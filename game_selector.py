@@ -13,6 +13,7 @@ from PySide6.QtGui import QFont, QPainter, QPen, QColor, QPainterPath, QBrush
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "OneDragon-ScriptChainer", "src"))
 from one_dragon.utils.os_utils import get_path_under_work_dir
 from script_chainer.utils.process_utils import launch_in_terminal
+from script_chainer.utils.runner_utils import build_runner_command
 
 TIMEOUT_SECONDS = 60
 
@@ -462,8 +463,15 @@ def update_config(input_path: str, output_path: str):
 
 
 if __name__ == "__main__":
+    chain_name = "99.yml"
     dir_path = os.path.dirname(os.path.abspath(__file__))
     input_path = os.path.join(dir_path, "config.yml")
-    output_path = get_path_under_work_dir("config", "script_chain", "99.yml")
+    output_path = get_path_under_work_dir("config", "script_chain", chain_name)
     update_config(input_path, output_path)
 
+    cmd, cwd = build_runner_command(chain_name)
+    launch_in_terminal(
+        command=cmd,
+        cwd=cwd,
+        title=f'运行脚本链 {chain_name}',
+    )
