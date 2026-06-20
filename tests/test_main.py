@@ -25,7 +25,7 @@ MAIN = importlib.import_module("main")
 
 
 class MainTests(TestCase):
-    def test_copy_config_copies_missing_file(self):
+    def test_copy_config_when_file_missing(self):
         with patch.object(MAIN, "get_path_under_work_dir", return_value="/tmp/config/script_chain"), \
             patch.object(MAIN.os.path, "exists", return_value=False), \
             patch.object(MAIN.shutil, "copy") as copy:
@@ -55,6 +55,14 @@ class MainTests(TestCase):
             "/tmp/config/script_chain/scripts",
         )
 
+    def test_copy_python_script_skips_existing_file(self):
+        with patch.object(MAIN, "get_path_under_work_dir", return_value="/tmp/config/script_chain/scripts"), \
+            patch.object(MAIN.os.path, "exists", return_value=True), \
+            patch.object(MAIN.shutil, "copy") as copy:
+            MAIN.copy_python_script("demo.py")
+
+        copy.assert_not_called()
+
     def test_main_runs_launcher(self):
         with patch.object(MAIN, "copy_config") as copy_config, \
             patch.object(MAIN, "get_path_under_work_dir", return_value="/work/src"), \
@@ -71,4 +79,4 @@ class MainTests(TestCase):
             ],
             cwd="/work/src",
         )
-        self.assertIs(result, run.return_value)
+        self.assertEqual(result, 0)

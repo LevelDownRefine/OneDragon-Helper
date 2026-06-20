@@ -37,7 +37,7 @@ def main():
         command,
         cwd=launcher_work_dir,
     )
-    return res
+    return res.returncode
 
 if __name__ == "__main__":
-    raise SystemExit(main().returncode)
+    raise SystemExit(main())
