@@ -34,7 +34,7 @@ class MainTests(TestCase):
             else:
                 sys.modules[name] = module
 
-    def test_teardown_class_restores_stub_modules(self):
+    def test_teardown_class_restores_original_modules(self):
         backups = {name: sys.modules.get(name) for name in _ORIGINAL_MODULES}
         try:
             for name in _ORIGINAL_MODULES:
