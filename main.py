@@ -25,7 +25,7 @@ def copy_python_script(file_name):
 
 def main():
     copy_config()
-    #copy_python_script() TODO: add python script
+    # copy_python_script() TODO: add python script
 
     launcher_work_dir = get_path_under_work_dir("src")
     command = [

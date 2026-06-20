@@ -22,9 +22,18 @@ def _install_os_utils_stub():
 _install_os_utils_stub()
 sys.modules.pop("main", None)
 MAIN = importlib.import_module("main")
+_ORIGINAL_MODULES = {name: sys.modules.get(name) for name in ("one_dragon", "one_dragon.utils", "one_dragon.utils.os_utils")}
 
 
 class MainTests(TestCase):
+    @classmethod
+    def tearDownClass(cls):
+        for name, module in _ORIGINAL_MODULES.items():
+            if module is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = module
+
     def test_copy_config_when_file_missing(self):
         with (
             patch.object(MAIN, "get_path_under_work_dir", return_value="/tmp/config/script_chain"),
@@ -54,10 +63,10 @@ class MainTests(TestCase):
             patch.object(MAIN.os.path, "exists", return_value=False),
             patch.object(MAIN.shutil, "copy") as copy,
         ):
-            MAIN.copy_python_script("demo.py")
+            MAIN.copy_python_script("main.py")
 
         copy.assert_called_once_with(
-            str(Path(MAIN.BASE_DIR) / "demo.py"),
+            str(Path(MAIN.BASE_DIR) / "main.py"),
             "/tmp/config/script_chain/scripts",
         )
 
@@ -67,7 +76,7 @@ class MainTests(TestCase):
             patch.object(MAIN.os.path, "exists", return_value=True),
             patch.object(MAIN.shutil, "copy") as copy,
         ):
-            MAIN.copy_python_script("demo.py")
+            MAIN.copy_python_script("main.py")
 
         copy.assert_not_called()
 
