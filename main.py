@@ -37,6 +37,15 @@ def launcher():
     return res.returncode
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] in ('--config', '-c'):
+        import config_ui
+        app = config_ui.QApplication(sys.argv)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        yml_path = os.path.join(base_dir, "99.yml")
+        window = config_ui.ConfigUI(yml_path)
+        window.show()
+        sys.exit(app.exec())
+
     copy_config()
     copy_python_script("shutdown.py")
     launcher()

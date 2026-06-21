@@ -6,3 +6,7 @@
 `OneDragon-ScriptChainer\Scripts\activate.bat`
 ## run
 `python main.py`
+
+## config
+To configure script paths in 99.yml via GUI:
+`python main.py --config`
