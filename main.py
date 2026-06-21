@@ -10,20 +10,27 @@ from one_dragon.utils.os_utils import get_path_under_work_dir as get_path_under_
 
 BaseDIR = os.path.dirname(os.path.abspath(__file__))
 
+def is_config_exist():
+    chain_name = "01.yml"
+    config_path = get_path_under_odsc("config", "script_chain")
+    return os.path.exists(os.path.join(config_path, chain_name))
+
 def copy_config():
     chain_name = "99.yml"
     input_path = os.path.join(BaseDIR, chain_name)
     output_path = get_path_under_odsc("config", "script_chain")
-    if not os.path.exists(os.path.join(output_path, chain_name)):
+    if not is_config_exist():
         shutil.copy(input_path, output_path)
         print(f"已复制配置文件到: {output_path}")
 
-def copy_python_script(file_name):
-    input_path = os.path.join(BaseDIR, file_name)
-    output_path = get_path_under_odsc("config", "script_chain", "scripts")
-    if not os.path.exists(os.path.join(output_path, file_name)):
-        shutil.copy(input_path, output_path)
-        print(f"已复制Python脚本到: {output_path}")
+def copy_python_scripts():
+    file_names = [f for f in os.listdir(BaseDIR) if f.endswith(".py")]
+    for file_name in file_names:
+        input_path = os.path.join(BaseDIR, file_name)
+        output_path = get_path_under_odsc("config", "script_chain", "scripts")
+        if not os.path.exists(os.path.join(output_path, file_name)):
+            shutil.copy(input_path, output_path)
+            print(f"已复制Python脚本{file_name}到: {output_path}")
 
 def launcher():
     launcher_work_dir = get_path_under_odsc("src")
@@ -39,7 +46,8 @@ def launcher():
     return res.returncode
 
 if __name__ == "__main__":
-    copy_python_script("shutdown.py")
+    #if not is_config_exist():
+    copy_python_scripts()
     config_ui.run_config_ui()
     copy_config()
     launcher()

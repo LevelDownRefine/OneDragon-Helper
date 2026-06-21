@@ -114,7 +114,7 @@ def run_config_ui():
     yml_path = os.path.join(base_dir, "99.yml")
     window = ConfigUI(yml_path)
     window.show()
-    sys.exit(app.exec())
+    app.exec()
 
 if __name__ == "__main__":
     run_config_ui()
