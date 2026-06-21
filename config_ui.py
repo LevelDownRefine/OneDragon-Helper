@@ -1,15 +1,13 @@
 import sys
 import os
 import yaml
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QFileDialog
+from functools import partial
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QFileDialog, QWidget, QVBoxLayout
 from qfluentwidgets import (
-    FluentWindow, NavigationInterface, NavigationItemPosition, NavigationAvatarWidget,
-    MessageBox, ScrollArea, SubtitleLabel, setFont,
+    MessageBox, ScrollArea, SubtitleLabel,
     LineEdit, PushButton, PrimaryPushButton, BodyLabel
 )
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QWidget, QVBoxLayout
 
 class ConfigUI(QWidget):
     def __init__(self, yml_path):
@@ -46,11 +44,18 @@ class ConfigUI(QWidget):
         
     def load_data(self):
         if not os.path.exists(self.yml_path):
-            MessageBox("错误", f"找不到文件: {self.yml_path}", self.window()).exec()
+            MessageBox("错误", f"找不到文件: {self.yml_path}", self).exec()
             return
             
-        with open(self.yml_path, 'r', encoding='utf-8') as f:
-            self.config_data = yaml.safe_load(f)
+        try:
+            with open(self.yml_path, 'r', encoding='utf-8') as f:
+                self.config_data = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            MessageBox("解析错误", f"解析 {self.yml_path} 失败: {str(e)}", self).exec()
+            return
+        except Exception as e:
+            MessageBox("读取错误", f"读取 {self.yml_path} 失败: {str(e)}", self).exec()
+            return
             
         script_list = self.config_data.get('script_list', [])
         for idx, script in enumerate(script_list):
@@ -64,7 +69,7 @@ class ConfigUI(QWidget):
             path_input.setText(script.get('script_path', ''))
             
             browse_btn = PushButton("选择", self)
-            browse_btn.clicked.connect(lambda checked, pi=path_input: self.browse_file(pi))
+            browse_btn.clicked.connect(partial(self.browse_file, path_input))
             
             row_layout.addWidget(label)
             row_layout.addWidget(path_input)
@@ -86,10 +91,14 @@ class ConfigUI(QWidget):
             if idx < len(script_list):
                 script_list[idx]['script_path'] = path_input.text()
                 
-        with open(self.yml_path, 'w', encoding='utf-8') as f:
-            yaml.dump(self.config_data, f, allow_unicode=True, sort_keys=False)
+        try:
+            with open(self.yml_path, 'w', encoding='utf-8') as f:
+                yaml.dump(self.config_data, f, allow_unicode=True, sort_keys=False)
+        except Exception as e:
+            MessageBox("保存错误", f"保存配置失败: {str(e)}", self).exec()
+            return
             
-        w = MessageBox("成功", "配置已保存！", self.window())
+        w = MessageBox("成功", "配置已保存！", self)
         w.yesButton.setText("确定")
         w.cancelButton.hide()
         w.exec()

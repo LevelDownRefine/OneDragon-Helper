@@ -38,7 +38,13 @@ def launcher():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] in ('--config', '-c'):
-        import config_ui
+        try:
+            import config_ui
+        except ImportError as e:
+            print(f"Failed to load UI dependencies: {e}")
+            print("Please ensure you run this command inside the OneDragon-ScriptChainer virtual environment where PySide6 and qfluentwidgets are installed.")
+            sys.exit(1)
+        
         app = config_ui.QApplication(sys.argv)
         base_dir = os.path.dirname(os.path.abspath(__file__))
         yml_path = os.path.join(base_dir, "99.yml")
