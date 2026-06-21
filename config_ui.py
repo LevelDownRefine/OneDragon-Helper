@@ -10,7 +10,7 @@ from qfluentwidgets import (
 from PySide6.QtCore import Qt, QSize
 
 class ConfigUI(QWidget):
-    FILE_FILTER = "可执行文件 (*.exe *.bat *.py);;所有文件 (*.*)"
+    FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
     LABEL_WIDTH = 100
 
     def __init__(self, yml_path):
