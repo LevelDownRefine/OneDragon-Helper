@@ -5,4 +5,4 @@
 ## activate
 `OneDragon-ScriptChainer\Scripts\activate.bat`
 ## run
-`python main.py`
+`python entry.py`
