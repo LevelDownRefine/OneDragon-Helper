@@ -2,7 +2,6 @@ import sys
 import os
 import shutil
 import subprocess
-import argparse
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "OneDragon-ScriptChainer", "src"))
 from one_dragon.utils.os_utils import get_path_under_work_dir as get_path_under_odsc
@@ -38,25 +37,10 @@ def launcher():
     return res.returncode
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="OneDragon-Helper Launcher")
-    parser.add_argument("--config", "-c", action="store_true", help="Launch the PySide6 configuration UI")
-    args, unknown = parser.parse_known_args()
-
-    if args.config:
-        try:
-            import config_ui
-        except ImportError as e:
-            print(f"Failed to load UI dependencies: {e}")
-            print("Please ensure you run this command inside the OneDragon-ScriptChainer virtual environment where PySide6 and qfluentwidgets are installed.")
-            sys.exit(1)
-        
-        app = config_ui.QApplication(sys.argv)
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        yml_path = os.path.join(base_dir, "99.yml")
-        window = config_ui.ConfigUI(yml_path)
-        window.show()
-        sys.exit(app.exec())
-
-    copy_config()
-    copy_python_script("shutdown.py")
-    launcher()
+    if len(sys.argv) > 1 and sys.argv[1] in ('--config', '-c'):
+        import config_ui
+        config_ui.run_config_ui()
+    else:
+        copy_config()
+        copy_python_script("shutdown.py")
+        launcher()
