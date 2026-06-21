@@ -10,6 +10,9 @@ from qfluentwidgets import (
 from PySide6.QtCore import Qt, QSize
 
 class ConfigUI(QWidget):
+    FILE_FILTER = "可执行文件 (*.exe *.bat *.py);;所有文件 (*.*)"
+    LABEL_WIDTH = 100
+
     def __init__(self, yml_path):
         super().__init__()
         self.yml_path = yml_path
@@ -63,7 +66,7 @@ class ConfigUI(QWidget):
             
             name = script.get('display_name', f'Script {idx}')
             label = BodyLabel(name, self)
-            label.setFixedWidth(100)
+            label.setFixedWidth(self.LABEL_WIDTH)
             
             path_input = LineEdit(self)
             path_input.setText(script.get('script_path', ''))
@@ -81,7 +84,7 @@ class ConfigUI(QWidget):
         self.scroll_layout.addStretch()
             
     def browse_file(self, path_input):
-        file_path, _ = QFileDialog.getOpenFileName(self, "选择脚本文件", "", "可执行文件 (*.exe *.bat *.py);;所有文件 (*.*)")
+        file_path, _ = QFileDialog.getOpenFileName(self, "选择脚本文件", "", self.FILE_FILTER)
         if file_path:
             path_input.setText(os.path.normpath(file_path))
             
@@ -89,7 +92,10 @@ class ConfigUI(QWidget):
         script_list = self.config_data.get('script_list', [])
         for idx, path_input in self.path_inputs:
             if idx < len(script_list):
-                script_list[idx]['script_path'] = path_input.text()
+                path_val = path_input.text().strip()
+                if not path_val:
+                    MessageBox("警告", f"脚本 {idx+1} 的路径为空，可能会导致运行问题！", self).exec()
+                script_list[idx]['script_path'] = path_val
                 
         try:
             with open(self.yml_path, 'w', encoding='utf-8') as f:
