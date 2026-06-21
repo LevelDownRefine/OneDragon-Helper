@@ -107,7 +107,7 @@ script_list:
   - pythonw.exe
   game_process_name: HTGame.exe
   launcher_mode: true
-  run_timeout_seconds: 600
+  run_timeout_seconds: 1200
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
