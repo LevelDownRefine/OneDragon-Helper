@@ -4,7 +4,7 @@
 
 `uv sync`
 ## activate on cmd
-`OneDragon-ScriptChainer\Scripts\activate.bat`
+`OneDragon-ScriptChainer\.venv\Scripts\activate.bat`
 
 ## run
 `python main.py`
