@@ -108,10 +108,10 @@ class ConfigUI(QWidget):
         w.cancelButton.hide()
         w.exec()
 
-def run_config_ui():
+def run_config_ui(config_name="01.yml"):
     app = QApplication(sys.argv)
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    yml_path = os.path.join(base_dir, "99.yml")
+    yml_path = os.path.join(base_dir, config_name)
     window = ConfigUI(yml_path)
     window.show()
     app.exec()

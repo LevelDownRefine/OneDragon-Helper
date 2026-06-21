@@ -9,24 +9,24 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "OneDra
 from one_dragon.utils.os_utils import get_path_under_work_dir as get_path_under_odsc
 
 BaseDIR = os.path.dirname(os.path.abspath(__file__))
+PyScriptDir = os.path.join(BaseDIR, "python_script")
+CHAIN_NAME = "01.yml"
 
 def is_config_exist():
-    chain_name = "01.yml"
     config_path = get_path_under_odsc("config", "script_chain")
-    return os.path.exists(os.path.join(config_path, chain_name))
+    return os.path.exists(os.path.join(config_path, CHAIN_NAME))
 
 def copy_config():
-    chain_name = "99.yml"
-    input_path = os.path.join(BaseDIR, chain_name)
+    input_path = os.path.join(BaseDIR, CHAIN_NAME)
     output_path = get_path_under_odsc("config", "script_chain")
     if not is_config_exist():
         shutil.copy(input_path, output_path)
         print(f"已复制配置文件到: {output_path}")
 
 def copy_python_scripts():
-    file_names = [f for f in os.listdir(BaseDIR) if f.endswith(".py")]
+    file_names = [f for f in os.listdir(PyScriptDir) if f.endswith(".py")]
     for file_name in file_names:
-        input_path = os.path.join(BaseDIR, file_name)
+        input_path = os.path.join(PyScriptDir, file_name)
         output_path = get_path_under_odsc("config", "script_chain", "scripts")
         if not os.path.exists(os.path.join(output_path, file_name)):
             shutil.copy(input_path, output_path)
@@ -46,8 +46,8 @@ def launcher():
     return res.returncode
 
 if __name__ == "__main__":
-    #if not is_config_exist():
-    copy_python_scripts()
-    config_ui.run_config_ui()
-    copy_config()
+    if not is_config_exist():
+        copy_python_scripts()
+        config_ui.run_config_ui(CHAIN_NAME)
+        copy_config()
     launcher()
