@@ -7,7 +7,6 @@ from qfluentwidgets import (
     MessageBox, ScrollArea, SubtitleLabel,
     LineEdit, PushButton, PrimaryPushButton, BodyLabel
 )
-from PySide6.QtCore import Qt, QSize
 
 class ConfigUI(QWidget):
     FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
@@ -27,7 +26,7 @@ class ConfigUI(QWidget):
         self.resize(700, 500)
         self.layout = QVBoxLayout(self)
         
-        title = SubtitleLabel("配置 99.yml 脚本路径", self)
+        title = SubtitleLabel("配置脚本路径", self)
         self.layout.addWidget(title)
         
         self.scroll_area = ScrollArea(self)

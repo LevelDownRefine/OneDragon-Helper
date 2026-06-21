@@ -3,6 +3,8 @@ import os
 import shutil
 import subprocess
 
+import config_ui
+
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "OneDragon-ScriptChainer", "src"))
 from one_dragon.utils.os_utils import get_path_under_work_dir as get_path_under_odsc
 
@@ -37,5 +39,7 @@ def launcher():
     return res.returncode
 
 if __name__ == "__main__":
-    import config_ui
+    copy_python_script("shutdown.py")
     config_ui.run_config_ui()
+    copy_config()
+    launcher()
