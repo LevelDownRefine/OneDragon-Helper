@@ -9,4 +9,4 @@
 
 ## config
 To configure script paths in 99.yml via GUI:
-`python main.py --config`
+`python main.py`

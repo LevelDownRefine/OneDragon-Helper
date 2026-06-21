@@ -37,10 +37,5 @@ def launcher():
     return res.returncode
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] in ('--config', '-c'):
-        import config_ui
-        config_ui.run_config_ui()
-    else:
-        copy_config()
-        copy_python_script("shutdown.py")
-        launcher()
+    import config_ui
+    config_ui.run_config_ui()
