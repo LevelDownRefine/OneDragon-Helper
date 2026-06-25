@@ -1,0 +1,20 @@
+{
+  "tagsForGroup1": "小怪，蕈兽，传奇，狭窄地形",
+  "tagsForGroup2": "",
+  "tagsForGroup3": "",
+  "tagsForGroup4": "",
+  "tagsForGroup5": "",
+  "tagsForGroup6": "",
+  "tagsForGroup7": "",
+  "tagsForGroup8": "",
+  "tagsForGroup9": "",
+  "tagsForGroup10": "",
+  "disableSelfOptimization": false,
+  "efficiencyIndex": "0.25",
+  "curiosityFactor": "0",
+  "ignoreRate": "100",
+  "targetEliteNum": "400",
+  "targetMonsterNum": "2000",
+  "priorityTags": "",
+  "excludeTags": ""
+}
