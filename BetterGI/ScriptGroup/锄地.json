@@ -1,0 +1,142 @@
+{
+  "index": 2,
+  "name": "锄地",
+  "config": {
+    "pathingConfig": {
+      "enabled": false,
+      "autoPickEnabled": true,
+      "partyName": "",
+      "isVisitStatueBeforeSwitchParty": false,
+      "mainAvatarIndex": "",
+      "guardianAvatarIndex": "",
+      "guardianElementalSkillSecondInterval": "",
+      "guardianElementalSkillLongPress": false,
+      "onlyInTeleportRecover": false,
+      "jsScriptUseEnabled": true,
+      "soloTaskUseFightEnabled": true,
+      "skipDuring": "",
+      "useGadgetIntervalMs": 0,
+      "autoSkipEnabled": true,
+      "autoRunEnabled": true,
+      "autoEatEnabled": false,
+      "autoEatConfig": {
+        "enabled": false,
+        "showNotification": true,
+        "checkInterval": 150,
+        "eatInterval": 1000,
+        "testFoodName": null,
+        "defaultAtkBoostingDishName": "炸萝卜丸子",
+        "defaultAdventurersDishName": null,
+        "defaultDefBoostingDishName": null
+      },
+      "hideOnRepeat": false,
+      "taskCycleConfig": {
+        "enable": false,
+        "boundaryTime": 0,
+        "isBoundaryTimeBasedOnServerTime": false,
+        "cycle": 1,
+        "index": 1
+      },
+      "taskCompletionSkipRuleConfig": {
+        "enable": false,
+        "skipPolicy": "GroupPhysicalPathSkipPolicy",
+        "boundaryTime": 4,
+        "isBoundaryTimeBasedOnServerTime": false,
+        "lastRunGapSeconds": -1,
+        "referencePoint": "EndTime"
+      },
+      "preExecutionPriorityConfig": {
+        "enabled": false,
+        "groupNames": "",
+        "maxRetryCount": 1
+      },
+      "autoFightEnabled": false,
+      "autoFightConfig": {
+        "strategyName": "",
+        "teamNames": "",
+        "fightFinishDetectEnabled": true,
+        "actionSchedulerByCd": "",
+        "onlyPickEliteDropsMode": "Closed",
+        "finishDetectConfig": {
+          "battleEndProgressBarColor": "",
+          "battleEndProgressBarColorTolerance": "",
+          "fastCheckEnabled": false,
+          "rotateFindEnemyEnabled": false,
+          "fastCheckParams": "",
+          "checkEndDelay": "",
+          "beforeDetectDelay": "",
+          "rotaryFactor": 10,
+          "isFirstCheck": false,
+          "checkBeforeBurst": false
+        },
+        "pickDropsAfterFightEnabled": false,
+        "pickDropsAfterFightSeconds": 15,
+        "battleThresholdForLoot": null,
+        "kazuhaPickupEnabled": true,
+        "qinDoublePickUp": false,
+        "guardianAvatar": "",
+        "guardianCombatSkip": false,
+        "skipModel": false,
+        "guardianAvatarHold": false,
+        "burstEnabled": false,
+        "kazuhaPartyName": "",
+        "swimmingEnabled": false,
+        "expBasedPickupEnabled": false,
+        "timeout": 120
+      }
+    },
+    "shellConfig": {
+      "disable": false,
+      "timeout": 60,
+      "noWindow": true,
+      "output": true
+    },
+    "enableShellConfig": false
+  },
+  "projects": [
+    {
+      "name": "锄地一条龙",
+      "folderName": "AutoHoeingOneDragon",
+      "jsScriptSettingsObject": {
+        "operationMode": "运行锄地路线",
+        "groupIndex": "路径组一",
+        "sortMode": "效率降序",
+        "pickup_Mode": "模板匹配拾取，拾取狗粮和怪物材料",
+        "onlyRelatedItems": false,
+        "disableSecondCheck": false,
+        "findFInterval": "100",
+        "pickupDelay": "50",
+        "rollingDelay": "32",
+        "timeMove": "1000",
+        "accountName": "默认账户",
+        "tagsForGroup1": "小怪，蕈兽，传奇，狭窄地形",
+        "efficiencyIndex": "0.25",
+        "curiosityFactor": "0",
+        "ignoreRate": "100",
+        "targetEliteNum": "400",
+        "targetMonsterNum": "2000",
+        "targetMonsters": "",
+        "partyName": "冰",
+        "tagsForGroup2": "",
+        "tagsForGroup3": "",
+        "tagsForGroup4": "",
+        "tagsForGroup5": "",
+        "tagsForGroup6": "",
+        "tagsForGroup7": "",
+        "tagsForGroup8": "",
+        "tagsForGroup9": "",
+        "tagsForGroup10": "",
+        "disableSelfOptimization": false,
+        "priorityTags": "",
+        "excludeTags": ""
+      },
+      "index": 1,
+      "type": "Javascript",
+      "status": "Enabled",
+      "schedule": "Daily",
+      "runNum": 1,
+      "allowJsNotification": true,
+      "allowJsHTTPHash": ""
+    }
+  ]
+}

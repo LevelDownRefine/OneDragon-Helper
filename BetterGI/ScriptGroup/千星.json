@@ -1,0 +1,132 @@
+{
+  "index": 1,
+  "name": "千星",
+  "config": {
+    "pathingConfig": {
+      "enabled": false,
+      "autoPickEnabled": true,
+      "partyName": "",
+      "isVisitStatueBeforeSwitchParty": false,
+      "mainAvatarIndex": "",
+      "guardianAvatarIndex": "",
+      "guardianElementalSkillSecondInterval": "",
+      "guardianElementalSkillLongPress": false,
+      "onlyInTeleportRecover": false,
+      "jsScriptUseEnabled": true,
+      "soloTaskUseFightEnabled": true,
+      "skipDuring": "",
+      "useGadgetIntervalMs": 0,
+      "autoSkipEnabled": true,
+      "autoRunEnabled": true,
+      "autoEatEnabled": false,
+      "autoEatConfig": {
+        "enabled": false,
+        "showNotification": true,
+        "checkInterval": 150,
+        "eatInterval": 1000,
+        "testFoodName": null,
+        "defaultAtkBoostingDishName": "炸萝卜丸子",
+        "defaultAdventurersDishName": null,
+        "defaultDefBoostingDishName": null
+      },
+      "hideOnRepeat": false,
+      "taskCycleConfig": {
+        "enable": false,
+        "boundaryTime": 0,
+        "isBoundaryTimeBasedOnServerTime": false,
+        "cycle": 1,
+        "index": 1
+      },
+      "taskCompletionSkipRuleConfig": {
+        "enable": false,
+        "skipPolicy": "GroupPhysicalPathSkipPolicy",
+        "boundaryTime": 4,
+        "isBoundaryTimeBasedOnServerTime": false,
+        "lastRunGapSeconds": -1,
+        "referencePoint": "EndTime"
+      },
+      "preExecutionPriorityConfig": {
+        "enabled": false,
+        "groupNames": "",
+        "maxRetryCount": 1
+      },
+      "autoFightEnabled": false,
+      "autoFightConfig": {
+        "strategyName": "",
+        "teamNames": "",
+        "fightFinishDetectEnabled": true,
+        "actionSchedulerByCd": "",
+        "onlyPickEliteDropsMode": "Closed",
+        "finishDetectConfig": {
+          "battleEndProgressBarColor": "",
+          "battleEndProgressBarColorTolerance": "",
+          "fastCheckEnabled": false,
+          "rotateFindEnemyEnabled": false,
+          "fastCheckParams": "",
+          "checkEndDelay": "",
+          "beforeDetectDelay": "",
+          "rotaryFactor": 10,
+          "isFirstCheck": false,
+          "checkBeforeBurst": false
+        },
+        "pickDropsAfterFightEnabled": false,
+        "pickDropsAfterFightSeconds": 15,
+        "battleThresholdForLoot": null,
+        "kazuhaPickupEnabled": true,
+        "qinDoublePickUp": false,
+        "guardianAvatar": "",
+        "guardianCombatSkip": false,
+        "skipModel": false,
+        "guardianAvatarHold": false,
+        "burstEnabled": false,
+        "kazuhaPartyName": "",
+        "swimmingEnabled": false,
+        "expBasedPickupEnabled": false,
+        "timeout": 120
+      }
+    },
+    "shellConfig": {
+      "disable": false,
+      "timeout": 60,
+      "noWindow": true,
+      "output": true
+    },
+    "enableShellConfig": false
+  },
+  "projects": [
+    {
+      "name": "千星奇域·每周经验刷取(回放通关版)",
+      "folderName": "MiliastraExperiencePlayback",
+      "jsScriptSettingsObject": {
+        "room": "",
+        "playbacks": "",
+        "expPerAttempt": "20",
+        "deleteStageSave": false,
+        "deleteStageSaveKeyword": "音乐播放",
+        "expWeeklyLimit": "4000",
+        "force": false,
+        "thisAttempts": "1",
+        "dailyEnabled": true,
+        "dailyRooms": "24339714898,45694132064",
+        "dailyPlaybacks": "木桩.json;木桩.json",
+        "dailyLimit": "1",
+        "dailyForce": true,
+        "closeStageDialog": true,
+        "goToTeyvat": true,
+        "dailyRewards": [
+          "诸界纪游",
+          "绮衣珍赏",
+          "奇趣盛邀",
+          "星境彩馈"
+        ]
+      },
+      "index": 1,
+      "type": "Javascript",
+      "status": "Enabled",
+      "schedule": "Daily",
+      "runNum": 1,
+      "allowJsNotification": true,
+      "allowJsHTTPHash": ""
+    }
+  ]
+}
