@@ -5,6 +5,7 @@ import copy
 import shutil
 from functools import partial
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QFileDialog, QWidget, QVBoxLayout
+from PySide6.QtGui import QIntValidator
 from qfluentwidgets import (
     MessageBox, ScrollArea, SubtitleLabel,
     LineEdit, PushButton, PrimaryPushButton, BodyLabel, SpinBox
@@ -98,9 +99,9 @@ class ConfigUI(QWidget):
             
             for day_idx in range(7):
                 day_label = BodyLabel(f"周{day_names[day_idx]}", self)
-                spinbox = SpinBox(self)
-                spinbox.setRange(0, 86400)
-                spinbox.setValue(weekly_timeouts[day_idx])
+                spinbox = LineEdit(self)
+                spinbox.setValidator(QIntValidator(0, 86400, self))
+                spinbox.setText(str(weekly_timeouts[day_idx]))
                 spinbox.setFixedWidth(80)
                 
                 row2.addWidget(day_label)
@@ -142,7 +143,7 @@ class ConfigUI(QWidget):
                 
         for idx, spinboxes in self.timeout_inputs:
             if idx < len(script_list):
-                weekly_timeouts = [sb.value() for sb in spinboxes]
+                weekly_timeouts = [int(sb.text()) if sb.text().strip().isdigit() else 0 for sb in spinboxes]
                 script_list[idx]['weekly_timeouts'] = weekly_timeouts
                 
         # 2. Generate 01.yml to 07.yml
