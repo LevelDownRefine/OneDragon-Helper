@@ -1,7 +1,8 @@
-import os
+﻿import os
 
 BaseDIR = os.path.dirname(os.path.abspath(__file__))
 OneDragonScriptChainerDir = os.path.join(BaseDIR, "OneDragon-ScriptChainer")
+BGIConfigDIR = os.path.join(BaseDIR, "BetterGI")
 
 def get_path_under_onedragon(*subs) -> str:
     """
