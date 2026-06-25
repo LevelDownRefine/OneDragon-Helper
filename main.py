@@ -51,13 +51,8 @@ def launcher():
     return res.returncode
 
 if __name__ == "__main__":
-    if not is_config_exist():
-        copy_python_scripts()
-        config_ui.run_config_ui(CHAIN_NAME)
-        copy_all_configs()
-    else:
-        # User might have regenerated configs manually
-        copy_all_configs()
-        copy_python_scripts()
+    copy_python_scripts()
+    config_ui.run_config_ui(CHAIN_NAME)
+    copy_all_configs()
 
     launcher()

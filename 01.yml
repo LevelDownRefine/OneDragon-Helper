@@ -6,7 +6,7 @@ script_list:
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
-  run_timeout_seconds: 3600
+  run_timeout_seconds: 10
   check_done: ''
   kill_script_after_done: true
   kill_game_after_done: true
@@ -18,6 +18,14 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  weekly_timeouts:
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
 - display_name: 鸣潮
   game_label: ''
   script_type: external
@@ -26,7 +34,7 @@ script_list:
   - pythonw.exe
   game_process_name: Client-Win64-Shipping.exe
   launcher_mode: true
-  run_timeout_seconds: 600
+  run_timeout_seconds: 1800
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -38,6 +46,14 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  weekly_timeouts:
+  - 1800
+  - 600
+  - 600
+  - 600
+  - 600
+  - 600
+  - 600
 - display_name: 原神
   game_label: ''
   script_type: external
@@ -46,7 +62,7 @@ script_list:
   - pythonw.exe
   game_process_name: YuanShen.exe
   launcher_mode: false
-  run_timeout_seconds: 1200
+  run_timeout_seconds: 1600
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -58,6 +74,14 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  weekly_timeouts:
+  - 1600
+  - 1200
+  - 1200
+  - 1200
+  - 1200
+  - 1200
+  - 1200
 - display_name: 终末地
   game_label: ''
   script_type: external
@@ -78,6 +102,14 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  weekly_timeouts:
+  - 2400
+  - 2400
+  - 2400
+  - 2400
+  - 2400
+  - 2400
+  - 2400
 - display_name: 绝区零
   game_label: ''
   script_type: external
@@ -99,6 +131,14 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  weekly_timeouts:
+  - 3600
+  - 1800
+  - 1800
+  - 1800
+  - 1800
+  - 1800
+  - 1800
 - display_name: 崩铁
   game_label: ''
   script_type: external
@@ -106,7 +146,7 @@ script_list:
   script_process_name: []
   game_process_name: StarRail.exe
   launcher_mode: false
-  run_timeout_seconds: 1800
+  run_timeout_seconds: 3600
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -118,6 +158,14 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  weekly_timeouts:
+  - 3600
+  - 1800
+  - 1800
+  - 1800
+  - 1800
+  - 1800
+  - 1800
 - display_name: 异环
   game_label: ''
   script_type: external
@@ -126,7 +174,7 @@ script_list:
   - pythonw.exe
   game_process_name: HTGame.exe
   launcher_mode: true
-  run_timeout_seconds: 600
+  run_timeout_seconds: 1200
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -138,6 +186,14 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  weekly_timeouts:
+  - 1200
+  - 1200
+  - 1200
+  - 1200
+  - 1200
+  - 1200
+  - 1200
 - display_name: 粥
   game_label: ''
   script_type: external
@@ -157,6 +213,14 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  weekly_timeouts:
+  - 3600
+  - 3600
+  - 3600
+  - 3600
+  - 3600
+  - 5400
+  - 3600
 - display_name: 关闭静音
   game_label: ''
   script_type: python
@@ -164,7 +228,7 @@ script_list:
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
-  run_timeout_seconds: 3600
+  run_timeout_seconds: 10
   check_done: ''
   kill_script_after_done: true
   kill_game_after_done: true
@@ -176,6 +240,14 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  weekly_timeouts:
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
 - display_name: 自动关机
   game_label: ''
   script_type: python
@@ -183,7 +255,7 @@ script_list:
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
-  run_timeout_seconds: 3600
+  run_timeout_seconds: 10
   check_done: ''
   kill_script_after_done: true
   kill_game_after_done: true
@@ -195,3 +267,11 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  weekly_timeouts:
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
+  - 10
