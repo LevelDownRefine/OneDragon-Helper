@@ -21,7 +21,7 @@ class ConfigUI(QWidget):
         self.base_dir = os.path.dirname(yml_path)
         self.config_data = {}
         self.path_inputs = []
-        self.timeout_inputs = [] # List of tuples: (script_idx, [spinbox_mon, ..., spinbox_sun])
+        self.timeout_inputs = [] # List of tuples: (script_idx, [lineedit_mon, ..., lineedit_sun])
         
         self.init_ui()
         self.load_data()
@@ -95,18 +95,18 @@ class ConfigUI(QWidget):
                 weekly_timeouts.extend([0] * (7 - len(weekly_timeouts)))
                 
             day_names = ["一", "二", "三", "四", "五", "六", "日"]
-            spinboxes = []
+            lineedits = []
             
             for day_idx in range(7):
                 day_label = BodyLabel(f"周{day_names[day_idx]}", self)
-                spinbox = LineEdit(self)
-                spinbox.setValidator(QIntValidator(0, 86400, self))
-                spinbox.setText(str(weekly_timeouts[day_idx]))
-                spinbox.setFixedWidth(80)
+                lineedit = LineEdit(self)
+                lineedit.setValidator(QIntValidator(0, 86400, self))
+                lineedit.setText(str(weekly_timeouts[day_idx]))
+                lineedit.setFixedWidth(80)
                 
                 row2.addWidget(day_label)
-                row2.addWidget(spinbox)
-                spinboxes.append(spinbox)
+                row2.addWidget(lineedit)
+                lineedits.append(lineedit)
                 
             row2.addStretch()
             
@@ -121,7 +121,7 @@ class ConfigUI(QWidget):
             self.scroll_layout.addLayout(script_layout)
             
             self.path_inputs.append((idx, path_input))
-            self.timeout_inputs.append((idx, spinboxes))
+            self.timeout_inputs.append((idx, lineedits))
             
         self.scroll_layout.addStretch()
             
@@ -141,9 +141,15 @@ class ConfigUI(QWidget):
                     MessageBox("警告", f"脚本 {idx+1} 的路径为空，可能会导致运行问题！", self).exec()
                 script_list[idx]['script_path'] = path_val
                 
-        for idx, spinboxes in self.timeout_inputs:
+        for idx, lineedits in self.timeout_inputs:
             if idx < len(script_list):
-                weekly_timeouts = [int(sb.text()) if sb.text().strip().isdigit() else 0 for sb in spinboxes]
+                weekly_timeouts = []
+                for le in lineedits:
+                    try:
+                        val = int(le.text().strip())
+                    except ValueError:
+                        val = 0
+                    weekly_timeouts.append(val)
                 script_list[idx]['weekly_timeouts'] = weekly_timeouts
                 
         # 2. Generate 01.yml to 07.yml
