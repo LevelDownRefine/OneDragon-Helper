@@ -2,7 +2,7 @@ import sys
 import subprocess
 
 from utils import get_path_under_onedragon
-from gen_onedragon_config import config_workflow
+from generate_onedragon_config import config_workflow
 
 def launcher():
     launcher_work_dir = get_path_under_onedragon("src")
