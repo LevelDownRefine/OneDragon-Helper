@@ -2,6 +2,14 @@ import os
 
 BaseDIR = os.path.dirname(os.path.abspath(__file__))
 OneDragonScriptChainerDir = os.path.join(BaseDIR, "OneDragon-ScriptChainer")
+OurBGIUserDir = os.path.join(BaseDIR, "BGI_User")
+
+def get_one_dragon_yml_path() -> str:
+    """
+    获取根目录下的config.yml文件路径
+    :return: 根目录下的config.yml文件路径
+    """
+    return os.path.join(BaseDIR, "config.yml")
 
 def get_path_under_onedragon(*subs) -> str:
     """
