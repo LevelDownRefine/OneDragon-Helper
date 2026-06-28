@@ -4,11 +4,7 @@ import shutil
 from utils import get_path_under_onedragon, get_path_under_cwd
 from config_ui import run_config_ui
 
-CHAIN_NAME = "01.yml"
-
-def is_config_exist():
-    config_path = get_path_under_onedragon("config", "script_chain")
-    return os.path.exists(os.path.join(config_path, CHAIN_NAME))
+CHAIN_NAME = "config.yml"
 
 def copy_all_configs():
     output_dir = get_path_under_onedragon("config", "script_chain")
