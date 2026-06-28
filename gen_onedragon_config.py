@@ -1,10 +1,8 @@
 import os
 import shutil
 
-from utils import get_path_under_onedragon, get_path_under_cwd
+from utils import get_path_under_onedragon, get_path_under_cwd, get_one_dragon_yml_path
 from config_ui import run_config_ui
-
-CHAIN_NAME = "config.yml"
 
 def copy_all_configs():
     output_dir = get_path_under_onedragon("config", "script_chain")
@@ -29,7 +27,7 @@ def copy_python_scripts():
 
 def config_workflow():
     copy_python_scripts()
-    run_config_ui(CHAIN_NAME)
+    run_config_ui(get_one_dragon_yml_path())
     copy_all_configs()
 
 if __name__ == "__main__":
