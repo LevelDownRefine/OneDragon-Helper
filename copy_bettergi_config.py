@@ -1,14 +1,14 @@
 ﻿import os
 import shutil
 import yaml
-from utils import get_one_dragon_yml_path, OurBGIUserDir
+from utils import get_one_dragon_yml_path_under_root, OurBGIUserDir
 
 def get_BGI_user_dir():
     """
     获取BetterGI配置文件中的脚本路径
     :return: 包含脚本路径
     """
-    with open(get_one_dragon_yml_path(), 'r', encoding='utf-8') as f:
+    with open(get_one_dragon_yml_path_under_root(), 'r', encoding='utf-8') as f:
         config_data = yaml.safe_load(f)
         script_list = config_data.get('script_list', [])
         for script in script_list:

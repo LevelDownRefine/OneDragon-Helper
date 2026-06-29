@@ -4,12 +4,19 @@ BaseDIR = os.path.dirname(os.path.abspath(__file__))
 OneDragonScriptChainerDir = os.path.join(BaseDIR, "OneDragon-ScriptChainer")
 OurBGIUserDir = os.path.join(BaseDIR, "BGI_User")
 
-def get_one_dragon_yml_path() -> str:
+def get_onedragon_yml_path_under_root() -> str:
     """
     获取根目录下的config.yml文件路径
     :return: 根目录下的config.yml文件路径
     """
     return os.path.join(BaseDIR, "config.yml")
+
+def get_script_chain_under_onedragon() -> str:
+    """
+    获取OneDragon-ScriptChainer目录下的配置文件路径
+    :return: OneDragon-ScriptChainer目录下的配置文件路径
+    """
+    return get_path_under_onedragon("config", "script_chain")
 
 def get_path_under_onedragon(*subs) -> str:
     """
@@ -19,20 +26,20 @@ def get_path_under_onedragon(*subs) -> str:
     """
     return join_dir_path_with_mk(OneDragonScriptChainerDir, *subs)
 
-def get_cwd() -> str:
+def get_root_dir() -> str:
     """
     获取当前工作目录
     :return: 当前工作目录
     """
     return os.path.dirname(os.path.abspath(__file__))
 
-def get_path_under_cwd(*subs) -> str:
+def get_path_under_root(*subs) -> str:
     """
     获取当前工作目录下的路径
     :param subs: 子目录路径 可以传入多个表示多级
     :return: 当前工作目录下的路径
     """
-    return join_dir_path_with_mk(get_cwd(), *subs)
+    return join_dir_path_with_mk(get_root_dir(), *subs)
 
 def join_dir_path_with_mk(path: str, *subs) -> str:
     """
