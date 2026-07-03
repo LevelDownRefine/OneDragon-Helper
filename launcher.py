@@ -23,6 +23,8 @@ def run_launcher():
     运行OneDragon-ScriptChainer
     :return: int
     """
+    chain_name = get_chain_name()
+    print(f"Running OneDragon-ScriptChainer {chain_name}")
     launcher_work_dir = get_path_under_onedragon("src")
     command = [
         sys.executable,
@@ -30,7 +32,7 @@ def run_launcher():
         "script_chainer.win_exe.launcher",
         "--onedragon", 
         "--chain", 
-        get_chain_name(),
+        chain_name,
     ]
     res = subprocess.run(
         command,
