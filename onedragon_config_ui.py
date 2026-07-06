@@ -2,7 +2,6 @@ import sys
 import os
 import yaml
 import copy
-import shutil
 from functools import partial
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QFileDialog, QWidget, QVBoxLayout
 from PySide6.QtGui import QIntValidator
@@ -142,31 +141,21 @@ class ConfigUI(QWidget):
                     weekly_timeouts.append(val)
                 script_list[idx]['weekly_timeouts'] = weekly_timeouts
                 
-        # 2. Generate 01.yml to 07.yml
-        for i in range(1, 8):
-            # Day index: 1 = Monday, 7 = Sunday
-            # Our weekly_timeouts array is 0-indexed (0 = Monday, 6 = Sunday)
-            data_copy = copy.deepcopy(self.config_data)
-            
-            for script in data_copy.get('script_list', []):
-                # Set the run_timeout_seconds to the specific day's timeout
-                timeouts = script.get('weekly_timeouts', [])
-                if len(timeouts) == 7:
-                    script['run_timeout_seconds'] = timeouts[i-1]
-                    
-            file_path = os.path.join(self.base_dir, f"{i:02d}.yml")
-            with open(file_path, 'w', encoding='utf-8') as f:
-                yaml.dump(data_copy, f, allow_unicode=True, sort_keys=False)
+        # 2. Only Generate 01.yml on BaseDir
+        i = 1
+        data_copy = copy.deepcopy(self.config_data)
+        
+        for script in data_copy.get('script_list', []):
+            # Set the run_timeout_seconds to the specific day's timeout
+            timeouts = script.get('weekly_timeouts', [])
+            if len(timeouts) == 7:
+                script['run_timeout_seconds'] = timeouts[i-1]
                 
-        # Auto-copy to script_chain directory if possible
-        sys.path.append(os.path.join(self.base_dir, "OneDragon-ScriptChainer", "src"))
-        from one_dragon.utils.os_utils import get_path_under_work_dir
-        output_dir = get_path_under_work_dir("config", "script_chain")
-        for i in range(1, 8):
-            chain_name = f"{i:02d}.yml"
-            shutil.copy(os.path.join(self.base_dir, chain_name), os.path.join(output_dir, chain_name))
+        file_path = os.path.join(self.base_dir, f"{i:02d}.yml")
+        with open(file_path, 'w', encoding='utf-8') as f:
+            yaml.dump(data_copy, f, allow_unicode=True, sort_keys=False)
             
-        w = MessageBox("成功", "7份配置已成功生成并保存！", self)
+        w = MessageBox("成功", "配置已成功生成并保存！", self)
         w.yesButton.setText("确定")
         w.cancelButton.hide()
         w.exec()

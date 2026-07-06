@@ -11,13 +11,6 @@ def get_onedragon_yml_path_under_root() -> str:
     """
     return os.path.join(BaseDIR, "config.yml")
 
-def get_script_chain_under_onedragon() -> str:
-    """
-    获取OneDragon-ScriptChainer目录下的配置文件路径
-    :return: OneDragon-ScriptChainer目录下的配置文件路径
-    """
-    return get_path_under_onedragon("config", "script_chain")
-
 def get_path_under_onedragon(*subs) -> str:
     """
     获取工作目录下的路径
