@@ -141,17 +141,9 @@ class ConfigUI(QWidget):
                     weekly_timeouts.append(val)
                 script_list[idx]['weekly_timeouts'] = weekly_timeouts
                 
-        # 2. Only Generate 01.yml on BaseDir
-        i = 1
+        # 2. Generate tmp.yml on BaseDir
         data_copy = copy.deepcopy(self.config_data)
-        
-        for script in data_copy.get('script_list', []):
-            # Set the run_timeout_seconds to the specific day's timeout
-            timeouts = script.get('weekly_timeouts', [])
-            if len(timeouts) == 7:
-                script['run_timeout_seconds'] = timeouts[i-1]
-                
-        file_path = os.path.join(self.base_dir, f"{i:02d}.yml")
+        file_path = os.path.join(self.base_dir, "tmp.yml")
         with open(file_path, 'w', encoding='utf-8') as f:
             yaml.dump(data_copy, f, allow_unicode=True, sort_keys=False)
             

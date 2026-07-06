@@ -24,7 +24,7 @@ def generate_OneDragon_script_chain():
         chain_name = f"01.yml"
         return os.path.join(output_dir, chain_name)
 
-    with open(os.path.join(BaseDIR, "01.yml"), 'r', encoding='utf-8') as f:
+    with open(os.path.join(BaseDIR, "tmp.yml"), 'r', encoding='utf-8') as f:
         config_data = yaml.safe_load(f)
 
     i = get_week_num()
