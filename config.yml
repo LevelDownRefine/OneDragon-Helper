@@ -159,7 +159,7 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   weekly_timeouts:
-  - 3600
+  - 4200
   - 1800
   - 1800
   - 1800
