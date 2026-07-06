@@ -1,8 +1,11 @@
-from datetime import datetime
 import subprocess
 import sys
+import os
+import yaml
+import copy
+from datetime import datetime
 
-from utils import get_path_under_onedragon
+from utils import get_path_under_onedragon, BaseDIR
 
 def get_week_num():
     """
@@ -11,28 +14,40 @@ def get_week_num():
     """
     return datetime.now().weekday()
 
-def get_chain_name():
+def generate_OneDragon_script_chain():
     """
-    返回链名称
-    :return: str
+    复制OneDragon-ScriptChainer到script_chain目录
+    :return: None
     """
-    return f"{get_week_num():02d}"
+    def get_output_file_path():
+        output_dir = get_path_under_onedragon("config", "script_chain")
+        chain_name = f"01.yml"
+        return os.path.join(output_dir, chain_name)
+
+    with open(os.path.join(BaseDIR, "01.yml"), 'r', encoding='utf-8') as f:
+        config_data = yaml.safe_load(f)
+
+    i = get_week_num()
+    data_copy = copy.deepcopy(config_data)
+    for script in data_copy.get('script_list', []):
+        timeouts = script.get('weekly_timeouts', [])
+        if len(timeouts) == 7:
+            script['run_timeout_seconds'] = timeouts[i-1]
+
+    output_file_path = get_output_file_path()
+    with open(output_file_path, 'w', encoding='utf-8') as f:
+        yaml.dump(data_copy, f, allow_unicode=True, sort_keys=False)
 
 def run_launcher():
     """
     运行OneDragon-ScriptChainer
     :return: int
     """
-    chain_name = get_chain_name()
-    print(f"Running OneDragon-ScriptChainer {chain_name}")
     launcher_work_dir = get_path_under_onedragon("src")
     command = [
         sys.executable,
         "-m",
         "script_chainer.win_exe.launcher",
-        "--onedragon", 
-        "--chain", 
-        chain_name,
     ]
     res = subprocess.run(
         command,
@@ -41,4 +56,5 @@ def run_launcher():
     return res.returncode
 
 if __name__ == "__main__":
+    generate_OneDragon_script_chain()
     run_launcher()
