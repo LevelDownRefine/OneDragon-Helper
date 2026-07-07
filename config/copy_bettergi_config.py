@@ -1,13 +1,6 @@
 ﻿import os
-import sys
 import shutil
 import yaml
-
-# Allow direct execution by adding parent directory to sys.path if utils is not directly importable
-try:
-    import utils
-except ImportError:
-    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from utils import get_our_bgi_user_dir, get_onedragon_yml_path_under_root
 
