@@ -159,4 +159,5 @@ def run_config_ui(yml_path):
     app.exec()
 
 if __name__ == "__main__":
-    run_config_ui()
+    from utils import get_onedragon_yml_path_under_root
+    run_config_ui(get_onedragon_yml_path_under_root())
