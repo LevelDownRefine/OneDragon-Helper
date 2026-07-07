@@ -54,9 +54,9 @@ class TestLauncher(unittest.TestCase):
         mock_get_path.return_value = out_dir
         
         # Test for Wednesday (weekday index 2)
-        WEDNESDAY_INDEX = 2
-        WEDNESDAY_TIMEOUT = 300
-        mock_get_week.return_value = WEDNESDAY_INDEX
+        wednesday_index = 2
+        wednesday_timeout = 300
+        mock_get_week.return_value = wednesday_index
         
         launcher.generate_OneDragon_script_chain()
         
@@ -68,7 +68,7 @@ class TestLauncher(unittest.TestCase):
             
         # Assertions
         scripts = output_data.get('script_list', [])
-        self.assertEqual(scripts[0]['run_timeout_seconds'], WEDNESDAY_TIMEOUT) # Wednesday timeout is 300
+        self.assertEqual(scripts[0]['run_timeout_seconds'], wednesday_timeout)
         self.assertEqual(scripts[1]['run_timeout_seconds'], 50)  # Unchanged since no weekly_timeouts
 
     @patch('launcher.get_week_num')
