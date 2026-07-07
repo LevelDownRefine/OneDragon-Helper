@@ -141,9 +141,9 @@ class ConfigUI(QWidget):
                     weekly_timeouts.append(val)
                 script_list[idx]['weekly_timeouts'] = weekly_timeouts
                 
-        # 2. Generate tmp.yml on BaseDir
+        # 2. Change config.yml on BaseDir
         data_copy = copy.deepcopy(self.config_data)
-        file_path = os.path.join(self.base_dir, "tmp.yml")
+        file_path = os.path.join(self.base_dir, "config.yml")
         with open(file_path, 'w', encoding='utf-8') as f:
             yaml.dump(data_copy, f, allow_unicode=True, sort_keys=False)
             

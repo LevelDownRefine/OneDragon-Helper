@@ -5,7 +5,7 @@ import yaml
 import copy
 from datetime import datetime
 
-from utils import get_path_under_onedragon, BaseDIR
+from utils import get_path_under_onedragon, get_root_dir
 
 def get_week_num():
     """
@@ -24,15 +24,17 @@ def generate_OneDragon_script_chain():
         chain_name = f"01.yml"
         return os.path.join(output_dir, chain_name)
 
-    with open(os.path.join(BaseDIR, "tmp.yml"), 'r', encoding='utf-8') as f:
+    with open(os.path.join(get_root_dir(), "config.yml"), 'r', encoding='utf-8') as f:
         config_data = yaml.safe_load(f)
 
     i = get_week_num()
     data_copy = copy.deepcopy(config_data)
     for script in data_copy.get('script_list', []):
-        timeouts = script.get('weekly_timeouts', [])
-        if len(timeouts) == 7:
-            script['run_timeout_seconds'] = timeouts[i-1]
+        timeouts = script.get('weekly_timeouts', None)
+        if timeouts:
+            assert len(timeouts) == 7, f"weekly_timeouts 长度错误，当前长度为 {len(timeouts)}"
+            script['run_timeout_seconds'] = timeouts[i]
+        print(f"[{script['display_name']}] 的超时时间为 {script['run_timeout_seconds']} 秒")
 
     output_file_path = get_output_file_path()
     with open(output_file_path, 'w', encoding='utf-8') as f:

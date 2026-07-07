@@ -1,15 +1,19 @@
 import os
+from functools import lru_cache
 
-BaseDIR = os.path.dirname(os.path.abspath(__file__))
-OneDragonScriptChainerDir = os.path.join(BaseDIR, "OneDragon-ScriptChainer")
-OurBGIUserDir = os.path.join(BaseDIR, "BGI_User")
+def get_our_bgi_user_dir() -> str:
+    """
+    获取当前工作目录下的BGI_User目录
+    :return: 当前工作目录下的BGI_User目录
+    """
+    return os.path.join(get_root_dir(), "BGI_User")
 
 def get_onedragon_yml_path_under_root() -> str:
     """
     获取根目录下的config.yml文件路径
     :return: 根目录下的config.yml文件路径
     """
-    return os.path.join(BaseDIR, "config.yml")
+    return os.path.join(get_root_dir(), "config.yml")
 
 def get_path_under_onedragon(*subs) -> str:
     """
@@ -17,8 +21,9 @@ def get_path_under_onedragon(*subs) -> str:
     :param subs: 子目录路径 可以传入多个表示多级
     :return: 工作目录下的路径
     """
-    return join_dir_path_with_mk(OneDragonScriptChainerDir, *subs)
+    return join_dir_path_with_mk(get_root_dir(), "OneDragon-ScriptChainer", *subs)
 
+@lru_cache
 def get_root_dir() -> str:
     """
     获取当前工作目录
