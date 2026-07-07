@@ -153,6 +153,9 @@ class ConfigUI(QWidget):
         w.exec()
 
 def run_config_ui(yml_path):
+    if not yml_path:
+        print("错误: 未指定 yml_path 参数。")
+        sys.exit(1)
     app = QApplication(sys.argv)
     window = ConfigUI(yml_path)
     window.show()
@@ -160,4 +163,9 @@ def run_config_ui(yml_path):
 
 if __name__ == "__main__":
     from utils import get_onedragon_yml_path_under_root
-    run_config_ui(get_onedragon_yml_path_under_root())
+    path = get_onedragon_yml_path_under_root()
+    if path:
+        run_config_ui(path)
+    else:
+        print("错误: 找不到配置文件路径。")
+        sys.exit(1)
