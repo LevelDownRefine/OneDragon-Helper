@@ -1,12 +1,13 @@
 ﻿import os
-import sys
 import shutil
 import yaml
 
-# Ensure the parent directory is in sys.path so utils and config can be imported correctly
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from utils import get_our_bgi_user_dir, get_onedragon_yml_path_under_root
+try:
+    from utils import get_our_bgi_user_dir, get_onedragon_yml_path_under_root
+except ImportError:
+    import sys
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    from utils import get_our_bgi_user_dir, get_onedragon_yml_path_under_root
 
 def get_BGI_user_dir():
     """
