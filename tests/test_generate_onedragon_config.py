@@ -5,13 +5,27 @@ import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
 
-# Mock PySide6 and qfluentwidgets to avoid ModuleNotFoundError when importing generate_onedragon_config
-sys.modules['PySide6'] = MagicMock()
-sys.modules['PySide6.QtWidgets'] = MagicMock()
-sys.modules['PySide6.QtGui'] = MagicMock()
-sys.modules['qfluentwidgets'] = MagicMock()
+# Global reference to target module and original modules dictionary
+generate_onedragon_config = None
+_original_modules = {}
 
-import generate_onedragon_config
+def setUpModule():
+    global generate_onedragon_config
+    # Mock PySide6 and qfluentwidgets to avoid ModuleNotFoundError when importing generate_onedragon_config
+    for mod in ['PySide6', 'PySide6.QtWidgets', 'PySide6.QtGui', 'qfluentwidgets']:
+        _original_modules[mod] = sys.modules.get(mod)
+        sys.modules[mod] = MagicMock()
+    
+    import generate_onedragon_config as goc
+    generate_onedragon_config = goc
+
+def tearDownModule():
+    # Restore original modules to prevent process-level pollution in other tests
+    for mod, orig in _original_modules.items():
+        if orig is None:
+            sys.modules.pop(mod, None)
+        else:
+            sys.modules[mod] = orig
 
 class TestGenerateOnedragonConfig(unittest.TestCase):
 

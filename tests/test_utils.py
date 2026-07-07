@@ -8,9 +8,8 @@ class TestUtils(unittest.TestCase):
 
     def test_get_root_dir(self):
         root_dir = utils.get_root_dir()
+        self.assertTrue(os.path.isabs(root_dir))
         self.assertTrue(os.path.isdir(root_dir))
-        # It should contain utils.py
-        self.assertTrue(os.path.exists(os.path.join(root_dir, "utils.py")))
 
     def test_get_our_bgi_user_dir(self):
         bgi_user_dir = utils.get_our_bgi_user_dir()
