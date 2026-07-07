@@ -153,7 +153,10 @@ class ConfigUI(QWidget):
         w.exec()
 
 def run_config_ui(yml_path):
-    if not isinstance(yml_path, str) or not yml_path.strip():
+    if not isinstance(yml_path, str):
+        print("Error: yml_path parameter is not specified / 错误: 未指定 yml_path 参数。", file=sys.stderr)
+        sys.exit(1)
+    if not yml_path.strip():
         print("Error: yml_path parameter is not specified / 错误: 未指定 yml_path 参数。", file=sys.stderr)
         sys.exit(1)
     app = QApplication(sys.argv)
