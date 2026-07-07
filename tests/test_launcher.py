@@ -25,6 +25,7 @@ class TestLauncher(unittest.TestCase):
             'script_list': [
                 {
                     'display_name': 'Test Script 1',
+                    # Timeout values corresponding to Mon (100) through Sun (700), i.e., indices 0-6
                     'weekly_timeouts': [100, 200, 300, 400, 500, 600, 700],
                     'run_timeout_seconds': 0
                 },
