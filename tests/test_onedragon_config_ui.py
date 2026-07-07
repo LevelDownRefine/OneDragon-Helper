@@ -1,5 +1,3 @@
-import os
-import sys
 import unittest
 from unittest.mock import patch, MagicMock
 from config import onedragon_config_ui
