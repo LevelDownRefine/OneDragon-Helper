@@ -4,7 +4,7 @@ import tempfile
 import yaml
 import shutil
 from unittest.mock import patch
-import copy_bettergi_config
+from config import copy_bettergi_config
 
 class TestCopyBettergiConfig(unittest.TestCase):
 
@@ -22,7 +22,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
         with open(os.path.join(self.mock_our_bgi_dir, "test_file.json"), "w") as f:
             f.write('{"test": true}')
 
-    @patch('copy_bettergi_config.get_onedragon_yml_path_under_root')
+    @patch('config.copy_bettergi_config.get_onedragon_yml_path_under_root')
     def test_get_BGI_user_dir_success(self, mock_get_yml):
         mock_get_yml.return_value = self.mock_config_path
         
@@ -46,7 +46,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
         expected = os.path.join(self.temp_dir.name, 'BetterGI', 'User')
         self.assertEqual(os.path.normpath(res), os.path.normpath(expected))
 
-    @patch('copy_bettergi_config.get_onedragon_yml_path_under_root')
+    @patch('config.copy_bettergi_config.get_onedragon_yml_path_under_root')
     def test_get_BGI_user_dir_not_found(self, mock_get_yml):
         mock_get_yml.return_value = self.mock_config_path
         
@@ -65,8 +65,8 @@ class TestCopyBettergiConfig(unittest.TestCase):
         res = copy_bettergi_config.get_BGI_user_dir()
         self.assertIsNone(res)
 
-    @patch('copy_bettergi_config.get_our_bgi_user_dir')
-    @patch('copy_bettergi_config.get_BGI_user_dir')
+    @patch('config.copy_bettergi_config.get_our_bgi_user_dir')
+    @patch('config.copy_bettergi_config.get_BGI_user_dir')
     def test_copy_BGI_config(self, mock_get_bgi, mock_get_our_bgi):
         target_dir = os.path.join(self.temp_dir.name, 'TargetBGI', 'User')
         
@@ -83,7 +83,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
         with open(os.path.join(target_dir, "test_file.json"), "r") as f:
             self.assertEqual(f.read(), '{"test": true}')
 
-    @patch('copy_bettergi_config.get_BGI_user_dir')
+    @patch('config.copy_bettergi_config.get_BGI_user_dir')
     @patch('shutil.copytree')
     def test_copy_BGI_config_none(self, mock_copytree, mock_get_bgi):
         mock_get_bgi.return_value = None
