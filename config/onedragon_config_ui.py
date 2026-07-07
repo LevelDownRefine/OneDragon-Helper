@@ -154,10 +154,10 @@ class ConfigUI(QWidget):
 
 def run_config_ui(yml_path):
     if not isinstance(yml_path, str):
-        print("Error: yml_path parameter must be a string / 错误: yml_path 参数必须是字符串。", file=sys.stderr)
+        print("Error: yml_path parameter must be a string. / 错误: yml_path 参数必须是字符串。", file=sys.stderr)
         sys.exit(1)
     if not yml_path.strip():
-        print("Error: yml_path parameter is not specified / 错误: 未指定 yml_path 参数。", file=sys.stderr)
+        print("Error: yml_path parameter is not specified. / 错误: 未指定 yml_path 参数。", file=sys.stderr)
         sys.exit(1)
     app = QApplication(sys.argv)
     window = ConfigUI(yml_path)
@@ -170,5 +170,5 @@ if __name__ == "__main__":
     if path:
         run_config_ui(path)
     else:
-        print("Error: Configuration file path not found / 错误: 找不到配置文件路径。", file=sys.stderr)
+        print("Error: Configuration file path not found. / 错误: 找不到配置文件路径。", file=sys.stderr)
         sys.exit(1)
