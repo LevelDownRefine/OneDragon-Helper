@@ -1,14 +1,14 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from config import onedragon_config_ui
+from config import onedrag_ui
 
 class TestOnedragonConfigUI(unittest.TestCase):
 
-    @patch('config.onedragon_config_ui.QApplication')
-    @patch('config.onedragon_config_ui.ConfigUI')
+    @patch('config.onedrag_ui.QApplication')
+    @patch('config.onedrag_ui.ConfigUI')
     def test_run_config_ui(self, mock_config_ui, mock_qapp):
         # Verify run_config_ui works and instantiates QApplication and ConfigUI correctly
-        onedragon_config_ui.run_config_ui("/mock/config.yml")
+        onedrag_ui.run_config_ui("/mock/config.yml")
         mock_qapp.assert_called_once()
         mock_config_ui.assert_called_once_with("/mock/config.yml")
 
@@ -20,7 +20,7 @@ class TestOnedragonConfigUI(unittest.TestCase):
         for val in invalid_inputs:
             mock_stderr.write.reset_mock()
             with self.assertRaises(SystemExit) as cm:
-                onedragon_config_ui.run_config_ui(val)
+                onedrag_ui.run_config_ui(val)
             self.assertEqual(cm.exception.code, 1)
             mock_stderr.write.assert_called()
             # Verify that the printed error message contains "Error:" or "错误:"
@@ -34,11 +34,11 @@ class TestOnedragonConfigUI(unittest.TestCase):
             else:
                 self.assertTrue("is not specified" in full_msg or "未指定" in full_msg)
 
-    @patch('config.onedragon_config_ui.QApplication')
-    @patch('config.onedragon_config_ui.ConfigUI')
+    @patch('config.onedrag_ui.QApplication')
+    @patch('config.onedrag_ui.ConfigUI')
     def test_run_config_ui_happy_path_no_exit(self, mock_config_ui, mock_qapp):
         # Verify that a valid yml_path does not raise SystemExit or call sys.exit
         try:
-            onedragon_config_ui.run_config_ui("/mock/config.yml")
+            onedrag_ui.run_config_ui("/mock/config.yml")
         except SystemExit:
             self.fail("run_config_ui raised SystemExit on a valid yml_path string")
