@@ -38,7 +38,7 @@ script_list:
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
-  script_arguments: ' -t 1 e'
+  script_arguments: ' -t 1 -e'
   notify_start: false
   notify_done: false
   notify_log_interval: 0
@@ -94,7 +94,7 @@ script_list:
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
-  script_arguments: ' -t 1 e'
+  script_arguments: ' -t 1 -e'
   notify_start: false
   notify_done: false
   notify_log_interval: 0
