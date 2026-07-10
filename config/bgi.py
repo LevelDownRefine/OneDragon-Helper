@@ -1,6 +1,7 @@
-﻿import os
+import os
 import shutil
 import yaml
+
 from utils import get_our_bgi_user_dir, get_onedragon_yml_path_under_root
 
 def get_BGI_user_dir():
