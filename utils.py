@@ -8,7 +8,7 @@ def get_our_bgi_user_dir() -> str:
     """
     return os.path.join(get_root_dir(), "BGI_User")
 
-def get_onedragon_yml_path_under_root() -> str:
+def get_config_yml_path_under_root() -> str:
     """
     获取根目录下的config.yml文件路径
     :return: 根目录下的config.yml文件路径

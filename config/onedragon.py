@@ -1,7 +1,7 @@
 import os
 import shutil
 
-from utils import get_path_under_root, get_onedragon_yml_path_under_root, get_path_under_onedragon
+from utils import get_path_under_root, get_path_under_onedragon
 from config.onedrag_ui import run_config_ui
 
 def copy_python_scripts():
@@ -16,7 +16,7 @@ def copy_python_scripts():
 
 def config_workflow():
     copy_python_scripts()
-    run_config_ui(get_onedragon_yml_path_under_root())
+    run_config_ui()
 
 if __name__ == "__main__":
     config_workflow()

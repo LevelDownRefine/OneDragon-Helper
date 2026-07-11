@@ -22,7 +22,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
         with open(os.path.join(self.mock_our_bgi_dir, "test_file.json"), "w") as f:
             f.write('{"test": true}')
 
-    @patch('config.bgi.get_onedragon_yml_path_under_root')
+    @patch('config.bgi.get_config_yml_path_under_root')
     def test_get_BGI_user_dir_success(self, mock_get_yml):
         mock_get_yml.return_value = self.mock_config_path
         
@@ -46,7 +46,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
         expected = os.path.join(self.temp_dir.name, 'BetterGI', 'User')
         self.assertEqual(os.path.normpath(res), os.path.normpath(expected))
 
-    @patch('config.bgi.get_onedragon_yml_path_under_root')
+    @patch('config.bgi.get_config_yml_path_under_root')
     def test_get_BGI_user_dir_not_found(self, mock_get_yml):
         mock_get_yml.return_value = self.mock_config_path
         

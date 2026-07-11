@@ -55,14 +55,11 @@ class TestGenerateOnedragonConfig(unittest.TestCase):
 
     @patch('config.onedragon.copy_python_scripts')
     @patch('config.onedragon.run_config_ui')
-    @patch('config.onedragon.get_onedragon_yml_path_under_root')
-    def test_config_workflow(self, mock_get_yml, mock_run_ui, mock_copy):
-        mock_get_yml.return_value = "/mock/config.yml"
-        
+    def test_config_workflow(self, mock_run_ui, mock_copy):
         onedragon.config_workflow()
         
         mock_copy.assert_called_once()
-        mock_run_ui.assert_called_once_with("/mock/config.yml")
+        mock_run_ui.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()

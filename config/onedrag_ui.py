@@ -10,16 +10,15 @@ from qfluentwidgets import (
     LineEdit, PushButton, PrimaryPushButton, BodyLabel
 )
 
-from utils import get_weekly_timeouts_yml_path_under_root
+from utils import get_config_yml_path_under_root, get_weekly_timeouts_yml_path_under_root
 
 class ConfigUI(QWidget):
     FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
     LABEL_WIDTH = 100
 
-    def __init__(self, yml_path):
+    def __init__(self):
         super().__init__()
-        self.yml_path = yml_path
-        self.base_dir = os.path.dirname(yml_path)
+        self.yml_path = get_config_yml_path_under_root()
         self.config_data = {}
         self.path_inputs = []
         self.timeout_inputs = []
@@ -155,8 +154,8 @@ class ConfigUI(QWidget):
 
         # 3. Save config.yml (paths and other settings, no weekly_timeouts)
         data_copy = copy.deepcopy(self.config_data)
-        file_path = os.path.join(self.base_dir, "config.yml")
-        with open(file_path, 'w', encoding='utf-8') as f:
+        config_path = get_config_yml_path_under_root()
+        with open(config_path, 'w', encoding='utf-8') as f:
             yaml.dump(data_copy, f, allow_unicode=True, sort_keys=False)
 
         # 4. Save weekly_timeouts.yml (weekly timeout settings only)
@@ -169,23 +168,11 @@ class ConfigUI(QWidget):
         w.cancelButton.hide()
         w.exec()
 
-def run_config_ui(yml_path):
-    if not isinstance(yml_path, str):
-        print("Error: yml_path parameter must be a string. / 错误: yml_path 参数必须是字符串。", file=sys.stderr)
-        sys.exit(1)
-    if not yml_path.strip():
-        print("Error: yml_path parameter is not specified. / 错误: 未指定 yml_path 参数。", file=sys.stderr)
-        sys.exit(1)
+def run_config_ui():
     app = QApplication(sys.argv)
-    window = ConfigUI(yml_path)
+    window = ConfigUI()
     window.show()
     app.exec()
 
 if __name__ == "__main__":
-    from utils import get_onedragon_yml_path_under_root
-    path = get_onedragon_yml_path_under_root()
-    if path:
-        run_config_ui(path)
-    else:
-        print("Error: Configuration file path not found. / 错误: 找不到配置文件路径。", file=sys.stderr)
-        sys.exit(1)
+    run_config_ui()

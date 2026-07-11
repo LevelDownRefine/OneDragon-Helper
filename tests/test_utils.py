@@ -16,8 +16,8 @@ class TestUtils(unittest.TestCase):
         root_dir = utils.get_root_dir()
         self.assertEqual(bgi_user_dir, os.path.join(root_dir, "BGI_User"))
 
-    def test_get_onedragon_yml_path_under_root(self):
-        yml_path = utils.get_onedragon_yml_path_under_root()
+    def test_get_config_yml_path_under_root(self):
+        yml_path = utils.get_config_yml_path_under_root()
         root_dir = utils.get_root_dir()
         self.assertEqual(yml_path, os.path.join(root_dir, "config.yml"))
 
