@@ -10,6 +10,8 @@ from qfluentwidgets import (
     LineEdit, PushButton, PrimaryPushButton, BodyLabel
 )
 
+from utils import get_weekly_timeouts_yml_path_under_root
+
 class ConfigUI(QWidget):
     FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
     LABEL_WIDTH = 100
@@ -52,10 +54,18 @@ class ConfigUI(QWidget):
         if not os.path.exists(self.yml_path):
             MessageBox("错误", f"找不到文件: {self.yml_path}", self).exec()
             return
-            
+
         with open(self.yml_path, 'r', encoding='utf-8') as f:
             self.config_data = yaml.safe_load(f)
-            
+
+        # 从 weekly_timeouts.yml 读取每周超时配置
+        weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
+        weekly_timeouts_map = {}
+        if os.path.exists(weekly_timeouts_path):
+            with open(weekly_timeouts_path, 'r', encoding='utf-8') as f:
+                weekly_timeouts_map = yaml.safe_load(f) or {}
+        self.weekly_timeouts_map = weekly_timeouts_map
+
         script_list = self.config_data.get('script_list', [])
         for idx, script in enumerate(script_list):
             script_layout = QVBoxLayout()
@@ -82,7 +92,7 @@ class ConfigUI(QWidget):
             timeout_label.setFixedWidth(self.LABEL_WIDTH)
             row2.addWidget(timeout_label)
             
-            weekly_timeouts = script.get('weekly_timeouts', [script.get('run_timeout_seconds', 0)] * 7)
+            weekly_timeouts = weekly_timeouts_map.get(name, [script.get('run_timeout_seconds', 0)] * 7)
             if len(weekly_timeouts) < 7:
                 weekly_timeouts.extend([0] * (7 - len(weekly_timeouts)))
                 
@@ -124,28 +134,35 @@ class ConfigUI(QWidget):
             
     def save_data(self):
         script_list = self.config_data.get('script_list', [])
-        
-        # 1. Collect data from UI and update memory config
+
+        # 1. Collect path data from UI and update config
         for idx, path_input in self.path_inputs:
             if idx < len(script_list):
                 path_val = path_input.text().strip()
                 if not path_val:
                     MessageBox("警告", f"脚本 {idx+1} 的路径为空，可能会导致运行问题！", self).exec()
                 script_list[idx]['script_path'] = path_val
-                
+
+        # 2. Collect timeout data from UI into weekly_timeouts_map
         for idx, lineedits in self.timeout_inputs:
             if idx < len(script_list):
+                display_name = script_list[idx].get('display_name', f'Script {idx}')
                 weekly_timeouts = []
                 for le in lineedits:
                     val = int(le.text().strip())
                     weekly_timeouts.append(val)
-                script_list[idx]['weekly_timeouts'] = weekly_timeouts
-                
-        # 2. Change config.yml on BaseDir
+                self.weekly_timeouts_map[display_name] = weekly_timeouts
+
+        # 3. Save config.yml (paths and other settings, no weekly_timeouts)
         data_copy = copy.deepcopy(self.config_data)
         file_path = os.path.join(self.base_dir, "config.yml")
         with open(file_path, 'w', encoding='utf-8') as f:
             yaml.dump(data_copy, f, allow_unicode=True, sort_keys=False)
+
+        # 4. Save weekly_timeouts.yml (weekly timeout settings only)
+        weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
+        with open(weekly_timeouts_path, 'w', encoding='utf-8') as f:
+            yaml.dump(self.weekly_timeouts_map, f, allow_unicode=True, sort_keys=False)
             
         w = MessageBox("成功", "配置已成功生成并保存！", self)
         w.yesButton.setText("确定")

@@ -5,7 +5,7 @@ import yaml
 import copy
 from datetime import datetime
 
-from utils import get_path_under_onedragon, get_root_dir
+from utils import get_path_under_onedragon, get_root_dir, get_weekly_timeouts_yml_path_under_root
 
 def get_week_num():
     """
@@ -27,12 +27,20 @@ def generate_OneDragon_script_chain():
     with open(os.path.join(get_root_dir(), "config.yml"), 'r', encoding='utf-8') as f:
         config_data = yaml.safe_load(f)
 
+    # 从独立的 weekly_timeouts.yml 读取每周超时配置
+    weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
+    weekly_timeouts_map = {}
+    if os.path.exists(weekly_timeouts_path):
+        with open(weekly_timeouts_path, 'r', encoding='utf-8') as f:
+            weekly_timeouts_map = yaml.safe_load(f) or {}
+
     i = get_week_num()
     data_copy = copy.deepcopy(config_data)
     for script in data_copy.get('script_list', []):
-        timeouts = script.get('weekly_timeouts', None)
+        display_name = script.get('display_name', '')
+        timeouts = weekly_timeouts_map.get(display_name, None)
         if timeouts:
-            assert len(timeouts) == 7, f"weekly_timeouts 长度错误，当前长度为 {len(timeouts)}"
+            assert len(timeouts) == 7, f"weekly_timeouts 长度错误 ({display_name})，当前长度为 {len(timeouts)}"
             script['run_timeout_seconds'] = timeouts[i]
         print(f"[{script['display_name']}] 的超时时间为 {script['run_timeout_seconds']} 秒")
 

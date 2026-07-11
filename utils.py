@@ -15,6 +15,13 @@ def get_onedragon_yml_path_under_root() -> str:
     """
     return os.path.join(get_root_dir(), "config.yml")
 
+def get_weekly_timeouts_yml_path_under_root() -> str:
+    """
+    获取根目录下的weekly_timeouts.yml文件路径
+    :return: 根目录下的weekly_timeouts.yml文件路径
+    """
+    return os.path.join(get_root_dir(), "weekly_timeouts.yml")
+
 def get_path_under_onedragon(*subs) -> str:
     """
     获取工作目录下的路径
