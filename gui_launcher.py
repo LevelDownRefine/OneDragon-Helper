@@ -9,7 +9,7 @@ from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QScrollArea, QFrame, QMessageBox, QStatusBar,
-    QComboBox, QMenu
+    QMenu
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont
@@ -146,13 +146,7 @@ class ScriptItem(QFrame):
                 self._selected_dungeon = saved_state['dungeon']
                 if saved_state.get('sequence'):
                     self._selected_sequence = saved_state['sequence']
-                    seq_str = str(self._selected_sequence)
-                    if seq_str.isdigit():
-                        self.dungeon_btn.setText(f"{self._selected_dungeon} > {seq_str}")
-                    else:
-                        self.dungeon_btn.setText(seq_str)
-                else:
-                    self.dungeon_btn.setText(self._selected_dungeon)
+                self.dungeon_btn.setText(self._dungeon_btn_text())
 
         # 开关按钮（Fluent Switch 风格）
         self.toggle_btn = QPushButton()
@@ -212,23 +206,26 @@ class ScriptItem(QFrame):
         # 在按钮下方弹出
         menu.exec(self.dungeon_btn.mapToGlobal(self.dungeon_btn.rect().bottomLeft()))
 
+    def _dungeon_btn_text(self):
+        """根据已选的一级/二级返回按钮显示文字"""
+        if not self._selected_dungeon:
+            return "选择副本"
+        if self._selected_sequence:
+            seq_str = str(self._selected_sequence)
+            if seq_str.isdigit():
+                return f"{self._selected_dungeon} > {seq_str}"
+            return seq_str
+        return self._selected_dungeon
+
     def _on_dungeon_selected(self, dungeon_name, sequence=None):
         """选择副本后的回调"""
         if dungeon_name == "未选择":
             self._selected_dungeon = None
             self._selected_sequence = None
-            self.dungeon_btn.setText("选择副本")
         else:
             self._selected_dungeon = dungeon_name
             self._selected_sequence = sequence
-            if sequence:
-                seq_str = str(sequence)
-                if seq_str.isdigit():
-                    self.dungeon_btn.setText(f"{dungeon_name} > {seq_str}")
-                else:
-                    self.dungeon_btn.setText(seq_str)
-            else:
-                self.dungeon_btn.setText(dungeon_name)
+        self.dungeon_btn.setText(self._dungeon_btn_text())
         self._on_state_changed()
 
     def get_state(self) -> dict:
@@ -393,16 +390,16 @@ class MainWindow(QMainWindow):
             seq_map = {}  # 副本名 → 二级选项列表
             show_seq = False
             if isinstance(dungeon_cfg, list):
-                for item in dungeon_cfg:
-                    if isinstance(item, dict):
+                for entry in dungeon_cfg:
+                    if isinstance(entry, dict):
                         # 字典项：key 为副本名，value 为二级选项列表
-                        for dungeon_name, seq_list in item.items():
+                        for dungeon_name, seq_list in entry.items():
                             options.append(dungeon_name)
                             seq_map[dungeon_name] = seq_list or []
                         show_seq = True
                     else:
                         # 普通字符串项
-                        options.append(str(item))
+                        options.append(str(entry))
 
             saved = self._ui_state.get(name)
             item = ScriptItem(data, dungeon_options=options if options else None,
