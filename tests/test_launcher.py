@@ -51,10 +51,10 @@ class TestLauncher(unittest.TestCase):
 
     @patch('launcher.get_week_num')
     @patch('launcher.get_weekly_timeouts_yml_path_under_root')
-    @patch('launcher.get_root_dir')
+    @patch('launcher.get_config_yml_path_under_root')
     @patch('launcher.get_path_under_onedragon')
-    def test_generate_OneDragon_script_chain_success(self, mock_get_path, mock_get_root, mock_get_wt_path, mock_get_week):
-        mock_get_root.return_value = self.mock_root_dir
+    def test_generate_OneDragon_script_chain_success(self, mock_get_path, mock_get_config_yml, mock_get_wt_path, mock_get_week):
+        mock_get_config_yml.return_value = self.config_yml_path
         mock_get_wt_path.return_value = self.weekly_timeouts_yml_path
 
         # Create output directory for script_chain config
@@ -82,10 +82,10 @@ class TestLauncher(unittest.TestCase):
 
     @patch('launcher.get_week_num')
     @patch('launcher.get_weekly_timeouts_yml_path_under_root')
-    @patch('launcher.get_root_dir')
+    @patch('launcher.get_config_yml_path_under_root')
     @patch('launcher.get_path_under_onedragon')
-    def test_generate_OneDragon_script_chain_invalid_timeout_length(self, mock_get_path, mock_get_root, mock_get_wt_path, mock_get_week):
-        mock_get_root.return_value = self.mock_root_dir
+    def test_generate_OneDragon_script_chain_invalid_timeout_length(self, mock_get_path, mock_get_config_yml, mock_get_wt_path, mock_get_week):
+        mock_get_config_yml.return_value = self.config_yml_path
         mock_get_wt_path.return_value = self.weekly_timeouts_yml_path
         out_dir = os.path.join(self.mock_onedragon_dir, "config", "script_chain")
         os.makedirs(out_dir, exist_ok=True)
