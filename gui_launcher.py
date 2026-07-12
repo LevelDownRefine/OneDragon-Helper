@@ -146,7 +146,11 @@ class ScriptItem(QFrame):
                 self._selected_dungeon = saved_state['dungeon']
                 if saved_state.get('sequence'):
                     self._selected_sequence = saved_state['sequence']
-                    self.dungeon_btn.setText(f"{self._selected_dungeon} > {self._selected_sequence}")
+                    seq_str = str(self._selected_sequence)
+                    if seq_str.isdigit():
+                        self.dungeon_btn.setText(f"{self._selected_dungeon} > {seq_str}")
+                    else:
+                        self.dungeon_btn.setText(seq_str)
                 else:
                     self.dungeon_btn.setText(self._selected_dungeon)
 
@@ -218,7 +222,11 @@ class ScriptItem(QFrame):
             self._selected_dungeon = dungeon_name
             self._selected_sequence = sequence
             if sequence:
-                self.dungeon_btn.setText(f"{dungeon_name} > {sequence}")
+                seq_str = str(sequence)
+                if seq_str.isdigit():
+                    self.dungeon_btn.setText(f"{dungeon_name} > {seq_str}")
+                else:
+                    self.dungeon_btn.setText(seq_str)
             else:
                 self.dungeon_btn.setText(dungeon_name)
         self._on_state_changed()
