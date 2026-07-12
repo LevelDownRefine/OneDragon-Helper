@@ -2,9 +2,11 @@
 import os
 import json
 import warnings
-import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
+
+# 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PySide6.QtWidgets import QApplication
 
