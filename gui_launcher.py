@@ -59,14 +59,15 @@ class ScriptItem(QFrame):
         self.sequence_spin = None
 
         self.setFrameShape(QFrame.NoFrame)
+        self.setObjectName("ScriptItem")
         self.setStyleSheet("""
-            QFrame {
+            QFrame#ScriptItem {
                 background-color: transparent;
                 border: none;
-                border-bottom: 1px solid #e8e8e8;
+                border-bottom: 1px solid #d0d0d0;
                 border-radius: 0px;
             }
-            QFrame:hover {
+            QFrame#ScriptItem:hover {
                 background-color: #f0f0f0;
             }
         """)
@@ -243,7 +244,7 @@ class MainWindow(QMainWindow):
         self.scroll_content.setStyleSheet("background-color: #f3f3f3;")
         self.scroll_layout = QVBoxLayout(self.scroll_content)
         self.scroll_layout.setContentsMargins(0, 0, 0, 0)
-        self.scroll_layout.setSpacing(8)
+        self.scroll_layout.setSpacing(2)
         self.scroll_layout.addStretch()
         scroll.setWidget(self.scroll_content)
         layout.addWidget(scroll, stretch=1)
