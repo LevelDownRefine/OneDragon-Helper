@@ -3,39 +3,106 @@
 # value: 可选副本名称列表
 # 后续适配脚本内部 config 后，选择的副本名将通过参数或配置注入
 
+# data\apps\ok-ww\working\configs\DailyTask.json
 鸣潮:
   - 未选择
-  - 声骸刷取
-  - 武器材料
-  - 角色突破材料
+  - 凝素领域:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+  - 模拟领域:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+  - 无音区:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
 
+# User\OneDragon\默认配置.json
+# 参考 https://github.com/babalae/bettergi-scripts-list/blob/main/repo/js/AutoDomain/main.js
 原神:
   - 未选择
-  - 每日委托
-  - 树脂刷取
-  - 周本
+  - 山风的荆冕
+  - 霜凝的机枢
+  - 无光的深都
 
+# data\apps\ok-ef\working\configs\DailyTask.json
+# 参考 https://github.com/AliceJump/ok-end-field/blob/master/docs/%E4%BD%93%E5%8A%9B%E6%9C%AC.md
 终末地:
   - 未选择
-  - 日常清体
-  - 周常
+  - 武陵城
+  - 干员经验
+  - 干员进阶
+  - 钱币收集
+  - 技能提升
+  - 武器经验
+  - 武器进阶
 
+# config\01\one_dragon\charge_plan.yml
+# 参考 https://github.com/OneDragon-Anything/ZenlessZoneZero-OneDragon/blob/main/docs/develop/zzz/application/charge_plan.md
 绝区零:
   - 未选择
-  - 日常清体力
-  - 周本
+  - 实战模拟室
 
+# config.yaml
 崩铁:
   - 未选择
-  - 每日实训
-  - 体力刷取
-  - 周本
+  - 天赋
+  - 凝滞虚影
+  - 侵蚀隧洞
+  - 饰品提取
 
+# data\apps\ok-nte\working\configs\DailyTask.json
+# 参考 https://github.com/BnanZ0/ok-nte/blob/main/src/tasks/AnomalyTask.py
 异环:
   - 未选择
-  - 日常清体力
+  - 空幕:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+  - 模拟领域:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
 
+# config\gui.new.json
 粥:
   - 未选择
-  - 日常
-  - 肉鸽
+  - 红票
+  - 经验

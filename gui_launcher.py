@@ -346,10 +346,23 @@ class MainWindow(QMainWindow):
 
         for data in script_list:
             name = data.get('display_name', '')
-            options = self.dungeon_map.get(name)
-            # ok 系列脚本显示刷取序列输入框
-            show_seq = name in ("鸣潮", "终末地", "异环")
-            item = ScriptItem(data, dungeon_options=options, show_sequence=show_seq)
+            dungeon_cfg = self.dungeon_map.get(name)
+
+            # 解析副本列表：支持平铺列表 和 带二级目录的嵌套列表
+            options = []
+            show_seq = False
+            if isinstance(dungeon_cfg, list):
+                for item in dungeon_cfg:
+                    if isinstance(item, dict):
+                        # 字典项：key 为副本名，value 为二级序列 → 启用序列输入
+                        for dungeon_name in item.keys():
+                            options.append(dungeon_name)
+                        show_seq = True
+                    else:
+                        # 普通字符串项
+                        options.append(str(item))
+
+            item = ScriptItem(data, dungeon_options=options if options else None, show_sequence=show_seq)
             self.scroll_layout.insertWidget(len(self.script_items), item)
             self.script_items.append(item)
 
