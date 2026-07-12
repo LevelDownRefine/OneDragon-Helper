@@ -6,7 +6,8 @@ import yaml
 from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QScrollArea, QFrame, QMessageBox, QStatusBar
+    QPushButton, QLabel, QScrollArea, QFrame, QMessageBox, QStatusBar,
+    QComboBox, QSpinBox
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont
@@ -16,6 +17,7 @@ from utils import (
     get_weekly_timeouts_yml_path_under_root,
     get_path_under_onedragon,
 )
+from dungeon_adapter import set_dungeon, set_sequence
 
 
 def get_week_num() -> int:
@@ -48,10 +50,13 @@ class ScriptChainRunner(QThread):
 class ScriptItem(QFrame):
     """单个脚本项"""
 
-    def __init__(self, script_data):
+    def __init__(self, script_data, dungeon_options=None, show_sequence=False):
         super().__init__()
         self.display_name = script_data.get('display_name', '未命名')
         self.enabled = script_data.get('enabled', True)
+        self.script_type = script_data.get('script_type', 'external')
+        self.dungeon_combo = None  # 副本选择下拉框
+        self.sequence_spin = None  # 刷取序列输入框
 
         self.setFrameShape(QFrame.StyledPanel)
         self.setStyleSheet("""
@@ -70,6 +75,43 @@ class ScriptItem(QFrame):
         name_label = QLabel(self.display_name)
         name_label.setFont(QFont("Microsoft YaHei", 10))
         layout.addWidget(name_label, stretch=1)
+
+        # 刷取序列（ok 系列脚本）
+        if show_sequence:
+            seq_label = QLabel("序列:")
+            seq_label.setStyleSheet("color: #666; font-size: 9px;")
+            layout.addWidget(seq_label)
+
+            self.sequence_spin = QSpinBox()
+            self.sequence_spin.setRange(1, 99)
+            self.sequence_spin.setValue(1)
+            self.sequence_spin.setFixedWidth(55)
+            self.sequence_spin.setStyleSheet("""
+                QSpinBox {
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    background: white;
+                    font-size: 9px;
+                }
+            """)
+            layout.addWidget(self.sequence_spin)
+
+        # 非 python 脚本显示副本选择
+        if self.script_type != 'python' and dungeon_options:
+            self.dungeon_combo = QComboBox()
+            self.dungeon_combo.addItems(dungeon_options)
+            self.dungeon_combo.setFixedHeight(26)
+            self.dungeon_combo.setStyleSheet("""
+                QComboBox {
+                    border: 1px solid #ccc;
+                    border-radius: 4px;
+                    padding: 0 8px;
+                    background: white;
+                    font-size: 9px;
+                    min-width: 90px;
+                }
+            """)
+            layout.addWidget(self.dungeon_combo)
 
         script_type = script_data.get('script_type', '')
         type_label = QLabel(script_type)
@@ -90,6 +132,20 @@ class ScriptItem(QFrame):
         self.toggle_btn.clicked.connect(self._toggle)
         self._update_style()
         layout.addWidget(self.toggle_btn)
+
+    def get_selected_dungeon(self):
+        """获取选择的副本名，未选择或 python 脚本返回 None"""
+        if self.dungeon_combo:
+            val = self.dungeon_combo.currentText()
+            if val and val != "未选择":
+                return val
+        return None
+
+    def get_sequence(self):
+        """获取刷取序列值，未启用返回 None"""
+        if self.sequence_spin:
+            return self.sequence_spin.value()
+        return None
 
     def _toggle(self):
         self.enabled = not self.enabled
@@ -213,6 +269,13 @@ class MainWindow(QMainWindow):
             with open(get_config_yml_path_under_root(), 'r', encoding='utf-8') as f:
                 self.all_config_data = yaml.safe_load(f)
 
+            # 读取副本列表配置
+            self.dungeon_map = {}
+            dungeon_file = os.path.join(os.path.dirname(get_config_yml_path_under_root()), "dungeon_list.yml")
+            if os.path.exists(dungeon_file):
+                with open(dungeon_file, 'r', encoding='utf-8') as f:
+                    self.dungeon_map = yaml.safe_load(f) or {}
+
             script_list = self.all_config_data.get('script_list', [])
 
             for item in self.script_items:
@@ -220,7 +283,11 @@ class MainWindow(QMainWindow):
             self.script_items.clear()
 
             for data in script_list:
-                item = ScriptItem(data)
+                name = data.get('display_name', '')
+                options = self.dungeon_map.get(name)
+                # ok 系列脚本显示刷取序列输入框
+                show_seq = name in ("鸣潮", "终末地", "异环")
+                item = ScriptItem(data, dungeon_options=options, show_sequence=show_seq)
                 self.scroll_layout.insertWidget(len(self.script_items), item)
                 self.script_items.append(item)
 
@@ -255,6 +322,19 @@ class MainWindow(QMainWindow):
                 weekly_timeouts = yaml.safe_load(f) or {}
 
         week_num = get_week_num()
+
+        # 收集每个启用脚本的副本选择、序列选择
+        enabled_dungeons = {}
+        enabled_sequences = {}
+        for item in self.script_items:
+            if item.enabled:
+                dungeon = item.get_selected_dungeon()
+                if dungeon:
+                    enabled_dungeons[item.display_name] = dungeon
+                seq = item.get_sequence()
+                if seq is not None:
+                    enabled_sequences[item.display_name] = seq
+
         enabled_names = [i.display_name for i in self.script_items if i.enabled]
 
         data = copy.deepcopy(self.all_config_data)
@@ -265,6 +345,13 @@ class MainWindow(QMainWindow):
                 timeouts = weekly_timeouts.get(name)
                 if timeouts and len(timeouts) == 7:
                     script['run_timeout_seconds'] = timeouts[week_num]
+
+                # 外观模式：写入各脚本内部 config（副本、序列）
+                if name in enabled_dungeons:
+                    set_dungeon(name, enabled_dungeons[name])
+                if name in enabled_sequences:
+                    set_sequence(name, enabled_sequences[name])
+
                 filtered.append(script)
 
         data['script_list'] = filtered
