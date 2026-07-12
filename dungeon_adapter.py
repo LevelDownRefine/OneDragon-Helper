@@ -169,7 +169,6 @@ def set_config(script_display_name: str,
         return False
 
     # handler 修改 config，返回修改后的 dict
-    breakpoint()
     try:
         updated = handler(config, dungeon_name, sequence)
     except Exception as e:
@@ -355,6 +354,34 @@ def _apply_nte(config: dict, dungeon_name: str, sequence=None) -> dict | None:
 
 # ---- 明日方舟 Arknights（粥）----
 def _apply_arknights(config: dict, dungeon_name: str, sequence=None) -> dict | None:
-    # TODO: 适配 MAA 的副本配置
-    print(f"[dungeon_adapter][Arknights] 待适配: {dungeon_name}")
-    return None
+
+    def update_task() -> bool:
+        """更新副本类型，返回是否有变化"""
+        task_map = {
+            "红票": 2,
+            "经验": 3,
+            "龙门币": 4,
+            "土": 5,
+        }
+        task_config = config["Configurations"]["Default"]["TaskQueue"]
+        if dungeon_name not in task_map:
+            print(f"[dungeon_adapter][Arknights] 未适配的副本: {dungeon_name}")
+            return False
+
+        # disable other tasks
+        for key in task_map:
+            task_config[task_map[key]]["IsEnable"] = False
+        
+        task_config[task_map[dungeon_name]]["IsEnable"] = True
+        task_config[task_map["土"]]["IsEnable"] = True
+        print(f"enable task: {dungeon_name}")
+
+        # always update task config for stability
+        return True
+
+    if not update_task():
+        print(f"[dungeon_adapter][Arknights] config 无需更新")
+        return None
+
+    print(f"[dungeon_adapter][Arknights] config 已更新")
+    return config
