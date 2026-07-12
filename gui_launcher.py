@@ -326,7 +326,6 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.status_bar.setStyleSheet("background-color: #f3f3f3; color: #606060;")
         self.setStatusBar(self.status_bar)
-        self._update_status()
 
     def _load_scripts(self):
         with open(get_config_yml_path_under_root(), 'r', encoding='utf-8') as f:
@@ -370,8 +369,6 @@ class MainWindow(QMainWindow):
             self.scroll_layout.insertWidget(len(self.script_items), item)
             self.script_items.append(item)
 
-        self._update_status()
-
 
     def _persist_ui_state(self):
         """收集所有脚本的 UI 状态并保存"""
@@ -379,12 +376,6 @@ class MainWindow(QMainWindow):
         for item in self.script_items:
             state[item.display_name] = item.get_state()
         _save_ui_state(state)
-        self._update_status()
-
-    def _update_status(self):
-        enabled = sum(1 for i in self.script_items if i.enabled)
-        total = len(self.script_items)
-        self.status_bar.showMessage(f"已选择 {enabled} / {total} 个脚本")
 
     def _generate_config(self, chain_name="01"):
         """生成 ScriptChainer 配置文件（仅含启用的脚本）"""
