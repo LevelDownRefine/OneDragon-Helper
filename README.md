@@ -1,4 +1,7 @@
 # OneDragon-Helper
+
+![demo](demo.png)
+
 ## install
 `cd OneDragon-ScriptChainer`
 
