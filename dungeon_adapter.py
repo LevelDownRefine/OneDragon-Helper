@@ -169,6 +169,7 @@ def set_config(script_display_name: str,
         return False
 
     # handler 修改 config，返回修改后的 dict
+    breakpoint()
     try:
         updated = handler(config, dungeon_name, sequence)
     except Exception as e:
@@ -233,6 +234,9 @@ def _apply_wuthering_waves(config: dict, dungeon_name: str, sequence=None) -> di
             if int(config['Which Forgery Challenge to Farm']) == sequence:
                 return False
             config['Which Forgery Challenge to Farm'] = sequence
+        else:
+            print(f"[dungeon_adapter][Wuthering Waves] 未适配的副本: {dungeon_name}")
+            return False
         return True
 
     changed = update_task() or update_sequence()
@@ -243,14 +247,16 @@ def _apply_wuthering_waves(config: dict, dungeon_name: str, sequence=None) -> di
     print(f"[dungeon_adapter][Wuthering Waves] config 已更新: {config}")
     return config
 
+
 # ---- 原神 Genshin Impact ----
 def _apply_genshin(config: dict, dungeon_name: str, sequence=None) -> dict | None:
 
     def update_task() -> bool:
         """更新副本类型，返回是否有变化"""
-        if config['DomainName'] == dungeon_name:
+        key = 'DomainName'
+        if config[key] == dungeon_name:
             return False
-        config['DomainName'] = dungeon_name
+        config[key] = dungeon_name
         return True
     
     if not update_task():
@@ -263,9 +269,21 @@ def _apply_genshin(config: dict, dungeon_name: str, sequence=None) -> dict | Non
 
 # ---- 终末地 Arknights: Endfield ----
 def _apply_endfield(config: dict, dungeon_name: str, sequence=None) -> dict | None:
-    # TODO: 适配终末地的副本配置（sequence > 0 时同时写入序列）
-    print(f"[dungeon_adapter][Endfield] 待适配: {dungeon_name}, seq={sequence}")
-    return None
+
+    def update_task() -> bool:
+        """更新副本类型，返回是否有变化"""
+        key = "体力本"
+        if config[key] == dungeon_name:
+            return False
+        config[key] = dungeon_name
+        return True
+
+    if not update_task():
+        print(f"[dungeon_adapter][Endfield] config 无需更新: {config}")
+        return None
+
+    print(f"[dungeon_adapter][Endfield] config 已更新: {config}")
+    return config
 
 
 # ---- 绝区零 Zenless Zone Zero ----
@@ -277,16 +295,62 @@ def _apply_zenless(config: dict, dungeon_name: str, sequence=None) -> dict | Non
 
 # ---- 崩铁 Honkai: Star Rail ----
 def _apply_star_rail(config: dict, dungeon_name: str, sequence=None) -> dict | None:
-    # TODO: 适配崩铁的副本配置
-    print(f"[dungeon_adapter][Star Rail] 待适配: {dungeon_name}")
-    return None
+
+    def update_task() -> bool:
+        """更新副本类型，返回是否有变化"""
+        key = "instance_type"
+        if config[key] == dungeon_name:
+            return False
+        config[key] = dungeon_name
+        return True
+
+    if not update_task():
+        print(f"[dungeon_adapter][Star Rail] config 无需更新")
+        return None
+
+    print(f"[dungeon_adapter][Star Rail] config 已更新")
+    return config
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
 def _apply_nte(config: dict, dungeon_name: str, sequence=None) -> dict | None:
-    # TODO: 适配异环的副本配置（sequence > 0 时同时写入序列）
-    print(f"[dungeon_adapter][NTE] 待适配: {dungeon_name}, seq={sequence}")
-    return None
+
+    def update_task() -> bool:
+        """更新副本类型，返回是否有变化"""
+        key = "任务类型"
+        if config[key] == dungeon_name:
+            return False
+        config[key] = dungeon_name
+        return True
+
+    def update_sequence() -> bool:
+        """更新序列，返回是否有变化"""
+        if sequence is None:
+            return False
+        if dungeon_name == "异能升级材料":
+            if config['异能材料序号'] == sequence:
+                return False
+            config['异能材料序号'] = sequence
+        elif dungeon_name == "空幕":
+            if config['空幕序号'] == sequence:
+                return False
+            config['空幕序号'] = sequence
+        elif dungeon_name == "弧盘突破材料":
+            if config['弧盘材料序号'] == sequence:
+                return False
+            config['弧盘材料序号'] = sequence
+        else:
+            print(f"[dungeon_adapter][NTE] 未适配的副本: {dungeon_name}")
+            return False
+        return True
+
+    changed = update_task() or update_sequence()
+    if not changed:
+        print(f"[dungeon_adapter][NTE] config 无需更新: {config}")
+        return None
+    
+    print(f"[dungeon_adapter][NTE] config 已更新: {config}")
+    return config
 
 
 # ---- 明日方舟 Arknights（粥）----
