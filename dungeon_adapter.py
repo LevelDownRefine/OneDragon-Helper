@@ -130,6 +130,9 @@ def set_config(script_display_name: str,
     """
     外观接口：为指定脚本设置副本和刷取序列
 
+    流程：load_config → handler 修改 → save_config
+    handler 只负责修改 config dict 并返回，不关心读写细节。
+
     sequence 默认 0 表示无序列，由各 handler 自行判断是否处理。
     是否需要序列由 dungeon_list.yml 中副本项有无二级目录决定。
 
@@ -159,61 +162,85 @@ def set_config(script_display_name: str,
         print(f"[dungeon_adapter] 未适配的脚本: {script_display_name}")
         return False
 
-    try:
-        return handler(dungeon_name, sequence)
-    except Exception as e:
-        print(f"[dungeon_adapter] {script_display_name} 写入配置失败: {e}")
+    # 统一 load
+    config = load_config(script_display_name)
+    if config is None:
+        print(f"[dungeon_adapter] {script_display_name} config 读取失败，无法写入")
         return False
+
+    # handler 修改 config，返回修改后的 dict
+    try:
+        updated = handler(config, dungeon_name, sequence)
+    except Exception as e:
+        print(f"[dungeon_adapter] {script_display_name} 适配配置失败: {e}")
+        return False
+
+    if updated is None:
+        # handler 返回 None 表示无需写入（例如数据无变化）
+        return True
+
+    # 统一 save
+    try:
+        if not save_config(script_display_name, updated):
+            print(f"[dungeon_adapter] {script_display_name} config 写入失败")
+            return False
+    except Exception as e:
+        print(f"[dungeon_adapter] {script_display_name} config 写入异常: {e}")
+        return False
+
+    return True
 
 
 # ============================================================
 # 各脚本具体实现（待适配）
+# 每个 handler 接收 (config, dungeon_name, sequence)，
+# 修改 config dict 并返回；返回 None 表示无需写入。
 # ============================================================
 
 # ---- 鸣潮 Wuthering Waves ----
-def _apply_wuthering_waves(dungeon_name: str, sequence: int = 0) -> bool:
+def _apply_wuthering_waves(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
     # TODO: 适配鸣潮的副本配置（sequence > 0 时同时写入序列）
     print(f"[dungeon_adapter][Wuthering Waves] 待适配: {dungeon_name}, seq={sequence}")
-    return True
+    return None
 
 
 # ---- 原神 Genshin Impact ----
-def _apply_genshin(dungeon_name: str, sequence: int = 0) -> bool:
+def _apply_genshin(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
     # TODO: 适配 BetterGI 的副本配置
     print(f"[dungeon_adapter][Genshin] 待适配: {dungeon_name}")
-    return True
+    return None
 
 
 # ---- 终末地 Arknights: Endfield ----
-def _apply_endfield(dungeon_name: str, sequence: int = 0) -> bool:
+def _apply_endfield(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
     # TODO: 适配终末地的副本配置（sequence > 0 时同时写入序列）
     print(f"[dungeon_adapter][Endfield] 待适配: {dungeon_name}, seq={sequence}")
-    return True
+    return None
 
 
 # ---- 绝区零 Zenless Zone Zero ----
-def _apply_zenless(dungeon_name: str, sequence: int = 0) -> bool:
+def _apply_zenless(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
     # TODO: 适配绝区零的副本配置
     print(f"[dungeon_adapter][Zenless] 待适配: {dungeon_name}")
-    return True
+    return None
 
 
 # ---- 崩铁 Honkai: Star Rail ----
-def _apply_star_rail(dungeon_name: str, sequence: int = 0) -> bool:
+def _apply_star_rail(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
     # TODO: 适配崩铁的副本配置
     print(f"[dungeon_adapter][Star Rail] 待适配: {dungeon_name}")
-    return True
+    return None
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
-def _apply_nte(dungeon_name: str, sequence: int = 0) -> bool:
+def _apply_nte(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
     # TODO: 适配异环的副本配置（sequence > 0 时同时写入序列）
     print(f"[dungeon_adapter][NTE] 待适配: {dungeon_name}, seq={sequence}")
-    return True
+    return None
 
 
 # ---- 明日方舟 Arknights（粥）----
-def _apply_arknights(dungeon_name: str, sequence: int = 0) -> bool:
+def _apply_arknights(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
     # TODO: 适配 MAA 的副本配置
     print(f"[dungeon_adapter][Arknights] 待适配: {dungeon_name}")
-    return True
+    return None
