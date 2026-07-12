@@ -4,6 +4,7 @@
 # 后续适配脚本内部 config 后，选择的副本名将通过参数或配置注入
 
 # config: data\apps\ok-ww\working\configs\DailyTask.json
+# see: https://github.com/ok-oldking/ok-wuthering-waves/blob/master/src/task/DailyTask.py
 鸣潮:
   - 未选择
   - 凝素领域:
@@ -41,7 +42,7 @@
       - 10
 
 # config: User\OneDragon\默认配置.json
-# 参考 https://github.com/babalae/bettergi-scripts-list/blob/main/repo/js/AutoDomain/main.js
+# see: https://github.com/babalae/bettergi-scripts-list/blob/main/repo/js/AutoDomain/main.js
 原神:
   - 未选择
   - 山风的荆冕
@@ -49,7 +50,7 @@
   - 无光的深都
 
 # config: data\apps\ok-ef\working\configs\DailyTask.json
-# 参考 https://github.com/AliceJump/ok-end-field/blob/master/docs/%E4%BD%93%E5%8A%9B%E6%9C%AC.md
+# see: https://github.com/AliceJump/ok-end-field/blob/master/docs/%E4%BD%93%E5%8A%9B%E6%9C%AC.md
 终末地:
   - 未选择
   - 武陵城
@@ -61,7 +62,7 @@
   - 武器进阶
 
 # config: config\01\one_dragon\charge_plan.yml
-# 参考 https://github.com/OneDragon-Anything/ZenlessZoneZero-OneDragon/blob/main/docs/develop/zzz/application/charge_plan.md
+# see: https://github.com/OneDragon-Anything/ZenlessZoneZero-OneDragon/blob/main/docs/develop/zzz/application/charge_plan.md
 绝区零:
   - 未选择
   - 实战模拟室
@@ -75,7 +76,7 @@
   - 饰品提取
 
 # config: data\apps\ok-nte\working\configs\DailyTask.json
-# 参考 https://github.com/BnanZ0/ok-nte/blob/main/src/tasks/AnomalyTask.py
+# see: https://github.com/BnanZ0/ok-nte/blob/main/src/tasks/AnomalyTask.py
 异环:
   - 未选择
   - 空幕:

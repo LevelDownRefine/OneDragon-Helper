@@ -171,6 +171,7 @@ def set_config(script_display_name: str,
     # handler 修改 config，返回修改后的 dict
     try:
         updated = handler(config, dungeon_name, sequence)
+        breakpoint()
     except Exception as e:
         print(f"[dungeon_adapter] {script_display_name} 适配配置失败: {e}")
         return False
@@ -198,11 +199,50 @@ def set_config(script_display_name: str,
 # ============================================================
 
 # ---- 鸣潮 Wuthering Waves ----
-def _apply_wuthering_waves(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
-    # TODO: 适配鸣潮的副本配置（sequence > 0 时同时写入序列）
-    print(f"[dungeon_adapter][Wuthering Waves] 待适配: {dungeon_name}, seq={sequence}")
-    return None
+def _apply_wuthering_waves(config: dict, dungeon_name: str, sequence=None) -> dict | None:
 
+    def update_task() -> bool:
+        """更新副本类型，返回是否有变化"""
+        dungeon_map = {
+            "凝素领域": "Forgery Challenge",
+            "模拟领域": "Simulation Challenge",
+            "无音区": "Tacet Suppression",
+        }
+        task = dungeon_map.get(dungeon_name)
+        if task is None:
+            print(f"[dungeon_adapter][Wuthering Waves] 未适配的副本: {dungeon_name}")
+            return False
+        if config['Which to Farm'] == task:
+            return False
+        config['Which to Farm'] = task
+        return True
+
+    def update_sequence() -> bool:
+        """更新序列，返回是否有变化"""
+        if sequence is None:
+            return False
+        if config['Which to Farm'] == "Simulation Challenge":
+            material_map = {1: "Resonator EXP", 2: "Weapon EXP", 3: "Shell Credit"}
+            if config['Material Selection'] == material_map[sequence]:
+                return False
+            config['Material Selection'] = material_map[sequence]
+        elif config['Which to Farm'] == "Tacet Suppression":
+            if int(config['Which Tacet Suppression to Farm']) == sequence:
+                return False
+            config['Which Tacet Suppression to Farm'] = sequence
+        elif config['Which to Farm'] == "Forgery Challenge":
+            if int(config['Which Forgery Challenge to Farm']) == sequence:
+                return False
+            config['Which Forgery Challenge to Farm'] = sequence
+        return True
+
+    changed = update_task() or update_sequence()
+    if not changed:
+        print(f"[dungeon_adapter][Wuthering Waves] config 无需更新: {config}")
+        return None
+    
+    print(f"[dungeon_adapter][Wuthering Waves] config 已更新: {config}")
+    return config
 
 # ---- 原神 Genshin Impact ----
 def _apply_genshin(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
