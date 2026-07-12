@@ -1,8 +1,10 @@
 import sys
 import os
 import copy
+import json
 import subprocess
 import yaml
+import warnings
 from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -16,8 +18,33 @@ from utils import (
     get_config_yml_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
     get_path_under_onedragon,
+    get_root_dir,
 )
 from dungeon_adapter import set_config
+
+
+# ---- UI 状态持久化 ----
+_STATE_FILE = os.path.join(get_root_dir(), "gui_state.json")
+
+
+def _load_ui_state() -> dict:
+    """读取上次保存的 UI 状态"""
+    if os.path.exists(_STATE_FILE):
+        try:
+            with open(_STATE_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            warnings.warn(f"读取 UI 状态文件失败: {e}")
+    return {}
+
+
+def _save_ui_state(state: dict):
+    """保存 UI 状态"""
+    try:
+        with open(_STATE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        warnings.warn(f"保存 UI 状态文件失败: {e}")
 
 
 def get_week_num() -> int:
@@ -50,13 +77,15 @@ class ScriptChainRunner(QThread):
 class ScriptItem(QFrame):
     """单个脚本项（Fluent 风格卡片）"""
 
-    def __init__(self, script_data, dungeon_options=None, show_sequence=False):
+    def __init__(self, script_data, dungeon_options=None, show_sequence=False,
+                 saved_state=None):
         super().__init__()
         self.display_name = script_data.get('display_name', '未命名')
-        self.enabled = script_data.get('enabled', True)
         self.script_type = script_data.get('script_type', 'external')
         self.dungeon_combo = None
         self.sequence_spin = None
+        self.enabled = script_data.get('enabled', True)
+        self._state_callback = None  # 状态变化回调，由 MainWindow 注入
 
         self.setFrameShape(QFrame.NoFrame)
         self.setObjectName("ScriptItem")
@@ -86,7 +115,7 @@ class ScriptItem(QFrame):
         if show_sequence:
             self.sequence_spin = QSpinBox()
             self.sequence_spin.setRange(1, 99)
-            self.sequence_spin.setValue(1)
+            self.sequence_spin.setValue(saved_state.get('sequence', 1) if saved_state else 1)
             self.sequence_spin.setFixedSize(60, 28)
             self.sequence_spin.setButtonSymbols(QSpinBox.NoButtons)
             self.sequence_spin.setAlignment(Qt.AlignCenter)
@@ -101,6 +130,7 @@ class ScriptItem(QFrame):
                 QSpinBox:hover { border-color: #a0a0a0; }
                 QSpinBox:focus { border-color: #0078D4; }
             """)
+            self.sequence_spin.valueChanged.connect(self._on_state_changed)
             layout.addWidget(self.sequence_spin)
 
         # 副本选择（列表中不止"未选择"时才显示）
@@ -112,6 +142,11 @@ class ScriptItem(QFrame):
         if self.script_type != 'python' and has_real_dungeons:
             self.dungeon_combo = QComboBox()
             self.dungeon_combo.addItems(dungeon_options)
+            # 恢复上次选择的副本
+            if saved_state and saved_state.get('dungeon'):
+                idx = self.dungeon_combo.findText(saved_state['dungeon'])
+                if idx >= 0:
+                    self.dungeon_combo.setCurrentIndex(idx)
             self.dungeon_combo.setFixedHeight(28)
             self.dungeon_combo.setMinimumWidth(110)
             self.dungeon_combo.setStyleSheet("""
@@ -139,6 +174,7 @@ class ScriptItem(QFrame):
                     selection-background-color: #0078D4;
                 }
             """)
+            self.dungeon_combo.currentTextChanged.connect(self._on_state_changed)
             layout.addWidget(self.dungeon_combo)
 
         # 开关按钮（Fluent Switch 风格）
@@ -148,6 +184,24 @@ class ScriptItem(QFrame):
         self.toggle_btn.clicked.connect(self._toggle)
         self._update_switch_style()
         layout.addWidget(self.toggle_btn)
+
+    def get_state(self) -> dict:
+        """获取当前 UI 状态，用于持久化"""
+        state = {}
+        if self.dungeon_combo:
+            state['dungeon'] = self.dungeon_combo.currentText()
+        if self.sequence_spin:
+            state['sequence'] = self.sequence_spin.value()
+        return state
+
+    def set_state_callback(self, callback):
+        """注入状态变化回调"""
+        self._state_callback = callback
+
+    def _on_state_changed(self, *args):
+        """子控件值变化时触发回调"""
+        if self._state_callback:
+            self._state_callback()
 
     def get_selected_dungeon(self):
         if self.dungeon_combo:
@@ -206,6 +260,7 @@ class MainWindow(QMainWindow):
         self.script_items = []
         self.all_config_data = None
         self.runner = None
+        self._ui_state = _load_ui_state()
 
         self._init_ui()
         self._load_scripts()
@@ -308,12 +363,23 @@ class MainWindow(QMainWindow):
                         # 普通字符串项
                         options.append(str(item))
 
-            item = ScriptItem(data, dungeon_options=options if options else None, show_sequence=show_seq)
+            saved = self._ui_state.get(name)
+            item = ScriptItem(data, dungeon_options=options if options else None,
+                              show_sequence=show_seq, saved_state=saved)
+            item.set_state_callback(self._persist_ui_state)
             self.scroll_layout.insertWidget(len(self.script_items), item)
             self.script_items.append(item)
 
         self._update_status()
 
+
+    def _persist_ui_state(self):
+        """收集所有脚本的 UI 状态并保存"""
+        state = {}
+        for item in self.script_items:
+            state[item.display_name] = item.get_state()
+        _save_ui_state(state)
+        self._update_status()
 
     def _update_status(self):
         enabled = sum(1 for i in self.script_items if i.enabled)

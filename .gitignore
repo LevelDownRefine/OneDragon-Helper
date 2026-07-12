@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# GUI 状态持久化（用户本地偏好）
+gui_state.json
