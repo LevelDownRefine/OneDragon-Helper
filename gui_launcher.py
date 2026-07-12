@@ -17,7 +17,7 @@ from utils import (
     get_weekly_timeouts_yml_path_under_root,
     get_path_under_onedragon,
 )
-from dungeon_adapter import set_dungeon, set_sequence
+from dungeon_adapter import set_config
 
 
 def get_week_num() -> int:
@@ -355,10 +355,9 @@ class MainWindow(QMainWindow):
                     script['run_timeout_seconds'] = timeouts[week_num]
 
                 # 外观模式：写入各脚本内部 config（副本、序列）
-                if name in enabled_dungeons:
-                    set_dungeon(name, enabled_dungeons[name])
-                if name in enabled_sequences:
-                    set_sequence(name, enabled_sequences[name])
+                dungeon = enabled_dungeons.get(name)
+                seq = enabled_sequences.get(name)
+                set_config(name, dungeon_name=dungeon, sequence=seq)
 
                 filtered.append(script)
 
