@@ -229,13 +229,6 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(12)
 
-        # 标题
-        title = QLabel("自动化脚本管理")
-        title.setFont(QFont("Microsoft YaHei", 14, QFont.Bold))
-        title.setStyleSheet("color: #202020;")
-        title.setAlignment(Qt.AlignLeft)
-        layout.addWidget(title)
-
         # 全选/全不选
         btn_row = QHBoxLayout()
         self.select_all_btn = QPushButton("全部开启")
