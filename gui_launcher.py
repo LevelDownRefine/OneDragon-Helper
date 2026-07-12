@@ -9,7 +9,7 @@ from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QScrollArea, QFrame, QMessageBox, QStatusBar,
-    QComboBox
+    QComboBox, QMenu
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont
@@ -82,11 +82,13 @@ class ScriptItem(QFrame):
         super().__init__()
         self.display_name = script_data.get('display_name', '未命名')
         self.script_type = script_data.get('script_type', 'external')
-        self.dungeon_combo = None
-        self.sequence_combo = None
+        self.dungeon_btn = None
+        self._selected_dungeon = None   # 一级副本名（None 表示未选择）
+        self._selected_sequence = None  # 二级序列名
         self.enabled = script_data.get('enabled', True)
         self._state_callback = None  # 状态变化回调，由 MainWindow 注入
         self._sequence_options_map = sequence_options_map or {}  # 副本名 → 二级选项列表
+        self._dungeon_options = dungeon_options or []  # 一级副本列表
 
         self.setFrameShape(QFrame.NoFrame)
         self.setObjectName("ScriptItem")
@@ -112,86 +114,41 @@ class ScriptItem(QFrame):
         title_label.setStyleSheet("color: #202020;")
         layout.addWidget(title_label, stretch=1)
 
-        # 刷取序列（QComboBox，选项随副本变化）
-        if show_sequence:
-            self.sequence_combo = QComboBox()
-            self.sequence_combo.setFixedHeight(28)
-            self.sequence_combo.setMinimumWidth(100)
-            self.sequence_combo.setStyleSheet("""
-                QComboBox {
-                    border: 1px solid #d0d0d0;
-                    border-radius: 4px;
-                    padding: 0 10px;
-                    background: white;
-                    font-size: 11px;
-                    color: #303030;
-                }
-                QComboBox:hover { border-color: #a0a0a0; }
-                QComboBox:focus { border-color: #0078D4; }
-                QComboBox::drop-down {
-                    border: none;
-                    width: 20px;
-                }
-                QComboBox QAbstractItemView {
-                    border: 1px solid #d0d0d0;
-                    border-radius: 4px;
-                    background: white;
-                    font-size: 11px;
-                    padding: 4px;
-                    outline: none;
-                    selection-background-color: #0078D4;
-                }
-            """)
-            self.sequence_combo.currentTextChanged.connect(self._on_state_changed)
-            layout.addWidget(self.sequence_combo)
-
-        # 副本选择（列表中不止"未选择"时才显示）
+        # 副本选择按钮（点击弹出级联菜单：一级 → 二级从右侧弹出）
         has_real_dungeons = (
             dungeon_options
             and len(dungeon_options) > 1
             and not (len(dungeon_options) == 1 and dungeon_options[0] == "未选择")
         )
         if self.script_type != 'python' and has_real_dungeons:
-            self.dungeon_combo = QComboBox()
-            self.dungeon_combo.addItems(dungeon_options)
-            # 恢复上次选择的副本
-            if saved_state and saved_state.get('dungeon'):
-                idx = self.dungeon_combo.findText(saved_state['dungeon'])
-                if idx >= 0:
-                    self.dungeon_combo.setCurrentIndex(idx)
-            self.dungeon_combo.setFixedHeight(28)
-            self.dungeon_combo.setMinimumWidth(110)
-            self.dungeon_combo.setStyleSheet("""
-                QComboBox {
+            self.dungeon_btn = QPushButton("选择副本")
+            self.dungeon_btn.setFixedHeight(28)
+            self.dungeon_btn.setMinimumWidth(120)
+            self.dungeon_btn.setCursor(Qt.PointingHandCursor)
+            self.dungeon_btn.setStyleSheet("""
+                QPushButton {
                     border: 1px solid #d0d0d0;
                     border-radius: 4px;
                     padding: 0 10px;
                     background: white;
                     font-size: 11px;
                     color: #303030;
+                    text-align: center;
                 }
-                QComboBox:hover { border-color: #a0a0a0; }
-                QComboBox:focus { border-color: #0078D4; }
-                QComboBox::drop-down {
-                    border: none;
-                    width: 20px;
-                }
-                QComboBox QAbstractItemView {
-                    border: 1px solid #d0d0d0;
-                    border-radius: 4px;
-                    background: white;
-                    font-size: 11px;
-                    padding: 4px;
-                    outline: none;
-                    selection-background-color: #0078D4;
-                }
+                QPushButton:hover { border-color: #a0a0a0; }
+                QPushButton:pressed { border-color: #0078D4; }
             """)
-            self.dungeon_combo.currentTextChanged.connect(self._on_state_changed)
-            self.dungeon_combo.currentTextChanged.connect(self._update_sequence_options)
-            layout.addWidget(self.dungeon_combo)
+            self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
+            layout.addWidget(self.dungeon_btn)
 
-            # 初始填充序列选项
-            self._update_sequence_options(self.dungeon_combo.currentText(), restore=saved_state)
+            # 恢复上次选择（仅当副本在选项列表中时）
+            if saved_state and saved_state.get('dungeon') and saved_state['dungeon'] in self._dungeon_options:
+                self._selected_dungeon = saved_state['dungeon']
+                if saved_state.get('sequence'):
+                    self._selected_sequence = saved_state['sequence']
+                    self.dungeon_btn.setText(f"{self._selected_dungeon} > {self._selected_sequence}")
+                else:
+                    self.dungeon_btn.setText(self._selected_dungeon)
 
         # 开关按钮（Fluent Switch 风格）
         self.toggle_btn = QPushButton()
@@ -201,32 +158,78 @@ class ScriptItem(QFrame):
         self._update_switch_style()
         layout.addWidget(self.toggle_btn)
 
-    def _update_sequence_options(self, dungeon_name, restore=None):
-        """根据当前副本更新序列下拉选项"""
-        if self.sequence_combo is None:
-            return
-        options = self._sequence_options_map.get(dungeon_name, [])
-        self.sequence_combo.blockSignals(True)
-        self.sequence_combo.clear()
-        if options:
-            self.sequence_combo.addItems([str(o) for o in options])
-            # 恢复上次选择
-            if restore and restore.get('sequence'):
-                idx = self.sequence_combo.findText(str(restore['sequence']))
-                if idx >= 0:
-                    self.sequence_combo.setCurrentIndex(idx)
-            self.sequence_combo.setEnabled(True)
+    def _show_dungeon_menu(self):
+        """点击副本按钮，弹出级联菜单"""
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                background: white;
+                padding: 4px;
+                font-size: 11px;
+            }
+            QMenu::item {
+                padding: 4px 20px 4px 12px;
+                border-radius: 3px;
+            }
+            QMenu::item:selected {
+                background-color: #0078D4;
+                color: white;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #e0e0e0;
+                margin: 4px 8px;
+            }
+        """)
+
+        for dungeon_name in self._dungeon_options:
+            if dungeon_name == "未选择":
+                action = menu.addAction(dungeon_name)
+                action.triggered.connect(lambda checked, dn=dungeon_name: self._on_dungeon_selected(dn))
+                menu.addSeparator()
+                continue
+
+            seq_options = self._sequence_options_map.get(dungeon_name, [])
+            if seq_options:
+                # 有二级选项 → 子菜单（从右侧弹出）
+                submenu = menu.addMenu(dungeon_name)
+                for seq in seq_options:
+                    sub_action = submenu.addAction(str(seq))
+                    sub_action.triggered.connect(
+                        lambda checked, dn=dungeon_name, sq=str(seq): self._on_dungeon_selected(dn, sq)
+                    )
+            else:
+                # 无二级选项 → 直接选择
+                action = menu.addAction(dungeon_name)
+                action.triggered.connect(lambda checked, dn=dungeon_name: self._on_dungeon_selected(dn))
+
+        # 在按钮下方弹出
+        menu.exec(self.dungeon_btn.mapToGlobal(self.dungeon_btn.rect().bottomLeft()))
+
+    def _on_dungeon_selected(self, dungeon_name, sequence=None):
+        """选择副本后的回调"""
+        if dungeon_name == "未选择":
+            self._selected_dungeon = None
+            self._selected_sequence = None
+            self.dungeon_btn.setText("选择副本")
         else:
-            self.sequence_combo.setEnabled(False)
-        self.sequence_combo.blockSignals(False)
+            self._selected_dungeon = dungeon_name
+            self._selected_sequence = sequence
+            if sequence:
+                self.dungeon_btn.setText(f"{dungeon_name} > {sequence}")
+            else:
+                self.dungeon_btn.setText(dungeon_name)
+        self._on_state_changed()
 
     def get_state(self) -> dict:
         """获取当前 UI 状态，用于持久化"""
         state = {}
-        if self.dungeon_combo:
-            state['dungeon'] = self.dungeon_combo.currentText()
-        if self.sequence_combo and self.sequence_combo.isEnabled():
-            state['sequence'] = self.sequence_combo.currentText()
+        if self._selected_dungeon:
+            state['dungeon'] = self._selected_dungeon
+            if self._selected_sequence:
+                state['sequence'] = self._selected_sequence
         return state
 
     def set_state_callback(self, callback):
@@ -239,16 +242,10 @@ class ScriptItem(QFrame):
             self._state_callback()
 
     def get_selected_dungeon(self):
-        if self.dungeon_combo:
-            val = self.dungeon_combo.currentText()
-            if val and val != "未选择":
-                return val
-        return None
+        return self._selected_dungeon
 
     def get_sequence(self):
-        if self.sequence_combo and self.sequence_combo.isEnabled():
-            return self.sequence_combo.currentText()
-        return None
+        return self._selected_sequence
 
     def _toggle(self):
         self.enabled = not self.enabled

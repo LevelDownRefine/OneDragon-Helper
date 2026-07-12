@@ -107,7 +107,7 @@ class TestScriptItemGetState(unittest.TestCase):
             {'display_name': 'test', 'script_type': 'external'},
             dungeon_options=["副本A", "副本B"],
         )
-        item.dungeon_combo.setCurrentText("副本B")
+        item._on_dungeon_selected("副本B")
         state = item.get_state()
         self.assertEqual(state, {'dungeon': '副本B'})
 
@@ -119,8 +119,7 @@ class TestScriptItemGetState(unittest.TestCase):
             sequence_options_map={'副本A': ['共鸣者经验', '武器经验', '贝币']},
             show_sequence=True,
         )
-        item.dungeon_combo.setCurrentText('副本A')
-        item.sequence_combo.setCurrentText('武器经验')
+        item._on_dungeon_selected('副本A', '武器经验')
         state = item.get_state()
         self.assertEqual(state, {'dungeon': '副本A', 'sequence': '武器经验'})
 
@@ -161,7 +160,7 @@ class TestScriptItemSavedState(unittest.TestCase):
             dungeon_options=["副本A", "副本B"],
             saved_state={'dungeon': '副本B'},
         )
-        self.assertEqual(item.dungeon_combo.currentText(), '副本B')
+        self.assertEqual(item._selected_dungeon, '副本B')
 
     def test_sequence_restored_from_saved_state(self):
         """序列从 saved_state 恢复"""
@@ -172,8 +171,8 @@ class TestScriptItemSavedState(unittest.TestCase):
             show_sequence=True,
             saved_state={'dungeon': '副本A', 'sequence': '武器经验'},
         )
-        self.assertEqual(item.dungeon_combo.currentText(), '副本A')
-        self.assertEqual(item.sequence_combo.currentText(), '武器经验')
+        self.assertEqual(item._selected_dungeon, '副本A')
+        self.assertEqual(item._selected_sequence, '武器经验')
 
     def test_dungeon_not_restored_if_not_in_options(self):
         """saved_state 中的副本不在选项中时不恢复"""
@@ -182,8 +181,8 @@ class TestScriptItemSavedState(unittest.TestCase):
             dungeon_options=["副本A", "副本B"],
             saved_state={'dungeon': '不存在'},
         )
-        # 保持默认（第一个）
-        self.assertEqual(item.dungeon_combo.currentText(), '副本A')
+        # 不在选项中，不恢复
+        self.assertIsNone(item._selected_dungeon)
 
 
 class TestScriptItemCallback(unittest.TestCase):
@@ -197,7 +196,7 @@ class TestScriptItemCallback(unittest.TestCase):
         )
         called = []
         item.set_state_callback(lambda: called.append(True))
-        item.dungeon_combo.setCurrentText("副本B")
+        item._on_dungeon_selected("副本B")
         self.assertEqual(len(called), 1)
 
     def test_sequence_change_triggers_callback(self):
@@ -210,10 +209,9 @@ class TestScriptItemCallback(unittest.TestCase):
         )
         called = []
         item.set_state_callback(lambda: called.append(True))
-        item.dungeon_combo.setCurrentText('副本A')
-        item.sequence_combo.setCurrentText('武器经验')
-        # 切换副本触发 1 次，切换序列触发 1 次
-        self.assertEqual(len(called), 2)
+        item._on_dungeon_selected('副本A', '武器经验')
+        # 选副本+序列一次性触发 1 次
+        self.assertEqual(len(called), 1)
 
 
 # ---- helpers ----
