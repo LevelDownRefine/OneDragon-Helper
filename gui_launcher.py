@@ -9,7 +9,7 @@ from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QScrollArea, QFrame, QMessageBox, QStatusBar,
-    QComboBox, QSpinBox
+    QComboBox
 )
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont
@@ -77,15 +77,16 @@ class ScriptChainRunner(QThread):
 class ScriptItem(QFrame):
     """单个脚本项（Fluent 风格卡片）"""
 
-    def __init__(self, script_data, dungeon_options=None, show_sequence=False,
-                 saved_state=None):
+    def __init__(self, script_data, dungeon_options=None, sequence_options_map=None,
+                 show_sequence=False, saved_state=None):
         super().__init__()
         self.display_name = script_data.get('display_name', '未命名')
         self.script_type = script_data.get('script_type', 'external')
         self.dungeon_combo = None
-        self.sequence_spin = None
+        self.sequence_combo = None
         self.enabled = script_data.get('enabled', True)
         self._state_callback = None  # 状态变化回调，由 MainWindow 注入
+        self._sequence_options_map = sequence_options_map or {}  # 副本名 → 二级选项列表
 
         self.setFrameShape(QFrame.NoFrame)
         self.setObjectName("ScriptItem")
@@ -111,27 +112,38 @@ class ScriptItem(QFrame):
         title_label.setStyleSheet("color: #202020;")
         layout.addWidget(title_label, stretch=1)
 
-        # 刷取序列
+        # 刷取序列（QComboBox，选项随副本变化）
         if show_sequence:
-            self.sequence_spin = QSpinBox()
-            self.sequence_spin.setRange(1, 99)
-            self.sequence_spin.setValue(int(saved_state.get('sequence', 1)) if saved_state else 1)
-            self.sequence_spin.setFixedSize(60, 28)
-            self.sequence_spin.setButtonSymbols(QSpinBox.NoButtons)
-            self.sequence_spin.setAlignment(Qt.AlignCenter)
-            self.sequence_spin.setStyleSheet("""
-                QSpinBox {
+            self.sequence_combo = QComboBox()
+            self.sequence_combo.setFixedHeight(28)
+            self.sequence_combo.setMinimumWidth(100)
+            self.sequence_combo.setStyleSheet("""
+                QComboBox {
                     border: 1px solid #d0d0d0;
                     border-radius: 4px;
+                    padding: 0 10px;
                     background: white;
                     font-size: 11px;
                     color: #303030;
                 }
-                QSpinBox:hover { border-color: #a0a0a0; }
-                QSpinBox:focus { border-color: #0078D4; }
+                QComboBox:hover { border-color: #a0a0a0; }
+                QComboBox:focus { border-color: #0078D4; }
+                QComboBox::drop-down {
+                    border: none;
+                    width: 20px;
+                }
+                QComboBox QAbstractItemView {
+                    border: 1px solid #d0d0d0;
+                    border-radius: 4px;
+                    background: white;
+                    font-size: 11px;
+                    padding: 4px;
+                    outline: none;
+                    selection-background-color: #0078D4;
+                }
             """)
-            self.sequence_spin.valueChanged.connect(self._on_state_changed)
-            layout.addWidget(self.sequence_spin)
+            self.sequence_combo.currentTextChanged.connect(self._on_state_changed)
+            layout.addWidget(self.sequence_combo)
 
         # 副本选择（列表中不止"未选择"时才显示）
         has_real_dungeons = (
@@ -175,7 +187,11 @@ class ScriptItem(QFrame):
                 }
             """)
             self.dungeon_combo.currentTextChanged.connect(self._on_state_changed)
+            self.dungeon_combo.currentTextChanged.connect(self._update_sequence_options)
             layout.addWidget(self.dungeon_combo)
+
+            # 初始填充序列选项
+            self._update_sequence_options(self.dungeon_combo.currentText(), restore=saved_state)
 
         # 开关按钮（Fluent Switch 风格）
         self.toggle_btn = QPushButton()
@@ -185,13 +201,32 @@ class ScriptItem(QFrame):
         self._update_switch_style()
         layout.addWidget(self.toggle_btn)
 
+    def _update_sequence_options(self, dungeon_name, restore=None):
+        """根据当前副本更新序列下拉选项"""
+        if self.sequence_combo is None:
+            return
+        options = self._sequence_options_map.get(dungeon_name, [])
+        self.sequence_combo.blockSignals(True)
+        self.sequence_combo.clear()
+        if options:
+            self.sequence_combo.addItems([str(o) for o in options])
+            # 恢复上次选择
+            if restore and restore.get('sequence'):
+                idx = self.sequence_combo.findText(str(restore['sequence']))
+                if idx >= 0:
+                    self.sequence_combo.setCurrentIndex(idx)
+            self.sequence_combo.setEnabled(True)
+        else:
+            self.sequence_combo.setEnabled(False)
+        self.sequence_combo.blockSignals(False)
+
     def get_state(self) -> dict:
         """获取当前 UI 状态，用于持久化"""
         state = {}
         if self.dungeon_combo:
             state['dungeon'] = self.dungeon_combo.currentText()
-        if self.sequence_spin:
-            state['sequence'] = str(self.sequence_spin.value())
+        if self.sequence_combo and self.sequence_combo.isEnabled():
+            state['sequence'] = self.sequence_combo.currentText()
         return state
 
     def set_state_callback(self, callback):
@@ -211,8 +246,8 @@ class ScriptItem(QFrame):
         return None
 
     def get_sequence(self):
-        if self.sequence_spin:
-            return str(self.sequence_spin.value())
+        if self.sequence_combo and self.sequence_combo.isEnabled():
+            return self.sequence_combo.currentText()
         return None
 
     def _toggle(self):
@@ -350,13 +385,15 @@ class MainWindow(QMainWindow):
 
             # 解析副本列表：支持平铺列表 和 带二级目录的嵌套列表
             options = []
+            seq_map = {}  # 副本名 → 二级选项列表
             show_seq = False
             if isinstance(dungeon_cfg, list):
                 for item in dungeon_cfg:
                     if isinstance(item, dict):
-                        # 字典项：key 为副本名，value 为二级序列 → 启用序列输入
-                        for dungeon_name in item.keys():
+                        # 字典项：key 为副本名，value 为二级选项列表
+                        for dungeon_name, seq_list in item.items():
                             options.append(dungeon_name)
+                            seq_map[dungeon_name] = seq_list or []
                         show_seq = True
                     else:
                         # 普通字符串项
@@ -364,6 +401,7 @@ class MainWindow(QMainWindow):
 
             saved = self._ui_state.get(name)
             item = ScriptItem(data, dungeon_options=options if options else None,
+                              sequence_options_map=seq_map if show_seq else None,
                               show_sequence=show_seq, saved_state=saved)
             item.set_state_callback(self._persist_ui_state)
             self.scroll_layout.insertWidget(len(self.script_items), item)

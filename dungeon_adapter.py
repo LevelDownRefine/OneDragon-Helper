@@ -221,10 +221,18 @@ def _apply_wuthering_waves(config: dict, dungeon_name: str, sequence: str | None
         if sequence is None:
             return False
         if config['Which to Farm'] == "Simulation Challenge":
-            material_map = {"1": "Resonator EXP", "2": "Weapon EXP", "3": "Shell Credit"}
-            if config['Material Selection'] == material_map[sequence]:
+            material_map = {
+                "共鸣者经验": "Resonator EXP",
+                "武器经验": "Weapon EXP",
+                "贝币": "Shell Credit",
+            }
+            target = material_map.get(sequence)
+            if target is None:
+                print(f"[dungeon_adapter][Wuthering Waves] 未适配的序列: {sequence}")
                 return False
-            config['Material Selection'] = material_map[sequence]
+            if config['Material Selection'] == target:
+                return False
+            config['Material Selection'] = target
         elif config['Which to Farm'] == "Tacet Suppression":
             if str(config['Which Tacet Suppression to Farm']) == sequence:
                 return False

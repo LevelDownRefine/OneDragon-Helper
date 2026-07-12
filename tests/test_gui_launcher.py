@@ -114,12 +114,15 @@ class TestScriptItemGetState(unittest.TestCase):
     def test_get_state_with_sequence(self):
         """有序列时返回 sequence"""
         item = gui_launcher.ScriptItem(
-            {'display_name': 'test'},
+            {'display_name': 'test', 'script_type': 'external'},
+            dungeon_options=['未选择', '副本A'],
+            sequence_options_map={'副本A': ['共鸣者经验', '武器经验', '贝币']},
             show_sequence=True,
         )
-        item.sequence_spin.setValue(3)
+        item.dungeon_combo.setCurrentText('副本A')
+        item.sequence_combo.setCurrentText('武器经验')
         state = item.get_state()
-        self.assertEqual(state, {'sequence': '3'})
+        self.assertEqual(state, {'dungeon': '副本A', 'sequence': '武器经验'})
 
     def test_get_state_excludes_enabled(self):
         """get_state 不包含 enabled"""
@@ -163,11 +166,14 @@ class TestScriptItemSavedState(unittest.TestCase):
     def test_sequence_restored_from_saved_state(self):
         """序列从 saved_state 恢复"""
         item = gui_launcher.ScriptItem(
-            {'display_name': 'test'},
+            {'display_name': 'test', 'script_type': 'external'},
+            dungeon_options=['未选择', '副本A'],
+            sequence_options_map={'副本A': ['共鸣者经验', '武器经验', '贝币']},
             show_sequence=True,
-            saved_state={'sequence': 5},
+            saved_state={'dungeon': '副本A', 'sequence': '武器经验'},
         )
-        self.assertEqual(item.sequence_spin.value(), 5)
+        self.assertEqual(item.dungeon_combo.currentText(), '副本A')
+        self.assertEqual(item.sequence_combo.currentText(), '武器经验')
 
     def test_dungeon_not_restored_if_not_in_options(self):
         """saved_state 中的副本不在选项中时不恢复"""
@@ -197,13 +203,17 @@ class TestScriptItemCallback(unittest.TestCase):
     def test_sequence_change_triggers_callback(self):
         """修改序列触发回调"""
         item = gui_launcher.ScriptItem(
-            {'display_name': 'test'},
+            {'display_name': 'test', 'script_type': 'external'},
+            dungeon_options=['未选择', '副本A'],
+            sequence_options_map={'副本A': ['共鸣者经验', '武器经验', '贝币']},
             show_sequence=True,
         )
         called = []
         item.set_state_callback(lambda: called.append(True))
-        item.sequence_spin.setValue(5)
-        self.assertEqual(len(called), 1)
+        item.dungeon_combo.setCurrentText('副本A')
+        item.sequence_combo.setCurrentText('武器经验')
+        # 切换副本触发 1 次，切换序列触发 1 次
+        self.assertEqual(len(called), 2)
 
 
 # ---- helpers ----
