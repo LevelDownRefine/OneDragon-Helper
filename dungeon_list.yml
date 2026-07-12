@@ -3,7 +3,7 @@
 # value: 可选副本名称列表
 # 后续适配脚本内部 config 后，选择的副本名将通过参数或配置注入
 
-# data\apps\ok-ww\working\configs\DailyTask.json
+# config: data\apps\ok-ww\working\configs\DailyTask.json
 鸣潮:
   - 未选择
   - 凝素领域:
@@ -40,7 +40,7 @@
       - 9
       - 10
 
-# User\OneDragon\默认配置.json
+# config: User\OneDragon\默认配置.json
 # 参考 https://github.com/babalae/bettergi-scripts-list/blob/main/repo/js/AutoDomain/main.js
 原神:
   - 未选择
@@ -48,7 +48,7 @@
   - 霜凝的机枢
   - 无光的深都
 
-# data\apps\ok-ef\working\configs\DailyTask.json
+# config: data\apps\ok-ef\working\configs\DailyTask.json
 # 参考 https://github.com/AliceJump/ok-end-field/blob/master/docs/%E4%BD%93%E5%8A%9B%E6%9C%AC.md
 终末地:
   - 未选择
@@ -60,13 +60,13 @@
   - 武器经验
   - 武器进阶
 
-# config\01\one_dragon\charge_plan.yml
+# config: config\01\one_dragon\charge_plan.yml
 # 参考 https://github.com/OneDragon-Anything/ZenlessZoneZero-OneDragon/blob/main/docs/develop/zzz/application/charge_plan.md
 绝区零:
   - 未选择
   - 实战模拟室
 
-# config.yaml
+# config: config.yaml
 崩铁:
   - 未选择
   - 天赋
@@ -74,7 +74,7 @@
   - 侵蚀隧洞
   - 饰品提取
 
-# data\apps\ok-nte\working\configs\DailyTask.json
+# config: data\apps\ok-nte\working\configs\DailyTask.json
 # 参考 https://github.com/BnanZ0/ok-nte/blob/main/src/tasks/AnomalyTask.py
 异环:
   - 未选择
@@ -89,7 +89,7 @@
       - 8
       - 9
       - 10
-  - 模拟领域:
+  - 异能升级材料:
       - 1
       - 2
       - 3
@@ -101,7 +101,7 @@
       - 9
       - 10
 
-# config\gui.new.json
+# config: config\gui.new.json
 粥:
   - 未选择
   - 红票

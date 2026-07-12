@@ -1,0 +1,243 @@
+"""
+测试 dungeon_adapter.py 中新增的 config 读写基础设施函数。
+
+覆盖函数：
+  - _CONFIG_REL_PATHS（数据完整性）
+  - _get_script_root_dir
+  - get_config_path
+  - load_config
+  - save_config（mock 文件写入，不真正写回脚本 config）
+"""
+import os
+import json
+import yaml
+import tempfile
+import unittest
+from unittest.mock import patch, mock_open, MagicMock
+
+import dungeon_adapter
+
+
+class TestConfigRelPaths(unittest.TestCase):
+    """测试 _CONFIG_REL_PATHS 数据完整性"""
+
+    def test_all_scripts_have_rel_path(self):
+        """每个已适配脚本都应在 _CONFIG_REL_PATHS 中有记录"""
+        scripts = ["鸣潮", "原神", "终末地", "绝区零", "崩铁", "异环", "粥"]
+        for name in scripts:
+            self.assertIn(name, dungeon_adapter._CONFIG_REL_PATHS,
+                          f"{name} 缺少 config 相对路径")
+
+    def test_rel_paths_are_strings(self):
+        for name, rel in dungeon_adapter._CONFIG_REL_PATHS.items():
+            self.assertIsInstance(rel, str, f"{name} 的 rel path 不是字符串")
+            self.assertTrue(len(rel) > 0, f"{name} 的 rel path 为空")
+
+    def test_rel_paths_contain_extension(self):
+        """每个相对路径应包含 .json 或 .yaml/.yml 扩展名"""
+        valid_exts = ('.json', '.yaml', '.yml')
+        for name, rel in dungeon_adapter._CONFIG_REL_PATHS.items():
+            ext = os.path.splitext(rel)[1].lower()
+            self.assertIn(ext, valid_exts,
+                          f"{name} 的 config 扩展名 {ext} 不在支持范围内")
+
+
+class TestGetScriptRootDir(unittest.TestCase):
+    """测试 _get_script_root_dir"""
+
+    def test_returns_dirname_of_script_path(self):
+        """应返回 script_path 的父目录"""
+        fake_config = {
+            "script_list": [
+                {"display_name": "鸣潮", "script_path": r"C:\fake\ok-ww\ok-ww.exe"},
+            ]
+        }
+        with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
+            root = dungeon_adapter._get_script_root_dir("鸣潮")
+        self.assertEqual(root, r"C:\fake\ok-ww")
+
+    def test_returns_none_for_unknown_script(self):
+        fake_config = {"script_list": []}
+        with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
+            root = dungeon_adapter._get_script_root_dir("不存在的脚本")
+        self.assertIsNone(root)
+
+    def test_returns_none_for_empty_script_path(self):
+        fake_config = {
+            "script_list": [
+                {"display_name": "空路径", "script_path": ""},
+            ]
+        }
+        with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
+            root = dungeon_adapter._get_script_root_dir("空路径")
+        self.assertIsNone(root)
+
+
+class TestGetConfigPath(unittest.TestCase):
+    """测试 get_config_path"""
+
+    def test_joins_root_and_rel(self):
+        """应正确拼接脚本根目录和 config 相对路径"""
+        fake_config = {
+            "script_list": [
+                {"display_name": "鸣潮", "script_path": r"C:\fake\ok-ww\ok-ww.exe"},
+            ]
+        }
+        with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
+            path = dungeon_adapter.get_config_path("鸣潮")
+
+        expected = os.path.join(r"C:\fake\ok-ww",
+                                dungeon_adapter._CONFIG_REL_PATHS["鸣潮"])
+        self.assertEqual(path, expected)
+
+    def test_returns_none_for_unknown_script(self):
+        """未在 _CONFIG_REL_PATHS 中的脚本应返回 None"""
+        with patch.object(dungeon_adapter, '_load_config_yml',
+                          return_value={"script_list": []}):
+            path = dungeon_adapter.get_config_path("不存在")
+        self.assertIsNone(path)
+
+    def test_all_real_scripts_resolve_non_none(self):
+        """对所有已注册脚本，get_config_path 应返回非 None 路径
+        （不要求文件真实存在，只要求路径推导成功）"""
+        scripts = list(dungeon_adapter._CONFIG_REL_PATHS.keys())
+        # 用真实 config.yml 加载
+        for name in scripts:
+            path = dungeon_adapter.get_config_path(name)
+            self.assertIsNotNone(path, f"{name} 路径推导失败")
+            self.assertTrue(os.path.isabs(path), f"{name} 路径不是绝对路径: {path}")
+
+
+class TestLoadConfig(unittest.TestCase):
+    """测试 load_config"""
+
+    def test_load_json_config(self):
+        """应正确解析 JSON 格式的 config"""
+        fake_data = {"key": "value", "nested": {"a": 1}}
+        fake_path = r"C:\fake\script\config.json"
+
+        with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path), \
+             patch('os.path.exists', return_value=True), \
+             patch('builtins.open', mock_open(read_data=json.dumps(fake_data))):
+            result = dungeon_adapter.load_config("鸣潮")
+
+        self.assertEqual(result, fake_data)
+
+    def test_load_yaml_config(self):
+        """应正确解析 YAML 格式的 config"""
+        fake_data = {"key": "value", "list": [1, 2, 3]}
+        fake_path = r"C:\fake\script\config.yaml"
+        yaml_str = yaml.dump(fake_data, allow_unicode=True)
+
+        with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path), \
+             patch('os.path.exists', return_value=True), \
+             patch('builtins.open', mock_open(read_data=yaml_str)):
+            result = dungeon_adapter.load_config("绝区零")
+
+        self.assertEqual(result, fake_data)
+
+    def test_load_returns_none_when_path_is_none(self):
+        """get_config_path 返回 None 时应返回 None"""
+        with patch.object(dungeon_adapter, 'get_config_path', return_value=None):
+            result = dungeon_adapter.load_config("不存在")
+        self.assertIsNone(result)
+
+    def test_load_returns_none_when_file_missing(self):
+        """config 文件不存在时应返回 None"""
+        fake_path = r"C:\fake\script\config.json"
+
+        with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path), \
+             patch('os.path.exists', return_value=False):
+            result = dungeon_adapter.load_config("鸣潮")
+
+        self.assertIsNone(result)
+
+    @unittest.skipUnless(
+        all(dungeon_adapter.get_config_path(n) and
+            os.path.exists(dungeon_adapter.get_config_path(n) or "")
+            for n in dungeon_adapter._CONFIG_REL_PATHS),
+        "部分脚本 config 文件不存在，跳过真实读取测试"
+    )
+    def test_load_all_real_configs(self):
+        """对所有真实存在的 config 文件执行读取测试"""
+        for name in dungeon_adapter._CONFIG_REL_PATHS:
+            data = dungeon_adapter.load_config(name)
+            self.assertIsNotNone(data, f"{name} config 读取失败")
+            self.assertIsInstance(data, (dict, list),
+                                  f"{name} config 应为 dict 或 list")
+
+
+class TestSaveConfig(unittest.TestCase):
+    """测试 save_config —— 全部 mock，不真正写回脚本 config"""
+
+    def test_save_json_config_does_not_write_real_file(self):
+        """save JSON 时不应写入真实 config 文件"""
+        fake_path = r"C:\fake\script\config.json"
+        data = {"Which to Farm": "Tacet"}
+
+        m = mock_open()
+        with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path), \
+             patch('builtins.open', m):
+            result = dungeon_adapter.save_config("鸣潮", data)
+
+        self.assertTrue(result)
+        m.assert_called_once_with(fake_path, 'w', encoding='utf-8')
+        # 验证写入的内容是正确的 JSON
+        handle = m()
+        written = ''.join(call.args[0] for call in handle.write.call_args_list)
+        self.assertEqual(json.loads(written), data)
+
+    def test_save_yaml_config_does_not_write_real_file(self):
+        """save YAML 时不应写入真实 config 文件"""
+        fake_path = r"C:\fake\script\charge_plan.yml"
+        data = {"plan_list": [{"category_name": "test"}]}
+
+        m = mock_open()
+        with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path), \
+             patch('builtins.open', m):
+            result = dungeon_adapter.save_config("绝区零", data)
+
+        self.assertTrue(result)
+        m.assert_called_once_with(fake_path, 'w', encoding='utf-8')
+        # 验证写入的内容是有效的 YAML
+        handle = m()
+        written = ''.join(call.args[0] for call in handle.write.call_args_list)
+        self.assertEqual(yaml.safe_load(written), data)
+
+    def test_save_returns_false_when_path_is_none(self):
+        """get_config_path 返回 None 时应返回 False"""
+        with patch.object(dungeon_adapter, 'get_config_path', return_value=None):
+            result = dungeon_adapter.save_config("不存在", {"key": "val"})
+        self.assertFalse(result)
+
+    def test_save_and_reload_roundtrip_json(self):
+        """JSON 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
+        data = {"test_key": "test_value", "num": 42}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_path = os.path.join(tmp, "config.json")
+            with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path):
+                # save
+                ok = dungeon_adapter.save_config("鸣潮", data)
+                self.assertTrue(ok)
+                # load
+                loaded = dungeon_adapter.load_config("鸣潮")
+                self.assertEqual(loaded, data)
+
+    def test_save_and_reload_roundtrip_yaml(self):
+        """YAML 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
+        data = {"plan_list": [{"category_name": "模拟"}], "enabled": True}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_path = os.path.join(tmp, "config.yaml")
+            with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path):
+                # save
+                ok = dungeon_adapter.save_config("绝区零", data)
+                self.assertTrue(ok)
+                # load
+                loaded = dungeon_adapter.load_config("绝区零")
+                self.assertEqual(loaded, data)
+
+
+if __name__ == "__main__":
+    unittest.main()
