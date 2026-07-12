@@ -171,7 +171,6 @@ def set_config(script_display_name: str,
     # handler 修改 config，返回修改后的 dict
     try:
         updated = handler(config, dungeon_name, sequence)
-        breakpoint()
     except Exception as e:
         print(f"[dungeon_adapter] {script_display_name} 适配配置失败: {e}")
         return False
@@ -245,42 +244,53 @@ def _apply_wuthering_waves(config: dict, dungeon_name: str, sequence=None) -> di
     return config
 
 # ---- 原神 Genshin Impact ----
-def _apply_genshin(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
-    # TODO: 适配 BetterGI 的副本配置
-    print(f"[dungeon_adapter][Genshin] 待适配: {dungeon_name}")
-    return None
+def _apply_genshin(config: dict, dungeon_name: str, sequence=None) -> dict | None:
+
+    def update_task() -> bool:
+        """更新副本类型，返回是否有变化"""
+        if config['DomainName'] == dungeon_name:
+            return False
+        config['DomainName'] = dungeon_name
+        return True
+    
+    if not update_task():
+        print(f"[dungeon_adapter][Genshin] config 无需更新: {config}")
+        return None
+
+    print(f"[dungeon_adapter][Genshin] config 已更新: {config}")
+    return config
 
 
 # ---- 终末地 Arknights: Endfield ----
-def _apply_endfield(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
+def _apply_endfield(config: dict, dungeon_name: str, sequence=None) -> dict | None:
     # TODO: 适配终末地的副本配置（sequence > 0 时同时写入序列）
     print(f"[dungeon_adapter][Endfield] 待适配: {dungeon_name}, seq={sequence}")
     return None
 
 
 # ---- 绝区零 Zenless Zone Zero ----
-def _apply_zenless(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
+def _apply_zenless(config: dict, dungeon_name: str, sequence=None) -> dict | None:
     # TODO: 适配绝区零的副本配置
     print(f"[dungeon_adapter][Zenless] 待适配: {dungeon_name}")
     return None
 
 
 # ---- 崩铁 Honkai: Star Rail ----
-def _apply_star_rail(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
+def _apply_star_rail(config: dict, dungeon_name: str, sequence=None) -> dict | None:
     # TODO: 适配崩铁的副本配置
     print(f"[dungeon_adapter][Star Rail] 待适配: {dungeon_name}")
     return None
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
-def _apply_nte(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
+def _apply_nte(config: dict, dungeon_name: str, sequence=None) -> dict | None:
     # TODO: 适配异环的副本配置（sequence > 0 时同时写入序列）
     print(f"[dungeon_adapter][NTE] 待适配: {dungeon_name}, seq={sequence}")
     return None
 
 
 # ---- 明日方舟 Arknights（粥）----
-def _apply_arknights(config: dict, dungeon_name: str, sequence: int = 0) -> dict | None:
+def _apply_arknights(config: dict, dungeon_name: str, sequence=None) -> dict | None:
     # TODO: 适配 MAA 的副本配置
     print(f"[dungeon_adapter][Arknights] 待适配: {dungeon_name}")
     return None
