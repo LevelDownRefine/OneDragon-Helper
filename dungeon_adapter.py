@@ -25,13 +25,13 @@ from utils import get_config_yml_path_under_root
 # 各脚本 config 文件相对于各自项目根目录的路径
 # （与 dungeon_list.yml 中注释一致）
 _CONFIG_REL_PATHS: dict[str, str] = {
-    "鸣潮":   r"data\apps\ok-ww\working\configs\DailyTask.json",
-    "原神":   r"User\OneDragon\默认配置.json",
-    "终末地": r"data\apps\ok-ef\working\configs\DailyTask.json",
-    "绝区零": r"config\01\one_dragon\charge_plan.yml",
-    "崩铁":   r"config.yaml",
-    "异环":   r"data\apps\ok-nte\working\configs\DailyTask.json",
-    "粥":     r"config\gui.new.json",
+    "鸣潮":   "data/apps/ok-ww/working/configs/DailyTask.json",
+    "原神":   "User/OneDragon/默认配置.json",
+    "终末地": "data/apps/ok-ef/working/configs/DailyTask.json",
+    "绝区零": "config/01/one_dragon/charge_plan.yml",
+    "崩铁":   "config.yaml",
+    "异环":   "data/apps/ok-nte/working/configs/DailyTask.json",
+    "粥":     "config/gui.new.json",
 }
 
 
@@ -45,13 +45,19 @@ def _get_script_root_dir(script_display_name: str) -> Optional[str]:
     """
     从 config.yml 中找到指定脚本的 script_path，
     取其父目录作为脚本项目根目录。
+
+    script_path 可能是 Windows 风格路径（C:\\...\\xxx.exe），
+    统一将反斜杠转为正斜杠后再取 dirname，确保跨平台可用。
     """
     config_data = _load_config_yml()
     for script in config_data.get('script_list', []):
         if script.get('display_name') == script_display_name:
             script_path = script.get('script_path', '')
             if script_path:
-                return os.path.dirname(script_path)
+                # 统一路径分隔符，兼容 Windows 路径在 Linux 上解析
+                normalized = script_path.replace('\\', '/')
+                root = os.path.dirname(normalized)
+                return root if root else None
     return None
 
 

@@ -47,14 +47,29 @@ class TestGetScriptRootDir(unittest.TestCase):
 
     def test_returns_dirname_of_script_path(self):
         """应返回 script_path 的父目录"""
+        fake_path = os.path.join("/fake", "ok-ww", "ok-ww.exe")
         fake_config = {
             "script_list": [
-                {"display_name": "鸣潮", "script_path": r"C:\fake\ok-ww\ok-ww.exe"},
+                {"display_name": "鸣潮", "script_path": fake_path},
+            ]
+        }
+        # _get_script_root_dir 内部会统一为正斜杠，期望值也要一致
+        expected_root = os.path.dirname(fake_path.replace('\\', '/'))
+        with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
+            root = dungeon_adapter._get_script_root_dir("鸣潮")
+        self.assertEqual(root, expected_root)
+
+    def test_handles_windows_path_on_any_platform(self):
+        """应正确处理 Windows 风格路径（反斜杠），即使在 Linux 上"""
+        fake_config = {
+            "script_list": [
+                {"display_name": "鸣潮",
+                 "script_path": r"C:\Users\test\ok-ww\ok-ww.exe"},
             ]
         }
         with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
             root = dungeon_adapter._get_script_root_dir("鸣潮")
-        self.assertEqual(root, r"C:\fake\ok-ww")
+        self.assertEqual(root, "C:/Users/test/ok-ww")
 
     def test_returns_none_for_unknown_script(self):
         fake_config = {"script_list": []}
@@ -78,15 +93,17 @@ class TestGetConfigPath(unittest.TestCase):
 
     def test_joins_root_and_rel(self):
         """应正确拼接脚本根目录和 config 相对路径"""
+        # mock Windows 风格的 script_path，验证在任意平台上都能推导
         fake_config = {
             "script_list": [
-                {"display_name": "鸣潮", "script_path": r"C:\fake\ok-ww\ok-ww.exe"},
+                {"display_name": "鸣潮",
+                 "script_path": r"C:\fake\ok-ww\ok-ww.exe"},
             ]
         }
         with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
             path = dungeon_adapter.get_config_path("鸣潮")
 
-        expected = os.path.join(r"C:\fake\ok-ww",
+        expected = os.path.join("C:/fake/ok-ww",
                                 dungeon_adapter._CONFIG_REL_PATHS["鸣潮"])
         self.assertEqual(path, expected)
 
@@ -97,15 +114,27 @@ class TestGetConfigPath(unittest.TestCase):
             path = dungeon_adapter.get_config_path("不存在")
         self.assertIsNone(path)
 
-    def test_all_real_scripts_resolve_non_none(self):
-        """对所有已注册脚本，get_config_path 应返回非 None 路径
-        （不要求文件真实存在，只要求路径推导成功）"""
+    def test_all_registered_scripts_resolve_with_mock_config(self):
+        """对所有已注册脚本，用 mock 的 config.yml 验证路径推导成功
+        （不依赖真实 config.yml，CI 也能跑）"""
         scripts = list(dungeon_adapter._CONFIG_REL_PATHS.keys())
-        # 用真实 config.yml 加载
-        for name in scripts:
-            path = dungeon_adapter.get_config_path(name)
-            self.assertIsNotNone(path, f"{name} 路径推导失败")
-            self.assertTrue(os.path.isabs(path), f"{name} 路径不是绝对路径: {path}")
+        # 构造 mock config：每个脚本都有一个假的 script_path
+        fake_script_list = [
+            {"display_name": name,
+             "script_path": r"C:\fake\root\script.exe"}
+            for name in scripts
+        ]
+        with patch.object(dungeon_adapter, '_load_config_yml',
+                          return_value={"script_list": fake_script_list}):
+            for name in scripts:
+                path = dungeon_adapter.get_config_path(name)
+                self.assertIsNotNone(path, f"{name} 路径推导失败")
+                # 路径中应包含相对路径的各段（不依赖具体分隔符）
+                rel = dungeon_adapter._CONFIG_REL_PATHS[name]
+                rel_parts = rel.split("/")
+                for part in rel_parts:
+                    self.assertIn(part, path,
+                                  f"{name} 路径缺少相对路径段 '{part}': {path}")
 
 
 class TestLoadConfig(unittest.TestCase):
@@ -152,19 +181,36 @@ class TestLoadConfig(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    @unittest.skipUnless(
-        all(dungeon_adapter.get_config_path(n) and
-            os.path.exists(dungeon_adapter.get_config_path(n) or "")
-            for n in dungeon_adapter._CONFIG_REL_PATHS),
-        "部分脚本 config 文件不存在，跳过真实读取测试"
-    )
-    def test_load_all_real_configs(self):
-        """对所有真实存在的 config 文件执行读取测试"""
-        for name in dungeon_adapter._CONFIG_REL_PATHS:
-            data = dungeon_adapter.load_config(name)
-            self.assertIsNotNone(data, f"{name} config 读取失败")
-            self.assertIsInstance(data, (dict, list),
-                                  f"{name} config 应为 dict 或 list")
+    def test_load_all_registered_configs_with_mock(self):
+        """对所有已注册脚本，用 mock config 文件验证读取逻辑
+        （不依赖真实 config 文件，CI 也能跑）"""
+        scripts = list(dungeon_adapter._CONFIG_REL_PATHS.keys())
+        # 构造 mock config.yml + mock 文件内容
+        fake_script_list = [
+            {"display_name": name,
+             "script_path": r"C:\fake\root\script.exe"}
+            for name in scripts
+        ]
+        fake_config_yml = {"script_list": fake_script_list}
+
+        for name in scripts:
+            rel = dungeon_adapter._CONFIG_REL_PATHS[name]
+            ext = os.path.splitext(rel)[1].lower()
+            fake_data = {"test_key": "test_value"}
+            if ext == '.json':
+                file_content = json.dumps(fake_data, ensure_ascii=False)
+            else:
+                file_content = yaml.dump(fake_data, allow_unicode=True)
+
+            with patch.object(dungeon_adapter, '_load_config_yml',
+                              return_value=fake_config_yml), \
+                 patch('os.path.exists', return_value=True), \
+                 patch('builtins.open', mock_open(read_data=file_content)):
+                result = dungeon_adapter.load_config(name)
+
+            self.assertIsNotNone(result, f"{name} config 读取失败")
+            self.assertEqual(result, fake_data,
+                             f"{name} config 读取内容不匹配")
 
 
 class TestSaveConfig(unittest.TestCase):
