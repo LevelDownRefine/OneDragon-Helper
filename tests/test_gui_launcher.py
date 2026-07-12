@@ -119,7 +119,7 @@ class TestScriptItemGetState(unittest.TestCase):
         )
         item.sequence_spin.setValue(3)
         state = item.get_state()
-        self.assertEqual(state, {'sequence': 3})
+        self.assertEqual(state, {'sequence': '3'})
 
     def test_get_state_excludes_enabled(self):
         """get_state 不包含 enabled"""

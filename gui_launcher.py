@@ -111,11 +111,11 @@ class ScriptItem(QFrame):
         title_label.setStyleSheet("color: #202020;")
         layout.addWidget(title_label, stretch=1)
 
-        # 刷取序列（ok 系列脚本）
+        # 刷取序列
         if show_sequence:
             self.sequence_spin = QSpinBox()
             self.sequence_spin.setRange(1, 99)
-            self.sequence_spin.setValue(saved_state.get('sequence', 1) if saved_state else 1)
+            self.sequence_spin.setValue(int(saved_state.get('sequence', 1)) if saved_state else 1)
             self.sequence_spin.setFixedSize(60, 28)
             self.sequence_spin.setButtonSymbols(QSpinBox.NoButtons)
             self.sequence_spin.setAlignment(Qt.AlignCenter)
@@ -191,7 +191,7 @@ class ScriptItem(QFrame):
         if self.dungeon_combo:
             state['dungeon'] = self.dungeon_combo.currentText()
         if self.sequence_spin:
-            state['sequence'] = self.sequence_spin.value()
+            state['sequence'] = str(self.sequence_spin.value())
         return state
 
     def set_state_callback(self, callback):
@@ -212,7 +212,7 @@ class ScriptItem(QFrame):
 
     def get_sequence(self):
         if self.sequence_spin:
-            return self.sequence_spin.value()
+            return str(self.sequence_spin.value())
         return None
 
     def _toggle(self):
