@@ -217,42 +217,6 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(12)
 
-        # 全选/全不选
-        btn_row = QHBoxLayout()
-        self.select_all_btn = QPushButton("全部开启")
-        self.select_all_btn.setFixedHeight(28)
-        self.select_all_btn.setStyleSheet("""
-            QPushButton {
-                background: white;
-                border: 1px solid #d0d0d0;
-                border-radius: 4px;
-                font-size: 10px;
-                padding: 0 14px;
-                color: #303030;
-            }
-            QPushButton:hover { border-color: #0078D4; color: #0078D4; }
-        """)
-        self.select_all_btn.clicked.connect(self._select_all)
-        btn_row.addWidget(self.select_all_btn)
-
-        self.deselect_all_btn = QPushButton("全部关闭")
-        self.deselect_all_btn.setFixedHeight(28)
-        self.deselect_all_btn.setStyleSheet("""
-            QPushButton {
-                background: white;
-                border: 1px solid #d0d0d0;
-                border-radius: 4px;
-                font-size: 10px;
-                padding: 0 14px;
-                color: #303030;
-            }
-            QPushButton:hover { border-color: #0078D4; color: #0078D4; }
-        """)
-        self.deselect_all_btn.clicked.connect(self._deselect_all)
-        btn_row.addWidget(self.deselect_all_btn)
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
-
         # 脚本列表
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -349,18 +313,6 @@ class MainWindow(QMainWindow):
 
         self._update_status()
 
-
-    def _select_all(self):
-        for item in self.script_items:
-            item.enabled = True
-            item._update_style()
-        self._update_status()
-
-    def _deselect_all(self):
-        for item in self.script_items:
-            item.enabled = False
-            item._update_style()
-        self._update_status()
 
     def _update_status(self):
         enabled = sum(1 for i in self.script_items if i.enabled)
