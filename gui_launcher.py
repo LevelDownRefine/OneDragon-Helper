@@ -48,93 +48,106 @@ class ScriptChainRunner(QThread):
 
 
 class ScriptItem(QFrame):
-    """单个脚本项"""
+    """单个脚本项（Fluent 风格卡片）"""
 
     def __init__(self, script_data, dungeon_options=None, show_sequence=False):
         super().__init__()
         self.display_name = script_data.get('display_name', '未命名')
         self.enabled = script_data.get('enabled', True)
         self.script_type = script_data.get('script_type', 'external')
-        self.dungeon_combo = None  # 副本选择下拉框
-        self.sequence_spin = None  # 刷取序列输入框
+        self.dungeon_combo = None
+        self.sequence_spin = None
 
-        self.setFrameShape(QFrame.StyledPanel)
+        self.setFrameShape(QFrame.NoFrame)
         self.setStyleSheet("""
             QFrame {
-                background-color: #f5f5f5;
-                border-radius: 8px;
+                background-color: transparent;
+                border: none;
+                border-radius: 4px;
             }
             QFrame:hover {
-                background-color: #e8e8e8;
+                background-color: #f0f0f0;
             }
         """)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 10, 16, 10)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(12)
 
-        name_label = QLabel(self.display_name)
-        name_label.setFont(QFont("Microsoft YaHei", 10))
-        layout.addWidget(name_label, stretch=1)
+        # 脚本名称
+        title_label = QLabel(self.display_name)
+        title_label.setFont(QFont("Microsoft YaHei", 10))
+        title_label.setStyleSheet("color: #202020;")
+        layout.addWidget(title_label, stretch=1)
 
         # 刷取序列（ok 系列脚本）
         if show_sequence:
-            seq_label = QLabel("序列:")
-            seq_label.setStyleSheet("color: #666; font-size: 9px;")
-            layout.addWidget(seq_label)
-
             self.sequence_spin = QSpinBox()
             self.sequence_spin.setRange(1, 99)
             self.sequence_spin.setValue(1)
-            self.sequence_spin.setFixedWidth(55)
+            self.sequence_spin.setFixedSize(60, 28)
+            self.sequence_spin.setButtonSymbols(QSpinBox.NoButtons)
+            self.sequence_spin.setAlignment(Qt.AlignCenter)
             self.sequence_spin.setStyleSheet("""
                 QSpinBox {
-                    border: 1px solid #ccc;
+                    border: 1px solid #d0d0d0;
                     border-radius: 4px;
                     background: white;
-                    font-size: 9px;
+                    font-size: 11px;
+                    color: #303030;
                 }
+                QSpinBox:hover { border-color: #a0a0a0; }
+                QSpinBox:focus { border-color: #0078D4; }
             """)
             layout.addWidget(self.sequence_spin)
 
-        # 非 python 脚本显示副本选择
-        if self.script_type != 'python' and dungeon_options:
+        # 副本选择（列表中不止"未选择"时才显示）
+        has_real_dungeons = (
+            dungeon_options
+            and len(dungeon_options) > 1
+            and not (len(dungeon_options) == 1 and dungeon_options[0] == "未选择")
+        )
+        if self.script_type != 'python' and has_real_dungeons:
             self.dungeon_combo = QComboBox()
             self.dungeon_combo.addItems(dungeon_options)
-            self.dungeon_combo.setFixedHeight(26)
+            self.dungeon_combo.setFixedHeight(28)
+            self.dungeon_combo.setMinimumWidth(110)
             self.dungeon_combo.setStyleSheet("""
                 QComboBox {
-                    border: 1px solid #ccc;
+                    border: 1px solid #d0d0d0;
                     border-radius: 4px;
-                    padding: 0 8px;
+                    padding: 0 10px;
                     background: white;
-                    font-size: 9px;
-                    min-width: 90px;
+                    font-size: 11px;
+                    color: #303030;
+                }
+                QComboBox:hover { border-color: #a0a0a0; }
+                QComboBox:focus { border-color: #0078D4; }
+                QComboBox::drop-down {
+                    border: none;
+                    width: 20px;
+                }
+                QComboBox QAbstractItemView {
+                    border: 1px solid #d0d0d0;
+                    border-radius: 4px;
+                    background: white;
+                    font-size: 11px;
+                    padding: 4px;
+                    outline: none;
+                    selection-background-color: #0078D4;
                 }
             """)
             layout.addWidget(self.dungeon_combo)
 
-        script_type = script_data.get('script_type', '')
-        type_label = QLabel(script_type)
-        type_label.setStyleSheet("""
-            QLabel {
-                color: #888;
-                font-size: 9px;
-                padding: 2px 8px;
-                background-color: #ddd;
-                border-radius: 10px;
-            }
-        """)
-        layout.addWidget(type_label)
-
+        # 开关按钮（Fluent Switch 风格）
         self.toggle_btn = QPushButton()
-        self.toggle_btn.setFixedSize(60, 28)
+        self.toggle_btn.setFixedSize(44, 22)
         self.toggle_btn.setCursor(Qt.PointingHandCursor)
         self.toggle_btn.clicked.connect(self._toggle)
-        self._update_style()
+        self._update_switch_style()
         layout.addWidget(self.toggle_btn)
 
     def get_selected_dungeon(self):
-        """获取选择的副本名，未选择或 python 脚本返回 None"""
         if self.dungeon_combo:
             val = self.dungeon_combo.currentText()
             if val and val != "未选择":
@@ -142,39 +155,56 @@ class ScriptItem(QFrame):
         return None
 
     def get_sequence(self):
-        """获取刷取序列值，未启用返回 None"""
         if self.sequence_spin:
             return self.sequence_spin.value()
         return None
 
     def _toggle(self):
         self.enabled = not self.enabled
-        self._update_style()
+        self._update_switch_style()
 
-    def _update_style(self):
+    def _update_switch_style(self):
         if self.enabled:
-            self.toggle_btn.setText("开启")
             self.toggle_btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #4CAF50;
+                    background-color: #0078D4;
+                    border: none;
+                    border-radius: 11px;
+                }
+                QPushButton::indicator {
+                    width: 18px; height: 18px;
+                    border-radius: 9px;
+                    background: white;
+                    subcontrol-position: right;
+                    margin: 2px;
+                }
+            """)
+            # 用文字模拟滑块位置
+            self.toggle_btn.setText("  ●")
+            self.toggle_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #0078D4;
                     color: white;
                     border: none;
-                    border-radius: 14px;
-                    font-weight: bold;
+                    border-radius: 11px;
+                    font-size: 14px;
+                    text-align: right;
+                    padding-right: 5px;
                 }
-                QPushButton:hover { background-color: #45a049; }
             """)
         else:
-            self.toggle_btn.setText("关闭")
+            self.toggle_btn.setText("●  ")
             self.toggle_btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #9e9e9e;
+                    background-color: #c0c0c0;
                     color: white;
                     border: none;
-                    border-radius: 14px;
-                    font-weight: bold;
+                    border-radius: 11px;
+                    font-size: 14px;
+                    text-align: left;
+                    padding-left: 5px;
                 }
-                QPushButton:hover { background-color: #757575; }
+                QPushButton:hover { background-color: #a8a8a8; }
             """)
 
 
@@ -193,50 +223,81 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         central = QWidget()
+        central.setStyleSheet("background-color: #f3f3f3;")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(12)
 
         # 标题
         title = QLabel("自动化脚本管理")
-        title.setFont(QFont("Microsoft YaHei", 16, QFont.Bold))
-        title.setAlignment(Qt.AlignCenter)
+        title.setFont(QFont("Microsoft YaHei", 14, QFont.Bold))
+        title.setStyleSheet("color: #202020;")
+        title.setAlignment(Qt.AlignLeft)
         layout.addWidget(title)
-
-        # 提示
-        hint = QLabel("点击按钮切换开关，设置完成后运行全部开启的脚本")
-        hint.setStyleSheet("color: #666; font-size: 11px;")
-        hint.setAlignment(Qt.AlignCenter)
-        layout.addWidget(hint)
 
         # 全选/全不选
         btn_row = QHBoxLayout()
         self.select_all_btn = QPushButton("全部开启")
-        self.select_all_btn.setFixedHeight(32)
+        self.select_all_btn.setFixedHeight(28)
+        self.select_all_btn.setStyleSheet("""
+            QPushButton {
+                background: white;
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                font-size: 10px;
+                padding: 0 14px;
+                color: #303030;
+            }
+            QPushButton:hover { border-color: #0078D4; color: #0078D4; }
+        """)
         self.select_all_btn.clicked.connect(self._select_all)
         btn_row.addWidget(self.select_all_btn)
 
         self.deselect_all_btn = QPushButton("全部关闭")
-        self.deselect_all_btn.setFixedHeight(32)
+        self.deselect_all_btn.setFixedHeight(28)
+        self.deselect_all_btn.setStyleSheet("""
+            QPushButton {
+                background: white;
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                font-size: 10px;
+                padding: 0 14px;
+                color: #303030;
+            }
+            QPushButton:hover { border-color: #0078D4; color: #0078D4; }
+        """)
         self.deselect_all_btn.clicked.connect(self._deselect_all)
         btn_row.addWidget(self.deselect_all_btn)
+        btn_row.addStretch()
         layout.addLayout(btn_row)
 
         # 脚本列表
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
         scroll.setStyleSheet("""
             QScrollArea {
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                background-color: white;
+                background-color: #f3f3f3;
+                border: none;
             }
+            QScrollBar:vertical {
+                width: 8px;
+                background: transparent;
+            }
+            QScrollBar::handle:vertical {
+                background: #c0c0c0;
+                border-radius: 4px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover { background: #a0a0a0; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
         """)
 
         self.scroll_content = QWidget()
+        self.scroll_content.setStyleSheet("background-color: #f3f3f3;")
         self.scroll_layout = QVBoxLayout(self.scroll_content)
-        self.scroll_layout.setContentsMargins(8, 8, 8, 8)
+        self.scroll_layout.setContentsMargins(0, 0, 0, 0)
         self.scroll_layout.setSpacing(8)
         self.scroll_layout.addStretch()
         scroll.setWidget(self.scroll_content)
@@ -244,56 +305,56 @@ class MainWindow(QMainWindow):
 
         # 运行按钮
         self.run_btn = QPushButton("▶ 运行全部开启的脚本")
-        self.run_btn.setFixedHeight(48)
-        self.run_btn.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        self.run_btn.setFixedHeight(40)
+        self.run_btn.setFont(QFont("Microsoft YaHei", 11, QFont.Bold))
         self.run_btn.setStyleSheet("""
             QPushButton {
-                background-color: #2196F3;
+                background-color: #0078D4;
                 color: white;
                 border: none;
-                border-radius: 8px;
+                border-radius: 6px;
             }
-            QPushButton:hover { background-color: #1976D2; }
-            QPushButton:disabled { background-color: #BDBDBD; }
+            QPushButton:hover { background-color: #106EBE; }
+            QPushButton:pressed { background-color: #005A9E; }
+            QPushButton:disabled { background-color: #B0B0B0; }
         """)
         self.run_btn.clicked.connect(self._run_selected)
         layout.addWidget(self.run_btn)
 
         # 状态栏
         self.status_bar = QStatusBar()
+        self.status_bar.setStyleSheet("background-color: #f3f3f3; color: #606060;")
         self.setStatusBar(self.status_bar)
         self._update_status()
 
     def _load_scripts(self):
-        try:
-            with open(get_config_yml_path_under_root(), 'r', encoding='utf-8') as f:
-                self.all_config_data = yaml.safe_load(f)
+        with open(get_config_yml_path_under_root(), 'r', encoding='utf-8') as f:
+            self.all_config_data = yaml.safe_load(f)
 
-            # 读取副本列表配置
-            self.dungeon_map = {}
-            dungeon_file = os.path.join(os.path.dirname(get_config_yml_path_under_root()), "dungeon_list.yml")
-            if os.path.exists(dungeon_file):
-                with open(dungeon_file, 'r', encoding='utf-8') as f:
-                    self.dungeon_map = yaml.safe_load(f) or {}
+        # 读取副本列表配置
+        self.dungeon_map = {}
+        dungeon_file = os.path.join(os.path.dirname(get_config_yml_path_under_root()), "dungeon_list.yml")
+        if os.path.exists(dungeon_file):
+            with open(dungeon_file, 'r', encoding='utf-8') as f:
+                self.dungeon_map = yaml.safe_load(f) or {}
 
-            script_list = self.all_config_data.get('script_list', [])
+        script_list = self.all_config_data.get('script_list', [])
 
-            for item in self.script_items:
-                item.deleteLater()
-            self.script_items.clear()
+        for item in self.script_items:
+            item.deleteLater()
+        self.script_items.clear()
 
-            for data in script_list:
-                name = data.get('display_name', '')
-                options = self.dungeon_map.get(name)
-                # ok 系列脚本显示刷取序列输入框
-                show_seq = name in ("鸣潮", "终末地", "异环")
-                item = ScriptItem(data, dungeon_options=options, show_sequence=show_seq)
-                self.scroll_layout.insertWidget(len(self.script_items), item)
-                self.script_items.append(item)
+        for data in script_list:
+            name = data.get('display_name', '')
+            options = self.dungeon_map.get(name)
+            # ok 系列脚本显示刷取序列输入框
+            show_seq = name in ("鸣潮", "终末地", "异环")
+            item = ScriptItem(data, dungeon_options=options, show_sequence=show_seq)
+            self.scroll_layout.insertWidget(len(self.script_items), item)
+            self.script_items.append(item)
 
-            self._update_status()
-        except Exception as e:
-            QMessageBox.critical(self, "加载失败", f"无法读取配置:\n{str(e)}")
+        self._update_status()
+
 
     def _select_all(self):
         for item in self.script_items:
