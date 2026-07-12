@@ -63,7 +63,8 @@ class ScriptItem(QFrame):
             QFrame {
                 background-color: transparent;
                 border: none;
-                border-radius: 4px;
+                border-bottom: 1px solid #e8e8e8;
+                border-radius: 0px;
             }
             QFrame:hover {
                 background-color: #f0f0f0;
@@ -165,44 +166,31 @@ class ScriptItem(QFrame):
 
     def _update_switch_style(self):
         if self.enabled:
-            self.toggle_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #0078D4;
-                    border: none;
-                    border-radius: 11px;
-                }
-                QPushButton::indicator {
-                    width: 18px; height: 18px;
-                    border-radius: 9px;
-                    background: white;
-                    subcontrol-position: right;
-                    margin: 2px;
-                }
-            """)
-            # 用文字模拟滑块位置
-            self.toggle_btn.setText("  ●")
+            self.toggle_btn.setText("●")
             self.toggle_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #0078D4;
                     color: white;
                     border: none;
                     border-radius: 11px;
-                    font-size: 14px;
+                    font-size: 10px;
                     text-align: right;
                     padding-right: 5px;
+                    padding-bottom: 2px;
                 }
             """)
         else:
-            self.toggle_btn.setText("●  ")
+            self.toggle_btn.setText("●")
             self.toggle_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #c0c0c0;
                     color: white;
                     border: none;
                     border-radius: 11px;
-                    font-size: 14px;
+                    font-size: 10px;
                     text-align: left;
                     padding-left: 5px;
+                    padding-bottom: 2px;
                 }
                 QPushButton:hover { background-color: #a8a8a8; }
             """)
