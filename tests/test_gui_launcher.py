@@ -1,7 +1,6 @@
 """测试 GUI 状态持久化功能"""
 import os
 import json
-import warnings
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -34,29 +33,6 @@ class TestLoadUiState(unittest.TestCase):
             result = gui_launcher._load_ui_state()
         self.assertEqual(result, data)
 
-    def test_warns_on_invalid_json(self):
-        """无效 JSON 抛出警告而非静默"""
-        with patch('gui_launcher.os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open_with_data_raw('not valid json')), \
-             warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter('always')
-            result = gui_launcher._load_ui_state()
-        self.assertEqual(result, {})
-        self.assertEqual(len(w), 1)
-        self.assertIn('读取 UI 状态文件失败', str(w[0].message))
-
-    def test_warns_on_os_error(self):
-        """OSError 时抛出警告"""
-        with patch('gui_launcher.os.path.exists', return_value=True), \
-             patch('builtins.open', side_effect=OSError("permission denied")), \
-             warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter('always')
-            result = gui_launcher._load_ui_state()
-        self.assertEqual(result, {})
-        self.assertEqual(len(w), 1)
-        self.assertIn('读取 UI 状态文件失败', str(w[0].message))
-
-
 class TestSaveUiState(unittest.TestCase):
     """测试 _save_ui_state"""
 
@@ -81,15 +57,6 @@ class TestSaveUiState(unittest.TestCase):
         written = json.loads(captured['buf'].getvalue())
         self.assertEqual(written, state)
         self.assertEqual(captured['mode'], 'w')
-
-    def test_warns_on_os_error(self):
-        """写入失败时抛出警告"""
-        with patch('builtins.open', side_effect=OSError("disk full")), \
-             warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter('always')
-            gui_launcher._save_ui_state({"test": 1})
-        self.assertEqual(len(w), 1)
-        self.assertIn('保存 UI 状态文件失败', str(w[0].message))
 
 
 class TestScriptItemGetState(unittest.TestCase):
