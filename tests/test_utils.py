@@ -2,6 +2,7 @@ import os
 import unittest
 import tempfile
 from unittest.mock import patch
+
 import utils
 
 class TestUtils(unittest.TestCase):
@@ -14,12 +15,12 @@ class TestUtils(unittest.TestCase):
     def test_get_our_bgi_user_dir(self):
         bgi_user_dir = utils.get_our_bgi_user_dir()
         root_dir = utils.get_root_dir()
-        self.assertEqual(bgi_user_dir, os.path.join(root_dir, "BGI_User"))
+        self.assertEqual(bgi_user_dir, os.path.join(root_dir, "config", "BGI_User"))
 
     def test_get_config_yml_path_under_root(self):
         yml_path = utils.get_config_yml_path_under_root()
         root_dir = utils.get_root_dir()
-        self.assertEqual(yml_path, os.path.join(root_dir, "config.yml"))
+        self.assertEqual(yml_path, os.path.join(root_dir, "config", "config.yml"))
 
     def test_get_path_under_root(self):
         # Without subdirs

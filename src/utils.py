@@ -3,24 +3,24 @@ from functools import lru_cache
 
 def get_our_bgi_user_dir() -> str:
     """
-    获取当前工作目录下的BGI_User目录
-    :return: 当前工作目录下的BGI_User目录
+    获取当前工作目录下的config/BGI_User目录
+    :return: 当前工作目录下的config/BGI_User目录
     """
-    return os.path.join(get_root_dir(), "BGI_User")
+    return os.path.join(get_root_dir(), "config", "BGI_User")
 
 def get_config_yml_path_under_root() -> str:
     """
-    获取根目录下的config.yml文件路径
-    :return: 根目录下的config.yml文件路径
+    获取根目录下的config/config.yml文件路径
+    :return: 根目录下的config/config.yml文件路径
     """
-    return os.path.join(get_root_dir(), "config.yml")
+    return os.path.join(get_root_dir(), "config", "config.yml")
 
 def get_weekly_timeouts_yml_path_under_root() -> str:
     """
-    获取根目录下的weekly_timeouts.yml文件路径
-    :return: 根目录下的weekly_timeouts.yml文件路径
+    获取根目录下的config/weekly_timeouts.yml文件路径
+    :return: 根目录下的config/weekly_timeouts.yml文件路径
     """
-    return os.path.join(get_root_dir(), "weekly_timeouts.yml")
+    return os.path.join(get_root_dir(), "config", "weekly_timeouts.yml")
 
 def get_path_under_onedragon(*subs) -> str:
     """
@@ -33,10 +33,10 @@ def get_path_under_onedragon(*subs) -> str:
 @lru_cache
 def get_root_dir() -> str:
     """
-    获取当前工作目录
-    :return: 当前工作目录
+    获取项目根目录
+    :return: 项目根目录（src/ 的父目录）
     """
-    return os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def get_path_under_root(*subs) -> str:
     """

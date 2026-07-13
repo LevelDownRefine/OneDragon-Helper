@@ -1,5 +1,6 @@
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 from config import onedrag_ui
 
 class TestOnedragonConfigUI(unittest.TestCase):

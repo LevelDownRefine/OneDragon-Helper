@@ -1,6 +1,6 @@
 # OneDragon-Helper
 
-![demo](demo.png)
+![demo](assets/demo.png)
 
 ## install
 
@@ -11,4 +11,4 @@
 `.venv\Scripts\activate.bat`
 
 ## run
-`python gui_launcher.py`
+`python src/gui_launcher.py`

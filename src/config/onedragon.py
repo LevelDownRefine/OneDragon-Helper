@@ -5,7 +5,7 @@ from utils import get_path_under_root, get_path_under_onedragon
 from config.onedrag_ui import run_config_ui
 
 def copy_python_scripts():
-    py_script_dir = get_path_under_root("python_script")
+    py_script_dir = get_path_under_root("src", "python_script")
     file_names = [f for f in os.listdir(py_script_dir) if f.endswith(".py")]
     for file_name in file_names:
         input_path = os.path.join(py_script_dir, file_name)
