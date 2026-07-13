@@ -172,7 +172,7 @@ def set_config(script_display_name: str,
     try:
         updated = handler(config, dungeon_name, sequence)
     except Exception as e:
-        print(f"[dungeon_adapter] {script_display_name} 适配配置失败: {e}")
+        print(f"[error][dungeon_adapter] {script_display_name} 适配配置失败: {e}")
         return False
 
     if updated is None:
@@ -185,7 +185,7 @@ def set_config(script_display_name: str,
             print(f"[dungeon_adapter] {script_display_name} config 写入失败")
             return False
     except Exception as e:
-        print(f"[dungeon_adapter] {script_display_name} config 写入异常: {e}")
+        print(f"[error][dungeon_adapter] {script_display_name} config 写入异常: {e}")
         return False
 
     return True

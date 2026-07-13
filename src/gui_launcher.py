@@ -4,7 +4,6 @@ import copy
 import json
 import subprocess
 import yaml
-import warnings
 from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -30,21 +29,15 @@ _STATE_FILE = os.path.join(get_root_dir(), "config", "gui_state.json")
 def _load_ui_state() -> dict:
     """读取上次保存的 UI 状态"""
     if os.path.exists(_STATE_FILE):
-        try:
-            with open(_STATE_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            warnings.warn(f"读取 UI 状态文件失败: {e}")
+        with open(_STATE_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
     return {}
 
 
 def _save_ui_state(state: dict):
     """保存 UI 状态"""
-    try:
-        with open(_STATE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(state, f, ensure_ascii=False, indent=2)
-    except OSError as e:
-        warnings.warn(f"保存 UI 状态文件失败: {e}")
+    with open(_STATE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
 
 
 def get_week_num() -> int:
@@ -482,11 +475,7 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.Yes:
             return
 
-        try:
-            count = self._generate_config("01")
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"生成配置失败:\n{str(e)}")
-            return
+        count = self._generate_config("01")
 
         self.run_btn.setEnabled(False)
         self.run_btn.setText("运行中...")
