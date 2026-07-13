@@ -1,5 +1,5 @@
 """
-测试 dungeon_adapter.py 中新增的 config 读写基础设施函数。
+测试 subscript_utils.py 中的子脚本 config 读写基础设施。
 
 覆盖函数：
   - _CONFIG_REL_PATHS（数据完整性）
@@ -15,7 +15,7 @@ import tempfile
 import unittest
 from unittest.mock import patch, mock_open, MagicMock
 
-import dungeon_adapter
+import subscript_utils
 
 
 class TestConfigRelPaths(unittest.TestCase):
@@ -25,18 +25,18 @@ class TestConfigRelPaths(unittest.TestCase):
         """每个已适配脚本都应在 _CONFIG_REL_PATHS 中有记录"""
         scripts = ["鸣潮", "原神", "终末地", "绝区零", "崩铁", "异环", "粥"]
         for name in scripts:
-            self.assertIn(name, dungeon_adapter._CONFIG_REL_PATHS,
+            self.assertIn(name, subscript_utils._CONFIG_REL_PATHS,
                           f"{name} 缺少 config 相对路径")
 
     def test_rel_paths_are_strings(self):
-        for name, rel in dungeon_adapter._CONFIG_REL_PATHS.items():
+        for name, rel in subscript_utils._CONFIG_REL_PATHS.items():
             self.assertIsInstance(rel, str, f"{name} 的 rel path 不是字符串")
             self.assertTrue(len(rel) > 0, f"{name} 的 rel path 为空")
 
     def test_rel_paths_contain_extension(self):
         """每个相对路径应包含 .json 或 .yaml/.yml 扩展名"""
         valid_exts = ('.json', '.yaml', '.yml')
-        for name, rel in dungeon_adapter._CONFIG_REL_PATHS.items():
+        for name, rel in subscript_utils._CONFIG_REL_PATHS.items():
             ext = os.path.splitext(rel)[1].lower()
             self.assertIn(ext, valid_exts,
                           f"{name} 的 config 扩展名 {ext} 不在支持范围内")
@@ -55,8 +55,8 @@ class TestGetScriptRootDir(unittest.TestCase):
         }
         # _get_script_root_dir 内部会统一为正斜杠，期望值也要一致
         expected_root = os.path.dirname(fake_path.replace('\\', '/'))
-        with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
-            root = dungeon_adapter._get_script_root_dir("鸣潮")
+        with patch.object(subscript_utils, '_load_config_yml', return_value=fake_config):
+            root = subscript_utils._get_script_root_dir("鸣潮")
         self.assertEqual(root, expected_root)
 
     def test_handles_windows_path_on_any_platform(self):
@@ -67,16 +67,16 @@ class TestGetScriptRootDir(unittest.TestCase):
                  "script_path": r"C:\Users\test\ok-ww\ok-ww.exe"},
             ]
         }
-        with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
-            root = dungeon_adapter._get_script_root_dir("鸣潮")
+        with patch.object(subscript_utils, '_load_config_yml', return_value=fake_config):
+            root = subscript_utils._get_script_root_dir("鸣潮")
         self.assertEqual(root, "C:/Users/test/ok-ww")
 
     def test_raises_for_unknown_script(self):
         """未在 config.yml 中的脚本应触发 AssertionError"""
         fake_config = {"script_list": []}
-        with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
+        with patch.object(subscript_utils, '_load_config_yml', return_value=fake_config):
             with self.assertRaises(AssertionError):
-                dungeon_adapter._get_script_root_dir("不存在的脚本")
+                subscript_utils._get_script_root_dir("不存在的脚本")
 
     def test_raises_for_empty_script_path(self):
         """script_path 为空时应触发 AssertionError"""
@@ -85,9 +85,9 @@ class TestGetScriptRootDir(unittest.TestCase):
                 {"display_name": "空路径", "script_path": ""},
             ]
         }
-        with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
+        with patch.object(subscript_utils, '_load_config_yml', return_value=fake_config):
             with self.assertRaises(AssertionError):
-                dungeon_adapter._get_script_root_dir("空路径")
+                subscript_utils._get_script_root_dir("空路径")
 
 
 class TestGetConfigPath(unittest.TestCase):
@@ -102,39 +102,39 @@ class TestGetConfigPath(unittest.TestCase):
                  "script_path": r"C:\fake\ok-ww\ok-ww.exe"},
             ]
         }
-        with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config), \
+        with patch.object(subscript_utils, '_load_config_yml', return_value=fake_config), \
              patch('os.path.exists', return_value=True):
-            path = dungeon_adapter.get_config_path("鸣潮")
+            path = subscript_utils.get_config_path("鸣潮")
 
         expected = os.path.join("C:/fake/ok-ww",
-                                dungeon_adapter._CONFIG_REL_PATHS["鸣潮"])
+                                subscript_utils._CONFIG_REL_PATHS["鸣潮"])
         self.assertEqual(path, expected)
 
     def test_raises_for_unknown_script(self):
         """未在 _CONFIG_REL_PATHS 中的脚本应触发 AssertionError"""
-        with patch.object(dungeon_adapter, '_load_config_yml',
+        with patch.object(subscript_utils, '_load_config_yml',
                           return_value={"script_list": []}):
             with self.assertRaises(AssertionError):
-                dungeon_adapter.get_config_path("不存在")
+                subscript_utils.get_config_path("不存在")
 
     def test_all_registered_scripts_resolve_with_mock_config(self):
         """对所有已注册脚本，用 mock 的 config.yml 验证路径推导成功
         （不依赖真实 config.yml，CI 也能跑）"""
-        scripts = list(dungeon_adapter._CONFIG_REL_PATHS.keys())
+        scripts = list(subscript_utils._CONFIG_REL_PATHS.keys())
         # 构造 mock config：每个脚本都有一个假的 script_path
         fake_script_list = [
             {"display_name": name,
              "script_path": r"C:\fake\root\script.exe"}
             for name in scripts
         ]
-        with patch.object(dungeon_adapter, '_load_config_yml',
+        with patch.object(subscript_utils, '_load_config_yml',
                           return_value={"script_list": fake_script_list}), \
              patch('os.path.exists', return_value=True):
             for name in scripts:
-                path = dungeon_adapter.get_config_path(name)
+                path = subscript_utils.get_config_path(name)
                 self.assertIsNotNone(path, f"{name} 路径推导失败")
                 # 路径中应包含相对路径的各段（不依赖具体分隔符）
-                rel = dungeon_adapter._CONFIG_REL_PATHS[name]
+                rel = subscript_utils._CONFIG_REL_PATHS[name]
                 rel_parts = rel.split("/")
                 for part in rel_parts:
                     self.assertIn(part, path,
@@ -149,9 +149,9 @@ class TestLoadConfig(unittest.TestCase):
         fake_data = {"key": "value", "nested": {"a": 1}}
         fake_path = r"C:\fake\script\config.json"
 
-        with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path), \
+        with patch.object(subscript_utils, 'get_config_path', return_value=fake_path), \
              patch('builtins.open', mock_open(read_data=json.dumps(fake_data))):
-            result = dungeon_adapter.load_config("鸣潮")
+            result = subscript_utils.load_config("鸣潮")
 
         self.assertEqual(result, fake_data)
 
@@ -161,16 +161,16 @@ class TestLoadConfig(unittest.TestCase):
         fake_path = r"C:\fake\script\config.yaml"
         yaml_str = yaml.dump(fake_data, allow_unicode=True)
 
-        with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path), \
+        with patch.object(subscript_utils, 'get_config_path', return_value=fake_path), \
              patch('builtins.open', mock_open(read_data=yaml_str)):
-            result = dungeon_adapter.load_config("绝区零")
+            result = subscript_utils.load_config("绝区零")
 
         self.assertEqual(result, fake_data)
 
     def test_load_all_registered_configs_with_mock(self):
         """对所有已注册脚本，用 mock config 文件验证读取逻辑
         （不依赖真实 config 文件，CI 也能跑）"""
-        scripts = list(dungeon_adapter._CONFIG_REL_PATHS.keys())
+        scripts = list(subscript_utils._CONFIG_REL_PATHS.keys())
         # 构造 mock config.yml + mock 文件内容
         fake_script_list = [
             {"display_name": name,
@@ -180,7 +180,7 @@ class TestLoadConfig(unittest.TestCase):
         fake_config_yml = {"script_list": fake_script_list}
 
         for name in scripts:
-            rel = dungeon_adapter._CONFIG_REL_PATHS[name]
+            rel = subscript_utils._CONFIG_REL_PATHS[name]
             ext = os.path.splitext(rel)[1].lower()
             fake_data = {"test_key": "test_value"}
             if ext == '.json':
@@ -188,11 +188,11 @@ class TestLoadConfig(unittest.TestCase):
             else:
                 file_content = yaml.dump(fake_data, allow_unicode=True)
 
-            with patch.object(dungeon_adapter, '_load_config_yml',
+            with patch.object(subscript_utils, '_load_config_yml',
                               return_value=fake_config_yml), \
                  patch('os.path.exists', return_value=True), \
                  patch('builtins.open', mock_open(read_data=file_content)):
-                result = dungeon_adapter.load_config(name)
+                result = subscript_utils.load_config(name)
 
             self.assertIsNotNone(result, f"{name} config 读取失败")
             self.assertEqual(result, fake_data,
@@ -208,9 +208,9 @@ class TestSaveConfig(unittest.TestCase):
         data = {"Which to Farm": "Tacet"}
 
         m = mock_open()
-        with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path), \
+        with patch.object(subscript_utils, 'get_config_path', return_value=fake_path), \
              patch('builtins.open', m):
-            result = dungeon_adapter.save_config("鸣潮", data)
+            result = subscript_utils.save_config("鸣潮", data)
 
         self.assertIsNone(result)
         m.assert_called_once_with(fake_path, 'w', encoding='utf-8')
@@ -225,9 +225,9 @@ class TestSaveConfig(unittest.TestCase):
         data = {"plan_list": [{"category_name": "test"}]}
 
         m = mock_open()
-        with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path), \
+        with patch.object(subscript_utils, 'get_config_path', return_value=fake_path), \
              patch('builtins.open', m):
-            result = dungeon_adapter.save_config("绝区零", data)
+            result = subscript_utils.save_config("绝区零", data)
 
         self.assertIsNone(result)
         m.assert_called_once_with(fake_path, 'w', encoding='utf-8')
@@ -238,9 +238,9 @@ class TestSaveConfig(unittest.TestCase):
 
     def test_save_raises_when_path_is_none(self):
         """get_config_path 返回 None 时应抛出异常"""
-        with patch.object(dungeon_adapter, 'get_config_path', return_value=None):
+        with patch.object(subscript_utils, 'get_config_path', return_value=None):
             with self.assertRaises((TypeError, AssertionError)):
-                dungeon_adapter.save_config("不存在", {"key": "val"})
+                subscript_utils.save_config("不存在", {"key": "val"})
 
     def test_save_and_reload_roundtrip_json(self):
         """JSON 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
@@ -248,12 +248,12 @@ class TestSaveConfig(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             fake_path = os.path.join(tmp, "config.json")
-            with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path):
+            with patch.object(subscript_utils, 'get_config_path', return_value=fake_path):
                 # save
-                ok = dungeon_adapter.save_config("鸣潮", data)
+                ok = subscript_utils.save_config("鸣潮", data)
                 self.assertIsNone(ok)
                 # load
-                loaded = dungeon_adapter.load_config("鸣潮")
+                loaded = subscript_utils.load_config("鸣潮")
                 self.assertEqual(loaded, data)
 
     def test_save_and_reload_roundtrip_yaml(self):
@@ -262,12 +262,12 @@ class TestSaveConfig(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             fake_path = os.path.join(tmp, "config.yaml")
-            with patch.object(dungeon_adapter, 'get_config_path', return_value=fake_path):
+            with patch.object(subscript_utils, 'get_config_path', return_value=fake_path):
                 # save
-                ok = dungeon_adapter.save_config("绝区零", data)
+                ok = subscript_utils.save_config("绝区零", data)
                 self.assertIsNone(ok)
                 # load
-                loaded = dungeon_adapter.load_config("绝区零")
+                loaded = subscript_utils.load_config("绝区零")
                 self.assertEqual(loaded, data)
 
 
