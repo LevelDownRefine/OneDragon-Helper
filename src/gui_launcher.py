@@ -19,7 +19,7 @@ from src.utils import (
     get_path_under_onedragon,
     get_root_dir,
 )
-from src.dungeon_adapter import set_config
+from src.config.set_config import set_config
 from src.config.init_config import need_config_workflow, config_workflow
 
 
