@@ -3,7 +3,7 @@
 对外提供统一的 set_config 接口，内部封装各自动化脚本的 config 读写逻辑。
 
 每个脚本的 config 格式、路径、字段名都不同，
-在各自的 _apply_xxx 函数中单独适配，上层无需关心差异。
+各脚本子类单独适配，上层无需关心差异。
 
 config 路径推导由 subscript_utils 统一处理：
   1. 从 config.yml 中取得各脚本的 script_path（exe 路径），取其父目录作为脚本根目录
@@ -15,89 +15,81 @@ from src.subscript_utils import load_config, save_config
 
 
 # ============================================================
-# 外观接口
+# 基类
 # ============================================================
 
-def set_config(script_display_name: str,
-               dungeon_name: str | None = None,
-               sequence: str | None = None) -> bool:
-    """
-    外观接口：为指定脚本设置副本和刷取序列
+class ScriptConfig:
+    """单个自动化脚本的 config 操作基类"""
 
-    流程：load_config → handler 修改 → save_config
-    handler 只负责修改 config dict 并返回，不关心读写细节。
+    display_name: str = ""
+    _task_key: str = ""
+    """config 中副本类型对应的字段名，设了即启用 _update_task"""
+    _task_map: dict[str, str] = {}
+    """副本中文名 → config 值的映射，空 dict 表示直接用 dungeon_name"""
 
-    sequence 为 str 类型，None 表示无序列。
-    是否需要序列由 dungeon_list.yml 中副本项有无二级目录决定。
+    # ---- load / save ----
 
-    Args:
-        script_display_name: 脚本显示名称（与 config.yml 中一致）
-        dungeon_name: 副本名称（来自 dungeon_list.yml），None 或 "未选择" 时跳过
-        sequence: 刷取序列（字符串），None 表示无序列
+    def _load(self) -> dict:
+        return load_config(self.display_name)
 
-    Returns:
-        是否设置成功
-    """
-    handlers = {
-        "鸣潮":   _apply_wuthering_waves,
-        "原神":   _apply_genshin,
-        "终末地": _apply_endfield,
-        "绝区零": _apply_zenless,
-        "崩铁":   _apply_star_rail,
-        "异环":   _apply_nte,
-        "粥":     _apply_arknights,
-    }
+    def _save(self, config: dict):
+        save_config(self.display_name, config)
 
-    if not dungeon_name or dungeon_name == "未选择":
+    # ---- 子类按需覆盖的操作 ----
+
+    def _update_task(self, config: dict, dungeon_name: str) -> bool:
+        """
+        更新副本类型字段。返回是否修改。
+        子类设 _task_key 即启用，_task_map 为空时直接赋 dungeon_name。
+        """
+        assert self._task_key, f"[set_config][{self.display_name}] 子类必须设 _task_key"
+        if self._task_map:
+            assert dungeon_name in self._task_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+            task = self._task_map[dungeon_name]
+        else:
+            task = dungeon_name
+        assert self._task_key in config, f"[set_config][{self.display_name}] config 中缺少字段: {self._task_key}"
+        if config[self._task_key] == task:
+            return False
+        config[self._task_key] = task
         return True
 
-    handler = handlers.get(script_display_name)
-    if handler is None:
-        print(f"[dungeon_adapter] 未适配的脚本: {script_display_name}")
+    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | None) -> bool:
+        """更新序列字段。返回是否修改。默认不启用。"""
         return False
 
-    # 统一 load
-    config = load_config(script_display_name)
-
-    # handler 修改 config，返回修改后的 dict
-    updated = handler(config, dungeon_name, sequence)
-
-    if updated is None:
-        # handler 返回 None 表示无需写入（例如数据无变化）
-        return True
-
-    # 统一 save
-    save_config(script_display_name, updated)
-    return True
+    def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
+        """
+        设置副本。默认流程：_update_task → _update_sequence → save。
+        子类直接覆盖 set_dungeon 则完全自定义（如粥）。
+        """
+        config = self._load()
+        changed = self._update_task(config, dungeon_name) or \
+                  self._update_sequence(config, dungeon_name, sequence)
+        if changed:
+            print(f"[set_config][{self.display_name}] config 已更新")
+            self._save(config)
+        else:
+            print(f"[set_config][{self.display_name}] config 无需更新")
 
 
 # ============================================================
-# 各脚本具体实现（待适配）
-# 每个 handler 接收 (config, dungeon_name, sequence)，
-# 修改 config dict 并返回；返回 None 表示无需写入。
+# 各脚本子类
 # ============================================================
 
 # ---- 鸣潮 Wuthering Waves ----
-def _apply_wuthering_waves(config: dict, dungeon_name: str, sequence: str | None = None) -> dict | None:
+class WutheringWavesConfig(ScriptConfig):
 
-    def update_task() -> bool:
-        """更新副本类型，返回是否有变化"""
-        dungeon_map = {
+    def __init__(self):
+        self.display_name = "鸣潮"
+        self._task_key = "Which to Farm"
+        self._task_map = {
             "凝素领域": "Forgery Challenge",
             "模拟领域": "Simulation Challenge",
             "无音区": "Tacet Suppression",
         }
-        task = dungeon_map.get(dungeon_name)
-        if task is None:
-            print(f"[dungeon_adapter][Wuthering Waves] 未适配的副本: {dungeon_name}")
-            return False
-        if config['Which to Farm'] == task:
-            return False
-        config['Which to Farm'] = task
-        return True
 
-    def update_sequence() -> bool:
-        """更新序列，返回是否有变化"""
+    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | None) -> bool:
         if sequence is None:
             return False
         if config['Which to Farm'] == "Simulation Challenge":
@@ -106,10 +98,8 @@ def _apply_wuthering_waves(config: dict, dungeon_name: str, sequence: str | None
                 "武器经验": "Weapon EXP",
                 "贝币": "Shell Credit",
             }
-            target = material_map.get(sequence)
-            if target is None:
-                print(f"[dungeon_adapter][Wuthering Waves] 未适配的序列: {sequence}")
-                return False
+            assert sequence in material_map, f"[set_config][{self.display_name}] 未适配的序列: {sequence}"
+            target = material_map[sequence]
             if config['Material Selection'] == target:
                 return False
             config['Material Selection'] = target
@@ -122,98 +112,53 @@ def _apply_wuthering_waves(config: dict, dungeon_name: str, sequence: str | None
                 return False
             config['Which Forgery Challenge to Farm'] = str(sequence)
         else:
-            print(f"[dungeon_adapter][Wuthering Waves] 未适配的副本: {dungeon_name}")
-            return False
+            assert False, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
         return True
-
-    changed = update_task() or update_sequence()
-    if not changed:
-        print(f"[dungeon_adapter][Wuthering Waves] config 无需更新: {config}")
-        return None
-
-    print(f"[dungeon_adapter][Wuthering Waves] config 已更新: {config}")
-    return config
 
 
 # ---- 原神 Genshin Impact ----
-def _apply_genshin(config: dict, dungeon_name: str, sequence: str | None = None) -> dict | None:
+class GenshinConfig(ScriptConfig):
 
-    def update_task() -> bool:
-        """更新副本类型，返回是否有变化"""
-        key = 'DomainName'
-        if config[key] == dungeon_name:
-            return False
-        config[key] = dungeon_name
-        return True
-    
-    if not update_task():
-        print(f"[dungeon_adapter][Genshin] config 无需更新: {config}")
-        return None
-
-    print(f"[dungeon_adapter][Genshin] config 已更新: {config}")
-    return config
+    def __init__(self):
+        self.display_name = "原神"
+        self._task_key = "DomainName"
 
 
 # ---- 终末地 Arknights: Endfield ----
-def _apply_endfield(config: dict, dungeon_name: str, sequence: str | None = None) -> dict | None:
+class EndfieldConfig(ScriptConfig):
 
-    def update_task() -> bool:
-        """更新副本类型，返回是否有变化"""
-        key = "体力本"
-        if config[key] == dungeon_name:
-            return False
-        config[key] = dungeon_name
-        return True
-
-    if not update_task():
-        print(f"[dungeon_adapter][Endfield] config 无需更新: {config}")
-        return None
-
-    print(f"[dungeon_adapter][Endfield] config 已更新: {config}")
-    return config
+    def __init__(self):
+        self.display_name = "终末地"
+        self._task_key = "体力本"
 
 
 # ---- 绝区零 Zenless Zone Zero ----
-def _apply_zenless(config: dict, dungeon_name: str, sequence: str | None = None) -> dict | None:
-    # TODO: 适配绝区零的副本配置
-    print(f"[dungeon_adapter][Zenless] 待适配: {dungeon_name}")
-    return None
+class ZenlessZoneZeroConfig(ScriptConfig):
+
+    def __init__(self):
+        self.display_name = "绝区零"
+
+    def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
+        print(f"[set_config][{self.display_name}] 暂未适配")
 
 
 # ---- 崩铁 Honkai: Star Rail ----
-def _apply_star_rail(config: dict, dungeon_name: str, sequence: str | None = None) -> dict | None:
+class StarRailConfig(ScriptConfig):
 
-    def update_task() -> bool:
-        """更新副本类型，返回是否有变化"""
-        key = "instance_type"
-        if config[key] == dungeon_name:
-            return False
-        config[key] = dungeon_name
-        return True
-
-    if not update_task():
-        print(f"[dungeon_adapter][Star Rail] config 无需更新")
-        return None
-
-    print(f"[dungeon_adapter][Star Rail] config 已更新")
-    return config
+    def __init__(self):
+        self.display_name = "崩铁"
+        self._task_key = "instance_type"
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
-def _apply_nte(config: dict, dungeon_name: str, sequence: str | None = None) -> dict | None:
+class NTEConfig(ScriptConfig):
 
-    def update_task() -> bool:
-        """更新副本类型，返回是否有变化"""
-        key = "任务类型"
-        if config[key] == dungeon_name:
-            return False
-        config[key] = dungeon_name
-        return True
+    def __init__(self):
+        self.display_name = "异环"
+        self._task_key = "任务类型"
 
-    def update_sequence() -> bool:
-        """更新序列，返回是否有变化"""
-        if sequence is None:
-            return False
+    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | None) -> bool:
+        assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
         if dungeon_name == "异能升级材料":
             if str(config['异能材料序号']) == sequence:
                 return False
@@ -227,24 +172,18 @@ def _apply_nte(config: dict, dungeon_name: str, sequence: str | None = None) -> 
                 return False
             config['弧盘材料序号'] = str(sequence)
         else:
-            print(f"[dungeon_adapter][NTE] 未适配的副本: {dungeon_name}")
-            return False
+            assert False, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
         return True
-
-    changed = update_task() or update_sequence()
-    if not changed:
-        print(f"[dungeon_adapter][NTE] config 无需更新: {config}")
-        return None
-
-    print(f"[dungeon_adapter][NTE] config 已更新: {config}")
-    return config
 
 
 # ---- 明日方舟 Arknights（粥）----
-def _apply_arknights(config: dict, dungeon_name: str, sequence: str | None = None) -> dict | None:
+class ArknightsConfig(ScriptConfig):
 
-    def update_task() -> bool:
-        """更新副本类型，返回是否有变化"""
+    def __init__(self):
+        self.display_name = "粥"
+
+    def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
+        config = self._load()
         task_map = {
             "红票": 2,
             "经验": 3,
@@ -252,24 +191,54 @@ def _apply_arknights(config: dict, dungeon_name: str, sequence: str | None = Non
             "土": 5,
         }
         task_config = config["Configurations"]["Default"]["TaskQueue"]
-        if dungeon_name not in task_map:
-            print(f"[dungeon_adapter][Arknights] 未适配的副本: {dungeon_name}")
-            return False
+        assert dungeon_name in task_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
 
         # disable other tasks
         for key in task_map:
             task_config[task_map[key]]["IsEnable"] = False
-        
+
         task_config[task_map[dungeon_name]]["IsEnable"] = True
         task_config[task_map["土"]]["IsEnable"] = True
-        print(f"enable task: {dungeon_name}")
 
-        # always update task config for stability
-        return True
+        print(f"[set_config][{self.display_name}] config 已更新")
+        self._save(config)
 
-    if not update_task():
-        print(f"[dungeon_adapter][Arknights] config 无需更新")
-        return None
 
-    print(f"[dungeon_adapter][Arknights] config 已更新")
-    return config
+# ============================================================
+# 注册表
+# ============================================================
+
+_CONFIGS: dict[str, type[ScriptConfig]] = {
+    "鸣潮": WutheringWavesConfig,
+    "原神": GenshinConfig,
+    "终末地": EndfieldConfig,
+    "绝区零": ZenlessZoneZeroConfig,
+    "崩铁": StarRailConfig,
+    "异环": NTEConfig,
+    "粥":   ArknightsConfig,
+}
+
+
+# ============================================================
+# 外观接口
+# ============================================================
+
+def set_config(script_display_name: str,
+               dungeon_name: str | None = None,
+               sequence: str | None = None) -> None:
+    """
+    外观接口：为指定脚本设置副本和刷取序列
+
+    Args:
+        script_display_name: 脚本显示名称（与 config.yml 中一致）
+        dungeon_name: 副本名称（来自 dungeon_list.yml），None 或 "未选择" 时跳过
+        sequence: 刷取序列（字符串），None 表示无序列
+    """
+    # 未选择副本时，不做更改
+    if not dungeon_name or dungeon_name == "未选择":
+        return
+
+    assert script_display_name in _CONFIGS, f"[set_config] 未适配的脚本: {script_display_name}"
+    cfg_cls = _CONFIGS[script_display_name]
+
+    cfg_cls().set_dungeon(dungeon_name, sequence)
