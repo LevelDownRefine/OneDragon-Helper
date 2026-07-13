@@ -3,10 +3,10 @@ import unittest
 import tempfile
 from unittest.mock import patch
 
-from config import onedragon
+from config import init_config
 
 
-class TestGenerateOnedragonConfig(unittest.TestCase):
+class TestGenerateInitConfig(unittest.TestCase):
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -23,8 +23,8 @@ class TestGenerateOnedragonConfig(unittest.TestCase):
         with open(os.path.join(self.src_dir, self.dummy_script_name), "w") as f:
             f.write("# Dummy python script")
 
-    @patch('config.onedragon.get_path_under_root')
-    @patch('config.onedragon.get_path_under_onedragon')
+    @patch('config.init_config.get_path_under_root')
+    @patch('config.init_config.get_path_under_onedragon')
     def test_copy_python_scripts_not_exists(self, mock_get_path, mock_get_root):
         mock_get_root.return_value = self.src_dir
         mock_get_path.return_value = self.dest_dir
@@ -32,13 +32,13 @@ class TestGenerateOnedragonConfig(unittest.TestCase):
         # The file does not exist in destination yet
         self.assertFalse(os.path.exists(os.path.join(self.dest_dir, self.dummy_script_name)))
 
-        onedragon.copy_python_scripts()
+        init_config.copy_python_scripts()
 
         # Verify file is copied
         self.assertTrue(os.path.exists(os.path.join(self.dest_dir, self.dummy_script_name)))
 
-    @patch('config.onedragon.get_path_under_root')
-    @patch('config.onedragon.get_path_under_onedragon')
+    @patch('config.init_config.get_path_under_root')
+    @patch('config.init_config.get_path_under_onedragon')
     @patch('shutil.copy')
     def test_copy_python_scripts_already_exists(self, mock_copy, mock_get_path, mock_get_root):
         mock_get_root.return_value = self.src_dir
@@ -48,36 +48,36 @@ class TestGenerateOnedragonConfig(unittest.TestCase):
         with open(os.path.join(self.dest_dir, self.dummy_script_name), "w") as f:
             f.write("# Pre-existing script")
 
-        onedragon.copy_python_scripts()
+        init_config.copy_python_scripts()
 
         # shutil.copy should not be called
         mock_copy.assert_not_called()
 
-    @patch('config.onedragon.copy_BGI_User')
-    @patch('config.onedragon.copy_python_scripts')
-    @patch('config.onedragon.run_config_ui')
+    @patch('config.init_config.copy_BGI_User')
+    @patch('config.init_config.copy_python_scripts')
+    @patch('config.init_config.run_config_ui')
     def test_config_workflow(self, mock_run_ui, mock_copy, mock_bgi):
-        onedragon.config_workflow()
+        init_config.config_workflow()
 
         mock_bgi.assert_called_once()
         mock_copy.assert_called_once()
         mock_run_ui.assert_called_once()
 
 
-class TestOnedragonConfigUI(unittest.TestCase):
+class TestInitConfigUI(unittest.TestCase):
 
-    @patch('config.onedragon.QApplication')
-    @patch('config.onedragon.ConfigUI')
+    @patch('config.init_config.QApplication')
+    @patch('config.init_config.ConfigUI')
     def test_run_config_ui(self, mock_config_ui, mock_qapp):
-        onedragon.run_config_ui()
+        init_config.run_config_ui()
         mock_qapp.assert_called_once()
         mock_config_ui.assert_called_once()
 
-    @patch('config.onedragon.QApplication')
-    @patch('config.onedragon.ConfigUI')
+    @patch('config.init_config.QApplication')
+    @patch('config.init_config.ConfigUI')
     def test_run_config_ui_happy_path_no_exit(self, mock_config_ui, mock_qapp):
         try:
-            onedragon.run_config_ui()
+            init_config.run_config_ui()
         except SystemExit:
             self.fail("run_config_ui raised SystemExit unexpectedly")
 
