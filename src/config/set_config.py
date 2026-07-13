@@ -56,6 +56,7 @@ class ScriptConfig:
 
     def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | None) -> bool:
         """更新序列字段。返回是否修改。默认不启用。"""
+        assert sequence is None, f"[set_config][{self.display_name}] 子类必须设 _update_sequence"
         return False
 
     def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
@@ -156,23 +157,19 @@ class NTEConfig(ScriptConfig):
     def __init__(self):
         self.display_name = "异环"
         self._task_key = "任务类型"
+        self._seq_key_map = {
+            "异能升级材料": "异能材料序号",
+            "空幕": "空幕序号",
+            "弧盘突破材料": "弧盘材料序号",
+        }
 
     def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | None) -> bool:
         assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
-        if dungeon_name == "异能升级材料":
-            if str(config['异能材料序号']) == sequence:
-                return False
-            config['异能材料序号'] = str(sequence)
-        elif dungeon_name == "空幕":
-            if str(config['空幕序号']) == sequence:
-                return False
-            config['空幕序号'] = str(sequence)
-        elif dungeon_name == "弧盘突破材料":
-            if str(config['弧盘材料序号']) == sequence:
-                return False
-            config['弧盘材料序号'] = str(sequence)
-        else:
-            assert False, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        assert dungeon_name in self._seq_key_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        key = self._seq_key_map[dungeon_name]
+        if str(config[key]) == sequence:
+            return False
+        config[key] = str(sequence)
         return True
 
 
@@ -194,10 +191,14 @@ class ArknightsConfig(ScriptConfig):
         assert dungeon_name in task_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
 
         # disable other tasks
-        for key in task_map:
-            task_config[task_map[key]]["IsEnable"] = False
+        for task_name in task_map:
+            task_num = task_map[task_name]
+            assert(task_config[task_num]['Name'] == task_name,
+                   f"[set_config][{self.display_name}] 未适配的任务: {task_name}")
+            task_config[task_num]["IsEnable"] = False
 
         task_config[task_map[dungeon_name]]["IsEnable"] = True
+        # 启用刷土清理剩余体力
         task_config[task_map["土"]]["IsEnable"] = True
 
         print(f"[set_config][{self.display_name}] config 已更新")
