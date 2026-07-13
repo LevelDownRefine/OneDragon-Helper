@@ -21,4 +21,4 @@ if not exist "%env_script%" (
 
 :: 调用执行，执行后返回本脚本上下文
 call "%env_script%"
-call python %base%launcher.py
+call python %base%gui_launcher.py
