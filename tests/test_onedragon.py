@@ -53,11 +53,13 @@ class TestGenerateOnedragonConfig(unittest.TestCase):
         # shutil.copy should not be called
         mock_copy.assert_not_called()
 
+    @patch('config.onedragon.copy_BGI_User')
     @patch('config.onedragon.copy_python_scripts')
     @patch('config.onedragon.run_config_ui')
-    def test_config_workflow(self, mock_run_ui, mock_copy):
+    def test_config_workflow(self, mock_run_ui, mock_copy, mock_bgi):
         onedragon.config_workflow()
 
+        mock_bgi.assert_called_once()
         mock_copy.assert_called_once()
         mock_run_ui.assert_called_once()
 
