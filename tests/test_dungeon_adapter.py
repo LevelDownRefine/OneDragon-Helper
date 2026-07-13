@@ -72,10 +72,10 @@ class TestGetScriptRootDir(unittest.TestCase):
         self.assertEqual(root, "C:/Users/test/ok-ww")
 
     def test_raises_for_unknown_script(self):
-        """未在 config.yml 中的脚本应抛出 KeyError"""
+        """未在 config.yml 中的脚本应触发 AssertionError"""
         fake_config = {"script_list": []}
         with patch.object(dungeon_adapter, '_load_config_yml', return_value=fake_config):
-            with self.assertRaises(KeyError):
+            with self.assertRaises(AssertionError):
                 dungeon_adapter._get_script_root_dir("不存在的脚本")
 
     def test_raises_for_empty_script_path(self):

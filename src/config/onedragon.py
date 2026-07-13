@@ -195,6 +195,9 @@ class ConfigUI(QWidget):
 
 
 def run_config_ui():
+    """
+    config 文件夹下生成 config.yml 及 weekly_timeouts.yml
+    """
     app = QApplication(sys.argv)
     window = ConfigUI()
     window.show()
