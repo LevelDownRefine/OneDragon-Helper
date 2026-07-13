@@ -24,7 +24,7 @@ from dungeon_adapter import set_config
 
 
 # ---- UI 状态持久化 ----
-_STATE_FILE = os.path.join(get_root_dir(), "gui_state.json")
+_STATE_FILE = os.path.join(get_root_dir(), "config", "gui_state.json")
 
 
 def _load_ui_state() -> dict:
@@ -370,7 +370,7 @@ class MainWindow(QMainWindow):
 
         # 读取副本列表配置
         self.dungeon_map = {}
-        dungeon_file = os.path.join(os.path.dirname(get_config_yml_path_under_root()), "dungeon_list.yml")
+        dungeon_file = os.path.join(get_root_dir(), "config", "dungeon_list.yml")
         if os.path.exists(dungeon_file):
             with open(dungeon_file, 'r', encoding='utf-8') as f:
                 self.dungeon_map = yaml.safe_load(f) or {}

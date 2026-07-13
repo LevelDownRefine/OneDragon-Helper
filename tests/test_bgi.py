@@ -2,8 +2,8 @@ import os
 import unittest
 import tempfile
 import yaml
-import shutil
 from unittest.mock import patch
+
 from config import bgi
 
 class TestCopyBettergiConfig(unittest.TestCase):

@@ -30,4 +30,4 @@ jobs:
 
       - name: Run tests
         run: |
-          uv run python -m unittest discover -s tests -p 'test*.py'
+          PYTHONPATH=src uv run python -m unittest discover -s tests -p 'test*.py'

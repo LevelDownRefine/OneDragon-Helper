@@ -1,9 +1,8 @@
 import os
-import sys
 import unittest
 import tempfile
-import shutil
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 from config import onedragon
 
 class TestGenerateOnedragonConfig(unittest.TestCase):
