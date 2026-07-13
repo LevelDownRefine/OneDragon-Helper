@@ -10,7 +10,7 @@ def get_our_bgi_user_dir() -> str:
 
 def get_config_yml_path_under_root() -> str:
     """
-    获取根目录下的config/config.yml文件路径
+    获取根目录下的config/config.yml文件路径（运行时生成，含个人信息，不追溯git）
     :return: 根目录下的config/config.yml文件路径
     """
     return os.path.join(get_root_dir(), "config", "config.yml")

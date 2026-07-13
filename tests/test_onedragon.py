@@ -64,11 +64,9 @@ class TestGenerateOnedragonConfig(unittest.TestCase):
 
 class TestOnedragonConfigUI(unittest.TestCase):
 
-    @patch('config.onedragon.get_config_yml_path_under_root')
     @patch('config.onedragon.QApplication')
     @patch('config.onedragon.ConfigUI')
-    def test_run_config_ui(self, mock_config_ui, mock_qapp, mock_get_path):
-        mock_get_path.return_value = "/mock/config.yml"
+    def test_run_config_ui(self, mock_config_ui, mock_qapp):
         onedragon.run_config_ui()
         mock_qapp.assert_called_once()
         mock_config_ui.assert_called_once()

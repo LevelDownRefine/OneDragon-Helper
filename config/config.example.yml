@@ -21,7 +21,7 @@ script_list:
 - display_name: 鸣潮
   game_label: ''
   script_type: external
-  script_path: C:\Users\WinSa\AppData\Local\ok-ww\ok-ww.exe
+  script_path: D:\game_helper\ok-ww\ok-ww.exe
   script_process_name:
   - pythonw.exe
   game_process_name: Client-Win64-Shipping.exe
@@ -61,7 +61,7 @@ script_list:
 - display_name: 终末地
   game_label: ''
   script_type: external
-  script_path: C:\Users\WinSa\AppData\Local\ok-ef\ok-ef.exe
+  script_path: D:\game_helper\ok-ef\ok-ef.exe
   script_process_name:
   - pythonw.exe
   game_process_name: Endfield.exe
@@ -102,7 +102,7 @@ script_list:
 - display_name: 崩铁
   game_label: ''
   script_type: external
-  script_path: D:\game_helper\March7thAssistant_full\March7th Assistant.exe
+  script_path: D:\game_helper\March7thAssistant\March7th Assistant.exe
   script_process_name: []
   game_process_name: StarRail.exe
   launcher_mode: false
@@ -141,7 +141,7 @@ script_list:
 - display_name: 粥
   game_label: ''
   script_type: external
-  script_path: D:\game_helper\MAA-v5.24.2-win-x64\MAA.exe
+  script_path: D:\game_helper\MAA\MAA.exe
   script_process_name: []
   game_process_name: MuMuNxDevice.exe
   launcher_mode: false

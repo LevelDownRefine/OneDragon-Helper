@@ -12,7 +12,7 @@ from qfluentwidgets import (
     LineEdit, PushButton, PrimaryPushButton, BodyLabel
 )
 
-from utils import (
+from src.utils import (
     get_path_under_root,
     get_path_under_onedragon,
     get_config_yml_path_under_root,
@@ -37,7 +37,12 @@ class ConfigUI(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.yml_path = get_config_yml_path_under_root()
+        # 优先读 config.yml（运行时生成），不存在时读 example.yml（模板）
+        self.save_path = get_config_yml_path_under_root()
+        if os.path.exists(self.save_path):
+            self.source_path = self.save_path
+        else:
+            self.source_path = os.path.join(os.path.dirname(self.save_path), "config.example.yml")
         self.config_data = {}
         self.path_inputs = []
         self.timeout_inputs = []
@@ -69,11 +74,11 @@ class ConfigUI(QWidget):
         self.layout.addLayout(btn_layout)
 
     def load_data(self):
-        if not os.path.exists(self.yml_path):
-            MessageBox("错误", f"找不到文件: {self.yml_path}", self).exec()
+        if not os.path.exists(self.source_path):
+            MessageBox("错误", f"找不到模板文件: {self.source_path}", self).exec()
             return
 
-        with open(self.yml_path, 'r', encoding='utf-8') as f:
+        with open(self.source_path, 'r', encoding='utf-8') as f:
             self.config_data = yaml.safe_load(f)
 
         # 从 weekly_timeouts.yml 读取每周超时配置
@@ -171,10 +176,9 @@ class ConfigUI(QWidget):
                     weekly_timeouts.append(val)
                 self.weekly_timeouts_map[display_name] = weekly_timeouts
 
-        # 3. Save config.yml (paths and other settings, no weekly_timeouts)
+        # 3. Save config.yml
         data_copy = copy.deepcopy(self.config_data)
-        config_path = get_config_yml_path_under_root()
-        with open(config_path, 'w', encoding='utf-8') as f:
+        with open(self.save_path, 'w', encoding='utf-8') as f:
             yaml.dump(data_copy, f, allow_unicode=True, sort_keys=False)
 
         # 4. Save weekly_timeouts.yml (weekly timeout settings only)

@@ -15,7 +15,7 @@ import json
 import yaml
 from typing import Optional, Any
 
-from utils import get_config_yml_path_under_root
+from src.utils import get_config_yml_path_under_root
 
 
 # ============================================================

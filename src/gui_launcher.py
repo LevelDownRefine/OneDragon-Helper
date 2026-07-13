@@ -13,13 +13,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont
 
-from utils import (
+from src.utils import (
     get_config_yml_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
     get_path_under_onedragon,
     get_root_dir,
 )
-from dungeon_adapter import set_config
+from src.dungeon_adapter import set_config
 
 
 # ---- UI 状态持久化 ----
