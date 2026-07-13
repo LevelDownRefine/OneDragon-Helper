@@ -20,6 +20,7 @@ from src.utils import (
     get_root_dir,
 )
 from src.dungeon_adapter import set_config
+from src.config.onedragon import need_config_workflow, config_workflow
 
 
 # ---- UI 状态持久化 ----
@@ -497,26 +498,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "提示", f"脚本运行结束，退出码: {return_code}")
 
 
-def _need_config_workflow() -> bool:
-    """判断是否需要先执行 config_workflow（首次运行 / 配置缺失时）"""
-    config_path = get_config_yml_path_under_root()
-    if not os.path.exists(config_path):
-        return True
-    with open(config_path, 'r', encoding='utf-8') as f:
-        data = yaml.safe_load(f)
-    script_list = data.get('script_list', [])
-    # 脚本列表为空 或 存在空路径 → 需要配置
-    if not script_list:
-        return True
-    for script in script_list:
-        if not script.get('script_path', '').strip():
-            return True
-    return False
-
-
 def main():
-    if _need_config_workflow():
-        from config.onedragon import config_workflow
+    if need_config_workflow():
         config_workflow()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")

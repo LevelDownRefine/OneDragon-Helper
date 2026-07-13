@@ -18,6 +18,7 @@ from src.utils import (
     get_config_yml_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
 )
+from src.config.bgi import copy_BGI_User
 
 
 def copy_python_scripts():
@@ -204,8 +205,29 @@ def run_config_ui():
     app.exec()
 
 
+def need_config_workflow() -> bool:
+    """判断是否需要先执行 config_workflow（首次运行 / 配置缺失时）"""
+    config_path = get_config_yml_path_under_root()
+    if not os.path.exists(config_path):
+        return True
+    with open(config_path, 'r', encoding='utf-8') as f:
+        data = yaml.safe_load(f)
+    script_list = data.get('script_list', [])
+    # 脚本列表为空 或 存在空路径 → 需要配置
+    if not script_list:
+        return True
+    for script in script_list:
+        if not script.get('script_path', '').strip():
+            return True
+    return False
+
+
 def config_workflow():
+    # 复制 BetterGI 用户配置
+    copy_BGI_User()
+    # 复制 src/python_scripts 到 OneDragon-ScriptChainer/config/script_chain/scripts
     copy_python_scripts()
+    # 生成 config.yml 及 weekly_timeouts.yml
     run_config_ui()
 
 
