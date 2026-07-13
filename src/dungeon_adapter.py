@@ -56,7 +56,7 @@ def _get_script_root_dir(script_display_name: str) -> str:
             assert script_path, f"[dungeon_adapter] config.yml 中 {script_display_name} 的 script_path 为空"
             normalized = script_path.replace('\\', '/')
             return os.path.dirname(normalized)
-    raise KeyError(f"[dungeon_adapter] config.yml 中找不到脚本: {script_display_name}")
+    assert False, f"[dungeon_adapter] config.yml 中找不到脚本: {script_display_name}"
 
 
 def get_config_path(script_display_name: str) -> str:

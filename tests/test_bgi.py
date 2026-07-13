@@ -88,7 +88,8 @@ class TestCopyBettergiConfig(unittest.TestCase):
     def test_copy_BGI_config_none(self, mock_copytree, mock_get_bgi):
         mock_get_bgi.return_value = None
         
-        bgi.copy_BGI_config()
+        with self.assertRaises(AssertionError):
+            bgi.copy_BGI_config()
         mock_copytree.assert_not_called()
 
 if __name__ == "__main__":
