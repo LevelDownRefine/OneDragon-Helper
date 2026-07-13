@@ -24,8 +24,9 @@ def copy_BGI_config():
     :return: None
     """
     user_dir = get_BGI_user_dir()
-    if user_dir:
-        shutil.copytree(get_our_bgi_user_dir(), user_dir, dirs_exist_ok=True)
+    assert user_dir, "未找到BetterGI用户目录"
+    print(f"[BetterGI] 复制BetterGI配置到: {user_dir}")
+    shutil.copytree(get_our_bgi_user_dir(), user_dir, dirs_exist_ok=True)
 
 if __name__ == "__main__":
     copy_BGI_config()

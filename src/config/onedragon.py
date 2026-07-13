@@ -29,6 +29,8 @@ def copy_python_scripts():
         if not os.path.exists(os.path.join(output_path, file_name)):
             shutil.copy(input_path, output_path)
             print(f"已复制Python脚本{file_name}到: {output_path}")
+        else:
+            print(f"[OneDragonHelper] Python脚本{file_name}已存在，跳过复制")
 
 
 class ConfigUI(QWidget):

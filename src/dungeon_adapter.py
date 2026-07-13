@@ -13,7 +13,7 @@ config 路径推导：
 import os
 import json
 import yaml
-from typing import Optional, Any
+from typing import Any
 
 from src.utils import get_config_yml_path_under_root
 
@@ -41,7 +41,7 @@ def _load_config_yml() -> dict:
         return yaml.safe_load(f)
 
 
-def _get_script_root_dir(script_display_name: str) -> Optional[str]:
+def _get_script_root_dir(script_display_name: str) -> str:
     """
     从 config.yml 中找到指定脚本的 script_path，
     取其父目录作为脚本项目根目录。
@@ -53,61 +53,51 @@ def _get_script_root_dir(script_display_name: str) -> Optional[str]:
     for script in config_data.get('script_list', []):
         if script.get('display_name') == script_display_name:
             script_path = script.get('script_path', '')
-            if script_path:
-                # 统一路径分隔符，兼容 Windows 路径在 Linux 上解析
-                normalized = script_path.replace('\\', '/')
-                root = os.path.dirname(normalized)
-                return root if root else None
-    return None
+            assert script_path, f"[dungeon_adapter] config.yml 中 {script_display_name} 的 script_path 为空"
+            normalized = script_path.replace('\\', '/')
+            return os.path.dirname(normalized)
+    raise KeyError(f"[dungeon_adapter] config.yml 中找不到脚本: {script_display_name}")
 
 
-def get_config_path(script_display_name: str) -> Optional[str]:
+def get_config_path(script_display_name: str) -> str:
     """
     获取指定脚本的 config 文件绝对路径。
     拼接脚本根目录 + config 相对路径。
     """
+    assert(script_display_name in _CONFIG_REL_PATHS, 
+           f"[dungeon_adapter] 未适配{script_display_name}")
     root = _get_script_root_dir(script_display_name)
     rel = _CONFIG_REL_PATHS.get(script_display_name)
-    if not root or not rel:
-        return None
-    return os.path.join(root, rel)
+    config_path = os.path.join(root, rel)
+    assert os.path.exists(config_path), f"[dungeon_adapter] config 文件不存在: {config_path}"
+    return config_path
 
 
 # ============================================================
 # config 读写工具函数
 # ============================================================
 
-def load_config(script_display_name: str) -> Optional[Any]:
+def load_config(script_display_name: str) -> Any:
     """
     读取指定脚本的 config 文件，返回解析后的 dict/list。
     支持 .json 和 .yaml/.yml 格式。
     """
     path = get_config_path(script_display_name)
-    if not path or not os.path.exists(path):
-        print(f"[dungeon_adapter] config 文件不存在: {script_display_name} -> {path}")
-        return None
-
     ext = os.path.splitext(path)[1].lower()
     with open(path, 'r', encoding='utf-8') as f:
         if ext == '.json':
             return json.load(f)
         elif ext in ('.yaml', '.yml'):
             return yaml.safe_load(f)
-        else:
-            print(f"[dungeon_adapter] 不支持的 config 格式: {ext}")
-            return None
+        raise ValueError(f"[dungeon_adapter] 不支持的 config 格式: {ext}")
 
 
-def save_config(script_display_name: str, data: Any) -> bool:
+def save_config(script_display_name: str, data: Any) -> None:
     """
     将数据写回指定脚本的 config 文件。
     保持原始格式（json / yaml）。
     """
     path = get_config_path(script_display_name)
-    if not path:
-        print(f"[dungeon_adapter] 无法确定 config 路径: {script_display_name}")
-        return False
-
     ext = os.path.splitext(path)[1].lower()
     with open(path, 'w', encoding='utf-8') as f:
         if ext == '.json':
@@ -115,9 +105,7 @@ def save_config(script_display_name: str, data: Any) -> bool:
         elif ext in ('.yaml', '.yml'):
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
         else:
-            print(f"[dungeon_adapter] 不支持的 config 格式: {ext}")
-            return False
-    return True
+            raise ValueError(f"[dungeon_adapter] 不支持的 config 格式: {ext}")
 
 
 # ============================================================
@@ -164,30 +152,16 @@ def set_config(script_display_name: str,
 
     # 统一 load
     config = load_config(script_display_name)
-    if config is None:
-        print(f"[dungeon_adapter] {script_display_name} config 读取失败，无法写入")
-        return False
 
     # handler 修改 config，返回修改后的 dict
-    try:
-        updated = handler(config, dungeon_name, sequence)
-    except Exception as e:
-        print(f"[error][dungeon_adapter] {script_display_name} 适配配置失败: {e}")
-        return False
+    updated = handler(config, dungeon_name, sequence)
 
     if updated is None:
         # handler 返回 None 表示无需写入（例如数据无变化）
         return True
 
     # 统一 save
-    try:
-        if not save_config(script_display_name, updated):
-            print(f"[dungeon_adapter] {script_display_name} config 写入失败")
-            return False
-    except Exception as e:
-        print(f"[error][dungeon_adapter] {script_display_name} config 写入异常: {e}")
-        return False
-
+    save_config(script_display_name, updated)
     return True
 
 
