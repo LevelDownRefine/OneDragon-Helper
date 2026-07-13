@@ -67,7 +67,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
 
     @patch('config.bgi.get_our_bgi_user_dir')
     @patch('config.bgi.get_BGI_user_dir')
-    def test_copy_BGI_config(self, mock_get_bgi, mock_get_our_bgi):
+    def test_copy_BGI_User(self, mock_get_bgi, mock_get_our_bgi):
         target_dir = os.path.join(self.temp_dir.name, 'TargetBGI', 'User')
         
         mock_get_our_bgi.return_value = self.mock_our_bgi_dir
@@ -76,7 +76,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
         # Ensure target_dir does not exist yet
         self.assertFalse(os.path.exists(target_dir))
         
-        bgi.copy_BGI_config()
+        bgi.copy_BGI_User()
         
         # Verify copying actually occurred
         self.assertTrue(os.path.exists(os.path.join(target_dir, "test_file.json")))
@@ -85,11 +85,11 @@ class TestCopyBettergiConfig(unittest.TestCase):
 
     @patch('config.bgi.get_BGI_user_dir')
     @patch('shutil.copytree')
-    def test_copy_BGI_config_none(self, mock_copytree, mock_get_bgi):
+    def test_copy_BGI_User_none(self, mock_copytree, mock_get_bgi):
         mock_get_bgi.return_value = None
         
         with self.assertRaises(AssertionError):
-            bgi.copy_BGI_config()
+            bgi.copy_BGI_User()
         mock_copytree.assert_not_called()
 
 if __name__ == "__main__":

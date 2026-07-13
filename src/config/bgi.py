@@ -18,7 +18,7 @@ def get_BGI_user_dir():
                 return os.path.join(BGI_dir, 'User')
     return None
 
-def copy_BGI_config():
+def copy_BGI_User():
     """
     复制BetterGI配置到指定路径
     :return: None
@@ -29,6 +29,6 @@ def copy_BGI_config():
     shutil.copytree(get_our_bgi_user_dir(), user_dir, dirs_exist_ok=True)
 
 if __name__ == "__main__":
-    copy_BGI_config()
+    copy_BGI_User()
     print("配置复制完成")
        
