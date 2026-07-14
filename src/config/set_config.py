@@ -178,28 +178,82 @@ class ArknightsConfig(ScriptConfig):
 
     def __init__(self):
         self.display_name = "粥"
+        self._task_map = {
+            "剿灭":   {"index": 1, "stage": "Annihilation"},
+            "红票":   {"index": 2, "stage": "AP-5"},
+            "经验":   {"index": 3, "stage": "LS-6"},
+            "龙门币": {"index": 4, "stage": "CE-6"},
+            "土":     {"index": 5, "stage": "1-7"},
+        }
+        self._init_config()
+
+    def _make_fight_task(self, name: str, *, is_enable: bool = False,
+                         hide_unavailable: bool = False, drop_count: int = 0,
+                         use_expiring_medicine: bool = False) -> dict:
+        """生成 FightTask 模板，stage 从 self._task_map 获取"""
+        stage = self._task_map[name]["stage"]
+        return {'$type': 'FightTask', 'UseMedicine': False, 'MedicineCount': 0, 'UseStone': False, 'StoneCount': 0, 'EnableTargetDrop': False, 'DropId': '', 'DropCount': drop_count, 'IsInventoryTarget': False, 'EnableTimesLimit': False, 'TimesLimit': 2147483647, 'Series': 0, 'StagePlan': [stage], 'IsDrGrandet': False, 'UseExpiringMedicine': use_expiring_medicine, 'MedicineExpireDays': 2, 'UseExpireMedicineForActivity': False, 'UseCustomAnnihilation': False, 'AnnihilationStage': 'Annihilation', 'HideUnavailableStage': hide_unavailable, 'IsStageManually': False, 'UseOptionalStage': False, 'UseStoneAllowSave': False, 'HideSeries': False, 'StageResetMode': 'Current', 'UseWeeklySchedule': False, 'Name': name, 'IsEnable': is_enable, 'TaskType': 'Fight'}
+
+    def _init_config(self):
+        config = self._load()
+        cur_config = config["Configurations"]["Default"]["TaskQueue"]
+
+        task_config: list = [None] * 10
+        task_config[0] = {'$type': 'StartUpTask', 'AccountName': '', 'AccountSwitchEnabled': False, 'Name': '开始唤醒', 'IsEnable': True, 'TaskType': 'StartUp'}
+        # 索引 1-5: 由 _task_map 生成 FightTask
+        task_config[1] = self._make_fight_task("剿灭", is_enable=True, hide_unavailable=True)
+        task_config[2] = self._make_fight_task("红票")
+        task_config[3] = self._make_fight_task("经验")
+        task_config[4] = self._make_fight_task("龙门币")
+        task_config[5] = self._make_fight_task("土", is_enable=True, drop_count=5, use_expiring_medicine=True)
+        # 索引 6-9: 非战斗任务
+        task_config[6] = {'$type': 'RecruitTask', 'MaxTimes': 4, 'ExtraTagMode': 0, 'Level3PreferTags': [], 'PreferTagEnabled': True, 'PreserveTagList': ['支援机械'], 'PreserveTagEnabled': False, 'RefreshLevel3': True, 'ForceRefresh': True, 'Level3Choose': True, 'Level4Choose': True, 'Level5Choose': True, 'Level6Choose': False, 'Level3Time': 540, 'Level4Time': 540, 'Name': '自动公招', 'IsEnable': True, 'TaskType': 'Recruit'}
+        task_config[7] = {'$type': 'InfrastTask', 'Mode': 'Normal', 'UsesOfDrones': 'PureGold', 'DormThreshold': 30, 'DormTrustEnabled': True, 'OriginiumShardAutoReplenishment': True, 'DormFilterNotStationed': True, 'ReceptionMessageBoard': True, 'ReceptionClueExchange': True, 'SendClue': True, 'ContinueTraining': False, 'Filename': '', 'PlanSelect': -1, 'RoomList': [{'Room': 'Mfg'}, {'Room': 'Trade'}, {'Room': 'Control'}, {'Room': 'Power'}, {'Room': 'Reception'}, {'Room': 'Office'}, {'Room': 'Dorm'}, {'Room': 'Processing'}, {'Room': 'Training'}], 'Name': '基建换班', 'IsEnable': True, 'TaskType': 'Infrast'}
+        task_config[8] = {'$type': 'MallTask', 'Shopping': True, 'CreditFight': False, 'CreditFightFormation': 0, 'CreditFightLastTime': '2025/09/13 00:00:00', 'CreditFightOnceADay': True, 'VisitFriends': True, 'VisitFriendsOnceADay': True, 'VisitFriendsLastTime': '2026/07/14 00:00:00', 'FirstList': '招聘许可', 'BlackList': '碳;家具;加急许可', 'ShoppingIgnoreBlackListWhenFull': False, 'OnlyBuyDiscount': False, 'ReserveMaxCredit': False, 'IsCreditFightAvailable': False, 'IsVisitFriendsAvailable': False, 'Name': '信用收支', 'IsEnable': True, 'TaskType': 'Mall'}
+        task_config[9] = {'$type': 'AwardTask', 'Award': True, 'Mail': True, 'FreeGacha': True, 'Orundum': True, 'Mining': True, 'SpecialAccess': True, 'Name': '领取奖励', 'IsEnable': True, 'TaskType': 'Award'}
+
+        if self._is_task_queue_equal(cur_config, task_config):
+            return
+
+        config["Configurations"]["Default"]["TaskQueue"] = task_config
+        print(f"[set_config][{self.display_name}] init config")
+        self._save(config)
+
+    def _is_task_queue_equal(self, cur: list, template: list) -> bool:
+        """比较当前 TaskQueue 与模板是否一致（只比较关键字段）"""
+        if len(cur) < len(template):
+            return False
+        for i in range(len(template)):
+            if cur[i].get("Name") != template[i]["Name"]:
+                return False
+            if cur[i].get("$type") != template[i]["$type"]:
+                return False
+            if template[i]["$type"] == "FightTask":
+                if cur[i].get("StagePlan") != template[i]["StagePlan"]:
+                    return False
+        return True
+
+    # ---- set_dungeon ----
 
     def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
         config = self._load()
-        task_map = {
-            "红票": 2,
-            "经验": 3,
-            "龙门币": 4,
-            "土": 5,
-        }
         task_config = config["Configurations"]["Default"]["TaskQueue"]
-        assert dungeon_name in task_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        assert dungeon_name in self._task_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
 
-        # disable other tasks
-        for task_name in task_map:
-            task_num = task_map[task_name]
-            assert(task_config[task_num]['Name'] == task_name,
-                   f"[set_config][{self.display_name}] 未适配的任务: {task_name}")
-            task_config[task_num]["IsEnable"] = False
+        # 校验并禁用所有副本任务
+        for name, info in self._task_map.items():
+            idx = info["index"]
+            stage = info["stage"]
+            assert task_config[idx]["Name"] == name, \
+                f"[set_config][{self.display_name}] TaskQueue[{idx}] Name 不匹配: 期望 {name}, 实际 {task_config[idx]['Name']}"
+            assert task_config[idx]["StagePlan"] == [stage], \
+                f"[set_config][{self.display_name}] TaskQueue[{idx}] StagePlan 不匹配: 期望 {[stage]}, 实际 {task_config[idx]['StagePlan']}"
+            task_config[idx]["IsEnable"] = False
 
-        task_config[task_map[dungeon_name]]["IsEnable"] = True
+        # 启用选定副本
+        task_config[self._task_map[dungeon_name]["index"]]["IsEnable"] = True
         # 启用刷土清理剩余体力
-        task_config[task_map["土"]]["IsEnable"] = True
+        task_config[self._task_map["土"]["index"]]["IsEnable"] = True
 
         print(f"[set_config][{self.display_name}] config 已更新")
         self._save(config)
