@@ -11,7 +11,11 @@ config 路径推导由 subscript_utils 统一处理：
   3. 拼接根目录 + 相对路径 = config 文件绝对路径
 """
 
+import os
+import json
+
 from src.subscript_utils import load_config, save_config
+from src.utils import get_our_bgi_user_dir
 
 
 # ============================================================
@@ -123,6 +127,27 @@ class GenshinConfig(ScriptConfig):
     def __init__(self):
         self.display_name = "原神"
         self._task_key = "DomainName"
+        self._init_config()
+
+    def _init_config(self):
+        config = self._load()
+        template_path = os.path.join(get_our_bgi_user_dir(), "OneDragon", "一条龙.json")
+        assert os.path.exists(template_path), f"[set_config][{self.display_name}] 未找到模板文件: {template_path}"
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template = json.load(f)
+
+        changed = False
+        for key, val in template.items():
+            if key == "PartyName":
+                # PartyName 可以与模板不同，但不能为空
+                assert key in config, f"[set_config][{self.display_name}] config 中缺少字段: {key}"
+            elif key not in config or config[key] != val:
+                config[key] = val
+                changed = True
+
+        if changed:
+            print(f"[set_config][{self.display_name}] init config")
+            self._save(config)
 
 
 # ---- 终末地 Arknights: Endfield ----
