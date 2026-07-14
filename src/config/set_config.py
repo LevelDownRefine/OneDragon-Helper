@@ -192,7 +192,12 @@ class ArknightsConfig(ScriptConfig):
                          use_expiring_medicine: bool = False) -> dict:
         """生成 FightTask 模板，stage 从 self._task_map 获取"""
         stage = self._task_map[name]["stage"]
-        return {'$type': 'FightTask', 'UseMedicine': False, 'MedicineCount': 0, 'UseStone': False, 'StoneCount': 0, 'EnableTargetDrop': False, 'DropId': '', 'DropCount': drop_count, 'IsInventoryTarget': False, 'EnableTimesLimit': False, 'TimesLimit': 2147483647, 'Series': 0, 'StagePlan': [stage], 'IsDrGrandet': False, 'UseExpiringMedicine': use_expiring_medicine, 'MedicineExpireDays': 2, 'UseExpireMedicineForActivity': False, 'UseCustomAnnihilation': False, 'AnnihilationStage': 'Annihilation', 'HideUnavailableStage': hide_unavailable, 'IsStageManually': False, 'UseOptionalStage': False, 'UseStoneAllowSave': False, 'HideSeries': False, 'StageResetMode': 'Current', 'UseWeeklySchedule': False, 'Name': name, 'IsEnable': is_enable, 'TaskType': 'Fight'}
+        return {'$type': 'FightTask', 'UseMedicine': False, 'MedicineCount': 0, 'UseStone': False,
+                'StoneCount': 0, 'EnableTargetDrop': False, 'DropId': '', 'DropCount': drop_count, 'IsInventoryTarget': False, 'EnableTimesLimit': False,
+                'TimesLimit': 2147483647, 'Series': 0, 'StagePlan': [stage], 'IsDrGrandet': False, 'UseExpiringMedicine': use_expiring_medicine, 'MedicineExpireDays': 2,
+                'UseExpireMedicineForActivity': False, 'UseCustomAnnihilation': False, 'AnnihilationStage': 'Annihilation', 'HideUnavailableStage': hide_unavailable,
+                'IsStageManually': False, 'UseOptionalStage': False, 'UseStoneAllowSave': False, 'HideSeries': False, 'StageResetMode': 'Current',
+                'UseWeeklySchedule': False, 'Name': name, 'IsEnable': is_enable, 'TaskType': 'Fight'}
 
     def _init_config(self):
         config = self._load()
