@@ -16,7 +16,7 @@ import json
 import yaml
 from typing import Any
 
-from src.utils import get_config_yml_path_under_root, get_our_bgi_user_dir
+from src.utils import get_config_yml_path_under_root, get_our_bgi_user_dir, get_root_dir
 
 
 # ============================================================
@@ -256,9 +256,47 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 
     def __init__(self):
         self.display_name = "绝区零"
+        self._init_config()
+
+    def _init_config(self):
+        config = self._load()
+        template_path = os.path.join(get_root_dir(), "config", "zzz_charge_plan.yml")
+        assert os.path.exists(template_path), f"[set_config][{self.display_name}] 未找到模板文件: {template_path}"
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template = yaml.safe_load(f)
+
+        if self._is_aligned(config, template):
+            return
+
+        print(f"[set_config][{self.display_name}] init config")
+        self._save(template)
 
     def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
-        print(f"[set_config][{self.display_name}] 暂未适配")
+        print(f"[set_config][{self.display_name}] zzz无需适配")
+
+    @staticmethod
+    def _is_aligned(config: dict, template: dict) -> bool:
+        """
+        检查游戏脚本 config 与模板是否对齐（严格要求顺序一致）：
+        - plan_list: 逐项按顺序比较，模板中出现的字段必须一致
+        - 其余顶层 key（double_reward 等）：值必须一致
+        """
+        for key, val in template.items():
+            if key not in config:
+                return False
+            if key == "plan_list":
+                cur_list = config[key]
+                if len(cur_list) < len(val):
+                    return False
+                for i, tpl_item in enumerate(val):
+                    cur_item = cur_list[i]
+                    for field, field_val in tpl_item.items():
+                        if field not in cur_item or cur_item[field] != field_val:
+                            return False
+            else:
+                if config[key] != val:
+                    return False
+        return True
 
 
 # ---- 崩铁 Honkai: Star Rail ----
@@ -335,14 +373,14 @@ class ArknightsConfig(ScriptConfig):
         task_config[8] = {'$type': 'MallTask', 'Shopping': True, 'CreditFight': False, 'CreditFightFormation': 0, 'CreditFightLastTime': '2025/09/13 00:00:00', 'CreditFightOnceADay': True, 'VisitFriends': True, 'VisitFriendsOnceADay': True, 'VisitFriendsLastTime': '2026/07/14 00:00:00', 'FirstList': '招聘许可', 'BlackList': '碳;家具;加急许可', 'ShoppingIgnoreBlackListWhenFull': False, 'OnlyBuyDiscount': False, 'ReserveMaxCredit': False, 'IsCreditFightAvailable': False, 'IsVisitFriendsAvailable': False, 'Name': '信用收支', 'IsEnable': True, 'TaskType': 'Mall'}
         task_config[9] = {'$type': 'AwardTask', 'Award': True, 'Mail': True, 'FreeGacha': True, 'Orundum': True, 'Mining': True, 'SpecialAccess': True, 'Name': '领取奖励', 'IsEnable': True, 'TaskType': 'Award'}
 
-        if self._is_task_queue_equal(cur_config, task_config):
+        if self._is_aligned(cur_config, task_config):
             return
 
         config["Configurations"]["Default"]["TaskQueue"] = task_config
         print(f"[set_config][{self.display_name}] init config")
         self._save(config)
 
-    def _is_task_queue_equal(self, cur: list, template: list) -> bool:
+    def _is_aligned(self, cur: list, template: list) -> bool:
         """比较当前 TaskQueue 与模板是否一致（只比较关键字段）"""
         if len(cur) < len(template):
             return False
