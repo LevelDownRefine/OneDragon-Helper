@@ -225,7 +225,7 @@ class GenshinConfig(ScriptConfig):
 
     def _init_config(self):
         config = self._load()
-        template_path = os.path.join(get_our_bgi_user_dir(), "OneDragon", "一条龙.json")
+        template_path = os.path.join(get_root_dir(), "config", "BGI一条龙.json")
         assert os.path.exists(template_path), f"[set_config][{self.display_name}] 未找到模板文件: {template_path}"
         with open(template_path, 'r', encoding='utf-8') as f:
             template = json.load(f)
