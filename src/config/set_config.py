@@ -143,6 +143,7 @@ class GenshinConfig(ScriptConfig):
     def _init_config(self):
         """
         目前只确认与模板相同，未完全适配。
+        确认包含了幽境、自动秘境、千星、周常。
         """
         config = self._load()
         template = self._load_template()
@@ -167,6 +168,11 @@ class EndfieldConfig(ScriptConfig):
     def __init__(self):
         self.display_name = "终末地"
         self._task_key = "体力本"
+        self._init_config()
+
+    def _init_config(self):
+        # TODO: 确认包含了绳索等配置
+        pass
 
 
 # ---- 绝区零 Zenless Zone Zero ----
@@ -223,6 +229,11 @@ class StarRailConfig(ScriptConfig):
     def __init__(self):
         self.display_name = "崩铁"
         self._task_key = "instance_type"
+        self._init_config()
+
+    def _init_config(self):
+        # TODO: 确认包含了培养角色等配置
+        pass
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
@@ -304,8 +315,6 @@ class ArknightsConfig(ScriptConfig):
                 if cur[i].get("StagePlan") != template[i]["StagePlan"]:
                     return False
         return True
-
-    # ---- set_dungeon ----
 
     def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
         config = self._load()
