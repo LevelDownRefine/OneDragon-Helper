@@ -247,19 +247,14 @@ class TestGenshinConfig(unittest.TestCase):
         mock_save.assert_not_called()
 
     def test_init_config_misaligned_saves(self):
-        """config 与模板不对齐时 save"""
+        """config 与模板不对齐时 assert"""
         template = {"DomainName": "绝缘本", "PartyName": "队伍A"}
         config = {"DomainName": "旧本", "PartyName": "队伍B"}
         with patch.object(GenshinConfig, '_load', return_value=config), \
              patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template))), \
-             patch.object(GenshinConfig, '_save') as mock_save:
-            GenshinConfig()
-        mock_save.assert_called_once()
-        saved = mock_save.call_args[0][0]
-        self.assertEqual(saved["DomainName"], "绝缘本")
-        # PartyName 不为空则保留
-        self.assertEqual(saved["PartyName"], "队伍B")
+             patch('builtins.open', mock_open(read_data=json.dumps(template))):
+            with self.assertRaises(AssertionError):
+                GenshinConfig()
 
     def test_init_config_party_name_missing_raises(self):
         """config 中缺少 PartyName 应 assert"""

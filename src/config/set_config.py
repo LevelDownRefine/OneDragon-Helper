@@ -141,6 +141,9 @@ class GenshinConfig(ScriptConfig):
         self._init_config()
 
     def _init_config(self):
+        """
+        目前只确认与模板相同，未完全适配。
+        """
         config = self._load()
         template = self._load_template()
 
@@ -154,8 +157,8 @@ class GenshinConfig(ScriptConfig):
                 changed = True
 
         if changed:
-            print(f"[set_config][{self.display_name}] init config") # TODO: assert False
-            self._save(config)
+            assert False, f"[set_config][{self.display_name}] init config"
+            # self._save(config)
 
 
 # ---- 终末地 Arknights: Endfield ----
@@ -174,6 +177,9 @@ class ZenlessZoneZeroConfig(ScriptConfig):
         self._init_config()
 
     def _init_config(self):
+        """
+        初始化配置文件，确保包含实战模拟室、专业挑战室、区域巡防任务，并设置为代理人方案培养。
+        """
         config = self._load()
         template = self._load_template()
 
@@ -269,6 +275,9 @@ class ArknightsConfig(ScriptConfig):
                     self._task_map[name] = {"index": index, "stage": stage}
 
     def _init_config(self):
+        """
+        初始化配置文件，确保包含红票、经验、龙门币、土等任务。
+        """
         config = self._load()
         cur_config = config["Configurations"]["Default"]["TaskQueue"]
 
