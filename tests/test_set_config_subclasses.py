@@ -626,19 +626,23 @@ class TestArknightsConfig(unittest.TestCase):
     def test_init_config_aligned_no_save(self):
         """TaskQueue 已与模板对齐时不 save"""
         cfg = self._make_cfg()
-        # 构造与模板对齐的 cur_config
-        template_queue = [None] * 10
-        template_queue[0] = {"Name": "开始唤醒", "$type": "StartUpTask"}
-        for i, name in enumerate(["剿灭", "红票", "经验", "龙门币", "土"], start=1):
-            stage = cfg._task_map[name]["stage"]
-            template_queue[i] = {"Name": name, "$type": "FightTask", "StagePlan": [stage]}
-        template_queue[6] = {"Name": "自动公招", "$type": "RecruitTask"}
-        template_queue[7] = {"Name": "基建换班", "$type": "InfrastTask"}
-        template_queue[8] = {"Name": "信用收支", "$type": "MallTask"}
-        template_queue[9] = {"Name": "领取奖励", "$type": "AwardTask"}
+        template_queue = [
+            {"Name": "开始唤醒", "$type": "StartUpTask"},
+            {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]},
+            {"Name": "红票", "$type": "FightTask", "StagePlan": ["AP-5"]},
+            {"Name": "经验", "$type": "FightTask", "StagePlan": ["LS-6"]},
+            {"Name": "龙门币", "$type": "FightTask", "StagePlan": ["CE-6"]},
+            {"Name": "土", "$type": "FightTask", "StagePlan": ["1-7"]},
+            {"Name": "自动公招", "$type": "RecruitTask"},
+            {"Name": "基建换班", "$type": "InfrastTask"},
+            {"Name": "信用收支", "$type": "MallTask"},
+            {"Name": "领取奖励", "$type": "AwardTask"},
+        ]
 
         config = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
         with patch.object(cfg, '_load', return_value=config), \
+             patch('os.path.exists', return_value=True), \
+             patch('builtins.open', mock_open(read_data=json.dumps(template_queue))), \
              patch.object(cfg, '_save') as mock_save:
             cfg._init_config()
         mock_save.assert_not_called()
@@ -646,9 +650,23 @@ class TestArknightsConfig(unittest.TestCase):
     def test_init_config_misaligned_saves(self):
         """TaskQueue 不对齐时 save"""
         cfg = self._make_cfg()
+        template_queue = [
+            {"Name": "开始唤醒", "$type": "StartUpTask"},
+            {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]},
+            {"Name": "红票", "$type": "FightTask", "StagePlan": ["AP-5"]},
+            {"Name": "经验", "$type": "FightTask", "StagePlan": ["LS-6"]},
+            {"Name": "龙门币", "$type": "FightTask", "StagePlan": ["CE-6"]},
+            {"Name": "土", "$type": "FightTask", "StagePlan": ["1-7"]},
+            {"Name": "自动公招", "$type": "RecruitTask"},
+            {"Name": "基建换班", "$type": "InfrastTask"},
+            {"Name": "信用收支", "$type": "MallTask"},
+            {"Name": "领取奖励", "$type": "AwardTask"},
+        ]
         cur_queue = [{"Name": "wrong", "$type": "Unknown"}]
         config = {"Configurations": {"Default": {"TaskQueue": cur_queue}}}
         with patch.object(cfg, '_load', return_value=config), \
+             patch('os.path.exists', return_value=True), \
+             patch('builtins.open', mock_open(read_data=json.dumps(template_queue))), \
              patch.object(cfg, '_save') as mock_save:
             cfg._init_config()
         mock_save.assert_called_once()

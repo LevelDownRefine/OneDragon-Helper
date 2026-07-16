@@ -372,19 +372,10 @@ class ArknightsConfig(ScriptConfig):
         config = self._load()
         cur_config = config["Configurations"]["Default"]["TaskQueue"]
 
-        task_config: list = [None] * 10
-        task_config[0] = {'$type': 'StartUpTask', 'AccountName': '', 'AccountSwitchEnabled': False, 'Name': '开始唤醒', 'IsEnable': True, 'TaskType': 'StartUp'}
-        # 索引 1-5: 由 _task_map 生成 FightTask
-        task_config[1] = self._make_fight_task("剿灭", is_enable=True, hide_unavailable=True)
-        task_config[2] = self._make_fight_task("红票")
-        task_config[3] = self._make_fight_task("经验")
-        task_config[4] = self._make_fight_task("龙门币")
-        task_config[5] = self._make_fight_task("土", is_enable=True, drop_count=5, use_expiring_medicine=True)
-        # 索引 6-9: 非战斗任务
-        task_config[6] = {'$type': 'RecruitTask', 'MaxTimes': 4, 'ExtraTagMode': 0, 'Level3PreferTags': [], 'PreferTagEnabled': True, 'PreserveTagList': ['支援机械'], 'PreserveTagEnabled': False, 'RefreshLevel3': True, 'ForceRefresh': True, 'Level3Choose': True, 'Level4Choose': True, 'Level5Choose': True, 'Level6Choose': False, 'Level3Time': 540, 'Level4Time': 540, 'Name': '自动公招', 'IsEnable': True, 'TaskType': 'Recruit'}
-        task_config[7] = {'$type': 'InfrastTask', 'Mode': 'Normal', 'UsesOfDrones': 'PureGold', 'DormThreshold': 30, 'DormTrustEnabled': True, 'OriginiumShardAutoReplenishment': True, 'DormFilterNotStationed': True, 'ReceptionMessageBoard': True, 'ReceptionClueExchange': True, 'SendClue': True, 'ContinueTraining': False, 'Filename': '', 'PlanSelect': -1, 'RoomList': [{'Room': 'Mfg'}, {'Room': 'Trade'}, {'Room': 'Control'}, {'Room': 'Power'}, {'Room': 'Reception'}, {'Room': 'Office'}, {'Room': 'Dorm'}, {'Room': 'Processing'}, {'Room': 'Training'}], 'Name': '基建换班', 'IsEnable': True, 'TaskType': 'Infrast'}
-        task_config[8] = {'$type': 'MallTask', 'Shopping': True, 'CreditFight': False, 'CreditFightFormation': 0, 'CreditFightLastTime': '2025/09/13 00:00:00', 'CreditFightOnceADay': True, 'VisitFriends': True, 'VisitFriendsOnceADay': True, 'VisitFriendsLastTime': '2026/07/14 00:00:00', 'FirstList': '招聘许可', 'BlackList': '碳;家具;加急许可', 'ShoppingIgnoreBlackListWhenFull': False, 'OnlyBuyDiscount': False, 'ReserveMaxCredit': False, 'IsCreditFightAvailable': False, 'IsVisitFriendsAvailable': False, 'Name': '信用收支', 'IsEnable': True, 'TaskType': 'Mall'}
-        task_config[9] = {'$type': 'AwardTask', 'Award': True, 'Mail': True, 'FreeGacha': True, 'Orundum': True, 'Mining': True, 'SpecialAccess': True, 'Name': '领取奖励', 'IsEnable': True, 'TaskType': 'Award'}
+        template_path = os.path.join(get_root_dir(), "config", "MAA一条龙.json")
+        self._assert_template_exists(template_path)
+        with open(template_path, 'r', encoding='utf-8') as f:
+            task_config = json.load(f)
 
         if self._is_aligned(cur_config, task_config):
             return
