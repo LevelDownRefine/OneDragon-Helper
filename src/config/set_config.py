@@ -275,7 +275,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
         print(f"[set_config][{self.display_name}] zzz无需适配")
 
-    def _is_aligned(config: dict, template: dict) -> bool:
+    def _is_aligned(self, config: dict, template: dict) -> bool:
         """
         检查游戏脚本 config 与模板是否对齐（严格要求顺序一致）：
         - plan_list: 逐项按顺序比较，模板中出现的字段必须一致
