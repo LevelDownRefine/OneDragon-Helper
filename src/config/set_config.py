@@ -239,7 +239,7 @@ class GenshinConfig(ScriptConfig):
                 changed = True
 
         if changed:
-            print(f"[set_config][{self.display_name}] init config")
+            print(f"[set_config][{self.display_name}] init config") # TODO: assert False
             self._save(config)
 
 

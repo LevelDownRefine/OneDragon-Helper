@@ -335,6 +335,44 @@ class MainWindow(QMainWindow):
         scroll.setWidget(self.scroll_content)
         layout.addWidget(scroll, stretch=1)
 
+        # 快捷操作按钮（全选 / 清空）
+        action_layout = QHBoxLayout()
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(8)
+
+        self.select_all_btn = QPushButton("一键全选")
+        self.select_all_btn.setFixedHeight(28)
+        self.select_all_btn.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                background: white;
+                font-size: 11px;
+                color: #303030;
+            }
+            QPushButton:hover { border-color: #a0a0a0; }
+        """)
+        self.select_all_btn.clicked.connect(self._select_all)
+        action_layout.addWidget(self.select_all_btn)
+
+        self.deselect_all_btn = QPushButton("清空选择")
+        self.deselect_all_btn.setFixedHeight(28)
+        self.deselect_all_btn.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                background: white;
+                font-size: 11px;
+                color: #303030;
+            }
+            QPushButton:hover { border-color: #a0a0a0; }
+        """)
+        self.deselect_all_btn.clicked.connect(self._deselect_all)
+        action_layout.addWidget(self.deselect_all_btn)
+
+        action_layout.addStretch()
+        layout.addLayout(action_layout)
+
         # 运行按钮
         self.run_btn = QPushButton("▶ 运行全部开启的脚本")
         self.run_btn.setFixedHeight(40)
@@ -496,6 +534,22 @@ class MainWindow(QMainWindow):
         else:
             self.status_bar.showMessage(f"运行结束 (退出码: {return_code})")
             QMessageBox.warning(self, "提示", f"脚本运行结束，退出码: {return_code}")
+
+    def _select_all(self):
+        """全选所有脚本"""
+        for item in self.script_items:
+            if not item.enabled:
+                item.enabled = True
+                item._update_switch_style()
+        self.status_bar.showMessage(f"已全选 {len(self.script_items)} 个脚本")
+
+    def _deselect_all(self):
+        """清空所有选择"""
+        for item in self.script_items:
+            if item.enabled:
+                item.enabled = False
+                item._update_switch_style()
+        self.status_bar.showMessage("已清空所有选择")
 
 
 def main():

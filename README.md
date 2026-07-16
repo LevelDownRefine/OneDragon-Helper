@@ -11,4 +11,4 @@
 `.venv\Scripts\activate.bat`
 
 ## run
-`python src/gui_launcher.py`
+`python -m src.gui_launcher`
