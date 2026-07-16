@@ -364,16 +364,23 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
 
     # ---- _is_aligned 单元测试 ----
 
+    def _make_cfg(self):
+        """创建一个跳过 _init_config 的 ZenlessZoneZeroConfig 实例"""
+        with patch.object(ZenlessZoneZeroConfig, '_init_config'):
+            return ZenlessZoneZeroConfig()
+
     def test_is_aligned_identical(self):
         template = {"plan_list": [{"tab_name": "A", "category_name": "x"}], "double_reward": False}
         config = {"plan_list": [{"tab_name": "A", "category_name": "x"}], "double_reward": False}
-        self.assertTrue(ZenlessZoneZeroConfig._is_aligned(config, template))
+        cfg = self._make_cfg()
+        self.assertTrue(cfg._is_aligned(config, template))
 
     def test_is_aligned_extra_fields_in_config_ok(self):
         """config 中 plan_list 项有额外字段，模板中出现的字段一致即可"""
         template = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
         config = {"plan_list": [{"tab_name": "A", "category_name": "x", "extra": 1}]}
-        self.assertTrue(ZenlessZoneZeroConfig._is_aligned(config, template))
+        cfg = self._make_cfg()
+        self.assertTrue(cfg._is_aligned(config, template))
 
     def test_is_aligned_more_items_in_config_ok(self):
         """config plan_list 比模板长是可以的"""
@@ -382,7 +389,8 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
             {"tab_name": "A", "category_name": "x"},
             {"tab_name": "B", "category_name": "y"},
         ]}
-        self.assertTrue(ZenlessZoneZeroConfig._is_aligned(config, template))
+        cfg = self._make_cfg()
+        self.assertTrue(cfg._is_aligned(config, template))
 
     def test_is_aligned_order_mismatch_returns_false(self):
         """plan_list 顺序不一致应返回 False"""
@@ -394,19 +402,22 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
             {"tab_name": "B", "category_name": "y"},
             {"tab_name": "A", "category_name": "x"},
         ]}
-        self.assertFalse(ZenlessZoneZeroConfig._is_aligned(config, template))
+        cfg = self._make_cfg()
+        self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_field_value_mismatch_returns_false(self):
         """plan_list 项字段值不一致应返回 False"""
         template = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
         config = {"plan_list": [{"tab_name": "A", "category_name": "z"}]}
-        self.assertFalse(ZenlessZoneZeroConfig._is_aligned(config, template))
+        cfg = self._make_cfg()
+        self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_missing_field_returns_false(self):
         """plan_list 项缺少模板中出现的字段应返回 False"""
         template = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
         config = {"plan_list": [{"tab_name": "A"}]}
-        self.assertFalse(ZenlessZoneZeroConfig._is_aligned(config, template))
+        cfg = self._make_cfg()
+        self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_config_shorter_list_returns_false(self):
         """config plan_list 比模板短应返回 False"""
@@ -415,19 +426,22 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
             {"tab_name": "B", "category_name": "y"},
         ]}
         config = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
-        self.assertFalse(ZenlessZoneZeroConfig._is_aligned(config, template))
+        cfg = self._make_cfg()
+        self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_missing_top_key_returns_false(self):
         """config 缺少模板中的顶层 key 应返回 False"""
         template = {"double_reward": False}
         config = {}
-        self.assertFalse(ZenlessZoneZeroConfig._is_aligned(config, template))
+        cfg = self._make_cfg()
+        self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_top_key_value_mismatch_returns_false(self):
         """顶层 key 值不一致应返回 False"""
         template = {"double_reward": False}
         config = {"double_reward": True}
-        self.assertFalse(ZenlessZoneZeroConfig._is_aligned(config, template))
+        cfg = self._make_cfg()
+        self.assertFalse(cfg._is_aligned(config, template))
 
 
 # ============================================================

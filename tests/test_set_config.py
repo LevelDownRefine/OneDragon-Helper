@@ -55,7 +55,8 @@ class TestGetScriptRootDir(unittest.TestCase):
         }
         # _get_script_root_dir 内部会统一为正斜杠，期望值也要一致
         expected_root = os.path.dirname(fake_path.replace('\\', '/'))
-        with patch.object(set_config, '_load_config_yml', return_value=fake_config):
+        with patch.object(set_config, '_load_config_yml', return_value=fake_config), \
+             patch('os.path.exists', return_value=True):
             root = set_config._get_script_root_dir("鸣潮")
         self.assertEqual(root, expected_root)
 
@@ -67,7 +68,8 @@ class TestGetScriptRootDir(unittest.TestCase):
                  "script_path": r"C:\Users\test\ok-ww\ok-ww.exe"},
             ]
         }
-        with patch.object(set_config, '_load_config_yml', return_value=fake_config):
+        with patch.object(set_config, '_load_config_yml', return_value=fake_config), \
+             patch('os.path.exists', return_value=True):
             root = set_config._get_script_root_dir("鸣潮")
         self.assertEqual(root, "C:/Users/test/ok-ww")
 
