@@ -33,6 +33,12 @@ _CONFIG_REL_PATHS: dict[str, str] = {
     "粥":     "config/gui.new.json",
 }
 
+_TEMPLATE_PATHS: dict[str, str] = {
+    "原神":   "BGI一条龙.json",
+    "绝区零": "ZZZ一条龙.yml",
+    "粥":     "MAA一条龙.json",
+}
+
 
 def _load_config_yml() -> dict:
     """读取主配置 config.yml"""
@@ -129,24 +135,29 @@ class ScriptConfig:
     _task_map: dict[str, str] = {}
     """副本中文名 → config 值的映射，空 dict 表示直接用 dungeon_name"""
 
-    # ---- load / save ----
-
     def _load(self) -> dict:
         return load_config(self.display_name)
 
     def _save(self, config: dict):
         save_config(self.display_name, config)
 
-    # ---- 安全检查工具 ----
-
-    def _assert_template_exists(self, template_path: str) -> None:
+    def _load_template(self) -> dict[str, Any] | list[dict[str, Any]]:
         """
-        检查模板文件是否存在，不存在则抛出 AssertionError。
-        统一格式：[set_config][display_name] 未找到模板文件: path。
+        加载模板文件，支持 JSON 和 YAML 格式。
+        文件不存在或格式不支持时抛出 AssertionError。
         """
+        assert self.display_name in _TEMPLATE_PATHS, \
+            f"[set_config][{self.display_name}] 未配置模板路径"
+        rel_path = _TEMPLATE_PATHS[self.display_name]
+        template_path = os.path.join(get_root_dir(), "config", rel_path)
         assert os.path.exists(template_path), f"[set_config][{self.display_name}] 未找到模板文件: {template_path}"
-
-    # ---- 子类按需覆盖的操作 ----
+        ext = os.path.splitext(template_path)[1].lower()
+        with open(template_path, 'r', encoding='utf-8') as f:
+            if ext == '.json':
+                return json.load(f)
+            elif ext in ('.yaml', '.yml'):
+                return yaml.safe_load(f)
+        raise ValueError(f"[set_config][{self.display_name}] 不支持的模板格式: {ext}")
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
         """
@@ -238,10 +249,7 @@ class GenshinConfig(ScriptConfig):
 
     def _init_config(self):
         config = self._load()
-        template_path = os.path.join(get_root_dir(), "config", "BGI一条龙.json")
-        self._assert_template_exists(template_path)
-        with open(template_path, 'r', encoding='utf-8') as f:
-            template = json.load(f)
+        template = self._load_template()
 
         changed = False
         for key, val in template.items():
@@ -274,10 +282,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 
     def _init_config(self):
         config = self._load()
-        template_path = os.path.join(get_root_dir(), "config", "ZZZ一条龙.yml")
-        self._assert_template_exists(template_path)
-        with open(template_path, 'r', encoding='utf-8') as f:
-            template = yaml.safe_load(f)
+        template = self._load_template()
 
         # 如果 config 已对齐，无需更新
         if self._is_aligned(config, template):
@@ -361,10 +366,7 @@ class ArknightsConfig(ScriptConfig):
         config = self._load()
         cur_config = config["Configurations"]["Default"]["TaskQueue"]
 
-        template_path = os.path.join(get_root_dir(), "config", "MAA一条龙.json")
-        self._assert_template_exists(template_path)
-        with open(template_path, 'r', encoding='utf-8') as f:
-            task_config = json.load(f)
+        task_config = self._load_template()
 
         # 如果当前配置与模板对齐，无需更新
         if self._is_aligned(cur_config, task_config):
