@@ -274,7 +274,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 
     def _init_config(self):
         config = self._load()
-        template_path = os.path.join(get_root_dir(), "config", "zzz_charge_plan.yml")
+        template_path = os.path.join(get_root_dir(), "config", "ZZZ一条龙.yml")
         self._assert_template_exists(template_path)
         with open(template_path, 'r', encoding='utf-8') as f:
             template = yaml.safe_load(f)
