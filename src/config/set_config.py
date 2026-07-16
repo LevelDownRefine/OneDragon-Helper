@@ -58,6 +58,7 @@ def _get_script_root_dir(script_display_name: str) -> str:
             script_path = script.get('script_path', '')
             assert script_path, f"[set_config] config.yml 中 {script_display_name} 的 script_path 为空"
             normalized = script_path.replace('\\', '/')
+            assert os.path.exists(normalized), f"[set_config] script_path 不存在: {normalized}"
             return os.path.dirname(normalized)
     assert False, f"[set_config] config.yml 中找不到脚本: {script_display_name}"
 
@@ -274,7 +275,6 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
         print(f"[set_config][{self.display_name}] zzz无需适配")
 
-    @staticmethod
     def _is_aligned(config: dict, template: dict) -> bool:
         """
         检查游戏脚本 config 与模板是否对齐（严格要求顺序一致）：
