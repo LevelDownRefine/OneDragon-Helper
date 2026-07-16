@@ -532,7 +532,7 @@ class TestNTEConfig(unittest.TestCase):
 # ============================================================
 
 class TestArknightsConfig(unittest.TestCase):
-    """测试粥的 _make_fight_task / _is_aligned / _init_config / set_dungeon"""
+    """测试粥的 _is_aligned / _init_config / set_dungeon"""
 
     def _make_cfg(self):
         """创建一个跳过 _init_config 的 ArknightsConfig 实例"""
@@ -545,29 +545,6 @@ class TestArknightsConfig(unittest.TestCase):
         self.assertIn("剿灭", cfg._task_map)
         self.assertEqual(cfg._task_map["剿灭"]["index"], 1)
         self.assertEqual(cfg._task_map["土"]["index"], 5)
-
-    # ---- _make_fight_task ----
-
-    def test_make_fight_task_basic(self):
-        cfg = self._make_cfg()
-        task = cfg._make_fight_task("剿灭")
-        self.assertEqual(task["$type"], "FightTask")
-        self.assertEqual(task["Name"], "剿灭")
-        self.assertEqual(task["StagePlan"], ["Annihilation"])
-        self.assertEqual(task["IsEnable"], False)  # 默认 False
-
-    def test_make_fight_task_with_kwargs(self):
-        cfg = self._make_cfg()
-        task = cfg._make_fight_task("土", is_enable=True, drop_count=5, use_expiring_medicine=True)
-        self.assertTrue(task["IsEnable"])
-        self.assertEqual(task["DropCount"], 5)
-        self.assertTrue(task["UseExpiringMedicine"])
-        self.assertEqual(task["StagePlan"], ["1-7"])
-
-    def test_make_fight_task_hide_unavailable(self):
-        cfg = self._make_cfg()
-        task = cfg._make_fight_task("剿灭", hide_unavailable=True)
-        self.assertTrue(task["HideUnavailableStage"])
 
     # ---- _is_aligned ----
 

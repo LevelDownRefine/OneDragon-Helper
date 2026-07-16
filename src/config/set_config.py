@@ -279,6 +279,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
         with open(template_path, 'r', encoding='utf-8') as f:
             template = yaml.safe_load(f)
 
+        # 如果 config 已对齐，无需更新
         if self._is_aligned(config, template):
             return
 
@@ -356,18 +357,6 @@ class ArknightsConfig(ScriptConfig):
         }
         self._init_config()
 
-    def _make_fight_task(self, name: str, *, is_enable: bool = False,
-                         hide_unavailable: bool = False, drop_count: int = 0,
-                         use_expiring_medicine: bool = False) -> dict:
-        """生成 FightTask 模板，stage 从 self._task_map 获取"""
-        stage = self._task_map[name]["stage"]
-        return {'$type': 'FightTask', 'UseMedicine': False, 'MedicineCount': 0, 'UseStone': False,
-                'StoneCount': 0, 'EnableTargetDrop': False, 'DropId': '', 'DropCount': drop_count, 'IsInventoryTarget': False, 'EnableTimesLimit': False,
-                'TimesLimit': 2147483647, 'Series': 0, 'StagePlan': [stage], 'IsDrGrandet': False, 'UseExpiringMedicine': use_expiring_medicine, 'MedicineExpireDays': 2,
-                'UseExpireMedicineForActivity': False, 'UseCustomAnnihilation': False, 'AnnihilationStage': 'Annihilation', 'HideUnavailableStage': hide_unavailable,
-                'IsStageManually': False, 'UseOptionalStage': False, 'UseStoneAllowSave': False, 'HideSeries': False, 'StageResetMode': 'Current',
-                'UseWeeklySchedule': False, 'Name': name, 'IsEnable': is_enable, 'TaskType': 'Fight'}
-
     def _init_config(self):
         config = self._load()
         cur_config = config["Configurations"]["Default"]["TaskQueue"]
@@ -377,6 +366,7 @@ class ArknightsConfig(ScriptConfig):
         with open(template_path, 'r', encoding='utf-8') as f:
             task_config = json.load(f)
 
+        # 如果当前配置与模板对齐，无需更新
         if self._is_aligned(cur_config, task_config):
             return
 
