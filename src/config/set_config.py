@@ -16,7 +16,7 @@ import json
 import yaml
 from typing import Any
 
-from src.utils import get_config_yml_path_under_root, get_our_bgi_user_dir, get_root_dir
+from src.utils import get_config_yml_path_under_root, get_root_dir
 
 
 # ============================================================
@@ -51,6 +51,7 @@ def _get_script_root_dir(script_display_name: str) -> str:
 
     script_path 可能是 Windows 风格路径（C:\\...\\xxx.exe），
     统一将反斜杠转为正斜杠后再取 dirname，确保跨平台可用。
+    并确保 exe 脚本存在。
     """
     config_data = _load_config_yml()
     for script in config_data.get('script_list', []):
@@ -58,7 +59,7 @@ def _get_script_root_dir(script_display_name: str) -> str:
             script_path = script.get('script_path', '')
             assert script_path, f"[set_config] config.yml 中 {script_display_name} 的 script_path 为空"
             normalized = script_path.replace('\\', '/')
-            assert os.path.exists(normalized), f"[set_config] script_path 不存在: {normalized}"
+            assert os.path.exists(normalized), f"[set_config] exe 不存在: {normalized}"
             return os.path.dirname(normalized)
     assert False, f"[set_config] config.yml 中找不到脚本: {script_display_name}"
 
@@ -67,6 +68,7 @@ def get_config_path(script_display_name: str) -> str:
     """
     获取指定脚本的 config 文件绝对路径。
     拼接脚本根目录 + config 相对路径。
+    并确保 config 文件存在。
     """
     assert script_display_name in _CONFIG_REL_PATHS, \
         f"[set_config] 未适配脚本: {script_display_name}"
@@ -85,6 +87,7 @@ def load_config(script_display_name: str) -> Any:
     """
     读取指定脚本的 config 文件，返回解析后的 dict/list。
     支持 .json 和 .yaml/.yml 格式。
+    并确保 config 文件能被读取。
     """
     path = get_config_path(script_display_name)
     ext = os.path.splitext(path)[1].lower()
@@ -100,6 +103,7 @@ def save_config(script_display_name: str, data: Any) -> None:
     """
     将数据写回指定脚本的 config 文件。
     保持原始格式（json / yaml）。
+    并确保 config 文件已存在且能被写入。
     """
     path = get_config_path(script_display_name)
     ext = os.path.splitext(path)[1].lower()
@@ -132,6 +136,15 @@ class ScriptConfig:
 
     def _save(self, config: dict):
         save_config(self.display_name, config)
+
+    # ---- 安全检查工具 ----
+
+    def _assert_template_exists(self, template_path: str) -> None:
+        """
+        检查模板文件是否存在，不存在则抛出 AssertionError。
+        统一格式：[set_config][display_name] 未找到模板文件: path。
+        """
+        assert os.path.exists(template_path), f"[set_config][{self.display_name}] 未找到模板文件: {template_path}"
 
     # ---- 子类按需覆盖的操作 ----
 
@@ -226,7 +239,7 @@ class GenshinConfig(ScriptConfig):
     def _init_config(self):
         config = self._load()
         template_path = os.path.join(get_root_dir(), "config", "BGI一条龙.json")
-        assert os.path.exists(template_path), f"[set_config][{self.display_name}] 未找到模板文件: {template_path}"
+        self._assert_template_exists(template_path)
         with open(template_path, 'r', encoding='utf-8') as f:
             template = json.load(f)
 
@@ -262,7 +275,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     def _init_config(self):
         config = self._load()
         template_path = os.path.join(get_root_dir(), "config", "zzz_charge_plan.yml")
-        assert os.path.exists(template_path), f"[set_config][{self.display_name}] 未找到模板文件: {template_path}"
+        self._assert_template_exists(template_path)
         with open(template_path, 'r', encoding='utf-8') as f:
             template = yaml.safe_load(f)
 
