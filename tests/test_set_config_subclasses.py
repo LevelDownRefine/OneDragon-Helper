@@ -537,7 +537,15 @@ class TestArknightsConfig(unittest.TestCase):
     def _make_cfg(self):
         """创建一个跳过 _init_config 的 ArknightsConfig 实例"""
         with patch.object(ArknightsConfig, '_init_config'):
-            return ArknightsConfig()
+            cfg = ArknightsConfig()
+            cfg._task_map = {
+                "剿灭":   {"index": 1, "stage": "Annihilation"},
+                "红票":   {"index": 2, "stage": "AP-5"},
+                "经验":   {"index": 3, "stage": "LS-6"},
+                "龙门币": {"index": 4, "stage": "CE-6"},
+                "土":     {"index": 5, "stage": "1-7"},
+            }
+            return cfg
 
     def test_init_attributes(self):
         cfg = self._make_cfg()

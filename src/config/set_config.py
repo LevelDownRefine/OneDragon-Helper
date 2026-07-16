@@ -246,14 +246,18 @@ class ArknightsConfig(ScriptConfig):
 
     def __init__(self):
         self.display_name = "粥"
-        self._task_map = {
-            "剿灭":   {"index": 1, "stage": "Annihilation"},
-            "红票":   {"index": 2, "stage": "AP-5"},
-            "经验":   {"index": 3, "stage": "LS-6"},
-            "龙门币": {"index": 4, "stage": "CE-6"},
-            "土":     {"index": 5, "stage": "1-7"},
-        }
+        self._init_task_map()
         self._init_config()
+
+    def _init_task_map(self):
+        task_config = self._load_template()
+        self._task_map = {}
+        for index, task in enumerate(task_config):
+            if task.get("$type") == "FightTask":
+                name = task.get("Name", "")
+                stage = task.get("StagePlan", [])[0] if task.get("StagePlan") else ""
+                if name and stage:
+                    self._task_map[name] = {"index": index, "stage": stage}
 
     def _init_config(self):
         config = self._load()
