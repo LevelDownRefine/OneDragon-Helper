@@ -190,7 +190,7 @@ class ScriptItem(QFrame):
                 for seq in seq_options:
                     sub_action = submenu.addAction(str(seq))
                     sub_action.triggered.connect(
-                        lambda checked, dn=dungeon_name, sq=str(seq): self._on_dungeon_selected(dn, sq)
+                        lambda checked, dn=dungeon_name, sq=seq: self._on_dungeon_selected(dn, sq)
                     )
             else:
                 # 无二级选项 → 直接选择
@@ -396,6 +396,28 @@ class MainWindow(QMainWindow):
         self.status_bar.setStyleSheet("background-color: #f3f3f3; color: #606060;")
         self.setStatusBar(self.status_bar)
 
+    def _restore_sequence_type(self, saved: dict, seq_map: dict) -> dict:
+        """
+        恢复 sequence 的正确类型：从原始选项列表中匹配值相等的项，
+        确保类型与 dungeon_list.yml 中定义的一致。
+        例如：gui_state.json 中保存的 "17" → 原始选项中的整数 17
+        """
+        seq_val = saved.get('sequence')
+        if seq_val is None:
+            return saved
+
+        dungeon_name = saved.get('dungeon')
+        seq_options = seq_map.get(dungeon_name, [])
+        if not seq_options:
+            return saved
+
+        saved = saved.copy()
+        for opt in seq_options:
+            if str(opt) == str(seq_val):
+                saved['sequence'] = opt
+                break
+        return saved
+
     def _load_scripts(self):
         with open(get_config_yml_path_under_root(), 'r', encoding='utf-8') as f:
             self.all_config_data = yaml.safe_load(f)
@@ -434,6 +456,8 @@ class MainWindow(QMainWindow):
                         options.append(str(entry))
 
             saved = self._ui_state.get(name)
+            if saved:
+                saved = self._restore_sequence_type(saved, seq_map)
             item = ScriptItem(data, dungeon_options=options if options else None,
                               sequence_options_map=seq_map if show_seq else None,
                               show_sequence=show_seq, saved_state=saved)

@@ -168,26 +168,26 @@ class TestWutheringWavesConfig(unittest.TestCase):
 
     def test_update_sequence_tacet(self):
         config = {"Which to Farm": "Tacet Suppression", "Which Tacet Suppression to Farm": 1}
-        changed = self.cfg._update_sequence(config, "无音区", "3")
+        changed = self.cfg._update_sequence(config, "无音区", 3)
         self.assertTrue(changed)
-        self.assertEqual(config["Which Tacet Suppression to Farm"], "3")
+        self.assertEqual(config["Which Tacet Suppression to Farm"], 3)
 
     def test_update_sequence_tacet_no_change(self):
         config = {"Which to Farm": "Tacet Suppression", "Which Tacet Suppression to Farm": 2}
-        changed = self.cfg._update_sequence(config, "无音区", "2")
+        changed = self.cfg._update_sequence(config, "无音区", 2)
         self.assertFalse(changed)
 
     # ---- _update_sequence: 凝素领域 ----
 
     def test_update_sequence_forgery(self):
         config = {"Which to Farm": "Forgery Challenge", "Which Forgery Challenge to Farm": 1}
-        changed = self.cfg._update_sequence(config, "凝素领域", "4")
+        changed = self.cfg._update_sequence(config, "凝素领域", 4)
         self.assertTrue(changed)
-        self.assertEqual(config["Which Forgery Challenge to Farm"], "4")
+        self.assertEqual(config["Which Forgery Challenge to Farm"], 4)
 
     def test_update_sequence_forgery_no_change(self):
         config = {"Which to Farm": "Forgery Challenge", "Which Forgery Challenge to Farm": 2}
-        changed = self.cfg._update_sequence(config, "凝素领域", "2")
+        changed = self.cfg._update_sequence(config, "凝素领域", 2)
         self.assertFalse(changed)
 
     # ---- _update_sequence: None ----
@@ -213,11 +213,11 @@ class TestWutheringWavesConfig(unittest.TestCase):
         }
         with patch.object(self.cfg, '_load', return_value=config), \
              patch.object(self.cfg, '_save') as mock_save:
-            self.cfg.set_dungeon("凝素领域", "3")
+            self.cfg.set_dungeon("凝素领域", 3)
         mock_save.assert_called_once()
         saved = mock_save.call_args[0][0]
         self.assertEqual(saved["Which to Farm"], "Forgery Challenge")
-        self.assertEqual(saved["Which Forgery Challenge to Farm"], "3")
+        self.assertEqual(saved["Which Forgery Challenge to Farm"], 3)
 
 
 # ============================================================
@@ -484,13 +484,13 @@ class TestNTEConfig(unittest.TestCase):
 
     def test_update_sequence_changes_value(self):
         config = {"空幕序号": 1}
-        changed = self.cfg._update_sequence(config, "空幕", "3")
+        changed = self.cfg._update_sequence(config, "空幕", 3)
         self.assertTrue(changed)
-        self.assertEqual(config["空幕序号"], "3")
+        self.assertEqual(config["空幕序号"], 3)
 
     def test_update_sequence_no_change(self):
         config = {"空幕序号": 2}
-        changed = self.cfg._update_sequence(config, "空幕", "2")
+        changed = self.cfg._update_sequence(config, "空幕", 2)
         self.assertFalse(changed)
 
     def test_update_sequence_none_raises(self):
@@ -508,18 +508,18 @@ class TestNTEConfig(unittest.TestCase):
         """测试 _seq_key_map 中所有副本都能正确更新"""
         for dungeon_name, seq_key in self.cfg._seq_key_map.items():
             config = {seq_key: 0}
-            changed = self.cfg._update_sequence(config, dungeon_name, "5")
+            changed = self.cfg._update_sequence(config, dungeon_name, 5)
             self.assertTrue(changed, f"{dungeon_name} 未正确更新")
-            self.assertEqual(config[seq_key], "5")
+            self.assertEqual(config[seq_key], 5)
 
     def test_set_dungeon_with_sequence_saves(self):
         config = {"任务类型": "空幕", "空幕序号": 1}
         with patch.object(self.cfg, '_load', return_value=config), \
              patch.object(self.cfg, '_save') as mock_save:
-            self.cfg.set_dungeon("空幕", "3")
+            self.cfg.set_dungeon("空幕", 3)
         mock_save.assert_called_once()
         saved = mock_save.call_args[0][0]
-        self.assertEqual(saved["空幕序号"], "3")
+        self.assertEqual(saved["空幕序号"], 3)
 
 
 # ============================================================

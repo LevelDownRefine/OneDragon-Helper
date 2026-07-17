@@ -18,6 +18,16 @@
       - 8
       - 9
       - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
   - 模拟领域:
       - 共鸣者经验
       - 武器经验
@@ -33,6 +43,15 @@
       - 8
       - 9
       - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
 
 # config: User\OneDragon\默认配置.json
 # see: https://github.com/babalae/bettergi-scripts-list/blob/main/repo/js/AutoDomain/main.js

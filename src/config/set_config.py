@@ -69,12 +69,12 @@ class ScriptConfig:
         config[self._task_key] = task
         return True
 
-    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | None) -> bool:
+    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
         """更新序列字段。返回是否修改。默认不启用。"""
         assert sequence is None, f"[set_config][{self.display_name}] 子类必须设 _update_sequence"
         return False
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
+    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         """
         设置副本。默认流程：_update_task → _update_sequence → save。
         子类直接覆盖 set_dungeon 则完全自定义（如粥）。
@@ -105,7 +105,7 @@ class WutheringWavesConfig(ScriptConfig):
             "无音区": "Tacet Suppression",
         }
 
-    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | None) -> bool:
+    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
         if sequence is None:
             return False
         if config['Which to Farm'] == "Simulation Challenge":
@@ -120,13 +120,15 @@ class WutheringWavesConfig(ScriptConfig):
                 return False
             config['Material Selection'] = target
         elif config['Which to Farm'] == "Tacet Suppression":
-            if str(config['Which Tacet Suppression to Farm']) == sequence:
+            key = 'Which Tacet Suppression to Farm'
+            if config[key] == sequence:
                 return False
-            config['Which Tacet Suppression to Farm'] = str(sequence)
+            config[key] = sequence
         elif config['Which to Farm'] == "Forgery Challenge":
-            if str(config['Which Forgery Challenge to Farm']) == sequence:
+            key = 'Which Forgery Challenge to Farm'
+            if config[key] == sequence:
                 return False
-            config['Which Forgery Challenge to Farm'] = str(sequence)
+            config[key] = sequence
         else:
             assert False, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
         return True
@@ -196,7 +198,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
         print(f"[set_config][{self.display_name}] init config")
         self._save(template)
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
+    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         print(f"[set_config][{self.display_name}] zzz无需适配")
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
@@ -248,13 +250,13 @@ class NTEConfig(ScriptConfig):
             "弧盘突破材料": "弧盘材料序号",
         }
 
-    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | None) -> bool:
+    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
         assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
         assert dungeon_name in self._seq_key_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
         key = self._seq_key_map[dungeon_name]
-        if str(config[key]) == sequence:
+        if config[key] == sequence:
             return False
-        config[key] = str(sequence)
+        config[key] = sequence
         return True
 
 
@@ -316,7 +318,7 @@ class ArknightsConfig(ScriptConfig):
                     return False
         return True
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | None = None):
+    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         config = self._load()
         task_config = config["Configurations"]["Default"]["TaskQueue"]
         assert dungeon_name in self._task_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
@@ -361,14 +363,14 @@ _CONFIGS: dict[str, type[ScriptConfig]] = {
 
 def set_config(script_display_name: str,
                dungeon_name: str | None = None,
-               sequence: str | None = None) -> None:
+               sequence: str | int | None = None) -> None:
     """
     外观接口：为指定脚本设置副本和刷取序列
 
     Args:
         script_display_name: 脚本显示名称（与 config.yml 中一致）
         dungeon_name: 副本名称（来自 dungeon_list.yml），None 或 "未选择" 时跳过
-        sequence: 刷取序列（字符串），None 表示无序列
+        sequence: 刷取序列（字符串或整数），None 表示无序列
     """
     # 未选择副本时，不做更改
     if not dungeon_name or dungeon_name == "未选择":
