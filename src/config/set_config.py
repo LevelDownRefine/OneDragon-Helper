@@ -25,7 +25,7 @@ class ScriptConfig:
     display_name: str = ""
     _task_key: str = ""
     """config 中副本类型对应的字段名，设了即启用 _update_task"""
-    _task_map: dict[str, str] = {}
+    _task_map: dict[str, Any] = {}
     """副本中文名 → config 值的映射，空 dict 表示直接用 dungeon_name"""
 
     def _load(self) -> dict:
@@ -71,7 +71,7 @@ class ScriptConfig:
 
     def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
         """更新序列字段。返回是否修改。默认不启用。"""
-        assert sequence is None, f"[set_config][{self.display_name}] 子类必须设 _update_sequence"
+        assert sequence is None, f"[set_config][{self.display_name}] 不支持 sequence 参数"
         return False
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
@@ -108,7 +108,7 @@ class WutheringWavesConfig(ScriptConfig):
     def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
         if sequence is None:
             return False
-        if config['Which to Farm'] == "Simulation Challenge":
+        if dungeon_name == "模拟领域":
             material_map = {
                 "共鸣者经验": "Resonator EXP",
                 "武器经验": "Weapon EXP",
@@ -116,21 +116,18 @@ class WutheringWavesConfig(ScriptConfig):
             }
             assert sequence in material_map, f"[set_config][{self.display_name}] 未适配的序列: {sequence}"
             target = material_map[sequence]
-            if config['Material Selection'] == target:
-                return False
-            config['Material Selection'] = target
-        elif config['Which to Farm'] == "Tacet Suppression":
-            key = 'Which Tacet Suppression to Farm'
-            if config[key] == sequence:
-                return False
-            config[key] = sequence
-        elif config['Which to Farm'] == "Forgery Challenge":
-            key = 'Which Forgery Challenge to Farm'
-            if config[key] == sequence:
-                return False
-            config[key] = sequence
+            key = "Material Selection"
+        elif dungeon_name == "无音区":
+            key = "Which Tacet Suppression to Farm"
+            target = sequence
+        elif dungeon_name == "凝素领域":
+            key = "Which Forgery Challenge to Farm"
+            target = sequence
         else:
             assert False, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        if config[key] == target:
+            return False
+        config[key] = target
         return True
 
 
@@ -146,6 +143,7 @@ class GenshinConfig(ScriptConfig):
         """
         目前只确认与模板相同，未完全适配。
         确认包含了幽境、自动秘境、千星、周常。
+        TODO: 完成适配后移除 assert，启用保存逻辑
         """
         config = self._load()
         template = self._load_template()
@@ -153,15 +151,14 @@ class GenshinConfig(ScriptConfig):
         changed = False
         for key, val in template.items():
             if key == "PartyName":
-                # PartyName 可以与模板不同，但不能为空
                 assert key in config, f"[set_config][{self.display_name}] config 中缺少字段: {key}"
             elif key not in config or config[key] != val:
                 config[key] = val
                 changed = True
 
         if changed:
-            assert False, f"[set_config][{self.display_name}] init config"
             # self._save(config)
+            assert False, f"[set_config][{self.display_name}] init config（未完成适配）"
 
 
 # ---- 终末地 Arknights: Endfield ----
