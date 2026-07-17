@@ -1,120 +1,198 @@
 # 各自动化脚本支持的副本列表
 # key: 脚本 display_name（与 config.yml 中对应）
-# value: 可选副本名称列表
-# 后续适配脚本内部 config 后，选择的副本名将通过参数或配置注入
+# value: 结构化配置（见下方格式说明）
+
+# 配置格式（结构化）：
+# dungeons:
+#   - name: "副本名称"                    # 一级选项名称
+#   - name: "有二级选项的副本"
+#     sequences:                          # 二级选项（可选）
+#       - display: "显示名称"              # 界面显示的友好名称
+#         value: 实际值                    # 保存和传递给 set_config 的值
 
 # config: data\apps\ok-ww\working\configs\DailyTask.json
 # see: https://github.com/ok-oldking/ok-wuthering-waves/blob/master/src/task/DailyTask.py
 鸣潮:
-  - 未选择
-  - 凝素领域:
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
-      - 6
-      - 7
-      - 8
-      - 9
-      - 10
-      - 11
-      - 12
-      - 13
-      - 14
-      - 15
-      - 16
-      - 17
-      - 18
-      - 19
-      - 20
-  - 模拟领域:
-      - 共鸣者经验
-      - 武器经验
-      - 贝币
-  - 无音区:
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
-      - 6
-      - 7
-      - 8
-      - 9
-      - 10
-      - 11
-      - 12
-      - 13
-      - 14
-      - 15
-      - 16
-      - 17
-      - 18
-      - 19
+  dungeons:
+    - name: "未选择"
+    - name: "凝素领域"
+      sequences:
+        - display: "梦州-迅刀"
+          value: 1
+        - display: "梦州-音感仪"
+          value: 2
+        - display: "梦州-长刃"
+          value: 3
+        - display: "梦州-臂铠"
+          value: 4
+        - display: "梦州-佩枪"
+          value: 5
+        - display: "拉海洛-迅刀"
+          value: 6
+        - display: "拉海洛-音感仪"
+          value: 7
+        - display: "拉海洛-长刃"
+          value: 8
+        - display: "拉海洛-臂铠"
+          value: 9
+        - display: "拉海洛-佩枪"
+          value: 10
+        - display: "黎那汐塔-迅刀"
+          value: 11
+        - display: "黎那汐塔-音感仪"
+          value: 12
+        - display: "黎那汐塔-长刃"
+          value: 13
+        - display: "黎那汐塔-臂铠"
+          value: 14
+        - display: "黎那汐塔-佩枪"
+          value: 15
+        - display: "今州-迅刀"
+          value: 16
+        - display: "今州-音感仪"
+          value: 17
+        - display: "今州-长刃"
+          value: 18
+        - display: "今州-臂铠"
+          value: 19
+        - display: "今州-佩枪"
+          value: 20
+    - name: "模拟领域"
+      sequences:
+        - display: "共鸣者经验"
+          value: "共鸣者经验"
+        - display: "武器经验"
+          value: "武器经验"
+        - display: "贝币"
+          value: "贝币"
+    - name: "无音区"
+      sequences:
+        - display: "梦州-盾"
+          value: 1
+        - display: "梦州-风"
+          value: 2
+        - display: "拉海洛-冰"
+          value: 3
+        - display: "拉海洛-风"
+          value: 4
+        - display: "拉海洛-火"
+          value: 5
+        - display: "拉海洛-光"
+          value: 6
+        - display: "拉海洛-奶"
+          value: 7
+        - display: "黎那汐塔-荣光火"
+          value: 8
+        - display: "黎那汐塔-流云暗"
+          value: 9
+        - display: "黎那汐塔-充能"
+          value: 10
+        - display: "黎那汐塔-冰"
+          value: 11
+        - display: "黎那汐塔-高天暗"
+          value: 12
+        - display: "今州-奶"
+          value: 13
+        - display: "今州-冰风"
+          value: 14
+        - display: "今州-冰雷"
+          value: 15
+        - display: "今州-光"
+          value: 16
+        - display: "今州-火奶"
+          value: 17
+        - display: "今州-雷火"
+          value: 18
+        - display: "今州-暗轻云"
+          value: 19
 
 # config: User\OneDragon\默认配置.json
 # see: https://github.com/babalae/bettergi-scripts-list/blob/main/repo/js/AutoDomain/main.js
 原神:
-  - 未选择
-  - 山风的荆冕
-  - 霜凝的机枢
-  - 无光的深都
+  dungeons:
+    - name: "未选择"
+    - name: "山风的荆冕"
+    - name: "霜凝的机枢"
+    - name: "无光的深都"
 
 # config: data\apps\ok-ef\working\configs\DailyTask.json
 # see: https://github.com/AliceJump/ok-end-field/blob/master/docs/%E4%BD%93%E5%8A%9B%E6%9C%AC.md
 终末地:
-  - 未选择
-  - 武陵城
-  - 干员经验
-  - 干员进阶
-  - 钱币收集
-  - 技能提升
-  - 武器经验
-  - 武器进阶
+  dungeons:
+    - name: "未选择"
+    - name: "武陵城"
+    - name: "干员经验"
+    - name: "干员进阶"
+    - name: "钱币收集"
+    - name: "技能提升"
+    - name: "武器经验"
+    - name: "武器进阶"
 
 # config: config\01\one_dragon\charge_plan.yml
 # see: https://github.com/OneDragon-Anything/ZenlessZoneZero-OneDragon/blob/main/docs/develop/zzz/application/charge_plan.md
 绝区零:
-  - 未选择
-  - 代理人方案培养
+  dungeons:
+    - name: "未选择"
+    - name: "代理人方案培养"
 
 # config: config.yaml
 崩铁:
-  - 未选择
-  - 拟造花萼（赤）
-  - 凝滞虚影
-  - 侵蚀隧洞
-  - 饰品提取
+  dungeons:
+    - name: "未选择"
+    - name: "拟造花萼（赤）"
+    - name: "凝滞虚影"
+    - name: "侵蚀隧洞"
+    - name: "饰品提取"
 
 # config: data\apps\ok-nte\working\configs\DailyTask.json
 # see: https://github.com/BnanZ0/ok-nte/blob/main/src/tasks/AnomalyTask.py
 异环:
-  - 未选择
-  - 空幕:
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
-      - 6
-  - 异能升级材料:
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
-  - 弧盘突破材料:
-      - 1
-      - 2
-      - 3
-      - 4
-      - 5
+  dungeons:
+    - name: "未选择"
+    - name: "空幕"
+      sequences:
+        - display: "光暗"
+          value: 1
+        - display: "魂相"
+          value: 2
+        - display: "灵咒"
+          value: 3
+        - display: "守卫萝卜"
+          value: 4
+        - display: "精神图谱"
+          value: 5
+        - display: "轨道之夜"
+          value: 6
+    - name: "异能升级材料"
+      sequences:
+        - display: "鸟"
+          value: 1
+        - display: "花"
+          value: 2
+        - display: "帽"
+          value: 3
+        - display: "心"
+          value: 4
+        - display: "杯"
+          value: 5
+    - name: "弧盘突破材料"
+      sequences:
+        - display: "苹果"
+          value: 1
+        - display: "弦乐"
+          value: 2
+        - display: "梦"
+          value: 3
+        - display: "点心"
+          value: 4
+        - display: "戏剧"
+          value: 5
 
 # config: config\gui.new.json
 粥:
-  - 未选择
-  - 红票
-  - 经验
-  - 龙门币
-  - 土
+  dungeons:
+    - name: "未选择"
+    - name: "红票"
+    - name: "经验"
+    - name: "龙门币"
+    - name: "土"

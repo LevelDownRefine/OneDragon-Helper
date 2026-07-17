@@ -21,6 +21,12 @@ from src.utils import (
 )
 from src.config.set_config import set_config
 from src.config.init_config import need_config_workflow, config_workflow
+from src.config.dungeon_config import (
+    load_dungeon_map,
+    parse_dungeon_config,
+    get_display_name,
+    restore_sequence_type,
+)
 
 
 # ---- UI 状态持久化 ----
@@ -187,10 +193,10 @@ class ScriptItem(QFrame):
             if seq_options:
                 # 有二级选项 → 子菜单（从右侧弹出）
                 submenu = menu.addMenu(dungeon_name)
-                for seq in seq_options:
-                    sub_action = submenu.addAction(str(seq))
+                for display_name, actual_value in seq_options:
+                    sub_action = submenu.addAction(display_name)
                     sub_action.triggered.connect(
-                        lambda checked, dn=dungeon_name, sq=seq: self._on_dungeon_selected(dn, sq)
+                        lambda checked, dn=dungeon_name, sq=actual_value: self._on_dungeon_selected(dn, sq)
                     )
             else:
                 # 无二级选项 → 直接选择
@@ -205,10 +211,12 @@ class ScriptItem(QFrame):
         if not self._selected_dungeon:
             return "选择副本"
         if self._selected_sequence:
-            seq_str = str(self._selected_sequence)
-            if seq_str.isdigit():
-                return f"{self._selected_dungeon} > {seq_str}"
-            return seq_str
+            display_name = get_display_name(
+                self._sequence_options_map,
+                self._selected_dungeon,
+                self._selected_sequence,
+            )
+            return f"{self._selected_dungeon} > {display_name}"
         return self._selected_dungeon
 
     def _on_dungeon_selected(self, dungeon_name, sequence=None):
@@ -396,38 +404,11 @@ class MainWindow(QMainWindow):
         self.status_bar.setStyleSheet("background-color: #f3f3f3; color: #606060;")
         self.setStatusBar(self.status_bar)
 
-    def _restore_sequence_type(self, saved: dict, seq_map: dict) -> dict:
-        """
-        恢复 sequence 的正确类型：从原始选项列表中匹配值相等的项，
-        确保类型与 dungeon_list.yml 中定义的一致。
-        例如：gui_state.json 中保存的 "17" → 原始选项中的整数 17
-        """
-        seq_val = saved.get('sequence')
-        if seq_val is None:
-            return saved
-
-        dungeon_name = saved.get('dungeon')
-        seq_options = seq_map.get(dungeon_name, [])
-        if not seq_options:
-            return saved
-
-        saved = saved.copy()
-        for opt in seq_options:
-            if str(opt) == str(seq_val):
-                saved['sequence'] = opt
-                break
-        return saved
-
     def _load_scripts(self):
         with open(get_config_yml_path_under_root(), 'r', encoding='utf-8') as f:
             self.all_config_data = yaml.safe_load(f)
 
-        # 读取副本列表配置
-        self.dungeon_map = {}
-        dungeon_file = os.path.join(get_root_dir(), "config", "dungeon_list.yml")
-        if os.path.exists(dungeon_file):
-            with open(dungeon_file, 'r', encoding='utf-8') as f:
-                self.dungeon_map = yaml.safe_load(f) or {}
+        self.dungeon_map = load_dungeon_map()
 
         script_list = self.all_config_data.get('script_list', [])
 
@@ -438,26 +419,11 @@ class MainWindow(QMainWindow):
         for data in script_list:
             name = data.get('display_name', '')
             dungeon_cfg = self.dungeon_map.get(name)
-
-            # 解析副本列表：支持平铺列表 和 带二级目录的嵌套列表
-            options = []
-            seq_map = {}  # 副本名 → 二级选项列表
-            show_seq = False
-            if isinstance(dungeon_cfg, list):
-                for entry in dungeon_cfg:
-                    if isinstance(entry, dict):
-                        # 字典项：key 为副本名，value 为二级选项列表
-                        for dungeon_name, seq_list in entry.items():
-                            options.append(dungeon_name)
-                            seq_map[dungeon_name] = seq_list or []
-                        show_seq = True
-                    else:
-                        # 普通字符串项
-                        options.append(str(entry))
+            options, seq_map, show_seq = parse_dungeon_config(dungeon_cfg)
 
             saved = self._ui_state.get(name)
             if saved:
-                saved = self._restore_sequence_type(saved, seq_map)
+                saved = restore_sequence_type(saved, seq_map)
             item = ScriptItem(data, dungeon_options=options if options else None,
                               sequence_options_map=seq_map if show_seq else None,
                               show_sequence=show_seq, saved_state=saved)

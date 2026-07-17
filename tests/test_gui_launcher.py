@@ -83,7 +83,7 @@ class TestScriptItemGetState(unittest.TestCase):
         item = gui_launcher.ScriptItem(
             {'display_name': 'test', 'script_type': 'external'},
             dungeon_options=['未选择', '副本A'],
-            sequence_options_map={'副本A': ['共鸣者经验', '武器经验', '贝币']},
+            sequence_options_map={'副本A': [('共鸣者经验', '共鸣者经验'), ('武器经验', '武器经验'), ('贝币', '贝币')]},
             show_sequence=True,
         )
         item._on_dungeon_selected('副本A', '武器经验')
@@ -134,7 +134,7 @@ class TestScriptItemSavedState(unittest.TestCase):
         item = gui_launcher.ScriptItem(
             {'display_name': 'test', 'script_type': 'external'},
             dungeon_options=['未选择', '副本A'],
-            sequence_options_map={'副本A': ['共鸣者经验', '武器经验', '贝币']},
+            sequence_options_map={'副本A': [('共鸣者经验', '共鸣者经验'), ('武器经验', '武器经验'), ('贝币', '贝币')]},
             show_sequence=True,
             saved_state={'dungeon': '副本A', 'sequence': '武器经验'},
         )
@@ -171,7 +171,7 @@ class TestScriptItemCallback(unittest.TestCase):
         item = gui_launcher.ScriptItem(
             {'display_name': 'test', 'script_type': 'external'},
             dungeon_options=['未选择', '副本A'],
-            sequence_options_map={'副本A': ['共鸣者经验', '武器经验', '贝币']},
+            sequence_options_map={'副本A': [('共鸣者经验', '共鸣者经验'), ('武器经验', '武器经验'), ('贝币', '贝币')]},
             show_sequence=True,
         )
         called = []
