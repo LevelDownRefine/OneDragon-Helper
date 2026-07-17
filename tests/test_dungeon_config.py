@@ -117,11 +117,11 @@ class TestGetDisplayName(unittest.TestCase):
         result = get_display_name(seq_map, "凝素领域", 99)
         self.assertEqual(result, "99")
 
-    def test_dungeon_not_in_map(self):
-        """副本不在映射中"""
+    def test_dungeon_not_in_map_raises(self):
+        """副本不在映射中时抛出 AssertionError"""
         seq_map = {"凝素领域": [("第1层", 1)]}
-        result = get_display_name(seq_map, "不存在", 1)
-        self.assertEqual(result, "1")
+        with self.assertRaises(AssertionError):
+            get_display_name(seq_map, "不存在", 1)
 
 
 class TestRestoreSequenceType(unittest.TestCase):

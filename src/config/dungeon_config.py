@@ -1,25 +1,11 @@
 import os
 import yaml
-from typing import Any, Dict, List, Tuple, TypedDict, Optional
+from typing import Any, Dict, List, Tuple
 
 from src.utils import get_root_dir
 
 DungeonOptions = List[str]
 SequenceOptionsMap = Dict[str, List[Tuple[str, Any]]]
-
-
-class SequenceConfig(TypedDict):
-    display: str
-    value: Any
-
-
-class DungeonConfig(TypedDict):
-    name: str
-    sequences: Optional[List[SequenceConfig]]
-
-
-class ScriptDungeonConfig(TypedDict):
-    dungeons: List[DungeonConfig]
 
 
 def get_dungeon_config_path() -> str:
@@ -68,7 +54,7 @@ def parse_dungeon_config(dungeon_cfg: Any) -> Tuple[DungeonOptions, SequenceOpti
             name = dungeon['name']
             options.append(name)
 
-            sequences = dungeon.get('sequences')
+            sequences = dungeon.get('sequences')  # optional: 副本可能没有二级选项
             if sequences:
                 assert isinstance(sequences, list), f"副本 '{name}' 的 sequences 必须是列表"
                 seq_map[name] = []
@@ -95,7 +81,8 @@ def get_display_name(seq_map: SequenceOptionsMap, dungeon_name: str, actual_valu
     Returns:
         显示名称，如果找不到则返回实际值的字符串表示
     """
-    seq_options = seq_map.get(dungeon_name, [])
+    assert dungeon_name in seq_map, f"[dungeon_config] 副本 '{dungeon_name}' 不在序列映射中"
+    seq_options = seq_map[dungeon_name]
     for display_name, val in seq_options:
         if val == actual_value:
             return display_name
@@ -114,12 +101,12 @@ def restore_sequence_type(saved: dict, seq_map: SequenceOptionsMap) -> dict:
     Returns:
         类型修复后的状态字典（新对象，不修改原字典）
     """
-    seq_val = saved.get('sequence')
+    seq_val = saved.get('sequence')  # optional: 用户可能从未选择过序列
     if seq_val is None:
         return saved
 
-    dungeon_name = saved.get('dungeon')
-    seq_options = seq_map.get(dungeon_name, [])
+    dungeon_name = saved.get('dungeon')  # optional: 用户可能从未选择过副本
+    seq_options = seq_map.get(dungeon_name, [])  # 防御性：配置可能更新导致保存的副本名称过时
     if not seq_options:
         return saved
 

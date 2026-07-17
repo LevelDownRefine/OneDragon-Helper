@@ -80,12 +80,14 @@ class ScriptItem(QFrame):
     def __init__(self, script_data, dungeon_options=None, sequence_options_map=None,
                  show_sequence=False, saved_state=None):
         super().__init__()
-        self.display_name = script_data.get('display_name', '未命名')
-        self.script_type = script_data.get('script_type', 'external')
+        assert 'display_name' in script_data, "[gui_launcher] 脚本配置缺少 display_name 字段"
+        assert 'script_type' in script_data, "[gui_launcher] 脚本配置缺少 script_type 字段"
+        self.display_name = script_data['display_name']
+        self.script_type = script_data['script_type']
         self.dungeon_btn = None
         self._selected_dungeon = None   # 一级副本名（None 表示未选择）
         self._selected_sequence = None  # 二级序列名
-        self.enabled = script_data.get('enabled', True)
+        self.enabled = script_data.get('enabled', True)  # 外部配置，可能缺失
         self._state_callback = None  # 状态变化回调，由 MainWindow 注入
         self._sequence_options_map = sequence_options_map or {}  # 副本名 → 二级选项列表
         self._dungeon_options = dungeon_options or []  # 一级副本列表
@@ -142,9 +144,9 @@ class ScriptItem(QFrame):
             layout.addWidget(self.dungeon_btn)
 
             # 恢复上次选择（仅当副本在选项列表中时）
-            if saved_state and saved_state.get('dungeon') and saved_state['dungeon'] in self._dungeon_options:
+            if saved_state and saved_state.get('dungeon') and saved_state['dungeon'] in self._dungeon_options:  # optional: 保存状态可能没有选择过副本
                 self._selected_dungeon = saved_state['dungeon']
-                if saved_state.get('sequence'):
+                if saved_state.get('sequence'):  # optional: 保存状态可能没有选择过序列
                     self._selected_sequence = saved_state['sequence']
                 self.dungeon_btn.setText(self._dungeon_btn_text())
 
@@ -189,7 +191,7 @@ class ScriptItem(QFrame):
                 menu.addSeparator()
                 continue
 
-            seq_options = self._sequence_options_map.get(dungeon_name, [])
+            seq_options = self._sequence_options_map.get(dungeon_name, [])  # optional: 副本可能没有二级选项
             if seq_options:
                 # 有二级选项 → 子菜单（从右侧弹出）
                 submenu = menu.addMenu(dungeon_name)
@@ -410,18 +412,18 @@ class MainWindow(QMainWindow):
 
         self.dungeon_map = load_dungeon_map()
 
-        script_list = self.all_config_data.get('script_list', [])
+        assert 'script_list' in self.all_config_data, "[gui_launcher] config.yml 缺少 script_list 字段"
 
         for item in self.script_items:
             item.deleteLater()
         self.script_items.clear()
 
-        for data in script_list:
-            name = data.get('display_name', '')
-            dungeon_cfg = self.dungeon_map.get(name)
+        for data in self.all_config_data['script_list']:
+            name = data['display_name']
+            dungeon_cfg = self.dungeon_map.get(name)  # optional: 不是所有脚本都有副本配置
             options, seq_map, show_seq = parse_dungeon_config(dungeon_cfg)
 
-            saved = self._ui_state.get(name)
+            saved = self._ui_state.get(name)  # optional: 新脚本可能没有保存的状态
             if saved:
                 saved = restore_sequence_type(saved, seq_map)
             item = ScriptItem(data, dungeon_options=options if options else None,
@@ -466,8 +468,8 @@ class MainWindow(QMainWindow):
 
         data = copy.deepcopy(self.all_config_data)
         filtered = []
-        for script in data.get('script_list', []):
-            name = script.get('display_name', '')
+        for script in data['script_list']:
+            name = script['display_name']
             if name in enabled_names:
                 timeouts = weekly_timeouts.get(name)
                 if timeouts and len(timeouts) == 7:
