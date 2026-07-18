@@ -64,7 +64,7 @@ class TestScriptItemGetState(unittest.TestCase):
 
     def test_get_state_no_dungeon_no_sequence(self):
         """无副本无序列时返回空 dict"""
-        item = gui_launcher.ScriptItem({'display_name': 'test', 'enabled': True})
+        item = gui_launcher.ScriptItem({'display_name': 'test', 'script_type': 'external', 'enabled': True})
         state = item.get_state()
         self.assertEqual(state, {})
 
@@ -92,7 +92,7 @@ class TestScriptItemGetState(unittest.TestCase):
 
     def test_get_state_excludes_enabled(self):
         """get_state 不包含 enabled"""
-        item = gui_launcher.ScriptItem({'display_name': 'test', 'enabled': True})
+        item = gui_launcher.ScriptItem({'display_name': 'test', 'script_type': 'external', 'enabled': True})
         state = item.get_state()
         self.assertNotIn('enabled', state)
 
@@ -102,7 +102,7 @@ class TestScriptItemEnabledNotPersisted(unittest.TestCase):
 
     def test_toggle_does_not_trigger_callback(self):
         """toggle 不触发 _on_state_changed"""
-        item = gui_launcher.ScriptItem({'display_name': 'test', 'enabled': True})
+        item = gui_launcher.ScriptItem({'display_name': 'test', 'script_type': 'external', 'enabled': True})
         callback_called = []
         item.set_state_callback(lambda: callback_called.append(True))
         item._toggle()
@@ -111,7 +111,7 @@ class TestScriptItemEnabledNotPersisted(unittest.TestCase):
     def test_enabled_from_script_data_not_saved_state(self):
         """enabled 从 script_data 取，不从 saved_state 恢复"""
         item = gui_launcher.ScriptItem(
-            {'display_name': 'test', 'enabled': True},
+            {'display_name': 'test', 'script_type': 'external', 'enabled': True},
             saved_state={'enabled': False, 'dungeon': 'A'},
         )
         self.assertTrue(item.enabled)
