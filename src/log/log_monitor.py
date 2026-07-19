@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import re
 import tempfile
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 
 
 class ScriptLogStatus:
@@ -13,169 +13,172 @@ class ScriptLogStatus:
     NO_LOG = "NoLog"
 
 
-def _read_file(path: Path) -> str:
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    except UnicodeDecodeError:
-        with open(path, "r", encoding="gbk") as f:
-            return f.read()
-    except Exception:
-        return ""
+class BaseLogParser:
+    display_name: str = ""
+
+    def get_log_path(self, script_path: str) -> Optional[Path]:
+        raise NotImplementedError
+
+    def parse_content(self, content: str) -> str:
+        raise NotImplementedError
+
+    def _read_file(self, path: Path) -> str:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+        except UnicodeDecodeError:
+            with open(path, "r", encoding="gbk") as f:
+                return f.read()
+        except Exception:
+            return ""
+
+    def _extract_datetime_from_content(self, content: str) -> Optional[datetime]:
+        patterns = [
+            r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})",
+            r"(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})",
+            r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, content)
+            if match:
+                try:
+                    groups = match.groups()
+                    year, month, day = int(groups[0]), int(groups[1]), int(groups[2])
+                    hour = int(groups[3]) if len(groups) > 3 else 0
+                    minute = int(groups[4]) if len(groups) > 4 else 0
+                    second = int(groups[5]) if len(groups) > 5 else 0
+                    return datetime(year, month, day, hour, minute, second)
+                except ValueError:
+                    continue
+        return None
+
+    def _is_valid_log(self, content: str) -> bool:
+        now = datetime.now()
+        extracted_dt = self._extract_datetime_from_content(content)
+        if not extracted_dt:
+            return False
+
+        if now.hour >= 4:
+            return extracted_dt.date() == now.date()
+
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if extracted_dt >= today_start:
+            return True
+
+        yesterday_4am = (now - timedelta(days=1)).replace(
+            hour=4, minute=0, second=0, microsecond=0
+        )
+        return extracted_dt >= yesterday_4am
+
+    def parse(self, script_path: str = "") -> dict:
+        log_path = self.get_log_path(script_path)
+        if not log_path or not log_path.exists():
+            return {"status": ScriptLogStatus.NO_LOG, "log_path": str(log_path) if log_path else None}
+
+        content = self._read_file(log_path)
+
+        if not self._is_valid_log(content):
+            return {"status": ScriptLogStatus.NO_LOG, "log_path": str(log_path)}
+
+        status = self.parse_content(content)
+        return {
+            "status": status,
+            "log_path": str(log_path),
+            "log_content": content[-2000:] if len(content) > 2000 else content,
+        }
 
 
-def _extract_datetime_from_content(content: str) -> Optional[datetime]:
-    patterns = [
-        r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})",
-        r"(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})",
-        r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, content)
-        if match:
-            try:
-                groups = match.groups()
-                year, month, day = int(groups[0]), int(groups[1]), int(groups[2])
-                hour = int(groups[3]) if len(groups) > 3 else 0
-                minute = int(groups[4]) if len(groups) > 4 else 0
-                second = int(groups[5]) if len(groups) > 5 else 0
-                return datetime(year, month, day, hour, minute, second)
-            except ValueError:
-                continue
-    return None
+class OkWwLogParser(BaseLogParser):
+    display_name = "鸣潮"
 
+    def get_log_path(self, script_path: str) -> Optional[Path]:
+        ok_ww_dir = Path(script_path).parent
+        return ok_ww_dir / "data" / "apps" / "ok-ww" / "working" / "logs" / "ok-script.log"
 
-def _is_valid_log(content: str) -> bool:
-    now = datetime.now()
-    extracted_dt = _extract_datetime_from_content(content)
-    if not extracted_dt:
-        return False
-
-    if now.hour >= 4:
-        return extracted_dt.date() == now.date()
-
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if extracted_dt >= today_start:
-        return True
-
-    yesterday_4am = (now - timedelta(days=1)).replace(
-        hour=4, minute=0, second=0, microsecond=0
-    )
-    return extracted_dt >= yesterday_4am
-
-
-def _parse_ok_ww(log_content: str) -> str:
-    if "Successfully Executed Task" in log_content or "Task completed" in log_content:
-        return ScriptLogStatus.SUCCESS
-    return ScriptLogStatus.FAILED
-
-
-def _parse_ok_ef(log_content: str) -> str:
-    if "执行状态: 完成" in log_content:
-        return ScriptLogStatus.SUCCESS
-    return ScriptLogStatus.FAILED
-
-
-def _parse_m7a(log_content: str) -> str:
-    if "游戏终止" in log_content:
-        error_count = log_content.count("ERROR")
-        if error_count <= 1:
+    def parse_content(self, content: str) -> str:
+        if "Successfully Executed Task" in content or "Task completed" in content:
             return ScriptLogStatus.SUCCESS
-    return ScriptLogStatus.FAILED
+        return ScriptLogStatus.FAILED
 
 
-def get_ok_ww_log_path(script_path: str) -> Path:
-    ok_ww_dir = Path(script_path).parent
-    return ok_ww_dir / "data" / "apps" / "ok-ww" / "working" / "logs" / "ok-script.log"
+class OkNteLogParser(BaseLogParser):
+    display_name = "异环"
+
+    def get_log_path(self, script_path: str) -> Optional[Path]:
+        ok_nte_dir = Path(script_path).parent
+        return ok_nte_dir / "data" / "apps" / "ok-nte" / "working" / "logs" / "ok-script.log"
+
+    def parse_content(self, content: str) -> str:
+        if "Successfully Executed Task" in content or "Task completed" in content:
+            return ScriptLogStatus.SUCCESS
+        return ScriptLogStatus.FAILED
 
 
-def get_ok_nte_log_path(script_path: str) -> Path:
-    ok_nte_dir = Path(script_path).parent
-    return ok_nte_dir / "data" / "apps" / "ok-nte" / "working" / "logs" / "ok-script.log"
+class OkEfLogParser(BaseLogParser):
+    display_name = "终末地"
 
+    def get_log_path(self, script_path: str) -> Optional[Path]:
+        log_dir = Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
+        if not log_dir.exists():
+            return None
 
-def get_ok_ef_latest_log() -> Optional[Path]:
-    log_dir = Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
-    if not log_dir.exists():
+        log_files = sorted(log_dir.glob("日常任务_*.txt"), reverse=True)
+        for log_file in log_files:
+            content = self._read_file(log_file)
+            if self._is_valid_log(content):
+                return log_file
+
         return None
 
-    log_files = sorted(log_dir.glob("日常任务_*.txt"), reverse=True)
-    for log_file in log_files:
-        content = _read_file(log_file)
-        if _is_valid_log(content):
-            return log_file
-
-    return None
+    def parse_content(self, content: str) -> str:
+        if "执行状态: 完成" in content:
+            return ScriptLogStatus.SUCCESS
+        return ScriptLogStatus.FAILED
 
 
-def get_m7a_latest_log(script_path: str) -> Optional[Path]:
-    m7a_dir = Path(script_path).parent
-    logs_dir = m7a_dir / "logs"
-    if not logs_dir.exists():
+class M7ALogParser(BaseLogParser):
+    display_name = "崩铁"
+
+    def get_log_path(self, script_path: str) -> Optional[Path]:
+        m7a_dir = Path(script_path).parent
+        logs_dir = m7a_dir / "logs"
+        if not logs_dir.exists():
+            return None
+
+        log_files = sorted(logs_dir.glob("*.log"), reverse=True)
+        for log_file in log_files:
+            content = self._read_file(log_file)
+            if self._is_valid_log(content):
+                return log_file
+
         return None
 
-    log_files = sorted(logs_dir.glob("*.log"), reverse=True)
-    for log_file in log_files:
-        content = _read_file(log_file)
-        if _is_valid_log(content):
-            return log_file
+    def parse_content(self, content: str) -> str:
+        if "游戏终止" in content:
+            error_count = content.count("ERROR")
+            if error_count <= 1:
+                return ScriptLogStatus.SUCCESS
+        return ScriptLogStatus.FAILED
 
+
+_PARSERS = [OkWwLogParser, OkNteLogParser, OkEfLogParser, M7ALogParser]
+
+
+def _find_parser(display_name: str) -> Optional[BaseLogParser]:
+    for parser_cls in _PARSERS:
+        if display_name == parser_cls.display_name:
+            return parser_cls()
     return None
 
 
 def parse_log(display_name: str, script_path: str = "") -> dict:
-    if display_name in ("ok-ww", "鸣潮"):
-        log_path = get_ok_ww_log_path(script_path)
-        if not log_path.exists():
-            return {"status": ScriptLogStatus.NO_LOG, "log_path": str(log_path)}
-        content = _read_file(log_path)
-        if not _is_valid_log(content):
-            return {"status": ScriptLogStatus.NO_LOG, "log_path": str(log_path)}
-        return {
-            "status": _parse_ok_ww(content),
-            "log_path": str(log_path),
-            "log_content": content[-2000:] if len(content) > 2000 else content,
-        }
-
-    if display_name in ("ok-nte", "异环"):
-        log_path = get_ok_nte_log_path(script_path)
-        if not log_path.exists():
-            return {"status": ScriptLogStatus.NO_LOG, "log_path": str(log_path)}
-        content = _read_file(log_path)
-        if not _is_valid_log(content):
-            return {"status": ScriptLogStatus.NO_LOG, "log_path": str(log_path)}
-        return {
-            "status": _parse_ok_ww(content),
-            "log_path": str(log_path),
-            "log_content": content[-2000:] if len(content) > 2000 else content,
-        }
-
-    if display_name in ("ok-ef", "终末地"):
-        log_path = get_ok_ef_latest_log()
-        if not log_path:
-            return {"status": ScriptLogStatus.NO_LOG, "log_path": None}
-        content = _read_file(log_path)
-        return {
-            "status": _parse_ok_ef(content),
-            "log_path": str(log_path),
-            "log_content": content[-2000:] if len(content) > 2000 else content,
-        }
-
-    if display_name in ("M7A", "崩铁"):
-        log_path = get_m7a_latest_log(script_path)
-        if not log_path:
-            return {"status": ScriptLogStatus.NO_LOG, "log_path": None}
-        content = _read_file(log_path)
-        return {
-            "status": _parse_m7a(content),
-            "log_path": str(log_path),
-            "log_content": content[-2000:] if len(content) > 2000 else content,
-        }
-
-    return {"status": "不支持的脚本", "log_path": None}
+    parser = _find_parser(display_name)
+    if not parser:
+        return {"status": "不支持的脚本", "log_path": None}
+    return parser.parse(script_path)
 
 
-def main():
+def parse_logs() -> None:
     import yaml
     from src.utils import get_root_dir
 
@@ -244,4 +247,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parse_logs()
