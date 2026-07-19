@@ -17,6 +17,21 @@ class BaseLogParser:
     display_name: str = ""
 
     def get_log_path(self, script_path: str) -> Optional[Path]:
+        log_dir = self._get_log_dir(script_path)
+        if not log_dir or not log_dir.exists():
+            return None
+
+        log_files = sorted(log_dir.glob(self._get_log_pattern()), reverse=True)
+        for log_file in log_files:
+            content = self._read_file(log_file)
+            if self._is_valid_log(content):
+                return log_file
+        return None
+
+    def _get_log_dir(self, script_path: str) -> Optional[Path]:
+        raise NotImplementedError
+
+    def _get_log_pattern(self) -> str:
         raise NotImplementedError
 
     def parse_content(self, content: str) -> str:
@@ -32,7 +47,7 @@ class BaseLogParser:
         except Exception:
             return ""
 
-    def _extract_datetime_from_content(self, content: str) -> Optional[datetime]:
+    def _extract_datetime(self, content: str) -> Optional[datetime]:
         patterns = [
             r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})",
             r"(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})",
@@ -54,7 +69,7 @@ class BaseLogParser:
 
     def _is_valid_log(self, content: str) -> bool:
         now = datetime.now()
-        extracted_dt = self._extract_datetime_from_content(content)
+        extracted_dt = self._extract_datetime(content)
         if not extracted_dt:
             return False
 
@@ -117,18 +132,11 @@ class OkNteLogParser(BaseLogParser):
 class OkEfLogParser(BaseLogParser):
     display_name = "终末地"
 
-    def get_log_path(self, script_path: str) -> Optional[Path]:
-        log_dir = Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
-        if not log_dir.exists():
-            return None
+    def _get_log_dir(self, script_path: str) -> Optional[Path]:
+        return Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
 
-        log_files = sorted(log_dir.glob("日常任务_*.txt"), reverse=True)
-        for log_file in log_files:
-            content = self._read_file(log_file)
-            if self._is_valid_log(content):
-                return log_file
-
-        return None
+    def _get_log_pattern(self) -> str:
+        return "日常任务_*.txt"
 
     def parse_content(self, content: str) -> str:
         if "执行状态: 完成" in content:
@@ -139,19 +147,12 @@ class OkEfLogParser(BaseLogParser):
 class M7ALogParser(BaseLogParser):
     display_name = "崩铁"
 
-    def get_log_path(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Optional[Path]:
         m7a_dir = Path(script_path).parent
-        logs_dir = m7a_dir / "logs"
-        if not logs_dir.exists():
-            return None
+        return m7a_dir / "logs"
 
-        log_files = sorted(logs_dir.glob("*.log"), reverse=True)
-        for log_file in log_files:
-            content = self._read_file(log_file)
-            if self._is_valid_log(content):
-                return log_file
-
-        return None
+    def _get_log_pattern(self) -> str:
+        return "*.log"
 
     def parse_content(self, content: str) -> str:
         if "游戏终止" in content:
@@ -161,7 +162,69 @@ class M7ALogParser(BaseLogParser):
         return ScriptLogStatus.FAILED
 
 
-_PARSERS = [OkWwLogParser, OkNteLogParser, OkEfLogParser, M7ALogParser]
+class BGILogParser(BaseLogParser):
+    display_name = "原神"
+
+    def get_log_path(self, script_path: str) -> Optional[Path]:
+        bgi_dir = Path(script_path).parent
+        logs_dir = bgi_dir / "log"
+        if not logs_dir.exists():
+            return None
+
+        now = datetime.now()
+        today_str = now.strftime("%Y%m%d")
+        today_file = logs_dir / f"better-genshin-impact{today_str}.log"
+        if today_file.exists():
+            self._log_path = today_file
+            return today_file
+
+        if now.hour < 4:
+            yesterday_str = (now - timedelta(days=1)).strftime("%Y%m%d")
+            yesterday_file = logs_dir / f"better-genshin-impact{yesterday_str}.log"
+            if yesterday_file.exists():
+                self._log_path = yesterday_file
+                return yesterday_file
+
+        log_files = sorted(logs_dir.glob("better-genshin-impact*.log"), reverse=True)
+        if log_files:
+            self._log_path = log_files[0]
+            return log_files[0]
+        return None
+
+    def _extract_datetime(self, content: str) -> Optional[datetime]:
+        # BGI 日志内容只有时间（如 [14:27:42.653]），日期从文件名提取
+        log_path = getattr(self, "_log_path", None)
+        if not log_path:
+            return None
+
+        date_match = re.search(r"(\d{4})(\d{2})(\d{2})", log_path.name)
+        if not date_match:
+            return None
+
+        year, month, day = int(date_match.group(1)), int(date_match.group(2)), int(date_match.group(3))
+
+        time_match = re.search(r"\[(\d{1,2}):(\d{2}):(\d{2})", content)
+        if time_match:
+            hour, minute, second = int(time_match.group(1)), int(time_match.group(2)), int(time_match.group(3))
+        else:
+            hour, minute, second = 0, 0, 0
+
+        try:
+            return datetime(year, month, day, hour, minute, second)
+        except ValueError:
+            return None
+
+    def parse_content(self, content: str) -> str:
+        if "一条龙和配置组任务结束" in content:
+            if "未领取" in content:
+                return ScriptLogStatus.FAILED
+            return ScriptLogStatus.SUCCESS
+        if "[ERR]" in content or "异常" in content:
+            return ScriptLogStatus.FAILED
+        return ScriptLogStatus.FAILED
+
+
+_PARSERS = [OkWwLogParser, OkNteLogParser, OkEfLogParser, M7ALogParser, BGILogParser]
 
 
 def _find_parser(display_name: str) -> Optional[BaseLogParser]:
@@ -179,8 +242,13 @@ def parse_log(display_name: str, script_path: str = "") -> dict:
 
 
 def parse_logs() -> None:
+    import sys
     import yaml
     from src.utils import get_root_dir
+
+    # Windows 控制台默认 GBK 编码，日志中可能含 emoji 等字符
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
     config_path = Path(get_root_dir()) / "config" / "config.yml"
     assert config_path.exists(), f"[log_monitor] config.yml 不存在: {config_path}"
@@ -189,7 +257,7 @@ def parse_logs() -> None:
         config_data = yaml.safe_load(f) or {}
 
     script_list = config_data.get("script_list", [])
-    supported_scripts = ("鸣潮", "终末地", "崩铁", "异环")
+    supported_scripts = ("鸣潮", "终末地", "崩铁", "异环", "原神")
 
     print("=" * 60)
     print("脚本运行状况汇总报告")
