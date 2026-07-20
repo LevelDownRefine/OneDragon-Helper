@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,7 +7,7 @@ from typing import Optional
 
 
 class ScriptLogStatus:
-    SUCCESS = "Success!"
+    SUCCESS = "Success"
     FAILED = "Failed"
     NO_LOG = "NoLog"
 
@@ -23,8 +22,7 @@ class BaseLogParser:
 
         log_files = sorted(log_dir.glob(self._get_log_pattern()), reverse=True)
         for log_file in log_files:
-            content = self._read_file(log_file)
-            if self._is_valid_log(content):
+            if self._is_valid_log(log_file):
                 return log_file
         return None
 
@@ -47,43 +45,21 @@ class BaseLogParser:
         except Exception:
             return ""
 
-    def _extract_datetime(self, content: str) -> Optional[datetime]:
-        patterns = [
-            r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})",
-            r"(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})",
-            r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})",
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, content)
-            if match:
-                try:
-                    groups = match.groups()
-                    year, month, day = int(groups[0]), int(groups[1]), int(groups[2])
-                    hour = int(groups[3]) if len(groups) > 3 else 0
-                    minute = int(groups[4]) if len(groups) > 4 else 0
-                    second = int(groups[5]) if len(groups) > 5 else 0
-                    return datetime(year, month, day, hour, minute, second)
-                except ValueError:
-                    continue
-        return None
-
-    def _is_valid_log(self, content: str) -> bool:
+    def _is_valid_log(self, log_path: Path) -> bool:
         now = datetime.now()
-        extracted_dt = self._extract_datetime(content)
-        if not extracted_dt:
-            return False
+        mtime = datetime.fromtimestamp(log_path.stat().st_mtime)
 
         if now.hour >= 4:
-            return extracted_dt.date() == now.date()
+            return mtime.date() == now.date()
 
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if extracted_dt >= today_start:
+        if mtime >= today_start:
             return True
 
         yesterday_4am = (now - timedelta(days=1)).replace(
             hour=4, minute=0, second=0, microsecond=0
         )
-        return extracted_dt >= yesterday_4am
+        return mtime >= yesterday_4am
 
     def parse(self, script_path: str = "") -> dict:
         log_path = self.get_log_path(script_path)
@@ -91,10 +67,6 @@ class BaseLogParser:
             return {"status": ScriptLogStatus.NO_LOG, "log_path": str(log_path) if log_path else None}
 
         content = self._read_file(log_path)
-
-        if not self._is_valid_log(content):
-            return {"status": ScriptLogStatus.NO_LOG, "log_path": str(log_path)}
-
         status = self.parse_content(content)
         return {
             "status": status,
@@ -106,9 +78,12 @@ class BaseLogParser:
 class OkWwLogParser(BaseLogParser):
     display_name = "鸣潮"
 
-    def get_log_path(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Optional[Path]:
         ok_ww_dir = Path(script_path).parent
-        return ok_ww_dir / "data" / "apps" / "ok-ww" / "working" / "logs" / "ok-script.log"
+        return ok_ww_dir / "data" / "apps" / "ok-ww" / "working" / "logs"
+
+    def _get_log_pattern(self) -> str:
+        return "ok-script.log"
 
     def parse_content(self, content: str) -> str:
         if "Successfully Executed Task" in content or "Task completed" in content:
@@ -119,9 +94,12 @@ class OkWwLogParser(BaseLogParser):
 class OkNteLogParser(BaseLogParser):
     display_name = "异环"
 
-    def get_log_path(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Optional[Path]:
         ok_nte_dir = Path(script_path).parent
-        return ok_nte_dir / "data" / "apps" / "ok-nte" / "working" / "logs" / "ok-script.log"
+        return ok_nte_dir / "data" / "apps" / "ok-nte" / "working" / "logs"
+
+    def _get_log_pattern(self) -> str:
+        return "ok-script.log"
 
     def parse_content(self, content: str) -> str:
         if "Successfully Executed Task" in content or "Task completed" in content:
@@ -162,57 +140,33 @@ class M7ALogParser(BaseLogParser):
         return ScriptLogStatus.FAILED
 
 
+class ZZZLogParser(BaseLogParser):
+    display_name = "绝区零"
+
+    def _get_log_dir(self, script_path: str) -> Optional[Path]:
+        zzz_dir = Path(script_path).parent
+        return zzz_dir / ".log"
+
+    def _get_log_pattern(self) -> str:
+        return "log.txt"
+
+    def parse_content(self, content: str) -> str:
+        if "指令[ 一条龙 ] 执行成功" in content or "指令[ 执行应用组 one_dragon ] 执行成功" in content:
+            return ScriptLogStatus.SUCCESS
+        if "[ERROR]" in content:
+            return ScriptLogStatus.FAILED
+        return ScriptLogStatus.FAILED
+
+
 class BGILogParser(BaseLogParser):
     display_name = "原神"
 
-    def get_log_path(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Optional[Path]:
         bgi_dir = Path(script_path).parent
-        logs_dir = bgi_dir / "log"
-        if not logs_dir.exists():
-            return None
+        return bgi_dir / "log"
 
-        now = datetime.now()
-        today_str = now.strftime("%Y%m%d")
-        today_file = logs_dir / f"better-genshin-impact{today_str}.log"
-        if today_file.exists():
-            self._log_path = today_file
-            return today_file
-
-        if now.hour < 4:
-            yesterday_str = (now - timedelta(days=1)).strftime("%Y%m%d")
-            yesterday_file = logs_dir / f"better-genshin-impact{yesterday_str}.log"
-            if yesterday_file.exists():
-                self._log_path = yesterday_file
-                return yesterday_file
-
-        log_files = sorted(logs_dir.glob("better-genshin-impact*.log"), reverse=True)
-        if log_files:
-            self._log_path = log_files[0]
-            return log_files[0]
-        return None
-
-    def _extract_datetime(self, content: str) -> Optional[datetime]:
-        # BGI 日志内容只有时间（如 [14:27:42.653]），日期从文件名提取
-        log_path = getattr(self, "_log_path", None)
-        if not log_path:
-            return None
-
-        date_match = re.search(r"(\d{4})(\d{2})(\d{2})", log_path.name)
-        if not date_match:
-            return None
-
-        year, month, day = int(date_match.group(1)), int(date_match.group(2)), int(date_match.group(3))
-
-        time_match = re.search(r"\[(\d{1,2}):(\d{2}):(\d{2})", content)
-        if time_match:
-            hour, minute, second = int(time_match.group(1)), int(time_match.group(2)), int(time_match.group(3))
-        else:
-            hour, minute, second = 0, 0, 0
-
-        try:
-            return datetime(year, month, day, hour, minute, second)
-        except ValueError:
-            return None
+    def _get_log_pattern(self) -> str:
+        return "better-genshin-impact*.log"
 
     def parse_content(self, content: str) -> str:
         if "一条龙和配置组任务结束" in content:
@@ -224,7 +178,7 @@ class BGILogParser(BaseLogParser):
         return ScriptLogStatus.FAILED
 
 
-_PARSERS = [OkWwLogParser, OkNteLogParser, OkEfLogParser, M7ALogParser, BGILogParser]
+_PARSERS = [OkWwLogParser, OkNteLogParser, OkEfLogParser, M7ALogParser, BGILogParser, ZZZLogParser]
 
 
 def _find_parser(display_name: str) -> Optional[BaseLogParser]:
@@ -257,7 +211,7 @@ def parse_logs() -> None:
         config_data = yaml.safe_load(f) or {}
 
     script_list = config_data.get("script_list", [])
-    supported_scripts = ("鸣潮", "终末地", "崩铁", "异环", "原神")
+    supported_scripts = ("鸣潮", "终末地", "崩铁", "异环", "原神", "绝区零")
 
     print("=" * 60)
     print("脚本运行状况汇总报告")
@@ -279,7 +233,7 @@ def parse_logs() -> None:
         status = result["status"]
 
         if status == ScriptLogStatus.SUCCESS:
-            status_icon = "[OK]"
+            status_icon = "[SUCCESS]"
             success_count += 1
         elif status == ScriptLogStatus.FAILED:
             status_icon = "[FAIL]"
