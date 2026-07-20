@@ -153,6 +153,7 @@ class TestLoadConfig(unittest.TestCase):
         fake_path = r"C:\fake\script\config.json"
 
         with patch.object(subscript, 'get_config_path', return_value=fake_path), \
+             patch('os.path.exists', return_value=True), \
              patch('builtins.open', mock_open(read_data=json.dumps(fake_data))):
             result = subscript.load_config("鸣潮")
 
@@ -165,6 +166,7 @@ class TestLoadConfig(unittest.TestCase):
         yaml_str = yaml.dump(fake_data, allow_unicode=True)
 
         with patch.object(subscript, 'get_config_path', return_value=fake_path), \
+             patch('os.path.exists', return_value=True), \
              patch('builtins.open', mock_open(read_data=yaml_str)):
             result = subscript.load_config("绝区零")
 
