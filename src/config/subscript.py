@@ -34,6 +34,7 @@ _TEMPLATE_PATHS: dict[str, str] = {
     "原神":   "BGI一条龙.json",
     "绝区零": "ZZZ一条龙.yml",
     "粥":     "MAA一条龙.json",
+    "崩铁":   "M7A一条龙.yml",
 }
 
 

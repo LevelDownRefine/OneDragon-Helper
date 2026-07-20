@@ -28,12 +28,13 @@ class ScriptConfig:
     _task_map: dict[str, Any] = {}
     """副本中文名 → config 值的映射，空 dict 表示直接用 dungeon_name"""
 
-    def _load(self) -> dict | list:
-        # 读取 脚本对应的 config 文件，并确保它存在
-        return load_config(self.display_name)
+    def _load(self) -> dict:
+        config = load_config(self.display_name)
+        assert isinstance(config, dict), f"[set_config][{self.display_name}] config 必须是 dict"
+        return config
 
-    def _save(self, config: dict | list):
-        # 确保脚本对应的 config 文件存在，并将数据写回  
+    def _save(self, config: dict):
+        assert isinstance(config, dict), f"[set_config][{self.display_name}] config 必须是 dict"
         save_config(self.display_name, config)
 
     def _load_template(self) -> dict[str, Any] | list[dict[str, Any]]:
@@ -75,6 +76,35 @@ class ScriptConfig:
         """更新序列字段。返回是否修改。默认不启用。"""
         assert sequence is None, f"[set_config][{self.display_name}] 不支持 sequence 参数"
         return False
+
+    def _init_config(self):
+        """
+        通用的 config 初始化逻辑：加载 config 和 template，检查对齐，合并更新。
+        子类重写 _is_aligned 和 _merge_config 以实现特殊逻辑。
+        """
+        config = self._load()
+        template = self._load_template()
+
+        if self._is_aligned(config, template):
+            return
+
+        self._merge_config(config, template)
+        print(f"[set_config][{self.display_name}] config 已更新")
+        self._save(config)
+
+    def _is_aligned(self, config: dict, template: dict) -> bool:
+        """
+        默认对齐检查：模板中所有 key 都存在且值一致。
+        子类重写以实现特殊比较逻辑（如绝区零的 plan_list、粥的 TaskQueue）。
+        """
+        return all(key in config and config[key] == val for key, val in template.items())
+
+    def _merge_config(self, config: dict, template: dict):
+        """
+        默认合并：用 template 更新 config。
+        子类重写以实现特殊合并逻辑（如粥更新子结构）。
+        """
+        config.update(template)
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         """
@@ -183,20 +213,6 @@ class ZenlessZoneZeroConfig(ScriptConfig):
         self.display_name = "绝区零"
         self._init_config()
 
-    def _init_config(self):
-        """
-        初始化配置文件，确保包含实战模拟室、专业挑战室、区域巡防任务，并设置为代理人方案培养。
-        """
-        config = self._load()
-        template = self._load_template()
-
-        # 如果 config 已对齐，无需更新
-        if self._is_aligned(config, template):
-            return
-
-        print(f"[set_config][{self.display_name}] init config")
-        self._save(template)
-
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         print(f"[set_config][{self.display_name}] zzz无需适配")
 
@@ -231,23 +247,6 @@ class StarRailConfig(ScriptConfig):
         self.display_name = "崩铁"
         self._task_key = "instance_type"
         self._init_config()
-
-    def _init_config(self):
-        config = self._load()
-        changed = False
-
-        if config.get("power_enable") is not True:
-            config["power_enable"] = True
-            changed = True
-            print(f"[set_config][{self.display_name}] power_enable 已设置为 true")
-
-        if config.get("build_target_enable") is not True:
-            config["build_target_enable"] = True
-            changed = True
-            print(f"[set_config][{self.display_name}] build_target_enable 已设置为 true")
-
-        if changed:
-            self._save(config)
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
@@ -299,25 +298,9 @@ class ArknightsConfig(ScriptConfig):
                 if name and stage:
                     self._task_map[name] = {"index": index, "stage": stage}
 
-    def _init_config(self):
-        """
-        初始化配置文件，确保包含红票、经验、龙门币、土等任务。
-        """
-        config = self._load()
-        cur_config = config["Configurations"]["Default"]["TaskQueue"]
-
-        task_config = self._load_template()
-
-        # 如果当前配置与模板对齐，无需更新
-        if self._is_aligned(cur_config, task_config):
-            return
-
-        config["Configurations"]["Default"]["TaskQueue"] = task_config
-        print(f"[set_config][{self.display_name}] init config")
-        self._save(config)
-
-    def _is_aligned(self, cur: list, template: list) -> bool:
+    def _is_aligned(self, config: dict, template: dict) -> bool:
         """比较当前 TaskQueue 与模板是否一致（只比较关键字段）"""
+        cur = config["Configurations"]["Default"]["TaskQueue"]
         if len(cur) < len(template):
             return False
         for i in range(len(template)):
@@ -329,6 +312,10 @@ class ArknightsConfig(ScriptConfig):
                 if cur[i].get("StagePlan") != template[i]["StagePlan"]:
                     return False
         return True
+
+    def _merge_config(self, config: dict, template: dict):
+        """更新 TaskQueue 子结构"""
+        config["Configurations"]["Default"]["TaskQueue"] = template
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         config = self._load()
