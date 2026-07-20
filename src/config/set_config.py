@@ -15,6 +15,20 @@ from src.config.subscript import load_config, save_config, _TEMPLATE_PATHS
 from src.utils import get_root_dir
 
 
+def safe_update(config: dict, template: dict):
+    """
+    用 template 更新 config，更新前 assert 每个已存在 key 的 value 类型一致。
+    config 中不存在的 key 直接添加，不检查类型。
+    用 type() 严格比较，避免 bool/int 混淆（isinstance(True, int) 为 True）。
+    """
+    for key, val in template.items():
+        if key in config:
+            assert type(config[key]) is type(val), \
+                f"[set_config] 类型不一致: key={key}, " \
+                f"config={type(config[key]).__name__}, template={type(val).__name__}"
+        config[key] = val
+
+
 # ============================================================
 # 基类
 # ============================================================
@@ -88,7 +102,7 @@ class ScriptConfig:
         if self._is_aligned(config, template):
             return
 
-        config.update(template)
+        safe_update(config, template)
         print(f"[set_config][{self.display_name}] config 已更新")
         self._save(config)
 
