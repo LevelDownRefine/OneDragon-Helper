@@ -177,23 +177,13 @@ class GenshinConfig(ScriptConfig):
     def _init_config(self):
         """
         目前只确认与模板相同，未完全适配。
-        确认包含了幽境、自动秘境、千星、周常。
-        TODO: 完成适配后移除 assert，启用保存逻辑
+        PartyName 是用户自定义的，模板中不包含，只检查存在性。
+        TODO: 完成适配后启用保存逻辑
         """
         config = self._load()
+        assert "PartyName" in config, f"[set_config][{self.display_name}] config 中缺少字段: PartyName"
         template = self._load_template()
-
-        changed = False
-        for key, val in template.items():
-            if key == "PartyName":
-                assert key in config, f"[set_config][{self.display_name}] config 中缺少字段: {key}"
-            elif key not in config or config[key] != val:
-                config[key] = val
-                changed = True
-
-        if changed:
-            # self._save(config)
-            assert False, f"[set_config][{self.display_name}] init config（未完成适配）"
+        assert self._is_aligned(config, template), f"[set_config][{self.display_name}] config 与模板不一致（未完成适配）"
 
 
 # ---- 终末地 Arknights: Endfield ----

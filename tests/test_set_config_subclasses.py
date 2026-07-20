@@ -235,20 +235,18 @@ class TestGenshinConfig(unittest.TestCase):
         self.assertEqual(cfg.display_name, "原神")
         self.assertEqual(cfg._task_key, "DomainName")
 
-    def test_init_config_aligned_no_save(self):
-        """config 与模板对齐（PartyName 不同但不为空）时不 save"""
-        template = {"DomainName": "绝缘本", "PartyName": "队伍A"}
+    def test_init_config_aligned_no_assert(self):
+        """config 与模板对齐（PartyName 存在但不在模板中）时不 assert"""
+        template = {"DomainName": "绝缘本"}
         config = {"DomainName": "绝缘本", "PartyName": "队伍B", "ExtraKey": "val"}
         with patch.object(GenshinConfig, '_load', return_value=config), \
              patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template))), \
-             patch.object(GenshinConfig, '_save') as mock_save:
-            GenshinConfig()
-        mock_save.assert_not_called()
+             patch('builtins.open', mock_open(read_data=json.dumps(template))):
+            GenshinConfig()  # 不应抛异常
 
-    def test_init_config_misaligned_saves(self):
-        """config 与模板不对齐时 assert"""
-        template = {"DomainName": "绝缘本", "PartyName": "队伍A"}
+    def test_init_config_misaligned_raises(self):
+        """config 与模板不对齐时 assert（未完成适配）"""
+        template = {"DomainName": "绝缘本"}
         config = {"DomainName": "旧本", "PartyName": "队伍B"}
         with patch.object(GenshinConfig, '_load', return_value=config), \
              patch('os.path.exists', return_value=True), \
@@ -258,7 +256,7 @@ class TestGenshinConfig(unittest.TestCase):
 
     def test_init_config_party_name_missing_raises(self):
         """config 中缺少 PartyName 应 assert"""
-        template = {"DomainName": "绝缘本", "PartyName": "队伍A"}
+        template = {"DomainName": "绝缘本"}
         config = {"DomainName": "绝缘本"}
         with patch.object(GenshinConfig, '_load', return_value=config), \
              patch('os.path.exists', return_value=True), \
