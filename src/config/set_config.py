@@ -27,6 +27,7 @@ def safe_update(config: dict, template: dict):
                 f"[set_config] 类型不一致: key={key}, " \
                 f"config={type(config[key]).__name__}, template={type(val).__name__}"
         config[key] = val
+    return
 
 
 # ============================================================
@@ -47,11 +48,12 @@ class ScriptConfig:
         assert isinstance(config, dict), f"[set_config][{self.display_name}] config 必须是 dict"
         return config
 
-    def _save(self, config: dict):
+    def _save(self, config: dict) -> None:
         assert isinstance(config, dict), f"[set_config][{self.display_name}] config 必须是 dict"
         save_config(self.display_name, config)
+        return
 
-    def _load_template(self) -> dict[str, Any] | list[dict[str, Any]]:
+    def _load_template(self) -> dict:
         """
         加载模板文件，支持 JSON 和 YAML 格式。
         文件不存在或格式不支持时抛出 AssertionError。
@@ -64,10 +66,14 @@ class ScriptConfig:
         ext = os.path.splitext(template_path)[1].lower()
         with open(template_path, 'r', encoding='utf-8') as f:
             if ext == '.json':
-                return json.load(f)
+                template = json.load(f)
             elif ext in ('.yaml', '.yml'):
-                return yaml.safe_load(f)
-        raise ValueError(f"[set_config][{self.display_name}] 不支持的模板格式: {ext}")
+                template = yaml.safe_load(f)
+            else:
+                raise ValueError(f"[set_config][{self.display_name}] 不支持的模板格式: {ext}")
+        assert isinstance(template, dict), \
+            f"[set_config][{self.display_name}] 模板必须是 dict"
+        return template
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
         """
@@ -91,7 +97,7 @@ class ScriptConfig:
         assert sequence is None, f"[set_config][{self.display_name}] 不支持 sequence 参数"
         return False
 
-    def _init_config(self):
+    def _init_config(self) -> None:
         """
         通用的 config 初始化逻辑：加载 config 和 template，检查对齐，合并更新。
         子类重写 _is_aligned 以实现特殊比较逻辑。
@@ -105,6 +111,7 @@ class ScriptConfig:
         safe_update(config, template)
         print(f"[set_config][{self.display_name}] config 已更新")
         self._save(config)
+        return
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
         """
@@ -123,7 +130,7 @@ class ScriptConfig:
 
         return all(key in config and _aligned(config[key], template[key]) for key, val in template.items())
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
+    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
         """
         设置副本。默认流程：_update_task → _update_sequence → save。
         子类直接覆盖 set_dungeon 则完全自定义（如粥）。
@@ -136,6 +143,7 @@ class ScriptConfig:
             self._save(config)
         else:
             print(f"[set_config][{self.display_name}] config 无需更新")
+        return
 
 
 # ============================================================
