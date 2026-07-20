@@ -90,13 +90,14 @@ def get_config_path(script_display_name: str) -> str:
 # config 读写
 # ============================================================
 
-def load_config(script_display_name: str) -> Any:
+def load_config(script_display_name: str) -> dict | list:
     """
-    读取指定脚本的 config 文件，返回解析后的 dict/list。
+    读取指定脚本的 config 文件，返回解析后的 dict 或 list。
     支持 .json 和 .yaml/.yml 格式。
-    并确保 config 文件能被读取。
+    assert 文件存在。
     """
     path = get_config_path(script_display_name)
+    assert os.path.exists(path), f"[set_config] config 文件不存在: {path}"
     ext = os.path.splitext(path)[1].lower()
     with open(path, 'r', encoding='utf-8') as f:
         if ext == '.json':
@@ -106,7 +107,7 @@ def load_config(script_display_name: str) -> Any:
         raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
 
-def save_config(script_display_name: str, data: Any) -> None:
+def save_config(script_display_name: str, data: dict | list) -> None:
     """
     将数据写回指定脚本的 config 文件。
     保持原始格式（json / yaml）。

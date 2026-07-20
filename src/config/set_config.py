@@ -28,10 +28,12 @@ class ScriptConfig:
     _task_map: dict[str, Any] = {}
     """副本中文名 → config 值的映射，空 dict 表示直接用 dungeon_name"""
 
-    def _load(self) -> dict:
+    def _load(self) -> dict | list:
+        # 读取 脚本对应的 config 文件，并确保它存在
         return load_config(self.display_name)
 
-    def _save(self, config: dict):
+    def _save(self, config: dict | list):
+        # 确保脚本对应的 config 文件存在，并将数据写回  
         save_config(self.display_name, config)
 
     def _load_template(self) -> dict[str, Any] | list[dict[str, Any]]:
@@ -231,8 +233,21 @@ class StarRailConfig(ScriptConfig):
         self._init_config()
 
     def _init_config(self):
-        # TODO: 确认包含了培养角色等配置
-        pass
+        config = self._load()
+        changed = False
+
+        if config.get("power_enable") is not True:
+            config["power_enable"] = True
+            changed = True
+            print(f"[set_config][{self.display_name}] power_enable 已设置为 true")
+
+        if config.get("build_target_enable") is not True:
+            config["build_target_enable"] = True
+            changed = True
+            print(f"[set_config][{self.display_name}] build_target_enable 已设置为 true")
+
+        if changed:
+            self._save(config)
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
