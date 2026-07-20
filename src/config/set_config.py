@@ -80,7 +80,7 @@ class ScriptConfig:
     def _init_config(self):
         """
         通用的 config 初始化逻辑：加载 config 和 template，检查对齐，合并更新。
-        子类重写 _is_aligned 和 _merge_config 以实现特殊逻辑。
+        子类重写 _is_aligned 以实现特殊比较逻辑。
         """
         config = self._load()
         template = self._load_template()
@@ -88,23 +88,26 @@ class ScriptConfig:
         if self._is_aligned(config, template):
             return
 
-        self._merge_config(config, template)
+        config.update(template)
         print(f"[set_config][{self.display_name}] config 已更新")
         self._save(config)
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
         """
-        默认对齐检查：模板中所有 key 都存在且值一致。
-        子类重写以实现特殊比较逻辑（如绝区零的 plan_list、粥的 TaskQueue）。
+        默认对齐检查：递归比较模板中的所有 key。
+        对于 dict 递归检查，对于 list 按索引逐一比较，其余直接比较值。
+        子类重写以实现特殊比较逻辑。
         """
-        return all(key in config and config[key] == val for key, val in template.items())
+        def _aligned(a, b):
+            if isinstance(a, dict) and isinstance(b, dict):
+                return all(k in a and _aligned(a[k], b[k]) for k in b)
+            if isinstance(a, list) and isinstance(b, list):
+                if len(a) < len(b):
+                    return False
+                return all(_aligned(a[i], b[i]) for i in range(len(b)))
+            return a == b
 
-    def _merge_config(self, config: dict, template: dict):
-        """
-        默认合并：用 template 更新 config。
-        子类重写以实现特殊合并逻辑（如粥更新子结构）。
-        """
-        config.update(template)
+        return all(key in config and _aligned(config[key], template[key]) for key, val in template.items())
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         """
@@ -216,29 +219,6 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         print(f"[set_config][{self.display_name}] zzz无需适配")
 
-    def _is_aligned(self, config: dict, template: dict) -> bool:
-        """
-        检查游戏脚本 config 与模板是否对齐（严格要求顺序一致）：
-        - plan_list: 逐项按顺序比较，模板中出现的字段必须一致
-        - 其余顶层 key（double_reward 等）：值必须一致
-        """
-        for key, val in template.items():
-            if key not in config:
-                return False
-            if key == "plan_list":
-                cur_list = config[key]
-                if len(cur_list) < len(val):
-                    return False
-                for i, tpl_item in enumerate(val):
-                    cur_item = cur_list[i]
-                    for field, field_val in tpl_item.items():
-                        if field not in cur_item or cur_item[field] != field_val:
-                            return False
-            else:
-                if config[key] != val:
-                    return False
-        return True
-
 
 # ---- 崩铁 Honkai: Star Rail ----
 class StarRailConfig(ScriptConfig):
@@ -289,7 +269,8 @@ class ArknightsConfig(ScriptConfig):
             "土":     {"index": 5, "stage": "1-7"},
         }
         """
-        task_config = self._load_template()
+        template = self._load_template()
+        task_config = template["Configurations"]["Default"]["TaskQueue"]
         self._task_map = {}
         for index, task in enumerate(task_config):
             if task.get("$type") == "FightTask":
@@ -297,25 +278,6 @@ class ArknightsConfig(ScriptConfig):
                 stage = task.get("StagePlan", [])[0] if task.get("StagePlan") else ""
                 if name and stage:
                     self._task_map[name] = {"index": index, "stage": stage}
-
-    def _is_aligned(self, config: dict, template: dict) -> bool:
-        """比较当前 TaskQueue 与模板是否一致（只比较关键字段）"""
-        cur = config["Configurations"]["Default"]["TaskQueue"]
-        if len(cur) < len(template):
-            return False
-        for i in range(len(template)):
-            if cur[i].get("Name") != template[i]["Name"]:
-                return False
-            if cur[i].get("$type") != template[i]["$type"]:
-                return False
-            if template[i]["$type"] == "FightTask":
-                if cur[i].get("StagePlan") != template[i]["StagePlan"]:
-                    return False
-        return True
-
-    def _merge_config(self, config: dict, template: dict):
-        """更新 TaskQueue 子结构"""
-        config["Configurations"]["Default"]["TaskQueue"] = template
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         config = self._load()

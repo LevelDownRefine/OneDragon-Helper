@@ -553,53 +553,65 @@ class TestArknightsConfig(unittest.TestCase):
 
     def test_is_aligned_identical(self):
         cfg = self._make_cfg()
-        template = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]},
-        ]
-        cur = [
-            {"Name": "开始唤醒", "$type": "StartUpTask", "ExtraKey": 1},
-            {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"], "IsEnable": True},
-        ]
-        self.assertTrue(cfg._is_aligned(cur, template))
+        template = {
+            "Configurations": {
+                "Default": {
+                    "TaskQueue": [
+                        {"Name": "开始唤醒", "$type": "StartUpTask"},
+                        {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]},
+                    ]
+                }
+            }
+        }
+        config = {
+            "Configurations": {
+                "Default": {
+                    "TaskQueue": [
+                        {"Name": "开始唤醒", "$type": "StartUpTask", "ExtraKey": 1},
+                        {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"], "IsEnable": True},
+                    ]
+                }
+            }
+        }
+        self.assertTrue(cfg._is_aligned(config, template))
 
     def test_is_aligned_name_mismatch(self):
         cfg = self._make_cfg()
-        template = [{"Name": "剿灭", "$type": "FightTask"}]
-        cur = [{"Name": "红票", "$type": "FightTask"}]
-        self.assertFalse(cfg._is_aligned(cur, template))
+        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]}}}
+        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "红票", "$type": "FightTask"}]}}}
+        self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_type_mismatch(self):
         cfg = self._make_cfg()
-        template = [{"Name": "剿灭", "$type": "FightTask"}]
-        cur = [{"Name": "剿灭", "$type": "StartUpTask"}]
-        self.assertFalse(cfg._is_aligned(cur, template))
+        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]}}}
+        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "剿灭", "$type": "StartUpTask"}]}}}
+        self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_stageplan_mismatch(self):
         cfg = self._make_cfg()
-        template = [{"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]}]
-        cur = [{"Name": "剿灭", "$type": "FightTask", "StagePlan": ["AP-5"]}]
-        self.assertFalse(cfg._is_aligned(cur, template))
+        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]}]}}}
+        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask", "StagePlan": ["AP-5"]}]}}}
+        self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_cur_shorter_returns_false(self):
         cfg = self._make_cfg()
-        template = [{"Name": "A", "$type": "X"}, {"Name": "B", "$type": "Y"}]
-        cur = [{"Name": "A", "$type": "X"}]
-        self.assertFalse(cfg._is_aligned(cur, template))
+        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}, {"Name": "B", "$type": "Y"}]}}}
+        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}}}
+        self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_cur_longer_ok(self):
         """cur 比 template 长是可以的"""
         cfg = self._make_cfg()
-        template = [{"Name": "A", "$type": "X"}]
-        cur = [{"Name": "A", "$type": "X"}, {"Name": "B", "$type": "Y"}]
-        self.assertTrue(cfg._is_aligned(cur, template))
+        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}}}
+        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}, {"Name": "B", "$type": "Y"}]}}}
+        self.assertTrue(cfg._is_aligned(config, template))
 
     def test_is_aligned_non_fight_task_skips_stageplan(self):
-        """非 FightTask 不检查 StagePlan"""
+        """非 FightTask 不检查 StagePlan（因为模板中没写 StagePlan）"""
         cfg = self._make_cfg()
-        template = [{"Name": "自动公招", "$type": "RecruitTask"}]
-        cur = [{"Name": "自动公招", "$type": "RecruitTask"}]
-        self.assertTrue(cfg._is_aligned(cur, template))
+        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]}}}
+        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]}}}
+        self.assertTrue(cfg._is_aligned(config, template))
 
     # ---- _init_config ----
 
@@ -618,11 +630,12 @@ class TestArknightsConfig(unittest.TestCase):
             {"Name": "信用收支", "$type": "MallTask"},
             {"Name": "领取奖励", "$type": "AwardTask"},
         ]
+        template = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
 
         config = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
         with patch.object(cfg, '_load', return_value=config), \
              patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template_queue))), \
+             patch('builtins.open', mock_open(read_data=json.dumps(template))), \
              patch.object(cfg, '_save') as mock_save:
             cfg._init_config()
         mock_save.assert_not_called()
@@ -642,11 +655,12 @@ class TestArknightsConfig(unittest.TestCase):
             {"Name": "信用收支", "$type": "MallTask"},
             {"Name": "领取奖励", "$type": "AwardTask"},
         ]
+        template = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
         cur_queue = [{"Name": "wrong", "$type": "Unknown"}]
         config = {"Configurations": {"Default": {"TaskQueue": cur_queue}}}
         with patch.object(cfg, '_load', return_value=config), \
              patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template_queue))), \
+             patch('builtins.open', mock_open(read_data=json.dumps(template))), \
              patch.object(cfg, '_save') as mock_save:
             cfg._init_config()
         mock_save.assert_called_once()
