@@ -446,25 +446,28 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
 class TestStarRailConfig(unittest.TestCase):
 
     def test_init_attributes(self):
-        cfg = StarRailConfig()
-        self.assertEqual(cfg.display_name, "崩铁")
-        self.assertEqual(cfg._task_key, "instance_type")
-        self.assertEqual(cfg._task_map, {})
+        with patch.object(StarRailConfig, '_init_config'):
+            cfg = StarRailConfig()
+            self.assertEqual(cfg.display_name, "崩铁")
+            self.assertEqual(cfg._task_key, "instance_type")
+            self.assertEqual(cfg._task_map, {})
 
     def test_update_task_direct_assign(self):
-        cfg = StarRailConfig()
-        config = {"instance_type": "旧本"}
-        changed = cfg._update_task(config, "新本")
-        self.assertTrue(changed)
-        self.assertEqual(config["instance_type"], "新本")
+        with patch.object(StarRailConfig, '_init_config'):
+            cfg = StarRailConfig()
+            config = {"instance_type": "旧本"}
+            changed = cfg._update_task(config, "新本")
+            self.assertTrue(changed)
+            self.assertEqual(config["instance_type"], "新本")
 
     def test_set_dungeon_changed_saves(self):
-        cfg = StarRailConfig()
-        config = {"instance_type": "旧本"}
-        with patch.object(cfg, '_load', return_value=config), \
-             patch.object(cfg, '_save') as mock_save:
-            cfg.set_dungeon("新本")
-        mock_save.assert_called_once_with({"instance_type": "新本"})
+        with patch.object(StarRailConfig, '_init_config'):
+            cfg = StarRailConfig()
+            config = {"instance_type": "旧本"}
+            with patch.object(cfg, '_load', return_value=config), \
+                 patch.object(cfg, '_save') as mock_save:
+                cfg.set_dungeon("新本")
+            mock_save.assert_called_once_with({"instance_type": "新本"})
 
 
 # ============================================================
