@@ -376,10 +376,11 @@ class MainWindow(QMainWindow):
 
         self.select_all_btn = QPushButton("一键全选")
         self.select_all_btn.setFixedHeight(28)
+        self.select_all_btn.setMinimumWidth(64)
         self.select_all_btn.setStyleSheet("""
             QPushButton {
                 border: 1px solid #d0d0d0;
-                border-radius: 4px;
+                border-radius: 8px;
                 background: white;
                 font-size: 11px;
                 color: #303030;
@@ -391,10 +392,11 @@ class MainWindow(QMainWindow):
 
         self.deselect_all_btn = QPushButton("清空选择")
         self.deselect_all_btn.setFixedHeight(28)
+        self.deselect_all_btn.setMinimumWidth(64)
         self.deselect_all_btn.setStyleSheet("""
             QPushButton {
                 border: 1px solid #d0d0d0;
-                border-radius: 4px;
+                border-radius: 8px;
                 background: white;
                 font-size: 11px;
                 color: #303030;
