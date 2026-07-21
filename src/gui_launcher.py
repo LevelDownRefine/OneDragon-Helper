@@ -20,7 +20,7 @@ from src.utils import (
     get_root_dir,
 )
 from src.config.set_config import set_config
-from src.config.init_config import need_config_workflow, config_workflow
+from src.config.init_config import need_config_workflow, config_workflow, SingleScriptConfigDialog
 from src.config.dungeon_config import (
     load_dungeon_map,
     parse_dungeon_config,
@@ -84,6 +84,7 @@ class ScriptItem(QFrame):
         assert 'script_type' in script_data, "[gui_launcher] 脚本配置缺少 script_type 字段"
         self.display_name = script_data['display_name']
         self.script_type = script_data['script_type']
+        self.script_path = script_data.get('script_path', '')
         self.dungeon_btn = None
         self._selected_dungeon = None   # 一级副本名（None 表示未选择）
         self._selected_sequence = None  # 二级序列名
@@ -108,13 +109,31 @@ class ScriptItem(QFrame):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(12)
+        layout.setSpacing(8)
 
         # 脚本名称
         title_label = QLabel(self.display_name)
         title_label.setFont(QFont("Microsoft YaHei", 10))
         title_label.setStyleSheet("color: #202020;")
         layout.addWidget(title_label, stretch=1)
+
+        # 配置按钮
+        self.config_btn = QPushButton("⚙")
+        self.config_btn.setFixedSize(28, 28)
+        self.config_btn.setCursor(Qt.PointingHandCursor)
+        self.config_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 4px;
+                background: #f5f5f5;
+                font-size: 14px;
+                color: #606060;
+            }
+            QPushButton:hover { background-color: #e0e0e0; }
+            QPushButton:pressed { background-color: #d0d0d0; }
+        """)
+        self.config_btn.clicked.connect(self._show_config_dialog)
+        layout.addWidget(self.config_btn)
 
         # 副本选择按钮（点击弹出级联菜单：一级 → 二级从右侧弹出）
         has_real_dungeons = (
@@ -157,6 +176,11 @@ class ScriptItem(QFrame):
         self.toggle_btn.clicked.connect(self._toggle)
         self._update_switch_style()
         layout.addWidget(self.toggle_btn)
+
+    def _show_config_dialog(self):
+        """打开单脚本配置弹窗"""
+        dialog = SingleScriptConfigDialog(self.display_name, self.script_path, self)
+        dialog.exec()
 
     def _show_dungeon_menu(self):
         """点击副本按钮，弹出级联菜单"""

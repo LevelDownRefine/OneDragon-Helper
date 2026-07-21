@@ -5,7 +5,7 @@ import shutil
 import yaml
 from functools import partial
 
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QFileDialog, QWidget, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QFileDialog, QWidget, QVBoxLayout, QDialog
 from PySide6.QtGui import QIntValidator
 from qfluentwidgets import (
     MessageBox, ScrollArea, SubtitleLabel,
@@ -193,6 +193,135 @@ class ConfigUI(QWidget):
         w.yesButton.setText("确定")
         w.cancelButton.hide()
         w.exec()
+
+
+class SingleScriptConfigDialog(QDialog):
+    """单个脚本的配置弹窗（路径选择 + 每周超时时间）"""
+    FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
+    LABEL_WIDTH = 100
+
+    def __init__(self, script_name, script_path="", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"配置 {script_name}")
+        self.resize(600, 300)
+
+        self.script_name = script_name
+        self.script_path = script_path
+        self._result_path = script_path
+        self._result_timeouts = []
+
+        self.init_ui()
+        self.load_data()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+
+        title = SubtitleLabel(f"配置 {self.script_name}", self)
+        layout.addWidget(title)
+
+        row1 = QHBoxLayout()
+        label = BodyLabel("脚本路径:", self)
+        label.setFixedWidth(self.LABEL_WIDTH)
+
+        self.path_input = LineEdit(self)
+        self.path_input.setText(self.script_path)
+
+        self.browse_btn = PushButton("选择", self)
+        self.browse_btn.clicked.connect(self.browse_file)
+
+        row1.addWidget(label)
+        row1.addWidget(self.path_input)
+        row1.addWidget(self.browse_btn)
+        layout.addLayout(row1)
+
+        row2 = QHBoxLayout()
+        timeout_label = BodyLabel("超时(秒):", self)
+        timeout_label.setFixedWidth(self.LABEL_WIDTH)
+        row2.addWidget(timeout_label)
+
+        day_names = ["一", "二", "三", "四", "五", "六", "日"]
+        self.timeout_inputs = []
+
+        for day_idx in range(7):
+            day_label = BodyLabel(f"周{day_names[day_idx]}", self)
+            lineedit = LineEdit(self)
+            lineedit.setValidator(QIntValidator(0, 86400, self))
+            lineedit.setFixedWidth(80)
+
+            row2.addWidget(day_label)
+            row2.addWidget(lineedit)
+            self.timeout_inputs.append(lineedit)
+
+        row2.addStretch()
+        layout.addLayout(row2)
+
+        btn_layout = QHBoxLayout()
+        self.save_btn = PrimaryPushButton("保存", self)
+        self.save_btn.clicked.connect(self.save_data)
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.save_btn)
+        layout.addLayout(btn_layout)
+
+    def load_data(self):
+        weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
+        weekly_timeouts_map = {}
+        if os.path.exists(weekly_timeouts_path):
+            with open(weekly_timeouts_path, 'r', encoding='utf-8') as f:
+                weekly_timeouts_map = yaml.safe_load(f) or {}
+
+        timeouts = weekly_timeouts_map.get(self.script_name, [0] * 7)
+        if len(timeouts) < 7:
+            timeouts.extend([0] * (7 - len(timeouts)))
+
+        for idx, le in enumerate(self.timeout_inputs):
+            le.setText(str(timeouts[idx]))
+
+    def browse_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "选择脚本文件", "", self.FILE_FILTER)
+        if file_path:
+            self.path_input.setText(os.path.normpath(file_path))
+
+    def save_data(self):
+        path_val = self.path_input.text().strip()
+        if not path_val:
+            MessageBox("警告", "脚本路径为空，可能会导致运行问题！", self).exec()
+            return
+
+        timeouts = []
+        for le in self.timeout_inputs:
+            val = int(le.text().strip())
+            timeouts.append(val)
+
+        config_path = get_config_yml_path_under_root()
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = yaml.safe_load(f)
+
+        for script in config_data.get('script_list', []):
+            if script.get('display_name') == self.script_name:
+                script['script_path'] = path_val
+                break
+
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.dump(config_data, f, allow_unicode=True, sort_keys=False)
+
+        weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
+        weekly_timeouts_map = {}
+        if os.path.exists(weekly_timeouts_path):
+            with open(weekly_timeouts_path, 'r', encoding='utf-8') as f:
+                weekly_timeouts_map = yaml.safe_load(f) or {}
+        weekly_timeouts_map[self.script_name] = timeouts
+
+        with open(weekly_timeouts_path, 'w', encoding='utf-8') as f:
+            yaml.dump(weekly_timeouts_map, f, allow_unicode=True, sort_keys=False)
+
+        w = MessageBox("成功", "配置已保存！", self)
+        w.yesButton.setText("确定")
+        w.cancelButton.hide()
+        w.exec()
+
+        self.accept()
 
 
 def run_config_ui():
