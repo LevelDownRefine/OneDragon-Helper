@@ -9,6 +9,7 @@ dependencies = [
     "opencv-python==4.10.0.84",
     "numpy==1.26.4",
     "psutil==6.1.1",
+    "pycaw==20220416",
     "pyinstaller==6.19.0",
     "pynput==1.8.1",
     "pyside6==6.8.0.2",
