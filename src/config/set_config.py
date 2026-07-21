@@ -159,8 +159,7 @@ class WutheringWavesConfig(ScriptConfig):
         }
 
     def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
-        if sequence is None:
-            return False
+        assert sequence is not None, f"[set_config][{self.display_name}] sequence 不能为空"
         if dungeon_name == "模拟领域":
             material_map = {
                 "共鸣者经验": "Resonator EXP",

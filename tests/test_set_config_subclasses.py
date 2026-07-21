@@ -192,10 +192,10 @@ class TestWutheringWavesConfig(unittest.TestCase):
 
     # ---- _update_sequence: None ----
 
-    def test_update_sequence_none_returns_false(self):
+    def test_update_sequence_none_raises(self):
         config = {"Which to Farm": "Simulation Challenge"}
-        changed = self.cfg._update_sequence(config, "模拟领域", None)
-        self.assertFalse(changed)
+        with self.assertRaises(AssertionError):
+            self.cfg._update_sequence(config, "模拟领域", None)
 
     # ---- _update_sequence: 未知副本类型 ----
 
