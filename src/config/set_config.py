@@ -288,7 +288,7 @@ class ArknightsConfig(ScriptConfig):
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
         """
-        粥的副本设置逻辑：禁用所有副本 → 启用选定副本 → 启用刷土清理剩余体力。
+        粥的副本设置逻辑：禁用所有副本 → 启用剿灭任务（周常） → 启用选定副本 → 启用刷土清理剩余体力。
         只有状态变化时返回 True。
         """
         task_config = config["Configurations"]["Default"]["TaskQueue"]
@@ -303,7 +303,7 @@ class ArknightsConfig(ScriptConfig):
             assert task_config[idx]["StagePlan"] == [stage], \
                 f"[set_config][{self.display_name}] TaskQueue[{idx}] StagePlan 不匹配: 期望 {[stage]}, 实际 {task_config[idx]['StagePlan']}"
 
-            should_enable = (name == dungeon_name) or (name == "土")
+            should_enable = (name == "剿灭") or (name == dungeon_name) or (name == "土")
             if task_config[idx]["IsEnable"] != should_enable:
                 task_config[idx]["IsEnable"] = should_enable
                 changed = True

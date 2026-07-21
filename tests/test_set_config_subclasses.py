@@ -700,8 +700,9 @@ class TestArknightsConfig(unittest.TestCase):
         self.assertTrue(saved_queue[2]["IsEnable"])
         # 土启用（清理剩余体力）
         self.assertTrue(saved_queue[5]["IsEnable"])
+        # 剿灭始终启用（周常）
+        self.assertTrue(saved_queue[1]["IsEnable"])  # 剿灭
         # 其他副本禁用
-        self.assertFalse(saved_queue[1]["IsEnable"])  # 剿灭
         self.assertFalse(saved_queue[3]["IsEnable"])  # 经验
         self.assertFalse(saved_queue[4]["IsEnable"])  # 龙门币
 
@@ -711,6 +712,37 @@ class TestArknightsConfig(unittest.TestCase):
         with patch.object(cfg, '_load', return_value=config):
             with self.assertRaises(AssertionError):
                 cfg.set_dungeon("不存在")
+
+    def test_set_dungeon_elimination_only_enables_elimination_and_土(self):
+        """选择剿灭时，只启用剿灭和土，其他副本禁用"""
+        cfg = self._make_cfg()
+        queue = [None] * 10
+        queue[0] = {"Name": "开始唤醒", "$type": "StartUpTask"}
+        for name, info in cfg._task_map.items():
+            queue[info["index"]] = {
+                "Name": name, "$type": "FightTask",
+                "StagePlan": [info["stage"]], "IsEnable": True,
+            }
+        queue[6] = {"Name": "自动公招", "$type": "RecruitTask"}
+        queue[7] = {"Name": "基建换班", "$type": "InfrastTask"}
+        queue[8] = {"Name": "信用收支", "$type": "MallTask"}
+        queue[9] = {"Name": "领取奖励", "$type": "AwardTask"}
+
+        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
+        with patch.object(cfg, '_load', return_value=config), \
+             patch.object(cfg, '_save') as mock_save:
+            cfg.set_dungeon("剿灭")
+
+        mock_save.assert_called_once()
+        saved_queue = mock_save.call_args[0][0]["Configurations"]["Default"]["TaskQueue"]
+        # 剿灭启用
+        self.assertTrue(saved_queue[1]["IsEnable"])  # 剿灭
+        # 土启用（清理剩余体力）
+        self.assertTrue(saved_queue[5]["IsEnable"])  # 土
+        # 其他副本禁用
+        self.assertFalse(saved_queue[2]["IsEnable"])  # 红票
+        self.assertFalse(saved_queue[3]["IsEnable"])  # 经验
+        self.assertFalse(saved_queue[4]["IsEnable"])  # 龙门币
 
     def test_set_dungeon_name_mismatch_raises(self):
         """TaskQueue 中 Name 不匹配应 assert"""
