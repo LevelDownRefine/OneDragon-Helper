@@ -144,12 +144,12 @@ class ScriptItem(QFrame):
         if self.script_type != 'python' and has_real_dungeons:
             self.dungeon_btn = QPushButton("选择副本")
             self.dungeon_btn.setFixedHeight(28)
-            self.dungeon_btn.setMinimumWidth(120)
+            self.dungeon_btn.setMinimumWidth(160)
             self.dungeon_btn.setCursor(Qt.PointingHandCursor)
             self.dungeon_btn.setStyleSheet("""
                 QPushButton {
                     border: 1px solid #d0d0d0;
-                    border-radius: 4px;
+                    border-radius: 8px;
                     padding: 0 10px;
                     background: white;
                     font-size: 11px;
