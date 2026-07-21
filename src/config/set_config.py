@@ -160,26 +160,32 @@ class WutheringWavesConfig(ScriptConfig):
 
     def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
         assert sequence is not None, f"[set_config][{self.display_name}] sequence 不能为空"
-        if dungeon_name == "模拟领域":
-            material_map = {
-                "共鸣者经验": "Resonator EXP",
-                "武器经验": "Weapon EXP",
-                "贝币": "Shell Credit",
-            }
-            assert sequence in material_map, f"[set_config][{self.display_name}] 未适配的序列: {sequence}"
-            target = material_map[sequence]
-            key = "Material Selection"
-        elif dungeon_name == "无音区":
-            key = "Which Tacet Suppression to Farm"
-            target = sequence
-        elif dungeon_name == "凝素领域":
-            key = "Which Forgery Challenge to Farm"
-            target = sequence
+
+        sequence_map = {
+            "模拟领域": {
+                "key": "Material Selection",
+                "values": {
+                    "共鸣者经验": "Resonator EXP",
+                    "武器经验": "Weapon EXP",
+                    "贝币": "Shell Credit",
+                },
+            },
+            "无音区": {"key": "Which Tacet Suppression to Farm", "values": None},
+            "凝素领域": {"key": "Which Forgery Challenge to Farm", "values": None},
+        }
+
+        assert dungeon_name in sequence_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        cfg = sequence_map[dungeon_name]
+
+        if cfg["values"] is not None:
+            assert sequence in cfg["values"], f"[set_config][{self.display_name}] 未适配的序列: {sequence}"
+            target = cfg["values"][sequence]
         else:
-            assert False, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
-        if config[key] == target:
+            target = sequence
+
+        if config[cfg["key"]] == target:
             return False
-        config[key] = target
+        config[cfg["key"]] = target
         return True
 
 
