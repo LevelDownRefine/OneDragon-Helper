@@ -1,4 +1,7 @@
 from __future__ import annotations
+import sys
+import yaml
+import os
 
 import tempfile
 from datetime import datetime, timedelta
@@ -196,15 +199,12 @@ def parse_log(display_name: str, script_path: str = "") -> dict:
 
 
 def parse_logs() -> None:
-    import sys
-    import yaml
-    from src.utils import get_root_dir
-
     # Windows 控制台默认 GBK 编码，日志中可能含 emoji 等字符
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    config_path = Path(get_root_dir()) / "config" / "config.yml"
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    config_path = Path(root_dir) / "config" / "config.yml"
     assert config_path.exists(), f"[log_monitor] config.yml 不存在: {config_path}"
 
     with open(config_path, "r", encoding="utf-8") as f:

@@ -176,6 +176,25 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+- display_name: 日志分析
+  game_label: ''
+  script_type: python
+  script_path: D:\game_helper\OneDragon-Helper\src\log\collect_log.py
+  script_process_name: []
+  game_process_name: ''
+  launcher_mode: false
+  run_timeout_seconds: 60
+  check_done: ''
+  kill_script_after_done: true
+  kill_game_after_done: true
+  script_arguments: ''
+  notify_start: false
+  notify_done: false
+  notify_log_interval: 0
+  enabled: true
+  attach_direction: ''
+  no_log_timeout_seconds: 0
+  no_log_max_retries: 3
 - display_name: 自动关机
   game_label: ''
   script_type: python
