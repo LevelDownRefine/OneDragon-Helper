@@ -2,7 +2,7 @@
 
 import unittest
 
-from src.log.log_monitor import (
+from src.log.collect_log import (
     ScriptLogStatus,
     parse_log,
     OkEfLogParser,
