@@ -27,7 +27,6 @@ def safe_update(config: dict, template: dict):
                 f"[set_config] 类型不一致: key={key}, " \
                 f"config={type(config[key]).__name__}, template={type(val).__name__}"
         config[key] = val
-    return
 
 
 # ============================================================
@@ -51,7 +50,6 @@ class ScriptConfig:
     def _save(self, config: dict) -> None:
         assert isinstance(config, dict), f"[set_config][{self.display_name}] config 必须是 dict"
         save_config(self.display_name, config)
-        return
 
     def _load_template(self) -> dict:
         """
@@ -111,7 +109,6 @@ class ScriptConfig:
         safe_update(config, template)
         print(f"[set_config][{self.display_name}] config 已更新")
         self._save(config)
-        return
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
         """
@@ -143,7 +140,6 @@ class ScriptConfig:
             self._save(config)
         else:
             print(f"[set_config][{self.display_name}] config 无需更新")
-        return
 
 
 # ============================================================
@@ -291,12 +287,15 @@ class ArknightsConfig(ScriptConfig):
                 if name and stage:
                     self._task_map[name] = {"index": index, "stage": stage}
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
-        config = self._load()
+    def _update_task(self, config: dict, dungeon_name: str) -> bool:
+        """
+        粥的副本设置逻辑：禁用所有副本 → 启用选定副本 → 启用刷土清理剩余体力。
+        只有状态变化时返回 True。
+        """
         task_config = config["Configurations"]["Default"]["TaskQueue"]
         assert dungeon_name in self._task_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
 
-        # 校验并禁用所有副本任务
+        changed = False
         for name, info in self._task_map.items():
             idx = info["index"]
             stage = info["stage"]
@@ -304,15 +303,13 @@ class ArknightsConfig(ScriptConfig):
                 f"[set_config][{self.display_name}] TaskQueue[{idx}] Name 不匹配: 期望 {name}, 实际 {task_config[idx]['Name']}"
             assert task_config[idx]["StagePlan"] == [stage], \
                 f"[set_config][{self.display_name}] TaskQueue[{idx}] StagePlan 不匹配: 期望 {[stage]}, 实际 {task_config[idx]['StagePlan']}"
-            task_config[idx]["IsEnable"] = False
 
-        # 启用选定副本
-        task_config[self._task_map[dungeon_name]["index"]]["IsEnable"] = True
-        # 启用刷土清理剩余体力
-        task_config[self._task_map["土"]["index"]]["IsEnable"] = True
+            should_enable = (name == dungeon_name) or (name == "土")
+            if task_config[idx]["IsEnable"] != should_enable:
+                task_config[idx]["IsEnable"] = should_enable
+                changed = True
 
-        print(f"[set_config][{self.display_name}] config 已更新")
-        self._save(config)
+        return changed
 
 
 # ============================================================
