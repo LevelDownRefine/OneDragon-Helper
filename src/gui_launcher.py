@@ -427,10 +427,7 @@ class MainWindow(QMainWindow):
         self.run_btn.clicked.connect(self._run_selected)
         layout.addWidget(self.run_btn)
 
-        # 状态栏
-        self.status_bar = QStatusBar()
-        self.status_bar.setStyleSheet("background-color: #f3f3f3; color: #606060;")
-        self.setStatusBar(self.status_bar)
+
 
     def _load_scripts(self):
         with open(get_config_yml_path_under_root(), 'r', encoding='utf-8') as f:
@@ -536,7 +533,7 @@ class MainWindow(QMainWindow):
 
         self.run_btn.setEnabled(False)
         self.run_btn.setText("运行中...")
-        self.status_bar.showMessage(f"正在运行 {count} 个脚本...")
+
 
         self.runner = ScriptChainRunner("01")
         self.runner.finished_signal.connect(self._on_finished)
@@ -547,10 +544,9 @@ class MainWindow(QMainWindow):
         self.run_btn.setText("▶ 运行全部开启的脚本")
 
         if return_code == 0:
-            self.status_bar.showMessage("运行完成 ✓")
+
             QMessageBox.information(self, "完成", "所有脚本运行完成！")
         else:
-            self.status_bar.showMessage(f"运行结束 (退出码: {return_code})")
             QMessageBox.warning(self, "提示", f"脚本运行结束，退出码: {return_code}")
 
     def _select_all(self):
@@ -559,15 +555,12 @@ class MainWindow(QMainWindow):
             if not item.enabled:
                 item.enabled = True
                 item._update_switch_style()
-        self.status_bar.showMessage(f"已全选 {len(self.script_items)} 个脚本")
-
     def _deselect_all(self):
         """清空所有选择"""
         for item in self.script_items:
             if item.enabled:
                 item.enabled = False
                 item._update_switch_style()
-        self.status_bar.showMessage("已清空所有选择")
 
 
 def main():
