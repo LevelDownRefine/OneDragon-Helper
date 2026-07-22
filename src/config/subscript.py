@@ -6,9 +6,8 @@
 import os
 import json
 import yaml
-from typing import Any
 
-from src.utils import get_config_yml_path_under_root
+from src.utils import get_config_yml_path_under_root, get_root_dir
 
 
 # ============================================================
@@ -90,6 +89,27 @@ def get_config_path(script_display_name: str) -> str:
 # ============================================================
 # config 读写
 # ============================================================
+
+def load_template(display_name: str) -> dict | list:
+    """
+    加载模板文件，支持 JSON 和 YAML 格式。
+    文件不存在或格式不支持时抛出 AssertionError。
+    """
+    assert display_name in _TEMPLATE_PATHS, \
+        f"[set_config][{display_name}] 未配置模板路径"
+    rel_path = _TEMPLATE_PATHS[display_name]
+    template_path = os.path.join(get_root_dir(), "config", rel_path)
+    assert os.path.exists(template_path), f"[set_config][{display_name}] 未找到模板文件: {template_path}"
+    ext = os.path.splitext(template_path)[1].lower()
+    with open(template_path, 'r', encoding='utf-8') as f:
+        if ext == '.json':
+            template = json.load(f)
+        elif ext in ('.yaml', '.yml'):
+            template = yaml.safe_load(f)
+        else:
+            raise ValueError(f"[set_config][{display_name}] 不支持的模板格式: {ext}")
+    return template
+
 
 def load_config(script_display_name: str) -> dict | list:
     """

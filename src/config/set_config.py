@@ -6,13 +6,9 @@
 各脚本子类单独适配，上层无需关心差异。
 """
 
-import os
-import json
-import yaml
 from typing import Any
 
-from src.config.subscript import load_config, save_config, _TEMPLATE_PATHS
-from src.utils import get_root_dir
+from src.config.subscript import load_config, save_config, load_template
 
 
 def safe_update(config: dict, key: str, value: Any, display_name: str = "",
@@ -70,26 +66,8 @@ class ScriptConfig:
         save_config(self.display_name, config)
 
     def _load_template(self) -> dict:
-        """
-        加载模板文件，支持 JSON 和 YAML 格式。
-        文件不存在或格式不支持时抛出 AssertionError。
-        """
-        assert self.display_name in _TEMPLATE_PATHS, \
-            f"[set_config][{self.display_name}] 未配置模板路径"
-        rel_path = _TEMPLATE_PATHS[self.display_name]
-        template_path = os.path.join(get_root_dir(), "config", rel_path)
-        assert os.path.exists(template_path), f"[set_config][{self.display_name}] 未找到模板文件: {template_path}"
-        ext = os.path.splitext(template_path)[1].lower()
-        with open(template_path, 'r', encoding='utf-8') as f:
-            if ext == '.json':
-                template = json.load(f)
-            elif ext in ('.yaml', '.yml'):
-                template = yaml.safe_load(f)
-            else:
-                raise ValueError(f"[set_config][{self.display_name}] 不支持的模板格式: {ext}")
-        assert isinstance(template, dict), \
-            f"[set_config][{self.display_name}] 模板必须是 dict"
-        return template
+        """加载模板文件，支持 JSON 和 YAML 格式"""
+        return load_template(self.display_name)
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
         """
