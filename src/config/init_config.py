@@ -5,12 +5,11 @@ import shutil
 import yaml
 from functools import partial
 
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QFileDialog, QWidget, QVBoxLayout, QDialog
-from PySide6.QtGui import QIntValidator
-from qfluentwidgets import (
-    MessageBox, ScrollArea, SubtitleLabel,
-    LineEdit, PushButton, PrimaryPushButton, BodyLabel
+from PySide6.QtWidgets import (
+    QApplication, QHBoxLayout, QFileDialog, QWidget, QVBoxLayout, QDialog,
+    QLabel, QLineEdit, QPushButton, QScrollArea, QMessageBox
 )
+from PySide6.QtGui import QIntValidator, QFont
 
 from src.utils import (
     get_path_under_root,
@@ -198,12 +197,13 @@ class ConfigUI(QWidget):
 class SingleScriptConfigDialog(QDialog):
     """单个脚本的配置弹窗（路径选择 + 每周超时时间）"""
     FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
-    LABEL_WIDTH = 100
+    LABEL_WIDTH = 80
 
     def __init__(self, script_name, script_path="", parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {script_name}")
-        self.resize(600, 300)
+        self.resize(680, 280)
+        self.setStyleSheet("background-color: #f3f3f3;")
 
         self.script_name = script_name
         self.script_path = script_path
@@ -218,17 +218,46 @@ class SingleScriptConfigDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(16)
 
-        title = SubtitleLabel(f"配置 {self.script_name}", self)
-        layout.addWidget(title)
-
         row1 = QHBoxLayout()
-        label = BodyLabel("脚本路径:", self)
+        row1.setSpacing(8)
+
+        label = QLabel("脚本路径:")
+        label.setFont(QFont("Microsoft YaHei", 10))
         label.setFixedWidth(self.LABEL_WIDTH)
+        label.setStyleSheet("color: #303030;")
 
-        self.path_input = LineEdit(self)
+        self.path_input = QLineEdit(self)
+        self.path_input.setFont(QFont("Microsoft YaHei", 10))
         self.path_input.setText(self.script_path)
+        self.path_input.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+                padding: 4px 8px;
+                background: white;
+                font-size: 10px;
+            }
+            QLineEdit:focus {
+                border-color: #0078D4;
+                outline: none;
+            }
+        """)
 
-        self.browse_btn = PushButton("选择", self)
+        self.browse_btn = QPushButton("选择")
+        self.browse_btn.setFixedHeight(28)
+        self.browse_btn.setFont(QFont("Microsoft YaHei", 10))
+        self.browse_btn.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+                background: white;
+                font-size: 10px;
+                color: #303030;
+                padding: 0 16px;
+            }
+            QPushButton:hover { border-color: #a0a0a0; }
+            QPushButton:pressed { border-color: #0078D4; }
+        """)
         self.browse_btn.clicked.connect(self.browse_file)
 
         row1.addWidget(label)
@@ -237,18 +266,41 @@ class SingleScriptConfigDialog(QDialog):
         layout.addLayout(row1)
 
         row2 = QHBoxLayout()
-        timeout_label = BodyLabel("超时(秒):", self)
+        row2.setSpacing(8)
+
+        timeout_label = QLabel("超时(秒):")
+        timeout_label.setFont(QFont("Microsoft YaHei", 10))
         timeout_label.setFixedWidth(self.LABEL_WIDTH)
+        timeout_label.setStyleSheet("color: #303030;")
         row2.addWidget(timeout_label)
 
         day_names = ["一", "二", "三", "四", "五", "六", "日"]
         self.timeout_inputs = []
 
         for day_idx in range(7):
-            day_label = BodyLabel(f"周{day_names[day_idx]}", self)
-            lineedit = LineEdit(self)
+            day_label = QLabel(f"周{day_names[day_idx]}")
+            day_label.setFont(QFont("Microsoft YaHei", 9))
+            day_label.setStyleSheet("color: #606060;")
+            day_label.setFixedWidth(30)
+
+            lineedit = QLineEdit(self)
+            lineedit.setFont(QFont("Microsoft YaHei", 10))
             lineedit.setValidator(QIntValidator(0, 86400, self))
-            lineedit.setFixedWidth(80)
+            lineedit.setFixedWidth(70)
+            lineedit.setStyleSheet("""
+                QLineEdit {
+                    border: 1px solid #d0d0d0;
+                    border-radius: 4px;
+                    padding: 3px 6px;
+                    background: white;
+                    font-size: 9px;
+                    text-align: center;
+                }
+                QLineEdit:focus {
+                    border-color: #0078D4;
+                    outline: none;
+                }
+            """)
 
             row2.addWidget(day_label)
             row2.addWidget(lineedit)
@@ -258,9 +310,41 @@ class SingleScriptConfigDialog(QDialog):
         layout.addLayout(row2)
 
         btn_layout = QHBoxLayout()
-        self.save_btn = PrimaryPushButton("保存", self)
+        self.save_btn = QPushButton("保存")
+        self.save_btn.setFixedHeight(32)
+        self.save_btn.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
+        self.save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0078D4;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 0 24px;
+                font-size: 10px;
+            }
+            QPushButton:hover { background-color: #106EBE; }
+            QPushButton:pressed { background-color: #005A9E; }
+        """)
         self.save_btn.clicked.connect(self.save_data)
+
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setFixedHeight(32)
+        cancel_btn.setFont(QFont("Microsoft YaHei", 10))
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+                background: white;
+                font-size: 10px;
+                color: #303030;
+                padding: 0 24px;
+            }
+            QPushButton:hover { border-color: #a0a0a0; }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+
         btn_layout.addStretch()
+        btn_layout.addWidget(cancel_btn)
         btn_layout.addWidget(self.save_btn)
         layout.addLayout(btn_layout)
 
@@ -286,7 +370,7 @@ class SingleScriptConfigDialog(QDialog):
     def save_data(self):
         path_val = self.path_input.text().strip()
         if not path_val:
-            MessageBox("警告", "脚本路径为空，可能会导致运行问题！", self).exec()
+            QMessageBox.warning(self, "警告", "脚本路径为空，可能会导致运行问题！")
             return
 
         timeouts = []
@@ -316,11 +400,7 @@ class SingleScriptConfigDialog(QDialog):
         with open(weekly_timeouts_path, 'w', encoding='utf-8') as f:
             yaml.dump(weekly_timeouts_map, f, allow_unicode=True, sort_keys=False)
 
-        w = MessageBox("成功", "配置已保存！", self)
-        w.yesButton.setText("确定")
-        w.cancelButton.hide()
-        w.exec()
-
+        QMessageBox.information(self, "成功", "配置已保存！")
         self.accept()
 
 
