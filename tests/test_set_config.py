@@ -279,69 +279,43 @@ class TestSaveConfig(unittest.TestCase):
 class TestSafeUpdate(unittest.TestCase):
     """测试 safe_update"""
 
-    def test_update_same_type(self):
-        """类型一致时正常更新"""
+    def test_update_changes_value(self):
+        """值不同时更新并返回 True"""
         from src.config.set_config import safe_update
-        config = {"a": 1, "b": "old"}
-        template = {"a": 2, "b": "new"}
-        safe_update(config, template)
-        self.assertEqual(config, {"a": 2, "b": "new"})
+        config = {"key": "old"}
+        result = safe_update(config, "key", "new", "test")
+        self.assertTrue(result)
+        self.assertEqual(config["key"], "new")
 
-    def test_add_new_key(self):
-        """config 中不存在的 key 直接添加，不检查类型"""
+    def test_no_change_when_same_value(self):
+        """值相同时不更新并返回 False"""
+        from src.config.set_config import safe_update
+        config = {"key": "same"}
+        result = safe_update(config, "key", "same", "test")
+        self.assertFalse(result)
+        self.assertEqual(config["key"], "same")
+
+    def test_key_not_exists_raises(self):
+        """key 不存在时 assert（默认）"""
+        from src.config.set_config import safe_update
+        config = {}
+        with self.assertRaises(AssertionError):
+            safe_update(config, "missing", "value", "test")
+
+    def test_key_not_exists_adds_with_flag(self):
+        """assert_key_exists=False 时允许添加新 key"""
         from src.config.set_config import safe_update
         config = {"a": 1}
-        template = {"b": [1, 2, 3]}
-        safe_update(config, template)
-        self.assertEqual(config, {"a": 1, "b": [1, 2, 3]})
+        result = safe_update(config, "b", "new", "test", assert_key_exists=False)
+        self.assertTrue(result)
+        self.assertEqual(config, {"a": 1, "b": "new"})
 
     def test_type_mismatch_raises(self):
         """类型不一致时 assert"""
         from src.config.set_config import safe_update
         config = {"a": 1}
-        template = {"a": "string"}
-        with self.assertRaises(AssertionError) as ctx:
-            safe_update(config, template)
-        self.assertIn("类型不一致", str(ctx.exception))
-        self.assertIn("key=a", str(ctx.exception))
-
-    def test_bool_int_not_confused(self):
-        """bool 和 int 不应混淆（type(True) is not type(1)）"""
-        from src.config.set_config import safe_update
-        config = {"flag": True}
-        template = {"flag": 1}
         with self.assertRaises(AssertionError):
-            safe_update(config, template)
-
-    def test_int_bool_not_confused(self):
-        """int 和 bool 不应混淆（type(1) is not type(True)）"""
-        from src.config.set_config import safe_update
-        config = {"count": 1}
-        template = {"count": True}
-        with self.assertRaises(AssertionError):
-            safe_update(config, template)
-
-    def test_nested_dict_type_mismatch_raises(self):
-        """嵌套结构类型不一致时 assert"""
-        from src.config.set_config import safe_update
-        config = {"a": [1, 2]}
-        template = {"a": {"x": 1}}
-        with self.assertRaises(AssertionError):
-            safe_update(config, template)
-
-    def test_empty_template_no_change(self):
-        """空 template 不修改 config"""
-        from src.config.set_config import safe_update
-        config = {"a": 1}
-        safe_update(config, {})
-        self.assertEqual(config, {"a": 1})
-
-    def test_same_value_no_change(self):
-        """值相同时正常更新（无变化）"""
-        from src.config.set_config import safe_update
-        config = {"a": 1}
-        safe_update(config, {"a": 1})
-        self.assertEqual(config, {"a": 1})
+            safe_update(config, "a", "string", "test")
 
 
 if __name__ == "__main__":

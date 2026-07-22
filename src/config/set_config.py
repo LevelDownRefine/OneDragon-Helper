@@ -15,18 +15,36 @@ from src.config.subscript import load_config, save_config, _TEMPLATE_PATHS
 from src.utils import get_root_dir
 
 
-def safe_update(config: dict, template: dict):
+def safe_update(config: dict, key: str, value: Any, display_name: str = "",
+                assert_key_exists: bool = True) -> bool:
     """
-    用 template 更新 config，更新前 assert 每个已存在 key 的 value 类型一致。
-    config 中不存在的 key 直接添加，不检查类型。
-    用 type() 严格比较，避免 bool/int 混淆（isinstance(True, int) 为 True）。
+    安全更新单个字段，返回是否修改。
+    检查类型一致性，用 type() 严格比较，避免 bool/int 混淆。
+
+    Args:
+        config: 配置字典
+        key: 要更新的键
+        value: 新值
+        display_name: 脚本显示名称，用于日志
+        assert_key_exists: 是否 assert key 存在；为 False 时允许添加新 key，此时需要 print 信息
     """
-    for key, val in template.items():
-        if key in config:
-            assert type(config[key]) is type(val), \
-                f"[set_config] 类型不一致: key={key}, " \
-                f"config={type(config[key]).__name__}, template={type(val).__name__}"
-        config[key] = val
+    if assert_key_exists:
+        assert key in config, f"[set_config][{display_name}] config 中缺少字段: {key}"
+    elif key not in config:
+        print(f"[set_config][{display_name}] 添加新字段 config['{key}'] = {value}")
+        config[key] = value
+        return True
+
+    if key in config:
+        assert type(config[key]) is type(value), \
+            f"[set_config][{display_name}] 类型不一致: key={key}, " \
+            f"config={type(config[key]).__name__}, value={type(value).__name__}"
+
+    if config[key] == value:
+        return False
+    config[key] = value
+    print(f"[set_config][{display_name}] 更新 config['{key}'] 为 {value}")
+    return True
 
 
 # ============================================================
@@ -84,11 +102,7 @@ class ScriptConfig:
             task = self._task_map[dungeon_name]
         else:
             task = dungeon_name
-        assert self._task_key in config, f"[set_config][{self.display_name}] config 中缺少字段: {self._task_key}"
-        if config[self._task_key] == task:
-            return False
-        config[self._task_key] = task
-        return True
+        return safe_update(config, self._task_key, task, self.display_name)
 
     def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
         """更新序列字段。返回是否修改。默认不启用。"""
@@ -106,7 +120,8 @@ class ScriptConfig:
         if self._is_aligned(config, template):
             return
 
-        safe_update(config, template)
+        for key, val in template.items():
+            safe_update(config, key, val, self.display_name, assert_key_exists=False)
         print(f"[set_config][{self.display_name}] config 已更新")
         self._save(config)
 
@@ -125,7 +140,7 @@ class ScriptConfig:
                 return all(_aligned(a[i], b[i]) for i in range(len(b)))
             return a == b
 
-        return all(key in config and _aligned(config[key], template[key]) for key, val in template.items())
+        return all(key in config and _aligned(config[key], template[key]) for key in template)
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
         """
@@ -183,10 +198,7 @@ class WutheringWavesConfig(ScriptConfig):
         else:
             target = sequence
 
-        if config[cfg["key"]] == target:
-            return False
-        config[cfg["key"]] = target
-        return True
+        return safe_update(config, cfg["key"], target, self.display_name)
 
 
 # ---- 原神 Genshin Impact ----
@@ -258,10 +270,7 @@ class NTEConfig(ScriptConfig):
         assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
         assert dungeon_name in self._seq_key_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
         key = self._seq_key_map[dungeon_name]
-        if config[key] == sequence:
-            return False
-        config[key] = sequence
-        return True
+        return safe_update(config, key, sequence, self.display_name)
 
 
 # ---- 明日方舟 Arknights（粥）----
@@ -309,10 +318,11 @@ class ArknightsConfig(ScriptConfig):
             assert task_config[idx]["StagePlan"] == [stage], \
                 f"[set_config][{self.display_name}] TaskQueue[{idx}] StagePlan 不匹配: 期望 {[stage]}, 实际 {task_config[idx]['StagePlan']}"
 
-            should_enable = (name == "剿灭") or (name == dungeon_name) or (name == "土")
+            should_enable = name in ["剿灭", "土", dungeon_name]
             if task_config[idx]["IsEnable"] != should_enable:
                 task_config[idx]["IsEnable"] = should_enable
                 changed = True
+                print(f"[set_config][{self.display_name}] 更新 TaskQueue[{idx}] IsEnable 为 {should_enable}")
 
         return changed
 
