@@ -53,33 +53,19 @@ class TestGenerateInitConfig(unittest.TestCase):
         # shutil.copy should not be called
         mock_copy.assert_not_called()
 
-    @patch('config.init_config.copy_BGI_User')
+    @patch('config.init_config.shutil.copy')
+    @patch('config.init_config.os.path.exists', return_value=False)
     @patch('config.init_config.copy_python_scripts')
-    @patch('config.init_config.run_config_ui')
-    def test_config_workflow(self, mock_run_ui, mock_copy, mock_bgi):
+    @patch('config.init_config.copy_BGI_User')
+    @patch('config.init_config.get_config_yml_path_under_root')
+    def test_config_workflow(self, mock_config_path, mock_bgi, mock_copy, mock_exists, mock_shutil_copy):
+        mock_config_path.return_value = os.path.join(self.temp_dir.name, "config.yml")
         init_config.config_workflow()
 
         mock_bgi.assert_called_once()
         mock_copy.assert_called_once()
-        mock_run_ui.assert_called_once()
-
-
-class TestInitConfigUI(unittest.TestCase):
-
-    @patch('config.init_config.QApplication')
-    @patch('config.init_config.ConfigUI')
-    def test_run_config_ui(self, mock_config_ui, mock_qapp):
-        init_config.run_config_ui()
-        mock_qapp.assert_called_once()
-        mock_config_ui.assert_called_once()
-
-    @patch('config.init_config.QApplication')
-    @patch('config.init_config.ConfigUI')
-    def test_run_config_ui_happy_path_no_exit(self, mock_config_ui, mock_qapp):
-        try:
-            init_config.run_config_ui()
-        except SystemExit:
-            self.fail("run_config_ui raised SystemExit unexpectedly")
+        # config.yml 不存在时，应从模板复制
+        mock_shutil_copy.assert_called_once()
 
 
 if __name__ == "__main__":
