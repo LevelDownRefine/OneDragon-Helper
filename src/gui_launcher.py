@@ -56,7 +56,7 @@ class ScriptChainRunner(QThread):
     """后台运行 ScriptChainer"""
     finished_signal = Signal(int)
 
-    def __init__(self, chain_name="01"):
+    def __init__(self, chain_name="88"):
         super().__init__()
         self.chain_name = chain_name
 
@@ -674,7 +674,7 @@ class MainWindow(QMainWindow):
             state[item.display_name] = item.get_state()
         _save_ui_state(state)
 
-    def _generate_config(self, chain_name="01"):
+    def _generate_config(self, chain_name="88"):
         """生成 ScriptChainer 配置文件（仅含启用的脚本）"""
         # 每周超时
         weekly_timeouts = {}
@@ -739,13 +739,13 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.Yes:
             return
 
-        count = self._generate_config("01")
+        count = self._generate_config("88")
 
         self.run_btn.setEnabled(False)
         self.run_btn.setText("运行中...")
 
 
-        self.runner = ScriptChainRunner("01")
+        self.runner = ScriptChainRunner("88")
         self.runner.finished_signal.connect(self._on_finished)
         self.runner.start()
 
