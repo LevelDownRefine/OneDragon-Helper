@@ -29,7 +29,7 @@ class BaseLogParser:
                 return log_file
         return None
 
-    def _get_log_dir(self, script_path: str) -> Path | None:
+    def _get_log_dir(self, script_path: str) -> Path:
         raise NotImplementedError
 
     def _get_log_pattern(self) -> str:
@@ -81,7 +81,7 @@ class BaseLogParser:
 class OkWwLogParser(BaseLogParser):
     display_name = "鸣潮"
 
-    def _get_log_dir(self, script_path: str) -> Path | None:
+    def _get_log_dir(self, script_path: str) -> Path:
         ok_ww_dir = Path(script_path).parent
         return ok_ww_dir / "data" / "apps" / "ok-ww" / "working" / "logs"
 
@@ -97,7 +97,7 @@ class OkWwLogParser(BaseLogParser):
 class OkNteLogParser(BaseLogParser):
     display_name = "异环"
 
-    def _get_log_dir(self, script_path: str) -> Path | None:
+    def _get_log_dir(self, script_path: str) -> Path:
         ok_nte_dir = Path(script_path).parent
         return ok_nte_dir / "data" / "apps" / "ok-nte" / "working" / "logs"
 
@@ -113,7 +113,7 @@ class OkNteLogParser(BaseLogParser):
 class OkEfLogParser(BaseLogParser):
     display_name = "终末地"
 
-    def _get_log_dir(self, script_path: str) -> Path | None:
+    def _get_log_dir(self, script_path: str) -> Path:
         return Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
 
     def _get_log_pattern(self) -> str:
@@ -128,7 +128,7 @@ class OkEfLogParser(BaseLogParser):
 class M7ALogParser(BaseLogParser):
     display_name = "崩铁"
 
-    def _get_log_dir(self, script_path: str) -> Path | None:
+    def _get_log_dir(self, script_path: str) -> Path:
         m7a_dir = Path(script_path).parent
         return m7a_dir / "logs"
 
@@ -146,7 +146,7 @@ class M7ALogParser(BaseLogParser):
 class ZZZLogParser(BaseLogParser):
     display_name = "绝区零"
 
-    def _get_log_dir(self, script_path: str) -> Path | None:
+    def _get_log_dir(self, script_path: str) -> Path:
         zzz_dir = Path(script_path).parent
         return zzz_dir / ".log"
 
@@ -164,7 +164,7 @@ class ZZZLogParser(BaseLogParser):
 class BGILogParser(BaseLogParser):
     display_name = "原神"
 
-    def _get_log_dir(self, script_path: str) -> Path | None:
+    def _get_log_dir(self, script_path: str) -> Path:
         bgi_dir = Path(script_path).parent
         return bgi_dir / "log"
 
