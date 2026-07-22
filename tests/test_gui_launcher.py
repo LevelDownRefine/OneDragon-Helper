@@ -1,8 +1,8 @@
 """测试 GUI 状态持久化功能"""
-import os
 import json
+import os
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -10,7 +10,6 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication
 
 import gui_launcher
-
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])

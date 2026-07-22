@@ -1,12 +1,12 @@
 from __future__ import annotations
-import sys
-import yaml
-import os
 
+import os
+import sys
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+
+import yaml
 
 
 class ScriptLogStatus:
@@ -18,7 +18,7 @@ class ScriptLogStatus:
 class BaseLogParser:
     display_name: str = ""
 
-    def get_log_path(self, script_path: str) -> Optional[Path]:
+    def get_log_path(self, script_path: str) -> Path | None:
         log_dir = self._get_log_dir(script_path)
         if not log_dir or not log_dir.exists():
             return None
@@ -29,7 +29,7 @@ class BaseLogParser:
                 return log_file
         return None
 
-    def _get_log_dir(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Path | None:
         raise NotImplementedError
 
     def _get_log_pattern(self) -> str:
@@ -40,10 +40,10 @@ class BaseLogParser:
 
     def _read_file(self, path: Path) -> str:
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 return f.read()
         except UnicodeDecodeError:
-            with open(path, "r", encoding="gbk") as f:
+            with open(path, encoding="gbk") as f:
                 return f.read()
         except Exception:
             return ""
@@ -81,7 +81,7 @@ class BaseLogParser:
 class OkWwLogParser(BaseLogParser):
     display_name = "鸣潮"
 
-    def _get_log_dir(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Path | None:
         ok_ww_dir = Path(script_path).parent
         return ok_ww_dir / "data" / "apps" / "ok-ww" / "working" / "logs"
 
@@ -97,7 +97,7 @@ class OkWwLogParser(BaseLogParser):
 class OkNteLogParser(BaseLogParser):
     display_name = "异环"
 
-    def _get_log_dir(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Path | None:
         ok_nte_dir = Path(script_path).parent
         return ok_nte_dir / "data" / "apps" / "ok-nte" / "working" / "logs"
 
@@ -113,7 +113,7 @@ class OkNteLogParser(BaseLogParser):
 class OkEfLogParser(BaseLogParser):
     display_name = "终末地"
 
-    def _get_log_dir(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Path | None:
         return Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
 
     def _get_log_pattern(self) -> str:
@@ -128,7 +128,7 @@ class OkEfLogParser(BaseLogParser):
 class M7ALogParser(BaseLogParser):
     display_name = "崩铁"
 
-    def _get_log_dir(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Path | None:
         m7a_dir = Path(script_path).parent
         return m7a_dir / "logs"
 
@@ -146,7 +146,7 @@ class M7ALogParser(BaseLogParser):
 class ZZZLogParser(BaseLogParser):
     display_name = "绝区零"
 
-    def _get_log_dir(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Path | None:
         zzz_dir = Path(script_path).parent
         return zzz_dir / ".log"
 
@@ -164,7 +164,7 @@ class ZZZLogParser(BaseLogParser):
 class BGILogParser(BaseLogParser):
     display_name = "原神"
 
-    def _get_log_dir(self, script_path: str) -> Optional[Path]:
+    def _get_log_dir(self, script_path: str) -> Path | None:
         bgi_dir = Path(script_path).parent
         return bgi_dir / "log"
 
@@ -184,7 +184,7 @@ class BGILogParser(BaseLogParser):
 _PARSERS = [OkWwLogParser, OkNteLogParser, OkEfLogParser, M7ALogParser, BGILogParser, ZZZLogParser]
 
 
-def _find_parser(display_name: str) -> Optional[BaseLogParser]:
+def _find_parser(display_name: str) -> BaseLogParser | None:
     for parser_cls in _PARSERS:
         if display_name == parser_cls.display_name:
             return parser_cls()
@@ -207,7 +207,7 @@ def parse_logs() -> None:
     config_path = Path(root_dir) / "config" / "config.yml"
     assert config_path.exists(), f"[log_monitor] config.yml 不存在: {config_path}"
 
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         config_data = yaml.safe_load(f) or {}
 
     script_list = config_data.get("script_list", [])

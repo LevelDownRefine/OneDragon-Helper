@@ -3,14 +3,14 @@
 import unittest
 
 from src.log.collect_log import (
-    ScriptLogStatus,
-    parse_log,
-    OkEfLogParser,
-    OkWwLogParser,
-    OkNteLogParser,
-    M7ALogParser,
     BGILogParser,
+    M7ALogParser,
+    OkEfLogParser,
+    OkNteLogParser,
+    OkWwLogParser,
+    ScriptLogStatus,
     ZZZLogParser,
+    parse_log,
 )
 
 

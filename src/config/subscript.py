@@ -3,12 +3,12 @@
 提供脚本根目录解析、config 路径推导、配置文件读写等功能。
 """
 
-import os
 import json
+import os
+
 import yaml
 
 from src.utils import get_config_yml_path_under_root, get_root_dir
-
 
 # ============================================================
 # 各脚本 config 相对路径映射
@@ -43,7 +43,7 @@ _TEMPLATE_PATHS: dict[str, str] = {
 
 def _load_config_yml() -> dict:
     """读取主配置 config.yml"""
-    with open(get_config_yml_path_under_root(), 'r', encoding='utf-8') as f:
+    with open(get_config_yml_path_under_root(), encoding='utf-8') as f:
         return yaml.safe_load(f)
 
 
@@ -68,7 +68,7 @@ def _get_script_root_dir(script_display_name: str) -> str:
             normalized = script_path.replace('\\', '/')
             assert os.path.exists(normalized), f"[set_config] exe 不存在: {normalized}"
             return os.path.dirname(normalized)
-    assert False, f"[set_config] config.yml 中找不到脚本: {script_display_name}"
+    assert False, f"[set_config] config.yml 中找不到脚本: {script_display_name}"  # noqa: B011  # 故意：config.yml 找不到脚本属编程错误，必须用 assert 表达不该发生
 
 
 def get_config_path(script_display_name: str) -> str:
@@ -101,7 +101,7 @@ def load_template(display_name: str) -> dict | list:
     template_path = os.path.join(get_root_dir(), "config", rel_path)
     assert os.path.exists(template_path), f"[set_config][{display_name}] 未找到模板文件: {template_path}"
     ext = os.path.splitext(template_path)[1].lower()
-    with open(template_path, 'r', encoding='utf-8') as f:
+    with open(template_path, encoding='utf-8') as f:
         if ext == '.json':
             template = json.load(f)
         elif ext in ('.yaml', '.yml'):
@@ -120,7 +120,7 @@ def load_config(script_display_name: str) -> dict | list:
     path = get_config_path(script_display_name)
     assert os.path.exists(path), f"[set_config] config 文件不存在: {path}"
     ext = os.path.splitext(path)[1].lower()
-    with open(path, 'r', encoding='utf-8') as f:
+    with open(path, encoding='utf-8') as f:
         if ext == '.json':
             return json.load(f)
         elif ext in ('.yaml', '.yml'):

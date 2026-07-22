@@ -8,7 +8,7 @@
 
 from typing import Any
 
-from src.config.subscript import load_config, save_config, load_template
+from src.config.subscript import load_config, load_template, save_config
 
 
 def safe_update(config: dict, key: str, value: Any, display_name: str = "",

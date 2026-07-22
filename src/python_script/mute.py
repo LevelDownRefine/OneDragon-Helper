@@ -1,5 +1,7 @@
+from ctypes import POINTER, cast
+
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-from ctypes import cast, POINTER
+
 
 def set_mute(mute_status):
     devices = AudioUtilities.GetSpeakers()

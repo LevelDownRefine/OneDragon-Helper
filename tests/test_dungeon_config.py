@@ -1,10 +1,9 @@
 """测试 dungeon_config 模块"""
 import unittest
-from unittest.mock import patch, MagicMock
 
 from src.config.dungeon_config import (
-    parse_dungeon_config,
     get_display_name,
+    parse_dungeon_config,
     restore_sequence_type,
 )
 

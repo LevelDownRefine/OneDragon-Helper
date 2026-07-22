@@ -8,14 +8,14 @@
   - load_config
   - save_config（mock 文件写入，不真正写回脚本 config）
 """
-import os
 import json
-import yaml
+import os
 import tempfile
 import unittest
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import mock_open, patch
 
-from src.config import set_config
+import yaml
+
 from src.config import subscript
 
 
@@ -77,9 +77,8 @@ class TestGetScriptRootDir(unittest.TestCase):
     def test_raises_for_unknown_script(self):
         """未在 config.yml 中的脚本应触发 AssertionError"""
         fake_config = {"script_list": []}
-        with patch.object(subscript, '_load_config_yml', return_value=fake_config):
-            with self.assertRaises(AssertionError):
-                subscript._get_script_root_dir("不存在的脚本")
+        with patch.object(subscript, '_load_config_yml', return_value=fake_config), self.assertRaises(AssertionError):
+            subscript._get_script_root_dir("不存在的脚本")
 
     def test_raises_for_empty_script_path(self):
         """script_path 为空时应触发 AssertionError"""
@@ -88,9 +87,8 @@ class TestGetScriptRootDir(unittest.TestCase):
                 {"display_name": "空路径", "script_path": ""},
             ]
         }
-        with patch.object(subscript, '_load_config_yml', return_value=fake_config):
-            with self.assertRaises(AssertionError):
-                subscript._get_script_root_dir("空路径")
+        with patch.object(subscript, '_load_config_yml', return_value=fake_config), self.assertRaises(AssertionError):
+            subscript._get_script_root_dir("空路径")
 
 
 class TestGetConfigPath(unittest.TestCase):
@@ -116,9 +114,8 @@ class TestGetConfigPath(unittest.TestCase):
     def test_raises_for_unknown_script(self):
         """未在 _CONFIG_REL_PATHS 中的脚本应触发 AssertionError"""
         with patch.object(subscript, '_load_config_yml',
-                          return_value={"script_list": []}):
-            with self.assertRaises(AssertionError):
-                subscript.get_config_path("不存在")
+                          return_value={"script_list": []}), self.assertRaises(AssertionError):
+            subscript.get_config_path("不存在")
 
     def test_all_registered_scripts_resolve_with_mock_config(self):
         """对所有已注册脚本，用 mock 的 config.yml 验证路径推导成功
@@ -243,9 +240,8 @@ class TestSaveConfig(unittest.TestCase):
 
     def test_save_raises_when_path_is_none(self):
         """get_config_path 返回 None 时应抛出异常"""
-        with patch.object(subscript, 'get_config_path', return_value=None):
-            with self.assertRaises((TypeError, AssertionError)):
-                subscript.save_config("不存在", {"key": "val"})
+        with patch.object(subscript, 'get_config_path', return_value=None), self.assertRaises((TypeError, AssertionError)):
+            subscript.save_config("不存在", {"key": "val"})
 
     def test_save_and_reload_roundtrip_json(self):
         """JSON 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""

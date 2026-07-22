@@ -1,6 +1,7 @@
 import os
 from functools import lru_cache
 
+
 def get_our_bgi_user_dir() -> str:
     """
     获取当前工作目录下的config/BGI_User目录

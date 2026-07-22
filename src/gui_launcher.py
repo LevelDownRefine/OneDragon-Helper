@@ -1,33 +1,44 @@
-import sys
-import os
 import copy
 import json
+import os
 import subprocess
-import yaml
+import sys
 from datetime import datetime
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QScrollArea, QFrame, QMessageBox, QMenu,
-    QDialog, QLineEdit, QFileDialog
-)
+
+import yaml
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont, QIntValidator
-
-from src.utils import (
-    get_config_yml_path_under_root,
-    get_weekly_timeouts_yml_path_under_root,
-    get_path_under_onedragon,
-    get_root_dir,
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
-from src.config.set_config import set_config
-from src.config.init_config import need_config_workflow, config_workflow
+
 from src.config.dungeon_config import (
+    get_display_name,
     load_dungeon_map,
     parse_dungeon_config,
-    get_display_name,
     restore_sequence_type,
 )
-
+from src.config.init_config import config_workflow, need_config_workflow
+from src.config.set_config import set_config
+from src.utils import (
+    get_config_yml_path_under_root,
+    get_path_under_onedragon,
+    get_root_dir,
+    get_weekly_timeouts_yml_path_under_root,
+)
 
 # ---- UI 状态持久化 ----
 _STATE_FILE = os.path.join(get_root_dir(), "config", "gui_state.json")
@@ -36,7 +47,7 @@ _STATE_FILE = os.path.join(get_root_dir(), "config", "gui_state.json")
 def _load_ui_state() -> dict:
     """读取上次保存的 UI 状态"""
     if os.path.exists(_STATE_FILE):
-        with open(_STATE_FILE, 'r', encoding='utf-8') as f:
+        with open(_STATE_FILE, encoding='utf-8') as f:
             return json.load(f)
     return {}
 
@@ -232,7 +243,7 @@ class SingleScriptConfigDialog(QDialog):
         weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
         weekly_timeouts_map = {}
         if os.path.exists(weekly_timeouts_path):
-            with open(weekly_timeouts_path, 'r', encoding='utf-8') as f:
+            with open(weekly_timeouts_path, encoding='utf-8') as f:
                 weekly_timeouts_map = yaml.safe_load(f) or {}
 
         timeouts = weekly_timeouts_map.get(self.script_name, [0] * 7)
@@ -259,7 +270,7 @@ class SingleScriptConfigDialog(QDialog):
             timeouts.append(val)
 
         config_path = get_config_yml_path_under_root()
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(config_path, encoding='utf-8') as f:
             config_data = yaml.safe_load(f)
 
         for script in config_data.get('script_list', []):
@@ -273,7 +284,7 @@ class SingleScriptConfigDialog(QDialog):
         weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
         weekly_timeouts_map = {}
         if os.path.exists(weekly_timeouts_path):
-            with open(weekly_timeouts_path, 'r', encoding='utf-8') as f:
+            with open(weekly_timeouts_path, encoding='utf-8') as f:
                 weekly_timeouts_map = yaml.safe_load(f) or {}
         weekly_timeouts_map[self.script_name] = timeouts
 
@@ -640,7 +651,7 @@ class MainWindow(QMainWindow):
 
 
     def _load_scripts(self):
-        with open(get_config_yml_path_under_root(), 'r', encoding='utf-8') as f:
+        with open(get_config_yml_path_under_root(), encoding='utf-8') as f:
             self.all_config_data = yaml.safe_load(f)
 
         self.dungeon_map = load_dungeon_map()
@@ -680,7 +691,7 @@ class MainWindow(QMainWindow):
         weekly_timeouts = {}
         weekly_path = get_weekly_timeouts_yml_path_under_root()
         if os.path.exists(weekly_path):
-            with open(weekly_path, 'r', encoding='utf-8') as f:
+            with open(weekly_path, encoding='utf-8') as f:
                 weekly_timeouts = yaml.safe_load(f) or {}
 
         week_num = get_week_num()
@@ -739,7 +750,7 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.Yes:
             return
 
-        count = self._generate_config("88")
+        self._generate_config("88")
 
         self.run_btn.setEnabled(False)
         self.run_btn.setText("运行中...")

@@ -1,12 +1,12 @@
 import os
 import shutil
 
-from src.utils import (
-    get_path_under_root,
-    get_path_under_onedragon,
-    get_config_yml_path_under_root,
-)
 from src.config.bgi import copy_BGI_User
+from src.utils import (
+    get_config_yml_path_under_root,
+    get_path_under_onedragon,
+    get_path_under_root,
+)
 
 
 def copy_python_scripts():

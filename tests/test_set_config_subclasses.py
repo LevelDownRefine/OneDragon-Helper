@@ -5,22 +5,22 @@
 所有文件 I/O 均通过 mock 隔离，不依赖真实 config 文件。
 """
 import json
-import yaml
 import unittest
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import MagicMock, mock_open, patch
+
+import yaml
 
 from src.config import set_config
 from src.config.set_config import (
-    ScriptConfig,
-    WutheringWavesConfig,
-    GenshinConfig,
-    EndfieldConfig,
-    ZenlessZoneZeroConfig,
-    StarRailConfig,
-    NTEConfig,
     ArknightsConfig,
+    EndfieldConfig,
+    GenshinConfig,
+    NTEConfig,
+    ScriptConfig,
+    StarRailConfig,
+    WutheringWavesConfig,
+    ZenlessZoneZeroConfig,
 )
-
 
 # ============================================================
 # 基类 ScriptConfig
@@ -250,9 +250,9 @@ class TestGenshinConfig(unittest.TestCase):
         config = {"DomainName": "旧本", "PartyName": "队伍B"}
         with patch.object(GenshinConfig, '_load', return_value=config), \
              patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template))):
-            with self.assertRaises(AssertionError):
-                GenshinConfig()
+             patch('builtins.open', mock_open(read_data=json.dumps(template))), \
+             self.assertRaises(AssertionError):
+            GenshinConfig()
 
     def test_init_config_party_name_missing_raises(self):
         """config 中缺少 PartyName 应 assert"""
@@ -260,9 +260,9 @@ class TestGenshinConfig(unittest.TestCase):
         config = {"DomainName": "绝缘本"}
         with patch.object(GenshinConfig, '_load', return_value=config), \
              patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template))):
-            with self.assertRaises(AssertionError):
-                GenshinConfig()
+             patch('builtins.open', mock_open(read_data=json.dumps(template))), \
+             self.assertRaises(AssertionError):
+            GenshinConfig()
 
     def test_update_task_uses_dungeon_name_directly(self):
         """原神 _task_map 为空，直接用 dungeon_name"""
@@ -709,9 +709,8 @@ class TestArknightsConfig(unittest.TestCase):
     def test_set_dungeon_unknown_raises(self):
         cfg = self._make_cfg()
         config = {"Configurations": {"Default": {"TaskQueue": []}}}
-        with patch.object(cfg, '_load', return_value=config):
-            with self.assertRaises(AssertionError):
-                cfg.set_dungeon("不存在")
+        with patch.object(cfg, '_load', return_value=config), self.assertRaises(AssertionError):
+            cfg.set_dungeon("不存在")
 
     def test_set_dungeon_elimination_only_enables_elimination_and_土(self):
         """选择剿灭时，只启用剿灭和土，其他副本禁用"""
@@ -750,9 +749,8 @@ class TestArknightsConfig(unittest.TestCase):
         queue = [None] * 10
         queue[1] = {"Name": "wrong", "$type": "FightTask", "StagePlan": ["Annihilation"], "IsEnable": True}
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        with patch.object(cfg, '_load', return_value=config):
-            with self.assertRaises(AssertionError):
-                cfg.set_dungeon("剿灭")
+        with patch.object(cfg, '_load', return_value=config), self.assertRaises(AssertionError):
+            cfg.set_dungeon("剿灭")
 
 
 # ============================================================

@@ -1,9 +1,10 @@
 import os
-import unittest
 import tempfile
+import unittest
 from unittest.mock import patch
 
 import utils
+
 
 class TestUtils(unittest.TestCase):
 
@@ -26,7 +27,7 @@ class TestUtils(unittest.TestCase):
         # Without subdirs
         path = utils.get_path_under_root()
         self.assertEqual(path, utils.get_root_dir())
-        
+
         # With subdirs (using mock to avoid actually creating it if it doesn't exist)
         with patch('utils.join_dir_path_with_mk') as mock_join:
             mock_join.return_value = "mock_path"
@@ -48,7 +49,7 @@ class TestUtils(unittest.TestCase):
             expected = os.path.normpath(os.path.join(temp_dir, "sub1", "sub2"))
             self.assertEqual(os.path.normpath(res), expected)
             self.assertTrue(os.path.isdir(expected))
-            
+
             # Let's test handling None in subs
             res_none = utils.join_dir_path_with_mk(temp_dir, "sub3", None, "sub4")
             expected_none = os.path.normpath(os.path.join(temp_dir, "sub3", "sub4"))

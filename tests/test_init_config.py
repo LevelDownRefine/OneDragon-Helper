@@ -1,6 +1,6 @@
 import os
-import unittest
 import tempfile
+import unittest
 from unittest.mock import patch
 
 from config import init_config

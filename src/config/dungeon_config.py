@@ -1,26 +1,27 @@
 import os
+from typing import Any
+
 import yaml
-from typing import Any, Dict, List, Tuple
 
 from src.utils import get_root_dir
 
-DungeonOptions = List[str]
-SequenceOptionsMap = Dict[str, List[Tuple[str, Any]]]
+DungeonOptions = list[str]
+SequenceOptionsMap = dict[str, list[tuple[str, Any]]]
 
 
 def get_dungeon_config_path() -> str:
     return os.path.join(get_root_dir(), "config", "dungeon_list.yml")
 
 
-def load_dungeon_map() -> Dict[str, Any]:
+def load_dungeon_map() -> dict[str, Any]:
     dungeon_file = get_dungeon_config_path()
     if os.path.exists(dungeon_file):
-        with open(dungeon_file, 'r', encoding='utf-8') as f:
+        with open(dungeon_file, encoding='utf-8') as f:
             return yaml.safe_load(f) or {}
     return {}
 
 
-def parse_dungeon_config(dungeon_cfg: Any) -> Tuple[DungeonOptions, SequenceOptionsMap, bool]:
+def parse_dungeon_config(dungeon_cfg: Any) -> tuple[DungeonOptions, SequenceOptionsMap, bool]:
     """
     解析单个脚本的副本配置。
 
@@ -111,7 +112,7 @@ def restore_sequence_type(saved: dict, seq_map: SequenceOptionsMap) -> dict:
         return saved
 
     saved = saved.copy()
-    for display_name, actual_value in seq_options:
+    for _display_name, actual_value in seq_options:
         if str(actual_value) == str(seq_val):
             saved['sequence'] = actual_value
             break
