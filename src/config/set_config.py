@@ -35,13 +35,13 @@ def safe_update(config: dict, key: str, value: Any, display_name: str = "",
         config[key] = value
         return True
 
-    if key in config:
-        assert type(config[key]) is type(value), \
-            f"[set_config][{display_name}] 类型不一致: key={key}, " \
-            f"config={type(config[key]).__name__}, value={type(value).__name__}"
+    assert type(config[key]) is type(value), \
+        f"[set_config][{display_name}] 类型不一致: key={key}, " \
+        f"config={type(config[key]).__name__}, value={type(value).__name__}"
 
     if config[key] == value:
         return False
+
     config[key] = value
     print(f"[set_config][{display_name}] 更新 config['{key}'] 为 {value}")
     return True
@@ -319,10 +319,10 @@ class ArknightsConfig(ScriptConfig):
                 f"[set_config][{self.display_name}] TaskQueue[{idx}] StagePlan 不匹配: 期望 {[stage]}, 实际 {task_config[idx]['StagePlan']}"
 
             should_enable = name in ["剿灭", "土", dungeon_name]
-            if task_config[idx]["IsEnable"] != should_enable:
-                task_config[idx]["IsEnable"] = should_enable
-                changed = True
-                print(f"[set_config][{self.display_name}] 更新 TaskQueue[{idx}] IsEnable 为 {should_enable}")
+            changed |= safe_update(
+                task_config[idx], "IsEnable", should_enable,
+                f"{self.display_name}[TaskQueue[{idx}]]"
+            )
 
         return changed
 
