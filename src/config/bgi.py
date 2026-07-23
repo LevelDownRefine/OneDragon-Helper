@@ -3,7 +3,11 @@ import shutil
 
 import yaml
 
-from src.utils import get_config_yml_path_under_root, get_our_bgi_user_dir
+from src.utils import (
+    get_config_yml_path_under_root,
+    get_our_bgi_user_dir,
+    safe_path_join,
+)
 
 
 def get_BGI_user_dir():
@@ -17,7 +21,7 @@ def get_BGI_user_dir():
         for script in script_list:
             if script.get('display_name') == '原神':
                 BGI_dir = os.path.dirname(script.get('script_path'))
-                return os.path.join(BGI_dir, 'User')
+                return safe_path_join(BGI_dir, 'User')
     return None
 
 def copy_BGI_User():

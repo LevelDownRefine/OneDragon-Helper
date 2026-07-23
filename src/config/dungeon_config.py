@@ -3,14 +3,14 @@ from typing import Any
 
 import yaml
 
-from src.utils import get_root_dir
+from src.utils import get_root_dir, safe_path_join
 
 DungeonOptions = list[str]
 SequenceOptionsMap = dict[str, list[tuple[str, Any]]]
 
 
 def get_dungeon_config_path() -> str:
-    return os.path.join(get_root_dir(), "config", "dungeon_list.yml")
+    return safe_path_join(get_root_dir(), "config", "dungeon_list.yml")
 
 
 def load_dungeon_map() -> dict[str, Any]:

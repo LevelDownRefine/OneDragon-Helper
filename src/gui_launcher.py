@@ -38,10 +38,11 @@ from src.utils import (
     get_path_under_onedragon,
     get_root_dir,
     get_weekly_timeouts_yml_path_under_root,
+    safe_path_join,
 )
 
 # ---- UI 状态持久化 ----
-_STATE_FILE = os.path.join(get_root_dir(), "config", "gui_state.json")
+_STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
 
 
 def _load_ui_state() -> dict:
@@ -729,7 +730,7 @@ class MainWindow(QMainWindow):
         data['script_list'] = filtered
 
         output_dir = get_path_under_onedragon("config", "script_chain")
-        output_file = os.path.join(output_dir, f"{chain_name}.yml")
+        output_file = safe_path_join(output_dir, f"{chain_name}.yml")
         with open(output_file, 'w', encoding='utf-8') as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
 

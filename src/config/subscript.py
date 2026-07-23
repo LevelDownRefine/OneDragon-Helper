@@ -8,7 +8,7 @@ import os
 
 import yaml
 
-from src.utils import get_config_yml_path_under_root, get_root_dir
+from src.utils import get_config_yml_path_under_root, get_root_dir, safe_path_join
 
 # ============================================================
 # 各脚本 config 相对路径映射
@@ -81,7 +81,7 @@ def get_config_path(script_display_name: str) -> str:
         f"[set_config] 未适配脚本: {script_display_name}"
     root = _get_script_root_dir(script_display_name)
     rel = _CONFIG_REL_PATHS[script_display_name]
-    config_path = os.path.join(root, rel)
+    config_path = safe_path_join(root, rel)
     assert os.path.exists(config_path), f"[set_config] config 文件不存在: {config_path}"
     return config_path
 
@@ -98,7 +98,7 @@ def load_template(display_name: str) -> dict | list:
     assert display_name in _TEMPLATE_PATHS, \
         f"[set_config][{display_name}] 未配置模板路径"
     rel_path = _TEMPLATE_PATHS[display_name]
-    template_path = os.path.join(get_root_dir(), "config", rel_path)
+    template_path = safe_path_join(get_root_dir(), "config", rel_path)
     assert os.path.exists(template_path), f"[set_config][{display_name}] 未找到模板文件: {template_path}"
     ext = os.path.splitext(template_path)[1].lower()
     with open(template_path, encoding='utf-8') as f:

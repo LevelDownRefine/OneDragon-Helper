@@ -1,4 +1,17 @@
-from __future__ import annotations
+"""
+各游戏脚本运行日志的解析与汇总。
+
+职责：
+- 每款游戏对应一个 `*LogParser` 子类，负责定位日志目录、筛选当日有效日志、
+  并从内容判定运行结果（成功 / 失败 / 无日志）。
+- `parse_log(display_name, script_path)` 解析单个脚本；`parse_logs()` 汇总
+  `config.yml` 中所有受支持脚本的当日运行情况并打印报告。。
+
+独立性约束（重要）：
+- 本文件刻意**不 import 本项目中的任何其他模块**。
+- 为保持独立，本文件自行从推导项目根目录，并直接 `yaml.safe_load` 读取 `config.yml`（而非 import）。
+- 目的：可作为独立脚本直接运行`python src/log/collect_log.py`。
+"""
 
 import os
 import sys

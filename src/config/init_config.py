@@ -6,6 +6,7 @@ from src.utils import (
     get_config_yml_path_under_root,
     get_path_under_onedragon,
     get_path_under_root,
+    safe_path_join,
 )
 
 
@@ -13,9 +14,9 @@ def copy_python_scripts():
     py_script_dir = get_path_under_root("src", "python_script")
     file_names = [f for f in os.listdir(py_script_dir) if f.endswith(".py")]
     for file_name in file_names:
-        input_path = os.path.join(py_script_dir, file_name)
+        input_path = safe_path_join(py_script_dir, file_name)
         output_path = get_path_under_onedragon("config", "script_chain", "scripts")
-        if not os.path.exists(os.path.join(output_path, file_name)):
+        if not os.path.exists(safe_path_join(output_path, file_name)):
             shutil.copy(input_path, output_path)
             print(f"已复制Python脚本{file_name}到: {output_path}")
         else:
@@ -35,7 +36,7 @@ def config_workflow():
     # 从模板生成 config.yml（如果不存在）
     config_path = get_config_yml_path_under_root()
     if not os.path.exists(config_path):
-        example_path = os.path.join(os.path.dirname(config_path), "config.example.yml")
+        example_path = safe_path_join(os.path.dirname(config_path), "config.example.yml")
         shutil.copy(example_path, config_path)
 
 

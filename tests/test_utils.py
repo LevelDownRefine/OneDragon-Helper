@@ -42,6 +42,42 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(res, "mock_path")
             mock_join.assert_called_once_with(utils.get_root_dir(), "OneDragon-ScriptChainer", "sub1")
 
+    def test_safe_path_join_normal(self):
+        base = os.path.abspath(os.sep + "base")
+        # 单层子路径
+        res = utils.safe_path_join(base, "sub")
+        self.assertEqual(res, os.path.join(base, "sub"))
+        # 多层子路径
+        res = utils.safe_path_join(base, "a", "b", "c.json")
+        self.assertEqual(res, os.path.join(base, "a", "b", "c.json"))
+        # 相对片段中的 . 归一化后仍在 base 内
+        res = utils.safe_path_join(base, "a", ".", "b")
+        self.assertEqual(res, os.path.join(base, "a", "b"))
+
+    def test_safe_path_join_equals_base(self):
+        base = os.path.abspath(os.sep + "base")
+        # 空拼接返回 base 本身
+        self.assertEqual(utils.safe_path_join(base), base)
+
+    def test_safe_path_join_rejects_parent_traversal(self):
+        base = os.path.abspath(os.sep + "base")
+        with self.assertRaises(AssertionError):
+            utils.safe_path_join(base, "..")
+        with self.assertRaises(AssertionError):
+            utils.safe_path_join(base, "a", "..", "..", "etc")
+
+    def test_safe_path_join_rejects_absolute_override(self):
+        base = os.path.abspath(os.sep + "base")
+        # 绝对路径片段会覆盖 base，应被拦截
+        with self.assertRaises(AssertionError):
+            utils.safe_path_join(base, os.path.abspath(os.sep + "evil"))
+
+    def test_safe_path_join_rejects_sibling_prefix(self):
+        # /base2 不应被误判为在 /base 内（防 startswith 前缀漏洞）
+        base = os.path.abspath(os.sep + "base")
+        with self.assertRaises(AssertionError):
+            utils.safe_path_join(base, ".." + os.sep + "base2")
+
     def test_join_dir_path_with_mk(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             # Let's test joining normal subdirectories
