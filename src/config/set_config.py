@@ -6,6 +6,7 @@
 各脚本子类单独适配，上层无需关心差异。
 """
 
+from time import sleep
 from typing import Any
 
 from src.config.subscript import load_config, load_template, save_config
@@ -343,3 +344,4 @@ def set_config(script_display_name: str,
     cfg_cls = _CONFIGS[script_display_name]
 
     cfg_cls().set_dungeon(dungeon_name, sequence)
+    sleep(1)    # 等待配置生效
