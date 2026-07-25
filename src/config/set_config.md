@@ -17,7 +17,7 @@
  鸣潮   原神/终末地  绝区零/崩铁  异环    粥
 ```
 
-- 基类 `ScriptConfig` 提供通用能力：`_load` / `_save` / `_update_task` / `_update_sequence` / `_init_config` / `_is_aligned` / `set_dungeon` / `safe_update`。
+- 基类 `ScriptConfig` 提供通用能力：`_load` / `_save` / `_verify_saved` / `_update_task` / `_update_sequence` / `_init_config` / `_is_aligned` / `set_dungeon` / `safe_update`。
 - 子类在 `__init__` 设 `display_name` / `_task_key` / `_task_map`，按需覆盖方法。
 - 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 把 `display_name` → 子类。
 
@@ -50,7 +50,9 @@
 
 ## 设置副本流程（set_dungeon）
 
-基类模板流程：`_load()` → `_update_task()` → `_update_sequence()` → 有改动则 `_save()`。
+基类模板流程：`_load()` → `_update_task()` → `_update_sequence()` → 有改动则 `_save()`（保存后 `_verify_saved()` 重读校验落盘一致性）。
+
+> **写盘校验（`_verify_saved`）**：`_save()` 是唯一的落盘点，写盘后调用 `_verify_saved()` 重新 `_load()` 并与预期整段相等断言。因 `save_config` 为同步阻塞写（`with open` + dump + close 即 flush），重读必为新内容，无需 `sleep`。校验失败属"不该发生"（磁盘写失败/文件被外部占用），用 `assert`。`set_config.py` 原 `sleep(1)` 已删除。
 
 | 钩子 | 作用 | 默认 |
 |------|------|------|

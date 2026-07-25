@@ -7,7 +7,6 @@
 """
 
 import logging
-from time import sleep
 from typing import Any
 
 from src.config.subscript import load_config, load_template, save_config
@@ -68,6 +67,15 @@ class ScriptConfig:
     def _save(self, config: dict) -> None:
         assert isinstance(config, dict), f"[set_config][{self.display_name}] config 必须是 dict"
         save_config(self.display_name, config)
+        self._verify_saved(config)
+
+    def _verify_saved(self, expected: dict) -> None:
+        """保存后重新读取，确认落盘内容与预期一致（校验写盘确实生效）。"""
+        reloaded = self._load()
+        assert reloaded == expected, (
+            f"[set_config][{self.display_name}] 配置保存后校验失败："
+            f"重新读取的内容与预期不一致"
+        )
 
     def _load_template(self) -> dict:
         """加载模板文件，支持 JSON 和 YAML 格式"""
@@ -347,4 +355,3 @@ def set_config(script_display_name: str,
     cfg_cls = _CONFIGS[script_display_name]
 
     cfg_cls().set_dungeon(dungeon_name, sequence)
-    sleep(1)    # 等待配置生效

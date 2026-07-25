@@ -125,6 +125,49 @@ class TestScriptConfigBase(unittest.TestCase):
 
 
 # ============================================================
+# _save / _verify_saved（保存后重读校验）
+# ============================================================
+
+class TestVerifySaved(unittest.TestCase):
+    """测试 _save 保存后重读校验（_verify_saved）"""
+
+    def _make_cfg(self):
+        cfg = ScriptConfig()
+        cfg.display_name = "测试"
+        return cfg
+
+    def test_save_round_trip_verifies_ok(self):
+        """_save 写盘后重读一致，不抛异常且按预期调用 save_config"""
+        cfg = self._make_cfg()
+        sample = {"k": "v", "n": 1}
+        with patch.object(cfg, '_load', return_value=sample), \
+             patch('src.config.set_config.save_config') as mock_save:
+            cfg._save(sample)   # 不应抛异常
+        mock_save.assert_called_once_with("测试", sample)
+
+    def test_save_mismatch_raises(self):
+        """_save 后重读内容不一致应 assert"""
+        cfg = self._make_cfg()
+        with patch.object(cfg, '_load', return_value={"k": "different"}), \
+             patch('src.config.set_config.save_config'), \
+             self.assertRaises(AssertionError):
+            cfg._save({"k": "expected"})
+
+    def test_verify_saved_equal_ok(self):
+        """_verify_saved 重读等于预期时不抛异常"""
+        cfg = self._make_cfg()
+        with patch.object(cfg, '_load', return_value={"a": 1}):
+            cfg._verify_saved({"a": 1})
+
+    def test_verify_saved_not_equal_raises(self):
+        """_verify_saved 重读不等于预期时 assert"""
+        cfg = self._make_cfg()
+        with patch.object(cfg, '_load', return_value={"a": 2}), \
+             self.assertRaises(AssertionError):
+            cfg._verify_saved({"a": 1})
+
+
+# ============================================================
 # 鸣潮 WutheringWavesConfig
 # ============================================================
 
