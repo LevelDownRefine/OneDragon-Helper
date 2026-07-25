@@ -220,3 +220,14 @@ __marimo__/
 # GUI 状态持久化（用户本地偏好）
 gui_state.json
 config/config.yml
+
+# ---- AI Agent 工具私有数据（记忆/技能/本地配置，可能含密钥）----
+# 注意：AGENTS.md / CLAUDE.md / .github/copilot-instructions.md 等「团队共享指引」应保留追踪，不在此忽略。
+.workbuddy/
+.codebuddy/
+.claude/
+.cursor/
+.aider/
+.agent/
+.continue/
+.windsurf/
