@@ -1,17 +1,21 @@
 @echo off
 chcp 65001 >nul
-setlocal
-
-:: 管理员提权
-fltmc >nul 2>&1 || (
-    echo 正在请求管理员权限...
-    powershell -Command "Start-Process cmd -ArgumentList '/c ""%~f0""' -Verb RunAs"
-    exit
-)
+setlocal EnableExtensions
 
 set "base=%~dp0"
 :: 将项目根目录加入Python模块搜索路径，才能使用 python -m
 set "PYTHONPATH=%base%;%PYTHONPATH%"
+
+:: 管理员提权（透传命令行参数）
+fltmc >nul 2>&1 || (
+    echo 正在请求管理员权限...
+    if "%~1"=="" (
+        powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c ""%~f0""' -Verb RunAs"
+    ) else (
+        powershell -NoProfile -Command "Start-Process cmd -ArgumentList '/c ""%~f0"" %*' -Verb RunAs"
+    )
+    exit /b
+)
 
 :: 加载环境
 set "env_script=%base%env.bat"
@@ -23,6 +27,7 @@ if exist "%env_script%" (
 )
 
 :: 模块启动，等价 src/gui_launcher.py → 模块名 src.gui_launcher
-python -m src.gui_launcher
+:: %* 透传参数（如 --no-set-config 计划任务模式）
+python -m src.gui_launcher %*
 
 endlocal

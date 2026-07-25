@@ -17,6 +17,7 @@ from unittest.mock import mock_open, patch
 import yaml
 
 from src.config import subscript
+from src.utils import safe_path_join
 
 
 class TestConfigRelPaths(unittest.TestCase):
@@ -107,8 +108,10 @@ class TestGetConfigPath(unittest.TestCase):
              patch('os.path.exists', return_value=True):
             path = subscript.get_config_path("鸣潮")
 
-        expected = os.path.join("C:/fake/ok-ww",
-                                subscript._CONFIG_REL_PATHS["鸣潮"])
+        # get_config_path 内部用 safe_path_join，会归一化为绝对路径（Windows 为反斜杠），
+        # 故 expected 需用同一归一化方式，避免分隔符不一致导致断言失败。
+        expected = safe_path_join("C:/fake/ok-ww",
+                                  subscript._CONFIG_REL_PATHS["鸣潮"])
         self.assertEqual(path, expected)
 
     def test_raises_for_unknown_script(self):

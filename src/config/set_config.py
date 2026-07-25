@@ -6,10 +6,13 @@
 各脚本子类单独适配，上层无需关心差异。
 """
 
+import logging
 from time import sleep
 from typing import Any
 
 from src.config.subscript import load_config, load_template, save_config
+
+logger = logging.getLogger(__name__)
 
 
 def safe_update(config: dict, key: str, value: Any, display_name: str = "",
@@ -28,7 +31,7 @@ def safe_update(config: dict, key: str, value: Any, display_name: str = "",
     if assert_key_exists:
         assert key in config, f"[set_config][{display_name}] config 中缺少字段: {key}"
     elif key not in config:
-        print(f"[set_config][{display_name}] 添加新字段 config['{key}'] = {value}")
+        logger.info(f"[set_config][{display_name}] 添加新字段 config['{key}'] = {value}")
         config[key] = value
         return True
 
@@ -40,7 +43,7 @@ def safe_update(config: dict, key: str, value: Any, display_name: str = "",
         return False
 
     config[key] = value
-    print(f"[set_config][{display_name}] 更新 config['{key}'] 为 {value}")
+    logger.info(f"[set_config][{display_name}] 更新 config['{key}'] 为 {value}")
     return True
 
 
@@ -101,7 +104,7 @@ class ScriptConfig:
 
         for key, val in template.items():
             safe_update(config, key, val, self.display_name, assert_key_exists=False)
-        print(f"[set_config][{self.display_name}] config 已更新")
+        logger.info(f"[set_config][{self.display_name}] config 已更新")
         self._save(config)
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
@@ -130,10 +133,10 @@ class ScriptConfig:
         changed = self._update_task(config, dungeon_name) or \
                   self._update_sequence(config, dungeon_name, sequence)
         if changed:
-            print(f"[set_config][{self.display_name}] config 已更新")
+            logger.info(f"[set_config][{self.display_name}] config 已更新")
             self._save(config)
         else:
-            print(f"[set_config][{self.display_name}] config 无需更新")
+            logger.info(f"[set_config][{self.display_name}] config 无需更新")
 
 
 # ============================================================
@@ -221,7 +224,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
         self._init_config()
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
-        print(f"[set_config][{self.display_name}] zzz无需适配")
+        logger.info(f"[set_config][{self.display_name}] zzz无需适配")
 
 
 # ---- 崩铁 Honkai: Star Rail ----

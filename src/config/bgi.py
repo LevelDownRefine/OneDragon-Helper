@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 
@@ -8,6 +9,8 @@ from src.utils import (
     get_our_bgi_user_dir,
     safe_path_join,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_BGI_user_dir():
@@ -31,9 +34,14 @@ def copy_BGI_User():
     """
     user_dir = get_BGI_user_dir()
     assert user_dir, "未找到BetterGI用户目录"
-    print(f"[BetterGI] 复制BetterGI配置到: {user_dir}")
+    logger.info(f"[BetterGI] 复制BetterGI配置到: {user_dir}")
     shutil.copytree(get_our_bgi_user_dir(), user_dir, dirs_exist_ok=True)
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     copy_BGI_User()
-    print("配置复制完成")
+    logger.info("配置复制完成")

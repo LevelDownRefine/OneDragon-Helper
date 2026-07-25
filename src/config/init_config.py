@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 
@@ -9,6 +10,8 @@ from src.utils import (
     safe_path_join,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def copy_python_scripts():
     py_script_dir = get_path_under_root("src", "python_script")
@@ -18,9 +21,9 @@ def copy_python_scripts():
         output_path = get_path_under_onedragon("config", "script_chain", "scripts")
         if not os.path.exists(safe_path_join(output_path, file_name)):
             shutil.copy(input_path, output_path)
-            print(f"已复制Python脚本{file_name}到: {output_path}")
+            logger.info(f"已复制Python脚本{file_name}到: {output_path}")
         else:
-            print(f"[OneDragonHelper] Python脚本{file_name}已存在，跳过复制")
+            logger.info(f"[OneDragonHelper] Python脚本{file_name}已存在，跳过复制")
 
 
 def need_config_workflow() -> bool:
@@ -41,4 +44,9 @@ def config_workflow():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     config_workflow()

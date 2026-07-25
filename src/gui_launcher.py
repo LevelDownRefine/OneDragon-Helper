@@ -1,5 +1,7 @@
+import argparse
 import copy
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -41,6 +43,8 @@ from src.utils import (
     safe_path_join,
 )
 
+logger = logging.getLogger(__name__)
+
 # ---- UI 状态持久化 ----
 _STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
 
@@ -64,6 +68,20 @@ def get_week_num() -> int:
     return datetime.now().weekday()
 
 
+def _build_chain_command(chain_name: str) -> tuple:
+    """构造 ScriptChainer 启动命令与运行目录（GUI 与无界面模式共用）"""
+    cwd = get_path_under_onedragon("src")
+    command = [
+        sys.executable,
+        "-m",
+        "script_chainer.win_exe.launcher",
+        "--onedragon",
+        "--chain",
+        chain_name,
+    ]
+    return command, cwd
+
+
 class ScriptChainRunner(QThread):
     """后台运行 ScriptChainer"""
     finished_signal = Signal(int)
@@ -73,16 +91,8 @@ class ScriptChainRunner(QThread):
         self.chain_name = chain_name
 
     def run(self):
-        launcher_work_dir = get_path_under_onedragon("src")
-        command = [
-            sys.executable,
-            "-m",
-            "script_chainer.win_exe.launcher",
-            "--onedragon",
-            "--chain",
-            self.chain_name,
-        ]
-        res = subprocess.run(command, cwd=launcher_work_dir)
+        command, cwd = _build_chain_command(self.chain_name)
+        res = subprocess.run(command, cwd=cwd)
         self.finished_signal.emit(res.returncode)
 
 
@@ -785,9 +795,71 @@ class MainWindow(QMainWindow):
                 item._update_switch_style()
 
 
+def parse_args():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(description="OneDragon 脚本启动器")
+    parser.add_argument(
+        "--no-set-config",
+        action="store_true",
+        help="计划任务模式：跳过 GUI 与各脚本内部 config 写入，直接按 config.yml 中已启用的脚本运行",
+    )
+    return parser.parse_args()
+
+
+def run_direct(chain_name="88") -> int:
+    """无界面直接运行（计划任务模式）。
+
+    跳过 GUI 与各脚本内部 config（set_config）写入，仅按 config.yml 中
+    enabled 为真的脚本生成 ScriptChainer 配置并直接运行，便于计划任务调用。
+    """
+    with open(get_config_yml_path_under_root(), encoding='utf-8') as f:
+        data = yaml.safe_load(f)
+    assert 'script_list' in data, "[gui_launcher] config.yml 缺少 script_list 字段"
+
+    weekly_timeouts = {}
+    weekly_path = get_weekly_timeouts_yml_path_under_root()
+    if os.path.exists(weekly_path):
+        with open(weekly_path, encoding='utf-8') as f:
+            weekly_timeouts = yaml.safe_load(f) or {}
+
+    week_num = get_week_num()
+
+    filtered = []
+    for script in data['script_list']:
+        if not script.get('enabled', True):
+            continue
+        name = script['display_name']
+        timeouts = weekly_timeouts.get(name)
+        if timeouts and len(timeouts) == 7:
+            script['run_timeout_seconds'] = timeouts[week_num]
+        filtered.append(script)
+
+    if not filtered:
+        logger.warning("[gui_launcher] 没有启用的脚本，直接退出")
+        return 0
+
+    data['script_list'] = filtered
+    output_dir = get_path_under_onedragon("config", "script_chain")
+    output_file = safe_path_join(output_dir, f"{chain_name}.yml")
+    with open(output_file, 'w', encoding='utf-8') as f:
+        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+
+    command, cwd = _build_chain_command(chain_name)
+    res = subprocess.run(command, cwd=cwd)
+    return res.returncode
+
+
 def main():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    args = parse_args()
     if need_config_workflow():
         config_workflow()
+    if args.no_set_config:
+        sys.exit(run_direct("88"))
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     window = MainWindow()

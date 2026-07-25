@@ -13,6 +13,7 @@
 - 目的：可作为独立脚本直接运行`python src/log/collect_log.py`。
 """
 
+import logging
 import os
 import sys
 import tempfile
@@ -20,6 +21,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 class ScriptLogStatus:
@@ -226,9 +229,9 @@ def parse_logs() -> None:
     script_list = config_data.get("script_list", [])
     supported_scripts = ("鸣潮", "终末地", "崩铁", "异环", "原神", "绝区零")
 
-    print("=" * 60)
-    print("脚本运行状况汇总报告")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("脚本运行状况汇总报告")
+    logger.info("=" * 60)
 
     success_count = 0
     failed_count = 0
@@ -256,30 +259,35 @@ def parse_logs() -> None:
             status_icon = "[NO LOG]"
             no_log_count += 1
 
-        print(f"\n{status_icon} {display_name}")
-        print(f"   状态: {status}")
+        logger.info(f"\n{status_icon} {display_name}")
+        logger.info(f"   状态: {status}")
         if result["log_path"]:
-            print(f"   日志: {result['log_path']}")
+            logger.info(f"   日志: {result['log_path']}")
 
-    print("\n" + "=" * 60)
-    print(
+    logger.info("\n" + "=" * 60)
+    logger.info(
         f"总计: {success_count + failed_count + no_log_count} 个脚本"
         f" | 成功: {success_count} | 失败: {failed_count} | 无日志: {no_log_count}"
     )
 
     if failed_results:
-        print("\n" + "=" * 60)
-        print("失败脚本详情")
-        print("=" * 60)
+        logger.info("\n" + "=" * 60)
+        logger.info("失败脚本详情")
+        logger.info("=" * 60)
 
         for display_name, result in failed_results:
-            print(f"\n[{display_name}] 日志内容:")
-            print("-" * 40)
+            logger.info(f"\n[{display_name}] 日志内容:")
+            logger.info("-" * 40)
             if "log_content" in result:
-                print(result["log_content"])
+                logger.info(result["log_content"])
             else:
-                print("无日志内容")
+                logger.info("无日志内容")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     parse_logs()
