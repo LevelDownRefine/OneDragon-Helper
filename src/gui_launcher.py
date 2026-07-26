@@ -51,7 +51,8 @@ logger = logging.getLogger(__name__)
 _DRAG_MIME = "application/x-onedragon-script"
 
 
-def _default_script_entry(display_name, script_type, script_path, run_timeout_seconds):
+def _default_script_entry(display_name, script_type, script_path, run_timeout_seconds,
+                          script_arguments=""):
     """构造一个 config.yml script_list 条目：核心字段由参数指定，其余用默认值补全。
 
     字段集合与 config.yml 中现有条目保持一致，供 GUI「添加脚本」使用。
@@ -68,7 +69,7 @@ def _default_script_entry(display_name, script_type, script_path, run_timeout_se
         "check_done": "",
         "kill_script_after_done": True,
         "kill_game_after_done": True,
-        "script_arguments": "",
+        "script_arguments": script_arguments,
         "notify_start": False,
         "notify_done": False,
         "notify_log_interval": 0,
@@ -459,6 +460,17 @@ class AddScriptDialog(QDialog):
         timeout_row.addStretch()
         layout.addLayout(timeout_row)
 
+        # 启动参数（可选）
+        args_row = QHBoxLayout()
+        args_row.setSpacing(8)
+        self.args_input = QLineEdit(self)
+        self.args_input.setFont(QFont("Microsoft YaHei", 10))
+        self.args_input.setPlaceholderText("可选，传给脚本的命令行参数")
+        self.args_input.setStyleSheet(self._INPUT_STYLE)
+        args_row.addWidget(self._make_label("启动参数:"))
+        args_row.addWidget(self.args_input)
+        layout.addLayout(args_row)
+
         # 按钮
         btn_layout = QHBoxLayout()
         save_btn = QPushButton("添加")
@@ -527,6 +539,7 @@ class AddScriptDialog(QDialog):
             script_type=self.type_combo.currentText(),
             script_path=path_val,
             run_timeout_seconds=timeout,
+            script_arguments=self.args_input.text().strip(),
         )
         self.accept()
 

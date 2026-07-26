@@ -652,7 +652,19 @@ class TestAddScriptDialog(unittest.TestCase):
         self.assertEqual(dlg.result_data['script_type'], 'python')
         self.assertEqual(dlg.result_data['script_path'], 'C:/foo/bar.py')
         self.assertEqual(dlg.result_data['run_timeout_seconds'], 600)
+        self.assertEqual(dlg.result_data['script_arguments'], '')
         acc.assert_called_once()
+
+    def test_save_captures_script_arguments(self):
+        """填入启动参数后写入 result_data['script_arguments']"""
+        dlg = gui_launcher.AddScriptDialog()
+        dlg.name_input.setText('带参脚本')
+        dlg.path_input.setText('C:/foo/bar.exe')
+        dlg.args_input.setText('--task daily --fast')
+        with patch.object(dlg, 'accept'):
+            dlg.save_data()
+        self.assertIsNotNone(dlg.result_data)
+        self.assertEqual(dlg.result_data['script_arguments'], '--task daily --fast')
 
     def test_save_rejects_empty_name(self):
         """名称为空时不构造 result_data"""
