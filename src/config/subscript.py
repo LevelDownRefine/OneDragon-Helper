@@ -143,3 +143,34 @@ def save_config(script_display_name: str, data: dict | list) -> None:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
         else:
             raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
+
+
+def _resolve_relative_script_paths(config_data: dict) -> None:
+    """
+    将 script_list 中相对的 script_path 解析为基于项目根目录的绝对路径；
+    绝对路径（如游戏 exe）原样保留。
+
+    config.example.yml 中 python 脚本统一使用相对项目根目录的路径
+    （如 src/python_script/mute.py），生成 config.yml 时展开为绝对路径，
+    使模板可移植、而运行时 ScriptChainer 拿到的始终是绝对路径。
+    """
+    root = get_root_dir()
+    for script in config_data.get("script_list", []):
+        script_path = script.get("script_path", "")
+        if script_path and not os.path.isabs(script_path):
+            script["script_path"] = safe_path_join(root, script_path)
+
+
+def generate_config_from_example() -> None:
+    """
+    从 config.example.yml 生成 config/config.yml，并把相对 script_path 解析为绝对路径。
+    仅负责生成；是否覆盖已存在的 config.yml 由调用方判断。
+    """
+    example_path = safe_path_join(get_root_dir(), "config", "config.example.yml")
+    config_path = get_config_yml_path_under_root()
+    assert os.path.exists(example_path), f"[subscript] 模板不存在: {example_path}"
+    with open(example_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    _resolve_relative_script_paths(data)
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, sort_keys=False)

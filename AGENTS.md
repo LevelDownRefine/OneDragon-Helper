@@ -42,7 +42,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 - **副本配置适配器**（`set_config.py`）：外观接口 `set_config()` + `ScriptConfig` 类层级，各游戏一个子类，封装 config 读写差异。**详细设计与各脚本适配状态见 [`src/config/set_config.md`](src/config/set_config.md)。**
 - **配置读写**（`subscript.py`）：`_CONFIG_REL_PATHS`（脚本 config 相对路径）+ `_TEMPLATE_PATHS`（init 模板，在 `config/` 下）；`load_config/save_config/load_template` 按扩展名支持 JSON/YAML；`_get_script_root_dir` 取 `script_path` 父目录并 `replace('\\','/')`。
 - **副本列表**（`dungeon_config.py`）：解析 `dungeon_list.yml` 结构化格式 → `(options, seq_map, show_seq)`；`get_display_name` 反查显示名；`restore_sequence_type` 恢复序列类型（解决 YAML 读 int/str 问题）。
-- **初始化**（`init_config.py`）：`config_workflow()` 复制 BGI 用户配置 + 从模板生成 `config.yml`（python 脚本不再拷贝，config.yml 直接绝对路径引用 `src/python_script/*`）。
+- **初始化**（`init_config.py`）：`config_workflow()` 复制 BGI 用户配置 + 从模板生成 `config.yml`。模板 `config.example.yml` 中 python 脚本用**相对项目根目录**的路径（如 `src/python_script/mute.py`），生成时 `subscript._resolve_relative_script_paths` 把相对 `script_path` 解析为绝对路径（基于 `get_root_dir()`，并经 `safe_path_join` 拦截 `..` 穿越）；游戏 exe 等绝对路径原样保留。`generate_config_from_example()` 负责读模板→解析→写 `config.yml`。
 - **日志**（`python_script/collect_log.py`）：每游戏一个 `*LogParser`，`parse_logs()` 汇总今日结果。
 
 ## 5. 编码约定（强偏好，违反即打回）
