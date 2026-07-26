@@ -224,6 +224,9 @@ __marimo__/
 gui_state.json
 config/config.yml
 
+# 运行日志（每日轮转，onedragon_helper.log.*）
+logs/
+
 # ---- AI Agent 工具私有数据（记忆/技能/本地配置，可能含密钥）----
 # 注意：AGENTS.md / CLAUDE.md / .github/copilot-instructions.md 等「团队共享指引」应保留追踪，不在此忽略。
 .workbuddy/

@@ -9,6 +9,7 @@ from src.utils import (
     get_our_bgi_user_dir,
     safe_path_join,
 )
+from src.utils_logger import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +39,6 @@ def copy_BGI_User():
     shutil.copytree(get_our_bgi_user_dir(), user_dir, dirs_exist_ok=True)
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    setup_logging()
     copy_BGI_User()
     logger.info("配置复制完成")

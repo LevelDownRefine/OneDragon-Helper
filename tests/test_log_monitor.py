@@ -2,7 +2,7 @@
 
 import unittest
 
-from src.log.collect_log import (
+from src.python_script.collect_log import (
     BGILogParser,
     M7ALogParser,
     OkEfLogParser,

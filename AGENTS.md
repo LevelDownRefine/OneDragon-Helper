@@ -31,8 +31,7 @@ src/config/
   dungeon_config.py         # dungeon_list.yml 解析（一级/二级副本）
   init_config.py            # config_workflow / need_config_workflow
   bgi.py                    # copy_BGI_User（整体复制，dirs_exist_ok=True）
-src/log/collect_log.py      # 各游戏 *LogParser + parse_logs() 汇总
-src/python_script/          # python 脚本（mute/shutdown/unmute 等，由 ScriptChainer 调用）
+src/python_script/          # python 脚本（mute/shutdown/unmute/collect_log 等，由 ScriptChainer 调用；不 import 任何项目模块，可独立运行）
 config/                     # config.example.yml / config.yml / dungeon_list.yml / weekly_timeouts.yml / gui_state.json / 各 init 模板 / BGI_User
 tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tests.bat  env.bat  uv.lock
 ```
@@ -44,7 +43,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 - **配置读写**（`subscript.py`）：`_CONFIG_REL_PATHS`（脚本 config 相对路径）+ `_TEMPLATE_PATHS`（init 模板，在 `config/` 下）；`load_config/save_config/load_template` 按扩展名支持 JSON/YAML；`_get_script_root_dir` 取 `script_path` 父目录并 `replace('\\','/')`。
 - **副本列表**（`dungeon_config.py`）：解析 `dungeon_list.yml` 结构化格式 → `(options, seq_map, show_seq)`；`get_display_name` 反查显示名；`restore_sequence_type` 恢复序列类型（解决 YAML 读 int/str 问题）。
 - **初始化**（`init_config.py`）：`config_workflow()` 复制 BGI 用户配置 + 从模板生成 `config.yml`（python 脚本不再拷贝，config.yml 直接绝对路径引用 `src/python_script/*`）。
-- **日志**（`log/collect_log.py`）：每游戏一个 `*LogParser`，`parse_logs()` 汇总今日结果。
+- **日志**（`python_script/collect_log.py`）：每游戏一个 `*LogParser`，`parse_logs()` 汇总今日结果。
 
 ## 5. 编码约定（强偏好，违反即打回）
 
@@ -58,7 +57,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 8. **代码稳定性优先**：能加强约束就加强（如 `_is_aligned` 严格要求 `plan_list` 顺序一致）。
 9. 新增/修改功能后**必须补测试并跑全套**。
 10. GUI 持久化：`gui_state.json` 只存 `dungeon`/`sequence`。**`enabled` 为纯内存态**：config.yml 不含 `enabled` 字段，启动默认全开，仅当次会话内可在 GUI 临时开关，不持久化（重启恢复全开）。
-11. **日志统一用 `logging` 模块**：每个模块 `logger = logging.getLogger(__name__)`；入口处（`main`/`__main__`）配置 `logging.basicConfig`，统一格式 `%(asctime)s [%(levelname)s] %(name)s: %(message)s`。**禁止用裸 `print` 输出日志**。`collect_log.py` 因独立性约束只 `import logging`（标准库），不引入项目模块。
+11. **日志统一用 `logging` 模块**：每个模块 `logger = logging.getLogger(__name__)`；入口处（`main`/`__main__`）调用 `setup_logging()`（`src/utils_logger.py`，幂等），统一格式 `%(asctime)s [%(levelname)s] %(name)s: %(message)s`，**同时输出控制台与文件** `logs/onedragon_helper.log`（每日 00:00 轮转，保留 14 天）。**禁止用裸 `print` 输出日志**。`collect_log.py` 因独立性约束（不 `import` 任何项目模块，可作独立脚本运行）保持原样：**仅用 `basicConfig` 输出控制台，不落盘**。子项目 `OneDragon-ScriptChainer` 有独立日志系统（`.log/`），不在此处理。
 
 ## 6. 测试
 
@@ -77,7 +76,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 - **启动 GUI**：`launcher.bat`（提权+加载环境），或 `python -m src.launcher`。
 - **计划任务（无界面直接运行）**：`launcher.bat --no-set-config`（或 `python -m src.launcher --no-set-config`）。跳过 GUI 与 `set_config`，`enabled` 为纯内存态、默认全开，故**直接运行全部脚本**（生成并运行 ScriptChainer 配置）；退出码透传给调用方，便于计划任务判断成败。
 - **首次初始化**：删 `config/config.yml` 后启动即触发 `config_workflow()`。
-- **日志汇总**：`python -m src.log.collect_log`。
+- **日志汇总**：`python -m src.python_script.collect_log`。
 - **加依赖**：改 `pyproject.toml` → `uv sync`（同步 `uv.lock`）。
 - **风格检查**（先激活 venv，见 §6 前置步骤）：`ruff check src tests`。只检查 `src/` 与 `tests/`，**不要**对 `OneDragon-ScriptChainer/` 跑（第三方，勿改）。自动修复安全项：`ruff check src tests --fix`；剩余需人工判断的项再逐个处理。
 - **新增游戏适配**：见 `src/config/set_config.md`「如何新增一个游戏适配」。

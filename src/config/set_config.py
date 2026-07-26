@@ -25,12 +25,12 @@ def safe_update(config: dict, key: str, value: Any, display_name: str = "",
         key: 要更新的键
         value: 新值
         display_name: 脚本显示名称，用于日志
-        assert_key_exists: 是否 assert key 存在；为 False 时允许添加新 key，此时需要 print 信息
+        assert_key_exists: 是否 assert key 存在；为 False 时允许添加新 key，此时会记录 warning 日志
     """
     if assert_key_exists:
         assert key in config, f"[set_config][{display_name}] config 中缺少字段: {key}"
     elif key not in config:
-        logger.info(f"[set_config][{display_name}] 添加新字段 config['{key}'] = {value}")
+        logger.warning(f"[set_config][{display_name}] 添加新字段 config['{key}'] = {value}")
         config[key] = value
         return True
 

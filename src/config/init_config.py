@@ -7,6 +7,7 @@ from src.utils import (
     get_config_yml_path_under_root,
     safe_path_join,
 )
+from src.utils_logger import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +28,5 @@ def config_workflow():
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    setup_logging()
     config_workflow()

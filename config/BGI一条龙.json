@@ -4,13 +4,10 @@
     "领取尘歌壶奖励": true,
     "自动幽境危战": true,
     "自动秘境": true,
-    "领取每日奖励": true,
-    "千星": true,
-    "周常": true
+    "领取每日奖励": true
   },
   "CraftingBenchCountry": "枫丹",
   "AdventurersGuildCountry": "枫丹",
-  "DomainName": "山风的荆冕",
   "WeeklyDomainEnabled": false,
   "DailyRewardPartyName": "",
   "MinResinToKeep": 0,

@@ -10,7 +10,7 @@
 独立性约束（重要）：
 - 本文件刻意**不 import 本项目中的任何其他模块**。
 - 为保持独立，本文件自行从推导项目根目录，并直接 `yaml.safe_load` 读取 `config.yml`（而非 import）。
-- 目的：可作为独立脚本直接运行`python src/log/collect_log.py`。
+- 目的：可作为独立脚本直接运行`python src/python_script/collect_log.py`。
 """
 
 import logging

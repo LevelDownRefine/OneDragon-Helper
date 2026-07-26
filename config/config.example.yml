@@ -170,7 +170,7 @@ script_list:
 - display_name: 日志分析
   game_label: ''
   script_type: python
-  script_path: D:\game_helper\OneDragon-Helper\src\log\collect_log.py
+  script_path: D:\game_helper\OneDragon-Helper\src\python_script\collect_log.py
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
