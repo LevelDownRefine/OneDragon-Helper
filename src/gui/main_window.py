@@ -23,6 +23,7 @@ from src.config.dungeon_config import (
     restore_sequence_type,
 )
 from src.config.set_config import set_config
+from src.gui.controls import make_pill_button
 from src.gui.dialogs import AddScriptDialog
 from src.gui.runner import ScriptChainRunner
 from src.gui.state import (
@@ -97,60 +98,15 @@ class MainWindow(QMainWindow):
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setSpacing(8)
 
-        self.select_all_btn = QPushButton("一键全选")
-        self.select_all_btn.setFixedHeight(32)
-        self.select_all_btn.setMinimumWidth(72)
-        self.select_all_btn.setCursor(Qt.PointingHandCursor)
-        self.select_all_btn.setStyleSheet("""
-            QPushButton {
-                border: 1px solid #d8dee9;
-                border-radius: 8px;
-                background: white;
-                font-size: 11px;
-                color: #4b5563;
-                padding: 0 16px;
-            }
-            QPushButton:hover { border-color: #3b82f6; color: #3b82f6; }
-            QPushButton:pressed { background: #f0f4ff; }
-        """)
+        self.select_all_btn = make_pill_button("一键全选", accent="#3b82f6", pressed_bg="#f0f4ff")
         self.select_all_btn.clicked.connect(self._select_all)
         action_layout.addWidget(self.select_all_btn)
 
-        self.deselect_all_btn = QPushButton("清空选择")
-        self.deselect_all_btn.setFixedHeight(32)
-        self.deselect_all_btn.setMinimumWidth(72)
-        self.deselect_all_btn.setCursor(Qt.PointingHandCursor)
-        self.deselect_all_btn.setStyleSheet("""
-            QPushButton {
-                border: 1px solid #d8dee9;
-                border-radius: 8px;
-                background: white;
-                font-size: 11px;
-                color: #4b5563;
-                padding: 0 16px;
-            }
-            QPushButton:hover { border-color: #ef4444; color: #ef4444; }
-            QPushButton:pressed { background: #fef2f2; }
-        """)
+        self.deselect_all_btn = make_pill_button("清空选择", accent="#ef4444", pressed_bg="#fef2f2")
         self.deselect_all_btn.clicked.connect(self._deselect_all)
         action_layout.addWidget(self.deselect_all_btn)
 
-        self.add_script_btn = QPushButton("添加脚本")
-        self.add_script_btn.setFixedHeight(32)
-        self.add_script_btn.setMinimumWidth(72)
-        self.add_script_btn.setCursor(Qt.PointingHandCursor)
-        self.add_script_btn.setStyleSheet("""
-            QPushButton {
-                border: 1px solid #d8dee9;
-                border-radius: 8px;
-                background: white;
-                font-size: 11px;
-                color: #4b5563;
-                padding: 0 16px;
-            }
-            QPushButton:hover { border-color: #22c55e; color: #16a34a; }
-            QPushButton:pressed { background: #f0fdf4; }
-        """)
+        self.add_script_btn = make_pill_button("添加脚本", accent="#22c55e", hover_color="#16a34a", pressed_bg="#f0fdf4")
         self.add_script_btn.clicked.connect(self._add_script)
         action_layout.addWidget(self.add_script_btn)
 

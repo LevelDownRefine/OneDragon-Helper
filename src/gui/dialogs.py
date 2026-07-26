@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.gui.controls import make_secondary_button
 from src.utils import (
     get_config_yml_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
@@ -107,21 +108,7 @@ class SingleScriptConfigDialog(QDialog):
             }
         """)
 
-        self.browse_btn = QPushButton("选择")
-        self.browse_btn.setFixedHeight(28)
-        self.browse_btn.setFont(QFont("Microsoft YaHei", 10))
-        self.browse_btn.setStyleSheet("""
-            QPushButton {
-                border: 1px solid #d0d0d0;
-                border-radius: 6px;
-                background: white;
-                font-size: 10px;
-                color: #303030;
-                padding: 0 16px;
-            }
-            QPushButton:hover { border-color: #a0a0a0; }
-            QPushButton:pressed { border-color: #0078D4; }
-        """)
+        self.browse_btn = make_secondary_button("选择")
         self.browse_btn.clicked.connect(self.browse_file)
 
         row1.addWidget(label)
@@ -350,21 +337,7 @@ class AddScriptDialog(QDialog):
         self.path_input.setFont(QFont("Microsoft YaHei", 10))
         self.path_input.setPlaceholderText("脚本/程序的完整路径")
         self.path_input.setStyleSheet(self._INPUT_STYLE)
-        browse_btn = QPushButton("选择")
-        browse_btn.setFixedHeight(28)
-        browse_btn.setFont(QFont("Microsoft YaHei", 10))
-        browse_btn.setStyleSheet("""
-            QPushButton {
-                border: 1px solid #d0d0d0;
-                border-radius: 6px;
-                background: white;
-                font-size: 10px;
-                color: #303030;
-                padding: 0 16px;
-            }
-            QPushButton:hover { border-color: #a0a0a0; }
-            QPushButton:pressed { border-color: #0078D4; }
-        """)
+        browse_btn = make_secondary_button("选择")
         browse_btn.clicked.connect(self.browse_file)
         path_row.addWidget(self._make_label("脚本路径:"))
         path_row.addWidget(self.path_input)

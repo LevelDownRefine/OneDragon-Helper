@@ -8,11 +8,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
-    QPushButton,
     QWidget,
 )
 
 from src.config.dungeon_config import get_display_name
+from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
 
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
@@ -127,23 +127,8 @@ class ScriptItem(QFrame):
             and not (len(dungeon_options) == 1 and dungeon_options[0] == "未选择")
         )
         if self.script_type != 'python' and has_real_dungeons:
-            self.dungeon_btn = QPushButton("选择副本")
-            self.dungeon_btn.setFixedHeight(28)
-            self.dungeon_btn.setMinimumWidth(160)
-            self.dungeon_btn.setCursor(Qt.PointingHandCursor)
-            self.dungeon_btn.setStyleSheet("""
-                QPushButton {
-                    border: 1px solid #d0d0d0;
-                    border-radius: 8px;
-                    padding: 0 10px;
-                    background: white;
-                    font-size: 11px;
-                    color: #303030;
-                    text-align: center;
-                }
-                QPushButton:hover { border-color: #a0a0a0; }
-                QPushButton:pressed { border-color: #0078D4; }
-            """)
+            self.dungeon_btn = make_secondary_button(
+                "选择副本", radius=8, padding="0 10px", font_size=11, min_width=160)
             self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
             layout.addWidget(self.dungeon_btn)
 
@@ -161,39 +146,17 @@ class ScriptItem(QFrame):
         layout.addWidget(self.toggle)
 
         # 删除按钮（红色垃圾桶，hover 高亮，点击经回调通知 MainWindow 删除）
-        self.delete_btn = QPushButton("🗑")
-        self.delete_btn.setFixedSize(30, 30)
-        self.delete_btn.setCursor(Qt.PointingHandCursor)
-        self.delete_btn.setStyleSheet("""
-            QPushButton {
-                border: none;
-                border-radius: 15px;
-                background: transparent;
-                font-size: 14px;
-                color: #c0c4cc;
-            }
-            QPushButton:hover { background-color: #fdecec; color: #ef4444; }
-            QPushButton:pressed { background-color: #f9d5d5; }
-        """)
+        self.delete_btn = make_icon_button(
+            "🗑", accent="#ef4444", normal_color="#c0c4cc", font_size=14,
+            hover_bg="#fdecec", pressed_bg="#f9d5d5")
         if self._delete_callback:
             self.delete_btn.clicked.connect(self._on_delete_clicked)
         layout.addWidget(self.delete_btn)
 
         # 配置按钮（最右边，圆形图标按钮）
-        self.config_btn = QPushButton("⚙")
-        self.config_btn.setFixedSize(30, 30)
-        self.config_btn.setCursor(Qt.PointingHandCursor)
-        self.config_btn.setStyleSheet("""
-            QPushButton {
-                border: none;
-                border-radius: 15px;
-                background: transparent;
-                font-size: 15px;
-                color: #9aa3b2;
-            }
-            QPushButton:hover { background-color: #eef2f7; color: #3b82f6; }
-            QPushButton:pressed { background-color: #e2e8f0; }
-        """)
+        self.config_btn = make_icon_button(
+            "⚙", accent="#3b82f6", normal_color="#9aa3b2", font_size=15,
+            hover_bg="#eef2f7", pressed_bg="#e2e8f0")
         self.config_btn.clicked.connect(self._show_config_dialog)
         layout.addWidget(self.config_btn)
 
