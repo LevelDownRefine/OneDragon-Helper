@@ -9,12 +9,13 @@ from datetime import datetime
 
 import yaml
 from PySide6.QtCore import QMimeData, Qt, QThread, Signal
-from PySide6.QtGui import QDrag, QFont, QIntValidator
+from PySide6.QtGui import QColor, QDrag, QFont, QIntValidator, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QFileDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -108,7 +109,7 @@ class SingleScriptConfigDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {script_name}")
         self.resize(680, 280)
-        self.setStyleSheet("background-color: #f3f3f3;")
+        self.setStyleSheet("background-color: #f7f8fa;")
 
         self.script_name = script_name
         self.script_path = script_path
@@ -220,15 +221,19 @@ class SingleScriptConfigDialog(QDialog):
         self.save_btn.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
         self.save_btn.setStyleSheet("""
             QPushButton {
-                background-color: #0078D4;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #4f8cff, stop:1 #3b82f6);
                 color: white;
                 border: none;
                 border-radius: 6px;
                 padding: 0 24px;
                 font-size: 10px;
             }
-            QPushButton:hover { background-color: #106EBE; }
-            QPushButton:pressed { background-color: #005A9E; }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #5b96ff, stop:1 #2f6fed);
+            }
+            QPushButton:pressed { background: #2f6fed; }
         """)
         self.save_btn.clicked.connect(self.save_data)
 
@@ -244,7 +249,7 @@ class SingleScriptConfigDialog(QDialog):
                 color: #303030;
                 padding: 0 24px;
             }
-            QPushButton:hover { border-color: #a0a0a0; }
+            QPushButton:hover { border-color: #3b82f6; color: #3b82f6; }
         """)
         cancel_btn.clicked.connect(self.reject)
 
@@ -309,8 +314,54 @@ class SingleScriptConfigDialog(QDialog):
         self.accept()
 
 
+class ToggleSwitch(QWidget):
+    """自定义滑动开关（圆角轨道 + 圆形滑块）"""
+
+    toggled = Signal(bool)
+
+    TRACK_ON = "#3b82f6"
+    TRACK_OFF = "#cbd5e1"
+    KNOB = "#ffffff"
+
+    def __init__(self, parent=None, checked=True):
+        super().__init__(parent)
+        self._checked = checked
+        self.setFixedSize(42, 24)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def setChecked(self, value):
+        if self._checked != value:
+            self._checked = value
+            self.update()
+
+    def isChecked(self):
+        return self._checked
+
+    def mousePressEvent(self, event):
+        self._checked = not self._checked
+        self.update()
+        self.toggled.emit(self._checked)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        r = h / 2
+        # 轨道
+        track = QColor(self.TRACK_ON if self._checked else self.TRACK_OFF)
+        p.setPen(Qt.NoPen)
+        p.setBrush(track)
+        p.drawRoundedRect(0, 0, w, h, r, r)
+        # 滑块
+        knob_d = h - 6
+        kx = (w - knob_d - 3) if self._checked else 3
+        ky = (h - knob_d) / 2
+        p.setBrush(QColor(self.KNOB))
+        p.drawEllipse(int(kx), int(ky), knob_d, knob_d)
+
+
 class ScriptItem(QFrame):
-    """单个脚本项（Fluent 风格卡片）"""
+    """单个脚本项（卡片风格）"""
 
     def __init__(self, script_data, dungeon_options=None, sequence_options_map=None,
                  show_sequence=False, saved_state=None, reorder_callback=None):
@@ -333,17 +384,13 @@ class ScriptItem(QFrame):
         self.setFrameShape(QFrame.NoFrame)
         self.setObjectName("ScriptItem")
         self.setAcceptDrops(True)
-        self.setStyleSheet("""
-            QFrame#ScriptItem {
-                background-color: transparent;
-                border: none;
-                border-bottom: 1px solid #d0d0d0;
-                border-radius: 0px;
-            }
-            QFrame#ScriptItem:hover {
-                background-color: #f0f0f0;
-            }
-        """)
+        self._apply_card_style()
+        # 卡片阴影，营造悬浮层次感
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(14)
+        shadow.setColor(QColor(15, 23, 42, 22))
+        shadow.setOffset(0, 3)
+        self.setGraphicsEffect(shadow)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
@@ -354,17 +401,17 @@ class ScriptItem(QFrame):
         self.handle.setFixedSize(20, 20)
         self.handle.setAlignment(Qt.AlignCenter)
         self.handle.setCursor(Qt.OpenHandCursor)
-        self.handle.setStyleSheet("color: #b0b0b0; font-size: 14px;")
+        self.handle.setStyleSheet("color: #c4c9d4; font-size: 16px;")
         self.handle.mousePressEvent = self._handle_mouse_press
         self.handle.mouseMoveEvent = self._handle_mouse_move
         self.handle.mouseReleaseEvent = self._handle_mouse_release
         layout.addWidget(self.handle)
 
         # 脚本名称
-        title_label = QLabel(self.display_name)
-        title_label.setFont(QFont("Microsoft YaHei", 10))
-        title_label.setStyleSheet("color: #202020;")
-        layout.addWidget(title_label, stretch=1)
+        self.title_label = QLabel(self.display_name)
+        self.title_label.setFont(QFont("Microsoft YaHei", 11))
+        self.title_label.setStyleSheet("color: #1f2937;")
+        layout.addWidget(self.title_label, stretch=1)
 
         # 副本选择按钮（点击弹出级联菜单：一级 → 二级从右侧弹出）
         has_real_dungeons = (
@@ -400,28 +447,26 @@ class ScriptItem(QFrame):
                     self._selected_sequence = saved_state['sequence']
                 self.dungeon_btn.setText(self._dungeon_btn_text())
 
-        # 开关按钮（Fluent Switch 风格）
-        self.toggle_btn = QPushButton()
-        self.toggle_btn.setFixedSize(44, 22)
-        self.toggle_btn.setCursor(Qt.PointingHandCursor)
-        self.toggle_btn.clicked.connect(self._toggle)
+        # 开关（自定义滑动开关）
+        self.toggle = ToggleSwitch(checked=self.enabled)
+        self.toggle.toggled.connect(self._on_toggle_changed)
         self._update_switch_style()
-        layout.addWidget(self.toggle_btn)
+        layout.addWidget(self.toggle)
 
-        # 配置按钮（最右边）
+        # 配置按钮（最右边，圆形图标按钮）
         self.config_btn = QPushButton("⚙")
-        self.config_btn.setFixedSize(28, 28)
+        self.config_btn.setFixedSize(30, 30)
         self.config_btn.setCursor(Qt.PointingHandCursor)
         self.config_btn.setStyleSheet("""
             QPushButton {
                 border: none;
-                border-radius: 4px;
-                background: #f5f5f5;
-                font-size: 14px;
-                color: #606060;
+                border-radius: 15px;
+                background: transparent;
+                font-size: 15px;
+                color: #9aa3b2;
             }
-            QPushButton:hover { background-color: #e0e0e0; }
-            QPushButton:pressed { background-color: #d0d0d0; }
+            QPushButton:hover { background-color: #eef2f7; color: #3b82f6; }
+            QPushButton:pressed { background-color: #e2e8f0; }
         """)
         self.config_btn.clicked.connect(self._show_config_dialog)
         layout.addWidget(self.config_btn)
@@ -533,36 +578,39 @@ class ScriptItem(QFrame):
         self.enabled = not self.enabled
         self._update_switch_style()
 
-    def _update_switch_style(self):
-        if self.enabled:
-            self.toggle_btn.setText("●")
-            self.toggle_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #0078D4;
-                    color: white;
-                    border: none;
-                    border-radius: 11px;
-                    font-size: 10px;
-                    text-align: right;
-                    padding-right: 5px;
-                    padding-bottom: 2px;
+    def _on_toggle_changed(self, checked):
+        """ToggleSwitch 状态变化回调"""
+        self.enabled = checked
+        self._update_switch_style()
+
+    def _apply_card_style(self, muted=False):
+        """卡片外观：启用=白底蓝边；停用=灰底浅边"""
+        if muted:
+            self.setStyleSheet("""
+                QFrame#ScriptItem {
+                    background-color: #f7f8fa;
+                    border: 1px solid #eceef2;
+                    border-radius: 12px;
                 }
+                QFrame#ScriptItem:hover { border-color: #cbd5e1; }
             """)
         else:
-            self.toggle_btn.setText("●")
-            self.toggle_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #c0c0c0;
-                    color: white;
-                    border: none;
-                    border-radius: 11px;
-                    font-size: 10px;
-                    text-align: left;
-                    padding-left: 5px;
-                    padding-bottom: 2px;
+            self.setStyleSheet("""
+                QFrame#ScriptItem {
+                    background-color: #ffffff;
+                    border: 1px solid #e6e9f0;
+                    border-radius: 12px;
                 }
-                QPushButton:hover { background-color: #a8a8a8; }
+                QFrame#ScriptItem:hover { border-color: #3b82f6; }
             """)
+
+    def _update_switch_style(self):
+        self.toggle.setChecked(self.enabled)
+        self._apply_card_style(not self.enabled)
+        if self.enabled:
+            self.title_label.setStyleSheet("color: #1f2937;")
+        else:
+            self.title_label.setStyleSheet("color: #9ca3af;")
 
     # ---- 拖拽重排（仅手柄可发起） ----
     def _handle_mouse_press(self, event):
@@ -611,7 +659,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("OneDragon 脚本启动器")
-        self.setMinimumSize(480, 560)
+        self.setMinimumSize(520, 640)
 
         self.script_items = []
         self.all_config_data = None
@@ -623,11 +671,11 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         central = QWidget()
-        central.setStyleSheet("background-color: #f3f3f3;")
+        central.setStyleSheet("background-color: #eef1f6;")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(12)
+        layout.setContentsMargins(18, 16, 18, 18)
+        layout.setSpacing(14)
 
         # 脚本列表
         scroll = QScrollArea()
@@ -635,7 +683,7 @@ class MainWindow(QMainWindow):
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setStyleSheet("""
             QScrollArea {
-                background-color: #f3f3f3;
+                background-color: transparent;
                 border: none;
             }
             QScrollBar:vertical {
@@ -643,19 +691,19 @@ class MainWindow(QMainWindow):
                 background: transparent;
             }
             QScrollBar::handle:vertical {
-                background: #c0c0c0;
+                background: #cbd5e1;
                 border-radius: 4px;
                 min-height: 30px;
             }
-            QScrollBar::handle:vertical:hover { background: #a0a0a0; }
+            QScrollBar::handle:vertical:hover { background: #94a3b8; }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
         """)
 
         self.scroll_content = QWidget()
-        self.scroll_content.setStyleSheet("background-color: #f3f3f3;")
+        self.scroll_content.setStyleSheet("background-color: transparent;")
         self.scroll_layout = QVBoxLayout(self.scroll_content)
-        self.scroll_layout.setContentsMargins(0, 0, 0, 0)
-        self.scroll_layout.setSpacing(2)
+        self.scroll_layout.setContentsMargins(2, 2, 2, 2)
+        self.scroll_layout.setSpacing(10)
         self.scroll_layout.addStretch()
         scroll.setWidget(self.scroll_content)
         layout.addWidget(scroll, stretch=1)
@@ -666,33 +714,39 @@ class MainWindow(QMainWindow):
         action_layout.setSpacing(8)
 
         self.select_all_btn = QPushButton("一键全选")
-        self.select_all_btn.setFixedHeight(28)
-        self.select_all_btn.setMinimumWidth(64)
+        self.select_all_btn.setFixedHeight(32)
+        self.select_all_btn.setMinimumWidth(72)
+        self.select_all_btn.setCursor(Qt.PointingHandCursor)
         self.select_all_btn.setStyleSheet("""
             QPushButton {
-                border: 1px solid #d0d0d0;
+                border: 1px solid #d8dee9;
                 border-radius: 8px;
                 background: white;
                 font-size: 11px;
-                color: #303030;
+                color: #4b5563;
+                padding: 0 16px;
             }
-            QPushButton:hover { border-color: #a0a0a0; }
+            QPushButton:hover { border-color: #3b82f6; color: #3b82f6; }
+            QPushButton:pressed { background: #f0f4ff; }
         """)
         self.select_all_btn.clicked.connect(self._select_all)
         action_layout.addWidget(self.select_all_btn)
 
         self.deselect_all_btn = QPushButton("清空选择")
-        self.deselect_all_btn.setFixedHeight(28)
-        self.deselect_all_btn.setMinimumWidth(64)
+        self.deselect_all_btn.setFixedHeight(32)
+        self.deselect_all_btn.setMinimumWidth(72)
+        self.deselect_all_btn.setCursor(Qt.PointingHandCursor)
         self.deselect_all_btn.setStyleSheet("""
             QPushButton {
-                border: 1px solid #d0d0d0;
+                border: 1px solid #d8dee9;
                 border-radius: 8px;
                 background: white;
                 font-size: 11px;
-                color: #303030;
+                color: #4b5563;
+                padding: 0 16px;
             }
-            QPushButton:hover { border-color: #a0a0a0; }
+            QPushButton:hover { border-color: #ef4444; color: #ef4444; }
+            QPushButton:pressed { background: #fef2f2; }
         """)
         self.deselect_all_btn.clicked.connect(self._deselect_all)
         action_layout.addWidget(self.deselect_all_btn)
@@ -702,18 +756,23 @@ class MainWindow(QMainWindow):
 
         # 运行按钮
         self.run_btn = QPushButton("▶ 运行全部开启的脚本")
-        self.run_btn.setFixedHeight(40)
-        self.run_btn.setFont(QFont("Microsoft YaHei", 11, QFont.Bold))
+        self.run_btn.setFixedHeight(46)
+        self.run_btn.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        self.run_btn.setCursor(Qt.PointingHandCursor)
         self.run_btn.setStyleSheet("""
             QPushButton {
-                background-color: #0078D4;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #4f8cff, stop:1 #3b82f6);
                 color: white;
                 border: none;
-                border-radius: 6px;
+                border-radius: 10px;
             }
-            QPushButton:hover { background-color: #106EBE; }
-            QPushButton:pressed { background-color: #005A9E; }
-            QPushButton:disabled { background-color: #B0B0B0; }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #5b96ff, stop:1 #2f6fed);
+            }
+            QPushButton:pressed { background: #2f6fed; }
+            QPushButton:disabled { background: #cbd5e1; }
         """)
         self.run_btn.clicked.connect(self._run_selected)
         layout.addWidget(self.run_btn)
