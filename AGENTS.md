@@ -29,7 +29,6 @@ src/config/
   set_config.py             # 副本配置适配器：外观接口 + ScriptConfig 类层级（设计见 set_config.md）
   subscript.py              # config 读写基础设施（_CONFIG_REL_PATHS / _TEMPLATE_PATHS / load/save/template）
   dungeon_config.py         # dungeon_list.yml 解析（一级/二级副本）
-  init_config.py            # config_workflow / need_config_workflow
   bgi.py                    # copy_BGI_User（整体复制，dirs_exist_ok=True）
 src/python_script/          # python 脚本（mute/shutdown/unmute/collect_log 等，由 ScriptChainer 调用；不 import 任何项目模块，可独立运行）
 config/                     # config.example.yml / config.yml / dungeon_list.yml / weekly_timeouts.yml / gui_state.json / 各 init 模板 / BGI_User
@@ -42,7 +41,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 - **副本配置适配器**（`set_config.py`）：外观接口 `set_config()` + `ScriptConfig` 类层级，各游戏一个子类，封装 config 读写差异。**详细设计与各脚本适配状态见 [`src/config/set_config.md`](src/config/set_config.md)。**
 - **配置读写**（`subscript.py`）：`_CONFIG_REL_PATHS`（脚本 config 相对路径）+ `_TEMPLATE_PATHS`（init 模板，在 `config/` 下）；`load_config/save_config/load_template` 按扩展名支持 JSON/YAML；`_get_script_root_dir` 取 `script_path` 父目录并 `replace('\\','/')`。
 - **副本列表**（`dungeon_config.py`）：解析 `dungeon_list.yml` 结构化格式 → `(options, seq_map, show_seq)`；`get_display_name` 反查显示名；`restore_sequence_type` 恢复序列类型（解决 YAML 读 int/str 问题）。
-- **初始化**（`init_config.py`）：`config_workflow()` 复制 BGI 用户配置 + 从模板生成 `config.yml`。模板 `config.example.yml` 中 python 脚本用**相对项目根目录**的路径（如 `src/python_script/mute.py`），生成时 `subscript._resolve_relative_script_paths` 把相对 `script_path` 解析为绝对路径（基于 `get_root_dir()`，并经 `safe_path_join` 拦截 `..` 穿越）；游戏 exe 等绝对路径原样保留。`generate_config_from_example()` 负责读模板→解析→写 `config.yml`。
+- **初始化**（`launcher.py`）：`config_workflow()` 复制 BGI 用户配置 + 从模板生成 `config.yml`（首次 `config.yml` 缺失时触发，在 `main()` 中调用）。模板 `config.example.yml` 中 python 脚本用**相对项目根目录**的路径（如 `src/python_script/mute.py`），生成时 `subscript._resolve_relative_script_paths` 把相对 `script_path` 解析为绝对路径（基于 `get_root_dir()`，并经 `safe_path_join` 拦截 `..` 穿越）；游戏 exe 等绝对路径原样保留。`generate_config_from_example()`（在 `subscript.py`）负责读模板→解析→写 `config.yml`。
 - **日志**（`python_script/collect_log.py`）：每游戏一个 `*LogParser`，`parse_logs()` 汇总今日结果。
 
 ## 5. 编码约定（强偏好，违反即打回）
@@ -68,14 +67,14 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 > 未激活环境是最常见的「本地能跑、CI 挂」或 `ImportError` 根因——**改代码、跑测试、跑 lint 前务必先激活**。
 
 - 本地（在已激活 venv 中）：`cd <root> && export PYTHONPATH=src && python -m unittest discover -s tests -p "test*.py"`（Windows cmd 用 `set PYTHONPATH=src`）。`python -m` 把根目录加入 `sys.path`（`from src.config import ...` 可用），`PYTHONPATH=src` 让 `import launcher` 可用——**两种 import 风格并存**，必须在根目录且带 `PYTHONPATH=src` 跑。
-- 测试文件：配置适配器（`test_set_config.py` / `test_set_config_subclasses.py`）、`test_dungeon_config.py`、GUI 测试与源码一一对应（`test_launcher.py` 入口 / `test_gui_state.py` / `test_gui_widgets.py` / `test_gui_dialogs.py` / `test_gui_main_window.py`，开头均设 `QT_QPA_PLATFORM=offscreen`）、`test_init_config.py` / `test_bgi.py` / `test_log_monitor.py` / `test_utils.py`。
+- 测试文件：配置适配器（`test_set_config.py` / `test_set_config_subclasses.py`）、`test_dungeon_config.py`、GUI 测试与源码一一对应（`test_launcher.py` 入口 / `test_gui_state.py` / `test_gui_widgets.py` / `test_gui_dialogs.py` / `test_gui_main_window.py`，开头均设 `QT_QPA_PLATFORM=offscreen`）、`test_subscript.py` / `test_bgi.py` / `test_log_monitor.py` / `test_utils.py`。
 - 隔离原则：文件 I/O 一律 mock；不依赖真实 config 文件或游戏脚本路径。
 
 ## 7. 常见任务
 
 - **启动 GUI**：`launcher.bat`（提权+加载环境），或 `python -m src.launcher`。
 - **计划任务（无界面直接运行）**：`launcher.bat --no-set-config`（或 `python -m src.launcher --no-set-config`）。跳过 GUI 与 `set_config`，`enabled` 为纯内存态、默认全开，故**直接运行全部脚本**（生成并运行 ScriptChainer 配置）；退出码透传给调用方，便于计划任务判断成败。
-- **首次初始化**：删 `config/config.yml` 后启动即触发 `config_workflow()`。
+- **首次初始化**：删 `config/config.yml` 后启动（`launcher.main`）即触发 `config_workflow()`。
 - **日志汇总**：`python -m src.python_script.collect_log`。
 - **加依赖**：改 `pyproject.toml` → `uv sync`（同步 `uv.lock`）。
 - **风格检查**（先激活 venv，见 §6 前置步骤）：`ruff check src tests`。只检查 `src/` 与 `tests/`，**不要**对 `OneDragon-ScriptChainer/` 跑（第三方，勿改）。自动修复安全项：`ruff check src tests --fix`；剩余需人工判断的项再逐个处理。

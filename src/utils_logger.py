@@ -1,6 +1,6 @@
 """统一日志配置：控制台 + 文件（每日轮转）。
 
-入口（launcher / init_config / bgi）在启动时调用 setup_logging()，
+入口（launcher / bgi）在启动时调用 setup_logging()，
 使 src/ 全链路的 logging 同时输出到控制台与 logs/onedragon_helper.log。
 子项目 OneDragon-ScriptChainer 有独立的日志系统，不在此处理。
 """

@@ -11,7 +11,8 @@ import sys
 import yaml
 from PySide6.QtWidgets import QApplication
 
-from src.config.init_config import config_workflow, need_config_workflow
+from src.config.bgi import copy_BGI_User
+from src.config.subscript import generate_config_from_example
 from src.gui.main_window import MainWindow
 from src.gui.runner import run_chain_command
 from src.gui.state import apply_weekly_timeout
@@ -68,6 +69,20 @@ def run_direct(chain_name="88") -> int:
         yaml.dump(data, f, allow_unicode=True, sort_keys=False)
 
     return run_chain_command(chain_name)
+
+
+def need_config_workflow() -> bool:
+    """判断是否需要先执行 config_workflow（首次运行时 config.yml 不存在）"""
+    return not os.path.exists(get_config_yml_path_under_root())
+
+
+def config_workflow():
+    # 复制 BetterGI 用户配置
+    copy_BGI_User()
+    # 从模板生成 config.yml（如果不存在），相对 script_path 解析为绝对路径
+    config_path = get_config_yml_path_under_root()
+    if not os.path.exists(config_path):
+        generate_config_from_example()
 
 
 def main():
