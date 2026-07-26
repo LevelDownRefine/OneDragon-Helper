@@ -5,23 +5,10 @@ import shutil
 from src.config.bgi import copy_BGI_User
 from src.utils import (
     get_config_yml_path_under_root,
-    get_path_under_onedragon,
-    get_path_under_root,
     safe_path_join,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def copy_python_scripts():
-    py_script_dir = get_path_under_root("src", "python_script")
-    file_names = [f for f in os.listdir(py_script_dir) if f.endswith(".py")]
-    for file_name in file_names:
-        input_path = safe_path_join(py_script_dir, file_name)
-        output_path = get_path_under_onedragon("config", "script_chain", "scripts")
-        os.makedirs(output_path, exist_ok=True)
-        shutil.copy(input_path, safe_path_join(output_path, file_name))
-        logger.info(f"已同步Python脚本{file_name}到: {output_path}")
 
 
 def need_config_workflow() -> bool:
@@ -32,8 +19,6 @@ def need_config_workflow() -> bool:
 def config_workflow():
     # 复制 BetterGI 用户配置
     copy_BGI_User()
-    # 复制 src/python_scripts 到 OneDragon-ScriptChainer/config/script_chain/scripts
-    copy_python_scripts()
     # 从模板生成 config.yml（如果不存在）
     config_path = get_config_yml_path_under_root()
     if not os.path.exists(config_path):

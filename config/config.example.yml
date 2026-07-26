@@ -2,7 +2,7 @@ script_list:
 - display_name: 静音
   game_label: ''
   script_type: python
-  script_path: scripts/mute.py
+  script_path: D:\game_helper\OneDragon-Helper\src\python_script\mute.py
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
@@ -152,7 +152,7 @@ script_list:
 - display_name: 关闭静音
   game_label: ''
   script_type: python
-  script_path: scripts/unmute.py
+  script_path: D:\game_helper\OneDragon-Helper\src\python_script\unmute.py
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
@@ -188,7 +188,7 @@ script_list:
 - display_name: 自动关机
   game_label: ''
   script_type: python
-  script_path: scripts/shutdown.py
+  script_path: D:\game_helper\OneDragon-Helper\src\python_script\shutdown.py
   script_process_name: []
   game_process_name: ''
   launcher_mode: false

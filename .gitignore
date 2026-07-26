@@ -217,6 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Backup files
+*.bak
+
 # GUI 状态持久化（用户本地偏好）
 gui_state.json
 config/config.yml
