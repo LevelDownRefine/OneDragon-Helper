@@ -16,13 +16,19 @@ OneDragon-Helper 是**多游戏自动化脚本调度器 + PySide6 GUI 启动器*
 ## 3. 目录结构
 
 ```
-src/gui_launcher.py        # 唯一 GUI 入口（MainWindow/ScriptItem/SingleScriptConfigDialog/ScriptChainRunner）
+src/launcher.py            # 薄入口（parse_args / run_direct / main），launcher.bat 用 python -m src.launcher
+src/gui/                    # GUI 包（依赖单向：main_window → widgets/dialogs/state/runner；widgets → dialogs）
+  state.py                  # load_ui_state / save_ui_state（gui_state.json）+ get_week_num
+  runner.py                 # build_chain_command + ScriptChainRunner(QThread)
+  dialogs.py                # default_script_entry + SingleScriptConfigDialog + AddScriptDialog
+  widgets.py                # DRAG_MIME + ToggleSwitch + ScriptItem
+  main_window.py            # MainWindow
 src/utils.py                # 路径工具（get_root_dir 等，lru_cache）
 src/config/
   set_config.py             # 副本配置适配器：外观接口 + ScriptConfig 类层级（设计见 set_config.md）
   subscript.py              # config 读写基础设施（_CONFIG_REL_PATHS / _TEMPLATE_PATHS / load/save/template）
   dungeon_config.py         # dungeon_list.yml 解析（一级/二级副本）
-  init_config.py            # config_workflow / need_config_workflow / copy_python_scripts
+  init_config.py            # config_workflow / need_config_workflow
   bgi.py                    # copy_BGI_User（整体复制，dirs_exist_ok=True）
 src/log/collect_log.py      # 各游戏 *LogParser + parse_logs() 汇总
 src/python_script/          # python 脚本（mute/shutdown/unmute 等，由 ScriptChainer 调用）
@@ -32,11 +38,11 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 
 ## 4. 核心架构
 
-- **GUI**（`gui_launcher.py`）：`MainWindow` 列出 `ScriptItem`（副本下拉 + 开关 + ⚙配置按钮）；`SingleScriptConfigDialog(QDialog)` 配脚本路径与每周超时；运行 → `_generate_config("88")` 生成 `OneDragon-ScriptChainer/config/script_chain/88.yml` → `ScriptChainRunner(QThread)` 后台调 `script_chainer.win_exe.launcher --chain 88`。
+- **GUI**（`src/gui/` 包，`launcher.py` 仅为薄入口）：`MainWindow` 列出 `ScriptItem`（副本下拉 + 开关 + ⚙配置按钮）；`SingleScriptConfigDialog(QDialog)` 配脚本路径与每周超时；运行 → `_generate_config("88")` 生成 `OneDragon-ScriptChainer/config/script_chain/88.yml` → `ScriptChainRunner(QThread)` 后台调 `script_chainer.win_exe.launcher --chain 88`。
 - **副本配置适配器**（`set_config.py`）：外观接口 `set_config()` + `ScriptConfig` 类层级，各游戏一个子类，封装 config 读写差异。**详细设计与各脚本适配状态见 [`src/config/set_config.md`](src/config/set_config.md)。**
 - **配置读写**（`subscript.py`）：`_CONFIG_REL_PATHS`（脚本 config 相对路径）+ `_TEMPLATE_PATHS`（init 模板，在 `config/` 下）；`load_config/save_config/load_template` 按扩展名支持 JSON/YAML；`_get_script_root_dir` 取 `script_path` 父目录并 `replace('\\','/')`。
 - **副本列表**（`dungeon_config.py`）：解析 `dungeon_list.yml` 结构化格式 → `(options, seq_map, show_seq)`；`get_display_name` 反查显示名；`restore_sequence_type` 恢复序列类型（解决 YAML 读 int/str 问题）。
-- **初始化**（`init_config.py`）：`config_workflow()` 复制 BGI 用户配置 + python 脚本 + 从模板生成 `config.yml`。
+- **初始化**（`init_config.py`）：`config_workflow()` 复制 BGI 用户配置 + 从模板生成 `config.yml`（python 脚本不再拷贝，config.yml 直接绝对路径引用 `src/python_script/*`）。
 - **日志**（`log/collect_log.py`）：每游戏一个 `*LogParser`，`parse_logs()` 汇总今日结果。
 
 ## 5. 编码约定（强偏好，违反即打回）
@@ -61,14 +67,14 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 >
 > 未激活环境是最常见的「本地能跑、CI 挂」或 `ImportError` 根因——**改代码、跑测试、跑 lint 前务必先激活**。
 
-- 本地（在已激活 venv 中）：`cd <root> && export PYTHONPATH=src && python -m unittest discover -s tests -p "test*.py"`（Windows cmd 用 `set PYTHONPATH=src`）。`python -m` 把根目录加入 `sys.path`（`from src.config import ...` 可用），`PYTHONPATH=src` 让 `import gui_launcher` 可用——**两种 import 风格并存**，必须在根目录且带 `PYTHONPATH=src` 跑。
-- 测试文件：配置适配器（`test_set_config.py` / `test_set_config_subclasses.py`）、`test_dungeon_config.py`、`test_gui_launcher.py`（开头设 `QT_QPA_PLATFORM=offscreen`）、`test_init_config.py` / `test_bgi.py` / `test_log_monitor.py` / `test_utils.py`。
+- 本地（在已激活 venv 中）：`cd <root> && export PYTHONPATH=src && python -m unittest discover -s tests -p "test*.py"`（Windows cmd 用 `set PYTHONPATH=src`）。`python -m` 把根目录加入 `sys.path`（`from src.config import ...` 可用），`PYTHONPATH=src` 让 `import launcher` 可用——**两种 import 风格并存**，必须在根目录且带 `PYTHONPATH=src` 跑。
+- 测试文件：配置适配器（`test_set_config.py` / `test_set_config_subclasses.py`）、`test_dungeon_config.py`、GUI 测试与源码一一对应（`test_launcher.py` 入口 / `test_gui_state.py` / `test_gui_widgets.py` / `test_gui_dialogs.py` / `test_gui_main_window.py`，开头均设 `QT_QPA_PLATFORM=offscreen`）、`test_init_config.py` / `test_bgi.py` / `test_log_monitor.py` / `test_utils.py`。
 - 隔离原则：文件 I/O 一律 mock；不依赖真实 config 文件或游戏脚本路径。
 
 ## 7. 常见任务
 
-- **启动 GUI**：`launcher.bat`（提权+加载环境），或 `python -m src.gui_launcher`。
-- **计划任务（无界面直接运行）**：`launcher.bat --no-set-config`（或 `python -m src.gui_launcher --no-set-config`）。跳过 GUI 与 `set_config`，`enabled` 为纯内存态、默认全开，故**直接运行全部脚本**（生成并运行 ScriptChainer 配置）；退出码透传给调用方，便于计划任务判断成败。
+- **启动 GUI**：`launcher.bat`（提权+加载环境），或 `python -m src.launcher`。
+- **计划任务（无界面直接运行）**：`launcher.bat --no-set-config`（或 `python -m src.launcher --no-set-config`）。跳过 GUI 与 `set_config`，`enabled` 为纯内存态、默认全开，故**直接运行全部脚本**（生成并运行 ScriptChainer 配置）；退出码透传给调用方，便于计划任务判断成败。
 - **首次初始化**：删 `config/config.yml` 后启动即触发 `config_workflow()`。
 - **日志汇总**：`python -m src.log.collect_log`。
 - **加依赖**：改 `pyproject.toml` → `uv sync`（同步 `uv.lock`）。

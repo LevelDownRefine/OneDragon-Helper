@@ -1,0 +1,386 @@
+"""自定义控件：ToggleSwitch 滑动开关与 ScriptItem 脚本卡片。"""
+from PySide6.QtCore import QMimeData, Qt, Signal
+from PySide6.QtGui import QColor, QDrag, QFont, QPainter
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QLabel,
+    QMenu,
+    QPushButton,
+    QWidget,
+)
+
+from src.config.dungeon_config import get_display_name
+from src.gui.dialogs import SingleScriptConfigDialog
+
+# 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
+DRAG_MIME = "application/x-onedragon-script"
+
+
+class ToggleSwitch(QWidget):
+    """自定义滑动开关（圆角轨道 + 圆形滑块）"""
+
+    toggled = Signal(bool)
+
+    TRACK_ON = "#3b82f6"
+    TRACK_OFF = "#cbd5e1"
+    KNOB = "#ffffff"
+
+    def __init__(self, parent=None, checked=True):
+        super().__init__(parent)
+        self._checked = checked
+        self.setFixedSize(42, 24)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def setChecked(self, value):
+        if self._checked != value:
+            self._checked = value
+            self.update()
+
+    def isChecked(self):
+        return self._checked
+
+    def mousePressEvent(self, event):
+        self._checked = not self._checked
+        self.update()
+        self.toggled.emit(self._checked)
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        r = h / 2
+        # 轨道
+        track = QColor(self.TRACK_ON if self._checked else self.TRACK_OFF)
+        p.setPen(Qt.NoPen)
+        p.setBrush(track)
+        p.drawRoundedRect(0, 0, w, h, r, r)
+        # 滑块
+        knob_d = h - 6
+        kx = (w - knob_d - 3) if self._checked else 3
+        ky = (h - knob_d) / 2
+        p.setBrush(QColor(self.KNOB))
+        p.drawEllipse(int(kx), int(ky), knob_d, knob_d)
+
+
+class ScriptItem(QFrame):
+    """单个脚本项（卡片风格）"""
+
+    def __init__(self, script_data, dungeon_options=None, sequence_options_map=None,
+                 show_sequence=False, saved_state=None, reorder_callback=None,
+                 delete_callback=None):
+        super().__init__()
+        assert 'display_name' in script_data, "[widgets] 脚本配置缺少 display_name 字段"
+        assert 'script_type' in script_data, "[widgets] 脚本配置缺少 script_type 字段"
+        self.display_name = script_data['display_name']
+        self.script_type = script_data['script_type']
+        self.script_path = script_data.get('script_path', '')
+        self.dungeon_btn = None
+        self._selected_dungeon = None   # 一级副本名（None 表示未选择）
+        self._selected_sequence = None  # 二级序列名
+        self.enabled = True  # 纯内存态：每次启动默认全开，仅当次会话可临时关（不读 config）
+        self._state_callback = None  # 状态变化回调，由 MainWindow 注入
+        self._reorder_callback = reorder_callback  # 拖拽重排回调，由 MainWindow 注入
+        self._delete_callback = delete_callback  # 删除回调，由 MainWindow 注入
+        self._drag_start_pos = None  # 拖拽起点（仅在手柄上按下时记录）
+        self._sequence_options_map = sequence_options_map or {}  # 副本名 → 二级选项列表
+        self._dungeon_options = dungeon_options or []  # 一级副本列表
+
+        self.setFrameShape(QFrame.NoFrame)
+        self.setObjectName("ScriptItem")
+        self.setAcceptDrops(True)
+        self._apply_card_style()
+        # 卡片阴影，营造悬浮层次感
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(14)
+        shadow.setColor(QColor(15, 23, 42, 22))
+        shadow.setOffset(0, 3)
+        self.setGraphicsEffect(shadow)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(8)
+
+        # 拖拽手柄（仅此处可发起拖拽，避免与开关/副本/配置按钮冲突）
+        self.handle = QLabel("⠿")
+        self.handle.setFixedSize(20, 20)
+        self.handle.setAlignment(Qt.AlignCenter)
+        self.handle.setCursor(Qt.OpenHandCursor)
+        self.handle.setStyleSheet("color: #c4c9d4; font-size: 16px;")
+        self.handle.mousePressEvent = self._handle_mouse_press
+        self.handle.mouseMoveEvent = self._handle_mouse_move
+        self.handle.mouseReleaseEvent = self._handle_mouse_release
+        layout.addWidget(self.handle)
+
+        # 脚本名称
+        self.title_label = QLabel(self.display_name)
+        self.title_label.setFont(QFont("Microsoft YaHei", 11))
+        self.title_label.setStyleSheet("color: #1f2937;")
+        layout.addWidget(self.title_label, stretch=1)
+
+        # 副本选择按钮（点击弹出级联菜单：一级 → 二级从右侧弹出）
+        has_real_dungeons = (
+            dungeon_options
+            and len(dungeon_options) > 1
+            and not (len(dungeon_options) == 1 and dungeon_options[0] == "未选择")
+        )
+        if self.script_type != 'python' and has_real_dungeons:
+            self.dungeon_btn = QPushButton("选择副本")
+            self.dungeon_btn.setFixedHeight(28)
+            self.dungeon_btn.setMinimumWidth(160)
+            self.dungeon_btn.setCursor(Qt.PointingHandCursor)
+            self.dungeon_btn.setStyleSheet("""
+                QPushButton {
+                    border: 1px solid #d0d0d0;
+                    border-radius: 8px;
+                    padding: 0 10px;
+                    background: white;
+                    font-size: 11px;
+                    color: #303030;
+                    text-align: center;
+                }
+                QPushButton:hover { border-color: #a0a0a0; }
+                QPushButton:pressed { border-color: #0078D4; }
+            """)
+            self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
+            layout.addWidget(self.dungeon_btn)
+
+            # 恢复上次选择（仅当副本在选项列表中时）
+            if saved_state and saved_state.get('dungeon') and saved_state['dungeon'] in self._dungeon_options:  # optional: 保存状态可能没有选择过副本
+                self._selected_dungeon = saved_state['dungeon']
+                if saved_state.get('sequence'):  # optional: 保存状态可能没有选择过序列
+                    self._selected_sequence = saved_state['sequence']
+                self.dungeon_btn.setText(self._dungeon_btn_text())
+
+        # 开关（自定义滑动开关）
+        self.toggle = ToggleSwitch(checked=self.enabled)
+        self.toggle.toggled.connect(self._on_toggle_changed)
+        self._update_switch_style()
+        layout.addWidget(self.toggle)
+
+        # 删除按钮（红色垃圾桶，hover 高亮，点击经回调通知 MainWindow 删除）
+        self.delete_btn = QPushButton("🗑")
+        self.delete_btn.setFixedSize(30, 30)
+        self.delete_btn.setCursor(Qt.PointingHandCursor)
+        self.delete_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 15px;
+                background: transparent;
+                font-size: 14px;
+                color: #c0c4cc;
+            }
+            QPushButton:hover { background-color: #fdecec; color: #ef4444; }
+            QPushButton:pressed { background-color: #f9d5d5; }
+        """)
+        if self._delete_callback:
+            self.delete_btn.clicked.connect(self._on_delete_clicked)
+        layout.addWidget(self.delete_btn)
+
+        # 配置按钮（最右边，圆形图标按钮）
+        self.config_btn = QPushButton("⚙")
+        self.config_btn.setFixedSize(30, 30)
+        self.config_btn.setCursor(Qt.PointingHandCursor)
+        self.config_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 15px;
+                background: transparent;
+                font-size: 15px;
+                color: #9aa3b2;
+            }
+            QPushButton:hover { background-color: #eef2f7; color: #3b82f6; }
+            QPushButton:pressed { background-color: #e2e8f0; }
+        """)
+        self.config_btn.clicked.connect(self._show_config_dialog)
+        layout.addWidget(self.config_btn)
+
+    def _on_delete_clicked(self):
+        """点击删除按钮，通知 MainWindow 删除本脚本（确认在 MainWindow 内完成）"""
+        if self._delete_callback:
+            self._delete_callback(self.display_name)
+
+    def _show_config_dialog(self):
+        """打开单脚本配置弹窗"""
+        dialog = SingleScriptConfigDialog(self.display_name, self.script_path, self)
+        dialog.exec()
+
+    def _show_dungeon_menu(self):
+        """点击副本按钮，弹出级联菜单"""
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                background: white;
+                padding: 4px;
+                font-size: 11px;
+            }
+            QMenu::item {
+                padding: 4px 20px 4px 12px;
+                border-radius: 3px;
+            }
+            QMenu::item:selected {
+                background-color: #0078D4;
+                color: white;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #e0e0e0;
+                margin: 4px 8px;
+            }
+        """)
+
+        for dungeon_name in self._dungeon_options:
+            if dungeon_name == "未选择":
+                action = menu.addAction(dungeon_name)
+                action.triggered.connect(lambda checked, dn=dungeon_name: self._on_dungeon_selected(dn))
+                menu.addSeparator()
+                continue
+
+            seq_options = self._sequence_options_map.get(dungeon_name, [])  # optional: 副本可能没有二级选项
+            if seq_options:
+                # 有二级选项 → 子菜单（从右侧弹出）
+                submenu = menu.addMenu(dungeon_name)
+                for display_name, actual_value in seq_options:
+                    sub_action = submenu.addAction(display_name)
+                    sub_action.triggered.connect(
+                        lambda checked, dn=dungeon_name, sq=actual_value: self._on_dungeon_selected(dn, sq)
+                    )
+            else:
+                # 无二级选项 → 直接选择
+                action = menu.addAction(dungeon_name)
+                action.triggered.connect(lambda checked, dn=dungeon_name: self._on_dungeon_selected(dn))
+
+        # 在按钮下方弹出
+        menu.exec(self.dungeon_btn.mapToGlobal(self.dungeon_btn.rect().bottomLeft()))
+
+    def _dungeon_btn_text(self):
+        """根据已选的一级/二级返回按钮显示文字"""
+        if not self._selected_dungeon:
+            return "选择副本"
+        if self._selected_sequence:
+            display_name = get_display_name(
+                self._sequence_options_map,
+                self._selected_dungeon,
+                self._selected_sequence,
+            )
+            return f"{self._selected_dungeon} > {display_name}"
+        return self._selected_dungeon
+
+    def _on_dungeon_selected(self, dungeon_name, sequence=None):
+        """选择副本后的回调"""
+        if dungeon_name == "未选择":
+            self._selected_dungeon = None
+            self._selected_sequence = None
+        else:
+            self._selected_dungeon = dungeon_name
+            self._selected_sequence = sequence
+        self.dungeon_btn.setText(self._dungeon_btn_text())
+        self._on_state_changed()
+
+    def get_state(self) -> dict:
+        """获取当前 UI 状态，用于持久化"""
+        state = {}
+        if self._selected_dungeon:
+            state['dungeon'] = self._selected_dungeon
+            if self._selected_sequence:
+                state['sequence'] = self._selected_sequence
+        return state
+
+    def set_state_callback(self, callback):
+        """注入状态变化回调"""
+        self._state_callback = callback
+
+    def _on_state_changed(self, *args):
+        """子控件值变化时触发回调"""
+        if self._state_callback:
+            self._state_callback()
+
+    def get_selected_dungeon(self):
+        return self._selected_dungeon
+
+    def get_sequence(self):
+        return self._selected_sequence
+
+    def _toggle(self):
+        self.enabled = not self.enabled
+        self._update_switch_style()
+
+    def _on_toggle_changed(self, checked):
+        """ToggleSwitch 状态变化回调"""
+        self.enabled = checked
+        self._update_switch_style()
+
+    def _apply_card_style(self, muted=False):
+        """卡片外观：启用=白底蓝边；停用=灰底浅边"""
+        if muted:
+            self.setStyleSheet("""
+                QFrame#ScriptItem {
+                    background-color: #f7f8fa;
+                    border: 1px solid #eceef2;
+                    border-radius: 12px;
+                }
+                QFrame#ScriptItem:hover { border-color: #cbd5e1; }
+            """)
+        else:
+            self.setStyleSheet("""
+                QFrame#ScriptItem {
+                    background-color: #ffffff;
+                    border: 1px solid #e6e9f0;
+                    border-radius: 12px;
+                }
+                QFrame#ScriptItem:hover { border-color: #3b82f6; }
+            """)
+
+    def _update_switch_style(self):
+        self.toggle.setChecked(self.enabled)
+        self._apply_card_style(not self.enabled)
+        if self.enabled:
+            self.title_label.setStyleSheet("color: #1f2937;")
+        else:
+            self.title_label.setStyleSheet("color: #9ca3af;")
+
+    # ---- 拖拽重排（仅手柄可发起） ----
+    def _handle_mouse_press(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_start_pos = event.pos()
+        QLabel.mousePressEvent(self.handle, event)
+
+    def _handle_mouse_move(self, event):
+        if self._drag_start_pos is None or not (event.buttons() & Qt.LeftButton):
+            return
+        if (event.pos() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+            return
+        self._drag_start_pos = None
+        self._start_drag()
+
+    def _handle_mouse_release(self, event):
+        self._drag_start_pos = None
+        QLabel.mouseReleaseEvent(self.handle, event)
+
+    def _start_drag(self):
+        mime = QMimeData()
+        mime.setText(self.display_name)
+        mime.setData(DRAG_MIME, self.display_name.encode('utf-8'))
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.setPixmap(self.grab())
+        drag.exec(Qt.MoveAction)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat(DRAG_MIME) and self._reorder_callback:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        if not (event.mimeData().hasFormat(DRAG_MIME) and self._reorder_callback):
+            event.ignore()
+            return
+        src_name = bytes(event.mimeData().data(DRAG_MIME)).decode('utf-8')
+        if src_name != self.display_name:
+            self._reorder_callback(src_name, self.display_name)
+        event.acceptProposedAction()

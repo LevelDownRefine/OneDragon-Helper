@@ -1,0 +1,219 @@
+"""测试 src/gui/main_window.py：重排、删除、添加脚本与持久化"""
+import os
+import unittest
+from io import StringIO
+from unittest.mock import MagicMock, patch
+
+import yaml
+
+# 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+
+from PySide6.QtWidgets import QApplication, QDialog
+
+from src.gui.dialogs import default_script_entry
+from src.gui.main_window import MainWindow, QMessageBox
+from src.gui.widgets import ScriptItem
+
+# 全局 QApplication 实例（测试共享）
+_app = QApplication.instance() or QApplication([])
+
+
+def _make_window(script_count=3, disable_persist=False):
+    """构造测试用 MainWindow：跳过真实 _load_scripts（涉及文件 I/O），手动注入状态。
+
+    disable_persist=True 时把写回 config.yml / gui_state.json 的方法换成 no-op，
+    防止测试桩数据污染真实配置文件。
+    """
+    with patch.object(MainWindow, '_load_scripts', lambda self: None):
+        win = MainWindow()
+    win.dungeon_map = {}
+    win.script_items = [
+        ScriptItem({'display_name': f'脚本{i}', 'script_type': 'external'})
+        for i in range(script_count)
+    ]
+    win.all_config_data = {
+        'script_list': [
+            {'display_name': f'脚本{i}', 'script_type': 'external'}
+            for i in range(script_count)
+        ]
+    }
+    if disable_persist:
+        win._save_script_order = lambda: None
+        win._persist_ui_state = lambda: None
+    return win
+
+
+def _fake_open_capture(captured):
+    """返回一个 fake open：写入内容捕获到 captured['buf']"""
+    def fake_open(file, mode='w', encoding=None):
+        m = MagicMock()
+        buf = StringIO()
+        captured['buf'] = buf
+        m.__enter__ = MagicMock(return_value=buf)
+        m.__exit__ = MagicMock(return_value=False)
+        return m
+    return fake_open
+
+
+class TestReorderScripts(unittest.TestCase):
+    """测试 MainWindow._reorder_scripts 顺序同步与持久化"""
+
+    def test_reorder_updates_script_items_order(self):
+        """重排后 self.script_items 顺序改变（脚本0 移动到 脚本2 之后）"""
+        win = _make_window(disable_persist=True)
+        win._reorder_scripts('脚本0', '脚本2')
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本1', '脚本2', '脚本0'])
+
+    def test_reorder_updates_config_data_order(self):
+        """重排后 self.all_config_data['script_list'] 顺序同步改变"""
+        win = _make_window(disable_persist=True)
+        win._reorder_scripts('脚本0', '脚本2')
+        names = [s['display_name'] for s in win.all_config_data['script_list']]
+        self.assertEqual(names, ['脚本1', '脚本2', '脚本0'])
+
+    def test_reorder_persists_to_config_yml(self):
+        """重排后写回 config.yml（script_list 顺序一致）"""
+        win = _make_window()
+        captured = {}
+        with patch('src.gui.main_window.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
+             patch('builtins.open', side_effect=_fake_open_capture(captured)):
+            win._reorder_scripts('脚本0', '脚本2')
+        written = yaml.safe_load(captured['buf'].getvalue())
+        names = [s['display_name'] for s in written['script_list']]
+        self.assertEqual(names, ['脚本1', '脚本2', '脚本0'])
+
+    def test_reorder_noop_when_same_target(self):
+        """源与目标相同（src==dst）时顺序不变"""
+        win = _make_window(disable_persist=True)
+        win._reorder_scripts('脚本1', '脚本1')
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本1', '脚本2'])
+
+
+class TestDeleteScript(unittest.TestCase):
+    """测试 MainWindow 删除脚本：UI 与 config.yml 同步移除并持久化"""
+
+    def test_delete_removes_from_script_items(self):
+        """确认删除后 self.script_items 不再包含该脚本"""
+        win = _make_window(disable_persist=True)
+        with patch('src.gui.main_window.QMessageBox.question',
+                   return_value=QMessageBox.Yes):
+            win._delete_script('脚本1')
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本2'])
+
+    def test_delete_removes_from_config_data(self):
+        """确认删除后 self.all_config_data['script_list'] 不再包含该脚本"""
+        win = _make_window(disable_persist=True)
+        with patch('src.gui.main_window.QMessageBox.question',
+                   return_value=QMessageBox.Yes):
+            win._delete_script('脚本1')
+        names = [s['display_name'] for s in win.all_config_data['script_list']]
+        self.assertEqual(names, ['脚本0', '脚本2'])
+
+    def test_delete_removes_widget_from_layout(self):
+        """确认删除后 widget 从滚动区布局移除"""
+        win = _make_window(disable_persist=True)
+        item = win.script_items[1]
+        win.scroll_layout.addWidget(item)
+        with patch('src.gui.main_window.QMessageBox.question',
+                   return_value=QMessageBox.Yes):
+            win._delete_script('脚本1')
+        self.assertEqual(win.scroll_layout.indexOf(item), -1)
+
+    def test_delete_persists_to_config_yml(self):
+        """确认删除后写回 config.yml（script_list 不含被删脚本）"""
+        win = _make_window()  # 保留真实 _save_script_order，验证写回
+        win._persist_ui_state = lambda: None  # 仅验证 config.yml 写回，隔离 gui_state.json
+        captured = {}
+        with patch('src.gui.main_window.QMessageBox.question',
+                   return_value=QMessageBox.Yes), \
+             patch('src.gui.main_window.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
+             patch('builtins.open', side_effect=_fake_open_capture(captured)):
+            win._delete_script('脚本1')
+        written = yaml.safe_load(captured['buf'].getvalue())
+        names = [s['display_name'] for s in written['script_list']]
+        self.assertEqual(names, ['脚本0', '脚本2'])
+
+    def test_delete_noop_when_confirm_no(self):
+        """确认弹窗选「否」时不删除、不改变任何状态"""
+        win = _make_window(disable_persist=True)
+        with patch('src.gui.main_window.QMessageBox.question',
+                   return_value=QMessageBox.No):
+            win._delete_script('脚本1')
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本1', '脚本2'])
+        cfg_names = [s['display_name'] for s in win.all_config_data['script_list']]
+        self.assertEqual(cfg_names, ['脚本0', '脚本1', '脚本2'])
+
+
+class TestAddScript(unittest.TestCase):
+    """测试 MainWindow 添加脚本：UI 与 config.yml 同步追加并持久化"""
+
+    def test_append_adds_to_script_items(self):
+        """追加后 self.script_items 末尾出现新脚本"""
+        win = _make_window(script_count=2, disable_persist=True)
+        entry = default_script_entry('新脚本', 'external', 'C:/x.exe', 100)
+        win._append_script(entry)
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本1', '新脚本'])
+
+    def test_append_adds_to_config_data(self):
+        """追加后 self.all_config_data['script_list'] 末尾出现新脚本条目"""
+        win = _make_window(script_count=2, disable_persist=True)
+        entry = default_script_entry('新脚本', 'external', 'C:/x.exe', 100)
+        win._append_script(entry)
+        names = [s['display_name'] for s in win.all_config_data['script_list']]
+        self.assertEqual(names, ['脚本0', '脚本1', '新脚本'])
+        self.assertIs(win.all_config_data['script_list'][-1], entry)
+
+    def test_append_persists_to_config_yml(self):
+        """追加后写回 config.yml（末尾含新脚本，字段完整）"""
+        win = _make_window(script_count=2)  # 保留真实 _save_script_order
+        win._persist_ui_state = lambda: None  # 隔离 gui_state.json
+        captured = {}
+        entry = default_script_entry('新脚本', 'python', 'C:/x.py', 100)
+        with patch('src.gui.main_window.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
+             patch('builtins.open', side_effect=_fake_open_capture(captured)):
+            win._append_script(entry)
+        written = yaml.safe_load(captured['buf'].getvalue())
+        names = [s['display_name'] for s in written['script_list']]
+        self.assertEqual(names, ['脚本0', '脚本1', '新脚本'])
+        self.assertEqual(written['script_list'][-1]['script_type'], 'python')
+        self.assertEqual(written['script_list'][-1]['run_timeout_seconds'], 100)
+
+    def test_append_widget_added_to_layout(self):
+        """追加后新脚本 widget 出现在滚动区布局中"""
+        win = _make_window(script_count=2, disable_persist=True)
+        entry = default_script_entry('新脚本', 'external', 'C:/x.exe', 100)
+        win._append_script(entry)
+        new_item = win.script_items[-1]
+        self.assertGreaterEqual(win.scroll_layout.indexOf(new_item), 0)
+
+    def test_add_script_cancel_does_nothing(self):
+        """对话框取消（非 Accepted）时不追加任何脚本"""
+        win = _make_window(script_count=2, disable_persist=True)
+        fake_dialog = MagicMock()
+        fake_dialog.exec.return_value = QDialog.Rejected
+        with patch('src.gui.main_window.AddScriptDialog', return_value=fake_dialog):
+            win._add_script()
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本1'])
+
+    def test_add_script_confirm_appends(self):
+        """对话框确认时用 result_data 追加脚本"""
+        win = _make_window(script_count=2, disable_persist=True)
+        entry = default_script_entry('确认脚本', 'external', 'C:/y.exe', 50)
+        fake_dialog = MagicMock()
+        fake_dialog.exec.return_value = QDialog.Accepted
+        fake_dialog.result_data = entry
+        with patch('src.gui.main_window.AddScriptDialog', return_value=fake_dialog):
+            win._add_script()
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本1', '确认脚本'])
+
+
+if __name__ == '__main__':
+    unittest.main()

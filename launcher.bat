@@ -26,8 +26,8 @@ if exist "%env_script%" (
     echo [WARN] 未找到 env.bat，使用当前环境
 )
 
-:: 模块启动，等价 src/gui_launcher.py → 模块名 src.gui_launcher
+:: 模块启动，等价 src/launcher.py → 模块名 src.launcher
 :: %* 透传参数（如 --no-set-config 计划任务模式）
-python -m src.gui_launcher %*
+python -m src.launcher %*
 
 endlocal
