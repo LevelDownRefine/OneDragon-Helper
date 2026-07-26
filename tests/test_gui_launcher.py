@@ -426,6 +426,100 @@ class TestScriptItemDragDrop(unittest.TestCase):
         self.assertTrue(event.isAccepted())
 
 
+class TestDeleteScript(unittest.TestCase):
+    """测试 MainWindow 删除脚本：UI 与 config.yml 同步移除并持久化"""
+
+    def _make_window(self, disable_persist=False):
+        with patch.object(gui_launcher.MainWindow, '_load_scripts', lambda self: None):
+            win = gui_launcher.MainWindow()
+        win.script_items = [
+            gui_launcher.ScriptItem({'display_name': f'脚本{i}', 'script_type': 'external'})
+            for i in range(3)
+        ]
+        win.all_config_data = {
+            'script_list': [
+                {'display_name': f'脚本{i}', 'script_type': 'external'} for i in range(3)
+            ]
+        }
+        if disable_persist:
+            win._save_script_order = lambda: None
+            win._persist_ui_state = lambda: None
+        return win
+
+    def test_delete_removes_from_script_items(self):
+        """确认删除后 self.script_items 不再包含该脚本"""
+        win = self._make_window(disable_persist=True)
+        with patch('gui_launcher.QMessageBox.question',
+                   return_value=gui_launcher.QMessageBox.Yes):
+            win._delete_script('脚本1')
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本2'])
+
+    def test_delete_removes_from_config_data(self):
+        """确认删除后 self.all_config_data['script_list'] 不再包含该脚本"""
+        win = self._make_window(disable_persist=True)
+        with patch('gui_launcher.QMessageBox.question',
+                   return_value=gui_launcher.QMessageBox.Yes):
+            win._delete_script('脚本1')
+        names = [s['display_name'] for s in win.all_config_data['script_list']]
+        self.assertEqual(names, ['脚本0', '脚本2'])
+
+    def test_delete_removes_widget_from_layout(self):
+        """确认删除后 widget 从滚动区布局移除"""
+        win = self._make_window(disable_persist=True)
+        item = win.script_items[1]
+        win.scroll_layout.addWidget(item)
+        with patch('gui_launcher.QMessageBox.question',
+                   return_value=gui_launcher.QMessageBox.Yes):
+            win._delete_script('脚本1')
+        self.assertEqual(win.scroll_layout.indexOf(item), -1)
+
+    def test_delete_persists_to_config_yml(self):
+        """确认删除后写回 config.yml（script_list 不含被删脚本）"""
+        win = self._make_window()  # 保留真实 _save_script_order，验证写回
+        win._persist_ui_state = lambda: None  # 仅验证 config.yml 写回，隔离 gui_state.json
+        captured = {}
+
+        def fake_open(file, mode='w', encoding=None):
+            m = MagicMock()
+            buf = StringIO()
+            captured['buf'] = buf
+            m.__enter__ = MagicMock(return_value=buf)
+            m.__exit__ = MagicMock(return_value=False)
+            return m
+
+        with patch('gui_launcher.QMessageBox.question',
+                   return_value=gui_launcher.QMessageBox.Yes), \
+             patch('gui_launcher.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
+             patch('builtins.open', side_effect=fake_open):
+            win._delete_script('脚本1')
+        written = yaml.safe_load(captured['buf'].getvalue())
+        names = [s['display_name'] for s in written['script_list']]
+        self.assertEqual(names, ['脚本0', '脚本2'])
+
+    def test_delete_noop_when_confirm_no(self):
+        """确认弹窗选「否」时不删除、不改变任何状态"""
+        win = self._make_window(disable_persist=True)
+        with patch('gui_launcher.QMessageBox.question',
+                   return_value=gui_launcher.QMessageBox.No):
+            win._delete_script('脚本1')
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本1', '脚本2'])
+        cfg_names = [s['display_name'] for s in win.all_config_data['script_list']]
+        self.assertEqual(cfg_names, ['脚本0', '脚本1', '脚本2'])
+
+    def test_script_item_delete_button_wired(self):
+        """脚本项的删除按钮点击应触发注入的回调，并传入 display_name"""
+        called = []
+        item = gui_launcher.ScriptItem(
+            {'display_name': 'X', 'script_type': 'external'},
+            delete_callback=lambda name: called.append(name),
+        )
+        self.assertTrue(hasattr(item, 'delete_btn'))
+        item._on_delete_clicked()
+        self.assertEqual(called, ['X'])
+
+
 # ---- helpers ----
 
 def mock_open_with_data(data):

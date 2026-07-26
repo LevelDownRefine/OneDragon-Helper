@@ -365,7 +365,8 @@ class ScriptItem(QFrame):
     """单个脚本项（卡片风格）"""
 
     def __init__(self, script_data, dungeon_options=None, sequence_options_map=None,
-                 show_sequence=False, saved_state=None, reorder_callback=None):
+                 show_sequence=False, saved_state=None, reorder_callback=None,
+                 delete_callback=None):
         super().__init__()
         assert 'display_name' in script_data, "[gui_launcher] 脚本配置缺少 display_name 字段"
         assert 'script_type' in script_data, "[gui_launcher] 脚本配置缺少 script_type 字段"
@@ -378,6 +379,7 @@ class ScriptItem(QFrame):
         self.enabled = True  # 纯内存态：每次启动默认全开，仅当次会话可临时关（不读 config）
         self._state_callback = None  # 状态变化回调，由 MainWindow 注入
         self._reorder_callback = reorder_callback  # 拖拽重排回调，由 MainWindow 注入
+        self._delete_callback = delete_callback  # 删除回调，由 MainWindow 注入
         self._drag_start_pos = None  # 拖拽起点（仅在手柄上按下时记录）
         self._sequence_options_map = sequence_options_map or {}  # 副本名 → 二级选项列表
         self._dungeon_options = dungeon_options or []  # 一级副本列表
@@ -454,6 +456,25 @@ class ScriptItem(QFrame):
         self._update_switch_style()
         layout.addWidget(self.toggle)
 
+        # 删除按钮（红色垃圾桶，hover 高亮，点击经回调通知 MainWindow 删除）
+        self.delete_btn = QPushButton("🗑")
+        self.delete_btn.setFixedSize(30, 30)
+        self.delete_btn.setCursor(Qt.PointingHandCursor)
+        self.delete_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                border-radius: 15px;
+                background: transparent;
+                font-size: 14px;
+                color: #c0c4cc;
+            }
+            QPushButton:hover { background-color: #fdecec; color: #ef4444; }
+            QPushButton:pressed { background-color: #f9d5d5; }
+        """)
+        if self._delete_callback:
+            self.delete_btn.clicked.connect(self._on_delete_clicked)
+        layout.addWidget(self.delete_btn)
+
         # 配置按钮（最右边，圆形图标按钮）
         self.config_btn = QPushButton("⚙")
         self.config_btn.setFixedSize(30, 30)
@@ -471,6 +492,11 @@ class ScriptItem(QFrame):
         """)
         self.config_btn.clicked.connect(self._show_config_dialog)
         layout.addWidget(self.config_btn)
+
+    def _on_delete_clicked(self):
+        """点击删除按钮，通知 MainWindow 删除本脚本（确认在 MainWindow 内完成）"""
+        if self._delete_callback:
+            self._delete_callback(self.display_name)
 
     def _show_config_dialog(self):
         """打开单脚本配置弹窗"""
@@ -803,7 +829,8 @@ class MainWindow(QMainWindow):
             item = ScriptItem(data, dungeon_options=options if options else None,
                               sequence_options_map=seq_map if show_seq else None,
                               show_sequence=show_seq, saved_state=saved,
-                              reorder_callback=self._reorder_scripts)
+                              reorder_callback=self._reorder_scripts,
+                              delete_callback=self._delete_script)
             item.set_state_callback(self._persist_ui_state)
             self.scroll_layout.insertWidget(len(self.script_items), item)
             self.script_items.append(item)
@@ -840,6 +867,37 @@ class MainWindow(QMainWindow):
         for item in self.script_items:
             self.scroll_layout.addWidget(item)
         self.scroll_layout.addStretch()
+
+    def _delete_script(self, display_name):
+        """删除指定脚本：弹确认框 → 从 UI 与 config.yml 移除并持久化"""
+        reply = QMessageBox.question(
+            self, "确认删除",
+            f"确定要删除脚本「{display_name}」吗？\n将从启动器移除并保存到 config.yml。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        self._remove_script(display_name)
+
+    def _remove_script(self, display_name):
+        """实际移除逻辑（无确认），供 _delete_script 与测试复用"""
+        idx = next((i for i, it in enumerate(self.script_items)
+                    if it.display_name == display_name), None)
+        if idx is None:
+            return
+        item = self.script_items.pop(idx)
+
+        s_idx = next((i for i, s in enumerate(self.all_config_data['script_list'])
+                      if s['display_name'] == display_name), None)
+        if s_idx is not None:
+            self.all_config_data['script_list'].pop(s_idx)
+
+        self.scroll_layout.removeWidget(item)
+        item.deleteLater()
+
+        self._save_script_order()
+        self._persist_ui_state()
 
     def _save_script_order(self):
         """把当前脚本顺序写回 config.yml"""
