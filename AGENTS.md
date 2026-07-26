@@ -50,7 +50,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 7. **坚决反对绕过依赖/CI 的 workaround**（禁 `skipUnless`、`os.name=='nt'` 等）；CI 用 uv 而非 env.bat 代理。
 8. **代码稳定性优先**：能加强约束就加强（如 `_is_aligned` 严格要求 `plan_list` 顺序一致）。
 9. 新增/修改功能后**必须补测试并跑全套**。
-10. GUI 持久化：`gui_state.json` 只存 `dungeon`/`sequence`，**`enabled` 不持久化**（从 config.yml 取）。
+10. GUI 持久化：`gui_state.json` 只存 `dungeon`/`sequence`。**`enabled` 为纯内存态**：config.yml 不含 `enabled` 字段，启动默认全开，仅当次会话内可在 GUI 临时开关，不持久化（重启恢复全开）。
 11. **日志统一用 `logging` 模块**：每个模块 `logger = logging.getLogger(__name__)`；入口处（`main`/`__main__`）配置 `logging.basicConfig`，统一格式 `%(asctime)s [%(levelname)s] %(name)s: %(message)s`。**禁止用裸 `print` 输出日志**。`collect_log.py` 因独立性约束只 `import logging`（标准库），不引入项目模块。
 
 ## 6. 测试
@@ -68,7 +68,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 ## 7. 常见任务
 
 - **启动 GUI**：`launcher.bat`（提权+加载环境），或 `python -m src.gui_launcher`。
-- **计划任务（无界面直接运行）**：`launcher.bat --no-set-config`（或 `python -m src.gui_launcher --no-set-config`）。跳过 GUI 与 `set_config`，按 `config.yml` 中已启用（`enabled: true`）的脚本直接生成并运行 ScriptChainer 配置；退出码透传给调用方，便于计划任务判断成败。
+- **计划任务（无界面直接运行）**：`launcher.bat --no-set-config`（或 `python -m src.gui_launcher --no-set-config`）。跳过 GUI 与 `set_config`，`enabled` 为纯内存态、默认全开，故**直接运行全部脚本**（生成并运行 ScriptChainer 配置）；退出码透传给调用方，便于计划任务判断成败。
 - **首次初始化**：删 `config/config.yml` 后启动即触发 `config_workflow()`。
 - **日志汇总**：`python -m src.log.collect_log`。
 - **加依赖**：改 `pyproject.toml` → `uv sync`（同步 `uv.lock`）。

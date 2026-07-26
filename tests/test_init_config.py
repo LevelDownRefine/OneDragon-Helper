@@ -40,18 +40,18 @@ class TestGenerateInitConfig(unittest.TestCase):
     @patch('config.init_config.get_path_under_root')
     @patch('config.init_config.get_path_under_onedragon')
     @patch('shutil.copy')
-    def test_copy_python_scripts_already_exists(self, mock_copy, mock_get_path, mock_get_root):
+    def test_copy_python_scripts_overwrites_existing(self, mock_copy, mock_get_path, mock_get_root):
         mock_get_root.return_value = self.src_dir
         mock_get_path.return_value = self.dest_dir
 
-        # Pre-create the file in destination
+        # Pre-create a stale file in destination (simulates an out-of-sync deploy)
         with open(os.path.join(self.dest_dir, self.dummy_script_name), "w") as f:
-            f.write("# Pre-existing script")
+            f.write("# Stale script")
 
         init_config.copy_python_scripts()
 
-        # shutil.copy should not be called
-        mock_copy.assert_not_called()
+        # src 为源真相：即使目标已存在也应覆盖同步
+        mock_copy.assert_called_once()
 
     @patch('config.init_config.shutil.copy')
     @patch('config.init_config.os.path.exists', return_value=False)

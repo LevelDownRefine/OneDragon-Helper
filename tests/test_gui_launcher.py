@@ -11,6 +11,8 @@ import yaml
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
+from PySide6.QtCore import QMimeData, QPoint, Qt
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QApplication
 
 import gui_launcher
@@ -111,10 +113,10 @@ class TestScriptItemEnabledNotPersisted(unittest.TestCase):
         item._toggle()
         self.assertEqual(len(callback_called), 0)
 
-    def test_enabled_from_script_data_not_saved_state(self):
-        """enabled 从 script_data 取，不从 saved_state 恢复"""
+    def test_enabled_always_true_ignores_config(self):
+        """enabled 为纯内存态、硬编码 True，不读 script_data 也不读 saved_state"""
         item = gui_launcher.ScriptItem(
-            {'display_name': 'test', 'script_type': 'external', 'enabled': True},
+            {'display_name': 'test', 'script_type': 'external', 'enabled': False},
             saved_state={'enabled': False, 'dungeon': 'A'},
         )
         self.assertTrue(item.enabled)
@@ -211,14 +213,12 @@ class TestRunDirect(unittest.TestCase):
             rc = gui_launcher.run_direct("88")
         return rc, captured, fake_run
 
-    def test_filters_enabled_and_applies_timeout(self):
-        """只保留 enabled 脚本，并写入当日超时"""
+    def test_runs_all_and_applies_timeout(self):
+        """运行全部脚本，并为有 weekly_timeouts 的脚本写入当日超时（enabled 不过滤）"""
         config_text = (
             "script_list:\n"
             "  - display_name: 鸣潮\n"
-            "    enabled: true\n"
             "  - display_name: 原神\n"
-            "    enabled: false\n"
         )
         weekly_text = "鸣潮: [10, 20, 30, 40, 50, 60, 70]\n"
         rc, captured, fake_run = self._run_with(config_text, weekly_text)
@@ -226,21 +226,18 @@ class TestRunDirect(unittest.TestCase):
         self.assertEqual(rc, 0)
         # 只调用一次 subprocess.run，且使用共享命令构造
         fake_run.assert_called_once_with(['echo', 'ok'], cwd='CWD')
-        # 输出文件仅一次写入，且只含启用的脚本
+        # 输出文件仅一次写入，且包含全部脚本
         self.assertEqual(len(captured), 1)
         written = yaml.safe_load(list(captured.values())[0].getvalue())
         names = [s['display_name'] for s in written['script_list']]
-        self.assertEqual(names, ['鸣潮'])
+        self.assertEqual(names, ['鸣潮', '原神'])
+        # 仅鸣潮有 weekly_timeouts，故只有它被写入 run_timeout_seconds
         self.assertIn('run_timeout_seconds', written['script_list'][0])
 
-    def test_empty_enabled_exits_zero(self):
-        """无启用脚本时直接退出且不调用 ScriptChainer"""
-        config_text = (
-            "script_list:\n"
-            "  - display_name: 鸣潮\n"
-            "    enabled: false\n"
-        )
-        weekly_text = "鸣潮: [10, 20, 30, 40, 50, 60, 70]\n"
+    def test_empty_script_list_exits_zero(self):
+        """script_list 为空时直接退出且不调用 ScriptChainer"""
+        config_text = "script_list: []\n"
+        weekly_text = ""
         rc, captured, fake_run = self._run_with(config_text, weekly_text)
 
         self.assertEqual(rc, 0)
@@ -297,6 +294,136 @@ class TestScriptItemCallback(unittest.TestCase):
         item._on_dungeon_selected('副本A', '武器经验')
         # 选副本+序列一次性触发 1 次
         self.assertEqual(len(called), 1)
+
+
+class TestReorderScripts(unittest.TestCase):
+    """测试 MainWindow._reorder_scripts 顺序同步与持久化"""
+
+    def _make_window(self, disable_persist=False):
+        # 跳过真实 _load_scripts（涉及文件 I/O），手动注入状态
+        with patch.object(gui_launcher.MainWindow, '_load_scripts', lambda self: None):
+            win = gui_launcher.MainWindow()
+        win.script_items = [
+            gui_launcher.ScriptItem({'display_name': f'脚本{i}', 'script_type': 'external'})
+            for i in range(3)
+        ]
+        win.all_config_data = {
+            'script_list': [
+                {'display_name': f'脚本{i}', 'script_type': 'external'} for i in range(3)
+            ]
+        }
+        # 默认禁止把测试桩数据写回真实 config.yml（持久化测试会单独 mock 路径与 open）
+        if disable_persist:
+            win._save_script_order = lambda: None
+        return win
+
+    def test_reorder_updates_script_items_order(self):
+        """重排后 self.script_items 顺序改变（脚本0 移动到 脚本2 之后）"""
+        win = self._make_window(disable_persist=True)
+        win._reorder_scripts('脚本0', '脚本2')
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本1', '脚本2', '脚本0'])
+
+    def test_reorder_updates_config_data_order(self):
+        """重排后 self.all_config_data['script_list'] 顺序同步改变"""
+        win = self._make_window(disable_persist=True)
+        win._reorder_scripts('脚本0', '脚本2')
+        names = [s['display_name'] for s in win.all_config_data['script_list']]
+        self.assertEqual(names, ['脚本1', '脚本2', '脚本0'])
+
+    def test_reorder_persists_to_config_yml(self):
+        """重排后写回 config.yml（script_list 顺序一致）"""
+        win = self._make_window()
+        captured = {}
+
+        def fake_open(file, mode='w', encoding=None):
+            m = MagicMock()
+            buf = StringIO()
+            captured['buf'] = buf
+            m.__enter__ = MagicMock(return_value=buf)
+            m.__exit__ = MagicMock(return_value=False)
+            return m
+
+        with patch('gui_launcher.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
+             patch('builtins.open', side_effect=fake_open):
+            win._reorder_scripts('脚本0', '脚本2')
+        written = yaml.safe_load(captured['buf'].getvalue())
+        names = [s['display_name'] for s in written['script_list']]
+        self.assertEqual(names, ['脚本1', '脚本2', '脚本0'])
+
+    def test_reorder_noop_when_same_target(self):
+        """源与目标相同（src==dst）时顺序不变"""
+        win = self._make_window(disable_persist=True)
+        win._reorder_scripts('脚本1', '脚本1')
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本1', '脚本2'])
+
+
+class TestScriptItemDragDrop(unittest.TestCase):
+    """测试 ScriptItem 拖拽手柄与 drop 事件"""
+
+    def test_handle_created_and_accepts_drops(self):
+        """构造后存在拖拽手柄且接受 drop"""
+        item = gui_launcher.ScriptItem({'display_name': 'A', 'script_type': 'external'})
+        self.assertIsNotNone(item.handle)
+        self.assertTrue(item.acceptDrops())
+
+    def test_dragEnterEvent_accepts_our_mime(self):
+        """dragEnterEvent 接受本应用的自定义 MIME"""
+        item = gui_launcher.ScriptItem({'display_name': 'A', 'script_type': 'external'})
+        item._reorder_callback = lambda src, dst: None
+        mime = QMimeData()
+        mime.setData(gui_launcher._DRAG_MIME, b'B')
+        event = QDragEnterEvent(QPoint(0, 0), Qt.MoveAction, mime, Qt.LeftButton, Qt.NoModifier)
+        event.ignore()
+        item.dragEnterEvent(event)
+        self.assertTrue(event.isAccepted())
+
+    def test_dragEnterEvent_ignores_unknown_mime(self):
+        """dragEnterEvent 忽略未知 MIME"""
+        item = gui_launcher.ScriptItem({'display_name': 'A', 'script_type': 'external'})
+        mime = QMimeData()
+        mime.setText('B')
+        event = QDragEnterEvent(QPoint(0, 0), Qt.MoveAction, mime, Qt.LeftButton, Qt.NoModifier)
+        event.accept()
+        item.dragEnterEvent(event)
+        self.assertFalse(event.isAccepted())
+
+    def test_dropEvent_calls_reorder_callback(self):
+        """dropEvent 以 (src_name, dst_name) 调用重排回调"""
+        item = gui_launcher.ScriptItem({'display_name': 'A', 'script_type': 'external'})
+        called = []
+        item._reorder_callback = lambda src, dst: called.append((src, dst))
+        mime = QMimeData()
+        mime.setData(gui_launcher._DRAG_MIME, b'B')
+        event = QDropEvent(QPoint(0, 0), Qt.MoveAction, mime, Qt.LeftButton, Qt.NoModifier)
+        item.dropEvent(event)
+        self.assertEqual(called, [('B', 'A')])
+        self.assertTrue(event.isAccepted())
+
+    def test_dropEvent_ignores_unknown_mime(self):
+        """dropEvent 忽略未知 MIME 且不触发回调"""
+        item = gui_launcher.ScriptItem({'display_name': 'A', 'script_type': 'external'})
+        called = []
+        item._reorder_callback = lambda src, dst: called.append((src, dst))
+        mime = QMimeData()
+        mime.setText('B')
+        event = QDropEvent(QPoint(0, 0), Qt.MoveAction, mime, Qt.LeftButton, Qt.NoModifier)
+        item.dropEvent(event)
+        self.assertEqual(called, [])
+        self.assertFalse(event.isAccepted())
+
+    def test_dropEvent_noop_when_same_name(self):
+        """拖到自己身上（src==dst）时不触发重排"""
+        item = gui_launcher.ScriptItem({'display_name': 'A', 'script_type': 'external'})
+        called = []
+        item._reorder_callback = lambda src, dst: called.append((src, dst))
+        mime = QMimeData()
+        mime.setData(gui_launcher._DRAG_MIME, b'A')
+        event = QDropEvent(QPoint(0, 0), Qt.MoveAction, mime, Qt.LeftButton, Qt.NoModifier)
+        item.dropEvent(event)
+        self.assertEqual(called, [])
+        self.assertTrue(event.isAccepted())
 
 
 # ---- helpers ----

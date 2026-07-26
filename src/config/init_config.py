@@ -19,11 +19,9 @@ def copy_python_scripts():
     for file_name in file_names:
         input_path = safe_path_join(py_script_dir, file_name)
         output_path = get_path_under_onedragon("config", "script_chain", "scripts")
-        if not os.path.exists(safe_path_join(output_path, file_name)):
-            shutil.copy(input_path, output_path)
-            logger.info(f"已复制Python脚本{file_name}到: {output_path}")
-        else:
-            logger.info(f"[OneDragonHelper] Python脚本{file_name}已存在，跳过复制")
+        os.makedirs(output_path, exist_ok=True)
+        shutil.copy(input_path, safe_path_join(output_path, file_name))
+        logger.info(f"已同步Python脚本{file_name}到: {output_path}")
 
 
 def need_config_workflow() -> bool:

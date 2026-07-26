@@ -8,8 +8,8 @@ import sys
 from datetime import datetime
 
 import yaml
-from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QFont, QIntValidator
+from PySide6.QtCore import QMimeData, Qt, QThread, Signal
+from PySide6.QtGui import QDrag, QFont, QIntValidator
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -44,6 +44,9 @@ from src.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
+_DRAG_MIME = "application/x-onedragon-script"
 
 # ---- UI 状态持久化 ----
 _STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
@@ -310,7 +313,7 @@ class ScriptItem(QFrame):
     """单个脚本项（Fluent 风格卡片）"""
 
     def __init__(self, script_data, dungeon_options=None, sequence_options_map=None,
-                 show_sequence=False, saved_state=None):
+                 show_sequence=False, saved_state=None, reorder_callback=None):
         super().__init__()
         assert 'display_name' in script_data, "[gui_launcher] 脚本配置缺少 display_name 字段"
         assert 'script_type' in script_data, "[gui_launcher] 脚本配置缺少 script_type 字段"
@@ -320,13 +323,16 @@ class ScriptItem(QFrame):
         self.dungeon_btn = None
         self._selected_dungeon = None   # 一级副本名（None 表示未选择）
         self._selected_sequence = None  # 二级序列名
-        self.enabled = script_data.get('enabled', True)  # 外部配置，可能缺失
+        self.enabled = True  # 纯内存态：每次启动默认全开，仅当次会话可临时关（不读 config）
         self._state_callback = None  # 状态变化回调，由 MainWindow 注入
+        self._reorder_callback = reorder_callback  # 拖拽重排回调，由 MainWindow 注入
+        self._drag_start_pos = None  # 拖拽起点（仅在手柄上按下时记录）
         self._sequence_options_map = sequence_options_map or {}  # 副本名 → 二级选项列表
         self._dungeon_options = dungeon_options or []  # 一级副本列表
 
         self.setFrameShape(QFrame.NoFrame)
         self.setObjectName("ScriptItem")
+        self.setAcceptDrops(True)
         self.setStyleSheet("""
             QFrame#ScriptItem {
                 background-color: transparent;
@@ -342,6 +348,17 @@ class ScriptItem(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(8)
+
+        # 拖拽手柄（仅此处可发起拖拽，避免与开关/副本/配置按钮冲突）
+        self.handle = QLabel("⠿")
+        self.handle.setFixedSize(20, 20)
+        self.handle.setAlignment(Qt.AlignCenter)
+        self.handle.setCursor(Qt.OpenHandCursor)
+        self.handle.setStyleSheet("color: #b0b0b0; font-size: 14px;")
+        self.handle.mousePressEvent = self._handle_mouse_press
+        self.handle.mouseMoveEvent = self._handle_mouse_move
+        self.handle.mouseReleaseEvent = self._handle_mouse_release
+        layout.addWidget(self.handle)
 
         # 脚本名称
         title_label = QLabel(self.display_name)
@@ -547,6 +564,48 @@ class ScriptItem(QFrame):
                 QPushButton:hover { background-color: #a8a8a8; }
             """)
 
+    # ---- 拖拽重排（仅手柄可发起） ----
+    def _handle_mouse_press(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_start_pos = event.pos()
+        QLabel.mousePressEvent(self.handle, event)
+
+    def _handle_mouse_move(self, event):
+        if self._drag_start_pos is None or not (event.buttons() & Qt.LeftButton):
+            return
+        if (event.pos() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+            return
+        self._drag_start_pos = None
+        self._start_drag()
+
+    def _handle_mouse_release(self, event):
+        self._drag_start_pos = None
+        QLabel.mouseReleaseEvent(self.handle, event)
+
+    def _start_drag(self):
+        mime = QMimeData()
+        mime.setText(self.display_name)
+        mime.setData(_DRAG_MIME, self.display_name.encode('utf-8'))
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.setPixmap(self.grab())
+        drag.exec(Qt.MoveAction)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat(_DRAG_MIME) and self._reorder_callback:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        if not (event.mimeData().hasFormat(_DRAG_MIME) and self._reorder_callback):
+            event.ignore()
+            return
+        src_name = bytes(event.mimeData().data(_DRAG_MIME)).decode('utf-8')
+        if src_name != self.display_name:
+            self._reorder_callback(src_name, self.display_name)
+        event.acceptProposedAction()
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -683,7 +742,8 @@ class MainWindow(QMainWindow):
                 saved = restore_sequence_type(saved, seq_map)
             item = ScriptItem(data, dungeon_options=options if options else None,
                               sequence_options_map=seq_map if show_seq else None,
-                              show_sequence=show_seq, saved_state=saved)
+                              show_sequence=show_seq, saved_state=saved,
+                              reorder_callback=self._reorder_scripts)
             item.set_state_callback(self._persist_ui_state)
             self.scroll_layout.insertWidget(len(self.script_items), item)
             self.script_items.append(item)
@@ -695,6 +755,37 @@ class MainWindow(QMainWindow):
         for item in self.script_items:
             state[item.display_name] = item.get_state()
         _save_ui_state(state)
+
+    def _reorder_scripts(self, src_name, dst_name):
+        """把 src_name 对应的脚本移动到 dst_name 所在位置，并同步 UI 与 config.yml"""
+        script_items = self.script_items
+        src_idx = next(i for i, it in enumerate(script_items) if it.display_name == src_name)
+        dst_idx = next(i for i, it in enumerate(script_items) if it.display_name == dst_name)
+        item = script_items.pop(src_idx)
+        script_items.insert(dst_idx, item)
+
+        # 同步 config.yml 中的顺序（以 UI 顺序为准）
+        scripts = self.all_config_data['script_list']
+        s_idx = next(i for i, s in enumerate(scripts) if s['display_name'] == src_name)
+        script = scripts.pop(s_idx)
+        scripts.insert(dst_idx, script)
+
+        self._relayout_script_widgets()
+        self._save_script_order()
+
+    def _relayout_script_widgets(self):
+        """按 self.script_items 当前顺序重排滚动区内的 widget（不销毁 widget）"""
+        while self.scroll_layout.count():
+            self.scroll_layout.takeAt(0)
+        for item in self.script_items:
+            self.scroll_layout.addWidget(item)
+        self.scroll_layout.addStretch()
+
+    def _save_script_order(self):
+        """把当前脚本顺序写回 config.yml"""
+        config_path = get_config_yml_path_under_root()
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.dump(self.all_config_data, f, allow_unicode=True, sort_keys=False)
 
     def _generate_config(self, chain_name="88"):
         """生成 ScriptChainer 配置文件（仅含启用的脚本）"""
@@ -809,8 +900,8 @@ def parse_args():
 def run_direct(chain_name="88") -> int:
     """无界面直接运行（计划任务模式）。
 
-    跳过 GUI 与各脚本内部 config（set_config）写入，仅按 config.yml 中
-    enabled 为真的脚本生成 ScriptChainer 配置并直接运行，便于计划任务调用。
+    `enabled` 为纯内存态、默认全开，故跳过 GUI 与各脚本内部 config（set_config）
+    写入，直接运行全部脚本（生成 ScriptChainer 配置并运行），便于计划任务调用。
     """
     with open(get_config_yml_path_under_root(), encoding='utf-8') as f:
         data = yaml.safe_load(f)
@@ -826,8 +917,6 @@ def run_direct(chain_name="88") -> int:
 
     filtered = []
     for script in data['script_list']:
-        if not script.get('enabled', True):
-            continue
         name = script['display_name']
         timeouts = weekly_timeouts.get(name)
         if timeouts and len(timeouts) == 7:
@@ -835,7 +924,7 @@ def run_direct(chain_name="88") -> int:
         filtered.append(script)
 
     if not filtered:
-        logger.warning("[gui_launcher] 没有启用的脚本，直接退出")
+        logger.warning("[gui_launcher] 没有可运行的脚本（script_list 为空），直接退出")
         return 0
 
     data['script_list'] = filtered
