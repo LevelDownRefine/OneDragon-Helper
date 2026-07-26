@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
 _DRAG_MIME = "application/x-onedragon-script"
 
+
 # ---- UI 状态持久化 ----
 _STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
 
@@ -702,7 +703,7 @@ class MainWindow(QMainWindow):
         self.scroll_content = QWidget()
         self.scroll_content.setStyleSheet("background-color: transparent;")
         self.scroll_layout = QVBoxLayout(self.scroll_content)
-        self.scroll_layout.setContentsMargins(2, 2, 2, 2)
+        self.scroll_layout.setContentsMargins(2, 2, 14, 2)
         self.scroll_layout.setSpacing(10)
         self.scroll_layout.addStretch()
         scroll.setWidget(self.scroll_content)
