@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QApplication
 from src.config.init_config import config_workflow, need_config_workflow
 from src.gui.main_window import MainWindow
 from src.gui.runner import build_chain_command
-from src.gui.state import get_week_num
+from src.gui.state import apply_weekly_timeout
 from src.utils import (
     get_config_yml_path_under_root,
     get_path_under_onedragon,
@@ -53,21 +53,16 @@ def run_direct(chain_name="88") -> int:
         with open(weekly_path, encoding='utf-8') as f:
             weekly_timeouts = yaml.safe_load(f) or {}
 
-    week_num = get_week_num()
-
-    filtered = []
+    updated_scripts = []
     for script in data['script_list']:
-        name = script['display_name']
-        timeouts = weekly_timeouts.get(name)
-        if timeouts and len(timeouts) == 7:
-            script['run_timeout_seconds'] = timeouts[week_num]
-        filtered.append(script)
+        apply_weekly_timeout(script, weekly_timeouts)
+        updated_scripts.append(script)
 
-    if not filtered:
+    if not updated_scripts:
         logger.warning("[launcher] 没有可运行的脚本（script_list 为空），直接退出")
         return 0
 
-    data['script_list'] = filtered
+    data['script_list'] = updated_scripts
     output_dir = get_path_under_onedragon("config", "script_chain")
     output_file = safe_path_join(output_dir, f"{chain_name}.yml")
     with open(output_file, 'w', encoding='utf-8') as f:

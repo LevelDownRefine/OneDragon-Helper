@@ -25,7 +25,11 @@ from src.config.dungeon_config import (
 from src.config.set_config import set_config
 from src.gui.dialogs import AddScriptDialog
 from src.gui.runner import ScriptChainRunner
-from src.gui.state import get_week_num, load_ui_state, save_ui_state
+from src.gui.state import (
+    apply_weekly_timeout,
+    load_ui_state,
+    save_ui_state,
+)
 from src.gui.widgets import ScriptItem
 from src.utils import (
     get_config_yml_path_under_root,
@@ -196,14 +200,22 @@ class MainWindow(QMainWindow):
             saved = self._ui_state.get(name)  # optional: 新脚本可能没有保存的状态
             if saved:
                 saved = restore_sequence_type(saved, seq_map)
-            item = ScriptItem(data, dungeon_options=options if options else None,
-                              sequence_options_map=seq_map if show_seq else None,
-                              show_sequence=show_seq, saved_state=saved,
-                              reorder_callback=self._reorder_scripts,
-                              delete_callback=self._delete_script)
-            item.set_state_callback(self._persist_ui_state)
+            item = self._create_script_item(data, saved)
             self.scroll_layout.insertWidget(len(self.script_items), item)
             self.script_items.append(item)
+
+    def _create_script_item(self, data, saved_state):
+        """构造 ScriptItem 并注入 UI 状态回调（_load_scripts 与 _append_script 共用）"""
+        name = data['display_name']
+        dungeon_cfg = self.dungeon_map.get(name)  # optional: 不是所有脚本都有副本配置
+        options, seq_map, show_seq = parse_dungeon_config(dungeon_cfg)
+        item = ScriptItem(data, dungeon_options=options if options else None,
+                          sequence_options_map=seq_map if show_seq else None,
+                          show_sequence=show_seq, saved_state=saved_state,
+                          reorder_callback=self._reorder_scripts,
+                          delete_callback=self._delete_script)
+        item.set_state_callback(self._persist_ui_state)
+        return item
 
     def _persist_ui_state(self):
         """收集所有脚本的 UI 状态并保存"""
@@ -215,14 +227,17 @@ class MainWindow(QMainWindow):
     def _reorder_scripts(self, src_name, dst_name):
         """把 src_name 对应的脚本移动到 dst_name 所在位置，并同步 UI 与 config.yml"""
         script_items = self.script_items
-        src_idx = next(i for i, it in enumerate(script_items) if it.display_name == src_name)
-        dst_idx = next(i for i, it in enumerate(script_items) if it.display_name == dst_name)
+        src_idx = next((i for i, it in enumerate(script_items) if it.display_name == src_name), None)
+        assert src_idx is not None, f"[main_window] 拖拽源脚本不存在: {src_name}"
+        dst_idx = next((i for i, it in enumerate(script_items) if it.display_name == dst_name), None)
+        assert dst_idx is not None, f"[main_window] 拖拽目标脚本不存在: {dst_name}"
         item = script_items.pop(src_idx)
         script_items.insert(dst_idx, item)
 
         # 同步 config.yml 中的顺序（以 UI 顺序为准）
         scripts = self.all_config_data['script_list']
-        s_idx = next(i for i, s in enumerate(scripts) if s['display_name'] == src_name)
+        s_idx = next((i for i, s in enumerate(scripts) if s['display_name'] == src_name), None)
+        assert s_idx is not None, f"[main_window] config 中找不到源脚本: {src_name}"
         script = scripts.pop(s_idx)
         scripts.insert(dst_idx, script)
 
@@ -280,15 +295,7 @@ class MainWindow(QMainWindow):
         """把新脚本条目追加到 config 数据与 UI 列表底部并持久化（无对话框，供测试复用）"""
         self.all_config_data['script_list'].append(script_data)
 
-        name = script_data['display_name']
-        dungeon_cfg = self.dungeon_map.get(name)  # optional: 自定义脚本通常没有副本配置
-        options, seq_map, show_seq = parse_dungeon_config(dungeon_cfg)
-        item = ScriptItem(script_data, dungeon_options=options if options else None,
-                          sequence_options_map=seq_map if show_seq else None,
-                          show_sequence=show_seq, saved_state=None,
-                          reorder_callback=self._reorder_scripts,
-                          delete_callback=self._delete_script)
-        item.set_state_callback(self._persist_ui_state)
+        item = self._create_script_item(script_data, None)
         self.script_items.append(item)
 
         self._relayout_script_widgets()
@@ -310,8 +317,6 @@ class MainWindow(QMainWindow):
             with open(weekly_path, encoding='utf-8') as f:
                 weekly_timeouts = yaml.safe_load(f) or {}
 
-        week_num = get_week_num()
-
         # 收集每个启用脚本的副本选择、序列选择
         enabled_dungeons = {}
         enabled_sequences = {}
@@ -324,16 +329,14 @@ class MainWindow(QMainWindow):
                 if seq is not None:
                     enabled_sequences[item.display_name] = seq
 
-        enabled_names = [i.display_name for i in self.script_items if i.enabled]
+        enabled_names = {i.display_name for i in self.script_items if i.enabled}
 
         data = copy.deepcopy(self.all_config_data)
         filtered = []
         for script in data['script_list']:
             name = script['display_name']
             if name in enabled_names:
-                timeouts = weekly_timeouts.get(name)
-                if timeouts and len(timeouts) == 7:
-                    script['run_timeout_seconds'] = timeouts[week_num]
+                apply_weekly_timeout(script, weekly_timeouts)
 
                 # 外观模式：写入各脚本内部 config（副本、序列）
                 dungeon = enabled_dungeons.get(name)

@@ -20,6 +20,16 @@ from src.utils import (
     get_weekly_timeouts_yml_path_under_root,
 )
 
+# 脚本文件选择过滤器（两个弹窗共用）
+SCRIPT_FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
+
+
+def _browse_script_file(parent, line_edit):
+    """弹出文件选择对话框，选中后规范化为系统路径写入 line_edit"""
+    file_path, _ = QFileDialog.getOpenFileName(parent, "选择脚本文件", "", SCRIPT_FILE_FILTER)
+    if file_path:
+        line_edit.setText(os.path.normpath(file_path))
+
 
 def default_script_entry(display_name, script_type, script_path, run_timeout_seconds,
                          script_arguments=""):
@@ -51,7 +61,6 @@ def default_script_entry(display_name, script_type, script_path, run_timeout_sec
 
 class SingleScriptConfigDialog(QDialog):
     """单个脚本的配置弹窗（路径选择 + 每周超时时间）"""
-    FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
     LABEL_WIDTH = 80
 
     def __init__(self, script_name, script_path="", parent=None):
@@ -222,9 +231,7 @@ class SingleScriptConfigDialog(QDialog):
             le.setText(str(timeouts[idx]))
 
     def browse_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "选择脚本文件", "", self.FILE_FILTER)
-        if file_path:
-            self.path_input.setText(os.path.normpath(file_path))
+        _browse_script_file(self, self.path_input)
 
     def save_data(self):
         path_val = self.path_input.text().strip()
@@ -234,8 +241,8 @@ class SingleScriptConfigDialog(QDialog):
 
         timeouts = []
         for le in self.timeout_inputs:
-            val = int(le.text().strip())
-            timeouts.append(val)
+            text = le.text().strip()
+            timeouts.append(int(text) if text else 0)
 
         config_path = get_config_yml_path_under_root()
         with open(config_path, encoding='utf-8') as f:
@@ -268,7 +275,6 @@ class AddScriptDialog(QDialog):
 
     确认后 result_data 为完整的 config.yml 条目 dict；取消则保持为 None。
     """
-    FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
     LABEL_WIDTH = 80
     _INPUT_STYLE = """
         QLineEdit {
@@ -433,9 +439,7 @@ class AddScriptDialog(QDialog):
         layout.addLayout(btn_layout)
 
     def browse_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "选择脚本文件", "", self.FILE_FILTER)
-        if file_path:
-            self.path_input.setText(os.path.normpath(file_path))
+        _browse_script_file(self, self.path_input)
 
     def save_data(self):
         name = self.name_input.text().strip()
