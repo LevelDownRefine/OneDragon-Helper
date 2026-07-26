@@ -34,10 +34,7 @@ def _browse_script_file(parent, line_edit):
 
 def default_script_entry(display_name, script_type, script_path, run_timeout_seconds,
                          script_arguments=""):
-    """构造一个 config.yml script_list 条目：核心字段由参数指定，其余用默认值补全。
-
-    字段集合与 config.yml 中现有条目保持一致，供 GUI「添加脚本」使用。
-    """
+    """构造一个 config.yml script_list 条目：核心字段由参数指定，其余用默认值补全。"""
     return {
         "display_name": display_name,
         "game_label": "",
@@ -258,10 +255,7 @@ class SingleScriptConfigDialog(QDialog):
 
 
 class AddScriptDialog(QDialog):
-    """新增脚本弹窗：收集核心字段（名称、类型、路径、超时），其余字段用默认值补全。
-
-    确认后 result_data 为完整的 config.yml 条目 dict；取消则保持为 None。
-    """
+    """新增脚本弹窗：收集核心字段（名称、类型、路径、超时），其余字段用默认值补全。"""
     LABEL_WIDTH = 80
     _INPUT_STYLE = """
         QLineEdit {

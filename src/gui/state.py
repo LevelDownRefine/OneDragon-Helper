@@ -33,9 +33,7 @@ def get_week_num() -> int:
 def apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
     """若该脚本在本周有完整 7 天超时配置，则就地覆盖 run_timeout_seconds。
 
-    星期数由 get_week_num() 确定（凌晨 4 点前算前一天）。
     仅当 weekly_timeouts 中存在且为 7 个值才覆盖，否则保持 config.yml 原值。
-    供无界面模式（run_direct）与 GUI（_generate_config）共用，确保周超时规则单一来源。
     """
     assert 'display_name' in script, "[state] script_list 条目缺少 display_name 字段"
     timeouts = weekly_timeouts.get(script['display_name'])

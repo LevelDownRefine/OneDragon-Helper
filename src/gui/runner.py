@@ -7,8 +7,8 @@ from PySide6.QtCore import QThread, Signal
 from src.utils import get_path_under_onedragon
 
 
-def build_chain_command(chain_name: str) -> tuple:
-    """构造 ScriptChainer 启动命令与运行目录（GUI 与无界面模式共用）"""
+def run_chain_command(chain_name: str) -> int:
+    """构造并同步运行 ScriptChainer 启动命令，返回退出码。"""
     cwd = get_path_under_onedragon("src")
     command = [
         sys.executable,
@@ -18,7 +18,8 @@ def build_chain_command(chain_name: str) -> tuple:
         "--chain",
         chain_name,
     ]
-    return command, cwd
+    res = subprocess.run(command, cwd=cwd)
+    return res.returncode
 
 
 class ScriptChainRunner(QThread):
@@ -30,6 +31,4 @@ class ScriptChainRunner(QThread):
         self.chain_name = chain_name
 
     def run(self):
-        command, cwd = build_chain_command(self.chain_name)
-        res = subprocess.run(command, cwd=cwd)
-        self.finished_signal.emit(res.returncode)
+        self.finished_signal.emit(run_chain_command(self.chain_name))

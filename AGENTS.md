@@ -20,7 +20,7 @@ src/launcher.py            # 薄入口（parse_args / run_direct / main），lau
 src/gui/                    # GUI 包（依赖单向：main_window → controls/widgets/dialogs/state/runner；widgets → dialogs；controls 仅依赖 PySide6）
   controls.py               # 共享按钮工厂：make_pill_button / make_secondary_button / make_icon_button（集中 QSS，避免重复）
   state.py                  # load_ui_state / save_ui_state（gui_state.json）+ get_week_num
-  runner.py                 # build_chain_command + ScriptChainRunner(QThread)
+  runner.py                 # run_chain_command + ScriptChainRunner(QThread)
   dialogs.py                # default_script_entry + SingleScriptConfigDialog + AddScriptDialog
   widgets.py                # DRAG_MIME + ToggleSwitch + ScriptItem
   main_window.py            # MainWindow

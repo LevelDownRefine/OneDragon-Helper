@@ -161,7 +161,7 @@ class MainWindow(QMainWindow):
             self.script_items.append(item)
 
     def _create_script_item(self, data, saved_state):
-        """构造 ScriptItem 并注入 UI 状态回调（_load_scripts 与 _append_script 共用）"""
+        """构造 ScriptItem 并注入 UI 状态回调"""
         name = data['display_name']
         dungeon_cfg = self.dungeon_map.get(name)  # optional: 不是所有脚本都有副本配置
         options, seq_map, show_seq = parse_dungeon_config(dungeon_cfg)
@@ -221,7 +221,7 @@ class MainWindow(QMainWindow):
         self._remove_script(display_name)
 
     def _remove_script(self, display_name):
-        """实际移除逻辑（无确认），供 _delete_script 与测试复用"""
+        """实际移除逻辑（无确认）"""
         idx = next((i for i, it in enumerate(self.script_items)
                     if it.display_name == display_name), None)
         if idx is None:
@@ -248,7 +248,7 @@ class MainWindow(QMainWindow):
         self._append_script(dialog.result_data)
 
     def _append_script(self, script_data):
-        """把新脚本条目追加到 config 数据与 UI 列表底部并持久化（无对话框，供测试复用）"""
+        """把新脚本条目追加到 config 数据与 UI 列表底部并持久化"""
         self.all_config_data['script_list'].append(script_data)
 
         item = self._create_script_item(script_data, None)

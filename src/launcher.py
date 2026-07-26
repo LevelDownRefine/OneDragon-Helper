@@ -6,7 +6,6 @@ widgets（自定义控件）、dialogs（弹窗）、main_window（主窗口）�
 import argparse
 import logging
 import os
-import subprocess
 import sys
 
 import yaml
@@ -14,7 +13,7 @@ from PySide6.QtWidgets import QApplication
 
 from src.config.init_config import config_workflow, need_config_workflow
 from src.gui.main_window import MainWindow
-from src.gui.runner import build_chain_command
+from src.gui.runner import run_chain_command
 from src.gui.state import apply_weekly_timeout
 from src.utils import (
     get_config_yml_path_under_root,
@@ -40,8 +39,7 @@ def parse_args():
 def run_direct(chain_name="88") -> int:
     """无界面直接运行（计划任务模式）。
 
-    `enabled` 为纯内存态、默认全开，故跳过 GUI 与各脚本内部 config（set_config）
-    写入，直接运行全部脚本（生成 ScriptChainer 配置并运行），便于计划任务调用。
+    读取 config.yml，应用周超时覆盖后生成 ScriptChainer 配置并运行全部脚本，便于计划任务调用。
     """
     with open(get_config_yml_path_under_root(), encoding='utf-8') as f:
         data = yaml.safe_load(f)
@@ -68,9 +66,7 @@ def run_direct(chain_name="88") -> int:
     with open(output_file, 'w', encoding='utf-8') as f:
         yaml.dump(data, f, allow_unicode=True, sort_keys=False)
 
-    command, cwd = build_chain_command(chain_name)
-    res = subprocess.run(command, cwd=cwd)
-    return res.returncode
+    return run_chain_command(chain_name)
 
 
 def main():

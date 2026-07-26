@@ -57,14 +57,12 @@ class TestRunDirect(unittest.TestCase):
             self.CONFIG_YML: config_text,
             self.WEEKLY_YML: weekly_text,
         }
-        fake_run = MagicMock()
-        fake_run.return_value.returncode = 0
+        fake_run = MagicMock(return_value=0)
         with patch('src.launcher.get_config_yml_path_under_root', return_value=self.CONFIG_YML), \
              patch('src.launcher.get_weekly_timeouts_yml_path_under_root', return_value=self.WEEKLY_YML), \
              patch('src.launcher.get_path_under_onedragon', return_value=self.OUT_DIR), \
              patch('src.launcher.os.path.exists', side_effect=lambda p: p == self.WEEKLY_YML), \
-             patch('src.launcher.build_chain_command', return_value=(['echo', 'ok'], 'CWD')), \
-             patch('src.launcher.subprocess.run', fake_run), \
+             patch('src.launcher.run_chain_command', fake_run), \
              patch('builtins.open', self._fake_open(read_data, captured)):
             rc = launcher.run_direct("88")
         return rc, captured, fake_run
@@ -80,8 +78,8 @@ class TestRunDirect(unittest.TestCase):
         rc, captured, fake_run = self._run_with(config_text, weekly_text)
 
         self.assertEqual(rc, 0)
-        # 只调用一次 subprocess.run，且使用共享命令构造
-        fake_run.assert_called_once_with(['echo', 'ok'], cwd='CWD')
+        # 只调用一次 run_chain_command，且透传 chain_name
+        fake_run.assert_called_once_with("88")
         # 输出文件仅一次写入，且包含全部脚本
         self.assertEqual(len(captured), 1)
         written = yaml.safe_load(list(captured.values())[0].getvalue())
@@ -110,14 +108,12 @@ class TestRunDirect(unittest.TestCase):
         weekly_text = "鸣潮: [10, 20, 30, 40, 50, 60, 70]\n"
         captured = {}
         read_data = {self.CONFIG_YML: config_text, self.WEEKLY_YML: weekly_text}
-        fake_run = MagicMock()
-        fake_run.return_value.returncode = 3
+        fake_run = MagicMock(return_value=3)
         with patch('src.launcher.get_config_yml_path_under_root', return_value=self.CONFIG_YML), \
              patch('src.launcher.get_weekly_timeouts_yml_path_under_root', return_value=self.WEEKLY_YML), \
              patch('src.launcher.get_path_under_onedragon', return_value=self.OUT_DIR), \
              patch('src.launcher.os.path.exists', side_effect=lambda p: p == self.WEEKLY_YML), \
-             patch('src.launcher.build_chain_command', return_value=(['echo', 'ok'], 'CWD')), \
-             patch('src.launcher.subprocess.run', fake_run), \
+             patch('src.launcher.run_chain_command', fake_run), \
              patch('builtins.open', self._fake_open(read_data, captured)):
             rc = launcher.run_direct("88")
         self.assertEqual(rc, 3)

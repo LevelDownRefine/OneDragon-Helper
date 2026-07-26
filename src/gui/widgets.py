@@ -161,7 +161,7 @@ class ScriptItem(QFrame):
         layout.addWidget(self.config_btn)
 
     def _on_delete_clicked(self):
-        """点击删除按钮，通知 MainWindow 删除本脚本（确认在 MainWindow 内完成）"""
+        """点击删除按钮，通知删除本脚本"""
         if self._delete_callback:
             self._delete_callback(self.display_name)
 
