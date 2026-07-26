@@ -520,6 +520,168 @@ class TestDeleteScript(unittest.TestCase):
         self.assertEqual(called, ['X'])
 
 
+class TestAddScript(unittest.TestCase):
+    """测试 MainWindow 添加脚本：UI 与 config.yml 同步追加并持久化"""
+
+    def _make_window(self, disable_persist=False):
+        with patch.object(gui_launcher.MainWindow, '_load_scripts', lambda self: None):
+            win = gui_launcher.MainWindow()
+        win.dungeon_map = {}  # 自定义脚本无副本配置
+        win.script_items = [
+            gui_launcher.ScriptItem({'display_name': f'脚本{i}', 'script_type': 'external'})
+            for i in range(2)
+        ]
+        win.all_config_data = {
+            'script_list': [
+                {'display_name': f'脚本{i}', 'script_type': 'external'} for i in range(2)
+            ]
+        }
+        if disable_persist:
+            win._save_script_order = lambda: None
+            win._persist_ui_state = lambda: None
+        return win
+
+    def test_default_script_entry_has_all_fields(self):
+        """_default_script_entry 覆盖 config.yml 全部字段，核心字段用参数值"""
+        entry = gui_launcher._default_script_entry('崩坏3', 'python', 'C:/a/b.py', 300)
+        self.assertEqual(entry['display_name'], '崩坏3')
+        self.assertEqual(entry['script_type'], 'python')
+        self.assertEqual(entry['script_path'], 'C:/a/b.py')
+        self.assertEqual(entry['run_timeout_seconds'], 300)
+        # 关键默认字段
+        self.assertEqual(entry['script_process_name'], [])
+        self.assertEqual(entry['kill_script_after_done'], True)
+        self.assertEqual(entry['no_log_max_retries'], 3)
+        # 与真实条目字段集合一致
+        expected_keys = {
+            'display_name', 'game_label', 'script_type', 'script_path',
+            'script_process_name', 'game_process_name', 'launcher_mode',
+            'run_timeout_seconds', 'check_done', 'kill_script_after_done',
+            'kill_game_after_done', 'script_arguments', 'notify_start',
+            'notify_done', 'notify_log_interval', 'attach_direction',
+            'no_log_timeout_seconds', 'no_log_max_retries',
+        }
+        self.assertEqual(set(entry.keys()), expected_keys)
+
+    def test_append_adds_to_script_items(self):
+        """追加后 self.script_items 末尾出现新脚本"""
+        win = self._make_window(disable_persist=True)
+        entry = gui_launcher._default_script_entry('新脚本', 'external', 'C:/x.exe', 100)
+        win._append_script(entry)
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本1', '新脚本'])
+
+    def test_append_adds_to_config_data(self):
+        """追加后 self.all_config_data['script_list'] 末尾出现新脚本条目"""
+        win = self._make_window(disable_persist=True)
+        entry = gui_launcher._default_script_entry('新脚本', 'external', 'C:/x.exe', 100)
+        win._append_script(entry)
+        names = [s['display_name'] for s in win.all_config_data['script_list']]
+        self.assertEqual(names, ['脚本0', '脚本1', '新脚本'])
+        self.assertIs(win.all_config_data['script_list'][-1], entry)
+
+    def test_append_persists_to_config_yml(self):
+        """追加后写回 config.yml（末尾含新脚本，字段完整）"""
+        win = self._make_window()  # 保留真实 _save_script_order
+        win._persist_ui_state = lambda: None  # 隔离 gui_state.json
+        captured = {}
+
+        def fake_open(file, mode='w', encoding=None):
+            m = MagicMock()
+            buf = StringIO()
+            captured['buf'] = buf
+            m.__enter__ = MagicMock(return_value=buf)
+            m.__exit__ = MagicMock(return_value=False)
+            return m
+
+        entry = gui_launcher._default_script_entry('新脚本', 'python', 'C:/x.py', 100)
+        with patch('gui_launcher.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
+             patch('builtins.open', side_effect=fake_open):
+            win._append_script(entry)
+        written = yaml.safe_load(captured['buf'].getvalue())
+        names = [s['display_name'] for s in written['script_list']]
+        self.assertEqual(names, ['脚本0', '脚本1', '新脚本'])
+        self.assertEqual(written['script_list'][-1]['script_type'], 'python')
+        self.assertEqual(written['script_list'][-1]['run_timeout_seconds'], 100)
+
+    def test_append_widget_added_to_layout(self):
+        """追加后新脚本 widget 出现在滚动区布局中"""
+        win = self._make_window(disable_persist=True)
+        entry = gui_launcher._default_script_entry('新脚本', 'external', 'C:/x.exe', 100)
+        win._append_script(entry)
+        new_item = win.script_items[-1]
+        self.assertGreaterEqual(win.scroll_layout.indexOf(new_item), 0)
+
+    def test_add_script_cancel_does_nothing(self):
+        """对话框取消（非 Accepted）时不追加任何脚本"""
+        win = self._make_window(disable_persist=True)
+        fake_dialog = MagicMock()
+        fake_dialog.exec.return_value = gui_launcher.QDialog.Rejected
+        with patch('gui_launcher.AddScriptDialog', return_value=fake_dialog):
+            win._add_script()
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本1'])
+
+    def test_add_script_confirm_appends(self):
+        """对话框确认时用 result_data 追加脚本"""
+        win = self._make_window(disable_persist=True)
+        entry = gui_launcher._default_script_entry('确认脚本', 'external', 'C:/y.exe', 50)
+        fake_dialog = MagicMock()
+        fake_dialog.exec.return_value = gui_launcher.QDialog.Accepted
+        fake_dialog.result_data = entry
+        with patch('gui_launcher.AddScriptDialog', return_value=fake_dialog):
+            win._add_script()
+        names = [it.display_name for it in win.script_items]
+        self.assertEqual(names, ['脚本0', '脚本1', '确认脚本'])
+
+
+class TestAddScriptDialog(unittest.TestCase):
+    """测试 AddScriptDialog 表单校验与结果构造"""
+
+    def test_save_builds_result_data(self):
+        """填入合法字段后 save_data 构造完整 result_data 并 accept"""
+        dlg = gui_launcher.AddScriptDialog(existing_names=['已存在'])
+        dlg.name_input.setText('新脚本')
+        dlg.type_combo.setCurrentText('python')
+        dlg.path_input.setText('C:/foo/bar.py')
+        dlg.timeout_input.setText('600')
+        with patch.object(dlg, 'accept') as acc:
+            dlg.save_data()
+        self.assertIsNotNone(dlg.result_data)
+        self.assertEqual(dlg.result_data['display_name'], '新脚本')
+        self.assertEqual(dlg.result_data['script_type'], 'python')
+        self.assertEqual(dlg.result_data['script_path'], 'C:/foo/bar.py')
+        self.assertEqual(dlg.result_data['run_timeout_seconds'], 600)
+        acc.assert_called_once()
+
+    def test_save_rejects_empty_name(self):
+        """名称为空时不构造 result_data"""
+        dlg = gui_launcher.AddScriptDialog()
+        dlg.name_input.setText('')
+        dlg.path_input.setText('C:/x.exe')
+        with patch('gui_launcher.QMessageBox.warning'):
+            dlg.save_data()
+        self.assertIsNone(dlg.result_data)
+
+    def test_save_rejects_duplicate_name(self):
+        """名称重复时不构造 result_data"""
+        dlg = gui_launcher.AddScriptDialog(existing_names=['原神'])
+        dlg.name_input.setText('原神')
+        dlg.path_input.setText('C:/x.exe')
+        with patch('gui_launcher.QMessageBox.warning'):
+            dlg.save_data()
+        self.assertIsNone(dlg.result_data)
+
+    def test_save_rejects_empty_path(self):
+        """路径为空时不构造 result_data"""
+        dlg = gui_launcher.AddScriptDialog()
+        dlg.name_input.setText('新脚本')
+        dlg.path_input.setText('')
+        with patch('gui_launcher.QMessageBox.warning'):
+            dlg.save_data()
+        self.assertIsNone(dlg.result_data)
+
+
 # ---- helpers ----
 
 def mock_open_with_data(data):

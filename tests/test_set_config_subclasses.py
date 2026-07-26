@@ -818,9 +818,19 @@ class TestSetConfigFacade(unittest.TestCase):
     def test_skip_when_dungeon_name_unselected(self):
         set_config.set_config("鸣潮", "未选择", None)
 
-    def test_unknown_script_raises(self):
-        with self.assertRaises(AssertionError):
-            set_config.set_config("不存在", "副本", "序列")
+    def test_unknown_script_skips_gracefully(self):
+        """未注册（自定义）脚本即使带副本也优雅跳过，不报错、不实例化任何子类"""
+        # 不应抛异常
+        set_config.set_config("不存在", "副本", "序列")
+
+    def test_unknown_script_does_not_touch_registry(self):
+        """未注册脚本不会命中注册表中的任何子类"""
+        mock_instance = MagicMock()
+        mock_cls = MagicMock(return_value=mock_instance)
+        with patch.dict('src.config.set_config._CONFIGS', {"鸣潮": mock_cls}):
+            set_config.set_config("自定义脚本", "副本", None)
+        mock_cls.assert_not_called()
+        mock_instance.set_dungeon.assert_not_called()
 
     def test_dispatches_to_correct_subclass(self):
         """验证 set_config 正确分发到对应子类"""

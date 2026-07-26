@@ -12,6 +12,7 @@ from PySide6.QtCore import QMimeData, Qt, QThread, Signal
 from PySide6.QtGui import QColor, QDrag, QFont, QIntValidator, QPainter
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
@@ -48,6 +49,33 @@ logger = logging.getLogger(__name__)
 
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
 _DRAG_MIME = "application/x-onedragon-script"
+
+
+def _default_script_entry(display_name, script_type, script_path, run_timeout_seconds):
+    """构造一个 config.yml script_list 条目：核心字段由参数指定，其余用默认值补全。
+
+    字段集合与 config.yml 中现有条目保持一致，供 GUI「添加脚本」使用。
+    """
+    return {
+        "display_name": display_name,
+        "game_label": "",
+        "script_type": script_type,
+        "script_path": script_path,
+        "script_process_name": [],
+        "game_process_name": "",
+        "launcher_mode": False,
+        "run_timeout_seconds": run_timeout_seconds,
+        "check_done": "",
+        "kill_script_after_done": True,
+        "kill_game_after_done": True,
+        "script_arguments": "",
+        "notify_start": False,
+        "notify_done": False,
+        "notify_log_interval": 0,
+        "attach_direction": "",
+        "no_log_timeout_seconds": 0,
+        "no_log_max_retries": 3,
+    }
 
 
 # ---- UI 状态持久化 ----
@@ -312,6 +340,194 @@ class SingleScriptConfigDialog(QDialog):
             yaml.dump(weekly_timeouts_map, f, allow_unicode=True, sort_keys=False)
 
         QMessageBox.information(self, "成功", "配置已保存！")
+        self.accept()
+
+
+class AddScriptDialog(QDialog):
+    """新增脚本弹窗：收集核心字段（名称、类型、路径、超时），其余字段用默认值补全。
+
+    确认后 result_data 为完整的 config.yml 条目 dict；取消则保持为 None。
+    """
+    FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
+    LABEL_WIDTH = 80
+    _INPUT_STYLE = """
+        QLineEdit {
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            padding: 4px 8px;
+            background: white;
+            font-size: 10px;
+        }
+        QLineEdit:focus { border-color: #0078D4; outline: none; }
+    """
+
+    def __init__(self, existing_names=None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("添加脚本")
+        self.resize(560, 250)
+        self.setStyleSheet("background-color: #f7f8fa;")
+        self._existing_names = set(existing_names or [])
+        self.result_data = None
+        self.init_ui()
+
+    def _make_label(self, text):
+        label = QLabel(text)
+        label.setFont(QFont("Microsoft YaHei", 10))
+        label.setFixedWidth(self.LABEL_WIDTH)
+        label.setStyleSheet("color: #303030;")
+        return label
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        # 名称
+        name_row = QHBoxLayout()
+        name_row.setSpacing(8)
+        self.name_input = QLineEdit(self)
+        self.name_input.setFont(QFont("Microsoft YaHei", 10))
+        self.name_input.setPlaceholderText("脚本显示名称，例如：1999")
+        self.name_input.setStyleSheet(self._INPUT_STYLE)
+        name_row.addWidget(self._make_label("脚本名称:"))
+        name_row.addWidget(self.name_input)
+        layout.addLayout(name_row)
+
+        # 类型
+        type_row = QHBoxLayout()
+        type_row.setSpacing(8)
+        self.type_combo = QComboBox(self)
+        self.type_combo.addItems(["external", "python"])
+        self.type_combo.setFont(QFont("Microsoft YaHei", 10))
+        self.type_combo.setFixedHeight(30)
+        self.type_combo.setStyleSheet("""
+            QComboBox {
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+                padding: 2px 8px;
+                background: white;
+                font-size: 10px;
+                color: #303030;
+            }
+            QComboBox:hover { border-color: #a0a0a0; }
+            QComboBox::drop-down { border: none; width: 20px; }
+        """)
+        type_row.addWidget(self._make_label("脚本类型:"))
+        type_row.addWidget(self.type_combo)
+        type_row.addStretch()
+        layout.addLayout(type_row)
+
+        # 路径 + 浏览
+        path_row = QHBoxLayout()
+        path_row.setSpacing(8)
+        self.path_input = QLineEdit(self)
+        self.path_input.setFont(QFont("Microsoft YaHei", 10))
+        self.path_input.setPlaceholderText("脚本/程序的完整路径")
+        self.path_input.setStyleSheet(self._INPUT_STYLE)
+        browse_btn = QPushButton("选择")
+        browse_btn.setFixedHeight(28)
+        browse_btn.setFont(QFont("Microsoft YaHei", 10))
+        browse_btn.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+                background: white;
+                font-size: 10px;
+                color: #303030;
+                padding: 0 16px;
+            }
+            QPushButton:hover { border-color: #a0a0a0; }
+            QPushButton:pressed { border-color: #0078D4; }
+        """)
+        browse_btn.clicked.connect(self.browse_file)
+        path_row.addWidget(self._make_label("脚本路径:"))
+        path_row.addWidget(self.path_input)
+        path_row.addWidget(browse_btn)
+        layout.addLayout(path_row)
+
+        # 超时
+        timeout_row = QHBoxLayout()
+        timeout_row.setSpacing(8)
+        self.timeout_input = QLineEdit(self)
+        self.timeout_input.setFont(QFont("Microsoft YaHei", 10))
+        self.timeout_input.setValidator(QIntValidator(0, 86400, self))
+        self.timeout_input.setText("1800")
+        self.timeout_input.setFixedWidth(120)
+        self.timeout_input.setStyleSheet(self._INPUT_STYLE)
+        timeout_row.addWidget(self._make_label("超时(秒):"))
+        timeout_row.addWidget(self.timeout_input)
+        timeout_row.addStretch()
+        layout.addLayout(timeout_row)
+
+        # 按钮
+        btn_layout = QHBoxLayout()
+        save_btn = QPushButton("添加")
+        save_btn.setFixedHeight(32)
+        save_btn.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #4f8cff, stop:1 #3b82f6);
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 0 24px;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                            stop:0 #5b96ff, stop:1 #2f6fed);
+            }
+            QPushButton:pressed { background: #2f6fed; }
+        """)
+        save_btn.clicked.connect(self.save_data)
+        cancel_btn = QPushButton("取消")
+        cancel_btn.setFixedHeight(32)
+        cancel_btn.setFont(QFont("Microsoft YaHei", 10))
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+                background: white;
+                font-size: 10px;
+                color: #303030;
+                padding: 0 24px;
+            }
+            QPushButton:hover { border-color: #3b82f6; color: #3b82f6; }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addStretch()
+        btn_layout.addWidget(cancel_btn)
+        btn_layout.addWidget(save_btn)
+        layout.addLayout(btn_layout)
+
+    def browse_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "选择脚本文件", "", self.FILE_FILTER)
+        if file_path:
+            self.path_input.setText(os.path.normpath(file_path))
+
+    def save_data(self):
+        name = self.name_input.text().strip()
+        if not name:
+            QMessageBox.warning(self, "警告", "脚本名称不能为空！")
+            return
+        if name in self._existing_names:
+            QMessageBox.warning(self, "警告", f"已存在同名脚本「{name}」，请换一个名称。")
+            return
+        path_val = self.path_input.text().strip()
+        if not path_val:
+            QMessageBox.warning(self, "警告", "脚本路径不能为空！")
+            return
+
+        timeout_text = self.timeout_input.text().strip()
+        timeout = int(timeout_text) if timeout_text else 0
+
+        self.result_data = _default_script_entry(
+            display_name=name,
+            script_type=self.type_combo.currentText(),
+            script_path=path_val,
+            run_timeout_seconds=timeout,
+        )
         self.accept()
 
 
@@ -778,6 +994,25 @@ class MainWindow(QMainWindow):
         self.deselect_all_btn.clicked.connect(self._deselect_all)
         action_layout.addWidget(self.deselect_all_btn)
 
+        self.add_script_btn = QPushButton("添加脚本")
+        self.add_script_btn.setFixedHeight(32)
+        self.add_script_btn.setMinimumWidth(88)
+        self.add_script_btn.setCursor(Qt.PointingHandCursor)
+        self.add_script_btn.setStyleSheet("""
+            QPushButton {
+                border: 1px solid #d8dee9;
+                border-radius: 8px;
+                background: white;
+                font-size: 11px;
+                color: #4b5563;
+                padding: 0 16px;
+            }
+            QPushButton:hover { border-color: #22c55e; color: #16a34a; }
+            QPushButton:pressed { background: #f0fdf4; }
+        """)
+        self.add_script_btn.clicked.connect(self._add_script)
+        action_layout.addWidget(self.add_script_btn)
+
         action_layout.addStretch()
         layout.addLayout(action_layout)
 
@@ -896,6 +1131,33 @@ class MainWindow(QMainWindow):
         self.scroll_layout.removeWidget(item)
         item.deleteLater()
 
+        self._save_script_order()
+        self._persist_ui_state()
+
+    def _add_script(self):
+        """弹出新增脚本对话框，确认后把脚本追加到列表底部并持久化"""
+        existing = [it.display_name for it in self.script_items]
+        dialog = AddScriptDialog(existing_names=existing, parent=self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        self._append_script(dialog.result_data)
+
+    def _append_script(self, script_data):
+        """把新脚本条目追加到 config 数据与 UI 列表底部并持久化（无对话框，供测试复用）"""
+        self.all_config_data['script_list'].append(script_data)
+
+        name = script_data['display_name']
+        dungeon_cfg = self.dungeon_map.get(name)  # optional: 自定义脚本通常没有副本配置
+        options, seq_map, show_seq = parse_dungeon_config(dungeon_cfg)
+        item = ScriptItem(script_data, dungeon_options=options if options else None,
+                          sequence_options_map=seq_map if show_seq else None,
+                          show_sequence=show_seq, saved_state=None,
+                          reorder_callback=self._reorder_scripts,
+                          delete_callback=self._delete_script)
+        item.set_state_callback(self._persist_ui_state)
+        self.script_items.append(item)
+
+        self._relayout_script_widgets()
         self._save_script_order()
         self._persist_ui_state()
 
