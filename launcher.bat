@@ -27,7 +27,6 @@ if exist "%env_script%" (
 )
 
 :: 模块启动，等价 src/launcher.py → 模块名 src.launcher
-:: %* 透传参数（如 --no-set-config 计划任务模式）
 python -m src.launcher %*
 
 endlocal

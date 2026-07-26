@@ -16,7 +16,7 @@ OneDragon-Helper 是**多游戏自动化脚本调度器 + PySide6 GUI 启动器*
 ## 3. 目录结构
 
 ```
-src/launcher.py            # 薄入口（parse_args / run_direct / main），launcher.bat 用 python -m src.launcher
+src/launcher.py            # 薄入口（need_config_workflow / config_workflow / main），launcher.bat 用 python -m src.launcher
 src/gui/                    # GUI 包（依赖单向：main_window → controls/widgets/dialogs/state/runner；widgets → dialogs；controls 仅依赖 PySide6）
   controls.py               # 共享按钮工厂：make_pill_button / make_secondary_button / make_icon_button（集中 QSS，避免重复）
   state.py                  # load_ui_state / save_ui_state（gui_state.json）+ get_week_num
@@ -30,7 +30,7 @@ src/config/
   subscript.py              # config 读写基础设施（_CONFIG_REL_PATHS / _TEMPLATE_PATHS / load/save/template）
   dungeon_config.py         # dungeon_list.yml 解析（一级/二级副本）
   bgi.py                    # copy_BGI_User（整体复制，dirs_exist_ok=True）
-src/python_script/          # python 脚本（mute/shutdown/unmute/collect_log 等，由 ScriptChainer 调用；不 import 任何项目模块，可独立运行）
+src/python_script/          # python 脚本（mute/shutdown/unmute/collect_log/wait_until_0410 等，由 ScriptChainer 调用；不 import 任何项目模块，可独立运行）
 config/                     # config.example.yml / config.yml / dungeon_list.yml / weekly_timeouts.yml / gui_state.json / 各 init 模板 / BGI_User
 tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tests.bat  env.bat  uv.lock
 ```
@@ -67,13 +67,13 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 > 未激活环境是最常见的「本地能跑、CI 挂」或 `ImportError` 根因——**改代码、跑测试、跑 lint 前务必先激活**。
 
 - 本地（在已激活 venv 中）：`cd <root> && export PYTHONPATH=src && python -m unittest discover -s tests -p "test*.py"`（Windows cmd 用 `set PYTHONPATH=src`）。`python -m` 把根目录加入 `sys.path`（`from src.config import ...` 可用），`PYTHONPATH=src` 让 `import launcher` 可用——**两种 import 风格并存**，必须在根目录且带 `PYTHONPATH=src` 跑。
-- 测试文件：配置适配器（`test_set_config.py` / `test_set_config_subclasses.py`）、`test_dungeon_config.py`、GUI 测试与源码一一对应（`test_launcher.py` 入口 / `test_gui_state.py` / `test_gui_widgets.py` / `test_gui_dialogs.py` / `test_gui_main_window.py`，开头均设 `QT_QPA_PLATFORM=offscreen`）、`test_subscript.py` / `test_bgi.py` / `test_log_monitor.py` / `test_utils.py`。
+- 测试文件：配置适配器（`test_set_config.py` / `test_set_config_subclasses.py`）、`test_dungeon_config.py`、GUI 测试与源码一一对应（`test_launcher.py` 入口 / `test_gui_state.py` / `test_gui_widgets.py` / `test_gui_dialogs.py` / `test_gui_main_window.py`，开头均设 `QT_QPA_PLATFORM=offscreen`）、`test_subscript.py` / `test_bgi.py` / `test_log_monitor.py` / `test_utils.py` / `test_wait_until_0410.py`（仅标准库，无需 offscreen）。
 - 隔离原则：文件 I/O 一律 mock；不依赖真实 config 文件或游戏脚本路径。
 
 ## 7. 常见任务
 
 - **启动 GUI**：`launcher.bat`（提权+加载环境），或 `python -m src.launcher`。
-- **计划任务（无界面直接运行）**：`launcher.bat --no-set-config`（或 `python -m src.launcher --no-set-config`）。跳过 GUI 与 `set_config`，`enabled` 为纯内存态、默认全开，故**直接运行全部脚本**（生成并运行 ScriptChainer 配置）；退出码透传给调用方，便于计划任务判断成败。
+- **每日定时运行**：在 `config.yml` 的 `script_list` 中加入 `等待4:10` 脚本项（置于首位，对应 `src/python_script/wait_until_0410.py`），它会在启动时阻塞至下一个 04:10 再继续后续脚本；通过 GUI「运行」或正常 chain 触发即可灵活管理（可在 GUI 里开关/排序）。该脚本 `run_timeout_seconds` 设 90000（25h）以覆盖最长约 24h 的等待。日志落盘到 `logs/onedragon_helper.log`。
 - **首次初始化**：删 `config/config.yml` 后启动（`launcher.main`）即触发 `config_workflow()`。
 - **日志汇总**：`python -m src.python_script.collect_log`。
 - **加依赖**：改 `pyproject.toml` → `uv sync`（同步 `uv.lock`）。
