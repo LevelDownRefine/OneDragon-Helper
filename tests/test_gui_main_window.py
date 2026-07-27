@@ -194,26 +194,21 @@ class TestAddScript(unittest.TestCase):
         self.assertGreaterEqual(win.scroll_layout.indexOf(new_item), 0)
 
     def test_add_script_cancel_does_nothing(self):
-        """对话框取消（非 Accepted）时不追加任何脚本"""
+        """文件选择取消（空路径）时不追加任何脚本"""
         win = _make_window(script_count=2, disable_persist=True)
-        fake_dialog = MagicMock()
-        fake_dialog.exec.return_value = QDialog.Rejected
-        with patch('src.gui.main_window.AddScriptDialog', return_value=fake_dialog):
+        with patch('src.gui.main_window.QFileDialog.getOpenFileName', return_value=("", "")):
             win._add_script()
         names = [it.display_name for it in win.script_items]
         self.assertEqual(names, ['脚本0', '脚本1'])
 
     def test_add_script_confirm_appends(self):
-        """对话框确认时用 result_data 追加脚本"""
+        """文件选择确认后自动以文件名作为显示名称追加脚本"""
         win = _make_window(script_count=2, disable_persist=True)
-        entry = default_script_entry('确认脚本', 'external', 'C:/y.exe', 50)
-        fake_dialog = MagicMock()
-        fake_dialog.exec.return_value = QDialog.Accepted
-        fake_dialog.result_data = entry
-        with patch('src.gui.main_window.AddScriptDialog', return_value=fake_dialog):
+        with patch('src.gui.main_window.QFileDialog.getOpenFileName', return_value=("C:/y.exe", "")):
             win._add_script()
         names = [it.display_name for it in win.script_items]
-        self.assertEqual(names, ['脚本0', '脚本1', '确认脚本'])
+        self.assertEqual(names, ['脚本0', '脚本1', 'y'])
+        self.assertEqual(win.script_items[-1].script_type, 'external')
 
 
 class TestConfigSaveSync(unittest.TestCase):

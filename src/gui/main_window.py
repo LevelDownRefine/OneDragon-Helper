@@ -6,7 +6,7 @@ import yaml
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QDialog,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QMainWindow,
@@ -24,7 +24,7 @@ from src.config.dungeon_config import (
 )
 from src.config.set_config import set_config
 from src.gui.controls import make_pill_button
-from src.gui.dialogs import AddScriptDialog
+from src.gui.dialogs import default_script_entry
 from src.gui.runner import ScriptChainRunner
 from src.gui.state import (
     apply_weekly_timeout,
@@ -261,12 +261,36 @@ class MainWindow(QMainWindow):
         self._persist_ui_state()
 
     def _add_script(self):
-        """弹出新增脚本对话框，确认后把脚本追加到列表底部并持久化"""
-        existing = [it.display_name for it in self.script_items]
-        dialog = AddScriptDialog(existing_names=existing, parent=self)
-        if dialog.exec() != QDialog.Accepted:
+        """弹出文件选择框，选完后自动以文件名作为显示名称追加到列表底部并持久化。
+
+        无需额外弹窗填写字段，默认字段（check_done / kill_game_after_done 等）
+        已对齐 ScriptChainer 校验规则；用户后续可点击「配置」按钮自行调整。
+        """
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "选择脚本文件", "",
+            "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
+        )
+        if not file_path:
             return
-        self._append_script(dialog.result_data)
+
+        file_path = os.path.normpath(file_path)
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+
+        existing = {it.display_name for it in self.script_items}
+        display_name = base_name
+        suffix = 1
+        while display_name in existing:
+            display_name = f"{base_name}_{suffix}"
+            suffix += 1
+
+        script_type = "python" if file_path.lower().endswith(".py") else "external"
+        script_data = default_script_entry(
+            display_name=display_name,
+            script_type=script_type,
+            script_path=file_path,
+            run_timeout_seconds=1800,
+        )
+        self._append_script(script_data)
 
     def _append_script(self, script_data):
         """把新脚本条目追加到 config 数据与 UI 列表底部并持久化"""

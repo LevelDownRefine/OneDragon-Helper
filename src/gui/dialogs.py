@@ -2,8 +2,10 @@
 import os
 
 import yaml
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -44,9 +46,9 @@ def default_script_entry(display_name, script_type, script_path, run_timeout_sec
         "game_process_name": "",
         "launcher_mode": False,
         "run_timeout_seconds": run_timeout_seconds,
-        "check_done": "",
+        "check_done": "script_closed",
         "kill_script_after_done": True,
-        "kill_game_after_done": True,
+        "kill_game_after_done": False,
         "script_arguments": script_arguments,
         "notify_start": False,
         "notify_done": False,
@@ -81,13 +83,12 @@ class SingleScriptConfigDialog(QDialog):
     def __init__(self, script_name, script_path="", parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {script_name}")
-        self.resize(680, 280)
+        self.resize(720, 420)
         self.setStyleSheet("background-color: #f7f8fa;")
 
         self.script_name = script_name
         self.script_path = script_path
-        self._result_path = script_path
-        self._result_timeouts = []
+        self._script_data = {}  # 从 config.yml 读到的本脚本完整数据
 
         self.init_ui()
         self.load_data()
@@ -95,127 +96,222 @@ class SingleScriptConfigDialog(QDialog):
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
+        layout.setSpacing(14)
 
+        # ---- 脚本路径 ----
         row1 = QHBoxLayout()
         row1.setSpacing(8)
-
         label = QLabel("脚本路径:")
         label.setFont(QFont("Microsoft YaHei", 10))
         label.setFixedWidth(self.LABEL_WIDTH)
         label.setStyleSheet("color: #303030;")
-
         self.path_input = QLineEdit(self)
         self.path_input.setFont(QFont("Microsoft YaHei", 10))
         self.path_input.setText(self.script_path)
-        self.path_input.setStyleSheet("""
-            QLineEdit {
-                border: 1px solid #d0d0d0;
-                border-radius: 6px;
-                padding: 4px 8px;
-                background: white;
-                font-size: 10px;
-            }
-            QLineEdit:focus {
-                border-color: #0078D4;
-                outline: none;
-            }
-        """)
-
+        self.path_input.setStyleSheet(self._LINEEDIT_STYLE)
         self.browse_btn = make_secondary_button("选择")
         self.browse_btn.clicked.connect(self.browse_file)
-
         row1.addWidget(label)
         row1.addWidget(self.path_input)
         row1.addWidget(self.browse_btn)
         layout.addLayout(row1)
 
+        # ---- 脚本类型 + 启动参数 ----
         row2 = QHBoxLayout()
         row2.setSpacing(8)
+        type_label = QLabel("脚本类型:")
+        type_label.setFont(QFont("Microsoft YaHei", 10))
+        type_label.setFixedWidth(self.LABEL_WIDTH)
+        type_label.setStyleSheet("color: #303030;")
+        self.type_combo = QComboBox(self)
+        self.type_combo.addItems(["external", "python"])
+        self.type_combo.setFont(QFont("Microsoft YaHei", 10))
+        self.type_combo.setFixedWidth(120)
+        self.type_combo.setStyleSheet(self._COMBO_STYLE)
+        row2.addWidget(type_label)
+        row2.addWidget(self.type_combo)
 
-        timeout_label = QLabel("超时(秒):")
+        args_label = QLabel("启动参数:")
+        args_label.setFont(QFont("Microsoft YaHei", 10))
+        args_label.setStyleSheet("color: #303030;")
+        self.args_input = QLineEdit(self)
+        self.args_input.setFont(QFont("Microsoft YaHei", 10))
+        self.args_input.setPlaceholderText("可选，传给脚本的命令行参数")
+        self.args_input.setStyleSheet(self._LINEEDIT_STYLE)
+        row2.addWidget(args_label)
+        row2.addWidget(self.args_input, 1)
+        layout.addLayout(row2)
+
+        # ---- 完成检测方式 ----
+        row3 = QHBoxLayout()
+        row3.setSpacing(8)
+        check_label = QLabel("完成检测:")
+        check_label.setFont(QFont("Microsoft YaHei", 10))
+        check_label.setFixedWidth(self.LABEL_WIDTH)
+        check_label.setStyleSheet("color: #303030;")
+        self.check_done_combo = QComboBox(self)
+        self.check_done_combo.addItems([
+            "game_or_script_closed",
+            "script_closed",
+            "game_closed",
+        ])
+        self.check_done_combo.setFont(QFont("Microsoft YaHei", 10))
+        self.check_done_combo.setFixedWidth(220)
+        self.check_done_combo.setStyleSheet(self._COMBO_STYLE)
+        row3.addWidget(check_label)
+        row3.addWidget(self.check_done_combo)
+        row3.addStretch()
+        layout.addLayout(row3)
+
+        # ---- 复选框行 ----
+        row4 = QHBoxLayout()
+        row4.setSpacing(24)
+        self.kill_script_cb = QCheckBox("运行结束后关闭脚本", self)
+        self.kill_script_cb.setFont(QFont("Microsoft YaHei", 10))
+        self.kill_script_cb.setStyleSheet("color: #303030;")
+        self.kill_game_cb = QCheckBox("运行结束后关闭游戏", self)
+        self.kill_game_cb.setFont(QFont("Microsoft YaHei", 10))
+        self.kill_game_cb.setStyleSheet("color: #303030;")
+        self.kill_game_cb.stateChanged.connect(self._on_kill_game_changed)
+        row4.addWidget(self.kill_script_cb)
+        row4.addWidget(self.kill_game_cb)
+        row4.addStretch()
+        layout.addLayout(row4)
+
+        # ---- 游戏进程名称 ----
+        row5 = QHBoxLayout()
+        row5.setSpacing(8)
+        game_label = QLabel("游戏进程:")
+        game_label.setFont(QFont("Microsoft YaHei", 10))
+        game_label.setFixedWidth(self.LABEL_WIDTH)
+        game_label.setStyleSheet("color: #303030;")
+        self.game_process_input = QLineEdit(self)
+        self.game_process_input.setFont(QFont("Microsoft YaHei", 10))
+        self.game_process_input.setPlaceholderText("关闭游戏时必填，例如 YuanShen.exe")
+        self.game_process_input.setStyleSheet(self._LINEEDIT_STYLE)
+        self.game_process_input.setEnabled(False)
+        row5.addWidget(game_label)
+        row5.addWidget(self.game_process_input)
+        layout.addLayout(row5)
+
+        # ---- 每周超时 ----
+        row6 = QHBoxLayout()
+        row6.setSpacing(8)
+        timeout_label = QLabel("每周超时:")
         timeout_label.setFont(QFont("Microsoft YaHei", 10))
         timeout_label.setFixedWidth(self.LABEL_WIDTH)
         timeout_label.setStyleSheet("color: #303030;")
-        row2.addWidget(timeout_label)
-
+        row6.addWidget(timeout_label)
         day_names = ["一", "二", "三", "四", "五", "六", "日"]
         self.timeout_inputs = []
-
         for day_idx in range(7):
             day_label = QLabel(f"周{day_names[day_idx]}")
             day_label.setFont(QFont("Microsoft YaHei", 9))
             day_label.setStyleSheet("color: #606060;")
             day_label.setFixedWidth(30)
-
             lineedit = QLineEdit(self)
             lineedit.setFont(QFont("Microsoft YaHei", 10))
             lineedit.setValidator(QIntValidator(0, 86400, self))
-            lineedit.setFixedWidth(70)
-            lineedit.setStyleSheet("""
-                QLineEdit {
-                    border: 1px solid #d0d0d0;
-                    border-radius: 4px;
-                    padding: 3px 6px;
-                    background: white;
-                    font-size: 9px;
-                    text-align: center;
-                }
-                QLineEdit:focus {
-                    border-color: #0078D4;
-                    outline: none;
-                }
-            """)
-
-            row2.addWidget(day_label)
-            row2.addWidget(lineedit)
+            lineedit.setFixedWidth(60)
+            lineedit.setStyleSheet(self._TIMEOUT_INPUT_STYLE)
+            row6.addWidget(day_label)
+            row6.addWidget(lineedit)
             self.timeout_inputs.append(lineedit)
+        row6.addStretch()
+        layout.addLayout(row6)
 
-        row2.addStretch()
-        layout.addLayout(row2)
-
+        # ---- 按钮 ----
         btn_layout = QHBoxLayout()
         self.save_btn = QPushButton("保存")
         self.save_btn.setFixedHeight(32)
         self.save_btn.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
-        self.save_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #4f8cff, stop:1 #3b82f6);
-                color: white;
-                border: none;
-                border-radius: 6px;
-                padding: 0 24px;
-                font-size: 10px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #5b96ff, stop:1 #2f6fed);
-            }
-            QPushButton:pressed { background: #2f6fed; }
-        """)
+        self.save_btn.setStyleSheet(self._SAVE_BTN_STYLE)
         self.save_btn.clicked.connect(self.save_data)
-
         cancel_btn = QPushButton("取消")
         cancel_btn.setFixedHeight(32)
         cancel_btn.setFont(QFont("Microsoft YaHei", 10))
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                border: 1px solid #d0d0d0;
-                border-radius: 6px;
-                background: white;
-                font-size: 10px;
-                color: #303030;
-                padding: 0 24px;
-            }
-            QPushButton:hover { border-color: #3b82f6; color: #3b82f6; }
-        """)
+        cancel_btn.setStyleSheet(self._CANCEL_BTN_STYLE)
         cancel_btn.clicked.connect(self.reject)
-
         btn_layout.addStretch()
         btn_layout.addWidget(cancel_btn)
         btn_layout.addWidget(self.save_btn)
         layout.addLayout(btn_layout)
+
+    _LINEEDIT_STYLE = """
+        QLineEdit {
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            padding: 4px 8px;
+            background: white;
+            font-size: 10px;
+        }
+        QLineEdit:focus { border-color: #0078D4; outline: none; }
+    """
+    _COMBO_STYLE = """
+        QComboBox {
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            padding: 2px 8px;
+            background: white;
+            font-size: 10px;
+            color: #303030;
+        }
+        QComboBox:hover { border-color: #a0a0a0; }
+        QComboBox::drop-down { border: none; width: 20px; }
+    """
+    _TIMEOUT_INPUT_STYLE = """
+        QLineEdit {
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            padding: 3px 6px;
+            background: white;
+            font-size: 9px;
+            text-align: center;
+        }
+        QLineEdit:focus { border-color: #0078D4; outline: none; }
+    """
+    _SAVE_BTN_STYLE = """
+        QPushButton {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                        stop:0 #4f8cff, stop:1 #3b82f6);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 0 24px;
+            font-size: 10px;
+        }
+        QPushButton:hover {
+            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                        stop:0 #5b96ff, stop:1 #2f6fed);
+        }
+        QPushButton:pressed { background: #2f6fed; }
+    """
+    _CANCEL_BTN_STYLE = """
+        QPushButton {
+            border: 1px solid #d0d0d0;
+            border-radius: 6px;
+            background: white;
+            font-size: 10px;
+            color: #303030;
+            padding: 0 24px;
+        }
+        QPushButton:hover { border-color: #3b82f6; color: #3b82f6; }
+    """
+
+    def _on_kill_game_changed(self, state):
+        self.game_process_input.setEnabled(state == Qt.Checked)
+
+    def _find_script_data(self) -> dict:
+        """从 config.yml 读取本脚本的完整数据字典；找不到返回空 dict。"""
+        config_path = get_config_yml_path_under_root()
+        if not os.path.exists(config_path):
+            return {}
+        with open(config_path, encoding='utf-8') as f:
+            config_data = yaml.safe_load(f) or {}
+        for script in config_data.get('script_list', []):
+            if script.get('display_name') == self.script_name:
+                return script
+        return {}
 
     def _default_timeout(self) -> int:
         """从 config.yml 读取本脚本的 run_timeout_seconds，作为周超时未配置时的默认填充值。"""
@@ -230,16 +326,31 @@ class SingleScriptConfigDialog(QDialog):
         return 0
 
     def load_data(self):
+        self._script_data = self._find_script_data()
+
+        # 脚本类型
+        self.type_combo.setCurrentText(self._script_data.get('script_type', 'external'))
+        # 启动参数
+        self.args_input.setText(self._script_data.get('script_arguments', ''))
+        # 完成检测
+        self.check_done_combo.setCurrentText(
+            self._script_data.get('check_done', 'script_closed')
+        )
+        # 关闭脚本 / 关闭游戏
+        self.kill_script_cb.setChecked(self._script_data.get('kill_script_after_done', True))
+        self.kill_game_cb.setChecked(self._script_data.get('kill_game_after_done', False))
+        self.game_process_input.setText(self._script_data.get('game_process_name', ''))
+        self.game_process_input.setEnabled(self.kill_game_cb.isChecked())
+
+        # 每周超时
         weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
         weekly_timeouts_map = {}
         if os.path.exists(weekly_timeouts_path):
             with open(weekly_timeouts_path, encoding='utf-8') as f:
                 weekly_timeouts_map = yaml.safe_load(f) or {}
-
         timeouts = compute_weekly_timeout_inputs(
             self.script_name, weekly_timeouts_map, self._default_timeout()
         )
-
         for idx, le in enumerate(self.timeout_inputs):
             le.setText(str(timeouts[idx]))
 
@@ -251,6 +362,10 @@ class SingleScriptConfigDialog(QDialog):
         if not path_val:
             QMessageBox.warning(self, "警告", "脚本路径为空，可能会导致运行问题！")
             return
+
+        # 若勾选了关闭游戏但未填写进程名，给出提示但不阻断（与 ScriptChainer 行为一致）
+        if self.kill_game_cb.isChecked() and not self.game_process_input.text().strip():
+            QMessageBox.warning(self, "警告", "勾选了「运行结束后关闭游戏」但未填写游戏进程名，\nScriptChainer 运行时会报「游戏进程名称为空」而跳过该脚本。")
 
         timeouts = []
         for le in self.timeout_inputs:
@@ -264,6 +379,12 @@ class SingleScriptConfigDialog(QDialog):
         for script in config_data.get('script_list', []):
             if script.get('display_name') == self.script_name:
                 script['script_path'] = path_val
+                script['script_type'] = self.type_combo.currentText()
+                script['script_arguments'] = self.args_input.text().strip()
+                script['check_done'] = self.check_done_combo.currentText()
+                script['kill_script_after_done'] = self.kill_script_cb.isChecked()
+                script['kill_game_after_done'] = self.kill_game_cb.isChecked()
+                script['game_process_name'] = self.game_process_input.text().strip()
                 break
 
         with open(config_path, 'w', encoding='utf-8') as f:

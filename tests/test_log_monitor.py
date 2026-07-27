@@ -137,10 +137,10 @@ class TestCollectLogSetup(unittest.TestCase):
     """测试 collect_log 的日志落盘配置（独立、仅标准库）。"""
 
     def test_get_root_dir_points_to_project_root(self):
-        """_get_root_dir 向上 3 层应落在项目根（含 config/config.yml 与 src/python_script）。"""
+        """_get_root_dir 向上 3 层应落在项目根（含 config/config.example.yml 与 src/python_script）。"""
         root = collect_log._get_root_dir()
         self.assertTrue(os.path.isdir(os.path.join(root, "src", "python_script")))
-        self.assertTrue(os.path.isfile(os.path.join(root, "config", "config.yml")))
+        self.assertTrue(os.path.isfile(os.path.join(root, "config", "config.example.yml")))
 
     def test_setup_logging_writes_to_logs_collect_log(self):
         """_setup_logging 应把日志写入 <root>/logs/collect_log.log（用临时根避免污染真实 logs）。"""
