@@ -288,13 +288,29 @@ class MainWindow(QMainWindow):
             display_name=display_name,
             script_type=script_type,
             script_path=file_path,
-            run_timeout_seconds=1800,
         )
         self._append_script(script_data)
 
     def _append_script(self, script_data):
-        """把新脚本条目追加到 config 数据与 UI 列表底部并持久化"""
+        """把新脚本条目追加到 config 数据与 UI 列表底部并持久化。
+
+        同时自动在 weekly_timeouts.yml 里为该脚本创建 7 格默认超时条目，
+        使首次运行即可使用统一的 DEFAULT_RUN_TIMEOUT，无需用户手动配置。
+        """
         self.all_config_data['script_list'].append(script_data)
+
+        # 自动创建 weekly_timeouts 默认条目
+        from src.gui.state import DEFAULT_RUN_TIMEOUT
+        weekly_path = get_weekly_timeouts_yml_path_under_root()
+        weekly_map = {}
+        if os.path.exists(weekly_path):
+            with open(weekly_path, encoding='utf-8') as f:
+                weekly_map = yaml.safe_load(f) or {}
+        name = script_data['display_name']
+        if name not in weekly_map:
+            weekly_map[name] = [DEFAULT_RUN_TIMEOUT] * 7
+            with open(weekly_path, 'w', encoding='utf-8') as f:
+                yaml.dump(weekly_map, f, allow_unicode=True, sort_keys=False)
 
         item = self._create_script_item(script_data, None)
         self.script_items.append(item)

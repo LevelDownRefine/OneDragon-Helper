@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.gui.controls import make_secondary_button
+from src.gui.state import DEFAULT_RUN_TIMEOUT
 from src.utils import (
     get_config_yml_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
@@ -34,7 +35,7 @@ def _browse_script_file(parent, line_edit):
         line_edit.setText(os.path.normpath(file_path))
 
 
-def default_script_entry(display_name, script_type, script_path, run_timeout_seconds,
+def default_script_entry(display_name, script_type, script_path,
                          script_arguments=""):
     """构造一个 config.yml script_list 条目：核心字段由参数指定，其余用默认值补全。"""
     return {
@@ -45,7 +46,6 @@ def default_script_entry(display_name, script_type, script_path, run_timeout_sec
         "script_process_name": [],
         "game_process_name": "",
         "launcher_mode": False,
-        "run_timeout_seconds": run_timeout_seconds,
         "check_done": "script_closed",
         "kill_script_after_done": True,
         "kill_game_after_done": False,
@@ -211,7 +211,7 @@ class SingleScriptConfigDialog(QDialog):
             day_label.setFixedWidth(30)
             lineedit = QLineEdit(self)
             lineedit.setFont(QFont("Microsoft YaHei", 10))
-            lineedit.setValidator(QIntValidator(0, 86400, self))
+            lineedit.setValidator(QIntValidator(10, 86400, self))
             lineedit.setFixedWidth(60)
             lineedit.setStyleSheet(self._TIMEOUT_INPUT_STYLE)
             row6.addWidget(day_label)
@@ -313,18 +313,6 @@ class SingleScriptConfigDialog(QDialog):
                 return script
         return {}
 
-    def _default_timeout(self) -> int:
-        """从 config.yml 读取本脚本的 run_timeout_seconds，作为周超时未配置时的默认填充值。"""
-        config_path = get_config_yml_path_under_root()
-        if not os.path.exists(config_path):
-            return 0
-        with open(config_path, encoding='utf-8') as f:
-            config_data = yaml.safe_load(f) or {}
-        for script in config_data.get('script_list', []):
-            if script.get('display_name') == self.script_name:
-                return int(script.get('run_timeout_seconds', 0))
-        return 0
-
     def load_data(self):
         self._script_data = self._find_script_data()
 
@@ -349,7 +337,7 @@ class SingleScriptConfigDialog(QDialog):
             with open(weekly_timeouts_path, encoding='utf-8') as f:
                 weekly_timeouts_map = yaml.safe_load(f) or {}
         timeouts = compute_weekly_timeout_inputs(
-            self.script_name, weekly_timeouts_map, self._default_timeout()
+            self.script_name, weekly_timeouts_map, DEFAULT_RUN_TIMEOUT
         )
         for idx, le in enumerate(self.timeout_inputs):
             le.setText(str(timeouts[idx]))
@@ -370,7 +358,8 @@ class SingleScriptConfigDialog(QDialog):
         timeouts = []
         for le in self.timeout_inputs:
             text = le.text().strip()
-            timeouts.append(int(text) if text else 0)
+            val = int(text) if text else DEFAULT_RUN_TIMEOUT
+            timeouts.append(max(val, 10))
 
         config_path = get_config_yml_path_under_root()
         with open(config_path, encoding='utf-8') as f:
@@ -488,20 +477,6 @@ class AddScriptDialog(QDialog):
         path_row.addWidget(browse_btn)
         layout.addLayout(path_row)
 
-        # 超时
-        timeout_row = QHBoxLayout()
-        timeout_row.setSpacing(8)
-        self.timeout_input = QLineEdit(self)
-        self.timeout_input.setFont(QFont("Microsoft YaHei", 10))
-        self.timeout_input.setValidator(QIntValidator(0, 86400, self))
-        self.timeout_input.setText("1800")
-        self.timeout_input.setFixedWidth(120)
-        self.timeout_input.setStyleSheet(self._INPUT_STYLE)
-        timeout_row.addWidget(self._make_label("超时(秒):"))
-        timeout_row.addWidget(self.timeout_input)
-        timeout_row.addStretch()
-        layout.addLayout(timeout_row)
-
         # 启动参数（可选）
         args_row = QHBoxLayout()
         args_row.setSpacing(8)
@@ -571,14 +546,10 @@ class AddScriptDialog(QDialog):
             QMessageBox.warning(self, "警告", "脚本路径不能为空！")
             return
 
-        timeout_text = self.timeout_input.text().strip()
-        timeout = int(timeout_text) if timeout_text else 0
-
         self.result_data = default_script_entry(
             display_name=name,
             script_type=self.type_combo.currentText(),
             script_path=path_val,
-            run_timeout_seconds=timeout,
             script_arguments=self.args_input.text().strip(),
         )
         self.accept()

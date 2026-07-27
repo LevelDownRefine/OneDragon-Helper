@@ -30,17 +30,19 @@ def get_week_num() -> int:
     return (datetime.now() - timedelta(hours=4)).weekday()
 
 
-def apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
-    """若该脚本在本周有完整 7 天超时配置，则就地覆盖 run_timeout_seconds。
+DEFAULT_RUN_TIMEOUT = 3600
+"""脚本运行默认超时秒数。当 weekly_timeouts.yml 无条目或不足 7 格时作为 fallback。"""
 
-    仅当 weekly_timeouts 中存在且为 7 个值才覆盖，否则保持 config.yml 原值。
-    单日超时为 0 视为「不覆盖」：ScriptChainer 对 run_timeout_seconds<=0 无豁免
-    （script_runner.py:410 为 now - start_time > run_timeout_seconds，0 即立即判超时杀掉），
-    故 0 必须保留 config.yml 原值，避免把脚本秒杀。
+
+def apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
+    """根据 weekly_timeouts.yml 就地设置 script['run_timeout_seconds']。
+
+    - 有完整 7 格 → 取当天值，且不低于 10（避免 0 秒杀脚本）。
+    - 无条目 / 不足 7 格 → fallback 到 DEFAULT_RUN_TIMEOUT。
     """
     assert 'display_name' in script, "[state] script_list 条目缺少 display_name 字段"
     timeouts = weekly_timeouts.get(script['display_name'])
     if timeouts and len(timeouts) == 7:
-        week_value = timeouts[get_week_num()]
-        if week_value > 0:
-            script['run_timeout_seconds'] = week_value
+        script['run_timeout_seconds'] = max(timeouts[get_week_num()], 10)
+    else:
+        script['run_timeout_seconds'] = DEFAULT_RUN_TIMEOUT

@@ -27,20 +27,19 @@ class TestDefaultScriptEntry(unittest.TestCase):
 
     def test_default_script_entry_has_all_fields(self):
         """default_script_entry 覆盖 config.yml 全部字段，核心字段用参数值"""
-        entry = default_script_entry('崩坏3', 'python', 'C:/a/b.py', 300)
+        entry = default_script_entry('崩坏3', 'python', 'C:/a/b.py')
         self.assertEqual(entry['display_name'], '崩坏3')
         self.assertEqual(entry['script_type'], 'python')
         self.assertEqual(entry['script_path'], 'C:/a/b.py')
-        self.assertEqual(entry['run_timeout_seconds'], 300)
         # 关键默认字段
         self.assertEqual(entry['script_process_name'], [])
         self.assertEqual(entry['kill_script_after_done'], True)
         self.assertEqual(entry['no_log_max_retries'], 3)
-        # 与真实条目字段集合一致
+        # 与真实条目字段集合一致（无 run_timeout_seconds）
         expected_keys = {
             'display_name', 'game_label', 'script_type', 'script_path',
             'script_process_name', 'game_process_name', 'launcher_mode',
-            'run_timeout_seconds', 'check_done', 'kill_script_after_done',
+            'check_done', 'kill_script_after_done',
             'kill_game_after_done', 'script_arguments', 'notify_start',
             'notify_done', 'notify_log_interval', 'attach_direction',
             'no_log_timeout_seconds', 'no_log_max_retries',
@@ -57,14 +56,12 @@ class TestAddScriptDialog(unittest.TestCase):
         dlg.name_input.setText('新脚本')
         dlg.type_combo.setCurrentText('python')
         dlg.path_input.setText('C:/foo/bar.py')
-        dlg.timeout_input.setText('600')
         with patch.object(dlg, 'accept') as acc:
             dlg.save_data()
         self.assertIsNotNone(dlg.result_data)
         self.assertEqual(dlg.result_data['display_name'], '新脚本')
         self.assertEqual(dlg.result_data['script_type'], 'python')
         self.assertEqual(dlg.result_data['script_path'], 'C:/foo/bar.py')
-        self.assertEqual(dlg.result_data['run_timeout_seconds'], 600)
         self.assertEqual(dlg.result_data['script_arguments'], '')
         acc.assert_called_once()
 
@@ -140,38 +137,27 @@ class TestComputeWeeklyTimeoutInputs(unittest.TestCase):
 
 
 class TestSingleScriptConfigDialogLoad(unittest.TestCase):
-    """测试 SingleScriptConfigDialog.load_data 从 run_timeout_seconds 取默认值。"""
+    """测试 SingleScriptConfigDialog.load_data 默认值行为。"""
 
-    def _make_files(self, script_list, weekly_map):
+    def _make_weekly_file(self, weekly_map):
         d = tempfile.mkdtemp()
-        cfg = os.path.join(d, 'config.yml')
         wt = os.path.join(d, 'weekly_timeouts.yml')
-        with open(cfg, 'w', encoding='utf-8') as f:
-            yaml.safe_dump({'script_list': script_list}, f, allow_unicode=True)
         with open(wt, 'w', encoding='utf-8') as f:
             yaml.safe_dump(weekly_map, f, allow_unicode=True)
-        return cfg, wt
+        return wt
 
-    def test_load_seeds_from_run_timeout_when_no_weekly_entry(self):
-        """weekly_timeouts 无该脚本条目时，7 格应显示 run_timeout_seconds（60）而非 0"""
-        cfg, wt = self._make_files(
-            [{'display_name': '日志分析', 'run_timeout_seconds': 60}],
-            {},
-        )
-        with patch('src.gui.dialogs.get_config_yml_path_under_root', return_value=cfg), \
-             patch('src.gui.dialogs.get_weekly_timeouts_yml_path_under_root', return_value=wt):
+    def test_load_seeds_from_default_when_no_weekly_entry(self):
+        """weekly_timeouts 无该脚本条目时，7 格应显示 DEFAULT_RUN_TIMEOUT（3600）"""
+        wt = self._make_weekly_file({})
+        with patch('src.gui.dialogs.get_weekly_timeouts_yml_path_under_root', return_value=wt):
             dlg = SingleScriptConfigDialog('日志分析', 'C:/x.py')
             values = [le.text() for le in dlg.timeout_inputs]
-        self.assertEqual(values, ['60'] * 7)
+        self.assertEqual(values, ['3600'] * 7)
 
     def test_load_uses_existing_weekly_entry(self):
-        """weekly_timeouts 已有条目时使用已有值，不被 run_timeout_seconds 覆盖"""
-        cfg, wt = self._make_files(
-            [{'display_name': '日志分析', 'run_timeout_seconds': 60}],
-            {'日志分析': [60, 60, 60, 60, 60, 60, 60]},
-        )
-        with patch('src.gui.dialogs.get_config_yml_path_under_root', return_value=cfg), \
-             patch('src.gui.dialogs.get_weekly_timeouts_yml_path_under_root', return_value=wt):
+        """weekly_timeouts 已有条目时使用已有值"""
+        wt = self._make_weekly_file({'日志分析': [60, 60, 60, 60, 60, 60, 60]})
+        with patch('src.gui.dialogs.get_weekly_timeouts_yml_path_under_root', return_value=wt):
             dlg = SingleScriptConfigDialog('日志分析', 'C:/x.py')
             values = [le.text() for le in dlg.timeout_inputs]
         self.assertEqual(values, ['60'] * 7)

@@ -175,7 +175,7 @@ class TestAddScript(unittest.TestCase):
         win = _make_window(script_count=2)  # 保留真实 _save_script_order
         win._persist_ui_state = lambda: None  # 隔离 gui_state.json
         captured = {}
-        entry = default_script_entry('新脚本', 'python', 'C:/x.py', 100)
+        entry = default_script_entry('新脚本', 'python', 'C:/x.py')
         with patch('src.gui.main_window.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
              patch('builtins.open', side_effect=_fake_open_capture(captured)):
             win._append_script(entry)
@@ -183,12 +183,11 @@ class TestAddScript(unittest.TestCase):
         names = [s['display_name'] for s in written['script_list']]
         self.assertEqual(names, ['脚本0', '脚本1', '新脚本'])
         self.assertEqual(written['script_list'][-1]['script_type'], 'python')
-        self.assertEqual(written['script_list'][-1]['run_timeout_seconds'], 100)
 
     def test_append_widget_added_to_layout(self):
         """追加后新脚本 widget 出现在滚动区布局中"""
         win = _make_window(script_count=2, disable_persist=True)
-        entry = default_script_entry('新脚本', 'external', 'C:/x.exe', 100)
+        entry = default_script_entry('新脚本', 'external', 'C:/x.exe')
         win._append_script(entry)
         new_item = win.script_items[-1]
         self.assertGreaterEqual(win.scroll_layout.indexOf(new_item), 0)

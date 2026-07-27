@@ -6,10 +6,9 @@ script_list:
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
-  run_timeout_seconds: 90000
-  check_done: ''
+  check_done: script_closed
   kill_script_after_done: true
-  kill_game_after_done: true
+  kill_game_after_done: false
   script_arguments: ''
   notify_start: false
   notify_done: false
@@ -24,10 +23,9 @@ script_list:
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
-  run_timeout_seconds: 10
-  check_done: ''
+  check_done: script_closed
   kill_script_after_done: true
-  kill_game_after_done: true
+  kill_game_after_done: false
   script_arguments: ''
   notify_start: false
   notify_done: false
@@ -43,7 +41,6 @@ script_list:
   - pythonw.exe
   game_process_name: Client-Win64-Shipping.exe
   launcher_mode: true
-  run_timeout_seconds: 1800
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -62,7 +59,6 @@ script_list:
   - pythonw.exe
   game_process_name: YuanShen.exe
   launcher_mode: false
-  run_timeout_seconds: 1600
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -81,7 +77,6 @@ script_list:
   - pythonw.exe
   game_process_name: Endfield.exe
   launcher_mode: true
-  run_timeout_seconds: 2400
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -101,7 +96,6 @@ script_list:
   - pythonw.exe
   game_process_name: ZenlessZoneZero.exe
   launcher_mode: true
-  run_timeout_seconds: 3600
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -119,7 +113,6 @@ script_list:
   script_process_name: []
   game_process_name: StarRail.exe
   launcher_mode: false
-  run_timeout_seconds: 3600
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -138,7 +131,6 @@ script_list:
   - pythonw.exe
   game_process_name: HTGame.exe
   launcher_mode: true
-  run_timeout_seconds: 1200
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -156,7 +148,6 @@ script_list:
   script_process_name: []
   game_process_name: MuMuNxDevice.exe
   launcher_mode: false
-  run_timeout_seconds: 3600
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
@@ -174,10 +165,9 @@ script_list:
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
-  run_timeout_seconds: 10
-  check_done: ''
+  check_done: script_closed
   kill_script_after_done: true
-  kill_game_after_done: true
+  kill_game_after_done: false
   script_arguments: ''
   notify_start: false
   notify_done: false
@@ -192,10 +182,9 @@ script_list:
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
-  run_timeout_seconds: 60
-  check_done: ''
+  check_done: script_closed
   kill_script_after_done: true
-  kill_game_after_done: true
+  kill_game_after_done: false
   script_arguments: ''
   notify_start: false
   notify_done: false
@@ -210,10 +199,9 @@ script_list:
   script_process_name: []
   game_process_name: ''
   launcher_mode: false
-  run_timeout_seconds: 10
-  check_done: ''
+  check_done: script_closed
   kill_script_after_done: true
-  kill_game_after_done: true
+  kill_game_after_done: false
   script_arguments: ''
   notify_start: false
   notify_done: false
