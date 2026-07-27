@@ -5,6 +5,7 @@
 
 import json
 import os
+import re
 
 import yaml
 
@@ -145,6 +146,21 @@ def save_config(script_display_name: str, data: dict | list) -> None:
             raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
 
+def _is_absolute_path(p: str) -> bool:
+    """跨平台判断路径是否为绝对路径。
+
+    除当前平台的 os.path.isabs 外，额外识别 Windows 风格绝对路径
+    （盘符路径 ``C:\\...`` 与 UNC ``\\\\...``）。这样在非 Windows 的 CI
+    上不会因为 os.path.isabs 不认盘符路径，而把 ``D:\\games\\x.exe``
+    误当成相对路径拼到项目根目录前面。
+    """
+    if os.path.isabs(p):
+        return True
+    if re.match(r'^[A-Za-z]:[\\/]', p):
+        return True
+    return p.startswith('\\\\') or p.startswith('//')
+
+
 def _resolve_relative_script_paths(config_data: dict) -> None:
     """
     将 script_list 中相对的 script_path 解析为基于项目根目录的绝对路径；
@@ -157,7 +173,7 @@ def _resolve_relative_script_paths(config_data: dict) -> None:
     root = get_root_dir()
     for script in config_data.get("script_list", []):
         script_path = script.get("script_path", "")
-        if script_path and not os.path.isabs(script_path):
+        if script_path and not _is_absolute_path(script_path):
             script["script_path"] = safe_path_join(root, script_path)
 
 
