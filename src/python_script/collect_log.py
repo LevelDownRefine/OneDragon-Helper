@@ -18,11 +18,57 @@ import os
 import sys
 import tempfile
 from datetime import datetime, timedelta
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 import yaml
 
 logger = logging.getLogger(__name__)
+
+
+def _get_root_dir() -> str:
+    """推导项目根目录（向上 3 层：src/python_script/collect_log.py → 项目根）。"""
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+_LOG_CONFIGURED = False
+
+
+def _setup_logging() -> None:
+    """独立配置日志：控制台 + logs/collect_log.log（按天轮转，保留 14 天）。
+
+    与 launcher 的 onedragon_helper.log 风格一致，但写成独立文件，
+    避免与主进程争用同一文件。幂等：重复调用不会重复添加 handler。
+    仅使用标准库，不 import 本项目任何模块。
+    """
+    global _LOG_CONFIGURED
+    if _LOG_CONFIGURED:
+        return
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    fmt = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    console = logging.StreamHandler(sys.stdout)
+    console.setFormatter(fmt)
+    root.addHandler(console)
+
+    log_dir = Path(_get_root_dir()) / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = TimedRotatingFileHandler(
+        str(log_dir / "collect_log.log"),
+        when="midnight",
+        backupCount=14,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(fmt)
+    root.addHandler(file_handler)
+
+    _LOG_CONFIGURED = True
 
 
 class ScriptLogStatus:
@@ -215,12 +261,12 @@ def parse_log(display_name: str, script_path: str = "") -> dict:
 
 
 def parse_logs() -> None:
+    _setup_logging()
     # Windows 控制台默认 GBK 编码，日志中可能含 emoji 等字符
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    config_path = Path(root_dir) / "config" / "config.yml"
+    config_path = Path(_get_root_dir()) / "config" / "config.yml"
     assert config_path.exists(), f"[log_monitor] config.yml 不存在: {config_path}"
 
     with open(config_path, encoding="utf-8") as f:
@@ -285,9 +331,4 @@ def parse_logs() -> None:
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
     parse_logs()
