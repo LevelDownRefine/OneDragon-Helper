@@ -57,6 +57,23 @@ def default_script_entry(display_name, script_type, script_path, run_timeout_sec
     }
 
 
+def compute_weekly_timeout_inputs(
+    script_name: str, weekly_timeouts_map: dict, default_timeout: int
+) -> list[int]:
+    """计算周超时弹窗 7 个输入框的初始值（纯函数，便于测试）。
+
+    - weekly_timeouts.yml 中已有该脚本条目：用其 7 个值（不足 7 格用 default_timeout 补齐）。
+    - 无条目：用 default_timeout 填满 7 格。default_timeout 一般取 config.yml 中该脚本的
+      run_timeout_seconds，避免首次打开弹窗时 7 格全 0、保存后把 weekly_timeouts 污染成全 0
+      （该问题曾多次出现）。
+    """
+    entry = weekly_timeouts_map.get(script_name)
+    timeouts = list(entry) if entry else [default_timeout] * 7
+    if len(timeouts) < 7:
+        timeouts.extend([default_timeout] * (7 - len(timeouts)))
+    return timeouts[:7]
+
+
 class SingleScriptConfigDialog(QDialog):
     """单个脚本的配置弹窗（路径选择 + 每周超时时间）"""
     LABEL_WIDTH = 80
@@ -200,6 +217,18 @@ class SingleScriptConfigDialog(QDialog):
         btn_layout.addWidget(self.save_btn)
         layout.addLayout(btn_layout)
 
+    def _default_timeout(self) -> int:
+        """从 config.yml 读取本脚本的 run_timeout_seconds，作为周超时未配置时的默认填充值。"""
+        config_path = get_config_yml_path_under_root()
+        if not os.path.exists(config_path):
+            return 0
+        with open(config_path, encoding='utf-8') as f:
+            config_data = yaml.safe_load(f) or {}
+        for script in config_data.get('script_list', []):
+            if script.get('display_name') == self.script_name:
+                return int(script.get('run_timeout_seconds', 0))
+        return 0
+
     def load_data(self):
         weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
         weekly_timeouts_map = {}
@@ -207,9 +236,9 @@ class SingleScriptConfigDialog(QDialog):
             with open(weekly_timeouts_path, encoding='utf-8') as f:
                 weekly_timeouts_map = yaml.safe_load(f) or {}
 
-        timeouts = weekly_timeouts_map.get(self.script_name, [0] * 7)
-        if len(timeouts) < 7:
-            timeouts.extend([0] * (7 - len(timeouts)))
+        timeouts = compute_weekly_timeout_inputs(
+            self.script_name, weekly_timeouts_map, self._default_timeout()
+        )
 
         for idx, le in enumerate(self.timeout_inputs):
             le.setText(str(timeouts[idx]))

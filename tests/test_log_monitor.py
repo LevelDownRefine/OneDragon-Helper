@@ -1,7 +1,11 @@
 """测试日志解析器"""
 
+import logging as _logging
+import os
+import tempfile
 import unittest
 
+from src.python_script import collect_log
 from src.python_script.collect_log import (
     BGILogParser,
     M7ALogParser,
@@ -127,6 +131,69 @@ ERROR: 另一个错误"""
         parser = ZZZLogParser()
         log_content = "[20:08:32.067] [one_dragon_context.py 471] [INFO]: 开始加载实例配置 1"
         self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
+
+
+class TestCollectLogSetup(unittest.TestCase):
+    """测试 collect_log 的日志落盘配置（独立、仅标准库）。"""
+
+    def test_get_root_dir_points_to_project_root(self):
+        """_get_root_dir 向上 3 层应落在项目根（含 config/config.yml 与 src/python_script）。"""
+        root = collect_log._get_root_dir()
+        self.assertTrue(os.path.isdir(os.path.join(root, "src", "python_script")))
+        self.assertTrue(os.path.isfile(os.path.join(root, "config", "config.yml")))
+
+    def test_setup_logging_writes_to_logs_collect_log(self):
+        """_setup_logging 应把日志写入 <root>/logs/collect_log.log（用临时根避免污染真实 logs）。"""
+        tmp = tempfile.mkdtemp()
+        orig = collect_log._get_root_dir
+        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
+        collect_log._LOG_CONFIGURED = False
+        before = {id(h) for h in _logging.getLogger().handlers}
+        try:
+            collect_log._setup_logging()
+            _logging.getLogger("__test_collect_log__").info("HELLO_FROM_TEST")
+            for h in _logging.getLogger().handlers:
+                h.flush()
+
+            log_file = os.path.join(tmp, "logs", "collect_log.log")
+            self.assertTrue(os.path.exists(log_file))
+            with open(log_file, encoding="utf-8") as f:
+                self.assertIn("HELLO_FROM_TEST", f.read())
+
+            targets = [getattr(h, "baseFilename", "") for h in _logging.getLogger().handlers]
+            self.assertTrue(any("collect_log.log" in t for t in targets))
+        finally:
+            after = {id(h) for h in _logging.getLogger().handlers}
+            for h in list(_logging.getLogger().handlers):
+                if id(h) in (after - before):
+                    _logging.getLogger().removeHandler(h)
+                    h.close()
+            collect_log._LOG_CONFIGURED = False
+            collect_log._get_root_dir = orig
+
+    def test_setup_logging_is_idempotent(self):
+        """重复调用 _setup_logging 不会重复添加指向 collect_log.log 的 handler。"""
+        tmp = tempfile.mkdtemp()
+        orig = collect_log._get_root_dir
+        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
+        collect_log._LOG_CONFIGURED = False
+        try:
+            collect_log._setup_logging()
+            collect_log._setup_logging()
+            count = sum(
+                1 for h in _logging.getLogger().handlers
+                if "collect_log.log" in getattr(h, "baseFilename", "")
+            )
+            self.assertEqual(count, 1)
+        finally:
+            before_ids = {id(h) for h in _logging.getLogger().handlers}
+            for h in list(_logging.getLogger().handlers):
+                if "collect_log.log" in getattr(h, "baseFilename", ""):
+                    _logging.getLogger().removeHandler(h)
+                    h.close()
+            collect_log._LOG_CONFIGURED = False
+            collect_log._get_root_dir = orig
+            _ = before_ids
 
 
 if __name__ == "__main__":
