@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 
 import yaml
 from PySide6.QtCore import QThread, Signal
@@ -26,17 +27,23 @@ def build_chain_command(chain_name: str, script_index: int) -> tuple[list[str], 
     return command, cwd
 
 
-def run_chain_command(chain_name: str, script_index: int) -> int:
-    """构造并同步运行一条 ScriptChainer 脚本命令，返回退出码。
+def run_chain_command(chain_name: str, script_index: int, block: bool = True) -> int:
+    """构造并运行一条 ScriptChainer 脚本命令，返回退出码。
 
     ``script_index`` 为要运行的脚本下标（必填，不允许 ``None``）；调用方
     （``ScriptChainRunner.run``）以 for 循环逐条传入，便于未来单条调试。
+    ``block=True``（默认）等待子进程结束并返回其退出码；``block=False`` 以
+    ``Popen`` 即起即返（返回 0 表示已启动），用于后台/非阻塞运行。
     """
     assert script_index is not None, "[runner] script_index 不能为 None（必须指定要运行的脚本下标）"
     command, cwd = build_chain_command(chain_name, script_index)
-    logger.info("[runner] 运行脚本: %s (cwd=%s, script_index=%s)", " ".join(command), cwd, script_index)
-    res = subprocess.run(command, cwd=cwd)
-    return res.returncode
+    logger.info("[runner] 运行脚本: %s (cwd=%s, script_index=%s, block=%s)", " ".join(command), cwd, script_index, block)
+    if block:
+        res = subprocess.run(command, cwd=cwd)
+        return res.returncode
+    subprocess.Popen(command, cwd=cwd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(10)
+    return 0
 
 
 def _chain_config_path(chain_name: str) -> str:
@@ -58,33 +65,34 @@ class ScriptChainRunner(QThread):
         super().__init__()
         self.chain_name = chain_name
 
-    def _resolve_script_indices(self) -> list[int]:
-        """从脚本链配置文件读取要运行的脚本下标列表。
+    def _resolve_script_specs(self) -> list[tuple[int, bool]]:
+        """从脚本链配置读取要运行的脚本规格 ``(下标, 是否阻塞)`` 列表。
 
-        下标相对 ``script_chain/<name>.yml`` 的 ``script_list`` 顺序，保证与
-        「实际要跑的链」严格对齐。
+        下标相对 ``script_chain/<name>.yml`` 的 ``script_list`` 顺序；``是否阻塞``
+        取自每项 ``block`` 字段（缺失视为 ``True``，即阻塞）。
         """
         chain_path = _chain_config_path(self.chain_name)
         assert os.path.exists(chain_path), f"[runner] 脚本链配置不存在: {chain_path}"
         with open(chain_path, encoding='utf-8') as f:
             chain_data = yaml.safe_load(f) or {}
         assert 'script_list' in chain_data, "[runner] 脚本链配置缺少 script_list 字段"
-        return list(range(len(chain_data['script_list'])))
+        return [(i, bool(s.get('block', True))) for i, s in enumerate(chain_data['script_list'])]
 
     def run(self):
         # 解析脚本链配置：失败属前置错误，必须 emit 并退出，否则运行按钮会卡死。
         try:
-            indices = self._resolve_script_indices()
+            specs = self._resolve_script_specs()
         except Exception:
             logger.exception("[runner] 解析脚本链配置失败")
             self.finished_signal.emit(-1)
             return
 
         # 逐条以独立进程运行；单条失败不影响其余脚本继续运行。
+        # block=True 阻塞等待结束，block=False 以非阻塞 Popen 即起即返。
         final_code = 0
-        for script_index in indices:
+        for script_index, block in specs:
             try:
-                code = run_chain_command(self.chain_name, script_index)
+                code = run_chain_command(self.chain_name, script_index, block=block)
             except Exception:
                 logger.exception("[runner] 运行脚本 %s 失败", script_index)
                 final_code = -1

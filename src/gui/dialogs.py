@@ -56,6 +56,7 @@ def default_script_entry(display_name, script_type, script_path,
         "attach_direction": "",
         "no_log_timeout_seconds": 0,
         "no_log_max_retries": 3,
+        "block": True,
     }
 
 
@@ -175,6 +176,11 @@ class SingleScriptConfigDialog(QDialog):
         self.kill_game_cb.stateChanged.connect(self._on_kill_game_changed)
         row4.addWidget(self.kill_script_cb)
         row4.addWidget(self.kill_game_cb)
+        self.block_cb = QCheckBox("阻塞运行", self)
+        self.block_cb.setFont(QFont("Microsoft YaHei", 10))
+        self.block_cb.setStyleSheet("color: #303030;")
+        self.block_cb.setToolTip("勾选后该脚本以阻塞方式启动，运行按钮会等待其结束；不勾选则后台非阻塞运行")
+        row4.addWidget(self.block_cb)
         row4.addStretch()
         layout.addLayout(row4)
 
@@ -331,6 +337,8 @@ class SingleScriptConfigDialog(QDialog):
         self.kill_game_cb.setChecked(self._script_data.get('kill_game_after_done', False))
         self.game_process_input.setText(self._script_data.get('game_process_name', ''))
         self.game_process_input.setEnabled(self.kill_game_cb.isChecked())
+        # 阻塞运行：缺字段视为 True（默认阻塞）
+        self.block_cb.setChecked(self._script_data.get('block', True))
 
         # 每周超时
         weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
@@ -376,6 +384,7 @@ class SingleScriptConfigDialog(QDialog):
                 script['kill_script_after_done'] = self.kill_script_cb.isChecked()
                 script['kill_game_after_done'] = self.kill_game_cb.isChecked()
                 script['game_process_name'] = self.game_process_input.text().strip()
+                script['block'] = self.block_cb.isChecked()
                 break
 
         with open(config_path, 'w', encoding='utf-8') as f:

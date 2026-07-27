@@ -170,6 +170,31 @@ class TestAddScript(unittest.TestCase):
         self.assertEqual(names, ['脚本0', '脚本1', '新脚本'])
         self.assertIs(win.all_config_data['script_list'][-1], entry)
 
+
+class TestRunSelected(unittest.TestCase):
+    """测试 MainWindow._run_selected：生成配置后构造 ScriptChainRunner（无全局 block）。"""
+
+    def _capture_runner_args(self, win):
+        captured = {}
+
+        def fake_runner(*args, **kwargs):
+            captured['args'] = args
+            captured['kwargs'] = kwargs
+            return MagicMock()
+
+        with patch('src.gui.main_window.QMessageBox.question', return_value=QMessageBox.Yes), \
+             patch.object(win, '_generate_config', return_value=0), \
+             patch('src.gui.main_window.ScriptChainRunner', side_effect=fake_runner):
+            win._run_selected()
+        return captured
+
+    def test_runner_constructed_without_global_block(self):
+        """后台运行改为 per-script 配置，主窗口不再传全局 block 参数。"""
+        win = _make_window(disable_persist=True)
+        captured = self._capture_runner_args(win)
+        self.assertEqual(captured['args'], ('88',))
+        self.assertNotIn('block', captured['kwargs'])
+
     def test_append_persists_to_config_yml(self):
         """追加后写回 config.yml（末尾含新脚本，字段完整）"""
         win = _make_window(script_count=2)  # 保留真实 _save_script_order

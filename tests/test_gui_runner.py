@@ -1,5 +1,6 @@
 """测试 src/gui/runner.py：命令构造、run_chain_command 的 script_index 约束、运行线程的 for 循环。"""
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,7 +19,6 @@ class TestBuildChainCommand(unittest.TestCase):
     """验证命令构造与 script_index → --debug-index 的映射。"""
 
     def test_build_chain_command_includes_debug_index(self):
-        """build_chain_command 始终携带 --debug-index <index>，且紧接 --chain。"""
         command, cwd = build_chain_command("88", 2)
         self.assertEqual(command[0], sys.executable)
         self.assertIn("-m", command)
@@ -52,33 +52,43 @@ class TestRunChainCommandScriptIndex(unittest.TestCase):
             run_chain_command("88", script_index=None)
 
 
-class TestResolveScriptIndices(unittest.TestCase):
-    """验证下标始终从 chain config 读取全部下标。"""
+class TestResolveScriptSpecs(unittest.TestCase):
+    """验证规格 (下标, 是否阻塞) 始终从 chain config 读取，含 block。"""
 
-    def test_reads_all_indices_from_chain_config(self):
+    def _write_cfg(self, data):
         d = tempfile.mkdtemp()
         cfg = os.path.join(d, "88.yml")
         with open(cfg, "w", encoding="utf-8") as f:
-            yaml.safe_dump({"script_list": [{"a": 1}, {"b": 2}, {"c": 3}]}, f)
+            yaml.safe_dump(data, f)
+        return cfg
+
+    def test_reads_specs_including_block(self):
+        cfg = self._write_cfg({"script_list": [
+            {"display_name": "a"},
+            {"display_name": "b", "block": False},
+            {"display_name": "c"},
+        ]})
         with mock.patch("src.gui.runner._chain_config_path", return_value=cfg):
             r = ScriptChainRunner("88")
-            self.assertEqual(r._resolve_script_indices(), [0, 1, 2])
+            self.assertEqual(r._resolve_script_specs(), [(0, True), (1, False), (2, True)])
+
+    def test_missing_block_defaults_true(self):
+        cfg = self._write_cfg({"script_list": [{"display_name": "a"}]})
+        with mock.patch("src.gui.runner._chain_config_path", return_value=cfg):
+            self.assertEqual(ScriptChainRunner("88")._resolve_script_specs(), [(0, True)])
 
     def test_missing_chain_config_asserts(self):
         with mock.patch("src.gui.runner._chain_config_path", return_value="/no/such/88.yml"):
             r = ScriptChainRunner("88")
             with self.assertRaises(AssertionError):
-                r._resolve_script_indices()
+                r._resolve_script_specs()
 
     def test_missing_script_list_asserts(self):
-        d = tempfile.mkdtemp()
-        cfg = os.path.join(d, "88.yml")
-        with open(cfg, "w", encoding="utf-8") as f:
-            yaml.safe_dump({"other": 1}, f)
+        cfg = self._write_cfg({"other": 1})
         with mock.patch("src.gui.runner._chain_config_path", return_value=cfg):
             r = ScriptChainRunner("88")
             with self.assertRaises(AssertionError):
-                r._resolve_script_indices()
+                r._resolve_script_specs()
 
 
 class TestScriptChainRunnerInit(unittest.TestCase):
@@ -90,22 +100,29 @@ class TestScriptChainRunnerInit(unittest.TestCase):
 
 
 class TestScriptChainRunnerRunLoop(unittest.TestCase):
-    """验证 run 是逐下标 for 循环，单条失败不影响其余，且 finished_signal 一定 emit。"""
+    """验证 run 逐 (下标,阻塞) 循环，block 直接透传；单条失败不影响其余，
+    finished_signal 一定 emit。"""
 
-    def test_run_loops_each_index_and_emits_final_code(self):
+    def _run_with_specs(self, specs):
+        received = []
         with mock.patch("src.gui.runner.run_chain_command", return_value=0) as rc, \
-             mock.patch.object(ScriptChainRunner, "_resolve_script_indices", return_value=[0, 1, 2]):
-            received = []
+             mock.patch.object(ScriptChainRunner, "_resolve_script_specs", return_value=specs):
             r = ScriptChainRunner("88")
             r.finished_signal.connect(lambda c: received.append(c))
             r.run()
+        return rc, received
+
+    def test_run_passes_block_directly(self):
+        """规格中的 block 直接透传：block=True 等待，block=False 非阻塞。"""
+        rc, received = self._run_with_specs([(0, True), (1, False), (2, True)])
         self.assertEqual(rc.call_count, 3)
-        self.assertEqual([c.args[1] for c in rc.call_args_list], [0, 1, 2])
+        blocks = [c.kwargs["block"] for c in rc.call_args_list]
+        self.assertEqual(blocks, [True, False, True])
         self.assertEqual(received, [0])
 
     def test_run_carries_last_failure_code(self):
         with mock.patch("src.gui.runner.run_chain_command", side_effect=[0, 1, 0]), \
-             mock.patch.object(ScriptChainRunner, "_resolve_script_indices", return_value=[0, 1, 2]):
+             mock.patch.object(ScriptChainRunner, "_resolve_script_specs", return_value=[(0, True), (1, True), (2, True)]):
             received = []
             r = ScriptChainRunner("88")
             r.finished_signal.connect(lambda c: received.append(c))
@@ -115,7 +132,7 @@ class TestScriptChainRunnerRunLoop(unittest.TestCase):
     def test_run_continues_on_per_script_exception(self):
         """for 循环内 try 包裹单条运行：某条抛异常后继续运行其余，并以 -1 收尾。"""
         with mock.patch("src.gui.runner.run_chain_command", side_effect=[0, RuntimeError("boom"), 0]), \
-             mock.patch.object(ScriptChainRunner, "_resolve_script_indices", return_value=[0, 1, 2]):
+             mock.patch.object(ScriptChainRunner, "_resolve_script_specs", return_value=[(0, True), (1, True), (2, True)]):
             received = []
             r = ScriptChainRunner("88")
             r.finished_signal.connect(lambda c: received.append(c))
@@ -123,12 +140,49 @@ class TestScriptChainRunnerRunLoop(unittest.TestCase):
         self.assertEqual(received, [-1])
 
     def test_run_always_emits_even_on_resolve_failure(self):
-        with mock.patch.object(ScriptChainRunner, "_resolve_script_indices", side_effect=RuntimeError("boom")):
+        with mock.patch.object(ScriptChainRunner, "_resolve_script_specs", side_effect=RuntimeError("boom")):
             received = []
             r = ScriptChainRunner("88")
             r.finished_signal.connect(lambda c: received.append(c))
             r.run()
         self.assertEqual(received, [-1])
+
+
+class TestNonBlocking(unittest.TestCase):
+    """验证 run_chain_command 的 block 分支；block=False 以 Popen 即起即返。"""
+
+    def test_nonblock_uses_popen_and_returns_zero(self):
+        with mock.patch("src.gui.runner.subprocess.run") as run, \
+             mock.patch("src.gui.runner.subprocess.Popen") as popen:
+            rc = run_chain_command("88", script_index=2, block=False)
+        self.assertEqual(rc, 0)
+        popen.assert_called_once()
+        run.assert_not_called()
+        _, kwargs = popen.call_args
+        self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
+        self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
+
+    def test_block_true_uses_subprocess_run(self):
+        with mock.patch("src.gui.runner.subprocess.run") as run, \
+             mock.patch("src.gui.runner.subprocess.Popen") as popen:
+            run.return_value.returncode = 0
+            run_chain_command("88", script_index=2, block=True)
+        run.assert_called_once()
+        popen.assert_not_called()
+
+    def test_runner_runs_nonblocking_script(self):
+        """chain 中 block=False 的脚本应以 block=False 运行。"""
+        with mock.patch("src.gui.runner.run_chain_command", return_value=0) as rc, \
+             mock.patch.object(ScriptChainRunner, "_resolve_script_specs", return_value=[(0, False)]):
+            ScriptChainRunner("88").run()
+        self.assertEqual(rc.call_args.kwargs["block"], False)
+
+    def test_runner_runs_blocking_script(self):
+        """chain 中 block=True 的脚本应以 block=True 运行。"""
+        with mock.patch("src.gui.runner.run_chain_command", return_value=0) as rc, \
+             mock.patch.object(ScriptChainRunner, "_resolve_script_specs", return_value=[(0, True)]):
+            ScriptChainRunner("88").run()
+        self.assertEqual(rc.call_args.kwargs["block"], True)
 
 
 if __name__ == '__main__':

@@ -16,6 +16,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 静音
   game_label: ''
   script_type: python
@@ -33,6 +34,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 鸣潮
   game_label: ''
   script_type: external
@@ -51,6 +53,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 原神
   game_label: ''
   script_type: external
@@ -69,6 +72,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 终末地
   game_label: ''
   script_type: external
@@ -87,6 +91,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 绝区零
   game_label: ''
   script_type: external
@@ -106,6 +111,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 崩铁
   game_label: ''
   script_type: external
@@ -123,6 +129,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 异环
   game_label: ''
   script_type: external
@@ -141,6 +148,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 粥
   game_label: ''
   script_type: external
@@ -158,6 +166,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 关闭静音
   game_label: ''
   script_type: python
@@ -175,6 +184,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 日志分析
   game_label: ''
   script_type: python
@@ -192,6 +202,7 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true
 - display_name: 自动关机
   game_label: ''
   script_type: python
@@ -209,3 +220,4 @@ script_list:
   attach_direction: ''
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
+  block: true

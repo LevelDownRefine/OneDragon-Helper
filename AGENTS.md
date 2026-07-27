@@ -37,7 +37,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 
 ## 4. 核心架构
 
-- **GUI**（`src/gui/` 包，`launcher.py` 仅为薄入口）：`MainWindow` 列出 `ScriptItem`（副本下拉 + 开关 + ⚙配置按钮）；`SingleScriptConfigDialog(QDialog)` 配脚本路径与每周超时；运行 → `_generate_config("88")` 生成 `OneDragon-ScriptChainer/config/script_chain/88.yml` → `ScriptChainRunner(QThread)` 后台**逐条**调 `script_chainer.win_exe.launcher --chain 88 --debug-index <i>`（`i` 取自 88.yml 的 `script_list` 下标，每个脚本独立进程；`script_indices=None` 时由 chain config 驱动，未来单条调试传 `[i]` 即可）。
+- **GUI**（`src/gui/` 包，`launcher.py` 仅为薄入口）：`MainWindow` 列出 `ScriptItem`（副本下拉 + 开关 + ⚙配置按钮）；`SingleScriptConfigDialog(QDialog)` 配脚本路径、每周超时与「阻塞运行」开关（存 `block` 字段，默认阻塞）；运行 → `_generate_config("88")` 生成 `OneDragon-ScriptChainer/config/script_chain/88.yml` → `ScriptChainRunner(QThread)` 后台**逐条**调 `script_chainer.win_exe.launcher --chain 88 --debug-index <i>`（`i` 取自 88.yml 的 `script_list` 下标，每个脚本独立进程；每条按自身 `block` 决定是否以阻塞方式启动（缺字段视为阻塞））。
 - **GUI 内存/磁盘同步不变量（强约束）**：`MainWindow.all_config_data` 是 `config.yml` 的内存副本；`_generate_config`（运行）与 `_save_script_order`（重排/增删）都基于它写回磁盘。`SingleScriptConfigDialog.save_data` 直接改磁盘 `config.yml`，**不会**更新内存副本。因此配置弹窗 `accept` 后，`ScriptItem` 必须通过 `config_saved_callback` → `MainWindow._on_script_config_saved` 重新从磁盘加载 `all_config_data` 并同步对应卡片的 `script_path`。**违反此约束会导致「保存路径失效」**：保存后内存仍是旧路径，下一次运行/重排就把旧路径覆盖回磁盘。
 - **副本配置适配器**（`set_config.py`）：外观接口 `set_config()` + `ScriptConfig` 类层级，各游戏一个子类，封装 config 读写差异。**详细设计与各脚本适配状态见 [`src/config/set_config.md`](src/config/set_config.md)。**
 - **配置读写**（`subscript.py`）：`_CONFIG_REL_PATHS`（脚本 config 相对路径）+ `_TEMPLATE_PATHS`（init 模板，在 `config/` 下）；`load_config/save_config/load_template` 按扩展名支持 JSON/YAML；`_get_script_root_dir` 取 `script_path` 父目录并 `replace('\\','/')`。

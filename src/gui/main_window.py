@@ -112,6 +112,7 @@ class MainWindow(QMainWindow):
         action_layout.addWidget(self.add_script_btn)
 
         action_layout.addStretch()
+
         layout.addLayout(action_layout)
 
         # 运行按钮
@@ -401,8 +402,9 @@ class MainWindow(QMainWindow):
         self.run_btn.setEnabled(True)
         self.run_btn.setText("▶ 运行全部开启的脚本")
 
+        # 后台运行的脚本仍在后台执行，故只用「已处理」措辞，不强调「完成」。
         if return_code == 0:
-            QMessageBox.information(self, "完成", "所有脚本运行完成！")
+            QMessageBox.information(self, "完成", "已处理全部脚本（后台运行的脚本仍在后台执行）。")
         else:
             QMessageBox.warning(self, "提示", f"脚本运行结束，退出码: {return_code}")
 

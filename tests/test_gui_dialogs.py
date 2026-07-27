@@ -42,7 +42,7 @@ class TestDefaultScriptEntry(unittest.TestCase):
             'check_done', 'kill_script_after_done',
             'kill_game_after_done', 'script_arguments', 'notify_start',
             'notify_done', 'notify_log_interval', 'attach_direction',
-            'no_log_timeout_seconds', 'no_log_max_retries',
+            'no_log_timeout_seconds', 'no_log_max_retries', 'block',
         }
         self.assertEqual(set(entry.keys()), expected_keys)
 
@@ -179,6 +179,53 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         with patch('src.utils.get_config_yml_path_under_root', return_value='C:/no/such/config.yml'), \
              self.assertRaises(AssertionError):
             SingleScriptConfigDialog('日志分析', 'C:/x.py')
+
+
+class TestSingleScriptConfigDialogBlock(unittest.TestCase):
+    """测试 block 字段在配置弹窗的加载与保存。"""
+
+    def _make_config_file(self, script_list):
+        d = tempfile.mkdtemp()
+        cfg = os.path.join(d, 'config.yml')
+        with open(cfg, 'w', encoding='utf-8') as f:
+            yaml.safe_dump({'script_list': script_list}, f, allow_unicode=True)
+        return cfg
+
+    def test_load_sets_block_from_config(self):
+        """config 中 block=True 时复选框应被勾选（阻塞）"""
+        cfg = self._make_config_file([
+            {'display_name': '日志分析', 'script_type': 'python', 'script_path': 'C:/x.py',
+             'block': True},
+        ])
+        with patch('src.utils.get_config_yml_path_under_root', return_value=cfg):
+            dlg = SingleScriptConfigDialog('日志分析', 'C:/x.py')
+        self.assertTrue(dlg.block_cb.isChecked())
+
+    def test_load_defaults_block_true_when_missing(self):
+        """缺 block 字段时默认勾选（阻塞）"""
+        cfg = self._make_config_file([
+            {'display_name': '日志分析', 'script_type': 'python', 'script_path': 'C:/x.py'},
+        ])
+        with patch('src.utils.get_config_yml_path_under_root', return_value=cfg):
+            dlg = SingleScriptConfigDialog('日志分析', 'C:/x.py')
+        self.assertTrue(dlg.block_cb.isChecked())
+
+    def test_save_writes_block(self):
+        """保存时把复选框状态写回 config.yml 的 block 字段"""
+        cfg = self._make_config_file([
+            {'display_name': '日志分析', 'script_type': 'python', 'script_path': 'C:/x.py'},
+        ])
+        weekly = os.path.join(tempfile.mkdtemp(), 'weekly_timeouts.yml')
+        with patch('src.utils.get_config_yml_path_under_root', return_value=cfg), \
+             patch('src.gui.dialogs.get_weekly_timeouts_yml_path_under_root', return_value=weekly), \
+             patch('src.gui.dialogs.QMessageBox.information'), \
+             patch.object(SingleScriptConfigDialog, 'accept'):
+            dlg = SingleScriptConfigDialog('日志分析', 'C:/x.py')
+            dlg.block_cb.setChecked(False)
+            dlg.save_data()
+        with open(cfg, encoding='utf-8') as f:
+            data = yaml.safe_load(f)
+        self.assertFalse(data['script_list'][0]['block'])
 
 
 if __name__ == '__main__':
