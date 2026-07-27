@@ -38,6 +38,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 ## 4. 核心架构
 
 - **GUI**（`src/gui/` 包，`launcher.py` 仅为薄入口）：`MainWindow` 列出 `ScriptItem`（副本下拉 + 开关 + ⚙配置按钮）；`SingleScriptConfigDialog(QDialog)` 配脚本路径与每周超时；运行 → `_generate_config("88")` 生成 `OneDragon-ScriptChainer/config/script_chain/88.yml` → `ScriptChainRunner(QThread)` 后台调 `script_chainer.win_exe.launcher --chain 88`。
+- **GUI 内存/磁盘同步不变量（强约束）**：`MainWindow.all_config_data` 是 `config.yml` 的内存副本；`_generate_config`（运行）与 `_save_script_order`（重排/增删）都基于它写回磁盘。`SingleScriptConfigDialog.save_data` 直接改磁盘 `config.yml`，**不会**更新内存副本。因此配置弹窗 `accept` 后，`ScriptItem` 必须通过 `config_saved_callback` → `MainWindow._on_script_config_saved` 重新从磁盘加载 `all_config_data` 并同步对应卡片的 `script_path`。**违反此约束会导致「保存路径失效」**：保存后内存仍是旧路径，下一次运行/重排就把旧路径覆盖回磁盘。
 - **副本配置适配器**（`set_config.py`）：外观接口 `set_config()` + `ScriptConfig` 类层级，各游戏一个子类，封装 config 读写差异。**详细设计与各脚本适配状态见 [`src/config/set_config.md`](src/config/set_config.md)。**
 - **配置读写**（`subscript.py`）：`_CONFIG_REL_PATHS`（脚本 config 相对路径）+ `_TEMPLATE_PATHS`（init 模板，在 `config/` 下）；`load_config/save_config/load_template` 按扩展名支持 JSON/YAML；`_get_script_root_dir` 取 `script_path` 父目录并 `replace('\\','/')`。
 - **副本列表**（`dungeon_config.py`）：解析 `dungeon_list.yml` 结构化格式 → `(options, seq_map, show_seq)`；`get_display_name` 反查显示名；`restore_sequence_type` 恢复序列类型（解决 YAML 读 int/str 问题）。
@@ -57,6 +58,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 9. 新增/修改功能后**必须补测试并跑全套**。
 10. GUI 持久化：`gui_state.json` 只存 `dungeon`/`sequence`。**`enabled` 为纯内存态**：config.yml 不含 `enabled` 字段，启动默认全开，仅当次会话内可在 GUI 临时开关，不持久化（重启恢复全开）。
 11. **日志统一用 `logging` 模块**：每个模块 `logger = logging.getLogger(__name__)`；入口处（`main`/`__main__`）调用 `setup_logging()`（`src/utils_logger.py`，幂等），统一格式 `%(asctime)s [%(levelname)s] %(name)s: %(message)s`，**同时输出控制台与文件** `logs/onedragon_helper.log`（每日 00:00 轮转，保留 14 天）。**禁止用裸 `print` 输出日志**。`collect_log.py` 因独立性约束（不 `import` 任何项目模块，可作独立脚本运行）保持原样：**仅用 `basicConfig` 输出控制台，不落盘**。子项目 `OneDragon-ScriptChainer` 有独立日志系统（`.log/`），不在此处理。
+12. **不随意修改 `.bak` / 备份文件**：`*.bak` 等备份是用户的个人文件，代理**不得**在未被明确要求时改动（包括改其中路径、配置等）。需要改动时先征得用户同意，或让用户自行处理。
 
 ## 6. 测试
 

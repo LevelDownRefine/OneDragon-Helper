@@ -3,6 +3,7 @@ from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QColor, QDrag, QFont, QPainter
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -70,7 +71,7 @@ class ScriptItem(QFrame):
 
     def __init__(self, script_data, dungeon_options=None, sequence_options_map=None,
                  show_sequence=False, saved_state=None, reorder_callback=None,
-                 delete_callback=None):
+                 delete_callback=None, config_saved_callback=None):
         super().__init__()
         assert 'display_name' in script_data, "[widgets] 脚本配置缺少 display_name 字段"
         assert 'script_type' in script_data, "[widgets] 脚本配置缺少 script_type 字段"
@@ -84,6 +85,7 @@ class ScriptItem(QFrame):
         self._state_callback = None  # 状态变化回调，由 MainWindow 注入
         self._reorder_callback = reorder_callback  # 拖拽重排回调，由 MainWindow 注入
         self._delete_callback = delete_callback  # 删除回调，由 MainWindow 注入
+        self._config_saved_callback = config_saved_callback  # 配置弹窗保存成功回调，由 MainWindow 注入
         self._drag_start_pos = None  # 拖拽起点（仅在手柄上按下时记录）
         self._sequence_options_map = sequence_options_map or {}  # 副本名 → 二级选项列表
         self._dungeon_options = dungeon_options or []  # 一级副本列表
@@ -166,9 +168,10 @@ class ScriptItem(QFrame):
             self._delete_callback(self.display_name)
 
     def _show_config_dialog(self):
-        """打开单脚本配置弹窗"""
+        """打开单脚本配置弹窗；保存成功(accept)后通知 MainWindow 重新吸收磁盘改动"""
         dialog = SingleScriptConfigDialog(self.display_name, self.script_path, self)
-        dialog.exec()
+        if dialog.exec() == QDialog.Accepted and self._config_saved_callback:
+            self._config_saved_callback(self.display_name)
 
     def _show_dungeon_menu(self):
         """点击副本按钮，弹出级联菜单"""

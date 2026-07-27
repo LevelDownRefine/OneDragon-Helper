@@ -1,5 +1,6 @@
 """测试 src/gui/main_window.py：重排、删除、添加脚本与持久化"""
 import os
+import tempfile
 import unittest
 from io import StringIO
 from unittest.mock import MagicMock, patch
@@ -213,6 +214,65 @@ class TestAddScript(unittest.TestCase):
             win._add_script()
         names = [it.display_name for it in win.script_items]
         self.assertEqual(names, ['脚本0', '脚本1', '确认脚本'])
+
+
+class TestConfigSaveSync(unittest.TestCase):
+    """测试配置弹窗保存后，MainWindow 重新吸收磁盘改动（修复「保存路径失效」）。"""
+
+    def test_script_config_saved_reloads_all_config_data(self):
+        """_on_script_config_saved 应从磁盘重新加载 all_config_data，吸收新路径"""
+        win = _make_window(disable_persist=True)
+        win.all_config_data['script_list'][0]['script_path'] = 'C:/old.exe'
+        win.script_items[0].script_path = 'C:/old.exe'
+
+        new_cfg = {
+            'script_list': [
+                {'display_name': f'脚本{i}', 'script_type': 'external',
+                 'script_path': 'C:/new.exe' if i == 0 else ''}
+                for i in range(3)
+            ]
+        }
+        with tempfile.NamedTemporaryFile(
+                mode='w', suffix='.yml', encoding='utf-8', delete=False) as tmp:
+            yaml.safe_dump(new_cfg, tmp, allow_unicode=True, sort_keys=False)
+            tmp_path = tmp.name
+        try:
+            with patch('src.gui.main_window.get_config_yml_path_under_root',
+                       return_value=tmp_path):
+                win._on_script_config_saved('脚本0')
+        finally:
+            os.unlink(tmp_path)
+
+        reloaded = next(s for s in win.all_config_data['script_list']
+                        if s['display_name'] == '脚本0')
+        self.assertEqual(reloaded['script_path'], 'C:/new.exe')
+        self.assertEqual(win.script_items[0].script_path, 'C:/new.exe')
+
+    def test_config_dialog_accept_triggers_callback(self):
+        """ScriptItem 配置弹窗 accept 后，应调用 config_saved_callback 通知 MainWindow"""
+        callback = MagicMock()
+        item = ScriptItem(
+            {'display_name': '脚本0', 'script_type': 'external'},
+            config_saved_callback=callback,
+        )
+        fake_dialog = MagicMock()
+        fake_dialog.exec.return_value = QDialog.Accepted
+        with patch('src.gui.widgets.SingleScriptConfigDialog', return_value=fake_dialog):
+            item._show_config_dialog()
+        callback.assert_called_once_with('脚本0')
+
+    def test_config_dialog_reject_does_not_trigger_callback(self):
+        """配置弹窗取消（Rejected）时不触发回调，避免无谓重载"""
+        callback = MagicMock()
+        item = ScriptItem(
+            {'display_name': '脚本0', 'script_type': 'external'},
+            config_saved_callback=callback,
+        )
+        fake_dialog = MagicMock()
+        fake_dialog.exec.return_value = QDialog.Rejected
+        with patch('src.gui.widgets.SingleScriptConfigDialog', return_value=fake_dialog):
+            item._show_config_dialog()
+        callback.assert_not_called()
 
 
 if __name__ == '__main__':

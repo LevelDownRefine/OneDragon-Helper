@@ -169,7 +169,8 @@ class MainWindow(QMainWindow):
                           sequence_options_map=seq_map if show_seq else None,
                           show_sequence=show_seq, saved_state=saved_state,
                           reorder_callback=self._reorder_scripts,
-                          delete_callback=self._delete_script)
+                          delete_callback=self._delete_script,
+                          config_saved_callback=self._on_script_config_saved)
         item.set_state_callback(self._persist_ui_state)
         return item
 
@@ -179,6 +180,26 @@ class MainWindow(QMainWindow):
         for item in self.script_items:
             state[item.display_name] = item.get_state()
         save_ui_state(state)
+
+    def _on_script_config_saved(self, display_name):
+        """配置弹窗保存成功后：重新从磁盘加载 all_config_data 并同步对应卡片的内存路径。
+
+        原因：配置弹窗直接改写磁盘上的 config.yml，但 MainWindow 的 all_config_data
+        是内存副本。若不重新吸收，后续 _generate_config（运行）或 _save_script_order
+        （重排/增删）会基于旧的 in-memory 副本把刚保存的路径覆盖掉，表现为「保存失效」。
+        """
+        with open(get_config_yml_path_under_root(), encoding='utf-8') as f:
+            self.all_config_data = yaml.safe_load(f)
+
+        for item in self.script_items:
+            if item.display_name == display_name:
+                new_path = next(
+                    (s.get('script_path', '') for s in self.all_config_data['script_list']
+                     if s['display_name'] == display_name),
+                    item.script_path,
+                )
+                item.script_path = new_path
+                break
 
     def _reorder_scripts(self, src_name, dst_name):
         """把 src_name 对应的脚本移动到 dst_name 所在位置，并同步 UI 与 config.yml"""
