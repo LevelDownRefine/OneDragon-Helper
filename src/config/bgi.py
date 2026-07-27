@@ -5,8 +5,8 @@ import shutil
 import yaml
 
 from src.utils import (
-    get_config_yml_path_under_root,
     get_our_bgi_user_dir,
+    require_config_yml_path,
     safe_path_join,
 )
 from src.utils_logger import setup_logging
@@ -19,7 +19,7 @@ def get_BGI_user_dir():
     获取BetterGI配置文件中的脚本路径
     :return: 包含脚本路径
     """
-    with open(get_config_yml_path_under_root(), encoding='utf-8') as f:
+    with open(require_config_yml_path(), encoding='utf-8') as f:
         config_data = yaml.safe_load(f)
         script_list = config_data.get('script_list', [])
         for script in script_list:

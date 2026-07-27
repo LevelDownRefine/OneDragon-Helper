@@ -123,23 +123,13 @@ class ScriptItem(QFrame):
         layout.addWidget(self.title_label, stretch=1)
 
         # 副本选择按钮（点击弹出级联菜单：一级 → 二级从右侧弹出）
-        has_real_dungeons = (
-            dungeon_options
-            and len(dungeon_options) > 1
-            and not (len(dungeon_options) == 1 and dungeon_options[0] == "未选择")
-        )
-        if self.script_type != 'python' and has_real_dungeons:
-            self.dungeon_btn = make_secondary_button(
-                "选择副本", radius=8, padding="0 10px", font_size=11, min_width=160)
-            self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
-            layout.addWidget(self.dungeon_btn)
-
-            # 恢复上次选择（仅当副本在选项列表中时）
-            if saved_state and saved_state.get('dungeon') and saved_state['dungeon'] in self._dungeon_options:  # optional: 保存状态可能没有选择过副本
-                self._selected_dungeon = saved_state['dungeon']
-                if saved_state.get('sequence'):  # optional: 保存状态可能没有选择过序列
-                    self._selected_sequence = saved_state['sequence']
-                self.dungeon_btn.setText(self._dungeon_btn_text())
+        self.dungeon_btn = None
+        # 恢复上次选择（仅当副本在选项列表中时）
+        if saved_state and saved_state.get('dungeon') and saved_state['dungeon'] in self._dungeon_options:  # optional: 保存状态可能没有选择过副本
+            self._selected_dungeon = saved_state['dungeon']
+            if saved_state.get('sequence'):  # optional: 保存状态可能没有选择过序列
+                self._selected_sequence = saved_state['sequence']
+        self._ensure_dungeon_button()
 
         # 开关（自定义滑动开关）
         self.toggle = ToggleSwitch(checked=self.enabled)
@@ -270,6 +260,42 @@ class ScriptItem(QFrame):
 
     def get_sequence(self):
         return self._selected_sequence
+
+    def _ensure_dungeon_button(self):
+        """根据 script_type 与副本选项，确保副本按钮存在且可见性正确。
+
+        - external 且有真实副本选项 → 显示，文本反映已选副本；
+        - python 或无副本 → 隐藏（并清除已选副本，避免残留）。
+        """
+        has_real_dungeons = (
+            self._dungeon_options
+            and len(self._dungeon_options) > 1
+            and not (len(self._dungeon_options) == 1 and self._dungeon_options[0] == "未选择")
+        )
+        should_show = self.script_type != 'python' and has_real_dungeons
+        if not should_show:
+            if self.dungeon_btn is not None:
+                self.dungeon_btn.setVisible(False)
+            self._selected_dungeon = None
+            self._selected_sequence = None
+            return
+
+        if self.dungeon_btn is None:
+            self.dungeon_btn = make_secondary_button(
+                "选择副本", radius=8, padding="0 10px", font_size=11, min_width=160)
+            self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
+            self.layout().insertWidget(2, self.dungeon_btn)
+        self.dungeon_btn.setVisible(True)
+        if self._selected_dungeon:
+            self.dungeon_btn.setText(self._dungeon_btn_text())
+
+    def sync_from_script_data(self, script_data: dict) -> None:
+        """配置弹窗保存后，从最新 script 数据同步内存态（路径、类型、副本按钮）。"""
+        assert 'script_path' in script_data, "[widgets] 同步缺少 script_path 字段"
+        assert 'script_type' in script_data, "[widgets] 同步缺少 script_type 字段"
+        self.script_path = script_data['script_path']
+        self.script_type = script_data['script_type']
+        self._ensure_dungeon_button()
 
     def _toggle(self):
         self.enabled = not self.enabled

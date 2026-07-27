@@ -36,6 +36,7 @@ from src.utils import (
     get_config_yml_path_under_root,
     get_path_under_onedragon,
     get_weekly_timeouts_yml_path_under_root,
+    require_config_yml_path,
     safe_path_join,
 )
 
@@ -137,7 +138,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.run_btn)
 
     def _load_scripts(self):
-        with open(get_config_yml_path_under_root(), encoding='utf-8') as f:
+        with open(require_config_yml_path(), encoding='utf-8') as f:
             self.all_config_data = yaml.safe_load(f)
 
         self.dungeon_map = load_dungeon_map()
@@ -151,7 +152,7 @@ class MainWindow(QMainWindow):
         for data in self.all_config_data['script_list']:
             name = data['display_name']
             dungeon_cfg = self.dungeon_map.get(name)  # optional: 不是所有脚本都有副本配置
-            options, seq_map, show_seq = parse_dungeon_config(dungeon_cfg)
+            _, seq_map, _ = parse_dungeon_config(dungeon_cfg)
 
             saved = self._ui_state.get(name)  # optional: 新脚本可能没有保存的状态
             if saved:
@@ -188,17 +189,18 @@ class MainWindow(QMainWindow):
         是内存副本。若不重新吸收，后续 _generate_config（运行）或 _save_script_order
         （重排/增删）会基于旧的 in-memory 副本把刚保存的路径覆盖掉，表现为「保存失效」。
         """
-        with open(get_config_yml_path_under_root(), encoding='utf-8') as f:
+        with open(require_config_yml_path(), encoding='utf-8') as f:
             self.all_config_data = yaml.safe_load(f)
 
         for item in self.script_items:
             if item.display_name == display_name:
-                new_path = next(
-                    (s.get('script_path', '') for s in self.all_config_data['script_list']
+                new_data = next(
+                    (s for s in self.all_config_data['script_list']
                      if s['display_name'] == display_name),
-                    item.script_path,
+                    None,
                 )
-                item.script_path = new_path
+                assert new_data is not None, f"[main_window] 保存后找不到脚本: {display_name}"
+                item.sync_from_script_data(new_data)
                 break
 
     def _reorder_scripts(self, src_name, dst_name):

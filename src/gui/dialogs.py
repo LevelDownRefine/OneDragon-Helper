@@ -20,8 +20,8 @@ from PySide6.QtWidgets import (
 from src.gui.controls import make_secondary_button
 from src.gui.state import DEFAULT_RUN_TIMEOUT
 from src.utils import (
-    get_config_yml_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
+    require_config_yml_path,
 )
 
 # 脚本文件选择过滤器（两个弹窗共用）
@@ -302,10 +302,12 @@ class SingleScriptConfigDialog(QDialog):
         self.game_process_input.setEnabled(state == Qt.Checked)
 
     def _find_script_data(self) -> dict:
-        """从 config.yml 读取本脚本的完整数据字典；找不到返回空 dict。"""
-        config_path = get_config_yml_path_under_root()
-        if not os.path.exists(config_path):
-            return {}
+        """从 config.yml 读取本脚本的完整数据字典。
+
+        config.yml 缺失属内部错误（对话框只在 config.yml 已加载的前提下打开），
+        必须存在，故用 assert 表达不该发生；脚本不在表中才返回空 dict。
+        """
+        config_path = require_config_yml_path()
         with open(config_path, encoding='utf-8') as f:
             config_data = yaml.safe_load(f) or {}
         for script in config_data.get('script_list', []):
@@ -361,7 +363,7 @@ class SingleScriptConfigDialog(QDialog):
             val = int(text) if text else DEFAULT_RUN_TIMEOUT
             timeouts.append(max(val, 10))
 
-        config_path = get_config_yml_path_under_root()
+        config_path = require_config_yml_path()
         with open(config_path, encoding='utf-8') as f:
             config_data = yaml.safe_load(f)
 

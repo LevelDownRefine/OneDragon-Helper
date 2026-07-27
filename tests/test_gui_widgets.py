@@ -219,5 +219,54 @@ class TestScriptItemDeleteButton(unittest.TestCase):
         self.assertEqual(called, ['X'])
 
 
+class TestSyncFromScriptData(unittest.TestCase):
+    """测试配置弹窗保存后同步内存态（路径/类型/副本按钮）。"""
+
+    def _show(self, item):
+        item.show()
+        _app.processEvents()
+
+    def test_sync_updates_path_and_type(self):
+        """sync 更新 script_path 与 script_type"""
+        item = ScriptItem(
+            {'display_name': 't', 'script_type': 'external'},
+            dungeon_options=["副本A", "副本B"],
+        )
+        item.sync_from_script_data(
+            {'display_name': 't', 'script_type': 'python', 'script_path': 'C:/y.py'})
+        self.assertEqual(item.script_path, 'C:/y.py')
+        self.assertEqual(item.script_type, 'python')
+
+    def test_sync_to_python_hides_dungeon_button_and_clears_selection(self):
+        """改为 python 后：副本按钮隐藏且已选副本被清除"""
+        item = ScriptItem(
+            {'display_name': 't', 'script_type': 'external'},
+            dungeon_options=["副本A", "副本B"],
+        )
+        item._on_dungeon_selected("副本A")
+        self.assertIsNotNone(item.dungeon_btn)
+        self._show(item)
+        item.sync_from_script_data(
+            {'display_name': 't', 'script_type': 'python', 'script_path': 'C:/y.py'})
+        _app.processEvents()
+        self.assertFalse(item.dungeon_btn.isVisible())
+        self.assertIsNone(item._selected_dungeon)
+        self.assertIsNone(item._selected_sequence)
+
+    def test_sync_to_external_creates_dungeon_button(self):
+        """改为 external（有副本）后：自动创建并显示副本按钮"""
+        item = ScriptItem(
+            {'display_name': 't', 'script_type': 'python'},
+            dungeon_options=["副本A", "副本B"],
+        )
+        self.assertIsNone(item.dungeon_btn)
+        self._show(item)
+        item.sync_from_script_data(
+            {'display_name': 't', 'script_type': 'external', 'script_path': 'C:/y.exe'})
+        _app.processEvents()
+        self.assertIsNotNone(item.dungeon_btn)
+        self.assertTrue(item.dungeon_btn.isVisible())
+
+
 if __name__ == '__main__':
     unittest.main()

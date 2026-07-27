@@ -78,7 +78,7 @@ class TestReorderScripts(unittest.TestCase):
         """重排后写回 config.yml（script_list 顺序一致）"""
         win = _make_window()
         captured = {}
-        with patch('src.gui.main_window.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
+        with patch('src.utils.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
              patch('builtins.open', side_effect=_fake_open_capture(captured)):
             win._reorder_scripts('脚本0', '脚本2')
         written = yaml.safe_load(captured['buf'].getvalue())
@@ -131,7 +131,7 @@ class TestDeleteScript(unittest.TestCase):
         captured = {}
         with patch('src.gui.main_window.QMessageBox.question',
                    return_value=QMessageBox.Yes), \
-             patch('src.gui.main_window.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
+             patch('src.utils.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
              patch('builtins.open', side_effect=_fake_open_capture(captured)):
             win._delete_script('脚本1')
         written = yaml.safe_load(captured['buf'].getvalue())
@@ -176,7 +176,7 @@ class TestAddScript(unittest.TestCase):
         win._persist_ui_state = lambda: None  # 隔离 gui_state.json
         captured = {}
         entry = default_script_entry('新脚本', 'python', 'C:/x.py')
-        with patch('src.gui.main_window.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
+        with patch('src.utils.get_config_yml_path_under_root', return_value='CONFIG.yml'), \
              patch('builtins.open', side_effect=_fake_open_capture(captured)):
             win._append_script(entry)
         written = yaml.safe_load(captured['buf'].getvalue())
@@ -231,7 +231,7 @@ class TestConfigSaveSync(unittest.TestCase):
             yaml.safe_dump(new_cfg, tmp, allow_unicode=True, sort_keys=False)
             tmp_path = tmp.name
         try:
-            with patch('src.gui.main_window.get_config_yml_path_under_root',
+            with patch('src.utils.get_config_yml_path_under_root',
                        return_value=tmp_path):
                 win._on_script_config_saved('脚本0')
         finally:

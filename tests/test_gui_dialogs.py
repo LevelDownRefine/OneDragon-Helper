@@ -146,10 +146,20 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
             yaml.safe_dump(weekly_map, f, allow_unicode=True)
         return wt
 
+    def _make_config_file(self):
+        """构造一个最小、存在的 config.yml 供对话框读取（对话框依赖 config.yml 已存在）。"""
+        d = tempfile.mkdtemp()
+        cfg = os.path.join(d, 'config.yml')
+        with open(cfg, 'w', encoding='utf-8') as f:
+            yaml.safe_dump({'script_list': []}, f, allow_unicode=True)
+        return cfg
+
     def test_load_seeds_from_default_when_no_weekly_entry(self):
         """weekly_timeouts 无该脚本条目时，7 格应显示 DEFAULT_RUN_TIMEOUT（3600）"""
         wt = self._make_weekly_file({})
-        with patch('src.gui.dialogs.get_weekly_timeouts_yml_path_under_root', return_value=wt):
+        cfg = self._make_config_file()
+        with patch('src.gui.dialogs.get_weekly_timeouts_yml_path_under_root', return_value=wt), \
+             patch('src.utils.get_config_yml_path_under_root', return_value=cfg):
             dlg = SingleScriptConfigDialog('日志分析', 'C:/x.py')
             values = [le.text() for le in dlg.timeout_inputs]
         self.assertEqual(values, ['3600'] * 7)
@@ -157,10 +167,18 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
     def test_load_uses_existing_weekly_entry(self):
         """weekly_timeouts 已有条目时使用已有值"""
         wt = self._make_weekly_file({'日志分析': [60, 60, 60, 60, 60, 60, 60]})
-        with patch('src.gui.dialogs.get_weekly_timeouts_yml_path_under_root', return_value=wt):
+        cfg = self._make_config_file()
+        with patch('src.gui.dialogs.get_weekly_timeouts_yml_path_under_root', return_value=wt), \
+             patch('src.utils.get_config_yml_path_under_root', return_value=cfg):
             dlg = SingleScriptConfigDialog('日志分析', 'C:/x.py')
             values = [le.text() for le in dlg.timeout_inputs]
         self.assertEqual(values, ['60'] * 7)
+
+    def test_init_asserts_when_config_yml_missing(self):
+        """config.yml 缺失属内部错误：构造对话框必须 assert，而非静默返回空数据"""
+        with patch('src.utils.get_config_yml_path_under_root', return_value='C:/no/such/config.yml'), \
+             self.assertRaises(AssertionError):
+            SingleScriptConfigDialog('日志分析', 'C:/x.py')
 
 
 if __name__ == '__main__':

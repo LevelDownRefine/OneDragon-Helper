@@ -16,6 +16,24 @@ def get_config_yml_path_under_root() -> str:
     """
     return safe_path_join(get_root_dir(), "config", "config.yml")
 
+
+def require_config_yml_path() -> str:
+    """
+    返回 config.yml 路径，并断言该文件已存在。
+
+    把「config.yml 必须存在」这个不变量收敛到一处：所有**读取/依赖**
+    config.yml 已存在的调用方都应走本函数，而不是在每个调用点重复
+    `assert os.path.exists(...)`。
+
+    注意：本函数仅在 config.yml 应当已存在时调用。以下场景应使用
+    `get_config_yml_path_under_root()`（纯路径，不做存在性断言）：
+    - 探测是否存在（launcher.need_config_workflow / config_workflow）；
+    - 作为写入/生成目标（subscript.generate_config_from_example / main_window 写回）。
+    """
+    path = get_config_yml_path_under_root()
+    assert os.path.exists(path), f"[utils] 未找到 config.yml，无法读取配置: {path}"
+    return path
+
 def get_weekly_timeouts_yml_path_under_root() -> str:
     """
     获取根目录下的config/weekly_timeouts.yml文件路径

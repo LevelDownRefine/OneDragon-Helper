@@ -9,7 +9,12 @@ import re
 
 import yaml
 
-from src.utils import get_config_yml_path_under_root, get_root_dir, safe_path_join
+from src.utils import (
+    get_config_yml_path_under_root,
+    get_root_dir,
+    require_config_yml_path,
+    safe_path_join,
+)
 
 # ============================================================
 # 各脚本 config 相对路径映射
@@ -44,7 +49,7 @@ _TEMPLATE_PATHS: dict[str, str] = {
 
 def _load_config_yml() -> dict:
     """读取主配置 config.yml"""
-    with open(get_config_yml_path_under_root(), encoding='utf-8') as f:
+    with open(require_config_yml_path(), encoding='utf-8') as f:
         return yaml.safe_load(f)
 
 
