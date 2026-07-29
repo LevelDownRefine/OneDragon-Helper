@@ -1,5 +1,7 @@
 """自定义控件：ToggleSwitch 滑动开关与 ScriptItem 脚本卡片。"""
 import os
+import subprocess
+import sys
 
 from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QColor, QDrag, QFont, QPainter
@@ -16,12 +18,42 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.dungeon_config import get_display_name
-from src.config.subscript import get_script_path
+from src.config.subscript import get_config_path, get_script_path
 from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
 
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
 DRAG_MIME = "application/x-onedragon-script"
+
+# 统一消息框样式：强制白底深字，避免在某些系统主题下出现全黑、文字不可读的提示框
+_MSG_STYLE = """
+QMessageBox { background-color: #ffffff; color: #1f2937; }
+QMessageBox QLabel { color: #1f2937; background-color: transparent; }
+QMessageBox QPushButton {
+    background-color: #f1f5f9; color: #1f2937;
+    border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 16px;
+}
+QMessageBox QPushButton:hover { background-color: #e2e8f0; }
+"""
+
+
+def _styled_msg_box(parent, icon, title, text):
+    """构造一个样式固定的消息框（白底深字，带图标），直接 .exec() 即可。"""
+    box = QMessageBox(parent)
+    box.setIcon(icon)
+    box.setWindowTitle(title)
+    box.setText(text)
+    box.setTextFormat(Qt.PlainText)
+    box.setStyleSheet(_MSG_STYLE)
+    return box
+
+
+def _safe_startfile(parent, path, fail_text):
+    """用系统默认程序打开 path；任何异常都转成清晰可读的提示，不让 GUI 崩溃。"""
+    try:
+        os.startfile(path)
+    except OSError as e:
+        _styled_msg_box(parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}").exec()
 
 
 class ToggleSwitch(QWidget):
@@ -149,12 +181,19 @@ class ScriptItem(QFrame):
             self.delete_btn.clicked.connect(self._on_delete_clicked)
         layout.addWidget(self.delete_btn)
 
-        # 打开脚本按钮（点击用 get_script_path 解析并启动 config.yml 中的 script_path 那个 exe）
+        # 打开脚本按钮：python 脚本用 python 运行，external 脚本启动 exe
         self.open_btn = make_icon_button(
             "▶", accent="#10b981", normal_color="#9aa3b2", font_size=15,
             hover_bg="#e8f6ee", pressed_bg="#d6f0e0")
         self.open_btn.clicked.connect(self._open_script)
         layout.addWidget(self.open_btn)
+
+        # 打开脚本配置按钮：python 脚本打开其 .py 源文件，external 脚本打开内部 config 文本文件
+        self.open_config_btn = make_icon_button(
+            "📄", accent="#8b5cf6", normal_color="#9aa3b2", font_size=14,
+            hover_bg="#f1ecfb", pressed_bg="#e6dff7")
+        self.open_config_btn.clicked.connect(self._open_script_config)
+        layout.addWidget(self.open_config_btn)
 
         # 配置按钮（最右边，圆形图标按钮）
         self.config_btn = make_icon_button(
@@ -175,13 +214,52 @@ class ScriptItem(QFrame):
             self._config_saved_callback(self.display_name)
 
     def _open_script(self):
-        """用 subscript.get_script_path 解析并启动 config.yml 中 script_path 那个 exe。"""
+        """打开/运行该脚本。
+        - python 脚本：用 python 解释器直接运行（不阻塞 GUI）；
+        - external 脚本：用 get_script_path 解析出 exe 并以 startfile 启动。
+        """
+        if self.script_type == 'python':
+            if not self.script_path or not os.path.isfile(self.script_path):
+                _styled_msg_box(self, QMessageBox.Warning, "提示",
+                                f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}").exec()
+                return
+            try:
+                subprocess.Popen([sys.executable, self.script_path],
+                                 cwd=os.path.dirname(self.script_path))
+            except OSError as e:
+                _styled_msg_box(self, QMessageBox.Warning, "提示", f"无法运行脚本：\n{e}").exec()
+            return
+
+        # external 脚本：解析出 exe 并启动
         try:
             exe_path = get_script_path(self.display_name)
         except AssertionError as e:
-            QMessageBox.warning(self, "提示", f"无法打开脚本：\n{e}")
+            _styled_msg_box(self, QMessageBox.Warning, "提示", f"无法打开脚本：\n{e}").exec()
             return
-        os.startfile(exe_path)
+        _safe_startfile(self, exe_path, "无法打开脚本")
+
+    def _open_script_config(self):
+        """打开该脚本的配置文件（文本）。
+        - python 脚本：无独立配置文件，直接打开其 .py 源文件；
+        - external 脚本：用 get_config_path 解析并打开其内部 config 文本文件；
+          未适配或文件缺失时给出清晰提示。
+        """
+        if self.script_type == 'python':
+            if not self.script_path or not os.path.isfile(self.script_path):
+                _styled_msg_box(self, QMessageBox.Warning, "提示",
+                                f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}").exec()
+                return
+            _safe_startfile(self, self.script_path, "无法打开脚本文件")
+            return
+
+        # external 脚本：解析并打开内部 config 文件
+        try:
+            config_path = get_config_path(self.display_name)
+        except AssertionError as e:
+            _styled_msg_box(self, QMessageBox.Warning, "提示",
+                            f"该脚本暂未适配配置文件，无法打开：\n{e}").exec()
+            return
+        _safe_startfile(self, config_path, "无法打开配置文件")
 
     def _show_dungeon_menu(self):
         """点击副本按钮，弹出级联菜单"""
