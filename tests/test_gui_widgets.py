@@ -1,6 +1,7 @@
 """测试 src/gui/widgets.py：ScriptItem 状态、回调、拖拽与删除按钮"""
 import os
 import unittest
+from unittest.mock import patch
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -266,6 +267,44 @@ class TestSyncFromScriptData(unittest.TestCase):
         _app.processEvents()
         self.assertIsNotNone(item.dungeon_btn)
         self.assertTrue(item.dungeon_btn.isVisible())
+
+
+class TestScriptItemOpenButton(unittest.TestCase):
+    """测试打开脚本按钮：用 subscript.get_script_path 解析并启动 exe（不依赖交互式消息框）"""
+
+    def test_open_btn_exists_and_is_wired(self):
+        """构造后存在打开脚本按钮，且点击触发 _open_script"""
+        item = ScriptItem({'display_name': '鸣潮', 'script_type': 'external',
+                           'script_path': 'C:/games/run.exe'})
+        self.assertTrue(hasattr(item, 'open_btn'))
+        called = []
+        item._open_script = lambda: called.append(True)
+        item.open_btn.clicked.disconnect()
+        item.open_btn.clicked.connect(item._open_script)
+        item.open_btn.click()
+        self.assertEqual(called, [True])
+
+    def test_open_script_launches_exe(self):
+        """已解析出 script_path 时，以 startfile 启动该 exe"""
+        item = ScriptItem({'display_name': '鸣潮', 'script_type': 'external',
+                           'script_path': 'C:/games/run.exe'})
+        exe = 'C:/games/run.exe'
+        with patch('os.startfile', create=True) as mock_start, \
+             patch('src.gui.widgets.get_script_path', return_value=exe):
+            item._open_script()
+        mock_start.assert_called_once_with(exe)
+
+    def test_open_script_missing_shows_warning(self):
+        """get_script_path 因路径缺失/不存在抛错时弹出警告且不调用 startfile"""
+        item = ScriptItem({'display_name': '我的自定义脚本', 'script_type': 'external',
+                           'script_path': 'C:/games/run.exe'})
+        with patch('os.startfile', create=True) as mock_start, \
+             patch('src.gui.widgets.get_script_path',
+                   side_effect=AssertionError("exe 不存在: C:/x")), \
+             patch('src.gui.widgets.QMessageBox.warning') as mock_warn:
+            item._open_script()
+        mock_start.assert_not_called()
+        mock_warn.assert_called_once()
 
 
 if __name__ == '__main__':

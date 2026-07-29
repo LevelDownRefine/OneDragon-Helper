@@ -57,14 +57,13 @@ def _load_config_yml() -> dict:
 # 脚本根目录 & config 路径解析
 # ============================================================
 
-def _get_script_root_dir(script_display_name: str) -> str:
+def get_script_path(script_display_name: str) -> str:
     """
-    从 config.yml 中找到指定脚本的 script_path，
-    取其父目录作为脚本项目根目录。
+    从 config.yml 中找到指定脚本的 script_path（exe 绝对路径），并校验其存在。
 
     script_path 可能是 Windows 风格路径（C:\\...\\xxx.exe），
-    统一将反斜杠转为正斜杠后再取 dirname，确保跨平台可用。
-    并确保 exe 脚本存在。
+    统一将反斜杠转为正斜杠，确保跨平台可用。
+    供 GUI「打开脚本」按钮与 _get_script_root_dir 复用。
     """
     config_data = _load_config_yml()
     for script in config_data.get('script_list', []):
@@ -73,8 +72,16 @@ def _get_script_root_dir(script_display_name: str) -> str:
             assert script_path, f"[set_config] config.yml 中 {script_display_name} 的 script_path 为空"
             normalized = script_path.replace('\\', '/')
             assert os.path.exists(normalized), f"[set_config] exe 不存在: {normalized}"
-            return os.path.dirname(normalized)
+            return normalized
     assert False, f"[set_config] config.yml 中找不到脚本: {script_display_name}"  # noqa: B011  # 故意：config.yml 找不到脚本属编程错误，必须用 assert 表达不该发生
+
+
+def _get_script_root_dir(script_display_name: str) -> str:
+    """
+    从 config.yml 中找到指定脚本的 script_path，取其父目录作为脚本项目根目录。
+    复用 get_script_path，确保 exe 脚本存在。
+    """
+    return os.path.dirname(get_script_path(script_display_name))
 
 
 def get_config_path(script_display_name: str) -> str:

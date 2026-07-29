@@ -1,4 +1,6 @@
 """自定义控件：ToggleSwitch 滑动开关与 ScriptItem 脚本卡片。"""
+import os
+
 from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QColor, QDrag, QFont, QPainter
 from PySide6.QtWidgets import (
@@ -9,10 +11,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
+    QMessageBox,
     QWidget,
 )
 
 from src.config.dungeon_config import get_display_name
+from src.config.subscript import get_script_path
 from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
 
@@ -139,11 +143,18 @@ class ScriptItem(QFrame):
 
         # 删除按钮（红色垃圾桶，hover 高亮，点击经回调通知 MainWindow 删除）
         self.delete_btn = make_icon_button(
-            "🗑", accent="#ef4444", normal_color="#c0c4cc", font_size=14,
+            "🗑", accent="#ef4444", normal_color="#9aa3b2", font_size=15,
             hover_bg="#fdecec", pressed_bg="#f9d5d5")
         if self._delete_callback:
             self.delete_btn.clicked.connect(self._on_delete_clicked)
         layout.addWidget(self.delete_btn)
+
+        # 打开脚本按钮（点击用 get_script_path 解析并启动 config.yml 中的 script_path 那个 exe）
+        self.open_btn = make_icon_button(
+            "▶", accent="#10b981", normal_color="#9aa3b2", font_size=15,
+            hover_bg="#e8f6ee", pressed_bg="#d6f0e0")
+        self.open_btn.clicked.connect(self._open_script)
+        layout.addWidget(self.open_btn)
 
         # 配置按钮（最右边，圆形图标按钮）
         self.config_btn = make_icon_button(
@@ -162,6 +173,15 @@ class ScriptItem(QFrame):
         dialog = SingleScriptConfigDialog(self.display_name, self.script_path, self)
         if dialog.exec() == QDialog.Accepted and self._config_saved_callback:
             self._config_saved_callback(self.display_name)
+
+    def _open_script(self):
+        """用 subscript.get_script_path 解析并启动 config.yml 中 script_path 那个 exe。"""
+        try:
+            exe_path = get_script_path(self.display_name)
+        except AssertionError as e:
+            QMessageBox.warning(self, "提示", f"无法打开脚本：\n{e}")
+            return
+        os.startfile(exe_path)
 
     def _show_dungeon_menu(self):
         """点击副本按钮，弹出级联菜单"""
