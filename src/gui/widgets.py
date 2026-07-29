@@ -21,39 +21,10 @@ from src.config.dungeon_config import get_display_name
 from src.config.subscript import get_config_path, get_script_path
 from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
+from src.gui.utils import _safe_startfile, _styled_msg_box
 
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
 DRAG_MIME = "application/x-onedragon-script"
-
-# 统一消息框样式：强制白底深字，避免在某些系统主题下出现全黑、文字不可读的提示框
-_MSG_STYLE = """
-QMessageBox { background-color: #ffffff; color: #1f2937; }
-QMessageBox QLabel { color: #1f2937; background-color: transparent; }
-QMessageBox QPushButton {
-    background-color: #f1f5f9; color: #1f2937;
-    border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 16px;
-}
-QMessageBox QPushButton:hover { background-color: #e2e8f0; }
-"""
-
-
-def _styled_msg_box(parent, icon, title, text):
-    """构造一个样式固定的消息框（白底深字，带图标），直接 .exec() 即可。"""
-    box = QMessageBox(parent)
-    box.setIcon(icon)
-    box.setWindowTitle(title)
-    box.setText(text)
-    box.setTextFormat(Qt.PlainText)
-    box.setStyleSheet(_MSG_STYLE)
-    return box
-
-
-def _safe_startfile(parent, path, fail_text):
-    """用系统默认程序打开 path；任何异常都转成清晰可读的提示，不让 GUI 崩溃。"""
-    try:
-        os.startfile(path)
-    except OSError as e:
-        _styled_msg_box(parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}").exec()
 
 
 class ToggleSwitch(QWidget):
@@ -190,7 +161,7 @@ class ScriptItem(QFrame):
 
         # 打开脚本配置按钮：python 脚本打开其 .py 源文件，external 脚本打开内部 config 文本文件
         self.open_config_btn = make_icon_button(
-            "📄", accent="#8b5cf6", normal_color="#9aa3b2", font_size=14,
+            "📄", accent="#8b5cf6", normal_color="#9aa3b2", font_size=15,
             hover_bg="#f1ecfb", pressed_bg="#e6dff7")
         self.open_config_btn.clicked.connect(self._open_script_config)
         layout.addWidget(self.open_config_btn)

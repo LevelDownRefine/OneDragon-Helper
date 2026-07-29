@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.gui.controls import make_secondary_button
-from src.gui.state import DEFAULT_RUN_TIMEOUT
+from src.gui.utils import DEFAULT_RUN_TIMEOUT
 from src.utils import (
     get_weekly_timeouts_yml_path_under_root,
     require_config_yml_path,

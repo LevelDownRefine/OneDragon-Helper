@@ -1,7 +1,14 @@
-"""UI 状态持久化（config/gui_state.json）与星期计算。"""
+"""GUI 工具与 UI 状态持久化。
+
+- UI 状态持久化（config/gui_state.json）与星期计算；
+- 统一的消息框 / 打开文件辅助函数（强制浅色样式，避免深色主题下全黑不可读）。
+"""
 import json
 import os
 from datetime import datetime, timedelta
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMessageBox
 
 from src.utils import get_root_dir, safe_path_join
 
@@ -46,3 +53,37 @@ def apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
         script['run_timeout_seconds'] = max(timeouts[get_week_num()], 10)
     else:
         script['run_timeout_seconds'] = DEFAULT_RUN_TIMEOUT
+
+
+# ---------------------------------------------------------------------------
+# 统一消息框 / 打开文件辅助（强制浅色样式，避免深色主题下全黑不可读）
+# ---------------------------------------------------------------------------
+
+_MSG_STYLE = """
+QMessageBox { background-color: #ffffff; color: #1f2937; }
+QMessageBox QLabel { color: #1f2937; background-color: transparent; }
+QMessageBox QPushButton {
+    background-color: #f1f5f9; color: #1f2937;
+    border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 16px;
+}
+QMessageBox QPushButton:hover { background-color: #e2e8f0; }
+"""
+
+
+def _styled_msg_box(parent, icon, title, text):
+    """构造一个样式固定的消息框（白底深字，带图标），直接 .exec() 即可。"""
+    box = QMessageBox(parent)
+    box.setIcon(icon)
+    box.setWindowTitle(title)
+    box.setText(text)
+    box.setTextFormat(Qt.PlainText)
+    box.setStyleSheet(_MSG_STYLE)
+    return box
+
+
+def _safe_startfile(parent, path, fail_text):
+    """用系统默认程序打开 path；任何异常都转成清晰可读的提示，不让 GUI 崩溃。"""
+    try:
+        os.startfile(path)
+    except OSError as e:
+        _styled_msg_box(parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}").exec()

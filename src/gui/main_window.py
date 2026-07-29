@@ -26,12 +26,14 @@ from src.config.set_config import set_config
 from src.gui.controls import make_pill_button
 from src.gui.dialogs import default_script_entry
 from src.gui.runner import ScriptChainRunner
-from src.gui.state import (
+from src.gui.utils import (
+    DEFAULT_RUN_TIMEOUT,
+    _safe_startfile,
     apply_weekly_timeout,
     load_ui_state,
     save_ui_state,
 )
-from src.gui.widgets import ScriptItem, _safe_startfile
+from src.gui.widgets import ScriptItem
 from src.utils import (
     get_config_yml_path_under_root,
     get_path_under_onedragon,
@@ -308,7 +310,6 @@ class MainWindow(QMainWindow):
         self.all_config_data['script_list'].append(script_data)
 
         # 自动创建 weekly_timeouts 默认条目
-        from src.gui.state import DEFAULT_RUN_TIMEOUT
         weekly_path = get_weekly_timeouts_yml_path_under_root()
         weekly_map = {}
         if os.path.exists(weekly_path):
