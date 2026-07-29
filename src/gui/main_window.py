@@ -31,7 +31,7 @@ from src.gui.state import (
     load_ui_state,
     save_ui_state,
 )
-from src.gui.widgets import ScriptItem
+from src.gui.widgets import ScriptItem, _safe_startfile
 from src.utils import (
     get_config_yml_path_under_root,
     get_path_under_onedragon,
@@ -45,7 +45,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("OneDragon 脚本启动器")
-        self.setMinimumSize(520, 640)
+        self.setMinimumSize(550, 640)
 
         self.script_items = []
         self.all_config_data = None
@@ -110,6 +110,11 @@ class MainWindow(QMainWindow):
         self.add_script_btn = make_pill_button("添加脚本", accent="#22c55e", hover_color="#16a34a", pressed_bg="#f0fdf4")
         self.add_script_btn.clicked.connect(self._add_script)
         action_layout.addWidget(self.add_script_btn)
+
+        # 打开配置：直接打开 config.yml（get_config_yml_path_under_root）
+        self.open_config_btn = make_pill_button("打开配置", accent="#8b5cf6", hover_color="#7c3aed", pressed_bg="#f1ecfb")
+        self.open_config_btn.clicked.connect(self._open_config_yml)
+        action_layout.addWidget(self.open_config_btn)
 
         action_layout.addStretch()
 
@@ -321,6 +326,10 @@ class MainWindow(QMainWindow):
         self._relayout_script_widgets()
         self._save_script_order()
         self._persist_ui_state()
+
+    def _open_config_yml(self):
+        """打开 config.yml（用系统默认程序打开文本文件）；缺失/异常时给出清晰提示。"""
+        _safe_startfile(self, get_config_yml_path_under_root(), "无法打开配置文件")
 
     def _save_script_order(self):
         """把当前脚本顺序写回 config.yml"""

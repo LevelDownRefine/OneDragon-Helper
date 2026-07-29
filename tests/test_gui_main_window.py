@@ -171,6 +171,29 @@ class TestAddScript(unittest.TestCase):
         self.assertIs(win.all_config_data['script_list'][-1], entry)
 
 
+class TestOpenConfigYml(unittest.TestCase):
+    """测试 MainWindow「打开配置」按钮：用 _safe_startfile 打开 get_config_yml_path_under_root 返回的路径"""
+
+    def test_open_config_btn_exists_and_wired(self):
+        """存在「打开配置」按钮，且点击触发 _open_config_yml"""
+        win = _make_window(disable_persist=True)
+        self.assertTrue(hasattr(win, 'open_config_btn'))
+        captured = []
+        win._open_config_yml = lambda: captured.append(True)
+        win.open_config_btn.clicked.disconnect()
+        win.open_config_btn.clicked.connect(win._open_config_yml)
+        win.open_config_btn.click()
+        self.assertEqual(captured, [True])
+
+    def test_open_config_yml_calls_safe_startfile_with_path(self):
+        """调用 _safe_startfile，传入 config.yml 路径与统一失败文案"""
+        win = _make_window(disable_persist=True)
+        with patch('src.gui.main_window._safe_startfile') as mock_start, \
+             patch('src.gui.main_window.get_config_yml_path_under_root', return_value='CONFIG.yml'):
+            win._open_config_yml()
+        mock_start.assert_called_once_with(win, 'CONFIG.yml', "无法打开配置文件")
+
+
 class TestRunSelected(unittest.TestCase):
     """测试 MainWindow._run_selected：生成配置后构造 ScriptChainRunner（无全局 block）。"""
 
