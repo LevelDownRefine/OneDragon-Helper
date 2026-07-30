@@ -216,7 +216,7 @@ class TestScriptItemDeleteButton(unittest.TestCase):
             {'display_name': 'X', 'script_type': 'external'},
             delete_callback=lambda name: called.append(name),
         )
-        self.assertTrue(hasattr(item, 'delete_btn'))
+        self.assertTrue(hasattr(item, 'overflow_btn'))
         item._on_delete_clicked()
         self.assertEqual(called, ['X'])
 
@@ -271,19 +271,7 @@ class TestSyncFromScriptData(unittest.TestCase):
 
 
 class TestScriptItemOpenButton(unittest.TestCase):
-    """测试打开脚本按钮：python 用解释器运行，external 启动 exe（不依赖交互式消息框）"""
-
-    def test_open_btn_exists_and_is_wired(self):
-        """构造后存在打开脚本按钮，且点击触发 _open_script"""
-        item = ScriptItem({'display_name': '鸣潮', 'script_type': 'external',
-                           'script_path': 'C:/games/run.exe'})
-        self.assertTrue(hasattr(item, 'open_btn'))
-        called = []
-        item._open_script = lambda: called.append(True)
-        item.open_btn.clicked.disconnect()
-        item.open_btn.clicked.connect(item._open_script)
-        item.open_btn.click()
-        self.assertEqual(called, [True])
+    """测试打开脚本逻辑：python 用解释器运行，external 启动 exe（不依赖交互式消息框）"""
 
     def test_open_script_external_launches_exe(self):
         """external 脚本：解析出 script_path 后以 startfile 启动该 exe"""
@@ -332,19 +320,7 @@ class TestScriptItemOpenButton(unittest.TestCase):
 
 
 class TestScriptItemOpenConfigButton(unittest.TestCase):
-    """测试打开脚本配置按钮：python 打开 .py 源文件，external 打开内部 config 文本文件"""
-
-    def test_open_config_btn_exists_and_is_wired(self):
-        """构造后存在打开脚本配置按钮，且点击触发 _open_script_config"""
-        item = ScriptItem({'display_name': '鸣潮', 'script_type': 'external',
-                           'script_path': 'C:/games/run.exe'})
-        self.assertTrue(hasattr(item, 'open_config_btn'))
-        called = []
-        item._open_script_config = lambda: called.append(True)
-        item.open_config_btn.clicked.disconnect()
-        item.open_config_btn.clicked.connect(item._open_script_config)
-        item.open_config_btn.click()
-        self.assertEqual(called, [True])
+    """测试打开脚本配置逻辑：python 打开 .py 源文件，external 打开内部 config 文本文件"""
 
     def test_open_config_external_opens_resolved_config(self):
         """external 已适配：用 get_config_path 解析并以 startfile 打开配置文件"""
@@ -387,6 +363,47 @@ class TestScriptItemOpenConfigButton(unittest.TestCase):
             item._open_script_config()
         mock_start.assert_not_called()
         mock_box.assert_called_once()
+
+
+class TestScriptItemOverflowMenu(unittest.TestCase):
+    """测试 ⋮ 溢出菜单：把删除/打开脚本/打开配置/配置都收进菜单（不依赖真实弹窗）"""
+
+    def _build(self, **kwargs):
+        return ScriptItem({'display_name': '鸣潮', 'script_type': 'external',
+                           'script_path': 'C:/games/run.exe'}, **kwargs)
+
+    def test_overflow_btn_exists(self):
+        """构造后存在 ⋮ 溢出按钮"""
+        item = self._build()
+        self.assertTrue(hasattr(item, 'overflow_btn'))
+
+    def test_menu_contains_expected_actions(self):
+        """菜单含 打开脚本 / 打开脚本配置 / 配置 / 删除 四项，且中间有分隔线"""
+        item = self._build()
+        menu = item._build_overflow_menu()
+        texts = [a.text() for a in menu.actions()]
+        self.assertIn("▶ 打开脚本", texts)
+        self.assertIn("📄 打开脚本配置", texts)
+        self.assertIn("⚙ 配置", texts)
+        self.assertIn("🗑 删除", texts)
+        self.assertTrue(any(a.isSeparator() for a in menu.actions()))
+
+    def test_menu_open_script_action_triggers_handler(self):
+        """点击「打开脚本」菜单项应触发 _open_script"""
+        item = self._build()
+        called = []
+        item._open_script = lambda: called.append(True)
+        menu = item._build_overflow_menu()
+        action = next(a for a in menu.actions() if a.text() == "▶ 打开脚本")
+        action.trigger()
+        self.assertEqual(called, [True])
+
+    def test_menu_delete_action_disabled_without_callback(self):
+        """无删除回调时，菜单里的「删除」项应被禁用"""
+        item = self._build()  # 未传 delete_callback
+        menu = item._build_overflow_menu()
+        action = next(a for a in menu.actions() if a.text() == "🗑 删除")
+        self.assertFalse(action.isEnabled())
 
 
 if __name__ == '__main__':

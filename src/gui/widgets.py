@@ -26,6 +26,34 @@ from src.gui.utils import _safe_startfile, _styled_msg_box
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
 DRAG_MIME = "application/x-onedragon-script"
 
+# 弹出菜单统一样式：白底深字，避免深色系统主题下文字不可读
+_MENU_STYLE = """
+QMenu {
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    background: white;
+    padding: 4px;
+    font-size: 11px;
+}
+QMenu::item {
+    padding: 4px 20px 4px 12px;
+    border-radius: 3px;
+    color: #1f2937;
+}
+QMenu::item:selected {
+    background-color: #3b82f6;
+    color: white;
+}
+QMenu::item:disabled {
+    color: #c0c4cc;
+}
+QMenu::separator {
+    height: 1px;
+    background: #e0e0e0;
+    margin: 4px 8px;
+}
+"""
+
 
 class ToggleSwitch(QWidget):
     """自定义滑动开关（圆角轨道 + 圆形滑块）"""
@@ -144,34 +172,38 @@ class ScriptItem(QFrame):
         self._update_switch_style()
         layout.addWidget(self.toggle)
 
-        # 删除按钮（红色垃圾桶，hover 高亮，点击经回调通知 MainWindow 删除）
-        self.delete_btn = make_icon_button(
-            "🗑", accent="#ef4444", normal_color="#9aa3b2", font_size=15,
-            hover_bg="#fdecec", pressed_bg="#f9d5d5")
+        # 操作菜单按钮：把删除 / 打开脚本 / 打开配置 / 配置 全部收进 ⋮，避免卡片按钮过多
+        self.overflow_btn = make_icon_button(
+            "⋮", accent="#3b82f6", normal_color="#9aa3b2", font_size=18,
+            hover_bg="#eef2f7", pressed_bg="#e2e8f0", tooltip="更多操作")
+        self.overflow_btn.clicked.connect(self._show_overflow_menu)
+        layout.addWidget(self.overflow_btn)
+
+    def _show_overflow_menu(self):
+        """点击 ⋮ 弹出操作菜单（不阻塞：菜单内动作才触发实际操作）。"""
+        menu = self._build_overflow_menu()
+        menu.exec(self.overflow_btn.mapToGlobal(self.overflow_btn.rect().bottomRight()))
+
+    def _build_overflow_menu(self):
+        """构造操作菜单：打开脚本 / 打开脚本配置 / 分隔线 / 配置 / 删除。"""
+        menu = QMenu(self)
+        menu.setStyleSheet(_MENU_STYLE)
+
+        open_action = menu.addAction("启动脚本")
+        open_action.triggered.connect(self._open_script)
+
+        config_file_action = menu.addAction("配置文件")
+        config_file_action.triggered.connect(self._open_script_config)
+
+        setting_action = menu.addAction("脚本参数")
+        setting_action.triggered.connect(self._show_config_dialog)
+
+        delete_action = menu.addAction("删除脚本")
         if self._delete_callback:
-            self.delete_btn.clicked.connect(self._on_delete_clicked)
-        layout.addWidget(self.delete_btn)
-
-        # 打开脚本按钮：python 脚本用 python 运行，external 脚本启动 exe
-        self.open_btn = make_icon_button(
-            "▶", accent="#10b981", normal_color="#9aa3b2", font_size=15,
-            hover_bg="#e8f6ee", pressed_bg="#d6f0e0")
-        self.open_btn.clicked.connect(self._open_script)
-        layout.addWidget(self.open_btn)
-
-        # 打开脚本配置按钮：python 脚本打开其 .py 源文件，external 脚本打开内部 config 文本文件
-        self.open_config_btn = make_icon_button(
-            "📄", accent="#8b5cf6", normal_color="#9aa3b2", font_size=15,
-            hover_bg="#f1ecfb", pressed_bg="#e6dff7")
-        self.open_config_btn.clicked.connect(self._open_script_config)
-        layout.addWidget(self.open_config_btn)
-
-        # 配置按钮（最右边，圆形图标按钮）
-        self.config_btn = make_icon_button(
-            "⚙", accent="#3b82f6", normal_color="#9aa3b2", font_size=15,
-            hover_bg="#eef2f7", pressed_bg="#e2e8f0")
-        self.config_btn.clicked.connect(self._show_config_dialog)
-        layout.addWidget(self.config_btn)
+            delete_action.triggered.connect(self._on_delete_clicked)
+        else:
+            delete_action.setEnabled(False)
+        return menu
 
     def _on_delete_clicked(self):
         """点击删除按钮，通知删除本脚本"""
@@ -235,28 +267,7 @@ class ScriptItem(QFrame):
     def _show_dungeon_menu(self):
         """点击副本按钮，弹出级联菜单"""
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu {
-                border: 1px solid #d0d0d0;
-                border-radius: 4px;
-                background: white;
-                padding: 4px;
-                font-size: 11px;
-            }
-            QMenu::item {
-                padding: 4px 20px 4px 12px;
-                border-radius: 3px;
-            }
-            QMenu::item:selected {
-                background-color: #0078D4;
-                color: white;
-            }
-            QMenu::separator {
-                height: 1px;
-                background: #e0e0e0;
-                margin: 4px 8px;
-            }
-        """)
+        menu.setStyleSheet(_MENU_STYLE)
 
         for dungeon_name in self._dungeon_options:
             if dungeon_name == "未选择":
