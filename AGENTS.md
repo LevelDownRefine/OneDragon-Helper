@@ -10,7 +10,7 @@ OneDragon-Helper 是**多游戏自动化脚本调度器 + PySide6 GUI 启动器*
 
 - **Python 3.11+**；GUI 用 **PySide6 + QFluentWidgets**（实际为原生控件 + 手写样式）
 - 依赖：`uv sync`（pyproject.toml）；Lint/Format：`ruff`（line-length 88，double quote）
-- `src/runner/`（vendored 的脚本链运行器，从 `OneDragon-ScriptChainer` fork 而来，**已替代原 git submodule 依赖**，不再依赖外部子模块）
+- `src/runner/`：脚本链运行器，**git submodule → OneDragonRunner**（https://github.com/LevelDownRefine/OneDragonRunner.git）；vendored 自 `OneDragon-ScriptChainer`，已不再依赖第三方子模块，改为我们独立维护的 submodule
 - CI：`.github/workflows/ci.yml` 用 `uv`，**不走 env.bat**
 
 ## 3. 目录结构
