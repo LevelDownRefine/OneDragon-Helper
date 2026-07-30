@@ -382,7 +382,7 @@ class MainWindow(QMainWindow):
         with open(output_file, 'w', encoding='utf-8') as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
 
-        return len(filtered)
+        return output_file
 
     def _run_selected(self):
         enabled_count = sum(1 for i in self.script_items if i.enabled)
@@ -399,12 +399,12 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.Yes:
             return
 
-        self._generate_config("88")
+        chain_path = self._generate_config("88")
 
         self.run_btn.setEnabled(False)
         self.run_btn.setText("运行中...")
 
-        self.runner = ScriptChainRunner("88")
+        self.runner = ScriptChainRunner(chain_path)
         self.runner.finished_signal.connect(self._on_finished)
         self.runner.start()
 

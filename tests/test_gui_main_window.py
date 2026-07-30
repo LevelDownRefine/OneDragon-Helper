@@ -206,7 +206,7 @@ class TestRunSelected(unittest.TestCase):
             return MagicMock()
 
         with patch('src.gui.main_window.QMessageBox.question', return_value=QMessageBox.Yes), \
-             patch.object(win, '_generate_config', return_value=0), \
+             patch.object(win, '_generate_config', return_value='config/script_chain/01.yml'), \
              patch('src.gui.main_window.ScriptChainRunner', side_effect=fake_runner):
             win._run_selected()
         return captured
@@ -215,7 +215,7 @@ class TestRunSelected(unittest.TestCase):
         """后台运行改为 per-script 配置，主窗口不再传全局 block 参数。"""
         win = _make_window(disable_persist=True)
         captured = self._capture_runner_args(win)
-        self.assertEqual(captured['args'], ('88',))
+        self.assertEqual(captured['args'], ('config/script_chain/01.yml',))
         self.assertNotIn('block', captured['kwargs'])
 
     def test_append_persists_to_config_yml(self):

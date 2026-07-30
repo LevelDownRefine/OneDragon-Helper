@@ -14,24 +14,27 @@ import yaml
 from src.gui.runner import ScriptChainRunner, build_chain_command, run_chain_command
 from src.utils import get_root_dir
 
+CHAIN_PATH = "config/script_chain/01.yml"
+CHAIN_PATH_ABS = os.path.join(get_root_dir(), CHAIN_PATH)
+
 
 class TestBuildChainCommand(unittest.TestCase):
     """验证命令构造与 script_index → --debug-index 的映射。"""
 
     def test_build_chain_command_includes_debug_index(self):
-        command, cwd, env = build_chain_command("88", 2)
+        command, cwd, env = build_chain_command(CHAIN_PATH, 2)
         self.assertEqual(command[0], sys.executable)
         self.assertIn("-m", command)
         self.assertIn("src.runner", command)
         self.assertNotIn("--onedragon", command)
         self.assertIn("--chain", command)
-        self.assertIn("88", command)
+        self.assertIn(CHAIN_PATH, command)
         idx = command.index("--debug-index")
         self.assertEqual(command[idx - 2], "--chain")
-        self.assertEqual(command[idx - 1], "88")
+        self.assertEqual(command[idx - 1], CHAIN_PATH)
         self.assertEqual(command[idx + 1], "2")
         self.assertEqual(cwd, get_root_dir())
-        # 注入 PYTHONPATH 使 vendored 的 script_chainer/one_dragon 可被导入
+        # 注入 PYTHONPATH 使 vendored 的 script_chainer 可被导入
         self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
 
 
@@ -41,7 +44,7 @@ class TestRunChainCommandScriptIndex(unittest.TestCase):
     def test_script_index_passed_to_subprocess(self):
         with mock.patch("src.gui.runner.subprocess.run") as run:
             run.return_value.returncode = 0
-            rc = run_chain_command("88", script_index=3)
+            rc = run_chain_command(CHAIN_PATH, script_index=3)
         self.assertEqual(rc, 0)
         command = run.call_args.args[0]
         self.assertIn("--debug-index", command)
@@ -52,15 +55,15 @@ class TestRunChainCommandScriptIndex(unittest.TestCase):
     def test_run_chain_command_asserts_on_none(self):
         """script_index=None 属编程错误：run_chain_command 必须 assert。"""
         with self.assertRaises(AssertionError):
-            run_chain_command("88", script_index=None)
+            run_chain_command(CHAIN_PATH, script_index=None)
 
 
 class TestResolveScriptSpecs(unittest.TestCase):
     """验证规格 (下标, 是否阻塞) 始终从 chain config 读取，含 block。"""
 
-    def _write_cfg(self, data):
+    def _write_cfg(self, data, name="88"):
         d = tempfile.mkdtemp()
-        cfg = os.path.join(d, "88.yml")
+        cfg = os.path.join(d, f"{name}.yml")
         with open(cfg, "w", encoding="utf-8") as f:
             yaml.safe_dump(data, f)
         return cfg
@@ -71,35 +74,31 @@ class TestResolveScriptSpecs(unittest.TestCase):
             {"display_name": "b", "block": False},
             {"display_name": "c"},
         ]})
-        with mock.patch("src.gui.runner._chain_config_path", return_value=cfg):
-            r = ScriptChainRunner("88")
-            self.assertEqual(r._resolve_script_specs(), [(0, True), (1, False), (2, True)])
+        r = ScriptChainRunner(cfg)
+        self.assertEqual(r._resolve_script_specs(), [(0, True), (1, False), (2, True)])
 
     def test_missing_block_defaults_true(self):
         cfg = self._write_cfg({"script_list": [{"display_name": "a"}]})
-        with mock.patch("src.gui.runner._chain_config_path", return_value=cfg):
-            self.assertEqual(ScriptChainRunner("88")._resolve_script_specs(), [(0, True)])
+        self.assertEqual(ScriptChainRunner(cfg)._resolve_script_specs(), [(0, True)])
 
     def test_missing_chain_config_asserts(self):
-        with mock.patch("src.gui.runner._chain_config_path", return_value="/no/such/88.yml"):
-            r = ScriptChainRunner("88")
-            with self.assertRaises(AssertionError):
-                r._resolve_script_specs()
+        r = ScriptChainRunner("/no/such/chain.yml")
+        with self.assertRaises(AssertionError):
+            r._resolve_script_specs()
 
     def test_missing_script_list_asserts(self):
         cfg = self._write_cfg({"other": 1})
-        with mock.patch("src.gui.runner._chain_config_path", return_value=cfg):
-            r = ScriptChainRunner("88")
-            with self.assertRaises(AssertionError):
-                r._resolve_script_specs()
+        r = ScriptChainRunner(cfg)
+        with self.assertRaises(AssertionError):
+            r._resolve_script_specs()
 
 
 class TestScriptChainRunnerInit(unittest.TestCase):
     """验证构造参数。"""
 
-    def test_runner_stores_chain_name(self):
-        r = ScriptChainRunner("88")
-        self.assertEqual(r.chain_name, "88")
+    def test_runner_stores_chain_config_path(self):
+        r = ScriptChainRunner(CHAIN_PATH)
+        self.assertEqual(r.chain_config_path, CHAIN_PATH)
 
 
 class TestScriptChainRunnerRunLoop(unittest.TestCase):
@@ -110,7 +109,7 @@ class TestScriptChainRunnerRunLoop(unittest.TestCase):
         received = []
         with mock.patch("src.gui.runner.run_chain_command", return_value=0) as rc, \
              mock.patch.object(ScriptChainRunner, "_resolve_script_specs", return_value=specs):
-            r = ScriptChainRunner("88")
+            r = ScriptChainRunner(CHAIN_PATH)
             r.finished_signal.connect(lambda c: received.append(c))
             r.run()
         return rc, received
@@ -127,7 +126,7 @@ class TestScriptChainRunnerRunLoop(unittest.TestCase):
         with mock.patch("src.gui.runner.run_chain_command", side_effect=[0, 1, 0]), \
              mock.patch.object(ScriptChainRunner, "_resolve_script_specs", return_value=[(0, True), (1, True), (2, True)]):
             received = []
-            r = ScriptChainRunner("88")
+            r = ScriptChainRunner(CHAIN_PATH)
             r.finished_signal.connect(lambda c: received.append(c))
             r.run()
         self.assertEqual(received, [1])
@@ -137,7 +136,7 @@ class TestScriptChainRunnerRunLoop(unittest.TestCase):
         with mock.patch("src.gui.runner.run_chain_command", side_effect=[0, RuntimeError("boom"), 0]), \
              mock.patch.object(ScriptChainRunner, "_resolve_script_specs", return_value=[(0, True), (1, True), (2, True)]):
             received = []
-            r = ScriptChainRunner("88")
+            r = ScriptChainRunner(CHAIN_PATH)
             r.finished_signal.connect(lambda c: received.append(c))
             r.run()
         self.assertEqual(received, [-1])
@@ -145,7 +144,7 @@ class TestScriptChainRunnerRunLoop(unittest.TestCase):
     def test_run_always_emits_even_on_resolve_failure(self):
         with mock.patch.object(ScriptChainRunner, "_resolve_script_specs", side_effect=RuntimeError("boom")):
             received = []
-            r = ScriptChainRunner("88")
+            r = ScriptChainRunner(CHAIN_PATH)
             r.finished_signal.connect(lambda c: received.append(c))
             r.run()
         self.assertEqual(received, [-1])
@@ -157,7 +156,7 @@ class TestNonBlocking(unittest.TestCase):
     def test_nonblock_uses_popen_and_returns_zero(self):
         with mock.patch("src.gui.runner.subprocess.run") as run, \
              mock.patch("src.gui.runner.subprocess.Popen") as popen:
-            rc = run_chain_command("88", script_index=2, block=False)
+            rc = run_chain_command(CHAIN_PATH, script_index=2, block=False)
         self.assertEqual(rc, 0)
         popen.assert_called_once()
         run.assert_not_called()
@@ -169,7 +168,7 @@ class TestNonBlocking(unittest.TestCase):
         with mock.patch("src.gui.runner.subprocess.run") as run, \
              mock.patch("src.gui.runner.subprocess.Popen") as popen:
             run.return_value.returncode = 0
-            run_chain_command("88", script_index=2, block=True)
+            run_chain_command(CHAIN_PATH, script_index=2, block=True)
         run.assert_called_once()
         popen.assert_not_called()
 
@@ -177,14 +176,14 @@ class TestNonBlocking(unittest.TestCase):
         """chain 中 block=False 的脚本应以 block=False 运行。"""
         with mock.patch("src.gui.runner.run_chain_command", return_value=0) as rc, \
              mock.patch.object(ScriptChainRunner, "_resolve_script_specs", return_value=[(0, False)]):
-            ScriptChainRunner("88").run()
+            ScriptChainRunner(CHAIN_PATH).run()
         self.assertEqual(rc.call_args.kwargs["block"], False)
 
     def test_runner_runs_blocking_script(self):
         """chain 中 block=True 的脚本应以 block=True 运行。"""
         with mock.patch("src.gui.runner.run_chain_command", return_value=0) as rc, \
              mock.patch.object(ScriptChainRunner, "_resolve_script_specs", return_value=[(0, True)]):
-            ScriptChainRunner("88").run()
+            ScriptChainRunner(CHAIN_PATH).run()
         self.assertEqual(rc.call_args.kwargs["block"], True)
 
 
