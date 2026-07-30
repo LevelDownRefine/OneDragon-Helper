@@ -21,7 +21,7 @@ def build_chain_command(chain_config_path: str, script_index: int) -> tuple[list
     ``--debug-index <script_index>`` 运行指定下标脚本（及其挂靠组）。下标相对
     脚本链配置文件 ``<chain_config_path>`` 的 ``script_list`` 顺序。
 
-    命令改为调用本项目 vendored 的运行器 ``src.runner``（不再依赖 git submodule）。
+    命令改为调用本项目 vendored 的运行器 ``src.runner.launcher``（不再依赖 git submodule）。
     工作目录设为项目根，并把 ``src/runner`` 加入 ``PYTHONPATH``，使 vendored 的
     ``script_chainer`` 包可被导入。``--chain`` 传入脚本链配置文件的路径。
     """
@@ -30,7 +30,7 @@ def build_chain_command(chain_config_path: str, script_index: int) -> tuple[list
     runner_pkg_dir = os.path.join(cwd, "src", "runner")
     existing_pp = os.environ.get("PYTHONPATH", "")
     env = {**os.environ, "PYTHONPATH": runner_pkg_dir + (os.pathsep + existing_pp if existing_pp else "")}
-    command = [sys.executable, "-m", "src.runner", *common_args]
+    command = [sys.executable, "-m", "src.runner.launcher", *common_args]
     return command, cwd, env
 
 

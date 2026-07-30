@@ -25,7 +25,7 @@ class TestBuildChainCommand(unittest.TestCase):
         command, cwd, env = build_chain_command(CHAIN_PATH, 2)
         self.assertEqual(command[0], sys.executable)
         self.assertIn("-m", command)
-        self.assertIn("src.runner", command)
+        self.assertIn("src.runner.launcher", command)
         self.assertNotIn("--onedragon", command)
         self.assertIn("--chain", command)
         self.assertIn(CHAIN_PATH, command)
