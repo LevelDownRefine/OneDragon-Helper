@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 from PySide6.QtCore import QMimeData, Qt, Signal
-from PySide6.QtGui import QColor, QDrag, QFont, QPainter
+from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -151,11 +151,20 @@ class ScriptItem(QFrame):
         self.handle.mouseReleaseEvent = self._handle_mouse_release
         layout.addWidget(self.handle)
 
-        # 脚本名称
+        # 脚本名称（固定宽度：所有卡片脚本名区等宽，副本按钮居中后才跨卡对齐）
         self.title_label = QLabel(self.display_name)
-        self.title_label.setFont(QFont("Microsoft YaHei", 11))
+        title_font = QFont("Microsoft YaHei", 11)
+        self.title_label.setFont(title_font)
         self.title_label.setStyleSheet("color: #1f2937;")
-        layout.addWidget(self.title_label, stretch=1)
+        self.title_label.setFixedWidth(60)
+        # QLabel 无 setElideMode，用 QFontMetrics 手动截断超长名字
+        self.title_label.setText(
+            QFontMetrics(title_font).elidedText(self.display_name, Qt.TextElideMode.ElideRight, 110))
+        layout.addWidget(self.title_label)
+
+        # 左侧弹性空间 + 副本按钮（居中） + 右侧弹性空间
+        # 无副本按钮时两块 stretch 合并为一段，脚本名靠左、开关靠右
+        layout.addStretch(1)  # 左 spacer（index 2）
 
         # 副本选择按钮（点击弹出级联菜单：一级 → 二级从右侧弹出）
         self.dungeon_btn = None
@@ -165,6 +174,7 @@ class ScriptItem(QFrame):
             if saved_state.get('sequence'):  # optional: 保存状态可能没有选择过序列
                 self._selected_sequence = saved_state['sequence']
         self._ensure_dungeon_button()
+        layout.addStretch(1)  # 右 spacer（副本按钮在两个等宽 stretch 之间 = 居中）
 
         # 开关（自定义滑动开关）
         self.toggle = ToggleSwitch(checked=self.enabled)
@@ -362,9 +372,15 @@ class ScriptItem(QFrame):
 
         if self.dungeon_btn is None:
             self.dungeon_btn = make_secondary_button(
-                "选择副本", radius=8, padding="0 10px", font_size=11, min_width=160)
+                "选择副本", radius=8, padding="0 10px", font_size=11)
+            # 固定宽度：所有卡片副本条等宽，右边缘对齐
+            self.dungeon_btn.setFixedWidth(220)
+            # 文本居中；按钮本身由左右等宽 stretch 夹在中间实现居中
+            self.dungeon_btn.setStyleSheet(
+                self.dungeon_btn.styleSheet() + "\nQPushButton { text-align: center; }")
             self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
-            self.layout().insertWidget(2, self.dungeon_btn)
+            # 插入到左 spacer(index 2) 与右 spacer(即将在 index 4) 之间 → 居中
+            self.layout().insertWidget(3, self.dungeon_btn)
         self.dungeon_btn.setVisible(True)
         if self._selected_dungeon:
             self.dungeon_btn.setText(self._dungeon_btn_text())
