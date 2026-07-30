@@ -378,15 +378,14 @@ class TestScriptItemOverflowMenu(unittest.TestCase):
         self.assertTrue(hasattr(item, 'overflow_btn'))
 
     def test_menu_contains_expected_actions(self):
-        """菜单含 打开脚本 / 打开脚本配置 / 配置 / 删除 四项，且中间有分隔线"""
+        """菜单含 启动脚本 / 配置文件 / 脚本参数 / 删除脚本 四项"""
         item = self._build()
         menu = item._build_overflow_menu()
         texts = [a.text() for a in menu.actions()]
-        self.assertIn("▶ 打开脚本", texts)
-        self.assertIn("📄 打开脚本配置", texts)
-        self.assertIn("⚙ 配置", texts)
-        self.assertIn("🗑 删除", texts)
-        self.assertTrue(any(a.isSeparator() for a in menu.actions()))
+        self.assertIn("启动脚本", texts)
+        self.assertIn("配置文件", texts)
+        self.assertIn("脚本参数", texts)
+        self.assertIn("删除脚本", texts)
 
     def test_menu_open_script_action_triggers_handler(self):
         """点击「打开脚本」菜单项应触发 _open_script"""
@@ -394,7 +393,7 @@ class TestScriptItemOverflowMenu(unittest.TestCase):
         called = []
         item._open_script = lambda: called.append(True)
         menu = item._build_overflow_menu()
-        action = next(a for a in menu.actions() if a.text() == "▶ 打开脚本")
+        action = next(a for a in menu.actions() if a.text() == "启动脚本")
         action.trigger()
         self.assertEqual(called, [True])
 
@@ -402,7 +401,7 @@ class TestScriptItemOverflowMenu(unittest.TestCase):
         """无删除回调时，菜单里的「删除」项应被禁用"""
         item = self._build()  # 未传 delete_callback
         menu = item._build_overflow_menu()
-        action = next(a for a in menu.actions() if a.text() == "🗑 删除")
+        action = next(a for a in menu.actions() if a.text() == "删除脚本")
         self.assertFalse(action.isEnabled())
 
 
