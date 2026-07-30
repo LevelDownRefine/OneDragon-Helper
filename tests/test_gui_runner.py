@@ -12,25 +12,27 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import yaml
 
 from src.gui.runner import ScriptChainRunner, build_chain_command, run_chain_command
-from src.utils import get_path_under_onedragon
+from src.utils import get_root_dir
 
 
 class TestBuildChainCommand(unittest.TestCase):
     """验证命令构造与 script_index → --debug-index 的映射。"""
 
     def test_build_chain_command_includes_debug_index(self):
-        command, cwd = build_chain_command("88", 2)
+        command, cwd, env = build_chain_command("88", 2)
         self.assertEqual(command[0], sys.executable)
         self.assertIn("-m", command)
-        self.assertIn("script_chainer.win_exe.launcher", command)
-        self.assertIn("--onedragon", command)
+        self.assertIn("src.runner", command)
+        self.assertNotIn("--onedragon", command)
         self.assertIn("--chain", command)
         self.assertIn("88", command)
         idx = command.index("--debug-index")
         self.assertEqual(command[idx - 2], "--chain")
         self.assertEqual(command[idx - 1], "88")
         self.assertEqual(command[idx + 1], "2")
-        self.assertEqual(cwd, get_path_under_onedragon("src"))
+        self.assertEqual(cwd, get_root_dir())
+        # 注入 PYTHONPATH 使 vendored 的 script_chainer/one_dragon 可被导入
+        self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
 
 
 class TestRunChainCommandScriptIndex(unittest.TestCase):
@@ -44,7 +46,8 @@ class TestRunChainCommandScriptIndex(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertIn("--debug-index", command)
         self.assertEqual(command[command.index("--debug-index") + 1], "3")
-        self.assertEqual(run.call_args.kwargs["cwd"], get_path_under_onedragon("src"))
+        self.assertEqual(run.call_args.kwargs["cwd"], get_root_dir())
+        self.assertIn(os.path.join("src", "runner"), run.call_args.kwargs["env"]["PYTHONPATH"])
 
     def test_run_chain_command_asserts_on_none(self):
         """script_index=None 属编程错误：run_chain_command 必须 assert。"""

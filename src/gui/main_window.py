@@ -36,7 +36,7 @@ from src.gui.utils import (
 from src.gui.widgets import ScriptItem
 from src.utils import (
     get_config_yml_path_under_root,
-    get_path_under_onedragon,
+    get_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
     require_config_yml_path,
     safe_path_join,
@@ -377,7 +377,7 @@ class MainWindow(QMainWindow):
 
         data['script_list'] = filtered
 
-        output_dir = get_path_under_onedragon("config", "script_chain")
+        output_dir = get_path_under_root("config", "script_chain")
         output_file = safe_path_join(output_dir, f"{chain_name}.yml")
         with open(output_file, 'w', encoding='utf-8') as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)

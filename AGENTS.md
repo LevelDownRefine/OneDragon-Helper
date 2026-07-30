@@ -4,13 +4,13 @@
 
 ## 1. 项目简介
 
-OneDragon-Helper 是**多游戏自动化脚本调度器 + PySide6 GUI 启动器**：GUI 选脚本/副本/超时 → 生成 `OneDragon-ScriptChainer` 配置 → 调用各游戏脚本 exe 运行；附带日志解析汇总成功/失败。
+OneDragon-Helper 是**多游戏自动化脚本调度器 + PySide6 GUI 启动器**：GUI 选脚本/副本/超时 → 生成脚本链配置 → 调用各游戏脚本 exe 运行；附带日志解析汇总成功/失败。
 
 ## 2. 技术栈与依赖
 
 - **Python 3.11+**；GUI 用 **PySide6 + QFluentWidgets**（实际为原生控件 + 手写样式）
 - 依赖：`uv sync`（pyproject.toml）；Lint/Format：`ruff`（line-length 88，double quote）
-- 子项目 `OneDragon-ScriptChainer/`（第三方游戏脚本，**勿改**）
+- `src/runner/`（vendored 的脚本链运行器，从 `OneDragon-ScriptChainer` fork 而来，**已替代原 git submodule 依赖**，不再依赖外部子模块）
 - CI：`.github/workflows/ci.yml` 用 `uv`，**不走 env.bat**
 
 ## 3. 目录结构
@@ -32,12 +32,12 @@ src/config/
   bgi.py                    # copy_BGI_User（整体复制，dirs_exist_ok=True）
 src/python_script/          # python 脚本（mute/shutdown/unmute/collect_log/wait_until_0410 等，由 ScriptChainer 调用；不 import 任何项目模块，可独立运行）
 config/                     # config.example.yml / config.yml / dungeon_list.yml / weekly_timeouts.yml / gui_state.json / 各 init 模板 / BGI_User
-tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tests.bat  env.bat  uv.lock
+tests/  assets/  pyproject.toml  launcher.bat  run_tests.bat  env.bat  uv.lock
 ```
 
 ## 4. 核心架构
 
-- **GUI**（`src/gui/` 包，`launcher.py` 仅为薄入口）：`MainWindow` 列出 `ScriptItem`（副本下拉 + 开关 + ⚙配置按钮）；`SingleScriptConfigDialog(QDialog)` 配脚本路径、每周超时与「阻塞运行」开关（存 `block` 字段，默认阻塞）；运行 → `_generate_config("88")` 生成 `OneDragon-ScriptChainer/config/script_chain/88.yml` → `ScriptChainRunner(QThread)` 后台**逐条**调 `script_chainer.win_exe.launcher --chain 88 --debug-index <i>`（`i` 取自 88.yml 的 `script_list` 下标，每个脚本独立进程；每条按自身 `block` 决定是否以阻塞方式启动（缺字段视为阻塞））。
+- **GUI**（`src/gui/` 包，`launcher.py` 仅为薄入口）：`MainWindow` 列出 `ScriptItem`（副本下拉 + 开关 + ⚙配置按钮）；`SingleScriptConfigDialog(QDialog)` 配脚本路径、每周超时与「阻塞运行」开关（存 `block` 字段，默认阻塞）；运行 → `_generate_config("88")` 生成 `config/script_chain/88.yml` → `ScriptChainRunner(QThread)` 后台**逐条**调 `python -m src.runner --chain 88 --debug-index <i>`（`i` 取自 88.yml 的 `script_list` 下标，每个脚本独立进程；每条按自身 `block` 决定是否以阻塞方式启动（缺字段视为阻塞））。
 - **GUI 内存/磁盘同步不变量（强约束）**：`MainWindow.all_config_data` 是 `config.yml` 的内存副本；`_generate_config`（运行）与 `_save_script_order`（重排/增删）都基于它写回磁盘。`SingleScriptConfigDialog.save_data` 直接改磁盘 `config.yml`，**不会**更新内存副本。因此配置弹窗 `accept` 后，`ScriptItem` 必须通过 `config_saved_callback` → `MainWindow._on_script_config_saved` 重新从磁盘加载 `all_config_data` 并同步对应卡片的 `script_path`。**违反此约束会导致「保存路径失效」**：保存后内存仍是旧路径，下一次运行/重排就把旧路径覆盖回磁盘。
 - **副本配置适配器**（`set_config.py`）：外观接口 `set_config()` + `ScriptConfig` 类层级，各游戏一个子类，封装 config 读写差异。**详细设计与各脚本适配状态见 [`src/config/set_config.md`](src/config/set_config.md)。**
 - **配置读写**（`subscript.py`）：`_CONFIG_REL_PATHS`（脚本 config 相对路径）+ `_TEMPLATE_PATHS`（init 模板，在 `config/` 下）；`load_config/save_config/load_template` 按扩展名支持 JSON/YAML；`_get_script_root_dir` 取 `script_path` 父目录并 `replace('\\','/')`。
@@ -57,7 +57,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 8. **代码稳定性优先**：能加强约束就加强（如 `_is_aligned` 严格要求 `plan_list` 顺序一致）。
 9. 新增/修改功能后**必须补测试并跑全套**。
 10. GUI 持久化：`gui_state.json` 只存 `dungeon`/`sequence`。**`enabled` 为纯内存态**：config.yml 不含 `enabled` 字段，启动默认全开，仅当次会话内可在 GUI 临时开关，不持久化（重启恢复全开）。
-11. **日志统一用 `logging` 模块**：每个模块 `logger = logging.getLogger(__name__)`；入口处（`main`/`__main__`）调用 `setup_logging()`（`src/utils_logger.py`，幂等），统一格式 `%(asctime)s [%(levelname)s] %(name)s: %(message)s`，**同时输出控制台与文件** `logs/onedragon_helper.log`（每日 00:00 轮转，保留 14 天）。**禁止用裸 `print` 输出日志**。`collect_log.py` 因独立性约束（不 `import` 任何项目模块，可作独立脚本运行）保持原样：**仅用 `basicConfig` 输出控制台，不落盘**。子项目 `OneDragon-ScriptChainer` 有独立日志系统（`.log/`），不在此处理。
+11. **日志统一用 `logging` 模块**：每个模块 `logger = logging.getLogger(__name__)`；入口处（`main`/`__main__`）调用 `setup_logging()`（`src/utils_logger.py`，幂等），统一格式 `%(asctime)s [%(levelname)s] %(name)s: %(message)s`，**同时输出控制台与文件** `logs/onedragon_helper.log`（每日 00:00 轮转，保留 14 天）。**禁止用裸 `print` 输出日志**。`collect_log.py` 因独立性约束（不 `import` 任何项目模块，可作独立脚本运行）保持原样：**仅用 `basicConfig` 输出控制台，不落盘**。vendored 的 `src/runner` 运行器有独立日志系统（`.log/`），不在此处理。
 12. **不随意修改 `.bak` / 备份文件**：`*.bak` 等备份是用户的个人文件，代理**不得**在未被明确要求时改动（包括改其中路径、配置等）。需要改动时先征得用户同意，或让用户自行处理。
 
 ## 6. 测试
@@ -79,7 +79,7 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 - **首次初始化**：删 `config/config.yml` 后启动（`launcher.main`）即触发 `config_workflow()`。
 - **日志汇总**：`python -m src.python_script.collect_log`。
 - **加依赖**：改 `pyproject.toml` → `uv sync`（同步 `uv.lock`）。
-- **风格检查**（先激活 venv，见 §6 前置步骤）：`ruff check src tests`。只检查 `src/` 与 `tests/`，**不要**对 `OneDragon-ScriptChainer/` 跑（第三方，勿改）。自动修复安全项：`ruff check src tests --fix`；剩余需人工判断的项再逐个处理。
+- **风格检查**（先激活 venv，见 §6 前置步骤）：`ruff check src tests`。只检查 `src/` 与 `tests/`，**不要**对 `src/runner/` 跑（vendored 第三方 fork，已在 ruff 配置 `exclude` 中排除，勿改其上游风格）。自动修复安全项：`ruff check src tests --fix`；剩余需人工判断的项再逐个处理。
 - **新增游戏适配**：见 `src/config/set_config.md`「如何新增一个游戏适配」。
 
 ## 8. 环境（Windows）
@@ -87,4 +87,4 @@ tests/  assets/  OneDragon-ScriptChainer/  pyproject.toml  launcher.bat  run_tes
 - **改代码 / 跑测试 / 跑 lint 前必须先激活环境**（详见 §6 前置步骤）。
 - `env.bat`：激活根 `.venv\Scripts\activate.bat` + 代理 `127.0.0.1:7890`；`launcher.bat`/`run_tests.bat` 先 call 它。
 - `renew.bat`：注释占位，未启用。
-- `OneDragon-ScriptChainer/` 有独立 `.venv` 与大量 `.pyc`，**勿改动内部代码、勿提交 `.pyc`**。
+- `src/runner/` 为 vendored 上游代码，已排除在 ruff 之外，**勿改动其上游风格、勿提交 `.pyc`**；需要功能改动时优先改我们自己的调用层（`src/gui/runner.py`）。

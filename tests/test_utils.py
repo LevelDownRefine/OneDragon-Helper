@@ -35,13 +35,6 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(res, "mock_path")
             mock_join.assert_called_once_with(utils.get_root_dir(), "sub1", "sub2")
 
-    def test_get_path_under_onedragon(self):
-        with patch('utils.join_dir_path_with_mk') as mock_join:
-            mock_join.return_value = "mock_path"
-            res = utils.get_path_under_onedragon("sub1")
-            self.assertEqual(res, "mock_path")
-            mock_join.assert_called_once_with(utils.get_root_dir(), "OneDragon-ScriptChainer", "sub1")
-
     def test_safe_path_join_normal(self):
         base = os.path.abspath(os.sep + "base")
         # 单层子路径

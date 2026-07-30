@@ -41,14 +41,6 @@ def get_weekly_timeouts_yml_path_under_root() -> str:
     """
     return safe_path_join(get_root_dir(), "config", "weekly_timeouts.yml")
 
-def get_path_under_onedragon(*subs) -> str:
-    """
-    获取工作目录下的路径
-    :param subs: 子目录路径 可以传入多个表示多级
-    :return: 工作目录下的路径
-    """
-    return join_dir_path_with_mk(get_root_dir(), "OneDragon-ScriptChainer", *subs)
-
 @lru_cache
 def get_root_dir() -> str:
     """
