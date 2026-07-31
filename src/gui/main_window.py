@@ -373,6 +373,9 @@ class MainWindow(QMainWindow):
                 seq = enabled_sequences.get(name)
                 set_config(name, dungeon_name=dungeon, sequence=seq)
 
+                # 阻塞字段：默认阻塞（True），保留配置中显式设置的 block
+                script.setdefault('block', True)
+
                 filtered.append(script)
 
         data['script_list'] = filtered
