@@ -185,7 +185,7 @@ class ScriptItem(QFrame):
         # 操作菜单按钮：把删除 / 打开脚本 / 打开配置 / 配置 全部收进 ⋮，避免卡片按钮过多
         self.overflow_btn = make_icon_button(
             "⋮", accent="#3b82f6", normal_color="#9aa3b2", font_size=18,
-            hover_bg="#eef2f7", pressed_bg="#e2e8f0", tooltip="更多操作")
+            hover_bg="#eef2f7", pressed_bg="#e2e8f0")
         self.overflow_btn.clicked.connect(self._show_overflow_menu)
         layout.addWidget(self.overflow_btn)
 
