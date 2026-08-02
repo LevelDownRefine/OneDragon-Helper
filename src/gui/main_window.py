@@ -1,6 +1,7 @@
 """主窗口：脚本列表、增删/重排/持久化、生成 ScriptChainer 配置并运行。"""
 
 import copy
+import logging
 import os
 
 import yaml
@@ -42,6 +43,8 @@ from src.utils import (
     require_config_yml_path,
     safe_path_join,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
@@ -462,12 +465,11 @@ class MainWindow(QMainWindow):
         self.run_btn.setText("▶ 运行全部开启的脚本")
 
         # 后台运行的脚本仍在后台执行，故只用「已处理」措辞，不强调「完成」。
+        # 运行结果仅写日志，不再弹模态窗（避免阻塞 GUI）。
         if return_code == 0:
-            QMessageBox.information(
-                self, "完成", "已处理全部脚本（后台运行的脚本仍在后台执行）。"
-            )
+            logger.info("脚本链运行结束：已处理全部脚本（后台运行的脚本仍在后台执行）")
         else:
-            QMessageBox.warning(self, "提示", f"脚本运行结束，退出码: {return_code}")
+            logger.warning("脚本链运行结束，退出码: %s", return_code)
 
     def _select_all(self):
         """全选所有脚本"""

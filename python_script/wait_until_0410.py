@@ -4,7 +4,7 @@
 之后脚本链继续执行后续项。仅依赖标准库，不 import 任何项目模块，可独立运行。
 
 用法：
-    python src/python_script/wait_until_0410.py
+    python python_script/wait_until_0410.py
 """
 
 import datetime

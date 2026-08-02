@@ -188,7 +188,7 @@ def _resolve_relative_script_paths(config_data: dict) -> None:
     绝对路径（如游戏 exe）原样保留。
 
     config.example.yml 中 python 脚本统一使用相对项目根目录的路径
-    （如 src/python_script/mute.py），生成 config.yml 时展开为绝对路径，
+    （如 python_script/mute.py），生成 config.yml 时展开为绝对路径，
     使模板可移植、而运行时 ScriptChainer 拿到的始终是绝对路径。
     """
     root = get_root_dir()

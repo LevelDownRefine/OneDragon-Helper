@@ -10,7 +10,7 @@
 独立性约束（重要）：
 - 本文件刻意**不 import 本项目中的任何其他模块**。
 - 为保持独立，本文件自行从推导项目根目录，并直接 `yaml.safe_load` 读取 `config.yml`（而非 import）。
-- 目的：可作为独立脚本直接运行`python src/python_script/collect_log.py`。
+- 目的：可作为独立脚本直接运行`python python_script/collect_log.py`。
 """
 
 import logging
@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 
 def _get_root_dir() -> str:
-    """推导项目根目录（向上 3 层：src/python_script/collect_log.py → 项目根）。"""
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    """推导项目根目录（向上 2 层：python_script/collect_log.py → 项目根）。"""
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 _LOG_CONFIGURED = False
