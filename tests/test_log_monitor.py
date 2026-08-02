@@ -2,11 +2,15 @@
 
 import logging as _logging
 import os
+import sys
 import tempfile
 import unittest
 
-from src.python_script import collect_log
-from src.python_script.collect_log import (
+# python_script/ 位于项目根（非 src/ 下），追加根目录到 sys.path 以便导入。
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from python_script import collect_log
+from python_script.collect_log import (
     BGILogParser,
     M7ALogParser,
     OkEfLogParser,
@@ -143,9 +147,9 @@ class TestCollectLogSetup(unittest.TestCase):
     """测试 collect_log 的日志落盘配置（独立、仅标准库）。"""
 
     def test_get_root_dir_points_to_project_root(self):
-        """_get_root_dir 向上 3 层应落在项目根（含 config/config.example.yml 与 src/python_script）。"""
+        """_get_root_dir 向上 2 层应落在项目根（含 config/config.example.yml 与 python_script）。"""
         root = collect_log._get_root_dir()
-        self.assertTrue(os.path.isdir(os.path.join(root, "src", "python_script")))
+        self.assertTrue(os.path.isdir(os.path.join(root, "python_script")))
         self.assertTrue(
             os.path.isfile(os.path.join(root, "config", "config.example.yml"))
         )

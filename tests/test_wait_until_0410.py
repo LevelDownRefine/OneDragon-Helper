@@ -1,4 +1,4 @@
-"""测试 src/python_script/wait_until_0410.py（仅标准库，无 PySide6 依赖）。
+"""测试 python_script/wait_until_0410.py（仅标准库，无 PySide6 依赖）。
 
 核心逻辑不依赖真实时钟：用 mock 控制 datetime.now / time.sleep，
 验证 next_trigger 的计算与 wait_until_target 的轮询/退出，不真睡眠、不卡死。
@@ -7,11 +7,16 @@
 故改为替换 datetime 模块上的 datetime 类（模块属性可变），用 MagicMock 提供可控 now()。
 """
 
+import os
+import sys
 import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, call, patch
 
-from src.python_script import wait_until_0410 as w
+# python_script/ 位于项目根（非 src/ 下），追加根目录到 sys.path 以便导入。
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from python_script import wait_until_0410 as w
 
 
 def _fake_datetime_class(now_value=None, now_side_effect=None) -> MagicMock:
