@@ -1,4 +1,5 @@
 import os
+import sys
 from functools import lru_cache
 
 
@@ -45,8 +46,10 @@ def get_weekly_timeouts_yml_path_under_root() -> str:
 def get_root_dir() -> str:
     """
     获取项目根目录
-    :return: 项目根目录（src/ 的父目录）
+    :return: 项目根目录（src/ 的父目录）；冻结（PyInstaller）时为 exe 所在目录
     """
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def get_path_under_root(*subs) -> str:

@@ -21,38 +21,47 @@ def _to_signed_32(code: int) -> int:
     return ctypes.c_int32(code & 0xFFFFFFFF).value
 
 
-def build_chain_command(chain_config_path: str, script_index: int | None = None) -> tuple[list[str], str, dict]:
-    """构造脚本链启动命令，返回 (命令列表, 工作目录, 环境变量)。
+def build_script_command(extra_args: list[str]) -> tuple[list[str], str, dict | None]:
+    """构造调用 vendored Runner 的启动命令，统一处理 frozen / 非 frozen。
 
-    整链调用（``script_index=None``）运行配置中的全部脚本，由 runner 按每条脚本的
-    ``block`` 字段决定阻塞/非阻塞；传 ``script_index`` 则仅运行该下标脚本（调试用）。
+    返回 ``(命令列表, 工作目录, 环境变量)``。``extra_args`` 为追加在命令后的 runner 参数
+    （如 ``["--chain", path]`` 或 ``["--script", path]``）。
 
-    命令调用本项目 vendored 的运行器 ``src.runner.launcher``（不再依赖 git submodule）。
-    工作目录设为项目根，并把 ``src/runner`` 加入 ``PYTHONPATH``，使 vendored 的
-    ``script_chainer`` 包可被导入。``--chain`` 传入脚本链配置文件的路径。
+    - 冻结（PyInstaller）模式：``sys.executable`` 指向 GUI 自身的 exe，不能用它跑 .py，
+      改用同目录的 ``OneDragon-Helper-Runner.exe``；工作目录设为 exe 所在目录，
+      ``env=None`` 继承父进程环境（不丢 PATH、SYSTEMROOT 等）。
+    - 开发模式：用 ``python -m src.runner.launcher``，并把 ``src/runner`` 注入
+      ``PYTHONPATH``（使 vendored 的 ``script_chainer`` 包可被导入）；工作目录设为项目根。
     """
-    common_args = ["--chain", chain_config_path]
-    if script_index is not None:
-        common_args += ["--debug-index", str(script_index)]
+    if getattr(sys, "frozen", False):
+        runner_exe = os.path.join(os.path.dirname(sys.executable), "OneDragon-Helper-Runner.exe")
+        return [runner_exe, *extra_args], os.path.dirname(sys.executable), None
+
     cwd = get_root_dir()
     runner_pkg_dir = os.path.join(cwd, "src", "runner")
     existing_pp = os.environ.get("PYTHONPATH", "")
     env = {**os.environ, "PYTHONPATH": runner_pkg_dir + (os.pathsep + existing_pp if existing_pp else "")}
-    command = [sys.executable, "-m", "src.runner.launcher", *common_args]
+    command = [sys.executable, "-m", "src.runner.launcher", *extra_args]
     return command, cwd, env
 
 
-def run_chain_command(chain_config_path: str, script_index: int | None = None, block: bool = True) -> int:
+def build_chain_command(chain_config_path: str) -> tuple[list[str], str, dict | None]:
+    """构造脚本链启动命令，返回 (命令列表, 工作目录, 环境变量)。
+
+    ``--chain`` 传入脚本链配置文件的路径。命令封装逻辑委托给 ``build_script_command``。
+    """
+    return build_script_command(["--chain", chain_config_path])
+
+
+def run_chain_command(chain_config_path: str, block: bool = True) -> int:
     """构造并运行一条脚本链命令，返回退出码。
 
-    ``chain_config_path`` 为脚本链配置路径；``script_index=None`` 表示整链运行
-    （默认），由 runner 内部按每条脚本的 ``block`` 字段处理阻塞/非阻塞；传
-    ``script_index`` 仅运行该下标脚本（调试）。``block=True``（默认）等待子进程
-    结束并返回其退出码；``block=False`` 以 Popen 即起即返（返回 0 表示已启动），
-    用于后台/非阻塞运行整条链。
+    ``chain_config_path`` 为脚本链配置路径，由 runner 内部按每条脚本的 ``block`` 字段
+    处理阻塞/非阻塞。``block=True``（默认）等待子进程结束并返回其退出码；``block=False``
+    以 Popen 即起即返（返回 0 表示已启动），用于后台/非阻塞运行整条链。
     """
-    command, cwd, env = build_chain_command(chain_config_path, script_index)
-    logger.info("[runner] 运行脚本链: %s (cwd=%s, script_index=%s, block=%s)", " ".join(command), cwd, script_index, block)
+    command, cwd, env = build_chain_command(chain_config_path)
+    logger.info("[runner] 运行脚本链: %s (cwd=%s, block=%s)", " ".join(command), cwd, block)
     if block:
         res = subprocess.run(command, cwd=cwd, env=env)
         return res.returncode

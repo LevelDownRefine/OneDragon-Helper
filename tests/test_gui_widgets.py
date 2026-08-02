@@ -296,16 +296,21 @@ class TestScriptItemOpenButton(unittest.TestCase):
         mock_box.assert_called_once()
 
     def test_open_script_python_runs_with_interpreter(self):
-        """python 脚本：用 sys.executable 直接运行该 .py（不阻塞，走 subprocess.Popen）"""
+        """python 脚本：命令构造委派给 build_script_command，_open_script 只负责 spawn"""
         item = ScriptItem({'display_name': '静音', 'script_type': 'python',
                            'script_path': 'C:/proj/src/python_script/mute.py'})
-        with patch('src.gui.widgets.subprocess.Popen') as mock_popen, \
+        fake_cmd = [sys.executable, '-m', 'src.runner.launcher', '--script',
+                    'C:/proj/src/python_script/mute.py']
+        with patch('src.gui.widgets.build_script_command',
+                   return_value=(fake_cmd, 'C:/root', None)) as bsc, \
+             patch('src.gui.widgets.subprocess.Popen') as mock_popen, \
              patch('os.path.isfile', return_value=True):
             item._open_script()
+        bsc.assert_called_once_with(['--script', 'C:/proj/src/python_script/mute.py'])
         mock_popen.assert_called_once()
         args, kwargs = mock_popen.call_args
-        self.assertEqual(list(args[0]), [sys.executable, 'C:/proj/src/python_script/mute.py'])
-        self.assertEqual(kwargs.get('cwd'), 'C:/proj/src/python_script')
+        self.assertEqual(list(args[0]), fake_cmd)
+        self.assertEqual(kwargs.get('cwd'), 'C:/root')
 
     def test_open_script_python_missing_file_shows_msg(self):
         """python 脚本文件不存在时弹出清晰提示且不启动进程"""

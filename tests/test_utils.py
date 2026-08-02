@@ -85,5 +85,47 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(os.path.normpath(res_none), expected_none)
             self.assertTrue(os.path.isdir(expected_none))
 
+
+class TestGetRootDirFrozen(unittest.TestCase):
+    """验证 PyInstaller 冻结模式下 get_root_dir() 返回 exe 所在目录，而非 __file__ 推导路径。
+
+    这些测试不需要实际的 exe 文件——通过 mock sys.frozen 和 sys.executable 模拟冻结环境。
+    """
+
+    def setUp(self):
+        # get_root_dir 使用 @lru_cache，测试前必须清缓存，否则会拿到上次（非冻结）的结果
+        utils.get_root_dir.cache_clear()
+
+    def tearDown(self):
+        # 测试后也要清缓存，避免影响后续测试
+        utils.get_root_dir.cache_clear()
+
+    def test_frozen_returns_exe_dir(self):
+        fake_exe = os.path.join(os.sep, "app", "OneDragon-Helper.exe")
+        with patch("sys.frozen", True, create=True), \
+             patch("sys.executable", fake_exe):
+            result = utils.get_root_dir()
+            self.assertEqual(result, os.path.dirname(fake_exe))
+
+    def test_frozen_not_uses_file(self):
+        """冻结模式下不应返回 __file__ 推导的路径（即不应是 src/ 的父目录）。"""
+        fake_exe = os.path.join(os.sep, "deploy", "dist", "OneDragon-Helper.exe")
+        with patch("sys.frozen", True, create=True), \
+             patch("sys.executable", fake_exe):
+            result = utils.get_root_dir()
+            # 不应包含 src 目录
+            self.assertNotIn("src", result)
+            self.assertEqual(result, os.path.dirname(fake_exe))
+
+    def test_non_frozen_uses_file(self):
+        """非冻结模式下走 __file__ 推导（原始行为不变）。"""
+        with patch("sys.frozen", False, create=True):
+            utils.get_root_dir.cache_clear()
+            result = utils.get_root_dir()
+            # 非冻结模式应返回 src/ 的父目录（项目根）
+            self.assertTrue(os.path.isdir(result))
+            self.assertTrue(os.path.isdir(os.path.join(result, "src")))
+
+
 if __name__ == "__main__":
     unittest.main()

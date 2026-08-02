@@ -1,7 +1,6 @@
 """自定义控件：ToggleSwitch 滑动开关与 ScriptItem 脚本卡片。"""
 import os
 import subprocess
-import sys
 
 from PySide6.QtCore import QMimeData, Qt, Signal
 from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter
@@ -21,6 +20,7 @@ from src.config.dungeon_config import get_display_name
 from src.config.subscript import get_config_path, get_script_path
 from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
+from src.gui.runner import build_script_command
 from src.gui.utils import _safe_startfile, _styled_msg_box
 
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
@@ -236,9 +236,11 @@ class ScriptItem(QFrame):
                 _styled_msg_box(self, QMessageBox.Warning, "提示",
                                 f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}").exec()
                 return
+            # 命令构造（含 frozen/非 frozen 判断）全部委托给 build_script_command，
+            # 这里只管拿 cmd list 去 spawn，不再关心运行环境。
+            command, cwd, env = build_script_command(["--script", self.script_path])
             try:
-                subprocess.Popen([sys.executable, self.script_path],
-                                 cwd=os.path.dirname(self.script_path))
+                subprocess.Popen(command, cwd=cwd, env=env)
             except OSError as e:
                 _styled_msg_box(self, QMessageBox.Warning, "提示", f"无法运行脚本：\n{e}").exec()
             return

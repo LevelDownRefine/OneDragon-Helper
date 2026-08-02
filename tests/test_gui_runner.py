@@ -10,6 +10,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from src.gui.runner import (
     ScriptChainRunner,
+    build_script_command,
     _to_signed_32,
     build_chain_command,
     run_chain_command,
@@ -21,27 +22,16 @@ CHAIN_PATH_ABS = os.path.join(get_root_dir(), CHAIN_PATH)
 
 
 class TestBuildChainCommand(unittest.TestCase):
-    """验证命令构造：整链默认无 --debug-index，传下标时带 --debug-index。"""
+    """验证整链命令构造：用 sys.executable -m src.runner.launcher --chain <路径>。"""
 
-    def test_whole_chain_has_no_debug_index(self):
+    def test_whole_chain_command_shape(self):
         command, cwd, env = build_chain_command(CHAIN_PATH)
         self.assertEqual(command[0], sys.executable)
         self.assertIn("-m", command)
         self.assertIn("src.runner.launcher", command)
-        self.assertNotIn("--onedragon", command)
         self.assertIn("--chain", command)
         self.assertIn(CHAIN_PATH, command)
         self.assertNotIn("--debug-index", command)
-        self.assertEqual(cwd, get_root_dir())
-        self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
-
-    def test_debug_index_included_when_given(self):
-        command, cwd, env = build_chain_command(CHAIN_PATH, 2)
-        self.assertIn("--debug-index", command)
-        idx = command.index("--debug-index")
-        self.assertEqual(command[idx - 2], "--chain")
-        self.assertEqual(command[idx - 1], CHAIN_PATH)
-        self.assertEqual(command[idx + 1], "2")
         self.assertEqual(cwd, get_root_dir())
         self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
 
@@ -58,16 +48,6 @@ class TestRunChainCommandInvocation(unittest.TestCase):
         self.assertIn("--chain", command)
         self.assertIn(CHAIN_PATH, command)
         self.assertNotIn("--debug-index", command)
-        self.assertEqual(run.call_args.kwargs["cwd"], get_root_dir())
-        self.assertIn(os.path.join("src", "runner"), run.call_args.kwargs["env"]["PYTHONPATH"])
-
-    def test_debug_index_passed_to_subprocess(self):
-        with mock.patch("src.gui.runner.subprocess.run") as run:
-            run.return_value.returncode = 0
-            rc = run_chain_command(CHAIN_PATH, script_index=3)
-        self.assertEqual(rc, 0)
-        command = run.call_args.args[0]
-        self.assertEqual(command[command.index("--debug-index") + 1], "3")
         self.assertEqual(run.call_args.kwargs["cwd"], get_root_dir())
         self.assertIn(os.path.join("src", "runner"), run.call_args.kwargs["env"]["PYTHONPATH"])
 
@@ -163,6 +143,92 @@ class TestNonBlocking(unittest.TestCase):
             run_chain_command(CHAIN_PATH, block=True)
         run.assert_called_once()
         popen.assert_not_called()
+
+
+class TestBuildChainCommandFrozen(unittest.TestCase):
+    """验证 PyInstaller 冻结模式下 build_chain_command 调用同目录 Runner exe。
+
+    不需要实际的 exe 文件——通过 mock sys.frozen 和 sys.executable 模拟冻结环境。
+    """
+
+    FAKE_EXE = os.path.join(os.sep, "app", "OneDragon-Helper.exe")
+    EXPECTED_RUNNER = os.path.join(os.sep, "app", "OneDragon-Helper-Runner.exe")
+
+    def test_frozen_calls_runner_exe_not_python(self):
+        with mock.patch("sys.frozen", True, create=True), \
+             mock.patch("sys.executable", self.FAKE_EXE):
+            command, cwd, env = build_chain_command(CHAIN_PATH)
+        # 命令首元素应是 Runner exe，而非 sys.executable（Python 解释器）
+        self.assertEqual(command[0], self.EXPECTED_RUNNER)
+        self.assertNotIn("-m", command)
+        self.assertNotIn("src.runner.launcher", command)
+
+    def test_frozen_passes_chain_arg(self):
+        with mock.patch("sys.frozen", True, create=True), \
+             mock.patch("sys.executable", self.FAKE_EXE):
+            command, cwd, env = build_chain_command(CHAIN_PATH)
+        self.assertIn("--chain", command)
+        self.assertIn(CHAIN_PATH, command)
+        self.assertNotIn("--debug-index", command)
+
+    def test_frozen_cwd_is_exe_dir(self):
+        with mock.patch("sys.frozen", True, create=True), \
+             mock.patch("sys.executable", self.FAKE_EXE):
+            command, cwd, env = build_chain_command(CHAIN_PATH)
+        self.assertEqual(cwd, os.path.dirname(self.FAKE_EXE))
+
+    def test_frozen_env_is_none(self):
+        """冻结模式下 env=None，让 subprocess 继承父进程环境（不丢 PATH 等）。"""
+        with mock.patch("sys.frozen", True, create=True), \
+             mock.patch("sys.executable", self.FAKE_EXE):
+            command, cwd, env = build_chain_command(CHAIN_PATH)
+        self.assertIsNone(env)
+
+    def test_non_frozen_unchanged(self):
+        """非冻结模式行为不变：用 sys.executable -m src.runner.launcher。"""
+        command, cwd, env = build_chain_command(CHAIN_PATH)
+        self.assertEqual(command[0], sys.executable)
+        self.assertIn("-m", command)
+        self.assertIn("src.runner.launcher", command)
+        self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
+
+
+class TestBuildScriptInvocationFrozen(unittest.TestCase):
+    """验证 build_script_command(["--script", ...]) 在 frozen/非 frozen 下一致。
+
+    不需要实际的 exe 文件——通过 mock sys.frozen 和 sys.executable 模拟冻结环境。
+    """
+
+    FAKE_EXE = os.path.join(os.sep, "app", "OneDragon-Helper.exe")
+    EXPECTED_RUNNER = os.path.join(os.sep, "app", "OneDragon-Helper-Runner.exe")
+    SCRIPT = "D:/scripts/foo.py"
+
+    def test_frozen_calls_runner_exe_with_script_flag(self):
+        with mock.patch("sys.frozen", True, create=True), \
+             mock.patch("sys.executable", self.FAKE_EXE):
+            command, cwd, env = build_script_command(["--script", self.SCRIPT])
+        self.assertEqual(command[0], self.EXPECTED_RUNNER)
+        self.assertEqual(command[1], "--script")
+        self.assertEqual(command[2], self.SCRIPT)
+        self.assertNotIn("-m", command)
+        self.assertNotIn("src.runner.launcher", command)
+
+    def test_frozen_cwd_is_exe_dir_and_env_none(self):
+        with mock.patch("sys.frozen", True, create=True), \
+             mock.patch("sys.executable", self.FAKE_EXE):
+            command, cwd, env = build_script_command(["--script", self.SCRIPT])
+        self.assertEqual(cwd, os.path.dirname(self.FAKE_EXE))
+        self.assertIsNone(env)
+
+    def test_non_frozen_uses_python_minus_m(self):
+        """非冻结模式：用 sys.executable -m src.runner.launcher --script <路径>。"""
+        command, cwd, env = build_script_command(["--script", self.SCRIPT])
+        self.assertEqual(command[0], sys.executable)
+        self.assertIn("-m", command)
+        self.assertIn("src.runner.launcher", command)
+        self.assertIn("--script", command)
+        self.assertEqual(command[command.index("--script") + 1], self.SCRIPT)
+        self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
 
 
 if __name__ == '__main__':
