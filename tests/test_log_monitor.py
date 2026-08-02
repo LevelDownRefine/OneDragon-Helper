@@ -47,7 +47,9 @@ class TestLogParser(unittest.TestCase):
 
     def test_parse_ok_ww_task_completed(self):
         parser = OkWwLogParser()
-        log_content = "2026-07-19 14:15:01,481 INFO TaskExecutor DailyTask:Task completed"
+        log_content = (
+            "2026-07-19 14:15:01,481 INFO TaskExecutor DailyTask:Task completed"
+        )
         self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
 
     def test_parse_ok_ww_failed(self):
@@ -84,7 +86,9 @@ ERROR: 另一个错误"""
 
     def test_parse_ok_nte_task_completed(self):
         parser = OkNteLogParser()
-        log_content = "2026-07-19 14:15:01,481 INFO TaskExecutor DailyTask:Task completed"
+        log_content = (
+            "2026-07-19 14:15:01,481 INFO TaskExecutor DailyTask:Task completed"
+        )
         self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
 
     def test_parse_ok_nte_failed(self):
@@ -99,7 +103,7 @@ ERROR: 另一个错误"""
 
     def test_parse_bgi_failed_unclaimed(self):
         parser = BGILogParser()
-        log_content = "[13:56:11.603] [WRN] BetterGenshinImpact.GameTask.Common.TaskControl\n检查每日奖励结果：\"未领取\"，请手动检查！\n[13:56:13.291] [INF] BetterGenshinImpact.ViewModel.Pages.OneDragonFlowViewModel\n一条龙和配置组任务结束"
+        log_content = '[13:56:11.603] [WRN] BetterGenshinImpact.GameTask.Common.TaskControl\n检查每日奖励结果："未领取"，请手动检查！\n[13:56:13.291] [INF] BetterGenshinImpact.ViewModel.Pages.OneDragonFlowViewModel\n一条龙和配置组任务结束'
         self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
 
     def test_parse_bgi_failed_error(self):
@@ -129,7 +133,9 @@ ERROR: 另一个错误"""
 
     def test_parse_zzz_failed_no_success(self):
         parser = ZZZLogParser()
-        log_content = "[20:08:32.067] [one_dragon_context.py 471] [INFO]: 开始加载实例配置 1"
+        log_content = (
+            "[20:08:32.067] [one_dragon_context.py 471] [INFO]: 开始加载实例配置 1"
+        )
         self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
 
 
@@ -140,7 +146,9 @@ class TestCollectLogSetup(unittest.TestCase):
         """_get_root_dir 向上 3 层应落在项目根（含 config/config.example.yml 与 src/python_script）。"""
         root = collect_log._get_root_dir()
         self.assertTrue(os.path.isdir(os.path.join(root, "src", "python_script")))
-        self.assertTrue(os.path.isfile(os.path.join(root, "config", "config.example.yml")))
+        self.assertTrue(
+            os.path.isfile(os.path.join(root, "config", "config.example.yml"))
+        )
 
     def test_setup_logging_writes_to_logs_collect_log(self):
         """_setup_logging 应把日志写入 <root>/logs/collect_log.log（用临时根避免污染真实 logs）。"""
@@ -160,7 +168,9 @@ class TestCollectLogSetup(unittest.TestCase):
             with open(log_file, encoding="utf-8") as f:
                 self.assertIn("HELLO_FROM_TEST", f.read())
 
-            targets = [getattr(h, "baseFilename", "") for h in _logging.getLogger().handlers]
+            targets = [
+                getattr(h, "baseFilename", "") for h in _logging.getLogger().handlers
+            ]
             self.assertTrue(any("collect_log.log" in t for t in targets))
         finally:
             after = {id(h) for h in _logging.getLogger().handlers}
@@ -181,7 +191,8 @@ class TestCollectLogSetup(unittest.TestCase):
             collect_log._setup_logging()
             collect_log._setup_logging()
             count = sum(
-                1 for h in _logging.getLogger().handlers
+                1
+                for h in _logging.getLogger().handlers
                 if "collect_log.log" in getattr(h, "baseFilename", "")
             )
             self.assertEqual(count, 1)

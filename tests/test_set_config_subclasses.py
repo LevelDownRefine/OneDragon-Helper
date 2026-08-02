@@ -4,6 +4,7 @@
 覆盖每个子类的 _update_task / _update_sequence / set_dungeon / _init_config / _is_aligned 等方法。
 所有文件 I/O 均通过 mock 隔离，不依赖真实 config 文件。
 """
+
 import json
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
@@ -25,6 +26,7 @@ from src.config.set_config import (
 # ============================================================
 # 基类 ScriptConfig
 # ============================================================
+
 
 class TestScriptConfigBase(unittest.TestCase):
     """测试基类 _update_task / _update_sequence / set_dungeon 的默认行为"""
@@ -107,8 +109,10 @@ class TestScriptConfigBase(unittest.TestCase):
         cfg.display_name = "测试"
         cfg._task_key = "task"
         cfg._task_map = {}
-        with patch.object(cfg, '_load', return_value={"task": "old"}), \
-             patch.object(cfg, '_save') as mock_save:
+        with (
+            patch.object(cfg, "_load", return_value={"task": "old"}),
+            patch.object(cfg, "_save") as mock_save,
+        ):
             cfg.set_dungeon("new")
         mock_save.assert_called_once_with({"task": "new"})
 
@@ -118,8 +122,10 @@ class TestScriptConfigBase(unittest.TestCase):
         cfg.display_name = "测试"
         cfg._task_key = "task"
         cfg._task_map = {}
-        with patch.object(cfg, '_load', return_value={"task": "same"}), \
-             patch.object(cfg, '_save') as mock_save:
+        with (
+            patch.object(cfg, "_load", return_value={"task": "same"}),
+            patch.object(cfg, "_save") as mock_save,
+        ):
             cfg.set_dungeon("same")
         mock_save.assert_not_called()
 
@@ -127,6 +133,7 @@ class TestScriptConfigBase(unittest.TestCase):
 # ============================================================
 # _save / _verify_saved（保存后重读校验）
 # ============================================================
+
 
 class TestVerifySaved(unittest.TestCase):
     """测试 _save 保存后重读校验（_verify_saved）"""
@@ -140,30 +147,36 @@ class TestVerifySaved(unittest.TestCase):
         """_save 写盘后重读一致，不抛异常且按预期调用 save_config"""
         cfg = self._make_cfg()
         sample = {"k": "v", "n": 1}
-        with patch.object(cfg, '_load', return_value=sample), \
-             patch('src.config.set_config.save_config') as mock_save:
-            cfg._save(sample)   # 不应抛异常
+        with (
+            patch.object(cfg, "_load", return_value=sample),
+            patch("src.config.set_config.save_config") as mock_save,
+        ):
+            cfg._save(sample)  # 不应抛异常
         mock_save.assert_called_once_with("测试", sample)
 
     def test_save_mismatch_raises(self):
         """_save 后重读内容不一致应 assert"""
         cfg = self._make_cfg()
-        with patch.object(cfg, '_load', return_value={"k": "different"}), \
-             patch('src.config.set_config.save_config'), \
-             self.assertRaises(AssertionError):
+        with (
+            patch.object(cfg, "_load", return_value={"k": "different"}),
+            patch("src.config.set_config.save_config"),
+            self.assertRaises(AssertionError),
+        ):
             cfg._save({"k": "expected"})
 
     def test_verify_saved_equal_ok(self):
         """_verify_saved 重读等于预期时不抛异常"""
         cfg = self._make_cfg()
-        with patch.object(cfg, '_load', return_value={"a": 1}):
+        with patch.object(cfg, "_load", return_value={"a": 1}):
             cfg._verify_saved({"a": 1})
 
     def test_verify_saved_not_equal_raises(self):
         """_verify_saved 重读不等于预期时 assert"""
         cfg = self._make_cfg()
-        with patch.object(cfg, '_load', return_value={"a": 2}), \
-             self.assertRaises(AssertionError):
+        with (
+            patch.object(cfg, "_load", return_value={"a": 2}),
+            self.assertRaises(AssertionError),
+        ):
             cfg._verify_saved({"a": 1})
 
 
@@ -171,8 +184,8 @@ class TestVerifySaved(unittest.TestCase):
 # 鸣潮 WutheringWavesConfig
 # ============================================================
 
-class TestWutheringWavesConfig(unittest.TestCase):
 
+class TestWutheringWavesConfig(unittest.TestCase):
     def setUp(self):
         self.cfg = WutheringWavesConfig()
 
@@ -198,7 +211,10 @@ class TestWutheringWavesConfig(unittest.TestCase):
         self.assertEqual(config["Material Selection"], "Resonator EXP")
 
     def test_update_sequence_simulation_no_change(self):
-        config = {"Which to Farm": "Simulation Challenge", "Material Selection": "Weapon EXP"}
+        config = {
+            "Which to Farm": "Simulation Challenge",
+            "Material Selection": "Weapon EXP",
+        }
         changed = self.cfg._update_sequence(config, "模拟领域", "武器经验")
         self.assertFalse(changed)
 
@@ -210,26 +226,38 @@ class TestWutheringWavesConfig(unittest.TestCase):
     # ---- _update_sequence: 无音区 ----
 
     def test_update_sequence_tacet(self):
-        config = {"Which to Farm": "Tacet Suppression", "Which Tacet Suppression to Farm": 1}
+        config = {
+            "Which to Farm": "Tacet Suppression",
+            "Which Tacet Suppression to Farm": 1,
+        }
         changed = self.cfg._update_sequence(config, "无音区", 3)
         self.assertTrue(changed)
         self.assertEqual(config["Which Tacet Suppression to Farm"], 3)
 
     def test_update_sequence_tacet_no_change(self):
-        config = {"Which to Farm": "Tacet Suppression", "Which Tacet Suppression to Farm": 2}
+        config = {
+            "Which to Farm": "Tacet Suppression",
+            "Which Tacet Suppression to Farm": 2,
+        }
         changed = self.cfg._update_sequence(config, "无音区", 2)
         self.assertFalse(changed)
 
     # ---- _update_sequence: 凝素领域 ----
 
     def test_update_sequence_forgery(self):
-        config = {"Which to Farm": "Forgery Challenge", "Which Forgery Challenge to Farm": 1}
+        config = {
+            "Which to Farm": "Forgery Challenge",
+            "Which Forgery Challenge to Farm": 1,
+        }
         changed = self.cfg._update_sequence(config, "凝素领域", 4)
         self.assertTrue(changed)
         self.assertEqual(config["Which Forgery Challenge to Farm"], 4)
 
     def test_update_sequence_forgery_no_change(self):
-        config = {"Which to Farm": "Forgery Challenge", "Which Forgery Challenge to Farm": 2}
+        config = {
+            "Which to Farm": "Forgery Challenge",
+            "Which Forgery Challenge to Farm": 2,
+        }
         changed = self.cfg._update_sequence(config, "凝素领域", 2)
         self.assertFalse(changed)
 
@@ -254,8 +282,10 @@ class TestWutheringWavesConfig(unittest.TestCase):
             "Which to Farm": "Forgery Challenge",
             "Which Forgery Challenge to Farm": 1,
         }
-        with patch.object(self.cfg, '_load', return_value=config), \
-             patch.object(self.cfg, '_save') as mock_save:
+        with (
+            patch.object(self.cfg, "_load", return_value=config),
+            patch.object(self.cfg, "_save") as mock_save,
+        ):
             self.cfg.set_dungeon("凝素领域", 3)
         mock_save.assert_called_once()
         saved = mock_save.call_args[0][0]
@@ -267,13 +297,15 @@ class TestWutheringWavesConfig(unittest.TestCase):
 # 原神 GenshinConfig
 # ============================================================
 
-class TestGenshinConfig(unittest.TestCase):
 
+class TestGenshinConfig(unittest.TestCase):
     def test_init_attributes(self):
         template = {"DomainName": "测试", "PartyName": "队伍1"}
-        with patch.object(GenshinConfig, '_init_config'), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template))):
+        with (
+            patch.object(GenshinConfig, "_init_config"),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps(template))),
+        ):
             cfg = GenshinConfig()
         self.assertEqual(cfg.display_name, "原神")
         self.assertEqual(cfg._task_key, "DomainName")
@@ -282,36 +314,44 @@ class TestGenshinConfig(unittest.TestCase):
         """config 与模板对齐（PartyName 存在但不在模板中）时不 assert"""
         template = {"DomainName": "绝缘本"}
         config = {"DomainName": "绝缘本", "PartyName": "队伍B", "ExtraKey": "val"}
-        with patch.object(GenshinConfig, '_load', return_value=config), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template))):
+        with (
+            patch.object(GenshinConfig, "_load", return_value=config),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps(template))),
+        ):
             GenshinConfig()  # 不应抛异常
 
     def test_init_config_misaligned_raises(self):
         """config 与模板不对齐时 assert（未完成适配）"""
         template = {"DomainName": "绝缘本"}
         config = {"DomainName": "旧本", "PartyName": "队伍B"}
-        with patch.object(GenshinConfig, '_load', return_value=config), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template))), \
-             self.assertRaises(AssertionError):
+        with (
+            patch.object(GenshinConfig, "_load", return_value=config),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps(template))),
+            self.assertRaises(AssertionError),
+        ):
             GenshinConfig()
 
     def test_init_config_party_name_missing_raises(self):
         """config 中缺少 PartyName 应 assert"""
         template = {"DomainName": "绝缘本"}
         config = {"DomainName": "绝缘本"}
-        with patch.object(GenshinConfig, '_load', return_value=config), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template))), \
-             self.assertRaises(AssertionError):
+        with (
+            patch.object(GenshinConfig, "_load", return_value=config),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps(template))),
+            self.assertRaises(AssertionError),
+        ):
             GenshinConfig()
 
     def test_update_task_uses_dungeon_name_directly(self):
         """原神 _task_map 为空，直接用 dungeon_name"""
-        with patch.object(GenshinConfig, '_init_config'), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data='{}')):
+        with (
+            patch.object(GenshinConfig, "_init_config"),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data="{}")),
+        ):
             cfg = GenshinConfig()
         config = {"DomainName": "旧本"}
         changed = cfg._update_task(config, "新本")
@@ -323,8 +363,8 @@ class TestGenshinConfig(unittest.TestCase):
 # 终末地 EndfieldConfig
 # ============================================================
 
-class TestEndfieldConfig(unittest.TestCase):
 
+class TestEndfieldConfig(unittest.TestCase):
     def test_init_attributes(self):
         cfg = EndfieldConfig()
         self.assertEqual(cfg.display_name, "终末地")
@@ -342,8 +382,10 @@ class TestEndfieldConfig(unittest.TestCase):
     def test_set_dungeon_no_sequence(self):
         cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
-        with patch.object(cfg, '_load', return_value=config), \
-             patch.object(cfg, '_save') as mock_save:
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
             cfg.set_dungeon("新本")
         mock_save.assert_called_once_with({"体力本": "新本"})
 
@@ -352,48 +394,70 @@ class TestEndfieldConfig(unittest.TestCase):
 # 绝区零 ZenlessZoneZeroConfig
 # ============================================================
 
-class TestZenlessZoneZeroConfig(unittest.TestCase):
 
+class TestZenlessZoneZeroConfig(unittest.TestCase):
     def test_init_attributes(self):
         template = {"plan_list": [], "double_reward": False}
-        with patch.object(ZenlessZoneZeroConfig, '_load', return_value=template), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=yaml.dump(template))), \
-             patch.object(ZenlessZoneZeroConfig, '_save'):
+        with (
+            patch.object(ZenlessZoneZeroConfig, "_load", return_value=template),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=yaml.dump(template))),
+            patch.object(ZenlessZoneZeroConfig, "_save"),
+        ):
             cfg = ZenlessZoneZeroConfig()
         self.assertEqual(cfg.display_name, "绝区零")
         self.assertEqual(cfg._task_key, "")
 
     def test_init_config_aligned_no_save(self):
         """config 与模板对齐时不 save"""
-        template = {"plan_list": [{"tab_name": "A", "category_name": "x"}], "double_reward": False}
-        config = {"plan_list": [{"tab_name": "A", "category_name": "x", "extra": 1}], "double_reward": False}
-        with patch.object(ZenlessZoneZeroConfig, '_load', return_value=config), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=yaml.dump(template))), \
-             patch.object(ZenlessZoneZeroConfig, '_save') as mock_save:
+        template = {
+            "plan_list": [{"tab_name": "A", "category_name": "x"}],
+            "double_reward": False,
+        }
+        config = {
+            "plan_list": [{"tab_name": "A", "category_name": "x", "extra": 1}],
+            "double_reward": False,
+        }
+        with (
+            patch.object(ZenlessZoneZeroConfig, "_load", return_value=config),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=yaml.dump(template))),
+            patch.object(ZenlessZoneZeroConfig, "_save") as mock_save,
+        ):
             ZenlessZoneZeroConfig()
         mock_save.assert_not_called()
 
     def test_init_config_misaligned_saves(self):
         """config 与模板不对齐时 save 模板"""
-        template = {"plan_list": [{"tab_name": "A", "category_name": "x"}], "double_reward": True}
-        config = {"plan_list": [{"tab_name": "B", "category_name": "y"}], "double_reward": False}
-        with patch.object(ZenlessZoneZeroConfig, '_load', return_value=config), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=yaml.dump(template))), \
-             patch.object(ZenlessZoneZeroConfig, '_save') as mock_save:
+        template = {
+            "plan_list": [{"tab_name": "A", "category_name": "x"}],
+            "double_reward": True,
+        }
+        config = {
+            "plan_list": [{"tab_name": "B", "category_name": "y"}],
+            "double_reward": False,
+        }
+        with (
+            patch.object(ZenlessZoneZeroConfig, "_load", return_value=config),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=yaml.dump(template))),
+            patch.object(ZenlessZoneZeroConfig, "_save") as mock_save,
+        ):
             ZenlessZoneZeroConfig()
         mock_save.assert_called_once_with(template)
 
     def test_set_dungeon_only_prints(self):
         """set_dungeon 应只 print 不做修改"""
-        with patch.object(ZenlessZoneZeroConfig, '_init_config'), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data='{}')):
+        with (
+            patch.object(ZenlessZoneZeroConfig, "_init_config"),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data="{}")),
+        ):
             cfg = ZenlessZoneZeroConfig()
-        with patch.object(cfg, '_load') as mock_load, \
-             patch.object(cfg, '_save') as mock_save:
+        with (
+            patch.object(cfg, "_load") as mock_load,
+            patch.object(cfg, "_save") as mock_save,
+        ):
             cfg.set_dungeon("任何副本", "任何序列")
         mock_load.assert_not_called()
         mock_save.assert_not_called()
@@ -402,12 +466,18 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
 
     def _make_cfg(self):
         """创建一个跳过 _init_config 的 ZenlessZoneZeroConfig 实例"""
-        with patch.object(ZenlessZoneZeroConfig, '_init_config'):
+        with patch.object(ZenlessZoneZeroConfig, "_init_config"):
             return ZenlessZoneZeroConfig()
 
     def test_is_aligned_identical(self):
-        template = {"plan_list": [{"tab_name": "A", "category_name": "x"}], "double_reward": False}
-        config = {"plan_list": [{"tab_name": "A", "category_name": "x"}], "double_reward": False}
+        template = {
+            "plan_list": [{"tab_name": "A", "category_name": "x"}],
+            "double_reward": False,
+        }
+        config = {
+            "plan_list": [{"tab_name": "A", "category_name": "x"}],
+            "double_reward": False,
+        }
         cfg = self._make_cfg()
         self.assertTrue(cfg._is_aligned(config, template))
 
@@ -421,23 +491,29 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
     def test_is_aligned_more_items_in_config_ok(self):
         """config plan_list 比模板长是可以的"""
         template = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
-        config = {"plan_list": [
-            {"tab_name": "A", "category_name": "x"},
-            {"tab_name": "B", "category_name": "y"},
-        ]}
+        config = {
+            "plan_list": [
+                {"tab_name": "A", "category_name": "x"},
+                {"tab_name": "B", "category_name": "y"},
+            ]
+        }
         cfg = self._make_cfg()
         self.assertTrue(cfg._is_aligned(config, template))
 
     def test_is_aligned_order_mismatch_returns_false(self):
         """plan_list 顺序不一致应返回 False"""
-        template = {"plan_list": [
-            {"tab_name": "A", "category_name": "x"},
-            {"tab_name": "B", "category_name": "y"},
-        ]}
-        config = {"plan_list": [
-            {"tab_name": "B", "category_name": "y"},
-            {"tab_name": "A", "category_name": "x"},
-        ]}
+        template = {
+            "plan_list": [
+                {"tab_name": "A", "category_name": "x"},
+                {"tab_name": "B", "category_name": "y"},
+            ]
+        }
+        config = {
+            "plan_list": [
+                {"tab_name": "B", "category_name": "y"},
+                {"tab_name": "A", "category_name": "x"},
+            ]
+        }
         cfg = self._make_cfg()
         self.assertFalse(cfg._is_aligned(config, template))
 
@@ -457,10 +533,12 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
 
     def test_is_aligned_config_shorter_list_returns_false(self):
         """config plan_list 比模板短应返回 False"""
-        template = {"plan_list": [
-            {"tab_name": "A", "category_name": "x"},
-            {"tab_name": "B", "category_name": "y"},
-        ]}
+        template = {
+            "plan_list": [
+                {"tab_name": "A", "category_name": "x"},
+                {"tab_name": "B", "category_name": "y"},
+            ]
+        }
         config = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
         cfg = self._make_cfg()
         self.assertFalse(cfg._is_aligned(config, template))
@@ -484,17 +562,17 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
 # 崩铁 StarRailConfig
 # ============================================================
 
-class TestStarRailConfig(unittest.TestCase):
 
+class TestStarRailConfig(unittest.TestCase):
     def test_init_attributes(self):
-        with patch.object(StarRailConfig, '_init_config'):
+        with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
             self.assertEqual(cfg.display_name, "崩铁")
             self.assertEqual(cfg._task_key, "instance_type")
             self.assertEqual(cfg._task_map, {})
 
     def test_update_task_direct_assign(self):
-        with patch.object(StarRailConfig, '_init_config'):
+        with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
             config = {"instance_type": "旧本"}
             changed = cfg._update_task(config, "新本")
@@ -502,11 +580,13 @@ class TestStarRailConfig(unittest.TestCase):
             self.assertEqual(config["instance_type"], "新本")
 
     def test_set_dungeon_changed_saves(self):
-        with patch.object(StarRailConfig, '_init_config'):
+        with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
             config = {"instance_type": "旧本"}
-            with patch.object(cfg, '_load', return_value=config), \
-                 patch.object(cfg, '_save') as mock_save:
+            with (
+                patch.object(cfg, "_load", return_value=config),
+                patch.object(cfg, "_save") as mock_save,
+            ):
                 cfg.set_dungeon("新本")
             mock_save.assert_called_once_with({"instance_type": "新本"})
 
@@ -515,8 +595,8 @@ class TestStarRailConfig(unittest.TestCase):
 # 异环 NTEConfig
 # ============================================================
 
-class TestNTEConfig(unittest.TestCase):
 
+class TestNTEConfig(unittest.TestCase):
     def setUp(self):
         self.cfg = NTEConfig()
 
@@ -558,8 +638,10 @@ class TestNTEConfig(unittest.TestCase):
 
     def test_set_dungeon_with_sequence_saves(self):
         config = {"任务类型": "空幕", "空幕序号": 1}
-        with patch.object(self.cfg, '_load', return_value=config), \
-             patch.object(self.cfg, '_save') as mock_save:
+        with (
+            patch.object(self.cfg, "_load", return_value=config),
+            patch.object(self.cfg, "_save") as mock_save,
+        ):
             self.cfg.set_dungeon("空幕", 3)
         mock_save.assert_called_once()
         saved = mock_save.call_args[0][0]
@@ -570,19 +652,20 @@ class TestNTEConfig(unittest.TestCase):
 # 明日方舟 ArknightsConfig（粥）
 # ============================================================
 
+
 class TestArknightsConfig(unittest.TestCase):
     """测试粥的 _is_aligned / _init_config / set_dungeon"""
 
     def _make_cfg(self):
         """创建一个跳过 _init_config 的 ArknightsConfig 实例"""
-        with patch.object(ArknightsConfig, '_init_config'):
+        with patch.object(ArknightsConfig, "_init_config"):
             cfg = ArknightsConfig()
             cfg._task_map = {
-                "剿灭":   {"index": 1, "stage": "Annihilation"},
-                "红票":   {"index": 2, "stage": "AP-5"},
-                "经验":   {"index": 3, "stage": "LS-6"},
+                "剿灭": {"index": 1, "stage": "Annihilation"},
+                "红票": {"index": 2, "stage": "AP-5"},
+                "经验": {"index": 3, "stage": "LS-6"},
                 "龙门币": {"index": 4, "stage": "CE-6"},
-                "土":     {"index": 5, "stage": "1-7"},
+                "土": {"index": 5, "stage": "1-7"},
             }
             return cfg
 
@@ -602,7 +685,11 @@ class TestArknightsConfig(unittest.TestCase):
                 "Default": {
                     "TaskQueue": [
                         {"Name": "开始唤醒", "$type": "StartUpTask"},
-                        {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]},
+                        {
+                            "Name": "剿灭",
+                            "$type": "FightTask",
+                            "StagePlan": ["Annihilation"],
+                        },
                     ]
                 }
             }
@@ -612,7 +699,12 @@ class TestArknightsConfig(unittest.TestCase):
                 "Default": {
                     "TaskQueue": [
                         {"Name": "开始唤醒", "$type": "StartUpTask", "ExtraKey": 1},
-                        {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"], "IsEnable": True},
+                        {
+                            "Name": "剿灭",
+                            "$type": "FightTask",
+                            "StagePlan": ["Annihilation"],
+                            "IsEnable": True,
+                        },
                     ]
                 }
             }
@@ -621,40 +713,106 @@ class TestArknightsConfig(unittest.TestCase):
 
     def test_is_aligned_name_mismatch(self):
         cfg = self._make_cfg()
-        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]}}}
-        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "红票", "$type": "FightTask"}]}}}
+        template = {
+            "Configurations": {
+                "Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]}
+            }
+        }
+        config = {
+            "Configurations": {
+                "Default": {"TaskQueue": [{"Name": "红票", "$type": "FightTask"}]}
+            }
+        }
         self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_type_mismatch(self):
         cfg = self._make_cfg()
-        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]}}}
-        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "剿灭", "$type": "StartUpTask"}]}}}
+        template = {
+            "Configurations": {
+                "Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]}
+            }
+        }
+        config = {
+            "Configurations": {
+                "Default": {"TaskQueue": [{"Name": "剿灭", "$type": "StartUpTask"}]}
+            }
+        }
         self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_stageplan_mismatch(self):
         cfg = self._make_cfg()
-        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]}]}}}
-        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask", "StagePlan": ["AP-5"]}]}}}
+        template = {
+            "Configurations": {
+                "Default": {
+                    "TaskQueue": [
+                        {
+                            "Name": "剿灭",
+                            "$type": "FightTask",
+                            "StagePlan": ["Annihilation"],
+                        }
+                    ]
+                }
+            }
+        }
+        config = {
+            "Configurations": {
+                "Default": {
+                    "TaskQueue": [
+                        {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["AP-5"]}
+                    ]
+                }
+            }
+        }
         self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_cur_shorter_returns_false(self):
         cfg = self._make_cfg()
-        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}, {"Name": "B", "$type": "Y"}]}}}
-        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}}}
+        template = {
+            "Configurations": {
+                "Default": {
+                    "TaskQueue": [
+                        {"Name": "A", "$type": "X"},
+                        {"Name": "B", "$type": "Y"},
+                    ]
+                }
+            }
+        }
+        config = {
+            "Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}}
+        }
         self.assertFalse(cfg._is_aligned(config, template))
 
     def test_is_aligned_cur_longer_ok(self):
         """cur 比 template 长是可以的"""
         cfg = self._make_cfg()
-        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}}}
-        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}, {"Name": "B", "$type": "Y"}]}}}
+        template = {
+            "Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}}
+        }
+        config = {
+            "Configurations": {
+                "Default": {
+                    "TaskQueue": [
+                        {"Name": "A", "$type": "X"},
+                        {"Name": "B", "$type": "Y"},
+                    ]
+                }
+            }
+        }
         self.assertTrue(cfg._is_aligned(config, template))
 
     def test_is_aligned_non_fight_task_skips_stageplan(self):
         """非 FightTask 不检查 StagePlan（因为模板中没写 StagePlan）"""
         cfg = self._make_cfg()
-        template = {"Configurations": {"Default": {"TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]}}}
-        config = {"Configurations": {"Default": {"TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]}}}
+        template = {
+            "Configurations": {
+                "Default": {"TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]}
+            }
+        }
+        config = {
+            "Configurations": {
+                "Default": {"TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]}
+            }
+        }
         self.assertTrue(cfg._is_aligned(config, template))
 
     # ---- _init_config ----
@@ -677,10 +835,12 @@ class TestArknightsConfig(unittest.TestCase):
         template = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
 
         config = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
-        with patch.object(cfg, '_load', return_value=config), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template))), \
-             patch.object(cfg, '_save') as mock_save:
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps(template))),
+            patch.object(cfg, "_save") as mock_save,
+        ):
             cfg._init_config()
         mock_save.assert_not_called()
 
@@ -702,10 +862,12 @@ class TestArknightsConfig(unittest.TestCase):
         template = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
         cur_queue = [{"Name": "wrong", "$type": "Unknown"}]
         config = {"Configurations": {"Default": {"TaskQueue": cur_queue}}}
-        with patch.object(cfg, '_load', return_value=config), \
-             patch('os.path.exists', return_value=True), \
-             patch('builtins.open', mock_open(read_data=json.dumps(template))), \
-             patch.object(cfg, '_save') as mock_save:
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps(template))),
+            patch.object(cfg, "_save") as mock_save,
+        ):
             cfg._init_config()
         mock_save.assert_called_once()
         saved = mock_save.call_args[0][0]
@@ -724,8 +886,10 @@ class TestArknightsConfig(unittest.TestCase):
         queue[0] = {"Name": "开始唤醒", "$type": "StartUpTask"}
         for name, info in cfg._task_map.items():
             queue[info["index"]] = {
-                "Name": name, "$type": "FightTask",
-                "StagePlan": [info["stage"]], "IsEnable": True,
+                "Name": name,
+                "$type": "FightTask",
+                "StagePlan": [info["stage"]],
+                "IsEnable": True,
             }
         queue[6] = {"Name": "自动公招", "$type": "RecruitTask"}
         queue[7] = {"Name": "基建换班", "$type": "InfrastTask"}
@@ -733,12 +897,16 @@ class TestArknightsConfig(unittest.TestCase):
         queue[9] = {"Name": "领取奖励", "$type": "AwardTask"}
 
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        with patch.object(cfg, '_load', return_value=config), \
-             patch.object(cfg, '_save') as mock_save:
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
             cfg.set_dungeon("红票")
 
         mock_save.assert_called_once()
-        saved_queue = mock_save.call_args[0][0]["Configurations"]["Default"]["TaskQueue"]
+        saved_queue = mock_save.call_args[0][0]["Configurations"]["Default"][
+            "TaskQueue"
+        ]
         # 红票启用
         self.assertTrue(saved_queue[2]["IsEnable"])
         # 土启用（清理剩余体力）
@@ -752,7 +920,10 @@ class TestArknightsConfig(unittest.TestCase):
     def test_set_dungeon_unknown_raises(self):
         cfg = self._make_cfg()
         config = {"Configurations": {"Default": {"TaskQueue": []}}}
-        with patch.object(cfg, '_load', return_value=config), self.assertRaises(AssertionError):
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            self.assertRaises(AssertionError),
+        ):
             cfg.set_dungeon("不存在")
 
     def test_set_dungeon_elimination_only_enables_elimination_and_土(self):
@@ -762,8 +933,10 @@ class TestArknightsConfig(unittest.TestCase):
         queue[0] = {"Name": "开始唤醒", "$type": "StartUpTask"}
         for name, info in cfg._task_map.items():
             queue[info["index"]] = {
-                "Name": name, "$type": "FightTask",
-                "StagePlan": [info["stage"]], "IsEnable": True,
+                "Name": name,
+                "$type": "FightTask",
+                "StagePlan": [info["stage"]],
+                "IsEnable": True,
             }
         queue[6] = {"Name": "自动公招", "$type": "RecruitTask"}
         queue[7] = {"Name": "基建换班", "$type": "InfrastTask"}
@@ -771,12 +944,16 @@ class TestArknightsConfig(unittest.TestCase):
         queue[9] = {"Name": "领取奖励", "$type": "AwardTask"}
 
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        with patch.object(cfg, '_load', return_value=config), \
-             patch.object(cfg, '_save') as mock_save:
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
             cfg.set_dungeon("剿灭")
 
         mock_save.assert_called_once()
-        saved_queue = mock_save.call_args[0][0]["Configurations"]["Default"]["TaskQueue"]
+        saved_queue = mock_save.call_args[0][0]["Configurations"]["Default"][
+            "TaskQueue"
+        ]
         # 剿灭启用
         self.assertTrue(saved_queue[1]["IsEnable"])  # 剿灭
         # 土启用（清理剩余体力）
@@ -790,15 +967,24 @@ class TestArknightsConfig(unittest.TestCase):
         """TaskQueue 中 Name 不匹配应 assert"""
         cfg = self._make_cfg()
         queue = [None] * 10
-        queue[1] = {"Name": "wrong", "$type": "FightTask", "StagePlan": ["Annihilation"], "IsEnable": True}
+        queue[1] = {
+            "Name": "wrong",
+            "$type": "FightTask",
+            "StagePlan": ["Annihilation"],
+            "IsEnable": True,
+        }
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        with patch.object(cfg, '_load', return_value=config), self.assertRaises(AssertionError):
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            self.assertRaises(AssertionError),
+        ):
             cfg.set_dungeon("剿灭")
 
 
 # ============================================================
 # 外观接口 set_config()
 # ============================================================
+
 
 class TestSetConfigFacade(unittest.TestCase):
     """测试外观接口 set_config() 的分发逻辑"""
@@ -807,7 +993,7 @@ class TestSetConfigFacade(unittest.TestCase):
         """dungeon_name 为 None 时直接返回，不创建实例"""
         mock_instance = MagicMock()
         mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict('src.config.set_config._CONFIGS', {"鸣潮": mock_cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"鸣潮": mock_cls}):
             set_config.set_config("鸣潮", None, None)
         mock_cls.assert_not_called()
         mock_instance.set_dungeon.assert_not_called()
@@ -827,7 +1013,7 @@ class TestSetConfigFacade(unittest.TestCase):
         """未注册脚本不会命中注册表中的任何子类"""
         mock_instance = MagicMock()
         mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict('src.config.set_config._CONFIGS', {"鸣潮": mock_cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"鸣潮": mock_cls}):
             set_config.set_config("自定义脚本", "副本", None)
         mock_cls.assert_not_called()
         mock_instance.set_dungeon.assert_not_called()
@@ -836,7 +1022,7 @@ class TestSetConfigFacade(unittest.TestCase):
         """验证 set_config 正确分发到对应子类"""
         mock_instance = MagicMock()
         mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict('src.config.set_config._CONFIGS', {"鸣潮": mock_cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"鸣潮": mock_cls}):
             set_config.set_config("鸣潮", "无音区", "1")
         mock_cls.assert_called_once()
         mock_instance.set_dungeon.assert_called_once_with("无音区", "1")

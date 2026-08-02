@@ -1,4 +1,5 @@
 """脚本链启动命令构造与后台运行线程（运行器已 vendored 到 src/runner）。"""
+
 import ctypes
 import logging
 import os
@@ -34,13 +35,19 @@ def build_script_command(extra_args: list[str]) -> tuple[list[str], str, dict | 
       ``PYTHONPATH``（使 vendored 的 ``script_chainer`` 包可被导入）；工作目录设为项目根。
     """
     if getattr(sys, "frozen", False):
-        runner_exe = os.path.join(os.path.dirname(sys.executable), "OneDragon-Helper-Runner.exe")
+        runner_exe = os.path.join(
+            os.path.dirname(sys.executable), "OneDragon-Helper-Runner.exe"
+        )
         return [runner_exe, *extra_args], os.path.dirname(sys.executable), None
 
     cwd = get_root_dir()
     runner_pkg_dir = os.path.join(cwd, "src", "runner")
     existing_pp = os.environ.get("PYTHONPATH", "")
-    env = {**os.environ, "PYTHONPATH": runner_pkg_dir + (os.pathsep + existing_pp if existing_pp else "")}
+    env = {
+        **os.environ,
+        "PYTHONPATH": runner_pkg_dir
+        + (os.pathsep + existing_pp if existing_pp else ""),
+    }
     command = [sys.executable, "-m", "src.runner.launcher", *extra_args]
     return command, cwd, env
 
@@ -61,11 +68,15 @@ def run_chain_command(chain_config_path: str, block: bool = True) -> int:
     以 Popen 即起即返（返回 0 表示已启动），用于后台/非阻塞运行整条链。
     """
     command, cwd, env = build_chain_command(chain_config_path)
-    logger.info("[runner] 运行脚本链: %s (cwd=%s, block=%s)", " ".join(command), cwd, block)
+    logger.info(
+        "[runner] 运行脚本链: %s (cwd=%s, block=%s)", " ".join(command), cwd, block
+    )
     if block:
         res = subprocess.run(command, cwd=cwd, env=env)
         return res.returncode
-    subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.Popen(
+        command, cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
     time.sleep(10)
     return 0
 

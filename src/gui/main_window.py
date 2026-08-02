@@ -1,4 +1,5 @@
 """主窗口：脚本列表、增删/重排/持久化、生成 ScriptChainer 配置并运行。"""
+
 import copy
 import os
 
@@ -101,20 +102,28 @@ class MainWindow(QMainWindow):
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setSpacing(8)
 
-        self.select_all_btn = make_pill_button("一键全选", accent="#3b82f6", pressed_bg="#f0f4ff")
+        self.select_all_btn = make_pill_button(
+            "一键全选", accent="#3b82f6", pressed_bg="#f0f4ff"
+        )
         self.select_all_btn.clicked.connect(self._select_all)
         action_layout.addWidget(self.select_all_btn)
 
-        self.deselect_all_btn = make_pill_button("清空选择", accent="#ef4444", pressed_bg="#fef2f2")
+        self.deselect_all_btn = make_pill_button(
+            "清空选择", accent="#ef4444", pressed_bg="#fef2f2"
+        )
         self.deselect_all_btn.clicked.connect(self._deselect_all)
         action_layout.addWidget(self.deselect_all_btn)
 
-        self.add_script_btn = make_pill_button("添加脚本", accent="#22c55e", hover_color="#16a34a", pressed_bg="#f0fdf4")
+        self.add_script_btn = make_pill_button(
+            "添加脚本", accent="#22c55e", hover_color="#16a34a", pressed_bg="#f0fdf4"
+        )
         self.add_script_btn.clicked.connect(self._add_script)
         action_layout.addWidget(self.add_script_btn)
 
         # 打开配置：直接打开 config.yml（get_config_yml_path_under_root）
-        self.open_config_btn = make_pill_button("打开配置", accent="#8b5cf6", hover_color="#7c3aed", pressed_bg="#f1ecfb")
+        self.open_config_btn = make_pill_button(
+            "打开配置", accent="#8b5cf6", hover_color="#7c3aed", pressed_bg="#f1ecfb"
+        )
         self.open_config_btn.clicked.connect(self._open_config_yml)
         action_layout.addWidget(self.open_config_btn)
 
@@ -146,20 +155,24 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.run_btn)
 
     def _load_scripts(self):
-        with open(require_config_yml_path(), encoding='utf-8') as f:
+        with open(require_config_yml_path(), encoding="utf-8") as f:
             self.all_config_data = yaml.safe_load(f)
 
         self.dungeon_map = load_dungeon_map()
 
-        assert 'script_list' in self.all_config_data, "[main_window] config.yml 缺少 script_list 字段"
+        assert "script_list" in self.all_config_data, (
+            "[main_window] config.yml 缺少 script_list 字段"
+        )
 
         for item in self.script_items:
             item.deleteLater()
         self.script_items.clear()
 
-        for data in self.all_config_data['script_list']:
-            name = data['display_name']
-            dungeon_cfg = self.dungeon_map.get(name)  # optional: 不是所有脚本都有副本配置
+        for data in self.all_config_data["script_list"]:
+            name = data["display_name"]
+            dungeon_cfg = self.dungeon_map.get(
+                name
+            )  # optional: 不是所有脚本都有副本配置
             _, seq_map, _ = parse_dungeon_config(dungeon_cfg)
 
             saved = self._ui_state.get(name)  # optional: 新脚本可能没有保存的状态
@@ -171,15 +184,19 @@ class MainWindow(QMainWindow):
 
     def _create_script_item(self, data, saved_state):
         """构造 ScriptItem 并注入 UI 状态回调"""
-        name = data['display_name']
+        name = data["display_name"]
         dungeon_cfg = self.dungeon_map.get(name)  # optional: 不是所有脚本都有副本配置
         options, seq_map, show_seq = parse_dungeon_config(dungeon_cfg)
-        item = ScriptItem(data, dungeon_options=options if options else None,
-                          sequence_options_map=seq_map if show_seq else None,
-                          show_sequence=show_seq, saved_state=saved_state,
-                          reorder_callback=self._reorder_scripts,
-                          delete_callback=self._delete_script,
-                          config_saved_callback=self._on_script_config_saved)
+        item = ScriptItem(
+            data,
+            dungeon_options=options if options else None,
+            sequence_options_map=seq_map if show_seq else None,
+            show_sequence=show_seq,
+            saved_state=saved_state,
+            reorder_callback=self._reorder_scripts,
+            delete_callback=self._delete_script,
+            config_saved_callback=self._on_script_config_saved,
+        )
         item.set_state_callback(self._persist_ui_state)
         return item
 
@@ -197,33 +214,46 @@ class MainWindow(QMainWindow):
         是内存副本。若不重新吸收，后续 _generate_config（运行）或 _save_script_order
         （重排/增删）会基于旧的 in-memory 副本把刚保存的路径覆盖掉，表现为「保存失效」。
         """
-        with open(require_config_yml_path(), encoding='utf-8') as f:
+        with open(require_config_yml_path(), encoding="utf-8") as f:
             self.all_config_data = yaml.safe_load(f)
 
         for item in self.script_items:
             if item.display_name == display_name:
                 new_data = next(
-                    (s for s in self.all_config_data['script_list']
-                     if s['display_name'] == display_name),
+                    (
+                        s
+                        for s in self.all_config_data["script_list"]
+                        if s["display_name"] == display_name
+                    ),
                     None,
                 )
-                assert new_data is not None, f"[main_window] 保存后找不到脚本: {display_name}"
+                assert new_data is not None, (
+                    f"[main_window] 保存后找不到脚本: {display_name}"
+                )
                 item.sync_from_script_data(new_data)
                 break
 
     def _reorder_scripts(self, src_name, dst_name):
         """把 src_name 对应的脚本移动到 dst_name 所在位置，并同步 UI 与 config.yml"""
         script_items = self.script_items
-        src_idx = next((i for i, it in enumerate(script_items) if it.display_name == src_name), None)
+        src_idx = next(
+            (i for i, it in enumerate(script_items) if it.display_name == src_name),
+            None,
+        )
         assert src_idx is not None, f"[main_window] 拖拽源脚本不存在: {src_name}"
-        dst_idx = next((i for i, it in enumerate(script_items) if it.display_name == dst_name), None)
+        dst_idx = next(
+            (i for i, it in enumerate(script_items) if it.display_name == dst_name),
+            None,
+        )
         assert dst_idx is not None, f"[main_window] 拖拽目标脚本不存在: {dst_name}"
         item = script_items.pop(src_idx)
         script_items.insert(dst_idx, item)
 
         # 同步 config.yml 中的顺序（以 UI 顺序为准）
-        scripts = self.all_config_data['script_list']
-        s_idx = next((i for i, s in enumerate(scripts) if s['display_name'] == src_name), None)
+        scripts = self.all_config_data["script_list"]
+        s_idx = next(
+            (i for i, s in enumerate(scripts) if s["display_name"] == src_name), None
+        )
         assert s_idx is not None, f"[main_window] config 中找不到源脚本: {src_name}"
         script = scripts.pop(s_idx)
         scripts.insert(dst_idx, script)
@@ -242,10 +272,11 @@ class MainWindow(QMainWindow):
     def _delete_script(self, display_name):
         """删除指定脚本：弹确认框 → 从 UI 与 config.yml 移除并持久化"""
         reply = QMessageBox.question(
-            self, "确认删除",
+            self,
+            "确认删除",
             f"确定要删除脚本「{display_name}」吗？\n将从启动器移除并保存到 config.yml。",
             QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
             return
@@ -253,16 +284,28 @@ class MainWindow(QMainWindow):
 
     def _remove_script(self, display_name):
         """实际移除逻辑（无确认）"""
-        idx = next((i for i, it in enumerate(self.script_items)
-                    if it.display_name == display_name), None)
+        idx = next(
+            (
+                i
+                for i, it in enumerate(self.script_items)
+                if it.display_name == display_name
+            ),
+            None,
+        )
         if idx is None:
             return
         item = self.script_items.pop(idx)
 
-        s_idx = next((i for i, s in enumerate(self.all_config_data['script_list'])
-                      if s['display_name'] == display_name), None)
+        s_idx = next(
+            (
+                i
+                for i, s in enumerate(self.all_config_data["script_list"])
+                if s["display_name"] == display_name
+            ),
+            None,
+        )
         if s_idx is not None:
-            self.all_config_data['script_list'].pop(s_idx)
+            self.all_config_data["script_list"].pop(s_idx)
 
         self.scroll_layout.removeWidget(item)
         item.deleteLater()
@@ -277,8 +320,10 @@ class MainWindow(QMainWindow):
         已对齐 ScriptChainer 校验规则；用户后续可点击「配置」按钮自行调整。
         """
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "选择脚本文件", "",
-            "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
+            self,
+            "选择脚本文件",
+            "",
+            "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)",
         )
         if not file_path:
             return
@@ -307,18 +352,18 @@ class MainWindow(QMainWindow):
         同时自动在 weekly_timeouts.yml 里为该脚本创建 7 格默认超时条目，
         使首次运行即可使用统一的 DEFAULT_RUN_TIMEOUT，无需用户手动配置。
         """
-        self.all_config_data['script_list'].append(script_data)
+        self.all_config_data["script_list"].append(script_data)
 
         # 自动创建 weekly_timeouts 默认条目
         weekly_path = get_weekly_timeouts_yml_path_under_root()
         weekly_map = {}
         if os.path.exists(weekly_path):
-            with open(weekly_path, encoding='utf-8') as f:
+            with open(weekly_path, encoding="utf-8") as f:
                 weekly_map = yaml.safe_load(f) or {}
-        name = script_data['display_name']
+        name = script_data["display_name"]
         if name not in weekly_map:
             weekly_map[name] = [DEFAULT_RUN_TIMEOUT] * 7
-            with open(weekly_path, 'w', encoding='utf-8') as f:
+            with open(weekly_path, "w", encoding="utf-8") as f:
                 yaml.dump(weekly_map, f, allow_unicode=True, sort_keys=False)
 
         item = self._create_script_item(script_data, None)
@@ -335,7 +380,7 @@ class MainWindow(QMainWindow):
     def _save_script_order(self):
         """把当前脚本顺序写回 config.yml"""
         config_path = get_config_yml_path_under_root()
-        with open(config_path, 'w', encoding='utf-8') as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(self.all_config_data, f, allow_unicode=True, sort_keys=False)
 
     def _generate_config(self, chain_name="88"):
@@ -344,7 +389,7 @@ class MainWindow(QMainWindow):
         weekly_timeouts = {}
         weekly_path = get_weekly_timeouts_yml_path_under_root()
         if os.path.exists(weekly_path):
-            with open(weekly_path, encoding='utf-8') as f:
+            with open(weekly_path, encoding="utf-8") as f:
                 weekly_timeouts = yaml.safe_load(f) or {}
 
         # 收集每个启用脚本的副本选择、序列选择
@@ -363,8 +408,8 @@ class MainWindow(QMainWindow):
 
         data = copy.deepcopy(self.all_config_data)
         filtered = []
-        for script in data['script_list']:
-            name = script['display_name']
+        for script in data["script_list"]:
+            name = script["display_name"]
             if name in enabled_names:
                 apply_weekly_timeout(script, weekly_timeouts)
 
@@ -374,15 +419,15 @@ class MainWindow(QMainWindow):
                 set_config(name, dungeon_name=dungeon, sequence=seq)
 
                 # 阻塞字段：默认阻塞（True），保留配置中显式设置的 block
-                script.setdefault('block', True)
+                script.setdefault("block", True)
 
                 filtered.append(script)
 
-        data['script_list'] = filtered
+        data["script_list"] = filtered
 
         output_dir = get_path_under_root("config", "script_chain")
         output_file = safe_path_join(output_dir, f"{chain_name}.yml")
-        with open(output_file, 'w', encoding='utf-8') as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
 
         return output_file
@@ -394,10 +439,11 @@ class MainWindow(QMainWindow):
             return
 
         reply = QMessageBox.question(
-            self, "确认运行",
+            self,
+            "确认运行",
             f"即将运行 {enabled_count} 个脚本，是否继续？",
             QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.No,
         )
         if reply != QMessageBox.Yes:
             return
@@ -417,7 +463,9 @@ class MainWindow(QMainWindow):
 
         # 后台运行的脚本仍在后台执行，故只用「已处理」措辞，不强调「完成」。
         if return_code == 0:
-            QMessageBox.information(self, "完成", "已处理全部脚本（后台运行的脚本仍在后台执行）。")
+            QMessageBox.information(
+                self, "完成", "已处理全部脚本（后台运行的脚本仍在后台执行）。"
+            )
         else:
             QMessageBox.warning(self, "提示", f"脚本运行结束，退出码: {return_code}")
 

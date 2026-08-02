@@ -1,4 +1,5 @@
 """弹窗：单脚本配置（路径 + 每周超时）与添加脚本。"""
+
 import os
 
 import yaml
@@ -25,18 +26,21 @@ from src.utils import (
 )
 
 # 脚本文件选择过滤器（两个弹窗共用）
-SCRIPT_FILE_FILTER = "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
+SCRIPT_FILE_FILTER = (
+    "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
+)
 
 
 def _browse_script_file(parent, line_edit):
     """弹出文件选择对话框，选中后规范化为系统路径写入 line_edit"""
-    file_path, _ = QFileDialog.getOpenFileName(parent, "选择脚本文件", "", SCRIPT_FILE_FILTER)
+    file_path, _ = QFileDialog.getOpenFileName(
+        parent, "选择脚本文件", "", SCRIPT_FILE_FILTER
+    )
     if file_path:
         line_edit.setText(os.path.normpath(file_path))
 
 
-def default_script_entry(display_name, script_type, script_path,
-                         script_arguments=""):
+def default_script_entry(display_name, script_type, script_path, script_arguments=""):
     """构造一个 config.yml script_list 条目：核心字段由参数指定，其余用默认值补全。"""
     return {
         "display_name": display_name,
@@ -79,6 +83,7 @@ def compute_weekly_timeout_inputs(
 
 class SingleScriptConfigDialog(QDialog):
     """单个脚本的配置弹窗（路径选择 + 每周超时时间）"""
+
     LABEL_WIDTH = 80
 
     def __init__(self, script_name, script_path="", parent=None):
@@ -151,11 +156,13 @@ class SingleScriptConfigDialog(QDialog):
         check_label.setFixedWidth(self.LABEL_WIDTH)
         check_label.setStyleSheet("color: #303030;")
         self.check_done_combo = QComboBox(self)
-        self.check_done_combo.addItems([
-            "game_or_script_closed",
-            "script_closed",
-            "game_closed",
-        ])
+        self.check_done_combo.addItems(
+            [
+                "game_or_script_closed",
+                "script_closed",
+                "game_closed",
+            ]
+        )
         self.check_done_combo.setFont(QFont("Microsoft YaHei", 10))
         self.check_done_combo.setFixedWidth(220)
         self.check_done_combo.setStyleSheet(self._COMBO_STYLE)
@@ -179,7 +186,9 @@ class SingleScriptConfigDialog(QDialog):
         self.block_cb = QCheckBox("阻塞运行", self)
         self.block_cb.setFont(QFont("Microsoft YaHei", 10))
         self.block_cb.setStyleSheet("color: #303030;")
-        self.block_cb.setToolTip("勾选后该脚本以阻塞方式启动，运行按钮会等待其结束；不勾选则后台非阻塞运行")
+        self.block_cb.setToolTip(
+            "勾选后该脚本以阻塞方式启动，运行按钮会等待其结束；不勾选则后台非阻塞运行"
+        )
         row4.addWidget(self.block_cb)
         row4.addStretch()
         layout.addLayout(row4)
@@ -314,10 +323,10 @@ class SingleScriptConfigDialog(QDialog):
         必须存在，故用 assert 表达不该发生；脚本不在表中才返回空 dict。
         """
         config_path = require_config_yml_path()
-        with open(config_path, encoding='utf-8') as f:
+        with open(config_path, encoding="utf-8") as f:
             config_data = yaml.safe_load(f) or {}
-        for script in config_data.get('script_list', []):
-            if script.get('display_name') == self.script_name:
+        for script in config_data.get("script_list", []):
+            if script.get("display_name") == self.script_name:
                 return script
         return {}
 
@@ -325,26 +334,30 @@ class SingleScriptConfigDialog(QDialog):
         self._script_data = self._find_script_data()
 
         # 脚本类型
-        self.type_combo.setCurrentText(self._script_data.get('script_type', 'external'))
+        self.type_combo.setCurrentText(self._script_data.get("script_type", "external"))
         # 启动参数
-        self.args_input.setText(self._script_data.get('script_arguments', ''))
+        self.args_input.setText(self._script_data.get("script_arguments", ""))
         # 完成检测
         self.check_done_combo.setCurrentText(
-            self._script_data.get('check_done', 'script_closed')
+            self._script_data.get("check_done", "script_closed")
         )
         # 关闭脚本 / 关闭游戏
-        self.kill_script_cb.setChecked(self._script_data.get('kill_script_after_done', True))
-        self.kill_game_cb.setChecked(self._script_data.get('kill_game_after_done', False))
-        self.game_process_input.setText(self._script_data.get('game_process_name', ''))
+        self.kill_script_cb.setChecked(
+            self._script_data.get("kill_script_after_done", True)
+        )
+        self.kill_game_cb.setChecked(
+            self._script_data.get("kill_game_after_done", False)
+        )
+        self.game_process_input.setText(self._script_data.get("game_process_name", ""))
         self.game_process_input.setEnabled(self.kill_game_cb.isChecked())
         # 阻塞运行：缺字段视为 True（默认阻塞）
-        self.block_cb.setChecked(self._script_data.get('block', True))
+        self.block_cb.setChecked(self._script_data.get("block", True))
 
         # 每周超时
         weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
         weekly_timeouts_map = {}
         if os.path.exists(weekly_timeouts_path):
-            with open(weekly_timeouts_path, encoding='utf-8') as f:
+            with open(weekly_timeouts_path, encoding="utf-8") as f:
                 weekly_timeouts_map = yaml.safe_load(f) or {}
         timeouts = compute_weekly_timeout_inputs(
             self.script_name, weekly_timeouts_map, DEFAULT_RUN_TIMEOUT
@@ -363,7 +376,11 @@ class SingleScriptConfigDialog(QDialog):
 
         # 若勾选了关闭游戏但未填写进程名，给出提示但不阻断（与 ScriptChainer 行为一致）
         if self.kill_game_cb.isChecked() and not self.game_process_input.text().strip():
-            QMessageBox.warning(self, "警告", "勾选了「运行结束后关闭游戏」但未填写游戏进程名，\nScriptChainer 运行时会报「游戏进程名称为空」而跳过该脚本。")
+            QMessageBox.warning(
+                self,
+                "警告",
+                "勾选了「运行结束后关闭游戏」但未填写游戏进程名，\nScriptChainer 运行时会报「游戏进程名称为空」而跳过该脚本。",
+            )
 
         timeouts = []
         for le in self.timeout_inputs:
@@ -372,32 +389,32 @@ class SingleScriptConfigDialog(QDialog):
             timeouts.append(max(val, 10))
 
         config_path = require_config_yml_path()
-        with open(config_path, encoding='utf-8') as f:
+        with open(config_path, encoding="utf-8") as f:
             config_data = yaml.safe_load(f)
 
-        for script in config_data.get('script_list', []):
-            if script.get('display_name') == self.script_name:
-                script['script_path'] = path_val
-                script['script_type'] = self.type_combo.currentText()
-                script['script_arguments'] = self.args_input.text().strip()
-                script['check_done'] = self.check_done_combo.currentText()
-                script['kill_script_after_done'] = self.kill_script_cb.isChecked()
-                script['kill_game_after_done'] = self.kill_game_cb.isChecked()
-                script['game_process_name'] = self.game_process_input.text().strip()
-                script['block'] = self.block_cb.isChecked()
+        for script in config_data.get("script_list", []):
+            if script.get("display_name") == self.script_name:
+                script["script_path"] = path_val
+                script["script_type"] = self.type_combo.currentText()
+                script["script_arguments"] = self.args_input.text().strip()
+                script["check_done"] = self.check_done_combo.currentText()
+                script["kill_script_after_done"] = self.kill_script_cb.isChecked()
+                script["kill_game_after_done"] = self.kill_game_cb.isChecked()
+                script["game_process_name"] = self.game_process_input.text().strip()
+                script["block"] = self.block_cb.isChecked()
                 break
 
-        with open(config_path, 'w', encoding='utf-8') as f:
+        with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(config_data, f, allow_unicode=True, sort_keys=False)
 
         weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
         weekly_timeouts_map = {}
         if os.path.exists(weekly_timeouts_path):
-            with open(weekly_timeouts_path, encoding='utf-8') as f:
+            with open(weekly_timeouts_path, encoding="utf-8") as f:
                 weekly_timeouts_map = yaml.safe_load(f) or {}
         weekly_timeouts_map[self.script_name] = timeouts
 
-        with open(weekly_timeouts_path, 'w', encoding='utf-8') as f:
+        with open(weekly_timeouts_path, "w", encoding="utf-8") as f:
             yaml.dump(weekly_timeouts_map, f, allow_unicode=True, sort_keys=False)
 
         QMessageBox.information(self, "成功", "配置已保存！")
@@ -406,6 +423,7 @@ class SingleScriptConfigDialog(QDialog):
 
 class AddScriptDialog(QDialog):
     """新增脚本弹窗：收集核心字段（名称、类型、路径、超时），其余字段用默认值补全。"""
+
     LABEL_WIDTH = 80
     _INPUT_STYLE = """
         QLineEdit {
@@ -550,7 +568,9 @@ class AddScriptDialog(QDialog):
             QMessageBox.warning(self, "警告", "脚本名称不能为空！")
             return
         if name in self._existing_names:
-            QMessageBox.warning(self, "警告", f"已存在同名脚本「{name}」，请换一个名称。")
+            QMessageBox.warning(
+                self, "警告", f"已存在同名脚本「{name}」，请换一个名称。"
+            )
             return
         path_val = self.path_input.text().strip()
         if not path_val:

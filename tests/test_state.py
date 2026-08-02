@@ -1,4 +1,5 @@
 """测试 src/gui/utils.py：apply_weekly_timeout 的覆盖规则。"""
+
 import unittest
 from unittest.mock import patch
 

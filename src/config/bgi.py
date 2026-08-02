@@ -19,14 +19,15 @@ def get_BGI_user_dir():
     获取BetterGI配置文件中的脚本路径
     :return: 包含脚本路径
     """
-    with open(require_config_yml_path(), encoding='utf-8') as f:
+    with open(require_config_yml_path(), encoding="utf-8") as f:
         config_data = yaml.safe_load(f)
-        script_list = config_data.get('script_list', [])
+        script_list = config_data.get("script_list", [])
         for script in script_list:
-            if script.get('display_name') == '原神':
-                BGI_dir = os.path.dirname(script.get('script_path'))
-                return safe_path_join(BGI_dir, 'User')
+            if script.get("display_name") == "原神":
+                BGI_dir = os.path.dirname(script.get("script_path"))
+                return safe_path_join(BGI_dir, "User")
     return None
+
 
 def copy_BGI_User():
     """
@@ -37,6 +38,7 @@ def copy_BGI_User():
     assert user_dir, "未找到BetterGI用户目录"
     logger.info(f"[BetterGI] 复制BetterGI配置到: {user_dir}")
     shutil.copytree(get_our_bgi_user_dir(), user_dir, dirs_exist_ok=True)
+
 
 if __name__ == "__main__":
     setup_logging()

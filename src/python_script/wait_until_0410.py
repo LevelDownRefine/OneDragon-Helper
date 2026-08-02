@@ -6,6 +6,7 @@
 用法：
     python src/python_script/wait_until_0410.py
 """
+
 import datetime
 import logging
 import time

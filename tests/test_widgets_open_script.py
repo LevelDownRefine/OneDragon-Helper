@@ -5,7 +5,7 @@ python 脚本的启动命令统一由 ``src.gui.runner.build_script_command(["--
 此测试验证 ``_open_script`` 正确委派给 ``build_script_command``，不重复 frozen 逻辑
 （frozen 行为由 ``test_gui_runner.py`` 的 ``TestBuildScriptInvocationFrozen`` 覆盖）。
 """
-import os
+
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -22,6 +22,7 @@ class _FakeItem:
 def _make_obj(script_path):
     item = _FakeItem("python", script_path)
     from src.gui.widgets import ScriptItem
+
     return SimpleNamespace(
         script_type=item.script_type,
         script_path=item.script_path,
@@ -36,10 +37,14 @@ class TestOpenPythonScriptDelegatesToBuildRunnerInvocation(unittest.TestCase):
         script_path = "D:/scripts/foo.py"
         fake_cmd = ["FAKE_CMD", "--script", script_path]
         obj = _make_obj(script_path)
-        with mock.patch("src.gui.widgets.build_script_command",
-                        return_value=(fake_cmd, "FAKE_CWD", None)) as bsc, \
-             mock.patch("src.gui.widgets.os.path.isfile", return_value=True), \
-             mock.patch("src.gui.widgets.subprocess.Popen") as popen:
+        with (
+            mock.patch(
+                "src.gui.widgets.build_script_command",
+                return_value=(fake_cmd, "FAKE_CWD", None),
+            ) as bsc,
+            mock.patch("src.gui.widgets.os.path.isfile", return_value=True),
+            mock.patch("src.gui.widgets.subprocess.Popen") as popen,
+        ):
             obj._open_script()
         bsc.assert_called_once_with(["--script", script_path])
         popen.assert_called_once()
@@ -50,10 +55,12 @@ class TestOpenPythonScriptDelegatesToBuildRunnerInvocation(unittest.TestCase):
 
     def test_missing_file_shows_warning_no_launch(self):
         obj = _make_obj("D:/nope/missing.py")
-        with mock.patch("src.gui.widgets.build_script_command") as bsc, \
-             mock.patch("src.gui.widgets.os.path.isfile", return_value=False), \
-             mock.patch("src.gui.widgets.subprocess.Popen") as popen, \
-             mock.patch("src.gui.widgets._styled_msg_box") as msg:
+        with (
+            mock.patch("src.gui.widgets.build_script_command") as bsc,
+            mock.patch("src.gui.widgets.os.path.isfile", return_value=False),
+            mock.patch("src.gui.widgets.subprocess.Popen") as popen,
+            mock.patch("src.gui.widgets._styled_msg_box") as msg,
+        ):
             obj._open_script()
         bsc.assert_not_called()
         popen.assert_not_called()

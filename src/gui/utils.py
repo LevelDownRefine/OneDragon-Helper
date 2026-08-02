@@ -3,6 +3,7 @@
 - UI 状态持久化（config/gui_state.json）与星期计算；
 - 统一的消息框 / 打开文件辅助函数（强制浅色样式，避免深色主题下全黑不可读）。
 """
+
 import json
 import os
 from datetime import datetime, timedelta
@@ -18,14 +19,14 @@ _STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
 def load_ui_state() -> dict:
     """读取上次保存的 UI 状态"""
     if os.path.exists(_STATE_FILE):
-        with open(_STATE_FILE, encoding='utf-8') as f:
+        with open(_STATE_FILE, encoding="utf-8") as f:
             return json.load(f)
     return {}
 
 
 def save_ui_state(state: dict):
     """保存 UI 状态"""
-    with open(_STATE_FILE, 'w', encoding='utf-8') as f:
+    with open(_STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
 
 
@@ -47,12 +48,12 @@ def apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
     - 有完整 7 格 → 取当天值，且不低于 10（避免 0 秒杀脚本）。
     - 无条目 / 不足 7 格 → fallback 到 DEFAULT_RUN_TIMEOUT。
     """
-    assert 'display_name' in script, "[state] script_list 条目缺少 display_name 字段"
-    timeouts = weekly_timeouts.get(script['display_name'])
+    assert "display_name" in script, "[state] script_list 条目缺少 display_name 字段"
+    timeouts = weekly_timeouts.get(script["display_name"])
     if timeouts and len(timeouts) == 7:
-        script['run_timeout_seconds'] = max(timeouts[get_week_num()], 10)
+        script["run_timeout_seconds"] = max(timeouts[get_week_num()], 10)
     else:
-        script['run_timeout_seconds'] = DEFAULT_RUN_TIMEOUT
+        script["run_timeout_seconds"] = DEFAULT_RUN_TIMEOUT
 
 
 # ---------------------------------------------------------------------------
@@ -86,4 +87,6 @@ def _safe_startfile(parent, path, fail_text):
     try:
         os.startfile(path)
     except OSError as e:
-        _styled_msg_box(parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}").exec()
+        _styled_msg_box(
+            parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}"
+        ).exec()

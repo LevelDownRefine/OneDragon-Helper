@@ -129,7 +129,10 @@ class BaseLogParser:
     def parse(self, script_path: str = "") -> dict:
         log_path = self.get_log_path(script_path)
         if not log_path or not log_path.exists():
-            return {"status": ScriptLogStatus.NO_LOG, "log_path": str(log_path) if log_path else None}
+            return {
+                "status": ScriptLogStatus.NO_LOG,
+                "log_path": str(log_path) if log_path else None,
+            }
 
         content = self._read_file(log_path)
         status = self.parse_content(content)
@@ -216,7 +219,10 @@ class ZZZLogParser(BaseLogParser):
         return "log.txt"
 
     def parse_content(self, content: str) -> str:
-        if "指令[ 一条龙 ] 执行成功" in content or "指令[ 执行应用组 one_dragon ] 执行成功" in content:
+        if (
+            "指令[ 一条龙 ] 执行成功" in content
+            or "指令[ 执行应用组 one_dragon ] 执行成功" in content
+        ):
             return ScriptLogStatus.SUCCESS
         if "[ERROR]" in content:
             return ScriptLogStatus.FAILED
@@ -243,7 +249,14 @@ class BGILogParser(BaseLogParser):
         return ScriptLogStatus.FAILED
 
 
-_PARSERS = [OkWwLogParser, OkNteLogParser, OkEfLogParser, M7ALogParser, BGILogParser, ZZZLogParser]
+_PARSERS = [
+    OkWwLogParser,
+    OkNteLogParser,
+    OkEfLogParser,
+    M7ALogParser,
+    BGILogParser,
+    ZZZLogParser,
+]
 
 
 def _find_parser(display_name: str) -> BaseLogParser | None:

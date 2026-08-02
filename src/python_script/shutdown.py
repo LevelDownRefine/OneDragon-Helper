@@ -36,7 +36,9 @@ class ShutdownWindow(QMainWindow):
         # 倒计时文本标签，字号改为16pt
         self.label_tip = QLabel("")
         self.label_tip.setAlignment(Qt.AlignCenter)
-        self.label_tip.setStyleSheet("font-family: 'Microsoft YaHei'; font-size: 16pt; font-weight: 500;")
+        self.label_tip.setStyleSheet(
+            "font-family: 'Microsoft YaHei'; font-size: 16pt; font-weight: 500;"
+        )
         main_layout.addWidget(self.label_tip)
 
         # 按钮行布局
@@ -64,7 +66,9 @@ class ShutdownWindow(QMainWindow):
 
     def update_countdown(self):
         if self.countdown_sec > 0:
-            self.label_tip.setText(f"电脑将在 {self.countdown_sec} 秒后关机\n请保存好您的工作！")
+            self.label_tip.setText(
+                f"电脑将在 {self.countdown_sec} 秒后关机\n请保存好您的工作！"
+            )
             self.countdown_sec -= 1
         else:
             self.timer.stop()
@@ -75,7 +79,7 @@ class ShutdownWindow(QMainWindow):
         subprocess.run(
             ["shutdown", "/s", "/t", "0"],
             shell=False,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
 
 

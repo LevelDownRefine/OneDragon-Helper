@@ -10,6 +10,7 @@ def get_our_bgi_user_dir() -> str:
     """
     return safe_path_join(get_root_dir(), "config", "BGI_User")
 
+
 def get_config_yml_path_under_root() -> str:
     """
     获取根目录下的config/config.yml文件路径（运行时生成，含个人信息，不追溯git）
@@ -35,12 +36,14 @@ def require_config_yml_path() -> str:
     assert os.path.exists(path), f"[utils] 未找到 config.yml，无法读取配置: {path}"
     return path
 
+
 def get_weekly_timeouts_yml_path_under_root() -> str:
     """
     获取根目录下的config/weekly_timeouts.yml文件路径
     :return: 根目录下的config/weekly_timeouts.yml文件路径
     """
     return safe_path_join(get_root_dir(), "config", "weekly_timeouts.yml")
+
 
 @lru_cache
 def get_root_dir() -> str:
@@ -52,6 +55,7 @@ def get_root_dir() -> str:
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+
 def get_path_under_root(*subs) -> str:
     """
     获取当前工作目录下的路径
@@ -59,6 +63,7 @@ def get_path_under_root(*subs) -> str:
     :return: 当前工作目录下的路径
     """
     return join_dir_path_with_mk(get_root_dir(), *subs)
+
 
 def safe_path_join(base: str, *paths: str) -> str:
     """
@@ -76,8 +81,9 @@ def safe_path_join(base: str, *paths: str) -> str:
     base_abs = os.path.abspath(base)
     target = os.path.abspath(os.path.join(base_abs, *paths))
     # startswith 判断可同时拦截 `..` 逃逸、绝对路径覆盖、跨盘符（Windows）
-    assert target == base_abs or target.startswith(base_abs + os.sep), \
+    assert target == base_abs or target.startswith(base_abs + os.sep), (
         f"[safe_path_join] 检测到路径穿越注入: base={base_abs} target={target}"
+    )
     return target
 
 

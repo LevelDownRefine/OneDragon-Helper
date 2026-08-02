@@ -1,4 +1,5 @@
 """测试 src/config/subscript.py：config 读写基础设施与相对路径解析"""
+
 import os
 import unittest
 
@@ -25,10 +26,12 @@ class TestResolveRelativeScriptPaths(unittest.TestCase):
             os.path.abspath(os.path.join(root, "src/python_script", "mute.py")),
         )
         # 绝对路径原样保留
-        self.assertEqual(data["script_list"][1]["script_path"], "D:\\games\\BetterGI.exe")
+        self.assertEqual(
+            data["script_list"][1]["script_path"], "D:\\games\\BetterGI.exe"
+        )
         # 空路径原样保留
         self.assertEqual(data["script_list"][2]["script_path"], "")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

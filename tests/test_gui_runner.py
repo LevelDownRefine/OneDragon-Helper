@@ -1,4 +1,5 @@
 """测试 src/gui/runner.py：命令构造、run_chain_command 的整链/调试调用、运行线程。"""
+
 import os
 import subprocess
 import sys
@@ -6,13 +7,13 @@ import unittest
 from unittest import mock
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
-os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from src.gui.runner import (
     ScriptChainRunner,
-    build_script_command,
     _to_signed_32,
     build_chain_command,
+    build_script_command,
     run_chain_command,
 )
 from src.utils import get_root_dir
@@ -49,7 +50,9 @@ class TestRunChainCommandInvocation(unittest.TestCase):
         self.assertIn(CHAIN_PATH, command)
         self.assertNotIn("--debug-index", command)
         self.assertEqual(run.call_args.kwargs["cwd"], get_root_dir())
-        self.assertIn(os.path.join("src", "runner"), run.call_args.kwargs["env"]["PYTHONPATH"])
+        self.assertIn(
+            os.path.join("src", "runner"), run.call_args.kwargs["env"]["PYTHONPATH"]
+        )
 
 
 class TestScriptChainRunnerInit(unittest.TestCase):
@@ -86,7 +89,9 @@ class TestScriptChainRunnerRun(unittest.TestCase):
 
     def test_run_emits_minus_one_on_exception(self):
         received = []
-        with mock.patch("src.gui.runner.run_chain_command", side_effect=RuntimeError("boom")):
+        with mock.patch(
+            "src.gui.runner.run_chain_command", side_effect=RuntimeError("boom")
+        ):
             r = ScriptChainRunner(CHAIN_PATH_ABS)
             r.finished_signal.connect(lambda c: received.append(c))
             r.run()
@@ -126,8 +131,10 @@ class TestNonBlocking(unittest.TestCase):
     """验证 run_chain_command 的 block 分支；block=False 以 Popen 即起即返。"""
 
     def test_nonblock_uses_popen_and_returns_zero(self):
-        with mock.patch("src.gui.runner.subprocess.run") as run, \
-             mock.patch("src.gui.runner.subprocess.Popen") as popen:
+        with (
+            mock.patch("src.gui.runner.subprocess.run") as run,
+            mock.patch("src.gui.runner.subprocess.Popen") as popen,
+        ):
             rc = run_chain_command(CHAIN_PATH, block=False)
         self.assertEqual(rc, 0)
         popen.assert_called_once()
@@ -137,8 +144,10 @@ class TestNonBlocking(unittest.TestCase):
         self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
 
     def test_block_true_uses_subprocess_run(self):
-        with mock.patch("src.gui.runner.subprocess.run") as run, \
-             mock.patch("src.gui.runner.subprocess.Popen") as popen:
+        with (
+            mock.patch("src.gui.runner.subprocess.run") as run,
+            mock.patch("src.gui.runner.subprocess.Popen") as popen,
+        ):
             run.return_value.returncode = 0
             run_chain_command(CHAIN_PATH, block=True)
         run.assert_called_once()
@@ -155,8 +164,10 @@ class TestBuildChainCommandFrozen(unittest.TestCase):
     EXPECTED_RUNNER = os.path.join(os.sep, "app", "OneDragon-Helper-Runner.exe")
 
     def test_frozen_calls_runner_exe_not_python(self):
-        with mock.patch("sys.frozen", True, create=True), \
-             mock.patch("sys.executable", self.FAKE_EXE):
+        with (
+            mock.patch("sys.frozen", True, create=True),
+            mock.patch("sys.executable", self.FAKE_EXE),
+        ):
             command, cwd, env = build_chain_command(CHAIN_PATH)
         # 命令首元素应是 Runner exe，而非 sys.executable（Python 解释器）
         self.assertEqual(command[0], self.EXPECTED_RUNNER)
@@ -164,23 +175,29 @@ class TestBuildChainCommandFrozen(unittest.TestCase):
         self.assertNotIn("src.runner.launcher", command)
 
     def test_frozen_passes_chain_arg(self):
-        with mock.patch("sys.frozen", True, create=True), \
-             mock.patch("sys.executable", self.FAKE_EXE):
+        with (
+            mock.patch("sys.frozen", True, create=True),
+            mock.patch("sys.executable", self.FAKE_EXE),
+        ):
             command, cwd, env = build_chain_command(CHAIN_PATH)
         self.assertIn("--chain", command)
         self.assertIn(CHAIN_PATH, command)
         self.assertNotIn("--debug-index", command)
 
     def test_frozen_cwd_is_exe_dir(self):
-        with mock.patch("sys.frozen", True, create=True), \
-             mock.patch("sys.executable", self.FAKE_EXE):
+        with (
+            mock.patch("sys.frozen", True, create=True),
+            mock.patch("sys.executable", self.FAKE_EXE),
+        ):
             command, cwd, env = build_chain_command(CHAIN_PATH)
         self.assertEqual(cwd, os.path.dirname(self.FAKE_EXE))
 
     def test_frozen_env_is_none(self):
         """冻结模式下 env=None，让 subprocess 继承父进程环境（不丢 PATH 等）。"""
-        with mock.patch("sys.frozen", True, create=True), \
-             mock.patch("sys.executable", self.FAKE_EXE):
+        with (
+            mock.patch("sys.frozen", True, create=True),
+            mock.patch("sys.executable", self.FAKE_EXE),
+        ):
             command, cwd, env = build_chain_command(CHAIN_PATH)
         self.assertIsNone(env)
 
@@ -204,8 +221,10 @@ class TestBuildScriptInvocationFrozen(unittest.TestCase):
     SCRIPT = "D:/scripts/foo.py"
 
     def test_frozen_calls_runner_exe_with_script_flag(self):
-        with mock.patch("sys.frozen", True, create=True), \
-             mock.patch("sys.executable", self.FAKE_EXE):
+        with (
+            mock.patch("sys.frozen", True, create=True),
+            mock.patch("sys.executable", self.FAKE_EXE),
+        ):
             command, cwd, env = build_script_command(["--script", self.SCRIPT])
         self.assertEqual(command[0], self.EXPECTED_RUNNER)
         self.assertEqual(command[1], "--script")
@@ -214,8 +233,10 @@ class TestBuildScriptInvocationFrozen(unittest.TestCase):
         self.assertNotIn("src.runner.launcher", command)
 
     def test_frozen_cwd_is_exe_dir_and_env_none(self):
-        with mock.patch("sys.frozen", True, create=True), \
-             mock.patch("sys.executable", self.FAKE_EXE):
+        with (
+            mock.patch("sys.frozen", True, create=True),
+            mock.patch("sys.executable", self.FAKE_EXE),
+        ):
             command, cwd, env = build_script_command(["--script", self.SCRIPT])
         self.assertEqual(cwd, os.path.dirname(self.FAKE_EXE))
         self.assertIsNone(env)
@@ -231,5 +252,5 @@ class TestBuildScriptInvocationFrozen(unittest.TestCase):
         self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

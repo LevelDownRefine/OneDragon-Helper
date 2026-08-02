@@ -21,13 +21,13 @@ from src.utils import (
 # ============================================================
 
 _CONFIG_REL_PATHS: dict[str, str] = {
-    "鸣潮":   "data/apps/ok-ww/working/configs/DailyTask.json",
-    "原神":   "User/OneDragon/默认配置.json",
+    "鸣潮": "data/apps/ok-ww/working/configs/DailyTask.json",
+    "原神": "User/OneDragon/默认配置.json",
     "终末地": "data/apps/ok-ef/working/configs/DailyTask.json",
     "绝区零": "config/01/one_dragon/charge_plan.yml",
-    "崩铁":   "config.yaml",
-    "异环":   "data/apps/ok-nte/working/configs/DailyTask.json",
-    "粥":     "config/gui.new.json",
+    "崩铁": "config.yaml",
+    "异环": "data/apps/ok-nte/working/configs/DailyTask.json",
+    "粥": "config/gui.new.json",
 }
 
 
@@ -36,10 +36,10 @@ _CONFIG_REL_PATHS: dict[str, str] = {
 # ============================================================
 
 _TEMPLATE_PATHS: dict[str, str] = {
-    "原神":   "BGI一条龙.json",
+    "原神": "BGI一条龙.json",
     "绝区零": "ZZZ一条龙.yml",
-    "粥":     "MAA一条龙.json",
-    "崩铁":   "M7A一条龙.yml",
+    "粥": "MAA一条龙.json",
+    "崩铁": "M7A一条龙.yml",
 }
 
 
@@ -47,15 +47,17 @@ _TEMPLATE_PATHS: dict[str, str] = {
 # 主配置加载
 # ============================================================
 
+
 def _load_config_yml() -> dict:
     """读取主配置 config.yml"""
-    with open(require_config_yml_path(), encoding='utf-8') as f:
+    with open(require_config_yml_path(), encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 # ============================================================
 # 脚本根目录 & config 路径解析
 # ============================================================
+
 
 def get_script_path(script_display_name: str) -> str:
     """
@@ -66,11 +68,13 @@ def get_script_path(script_display_name: str) -> str:
     供 GUI「打开脚本」按钮与 _get_script_root_dir 复用。
     """
     config_data = _load_config_yml()
-    for script in config_data.get('script_list', []):
-        if script.get('display_name') == script_display_name:
-            script_path = script.get('script_path', '')
-            assert script_path, f"[set_config] config.yml 中 {script_display_name} 的 script_path 为空"
-            normalized = script_path.replace('\\', '/')
+    for script in config_data.get("script_list", []):
+        if script.get("display_name") == script_display_name:
+            script_path = script.get("script_path", "")
+            assert script_path, (
+                f"[set_config] config.yml 中 {script_display_name} 的 script_path 为空"
+            )
+            normalized = script_path.replace("\\", "/")
             assert os.path.exists(normalized), f"[set_config] exe 不存在: {normalized}"
             return normalized
     assert False, f"[set_config] config.yml 中找不到脚本: {script_display_name}"  # noqa: B011  # 故意：config.yml 找不到脚本属编程错误，必须用 assert 表达不该发生
@@ -90,8 +94,9 @@ def get_config_path(script_display_name: str) -> str:
     拼接脚本根目录 + config 相对路径。
     并确保 config 文件存在。
     """
-    assert script_display_name in _CONFIG_REL_PATHS, \
+    assert script_display_name in _CONFIG_REL_PATHS, (
         f"[set_config] 未适配脚本: {script_display_name}"
+    )
     root = _get_script_root_dir(script_display_name)
     rel = _CONFIG_REL_PATHS[script_display_name]
     config_path = safe_path_join(root, rel)
@@ -103,21 +108,25 @@ def get_config_path(script_display_name: str) -> str:
 # config 读写
 # ============================================================
 
+
 def load_template(display_name: str) -> dict | list:
     """
     加载模板文件，支持 JSON 和 YAML 格式。
     文件不存在或格式不支持时抛出 AssertionError。
     """
-    assert display_name in _TEMPLATE_PATHS, \
+    assert display_name in _TEMPLATE_PATHS, (
         f"[set_config][{display_name}] 未配置模板路径"
+    )
     rel_path = _TEMPLATE_PATHS[display_name]
     template_path = safe_path_join(get_root_dir(), "config", rel_path)
-    assert os.path.exists(template_path), f"[set_config][{display_name}] 未找到模板文件: {template_path}"
+    assert os.path.exists(template_path), (
+        f"[set_config][{display_name}] 未找到模板文件: {template_path}"
+    )
     ext = os.path.splitext(template_path)[1].lower()
-    with open(template_path, encoding='utf-8') as f:
-        if ext == '.json':
+    with open(template_path, encoding="utf-8") as f:
+        if ext == ".json":
             template = json.load(f)
-        elif ext in ('.yaml', '.yml'):
+        elif ext in (".yaml", ".yml"):
             template = yaml.safe_load(f)
         else:
             raise ValueError(f"[set_config][{display_name}] 不支持的模板格式: {ext}")
@@ -133,10 +142,10 @@ def load_config(script_display_name: str) -> dict | list:
     path = get_config_path(script_display_name)
     assert os.path.exists(path), f"[set_config] config 文件不存在: {path}"
     ext = os.path.splitext(path)[1].lower()
-    with open(path, encoding='utf-8') as f:
-        if ext == '.json':
+    with open(path, encoding="utf-8") as f:
+        if ext == ".json":
             return json.load(f)
-        elif ext in ('.yaml', '.yml'):
+        elif ext in (".yaml", ".yml"):
             return yaml.safe_load(f)
         raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
@@ -149,10 +158,10 @@ def save_config(script_display_name: str, data: dict | list) -> None:
     """
     path = get_config_path(script_display_name)
     ext = os.path.splitext(path)[1].lower()
-    with open(path, 'w', encoding='utf-8') as f:
-        if ext == '.json':
+    with open(path, "w", encoding="utf-8") as f:
+        if ext == ".json":
             json.dump(data, f, ensure_ascii=False, indent=4)
-        elif ext in ('.yaml', '.yml'):
+        elif ext in (".yaml", ".yml"):
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
         else:
             raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
@@ -168,9 +177,9 @@ def _is_absolute_path(p: str) -> bool:
     """
     if os.path.isabs(p):
         return True
-    if re.match(r'^[A-Za-z]:[\\/]', p):
+    if re.match(r"^[A-Za-z]:[\\/]", p):
         return True
-    return p.startswith('\\\\') or p.startswith('//')
+    return p.startswith("\\\\") or p.startswith("//")
 
 
 def _resolve_relative_script_paths(config_data: dict) -> None:

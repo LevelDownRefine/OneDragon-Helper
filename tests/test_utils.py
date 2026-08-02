@@ -7,7 +7,6 @@ import utils
 
 
 class TestUtils(unittest.TestCase):
-
     def test_get_root_dir(self):
         root_dir = utils.get_root_dir()
         self.assertTrue(os.path.isabs(root_dir))
@@ -29,7 +28,7 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(path, utils.get_root_dir())
 
         # With subdirs (using mock to avoid actually creating it if it doesn't exist)
-        with patch('utils.join_dir_path_with_mk') as mock_join:
+        with patch("utils.join_dir_path_with_mk") as mock_join:
             mock_join.return_value = "mock_path"
             res = utils.get_path_under_root("sub1", "sub2")
             self.assertEqual(res, "mock_path")
@@ -102,16 +101,14 @@ class TestGetRootDirFrozen(unittest.TestCase):
 
     def test_frozen_returns_exe_dir(self):
         fake_exe = os.path.join(os.sep, "app", "OneDragon-Helper.exe")
-        with patch("sys.frozen", True, create=True), \
-             patch("sys.executable", fake_exe):
+        with patch("sys.frozen", True, create=True), patch("sys.executable", fake_exe):
             result = utils.get_root_dir()
             self.assertEqual(result, os.path.dirname(fake_exe))
 
     def test_frozen_not_uses_file(self):
         """冻结模式下不应返回 __file__ 推导的路径（即不应是 src/ 的父目录）。"""
         fake_exe = os.path.join(os.sep, "deploy", "dist", "OneDragon-Helper.exe")
-        with patch("sys.frozen", True, create=True), \
-             patch("sys.executable", fake_exe):
+        with patch("sys.frozen", True, create=True), patch("sys.executable", fake_exe):
             result = utils.get_root_dir()
             # 不应包含 src 目录
             self.assertNotIn("src", result)

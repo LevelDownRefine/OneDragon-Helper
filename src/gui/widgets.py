@@ -1,4 +1,5 @@
 """自定义控件：ToggleSwitch 滑动开关与 ScriptItem 脚本卡片。"""
+
 import os
 import subprocess
 
@@ -104,23 +105,35 @@ class ToggleSwitch(QWidget):
 class ScriptItem(QFrame):
     """单个脚本项（卡片风格）"""
 
-    def __init__(self, script_data, dungeon_options=None, sequence_options_map=None,
-                 show_sequence=False, saved_state=None, reorder_callback=None,
-                 delete_callback=None, config_saved_callback=None):
+    def __init__(
+        self,
+        script_data,
+        dungeon_options=None,
+        sequence_options_map=None,
+        show_sequence=False,
+        saved_state=None,
+        reorder_callback=None,
+        delete_callback=None,
+        config_saved_callback=None,
+    ):
         super().__init__()
-        assert 'display_name' in script_data, "[widgets] 脚本配置缺少 display_name 字段"
-        assert 'script_type' in script_data, "[widgets] 脚本配置缺少 script_type 字段"
-        self.display_name = script_data['display_name']
-        self.script_type = script_data['script_type']
-        self.script_path = script_data.get('script_path', '')
+        assert "display_name" in script_data, "[widgets] 脚本配置缺少 display_name 字段"
+        assert "script_type" in script_data, "[widgets] 脚本配置缺少 script_type 字段"
+        self.display_name = script_data["display_name"]
+        self.script_type = script_data["script_type"]
+        self.script_path = script_data.get("script_path", "")
         self.dungeon_btn = None
-        self._selected_dungeon = None   # 一级副本名（None 表示未选择）
+        self._selected_dungeon = None  # 一级副本名（None 表示未选择）
         self._selected_sequence = None  # 二级序列名
-        self.enabled = True  # 纯内存态：每次启动默认全开，仅当次会话可临时关（不读 config）
+        self.enabled = (
+            True  # 纯内存态：每次启动默认全开，仅当次会话可临时关（不读 config）
+        )
         self._state_callback = None  # 状态变化回调，由 MainWindow 注入
         self._reorder_callback = reorder_callback  # 拖拽重排回调，由 MainWindow 注入
         self._delete_callback = delete_callback  # 删除回调，由 MainWindow 注入
-        self._config_saved_callback = config_saved_callback  # 配置弹窗保存成功回调，由 MainWindow 注入
+        self._config_saved_callback = (
+            config_saved_callback  # 配置弹窗保存成功回调，由 MainWindow 注入
+        )
         self._drag_start_pos = None  # 拖拽起点（仅在手柄上按下时记录）
         self._sequence_options_map = sequence_options_map or {}  # 副本名 → 二级选项列表
         self._dungeon_options = dungeon_options or []  # 一级副本列表
@@ -159,7 +172,10 @@ class ScriptItem(QFrame):
         self.title_label.setFixedWidth(60)
         # QLabel 无 setElideMode，用 QFontMetrics 手动截断超长名字
         self.title_label.setText(
-            QFontMetrics(title_font).elidedText(self.display_name, Qt.TextElideMode.ElideRight, 110))
+            QFontMetrics(title_font).elidedText(
+                self.display_name, Qt.TextElideMode.ElideRight, 110
+            )
+        )
         layout.addWidget(self.title_label)
 
         # 左侧弹性空间 + 副本按钮（居中） + 右侧弹性空间
@@ -169,10 +185,14 @@ class ScriptItem(QFrame):
         # 副本选择按钮（点击弹出级联菜单：一级 → 二级从右侧弹出）
         self.dungeon_btn = None
         # 恢复上次选择（仅当副本在选项列表中时）
-        if saved_state and saved_state.get('dungeon') and saved_state['dungeon'] in self._dungeon_options:  # optional: 保存状态可能没有选择过副本
-            self._selected_dungeon = saved_state['dungeon']
-            if saved_state.get('sequence'):  # optional: 保存状态可能没有选择过序列
-                self._selected_sequence = saved_state['sequence']
+        if (
+            saved_state
+            and saved_state.get("dungeon")
+            and saved_state["dungeon"] in self._dungeon_options
+        ):  # optional: 保存状态可能没有选择过副本
+            self._selected_dungeon = saved_state["dungeon"]
+            if saved_state.get("sequence"):  # optional: 保存状态可能没有选择过序列
+                self._selected_sequence = saved_state["sequence"]
         self._ensure_dungeon_button()
         layout.addStretch(1)  # 右 spacer（副本按钮在两个等宽 stretch 之间 = 居中）
 
@@ -184,8 +204,13 @@ class ScriptItem(QFrame):
 
         # 操作菜单按钮：把删除 / 打开脚本 / 打开配置 / 配置 全部收进 ⋮，避免卡片按钮过多
         self.overflow_btn = make_icon_button(
-            "⋮", accent="#3b82f6", normal_color="#9aa3b2", font_size=18,
-            hover_bg="#eef2f7", pressed_bg="#e2e8f0")
+            "⋮",
+            accent="#3b82f6",
+            normal_color="#9aa3b2",
+            font_size=18,
+            hover_bg="#eef2f7",
+            pressed_bg="#e2e8f0",
+        )
         self.overflow_btn.clicked.connect(self._show_overflow_menu)
         layout.addWidget(self.overflow_btn)
 
@@ -231,10 +256,14 @@ class ScriptItem(QFrame):
         - python 脚本：用 python 解释器直接运行（不阻塞 GUI）；
         - external 脚本：用 get_script_path 解析出 exe 并以 startfile 启动。
         """
-        if self.script_type == 'python':
+        if self.script_type == "python":
             if not self.script_path or not os.path.isfile(self.script_path):
-                _styled_msg_box(self, QMessageBox.Warning, "提示",
-                                f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}").exec()
+                _styled_msg_box(
+                    self,
+                    QMessageBox.Warning,
+                    "提示",
+                    f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}",
+                ).exec()
                 return
             # 命令构造（含 frozen/非 frozen 判断）全部委托给 build_script_command，
             # 这里只管拿 cmd list 去 spawn，不再关心运行环境。
@@ -242,14 +271,18 @@ class ScriptItem(QFrame):
             try:
                 subprocess.Popen(command, cwd=cwd, env=env)
             except OSError as e:
-                _styled_msg_box(self, QMessageBox.Warning, "提示", f"无法运行脚本：\n{e}").exec()
+                _styled_msg_box(
+                    self, QMessageBox.Warning, "提示", f"无法运行脚本：\n{e}"
+                ).exec()
             return
 
         # external 脚本：解析出 exe 并启动
         try:
             exe_path = get_script_path(self.display_name)
         except AssertionError as e:
-            _styled_msg_box(self, QMessageBox.Warning, "提示", f"无法打开脚本：\n{e}").exec()
+            _styled_msg_box(
+                self, QMessageBox.Warning, "提示", f"无法打开脚本：\n{e}"
+            ).exec()
             return
         _safe_startfile(self, exe_path, "无法打开脚本")
 
@@ -259,10 +292,14 @@ class ScriptItem(QFrame):
         - external 脚本：用 get_config_path 解析并打开其内部 config 文本文件；
           未适配或文件缺失时给出清晰提示。
         """
-        if self.script_type == 'python':
+        if self.script_type == "python":
             if not self.script_path or not os.path.isfile(self.script_path):
-                _styled_msg_box(self, QMessageBox.Warning, "提示",
-                                f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}").exec()
+                _styled_msg_box(
+                    self,
+                    QMessageBox.Warning,
+                    "提示",
+                    f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}",
+                ).exec()
                 return
             _safe_startfile(self, self.script_path, "无法打开脚本文件")
             return
@@ -271,8 +308,12 @@ class ScriptItem(QFrame):
         try:
             config_path = get_config_path(self.display_name)
         except AssertionError as e:
-            _styled_msg_box(self, QMessageBox.Warning, "提示",
-                            f"该脚本暂未适配配置文件，无法打开：\n{e}").exec()
+            _styled_msg_box(
+                self,
+                QMessageBox.Warning,
+                "提示",
+                f"该脚本暂未适配配置文件，无法打开：\n{e}",
+            ).exec()
             return
         _safe_startfile(self, config_path, "无法打开配置文件")
 
@@ -284,23 +325,31 @@ class ScriptItem(QFrame):
         for dungeon_name in self._dungeon_options:
             if dungeon_name == "未选择":
                 action = menu.addAction(dungeon_name)
-                action.triggered.connect(lambda checked, dn=dungeon_name: self._on_dungeon_selected(dn))
+                action.triggered.connect(
+                    lambda checked, dn=dungeon_name: self._on_dungeon_selected(dn)
+                )
                 menu.addSeparator()
                 continue
 
-            seq_options = self._sequence_options_map.get(dungeon_name, [])  # optional: 副本可能没有二级选项
+            seq_options = self._sequence_options_map.get(
+                dungeon_name, []
+            )  # optional: 副本可能没有二级选项
             if seq_options:
                 # 有二级选项 → 子菜单（从右侧弹出）
                 submenu = menu.addMenu(dungeon_name)
                 for display_name, actual_value in seq_options:
                     sub_action = submenu.addAction(display_name)
                     sub_action.triggered.connect(
-                        lambda checked, dn=dungeon_name, sq=actual_value: self._on_dungeon_selected(dn, sq)
+                        lambda checked, dn=dungeon_name, sq=actual_value: (
+                            self._on_dungeon_selected(dn, sq)
+                        )
                     )
             else:
                 # 无二级选项 → 直接选择
                 action = menu.addAction(dungeon_name)
-                action.triggered.connect(lambda checked, dn=dungeon_name: self._on_dungeon_selected(dn))
+                action.triggered.connect(
+                    lambda checked, dn=dungeon_name: self._on_dungeon_selected(dn)
+                )
 
         # 在按钮下方弹出
         menu.exec(self.dungeon_btn.mapToGlobal(self.dungeon_btn.rect().bottomLeft()))
@@ -333,9 +382,9 @@ class ScriptItem(QFrame):
         """获取当前 UI 状态，用于持久化"""
         state = {}
         if self._selected_dungeon:
-            state['dungeon'] = self._selected_dungeon
+            state["dungeon"] = self._selected_dungeon
             if self._selected_sequence:
-                state['sequence'] = self._selected_sequence
+                state["sequence"] = self._selected_sequence
         return state
 
     def set_state_callback(self, callback):
@@ -362,9 +411,11 @@ class ScriptItem(QFrame):
         has_real_dungeons = (
             self._dungeon_options
             and len(self._dungeon_options) > 1
-            and not (len(self._dungeon_options) == 1 and self._dungeon_options[0] == "未选择")
+            and not (
+                len(self._dungeon_options) == 1 and self._dungeon_options[0] == "未选择"
+            )
         )
-        should_show = self.script_type != 'python' and has_real_dungeons
+        should_show = self.script_type != "python" and has_real_dungeons
         if not should_show:
             if self.dungeon_btn is not None:
                 self.dungeon_btn.setVisible(False)
@@ -374,12 +425,14 @@ class ScriptItem(QFrame):
 
         if self.dungeon_btn is None:
             self.dungeon_btn = make_secondary_button(
-                "选择副本", radius=8, padding="0 10px", font_size=11)
+                "选择副本", radius=8, padding="0 10px", font_size=11
+            )
             # 固定宽度：所有卡片副本条等宽，右边缘对齐
             self.dungeon_btn.setFixedWidth(220)
             # 文本居中；按钮本身由左右等宽 stretch 夹在中间实现居中
             self.dungeon_btn.setStyleSheet(
-                self.dungeon_btn.styleSheet() + "\nQPushButton { text-align: center; }")
+                self.dungeon_btn.styleSheet() + "\nQPushButton { text-align: center; }"
+            )
             self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
             # 插入到左 spacer(index 2) 与右 spacer(即将在 index 4) 之间 → 居中
             self.layout().insertWidget(3, self.dungeon_btn)
@@ -389,10 +442,10 @@ class ScriptItem(QFrame):
 
     def sync_from_script_data(self, script_data: dict) -> None:
         """配置弹窗保存后，从最新 script 数据同步内存态（路径、类型、副本按钮）。"""
-        assert 'script_path' in script_data, "[widgets] 同步缺少 script_path 字段"
-        assert 'script_type' in script_data, "[widgets] 同步缺少 script_type 字段"
-        self.script_path = script_data['script_path']
-        self.script_type = script_data['script_type']
+        assert "script_path" in script_data, "[widgets] 同步缺少 script_path 字段"
+        assert "script_type" in script_data, "[widgets] 同步缺少 script_type 字段"
+        self.script_path = script_data["script_path"]
+        self.script_type = script_data["script_type"]
         self._ensure_dungeon_button()
 
     def _toggle(self):
@@ -442,7 +495,9 @@ class ScriptItem(QFrame):
     def _handle_mouse_move(self, event):
         if self._drag_start_pos is None or not (event.buttons() & Qt.LeftButton):
             return
-        if (event.pos() - self._drag_start_pos).manhattanLength() < QApplication.startDragDistance():
+        if (
+            event.pos() - self._drag_start_pos
+        ).manhattanLength() < QApplication.startDragDistance():
             return
         self._drag_start_pos = None
         self._start_drag()
@@ -454,7 +509,7 @@ class ScriptItem(QFrame):
     def _start_drag(self):
         mime = QMimeData()
         mime.setText(self.display_name)
-        mime.setData(DRAG_MIME, self.display_name.encode('utf-8'))
+        mime.setData(DRAG_MIME, self.display_name.encode("utf-8"))
         drag = QDrag(self)
         drag.setMimeData(mime)
         drag.setPixmap(self.grab())
@@ -470,7 +525,7 @@ class ScriptItem(QFrame):
         if not (event.mimeData().hasFormat(DRAG_MIME) and self._reorder_callback):
             event.ignore()
             return
-        src_name = bytes(event.mimeData().data(DRAG_MIME)).decode('utf-8')
+        src_name = bytes(event.mimeData().data(DRAG_MIME)).decode("utf-8")
         if src_name != self.display_name:
             self._reorder_callback(src_name, self.display_name)
         event.acceptProposedAction()

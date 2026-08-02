@@ -16,12 +16,14 @@ def get_dungeon_config_path() -> str:
 def load_dungeon_map() -> dict[str, Any]:
     dungeon_file = get_dungeon_config_path()
     if os.path.exists(dungeon_file):
-        with open(dungeon_file, encoding='utf-8') as f:
+        with open(dungeon_file, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     return {}
 
 
-def parse_dungeon_config(dungeon_cfg: Any) -> tuple[DungeonOptions, SequenceOptionsMap, bool]:
+def parse_dungeon_config(
+    dungeon_cfg: Any,
+) -> tuple[DungeonOptions, SequenceOptionsMap, bool]:
     """
     解析单个脚本的副本配置。
 
@@ -46,31 +48,43 @@ def parse_dungeon_config(dungeon_cfg: Any) -> tuple[DungeonOptions, SequenceOpti
     seq_map: SequenceOptionsMap = {}
     show_seq = False
 
-    if isinstance(dungeon_cfg, dict) and 'dungeons' in dungeon_cfg:
-        for i, dungeon in enumerate(dungeon_cfg['dungeons']):
-            assert isinstance(dungeon, dict), f"第{i}个副本配置必须是字典，实际是 {type(dungeon)}"
-            assert 'name' in dungeon, f"第{i}个副本配置缺少 'name' 字段"
-            assert isinstance(dungeon['name'], str), f"第{i}个副本的 'name' 必须是字符串"
+    if isinstance(dungeon_cfg, dict) and "dungeons" in dungeon_cfg:
+        for i, dungeon in enumerate(dungeon_cfg["dungeons"]):
+            assert isinstance(dungeon, dict), (
+                f"第{i}个副本配置必须是字典，实际是 {type(dungeon)}"
+            )
+            assert "name" in dungeon, f"第{i}个副本配置缺少 'name' 字段"
+            assert isinstance(dungeon["name"], str), (
+                f"第{i}个副本的 'name' 必须是字符串"
+            )
 
-            name = dungeon['name']
+            name = dungeon["name"]
             options.append(name)
 
-            sequences = dungeon.get('sequences')  # optional: 副本可能没有二级选项
+            sequences = dungeon.get("sequences")  # optional: 副本可能没有二级选项
             if sequences:
-                assert isinstance(sequences, list), f"副本 '{name}' 的 sequences 必须是列表"
+                assert isinstance(sequences, list), (
+                    f"副本 '{name}' 的 sequences 必须是列表"
+                )
                 seq_map[name] = []
                 for j, seq in enumerate(sequences):
                     assert isinstance(seq, dict), f"副本 '{name}' 第{j}个序列必须是字典"
-                    assert 'display' in seq, f"副本 '{name}' 第{j}个序列缺少 'display' 字段"
-                    assert 'value' in seq, f"副本 '{name}' 第{j}个序列缺少 'value' 字段"
-                    assert isinstance(seq['display'], str), f"副本 '{name}' 第{j}个序列的 'display' 必须是字符串"
-                    seq_map[name].append((seq['display'], seq['value']))
+                    assert "display" in seq, (
+                        f"副本 '{name}' 第{j}个序列缺少 'display' 字段"
+                    )
+                    assert "value" in seq, f"副本 '{name}' 第{j}个序列缺少 'value' 字段"
+                    assert isinstance(seq["display"], str), (
+                        f"副本 '{name}' 第{j}个序列的 'display' 必须是字符串"
+                    )
+                    seq_map[name].append((seq["display"], seq["value"]))
                 show_seq = True
 
     return options, seq_map, show_seq
 
 
-def get_display_name(seq_map: SequenceOptionsMap, dungeon_name: str, actual_value: Any) -> str:
+def get_display_name(
+    seq_map: SequenceOptionsMap, dungeon_name: str, actual_value: Any
+) -> str:
     """
     根据实际值获取对应的显示名称。
 
@@ -82,7 +96,9 @@ def get_display_name(seq_map: SequenceOptionsMap, dungeon_name: str, actual_valu
     Returns:
         显示名称，如果找不到则返回实际值的字符串表示
     """
-    assert dungeon_name in seq_map, f"[dungeon_config] 副本 '{dungeon_name}' 不在序列映射中"
+    assert dungeon_name in seq_map, (
+        f"[dungeon_config] 副本 '{dungeon_name}' 不在序列映射中"
+    )
     seq_options = seq_map[dungeon_name]
     for display_name, val in seq_options:
         if val == actual_value:
@@ -102,18 +118,20 @@ def restore_sequence_type(saved: dict, seq_map: SequenceOptionsMap) -> dict:
     Returns:
         类型修复后的状态字典（新对象，不修改原字典）
     """
-    seq_val = saved.get('sequence')  # optional: 用户可能从未选择过序列
+    seq_val = saved.get("sequence")  # optional: 用户可能从未选择过序列
     if seq_val is None:
         return saved
 
-    dungeon_name = saved.get('dungeon')  # optional: 用户可能从未选择过副本
-    seq_options = seq_map.get(dungeon_name, [])  # 防御性：配置可能更新导致保存的副本名称过时
+    dungeon_name = saved.get("dungeon")  # optional: 用户可能从未选择过副本
+    seq_options = seq_map.get(
+        dungeon_name, []
+    )  # 防御性：配置可能更新导致保存的副本名称过时
     if not seq_options:
         return saved
 
     saved = saved.copy()
     for _display_name, actual_value in seq_options:
         if str(actual_value) == str(seq_val):
-            saved['sequence'] = actual_value
+            saved["sequence"] = actual_value
             break
     return saved

@@ -14,8 +14,13 @@ from src.config.subscript import load_config, load_template, save_config
 logger = logging.getLogger(__name__)
 
 
-def safe_update(config: dict, key: str, value: Any, display_name: str = "",
-                assert_key_exists: bool = True) -> bool:
+def safe_update(
+    config: dict,
+    key: str,
+    value: Any,
+    display_name: str = "",
+    assert_key_exists: bool = True,
+) -> bool:
     """
     安全更新单个字段，返回是否修改。
     检查类型一致性，用 type() 严格比较，避免 bool/int 混淆。
@@ -30,13 +35,16 @@ def safe_update(config: dict, key: str, value: Any, display_name: str = "",
     if assert_key_exists:
         assert key in config, f"[set_config][{display_name}] config 中缺少字段: {key}"
     elif key not in config:
-        logger.warning(f"[set_config][{display_name}] 添加新字段 config['{key}'] = {value}")
+        logger.warning(
+            f"[set_config][{display_name}] 添加新字段 config['{key}'] = {value}"
+        )
         config[key] = value
         return True
 
-    assert type(config[key]) is type(value), \
-        f"[set_config][{display_name}] 类型不一致: key={key}, " \
+    assert type(config[key]) is type(value), (
+        f"[set_config][{display_name}] 类型不一致: key={key}, "
         f"config={type(config[key]).__name__}, value={type(value).__name__}"
+    )
 
     if config[key] == value:
         return False
@@ -50,6 +58,7 @@ def safe_update(config: dict, key: str, value: Any, display_name: str = "",
 # 基类
 # ============================================================
 
+
 class ScriptConfig:
     """单个自动化脚本的 config 操作基类"""
 
@@ -61,11 +70,15 @@ class ScriptConfig:
 
     def _load(self) -> dict:
         config = load_config(self.display_name)
-        assert isinstance(config, dict), f"[set_config][{self.display_name}] config 必须是 dict"
+        assert isinstance(config, dict), (
+            f"[set_config][{self.display_name}] config 必须是 dict"
+        )
         return config
 
     def _save(self, config: dict) -> None:
-        assert isinstance(config, dict), f"[set_config][{self.display_name}] config 必须是 dict"
+        assert isinstance(config, dict), (
+            f"[set_config][{self.display_name}] config 必须是 dict"
+        )
         save_config(self.display_name, config)
         self._verify_saved(config)
 
@@ -88,15 +101,21 @@ class ScriptConfig:
         """
         assert self._task_key, f"[set_config][{self.display_name}] 子类必须设 _task_key"
         if self._task_map:
-            assert dungeon_name in self._task_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+            assert dungeon_name in self._task_map, (
+                f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+            )
             task = self._task_map[dungeon_name]
         else:
             task = dungeon_name
         return safe_update(config, self._task_key, task, self.display_name)
 
-    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
+    def _update_sequence(
+        self, config: dict, dungeon_name: str, sequence: str | int | None
+    ) -> bool:
         """更新序列字段。返回是否修改。默认不启用。"""
-        assert sequence is None, f"[set_config][{self.display_name}] 不支持 sequence 参数"
+        assert sequence is None, (
+            f"[set_config][{self.display_name}] 不支持 sequence 参数"
+        )
         return False
 
     def _init_config(self) -> None:
@@ -121,6 +140,7 @@ class ScriptConfig:
         对于 dict 递归检查，对于 list 按索引逐一比较，其余直接比较值。
         子类重写以实现特殊比较逻辑。
         """
+
         def _aligned(a, b):
             if isinstance(a, dict) and isinstance(b, dict):
                 return all(k in a and _aligned(a[k], b[k]) for k in b)
@@ -130,7 +150,9 @@ class ScriptConfig:
                 return all(_aligned(a[i], b[i]) for i in range(len(b)))
             return a == b
 
-        return all(key in config and _aligned(config[key], template[key]) for key in template)
+        return all(
+            key in config and _aligned(config[key], template[key]) for key in template
+        )
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
         """
@@ -138,8 +160,9 @@ class ScriptConfig:
         子类直接覆盖 set_dungeon 则完全自定义（如粥）。
         """
         config = self._load()
-        changed = self._update_task(config, dungeon_name) or \
-                  self._update_sequence(config, dungeon_name, sequence)
+        changed = self._update_task(config, dungeon_name) or self._update_sequence(
+            config, dungeon_name, sequence
+        )
         if changed:
             logger.info(f"[set_config][{self.display_name}] config 已更新")
             self._save(config)
@@ -151,9 +174,9 @@ class ScriptConfig:
 # 各脚本子类
 # ============================================================
 
+
 # ---- 鸣潮 Wuthering Waves ----
 class WutheringWavesConfig(ScriptConfig):
-
     def __init__(self):
         self.display_name = "鸣潮"
         self._task_key = "Which to Farm"
@@ -163,8 +186,12 @@ class WutheringWavesConfig(ScriptConfig):
             "无音区": "Tacet Suppression",
         }
 
-    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
-        assert sequence is not None, f"[set_config][{self.display_name}] sequence 不能为空"
+    def _update_sequence(
+        self, config: dict, dungeon_name: str, sequence: str | int | None
+    ) -> bool:
+        assert sequence is not None, (
+            f"[set_config][{self.display_name}] sequence 不能为空"
+        )
 
         sequence_map = {
             "模拟领域": {
@@ -179,11 +206,15 @@ class WutheringWavesConfig(ScriptConfig):
             "凝素领域": {"key": "Which Forgery Challenge to Farm", "values": None},
         }
 
-        assert dungeon_name in sequence_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        assert dungeon_name in sequence_map, (
+            f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        )
         cfg = sequence_map[dungeon_name]
 
         if cfg["values"] is not None:
-            assert sequence in cfg["values"], f"[set_config][{self.display_name}] 未适配的序列: {sequence}"
+            assert sequence in cfg["values"], (
+                f"[set_config][{self.display_name}] 未适配的序列: {sequence}"
+            )
             target = cfg["values"][sequence]
         else:
             target = sequence
@@ -193,7 +224,6 @@ class WutheringWavesConfig(ScriptConfig):
 
 # ---- 原神 Genshin Impact ----
 class GenshinConfig(ScriptConfig):
-
     def __init__(self):
         self.display_name = "原神"
         self._task_key = "DomainName"
@@ -206,14 +236,17 @@ class GenshinConfig(ScriptConfig):
         TODO: 完成适配后启用保存逻辑
         """
         config = self._load()
-        assert "PartyName" in config, f"[set_config][{self.display_name}] config 中缺少字段: PartyName"
+        assert "PartyName" in config, (
+            f"[set_config][{self.display_name}] config 中缺少字段: PartyName"
+        )
         template = self._load_template()
-        assert self._is_aligned(config, template), f"[set_config][{self.display_name}] config 与模板不一致（未完成适配）"
+        assert self._is_aligned(config, template), (
+            f"[set_config][{self.display_name}] config 与模板不一致（未完成适配）"
+        )
 
 
 # ---- 终末地 Arknights: Endfield ----
 class EndfieldConfig(ScriptConfig):
-
     def __init__(self):
         self.display_name = "终末地"
         self._task_key = "体力本"
@@ -226,7 +259,6 @@ class EndfieldConfig(ScriptConfig):
 
 # ---- 绝区零 Zenless Zone Zero ----
 class ZenlessZoneZeroConfig(ScriptConfig):
-
     def __init__(self):
         self.display_name = "绝区零"
         self._init_config()
@@ -237,7 +269,6 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 
 # ---- 崩铁 Honkai: Star Rail ----
 class StarRailConfig(ScriptConfig):
-
     def __init__(self):
         self.display_name = "崩铁"
         self._task_key = "instance_type"
@@ -246,7 +277,6 @@ class StarRailConfig(ScriptConfig):
 
 # ---- 异环 Neverness to Everness (NTE) ----
 class NTEConfig(ScriptConfig):
-
     def __init__(self):
         self.display_name = "异环"
         self._task_key = "任务类型"
@@ -256,16 +286,19 @@ class NTEConfig(ScriptConfig):
             "弧盘突破材料": "弧盘材料序号",
         }
 
-    def _update_sequence(self, config: dict, dungeon_name: str, sequence: str | int | None) -> bool:
+    def _update_sequence(
+        self, config: dict, dungeon_name: str, sequence: str | int | None
+    ) -> bool:
         assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
-        assert dungeon_name in self._seq_key_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        assert dungeon_name in self._seq_key_map, (
+            f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        )
         key = self._seq_key_map[dungeon_name]
         return safe_update(config, key, sequence, self.display_name)
 
 
 # ---- 明日方舟 Arknights（粥）----
 class ArknightsConfig(ScriptConfig):
-
     def __init__(self):
         self.display_name = "粥"
         self._init_task_map()
@@ -297,21 +330,27 @@ class ArknightsConfig(ScriptConfig):
         只有状态变化时返回 True。
         """
         task_config = config["Configurations"]["Default"]["TaskQueue"]
-        assert dungeon_name in self._task_map, f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        assert dungeon_name in self._task_map, (
+            f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        )
 
         changed = False
         for name, info in self._task_map.items():
             idx = info["index"]
             stage = info["stage"]
-            assert task_config[idx]["Name"] == name, \
+            assert task_config[idx]["Name"] == name, (
                 f"[set_config][{self.display_name}] TaskQueue[{idx}] Name 不匹配: 期望 {name}, 实际 {task_config[idx]['Name']}"
-            assert task_config[idx]["StagePlan"] == [stage], \
+            )
+            assert task_config[idx]["StagePlan"] == [stage], (
                 f"[set_config][{self.display_name}] TaskQueue[{idx}] StagePlan 不匹配: 期望 {[stage]}, 实际 {task_config[idx]['StagePlan']}"
+            )
 
             should_enable = name in ["剿灭", "土", dungeon_name]
             changed |= safe_update(
-                task_config[idx], "IsEnable", should_enable,
-                f"{self.display_name}[TaskQueue[{idx}]]"
+                task_config[idx],
+                "IsEnable",
+                should_enable,
+                f"{self.display_name}[TaskQueue[{idx}]]",
             )
 
         return changed
@@ -328,7 +367,7 @@ _CONFIGS: dict[str, type[ScriptConfig]] = {
     "绝区零": ZenlessZoneZeroConfig,
     "崩铁": StarRailConfig,
     "异环": NTEConfig,
-    "粥":   ArknightsConfig,
+    "粥": ArknightsConfig,
 }
 
 
@@ -336,9 +375,12 @@ _CONFIGS: dict[str, type[ScriptConfig]] = {
 # 外观接口
 # ============================================================
 
-def set_config(script_display_name: str,
-               dungeon_name: str | None = None,
-               sequence: str | int | None = None) -> None:
+
+def set_config(
+    script_display_name: str,
+    dungeon_name: str | None = None,
+    sequence: str | int | None = None,
+) -> None:
     """
     外观接口：为指定脚本设置副本和刷取序列
 
@@ -354,7 +396,9 @@ def set_config(script_display_name: str,
     # 自定义脚本（用户在 GUI 中新增）没有副本适配，不在注册表中，直接跳过。
     # 这类脚本本就没有副本选项，正常不会带 dungeon_name 走到这里；即便带了也优雅跳过。
     if script_display_name not in _CONFIGS:
-        logger.info(f"[set_config] 脚本 {script_display_name} 无副本适配（自定义脚本），跳过")
+        logger.info(
+            f"[set_config] 脚本 {script_display_name} 无副本适配（自定义脚本），跳过"
+        )
         return
 
     cfg_cls = _CONFIGS[script_display_name]

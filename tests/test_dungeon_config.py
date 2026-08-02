@@ -1,4 +1,5 @@
 """测试 dungeon_config 模块"""
+
 import unittest
 
 from src.config.dungeon_config import (
@@ -83,7 +84,10 @@ class TestParseDungeonConfig(unittest.TestCase):
         options, seq_map, show_seq = parse_dungeon_config(cfg)
         self.assertEqual(options, ["未选择", "凝素领域", "模拟领域"])
         self.assertEqual(seq_map["凝素领域"], [("第1层", 1), ("第2层", 2)])
-        self.assertEqual(seq_map["模拟领域"], [("共鸣者经验", "共鸣者经验"), ("武器经验", "武器经验")])
+        self.assertEqual(
+            seq_map["模拟领域"],
+            [("共鸣者经验", "共鸣者经验"), ("武器经验", "武器经验")],
+        )
         self.assertTrue(show_seq)
 
     def test_invalid_format_no_dungeons_key(self):
@@ -173,5 +177,5 @@ class TestRestoreSequenceType(unittest.TestCase):
         self.assertEqual(result["sequence"], "武器经验")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
