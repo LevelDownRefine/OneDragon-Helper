@@ -12,6 +12,7 @@
 
 注意：需要在「管理员终端」下运行才能真实验证 exe；CI / 普通终端下自动 skip。
 """
+import contextlib
 import ctypes
 import os
 import subprocess
@@ -81,10 +82,8 @@ class TestRunnerExe(unittest.TestCase):
         try:
             result = self._run_exe("--script", stub)
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(stub)
-            except OSError:
-                pass
         self.assertEqual(result.returncode, 0, msg=result.stderr[:500])
         self.assertIn(marker, result.stdout)
 

@@ -12,7 +12,7 @@ import yaml
 # python_script/ 位于项目根（非 src/ 下），追加根目录到 sys.path 以便导入。
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from python_script import collect_log
+from python_script import collect_log, rerun
 from python_script.collect_log import (
     BGILogParser,
     M7ALogParser,
@@ -23,8 +23,6 @@ from python_script.collect_log import (
     ZZZLogParser,
     parse_log,
 )
-
-from python_script import rerun
 
 
 class TestLogParser(unittest.TestCase):
@@ -297,11 +295,10 @@ class TestRerunFailed(unittest.TestCase):
     """
 
     def _write_chain(self, script_list: list[dict], suffix: str = ".yml") -> str:
-        chain = tempfile.NamedTemporaryFile(
+        with tempfile.NamedTemporaryFile(
             "w", suffix=suffix, delete=False, encoding="utf-8"
-        )
-        yaml.safe_dump({"script_list": script_list}, chain)
-        chain.close()
+        ) as chain:
+            yaml.safe_dump({"script_list": script_list}, chain)
         return chain.name
 
     def test_find_chain_index_matches_enabled(self):
