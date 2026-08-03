@@ -45,8 +45,6 @@ def _set_app_window_icon(app):
 
 def main():
     setup_logging()
-    if need_config_workflow():
-        config_workflow()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     _set_app_window_icon(app)
