@@ -34,6 +34,21 @@ hiddenimports += collect_submodules('pynput')
 # 由 collect_submodules('pycaw') 顺带收集，无需把 comtypes.test 等一并打包。
 hiddenimports += collect_submodules('pycaw')
 
+# --- 可安全排除的模块 ---
+# pynput 跨平台后端: Windows 仅用 win32，其余后端永不加载。
+# 其余为标准库未使用模块。
+# 注意: 不在此排除 numpy —— Runner 在运行时加载用户脚本(python_script/)，
+#       若脚本 import numpy 需由本包提供。
+excludes = [
+    'pynput.keyboard._darwin', 'pynput.keyboard._xorg',
+    'pynput.mouse._darwin', 'pynput.mouse._xorg',
+    'pynput._util.darwin', 'pynput._util.xorg', 'pynput._util.xorg_keys',
+    'pynput.keyboard._uinput', 'pynput.mouse._uinput',
+    'tkinter', 'unittest', 'doctest', 'pydoc', 'lib2to3',
+    'curses', 'ensurepip', 'distutils', 'venv', 'idlelib',
+    'turtledemo', 'test', 'pty', 'tty', 'wsgiref',
+]
+
 
 a = Analysis(
     ['../src/runner/launcher.py'],
@@ -44,7 +59,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
     optimize=0,
 )

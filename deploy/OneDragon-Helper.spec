@@ -31,6 +31,27 @@ hiddenimports += collect_submodules('pynput')
 # qfluentwidgets 的 QSS、图片等资源（由 PyInstaller 放入 _internal/）
 datas = collect_data_files('qfluentwidgets')
 
+# --- 可安全排除的模块（实测 GUI 运行时走不到）---
+# numpy: 仅 qfluentwidgets.acrylic_label 以 try/except ImportError 懒加载，
+#        本 GUI 不使用 AcrylicLabel，缺失时回退 QPixmap，安全排除（省 ~42M）。
+# QtQml/QtQuick + QtMultimedia: GUI 与 qfluentwidgets 均不使用 QML / 媒体播放，
+#        顺带省下 FFmpeg 的 av*.dll（省 ~30M）。
+# pynput 跨平台后端: Windows 仅用 win32，其余后端永不加载。
+# 其余为标准库未使用模块。
+excludes = [
+    'numpy',
+    'PySide6.QtQml', 'PySide6.QtQuick', 'PySide6.QtQmlModels',
+    'PySide6.QtQmlMeta', 'PySide6.QtQmlWorkerScript',
+    'PySide6.QtMultimedia', 'PySide6.QtMultimediaWidgets',
+    'pynput.keyboard._darwin', 'pynput.keyboard._xorg',
+    'pynput.mouse._darwin', 'pynput.mouse._xorg',
+    'pynput._util.darwin', 'pynput._util.xorg', 'pynput._util.xorg_keys',
+    'pynput.keyboard._uinput', 'pynput.mouse._uinput',
+    'tkinter', 'unittest', 'doctest', 'pydoc', 'lib2to3',
+    'curses', 'ensurepip', 'distutils', 'venv', 'idlelib',
+    'turtledemo', 'test', 'pty', 'tty', 'wsgiref',
+]
+
 # config/ 和 assets/ 不打入 _internal/，由 build.bat 后处理拷贝到 exe 同级目录，
 # 保证 get_root_dir() 在冻结模式下能正确找到（可写、持久化）。
 
@@ -44,7 +65,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
     optimize=0,
 )
