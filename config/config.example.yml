@@ -203,6 +203,24 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
+- display_name: 失败重跑
+  game_label: ''
+  script_type: python
+  script_path: python_script/rerun.py
+  script_process_name: []
+  game_process_name: ''
+  launcher_mode: false
+  check_done: script_closed
+  kill_script_after_done: true
+  kill_game_after_done: false
+  script_arguments: ''
+  notify_start: false
+  notify_done: false
+  notify_log_interval: 0
+  attach_direction: ''
+  no_log_timeout_seconds: 0
+  no_log_max_retries: 3
+  block: true
 - display_name: 自动关机
   game_label: ''
   script_type: python
