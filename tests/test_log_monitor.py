@@ -324,17 +324,13 @@ class TestRerunFailed(unittest.TestCase):
 
     def test_find_chain_index_missing_file_returns_none(self):
         """脚本链文件不存在时优雅返回 None（仅告警），不抛异常。"""
-        self.assertIsNone(
-            rerun._find_chain_index("原神", "/no/such/file.yml")
-        )
+        self.assertIsNone(rerun._find_chain_index("原神", "/no/such/file.yml"))
 
     def test_build_rerun_command_dev(self):
         """开发模式：构造 `python -m src.runner.launcher --chain <abs> --debug-index N`。"""
         with mock.patch.object(sys, "frozen", False, create=True):
             cmd, cwd, env = rerun._build_rerun_command(2, "/tmp/88.yml")
-        self.assertEqual(
-            cmd[:3], [sys.executable, "-m", "src.runner.launcher"]
-        )
+        self.assertEqual(cmd[:3], [sys.executable, "-m", "src.runner.launcher"])
         self.assertEqual(
             cmd[3:],
             ["--chain", os.path.abspath("/tmp/88.yml"), "--debug-index", "2"],
@@ -345,13 +341,14 @@ class TestRerunFailed(unittest.TestCase):
 
     def test_build_rerun_command_frozen(self):
         """冻结模式：构造 `<exe_dir>/OneDragon-Helper-Runner.exe --chain <abs> --debug-index N`。"""
-        with mock.patch.object(
-            sys, "frozen", True, create=True
-        ), mock.patch.object(
-            sys,
-            "executable",
-            "/fake/exe/OneDragon-Helper-Runner.exe",
-            create=True,
+        with (
+            mock.patch.object(sys, "frozen", True, create=True),
+            mock.patch.object(
+                sys,
+                "executable",
+                "/fake/exe/OneDragon-Helper-Runner.exe",
+                create=True,
+            ),
         ):
             cmd, cwd, env = rerun._build_rerun_command(3, "/tmp/88.yml")
         # os.path.join 在 Windows 上用反斜杠，用 normpath 归一化后再比，避免分隔符差异。
@@ -398,25 +395,26 @@ class TestRerunFailed(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(calls, [])
 
+
 class TestRerunGames(unittest.TestCase):
     """测试 rerun.py 的编排：先调 collect_log 分析拿需重跑列表（FAILED + NO_LOG），再逐个重跑。"""
 
     def test_rerun_failed_games_reruns_collected_failures(self):
         """rerun_failed_games 应把 collect_log.parse_logs 返回的需重跑项逐个重跑。"""
-        with mock.patch.object(
-            collect_log, "parse_logs", return_value=["原神", "崩铁"]
-        ), mock.patch.object(
-            rerun, "_rerun_failed_script", return_value=True
-        ) as run:
+        with (
+            mock.patch.object(collect_log, "parse_logs", return_value=["原神", "崩铁"]),
+            mock.patch.object(rerun, "_rerun_failed_script", return_value=True) as run,
+        ):
             rerun.rerun_failed_games()
         called = [c.args[0] for c in run.call_args_list]
         self.assertEqual(set(called), {"原神", "崩铁"})
 
     def test_rerun_failed_games_noop_when_no_failures(self):
         """无失败脚本时不应发起任何重跑。"""
-        with mock.patch.object(
-            collect_log, "parse_logs", return_value=[]
-        ), mock.patch.object(rerun, "_rerun_failed_script") as run:
+        with (
+            mock.patch.object(collect_log, "parse_logs", return_value=[]),
+            mock.patch.object(rerun, "_rerun_failed_script") as run,
+        ):
             rerun.rerun_failed_games()
         run.assert_not_called()
 

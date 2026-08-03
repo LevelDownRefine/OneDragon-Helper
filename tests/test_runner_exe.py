@@ -12,6 +12,7 @@
 
 注意：需要在「管理员终端」下运行才能真实验证 exe；CI / 普通终端下自动 skip。
 """
+
 import contextlib
 import ctypes
 import os
@@ -48,9 +49,8 @@ def _is_admin() -> bool:
 
 
 CAN_RUN_EXE = sys.platform == "win32" and RUNNER_EXE is not None and _is_admin()
-_SKIP_REASON = (
-    "需要 Windows + 管理员权限 + 存在的 Runner exe 才能真实测试打包产物"
-    + (f"（未找到 exe，候选: {_CANDIDATES}）" if RUNNER_EXE is None else "")
+_SKIP_REASON = "需要 Windows + 管理员权限 + 存在的 Runner exe 才能真实测试打包产物" + (
+    f"（未找到 exe，候选: {_CANDIDATES}）" if RUNNER_EXE is None else ""
 )
 
 

@@ -86,11 +86,11 @@
 ```python
 from src.config.set_config import set_config
 
-set_config("鸣潮", dungeon_name="无音区")                       # 无序列
-set_config("鸣潮", dungeon_name="凝素领域", sequence=17)        # 序列为数字
-set_config("鸣潮", dungeon_name="模拟领域", sequence="贝币")     # 序列为字符串
-set_config("鸣潮", dungeon_name=None)        # 跳过
-set_config("鸣潮", dungeon_name="未选择")     # 跳过
+set_config("鸣潮", dungeon_name="无音区")  # 无序列
+set_config("鸣潮", dungeon_name="凝素领域", sequence=17)  # 序列为数字
+set_config("鸣潮", dungeon_name="模拟领域", sequence="贝币")  # 序列为字符串
+set_config("鸣潮", dungeon_name=None)  # 跳过
+set_config("鸣潮", dungeon_name="未选择")  # 跳过
 ```
 
 每次调用都会实例化对应子类（`__init__` 触发初始化），再调 `set_dungeon`。
