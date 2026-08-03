@@ -246,10 +246,27 @@ class ScriptItem(QFrame):
             self._delete_callback(self.display_name)
 
     def _show_config_dialog(self):
-        """打开单脚本配置弹窗；保存成功(accept)后通知 MainWindow 重新吸收磁盘改动"""
+        """打开单脚本配置弹窗；保存成功(accept)后通知 MainWindow 重新吸收磁盘改动。
+
+        若用户在弹窗内改了脚本名称，先把本卡片的内存名与标题刷新为新名，
+        再回调新名，使 MainWindow 能按新名定位卡片并同步。
+        """
         dialog = SingleScriptConfigDialog(self.display_name, self.script_path, self)
         if dialog.exec() == QDialog.Accepted and self._config_saved_callback:
-            self._config_saved_callback(self.display_name)
+            new_name = dialog.saved_display_name
+            if new_name != self.display_name:
+                self.display_name = new_name
+                self._refresh_title()
+            self._config_saved_callback(new_name)
+
+    def _refresh_title(self) -> None:
+        """按当前 display_name 刷新卡片标题（含超长截断），改名后调用。"""
+        title_font = self.title_label.font()
+        self.title_label.setText(
+            QFontMetrics(title_font).elidedText(
+                self.display_name, Qt.TextElideMode.ElideRight, 110
+            )
+        )
 
     def _open_script(self):
         """打开/运行该脚本。

@@ -94,6 +94,7 @@ class SingleScriptConfigDialog(QDialog):
 
         self.script_name = script_name
         self.script_path = script_path
+        self.saved_display_name = script_name  # 保存后最终生效的名称（可能被改名）
         self._script_data = {}  # 从 config.yml 读到的本脚本完整数据
 
         self.init_ui()
@@ -103,6 +104,21 @@ class SingleScriptConfigDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(14)
+
+        # ---- 脚本名称 ----
+        row_name = QHBoxLayout()
+        row_name.setSpacing(8)
+        name_label = QLabel("脚本名称:")
+        name_label.setFont(QFont("Microsoft YaHei", 10))
+        name_label.setFixedWidth(self.LABEL_WIDTH)
+        name_label.setStyleSheet("color: #303030;")
+        self.name_input = QLineEdit(self)
+        self.name_input.setFont(QFont("Microsoft YaHei", 10))
+        self.name_input.setPlaceholderText("脚本显示名称，例如：1999")
+        self.name_input.setStyleSheet(self._LINEEDIT_STYLE)
+        row_name.addWidget(name_label)
+        row_name.addWidget(self.name_input, 1)
+        layout.addLayout(row_name)
 
         # ---- 脚本路径 ----
         row1 = QHBoxLayout()
@@ -333,6 +349,8 @@ class SingleScriptConfigDialog(QDialog):
     def load_data(self):
         self._script_data = self._find_script_data()
 
+        # 脚本名称
+        self.name_input.setText(self.script_name)
         # 脚本类型
         self.type_combo.setCurrentText(self._script_data.get("script_type", "external"))
         # 启动参数
@@ -374,6 +392,22 @@ class SingleScriptConfigDialog(QDialog):
             QMessageBox.warning(self, "警告", "脚本路径为空，可能会导致运行问题！")
             return
 
+        config_path = require_config_yml_path()
+        with open(config_path, encoding="utf-8") as f:
+            config_data = yaml.safe_load(f) or {}
+
+        # 脚本名称：非空 + 不与其它脚本重名（允许与自身相同，即不改名）
+        new_name = self.name_input.text().strip()
+        if not new_name:
+            QMessageBox.warning(self, "警告", "脚本名称不能为空！")
+            return
+        for s in config_data.get("script_list", []):
+            if s.get("display_name") == new_name and new_name != self.script_name:
+                QMessageBox.warning(
+                    self, "警告", f"已存在同名脚本「{new_name}」，请换一个名称。"
+                )
+                return
+
         # 若勾选了关闭游戏但未填写进程名，给出提示但不阻断（与 ScriptChainer 行为一致）
         if self.kill_game_cb.isChecked() and not self.game_process_input.text().strip():
             QMessageBox.warning(
@@ -388,10 +422,7 @@ class SingleScriptConfigDialog(QDialog):
             val = int(text) if text else DEFAULT_RUN_TIMEOUT
             timeouts.append(max(val, 10))
 
-        config_path = require_config_yml_path()
-        with open(config_path, encoding="utf-8") as f:
-            config_data = yaml.safe_load(f)
-
+        renamed = new_name != self.script_name
         for script in config_data.get("script_list", []):
             if script.get("display_name") == self.script_name:
                 script["script_path"] = path_val
@@ -402,6 +433,8 @@ class SingleScriptConfigDialog(QDialog):
                 script["kill_game_after_done"] = self.kill_game_cb.isChecked()
                 script["game_process_name"] = self.game_process_input.text().strip()
                 script["block"] = self.block_cb.isChecked()
+                if renamed:
+                    script["display_name"] = new_name
                 break
 
         with open(config_path, "w", encoding="utf-8") as f:
@@ -412,11 +445,17 @@ class SingleScriptConfigDialog(QDialog):
         if os.path.exists(weekly_timeouts_path):
             with open(weekly_timeouts_path, encoding="utf-8") as f:
                 weekly_timeouts_map = yaml.safe_load(f) or {}
-        weekly_timeouts_map[self.script_name] = timeouts
+        # 改名时把每周超时配置从旧名 key 迁移到新名，避免旧 key 残留、新名找不到
+        if renamed:
+            old_val = weekly_timeouts_map.pop(self.script_name, None)
+            if old_val is not None:
+                weekly_timeouts_map[new_name] = old_val
+        weekly_timeouts_map[new_name] = timeouts
 
         with open(weekly_timeouts_path, "w", encoding="utf-8") as f:
             yaml.dump(weekly_timeouts_map, f, allow_unicode=True, sort_keys=False)
 
+        self.saved_display_name = new_name
         QMessageBox.information(self, "成功", "配置已保存！")
         self.accept()
 
