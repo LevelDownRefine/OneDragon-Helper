@@ -310,40 +310,44 @@ class TestGenshinConfig(unittest.TestCase):
         self.assertEqual(cfg.display_name, "原神")
         self.assertEqual(cfg._task_key, "DomainName")
 
-    def test_init_config_aligned_no_assert(self):
-        """config 与模板对齐（PartyName 存在但不在模板中）时不 assert"""
-        template = {"DomainName": "绝缘本"}
-        config = {"DomainName": "绝缘本", "PartyName": "队伍B", "ExtraKey": "val"}
+    def test_init_config_aligned_no_save(self):
+        """config 与模板对齐（含模板外的自定义 key）时不保存"""
+        template = {
+            "TaskEnabledList": {"领取邮件": True},
+            "CompletionAction": "关闭游戏",
+        }
+        config = {
+            "TaskEnabledList": {"领取邮件": True},
+            "CompletionAction": "关闭游戏",
+            "PartyName": "队伍B",  # 模板外的用户自定义 key，不应被改动
+        }
         with (
             patch.object(GenshinConfig, "_load", return_value=config),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
-        ):
-            GenshinConfig()  # 不应抛异常
-
-    def test_init_config_misaligned_raises(self):
-        """config 与模板不对齐时 assert（未完成适配）"""
-        template = {"DomainName": "绝缘本"}
-        config = {"DomainName": "旧本", "PartyName": "队伍B"}
-        with (
-            patch.object(GenshinConfig, "_load", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            self.assertRaises(AssertionError),
+            patch.object(GenshinConfig, "_save") as mock_save,
         ):
             GenshinConfig()
+        mock_save.assert_not_called()
 
-    def test_init_config_party_name_missing_raises(self):
-        """config 中缺少 PartyName 应 assert"""
-        template = {"DomainName": "绝缘本"}
-        config = {"DomainName": "绝缘本"}
+    def test_init_config_misaligned_saves(self):
+        """config 与模板不对齐时用模板值回填并保存"""
+        template = {
+            "TaskEnabledList": {"领取邮件": True},
+            "CompletionAction": "关闭游戏",
+        }
+        config = {
+            "TaskEnabledList": {"领取邮件": False},
+            "CompletionAction": "不操作",
+        }
         with (
             patch.object(GenshinConfig, "_load", return_value=config),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            self.assertRaises(AssertionError),
+            patch.object(GenshinConfig, "_save") as mock_save,
         ):
             GenshinConfig()
+        mock_save.assert_called_once_with(template)
 
     def test_update_task_uses_dungeon_name_directly(self):
         """原神 _task_map 为空，直接用 dungeon_name"""

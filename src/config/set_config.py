@@ -229,21 +229,6 @@ class GenshinConfig(ScriptConfig):
         self._task_key = "DomainName"
         self._init_config()
 
-    def _init_config(self):
-        """
-        目前只确认与模板相同，未完全适配。
-        PartyName 是用户自定义的，模板中不包含，只检查存在性。
-        TODO: 完成适配后启用保存逻辑
-        """
-        config = self._load()
-        assert "PartyName" in config, (
-            f"[set_config][{self.display_name}] config 中缺少字段: PartyName"
-        )
-        template = self._load_template()
-        assert self._is_aligned(config, template), (
-            f"[set_config][{self.display_name}] config 与模板不一致（未完成适配）"
-        )
-
 
 # ---- 终末地 Arknights: Endfield ----
 class EndfieldConfig(ScriptConfig):
