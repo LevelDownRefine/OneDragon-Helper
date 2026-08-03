@@ -345,6 +345,8 @@ class TestConfigSaveSync(unittest.TestCase):
         )
         fake_dialog = MagicMock()
         fake_dialog.exec.return_value = QDialog.Accepted
+        # saved_display_name 用真实字符串：与原名相同 => 不改名分支，仅验证回调原名称
+        fake_dialog.saved_display_name = "脚本0"
         with patch(
             "src.gui.widgets.SingleScriptConfigDialog", return_value=fake_dialog
         ):
