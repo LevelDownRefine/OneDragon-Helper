@@ -8,9 +8,10 @@
   `config.yml` 中所有受支持脚本的当日运行情况并打印报告。。
 
 独立性约束（重要）：
-- 本文件刻意**不 import 本项目中的任何其他模块**。
-- 为保持独立，本文件自行从推导项目根目录，并直接 `yaml.safe_load` 读取 `config.yml`（而非 import）。
+- 本文件刻意**不 import 本项目中的任何其他模块**，只负责"收集并打印"当日日志。
+- 为保持独立，本文件自行推导项目根目录，并直接 `yaml.safe_load` 读取 `config.yml`（而非 import）。
 - 目的：可作为独立脚本直接运行`python python_script/collect_log.py`。
+- 失败重跑由同包 `rerun.py` 负责：它调用本文件的 `parse_logs()` 拿到需重跑列表（含 FAILED 与 NO_LOG）后再重跑。
 """
 
 import logging
@@ -24,6 +25,15 @@ from pathlib import Path
 import yaml
 
 logger = logging.getLogger(__name__)
+
+
+def log_info(msg, *args, do_log: bool = True) -> None:
+    """统一的日志打印入口；do_log=False 时静默（不打印）。
+
+    让 parse_logs 等把"要不要打印"作为显式参数层层下传，避免散落的全局开关。
+    """
+    if do_log:
+        logger.info(msg, *args)
 
 
 def _get_root_dir() -> str:
@@ -279,7 +289,12 @@ def parse_log(display_name: str, script_path: str = "") -> dict:
     return parser.parse(script_path)
 
 
-def parse_logs() -> None:
+def parse_logs(do_log: bool = True) -> list[str]:
+    """汇总 `config.yml` 中各脚本当日运行情况，打印报告并返回需重跑的游戏名。
+
+    返回列表包含判定为 FAILED 以及 NO_LOG（无日志，可能未正常启动）的游戏，
+    供上层（rerun.py）决定重跑。do_log=False 时不打印报告，仅返回列表。
+    """
     _setup_logging()
     # Windows 控制台默认 GBK 编码，日志中可能含 emoji 等字符
     if hasattr(sys.stdout, "reconfigure"):
@@ -294,14 +309,15 @@ def parse_logs() -> None:
     script_list = config_data.get("script_list", [])
     supported_scripts = ("鸣潮", "终末地", "崩铁", "异环", "原神", "绝区零")
 
-    logger.info("=" * 60)
-    logger.info("脚本运行状况汇总报告")
-    logger.info("=" * 60)
+    log_info("=" * 60, do_log=do_log)
+    log_info("脚本运行状况汇总报告", do_log=do_log)
+    log_info("=" * 60, do_log=do_log)
 
     success_count = 0
     failed_count = 0
     no_log_count = 0
     failed_results = []
+    rerun_list = []  # 需重跑：FAILED + NO_LOG
 
     for script in script_list:
         display_name = script.get("display_name", "")
@@ -320,34 +336,41 @@ def parse_logs() -> None:
             status_icon = "[FAIL]"
             failed_count += 1
             failed_results.append((display_name, result))
+            rerun_list.append(display_name)
         else:
             status_icon = "[NO LOG]"
             no_log_count += 1
+            rerun_list.append(display_name)  # 无日志也重跑（可能未正常启动）
 
-        logger.info(f"\n{status_icon} {display_name}")
-        logger.info(f"   状态: {status}")
+        log_info(f"\n{status_icon} {display_name}", do_log=do_log)
+        log_info(f"   状态: {status}", do_log=do_log)
         if result["log_path"]:
-            logger.info(f"   日志: {result['log_path']}")
+            log_info(f"   日志: {result['log_path']}", do_log=do_log)
 
-    logger.info("\n" + "=" * 60)
-    logger.info(
+    log_info("\n" + "=" * 60, do_log=do_log)
+    log_info(
         f"总计: {success_count + failed_count + no_log_count} 个脚本"
-        f" | 成功: {success_count} | 失败: {failed_count} | 无日志: {no_log_count}"
+        f" | 成功: {success_count} | 失败: {failed_count} | 无日志: {no_log_count}",
+        do_log=do_log,
     )
 
     if failed_results:
-        logger.info("\n" + "=" * 60)
-        logger.info("失败脚本详情")
-        logger.info("=" * 60)
+        log_info("\n" + "=" * 60, do_log=do_log)
+        log_info("失败脚本详情", do_log=do_log)
+        log_info("=" * 60, do_log=do_log)
 
         for display_name, result in failed_results:
-            logger.info(f"\n[{display_name}] 日志内容:")
-            logger.info("-" * 40)
+            log_info(f"\n[{display_name}] 日志内容:", do_log=do_log)
+            log_info("-" * 40, do_log=do_log)
             if "log_content" in result:
-                logger.info(result["log_content"])
+                log_info(result["log_content"], do_log=do_log)
             else:
-                logger.info("无日志内容")
+                log_info("无日志内容", do_log=do_log)
+
+    # 返回需重跑的游戏名（FAILED + NO_LOG），供上层（rerun.py）决定重跑。
+    return rerun_list
 
 
 if __name__ == "__main__":
+    # 仅收集并打印当日各脚本的运行日志（重跑由 rerun.py 负责）。
     parse_logs()
