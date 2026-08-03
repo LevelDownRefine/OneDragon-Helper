@@ -79,6 +79,29 @@ ERROR: 另一个错误"""
         log_content = "INFO: 开始执行任务"
         self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
 
+    def test_parse_m7a_ignores_errors_after_terminate(self):
+        """游戏终止后的收尾报错（WinError 233 + 截图失败）属良性，应忽略 → SUCCESS。
+
+        对应真实场景：游戏正常跑完后关闭，助手收尾步骤碰不到已关闭的窗口而产生
+        多个 ERROR，但这些不应把整日判为失败。注意报错位于「游戏终止」之后。
+        """
+        parser = M7ALogParser()
+        log_content = """2026-08-02 05:24:33,436 | INFO | 切换到：星际和平指南-生存索引
+游戏终止：StarRail
+------------------------------------------------------- 完成 --------------------------------------------------------
+2026-08-02 05:31:23,466 | ERROR | 发生错误 [WinError 233] 管道的另一端上无任何进程。
+2026-08-02 05:31:23,467 | ERROR | 截图失败：没有找到游戏窗口"""
+        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
+
+    def test_parse_m7a_fails_on_errors_before_terminate(self):
+        """游戏终止之前确有多个真实错误（如界面无法识别）时仍应判失败。"""
+        parser = M7ALogParser()
+        log_content = """2026-07-30 06:08:43,639 | WARNING | 未识别出任何界面
+2026-07-30 06:09:09,076 | ERROR | 当前界面：未知
+2026-07-30 06:09:10,078 | ERROR | 获取当前界面超时
+游戏终止：StarRail"""
+        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
+
     def test_parse_log_not_supported(self):
         result = parse_log("MAA")
         self.assertEqual(result["status"], "不支持的脚本")

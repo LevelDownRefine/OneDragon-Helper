@@ -201,10 +201,16 @@ class M7ALogParser(BaseLogParser):
         return "*.log"
 
     def parse_content(self, content: str) -> str:
-        if "游戏终止" in content:
-            error_count = content.count("ERROR")
-            if error_count <= 1:
-                return ScriptLogStatus.SUCCESS
+        # 游戏正常终止后，助手还会做收尾善后（如「获取培养目标」），
+        # 此时游戏窗口已关闭，会固定产生 WinError 233 / 截图失败 等报错。
+        # 这些「终止后」的报错属良性，不应计入当日成败，只统计终止之前的报错。
+        term_idx = content.rfind("游戏终止")
+        if term_idx < 0:
+            # 没有「游戏终止」标记：游戏未正常结束（很可能超时 / 被强杀），判失败。
+            return ScriptLogStatus.FAILED
+        body = content[:term_idx]
+        if body.count("ERROR") <= 1:
+            return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
 
 
