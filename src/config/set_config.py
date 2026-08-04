@@ -307,7 +307,11 @@ class ArknightsConfig(ScriptConfig):
             if task.get("$type") == "FightTask":
                 name = task.get("Name", "")
                 if name:
-                    stage = None if "StagePlan" not in task or len(task["StagePlan"]) == 0 else task["StagePlan"][0]
+                    stage = (
+                        None
+                        if "StagePlan" not in task or len(task["StagePlan"]) == 0
+                        else task["StagePlan"][0]
+                    )
                     self._task_map[name] = {"index": index, "stage": stage}
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
@@ -333,7 +337,9 @@ class ArknightsConfig(ScriptConfig):
                 )
 
             should_enable = name in ["剿灭", "土", "活动土", dungeon_name]
-            print(f"[set_config][{self.display_name}] task_config[{idx}] {task_config[idx]}")
+            print(
+                f"[set_config][{self.display_name}] task_config[{idx}] {task_config[idx]}"
+            )
             changed |= safe_update(
                 task_config[idx],
                 "IsEnable",
