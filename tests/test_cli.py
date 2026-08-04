@@ -27,6 +27,7 @@ import yaml
 
 from src import launcher
 from src.gui import chain as gui_chain
+from src.utils import require_config_yml_path
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
