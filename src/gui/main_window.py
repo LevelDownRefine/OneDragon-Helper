@@ -1,6 +1,5 @@
 """主窗口：脚本列表、增删/重排/持久化、生成 ScriptChainer 配置并运行。"""
 
-import copy
 import logging
 import os
 
@@ -24,24 +23,21 @@ from src.config.dungeon_config import (
     parse_dungeon_config,
     restore_sequence_type,
 )
-from src.config.set_config import set_config
+from src.gui.chain import generate_chain_config
 from src.gui.controls import make_pill_button
 from src.gui.dialogs import default_script_entry
 from src.gui.runner import ScriptChainRunner
 from src.gui.utils import (
     DEFAULT_RUN_TIMEOUT,
     _safe_startfile,
-    apply_weekly_timeout,
     load_ui_state,
     save_ui_state,
 )
 from src.gui.widgets import ScriptItem
 from src.utils import (
     get_config_yml_path_under_root,
-    get_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
     require_config_yml_path,
-    safe_path_join,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,7 +47,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("OneDragon 脚本启动器")
-        self.setMinimumSize(500, 640)
+        self.setMinimumSize(580, 700)
 
         self.script_items = []
         self.all_config_data = None
@@ -388,52 +384,10 @@ class MainWindow(QMainWindow):
 
     def _generate_config(self, chain_name="88"):
         """生成 ScriptChainer 配置文件（仅含启用的脚本）"""
-        # 每周超时
-        weekly_timeouts = {}
-        weekly_path = get_weekly_timeouts_yml_path_under_root()
-        if os.path.exists(weekly_path):
-            with open(weekly_path, encoding="utf-8") as f:
-                weekly_timeouts = yaml.safe_load(f) or {}
-
-        # 收集每个启用脚本的副本选择、序列选择
-        enabled_dungeons = {}
-        enabled_sequences = {}
-        for item in self.script_items:
-            if item.enabled:
-                dungeon = item.get_selected_dungeon()
-                if dungeon:
-                    enabled_dungeons[item.display_name] = dungeon
-                seq = item.get_sequence()
-                if seq is not None:
-                    enabled_sequences[item.display_name] = seq
-
         enabled_names = {i.display_name for i in self.script_items if i.enabled}
-
-        data = copy.deepcopy(self.all_config_data)
-        filtered = []
-        for script in data["script_list"]:
-            name = script["display_name"]
-            if name in enabled_names:
-                apply_weekly_timeout(script, weekly_timeouts)
-
-                # 外观模式：写入各脚本内部 config（副本、序列）
-                dungeon = enabled_dungeons.get(name)
-                seq = enabled_sequences.get(name)
-                set_config(name, dungeon_name=dungeon, sequence=seq)
-
-                # 阻塞字段：默认阻塞（True），保留配置中显式设置的 block
-                script.setdefault("block", True)
-
-                filtered.append(script)
-
-        data["script_list"] = filtered
-
-        output_dir = get_path_under_root("config", "script_chain")
-        output_file = safe_path_join(output_dir, f"{chain_name}.yml")
-        with open(output_file, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
-
-        return output_file
+        return generate_chain_config(
+            self.all_config_data, enabled_names, chain_name, self._ui_state
+        )
 
     def _run_selected(self):
         enabled_count = sum(1 for i in self.script_items if i.enabled)

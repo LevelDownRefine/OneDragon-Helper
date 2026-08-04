@@ -19,7 +19,7 @@ echo.
 REM 清理上一轮产物，避免 PyInstaller COLLECT 步骤因旧目录残留而失败
 if exist "%~dp0dist" rmdir /S /Q "%~dp0dist"
 
-echo [1/4] 构建 GUI 主程序 (onedir)...
+echo [1/5] 构建 GUI 主程序 (onedir)...
 %PY% --noconfirm --clean "OneDragon-Helper.spec"
 if errorlevel 1 (
     echo [ERROR] GUI 构建失败
@@ -28,7 +28,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [2/4] 构建 Runner (onefile)...
+echo [2/5] 构建 Runner (onefile)...
 %PY% --noconfirm --clean "OneDragon-Helper-Runner.spec"
 if errorlevel 1 (
     echo [ERROR] Runner 构建失败
@@ -37,7 +37,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [3/4] 整合：将 Runner 拷入 GUI 目录...
+echo [3/5] 整合：将 Runner 拷入 GUI 目录...
 set "GUI_DIR=%~dp0dist\OneDragon-Helper"
 set "RUNNER_EXE=%~dp0dist\OneDragon-Helper-Runner.exe"
 if not exist "%RUNNER_EXE%" (
@@ -53,7 +53,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [4/4] 拷贝 config 模板、assets 和 python_script 到 exe 同级目录...
+echo [4/5] 拷贝 config 模板、assets 和 python_script 到 exe 同级目录...
 set "SRC_CONFIG=%~dp0..\config"
 set "SRC_ASSETS=%~dp0..\assets"
 set "SRC_SCRIPTS=%~dp0..\python_script"
@@ -61,9 +61,22 @@ set "DST_CONFIG=%GUI_DIR%\config"
 set "DST_ASSETS=%GUI_DIR%\assets"
 set "DST_SCRIPTS=%GUI_DIR%\python_script"
 
+REM 整体拷贝 config（含共享资源：dungeon_list.yml / weekly_timeouts.yml / script_chain / BGI_User 等）
 xcopy /E /I /Y "%SRC_CONFIG%" "%DST_CONFIG%" >nul
 if errorlevel 1 (
     echo [ERROR] 拷贝 config 失败
+    pause
+    exit /b 1
+)
+REM 安全：绝不要把开发机的个人配置打进包（config.yml / config.yml.bak 含账号、路径等私密，
+REM gui_state.json 是本地 UI 状态）。源文件保持不动，仅从打包产物中清除。
+if exist "%DST_CONFIG%\config.yml" del /Q "%DST_CONFIG%\config.yml"
+if exist "%DST_CONFIG%\config.yml.bak" del /Q "%DST_CONFIG%\config.yml.bak"
+if exist "%DST_CONFIG%\gui_state.json" del /Q "%DST_CONFIG%\gui_state.json"
+REM 改用模板生成干净的默认 config.yml（不含任何个人信息），打包产物开箱即用
+copy /Y "%SRC_CONFIG%\config.example.yml" "%DST_CONFIG%\config.yml" >nul
+if errorlevel 1 (
+    echo [ERROR] 生成默认 config.yml 失败
     pause
     exit /b 1
 )
@@ -80,6 +93,19 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
+
+echo.
+echo [5/5] 验证打包产物 exe（非阻断，结果见上方输出）...
+pushd "%~dp0.."
+REM 只测与打包产物相关的 exe 集成测试（test_*_exe.py：Runner + GUI），源码单测由 CI 覆盖。
+REM 这些测试仅 import 标准库，无需 PYTHONPATH=src；会自动在 deploy/dist 找到刚打好的 exe。
+REM 注意：需以管理员运行 build.bat，否则因 exe 的 uac_admin manifest 而整文件 skip。
+if exist "%VENV_PY%" (
+    "%VENV_PY%" -m unittest discover -s tests -p "test_*_exe.py"
+) else (
+    uv run python -m unittest discover -s tests -p "test_*_exe.py"
+)
+popd
 
 echo.
 echo ============================================

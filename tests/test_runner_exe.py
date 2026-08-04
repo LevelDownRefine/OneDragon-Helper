@@ -76,9 +76,11 @@ class TestRunnerExe(unittest.TestCase):
     def test_exe_runs_single_script(self):
         """--script 单文件模式：exe 应成功 exec 一个无害 .py 并以退出码 0 结束。"""
         marker = "ODH_RUNNER_EXE_SELFTEST_OK"
-        stub = tempfile.mktemp(suffix=".py")
-        with open(stub, "w", encoding="utf-8") as f:
-            f.write(f'print("{marker}")\n')
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".py", delete=False, encoding="utf-8"
+        ) as fh:
+            fh.write(f'print("{marker}")\n')
+            stub = fh.name
         try:
             result = self._run_exe("--script", stub)
         finally:

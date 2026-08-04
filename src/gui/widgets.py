@@ -3,7 +3,7 @@
 import os
 import subprocess
 
-from PySide6.QtCore import QMimeData, Qt, Signal
+from PySide6.QtCore import QMimeData, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QApplication,
@@ -22,7 +22,12 @@ from src.config.subscript import get_config_path, get_script_path
 from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.runner import build_script_command
-from src.gui.utils import _safe_startfile, _styled_msg_box
+from src.gui.utils import (
+    _default_icon,
+    _safe_startfile,
+    _styled_msg_box,
+    get_script_icon,
+)
 
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
 DRAG_MIME = "application/x-onedragon-script"
@@ -164,6 +169,14 @@ class ScriptItem(QFrame):
         self.handle.mouseReleaseEvent = self._handle_mouse_release
         layout.addWidget(self.handle)
 
+        # 脚本图标：external 脚本用 exe 自带图标，其余（如 python）用默认图标
+        self.icon_label = QLabel()
+        self.icon_label.setFixedSize(28, 28)
+        self.icon_label.setStyleSheet("padding: 0;")
+        self.icon_label.setAlignment(Qt.AlignCenter)
+        self._refresh_icon(script_data)
+        layout.addWidget(self.icon_label)
+
         # 脚本名称（固定宽度：所有卡片脚本名区等宽，副本按钮居中后才跨卡对齐）
         self.title_label = QLabel(self.display_name)
         title_font = QFont("Microsoft YaHei", 11)
@@ -267,6 +280,33 @@ class ScriptItem(QFrame):
                 self.display_name, Qt.TextElideMode.ElideRight, 110
             )
         )
+
+    def _refresh_icon(self, script_data: dict) -> None:
+        """按脚本数据刷新卡片图标（external 用 exe 自带，否则默认），构造与改名后调用。
+
+        - 便宜的默认/Python 图标：立即设置，不阻塞窗口打开。
+        - 昂贵的 external exe 图标：先用默认图标占位，再用 ``QTimer`` 推迟到事件循环
+          下一拍再提取，避免打开窗口时在主线程同步抠 exe 内嵌图标导致卡顿。
+        """
+        size = self.icon_label.width()
+        if script_data.get("script_type") == "external" and os.path.isfile(
+            script_data.get("script_path", "")
+        ):
+            # external 且 exe 存在：占位 + 延迟补真实图标
+            self.icon_label.setPixmap(_default_icon().pixmap(size, size))
+            QTimer.singleShot(0, lambda: self._load_exe_icon(script_data))
+        else:
+            self.icon_label.setPixmap(get_script_icon(script_data).pixmap(size, size))
+
+    def _load_exe_icon(self, script_data: dict) -> None:
+        """异步补充 external 脚本的 exe 自带图标（构造时已用默认图标占位）。"""
+        try:
+            icon = get_script_icon(script_data)
+            size = self.icon_label.width()
+            self.icon_label.setPixmap(icon.pixmap(size, size))
+        except RuntimeError:
+            # item 已被销毁（如窗口快速关闭），忽略该次回调
+            pass
 
     def _open_script(self):
         """打开/运行该脚本。
@@ -451,8 +491,8 @@ class ScriptItem(QFrame):
                 self.dungeon_btn.styleSheet() + "\nQPushButton { text-align: center; }"
             )
             self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
-            # 插入到左 spacer(index 2) 与右 spacer(即将在 index 4) 之间 → 居中
-            self.layout().insertWidget(3, self.dungeon_btn)
+            # 追加到左 spacer 之后、右 spacer（__init__ 随后添加）之前 → 居中
+            self.layout().insertWidget(self.layout().count(), self.dungeon_btn)
         self.dungeon_btn.setVisible(True)
         if self._selected_dungeon:
             self.dungeon_btn.setText(self._dungeon_btn_text())
@@ -463,6 +503,7 @@ class ScriptItem(QFrame):
         assert "script_type" in script_data, "[widgets] 同步缺少 script_type 字段"
         self.script_path = script_data["script_path"]
         self.script_type = script_data["script_type"]
+        self._refresh_icon(script_data)
         self._ensure_dungeon_button()
 
     def _toggle(self):

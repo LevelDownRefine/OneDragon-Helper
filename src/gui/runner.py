@@ -52,22 +52,28 @@ def build_script_command(extra_args: list[str]) -> tuple[list[str], str, dict | 
     return command, cwd, env
 
 
-def build_chain_command(chain_config_path: str) -> tuple[list[str], str, dict | None]:
+def build_chain_command(
+    chain_config_path: str, extra_args: list[str] | None = None
+) -> tuple[list[str], str, dict | None]:
     """构造脚本链启动命令，返回 (命令列表, 工作目录, 环境变量)。
 
-    ``--chain`` 传入脚本链配置文件的路径。命令封装逻辑委托给 ``build_script_command``。
+    ``--chain`` 传入脚本链配置文件的路径。``extra_args`` 为追加到 runner 命令的额外
+    参数（如 ``["--shutdown", "60"]``）。命令封装逻辑委托给 ``build_script_command``。
     """
-    return build_script_command(["--chain", chain_config_path])
+    return build_script_command(["--chain", chain_config_path] + (extra_args or []))
 
 
-def run_chain_command(chain_config_path: str, block: bool = True) -> int:
+def run_chain_command(
+    chain_config_path: str, block: bool = True, extra_args: list[str] | None = None
+) -> int:
     """构造并运行一条脚本链命令，返回退出码。
 
     ``chain_config_path`` 为脚本链配置路径，由 runner 内部按每条脚本的 ``block`` 字段
     处理阻塞/非阻塞。``block=True``（默认）等待子进程结束并返回其退出码；``block=False``
-    以 Popen 即起即返（返回 0 表示已启动），用于后台/非阻塞运行整条链。
+    以 Popen 即起即返（返回 0 表示已启动），用于后台/非阻塞运行整条链。``extra_args``
+    透传给 runner（如 ``--shutdown``）。
     """
-    command, cwd, env = build_chain_command(chain_config_path)
+    command, cwd, env = build_chain_command(chain_config_path, extra_args)
     logger.info(
         "[runner] 运行脚本链: %s (cwd=%s, block=%s)", " ".join(command), cwd, block
     )

@@ -12,6 +12,7 @@ from PySide6.QtCore import QMimeData, QPoint, Qt
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QApplication
 
+from src.gui.utils import _default_icon, get_script_icon
 from src.gui.widgets import DRAG_MIME, ScriptItem
 
 # 全局 QApplication 实例（测试共享）
@@ -519,6 +520,56 @@ class TestScriptItemOverflowMenu(unittest.TestCase):
         menu = item._build_overflow_menu()
         action = next(a for a in menu.actions() if a.text() == "删除脚本")
         self.assertFalse(action.isEnabled())
+
+
+class TestGetScriptIcon(unittest.TestCase):
+    """测试 get_script_icon：external 用 exe 自带图标，其余用默认图标。"""
+
+    def test_python_script_uses_default_icon(self):
+        """python 脚本无自带图标 → 返回非空的默认图标"""
+        icon = get_script_icon(
+            {"display_name": "静音", "script_type": "python", "script_path": "x.py"}
+        )
+        self.assertFalse(icon.isNull())
+
+    def test_external_missing_exe_falls_back_to_default(self):
+        """external 但 exe 不存在 → 回退到非空的默认图标（不崩溃）"""
+        icon = get_script_icon(
+            {
+                "display_name": "x",
+                "script_type": "external",
+                "script_path": "C:/nope/run.exe",
+            }
+        )
+        self.assertFalse(icon.isNull())
+
+    def test_external_existing_exe_uses_own_icon(self):
+        """external 且 exe 存在 → 返回该 exe 自带图标（非空）。"""
+        icon = get_script_icon(
+            {
+                "display_name": "x",
+                "script_type": "external",
+                "script_path": sys.executable,
+            }
+        )
+        self.assertFalse(icon.isNull())
+
+    @patch("src.gui.widgets.get_script_icon")
+    def test_external_icon_deferred_not_eager(self, mock_get):
+        """external 的 exe 图标延迟加载：构造时不同步提取，事件循环处理后才提取。"""
+        # 占位与默认图标由 _default_icon 提供，故构造阶段不应调 get_script_icon
+        mock_get.return_value = _default_icon()
+        ScriptItem(
+            {
+                "display_name": "x",
+                "script_type": "external",
+                "script_path": sys.executable,
+            }
+        )
+        mock_get.assert_not_called()
+        # 事件循环处理 QTimer.singleShot(0) 后，才真正去取 exe 图标
+        QApplication.processEvents()
+        mock_get.assert_called_once()
 
 
 if __name__ == "__main__":
