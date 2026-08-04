@@ -29,10 +29,6 @@ indent-width = 4
 # Assume Python 3.11
 target-version = "py311"
 
-# src/runner 是从 OneDragon-ScriptChainer vendored（fork）的脚本链运行器，
-# 属于上游第三方代码的本地移植，按项目「第三方/勿改代码不跑 lint」的精神排除。
-exclude = ["src/runner"]
-
 [tool.ruff.lint]
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`) codes by default.
 select = [
