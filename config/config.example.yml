@@ -1,5 +1,5 @@
 script_list:
-- display_name: 等待4:10
+- display_name: 四点启动
   game_label: ''
   script_type: python
   script_path: python_script/wait_until_0410.py

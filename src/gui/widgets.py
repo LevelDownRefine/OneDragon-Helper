@@ -1,9 +1,11 @@
 """自定义控件：ToggleSwitch 滑动开关与 ScriptItem 脚本卡片。"""
 
+import contextlib
+import logging
 import os
 import subprocess
 
-from PySide6.QtCore import QMimeData, Qt, QTimer, Signal
+from PySide6.QtCore import QMimeData, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QApplication,
@@ -19,16 +21,13 @@ from PySide6.QtWidgets import (
 
 from src.config.dungeon_config import get_display_name
 from src.config.subscript import get_config_path, get_script_path
+from src.gui import icons
 from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.runner import build_script_command
-from src.gui.utils import (
-    _default_icon,
-    _safe_startfile,
-    _styled_msg_box,
-    get_icon_source,
-    get_script_icon,
-)
+from src.gui.utils import _safe_startfile, _styled_msg_box
+
+logger = logging.getLogger(__name__)
 
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
 DRAG_MIME = "application/x-onedragon-script"
@@ -286,27 +285,33 @@ class ScriptItem(QFrame):
         """按脚本数据刷新卡片图标（external 用 exe 自带，否则默认），构造与改名后调用。
 
         - 便宜的默认/Python 图标：立即设置，不阻塞窗口打开。
-        - 昂贵的 external exe 图标：先用默认图标占位，再用 ``QTimer`` 推迟到事件循环
-          下一拍再提取，避免打开窗口时在主线程同步抠 exe 内嵌图标导致卡顿。
+        - 昂贵的 external exe 图标：先用默认图标占位，再提交 ``QThreadPool`` 后台线程
+          用纯 Win32 提取（避开 QFileIconProvider 的 COM 限制），主线程只做轻量转换，
+          避免打开窗口时主线程被同步抠 exe 内嵌图标卡住。
         """
         size = self.icon_label.width()
-        source = get_icon_source(script_data)
+        dpr = self.devicePixelRatioF()
+        source = icons.get_icon_source(script_data)
         if source and os.path.isfile(source):
-            # 图标源（icon_path 覆盖或 external 的 exe）存在：占位 + 延迟补真实图标
-            self.icon_label.setPixmap(_default_icon().pixmap(size, size))
-            QTimer.singleShot(0, lambda: self._load_exe_icon(script_data))
+            # 图标源（external 的 exe）存在：先用默认图标占位，再提交后台线程
+            # 提取真实图标。QIcon.pixmap(QSize, dpr) 会自动按 dpr 选高清表示，
+            # 不需要再手动 setDevicePixelRatio。
+            ph = icons._default_icon().pixmap(QSize(size, size), dpr)
+            self.icon_label.setPixmap(ph)
+            icons._schedule_icon_load(self, script_data)
         else:
-            self.icon_label.setPixmap(get_script_icon(script_data).pixmap(size, size))
+            ph = icons.get_script_icon(script_data).pixmap(QSize(size, size), dpr)
+            self.icon_label.setPixmap(ph)
 
-    def _load_exe_icon(self, script_data: dict) -> None:
-        """异步补充 external 脚本的 exe 自带图标（构造时已用默认图标占位）。"""
-        try:
-            icon = get_script_icon(script_data)
-            size = self.icon_label.width()
-            self.icon_label.setPixmap(icon.pixmap(size, size))
-        except RuntimeError:
-            # item 已被销毁（如窗口快速关闭），忽略该次回调
-            pass
+    def _on_icon_loaded(self, source: str, qimg) -> None:
+        """后台线程提取完成（主线程执行）：QImage → QPixmap 并设置，同时缓存。
+
+        转换/缓存逻辑集中在 ``icons.on_script_icon_loaded``，这里只负责把结果
+        设到本卡片的图标 label；item 已被销毁（如窗口快速关闭）时忽略该次回调。
+        """
+        with contextlib.suppress(RuntimeError):
+            # item 已被销毁（如窗口快速关闭）时忽略该次回调（setPixmap 会抛错）
+            icons.on_script_icon_loaded(self.icon_label, source, qimg)
 
     def _open_script(self):
         """打开/运行该脚本。

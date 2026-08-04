@@ -296,7 +296,8 @@ class ArknightsConfig(ScriptConfig):
             "红票":   {"index": 2, "stage": "AP-5"},
             "经验":   {"index": 3, "stage": "LS-6"},
             "龙门币": {"index": 4, "stage": "CE-6"},
-            "土":     {"index": 5, "stage": "1-7"},
+            "活动土": {"index": 5, "stage": "???"},
+            "土":     {"index": 6, "stage": "1-7"},
         }
         """
         template = self._load_template()
@@ -305,8 +306,12 @@ class ArknightsConfig(ScriptConfig):
         for index, task in enumerate(task_config):
             if task.get("$type") == "FightTask":
                 name = task.get("Name", "")
-                stage = task.get("StagePlan", [])[0] if task.get("StagePlan") else ""
-                if name and stage:
+                if name:
+                    stage = (
+                        None
+                        if "StagePlan" not in task or len(task["StagePlan"]) == 0
+                        else task["StagePlan"][0]
+                    )
                     self._task_map[name] = {"index": index, "stage": stage}
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
@@ -322,15 +327,19 @@ class ArknightsConfig(ScriptConfig):
         changed = False
         for name, info in self._task_map.items():
             idx = info["index"]
-            stage = info["stage"]
             assert task_config[idx]["Name"] == name, (
                 f"[set_config][{self.display_name}] TaskQueue[{idx}] Name 不匹配: 期望 {name}, 实际 {task_config[idx]['Name']}"
             )
-            assert task_config[idx]["StagePlan"] == [stage], (
-                f"[set_config][{self.display_name}] TaskQueue[{idx}] StagePlan 不匹配: 期望 {[stage]}, 实际 {task_config[idx]['StagePlan']}"
-            )
+            stage = info["stage"]
+            if stage is not None:
+                assert task_config[idx]["StagePlan"] == [stage], (
+                    f"[set_config][{self.display_name}] TaskQueue[{idx}] StagePlan 不匹配: 期望 {[stage]}, 实际 {task_config[idx]['StagePlan']}"
+                )
 
-            should_enable = name in ["剿灭", "土", dungeon_name]
+            should_enable = name in ["剿灭", "土", "活动土", dungeon_name]
+            print(
+                f"[set_config][{self.display_name}] task_config[{idx}] {task_config[idx]}"
+            )
             changed |= safe_update(
                 task_config[idx],
                 "IsEnable",
