@@ -20,17 +20,12 @@ class TestInitConfig(unittest.TestCase):
 
     @patch("src.launcher.generate_config_from_example")
     @patch("src.launcher.os.path.exists", return_value=False)
-    @patch("src.launcher.copy_BGI_User")
     @patch("src.launcher.get_config_yml_path_under_root")
-    def test_config_workflow(
-        self, mock_config_path, mock_bgi, mock_exists, mock_generate
-    ):
+    def test_config_workflow(self, mock_config_path, mock_exists, mock_generate):
         # 模拟首次运行：config.yml 不存在，触发从模板生成
         mock_config_path.return_value = os.path.join(self.temp_dir.name, "config.yml")
         launcher.config_workflow()
 
-        # BetterGI 用户配置始终复制
-        mock_bgi.assert_called_once()
         # config.yml 不存在时，应从模板生成（相对路径解析为绝对）
         mock_generate.assert_called_once()
 

@@ -25,7 +25,7 @@ def need_config_workflow() -> bool:
 
 
 def config_workflow():
-    # 从模板生成 config.yml（如果不存在），相对 script_path 解析为绝对路径
+    # 首次运行时从模板生成 config.yml（相对 script_path 解析为绝对路径）
     config_path = get_config_yml_path_under_root()
     if not os.path.exists(config_path):
         generate_config_from_example()

@@ -27,7 +27,6 @@ import yaml
 
 from src import launcher
 from src.gui import chain as gui_chain
-from src.utils import require_config_yml_path
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -63,7 +62,14 @@ def _read_cli_file(kind: str) -> str:
 
 
 def _known_script_names():
-    with open(require_config_yml_path(), encoding="utf-8") as f:
+    # 确保 config.yml 存在：复用 launcher 自身的首次运行逻辑（与 main() 一致，
+    # 即「若 need_config_workflow 则 config_workflow」），不手动复制文件。
+    # 随后直接读取 --generate-chain 实际使用的同一份 config.yml，保证期望集合与
+    # 产出集合同源（本地真实 config 可能含 example 没有的脚本，如 MAS）。
+    if launcher.need_config_workflow():
+        launcher.config_workflow()
+    config_path = launcher.get_config_yml_path_under_root()
+    with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     return [s["display_name"] for s in data.get("script_list", [])]
 
