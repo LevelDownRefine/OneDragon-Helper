@@ -12,7 +12,11 @@ from PySide6.QtCore import QMimeData, QPoint, Qt
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QApplication
 
-from src.gui.utils import _default_icon, get_script_icon
+from src.gui.utils import (
+    _default_icon,
+    get_icon_source,
+    get_script_icon,
+)
 from src.gui.widgets import DRAG_MIME, ScriptItem
 
 # 全局 QApplication 实例（测试共享）
@@ -570,6 +574,34 @@ class TestGetScriptIcon(unittest.TestCase):
         # 事件循环处理 QTimer.singleShot(0) 后，才真正去取 exe 图标
         QApplication.processEvents()
         mock_get.assert_called_once()
+
+    def test_star_rail_swaps_to_launcher_icon(self):
+        """崩铁：同目录存在 March7th Launcher.exe 时，图标源换成它而非自身 exe。"""
+        data = {
+            "display_name": "崩铁",
+            "script_type": "external",
+            "script_path": "D:/game_helper/March7thAssistant/March7th Assistant.exe",
+        }
+        with patch("src.gui.utils.os.path.isfile", return_value=True):
+            self.assertEqual(
+                get_icon_source(data),
+                os.path.join(
+                    "D:/game_helper/March7thAssistant", "March7th Launcher.exe"
+                ),
+            )
+
+    def test_star_rail_launcher_missing_uses_own_exe(self):
+        """崩铁：若同目录没有 March7th Launcher.exe，则仍用自身 exe 作为图标源。"""
+        data = {
+            "display_name": "崩铁",
+            "script_type": "external",
+            "script_path": "D:/game_helper/March7thAssistant/March7th Assistant.exe",
+        }
+        with patch("src.gui.utils.os.path.isfile", return_value=False):
+            self.assertEqual(
+                get_icon_source(data),
+                "D:/game_helper/March7thAssistant/March7th Assistant.exe",
+            )
 
 
 if __name__ == "__main__":

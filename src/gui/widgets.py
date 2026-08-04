@@ -26,6 +26,7 @@ from src.gui.utils import (
     _default_icon,
     _safe_startfile,
     _styled_msg_box,
+    get_icon_source,
     get_script_icon,
 )
 
@@ -289,10 +290,9 @@ class ScriptItem(QFrame):
           下一拍再提取，避免打开窗口时在主线程同步抠 exe 内嵌图标导致卡顿。
         """
         size = self.icon_label.width()
-        if script_data.get("script_type") == "external" and os.path.isfile(
-            script_data.get("script_path", "")
-        ):
-            # external 且 exe 存在：占位 + 延迟补真实图标
+        source = get_icon_source(script_data)
+        if source and os.path.isfile(source):
+            # 图标源（icon_path 覆盖或 external 的 exe）存在：占位 + 延迟补真实图标
             self.icon_label.setPixmap(_default_icon().pixmap(size, size))
             QTimer.singleShot(0, lambda: self._load_exe_icon(script_data))
         else:

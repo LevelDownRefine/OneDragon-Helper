@@ -47,7 +47,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("OneDragon 脚本启动器")
-        self.setMinimumSize(580, 700)
+        self.setMinimumSize(600, 800)
 
         self.script_items = []
         self.all_config_data = None

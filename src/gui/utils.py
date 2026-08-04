@@ -5,6 +5,7 @@
 """
 
 import json
+import logging
 import os
 import sys
 from datetime import datetime, timedelta
@@ -15,6 +16,8 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QFileIconProvider, QMessageBox
 
 from src.utils import get_root_dir, safe_path_join
+
+logger = logging.getLogger(__name__)
 
 # 默认图标：没有自带图标的脚本（如 python 脚本，或 external 但取不到 exe 图标的）使用。
 # 优先用当前 Python 解释器（sys.executable）的 OS 文件图标，即 Python 官方图标；
@@ -128,8 +131,24 @@ def _exe_icon(path: str) -> QIcon | None:
     try:
         icon = QFileIconProvider().icon(QFileInfo(path))
     except Exception:  # noqa: BLE001  # 取图标失败不应影响整个列表
+        logger.warning("取 %s 的图标失败", path, exc_info=True)
         return None
     return icon if (icon is not None and not icon.isNull()) else None
+
+
+def get_icon_source(script_data: dict) -> str | None:
+    """返回本脚本将用于显示图标的 exe 路径。
+
+    崩铁（星铁）的 exe 图标不好看，其 exe 同目录下有 ``March7th Launcher.exe``
+    图标更好看，故优先用它；其它 external 脚本用自身 exe；非 exe 图标源返回 None。
+    """
+    if script_data.get("script_type") != "external":
+        return None
+    script_path = script_data.get("script_path", "")
+    launcher = os.path.join(os.path.dirname(script_path), "March7th Launcher.exe")
+    if script_path and os.path.isfile(launcher):
+        return launcher
+    return script_path
 
 
 def get_script_icon(script_data: dict) -> QIcon:
@@ -141,8 +160,9 @@ def get_script_icon(script_data: dict) -> QIcon:
 
     调用方（ScriptItem）可缓存结果，本函数仅做轻量解析与缓存。
     """
-    if script_data.get("script_type") == "external":
-        icon = _exe_icon(script_data.get("script_path", ""))
+    source = get_icon_source(script_data)
+    if source:
+        icon = _exe_icon(source)
         if icon is not None:
             return icon
     return _default_icon()
