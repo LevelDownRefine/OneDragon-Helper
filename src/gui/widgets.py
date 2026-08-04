@@ -1,11 +1,12 @@
 """自定义控件：ToggleSwitch 滑动开关与 ScriptItem 脚本卡片。"""
 
+import contextlib
 import logging
 import os
 import subprocess
 
-from PySide6.QtCore import QMimeData, QObject, QRunnable, Qt, QThreadPool, Signal
-from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter, QPixmap
+from PySide6.QtCore import QMimeData, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -20,20 +21,11 @@ from PySide6.QtWidgets import (
 
 from src.config.dungeon_config import get_display_name
 from src.config.subscript import get_config_path, get_script_path
+from src.gui import icons
 from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.runner import build_script_command
-from src.gui.utils import (
-    _ICON_EXTRACTION_AVAILABLE,
-    _default_icon,
-    _destroy_hicon,
-    _extract_hicon,
-    _hicon_to_qimage,
-    _safe_startfile,
-    _styled_msg_box,
-    get_icon_source,
-    get_script_icon,
-)
+from src.gui.utils import _safe_startfile, _styled_msg_box
 
 logger = logging.getLogger(__name__)
 
@@ -113,52 +105,6 @@ class ToggleSwitch(QWidget):
         ky = (h - knob_d) / 2
         p.setBrush(QColor(self.KNOB))
         p.drawEllipse(int(kx), int(ky), knob_d, knob_d)
-
-
-# 图标后台加载：external 的 exe 图标用纯 Win32 ExtractIconExW 在 QThreadPool 后台线程
-# 提取（最慢的“加载 exe / 读图标资源”被挪出主线程），主线程只做轻量的
-# HICON → QPixmap 转换。避免窗口打开时主线程被同步抠图标卡住。
-_EXE_ICON_PIXMAP_CACHE: dict[str, QPixmap] = {}  # 已转换的 exe 图标（仅主线程读写）
-
-
-class _IconLoadSignals(QObject):
-    """后台提取完成信号：(exe 路径, 转换好的 QImage 或 None)。"""
-
-    finished = Signal(str, object)
-
-
-class _IconLoadWorker(QRunnable):
-    """在后台线程提取单个 exe 图标（HICON→QImage，纯 GDI），结果回传主线程。"""
-
-    def __init__(self, source: str):
-        super().__init__()
-        self.source = source
-        self.signals = _IconLoadSignals()
-
-    def run(self):
-        handle = _extract_hicon(self.source)
-        qimg = _hicon_to_qimage(handle)
-        _destroy_hicon(handle)
-        self.signals.finished.emit(self.source, qimg)
-
-
-def _schedule_icon_load(item, script_data: dict) -> None:
-    """external 图标：先查缓存；未命中则提交后台线程提取，结果回主线程设置。
-
-    非 Windows 环境（CI/Linux）无 Win32 图标提取能力，直接保持默认占位图标即可。
-    """
-    if not _ICON_EXTRACTION_AVAILABLE:
-        return
-    source = get_icon_source(script_data)
-    if not source:
-        return
-    cached = _EXE_ICON_PIXMAP_CACHE.get(source)
-    if cached is not None:
-        item.icon_label.setPixmap(cached)
-        return
-    worker = _IconLoadWorker(source)
-    worker.signals.finished.connect(item._on_icon_loaded)
-    QThreadPool.globalInstance().start(worker)
 
 
 class ScriptItem(QFrame):
@@ -344,30 +290,28 @@ class ScriptItem(QFrame):
           避免打开窗口时主线程被同步抠 exe 内嵌图标卡住。
         """
         size = self.icon_label.width()
-        source = get_icon_source(script_data)
+        dpr = self.devicePixelRatioF()
+        source = icons.get_icon_source(script_data)
         if source and os.path.isfile(source):
-            # 图标源（external 的 exe）存在：先用默认图标占位，再提交后台线程提取真实图标
-            self.icon_label.setPixmap(_default_icon().pixmap(size, size))
-            _schedule_icon_load(self, script_data)
+            # 图标源（external 的 exe）存在：先用默认图标占位，再提交后台线程
+            # 提取真实图标。QIcon.pixmap(QSize, dpr) 会自动按 dpr 选高清表示，
+            # 不需要再手动 setDevicePixelRatio。
+            ph = icons._default_icon().pixmap(QSize(size, size), dpr)
+            self.icon_label.setPixmap(ph)
+            icons._schedule_icon_load(self, script_data)
         else:
-            self.icon_label.setPixmap(get_script_icon(script_data).pixmap(size, size))
+            ph = icons.get_script_icon(script_data).pixmap(QSize(size, size), dpr)
+            self.icon_label.setPixmap(ph)
 
     def _on_icon_loaded(self, source: str, qimg) -> None:
         """后台线程提取完成（主线程执行）：QImage → QPixmap 并设置，同时缓存。
 
-        跨线程信号经事件循环投递到主线程，故本方法内可安全构造 QPixmap。
+        转换/缓存逻辑集中在 ``icons.on_script_icon_loaded``，这里只负责把结果
+        设到本卡片的图标 label；item 已被销毁（如窗口快速关闭）时忽略该次回调。
         """
-        try:
-            if qimg is not None and not qimg.isNull():
-                size = self.icon_label.width()
-                pix = QPixmap.fromImage(qimg).scaled(
-                    size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation
-                )
-                self.icon_label.setPixmap(pix)
-                _EXE_ICON_PIXMAP_CACHE[source] = pix
-        except RuntimeError:
-            # item 已被销毁（如窗口快速关闭），忽略该次回调
-            pass
+        with contextlib.suppress(RuntimeError):
+            # item 已被销毁（如窗口快速关闭）时忽略该次回调（setPixmap 会抛错）
+            icons.on_script_icon_loaded(self.icon_label, source, qimg)
 
     def _open_script(self):
         """打开/运行该脚本。

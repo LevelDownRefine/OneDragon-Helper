@@ -12,11 +12,12 @@ from PySide6.QtCore import QMimeData, QPoint, Qt
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QImage
 from PySide6.QtWidgets import QApplication
 
-from src.gui.utils import (
+from src.gui.icons import (
+    _EXE_ICON_PIXMAP_CACHE,
     get_icon_source,
     get_script_icon,
 )
-from src.gui.widgets import _EXE_ICON_PIXMAP_CACHE, DRAG_MIME, ScriptItem
+from src.gui.widgets import DRAG_MIME, ScriptItem
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
@@ -557,7 +558,7 @@ class TestGetScriptIcon(unittest.TestCase):
         )
         self.assertFalse(icon.isNull())
 
-    @patch("src.gui.widgets._ICON_EXTRACTION_AVAILABLE", True)
+    @patch("src.gui.icons._ICON_EXTRACTION_AVAILABLE", True)
     def test_external_icon_deferred_not_eager(self):
         """external 的 exe 图标延迟加载：构造时不同步提取，交由后台线程，主线程只做转换。
 
@@ -569,9 +570,7 @@ class TestGetScriptIcon(unittest.TestCase):
         fake_pool = MagicMock()
         fake_pool.start.side_effect = lambda runnable: captured.append(runnable)
 
-        with patch(
-            "src.gui.widgets.QThreadPool.globalInstance", return_value=fake_pool
-        ):
+        with patch("src.gui.icons.QThreadPool.globalInstance", return_value=fake_pool):
             item = ScriptItem(
                 {
                     "display_name": "x",
@@ -586,8 +585,10 @@ class TestGetScriptIcon(unittest.TestCase):
 
         real_img = QImage(28, 28, QImage.Format_RGBA8888)
         with (
-            patch("src.gui.widgets._extract_hicon", return_value=0x1234),
-            patch("src.gui.widgets._hicon_to_qimage", return_value=real_img),
+            patch("src.gui.icons._init_com_for_thread"),
+            patch("src.gui.icons._uninit_com_for_thread"),
+            patch("src.gui.icons._extract_hicon", return_value=0x1234),
+            patch("src.gui.icons._hicon_to_qimage", return_value=real_img),
         ):
             captured[0].run()  # 模拟后台线程：提取并转 QImage
         # 主线程收到信号后把 QImage 转成 QPixmap 并设置（跨线程信号经事件循环投递）
