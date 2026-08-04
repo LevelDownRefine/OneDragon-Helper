@@ -36,7 +36,10 @@ _ICON_PROVIDER = QFileIconProvider()
 # 后台线程提取 exe 图标：用纯 Win32 SHDefExtractIconW + 纯 GDI 转 QImage（跨线程安全），
 # 主线程只做轻量的 QImage → QPixmap 转换。worker 取到 HICON 后由纯 GDI 把它转成 QImage
 # （不依赖 PySide6.QtWin），再由主线程转 QPixmap 显示。
-try:
+# 注：以下 ctypes 句柄先初始化为 None。非 Windows（CI/Linux）下 ctypes.windll 不存在，
+_shell32 = _user32 = _gdi32 = _ole32 = None
+_ICON_EXTRACTION_AVAILABLE = False
+if sys.platform == "win32":
     _shell32 = ctypes.windll.shell32
     _user32 = ctypes.windll.user32
     _gdi32 = ctypes.windll.gdi32
@@ -95,8 +98,6 @@ try:
     _ole32.CoUninitialize.argtypes = []
     _ole32.CoUninitialize.restype = None
     _ICON_EXTRACTION_AVAILABLE = True
-except Exception:  # noqa: BLE001 - 非 Windows（如 CI/Linux）环境不可用
-    _ICON_EXTRACTION_AVAILABLE = False
 
 # 后台提取时向系统请求的目标像素尺寸：尽量取高清源（系统会选 exe 内最接近的图标资源
 # 并缩放），再由界面按实际显示尺寸 + DPR 精确缩放，避免模糊。纯 GDI 常量。
