@@ -13,7 +13,6 @@ import tempfile
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from src.config.bgi import copy_BGI_User
 from src.config.subscript import generate_config_from_example
 from src.gui.main_window import MainWindow
 from src.utils import get_config_yml_path_under_root, get_path_under_root
@@ -26,8 +25,6 @@ def need_config_workflow() -> bool:
 
 
 def config_workflow():
-    # 复制 BetterGI 用户配置
-    copy_BGI_User()
     # 从模板生成 config.yml（如果不存在），相对 script_path 解析为绝对路径
     config_path = get_config_yml_path_under_root()
     if not os.path.exists(config_path):
@@ -226,6 +223,10 @@ def _run_run_chain(args) -> int:
 
 
 def main():
+    # 首次运行时，拷贝配置模板到用户目录
+    if need_config_workflow():
+        config_workflow()
+
     parser = _build_parser()
     args = parser.parse_args()
 
