@@ -15,6 +15,7 @@
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -27,9 +28,23 @@ import yaml
 
 from src import launcher
 from src.gui import chain as gui_chain
-from src.utils import require_config_yml_path
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# config.yml 是用户环境生成的（含个人信息、不追溯 git），CI 与全新 checkout 中没有。
+# 本测试依赖它存在（require_config_yml_path 会断言），故在模块开始时按应用自身的
+# config_workflow() 逻辑从已提交的 config.example.yml 引导出一个 config.yml。
+# 仅当缺失时才创建，绝不覆盖已有的真实 config.yml；创建后也不删除（避免影响同进程
+# 内后续模块的 discover；config.yml 已被 gitignore，CI 环境用完即弃）。
+_CONFIG_DIR = os.path.join(PROJECT_ROOT, "config")
+_EXAMPLE_CONFIG = os.path.join(_CONFIG_DIR, "config.example.yml")
+_TARGET_CONFIG = os.path.join(_CONFIG_DIR, "config.yml")
+
+
+def setUpModule():
+    # 仅当缺失时按应用自身 config_workflow() 的逻辑从示例引导；绝不覆盖已有 config.yml。
+    if not os.path.exists(_TARGET_CONFIG) and os.path.exists(_EXAMPLE_CONFIG):
+        shutil.copyfile(_EXAMPLE_CONFIG, _TARGET_CONFIG)
 
 
 def _cli_file(kind: str) -> str:
@@ -63,7 +78,11 @@ def _read_cli_file(kind: str) -> str:
 
 
 def _known_script_names():
-    with open(require_config_yml_path(), encoding="utf-8") as f:
+    # 依赖 setUpModule 已把 config.example.yml 引导为 config.yml
+    assert os.path.exists(_TARGET_CONFIG), (
+        f"测试前提缺失 config.yml，且 {_EXAMPLE_CONFIG} 不存在，无法引导"
+    )
+    with open(_TARGET_CONFIG, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     return [s["display_name"] for s in data.get("script_list", [])]
 

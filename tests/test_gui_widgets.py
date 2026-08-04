@@ -561,8 +561,12 @@ class TestGetScriptIcon(unittest.TestCase):
     @patch("src.gui.widgets.get_script_icon")
     def test_external_icon_deferred_not_eager(self, mock_get):
         """external 的 exe 图标延迟加载：构造时不同步提取，事件循环处理后才提取。"""
-        # 占位与默认图标由 _default_icon 提供，故构造阶段不应调 get_script_icon
+        # 占位与默认图标由 _default_icon 提供；先设好 return_value，再排空其它测试
+        # 遗留的 QTimer 回调（如 selftest / 其它用例构造 ScriptItem 时排队的延迟图标
+        # 加载），最后 reset，避免污染本测试的调用计数。
         mock_get.return_value = _default_icon()
+        QApplication.processEvents()
+        mock_get.reset_mock()
         ScriptItem(
             {
                 "display_name": "x",
