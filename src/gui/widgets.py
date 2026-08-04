@@ -1,10 +1,11 @@
 """自定义控件：ToggleSwitch 滑动开关与 ScriptItem 脚本卡片。"""
 
+import logging
 import os
 import subprocess
 
-from PySide6.QtCore import QMimeData, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter
+from PySide6.QtCore import QMimeData, QObject, QRunnable, Qt, QThreadPool, Signal
+from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -23,12 +24,18 @@ from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.runner import build_script_command
 from src.gui.utils import (
+    _ICON_EXTRACTION_AVAILABLE,
     _default_icon,
+    _destroy_hicon,
+    _extract_hicon,
+    _hicon_to_qimage,
     _safe_startfile,
     _styled_msg_box,
     get_icon_source,
     get_script_icon,
 )
+
+logger = logging.getLogger(__name__)
 
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
 DRAG_MIME = "application/x-onedragon-script"
@@ -106,6 +113,52 @@ class ToggleSwitch(QWidget):
         ky = (h - knob_d) / 2
         p.setBrush(QColor(self.KNOB))
         p.drawEllipse(int(kx), int(ky), knob_d, knob_d)
+
+
+# 图标后台加载：external 的 exe 图标用纯 Win32 ExtractIconExW 在 QThreadPool 后台线程
+# 提取（最慢的“加载 exe / 读图标资源”被挪出主线程），主线程只做轻量的
+# HICON → QPixmap 转换。避免窗口打开时主线程被同步抠图标卡住。
+_EXE_ICON_PIXMAP_CACHE: dict[str, QPixmap] = {}  # 已转换的 exe 图标（仅主线程读写）
+
+
+class _IconLoadSignals(QObject):
+    """后台提取完成信号：(exe 路径, 转换好的 QImage 或 None)。"""
+
+    finished = Signal(str, object)
+
+
+class _IconLoadWorker(QRunnable):
+    """在后台线程提取单个 exe 图标（HICON→QImage，纯 GDI），结果回传主线程。"""
+
+    def __init__(self, source: str):
+        super().__init__()
+        self.source = source
+        self.signals = _IconLoadSignals()
+
+    def run(self):
+        handle = _extract_hicon(self.source)
+        qimg = _hicon_to_qimage(handle)
+        _destroy_hicon(handle)
+        self.signals.finished.emit(self.source, qimg)
+
+
+def _schedule_icon_load(item, script_data: dict) -> None:
+    """external 图标：先查缓存；未命中则提交后台线程提取，结果回主线程设置。
+
+    非 Windows 环境（CI/Linux）无 Win32 图标提取能力，直接保持默认占位图标即可。
+    """
+    if not _ICON_EXTRACTION_AVAILABLE:
+        return
+    source = get_icon_source(script_data)
+    if not source:
+        return
+    cached = _EXE_ICON_PIXMAP_CACHE.get(source)
+    if cached is not None:
+        item.icon_label.setPixmap(cached)
+        return
+    worker = _IconLoadWorker(source)
+    worker.signals.finished.connect(item._on_icon_loaded)
+    QThreadPool.globalInstance().start(worker)
 
 
 class ScriptItem(QFrame):
@@ -286,24 +339,32 @@ class ScriptItem(QFrame):
         """按脚本数据刷新卡片图标（external 用 exe 自带，否则默认），构造与改名后调用。
 
         - 便宜的默认/Python 图标：立即设置，不阻塞窗口打开。
-        - 昂贵的 external exe 图标：先用默认图标占位，再用 ``QTimer`` 推迟到事件循环
-          下一拍再提取，避免打开窗口时在主线程同步抠 exe 内嵌图标导致卡顿。
+        - 昂贵的 external exe 图标：先用默认图标占位，再提交 ``QThreadPool`` 后台线程
+          用纯 Win32 提取（避开 QFileIconProvider 的 COM 限制），主线程只做轻量转换，
+          避免打开窗口时主线程被同步抠 exe 内嵌图标卡住。
         """
         size = self.icon_label.width()
         source = get_icon_source(script_data)
         if source and os.path.isfile(source):
-            # 图标源（icon_path 覆盖或 external 的 exe）存在：占位 + 延迟补真实图标
+            # 图标源（external 的 exe）存在：先用默认图标占位，再提交后台线程提取真实图标
             self.icon_label.setPixmap(_default_icon().pixmap(size, size))
-            QTimer.singleShot(0, lambda: self._load_exe_icon(script_data))
+            _schedule_icon_load(self, script_data)
         else:
             self.icon_label.setPixmap(get_script_icon(script_data).pixmap(size, size))
 
-    def _load_exe_icon(self, script_data: dict) -> None:
-        """异步补充 external 脚本的 exe 自带图标（构造时已用默认图标占位）。"""
+    def _on_icon_loaded(self, source: str, qimg) -> None:
+        """后台线程提取完成（主线程执行）：QImage → QPixmap 并设置，同时缓存。
+
+        跨线程信号经事件循环投递到主线程，故本方法内可安全构造 QPixmap。
+        """
         try:
-            icon = get_script_icon(script_data)
-            size = self.icon_label.width()
-            self.icon_label.setPixmap(icon.pixmap(size, size))
+            if qimg is not None and not qimg.isNull():
+                size = self.icon_label.width()
+                pix = QPixmap.fromImage(qimg).scaled(
+                    size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                )
+                self.icon_label.setPixmap(pix)
+                _EXE_ICON_PIXMAP_CACHE[source] = pix
         except RuntimeError:
             # item 已被销毁（如窗口快速关闭），忽略该次回调
             pass

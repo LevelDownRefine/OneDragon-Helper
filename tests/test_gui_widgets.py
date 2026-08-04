@@ -3,21 +3,20 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QMimeData, QPoint, Qt
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QImage
 from PySide6.QtWidgets import QApplication
 
 from src.gui.utils import (
-    _default_icon,
     get_icon_source,
     get_script_icon,
 )
-from src.gui.widgets import DRAG_MIME, ScriptItem
+from src.gui.widgets import _EXE_ICON_PIXMAP_CACHE, DRAG_MIME, ScriptItem
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
@@ -558,26 +557,44 @@ class TestGetScriptIcon(unittest.TestCase):
         )
         self.assertFalse(icon.isNull())
 
-    @patch("src.gui.widgets.get_script_icon")
-    def test_external_icon_deferred_not_eager(self, mock_get):
-        """external 的 exe 图标延迟加载：构造时不同步提取，事件循环处理后才提取。"""
-        # 占位与默认图标由 _default_icon 提供；先设好 return_value，再排空其它测试
-        # 遗留的 QTimer 回调（如 selftest / 其它用例构造 ScriptItem 时排队的延迟图标
-        # 加载），最后 reset，避免污染本测试的调用计数。
-        mock_get.return_value = _default_icon()
+    @patch("src.gui.widgets._ICON_EXTRACTION_AVAILABLE", True)
+    def test_external_icon_deferred_not_eager(self):
+        """external 的 exe 图标延迟加载：构造时不同步提取，交由后台线程，主线程只做转换。
+
+        用假 QThreadPool 捕获提交的 worker，验证构造阶段不内联执行提取；随后手动触发
+        worker.run()（模拟后台线程：提取 HICON → GDI 转 QImage → 销毁句柄），再
+        processEvents() 把结果信号送回主线程设置 pixmap。
+        """
+        captured = []
+        fake_pool = MagicMock()
+        fake_pool.start.side_effect = lambda runnable: captured.append(runnable)
+
+        with patch(
+            "src.gui.widgets.QThreadPool.globalInstance", return_value=fake_pool
+        ):
+            item = ScriptItem(
+                {
+                    "display_name": "x",
+                    "script_type": "external",
+                    "script_path": sys.executable,
+                }
+            )
+        # 构造返回后 worker 已被提交（延迟），但尚未执行
+        self.assertEqual(len(captured), 1)
+        # 占位图标已设置（默认图标），非空
+        self.assertFalse(item.icon_label.pixmap().isNull())
+
+        real_img = QImage(28, 28, QImage.Format_RGBA8888)
+        with (
+            patch("src.gui.widgets._extract_hicon", return_value=0x1234),
+            patch("src.gui.widgets._hicon_to_qimage", return_value=real_img),
+        ):
+            captured[0].run()  # 模拟后台线程：提取并转 QImage
+        # 主线程收到信号后把 QImage 转成 QPixmap 并设置（跨线程信号经事件循环投递）
         QApplication.processEvents()
-        mock_get.reset_mock()
-        ScriptItem(
-            {
-                "display_name": "x",
-                "script_type": "external",
-                "script_path": sys.executable,
-            }
-        )
-        mock_get.assert_not_called()
-        # 事件循环处理 QTimer.singleShot(0) 后，才真正去取 exe 图标
-        QApplication.processEvents()
-        mock_get.assert_called_once()
+        self.assertFalse(item.icon_label.pixmap().isNull())
+        # 已写入图标缓存（key 为该 exe 路径）
+        self.assertIn(sys.executable, _EXE_ICON_PIXMAP_CACHE)
 
     def test_star_rail_swaps_to_launcher_icon(self):
         """崩铁：同目录存在 March7th Launcher.exe 时，图标源换成它而非自身 exe。"""
