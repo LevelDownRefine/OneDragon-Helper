@@ -314,12 +314,11 @@ class ScriptItem(QFrame):
             icons.on_script_icon_loaded(self.icon_label, source, qimg)
 
     def _open_script(self):
-        """打开/运行该脚本。
-        - python 脚本：用 python 解释器直接运行（不阻塞 GUI）；
-        - external 脚本：用 get_script_path 解析出 exe 并以 startfile 启动。
-        """
+        """打开/运行该脚本：python 用解释器跑，external 解析后 startfile。"""
         if self.script_type == "python":
-            if not self.script_path or not os.path.isfile(self.script_path):
+            try:
+                resolved = get_script_path(self.display_name)
+            except AssertionError:
                 _styled_msg_box(
                     self,
                     QMessageBox.Warning,
@@ -327,9 +326,7 @@ class ScriptItem(QFrame):
                     f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}",
                 ).exec()
                 return
-            # 命令构造（含 frozen/非 frozen 判断）全部委托给 build_script_command，
-            # 这里只管拿 cmd list 去 spawn，不再关心运行环境。
-            command, cwd, env = build_script_command(["--script", self.script_path])
+            command, cwd, env = build_script_command(["--script", resolved])
             try:
                 subprocess.Popen(command, cwd=cwd, env=env)
             except OSError as e:
@@ -349,13 +346,11 @@ class ScriptItem(QFrame):
         _safe_startfile(self, exe_path, "无法打开脚本")
 
     def _open_script_config(self):
-        """打开该脚本的配置文件（文本）。
-        - python 脚本：无独立配置文件，直接打开其 .py 源文件；
-        - external 脚本：用 get_config_path 解析并打开其内部 config 文本文件；
-          未适配或文件缺失时给出清晰提示。
-        """
+        """打开脚本配置文件：python 打开 .py 源文件，external 打开内部 config 文本。"""
         if self.script_type == "python":
-            if not self.script_path or not os.path.isfile(self.script_path):
+            try:
+                resolved = get_script_path(self.display_name)
+            except AssertionError:
                 _styled_msg_box(
                     self,
                     QMessageBox.Warning,
@@ -363,7 +358,7 @@ class ScriptItem(QFrame):
                     f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}",
                 ).exec()
                 return
-            _safe_startfile(self, self.script_path, "无法打开脚本文件")
+            _safe_startfile(self, resolved, "无法打开脚本文件")
             return
 
         # external 脚本：解析并打开内部 config 文件

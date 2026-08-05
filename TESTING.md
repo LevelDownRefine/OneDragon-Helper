@@ -39,5 +39,5 @@ ruff check src tests --fix                 # 自动修复安全项
 
 - **先看日志再下结论**：主程序日志在 `logs/onedragon_helper.log`（每日 00:00 轮转，保留 14 天）。
 - 运行器子进程有独立日志系统（`.log/`）。
-- 子脚本自身的日志参照 `python_script\collect_log.py`各子类`_get_log_dir`方法。
- - 日志汇总：`python -m python_script.collect_log`。
+- 子脚本自身的日志参照 `scripts\collect_log.py`各子类`_get_log_dir`方法。
+ - 日志汇总：`python scripts/collect_log.py`。

@@ -59,14 +59,15 @@ def _load_config_yml() -> dict:
 # ============================================================
 
 
-def get_script_path(script_display_name: str) -> str:
-    """
-    从 config.yml 中找到指定脚本的 script_path（exe 绝对路径），并校验其存在。
+def resolve_script_path(path: str) -> str:
+    """相对 script_path 解析为基于项目根的绝对路径；绝对路径原样返回。"""
+    if _is_absolute_path(path):
+        return path
+    return safe_path_join(get_root_dir(), path)
 
-    script_path 可能是 Windows 风格路径（C:\\...\\xxx.exe），
-    统一将反斜杠转为正斜杠，确保跨平台可用。
-    供 GUI「打开脚本」按钮与 _get_script_root_dir 复用。
-    """
+
+def get_script_path(script_display_name: str) -> str:
+    """取指定脚本的 script_path，解析相对路径并校验存在。"""
     config_data = _load_config_yml()
     for script in config_data.get("script_list", []):
         if script.get("display_name") == script_display_name:
@@ -74,6 +75,7 @@ def get_script_path(script_display_name: str) -> str:
             assert script_path, (
                 f"[set_config] config.yml 中 {script_display_name} 的 script_path 为空"
             )
+            script_path = resolve_script_path(script_path)
             normalized = script_path.replace("\\", "/")
             assert os.path.exists(normalized), f"[set_config] exe 不存在: {normalized}"
             return normalized
@@ -182,32 +184,16 @@ def _is_absolute_path(p: str) -> bool:
     return p.startswith("\\\\") or p.startswith("//")
 
 
-def _resolve_relative_script_paths(config_data: dict) -> None:
-    """
-    将 script_list 中相对的 script_path 解析为基于项目根目录的绝对路径；
-    绝对路径（如游戏 exe）原样保留。
-
-    config.example.yml 中 python 脚本统一使用相对项目根目录的路径
-    （如 python_script/mute.py），生成 config.yml 时展开为绝对路径，
-    使模板可移植、而运行时 ScriptChainer 拿到的始终是绝对路径。
-    """
-    root = get_root_dir()
-    for script in config_data.get("script_list", []):
-        script_path = script.get("script_path", "")
-        if script_path and not _is_absolute_path(script_path):
-            script["script_path"] = safe_path_join(root, script_path)
-
-
 def generate_config_from_example() -> None:
-    """
-    从 config.example.yml 生成 config/config.yml，并把相对 script_path 解析为绝对路径。
-    仅负责生成；是否覆盖已存在的 config.yml 由调用方判断。
+    """从 config.example.yml 复制生成 config/config.yml。
+
+    相对 script_path 保留原样，运行时由 resolve_script_path / get_script_path
+    按项目根解析（配置可移植、跨机可用）。
     """
     example_path = safe_path_join(get_root_dir(), "config", "config.example.yml")
     config_path = get_config_yml_path_under_root()
     assert os.path.exists(example_path), f"[subscript] 模板不存在: {example_path}"
     with open(example_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    _resolve_relative_script_paths(data)
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, allow_unicode=True, sort_keys=False)

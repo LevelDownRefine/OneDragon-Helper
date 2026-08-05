@@ -29,7 +29,7 @@ hiddenimports = [
     'script_chainer.services.log_notifier',  # 条件导入，PyInstaller 静态分析可能遗漏
 ]
 hiddenimports += collect_submodules('pynput')
-# python_script/mute.py、unmute.py 在运行时才 import pycaw，静态分析抓不到。
+# scripts/mute.py、unmute.py 在运行时才 import pycaw，静态分析抓不到。
 # pycaw 仅依赖 comtypes 核心与 comtypes.automation（其源码里为静态 import），
 # 由 collect_submodules('pycaw') 顺带收集，无需把 comtypes.test 等一并打包。
 hiddenimports += collect_submodules('pycaw')
@@ -37,7 +37,7 @@ hiddenimports += collect_submodules('pycaw')
 # --- 可安全排除的模块 ---
 # pynput 跨平台后端: Windows 仅用 win32，其余后端永不加载。
 # 其余为标准库未使用模块。
-# 注意: 不在此排除 numpy —— Runner 在运行时加载用户脚本(python_script/)，
+# 注意: 不在此排除 numpy —— Runner 在运行时加载用户脚本(scripts/)，
 #       若脚本 import numpy 需由本包提供。
 excludes = [
     'pynput.keyboard._darwin', 'pynput.keyboard._xorg',

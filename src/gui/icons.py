@@ -26,6 +26,7 @@ from PySide6.QtCore import QFileInfo, QObject, QRunnable, Qt, QThreadPool, Signa
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QFileIconProvider
 
+from src.config.subscript import resolve_script_path
 from src.utils import get_root_dir, safe_path_join
 
 logger = logging.getLogger(__name__)
@@ -317,16 +318,15 @@ def _destroy_hicon(handle: int) -> None:
 
 
 def get_icon_source(script_data: dict) -> str | None:
-    """返回本脚本将用于显示图标的 exe 路径。
-
-    崩铁（星铁）的 exe 图标不好看，其 exe 同目录下有 ``March7th Launcher.exe``
-    图标更好看，故优先用它；其它 external 脚本用自身 exe；非 exe 图标源返回 None。
-    """
+    """返回脚本图标所用的 exe 路径（崩铁优先同目录 March7th Launcher.exe）。"""
     if script_data.get("script_type") != "external":
         return None
-    script_path = script_data.get("script_path", "")
+    raw = script_data.get("script_path", "")
+    if not raw:
+        return None
+    script_path = resolve_script_path(raw)
     launcher = os.path.join(os.path.dirname(script_path), "March7th Launcher.exe")
-    if script_path and os.path.isfile(launcher):
+    if os.path.isfile(launcher):
         return launcher
     return script_path
 

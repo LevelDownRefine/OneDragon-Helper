@@ -4,6 +4,7 @@ import shutil
 
 import yaml
 
+from src.config.subscript import resolve_script_path
 from src.utils import (
     get_our_bgi_user_dir,
     require_config_yml_path,
@@ -15,17 +16,18 @@ logger = logging.getLogger(__name__)
 
 
 def get_BGI_user_dir():
-    """
-    获取BetterGI配置文件中的脚本路径
-    :return: 包含脚本路径
-    """
+    """返回 BetterGI 配置目录（原神 exe 父目录下的 User）。"""
     with open(require_config_yml_path(), encoding="utf-8") as f:
         config_data = yaml.safe_load(f)
         script_list = config_data.get("script_list", [])
         for script in script_list:
             if script.get("display_name") == "原神":
-                BGI_dir = os.path.dirname(script.get("script_path"))
-                return safe_path_join(BGI_dir, "User")
+                path = script.get("script_path")
+                if not path:
+                    continue
+                return safe_path_join(
+                    os.path.dirname(resolve_script_path(path)), "User"
+                )
     return None
 
 

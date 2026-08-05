@@ -29,7 +29,7 @@ src/config/
   dungeon_config.py         # dungeon_list.yml 解析
   bgi.py                    # 暂时未使用
 src/runner/                 # 用于运行脚本链；git submodule → OneDragonRunner
-python_script/              # 独立脚本，不 import 项目模块
+scripts/              # 独立脚本，不 import 项目模块
 config/                     # 各种配置文件
 tests/                      # 测试文件
 ```
@@ -40,7 +40,7 @@ tests/                      # 测试文件
 - **副本配置适配器**：外观接口 `set_config()` + `ScriptConfig` 类层级，各游戏一个子类。详见 [`src/config/set_config.md`](src/config/set_config.md)。
 - **运行器**：`src/runner/` 逐条执行脚本链，`block` 字段控制阻塞/非阻塞。详见 [`src/runner/README.md`](src/runner/README.md)。
 - **初始化**：首次 `config.yml` 缺失时 `config_workflow()`模板生成。
-- **日志解析**：由独立脚本`python_script/collect_log.py`解析，并由独立脚本`python_script/rerun.py`重新运行脚本。
+- **日志解析**：由独立脚本`scripts/collect_log.py`解析，并由独立脚本`scripts/rerun.py`重新运行脚本。
 
 ## 5. 编码约定（强偏好，违反即打回）
 

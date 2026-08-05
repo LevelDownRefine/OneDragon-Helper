@@ -360,7 +360,7 @@ class TestScriptItemOpenButton(unittest.TestCase):
             {
                 "display_name": "静音",
                 "script_type": "python",
-                "script_path": "C:/proj/src/python_script/mute.py",
+                "script_path": "C:/proj/src/scripts/mute.py",
             }
         )
         fake_cmd = [
@@ -368,7 +368,7 @@ class TestScriptItemOpenButton(unittest.TestCase):
             "-m",
             "src.runner.launcher",
             "--script",
-            "C:/proj/src/python_script/mute.py",
+            "C:/proj/src/scripts/mute.py",
         ]
         with (
             patch(
@@ -376,10 +376,13 @@ class TestScriptItemOpenButton(unittest.TestCase):
                 return_value=(fake_cmd, "C:/root", None),
             ) as bsc,
             patch("src.gui.widgets.subprocess.Popen") as mock_popen,
-            patch("os.path.isfile", return_value=True),
+            patch(
+                "src.gui.widgets.get_script_path",
+                return_value="C:/proj/src/scripts/mute.py",
+            ),
         ):
             item._open_script()
-        bsc.assert_called_once_with(["--script", "C:/proj/src/python_script/mute.py"])
+        bsc.assert_called_once_with(["--script", "C:/proj/src/scripts/mute.py"])
         mock_popen.assert_called_once()
         args, kwargs = mock_popen.call_args
         self.assertEqual(list(args[0]), fake_cmd)
@@ -396,7 +399,10 @@ class TestScriptItemOpenButton(unittest.TestCase):
         )
         with (
             patch("src.gui.widgets.subprocess.Popen") as mock_popen,
-            patch("os.path.isfile", return_value=False),
+            patch(
+                "src.gui.widgets.get_script_path",
+                side_effect=AssertionError("exe 不存在: C:/nope/mute.py"),
+            ),
             patch("src.gui.widgets._styled_msg_box") as mock_box,
         ):
             item._open_script()
@@ -451,15 +457,18 @@ class TestScriptItemOpenConfigButton(unittest.TestCase):
             {
                 "display_name": "静音",
                 "script_type": "python",
-                "script_path": "C:/proj/src/python_script/mute.py",
+                "script_path": "C:/proj/src/scripts/mute.py",
             }
         )
         with (
             patch("os.startfile", create=True) as mock_start,
-            patch("os.path.isfile", return_value=True),
+            patch(
+                "src.gui.widgets.get_script_path",
+                return_value="C:/proj/src/scripts/mute.py",
+            ),
         ):
             item._open_script_config()
-        mock_start.assert_called_once_with("C:/proj/src/python_script/mute.py")
+        mock_start.assert_called_once_with("C:/proj/src/scripts/mute.py")
 
     def test_open_config_python_missing_file_shows_msg(self):
         """python 脚本文件不存在时弹出清晰提示且不调用 startfile"""
@@ -472,7 +481,10 @@ class TestScriptItemOpenConfigButton(unittest.TestCase):
         )
         with (
             patch("os.startfile", create=True) as mock_start,
-            patch("os.path.isfile", return_value=False),
+            patch(
+                "src.gui.widgets.get_script_path",
+                side_effect=AssertionError("exe 不存在: C:/nope/mute.py"),
+            ),
             patch("src.gui.widgets._styled_msg_box") as mock_box,
         ):
             item._open_script_config()
@@ -529,7 +541,7 @@ class TestScriptItemOverflowMenu(unittest.TestCase):
 class TestGetScriptIcon(unittest.TestCase):
     """测试 get_script_icon：external 用 exe 自带图标，其余用默认图标。"""
 
-    def test_python_script_uses_default_icon(self):
+    def test_scripts_uses_default_icon(self):
         """python 脚本无自带图标 → 返回非空的默认图标"""
         icon = get_script_icon(
             {"display_name": "静音", "script_type": "python", "script_path": "x.py"}

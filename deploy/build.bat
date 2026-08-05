@@ -53,13 +53,13 @@ if errorlevel 1 (
 )
 
 echo.
-echo [4/5] 拷贝 config 模板、assets 和 python_script 到 exe 同级目录...
+echo [4/5] 拷贝 config 模板、assets 和 scripts 到 exe 同级目录...
 set "SRC_CONFIG=%~dp0..\config"
 set "SRC_ASSETS=%~dp0..\assets"
-set "SRC_SCRIPTS=%~dp0..\python_script"
+set "SRC_SCRIPTS=%~dp0..\scripts"
 set "DST_CONFIG=%GUI_DIR%\config"
 set "DST_ASSETS=%GUI_DIR%\assets"
-set "DST_SCRIPTS=%GUI_DIR%\python_script"
+set "DST_SCRIPTS=%GUI_DIR%\scripts"
 
 REM 整体拷贝 config（含共享资源：dungeon_list.yml / weekly_timeouts.yml / script_chain / BGI_User 等）
 xcopy /E /I /Y "%SRC_CONFIG%" "%DST_CONFIG%" >nul
@@ -86,10 +86,10 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-REM python_script 是用户脚本，作为松散文件随包发布（不打包进 exe），供 Runner 在运行时加载
+REM scripts 是用户脚本，作为松散文件随包发布（不打包进 exe），供 Runner 在运行时加载
 xcopy /E /I /Y "%SRC_SCRIPTS%" "%DST_SCRIPTS%" >nul
 if errorlevel 1 (
-    echo [ERROR] 拷贝 python_script 失败
+    echo [ERROR] 拷贝 scripts 失败
     pause
     exit /b 1
 )
@@ -115,7 +115,7 @@ echo   - OneDragon-Helper.exe        (GUI 主程序)
 echo   - OneDragon-Helper-Runner.exe  (脚本运行器)
 echo   - config\                      (配置目录)
 echo   - assets\                      (资源目录)
-echo   - python_script\               (用户脚本，松散文件)
+echo   - scripts\               (用户脚本，松散文件)
 echo ============================================
 echo.
 pause

@@ -10,8 +10,8 @@
 独立性约束（重要）：
 - 本文件刻意**不 import 本项目中的任何其他模块**，只负责"收集并打印"当日日志。
 - 为保持独立，本文件自行推导项目根目录，并直接 `yaml.safe_load` 读取 `config.yml`（而非 import）。
-- 目的：可作为独立脚本直接运行`python python_script/collect_log.py`。
-- 失败重跑由同包 `rerun.py` 负责：它调用本文件的 `parse_logs()` 拿到需重跑列表（含 FAILED 与 NO_LOG）后再重跑。
+- 目的：可作为独立脚本直接运行`python scripts/collect_log.py`。
+- 失败重跑由同目录 `rerun.py` 负责：它调用本文件的 `parse_logs()` 拿到需重跑列表（含 FAILED 与 NO_LOG）后再重跑。
 """
 
 import logging
@@ -37,7 +37,7 @@ def log_info(msg, *args, do_log: bool = True) -> None:
 
 
 def _get_root_dir() -> str:
-    """推导项目根目录（向上 2 层：python_script/collect_log.py → 项目根）。"""
+    """推导项目根目录（向上 2 层：scripts/collect_log.py → 项目根）。"""
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
