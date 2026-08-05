@@ -376,10 +376,7 @@ class TestScriptItemOpenButton(unittest.TestCase):
                 return_value=(fake_cmd, "C:/root", None),
             ) as bsc,
             patch("src.gui.widgets.subprocess.Popen") as mock_popen,
-            patch(
-                "src.gui.widgets.get_script_path",
-                return_value="C:/proj/src/scripts/mute.py",
-            ),
+            patch("src.gui.widgets.os.path.isfile", return_value=True),
         ):
             item._open_script()
         bsc.assert_called_once_with(["--script", "C:/proj/src/scripts/mute.py"])
@@ -399,10 +396,7 @@ class TestScriptItemOpenButton(unittest.TestCase):
         )
         with (
             patch("src.gui.widgets.subprocess.Popen") as mock_popen,
-            patch(
-                "src.gui.widgets.get_script_path",
-                side_effect=AssertionError("exe 不存在: C:/nope/mute.py"),
-            ),
+            patch("src.gui.widgets.os.path.isfile", return_value=False),
             patch("src.gui.widgets._styled_msg_box") as mock_box,
         ):
             item._open_script()
@@ -462,10 +456,7 @@ class TestScriptItemOpenConfigButton(unittest.TestCase):
         )
         with (
             patch("os.startfile", create=True) as mock_start,
-            patch(
-                "src.gui.widgets.get_script_path",
-                return_value="C:/proj/src/scripts/mute.py",
-            ),
+            patch("src.gui.widgets.os.path.isfile", return_value=True),
         ):
             item._open_script_config()
         mock_start.assert_called_once_with("C:/proj/src/scripts/mute.py")
@@ -481,10 +472,7 @@ class TestScriptItemOpenConfigButton(unittest.TestCase):
         )
         with (
             patch("os.startfile", create=True) as mock_start,
-            patch(
-                "src.gui.widgets.get_script_path",
-                side_effect=AssertionError("exe 不存在: C:/nope/mute.py"),
-            ),
+            patch("src.gui.widgets.os.path.isfile", return_value=False),
             patch("src.gui.widgets._styled_msg_box") as mock_box,
         ):
             item._open_script_config()

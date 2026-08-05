@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.dungeon_config import get_display_name
-from src.config.subscript import get_config_path, get_script_path
+from src.config.subscript import get_config_path, get_script_path, resolve_script_path
 from src.gui import icons
 from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
@@ -316,9 +316,8 @@ class ScriptItem(QFrame):
     def _open_script(self):
         """打开/运行该脚本：python 用解释器跑，external 解析后 startfile。"""
         if self.script_type == "python":
-            try:
-                resolved = get_script_path(self.display_name)
-            except AssertionError:
+            resolved = resolve_script_path(self.script_path)
+            if not resolved or not os.path.isfile(resolved):
                 _styled_msg_box(
                     self,
                     QMessageBox.Warning,
@@ -348,9 +347,8 @@ class ScriptItem(QFrame):
     def _open_script_config(self):
         """打开脚本配置文件：python 打开 .py 源文件，external 打开内部 config 文本。"""
         if self.script_type == "python":
-            try:
-                resolved = get_script_path(self.display_name)
-            except AssertionError:
+            resolved = resolve_script_path(self.script_path)
+            if not resolved or not os.path.isfile(resolved):
                 _styled_msg_box(
                     self,
                     QMessageBox.Warning,
