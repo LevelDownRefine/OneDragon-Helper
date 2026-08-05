@@ -21,9 +21,7 @@ for _dll in ('ffi-8.dll', 'liblzma.dll', 'libbz2.dll', 'libexpat.dll'):
         _extra_dlls.append((_p, '.'))
 
 # --- 隐式导入：PySide6 + Fluent Widgets + 其他动态加载的包 ---
-hiddenimports = [
-    '_cffi_backend',
-]
+hiddenimports = []
 hiddenimports += collect_submodules('qfluentwidgets')
 hiddenimports += collect_submodules('pynput')
 
