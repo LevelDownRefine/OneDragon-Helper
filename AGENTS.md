@@ -54,7 +54,7 @@ tests/                      # 测试文件
 8. **日志用 `logging` 模块**（`logger = logging.getLogger(__name__)`，入口调 `setup_logging()`），禁止裸 `print`。`collect_log.py` 例外（独立性约束，仅 `basicConfig` 控制台输出）。
 9. GUI 持久化：`gui_state.json` 只存 `dungeon`/`sequence`；`enabled` 纯内存态（重启恢复全开）。
 10. **不随意修改 `.bak` / 备份文件**，需改动时先征得用户同意。
-11. 新增/修改功能后**必须补测试并跑全套**。
+11. 新增/修改功能后**必须补测试并跑全套**。尤其是动了共享接口 / 多模块 / 做了重构的**大改动**，必须用与 CI 一致的命令跑**全量** `unittest discover`，不能只跑改动相关的几个文件：`PYTHONPATH=src python -m unittest discover -s tests -p "test*.py"`（`PYTHONPATH=src` 不可省，否则 `test_bgi`/`test_utils` 顶层导入会误报 import 错）。
 12. **避免使用try-except**，仅在必要时捕获异常。尽可能改用if判断。
 
 ## 6. 测试与开发工作流
