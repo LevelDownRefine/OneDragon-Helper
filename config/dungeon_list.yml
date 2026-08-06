@@ -120,7 +120,15 @@
 终末地:
   dungeons:
     - name: "未选择"
+    - name: "枢纽区"
+    - name: "源石研究园"
+    - name: "试验园区"
+    - name: "矿脉源区"
+    - name: "供能高地"
     - name: "武陵城"
+    - name: "清波寨"
+    - name: "首墩"
+    - name: "藏剑谷"
     - name: "干员经验"
     - name: "干员进阶"
     - name: "钱币收集"
