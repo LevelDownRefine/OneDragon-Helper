@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import yaml
 
-from config import bgi
+from src.config import bgi
 
 
 class TestCopyBettergiConfig(unittest.TestCase):
@@ -62,8 +62,8 @@ class TestCopyBettergiConfig(unittest.TestCase):
         res = bgi.get_BGI_user_dir()
         self.assertIsNone(res)
 
-    @patch("config.bgi.get_our_bgi_user_dir")
-    @patch("config.bgi.get_BGI_user_dir")
+    @patch("src.config.bgi.get_our_bgi_user_dir")
+    @patch("src.config.bgi.get_BGI_user_dir")
     def test_copy_BGI_User(self, mock_get_bgi, mock_get_our_bgi):
         target_dir = os.path.join(self.temp_dir.name, "TargetBGI", "User")
 
@@ -80,7 +80,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
         with open(os.path.join(target_dir, "test_file.json")) as f:
             self.assertEqual(f.read(), '{"test": true}')
 
-    @patch("config.bgi.get_BGI_user_dir")
+    @patch("src.config.bgi.get_BGI_user_dir")
     @patch("shutil.copytree")
     def test_copy_BGI_User_none(self, mock_copytree, mock_get_bgi):
         mock_get_bgi.return_value = None

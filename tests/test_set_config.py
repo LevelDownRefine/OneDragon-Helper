@@ -428,11 +428,12 @@ class TestConfirmSave(unittest.TestCase):
         self.assertFalse(config._confirm_save())
         self.assertFalse(config.enabled)
 
-        with patch.object(
-            type(config), "_verify_saved", side_effect=AssertionError("不应落盘")
-        ) as mock_verify, patch(
-            "src.config.set_config.save_config"
-        ) as mock_save:
+        with (
+            patch.object(
+                type(config), "_verify_saved", side_effect=AssertionError("不应落盘")
+            ) as mock_verify,
+            patch("src.config.set_config.save_config") as mock_save,
+        ):
             config._save({})
         mock_save.assert_not_called()
         mock_verify.assert_not_called()

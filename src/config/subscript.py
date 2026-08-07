@@ -16,6 +16,9 @@ from src.utils import (
     safe_path_join,
 )
 
+DEFAULT_RUN_TIMEOUT = 3600
+"""脚本运行默认超时秒数。当 weekly_timeouts.yml 无条目或不足 7 格时作为 fallback。"""
+
 # ============================================================
 # 各脚本 config 相对路径映射
 # ============================================================
@@ -182,6 +185,40 @@ def _is_absolute_path(p: str) -> bool:
     if re.match(r"^[A-Za-z]:[\\/]", p):
         return True
     return p.startswith("\\\\") or p.startswith("//")
+
+
+def default_script_entry(display_name, script_type, script_path, script_arguments=""):
+    """构造一个 config.yml script_list 条目：核心字段由参数指定，其余用默认值补全。
+
+    Args:
+        display_name: 脚本显示名。
+        script_type: 脚本类型（python / external）。
+        script_path: 脚本路径。
+        script_arguments: 启动参数，默认空。
+
+    Returns:
+        完整的 script_list 条目 dict（含全部默认字段）。
+    """
+    return {
+        "display_name": display_name,
+        "game_label": "",
+        "script_type": script_type,
+        "script_path": script_path,
+        "script_process_name": [],
+        "game_process_name": "",
+        "launcher_mode": False,
+        "check_done": "script_closed",
+        "kill_script_after_done": True,
+        "kill_game_after_done": False,
+        "script_arguments": script_arguments,
+        "notify_start": False,
+        "notify_done": False,
+        "notify_log_interval": 0,
+        "attach_direction": "",
+        "no_log_timeout_seconds": 0,
+        "no_log_max_retries": 3,
+        "block": True,
+    }
 
 
 def generate_config_from_example() -> None:

@@ -22,10 +22,14 @@ from PySide6.QtWidgets import (
 from src.config.dungeon_config import get_display_name
 from src.config.subscript import get_config_path, get_script_path, resolve_script_path
 from src.gui import icons
-from src.gui.controls import make_icon_button, make_secondary_button
 from src.gui.dialogs import SingleScriptConfigDialog
-from src.gui.runner import build_script_command
-from src.gui.utils import _safe_startfile, _styled_msg_box
+from src.gui.utils import (
+    _styled_msg_box,
+    make_icon_button,
+    make_secondary_button,
+    safe_startfile,
+)
+from src.utils_runner import build_script_command
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +124,7 @@ class ScriptItem(QFrame):
         reorder_callback=None,
         delete_callback=None,
         config_saved_callback=None,
+        script_service=None,
     ):
         super().__init__()
         assert "display_name" in script_data, "[widgets] 脚本配置缺少 display_name 字段"
@@ -138,6 +143,9 @@ class ScriptItem(QFrame):
         self._delete_callback = delete_callback  # 删除回调，由 MainWindow 注入
         self._config_saved_callback = (
             config_saved_callback  # 配置弹窗保存成功回调，由 MainWindow 注入
+        )
+        self._script_service = (
+            script_service  # 配置弹窗共享的 ScriptService（None 时弹窗自建）
         )
         self._drag_start_pos = None  # 拖拽起点（仅在手柄上按下时记录）
         self._sequence_options_map = sequence_options_map or {}  # 副本名 → 二级选项列表
@@ -264,7 +272,12 @@ class ScriptItem(QFrame):
         若用户在弹窗内改了脚本名称，先把本卡片的内存名与标题刷新为新名，
         再回调新名，使 MainWindow 能按新名定位卡片并同步。
         """
-        dialog = SingleScriptConfigDialog(self.display_name, self.script_path, self)
+        dialog = SingleScriptConfigDialog(
+            self.display_name,
+            self.script_path,
+            self,
+            script_service=self._script_service,
+        )
         if dialog.exec() == QDialog.Accepted and self._config_saved_callback:
             new_name = dialog.saved_display_name
             if new_name != self.display_name:
@@ -342,7 +355,7 @@ class ScriptItem(QFrame):
                 self, QMessageBox.Warning, "提示", f"无法打开脚本：\n{e}"
             ).exec()
             return
-        _safe_startfile(self, exe_path, "无法打开脚本")
+        safe_startfile(self, exe_path, "无法打开脚本")
 
     def _open_script_config(self):
         """打开脚本配置文件：python 打开 .py 源文件，external 打开内部 config 文本。"""
@@ -356,7 +369,7 @@ class ScriptItem(QFrame):
                     f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}",
                 ).exec()
                 return
-            _safe_startfile(self, resolved, "无法打开脚本文件")
+            safe_startfile(self, resolved, "无法打开脚本文件")
             return
 
         # external 脚本：解析并打开内部 config 文件
@@ -370,7 +383,7 @@ class ScriptItem(QFrame):
                 f"该脚本暂未适配配置文件，无法打开：\n{e}",
             ).exec()
             return
-        _safe_startfile(self, config_path, "无法打开配置文件")
+        safe_startfile(self, config_path, "无法打开配置文件")
 
     def _show_dungeon_menu(self):
         """点击副本按钮，弹出级联菜单"""

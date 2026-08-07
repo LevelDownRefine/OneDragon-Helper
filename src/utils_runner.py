@@ -1,24 +1,31 @@
-"""Runner 配置校验工具（GUI 侧复刻 runner 的 ScriptConfig.invalid_message）。
+"""Runner 相关纯工具（无 Qt 依赖）。
 
-校验逻辑对齐 ``src/runner/script_chainer/config/script_config.py`` 的
-``ScriptConfig.invalid_message``，但基于 config.yml 的 dict 条目（GUI 侧数据形态），
-路径解析复用 ``resolve_script_path``（相对路径按项目根解析）。
+- 配置校验：复刻 runner ``ScriptConfig.invalid_message``，基于 config.yml 的 dict 条目；
+- 命令构造与运行：构造 Runner 启动命令（frozen / 开发态统一处理）并运行脚本链子进程。
 
-注意：本模块与 runner 侧是两份独立实现，**改动校验规则时必须同步 runner 的
-``ScriptConfig.invalid_message``**（反之亦然），避免两处规则漂移。
-
-供 GUI 运行前（``MainWindow._run_selected``）校验使用，提前暴露
-「脚本配置不合法 跳过运行」类问题，避免脚本链跑完才发现某脚本被
-runner 静默跳过（如自动关机未执行）。
+合并自 ``src.config.utils_runner`` 与 ``src.service.runner_cmds``：两者都是 runner 相关、
+无 Qt 的纯逻辑，被 GUI 与 service 多处直接引用，收拢到 src 顶层便于共用。
 """
 
+import ctypes
+import logging
 import os
+import subprocess
 import sys
+import time
 from pathlib import PureWindowsPath
 
 from src.config.subscript import resolve_script_path
+from src.utils import get_root_dir
+
+logger = logging.getLogger(__name__)
 
 _CHECK_DONE_VALUES = {"game_closed", "script_closed", "game_or_script_closed"}
+
+
+# ---------------------------------------------------------------------------
+# 配置校验（对齐 runner ScriptConfig.invalid_message，GUI 侧 dict 数据形态）
+# ---------------------------------------------------------------------------
 
 
 def _normalize_process_name(name: str) -> str:
@@ -106,9 +113,7 @@ def script_invalid_message(script: dict) -> str | None:
     ) and not game_process_name:
         return "游戏进程名称为空"
 
-    script_process_names = _normalize_process_names(
-        script.get("script_process_name")
-    )
+    script_process_names = _normalize_process_names(script.get("script_process_name"))
     if (
         script.get("launcher_mode", False)
         and (
@@ -137,6 +142,12 @@ def collect_invalid_script_messages(script_list: list[dict]) -> list[tuple[str, 
     """遍历脚本列表，返回 ``[(display_name, invalid_message), ...]``（仅不合法项）。
 
     供 GUI 运行前与 CLI 生成前校验使用；合法脚本不出现在结果里。
+
+    Args:
+        script_list: 脚本配置条目列表。
+
+    Returns:
+        (display_name, invalid_message) 列表，仅含不合法项。
     """
     result: list[tuple[str, str]] = []
     for script in script_list:
@@ -144,3 +155,83 @@ def collect_invalid_script_messages(script_list: list[dict]) -> list[tuple[str, 
         if message is not None:
             result.append((script.get("display_name") or "(未命名)", message))
     return result
+
+
+# ---------------------------------------------------------------------------
+# 命令构造与运行（frozen / 开发态统一处理）
+# ---------------------------------------------------------------------------
+
+
+def _to_signed_32(code: int) -> int:
+    """将退出码转补码有符号 32 位整数。"""
+    return ctypes.c_int32(code & 0xFFFFFFFF).value
+
+
+def build_script_command(extra_args: list[str]) -> tuple[list[str], str, dict | None]:
+    """构造 Runner 启动命令（frozen / 开发态统一处理）。
+
+    Args:
+        extra_args: 追加在 runner 命令后的参数（如 ``["--chain", path]``）。
+
+    Returns:
+        (命令列表, 工作目录, 环境变量)。冻结态调用同目录 Runner exe；
+        开发态用 ``python -m src.runner.launcher`` 并注入 ``PYTHONPATH``。
+    """
+    if getattr(sys, "frozen", False):
+        runner_exe = os.path.join(
+            os.path.dirname(sys.executable), "OneDragon-Helper-Runner.exe"
+        )
+        return [runner_exe, *extra_args], os.path.dirname(sys.executable), None
+
+    cwd = get_root_dir()
+    runner_pkg_dir = os.path.join(cwd, "src", "runner")
+    existing_pp = os.environ.get("PYTHONPATH", "")
+    env = {
+        **os.environ,
+        "PYTHONPATH": runner_pkg_dir
+        + (os.pathsep + existing_pp if existing_pp else ""),
+    }
+    command = [sys.executable, "-m", "src.runner.launcher", *extra_args]
+    return command, cwd, env
+
+
+def build_chain_command(
+    chain_config_path: str, extra_args: list[str] | None = None
+) -> tuple[list[str], str, dict | None]:
+    """构造脚本链启动命令（``--chain <path>``）。
+
+    Args:
+        chain_config_path: 脚本链配置文件路径。
+        extra_args: 透传给 runner 的额外参数（如 ``["--shutdown", "60"]``）。
+
+    Returns:
+        (命令列表, 工作目录, 环境变量)。
+    """
+    return build_script_command(["--chain", chain_config_path] + (extra_args or []))
+
+
+def run_chain_command(
+    chain_config_path: str, block: bool = True, extra_args: list[str] | None = None
+) -> int:
+    """运行一条脚本链。
+
+    Args:
+        chain_config_path: 脚本链配置文件路径。
+        block: True 等待子进程结束并返回退出码；False 用 Popen 即起即返。
+        extra_args: 透传给 runner 的额外参数（如 ``["--shutdown", "60"]``）。
+
+    Returns:
+        退出码（有符号 32 位）；block=False 时返回 0 表示已启动。
+    """
+    command, cwd, env = build_chain_command(chain_config_path, extra_args)
+    logger.info(
+        "[runner] 运行脚本链: %s (cwd=%s, block=%s)", " ".join(command), cwd, block
+    )
+    if block:
+        res = subprocess.run(command, cwd=cwd, env=env)
+        return _to_signed_32(res.returncode)
+    subprocess.Popen(
+        command, cwd=cwd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    time.sleep(10)
+    return 0

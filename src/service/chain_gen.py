@@ -1,16 +1,18 @@
-"""脚本链配置生成（纯逻辑，GUI 与 CLI 共用）。
+"""脚本链配置生成（纯逻辑，无 Qt 依赖）。
 
 复刻 ``MainWindow._generate_config`` 的核心，但去掉 QWidget 依赖：
 - 启用脚本集合由调用方以 ``enabled_names`` 传入；
 - 副本/序列选择从 ``gui_state.json``（UI 状态）读取，并按 dungeon_list 选项校验，
   与 ``ScriptItem.__init__`` 构造时的取数逻辑一致。
 
-脚本配置合法性校验（对齐 runner invalid_message）见 ``src.config.runner_utils``。
+脚本配置合法性校验（对齐 runner invalid_message）见 ``src.utils_runner``。
+自 ``src.gui.chain`` 迁出：不依赖 Qt，收编到 service 层便于无头测试与 GUI/CLI 共用。
 """
 
 import copy
 import logging
 import os
+from datetime import datetime, timedelta
 from typing import Any
 
 import yaml
@@ -21,7 +23,7 @@ from src.config.dungeon_config import (
     restore_sequence_type,
 )
 from src.config.set_config import set_config
-from src.gui.utils import apply_weekly_timeout
+from src.config.subscript import DEFAULT_RUN_TIMEOUT
 from src.utils import (
     get_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
@@ -31,16 +33,43 @@ from src.utils import (
 logger = logging.getLogger(__name__)
 
 
+def _get_week_num() -> int:
+    """返回星期数字：0周一 ~ 6周日（凌晨 4 点为界，4 点前归前一天）。"""
+    return (datetime.now() - timedelta(hours=4)).weekday()
+
+
+def _apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
+    """根据 weekly_timeouts.yml 就地设置 script['run_timeout_seconds']。
+
+    - 有完整 7 格 → 取当天值，且不低于 10（避免 0 秒杀脚本）。
+    - 无条目 / 不足 7 格 → fallback 到 DEFAULT_RUN_TIMEOUT。
+    """
+    assert "display_name" in script, (
+        "[chain_gen] script_list 条目缺少 display_name 字段"
+    )
+    timeouts = weekly_timeouts.get(script["display_name"])
+    if timeouts and len(timeouts) == 7:
+        script["run_timeout_seconds"] = max(timeouts[_get_week_num()], 10)
+    else:
+        script["run_timeout_seconds"] = DEFAULT_RUN_TIMEOUT
+
+
 def _collect_enabled_selections(
     all_config_data: dict,
     enabled_names: set[str],
     ui_state: dict,
     dungeon_map: dict,
 ) -> tuple[dict[str, str], dict[str, Any]]:
-    """返回 ``(enabled_dungeons, enabled_sequences)``。
+    """收集启用脚本的副本/序列选择。
 
-    取数逻辑对齐 ``ScriptItem.__init__``：副本来自 ``gui_state.json`` 的 saved_state，
-    且必须落在 ``parse_dungeon_config`` 给出的 dungeon 选项内才生效。
+    Args:
+        all_config_data: config.yml 完整数据（含 script_list）。
+        enabled_names: 要纳入链的脚本 display_name 集合。
+        ui_state: gui_state.json 的 UI 状态（副本/序列选择）。
+        dungeon_map: dungeon_list.yml 的副本配置映射。
+
+    Returns:
+        (enabled_dungeons, enabled_sequences)，仅含在 dungeon 选项内的选择。
     """
     enabled_dungeons: dict[str, str] = {}
     enabled_sequences: dict[str, Any] = {}
@@ -67,11 +96,17 @@ def generate_chain_config(
     ui_state: dict | None = None,
     out_path: str | None = None,
 ) -> str:
-    """生成 ScriptChainer 配置文件（仅含启用的脚本），返回输出路径。
+    """生成 ScriptChainer 配置文件（仅含启用的脚本）。
 
-    对齐 ``MainWindow._generate_config``：按当天星期套超时、把副本/序列下发到各脚本
-    内部 config（``set_config``），写出链 yml。``out_path`` 指定则写该路径，否则默认
-    ``config/script_chain/<chain_name>.yml``。
+    Args:
+        all_config_data: config.yml 完整数据（含 script_list）。
+        enabled_names: 要纳入链的脚本 display_name 集合。
+        chain_name: 链配置文件名（不含扩展名）。
+        ui_state: gui_state.json 的 UI 状态（副本/序列选择）。
+        out_path: 输出路径；None 时默认 config/script_chain/<chain_name>.yml。
+
+    Returns:
+        输出文件路径。
     """
     ui_state = ui_state or {}
     dungeon_map = load_dungeon_map()
@@ -91,7 +126,7 @@ def generate_chain_config(
     for script in data["script_list"]:
         name = script["display_name"]
         if name in enabled_names:
-            apply_weekly_timeout(script, weekly_timeouts)
+            _apply_weekly_timeout(script, weekly_timeouts)
             set_config(
                 name,
                 dungeon_name=enabled_dungeons.get(name),

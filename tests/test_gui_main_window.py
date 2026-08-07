@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QDialog
 
-from src.gui.dialogs import default_script_entry
+from src.config.subscript import default_script_entry
 from src.gui.main_window import MainWindow, QMessageBox
 from src.gui.widgets import ScriptItem
 
@@ -25,7 +25,7 @@ def _make_window(script_count=3, disable_persist=False):
     """构造测试用 MainWindow：跳过真实 _load_scripts（涉及文件 I/O），手动注入状态。
 
     disable_persist=True 时把写回 config.yml / gui_state.json 的方法换成 no-op，
-    防止测试桩数据污染真实配置文件。
+    防止测试桩数据污染真实配置文件。script_service 注入 mock，隔离 weekly_timeouts 副作用。
     """
     with patch.object(MainWindow, "_load_scripts", lambda self: None):
         win = MainWindow()
@@ -40,6 +40,7 @@ def _make_window(script_count=3, disable_persist=False):
             for i in range(script_count)
         ]
     }
+    win._script_service = MagicMock()  # 隔离 ScriptService 文件读写副作用
     if disable_persist:
         win._save_script_order = lambda: None
         win._persist_ui_state = lambda: None
@@ -190,7 +191,7 @@ class TestAddScript(unittest.TestCase):
 
 
 class TestOpenConfigYml(unittest.TestCase):
-    """测试 MainWindow「打开配置」按钮：用 _safe_startfile 打开 get_config_yml_path_under_root 返回的路径"""
+    """测试 MainWindow「打开配置」按钮：用 safe_startfile 打开 get_config_yml_path_under_root 返回的路径"""
 
     def test_open_config_btn_exists_and_wired(self):
         """存在「打开配置」按钮，且点击触发 _open_config_yml"""
@@ -203,11 +204,11 @@ class TestOpenConfigYml(unittest.TestCase):
         win.open_config_btn.click()
         self.assertEqual(captured, [True])
 
-    def test_open_config_yml_calls_safe_startfile_with_path(self):
-        """调用 _safe_startfile，传入 config.yml 路径与统一失败文案"""
+    def test_open_config_yml_callssafe_startfile_with_path(self):
+        """调用 safe_startfile，传入 config.yml 路径与统一失败文案"""
         win = _make_window(disable_persist=True)
         with (
-            patch("src.gui.main_window._safe_startfile") as mock_start,
+            patch("src.gui.main_window.safe_startfile") as mock_start,
             patch(
                 "src.gui.main_window.get_config_yml_path_under_root",
                 return_value="CONFIG.yml",
@@ -232,10 +233,7 @@ class TestRunSelected(unittest.TestCase):
             patch(
                 "src.gui.main_window.QMessageBox.question", return_value=QMessageBox.Yes
             ),
-            patch(
-                "src.gui.main_window.collect_invalid_script_messages",
-                return_value=[],
-            ),
+            patch.object(win.service, "collect_invalid_scripts", return_value=[]),
             patch.object(
                 win, "_generate_config", return_value="config/script_chain/01.yml"
             ),
@@ -265,9 +263,8 @@ class TestRunSelected(unittest.TestCase):
             ("脚本1", "游戏进程名称为空"),
         ]
         with (
-            patch(
-                "src.gui.main_window.collect_invalid_script_messages",
-                return_value=invalid,
+            patch.object(
+                win.service, "collect_invalid_scripts", return_value=invalid
             ) as mock_collect,
             patch(
                 "src.gui.main_window.QMessageBox.warning", return_value=QMessageBox.No
@@ -286,10 +283,7 @@ class TestRunSelected(unittest.TestCase):
         win = _make_window(disable_persist=True)
         invalid = [("脚本0", "脚本路径为空")]
         with (
-            patch(
-                "src.gui.main_window.collect_invalid_script_messages",
-                return_value=invalid,
-            ),
+            patch.object(win.service, "collect_invalid_scripts", return_value=invalid),
             patch(
                 "src.gui.main_window.QMessageBox.warning", return_value=QMessageBox.Yes
             ),
@@ -343,6 +337,11 @@ class TestRunSelected(unittest.TestCase):
     def test_add_script_confirm_appends(self):
         """文件选择确认后自动以文件名作为显示名称追加脚本"""
         win = _make_window(script_count=2, disable_persist=True)
+        win._script_service.build_script_entry.return_value = {
+            "display_name": "y",
+            "script_type": "external",
+            "script_path": "C:/y.exe",
+        }
         with patch(
             "src.gui.main_window.QFileDialog.getOpenFileName",
             return_value=("C:/y.exe", ""),

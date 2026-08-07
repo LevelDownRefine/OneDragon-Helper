@@ -2,7 +2,6 @@
 
 import os
 
-import yaml
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
@@ -19,12 +18,9 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.set_config import ScriptConfig
-from src.gui.controls import make_secondary_button
-from src.gui.utils import DEFAULT_RUN_TIMEOUT
-from src.utils import (
-    get_weekly_timeouts_yml_path_under_root,
-    require_config_yml_path,
-)
+from src.config.subscript import default_script_entry
+from src.gui.utils import make_secondary_button
+from src.service.script_service import ScriptService
 
 # 脚本文件选择过滤器（两个弹窗共用）
 SCRIPT_FILE_FILTER = (
@@ -58,53 +54,12 @@ def _browse_script_file(parent, line_edit):
         line_edit.setText(os.path.normpath(file_path))
 
 
-def default_script_entry(display_name, script_type, script_path, script_arguments=""):
-    """构造一个 config.yml script_list 条目：核心字段由参数指定，其余用默认值补全。"""
-    return {
-        "display_name": display_name,
-        "game_label": "",
-        "script_type": script_type,
-        "script_path": script_path,
-        "script_process_name": [],
-        "game_process_name": "",
-        "launcher_mode": False,
-        "check_done": "script_closed",
-        "kill_script_after_done": True,
-        "kill_game_after_done": False,
-        "script_arguments": script_arguments,
-        "notify_start": False,
-        "notify_done": False,
-        "notify_log_interval": 0,
-        "attach_direction": "",
-        "no_log_timeout_seconds": 0,
-        "no_log_max_retries": 3,
-        "block": True,
-    }
-
-
-def compute_weekly_timeout_inputs(
-    script_name: str, weekly_timeouts_map: dict, default_timeout: int
-) -> list[int]:
-    """计算周超时弹窗 7 个输入框的初始值（纯函数，便于测试）。
-
-    - weekly_timeouts.yml 中已有该脚本条目：用其 7 个值（不足 7 格用 default_timeout 补齐）。
-    - 无条目：用 default_timeout 填满 7 格。default_timeout 一般取 config.yml 中该脚本的
-      run_timeout_seconds，避免首次打开弹窗时 7 格全 0、保存后把 weekly_timeouts 污染成全 0
-      （该问题曾多次出现）。
-    """
-    entry = weekly_timeouts_map.get(script_name)
-    timeouts = list(entry) if entry else [default_timeout] * 7
-    if len(timeouts) < 7:
-        timeouts.extend([default_timeout] * (7 - len(timeouts)))
-    return timeouts[:7]
-
-
 class SingleScriptConfigDialog(QDialog):
     """单个脚本的配置弹窗（路径选择 + 每周超时时间）"""
 
     LABEL_WIDTH = 80
 
-    def __init__(self, script_name, script_path="", parent=None):
+    def __init__(self, script_name, script_path="", parent=None, script_service=None):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {script_name}")
         self.resize(720, 420)
@@ -114,6 +69,7 @@ class SingleScriptConfigDialog(QDialog):
         self.script_path = script_path
         self.saved_display_name = script_name  # 保存后最终生效的名称（可能被改名）
         self._script_data = {}  # 从 config.yml 读到的本脚本完整数据
+        self._script_service = script_service or ScriptService()
 
         self.init_ui()
         self.load_data()
@@ -356,13 +312,8 @@ class SingleScriptConfigDialog(QDialog):
         config.yml 缺失属内部错误（对话框只在 config.yml 已加载的前提下打开），
         必须存在，故用 assert 表达不该发生；脚本不在表中才返回空 dict。
         """
-        config_path = require_config_yml_path()
-        with open(config_path, encoding="utf-8") as f:
-            config_data = yaml.safe_load(f) or {}
-        for script in config_data.get("script_list", []):
-            if script.get("display_name") == self.script_name:
-                return script
-        return {}
+        script = self._script_service.get_script(self.script_name)
+        return script if script is not None else {}
 
     def load_data(self):
         self._script_data = self._find_script_data()
@@ -390,14 +341,7 @@ class SingleScriptConfigDialog(QDialog):
         self.block_cb.setChecked(self._script_data.get("block", True))
 
         # 每周超时
-        weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
-        weekly_timeouts_map = {}
-        if os.path.exists(weekly_timeouts_path):
-            with open(weekly_timeouts_path, encoding="utf-8") as f:
-                weekly_timeouts_map = yaml.safe_load(f) or {}
-        timeouts = compute_weekly_timeout_inputs(
-            self.script_name, weekly_timeouts_map, DEFAULT_RUN_TIMEOUT
-        )
+        timeouts = self._script_service.weekly_inputs(self.script_name)
         for idx, le in enumerate(self.timeout_inputs):
             le.setText(str(timeouts[idx]))
 
@@ -410,21 +354,17 @@ class SingleScriptConfigDialog(QDialog):
             QMessageBox.warning(self, "警告", "脚本路径为空，可能会导致运行问题！")
             return
 
-        config_path = require_config_yml_path()
-        with open(config_path, encoding="utf-8") as f:
-            config_data = yaml.safe_load(f) or {}
-
         # 脚本名称：非空 + 不与其它脚本重名（允许与自身相同，即不改名）
         new_name = self.name_input.text().strip()
         if not new_name:
             QMessageBox.warning(self, "警告", "脚本名称不能为空！")
             return
-        for s in config_data.get("script_list", []):
-            if s.get("display_name") == new_name and new_name != self.script_name:
-                QMessageBox.warning(
-                    self, "警告", f"已存在同名脚本「{new_name}」，请换一个名称。"
-                )
-                return
+        existing = self._script_service.get_script(new_name)
+        if existing is not None and new_name != self.script_name:
+            QMessageBox.warning(
+                self, "警告", f"已存在同名脚本「{new_name}」，请换一个名称。"
+            )
+            return
 
         # 若勾选了关闭游戏但未填写进程名，给出提示但不阻断（与 ScriptChainer 行为一致）
         if self.kill_game_cb.isChecked() and not self.game_process_input.text().strip():
@@ -434,44 +374,27 @@ class SingleScriptConfigDialog(QDialog):
                 "勾选了「运行结束后关闭游戏」但未填写游戏进程名，\nScriptChainer 运行时会报「游戏进程名称为空」而跳过该脚本。",
             )
 
+        # 空输入传 None，由 ScriptService.update_script 转为默认超时并 clamp
         timeouts = []
         for le in self.timeout_inputs:
             text = le.text().strip()
-            val = int(text) if text else DEFAULT_RUN_TIMEOUT
-            timeouts.append(max(val, 10))
+            timeouts.append(int(text) if text else None)
 
-        renamed = new_name != self.script_name
-        for script in config_data.get("script_list", []):
-            if script.get("display_name") == self.script_name:
-                script["script_path"] = path_val
-                script["script_type"] = self.type_combo.currentText()
-                script["script_arguments"] = self.args_input.text().strip()
-                script["check_done"] = self.check_done_combo.currentText()
-                script["kill_script_after_done"] = self.kill_script_cb.isChecked()
-                script["kill_game_after_done"] = self.kill_game_cb.isChecked()
-                script["game_process_name"] = self.game_process_input.text().strip()
-                script["block"] = self.block_cb.isChecked()
-                if renamed:
-                    script["display_name"] = new_name
-                break
-
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config_data, f, allow_unicode=True, sort_keys=False)
-
-        weekly_timeouts_path = get_weekly_timeouts_yml_path_under_root()
-        weekly_timeouts_map = {}
-        if os.path.exists(weekly_timeouts_path):
-            with open(weekly_timeouts_path, encoding="utf-8") as f:
-                weekly_timeouts_map = yaml.safe_load(f) or {}
-        # 改名时把每周超时配置从旧名 key 迁移到新名，避免旧 key 残留、新名找不到
-        if renamed:
-            old_val = weekly_timeouts_map.pop(self.script_name, None)
-            if old_val is not None:
-                weekly_timeouts_map[new_name] = old_val
-        weekly_timeouts_map[new_name] = timeouts
-
-        with open(weekly_timeouts_path, "w", encoding="utf-8") as f:
-            yaml.dump(weekly_timeouts_map, f, allow_unicode=True, sort_keys=False)
+        self._script_service.update_script(
+            self.script_name,
+            new_name,
+            {
+                "script_path": path_val,
+                "script_type": self.type_combo.currentText(),
+                "script_arguments": self.args_input.text().strip(),
+                "check_done": self.check_done_combo.currentText(),
+                "kill_script_after_done": self.kill_script_cb.isChecked(),
+                "kill_game_after_done": self.kill_game_cb.isChecked(),
+                "game_process_name": self.game_process_input.text().strip(),
+                "block": self.block_cb.isChecked(),
+            },
+            weekly_timeouts=timeouts,
+        )
 
         self.saved_display_name = new_name
         QMessageBox.information(self, "成功", "配置已保存！")
