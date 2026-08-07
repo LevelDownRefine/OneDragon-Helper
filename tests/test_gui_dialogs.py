@@ -10,17 +10,66 @@ import yaml
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from src.gui.dialogs import (
     AddScriptDialog,
     SingleScriptConfigDialog,
     compute_weekly_timeout_inputs,
     default_script_entry,
+    inject_config_confirm,
 )
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
+
+
+class TestInjectConfigConfirm(unittest.TestCase):
+    """测试 inject_config_confirm：把 GUI 确认弹窗注入 config 层回调"""
+
+    def setUp(self):
+        from src.config.set_config import ScriptConfig
+
+        self.original = ScriptConfig.confirm_before_save
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        from src.config.set_config import ScriptConfig
+
+        ScriptConfig.confirm_before_save = self.original
+
+    def test_inject_sets_callback(self):
+        """注入后 ScriptConfig.confirm_before_save 指向 GUI 弹窗回调"""
+        from src.config.set_config import ScriptConfig
+
+        inject_config_confirm()
+        callback = ScriptConfig.confirm_before_save
+        self.assertIsNotNone(callback)
+        # 回调是可调用函数且签名只收 display_name（描述符绑定回归防护）
+        with patch("src.gui.dialogs.QMessageBox") as mock_box:
+            mock_box.Yes = QMessageBox.Yes
+            instance = mock_box.return_value
+            instance.exec.return_value = None
+            instance.result.return_value = QMessageBox.Yes
+            result = callback("测试脚本")
+        self.assertTrue(result)
+        self.assertEqual(
+            instance.setText.call_args[0][0],
+            "「测试脚本」的配置文件与模板不一致，是否更新并保存？",
+        )
+
+    def test_inject_callback_returns_false_on_no(self):
+        """用户点 No 时回调返回 False（对应 config 层 enabled 置 False）"""
+        from src.config.set_config import ScriptConfig
+
+        inject_config_confirm()
+        callback = ScriptConfig.confirm_before_save
+        with patch("src.gui.dialogs.QMessageBox") as mock_box:
+            mock_box.No = QMessageBox.No
+            instance = mock_box.return_value
+            instance.exec.return_value = None
+            instance.result.return_value = QMessageBox.No
+            self.assertFalse(callback("测试脚本"))
 
 
 class TestDefaultScriptEntry(unittest.TestCase):

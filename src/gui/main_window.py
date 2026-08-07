@@ -23,6 +23,7 @@ from src.config.dungeon_config import (
     parse_dungeon_config,
     restore_sequence_type,
 )
+from src.config.runner_utils import collect_invalid_script_messages
 from src.gui.chain import generate_chain_config
 from src.gui.controls import make_pill_button
 from src.gui.dialogs import default_script_entry
@@ -389,10 +390,40 @@ class MainWindow(QMainWindow):
             self.all_config_data, enabled_names, chain_name, self._ui_state
         )
 
+    def _warn_if_invalid_scripts(self) -> bool:
+        """运行前校验启用脚本配置合法性；有非法项时弹窗询问是否仍运行。
+
+        返回 True 表示继续运行，False 表示用户取消。
+        提前暴露「脚本配置不合法 跳过运行」类问题，避免脚本链跑完才发现
+        某脚本被 runner 静默跳过（如自动关机未执行）。
+        校验规则对齐 runner ``ScriptConfig.invalid_message``（见 src.config.runner_utils）。
+        """
+        enabled_names = {i.display_name for i in self.script_items if i.enabled}
+        enabled_scripts = [
+            s
+            for s in self.all_config_data["script_list"]
+            if s.get("display_name") in enabled_names
+        ]
+        invalid = collect_invalid_script_messages(enabled_scripts)
+        if not invalid:
+            return True
+        details = "\n".join(f"· {name}：{msg}" for name, msg in invalid)
+        reply = QMessageBox.warning(
+            self,
+            "脚本配置不合法",
+            f"以下脚本配置不合法，运行时会被跳过：\n{details}\n\n是否仍然运行？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return reply == QMessageBox.Yes
+
     def _run_selected(self):
         enabled_count = sum(1 for i in self.script_items if i.enabled)
         if enabled_count == 0:
             QMessageBox.warning(self, "提示", "请至少开启一个脚本")
+            return
+
+        if not self._warn_if_invalid_scripts():
             return
 
         reply = QMessageBox.question(

@@ -232,6 +232,10 @@ class TestRunSelected(unittest.TestCase):
             patch(
                 "src.gui.main_window.QMessageBox.question", return_value=QMessageBox.Yes
             ),
+            patch(
+                "src.gui.main_window.collect_invalid_script_messages",
+                return_value=[],
+            ),
             patch.object(
                 win, "_generate_config", return_value="config/script_chain/01.yml"
             ),
@@ -246,6 +250,59 @@ class TestRunSelected(unittest.TestCase):
         captured = self._capture_runner_args(win)
         self.assertEqual(captured["args"], ("config/script_chain/01.yml",))
         self.assertNotIn("block", captured["kwargs"])
+
+    def test_invalid_config_warns_and_can_cancel(self):
+        """启用脚本配置不合法时弹窗列出明细；点 No 则不运行。"""
+        win = _make_window(disable_persist=True)
+        win.all_config_data = {
+            "script_list": [
+                {"display_name": "脚本0", "script_type": "external"},
+                {"display_name": "脚本1", "script_type": "external"},
+            ]
+        }
+        invalid = [
+            ("脚本0", "脚本路径为空"),
+            ("脚本1", "游戏进程名称为空"),
+        ]
+        with (
+            patch(
+                "src.gui.main_window.collect_invalid_script_messages",
+                return_value=invalid,
+            ) as mock_collect,
+            patch(
+                "src.gui.main_window.QMessageBox.warning", return_value=QMessageBox.No
+            ) as mock_warning,
+            patch("src.gui.main_window.ScriptChainRunner") as mock_runner,
+        ):
+            win._run_selected()
+        mock_collect.assert_called_once()
+        args, _ = mock_warning.call_args
+        self.assertIn("脚本路径为空", args[2])
+        self.assertIn("游戏进程名称为空", args[2])
+        mock_runner.assert_not_called()
+
+    def test_invalid_config_can_force_run(self):
+        """配置不合法但用户选择仍然运行 → 继续原有流程。"""
+        win = _make_window(disable_persist=True)
+        invalid = [("脚本0", "脚本路径为空")]
+        with (
+            patch(
+                "src.gui.main_window.collect_invalid_script_messages",
+                return_value=invalid,
+            ),
+            patch(
+                "src.gui.main_window.QMessageBox.warning", return_value=QMessageBox.Yes
+            ),
+            patch(
+                "src.gui.main_window.QMessageBox.question", return_value=QMessageBox.Yes
+            ),
+            patch.object(
+                win, "_generate_config", return_value="config/script_chain/01.yml"
+            ),
+            patch("src.gui.main_window.ScriptChainRunner") as mock_runner,
+        ):
+            win._run_selected()
+        mock_runner.assert_called_once()
 
     def test_append_persists_to_config_yml(self):
         """追加后写回 config.yml（末尾含新脚本，字段完整）"""

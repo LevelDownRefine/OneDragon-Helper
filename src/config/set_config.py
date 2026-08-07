@@ -7,6 +7,7 @@
 """
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from src.config.subscript import load_config, load_template, save_config
@@ -68,6 +69,21 @@ class ScriptConfig:
     _task_map: dict[str, Any] = {}
     """副本中文名 → config 值的映射，空 dict 表示直接用 dungeon_name"""
 
+    confirm_before_save: Callable[[str], bool] | None = None
+    """保存前确认回调（由 GUI 注入，参数为 display_name，返回 True 才落盘）。
+
+    None 表示未注入（CLI/测试等无 GUI 环境），此时直接保存保持原行为。
+    """
+
+    enabled: bool = True
+    """本次实例是否可操作 config。默认 True（每次新建实例即重置）。
+
+    用户在 ``_confirm_save`` 中拒绝（回调返回 False）后置为 False，
+    此时该实例「什么都不做」：``_save`` 统一检查该标记，使本次运行中后续
+    ``set_dungeon`` 等写入一并失效，避免「刚拒绝更新、另一入口又改写同一
+    config」的矛盾行为。
+    """
+
     def _load(self) -> dict:
         config = load_config(self.display_name)
         assert isinstance(config, dict), (
@@ -79,6 +95,9 @@ class ScriptConfig:
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
+        if not self.enabled:
+            logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
+            return
         save_config(self.display_name, config)
         self._verify_saved(config)
 
@@ -118,6 +137,24 @@ class ScriptConfig:
         )
         return False
 
+    def _confirm_save(self) -> bool:
+        """保存前询问用户确认；未注入回调时默认放行（保持 CLI/测试行为不变）。
+
+        注意必须经 ``type(self).confirm_before_save`` 取类属性：若用 ``self.confirm_before_save``
+        访问，普通函数会被描述符绑定成实例方法（多传 self），导致
+        ``confirm_config_update(self, display_name)`` 的 TypeError。
+
+        用户拒绝（回调返回 False）时置 ``enabled = False``，使本次实例后续所有
+        ``_save`` 调用（含 ``set_dungeon``）一并失效。
+        """
+        callback = type(self).confirm_before_save
+        if callback is None:
+            return True
+        accepted = callback(self.display_name)
+        if not accepted:
+            self.enabled = False
+        return accepted
+
     def _init_config(self) -> None:
         """
         通用的 config 初始化逻辑：加载 config 和 template，检查对齐，合并更新。
@@ -132,7 +169,8 @@ class ScriptConfig:
         for key, val in template.items():
             safe_update(config, key, val, self.display_name, assert_key_exists=False)
         logger.info(f"[set_config][{self.display_name}] config 已更新")
-        self._save(config)
+        if self._confirm_save():
+            self._save(config)
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
         """
@@ -158,7 +196,13 @@ class ScriptConfig:
         """
         设置副本。默认流程：_update_task → _update_sequence → save。
         子类直接覆盖 set_dungeon 则完全自定义（如粥）。
+
+        用户已拒绝（enabled=False）时直接短路：本实例「什么都不做」，
+        连 _load/_update_task 等也不执行，仅记日志。
         """
+        if not self.enabled:
+            logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过副本设置")
+            return
         config = self._load()
         changed = self._update_task(config, dungeon_name) or self._update_sequence(
             config, dungeon_name, sequence

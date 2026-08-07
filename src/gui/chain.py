@@ -4,6 +4,8 @@
 - 启用脚本集合由调用方以 ``enabled_names`` 传入；
 - 副本/序列选择从 ``gui_state.json``（UI 状态）读取，并按 dungeon_list 选项校验，
   与 ``ScriptItem.__init__`` 构造时的取数逻辑一致。
+
+脚本配置合法性校验（对齐 runner invalid_message）见 ``src.config.runner_utils``。
 """
 
 import copy

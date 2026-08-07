@@ -14,6 +14,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from src.config.subscript import generate_config_from_example
+from src.gui.dialogs import inject_config_confirm
 from src.gui.main_window import MainWindow
 from src.utils import get_config_yml_path_under_root, get_path_under_root
 from src.utils_logger import setup_logging
@@ -250,6 +251,7 @@ def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     _set_app_window_icon(app)
+    inject_config_confirm()
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

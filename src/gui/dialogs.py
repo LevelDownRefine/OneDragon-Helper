@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.config.set_config import ScriptConfig
 from src.gui.controls import make_secondary_button
 from src.gui.utils import DEFAULT_RUN_TIMEOUT
 from src.utils import (
@@ -29,6 +30,23 @@ from src.utils import (
 SCRIPT_FILE_FILTER = (
     "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
 )
+
+
+def confirm_config_update(display_name: str) -> bool:
+    """GUI 确认回调：config 与模板不一致时，询问用户是否更新并保存。"""
+    box = QMessageBox()
+    box.setIcon(QMessageBox.Question)
+    box.setWindowTitle("更新配置")
+    box.setText(f"「{display_name}」的配置文件与模板不一致，是否更新并保存？")
+    box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+    box.setDefaultButton(QMessageBox.No)
+    box.exec()
+    return box.result() == QMessageBox.Yes
+
+
+def inject_config_confirm() -> None:
+    """把 GUI 确认弹窗注入 config 层的保存前回调（无头 CLI 不注入）。"""
+    ScriptConfig.confirm_before_save = confirm_config_update
 
 
 def _browse_script_file(parent, line_edit):
