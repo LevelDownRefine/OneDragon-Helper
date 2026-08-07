@@ -90,6 +90,27 @@ class TestUpdateScript(ScriptServiceTestBase):
         )
         self.assertEqual(self._read_weekly()["原神"], [60] * 7)
 
+    def test_empty_game_process_forces_kill_game_off(self):
+        """game_process_name 为空 → kill_game_after_done 强制 False（避免无效配置）。"""
+        ScriptService().update_script(
+            "原神",
+            "原神",
+            {"kill_game_after_done": True, "game_process_name": ""},
+        )
+        target = self._read_config()["script_list"][0]
+        self.assertEqual(target["game_process_name"], "")
+        self.assertFalse(target["kill_game_after_done"])
+
+    def test_game_process_keeps_kill_game(self):
+        """game_process_name 非空 → kill_game_after_done 保持原值。"""
+        ScriptService().update_script(
+            "原神",
+            "原神",
+            {"kill_game_after_done": True, "game_process_name": "YuanShen.exe"},
+        )
+        target = self._read_config()["script_list"][0]
+        self.assertTrue(target["kill_game_after_done"])
+
     def test_update_none_timeouts_resolved_to_default(self):
         """空输入（None）→ 落盘前转默认超时。"""
         ScriptService().update_script(

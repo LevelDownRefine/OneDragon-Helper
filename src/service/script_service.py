@@ -112,6 +112,10 @@ class ScriptService:
             target[key] = value
         target["display_name"] = new_name
 
+        # 配置自洽：未设置游戏进程名时「运行后关闭游戏」强制 False（避免无效配置）
+        if not target.get("game_process_name"):
+            target["kill_game_after_done"] = False
+
         renamed = new_name != old_name
         if weekly_timeouts is not None or renamed:
             weekly = _load_weekly()

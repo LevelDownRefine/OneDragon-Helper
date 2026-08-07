@@ -366,12 +366,12 @@ class SingleScriptConfigDialog(QDialog):
             )
             return
 
-        # 若勾选了关闭游戏但未填写进程名，给出提示但不阻断（与 ScriptChainer 行为一致）
+        # 若勾选了关闭游戏但未填写进程名，保存时「运行后关闭游戏」自动失效
         if self.kill_game_cb.isChecked() and not self.game_process_input.text().strip():
             QMessageBox.warning(
                 self,
-                "警告",
-                "勾选了「运行结束后关闭游戏」但未填写游戏进程名，\nScriptChainer 运行时会报「游戏进程名称为空」而跳过该脚本。",
+                "提示",
+                "未填写游戏进程名，保存后「运行结束后关闭游戏」将自动关闭。",
             )
 
         # 空输入传 None，由 ScriptService.update_script 转为默认超时并 clamp
