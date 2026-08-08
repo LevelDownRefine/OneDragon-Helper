@@ -33,7 +33,10 @@ class TestGetScriptPath(unittest.TestCase):
                 {"display_name": "自动关机", "script_path": "scripts/shutdown.bat"},
             ]
         }
-        with mock.patch("src.config.subscript._load_config_yml", return_value=fake):
+        with (
+            mock.patch("src.config.subscript._load_config_yml", return_value=fake),
+            mock.patch("src.config.subscript.os.path.exists", return_value=True),
+        ):
             got = get_script_path("自动关机")
         expected = safe_path_join(get_root_dir(), "scripts/shutdown.bat").replace(
             "\\", "/"
