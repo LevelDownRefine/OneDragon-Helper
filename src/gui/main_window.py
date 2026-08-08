@@ -358,11 +358,13 @@ class MainWindow(QMainWindow):
         校验规则对齐 runner ``ScriptConfig.invalid_message``（见 src.utils_runner）。
         """
         enabled_names = {i.display_name for i in self.script_items if i.enabled}
-        enabled_scripts = [
-            s
-            for s in self.all_config_data["script_list"]
-            if s.get("display_name") in enabled_names
-        ]
+        enabled_scripts = []
+        for script in self.all_config_data["script_list"]:
+            assert "display_name" in script, (
+                "[main_window] 脚本配置缺少 display_name 字段"
+            )
+            if script["display_name"] in enabled_names:
+                enabled_scripts.append(script)
         invalid = self.service.collect_invalid_scripts(enabled_scripts)
         if not invalid:
             return True

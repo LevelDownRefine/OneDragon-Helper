@@ -12,6 +12,8 @@ import argparse
 import json
 import os
 import tempfile
+import tomllib
+import warnings
 
 from src.service.chain_service import ChainService
 from src.service.script_service import ScriptService
@@ -110,14 +112,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _emit_cli(kind: str, text: str) -> None:
-    """把 CLI 输出同时打印（dev 可见）与写文件（windowed exe 可观测）。"""
+    """把 CLI 输出同时打印（dev 可见）与写文件（windowed exe 可观测）。
+
+    Args:
+        kind: 出口名，用于默认输出文件名 odh_gui_<kind>.txt。
+        text: 要写出的文本。
+
+    写文件失败时告警（windowed exe 下文件是唯一可观测渠道，不能静默丢弃）。
+    """
     print(text)
     path = os.path.join(tempfile.gettempdir(), f"odh_gui_{kind}.txt")
     try:
         with open(path, "w", encoding="utf-8") as f:
             f.write(text + "\n")
-    except OSError:
-        pass
+    except OSError as exc:
+        warnings.warn(f"[cli] 无法写入 {path}: {exc}", RuntimeWarning, stacklevel=2)
 
 
 def _emit_json(kind: str, data: dict, out_path: str | None = None) -> None:
@@ -127,6 +136,8 @@ def _emit_json(kind: str, data: dict, out_path: str | None = None) -> None:
         kind: 出口名，用于默认输出文件名 odh_gui_<kind>.json。
         data: 要输出的 JSON 可序列化 dict。
         out_path: 指定输出路径；None 时用默认 %TEMP%/odh_gui_<kind>.json。
+
+    写文件失败时告警（windowed exe 下文件是唯一可观测渠道，不能静默丢弃）。
     """
     text = json.dumps(data, ensure_ascii=False, indent=2)
     print(text)
@@ -134,21 +145,31 @@ def _emit_json(kind: str, data: dict, out_path: str | None = None) -> None:
     try:
         with open(out, "w", encoding="utf-8") as f:
             f.write(text + "\n")
-    except OSError:
-        pass
+    except OSError as exc:
+        warnings.warn(f"[cli] 无法写入 {out}: {exc}", RuntimeWarning, stacklevel=2)
 
 
 def get_version() -> str:
-    """读取 pyproject.toml 的 [project] version。"""
-    try:
-        import tomllib
+    """读取 pyproject.toml 的 [project] version。
 
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        with open(os.path.join(root, "pyproject.toml"), "rb") as f:
-            data = tomllib.load(f)
-        return str(data.get("project", {}).get("version", "unknown"))
-    except Exception:
+    Returns:
+        版本字符串；pyproject.toml 缺失时返回 "unknown" 并告警
+        （打包产物不含源码树属正常场景）。
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    pyproject_path = os.path.join(root, "pyproject.toml")
+    if not os.path.exists(pyproject_path):
+        warnings.warn(
+            f"[cli] 找不到 pyproject.toml: {pyproject_path}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return "unknown"
+    with open(pyproject_path, "rb") as f:
+        data = tomllib.load(f)
+    assert "project" in data, "[cli] pyproject.toml 缺少 [project] 段"
+    assert "version" in data["project"], "[cli] pyproject.toml 缺少 project.version"
+    return str(data["project"]["version"])
 
 
 def _run_selftest(out_path: str | None) -> int:
@@ -162,7 +183,7 @@ def _run_selftest(out_path: str | None) -> int:
         service = ChainService()
         data = service.load_config()
         result["checks"]["service_ready"] = True
-        result["checks"]["script_count"] = len(data.get("script_list", []))
+        result["checks"]["script_count"] = len(data["script_list"])
         result["checks"]["config_loaded"] = True
         result["status"] = "ok"
     except Exception as exc:  # noqa: BLE001 - 自检需捕获一切以产出失败结果
@@ -181,12 +202,10 @@ def _run_check_config(out_path: str | None) -> int:
     try:
         service = ChainService()
         all_config_data = service.load_config()
-        invalid = service.collect_invalid_scripts(
-            all_config_data.get("script_list", [])
-        )
+        invalid = service.collect_invalid_scripts(all_config_data["script_list"])
         result = {
             "status": "ok" if not invalid else "invalid",
-            "script_count": len(all_config_data.get("script_list", [])),
+            "script_count": len(all_config_data["script_list"]),
             "invalid": [{"name": n, "message": m} for n, m in invalid],
         }
         _emit_json("check_config", result, out_path)
@@ -200,7 +219,7 @@ def _run_list_scripts(out_path: str | None) -> int:
     """CLI: 列出所有脚本 display_name。"""
     service = ChainService()
     all_config_data = service.load_config()
-    names = [s["display_name"] for s in all_config_data.get("script_list", [])]
+    names = [s["display_name"] for s in all_config_data["script_list"]]
     result = {"script_count": len(names), "scripts": names}
     _emit_json("list_scripts", result, out_path)
     return 0
@@ -240,7 +259,8 @@ def _run_check_weekly(out_path: str | None) -> int:
     """
     result = ScriptService().check_weekly()
     _emit_json("check_weekly", result, out_path)
-    return 0 if result.get("status") == "ok" else 1
+    assert "status" in result, "[cli] check_weekly 结果缺少 status"
+    return 0 if result["status"] == "ok" else 1
 
 
 def _run_generate_chain(args) -> int:
@@ -286,7 +306,10 @@ def _run_run_chain(args) -> int:
     code = service.run_chain_command(
         chain_path, block=not args.no_block, extra_args=extra_args
     )
-    _emit_cli("run_chain", f"脚本链退出码: {code}")
+    if args.no_block:
+        _emit_cli("run_chain", f"脚本链已后台启动，启动状态码: {code}")
+    else:
+        _emit_cli("run_chain", f"脚本链退出码: {code}")
     return code
 
 
@@ -311,7 +334,7 @@ def run_cli(args) -> int | None:
         return _run_check_config(args.out)
     if args.list_scripts:
         return _run_list_scripts(args.out)
-    if args.get_script:
+    if args.get_script is not None:
         return _run_get_script(args.get_script, args.out)
     if args.dump_config:
         return _run_dump_config(args.out)
@@ -319,6 +342,6 @@ def run_cli(args) -> int | None:
         return _run_check_weekly(args.out)
     if args.generate_chain:
         return _run_generate_chain(args)
-    if args.run_chain:
+    if args.run_chain is not None:
         return _run_run_chain(args)
     return None

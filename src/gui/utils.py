@@ -7,6 +7,7 @@ UI 状态持久化见 :mod:`src.service.chain_service`，每周超时应用见 :
 
 import logging
 import os
+import warnings
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox, QPushButton
@@ -45,6 +46,7 @@ def safe_startfile(parent, path, fail_text):
     try:
         os.startfile(path)
     except OSError as e:
+        warnings.warn(f"{fail_text}: {e}", RuntimeWarning, stacklevel=2)
         _styled_msg_box(
             parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}"
         ).exec()

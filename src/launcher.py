@@ -51,6 +51,9 @@ def main():
         config_workflow()
 
     args = build_parser().parse_args()
+    # 提前配置日志：CLI 出口（如 run_chain_command）也依赖 logger，
+    # windowed exe 下 logs/onedragon_helper.log 是主要观测渠道。幂等，GUI 路径复用。
+    setup_logging()
 
     # 非 GUI 的 CLI 出口：解析后即退出，不进入事件循环。
     exit_code = run_cli(args)
@@ -58,7 +61,6 @@ def main():
         sys.exit(exit_code)
 
     # GUI 主路径
-    setup_logging()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     _set_app_window_icon(app)

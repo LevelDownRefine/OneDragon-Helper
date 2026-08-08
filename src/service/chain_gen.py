@@ -47,7 +47,11 @@ def _apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
     assert "display_name" in script, (
         "[chain_gen] script_list 条目缺少 display_name 字段"
     )
-    timeouts = weekly_timeouts.get(script["display_name"])
+    name = script["display_name"]
+    if name not in weekly_timeouts:
+        script["run_timeout_seconds"] = DEFAULT_RUN_TIMEOUT
+        return
+    timeouts = weekly_timeouts[name]
     if timeouts and len(timeouts) == 7:
         script["run_timeout_seconds"] = max(timeouts[_get_week_num()], 10)
     else:
