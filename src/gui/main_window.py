@@ -3,7 +3,6 @@
 import logging
 import os
 
-import yaml
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
@@ -19,33 +18,21 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.dungeon_config import (
-    load_dungeon_map,
     parse_dungeon_config,
     restore_sequence_type,
 )
-from src.config.runner_utils import collect_invalid_script_messages
-from src.gui.chain import generate_chain_config
-from src.gui.controls import make_pill_button
-from src.gui.dialogs import default_script_entry
 from src.gui.runner import ScriptChainRunner
-from src.gui.utils import (
-    DEFAULT_RUN_TIMEOUT,
-    _safe_startfile,
-    load_ui_state,
-    save_ui_state,
-)
+from src.gui.utils import make_pill_button, safe_startfile
 from src.gui.widgets import ScriptItem
-from src.utils import (
-    get_config_yml_path_under_root,
-    get_weekly_timeouts_yml_path_under_root,
-    require_config_yml_path,
-)
+from src.service.chain_service import ChainService
+from src.service.script_service import ScriptService
+from src.utils import get_config_yml_path_under_root
 
 logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, service=None, script_service=None):
         super().__init__()
         self.setWindowTitle("OneDragon 脚本启动器")
         self.setMinimumSize(600, 800)
@@ -53,7 +40,9 @@ class MainWindow(QMainWindow):
         self.script_items = []
         self.all_config_data = None
         self.runner = None
-        self._ui_state = load_ui_state()
+        self.service = service or ChainService()
+        self._script_service = script_service or ScriptService()
+        self._ui_state = self.service.load_ui_state()
 
         self._init_ui()
         self._load_scripts()
@@ -155,14 +144,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.run_btn)
 
     def _load_scripts(self):
-        with open(require_config_yml_path(), encoding="utf-8") as f:
-            self.all_config_data = yaml.safe_load(f)
+        self.all_config_data = self.service.load_config()
 
-        self.dungeon_map = load_dungeon_map()
-
-        assert "script_list" in self.all_config_data, (
-            "[main_window] config.yml 缺少 script_list 字段"
-        )
+        self.dungeon_map = self.service.dungeon_map()
 
         for item in self.script_items:
             item.deleteLater()
@@ -196,6 +180,7 @@ class MainWindow(QMainWindow):
             reorder_callback=self._reorder_scripts,
             delete_callback=self._delete_script,
             config_saved_callback=self._on_script_config_saved,
+            script_service=self._script_service,
         )
         item.set_state_callback(self._persist_ui_state)
         return item
@@ -205,7 +190,7 @@ class MainWindow(QMainWindow):
         state = {}
         for item in self.script_items:
             state[item.display_name] = item.get_state()
-        save_ui_state(state)
+        self.service.save_ui_state(state)
 
     def _on_script_config_saved(self, display_name):
         """配置弹窗保存成功后：重新从磁盘加载 all_config_data 并同步对应卡片的内存路径。
@@ -214,9 +199,7 @@ class MainWindow(QMainWindow):
         是内存副本。若不重新吸收，后续 _generate_config（运行）或 _save_script_order
         （重排/增删）会基于旧的 in-memory 副本把刚保存的路径覆盖掉，表现为「保存失效」。
         """
-        with open(require_config_yml_path(), encoding="utf-8") as f:
-            self.all_config_data = yaml.safe_load(f)
-
+        self.all_config_data = self.service.load_config()
         for item in self.script_items:
             if item.display_name == display_name:
                 new_data = next(
@@ -329,21 +312,8 @@ class MainWindow(QMainWindow):
             return
 
         file_path = os.path.normpath(file_path)
-        base_name = os.path.splitext(os.path.basename(file_path))[0]
-
         existing = {it.display_name for it in self.script_items}
-        display_name = base_name
-        suffix = 1
-        while display_name in existing:
-            display_name = f"{base_name}_{suffix}"
-            suffix += 1
-
-        script_type = "python" if file_path.lower().endswith(".py") else "external"
-        script_data = default_script_entry(
-            display_name=display_name,
-            script_type=script_type,
-            script_path=file_path,
-        )
+        script_data = self._script_service.build_script_entry(file_path, existing)
         self._append_script(script_data)
 
     def _append_script(self, script_data):
@@ -355,16 +325,7 @@ class MainWindow(QMainWindow):
         self.all_config_data["script_list"].append(script_data)
 
         # 自动创建 weekly_timeouts 默认条目
-        weekly_path = get_weekly_timeouts_yml_path_under_root()
-        weekly_map = {}
-        if os.path.exists(weekly_path):
-            with open(weekly_path, encoding="utf-8") as f:
-                weekly_map = yaml.safe_load(f) or {}
-        name = script_data["display_name"]
-        if name not in weekly_map:
-            weekly_map[name] = [DEFAULT_RUN_TIMEOUT] * 7
-            with open(weekly_path, "w", encoding="utf-8") as f:
-                yaml.dump(weekly_map, f, allow_unicode=True, sort_keys=False)
+        self._script_service.ensure_weekly_entry(script_data["display_name"])
 
         item = self._create_script_item(script_data, None)
         self.script_items.append(item)
@@ -375,18 +336,16 @@ class MainWindow(QMainWindow):
 
     def _open_config_yml(self):
         """打开 config.yml（用系统默认程序打开文本文件）；缺失/异常时给出清晰提示。"""
-        _safe_startfile(self, get_config_yml_path_under_root(), "无法打开配置文件")
+        safe_startfile(self, get_config_yml_path_under_root(), "无法打开配置文件")
 
     def _save_script_order(self):
         """把当前脚本顺序写回 config.yml"""
-        config_path = get_config_yml_path_under_root()
-        with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(self.all_config_data, f, allow_unicode=True, sort_keys=False)
+        self.service.save_config(self.all_config_data)
 
     def _generate_config(self, chain_name="88"):
         """生成 ScriptChainer 配置文件（仅含启用的脚本）"""
         enabled_names = {i.display_name for i in self.script_items if i.enabled}
-        return generate_chain_config(
+        return self.service.generate_chain(
             self.all_config_data, enabled_names, chain_name, self._ui_state
         )
 
@@ -396,15 +355,17 @@ class MainWindow(QMainWindow):
         返回 True 表示继续运行，False 表示用户取消。
         提前暴露「脚本配置不合法 跳过运行」类问题，避免脚本链跑完才发现
         某脚本被 runner 静默跳过（如自动关机未执行）。
-        校验规则对齐 runner ``ScriptConfig.invalid_message``（见 src.config.runner_utils）。
+        校验规则对齐 runner ``ScriptConfig.invalid_message``（见 src.utils_runner）。
         """
         enabled_names = {i.display_name for i in self.script_items if i.enabled}
-        enabled_scripts = [
-            s
-            for s in self.all_config_data["script_list"]
-            if s.get("display_name") in enabled_names
-        ]
-        invalid = collect_invalid_script_messages(enabled_scripts)
+        enabled_scripts = []
+        for script in self.all_config_data["script_list"]:
+            assert "display_name" in script, (
+                "[main_window] 脚本配置缺少 display_name 字段"
+            )
+            if script["display_name"] in enabled_names:
+                enabled_scripts.append(script)
+        invalid = self.service.collect_invalid_scripts(enabled_scripts)
         if not invalid:
             return True
         details = "\n".join(f"· {name}：{msg}" for name, msg in invalid)

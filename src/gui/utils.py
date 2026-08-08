@@ -1,64 +1,18 @@
-"""GUI 工具与 UI 状态持久化。
+"""GUI 工具：统一消息框 / 打开文件辅助 / 共享按钮工厂（强制浅色样式，避免深色主题下全黑不可读）。
 
-- UI 状态持久化（config/gui_state.json）与星期计算；
-- 统一的消息框 / 打开文件辅助函数（强制浅色样式，避免深色主题下全黑不可读）。
-
-图标相关逻辑已迁移到 :mod:`src.gui.icons`（与 UI 状态/消息框职责分离）。
+UI 状态持久化见 :mod:`src.service.chain_service`，每周超时应用见 :mod:`src.service.chain_gen`，
+默认超时常量见 :mod:`src.config.subscript`（均无 Qt，GUI 与 CLI 共用，由调用方直接 import）。
+图标相关逻辑在 :mod:`src.gui.icons`。
 """
 
-import json
 import logging
 import os
-from datetime import datetime, timedelta
+import warnings
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMessageBox
-
-from src.utils import get_root_dir, safe_path_join
+from PySide6.QtWidgets import QMessageBox, QPushButton
 
 logger = logging.getLogger(__name__)
-
-_STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
-
-
-def load_ui_state() -> dict:
-    """读取上次保存的 UI 状态"""
-    if os.path.exists(_STATE_FILE):
-        with open(_STATE_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-
-def save_ui_state(state: dict):
-    """保存 UI 状态"""
-    with open(_STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
-
-
-def get_week_num() -> int:
-    """返回星期数字：0周一 ~ 6周日。
-
-    以凌晨 4 点为界：4 点前归前一天，例如周一 03:00 仍按上周日(6)计。
-    """
-    return (datetime.now() - timedelta(hours=4)).weekday()
-
-
-DEFAULT_RUN_TIMEOUT = 3600
-"""脚本运行默认超时秒数。当 weekly_timeouts.yml 无条目或不足 7 格时作为 fallback。"""
-
-
-def apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
-    """根据 weekly_timeouts.yml 就地设置 script['run_timeout_seconds']。
-
-    - 有完整 7 格 → 取当天值，且不低于 10（避免 0 秒杀脚本）。
-    - 无条目 / 不足 7 格 → fallback 到 DEFAULT_RUN_TIMEOUT。
-    """
-    assert "display_name" in script, "[state] script_list 条目缺少 display_name 字段"
-    timeouts = weekly_timeouts.get(script["display_name"])
-    if timeouts and len(timeouts) == 7:
-        script["run_timeout_seconds"] = max(timeouts[get_week_num()], 10)
-    else:
-        script["run_timeout_seconds"] = DEFAULT_RUN_TIMEOUT
 
 
 # ---------------------------------------------------------------------------
@@ -87,11 +41,119 @@ def _styled_msg_box(parent, icon, title, text):
     return box
 
 
-def _safe_startfile(parent, path, fail_text):
+def safe_startfile(parent, path, fail_text):
     """用系统默认程序打开 path；任何异常都转成清晰可读的提示，不让 GUI 崩溃。"""
     try:
         os.startfile(path)
     except OSError as e:
+        warnings.warn(f"{fail_text}: {e}", RuntimeWarning, stacklevel=2)
         _styled_msg_box(
             parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}"
         ).exec()
+
+
+# ---------------------------------------------------------------------------
+# 共享按钮工厂（样式集中管理，避免各处重复 QSS 字符串）
+# ---------------------------------------------------------------------------
+
+
+def make_pill_button(
+    text,
+    *,
+    accent="#3b82f6",
+    hover_color=None,
+    pressed_bg=None,
+    min_width=72,
+    fixed_height=32,
+    border="#d8dee9",
+    radius=8,
+    padding="0 16px",
+    color="#4b5563",
+    font_size=11,
+) -> QPushButton:
+    """强调色轮廓药丸按钮：白底圆角边框，hover 改边框/字色，pressed 改淡背景。"""
+    btn = QPushButton(text)
+    btn.setCursor(Qt.PointingHandCursor)
+    btn.setFixedHeight(fixed_height)
+    if min_width:
+        btn.setMinimumWidth(min_width)
+    hover = hover_color or accent
+    pressed = f"background: {pressed_bg};" if pressed_bg else ""
+    btn.setStyleSheet(f"""
+        QPushButton {{
+            background: white;
+            border: 1px solid {border};
+            border-radius: {radius}px;
+            padding: {padding};
+            color: {color};
+            font-size: {font_size}px;
+        }}
+        QPushButton:hover {{ border-color: {accent}; color: {hover}; }}
+        QPushButton:pressed {{ {pressed} }}
+    """)
+    return btn
+
+
+def make_secondary_button(
+    text,
+    *,
+    fixed_height=28,
+    border="#d0d0d0",
+    radius=6,
+    padding="0 16px",
+    font_size=10,
+    color="#303030",
+    min_width=0,
+) -> QPushButton:
+    """中性轮廓按钮：白底圆角边框，hover 改边框灰，pressed 改边框蓝。"""
+    btn = QPushButton(text)
+    btn.setCursor(Qt.PointingHandCursor)
+    btn.setFixedHeight(fixed_height)
+    if min_width:
+        btn.setMinimumWidth(min_width)
+    btn.setStyleSheet(f"""
+        QPushButton {{
+            border: 1px solid {border};
+            border-radius: {radius}px;
+            background: white;
+            font-family: "Microsoft YaHei";
+            font-size: {font_size}px;
+            color: {color};
+            padding: {padding};
+            text-align: center;
+        }}
+        QPushButton:hover {{ border-color: #a0a0a0; }}
+        QPushButton:pressed {{ border-color: #0078D4; }}
+    """)
+    return btn
+
+
+def make_icon_button(
+    symbol,
+    *,
+    accent="#3b82f6",
+    normal_color="#9aa3b2",
+    font_size=14,
+    hover_bg="#eef2f7",
+    pressed_bg="#e2e8f0",
+    size=30,
+    tooltip=None,
+) -> QPushButton:
+    """圆形透明图标按钮：固定正方形，hover/pressed 变色。"""
+    btn = QPushButton(symbol)
+    btn.setFixedSize(size, size)
+    btn.setCursor(Qt.PointingHandCursor)
+    if tooltip:
+        btn.setToolTip(tooltip)
+    btn.setStyleSheet(f"""
+        QPushButton {{
+            border: none;
+            border-radius: {size // 2}px;
+            background: transparent;
+            font-size: {font_size}px;
+            color: {normal_color};
+        }}
+        QPushButton:hover {{ background-color: {hover_bg}; color: {accent}; }}
+        QPushButton:pressed {{ background-color: {pressed_bg}; }}
+    """)
+    return btn

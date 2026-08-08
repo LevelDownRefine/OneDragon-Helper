@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import utils
+from src import utils
 
 
 class TestUtils(unittest.TestCase):
@@ -28,7 +28,7 @@ class TestUtils(unittest.TestCase):
         self.assertEqual(path, utils.get_root_dir())
 
         # With subdirs (using mock to avoid actually creating it if it doesn't exist)
-        with patch("utils.join_dir_path_with_mk") as mock_join:
+        with patch("src.utils.join_dir_path_with_mk") as mock_join:
             mock_join.return_value = "mock_path"
             res = utils.get_path_under_root("sub1", "sub2")
             self.assertEqual(res, "mock_path")

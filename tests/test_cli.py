@@ -6,10 +6,10 @@
 
 关键约定：
 - CLI 出口都通过 ``sys.exit`` 返回，故用 ``assertRaises(SystemExit)`` 捕获退出码。
-- --help/--version/--generate-chain/--run-chain 的结果经 ``_emit_cli`` 写临时文件，
+- --help/--version/--generate-chain/--run-chain 的结果经 ``cli._emit_cli`` 写临时文件，
   测试读这些文件验证实质行为（与 windowed exe 的可观测方式一致）。
 - --generate-chain 会经 ``generate_chain_config`` 调 ``set_config``，可能回写真实脚本
-  配置（依赖游戏 exe 存在）。源码测试里 patch 掉 ``src.gui.chain.set_config``，
+  配置（依赖游戏 exe 存在）。源码测试里 patch 掉 ``src.service.chain_gen.set_config``，
   避免副作用、并使其不依赖本机是否装有游戏。
 """
 
@@ -25,14 +25,24 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import yaml
 
-from src import launcher
-from src.gui import chain as gui_chain
+from src import cli, launcher
+from src.service import chain_gen as service_chain_gen
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def setUpModule():
+    """确保 config.yml 存在（复用 launcher 首次运行机制，与 _known_script_names 同源）。
+
+    config.yml 被 .gitignore 排除，CI 环境缺失；本模块多数 CLI 出口依赖真实 config，
+    故模块加载时先按需生成，避免隐式依赖某个测试先触发（如 _known_script_names）。
+    """
+    if launcher.need_config_workflow():
+        launcher.config_workflow()
+
+
 def _cli_file(kind: str) -> str:
-    """CLI 出口结果文件（与 src/launcher.py 的 _emit_cli 对应）。"""
+    """CLI 出口结果文件（与 src/cli.py 的 _emit_cli 对应）。"""
     return os.path.join(tempfile.gettempdir(), f"odh_gui_{kind}.txt")
 
 
@@ -59,6 +69,18 @@ def _read_cli_file(kind: str) -> str:
     assert os.path.isfile(path), f"{kind} 未生成文件: {path}"
     with open(path, encoding="utf-8") as f:
         return f.read()
+
+
+def _cli_json(kind: str) -> str:
+    """结构化出口（_emit_json）的结果文件 odh_gui_<kind>.json。"""
+    return os.path.join(tempfile.gettempdir(), f"odh_gui_{kind}.json")
+
+
+def _read_cli_json(kind: str) -> dict:
+    path = _cli_json(kind)
+    assert os.path.isfile(path), f"{kind} 未生成 JSON: {path}"
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def _known_script_names():
@@ -88,11 +110,11 @@ class TestCliHelpVersion(unittest.TestCase):
         self.assertEqual(code, 0)
         text = _read_cli_file("version").strip()
         self.assertTrue(text, "--version 文件为空")
-        self.assertEqual(text, launcher._get_version())
+        self.assertEqual(text, cli.get_version())
 
 
 class TestCliSelftest(unittest.TestCase):
-    """--selftest 出口：无头构造 MainWindow，退出 0 且 JSON 标记 OK。"""
+    """--selftest 出口：无头校验 ChainService，退出 0 且 JSON 标记 OK。"""
 
     def test_selftest_ok(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
@@ -105,9 +127,9 @@ class TestCliSelftest(unittest.TestCase):
                 data = json.load(f)
             self.assertEqual(data.get("status"), "ok", msg=data)
             checks = data.get("checks", {})
-            self.assertTrue(checks.get("mainwindow_created"), msg=checks)
+            self.assertTrue(checks.get("service_ready"), msg=checks)
             self.assertIn("script_count", checks, msg=checks)
-            self.assertIn("config_loaded", checks, msg=checks)
+            self.assertTrue(checks.get("config_loaded"), msg=checks)
         finally:
             if os.path.exists(out):
                 os.remove(out)
@@ -124,7 +146,7 @@ class TestCliGenerateChain(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(gui_chain, "set_config"):
+            with patch.object(service_chain_gen, "set_config"):
                 code = _run_main(["--generate-chain", "--out", out], expect_exit=0)
             self.assertEqual(code, 0)
             self.assertTrue(os.path.isfile(out), f"--generate-chain 未产出 yml: {out}")
@@ -144,7 +166,7 @@ class TestCliGenerateChain(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(gui_chain, "set_config"):
+            with patch.object(service_chain_gen, "set_config"):
                 code = _run_main(
                     ["--generate-chain", "--enable", target, "--out", out],
                     expect_exit=0,
@@ -161,7 +183,7 @@ class TestCliGenerateChain(unittest.TestCase):
     def test_generate_chain_unknown_name_exits_one(self):
         bogus = "此脚本一定不存在_XYZ"
         assert bogus not in self._names
-        with patch.object(gui_chain, "set_config"):
+        with patch.object(service_chain_gen, "set_config"):
             code = _run_main(["--generate-chain", "--enable", bogus], expect_exit=1)
         self.assertEqual(code, 1)
         self.assertIn("未知的脚本名", _read_cli_file("generate_chain"))
@@ -174,11 +196,90 @@ class TestCliRunChain(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix=".yml", delete=False) as fh:
             missing = fh.name
         os.unlink(missing)  # 故意不创建
-        with patch("src.gui.runner.run_chain_command") as mock_run:
+        with patch("src.utils_runner.run_chain_command") as mock_run:
             code = _run_main(["--run-chain", missing], expect_exit=1)
         self.assertEqual(code, 1)
         mock_run.assert_not_called()  # 缺文件时不该真正启动 Runner
         self.assertIn("脚本链配置不存在", _read_cli_file("run_chain"))
+
+
+class TestCliCheckConfig(unittest.TestCase):
+    """--check-config 出口：校验全部脚本合法性，JSON 结果可断言。"""
+
+    def test_check_config_reports_invalid(self):
+        """退出码与 invalid 列表一致：invalid 非空 → 1，空 → 0。"""
+        code = _run_main(["--check-config"])  # 不预设退出码，按实际内容断言
+        data = _read_cli_json("check_config")
+        self.assertEqual(data["status"], "invalid" if data["invalid"] else "ok")
+        self.assertEqual(code, 1 if data["invalid"] else 0)
+        # invalid 元素结构：{name, message}
+        self.assertTrue(all({"name", "message"} <= i.keys() for i in data["invalid"]))
+
+    def test_check_config_json_structure(self):
+        """JSON 结果字段完整，可被测试断言。"""
+        _run_main(["--check-config"])
+        data = _read_cli_json("check_config")
+        self.assertIn("status", data)
+        self.assertIn("script_count", data)
+        self.assertIn("invalid", data)
+
+
+class TestCliListScripts(unittest.TestCase):
+    """--list-scripts 出口：列出脚本名，JSON 含完整列表。"""
+
+    def test_list_scripts_matches_config(self):
+        """脚本列表与 config.yml 的 script_list 一致。"""
+        code = _run_main(["--list-scripts"], expect_exit=0)
+        self.assertEqual(code, 0)
+        data = _read_cli_json("list_scripts")
+        self.assertEqual(data["scripts"], _known_script_names())
+
+
+class TestCliGetScript(unittest.TestCase):
+    """--get-script 出口：查询单个脚本。"""
+
+    def setUp(self):
+        self._names = _known_script_names()
+
+    def test_get_existing_script(self):
+        """存在的脚本 → status=ok 且条目完整。"""
+        code = _run_main(["--get-script", self._names[0]], expect_exit=0)
+        self.assertEqual(code, 0)
+        data = _read_cli_json("get_script")
+        self.assertEqual(data["status"], "ok")
+        self.assertEqual(data["script"]["display_name"], self._names[0])
+
+    def test_get_missing_script_exits_one(self):
+        """不存在的脚本 → status=not_found 且退出码 1。"""
+        code = _run_main(["--get-script", "不存在脚本_XYZ"], expect_exit=1)
+        self.assertEqual(code, 1)
+        data = _read_cli_json("get_script")
+        self.assertEqual(data["status"], "not_found")
+
+
+class TestCliDumpConfig(unittest.TestCase):
+    """--dump-config 出口：导出完整 config.yml。"""
+
+    def test_dump_config_matches_source(self):
+        """导出内容与 config.yml 一致。"""
+        code = _run_main(["--dump-config"], expect_exit=0)
+        self.assertEqual(code, 0)
+        data = _read_cli_json("dump_config")
+        self.assertEqual(
+            [s["display_name"] for s in data["script_list"]],
+            _known_script_names(),
+        )
+
+
+class TestCliCheckWeekly(unittest.TestCase):
+    """--check-weekly 出口：校验 weekly 一致性。"""
+
+    def test_check_weekly_ok(self):
+        """weekly 与 config 一致 → status=ok 且退出码 0。"""
+        code = _run_main(["--check-weekly"], expect_exit=0)
+        self.assertEqual(code, 0)
+        data = _read_cli_json("check_weekly")
+        self.assertEqual(data["status"], "ok", msg=data)
 
 
 if __name__ == "__main__":

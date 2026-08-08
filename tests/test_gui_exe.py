@@ -27,7 +27,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _cli_file(kind: str) -> str:
-    """CLI 出口结果文件（与 src/launcher.py 的 _emit_cli / _run_selftest 对应）。"""
+    """CLI 出口结果文件（与 src/cli.py 的 _emit_cli / _run_selftest 对应）。"""
     if kind == "selftest":
         return os.path.join(tempfile.gettempdir(), "odh_gui_selftest.json")
     return os.path.join(tempfile.gettempdir(), f"odh_gui_{kind}.txt")
@@ -95,7 +95,7 @@ class TestGuiExe(unittest.TestCase):
             self.assertTrue(f.read().strip(), "--version 文件为空")
 
     def test_exe_selftest(self):
-        """--selftest 应无头构造 MainWindow 并写 JSON 结果（status=ok、关键检查通过）。"""
+        """--selftest 应无头校验 ChainService 并写 JSON 结果（status=ok、关键检查通过）。"""
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
             out = fh.name
         result = self._run_exe("--selftest", "--out", out)
@@ -105,9 +105,9 @@ class TestGuiExe(unittest.TestCase):
             data = json.load(f)
         self.assertEqual(data.get("status"), "ok", msg=data)
         checks = data.get("checks", {})
-        self.assertTrue(checks.get("mainwindow_created"), msg=checks)
+        self.assertTrue(checks.get("service_ready"), msg=checks)
         self.assertIn("script_count", checks, msg=checks)
-        self.assertIn("config_loaded", checks, msg=checks)
+        self.assertTrue(checks.get("config_loaded"), msg=checks)
 
     def test_exe_generate_chain(self):
         """--generate-chain 应退出 0，并把脚本链配置写到 --out 指定的路径。"""
@@ -128,6 +128,54 @@ class TestGuiExe(unittest.TestCase):
         os.unlink(missing)
         result = self._run_exe("--run-chain", missing)
         self.assertEqual(result.returncode, 1, msg=result.stderr[:500])
+
+    def test_exe_list_scripts(self):
+        """--list-scripts 应退出 0，JSON 含脚本列表（可断言数量与内容）。"""
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            out = fh.name
+        result = self._run_exe("--list-scripts", "--out", out)
+        self.assertEqual(result.returncode, 0, msg=result.stderr[:500])
+        self.assertTrue(os.path.isfile(out), f"--list-scripts 未生成 JSON: {out}")
+        with open(out, encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertIn("scripts", data, msg=data)
+        self.assertIsInstance(data["scripts"], list, msg=data)
+        self.assertGreaterEqual(data["script_count"], 1, msg=data)
+
+    def test_exe_get_script(self):
+        """--get-script 应退出 0，JSON 含目标脚本条目。"""
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            out = fh.name
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh2:
+            list_out = fh2.name
+        result = self._run_exe("--list-scripts", "--out", list_out)
+        self.assertEqual(result.returncode, 0, msg=result.stderr[:500])
+        with open(list_out, encoding="utf-8") as f:
+            names = json.load(f)["scripts"]
+        result = self._run_exe("--get-script", names[0], "--out", out)
+        self.assertEqual(result.returncode, 0, msg=result.stderr[:500])
+        with open(out, encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual(data["status"], "ok", msg=data)
+        self.assertEqual(data["script"]["display_name"], names[0])
+
+    def test_exe_check_config(self):
+        """--check-config 应退出 0/1 且 JSON 结构完整（invalid 元素可断言）。"""
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            out = fh.name
+        result = self._run_exe("--check-config", "--out", out)
+        self.assertIn(result.returncode, (0, 1), msg=result.stderr[:500])
+        self.assertTrue(os.path.isfile(out), f"--check-config 未生成 JSON: {out}")
+        with open(out, encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertIn("status", data, msg=data)
+        self.assertIn("script_count", data, msg=data)
+        self.assertIn("invalid", data, msg=data)
+        # status 与退出码一致：invalid 非空 → 1，空 → 0
+        if data["invalid"]:
+            self.assertEqual(result.returncode, 1)
+        else:
+            self.assertEqual(result.returncode, 0)
 
 
 if __name__ == "__main__":

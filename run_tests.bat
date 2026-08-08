@@ -23,6 +23,24 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: ruff lint（与 CI 的 `ruff check src tests` 一致，全量）
+echo.
+echo [INFO] ruff lint...
+python -m ruff check "%base%src" "%base%tests"
+if %errorlevel% neq 0 (
+    echo [FAIL] ruff lint 未通过
+    exit /b 1
+)
+
+:: ruff format 检查（与 CI 的 `ruff format --check src tests` 一致）
+echo.
+echo [INFO] ruff format 检查...
+python -m ruff format --check "%base%src" "%base%tests"
+if %errorlevel% neq 0 (
+    echo [FAIL] ruff format 未通过（可运行 `ruff format src tests` 修复）
+    exit /b 1
+)
+
 :: 运行测试（PYTHONPATH 确保 src/ 可被导入）
 echo.
 echo [INFO] 运行测试...

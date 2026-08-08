@@ -1,6 +1,6 @@
 """测试 GUI 卡片「启动脚本」(_open_script) 的 python 分支命令构造。
 
-python 脚本的启动命令统一由 ``src.gui.runner.build_script_command(["--script", ...])``
+python 脚本的启动命令统一由 ``src.utils_runner.build_script_command(["--script", ...])``
 构造（其内部已含 frozen / 非 frozen 判断），``_open_script`` 只负责拿 cmd list 去 spawn。
 此测试验证 ``_open_script`` 正确委派给 ``build_script_command``，不重复 frozen 逻辑
 （frozen 行为由 ``test_gui_runner.py`` 的 ``TestBuildScriptInvocationFrozen`` 覆盖）。
