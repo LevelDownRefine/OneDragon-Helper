@@ -578,8 +578,16 @@ class TestGetScriptIcon(unittest.TestCase):
                     "script_path": sys.executable,
                 }
             )
-        # 构造返回后 worker 已被提交（延迟），但尚未执行
-        self.assertEqual(len(captured), 1)
+            # 构造返回后 worker 尚未提交：_refresh_icon 先 singleShot(0) 延迟执行
+            # 图标设置（_apply_icon），其内部 _schedule_icon_load 再 singleShot(0)
+            # 延迟提交 worker——两层延迟都等到事件循环空闲（window.show() 首帧
+            # 渲染完成之后）才触发，避免与首帧渲染抢 CPU
+            self.assertEqual(len(captured), 0)
+            # 事件循环空闲（模拟 show 后的首轮事件处理）→ _apply_icon 设置占位图标
+            QApplication.processEvents()
+            # 第二轮 → _schedule_icon_load 提交 worker
+            QApplication.processEvents()
+            self.assertEqual(len(captured), 1)
         # 占位图标已设置（默认图标），非空
         self.assertFalse(item.icon_label.pixmap().isNull())
 

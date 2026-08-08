@@ -5,7 +5,7 @@ import logging
 import os
 import subprocess
 
-from PySide6.QtCore import QMimeData, QSize, Qt, Signal
+from PySide6.QtCore import QMimeData, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QApplication,
@@ -297,24 +297,32 @@ class ScriptItem(QFrame):
     def _refresh_icon(self, script_data: dict) -> None:
         """按脚本数据刷新卡片图标（external 用 exe 自带，否则默认），构造与改名后调用。
 
-        - 便宜的默认/Python 图标：立即设置，不阻塞窗口打开。
-        - 昂贵的 external exe 图标：先用默认图标占位，再提交 ``QThreadPool`` 后台线程
-          用纯 Win32 提取（避开 QFileIconProvider 的 COM 限制），主线程只做轻量转换，
-          避免打开窗口时主线程被同步抠 exe 内嵌图标卡住。
+        - 图标设置统一延迟到事件循环空闲（window.show() 首帧渲染之后）执行：
+          QIcon.pixmap() 首次栅格化是 Qt 进程级一次性成本（~80ms），若在卡片构造时
+          同步执行会阻塞首帧显示；延迟后窗口先显示、图标随后填充，用户无感。
+        - external 的 exe 图标：先用默认图标占位，再提交 ``QThreadPool`` 后台线程
+          用纯 Win32 提取（避开 QFileIconProvider 的 COM 限制），主线程只做轻量转换。
         """
-        size = self.icon_label.width()
-        dpr = self.devicePixelRatioF()
-        source = icons.get_icon_source(script_data)
-        if source and os.path.isfile(source):
-            # 图标源（external 的 exe）存在：先用默认图标占位，再提交后台线程
-            # 提取真实图标。QIcon.pixmap(QSize, dpr) 会自动按 dpr 选高清表示，
-            # 不需要再手动 setDevicePixelRatio。
-            ph = icons._default_icon().pixmap(QSize(size, size), dpr)
-            self.icon_label.setPixmap(ph)
-            icons._schedule_icon_load(self, script_data)
-        else:
-            ph = icons.get_script_icon(script_data).pixmap(QSize(size, size), dpr)
-            self.icon_label.setPixmap(ph)
+        self._pending_script_data = script_data
+        QTimer.singleShot(0, self, self._apply_icon)
+
+    def _apply_icon(self) -> None:
+        """事件循环空闲时真正设置图标（item 已销毁则跳过，如窗口快速关闭）。"""
+        with contextlib.suppress(RuntimeError):
+            script_data = self._pending_script_data
+            size = self.icon_label.width()
+            dpr = self.devicePixelRatioF()
+            source = icons.get_icon_source(script_data)
+            if source and os.path.isfile(source):
+                # 图标源（external 的 exe）存在：先用默认图标占位，再提交后台线程
+                # 提取真实图标。QIcon.pixmap(QSize, dpr) 会自动按 dpr 选高清表示，
+                # 不需要再手动 setDevicePixelRatio。
+                ph = icons._default_icon().pixmap(QSize(size, size), dpr)
+                self.icon_label.setPixmap(ph)
+                icons._schedule_icon_load(self, script_data)
+            else:
+                ph = icons.get_script_icon(script_data).pixmap(QSize(size, size), dpr)
+                self.icon_label.setPixmap(ph)
 
     def _on_icon_loaded(self, source: str, qimg) -> None:
         """后台线程提取完成（主线程执行）：QImage → QPixmap 并设置，同时缓存。

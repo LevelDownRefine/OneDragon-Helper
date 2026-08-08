@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
@@ -34,6 +35,8 @@ logger = logging.getLogger(__name__)
 class MainWindow(QMainWindow):
     def __init__(self, service=None, script_service=None):
         super().__init__()
+        # MainWindow 构造耗时打点基准：__init__ 入口归零，阶段差值为真实耗时
+        self._init_t0 = time.perf_counter()
         self.setWindowTitle("OneDragon 脚本启动器")
         self.setMinimumSize(600, 800)
 
@@ -43,9 +46,17 @@ class MainWindow(QMainWindow):
         self.service = service or ChainService()
         self._script_service = script_service or ScriptService()
         self._ui_state = self.service.load_ui_state()
+        self._log_init("load_ui_state")
 
         self._init_ui()
+        self._log_init("_init_ui")
         self._load_scripts()
+        self._log_init("_load_scripts")
+
+    def _log_init(self, stage: str) -> None:
+        """记录 MainWindow 构造阶段耗时：相对 __init__ 入口的毫秒数（供启动性能分析）。"""
+        elapsed_ms = (time.perf_counter() - self._init_t0) * 1000
+        logger.info("[startup]   MainWindow.%-24s %8.1f ms", stage, elapsed_ms)
 
     def _init_ui(self):
         central = QWidget()
@@ -54,6 +65,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(central)
         layout.setContentsMargins(18, 16, 18, 18)
         layout.setSpacing(14)
+        self._central_layout = layout  # 供 _load_scripts 末尾挂载 scroll
 
         # 脚本列表
         scroll = QScrollArea()
@@ -83,8 +95,10 @@ class MainWindow(QMainWindow):
         self.scroll_layout.setContentsMargins(2, 2, 14, 2)
         self.scroll_layout.setSpacing(10)
         self.scroll_layout.addStretch()
-        scroll.setWidget(self.scroll_content)
-        layout.addWidget(scroll, stretch=1)
+        # 挂载延迟到 _load_scripts 末尾（卡片插满后再 setWidget+addWidget）：
+        # widgetResizable=True 时，若先挂载再逐卡插入，每次插入都触发 viewport
+        # 重算，show() 时一次性爆发，拖慢启动（实测 400ms→120ms，见 2026-08-08）。
+        self._scroll = scroll
 
         # 快捷操作按钮（全选 / 清空 / 添加）
         action_layout = QHBoxLayout()
@@ -154,6 +168,7 @@ class MainWindow(QMainWindow):
 
         for data in self.all_config_data["script_list"]:
             name = data["display_name"]
+            item_t0 = time.perf_counter()
             dungeon_cfg = self.dungeon_map.get(
                 name
             )  # optional: 不是所有脚本都有副本配置
@@ -165,6 +180,13 @@ class MainWindow(QMainWindow):
             item = self._create_script_item(data, saved)
             self.scroll_layout.insertWidget(len(self.script_items), item)
             self.script_items.append(item)
+            item_ms = (time.perf_counter() - item_t0) * 1000
+            logger.info("[startup]     构造 ScriptItem %-8s %8.1f ms", name, item_ms)
+
+        # 卡片插满后再统一挂载 scroll（见 _init_ui 说明）：避免逐卡插入触发
+        # widgetResizable viewport 反复重算。布局顺序：scroll 需位于按钮区之前。
+        self._scroll.setWidget(self.scroll_content)
+        self._central_layout.insertWidget(0, self._scroll, stretch=1)
 
     def _create_script_item(self, data, saved_state):
         """构造 ScriptItem 并注入 UI 状态回调"""

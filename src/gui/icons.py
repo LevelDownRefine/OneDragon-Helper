@@ -22,7 +22,15 @@ import sys
 from ctypes import wintypes
 from functools import lru_cache
 
-from PySide6.QtCore import QFileInfo, QObject, QRunnable, Qt, QThreadPool, Signal
+from PySide6.QtCore import (
+    QFileInfo,
+    QObject,
+    QRunnable,
+    Qt,
+    QThreadPool,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QFileIconProvider
 
@@ -104,8 +112,9 @@ if sys.platform == "win32":
 # 并缩放），再由界面按实际显示尺寸 + DPR 精确缩放，避免模糊。纯 GDI 常量。
 _IMAGE_ICON = 1  # IMAGE_ICON
 _LR_LOADFROMFILE = 0x10  # LR_LOADFROMFILE
-_ICON_DESIRED_SIZE = 256
-# SHDefExtractIconW 的 nIconSize 是目标像素尺寸（取 256 高清源）；COM 初始化用 STA 单元
+_ICON_DESIRED_SIZE = 64
+# SHDefExtractIconW 的 nIconSize 是目标像素尺寸：64px 源对 28px×DPR(≈56px) 的显示足够清晰，
+# 且提取比 256px 高清源快数倍（如崩铁 107ms→20-30ms）。COM 初始化用 STA 单元
 _COINIT_APARTMENTTHREADED = 0x2  # COINIT_APARTMENTTHREADED
 
 
@@ -374,7 +383,7 @@ class _IconLoadWorker(QRunnable):
 
 
 def _schedule_icon_load(item, script_data: dict) -> None:
-    """external 图标：先查缓存；未命中则提交后台线程提取，结果回主线程设置。
+    """external 图标：先查缓存；未命中则延迟到事件循环空闲后提交后台线程提取。
 
     非 Windows 环境（CI/Linux）无 Win32 图标提取能力，直接保持默认占位图标即可。
     """
@@ -389,7 +398,9 @@ def _schedule_icon_load(item, script_data: dict) -> None:
         return
     worker = _IconLoadWorker(source)
     worker.signals.finished.connect(item._on_icon_loaded)
-    QThreadPool.globalInstance().start(worker)
+    # 延迟提交：singleShot(0) 在事件循环空闲（window.show() 首帧渲染完成）后才触发，
+    # 避免构造期立即启动 14 个提取线程与首帧渲染抢 CPU，拖慢启动（见 2026-08-08 启动分析）。
+    QTimer.singleShot(0, lambda: QThreadPool.globalInstance().start(worker))
 
 
 def on_script_icon_loaded(label, source: str, qimg) -> None:
