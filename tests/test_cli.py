@@ -189,6 +189,130 @@ class TestCliGenerateChain(unittest.TestCase):
         self.assertIn("未知的脚本名", _read_cli_file("generate_chain"))
 
 
+class TestParseOverrides(unittest.TestCase):
+    """_parse_overrides：解析 '脚本名=值' 格式的覆盖参数。"""
+
+    def test_none_returns_empty(self):
+        self.assertEqual(cli._parse_overrides(None), {})
+
+    def test_empty_string_returns_empty(self):
+        self.assertEqual(cli._parse_overrides(""), {})
+
+    def test_single_pair(self):
+        self.assertEqual(cli._parse_overrides("鸣潮=凝素领域"), {"鸣潮": "凝素领域"})
+
+    def test_multiple_pairs(self):
+        result = cli._parse_overrides("鸣潮=凝素领域,崩铁=侵蚀隧洞")
+        self.assertEqual(result, {"鸣潮": "凝素领域", "崩铁": "侵蚀隧洞"})
+
+    def test_strips_whitespace(self):
+        result = cli._parse_overrides(" 鸣潮 = 凝素领域 , 崩铁 = 侵蚀隧洞 ")
+        self.assertEqual(result, {"鸣潮": "凝素领域", "崩铁": "侵蚀隧洞"})
+
+    def test_missing_equals_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            cli._parse_overrides("鸣潮凝素领域")
+        self.assertIn("缺少 '='", str(ctx.exception))
+
+    def test_empty_name_raises(self):
+        with self.assertRaises(ValueError):
+            cli._parse_overrides("=凝素领域")
+
+    def test_empty_value_raises(self):
+        with self.assertRaises(ValueError):
+            cli._parse_overrides("鸣潮=")
+
+
+class TestCliGenerateChainOverrides(unittest.TestCase):
+    """--dungeon / --sequence 命令行覆盖：合并到 ui_state 后传给 generate_chain。"""
+
+    def setUp(self):
+        self._names = _known_script_names()
+        self.assertTrue(self._names, "config.yml 不应为空脚本列表")
+        self._target = "鸣潮"
+        assert self._target in self._names, f"config.yml 缺少 {self._target}"
+
+    def test_dungeon_override_merged_into_ui_state(self):
+        """--dungeon 覆盖值合并到传给 generate_chain 的 ui_state。"""
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            with patch.object(cli.ChainService, "generate_chain", return_value=out) as mock_gen:
+                _run_main(
+                    ["--generate-chain", "--enable", self._target,
+                     "--dungeon", f"{self._target}=凝素领域", "--out", out],
+                    expect_exit=0,
+                )
+            mock_gen.assert_called_once()
+            # generate_chain(self, all_config_data, enabled_names, chain_name, ui_state, out_path=)
+            ui_state = mock_gen.call_args.args[3]
+            self.assertEqual(ui_state[self._target]["dungeon"], "凝素领域")
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+    def test_sequence_override_merged_into_ui_state(self):
+        """--sequence 覆盖值合并到传给 generate_chain 的 ui_state。"""
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            with patch.object(cli.ChainService, "generate_chain", return_value=out) as mock_gen:
+                _run_main(
+                    ["--generate-chain", "--enable", self._target,
+                     "--dungeon", f"{self._target}=凝素领域",
+                     "--sequence", f"{self._target}=5", "--out", out],
+                    expect_exit=0,
+                )
+            ui_state = mock_gen.call_args.args[3]
+            self.assertEqual(ui_state[self._target]["sequence"], "5")
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+    def test_overrides_do_not_persist_to_gui_state(self):
+        """--dungeon / --sequence 仅本次生效，不写回 gui_state.json。"""
+        state_path = os.path.join(PROJECT_ROOT, "config", "gui_state.json")
+        with open(state_path, encoding="utf-8") as f:
+            before = json.load(f)
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            with patch.object(service_chain_gen, "set_config"):
+                _run_main(
+                    ["--generate-chain", "--enable", self._target,
+                     "--dungeon", f"{self._target}=凝素领域",
+                     "--sequence", f"{self._target}=5", "--out", out],
+                    expect_exit=0,
+                )
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+        with open(state_path, encoding="utf-8") as f:
+            after = json.load(f)
+        self.assertEqual(before, after, "gui_state.json 被 CLI 覆盖修改了")
+
+    def test_bad_format_exits_one(self):
+        with patch.object(service_chain_gen, "set_config"):
+            code = _run_main(
+                ["--generate-chain", "--enable", self._target,
+                 "--dungeon", "鸣潮凝素领域"],
+                expect_exit=1,
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("格式错误", _read_cli_file("generate_chain"))
+
+    def test_unknown_script_in_dungeon_exits_one(self):
+        bogus = "此脚本一定不存在_XYZ"
+        with patch.object(service_chain_gen, "set_config"):
+            code = _run_main(
+                ["--generate-chain", "--enable", self._target,
+                 "--dungeon", f"{bogus}=凝素领域"],
+                expect_exit=1,
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("未知的脚本名", _read_cli_file("generate_chain"))
+
+
 class TestCliRunChain(unittest.TestCase):
     """--run-chain 出口：配置文件不存在时退出 1 且不真正拉起 Runner。"""
 

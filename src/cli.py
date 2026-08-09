@@ -102,6 +102,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --run-chain，即起即返（后台非阻塞运行整条链）",
     )
     parser.add_argument(
+        "--dungeon",
+        type=str,
+        default=None,
+        help="配合 --generate-chain，覆盖副本选择，格式 '脚本名=副本名'（逗号分隔多个）",
+    )
+    parser.add_argument(
+        "--sequence",
+        type=str,
+        default=None,
+        help="配合 --generate-chain，覆盖序列选择，格式 '脚本名=序列值'（逗号分隔多个）",
+    )
+    parser.add_argument(
         "--out",
         type=str,
         default=None,
@@ -263,6 +275,35 @@ def _run_check_weekly(out_path: str | None) -> int:
     return 0 if result["status"] == "ok" else 1
 
 
+def _parse_overrides(raw: str | None) -> dict[str, str]:
+    """解析 '脚本名=值,脚本名=值' 格式的命令行覆盖参数。
+
+    Args:
+        raw: 原始字符串（None 或空 → 空 dict）。
+
+    Returns:
+        脚本名 → 值的映射。
+
+    Raises:
+        ValueError: 条目缺少 '=' 或值为空。
+    """
+    if not raw:
+        return {}
+    result: dict[str, str] = {}
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if "=" not in entry:
+            raise ValueError(f"覆盖参数格式错误（缺少 '='）: {entry}")
+        name, _, value = entry.partition("=")
+        name, value = name.strip(), value.strip()
+        if not name or not value:
+            raise ValueError(f"覆盖参数格式错误（脚本名或值为空）: {entry}")
+        result[name] = value
+    return result
+
+
 def _run_generate_chain(args) -> int:
     """CLI: 生成脚本链配置。返回退出码 0=成功 / 1=失败。"""
     service = ChainService()
@@ -279,6 +320,31 @@ def _run_generate_chain(args) -> int:
         enabled_names = set(known)
 
     ui_state = service.load_ui_state()
+
+    # 命令行覆盖：--dungeon / --sequence 合并到 ui_state（仅本次生效，不持久化）
+    try:
+        dungeon_overrides = _parse_overrides(args.dungeon)
+        sequence_overrides = _parse_overrides(args.sequence)
+    except ValueError as exc:
+        _emit_cli("generate_chain", str(exc))
+        return 1
+
+    for name in dungeon_overrides:
+        if name not in known:
+            _emit_cli("generate_chain", f"--dungeon 中未知的脚本名: {name}")
+            return 1
+        if name not in ui_state:
+            ui_state[name] = {}
+        ui_state[name]["dungeon"] = dungeon_overrides[name]
+
+    for name in sequence_overrides:
+        if name not in known:
+            _emit_cli("generate_chain", f"--sequence 中未知的脚本名: {name}")
+            return 1
+        if name not in ui_state:
+            ui_state[name] = {}
+        ui_state[name]["sequence"] = sequence_overrides[name]
+
     out = args.out
     if out:
         out = os.path.abspath(out)
