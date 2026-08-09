@@ -44,6 +44,11 @@ class ChainService:
     内部集成 ScriptService 处理 weekly_timeouts 同步。"""
 
     def __init__(self, script_service=None):
+        """初始化 ChainService。
+
+        Args:
+            script_service: 可注入的 ScriptService；None 时自建默认实例。
+        """
         self._script_service = script_service or ScriptService()
 
     # ---------- 配置读写 ----------
@@ -82,13 +87,23 @@ class ChainService:
     def add_script(self, script_data: dict) -> None:
         """向 config.yml 的 script_list 追加一个脚本条目，并自动创建 weekly 默认条目。
 
+        display_name 不得与已有条目重复（数据完整性约束）。
+
         Args:
             script_data: 完整脚本条目 dict（含 display_name / script_path 等）。
         """
+        assert "display_name" in script_data, (
+            "[service] script_data 缺少 display_name"
+        )
         config = self.load_config()
-        config.setdefault("script_list", []).append(script_data)
+        scripts = config.setdefault("script_list", [])
+        display_name = script_data["display_name"]
+        assert all(s.get("display_name") != display_name for s in scripts), (
+            f"[service] 脚本名称已存在: {display_name}"
+        )
+        scripts.append(script_data)
         self.save_config(config)
-        self._script_service.ensure_weekly_entry(script_data["display_name"])
+        self._script_service.ensure_weekly_entry(display_name)
 
     def remove_script(self, display_name: str) -> None:
         """从 config.yml 的 script_list 移除指定脚本条目，并自动清理 weekly 孤儿。
@@ -133,6 +148,13 @@ class ChainService:
                 break
         assert target is not None, f"[service] 找不到脚本: {old_display_name}"
 
+        renamed = new_display_name != old_display_name
+        if renamed:
+            assert all(
+                s.get("display_name") != new_display_name
+                for s in config["script_list"]
+            ), f"[service] 脚本名称已存在: {new_display_name}"
+
         for key, value in config_patch.items():
             target[key] = value
         target["display_name"] = new_display_name
@@ -143,7 +165,7 @@ class ChainService:
 
         self.save_config(config)
 
-        if new_display_name != old_display_name:
+        if renamed:
             self._script_service.rename_weekly_in_timeouts(
                 old_display_name, new_display_name
             )

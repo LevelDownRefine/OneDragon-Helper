@@ -91,8 +91,11 @@ class ScriptService:
 
         Args:
             display_name: 脚本 display_name。
-            timeouts: 7 格超时输入值，空输入为 None。
+            timeouts: 7 格超时输入值（必须恰好 7 格），空输入为 None。
         """
+        assert len(timeouts) == 7, (
+            f"[service] weekly 超时必须为 7 格，实际 {len(timeouts)}"
+        )
         weekly = _load_weekly()
         weekly[display_name] = _resolve_weekly_timeouts(timeouts)
         _dump_weekly(weekly)

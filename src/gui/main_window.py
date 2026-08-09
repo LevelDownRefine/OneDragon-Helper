@@ -297,7 +297,15 @@ class MainWindow(QMainWindow):
         self.scroll_layout.addStretch()
 
     def _delete_script(self, display_name):
-        """删除指定脚本（弹窗已确认）：UI 列表 + 内存 config + 总 config(ChainService, 含 weekly 清理)。"""
+        """删除指定脚本（弹窗已确认）：先持久化再清理 UI/内存。
+
+        持久化先于 widget 销毁，避免 ChainService.remove_script 断言失败时
+        卡片已被删除、UI 与磁盘状态不匹配。
+        """
+        # 1. 持久化：config.yml + weekly_timeouts 都由 ChainService 内部处理
+        self.service.remove_script(display_name)
+
+        # 2. 清理 UI 与内存
         idx = next(
             (
                 i
@@ -324,8 +332,6 @@ class MainWindow(QMainWindow):
         self.scroll_layout.removeWidget(item)
         item.deleteLater()
 
-        # config.yml + weekly_timeouts 都由 ChainService 内部处理
-        self.service.remove_script(display_name)
         self._persist_ui_state()
 
     def _add_script(self):
