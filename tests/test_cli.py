@@ -289,14 +289,29 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
                 os.remove(out)
 
     def test_overrides_do_not_persist_to_gui_state(self):
-        """--dungeon / --sequence 仅本次生效，不写回 gui_state.json。"""
-        state_path = os.path.join(PROJECT_ROOT, "config", "gui_state.json")
-        with open(state_path, encoding="utf-8") as f:
-            before = json.load(f)
+        """--dungeon / --sequence 仅本次生效，不写回 gui_state.json。
+
+        gui_state.json 由首次运行生成、不纳入版本控制，CI 无此文件，故 mock
+        load/save_ui_state 验证覆盖仅作用于内存 ui_state、不触发任何持久化写入。
+        """
+        saved = []
+        base_state = {self._target: {"dungeon": "基线副本", "sequence": "0"}}
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(service_chain_gen, "set_config"):
+            with (
+                patch.object(
+                    cli.ChainService, "load_ui_state", return_value=dict(base_state)
+                ),
+                patch.object(
+                    cli.ChainService,
+                    "save_ui_state",
+                    side_effect=lambda state: saved.append(state),
+                ),
+                patch.object(
+                    cli.ChainService, "generate_chain", return_value=out
+                ) as mock_gen,
+            ):
                 _run_main(
                     [
                         "--generate-chain",
@@ -311,12 +326,13 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
                     ],
                     expect_exit=0,
                 )
+            ui_state = mock_gen.call_args.args[3]
+            self.assertEqual(ui_state[self._target]["dungeon"], "凝素领域")
+            self.assertEqual(ui_state[self._target]["sequence"], "5")
+            self.assertEqual(saved, [], "CLI 覆盖参数不应写回 gui_state.json")
         finally:
             if os.path.exists(out):
                 os.remove(out)
-        with open(state_path, encoding="utf-8") as f:
-            after = json.load(f)
-        self.assertEqual(before, after, "gui_state.json 被 CLI 覆盖修改了")
 
     def test_bad_format_exits_one(self):
         with patch.object(service_chain_gen, "set_config"):

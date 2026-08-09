@@ -27,10 +27,6 @@ class ScriptServiceTestBase(unittest.TestCase):
                 return_value=self.config_path,
             ),
             patch(
-                "src.service.script_service.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-            patch(
                 "src.service.script_service.get_weekly_timeouts_yml_path_under_root",
                 return_value=self.weekly_path,
             ),
@@ -63,81 +59,52 @@ class TestGetScript(ScriptServiceTestBase):
         self.assertIsNone(ScriptService().get_script("不存在"))
 
 
-class TestUpdateScript(ScriptServiceTestBase):
-    def test_update_fields(self):
-        ScriptService().update_script(
-            "原神", "原神", {"script_path": "C:/new.exe", "block": False}
-        )
-        data = self._read_config()
-        target = data["script_list"][0]
-        self.assertEqual(target["script_path"], "C:/new.exe")
-        self.assertFalse(target["block"])
-        self.assertEqual(target["display_name"], "原神")
+class TestSaveWeekly(ScriptServiceTestBase):
+    """save_weekly：保存 7 格超时到 weekly_timeouts.yml。"""
 
-    def test_rename_migrates_weekly(self):
+    def test_save_weekly_writes_entry(self):
+        ScriptService().save_weekly("原神", [60] * 7)
+        self.assertEqual(self._read_weekly()["原神"], [60] * 7)
+
+    def test_none_timeouts_resolved_to_default(self):
+        """空输入（None）→ 转默认超时。"""
+        ScriptService().save_weekly("原神", [None, 60, None, 60, 60, 60, 60])
+        self.assertEqual(
+            self._read_weekly()["原神"],
+            [3600, 60, 3600, 60, 60, 60, 60],
+        )
+
+    def test_low_timeouts_clamped_to_10(self):
+        """低于 10 的输入 → clamp 到 10。"""
+        ScriptService().save_weekly("原神", [5, 0, 60, 60, 60, 60, 60])
+        self.assertEqual(
+            self._read_weekly()["原神"],
+            [10, 10, 60, 60, 60, 60, 60],
+        )
+
+
+class TestRenameWeeklyInTimeouts(ScriptServiceTestBase):
+    """rename_weekly_in_timeouts：改名时迁移 weekly_timeouts.yml 条目。"""
+
+    def test_rename_migrates_entry(self):
         with open(self.weekly_path, "w", encoding="utf-8") as f:
             yaml.dump({"原神": [1] * 7}, f, allow_unicode=True)
-        ScriptService().update_script("原神", "原神2", {"script_path": "C:/a.exe"})
+        ScriptService().rename_weekly_in_timeouts("原神", "原神2")
         weekly = self._read_weekly()
         self.assertNotIn("原神", weekly)
         self.assertEqual(weekly["原神2"], [1] * 7)
-        data = self._read_config()
-        self.assertEqual(data["script_list"][0]["display_name"], "原神2")
 
-    def test_update_with_weekly_timeouts(self):
-        ScriptService().update_script(
-            "原神", "原神", {"script_path": "C:/a.exe"}, weekly_timeouts=[60] * 7
-        )
+    def test_same_name_noop(self):
+        """同名的 rename 为 no-op，不影响已有 weekly 条目。"""
+        with open(self.weekly_path, "w", encoding="utf-8") as f:
+            yaml.dump({"原神": [60] * 7}, f, allow_unicode=True)
+        ScriptService().rename_weekly_in_timeouts("原神", "原神")
         self.assertEqual(self._read_weekly()["原神"], [60] * 7)
 
-    def test_empty_game_process_forces_kill_game_off(self):
-        """game_process_name 为空 → kill_game_after_done 强制 False（避免无效配置）。"""
-        ScriptService().update_script(
-            "原神",
-            "原神",
-            {"kill_game_after_done": True, "game_process_name": ""},
-        )
-        target = self._read_config()["script_list"][0]
-        self.assertEqual(target["game_process_name"], "")
-        self.assertFalse(target["kill_game_after_done"])
-
-    def test_game_process_keeps_kill_game(self):
-        """game_process_name 非空 → kill_game_after_done 保持原值。"""
-        ScriptService().update_script(
-            "原神",
-            "原神",
-            {"kill_game_after_done": True, "game_process_name": "YuanShen.exe"},
-        )
-        target = self._read_config()["script_list"][0]
-        self.assertTrue(target["kill_game_after_done"])
-
-    def test_update_none_timeouts_resolved_to_default(self):
-        """空输入（None）→ 落盘前转默认超时。"""
-        ScriptService().update_script(
-            "原神",
-            "原神",
-            {"script_path": "C:/a.exe"},
-            weekly_timeouts=[None, 60, None, 60, 60, 60, 60],
-        )
-        self.assertEqual(self._read_weekly()["原神"], [3600, 60, 3600, 60, 60, 60, 60])
-
-    def test_update_low_timeouts_clamped_to_10(self):
-        """低于 10 的输入 → clamp 到 10。"""
-        ScriptService().update_script(
-            "原神",
-            "原神",
-            {"script_path": "C:/a.exe"},
-            weekly_timeouts=[5, 0, 60, 60, 60, 60, 60],
-        )
-        self.assertEqual(self._read_weekly()["原神"], [10, 10, 60, 60, 60, 60, 60])
-
-    def test_update_missing_script_raises(self):
-        with self.assertRaises(AssertionError):
-            ScriptService().update_script("不存在", "不存在", {})
-
-    def test_empty_new_name_raises(self):
-        with self.assertRaises(AssertionError):
-            ScriptService().update_script("原神", "", {})
+    def test_old_entry_missing_noop(self):
+        """旧名无 weekly 条目 → no-op（不报错，不写文件）。"""
+        ScriptService().rename_weekly_in_timeouts("不存在", "新名")
+        self.assertIsNone(self._read_weekly())
 
 
 class TestEnsureWeeklyEntry(ScriptServiceTestBase):
@@ -221,11 +188,115 @@ class TestCheckWeekly(ScriptServiceTestBase):
         self.assertEqual(result["status"], "inconsistent")
         self.assertEqual(result["orphans"], ["已删除脚本"])
 
-    def test_missing_display_name_raises_keyerror(self):
-        """条目缺 display_name 属数据损坏：显式 KeyError，而非静默按 None 处理。"""
+    def test_missing_display_name_raises_assertion(self):
+        """条目缺 display_name 属数据损坏：_load_config 入口抛 AssertionError。"""
         self._write_config({"script_list": [{"script_path": "C:/x.py"}]})
-        with self.assertRaises(KeyError):
+        with self.assertRaises(AssertionError):
             ScriptService().check_weekly()
+
+
+class TestConfigFilePath(ScriptServiceTestBase):
+    """测试 ScriptService.config_file_path：python/external 分支与缺失处理。"""
+
+    def _setup_script(self, display_name, script_type, script_path):
+        self._write_config(
+            {
+                "script_list": [
+                    {
+                        "display_name": display_name,
+                        "script_type": script_type,
+                        "script_path": script_path,
+                    }
+                ]
+            }
+        )
+
+    def test_missing_script_returns_error(self):
+        self._setup_script("原神", "external", "C:/a.exe")
+        path, error = ScriptService().config_file_path("不存在")
+        self.assertIsNone(path)
+        self.assertIn("找不到脚本", error)
+
+    def test_external_adapted_returns_config_path(self):
+        self._setup_script("原神", "external", "C:/a.exe")
+        with (
+            patch(
+                "src.service.script_service.get_config_path",
+                return_value="C:/config/DailyTask.json",
+            ),
+            patch("src.service.script_service.os.path.isfile", return_value=True),
+        ):
+            path, error = ScriptService().config_file_path("原神")
+        self.assertEqual(path, "C:/config/DailyTask.json")
+        self.assertIsNone(error)
+
+    def test_external_unadapted_returns_error(self):
+        self._setup_script("原神", "external", "C:/a.exe")
+        with patch(
+            "src.service.script_service.get_config_path",
+            side_effect=AssertionError("未适配脚本: 原神"),
+        ):
+            path, error = ScriptService().config_file_path("原神")
+        self.assertIsNone(path)
+        self.assertIn("暂未适配", error)
+
+    def test_python_resolved_returns_py_path(self):
+        self._setup_script("静音", "python", "C:/proj/mute.py")
+        with (
+            patch(
+                "src.service.script_service.resolve_script_path",
+                return_value="C:/proj/mute.py",
+            ),
+            patch("src.service.script_service.os.path.isfile", return_value=True),
+        ):
+            path, error = ScriptService().config_file_path("静音")
+        self.assertEqual(path, "C:/proj/mute.py")
+        self.assertIsNone(error)
+
+    def test_python_missing_file_returns_error(self):
+        self._setup_script("静音", "python", "C:/nope/mute.py")
+        with (
+            patch(
+                "src.service.script_service.resolve_script_path",
+                return_value="C:/nope/mute.py",
+            ),
+            patch("src.service.script_service.os.path.isfile", return_value=False),
+        ):
+            path, error = ScriptService().config_file_path("静音")
+        self.assertIsNone(path)
+        self.assertIn("找不到脚本文件", error)
+
+
+class TestDeleteWeekly(ScriptServiceTestBase):
+    """测试 ScriptService.delete_weekly：仅清理 weekly_timeouts.yml 孤儿（总 config 移除归 ChainService）。"""
+
+    def test_delete_weekly_cleans_orphan(self):
+        """删除后 weekly_timeouts.yml 中该脚本的孤儿条目被移除"""
+        with open(self.weekly_path, "w", encoding="utf-8") as f:
+            yaml.dump({"原神": [100] * 7}, f, allow_unicode=True, sort_keys=False)
+        ScriptService().delete_weekly("原神")
+        weekly = self._read_weekly()
+        self.assertNotIn("原神", weekly)
+        self.assertEqual(weekly, {})
+
+    def test_delete_weekly_keeps_others(self):
+        """删除单个脚本不影响 weekly_timeouts.yml 中其它条目"""
+        with open(self.weekly_path, "w", encoding="utf-8") as f:
+            yaml.dump(
+                {"原神": [100] * 7, "鸣潮": [120] * 7},
+                f,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+        ScriptService().delete_weekly("原神")
+        weekly = self._read_weekly()
+        self.assertNotIn("原神", weekly)
+        self.assertEqual(weekly, {"鸣潮": [120] * 7})
+
+    def test_delete_weekly_noop_when_absent(self):
+        """脚本无 weekly 条目时清理为 no-op（不报错）"""
+        ScriptService().delete_weekly("不存在")
+        self.assertIsNone(self._read_weekly())
 
 
 if __name__ == "__main__":

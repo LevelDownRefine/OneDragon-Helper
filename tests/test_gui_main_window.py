@@ -1,17 +1,13 @@
 """测试 src/gui/main_window.py：重排、删除、添加脚本与持久化"""
 
 import os
-import tempfile
 import unittest
-from io import StringIO
 from unittest.mock import MagicMock, patch
-
-import yaml
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication
 
 from src.config.subscript import default_script_entry
 from src.gui.main_window import MainWindow, QMessageBox
@@ -41,24 +37,15 @@ def _make_window(script_count=3, disable_persist=False):
         ]
     }
     win._script_service = MagicMock()  # 隔离 ScriptService 文件读写副作用
+    # 仅隔离 ChainService 的落盘方法（总 config.yml）；其余方法保留真实实现
+    win.service.add_script = MagicMock()
+    win.service.remove_script = MagicMock()
+    win.service.save_config = MagicMock()
+    win.service.update_script = MagicMock()
     if disable_persist:
         win._save_script_order = lambda: None
         win._persist_ui_state = lambda: None
     return win
-
-
-def _fake_open_capture(captured):
-    """返回一个 fake open：写入内容捕获到 captured['buf']"""
-
-    def fake_open(file, mode="w", encoding=None):
-        m = MagicMock()
-        buf = StringIO()
-        captured["buf"] = buf
-        m.__enter__ = MagicMock(return_value=buf)
-        m.__exit__ = MagicMock(return_value=False)
-        return m
-
-    return fake_open
 
 
 class TestReorderScripts(unittest.TestCase):
@@ -79,18 +66,12 @@ class TestReorderScripts(unittest.TestCase):
         self.assertEqual(names, ["脚本1", "脚本2", "脚本0"])
 
     def test_reorder_persists_to_config_yml(self):
-        """重排后写回 config.yml（script_list 顺序一致）"""
+        """重排后调 ChainService.save_config 传入顺序一致的 script_list。"""
         win = _make_window()
-        captured = {}
-        with (
-            patch(
-                "src.utils.get_config_yml_path_under_root", return_value="CONFIG.yml"
-            ),
-            patch("builtins.open", side_effect=_fake_open_capture(captured)),
-        ):
-            win._reorder_scripts("脚本0", "脚本2")
-        written = yaml.safe_load(captured["buf"].getvalue())
-        names = [s["display_name"] for s in written["script_list"]]
+        win._reorder_scripts("脚本0", "脚本2")
+        win.service.save_config.assert_called_once()
+        args, _ = win.service.save_config.call_args
+        names = [s["display_name"] for s in args[0]["script_list"]]
         self.assertEqual(names, ["脚本1", "脚本2", "脚本0"])
 
     def test_reorder_noop_when_same_target(self):
@@ -102,71 +83,39 @@ class TestReorderScripts(unittest.TestCase):
 
 
 class TestDeleteScript(unittest.TestCase):
-    """测试 MainWindow 删除脚本：UI 与 config.yml 同步移除并持久化"""
+    """测试 MainWindow 删除脚本：UI 与 config.yml 同步移除并持久化
+
+    确认交互由弹窗（SingleScriptConfigDialog._on_delete_clicked）负责，
+    MainWindow._delete_script 不再二次确认，故此处不测「取消」分支。
+    """
 
     def test_delete_removes_from_script_items(self):
-        """确认删除后 self.script_items 不再包含该脚本"""
+        """删除后 self.script_items 不再包含该脚本"""
         win = _make_window(disable_persist=True)
-        with patch(
-            "src.gui.main_window.QMessageBox.question", return_value=QMessageBox.Yes
-        ):
-            win._delete_script("脚本1")
+        win._delete_script("脚本1")
         names = [it.display_name for it in win.script_items]
         self.assertEqual(names, ["脚本0", "脚本2"])
 
     def test_delete_removes_from_config_data(self):
-        """确认删除后 self.all_config_data['script_list'] 不再包含该脚本"""
+        """删除后 self.all_config_data['script_list'] 不再包含该脚本"""
         win = _make_window(disable_persist=True)
-        with patch(
-            "src.gui.main_window.QMessageBox.question", return_value=QMessageBox.Yes
-        ):
-            win._delete_script("脚本1")
+        win._delete_script("脚本1")
         names = [s["display_name"] for s in win.all_config_data["script_list"]]
         self.assertEqual(names, ["脚本0", "脚本2"])
 
     def test_delete_removes_widget_from_layout(self):
-        """确认删除后 widget 从滚动区布局移除"""
+        """删除后 widget 从滚动区布局移除"""
         win = _make_window(disable_persist=True)
         item = win.script_items[1]
         win.scroll_layout.addWidget(item)
-        with patch(
-            "src.gui.main_window.QMessageBox.question", return_value=QMessageBox.Yes
-        ):
-            win._delete_script("脚本1")
+        win._delete_script("脚本1")
         self.assertEqual(win.scroll_layout.indexOf(item), -1)
 
-    def test_delete_persists_to_config_yml(self):
-        """确认删除后写回 config.yml（script_list 不含被删脚本）"""
-        win = _make_window()  # 保留真实 _save_script_order，验证写回
-        win._persist_ui_state = lambda: (
-            None
-        )  # 仅验证 config.yml 写回，隔离 gui_state.json
-        captured = {}
-        with (
-            patch(
-                "src.gui.main_window.QMessageBox.question", return_value=QMessageBox.Yes
-            ),
-            patch(
-                "src.utils.get_config_yml_path_under_root", return_value="CONFIG.yml"
-            ),
-            patch("builtins.open", side_effect=_fake_open_capture(captured)),
-        ):
-            win._delete_script("脚本1")
-        written = yaml.safe_load(captured["buf"].getvalue())
-        names = [s["display_name"] for s in written["script_list"]]
-        self.assertEqual(names, ["脚本0", "脚本2"])
-
-    def test_delete_noop_when_confirm_no(self):
-        """确认弹窗选「否」时不删除、不改变任何状态"""
+    def test_delete_delegates_to_services(self):
+        """删除委托 ChainService.remove_script（内部自动处理 config + weekly）"""
         win = _make_window(disable_persist=True)
-        with patch(
-            "src.gui.main_window.QMessageBox.question", return_value=QMessageBox.No
-        ):
-            win._delete_script("脚本1")
-        names = [it.display_name for it in win.script_items]
-        self.assertEqual(names, ["脚本0", "脚本1", "脚本2"])
-        cfg_names = [s["display_name"] for s in win.all_config_data["script_list"]]
-        self.assertEqual(cfg_names, ["脚本0", "脚本1", "脚本2"])
+        win._delete_script("脚本1")
+        win.service.remove_script.assert_called_once_with("脚本1")
 
 
 class TestAddScript(unittest.TestCase):
@@ -298,23 +247,15 @@ class TestRunSelected(unittest.TestCase):
             win._run_selected()
         mock_runner.assert_called_once()
 
-    def test_append_persists_to_config_yml(self):
-        """追加后写回 config.yml（末尾含新脚本，字段完整）"""
-        win = _make_window(script_count=2)  # 保留真实 _save_script_order
+    def test_append_delegates_to_chain_service(self):
+        """追加委托 ChainService.add_script 落盘（config.yml 写回），且内存 script_list 含新脚本"""
+        win = _make_window(script_count=2)
         win._persist_ui_state = lambda: None  # 隔离 gui_state.json
-        captured = {}
         entry = default_script_entry("新脚本", "python", "C:/x.py")
-        with (
-            patch(
-                "src.utils.get_config_yml_path_under_root", return_value="CONFIG.yml"
-            ),
-            patch("builtins.open", side_effect=_fake_open_capture(captured)),
-        ):
-            win._append_script(entry)
-        written = yaml.safe_load(captured["buf"].getvalue())
-        names = [s["display_name"] for s in written["script_list"]]
+        win._append_script(entry)
+        win.service.add_script.assert_called_once_with(entry)
+        names = [s["display_name"] for s in win.all_config_data["script_list"]]
         self.assertEqual(names, ["脚本0", "脚本1", "新脚本"])
-        self.assertEqual(written["script_list"][-1]["script_type"], "python")
 
     def test_append_widget_added_to_layout(self):
         """追加后新脚本 widget 出现在滚动区布局中"""
@@ -353,76 +294,123 @@ class TestRunSelected(unittest.TestCase):
 
 
 class TestConfigSaveSync(unittest.TestCase):
-    """测试配置弹窗保存后，MainWindow 重新吸收磁盘改动（修复「保存路径失效」）。"""
+    """弹窗保存后，MainWindow 委托 ChainService.update_script 落盘并同步内存。"""
 
-    def test_script_config_saved_reloads_all_config_data(self):
-        """_on_script_config_saved 应从磁盘重新加载 all_config_data，吸收新路径"""
+    def _make_result(self, old="脚本0", new="脚本0", **patch_overrides):
+        base_patch = {
+            "script_path": "C:/new.exe",
+            "script_type": "external",
+            "script_arguments": "",
+            "check_done": "script_closed",
+            "kill_script_after_done": True,
+            "kill_game_after_done": False,
+            "game_process_name": "",
+            "block": True,
+        }
+        base_patch.update(patch_overrides)
+        return {
+            "old_display_name": old,
+            "new_display_name": new,
+            "config_patch": base_patch,
+            "weekly_timeouts": [3600] * 7,
+        }
+
+    def _updated_config(self, win, **patch_overrides):
+        """返回更新后的 all_config_data（模拟 load_config 返回）。"""
+        result = {"script_list": []}
+        for script in win.all_config_data["script_list"]:
+            copy = dict(script)
+            if copy["display_name"] == "脚本0":
+                copy["script_path"] = "C:/new.exe"
+                copy["script_type"] = "external"
+                copy["script_arguments"] = ""
+                copy["check_done"] = "script_closed"
+                copy["kill_script_after_done"] = True
+                copy["kill_game_after_done"] = False
+                copy["game_process_name"] = ""
+                copy["block"] = True
+                copy.update(patch_overrides)
+            result["script_list"].append(copy)
+        return result
+
+    def test_on_config_saved_delegates_to_service(self):
+        """_on_script_config_saved 应委托 ChainService.update_script 落盘，
+        再重新 load_config 同步内存与卡片。"""
         win = _make_window(disable_persist=True)
         win.all_config_data["script_list"][0]["script_path"] = "C:/old.exe"
         win.script_items[0].script_path = "C:/old.exe"
 
-        new_cfg = {
-            "script_list": [
-                {
-                    "display_name": f"脚本{i}",
-                    "script_type": "external",
-                    "script_path": "C:/new.exe" if i == 0 else "",
-                }
-                for i in range(3)
-            ]
-        }
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yml", encoding="utf-8", delete=False
-        ) as tmp:
-            yaml.safe_dump(new_cfg, tmp, allow_unicode=True, sort_keys=False)
-            tmp_path = tmp.name
-        try:
-            with patch(
-                "src.utils.get_config_yml_path_under_root", return_value=tmp_path
-            ):
-                win._on_script_config_saved("脚本0")
-        finally:
-            os.unlink(tmp_path)
+        result_data = self._make_result()
+        updated = self._updated_config(win)
+        win.service.load_config = MagicMock(return_value=updated)
 
+        win._on_script_config_saved(result_data)
+
+        # 委托 ChainService
+        win.service.update_script.assert_called_once_with(
+            "脚本0",
+            "脚本0",
+            result_data["config_patch"],
+            result_data["weekly_timeouts"],
+        )
+        # 内存重新加载
         reloaded = next(
             s
             for s in win.all_config_data["script_list"]
             if s["display_name"] == "脚本0"
         )
         self.assertEqual(reloaded["script_path"], "C:/new.exe")
+        # 卡片同步
         self.assertEqual(win.script_items[0].script_path, "C:/new.exe")
 
-    def test_config_dialog_accept_triggers_callback(self):
-        """ScriptItem 配置弹窗 accept 后，应调用 config_saved_callback 通知 MainWindow"""
-        callback = MagicMock()
-        item = ScriptItem(
-            {"display_name": "脚本0", "script_type": "external"},
-            config_saved_callback=callback,
-        )
-        fake_dialog = MagicMock()
-        fake_dialog.exec.return_value = QDialog.Accepted
-        # saved_display_name 用真实字符串：与原名相同 => 不改名分支，仅验证回调原名称
-        fake_dialog.saved_display_name = "脚本0"
-        with patch(
-            "src.gui.widgets.SingleScriptConfigDialog", return_value=fake_dialog
-        ):
-            item._show_config_dialog()
-        callback.assert_called_once_with("脚本0")
+    def test_on_config_saved_handles_rename(self):
+        """改名时 ChainService 处理 weekly 迁移，load_config 返回新名条目后同步卡片。"""
+        win = _make_window(script_count=2, disable_persist=True)
+        win.script_items[0].display_name = "脚本0"
+        result_data = self._make_result(old="脚本0", new="脚本改")
+        updated = {
+            "script_list": [
+                {
+                    "display_name": "脚本改",
+                    "script_type": "external",
+                    "script_path": "C:/new.exe",
+                },
+                {"display_name": "脚本1", "script_type": "external", "script_path": ""},
+            ]
+        }
+        win.service.load_config = MagicMock(return_value=updated)
 
-    def test_config_dialog_reject_does_not_trigger_callback(self):
-        """配置弹窗取消（Rejected）时不触发回调，避免无谓重载"""
-        callback = MagicMock()
-        item = ScriptItem(
-            {"display_name": "脚本0", "script_type": "external"},
-            config_saved_callback=callback,
+        win._on_script_config_saved(result_data)
+
+        win.service.update_script.assert_called_once_with(
+            "脚本0",
+            "脚本改",
+            result_data["config_patch"],
+            result_data["weekly_timeouts"],
         )
-        fake_dialog = MagicMock()
-        fake_dialog.exec.return_value = QDialog.Rejected
-        with patch(
-            "src.gui.widgets.SingleScriptConfigDialog", return_value=fake_dialog
-        ):
-            item._show_config_dialog()
-        callback.assert_not_called()
+        names = [s["display_name"] for s in win.all_config_data["script_list"]]
+        self.assertIn("脚本改", names)
+
+    def test_on_config_saved_syncs_card_after_load(self):
+        """卡片同步发生在 load_config 返回后，数据源为磁盘加载结果。"""
+        win = _make_window(disable_persist=True)
+        win.script_items[0].script_path = "C:/old.exe"
+
+        updated = {
+            "script_list": [
+                {
+                    "display_name": "脚本0",
+                    "script_type": "external",
+                    "script_path": "C:/brand_new.exe",
+                },
+                {"display_name": "脚本1", "script_type": "external", "script_path": ""},
+                {"display_name": "脚本2", "script_type": "external", "script_path": ""},
+            ]
+        }
+        win.service.load_config = MagicMock(return_value=updated)
+
+        win._on_script_config_saved(self._make_result())
+        self.assertEqual(win.script_items[0].script_path, "C:/brand_new.exe")
 
 
 class TestPersistUiState(unittest.TestCase):
@@ -439,7 +427,7 @@ class TestPersistUiState(unittest.TestCase):
         win.service.save_ui_state = MagicMock()  # 隔离写盘
         win._ui_state = {}
 
-        # 直接设置选择状态（绕过 dungeon_btn UI 更新，聚焦 _persist_ui_state 逻辑）
+        # 直接设置选择状态，聚焦 _persist_ui_state 逻辑
         win.script_items[0]._selected_dungeon = "凝素领域"
         win.script_items[0]._selected_sequence = 5
         win._persist_ui_state()

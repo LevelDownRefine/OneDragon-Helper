@@ -137,14 +137,11 @@ def make_icon_button(
     hover_bg="#eef2f7",
     pressed_bg="#e2e8f0",
     size=30,
-    tooltip=None,
 ) -> QPushButton:
     """圆形透明图标按钮：固定正方形，hover/pressed 变色。"""
     btn = QPushButton(symbol)
     btn.setFixedSize(size, size)
     btn.setCursor(Qt.PointingHandCursor)
-    if tooltip:
-        btn.setToolTip(tooltip)
     btn.setStyleSheet(f"""
         QPushButton {{
             border: none;

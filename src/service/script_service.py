@@ -1,8 +1,11 @@
 """ScriptService：单脚本配置服务（无 Qt 依赖）。
 
-承载「单脚本」视角的真实实现：从 config.yml 读写单个脚本条目，并同步
-weekly_timeouts.yml。对应 GUI 的 ScriptItem 卡片与配置弹窗（SingleScriptConfigDialog）；
-GUI 只做表单收集/弹窗，持久化逻辑在此收编，便于无头测试与 CLI 复用。
+承载「单脚本」视角的实现：从 config.yml 读取单个脚本条目，管理
+weekly_timeouts.yml 的读写与改名迁移。
+
+config.yml 的写入权统一归 ChainService；本 Service 仅做只读查询与
+weekly_timeouts 管理。对应 GUI 的 ScriptItem 卡片与配置弹窗（
+SingleScriptConfigDialog）。
 
 链编排（脚本列表/生成/运行）见 :mod:`src.service.chain_service`。
 """
@@ -12,9 +15,13 @@ import os
 
 import yaml
 
-from src.config.subscript import DEFAULT_RUN_TIMEOUT, default_script_entry
+from src.config.subscript import (
+    DEFAULT_RUN_TIMEOUT,
+    default_script_entry,
+    get_config_path,
+    resolve_script_path,
+)
 from src.utils import (
-    get_config_yml_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
     require_config_yml_path,
 )
@@ -23,17 +30,13 @@ logger = logging.getLogger(__name__)
 
 
 def _load_config() -> dict:
-    """读取 config.yml（断言存在）。"""
+    """读取 config.yml（断言存在），校验每个条目含 display_name。"""
     config_path = require_config_yml_path()
     with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
-
-
-def _dump_config(config: dict) -> None:
-    """写回 config.yml。"""
-    config_path = get_config_yml_path_under_root()
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.dump(config, f, allow_unicode=True, sort_keys=False)
+        data = yaml.safe_load(f) or {}
+    for s in data.get("script_list", []):
+        assert "display_name" in s, f"[service] script_list 条目缺少 display_name: {s}"
+    return data
 
 
 def _load_weekly() -> dict:
@@ -65,7 +68,11 @@ def _resolve_weekly_timeouts(timeouts: list[int | None]) -> list[int]:
 
 
 class ScriptService:
-    """单脚本配置服务：config.yml 单条目读写 + weekly_timeouts 同步。"""
+    """单脚本配置服务：config.yml 只读查询 + weekly_timeouts 管理。"""
+
+    def load_all_weekly(self) -> dict:
+        """返回 weekly_timeouts.yml 的完整字典（文件不存在时返回空 dict）。"""
+        return _load_weekly()
 
     def get_script(self, display_name: str) -> dict | None:
         """按 display_name 读取单个脚本条目。
@@ -78,56 +85,40 @@ class ScriptService:
         """
         config = _load_config()
         for script in config.get("script_list", []):
-            if script.get("display_name") == display_name:
+            if script["display_name"] == display_name:
                 return script
         return None
 
-    def update_script(
-        self,
-        old_name: str,
-        new_name: str,
-        patch: dict,
-        weekly_timeouts: list[int] | None = None,
-    ) -> None:
-        """更新单个脚本条目（支持改名）并同步 weekly_timeouts。
+    def save_weekly(self, display_name: str, timeouts: list[int | None]) -> None:
+        """保存单个脚本的每周超时（空输入转默认超时并 clamp ≥10）。
 
         Args:
-            old_name: 原 display_name（用于定位条目）。
-            new_name: 新 display_name（可与 old_name 相同表示不改名）。
-            patch: 要写入条目顶层字段的映射（如 script_path/check_done）。
-            weekly_timeouts: 新的 7 格超时列表（元素为 None 表示空输入，
-                落盘前转默认超时并 clamp ≥10）；None 表示不改 weekly_timeouts。
-                改名时旧的超时配置会迁移到新名。
+            display_name: 脚本 display_name。
+            timeouts: 7 格超时输入值（必须恰好 7 格），空输入为 None。
         """
-        assert new_name, "[service] 脚本名称不能为空"
-        config = _load_config()
-        target = None
-        for script in config.get("script_list", []):
-            if script.get("display_name") == old_name:
-                target = script
-                break
-        assert target is not None, f"[service] 找不到脚本: {old_name}"
+        assert len(timeouts) == 7, (
+            f"[service] weekly 超时必须为 7 格，实际 {len(timeouts)}"
+        )
+        weekly = _load_weekly()
+        weekly[display_name] = _resolve_weekly_timeouts(timeouts)
+        _dump_weekly(weekly)
 
-        for key, value in patch.items():
-            target[key] = value
-        target["display_name"] = new_name
+    def rename_weekly_in_timeouts(self, old_name: str, new_name: str) -> None:
+        """改名时迁移 weekly_timeouts.yml 中的条目。
 
-        # 配置自洽：未设置游戏进程名时「运行后关闭游戏」强制 False（避免无效配置）
-        if not target.get("game_process_name"):
-            target["kill_game_after_done"] = False
+        旧条目存在则迁移到新名；不存在则无操作。
 
-        renamed = new_name != old_name
-        if weekly_timeouts is not None or renamed:
-            weekly = _load_weekly()
-            if renamed:
-                old_val = weekly.pop(old_name, None)
-                if old_val is not None:
-                    weekly[new_name] = old_val
-            if weekly_timeouts is not None:
-                weekly[new_name] = _resolve_weekly_timeouts(weekly_timeouts)
+        Args:
+            old_name: 原 display_name。
+            new_name: 新 display_name。
+        """
+        if old_name == new_name:
+            return
+        weekly = _load_weekly()
+        old_val = weekly.pop(old_name, None)
+        if old_val is not None:
+            weekly[new_name] = old_val
             _dump_weekly(weekly)
-
-        _dump_config(config)
 
     def ensure_weekly_entry(self, display_name: str) -> None:
         """为该脚本在 weekly_timeouts.yml 创建 7 格默认条目（已存在则跳过）。
@@ -201,3 +192,50 @@ class ScriptService:
             script_type=script_type,
             script_path=file_path,
         )
+
+    def delete_weekly(self, display_name: str) -> None:
+        """删除脚本时清理 weekly_timeouts.yml 中该脚本的孤儿条目。
+
+        config.yml 的总配置移除由 ChainService.remove_script 负责；此处仅清理
+        脚本级配置（weekly 超时条目），使删除行为完整、无残留。
+
+        Args:
+            display_name: 要清理 weekly 条目的脚本 display_name。
+        """
+        weekly = _load_weekly()
+        if display_name in weekly:
+            weekly.pop(display_name)
+            _dump_weekly(weekly)
+
+    def config_file_path(self, display_name: str) -> tuple[str | None, str | None]:
+        """返回该脚本「配置文件」的本地路径（用于外部打开）与失败原因。
+
+        python 脚本返回其 .py 源文件路径；external 脚本返回其内部 config 路径。
+        文件不存在或脚本未适配配置文件时返回 (None, error)，error 可直接展示给用户。
+
+        Args:
+            display_name: 脚本 display_name。
+
+        Returns:
+            (path, error)：path 为可打开的配置文件路径（str）；error 为非空字符串时
+                表示未适配或文件缺失（可直接展示），此时 path 为 None。
+        """
+        script = self.get_script(display_name)
+        if script is None:
+            return None, f"找不到脚本: {display_name}"
+        script_type = script.get("script_type", "external")
+        if script_type == "python":
+            resolved = resolve_script_path(script.get("script_path", ""))
+            if not resolved or not os.path.isfile(resolved):
+                return (
+                    None,
+                    f"找不到脚本文件：{script.get('script_path', '') or '(未设置路径)'}",
+                )
+            return resolved, None
+        try:
+            config_path = get_config_path(display_name)
+        except AssertionError as e:
+            return None, f"该脚本暂未适配配置文件，无法打开：{e}"
+        if not os.path.isfile(config_path):
+            return None, f"配置文件不存在：{config_path}"
+        return config_path, None
