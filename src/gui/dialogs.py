@@ -158,19 +158,19 @@ class SingleScriptConfigDialog(_FormDialogBase):
 
     def __init__(
         self,
-        script_name,
+        display_name,
         script_path="",
         parent=None,
         script_service=None,
     ):
         super().__init__(parent)
-        self.setWindowTitle(f"配置 {script_name}")
+        self.setWindowTitle(f"配置 {display_name}")
         self.resize(720, 500)
         self.setStyleSheet("background-color: #f7f8fa;")
 
-        self.display_name = script_name
+        self.display_name = display_name
         self.script_path = script_path
-        self.saved_display_name = script_name  # 保存后最终生效的名称（可能被改名）
+        self.saved_display_name = display_name  # 保存后最终生效的名称（可能被改名）
         self._script_data = {}  # 从 config.yml 读到的本脚本完整数据
         self._script_service = script_service or ScriptService()
         self.pending_changes = None  # accept() 后供调用方取表单字段与 weekly
