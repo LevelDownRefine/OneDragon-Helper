@@ -119,9 +119,7 @@ class ChainService:
         """
         config = self.load_config()
         scripts = config.setdefault("script_list", [])
-        target = next(
-            (s for s in scripts if s["display_name"] == display_name), None
-        )
+        target = next((s for s in scripts if s["display_name"] == display_name), None)
         assert target is not None, f"[service] 找不到脚本: {display_name}"
         scripts.remove(target)
         self.save_config(config)

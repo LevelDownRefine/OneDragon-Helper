@@ -35,9 +35,7 @@ def _load_config() -> dict:
     with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     for s in data.get("script_list", []):
-        assert "display_name" in s, (
-            f"[service] script_list 条目缺少 display_name: {s}"
-        )
+        assert "display_name" in s, f"[service] script_list 条目缺少 display_name: {s}"
     return data
 
 
