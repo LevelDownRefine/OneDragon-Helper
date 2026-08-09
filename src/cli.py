@@ -321,7 +321,7 @@ def _run_generate_chain(args) -> int:
 
     ui_state = service.load_ui_state()
 
-    # 命令行覆盖：--dungeon / --sequence 合并到 ui_state（仅本次生效，不持久化）
+    # 命令行覆盖：--dungeon / --sequence 合并到内存 ui_state，仅本次生效、不持久化
     try:
         dungeon_overrides = _parse_overrides(args.dungeon)
         sequence_overrides = _parse_overrides(args.sequence)

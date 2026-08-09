@@ -11,7 +11,6 @@
 
 import copy
 import logging
-import os
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -26,7 +25,6 @@ from src.config.set_config import set_config
 from src.config.subscript import DEFAULT_RUN_TIMEOUT
 from src.utils import (
     get_path_under_root,
-    get_weekly_timeouts_yml_path_under_root,
     safe_path_join,
 )
 
@@ -99,8 +97,12 @@ def generate_chain_config(
     chain_name: str = "88",
     ui_state: dict | None = None,
     out_path: str | None = None,
+    weekly_timeouts: dict | None = None,
 ) -> str:
     """生成 ScriptChainer 配置文件（仅含启用的脚本）。
+
+    weekly_timeouts 由调用方（ChainService）通过 ScriptService 加载后传入，
+    不再直接读取磁盘文件。
 
     Args:
         all_config_data: config.yml 完整数据（含 script_list）。
@@ -108,18 +110,14 @@ def generate_chain_config(
         chain_name: 链配置文件名（不含扩展名）。
         ui_state: gui_state.json 的 UI 状态（副本/序列选择）。
         out_path: 输出路径；None 时默认 config/script_chain/<chain_name>.yml。
+        weekly_timeouts: weekly_timeouts.yml 的全量字典（默认空 dict）。
 
     Returns:
         输出文件路径。
     """
     ui_state = ui_state or {}
+    weekly_timeouts = weekly_timeouts or {}
     dungeon_map = load_dungeon_map()
-
-    weekly_timeouts: dict = {}
-    weekly_path = get_weekly_timeouts_yml_path_under_root()
-    if os.path.exists(weekly_path):
-        with open(weekly_path, encoding="utf-8") as f:
-            weekly_timeouts = yaml.safe_load(f) or {}
 
     enabled_dungeons, enabled_sequences = _collect_enabled_selections(
         all_config_data, enabled_names, ui_state, dungeon_map

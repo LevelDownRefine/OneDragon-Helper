@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
         # MainWindow 构造耗时打点基准：__init__ 入口归零，阶段差值为真实耗时
         self._init_t0 = time.perf_counter()
         self.setWindowTitle("OneDragon 脚本启动器")
-        self.setMinimumSize(600, 800)
+        self.setMinimumSize(530, 800)
 
         self.script_items = []
         self.all_config_data = None
@@ -167,22 +167,25 @@ class MainWindow(QMainWindow):
         self.script_items.clear()
 
         for data in self.all_config_data["script_list"]:
-            name = data["display_name"]
+            display_name = data["display_name"]
             item_t0 = time.perf_counter()
             dungeon_cfg = self.dungeon_map.get(
-                name
+                display_name
             )  # optional: 不是所有脚本都有副本配置
             _, seq_map, _ = parse_dungeon_config(dungeon_cfg)
 
-            saved = self._ui_state.get(name)  # optional: 新脚本可能没有保存的状态
+            saved = self._ui_state.get(
+                display_name
+            )  # optional: 新脚本可能没有保存的状态
             if saved:
                 saved = restore_sequence_type(saved, seq_map)
             item = self._create_script_item(data, saved)
             self.scroll_layout.insertWidget(len(self.script_items), item)
             self.script_items.append(item)
             item_ms = (time.perf_counter() - item_t0) * 1000
-            logger.info("[startup]     构造 ScriptItem %-8s %8.1f ms", name, item_ms)
-
+            logger.info(
+                "[startup]     构造 ScriptItem %-8s %8.1f ms", display_name, item_ms
+            )
         # 卡片插满后再统一挂载 scroll（见 _init_ui 说明）：避免逐卡插入触发
         # widgetResizable viewport 反复重算。布局顺序：scroll 需位于按钮区之前。
         self._scroll.setWidget(self.scroll_content)
@@ -190,8 +193,10 @@ class MainWindow(QMainWindow):
 
     def _create_script_item(self, data, saved_state):
         """构造 ScriptItem 并注入 UI 状态回调"""
-        name = data["display_name"]
-        dungeon_cfg = self.dungeon_map.get(name)  # optional: 不是所有脚本都有副本配置
+        display_name = data["display_name"]
+        dungeon_cfg = self.dungeon_map.get(
+            display_name
+        )  # optional: 不是所有脚本都有副本配置
         options, seq_map, show_seq = parse_dungeon_config(dungeon_cfg)
         item = ScriptItem(
             data,
@@ -219,26 +224,38 @@ class MainWindow(QMainWindow):
         self._ui_state = state
         self.service.save_ui_state(state)
 
-    def _on_script_config_saved(self, display_name):
-        """配置弹窗保存成功后：重新从磁盘加载 all_config_data 并同步对应卡片的内存路径。
+    def _on_script_config_saved(self, pending_changes):
+        """配置弹窗保存成功后：委托 ChainService 落盘 → 同步内存与卡片。
 
-        原因：配置弹窗直接改写磁盘上的 config.yml，但 MainWindow 的 all_config_data
-        是内存副本。若不重新吸收，后续 _generate_config（运行）或 _save_script_order
-        （重排/增删）会基于旧的 in-memory 副本把刚保存的路径覆盖掉，表现为「保存失效」。
+        弹窗不再自行写 config.yml（写入权统一归 ChainService）。此方法
+        将表单数据委托给 ChainService，再重新加载 all_config_data 并
+        同步对应 ScriptItem 卡片的内存态。config + weekly 在 service 层
+        原子完成。
         """
+        self.service.update_script(
+            pending_changes["old_display_name"],
+            pending_changes["new_display_name"],
+            pending_changes["config_patch"],
+            pending_changes["weekly_timeouts"],
+        )
+
+        # 服务层写盘后重新吸收，保持内存与磁盘一致
         self.all_config_data = self.service.load_config()
+
+        # 同步对应 ScriptItem 卡片的内存态
+        new_display_name = pending_changes["new_display_name"]
         for item in self.script_items:
-            if item.display_name == display_name:
+            if item.display_name == new_display_name:
                 new_data = next(
                     (
                         s
                         for s in self.all_config_data["script_list"]
-                        if s["display_name"] == display_name
+                        if s["display_name"] == new_display_name
                     ),
                     None,
                 )
                 assert new_data is not None, (
-                    f"[main_window] 保存后找不到脚本: {display_name}"
+                    f"[main_window] 保存后找不到脚本: {new_display_name}"
                 )
                 item.sync_from_script_data(new_data)
                 break
@@ -280,20 +297,7 @@ class MainWindow(QMainWindow):
         self.scroll_layout.addStretch()
 
     def _delete_script(self, display_name):
-        """删除指定脚本：弹确认框 → 从 UI 与 config.yml 移除并持久化"""
-        reply = QMessageBox.question(
-            self,
-            "确认删除",
-            f"确定要删除脚本「{display_name}」吗？\n将从启动器移除并保存到 config.yml。",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if reply != QMessageBox.Yes:
-            return
-        self._remove_script(display_name)
-
-    def _remove_script(self, display_name):
-        """实际移除逻辑（无确认）"""
+        """删除指定脚本（弹窗已确认）：UI 列表 + 内存 config + 总 config(ChainService, 含 weekly 清理)。"""
         idx = next(
             (
                 i
@@ -320,7 +324,8 @@ class MainWindow(QMainWindow):
         self.scroll_layout.removeWidget(item)
         item.deleteLater()
 
-        self._save_script_order()
+        # config.yml + weekly_timeouts 都由 ChainService 内部处理
+        self.service.remove_script(display_name)
         self._persist_ui_state()
 
     def _add_script(self):
@@ -346,19 +351,15 @@ class MainWindow(QMainWindow):
     def _append_script(self, script_data):
         """把新脚本条目追加到 config 数据与 UI 列表底部并持久化。
 
-        同时自动在 weekly_timeouts.yml 里为该脚本创建 7 格默认超时条目，
-        使首次运行即可使用统一的 DEFAULT_RUN_TIMEOUT，无需用户手动配置。
+        config.yml + weekly_timeouts 都由 ChainService 内部处理，GUI 只负责
+        UI 列表与内存同步。
         """
         self.all_config_data["script_list"].append(script_data)
-
-        # 自动创建 weekly_timeouts 默认条目
-        self._script_service.ensure_weekly_entry(script_data["display_name"])
-
         item = self._create_script_item(script_data, None)
         self.script_items.append(item)
 
         self._relayout_script_widgets()
-        self._save_script_order()
+        self.service.add_script(script_data)
         self._persist_ui_state()
 
     def _open_config_yml(self):
@@ -395,7 +396,7 @@ class MainWindow(QMainWindow):
         invalid = self.service.collect_invalid_scripts(enabled_scripts)
         if not invalid:
             return True
-        details = "\n".join(f"· {name}：{msg}" for name, msg in invalid)
+        details = "\n".join(f"· {script_name}：{msg}" for script_name, msg in invalid)
         reply = QMessageBox.warning(
             self,
             "脚本配置不合法",

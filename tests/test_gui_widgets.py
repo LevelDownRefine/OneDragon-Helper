@@ -250,13 +250,12 @@ class TestScriptItemDeleteButton(unittest.TestCase):
     """测试删除按钮接线"""
 
     def test_script_item_delete_button_wired(self):
-        """脚本项的删除按钮点击应触发注入的回调，并传入 display_name"""
+        """脚本项的删除回调接线：_on_delete_clicked 传入 display_name"""
         called = []
         item = ScriptItem(
             {"display_name": "X", "script_type": "external"},
             delete_callback=lambda name: called.append(name),
         )
-        self.assertTrue(hasattr(item, "overflow_btn"))
         item._on_delete_clicked()
         self.assertEqual(called, ["X"])
 
@@ -404,84 +403,8 @@ class TestScriptItemOpenButton(unittest.TestCase):
         mock_box.assert_called_once()
 
 
-class TestScriptItemOpenConfigButton(unittest.TestCase):
-    """测试打开脚本配置逻辑：python 打开 .py 源文件，external 打开内部 config 文本文件"""
-
-    def test_open_config_external_opens_resolved_config(self):
-        """external 已适配：用 get_config_path 解析并以 startfile 打开配置文件"""
-        item = ScriptItem(
-            {
-                "display_name": "鸣潮",
-                "script_type": "external",
-                "script_path": "C:/games/run.exe",
-            }
-        )
-        cfg = "C:/games/config/DailyTask.json"
-        with (
-            patch("os.startfile", create=True) as mock_start,
-            patch("src.gui.widgets.get_config_path", return_value=cfg),
-        ):
-            item._open_script_config()
-        mock_start.assert_called_once_with(cfg)
-
-    def test_open_config_external_missing_shows_msg(self):
-        """external 未适配/文件缺失时弹出清晰提示且不调用 startfile"""
-        item = ScriptItem(
-            {
-                "display_name": "我的自定义脚本",
-                "script_type": "external",
-                "script_path": "C:/games/run.exe",
-            }
-        )
-        with (
-            patch("os.startfile", create=True) as mock_start,
-            patch(
-                "src.gui.widgets.get_config_path",
-                side_effect=AssertionError("未适配脚本: 我的自定义脚本"),
-            ),
-            patch("src.gui.widgets._styled_msg_box") as mock_box,
-        ):
-            item._open_script_config()
-        mock_start.assert_not_called()
-        mock_box.assert_called_once()
-
-    def test_open_config_python_opens_py_file(self):
-        """python 脚本：打开其 .py 源文件（os.startfile）"""
-        item = ScriptItem(
-            {
-                "display_name": "静音",
-                "script_type": "python",
-                "script_path": "C:/proj/src/scripts/mute.py",
-            }
-        )
-        with (
-            patch("os.startfile", create=True) as mock_start,
-            patch("src.gui.widgets.os.path.isfile", return_value=True),
-        ):
-            item._open_script_config()
-        mock_start.assert_called_once_with("C:/proj/src/scripts/mute.py")
-
-    def test_open_config_python_missing_file_shows_msg(self):
-        """python 脚本文件不存在时弹出清晰提示且不调用 startfile"""
-        item = ScriptItem(
-            {
-                "display_name": "静音",
-                "script_type": "python",
-                "script_path": "C:/nope/mute.py",
-            }
-        )
-        with (
-            patch("os.startfile", create=True) as mock_start,
-            patch("src.gui.widgets.os.path.isfile", return_value=False),
-            patch("src.gui.widgets._styled_msg_box") as mock_box,
-        ):
-            item._open_script_config()
-        mock_start.assert_not_called()
-        mock_box.assert_called_once()
-
-
-class TestScriptItemOverflowMenu(unittest.TestCase):
-    """测试 ⋮ 溢出菜单：把删除/打开脚本/打开配置/配置都收进菜单（不依赖真实弹窗）"""
+class TestScriptItemTitleClick(unittest.TestCase):
+    """测试脚本名称交互：左键点击名称打开配置弹窗，图标点击启动脚本。"""
 
     def _build(self, **kwargs):
         return ScriptItem(
@@ -493,37 +416,49 @@ class TestScriptItemOverflowMenu(unittest.TestCase):
             **kwargs,
         )
 
-    def test_overflow_btn_exists(self):
-        """构造后存在 ⋮ 溢出按钮"""
-        item = self._build()
-        self.assertTrue(hasattr(item, "overflow_btn"))
-
-    def test_menu_contains_expected_actions(self):
-        """菜单含 启动脚本 / 配置文件 / 脚本参数 / 删除脚本 四项"""
-        item = self._build()
-        menu = item._build_overflow_menu()
-        texts = [a.text() for a in menu.actions()]
-        self.assertIn("启动脚本", texts)
-        self.assertIn("配置文件", texts)
-        self.assertIn("脚本参数", texts)
-        self.assertIn("删除脚本", texts)
-
-    def test_menu_open_script_action_triggers_handler(self):
-        """点击「打开脚本」菜单项应触发 _open_script"""
+    def test_icon_left_click_triggers_open_script(self):
+        """左键点击图标应触发 _open_script。"""
         item = self._build()
         called = []
         item._open_script = lambda: called.append(True)
-        menu = item._build_overflow_menu()
-        action = next(a for a in menu.actions() if a.text() == "启动脚本")
-        action.trigger()
+        event = MagicMock()
+        event.button.return_value = Qt.LeftButton
+        with patch("src.gui.widgets.QLabel.mousePressEvent"):
+            item._icon_mouse_press(event)
         self.assertEqual(called, [True])
 
-    def test_menu_delete_action_disabled_without_callback(self):
-        """无删除回调时，菜单里的「删除」项应被禁用"""
-        item = self._build()  # 未传 delete_callback
-        menu = item._build_overflow_menu()
-        action = next(a for a in menu.actions() if a.text() == "删除脚本")
-        self.assertFalse(action.isEnabled())
+    def test_icon_right_click_does_not_open_script(self):
+        """右键点击图标不应触发 _open_script"""
+        item = self._build()
+        called = []
+        item._open_script = lambda: called.append(True)
+        event = MagicMock()
+        event.button.return_value = Qt.RightButton
+        with patch("src.gui.widgets.QLabel.mousePressEvent"):
+            item._icon_mouse_press(event)
+        self.assertEqual(called, [])
+
+    def test_title_click_opens_config_dialog(self):
+        """左键点击脚本名称应触发 _show_config_dialog。"""
+        item = self._build()
+        called = []
+        item._show_config_dialog = lambda: called.append(True)
+        event = MagicMock()
+        event.button.return_value = Qt.LeftButton
+        with patch("src.gui.widgets.QLabel.mousePressEvent"):
+            item._title_mouse_press(event)
+        self.assertEqual(called, [True])
+
+    def test_title_right_click_does_not_open(self):
+        """右键点击脚本名称不应打开配置弹窗"""
+        item = self._build()
+        called = []
+        item._show_config_dialog = lambda: called.append(True)
+        event = MagicMock()
+        event.button.return_value = Qt.RightButton
+        with patch("src.gui.widgets.QLabel.mousePressEvent"):
+            item._title_mouse_press(event)
+        self.assertEqual(called, [])
 
 
 class TestGetScriptIcon(unittest.TestCase):

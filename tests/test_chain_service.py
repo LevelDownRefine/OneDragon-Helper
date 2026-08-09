@@ -3,7 +3,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import yaml
 
@@ -70,12 +70,18 @@ class TestChainGeneration(unittest.TestCase):
 
     def test_generate_chain_delegates(self):
         data = {"script_list": []}
+        mock_script = MagicMock()
+        mock_script.load_all_weekly.return_value = {}
         with patch(
             "src.service.chain_service._generate_chain_config", return_value="out.yml"
         ) as m:
-            out = ChainService().generate_chain(data, {"A"}, "88", {"A": {}}, "out.yml")
+            out = ChainService(script_service=mock_script).generate_chain(
+                data, {"A"}, "88", {"A": {}}, "out.yml"
+            )
         self.assertEqual(out, "out.yml")
-        m.assert_called_once_with(data, {"A"}, "88", {"A": {}}, "out.yml")
+        m.assert_called_once_with(
+            data, {"A"}, "88", {"A": {}}, "out.yml", weekly_timeouts={}
+        )
 
     def test_collect_invalid_scripts_delegates(self):
         invalid = [("A", "游戏进程名称为空")]
@@ -109,6 +115,77 @@ class TestRunChain(unittest.TestCase):
             )
         self.assertEqual(code, 0)
         m.assert_called_once_with("88.yml", False, [])
+
+
+class TestAddRemoveScript(unittest.TestCase):
+    """add_script / remove_script / update_script：操作 config.yml 并同步 weekly。"""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
+        self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            yaml.dump(
+                {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]},
+                f,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+        self.mock_script = MagicMock()
+
+    def _read(self):
+        with open(self.config_path, encoding="utf-8") as f:
+            return yaml.safe_load(f)
+
+    def test_add_script_appends(self):
+        """add_script 在 script_list 末尾追加条目、落盘，并内部调 ensure_weekly_entry。"""
+        with (
+            patch(
+                "src.service.chain_service.require_config_yml_path",
+                return_value=self.config_path,
+            ),
+            patch(
+                "src.service.chain_service.get_config_yml_path_under_root",
+                return_value=self.config_path,
+            ),
+        ):
+            ChainService(script_service=self.mock_script).add_script(
+                {"display_name": "鸣潮", "script_path": "C:/b.exe"}
+            )
+        names = [s["display_name"] for s in self._read()["script_list"]]
+        self.assertEqual(names, ["原神", "鸣潮"])
+        self.mock_script.ensure_weekly_entry.assert_called_once_with("鸣潮")
+
+    def test_remove_script_removes(self):
+        """remove_script 从 script_list 移除指定条目、落盘，并内部清 weekly 孤儿。"""
+        with (
+            patch(
+                "src.service.chain_service.require_config_yml_path",
+                return_value=self.config_path,
+            ),
+            patch(
+                "src.service.chain_service.get_config_yml_path_under_root",
+                return_value=self.config_path,
+            ),
+        ):
+            ChainService(script_service=self.mock_script).remove_script("原神")
+        self.assertEqual(self._read()["script_list"], [])
+        self.mock_script.delete_weekly.assert_called_once_with("原神")
+
+    def test_remove_script_missing_raises(self):
+        """remove_script 移除不存在的脚本属非法调用：assert 表达不该发生"""
+        with (
+            patch(
+                "src.service.chain_service.require_config_yml_path",
+                return_value=self.config_path,
+            ),
+            patch(
+                "src.service.chain_service.get_config_yml_path_under_root",
+                return_value=self.config_path,
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            ChainService(script_service=self.mock_script).remove_script("不存在")
 
 
 if __name__ == "__main__":

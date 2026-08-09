@@ -2,7 +2,7 @@
 
 import os
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 
 from src.config.set_config import ScriptConfig
 from src.config.subscript import default_script_entry
-from src.gui.utils import make_secondary_button
+from src.gui.utils import _styled_msg_box, make_secondary_button, safe_startfile
 from src.service.script_service import ScriptService
 
 # 脚本文件选择过滤器（两个弹窗共用）
@@ -107,6 +107,18 @@ class _FormDialogBase(QDialog):
         }
         QPushButton:hover { border-color: #3b82f6; color: #3b82f6; }
     """
+    _DANGER_BTN_STYLE = """
+        QPushButton {
+            border: 1px solid #f0b4b4;
+            border-radius: 6px;
+            background: white;
+            font-size: 10px;
+            color: #d14343;
+            padding: 0 24px;
+        }
+        QPushButton:hover { border-color: #d14343; color: #d14343; }
+        QPushButton:disabled { color: #c0c4cc; border-color: #e6e6e6; }
+    """
 
     def _make_label(self, text) -> QLabel:
         """构造固定宽度的表单字段标签。"""
@@ -140,19 +152,28 @@ class _FormDialogBase(QDialog):
 
 
 class SingleScriptConfigDialog(_FormDialogBase):
-    """单个脚本的配置弹窗（路径选择 + 每周超时时间）"""
+    """单个脚本的配置弹窗（路径选择 + 每周超时时间 + 配置文件 / 删除脚本）"""
 
-    def __init__(self, script_name, script_path="", parent=None, script_service=None):
+    delete_requested = Signal(str)
+
+    def __init__(
+        self,
+        script_name,
+        script_path="",
+        parent=None,
+        script_service=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {script_name}")
-        self.resize(720, 420)
+        self.resize(720, 500)
         self.setStyleSheet("background-color: #f7f8fa;")
 
-        self.script_name = script_name
+        self.display_name = script_name
         self.script_path = script_path
         self.saved_display_name = script_name  # 保存后最终生效的名称（可能被改名）
         self._script_data = {}  # 从 config.yml 读到的本脚本完整数据
         self._script_service = script_service or ScriptService()
+        self.pending_changes = None  # accept() 后供调用方取表单字段与 weekly
 
         self.init_ui()
         self.load_data()
@@ -247,9 +268,6 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.block_cb = QCheckBox("阻塞运行", self)
         self.block_cb.setFont(QFont("Microsoft YaHei", 10))
         self.block_cb.setStyleSheet("color: #303030;")
-        self.block_cb.setToolTip(
-            "勾选后该脚本以阻塞方式启动，运行按钮会等待其结束；不勾选则后台非阻塞运行"
-        )
         row4.addWidget(self.block_cb)
         row4.addStretch()
         layout.addLayout(row4)
@@ -290,6 +308,26 @@ class SingleScriptConfigDialog(_FormDialogBase):
         row6.addStretch()
         layout.addLayout(row6)
 
+        # ---- 其它操作：配置文件 / 删除脚本 ----
+        row_ops = QHBoxLayout()
+        row_ops.setSpacing(8)
+        open_cfg_btn = QPushButton("配置文件")
+        open_cfg_btn.setFixedHeight(32)
+        open_cfg_btn.setFont(QFont("Microsoft YaHei", 10))
+        open_cfg_btn.setStyleSheet(self._SECONDARY_BTN_STYLE)
+        open_cfg_btn.clicked.connect(self._open_config_file)
+        row_ops.addWidget(open_cfg_btn)
+
+        delete_btn = QPushButton("删除脚本")
+        delete_btn.setFixedHeight(32)
+        delete_btn.setFont(QFont("Microsoft YaHei", 10))
+        delete_btn.setStyleSheet(self._DANGER_BTN_STYLE)
+        delete_btn.clicked.connect(self._on_delete_clicked)
+        row_ops.addWidget(delete_btn)
+        row_ops.addStretch()
+        layout.addLayout(row_ops)
+        self._delete_btn = delete_btn
+
         # ---- 按钮 ----
         layout.addLayout(self._make_buttons("保存", self.save_data))
 
@@ -314,14 +352,14 @@ class SingleScriptConfigDialog(_FormDialogBase):
         config.yml 缺失属内部错误（对话框只在 config.yml 已加载的前提下打开），
         必须存在，故用 assert 表达不该发生；脚本不在表中才返回空 dict。
         """
-        script = self._script_service.get_script(self.script_name)
+        script = self._script_service.get_script(self.display_name)
         return script if script is not None else {}
 
     def load_data(self):
         self._script_data = self._find_script_data()
 
         # 脚本名称
-        self.name_input.setText(self.script_name)
+        self.name_input.setText(self.display_name)
         # 脚本类型
         self.type_combo.setCurrentText(self._script_data.get("script_type", "external"))
         # 启动参数
@@ -343,29 +381,33 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.block_cb.setChecked(self._script_data.get("block", True))
 
         # 每周超时
-        timeouts = self._script_service.weekly_inputs(self.script_name)
+        timeouts = self._script_service.weekly_inputs(self.display_name)
         for idx, le in enumerate(self.timeout_inputs):
             le.setText(str(timeouts[idx]))
 
     def save_data(self):
+        """收集表单数据存入 self.pending_changes 后 accept()；写盘由调用方完成。
+
+        不再直接调 ScriptService.update_script() 写 config.yml——config.yml
+        的写入权归 MainWindow/ChainService。weekly_timeouts 也由调用方
+        决定是否持久化（通常紧跟 config 写盘后通过 ScriptService 保存）。
+        """
         path_val = self.path_input.text().strip()
         if not path_val:
             QMessageBox.warning(self, "警告", "脚本路径为空，可能会导致运行问题！")
             return
 
-        # 脚本名称：非空 + 不与其它脚本重名（允许与自身相同，即不改名）
-        new_name = self.name_input.text().strip()
-        if not new_name:
+        new_display_name = self.name_input.text().strip()
+        if not new_display_name:
             QMessageBox.warning(self, "警告", "脚本名称不能为空！")
             return
-        existing = self._script_service.get_script(new_name)
-        if existing is not None and new_name != self.script_name:
+        existing = self._script_service.get_script(new_display_name)
+        if existing is not None and new_display_name != self.display_name:
             QMessageBox.warning(
-                self, "警告", f"已存在同名脚本「{new_name}」，请换一个名称。"
+                self, "警告", f"已存在同名脚本「{new_display_name}」，请换一个名称。"
             )
             return
 
-        # 若勾选了关闭游戏但未填写进程名，保存时「运行后关闭游戏」自动失效
         if self.kill_game_cb.isChecked() and not self.game_process_input.text().strip():
             QMessageBox.warning(
                 self,
@@ -373,16 +415,16 @@ class SingleScriptConfigDialog(_FormDialogBase):
                 "未填写游戏进程名，保存后「运行结束后关闭游戏」将自动关闭。",
             )
 
-        # 空输入传 None，由 ScriptService.update_script 转为默认超时并 clamp
         timeouts = []
         for le in self.timeout_inputs:
             text = le.text().strip()
             timeouts.append(int(text) if text else None)
 
-        self._script_service.update_script(
-            self.script_name,
-            new_name,
-            {
+        self.saved_display_name = new_display_name
+        self.pending_changes = {
+            "old_display_name": self.display_name,
+            "new_display_name": new_display_name,
+            "config_patch": {
                 "script_path": path_val,
                 "script_type": self.type_combo.currentText(),
                 "script_arguments": self.args_input.text().strip(),
@@ -392,12 +434,30 @@ class SingleScriptConfigDialog(_FormDialogBase):
                 "game_process_name": self.game_process_input.text().strip(),
                 "block": self.block_cb.isChecked(),
             },
-            weekly_timeouts=timeouts,
-        )
-
-        self.saved_display_name = new_name
-        QMessageBox.information(self, "成功", "配置已保存！")
+            "weekly_timeouts": timeouts,
+        }
         self.accept()
+
+    def _open_config_file(self):
+        """打开本脚本的配置文件：路径计算委托 ScriptService，GUI 只负责打开或提示。"""
+        path, error = self._script_service.config_file_path(self.display_name)
+        if error is not None:
+            _styled_msg_box(self, QMessageBox.Warning, "提示", error).exec()
+            return
+        safe_startfile(self, path, "无法打开配置文件")
+
+    def _on_delete_clicked(self):
+        """删除本脚本：二次确认后通知外部并关闭弹窗。"""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("删除脚本")
+        box.setText(f"确定删除「{self.display_name}」？此操作不可撤销。")
+        box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        if box.exec() != QMessageBox.Ok:
+            return
+        self.delete_requested.emit(self.display_name)
+        self.close()
 
 
 class AddScriptDialog(_FormDialogBase):
@@ -409,7 +469,7 @@ class AddScriptDialog(_FormDialogBase):
         self.resize(560, 250)
         self.setStyleSheet("background-color: #f7f8fa;")
         self._existing_names = set(existing_names or [])
-        self.result_data = None
+        self.script_entry = None
         self.init_ui()
 
     def init_ui(self):
@@ -470,13 +530,13 @@ class AddScriptDialog(_FormDialogBase):
         layout.addLayout(self._make_buttons("添加", self.save_data))
 
     def save_data(self):
-        name = self.name_input.text().strip()
-        if not name:
+        display_name = self.name_input.text().strip()
+        if not display_name:
             QMessageBox.warning(self, "警告", "脚本名称不能为空！")
             return
-        if name in self._existing_names:
+        if display_name in self._existing_names:
             QMessageBox.warning(
-                self, "警告", f"已存在同名脚本「{name}」，请换一个名称。"
+                self, "警告", f"已存在同名脚本「{display_name}」，请换一个名称。"
             )
             return
         path_val = self.path_input.text().strip()
@@ -484,8 +544,8 @@ class AddScriptDialog(_FormDialogBase):
             QMessageBox.warning(self, "警告", "脚本路径不能为空！")
             return
 
-        self.result_data = default_script_entry(
-            display_name=name,
+        self.script_entry = default_script_entry(
+            display_name=display_name,
             script_type=self.type_combo.currentText(),
             script_path=path_val,
             script_arguments=self.args_input.text().strip(),

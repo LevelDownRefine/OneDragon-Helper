@@ -1,8 +1,10 @@
-"""ChainService：脚本链核心服务。
+"""ChainService：脚本链核心服务（GUI / CLI 唯一 facade）。
 
-承载「真实实现」：脚本配置读写、UI 状态持久化（gui_state.json）、脚本链生成、
-合法性校验、runner 命令构造。GUI（MainWindow）与 CLI（launcher.py）都作为薄适配器
-依赖本服务，便于无头测试与两端行为一致。
+承载「真实实现」：config.yml 完整读写（含单脚本字段更新）、UI 状态持久化
+（gui_state.json）、脚本链生成、合法性校验、runner 命令构造。
+
+weekly_timeouts 同步由内部 ScriptService 处理，调用方不感知。GUI（MainWindow）
+与 CLI（launcher.py）都作为薄适配器依赖本服务。
 
 本模块不承载 UI 渲染/弹窗逻辑，无 Qt 依赖。
 """
@@ -15,6 +17,7 @@ import yaml
 
 from src.config.dungeon_config import load_dungeon_map
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
+from src.service.script_service import ScriptService
 from src.utils import (
     get_config_yml_path_under_root,
     get_root_dir,
@@ -37,7 +40,11 @@ _STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
 
 
 class ChainService:
-    """脚本链核心服务：配置读写、链生成、校验、运行命令构造。"""
+    """脚本链核心服务：config.yml 读写、链生成、校验、运行命令构造，
+    内部集成 ScriptService 处理 weekly_timeouts 同步。"""
+
+    def __init__(self, script_service=None):
+        self._script_service = script_service or ScriptService()
 
     # ---------- 配置读写 ----------
 
@@ -72,6 +79,76 @@ class ChainService:
         with open(config_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
 
+    def add_script(self, script_data: dict) -> None:
+        """向 config.yml 的 script_list 追加一个脚本条目，并自动创建 weekly 默认条目。
+
+        Args:
+            script_data: 完整脚本条目 dict（含 display_name / script_path 等）。
+        """
+        config = self.load_config()
+        config.setdefault("script_list", []).append(script_data)
+        self.save_config(config)
+        self._script_service.ensure_weekly_entry(script_data["display_name"])
+
+    def remove_script(self, display_name: str) -> None:
+        """从 config.yml 的 script_list 移除指定脚本条目，并自动清理 weekly 孤儿。
+
+        Args:
+            display_name: 要移除的脚本 display_name。
+        """
+        config = self.load_config()
+        scripts = config.setdefault("script_list", [])
+        target = next(
+            (s for s in scripts if s.get("display_name") == display_name), None
+        )
+        assert target is not None, f"[service] 找不到脚本: {display_name}"
+        scripts.remove(target)
+        self.save_config(config)
+        self._script_service.delete_weekly(display_name)
+
+    def update_script(
+        self,
+        old_display_name: str,
+        new_display_name: str,
+        config_patch: dict,
+        weekly_timeouts: list[int | None],
+    ) -> None:
+        """更新单个脚本条目字段并同步 weekly_timeouts。
+
+        自动处理改名（含 weekly 迁移）与 kill_game_after_done 自洽
+        （未设置 game_process_name 时强制 False）。
+
+        Args:
+            old_display_name: 原 display_name（用于定位条目）。
+            new_display_name: 新 display_name（可与 old_display_name 相同表示不改名）。
+            config_patch: 要写入条目顶层字段的映射（如 script_path/check_done）。
+            weekly_timeouts: 7 格超时输入值，空输入为 None（落盘前转默认超时）。
+        """
+        assert new_display_name, "[service] 脚本名称不能为空"
+        config = self.load_config()
+        target = None
+        for script in config.setdefault("script_list", []):
+            if script.get("display_name") == old_display_name:
+                target = script
+                break
+        assert target is not None, f"[service] 找不到脚本: {old_display_name}"
+
+        for key, value in config_patch.items():
+            target[key] = value
+        target["display_name"] = new_display_name
+
+        # 配置自洽：未设置游戏进程名时「运行后关闭游戏」强制 False
+        if not target.get("game_process_name"):
+            target["kill_game_after_done"] = False
+
+        self.save_config(config)
+
+        if new_display_name != old_display_name:
+            self._script_service.rename_weekly_in_timeouts(
+                old_display_name, new_display_name
+            )
+        self._script_service.save_weekly(new_display_name, weekly_timeouts)
+
     def load_ui_state(self) -> dict:
         """读取 gui_state.json（UI 状态：副本/序列选择）。
 
@@ -104,6 +181,9 @@ class ChainService:
     ) -> str:
         """生成 ScriptChainer 配置文件（仅含启用脚本）。
 
+        weekly_timeouts 通过 ScriptService 加载后传入 chain_gen，不再由
+        chain_gen 直接读取磁盘文件。
+
         Args:
             all_config_data: config.yml 完整数据（含 script_list）。
             enabled_names: 要纳入链的脚本 display_name 集合。
@@ -114,8 +194,14 @@ class ChainService:
         Returns:
             输出文件路径。
         """
+        weekly_timeouts = self._script_service.load_all_weekly()
         return _generate_chain_config(
-            all_config_data, enabled_names, chain_name, ui_state, out_path
+            all_config_data,
+            enabled_names,
+            chain_name,
+            ui_state,
+            out_path,
+            weekly_timeouts=weekly_timeouts,
         )
 
     def collect_invalid_scripts(self, script_list: list[dict]) -> list[tuple[str, str]]:

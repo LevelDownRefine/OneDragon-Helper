@@ -20,12 +20,11 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.dungeon_config import get_display_name
-from src.config.subscript import get_config_path, get_script_path, resolve_script_path
+from src.config.subscript import get_script_path, resolve_script_path
 from src.gui import icons
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.utils import (
     _styled_msg_box,
-    make_icon_button,
     make_secondary_button,
     safe_startfile,
 )
@@ -182,6 +181,8 @@ class ScriptItem(QFrame):
         self.icon_label.setFixedSize(28, 28)
         self.icon_label.setStyleSheet("padding: 0;")
         self.icon_label.setAlignment(Qt.AlignCenter)
+        self.icon_label.setCursor(Qt.PointingHandCursor)
+        self.icon_label.mousePressEvent = self._icon_mouse_press
         self._refresh_icon(script_data)
         layout.addWidget(self.icon_label)
 
@@ -197,6 +198,8 @@ class ScriptItem(QFrame):
                 self.display_name, Qt.TextElideMode.ElideRight, 110
             )
         )
+        self.title_label.setCursor(Qt.PointingHandCursor)
+        self.title_label.mousePressEvent = self._title_mouse_press
         layout.addWidget(self.title_label)
 
         # 左侧弹性空间 + 副本按钮（居中） + 右侧弹性空间
@@ -223,54 +226,16 @@ class ScriptItem(QFrame):
         self._update_switch_style()
         layout.addWidget(self.toggle)
 
-        # 操作菜单按钮：把删除 / 打开脚本 / 打开配置 / 配置 全部收进 ⋮，避免卡片按钮过多
-        self.overflow_btn = make_icon_button(
-            "⋮",
-            accent="#3b82f6",
-            normal_color="#9aa3b2",
-            font_size=18,
-            hover_bg="#eef2f7",
-            pressed_bg="#e2e8f0",
-        )
-        self.overflow_btn.clicked.connect(self._show_overflow_menu)
-        layout.addWidget(self.overflow_btn)
-
-    def _show_overflow_menu(self):
-        """点击 ⋮ 弹出操作菜单（不阻塞：菜单内动作才触发实际操作）。"""
-        menu = self._build_overflow_menu()
-        menu.exec(self.overflow_btn.mapToGlobal(self.overflow_btn.rect().bottomRight()))
-
-    def _build_overflow_menu(self):
-        """构造操作菜单：打开脚本 / 打开脚本配置 / 分隔线 / 配置 / 删除。"""
-        menu = QMenu(self)
-        menu.setStyleSheet(_MENU_STYLE)
-
-        open_action = menu.addAction("启动脚本")
-        open_action.triggered.connect(self._open_script)
-
-        config_file_action = menu.addAction("配置文件")
-        config_file_action.triggered.connect(self._open_script_config)
-
-        setting_action = menu.addAction("脚本参数")
-        setting_action.triggered.connect(self._show_config_dialog)
-
-        delete_action = menu.addAction("删除脚本")
-        if self._delete_callback:
-            delete_action.triggered.connect(self._on_delete_clicked)
-        else:
-            delete_action.setEnabled(False)
-        return menu
-
     def _on_delete_clicked(self):
         """点击删除按钮，通知删除本脚本"""
         if self._delete_callback:
             self._delete_callback(self.display_name)
 
     def _show_config_dialog(self):
-        """打开单脚本配置弹窗；保存成功(accept)后通知 MainWindow 重新吸收磁盘改动。
+        """打开单脚本配置弹窗；保存成功(accept)后通知 MainWindow 应用 patch 并写盘。
 
-        若用户在弹窗内改了脚本名称，先把本卡片的内存名与标题刷新为新名，
-        再回调新名，使 MainWindow 能按新名定位卡片并同步。
+        弹窗不再自行写 config.yml——表单数据通过 pending_changes 返回，由 MainWindow
+        统一在内存更新 all_config_data 后通过 ChainService 一次性落盘。
         """
         dialog = SingleScriptConfigDialog(
             self.display_name,
@@ -278,12 +243,17 @@ class ScriptItem(QFrame):
             self,
             script_service=self._script_service,
         )
+        dialog.delete_requested.connect(self._on_delete_clicked)
         if dialog.exec() == QDialog.Accepted and self._config_saved_callback:
-            new_name = dialog.saved_display_name
-            if new_name != self.display_name:
-                self.display_name = new_name
+            assert dialog.pending_changes is not None, (
+                "[widgets] 弹窗 accept 但 pending_changes 为空"
+            )
+            changes = dialog.pending_changes
+            new_display_name = dialog.saved_display_name
+            if new_display_name != self.display_name:
+                self.display_name = new_display_name
                 self._refresh_title()
-            self._config_saved_callback(new_name)
+            self._config_saved_callback(changes)
 
     def _refresh_title(self) -> None:
         """按当前 display_name 刷新卡片标题（含超长截断），改名后调用。"""
@@ -334,6 +304,12 @@ class ScriptItem(QFrame):
             # item 已被销毁（如窗口快速关闭）时忽略该次回调（setPixmap 会抛错）
             icons.on_script_icon_loaded(self.icon_label, source, qimg)
 
+    def _icon_mouse_press(self, event):
+        """左键点击图标即启动脚本。"""
+        if event.button() == Qt.LeftButton:
+            self._open_script()
+        QLabel.mousePressEvent(self.icon_label, event)
+
     def _open_script(self):
         """打开/运行该脚本：python 用解释器跑，external 解析后 startfile。"""
         if self.script_type == "python":
@@ -365,33 +341,11 @@ class ScriptItem(QFrame):
             return
         safe_startfile(self, exe_path, "无法打开脚本")
 
-    def _open_script_config(self):
-        """打开脚本配置文件：python 打开 .py 源文件，external 打开内部 config 文本。"""
-        if self.script_type == "python":
-            resolved = resolve_script_path(self.script_path)
-            if not resolved or not os.path.isfile(resolved):
-                _styled_msg_box(
-                    self,
-                    QMessageBox.Warning,
-                    "提示",
-                    f"找不到脚本文件：\n{self.script_path or '(未设置路径)'}",
-                ).exec()
-                return
-            safe_startfile(self, resolved, "无法打开脚本文件")
-            return
-
-        # external 脚本：解析并打开内部 config 文件
-        try:
-            config_path = get_config_path(self.display_name)
-        except AssertionError as e:
-            _styled_msg_box(
-                self,
-                QMessageBox.Warning,
-                "提示",
-                f"该脚本暂未适配配置文件，无法打开：\n{e}",
-            ).exec()
-            return
-        safe_startfile(self, config_path, "无法打开配置文件")
+    def _title_mouse_press(self, event):
+        """左键点击脚本名称打开配置弹窗。"""
+        if event.button() == Qt.LeftButton:
+            self._show_config_dialog()
+        QLabel.mousePressEvent(self.title_label, event)
 
     def _show_dungeon_menu(self):
         """点击副本按钮，弹出级联菜单"""

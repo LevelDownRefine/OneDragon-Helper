@@ -3,7 +3,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import yaml
 
@@ -73,58 +73,58 @@ class TestInjectConfigConfirm(unittest.TestCase):
 class TestAddScriptDialog(unittest.TestCase):
     """测试 AddScriptDialog 表单校验与结果构造"""
 
-    def test_save_builds_result_data(self):
-        """填入合法字段后 save_data 构造完整 result_data 并 accept"""
+    def test_save_builds_script_entry(self):
+        """填入合法字段后 save_data 构造完整 script_entry 并 accept"""
         dlg = AddScriptDialog(existing_names=["已存在"])
         dlg.name_input.setText("新脚本")
         dlg.type_combo.setCurrentText("python")
         dlg.path_input.setText("C:/foo/bar.py")
         with patch.object(dlg, "accept") as acc:
             dlg.save_data()
-        self.assertIsNotNone(dlg.result_data)
-        self.assertEqual(dlg.result_data["display_name"], "新脚本")
-        self.assertEqual(dlg.result_data["script_type"], "python")
-        self.assertEqual(dlg.result_data["script_path"], "C:/foo/bar.py")
-        self.assertEqual(dlg.result_data["script_arguments"], "")
+        self.assertIsNotNone(dlg.script_entry)
+        self.assertEqual(dlg.script_entry["display_name"], "新脚本")
+        self.assertEqual(dlg.script_entry["script_type"], "python")
+        self.assertEqual(dlg.script_entry["script_path"], "C:/foo/bar.py")
+        self.assertEqual(dlg.script_entry["script_arguments"], "")
         acc.assert_called_once()
 
     def test_save_captures_script_arguments(self):
-        """填入启动参数后写入 result_data['script_arguments']"""
+        """填入启动参数后写入 script_entry['script_arguments']"""
         dlg = AddScriptDialog()
         dlg.name_input.setText("带参脚本")
         dlg.path_input.setText("C:/foo/bar.exe")
         dlg.args_input.setText("--task daily --fast")
         with patch.object(dlg, "accept"):
             dlg.save_data()
-        self.assertIsNotNone(dlg.result_data)
-        self.assertEqual(dlg.result_data["script_arguments"], "--task daily --fast")
+        self.assertIsNotNone(dlg.script_entry)
+        self.assertEqual(dlg.script_entry["script_arguments"], "--task daily --fast")
 
     def test_save_rejects_empty_name(self):
-        """名称为空时不构造 result_data"""
+        """名称为空时不构造 script_entry"""
         dlg = AddScriptDialog()
         dlg.name_input.setText("")
         dlg.path_input.setText("C:/x.exe")
         with patch("src.gui.dialogs.QMessageBox.warning"):
             dlg.save_data()
-        self.assertIsNone(dlg.result_data)
+        self.assertIsNone(dlg.script_entry)
 
     def test_save_rejects_duplicate_name(self):
-        """名称重复时不构造 result_data"""
+        """名称重复时不构造 script_entry"""
         dlg = AddScriptDialog(existing_names=["原神"])
         dlg.name_input.setText("原神")
         dlg.path_input.setText("C:/x.exe")
         with patch("src.gui.dialogs.QMessageBox.warning"):
             dlg.save_data()
-        self.assertIsNone(dlg.result_data)
+        self.assertIsNone(dlg.script_entry)
 
     def test_save_rejects_empty_path(self):
-        """路径为空时不构造 result_data"""
+        """路径为空时不构造 script_entry"""
         dlg = AddScriptDialog()
         dlg.name_input.setText("新脚本")
         dlg.path_input.setText("")
         with patch("src.gui.dialogs.QMessageBox.warning"):
             dlg.save_data()
-        self.assertIsNone(dlg.result_data)
+        self.assertIsNone(dlg.script_entry)
 
 
 class TestSingleScriptConfigDialogLoad(unittest.TestCase):
@@ -155,10 +155,6 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
                 return_value=cfg,
             ),
             patch(
-                "src.service.script_service.get_config_yml_path_under_root",
-                return_value=cfg,
-            ),
-            patch(
                 "src.service.script_service.get_weekly_timeouts_yml_path_under_root",
                 return_value=wt,
             ),
@@ -174,10 +170,6 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         with (
             patch(
                 "src.service.script_service.require_config_yml_path",
-                return_value=cfg,
-            ),
-            patch(
-                "src.service.script_service.get_config_yml_path_under_root",
                 return_value=cfg,
             ),
             patch(
@@ -223,15 +215,9 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
                 },
             ]
         )
-        with (
-            patch(
-                "src.service.script_service.require_config_yml_path",
-                return_value=cfg,
-            ),
-            patch(
-                "src.service.script_service.get_config_yml_path_under_root",
-                return_value=cfg,
-            ),
+        with patch(
+            "src.service.script_service.require_config_yml_path",
+            return_value=cfg,
         ):
             dlg = SingleScriptConfigDialog("日志分析", "C:/x.py")
         self.assertTrue(dlg.block_cb.isChecked())
@@ -247,21 +233,15 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
                 },
             ]
         )
-        with (
-            patch(
-                "src.service.script_service.require_config_yml_path",
-                return_value=cfg,
-            ),
-            patch(
-                "src.service.script_service.get_config_yml_path_under_root",
-                return_value=cfg,
-            ),
+        with patch(
+            "src.service.script_service.require_config_yml_path",
+            return_value=cfg,
         ):
             dlg = SingleScriptConfigDialog("日志分析", "C:/x.py")
         self.assertTrue(dlg.block_cb.isChecked())
 
-    def test_save_writes_block(self):
-        """保存时把复选框状态写回 config.yml 的 block 字段"""
+    def test_save_stores_block_in_pending_changes(self):
+        """保存时把复选框状态存到 pending_changes['config_patch']['block']（不再直接写盘）。"""
         cfg = self._make_config_file(
             [
                 {
@@ -271,29 +251,127 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
                 },
             ]
         )
-        weekly = os.path.join(tempfile.mkdtemp(), "weekly_timeouts.yml")
         with (
             patch(
                 "src.service.script_service.require_config_yml_path",
                 return_value=cfg,
             ),
-            patch(
-                "src.service.script_service.get_config_yml_path_under_root",
-                return_value=cfg,
-            ),
-            patch(
-                "src.service.script_service.get_weekly_timeouts_yml_path_under_root",
-                return_value=weekly,
-            ),
-            patch("src.gui.dialogs.QMessageBox.information"),
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg = SingleScriptConfigDialog("日志分析", "C:/x.py")
             dlg.block_cb.setChecked(False)
             dlg.save_data()
-        with open(cfg, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        self.assertFalse(data["script_list"][0]["block"])
+        self.assertFalse(dlg.pending_changes["config_patch"]["block"])
+        self.assertEqual(dlg.pending_changes["new_display_name"], "日志分析")
+
+
+class _FakeService:
+    """极简 ScriptService 替身：供弹窗构造时读取脚本数据，避免依赖真实 config。"""
+
+    def __init__(self, script_type, script_path):
+        self._data = {"script_type": script_type, "script_path": script_path}
+
+    def get_script(self, name):
+        return self._data
+
+    def weekly_inputs(self, name):
+        return [3600] * 7
+
+
+class TestSingleScriptConfigDialogOpenConfig(unittest.TestCase):
+    """测试弹窗内「配置文件」动作：委托 ScriptService.config_file_path。"""
+
+    def _make_dialog(self, config_return):
+        dlg = SingleScriptConfigDialog(
+            "鸣潮",
+            "C:/games/run.exe",
+            script_service=_FakeService("external", "C:/games/run.exe"),
+        )
+        svc = MagicMock()
+        svc.config_file_path.return_value = config_return
+        dlg._script_service = svc
+        return dlg
+
+    def test_external_opens_resolved_config(self):
+        """service 返回 external config 路径：以 safe_startfile 打开"""
+        dlg = self._make_dialog(("C:/games/config/DailyTask.json", None))
+        with patch("src.gui.dialogs.safe_startfile") as mock_start:
+            dlg._open_config_file()
+        mock_start.assert_called_once_with(
+            dlg, "C:/games/config/DailyTask.json", "无法打开配置文件"
+        )
+
+    def test_external_missing_shows_msg(self):
+        """service 返回错误：弹窗提示且不打开文件"""
+        dlg = self._make_dialog((None, "该脚本暂未适配配置文件，无法打开"))
+        with (
+            patch("src.gui.dialogs.safe_startfile") as mock_start,
+            patch("src.gui.dialogs._styled_msg_box") as mock_box,
+        ):
+            dlg._open_config_file()
+        mock_start.assert_not_called()
+        mock_box.assert_called_once()
+
+    def test_python_opens_py_file(self):
+        """service 返回 python .py 路径：以 safe_startfile 打开"""
+        dlg = self._make_dialog(("C:/proj/src/scripts/mute.py", None))
+        with patch("src.gui.dialogs.safe_startfile") as mock_start:
+            dlg._open_config_file()
+        mock_start.assert_called_once_with(
+            dlg, "C:/proj/src/scripts/mute.py", "无法打开配置文件"
+        )
+
+    def test_python_missing_file_shows_msg(self):
+        """service 返回错误：弹窗提示且不打开文件"""
+        dlg = self._make_dialog((None, "找不到脚本文件"))
+        with (
+            patch("src.gui.dialogs.safe_startfile") as mock_start,
+            patch("src.gui.dialogs._styled_msg_box") as mock_box,
+        ):
+            dlg._open_config_file()
+        mock_start.assert_not_called()
+        mock_box.assert_called_once()
+
+
+class TestSingleScriptConfigDialogDelete(unittest.TestCase):
+    """测试弹窗内「删除脚本」动作。"""
+
+    def _make_dialog(self):
+        return SingleScriptConfigDialog(
+            "鸣潮",
+            "C:/games/run.exe",
+            script_service=_FakeService("external", "C:/games/run.exe"),
+        )
+
+    def test_delete_emits_signal_and_closes(self):
+        """确认删除后发出 delete_requested 并关闭弹窗"""
+        dlg = self._make_dialog()
+        received = []
+        dlg.delete_requested.connect(lambda n: received.append(n))
+        with (
+            patch("src.gui.dialogs.QMessageBox") as mock_box,
+            patch.object(dlg, "close") as mock_close,
+        ):
+            mock_box.Ok = "OK"
+            mock_box.return_value.exec.return_value = "OK"
+            dlg._on_delete_clicked()
+        self.assertEqual(received, ["鸣潮"])
+        mock_close.assert_called_once()
+
+    def test_delete_cancelled_does_not_emit(self):
+        """取消删除时不发信号、不关闭弹窗"""
+        dlg = self._make_dialog()
+        received = []
+        dlg.delete_requested.connect(lambda n: received.append(n))
+        with (
+            patch("src.gui.dialogs.QMessageBox") as mock_box,
+            patch.object(dlg, "close") as mock_close,
+        ):
+            mock_box.Ok = "OK"
+            mock_box.return_value.exec.return_value = "CANCEL"
+            dlg._on_delete_clicked()
+        self.assertEqual(received, [])
+        mock_close.assert_not_called()
 
 
 if __name__ == "__main__":

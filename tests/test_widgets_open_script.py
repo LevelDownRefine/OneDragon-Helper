@@ -1,4 +1,4 @@
-"""测试 GUI 卡片「启动脚本」(_open_script) 的 python 分支命令构造。
+"""测试 GUI 卡片点击图标启动脚本(_open_script) 的 python 分支命令构造。
 
 python 脚本的启动命令统一由 ``src.utils_runner.build_script_command(["--script", ...])``
 构造（其内部已含 frozen / 非 frozen 判断），``_open_script`` 只负责拿 cmd list 去 spawn。
