@@ -188,10 +188,10 @@ class TestCheckWeekly(ScriptServiceTestBase):
         self.assertEqual(result["status"], "inconsistent")
         self.assertEqual(result["orphans"], ["已删除脚本"])
 
-    def test_missing_display_name_raises_keyerror(self):
-        """条目缺 display_name 属数据损坏：显式 KeyError，而非静默按 None 处理。"""
+    def test_missing_display_name_raises_assertion(self):
+        """条目缺 display_name 属数据损坏：_load_config 入口抛 AssertionError。"""
         self._write_config({"script_list": [{"script_path": "C:/x.py"}]})
-        with self.assertRaises(KeyError):
+        with self.assertRaises(AssertionError):
             ScriptService().check_weekly()
 
 

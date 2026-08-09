@@ -30,10 +30,15 @@ logger = logging.getLogger(__name__)
 
 
 def _load_config() -> dict:
-    """读取 config.yml（断言存在）。"""
+    """读取 config.yml（断言存在），校验每个条目含 display_name。"""
     config_path = require_config_yml_path()
     with open(config_path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        data = yaml.safe_load(f) or {}
+    for s in data.get("script_list", []):
+        assert "display_name" in s, (
+            f"[service] script_list 条目缺少 display_name: {s}"
+        )
+    return data
 
 
 def _load_weekly() -> dict:
@@ -82,7 +87,7 @@ class ScriptService:
         """
         config = _load_config()
         for script in config.get("script_list", []):
-            if script.get("display_name") == display_name:
+            if script["display_name"] == display_name:
                 return script
         return None
 

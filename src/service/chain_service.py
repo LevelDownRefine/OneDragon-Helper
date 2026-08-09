@@ -54,13 +54,21 @@ class ChainService:
     # ---------- 配置读写 ----------
 
     def load_config(self) -> dict:
-        """读取 config.yml（断言存在），返回完整 script_list 配置。"""
+        """读取 config.yml（断言存在），返回完整 script_list 配置。
+
+        结果从外部 YAML 载入——入口处一次性校验每个条目含 display_name，
+        ``script_list`` 内部数据此后可安全用直接访问。
+        """
         config_path = require_config_yml_path()
         with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
         assert isinstance(data, dict) and "script_list" in data, (
             "[service] config.yml 缺少 script_list 字段"
         )
+        for s in data["script_list"]:
+            assert "display_name" in s, (
+                f"[service] script_list 条目缺少 display_name: {s}"
+            )
         return data
 
     def dungeon_map(self) -> dict:
@@ -96,7 +104,7 @@ class ChainService:
         config = self.load_config()
         scripts = config.setdefault("script_list", [])
         display_name = script_data["display_name"]
-        assert all(s.get("display_name") != display_name for s in scripts), (
+        assert all(s["display_name"] != display_name for s in scripts), (
             f"[service] 脚本名称已存在: {display_name}"
         )
         scripts.append(script_data)
@@ -112,7 +120,7 @@ class ChainService:
         config = self.load_config()
         scripts = config.setdefault("script_list", [])
         target = next(
-            (s for s in scripts if s.get("display_name") == display_name), None
+            (s for s in scripts if s["display_name"] == display_name), None
         )
         assert target is not None, f"[service] 找不到脚本: {display_name}"
         scripts.remove(target)
@@ -141,7 +149,7 @@ class ChainService:
         config = self.load_config()
         target = None
         for script in config.setdefault("script_list", []):
-            if script.get("display_name") == old_display_name:
+            if script["display_name"] == old_display_name:
                 target = script
                 break
         assert target is not None, f"[service] 找不到脚本: {old_display_name}"
@@ -149,7 +157,7 @@ class ChainService:
         renamed = new_display_name != old_display_name
         if renamed:
             assert all(
-                s.get("display_name") != new_display_name for s in config["script_list"]
+                s["display_name"] != new_display_name for s in config["script_list"]
             ), f"[service] 脚本名称已存在: {new_display_name}"
 
         for key, value in config_patch.items():
@@ -157,7 +165,7 @@ class ChainService:
         target["display_name"] = new_display_name
 
         # 配置自洽：未设置游戏进程名时「运行后关闭游戏」强制 False
-        if not target.get("game_process_name"):
+        if not target.get("game_process_name", ""):
             target["kill_game_after_done"] = False
 
         self.save_config(config)
