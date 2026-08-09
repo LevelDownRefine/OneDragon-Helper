@@ -92,9 +92,7 @@ class ChainService:
         Args:
             script_data: 完整脚本条目 dict（含 display_name / script_path 等）。
         """
-        assert "display_name" in script_data, (
-            "[service] script_data 缺少 display_name"
-        )
+        assert "display_name" in script_data, "[service] script_data 缺少 display_name"
         config = self.load_config()
         scripts = config.setdefault("script_list", [])
         display_name = script_data["display_name"]
@@ -151,8 +149,7 @@ class ChainService:
         renamed = new_display_name != old_display_name
         if renamed:
             assert all(
-                s.get("display_name") != new_display_name
-                for s in config["script_list"]
+                s.get("display_name") != new_display_name for s in config["script_list"]
             ), f"[service] 脚本名称已存在: {new_display_name}"
 
         for key, value in config_patch.items():
