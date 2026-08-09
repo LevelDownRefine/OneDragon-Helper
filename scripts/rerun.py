@@ -11,13 +11,7 @@ import sys
 
 import yaml
 
-# collect_log 是同目录独立脚本：直接运行时本脚本目录已在 sys.path，
-# 找不到时再把本目录显式加入 sys.path，确保 `import collect_log` 可用。
-try:
-    import collect_log
-except ImportError:  # 作为模块被导入（如测试）时走此分支
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import collect_log
+import collect_log
 
 logger = logging.getLogger(__name__)
 

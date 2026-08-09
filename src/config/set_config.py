@@ -164,13 +164,14 @@ class ScriptConfig:
         template = self._load_template()
 
         if self._is_aligned(config, template):
+            logger.info(f"[init_config][{self.display_name}] config 已对齐，无需更新")
             return
 
         for key, val in template.items():
             safe_update(config, key, val, self.display_name, assert_key_exists=False)
-        logger.info(f"[set_config][{self.display_name}] config 已更新")
         if self._confirm_save():
             self._save(config)
+            logger.info(f"[init_config][{self.display_name}] config 已更新")
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
         """
@@ -201,17 +202,17 @@ class ScriptConfig:
         连 _load/_update_task 等也不执行，仅记日志。
         """
         if not self.enabled:
-            logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过副本设置")
+            logger.info(f"[set_dungeon][{self.display_name}] 用户拒绝更新，跳过副本设置")
             return
         config = self._load()
         changed = self._update_task(config, dungeon_name) or self._update_sequence(
             config, dungeon_name, sequence
         )
         if changed:
-            logger.info(f"[set_config][{self.display_name}] config 已更新")
+            logger.info(f"[set_dungeon][{self.display_name}] config 已更新")
             self._save(config)
         else:
-            logger.info(f"[set_config][{self.display_name}] config 无需更新")
+            logger.info(f"[set_dungeon][{self.display_name}] config 无需更新")
 
 
 # ============================================================
@@ -234,7 +235,7 @@ class WutheringWavesConfig(ScriptConfig):
         self, config: dict, dungeon_name: str, sequence: str | int | None
     ) -> bool:
         assert sequence is not None, (
-            f"[set_config][{self.display_name}] sequence 不能为空"
+            f"[set_dungeon][{self.display_name}] sequence 不能为空"
         )
 
         sequence_map = {
@@ -251,13 +252,13 @@ class WutheringWavesConfig(ScriptConfig):
         }
 
         assert dungeon_name in sequence_map, (
-            f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+            f"[set_dungeon][{self.display_name}] 未适配的副本: {dungeon_name}"
         )
         cfg = sequence_map[dungeon_name]
 
         if cfg["values"] is not None:
             assert sequence in cfg["values"], (
-                f"[set_config][{self.display_name}] 未适配的序列: {sequence}"
+                f"[set_dungeon][{self.display_name}] 未适配的序列: {sequence}"
             )
             target = cfg["values"][sequence]
         else:
@@ -340,7 +341,7 @@ class ArknightsConfig(ScriptConfig):
             "红票":   {"index": 2, "stage": "AP-5"},
             "经验":   {"index": 3, "stage": "LS-6"},
             "龙门币": {"index": 4, "stage": "CE-6"},
-            "活动土": {"index": 5, "stage": "???"},
+            "活动土": {"index": 5, "stage": None},
             "土":     {"index": 6, "stage": "1-7"},
         }
         """
@@ -381,7 +382,7 @@ class ArknightsConfig(ScriptConfig):
                 )
 
             should_enable = name in ["剿灭", "土", "活动土", dungeon_name]
-            print(
+            logger.info(
                 f"[set_config][{self.display_name}] task_config[{idx}] {task_config[idx]}"
             )
             changed |= safe_update(
