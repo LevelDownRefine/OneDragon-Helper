@@ -208,10 +208,15 @@ class MainWindow(QMainWindow):
         return item
 
     def _persist_ui_state(self):
-        """收集所有脚本的 UI 状态并保存"""
+        """收集所有脚本的 UI 状态并保存。
+
+        同步更新内存态 self._ui_state：_generate_config 运行时读的是这个实例
+        变量，若只写盘不更新内存，用户改了副本选择后直接运行会用到过期状态。
+        """
         state = {}
         for item in self.script_items:
             state[item.display_name] = item.get_state()
+        self._ui_state = state
         self.service.save_ui_state(state)
 
     def _on_script_config_saved(self, display_name):

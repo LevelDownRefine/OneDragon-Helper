@@ -425,5 +425,45 @@ class TestConfigSaveSync(unittest.TestCase):
         callback.assert_not_called()
 
 
+class TestPersistUiState(unittest.TestCase):
+    """测试 _persist_ui_state 同步更新内存态 self._ui_state。
+
+    修复：用户在 GUI 改选副本后，_persist_ui_state 只写盘不更新内存，
+    导致点「运行」时 _generate_config 传的是过期的 self._ui_state，
+    set_config 收到的 sequence 不是用户刚选的值。
+    """
+
+    def test_persist_syncs_in_memory_ui_state(self):
+        """改选副本后 _persist_ui_state 同步更新 self._ui_state"""
+        win = _make_window()
+        win.service.save_ui_state = MagicMock()  # 隔离写盘
+        win._ui_state = {}
+
+        # 直接设置选择状态（绕过 dungeon_btn UI 更新，聚焦 _persist_ui_state 逻辑）
+        win.script_items[0]._selected_dungeon = "凝素领域"
+        win.script_items[0]._selected_sequence = 5
+        win._persist_ui_state()
+
+        self.assertEqual(
+            win._ui_state.get("脚本0"),
+            {"dungeon": "凝素领域", "sequence": 5},
+        )
+
+    def test_persist_overwrites_previous_selection(self):
+        """已有旧选择时，改选后 self._ui_state 被新值覆盖"""
+        win = _make_window()
+        win.service.save_ui_state = MagicMock()
+        win._ui_state = {"脚本0": {"dungeon": "无音区", "sequence": 1}}
+
+        win.script_items[0]._selected_dungeon = "凝素领域"
+        win.script_items[0]._selected_sequence = 5
+        win._persist_ui_state()
+
+        self.assertEqual(
+            win._ui_state["脚本0"],
+            {"dungeon": "凝素领域", "sequence": 5},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
