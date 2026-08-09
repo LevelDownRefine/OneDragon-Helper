@@ -237,10 +237,19 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(cli.ChainService, "generate_chain", return_value=out) as mock_gen:
+            with patch.object(
+                cli.ChainService, "generate_chain", return_value=out
+            ) as mock_gen:
                 _run_main(
-                    ["--generate-chain", "--enable", self._target,
-                     "--dungeon", f"{self._target}=凝素领域", "--out", out],
+                    [
+                        "--generate-chain",
+                        "--enable",
+                        self._target,
+                        "--dungeon",
+                        f"{self._target}=凝素领域",
+                        "--out",
+                        out,
+                    ],
                     expect_exit=0,
                 )
             mock_gen.assert_called_once()
@@ -256,11 +265,21 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(cli.ChainService, "generate_chain", return_value=out) as mock_gen:
+            with patch.object(
+                cli.ChainService, "generate_chain", return_value=out
+            ) as mock_gen:
                 _run_main(
-                    ["--generate-chain", "--enable", self._target,
-                     "--dungeon", f"{self._target}=凝素领域",
-                     "--sequence", f"{self._target}=5", "--out", out],
+                    [
+                        "--generate-chain",
+                        "--enable",
+                        self._target,
+                        "--dungeon",
+                        f"{self._target}=凝素领域",
+                        "--sequence",
+                        f"{self._target}=5",
+                        "--out",
+                        out,
+                    ],
                     expect_exit=0,
                 )
             ui_state = mock_gen.call_args.args[3]
@@ -279,9 +298,17 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
         try:
             with patch.object(service_chain_gen, "set_config"):
                 _run_main(
-                    ["--generate-chain", "--enable", self._target,
-                     "--dungeon", f"{self._target}=凝素领域",
-                     "--sequence", f"{self._target}=5", "--out", out],
+                    [
+                        "--generate-chain",
+                        "--enable",
+                        self._target,
+                        "--dungeon",
+                        f"{self._target}=凝素领域",
+                        "--sequence",
+                        f"{self._target}=5",
+                        "--out",
+                        out,
+                    ],
                     expect_exit=0,
                 )
         finally:
@@ -294,8 +321,13 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
     def test_bad_format_exits_one(self):
         with patch.object(service_chain_gen, "set_config"):
             code = _run_main(
-                ["--generate-chain", "--enable", self._target,
-                 "--dungeon", "鸣潮凝素领域"],
+                [
+                    "--generate-chain",
+                    "--enable",
+                    self._target,
+                    "--dungeon",
+                    "鸣潮凝素领域",
+                ],
                 expect_exit=1,
             )
         self.assertEqual(code, 1)
@@ -305,8 +337,13 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
         bogus = "此脚本一定不存在_XYZ"
         with patch.object(service_chain_gen, "set_config"):
             code = _run_main(
-                ["--generate-chain", "--enable", self._target,
-                 "--dungeon", f"{bogus}=凝素领域"],
+                [
+                    "--generate-chain",
+                    "--enable",
+                    self._target,
+                    "--dungeon",
+                    f"{bogus}=凝素领域",
+                ],
                 expect_exit=1,
             )
         self.assertEqual(code, 1)

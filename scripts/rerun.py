@@ -9,9 +9,8 @@ import os
 import subprocess
 import sys
 
-import yaml
-
 import collect_log
+import yaml
 
 logger = logging.getLogger(__name__)
 

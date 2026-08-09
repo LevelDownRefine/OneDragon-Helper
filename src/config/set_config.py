@@ -202,7 +202,9 @@ class ScriptConfig:
         连 _load/_update_task 等也不执行，仅记日志。
         """
         if not self.enabled:
-            logger.info(f"[set_dungeon][{self.display_name}] 用户拒绝更新，跳过副本设置")
+            logger.info(
+                f"[set_dungeon][{self.display_name}] 用户拒绝更新，跳过副本设置"
+            )
             return
         config = self._load()
         changed = self._update_task(config, dungeon_name) or self._update_sequence(
