@@ -1,9 +1,3 @@
 {
-  "TaskEnabledList": {
-    "领取邮件": true,
-    "领取尘歌壶奖励": true,
-    "自动秘境": true,
-    "领取每日奖励": true
-  },
   "CompletionAction": "关闭游戏和软件"
 }
