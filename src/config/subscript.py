@@ -4,6 +4,7 @@
 """
 
 import json
+import logging
 import os
 import re
 
@@ -15,6 +16,8 @@ from src.utils import (
     require_config_yml_path,
     safe_path_join,
 )
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_RUN_TIMEOUT = 3600
 """脚本运行默认超时秒数。当 weekly_timeouts.yml 无条目或不足 7 格时作为 fallback。"""
@@ -43,6 +46,23 @@ _TEMPLATE_PATHS: dict[str, str] = {
     "绝区零": "ZZZ一条龙.yml",
     "粥": "MAA一条龙.json",
     "崩铁": "M7A一条龙.yml",
+}
+
+
+# ============================================================
+# 各脚本游戏路径配置文件相对路径映射
+# ============================================================
+# 各自动化脚本自己的 config 里存了游戏 exe 路径，本项目不维护。
+# 注意：这里与 _CONFIG_REL_PATHS（副本配置）大多不是同一文件。
+
+_GAME_PATH_REL_PATHS: dict[str, str] = {
+    "鸣潮": "data/apps/ok-ww/working/configs/devices.json",
+    "原神": "User/config.json",
+    "终末地": "data/apps/ok-ef/working/configs/devices.json",
+    "绝区零": "config/01/game_account.yml",
+    "崩铁": "config.yaml",
+    "异环": "data/apps/ok-nte/working/configs/devices.json",
+    "粥": "config/gui.new.json",
 }
 
 
@@ -91,6 +111,22 @@ def _get_script_root_dir(script_display_name: str) -> str:
     复用 get_script_path，确保 exe 脚本存在。
     """
     return os.path.dirname(get_script_path(script_display_name))
+
+
+def _get_script_root_dir_soft(script_display_name: str) -> str | None:
+    """
+    从 config.yml 解析脚本根目录，**不校验 exe 存在**（游戏路径只读查询用）。
+
+    返回 None 表示：config.yml 中无此脚本或 script_path 为空（查询无从谈起）。
+    """
+    config_data = _load_config_yml()
+    for script in config_data.get("script_list", []):
+        if script.get("display_name") == script_display_name:
+            script_path = script.get("script_path", "")
+            if not script_path:
+                return None
+            return os.path.dirname(resolve_script_path(script_path))
+    return None
 
 
 def get_config_path(script_display_name: str) -> str:
@@ -148,6 +184,36 @@ def load_config(script_display_name: str) -> dict | list:
     assert os.path.exists(path), f"[set_config] config 文件不存在: {path}"
     ext = os.path.splitext(path)[1].lower()
     with open(path, encoding="utf-8") as f:
+        if ext == ".json":
+            return json.load(f)
+        elif ext in (".yaml", ".yml"):
+            return yaml.safe_load(f)
+        raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
+
+
+def load_game_config(script_display_name: str) -> dict | None:
+    """
+    读取指定脚本的游戏路径配置文件，返回解析后的 dict。
+
+    与 load_config 的区别：面向「打开游戏」功能的只读查询，**不 assert 文件存在**。
+    文件缺失/未适配脚本时返回 None，由调用方（GUI）优雅降级。
+    """
+    assert script_display_name in _GAME_PATH_REL_PATHS, (
+        f"[set_config] 未适配游戏路径的脚本: {script_display_name}"
+    )
+    root = _get_script_root_dir_soft(script_display_name)
+    if root is None:
+        return None
+    rel = _GAME_PATH_REL_PATHS[script_display_name]
+    game_config_path = safe_path_join(root, rel)
+    if not os.path.exists(game_config_path):
+        logger.warning(
+            f"[set_config][{script_display_name}] 游戏路径配置文件不存在: "
+            f"{game_config_path}"
+        )
+        return None
+    ext = os.path.splitext(game_config_path)[1].lower()
+    with open(game_config_path, encoding="utf-8") as f:
         if ext == ".json":
             return json.load(f)
         elif ext in (".yaml", ".yml"):

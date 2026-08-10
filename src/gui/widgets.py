@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.dungeon_config import get_display_name
+from src.config.set_config import get_game_exe_path
 from src.config.subscript import get_script_path, resolve_script_path
 from src.gui import icons, theme
 from src.gui.dialogs import SingleScriptConfigDialog
@@ -321,10 +322,36 @@ class ScriptItem(QFrame):
             icons.on_script_icon_loaded(self.icon_label, source, qimg)
 
     def _icon_mouse_press(self, event):
-        """左键点击图标即启动脚本。"""
+        """左键点击图标即启动脚本；右键弹出「打开游戏」菜单。"""
         if event.button() == Qt.LeftButton:
             self._open_script()
+        elif event.button() == Qt.RightButton:
+            self._show_game_menu()
         QLabel.mousePressEvent(self.icon_label, event)
+
+    def _show_game_menu(self):
+        """右键图标弹出菜单：打开游戏（若脚本有游戏路径）。
+
+        只读查询游戏 exe 路径（不实例化 config 子类，无写盘副作用）；
+        无游戏路径时（python 辅助脚本等）不弹菜单。
+        """
+        menu = self._build_game_menu()
+        if menu is None:
+            return
+        menu.exec(self.icon_label.mapToGlobal(self.icon_label.rect().bottomLeft()))
+
+    def _build_game_menu(self):
+        """构建「打开游戏」菜单；无游戏路径时返回 None（不弹菜单）。"""
+        game_path = get_game_exe_path(self.display_name)
+        if not game_path:
+            return None
+        menu = QMenu(self)
+        menu.setStyleSheet(_MENU_STYLE)
+        action = menu.addAction("打开游戏")
+        action.triggered.connect(
+            lambda checked: safe_startfile(self, game_path, "无法打开游戏")
+        )
+        return menu
 
     def _open_script(self):
         """打开/运行该脚本：python 用解释器跑，external 解析后 startfile。"""

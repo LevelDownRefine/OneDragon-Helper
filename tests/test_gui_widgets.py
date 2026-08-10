@@ -428,15 +428,19 @@ class TestScriptItemTitleClick(unittest.TestCase):
         self.assertEqual(called, [True])
 
     def test_icon_right_click_does_not_open_script(self):
-        """右键点击图标不应触发 _open_script"""
+        """右键点击图标不应触发 _open_script（改弹「打开游戏」菜单）"""
         item = self._build()
         called = []
         item._open_script = lambda: called.append(True)
         event = MagicMock()
         event.button.return_value = Qt.RightButton
-        with patch("src.gui.widgets.QLabel.mousePressEvent"):
+        with (
+            patch("src.gui.widgets.QLabel.mousePressEvent"),
+            patch.object(item, "_show_game_menu") as mock_menu,
+        ):
             item._icon_mouse_press(event)
         self.assertEqual(called, [])
+        mock_menu.assert_called_once()
 
     def test_title_click_opens_config_dialog(self):
         """左键点击脚本名称应触发 _show_config_dialog。"""
@@ -459,6 +463,54 @@ class TestScriptItemTitleClick(unittest.TestCase):
         with patch("src.gui.widgets.QLabel.mousePressEvent"):
             item._title_mouse_press(event)
         self.assertEqual(called, [])
+
+
+class TestScriptItemGameMenu(unittest.TestCase):
+    """测试图标右键「打开游戏」菜单的构建逻辑。"""
+
+    def _build(self, **kwargs):
+        return ScriptItem(
+            {
+                "display_name": "鸣潮",
+                "script_type": "external",
+                "script_path": "C:/games/run.exe",
+            },
+            **kwargs,
+        )
+
+    def test_menu_built_when_game_path_exists(self):
+        """能读到游戏路径时构建含「打开游戏」的菜单。"""
+        item = self._build()
+        with patch(
+            "src.gui.widgets.get_game_exe_path", return_value="D:/game/game.exe"
+        ):
+            menu = item._build_game_menu()
+        self.assertIsNotNone(menu)
+        actions = menu.actions()
+        self.assertEqual(len(actions), 1)
+        self.assertEqual(actions[0].text(), "打开游戏")
+
+    def test_menu_none_when_no_game_path(self):
+        """读不到游戏路径时不弹菜单（返回 None）。"""
+        item = self._build()
+        with patch("src.gui.widgets.get_game_exe_path", return_value=None):
+            menu = item._build_game_menu()
+        self.assertIsNone(menu)
+
+    def test_menu_action_triggers_startfile(self):
+        """点击「打开游戏」触发 safe_startfile 打开游戏 exe。"""
+        item = self._build()
+        with (
+            patch(
+                "src.gui.widgets.get_game_exe_path",
+                return_value="D:/game/game.exe",
+            ),
+            patch("src.gui.widgets.safe_startfile") as mock_start,
+        ):
+            menu = item._build_game_menu()
+            action = menu.actions()[0]
+            action.trigger()
+        mock_start.assert_called_once_with(item, "D:/game/game.exe", "无法打开游戏")
 
 
 class TestGetScriptIcon(unittest.TestCase):

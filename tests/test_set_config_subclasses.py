@@ -986,6 +986,128 @@ class TestArknightsConfig(unittest.TestCase):
 
 
 # ============================================================
+# get_game_exe_path（打开游戏只读查询）
+# ============================================================
+
+
+class TestGetGameExePath(unittest.TestCase):
+    """测试 ScriptConfig.get_game_exe_path：从各脚本游戏配置中提取游戏路径。"""
+
+    def test_unadapted_base_returns_none(self):
+        """基类未适配（_game_path_keys 为空）→ None，不触发任何读取"""
+        with patch("src.config.set_config.load_game_config") as mock_load:
+            got = ScriptConfig.get_game_exe_path("任意")
+        self.assertIsNone(got)
+        mock_load.assert_not_called()
+
+    def test_ok_series_pc_full_path(self):
+        """OK 系（鸣潮/终末地/异环）读取 devices.json 的 pc_full_path"""
+        cases = (
+            (WutheringWavesConfig, "鸣潮"),
+            (EndfieldConfig, "终末地"),
+            (NTEConfig, "异环"),
+        )
+        for cls, display_name in cases:
+            with patch(
+                "src.config.set_config.load_game_config",
+                return_value={
+                    "preferred": "pc_1",
+                    "pc_full_path": "D:\\Game\\game.exe",
+                },
+            ):
+                got = cls.get_game_exe_path(display_name)
+            self.assertEqual(got, "D:\\Game\\game.exe")
+
+    def test_genshin_nested_install_path(self):
+        """原神读取 config.json 的 genshinStartConfig.installPath（嵌套）"""
+        with patch(
+            "src.config.set_config.load_game_config",
+            return_value={
+                "genshinStartConfig": {
+                    "installPath": "D:\\Genshin\\YuanShen.exe",
+                }
+            },
+        ):
+            got = GenshinConfig.get_game_exe_path("原神")
+        self.assertEqual(got, "D:\\Genshin\\YuanShen.exe")
+
+    def test_game_path_top_level(self):
+        """绝区零/崩铁读取顶层 game_path"""
+        cases = (
+            (ZenlessZoneZeroConfig, "绝区零"),
+            (StarRailConfig, "崩铁"),
+        )
+        for cls, display_name in cases:
+            with patch(
+                "src.config.set_config.load_game_config",
+                return_value={"game_path": "D:\\Game\\game.exe"},
+            ):
+                got = cls.get_game_exe_path(display_name)
+            self.assertEqual(got, "D:\\Game\\game.exe")
+
+    def test_arknights_nested_emulator_path(self):
+        """粥读取 gui.new.json 的 Configurations.Default.Gui.StartUpSettings.EmulatorPath（多级嵌套）"""
+        with patch(
+            "src.config.set_config.load_game_config",
+            return_value={
+                "Configurations": {
+                    "Default": {
+                        "Gui": {
+                            "StartUpSettings": {
+                                "EmulatorPath": "C:\\MuMu\\#0 MuMu安卓设备.lnk",
+                            }
+                        }
+                    }
+                }
+            },
+        ):
+            got = ArknightsConfig.get_game_exe_path("粥")
+        self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
+
+    def test_missing_config_returns_none(self):
+        """游戏配置文件缺失（load_game_config 返回 None）→ None"""
+        with patch("src.config.set_config.load_game_config", return_value=None):
+            got = WutheringWavesConfig.get_game_exe_path("鸣潮")
+        self.assertIsNone(got)
+
+    def test_missing_field_returns_none(self):
+        """配置中缺字段 → None"""
+        with patch(
+            "src.config.set_config.load_game_config",
+            return_value={"other": "x"},
+        ):
+            got = WutheringWavesConfig.get_game_exe_path("鸣潮")
+        self.assertIsNone(got)
+
+    def test_empty_value_returns_none(self):
+        """字段值为空字符串 → None"""
+        with patch(
+            "src.config.set_config.load_game_config",
+            return_value={"pc_full_path": ""},
+        ):
+            got = WutheringWavesConfig.get_game_exe_path("鸣潮")
+        self.assertIsNone(got)
+
+
+class TestGetGameExePathFacade(unittest.TestCase):
+    """测试外观接口 get_game_exe_path 的分发逻辑"""
+
+    def test_unknown_script_returns_none(self):
+        """未注册（自定义）脚本 → None"""
+        got = set_config.get_game_exe_path("不存在")
+        self.assertIsNone(got)
+
+    def test_known_script_dispatches(self):
+        """已注册脚本 → 走对应子类"""
+        with patch(
+            "src.config.set_config.load_game_config",
+            return_value={"pc_full_path": "D:\\Game\\game.exe"},
+        ):
+            got = set_config.get_game_exe_path("鸣潮")
+        self.assertEqual(got, "D:\\Game\\game.exe")
+
+
+# ============================================================
 # 外观接口 set_config()
 # ============================================================
 
