@@ -11,7 +11,6 @@
     CRIMSON    酒红   —— 危险 / 删除 / 警示
 """
 
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QPushButton
@@ -57,7 +56,7 @@ FONT_SIZE_BODY = 11  # 正文：脚本名 chip / 副本按钮 / 输入框 / 下�
 FONT_SIZE_BTN = 12  # 按钮：次级 / 药丸 / 危险
 FONT_SIZE_HERO = 13  # 主要操作：运行按钮
 # ── 文本 / 布局常量 ──────────────────────────────────────────────────────
-LABEL_WIDTH = 64  # 表单标签固定宽（4 字中文在 11px YaHei 下约 60px）
+LABEL_WIDTH = 64  # 表单标签固定宽
 
 
 def make_font(*, size: int = FONT_SIZE_BODY, bold: bool = False) -> QFont:
@@ -136,8 +135,6 @@ def danger_button_qss(*, radius: int = 10, font_size: int = FONT_SIZE_BODY) -> s
                             background: {BG_DANGER_SOFT}; }}
         QPushButton:disabled {{ color: {TEXT_FAINT}; border-color: {DISABLED}; }}
     """
-
-
 
 
 def pill_button_qss(

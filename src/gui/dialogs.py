@@ -30,8 +30,8 @@ SCRIPT_FILE_FILTER = (
 )
 
 # 表单输入控件宽度上下限（限制 input 不拉满整个弹窗，保留右侧空白感）
-INPUT_MAX_W = 320
 INPUT_FIXED_W = 320
+INPUT_FIXED_H = 30
 
 
 def confirm_config_update(display_name: str) -> bool:
@@ -150,7 +150,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.load_data()
 
     def init_ui(self):
-        """用 QGridLayout：所有 label 在 col 0、input 在 col 1（stretch=1），自动等宽对齐。"""
+        """用 QGridLayout：所有 label 在 col 0、input 在 col 1（固定宽），自动等宽对齐。"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
@@ -168,7 +168,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.name_input.setFont(font)
         self.name_input.setPlaceholderText("脚本显示名称，例如：1999")
         self.name_input.setFixedWidth(INPUT_FIXED_W)
-        self.name_input.setFixedHeight(30)
+        self.name_input.setFixedHeight(INPUT_FIXED_H)
         self.name_input.setStyleSheet(self._LINE_EDIT_STYLE)
         grid.addWidget(name_label, 0, 0)
         grid.addWidget(self.name_input, 0, 1)
@@ -181,7 +181,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.path_input.setText(self.script_path)
         self.path_input.setReadOnly(True)  # 只显示路径，编辑通过重新选择完成
         self.path_input.setFixedWidth(INPUT_FIXED_W)
-        self.path_input.setFixedHeight(30)
+        self.path_input.setFixedHeight(INPUT_FIXED_H)
         self.path_input.setStyleSheet(self._LINE_EDIT_STYLE)
         # 点击 input 触发文件选择（替代外部"选择"按钮）
         path_orig_press = self.path_input.mousePressEvent
@@ -202,7 +202,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         font = theme.make_font(size=theme.FONT_SIZE_BODY)
         self.type_combo.setFont(font)
         self.type_combo.setFixedWidth(INPUT_FIXED_W)
-        self.type_combo.setFixedHeight(30)
+        self.type_combo.setFixedHeight(INPUT_FIXED_H)
         self.type_combo.setStyleSheet(self._COMBO_STYLE)
         grid.addWidget(type_label, 2, 0)
         grid.addWidget(self.type_combo, 2, 1)
@@ -219,7 +219,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.args_input.setFont(font)
         self.args_input.setPlaceholderText("可选，传给脚本的命令行参数")
         self.args_input.setFixedWidth(INPUT_FIXED_W)
-        self.args_input.setFixedHeight(30)
+        self.args_input.setFixedHeight(INPUT_FIXED_H)
         self.args_input.setStyleSheet(self._LINE_EDIT_STYLE)
         grid.addWidget(args_label, 3, 0)
         grid.addWidget(self.args_input, 3, 1, 1, 2)
@@ -237,7 +237,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         font = theme.make_font(size=theme.FONT_SIZE_BODY)
         self.check_done_combo.setFont(font)
         self.check_done_combo.setFixedWidth(INPUT_FIXED_W)
-        self.check_done_combo.setFixedHeight(30)
+        self.check_done_combo.setFixedHeight(INPUT_FIXED_H)
         self.check_done_combo.setStyleSheet(self._COMBO_STYLE)
         grid.addWidget(check_label, 4, 0)
         grid.addWidget(self.check_done_combo, 4, 1, 1, 2)
@@ -269,11 +269,9 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.game_process_input = QLineEdit(self)
         font = theme.make_font(size=theme.FONT_SIZE_BODY)
         self.game_process_input.setFont(font)
-        self.game_process_input.setPlaceholderText(
-            "关闭游戏时必填，例如 YuanShen.exe"
-        )
+        self.game_process_input.setPlaceholderText("关闭游戏时必填，例如 YuanShen.exe")
         self.game_process_input.setFixedWidth(INPUT_FIXED_W)
-        self.game_process_input.setFixedHeight(30)
+        self.game_process_input.setFixedHeight(INPUT_FIXED_H)
         self.game_process_input.setStyleSheet(self._LINE_EDIT_STYLE)
         self.game_process_input.setEnabled(False)
         grid.addWidget(game_label, 6, 0)
@@ -476,7 +474,7 @@ class AddScriptDialog(_FormDialogBase):
         self.name_input.setFont(font)
         self.name_input.setPlaceholderText("脚本显示名称，例如：1999")
         self.name_input.setFixedWidth(INPUT_FIXED_W)
-        self.name_input.setFixedHeight(30)
+        self.name_input.setFixedHeight(INPUT_FIXED_H)
         self.name_input.setStyleSheet(self._LINE_EDIT_STYLE)
         name_row.addWidget(self._make_label("脚本名称:"))
         name_row.addWidget(self.name_input)
@@ -489,7 +487,7 @@ class AddScriptDialog(_FormDialogBase):
         self.type_combo.addItems(["external", "python"])
         font = theme.make_font(size=theme.FONT_SIZE_BODY)
         self.type_combo.setFont(font)
-        self.type_combo.setFixedHeight(30)
+        self.type_combo.setFixedHeight(INPUT_FIXED_H)
         self.type_combo.setFixedWidth(INPUT_FIXED_W)
         self.type_combo.setStyleSheet(self._COMBO_STYLE)
         type_row.addWidget(self._make_label("脚本类型:"))
@@ -505,7 +503,7 @@ class AddScriptDialog(_FormDialogBase):
         self.path_input.setFont(font)
         self.path_input.setPlaceholderText("脚本/程序的完整路径")
         self.path_input.setFixedWidth(INPUT_FIXED_W)
-        self.path_input.setFixedHeight(30)
+        self.path_input.setFixedHeight(INPUT_FIXED_H)
         self.path_input.setStyleSheet(self._LINE_EDIT_STYLE)
         browse_btn = make_secondary_button("选择")
         browse_btn.clicked.connect(self.browse_file)
@@ -522,7 +520,7 @@ class AddScriptDialog(_FormDialogBase):
         self.args_input.setFont(font)
         self.args_input.setPlaceholderText("可选，传给脚本的命令行参数")
         self.args_input.setFixedWidth(INPUT_FIXED_W)
-        self.args_input.setFixedHeight(30)
+        self.args_input.setFixedHeight(INPUT_FIXED_H)
         self.args_input.setStyleSheet(self._LINE_EDIT_STYLE)
         args_row.addWidget(self._make_label("启动参数:"))
         args_row.addWidget(self.args_input)

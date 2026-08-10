@@ -43,7 +43,7 @@ _DUNGEON_BTN_QSS = (
     f"QPushButton {{"
     f"  border: 1px solid {theme.BORDER}; border-radius: 8px;"
     f"  padding: 0 10px; background: transparent;"
-    f"  color: {theme.DARK_BLUE}; font-family: Microsoft YaHei;"
+    f"  color: {theme.DARK_BLUE}; font-family: {theme.FONT_FAMILY};"
     f"  font-size: {theme.FONT_SIZE_BODY}px; text-align: center;"
     f"}}"
     f"QPushButton:hover {{"
@@ -152,7 +152,7 @@ class ScriptItem(QFrame):
         self.setObjectName("ScriptItem")
         self.setAcceptDrops(True)
         self._apply_card_style()
-        # 卡片阴影，营造悬浮层次感（中改：blur 14→18，offset 3→2，色不透明度 22→28）
+        # 卡片阴影，营造悬浮层次感
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(18)
         shadow.setColor(QColor(15, 23, 42, 28))
