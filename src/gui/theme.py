@@ -41,21 +41,15 @@ DISABLED = "#CBD3E2"  # 禁用底色
 
 FONT_FAMILY = '"Microsoft YaHei", "Segoe UI", sans-serif'
 
-# 复选框勾选图标（白色 SVG check，内联 data URI，避免依赖外部资源）
-CHECK_ICON_DATA = (
-    "data:image/svg+xml;base64,"
-    "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+"
-    "PHBhdGggZD0iTTMuNSA4LjUgTDYuNSAxMS41IEwxMi41IDQuNSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tl"
-    "LXdpZHRoPSIyIiBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5l"
-    "am9pbj0icm91bmQiLz48L3N2Zz4="
-)
-
 
 # ── 字号 token（统一所有控件，避免散在多处） ─────────────────────────────────
 FONT_SIZE_BODY = 11  # 正文：脚本名 chip / 副本按钮 / 输入框 / 下拉框 / 表单标签
 FONT_SIZE_BTN = 12  # 按钮：次级 / 药丸 / 危险
 FONT_SIZE_HERO = 13  # 主要操作：运行按钮
-# ── 文本 / 布局常量 ──────────────────────────────────────────────────────
+
+
+# ── 文本 / 布局常量 ──────────────────────────────────────────────────────────
+LABEL_WIDTH = 64  # 表单标签固定宽
 LABEL_WIDTH = 64  # 表单标签固定宽
 
 
@@ -246,32 +240,12 @@ def combo_box_qss(*, radius: int = 8, font_size: int = FONT_SIZE_BODY) -> str:
 
 
 def check_box_qss(*, size: int = 16) -> str:
-    """复选框：未勾白底雾蓝边 + 勾上钢蓝填充 + 白勾 SVG。"""
+    """复选框：只定制文字颜色，indicator 完全走平台原生（原生自带白底方框+勾）。"""
     return f"""
         QCheckBox {{
             color: {TEXT};
-            background: transparent;
-            border: none;
-            spacing: 6px;
-        }}
-        QCheckBox::indicator {{
-            width: {size}px;
-            height: {size}px;
-            border: 1px solid {BORDER};
-            border-radius: 3px;
-            background: white;
-        }}
-        QCheckBox::indicator:hover {{ border-color: {BLUE}; }}
-        QCheckBox::indicator:checked {{
-            background: {BLUE};
-            border-color: {BLUE};
-            image: url({CHECK_ICON_DATA});
         }}
         QCheckBox:disabled {{ color: {TEXT_FAINT}; }}
-        QCheckBox::indicator:disabled {{
-            background: {BG_HOVER};
-            border-color: {DISABLED};
-        }}
     """
 
 
