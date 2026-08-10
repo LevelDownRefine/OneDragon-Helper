@@ -60,7 +60,9 @@ def _dump_weekly(weekly_map: dict) -> None:
 
 
 def _resolve_weekly_timeouts(timeouts: list[int | None]) -> list[int]:
-    """把弹窗输入的超时列表规范化：None（空输入）转默认超时，并 clamp 不低于 10。
+    """把弹窗输入的超时列表规范化：None（空输入）转默认超时，低值（<10）原样保留。
+
+    低值不再 clamp，由 chain_gen 在生成链时按「当天 <10 秒不运行」语义跳过脚本。
 
     Args:
         timeouts: 7 格输入值，空输入为 None。
@@ -68,7 +70,7 @@ def _resolve_weekly_timeouts(timeouts: list[int | None]) -> list[int]:
     Returns:
         规范化后的 7 格超时值列表。
     """
-    return [DEFAULT_RUN_TIMEOUT if v is None else max(v, 10) for v in timeouts]
+    return [DEFAULT_RUN_TIMEOUT if v is None else v for v in timeouts]
 
 
 class ScriptService:
@@ -101,7 +103,7 @@ class ScriptService:
         return None
 
     def save_weekly(self, script_name: str, timeouts: list[int | None]) -> None:
-        """保存单个脚本的每周超时（空输入转默认超时并 clamp ≥10）。
+        """保存单个脚本的每周超时（空输入转默认超时；低值原样保留表示当天不运行）。
 
         Args:
             script_name: 脚本唯一标识。

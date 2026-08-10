@@ -299,7 +299,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
             day_label.setFixedWidth(22)
             lineedit = QLineEdit(self)
             lineedit.setFont(theme.make_font(size=theme.FONT_SIZE_BODY))
-            lineedit.setValidator(QIntValidator(10, 86400, self))
+            lineedit.setValidator(QIntValidator(0, 86400, self))
             lineedit.setAlignment(Qt.AlignRight)  # 数字右对齐
             lineedit.setFixedWidth(50)
             lineedit.setMinimumWidth(50)

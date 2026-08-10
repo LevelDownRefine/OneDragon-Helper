@@ -74,12 +74,12 @@ class TestSaveWeekly(ScriptServiceTestBase):
             [3600, 60, 3600, 60, 60, 60, 60],
         )
 
-    def test_low_timeouts_clamped_to_10(self):
-        """低于 10 的输入 → clamp 到 10。"""
+    def test_low_timeouts_preserved(self):
+        """低于 10 的输入原样保留（由 chain_gen 按「<10 当天不运行」跳过，不再 clamp）。"""
         ScriptService().save_weekly("a", [5, 0, 60, 60, 60, 60, 60])
         self.assertEqual(
             self._read_weekly()["a"],
-            [10, 10, 60, 60, 60, 60, 60],
+            [5, 0, 60, 60, 60, 60, 60],
         )
 
 

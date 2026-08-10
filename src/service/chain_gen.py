@@ -36,24 +36,37 @@ def _get_week_num() -> int:
     return (datetime.now() - timedelta(hours=4)).weekday()
 
 
-def _apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
-    """根据 weekly_timeouts.yml 就地设置 script['run_timeout_seconds']。
+def _resolve_daily_run(script: dict, weekly_timeouts: dict) -> bool:
+    """按 weekly_timeouts.yml 解析脚本当天是否运行，运行时就地设置超时。
 
     weekly_timeouts 的 key 为脚本唯一标识（exe 用进程名，脚本文件用 display_name）。
 
-    - 有完整 7 格 → 取当天值，且不低于 10（避免 0 秒杀脚本）。
-    - 无条目 / 不足 7 格 → fallback 到 DEFAULT_RUN_TIMEOUT。
+    - 有完整 7 格且当天值 >= 10 → 取当天值作为 run_timeout_seconds，返回 True。
+    - 当天值 < 10 → 视为「当天不运行」，不设置超时字段，返回 False。
+    - 无条目 / 不足 7 格 → fallback 到 DEFAULT_RUN_TIMEOUT，返回 True。
+
+    Returns:
+        True 表示脚本当天应运行；False 表示不运行，调用方应从链中剔除。
     """
     assert "script_path" in script, "[chain_gen] script_list 条目缺少 script_path 字段"
     script_name = get_script_name(script)
     if script_name not in weekly_timeouts:
         script["run_timeout_seconds"] = DEFAULT_RUN_TIMEOUT
-        return
+        return True
     timeouts = weekly_timeouts[script_name]
     if timeouts and len(timeouts) == 7:
-        script["run_timeout_seconds"] = max(timeouts[_get_week_num()], 10)
-    else:
-        script["run_timeout_seconds"] = DEFAULT_RUN_TIMEOUT
+        week_value = timeouts[_get_week_num()]
+        if week_value < 10:
+            logger.warning(
+                "[chain_gen] %s 当天超时 %s 秒低于下限 10，跳过不运行",
+                script_name,
+                week_value,
+            )
+            return False
+        script["run_timeout_seconds"] = week_value
+        return True
+    script["run_timeout_seconds"] = DEFAULT_RUN_TIMEOUT
+    return True
 
 
 def _collect_enabled_selections(
@@ -134,7 +147,8 @@ def generate_chain_config(
         )
         script_name = get_script_name(script)
         if script_name in enabled_keys:
-            _apply_weekly_timeout(script, weekly_timeouts)
+            if not _resolve_daily_run(script, weekly_timeouts):
+                continue
             set_config(
                 script_name,
                 dungeon_name=enabled_dungeons.get(script_name),
