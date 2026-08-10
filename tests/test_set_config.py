@@ -26,7 +26,7 @@ class TestConfigRelPaths(unittest.TestCase):
 
     def test_all_scripts_have_rel_path(self):
         """每个已适配脚本都应在 _CONFIG_REL_PATHS 中有记录"""
-        scripts = ["鸣潮", "原神", "终末地", "绝区零", "崩铁", "异环", "粥"]
+        scripts = ["ok-ww", "BetterGI", "ok-ef", "OneDragon-Launcher", "March7th-Assistant", "ok-nte", "MAA"]
         for name in scripts:
             self.assertIn(
                 name, subscript._CONFIG_REL_PATHS, f"{name} 缺少 config 相对路径"
@@ -64,7 +64,7 @@ class TestGetScriptRootDir(unittest.TestCase):
             patch.object(subscript, "_load_config_yml", return_value=fake_config),
             patch("os.path.exists", return_value=True),
         ):
-            root = subscript._get_script_root_dir("鸣潮")
+            root = subscript._get_script_root_dir("ok-ww")
         self.assertEqual(root, expected_root)
 
     def test_handles_windows_path_on_any_platform(self):
@@ -81,7 +81,7 @@ class TestGetScriptRootDir(unittest.TestCase):
             patch.object(subscript, "_load_config_yml", return_value=fake_config),
             patch("os.path.exists", return_value=True),
         ):
-            root = subscript._get_script_root_dir("鸣潮")
+            root = subscript._get_script_root_dir("ok-ww")
         self.assertEqual(root, "C:/Users/test/ok-ww")
 
     def test_raises_for_unknown_script(self):
@@ -91,7 +91,7 @@ class TestGetScriptRootDir(unittest.TestCase):
             patch.object(subscript, "_load_config_yml", return_value=fake_config),
             self.assertRaises(AssertionError),
         ):
-            subscript._get_script_root_dir("不存在的脚本")
+            subscript._get_script_root_dir("none")
 
     def test_raises_for_empty_script_path(self):
         """script_path 为空时应触发 AssertionError"""
@@ -104,7 +104,7 @@ class TestGetScriptRootDir(unittest.TestCase):
             patch.object(subscript, "_load_config_yml", return_value=fake_config),
             self.assertRaises(AssertionError),
         ):
-            subscript._get_script_root_dir("空路径")
+            subscript._get_script_root_dir("empty")
 
 
 class TestGetConfigPath(unittest.TestCase):
@@ -122,11 +122,11 @@ class TestGetConfigPath(unittest.TestCase):
             patch.object(subscript, "_load_config_yml", return_value=fake_config),
             patch("os.path.exists", return_value=True),
         ):
-            path = subscript.get_config_path("鸣潮")
+            path = subscript.get_config_path("ok-ww")
 
         # get_config_path 内部用 safe_path_join，会归一化为绝对路径（Windows 为反斜杠），
         # 故 expected 需用同一归一化方式，避免分隔符不一致导致断言失败。
-        expected = safe_path_join("C:/fake/ok-ww", subscript._CONFIG_REL_PATHS["鸣潮"])
+        expected = safe_path_join("C:/fake/ok-ww", subscript._CONFIG_REL_PATHS["ok-ww"])
         self.assertEqual(path, expected)
 
     def test_raises_for_unknown_script(self):
@@ -137,15 +137,18 @@ class TestGetConfigPath(unittest.TestCase):
             ),
             self.assertRaises(AssertionError),
         ):
-            subscript.get_config_path("不存在")
+            subscript.get_config_path("none")
 
     def test_all_registered_scripts_resolve_with_mock_config(self):
         """对所有已注册脚本，用 mock 的 config.yml 验证路径推导成功
         （不依赖真实 config.yml，CI 也能跑）"""
         scripts = list(subscript._CONFIG_REL_PATHS.keys())
-        # 构造 mock config：每个脚本都有一个假的 script_path
+        # 构造 mock config：每个脚本一个唯一的 script_path（key 即进程名）
         fake_script_list = [
-            {"display_name": name, "script_path": r"C:\fake\root\script.exe"}
+            {
+                "display_name": name,
+                "script_path": rf"C:\fake\root\{name}.exe",
+            }
             for name in scripts
         ]
         with (
@@ -181,7 +184,7 @@ class TestLoadConfig(unittest.TestCase):
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(fake_data))),
         ):
-            result = subscript.load_config("鸣潮")
+            result = subscript.load_config("ok-ww")
 
         self.assertEqual(result, fake_data)
 
@@ -196,7 +199,7 @@ class TestLoadConfig(unittest.TestCase):
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=yaml_str)),
         ):
-            result = subscript.load_config("绝区零")
+            result = subscript.load_config("OneDragon-Launcher")
 
         self.assertEqual(result, fake_data)
 
@@ -206,7 +209,10 @@ class TestLoadConfig(unittest.TestCase):
         scripts = list(subscript._CONFIG_REL_PATHS.keys())
         # 构造 mock config.yml + mock 文件内容
         fake_script_list = [
-            {"display_name": name, "script_path": r"C:\fake\root\script.exe"}
+            {
+                "display_name": name,
+                "script_path": rf"C:\fake\root\{name}.exe",
+            }
             for name in scripts
         ]
         fake_config_yml = {"script_list": fake_script_list}
@@ -246,7 +252,7 @@ class TestSaveConfig(unittest.TestCase):
             patch.object(subscript, "get_config_path", return_value=fake_path),
             patch("builtins.open", m),
         ):
-            result = subscript.save_config("鸣潮", data)
+            result = subscript.save_config("ok-ww", data)
 
         self.assertIsNone(result)
         m.assert_called_once_with(fake_path, "w", encoding="utf-8")
@@ -265,7 +271,7 @@ class TestSaveConfig(unittest.TestCase):
             patch.object(subscript, "get_config_path", return_value=fake_path),
             patch("builtins.open", m),
         ):
-            result = subscript.save_config("绝区零", data)
+            result = subscript.save_config("OneDragon-Launcher", data)
 
         self.assertIsNone(result)
         m.assert_called_once_with(fake_path, "w", encoding="utf-8")
@@ -280,7 +286,7 @@ class TestSaveConfig(unittest.TestCase):
             patch.object(subscript, "get_config_path", return_value=None),
             self.assertRaises((TypeError, AssertionError)),
         ):
-            subscript.save_config("不存在", {"key": "val"})
+            subscript.save_config("none", {"key": "val"})
 
     def test_save_and_reload_roundtrip_json(self):
         """JSON 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
@@ -290,10 +296,10 @@ class TestSaveConfig(unittest.TestCase):
             fake_path = os.path.join(tmp, "config.json")
             with patch.object(subscript, "get_config_path", return_value=fake_path):
                 # save
-                ok = subscript.save_config("鸣潮", data)
+                ok = subscript.save_config("ok-ww", data)
                 self.assertIsNone(ok)
                 # load
-                loaded = subscript.load_config("鸣潮")
+                loaded = subscript.load_config("ok-ww")
                 self.assertEqual(loaded, data)
 
     def test_save_and_reload_roundtrip_yaml(self):
@@ -304,10 +310,10 @@ class TestSaveConfig(unittest.TestCase):
             fake_path = os.path.join(tmp, "config.yaml")
             with patch.object(subscript, "get_config_path", return_value=fake_path):
                 # save
-                ok = subscript.save_config("绝区零", data)
+                ok = subscript.save_config("OneDragon-Launcher", data)
                 self.assertIsNone(ok)
                 # load
-                loaded = subscript.load_config("绝区零")
+                loaded = subscript.load_config("OneDragon-Launcher")
                 self.assertEqual(loaded, data)
 
 

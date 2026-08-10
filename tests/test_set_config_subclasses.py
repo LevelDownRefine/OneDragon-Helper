@@ -140,7 +140,8 @@ class TestVerifySaved(unittest.TestCase):
 
     def _make_cfg(self):
         cfg = ScriptConfig()
-        cfg.display_name = "测试"
+        cfg.script_name = "测试"
+        cfg.display_name = "测试展示名"
         return cfg
 
     def test_save_round_trip_verifies_ok(self):
@@ -191,6 +192,7 @@ class TestWutheringWavesConfig(unittest.TestCase):
 
     def test_init_attributes(self):
         self.assertEqual(self.cfg.display_name, "鸣潮")
+        self.assertEqual(self.cfg.script_name, "ok-ww")
         self.assertEqual(self.cfg._task_key, "Which to Farm")
         self.assertIn("凝素领域", self.cfg._task_map)
         self.assertIn("模拟领域", self.cfg._task_map)
@@ -308,6 +310,7 @@ class TestGenshinConfig(unittest.TestCase):
         ):
             cfg = GenshinConfig()
         self.assertEqual(cfg.display_name, "原神")
+        self.assertEqual(cfg.script_name, "BetterGI")
         self.assertEqual(cfg._task_key, "DomainName")
 
     def test_init_config_aligned_no_save(self):
@@ -372,6 +375,7 @@ class TestEndfieldConfig(unittest.TestCase):
     def test_init_attributes(self):
         cfg = EndfieldConfig()
         self.assertEqual(cfg.display_name, "终末地")
+        self.assertEqual(cfg.script_name, "ok-ef")
         self.assertEqual(cfg._task_key, "体力本")
         self.assertEqual(cfg._task_map, {})
 
@@ -410,6 +414,7 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         ):
             cfg = ZenlessZoneZeroConfig()
         self.assertEqual(cfg.display_name, "绝区零")
+        self.assertEqual(cfg.script_name, "OneDragon-Launcher")
         self.assertEqual(cfg._task_key, "")
 
     def test_init_config_aligned_no_save(self):
@@ -572,6 +577,7 @@ class TestStarRailConfig(unittest.TestCase):
         with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
             self.assertEqual(cfg.display_name, "崩铁")
+            self.assertEqual(cfg.script_name, "March7th-Assistant")
             self.assertEqual(cfg._task_key, "instance_type")
             self.assertEqual(cfg._task_map, {})
 
@@ -606,6 +612,7 @@ class TestNTEConfig(unittest.TestCase):
 
     def test_init_attributes(self):
         self.assertEqual(self.cfg.display_name, "异环")
+        self.assertEqual(self.cfg.script_name, "ok-nte")
         self.assertEqual(self.cfg._task_key, "任务类型")
         self.assertIn("空幕", self.cfg._seq_key_map)
         self.assertEqual(self.cfg._seq_key_map["空幕"], "空幕序号")
@@ -676,6 +683,7 @@ class TestArknightsConfig(unittest.TestCase):
     def test_init_attributes(self):
         cfg = self._make_cfg()
         self.assertEqual(cfg.display_name, "粥")
+        self.assertEqual(cfg.script_name, "MAA")
         self.assertIn("剿灭", cfg._task_map)
         self.assertEqual(cfg._task_map["剿灭"]["index"], 1)
         self.assertEqual(cfg._task_map["土"]["index"], 5)
@@ -1001,13 +1009,13 @@ class TestGetGameExePath(unittest.TestCase):
         mock_load.assert_not_called()
 
     def test_ok_series_pc_full_path(self):
-        """OK 系（鸣潮/终末地/异环）读取 devices.json 的 pc_full_path"""
+        """OK 系（ok-ww/ok-ef/ok-nte）读取 devices.json 的 pc_full_path"""
         cases = (
-            (WutheringWavesConfig, "鸣潮"),
-            (EndfieldConfig, "终末地"),
-            (NTEConfig, "异环"),
+            (WutheringWavesConfig, "ok-ww"),
+            (EndfieldConfig, "ok-ef"),
+            (NTEConfig, "ok-nte"),
         )
-        for cls, display_name in cases:
+        for cls, script_name in cases:
             with patch(
                 "src.config.set_config.load_game_config",
                 return_value={
@@ -1015,11 +1023,11 @@ class TestGetGameExePath(unittest.TestCase):
                     "pc_full_path": "D:\\Game\\game.exe",
                 },
             ):
-                got = cls.get_game_exe_path(display_name)
+                got = cls.get_game_exe_path(script_name)
             self.assertEqual(got, "D:\\Game\\game.exe")
 
     def test_genshin_nested_install_path(self):
-        """原神读取 config.json 的 genshinStartConfig.installPath（嵌套）"""
+        """原神（BetterGI）读取 config.json 的 genshinStartConfig.installPath（嵌套）"""
         with patch(
             "src.config.set_config.load_game_config",
             return_value={
@@ -1028,25 +1036,25 @@ class TestGetGameExePath(unittest.TestCase):
                 }
             },
         ):
-            got = GenshinConfig.get_game_exe_path("原神")
+            got = GenshinConfig.get_game_exe_path("BetterGI")
         self.assertEqual(got, "D:\\Genshin\\YuanShen.exe")
 
     def test_game_path_top_level(self):
         """绝区零/崩铁读取顶层 game_path"""
         cases = (
-            (ZenlessZoneZeroConfig, "绝区零"),
-            (StarRailConfig, "崩铁"),
+            (ZenlessZoneZeroConfig, "OneDragon-Launcher"),
+            (StarRailConfig, "March7th-Assistant"),
         )
-        for cls, display_name in cases:
+        for cls, script_name in cases:
             with patch(
                 "src.config.set_config.load_game_config",
                 return_value={"game_path": "D:\\Game\\game.exe"},
             ):
-                got = cls.get_game_exe_path(display_name)
+                got = cls.get_game_exe_path(script_name)
             self.assertEqual(got, "D:\\Game\\game.exe")
 
     def test_arknights_nested_emulator_path(self):
-        """粥读取 gui.new.json 的 Configurations.Default.Gui.StartUpSettings.EmulatorPath（多级嵌套）"""
+        """粥（MAA）读取 gui.new.json 的 Configurations.Default.Gui.StartUpSettings.EmulatorPath（多级嵌套）"""
         with patch(
             "src.config.set_config.load_game_config",
             return_value={
@@ -1061,13 +1069,13 @@ class TestGetGameExePath(unittest.TestCase):
                 }
             },
         ):
-            got = ArknightsConfig.get_game_exe_path("粥")
+            got = ArknightsConfig.get_game_exe_path("MAA")
         self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
 
     def test_missing_config_returns_none(self):
         """游戏配置文件缺失（load_game_config 返回 None）→ None"""
         with patch("src.config.set_config.load_game_config", return_value=None):
-            got = WutheringWavesConfig.get_game_exe_path("鸣潮")
+            got = WutheringWavesConfig.get_game_exe_path("ok-ww")
         self.assertIsNone(got)
 
     def test_missing_field_returns_none(self):
@@ -1076,7 +1084,7 @@ class TestGetGameExePath(unittest.TestCase):
             "src.config.set_config.load_game_config",
             return_value={"other": "x"},
         ):
-            got = WutheringWavesConfig.get_game_exe_path("鸣潮")
+            got = WutheringWavesConfig.get_game_exe_path("ok-ww")
         self.assertIsNone(got)
 
     def test_empty_value_returns_none(self):
@@ -1085,25 +1093,25 @@ class TestGetGameExePath(unittest.TestCase):
             "src.config.set_config.load_game_config",
             return_value={"pc_full_path": ""},
         ):
-            got = WutheringWavesConfig.get_game_exe_path("鸣潮")
+            got = WutheringWavesConfig.get_game_exe_path("ok-ww")
         self.assertIsNone(got)
 
 
 class TestGetGameExePathFacade(unittest.TestCase):
     """测试外观接口 get_game_exe_path 的分发逻辑"""
 
-    def test_unknown_script_returns_none(self):
-        """未注册（自定义）脚本 → None"""
+    def test_unknown_process_returns_none(self):
+        """未注册（自定义）进程 → None"""
         got = set_config.get_game_exe_path("不存在")
         self.assertIsNone(got)
 
-    def test_known_script_dispatches(self):
-        """已注册脚本 → 走对应子类"""
+    def test_known_process_dispatches(self):
+        """已注册进程 → 走对应子类"""
         with patch(
             "src.config.set_config.load_game_config",
             return_value={"pc_full_path": "D:\\Game\\game.exe"},
         ):
-            got = set_config.get_game_exe_path("鸣潮")
+            got = set_config.get_game_exe_path("ok-ww")
         self.assertEqual(got, "D:\\Game\\game.exe")
 
 
@@ -1119,27 +1127,27 @@ class TestSetConfigFacade(unittest.TestCase):
         """dungeon_name 为 None 时直接返回，不创建实例"""
         mock_instance = MagicMock()
         mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"鸣潮": mock_cls}):
-            set_config.set_config("鸣潮", None, None)
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+            set_config.set_config("ok-ww", None, None)
         mock_cls.assert_not_called()
         mock_instance.set_dungeon.assert_not_called()
 
     def test_skip_when_dungeon_name_empty(self):
-        set_config.set_config("鸣潮", "", None)
+        set_config.set_config("ok-ww", "", None)
 
     def test_skip_when_dungeon_name_unselected(self):
-        set_config.set_config("鸣潮", "未选择", None)
+        set_config.set_config("ok-ww", "未选择", None)
 
-    def test_unknown_script_skips_gracefully(self):
-        """未注册（自定义）脚本即使带副本也优雅跳过，不报错、不实例化任何子类"""
+    def test_unknown_process_skips_gracefully(self):
+        """未注册（自定义）进程即使带副本也优雅跳过，不报错、不实例化任何子类"""
         # 不应抛异常
         set_config.set_config("不存在", "副本", "序列")
 
-    def test_unknown_script_does_not_touch_registry(self):
-        """未注册脚本不会命中注册表中的任何子类"""
+    def test_unknown_process_does_not_touch_registry(self):
+        """未注册进程不会命中注册表中的任何子类"""
         mock_instance = MagicMock()
         mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"鸣潮": mock_cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
             set_config.set_config("自定义脚本", "副本", None)
         mock_cls.assert_not_called()
         mock_instance.set_dungeon.assert_not_called()
@@ -1148,8 +1156,8 @@ class TestSetConfigFacade(unittest.TestCase):
         """验证 set_config 正确分发到对应子类"""
         mock_instance = MagicMock()
         mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"鸣潮": mock_cls}):
-            set_config.set_config("鸣潮", "无音区", "1")
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+            set_config.set_config("ok-ww", "无音区", "1")
         mock_cls.assert_called_once()
         mock_instance.set_dungeon.assert_called_once_with("无音区", "1")
 

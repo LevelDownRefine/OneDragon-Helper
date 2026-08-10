@@ -2,24 +2,30 @@
 
 对外提供统一的 `set_config()` 外观接口，内部封装各游戏脚本千差万别的 config 读写逻辑。每个脚本的 config 格式、路径、字段名都不同，由各 `ScriptConfig` 子类单独适配，上层（GUI）无需关心差异。
 
+> **脚本唯一标识 script_name（2026-08-10 定稿）**：全链路内部 key 统一为 `get_script_name(script)`（见 `subscript.py`），与 `get_process_name`（进程名）区分——
+> - **exe 脚本** → script_name 即进程名（script_path basename 去后缀，如 `ok-ww` / `BetterGI` / `MAA`）
+> - **python/bat 等脚本文件** → script_name 即 display_name（脚本文件无独立进程名，靠展示名标识）
+>
+> `_CONFIGS` 注册表、`dungeon_list.yml`、`gui_state.json` / `weekly_timeouts.yml` 的 key 全部用 script_name；display_name 仅用于 GUI 展示。config.yml 加载时经 `check_script_name_uniqueness` 断言标识唯一（同名 exe 配多脚本 / display_name 重复属配置错误）。
+
 ## 架构
 
 **外观模式 + 类层级**（非模板方法）：
 
 ```
-上层调用 ─▶ set_config(name, dungeon_name, sequence)  # 外观接口
+上层调用 ─▶ set_config(name, dungeon_name, sequence)  # 外观接口（name=脚本唯一标识）
                 │ 判空跳过 → 查 _CONFIGS 注册表 → 构造子类 → set_dungeon()
                 ▼
           ScriptConfig（基类）
                 │ 继承
    ┌──────┬──────────┬──────────┬──────┬──────┐
    ▼      ▼          ▼          ▼      ▼      ▼
- 鸣潮   原神/终末地  绝区零/崩铁  异环    粥
+ ok-ww  BetterGI/ok-ef OneDragon-Launcher/March7th-Assistant ok-nte  MAA
 ```
 
 - 基类 `ScriptConfig` 提供通用能力：`_load` / `_save` / `_verify_saved` / `_update_task` / `_update_sequence` / `_init_config` / `_is_aligned` / `set_dungeon` / `safe_update`。
-- 子类在 `__init__` 设 `display_name` / `_task_key` / `_task_map`，按需覆盖方法。
-- 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 把 `display_name` → 子类。
+- 子类声明 `script_name`（注册表 key，exe 即进程名，如 `ok-ww`）与 `display_name`（展示名，如 `鸣潮`）；`_task_key` / `_task_map` 按需覆盖方法。
+- 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 把 `script_name` → 子类。
 
 ## 两个独立流程
 
@@ -86,31 +92,31 @@
 ```python
 from src.config.set_config import set_config
 
-set_config("鸣潮", dungeon_name="无音区")  # 无序列
-set_config("鸣潮", dungeon_name="凝素领域", sequence=17)  # 序列为数字
-set_config("鸣潮", dungeon_name="模拟领域", sequence="贝币")  # 序列为字符串
-set_config("鸣潮", dungeon_name=None)  # 跳过
-set_config("鸣潮", dungeon_name="未选择")  # 跳过
+set_config("ok-ww", dungeon_name="无音区")  # 无序列（name 为 script_name）
+set_config("ok-ww", dungeon_name="凝素领域", sequence=17)  # 序列为数字
+set_config("ok-ww", dungeon_name="模拟领域", sequence="贝币")  # 序列为字符串
+set_config("ok-ww", dungeon_name=None)  # 跳过
+set_config("ok-ww", dungeon_name="未选择")  # 跳过
 ```
 
-每次调用都会实例化对应子类（`__init__` 触发初始化），再调 `set_dungeon`。
+`set_config()` 接收 script_name（exe 游戏脚本即进程名，`_CONFIGS` 注册表按 script_name 索引）；python/bat 等脚本文件不在注册表内，`chain_gen` 传 display_name 时被优雅跳过。每次调用都会实例化对应子类（`__init__` 触发初始化），再调 `set_dungeon`。
 
 ## 相关文件
 
 | 文件 | 作用 |
 |------|------|
 | `set_config.py` | 本适配器（外观 + 类层级） |
-| `subscript.py` | config 读写基础设施（`_CONFIG_REL_PATHS` / `_TEMPLATE_PATHS` / `load` / `save` / `load_template`） |
+| `subscript.py` | config 读写基础设施（`_CONFIG_REL_PATHS` / `_TEMPLATE_PATHS` / `get_script_name` / `load` / `save` / `load_template`） |
 | `dungeon_config.py` | `dungeon_list.yml` 解析（一级/二级选项） |
-| `config/dungeon_list.yml` | 各脚本支持的副本及序列展示名 |
+| `config/dungeon_list.yml` | 各脚本支持的副本及序列展示名（key 为 script_name） |
 | `config/MAA一条龙.json` · `BGI一条龙.json` · `ZZZ一条龙.yml` · `M7A一条龙.yml` | 各脚本 init 模板 |
 
 ## 如何新增一个游戏适配
 
-1. `subscript.py` 的 `_CONFIG_REL_PATHS` 加 config 相对路径；需要模板则加 `_TEMPLATE_PATHS` 并在 `config/` 建模板。
-2. `set_config.py` 新建子类继承 `ScriptConfig`：设 `display_name`；初始化需要则实现 `_init_config` 并在 `__init__` 调用；设 `_task_key` / `_task_map`，需序列支持则覆盖 `_update_sequence`，标准流程不够则覆盖 `set_dungeon`。
-3. 在 `_CONFIGS` 注册表登记。
-4. `config/dungeon_list.yml` 加副本/序列选项。
+1. `subscript.py` 的 `_CONFIG_REL_PATHS` 加 config 相对路径（key 用 script_name）；需要模板则加 `_TEMPLATE_PATHS` 并在 `config/` 建模板。
+2. `set_config.py` 新建子类继承 `ScriptConfig`：设 `script_name`（exe 即进程名，注册表 key）与 `display_name`（展示名）；初始化需要则实现 `_init_config` 并在 `__init__` 调用；设 `_task_key` / `_task_map`，需序列支持则覆盖 `_update_sequence`，标准流程不够则覆盖 `set_dungeon`。
+3. 在 `_CONFIGS` 注册表登记（key 用 script_name）。
+4. `config/dungeon_list.yml` 加副本/序列选项（key 用 script_name）。
 5. 补测试（`tests/test_set_config_subclasses.py`）。
 
 ## 设计原则

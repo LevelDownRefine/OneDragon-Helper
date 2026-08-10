@@ -52,33 +52,33 @@ class ScriptServiceTestBase(unittest.TestCase):
 
 class TestGetScript(ScriptServiceTestBase):
     def test_get_existing_script(self):
-        s = ScriptService().get_script("原神")
+        s = ScriptService().get_script("a")
         self.assertEqual(s, {"display_name": "原神", "script_path": "C:/a.exe"})
 
     def test_get_missing_script_returns_none(self):
-        self.assertIsNone(ScriptService().get_script("不存在"))
+        self.assertIsNone(ScriptService().get_script("none"))
 
 
 class TestSaveWeekly(ScriptServiceTestBase):
     """save_weekly：保存 7 格超时到 weekly_timeouts.yml。"""
 
     def test_save_weekly_writes_entry(self):
-        ScriptService().save_weekly("原神", [60] * 7)
-        self.assertEqual(self._read_weekly()["原神"], [60] * 7)
+        ScriptService().save_weekly("a", [60] * 7)
+        self.assertEqual(self._read_weekly()["a"], [60] * 7)
 
     def test_none_timeouts_resolved_to_default(self):
         """空输入（None）→ 转默认超时。"""
-        ScriptService().save_weekly("原神", [None, 60, None, 60, 60, 60, 60])
+        ScriptService().save_weekly("a", [None, 60, None, 60, 60, 60, 60])
         self.assertEqual(
-            self._read_weekly()["原神"],
+            self._read_weekly()["a"],
             [3600, 60, 3600, 60, 60, 60, 60],
         )
 
     def test_low_timeouts_clamped_to_10(self):
         """低于 10 的输入 → clamp 到 10。"""
-        ScriptService().save_weekly("原神", [5, 0, 60, 60, 60, 60, 60])
+        ScriptService().save_weekly("a", [5, 0, 60, 60, 60, 60, 60])
         self.assertEqual(
-            self._read_weekly()["原神"],
+            self._read_weekly()["a"],
             [10, 10, 60, 60, 60, 60, 60],
         )
 
@@ -88,52 +88,52 @@ class TestRenameWeeklyInTimeouts(ScriptServiceTestBase):
 
     def test_rename_migrates_entry(self):
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"原神": [1] * 7}, f, allow_unicode=True)
-        ScriptService().rename_weekly_in_timeouts("原神", "原神2")
+            yaml.dump({"a": [1] * 7}, f, allow_unicode=True)
+        ScriptService().rename_weekly_in_timeouts("a", "b")
         weekly = self._read_weekly()
-        self.assertNotIn("原神", weekly)
-        self.assertEqual(weekly["原神2"], [1] * 7)
+        self.assertNotIn("a", weekly)
+        self.assertEqual(weekly["b"], [1] * 7)
 
     def test_same_name_noop(self):
         """同名的 rename 为 no-op，不影响已有 weekly 条目。"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"原神": [60] * 7}, f, allow_unicode=True)
-        ScriptService().rename_weekly_in_timeouts("原神", "原神")
-        self.assertEqual(self._read_weekly()["原神"], [60] * 7)
+            yaml.dump({"a": [60] * 7}, f, allow_unicode=True)
+        ScriptService().rename_weekly_in_timeouts("a", "a")
+        self.assertEqual(self._read_weekly()["a"], [60] * 7)
 
     def test_old_entry_missing_noop(self):
         """旧名无 weekly 条目 → no-op（不报错，不写文件）。"""
-        ScriptService().rename_weekly_in_timeouts("不存在", "新名")
+        ScriptService().rename_weekly_in_timeouts("none", "b")
         self.assertIsNone(self._read_weekly())
 
 
 class TestEnsureWeeklyEntry(ScriptServiceTestBase):
     def test_creates_default_entry(self):
-        ScriptService().ensure_weekly_entry("原神")
-        self.assertEqual(self._read_weekly()["原神"], [3600] * 7)
+        ScriptService().ensure_weekly_entry("a")
+        self.assertEqual(self._read_weekly()["a"], [3600] * 7)
 
     def test_existing_entry_untouched(self):
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"原神": [60] * 7}, f, allow_unicode=True)
-        ScriptService().ensure_weekly_entry("原神")
-        self.assertEqual(self._read_weekly()["原神"], [60] * 7)
+            yaml.dump({"a": [60] * 7}, f, allow_unicode=True)
+        ScriptService().ensure_weekly_entry("a")
+        self.assertEqual(self._read_weekly()["a"], [60] * 7)
 
 
 class TestWeeklyInputs(ScriptServiceTestBase):
     def test_missing_entry_uses_default(self):
-        self.assertEqual(ScriptService().weekly_inputs("原神"), [3600] * 7)
+        self.assertEqual(ScriptService().weekly_inputs("a"), [3600] * 7)
 
     def test_existing_entry_kept(self):
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"原神": [1, 2, 3, 4, 5, 6, 7]}, f, allow_unicode=True)
-        self.assertEqual(ScriptService().weekly_inputs("原神"), [1, 2, 3, 4, 5, 6, 7])
+            yaml.dump({"a": [1, 2, 3, 4, 5, 6, 7]}, f, allow_unicode=True)
+        self.assertEqual(ScriptService().weekly_inputs("a"), [1, 2, 3, 4, 5, 6, 7])
 
     def test_short_entry_padded_with_default(self):
         """不足 7 格 → 用默认超时补齐。"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"原神": [10, 20]}, f, allow_unicode=True)
+            yaml.dump({"a": [10, 20]}, f, allow_unicode=True)
         self.assertEqual(
-            ScriptService().weekly_inputs("原神"),
+            ScriptService().weekly_inputs("a"),
             [10, 20, 3600, 3600, 3600, 3600, 3600],
         )
 
@@ -166,7 +166,7 @@ class TestCheckWeekly(ScriptServiceTestBase):
     def test_ok_when_aligned(self):
         """weekly 有 7 格条目且无孤儿 → status=ok。"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"原神": [3600] * 7}, f, allow_unicode=True)
+            yaml.dump({"a": [3600] * 7}, f, allow_unicode=True)
         result = ScriptService().check_weekly()
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["missing_or_short"], [])
@@ -176,17 +176,17 @@ class TestCheckWeekly(ScriptServiceTestBase):
         """config 有脚本但 weekly 无条目 → 进 missing_or_short。"""
         result = ScriptService().check_weekly()
         self.assertEqual(result["status"], "inconsistent")
-        self.assertEqual(result["missing_or_short"], ["原神"])
+        self.assertEqual(result["missing_or_short"], ["a"])
 
     def test_orphan_key_reported(self):
         """weekly 有 config 已删除的 key → 进 orphans。"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
             yaml.dump(
-                {"原神": [3600] * 7, "已删除脚本": [3600] * 7}, f, allow_unicode=True
+                {"a": [3600] * 7, "gone": [3600] * 7}, f, allow_unicode=True
             )
         result = ScriptService().check_weekly()
         self.assertEqual(result["status"], "inconsistent")
-        self.assertEqual(result["orphans"], ["已删除脚本"])
+        self.assertEqual(result["orphans"], ["gone"])
 
     def test_missing_display_name_raises_assertion(self):
         """条目缺 display_name 属数据损坏：_load_config 入口抛 AssertionError。"""
@@ -213,7 +213,7 @@ class TestConfigFilePath(ScriptServiceTestBase):
 
     def test_missing_script_returns_error(self):
         self._setup_script("原神", "external", "C:/a.exe")
-        path, error = ScriptService().config_file_path("不存在")
+        path, error = ScriptService().config_file_path("none")
         self.assertIsNone(path)
         self.assertIn("找不到脚本", error)
 
@@ -226,7 +226,7 @@ class TestConfigFilePath(ScriptServiceTestBase):
             ),
             patch("src.service.script_service.os.path.isfile", return_value=True),
         ):
-            path, error = ScriptService().config_file_path("原神")
+            path, error = ScriptService().config_file_path("a")
         self.assertEqual(path, "C:/config/DailyTask.json")
         self.assertIsNone(error)
 
@@ -236,7 +236,7 @@ class TestConfigFilePath(ScriptServiceTestBase):
             "src.service.script_service.get_config_path",
             side_effect=AssertionError("未适配脚本: 原神"),
         ):
-            path, error = ScriptService().config_file_path("原神")
+            path, error = ScriptService().config_file_path("a")
         self.assertIsNone(path)
         self.assertIn("暂未适配", error)
 
@@ -273,25 +273,25 @@ class TestDeleteWeekly(ScriptServiceTestBase):
     def test_delete_weekly_cleans_orphan(self):
         """删除后 weekly_timeouts.yml 中该脚本的孤儿条目被移除"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"原神": [100] * 7}, f, allow_unicode=True, sort_keys=False)
-        ScriptService().delete_weekly("原神")
+            yaml.dump({"a": [100] * 7}, f, allow_unicode=True, sort_keys=False)
+        ScriptService().delete_weekly("a")
         weekly = self._read_weekly()
-        self.assertNotIn("原神", weekly)
+        self.assertNotIn("a", weekly)
         self.assertEqual(weekly, {})
 
     def test_delete_weekly_keeps_others(self):
         """删除单个脚本不影响 weekly_timeouts.yml 中其它条目"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
             yaml.dump(
-                {"原神": [100] * 7, "鸣潮": [120] * 7},
+                {"a": [100] * 7, "mute": [120] * 7},
                 f,
                 allow_unicode=True,
                 sort_keys=False,
             )
-        ScriptService().delete_weekly("原神")
+        ScriptService().delete_weekly("a")
         weekly = self._read_weekly()
-        self.assertNotIn("原神", weekly)
-        self.assertEqual(weekly, {"鸣潮": [120] * 7})
+        self.assertNotIn("a", weekly)
+        self.assertEqual(weekly, {"mute": [120] * 7})
 
     def test_delete_weekly_noop_when_absent(self):
         """脚本无 weekly 条目时清理为 no-op（不报错）"""

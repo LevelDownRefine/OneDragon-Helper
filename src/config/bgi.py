@@ -4,7 +4,7 @@ import shutil
 
 import yaml
 
-from src.config.subscript import resolve_script_path
+from src.config.subscript import get_process_name, resolve_script_path
 from src.utils import (
     get_our_bgi_user_dir,
     require_config_yml_path,
@@ -21,7 +21,7 @@ def get_BGI_user_dir():
         config_data = yaml.safe_load(f)
         script_list = config_data.get("script_list", [])
         for script in script_list:
-            if script.get("display_name") == "原神":
+            if get_process_name(script.get("script_path", "")) == "BetterGI":
                 path = script.get("script_path")
                 if not path:
                     continue

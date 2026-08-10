@@ -19,7 +19,11 @@ class TestLoadSaveConfig(unittest.TestCase):
         self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
 
     def test_load_config_reads_yaml(self):
-        fake_data = {"script_list": [{"display_name": "测试"}]}
+        fake_data = {
+            "script_list": [
+                {"display_name": "测试", "script_path": "C:/x.exe"},
+            ]
+        }
         with open(self.config_path, "w", encoding="utf-8") as f:
             yaml.dump(fake_data, f, allow_unicode=True)
         with patch(
@@ -59,9 +63,9 @@ class TestLoadSaveConfig(unittest.TestCase):
 class TestDungeonMap(unittest.TestCase):
     """dungeon_map：转发 load_dungeon_map 读取副本配置。"""
 
-    @patch("src.service.chain_service.load_dungeon_map", return_value={"鸣潮": {}})
+    @patch("src.service.chain_service.load_dungeon_map", return_value={"ok-ww": {}})
     def test_returns_dungeon_map(self, mock_load):
-        self.assertEqual(ChainService().dungeon_map(), {"鸣潮": {}})
+        self.assertEqual(ChainService().dungeon_map(), {"ok-ww": {}})
         mock_load.assert_called_once()
 
 
@@ -154,10 +158,10 @@ class TestAddRemoveScript(unittest.TestCase):
             )
         names = [s["display_name"] for s in self._read()["script_list"]]
         self.assertEqual(names, ["原神", "鸣潮"])
-        self.mock_script.ensure_weekly_entry.assert_called_once_with("鸣潮")
+        self.mock_script.ensure_weekly_entry.assert_called_once_with("b")
 
     def test_remove_script_removes(self):
-        """remove_script 从 script_list 移除指定条目、落盘，并内部清 weekly 孤儿。"""
+        """remove_script 从 script_list 移除指定进程条目、落盘，并内部清 weekly 孤儿。"""
         with (
             patch(
                 "src.service.chain_service.require_config_yml_path",
@@ -168,9 +172,9 @@ class TestAddRemoveScript(unittest.TestCase):
                 return_value=self.config_path,
             ),
         ):
-            ChainService(script_service=self.mock_script).remove_script("原神")
+            ChainService(script_service=self.mock_script).remove_script("a")
         self.assertEqual(self._read()["script_list"], [])
-        self.mock_script.delete_weekly.assert_called_once_with("原神")
+        self.mock_script.delete_weekly.assert_called_once_with("a")
 
     def test_remove_script_missing_raises(self):
         """remove_script 移除不存在的脚本属非法调用：assert 表达不该发生"""

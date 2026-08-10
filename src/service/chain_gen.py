@@ -22,7 +22,7 @@ from src.config.dungeon_config import (
     restore_sequence_type,
 )
 from src.config.set_config import set_config
-from src.config.subscript import DEFAULT_RUN_TIMEOUT
+from src.config.subscript import DEFAULT_RUN_TIMEOUT, get_script_name
 from src.utils import (
     get_path_under_root,
     safe_path_join,
@@ -39,17 +39,19 @@ def _get_week_num() -> int:
 def _apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
     """根据 weekly_timeouts.yml 就地设置 script['run_timeout_seconds']。
 
+    weekly_timeouts 的 key 为脚本唯一标识（exe 用进程名，脚本文件用 display_name）。
+
     - 有完整 7 格 → 取当天值，且不低于 10（避免 0 秒杀脚本）。
     - 无条目 / 不足 7 格 → fallback 到 DEFAULT_RUN_TIMEOUT。
     """
-    assert "display_name" in script, (
-        "[chain_gen] script_list 条目缺少 display_name 字段"
+    assert "script_path" in script, (
+        "[chain_gen] script_list 条目缺少 script_path 字段"
     )
-    name = script["display_name"]
-    if name not in weekly_timeouts:
+    script_name = get_script_name(script)
+    if script_name not in weekly_timeouts:
         script["run_timeout_seconds"] = DEFAULT_RUN_TIMEOUT
         return
-    timeouts = weekly_timeouts[name]
+    timeouts = weekly_timeouts[script_name]
     if timeouts and len(timeouts) == 7:
         script["run_timeout_seconds"] = max(timeouts[_get_week_num()], 10)
     else:
@@ -58,7 +60,7 @@ def _apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
 
 def _collect_enabled_selections(
     all_config_data: dict,
-    enabled_names: set[str],
+    enabled_keys: set[str],
     ui_state: dict,
     dungeon_map: dict,
 ) -> tuple[dict[str, str], dict[str, Any]]:
@@ -66,9 +68,9 @@ def _collect_enabled_selections(
 
     Args:
         all_config_data: config.yml 完整数据（含 script_list）。
-        enabled_names: 要纳入链的脚本 display_name 集合。
-        ui_state: gui_state.json 的 UI 状态（副本/序列选择）。
-        dungeon_map: dungeon_list.yml 的副本配置映射。
+        enabled_keys: 要纳入链的脚本唯一标识集合。
+        ui_state: gui_state.json 的 UI 状态（副本/序列选择），key 为脚本唯一标识。
+        dungeon_map: dungeon_list.yml 的副本配置映射，key 为脚本唯一标识。
 
     Returns:
         (enabled_dungeons, enabled_sequences)，仅含在 dungeon 选项内的选择。
@@ -76,24 +78,27 @@ def _collect_enabled_selections(
     enabled_dungeons: dict[str, str] = {}
     enabled_sequences: dict[str, Any] = {}
     for script in all_config_data["script_list"]:
-        name = script["display_name"]
-        if name not in enabled_names:
+        assert "script_path" in script, (
+            "[chain_gen] script_list 条目缺少 script_path 字段"
+        )
+        script_name = get_script_name(script)
+        if script_name not in enabled_keys:
             continue
-        dungeon_cfg = dungeon_map.get(name)
+        dungeon_cfg = dungeon_map.get(script_name)
         options, seq_map, _ = parse_dungeon_config(dungeon_cfg)
-        saved = ui_state.get(name)
+        saved = ui_state.get(script_name)
         if saved:
             saved = restore_sequence_type(saved, seq_map)
         if saved and saved.get("dungeon") and saved["dungeon"] in (options or []):
-            enabled_dungeons[name] = saved["dungeon"]
+            enabled_dungeons[script_name] = saved["dungeon"]
             if saved.get("sequence"):
-                enabled_sequences[name] = saved["sequence"]
+                enabled_sequences[script_name] = saved["sequence"]
     return enabled_dungeons, enabled_sequences
 
 
 def generate_chain_config(
     all_config_data: dict,
-    enabled_names: set[str],
+    enabled_keys: set[str],
     chain_name: str = "88",
     ui_state: dict | None = None,
     out_path: str | None = None,
@@ -106,9 +111,9 @@ def generate_chain_config(
 
     Args:
         all_config_data: config.yml 完整数据（含 script_list）。
-        enabled_names: 要纳入链的脚本 display_name 集合。
+        enabled_keys: 要纳入链的脚本唯一标识集合。
         chain_name: 链配置文件名（不含扩展名）。
-        ui_state: gui_state.json 的 UI 状态（副本/序列选择）。
+        ui_state: gui_state.json 的 UI 状态（副本/序列选择），key 为脚本唯一标识。
         out_path: 输出路径；None 时默认 config/script_chain/<chain_name>.yml。
         weekly_timeouts: weekly_timeouts.yml 的全量字典（默认空 dict）。
 
@@ -120,19 +125,22 @@ def generate_chain_config(
     dungeon_map = load_dungeon_map()
 
     enabled_dungeons, enabled_sequences = _collect_enabled_selections(
-        all_config_data, enabled_names, ui_state, dungeon_map
+        all_config_data, enabled_keys, ui_state, dungeon_map
     )
 
     data = copy.deepcopy(all_config_data)
     filtered = []
     for script in data["script_list"]:
-        name = script["display_name"]
-        if name in enabled_names:
+        assert "script_path" in script, (
+            "[chain_gen] script_list 条目缺少 script_path 字段"
+        )
+        script_name = get_script_name(script)
+        if script_name in enabled_keys:
             _apply_weekly_timeout(script, weekly_timeouts)
             set_config(
-                name,
-                dungeon_name=enabled_dungeons.get(name),
-                sequence=enabled_sequences.get(name),
+                script_name,
+                dungeon_name=enabled_dungeons.get(script_name),
+                sequence=enabled_sequences.get(script_name),
             )
             script.setdefault("block", True)
             filtered.append(script)

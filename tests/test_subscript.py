@@ -1,16 +1,98 @@
-"""测试 src/config/subscript.py：相对路径解析、脚本路径读取、默认条目构造"""
+"""测试 src/config/subscript.py：脚本唯一标识、路径解析、脚本路径读取、默认条目构造"""
 
 import unittest
 from unittest import mock
 
 from src.config.subscript import (
     _GAME_PATH_REL_PATHS,
+    _TEMPLATE_PATHS,
+    check_script_name_uniqueness,
     default_script_entry,
+    get_process_name,
+    get_script_name,
     get_script_path,
     load_game_config,
     resolve_script_path,
 )
 from src.utils import get_root_dir, safe_path_join
+
+
+class TestGetProcessName(unittest.TestCase):
+    """测试 get_process_name：script_path basename 去后缀。"""
+
+    def test_exe_basename(self):
+        self.assertEqual(get_process_name("D:\\game_helper\\BetterGI\\BetterGI.exe"), "BetterGI")
+
+    def test_exe_with_spaces(self):
+        self.assertEqual(
+            get_process_name("D:/game_helper/March7thAssistant_full/March7th Assistant.exe"),
+            "March7th-Assistant",
+        )
+
+    def test_edge_spaces_removed_not_replaced(self):
+        """首尾空格（误输入）被去除而非替换成 -，句中空格才替换。"""
+        self.assertEqual(get_process_name("D:/x/foo .exe"), "foo")
+        self.assertEqual(get_process_name("D:/x/ foo .exe"), "foo")
+
+    def test_python_script(self):
+        self.assertEqual(get_process_name("scripts/mute.py"), "mute")
+
+    def test_plain_name(self):
+        self.assertEqual(get_process_name("ok-ww.exe"), "ok-ww")
+
+
+class TestGetScriptKey(unittest.TestCase):
+    """测试 get_script_name：exe 用进程名，脚本文件用 display_name。"""
+
+    def test_exe_script_uses_process_name(self):
+        script = {"display_name": "鸣潮", "script_path": "C:/game_helper/ok-ww.exe"}
+        self.assertEqual(get_script_name(script), "ok-ww")
+
+    def test_python_script_uses_display_name(self):
+        script = {"display_name": "静音", "script_path": "scripts/mute.py"}
+        self.assertEqual(get_script_name(script), "静音")
+
+    def test_bat_script_uses_display_name(self):
+        script = {"display_name": "启动脚本", "script_path": "scripts/start.bat"}
+        self.assertEqual(get_script_name(script), "启动脚本")
+
+    def test_exe_case_insensitive(self):
+        script = {"display_name": "MAA", "script_path": "C:/game_helper/MAA.EXE"}
+        self.assertEqual(get_script_name(script), "MAA")
+
+
+class TestCheckScriptKeyUniqueness(unittest.TestCase):
+    """测试 check_script_name_uniqueness：脚本唯一标识唯一性校验。"""
+
+    def test_unique_ok(self):
+        data = {
+            "script_list": [
+                {"display_name": "鸣潮", "script_path": "D:/a/ok-ww.exe"},
+                {"display_name": "原神", "script_path": "D:/b/BetterGI.exe"},
+                {"display_name": "静音", "script_path": "scripts/mute.py"},
+            ]
+        }
+        check_script_name_uniqueness(data)  # 不应抛异常
+
+    def test_duplicate_exe_raises(self):
+        data = {
+            "script_list": [
+                {"display_name": "鸣潮1", "script_path": "D:/a/ok-ww.exe"},
+                {"display_name": "鸣潮2", "script_path": "D:/b/ok-ww.exe"},
+            ]
+        }
+        with self.assertRaises(AssertionError):
+            check_script_name_uniqueness(data)
+
+    def test_duplicate_display_name_raises(self):
+        data = {
+            "script_list": [
+                {"display_name": "静音", "script_path": "scripts/a.py"},
+                {"display_name": "静音", "script_path": "scripts/b.py"},
+            ]
+        }
+        with self.assertRaises(AssertionError):
+            check_script_name_uniqueness(data)
 
 
 class TestResolveScriptPath(unittest.TestCase):
@@ -55,8 +137,16 @@ class TestGetScriptPath(unittest.TestCase):
             mock.patch("src.config.subscript._load_config_yml", return_value=fake),
             mock.patch("src.config.subscript.os.path.exists", return_value=True),
         ):
-            got = get_script_path("原神")
+            got = get_script_path("BetterGI")
         self.assertEqual(got, "D:/games/BetterGI.exe")
+
+    def test_missing_script_raises(self):
+        fake = {"script_list": []}
+        with (
+            mock.patch("src.config.subscript._load_config_yml", return_value=fake),
+            self.assertRaises(AssertionError),
+        ):
+            get_script_path("不存在")
 
 
 class TestDefaultScriptEntry(unittest.TestCase):
@@ -100,23 +190,38 @@ class TestLoadGameConfig(unittest.TestCase):
     """测试 load_game_config：读取游戏路径配置文件（只读、不 assert 文件存在）。"""
 
     def test_game_path_rel_paths_covers_all_scripts(self):
-        """_GAME_PATH_REL_PATHS 覆盖全部 7 个游戏脚本"""
+        """_GAME_PATH_REL_PATHS 覆盖全部 7 个游戏脚本（进程名）"""
         self.assertEqual(
             set(_GAME_PATH_REL_PATHS.keys()),
-            {"鸣潮", "原神", "终末地", "绝区零", "崩铁", "异环", "粥"},
+            {
+                "ok-ww",
+                "BetterGI",
+                "ok-ef",
+                "OneDragon-Launcher",
+                "March7th-Assistant",
+                "ok-nte",
+                "MAA",
+            },
         )
 
-    def test_unadapted_script_raises(self):
-        """未适配脚本 → assert"""
+    def test_template_paths_use_process_names(self):
+        """_TEMPLATE_PATHS key 为进程名"""
+        self.assertEqual(
+            set(_TEMPLATE_PATHS.keys()),
+            {"BetterGI", "OneDragon-Launcher", "MAA", "March7th-Assistant"},
+        )
+
+    def test_unadapted_process_raises(self):
+        """未适配进程 → assert"""
         with self.assertRaises(AssertionError):
             load_game_config("自定义脚本")
 
     def test_root_missing_returns_none(self):
-        """config.yml 中无此脚本（根目录解析失败）→ None"""
+        """config.yml 中无此进程（根目录解析失败）→ None"""
         with mock.patch(
             "src.config.subscript._get_script_root_dir_soft", return_value=None
         ):
-            got = load_game_config("鸣潮")
+            got = load_game_config("ok-ww")
         self.assertIsNone(got)
 
     def test_config_file_missing_returns_none(self):
@@ -130,7 +235,7 @@ class TestLoadGameConfig(unittest.TestCase):
                 "src.config.subscript.os.path.exists", return_value=False
             ),
         ):
-            got = load_game_config("鸣潮")
+            got = load_game_config("ok-ww")
         self.assertIsNone(got)
 
     def test_json_config_parsed(self):
@@ -155,7 +260,7 @@ class TestLoadGameConfig(unittest.TestCase):
                 ),
             ),
         ):
-            got = load_game_config("鸣潮")
+            got = load_game_config("ok-ww")
         self.assertEqual(got, {"pc_full_path": "D:/Game/game.exe"})
 
     def test_yaml_config_parsed(self):
@@ -178,7 +283,7 @@ class TestLoadGameConfig(unittest.TestCase):
                 mock.mock_open(read_data="game_path: D:/Game/game.exe\n"),
             ),
         ):
-            got = load_game_config("绝区零")
+            got = load_game_config("OneDragon-Launcher")
         self.assertEqual(got, {"game_path": "D:/Game/game.exe"})
 
 

@@ -26,6 +26,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import yaml
 
 from src import cli, launcher
+from src.config.subscript import get_script_name
 from src.service import chain_gen as service_chain_gen
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -88,12 +89,15 @@ def _known_script_names():
     # 即「若 need_config_workflow 则 config_workflow」），不手动复制文件。
     # 随后直接读取 --generate-chain 实际使用的同一份 config.yml，保证期望集合与
     # 产出集合同源（本地真实 config 可能含 example 没有的脚本，如 MAS）。
+    # 返回脚本唯一标识（exe 用进程名，python/bat 用 display_name）。
     if launcher.need_config_workflow():
         launcher.config_workflow()
     config_path = launcher.get_config_yml_path_under_root()
     with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    return [s["display_name"] for s in data.get("script_list", [])]
+    return [
+        get_script_name(s) for s in data.get("script_list", [])
+    ]
 
 
 class TestCliHelpVersion(unittest.TestCase):
@@ -153,7 +157,7 @@ class TestCliGenerateChain(unittest.TestCase):
             with open(out, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             self.assertIn("script_list", data, msg=data)
-            produced = [s["display_name"] for s in data["script_list"]]
+            produced = [get_script_name(s) for s in data["script_list"]]
             self.assertEqual(set(produced), set(self._names), msg=produced)
             # _emit_cli 也应写了结果文件
             self.assertIn("已生成脚本链配置", _read_cli_file("generate_chain"))
@@ -174,7 +178,7 @@ class TestCliGenerateChain(unittest.TestCase):
             self.assertEqual(code, 0)
             with open(out, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
-            produced = [s["display_name"] for s in data["script_list"]]
+            produced = [get_script_name(s) for s in data["script_list"]]
             self.assertEqual(produced, [target], msg=produced)
         finally:
             if os.path.exists(out):
@@ -186,7 +190,7 @@ class TestCliGenerateChain(unittest.TestCase):
         with patch.object(service_chain_gen, "set_config"):
             code = _run_main(["--generate-chain", "--enable", bogus], expect_exit=1)
         self.assertEqual(code, 1)
-        self.assertIn("未知的脚本名", _read_cli_file("generate_chain"))
+        self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
 
 
 class TestParseOverrides(unittest.TestCase):
@@ -229,7 +233,7 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
     def setUp(self):
         self._names = _known_script_names()
         self.assertTrue(self._names, "config.yml 不应为空脚本列表")
-        self._target = "鸣潮"
+        self._target = "ok-ww"
         assert self._target in self._names, f"config.yml 缺少 {self._target}"
 
     def test_dungeon_override_merged_into_ui_state(self):
@@ -363,7 +367,7 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
                 expect_exit=1,
             )
         self.assertEqual(code, 1)
-        self.assertIn("未知的脚本名", _read_cli_file("generate_chain"))
+        self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
 
 
 class TestCliRunChain(unittest.TestCase):
@@ -438,13 +442,17 @@ class TestCliDumpConfig(unittest.TestCase):
     """--dump-config 出口：导出完整 config.yml。"""
 
     def test_dump_config_matches_source(self):
-        """导出内容与 config.yml 一致。"""
+        """导出内容与 config.yml 一致（display_name 列表）。"""
         code = _run_main(["--dump-config"], expect_exit=0)
         self.assertEqual(code, 0)
         data = _read_cli_json("dump_config")
+        # 与 config.yml 的 display_name 列表一致（dump 是原始 config.yml 导出）
+        config_path = launcher.get_config_yml_path_under_root()
+        with open(config_path, encoding="utf-8") as f:
+            source = yaml.safe_load(f)
         self.assertEqual(
             [s["display_name"] for s in data["script_list"]],
-            _known_script_names(),
+            [s["display_name"] for s in source.get("script_list", [])],
         )
 
 

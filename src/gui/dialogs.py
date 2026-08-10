@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.set_config import ScriptConfig
-from src.config.subscript import default_script_entry
+from src.config.subscript import default_script_entry, get_script_name
 from src.gui import theme
 from src.gui.utils import _styled_msg_box, make_secondary_button, safe_startfile
 from src.service.script_service import ScriptService
@@ -130,6 +130,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
 
     def __init__(
         self,
+        script_name,
         display_name,
         script_path="",
         parent=None,
@@ -139,9 +140,10 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.setWindowTitle(f"配置 {display_name}")
         self.setStyleSheet(f"background-color: {theme.BG_HOVER};")
 
-        self.display_name = display_name
+        self.script_name = script_name  # 内部标识：exe 用进程名，脚本文件用 display_name
+        self.display_name = display_name  # 展示名
         self.script_path = script_path
-        self.saved_display_name = display_name  # 保存后最终生效的名称（可能被改名）
+        self.saved_display_name = display_name  # 保存后最终生效的展示名（可能被改名）
         self._script_data = {}  # 从 config.yml 读到的本脚本完整数据
         self._script_service = script_service or ScriptService()
         self.pending_changes = None  # accept() 后供调用方取表单字段与 weekly
@@ -342,7 +344,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         config.yml 缺失属内部错误（对话框只在 config.yml 已加载的前提下打开），
         必须存在，故用 assert 表达不该发生；脚本不在表中才返回空 dict。
         """
-        script = self._script_service.get_script(self.display_name)
+        script = self._script_service.get_script(self.script_name)
         return script if script is not None else {}
 
     def load_data(self):
@@ -371,7 +373,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.block_cb.setChecked(self._script_data.get("block", True))
 
         # 每周超时
-        timeouts = self._script_service.weekly_inputs(self.display_name)
+        timeouts = self._script_service.weekly_inputs(self.script_name)
         for idx, le in enumerate(self.timeout_inputs):
             le.setText(str(timeouts[idx]))
 
@@ -391,10 +393,15 @@ class SingleScriptConfigDialog(_FormDialogBase):
         if not new_display_name:
             QMessageBox.warning(self, "警告", "脚本名称不能为空！")
             return
-        existing = self._script_service.get_script(new_display_name)
-        if existing is not None and new_display_name != self.display_name:
+        new_script_name = get_script_name(
+            {"display_name": new_display_name, "script_path": path_val}
+        )
+        existing = self._script_service.get_script(new_script_name)
+        if existing is not None and new_script_name != self.script_name:
             QMessageBox.warning(
-                self, "警告", f"已存在同名脚本「{new_display_name}」，请换一个名称。"
+                self,
+                "警告",
+                f"已存在同标识脚本「{existing.get('display_name', '')}」，请换一个脚本路径或名称。",
             )
             return
 
@@ -412,7 +419,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
 
         self.saved_display_name = new_display_name
         self.pending_changes = {
-            "old_display_name": self.display_name,
+            "old_script_name": self.script_name,
             "new_display_name": new_display_name,
             "config_patch": {
                 "script_path": path_val,
@@ -430,7 +437,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
 
     def _open_config_file(self):
         """打开本脚本的配置文件：路径计算委托 ScriptService，GUI 只负责打开或提示。"""
-        path, error = self._script_service.config_file_path(self.display_name)
+        path, error = self._script_service.config_file_path(self.script_name)
         if error is not None:
             _styled_msg_box(self, QMessageBox.Warning, "提示", error).exec()
             return
@@ -446,18 +453,18 @@ class SingleScriptConfigDialog(_FormDialogBase):
         box.setDefaultButton(QMessageBox.Cancel)
         if box.exec() != QMessageBox.Ok:
             return
-        self.delete_requested.emit(self.display_name)
+        self.delete_requested.emit(self.script_name)
         self.close()
 
 
 class AddScriptDialog(_FormDialogBase):
     """新增脚本弹窗：收集核心字段（名称、类型、路径、超时），其余字段用默认值补全。"""
 
-    def __init__(self, existing_names=None, parent=None):
+    def __init__(self, existing_script_names=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("添加脚本")
         self.setStyleSheet(f"background-color: {theme.BG_HOVER};")
-        self._existing_names = set(existing_names or [])
+        self._existing_script_names = set(existing_script_names or [])
         self.script_entry = None
         self.init_ui()
 
@@ -534,14 +541,19 @@ class AddScriptDialog(_FormDialogBase):
         if not display_name:
             QMessageBox.warning(self, "警告", "脚本名称不能为空！")
             return
-        if display_name in self._existing_names:
-            QMessageBox.warning(
-                self, "警告", f"已存在同名脚本「{display_name}」，请换一个名称。"
-            )
-            return
         path_val = self.path_input.text().strip()
         if not path_val:
             QMessageBox.warning(self, "警告", "脚本路径不能为空！")
+            return
+        script_name = get_script_name(
+            {"display_name": display_name, "script_path": path_val}
+        )
+        if script_name in self._existing_script_names:
+            QMessageBox.warning(
+                self,
+                "警告",
+                f"已存在同标识脚本「{script_name}」，请换一个脚本路径或名称。",
+            )
             return
 
         self.script_entry = default_script_entry(

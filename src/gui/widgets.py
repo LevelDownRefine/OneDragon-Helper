@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from src.config.dungeon_config import get_display_name
 from src.config.set_config import get_game_exe_path
-from src.config.subscript import get_script_path, resolve_script_path
+from src.config.subscript import get_script_name, get_script_path, resolve_script_path
 from src.gui import icons, theme
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.utils import (
@@ -33,7 +33,7 @@ from src.utils_runner import build_script_command
 
 logger = logging.getLogger(__name__)
 
-# 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
+# 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本唯一标识）
 DRAG_MIME = "application/x-onedragon-script"
 
 # 弹出菜单统一样式（theme 模板）：白底深字，避免深色系统主题下文字不可读
@@ -127,9 +127,13 @@ class ScriptItem(QFrame):
         super().__init__()
         assert "display_name" in script_data, "[widgets] 脚本配置缺少 display_name 字段"
         assert "script_type" in script_data, "[widgets] 脚本配置缺少 script_type 字段"
-        self.display_name = script_data["display_name"]
+        assert "script_path" in script_data, "[widgets] 脚本配置缺少 script_path 字段"
+        self.display_name = script_data["display_name"]  # 展示名（GUI 展示用）
+        self.script_name = get_script_name(
+            script_data
+        )  # 内部标识：exe 用进程名，脚本文件用 display_name
         self.script_type = script_data["script_type"]
-        self.script_path = script_data.get("script_path", "")
+        self.script_path = script_data["script_path"]
         self.dungeon_btn = None
         self._selected_dungeon = None  # 一级副本名（None 表示未选择）
         self._selected_sequence = None  # 二级序列名
@@ -242,7 +246,7 @@ class ScriptItem(QFrame):
     def _on_delete_clicked(self):
         """点击删除按钮，通知删除本脚本"""
         if self._delete_callback:
-            self._delete_callback(self.display_name)
+            self._delete_callback(self.script_name)
 
     def _show_config_dialog(self):
         """打开单脚本配置弹窗；保存成功(accept)后通知 MainWindow 应用 patch 并写盘。
@@ -251,6 +255,7 @@ class ScriptItem(QFrame):
         统一在内存更新 all_config_data 后通过 ChainService 一次性落盘。
         """
         dialog = SingleScriptConfigDialog(
+            self.script_name,
             self.display_name,
             self.script_path,
             self,
@@ -342,7 +347,7 @@ class ScriptItem(QFrame):
 
     def _build_game_menu(self):
         """构建「打开游戏」菜单；无游戏路径时返回 None（不弹菜单）。"""
-        game_path = get_game_exe_path(self.display_name)
+        game_path = get_game_exe_path(self.script_name)
         if not game_path:
             return None
         menu = QMenu(self)
@@ -376,7 +381,7 @@ class ScriptItem(QFrame):
 
         # external 脚本：解析出 exe 并启动
         try:
-            exe_path = get_script_path(self.display_name)
+            exe_path = get_script_path(self.script_name)
         except AssertionError as e:
             _styled_msg_box(
                 self, QMessageBox.Warning, "提示", f"无法打开脚本：\n{e}"
@@ -522,8 +527,11 @@ class ScriptItem(QFrame):
 
     def sync_from_script_data(self, script_data: dict) -> None:
         """配置弹窗保存后，从最新 script 数据同步内存态（路径、类型、副本按钮）。"""
+        assert "display_name" in script_data, "[widgets] 同步缺少 display_name 字段"
         assert "script_path" in script_data, "[widgets] 同步缺少 script_path 字段"
         assert "script_type" in script_data, "[widgets] 同步缺少 script_type 字段"
+        self.display_name = script_data["display_name"]
+        self.script_name = get_script_name(script_data)
         self.script_path = script_data["script_path"]
         self.script_type = script_data["script_type"]
         self._refresh_icon(script_data)
@@ -586,7 +594,7 @@ class ScriptItem(QFrame):
     def _start_drag(self):
         mime = QMimeData()
         mime.setText(self.display_name)
-        mime.setData(DRAG_MIME, self.display_name.encode("utf-8"))
+        mime.setData(DRAG_MIME, self.script_name.encode("utf-8"))
         drag = QDrag(self)
         drag.setMimeData(mime)
         drag.setPixmap(self.grab())
@@ -603,6 +611,6 @@ class ScriptItem(QFrame):
             event.ignore()
             return
         src_name = bytes(event.mimeData().data(DRAG_MIME)).decode("utf-8")
-        if src_name != self.display_name:
-            self._reorder_callback(src_name, self.display_name)
+        if src_name != self.script_name:
+            self._reorder_callback(src_name, self.script_name)
         event.acceptProposedAction()

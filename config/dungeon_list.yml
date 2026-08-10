@@ -1,5 +1,5 @@
 # 各自动化脚本支持的副本列表
-# key: 脚本 display_name（与 config.yml 中对应）
+# key: 脚本进程名（script_path basename 去后缀，与 config.yml 中 script_path 对应）
 # value: 结构化配置（见下方格式说明）
 
 # 配置格式（结构化）：
@@ -12,7 +12,7 @@
 
 # config: data\apps\ok-ww\working\configs\DailyTask.json
 # see: https://github.com/ok-oldking/ok-wuthering-waves/blob/master/src/task/DailyTask.py
-鸣潮:
+"ok-ww":
   dungeons:
     - name: "未选择"
     - name: "凝素领域"
@@ -108,7 +108,7 @@
 
 # config: User\OneDragon\默认配置.json
 # see: https://github.com/babalae/bettergi-scripts-list/blob/main/repo/js/AutoDomain/main.js
-原神:
+BetterGI:
   dungeons:
     - name: "未选择"
     - name: "山风的荆冕"
@@ -117,7 +117,7 @@
 
 # config: data\apps\ok-ef\working\configs\DailyTask.json
 # see: https://github.com/AliceJump/ok-end-field/blob/master/docs/%E4%BD%93%E5%8A%9B%E6%9C%AC.md
-终末地:
+"ok-ef":
   dungeons:
     - name: "未选择"
     - name: "枢纽区"
@@ -138,13 +138,13 @@
 
 # config: config\01\one_dragon\charge_plan.yml
 # see: https://github.com/OneDragon-Anything/ZenlessZoneZero-OneDragon/blob/main/docs/develop/zzz/application/charge_plan.md
-绝区零:
+"OneDragon-Launcher":
   dungeons:
     - name: "未选择"
     - name: "代理人方案培养"
 
 # config: config.yaml
-崩铁:
+"March7th-Assistant":
   dungeons:
     - name: "未选择"
     - name: "拟造花萼（金）"
@@ -155,7 +155,7 @@
 
 # config: data\apps\ok-nte\working\configs\DailyTask.json
 # see: https://github.com/BnanZ0/ok-nte/blob/main/src/tasks/AnomalyTask.py
-异环:
+"ok-nte":
   dungeons:
     - name: "未选择"
     - name: "空幕"
@@ -198,7 +198,7 @@
           value: 5
 
 # config: config\gui.new.json
-粥:
+MAA:
   dungeons:
     - name: "未选择"
     - name: "红票"

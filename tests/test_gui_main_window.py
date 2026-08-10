@@ -27,12 +27,12 @@ def _make_window(script_count=3, disable_persist=False):
         win = MainWindow()
     win.dungeon_map = {}
     win.script_items = [
-        ScriptItem({"display_name": f"脚本{i}", "script_type": "external"})
+        ScriptItem({"display_name": f"脚本{i}", "script_type": "external", "script_path": f"脚本{i}.exe"})
         for i in range(script_count)
     ]
     win.all_config_data = {
         "script_list": [
-            {"display_name": f"脚本{i}", "script_type": "external"}
+            {"display_name": f"脚本{i}", "script_type": "external", "script_path": f"脚本{i}.exe"}
             for i in range(script_count)
         ]
     }
@@ -203,8 +203,16 @@ class TestRunSelected(unittest.TestCase):
         win = _make_window(disable_persist=True)
         win.all_config_data = {
             "script_list": [
-                {"display_name": "脚本0", "script_type": "external"},
-                {"display_name": "脚本1", "script_type": "external"},
+                {
+                    "display_name": "脚本0",
+                    "script_type": "external",
+                    "script_path": "脚本0.exe",
+                },
+                {
+                    "display_name": "脚本1",
+                    "script_type": "external",
+                    "script_path": "脚本1.exe",
+                },
             ]
         }
         invalid = [
@@ -309,7 +317,7 @@ class TestConfigSaveSync(unittest.TestCase):
         }
         base_patch.update(patch_overrides)
         return {
-            "old_display_name": old,
+            "old_script_name": old,
             "new_display_name": new,
             "config_patch": base_patch,
             "weekly_timeouts": [3600] * 7,
@@ -339,8 +347,9 @@ class TestConfigSaveSync(unittest.TestCase):
         win = _make_window(disable_persist=True)
         win.all_config_data["script_list"][0]["script_path"] = "C:/old.exe"
         win.script_items[0].script_path = "C:/old.exe"
+        win.script_items[0].script_name = "old"
 
-        result_data = self._make_result()
+        result_data = self._make_result(old="old")
         updated = self._updated_config(win)
         win.service.load_config = MagicMock(return_value=updated)
 
@@ -348,7 +357,7 @@ class TestConfigSaveSync(unittest.TestCase):
 
         # 委托 ChainService
         win.service.update_script.assert_called_once_with(
-            "脚本0",
+            "old",
             "脚本0",
             result_data["config_patch"],
             result_data["weekly_timeouts"],
@@ -360,8 +369,9 @@ class TestConfigSaveSync(unittest.TestCase):
             if s["display_name"] == "脚本0"
         )
         self.assertEqual(reloaded["script_path"], "C:/new.exe")
-        # 卡片同步
+        # 卡片同步（原卡片 script_name=old 被更新为 new）
         self.assertEqual(win.script_items[0].script_path, "C:/new.exe")
+        self.assertEqual(win.script_items[0].script_name, "new")
 
     def test_on_config_saved_handles_rename(self):
         """改名时 ChainService 处理 weekly 迁移，load_config 返回新名条目后同步卡片。"""
@@ -395,6 +405,7 @@ class TestConfigSaveSync(unittest.TestCase):
         """卡片同步发生在 load_config 返回后，数据源为磁盘加载结果。"""
         win = _make_window(disable_persist=True)
         win.script_items[0].script_path = "C:/old.exe"
+        win.script_items[0].script_name = "old"
 
         updated = {
             "script_list": [
@@ -409,8 +420,42 @@ class TestConfigSaveSync(unittest.TestCase):
         }
         win.service.load_config = MagicMock(return_value=updated)
 
-        win._on_script_config_saved(self._make_result())
+        win._on_script_config_saved(
+            self._make_result(old="old", script_path="C:/brand_new.exe")
+        )
         self.assertEqual(win.script_items[0].script_path, "C:/brand_new.exe")
+
+    def test_on_config_saved_python_script(self):
+        """python 脚本（key=display_name）：config_patch 不含 display_name，
+        但 new_script_name 需由 new_display_name 补算，否则定位不到 new_data。"""
+        win = _make_window(script_count=1, disable_persist=True)
+        win.script_items[0].display_name = "日志分析"
+        win.script_items[0].script_name = "日志分析"
+        win.script_items[0].script_path = "C:/x.py"
+        win.script_items[0].script_type = "python"
+
+        result_data = self._make_result(
+            old="日志分析",
+            new="日志分析",
+            script_path="C:/y.py",
+            script_type="python",
+        )
+        updated = {
+            "script_list": [
+                {
+                    "display_name": "日志分析",
+                    "script_type": "python",
+                    "script_path": "C:/y.py",
+                },
+            ]
+        }
+        win.service.load_config = MagicMock(return_value=updated)
+
+        # 修复前：new_script_name 由 config_patch 算出空串，此处 assert 崩溃
+        win._on_script_config_saved(result_data)
+
+        self.assertEqual(win.script_items[0].script_path, "C:/y.py")
+        self.assertEqual(win.script_items[0].script_name, "日志分析")
 
 
 class TestPersistUiState(unittest.TestCase):

@@ -72,18 +72,19 @@ class ScriptConfig:
 
 ## 实现记录（2026-08-10 完成）
 
-- `subscript.py`：新增 `_GAME_PATH_REL_PATHS`（脚本 → 游戏路径配置文件相对路径）与 `load_game_config()`（只读查询，文件缺失返回 None 不 assert）；新增 `_get_script_root_dir_soft()`（不校验 exe 存在，供只读查询）。
+- `subscript.py`：新增 `_GAME_PATH_REL_PATHS`（脚本 → 游戏路径配置文件相对路径，key 为 script_name，exe 即进程名）与 `load_game_config()`（只读查询，文件缺失返回 None 不 assert）；新增 `_get_script_root_dir_soft()`（不校验 exe 存在，供只读查询）。
 - `set_config.py`：基类新增类属性 `_game_path_keys`（嵌套键路径）与类方法 `get_game_exe_path()`（不实例化、无写盘副作用）；各子类声明 `_game_path_keys`；新增外观接口 `get_game_exe_path()`。
 - 粥的路径实测为 `Configurations.Default.Gui.StartUpSettings.EmulatorPath`（多级嵌套），非顶层 `Gui`。
 - `widgets.py`：`_icon_mouse_press` 左键=启动脚本、右键=`_show_game_menu`；菜单构建与弹出分离（`_build_game_menu` 返回菜单或 None，便于测试）。
 - 测试：`test_subscript.py` 增 `TestLoadGameConfig`（6 例）；`test_set_config_subclasses.py` 增 `TestGetGameExePath` + `TestGetGameExePathFacade`（10 例）；`test_gui_widgets.py` 增 `TestScriptItemGameMenu`（3 例）。全量 430 通过，ruff 干净。
 - 真实环境验证：7 个游戏脚本全部读出真实路径，python/自定义脚本返回 None。
+- **后续全局改造（2026-08-10）**：`get_game_exe_path()` 外观入参从 display_name 改为 script_name（exe 用进程名）；GUI `ScriptItem` 用 `script_name` 属性定位，`_build_game_menu` 传 `script_name`。python 脚本的 `script_name` = display_name，不在 `_CONFIGS` 注册表 → 右键不弹「打开游戏」。
 
 ## 相关文件
 
 | 文件 | 作用 |
 |------|------|
-| `src/config/subscript.py` | `_CONFIG_REL_PATHS` / `load_config`（复用） |
+| `src/config/subscript.py` | `_CONFIG_REL_PATHS` / `get_script_name` / `load_config`（复用） |
 | `src/config/set_config.py` | `ScriptConfig` 类层级（加 `get_game_exe_path`） |
 | `src/gui/widgets.py` | `ScriptItem` 卡片（加按钮） |
 | `src/gui/theme.py` | 按钮样式工厂 |

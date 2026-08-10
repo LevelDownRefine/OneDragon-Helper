@@ -15,6 +15,7 @@ import tempfile
 import tomllib
 import warnings
 
+from src.config.subscript import get_script_name
 from src.service.chain_service import ChainService
 from src.service.script_service import ScriptService
 
@@ -51,12 +52,12 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument(
         "--list-scripts",
         action="store_true",
-        help="列出所有脚本 display_name，结果写文件后退出",
+        help="列出所有脚本唯一标识，结果写文件后退出",
     )
     action.add_argument(
         "--get-script",
-        metavar="NAME",
-        help="查询单个脚本条目，结果写 JSON 后退出",
+        metavar="SCRIPT_KEY",
+        help="查询单个脚本条目（按唯一标识），结果写 JSON 后退出",
     )
     action.add_argument(
         "--dump-config",
@@ -82,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--enable",
         type=str,
         default=None,
-        help="配合 --generate-chain，逗号分隔的脚本名白名单（默认：全部脚本）",
+        help="配合 --generate-chain，逗号分隔的脚本标识白名单（默认：全部脚本）",
     )
     parser.add_argument(
         "--name",
@@ -105,13 +106,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--dungeon",
         type=str,
         default=None,
-        help="配合 --generate-chain，覆盖副本选择，格式 '脚本名=副本名'（逗号分隔多个）",
+        help="配合 --generate-chain，覆盖副本选择，格式 '脚本标识=副本名'（逗号分隔多个）",
     )
     parser.add_argument(
         "--sequence",
         type=str,
         default=None,
-        help="配合 --generate-chain，覆盖序列选择，格式 '脚本名=序列值'（逗号分隔多个）",
+        help="配合 --generate-chain，覆盖序列选择，格式 '脚本标识=序列值'（逗号分隔多个）",
     )
     parser.add_argument(
         "--out",
@@ -228,24 +229,26 @@ def _run_check_config(out_path: str | None) -> int:
 
 
 def _run_list_scripts(out_path: str | None) -> int:
-    """CLI: 列出所有脚本 display_name。"""
+    """CLI: 列出所有脚本唯一标识（exe 用进程名，脚本文件用 display_name）。"""
     service = ChainService()
     all_config_data = service.load_config()
-    names = [s["display_name"] for s in all_config_data["script_list"]]
+    names = [get_script_name(s) for s in all_config_data["script_list"]]
     result = {"script_count": len(names), "scripts": names}
     _emit_json("list_scripts", result, out_path)
     return 0
 
 
-def _run_get_script(display_name: str, out_path: str | None) -> int:
-    """CLI: 查询单个脚本条目（JSON）。
+def _run_get_script(script_name: str, out_path: str | None) -> int:
+    """CLI: 查询单个脚本条目（按唯一标识，JSON）。
 
     返回退出码 0=找到 / 1=不存在。
     """
-    script = ScriptService().get_script(display_name)
+    script = ScriptService().get_script(script_name)
     if script is None:
         _emit_json(
-            "get_script", {"status": "not_found", "name": display_name}, out_path
+            "get_script",
+            {"status": "not_found", "script_name": script_name},
+            out_path,
         )
         return 1
     _emit_json("get_script", {"status": "ok", "script": script}, out_path)
@@ -309,15 +312,15 @@ def _run_generate_chain(args) -> int:
     service = ChainService()
     all_config_data = service.load_config()
 
-    known = {s["display_name"] for s in all_config_data["script_list"]}
+    known = {get_script_name(s) for s in all_config_data["script_list"]}
     if args.enable:
-        enabled_names = {n.strip() for n in args.enable.split(",") if n.strip()}
-        unknown = enabled_names - known
+        enabled_keys = {n.strip() for n in args.enable.split(",") if n.strip()}
+        unknown = enabled_keys - known
         if unknown:
-            _emit_cli("generate_chain", f"未知的脚本名: {sorted(unknown)}")
+            _emit_cli("generate_chain", f"未知的脚本标识: {sorted(unknown)}")
             return 1
     else:
-        enabled_names = set(known)
+        enabled_keys = set(known)
 
     ui_state = service.load_ui_state()
 
@@ -329,27 +332,27 @@ def _run_generate_chain(args) -> int:
         _emit_cli("generate_chain", str(exc))
         return 1
 
-    for name in dungeon_overrides:
-        if name not in known:
-            _emit_cli("generate_chain", f"--dungeon 中未知的脚本名: {name}")
+    for script_name in dungeon_overrides:
+        if script_name not in known:
+            _emit_cli("generate_chain", f"--dungeon 中未知的脚本标识: {script_name}")
             return 1
-        if name not in ui_state:
-            ui_state[name] = {}
-        ui_state[name]["dungeon"] = dungeon_overrides[name]
+        if script_name not in ui_state:
+            ui_state[script_name] = {}
+        ui_state[script_name]["dungeon"] = dungeon_overrides[script_name]
 
-    for name in sequence_overrides:
-        if name not in known:
-            _emit_cli("generate_chain", f"--sequence 中未知的脚本名: {name}")
+    for script_name in sequence_overrides:
+        if script_name not in known:
+            _emit_cli("generate_chain", f"--sequence 中未知的脚本标识: {script_name}")
             return 1
-        if name not in ui_state:
-            ui_state[name] = {}
-        ui_state[name]["sequence"] = sequence_overrides[name]
+        if script_name not in ui_state:
+            ui_state[script_name] = {}
+        ui_state[script_name]["sequence"] = sequence_overrides[script_name]
 
     out = args.out
     if out:
         out = os.path.abspath(out)
     out = service.generate_chain(
-        all_config_data, enabled_names, args.name, ui_state, out_path=out
+        all_config_data, enabled_keys, args.name, ui_state, out_path=out
     )
     _emit_cli("generate_chain", f"已生成脚本链配置: {out}")
     return 0

@@ -3,9 +3,10 @@
 承载「单脚本」视角的实现：从 config.yml 读取单个脚本条目，管理
 weekly_timeouts.yml 的读写与改名迁移。
 
-config.yml 的写入权统一归 ChainService；本 Service 仅做只读查询与
-weekly_timeouts 管理。对应 GUI 的 ScriptItem 卡片与配置弹窗（
-SingleScriptConfigDialog）。
+内部标识统一用**脚本唯一标识 script_name**（exe 脚本为进程名、脚本文件为
+display_name），display_name 仅用于展示。config.yml 的写入权统一归
+ChainService；本 Service 仅做只读查询与 weekly_timeouts 管理。对应 GUI 的
+ScriptItem 卡片与配置弹窗（SingleScriptConfigDialog）。
 
 链编排（脚本列表/生成/运行）见 :mod:`src.service.chain_service`。
 """
@@ -17,8 +18,10 @@ import yaml
 
 from src.config.subscript import (
     DEFAULT_RUN_TIMEOUT,
+    _is_exe_script,
     default_script_entry,
     get_config_path,
+    get_script_name,
     resolve_script_path,
 )
 from src.utils import (
@@ -30,12 +33,13 @@ logger = logging.getLogger(__name__)
 
 
 def _load_config() -> dict:
-    """读取 config.yml（断言存在），校验每个条目含 display_name。"""
+    """读取 config.yml（断言存在），校验每个条目含 display_name 与 script_path。"""
     config_path = require_config_yml_path()
     with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     for s in data.get("script_list", []):
         assert "display_name" in s, f"[service] script_list 条目缺少 display_name: {s}"
+        assert "script_path" in s, f"[service] script_list 条目缺少 script_path: {s}"
     return data
 
 
@@ -68,81 +72,90 @@ def _resolve_weekly_timeouts(timeouts: list[int | None]) -> list[int]:
 
 
 class ScriptService:
-    """单脚本配置服务：config.yml 只读查询 + weekly_timeouts 管理。"""
+    """单脚本配置服务：config.yml 只读查询 + weekly_timeouts 管理。
+
+    脚本内部标识为**脚本唯一标识**（get_script_name）：exe 脚本用进程名，
+    python/bat 等脚本文件用 display_name。所有方法入参均为此标识。
+    """
 
     def load_all_weekly(self) -> dict:
-        """返回 weekly_timeouts.yml 的完整字典（文件不存在时返回空 dict）。"""
+        """返回 weekly_timeouts.yml 的完整字典（文件不存在时返回空 dict）。
+
+        key 为脚本唯一标识。
+        """
         return _load_weekly()
 
-    def get_script(self, display_name: str) -> dict | None:
-        """按 display_name 读取单个脚本条目。
+    def get_script(self, script_name: str) -> dict | None:
+        """按脚本唯一标识读取单个脚本条目。
 
         Args:
-            display_name: 脚本 display_name。
+            script_name: 脚本唯一标识（exe 用进程名，脚本文件用 display_name）。
 
         Returns:
             脚本条目 dict；不存在时返回 None。
         """
         config = _load_config()
         for script in config.get("script_list", []):
-            if script["display_name"] == display_name:
+            if get_script_name(script) == script_name:
                 return script
         return None
 
-    def save_weekly(self, display_name: str, timeouts: list[int | None]) -> None:
+    def save_weekly(self, script_name: str, timeouts: list[int | None]) -> None:
         """保存单个脚本的每周超时（空输入转默认超时并 clamp ≥10）。
 
         Args:
-            display_name: 脚本 display_name。
+            script_name: 脚本唯一标识。
             timeouts: 7 格超时输入值（必须恰好 7 格），空输入为 None。
         """
         assert len(timeouts) == 7, (
             f"[service] weekly 超时必须为 7 格，实际 {len(timeouts)}"
         )
         weekly = _load_weekly()
-        weekly[display_name] = _resolve_weekly_timeouts(timeouts)
+        weekly[script_name] = _resolve_weekly_timeouts(timeouts)
         _dump_weekly(weekly)
 
-    def rename_weekly_in_timeouts(self, old_name: str, new_name: str) -> None:
-        """改名时迁移 weekly_timeouts.yml 中的条目。
+    def rename_weekly_in_timeouts(
+        self, old_script_name: str, new_script_name: str
+    ) -> None:
+        """脚本标识变更时迁移 weekly_timeouts.yml 中的条目。
 
         旧条目存在则迁移到新名；不存在则无操作。
 
         Args:
-            old_name: 原 display_name。
-            new_name: 新 display_name。
+            old_script_name: 原脚本唯一标识。
+            new_script_name: 新脚本唯一标识。
         """
-        if old_name == new_name:
+        if old_script_name == new_script_name:
             return
         weekly = _load_weekly()
-        old_val = weekly.pop(old_name, None)
+        old_val = weekly.pop(old_script_name, None)
         if old_val is not None:
-            weekly[new_name] = old_val
+            weekly[new_script_name] = old_val
             _dump_weekly(weekly)
 
-    def ensure_weekly_entry(self, display_name: str) -> None:
+    def ensure_weekly_entry(self, script_name: str) -> None:
         """为该脚本在 weekly_timeouts.yml 创建 7 格默认条目（已存在则跳过）。
 
         Args:
-            display_name: 脚本 display_name。
+            script_name: 脚本唯一标识。
         """
         weekly = _load_weekly()
-        if display_name in weekly:
+        if script_name in weekly:
             return
-        weekly[display_name] = [DEFAULT_RUN_TIMEOUT] * 7
+        weekly[script_name] = [DEFAULT_RUN_TIMEOUT] * 7
         _dump_weekly(weekly)
 
-    def weekly_inputs(self, display_name: str) -> list[int]:
+    def weekly_inputs(self, script_name: str) -> list[int]:
         """返回配置弹窗 7 个超时输入框的初始值。
 
         Args:
-            display_name: 脚本 display_name。
+            script_name: 脚本唯一标识。
 
         Returns:
             长度为 7 的超时值列表（无条目/不足 7 格时用默认超时补齐）。
         """
         weekly_map = _load_weekly()
-        entry = weekly_map.get(display_name)
+        entry = weekly_map.get(script_name)
         timeouts = list(entry) if entry else [DEFAULT_RUN_TIMEOUT] * 7
         if len(timeouts) < 7:
             timeouts.extend([DEFAULT_RUN_TIMEOUT] * (7 - len(timeouts)))
@@ -153,15 +166,15 @@ class ScriptService:
 
         Returns:
             {"status": "ok"|"inconsistent", "missing_or_short": [...], "orphans": [...]}。
-            weekly_timeouts 中不是 7 格条目的脚本进 missing_or_short；
-            config 已删除的孤儿 key 进 orphans。
+            weekly_timeouts 中不是 7 格条目的脚本标识进 missing_or_short；
+            config 已删除的孤儿 key 进 orphans（均为脚本唯一标识）。
         """
         config = _load_config()
-        config_names = [s["display_name"] for s in config.get("script_list", [])]
+        config_keys = [get_script_name(s) for s in config.get("script_list", [])]
         weekly = _load_weekly()
 
-        missing = [name for name in config_names if len(weekly.get(name) or []) != 7]
-        orphans = [name for name in weekly if name not in config_names]
+        missing = [name for name in config_keys if len(weekly.get(name) or []) != 7]
+        orphans = [name for name in weekly if name not in config_keys]
 
         return {
             "status": "ok" if not missing and not orphans else "inconsistent",
@@ -169,20 +182,25 @@ class ScriptService:
             "orphans": orphans,
         }
 
-    def build_script_entry(self, file_path: str, existing_names: set[str]) -> dict:
+    def build_script_entry(
+        self, file_path: str, existing_script_names: set[str]
+    ) -> dict:
         """按文件路径构造脚本条目：去重命名 + 类型推断 + 默认字段补全。
+
+        新脚本的 display_name 与唯一标识一致（exe 为进程名，脚本文件为 display_name），
+        去重基于唯一标识。
 
         Args:
             file_path: 选中的脚本文件路径（已规范化）。
-            existing_names: 已有脚本 display_name 集合，用于去重命名。
+            existing_script_names: 已有脚本唯一标识集合，用于去重命名。
 
         Returns:
-            完整的 script_list 条目 dict（display_name 不与 existing_names 重复）。
+            完整的 script_list 条目 dict（display_name 不与 existing 重复）。
         """
         base_name = os.path.splitext(os.path.basename(file_path))[0]
         display_name = base_name
         suffix = 1
-        while display_name in existing_names:
+        while display_name in existing_script_names:
             display_name = f"{base_name}_{suffix}"
             suffix += 1
 
@@ -193,49 +211,56 @@ class ScriptService:
             script_path=file_path,
         )
 
-    def delete_weekly(self, display_name: str) -> None:
+    def delete_weekly(self, script_name: str) -> None:
         """删除脚本时清理 weekly_timeouts.yml 中该脚本的孤儿条目。
 
         config.yml 的总配置移除由 ChainService.remove_script 负责；此处仅清理
         脚本级配置（weekly 超时条目），使删除行为完整、无残留。
 
         Args:
-            display_name: 要清理 weekly 条目的脚本 display_name。
+            script_name: 要清理 weekly 条目的脚本唯一标识。
         """
         weekly = _load_weekly()
-        if display_name in weekly:
-            weekly.pop(display_name)
+        if script_name in weekly:
+            weekly.pop(script_name)
             _dump_weekly(weekly)
 
-    def config_file_path(self, display_name: str) -> tuple[str | None, str | None]:
+    def config_file_path(self, script_name: str) -> tuple[str | None, str | None]:
         """返回该脚本「配置文件」的本地路径（用于外部打开）与失败原因。
 
         python 脚本返回其 .py 源文件路径；external 脚本返回其内部 config 路径。
         文件不存在或脚本未适配配置文件时返回 (None, error)，error 可直接展示给用户。
 
         Args:
-            display_name: 脚本 display_name。
+            script_name: 脚本唯一标识。
 
         Returns:
             (path, error)：path 为可打开的配置文件路径（str）；error 为非空字符串时
                 表示未适配或文件缺失（可直接展示），此时 path 为 None。
         """
-        script = self.get_script(display_name)
+        script = self.get_script(script_name)
         if script is None:
-            return None, f"找不到脚本: {display_name}"
+            return None, f"找不到脚本: {script_name}"
         script_type = script.get("script_type", "external")
+        script_path = script.get("script_path", "")
         if script_type == "python":
-            resolved = resolve_script_path(script.get("script_path", ""))
+            resolved = resolve_script_path(script_path)
             if not resolved or not os.path.isfile(resolved):
                 return (
                     None,
-                    f"找不到脚本文件：{script.get('script_path', '') or '(未设置路径)'}",
+                    f"找不到脚本文件：{script_path or '(未设置路径)'}",
                 )
             return resolved, None
-        try:
-            config_path = get_config_path(display_name)
-        except AssertionError as e:
-            return None, f"该脚本暂未适配配置文件，无法打开：{e}"
-        if not os.path.isfile(config_path):
-            return None, f"配置文件不存在：{config_path}"
-        return config_path, None
+        if _is_exe_script(script_path):
+            try:
+                config_path = get_config_path(get_script_name(script))
+            except AssertionError as e:
+                return None, f"该脚本暂未适配配置文件，无法打开：{e}"
+            if not os.path.isfile(config_path):
+                return None, f"配置文件不存在：{config_path}"
+            return config_path, None
+        # external 但非 exe（如 bat 等）：无 config 适配，打开其自身
+        resolved = resolve_script_path(script_path)
+        if not resolved or not os.path.isfile(resolved):
+            return None, f"找不到脚本文件：{script_path or '(未设置路径)'}"
+        return resolved, None

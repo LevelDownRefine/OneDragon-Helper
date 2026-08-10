@@ -23,6 +23,7 @@ from src.config.dungeon_config import (
     parse_dungeon_config,
     restore_sequence_type,
 )
+from src.config.subscript import get_script_name
 from src.gui import theme
 from src.gui.runner import ScriptChainRunner
 from src.gui.utils import make_pill_button, safe_startfile
@@ -167,14 +168,15 @@ class MainWindow(QMainWindow):
 
         for data in self.all_config_data["script_list"]:
             display_name = data["display_name"]
+            script_name = get_script_name(data)
             item_t0 = time.perf_counter()
             dungeon_cfg = self.dungeon_map.get(
-                display_name
+                script_name
             )  # optional: 不是所有脚本都有副本配置
             _, seq_map, _ = parse_dungeon_config(dungeon_cfg)
 
             saved = self._ui_state.get(
-                display_name
+                script_name
             )  # optional: 新脚本可能没有保存的状态
             if saved:
                 saved = restore_sequence_type(saved, seq_map)
@@ -221,9 +223,8 @@ class MainWindow(QMainWindow):
 
     def _create_script_item(self, data, saved_state):
         """构造 ScriptItem 并注入 UI 状态回调"""
-        display_name = data["display_name"]
         dungeon_cfg = self.dungeon_map.get(
-            display_name
+            get_script_name(data)
         )  # optional: 不是所有脚本都有副本配置
         options, seq_map, show_seq = parse_dungeon_config(dungeon_cfg)
         item = ScriptItem(
@@ -245,10 +246,11 @@ class MainWindow(QMainWindow):
 
         同步更新内存态 self._ui_state：_generate_config 运行时读的是这个实例
         变量，若只写盘不更新内存，用户改了副本选择后直接运行会用到过期状态。
+        gui_state 的 key 为脚本唯一标识（exe 为进程名、脚本文件为 display_name）。
         """
         state = {}
         for item in self.script_items:
-            state[item.display_name] = item.get_state()
+            state[item.script_name] = item.get_state()
         self._ui_state = state
         self.service.save_ui_state(state)
 
@@ -261,7 +263,7 @@ class MainWindow(QMainWindow):
         原子完成。
         """
         self.service.update_script(
-            pending_changes["old_display_name"],
+            pending_changes["old_script_name"],
             pending_changes["new_display_name"],
             pending_changes["config_patch"],
             pending_changes["weekly_timeouts"],
@@ -270,20 +272,31 @@ class MainWindow(QMainWindow):
         # 服务层写盘后重新吸收，保持内存与磁盘一致
         self.all_config_data = self.service.load_config()
 
-        # 同步对应 ScriptItem 卡片的内存态
-        new_display_name = pending_changes["new_display_name"]
+        # 同步对应 ScriptItem 卡片的内存态：
+        # 以保存前的唯一标识（old_script_name）定位卡片（保存后标识可能已变，
+        # 若改用新标识定位会找不到旧卡片）；随后 sync_from_script_data 会
+        # 从最新 script_data 更新 script_name / display_name。
+        old_script_name = pending_changes["old_script_name"]
+        # 新标识需合并 new_display_name 计算：config_patch 不含 display_name，
+        # 而 python/bat 脚本的标识恰好是 display_name，单独用 config_patch 会算出空串。
+        new_script_name = get_script_name(
+            {
+                "display_name": pending_changes["new_display_name"],
+                "script_path": pending_changes["config_patch"]["script_path"],
+            }
+        )
         for item in self.script_items:
-            if item.display_name == new_display_name:
+            if item.script_name == old_script_name:
                 new_data = next(
                     (
                         s
                         for s in self.all_config_data["script_list"]
-                        if s["display_name"] == new_display_name
+                        if get_script_name(s) == new_script_name
                     ),
                     None,
                 )
                 assert new_data is not None, (
-                    f"[main_window] 保存后找不到脚本: {new_display_name}"
+                    f"[main_window] 保存后找不到脚本: {new_script_name}"
                 )
                 item.sync_from_script_data(new_data)
                 break
@@ -292,28 +305,43 @@ class MainWindow(QMainWindow):
         # （避免单卡破坏等宽——sync 会按所有脚本重算最长内容并统一应用）
         self._sync_title_widths()
 
-    def _reorder_scripts(self, src_name, dst_name):
-        """把 src_name 对应的脚本移动到 dst_name 所在位置，并同步 UI 与 config.yml"""
+    def _reorder_scripts(self, src_script_name, dst_script_name):
+        """把 src 标识对应的脚本移动到 dst 标识所在位置，并同步 UI 与 config.yml"""
         script_items = self.script_items
         src_idx = next(
-            (i for i, it in enumerate(script_items) if it.display_name == src_name),
+            (
+                i
+                for i, it in enumerate(script_items)
+                if it.script_name == src_script_name
+            ),
             None,
         )
-        assert src_idx is not None, f"[main_window] 拖拽源脚本不存在: {src_name}"
+        assert src_idx is not None, f"[main_window] 拖拽源脚本不存在: {src_script_name}"
         dst_idx = next(
-            (i for i, it in enumerate(script_items) if it.display_name == dst_name),
+            (
+                i
+                for i, it in enumerate(script_items)
+                if it.script_name == dst_script_name
+            ),
             None,
         )
-        assert dst_idx is not None, f"[main_window] 拖拽目标脚本不存在: {dst_name}"
+        assert dst_idx is not None, f"[main_window] 拖拽目标脚本不存在: {dst_script_name}"
         item = script_items.pop(src_idx)
         script_items.insert(dst_idx, item)
 
         # 同步 config.yml 中的顺序（以 UI 顺序为准）
         scripts = self.all_config_data["script_list"]
         s_idx = next(
-            (i for i, s in enumerate(scripts) if s["display_name"] == src_name), None
+            (
+                i
+                for i, s in enumerate(scripts)
+                if get_script_name(s) == src_script_name
+            ),
+            None,
         )
-        assert s_idx is not None, f"[main_window] config 中找不到源脚本: {src_name}"
+        assert s_idx is not None, (
+            f"[main_window] config 中找不到源脚本: {src_script_name}"
+        )
         script = scripts.pop(s_idx)
         scripts.insert(dst_idx, script)
 
@@ -328,21 +356,21 @@ class MainWindow(QMainWindow):
             self.scroll_layout.addWidget(item)
         self.scroll_layout.addStretch()
 
-    def _delete_script(self, display_name):
+    def _delete_script(self, script_name):
         """删除指定脚本（弹窗已确认）：先持久化再清理 UI/内存。
 
         持久化先于 widget 销毁，避免 ChainService.remove_script 断言失败时
         卡片已被删除、UI 与磁盘状态不匹配。
         """
         # 1. 持久化：config.yml + weekly_timeouts 都由 ChainService 内部处理
-        self.service.remove_script(display_name)
+        self.service.remove_script(script_name)
 
         # 2. 清理 UI 与内存
         idx = next(
             (
                 i
                 for i, it in enumerate(self.script_items)
-                if it.display_name == display_name
+                if it.script_name == script_name
             ),
             None,
         )
@@ -354,7 +382,7 @@ class MainWindow(QMainWindow):
             (
                 i
                 for i, s in enumerate(self.all_config_data["script_list"])
-                if s["display_name"] == display_name
+                if get_script_name(s) == script_name
             ),
             None,
         )
@@ -382,7 +410,7 @@ class MainWindow(QMainWindow):
             return
 
         file_path = os.path.normpath(file_path)
-        existing = {it.display_name for it in self.script_items}
+        existing = {it.script_name for it in self.script_items}
         script_data = self._script_service.build_script_entry(file_path, existing)
         self._append_script(script_data)
 
@@ -410,9 +438,9 @@ class MainWindow(QMainWindow):
 
     def _generate_config(self, chain_name="88"):
         """生成 ScriptChainer 配置文件（仅含启用的脚本）"""
-        enabled_names = {i.display_name for i in self.script_items if i.enabled}
+        enabled_keys = {i.script_name for i in self.script_items if i.enabled}
         return self.service.generate_chain(
-            self.all_config_data, enabled_names, chain_name, self._ui_state
+            self.all_config_data, enabled_keys, chain_name, self._ui_state
         )
 
     def _warn_if_invalid_scripts(self) -> bool:
@@ -423,13 +451,13 @@ class MainWindow(QMainWindow):
         某脚本被 runner 静默跳过（如自动关机未执行）。
         校验规则对齐 runner ``ScriptConfig.invalid_message``（见 src.utils_runner）。
         """
-        enabled_names = {i.display_name for i in self.script_items if i.enabled}
+        enabled_keys = {i.script_name for i in self.script_items if i.enabled}
         enabled_scripts = []
         for script in self.all_config_data["script_list"]:
-            assert "display_name" in script, (
-                "[main_window] 脚本配置缺少 display_name 字段"
+            assert "script_path" in script, (
+                "[main_window] 脚本配置缺少 script_path 字段"
             )
-            if script["display_name"] in enabled_names:
+            if get_script_name(script) in enabled_keys:
                 enabled_scripts.append(script)
         invalid = self.service.collect_invalid_scripts(enabled_scripts)
         if not invalid:

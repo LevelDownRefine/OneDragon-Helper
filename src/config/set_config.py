@@ -68,7 +68,10 @@ def safe_update(
 class ScriptConfig:
     """单个自动化脚本的 config 操作基类"""
 
+    script_name: str = ""
+    """内部标识：script_path basename 去后缀（如 ok-ww / BetterGI），全链路适配 key"""
     display_name: str = ""
+    """GUI 展示名（如 鸣潮），仅用于展示/日志"""
     _task_key: str = ""
     """config 中副本类型对应的字段名，设了即启用 _update_task"""
     _task_map: dict[str, Any] = {}
@@ -96,7 +99,7 @@ class ScriptConfig:
     """
 
     def _load(self) -> dict:
-        config = load_config(self.display_name)
+        config = load_config(self.script_name)
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
@@ -109,7 +112,7 @@ class ScriptConfig:
         if not self.enabled:
             logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
             return
-        save_config(self.display_name, config)
+        save_config(self.script_name, config)
         self._verify_saved(config)
 
     def _verify_saved(self, expected: dict) -> None:
@@ -122,7 +125,7 @@ class ScriptConfig:
 
     def _load_template(self) -> dict:
         """加载模板文件，支持 JSON 和 YAML 格式"""
-        return load_template(self.display_name)
+        return load_template(self.script_name)
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
         """
@@ -228,7 +231,7 @@ class ScriptConfig:
             logger.info(f"[set_dungeon][{self.display_name}] config 无需更新")
 
     @classmethod
-    def get_game_exe_path(cls, display_name: str) -> str | None:
+    def get_game_exe_path(cls, script_name: str) -> str | None:
         """
         读取脚本配置中的游戏可执行文件路径（类方法，不实例化，无写盘副作用）。
 
@@ -237,25 +240,26 @@ class ScriptConfig:
         - 成功 → 游戏 exe 路径字符串（可能是 .lnk 快捷方式）
 
         Args:
-            display_name: 脚本显示名称（用于读对应脚本的游戏配置）。
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name），
+                用于读对应脚本的游戏配置。
         """
         if not cls._game_path_keys:
             return None
-        game_config = load_game_config(display_name)
+        game_config = load_game_config(script_name)
         if game_config is None:
             return None
         node = game_config
         for key in cls._game_path_keys:
             if not isinstance(node, dict) or key not in node:
                 logger.warning(
-                    f"[get_game_exe_path][{display_name}] 配置缺少字段: "
+                    f"[get_game_exe_path][{script_name}] 配置缺少字段: "
                     f"{cls._game_path_keys}"
                 )
                 return None
             node = node[key]
         if not isinstance(node, str) or not node:
             logger.warning(
-                f"[get_game_exe_path][{display_name}] 游戏路径字段非字符串或为空"
+                f"[get_game_exe_path][{script_name}] 游戏路径字段非字符串或为空"
             )
             return None
         return node
@@ -268,6 +272,7 @@ class ScriptConfig:
 
 # ---- 鸣潮 Wuthering Waves ----
 class WutheringWavesConfig(ScriptConfig):
+    script_name = "ok-ww"
     _game_path_keys = ("pc_full_path",)
 
     def __init__(self):
@@ -317,6 +322,7 @@ class WutheringWavesConfig(ScriptConfig):
 
 # ---- 原神 Genshin Impact ----
 class GenshinConfig(ScriptConfig):
+    script_name = "BetterGI"
     _game_path_keys = ("genshinStartConfig", "installPath")
 
     def __init__(self):
@@ -327,6 +333,7 @@ class GenshinConfig(ScriptConfig):
 
 # ---- 终末地 Arknights: Endfield ----
 class EndfieldConfig(ScriptConfig):
+    script_name = "ok-ef"
     _game_path_keys = ("pc_full_path",)
 
     def __init__(self):
@@ -341,6 +348,7 @@ class EndfieldConfig(ScriptConfig):
 
 # ---- 绝区零 Zenless Zone Zero ----
 class ZenlessZoneZeroConfig(ScriptConfig):
+    script_name = "OneDragon-Launcher"
     _game_path_keys = ("game_path",)
 
     def __init__(self):
@@ -353,6 +361,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 
 # ---- 崩铁 Honkai: Star Rail ----
 class StarRailConfig(ScriptConfig):
+    script_name = "March7th-Assistant"
     _game_path_keys = ("game_path",)
 
     def __init__(self):
@@ -363,6 +372,7 @@ class StarRailConfig(ScriptConfig):
 
 # ---- 异环 Neverness to Everness (NTE) ----
 class NTEConfig(ScriptConfig):
+    script_name = "ok-nte"
     _game_path_keys = ("pc_full_path",)
 
     def __init__(self):
@@ -387,6 +397,7 @@ class NTEConfig(ScriptConfig):
 
 # ---- 明日方舟 Arknights（粥）----
 class ArknightsConfig(ScriptConfig):
+    script_name = "MAA"
     _game_path_keys = (
         "Configurations",
         "Default",
@@ -466,13 +477,13 @@ class ArknightsConfig(ScriptConfig):
 # ============================================================
 
 _CONFIGS: dict[str, type[ScriptConfig]] = {
-    "鸣潮": WutheringWavesConfig,
-    "原神": GenshinConfig,
-    "终末地": EndfieldConfig,
-    "绝区零": ZenlessZoneZeroConfig,
-    "崩铁": StarRailConfig,
-    "异环": NTEConfig,
-    "粥": ArknightsConfig,
+    "ok-ww": WutheringWavesConfig,
+    "BetterGI": GenshinConfig,
+    "ok-ef": EndfieldConfig,
+    "OneDragon-Launcher": ZenlessZoneZeroConfig,
+    "March7th-Assistant": StarRailConfig,
+    "ok-nte": NTEConfig,
+    "MAA": ArknightsConfig,
 }
 
 
@@ -482,7 +493,7 @@ _CONFIGS: dict[str, type[ScriptConfig]] = {
 
 
 def set_config(
-    script_display_name: str,
+    script_name: str,
     dungeon_name: str | None = None,
     sequence: str | int | None = None,
 ) -> None:
@@ -490,7 +501,8 @@ def set_config(
     外观接口：为指定脚本设置副本和刷取序列
 
     Args:
-        script_display_name: 脚本显示名称（与 config.yml 中一致）
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）
         dungeon_name: 副本名称（来自 dungeon_list.yml），None 或 "未选择" 时跳过
         sequence: 刷取序列（字符串或整数），None 表示无序列
     """
@@ -500,17 +512,17 @@ def set_config(
 
     # 自定义脚本（用户在 GUI 中新增）没有副本适配，不在注册表中，直接跳过。
     # 这类脚本本就没有副本选项，正常不会带 dungeon_name 走到这里；即便带了也优雅跳过。
-    if script_display_name not in _CONFIGS:
+    if script_name not in _CONFIGS:
         logger.info(
-            f"[set_config] 脚本 {script_display_name} 无副本适配（自定义脚本），跳过"
+            f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过"
         )
         return
 
-    cfg_cls = _CONFIGS[script_display_name]
+    cfg_cls = _CONFIGS[script_name]
     cfg_cls().set_dungeon(dungeon_name, sequence)
 
 
-def get_game_exe_path(script_display_name: str) -> str | None:
+def get_game_exe_path(script_name: str) -> str | None:
     """
     外观接口：读取指定脚本对应的游戏可执行文件路径（供 GUI「打开游戏」用）。
 
@@ -518,8 +530,9 @@ def get_game_exe_path(script_display_name: str) -> str | None:
     未适配 / 游戏配置缺失 / 字段缺失 / 值为空时返回 None，GUI 据此隐藏菜单项。
 
     Args:
-        script_display_name: 脚本显示名称（与 config.yml 中一致）。
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
     """
-    if script_display_name not in _CONFIGS:
+    if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_display_name].get_game_exe_path(script_display_name)
+    return _CONFIGS[script_name].get_game_exe_path(script_name)

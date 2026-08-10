@@ -8,7 +8,8 @@ from src.service.chain_gen import _apply_weekly_timeout
 
 
 def _script(display_name="测试"):
-    return {"display_name": display_name}
+    # 脚本文件（.py）：脚本唯一标识 = display_name
+    return {"display_name": display_name, "script_path": "scripts/test.py"}
 
 
 class TestApplyWeeklyTimeout(unittest.TestCase):

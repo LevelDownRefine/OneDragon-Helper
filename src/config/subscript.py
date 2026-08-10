@@ -24,45 +24,48 @@ DEFAULT_RUN_TIMEOUT = 3600
 
 # ============================================================
 # 各脚本 config 相对路径映射
+# key: script_name（exe 脚本即进程名，如 ok-ww / BetterGI / MAA）
 # ============================================================
 
 _CONFIG_REL_PATHS: dict[str, str] = {
-    "鸣潮": "data/apps/ok-ww/working/configs/DailyTask.json",
-    "原神": "User/OneDragon/默认配置.json",
-    "终末地": "data/apps/ok-ef/working/configs/DailyTask.json",
-    "绝区零": "config/01/one_dragon/charge_plan.yml",
-    "崩铁": "config.yaml",
-    "异环": "data/apps/ok-nte/working/configs/DailyTask.json",
-    "粥": "config/gui.new.json",
+    "ok-ww": "data/apps/ok-ww/working/configs/DailyTask.json",
+    "BetterGI": "User/OneDragon/默认配置.json",
+    "ok-ef": "data/apps/ok-ef/working/configs/DailyTask.json",
+    "OneDragon-Launcher": "config/01/one_dragon/charge_plan.yml",
+    "March7th-Assistant": "config.yaml",
+    "ok-nte": "data/apps/ok-nte/working/configs/DailyTask.json",
+    "MAA": "config/gui.new.json",
 }
 
 
 # ============================================================
 # 模板文件路径映射 无需配置鸣潮和异环
+# key: script_name
 # ============================================================
 
 _TEMPLATE_PATHS: dict[str, str] = {
-    "原神": "BGI一条龙.json",
-    "绝区零": "ZZZ一条龙.yml",
-    "粥": "MAA一条龙.json",
-    "崩铁": "M7A一条龙.yml",
+    "BetterGI": "BGI一条龙.json",
+    "OneDragon-Launcher": "ZZZ一条龙.yml",
+    "MAA": "MAA一条龙.json",
+    "March7th-Assistant": "M7A一条龙.yml",
 }
 
 
 # ============================================================
 # 各脚本游戏路径配置文件相对路径映射
+# key: script_name（exe 脚本即进程名）
 # ============================================================
 # 各自动化脚本自己的 config 里存了游戏 exe 路径，本项目不维护。
 # 注意：这里与 _CONFIG_REL_PATHS（副本配置）大多不是同一文件。
 
 _GAME_PATH_REL_PATHS: dict[str, str] = {
-    "鸣潮": "data/apps/ok-ww/working/configs/devices.json",
-    "原神": "User/config.json",
-    "终末地": "data/apps/ok-ef/working/configs/devices.json",
-    "绝区零": "config/01/game_account.yml",
-    "崩铁": "config.yaml",
-    "异环": "data/apps/ok-nte/working/configs/devices.json",
-    "粥": "config/gui.new.json",
+    "ok-ww": "data/apps/ok-ww/working/configs/devices.json",
+    "BetterGI": "User/config.json",
+    "ok-ef": "data/apps/ok-ef/working/configs/devices.json",
+    "OneDragon-Launcher": "config/01/game_account.yml",
+    "March7th-Assistant": "config.yaml",
+    "ok-nte": "data/apps/ok-nte/working/configs/devices.json",
+    "MAA": "config/gui.new.json",
 }
 
 
@@ -89,39 +92,87 @@ def resolve_script_path(path: str) -> str:
     return safe_path_join(get_root_dir(), path)
 
 
-def get_script_path(script_display_name: str) -> str:
-    """取指定脚本的 script_path，解析相对路径并校验存在。"""
+def get_process_name(script_path: str) -> str:
+    """从 script_path 解析进程名：取 basename 并去后缀（如 ``ok-ww.exe`` → ``ok-ww``）。
+
+    首尾空格先去除（误输入容错），句中空格统一替换为 ``-``
+    （如 ``March7th Assistant.exe`` → ``March7th-Assistant``），保证进程名作为
+    key 时不含空格（拼接路径 / 命令行传参更安全）。
+
+    仅对 exe 脚本有意义（python/bat 等脚本文件无独立进程名）。
+    """
+    base = os.path.splitext(os.path.basename(script_path))[0]
+    return base.strip().replace(" ", "-")
+
+
+def _is_exe_script(script_path: str) -> bool:
+    """判断脚本路径是否 exe 可执行文件（大小写不敏感）。"""
+    return script_path.lower().endswith(".exe")
+
+
+def get_script_name(script: dict) -> str:
+    """脚本唯一标识 script_name（全链路内部标识）。
+
+    - exe 脚本 → 进程名（script_path basename 去后缀，如 ok-ww / BetterGI）
+    - python/bat 等脚本文件 → display_name（无独立进程名，靠展示名标识）
+
+    Args:
+        script: config.yml 的 script_list 条目（含 display_name / script_path）。
+    """
+    script_path = script.get("script_path", "")
+    if _is_exe_script(script_path):
+        return get_process_name(script_path)
+    return script.get("display_name", "")
+
+
+def check_script_name_uniqueness(config_data: dict) -> None:
+    """断言 config.yml 中所有脚本唯一标识唯一（进程名或 display_name 冲突属配置错误）。"""
+    seen: dict[str, str] = {}
+    for script in config_data.get("script_list", []):
+        script_name = get_script_name(script)
+        if not script_name:
+            continue
+        display_name = script.get("display_name", script_name)
+        if script_name in seen:
+            raise AssertionError(
+                f"[subscript] 脚本标识重复: {script_name}（{seen[script_name]} 与 {display_name}）"
+            )
+        seen[script_name] = display_name
+
+
+def get_script_path(script_name: str) -> str:
+    """按脚本唯一标识取 script_path，解析相对路径并校验存在。"""
     config_data = _load_config_yml()
     for script in config_data.get("script_list", []):
-        if script.get("display_name") == script_display_name:
+        if get_script_name(script) == script_name:
             script_path = script.get("script_path", "")
             assert script_path, (
-                f"[set_config] config.yml 中 {script_display_name} 的 script_path 为空"
+                f"[set_config] config.yml 中 {script_name} 的 script_path 为空"
             )
             script_path = resolve_script_path(script_path)
             normalized = script_path.replace("\\", "/")
             assert os.path.exists(normalized), f"[set_config] exe 不存在: {normalized}"
             return normalized
-    assert False, f"[set_config] config.yml 中找不到脚本: {script_display_name}"  # noqa: B011  # 故意：config.yml 找不到脚本属编程错误，必须用 assert 表达不该发生
+    assert False, f"[set_config] config.yml 中找不到脚本: {script_name}"  # noqa: B011  # 故意：config.yml 找不到脚本属编程错误，必须用 assert 表达不该发生
 
 
-def _get_script_root_dir(script_display_name: str) -> str:
+def _get_script_root_dir(script_name: str) -> str:
     """
     从 config.yml 中找到指定脚本的 script_path，取其父目录作为脚本项目根目录。
-    复用 get_script_path，确保 exe 脚本存在。
+    复用 get_script_path，确保脚本文件存在。
     """
-    return os.path.dirname(get_script_path(script_display_name))
+    return os.path.dirname(get_script_path(script_name))
 
 
-def _get_script_root_dir_soft(script_display_name: str) -> str | None:
+def _get_script_root_dir_soft(script_name: str) -> str | None:
     """
-    从 config.yml 解析脚本根目录，**不校验 exe 存在**（游戏路径只读查询用）。
+    从 config.yml 解析脚本根目录，**不校验文件存在**（游戏路径只读查询用）。
 
     返回 None 表示：config.yml 中无此脚本或 script_path 为空（查询无从谈起）。
     """
     config_data = _load_config_yml()
     for script in config_data.get("script_list", []):
-        if script.get("display_name") == script_display_name:
+        if get_script_name(script) == script_name:
             script_path = script.get("script_path", "")
             if not script_path:
                 return None
@@ -129,17 +180,17 @@ def _get_script_root_dir_soft(script_display_name: str) -> str | None:
     return None
 
 
-def get_config_path(script_display_name: str) -> str:
+def get_config_path(script_name: str) -> str:
     """
     获取指定脚本的 config 文件绝对路径。
     拼接脚本根目录 + config 相对路径。
     并确保 config 文件存在。
     """
-    assert script_display_name in _CONFIG_REL_PATHS, (
-        f"[set_config] 未适配脚本: {script_display_name}"
+    assert script_name in _CONFIG_REL_PATHS, (
+        f"[set_config] 未适配脚本: {script_name}"
     )
-    root = _get_script_root_dir(script_display_name)
-    rel = _CONFIG_REL_PATHS[script_display_name]
+    root = _get_script_root_dir(script_name)
+    rel = _CONFIG_REL_PATHS[script_name]
     config_path = safe_path_join(root, rel)
     assert os.path.exists(config_path), f"[set_config] config 文件不存在: {config_path}"
     return config_path
@@ -150,18 +201,18 @@ def get_config_path(script_display_name: str) -> str:
 # ============================================================
 
 
-def load_template(display_name: str) -> dict | list:
+def load_template(script_name: str) -> dict | list:
     """
     加载模板文件，支持 JSON 和 YAML 格式。
     文件不存在或格式不支持时抛出 AssertionError。
     """
-    assert display_name in _TEMPLATE_PATHS, (
-        f"[set_config][{display_name}] 未配置模板路径"
+    assert script_name in _TEMPLATE_PATHS, (
+        f"[set_config][{script_name}] 未配置模板路径"
     )
-    rel_path = _TEMPLATE_PATHS[display_name]
+    rel_path = _TEMPLATE_PATHS[script_name]
     template_path = safe_path_join(get_root_dir(), "config", rel_path)
     assert os.path.exists(template_path), (
-        f"[set_config][{display_name}] 未找到模板文件: {template_path}"
+        f"[set_config][{script_name}] 未找到模板文件: {template_path}"
     )
     ext = os.path.splitext(template_path)[1].lower()
     with open(template_path, encoding="utf-8") as f:
@@ -170,17 +221,17 @@ def load_template(display_name: str) -> dict | list:
         elif ext in (".yaml", ".yml"):
             template = yaml.safe_load(f)
         else:
-            raise ValueError(f"[set_config][{display_name}] 不支持的模板格式: {ext}")
+            raise ValueError(f"[set_config][{script_name}] 不支持的模板格式: {ext}")
     return template
 
 
-def load_config(script_display_name: str) -> dict | list:
+def load_config(script_name: str) -> dict | list:
     """
     读取指定脚本的 config 文件，返回解析后的 dict 或 list。
     支持 .json 和 .yaml/.yml 格式。
     assert 文件存在。
     """
-    path = get_config_path(script_display_name)
+    path = get_config_path(script_name)
     assert os.path.exists(path), f"[set_config] config 文件不存在: {path}"
     ext = os.path.splitext(path)[1].lower()
     with open(path, encoding="utf-8") as f:
@@ -191,24 +242,24 @@ def load_config(script_display_name: str) -> dict | list:
         raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
 
-def load_game_config(script_display_name: str) -> dict | None:
+def load_game_config(script_name: str) -> dict | None:
     """
     读取指定脚本的游戏路径配置文件，返回解析后的 dict。
 
     与 load_config 的区别：面向「打开游戏」功能的只读查询，**不 assert 文件存在**。
     文件缺失/未适配脚本时返回 None，由调用方（GUI）优雅降级。
     """
-    assert script_display_name in _GAME_PATH_REL_PATHS, (
-        f"[set_config] 未适配游戏路径的脚本: {script_display_name}"
+    assert script_name in _GAME_PATH_REL_PATHS, (
+        f"[set_config] 未适配游戏路径的脚本: {script_name}"
     )
-    root = _get_script_root_dir_soft(script_display_name)
+    root = _get_script_root_dir_soft(script_name)
     if root is None:
         return None
-    rel = _GAME_PATH_REL_PATHS[script_display_name]
+    rel = _GAME_PATH_REL_PATHS[script_name]
     game_config_path = safe_path_join(root, rel)
     if not os.path.exists(game_config_path):
         logger.warning(
-            f"[set_config][{script_display_name}] 游戏路径配置文件不存在: "
+            f"[set_config][{script_name}] 游戏路径配置文件不存在: "
             f"{game_config_path}"
         )
         return None
@@ -221,13 +272,13 @@ def load_game_config(script_display_name: str) -> dict | None:
         raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
 
-def save_config(script_display_name: str, data: dict | list) -> None:
+def save_config(script_name: str, data: dict | list) -> None:
     """
     将数据写回指定脚本的 config 文件。
     保持原始格式（json / yaml）。
     并确保 config 文件已存在且能被写入。
     """
-    path = get_config_path(script_display_name)
+    path = get_config_path(script_name)
     ext = os.path.splitext(path)[1].lower()
     with open(path, "w", encoding="utf-8") as f:
         if ext == ".json":

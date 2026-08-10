@@ -75,7 +75,7 @@ class TestAddScriptDialog(unittest.TestCase):
 
     def test_save_builds_script_entry(self):
         """填入合法字段后 save_data 构造完整 script_entry 并 accept"""
-        dlg = AddScriptDialog(existing_names=["已存在"])
+        dlg = AddScriptDialog(existing_script_names=["已存在"])
         dlg.name_input.setText("新脚本")
         dlg.type_combo.setCurrentText("python")
         dlg.path_input.setText("C:/foo/bar.py")
@@ -108,11 +108,11 @@ class TestAddScriptDialog(unittest.TestCase):
             dlg.save_data()
         self.assertIsNone(dlg.script_entry)
 
-    def test_save_rejects_duplicate_name(self):
-        """名称重复时不构造 script_entry"""
-        dlg = AddScriptDialog(existing_names=["原神"])
-        dlg.name_input.setText("原神")
-        dlg.path_input.setText("C:/x.exe")
+    def test_save_rejects_duplicate_key(self):
+        """脚本标识重复时不构造 script_entry"""
+        dlg = AddScriptDialog(existing_script_names=["BetterGI"])
+        dlg.name_input.setText("原神改")
+        dlg.path_input.setText("C:/game_helper/BetterGI.exe")
         with patch("src.gui.dialogs.QMessageBox.warning"):
             dlg.save_data()
         self.assertIsNone(dlg.script_entry)
@@ -159,13 +159,13 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
                 return_value=wt,
             ),
         ):
-            dlg = SingleScriptConfigDialog("日志分析", "C:/x.py")
+            dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
             values = [le.text() for le in dlg.timeout_inputs]
         self.assertEqual(values, ["3600"] * 7)
 
     def test_load_uses_existing_weekly_entry(self):
         """weekly_timeouts 已有条目时使用已有值"""
-        wt = self._make_weekly_file({"日志分析": [60, 60, 60, 60, 60, 60, 60]})
+        wt = self._make_weekly_file({"collect_log": [60, 60, 60, 60, 60, 60, 60]})
         cfg = self._make_config_file()
         with (
             patch(
@@ -177,7 +177,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
                 return_value=wt,
             ),
         ):
-            dlg = SingleScriptConfigDialog("日志分析", "C:/x.py")
+            dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
             values = [le.text() for le in dlg.timeout_inputs]
         self.assertEqual(values, ["60"] * 7)
 
@@ -190,7 +190,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
             ),
             self.assertRaises(AssertionError),
         ):
-            SingleScriptConfigDialog("日志分析", "C:/x.py")
+            SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
 
 
 class TestSingleScriptConfigDialogBlock(unittest.TestCase):
@@ -219,7 +219,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
             "src.service.script_service.require_config_yml_path",
             return_value=cfg,
         ):
-            dlg = SingleScriptConfigDialog("日志分析", "C:/x.py")
+            dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
         self.assertTrue(dlg.block_cb.isChecked())
 
     def test_load_defaults_block_true_when_missing(self):
@@ -237,7 +237,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
             "src.service.script_service.require_config_yml_path",
             return_value=cfg,
         ):
-            dlg = SingleScriptConfigDialog("日志分析", "C:/x.py")
+            dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
         self.assertTrue(dlg.block_cb.isChecked())
 
     def test_save_stores_block_in_pending_changes(self):
@@ -247,7 +247,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
                 {
                     "display_name": "日志分析",
                     "script_type": "python",
-                    "script_path": "C:/x.py",
+                    "script_path": "C:/y.py",
                 },
             ]
         )
@@ -256,9 +256,10 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
                 "src.service.script_service.require_config_yml_path",
                 return_value=cfg,
             ),
+            patch("src.gui.dialogs.QMessageBox.warning"),
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
-            dlg = SingleScriptConfigDialog("日志分析", "C:/x.py")
+            dlg = SingleScriptConfigDialog("日志分析", "日志分析", "C:/y.py")
             dlg.block_cb.setChecked(False)
             dlg.save_data()
         self.assertFalse(dlg.pending_changes["config_patch"]["block"])
@@ -283,6 +284,7 @@ class TestSingleScriptConfigDialogOpenConfig(unittest.TestCase):
 
     def _make_dialog(self, config_return):
         dlg = SingleScriptConfigDialog(
+            "ok-ww",
             "鸣潮",
             "C:/games/run.exe",
             script_service=_FakeService("external", "C:/games/run.exe"),
@@ -338,6 +340,7 @@ class TestSingleScriptConfigDialogDelete(unittest.TestCase):
 
     def _make_dialog(self):
         return SingleScriptConfigDialog(
+            "ok-ww",
             "鸣潮",
             "C:/games/run.exe",
             script_service=_FakeService("external", "C:/games/run.exe"),
@@ -355,7 +358,7 @@ class TestSingleScriptConfigDialogDelete(unittest.TestCase):
             mock_box.Ok = "OK"
             mock_box.return_value.exec.return_value = "OK"
             dlg._on_delete_clicked()
-        self.assertEqual(received, ["鸣潮"])
+        self.assertEqual(received, ["ok-ww"])
         mock_close.assert_called_once()
 
     def test_delete_cancelled_does_not_emit(self):
