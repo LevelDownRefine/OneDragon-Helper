@@ -1,5 +1,5 @@
 script_list:
-- display_name: 四点启动
+- display_name: 定时计划
   game_label: ''
   script_type: python
   script_path: scripts/wait_until_0410.py
@@ -221,7 +221,7 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: 失败邮件通知
+- display_name: 邮件通知
   game_label: ''
   script_type: python
   script_path: scripts/notify_mail.py

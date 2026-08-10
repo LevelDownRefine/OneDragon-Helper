@@ -52,9 +52,12 @@ def get_process_name(script_path: str) -> str:
     （如 ``March7th Assistant.exe`` → ``March7th-Assistant``），保证进程名作为
     key 时不含空格（拼接路径 / 命令行传参更安全）。
 
+    先统一为 ``/`` 分隔再取 basename，使 Windows 反斜杠路径（``D:\\game\\ok-ww.exe``）
+    在 Linux 的 CI 上也能正确解析（config.example.yml / 用户配置均为 Windows 路径）。
+
     仅对 exe 脚本有意义（python/bat 等脚本文件无独立进程名）。
     """
-    base = os.path.splitext(os.path.basename(script_path))[0]
+    base = os.path.splitext(os.path.basename(script_path.replace("\\", "/")))[0]
     return base.strip().replace(" ", "-")
 
 
@@ -129,20 +132,19 @@ def _get_script_root_dir_soft(script_name: str) -> str | None:
             script_path = script.get("script_path", "")
             if not script_path:
                 return None
-            return os.path.dirname(resolve_script_path(script_path))
+            # 与 get_script_path 一致：归一化为正斜杠再取父目录，跨平台（Linux CI）
+            return os.path.dirname(resolve_script_path(script_path).replace("\\", "/"))
     return None
 
 
-def get_config_path(script_name: str) -> str:
+def get_config_path(script_name: str, rel_path: str) -> str:
     """
     获取指定脚本的 config 文件绝对路径。
-    拼接脚本根目录 + config 相对路径。
+    拼接脚本根目录 + config 相对路径（rel_path 由适配层声明，本模块不感知具体脚本）。
     并确保 config 文件存在。
     """
-    assert script_name in _CONFIG_REL_PATHS, f"[set_config] 未适配脚本: {script_name}"
     root = _get_script_root_dir(script_name)
-    rel = _CONFIG_REL_PATHS[script_name]
-    config_path = safe_path_join(root, rel)
+    config_path = safe_path_join(root, rel_path)
     assert os.path.exists(config_path), f"[set_config] config 文件不存在: {config_path}"
     return config_path
 
