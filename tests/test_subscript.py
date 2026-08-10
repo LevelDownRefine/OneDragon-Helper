@@ -4,8 +4,6 @@ import unittest
 from unittest import mock
 
 from src.config.subscript import (
-    _GAME_PATH_REL_PATHS,
-    _TEMPLATE_PATHS,
     check_script_name_uniqueness,
     default_script_entry,
     get_process_name,
@@ -193,39 +191,14 @@ class TestDefaultScriptEntry(unittest.TestCase):
 class TestLoadGameConfig(unittest.TestCase):
     """测试 load_game_config：读取游戏路径配置文件（只读、不 assert 文件存在）。"""
 
-    def test_game_path_rel_paths_covers_all_scripts(self):
-        """_GAME_PATH_REL_PATHS 覆盖全部 7 个游戏脚本（进程名）"""
-        self.assertEqual(
-            set(_GAME_PATH_REL_PATHS.keys()),
-            {
-                "ok-ww",
-                "BetterGI",
-                "ok-ef",
-                "OneDragon-Launcher",
-                "March7th-Assistant",
-                "ok-nte",
-                "MAA",
-            },
-        )
-
-    def test_template_paths_use_process_names(self):
-        """_TEMPLATE_PATHS key 为进程名"""
-        self.assertEqual(
-            set(_TEMPLATE_PATHS.keys()),
-            {"BetterGI", "OneDragon-Launcher", "MAA", "March7th-Assistant"},
-        )
-
-    def test_unadapted_process_raises(self):
-        """未适配进程 → assert"""
-        with self.assertRaises(AssertionError):
-            load_game_config("自定义脚本")
-
     def test_root_missing_returns_none(self):
         """config.yml 中无此进程（根目录解析失败）→ None"""
         with mock.patch(
             "src.config.subscript._get_script_root_dir_soft", return_value=None
         ):
-            got = load_game_config("ok-ww")
+            got = load_game_config(
+                "ok-ww", "data/apps/ok-ww/working/configs/devices.json"
+            )
         self.assertIsNone(got)
 
     def test_config_file_missing_returns_none(self):
@@ -237,7 +210,9 @@ class TestLoadGameConfig(unittest.TestCase):
             ),
             mock.patch("src.config.subscript.os.path.exists", return_value=False),
         ):
-            got = load_game_config("ok-ww")
+            got = load_game_config(
+                "ok-ww", "data/apps/ok-ww/working/configs/devices.json"
+            )
         self.assertIsNone(got)
 
     def test_json_config_parsed(self):
@@ -258,7 +233,9 @@ class TestLoadGameConfig(unittest.TestCase):
                 mock.mock_open(read_data='{"pc_full_path": "D:/Game/game.exe"}'),
             ),
         ):
-            got = load_game_config("ok-ww")
+            got = load_game_config(
+                "ok-ww", "data/apps/ok-ww/working/configs/devices.json"
+            )
         self.assertEqual(got, {"pc_full_path": "D:/Game/game.exe"})
 
     def test_yaml_config_parsed(self):
@@ -279,7 +256,7 @@ class TestLoadGameConfig(unittest.TestCase):
                 mock.mock_open(read_data="game_path: D:/Game/game.exe\n"),
             ),
         ):
-            got = load_game_config("OneDragon-Launcher")
+            got = load_game_config("OneDragon-Launcher", "config/01/game_account.yml")
         self.assertEqual(got, {"game_path": "D:/Game/game.exe"})
 
 

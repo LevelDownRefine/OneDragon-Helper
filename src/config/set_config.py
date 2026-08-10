@@ -11,6 +11,9 @@ from collections.abc import Callable
 from typing import Any
 
 from src.config.subscript import (
+    get_config_path as _get_config_path_impl,
+)
+from src.config.subscript import (
     load_config,
     load_game_config,
     load_template,
@@ -78,10 +81,19 @@ class ScriptConfig:
     """副本中文名 → config 值的映射，空 dict 表示直接用 dungeon_name"""
 
     _game_path_keys: tuple[str, ...] = ()
-    """游戏 exe 路径在游戏配置（_GAME_PATH_REL_PATHS 指向的文件）中的嵌套键路径。
+    """游戏 exe 路径在游戏配置（_game_config_rel_path 指向的文件）中的嵌套键路径。
 
     空元组表示该脚本未适配「打开游戏」。各子类按需声明，如 ``("pc_full_path",)``。
     """
+
+    _config_rel_path: str = ""
+    """config 文件相对脚本根目录的路径（必填，子类必须声明）。"""
+
+    _game_config_rel_path: str = ""
+    """游戏路径配置文件相对脚本根目录的路径（声明了 ``_game_path_keys`` 则必填）。"""
+
+    _template_rel_path: str = ""
+    """模板文件相对 config/ 目录的路径（走模板初始化的子类必须声明）。"""
 
     confirm_before_save: Callable[[str], bool] | None = None
     """保存前确认回调（由 GUI 注入，参数为 display_name，返回 True 才落盘）。
@@ -98,8 +110,29 @@ class ScriptConfig:
     config」的矛盾行为。
     """
 
+    def __init_subclass__(cls, **kwargs) -> None:
+        """自动把声明了 ``script_name`` 的子类登记进 ``_CONFIGS`` 注册表。
+
+        未声明 ``script_name`` 的中间基类/测试类不注册。路径声明不完整
+        （缺 ``_config_rel_path``、或声明了 ``_game_path_keys`` 却缺
+        ``_game_config_rel_path``）属编程错误，import 时立即 assert 暴露，
+        避免新增脚本漏配路径后静默缺功能。
+        """
+        super().__init_subclass__(**kwargs)
+        if not cls.script_name:
+            return
+        assert cls._config_rel_path, (
+            f"[set_config][{cls.__name__}] 必须声明 _config_rel_path"
+        )
+        if cls._game_path_keys:
+            assert cls._game_config_rel_path, (
+                f"[set_config][{cls.__name__}] 声明了 _game_path_keys 必须声明 "
+                f"_game_config_rel_path"
+            )
+        _CONFIGS[cls.script_name] = cls
+
     def _load(self) -> dict:
-        config = load_config(self.script_name)
+        config = load_config(self.script_name, self._config_rel_path)
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
@@ -112,7 +145,7 @@ class ScriptConfig:
         if not self.enabled:
             logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
             return
-        save_config(self.script_name, config)
+        save_config(self.script_name, self._config_rel_path, config)
         self._verify_saved(config)
 
     def _verify_saved(self, expected: dict) -> None:
@@ -124,8 +157,11 @@ class ScriptConfig:
         )
 
     def _load_template(self) -> dict:
-        """加载模板文件，支持 JSON 和 YAML 格式"""
-        return load_template(self.script_name)
+        """加载模板文件（相对 config/ 目录），支持 JSON 和 YAML 格式"""
+        assert self._template_rel_path, (
+            f"[set_config][{self.display_name}] 未声明 _template_rel_path"
+        )
+        return load_template(self.script_name, self._template_rel_path)
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
         """
@@ -245,7 +281,7 @@ class ScriptConfig:
         """
         if not cls._game_path_keys:
             return None
-        game_config = load_game_config(script_name)
+        game_config = load_game_config(script_name, cls._game_config_rel_path)
         if game_config is None:
             return None
         node = game_config
@@ -266,6 +302,14 @@ class ScriptConfig:
 
 
 # ============================================================
+# 注册表
+# ============================================================
+
+# 由 ScriptConfig.__init_subclass__ 在子类定义时自动填充（必须在子类定义前初始化）。
+_CONFIGS: dict[str, type[ScriptConfig]] = {}
+
+
+# ============================================================
 # 各脚本子类
 # ============================================================
 
@@ -273,6 +317,8 @@ class ScriptConfig:
 # ---- 鸣潮 Wuthering Waves ----
 class WutheringWavesConfig(ScriptConfig):
     script_name = "ok-ww"
+    _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
+    _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
 
     def __init__(self):
@@ -323,6 +369,9 @@ class WutheringWavesConfig(ScriptConfig):
 # ---- 原神 Genshin Impact ----
 class GenshinConfig(ScriptConfig):
     script_name = "BetterGI"
+    _config_rel_path = "User/OneDragon/默认配置.json"
+    _game_config_rel_path = "User/config.json"
+    _template_rel_path = "BGI一条龙.json"
     _game_path_keys = ("genshinStartConfig", "installPath")
 
     def __init__(self):
@@ -334,6 +383,8 @@ class GenshinConfig(ScriptConfig):
 # ---- 终末地 Arknights: Endfield ----
 class EndfieldConfig(ScriptConfig):
     script_name = "ok-ef"
+    _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
+    _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
 
     def __init__(self):
@@ -349,6 +400,9 @@ class EndfieldConfig(ScriptConfig):
 # ---- 绝区零 Zenless Zone Zero ----
 class ZenlessZoneZeroConfig(ScriptConfig):
     script_name = "OneDragon-Launcher"
+    _config_rel_path = "config/01/one_dragon/charge_plan.yml"
+    _game_config_rel_path = "config/01/game_account.yml"
+    _template_rel_path = "ZZZ一条龙.yml"
     _game_path_keys = ("game_path",)
 
     def __init__(self):
@@ -362,6 +416,9 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 # ---- 崩铁 Honkai: Star Rail ----
 class StarRailConfig(ScriptConfig):
     script_name = "March7th-Assistant"
+    _config_rel_path = "config.yaml"
+    _game_config_rel_path = "config.yaml"
+    _template_rel_path = "M7A一条龙.yml"
     _game_path_keys = ("game_path",)
 
     def __init__(self):
@@ -373,6 +430,8 @@ class StarRailConfig(ScriptConfig):
 # ---- 异环 Neverness to Everness (NTE) ----
 class NTEConfig(ScriptConfig):
     script_name = "ok-nte"
+    _config_rel_path = "data/apps/ok-nte/working/configs/DailyTask.json"
+    _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
 
     def __init__(self):
@@ -398,6 +457,9 @@ class NTEConfig(ScriptConfig):
 # ---- 明日方舟 Arknights（粥）----
 class ArknightsConfig(ScriptConfig):
     script_name = "MAA"
+    _config_rel_path = "config/gui.new.json"
+    _game_config_rel_path = "config/gui.new.json"
+    _template_rel_path = "MAA一条龙.json"
     _game_path_keys = (
         "Configurations",
         "Default",
@@ -475,16 +537,8 @@ class ArknightsConfig(ScriptConfig):
 # ============================================================
 # 注册表
 # ============================================================
-
-_CONFIGS: dict[str, type[ScriptConfig]] = {
-    "ok-ww": WutheringWavesConfig,
-    "BetterGI": GenshinConfig,
-    "ok-ef": EndfieldConfig,
-    "OneDragon-Launcher": ZenlessZoneZeroConfig,
-    "March7th-Assistant": StarRailConfig,
-    "ok-nte": NTEConfig,
-    "MAA": ArknightsConfig,
-}
+# 见基类上方定义：由 ScriptConfig.__init_subclass__ 自动填充，
+# 新增脚本只需声明子类（script_name + 路径类属性），无需手动登记。
 
 
 # ============================================================
@@ -518,6 +572,21 @@ def set_config(
 
     cfg_cls = _CONFIGS[script_name]
     cfg_cls().set_dungeon(dungeon_name, sequence)
+
+
+def get_config_path(script_name: str) -> str:
+    """
+    外观接口：按脚本唯一标识取脚本 config 绝对路径（供 GUI「打开配置文件」用）。
+
+    未适配脚本 → AssertionError（消息与 subscript 原语义一致，供上层捕获提示）。
+    路径（``_config_rel_path``）由对应子类声明，本函数只做分发。
+
+    Args:
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
+    """
+    assert script_name in _CONFIGS, f"[set_config] 未适配脚本: {script_name}"
+    return _get_config_path_impl(script_name, _CONFIGS[script_name]._config_rel_path)
 
 
 def get_game_exe_path(script_name: str) -> str | None:

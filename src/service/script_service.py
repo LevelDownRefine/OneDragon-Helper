@@ -16,11 +16,11 @@ import os
 
 import yaml
 
+from src.config.set_config import get_config_path
 from src.config.subscript import (
     DEFAULT_RUN_TIMEOUT,
     _is_exe_script,
     default_script_entry,
-    get_config_path,
     get_script_name,
     resolve_script_path,
 )

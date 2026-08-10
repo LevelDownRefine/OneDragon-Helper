@@ -153,7 +153,7 @@ class TestVerifySaved(unittest.TestCase):
             patch("src.config.set_config.save_config") as mock_save,
         ):
             cfg._save(sample)  # 不应抛异常
-        mock_save.assert_called_once_with("测试", sample)
+        mock_save.assert_called_once_with("测试", "", sample)
 
     def test_save_mismatch_raises(self):
         """_save 后重读内容不一致应 assert"""

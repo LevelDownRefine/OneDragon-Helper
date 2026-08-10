@@ -2,7 +2,7 @@
 测试 set_config.py 中的子脚本 config 读写基础设施。
 
 覆盖函数：
-  - _CONFIG_REL_PATHS（数据完整性）
+  - _CONFIGS（子类路径声明完整性）
   - _get_script_root_dir
   - get_config_path
   - load_config
@@ -17,39 +17,61 @@ from unittest.mock import mock_open, patch
 
 import yaml
 
-from src.config import subscript
+from src.config import set_config, subscript
 from src.utils import safe_path_join
 
 
 class TestConfigRelPaths(unittest.TestCase):
-    """测试 _CONFIG_REL_PATHS 数据完整性"""
+    """测试 ScriptConfig 子类路径声明完整性（_CONFIGS 注册表自动收集）"""
 
-    def test_all_scripts_have_rel_path(self):
-        """每个已适配脚本都应在 _CONFIG_REL_PATHS 中有记录"""
-        scripts = [
-            "ok-ww",
-            "BetterGI",
-            "ok-ef",
-            "OneDragon-Launcher",
-            "March7th-Assistant",
-            "ok-nte",
-            "MAA",
-        ]
-        for name in scripts:
-            self.assertIn(
-                name, subscript._CONFIG_REL_PATHS, f"{name} 缺少 config 相对路径"
+    def test_configs_registry_covers_all_scripts(self):
+        """_CONFIGS 覆盖全部 7 个已适配脚本（进程名）"""
+        self.assertEqual(
+            set(set_config._CONFIGS.keys()),
+            {
+                "ok-ww",
+                "BetterGI",
+                "ok-ef",
+                "OneDragon-Launcher",
+                "March7th-Assistant",
+                "ok-nte",
+                "MAA",
+            },
+        )
+
+    def test_every_subclass_has_config_rel_path(self):
+        """每个注册子类都声明了非空 _config_rel_path"""
+        for name, cls in set_config._CONFIGS.items():
+            self.assertIsInstance(
+                cls._config_rel_path, str, f"{name} 的 _config_rel_path 不是字符串"
+            )
+            self.assertTrue(
+                len(cls._config_rel_path) > 0, f"{name} 的 _config_rel_path 为空"
             )
 
-    def test_rel_paths_are_strings(self):
-        for name, rel in subscript._CONFIG_REL_PATHS.items():
-            self.assertIsInstance(rel, str, f"{name} 的 rel path 不是字符串")
-            self.assertTrue(len(rel) > 0, f"{name} 的 rel path 为空")
+    def test_game_config_rel_path_covers_all(self):
+        """全部 7 个脚本都声明了 _game_path_keys 与 _game_config_rel_path"""
+        for name, cls in set_config._CONFIGS.items():
+            self.assertTrue(cls._game_path_keys, f"{name} 缺少 _game_path_keys")
+            self.assertTrue(
+                cls._game_config_rel_path, f"{name} 缺少 _game_config_rel_path"
+            )
+
+    def test_template_rel_path_only_for_template_scripts(self):
+        """模板路径只覆盖 4 个走模板初始化的脚本"""
+        with_template = {
+            name for name, cls in set_config._CONFIGS.items() if cls._template_rel_path
+        }
+        self.assertEqual(
+            with_template,
+            {"BetterGI", "OneDragon-Launcher", "MAA", "March7th-Assistant"},
+        )
 
     def test_rel_paths_contain_extension(self):
-        """每个相对路径应包含 .json 或 .yaml/.yml 扩展名"""
+        """每个 config 相对路径应包含 .json 或 .yaml/.yml 扩展名"""
         valid_exts = (".json", ".yaml", ".yml")
-        for name, rel in subscript._CONFIG_REL_PATHS.items():
-            ext = os.path.splitext(rel)[1].lower()
+        for name, cls in set_config._CONFIGS.items():
+            ext = os.path.splitext(cls._config_rel_path)[1].lower()
             self.assertIn(
                 ext, valid_exts, f"{name} 的 config 扩展名 {ext} 不在支持范围内"
             )
@@ -126,31 +148,32 @@ class TestGetConfigPath(unittest.TestCase):
                 {"display_name": "鸣潮", "script_path": r"C:\fake\ok-ww\ok-ww.exe"},
             ]
         }
+        rel = "data/apps/ok-ww/working/configs/DailyTask.json"
         with (
             patch.object(subscript, "_load_config_yml", return_value=fake_config),
             patch("os.path.exists", return_value=True),
         ):
-            path = subscript.get_config_path("ok-ww")
+            path = subscript.get_config_path("ok-ww", rel)
 
         # get_config_path 内部用 safe_path_join，会归一化为绝对路径（Windows 为反斜杠），
         # 故 expected 需用同一归一化方式，避免分隔符不一致导致断言失败。
-        expected = safe_path_join("C:/fake/ok-ww", subscript._CONFIG_REL_PATHS["ok-ww"])
+        expected = safe_path_join("C:/fake/ok-ww", rel)
         self.assertEqual(path, expected)
 
     def test_raises_for_unknown_script(self):
-        """未在 _CONFIG_REL_PATHS 中的脚本应触发 AssertionError"""
+        """config.yml 中无此脚本应触发 AssertionError"""
         with (
             patch.object(
                 subscript, "_load_config_yml", return_value={"script_list": []}
             ),
             self.assertRaises(AssertionError),
         ):
-            subscript.get_config_path("none")
+            subscript.get_config_path("none", "whatever.json")
 
     def test_all_registered_scripts_resolve_with_mock_config(self):
         """对所有已注册脚本，用 mock 的 config.yml 验证路径推导成功
         （不依赖真实 config.yml，CI 也能跑）"""
-        scripts = list(subscript._CONFIG_REL_PATHS.keys())
+        scripts = list(set_config._CONFIGS.keys())
         # 构造 mock config：每个脚本一个唯一的 script_path（key 即进程名）
         fake_script_list = [
             {
@@ -168,10 +191,10 @@ class TestGetConfigPath(unittest.TestCase):
             patch("os.path.exists", return_value=True),
         ):
             for name in scripts:
-                path = subscript.get_config_path(name)
+                rel = set_config._CONFIGS[name]._config_rel_path
+                path = subscript.get_config_path(name, rel)
                 self.assertIsNotNone(path, f"{name} 路径推导失败")
                 # 路径中应包含相对路径的各段（不依赖具体分隔符）
-                rel = subscript._CONFIG_REL_PATHS[name]
                 rel_parts = rel.split("/")
                 for part in rel_parts:
                     self.assertIn(
@@ -192,7 +215,7 @@ class TestLoadConfig(unittest.TestCase):
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(fake_data))),
         ):
-            result = subscript.load_config("ok-ww")
+            result = subscript.load_config("ok-ww", "DailyTask.json")
 
         self.assertEqual(result, fake_data)
 
@@ -207,14 +230,14 @@ class TestLoadConfig(unittest.TestCase):
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=yaml_str)),
         ):
-            result = subscript.load_config("OneDragon-Launcher")
+            result = subscript.load_config("OneDragon-Launcher", "charge_plan.yml")
 
         self.assertEqual(result, fake_data)
 
     def test_load_all_registered_configs_with_mock(self):
         """对所有已注册脚本，用 mock config 文件验证读取逻辑
         （不依赖真实 config 文件，CI 也能跑）"""
-        scripts = list(subscript._CONFIG_REL_PATHS.keys())
+        scripts = list(set_config._CONFIGS.keys())
         # 构造 mock config.yml + mock 文件内容
         fake_script_list = [
             {
@@ -226,7 +249,7 @@ class TestLoadConfig(unittest.TestCase):
         fake_config_yml = {"script_list": fake_script_list}
 
         for name in scripts:
-            rel = subscript._CONFIG_REL_PATHS[name]
+            rel = set_config._CONFIGS[name]._config_rel_path
             ext = os.path.splitext(rel)[1].lower()
             fake_data = {"test_key": "test_value"}
             if ext == ".json":
@@ -241,7 +264,7 @@ class TestLoadConfig(unittest.TestCase):
                 patch("os.path.exists", return_value=True),
                 patch("builtins.open", mock_open(read_data=file_content)),
             ):
-                result = subscript.load_config(name)
+                result = subscript.load_config(name, rel)
 
             self.assertIsNotNone(result, f"{name} config 读取失败")
             self.assertEqual(result, fake_data, f"{name} config 读取内容不匹配")
@@ -260,7 +283,7 @@ class TestSaveConfig(unittest.TestCase):
             patch.object(subscript, "get_config_path", return_value=fake_path),
             patch("builtins.open", m),
         ):
-            result = subscript.save_config("ok-ww", data)
+            result = subscript.save_config("ok-ww", "DailyTask.json", data)
 
         self.assertIsNone(result)
         m.assert_called_once_with(fake_path, "w", encoding="utf-8")
@@ -279,7 +302,9 @@ class TestSaveConfig(unittest.TestCase):
             patch.object(subscript, "get_config_path", return_value=fake_path),
             patch("builtins.open", m),
         ):
-            result = subscript.save_config("OneDragon-Launcher", data)
+            result = subscript.save_config(
+                "OneDragon-Launcher", "charge_plan.yml", data
+            )
 
         self.assertIsNone(result)
         m.assert_called_once_with(fake_path, "w", encoding="utf-8")
@@ -294,7 +319,7 @@ class TestSaveConfig(unittest.TestCase):
             patch.object(subscript, "get_config_path", return_value=None),
             self.assertRaises((TypeError, AssertionError)),
         ):
-            subscript.save_config("none", {"key": "val"})
+            subscript.save_config("none", "whatever.json", {"key": "val"})
 
     def test_save_and_reload_roundtrip_json(self):
         """JSON 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
@@ -304,10 +329,10 @@ class TestSaveConfig(unittest.TestCase):
             fake_path = os.path.join(tmp, "config.json")
             with patch.object(subscript, "get_config_path", return_value=fake_path):
                 # save
-                ok = subscript.save_config("ok-ww", data)
+                ok = subscript.save_config("ok-ww", "DailyTask.json", data)
                 self.assertIsNone(ok)
                 # load
-                loaded = subscript.load_config("ok-ww")
+                loaded = subscript.load_config("ok-ww", "DailyTask.json")
                 self.assertEqual(loaded, data)
 
     def test_save_and_reload_roundtrip_yaml(self):
@@ -318,10 +343,12 @@ class TestSaveConfig(unittest.TestCase):
             fake_path = os.path.join(tmp, "config.yaml")
             with patch.object(subscript, "get_config_path", return_value=fake_path):
                 # save
-                ok = subscript.save_config("OneDragon-Launcher", data)
+                ok = subscript.save_config(
+                    "OneDragon-Launcher", "charge_plan.yml", data
+                )
                 self.assertIsNone(ok)
                 # load
-                loaded = subscript.load_config("OneDragon-Launcher")
+                loaded = subscript.load_config("OneDragon-Launcher", "charge_plan.yml")
                 self.assertEqual(loaded, data)
 
 
