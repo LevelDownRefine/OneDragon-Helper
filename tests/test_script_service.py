@@ -181,9 +181,7 @@ class TestCheckWeekly(ScriptServiceTestBase):
     def test_orphan_key_reported(self):
         """weekly 有 config 已删除的 key → 进 orphans。"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump(
-                {"a": [3600] * 7, "gone": [3600] * 7}, f, allow_unicode=True
-            )
+            yaml.dump({"a": [3600] * 7, "gone": [3600] * 7}, f, allow_unicode=True)
         result = ScriptService().check_weekly()
         self.assertEqual(result["status"], "inconsistent")
         self.assertEqual(result["orphans"], ["gone"])

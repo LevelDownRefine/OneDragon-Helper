@@ -21,11 +21,15 @@ class TestGetProcessName(unittest.TestCase):
     """测试 get_process_name：script_path basename 去后缀。"""
 
     def test_exe_basename(self):
-        self.assertEqual(get_process_name("D:\\game_helper\\BetterGI\\BetterGI.exe"), "BetterGI")
+        self.assertEqual(
+            get_process_name("D:\\game_helper\\BetterGI\\BetterGI.exe"), "BetterGI"
+        )
 
     def test_exe_with_spaces(self):
         self.assertEqual(
-            get_process_name("D:/game_helper/March7thAssistant_full/March7th Assistant.exe"),
+            get_process_name(
+                "D:/game_helper/March7thAssistant_full/March7th Assistant.exe"
+            ),
             "March7th-Assistant",
         )
 
@@ -231,9 +235,7 @@ class TestLoadGameConfig(unittest.TestCase):
                 "src.config.subscript._get_script_root_dir_soft",
                 return_value="C:/root",
             ),
-            mock.patch(
-                "src.config.subscript.os.path.exists", return_value=False
-            ),
+            mock.patch("src.config.subscript.os.path.exists", return_value=False),
         ):
             got = load_game_config("ok-ww")
         self.assertIsNone(got)
@@ -246,18 +248,14 @@ class TestLoadGameConfig(unittest.TestCase):
                 "src.config.subscript._get_script_root_dir_soft",
                 return_value="C:/root",
             ),
-            mock.patch(
-                "src.config.subscript.os.path.exists", return_value=True
-            ),
+            mock.patch("src.config.subscript.os.path.exists", return_value=True),
             mock.patch(
                 "src.config.subscript.safe_path_join",
                 return_value=fake_path,
             ),
             mock.patch(
                 "builtins.open",
-                mock.mock_open(
-                    read_data='{"pc_full_path": "D:/Game/game.exe"}'
-                ),
+                mock.mock_open(read_data='{"pc_full_path": "D:/Game/game.exe"}'),
             ),
         ):
             got = load_game_config("ok-ww")
@@ -271,9 +269,7 @@ class TestLoadGameConfig(unittest.TestCase):
                 "src.config.subscript._get_script_root_dir_soft",
                 return_value="C:/root",
             ),
-            mock.patch(
-                "src.config.subscript.os.path.exists", return_value=True
-            ),
+            mock.patch("src.config.subscript.os.path.exists", return_value=True),
             mock.patch(
                 "src.config.subscript.safe_path_join",
                 return_value=fake_path,

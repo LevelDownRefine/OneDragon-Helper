@@ -513,9 +513,7 @@ def set_config(
     # 自定义脚本（用户在 GUI 中新增）没有副本适配，不在注册表中，直接跳过。
     # 这类脚本本就没有副本选项，正常不会带 dungeon_name 走到这里；即便带了也优雅跳过。
     if script_name not in _CONFIGS:
-        logger.info(
-            f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过"
-        )
+        logger.info(f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过")
         return
 
     cfg_cls = _CONFIGS[script_name]

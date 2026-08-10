@@ -186,9 +186,7 @@ def get_config_path(script_name: str) -> str:
     拼接脚本根目录 + config 相对路径。
     并确保 config 文件存在。
     """
-    assert script_name in _CONFIG_REL_PATHS, (
-        f"[set_config] 未适配脚本: {script_name}"
-    )
+    assert script_name in _CONFIG_REL_PATHS, f"[set_config] 未适配脚本: {script_name}"
     root = _get_script_root_dir(script_name)
     rel = _CONFIG_REL_PATHS[script_name]
     config_path = safe_path_join(root, rel)
@@ -206,9 +204,7 @@ def load_template(script_name: str) -> dict | list:
     加载模板文件，支持 JSON 和 YAML 格式。
     文件不存在或格式不支持时抛出 AssertionError。
     """
-    assert script_name in _TEMPLATE_PATHS, (
-        f"[set_config][{script_name}] 未配置模板路径"
-    )
+    assert script_name in _TEMPLATE_PATHS, f"[set_config][{script_name}] 未配置模板路径"
     rel_path = _TEMPLATE_PATHS[script_name]
     template_path = safe_path_join(get_root_dir(), "config", rel_path)
     assert os.path.exists(template_path), (
@@ -259,8 +255,7 @@ def load_game_config(script_name: str) -> dict | None:
     game_config_path = safe_path_join(root, rel)
     if not os.path.exists(game_config_path):
         logger.warning(
-            f"[set_config][{script_name}] 游戏路径配置文件不存在: "
-            f"{game_config_path}"
+            f"[set_config][{script_name}] 游戏路径配置文件不存在: {game_config_path}"
         )
         return None
     ext = os.path.splitext(game_config_path)[1].lower()

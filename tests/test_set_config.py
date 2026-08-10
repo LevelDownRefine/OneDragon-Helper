@@ -26,7 +26,15 @@ class TestConfigRelPaths(unittest.TestCase):
 
     def test_all_scripts_have_rel_path(self):
         """每个已适配脚本都应在 _CONFIG_REL_PATHS 中有记录"""
-        scripts = ["ok-ww", "BetterGI", "ok-ef", "OneDragon-Launcher", "March7th-Assistant", "ok-nte", "MAA"]
+        scripts = [
+            "ok-ww",
+            "BetterGI",
+            "ok-ef",
+            "OneDragon-Launcher",
+            "March7th-Assistant",
+            "ok-nte",
+            "MAA",
+        ]
         for name in scripts:
             self.assertIn(
                 name, subscript._CONFIG_REL_PATHS, f"{name} 缺少 config 相对路径"

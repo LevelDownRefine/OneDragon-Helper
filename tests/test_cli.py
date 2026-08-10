@@ -95,9 +95,7 @@ def _known_script_names():
     config_path = launcher.get_config_yml_path_under_root()
     with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    return [
-        get_script_name(s) for s in data.get("script_list", [])
-    ]
+    return [get_script_name(s) for s in data.get("script_list", [])]
 
 
 class TestCliHelpVersion(unittest.TestCase):

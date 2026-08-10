@@ -27,12 +27,22 @@ def _make_window(script_count=3, disable_persist=False):
         win = MainWindow()
     win.dungeon_map = {}
     win.script_items = [
-        ScriptItem({"display_name": f"脚本{i}", "script_type": "external", "script_path": f"脚本{i}.exe"})
+        ScriptItem(
+            {
+                "display_name": f"脚本{i}",
+                "script_type": "external",
+                "script_path": f"脚本{i}.exe",
+            }
+        )
         for i in range(script_count)
     ]
     win.all_config_data = {
         "script_list": [
-            {"display_name": f"脚本{i}", "script_type": "external", "script_path": f"脚本{i}.exe"}
+            {
+                "display_name": f"脚本{i}",
+                "script_type": "external",
+                "script_path": f"脚本{i}.exe",
+            }
             for i in range(script_count)
         ]
     }

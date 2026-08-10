@@ -325,18 +325,16 @@ class MainWindow(QMainWindow):
             ),
             None,
         )
-        assert dst_idx is not None, f"[main_window] 拖拽目标脚本不存在: {dst_script_name}"
+        assert dst_idx is not None, (
+            f"[main_window] 拖拽目标脚本不存在: {dst_script_name}"
+        )
         item = script_items.pop(src_idx)
         script_items.insert(dst_idx, item)
 
         # 同步 config.yml 中的顺序（以 UI 顺序为准）
         scripts = self.all_config_data["script_list"]
         s_idx = next(
-            (
-                i
-                for i, s in enumerate(scripts)
-                if get_script_name(s) == src_script_name
-            ),
+            (i for i, s in enumerate(scripts) if get_script_name(s) == src_script_name),
             None,
         )
         assert s_idx is not None, (

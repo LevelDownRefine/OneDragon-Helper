@@ -29,7 +29,12 @@ class TestScriptItemGetState(unittest.TestCase):
     def test_get_state_no_dungeon_no_sequence(self):
         """无副本无序列时返回空 dict"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe", "enabled": True}
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+                "enabled": True,
+            }
         )
         state = item.get_state()
         self.assertEqual(state, {})
@@ -37,7 +42,11 @@ class TestScriptItemGetState(unittest.TestCase):
     def test_get_state_with_dungeon(self):
         """有副本选择时返回 dungeon"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe"},
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+            },
             dungeon_options=["副本A", "副本B"],
         )
         item._on_dungeon_selected("副本B")
@@ -47,7 +56,11 @@ class TestScriptItemGetState(unittest.TestCase):
     def test_get_state_with_sequence(self):
         """有序列时返回 sequence"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe"},
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+            },
             dungeon_options=["未选择", "副本A"],
             sequence_options_map={
                 "副本A": [
@@ -65,7 +78,12 @@ class TestScriptItemGetState(unittest.TestCase):
     def test_get_state_excludes_enabled(self):
         """get_state 不包含 enabled"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe", "enabled": True}
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+                "enabled": True,
+            }
         )
         state = item.get_state()
         self.assertNotIn("enabled", state)
@@ -77,7 +95,12 @@ class TestScriptItemEnabledNotPersisted(unittest.TestCase):
     def test_toggle_does_not_trigger_callback(self):
         """toggle 不触发 _on_state_changed"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe", "enabled": True}
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+                "enabled": True,
+            }
         )
         callback_called = []
         item.set_state_callback(lambda: callback_called.append(True))
@@ -87,7 +110,12 @@ class TestScriptItemEnabledNotPersisted(unittest.TestCase):
     def test_enabled_always_true_ignores_config(self):
         """enabled 为纯内存态、硬编码 True，不读 script_data 也不读 saved_state"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe", "enabled": False},
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+                "enabled": False,
+            },
             saved_state={"enabled": False, "dungeon": "A"},
         )
         self.assertTrue(item.enabled)
@@ -99,7 +127,11 @@ class TestScriptItemSavedState(unittest.TestCase):
     def test_dungeon_restored_from_saved_state(self):
         """副本选择从 saved_state 恢复"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe"},
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+            },
             dungeon_options=["副本A", "副本B"],
             saved_state={"dungeon": "副本B"},
         )
@@ -108,7 +140,11 @@ class TestScriptItemSavedState(unittest.TestCase):
     def test_sequence_restored_from_saved_state(self):
         """序列从 saved_state 恢复"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe"},
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+            },
             dungeon_options=["未选择", "副本A"],
             sequence_options_map={
                 "副本A": [
@@ -126,7 +162,11 @@ class TestScriptItemSavedState(unittest.TestCase):
     def test_dungeon_not_restored_if_not_in_options(self):
         """saved_state 中的副本不在选项中时不恢复"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe"},
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+            },
             dungeon_options=["副本A", "副本B"],
             saved_state={"dungeon": "不存在"},
         )
@@ -140,7 +180,11 @@ class TestScriptItemCallback(unittest.TestCase):
     def test_dungeon_change_triggers_callback(self):
         """切换副本触发回调"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe"},
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+            },
             dungeon_options=["副本A", "副本B"],
         )
         called = []
@@ -151,7 +195,11 @@ class TestScriptItemCallback(unittest.TestCase):
     def test_sequence_change_triggers_callback(self):
         """修改序列触发回调"""
         item = ScriptItem(
-            {"display_name": "test", "script_type": "external", "script_path": "test.exe"},
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+            },
             dungeon_options=["未选择", "副本A"],
             sequence_options_map={
                 "副本A": [
@@ -174,13 +222,17 @@ class TestScriptItemDragDrop(unittest.TestCase):
 
     def test_item_created_and_accepts_drops(self):
         """构造后可发起拖拽（_drag_start_pos 已初始化）且接受 drop"""
-        item = ScriptItem({"display_name": "A", "script_type": "external", "script_path": "A.exe"})
+        item = ScriptItem(
+            {"display_name": "A", "script_type": "external", "script_path": "A.exe"}
+        )
         self.assertIsNone(item._drag_start_pos)
         self.assertTrue(item.acceptDrops())
 
     def test_dragEnterEvent_accepts_our_mime(self):
         """dragEnterEvent 接受本应用的自定义 MIME"""
-        item = ScriptItem({"display_name": "A", "script_type": "external", "script_path": "A.exe"})
+        item = ScriptItem(
+            {"display_name": "A", "script_type": "external", "script_path": "A.exe"}
+        )
         item._reorder_callback = lambda src, dst: None
         mime = QMimeData()
         mime.setData(DRAG_MIME, b"B")
@@ -193,7 +245,9 @@ class TestScriptItemDragDrop(unittest.TestCase):
 
     def test_dragEnterEvent_ignores_unknown_mime(self):
         """dragEnterEvent 忽略未知 MIME"""
-        item = ScriptItem({"display_name": "A", "script_type": "external", "script_path": "A.exe"})
+        item = ScriptItem(
+            {"display_name": "A", "script_type": "external", "script_path": "A.exe"}
+        )
         mime = QMimeData()
         mime.setText("B")
         event = QDragEnterEvent(
@@ -205,7 +259,9 @@ class TestScriptItemDragDrop(unittest.TestCase):
 
     def test_dropEvent_calls_reorder_callback(self):
         """dropEvent 以 (src_name, dst_name) 调用重排回调"""
-        item = ScriptItem({"display_name": "A", "script_type": "external", "script_path": "A.exe"})
+        item = ScriptItem(
+            {"display_name": "A", "script_type": "external", "script_path": "A.exe"}
+        )
         called = []
         item._reorder_callback = lambda src, dst: called.append((src, dst))
         mime = QMimeData()
@@ -219,7 +275,9 @@ class TestScriptItemDragDrop(unittest.TestCase):
 
     def test_dropEvent_ignores_unknown_mime(self):
         """dropEvent 忽略未知 MIME 且不触发回调"""
-        item = ScriptItem({"display_name": "A", "script_type": "external", "script_path": "A.exe"})
+        item = ScriptItem(
+            {"display_name": "A", "script_type": "external", "script_path": "A.exe"}
+        )
         called = []
         item._reorder_callback = lambda src, dst: called.append((src, dst))
         mime = QMimeData()
@@ -233,7 +291,9 @@ class TestScriptItemDragDrop(unittest.TestCase):
 
     def test_dropEvent_noop_when_same_name(self):
         """拖到自己身上（src==dst）时不触发重排"""
-        item = ScriptItem({"display_name": "A", "script_type": "external", "script_path": "A.exe"})
+        item = ScriptItem(
+            {"display_name": "A", "script_type": "external", "script_path": "A.exe"}
+        )
         called = []
         item._reorder_callback = lambda src, dst: called.append((src, dst))
         mime = QMimeData()

@@ -140,7 +140,9 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.setWindowTitle(f"配置 {display_name}")
         self.setStyleSheet(f"background-color: {theme.BG_HOVER};")
 
-        self.script_name = script_name  # 内部标识：exe 用进程名，脚本文件用 display_name
+        self.script_name = (
+            script_name  # 内部标识：exe 用进程名，脚本文件用 display_name
+        )
         self.display_name = display_name  # 展示名
         self.script_path = script_path
         self.saved_display_name = display_name  # 保存后最终生效的展示名（可能被改名）

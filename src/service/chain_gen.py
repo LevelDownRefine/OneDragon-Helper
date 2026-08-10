@@ -44,9 +44,7 @@ def _apply_weekly_timeout(script: dict, weekly_timeouts: dict) -> None:
     - 有完整 7 格 → 取当天值，且不低于 10（避免 0 秒杀脚本）。
     - 无条目 / 不足 7 格 → fallback 到 DEFAULT_RUN_TIMEOUT。
     """
-    assert "script_path" in script, (
-        "[chain_gen] script_list 条目缺少 script_path 字段"
-    )
+    assert "script_path" in script, "[chain_gen] script_list 条目缺少 script_path 字段"
     script_name = get_script_name(script)
     if script_name not in weekly_timeouts:
         script["run_timeout_seconds"] = DEFAULT_RUN_TIMEOUT
