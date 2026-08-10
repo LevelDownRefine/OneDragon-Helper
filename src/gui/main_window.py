@@ -5,10 +5,11 @@ import os
 import time
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFontMetrics
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QMainWindow,
     QMessageBox,
@@ -22,9 +23,14 @@ from src.config.dungeon_config import (
     parse_dungeon_config,
     restore_sequence_type,
 )
+from src.gui import theme
 from src.gui.runner import ScriptChainRunner
 from src.gui.utils import make_pill_button, safe_startfile
-from src.gui.widgets import ScriptItem
+from src.gui.widgets import (
+    TITLE_MAX_WIDTH,
+    TITLE_MIN_WIDTH,
+    ScriptItem,
+)
 from src.service.chain_service import ChainService
 from src.service.script_service import ScriptService
 from src.utils import get_config_yml_path_under_root
@@ -60,40 +66,24 @@ class MainWindow(QMainWindow):
 
     def _init_ui(self):
         central = QWidget()
-        central.setStyleSheet("background-color: #eef1f6;")
+        central.setStyleSheet(f"background-color: {theme.BG_MAIN};")
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(18, 16, 18, 18)
-        layout.setSpacing(14)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(16)
         self._central_layout = layout  # 供 _load_scripts 末尾挂载 scroll
 
         # 脚本列表
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setStyleSheet("""
-            QScrollArea {
-                background-color: transparent;
-                border: none;
-            }
-            QScrollBar:vertical {
-                width: 8px;
-                background: transparent;
-            }
-            QScrollBar::handle:vertical {
-                background: #cbd5e1;
-                border-radius: 4px;
-                min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover { background: #94a3b8; }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-        """)
+        scroll.setStyleSheet(theme.scroll_area_qss())
 
         self.scroll_content = QWidget()
         self.scroll_content.setStyleSheet("background-color: transparent;")
         self.scroll_layout = QVBoxLayout(self.scroll_content)
-        self.scroll_layout.setContentsMargins(2, 2, 14, 2)
-        self.scroll_layout.setSpacing(10)
+        self.scroll_layout.setContentsMargins(2, 4, 14, 4)
+        self.scroll_layout.setSpacing(12)
         self.scroll_layout.addStretch()
         # 挂载延迟到 _load_scripts 末尾（卡片插满后再 setWidget+addWidget）：
         # widgetResizable=True 时，若先挂载再逐卡插入，每次插入都触发 viewport
@@ -103,29 +93,43 @@ class MainWindow(QMainWindow):
         # 快捷操作按钮（全选 / 清空 / 添加）
         action_layout = QHBoxLayout()
         action_layout.setContentsMargins(0, 0, 0, 0)
-        action_layout.setSpacing(8)
+        action_layout.setSpacing(10)
 
         self.select_all_btn = make_pill_button(
-            "一键全选", accent="#3b82f6", pressed_bg="#f0f4ff"
+            "一键全选",
+            accent=theme.BLUE,
+            pressed_bg=theme.BG_CHIP,
+            font_size=theme.FONT_SIZE_BODY,
         )
         self.select_all_btn.clicked.connect(self._select_all)
         action_layout.addWidget(self.select_all_btn)
 
         self.deselect_all_btn = make_pill_button(
-            "清空选择", accent="#ef4444", pressed_bg="#fef2f2"
+            "清空选择",
+            accent=theme.CRIMSON,
+            pressed_bg=theme.BG_DANGER_SOFT,
+            font_size=theme.FONT_SIZE_BODY,
         )
         self.deselect_all_btn.clicked.connect(self._deselect_all)
         action_layout.addWidget(self.deselect_all_btn)
 
         self.add_script_btn = make_pill_button(
-            "添加脚本", accent="#22c55e", hover_color="#16a34a", pressed_bg="#f0fdf4"
+            "添加脚本",
+            accent=theme.DARK_BLUE,
+            hover_color=theme.BLUE_DARK,
+            pressed_bg=theme.BG_CHIP,
+            font_size=theme.FONT_SIZE_BODY,
         )
         self.add_script_btn.clicked.connect(self._add_script)
         action_layout.addWidget(self.add_script_btn)
 
         # 打开配置：直接打开 config.yml（get_config_yml_path_under_root）
         self.open_config_btn = make_pill_button(
-            "打开配置", accent="#8b5cf6", hover_color="#7c3aed", pressed_bg="#f1ecfb"
+            "打开配置",
+            accent=theme.SKY_BLUE,
+            hover_color=theme.BLUE,
+            pressed_bg=theme.BG_CHIP,
+            font_size=theme.FONT_SIZE_BODY,
         )
         self.open_config_btn.clicked.connect(self._open_config_yml)
         action_layout.addWidget(self.open_config_btn)
@@ -136,24 +140,19 @@ class MainWindow(QMainWindow):
 
         # 运行按钮
         self.run_btn = QPushButton("▶ 运行全部开启的脚本")
-        self.run_btn.setFixedHeight(46)
-        self.run_btn.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+        self.run_btn.setFixedHeight(48)
+        font = theme.make_font(size=theme.FONT_SIZE_HERO, bold=True)
+        self.run_btn.setFont(font)
         self.run_btn.setCursor(Qt.PointingHandCursor)
-        self.run_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #4f8cff, stop:1 #3b82f6);
-                color: white;
-                border: none;
-                border-radius: 10px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                            stop:0 #5b96ff, stop:1 #2f6fed);
-            }
-            QPushButton:pressed { background: #2f6fed; }
-            QPushButton:disabled { background: #cbd5e1; }
-        """)
+        self.run_btn.setStyleSheet(
+            theme.primary_button_qss(radius=12, font_size=theme.FONT_SIZE_HERO)
+        )
+        # 运行按钮加重阴影（深空蓝透明），强化主操作层次感
+        run_shadow = QGraphicsDropShadowEffect(self.run_btn)
+        run_shadow.setBlurRadius(20)
+        run_shadow.setColor(QColor(93, 116, 162, 80))
+        run_shadow.setOffset(0, 4)
+        self.run_btn.setGraphicsEffect(run_shadow)
         self.run_btn.clicked.connect(self._run_selected)
         layout.addWidget(self.run_btn)
 
@@ -190,6 +189,35 @@ class MainWindow(QMainWindow):
         # widgetResizable viewport 反复重算。布局顺序：scroll 需位于按钮区之前。
         self._scroll.setWidget(self.scroll_content)
         self._central_layout.insertWidget(0, self._scroll, stretch=1)
+
+        # 标题列等宽对齐：扫描所有 ScriptItem 后统一计算（流程化，避免硬编码漂移）
+        self._sync_title_widths()
+
+    def _sync_title_widths(self) -> None:
+        """统一所有 ScriptItem 标题列宽度 = 最长内容 + padding，带上下限。
+
+        流程化设计：每个 ScriptItem 构造时只设 minimum + 默认占位宽度；本方法
+        在 ``_load_scripts`` 末尾 / 改名后调用，按实际内容动态算宽度，刷新
+        ``_title_width`` 并触发 ``_refresh_title`` 重新截断。这样无论新增脚本
+        名字多长，都不会撑爆布局，也不会因硬编码 60/110 漂移而漏字。
+        """
+        items = self.script_items
+        if not items:
+            return
+        fm = QFontMetrics(items[0].title_label.font())
+        # chip 水平 padding 之和（widgets.py title_label padding 10+10=20）
+        # 同步固定宽度 = 文字宽 + 20
+        padding = 20
+        max_w = TITLE_MIN_WIDTH
+        for it in items:
+            w = fm.horizontalAdvance(it.display_name) + padding
+            if w > max_w:
+                max_w = w
+        max_w = max(TITLE_MIN_WIDTH, min(TITLE_MAX_WIDTH, int(max_w)))
+        for it in items:
+            it._title_width = max_w
+            it.title_label.setFixedWidth(max_w)
+            it._refresh_title()
 
     def _create_script_item(self, data, saved_state):
         """构造 ScriptItem 并注入 UI 状态回调"""
@@ -259,6 +287,10 @@ class MainWindow(QMainWindow):
                 )
                 item.sync_from_script_data(new_data)
                 break
+
+        # 改名后该 ScriptItem 的 display_name 变化，需重新同步标题列宽度
+        # （避免单卡破坏等宽——sync 会按所有脚本重算最长内容并统一应用）
+        self._sync_title_widths()
 
     def _reorder_scripts(self, src_name, dst_name):
         """把 src_name 对应的脚本移动到 dst_name 所在位置，并同步 UI 与 config.yml"""

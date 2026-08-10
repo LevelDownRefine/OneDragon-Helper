@@ -6,7 +6,7 @@ import os
 import subprocess
 
 from PySide6.QtCore import QMimeData, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter
+from PySide6.QtGui import QColor, QDrag, QFontMetrics, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -16,16 +16,16 @@ from PySide6.QtWidgets import (
     QLabel,
     QMenu,
     QMessageBox,
+    QPushButton,
     QWidget,
 )
 
 from src.config.dungeon_config import get_display_name
 from src.config.subscript import get_script_path, resolve_script_path
-from src.gui import icons
+from src.gui import icons, theme
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.utils import (
     _styled_msg_box,
-    make_secondary_button,
     safe_startfile,
 )
 from src.utils_runner import build_script_command
@@ -35,33 +35,31 @@ logger = logging.getLogger(__name__)
 # 拖拽重排使用的自定义 MIME 类型（仅在本应用内传递脚本 display_name）
 DRAG_MIME = "application/x-onedragon-script"
 
-# 弹出菜单统一样式：白底深字，避免深色系统主题下文字不可读
-_MENU_STYLE = """
-QMenu {
-    border: 1px solid #d0d0d0;
-    border-radius: 4px;
-    background: white;
-    padding: 4px;
-    font-size: 11px;
-}
-QMenu::item {
-    padding: 4px 20px 4px 12px;
-    border-radius: 3px;
-    color: #1f2937;
-}
-QMenu::item:selected {
-    background-color: #3b82f6;
-    color: white;
-}
-QMenu::item:disabled {
-    color: #c0c4cc;
-}
-QMenu::separator {
-    height: 1px;
-    background: #e0e0e0;
-    margin: 4px 8px;
-}
-"""
+# 弹出菜单统一样式（theme 模板）：白底深字，避免深色系统主题下文字不可读
+_MENU_STYLE = theme.menu_qss()
+
+# 副本按钮 QSS（与脚本名 chip 风格统一）：透明底 + 雾蓝边框 + 钢蓝 hover
+_DUNGEON_BTN_QSS = (
+    f"QPushButton {{"
+    f"  border: 1px solid {theme.BORDER}; border-radius: 8px;"
+    f"  padding: 0 10px; background: transparent;"
+    f"  color: {theme.DARK_BLUE}; font-family: Microsoft YaHei;"
+    f"  font-size: {theme.FONT_SIZE_BODY}px; text-align: center;"
+    f"}}"
+    f"QPushButton:hover {{"
+    f"  border-color: {theme.BLUE}; background: transparent;"
+    f"  color: {theme.BLUE};"
+    f"}}"
+    f"QPushButton:pressed {{"
+    f"  border-color: {theme.BLUE}; background: transparent;"
+    f"  color: {theme.DARK_BLUE};"
+    f"}}"
+)
+
+# 标题列宽度常量（详见 MainWindow._sync_title_widths）
+TITLE_DEFAULT_WIDTH = 110  # 构造期占位宽度；加载完成后会被 sync 流程覆盖
+TITLE_MIN_WIDTH = 60
+TITLE_MAX_WIDTH = 180
 
 
 class ToggleSwitch(QWidget):
@@ -69,9 +67,9 @@ class ToggleSwitch(QWidget):
 
     toggled = Signal(bool)
 
-    TRACK_ON = "#3b82f6"
-    TRACK_OFF = "#cbd5e1"
-    KNOB = "#ffffff"
+    TRACK_ON = theme.BLUE
+    TRACK_OFF = theme.DISABLED
+    KNOB = theme.BG_CARD
 
     def __init__(self, parent=None, checked=True):
         super().__init__(parent)
@@ -146,7 +144,7 @@ class ScriptItem(QFrame):
         self._script_service = (
             script_service  # 配置弹窗共享的 ScriptService（None 时弹窗自建）
         )
-        self._drag_start_pos = None  # 拖拽起点（仅在手柄上按下时记录）
+        self._drag_start_pos = None  # 拖拽起点（在卡片空白区按下时记录）
         self._sequence_options_map = sequence_options_map or {}  # 副本名 → 二级选项列表
         self._dungeon_options = dungeon_options or []  # 一级副本列表
 
@@ -154,48 +152,62 @@ class ScriptItem(QFrame):
         self.setObjectName("ScriptItem")
         self.setAcceptDrops(True)
         self._apply_card_style()
-        # 卡片阴影，营造悬浮层次感
+        # 卡片阴影，营造悬浮层次感（中改：blur 14→18，offset 3→2，色不透明度 22→28）
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(14)
-        shadow.setColor(QColor(15, 23, 42, 22))
-        shadow.setOffset(0, 3)
+        shadow.setBlurRadius(18)
+        shadow.setColor(QColor(15, 23, 42, 28))
+        shadow.setOffset(0, 2)
         self.setGraphicsEffect(shadow)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 12)
-        layout.setSpacing(8)
-
-        # 拖拽手柄（仅此处可发起拖拽，避免与开关/副本/配置按钮冲突）
-        self.handle = QLabel("⠿")
-        self.handle.setFixedSize(20, 20)
-        self.handle.setAlignment(Qt.AlignCenter)
-        self.handle.setCursor(Qt.OpenHandCursor)
-        self.handle.setStyleSheet("color: #c4c9d4; font-size: 16px;")
-        self.handle.mousePressEvent = self._handle_mouse_press
-        self.handle.mouseMoveEvent = self._handle_mouse_move
-        self.handle.mouseReleaseEvent = self._handle_mouse_release
-        layout.addWidget(self.handle)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
 
         # 脚本图标：external 脚本用 exe 自带图标，其余（如 python）用默认图标
         self.icon_label = QLabel()
         self.icon_label.setFixedSize(28, 28)
-        self.icon_label.setStyleSheet("padding: 0;")
+        self.icon_label.setStyleSheet(
+            "padding: 0; background: transparent; border: none;"
+        )
         self.icon_label.setAlignment(Qt.AlignCenter)
         self.icon_label.setCursor(Qt.PointingHandCursor)
         self.icon_label.mousePressEvent = self._icon_mouse_press
         self._refresh_icon(script_data)
         layout.addWidget(self.icon_label)
 
-        # 脚本名称（固定宽度：所有卡片脚本名区等宽，副本按钮居中后才跨卡对齐）
+        # 脚本名称：宽度由 MainWindow._sync_title_widths() 流程统一决定（避免硬编码漂移）。
+        # 构造期先按默认 ``TITLE_DEFAULT_WIDTH`` 占位，load_scripts 末尾会刷新。
         self.title_label = QLabel(self.display_name)
-        title_font = QFont("Microsoft YaHei", 11)
+        # 脚本名 chip：字号用像素单位（与 QSS font-size 一致渲染），见 theme.make_font
+        title_font = theme.make_font(size=theme.FONT_SIZE_BODY)
         self.title_label.setFont(title_font)
-        self.title_label.setStyleSheet("color: #1f2937;")
-        self.title_label.setFixedWidth(60)
+        # 脚本名：透明底 + 雾蓝边框 + 圆角 8（hover 时由 enter/leaveEvent 变色，与副本按钮统一）
+        self._STYLE_TITLE_NORMAL = (
+            f"color: {theme.DARK_BLUE}; background: transparent;"
+            f" border: 1px solid {theme.BORDER}; border-radius: 8px;"
+            " padding: 4px 10px;"
+        )
+        self._STYLE_TITLE_HOVER = (
+            f"color: {theme.BLUE}; background: transparent;"
+            f" border: 1px solid {theme.BLUE}; border-radius: 8px;"
+            " padding: 4px 10px;"
+        )
+        self._STYLE_TITLE_DISABLED = (
+            f"color: {theme.TEXT_FAINT}; background: transparent;"
+            f" border: 1px solid {theme.BORDER_SOFT}; border-radius: 8px;"
+            " padding: 4px 10px;"
+        )
+        self.title_label.setStyleSheet(self._STYLE_TITLE_NORMAL)
+        # 脚本名 hover 变色：与副本按钮 hover 效果一致（边框+文字变钢蓝）
+        self.title_label.enterEvent = self._title_enter
+        self.title_label.leaveEvent = self._title_leave
+        self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setMinimumWidth(TITLE_MIN_WIDTH)
+        self._title_width = TITLE_DEFAULT_WIDTH
         # QLabel 无 setElideMode，用 QFontMetrics 手动截断超长名字
         self.title_label.setText(
             QFontMetrics(title_font).elidedText(
-                self.display_name, Qt.TextElideMode.ElideRight, 110
+                self.display_name, Qt.TextElideMode.ElideRight, self._title_width
             )
         )
         self.title_label.setCursor(Qt.PointingHandCursor)
@@ -256,11 +268,15 @@ class ScriptItem(QFrame):
             self._config_saved_callback(changes)
 
     def _refresh_title(self) -> None:
-        """按当前 display_name 刷新卡片标题（含超长截断），改名后调用。"""
+        """按当前 display_name + _title_width 刷新卡片标题（含超长截断）。
+
+        ``_title_width`` 由 :meth:`MainWindow._sync_title_widths` 同步设置，
+        所有 ScriptItem 一致；改名后调用本方法可立即以新宽度重新截断。
+        """
         title_font = self.title_label.font()
         self.title_label.setText(
             QFontMetrics(title_font).elidedText(
-                self.display_name, Qt.TextElideMode.ElideRight, 110
+                self.display_name, Qt.TextElideMode.ElideRight, self._title_width
             )
         )
 
@@ -346,6 +362,16 @@ class ScriptItem(QFrame):
         if event.button() == Qt.LeftButton:
             self._show_config_dialog()
         QLabel.mousePressEvent(self.title_label, event)
+
+    def _title_enter(self, _event):
+        """鼠标进入脚本名区域：边框/文字变钢蓝，与副本按钮 hover 效果统一。"""
+        if self.enabled:
+            self.title_label.setStyleSheet(self._STYLE_TITLE_HOVER)
+
+    def _title_leave(self, _event):
+        """鼠标离开脚本名区域：恢复默认样式。"""
+        if self.enabled:
+            self.title_label.setStyleSheet(self._STYLE_TITLE_NORMAL)
 
     def _show_dungeon_menu(self):
         """点击副本按钮，弹出级联菜单"""
@@ -454,15 +480,12 @@ class ScriptItem(QFrame):
             return
 
         if self.dungeon_btn is None:
-            self.dungeon_btn = make_secondary_button(
-                "选择副本", radius=8, padding="0 10px", font_size=11
-            )
+            self.dungeon_btn = QPushButton("选择副本")
+            self.dungeon_btn.setCursor(Qt.PointingHandCursor)
+            self.dungeon_btn.setFixedHeight(26)
+            self.dungeon_btn.setStyleSheet(_DUNGEON_BTN_QSS)
             # 固定宽度：所有卡片副本条等宽，右边缘对齐
             self.dungeon_btn.setFixedWidth(220)
-            # 文本居中；按钮本身由左右等宽 stretch 夹在中间实现居中
-            self.dungeon_btn.setStyleSheet(
-                self.dungeon_btn.styleSheet() + "\nQPushButton { text-align: center; }"
-            )
             self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
             # 追加到左 spacer 之后、右 spacer（__init__ 随后添加）之前 → 居中
             self.layout().insertWidget(self.layout().count(), self.dungeon_btn)
@@ -489,53 +512,49 @@ class ScriptItem(QFrame):
         self._update_switch_style()
 
     def _apply_card_style(self, muted=False):
-        """卡片外观：启用=白底蓝边；停用=灰底浅边"""
+        """卡片外观：启用=白底柔边 + 蓝 hover；停用=灰底浅边"""
         if muted:
-            self.setStyleSheet("""
-                QFrame#ScriptItem {
-                    background-color: #f7f8fa;
-                    border: 1px solid #eceef2;
-                    border-radius: 12px;
-                }
-                QFrame#ScriptItem:hover { border-color: #cbd5e1; }
-            """)
+            self.setStyleSheet(
+                theme.card_qss(
+                    background=theme.BG_MUTED,
+                    border=theme.BORDER_SOFT,
+                    hover_border=theme.DISABLED,
+                )
+            )
         else:
-            self.setStyleSheet("""
-                QFrame#ScriptItem {
-                    background-color: #ffffff;
-                    border: 1px solid #e6e9f0;
-                    border-radius: 12px;
-                }
-                QFrame#ScriptItem:hover { border-color: #3b82f6; }
-            """)
+            self.setStyleSheet(
+                theme.card_qss(
+                    background=theme.BG_CARD,
+                    border=theme.BORDER,
+                    hover_border=theme.BLUE,
+                )
+            )
 
     def _update_switch_style(self):
         self.toggle.setChecked(self.enabled)
         self._apply_card_style(not self.enabled)
-        if self.enabled:
-            self.title_label.setStyleSheet("color: #1f2937;")
-        else:
-            self.title_label.setStyleSheet("color: #9ca3af;")
+        self.title_label.setStyleSheet(
+            self._STYLE_TITLE_NORMAL if self.enabled else self._STYLE_TITLE_DISABLED
+        )
 
-    # ---- 拖拽重排（仅手柄可发起） ----
-    def _handle_mouse_press(self, event):
+    # ---- 拖拽重排（整个卡片空白区域可发起，子控件点击不受影响） ----
+    def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._drag_start_pos = event.pos()
-        QLabel.mousePressEvent(self.handle, event)
+        super().mousePressEvent(event)
 
-    def _handle_mouse_move(self, event):
-        if self._drag_start_pos is None or not (event.buttons() & Qt.LeftButton):
-            return
-        if (
-            event.pos() - self._drag_start_pos
-        ).manhattanLength() < QApplication.startDragDistance():
-            return
-        self._drag_start_pos = None
-        self._start_drag()
+    def mouseMoveEvent(self, event):
+        if self._drag_start_pos is not None and (event.buttons() & Qt.LeftButton):
+            if (
+                event.pos() - self._drag_start_pos
+            ).manhattanLength() >= QApplication.startDragDistance():
+                self._drag_start_pos = None
+                self._start_drag()
+        super().mouseMoveEvent(event)
 
-    def _handle_mouse_release(self, event):
+    def mouseReleaseEvent(self, event):
         self._drag_start_pos = None
-        QLabel.mouseReleaseEvent(self.handle, event)
+        super().mouseReleaseEvent(event)
 
     def _start_drag(self):
         mime = QMimeData()
