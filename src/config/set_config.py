@@ -71,8 +71,9 @@ def safe_update(
 class ScriptConfig:
     """单个自动化脚本的 config 操作基类"""
 
-    script_name: str = ""
-    """内部标识：script_path basename 去后缀（如 ok-ww / BetterGI），全链路适配 key"""
+    _script_name: str = ""
+    """内部标识：script_path basename 去后缀（如 ok-ww / BetterGI），全链路适配 key
+    （_CONFIGS 注册表索引，外部代码不直接访问）"""
     display_name: str = ""
     """GUI 展示名（如 鸣潮），仅用于展示/日志"""
     _task_key: str = ""
@@ -110,29 +111,8 @@ class ScriptConfig:
     config」的矛盾行为。
     """
 
-    def __init_subclass__(cls, **kwargs) -> None:
-        """自动把声明了 ``script_name`` 的子类登记进 ``_CONFIGS`` 注册表。
-
-        未声明 ``script_name`` 的中间基类/测试类不注册。路径声明不完整
-        （缺 ``_config_rel_path``、或声明了 ``_game_path_keys`` 却缺
-        ``_game_config_rel_path``）属编程错误，import 时立即 assert 暴露，
-        避免新增脚本漏配路径后静默缺功能。
-        """
-        super().__init_subclass__(**kwargs)
-        if not cls.script_name:
-            return
-        assert cls._config_rel_path, (
-            f"[set_config][{cls.__name__}] 必须声明 _config_rel_path"
-        )
-        if cls._game_path_keys:
-            assert cls._game_config_rel_path, (
-                f"[set_config][{cls.__name__}] 声明了 _game_path_keys 必须声明 "
-                f"_game_config_rel_path"
-            )
-        _CONFIGS[cls.script_name] = cls
-
     def _load(self) -> dict:
-        config = load_config(self.script_name, self._config_rel_path)
+        config = load_config(self._script_name, self._config_rel_path)
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
@@ -145,7 +125,7 @@ class ScriptConfig:
         if not self.enabled:
             logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
             return
-        save_config(self.script_name, self._config_rel_path, config)
+        save_config(self._script_name, self._config_rel_path, config)
         self._verify_saved(config)
 
     def _verify_saved(self, expected: dict) -> None:
@@ -161,7 +141,7 @@ class ScriptConfig:
         assert self._template_rel_path, (
             f"[set_config][{self.display_name}] 未声明 _template_rel_path"
         )
-        return load_template(self.script_name, self._template_rel_path)
+        return load_template(self._script_name, self._template_rel_path)
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
         """
@@ -305,8 +285,29 @@ class ScriptConfig:
 # 注册表
 # ============================================================
 
-# 由 ScriptConfig.__init_subclass__ 在子类定义时自动填充（必须在子类定义前初始化）。
+# 由 register() 装饰器显式填充（必须在子类定义前初始化）。
 _CONFIGS: dict[str, type[ScriptConfig]] = {}
+
+
+def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
+    """显式注册 ScriptConfig 子类到 ``_CONFIGS``（装饰器）。
+
+    子类声明 ``_script_name`` 与路径类属性后加 ``@register`` 即完成登记。
+    路径声明不完整（缺 ``_config_rel_path``、或声明了 ``_game_path_keys`` 却缺
+    ``_game_config_rel_path``）属编程错误，import 时立即 assert 暴露，
+    避免新增脚本漏配路径后静默缺功能。
+    """
+    assert cls._script_name, f"[set_config][{cls.__name__}] 必须声明 _script_name"
+    assert cls._config_rel_path, (
+        f"[set_config][{cls.__name__}] 必须声明 _config_rel_path"
+    )
+    if cls._game_path_keys:
+        assert cls._game_config_rel_path, (
+            f"[set_config][{cls.__name__}] 声明了 _game_path_keys 必须声明 "
+            f"_game_config_rel_path"
+        )
+    _CONFIGS[cls._script_name] = cls
+    return cls
 
 
 # ============================================================
@@ -315,8 +316,9 @@ _CONFIGS: dict[str, type[ScriptConfig]] = {}
 
 
 # ---- 鸣潮 Wuthering Waves ----
+@register
 class WutheringWavesConfig(ScriptConfig):
-    script_name = "ok-ww"
+    _script_name = "ok-ww"
     _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
@@ -367,8 +369,9 @@ class WutheringWavesConfig(ScriptConfig):
 
 
 # ---- 原神 Genshin Impact ----
+@register
 class GenshinConfig(ScriptConfig):
-    script_name = "BetterGI"
+    _script_name = "BetterGI"
     _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
@@ -381,8 +384,9 @@ class GenshinConfig(ScriptConfig):
 
 
 # ---- 终末地 Arknights: Endfield ----
+@register
 class EndfieldConfig(ScriptConfig):
-    script_name = "ok-ef"
+    _script_name = "ok-ef"
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
@@ -398,8 +402,9 @@ class EndfieldConfig(ScriptConfig):
 
 
 # ---- 绝区零 Zenless Zone Zero ----
+@register
 class ZenlessZoneZeroConfig(ScriptConfig):
-    script_name = "OneDragon-Launcher"
+    _script_name = "OneDragon-Launcher"
     _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
     _template_rel_path = "ZZZ一条龙.yml"
@@ -414,8 +419,9 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 
 
 # ---- 崩铁 Honkai: Star Rail ----
+@register
 class StarRailConfig(ScriptConfig):
-    script_name = "March7th-Assistant"
+    _script_name = "March7th-Assistant"
     _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
     _template_rel_path = "M7A一条龙.yml"
@@ -428,8 +434,9 @@ class StarRailConfig(ScriptConfig):
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
+@register
 class NTEConfig(ScriptConfig):
-    script_name = "ok-nte"
+    _script_name = "ok-nte"
     _config_rel_path = "data/apps/ok-nte/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
@@ -455,8 +462,9 @@ class NTEConfig(ScriptConfig):
 
 
 # ---- 明日方舟 Arknights（粥）----
+@register
 class ArknightsConfig(ScriptConfig):
-    script_name = "MAA"
+    _script_name = "MAA"
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
     _template_rel_path = "MAA一条龙.json"
@@ -537,8 +545,8 @@ class ArknightsConfig(ScriptConfig):
 # ============================================================
 # 注册表
 # ============================================================
-# 见基类上方定义：由 ScriptConfig.__init_subclass__ 自动填充，
-# 新增脚本只需声明子类（script_name + 路径类属性），无需手动登记。
+# 见基类上方定义：由 register() 装饰器显式填充，
+# 新增脚本只需声明子类（_script_name + 路径类属性）并加 @register。
 
 
 # ============================================================

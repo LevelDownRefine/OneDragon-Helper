@@ -140,7 +140,7 @@ class TestVerifySaved(unittest.TestCase):
 
     def _make_cfg(self):
         cfg = ScriptConfig()
-        cfg.script_name = "测试"
+        cfg._script_name = "测试"
         cfg.display_name = "测试展示名"
         return cfg
 
@@ -192,7 +192,7 @@ class TestWutheringWavesConfig(unittest.TestCase):
 
     def test_init_attributes(self):
         self.assertEqual(self.cfg.display_name, "鸣潮")
-        self.assertEqual(self.cfg.script_name, "ok-ww")
+        self.assertEqual(self.cfg._script_name, "ok-ww")
         self.assertEqual(self.cfg._task_key, "Which to Farm")
         self.assertIn("凝素领域", self.cfg._task_map)
         self.assertIn("模拟领域", self.cfg._task_map)
@@ -310,7 +310,7 @@ class TestGenshinConfig(unittest.TestCase):
         ):
             cfg = GenshinConfig()
         self.assertEqual(cfg.display_name, "原神")
-        self.assertEqual(cfg.script_name, "BetterGI")
+        self.assertEqual(cfg._script_name, "BetterGI")
         self.assertEqual(cfg._task_key, "DomainName")
 
     def test_init_config_aligned_no_save(self):
@@ -375,7 +375,7 @@ class TestEndfieldConfig(unittest.TestCase):
     def test_init_attributes(self):
         cfg = EndfieldConfig()
         self.assertEqual(cfg.display_name, "终末地")
-        self.assertEqual(cfg.script_name, "ok-ef")
+        self.assertEqual(cfg._script_name, "ok-ef")
         self.assertEqual(cfg._task_key, "体力本")
         self.assertEqual(cfg._task_map, {})
 
@@ -414,7 +414,7 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         ):
             cfg = ZenlessZoneZeroConfig()
         self.assertEqual(cfg.display_name, "绝区零")
-        self.assertEqual(cfg.script_name, "OneDragon-Launcher")
+        self.assertEqual(cfg._script_name, "OneDragon-Launcher")
         self.assertEqual(cfg._task_key, "")
 
     def test_init_config_aligned_no_save(self):
@@ -577,7 +577,7 @@ class TestStarRailConfig(unittest.TestCase):
         with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
             self.assertEqual(cfg.display_name, "崩铁")
-            self.assertEqual(cfg.script_name, "March7th-Assistant")
+            self.assertEqual(cfg._script_name, "March7th-Assistant")
             self.assertEqual(cfg._task_key, "instance_type")
             self.assertEqual(cfg._task_map, {})
 
@@ -612,7 +612,7 @@ class TestNTEConfig(unittest.TestCase):
 
     def test_init_attributes(self):
         self.assertEqual(self.cfg.display_name, "异环")
-        self.assertEqual(self.cfg.script_name, "ok-nte")
+        self.assertEqual(self.cfg._script_name, "ok-nte")
         self.assertEqual(self.cfg._task_key, "任务类型")
         self.assertIn("空幕", self.cfg._seq_key_map)
         self.assertEqual(self.cfg._seq_key_map["空幕"], "空幕序号")
@@ -683,7 +683,7 @@ class TestArknightsConfig(unittest.TestCase):
     def test_init_attributes(self):
         cfg = self._make_cfg()
         self.assertEqual(cfg.display_name, "粥")
-        self.assertEqual(cfg.script_name, "MAA")
+        self.assertEqual(cfg._script_name, "MAA")
         self.assertIn("剿灭", cfg._task_map)
         self.assertEqual(cfg._task_map["剿灭"]["index"], 1)
         self.assertEqual(cfg._task_map["土"]["index"], 5)

@@ -24,8 +24,8 @@
 ```
 
 - 基类 `ScriptConfig` 提供通用能力：`_load` / `_save` / `_verify_saved` / `_update_task` / `_update_sequence` / `_init_config` / `_is_aligned` / `set_dungeon` / `safe_update`。
-- 子类声明 `script_name`（注册表 key，exe 即进程名，如 `ok-ww`）、`display_name`（展示名，如 `鸣潮`）与路径类属性：`_config_rel_path`（config 相对脚本根目录，必填）、`_game_config_rel_path`（游戏路径配置文件，声明了 `_game_path_keys` 则必填）、`_template_rel_path`（模板文件相对 config/，走模板初始化才需要）。`_task_key` / `_task_map` 按需覆盖方法。
-- 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 由 `ScriptConfig.__init_subclass__` 在子类定义时自动填充（`script_name` 非空即注册），无需手动登记；路径声明不完整会在 import 时 assert 暴露。
+- 子类声明 `_script_name`（注册表 key，exe 即进程名，如 `ok-ww`）、`display_name`（展示名，如 `鸣潮`）与路径类属性：`_config_rel_path`（config 相对脚本根目录，必填）、`_game_config_rel_path`（游戏路径配置文件，声明了 `_game_path_keys` 则必填）、`_template_rel_path`（模板文件相对 config/，走模板初始化才需要）。`_task_key` / `_task_map` 按需覆盖方法。
+- 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 由 `@register` 装饰器显式填充（子类标注 `@register` 即登记，key 为 `_script_name`）；路径声明不完整会在 import 时 assert 暴露。
 
 ## 两个独立流程
 
@@ -105,7 +105,7 @@ set_config("ok-ww", dungeon_name="未选择")  # 跳过
 
 | 文件 | 作用 |
 |------|------|
-| `set_config.py` | 本适配器（外观 + 类层级）；各脚本路径（config/游戏配置/模板）由子类声明，`_CONFIGS` 自动收集 |
+| `set_config.py` | 本适配器（外观 + 类层级）；各脚本路径（config/游戏配置/模板）由子类声明，`@register` 显式注册 |
 | `subscript.py` | config 读写基础设施（`get_script_name` / `load` / `save` / `load_template`），只接收 `rel_path` 入参，不感知具体脚本 |
 | `dungeon_config.py` | `dungeon_list.yml` 解析（一级/二级选项） |
 | `config/dungeon_list.yml` | 各脚本支持的副本及序列展示名（key 为 script_name） |
@@ -113,7 +113,7 @@ set_config("ok-ww", dungeon_name="未选择")  # 跳过
 
 ## 如何新增一个游戏适配
 
-1. `set_config.py` 新建子类继承 `ScriptConfig`：设 `script_name`（exe 即进程名，注册表 key）、`display_name`（展示名）与路径类属性 `_config_rel_path`（必填）、`_game_config_rel_path`（声明了 `_game_path_keys` 则必填）、`_template_rel_path`（需要模板初始化才设，并在 `config/` 建模板）。注册表 `_CONFIGS` 由 `__init_subclass__` 自动收集，无需手动登记。
+1. `set_config.py` 新建子类继承 `ScriptConfig` 并加 `@register`：设 `_script_name`（exe 即进程名，注册表 key）、`display_name`（展示名）与路径类属性 `_config_rel_path`（必填）、`_game_config_rel_path`（声明了 `_game_path_keys` 则必填）、`_template_rel_path`（需要模板初始化才设，并在 `config/` 建模板）。
 2. 初始化需要则实现 `_init_config` 并在 `__init__` 调用；设 `_task_key` / `_task_map`，需序列支持则覆盖 `_update_sequence`，标准流程不够则覆盖 `set_dungeon`。
 3. `config/dungeon_list.yml` 加副本/序列选项（key 用 script_name）。
 4. 补测试（`tests/test_set_config_subclasses.py`）。
