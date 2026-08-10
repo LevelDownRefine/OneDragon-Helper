@@ -3,12 +3,13 @@
 import os
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QIntValidator
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from src.config.set_config import ScriptConfig
 from src.config.subscript import default_script_entry
+from src.gui import theme
 from src.gui.utils import _styled_msg_box, make_secondary_button, safe_startfile
 from src.service.script_service import ScriptService
 
@@ -26,6 +28,10 @@ from src.service.script_service import ScriptService
 SCRIPT_FILE_FILTER = (
     "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)"
 )
+
+# 表单输入控件宽度上下限（限制 input 不拉满整个弹窗，保留右侧空白感）
+INPUT_FIXED_W = 320
+INPUT_FIXED_H = 30
 
 
 def confirm_config_update(display_name: str) -> bool:
@@ -55,96 +61,62 @@ def _browse_script_file(parent, line_edit):
 
 
 class _FormDialogBase(QDialog):
-    """表单弹窗基类：共享 QSS 样式常量与 label/按钮行构造。"""
+    """表单弹窗基类：共享样式常量（来自 theme）与 label/按钮行构造。"""
 
-    LABEL_WIDTH = 80
-    _LINE_EDIT_STYLE = """
-        QLineEdit {
-            border: 1px solid #d0d0d0;
-            border-radius: 6px;
-            padding: 4px 8px;
-            background: white;
-            font-size: 10px;
-        }
-        QLineEdit:focus { border-color: #0078D4; outline: none; }
-    """
-    _COMBO_STYLE = """
-        QComboBox {
-            border: 1px solid #d0d0d0;
-            border-radius: 6px;
-            padding: 2px 8px;
-            background: white;
-            font-size: 10px;
-            color: #303030;
-        }
-        QComboBox:hover { border-color: #a0a0a0; }
-        QComboBox::drop-down { border: none; width: 20px; }
-    """
-    _PRIMARY_BTN_STYLE = """
-        QPushButton {
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                        stop:0 #4f8cff, stop:1 #3b82f6);
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 0 24px;
-            font-size: 10px;
-        }
-        QPushButton:hover {
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                        stop:0 #5b96ff, stop:1 #2f6fed);
-        }
-        QPushButton:pressed { background: #2f6fed; }
-    """
-    _SECONDARY_BTN_STYLE = """
-        QPushButton {
-            border: 1px solid #d0d0d0;
-            border-radius: 6px;
-            background: white;
-            font-size: 10px;
-            color: #303030;
-            padding: 0 24px;
-        }
-        QPushButton:hover { border-color: #3b82f6; color: #3b82f6; }
-    """
-    _DANGER_BTN_STYLE = """
-        QPushButton {
-            border: 1px solid #f0b4b4;
-            border-radius: 6px;
-            background: white;
-            font-size: 10px;
-            color: #d14343;
-            padding: 0 24px;
-        }
-        QPushButton:hover { border-color: #d14343; color: #d14343; }
-        QPushButton:disabled { color: #c0c4cc; border-color: #e6e6e6; }
-    """
+    LABEL_WIDTH = theme.LABEL_WIDTH
+    _LINE_EDIT_STYLE = theme.line_edit_qss()
+    _COMBO_STYLE = theme.combo_box_qss()
+    _CHECK_STYLE = theme.check_box_qss()
+    _PRIMARY_BTN_STYLE = theme.primary_button_qss(
+        radius=6, font_size=theme.FONT_SIZE_BODY
+    )
+    _SECONDARY_BTN_STYLE = theme.secondary_button_qss(font_size=theme.FONT_SIZE_BODY)
+    _DANGER_BTN_STYLE = theme.danger_button_qss(font_size=theme.FONT_SIZE_BODY)
 
     def _make_label(self, text) -> QLabel:
-        """构造固定宽度的表单字段标签。"""
+        """构造固定宽度的表单字段标签（无边框透明背景）。"""
         label = QLabel(text)
-        label.setFont(QFont("Microsoft YaHei", 10))
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        label.setFont(font)
         label.setFixedWidth(self.LABEL_WIDTH)
-        label.setStyleSheet("color: #303030;")
+        label.setStyleSheet(
+            f"color: {theme.TEXT}; border: none; background: transparent;"
+        )
         return label
 
-    def _make_buttons(self, primary_text, primary_slot) -> QHBoxLayout:
-        """构造表单底部「取消 + 主操作」按钮行。"""
-        btn_layout = QHBoxLayout()
-        primary_btn = QPushButton(primary_text)
-        primary_btn.setFixedHeight(32)
-        primary_btn.setFont(QFont("Microsoft YaHei", 10, QFont.Bold))
-        primary_btn.setStyleSheet(self._PRIMARY_BTN_STYLE)
-        primary_btn.clicked.connect(primary_slot)
+    def _make_footer(
+        self,
+        primary_text: str,
+        primary_slot,
+        *,
+        left_widgets: tuple = (),
+    ) -> QHBoxLayout:
+        """构造底部按钮行：``[left_widgets...] -- stretch -- [取消] [primary]``。"""
+        footer = QHBoxLayout()
+        footer.setSpacing(8)
+        for w in left_widgets:
+            footer.addWidget(w)
+
         cancel_btn = QPushButton("取消")
-        cancel_btn.setFixedHeight(32)
-        cancel_btn.setFont(QFont("Microsoft YaHei", 10))
+        cancel_btn.setFixedHeight(28)
+        cancel_btn.setMinimumWidth(80)
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        cancel_btn.setFont(font)
         cancel_btn.setStyleSheet(self._SECONDARY_BTN_STYLE)
         cancel_btn.clicked.connect(self.reject)
-        btn_layout.addStretch()
-        btn_layout.addWidget(cancel_btn)
-        btn_layout.addWidget(primary_btn)
-        return btn_layout
+
+        primary_btn = QPushButton(primary_text)
+        primary_btn.setFixedHeight(28)
+        primary_btn.setMinimumWidth(80)
+        font = theme.make_font(size=theme.FONT_SIZE_BTN, bold=True)
+        primary_btn.setFont(font)
+        primary_btn.setStyleSheet(self._PRIMARY_BTN_STYLE)
+        primary_btn.clicked.connect(primary_slot)
+
+        footer.addStretch()
+        footer.addWidget(cancel_btn)
+        footer.addWidget(primary_btn)
+        return footer
 
     def browse_file(self):
         """弹出文件选择对话框，选中后写入 self.path_input。"""
@@ -165,8 +137,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
     ):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {display_name}")
-        self.resize(720, 500)
-        self.setStyleSheet("background-color: #f7f8fa;")
+        self.setStyleSheet(f"background-color: {theme.BG_HOVER};")
 
         self.display_name = display_name
         self.script_path = script_path
@@ -179,63 +150,81 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.load_data()
 
     def init_ui(self):
+        """用 QGridLayout：所有 label 在 col 0、input 在 col 1（固定宽），自动等宽对齐。"""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
 
-        # ---- 脚本名称 ----
-        row_name = QHBoxLayout()
-        row_name.setSpacing(8)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(8)
+        grid.setColumnStretch(0, 0)
+        grid.setColumnStretch(1, 0)
+
+        # 行 0：脚本名称 + name_input
         name_label = self._make_label("脚本名称:")
         self.name_input = QLineEdit(self)
-        self.name_input.setFont(QFont("Microsoft YaHei", 10))
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.name_input.setFont(font)
         self.name_input.setPlaceholderText("脚本显示名称，例如：1999")
+        self.name_input.setFixedWidth(INPUT_FIXED_W)
+        self.name_input.setFixedHeight(INPUT_FIXED_H)
         self.name_input.setStyleSheet(self._LINE_EDIT_STYLE)
-        row_name.addWidget(name_label)
-        row_name.addWidget(self.name_input, 1)
-        layout.addLayout(row_name)
+        grid.addWidget(name_label, 0, 0)
+        grid.addWidget(self.name_input, 0, 1)
 
-        # ---- 脚本路径 ----
-        row1 = QHBoxLayout()
-        row1.setSpacing(8)
-        label = self._make_label("脚本路径:")
+        # 行 1：脚本路径 + path_input + browse_btn
+        path_label = self._make_label("脚本路径:")
         self.path_input = QLineEdit(self)
-        self.path_input.setFont(QFont("Microsoft YaHei", 10))
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.path_input.setFont(font)
         self.path_input.setText(self.script_path)
+        self.path_input.setReadOnly(True)  # 只显示路径，编辑通过重新选择完成
+        self.path_input.setFixedWidth(INPUT_FIXED_W)
+        self.path_input.setFixedHeight(INPUT_FIXED_H)
         self.path_input.setStyleSheet(self._LINE_EDIT_STYLE)
-        self.browse_btn = make_secondary_button("选择")
-        self.browse_btn.clicked.connect(self.browse_file)
-        row1.addWidget(label)
-        row1.addWidget(self.path_input)
-        row1.addWidget(self.browse_btn)
-        layout.addLayout(row1)
+        # 点击 input 触发文件选择（替代外部"选择"按钮）
+        path_orig_press = self.path_input.mousePressEvent
 
-        # ---- 脚本类型 + 启动参数 ----
-        row2 = QHBoxLayout()
-        row2.setSpacing(8)
+        def _path_press(event):
+            if event.button() == Qt.LeftButton:
+                self.browse_file()
+            path_orig_press(event)
+
+        self.path_input.mousePressEvent = _path_press
+        grid.addWidget(path_label, 1, 0)
+        grid.addWidget(self.path_input, 1, 1)
+
+        # 行 2：脚本类型 + type_combo
         type_label = self._make_label("脚本类型:")
         self.type_combo = QComboBox(self)
         self.type_combo.addItems(["external", "python"])
-        self.type_combo.setFont(QFont("Microsoft YaHei", 10))
-        self.type_combo.setFixedWidth(120)
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.type_combo.setFont(font)
+        self.type_combo.setFixedWidth(INPUT_FIXED_W)
+        self.type_combo.setFixedHeight(INPUT_FIXED_H)
         self.type_combo.setStyleSheet(self._COMBO_STYLE)
-        row2.addWidget(type_label)
-        row2.addWidget(self.type_combo)
+        grid.addWidget(type_label, 2, 0)
+        grid.addWidget(self.type_combo, 2, 1)
 
+        # 行 3：启动参数 + args_input（横跨 col 1-2）
         args_label = QLabel("启动参数:")
-        args_label.setFont(QFont("Microsoft YaHei", 10))
-        args_label.setStyleSheet("color: #303030;")
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        args_label.setFont(font)
+        args_label.setStyleSheet(
+            f"color: {theme.TEXT}; border: none; background: transparent;"
+        )
         self.args_input = QLineEdit(self)
-        self.args_input.setFont(QFont("Microsoft YaHei", 10))
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.args_input.setFont(font)
         self.args_input.setPlaceholderText("可选，传给脚本的命令行参数")
+        self.args_input.setFixedWidth(INPUT_FIXED_W)
+        self.args_input.setFixedHeight(INPUT_FIXED_H)
         self.args_input.setStyleSheet(self._LINE_EDIT_STYLE)
-        row2.addWidget(args_label)
-        row2.addWidget(self.args_input, 1)
-        layout.addLayout(row2)
+        grid.addWidget(args_label, 3, 0)
+        grid.addWidget(self.args_input, 3, 1, 1, 2)
 
-        # ---- 完成检测方式 ----
-        row3 = QHBoxLayout()
-        row3.setSpacing(8)
+        # 行 4：完成检测 + check_done_combo（横跨 col 1-2）
         check_label = self._make_label("完成检测:")
         self.check_done_combo = QComboBox(self)
         self.check_done_combo.addItems(
@@ -245,103 +234,104 @@ class SingleScriptConfigDialog(_FormDialogBase):
                 "game_closed",
             ]
         )
-        self.check_done_combo.setFont(QFont("Microsoft YaHei", 10))
-        self.check_done_combo.setFixedWidth(220)
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.check_done_combo.setFont(font)
+        self.check_done_combo.setFixedWidth(INPUT_FIXED_W)
+        self.check_done_combo.setFixedHeight(INPUT_FIXED_H)
         self.check_done_combo.setStyleSheet(self._COMBO_STYLE)
-        row3.addWidget(check_label)
-        row3.addWidget(self.check_done_combo)
-        row3.addStretch()
-        layout.addLayout(row3)
+        grid.addWidget(check_label, 4, 0)
+        grid.addWidget(self.check_done_combo, 4, 1, 1, 2)
 
-        # ---- 复选框行 ----
-        row4 = QHBoxLayout()
-        row4.setSpacing(24)
-        self.kill_script_cb = QCheckBox("运行结束后关闭脚本", self)
-        self.kill_script_cb.setFont(QFont("Microsoft YaHei", 10))
-        self.kill_script_cb.setStyleSheet("color: #303030;")
-        self.kill_game_cb = QCheckBox("运行结束后关闭游戏", self)
-        self.kill_game_cb.setFont(QFont("Microsoft YaHei", 10))
-        self.kill_game_cb.setStyleSheet("color: #303030;")
+        # 行 5：复选框行（横跨 col 1-2）
+        checkbox_row = QHBoxLayout()
+        checkbox_row.setSpacing(12)
+        self.kill_script_cb = QCheckBox("结束后关闭脚本", self)
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.kill_script_cb.setFont(font)
+        self.kill_script_cb.setStyleSheet(self._CHECK_STYLE)
+        self.kill_game_cb = QCheckBox("结束后关闭游戏", self)
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.kill_game_cb.setFont(font)
+        self.kill_game_cb.setStyleSheet(self._CHECK_STYLE)
         self.kill_game_cb.stateChanged.connect(self._on_kill_game_changed)
-        row4.addWidget(self.kill_script_cb)
-        row4.addWidget(self.kill_game_cb)
         self.block_cb = QCheckBox("阻塞运行", self)
-        self.block_cb.setFont(QFont("Microsoft YaHei", 10))
-        self.block_cb.setStyleSheet("color: #303030;")
-        row4.addWidget(self.block_cb)
-        row4.addStretch()
-        layout.addLayout(row4)
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.block_cb.setFont(font)
+        self.block_cb.setStyleSheet(self._CHECK_STYLE)
+        checkbox_row.addWidget(self.kill_script_cb)
+        checkbox_row.addWidget(self.kill_game_cb)
+        checkbox_row.addWidget(self.block_cb)
+        checkbox_row.addStretch()
+        grid.addLayout(checkbox_row, 5, 1, 1, 2)
 
-        # ---- 游戏进程名称 ----
-        row5 = QHBoxLayout()
-        row5.setSpacing(8)
+        # 行 6：游戏进程 + game_process_input（横跨 col 1-2）
         game_label = self._make_label("游戏进程:")
         self.game_process_input = QLineEdit(self)
-        self.game_process_input.setFont(QFont("Microsoft YaHei", 10))
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.game_process_input.setFont(font)
         self.game_process_input.setPlaceholderText("关闭游戏时必填，例如 YuanShen.exe")
+        self.game_process_input.setFixedWidth(INPUT_FIXED_W)
+        self.game_process_input.setFixedHeight(INPUT_FIXED_H)
         self.game_process_input.setStyleSheet(self._LINE_EDIT_STYLE)
         self.game_process_input.setEnabled(False)
-        row5.addWidget(game_label)
-        row5.addWidget(self.game_process_input)
-        layout.addLayout(row5)
+        grid.addWidget(game_label, 6, 0)
+        grid.addWidget(self.game_process_input, 6, 1, 1, 2)
 
-        # ---- 每周超时 ----
-        row6 = QHBoxLayout()
-        row6.setSpacing(8)
+        # 行 7：每周超时（4×2 Grid 让同列等宽，数字右对齐）
         timeout_label = self._make_label("每周超时:")
-        row6.addWidget(timeout_label)
+        timeout_grid = QGridLayout()
+        timeout_grid.setHorizontalSpacing(4)
+        timeout_grid.setVerticalSpacing(2)
         day_names = ["一", "二", "三", "四", "五", "六", "日"]
         self.timeout_inputs = []
-        for day_idx in range(7):
-            day_label = QLabel(f"周{day_names[day_idx]}")
-            day_label.setFont(QFont("Microsoft YaHei", 9))
-            day_label.setStyleSheet("color: #606060;")
-            day_label.setFixedWidth(30)
+        for day_idx, day_name in enumerate(day_names):
+            row = day_idx // 4
+            col = (day_idx % 4) * 2
+            day_label = QLabel(f"周{day_name}")
+            day_label.setFont(theme.make_font(size=theme.FONT_SIZE_BODY))
+            day_label.setStyleSheet(
+                f"color: {theme.TEXT_MUTED}; border: none; background: transparent;"
+            )
+            day_label.setFixedWidth(22)
             lineedit = QLineEdit(self)
-            lineedit.setFont(QFont("Microsoft YaHei", 10))
+            lineedit.setFont(theme.make_font(size=theme.FONT_SIZE_BODY))
             lineedit.setValidator(QIntValidator(10, 86400, self))
-            lineedit.setFixedWidth(60)
+            lineedit.setAlignment(Qt.AlignRight)  # 数字右对齐
+            lineedit.setFixedWidth(50)
+            lineedit.setMinimumWidth(50)
             lineedit.setStyleSheet(self._TIMEOUT_INPUT_STYLE)
-            row6.addWidget(day_label)
-            row6.addWidget(lineedit)
+            timeout_grid.addWidget(day_label, row, col)
+            timeout_grid.addWidget(lineedit, row, col + 1)
             self.timeout_inputs.append(lineedit)
-        row6.addStretch()
-        layout.addLayout(row6)
+        grid.addWidget(timeout_label, 7, 0)
+        grid.addLayout(timeout_grid, 7, 1, 1, 2)
 
-        # ---- 其它操作：配置文件 / 删除脚本 ----
-        row_ops = QHBoxLayout()
-        row_ops.setSpacing(8)
+        # 底部按钮行：左次要（配置文件 / 删除脚本）+ 右主操作（取消 / 保存）
         open_cfg_btn = QPushButton("配置文件")
-        open_cfg_btn.setFixedHeight(32)
-        open_cfg_btn.setFont(QFont("Microsoft YaHei", 10))
+        open_cfg_btn.setFixedHeight(28)
+        open_cfg_btn.setMinimumWidth(90)
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        open_cfg_btn.setFont(font)
         open_cfg_btn.setStyleSheet(self._SECONDARY_BTN_STYLE)
         open_cfg_btn.clicked.connect(self._open_config_file)
-        row_ops.addWidget(open_cfg_btn)
 
         delete_btn = QPushButton("删除脚本")
-        delete_btn.setFixedHeight(32)
-        delete_btn.setFont(QFont("Microsoft YaHei", 10))
+        delete_btn.setFixedHeight(28)
+        delete_btn.setMinimumWidth(90)
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        delete_btn.setFont(font)
         delete_btn.setStyleSheet(self._DANGER_BTN_STYLE)
         delete_btn.clicked.connect(self._on_delete_clicked)
-        row_ops.addWidget(delete_btn)
-        row_ops.addStretch()
-        layout.addLayout(row_ops)
         self._delete_btn = delete_btn
 
-        # ---- 按钮 ----
-        layout.addLayout(self._make_buttons("保存", self.save_data))
+        footer = self._make_footer(
+            "保存", self.save_data, left_widgets=(open_cfg_btn, delete_btn)
+        )
 
-    _TIMEOUT_INPUT_STYLE = """
-        QLineEdit {
-            border: 1px solid #d0d0d0;
-            border-radius: 4px;
-            padding: 3px 6px;
-            background: white;
-            font-size: 9px;
-            text-align: center;
-        }
-        QLineEdit:focus { border-color: #0078D4; outline: none; }
-    """
+        layout.addLayout(grid)
+        layout.addLayout(footer)
+
+    _TIMEOUT_INPUT_STYLE = theme.small_line_edit_qss(text_align="right")
 
     def _on_kill_game_changed(self, state):
         self.game_process_input.setEnabled(state == Qt.Checked)
@@ -412,7 +402,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
             QMessageBox.warning(
                 self,
                 "提示",
-                "未填写游戏进程名，保存后「运行结束后关闭游戏」将自动关闭。",
+                "未填写游戏进程名，保存后「结束后关闭游戏」将自动关闭。",
             )
 
         timeouts = []
@@ -466,23 +456,25 @@ class AddScriptDialog(_FormDialogBase):
     def __init__(self, existing_names=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("添加脚本")
-        self.resize(560, 250)
-        self.setStyleSheet("background-color: #f7f8fa;")
+        self.setStyleSheet(f"background-color: {theme.BG_HOVER};")
         self._existing_names = set(existing_names or [])
         self.script_entry = None
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
 
         # 名称
         name_row = QHBoxLayout()
         name_row.setSpacing(8)
         self.name_input = QLineEdit(self)
-        self.name_input.setFont(QFont("Microsoft YaHei", 10))
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.name_input.setFont(font)
         self.name_input.setPlaceholderText("脚本显示名称，例如：1999")
+        self.name_input.setFixedWidth(INPUT_FIXED_W)
+        self.name_input.setFixedHeight(INPUT_FIXED_H)
         self.name_input.setStyleSheet(self._LINE_EDIT_STYLE)
         name_row.addWidget(self._make_label("脚本名称:"))
         name_row.addWidget(self.name_input)
@@ -493,8 +485,10 @@ class AddScriptDialog(_FormDialogBase):
         type_row.setSpacing(8)
         self.type_combo = QComboBox(self)
         self.type_combo.addItems(["external", "python"])
-        self.type_combo.setFont(QFont("Microsoft YaHei", 10))
-        self.type_combo.setFixedHeight(30)
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.type_combo.setFont(font)
+        self.type_combo.setFixedHeight(INPUT_FIXED_H)
+        self.type_combo.setFixedWidth(INPUT_FIXED_W)
         self.type_combo.setStyleSheet(self._COMBO_STYLE)
         type_row.addWidget(self._make_label("脚本类型:"))
         type_row.addWidget(self.type_combo)
@@ -505,8 +499,11 @@ class AddScriptDialog(_FormDialogBase):
         path_row = QHBoxLayout()
         path_row.setSpacing(8)
         self.path_input = QLineEdit(self)
-        self.path_input.setFont(QFont("Microsoft YaHei", 10))
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.path_input.setFont(font)
         self.path_input.setPlaceholderText("脚本/程序的完整路径")
+        self.path_input.setFixedWidth(INPUT_FIXED_W)
+        self.path_input.setFixedHeight(INPUT_FIXED_H)
         self.path_input.setStyleSheet(self._LINE_EDIT_STYLE)
         browse_btn = make_secondary_button("选择")
         browse_btn.clicked.connect(self.browse_file)
@@ -519,15 +516,18 @@ class AddScriptDialog(_FormDialogBase):
         args_row = QHBoxLayout()
         args_row.setSpacing(8)
         self.args_input = QLineEdit(self)
-        self.args_input.setFont(QFont("Microsoft YaHei", 10))
+        font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        self.args_input.setFont(font)
         self.args_input.setPlaceholderText("可选，传给脚本的命令行参数")
+        self.args_input.setFixedWidth(INPUT_FIXED_W)
+        self.args_input.setFixedHeight(INPUT_FIXED_H)
         self.args_input.setStyleSheet(self._LINE_EDIT_STYLE)
         args_row.addWidget(self._make_label("启动参数:"))
         args_row.addWidget(self.args_input)
         layout.addLayout(args_row)
 
         # 按钮
-        layout.addLayout(self._make_buttons("添加", self.save_data))
+        layout.addLayout(self._make_footer("添加", self.save_data))
 
     def save_data(self):
         display_name = self.name_input.text().strip()

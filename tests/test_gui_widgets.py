@@ -170,12 +170,12 @@ class TestScriptItemCallback(unittest.TestCase):
 
 
 class TestScriptItemDragDrop(unittest.TestCase):
-    """测试 ScriptItem 拖拽手柄与 drop 事件"""
+    """测试 ScriptItem 卡片拖拽与 drop 事件"""
 
-    def test_handle_created_and_accepts_drops(self):
-        """构造后存在拖拽手柄且接受 drop"""
+    def test_item_created_and_accepts_drops(self):
+        """构造后可发起拖拽（_drag_start_pos 已初始化）且接受 drop"""
         item = ScriptItem({"display_name": "A", "script_type": "external"})
-        self.assertIsNotNone(item.handle)
+        self.assertIsNone(item._drag_start_pos)
         self.assertTrue(item.acceptDrops())
 
     def test_dragEnterEvent_accepts_our_mime(self):
