@@ -56,7 +56,9 @@ def _find_chain_index(display_name: str, chain_path: str) -> int | None:
     return None
 
 
-def _build_rerun_command(index: int, chain_path: str) -> tuple[list[str], str, dict | None]:
+def _build_rerun_command(
+    index: int, chain_path: str
+) -> tuple[list[str], str, dict | None]:
     """构造重跑指定下标脚本的 Runner 命令，返回 (命令列表, 工作目录, 环境变量)。
 
     - 冻结模式：<exe目录>/OneDragon-Helper-Runner.exe --chain <abs> --debug-index <idx>

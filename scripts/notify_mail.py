@@ -41,13 +41,17 @@ def _load_mail_config() -> dict | None:
         with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     except Exception:
-        logger.exception("[notify_mail] 读取邮件配置失败，跳过失败通知: %s", config_path)
+        logger.exception(
+            "[notify_mail] 读取邮件配置失败，跳过失败通知: %s", config_path
+        )
         return None
 
     email = data.get("email", "")
     password = data.get("password", "")
     if not email or not password:
-        logger.warning("[notify_mail] 邮件配置缺少 email/password，跳过失败通知: %s", config_path)
+        logger.warning(
+            "[notify_mail] 邮件配置缺少 email/password，跳过失败通知: %s", config_path
+        )
         return None
 
     return {"email": email, "password": password}
@@ -65,7 +69,9 @@ def _collect_failed_details(targets: list[str]) -> list[dict]:
         with open(config_path, encoding="utf-8") as f:
             config_data = yaml.safe_load(f) or {}
     except Exception:
-        logger.exception("[notify_mail] 读取 config.yml 失败，本次仅通知失败名单: %s", config_path)
+        logger.exception(
+            "[notify_mail] 读取 config.yml 失败，本次仅通知失败名单: %s", config_path
+        )
         return []
 
     script_list = config_data.get("script_list", [])
@@ -123,7 +129,12 @@ def _collapse_repeated_lines(text: str) -> str:
 
 def _build_body(details: list[dict]) -> str:
     """邮件正文：运行日期 + 每个失败游戏的名称、状态、日志路径与日志尾部内容。"""
-    sections = [f"运行日期: {datetime.now():%Y-%m-%d}", "", "以下脚本运行失败，请检查：", ""]
+    sections = [
+        f"运行日期: {datetime.now():%Y-%m-%d}",
+        "",
+        "以下脚本运行失败，请检查：",
+        "",
+    ]
     for detail in details:
         sections.append(f"【{detail['display_name']}】状态: {detail['status']}")
         if detail["log_path"]:
