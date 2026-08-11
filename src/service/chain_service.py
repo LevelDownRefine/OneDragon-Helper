@@ -211,7 +211,7 @@ class ChainService:
         self,
         all_config_data: dict,
         enabled_keys: set[str],
-        chain_name: str = "88",
+        chain_name: str = "today",
         ui_state: dict | None = None,
         out_path: str | None = None,
     ) -> str:

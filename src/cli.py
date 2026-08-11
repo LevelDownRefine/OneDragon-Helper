@@ -88,8 +88,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--name",
         type=str,
-        default="88",
-        help="配合 --generate-chain，脚本链文件名（不含扩展名，默认 88）",
+        default="today",
+        help="配合 --generate-chain，脚本链文件名（不含扩展名，默认 today）",
     )
     parser.add_argument(
         "--shutdown",

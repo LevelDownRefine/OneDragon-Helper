@@ -434,7 +434,7 @@ class MainWindow(QMainWindow):
         """把当前脚本顺序写回 config.yml"""
         self.service.save_config(self.all_config_data)
 
-    def _generate_config(self, chain_name="88"):
+    def _generate_config(self, chain_name="today"):
         """生成 ScriptChainer 配置文件（仅含启用的脚本）"""
         enabled_keys = {i.script_name for i in self.script_items if i.enabled}
         return self.service.generate_chain(
@@ -489,7 +489,7 @@ class MainWindow(QMainWindow):
         if reply != QMessageBox.Yes:
             return
 
-        chain_path = self._generate_config("88")
+        chain_path = self._generate_config("today")
 
         self.run_btn.setEnabled(False)
         self.run_btn.setText("运行中...")

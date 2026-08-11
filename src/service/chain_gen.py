@@ -110,7 +110,7 @@ def _collect_enabled_selections(
 def generate_chain_config(
     all_config_data: dict,
     enabled_keys: set[str],
-    chain_name: str = "88",
+    chain_name: str = "today",
     ui_state: dict | None = None,
     out_path: str | None = None,
     weekly_timeouts: dict | None = None,

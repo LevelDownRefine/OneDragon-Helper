@@ -31,7 +31,10 @@ class TestScriptChainRunnerRun(unittest.TestCase):
 
     def test_run_calls_run_chain_command_once(self):
         received = []
-        with mock.patch("src.gui.runner.run_chain_command", return_value=0) as rc:
+        with (
+            mock.patch("src.gui.runner.os.path.exists", return_value=True),
+            mock.patch("src.gui.runner.run_chain_command", return_value=0) as rc,
+        ):
             r = ScriptChainRunner(CHAIN_PATH_ABS)
             r.finished_signal.connect(lambda c: received.append(c))
             r.run()
@@ -52,8 +55,11 @@ class TestScriptChainRunnerRun(unittest.TestCase):
 
     def test_run_emits_minus_one_on_exception(self):
         received = []
-        with mock.patch(
-            "src.gui.runner.run_chain_command", side_effect=RuntimeError("boom")
+        with (
+            mock.patch("src.gui.runner.os.path.exists", return_value=True),
+            mock.patch(
+                "src.gui.runner.run_chain_command", side_effect=RuntimeError("boom")
+            ),
         ):
             r = ScriptChainRunner(CHAIN_PATH_ABS)
             r.finished_signal.connect(lambda c: received.append(c))
@@ -66,7 +72,10 @@ class TestScriptChainRunnerEmitsClampedCode(unittest.TestCase):
 
     def test_large_unsigned_code_emitted_without_overflow(self):
         received = []
-        with mock.patch("src.gui.runner.run_chain_command", return_value=0xC0000005):
+        with (
+            mock.patch("src.gui.runner.os.path.exists", return_value=True),
+            mock.patch("src.gui.runner.run_chain_command", return_value=0xC0000005),
+        ):
             r = ScriptChainRunner(CHAIN_PATH_ABS)
             r.finished_signal.connect(lambda c: received.append(c))
             r.run()  # 此前因 emit 溢出退出码会抛 OverflowError

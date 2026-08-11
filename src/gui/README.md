@@ -30,7 +30,7 @@ PySide6 GUI：脚本列表、增删/重排/配置、生成脚本链配置并运�
 
 ## 运行流程
 
-点「运行」→ `_generate_config("88")` → `ChainService.generate_chain` → `chain_gen.generate_chain_config` 生成 `config/script_chain/88.yml`（仅含启用的脚本）→ `ScriptChainRunner(QThread)` 以**单个 runner 子进程**运行整条链。
+点「运行」→ `_generate_config("today")` → `ChainService.generate_chain` → `chain_gen.generate_chain_config` 生成 `config/script_chain/today.yml`（仅含启用的脚本）→ `ScriptChainRunner(QThread)` 以**单个 runner 子进程**运行整条链。
 
 命令：开发态 `python -m src.runner.launcher --chain <path>`（注入 `PYTHONPATH=src/runner`）；frozen 态用同目录 `OneDragon-Helper-Runner.exe`。链内每条脚本的 `block` 字段决定阻塞/非阻塞（缺字段视为阻塞），详见 [`src/runner/README.md`](../runner/README.md)。
 

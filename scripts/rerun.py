@@ -15,14 +15,14 @@ import yaml
 logger = logging.getLogger(__name__)
 
 # 默认脚本链配置文件（runner 真正用来启动各游戏的那条链）。
-_DEFAULT_CHAIN_REL = os.path.join("config", "script_chain", "88.yml")
+_DEFAULT_CHAIN_REL = os.path.join("config", "script_chain", "today.yml")
 
 # 冻结（PyInstaller）模式下 Runner 的可执行文件名（与 src/gui/runner.py 一致）。
 _RUNNER_EXE_NAME = "OneDragon-Helper-Runner.exe"
 
 
 def _resolve_chain_path(chain_path: str | None) -> str:
-    """解析脚本链配置文件路径为绝对路径（缺省用项目根下的 88.yml）。"""
+    """解析脚本链配置文件路径为绝对路径（缺省用项目根下的 today.yml）。"""
     rel = chain_path or _DEFAULT_CHAIN_REL
     if os.path.isabs(rel):
         return rel

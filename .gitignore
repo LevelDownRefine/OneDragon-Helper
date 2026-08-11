@@ -229,14 +229,17 @@ config/config.yml
 # 脚本失败邮件通知配置（含 SMTP 授权码，不进版本库；模板见 config/notify_mail.example.yml）
 config/notify_mail.yml
 
-# 生成的脚本链配置（GUI 运行时由 _generate_config 写入，非源码，不进版本库）
-config/script_chain/88.yml
+# 生成的脚本链配置（GUI/CLI 运行时由链生成写入，非源码，不进版本库）
+config/script_chain/
 
 # 本地安全测试（不进 git，手动把关 config.yml 的 script_path 是否被非法改动）
 tests/test_local_config_paths.py
 
 # 运行日志（每日轮转，onedragon_helper.log.*）
 logs/
+
+# 本地待办（个人维护，不进版本库）
+TODO.md
 
 # ---- AI Agent 工具私有数据（记忆/技能/本地配置，可能含密钥）----
 # 注意：AGENTS.md / CLAUDE.md / .github/copilot-instructions.md 等「团队共享指引」应保留追踪，不在此忽略。
