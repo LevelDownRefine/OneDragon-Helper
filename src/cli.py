@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="OneDragon-Helper",
-        description="OneDragon-Helper 脚本启动器（GUI）",
+        description="OneDragon-Helper",
         add_help=False,
     )
     parser.add_argument(

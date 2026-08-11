@@ -1,4 +1,4 @@
-"""GUI 工具：统一消息框 / 打开文件辅助 / 共享按钮工厂。
+"""GUI 工具：统一消息框 / 打开文件辅助 / 共享按钮工厂 / 标题栏同步。
 
 样式模板（按钮、消息框）已抽到 :mod:`src.gui.theme`，本模块只保留 Qt 工具函数
 与对 theme 工厂的转发。UI 状态持久化见 :mod:`src.service.chain_service`，每周超时
@@ -7,8 +7,10 @@
 :mod:`src.gui.icons`。
 """
 
+import ctypes
 import logging
 import os
+import sys
 import warnings
 
 from PySide6.QtCore import Qt
@@ -29,7 +31,41 @@ __all__ = [
     "make_pill_button",
     "make_secondary_button",
     "make_icon_button",
+    "sync_titlebar_color",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Windows 标题栏背景色（DWM API，Win11 22H2+）：让标题栏与客户区融合
+# ---------------------------------------------------------------------------
+
+
+def sync_titlebar_color(widget, color_hex: str) -> None:
+    """把窗口标题栏背景设为指定色（与客户区融为一体，消除分层感）。
+
+    仅 Windows 11 22H2+ 生效，其他平台 no-op。失败静默（debug 日志）。
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        from ctypes import wintypes
+
+        DWMWA_CAPTION_COLOR = 35
+        r, g, b = (
+            int(color_hex[1:3], 16),
+            int(color_hex[3:5], 16),
+            int(color_hex[5:7], 16),
+        )
+        colorref = wintypes.DWORD((b << 16) | (g << 8) | r)  # COLORREF 是 BGR
+        try:
+            hwnd = int(widget.windowHandle().winId())
+        except Exception:  # noqa: BLE001
+            hwnd = int(widget.winId())
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, DWMWA_CAPTION_COLOR, ctypes.byref(colorref), ctypes.sizeof(colorref)
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("[titlebar] DWM 失败（Win11 22H2- 或系统不支持）: %s", exc)
 
 
 # ---------------------------------------------------------------------------

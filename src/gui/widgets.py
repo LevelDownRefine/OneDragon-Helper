@@ -41,7 +41,7 @@ _MENU_STYLE = theme.menu_qss()
 # 副本按钮 QSS（与脚本名 chip 风格统一）：透明底 + 雾蓝边框 + 钢蓝 hover
 _DUNGEON_BTN_QSS = (
     f"QPushButton {{"
-    f"  border: 1px solid {theme.BORDER}; border-radius: 8px;"
+    f"  border: {theme.BORDER_WIDTH} solid {theme.BORDER}; border-radius: 8px;"
     f"  padding: 0 10px; background: transparent;"
     f"  color: {theme.DARK_BLUE}; font-family: {theme.FONT_FAMILY};"
     f"  font-size: {theme.FONT_SIZE_BODY}px; text-align: center;"

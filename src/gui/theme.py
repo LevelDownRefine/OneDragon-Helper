@@ -26,7 +26,7 @@ CRIMSON = "#8E2D30"  # 酒红
 TEXT = DARK_BLUE  # 正文
 TEXT_MUTED = DARK_BLUE  # 次要文字
 TEXT_FAINT = DARK_BLUE  # 弱文字 / 占位
-BG_MAIN = BEIGE  # 主窗口背景
+BG_MAIN = "#F0F6FF"  # 主窗口背景（极淡蓝）
 BG_CARD = "#FFFFFF"  # 卡片底（白色保留）
 BG_MUTED = BEIGE  # 禁用/静音卡片底
 BG_HOVER = SKY_BLUE  # 悬停底
@@ -35,6 +35,7 @@ BG_DANGER_SOFT = BEIGE  # 危险浅底
 BORDER = SKY_BLUE  # 中性边框
 BORDER_SOFT = SKY_BLUE  # 极柔边框
 DISABLED = SKY_BLUE  # 禁用底色
+BORDER_WIDTH = "1px"  # 统一边框宽度（QSS 模板引用）
 
 FONT_FAMILY = '"Microsoft YaHei", "Segoe UI", sans-serif'
 
@@ -93,7 +94,7 @@ def outlined_qss(
     透明底 + 圆角边框，hover 只变边框/文字色（不填充背景，保持平面风格）。"""
     return f"""
         {selector} {{
-            border: 1px solid {border};
+            border: {BORDER_WIDTH} solid {border};
             border-radius: {radius}px;
             background: transparent;
             font-family: {FONT_FAMILY};
@@ -123,7 +124,7 @@ def pill_button_qss(
     return f"""
         QPushButton {{
             background: white;
-            border: 1px solid {border};
+            border: {BORDER_WIDTH} solid {border};
             border-radius: {radius}px;
             padding: {padding};
             color: {color};
@@ -169,7 +170,7 @@ def line_edit_qss(
     """文本输入框：白底灰边，focus 钢蓝边框。"""
     return f"""
         QLineEdit {{
-            border: 1px solid {BORDER};
+            border: {BORDER_WIDTH} solid {BORDER};
             border-radius: {radius}px;
             padding: {padding};
             background: white;
@@ -186,7 +187,7 @@ def small_line_edit_qss(
     """紧凑文本输入框（如每周超时数字框）：居中或右对齐显示。"""
     return f"""
         QLineEdit {{
-            border: 1px solid {BORDER};
+            border: {BORDER_WIDTH} solid {BORDER};
             border-radius: {radius}px;
             padding: 4px 8px;
             background: white;
@@ -202,7 +203,7 @@ def combo_box_qss(*, radius: int = 8, font_size: int = FONT_SIZE_BODY) -> str:
     """下拉框：白底灰边，drop-down 无独立边框。padding-left=12 与 line_edit 一致。"""
     return f"""
         QComboBox {{
-            border: 1px solid {BORDER};
+            border: {BORDER_WIDTH} solid {BORDER};
             border-radius: {radius}px;
             padding: 4px 12px;
             background: white;
@@ -228,7 +229,7 @@ def menu_qss() -> str:
     """弹出菜单（级联/右键）：白底深字，选中项钢蓝底白字。"""
     return f"""
         QMenu {{
-            border: 1px solid {BORDER};
+            border: {BORDER_WIDTH} solid {BORDER};
             border-radius: 4px;
             background: white;
             padding: 4px;
@@ -252,7 +253,7 @@ def message_box_qss() -> str:
         QMessageBox QLabel {{ color: {TEXT}; background-color: transparent; }}
         QMessageBox QPushButton {{
             background-color: #F1F5F9; color: {TEXT};
-            border: 1px solid {BORDER}; border-radius: 6px; padding: 6px 16px;
+            border: {BORDER_WIDTH} solid {BORDER}; border-radius: 6px; padding: 6px 16px;
         }}
         QMessageBox QPushButton:hover {{ background-color: {BG_HOVER}; }}
     """
@@ -288,7 +289,7 @@ def card_qss(
     return f"""
         QFrame {{
             background-color: {background};
-            border: 1px solid {border};
+            border: {BORDER_WIDTH} solid {border};
             border-radius: {radius}px;
         }}
         {hover}

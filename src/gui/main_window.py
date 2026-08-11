@@ -25,7 +25,7 @@ from src.config.dungeon_config import (
 from src.config.subscript import get_script_name
 from src.gui import theme
 from src.gui.runner import ScriptChainRunner
-from src.gui.utils import make_pill_button, safe_startfile
+from src.gui.utils import make_pill_button, safe_startfile, sync_titlebar_color
 from src.gui.widgets import (
     TITLE_MAX_WIDTH,
     TITLE_MIN_WIDTH,
@@ -43,7 +43,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         # MainWindow 构造耗时打点基准：__init__ 入口归零，阶段差值为真实耗时
         self._init_t0 = time.perf_counter()
-        self.setWindowTitle("OneDragon 脚本启动器")
+        self.setWindowTitle("OneDragon")
         self.setMinimumSize(350, 800)
 
         self.script_items = []
@@ -67,6 +67,8 @@ class MainWindow(QMainWindow):
     def _init_ui(self):
         central = QWidget()
         central.setStyleSheet(f"background-color: {theme.BG_MAIN};")
+        # Windows 11+: 标题栏背景跟随客户区融为一体
+        sync_titlebar_color(self, theme.BG_MAIN)
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
         layout.setContentsMargins(18, 18, 18, 18)
