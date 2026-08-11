@@ -19,16 +19,16 @@ from PySide6.QtWidgets import QPushButton
 DARK_BLUE = "#333957"  # 深空蓝
 BLUE = "#5D74A2"  # 钢蓝
 SKY_BLUE = "#C4D8F2"  # 雾蓝
-BEIGE = "#F2E8E3"  # 肤
+BEIGE = "#F2E8E3"  # 肤色；现主要作危险浅底 / 暖色保留
 CRIMSON = "#8E2D30"  # 酒红
 
-# ── 语义色（全部直接引用五色，不派生新值；不好看再换回派生色） ───────────────
+# ── 语义色（大部分直接引用五色；BG_MUTED 因米色与主背景不协改用派生冷灰蓝） ─
 TEXT = DARK_BLUE  # 正文
 TEXT_MUTED = DARK_BLUE  # 次要文字
 TEXT_FAINT = DARK_BLUE  # 弱文字 / 占位
 BG_MAIN = "#F0F6FF"  # 主窗口背景（极淡蓝）
 BG_CARD = "#FFFFFF"  # 卡片底（白色保留）
-BG_MUTED = BEIGE  # 禁用/静音卡片底
+BG_MUTED = "#E8EEF5"  # 禁用/静音卡片底（米色与主背景不协，改用冷灰蓝派生）
 BG_HOVER = SKY_BLUE  # 悬停底
 BG_CHIP = SKY_BLUE  # 标题 chip 底色
 BG_DANGER_SOFT = BEIGE  # 危险浅底

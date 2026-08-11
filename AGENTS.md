@@ -21,8 +21,8 @@ src/launcher.py            # 入口：parse_args / config_workflow / main
 src/utils.py               # 路径工具
 src/utils_logger.py        # setup_logging()：控制台 + 文件轮转
 src/gui/                   # GUI 包（详见 src/gui/README.md）
-  main_window.py / widgets.py / dialogs.py / controls.py
-  icons.py / chain.py / utils.py / runner.py
+  main_window.py / widgets.py / dialogs.py / icons.py
+  theme.py / utils.py / runner.py
 src/config/
   set_config.py             # 副本配置适配器：外观接口 + ScriptConfig 类层级（设计见 set_config.md）
   subscript.py              # config 读写子脚本基础设施（load/save/template）

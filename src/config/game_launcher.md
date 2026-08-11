@@ -86,5 +86,5 @@ class ScriptConfig:
 |------|------|
 | `src/config/subscript.py` | `_CONFIG_REL_PATHS` / `get_script_name` / `load_config`（复用） |
 | `src/config/set_config.py` | `ScriptConfig` 类层级（加 `get_game_exe_path`） |
-| `src/gui/widgets.py` | `ScriptItem` 卡片（加按钮） |
+| `src/gui/widgets.py` | `ScriptItem` 卡片：图标左键启动脚本、右键菜单「打开游戏」 |
 | `src/gui/theme.py` | 按钮样式工厂 |

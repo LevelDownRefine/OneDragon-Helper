@@ -6,14 +6,29 @@ PySide6 GUI：脚本列表、增删/重排/配置、生成脚本链配置并运�
 
 | 模块 | 项目内依赖 |
 |------|-----------|
-| `main_window` | widgets / dialogs / runner / config.dungeon_config / service.chain_service / service.script_service / src.utils |
-| `widgets` | dialogs / icons / runner / utils / config.dungeon_config / config.subscript |
-| `dialogs` | utils / src.utils / service.script_service |
+| `main_window` | widgets / dialogs / runner / theme / utils / config.dungeon_config / service.chain_service / service.script_service / src.utils |
+| `widgets` | dialogs / icons / theme / runner / utils / config.dungeon_config / config.subscript |
+| `dialogs` | theme / utils / src.utils / service.script_service |
 | `icons` | src.utils |
-| `utils` | src.utils |
+| `utils` | theme / src.utils |
+| `theme` | （无项目内依赖，纯样式层） |
 | `runner` | src.utils |
 
-依赖单向：`main_window` 是唯一入口，其余模块不反向引用主窗口。
+依赖单向：`main_window` 是唯一入口，其余模块不反向引用主窗口。`theme` 被各 GUI 模块引用，但自身不依赖任何业务模块。
+
+## 主题与样式（`src/gui/theme.py`）
+
+所有 GUI 模块的视觉样式（颜色、字号、QSS、按钮构造）统一从 `theme.py` 取，**业务代码禁止写裸色值 / 裸 QSS 字符串**。
+
+- **设计 token**：甘雨五色 `DARK_BLUE / BLUE / SKY_BLUE / BEIGE / CRIMSON`；语义色基本直接引用五色，`BORDER_WIDTH = "1px"` 统一边框宽度。`BG_MUTED` 因原米色与极淡蓝主背景不协，改用派生冷灰蓝 `#E8EEF5`。
+- **字体 / 字号**：`FONT_FAMILY`（微软雅黑优先）+ `make_font()` 统一构造像素字号 `QFont`；`FONT_SIZE_BODY / FONT_SIZE_BTN / FONT_SIZE_HERO` 分别管正文 / 按钮 / 主操作字号。
+- **QSS 模板**：`line_edit_qss` / `combo_box_qss` / `check_box_qss` / `card_qss` / `menu_qss` / `message_box_qss` / `scroll_area_qss` 等，全部 f-string 插值 token。
+- **按钮风格（平面化）**：主按钮 `primary_button_qss`（钢蓝纯色底 + 白字，hover/pressed 转深空蓝）；次级 / 危险 / chip 共用 `outlined_qss`（透明底 + 圆角边框，hover 只变边框/字色、不填背景）。
+- **按钮工厂**：`make_pill_button` / `make_secondary_button` / `make_icon_button` 统一构造入口，替代各文件手写 `QPushButton` + `setStyleSheet`。
+
+**平面风格约定**：不使用阴影（`QGraphicsDropShadowEffect` 已移除）；背景 `BG_MAIN` 极淡蓝、卡片 `BG_CARD` 白；标题栏颜色经 `sync_titlebar_color(widget, theme.BG_MAIN)`（在 `utils.py`）与 DWM 同步。
+
+`dialogs._FormDialogBase` 复用基类样式常量与 `_make_footer(primary_text, slot, *, left_widgets=())`（构造 `[left_widgets…] — [取消] [主按钮]` 行），`SingleScriptConfigDialog` / `AddScriptDialog` 共用。`INPUT_FIXED_W=320` / `INPUT_FIXED_H=30` 统一输入框尺寸，表单用 `QGridLayout`（label 列固定宽、input 列固定宽）保证对齐。
 
 ## 写盘架构（单一路径）
 
