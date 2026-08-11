@@ -5,11 +5,10 @@ import os
 import time
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFontMetrics
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QMainWindow,
     QMessageBox,
@@ -45,7 +44,7 @@ class MainWindow(QMainWindow):
         # MainWindow 构造耗时打点基准：__init__ 入口归零，阶段差值为真实耗时
         self._init_t0 = time.perf_counter()
         self.setWindowTitle("OneDragon 脚本启动器")
-        self.setMinimumSize(530, 800)
+        self.setMinimumSize(350, 800)
 
         self.script_items = []
         self.all_config_data = None
@@ -117,7 +116,7 @@ class MainWindow(QMainWindow):
         self.add_script_btn = make_pill_button(
             "添加脚本",
             accent=theme.DARK_BLUE,
-            hover_color=theme.BLUE_DARK,
+            hover_color=theme.DARK_BLUE,
             pressed_bg=theme.BG_CHIP,
             font_size=theme.FONT_SIZE_BODY,
         )
@@ -148,12 +147,6 @@ class MainWindow(QMainWindow):
         self.run_btn.setStyleSheet(
             theme.primary_button_qss(radius=12, font_size=theme.FONT_SIZE_HERO)
         )
-        # 运行按钮加重阴影（深空蓝透明），强化主操作层次感
-        run_shadow = QGraphicsDropShadowEffect(self.run_btn)
-        run_shadow.setBlurRadius(20)
-        run_shadow.setColor(QColor(93, 116, 162, 80))
-        run_shadow.setOffset(0, 4)
-        self.run_btn.setGraphicsEffect(run_shadow)
         self.run_btn.clicked.connect(self._run_selected)
         layout.addWidget(self.run_btn)
 
@@ -194,6 +187,8 @@ class MainWindow(QMainWindow):
 
         # 标题列等宽对齐：扫描所有 ScriptItem 后统一计算（流程化，避免硬编码漂移）
         self._sync_title_widths()
+        # 副本按钮等宽对齐：所有脚本候选文本共用同一长度模板
+        self._sync_dungeon_btn_widths()
 
     def _sync_title_widths(self) -> None:
         """统一所有 ScriptItem 标题列宽度 = 最长内容 + padding，带上下限。
@@ -220,6 +215,30 @@ class MainWindow(QMainWindow):
             it._title_width = max_w
             it.title_label.setFixedWidth(max_w)
             it._refresh_title()
+
+    def _sync_dungeon_btn_widths(self) -> None:
+        """统一所有 ScriptItem 副本按钮宽度 = 全部候选文本最长者 + padding。
+
+        与 ``_sync_title_widths`` 同理：副本按钮构造时不设固定宽度（按内容自适应），
+        本方法在 ``_load_scripts`` 末尾 / 配置保存后调用，扫描每个有副本按钮的
+        ScriptItem 的全部候选文本（占位「选择副本」、一级选项、二级 display），
+        取全局最长宽度统一 ``setFixedWidth``，保证各卡片副本按钮右边缘对齐。
+        """
+        items = [it for it in self.script_items if it.dungeon_btn is not None]
+        if not items:
+            return
+        fm = QFontMetrics(items[0].dungeon_btn.font())
+        # 副本按钮 QSS 水平 padding 10+10=20（widgets.py _DUNGEON_BTN_QSS）
+        padding = 20
+        max_w = TITLE_MIN_WIDTH
+        for it in items:
+            for text in it.dungeon_btn_candidate_texts():
+                w = fm.horizontalAdvance(text) + padding
+                if w > max_w:
+                    max_w = w
+        max_w = max(TITLE_MIN_WIDTH, min(TITLE_MAX_WIDTH, int(max_w)))
+        for it in items:
+            it.dungeon_btn.setFixedWidth(max_w)
 
     def _create_script_item(self, data, saved_state):
         """构造 ScriptItem 并注入 UI 状态回调"""
@@ -304,6 +323,8 @@ class MainWindow(QMainWindow):
         # 改名后该 ScriptItem 的 display_name 变化，需重新同步标题列宽度
         # （避免单卡破坏等宽——sync 会按所有脚本重算最长内容并统一应用）
         self._sync_title_widths()
+        # 配置保存后脚本类型可能变化（python ↔ external），副本按钮创建/隐藏时机变化
+        self._sync_dungeon_btn_widths()
 
     def _reorder_scripts(self, src_script_name, dst_script_name):
         """把 src 标识对应的脚本移动到 dst 标识所在位置，并同步 UI 与 config.yml"""

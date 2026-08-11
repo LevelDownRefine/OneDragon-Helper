@@ -1,21 +1,21 @@
 plan_list:
 - tab_name: 训练
   category_name: 实战模拟室
-  mission_type_name: 代理人方案培养
-  mission_name: 代理人方案培养
+  mission_type_name: 培养方案
+  mission_name: 培养方案
   level: 默认等级
   auto_battle_config: 全配队通用
   predefined_team_idx: 0
 - tab_name: 训练
   category_name: 专业挑战室
-  mission_type_name: 代理人方案培养
+  mission_type_name: 培养方案
   mission_name: 调查专项
   level: 默认等级
   auto_battle_config: 全配队通用
   predefined_team_idx: 0
 - tab_name: 训练
   category_name: 区域巡防
-  mission_type_name: 代理人方案培养
+  mission_type_name: 培养方案
   mission_name: 调查专项
   level: 默认等级
   auto_battle_config: 全配队通用

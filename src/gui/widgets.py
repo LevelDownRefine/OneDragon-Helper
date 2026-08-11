@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -157,12 +156,6 @@ class ScriptItem(QFrame):
         self.setObjectName("ScriptItem")
         self.setAcceptDrops(True)
         self._apply_card_style()
-        # 卡片阴影，营造悬浮层次感
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(18)
-        shadow.setColor(QColor(15, 23, 42, 28))
-        shadow.setOffset(0, 2)
-        self.setGraphicsEffect(shadow)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)
@@ -186,21 +179,18 @@ class ScriptItem(QFrame):
         # 脚本名 chip：字号用像素单位（与 QSS font-size 一致渲染），见 theme.make_font
         title_font = theme.make_font(size=theme.FONT_SIZE_BODY)
         self.title_label.setFont(title_font)
-        # 脚本名：透明底 + 雾蓝边框 + 圆角 8（hover 时由 enter/leaveEvent 变色，与副本按钮统一）
-        self._STYLE_TITLE_NORMAL = (
-            f"color: {theme.DARK_BLUE}; background: transparent;"
-            f" border: 1px solid {theme.BORDER}; border-radius: 8px;"
-            " padding: 4px 10px;"
+        # 脚本名：透明底 + 雾蓝边框 + 圆角 8（hover 时由 enter/leaveEvent 变色，与次级按钮统一）
+        self._STYLE_TITLE_NORMAL = theme.outlined_qss(
+            selector="QLabel", color=theme.DARK_BLUE, border=theme.BORDER
         )
-        self._STYLE_TITLE_HOVER = (
-            f"color: {theme.BLUE}; background: transparent;"
-            f" border: 1px solid {theme.BLUE}; border-radius: 8px;"
-            " padding: 4px 10px;"
+        self._STYLE_TITLE_HOVER = theme.outlined_qss(
+            selector="QLabel", color=theme.BLUE, border=theme.BLUE, accent=theme.BLUE
         )
-        self._STYLE_TITLE_DISABLED = (
-            f"color: {theme.TEXT_FAINT}; background: transparent;"
-            f" border: 1px solid {theme.BORDER_SOFT}; border-radius: 8px;"
-            " padding: 4px 10px;"
+        self._STYLE_TITLE_DISABLED = theme.outlined_qss(
+            selector="QLabel",
+            color=theme.TEXT_FAINT,
+            border=theme.BORDER_SOFT,
+            accent=theme.BLUE,
         )
         self.title_label.setStyleSheet(self._STYLE_TITLE_NORMAL)
         # 脚本名 hover 变色：与副本按钮 hover 效果一致（边框+文字变钢蓝）
@@ -455,6 +445,20 @@ class ScriptItem(QFrame):
             return display_name
         return self._selected_dungeon
 
+    def dungeon_btn_candidate_texts(self) -> list[str]:
+        """副本按钮可能出现的最长文本集合（供 MainWindow 统一对齐宽度）。
+
+        含「选择副本」占位、全部一级选项名、全部二级 display 名。
+        让所有卡片副本按钮共用同一长度模板：MainWindow 扫描全部脚本的候选
+        文本取最长宽度，统一 ``setFixedWidth``，保证右边缘对齐。
+        """
+        candidates = ["选择副本"]
+        candidates.extend(self._dungeon_options)
+        for seq_options in self._sequence_options_map.values():
+            for display_name, _actual_value in seq_options:
+                candidates.append(display_name)
+        return candidates
+
     def _on_dungeon_selected(self, dungeon_name, sequence=None):
         """选择副本后的回调"""
         if dungeon_name == "未选择":
@@ -516,8 +520,8 @@ class ScriptItem(QFrame):
             self.dungeon_btn.setCursor(Qt.PointingHandCursor)
             self.dungeon_btn.setFixedHeight(26)
             self.dungeon_btn.setStyleSheet(_DUNGEON_BTN_QSS)
-            # 固定宽度：所有卡片副本条等宽，右边缘对齐
-            self.dungeon_btn.setFixedWidth(220)
+            # 按内容自适应宽度：有二级时仅显示二级 display（较短），固定宽度会浪费空间；
+            # QPushButton 默认按 minimumSizeHint（内容宽 + padding）调整，无须固定宽度。
             self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
             # 追加到左 spacer 之后、右 spacer（__init__ 随后添加）之前 → 居中
             self.layout().insertWidget(self.layout().count(), self.dungeon_btn)

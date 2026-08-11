@@ -508,5 +508,48 @@ class TestPersistUiState(unittest.TestCase):
         )
 
 
+class TestSyncDungeonBtnWidths(unittest.TestCase):
+    """测试 _sync_dungeon_btn_widths：副本按钮按最长候选文本统一对齐"""
+
+    def _item_with_dungeon(self, candidates):
+        return ScriptItem(
+            {
+                "display_name": "t",
+                "script_type": "external",
+                "script_path": "t.exe",
+            },
+            dungeon_options=["未选择"] + candidates,
+        )
+
+    def _item_without_dungeon(self):
+        return ScriptItem(
+            {
+                "display_name": "t",
+                "script_type": "python",
+                "script_path": "t.py",
+            },
+            dungeon_options=None,
+        )
+
+    def test_widths_equal_and_based_on_longest_candidate(self):
+        """有副本按钮的脚本宽度一致，且按最长候选文本计算"""
+        win = _make_window(script_count=0)
+        it_short = self._item_with_dungeon(["副本A", "副本B"])
+        it_long = self._item_with_dungeon(["副本甲", "副本乙", "副本丙"])
+        # 无副本的 python 脚本不参与对齐（dungeon_btn 为 None）
+        it_none = self._item_without_dungeon()
+        win.script_items = [it_short, it_long, it_none]
+
+        # 触发按钮创建（ScriptItem 构造时 _ensure_dungeon_button 已创建）
+        win._sync_dungeon_btn_widths()
+
+        self.assertIsNotNone(it_short.dungeon_btn)
+        self.assertIsNotNone(it_long.dungeon_btn)
+        self.assertIsNone(it_none.dungeon_btn)
+        self.assertEqual(it_short.dungeon_btn.width(), it_long.dungeon_btn.width())
+        # 宽度应大于最短候选（"副本A"），覆盖最长候选（"副本丙"）→ 更宽
+        self.assertGreaterEqual(it_short.dungeon_btn.width(), 60)
+
+
 if __name__ == "__main__":
     unittest.main()

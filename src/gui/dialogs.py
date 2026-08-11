@@ -70,8 +70,22 @@ class _FormDialogBase(QDialog):
     _PRIMARY_BTN_STYLE = theme.primary_button_qss(
         radius=6, font_size=theme.FONT_SIZE_BODY
     )
-    _SECONDARY_BTN_STYLE = theme.secondary_button_qss(font_size=theme.FONT_SIZE_BODY)
-    _DANGER_BTN_STYLE = theme.danger_button_qss(font_size=theme.FONT_SIZE_BODY)
+    _SECONDARY_BTN_STYLE = theme.outlined_qss(
+        selector="QPushButton",
+        radius=10,
+        font_size=theme.FONT_SIZE_BODY,
+        color=theme.TEXT,
+        padding="0 16px",
+    )
+    _DANGER_BTN_STYLE = theme.outlined_qss(
+        selector="QPushButton",
+        accent=theme.CRIMSON,
+        radius=10,
+        font_size=theme.FONT_SIZE_BODY,
+        color=theme.CRIMSON,
+        border="#D8B4B6",
+        padding="0 24px",
+    )
 
     def _make_label(self, text) -> QLabel:
         """构造固定宽度的表单字段标签（无边框透明背景）。"""
@@ -138,7 +152,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
     ):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {display_name}")
-        self.setStyleSheet(f"background-color: {theme.BG_HOVER};")
+        self.setStyleSheet(f"background-color: {theme.BG_CARD};")
 
         self.script_name = (
             script_name  # 内部标识：exe 用进程名，脚本文件用 display_name
@@ -465,7 +479,7 @@ class AddScriptDialog(_FormDialogBase):
     def __init__(self, existing_script_names=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("添加脚本")
-        self.setStyleSheet(f"background-color: {theme.BG_HOVER};")
+        self.setStyleSheet(f"background-color: {theme.BG_CARD};")
         self._existing_script_names = set(existing_script_names or [])
         self.script_entry = None
         self.init_ui()

@@ -126,6 +126,44 @@ class TestScriptItemDungeonBtnText(unittest.TestCase):
         self.assertEqual(item.dungeon_btn.text(), "副本B")
 
 
+class TestScriptItemDungeonBtnCandidateTexts(unittest.TestCase):
+    """测试副本按钮候选文本（供 MainWindow 统一对齐宽度）"""
+
+    def _make_item(self):
+        return ScriptItem(
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+            },
+            dungeon_options=["未选择", "副本A", "副本B"],
+            sequence_options_map={
+                "副本A": [
+                    ("共鸣者经验", "共鸣者经验"),
+                    ("武器经验", "武器经验"),
+                ]
+            },
+            show_sequence=True,
+        )
+
+    def test_candidates_cover_placeholder_and_all_levels(self):
+        """候选文本含占位符、全部一级选项名、全部二级 display 名"""
+        item = self._make_item()
+        texts = item.dungeon_btn_candidate_texts()
+        self.assertIn("选择副本", texts)
+        self.assertIn("副本A", texts)
+        self.assertIn("副本B", texts)
+        self.assertIn("共鸣者经验", texts)
+        self.assertIn("武器经验", texts)
+
+    def test_candidates_do_not_include_actual_values(self):
+        """候选文本是 display 名，不含 value（如 1/2）"""
+        item = self._make_item()
+        texts = item.dungeon_btn_candidate_texts()
+        self.assertNotIn(1, texts)
+        self.assertNotIn("1", texts)
+
+
 class TestScriptItemEnabledNotPersisted(unittest.TestCase):
     """测试 enabled 不被持久化"""
 

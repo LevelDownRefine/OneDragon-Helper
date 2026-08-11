@@ -1,7 +1,7 @@
 # OneDragon-Helper
 
 本项目是多游戏自动化脚本调度器，支持多个游戏的脚本调度。
-![ds](assets\ds.jpg)
+![ds](assets/ds.jpg)
 Agent兴起，可以借助Agent快速自定义脚本级别工具。
 
 ## 功能

@@ -22,22 +22,19 @@ SKY_BLUE = "#C4D8F2"  # 雾蓝
 BEIGE = "#F2E8E3"  # 肤
 CRIMSON = "#8E2D30"  # 酒红
 
-# ── 派生色（在五色基础上调亮/调深，保证可读性） ────────────────────────────────
-BLUE_LIGHT = "#7D93BF"  # 钢蓝亮端（渐变顶 / hover）
-BLUE_DARK = "#4A5F8C"  # 钢蓝深端（按下）
-TEXT = "#333957"  # 正文 = 深空蓝
-TEXT_MUTED = "#6B7390"  # 次要文字（深空蓝降饱和）
-TEXT_FAINT = "#9AA1B5"  # 弱文字 / 占位
-BG_MAIN = "#F4EDE6"  # 主窗口背景（肤色调亮）
-BG_CARD = "#FFFFFF"  # 卡片白底
-BG_MUTED = "#F7F8FA"  # 禁用/静音卡片底
-BG_HOVER = "#E9F0FA"  # 悬停底（雾蓝极浅）
-BG_CHIP = "#EEF3FA"  # 标题 chip 底色
-BG_DANGER_SOFT = "#F7EBEB"  # 危险浅底（酒红极浅）
-BORDER = "#DAE4F1"  # 中性边框（雾蓝柔化）
-BORDER_ACCENT = "#C5D4EA"  # 雾蓝边框（悬停 / 次级按钮）
-BORDER_SOFT = "#E8EDF5"  # 极柔边框（弱化层）
-DISABLED = "#CBD3E2"  # 禁用底色
+# ── 语义色（全部直接引用五色，不派生新值；不好看再换回派生色） ───────────────
+TEXT = DARK_BLUE  # 正文
+TEXT_MUTED = DARK_BLUE  # 次要文字
+TEXT_FAINT = DARK_BLUE  # 弱文字 / 占位
+BG_MAIN = BEIGE  # 主窗口背景
+BG_CARD = "#FFFFFF"  # 卡片底（白色保留）
+BG_MUTED = BEIGE  # 禁用/静音卡片底
+BG_HOVER = SKY_BLUE  # 悬停底
+BG_CHIP = SKY_BLUE  # 标题 chip 底色
+BG_DANGER_SOFT = BEIGE  # 危险浅底
+BORDER = SKY_BLUE  # 中性边框
+BORDER_SOFT = SKY_BLUE  # 极柔边框
+DISABLED = SKY_BLUE  # 禁用底色
 
 FONT_FAMILY = '"Microsoft YaHei", "Segoe UI", sans-serif'
 
@@ -49,7 +46,6 @@ FONT_SIZE_HERO = 13  # 主要操作：运行按钮
 
 
 # ── 文本 / 布局常量 ──────────────────────────────────────────────────────────
-LABEL_WIDTH = 64  # 表单标签固定宽
 LABEL_WIDTH = 64  # 表单标签固定宽
 
 
@@ -68,66 +64,45 @@ def make_font(*, size: int = FONT_SIZE_BODY, bold: bool = False) -> QFont:
 
 
 def primary_button_qss(*, radius: int = 10, font_size: int = FONT_SIZE_BTN) -> str:
-    """主按钮：钢蓝渐变底 + 白字。dialogs 主按钮 / 主窗口「运行」共用。"""
+    """主按钮：钢蓝纯色底 + 白字（平面风格，无渐变）。dialogs 主按钮 / 主窗口「运行」共用。"""
     return f"""
         QPushButton {{
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                        stop:0 {BLUE_LIGHT}, stop:1 {BLUE});
+            background: {BLUE};
             color: white;
             border: none;
             border-radius: {radius}px;
             font-size: {font_size}px;
         }}
-        QPushButton:hover {{
-            background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                                        stop:0 #8FA5CF, stop:1 {BLUE_DARK});
-        }}
+        QPushButton:hover {{ background: {DARK_BLUE}; }}
         QPushButton:pressed {{ background: {DARK_BLUE}; }}
         QPushButton:disabled {{ background: {DISABLED}; color: #F0F3F8; }}
     """
 
 
-def secondary_button_qss(
+def outlined_qss(
     *,
-    border: str = BORDER,
-    radius: int = 10,
+    selector: str = "QPushButton",
+    accent: str = BLUE,
+    radius: int = 8,
     font_size: int = FONT_SIZE_BODY,
-    color: str = TEXT,
+    color: str = DARK_BLUE,
+    border: str = BORDER,
+    padding: str = "4px 10px",
 ) -> str:
-    """中性轮廓按钮：白底圆角边框，hover 改边框/字色 + 加浅底，pressed 加深底。"""
+    """轮廓控件模板（脚本名 chip / 次级按钮 / 危险按钮共用）：
+    透明底 + 圆角边框，hover 只变边框/文字色（不填充背景，保持平面风格）。"""
     return f"""
-        QPushButton {{
+        {selector} {{
             border: 1px solid {border};
             border-radius: {radius}px;
-            background: white;
+            background: transparent;
             font-family: {FONT_FAMILY};
             font-size: {font_size}px;
             color: {color};
-            padding: 0 16px;
-            text-align: center;
+            padding: {padding};
         }}
-        QPushButton:hover {{
-            border-color: {BLUE}; color: {BLUE}; background: {BG_HOVER};
-        }}
-        QPushButton:pressed {{ background: {BG_CHIP}; }}
-        QPushButton:disabled {{ color: {TEXT_FAINT}; border-color: {DISABLED}; }}
-    """
-
-
-def danger_button_qss(*, radius: int = 10, font_size: int = FONT_SIZE_BODY) -> str:
-    """危险按钮：白底酒红边框/文字（删除、清空等破坏性操作）。"""
-    return f"""
-        QPushButton {{
-            border: 1px solid #D8B4B6;
-            border-radius: {radius}px;
-            background: white;
-            font-size: {font_size}px;
-            color: {CRIMSON};
-            padding: 0 24px;
-        }}
-        QPushButton:hover {{ border-color: {CRIMSON}; color: {CRIMSON};
-                            background: {BG_DANGER_SOFT}; }}
-        QPushButton:disabled {{ color: {TEXT_FAINT}; border-color: {DISABLED}; }}
+        {selector}:hover {{ border-color: {accent}; color: {accent}; }}
+        {selector}:disabled {{ color: {TEXT_FAINT}; border-color: {DISABLED}; }}
     """
 
 
@@ -369,18 +344,21 @@ def make_secondary_button(
     color: str = TEXT,
     min_width: int = 0,
 ) -> QPushButton:
-    """中性轮廓按钮（见 :func:`secondary_button_qss`）。"""
+    """中性轮廓按钮（见 :func:`outlined_qss`）。"""
     btn = QPushButton(text)
     btn.setCursor(Qt.PointingHandCursor)
     btn.setFixedHeight(fixed_height)
     if min_width:
         btn.setMinimumWidth(min_width)
     btn.setStyleSheet(
-        secondary_button_qss(
+        outlined_qss(
+            selector="QPushButton",
             border=border,
             radius=radius,
             font_size=font_size,
             color=color,
+            accent=BLUE,
+            padding=padding,
         )
     )
     return btn

@@ -215,7 +215,7 @@ BetterGI:
 "OneDragon-Launcher":
   dungeons:
     - name: "未选择"
-    - name: "代理人方案培养"
+    - name: "培养方案"
 
 # config: config.yaml
 "March7th-Assistant":
