@@ -108,12 +108,24 @@
 
 # config: User\OneDragon\默认配置.json
 # see: https://github.com/babalae/bettergi-scripts-list/blob/main/repo/js/AutoDomain/main.js
+# 原神副本按类型分目录（一级=类型，二级=具体副本）；数字为占位目录名，后续补充副本时再命名。
 BetterGI:
   dungeons:
     - name: "未选择"
-    - name: "山风的荆冕"
-    - name: "霜凝的机枢"
-    - name: "无光的深都"
+    - name: "圣遗物"
+      sequences:
+        - display: "山风的荆冕"
+          value: "山风的荆冕"
+        - display: "霜凝的机枢"
+          value: "霜凝的机枢"
+    - name: "武器"
+      sequences:
+        - display: "失落的月庭"
+          value: "失落的月庭"
+    - name: "天赋"
+      sequences:
+        - display: "无光的深都"
+          value: "无光的深都"
 
 # config: data\apps\ok-ef\working\configs\DailyTask.json
 # see: https://github.com/AliceJump/ok-end-field/blob/master/docs/%E4%BD%93%E5%8A%9B%E6%9C%AC.md
