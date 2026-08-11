@@ -397,6 +397,17 @@ class TestEndfieldConfig(unittest.TestCase):
             cfg.set_dungeon("新本")
         mock_save.assert_called_once_with({"体力本": "新本"})
 
+    def test_set_dungeon_with_sequence_writes_second_level(self):
+        """终末地副本按「类型 → 副本」两级组织（假一级目录）：写入的是二级副本名。"""
+        cfg = EndfieldConfig()
+        config = {"体力本": "旧本"}
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg.set_dungeon("能量淤积点", sequence="枢纽区")
+        mock_save.assert_called_once_with({"体力本": "枢纽区"})
+
 
 # ============================================================
 # 绝区零 ZenlessZoneZeroConfig

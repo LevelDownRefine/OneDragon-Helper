@@ -409,6 +409,15 @@ class EndfieldConfig(ScriptConfig):
         # TODO: 确认包含了绳索等配置
         pass
 
+    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
+        """设置终末地副本：副本按「类型 → 副本」两级组织（假一级目录），实际写入的是二级副本名。
+
+        dungeon_list.yml 中一级为类型目录，二级才是具体副本名。
+        体力本 字段存副本名；无二级时（兼容旧单层配置）回退写一级名。
+        """
+        target = sequence if sequence is not None else dungeon_name
+        super().set_dungeon(target)
+
 
 # ---- 绝区零 Zenless Zone Zero ----
 @register
