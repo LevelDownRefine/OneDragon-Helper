@@ -89,6 +89,43 @@ class TestScriptItemGetState(unittest.TestCase):
         self.assertNotIn("enabled", state)
 
 
+class TestScriptItemDungeonBtnText(unittest.TestCase):
+    """测试副本按钮文本：有二级时只显示二级，无二级显示一级"""
+
+    def _make_item(self):
+        return ScriptItem(
+            {
+                "display_name": "test",
+                "script_type": "external",
+                "script_path": "test.exe",
+            },
+            dungeon_options=["未选择", "副本A", "副本B"],
+            sequence_options_map={
+                "副本A": [
+                    ("共鸣者经验", "共鸣者经验"),
+                    ("武器经验", "武器经验"),
+                ]
+            },
+            show_sequence=True,
+        )
+
+    def test_no_selection_shows_placeholder(self):
+        item = self._make_item()
+        self.assertEqual(item._dungeon_btn_text(), "选择副本")
+
+    def test_has_sequence_shows_secondary_only(self):
+        """有二级选项时按钮只显示二级名，不拼接一级"""
+        item = self._make_item()
+        item._on_dungeon_selected("副本A", "武器经验")
+        self.assertEqual(item.dungeon_btn.text(), "武器经验")
+
+    def test_no_sequence_shows_dungeon_name(self):
+        """无二级选项的副本按钮显示一级名"""
+        item = self._make_item()
+        item._on_dungeon_selected("副本B")
+        self.assertEqual(item.dungeon_btn.text(), "副本B")
+
+
 class TestScriptItemEnabledNotPersisted(unittest.TestCase):
     """测试 enabled 不被持久化"""
 

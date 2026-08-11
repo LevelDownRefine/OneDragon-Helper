@@ -443,7 +443,7 @@ class ScriptItem(QFrame):
         menu.exec(self.dungeon_btn.mapToGlobal(self.dungeon_btn.rect().bottomLeft()))
 
     def _dungeon_btn_text(self):
-        """根据已选的一级/二级返回按钮显示文字"""
+        """根据已选的一级/二级返回按钮显示文字：有二级只显示二级名"""
         if not self._selected_dungeon:
             return "选择副本"
         if self._selected_sequence:
@@ -452,7 +452,7 @@ class ScriptItem(QFrame):
                 self._selected_dungeon,
                 self._selected_sequence,
             )
-            return f"{self._selected_dungeon} > {display_name}"
+            return display_name
         return self._selected_dungeon
 
     def _on_dungeon_selected(self, dungeon_name, sequence=None):
