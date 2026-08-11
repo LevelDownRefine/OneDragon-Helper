@@ -163,8 +163,8 @@ class _BITMAPINFO(ctypes.Structure):
 
 # 默认图标：没有自带图标的脚本（如 python 脚本，或 external 但取不到 exe 图标的）使用。
 # 优先用当前 Python 解释器（sys.executable）的 OS 文件图标，即 Python 官方图标；
-# 极个别取不到时（如冻结后 sys.executable 指向自身 exe）回退到 assets/Chtholly.ico。
-_DEFAULT_ICON_PATH = safe_path_join(get_root_dir(), "assets", "Chtholly.ico")
+# 极个别取不到时（如冻结后 sys.executable 指向自身 exe）回退到 assets/ds.ico。
+_DEFAULT_ICON_PATH = safe_path_join(get_root_dir(), "assets", "ds.ico")
 _DEFAULT_ICON: QIcon | None = None
 
 # 已转换的 exe 图标（仅主线程读写，key=exe 路径，避免重复后台提取）
@@ -172,7 +172,7 @@ _EXE_ICON_PIXMAP_CACHE: dict[str, QPixmap] = {}
 
 
 def _default_icon() -> QIcon:
-    """懒加载默认图标（缺自带图标时回退用）：优先 Python 解释器图标，否则 Chtholly。"""
+    """懒加载默认图标（缺自带图标时回退用）：优先 Python 解释器图标，否则 ds。"""
     global _DEFAULT_ICON
     if _DEFAULT_ICON is None:
         python_icon = _exe_icon(sys.executable)

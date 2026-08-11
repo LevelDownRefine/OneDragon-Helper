@@ -48,13 +48,13 @@ def config_workflow():
 
 
 def _set_app_window_icon(app):
-    """把 assets/Chtholly.ico 设为应用窗口图标（标题栏/任务栏）。
+    """把 assets/ds.ico 设为应用窗口图标（标题栏/任务栏）。
 
     在 dev 与冻结（PyInstaller）两种模式下都能定位：dev 时 assets/ 在项目根，
     冻结时 build.bat 已把 assets/ 拷到 exe 同级目录，get_path_under_root 据此解析。
     图标缺失时静默跳过，不影响启动。
     """
-    icon_path = get_path_under_root("assets", "Chtholly.ico")
+    icon_path = get_path_under_root("assets", "ds.ico")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 

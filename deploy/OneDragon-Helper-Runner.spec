@@ -82,5 +82,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     uac_admin=True,
-    icon=['../assets/Chtholly.ico'],
+    icon=['../assets/ds.ico'],
 )
