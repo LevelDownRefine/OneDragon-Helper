@@ -382,6 +382,15 @@ class GenshinConfig(ScriptConfig):
         self._task_key = "DomainName"
         self._init_config()
 
+    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
+        """设置原神副本：副本按「目录 → 副本」两级组织，实际写入的是二级副本名。
+
+        dungeon_list.yml 中一级为类型目录，二级才是具体副本名。
+        DomainName 字段存副本名；无二级时（兼容旧单层配置）回退写一级名。
+        """
+        target = sequence if sequence is not None else dungeon_name
+        super().set_dungeon(target)
+
 
 # ---- 终末地 Arknights: Endfield ----
 @register

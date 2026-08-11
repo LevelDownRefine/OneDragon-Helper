@@ -98,6 +98,28 @@ class TestParseDungeonConfig(unittest.TestCase):
         self.assertEqual(seq_map, {})
         self.assertFalse(show_seq)
 
+    def test_directory_structure(self):
+        """一级为目录、二级为具体副本的目录结构（原神 BetterGI）"""
+        cfg = {
+            "dungeons": [
+                {"name": "未选择"},
+                {
+                    "name": "1",
+                    "sequences": [
+                        {"display": "山风的荆冕", "value": "山风的荆冕"},
+                        {"display": "霜凝的机枢", "value": "霜凝的机枢"},
+                    ],
+                },
+            ]
+        }
+        options, seq_map, show_seq = parse_dungeon_config(cfg)
+        self.assertEqual(options, ["未选择", "1"])
+        self.assertEqual(
+            seq_map["1"],
+            [("山风的荆冕", "山风的荆冕"), ("霜凝的机枢", "霜凝的机枢")],
+        )
+        self.assertTrue(show_seq)
+
 
 class TestGetDisplayName(unittest.TestCase):
     """测试 get_display_name"""

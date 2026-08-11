@@ -352,6 +352,46 @@ class TestSaveConfig(unittest.TestCase):
                 self.assertEqual(loaded, data)
 
 
+class TestGenshinSetDungeon(unittest.TestCase):
+    """测试 GenshinConfig.set_dungeon：目录→副本两级组织，DomainName 存副本名"""
+
+    def setUp(self):
+        from src.config.set_config import GenshinConfig
+
+        self.config = GenshinConfig.__new__(GenshinConfig)
+        self.config.display_name = "原神"
+        self.config._task_key = "DomainName"
+        self.config.enabled = True
+        self.config._config_data = {"DomainName": "旧副本", "TaskEnabledList": []}
+        self.config._verify_saved = lambda *a: None
+        # 统一注入 mock IO：load 返回内存态，save 不落盘
+        self.mock_save = self.enterContext(
+            patch("src.config.set_config.save_config", return_value=None)
+        )
+        self.enterContext(
+            patch(
+                "src.config.set_config.load_config",
+                side_effect=lambda *a: self.config._config_data,
+            )
+        )
+
+    def test_has_sequence_writes_secondary_name(self):
+        """有二级（目录 → 副本）时 DomainName 写入二级副本名"""
+        self.config.set_dungeon("1", "霜凝的机枢")
+        self.assertEqual(self.config._config_data["DomainName"], "霜凝的机枢")
+
+    def test_no_sequence_writes_dungeon_name(self):
+        """无二级（兼容旧单层配置）时 DomainName 写入一级名"""
+        self.config.set_dungeon("山风的荆冕")
+        self.assertEqual(self.config._config_data["DomainName"], "山风的荆冕")
+
+    def test_same_value_no_save(self):
+        """DomainName 未变化时不落盘"""
+        self.config._config_data["DomainName"] = "霜凝的机枢"
+        self.config.set_dungeon("1", "霜凝的机枢")
+        self.mock_save.assert_not_called()
+
+
 class TestSafeUpdate(unittest.TestCase):
     """测试 safe_update"""
 
