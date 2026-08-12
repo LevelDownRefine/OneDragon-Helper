@@ -86,6 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="配合 --generate-chain，逗号分隔的脚本标识白名单（默认：全部脚本）",
     )
     parser.add_argument(
+        "--exclude",
+        type=str,
+        default=None,
+        help="配合 --generate-chain，逗号分隔的脚本标识黑名单（从启用集合中剔除）",
+    )
+    parser.add_argument(
         "--name",
         type=str,
         default="today",
@@ -321,6 +327,14 @@ def _run_generate_chain(args) -> int:
             return 1
     else:
         enabled_keys = set(known)
+
+    if args.exclude:
+        excluded = {n.strip() for n in args.exclude.split(",") if n.strip()}
+        unknown = excluded - known
+        if unknown:
+            _emit_cli("generate_chain", f"未知的脚本标识: {sorted(unknown)}")
+            return 1
+        enabled_keys -= excluded
 
     ui_state = service.load_ui_state()
 

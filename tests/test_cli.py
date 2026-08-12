@@ -143,6 +143,13 @@ class TestCliGenerateChain(unittest.TestCase):
     def setUp(self):
         self._names = _known_script_names()
         self.assertTrue(self._names, "config.yml 不应为空脚本列表")
+        # 固定「当天全部运行」，消除 weekly_timeouts 按星期剔除脚本带来的日期敏感
+        # （如 AUTO-MAS 周三配置 0 不运行，会让"应含全部脚本"的断言随机失败）。
+        self._resolve_daily = patch.object(
+            service_chain_gen, "_resolve_daily_run", return_value=True
+        )
+        self._resolve_daily.start()
+        self.addCleanup(self._resolve_daily.stop)
 
     def test_generate_chain_default_all_enabled(self):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
@@ -187,6 +194,64 @@ class TestCliGenerateChain(unittest.TestCase):
         assert bogus not in self._names
         with patch.object(service_chain_gen, "set_config"):
             code = _run_main(["--generate-chain", "--enable", bogus], expect_exit=1)
+        self.assertEqual(code, 1)
+        self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
+
+    def test_generate_chain_exclude_subset(self):
+        """--exclude 从全部脚本中剔除指定标识"""
+        target = self._names[0]
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            with patch.object(service_chain_gen, "set_config"):
+                code = _run_main(
+                    ["--generate-chain", "--exclude", target, "--out", out],
+                    expect_exit=0,
+                )
+            self.assertEqual(code, 0)
+            with open(out, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            produced = [get_script_name(s) for s in data["script_list"]]
+            self.assertEqual(set(produced), set(self._names) - {target}, msg=produced)
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+    def test_generate_chain_exclude_with_enable(self):
+        """--enable 白名单后再 --exclude，交集为最终集合"""
+        target = self._names[0]
+        other = self._names[1]
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            with patch.object(service_chain_gen, "set_config"):
+                code = _run_main(
+                    [
+                        "--generate-chain",
+                        "--enable",
+                        f"{target},{other}",
+                        "--exclude",
+                        target,
+                        "--out",
+                        out,
+                    ],
+                    expect_exit=0,
+                )
+            self.assertEqual(code, 0)
+            with open(out, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            produced = [get_script_name(s) for s in data["script_list"]]
+            self.assertEqual(produced, [other], msg=produced)
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+    def test_generate_chain_exclude_unknown_name_exits_one(self):
+        """--exclude 含未知标识时报错退出 1"""
+        bogus = "此脚本一定不存在_XYZ"
+        assert bogus not in self._names
+        with patch.object(service_chain_gen, "set_config"):
+            code = _run_main(["--generate-chain", "--exclude", bogus], expect_exit=1)
         self.assertEqual(code, 1)
         self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
 
