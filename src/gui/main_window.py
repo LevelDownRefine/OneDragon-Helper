@@ -44,7 +44,7 @@ class MainWindow(QMainWindow):
         # MainWindow 构造耗时打点基准：__init__ 入口归零，阶段差值为真实耗时
         self._init_t0 = time.perf_counter()
         self.setWindowTitle("OneDragon")
-        self.setMinimumSize(350, 800)
+        self.setMinimumSize(315, 800)
 
         self.script_items = []
         self.all_config_data = None
@@ -85,7 +85,7 @@ class MainWindow(QMainWindow):
         self.scroll_content.setStyleSheet("background-color: transparent;")
         self.scroll_layout = QVBoxLayout(self.scroll_content)
         self.scroll_layout.setContentsMargins(2, 4, 14, 4)
-        self.scroll_layout.setSpacing(12)
+        self.scroll_layout.setSpacing(5)
         self.scroll_layout.addStretch()
         # 挂载延迟到 _load_scripts 末尾（卡片插满后再 setWidget+addWidget）：
         # widgetResizable=True 时，若先挂载再逐卡插入，每次插入都触发 viewport
@@ -102,6 +102,8 @@ class MainWindow(QMainWindow):
             accent=theme.BLUE,
             pressed_bg=theme.BG_CHIP,
             font_size=theme.FONT_SIZE_BODY,
+            padding="0 10px",
+            min_width=0,
         )
         self.select_all_btn.clicked.connect(self._select_all)
         action_layout.addWidget(self.select_all_btn)
@@ -111,6 +113,8 @@ class MainWindow(QMainWindow):
             accent=theme.CRIMSON,
             pressed_bg=theme.BG_DANGER_SOFT,
             font_size=theme.FONT_SIZE_BODY,
+            padding="0 10px",
+            min_width=0,
         )
         self.deselect_all_btn.clicked.connect(self._deselect_all)
         action_layout.addWidget(self.deselect_all_btn)
@@ -121,6 +125,8 @@ class MainWindow(QMainWindow):
             hover_color=theme.DARK_BLUE,
             pressed_bg=theme.BG_CHIP,
             font_size=theme.FONT_SIZE_BODY,
+            padding="0 10px",
+            min_width=0,
         )
         self.add_script_btn.clicked.connect(self._add_script)
         action_layout.addWidget(self.add_script_btn)
@@ -132,6 +138,8 @@ class MainWindow(QMainWindow):
             hover_color=theme.BLUE,
             pressed_bg=theme.BG_CHIP,
             font_size=theme.FONT_SIZE_BODY,
+            padding="0 10px",
+            min_width=0,
         )
         self.open_config_btn.clicked.connect(self._open_config_yml)
         action_layout.addWidget(self.open_config_btn)
@@ -193,29 +201,13 @@ class MainWindow(QMainWindow):
         self._sync_dungeon_btn_widths()
 
     def _sync_title_widths(self) -> None:
-        """统一所有 ScriptItem 标题列宽度 = 最长内容 + padding，带上下限。
+        """display_name 无框大字：宽度自适应内容，仅刷新超长截断。
 
-        流程化设计：每个 ScriptItem 构造时只设 minimum + 默认占位宽度；本方法
-        在 ``_load_scripts`` 末尾 / 改名后调用，按实际内容动态算宽度，刷新
-        ``_title_width`` 并触发 ``_refresh_title`` 重新截断。这样无论新增脚本
-        名字多长，都不会撑爆布局，也不会因硬编码 60/110 漂移而漏字。
+        无框后不再需要 chip 时代的等宽对齐（那时固定宽度是为了所有 chip 右边
+        框整齐）；每个标题按内容自适应，超长（> TITLE_MAX_WIDTH）由
+        ``_refresh_title`` 内部 elide。改名后调用本方法重新按新文本截断。
         """
-        items = self.script_items
-        if not items:
-            return
-        fm = QFontMetrics(items[0].title_label.font())
-        # chip 水平 padding 之和（widgets.py title_label padding 10+10=20）
-        # 同步固定宽度 = 文字宽 + 20
-        padding = 20
-        max_w = TITLE_MIN_WIDTH
-        for it in items:
-            w = fm.horizontalAdvance(it.display_name) + padding
-            if w > max_w:
-                max_w = w
-        max_w = max(TITLE_MIN_WIDTH, min(TITLE_MAX_WIDTH, int(max_w)))
-        for it in items:
-            it._title_width = max_w
-            it.title_label.setFixedWidth(max_w)
+        for it in self.script_items:
             it._refresh_title()
 
     def _sync_dungeon_btn_widths(self) -> None:

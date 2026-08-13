@@ -44,7 +44,7 @@ _DUNGEON_BTN_QSS = (
     f"  border: {theme.BORDER_WIDTH} solid {theme.BORDER}; border-radius: 8px;"
     f"  padding: 0 10px; background: transparent;"
     f"  color: {theme.DARK_BLUE}; font-family: {theme.FONT_FAMILY};"
-    f"  font-size: {theme.FONT_SIZE_BODY}px; text-align: center;"
+    f"  font-size: {theme.FONT_SIZE_SMALL}px; text-align: center;"
     f"}}"
     f"QPushButton:hover {{"
     f"  border-color: {theme.BLUE}; background: transparent;"
@@ -56,8 +56,8 @@ _DUNGEON_BTN_QSS = (
     f"}}"
 )
 
-# 标题列宽度常量（详见 MainWindow._sync_title_widths）
-TITLE_DEFAULT_WIDTH = 110  # 构造期占位宽度；加载完成后会被 sync 流程覆盖
+# 标题/副本按钮宽度常量：标题无框大字自适应内容（仅最大宽度上限防超长）；
+# TITLE_MIN_WIDTH 供副本按钮等宽对齐流程使用（有框 chip 仍需等宽）
 TITLE_MIN_WIDTH = 60
 TITLE_MAX_WIDTH = 180
 
@@ -158,7 +158,7 @@ class ScriptItem(QFrame):
         self._apply_card_style()
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(12, 5, 5, 5)
         layout.setSpacing(10)
 
         # 脚本图标：external 脚本用 exe 自带图标，其余（如 python）用默认图标
@@ -173,45 +173,31 @@ class ScriptItem(QFrame):
         self._refresh_icon(script_data)
         layout.addWidget(self.icon_label)
 
-        # 脚本名称：宽度由 MainWindow._sync_title_widths() 流程统一决定（避免硬编码漂移）。
-        # 构造期先按默认 ``TITLE_DEFAULT_WIDTH`` 占位，load_scripts 末尾会刷新。
+        # 脚本名称：无框大字，宽度自适应内容；仅设最大宽度上限防止超长名字撑爆布局。
+        # 构造期直接显示全文，load_scripts 末尾的 sync 会按需重新截断。
         self.title_label = QLabel(self.display_name)
-        # 脚本名 chip：字号用像素单位（与 QSS font-size 一致渲染），见 theme.make_font
-        title_font = theme.make_font(size=theme.FONT_SIZE_BODY)
+        # 脚本名标题：无框大字（识别角色），与副本按钮的 chip（操作角色）形态区分
+        title_font = theme.make_font(size=theme.FONT_SIZE_TITLE)
         self.title_label.setFont(title_font)
-        # 脚本名：透明底 + 雾蓝边框 + 圆角 8（hover 时由 enter/leaveEvent 变色，与次级按钮统一）
-        self._STYLE_TITLE_NORMAL = theme.outlined_qss(
-            selector="QLabel", color=theme.DARK_BLUE, border=theme.BORDER
-        )
-        self._STYLE_TITLE_HOVER = theme.outlined_qss(
-            selector="QLabel", color=theme.BLUE, border=theme.BLUE, accent=theme.BLUE
-        )
-        self._STYLE_TITLE_DISABLED = theme.outlined_qss(
-            selector="QLabel",
-            color=theme.TEXT_FAINT,
-            border=theme.BORDER_SOFT,
-            accent=theme.BLUE,
-        )
+        # 无框大字：正常深空蓝 / hover 钢蓝（仅文字变色，不画边框）/ 停用弱色
+        self._STYLE_TITLE_NORMAL = theme.title_qss(color=theme.DARK_BLUE)
+        self._STYLE_TITLE_HOVER = theme.title_qss(color=theme.BLUE)
+        self._STYLE_TITLE_DISABLED = theme.title_qss(color=theme.TEXT_FAINT)
         self.title_label.setStyleSheet(self._STYLE_TITLE_NORMAL)
-        # 脚本名 hover 变色：与副本按钮 hover 效果一致（边框+文字变钢蓝）
+        # 脚本名 hover 变色：仅文字变色（与次级按钮 chip 的边框变色区分）
         self.title_label.enterEvent = self._title_enter
         self.title_label.leaveEvent = self._title_leave
-        self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setMinimumWidth(TITLE_MIN_WIDTH)
-        self._title_width = TITLE_DEFAULT_WIDTH
-        # QLabel 无 setElideMode，用 QFontMetrics 手动截断超长名字
-        self.title_label.setText(
-            QFontMetrics(title_font).elidedText(
-                self.display_name, Qt.TextElideMode.ElideRight, self._title_width
-            )
-        )
+        # 左对齐（QLabel 默认水平左对齐，显式声明避免依赖隐式行为）
+        self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        # 最大宽度上限：超长名字 elide 截断，防撑爆布局（不再固定等宽）
+        self.title_label.setMaximumWidth(TITLE_MAX_WIDTH)
         self.title_label.setCursor(Qt.PointingHandCursor)
         self.title_label.mousePressEvent = self._title_mouse_press
         layout.addWidget(self.title_label)
 
-        # 左侧弹性空间 + 副本按钮（居中） + 右侧弹性空间
-        # 无副本按钮时两块 stretch 合并为一段，脚本名靠左、开关靠右
-        layout.addStretch(1)  # 左 spacer（index 2）
+        # 左侧弹性空间：标题自适应宽度后，剩余空间全部由左侧 stretch 吸收；
+        # 副本按钮紧跟开关之前（右边缘对齐开关），不再随标题宽度漂移。
+        layout.addStretch(1)  # 左 spacer（吸收标题自适应后的剩余空间）
 
         # 副本选择按钮（点击弹出级联菜单：一级 → 二级从右侧弹出）
         self.dungeon_btn = None
@@ -225,9 +211,8 @@ class ScriptItem(QFrame):
             if saved_state.get("sequence"):  # optional: 保存状态可能没有选择过序列
                 self._selected_sequence = saved_state["sequence"]
         self._ensure_dungeon_button()
-        layout.addStretch(1)  # 右 spacer（副本按钮在两个等宽 stretch 之间 = 居中）
 
-        # 开关（自定义滑动开关）
+        # 开关（自定义滑动开关）：最后加入，固定右端，副本按钮右边缘对齐它
         self.toggle = ToggleSwitch(checked=self.enabled)
         self.toggle.toggled.connect(self._on_toggle_changed)
         self._update_switch_style()
@@ -264,15 +249,16 @@ class ScriptItem(QFrame):
             self._config_saved_callback(changes)
 
     def _refresh_title(self) -> None:
-        """按当前 display_name + _title_width 刷新卡片标题（含超长截断）。
+        """按当前 display_name + 最大宽度上限刷新卡片标题（超长自动截断）。
 
-        ``_title_width`` 由 :meth:`MainWindow._sync_title_widths` 同步设置，
-        所有 ScriptItem 一致；改名后调用本方法可立即以新宽度重新截断。
+        无框大字自适应宽度：短名字按内容显示，超长（超过 maximumWidth）elide。
+        改名后调用本方法可立即以新文本重新截断。
         """
         title_font = self.title_label.font()
+        max_w = self.title_label.maximumWidth()
         self.title_label.setText(
             QFontMetrics(title_font).elidedText(
-                self.display_name, Qt.TextElideMode.ElideRight, self._title_width
+                self.display_name, Qt.TextElideMode.ElideRight, max_w
             )
         )
 
@@ -523,7 +509,7 @@ class ScriptItem(QFrame):
             # 按内容自适应宽度：有二级时仅显示二级 display（较短），固定宽度会浪费空间；
             # QPushButton 默认按 minimumSizeHint（内容宽 + padding）调整，无须固定宽度。
             self.dungeon_btn.clicked.connect(self._show_dungeon_menu)
-            # 追加到左 spacer 之后、右 spacer（__init__ 随后添加）之前 → 居中
+            # 追加到左 spacer 之后、开关（__init__ 随后添加）之前 → 右边缘对齐开关
             self.layout().insertWidget(self.layout().count(), self.dungeon_btn)
         self.dungeon_btn.setVisible(True)
         if self._selected_dungeon:

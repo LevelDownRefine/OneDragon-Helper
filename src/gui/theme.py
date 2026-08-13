@@ -42,8 +42,10 @@ FONT_FAMILY = '"Microsoft YaHei", "Segoe UI", sans-serif'
 
 # ── 字号 token（统一所有控件，避免散在多处） ─────────────────────────────────
 FONT_SIZE_BODY = 11  # 正文：脚本名 chip / 副本按钮 / 输入框 / 下拉框 / 表单标签
+FONT_SIZE_SMALL = 10  # 小字号：副本按钮（次级操作，弱于标题）
 FONT_SIZE_BTN = 12  # 按钮：次级 / 药丸 / 危险
 FONT_SIZE_HERO = 13  # 主要操作：运行按钮
+FONT_SIZE_TITLE = 13  # 标题：脚本名 display_name（无框大字，识别角色）
 
 
 # ── 文本 / 布局常量 ──────────────────────────────────────────────────────────
@@ -104,6 +106,29 @@ def outlined_qss(
         }}
         {selector}:hover {{ border-color: {accent}; color: {accent}; }}
         {selector}:disabled {{ color: {TEXT_FAINT}; border-color: {DISABLED}; }}
+    """
+
+
+def title_qss(
+    *,
+    color: str = DARK_BLUE,
+    hover_color: str = BLUE,
+    font_size: int = FONT_SIZE_TITLE,
+) -> str:
+    """脚本名标题（display_name）无框大字模板：无边框无背景，hover 仅文字变色。
+
+    与 ``outlined_qss`` 的 chip 形态区分：标题是「识别」角色（无框大字），
+    副本按钮等 chip 是「操作」角色（有边框）。避免两个 chip 视觉重复。
+    """
+    return f"""
+        QLabel {{
+            border: none;
+            background: transparent;
+            font-family: {FONT_FAMILY};
+            font-size: {font_size}px;
+            color: {color};
+        }}
+        QLabel:hover {{ color: {hover_color}; }}
     """
 
 
