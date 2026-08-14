@@ -251,3 +251,10 @@ TODO.md
 .agent/
 .continue/
 .windsurf/
+
+# 运行时下载的背景图（可重新下载，不入库；ds.* 等自带资源保留）
+assets/banner.jpg
+assets/wuwa.webp
+assets/nte.jpg
+assets/ef.jpg
+assets/ak.png
