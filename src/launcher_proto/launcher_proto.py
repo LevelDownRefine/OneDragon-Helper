@@ -58,12 +58,9 @@ from src.utils_runner import build_script_command
 
 # ═══════════════════════ 设计稿常量（Ardot 画布原值）═══════════════════════
 CANVAS_W, CANVAS_H = 1280, 720
-HERO_W = 1200  # hero 背景区宽（画布宽 1280 - 左侧栏 80）
 
 # 颜色（从画布 fills 换算 hex）
 C_WINDOW_BG = "#0A0E1A"  # 主窗口底色
-C_RAIL_BG = "#070A14"  # 左侧游戏栏
-C_RAIL_DIV = "#0F1524"  # 游戏栏描边
 C_BTN_DARK = "#1F2937"  # 悬浮条/窗口控制深底
 C_YELLOW = "#F4C242"  # 启动全部 / 启动脚本主色
 C_BLUE = "#2196F3"  # 启动脚本蓝色大胶囊
@@ -131,13 +128,14 @@ class RailContainer(QWidget):
         super().__init__(parent)
         self._fixed_bottom_h = fixed_bottom_height
         self.setFixedSize(80, CANVAS_H)
+        # 半透明栏：背景图铺满全画布（16:9 零裁切），栏浮在上面透出背景
         self.setStyleSheet(
-            f"background:{C_RAIL_BG}; border-right:1px solid {C_RAIL_DIV};"
+            "background:rgba(7,10,20,0.72); border-right:1px solid rgba(15,21,36,0.8);"
         )
         self._content = QWidget(self)
         self._content.setFixedSize(80, CANVAS_H - fixed_bottom_height)
         self._content.move(0, 0)
-        self._content.setStyleSheet(f"background:{C_RAIL_BG};")
+        self._content.setStyleSheet("background:rgba(7,10,20,0.72);")
         self._content.show()
         self._offset = 0
         self._max_offset = 0
@@ -1249,8 +1247,8 @@ class LauncherWindow(QWidget):
         )  # 平滑缩放背景图，抑制颗粒感
         # 画布底
         p.fillRect(self.rect(), QColor(C_WINDOW_BG))
-        # hero 区（x:80 起）
-        target = QRect(80, 0, HERO_W, CANVAS_H)
+        # 背景铺满全画布（16:9 零裁切）；左侧栏半透明覆盖在背景上（双画布叠加）
+        target = QRect(0, 0, CANVAS_W, CANVAS_H)
         if not self._bg.isNull():
             # cover 裁剪：按目标比例截取源图（中心对齐），避免超宽/超高图拉伸变形
             # （如崩铁 bg37 2560x1162 超宽，全图压到 16:9 会纵向压扁）
