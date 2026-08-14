@@ -16,7 +16,11 @@ from src.config.subscript import (
     load_config,
     load_game_config,
     load_template,
+    resolve_script_path,
     save_config,
+)
+from src.config.subscript import (
+    download_file as _download_file,
 )
 from src.config.subscript import (
     get_config_path as _get_config_path_impl,
@@ -102,6 +106,13 @@ class ScriptConfig:
     """启动器背景图相对脚本根目录的路径（如 assets/ui/static_background.webp）。
 
     空字符串表示未配置，GUI 走渐变占位背景。由 GUI 通过 ``get_game_bg_img``
+    只读获取，不实例化子类。
+    """
+
+    bilibili: str = ""
+    """游戏官方 B 站空间链接（如 https://space.bilibili.com/xxxx）。
+
+    空字符串表示未配置，GUI 走通用占位链接。由 GUI 通过 ``get_game_bilibili``
     只读获取，不实例化子类。
     """
 
@@ -313,6 +324,18 @@ class ScriptConfig:
             return ""
         return bg_path
 
+    @classmethod
+    def get_game_bilibili(cls, script_name: str) -> str:
+        """
+        读取游戏官方 B 站空间链接（类方法，不实例化，无副作用）。
+
+        未声明（``bilibili`` 为空）→ 返回空字符串，GUI 走通用占位链接。
+
+        Args:
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        """
+        return cls.bilibili
+
 
 # ============================================================
 # 注册表
@@ -355,6 +378,7 @@ class WutheringWavesConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    bilibili = "https://space.bilibili.com/1955897084"
 
     def __init__(self):
         self.display_name = "鸣潮"
@@ -409,11 +433,35 @@ class GenshinConfig(ScriptConfig):
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
     _game_path_keys = ("genshinStartConfig", "installPath")
+    bilibili = "https://space.bilibili.com/401742377"
+    banner_url = (
+        "https://cdn.jsdelivr.net/gh/babalae/better-genshin-impact@0.63.0/"
+        "BetterGenshinImpact/Resources/Images/banner.jpg"
+    )
+    """BetterGI 官方仓库 banner（与 BetterGI.exe 内嵌主界面横幅同一张）。"""
 
     def __init__(self):
         self.display_name = "原神"
         self._task_key = "DomainName"
         self._init_config()
+
+    @classmethod
+    def get_game_bg_img(cls, script_name: str) -> str:
+        """原神背景：项目 assets/banner.jpg（无则从官方仓库下载）。
+
+        原始图 = 项目根 assets/banner.jpg（官方仓库 banner，与 exe 内嵌
+        主界面横幅同一张，2538x1157 超宽，由 GUI cover 裁剪显示）。
+        assets 无原始图 → 从 jsDelivr 官方仓库下载；下载失败 → 空（渐变占位）。
+        仅在脚本已注册（_CONFIGS 含 BetterGI，模块级接口已兜底）时被调用。
+
+        Args:
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        """
+        assets_file = resolve_script_path("assets/banner.jpg")
+        if not os.path.isfile(assets_file):
+            if not _download_file(cls.banner_url, assets_file):
+                return ""
+        return assets_file
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
         """设置原神副本：副本按「目录 → 副本」两级组织，实际写入的是二级副本名。
@@ -432,6 +480,7 @@ class EndfieldConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    bilibili = "https://space.bilibili.com/1265652806"
 
     def __init__(self):
         self.display_name = "终末地"
@@ -461,6 +510,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _template_rel_path = "ZZZ一条龙.yml"
     _game_path_keys = ("game_path",)
     bg_img = "assets/ui/static_background.webp"
+    bilibili = "https://space.bilibili.com/1636034895"
 
     def __init__(self):
         self.display_name = "绝区零"
@@ -479,6 +529,7 @@ class StarRailConfig(ScriptConfig):
     _template_rel_path = "M7A一条龙.yml"
     _game_path_keys = ("game_path",)
     bg_img = "assets/app/images/bg37.jpg"
+    bilibili = "https://space.bilibili.com/1340190821"
 
     def __init__(self):
         self.display_name = "崩铁"
@@ -493,6 +544,7 @@ class NTEConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-nte/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    bilibili = "https://space.bilibili.com/3546636978489848"
 
     def __init__(self):
         self.display_name = "异环"
@@ -521,6 +573,7 @@ class ArknightsConfig(ScriptConfig):
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
     _template_rel_path = "MAA一条龙.json"
+    bilibili = "https://space.bilibili.com/161775300"
     _game_path_keys = (
         "Configurations",
         "Default",
@@ -680,3 +733,18 @@ def get_game_bg_img(script_name: str) -> str:
     if script_name not in _CONFIGS:
         return ""
     return _CONFIGS[script_name].get_game_bg_img(script_name)
+
+
+def get_game_bilibili(script_name: str) -> str:
+    """
+    外观接口：读取指定脚本对应的游戏官方 B 站空间链接（供 GUI 打开 B 站用）。
+
+    只读查询，不实例化子类。未适配 / 未声明 → 返回空字符串，GUI 走通用占位链接。
+
+    Args:
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
+    """
+    if script_name not in _CONFIGS:
+        return ""
+    return _CONFIGS[script_name].get_game_bilibili(script_name)
