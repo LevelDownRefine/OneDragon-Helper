@@ -8,11 +8,11 @@
   get_game_exe_path() 供「打开游戏」。背景图经 set_config.get_game_bg_img()
   获取（ScriptConfig.bg_img 相对脚本根目录声明，接口解析为绝对路径并校验存在）；
   B站链接经 set_config.get_game_bilibili() 获取（ScriptConfig.bilibili 声明，
-  各游戏官方 B 站空间）；GitHub 链接仍在 _GAME_META 占位，未配置的走默认
-  （渐变占位背景 / 通用链接）。
+  各游戏官方 B 站空间）；GitHub 链接经 set_config.get_game_github() 获取
+  （ScriptConfig.github 声明，各脚本项目主页）；未配置的走通用占位链接。
 结构：
   左侧游戏栏(80x720，脚本图标 + ⊞ + 启动全部整体可滚轮/拖动滚动)
-   + HERO区(1200x720，按选中游戏画背景：官方图或渐变占位)
+   + HERO区(1280x720，按选中游戏画背景：官方图或渐变占位)
   右上：窗口控制（最小化/关闭）
   左下：专题卡（选中游戏的任务调度，日常/周本两行；未适配游戏隐藏）
   右下：启动脚本蓝色大胶囊（单脚本直跑；右侧 ☰ 弹配置）
@@ -51,6 +51,7 @@ from src.config.set_config import _CONFIGS
 from src.config.set_config import get_game_bg_img as _get_game_bg_img
 from src.config.set_config import get_game_bilibili as _get_game_bilibili
 from src.config.set_config import get_game_exe_path as _get_game_exe_path
+from src.config.set_config import get_game_github as _get_game_github
 from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.icons import get_script_icon
@@ -85,22 +86,7 @@ FONT_FAMILY = "Microsoft YaHei"
 DEFAULT_BG = "assets/ds.jpg"
 
 # ── 游戏元数据（display_name → 图标底色 / 背景主色 / 链接）───────────────
-# GitHub：set_config 侧尚未实现，此处先占位（空 = 走默认）。
-# 背景图与 B 站链接已下沉到 set_config.ScriptConfig（经 get_game_bg_img /
-# get_game_bilibili 获取），此处不再维护。
-_GAME_META: dict[str, dict] = {
-    "鸣潮": {"color": "#2A4A8A", "github": ""},
-    "原神": {"color": "#3A3A6A", "github": ""},
-    "崩铁": {"color": "#2A4A7A", "github": ""},
-    "粥": {"color": "#161C28", "github": ""},
-    "绝区零": {"color": "#1E5A4A", "github": ""},
-    "异环": {"color": "#161C28", "github": ""},
-    "终末地": {"color": "#161C28", "github": ""},
-    "明日方舟": {"color": "#161C28", "github": ""},
-    "MAS": {"color": "#1F2937", "github": ""},
-}
-
-# 通用占位链接（对应内容未实现时使用）
+# 通用占位链接（对应内容未配置时使用）
 _URL_HOME = "https://github.com/"
 _URL_BILIBILI = "https://www.bilibili.com/"
 
@@ -583,22 +569,19 @@ class LauncherWindow(QWidget):
         """从 config.yml 构建左侧栏脚本列表（全部 script_list，含 python 辅助脚本）。
 
         Returns:
-            每个元素：{display_name, script_name, script_data, color, meta}。
-            script_data 供 get_script_icon 取真实图标；color/char 供占位背景渐变。
-            未登记（辅助/自定义）脚本用默认暗色，任务卡隐藏。
+            每个元素：{display_name, script_name, script_data, char, color}。
+            script_data 供 get_script_icon 取真实图标；color/char 仅供兜底渐变背景。
         """
         games = []
         for script in self.service.load_config().get("script_list", []):
             display_name = script["display_name"]
-            meta = _GAME_META.get(display_name, {})
             games.append(
                 {
                     "display_name": display_name,
                     "script_name": get_script_name(script),
                     "script_data": script,
                     "char": display_name[0],
-                    "color": meta.get("color", C_GAME_DIM),
-                    "meta": meta,
+                    "color": C_GAME_DIM,
                 }
             )
         return games
@@ -1367,7 +1350,12 @@ class LauncherWindow(QWidget):
         self._toast(f"打开{label}：{target}")
 
     def _open_home(self):
-        self._open_url(self._current_game()["meta"].get("github"), _URL_HOME, "主页")
+        """打开当前脚本项目的 GitHub 主页（与 GitHub 图标同源，空则通用占位）。"""
+        self._open_url(
+            _get_game_github(self._current_game()["script_name"]),
+            _URL_HOME,
+            "主页",
+        )
 
     def _open_bilibili(self):
         """打开当前游戏官方 B 站（set_config 声明，空则通用占位）。"""
@@ -1378,7 +1366,12 @@ class LauncherWindow(QWidget):
         )
 
     def _open_github(self):
-        self._open_url(self._current_game()["meta"].get("github"), _URL_HOME, "GitHub")
+        """打开当前脚本项目的 GitHub 主页（set_config 声明，空则通用占位）。"""
+        self._open_url(
+            _get_game_github(self._current_game()["script_name"]),
+            _URL_HOME,
+            "GitHub",
+        )
 
     def _open_script_folder(self):
         """打开当前脚本所在目录（script_path 父目录，资源管理器）。"""
