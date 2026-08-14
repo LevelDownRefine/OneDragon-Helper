@@ -1,23 +1,25 @@
 """OneDragon-Helper 启动器式 GUI 原型（严格还原 Ardot 设计稿）。
 
-画布：1280x720 (16:9) · 保留原画布 + 等比缩放
+画布：1280x720 (16:9) · 无系统标题栏（frameless，按住空白处可拖动窗口）
 结构：
-  左侧游戏栏(80x720) + HERO区(1200x720，官方 ZZZ 背景图 cover)
+  左侧游戏栏(80x720，游戏图标可滚轮/拖动滚动；⊞ 与启动全部固定底部)
+   + HERO区(1200x720，官方 ZZZ 背景图 cover)
   右上：窗口控制（最小化/关闭）
   左下：专题卡（鸣潮·任务调度，日常/周本两行）
   右下：启动脚本蓝色大胶囊
-  右侧：玻璃悬浮条（主页/启动游戏/B站/小红书/帮助）
+  右侧：悬浮图标条（主页/启动游戏/B站/小红书/GitHub，无背景框）
 
 修改记录：
-  - 左侧栏改为 RailContainer，支持鼠标滚轮 + 拖动滚动（无 scrollbar）
-  - ⊞ 用 _GlyphButton 自绘 3x3 点阵（替代 QLabel "≡"）
-  - 小红书图标用官方红 #FF2442 + 白 R 字（draw_xhs）
-  - paintEvent 加 SmoothPixmapTransform 抑制背景颗粒感
+  - 左侧栏 RailContainer 滚动容器（滚轮+拖动，无 scrollbar；固定底部区）
+  - ⊞ 自绘 3x3 点阵（中心点定位）；启动全部 56×56
+  - 小红书红底白 R（#FF2442）；GitHub Octocat（QSvgRenderer 缓存）
+  - frameless 无边框窗口 + 空白处拖动；全局默认字体微软雅黑
+  - 悬浮条去玻璃底；任务行去描边；toast 改为右下浮层
 """
 
 import sys
 
-from PySide6.QtCore import QPointF, QRect, Qt, Signal
+from PySide6.QtCore import QPointF, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -44,7 +46,6 @@ C_RAIL_BG = "#070A14"        # 左侧游戏栏
 C_RAIL_DIV = "#0F1524"       # 游戏栏描边
 C_BTN_DARK = "#1F2937"       # 悬浮条/窗口控制深底
 C_YELLOW = "#F4C242"         # 启动全部 / 启动脚本主色
-C_YELLOW_DEEP = "#3D2E00"    # 黄色胶囊内圆深底
 C_BLUE = "#2196F3"           # 启动脚本蓝色大胶囊
 C_BLUE_DEEP = "#0F2A4D"      # 蓝色胶囊内圆深底
 C_WHITE = "#FFFFFF"
@@ -54,10 +55,8 @@ C_FAINT = "#4A5568"          # 停用文字
 C_GREEN = "#3DD68C"          # 启用开关
 C_GRAY_TRACK = "#2A2F38"     # 停用开关轨道
 C_GRAY_KNOB = "#5A6470"      # 停用开关滑块
-C_CARD_BG = "#0A1020"        # 专题卡玻璃底
 C_ROW_DAILY = "#0E1A30"      # 日常行
 C_ROW_WEEKLY = "#0E1420"     # 周本行
-C_CHIP_BG = "#0F1A2E"        # 副本 chip
 C_GAME_SELECT = "#2A4A8A"    # 鸣潮选中
 C_GAME_DIM = "#161C28"       # 停用游戏图标
 C_XHS_RED = "#FF2442"        # 小红书品牌红
@@ -330,13 +329,6 @@ def draw_close(p: QPainter):
     p.drawLine(6, -6, -6, 6)
 
 
-def draw_play(p: QPainter):
-    p.setPen(Qt.NoPen)
-    p.setBrush(QColor(C_WHITE))
-    pts = QPolygonF([QPointF(-4, -8), QPointF(-4, 8), QPointF(8, 0)])
-    p.drawPolygon(pts)
-
-
 def draw_grid(p: QPainter):
     """⊞ 工具网格（3x3 点阵，蓝色调）。
 
@@ -411,7 +403,7 @@ class GameIcon(QWidget):
         super().__init__(parent)
         self._index = index
         self._char, self._bg, self._fg = char, QColor(bg), QColor(fg)
-        self._enabled, self._selected = enabled, selected
+        self._selected = selected
         self.setFixedSize(56, 56)
         self.setCursor(Qt.PointingHandCursor)
 
@@ -483,6 +475,17 @@ class LauncherWindow(QWidget):
         self._build_launch_button()
         self._build_float_bar()
         self._build_window_controls()
+        self._build_toast()
+
+    def _build_toast(self):
+        """右下角 toast 浮层（frameless 窗口无标题栏，提示必须用浮层显示）。"""
+        self.toast_lbl = QLabel(self)
+        self.toast_lbl.setStyleSheet(
+            "background:rgba(10,16,32,0.92); color:#FFFFFF;"
+            "border-radius:12px; padding:10px 18px; font-size:14px;"
+        )
+        self.toast_lbl.hide()
+        self.toast_lbl.raise_()
 
     def _build_left_rail(self):
         """左侧游戏栏：游戏图标可滚动；⊞ 与启动全部固定在底部（画布 3:33/3:151）。"""
@@ -492,12 +495,12 @@ class LauncherWindow(QWidget):
         content = self.rail.content()
 
         # 7 个游戏图标（滚动区，y: 16..448，stride 72，最后底部 504）
+        # 用 rail.add() 添加：内部会重算 content 高度与滚动范围
         self.game_icons = []
         for i, (char, bg, fg, enabled, selected) in enumerate(GAMES):
             icon = GameIcon(i, char, bg, fg, enabled, selected, content)
-            icon.move(12, 16 + i * 72)
+            self.rail.add(icon, 12, 16 + i * 72)
             icon.clicked.connect(self._select_game)
-            icon.show()
             self.game_icons.append(icon)
 
         # 分割线（⊞ 上方 8px，与画布 10:5 一致；y=584，⊞ y=592）
@@ -505,11 +508,14 @@ class LauncherWindow(QWidget):
         divider.setGeometry(12, 584, 56, 1)
         divider.setStyleSheet("background:#2A3850;")
 
-        # ⊞ 工具网格（固定：y=592；56×56）
+        # ⊞ 工具网格（固定：y=592；56×56；点击 accept 不冒泡触发窗口拖动）
         grid_frame = QFrame(self.rail)
         grid_frame.setGeometry(12, 592, 56, 56)
         grid_frame.setStyleSheet(
             "background:transparent; border:1px solid #4D6A8C; border-radius:14px;"
+        )
+        grid_frame.mousePressEvent = lambda e: (
+            e.accept() if e.button() == Qt.LeftButton else None
         )
         grid_glyph = _GlyphButton(draw_grid, grid_frame)
         grid_glyph.setGeometry(0, 0, 56, 56)
@@ -585,8 +591,6 @@ class LauncherWindow(QWidget):
         row = QFrame(card)
         row.setGeometry(x, y, 440, 56)
         row.setStyleSheet(f"background:{row_bg}; border-radius:12px;")
-        if not on:
-            row.setStyleSheet(f"background:{row_bg}; border-radius:12px;")
         row.setWindowOpacity(0.55 if not on else 1.0)
         row.show()
 
@@ -613,10 +617,10 @@ class LauncherWindow(QWidget):
 
         toggle = Toggle(on, row)
         toggle.move(388, 17)
-        toggle.toggled.connect(lambda v, r=row, t=toggle: self._on_task_toggled(r, t, v))
+        toggle.toggled.connect(lambda v, r=row: self._on_task_toggled(r, v))
         return row
 
-    def _on_task_toggled(self, row, toggle, on):
+    def _on_task_toggled(self, row, on):
         """任务行开关切换：启用→整行高亮；停用→整行置灰。"""
         row.setWindowOpacity(1.0 if on else 0.55)
         # 背景色在启用/停用间切换
@@ -663,9 +667,13 @@ class LauncherWindow(QWidget):
         menu_ico.setGeometry(0, 0, 56, 56)
         menu_ico.setAlignment(Qt.AlignCenter)
 
-        btn.mousePressEvent = lambda e: (
-            self._launch_script() if e.button() == Qt.LeftButton else None
-        )
+        # 点击 accept，防止事件冒泡到 LauncherWindow 触发窗口拖动
+        def _on_launch_script_press(e):
+            if e.button() == Qt.LeftButton:
+                e.accept()
+                self._launch_script()
+
+        btn.mousePressEvent = _on_launch_script_press
 
     def _build_float_bar(self):
         """右侧悬浮条（5 个图标，无背景框——画布 3:287 已去玻璃底）。"""
@@ -701,28 +709,36 @@ class LauncherWindow(QWidget):
     # ── 交互 ─────────────────────────────────────────────────────────────
     def _select_game(self, index: int):
         """点击左侧游戏图标：切换当前浏览的游戏（仅选中态变化，位置不变）。"""
+        assert 0 <= index < len(GAMES), f"game index out of range: {index}"
         for i, icon in enumerate(self.game_icons):
             icon.set_selected(i == index)
-        name = GAMES[index][0]
-        self._toast(f"已切换到 {name}")
+        self._toast(f"已切换到 {GAMES[index][0]}")
+
+    def _enabled_task_names(self) -> list:
+        """当前已启用（开关开启）的任务行名称。"""
+        return [n for n, row in (("日常", self.daily_row), ("周本", self.weekly_row))
+                if row.findChild(Toggle).is_on()]
 
     def _launch_all(self):
         """启动全部：启动所有已启用（开关开启）的任务行。"""
-        enabled = [n for n, row in (("日常", self.daily_row), ("周本", self.weekly_row))
-                   if row.findChild(Toggle).is_on()]
+        enabled = self._enabled_task_names()
         self._toast(f"启动全部：{'、'.join(enabled) if enabled else '无已启用任务'}")
 
     def _launch_script(self):
         """启动脚本：启动当前游戏（鸣潮）的已启用任务。"""
-        enabled = [n for n, row in (("日常", self.daily_row), ("周本", self.weekly_row))
-                   if row.findChild(Toggle).is_on()]
+        enabled = self._enabled_task_names()
         self._toast(f"启动脚本（鸣潮）：{'、'.join(enabled) if enabled else '无已启用任务'}")
 
     def _toast(self, text: str):
-        """右下角 toast 提示（简单实现：标题栏显示 3 秒）。"""
-        self.setWindowTitle(f"OneDragon-Helper · {text}")
-        from PySide6.QtCore import QTimer
-        QTimer.singleShot(3000, lambda: self.setWindowTitle("OneDragon-Helper · 游戏自动化调度器"))
+        """右下角 toast 浮层：显示 3 秒后自动消失（frameless 无标题栏提示）。"""
+        self.toast_lbl.setText(text)
+        self.toast_lbl.adjustSize()
+        w, h = self.toast_lbl.width(), self.toast_lbl.height()
+        # 底部居中，避开任务卡（左）和启动脚本按钮（右）
+        self.toast_lbl.move((CANVAS_W - w) // 2, CANVAS_H - h - 16)
+        self.toast_lbl.show()
+        self.toast_lbl.raise_()
+        QTimer.singleShot(3000, self.toast_lbl.hide)
 
     # ── 背景绘制（cover）──────────────────────────────────────────────────
     def paintEvent(self, event):
