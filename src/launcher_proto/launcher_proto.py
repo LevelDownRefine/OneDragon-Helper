@@ -80,7 +80,7 @@ C_GAME_DIM = "#161C28"  # 停用游戏图标
 FONT_FAMILY = "Microsoft YaHei"
 
 # 兜底背景：脚本未配置背景图时使用（相对项目根）
-DEFAULT_BG = "assets/ds.png"
+DEFAULT_BG = "assets/ds.jpg"
 
 # ── 游戏元数据（display_name → 图标底色 / 背景主色 / 链接）───────────────
 # GitHub：set_config 侧尚未实现，此处先占位（空 = 走默认）。

@@ -379,6 +379,8 @@ class WutheringWavesConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     bilibili = "https://space.bilibili.com/1955897084"
+    banner_url = "https://i.17173cdn.com/2fhnvk/YWxqaGBf/cms3/OIubWtbtFpzieyq.webp"
+    """鸣潮 3.6 版本主视觉壁纸（1920x1080 16:9）。"""
 
     def __init__(self):
         self.display_name = "鸣潮"
@@ -388,6 +390,22 @@ class WutheringWavesConfig(ScriptConfig):
             "模拟领域": "Simulation Challenge",
             "无音区": "Tacet Suppression",
         }
+
+    @classmethod
+    def get_game_bg_img(cls, script_name: str) -> str:
+        """鸣潮背景：项目 assets/3.6_主视觉_清宵景燃.webp（无则从 17173 下载）。
+
+        仅在脚本已注册（_CONFIGS 含 ok-ww，模块级接口已兜底）时被调用。
+        下载失败 → 空（GUI 走兜底 ds.png）。
+
+        Args:
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        """
+        assets_file = resolve_script_path("assets/3.6_主视觉_清宵景燃.webp")
+        if not os.path.isfile(assets_file):
+            if not _download_file(cls.banner_url, assets_file):
+                return ""
+        return assets_file
 
     def _update_sequence(
         self, config: dict, dungeon_name: str, sequence: str | int | None
