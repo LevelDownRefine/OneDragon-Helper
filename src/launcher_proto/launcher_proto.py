@@ -29,6 +29,7 @@ from PySide6.QtCore import (
     QMimeData,
     QPointF,
     QRect,
+    QRectF,
     Qt,
     QTimer,
     QVariantAnimation,
@@ -67,6 +68,7 @@ from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.icons import get_script_icon
 from src.service.chain_service import ChainService
+from src.utils import get_config_yml_path_under_root
 from src.utils_runner import build_script_command
 
 # ═══════════════════════ 设计稿常量（Ardot 画布原值）═══════════════════════
@@ -426,6 +428,23 @@ def draw_folder(p: QPainter):
 def draw_min(p: QPainter):
     p.setPen(QPen(QColor(C_WHITE), 2, Qt.SolidLine, Qt.RoundCap))
     p.drawLine(-8, 0, 8, 0)
+
+
+def draw_config(p: QPainter):
+    """配置文件：白色齿轮（外齿 8 线 + 主体圆 + 内孔）。"""
+    import math
+
+    p.setRenderHint(QPainter.Antialiasing)
+    pen = QPen(QColor(C_WHITE), 2, Qt.SolidLine, Qt.RoundCap)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+    for i in range(8):  # 外齿
+        a = math.radians(i * 45)
+        x1, y1 = 6.5 * math.cos(a), 6.5 * math.sin(a)
+        x2, y2 = 9.5 * math.cos(a), 9.5 * math.sin(a)
+        p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+    p.drawEllipse(QRectF(-6.5, -6.5, 13, 13))  # 主体圆
+    p.drawEllipse(QRectF(-2.5, -2.5, 5, 5))  # 内孔
 
 
 def draw_close(p: QPainter):
@@ -1157,15 +1176,26 @@ class LauncherWindow(QWidget):
     def _build_window_controls(self):
         """窗口控制（右上角贴右边缘，深底圆按钮）。
 
-        关闭按钮右贴画布右缘（1280-36=1244），最小化在左边 8px 间距
-        （1200..1236）；与悬浮条（1220..1280）右边缘对齐。
+        最右：关闭（1244..1280）；左 8px：最小化（1200..1236）；再左 8px：
+        配置文件齿轮（1156..1192，打开总配置 config.yml——旧 GUI 同功能）。
         """
+        cfg_btn = IconButton(draw_config, self.hero, size=36, radius=18)
+        cfg_btn.move(1156, 8)
+        cfg_btn.clicked.connect(self._open_config_yml)
         min_btn = IconButton(draw_min, self.hero, size=36, radius=18)
         min_btn.move(1200, 8)
         min_btn.clicked.connect(self.showMinimized)
         close_btn = IconButton(draw_close, self.hero, size=36, radius=18)
         close_btn.move(1244, 8)
         close_btn.clicked.connect(self.close)
+
+    def _open_config_yml(self):
+        """打开总配置文件 config.yml（系统默认程序）；缺失时 toast 提示（对齐旧 GUI）。"""
+        config_path = get_config_yml_path_under_root()
+        if not os.path.isfile(config_path):
+            self._toast("未找到 config/config.yml")
+            return
+        os.startfile(config_path)  # noqa: S606 打开配置文件
 
     # ── 交互 ─────────────────────────────────────────────────────────────
     def _toggle_mode(self):
