@@ -599,14 +599,14 @@ class LauncherWindow(QWidget):
         self._toast_timer.timeout.connect(self.toast_lbl.hide)
 
     def _build_left_rail(self):
-        """左侧游戏栏：全部脚本图标 + ⊞ + 启动全部一起可滚动（脚本多了容纳不下，
-        改为整体滚动；启动全部需要滚到底部才能看到）。"""
-        # 全部走滚动（脚本图标 + ⊞ + 启动全部），不再做底部固定区
-        self.rail = RailContainer(self, fixed_bottom_height=0)
+        """左侧游戏栏：脚本图标可滚动（滚轮/拖动，无 scrollbar）；
+        ⊞ 与启动全部固定在栏底（画布 3:33/3:151 常驻最下方）。"""
+        # 底部固定区（贴底，底部间距 16）：启动全部 48 + 8 + ⊞ 48 + 8 + 分割线 1 = 113
+        self.rail = RailContainer(self, fixed_bottom_height=113)
         self.rail.move(0, 0)
         content = self.rail.content()
 
-        # 脚本图标（用 rail.add() 触发滚动范围重算；48×48，stride 64——画布已缩）
+        # 脚本图标（滚动区，48×48 stride 64；rail.add() 触发滚动范围重算）
         self.game_icons = []
         for i, game in enumerate(self.games):
             icon = GameIcon(i, game["script_data"], i == self._current_index, content)
@@ -614,9 +614,21 @@ class LauncherWindow(QWidget):
             icon.clicked.connect(self._select_game)
             self.game_icons.append(icon)
 
-        # ⊞ 工具网格（紧随脚本图标之后，也参与滚动）——点击切换浏览/控制模式
-        self.grid_frame = QFrame(content)
-        self.grid_frame.setGeometry(16, 16 + len(self.games) * 64 + 16, 48, 48)
+        # 固定区遮罩：z-order 在 content 之上、固定区元素之下——滚动内容显示到
+        # 分割线以下就被盖住，不会透过 ⊞（透明背景）与 ▶ 区域造成"重合"。
+        # 必须完全不透明：半透明会把滚过的图标透出来。
+        self._fixed_overlay = QFrame(self.rail)
+        self._fixed_overlay.setGeometry(0, 591, 80, CANVAS_H - 591)
+        self._fixed_overlay.setStyleSheet("background:#070A14;")
+
+        # 分割线（⊞ 上方 8px，固定区顶；与画布 10:5 一致）
+        divider = QFrame(self.rail)
+        divider.setGeometry(16, 591, 48, 1)
+        divider.setStyleSheet("background:#2A3850;")
+
+        # ⊞ 工具网格（固定：y=600；48×48；点击切换浏览/控制模式）
+        self.grid_frame = QFrame(self.rail)
+        self.grid_frame.setGeometry(16, 600, 48, 48)
         self.grid_frame.setStyleSheet(
             "background:transparent; border:1px solid #4D6A8C; border-radius:12px;"
         )
@@ -628,10 +640,9 @@ class LauncherWindow(QWidget):
         grid_glyph.setGeometry(0, 0, 48, 48)
         grid_glyph.show()
 
-        # 启动全部按钮（紧跟 ⊞；QFrame + WA_Hover 启用 :hover 状态反馈）
-        launch_y = 16 + len(self.games) * 64 + 16 + 48 + 16
-        launch_btn = QFrame(content)
-        launch_btn.setGeometry(16, launch_y, 48, 48)
+        # 启动全部按钮（固定最底部：y=656；48×48；QFrame + WA_Hover 启用 :hover 反馈）
+        launch_btn = QFrame(self.rail)
+        launch_btn.setGeometry(16, 656, 48, 48)
         launch_btn.setAttribute(Qt.WA_Hover, True)
         launch_btn.setStyleSheet(
             f"QFrame {{ background:{C_YELLOW}; border-radius:12px; }}"
@@ -649,9 +660,7 @@ class LauncherWindow(QWidget):
                 self._launch_all()
 
         launch_btn.mousePressEvent = _on_launch_press
-        # ⊞ 和启动全部不是 rail.add() 加入的，需手动重算 content 高度（含它们）
-        self.rail._recompute_height()
-        # 重建后恢复 ⊞ 模式样式（可能处于控制模式）
+        # 固定区元素直接放 rail 上，滚动只影响 content；重建后恢复 ⊞ 模式样式
         self._apply_mode_style()
 
     def _rebuild_left_rail(self):
