@@ -58,6 +58,7 @@ from src.utils_runner import build_script_command
 
 # ═══════════════════════ 设计稿常量（Ardot 画布原值）═══════════════════════
 CANVAS_W, CANVAS_H = 1280, 720
+HERO_W = 1200  # hero 背景区宽（画布宽 1280 - 左侧栏 80）
 
 # 颜色（从画布 fills 换算 hex）
 C_WINDOW_BG = "#0A0E1A"  # 主窗口底色
@@ -1249,7 +1250,7 @@ class LauncherWindow(QWidget):
         # 画布底
         p.fillRect(self.rect(), QColor(C_WINDOW_BG))
         # hero 区（x:80 起）
-        target = QRect(80, 0, 1200, CANVAS_H)
+        target = QRect(80, 0, HERO_W, CANVAS_H)
         if not self._bg.isNull():
             # cover 裁剪：按目标比例截取源图（中心对齐），避免超宽/超高图拉伸变形
             # （如崩铁 bg37 2560x1162 超宽，全图压到 16:9 会纵向压扁）
