@@ -7,17 +7,19 @@
 """
 
 import logging
+import os
 from collections.abc import Callable
 from typing import Any
 
 from src.config.subscript import (
-    get_config_path as _get_config_path_impl,
-)
-from src.config.subscript import (
+    _get_script_root_dir_soft,
     load_config,
     load_game_config,
     load_template,
     save_config,
+)
+from src.config.subscript import (
+    get_config_path as _get_config_path_impl,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,6 +97,13 @@ class ScriptConfig:
 
     _template_rel_path: str = ""
     """模板文件相对 config/ 目录的路径（走模板初始化的子类必须声明）。"""
+
+    bg_img: str = ""
+    """启动器背景图相对脚本根目录的路径（如 assets/ui/static_background.webp）。
+
+    空字符串表示未配置，GUI 走渐变占位背景。由 GUI 通过 ``get_game_bg_img``
+    只读获取，不实例化子类。
+    """
 
     confirm_before_save: Callable[[str], bool] | None = None
     """保存前确认回调（由 GUI 注入，参数为 display_name，返回 True 才落盘）。
@@ -280,6 +289,30 @@ class ScriptConfig:
             return None
         return node
 
+    @classmethod
+    def get_game_bg_img(cls, script_name: str) -> str:
+        """
+        读取脚本配置中的启动器背景图绝对路径（类方法，不实例化，无副作用）。
+
+        背景图相对脚本根目录（script_path 父目录）声明，本方法完成
+        相对 → 绝对解析并校验文件存在。以下情况返回空字符串（GUI 走渐变占位）：
+        - 未声明（``bg_img`` 为空）
+        - 脚本根目录取不到（config.yml 无此脚本 / script_path 为空）
+        - 背景图文件不存在
+
+        Args:
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        """
+        if not cls.bg_img:
+            return ""
+        script_root = _get_script_root_dir_soft(script_name)
+        if not script_root:
+            return ""
+        bg_path = os.path.join(script_root, cls.bg_img)
+        if not os.path.isfile(bg_path):
+            return ""
+        return bg_path
+
 
 # ============================================================
 # 注册表
@@ -427,6 +460,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _game_config_rel_path = "config/01/game_account.yml"
     _template_rel_path = "ZZZ一条龙.yml"
     _game_path_keys = ("game_path",)
+    bg_img = "assets/ui/static_background.webp"
 
     def __init__(self):
         self.display_name = "绝区零"
@@ -444,6 +478,7 @@ class StarRailConfig(ScriptConfig):
     _game_config_rel_path = "config.yaml"
     _template_rel_path = "M7A一条龙.yml"
     _game_path_keys = ("game_path",)
+    bg_img = "assets/app/images/bg37.jpg"
 
     def __init__(self):
         self.display_name = "崩铁"
@@ -629,3 +664,19 @@ def get_game_exe_path(script_name: str) -> str | None:
     if script_name not in _CONFIGS:
         return None
     return _CONFIGS[script_name].get_game_exe_path(script_name)
+
+
+def get_game_bg_img(script_name: str) -> str:
+    """
+    外观接口：读取指定脚本对应的启动器背景图绝对路径（供 GUI 渲染背景用）。
+
+    只读查询，不实例化子类。未适配 / 未声明 / 根目录取不到 / 文件不存在
+    → 返回空字符串，GUI 据此走渐变占位背景。
+
+    Args:
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
+    """
+    if script_name not in _CONFIGS:
+        return ""
+    return _CONFIGS[script_name].get_game_bg_img(script_name)

@@ -1,28 +1,31 @@
-"""OneDragon-Helper 启动器式 GUI 原型（严格还原 Ardot 设计稿）。
+"""OneDragon-Helper 启动器式 GUI（接入真实 ChainService 数据）。
 
 画布：1280x720 (16:9) · 无系统标题栏（frameless，按住空白处可拖动窗口）
+运行：项目根下 `python -m src.launcher_proto.launcher_proto`（模块方式，
+  项目根在 sys.path，直接 import src.*）。
+数据源：ChainService.load_config() 的 script_list（左侧栏 = 全部脚本，含 python
+  辅助脚本）；set_config._CONFIGS 决定该脚本是否有「任务卡」适配；
+  get_game_exe_path() 供「打开游戏」。背景图经 set_config.get_game_bg_img()
+  获取（ScriptConfig.bg_img 相对脚本根目录声明，接口解析为绝对路径并校验存在）；
+  GitHub/B站 链接仍在 _GAME_META 占位，未配置的走默认（渐变占位背景 / 通用链接）。
 结构：
-  左侧游戏栏(80x720，游戏图标可滚轮/拖动滚动；⊞ 与启动全部固定底部)
-   + HERO区(1200x720，官方 ZZZ 背景图 cover)
+  左侧游戏栏(80x720，脚本图标 + ⊞ + 启动全部整体可滚轮/拖动滚动)
+   + HERO区(1200x720，按选中游戏画背景：官方图或渐变占位)
   右上：窗口控制（最小化/关闭）
-  左下：专题卡（鸣潮·任务调度，日常/周本两行）
-  右下：启动脚本蓝色大胶囊
-  右侧：悬浮图标条（主页/启动游戏/B站/小红书/GitHub，无背景框）
-
-修改记录：
-  - 左侧栏 RailContainer 滚动容器（滚轮+拖动，无 scrollbar；固定底部区）
-  - ⊞ 自绘 3x3 点阵（中心点定位）；启动全部 56×56
-  - 小红书红底白 R（#FF2442）；GitHub Octocat（QSvgRenderer 缓存）
-  - frameless 无边框窗口 + 空白处拖动；全局默认字体微软雅黑
-  - 悬浮条去玻璃底；任务行去描边；toast 改为右下浮层
+  左下：专题卡（选中游戏的任务调度，日常/周本两行；未适配游戏隐藏）
+  右下：启动脚本蓝色大胶囊（单脚本直跑；右侧 ☰ 弹配置）
+  右侧：悬浮图标条（主页/启动游戏/文件夹/B站/小红书/GitHub，无背景框）
 """
 
-import sys
+import os
+import subprocess
+import webbrowser
 
 from PySide6.QtCore import QPointF, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QLinearGradient,
     QPainter,
     QPainterPath,
     QPen,
@@ -31,49 +34,69 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QLabel,
+    QMenu,
+    QMessageBox,
     QWidget,
 )
+
+from src.config.dungeon_config import get_display_name, parse_dungeon_config
+from src.config.set_config import _CONFIGS
+from src.config.set_config import get_game_bg_img as _get_game_bg_img
+from src.config.set_config import get_game_exe_path as _get_game_exe_path
+from src.config.subscript import get_script_name, resolve_script_path
+from src.gui.dialogs import SingleScriptConfigDialog
+from src.gui.icons import get_script_icon
+from src.service.chain_service import ChainService
+from src.utils_runner import build_script_command
 
 # ═══════════════════════ 设计稿常量（Ardot 画布原值）═══════════════════════
 CANVAS_W, CANVAS_H = 1280, 720
 
 # 颜色（从画布 fills 换算 hex）
-C_WINDOW_BG = "#0A0E1A"      # 主窗口底色
-C_RAIL_BG = "#070A14"        # 左侧游戏栏
-C_RAIL_DIV = "#0F1524"       # 游戏栏描边
-C_BTN_DARK = "#1F2937"       # 悬浮条/窗口控制深底
-C_YELLOW = "#F4C242"         # 启动全部 / 启动脚本主色
-C_BLUE = "#2196F3"           # 启动脚本蓝色大胶囊
-C_BLUE_DEEP = "#0F2A4D"      # 蓝色胶囊内圆深底
+C_WINDOW_BG = "#0A0E1A"  # 主窗口底色
+C_RAIL_BG = "#070A14"  # 左侧游戏栏
+C_RAIL_DIV = "#0F1524"  # 游戏栏描边
+C_BTN_DARK = "#1F2937"  # 悬浮条/窗口控制深底
+C_YELLOW = "#F4C242"  # 启动全部 / 启动脚本主色
+C_BLUE = "#2196F3"  # 启动脚本蓝色大胶囊
+C_BLUE_DEEP = "#0F2A4D"  # 蓝色胶囊内圆深底
 C_WHITE = "#FFFFFF"
-C_BLUE_TEXT = "#7DA8FF"      # 选中/文字高亮蓝
-C_MUTED = "#8A9AB8"          # 次要文字
-C_FAINT = "#4A5568"          # 停用文字
-C_GREEN = "#3DD68C"          # 启用开关
-C_GRAY_TRACK = "#2A2F38"     # 停用开关轨道
-C_GRAY_KNOB = "#5A6470"      # 停用开关滑块
-C_GAME_SELECT = "#2A4A8A"    # 鸣潮选中
-C_GAME_DIM = "#161C28"       # 停用游戏图标
-C_XHS_RED = "#FF2442"        # 小红书品牌红
-
-BG_IMG = r"D:/game_helper/zzz_od/assets/ui/static_background.webp"
+C_BLUE_TEXT = "#7DA8FF"  # 选中/文字高亮蓝
+C_MUTED = "#8A9AB8"  # 次要文字
+C_FAINT = "#4A5568"  # 停用文字
+C_GREEN = "#3DD68C"  # 启用开关
+C_GRAY_TRACK = "#2A2F38"  # 停用开关轨道
+C_GRAY_KNOB = "#5A6470"  # 停用开关滑块
+C_GAME_DIM = "#161C28"  # 停用游戏图标
+C_XHS_RED = "#FF2442"  # 小红书品牌红
 
 # 字体
 FONT_FAMILY = "Microsoft YaHei"
 
-# ── 左侧游戏栏数据：名称 / 底色 / 文字色 / 是否启用 ─────────────────────────
-GAMES = [
-    ("鸣", C_GAME_SELECT, C_WHITE, True, True),      # 鸣潮：选中+启用
-    ("原", "#3A3A6A", "#C8C8E8", True, False),
-    ("崩", "#2A4A7A", "#C8D0E8", True, False),
-    ("粥", C_GAME_DIM, C_FAINT, False, False),
-    ("绝", "#1E5A4A", "#B8E0C8", True, False),
-    ("异", C_GAME_DIM, C_FAINT, False, False),
-    ("终", C_GAME_DIM, C_FAINT, False, False),
-]
+# ── 游戏元数据（display_name → 图标底色 / 背景主色 / 链接）───────────────
+# GitHub/B站/小红书：set_config 侧尚未实现，此处先占位（空 = 走默认）。
+# 背景图已下沉到 set_config.ScriptConfig.bg_img（经 get_game_bg_img 获取），
+# 此处不再维护。
+_GAME_META: dict[str, dict] = {
+    "鸣潮": {"color": "#2A4A8A", "github": "", "bilibili": ""},
+    "原神": {"color": "#3A3A6A", "github": "", "bilibili": ""},
+    "崩铁": {"color": "#2A4A7A", "github": "", "bilibili": ""},
+    "粥": {"color": "#161C28", "github": "", "bilibili": ""},
+    "绝区零": {"color": "#1E5A4A", "github": "", "bilibili": ""},
+    "异环": {"color": "#161C28", "github": "", "bilibili": ""},
+    "终末地": {"color": "#161C28", "github": "", "bilibili": ""},
+    "明日方舟": {"color": "#161C28", "github": "", "bilibili": ""},
+    "MAS": {"color": "#1F2937", "github": "", "bilibili": ""},
+}
+
+# 通用占位链接（对应内容未实现时使用）
+_URL_HOME = "https://github.com/"
+_URL_BILIBILI = "https://www.bilibili.com/"
+_URL_XHS = "https://www.xiaohongshu.com/"
 
 
 def make_font(size: int, weight: int = 400) -> QFont:
@@ -103,7 +126,9 @@ class RailContainer(QWidget):
         super().__init__(parent)
         self._fixed_bottom_h = fixed_bottom_height
         self.setFixedSize(80, CANVAS_H)
-        self.setStyleSheet(f"background:{C_RAIL_BG}; border-right:1px solid {C_RAIL_DIV};")
+        self.setStyleSheet(
+            f"background:{C_RAIL_BG}; border-right:1px solid {C_RAIL_DIV};"
+        )
         self._content = QWidget(self)
         self._content.setFixedSize(80, CANVAS_H - fixed_bottom_height)
         self._content.move(0, 0)
@@ -230,14 +255,14 @@ class IconButton(QWidget):
 def draw_home(p: QPainter):
     p.setPen(QPen(QColor(C_WHITE), 2.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
     p.setBrush(Qt.NoBrush)
-    p.drawLine(-10, -3, 0, -11)   # 屋顶左
-    p.drawLine(0, -11, 10, -3)    # 屋顶右
-    p.drawLine(-7, -1, -7, 9)     # 左墙
-    p.drawLine(7, -1, 7, 9)       # 右墙
-    p.drawLine(-7, 9, 7, 9)       # 地
+    p.drawLine(-10, -3, 0, -11)  # 屋顶左
+    p.drawLine(0, -11, 10, -3)  # 屋顶右
+    p.drawLine(-7, -1, -7, 9)  # 左墙
+    p.drawLine(7, -1, 7, 9)  # 右墙
+    p.drawLine(-7, 9, 7, 9)  # 地
     p.setBrush(QColor(C_WHITE))
     p.setPen(Qt.NoPen)
-    p.drawRect(-2, 2, 4, 5)       # 门
+    p.drawRect(-2, 2, 4, 5)  # 门
 
 
 def draw_controller(p: QPainter):
@@ -290,17 +315,17 @@ def draw_xhs(p: QPainter):
 _GITHUB_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
     '<path fill="#FFFFFF" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 '
-    '8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724'
-    '-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744'
-    '.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 '
-    '1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466'
-    '-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 '
-    '1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 '
-    '2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 '
-    '1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 '
-    '2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 '
+    "8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724"
+    "-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744"
+    ".084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 "
+    "1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466"
+    "-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 "
+    "1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 "
+    "2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 "
+    "1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 "
+    "2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 "
     '17.592 24 12.297c0-6.627-5.373-12-12-12"/>'
-    '</svg>'
+    "</svg>"
 )
 
 _github_renderer = None
@@ -312,8 +337,33 @@ def draw_github(p: QPainter):
     if _github_renderer is None:
         from PySide6.QtCore import QByteArray
         from PySide6.QtSvg import QSvgRenderer
+
         _github_renderer = QSvgRenderer(QByteArray(_GITHUB_SVG.encode()))
     _github_renderer.render(p, QRect(-10, -10, 20, 20))
+
+
+_FOLDER_SVG = (
+    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" '
+    'xmlns="http://www.w3.org/2000/svg">'
+    '<path d="M3 7C3 5.89543 3.89543 5 5 5H9.58579C9.851 5 10.1054 5.10536 '
+    "10.2929 5.29289L12 7H19C20.1046 7 21 7.89543 21 9V17C21 18.1046 "
+    '20.1046 19 19 19H5C3.89543 19 3 18.1046 3 17V7Z" stroke="#FFFFFF" '
+    'stroke-width="1.8" stroke-linejoin="round"/>'
+    "</svg>"
+)
+
+_folder_renderer = None
+
+
+def draw_folder(p: QPainter):
+    """文件夹图标（打开脚本所在路径，线性描边，QSvgRenderer 缓存渲染）。"""
+    global _folder_renderer
+    if _folder_renderer is None:
+        from PySide6.QtCore import QByteArray
+        from PySide6.QtSvg import QSvgRenderer
+
+        _folder_renderer = QSvgRenderer(QByteArray(_FOLDER_SVG.encode()))
+    _folder_renderer.render(p, QRect(-10, -10, 20, 20))
 
 
 def draw_min(p: QPainter):
@@ -391,23 +441,33 @@ class Toggle(QWidget):
         p.drawEllipse(QRect(x, 2, 18, 18))
 
 
-# ═══════════════════════ 游戏图标（左侧栏）══════════════════════════════════
+# ═══════════════════════ 脚本图标（左侧栏）══════════════════════════════════
 class GameIcon(QWidget):
-    """游戏图标按钮：点击切换选中态（浏览模式）。"""
+    """脚本图标按钮：显示脚本真实图标（get_script_icon），点击切换选中态。"""
 
     clicked = Signal(int)
 
-    def __init__(self, index, char, bg, fg, enabled, selected=False, parent=None):
+    def __init__(self, index, script_data, selected=False, enabled=True, parent=None):
         super().__init__(parent)
         self._index = index
-        self._char, self._bg, self._fg = char, QColor(bg), QColor(fg)
+        self._icon = get_script_icon(script_data)
         self._selected = selected
+        self._enabled = enabled  # 纯内存态：默认全开，会话内可临时关（对齐旧 GUI）
         self.setFixedSize(56, 56)
         self.setCursor(Qt.PointingHandCursor)
 
     def set_selected(self, selected: bool):
         self._selected = selected
         self.update()
+
+    def set_enabled(self, enabled: bool):
+        """启用/停用切换（控制模式下点击图标）：停用图标盖半透明黑。"""
+        self._enabled = enabled
+        self.update()
+
+    def is_enabled(self) -> bool:
+        """当前是否启用（纯内存态，默认全开）。"""
+        return self._enabled
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -418,18 +478,19 @@ class GameIcon(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        p.setPen(Qt.NoPen)
-        p.setBrush(self._bg)
-        p.drawRoundedRect(self.rect(), 14, 14)
         # 选中光晕
         if self._selected:
             glow = QColor("#4070FF")
             glow.setAlpha(90)
+            p.setPen(Qt.NoPen)
             p.setBrush(glow)
             p.drawRoundedRect(self.rect().adjusted(-3, -3, 3, 3), 16, 16)
-        p.setFont(make_font(24, 700))
-        p.setPen(self._fg)
-        p.drawText(self.rect(), Qt.AlignCenter, self._char)
+        # 真实图标（圆角裁切视觉：图标本身多为方形/圆形，直接铺满）
+        pix = self._icon.pixmap(self.width(), self.height())
+        p.drawPixmap(0, 0, pix)
+        # 停用：盖半透明黑（光暗表达启停，对齐设计稿）
+        if not self._enabled:
+            p.fillRect(self.rect(), QColor(0, 0, 0, 150))
 
 
 # ═══════════════════════ 主窗口 ════════════════════════════════════════════
@@ -442,16 +503,66 @@ class LauncherWindow(QWidget):
         self.setWindowTitle("OneDragon-Helper · 游戏自动化调度器")
         self.setAttribute(Qt.WA_TranslucentBackground, False)
         self._drag_offset = None
-        self._bg = QPixmap(BG_IMG)
-        if self._bg.isNull():
-            self._bg = QPixmap(1200, 720)
-            self._bg.fill(C_WINDOW_BG)
+        self.service = ChainService()
+        self.games = self._load_games()
+        assert self.games, "[launcher_proto] config.yml 中没有脚本"
+        self._current_index = 0
+        self._control_mode = (
+            False  # ⊞ 模式：False=浏览（点图标选脚本），True=控制（点图标启停）
+        )
+        # 任务调度（副本/序列选择）持久化到 gui_state.json（与旧 GUI 一致）；
+        # 仅 enabled 按钮状态不持久化（内存态，重启默认全开）
+        self._dungeon_state: dict = self.service.load_ui_state()
+        self._bg = QPixmap()  # 按选中游戏延迟加载
         self._build_ui()
+        self._apply_current_game()
+
+    def _load_games(self) -> list[dict]:
+        """从 config.yml 构建左侧栏脚本列表（全部 script_list，含 python 辅助脚本）。
+
+        Returns:
+            每个元素：{display_name, script_name, script_data, color, meta}。
+            script_data 供 get_script_icon 取真实图标；color/char 供占位背景渐变。
+            未登记（辅助/自定义）脚本用默认暗色，任务卡隐藏。
+        """
+        games = []
+        for script in self.service.load_config().get("script_list", []):
+            display_name = script["display_name"]
+            meta = _GAME_META.get(display_name, {})
+            games.append(
+                {
+                    "display_name": display_name,
+                    "script_name": get_script_name(script),
+                    "script_data": script,
+                    "char": display_name[0],
+                    "color": meta.get("color", C_GAME_DIM),
+                    "meta": meta,
+                }
+            )
+        return games
+
+    def _apply_current_game(self):
+        """选中游戏切换后：刷新任务卡（适配才显示）、日常 chip 与背景图。"""
+        game = self.games[self._current_index]
+        adapted = game["script_name"] in _CONFIGS
+        self._set_task_card_visible(adapted)
+        if adapted:
+            self._set_task_card_title(game["display_name"])
+            self._refresh_daily_chip()
+        self._bg = self._load_bg(game)
+        self.update()
+
+    def _load_bg(self, game: dict) -> QPixmap:
+        """加载背景图：set_config.get_game_bg_img 已解析为绝对路径；空 = 渐变占位。"""
+        bg_path = _get_game_bg_img(game["script_name"])
+        return QPixmap(bg_path) if bg_path else QPixmap()
 
     # ── 无边框窗口拖动（按住空白处移动窗口）─────────────────────────────
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self._drag_offset = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
             event.accept()
         else:
             super().mousePressEvent(event)
@@ -484,45 +595,50 @@ class LauncherWindow(QWidget):
         )
         self.toast_lbl.hide()
         self.toast_lbl.raise_()
+        # 单实例 timer：连续触发时 restart，避免旧 timer 提前隐藏新 toast
+        self._toast_timer = QTimer(self)
+        self._toast_timer.setSingleShot(True)
+        self._toast_timer.timeout.connect(self.toast_lbl.hide)
 
     def _build_left_rail(self):
-        """左侧游戏栏：游戏图标可滚动；⊞ 与启动全部固定在底部（画布 3:33/3:151）。"""
-        # 底部固定区 = 分割线 1 + 8 + ⊞ 56 + 8 + 启动全部 56 + 8 = 137
-        self.rail = RailContainer(self, fixed_bottom_height=137)
+        """左侧游戏栏：全部脚本图标 + ⊞ + 启动全部一起可滚动（脚本多了容纳不下，
+        改为整体滚动；启动全部需要滚到底部才能看到）。"""
+        # 全部走滚动（脚本图标 + ⊞ + 启动全部），不再做底部固定区
+        self.rail = RailContainer(self, fixed_bottom_height=0)
         self.rail.move(0, 0)
         content = self.rail.content()
 
-        # 7 个游戏图标（滚动区，y: 16..448，stride 72，最后底部 504）
-        # 用 rail.add() 添加：内部会重算 content 高度与滚动范围
+        # 脚本图标（用 rail.add() 触发滚动范围重算）
         self.game_icons = []
-        for i, (char, bg, fg, enabled, selected) in enumerate(GAMES):
-            icon = GameIcon(i, char, bg, fg, enabled, selected, content)
+        for i, game in enumerate(self.games):
+            icon = GameIcon(i, game["script_data"], i == self._current_index, content)
             self.rail.add(icon, 12, 16 + i * 72)
             icon.clicked.connect(self._select_game)
             self.game_icons.append(icon)
 
-        # 分割线（⊞ 上方 8px，与画布 10:5 一致；y=584，⊞ y=592）
-        divider = QFrame(self.rail)
-        divider.setGeometry(12, 584, 56, 1)
-        divider.setStyleSheet("background:#2A3850;")
-
-        # ⊞ 工具网格（固定：y=592；56×56；点击 accept 不冒泡触发窗口拖动）
-        grid_frame = QFrame(self.rail)
-        grid_frame.setGeometry(12, 592, 56, 56)
-        grid_frame.setStyleSheet(
+        # ⊞ 工具网格（紧随脚本图标之后，也参与滚动）——点击切换浏览/控制模式
+        self.grid_frame = QFrame(content)
+        self.grid_frame.setGeometry(12, 16 + len(self.games) * 72 + 16, 56, 56)
+        self.grid_frame.setStyleSheet(
             "background:transparent; border:1px solid #4D6A8C; border-radius:14px;"
         )
-        grid_frame.mousePressEvent = lambda e: (
-            e.accept() if e.button() == Qt.LeftButton else None
+        self.grid_frame.setCursor(Qt.PointingHandCursor)
+        self.grid_frame.mousePressEvent = lambda e: (
+            self._toggle_mode() if e.button() == Qt.LeftButton else None
         )
-        grid_glyph = _GlyphButton(draw_grid, grid_frame)
+        grid_glyph = _GlyphButton(draw_grid, self.grid_frame)
         grid_glyph.setGeometry(0, 0, 56, 56)
         grid_glyph.show()
 
-        # 启动全部按钮（固定最底部：y=656；56×56；rail 80 居中 x=12）
-        launch_btn = QFrame(self.rail)
-        launch_btn.setGeometry(12, 656, 56, 56)
-        launch_btn.setStyleSheet(f"background:{C_YELLOW}; border-radius:14px;")
+        # 启动全部按钮（紧跟 ⊞；QFrame + WA_Hover 启用 :hover 状态反馈）
+        launch_y = 16 + len(self.games) * 72 + 16 + 56 + 16
+        launch_btn = QFrame(content)
+        launch_btn.setGeometry(12, launch_y, 56, 56)
+        launch_btn.setAttribute(Qt.WA_Hover, True)
+        launch_btn.setStyleSheet(
+            f"QFrame {{ background:{C_YELLOW}; border-radius:14px; }}"
+            f"QFrame:hover {{ background:{QColor(C_YELLOW).lighter(118).name()}; }}"
+        )
         launch_btn.setCursor(Qt.PointingHandCursor)
         launch_glyph = _GlyphButton(draw_launch, launch_btn)
         launch_glyph.setGeometry(0, 0, 56, 56)
@@ -535,6 +651,32 @@ class LauncherWindow(QWidget):
                 self._launch_all()
 
         launch_btn.mousePressEvent = _on_launch_press
+        # ⊞ 和启动全部不是 rail.add() 加入的，需手动重算 content 高度（含它们）
+        self.rail._recompute_height()
+        # 重建后恢复 ⊞ 模式样式（可能处于控制模式）
+        self._apply_mode_style()
+
+    def _rebuild_left_rail(self):
+        """（重）建左侧栏：销毁旧 rail 后按 self.games 重建（脚本增删/改名后调用）。
+
+        旧 rail 先 setParent(None) 脱离显示，再 deleteLater 排队销毁；
+        _build_left_rail 内 self.rail / self.game_icons 均重新赋值。
+        """
+        if getattr(self, "rail", None) is not None:
+            self.rail.setParent(None)
+            self.rail.deleteLater()
+        self._build_left_rail()
+
+    def _apply_mode_style(self):
+        """刷新 ⊞ 的模式样式（浏览/控制），供 _toggle_mode 与重建后恢复用。"""
+        if self._control_mode:
+            self.grid_frame.setStyleSheet(
+                "background:#1A2A4A; border:1px solid #7DA8FF; border-radius:14px;"
+            )
+        else:
+            self.grid_frame.setStyleSheet(
+                "background:transparent; border:1px solid #4D6A8C; border-radius:14px;"
+            )
 
     def _build_hero(self):
         """HERO 区：1200x720 官方背景图（cover）。"""
@@ -542,20 +684,26 @@ class LauncherWindow(QWidget):
         self.hero.setGeometry(80, 0, 1200, CANVAS_H)
 
     def _build_task_card(self):
-        """专题卡（左下 x:48 y:428 w:480 h:268，玻璃半透明）。"""
-        card = QFrame(self.hero)
-        card.setGeometry(48, 428, 480, 268)
+        """专题卡（左下 x:48 y:428 w:480 h:268，玻璃半透明）。
+
+        标题随选中游戏变化；未适配副本配置的游戏（不在 set_config._CONFIGS）
+        隐藏整卡（通过 _set_task_card_visible 控制）。
+        """
+        self.task_card = QFrame(self.hero)
+        self.task_card.setGeometry(48, 428, 480, 268)
         # 玻璃感：半透明
-        card.setStyleSheet("background:rgba(10,16,32,0.78); border-radius:16px;")
-        shadow = QGraphicsDropShadowEffect(card)
+        self.task_card.setStyleSheet(
+            "background:rgba(10,16,32,0.78); border-radius:16px;"
+        )
+        shadow = QGraphicsDropShadowEffect(self.task_card)
         shadow.setBlurRadius(24)
         shadow.setOffset(0, 8)
         shadow.setColor(QColor(0, 0, 0, 130))
-        card.setGraphicsEffect(shadow)
-        card.show()
+        self.task_card.setGraphicsEffect(shadow)
+        self.task_card.show()
 
         # 标题行（ico 36×36 与任务行 ico 对齐：x=12；文字 x=58 与行名对齐）
-        title_row = QWidget(card)
+        title_row = QWidget(self.task_card)
         title_row.setGeometry(20, 18, 440, 36)
         t_ico = QLabel("▶", title_row)
         t_ico.setGeometry(12, 0, 36, 36)
@@ -563,9 +711,11 @@ class LauncherWindow(QWidget):
             f"background:{C_YELLOW}; color:#1A1A1A; font-size:16px;"
             "border-radius:10px; qproperty-alignment:AlignCenter;"
         )
-        t_txt = QLabel("鸣潮 · 任务调度", title_row)
-        t_txt.setGeometry(58, 5, 260, 26)
-        t_txt.setStyleSheet(f"color:{C_WHITE}; font-size:19px; font-weight:700; background:transparent;")
+        self.task_title = QLabel("", title_row)
+        self.task_title.setGeometry(58, 5, 260, 26)
+        self.task_title.setStyleSheet(
+            f"color:{C_WHITE}; font-size:19px; font-weight:700; background:transparent;"
+        )
 
         # 总开关（标题行右侧，与任务行开关右边缘对齐 x=388；一键同步日常/周本）
         self.master_toggle = Toggle(True, title_row)
@@ -573,24 +723,71 @@ class LauncherWindow(QWidget):
         self.master_toggle.toggled.connect(self._on_master_toggled)
 
         # 分隔线
-        divider = QFrame(card)
+        divider = QFrame(self.task_card)
         divider.setGeometry(20, 56, 440, 1)
         divider.setStyleSheet("background:#2A3850;")
 
-        # 日常行（启用）
-        self.daily_row = self._task_row(
-            card, 20, 68, "日常", "#0F1A2E",
-            C_BLUE_TEXT, "⚡", "#1A3A7A", C_BLUE_TEXT, "无音区", True
+        # 日常行（启用；chip 点击弹出副本选择菜单）
+        self.daily_row, self.daily_chip_lbl = self._task_row(
+            self.task_card,
+            20,
+            68,
+            "日常",
+            "#0F1A2E",
+            C_BLUE_TEXT,
+            "⚡",
+            "#1A3A7A",
+            C_BLUE_TEXT,
+            "选择副本",
+            True,
+        )
+        self.daily_chip_lbl.setCursor(Qt.PointingHandCursor)
+        self.daily_chip_lbl.mousePressEvent = lambda e: (
+            self._show_daily_menu() if e.button() == Qt.LeftButton else None
         )
         # 周本行（未支持，opacity 0.55）
-        self.weekly_row = self._task_row(
-            card, 20, 134, "周本", "#1A2028",
-            C_FAINT, "📅", "#2A3040", C_FAINT, "未支持", False
+        # 未来：每个脚本在"周 i 之后"才可开启周本（i 可设置），届时放开此开关
+        self.weekly_row, _ = self._task_row(
+            self.task_card,
+            20,
+            134,
+            "周本",
+            "#1A2028",
+            C_FAINT,
+            "📅",
+            "#2A3040",
+            C_FAINT,
+            "未支持",
+            False,
         )
 
-    def _task_row(self, card, x, y, name, chip_bg, name_fg,
-                  ico_char, ico_bg, chip_fg, chip_text, on):
-        """专题卡内任务行（56 高，图标+名称+chip+开关；行背景透明——画布已去）。"""
+    def _set_task_card_visible(self, visible: bool):
+        """任务卡显隐（未适配副本配置的游戏不显示日常/周本）。"""
+        self.task_card.setVisible(visible)
+
+    def _set_task_card_title(self, display_name: str):
+        """更新任务卡标题（<游戏名> · 任务调度）。"""
+        self.task_title.setText(f"{display_name} · 任务调度")
+
+    def _task_row(
+        self,
+        card,
+        x,
+        y,
+        name,
+        chip_bg,
+        name_fg,
+        ico_char,
+        ico_bg,
+        chip_fg,
+        chip_text,
+        on,
+    ):
+        """专题卡内任务行（56 高，图标+名称+chip+开关；行背景透明——画布已去）。
+
+        Returns:
+            (row, chip_lbl)：chip_lbl 供外部点击绑定副本选择菜单。
+        """
         row = QFrame(card)
         row.setGeometry(x, y, 440, 56)
         row.setStyleSheet("background:transparent;")
@@ -606,22 +803,29 @@ class LauncherWindow(QWidget):
 
         name_lbl = QLabel(name, row)
         name_lbl.setGeometry(58, 15, 60, 26)
-        name_lbl.setStyleSheet(f"color:{name_fg}; font-size:15px; font-weight:600; background:transparent;")
+        name_lbl.setStyleSheet(
+            f"color:{name_fg}; font-size:15px; font-weight:600; background:transparent;"
+        )
 
         chip = QFrame(row)
         chip.setGeometry(130, 15, 96, 26)
+        chip.setAttribute(Qt.WA_Hover, True)
         chip.setStyleSheet(
-            f"background:{chip_bg}; border-radius:13px; border:1px solid #33517A;"
+            f"QFrame {{ background:{chip_bg}; border-radius:13px; border:1px solid #33517A; }}"
+            f"QFrame:hover {{ background:{QColor(chip_bg).lighter(125).name()};"
+            " border:1px solid #7DA8FF; }"
         )
         chip_lbl = QLabel(chip_text, chip)
-        chip_lbl.setStyleSheet(f"color:{chip_fg}; font-size:11px; background:transparent;")
+        chip_lbl.setStyleSheet(
+            f"color:{chip_fg}; font-size:11px; background:transparent;"
+        )
         chip_lbl.setGeometry(0, 0, 96, 26)
         chip_lbl.setAlignment(Qt.AlignCenter)
 
         toggle = Toggle(on, row)
         toggle.move(388, 17)
         toggle.toggled.connect(lambda v, r=row: self._on_task_toggled(r, v))
-        return row
+        return row, chip_lbl
 
     def _on_task_toggled(self, row, on):
         """任务行开关切换：启用→正常亮度；停用→整行置灰。"""
@@ -640,7 +844,11 @@ class LauncherWindow(QWidget):
         文字 x=60 宽 96，中心 108 = (60+156)/2，正好在 ▶ 和 ☰ 的几何中点。"""
         btn = QFrame(self.hero)
         btn.setGeometry(960, 636, 216, 64)
-        btn.setStyleSheet(f"background:{C_BLUE}; border-radius:32px;")
+        btn.setAttribute(Qt.WA_Hover, True)
+        btn.setStyleSheet(
+            f"QFrame {{ background:{C_BLUE}; border-radius:32px; }}"
+            f"QFrame:hover {{ background:{QColor(C_BLUE).lighter(118).name()}; }}"
+        )
         btn.setCursor(Qt.PointingHandCursor)
         shadow = QGraphicsDropShadowEffect(btn)
         shadow.setBlurRadius(20)
@@ -654,24 +862,38 @@ class LauncherWindow(QWidget):
         play.setGeometry(4, 4, 56, 56)
         play.setStyleSheet(f"background:{C_BLUE_DEEP}; border-radius:28px;")
         play_ico = QLabel("▶", play)
-        play_ico.setStyleSheet(f"color:{C_WHITE}; font-size:22px; font-weight:700; background:transparent;")
+        play_ico.setStyleSheet(
+            f"color:{C_WHITE}; font-size:22px; font-weight:700; background:transparent;"
+        )
         play_ico.setGeometry(0, 0, 56, 56)
         play_ico.setAlignment(Qt.AlignCenter)
 
         # 中间文字"启动脚本"居中于 [60, 156] 几何中点 108
         txt = QLabel("启动脚本", btn)
         txt.setGeometry(60, 0, 96, 64)
-        txt.setStyleSheet(f"color:{C_WHITE}; font-size:18px; font-weight:700; background:transparent;")
+        txt.setStyleSheet(
+            f"color:{C_WHITE}; font-size:18px; font-weight:700; background:transparent;"
+        )
         txt.setAlignment(Qt.AlignCenter)
 
-        # 右侧 ☰ 菜单圆（与 ▶ 对称，56×56）
+        # 右侧 ☰ 菜单圆（与 ▶ 对称，56×56）——点击打开当前脚本配置弹窗
         menu = QFrame(btn)
         menu.setGeometry(156, 4, 56, 56)
         menu.setStyleSheet(f"background:{C_BLUE_DEEP}; border-radius:28px;")
+        menu.setCursor(Qt.PointingHandCursor)
         menu_ico = QLabel("≡", menu)
-        menu_ico.setStyleSheet(f"color:{C_WHITE}; font-size:22px; background:transparent;")
+        menu_ico.setStyleSheet(
+            f"color:{C_WHITE}; font-size:22px; background:transparent;"
+        )
         menu_ico.setGeometry(0, 0, 56, 56)
         menu_ico.setAlignment(Qt.AlignCenter)
+
+        def _on_menu_press(e):
+            if e.button() == Qt.LeftButton:
+                e.accept()  # 阻止冒泡到 btn 触发"启动脚本"
+                self._open_config_dialog()
+
+        menu.mousePressEvent = _on_menu_press
 
         # 点击 accept，防止事件冒泡到 LauncherWindow 触发窗口拖动
         def _on_launch_script_press(e):
@@ -682,19 +904,20 @@ class LauncherWindow(QWidget):
         btn.mousePressEvent = _on_launch_script_press
 
     def _build_float_bar(self):
-        """右侧悬浮条（5 个图标，无背景框——画布 3:287 已去玻璃底）。"""
+        """右侧悬浮条（6 个图标，无背景框——画布 3:287 已去玻璃底）。"""
         bar = QFrame(self.hero)
-        bar.setGeometry(1140, 80, 60, 280)
+        bar.setGeometry(1140, 80, 60, 300)
         # 去掉玻璃底：图标按钮自身有深色底，直接悬浮在 hero 上
         bar.setStyleSheet("background:transparent;")
         bar.show()
 
         icons = [
-            (draw_home, "主页", lambda: self._toast("主页")),
-            (draw_controller, "启动游戏", lambda: self._toast("启动游戏")),
-            (draw_tv, "B站", lambda: self._toast("B站")),
-            (draw_xhs, "小红书", lambda: self._toast("小红书")),
-            (draw_github, "GitHub", lambda: self._toast("GitHub")),
+            (draw_home, "主页", self._open_home),
+            (draw_controller, "启动游戏", self._launch_game),
+            (draw_folder, "打开脚本目录", self._open_script_folder),
+            (draw_tv, "B站", self._open_bilibili),
+            (draw_xhs, "小红书", self._open_xhs),
+            (draw_github, "GitHub", self._open_github),
         ]
         y = 22
         for fn, _name, action in icons:
@@ -713,27 +936,293 @@ class LauncherWindow(QWidget):
         close_btn.clicked.connect(self.close)
 
     # ── 交互 ─────────────────────────────────────────────────────────────
+    def _toggle_mode(self):
+        """⊞ 模式切换：浏览（点图标选脚本）⇄ 控制（点图标切换启用/停用）。"""
+        self._control_mode = not self._control_mode
+        self._apply_mode_style()
+        if self._control_mode:
+            self._toast("控制模式：点击图标切换启用/停用")
+        else:
+            self._toast("浏览模式：点击图标选择脚本")
+
     def _select_game(self, index: int):
-        """点击左侧游戏图标：切换当前浏览的游戏（仅选中态变化，位置不变）。"""
-        assert 0 <= index < len(GAMES), f"game index out of range: {index}"
+        """点击左侧脚本图标：控制模式切换启停，浏览模式切换选中。"""
+        assert 0 <= index < len(self.games), f"game index out of range: {index}"
+        if self._control_mode:
+            icon = self.game_icons[index]
+            icon.set_enabled(not icon.is_enabled())
+            self._toast(
+                f"{self.games[index]['display_name']}："
+                f"{'启用' if icon.is_enabled() else '停用'}"
+            )
+            return
+        self._current_index = index
         for i, icon in enumerate(self.game_icons):
             icon.set_selected(i == index)
-        self._toast(f"已切换到 {GAMES[index][0]}")
+        self._apply_current_game()
+        self._toast(f"已切换到 {self.games[index]['display_name']}")
+
+    def _current_game(self) -> dict:
+        """当前选中游戏条目。"""
+        return self.games[self._current_index]
 
     def _enabled_task_names(self) -> list:
         """当前已启用（开关开启）的任务行名称。"""
-        return [n for n, row in (("日常", self.daily_row), ("周本", self.weekly_row))
-                if row.findChild(Toggle).is_on()]
+        return [
+            n
+            for n, row in (("日常", self.daily_row), ("周本", self.weekly_row))
+            if row.findChild(Toggle).is_on()
+        ]
+
+    def _confirm_run(self, enabled_keys: set[str]) -> bool:
+        """运行前校验（对齐旧 GUI _warn_if_invalid_scripts）+ 确认弹窗。
+
+        Returns:
+            True 继续运行，False 取消。
+        """
+        config_data = self.service.load_config()
+        enabled_scripts = [
+            s for s in config_data["script_list"] if get_script_name(s) in enabled_keys
+        ]
+        invalid = self.service.collect_invalid_scripts(enabled_scripts)
+        if invalid:
+            details = "\n".join(f"· {name}：{msg}" for name, msg in invalid)
+            reply = QMessageBox.warning(
+                self,
+                "脚本配置不合法",
+                f"以下脚本配置不合法，运行时会被跳过：\n{details}\n\n是否仍然运行？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return False
+        reply = QMessageBox.question(
+            self,
+            "确认运行",
+            f"即将运行 {len(enabled_keys)} 个脚本，是否继续？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return reply == QMessageBox.Yes
+
+    def _run_chain(self, config_data: dict, enabled_keys: set[str], label: str) -> None:
+        """生成并运行脚本链（真实 ChainService；ui_state 用内存副本选择，不持久化）。"""
+        chain_path = self.service.generate_chain(
+            config_data, enabled_keys, chain_name="today", ui_state=self._dungeon_state
+        )
+        self.service.run_chain_command(chain_path, block=False)
+        self._toast(f"{label}：已生成并运行链 ({len(enabled_keys)} 个脚本)")
 
     def _launch_all(self):
-        """启动全部：启动所有已启用（开关开启）的任务行。"""
-        enabled = self._enabled_task_names()
-        self._toast(f"启动全部：{'、'.join(enabled) if enabled else '无已启用任务'}")
+        """启动全部：生成仅含启用（亮着）脚本的链并运行（对齐旧 GUI enabled 语义）。"""
+        # games 与 game_icons 一一对应（同一循环构建），长度必然一致
+        keys = {
+            g["script_name"]
+            for g, icon in zip(self.games, self.game_icons, strict=True)
+            if icon.is_enabled()
+        }
+        if not keys:
+            self._toast("没有启用的脚本")
+            return
+        if not self._confirm_run(keys):
+            return
+        config_data = self.service.load_config()
+        self._run_chain(config_data, keys, "启动全部")
 
     def _launch_script(self):
-        """启动脚本：启动当前游戏（鸣潮）的已启用任务。"""
-        enabled = self._enabled_task_names()
-        self._toast(f"启动脚本（鸣潮）：{'、'.join(enabled) if enabled else '无已启用任务'}")
+        """启动当前选中脚本（直接运行，不走链；对齐旧 GUI 图标左键语义）。
+
+        - python 脚本：走 runner 的 --script 参数用解释器运行
+        - external 脚本：解析 exe 路径后 startfile 启动
+        """
+        game = self._current_game()
+        script = game["script_data"]
+        if script.get("script_type") == "python":
+            resolved = resolve_script_path(script["script_path"])
+            if not resolved or not os.path.isfile(resolved):
+                self._toast(f"找不到脚本文件：{script['script_path']}")
+                return
+            command, cwd, env = build_script_command(["--script", resolved])
+            subprocess.Popen(command, cwd=cwd, env=env)
+        else:
+            # external：容错解析（不走 get_script_path 的 assert，配置损坏时 toast 提示）
+            exe_path = script.get("script_path", "")
+            resolved = resolve_script_path(exe_path) if exe_path else None
+            if not resolved or not os.path.isfile(resolved):
+                self._toast(f"找不到脚本：{exe_path}")
+                return
+            os.startfile(resolved)  # noqa: S606 启动脚本本体
+        self._toast(f"已启动 {game['display_name']}")
+
+    def _show_daily_menu(self):
+        """日常副本选择：弹出 dungeon_list.yml 级联菜单（一级副本 → 二级序列）。
+
+        选择经 _set_daily 持久化到 gui_state.json；运行链时由
+        generate_chain → set_config 写入脚本 config。
+        """
+        game = self._current_game()
+        dungeon_cfg = self.service.dungeon_map().get(game["script_name"])
+        options, seq_map, _ = parse_dungeon_config(dungeon_cfg)
+        if not options:
+            self._toast(f"{game['display_name']}：暂无副本选项")
+            return
+        menu = QMenu(self)
+        menu.setStyleSheet("background:#0F1A2E; color:#FFFFFF;")
+        for dungeon_name in options:
+            if dungeon_name == "未选择":
+                menu.addAction("未选择").triggered.connect(
+                    lambda _c=False: self._set_daily(None, None)
+                )
+                menu.addSeparator()
+                continue
+            seqs = seq_map.get(dungeon_name, [])
+            if seqs:
+                submenu = menu.addMenu(dungeon_name)
+                for display, value in seqs:
+                    submenu.addAction(display).triggered.connect(
+                        lambda _c=False, dn=dungeon_name, sq=value: self._set_daily(
+                            dn, sq
+                        )
+                    )
+            else:
+                menu.addAction(dungeon_name).triggered.connect(
+                    lambda _c=False, dn=dungeon_name: self._set_daily(dn, None)
+                )
+        menu.exec(
+            self.daily_chip_lbl.mapToGlobal(self.daily_chip_lbl.rect().bottomLeft())
+        )
+
+    def _dungeon_chip_text(self, dungeon_cfg, dungeon_name: str, sequence) -> str:
+        """副本 chip 文字：有二级序列且选了二级 → 二级展示名；否则副本名本身。
+
+        避免 get_display_name 找不到二级匹配时返回字符串 "None"。
+        """
+        _, seq_map, _ = parse_dungeon_config(dungeon_cfg)
+        if sequence is not None and dungeon_name in seq_map:
+            return get_display_name(seq_map, dungeon_name, sequence)
+        return dungeon_name
+
+    def _refresh_daily_chip(self):
+        """从 _dungeon_state（gui_state.json）恢复当前脚本的日常副本 chip 文字。"""
+        game = self._current_game()
+        saved = self._dungeon_state.get(game["script_name"])
+        if not saved or not saved.get("dungeon"):
+            self.daily_chip_lbl.setText("选择副本")
+            return
+        dungeon_cfg = self.service.dungeon_map().get(game["script_name"])
+        self.daily_chip_lbl.setText(
+            self._dungeon_chip_text(
+                dungeon_cfg, saved["dungeon"], saved.get("sequence")
+            )
+        )
+
+    def _set_daily(self, dungeon_name: str | None, sequence):
+        """保存日常副本选择（持久化到 gui_state.json，与旧 GUI 一致）并更新 chip 文字。"""
+        game = self._current_game()
+        if dungeon_name is None:
+            self._dungeon_state.pop(game["script_name"], None)
+            self.daily_chip_lbl.setText("选择副本")
+        else:
+            self._dungeon_state[game["script_name"]] = {
+                "dungeon": dungeon_name,
+                "sequence": sequence,
+            }
+            dungeon_cfg = self.service.dungeon_map().get(game["script_name"])
+            self.daily_chip_lbl.setText(
+                self._dungeon_chip_text(dungeon_cfg, dungeon_name, sequence)
+            )
+        self.service.save_ui_state(self._dungeon_state)
+
+    def _launch_game(self):
+        """启动游戏：读取当前游戏 exe 路径并打开（未适配时提示）。"""
+        game = self._current_game()
+        exe_path = _get_game_exe_path(game["script_name"])
+        if not exe_path:
+            self._toast(f"{game['display_name']}：未找到游戏路径")
+            return
+        os.startfile(exe_path)  # noqa: S606 启动游戏本体
+        self._toast(f"正在启动 {game['display_name']}…")
+
+    def _open_url(self, url: str, fallback: str, label: str):
+        """打开链接（游戏级 meta 有值用其值，否则用通用占位链接）。"""
+        target = url or fallback
+        webbrowser.open(target)
+        self._toast(f"打开{label}：{target}")
+
+    def _open_home(self):
+        self._open_url(self._current_game()["meta"].get("github"), _URL_HOME, "主页")
+
+    def _open_bilibili(self):
+        self._open_url(
+            self._current_game()["meta"].get("bilibili"), _URL_BILIBILI, "B站"
+        )
+
+    def _open_xhs(self):
+        self._open_url("", _URL_XHS, "小红书")
+
+    def _open_github(self):
+        self._open_url(self._current_game()["meta"].get("github"), _URL_HOME, "GitHub")
+
+    def _open_script_folder(self):
+        """打开当前脚本所在目录（script_path 父目录，资源管理器）。"""
+        game = self._current_game()
+        script_path = game["script_data"].get("script_path", "")
+        resolved = resolve_script_path(script_path) if script_path else None
+        if not resolved:
+            self._toast(f"{game['display_name']}：未找到脚本路径")
+            return
+        folder = os.path.dirname(resolved)
+        if not os.path.isdir(folder):
+            self._toast(f"{game['display_name']}：脚本目录不存在")
+            return
+        os.startfile(folder)  # noqa: S606 打开脚本所在目录
+        self._toast(f"已打开 {game['display_name']} 脚本目录")
+
+    def _open_config_dialog(self):
+        """打开当前脚本的配置弹窗（复用 SingleScriptConfigDialog）。
+
+        保存成功（Accept）→ ChainService.update_script 落盘并重载左侧栏；
+        删除确认（delete_requested 信号）→ ChainService.remove_script 落盘并重载。
+        弹窗删除路径走 close()（非 Accepted），不会误入保存分支。
+        """
+        game = self._current_game()
+        dialog = SingleScriptConfigDialog(
+            game["script_name"],
+            game["display_name"],
+            game["script_data"].get("script_path", ""),
+            self,
+            script_service=self.service._script_service,
+        )
+        dialog.delete_requested.connect(self._on_delete_script)
+        if dialog.exec() == QDialog.Accepted:
+            assert dialog.pending_changes is not None, (
+                "[launcher_proto] 配置弹窗 accept 但 pending_changes 为空"
+            )
+            changes = dialog.pending_changes
+            self.service.update_script(
+                changes["old_script_name"],
+                changes["new_display_name"],
+                changes["config_patch"],
+                changes["weekly_timeouts"],
+            )
+            self._reload_games()
+            self._toast(f"已保存 {changes['new_display_name']} 配置")
+
+    def _on_delete_script(self, script_name: str):
+        """配置弹窗确认删除：先落盘（config.yml + weekly 清理）再重建左侧栏。
+
+        落盘先于 UI 重建，避免 remove_script 断言失败时界面与磁盘状态不一致。
+        """
+        self.service.remove_script(script_name)
+        self._reload_games()
+        self._toast("已删除脚本")
+
+    def _reload_games(self):
+        """配置保存后重载左侧栏：重读 config.yml 并完整重建 rail（脚本数可变）。"""
+        self.games = self._load_games()
+        self._current_index = min(self._current_index, len(self.games) - 1)
+        self._rebuild_left_rail()
+        self._apply_current_game()
 
     def _toast(self, text: str):
         """右下角 toast 浮层：显示 3 秒后自动消失（frameless 无标题栏提示）。"""
@@ -744,31 +1233,57 @@ class LauncherWindow(QWidget):
         self.toast_lbl.move((CANVAS_W - w) // 2, CANVAS_H - h - 16)
         self.toast_lbl.show()
         self.toast_lbl.raise_()
-        QTimer.singleShot(3000, self.toast_lbl.hide)
+        self._toast_timer.start(3000)
 
-    # ── 背景绘制（cover）──────────────────────────────────────────────────
+    # ── 背景绘制（官方图 / 渐变占位）──────────────────────────────────────
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        p.setRenderHint(QPainter.SmoothPixmapTransform, True)  # 平滑缩放背景图，抑制颗粒感
+        p.setRenderHint(
+            QPainter.SmoothPixmapTransform, True
+        )  # 平滑缩放背景图，抑制颗粒感
         # 画布底
         p.fillRect(self.rect(), QColor(C_WINDOW_BG))
-        # hero 背景图（cover 填满 1200x720，保持 16:9 无裁切）
+        # hero 区（x:80 起）
         target = QRect(80, 0, 1200, CANVAS_H)
         if not self._bg.isNull():
-            # 计算 cover 源区域：图片与目标同比例(16:9)，直接全图适配
-            src = QRect(0, 0, self._bg.width(), self._bg.height())
-            p.drawPixmap(target, self._bg, src)
+            # cover 裁剪：按目标比例截取源图（中心对齐），避免超宽/超高图拉伸变形
+            # （如崩铁 bg37 2560x1162 超宽，全图压到 16:9 会纵向压扁）
+            src_w, src_h = self._bg.width(), self._bg.height()
+            target_ratio = target.width() / target.height()
+            src_ratio = src_w / src_h
+            if src_ratio > target_ratio:
+                crop_w = int(src_h * target_ratio)
+                src_rect = QRect((src_w - crop_w) // 2, 0, crop_w, src_h)
+            else:
+                crop_h = int(src_w / target_ratio)
+                src_rect = QRect(0, (src_h - crop_h) // 2, src_w, crop_h)
+            p.drawPixmap(target, self._bg, src_rect)
+        else:
+            self._draw_gradient_bg(p, target)
+
+    def _draw_gradient_bg(self, p: QPainter, rect: QRect):
+        """渐变占位背景：游戏主色 → 深色，中央大号游戏名（背景图未实现的过渡方案）。"""
+        game = self._current_game()
+        base = QColor(game["color"])
+        grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        grad.setColorAt(0.0, base.lighter(130))
+        grad.setColorAt(1.0, QColor(C_WINDOW_BG))
+        p.fillRect(rect, grad)
+        # 中央水印：游戏名首字，低透明度
+        p.setFont(make_font(260, 900))
+        p.setPen(QColor(255, 255, 255, 22))
+        p.drawText(rect, Qt.AlignCenter, game["char"])
 
 
 def main():
-    app = QApplication(sys.argv)
+    app = QApplication([])
     # 全局默认字体：QLabel 的 QSS 只设 font-size 未设 font-family，中文字符会 fallback
     # 到宋体(SimSun)；显式设置应用默认字体为微软雅黑后 QSS 文字统一用它
     app.setFont(QFont(FONT_FAMILY))
     win = LauncherWindow()
     win.show()
-    sys.exit(app.exec())
+    app.exec()
 
 
 if __name__ == "__main__":
