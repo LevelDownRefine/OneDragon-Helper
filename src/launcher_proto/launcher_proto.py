@@ -453,8 +453,9 @@ class GameIcon(QWidget):
     clicked = Signal(int)
     dropped = Signal(str, str)  # (源 script_name, 目标 script_name)
 
-    def __init__(self, index, script_name, script_data, selected=False, enabled=True,
-                 parent=None):
+    def __init__(
+        self, index, script_name, script_data, selected=False, enabled=True, parent=None
+    ):
         super().__init__(parent)
         self._index = index
         self._script_name = script_name
@@ -674,8 +675,13 @@ class LauncherWindow(QWidget):
         # rail.add() 触发滚动范围重算；x=12 在 80 宽栏内居中）
         self.game_icons = []
         for i, game in enumerate(self.games):
-            icon = GameIcon(i, game["script_name"], game["script_data"],
-                            i == self._current_index, content)
+            icon = GameIcon(
+                i,
+                game["script_name"],
+                game["script_data"],
+                i == self._current_index,
+                content,
+            )
             self.rail.add(icon, 12, 16 + i * 64)
             icon.clicked.connect(self._select_game)
             icon.dropped.connect(self._reorder_scripts)
@@ -1131,15 +1137,27 @@ class LauncherWindow(QWidget):
     def _reorder_scripts(self, src_script_name: str, dst_script_name: str):
         """拖拽重排：把 src 脚本移到 dst 脚本位置，同步 UI 与 config.yml（对齐旧 GUI）。"""
         src_idx = next(
-            (i for i, g in enumerate(self.games) if g["script_name"] == src_script_name),
+            (
+                i
+                for i, g in enumerate(self.games)
+                if g["script_name"] == src_script_name
+            ),
             None,
         )
         dst_idx = next(
-            (i for i, g in enumerate(self.games) if g["script_name"] == dst_script_name),
+            (
+                i
+                for i, g in enumerate(self.games)
+                if g["script_name"] == dst_script_name
+            ),
             None,
         )
-        assert src_idx is not None, f"[launcher_proto] 拖拽源脚本不存在: {src_script_name}"
-        assert dst_idx is not None, f"[launcher_proto] 拖拽目标脚本不存在: {dst_script_name}"
+        assert src_idx is not None, (
+            f"[launcher_proto] 拖拽源脚本不存在: {src_script_name}"
+        )
+        assert dst_idx is not None, (
+            f"[launcher_proto] 拖拽目标脚本不存在: {dst_script_name}"
+        )
         cur_name = self._current_game()["script_name"]  # 重排后按名字恢复选中
         game = self.games.pop(src_idx)
         self.games.insert(dst_idx, game)
@@ -1151,7 +1169,9 @@ class LauncherWindow(QWidget):
             (i for i, s in enumerate(scripts) if get_script_name(s) == src_script_name),
             None,
         )
-        assert s_idx is not None, f"[launcher_proto] config 中找不到源脚本: {src_script_name}"
+        assert s_idx is not None, (
+            f"[launcher_proto] config 中找不到源脚本: {src_script_name}"
+        )
         script = scripts.pop(s_idx)
         scripts.insert(dst_idx, script)
         self.service.save_config(config_data)
