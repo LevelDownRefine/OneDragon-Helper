@@ -443,7 +443,9 @@ class GameIcon(QWidget):
         self._icon = get_script_icon(script_data)
         self._selected = selected
         self._enabled = enabled  # 纯内存态：默认全开，会话内可临时关（对齐旧 GUI）
-        self.setFixedSize(48, 48)
+        # 56×56（含 4px 内边距）：图标 48 居中画在 (4,4)，选中白框画在 56 边界
+        # ——与画布 3:15（56 容器）3:16（白框）3:17（48 图标）结构一致
+        self.setFixedSize(56, 56)
         self.setCursor(Qt.PointingHandCursor)
 
     def set_selected(self, selected: bool):
@@ -468,19 +470,18 @@ class GameIcon(QWidget):
     def paintEvent(self, event):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        # 选中光晕（48 图标外扩 4px = 56，与画布 3:16 一致）
+        # 选中：粗白色圆角方框（画在 56 边界，完整包住 48 图标；画布 3:16 一致）
         if self._selected:
-            glow = QColor("#4070FF")
-            glow.setAlpha(90)
-            p.setPen(Qt.NoPen)
-            p.setBrush(glow)
-            p.drawRoundedRect(self.rect().adjusted(-4, -4, 4, 4), 14, 14)
-        # 真实图标（圆角裁切视觉：图标本身多为方形/圆形，直接铺满）
-        pix = self._icon.pixmap(self.width(), self.height())
-        p.drawPixmap(0, 0, pix)
-        # 停用：盖半透明黑（光暗表达启停，对齐设计稿）
+            pen = QPen(QColor(C_WHITE), 3)
+            p.setPen(pen)
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(self.rect(), 16, 16)
+        # 真实图标（48×48 居中画在 (4,4)，与画布 3:17 一致）
+        pix = self._icon.pixmap(48, 48)
+        p.drawPixmap(4, 4, pix)
+        # 停用：盖半透明黑（光暗表达启停，只盖图标区域，对齐设计稿）
         if not self._enabled:
-            p.fillRect(self.rect(), QColor(0, 0, 0, 150))
+            p.fillRect(4, 4, 48, 48, QColor(0, 0, 0, 150))
 
 
 # ═══════════════════════ 主窗口 ════════════════════════════════════════════
@@ -606,11 +607,12 @@ class LauncherWindow(QWidget):
         self.rail.move(0, 0)
         content = self.rail.content()
 
-        # 脚本图标（滚动区，48×48 stride 64；rail.add() 触发滚动范围重算）
+        # 脚本图标（滚动区，56×56 stride 64（含 8 间距，画布 itemSpacing=8）；
+        # rail.add() 触发滚动范围重算；x=12 在 80 宽栏内居中）
         self.game_icons = []
         for i, game in enumerate(self.games):
             icon = GameIcon(i, game["script_data"], i == self._current_index, content)
-            self.rail.add(icon, 16, 16 + i * 64)
+            self.rail.add(icon, 12, 16 + i * 64)
             icon.clicked.connect(self._select_game)
             self.game_icons.append(icon)
 
