@@ -55,8 +55,6 @@ C_FAINT = "#4A5568"          # 停用文字
 C_GREEN = "#3DD68C"          # 启用开关
 C_GRAY_TRACK = "#2A2F38"     # 停用开关轨道
 C_GRAY_KNOB = "#5A6470"      # 停用开关滑块
-C_ROW_DAILY = "#0E1A30"      # 日常行
-C_ROW_WEEKLY = "#0E1420"     # 周本行
 C_GAME_SELECT = "#2A4A8A"    # 鸣潮选中
 C_GAME_DIM = "#161C28"       # 停用游戏图标
 C_XHS_RED = "#FF2442"        # 小红书品牌红
@@ -569,6 +567,11 @@ class LauncherWindow(QWidget):
         t_txt.setGeometry(58, 5, 260, 26)
         t_txt.setStyleSheet(f"color:{C_WHITE}; font-size:19px; font-weight:700; background:transparent;")
 
+        # 总开关（标题行右侧，与任务行开关右边缘对齐 x=388；一键同步日常/周本）
+        self.master_toggle = Toggle(True, title_row)
+        self.master_toggle.move(388, 7)
+        self.master_toggle.toggled.connect(self._on_master_toggled)
+
         # 分隔线
         divider = QFrame(card)
         divider.setGeometry(20, 56, 440, 1)
@@ -576,21 +579,21 @@ class LauncherWindow(QWidget):
 
         # 日常行（启用）
         self.daily_row = self._task_row(
-            card, 20, 68, "日常", C_ROW_DAILY, "#0F1A2E",
+            card, 20, 68, "日常", "#0F1A2E",
             C_BLUE_TEXT, "⚡", "#1A3A7A", C_BLUE_TEXT, "无音区", True
         )
         # 周本行（未支持，opacity 0.55）
         self.weekly_row = self._task_row(
-            card, 20, 134, "周本", C_ROW_WEEKLY, "#1A2028",
+            card, 20, 134, "周本", "#1A2028",
             C_FAINT, "📅", "#2A3040", C_FAINT, "未支持", False
         )
 
-    def _task_row(self, card, x, y, name, row_bg, chip_bg, name_fg,
+    def _task_row(self, card, x, y, name, chip_bg, name_fg,
                   ico_char, ico_bg, chip_fg, chip_text, on):
-        """专题卡内任务行（56 高，图标+名称+chip+开关；画布已去行描边）。"""
+        """专题卡内任务行（56 高，图标+名称+chip+开关；行背景透明——画布已去）。"""
         row = QFrame(card)
         row.setGeometry(x, y, 440, 56)
-        row.setStyleSheet(f"background:{row_bg}; border-radius:12px;")
+        row.setStyleSheet("background:transparent;")
         row.setWindowOpacity(0.55 if not on else 1.0)
         row.show()
 
@@ -621,11 +624,14 @@ class LauncherWindow(QWidget):
         return row
 
     def _on_task_toggled(self, row, on):
-        """任务行开关切换：启用→整行高亮；停用→整行置灰。"""
+        """任务行开关切换：启用→正常亮度；停用→整行置灰。"""
         row.setWindowOpacity(1.0 if on else 0.55)
-        # 背景色在启用/停用间切换
-        base = C_ROW_DAILY if on else C_ROW_WEEKLY
-        row.setStyleSheet(f"background:{base}; border-radius:12px;")
+
+    def _on_master_toggled(self, on):
+        """总开关：一键同步日常/周本两个任务行开关（set_on 不发信号，无循环）。"""
+        for row in (self.daily_row, self.weekly_row):
+            row.findChild(Toggle).set_on(on)
+            self._on_task_toggled(row, on)
 
     def _build_launch_button(self):
         """启动脚本：右下蓝色大胶囊（x:960 y:636 w:216 h:64）——可点击。
