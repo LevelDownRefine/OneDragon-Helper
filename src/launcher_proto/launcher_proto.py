@@ -23,9 +23,10 @@ import os
 import subprocess
 import webbrowser
 
-from PySide6.QtCore import QPointF, QRect, Qt, QTimer, Signal
+from PySide6.QtCore import QMimeData, QPointF, QRect, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
+    QDrag,
     QFont,
     QLinearGradient,
     QPainter,
@@ -68,6 +69,9 @@ C_BLUE_DEEP = "#0F2A4D"  # 蓝色胶囊内圆深底
 C_WHITE = "#FFFFFF"
 C_BLUE_TEXT = "#7DA8FF"  # 选中/文字高亮蓝
 C_MUTED = "#8A9AB8"  # 次要文字
+
+# 拖拽重排 MIME（脚本唯一标识 script_name；与旧 GUI src/gui/widgets.py 一致）
+DRAG_MIME = "application/x-onedragon-script"
 C_FAINT = "#4A5568"  # 停用文字
 C_GREEN = "#3DD68C"  # 启用开关
 C_GRAY_TRACK = "#2A2F38"  # 停用开关轨道
@@ -389,6 +393,29 @@ def draw_launch(p: QPainter):
     p.drawPolygon(pts)
 
 
+def draw_select_all(p: QPainter):
+    """全选：白色对勾 √（绿色按钮上的图形）。"""
+    p.setRenderHint(QPainter.Antialiasing)
+    pen = QPen(QColor(C_WHITE), 2.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+    path = QPainterPath()
+    path.moveTo(-6, 0)
+    path.lineTo(-2, 5)
+    path.lineTo(7, -6)
+    p.drawPath(path)
+
+
+def draw_deselect_all(p: QPainter):
+    """清空：白色 ×（暗底按钮上的图形）。"""
+    p.setRenderHint(QPainter.Antialiasing)
+    pen = QPen(QColor(C_WHITE), 2.5, Qt.SolidLine, Qt.RoundCap)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+    p.drawLine(-5, -5, 5, 5)
+    p.drawLine(-5, 5, 5, -5)
+
+
 # ═══════════════════════ 开关（Toggle）══════════════════════════════════════
 class Toggle(QWidget):
     """滑动开关：点击切换 on/off，触发 toggled 信号。"""
@@ -433,20 +460,26 @@ class Toggle(QWidget):
 
 # ═══════════════════════ 脚本图标（左侧栏）══════════════════════════════════
 class GameIcon(QWidget):
-    """脚本图标按钮：显示脚本真实图标（get_script_icon），点击切换选中态。"""
+    """脚本图标按钮：显示脚本真实图标（get_script_icon），点击切换选中态。
+    支持拖拽重排（DRAG_MIME 传 script_name；对齐旧 GUI ScriptItem）。"""
 
     clicked = Signal(int)
+    dropped = Signal(str, str)  # (源 script_name, 目标 script_name)
 
-    def __init__(self, index, script_data, selected=False, enabled=True, parent=None):
+    def __init__(self, index, script_name, script_data, selected=False, enabled=True,
+                 parent=None):
         super().__init__(parent)
         self._index = index
+        self._script_name = script_name
         self._icon = get_script_icon(script_data)
         self._selected = selected
         self._enabled = enabled  # 纯内存态：默认全开，会话内可临时关（对齐旧 GUI）
+        self._drag_start_pos = None
         # 56×56（含 4px 内边距）：图标 48 居中画在 (4,4)，选中白框画在 56 边界
         # ——与画布 3:15（56 容器）3:16（白框）3:17（48 图标）结构一致
         self.setFixedSize(56, 56)
         self.setCursor(Qt.PointingHandCursor)
+        self.setAcceptDrops(True)
 
     def set_selected(self, selected: bool):
         self._selected = selected
@@ -464,8 +497,46 @@ class GameIcon(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             event.accept()
+            self._drag_start_pos = event.pos()  # 记录拖拽起点（超过阈值才发起拖拽）
             self.clicked.emit(self._index)
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_start_pos is not None and (event.buttons() & Qt.LeftButton):
+            if (
+                event.pos() - self._drag_start_pos
+            ).manhattanLength() >= QApplication.startDragDistance():
+                self._drag_start_pos = None
+                self._start_drag()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def _start_drag(self):
+        mime = QMimeData()
+        mime.setText(self._script_name)
+        mime.setData(DRAG_MIME, self._script_name.encode("utf-8"))
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        drag.setPixmap(self.grab())
+        drag.exec(Qt.MoveAction)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat(DRAG_MIME):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        if not event.mimeData().hasFormat(DRAG_MIME):
+            event.ignore()
+            return
+        src_name = bytes(event.mimeData().data(DRAG_MIME)).decode("utf-8")
+        if src_name != self._script_name:
+            self.dropped.emit(src_name, self._script_name)
+        event.acceptProposedAction()
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -581,9 +652,12 @@ class LauncherWindow(QWidget):
         self._build_hero()
         self._build_task_card()
         self._build_launch_button()
+        self._build_select_buttons()
         self._build_float_bar()
         self._build_window_controls()
         self._build_toast()
+        # hero 全画布（后创建）会盖住 rail，最后统一把 rail 提到最上保证可交互
+        self.rail.raise_()
 
     def _build_toast(self):
         """右下角 toast 浮层（frameless 窗口无标题栏，提示必须用浮层显示）。"""
@@ -605,15 +679,22 @@ class LauncherWindow(QWidget):
         # 底部固定区（贴底，底部间距 16）：启动全部 48 + 8 + ⊞ 48 + 8 + 分割线 1 = 113
         self.rail = RailContainer(self, fixed_bottom_height=113)
         self.rail.move(0, 0)
+        # hero 全画布后覆盖 rail 区域（0..80），raise 让 rail 浮在最上（可交互）
+        self.rail.raise_()
+        # 显式 show：首次构建时窗口未显示可省略，但拖拽重排（窗口已显示）重建时
+        # 新建 QWidget 默认隐藏，不 show 会导致整个左侧栏消失
+        self.rail.show()
         content = self.rail.content()
 
         # 脚本图标（滚动区，56×56 stride 64（含 8 间距，画布 itemSpacing=8）；
         # rail.add() 触发滚动范围重算；x=12 在 80 宽栏内居中）
         self.game_icons = []
         for i, game in enumerate(self.games):
-            icon = GameIcon(i, game["script_data"], i == self._current_index, content)
+            icon = GameIcon(i, game["script_name"], game["script_data"],
+                            i == self._current_index, content)
             self.rail.add(icon, 12, 16 + i * 64)
             icon.clicked.connect(self._select_game)
+            icon.dropped.connect(self._reorder_scripts)
             self.game_icons.append(icon)
 
         # 固定区遮罩：z-order 在 content 之上、固定区元素之下——滚动内容显示到
@@ -622,11 +703,13 @@ class LauncherWindow(QWidget):
         self._fixed_overlay = QFrame(self.rail)
         self._fixed_overlay.setGeometry(0, 591, 80, CANVAS_H - 591)
         self._fixed_overlay.setStyleSheet("background:#070A14;")
+        self._fixed_overlay.show()
 
         # 分割线（⊞ 上方 8px，固定区顶；与画布 10:5 一致）
         divider = QFrame(self.rail)
         divider.setGeometry(16, 591, 48, 1)
         divider.setStyleSheet("background:#2A3850;")
+        divider.show()
 
         # ⊞ 工具网格（固定：y=600；48×48；点击切换浏览/控制模式）
         self.grid_frame = QFrame(self.rail)
@@ -641,6 +724,7 @@ class LauncherWindow(QWidget):
         grid_glyph = _GlyphButton(draw_grid, self.grid_frame)
         grid_glyph.setGeometry(0, 0, 48, 48)
         grid_glyph.show()
+        self.grid_frame.show()
 
         # 启动全部按钮（固定最底部：y=656；48×48；QFrame + WA_Hover 启用 :hover 反馈）
         launch_btn = QFrame(self.rail)
@@ -654,6 +738,7 @@ class LauncherWindow(QWidget):
         launch_glyph = _GlyphButton(draw_launch, launch_btn)
         launch_glyph.setGeometry(0, 0, 48, 48)
         launch_glyph.show()
+        launch_btn.show()
 
         # 点击事件（accept 防止冒泡触发 RailContainer 拖动）
         def _on_launch_press(e):
@@ -677,7 +762,11 @@ class LauncherWindow(QWidget):
         self._build_left_rail()
 
     def _apply_mode_style(self):
-        """刷新 ⊞ 的模式样式（浏览/控制），供 _toggle_mode 与重建后恢复用。"""
+        """刷新 ⊞ 的模式样式（浏览/控制），供 _toggle_mode 与重建后恢复用。
+
+        控制模式：⊞ 高亮 + 显示全选/清空按钮；浏览模式：⊞ 常态 + 隐藏。
+        _build_left_rail 重建时 _build_select_buttons 尚未创建，getattr 保护。
+        """
         if self._control_mode:
             self.grid_frame.setStyleSheet(
                 "background:#1A2A4A; border:1px solid #7DA8FF; border-radius:14px;"
@@ -686,11 +775,18 @@ class LauncherWindow(QWidget):
             self.grid_frame.setStyleSheet(
                 "background:transparent; border:1px solid #4D6A8C; border-radius:14px;"
             )
+        for attr in ("clear_btn", "select_all_btn"):
+            btn = getattr(self, attr, None)
+            if btn is not None:
+                btn.setVisible(self._control_mode)
 
     def _build_hero(self):
-        """HERO 区：1200x720 官方背景图（cover）。"""
+        """HERO 区：全画布 1280x720（子元素用画布绝对坐标）。
+
+        背景图由 LauncherWindow.paintEvent 铺满全画布（16:9 零裁切）；
+        hero 只是子元素容器（透明），坐标与画布绝对坐标一致。"""
         self.hero = QWidget(self)
-        self.hero.setGeometry(80, 0, 1200, CANVAS_H)
+        self.hero.setGeometry(0, 0, CANVAS_W, CANVAS_H)
 
     def _build_task_card(self):
         """专题卡（左下 x:48 y:428 w:480，玻璃半透明）。
@@ -700,7 +796,7 @@ class LauncherWindow(QWidget):
         （通过 _set_task_rows_visible 控制，卡片高度随之收缩）。
         """
         self.task_card = QFrame(self.hero)
-        self.task_card.setGeometry(48, 428, 480, 268)
+        self.task_card.setGeometry(128, 428, 480, 268)
         # 玻璃感：半透明
         self.task_card.setStyleSheet(
             "background:rgba(10,16,32,0.78); border-radius:16px;"
@@ -778,7 +874,7 @@ class LauncherWindow(QWidget):
         self.daily_row.setVisible(adapted)
         self.weekly_row.setVisible(adapted)
         height = 268 if adapted else 100
-        self.task_card.setGeometry(48, 428, 480, height)
+        self.task_card.setGeometry(128, 428, 480, height)
 
     def _set_task_card_title(self, display_name: str):
         """更新任务卡标题（<游戏名> · 任务调度）。"""
@@ -918,10 +1014,62 @@ class LauncherWindow(QWidget):
 
         btn.mousePressEvent = _on_launch_script_press
 
+    def _build_select_buttons(self):
+        """全选 / 清空按钮：清空在 ⊞ 右边（hero 区），全选在启动脚本胶囊右边。
+
+        清空按钮：48x48 暗色圆角（× 图标），紧邻 rail 右边 8px（x=88, y=600），
+        与 ⊞（y=600）水平对齐。点击 → _deselect_all（所有脚本停用）。
+
+        全选按钮：64x64 绿色圆角（√ 图标），紧邻启动脚本胶囊右边 8px
+        （x=1184, y=636），与启动脚本（y=636）水平对齐。点击 → _select_all。
+        """
+        # 清空按钮（hero 区，⊞ 右边）
+        self.clear_btn = QFrame(self.hero)
+        self.clear_btn.setGeometry(88, 600, 48, 48)
+        self.clear_btn.setAttribute(Qt.WA_Hover, True)
+        self.clear_btn.setStyleSheet(
+            f"QFrame {{ background:{C_BTN_DARK}; border-radius:14px; }}"
+            f"QFrame:hover {{ background:{QColor(C_BTN_DARK).lighter(140).name()}; }}"
+        )
+        self.clear_btn.setCursor(Qt.PointingHandCursor)
+        clear_glyph = _GlyphButton(draw_deselect_all, self.clear_btn)
+        clear_glyph.setGeometry(0, 0, 48, 48)
+        clear_glyph.show()
+        self.clear_btn.setVisible(self._control_mode)  # 仅控制模式显示
+
+        def _on_clear_press(e):
+            if e.button() == Qt.LeftButton:
+                e.accept()
+                self._deselect_all()
+
+        self.clear_btn.mousePressEvent = _on_clear_press
+
+        # 全选按钮（启动全部按钮右边：x=88 y=656，48×48 与启动全部对齐；
+        # 清空按钮在 ⊞ 右边同一列 x=88 y=600，两者垂直排列）
+        self.select_all_btn = QFrame(self.hero)
+        self.select_all_btn.setGeometry(88, 656, 48, 48)
+        self.select_all_btn.setAttribute(Qt.WA_Hover, True)
+        self.select_all_btn.setStyleSheet(
+            f"QFrame {{ background:{C_GREEN}; border-radius:12px; }}"
+            f"QFrame:hover {{ background:{QColor(C_GREEN).lighter(115).name()}; }}"
+        )
+        self.select_all_btn.setCursor(Qt.PointingHandCursor)
+        select_glyph = _GlyphButton(draw_select_all, self.select_all_btn)
+        select_glyph.setGeometry(0, 0, 48, 48)
+        select_glyph.show()
+        self.select_all_btn.setVisible(self._control_mode)  # 仅控制模式显示
+
+        def _on_select_all_press(e):
+            if e.button() == Qt.LeftButton:
+                e.accept()
+                self._select_all()
+
+        self.select_all_btn.mousePressEvent = _on_select_all_press
+
     def _build_float_bar(self):
         """右侧悬浮条（5 个图标，无背景框——画布 3:287 已去玻璃底）。"""
         bar = QFrame(self.hero)
-        bar.setGeometry(1140, 80, 60, 252)
+        bar.setGeometry(1220, 80, 60, 252)
         # 去掉玻璃底：图标按钮自身有深色底，直接悬浮在 hero 上
         bar.setStyleSheet("background:transparent;")
         bar.show()
@@ -941,12 +1089,16 @@ class LauncherWindow(QWidget):
             y += 48  # 36 + 12 gap
 
     def _build_window_controls(self):
-        """窗口控制（右上角，深底圆按钮）。"""
+        """窗口控制（右上角贴右边缘，深底圆按钮）。
+
+        关闭按钮右贴画布右缘（1280-36=1244），最小化在左边 8px 间距
+        （1200..1236）；与悬浮条（1220..1280）右边缘对齐。
+        """
         min_btn = IconButton(draw_min, self.hero, size=36, radius=18)
-        min_btn.move(1116, 8)
+        min_btn.move(1200, 8)
         min_btn.clicked.connect(self.showMinimized)
         close_btn = IconButton(draw_close, self.hero, size=36, radius=18)
-        close_btn.move(1156, 8)
+        close_btn.move(1244, 8)
         close_btn.clicked.connect(self.close)
 
     # ── 交互 ─────────────────────────────────────────────────────────────
@@ -958,6 +1110,18 @@ class LauncherWindow(QWidget):
             self._toast("控制模式：点击图标切换启用/停用")
         else:
             self._toast("浏览模式：点击图标选择脚本")
+
+    def _select_all(self):
+        """全选：所有脚本图标设为启用（纯内存态，不持久化）。"""
+        for icon in self.game_icons:
+            icon.set_enabled(True)
+        self._toast("已全选（全部启用）")
+
+    def _deselect_all(self):
+        """清空：所有脚本图标设为停用（纯内存态，不持久化）。"""
+        for icon in self.game_icons:
+            icon.set_enabled(False)
+        self._toast("已清空（全部停用）")
 
     def _select_game(self, index: int):
         """点击左侧脚本图标：控制模式切换启停，浏览模式切换选中。"""
@@ -979,6 +1143,45 @@ class LauncherWindow(QWidget):
     def _current_game(self) -> dict:
         """当前选中游戏条目。"""
         return self.games[self._current_index]
+
+    def _reorder_scripts(self, src_script_name: str, dst_script_name: str):
+        """拖拽重排：把 src 脚本移到 dst 脚本位置，同步 UI 与 config.yml（对齐旧 GUI）。"""
+        src_idx = next(
+            (i for i, g in enumerate(self.games) if g["script_name"] == src_script_name),
+            None,
+        )
+        dst_idx = next(
+            (i for i, g in enumerate(self.games) if g["script_name"] == dst_script_name),
+            None,
+        )
+        assert src_idx is not None, f"[launcher_proto] 拖拽源脚本不存在: {src_script_name}"
+        assert dst_idx is not None, f"[launcher_proto] 拖拽目标脚本不存在: {dst_script_name}"
+        cur_name = self._current_game()["script_name"]  # 重排后按名字恢复选中
+        game = self.games.pop(src_idx)
+        self.games.insert(dst_idx, game)
+
+        # 同步 config.yml 顺序（以 UI 顺序为准），持久化
+        config_data = self.service.load_config()
+        scripts = config_data["script_list"]
+        s_idx = next(
+            (i for i, s in enumerate(scripts) if get_script_name(s) == src_script_name),
+            None,
+        )
+        assert s_idx is not None, f"[launcher_proto] config 中找不到源脚本: {src_script_name}"
+        script = scripts.pop(s_idx)
+        scripts.insert(dst_idx, script)
+        self.service.save_config(config_data)
+
+        # 重建左侧栏并恢复选中（新 index 可能已变）
+        new_idx = next(
+            (i for i, g in enumerate(self.games) if g["script_name"] == cur_name),
+            None,
+        )
+        assert new_idx is not None, f"[launcher_proto] 重排后丢失选中脚本: {cur_name}"
+        self._current_index = new_idx
+        self._rebuild_left_rail()
+        self._apply_current_game()
+        self._toast("已调整脚本顺序")
 
     def _enabled_task_names(self) -> list:
         """当前已启用（开关开启）的任务行名称。"""
