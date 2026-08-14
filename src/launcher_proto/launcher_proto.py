@@ -23,7 +23,17 @@ import os
 import subprocess
 import webbrowser
 
-from PySide6.QtCore import QMimeData, QPointF, QRect, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    QAbstractAnimation,
+    QEasingCurve,
+    QMimeData,
+    QPointF,
+    QRect,
+    Qt,
+    QTimer,
+    QVariantAnimation,
+    Signal,
+)
 from PySide6.QtGui import (
     QColor,
     QDrag,
@@ -131,6 +141,16 @@ class RailContainer(QWidget):
         self._offset = 0
         self._max_offset = 0
         self._drag_pos = None
+        # 平滑滚动动画（滚轮）：从当前 offset 缓动到目标
+        self._anim = QVariantAnimation(self)
+        self._anim.valueChanged.connect(self._on_anim_value)
+        # 拖动惯性：松手后按末速度减速滑行（16ms 逐帧，速度 ×0.95）
+        self._fling_velocity = 0.0
+        self._fling_timer = QTimer(self)
+        self._fling_timer.setInterval(16)
+        self._fling_timer.timeout.connect(self._fling_step)
+        self._last_pos = None
+        self._last_time = 0
 
     def content(self) -> QWidget:
         return self._content
@@ -159,29 +179,85 @@ class RailContainer(QWidget):
     def _apply_offset(self):
         self._content.move(0, -self._offset)
 
+    # ── 平滑滚动（滚轮/触控板）─────────────────────────────────────────
     def wheelEvent(self, event):
-        delta = event.angleDelta().y() // 8  # 一咔嗒 15px
+        pixel = event.pixelDelta().y()  # 触控板像素滚动
+        delta = (
+            pixel if pixel != 0 else (event.angleDelta().y() // 8) * 4
+        )  # 每咔嗒 60px
         if delta == 0:
             return
-        self._offset = max(0, min(self._max_offset, self._offset + delta))
-        self._apply_offset()
+        base = self._current_scroll()
+        self._animate_to(base + delta)
         event.accept()
 
+    def _current_scroll(self) -> int:
+        """当前滚动基准：动画进行中取动画目标值（连续滚动累加），否则取 _offset。"""
+        if self._anim.state() == QAbstractAnimation.State.Running:
+            return int(self._anim.endValue())
+        return self._offset
+
+    def _animate_to(self, target: int):
+        """缓动到目标 offset（滚轮使用）；目标超出边界时钳制。
+
+        动画进行中再滚动时以动画当前值为基准，避免重置回旧 offset。
+        """
+        base = self._current_scroll()
+        target = max(0, min(self._max_offset, target))
+        if target == base:
+            return
+        self._anim.stop()
+        self._anim.setStartValue(base)
+        self._anim.setEndValue(target)
+        self._anim.setDuration(160)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._anim.start()
+
+    def _on_anim_value(self, value):
+        self._offset = int(value)
+        self._apply_offset()
+
+    # ── 拖动滚动 + 惯性滑行 ────────────────────────────────────────────
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
+            self._anim.stop()
+            self._fling_timer.stop()
             self._drag_pos = event.position().y()
+            self._last_pos = event.position().y()
+            self._last_time = event.timestamp()
             event.accept()
 
     def mouseMoveEvent(self, event):
         if self._drag_pos is not None and event.buttons() & Qt.LeftButton:
+            now = event.timestamp()
             dy = self._drag_pos - event.position().y()
             self._offset = max(0, min(self._max_offset, self._offset + dy))
             self._apply_offset()
+            dt = now - self._last_time
+            if dt > 0:
+                self._fling_velocity = dy / dt  # px/ms 末速度
             self._drag_pos = event.position().y()
+            self._last_time = now
             event.accept()
 
     def mouseReleaseEvent(self, event):
-        self._drag_pos = None
+        if self._drag_pos is not None:
+            self._drag_pos = None
+            if abs(self._fling_velocity) > 0.4:  # 速度阈值，开启惯性滑行
+                self._fling_timer.start()
+
+    def _fling_step(self):
+        self._offset = max(
+            0, min(self._max_offset, self._offset + self._fling_velocity * 16)
+        )
+        self._apply_offset()
+        self._fling_velocity *= 0.95
+        # 触底或速度过低停止
+        hit_edge = (self._offset <= 0 and self._fling_velocity < 0) or (
+            self._offset >= self._max_offset and self._fling_velocity > 0
+        )
+        if hit_edge or abs(self._fling_velocity) < 0.05:
+            self._fling_timer.stop()
 
 
 class _GlyphButton(QWidget):
