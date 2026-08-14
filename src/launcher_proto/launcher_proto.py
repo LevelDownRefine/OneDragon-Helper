@@ -52,6 +52,7 @@ from src.config.set_config import get_game_bg_img as _get_game_bg_img
 from src.config.set_config import get_game_bilibili as _get_game_bilibili
 from src.config.set_config import get_game_exe_path as _get_game_exe_path
 from src.config.set_config import get_game_github as _get_game_github
+from src.config.set_config import get_game_homepage as _get_game_homepage
 from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.icons import get_script_icon
@@ -1350,9 +1351,9 @@ class LauncherWindow(QWidget):
         self._toast(f"打开{label}：{target}")
 
     def _open_home(self):
-        """打开当前脚本项目的 GitHub 主页（与 GitHub 图标同源，空则通用占位）。"""
+        """打开当前游戏官方主页（set_config 声明，空则通用占位）。"""
         self._open_url(
-            _get_game_github(self._current_game()["script_name"]),
+            _get_game_homepage(self._current_game()["script_name"]),
             _URL_HOME,
             "主页",
         )

@@ -123,6 +123,13 @@ class ScriptConfig:
     只读获取，不实例化子类。
     """
 
+    homepage: str = ""
+    """游戏官方主页链接（官网首页，区别于脚本项目 GitHub）。
+
+    空字符串表示未配置，GUI 走通用占位链接。由 GUI 通过 ``get_game_homepage``
+    只读获取，不实例化子类。
+    """
+
     confirm_before_save: Callable[[str], bool] | None = None
     """保存前确认回调（由 GUI 注入，参数为 display_name，返回 True 才落盘）。
 
@@ -355,6 +362,18 @@ class ScriptConfig:
         """
         return cls.github
 
+    @classmethod
+    def get_game_homepage(cls, script_name: str) -> str:
+        """
+        读取游戏官方主页链接（类方法，不实例化，无副作用）。
+
+        未声明（``homepage`` 为空）→ 返回空字符串，GUI 走通用占位链接。
+
+        Args:
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        """
+        return cls.homepage
+
 
 # ============================================================
 # 注册表
@@ -399,6 +418,7 @@ class WutheringWavesConfig(ScriptConfig):
     _game_path_keys = ("pc_full_path",)
     bilibili = "https://space.bilibili.com/1955897084"
     github = "https://github.com/ok-oldking/ok-wuthering-waves"
+    homepage = "https://mc.kurogames.com/"
     banner_url = "https://i.17173cdn.com/2fhnvk/YWxqaGBf/cms3/OIubWtbtFpzieyq.webp"
     """鸣潮背景图下载地址。"""
 
@@ -472,6 +492,7 @@ class GenshinConfig(ScriptConfig):
     _game_path_keys = ("genshinStartConfig", "installPath")
     bilibili = "https://space.bilibili.com/401742377"
     github = "https://github.com/babalae/better-genshin-impact"
+    homepage = "https://ys.mihoyo.com/"
     banner_url = (
         "https://cdn.jsdelivr.net/gh/babalae/better-genshin-impact@0.63.0/"
         "BetterGenshinImpact/Resources/Images/banner.jpg"
@@ -520,6 +541,7 @@ class EndfieldConfig(ScriptConfig):
     _game_path_keys = ("pc_full_path",)
     bilibili = "https://space.bilibili.com/1265652806"
     github = "https://github.com/AliceJump/ok-end-field/"
+    homepage = "https://endfield.hypergryph.com/"
     banner_url = "https://web.hycdn.cn/upload/image/20260710/0ffe54e3ecf2e1eae71e4e67afe9514d.jpg"
     """终末地背景图下载地址。"""
 
@@ -568,6 +590,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     bg_img = "assets/ui/static_background.webp"
     bilibili = "https://space.bilibili.com/1636034895"
     github = "https://github.com/DoctorReid/ZenlessZoneZero-OneDragon"
+    homepage = "https://zzz.mihoyo.com/"
 
     def __init__(self):
         self.display_name = "绝区零"
@@ -588,6 +611,7 @@ class StarRailConfig(ScriptConfig):
     bg_img = "assets/app/images/bg37.jpg"
     bilibili = "https://space.bilibili.com/1340190821"
     github = "https://github.com/moesnow/March7thAssistant"
+    homepage = "https://sr.mihoyo.com/"
 
     def __init__(self):
         self.display_name = "崩铁"
@@ -604,6 +628,7 @@ class NTEConfig(ScriptConfig):
     _game_path_keys = ("pc_full_path",)
     bilibili = "https://space.bilibili.com/3546636978489848"
     github = "https://github.com/BnanZ0/ok-nte"
+    homepage = "https://yh.wanmei.com/"
     banner_url = "https://yh.wanmei.com/images/main260813/pageCitySlide4.jpg"
     """异环背景图下载地址。"""
 
@@ -651,6 +676,7 @@ class ArknightsConfig(ScriptConfig):
     _template_rel_path = "MAA一条龙.json"
     bilibili = "https://space.bilibili.com/161775300"
     github = "https://github.com/MaaAssistantArknights/MaaAssistantArknights"
+    homepage = "https://ak.hypergryph.com/"
     banner_url = "https://i.imgs.ovh/2026/07/21/681b3ad143c01572d891fb518199be4d.png"
     """明日方舟背景图下载地址。"""
     _game_path_keys = (
@@ -857,3 +883,18 @@ def get_game_github(script_name: str) -> str:
     if script_name not in _CONFIGS:
         return ""
     return _CONFIGS[script_name].get_game_github(script_name)
+
+
+def get_game_homepage(script_name: str) -> str:
+    """
+    外观接口：读取指定脚本对应的游戏官方主页链接（供 GUI 打开官网用）。
+
+    只读查询，不实例化子类。未适配 / 未声明 → 返回空字符串，GUI 走通用占位链接。
+
+    Args:
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
+    """
+    if script_name not in _CONFIGS:
+        return ""
+    return _CONFIGS[script_name].get_game_homepage(script_name)
