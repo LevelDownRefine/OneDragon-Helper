@@ -627,39 +627,44 @@ class TestNTEConfig(unittest.TestCase):
         self.assertEqual(self.cfg._task_key, "任务类型")
         self.assertIn("空幕", self.cfg._seq_key_map)
         self.assertEqual(self.cfg._seq_key_map["空幕"], "空幕序号")
+        self.assertEqual(
+            self.cfg._config_rel_path,
+            "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json",
+        )
+        self.assertEqual(self.cfg._daily_section, "daily_anomaly")
 
     def test_update_sequence_changes_value(self):
-        config = {"空幕序号": 1}
+        config = {"daily_anomaly": {"空幕序号": 1}}
         changed = self.cfg._update_sequence(config, "空幕", 3)
         self.assertTrue(changed)
-        self.assertEqual(config["空幕序号"], 3)
+        self.assertEqual(config["daily_anomaly"]["空幕序号"], 3)
 
     def test_update_sequence_no_change(self):
-        config = {"空幕序号": 2}
+        config = {"daily_anomaly": {"空幕序号": 2}}
         changed = self.cfg._update_sequence(config, "空幕", 2)
         self.assertFalse(changed)
 
     def test_update_sequence_none_raises(self):
         """异环要求 sequence 不能为 None"""
-        config = {"空幕序号": 1}
+        config = {"daily_anomaly": {"空幕序号": 1}}
         with self.assertRaises(AssertionError):
             self.cfg._update_sequence(config, "空幕", None)
 
     def test_update_sequence_unknown_dungeon_raises(self):
-        config = {"未知序号": 1}
+        config = {"daily_anomaly": {"未知序号": 1}}
         with self.assertRaises(AssertionError):
             self.cfg._update_sequence(config, "不存在", "1")
 
     def test_update_sequence_all_mapped_dungeons(self):
         """测试 _seq_key_map 中所有副本都能正确更新"""
         for dungeon_name, seq_key in self.cfg._seq_key_map.items():
-            config = {seq_key: 0}
+            config = {"daily_anomaly": {seq_key: 0}}
             changed = self.cfg._update_sequence(config, dungeon_name, 5)
             self.assertTrue(changed, f"{dungeon_name} 未正确更新")
-            self.assertEqual(config[seq_key], 5)
+            self.assertEqual(config["daily_anomaly"][seq_key], 5)
 
     def test_set_dungeon_with_sequence_saves(self):
-        config = {"任务类型": "空幕", "空幕序号": 1}
+        config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 1}}
         with (
             patch.object(self.cfg, "_load", return_value=config),
             patch.object(self.cfg, "_save") as mock_save,
@@ -667,7 +672,20 @@ class TestNTEConfig(unittest.TestCase):
             self.cfg.set_dungeon("空幕", 3)
         mock_save.assert_called_once()
         saved = mock_save.call_args[0][0]
-        self.assertEqual(saved["空幕序号"], 3)
+        self.assertEqual(saved["daily_anomaly"]["空幕序号"], 3)
+
+    def test_update_task_writes_dungeon_name(self):
+        """任务类型写入 daily_anomaly 子对象（值即中文副本名）"""
+        config = {"daily_anomaly": {"任务类型": "空幕"}}
+        changed = self.cfg._update_task(config, "异能升级材料")
+        self.assertTrue(changed)
+        self.assertEqual(config["daily_anomaly"]["任务类型"], "异能升级材料")
+
+    def test_missing_daily_section_raises(self):
+        """顶层缺 daily_anomaly（旧版 DailyTask.json 结构）→ assert"""
+        config = {"任务类型": "空幕"}
+        with self.assertRaises(AssertionError):
+            self.cfg._update_task(config, "空幕")
 
 
 # ============================================================

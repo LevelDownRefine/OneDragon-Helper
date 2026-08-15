@@ -749,12 +749,14 @@ class StarRailConfig(ScriptConfig):
 @register
 class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
-    _config_rel_path = "data/apps/ok-nte/working/configs/DailyTask.json"
+    _config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     bilibili = "3546636978489848"
     github = "BnanZ0/ok-nte"
     homepage = "https://yh.wanmei.com/"
+    _daily_section = "daily_anomaly"
+    """日常任务配置所在顶层子对象（新格式：任务类型/序号字段嵌在其下）。"""
 
     def __init__(self):
         self.display_name = "异环"
@@ -765,15 +767,38 @@ class NTEConfig(ScriptConfig):
             "弧盘突破材料": "弧盘材料序号",
         }
 
-    def _update_sequence(
-        self, config: dict, dungeon_name: str, sequence: str | int | None
-    ) -> bool:
+    def _daily_section_dict(self, config: dict) -> dict:
+        """取日常任务配置子对象（新格式字段嵌在 daily_anomaly 下）。
+
+        顶层缺 ``_daily_section`` 属配置错误（旧版 DailyTask.json 已废弃），assert 暴露。
+        """
+        assert self._daily_section in config, (
+            f"[set_config][{self.display_name}] config 缺少 {self._daily_section}"
+        )
+        section = config[self._daily_section]
+        assert isinstance(section, dict), (
+            f"[set_config][{self.display_name}] {self._daily_section} 必须是 dict"
+        )
+        return section
+
+    def _update_task(self, config: dict, dungeon_name: str) -> bool:
+        """任务类型写入 daily_anomaly 子对象（值即中文副本名）。"""
+        return safe_update(
+            self._daily_section_dict(config),
+            self._task_key,
+            dungeon_name,
+            self.display_name,
+        )
+
+    def _update_sequence(self, config, dungeon_name, sequence) -> bool:
         assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
         assert dungeon_name in self._seq_key_map, (
             f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
         )
         key = self._seq_key_map[dungeon_name]
-        return safe_update(config, key, sequence, self.display_name)
+        return safe_update(
+            self._daily_section_dict(config), key, sequence, self.display_name
+        )
 
 
 # ---- 明日方舟 Arknights（粥）----
