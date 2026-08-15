@@ -3,10 +3,12 @@
 提供脚本根目录解析、config 路径推导、配置文件读写等功能。
 """
 
+import contextlib
 import json
 import logging
 import os
 import re
+import urllib.error
 import urllib.request
 
 import yaml
@@ -314,11 +316,19 @@ def download_file(url: str, out_path: str, timeout: int = 10) -> str | None:
     Returns:
         输出路径；下载失败（网络/磁盘）→ None，调用方自行降级。
     """
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    tmp_path = f"{out_path}.part"
     try:  # 网络/磁盘操作，失败可恢复，调用方降级处理
-        urllib.request.urlretrieve(url, out_path)
+        with (
+            urllib.request.urlopen(url, timeout=timeout) as resp,  # noqa: S310
+            open(tmp_path, "wb") as f,
+        ):
+            f.write(resp.read())
+        os.replace(tmp_path, out_path)
     except (urllib.error.URLError, OSError) as exc:
         logger.warning(f"[subscript] 下载失败 {url}: {exc}")
+        with contextlib.suppress(OSError):
+            os.remove(tmp_path)
         return None
     logger.info(f"[subscript] 下载完成: {out_path}")
     return out_path

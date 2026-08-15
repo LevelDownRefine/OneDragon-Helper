@@ -317,13 +317,16 @@ class ScriptConfig:
     @classmethod
     def get_game_bg_img(cls, script_name: str) -> str:
         """
-        读取脚本配置中的启动器背景图绝对路径（类方法，不实例化，无副作用）。
+        读取脚本配置中的启动器背景图绝对路径（类方法，不实例化）。
 
         背景图相对脚本根目录（script_path 父目录）声明，本方法完成
         相对 → 绝对解析并校验文件存在。以下情况返回空字符串（GUI 走渐变占位）：
         - 未声明（``bg_img`` 为空）
         - 脚本根目录取不到（config.yml 无此脚本 / script_path 为空）
         - 背景图文件不存在
+
+        注意：个别子类覆盖本方法时会先尝试下载远程背景图（网络操作，
+        见子类 docstring），此时并非纯只读。
 
         Args:
             script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
@@ -775,8 +778,10 @@ def get_game_bg_img(script_name: str) -> str:
     """
     外观接口：读取指定脚本对应的启动器背景图绝对路径（供 GUI 渲染背景用）。
 
-    只读查询，不实例化子类。未适配 / 未声明 / 根目录取不到 / 文件不存在
+    不实例化子类。未适配 / 未声明 / 根目录取不到 / 文件不存在
     → 返回空字符串，GUI 据此走渐变占位背景。
+    注意：个别脚本（原神）首次调用时会尝试下载远程背景图（网络操作，
+    见 GenshinConfig.get_game_bg_img），并非纯只读。
 
     Args:
         script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，

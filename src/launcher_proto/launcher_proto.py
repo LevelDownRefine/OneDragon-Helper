@@ -53,6 +53,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect,
     QLabel,
     QMenu,
     QMessageBox,
@@ -750,10 +751,10 @@ class LauncherWindow(QWidget):
 
     def _load_bg(self, game: dict) -> QPixmap:
         """加载背景图：自定义壁纸（_open_wallpaper）→ 脚本背景（set_config）
-        → 兜底 assets/ds.png → 空（渐变）。
+        → 兜底 assets/ds.jpg → 空（渐变）。
 
         所有脚本通用：未配置背景图（get_game_bg_img 返回空）时用项目根
-        assets/ds.png；该文件也缺失时才返回空走渐变占位。
+        assets/ds.jpg；该文件也缺失时才返回空走渐变占位。
         """
         bg_path = self._custom_bg.get(game["script_name"]) or (
             _get_game_bg_img(game["script_name"]) or DEFAULT_BG
@@ -831,7 +832,7 @@ class LauncherWindow(QWidget):
                 game["script_name"],
                 game["script_data"],
                 i == self._current_index,
-                content,
+                parent=content,
             )
             self.rail.add(icon, 12, 16 + i * 64)
             icon.clicked.connect(self._select_game)
@@ -1043,7 +1044,10 @@ class LauncherWindow(QWidget):
         row = QFrame(card)
         row.setGeometry(x, y, 440, 56)
         row.setStyleSheet("background:transparent;")
-        row.setWindowOpacity(0.55 if not on else 1.0)
+        # setWindowOpacity 只对顶层窗口生效，子控件用 QGraphicsOpacityEffect 实现置灰
+        opacity = QGraphicsOpacityEffect(row)
+        opacity.setOpacity(0.55 if not on else 1.0)
+        row.setGraphicsEffect(opacity)
         row.show()
 
         ico = QLabel(ico_char, row)
@@ -1081,7 +1085,11 @@ class LauncherWindow(QWidget):
 
     def _on_task_toggled(self, row, on):
         """任务行开关切换：启用→正常亮度；停用→整行置灰。"""
-        row.setWindowOpacity(1.0 if on else 0.55)
+        opacity = row.graphicsEffect()
+        assert isinstance(opacity, QGraphicsOpacityEffect), (
+            f"[launcher_proto] 任务行缺少 QGraphicsOpacityEffect: {row}"
+        )
+        opacity.setOpacity(1.0 if on else 0.55)
 
     def _on_master_toggled(self, on):
         """总开关：一键同步日常/周本两个任务行开关（set_on 不发信号，无循环）。"""
@@ -1661,6 +1669,11 @@ class LauncherWindow(QWidget):
     def _reload_games(self):
         """配置保存后重载左侧栏：重读 config.yml 并完整重建 rail（脚本数可变）。"""
         self.games = self._load_games()
+        if not self.games:
+            # 删光所有脚本：索引置 -1 并清空 rail，避免越界崩溃
+            self._current_index = -1
+            self._rebuild_left_rail()
+            return
         self._current_index = min(self._current_index, len(self.games) - 1)
         self._rebuild_left_rail()
         self._apply_current_game()
