@@ -1,0 +1,51 @@
+name: Sync ok-nte dungeons
+
+on:
+  schedule:
+    - cron: "30 3 * * 6" # 每周六 03:30 UTC（北京 11:30，与 okef/okww 错开避免并发改同一 yml）
+  workflow_dispatch: # 支持手动触发
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install pyyaml
+
+      - name: Check and apply new numbers
+        id: sync
+        run: |
+          # exit=0 无差异；exit=1 有差异（自动 apply 后开 PR）；
+          # exit=2 抓取/解析失败（跳过本次，不误开 PR）
+          python tools/sync_oknte_dungeons.py >/dev/null 2>&1
+          code=$?
+          if [ $code -eq 1 ]; then
+            python tools/sync_oknte_dungeons.py --apply
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request
+        if: steps.sync.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore: sync ok-nte dungeon numbers from upstream"
+          title: "chore: 同步异环副本数字"
+          body: |
+            检测到异环副本数量有更新，已从 ok-nte 的 `AnomalyTask.py`（`_ID_RANGE`）同步到 `config/dungeon_list.yml`。
+
+            - 新增数字的 display 为占位数字，**请人工改成友好名**（如 光暗/鸟/苹果）
+            - 移除的数字仅报告不删除（避免上游短暂回退时丢配置）
+          branch: auto-sync/oknte-dungeons
+          delete-branch: true

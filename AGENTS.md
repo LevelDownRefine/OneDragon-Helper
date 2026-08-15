@@ -29,7 +29,8 @@ src/config/
   dungeon_config.py         # dungeon_list.yml 解析
   bgi.py                    # 暂时未使用
 src/runner/                 # 用于运行脚本链；git submodule → OneDragonRunner
-scripts/              # 独立脚本，不 import 项目模块
+scripts/              # 脚本链运行器执行的实际脚本（独立脚本，不 import 项目模块）
+tools/                # 开发/CI 工具（副本同步脚本，总览见 tools/README.md）
 config/                     # 各种配置文件
 tests/                      # 测试文件
 ```
@@ -41,6 +42,7 @@ tests/                      # 测试文件
 - **运行器**：`src/runner/` 逐条执行脚本链，`block` 字段控制阻塞/非阻塞。详见 [`src/runner/README.md`](src/runner/README.md)。
 - **初始化**：首次 `config.yml` 缺失时 `config_workflow()`模板生成。
 - **日志解析**：由独立脚本`scripts/collect_log.py`解析，并由独立脚本`scripts/rerun.py`重新运行脚本。
+- **副本列表更新**：`config/dungeon_list.yml` 各游戏维护方式不同——终末地/鸣潮/异环由 GitHub Action 自动检测并开 PR，原神走手动 skill（`sync-bgi-dungeons`，display 需人工），其余固定。总览见 [`tools/README.md`](tools/README.md)。
 
 ## 5. 编码约定（强偏好，违反即打回）
 
