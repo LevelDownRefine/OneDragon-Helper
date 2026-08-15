@@ -60,7 +60,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.dungeon_config import get_display_name, parse_dungeon_config
-from src.config.set_config import _CONFIGS
+from src.config.set_config import _CONFIGS, ScriptConfig
 from src.config.set_config import get_game_bg_img as _get_game_bg_img
 from src.config.set_config import get_game_bilibili as _get_game_bilibili
 from src.config.set_config import get_game_exe_path as _get_game_exe_path
@@ -391,16 +391,18 @@ def draw_controller(p: QPainter):
 
 
 def draw_tv(p: QPainter):
+    """B站 图标：小电视 logo（顶部天线 + 圆角机身 + 屏幕双眼）。"""
+    pen = QPen(QColor(C_WHITE), 2.0, Qt.SolidLine, Qt.RoundCap)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+    p.drawLine(-6, -7, -8, -9)  # 左天线
+    p.drawLine(6, -7, 8, -9)  # 右天线
     p.setPen(Qt.NoPen)
     p.setBrush(QColor(C_WHITE))
-    p.drawRoundedRect(QRect(-9, -8, 18, 12), 3, 3)
+    p.drawRoundedRect(QRect(-9, -7, 18, 14), 4, 4)  # 机身
     p.setBrush(QColor(C_BTN_DARK))
-    p.drawEllipse(QRect(-3, -4, 2, 2))
-    p.drawEllipse(QRect(1, -4, 2, 2))
-    p.setBrush(QColor(C_WHITE))
-    p.drawRoundedRect(QRect(-2, 4, 4, 2), 1, 1)
-    p.drawEllipse(QRect(-5, 6, 2, 2))
-    p.drawEllipse(QRect(3, 6, 2, 2))
+    p.drawEllipse(QRect(-5, -2, 3, 3))  # 左眼
+    p.drawEllipse(QRect(2, -2, 3, 3))  # 右眼
 
 
 # GitHub Octocat 单色 SVG（Simple Icons 路径，白色）
@@ -1719,11 +1721,29 @@ class LauncherWindow(QWidget):
         p.drawText(rect, Qt.AlignCenter, game["char"])
 
 
+def _confirm_config_update(display_name: str) -> bool:
+    """config 与模板不一致时弹窗确认（对齐旧 GUI confirm_config_update）。
+
+    默认拒绝（No）→ ScriptConfig 置 enabled=False，本次实例不再改动 config，
+    也不写入副本。仅在 GUI 启动时注入（main），CLI/测试不注入保持原行为。
+    """
+    box = QMessageBox()
+    box.setIcon(QMessageBox.Question)
+    box.setWindowTitle("更新配置")
+    box.setText(f"「{display_name}」的配置文件与模板不一致，是否更新并保存？")
+    box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+    box.setDefaultButton(QMessageBox.No)
+    box.exec()
+    return box.result() == QMessageBox.Yes
+
+
 def main():
     app = QApplication([])
     # 全局默认字体：QLabel 的 QSS 只设 font-size 未设 font-family，中文字符会 fallback
     # 到宋体(SimSun)；显式设置应用默认字体为微软雅黑后 QSS 文字统一用它
     app.setFont(QFont(FONT_FAMILY))
+    # 对齐旧 GUI：config 与模板不一致时弹窗确认（CLI/测试不注入）
+    ScriptConfig.confirm_before_save = _confirm_config_update
     win = LauncherWindow()
     win.show()
     app.exec()
