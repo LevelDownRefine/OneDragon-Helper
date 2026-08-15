@@ -19,6 +19,7 @@
   右侧：悬浮图标条（主页/启动游戏/文件夹/B站/GitHub，无背景框）
 """
 
+import json
 import os
 import subprocess
 import webbrowser
@@ -49,6 +50,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
     QLabel,
@@ -401,6 +403,23 @@ def draw_github(p: QPainter):
     _github_renderer.render(p, QRect(-10, -10, 20, 20))
 
 
+def draw_wallpaper(p: QPainter):
+    """壁纸图标：图片框（圆角矩形 + 太阳圆 + 山形）。"""
+    p.setRenderHint(QPainter.Antialiasing)
+    pen = QPen(QColor(C_WHITE), 1.8, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.NoBrush)
+    p.drawRoundedRect(QRectF(-9, -8, 18, 16), 3, 3)  # 相框
+    p.drawEllipse(QRectF(-5.5, -5.5, 3.4, 3.4))  # 太阳
+    path = QPainterPath()  # 山
+    path.moveTo(-7, 6)
+    path.lineTo(-1.5, -1)
+    path.lineTo(2, 3.5)
+    path.lineTo(4.5, 1)
+    path.lineTo(8, 6)
+    p.drawPath(path)
+
+
 _FOLDER_SVG = (
     '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" '
     'xmlns="http://www.w3.org/2000/svg">'
@@ -658,6 +677,7 @@ class LauncherWindow(QWidget):
         # 任务调度（副本/序列选择）持久化到 gui_state.json（与旧 GUI 一致）；
         # 仅 enabled 按钮状态不持久化（内存态，重启默认全开）
         self._dungeon_state: dict = self.service.load_ui_state()
+        self._custom_bg: dict[str, str] = self._load_wallpapers()  # 脚本 → 壁纸路径
         self._bg = QPixmap()  # 按选中游戏延迟加载
         self._build_ui()
         self._apply_current_game()
@@ -696,12 +716,15 @@ class LauncherWindow(QWidget):
         self.update()
 
     def _load_bg(self, game: dict) -> QPixmap:
-        """加载背景图：脚本背景（set_config）→ 兜底 assets/ds.png → 空（渐变）。
+        """加载背景图：自定义壁纸（_open_wallpaper）→ 脚本背景（set_config）
+        → 兜底 assets/ds.png → 空（渐变）。
 
         所有脚本通用：未配置背景图（get_game_bg_img 返回空）时用项目根
         assets/ds.png；该文件也缺失时才返回空走渐变占位。
         """
-        bg_path = _get_game_bg_img(game["script_name"]) or DEFAULT_BG
+        bg_path = self._custom_bg.get(game["script_name"]) or (
+            _get_game_bg_img(game["script_name"]) or DEFAULT_BG
+        )
         resolved = resolve_script_path(bg_path)
         if not os.path.isfile(resolved):
             return QPixmap()
@@ -1152,9 +1175,9 @@ class LauncherWindow(QWidget):
         self.select_all_btn.mousePressEvent = _on_select_all_press
 
     def _build_float_bar(self):
-        """右侧悬浮条（5 个图标，无背景框——画布 3:287 已去玻璃底）。"""
+        """右侧悬浮条（6 个图标，无背景框——画布 3:287 已去玻璃底）。"""
         bar = QFrame(self.hero)
-        bar.setGeometry(1220, 80, 60, 252)
+        bar.setGeometry(1220, 80, 60, 300)
         # 去掉玻璃底：图标按钮自身有深色底，直接悬浮在 hero 上
         bar.setStyleSheet("background:transparent;")
         bar.show()
@@ -1165,6 +1188,7 @@ class LauncherWindow(QWidget):
             (draw_folder, "打开脚本目录", self._open_script_folder),
             (draw_tv, "B站", self._open_bilibili),
             (draw_github, "GitHub", self._open_github),
+            (draw_wallpaper, "壁纸", self._open_wallpaper),
         ]
         y = 22
         for fn, _name, action in icons:
@@ -1333,11 +1357,24 @@ class LauncherWindow(QWidget):
         return reply == QMessageBox.Yes
 
     def _run_chain(self, config_data: dict, enabled_keys: set[str], label: str) -> None:
-        """生成并运行脚本链（真实 ChainService；ui_state 用内存副本选择，不持久化）。"""
+        """生成并运行脚本链（真实 ChainService；ui_state 用内存副本选择，不持久化）。
+
+        直接 Popen 新控制台窗口运行 runner（cmd 可见链日志）：
+        - runner 用 python.exe（pythonw 无控制台，输出无处可去）
+        - CREATE_NEW_CONSOLE 开独立 cmd 窗口（复用 run_chain_command(block=False)
+          会把 stdout/stderr 丢到 DEVNULL，看不到任何信息）
+        """
         chain_path = self.service.generate_chain(
             config_data, enabled_keys, chain_name="today", ui_state=self._dungeon_state
         )
-        self.service.run_chain_command(chain_path, block=False)
+        command, cwd, env = build_script_command(["--chain", chain_path])
+        command[0] = command[0].replace("pythonw.exe", "python.exe")
+        subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=env,
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )
         self._toast(f"{label}：已生成并运行链 ({len(enabled_keys)} 个脚本)")
 
     def _launch_all(self):
@@ -1514,6 +1551,40 @@ class LauncherWindow(QWidget):
             return
         os.startfile(folder)  # noqa: S606 打开脚本所在目录
         self._toast(f"已打开 {game['display_name']} 脚本目录")
+
+    def _load_wallpapers(self) -> dict:
+        """读取 config/wallpaper.json（脚本 → 壁纸路径）；缺失返回空。"""
+        path = resolve_script_path("config/wallpaper.json")
+        if not os.path.isfile(path):
+            return {}
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+
+    def _save_wallpapers(self):
+        """把 _custom_bg 写回 config/wallpaper.json。"""
+        path = resolve_script_path("config/wallpaper.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self._custom_bg, f, ensure_ascii=False, indent=2)
+
+    def _open_wallpaper(self):
+        """更改当前脚本壁纸并持久化。
+
+        选图 → 记录原路径到 _custom_bg → 写 config/wallpaper.json。
+        取消选择（空路径）无操作。
+        """
+        game = self._current_game()
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            f"选择 {game['display_name']} 壁纸",
+            "",
+            "图片 (*.png *.jpg *.jpeg *.webp *.bmp)",
+        )
+        if not path:
+            return
+        self._custom_bg[game["script_name"]] = path
+        self._save_wallpapers()
+        self._apply_current_game()
+        self._toast(f"已更换 {game['display_name']} 壁纸")
 
     def _open_config_dialog(self):
         """打开当前脚本的配置弹窗（复用 SingleScriptConfigDialog）。

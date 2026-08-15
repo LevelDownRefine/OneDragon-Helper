@@ -27,6 +27,6 @@ if exist "%env_script%" (
 )
 
 :: 模块启动，等价 src/launcher.py → 模块名 src.launcher
-python -m src.launcher %*
+python -m src.launcher_proto.launcher_proto %*
 
 endlocal

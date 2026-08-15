@@ -419,8 +419,6 @@ class WutheringWavesConfig(ScriptConfig):
     bilibili = "https://space.bilibili.com/1955897084"
     github = "https://github.com/ok-oldking/ok-wuthering-waves"
     homepage = "https://mc.kurogames.com/"
-    banner_url = "https://i.17173cdn.com/2fhnvk/YWxqaGBf/cms3/OIubWtbtFpzieyq.webp"
-    """鸣潮背景图下载地址。"""
 
     def __init__(self):
         self.display_name = "鸣潮"
@@ -430,21 +428,6 @@ class WutheringWavesConfig(ScriptConfig):
             "模拟领域": "Simulation Challenge",
             "无音区": "Tacet Suppression",
         }
-
-    @classmethod
-    def get_game_bg_img(cls, script_name: str) -> str:
-        """鸣潮背景：项目 assets/wuwa.webp（无则下载）。
-
-        仅在脚本已注册时被调用；下载失败 → 空（GUI 走兜底 ds.jpg）。
-
-        Args:
-            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
-        """
-        assets_file = resolve_script_path("assets/wuwa.webp")
-        if not os.path.isfile(assets_file):
-            if not _download_file(cls.banner_url, assets_file):
-                return ""
-        return assets_file
 
     def _update_sequence(
         self, config: dict, dungeon_name: str, sequence: str | int | None
@@ -542,28 +525,11 @@ class EndfieldConfig(ScriptConfig):
     bilibili = "https://space.bilibili.com/1265652806"
     github = "https://github.com/AliceJump/ok-end-field/"
     homepage = "https://endfield.hypergryph.com/"
-    banner_url = "https://web.hycdn.cn/upload/image/20260710/0ffe54e3ecf2e1eae71e4e67afe9514d.jpg"
-    """终末地背景图下载地址。"""
 
     def __init__(self):
         self.display_name = "终末地"
         self._task_key = "体力本"
         self._init_config()
-
-    @classmethod
-    def get_game_bg_img(cls, script_name: str) -> str:
-        """终末地背景：项目 assets/ef.jpg（无则下载）。
-
-        仅在脚本已注册时被调用；下载失败 → 空（GUI 走兜底 ds.jpg）。
-
-        Args:
-            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
-        """
-        assets_file = resolve_script_path("assets/ef.jpg")
-        if not os.path.isfile(assets_file):
-            if not _download_file(cls.banner_url, assets_file):
-                return ""
-        return assets_file
 
     def _init_config(self):
         # TODO: 确认包含了绳索等配置
@@ -629,8 +595,6 @@ class NTEConfig(ScriptConfig):
     bilibili = "https://space.bilibili.com/3546636978489848"
     github = "https://github.com/BnanZ0/ok-nte"
     homepage = "https://yh.wanmei.com/"
-    banner_url = "https://yh.wanmei.com/images/main260813/pageCitySlide4.jpg"
-    """异环背景图下载地址。"""
 
     def __init__(self):
         self.display_name = "异环"
@@ -640,21 +604,6 @@ class NTEConfig(ScriptConfig):
             "空幕": "空幕序号",
             "弧盘突破材料": "弧盘材料序号",
         }
-
-    @classmethod
-    def get_game_bg_img(cls, script_name: str) -> str:
-        """异环背景：项目 assets/nte.jpg（无则下载）。
-
-        仅在脚本已注册时被调用；下载失败 → 空（GUI 走兜底 ds.jpg）。
-
-        Args:
-            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
-        """
-        assets_file = resolve_script_path("assets/nte.jpg")
-        if not os.path.isfile(assets_file):
-            if not _download_file(cls.banner_url, assets_file):
-                return ""
-        return assets_file
 
     def _update_sequence(
         self, config: dict, dungeon_name: str, sequence: str | int | None
@@ -677,8 +626,6 @@ class ArknightsConfig(ScriptConfig):
     bilibili = "https://space.bilibili.com/161775300"
     github = "https://github.com/MaaAssistantArknights/MaaAssistantArknights"
     homepage = "https://ak.hypergryph.com/"
-    banner_url = "https://i.imgs.ovh/2026/07/21/681b3ad143c01572d891fb518199be4d.png"
-    """明日方舟背景图下载地址。"""
     _game_path_keys = (
         "Configurations",
         "Default",
@@ -691,21 +638,6 @@ class ArknightsConfig(ScriptConfig):
         self.display_name = "粥"
         self._init_task_map()
         self._init_config()
-
-    @classmethod
-    def get_game_bg_img(cls, script_name: str) -> str:
-        """明日方舟背景：项目 assets/ak.png（无则下载）。
-
-        仅在脚本已注册时被调用；下载失败 → 空（GUI 走兜底 ds.jpg）。
-
-        Args:
-            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
-        """
-        assets_file = resolve_script_path("assets/ak.png")
-        if not os.path.isfile(assets_file):
-            if not _download_file(cls.banner_url, assets_file):
-                return ""
-        return assets_file
 
     def _init_task_map(self):
         """
