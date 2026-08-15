@@ -1018,8 +1018,8 @@ class LauncherWindow(QWidget):
         self.task_card.setGeometry(128, 428, 480, height)
 
     def _set_task_card_title(self, display_name: str):
-        """更新任务卡标题（<游戏名> · 任务调度）。"""
-        self.task_title.setText(f"{display_name} · 任务调度")
+        """更新任务卡标题（只显示游戏名）。"""
+        self.task_title.setText(display_name)
 
     def _task_row(
         self,
