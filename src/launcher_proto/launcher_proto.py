@@ -66,12 +66,14 @@ from src.config.set_config import get_game_bilibili as _get_game_bilibili
 from src.config.set_config import get_game_exe_path as _get_game_exe_path
 from src.config.set_config import get_game_github as _get_game_github
 from src.config.set_config import get_game_homepage as _get_game_homepage
+from src.config.set_config import supports_weekly as _supports_weekly
 from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.dialogs import SingleScriptConfigDialog
 from src.gui.icons import get_script_icon
 from src.service.chain_service import ChainService
 from src.utils import get_config_yml_path_under_root
 from src.utils_runner import build_script_command
+from src.utils_weekly import get_week_num, is_weekly_start_reached
 
 # ═══════════════════════ 设计稿常量（Ardot 画布原值）═══════════════════════
 CANVAS_W, CANVAS_H = 1280, 720
@@ -99,6 +101,17 @@ FONT_FAMILY = "Microsoft YaHei"
 
 # 兜底背景：脚本未配置背景图时使用（相对项目根）
 DEFAULT_BG = "assets/ds.jpg"
+
+# 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
+WEEKDAY_NAMES = {
+    1: "周一",
+    2: "周二",
+    3: "周三",
+    4: "周四",
+    5: "周五",
+    6: "周六",
+    7: "周日",
+}
 
 # ── 游戏元数据（display_name → 图标底色 / 背景主色 / 链接）───────────────
 # 通用占位链接（对应内容未配置时使用）
@@ -712,10 +725,32 @@ class LauncherWindow(QWidget):
         # 任务调度（副本/序列选择）持久化到 gui_state.json（与旧 GUI 一致）；
         # 仅 enabled 按钮状态不持久化（内存态，重启默认全开）
         self._dungeon_state: dict = self.service.load_ui_state()
+        self._weekly_toggle_state: dict[str, bool] = self._init_weekly_toggle_states()
         self._custom_bg: dict[str, str] = self._load_wallpapers()  # 脚本 → 壁纸路径
         self._bg = QPixmap()  # 按选中游戏延迟加载
         self._build_ui()
         self._apply_current_game()
+        # 周常开关（enabled）是纯内存态：启动时由 weekly_start 初始化（_init_weekly_toggle_states），
+        # 脚本配置的周常开关由运行链时 chain_gen 按 weekly_start 判断写入，启动时不落盘
+
+    def _init_weekly_toggle_states(self) -> dict[str, bool]:
+        """初始化各脚本周常开关（纯内存 UI 态，不持久化、不写脚本配置）。
+
+        启动时由 weekly_start 决定：已设置「周几起」且今天周几 >= 起始日 → True，
+        否则 False。仅用于 UI 显示；周常是否执行由运行链时 chain_gen 按
+        weekly_start 判断（与日常开关模型一致）。
+        """
+        states: dict[str, bool] = {}
+        for game in self.games:
+            script_name = game["script_name"]
+            if not _supports_weekly(script_name):
+                continue
+            saved = self._dungeon_state.get(script_name)
+            weekly_start = saved.get("weekly_start") if saved else None
+            states[script_name] = weekly_start is not None and is_weekly_start_reached(
+                weekly_start
+            )
+        return states
 
     def _load_games(self) -> list[dict]:
         """从 config.yml 构建左侧栏脚本列表（全部 script_list，含 python 辅助脚本）。
@@ -740,15 +775,30 @@ class LauncherWindow(QWidget):
 
     def _apply_current_game(self):
         """选中游戏切换后：刷新任务卡（所有脚本都显示，未适配只留标题）、
-        日常 chip 与背景图。"""
+        日常 chip、周常 chip 与开关、背景图。"""
         game = self.games[self._current_index]
         adapted = game["script_name"] in _CONFIGS
         self._set_task_card_title(game["display_name"])
         self._set_task_rows_visible(adapted)
         if adapted:
             self._refresh_daily_chip()
+            self._refresh_weekly_chip()
+            self._sync_weekly_toggle()
         self._bg = self._load_bg(game)
         self.update()
+
+    def _sync_weekly_toggle(self):
+        """把当前游戏的周常开关内存态同步到 UI toggle（set_on 不发信号，无循环）。"""
+        script_name = self._current_game()["script_name"]
+        self.weekly_toggle.set_on(self._weekly_toggle_state.get(script_name, False))
+
+    def _on_weekly_toggled(self, on: bool):
+        """周常开关点击：只更新内存态（纯 UI，不持久化、不写脚本配置）。
+
+        与日常开关模型一致：enabled 只在内存，周常是否执行由 weekly_start
+        按「今天周几 >= 起始日」在运行链时决定（chain_gen → set_config）。
+        """
+        self._weekly_toggle_state[self._current_game()["script_name"]] = on
 
     def _load_bg(self, game: dict) -> QPixmap:
         """加载背景图：自定义壁纸（_open_wallpaper）→ 脚本背景（set_config）
@@ -994,13 +1044,13 @@ class LauncherWindow(QWidget):
         self.daily_chip_lbl.mousePressEvent = lambda e: (
             self._show_daily_menu() if e.button() == Qt.LeftButton else None
         )
-        # 周本行（未支持，opacity 0.55）
-        # 未来：每个脚本在"周 i 之后"才可开启周本（i 可设置），届时放开此开关
-        self.weekly_row, _ = self._task_row(
+        # 周常行（周几以后开始执行；支持态由 _supports_weekly 决定，
+        # 支持则 chip 可点选周一起始日，未支持保持「未支持」禁用）
+        self.weekly_row, self.weekly_chip_lbl = self._task_row(
             self.task_card,
             20,
             134,
-            "周本",
+            "周常",
             "#1A2028",
             C_FAINT,
             "📅",
@@ -1009,6 +1059,14 @@ class LauncherWindow(QWidget):
             "未支持",
             False,
         )
+        self.weekly_chip_lbl.setCursor(Qt.ArrowCursor)
+        self.weekly_chip_lbl.mousePressEvent = lambda e: (
+            self._show_weekly_menu() if e.button() == Qt.LeftButton else None
+        )
+        # 周常开关（toggle，纯内存 UI 态不持久化）：点击只改按钮，不写脚本配置；
+        # 周常是否执行由运行链时 chain_gen 按 weekly_start 判断
+        self.weekly_toggle = self.weekly_row.findChild(Toggle)
+        self.weekly_toggle.toggled.connect(self._on_weekly_toggled)
 
     def _set_task_rows_visible(self, adapted: bool):
         """任务行显隐：适配脚本显示日常/周本（卡片 268 高）；未适配只留标题 + 总开关
@@ -1084,9 +1142,16 @@ class LauncherWindow(QWidget):
         return row, chip_lbl
 
     def _on_master_toggled(self, on):
-        """总开关：一键同步日常/周本两个任务行开关（set_on 不发信号，无循环）。"""
+        """总开关：一键同步日常/周本两个任务行开关（set_on 不发信号，无循环）。
+
+        周常开关内存态一并同步（仅支持周常的脚本；总开关关 = 周常也关）。
+        开关是纯内存态，不写脚本配置（由运行链时按 weekly_start 判断）。
+        """
         for row in (self.daily_row, self.weekly_row):
             row.findChild(Toggle).set_on(on)
+        script_name = self._current_game()["script_name"]
+        if _supports_weekly(script_name):
+            self._weekly_toggle_state[script_name] = on
 
     def _build_launch_button(self):
         """启动脚本：右下蓝色大胶囊（x:960 y:636 w:216 h:64）——可点击。
@@ -1353,7 +1418,7 @@ class LauncherWindow(QWidget):
         """当前已启用（开关开启）的任务行名称。"""
         return [
             n
-            for n, row in (("日常", self.daily_row), ("周本", self.weekly_row))
+            for n, row in (("日常", self.daily_row), ("周常", self.weekly_row))
             if row.findChild(Toggle).is_on()
         ]
 
@@ -1391,13 +1456,18 @@ class LauncherWindow(QWidget):
     def _run_chain(self, config_data: dict, enabled_keys: set[str], label: str) -> None:
         """生成并运行脚本链（真实 ChainService；ui_state 用内存副本选择，不持久化）。
 
+        周常开关（enabled）是纯内存 UI 态，不参与配置写入；周常是否执行由
+        chain_gen 按 ui_state 持久化的 weekly_start（周几起）判断，运行链时
+        写入脚本配置（与日常副本选择落盘模型一致）。
+
         直接 Popen 新控制台窗口运行 runner（cmd 可见链日志）：
         - runner 用 python.exe（pythonw 无控制台，输出无处可去）
         - CREATE_NEW_CONSOLE 开独立 cmd 窗口（复用 run_chain_command(block=False)
           会把 stdout/stderr 丢到 DEVNULL，看不到任何信息）
         """
+        ui_state = {name: dict(entry) for name, entry in self._dungeon_state.items()}
         chain_path = self.service.generate_chain(
-            config_data, enabled_keys, chain_name="today", ui_state=self._dungeon_state
+            config_data, enabled_keys, chain_name="today", ui_state=ui_state
         )
         command, cwd, env = build_script_command(["--chain", chain_path])
         command[0] = command[0].replace("pythonw.exe", "python.exe")
@@ -1512,17 +1582,98 @@ class LauncherWindow(QWidget):
             )
         )
 
-    def _set_daily(self, dungeon_name: str | None, sequence):
-        """保存日常副本选择（持久化到 gui_state.json，与旧 GUI 一致）并更新 chip 文字。"""
+    def _refresh_weekly_chip(self):
+        """刷新周常 chip：支持周常的脚本显示「周几起」可选，未支持保持「未支持」禁用。
+
+        支持态（_supports_weekly 为 True）：chip 亮色可点，显示已选起始日
+        （如「周四起」）或「选择周几」；未支持：chip 暗色置灰，不可点。
+        """
         game = self._current_game()
+        supported = _supports_weekly(game["script_name"])
+        saved = self._dungeon_state.get(game["script_name"])
+        start_day = saved.get("weekly_start") if saved else None
+        chip = self.weekly_chip_lbl.parent()
+        if not supported:
+            self.weekly_chip_lbl.setText("未支持")
+            chip.setStyleSheet(
+                "QFrame { background:#1A2028; border-radius:13px;"
+                " border:1px solid #2A3850; }"
+            )
+            self.weekly_chip_lbl.setStyleSheet(
+                f"color:{C_FAINT}; font-size:11px; background:transparent;"
+            )
+            self.weekly_chip_lbl.setCursor(Qt.ArrowCursor)
+            self.weekly_toggle.setEnabled(False)
+            return
+        self.weekly_toggle.setEnabled(True)
+        if start_day is None:
+            self.weekly_chip_lbl.setText("选择周几")
+        else:
+            self.weekly_chip_lbl.setText(f"{WEEKDAY_NAMES[start_day]}起")
+        chip.setStyleSheet(
+            f"QFrame {{ background:#0F1A2E; border-radius:13px; border:1px solid #33517A; }}"
+            f"QFrame:hover {{ background:{QColor('#0F1A2E').lighter(125).name()};"
+            " border:1px solid #7DA8FF; }"
+        )
+        self.weekly_chip_lbl.setStyleSheet(
+            f"color:{C_BLUE_TEXT}; font-size:11px; background:transparent;"
+        )
+        self.weekly_chip_lbl.setCursor(Qt.PointingHandCursor)
+
+    def _show_weekly_menu(self):
+        """周常起始日选择：弹出周一至周日菜单（含今天标注，凌晨 4 点为界）。
+
+        选择经 _set_weekly 持久化到 gui_state.json 并同步周常开关（UI 显示）；
+        脚本配置的周常开关由运行链时 chain_gen 按 weekly_start 判断写入。
+        """
+        game = self._current_game()
+        if not _supports_weekly(game["script_name"]):
+            return
+        menu = QMenu(self)
+        menu.setStyleSheet("background:#0F1A2E; color:#FFFFFF;")
+        today = get_week_num() + 1  # 0=周一..6=周日 → 1..7
+        for day in range(1, 8):
+            label = WEEKDAY_NAMES[day]
+            if day == today:
+                label += "（今天）"
+            menu.addAction(label).triggered.connect(
+                lambda _c=False, d=day: self._set_weekly(d)
+            )
+        menu.exec(
+            self.weekly_chip_lbl.mapToGlobal(self.weekly_chip_lbl.rect().bottomLeft())
+        )
+
+    def _set_weekly(self, start_day: int):
+        """保存周常起始日（持久化到 gui_state.json 的 weekly_start，1=周一）并更新 chip。
+
+        修改后立即同步周常开关（UI 显示）：今天周几 >= 起始日 → 开关开启，否则关闭。
+        开关是纯内存态；脚本配置的周常开关由运行链时 chain_gen 按 weekly_start
+        判断写入（与日常开关模型一致）。
+        """
+        assert start_day in WEEKDAY_NAMES, f"[launcher_proto] 非法周几: {start_day}"
+        game = self._current_game()
+        saved = self._dungeon_state.setdefault(game["script_name"], {})
+        saved["weekly_start"] = start_day
+        self.weekly_chip_lbl.setText(f"{WEEKDAY_NAMES[start_day]}起")
+        enabled = is_weekly_start_reached(start_day)
+        self._weekly_toggle_state[game["script_name"]] = enabled
+        self.weekly_toggle.set_on(enabled)
+        self.service.save_ui_state(self._dungeon_state)
+
+    def _set_daily(self, dungeon_name: str | None, sequence):
+        """保存日常副本选择（持久化到 gui_state.json，与旧 GUI 一致）并更新 chip 文字。
+
+        合并更新脚本条目（保留 weekly_start 等其它字段，不整体覆盖）。
+        """
+        game = self._current_game()
+        saved = self._dungeon_state.setdefault(game["script_name"], {})
         if dungeon_name is None:
-            self._dungeon_state.pop(game["script_name"], None)
+            saved.pop("dungeon", None)
+            saved.pop("sequence", None)
             self.daily_chip_lbl.setText("选择副本")
         else:
-            self._dungeon_state[game["script_name"]] = {
-                "dungeon": dungeon_name,
-                "sequence": sequence,
-            }
+            saved["dungeon"] = dungeon_name
+            saved["sequence"] = sequence
             dungeon_cfg = self.service.dungeon_map().get(game["script_name"])
             self.daily_chip_lbl.setText(
                 self._dungeon_chip_text(dungeon_cfg, dungeon_name, sequence)

@@ -98,6 +98,59 @@ class TestChainGeneration(unittest.TestCase):
         m.assert_called_once_with(scripts)
 
 
+class TestGenerateChainWeeklyStart(unittest.TestCase):
+    """generate_chain_config：ui_state 的 weekly_start 原样传给 set_config（CLI 兜底，不判断今天）"""
+
+    def _run_chain(self, ui_state):
+        from src.service import chain_gen
+
+        data = {
+            "script_list": [
+                {
+                    "display_name": "测试",
+                    "script_path": "scripts/test.py",
+                }
+            ]
+        }
+        with (
+            patch.object(chain_gen, "load_dungeon_map", return_value={"测试": {}}),
+            patch.object(chain_gen, "set_config") as mock_set_config,
+            patch(
+                "src.service.chain_gen.safe_path_join",
+                return_value="out.yml",
+            ),
+            patch(
+                "src.service.chain_gen.get_path_under_root",
+                return_value="root",
+            ),
+            patch("builtins.open"),
+        ):
+            chain_gen.generate_chain_config(
+                data, {"测试"}, ui_state=ui_state, out_path="out.yml"
+            )
+        return mock_set_config
+
+    def test_weekly_start_passed_through(self):
+        """weekly_start=4 → set_config 收到（CLI 无 GUI 时按周几兜底）"""
+        mock = self._run_chain({"测试": {"weekly_start": 4}})
+        mock.assert_called_once_with(
+            "测试",
+            dungeon_name=None,
+            sequence=None,
+            weekly_start=4,
+        )
+
+    def test_no_weekly_start_skips(self):
+        """未设置周常 → set_config(weekly_start=None)，不处理周常"""
+        mock = self._run_chain({"测试": {"dungeon": "副本"}})
+        mock.assert_called_once_with(
+            "测试",
+            dungeon_name=None,
+            sequence=None,
+            weekly_start=None,
+        )
+
+
 class TestRunChain(unittest.TestCase):
     """runner 命令：转发"""
 

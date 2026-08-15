@@ -13,6 +13,7 @@
   避免副作用、并使其不依赖本机是否装有游戏。
 """
 
+import copy
 import json
 import os
 import sys
@@ -431,6 +432,152 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
             )
         self.assertEqual(code, 1)
         self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
+
+    def test_weekly_start_override_merged_into_ui_state(self):
+        """--weekly-start 覆盖值合并到传给 generate_chain 的 ui_state（int）。"""
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            with patch.object(
+                cli.ChainService, "generate_chain", return_value=out
+            ) as mock_gen:
+                _run_main(
+                    [
+                        "--generate-chain",
+                        "--enable",
+                        self._target,
+                        "--weekly-start",
+                        f"{self._target}=4",
+                        "--out",
+                        out,
+                    ],
+                    expect_exit=0,
+                )
+            ui_state = mock_gen.call_args.args[3]
+            self.assertEqual(ui_state[self._target]["weekly_start"], 4)
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+    def test_weekly_start_persisted(self):
+        """--weekly-start 持久化到 gui_state.json（周几跑是长期配置，同 GUI 改周几起），
+        且不把 --dungeon 临时覆盖写回。"""
+        saved = []
+        base_state = {self._target: {"dungeon": "基线副本"}}
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            with (
+                patch.object(
+                    cli.ChainService,
+                    "load_ui_state",
+                    side_effect=lambda: copy.deepcopy(base_state),
+                ),
+                patch.object(
+                    cli.ChainService,
+                    "save_ui_state",
+                    side_effect=lambda state: saved.append(state),
+                ),
+                patch.object(
+                    cli.ChainService, "generate_chain", return_value=out
+                ) as mock_gen,
+            ):
+                _run_main(
+                    [
+                        "--generate-chain",
+                        "--enable",
+                        self._target,
+                        "--dungeon",
+                        f"{self._target}=凝素领域",
+                        "--weekly-start",
+                        f"{self._target}=4",
+                        "--out",
+                        out,
+                    ],
+                    expect_exit=0,
+                )
+            # 落盘版本：含 weekly_start=4，不含 --dungeon 临时覆盖
+            self.assertEqual(
+                saved,
+                [{self._target: {"dungeon": "基线副本", "weekly_start": 4}}],
+            )
+            # 内存 ui_state（传 generate_chain）：含 dungeon 覆盖 + weekly_start
+            ui_state = mock_gen.call_args.args[3]
+            self.assertEqual(ui_state[self._target]["dungeon"], "凝素领域")
+            self.assertEqual(ui_state[self._target]["weekly_start"], 4)
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+    def test_weekly_start_non_int_exits_one(self):
+        """--weekly-start 值不是整数 → 退出 1 并报错。"""
+        with patch.object(service_chain_gen, "set_config"):
+            code = _run_main(
+                [
+                    "--generate-chain",
+                    "--enable",
+                    self._target,
+                    "--weekly-start",
+                    f"{self._target}=abc",
+                ],
+                expect_exit=1,
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("不是整数", _read_cli_file("generate_chain"))
+
+    def test_weekly_start_out_of_range_exits_one(self):
+        """--weekly-start 值越界（0 / 8）→ 退出 1 并报错。"""
+        for bad in ("0", "8"):
+            with self.subTest(bad=bad), patch.object(service_chain_gen, "set_config"):
+                code = _run_main(
+                    [
+                        "--generate-chain",
+                        "--enable",
+                        self._target,
+                        "--weekly-start",
+                        f"{self._target}={bad}",
+                    ],
+                    expect_exit=1,
+                )
+            self.assertEqual(code, 1)
+            self.assertIn("越界", _read_cli_file("generate_chain"))
+
+    def test_unknown_script_in_weekly_start_exits_one(self):
+        """--weekly-start 中未知脚本标识 → 退出 1 并报错。"""
+        bogus = "此脚本一定不存在_XYZ"
+        with patch.object(service_chain_gen, "set_config"):
+            code = _run_main(
+                [
+                    "--generate-chain",
+                    "--enable",
+                    self._target,
+                    "--weekly-start",
+                    f"{bogus}=4",
+                ],
+                expect_exit=1,
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
+
+    def test_weekly_start_unsupported_script_exits_one(self):
+        """--weekly-start 对未支持周常的脚本 → 退出 1 并报错（不崩溃）。"""
+        # 找一个不支持周常的已注册脚本（如 ok-ef 终末地）
+        from src.config.set_config import _CONFIGS
+
+        unsupported = next(n for n in _CONFIGS if not _CONFIGS[n]._weekly_task_name)
+        with patch.object(service_chain_gen, "set_config"):
+            code = _run_main(
+                [
+                    "--generate-chain",
+                    "--enable",
+                    self._target,
+                    "--weekly-start",
+                    f"{unsupported}=4",
+                ],
+                expect_exit=1,
+            )
+        self.assertEqual(code, 1)
+        self.assertIn("未支持周常", _read_cli_file("generate_chain"))
 
 
 class TestCliRunChain(unittest.TestCase):

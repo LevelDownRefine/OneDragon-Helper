@@ -11,7 +11,6 @@
 
 import copy
 import logging
-from datetime import datetime, timedelta
 from typing import Any
 
 import yaml
@@ -27,13 +26,9 @@ from src.utils import (
     get_path_under_root,
     safe_path_join,
 )
+from src.utils_weekly import get_week_num
 
 logger = logging.getLogger(__name__)
-
-
-def _get_week_num() -> int:
-    """返回星期数字：0周一 ~ 6周日（凌晨 4 点为界，4 点前归前一天）。"""
-    return (datetime.now() - timedelta(hours=4)).weekday()
 
 
 def _resolve_daily_run(script: dict, weekly_timeouts: dict) -> bool:
@@ -55,7 +50,7 @@ def _resolve_daily_run(script: dict, weekly_timeouts: dict) -> bool:
         return True
     timeouts = weekly_timeouts[script_name]
     if timeouts and len(timeouts) == 7:
-        week_value = timeouts[_get_week_num()]
+        week_value = timeouts[get_week_num()]
         if week_value < 10:
             logger.warning(
                 "[chain_gen] %s 当天超时 %s 秒低于下限 10，跳过不运行",
@@ -67,6 +62,30 @@ def _resolve_daily_run(script: dict, weekly_timeouts: dict) -> bool:
         return True
     script["run_timeout_seconds"] = DEFAULT_RUN_TIMEOUT
     return True
+
+
+def _resolve_weekly_start(ui_state: dict, script_name: str) -> int | None:
+    """取脚本的周常起始日（1=周一 ~ 7=周日），未设置返回 None。
+
+    周常开关（enabled）是 GUI 内存态，不参与链生成；GUI 与 CLI 统一按
+    「今天周几 >= 起始日」由 set_config 判断启用/停用写入脚本配置
+    （与日常副本选择落盘不受日常开关影响的模型一致）。
+
+    Args:
+        ui_state: gui_state.json 的 UI 状态，key 为脚本唯一标识。
+        script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+
+    Returns:
+        周常起始日（1~7），未设置返回 None。
+    """
+    saved = ui_state.get(script_name)
+    weekly_start = saved.get("weekly_start") if saved else None
+    if weekly_start is None:
+        return None
+    assert 1 <= weekly_start <= 7, (
+        f"[chain_gen] {script_name} 非法 weekly_start: {weekly_start}（应为 1~7）"
+    )
+    return weekly_start
 
 
 def _collect_enabled_selections(
@@ -149,10 +168,12 @@ def generate_chain_config(
         if script_name in enabled_keys:
             if not _resolve_daily_run(script, weekly_timeouts):
                 continue
+            weekly_start = _resolve_weekly_start(ui_state, script_name)
             set_config(
                 script_name,
                 dungeon_name=enabled_dungeons.get(script_name),
                 sequence=enabled_sequences.get(script_name),
+                weekly_start=weekly_start,
             )
             script.setdefault("block", True)
             filtered.append(script)

@@ -67,6 +67,30 @@ class TestConfigRelPaths(unittest.TestCase):
             {"BetterGI", "OneDragon-Launcher", "MAA", "March7th-Assistant"},
         )
 
+    def test_weekly_task_name_requires_write_weekly(self):
+        """声明 _weekly_task_name 的子类必须实现 _write_weekly（register 完整性校验）"""
+        for name, cls in set_config._CONFIGS.items():
+            if cls._weekly_task_name:
+                self.assertIsNot(
+                    cls._write_weekly,
+                    set_config.ScriptConfig._write_weekly,
+                    f"{name} 声明了 _weekly_task_name 但未实现 _write_weekly",
+                )
+
+    def test_register_rejects_weekly_without_write(self):
+        """register 拒绝：声明 _weekly_task_name 但沿用基类 _write_weekly 的子类"""
+        bogus = type(
+            "BogusWeekly",
+            (set_config.ScriptConfig,),
+            {
+                "_script_name": "bogus-weekly",
+                "_config_rel_path": "config.json",
+                "_weekly_task_name": "weekly",
+            },
+        )
+        with self.assertRaises(AssertionError):
+            set_config.register(bogus)
+
     def test_rel_paths_contain_extension(self):
         """每个 config 相对路径应包含 .json 或 .yaml/.yml 扩展名"""
         valid_exts = (".json", ".yaml", ".yml")

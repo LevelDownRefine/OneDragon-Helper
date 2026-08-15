@@ -1126,9 +1126,241 @@ class TestGetGameExePathFacade(unittest.TestCase):
         self.assertEqual(got, "D:\\Game\\game.exe")
 
 
-# ============================================================
-# 外观接口 set_config()
-# ============================================================
+class TestSupportsWeekly(unittest.TestCase):
+    """测试周常（周几以后开始执行）支持查询：supports_weekly"""
+
+    def test_unknown_process_returns_false(self):
+        """未注册（自定义）进程 → False"""
+        self.assertFalse(set_config.supports_weekly("不存在"))
+
+    def test_weekly_supported_scripts(self):
+        """已适配周常的脚本：崩铁（货币战争）/ 鸣潮（每周花园）/ 绝区零（lost_void）"""
+        for name in (
+            "March7th-Assistant",
+            "ok-ww",
+            "OneDragon-Launcher",
+        ):
+            self.assertTrue(set_config.supports_weekly(name), f"{name} 应支持周常")
+
+    def test_other_scripts_default_false(self):
+        """其余脚本未适配周常 → False"""
+        for name in set_config._CONFIGS:
+            if name in ("March7th-Assistant", "ok-ww", "OneDragon-Launcher"):
+                continue
+            self.assertFalse(set_config.supports_weekly(name), f"{name} 不应支持周常")
+
+    def test_dispatches_to_subclass_flag(self):
+        """已注册脚本按子类 _weekly_task_name 非空返回"""
+        cls = MagicMock()
+        cls._weekly_task_name = "task"
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": cls}):
+            self.assertTrue(set_config.supports_weekly("ok-ww"))
+        cls._weekly_task_name = ""
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": cls}):
+            self.assertFalse(set_config.supports_weekly("ok-ww"))
+
+
+class TestSetWeekly(unittest.TestCase):
+    """测试三个已适配脚本的 set_weekly（按周几起 start_day 判断写入）"""
+
+    # ---- 基类：start_day 校验与 _write_weekly 钩子 ----
+
+    def test_base_weekly_unsupported_raises(self):
+        """未适配子类调用 set_weekly → assert（未声明 _weekly_task_name）"""
+        cfg = ScriptConfig()
+        cfg.display_name = "测试"
+        with self.assertRaises(AssertionError):
+            cfg.set_weekly(4)
+
+    def test_invalid_start_day_raises(self):
+        """start_day 越界（0 / 8）→ assert"""
+        with patch.object(StarRailConfig, "_init_config"):
+            cfg = StarRailConfig()
+        for bad in (0, 8):
+            with self.subTest(bad=bad), self.assertRaises(AssertionError):
+                cfg.set_weekly(bad)
+
+    def test_set_weekly_today_reached_enables(self):
+        """今天周四（get_week_num=3），start_day=4 → _write_weekly(True)"""
+        with patch.object(StarRailConfig, "_init_config"):
+            cfg = StarRailConfig()
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch.object(cfg, "_write_weekly") as mock_write,
+        ):
+            cfg.set_weekly(4)
+        mock_write.assert_called_once_with(True)
+
+    def test_set_weekly_today_before_disables(self):
+        """今天周二（get_week_num=1），start_day=4 → _write_weekly(False)"""
+        with patch.object(StarRailConfig, "_init_config"):
+            cfg = StarRailConfig()
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=1),
+            patch.object(cfg, "_write_weekly") as mock_write,
+        ):
+            cfg.set_weekly(4)
+        mock_write.assert_called_once_with(False)
+
+    def test_set_weekly_enabled_false_short_circuits(self):
+        """用户已拒绝（enabled=False）→ 直接跳过，不调 _write_weekly（同 set_dungeon）"""
+        with patch.object(StarRailConfig, "_init_config"):
+            cfg = StarRailConfig()
+        cfg.enabled = False
+        with patch.object(cfg, "_write_weekly") as mock_write:
+            cfg.set_weekly(4)
+        mock_write.assert_not_called()
+
+    # ---- 崩铁：currencywars_enable ----
+
+    def test_star_rail_enable_writes_true(self):
+        """崩铁启用周常（今天已到起始日）→ currencywars_enable=True"""
+        with patch.object(StarRailConfig, "_init_config"):
+            cfg = StarRailConfig()
+        config = {"currencywars_enable": False}
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg.set_weekly(4)
+        self.assertTrue(config["currencywars_enable"])
+        mock_save.assert_called_once()
+
+    def test_star_rail_disable_writes_false(self):
+        """崩铁停用周常（今天未到起始日）→ currencywars_enable=False"""
+        with patch.object(StarRailConfig, "_init_config"):
+            cfg = StarRailConfig()
+        config = {"currencywars_enable": True}
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=1),
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg.set_weekly(4)
+        self.assertFalse(config["currencywars_enable"])
+        mock_save.assert_called_once()
+
+    # ---- 鸣潮：Additional Tasks 列表增删 Check Weekly Garden ----
+
+    def test_ww_enable_appends_weekly_task(self):
+        """鸣潮启用周常（今天已到起始日）→ Additional Tasks 列表追加 Check Weekly Garden"""
+        cfg = WutheringWavesConfig()
+        config = {
+            "Additional Tasks to Run After Daily Task": [
+                "Merge Echo If discarded > 1000",
+            ]
+        }
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg.set_weekly(4)
+        self.assertIn(
+            "Check Weekly Garden",
+            config["Additional Tasks to Run After Daily Task"],
+        )
+        mock_save.assert_called_once()
+
+    def test_ww_disable_removes_weekly_task(self):
+        """鸣潮停用周常（今天未到起始日）→ Additional Tasks 列表移除 Check Weekly Garden"""
+        cfg = WutheringWavesConfig()
+        config = {
+            "Additional Tasks to Run After Daily Task": [
+                "Check Weekly Garden",
+                "Merge Echo If discarded > 1000",
+            ]
+        }
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=1),
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg.set_weekly(4)
+        self.assertNotIn(
+            "Check Weekly Garden",
+            config["Additional Tasks to Run After Daily Task"],
+        )
+        mock_save.assert_called_once()
+
+    def test_ww_no_change_skips_save(self):
+        """鸣潮状态无变化（已启用再启用）→ 不落盘"""
+        cfg = WutheringWavesConfig()
+        config = {
+            "Additional Tasks to Run After Daily Task": ["Check Weekly Garden"],
+        }
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg.set_weekly(4)
+        mock_save.assert_not_called()
+
+    def test_ww_missing_tasks_key_raises(self):
+        """鸣潮 config 缺 Additional Tasks 字段 → assert"""
+        cfg = WutheringWavesConfig()
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch.object(cfg, "_load", return_value={}),
+            self.assertRaises(AssertionError),
+        ):
+            cfg.set_weekly(4)
+
+    # ---- 绝区零：_group.yml 的 lost_void.enabled ----
+
+    def _make_zzz_cfg(self):
+        with patch.object(ZenlessZoneZeroConfig, "_init_config"):
+            return ZenlessZoneZeroConfig()
+
+    def test_zzz_enable_writes_lost_void_true(self):
+        """绝区零启用周常（今天已到起始日）→ _group.yml 的 lost_void.enabled=True"""
+        cfg = self._make_zzz_cfg()
+        config = {
+            "app_list": [
+                {"app_id": "notorious_hunt", "enabled": True},
+                {"app_id": "lost_void", "enabled": False},
+            ]
+        }
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch("src.config.set_config.load_config", return_value=config),
+            patch("src.config.set_config.save_config") as mock_save,
+        ):
+            cfg.set_weekly(4)
+        lost = next(a for a in config["app_list"] if a["app_id"] == "lost_void")
+        self.assertTrue(lost["enabled"])
+        mock_save.assert_called_once()
+
+    def test_zzz_disable_writes_lost_void_false(self):
+        """绝区零停用周常（今天未到起始日）→ lost_void.enabled=False"""
+        cfg = self._make_zzz_cfg()
+        config = {
+            "app_list": [
+                {"app_id": "lost_void", "enabled": True},
+            ]
+        }
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=1),
+            patch("src.config.set_config.load_config", return_value=config),
+            patch("src.config.set_config.save_config") as mock_save,
+        ):
+            cfg.set_weekly(4)
+        lost = next(a for a in config["app_list"] if a["app_id"] == "lost_void")
+        self.assertFalse(lost["enabled"])
+        mock_save.assert_called_once()
+
+    def test_zzz_missing_app_id_raises(self):
+        """app_list 缺 lost_void → assert"""
+        cfg = self._make_zzz_cfg()
+        config = {"app_list": [{"app_id": "other", "enabled": True}]}
+        with (
+            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch("src.config.set_config.load_config", return_value=config),
+            self.assertRaises(AssertionError),
+        ):
+            cfg.set_weekly(4)
 
 
 class TestSetConfigFacade(unittest.TestCase):
@@ -1171,7 +1403,3 @@ class TestSetConfigFacade(unittest.TestCase):
             set_config.set_config("ok-ww", "无音区", "1")
         mock_cls.assert_called_once()
         mock_instance.set_dungeon.assert_called_once_with("无音区", "1")
-
-
-if __name__ == "__main__":
-    unittest.main()

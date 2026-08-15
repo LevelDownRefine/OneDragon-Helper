@@ -25,6 +25,7 @@ from src.config.subscript import (
 from src.config.subscript import (
     get_config_path as _get_config_path_impl,
 )
+from src.utils_weekly import is_weekly_start_reached
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +131,22 @@ class ScriptConfig:
     只读获取，不实例化子类。
     """
 
+    _weekly_task_name: str = ""
+    """周常任务在脚本配置中的标识名（非空即表示该脚本支持周常「周几以后开始执行」）。
+
+    各脚本含义不同（如崩铁 config 字段名 currencywars_enable、鸣潮 Additional
+    Tasks 列表任务名 Check Weekly Garden、绝区零 _group.yml 的 app_id lost_void），
+    但统一用本字段非空判定是否支持周常。GUI 通过 ``supports_weekly`` 只读查询，
+    不实例化子类。
+    """
+
+    _weekly_config_rel_path: str = ""
+    """周常配置文件相对脚本根目录的路径（如 ``config/01/one_dragon/_group.yml``）。
+
+    空字符串表示周常配置与 ``_config_rel_path`` 同一文件（声明了 ``_weekly_task_name``
+    的子类按需声明；缺省复用主 config 文件）。
+    """
+
     confirm_before_save: Callable[[str], bool] | None = None
     """保存前确认回调（由 GUI 注入，参数为 display_name，返回 True 才落盘）。
 
@@ -167,6 +184,35 @@ class ScriptConfig:
         reloaded = self._load()
         assert reloaded == expected, (
             f"[set_config][{self.display_name}] 配置保存后校验失败："
+            f"重新读取的内容与预期不一致"
+        )
+
+    def _load_weekly(self) -> dict:
+        """加载周常配置文件（``_weekly_config_rel_path``，缺省复用主 config）。"""
+        config = load_config(
+            self._script_name, self._weekly_config_rel_path or self._config_rel_path
+        )
+        assert isinstance(config, dict), (
+            f"[set_config][{self.display_name}] 周常 config 必须是 dict"
+        )
+        return config
+
+    def _save_weekly(self, config: dict) -> None:
+        """保存周常配置文件并校验落盘（同主 config 的保存后校验语义）。"""
+        assert isinstance(config, dict), (
+            f"[set_config][{self.display_name}] 周常 config 必须是 dict"
+        )
+        if not self.enabled:
+            logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
+            return
+        save_config(
+            self._script_name,
+            self._weekly_config_rel_path or self._config_rel_path,
+            config,
+        )
+        reloaded = self._load_weekly()
+        assert reloaded == config, (
+            f"[set_config][{self.display_name}] 周常配置保存后校验失败："
             f"重新读取的内容与预期不一致"
         )
 
@@ -279,6 +325,41 @@ class ScriptConfig:
             self._save(config)
         else:
             logger.info(f"[set_dungeon][{self.display_name}] config 无需更新")
+
+    def set_weekly(self, start_day: int) -> None:
+        """设置周常起始日（周几以后开始执行），今天周几 >= 起始日则启用周常。
+
+        周常开关（enabled）是 GUI 内存态，不参与本方法；无论开关如何，
+        都按 start_day 判断写入脚本配置（与日常副本选择落盘不受日常开关
+        影响的模型一致）。子类声明 _weekly_task_name 并实现 _write_weekly(enabled)。
+
+        用户已拒绝（enabled=False）时直接短路（同 ``set_dungeon``）。
+
+        Args:
+            start_day: 周常起始日（1=周一 ~ 7=周日）。
+        """
+        if not self.enabled:
+            logger.info(f"[set_weekly][{self.display_name}] 用户拒绝更新，跳过周常设置")
+            return
+        assert self._weekly_task_name, (
+            f"[set_config][{self.display_name}] 未支持周常配置"
+        )
+        assert 1 <= start_day <= 7, (
+            f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
+        )
+        self._write_weekly(is_weekly_start_reached(start_day))
+
+    def _write_weekly(self, enabled: bool) -> None:
+        """写周常开关到脚本配置（子类实现）。默认不支持，未声明 _weekly_task_name 的子类
+        调用本方法属编程错误，直接 assert 暴露。
+
+        仅由 ``set_weekly`` 内部调用，enabled 为「今天周几 >= 起始日」的判断结果；
+        GUI 周常开关（enabled 内存态）不直写本方法。
+
+        Args:
+            enabled: True 表示启用周常，False 表示停用周常。
+        """
+        assert False, f"[set_config][{self.display_name}] 未支持周常配置"  # noqa: B011  # 故意：未适配脚本不应走到周常写入
 
     @classmethod
     def get_game_exe_path(cls, script_name: str) -> str | None:
@@ -394,9 +475,10 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
     """显式注册 ScriptConfig 子类到 ``_CONFIGS``（装饰器）。
 
     子类声明 ``_script_name`` 与路径类属性后加 ``@register`` 即完成登记。
-    路径声明不完整（缺 ``_config_rel_path``、或声明了 ``_game_path_keys`` 却缺
-    ``_game_config_rel_path``）属编程错误，import 时立即 assert 暴露，
-    避免新增脚本漏配路径后静默缺功能。
+    路径/周常声明不完整属编程错误，import 时立即 assert 暴露，
+    避免新增脚本漏配后静默缺功能：
+    - 缺 ``_config_rel_path``、或声明了 ``_game_path_keys`` 却缺 ``_game_config_rel_path``
+    - 声明了 ``_weekly_task_name``（支持周常）却未实现 ``_write_weekly``
     """
     assert cls._script_name, f"[set_config][{cls.__name__}] 必须声明 _script_name"
     assert cls._config_rel_path, (
@@ -406,6 +488,11 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
         assert cls._game_config_rel_path, (
             f"[set_config][{cls.__name__}] 声明了 _game_path_keys 必须声明 "
             f"_game_config_rel_path"
+        )
+    if cls._weekly_task_name:
+        assert cls._write_weekly is not ScriptConfig._write_weekly, (
+            f"[set_config][{cls.__name__}] 声明了 _weekly_task_name 必须实现 "
+            f"_write_weekly"
         )
     _CONFIGS[cls._script_name] = cls
     return cls
@@ -426,6 +513,8 @@ class WutheringWavesConfig(ScriptConfig):
     bilibili = "1955897084"
     github = "ok-oldking/ok-wuthering-waves"
     homepage = "https://mc.kurogames.com/"
+    _weekly_task_name = "Check Weekly Garden"
+    """周常（每周花园）在 Additional Tasks 列表中的任务名。"""
 
     def __init__(self):
         self.display_name = "鸣潮"
@@ -435,6 +524,35 @@ class WutheringWavesConfig(ScriptConfig):
             "模拟领域": "Simulation Challenge",
             "无音区": "Tacet Suppression",
         }
+
+    def _write_weekly(self, enabled: bool) -> None:
+        """鸣潮周常开关：控制 Additional Tasks 列表中「Check Weekly Garden」的增删。
+
+        启用 → 任务名加入 ``Additional Tasks to Run After Daily Task`` 列表；
+        停用 → 从列表中移除。列表本身缺失属配置错误，assert 暴露。
+        """
+        config = self._load()
+        assert "Additional Tasks to Run After Daily Task" in config, (
+            f"[set_config][{self.display_name}] config 缺少 Additional Tasks 字段"
+        )
+        tasks = config["Additional Tasks to Run After Daily Task"]
+        assert isinstance(tasks, list), (
+            f"[set_config][{self.display_name}] Additional Tasks 必须是列表"
+        )
+        contains = self._weekly_task_name in tasks
+        if enabled == contains:
+            logger.info(
+                f"[set_weekly][{self.display_name}] 周常状态无变化（enabled={enabled}）"
+            )
+            return
+        if enabled:
+            tasks.append(self._weekly_task_name)
+        else:
+            tasks.remove(self._weekly_task_name)
+        logger.info(
+            f"[set_weekly][{self.display_name}] {'启用' if enabled else '停用'}周常"
+        )
+        self._save(config)
 
     def _update_sequence(
         self, config: dict, dungeon_name: str, sequence: str | int | None
@@ -559,11 +677,14 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
     _template_rel_path = "ZZZ一条龙.yml"
+    _weekly_config_rel_path = "config/01/one_dragon/_group.yml"
     _game_path_keys = ("game_path",)
     bg_img = "assets/ui/static_background.webp"
     bilibili = "1636034895"
     github = "DoctorReid/ZenlessZoneZero-OneDragon"
     homepage = "https://zzz.mihoyo.com/"
+    _weekly_task_name = "lost_void"
+    """周常（遗失的虚空）在 _group.yml app_list 中的 app_id。"""
 
     def __init__(self):
         self.display_name = "绝区零"
@@ -571,6 +692,30 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         logger.info(f"[set_config][{self.display_name}] zzz无需适配")
+
+    def _write_weekly(self, enabled: bool) -> None:
+        """绝区零周常开关：控制 _group.yml 中 lost_void 应用的 enabled。
+
+        在 app_list 中按 ``_weekly_task_name`` 定位条目并更新 enabled；
+        条目缺失属配置错误，assert 暴露。
+        """
+        config = self._load_weekly()
+        assert "app_list" in config, (
+            f"[set_config][{self.display_name}] _group.yml 缺少 app_list"
+        )
+        app_list = config["app_list"]
+        assert isinstance(app_list, list), (
+            f"[set_config][{self.display_name}] app_list 必须是列表"
+        )
+        target = next(
+            (app for app in app_list if app.get("app_id") == self._weekly_task_name),
+            None,
+        )
+        assert target is not None, (
+            f"[set_config][{self.display_name}] app_list 缺少 {self._weekly_task_name}"
+        )
+        safe_update(target, "enabled", enabled, self.display_name)
+        self._save_weekly(config)
 
 
 # ---- 崩铁 Honkai: Star Rail ----
@@ -585,11 +730,19 @@ class StarRailConfig(ScriptConfig):
     bilibili = "1340190821"
     github = "moesnow/March7thAssistant"
     homepage = "https://sr.mihoyo.com/"
+    _weekly_task_name = "currencywars_enable"
+    """周常（货币战争）在 config.yaml 中的开关字段名。"""
 
     def __init__(self):
         self.display_name = "崩铁"
         self._task_key = "instance_type"
         self._init_config()
+
+    def _write_weekly(self, enabled: bool) -> None:
+        """崩铁周常开关：控制 config.yaml 的 currencywars_enable 字段。"""
+        config = self._load()
+        safe_update(config, self._weekly_task_name, enabled, self.display_name)
+        self._save(config)
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
@@ -723,18 +876,23 @@ def set_config(
     script_name: str,
     dungeon_name: str | None = None,
     sequence: str | int | None = None,
+    weekly_start: int | None = None,
 ) -> None:
     """
-    外观接口：为指定脚本设置副本和刷取序列
+    外观接口：为指定脚本设置副本、刷取序列与周常起始日
 
     Args:
         script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
             python/bat 为 display_name）
-        dungeon_name: 副本名称（来自 dungeon_list.yml），None 或 "未选择" 时跳过
+        dungeon_name: 副本名称（来自 dungeon_list.yml），None 或 "未选择" 时跳过副本
         sequence: 刷取序列（字符串或整数），None 表示无序列
+        weekly_start: 周常起始日（1=周一 ~ 7=周日），None 表示不处理周常。
+            无论 GUI 周常开关（enabled，纯内存 UI 态）如何，都按
+            「今天周几 >= 起始日」判断启用/停用写入脚本配置——与日常副本
+            选择落盘不受日常开关影响的模型一致。
     """
-    # 未选择副本时，不做更改
-    if not dungeon_name or dungeon_name == "未选择":
+    # 未选择副本且未指定周常时，不做更改
+    if (not dungeon_name or dungeon_name == "未选择") and weekly_start is None:
         return
 
     # 自定义脚本（用户在 GUI 中新增）没有副本适配，不在注册表中，直接跳过。
@@ -744,7 +902,11 @@ def set_config(
         return
 
     cfg_cls = _CONFIGS[script_name]
-    cfg_cls().set_dungeon(dungeon_name, sequence)
+    cfg = cfg_cls()
+    if dungeon_name and dungeon_name != "未选择":
+        cfg.set_dungeon(dungeon_name, sequence)
+    if weekly_start is not None:
+        cfg.set_weekly(weekly_start)
 
 
 def get_config_path(script_name: str) -> str:
@@ -839,3 +1001,19 @@ def get_game_homepage(script_name: str) -> str:
     if script_name not in _CONFIGS:
         return ""
     return _CONFIGS[script_name].get_game_homepage(script_name)
+
+
+def supports_weekly(script_name: str) -> bool:
+    """
+    外观接口：查询脚本是否支持周常（周几以后开始执行）配置（供 GUI 控制周常行可选性）。
+
+    只读查询，不实例化子类。未适配 / 未声明 ``_weekly_task_name`` → False，
+    GUI 据此保持周常行「未支持」禁用态。
+
+    Args:
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
+    """
+    if script_name not in _CONFIGS:
+        return False
+    return bool(_CONFIGS[script_name]._weekly_task_name)
