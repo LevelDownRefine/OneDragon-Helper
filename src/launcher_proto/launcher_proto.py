@@ -133,14 +133,14 @@ class RailContainer(QWidget):
         super().__init__(parent)
         self._fixed_bottom_h = fixed_bottom_height
         self.setFixedSize(80, CANVAS_H)
-        # 半透明栏：背景图铺满全画布（16:9 零裁切），栏浮在上面透出背景
-        self.setStyleSheet(
-            "background:rgba(7,10,20,0.72); border-right:1px solid rgba(15,21,36,0.8);"
-        )
+        # 背景由 paintEvent 自绘（不依赖样式表 WA_StyledBackground），
+        # 保证 content 透明后栏背景稳定；背景图铺满全画布透出。
         self._content = QWidget(self)
         self._content.setFixedSize(80, CANVAS_H - fixed_bottom_height)
         self._content.move(0, 0)
-        self._content.setStyleSheet("background:rgba(7,10,20,0.72);")
+        # content 透明：背景由 RailContainer 固定提供，过滚时图标在固定背景上滑动
+        self._content.setStyleSheet("background:transparent;")
+        self._content.setAttribute(Qt.WA_NoSystemBackground, True)
         self._content.show()
         self._offset = 0
         self._max_offset = 0
@@ -148,6 +148,7 @@ class RailContainer(QWidget):
         # 平滑滚动动画（滚轮）：从当前 offset 缓动到目标
         self._anim = QVariantAnimation(self)
         self._anim.valueChanged.connect(self._on_anim_value)
+        self._anim.finished.connect(self._snap_back)
         # 拖动惯性：松手后按末速度减速滑行（16ms 逐帧，速度 ×0.95）
         self._fling_velocity = 0.0
         self._fling_timer = QTimer(self)
@@ -156,8 +157,37 @@ class RailContainer(QWidget):
         self._last_pos = None
         self._last_time = 0
 
+    def _clamp_soft(self, value: int) -> int:
+        """软钳制：边界内原值；超出部分压缩为 1/3（过滚手感，回弹由 _snap_back 负责）。"""
+        if value < 0:
+            return value // 3
+        if value > self._max_offset:
+            return self._max_offset + (value - self._max_offset) // 3
+        return value
+
+    def _snap_back(self):
+        """过滚回弹：offset 在边界外时动画回到边界（到达边界即返回）。"""
+        if 0 <= self._offset <= self._max_offset:
+            return
+        target = max(0, min(self._max_offset, self._offset))
+        self._anim.stop()
+        self._anim.setStartValue(self._offset)
+        self._anim.setEndValue(target)
+        self._anim.setDuration(180)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._anim.start()
+
     def content(self) -> QWidget:
         return self._content
+
+    def paintEvent(self, event):
+        """自绘半透明栏背景 + 右边框（不依赖样式表，content 透明时背景稳定）。"""
+        p = QPainter(self)
+        p.fillRect(self.rect(), QColor(7, 10, 20, 184))  # rgba(7,10,20,0.72)
+        p.fillRect(
+            QRect(self.width() - 1, 0, 1, self.height()),
+            QColor(15, 21, 36, 204),  # rgba(15,21,36,0.8) 右边框
+        )
 
     def add(self, item: QWidget, x: int, y: int):
         """把 item 加入 content，x/y 为 content 内坐标。"""
@@ -192,7 +222,7 @@ class RailContainer(QWidget):
         if delta == 0:
             return
         base = self._current_scroll()
-        self._animate_to(base + delta)
+        self._animate_to(base - delta)  # 方向取反：滚轮向上 → 内容上移
         event.accept()
 
     def _current_scroll(self) -> int:
@@ -202,12 +232,12 @@ class RailContainer(QWidget):
         return self._offset
 
     def _animate_to(self, target: int):
-        """缓动到目标 offset（滚轮使用）；目标超出边界时钳制。
+        """缓动到目标 offset（滚轮使用）；超出边界时软钳制（过滚，回弹由 _snap_back 负责）。
 
         动画进行中再滚动时以动画当前值为基准，避免重置回旧 offset。
         """
         base = self._current_scroll()
-        target = max(0, min(self._max_offset, target))
+        target = self._clamp_soft(target)
         if target == base:
             return
         self._anim.stop()
@@ -235,7 +265,7 @@ class RailContainer(QWidget):
         if self._drag_pos is not None and event.buttons() & Qt.LeftButton:
             now = event.timestamp()
             dy = self._drag_pos - event.position().y()
-            self._offset = max(0, min(self._max_offset, self._offset + dy))
+            self._offset = int(self._clamp_soft(self._offset + dy))
             self._apply_offset()
             dt = now - self._last_time
             if dt > 0:
@@ -249,11 +279,11 @@ class RailContainer(QWidget):
             self._drag_pos = None
             if abs(self._fling_velocity) > 0.4:  # 速度阈值，开启惯性滑行
                 self._fling_timer.start()
+            else:
+                self._snap_back()  # 无惯性时若划过边界则回弹
 
     def _fling_step(self):
-        self._offset = max(
-            0, min(self._max_offset, self._offset + self._fling_velocity * 16)
-        )
+        self._offset = int(self._clamp_soft(self._offset + self._fling_velocity * 16))
         self._apply_offset()
         self._fling_velocity *= 0.95
         # 触底或速度过低停止
@@ -262,6 +292,7 @@ class RailContainer(QWidget):
         )
         if hit_edge or abs(self._fling_velocity) < 0.05:
             self._fling_timer.stop()
+            self._snap_back()
 
 
 class _GlyphButton(QWidget):
@@ -599,14 +630,16 @@ class GameIcon(QWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             event.accept()
-            self._drag_start_pos = event.pos()  # 记录拖拽起点（超过阈值才发起拖拽）
+            self._drag_start_pos = (
+                event.position().toPoint()
+            )  # 记录拖拽起点（超过阈值才发起拖拽）
             self.clicked.emit(self._index)
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self._drag_start_pos is not None and (event.buttons() & Qt.LeftButton):
             if (
-                event.pos() - self._drag_start_pos
+                event.position().toPoint() - self._drag_start_pos
             ).manhattanLength() >= QApplication.startDragDistance():
                 self._drag_start_pos = None
                 self._start_drag()
