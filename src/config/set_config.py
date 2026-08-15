@@ -110,17 +110,17 @@ class ScriptConfig:
     """
 
     bilibili: str = ""
-    """游戏官方 B 站空间链接（如 https://space.bilibili.com/xxxx）。
+    """游戏官方 B 站空间 UID（如 1955897084，不含域名前缀）。
 
     空字符串表示未配置，GUI 走通用占位链接。由 GUI 通过 ``get_game_bilibili``
-    只读获取，不实例化子类。
+    只读获取（基类拼接完整 https://space.bilibili.com/<uid>），不实例化子类。
     """
 
     github: str = ""
-    """游戏对应脚本项目的 GitHub 主页链接。
+    """游戏对应脚本项目的 GitHub repo 路径（如 ok-oldking/ok-wuthering-waves，不含域名前缀）。
 
     空字符串表示未配置，GUI 走通用占位链接。由 GUI 通过 ``get_game_github``
-    只读获取，不实例化子类。
+    只读获取（基类拼接完整 https://github.com/<repo>），不实例化子类。
     """
 
     homepage: str = ""
@@ -346,24 +346,28 @@ class ScriptConfig:
         """
         读取游戏官方 B 站空间链接（类方法，不实例化，无副作用）。
 
-        未声明（``bilibili`` 为空）→ 返回空字符串，GUI 走通用占位链接。
+        子类 ``bilibili`` 只存 UID（如 ``1955897084``），本方法拼接完整
+        ``https://space.bilibili.com/<uid>``。未声明（``bilibili`` 为空）→
+        返回空字符串，GUI 走通用占位链接。
 
         Args:
             script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
         """
-        return cls.bilibili
+        return f"https://space.bilibili.com/{cls.bilibili}" if cls.bilibili else ""
 
     @classmethod
     def get_game_github(cls, script_name: str) -> str:
         """
         读取脚本项目的 GitHub 主页链接（类方法，不实例化，无副作用）。
 
-        未声明（``github`` 为空）→ 返回空字符串，GUI 走通用占位链接。
+        子类 ``github`` 只存 repo 路径（如 ``ok-oldking/ok-wuthering-waves``），
+        本方法拼接完整 ``https://github.com/<repo>``。未声明（``github`` 为空）→
+        返回空字符串，GUI 走通用占位链接。
 
         Args:
             script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
         """
-        return cls.github
+        return f"https://github.com/{cls.github}" if cls.github else ""
 
     @classmethod
     def get_game_homepage(cls, script_name: str) -> str:
@@ -419,8 +423,8 @@ class WutheringWavesConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
-    bilibili = "https://space.bilibili.com/1955897084"
-    github = "https://github.com/ok-oldking/ok-wuthering-waves"
+    bilibili = "1955897084"
+    github = "ok-oldking/ok-wuthering-waves"
     homepage = "https://mc.kurogames.com/"
 
     def __init__(self):
@@ -476,8 +480,8 @@ class GenshinConfig(ScriptConfig):
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
     _game_path_keys = ("genshinStartConfig", "installPath")
-    bilibili = "https://space.bilibili.com/401742377"
-    github = "https://github.com/babalae/better-genshin-impact"
+    bilibili = "401742377"
+    github = "babalae/better-genshin-impact"
     homepage = "https://ys.mihoyo.com/"
     banner_url = (
         "https://cdn.jsdelivr.net/gh/babalae/better-genshin-impact@0.63.0/"
@@ -525,8 +529,8 @@ class EndfieldConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
-    bilibili = "https://space.bilibili.com/1265652806"
-    github = "https://github.com/AliceJump/ok-end-field/"
+    bilibili = "1265652806"
+    github = "AliceJump/ok-end-field"
     homepage = "https://endfield.hypergryph.com/"
 
     def __init__(self):
@@ -557,8 +561,8 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _template_rel_path = "ZZZ一条龙.yml"
     _game_path_keys = ("game_path",)
     bg_img = "assets/ui/static_background.webp"
-    bilibili = "https://space.bilibili.com/1636034895"
-    github = "https://github.com/DoctorReid/ZenlessZoneZero-OneDragon"
+    bilibili = "1636034895"
+    github = "DoctorReid/ZenlessZoneZero-OneDragon"
     homepage = "https://zzz.mihoyo.com/"
 
     def __init__(self):
@@ -578,8 +582,8 @@ class StarRailConfig(ScriptConfig):
     _template_rel_path = "M7A一条龙.yml"
     _game_path_keys = ("game_path",)
     bg_img = "assets/app/images/bg37.jpg"
-    bilibili = "https://space.bilibili.com/1340190821"
-    github = "https://github.com/moesnow/March7thAssistant"
+    bilibili = "1340190821"
+    github = "moesnow/March7thAssistant"
     homepage = "https://sr.mihoyo.com/"
 
     def __init__(self):
@@ -595,8 +599,8 @@ class NTEConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-nte/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
-    bilibili = "https://space.bilibili.com/3546636978489848"
-    github = "https://github.com/BnanZ0/ok-nte"
+    bilibili = "3546636978489848"
+    github = "BnanZ0/ok-nte"
     homepage = "https://yh.wanmei.com/"
 
     def __init__(self):
@@ -626,8 +630,8 @@ class ArknightsConfig(ScriptConfig):
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
     _template_rel_path = "MAA一条龙.json"
-    bilibili = "https://space.bilibili.com/161775300"
-    github = "https://github.com/MaaAssistantArknights/MaaAssistantArknights"
+    bilibili = "161775300"
+    github = "MaaAssistantArknights/MaaAssistantArknights"
     homepage = "https://ak.hypergryph.com/"
     _game_path_keys = (
         "Configurations",
