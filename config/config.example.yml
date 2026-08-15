@@ -1,5 +1,5 @@
 script_list:
-- display_name: 定时计划
+- display_name: 定时
   game_label: ''
   script_type: python
   script_path: scripts/wait_until_0410.py
@@ -112,7 +112,7 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: 崩铁
+- display_name: 崩坏：星穹铁道
   game_label: ''
   script_type: external
   script_path: D:\game_helper\March7thAssistant\March7th Assistant.exe
@@ -149,7 +149,7 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: 粥
+- display_name: 明日方舟
   game_label: ''
   script_type: external
   script_path: D:\game_helper\MAA\MAA.exe
@@ -185,7 +185,7 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: 关闭静音
+- display_name: 开启声音
   game_label: ''
   script_type: python
   script_path: scripts/unmute.py
@@ -203,7 +203,7 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: 日志分析
+- display_name: 日志
   game_label: ''
   script_type: python
   script_path: scripts/collect_log.py
@@ -221,7 +221,7 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: 邮件通知
+- display_name: 邮件
   game_label: ''
   script_type: python
   script_path: scripts/notify_mail.py
@@ -239,7 +239,7 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: 失败重跑
+- display_name: 重跑
   game_label: ''
   script_type: python
   script_path: scripts/rerun.py
@@ -257,7 +257,7 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: 自动关机
+- display_name: 关机
   game_label: ''
   script_type: python
   script_path: scripts/shutdown.py

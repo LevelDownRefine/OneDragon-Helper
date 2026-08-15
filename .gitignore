@@ -251,3 +251,9 @@ TODO.md
 .agent/
 .continue/
 .windsurf/
+
+# 运行时下载的背景图（原神可重新下载，不入库）
+assets/banner.jpg
+
+# 用户自定义壁纸（记录原路径，不入库）
+config/wallpaper.json

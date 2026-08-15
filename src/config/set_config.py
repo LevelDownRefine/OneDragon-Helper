@@ -7,17 +7,23 @@
 """
 
 import logging
+import os
 from collections.abc import Callable
 from typing import Any
 
 from src.config.subscript import (
-    get_config_path as _get_config_path_impl,
-)
-from src.config.subscript import (
+    _get_script_root_dir_soft,
     load_config,
     load_game_config,
     load_template,
+    resolve_script_path,
     save_config,
+)
+from src.config.subscript import (
+    download_file as _download_file,
+)
+from src.config.subscript import (
+    get_config_path as _get_config_path_impl,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,6 +101,34 @@ class ScriptConfig:
 
     _template_rel_path: str = ""
     """模板文件相对 config/ 目录的路径（走模板初始化的子类必须声明）。"""
+
+    bg_img: str = ""
+    """启动器背景图相对脚本根目录的路径（如 assets/ui/static_background.webp）。
+
+    空字符串表示未配置，GUI 走渐变占位背景。由 GUI 通过 ``get_game_bg_img``
+    只读获取，不实例化子类。
+    """
+
+    bilibili: str = ""
+    """游戏官方 B 站空间 UID（如 1955897084，不含域名前缀）。
+
+    空字符串表示未配置，GUI 走通用占位链接。由 GUI 通过 ``get_game_bilibili``
+    只读获取（基类拼接完整 https://space.bilibili.com/<uid>），不实例化子类。
+    """
+
+    github: str = ""
+    """游戏对应脚本项目的 GitHub repo 路径（如 ok-oldking/ok-wuthering-waves，不含域名前缀）。
+
+    空字符串表示未配置，GUI 走通用占位链接。由 GUI 通过 ``get_game_github``
+    只读获取（基类拼接完整 https://github.com/<repo>），不实例化子类。
+    """
+
+    homepage: str = ""
+    """游戏官方主页链接（官网首页，区别于脚本项目 GitHub）。
+
+    空字符串表示未配置，GUI 走通用占位链接。由 GUI 通过 ``get_game_homepage``
+    只读获取，不实例化子类。
+    """
 
     confirm_before_save: Callable[[str], bool] | None = None
     """保存前确认回调（由 GUI 注入，参数为 display_name，返回 True 才落盘）。
@@ -280,6 +314,73 @@ class ScriptConfig:
             return None
         return node
 
+    @classmethod
+    def get_game_bg_img(cls, script_name: str) -> str:
+        """
+        读取脚本配置中的启动器背景图绝对路径（类方法，不实例化）。
+
+        背景图相对脚本根目录（script_path 父目录）声明，本方法完成
+        相对 → 绝对解析并校验文件存在。以下情况返回空字符串（GUI 走渐变占位）：
+        - 未声明（``bg_img`` 为空）
+        - 脚本根目录取不到（config.yml 无此脚本 / script_path 为空）
+        - 背景图文件不存在
+
+        注意：个别子类覆盖本方法时会先尝试下载远程背景图（网络操作，
+        见子类 docstring），此时并非纯只读。
+
+        Args:
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        """
+        if not cls.bg_img:
+            return ""
+        script_root = _get_script_root_dir_soft(script_name)
+        if not script_root:
+            return ""
+        bg_path = os.path.join(script_root, cls.bg_img)
+        if not os.path.isfile(bg_path):
+            return ""
+        return bg_path
+
+    @classmethod
+    def get_game_bilibili(cls, script_name: str) -> str:
+        """
+        读取游戏官方 B 站空间链接（类方法，不实例化，无副作用）。
+
+        子类 ``bilibili`` 只存 UID（如 ``1955897084``），本方法拼接完整
+        ``https://space.bilibili.com/<uid>``。未声明（``bilibili`` 为空）→
+        返回空字符串，GUI 走通用占位链接。
+
+        Args:
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        """
+        return f"https://space.bilibili.com/{cls.bilibili}" if cls.bilibili else ""
+
+    @classmethod
+    def get_game_github(cls, script_name: str) -> str:
+        """
+        读取脚本项目的 GitHub 主页链接（类方法，不实例化，无副作用）。
+
+        子类 ``github`` 只存 repo 路径（如 ``ok-oldking/ok-wuthering-waves``），
+        本方法拼接完整 ``https://github.com/<repo>``。未声明（``github`` 为空）→
+        返回空字符串，GUI 走通用占位链接。
+
+        Args:
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        """
+        return f"https://github.com/{cls.github}" if cls.github else ""
+
+    @classmethod
+    def get_game_homepage(cls, script_name: str) -> str:
+        """
+        读取游戏官方主页链接（类方法，不实例化，无副作用）。
+
+        未声明（``homepage`` 为空）→ 返回空字符串，GUI 走通用占位链接。
+
+        Args:
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        """
+        return cls.homepage
+
 
 # ============================================================
 # 注册表
@@ -322,6 +423,9 @@ class WutheringWavesConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    bilibili = "1955897084"
+    github = "ok-oldking/ok-wuthering-waves"
+    homepage = "https://mc.kurogames.com/"
 
     def __init__(self):
         self.display_name = "鸣潮"
@@ -376,11 +480,37 @@ class GenshinConfig(ScriptConfig):
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
     _game_path_keys = ("genshinStartConfig", "installPath")
+    bilibili = "401742377"
+    github = "babalae/better-genshin-impact"
+    homepage = "https://ys.mihoyo.com/"
+    banner_url = (
+        "https://cdn.jsdelivr.net/gh/babalae/better-genshin-impact@0.63.0/"
+        "BetterGenshinImpact/Resources/Images/banner.jpg"
+    )
+    """BetterGI 官方仓库 banner（与 BetterGI.exe 内嵌主界面横幅同一张）。"""
 
     def __init__(self):
         self.display_name = "原神"
         self._task_key = "DomainName"
         self._init_config()
+
+    @classmethod
+    def get_game_bg_img(cls, script_name: str) -> str:
+        """原神背景：项目 assets/banner.jpg（无则从官方仓库下载）。
+
+        原始图 = 项目根 assets/banner.jpg（官方仓库 banner，与 exe 内嵌
+        主界面横幅同一张，2538x1157 超宽，由 GUI cover 裁剪显示）。
+        assets 无原始图 → 从 jsDelivr 官方仓库下载；下载失败 → 空（渐变占位）。
+        仅在脚本已注册（_CONFIGS 含 BetterGI，模块级接口已兜底）时被调用。
+
+        Args:
+            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+        """
+        assets_file = resolve_script_path("assets/banner.jpg")
+        if not os.path.isfile(assets_file):
+            if not _download_file(cls.banner_url, assets_file):
+                return ""
+        return assets_file
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
         """设置原神副本：副本按「目录 → 副本」两级组织，实际写入的是二级副本名。
@@ -399,6 +529,9 @@ class EndfieldConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    bilibili = "1265652806"
+    github = "AliceJump/ok-end-field"
+    homepage = "https://endfield.hypergryph.com/"
 
     def __init__(self):
         self.display_name = "终末地"
@@ -427,6 +560,10 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _game_config_rel_path = "config/01/game_account.yml"
     _template_rel_path = "ZZZ一条龙.yml"
     _game_path_keys = ("game_path",)
+    bg_img = "assets/ui/static_background.webp"
+    bilibili = "1636034895"
+    github = "DoctorReid/ZenlessZoneZero-OneDragon"
+    homepage = "https://zzz.mihoyo.com/"
 
     def __init__(self):
         self.display_name = "绝区零"
@@ -444,6 +581,10 @@ class StarRailConfig(ScriptConfig):
     _game_config_rel_path = "config.yaml"
     _template_rel_path = "M7A一条龙.yml"
     _game_path_keys = ("game_path",)
+    bg_img = "assets/app/images/bg37.jpg"
+    bilibili = "1340190821"
+    github = "moesnow/March7thAssistant"
+    homepage = "https://sr.mihoyo.com/"
 
     def __init__(self):
         self.display_name = "崩铁"
@@ -458,6 +599,9 @@ class NTEConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-nte/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    bilibili = "3546636978489848"
+    github = "BnanZ0/ok-nte"
+    homepage = "https://yh.wanmei.com/"
 
     def __init__(self):
         self.display_name = "异环"
@@ -486,6 +630,9 @@ class ArknightsConfig(ScriptConfig):
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
     _template_rel_path = "MAA一条龙.json"
+    bilibili = "161775300"
+    github = "MaaAssistantArknights/MaaAssistantArknights"
+    homepage = "https://ak.hypergryph.com/"
     _game_path_keys = (
         "Configurations",
         "Default",
@@ -629,3 +776,66 @@ def get_game_exe_path(script_name: str) -> str | None:
     if script_name not in _CONFIGS:
         return None
     return _CONFIGS[script_name].get_game_exe_path(script_name)
+
+
+def get_game_bg_img(script_name: str) -> str:
+    """
+    外观接口：读取指定脚本对应的启动器背景图绝对路径（供 GUI 渲染背景用）。
+
+    不实例化子类。未适配 / 未声明 / 根目录取不到 / 文件不存在
+    → 返回空字符串，GUI 据此走渐变占位背景。
+    注意：个别脚本（原神）首次调用时会尝试下载远程背景图（网络操作，
+    见 GenshinConfig.get_game_bg_img），并非纯只读。
+
+    Args:
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
+    """
+    if script_name not in _CONFIGS:
+        return ""
+    return _CONFIGS[script_name].get_game_bg_img(script_name)
+
+
+def get_game_bilibili(script_name: str) -> str:
+    """
+    外观接口：读取指定脚本对应的游戏官方 B 站空间链接（供 GUI 打开 B 站用）。
+
+    只读查询，不实例化子类。未适配 / 未声明 → 返回空字符串，GUI 走通用占位链接。
+
+    Args:
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
+    """
+    if script_name not in _CONFIGS:
+        return ""
+    return _CONFIGS[script_name].get_game_bilibili(script_name)
+
+
+def get_game_github(script_name: str) -> str:
+    """
+    外观接口：读取指定脚本项目的 GitHub 主页链接（供 GUI 打开 GitHub 用）。
+
+    只读查询，不实例化子类。未适配 / 未声明 → 返回空字符串，GUI 走通用占位链接。
+
+    Args:
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
+    """
+    if script_name not in _CONFIGS:
+        return ""
+    return _CONFIGS[script_name].get_game_github(script_name)
+
+
+def get_game_homepage(script_name: str) -> str:
+    """
+    外观接口：读取指定脚本对应的游戏官方主页链接（供 GUI 打开官网用）。
+
+    只读查询，不实例化子类。未适配 / 未声明 → 返回空字符串，GUI 走通用占位链接。
+
+    Args:
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
+    """
+    if script_name not in _CONFIGS:
+        return ""
+    return _CONFIGS[script_name].get_game_homepage(script_name)

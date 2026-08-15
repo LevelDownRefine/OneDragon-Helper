@@ -3,10 +3,13 @@
 提供脚本根目录解析、config 路径推导、配置文件读写等功能。
 """
 
+import contextlib
 import json
 import logging
 import os
 import re
+import urllib.error
+import urllib.request
 
 import yaml
 
@@ -295,3 +298,37 @@ def generate_config_from_example() -> None:
         data = yaml.safe_load(f)
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+
+
+# ============================================================
+# 网络下载
+# ============================================================
+
+
+def download_file(url: str, out_path: str, timeout: int = 10) -> str | None:
+    """下载文件到本地（通用工具，供各脚本拉取远程资源，如背景图）。
+
+    Args:
+        url: 下载地址。
+        out_path: 输出路径（自动创建父目录）。
+        timeout: 网络超时秒数。
+
+    Returns:
+        输出路径；下载失败（网络/磁盘）→ None，调用方自行降级。
+    """
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    tmp_path = f"{out_path}.part"
+    try:  # 网络/磁盘操作，失败可恢复，调用方降级处理
+        with (
+            urllib.request.urlopen(url, timeout=timeout) as resp,  # noqa: S310
+            open(tmp_path, "wb") as f,
+        ):
+            f.write(resp.read())
+        os.replace(tmp_path, out_path)
+    except (urllib.error.URLError, OSError) as exc:
+        logger.warning(f"[subscript] 下载失败 {url}: {exc}")
+        with contextlib.suppress(OSError):
+            os.remove(tmp_path)
+        return None
+    logger.info(f"[subscript] 下载完成: {out_path}")
+    return out_path
