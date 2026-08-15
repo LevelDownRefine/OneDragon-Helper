@@ -385,22 +385,19 @@ def draw_home(p: QPainter):
 
 def draw_controller(p: QPainter):
     p.setPen(Qt.NoPen)
+    # 手柄主体：扁圆角矩形（窄于握把外缘，避免盖住握把像"脸"）
     p.setBrush(QColor(C_WHITE))
-    # 手柄主体
-    body = QPainterPath()
-    body.addRoundedRect(QRect(-11, -7, 22, 15), 5, 5)
-    p.drawPath(body)
-    # 左握把 + 右握把
-    p.setBrush(QColor(C_WHITE))
-    p.drawRoundedRect(QRect(-11, -2, 4, 9), 2, 2)
-    p.drawRoundedRect(QRect(7, -2, 4, 9), 2, 2)
-    # 十字键
+    p.drawRoundedRect(QRect(-9, -8, 18, 11), 4, 4)
+    # 左/右握把：从主体两端向下伸出（下端露出主体下缘 3px，一眼是手柄）
+    p.drawRoundedRect(QRect(-12, -4, 5, 10), 2.5, 2.5)
+    p.drawRoundedRect(QRect(7, -4, 5, 10), 2.5, 2.5)
+    # 十字键：主体左侧
     p.setBrush(QColor(C_BTN_DARK))
-    p.drawRoundedRect(QRect(-4, -4, 2.4, 6), 1, 1)
-    p.drawRoundedRect(QRect(-6.5, -1.2, 7, 2.4), 1, 1)
-    # AB 按钮
-    p.drawEllipse(QRect(3, -4, 2.6, 2.6))
-    p.drawEllipse(QRect(6.5, -2, 2.6, 2.6))
+    p.drawRoundedRect(QRect(-5.5, -5.5, 2.4, 7), 1, 1)
+    p.drawRoundedRect(QRect(-7.8, -3.2, 7, 2.4), 1, 1)
+    # AB 按钮：主体右侧斜排（不再对称居中，避免像眼睛）
+    p.drawEllipse(QRect(2, -4.5, 2.6, 2.6))
+    p.drawEllipse(QRect(4.8, -1.5, 2.6, 2.6))
 
 
 def draw_tv(p: QPainter):
