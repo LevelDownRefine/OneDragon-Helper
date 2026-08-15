@@ -53,7 +53,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QGraphicsDropShadowEffect,
-    QGraphicsOpacityEffect,
     QLabel,
     QMenu,
     QMessageBox,
@@ -1044,10 +1043,8 @@ class LauncherWindow(QWidget):
         row = QFrame(card)
         row.setGeometry(x, y, 440, 56)
         row.setStyleSheet("background:transparent;")
-        # setWindowOpacity 只对顶层窗口生效，子控件用 QGraphicsOpacityEffect 实现置灰
-        opacity = QGraphicsOpacityEffect(row)
-        opacity.setOpacity(0.55 if not on else 1.0)
-        row.setGraphicsEffect(opacity)
+        # 置灰由行内暗色参数表达（未支持行传暗色 chip/ico/文字 + toggle 灰色关闭态），
+        # 不加覆盖层：QGraphicsOpacityEffect 会让子控件渲染偏移，覆盖层会叠出多余背景
         row.show()
 
         ico = QLabel(ico_char, row)
@@ -1080,22 +1077,14 @@ class LauncherWindow(QWidget):
 
         toggle = Toggle(on, row)
         toggle.move(388, 17)
-        toggle.toggled.connect(lambda v, r=row: self._on_task_toggled(r, v))
+        # toggle 关闭态自带灰色轨道/滑块视觉，行内容置灰由暗色参数表达，
+        # 无需行级联动（避免 QGraphicsEffect 偏移 / 覆盖层叠出多余背景）
         return row, chip_lbl
-
-    def _on_task_toggled(self, row, on):
-        """任务行开关切换：启用→正常亮度；停用→整行置灰。"""
-        opacity = row.graphicsEffect()
-        assert isinstance(opacity, QGraphicsOpacityEffect), (
-            f"[launcher_proto] 任务行缺少 QGraphicsOpacityEffect: {row}"
-        )
-        opacity.setOpacity(1.0 if on else 0.55)
 
     def _on_master_toggled(self, on):
         """总开关：一键同步日常/周本两个任务行开关（set_on 不发信号，无循环）。"""
         for row in (self.daily_row, self.weekly_row):
             row.findChild(Toggle).set_on(on)
-            self._on_task_toggled(row, on)
 
     def _build_launch_button(self):
         """启动脚本：右下蓝色大胶囊（x:960 y:636 w:216 h:64）——可点击。
