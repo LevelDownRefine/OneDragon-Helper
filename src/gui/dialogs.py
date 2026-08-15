@@ -2,7 +2,7 @@
 
 import os
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -34,14 +34,25 @@ INPUT_FIXED_W = 320
 INPUT_FIXED_H = 30
 
 
-def confirm_config_update(display_name: str) -> bool:
-    """GUI 确认回调：config 与模板不一致时，询问用户是否更新并保存。"""
+def confirm_config_update(display_name: str, timeout_ms: int = 30_000) -> bool:
+    """GUI 确认回调：config 与模板不一致时，询问用户是否更新并保存。
+
+    弹窗限时 ``timeout_ms``（默认 30 秒）：超时未选择自动按「拒绝」处理
+    （QMessageBox.done(No) 关闭），回调返回 False → config 层把本次实例
+    ``enabled`` 置 False（disable），后续写入一并跳过、不落盘。
+
+    Args:
+        display_name: 脚本显示名（弹窗提示用）。
+        timeout_ms: 限时毫秒数（默认 30_000；测试可传小值）。
+    """
     box = QMessageBox()
     box.setIcon(QMessageBox.Question)
     box.setWindowTitle("更新配置")
     box.setText(f"「{display_name}」的配置文件与模板不一致，是否更新并保存？")
     box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
     box.setDefaultButton(QMessageBox.No)
+    # 限时未选择 → done(No) 关闭并置结果 No（不落盘、disable 本次实例）
+    QTimer.singleShot(timeout_ms, lambda: box.done(QMessageBox.No))
     box.exec()
     return box.result() == QMessageBox.Yes
 

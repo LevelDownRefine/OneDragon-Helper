@@ -269,6 +269,9 @@ class ScriptConfig:
         """
         通用的 config 初始化逻辑：加载 config 和 template，检查对齐，合并更新。
         子类重写 _is_aligned 以实现特殊比较逻辑。
+
+        先确认再改内存/落盘：用户拒绝或限时超时（enabled=False）→ 不添加字段、
+        不落盘、不打「已更新」日志（未确认前不产生任何修改与更新日志）。
         """
         config = self._load()
         template = self._load_template()
@@ -277,11 +280,14 @@ class ScriptConfig:
             logger.info(f"[init_config][{self.display_name}] config 已对齐，无需更新")
             return
 
+        if not self._confirm_save():
+            logger.info(f"[init_config][{self.display_name}] 用户拒绝更新，跳过")
+            return
+
         for key, val in template.items():
             safe_update(config, key, val, self.display_name, assert_key_exists=False)
-        if self._confirm_save():
-            self._save(config)
-            logger.info(f"[init_config][{self.display_name}] config 已更新")
+        self._save(config)
+        logger.info(f"[init_config][{self.display_name}] config 已更新")
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
         """

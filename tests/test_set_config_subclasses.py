@@ -918,6 +918,31 @@ class TestArknightsConfig(unittest.TestCase):
         self.assertEqual(saved_queue[1]["Name"], "剿灭")
         self.assertEqual(saved_queue[5]["Name"], "土")
 
+    def test_init_config_rejected_does_not_modify(self):
+        """确认被拒绝（enabled=False）→ 不添加字段、不落盘、不改内存 config"""
+        cfg = self._make_cfg()
+        template_queue = [
+            {"Name": "开始唤醒", "$type": "StartUpTask"},
+            {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]},
+        ]
+        template = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
+        cur_queue = [{"Name": "wrong", "$type": "Unknown"}]
+        config = {"Configurations": {"Default": {"TaskQueue": cur_queue}}}
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps(template))),
+            patch.object(cfg, "_confirm_save", return_value=False),
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg._init_config()
+        mock_save.assert_not_called()
+        # 内存 config 未被改动（无模板字段插入，不产生「添加新字段」日志）
+        self.assertEqual(
+            config,
+            {"Configurations": {"Default": {"TaskQueue": cur_queue}}},
+        )
+
     # ---- set_dungeon ----
 
     def test_set_dungeon_disables_all_enables_selected_and_土(self):
