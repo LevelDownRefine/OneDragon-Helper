@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFrame, QLabel
 
 from src.launcher_proto import launcher_proto
-from src.launcher_proto.launcher_proto import LauncherWindow
+from src.launcher_proto.launcher_proto import C_BLUE_TEXT, LauncherWindow
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
@@ -32,6 +32,8 @@ def _make_window(script_name="ok-ww"):
     chip = QFrame()
     _chip_holder.append(chip)  # 保持引用，防止被垃圾回收
     win.weekly_chip_lbl = QLabel("", chip)
+    win.weekly_ico_lbl = QLabel("", chip)
+    win.weekly_name_lbl = QLabel("", chip)
     daily_chip = QFrame()
     _chip_holder.append(daily_chip)
     win.daily_chip_lbl = QLabel("", daily_chip)
@@ -74,6 +76,9 @@ class TestRefreshWeeklyChip(unittest.TestCase):
         with patch.object(launcher_proto, "_supports_weekly", return_value=True):
             win._refresh_weekly_chip()
         self.assertEqual(win.weekly_chip_lbl.text(), "周四起")
+        self.assertIn("#0F1A2E", win.weekly_chip_lbl.parent().styleSheet())
+        self.assertIn(C_BLUE_TEXT, win.weekly_ico_lbl.styleSheet())
+        self.assertIn(C_BLUE_TEXT, win.weekly_name_lbl.styleSheet())
 
     def test_supported_missing_state_entry(self):
         """_dungeon_state 无该脚本条目 → 视为未选择"""

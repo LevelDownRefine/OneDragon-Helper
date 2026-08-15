@@ -1058,7 +1058,10 @@ class LauncherWindow(QWidget):
             C_FAINT,
             "未支持",
             False,
+            obj_prefix="weekly",
         )
+        self.weekly_ico_lbl = self.weekly_row.findChild(QLabel, "weekly_ico")
+        self.weekly_name_lbl = self.weekly_row.findChild(QLabel, "weekly_name")
         self.weekly_chip_lbl.setCursor(Qt.ArrowCursor)
         self.weekly_chip_lbl.mousePressEvent = lambda e: (
             self._show_weekly_menu() if e.button() == Qt.LeftButton else None
@@ -1094,8 +1097,13 @@ class LauncherWindow(QWidget):
         chip_fg,
         chip_text,
         on,
+        obj_prefix: str = "",
     ):
         """专题卡内任务行（56 高，图标+名称+chip+开关；行背景透明——画布已去）。
+
+        ``obj_prefix`` 非空时给 ico/name/chip 子 QLabel 设
+        ``{prefix}_ico/name/chip`` 的 objectName，供外部 ``findChild`` 拿到引用
+        （如周常行支持态需同步切整行样式，日常行不需要）。
 
         Returns:
             (row, chip_lbl)：chip_lbl 供外部点击绑定副本选择菜单。
@@ -1113,12 +1121,16 @@ class LauncherWindow(QWidget):
             f"background:{ico_bg}; color:{chip_fg}; font-size:16px;"
             "border-radius:10px; qproperty-alignment:AlignCenter;"
         )
+        if obj_prefix:
+            ico.setObjectName(f"{obj_prefix}_ico")
 
         name_lbl = QLabel(name, row)
         name_lbl.setGeometry(58, 15, 60, 26)
         name_lbl.setStyleSheet(
             f"color:{name_fg}; font-size:15px; font-weight:600; background:transparent;"
         )
+        if obj_prefix:
+            name_lbl.setObjectName(f"{obj_prefix}_name")
 
         chip = QFrame(row)
         chip.setGeometry(130, 15, 96, 26)
@@ -1134,6 +1146,8 @@ class LauncherWindow(QWidget):
         )
         chip_lbl.setGeometry(0, 0, 96, 26)
         chip_lbl.setAlignment(Qt.AlignCenter)
+        if obj_prefix:
+            chip_lbl.setObjectName(f"{obj_prefix}_chip")
 
         toggle = Toggle(on, row)
         toggle.move(388, 17)
@@ -1583,10 +1597,12 @@ class LauncherWindow(QWidget):
         )
 
     def _refresh_weekly_chip(self):
-        """刷新周常 chip：支持周常的脚本显示「周几起」可选，未支持保持「未支持」禁用。
+        """刷新周常行整行样式：支持周常的脚本切到亮蓝可点，未支持保持暗色置灰。
 
-        支持态（_supports_weekly 为 True）：chip 亮色可点，显示已选起始日
-        （如「周四起」）或「选择周几」；未支持：chip 暗色置灰，不可点。
+        周常行整行（图标 + "周常"文字 + chip + toggle）必须在支持/未支持间整体切换，
+        否则只有 chip 变亮、图标和文字仍暗，视觉割裂（之前 bug：支持态下整行
+        仍像「未支持」）。切换点：切游戏（_apply_current_game）与 toggle 状态
+        同步时。
         """
         game = self._current_game()
         supported = _supports_weekly(game["script_name"])
@@ -1604,6 +1620,13 @@ class LauncherWindow(QWidget):
             )
             self.weekly_chip_lbl.setCursor(Qt.ArrowCursor)
             self.weekly_toggle.setEnabled(False)
+            self.weekly_ico_lbl.setStyleSheet(
+                f"background:#2A3040; color:{C_FAINT}; font-size:16px;"
+                "border-radius:10px; qproperty-alignment:AlignCenter;"
+            )
+            self.weekly_name_lbl.setStyleSheet(
+                f"color:{C_FAINT}; font-size:15px; font-weight:600; background:transparent;"
+            )
             return
         self.weekly_toggle.setEnabled(True)
         if start_day is None:
@@ -1619,6 +1642,13 @@ class LauncherWindow(QWidget):
             f"color:{C_BLUE_TEXT}; font-size:11px; background:transparent;"
         )
         self.weekly_chip_lbl.setCursor(Qt.PointingHandCursor)
+        self.weekly_ico_lbl.setStyleSheet(
+            f"background:#1A3A7A; color:{C_BLUE_TEXT}; font-size:16px;"
+            "border-radius:10px; qproperty-alignment:AlignCenter;"
+        )
+        self.weekly_name_lbl.setStyleSheet(
+            f"color:{C_BLUE_TEXT}; font-size:15px; font-weight:600; background:transparent;"
+        )
 
     def _show_weekly_menu(self):
         """周常起始日选择：弹出周一至周日菜单（含今天标注，凌晨 4 点为界）。
