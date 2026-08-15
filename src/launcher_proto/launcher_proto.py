@@ -876,6 +876,13 @@ class LauncherWindow(QWidget):
 
         # 脚本图标（滚动区，56×56 stride 64（含 8 间距，画布 itemSpacing=8）；
         # rail.add() 触发滚动范围重算；x=12 在 80 宽栏内居中）
+        # 重建前收集旧图标启用状态（按 script_name）：保存配置/增删脚本后重建 rail
+        # 不重置用户启停；首次构建（game_icons 不存在）或新增脚本默认启用（全开语义）
+        prev_enabled = (
+            {icon._script_name for icon in self.game_icons if icon.is_enabled()}
+            if hasattr(self, "game_icons")
+            else None
+        )
         self.game_icons = []
         for i, game in enumerate(self.games):
             icon = GameIcon(
@@ -883,6 +890,7 @@ class LauncherWindow(QWidget):
                 game["script_name"],
                 game["script_data"],
                 i == self._current_index,
+                enabled=(prev_enabled is None or game["script_name"] in prev_enabled),
                 parent=content,
             )
             self.rail.add(icon, 12, 16 + i * 64)

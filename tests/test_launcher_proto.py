@@ -194,6 +194,38 @@ class TestSetDailyKeepsWeekly(unittest.TestCase):
         self.assertEqual(win._dungeon_state["ok-ww"], {"weekly_start": 4})
 
 
+class TestReloadKeepsEnabledState(unittest.TestCase):
+    """_reload_games（保存配置后）重建 rail 时保留脚本启用/停用状态"""
+
+    def test_reload_preserves_enabled_state(self):
+        """停用脚本 → 保存配置重建 → 停用状态保留，其余仍启用"""
+        scripts = [
+            {"display_name": "甲", "script_path": "scripts/a.py"},
+            {"display_name": "乙", "script_path": "scripts/b.py"},
+        ]
+        with (
+            patch.object(
+                launcher_proto.ChainService,
+                "load_config",
+                return_value={"script_list": scripts},
+            ),
+            patch.object(launcher_proto.ChainService, "load_ui_state", return_value={}),
+            patch.object(
+                launcher_proto.LauncherWindow, "_load_wallpapers", return_value={}
+            ),
+        ):
+            win = LauncherWindow()
+            try:
+                self.assertTrue(all(i.is_enabled() for i in win.game_icons))
+                # 停用第一个脚本后保存配置（_reload_games 重建 rail）
+                win.game_icons[0].set_enabled(False)
+                win._reload_games()
+                self.assertFalse(win.game_icons[0].is_enabled())
+                self.assertTrue(win.game_icons[1].is_enabled())
+            finally:
+                win.close()
+
+
 class TestShowWeeklyMenu(unittest.TestCase):
     """_show_weekly_menu：支持门控与菜单选项"""
 
