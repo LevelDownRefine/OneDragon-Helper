@@ -138,6 +138,8 @@ BetterGI:
       value: 月童的库藏
     - display: 天美-超导
       value: 山风的荆冕
+    - display: 血红-炉火
+      value: 逆悬的冰河
   - name: 武器
     sequences:
     - display: 蒙德
@@ -154,6 +156,8 @@ BetterGI:
       value: 深古瞭望所
     - display: 挪德卡莱
       value: 失落的月庭
+    - display: 至冬
+      value: 妄念的创痕
   - name: 天赋
     sequences:
     - display: 忘却之峡
@@ -170,6 +174,8 @@ BetterGI:
       value: 蕴火的幽墟
     - display: 无光的深都
       value: 无光的深都
+    - display: 荒坠的圣迹
+      value: 荒坠的圣迹
 ok-ef:
   dungeons:
   - name: 未选择
@@ -189,7 +195,7 @@ ok-ef:
       value: 武器经验
     - display: 武器进阶
       value: 武器进阶
-  - name: 危机再现
+  - name: 危境再现
     sequences:
     - display: 罗丹
       value: 罗丹
