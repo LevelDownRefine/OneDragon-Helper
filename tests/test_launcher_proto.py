@@ -226,6 +226,46 @@ class TestReloadKeepsEnabledState(unittest.TestCase):
                 win.close()
 
 
+class TestLaunchGame(unittest.TestCase):
+    """_launch_game：统一走 _get_game_exe_path（异环经 set_config 重写返回启动器路径）。"""
+
+    def test_launch_uses_get_game_exe_path(self):
+        """启动游戏 → os.startfile(_get_game_exe_path 返回值)"""
+        win = _make_window()
+        win.games = [
+            {
+                "script_name": "ok-ww",
+                "display_name": "鸣潮",
+                "script_data": {"script_path": "C:/fake/ok-ww/ok-ww.exe"},
+            }
+        ]
+        with (
+            patch.object(
+                launcher_proto,
+                "_get_game_exe_path",
+                return_value="D:/Game/game.exe",
+            ),
+            # os.startfile 仅 Windows 存在，create=True 让 Linux CI 也能 patch
+            patch("os.startfile", create=True) as mock_start,
+            patch.object(win, "_toast"),
+        ):
+            win._launch_game()
+        mock_start.assert_called_once_with("D:/Game/game.exe")
+
+    def test_missing_exe_toasts(self):
+        """未找到游戏路径（含异环启动器缺失）→ toast 提示"""
+        win = _make_window()
+        with (
+            patch.object(launcher_proto, "_get_game_exe_path", return_value=None),
+            patch("os.startfile", create=True) as mock_start,
+            patch.object(win, "_toast") as mock_toast,
+        ):
+            win._launch_game()
+        mock_start.assert_not_called()
+        mock_toast.assert_called_once()
+        self.assertIn("未找到游戏路径", mock_toast.call_args[0][0])
+
+
 class TestShowWeeklyMenu(unittest.TestCase):
     """_show_weekly_menu：支持门控与菜单选项"""
 

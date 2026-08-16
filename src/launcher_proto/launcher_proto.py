@@ -22,6 +22,7 @@
 import json
 import os
 import subprocess
+import sys
 import webbrowser
 
 from PySide6.QtCore import (
@@ -1198,7 +1199,7 @@ class LauncherWindow(QWidget):
         play.setStyleSheet(f"background:{C_BLUE_DEEP}; border-radius:28px;")
         play_ico = QLabel("▶", play)
         play_ico.setStyleSheet(
-            f"color:{C_WHITE}; font-size:22px; font-weight:700; background:transparent;"
+            f"color:{C_WHITE}; font-size:30px; font-weight:700; background:transparent;"
         )
         play_ico.setGeometry(0, 0, 56, 56)
         play_ico.setAlignment(Qt.AlignCenter)
@@ -1218,7 +1219,7 @@ class LauncherWindow(QWidget):
         menu.setCursor(Qt.PointingHandCursor)
         menu_ico = QLabel("≡", menu)
         menu_ico.setStyleSheet(
-            f"color:{C_WHITE}; font-size:22px; background:transparent;"
+            f"color:{C_WHITE}; font-size:30px; background:transparent;"
         )
         menu_ico.setGeometry(0, 0, 56, 56)
         menu_ico.setAlignment(Qt.AlignCenter)
@@ -1490,11 +1491,13 @@ class LauncherWindow(QWidget):
         )
         command, cwd, env = build_script_command(["--chain", chain_path])
         command[0] = command[0].replace("pythonw.exe", "python.exe")
+        # CREATE_NEW_CONSOLE 开独立 cmd 窗口（Windows 专属）；Linux CI 无此标志
+        creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
         subprocess.Popen(
             command,
             cwd=cwd,
             env=env,
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
+            creationflags=creationflags,
         )
         self._toast(f"{label}：已生成并运行链 ({len(enabled_keys)} 个脚本)")
 
@@ -1716,13 +1719,17 @@ class LauncherWindow(QWidget):
         self.service.save_ui_state(self._dungeon_state)
 
     def _launch_game(self):
-        """启动游戏：读取当前游戏 exe 路径并打开（未适配时提示）。"""
+        """启动游戏：读取当前游戏 exe 路径并打开（未适配时提示）。
+
+        异环的 get_game_exe_path 已重写为返回启动器（ok-nte.exe）路径，
+        故「启动游戏」打开启动器，与其他游戏统一走本方法、无需特判。
+        """
         game = self._current_game()
         exe_path = _get_game_exe_path(game["script_name"])
         if not exe_path:
             self._toast(f"{game['display_name']}：未找到游戏路径")
             return
-        os.startfile(exe_path)  # noqa: S606 启动游戏本体
+        os.startfile(exe_path)  # noqa: S606 启动游戏（异环为启动器）
         self._toast(f"正在启动 {game['display_name']}…")
 
     def _open_url(self, url: str, fallback: str, label: str):

@@ -6,6 +6,7 @@
 """
 
 import json
+import os
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -1063,11 +1064,13 @@ class TestGetGameExePath(unittest.TestCase):
         mock_load.assert_not_called()
 
     def test_ok_series_pc_full_path(self):
-        """OK 系（ok-ww/ok-ef/ok-nte）读取 devices.json 的 pc_full_path"""
+        """OK 系（ok-ww/ok-ef）读取 devices.json 的 pc_full_path。
+
+        异环（ok-nte）已重写 get_game_exe_path 返回启动器路径，不在此列（见专项测试）。
+        """
         cases = (
             (WutheringWavesConfig, "ok-ww"),
             (EndfieldConfig, "ok-ef"),
-            (NTEConfig, "ok-nte"),
         )
         for cls, script_name in cases:
             with patch(
@@ -1079,6 +1082,55 @@ class TestGetGameExePath(unittest.TestCase):
             ):
                 got = cls.get_game_exe_path(script_name)
             self.assertEqual(got, "D:\\Game\\game.exe")
+
+    def test_nte_launcher_found_upward(self):
+        """异环启动器在游戏安装根目录（从游戏本体逐级上溯）→ 返回 NTELauncher.exe 路径"""
+        game_exe = os.path.join(
+            "D:/Neverness To Everness",
+            "Client",
+            "WindowsNoEditor",
+            "HT",
+            "Binaries",
+            "Win64",
+            "HTGame.exe",
+        )
+        launcher = os.path.join("D:/Neverness To Everness", "NTELauncher.exe")
+        with (
+            patch(
+                "src.config.set_config.load_game_config",
+                return_value={"pc_full_path": game_exe},
+            ),
+            patch("os.path.isfile", side_effect=lambda p: p == launcher),
+        ):
+            got = NTEConfig.get_game_exe_path("ok-nte")
+        self.assertEqual(got, launcher)
+
+    def test_nte_launcher_missing_returns_none(self):
+        """异环启动器不存在（上溯到盘符根也找不到）→ None，GUI 提示「未找到游戏路径」"""
+        game_exe = os.path.join(
+            "D:/Neverness To Everness",
+            "Client",
+            "WindowsNoEditor",
+            "HT",
+            "Binaries",
+            "Win64",
+            "HTGame.exe",
+        )
+        with (
+            patch(
+                "src.config.set_config.load_game_config",
+                return_value={"pc_full_path": game_exe},
+            ),
+            patch("os.path.isfile", return_value=False),
+        ):
+            got = NTEConfig.get_game_exe_path("ok-nte")
+        self.assertIsNone(got)
+
+    def test_nte_game_exe_missing_returns_none(self):
+        """异环游戏本体路径读不到（devices.json 缺失）→ None"""
+        with patch("src.config.set_config.load_game_config", return_value=None):
+            got = NTEConfig.get_game_exe_path("ok-nte")
+        self.assertIsNone(got)
 
     def test_genshin_nested_install_path(self):
         """原神（BetterGI）读取 config.json 的 genshinStartConfig.installPath（嵌套）"""

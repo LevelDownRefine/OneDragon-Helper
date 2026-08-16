@@ -764,6 +764,16 @@ class NTEConfig(ScriptConfig):
     _daily_section = "daily_anomaly"
     """日常任务配置所在顶层子对象（新格式：任务类型/序号字段嵌在其下）。"""
 
+    _launcher_rel_path = "NTELauncher.exe"
+    """启动器可执行文件名（相对游戏安装根目录）。
+
+    异环的「启动游戏」打开官方启动器（NTELauncher.exe）而非游戏本体
+    （HTGame.exe），与鸣潮/终末地等打开游戏本体的行为不同，故重写
+    ``get_game_exe_path``。启动器位于游戏安装根目录（如
+    ``D:\\Neverness To Everness\\NTELauncher.exe``），从游戏本体路径
+    逐级向上查找定位。
+    """
+
     def __init__(self):
         self.display_name = "异环"
         self._task_key = "任务类型"
@@ -772,6 +782,35 @@ class NTEConfig(ScriptConfig):
             "空幕": "空幕序号",
             "弧盘突破材料": "弧盘材料序号",
         }
+
+    @classmethod
+    def get_game_exe_path(cls, script_name: str) -> str | None:
+        """异环重写：返回官方启动器（NTELauncher.exe）路径，非游戏本体。
+
+        先读游戏本体路径（devices.json 的 pc_full_path），再从其目录逐级
+        向上查找 ``_launcher_rel_path``（启动器在游戏安装根目录，如
+        ``D:\\Neverness To Everness\\NTELauncher.exe``）；启动器不存在
+        （上溯到盘符根仍无）→ None，GUI 提示「未找到游戏路径」。
+
+        Args:
+            script_name: 脚本唯一标识（ok-nte）。
+        """
+        game_exe = super().get_game_exe_path(script_name)
+        if not game_exe:
+            return None
+        directory = os.path.dirname(game_exe)
+        while True:
+            candidate = os.path.join(directory, cls._launcher_rel_path)
+            if os.path.isfile(candidate):
+                return candidate
+            parent = os.path.dirname(directory)
+            if parent == directory:
+                break
+            directory = parent
+        logger.warning(
+            f"[get_game_exe_path][{script_name}] 未找到启动器 {cls._launcher_rel_path}"
+        )
+        return None
 
     def _daily_section_dict(self, config: dict) -> dict:
         """取日常任务配置子对象（新格式字段嵌在 daily_anomaly 下）。
