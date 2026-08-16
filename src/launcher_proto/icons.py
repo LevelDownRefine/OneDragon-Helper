@@ -1,23 +1,40 @@
-"""launcher_proto 图标绘制模块：自绘图标 widget 与全部 draw_* 绘制函数。
+"""launcher_proto 图标模块：自绘图标 widget/绘制函数 + 脚本 exe 图标获取。
 
-从 launcher_proto.py 按职责拆分而来（2026-08-16）：图标类（_GlyphButton /
-IconButton）与图标绘制函数（悬浮条/窗口控制/左侧栏按钮图形）独立成模块，
-主窗口只负责组装。依赖单向：icons → theme，launcher_proto → icons。
+- 自绘部分（2026-08-16 从 launcher_proto.py 拆分）：``_GlyphButton`` /
+  ``IconButton`` 与悬浮条/窗口控制/左侧栏按钮的 ``draw_*`` 绘制函数。
+- 脚本图标部分（2026-08-16 从 src/gui/icons.py 合并）：``get_script_icon``
+  同步链——external 脚本用 exe 自带图标（崩铁优先同目录 March7th Launcher.exe），
+  python 脚本用默认图标（Python 解释器图标，取不到回退 assets/ds.ico）。
+  原 src/gui/icons.py 的后台异步加载机制（Win32 提取 + QThreadPool）已随旧 GUI
+  删除：新 GUI 的 GameIcon 同步取图标，无需后台线程。
+
+依赖单向：icons → theme / config.subscript / utils，launcher_proto → icons。
 """
 
-from PySide6.QtCore import QPointF, QRect, QRectF, Qt, Signal
+import logging
+import os
+import sys
+from functools import lru_cache
+
+from PySide6.QtCore import QFileInfo, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
+    QIcon,
     QPainter,
     QPainterPath,
     QPen,
     QPolygonF,
 )
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QFileIconProvider, QWidget
 
+from src.config.subscript import resolve_script_path
 from src.launcher_proto.theme import C_BLUE_TEXT, C_BTN_DARK, C_WHITE
+from src.utils import get_root_dir, safe_path_join
+
+logger = logging.getLogger(__name__)
 
 
+# ═══════════════════════ 自绘图标 widget ═══════════════════════════════════
 class _GlyphButton(QWidget):
     """自绘图标 widget：draw_fn 接受已经 translate 到中心的 QPainter。"""
 
@@ -279,3 +296,72 @@ def draw_add(p: QPainter):
     p.setBrush(Qt.NoBrush)
     p.drawLine(-6, 0, 6, 0)
     p.drawLine(0, -6, 0, 6)
+
+
+# ═══════════════════════ 脚本 exe 图标获取（2026-08-16 从 src/gui/icons.py 合并）═══
+# 复用的文件图标提供器：避免每个 exe 都 new 一个 QFileIconProvider 的开销
+_ICON_PROVIDER = QFileIconProvider()
+
+# 默认图标：没有自带图标的脚本（如 python 脚本，或 external 但取不到 exe 图标的）使用。
+# 优先用当前 Python 解释器（sys.executable）的 OS 文件图标，即 Python 官方图标；
+# 极个别取不到时（如冻结后 sys.executable 指向自身 exe）回退到 assets/ds.ico。
+_DEFAULT_ICON_PATH = safe_path_join(get_root_dir(), "assets", "ds.ico")
+_DEFAULT_ICON: QIcon | None = None
+
+
+def _default_icon() -> QIcon:
+    """懒加载默认图标（缺自带图标时回退用）：优先 Python 解释器图标，否则 ds。"""
+    global _DEFAULT_ICON
+    if _DEFAULT_ICON is None:
+        python_icon = _exe_icon(sys.executable)
+        _DEFAULT_ICON = (
+            python_icon if python_icon is not None else QIcon(_DEFAULT_ICON_PATH)
+        )
+    return _DEFAULT_ICON
+
+
+@lru_cache
+def _exe_icon(path: str) -> QIcon | None:
+    """返回 exe 自带图标（OS 文件图标，即程序内嵌图标）。
+
+    文件缺失 / 取不到时返回 None；异常也一并吞掉，不让列表渲染崩溃。
+    """
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        icon = _ICON_PROVIDER.icon(QFileInfo(path))
+    except Exception:  # noqa: BLE001  # 取图标失败不应影响整个列表
+        logger.warning("取 %s 的图标失败", path, exc_info=True)
+        return None
+    return icon if (icon is not None and not icon.isNull()) else None
+
+
+def get_icon_source(script_data: dict) -> str | None:
+    """返回脚本图标所用的 exe 路径（崩铁优先同目录 March7th Launcher.exe）。"""
+    if script_data.get("script_type") != "external":
+        return None
+    raw = script_data.get("script_path", "")
+    if not raw:
+        return None
+    script_path = resolve_script_path(raw)
+    launcher = os.path.join(os.path.dirname(script_path), "March7th Launcher.exe")
+    if os.path.isfile(launcher):
+        return launcher
+    return script_path
+
+
+def get_script_icon(script_data: dict) -> QIcon:
+    """返回脚本在列表中显示的图标。
+
+    - external 脚本（指向 exe）：优先使用 exe 内嵌的自带图标；
+      取不到（文件缺失 / 无图标）时回退默认图标。
+    - python 脚本及其他：使用默认图标。
+
+    调用方（GameIcon）可缓存结果，本函数仅做轻量解析与缓存。
+    """
+    source = get_icon_source(script_data)
+    if source:
+        icon = _exe_icon(source)
+        if icon is not None:
+            return icon
+    return _default_icon()

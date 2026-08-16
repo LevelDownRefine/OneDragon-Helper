@@ -3,8 +3,8 @@
 样式模板（按钮、消息框）已抽到 :mod:`src.gui.theme`，本模块只保留 Qt 工具函数
 与对 theme 工厂的转发。UI 状态持久化见 :mod:`src.service.chain_service`，每周超时
 应用见 :mod:`src.service.chain_gen`，默认超时常量见 :mod:`src.config.subscript`
-（均无 Qt，GUI 与 CLI 共用，由调用方直接 import）。图标相关逻辑在
-:mod:`src.gui.icons`。
+（均无 Qt，GUI 与 CLI 共用，由调用方直接 import）。脚本图标逻辑已并入
+:mod:`src.launcher_proto.icons`。
 """
 
 import ctypes

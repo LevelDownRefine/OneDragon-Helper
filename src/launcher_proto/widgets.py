@@ -3,7 +3,7 @@
 从 launcher_proto.py 按职责拆分而来（2026-08-16）：RailContainer（滚轮/拖动
 滚动 + 惯性滑行）、Toggle（启停开关）、GameIcon（脚本图标 + 拖拽重排）三个
 纯 UI 复用件独立成模块，零业务耦合（不碰 config/service，只经信号/方法交互）。
-依赖单向：widgets → theme / src.gui.icons，launcher_proto → widgets。
+依赖单向：widgets → theme / icons，launcher_proto → widgets。
 """
 
 from PySide6.QtCore import (
@@ -19,7 +19,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QDrag, QPainter, QPen
 from PySide6.QtWidgets import QApplication, QWidget
 
-from src.gui.icons import get_script_icon
+from src.launcher_proto.icons import get_script_icon
 from src.launcher_proto.theme import (
     C_GRAY_KNOB,
     C_GRAY_TRACK,

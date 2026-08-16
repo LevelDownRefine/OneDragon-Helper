@@ -1,11 +1,11 @@
-"""GUI 包：启动器界面按职责拆分的各模块。
+"""GUI 包（旧 GUI 残留：仅保留被新 GUI src/launcher_proto 复用的共享模块）。
 
-- utils: UI 状态持久化（gui_state.json）/ 星期计算 / 统一消息框辅助
-- icons: 脚本图标（exe 提取、默认/占位图标、后台异步加载与缓存）
-- runner: ScriptChainer 命令构造与后台运行线程
-- widgets: ToggleSwitch / ScriptItem 等自定义控件
 - dialogs: 单脚本配置弹窗 / 添加脚本弹窗
-- main_window: 主窗口
+- theme: 旧 GUI 设计 token 与 QSS（dialogs 依赖）
+- utils: 统一消息框 / 打开文件辅助 / 按钮工厂 / 标题栏同步（dialogs 依赖）
 
-入口在 src/launcher.py（python -m src.launcher）。
+脚本图标获取（get_script_icon）已并入 src/launcher_proto/icons.py（2026-08-16）。
+
+新 GUI 主窗口在 src/launcher_proto；正式入口 launcher.bat（python -m
+src.launcher_proto.launcher_proto）与 src/launcher.py 的 GUI 主路径均已指向它。
 """

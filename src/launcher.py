@@ -1,8 +1,8 @@
 """启动器入口：GUI 启动。
 
-GUI 各部分在 src/gui 包中：state（状态持久化）、runner（后台运行）、
-widgets（自定义控件）、dialogs（弹窗）、main_window（主窗口）。
-无头 CLI 出口见 :mod:`src.cli`。
+GUI 主窗口在新 GUI（src/launcher_proto）；旧 GUI 仅保留被新 GUI 复用的
+共享模块（src/gui 的 dialogs / icons / theme / utils）。无头 CLI 出口见
+:mod:`src.cli`（本模块的 --generate-chain / --run-chain 等命令行参数）。
 """
 
 import logging
@@ -11,15 +11,14 @@ import sys
 import time
 
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication
 
 from src.cli import build_parser, run_cli
 from src.config.subscript import generate_config_from_example
 from src.gui.dialogs import inject_config_confirm
-from src.gui.main_window import MainWindow
-from src.service.chain_service import ChainService
-from src.service.script_service import ScriptService
+from src.launcher_proto.launcher_proto import LauncherWindow
+from src.launcher_proto.theme import FONT_FAMILY
 from src.utils import get_config_yml_path_under_root, get_path_under_root
 from src.utils_logger import setup_logging
 
@@ -81,17 +80,17 @@ def main():
     # GUI 主路径
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    # 新 GUI 的 QSS 只设 font-size 未设 font-family，需显式设置应用默认字体
+    # （与 launcher_proto.main() 一致），否则中文字符会 fallback 到宋体
+    app.setFont(QFont(FONT_FAMILY))
     _set_app_window_icon(app)
     _log_startup("QApplication + setStyle + icon")
 
     inject_config_confirm()
     _log_startup("inject_config_confirm")
 
-    window = MainWindow(
-        service=ChainService(),
-        script_service=ScriptService(),
-    )
-    _log_startup("MainWindow 构造")
+    window = LauncherWindow()
+    _log_startup("LauncherWindow 构造")
 
     window.show()
     _log_startup("window.show()")
