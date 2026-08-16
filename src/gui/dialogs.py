@@ -1,4 +1,4 @@
-"""弹窗：单脚本配置（路径 + 每周超时）与添加脚本。"""
+"""弹窗：单脚本配置（路径 + 每周超时）。"""
 
 import os
 
@@ -19,9 +19,9 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.set_config import ScriptConfig
-from src.config.subscript import default_script_entry, get_script_name
+from src.config.subscript import get_script_name
 from src.gui import theme
-from src.gui.utils import make_secondary_button, safe_startfile, styled_msg_box
+from src.gui.utils import safe_startfile, styled_msg_box
 from src.service.script_service import ScriptService
 
 # 脚本文件选择过滤器（两个弹窗共用）
@@ -482,111 +482,3 @@ class SingleScriptConfigDialog(_FormDialogBase):
             return
         self.delete_requested.emit(self.script_name)
         self.close()
-
-
-class AddScriptDialog(_FormDialogBase):
-    """新增脚本弹窗：收集核心字段（名称、类型、路径、超时），其余字段用默认值补全。"""
-
-    def __init__(self, existing_script_names=None, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("添加脚本")
-        self.setStyleSheet(f"background-color: {theme.BG_CARD};")
-        self._existing_script_names = set(existing_script_names or [])
-        self.script_entry = None
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
-
-        # 名称
-        name_row = QHBoxLayout()
-        name_row.setSpacing(8)
-        self.name_input = QLineEdit(self)
-        font = theme.make_font(size=theme.FONT_SIZE_BODY)
-        self.name_input.setFont(font)
-        self.name_input.setPlaceholderText("脚本显示名称，例如：1999")
-        self.name_input.setFixedWidth(INPUT_FIXED_W)
-        self.name_input.setFixedHeight(INPUT_FIXED_H)
-        self.name_input.setStyleSheet(self._LINE_EDIT_STYLE)
-        name_row.addWidget(self._make_label("脚本名称:"))
-        name_row.addWidget(self.name_input)
-        layout.addLayout(name_row)
-
-        # 类型
-        type_row = QHBoxLayout()
-        type_row.setSpacing(8)
-        self.type_combo = QComboBox(self)
-        self.type_combo.addItems(["external", "python"])
-        font = theme.make_font(size=theme.FONT_SIZE_BODY)
-        self.type_combo.setFont(font)
-        self.type_combo.setFixedHeight(INPUT_FIXED_H)
-        self.type_combo.setFixedWidth(INPUT_FIXED_W)
-        self.type_combo.setStyleSheet(self._COMBO_STYLE)
-        type_row.addWidget(self._make_label("脚本类型:"))
-        type_row.addWidget(self.type_combo)
-        type_row.addStretch()
-        layout.addLayout(type_row)
-
-        # 路径 + 浏览
-        path_row = QHBoxLayout()
-        path_row.setSpacing(8)
-        self.path_input = QLineEdit(self)
-        font = theme.make_font(size=theme.FONT_SIZE_BODY)
-        self.path_input.setFont(font)
-        self.path_input.setPlaceholderText("脚本/程序的完整路径")
-        self.path_input.setFixedWidth(INPUT_FIXED_W)
-        self.path_input.setFixedHeight(INPUT_FIXED_H)
-        self.path_input.setStyleSheet(self._LINE_EDIT_STYLE)
-        browse_btn = make_secondary_button("选择")
-        browse_btn.clicked.connect(self.browse_file)
-        path_row.addWidget(self._make_label("脚本路径:"))
-        path_row.addWidget(self.path_input)
-        path_row.addWidget(browse_btn)
-        layout.addLayout(path_row)
-
-        # 启动参数（可选）
-        args_row = QHBoxLayout()
-        args_row.setSpacing(8)
-        self.args_input = QLineEdit(self)
-        font = theme.make_font(size=theme.FONT_SIZE_BODY)
-        self.args_input.setFont(font)
-        self.args_input.setPlaceholderText("可选，传给脚本的命令行参数")
-        self.args_input.setFixedWidth(INPUT_FIXED_W)
-        self.args_input.setFixedHeight(INPUT_FIXED_H)
-        self.args_input.setStyleSheet(self._LINE_EDIT_STYLE)
-        args_row.addWidget(self._make_label("启动参数:"))
-        args_row.addWidget(self.args_input)
-        layout.addLayout(args_row)
-
-        # 按钮
-        layout.addLayout(self._make_footer("添加", self.save_data))
-
-    def save_data(self):
-        display_name = self.name_input.text().strip()
-        if not display_name:
-            QMessageBox.warning(self, "警告", "脚本名称不能为空！")
-            return
-        path_val = self.path_input.text().strip()
-        if not path_val:
-            QMessageBox.warning(self, "警告", "脚本路径不能为空！")
-            return
-        script_name = get_script_name(
-            {"display_name": display_name, "script_path": path_val}
-        )
-        if script_name in self._existing_script_names:
-            QMessageBox.warning(
-                self,
-                "警告",
-                f"已存在同标识脚本「{script_name}」，请换一个脚本路径或名称。",
-            )
-            return
-
-        self.script_entry = default_script_entry(
-            display_name=display_name,
-            script_type=self.type_combo.currentText(),
-            script_path=path_val,
-            script_arguments=self.args_input.text().strip(),
-        )
-        self.accept()

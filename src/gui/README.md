@@ -22,7 +22,6 @@
   `pending_changes` 返回，写盘由调用方委托 `ChainService.update_script`。
 - `confirm_config_update` / `inject_config_confirm`：config 与模板不一致时的
   保存前确认回调（30s 限时，超时按拒绝处理），GUI 入口注入。
-- `AddScriptDialog`：新增脚本弹窗（未被接线，仅保留）。
 
 ## 写盘架构（单一路径）
 

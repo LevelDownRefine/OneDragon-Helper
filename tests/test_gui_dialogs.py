@@ -1,4 +1,4 @@
-"""测试 src/gui/dialogs.py：AddScriptDialog 表单（default_script_entry 见 test_subscript）"""
+"""测试 src/gui/dialogs.py：配置确认回调与 SingleScriptConfigDialog。"""
 
 import os
 import tempfile
@@ -13,7 +13,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from src.gui.dialogs import (
-    AddScriptDialog,
     SingleScriptConfigDialog,
     inject_config_confirm,
 )
@@ -105,63 +104,6 @@ class TestInjectConfigConfirm(unittest.TestCase):
         # 真实 QMessageBox（未 mock），200ms 超时后自动按拒绝关闭
         result = confirm_config_update("测试脚本", timeout_ms=200)
         self.assertFalse(result)
-
-
-class TestAddScriptDialog(unittest.TestCase):
-    """测试 AddScriptDialog 表单校验与结果构造"""
-
-    def test_save_builds_script_entry(self):
-        """填入合法字段后 save_data 构造完整 script_entry 并 accept"""
-        dlg = AddScriptDialog(existing_script_names=["已存在"])
-        dlg.name_input.setText("新脚本")
-        dlg.type_combo.setCurrentText("python")
-        dlg.path_input.setText("C:/foo/bar.py")
-        with patch.object(dlg, "accept") as acc:
-            dlg.save_data()
-        self.assertIsNotNone(dlg.script_entry)
-        self.assertEqual(dlg.script_entry["display_name"], "新脚本")
-        self.assertEqual(dlg.script_entry["script_type"], "python")
-        self.assertEqual(dlg.script_entry["script_path"], "C:/foo/bar.py")
-        self.assertEqual(dlg.script_entry["script_arguments"], "")
-        acc.assert_called_once()
-
-    def test_save_captures_script_arguments(self):
-        """填入启动参数后写入 script_entry['script_arguments']"""
-        dlg = AddScriptDialog()
-        dlg.name_input.setText("带参脚本")
-        dlg.path_input.setText("C:/foo/bar.exe")
-        dlg.args_input.setText("--task daily --fast")
-        with patch.object(dlg, "accept"):
-            dlg.save_data()
-        self.assertIsNotNone(dlg.script_entry)
-        self.assertEqual(dlg.script_entry["script_arguments"], "--task daily --fast")
-
-    def test_save_rejects_empty_name(self):
-        """名称为空时不构造 script_entry"""
-        dlg = AddScriptDialog()
-        dlg.name_input.setText("")
-        dlg.path_input.setText("C:/x.exe")
-        with patch("src.gui.dialogs.QMessageBox.warning"):
-            dlg.save_data()
-        self.assertIsNone(dlg.script_entry)
-
-    def test_save_rejects_duplicate_key(self):
-        """脚本标识重复时不构造 script_entry"""
-        dlg = AddScriptDialog(existing_script_names=["BetterGI"])
-        dlg.name_input.setText("原神改")
-        dlg.path_input.setText("C:/game_helper/BetterGI.exe")
-        with patch("src.gui.dialogs.QMessageBox.warning"):
-            dlg.save_data()
-        self.assertIsNone(dlg.script_entry)
-
-    def test_save_rejects_empty_path(self):
-        """路径为空时不构造 script_entry"""
-        dlg = AddScriptDialog()
-        dlg.name_input.setText("新脚本")
-        dlg.path_input.setText("")
-        with patch("src.gui.dialogs.QMessageBox.warning"):
-            dlg.save_data()
-        self.assertIsNone(dlg.script_entry)
 
 
 class TestSingleScriptConfigDialogLoad(unittest.TestCase):

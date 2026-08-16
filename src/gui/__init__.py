@@ -1,6 +1,6 @@
 """GUI 包（旧 GUI 残留：仅保留被新 GUI src/launcher_proto 复用的共享模块）。
 
-- dialogs: 单脚本配置弹窗 / 添加脚本弹窗
+- dialogs: 单脚本配置弹窗（SingleScriptConfigDialog）与确认回调
 - theme: 旧 GUI 设计 token 与 QSS（dialogs 依赖）
 - utils: 统一消息框 / 打开文件辅助 / 按钮工厂 / 标题栏同步（dialogs 依赖）
 
