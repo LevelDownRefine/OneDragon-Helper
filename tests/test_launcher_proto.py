@@ -308,5 +308,49 @@ class TestShowWeeklyMenu(unittest.TestCase):
         self.assertEqual(win._dungeon_state["ok-ww"]["weekly_start"], 4)
 
 
+class TestAddScript(unittest.TestCase):
+    """_add_script：选文件 → build_script_entry → add_script 落盘 → 重建 rail"""
+
+    def test_cancel_does_nothing(self):
+        """文件选择取消（空路径）时不添加脚本、不落盘"""
+        win = _make_window()
+        with patch(
+            "src.launcher_proto.launcher_proto.QFileDialog.getOpenFileName",
+            return_value=("", ""),
+        ):
+            win._add_script()
+        win.service.add_script.assert_not_called()
+        win._reload_games = MagicMock()
+        win._reload_games.assert_not_called()
+
+    def test_confirm_adds_script(self):
+        """选择文件后构造条目、落盘并重建 rail；去重基于已有 script_name"""
+        win = _make_window(script_name="ok-ww")
+        win.service._script_service.build_script_entry.return_value = {
+            "display_name": "y",
+            "script_type": "external",
+            "script_path": "C:/y.exe",
+        }
+        win._reload_games = MagicMock()
+        win._toast = MagicMock()
+        with patch(
+            "src.launcher_proto.launcher_proto.QFileDialog.getOpenFileName",
+            return_value=("C:/y.exe", ""),
+        ):
+            win._add_script()
+        win.service._script_service.build_script_entry.assert_called_once_with(
+            os.path.normpath("C:/y.exe"), {"ok-ww"}
+        )
+        win.service.add_script.assert_called_once_with(
+            {
+                "display_name": "y",
+                "script_type": "external",
+                "script_path": "C:/y.exe",
+            }
+        )
+        win._reload_games.assert_called_once()
+        win._toast.assert_called_once_with("已添加 y")
+
+
 if __name__ == "__main__":
     unittest.main()
