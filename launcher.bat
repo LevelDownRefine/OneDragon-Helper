@@ -27,6 +27,6 @@ if exist "%env_script%" (
 )
 
 :: 模块启动（GUI 主窗口：src.gui.main_window）
-python -m src.gui.main_window %*
+python -m src.launcher %*
 
 endlocal
