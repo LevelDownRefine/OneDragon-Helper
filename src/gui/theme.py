@@ -1,170 +1,64 @@
-"""gui 主题：设计 token 与统一样式模板（QSS）。
+"""主题常量与工具：设计稿常量（Ardot 画布原值）的单一来源。
 
-旧 GUI 残留中仅被 dialogs.py 使用的表单样式子集（2026-08-16 清理死代码后）：
-其余 QSS 工厂 / 按钮工厂 / 旧色系常量（BEIGE、BG_MAIN、BG_MUTED 等）已随
-旧 GUI 主窗口删除。
+从 main_window.py 按职责拆分而来（2026-08-16）：全部颜色/尺寸/字体/星期名/
+元数据链接等常量与 make_font/rgba 工具独立成模块，供 icons/widgets/主窗口共享。
+依赖单向：theme → 无（仅 QtGui），其余模块 → theme。
 """
 
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor, QFont
 
-# ── 甘雨五色（色卡） ────────────────────────────────────────────────────────
-DARK_BLUE = "#333957"  # 深空蓝
-BLUE = "#5D74A2"  # 钢蓝
-SKY_BLUE = "#C4D8F2"  # 雾蓝
-CRIMSON = "#8E2D30"  # 酒红
+# ═══════════════════════ 设计稿常量（Ardot 画布原值）═══════════════════════
+CANVAS_W, CANVAS_H = 1280, 720
 
-# ── 语义色（直接引用五色） ──────────────────────────────────────────────────
-TEXT = DARK_BLUE  # 正文
-TEXT_MUTED = DARK_BLUE  # 次要文字
-TEXT_FAINT = DARK_BLUE  # 弱文字 / 占位
-BG_CARD = "#FFFFFF"  # 卡片底（白色保留）
-BG_HOVER = SKY_BLUE  # 悬停底
-BORDER = SKY_BLUE  # 中性边框
-DISABLED = SKY_BLUE  # 禁用底色
-BORDER_WIDTH = "1px"  # 统一边框宽度（QSS 模板引用）
+# 颜色（从画布 fills 换算 hex）
+C_WINDOW_BG = "#0A0E1A"  # 主窗口底色
+C_BTN_DARK = "#1F2937"  # 悬浮条/窗口控制深底
+C_YELLOW = "#F4C242"  # 启动全部 / 启动脚本主色
+C_BLUE = "#2196F3"  # 启动脚本蓝色大胶囊
+C_BLUE_DEEP = "#0F2A4D"  # 蓝色胶囊内圆深底
+C_WHITE = "#FFFFFF"
+C_BLUE_TEXT = "#7DA8FF"  # 选中/文字高亮蓝
 
-FONT_FAMILY = '"Microsoft YaHei", "Segoe UI", sans-serif'
+# 拖拽重排 MIME（脚本唯一标识 script_name；与旧 GUI src/gui/widgets.py 一致）
+DRAG_MIME = "application/x-onedragon-script"
+C_FAINT = "#4A5568"  # 停用文字
+C_GREEN = "#3DD68C"  # 启用开关
+C_GRAY_TRACK = "#2A2F38"  # 停用开关轨道
+C_GRAY_KNOB = "#5A6470"  # 停用开关滑块
+C_GAME_DIM = "#161C28"  # 停用游戏图标
 
+# 字体
+FONT_FAMILY = "Microsoft YaHei"
 
-# ── 字号 token ──────────────────────────────────────────────────────────────
-FONT_SIZE_BODY = 11  # 正文：输入框 / 下拉框 / 表单标签
-FONT_SIZE_BTN = 12  # 按钮：主 / 次级 / 危险
+# 兜底背景：脚本未配置背景图时使用（相对项目根）
+DEFAULT_BG = "assets/ds.jpg"
 
+# 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
+WEEKDAY_NAMES = {
+    1: "周一",
+    2: "周二",
+    3: "周三",
+    4: "周四",
+    5: "周五",
+    6: "周六",
+    7: "周日",
+}
 
-# ── 文本 / 布局常量 ──────────────────────────────────────────────────────────
-LABEL_WIDTH = 64  # 表单标签固定宽
-
-
-def make_font(*, size: int = FONT_SIZE_BODY, bold: bool = False) -> QFont:
-    """统一构造像素字号的 QFont（避免 point size 与 QSS px 差异 + 字体名硬编码）。"""
-    font = QFont("Microsoft YaHei")
-    font.setPixelSize(size)
-    if bold:
-        font.setBold(True)
-    return font
-
-
-# ── 按钮 QSS 模板 ────────────────────────────────────────────────────────────
-
-
-def primary_button_qss(*, radius: int = 10, font_size: int = FONT_SIZE_BTN) -> str:
-    """主按钮：钢蓝纯色底 + 白字（平面风格，无渐变）。dialogs 主按钮用。"""
-    return f"""
-        QPushButton {{
-            background: {BLUE};
-            color: white;
-            border: none;
-            border-radius: {radius}px;
-            font-size: {font_size}px;
-        }}
-        QPushButton:hover {{ background: {DARK_BLUE}; }}
-        QPushButton:pressed {{ background: {DARK_BLUE}; }}
-        QPushButton:disabled {{ background: {DISABLED}; color: #F0F3F8; }}
-    """
+# ── 游戏元数据（display_name → 图标底色 / 背景主色 / 链接）───────────────
+# 通用占位链接（对应内容未配置时使用）
+_URL_HOME = "https://github.com/"
+_URL_BILIBILI = "https://www.bilibili.com/"
 
 
-def outlined_qss(
-    *,
-    selector: str = "QPushButton",
-    accent: str = BLUE,
-    radius: int = 8,
-    font_size: int = FONT_SIZE_BODY,
-    color: str = DARK_BLUE,
-    border: str = BORDER,
-    padding: str = "4px 10px",
-) -> str:
-    """轮廓控件模板（次级按钮 / 危险按钮共用）：
-    透明底 + 圆角边框，hover 只变边框/文字色（不填充背景，保持平面风格）。"""
-    return f"""
-        {selector} {{
-            border: {BORDER_WIDTH} solid {border};
-            border-radius: {radius}px;
-            background: transparent;
-            font-family: {FONT_FAMILY};
-            font-size: {font_size}px;
-            color: {color};
-            padding: {padding};
-        }}
-        {selector}:hover {{ border-color: {accent}; color: {accent}; }}
-        {selector}:disabled {{ color: {TEXT_FAINT}; border-color: {DISABLED}; }}
-    """
+def make_font(size: int, weight: int = 400) -> QFont:
+    """统一像素字号 QFont（与 QSS px 渲染一致）。"""
+    f = QFont(FONT_FAMILY)
+    f.setPixelSize(size)
+    f.setWeight(QFont.Weight(weight))
+    return f
 
 
-# ── 输入控件 QSS 模板 ────────────────────────────────────────────────────────
-
-
-def line_edit_qss(
-    *,
-    radius: int = 8,
-    font_size: int = FONT_SIZE_BODY,
-    padding: str = "6px 12px",
-) -> str:
-    """文本输入框：白底灰边，focus 钢蓝边框。"""
-    return f"""
-        QLineEdit {{
-            border: {BORDER_WIDTH} solid {BORDER};
-            border-radius: {radius}px;
-            padding: {padding};
-            background: white;
-            font-size: {font_size}px;
-            color: {TEXT};
-        }}
-        QLineEdit:focus {{ border-color: {BLUE}; outline: none; }}
-    """
-
-
-def small_line_edit_qss(
-    *, radius: int = 6, font_size: int = FONT_SIZE_BODY, text_align: str = "center"
-) -> str:
-    """紧凑文本输入框（如每周超时数字框）：居中或右对齐显示。"""
-    return f"""
-        QLineEdit {{
-            border: {BORDER_WIDTH} solid {BORDER};
-            border-radius: {radius}px;
-            padding: 4px 8px;
-            background: white;
-            font-size: {font_size}px;
-            text-align: {text_align};
-            color: {TEXT};
-        }}
-        QLineEdit:focus {{ border-color: {BLUE}; outline: none; }}
-    """
-
-
-def combo_box_qss(*, radius: int = 8, font_size: int = FONT_SIZE_BODY) -> str:
-    """下拉框：白底灰边，drop-down 无独立边框。padding-left=12 与 line_edit 一致。"""
-    return f"""
-        QComboBox {{
-            border: {BORDER_WIDTH} solid {BORDER};
-            border-radius: {radius}px;
-            padding: 4px 12px;
-            background: white;
-            font-size: {font_size}px;
-            color: {TEXT};
-        }}
-        QComboBox:hover {{ border-color: {BLUE}; }}
-        QComboBox::drop-down {{ border: none; width: 20px; }}
-    """
-
-
-def check_box_qss(*, size: int = 16) -> str:
-    """复选框：只定制文字颜色，indicator 完全走平台原生（原生自带白底方框+勾）。"""
-    return f"""
-        QCheckBox {{
-            color: {TEXT};
-        }}
-        QCheckBox:disabled {{ color: {TEXT_FAINT}; }}
-    """
-
-
-def message_box_qss() -> str:
-    """消息框：白底深字 + 中性按钮。"""
-    return f"""
-        QMessageBox {{ background-color: white; color: {TEXT}; }}
-        QMessageBox QLabel {{ color: {TEXT}; background-color: transparent; }}
-        QMessageBox QPushButton {{
-            background-color: #F1F5F9; color: {TEXT};
-            border: {BORDER_WIDTH} solid {BORDER}; border-radius: 6px; padding: 6px 16px;
-        }}
-        QMessageBox QPushButton:hover {{ background-color: {BG_HOVER}; }}
-    """
+def rgba(hex_color: str, alpha: int) -> QColor:
+    c = QColor(hex_color)
+    c.setAlpha(alpha)
+    return c

@@ -1,11 +1,10 @@
-"""GUI 包（旧 GUI 残留：仅保留被新 GUI src/launcher_proto 复用的共享模块）。
+"""GUI 包：新 GUI 主窗口 + 单脚本配置弹窗（旧 GUI 残留已并入/删除）。
 
-- dialogs: 单脚本配置弹窗（SingleScriptConfigDialog）与确认回调
-- theme: 旧 GUI 设计 token 与 QSS（dialogs 依赖）
-- utils: 统一消息框 / 打开文件辅助 / 按钮工厂 / 标题栏同步（dialogs 依赖）
+- main_window: 启动器式主窗口（LauncherWindow，2026-08-16 起正式入口）
+- task_card / widgets / icons / theme: 任务卡 / 自绘控件 / 图标 / 设计常量
+- dialogs: SingleScriptConfigDialog / confirm_config_update / inject_config_confirm
+  （自包含：弹窗样式与工具封在文件内部）
 
-脚本图标获取（get_script_icon）已并入 src/launcher_proto/icons.py（2026-08-16）。
-
-新 GUI 主窗口在 src/launcher_proto；正式入口 launcher.bat（python -m
-src.launcher_proto.launcher_proto）与 src/launcher.py 的 GUI 主路径均已指向它。
+正式入口 launcher.bat（python -m src.gui.main_window）与 src/launcher.py 的
+GUI 主路径均指向 LauncherWindow。
 """

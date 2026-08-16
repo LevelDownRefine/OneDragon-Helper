@@ -1,6 +1,6 @@
-"""launcher_proto 任务调度面板（TaskCardPanel）：专题卡构建与副本/周常交互。
+"""任务调度面板（TaskCardPanel）：专题卡构建与副本/周常交互。
 
-从 launcher_proto.py 按职责拆分而来（2026-08-16）：卡片本体（标题行 + 总开关 +
+从 main_window.py 按职责拆分而来（2026-08-16）：卡片本体（标题行 + 总开关 +
 日常/周常任务行）、副本级联菜单、周几选择、gui_state.json 持久化，全部收敛到
 独立面板类。依赖单向：task_card → theme / widgets / config 模块，主窗口 → task_card。
 
@@ -27,14 +27,14 @@ from PySide6.QtWidgets import (
 from src.config.dungeon_config import get_display_name, parse_dungeon_config
 from src.config.set_config import is_adapted
 from src.config.set_config import supports_weekly as _supports_weekly
-from src.launcher_proto.theme import (
+from src.gui.theme import (
     C_BLUE_TEXT,
     C_FAINT,
     C_WHITE,
     C_YELLOW,
     WEEKDAY_NAMES,
 )
-from src.launcher_proto.widgets import Toggle
+from src.gui.widgets import Toggle
 from src.service.chain_service import ChainService
 from src.utils_weekly import get_week_num, is_weekly_start_reached
 

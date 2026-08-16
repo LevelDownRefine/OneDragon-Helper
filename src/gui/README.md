@@ -1,19 +1,28 @@
-# src/gui — 旧 GUI 残留（共享模块）
+# src/gui — GUI 包
 
-旧 GUI（main_window / widgets / runner）已被新 GUI `src/launcher_proto` 替代删除。
-脚本图标获取（icons.py）也已并入 `src/launcher_proto/icons.py`。本包仅保留
-`dialogs`（配置弹窗）与它依赖的 `theme` / `utils`。新 GUI 入口见 `src/launcher_proto`。
+新 GUI 主窗口 + 单脚本配置弹窗（2026-08-16 由 src/launcher_proto 迁入，
+2026-08-17 更名 main_window.py；旧 GUI 的 runner / widgets 已删，
+弹窗样式/工具已并入 dialogs.py）。
 
 ## 文件与依赖
 
-| 模块 | 项目内依赖 |
-|------|-----------|
-| `dialogs` | theme / utils / config.set_config / config.subscript / service.script_service |
-| `theme` | （无项目内依赖，纯样式层） |
-| `utils` | theme / src.utils |
+| 模块 | 职责 | 项目内依赖 |
+|------|------|-----------|
+| `main_window` | 主窗口 LauncherWindow（正式入口） | task_card / widgets / icons / theme / dialogs / config / service |
+| `task_card` | TaskCardPanel 任务卡（副本/周常调度） | theme / widgets / config / service / utils_weekly |
+| `widgets` | RailContainer / Toggle / GameIcon 自绘控件 | theme / icons |
+| `icons` | glyph 绘制 + 脚本 exe 图标获取 | theme / config.subscript / utils |
+| `theme` | 设计稿常量（颜色/尺寸/字体/链接） | （无，纯样式层） |
+| `dialogs` | SingleScriptConfigDialog 弹窗 + 确认回调 | config / service（自包含样式与工具） |
 
-依赖单向：`dialogs` 被新 GUI 的 `launcher_proto.py` 与 `src/launcher.py` 复用；
-`theme` / `utils` 仅被 `dialogs` 依赖。
+依赖单向：`main_window` 是入口，各模块不反向引用主窗口；`theme` 被各模块引用但不依赖业务模块。
+
+## 主窗口（`main_window.py`）
+
+`LauncherWindow`：1280x720 frameless 启动器式界面——左侧脚本栏（图标 + ⊞ 控制
+模式 + 启动全部）、HERO 背景区、任务卡（日常副本/周常周几起）、启动胶囊 +
+悬浮图标条（主页/启动游戏/文件夹/B站/GitHub/壁纸）。运行直接
+`subprocess.Popen` 开独立控制台窗口跑链。
 
 ## 弹窗（`dialogs.py`）
 

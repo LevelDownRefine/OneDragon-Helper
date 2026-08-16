@@ -1,10 +1,10 @@
 """OneDragon-Helper 启动器式 GUI（接入真实 ChainService 数据）。
 
 画布：1280x720 (16:9) · 无系统标题栏（frameless，按住空白处可拖动窗口）
-运行：项目根下 `python -m src.launcher_proto.launcher_proto`（模块方式，
+运行：项目根下 `python -m src.gui.main_window`（模块方式，
   项目根在 sys.path，直接 import src.*）。
 数据源：ChainService.load_config() 的 script_list（左侧栏 = 全部脚本，含 python
-  辅助脚本）；set_config._CONFIGS 决定该脚本是否有「任务卡」适配；
+  辅助脚本）；set_config.is_adapted 决定该脚本是否有「任务卡」适配；
   get_game_exe_path() 供「打开游戏」。背景图经 set_config.get_game_bg_img()
   获取（ScriptConfig.bg_img 相对脚本根目录声明，接口解析为绝对路径并校验存在）；
   B站链接经 set_config.get_game_bilibili() 获取（ScriptConfig.bilibili 声明，
@@ -47,7 +47,7 @@ from src.config.set_config import get_game_homepage as _get_game_homepage
 from src.config.set_config import supports_weekly as _supports_weekly
 from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.dialogs import SingleScriptConfigDialog, confirm_config_update
-from src.launcher_proto.icons import (
+from src.gui.icons import (
     GlyphButton,
     IconButton,
     draw_add,
@@ -65,8 +65,8 @@ from src.launcher_proto.icons import (
     draw_tv,
     draw_wallpaper,
 )
-from src.launcher_proto.task_card import TaskCardPanel
-from src.launcher_proto.theme import (
+from src.gui.task_card import TaskCardPanel
+from src.gui.theme import (
     _URL_BILIBILI,
     _URL_HOME,
     C_BLUE,
@@ -84,7 +84,7 @@ from src.launcher_proto.theme import (
     make_font,
     rgba,
 )
-from src.launcher_proto.widgets import GameIcon, RailContainer
+from src.gui.widgets import GameIcon, RailContainer
 from src.service.chain_service import ChainService
 from src.utils import get_config_yml_path_under_root
 from src.utils_runner import build_script_command
@@ -103,7 +103,7 @@ class LauncherWindow(QWidget):
         self._drag_offset = None
         self.service = ChainService()
         self.games = self._load_games()
-        assert self.games, "[launcher_proto] config.yml 中没有脚本"
+        assert self.games, "[main_window] config.yml 中没有脚本"
         self._current_index = 0
         self._control_mode = (
             False  # ⊞ 模式：False=浏览（点图标选脚本），True=控制（点图标启停）
@@ -646,11 +646,9 @@ class LauncherWindow(QWidget):
             ),
             None,
         )
-        assert src_idx is not None, (
-            f"[launcher_proto] 拖拽源脚本不存在: {src_script_name}"
-        )
+        assert src_idx is not None, f"[main_window] 拖拽源脚本不存在: {src_script_name}"
         assert dst_idx is not None, (
-            f"[launcher_proto] 拖拽目标脚本不存在: {dst_script_name}"
+            f"[main_window] 拖拽目标脚本不存在: {dst_script_name}"
         )
         cur_name = self._current_game()["script_name"]  # 重排后按名字恢复选中
         game = self.games.pop(src_idx)
@@ -664,7 +662,7 @@ class LauncherWindow(QWidget):
             None,
         )
         assert s_idx is not None, (
-            f"[launcher_proto] config 中找不到源脚本: {src_script_name}"
+            f"[main_window] config 中找不到源脚本: {src_script_name}"
         )
         script = scripts.pop(s_idx)
         scripts.insert(dst_idx, script)
@@ -675,7 +673,7 @@ class LauncherWindow(QWidget):
             (i for i, g in enumerate(self.games) if g["script_name"] == cur_name),
             None,
         )
-        assert new_idx is not None, f"[launcher_proto] 重排后丢失选中脚本: {cur_name}"
+        assert new_idx is not None, f"[main_window] 重排后丢失选中脚本: {cur_name}"
         self._current_index = new_idx
         self._rebuild_left_rail()
         self._apply_current_game()
@@ -892,7 +890,7 @@ class LauncherWindow(QWidget):
         dialog.delete_requested.connect(self._on_delete_script)
         if dialog.exec() == QDialog.Accepted:
             assert dialog.pending_changes is not None, (
-                "[launcher_proto] 配置弹窗 accept 但 pending_changes 为空"
+                "[main_window] 配置弹窗 accept 但 pending_changes 为空"
             )
             changes = dialog.pending_changes
             self.service.update_script(

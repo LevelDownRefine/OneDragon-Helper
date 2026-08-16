@@ -1,4 +1,4 @@
-"""测试 src/launcher_proto：周常「周几起」选择、日常副本选择与持久化。"""
+"""测试 src/gui.main_window：周常「周几起」选择、日常副本选择与持久化。"""
 
 import os
 import unittest
@@ -10,10 +10,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFrame
 
-from src.launcher_proto import launcher_proto, task_card
-from src.launcher_proto.launcher_proto import LauncherWindow
-from src.launcher_proto.task_card import TaskCardPanel
-from src.launcher_proto.theme import C_BLUE_TEXT
+from src.gui import main_window, task_card
+from src.gui.main_window import LauncherWindow
+from src.gui.task_card import TaskCardPanel
+from src.gui.theme import C_BLUE_TEXT
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
@@ -165,8 +165,8 @@ class TestWeeklyToggleState(unittest.TestCase):
         win._weekly_toggle_state = {"ok-ww": True}
         win.service.generate_chain.return_value = "chain.yml"
         with (
-            patch.object(launcher_proto, "build_script_command") as mock_build,
-            patch.object(launcher_proto.subprocess, "Popen"),
+            patch.object(main_window, "build_script_command") as mock_build,
+            patch.object(main_window.subprocess, "Popen"),
             patch.object(win, "_toast"),
         ):
             mock_build.return_value = (["python", "--chain", "chain.yml"], ".", {})
@@ -211,13 +211,13 @@ class TestReloadKeepsEnabledState(unittest.TestCase):
         ]
         with (
             patch.object(
-                launcher_proto.ChainService,
+                main_window.ChainService,
                 "load_config",
                 return_value={"script_list": scripts},
             ),
-            patch.object(launcher_proto.ChainService, "load_ui_state", return_value={}),
+            patch.object(main_window.ChainService, "load_ui_state", return_value={}),
             patch.object(
-                launcher_proto.LauncherWindow, "_load_wallpapers", return_value={}
+                main_window.LauncherWindow, "_load_wallpapers", return_value={}
             ),
         ):
             win = LauncherWindow()
@@ -247,7 +247,7 @@ class TestLaunchGame(unittest.TestCase):
         ]
         with (
             patch.object(
-                launcher_proto,
+                main_window,
                 "_get_game_exe_path",
                 return_value="D:/Game/game.exe",
             ),
@@ -262,7 +262,7 @@ class TestLaunchGame(unittest.TestCase):
         """未找到游戏路径（含异环启动器缺失）→ toast 提示"""
         win = _make_window()
         with (
-            patch.object(launcher_proto, "_get_game_exe_path", return_value=None),
+            patch.object(main_window, "_get_game_exe_path", return_value=None),
             patch("os.startfile", create=True) as mock_start,
             patch.object(win, "_toast") as mock_toast,
         ):
@@ -321,7 +321,7 @@ class TestAddScript(unittest.TestCase):
         """文件选择取消（空路径）时不添加脚本、不落盘"""
         win = _make_window()
         with patch(
-            "src.launcher_proto.launcher_proto.QFileDialog.getOpenFileName",
+            "src.gui.main_window.QFileDialog.getOpenFileName",
             return_value=("", ""),
         ):
             win._add_script()
@@ -340,7 +340,7 @@ class TestAddScript(unittest.TestCase):
         win._reload_games = MagicMock()
         win._toast = MagicMock()
         with patch(
-            "src.launcher_proto.launcher_proto.QFileDialog.getOpenFileName",
+            "src.gui.main_window.QFileDialog.getOpenFileName",
             return_value=("C:/y.exe", ""),
         ):
             win._add_script()

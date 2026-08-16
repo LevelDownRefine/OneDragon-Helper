@@ -1,4 +1,4 @@
-"""测试 src/launcher_proto/icons.py：get_script_icon / get_icon_source 的图标源选择。"""
+"""测试 src/gui/icons.py：get_script_icon / get_icon_source 的图标源选择。"""
 
 import os
 import sys
@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-from src.launcher_proto.icons import get_icon_source, get_script_icon
+from src.gui.icons import get_icon_source, get_script_icon
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
@@ -55,7 +55,7 @@ class TestGetScriptIcon(unittest.TestCase):
             "script_type": "external",
             "script_path": "D:/game_helper/March7thAssistant/March7th Assistant.exe",
         }
-        with patch("src.launcher_proto.icons.os.path.isfile", return_value=True):
+        with patch("src.gui.icons.os.path.isfile", return_value=True):
             self.assertEqual(
                 get_icon_source(data),
                 os.path.join(
@@ -70,7 +70,7 @@ class TestGetScriptIcon(unittest.TestCase):
             "script_type": "external",
             "script_path": "D:/game_helper/March7thAssistant/March7th Assistant.exe",
         }
-        with patch("src.launcher_proto.icons.os.path.isfile", return_value=False):
+        with patch("src.gui.icons.os.path.isfile", return_value=False):
             self.assertEqual(
                 get_icon_source(data),
                 "D:/game_helper/March7thAssistant/March7th Assistant.exe",

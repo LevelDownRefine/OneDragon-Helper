@@ -26,7 +26,7 @@ if exist "%env_script%" (
     echo [WARN] 未找到 env.bat，使用当前环境
 )
 
-:: 模块启动，等价 src/launcher.py → 模块名 src.launcher
-python -m src.launcher_proto.launcher_proto %*
+:: 模块启动（GUI 主窗口：src.gui.main_window）
+python -m src.gui.main_window %*
 
 endlocal

@@ -1,6 +1,6 @@
-"""launcher_proto 图标模块：自绘图标 widget/绘制函数 + 脚本 exe 图标获取。
+"""图标模块：自绘图标 widget/绘制函数 + 脚本 exe 图标获取。
 
-- 自绘部分（2026-08-16 从 launcher_proto.py 拆分）：``GlyphButton`` /
+- 自绘部分（2026-08-16 从 main_window.py 拆分）：``GlyphButton`` /
   ``IconButton`` 与悬浮条/窗口控制/左侧栏按钮的 ``draw_*`` 绘制函数。
 - 脚本图标部分（2026-08-16 从 src/gui/icons.py 合并）：``get_script_icon``
   同步链——external 脚本用 exe 自带图标（崩铁优先同目录 March7th Launcher.exe），
@@ -8,7 +8,7 @@
   原 src/gui/icons.py 的后台异步加载机制（Win32 提取 + QThreadPool）已随旧 GUI
   删除：新 GUI 的 GameIcon 同步取图标，无需后台线程。
 
-依赖单向：icons → theme / config.subscript / utils，launcher_proto → icons。
+依赖单向：icons → theme / config.subscript / utils，main_window → icons。
 """
 
 import logging
@@ -28,7 +28,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QFileIconProvider, QWidget
 
 from src.config.subscript import resolve_script_path
-from src.launcher_proto.theme import C_BLUE_TEXT, C_BTN_DARK, C_WHITE
+from src.gui.theme import C_BLUE_TEXT, C_BTN_DARK, C_WHITE
 from src.utils import get_root_dir, safe_path_join
 
 logger = logging.getLogger(__name__)
