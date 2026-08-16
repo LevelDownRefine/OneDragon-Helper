@@ -46,7 +46,7 @@ WEEKDAY_NAMES = {
 
 # ── 游戏元数据（display_name → 图标底色 / 背景主色 / 链接）───────────────
 # 通用占位链接（对应内容未配置时使用）
-_URL_HOME = "https://github.com/"
+_URL_HOME = "https://github.com/LevelDownRefine/OneDragon-Helper"
 _URL_BILIBILI = "https://www.bilibili.com/"
 
 
