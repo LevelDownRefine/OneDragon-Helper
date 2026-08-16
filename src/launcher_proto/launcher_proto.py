@@ -679,6 +679,7 @@ class LauncherWindow(QWidget):
         self._current_index = new_idx
         self._rebuild_left_rail()
         self._apply_current_game()
+        self._toast("已调整脚本顺序")
 
     def _confirm_run(self, enabled_keys: set[str]) -> bool:
         """运行前校验（对齐旧 GUI _warn_if_invalid_scripts）+ 确认弹窗。
