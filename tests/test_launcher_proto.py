@@ -1,4 +1,4 @@
-"""测试 src/launcher_proto/launcher_proto.py：周常「周几起」选择与持久化。"""
+"""测试 src/launcher_proto：周常「周几起」选择、日常副本选择与持久化。"""
 
 import os
 import unittest
@@ -8,86 +8,91 @@ from unittest.mock import MagicMock, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QFrame, QLabel
+from PySide6.QtWidgets import QApplication, QFrame
 
-from src.launcher_proto import launcher_proto
+from src.launcher_proto import launcher_proto, task_card
 from src.launcher_proto.launcher_proto import LauncherWindow
+from src.launcher_proto.task_card import TaskCardPanel
 from src.launcher_proto.theme import C_BLUE_TEXT
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
 
-# 模块级持有 chip 引用，避免无 parent 的 QFrame 被垃圾回收
-_chip_holder = []
+# 模块级持有 panel 引用，避免无 parent 的 QFrame 被垃圾回收
+_panel_holder = []
 
 
 def _make_window(script_name="ok-ww"):
     """构造测试用 LauncherWindow：跳过完整 __init__（避免文件 I/O 与 UI 构建），
-    手动注入周常相关状态。"""
+    手动注入状态与 TaskCardPanel。"""
     win = LauncherWindow.__new__(LauncherWindow)
     win.games = [{"script_name": script_name, "display_name": "测试"}]
     win._current_index = 0
     win._dungeon_state = {}
     win._weekly_toggle_state = {}
     win.service = MagicMock()
-    chip = QFrame()
-    _chip_holder.append(chip)  # 保持引用，防止被垃圾回收
-    win.weekly_chip_lbl = QLabel("", chip)
-    win.weekly_ico_lbl = QLabel("", chip)
-    win.weekly_name_lbl = QLabel("", chip)
-    daily_chip = QFrame()
-    _chip_holder.append(daily_chip)
-    win.daily_chip_lbl = QLabel("", daily_chip)
-    win.weekly_toggle = MagicMock()
-    win.toast_lbl = MagicMock()
+    win._toast = MagicMock()
+    panel_holder = QFrame()
+    _panel_holder.append(panel_holder)  # 保持引用，防止被垃圾回收
+    win.task_card = TaskCardPanel(
+        panel_holder,
+        get_current_game=win._current_game,
+        dungeon_state=win._dungeon_state,
+        weekly_toggle_state=win._weekly_toggle_state,
+        service=win.service,
+        toast=win._toast,
+    )
+    win.task_card.weekly_toggle = MagicMock()
     return win
 
 
 class TestRefreshWeeklyChip(unittest.TestCase):
-    """_refresh_weekly_chip：按 supports_weekly 与已选起始日刷新 chip"""
+    """TaskCardPanel._refresh_weekly_chip：按 supports_weekly 与已选起始日刷新 chip"""
 
     def test_unsupported_shows_disabled(self):
         """未支持周常的脚本 → chip 文字「未支持」不可点，toggle 禁用"""
         win = _make_window()
-        with patch.object(launcher_proto, "_supports_weekly", return_value=False):
-            win._refresh_weekly_chip()
-        self.assertEqual(win.weekly_chip_lbl.text(), "未支持")
-        self.assertEqual(win.weekly_chip_lbl.cursor().shape(), Qt.ArrowCursor)
-        win.weekly_toggle.setEnabled.assert_called_once_with(False)
+        with patch.object(task_card, "_supports_weekly", return_value=False):
+            win.task_card._refresh_weekly_chip()
+        self.assertEqual(win.task_card.weekly_chip_lbl.text(), "未支持")
+        self.assertEqual(win.task_card.weekly_chip_lbl.cursor().shape(), Qt.ArrowCursor)
+        win.task_card.weekly_toggle.setEnabled.assert_called_once_with(False)
 
     def test_supported_enables_toggle(self):
         """支持周常的脚本 → toggle 可用"""
         win = _make_window()
-        with patch.object(launcher_proto, "_supports_weekly", return_value=True):
-            win._refresh_weekly_chip()
-        win.weekly_toggle.setEnabled.assert_called_once_with(True)
+        with patch.object(task_card, "_supports_weekly", return_value=True):
+            win.task_card._refresh_weekly_chip()
+        win.task_card.weekly_toggle.setEnabled.assert_called_once_with(True)
 
     def test_supported_no_selection(self):
         """支持但未选起始日 → 「选择周几」可点（PointingHandCursor）"""
         win = _make_window()
-        with patch.object(launcher_proto, "_supports_weekly", return_value=True):
-            win._refresh_weekly_chip()
-        self.assertEqual(win.weekly_chip_lbl.text(), "选择周几")
-        self.assertEqual(win.weekly_chip_lbl.cursor().shape(), Qt.PointingHandCursor)
+        with patch.object(task_card, "_supports_weekly", return_value=True):
+            win.task_card._refresh_weekly_chip()
+        self.assertEqual(win.task_card.weekly_chip_lbl.text(), "选择周几")
+        self.assertEqual(
+            win.task_card.weekly_chip_lbl.cursor().shape(), Qt.PointingHandCursor
+        )
 
     def test_supported_with_selection(self):
         """支持且已选起始日 4 → 「周四起」"""
         win = _make_window()
-        win._dungeon_state = {"ok-ww": {"weekly_start": 4}}
-        with patch.object(launcher_proto, "_supports_weekly", return_value=True):
-            win._refresh_weekly_chip()
-        self.assertEqual(win.weekly_chip_lbl.text(), "周四起")
-        self.assertIn("#0F1A2E", win.weekly_chip_lbl.parent().styleSheet())
-        self.assertIn(C_BLUE_TEXT, win.weekly_ico_lbl.styleSheet())
-        self.assertIn(C_BLUE_TEXT, win.weekly_name_lbl.styleSheet())
+        win.task_card._dungeon_state = {"ok-ww": {"weekly_start": 4}}
+        with patch.object(task_card, "_supports_weekly", return_value=True):
+            win.task_card._refresh_weekly_chip()
+        self.assertEqual(win.task_card.weekly_chip_lbl.text(), "周四起")
+        self.assertIn("#0F1A2E", win.task_card.weekly_chip_lbl.parent().styleSheet())
+        self.assertIn(C_BLUE_TEXT, win.task_card.weekly_ico_lbl.styleSheet())
+        self.assertIn(C_BLUE_TEXT, win.task_card.weekly_name_lbl.styleSheet())
 
     def test_supported_missing_state_entry(self):
         """_dungeon_state 无该脚本条目 → 视为未选择"""
         win = _make_window()
-        win._dungeon_state = {}
-        with patch.object(launcher_proto, "_supports_weekly", return_value=True):
-            win._refresh_weekly_chip()
-        self.assertEqual(win.weekly_chip_lbl.text(), "选择周几")
+        win.task_card._dungeon_state = {}
+        with patch.object(task_card, "_supports_weekly", return_value=True):
+            win.task_card._refresh_weekly_chip()
+        self.assertEqual(win.task_card.weekly_chip_lbl.text(), "选择周几")
 
 
 class TestSetWeekly(unittest.TestCase):
@@ -96,18 +101,18 @@ class TestSetWeekly(unittest.TestCase):
     def test_persists_and_updates_chip(self):
         """选周四（4）→ _dungeon_state 落 weekly_start=4，chip「周四起」，save_ui_state 调用"""
         win = _make_window()
-        win._set_weekly(4)
+        win.task_card._set_weekly(4)
         self.assertEqual(win._dungeon_state["ok-ww"]["weekly_start"], 4)
-        self.assertEqual(win.weekly_chip_lbl.text(), "周四起")
+        self.assertEqual(win.task_card.weekly_chip_lbl.text(), "周四起")
         win.service.save_ui_state.assert_called_once_with(win._dungeon_state)
 
     def test_keeps_existing_dungeon_fields(self):
         """已有 daily 字段时合并更新，不覆盖 dungeon/sequence"""
         win = _make_window()
-        win._dungeon_state = {"ok-ww": {"dungeon": "无音区", "sequence": 2}}
-        win._set_weekly(6)
+        win.task_card._dungeon_state = {"ok-ww": {"dungeon": "无音区", "sequence": 2}}
+        win.task_card._set_weekly(6)
         self.assertEqual(
-            win._dungeon_state["ok-ww"],
+            win.task_card._dungeon_state["ok-ww"],
             {"dungeon": "无音区", "sequence": 2, "weekly_start": 6},
         )
 
@@ -116,23 +121,23 @@ class TestSetWeekly(unittest.TestCase):
         win = _make_window()
         for bad in (0, 8):
             with self.subTest(bad=bad), self.assertRaises(AssertionError):
-                win._set_weekly(bad)
+                win.task_card._set_weekly(bad)
 
     def test_syncs_toggle_on_when_today_reached(self):
         """今天已是起始日（今天=周五 get_week_num=4，起始=周四4）→ 周常开关开启"""
         win = _make_window()
         with patch("src.utils_weekly.get_week_num", return_value=4):
-            win._set_weekly(4)
+            win.task_card._set_weekly(4)
         self.assertTrue(win._weekly_toggle_state["ok-ww"])
-        win.weekly_toggle.set_on.assert_called_once_with(True)
+        win.task_card.weekly_toggle.set_on.assert_called_once_with(True)
 
     def test_syncs_toggle_off_when_today_before(self):
         """今天未到起始日（今天=周二 get_week_num=1，起始=周四4）→ 周常开关关闭"""
         win = _make_window()
         with patch("src.utils_weekly.get_week_num", return_value=1):
-            win._set_weekly(4)
+            win.task_card._set_weekly(4)
         self.assertFalse(win._weekly_toggle_state["ok-ww"])
-        win.weekly_toggle.set_on.assert_called_once_with(False)
+        win.task_card.weekly_toggle.set_on.assert_called_once_with(False)
 
 
 class TestWeeklyToggleState(unittest.TestCase):
@@ -141,16 +146,16 @@ class TestWeeklyToggleState(unittest.TestCase):
     def test_on_weekly_toggled_updates_memory_state(self):
         """点击开关（on=True）→ 只更新 _weekly_toggle_state，不写 gui_state.json"""
         win = _make_window()
-        win._on_weekly_toggled(True)
+        win.task_card._on_weekly_toggled(True)
         self.assertTrue(win._weekly_toggle_state["ok-ww"])
         win.service.save_ui_state.assert_not_called()
 
     def test_sync_weekly_toggle_applies_memory_state(self):
         """切游戏时把内存态同步到 UI toggle"""
         win = _make_window()
-        win._weekly_toggle_state = {"ok-ww": True}
-        win._sync_weekly_toggle()
-        win.weekly_toggle.set_on.assert_called_once_with(True)
+        win.task_card._weekly_toggle_state = {"ok-ww": True}
+        win.task_card._sync_weekly_toggle()
+        win.task_card.weekly_toggle.set_on.assert_called_once_with(True)
 
     def test_run_chain_passes_persisted_state(self):
         """运行链时把持久化 ui_state（含 weekly_start）传给 chain_gen，
@@ -179,20 +184,20 @@ class TestSetDailyKeepsWeekly(unittest.TestCase):
     def test_daily_update_keeps_weekly_start(self):
         """先设周常再设日常 → weekly_start 保留"""
         win = _make_window()
-        win._set_weekly(4)
+        win.task_card._set_weekly(4)
         win._dungeon_state["ok-ww"].update({"dungeon": "无音区", "sequence": 2})
-        win._set_daily("无音区", 2)
+        win.task_card._set_daily("无音区", 2)
         self.assertEqual(win._dungeon_state["ok-ww"]["weekly_start"], 4)
         self.assertEqual(win._dungeon_state["ok-ww"]["dungeon"], "无音区")
 
     def test_clear_daily_keeps_weekly_start(self):
         """清空日常（None）→ 只删 dungeon/sequence，weekly_start 保留"""
         win = _make_window()
-        win._dungeon_state = {
+        win.task_card._dungeon_state = {
             "ok-ww": {"dungeon": "无音区", "sequence": 2, "weekly_start": 4}
         }
-        win._set_daily(None, None)
-        self.assertEqual(win._dungeon_state["ok-ww"], {"weekly_start": 4})
+        win.task_card._set_daily(None, None)
+        self.assertEqual(win.task_card._dungeon_state["ok-ww"], {"weekly_start": 4})
 
 
 class TestReloadKeepsEnabledState(unittest.TestCase):
@@ -274,10 +279,10 @@ class TestShowWeeklyMenu(unittest.TestCase):
         """未支持周常 → 直接返回，不 exec 菜单"""
         win = _make_window()
         with (
-            patch.object(launcher_proto, "_supports_weekly", return_value=False),
-            patch.object(launcher_proto.QMenu, "exec") as mock_exec,
+            patch.object(task_card, "_supports_weekly", return_value=False),
+            patch.object(task_card.QMenu, "exec") as mock_exec,
         ):
-            win._show_weekly_menu()
+            win.task_card._show_weekly_menu()
         mock_exec.assert_not_called()
 
     def test_supported_shows_seven_days(self):
@@ -290,11 +295,11 @@ class TestShowWeeklyMenu(unittest.TestCase):
         )
         fake_menu_cls = MagicMock(return_value=menu)
         with (
-            patch.object(launcher_proto, "_supports_weekly", return_value=True),
-            patch.object(launcher_proto, "get_week_num", return_value=3),
-            patch.object(launcher_proto, "QMenu", fake_menu_cls),
+            patch.object(task_card, "_supports_weekly", return_value=True),
+            patch.object(task_card, "get_week_num", return_value=3),
+            patch.object(task_card, "QMenu", fake_menu_cls),
         ):
-            win._show_weekly_menu()
+            win.task_card._show_weekly_menu()
         self.assertEqual(len(slots), 7)
         labels = [call.args[0] for call in menu.addAction.call_args_list]
         # 周四（today=3 → 4）标注「（今天）」，其余为纯星期名
