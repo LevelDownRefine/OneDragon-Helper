@@ -48,8 +48,8 @@ from src.config.set_config import supports_weekly as _supports_weekly
 from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.dialogs import SingleScriptConfigDialog, confirm_config_update
 from src.launcher_proto.icons import (
+    GlyphButton,
     IconButton,
-    _GlyphButton,
     draw_add,
     draw_close,
     draw_config,
@@ -289,7 +289,7 @@ class LauncherWindow(QWidget):
         self.grid_frame.mousePressEvent = lambda e: (
             self._toggle_mode() if e.button() == Qt.LeftButton else None
         )
-        grid_glyph = _GlyphButton(draw_grid, self.grid_frame)
+        grid_glyph = GlyphButton(draw_grid, self.grid_frame)
         grid_glyph.setGeometry(0, 0, 48, 48)
         grid_glyph.show()
         self.grid_frame.show()
@@ -303,7 +303,7 @@ class LauncherWindow(QWidget):
             f"QFrame:hover {{ background:{QColor(C_YELLOW).lighter(118).name()}; }}"
         )
         launch_btn.setCursor(Qt.PointingHandCursor)
-        launch_glyph = _GlyphButton(draw_launch, launch_btn)
+        launch_glyph = GlyphButton(draw_launch, launch_btn)
         launch_glyph.setGeometry(0, 0, 48, 48)
         launch_glyph.show()
         launch_btn.show()
@@ -459,7 +459,7 @@ class LauncherWindow(QWidget):
             f"QFrame:hover {{ background:{QColor(C_BTN_DARK).lighter(140).name()}; }}"
         )
         self.add_btn.setCursor(Qt.PointingHandCursor)
-        add_glyph = _GlyphButton(draw_add, self.add_btn)
+        add_glyph = GlyphButton(draw_add, self.add_btn)
         add_glyph.setGeometry(0, 0, 48, 48)
         add_glyph.show()
         self.add_btn.setVisible(self._control_mode)  # 仅控制模式显示
@@ -480,7 +480,7 @@ class LauncherWindow(QWidget):
             f"QFrame:hover {{ background:{QColor(C_BTN_DARK).lighter(140).name()}; }}"
         )
         self.clear_btn.setCursor(Qt.PointingHandCursor)
-        clear_glyph = _GlyphButton(draw_deselect_all, self.clear_btn)
+        clear_glyph = GlyphButton(draw_deselect_all, self.clear_btn)
         clear_glyph.setGeometry(0, 0, 48, 48)
         clear_glyph.show()
         self.clear_btn.setVisible(self._control_mode)  # 仅控制模式显示
@@ -502,7 +502,7 @@ class LauncherWindow(QWidget):
             f"QFrame:hover {{ background:{QColor(C_GREEN).lighter(115).name()}; }}"
         )
         self.select_all_btn.setCursor(Qt.PointingHandCursor)
-        select_glyph = _GlyphButton(draw_select_all, self.select_all_btn)
+        select_glyph = GlyphButton(draw_select_all, self.select_all_btn)
         select_glyph.setGeometry(0, 0, 48, 48)
         select_glyph.show()
         self.select_all_btn.setVisible(self._control_mode)  # 仅控制模式显示

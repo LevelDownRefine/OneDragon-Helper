@@ -345,7 +345,7 @@ class TestSingleScriptConfigDialogOpenConfig(unittest.TestCase):
         dlg = self._make_dialog((None, "该脚本暂未适配配置文件，无法打开"))
         with (
             patch("src.gui.dialogs.safe_startfile") as mock_start,
-            patch("src.gui.dialogs._styled_msg_box") as mock_box,
+            patch("src.gui.dialogs.styled_msg_box") as mock_box,
         ):
             dlg._open_config_file()
         mock_start.assert_not_called()
@@ -365,7 +365,7 @@ class TestSingleScriptConfigDialogOpenConfig(unittest.TestCase):
         dlg = self._make_dialog((None, "找不到脚本文件"))
         with (
             patch("src.gui.dialogs.safe_startfile") as mock_start,
-            patch("src.gui.dialogs._styled_msg_box") as mock_box,
+            patch("src.gui.dialogs.styled_msg_box") as mock_box,
         ):
             dlg._open_config_file()
         mock_start.assert_not_called()

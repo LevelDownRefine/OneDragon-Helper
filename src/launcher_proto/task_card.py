@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.dungeon_config import get_display_name, parse_dungeon_config
-from src.config.set_config import _CONFIGS
+from src.config.set_config import is_adapted
 from src.config.set_config import supports_weekly as _supports_weekly
 from src.launcher_proto.theme import (
     C_BLUE_TEXT,
@@ -73,8 +73,8 @@ class TaskCardPanel(QFrame):
     def _build_ui(self):
         """专题卡（x:128 y:428 w:480，玻璃半透明）。
 
-        标题随选中游戏变化；所有脚本都显示卡片（任务调度），未适配副本配置
-        的游戏（不在 set_config._CONFIGS）只留标题，隐藏总开关/分隔线/任务行
+        标题随选中游戏变化；所有脚本都显示卡片（任务调度），未注册适配
+        的游戏（is_adapted 为 False）只留标题，隐藏总开关/分隔线/任务行
         （通过 refresh 的 _set_task_rows_visible 控制，卡片高度随之收缩）。
         """
         self.setGeometry(128, 428, 480, 268)
@@ -160,7 +160,7 @@ class TaskCardPanel(QFrame):
 
         对齐旧 GUI _apply_current_game 的 task_card 部分。
         """
-        adapted = game["script_name"] in _CONFIGS
+        adapted = is_adapted(game["script_name"])
         self._set_task_card_title(game["display_name"])
         self._set_task_rows_visible(adapted)
         if adapted:

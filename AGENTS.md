@@ -20,9 +20,8 @@ OneDragon-Helper 项目指南
 src/launcher.py            # 入口：parse_args / config_workflow / main
 src/utils.py               # 路径工具
 src/utils_logger.py        # setup_logging()：控制台 + 文件轮转
-src/gui/                   # GUI 包（详见 src/gui/README.md）
-  main_window.py / widgets.py / dialogs.py / icons.py
-  theme.py / utils.py / runner.py
+src/gui/                   # 旧 GUI 残留：仅 dialogs/theme/utils（dialogs 被新 GUI 复用）
+src/launcher_proto/        # 新 GUI：主窗口（launcher_proto.py）+ task_card/widgets/icons/theme
 src/config/
   set_config.py             # 副本配置适配器：外观接口 + ScriptConfig 类层级（设计见 set_config.md）
   subscript.py              # config 读写子脚本基础设施（load/save/template）
@@ -37,7 +36,7 @@ tests/                      # 测试文件
 
 ## 4. 核心架构
 
-- **GUI**：`MainWindow` 列出 `ScriptItem`（副本下拉 + 开关 + 配置弹窗）→ 生成脚本链配置 → `ScriptChainRunner(QThread)` 以单个 runner 子进程运行整条链。详见 [`src/gui/README.md`](src/gui/README.md)。
+- **GUI**：新 GUI `LauncherWindow`（src/launcher_proto）——左侧脚本栏（图标 + ⊞ 控制模式 + 启动全部）+ 任务卡（日常副本/周常周几起）+ 启动胶囊 + 悬浮图标条；运行直接 `subprocess.Popen` 开独立控制台窗口跑链。旧 GUI 仅残留被复用的 dialogs/theme/utils（脚本图标已并入 launcher_proto/icons.py）。详见 [`src/gui/README.md`](src/gui/README.md) 与 `src/launcher_proto/` 各模块 docstring。
 - **副本配置适配器**：外观接口 `set_config()` + `ScriptConfig` 类层级，各游戏一个子类。详见 [`src/config/set_config.md`](src/config/set_config.md)。
 - **运行器**：`src/runner/` 逐条执行脚本链，`block` 字段控制阻塞/非阻塞。详见 [`src/runner/README.md`](src/runner/README.md)。
 - **初始化**：首次 `config.yml` 缺失时 `config_workflow()`模板生成。
@@ -72,5 +71,5 @@ export PYTHONPATH=src && python -m unittest discover -s tests -p "test*.py"   # 
 ruff check src tests                                                          # 风格检查（含 src/runner/）
 ```
 
-- **启动 GUI**：`launcher.bat`，或 `python -m src.launcher`。
+- **启动 GUI**：`launcher.bat`，或 `python -m src.launcher`（CLI 出口 `--generate-chain`/`--run-chain` 见 `cli_launcher.bat`）。
 - **新增游戏适配**：见 `src/config/set_config.md`。

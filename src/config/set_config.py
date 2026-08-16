@@ -1073,6 +1073,19 @@ def get_game_homepage(script_name: str) -> str:
     return _CONFIGS[script_name].get_game_homepage(script_name)
 
 
+def is_adapted(script_name: str) -> bool:
+    """
+    外观接口：查询脚本是否已注册副本配置适配（供 GUI 决定是否显示任务卡）。
+
+    只读查询，不实例化子类。未适配（不在 _CONFIGS 注册表）→ False。
+
+    Args:
+        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
+            python/bat 为 display_name）。
+    """
+    return script_name in _CONFIGS
+
+
 def supports_weekly(script_name: str) -> bool:
     """
     外观接口：查询脚本是否支持周常（周几以后开始执行）配置（供 GUI 控制周常行可选性）。

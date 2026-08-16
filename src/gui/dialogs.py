@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 from src.config.set_config import ScriptConfig
 from src.config.subscript import default_script_entry, get_script_name
 from src.gui import theme
-from src.gui.utils import _styled_msg_box, make_secondary_button, safe_startfile
+from src.gui.utils import make_secondary_button, safe_startfile, styled_msg_box
 from src.service.script_service import ScriptService
 
 # 脚本文件选择过滤器（两个弹窗共用）
@@ -466,7 +466,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         """打开本脚本的配置文件：路径计算委托 ScriptService，GUI 只负责打开或提示。"""
         path, error = self._script_service.config_file_path(self.script_name)
         if error is not None:
-            _styled_msg_box(self, QMessageBox.Warning, "提示", error).exec()
+            styled_msg_box(self, QMessageBox.Warning, "提示", error).exec()
             return
         safe_startfile(self, path, "无法打开配置文件")
 

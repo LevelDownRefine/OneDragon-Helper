@@ -577,5 +577,17 @@ class TestConfirmSave(unittest.TestCase):
         self.assertTrue(self._make_config().enabled)
 
 
+class TestIsAdapted(unittest.TestCase):
+    """is_adapted：脚本是否已注册副本配置适配（GUI 任务卡显隐依据）。"""
+
+    def test_registered_script_true(self):
+        """已注册适配的脚本（如 ok-ww 鸣潮）→ True"""
+        self.assertTrue(set_config.is_adapted("ok-ww"))
+
+    def test_unregistered_script_false(self):
+        """未注册适配的脚本（任意未知标识）→ False，不抛异常"""
+        self.assertFalse(set_config.is_adapted("不存在的脚本"))
+
+
 if __name__ == "__main__":
     unittest.main()

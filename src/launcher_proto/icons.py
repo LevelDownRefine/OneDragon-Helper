@@ -1,6 +1,6 @@
 """launcher_proto 图标模块：自绘图标 widget/绘制函数 + 脚本 exe 图标获取。
 
-- 自绘部分（2026-08-16 从 launcher_proto.py 拆分）：``_GlyphButton`` /
+- 自绘部分（2026-08-16 从 launcher_proto.py 拆分）：``GlyphButton`` /
   ``IconButton`` 与悬浮条/窗口控制/左侧栏按钮的 ``draw_*`` 绘制函数。
 - 脚本图标部分（2026-08-16 从 src/gui/icons.py 合并）：``get_script_icon``
   同步链——external 脚本用 exe 自带图标（崩铁优先同目录 March7th Launcher.exe），
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════ 自绘图标 widget ═══════════════════════════════════
-class _GlyphButton(QWidget):
+class GlyphButton(QWidget):
     """自绘图标 widget：draw_fn 接受已经 translate 到中心的 QPainter。"""
 
     def __init__(self, draw_fn, parent=None):

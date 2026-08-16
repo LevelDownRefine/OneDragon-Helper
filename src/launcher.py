@@ -1,7 +1,7 @@
 """启动器入口：GUI 启动。
 
 GUI 主窗口在新 GUI（src/launcher_proto）；旧 GUI 仅保留被新 GUI 复用的
-共享模块（src/gui 的 dialogs / icons / theme / utils）。无头 CLI 出口见
+共享模块（src/gui 的 dialogs / theme / utils）。无头 CLI 出口见
 :mod:`src.cli`（本模块的 --generate-chain / --run-chain 等命令行参数）。
 """
 

@@ -26,7 +26,7 @@ from src.gui.theme import (
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "_styled_msg_box",
+    "styled_msg_box",
     "safe_startfile",
     "make_pill_button",
     "make_secondary_button",
@@ -73,7 +73,7 @@ def sync_titlebar_color(widget, color_hex: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _styled_msg_box(parent, icon, title, text):
+def styled_msg_box(parent, icon, title, text):
     """构造一个样式固定的消息框（白底深字，带图标），直接 .exec() 即可。"""
     box = QMessageBox(parent)
     box.setIcon(icon)
@@ -90,6 +90,6 @@ def safe_startfile(parent, path, fail_text):
         os.startfile(path)
     except OSError as e:
         warnings.warn(f"{fail_text}: {e}", RuntimeWarning, stacklevel=2)
-        _styled_msg_box(
+        styled_msg_box(
             parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}"
         ).exec()
