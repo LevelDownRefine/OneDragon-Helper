@@ -2,10 +2,7 @@
 
 从 launcher_proto.py 按职责拆分而来（2026-08-16）：图标类（_GlyphButton /
 IconButton）与图标绘制函数（悬浮条/窗口控制/左侧栏按钮图形）独立成模块，
-主窗口只负责组装。依赖单向：icons → 无（Qt 标准库），launcher_proto → icons。
-
-颜色常量自包含：不反向 import 主窗口常量（避免循环导入）；值与
-launcher_proto.py 顶层常量同源，待后续抽 theme.py 时统一收敛。
+主窗口只负责组装。依赖单向：icons → theme，launcher_proto → icons。
 """
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt, Signal
@@ -18,10 +15,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-# 图标绘制用色（与 launcher_proto.py 顶层常量同值；待 theme.py 抽取后合并）
-C_WHITE = "#FFFFFF"
-C_BTN_DARK = "#1F2937"  # 悬浮条/窗口控制深底
-C_BLUE_TEXT = "#7DA8FF"  # 选中/文字高亮蓝
+from src.launcher_proto.theme import C_BLUE_TEXT, C_BTN_DARK, C_WHITE
 
 
 class _GlyphButton(QWidget):

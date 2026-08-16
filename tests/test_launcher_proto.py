@@ -11,7 +11,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QFrame, QLabel
 
 from src.launcher_proto import launcher_proto
-from src.launcher_proto.launcher_proto import C_BLUE_TEXT, LauncherWindow
+from src.launcher_proto.launcher_proto import LauncherWindow
+from src.launcher_proto.theme import C_BLUE_TEXT
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
