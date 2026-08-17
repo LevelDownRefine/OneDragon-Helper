@@ -695,6 +695,7 @@ class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
     _task_key = "体力本"
+    _template_rel_path = "okef一条龙.json"
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
@@ -704,10 +705,6 @@ class EndfieldConfig(ScriptConfig):
 
     def __init__(self):
         self._init_config()
-
-    def _init_config(self):
-        # TODO: 确认包含了绳索等配置
-        pass
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
         """终末地副本两级组织：有二级时写入二级副本名，否则回退一级。

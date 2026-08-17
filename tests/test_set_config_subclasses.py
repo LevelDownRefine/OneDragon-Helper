@@ -374,22 +374,26 @@ class TestGenshinConfig(unittest.TestCase):
 
 class TestEndfieldConfig(unittest.TestCase):
     def test_init_attributes(self):
-        cfg = EndfieldConfig()
+        with patch.object(EndfieldConfig, "_init_config"):
+            cfg = EndfieldConfig()
         self.assertEqual(cfg.display_name, "终末地")
         self.assertEqual(cfg._script_name, "ok-ef")
         self.assertEqual(cfg._task_key, "体力本")
         self.assertEqual(cfg._task_map, {})
+        self.assertEqual(cfg._template_rel_path, "okef一条龙.json")
 
     def test_update_task_direct_assign(self):
         """终末地 _task_map 为空，直接用 dungeon_name"""
-        cfg = EndfieldConfig()
+        with patch.object(EndfieldConfig, "_init_config"):
+            cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
         changed = cfg._update_task(config, "新本")
         self.assertTrue(changed)
         self.assertEqual(config["体力本"], "新本")
 
     def test_set_dungeon_no_sequence(self):
-        cfg = EndfieldConfig()
+        with patch.object(EndfieldConfig, "_init_config"):
+            cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
         with (
             patch.object(cfg, "_load", return_value=config),
@@ -400,7 +404,8 @@ class TestEndfieldConfig(unittest.TestCase):
 
     def test_set_dungeon_with_sequence_writes_second_level(self):
         """终末地副本按「类型 → 副本」两级组织（假一级目录）：写入的是二级副本名。"""
-        cfg = EndfieldConfig()
+        with patch.object(EndfieldConfig, "_init_config"):
+            cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
         with (
             patch.object(cfg, "_load", return_value=config),
@@ -408,6 +413,36 @@ class TestEndfieldConfig(unittest.TestCase):
         ):
             cfg.set_dungeon("能量淤积点", sequence="枢纽区")
         mock_save.assert_called_once_with({"体力本": "枢纽区"})
+
+    def test_init_config_aligned_no_save(self):
+        """config 与模板对齐（含模板外的自定义 key）时不保存"""
+        template = {"购物白名单": ["精锻"], "是否买礼物": False}
+        config = {
+            "购物白名单": ["精锻"],
+            "是否买礼物": False,
+            "体力本": "旧本",  # 模板外的用户自定义 key
+        }
+        with (
+            patch.object(EndfieldConfig, "_load", return_value=config),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps(template))),
+            patch.object(EndfieldConfig, "_save") as mock_save,
+        ):
+            EndfieldConfig()
+        mock_save.assert_not_called()
+
+    def test_init_config_misaligned_saves(self):
+        """config 与模板不对齐时用模板值回填并保存"""
+        template = {"购物白名单": ["精锻"], "是否买礼物": False}
+        config = {"购物白名单": ["碎矿"], "是否买礼物": True}
+        with (
+            patch.object(EndfieldConfig, "_load", return_value=config),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps(template))),
+            patch.object(EndfieldConfig, "_save") as mock_save,
+        ):
+            EndfieldConfig()
+        mock_save.assert_called_once_with(template)
 
 
 # ============================================================
