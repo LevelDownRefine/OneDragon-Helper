@@ -763,6 +763,30 @@ class TestNTEConfig(unittest.TestCase):
         self.assertEqual(saved_config["daily_anomaly"]["任务类型"], "异能升级材料")
         self.assertEqual(saved_config["daily_anomaly"]["异能材料序号"], 3)
 
+    def test_set_dungeon_switch_and_sequence_writes_both(self):
+        """从异能升级材料切到空幕并选序号：任务类型与序号两通道都必须写入。
+
+        基类改用非短路取或前，_update_task 返回 True 会吞掉 _update_sequence，
+        导致 空幕序号 不写（缺字段）。本断言钉死双通道都执行。
+        """
+        config = {
+            "daily_anomaly": {
+                "任务类型": "异能升级材料",
+                "异能材料序号": 1,
+                "空幕序号": 1,
+            }
+        }
+        routine = self._make_routine()  # 已对齐，不触发 routine 写盘
+        with (
+            self._patch_load(config, routine),
+            patch.object(self.cfg, "_save") as mock_save,
+        ):
+            self.cfg.set_dungeon("空幕", 3)
+        mock_save.assert_called_once()  # 仅主配置落盘
+        saved = mock_save.call_args[0][0]
+        self.assertEqual(saved["daily_anomaly"]["任务类型"], "空幕")
+        self.assertEqual(saved["daily_anomaly"]["空幕序号"], 3)  # 序号通道也被执行
+
     def test_update_task_writes_dungeon_name(self):
         """任务类型写入 daily_anomaly 子对象（值即中文副本名）"""
         self.cfg._bind_section("异能升级材料")

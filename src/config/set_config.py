@@ -342,9 +342,9 @@ class ScriptConfig:
             )
             return
         config = self._load()
-        changed = self._update_task(config, dungeon_name) or self._update_sequence(
-            config, dungeon_name, sequence
-        )
+        task_changed = self._update_task(config, dungeon_name)
+        seq_changed = self._update_sequence(config, dungeon_name, sequence)
+        changed = task_changed or seq_changed
         if changed:
             logger.info(f"[set_dungeon][{self.display_name}] config 已更新")
             self._save(config)
