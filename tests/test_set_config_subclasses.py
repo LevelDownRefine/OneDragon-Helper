@@ -633,7 +633,6 @@ class TestNTEConfig(unittest.TestCase):
             self.cfg._routine_config_rel_path,
             "data/apps/ok-nte/working/configs/DailyRoutineTask.json",
         )
-        self.assertEqual(self.cfg._daily_section, "daily_anomaly")
         self.assertEqual(
             self.cfg._exclusive_routine_items,
             ("daily_anomaly", "daily_anomaly_hunter"),

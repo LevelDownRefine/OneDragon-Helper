@@ -550,20 +550,17 @@ class WutheringWavesConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    display_name = "鸣潮"
+    _task_key = "Which to Farm"
+    _task_map = {
+        "凝素领域": "Forgery Challenge",
+        "模拟领域": "Simulation Challenge",
+        "无音区": "Tacet Suppression",
+    }
     bilibili = "1955897084"
     github = "ok-oldking/ok-wuthering-waves"
     homepage = "https://mc.kurogames.com/"
     _weekly_task_name = "Check Weekly Garden"
-    """周常（每周花园）在 Additional Tasks 列表中的任务名。"""
-
-    def __init__(self):
-        self.display_name = "鸣潮"
-        self._task_key = "Which to Farm"
-        self._task_map = {
-            "凝素领域": "Forgery Challenge",
-            "模拟领域": "Simulation Challenge",
-            "无音区": "Tacet Suppression",
-        }
 
     def _write_weekly(self, enabled: bool) -> None:
         """控制「Check Weekly Garden」在 Additional Tasks 中的增删。
@@ -575,6 +572,7 @@ class WutheringWavesConfig(ScriptConfig):
             AssertionError: 缺少 Additional Tasks 列表字段。
         """
         config = self._load()
+        # 周常（乐园）在 Additional Tasks 列表中任务名 _weekly_task_name。
         tasks = get_field(
             config, "Additional Tasks to Run After Daily Task", self.display_name, list
         )
@@ -646,6 +644,8 @@ class WutheringWavesConfig(ScriptConfig):
 @register
 class GenshinConfig(ScriptConfig):
     _script_name = "BetterGI"
+    display_name = "原神"
+    _task_key = "DomainName"
     _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
@@ -660,8 +660,6 @@ class GenshinConfig(ScriptConfig):
     """BetterGI 官方仓库 banner（与 BetterGI.exe 内嵌主界面横幅同一张）。"""
 
     def __init__(self):
-        self.display_name = "原神"
-        self._task_key = "DomainName"
         self._init_config()
 
     @classmethod
@@ -695,6 +693,8 @@ class GenshinConfig(ScriptConfig):
 @register
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
+    display_name = "终末地"
+    _task_key = "体力本"
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
@@ -703,8 +703,6 @@ class EndfieldConfig(ScriptConfig):
     homepage = "https://endfield.hypergryph.com/"
 
     def __init__(self):
-        self.display_name = "终末地"
-        self._task_key = "体力本"
         self._init_config()
 
     def _init_config(self):
@@ -726,6 +724,7 @@ class EndfieldConfig(ScriptConfig):
 @register
 class ZenlessZoneZeroConfig(ScriptConfig):
     _script_name = "OneDragon-Launcher"
+    display_name = "绝区零"
     _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
     _template_rel_path = "ZZZ一条龙.yml"
@@ -736,10 +735,8 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     github = "DoctorReid/ZenlessZoneZero-OneDragon"
     homepage = "https://zzz.mihoyo.com/"
     _weekly_task_name = "lost_void"
-    """周常（遗失的虚空）在 _group.yml app_list 中的 app_id。"""
 
     def __init__(self):
-        self.display_name = "绝区零"
         self._init_config()
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
@@ -755,6 +752,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
             AssertionError: app_list 缺少 lost_void 条目。
         """
         config = self._load_weekly()
+        # 周常（迷失之地）在 _group.yml app_list 中的 app_id。
         app_list = get_field(config, "app_list", self.display_name, list)
         target = next(
             (app for app in app_list if app.get("app_id") == self._weekly_task_name),
@@ -771,6 +769,8 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 @register
 class StarRailConfig(ScriptConfig):
     _script_name = "March7th-Assistant"
+    display_name = "崩铁"
+    _task_key = "instance_type"
     _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
     _template_rel_path = "M7A一条龙.yml"
@@ -780,11 +780,8 @@ class StarRailConfig(ScriptConfig):
     github = "moesnow/March7thAssistant"
     homepage = "https://sr.mihoyo.com/"
     _weekly_task_name = "currencywars_enable"
-    """周常（货币战争）在 config.yaml 中的开关字段名。"""
 
     def __init__(self):
-        self.display_name = "崩铁"
-        self._task_key = "instance_type"
         self._init_config()
 
     def _write_weekly(self, enabled: bool) -> None:
@@ -794,6 +791,7 @@ class StarRailConfig(ScriptConfig):
             enabled: 是否启用周常。
         """
         config = self._load()
+        # 周常（货币战争）在 config.yaml 中的开关_weekly_task_name。
         safe_update(config, self._weekly_task_name, enabled, self.display_name)
         self._save(config)
 
@@ -806,20 +804,15 @@ class NTEConfig(ScriptConfig):
     _routine_config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTask.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    display_name = "异环"
     bilibili = "3546636978489848"
     github = "BnanZ0/ok-nte"
     homepage = "https://yh.wanmei.com/"
-    _daily_section = "daily_anomaly"
-    """日常任务配置顶层子对象名（由 _bind_section 按副本切换）。"""
     _exclusive_routine_items = ("daily_anomaly", "daily_anomaly_hunter")
     """互斥的两个日常 routine item id（DailyRoutineTask.json）。"""
 
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
-
-    def __init__(self):
-        self.display_name = "异环"
-        # 动态字段由 _bind_section 绑定
 
     @classmethod
     def get_game_exe_path(cls, script_name: str) -> str | None:
@@ -987,6 +980,7 @@ class NTEConfig(ScriptConfig):
 @register
 class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
+    display_name = "粥"
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
     _template_rel_path = "MAA一条龙.json"
@@ -1002,7 +996,6 @@ class ArknightsConfig(ScriptConfig):
     )
 
     def __init__(self):
-        self.display_name = "粥"
         self._init_task_map()
         self._init_config()
 
