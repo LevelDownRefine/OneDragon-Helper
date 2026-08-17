@@ -812,7 +812,13 @@ class NTEConfig(ScriptConfig):
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
         """写任务类型字段（值=中文副本名）；追猎目标无此字段，跳过。"""
         if dungeon_name == "追猎目标":
+            assert not self._task_key, (
+                f"[set_config][{self.display_name}] 追猎目标不应绑定任务类型通道"
+            )
             return False
+        assert self._task_key, (
+            f"[set_config][{self.display_name}] 异象界域必须绑定任务类型通道"
+        )
         return safe_update(
             self._daily_section_dict(config),
             self._task_key,
@@ -837,6 +843,7 @@ class NTEConfig(ScriptConfig):
         if dungeon_name == "追猎目标":
             self._daily_section = "daily_anomaly_hunter"
             self._seq_key_map = {"追猎目标": "追猎目标"}
+            self._task_key = None  # 追猎目标走序列通道，无任务类型字段
         else:
             self._daily_section = "daily_anomaly"
             self._seq_key_map = {
