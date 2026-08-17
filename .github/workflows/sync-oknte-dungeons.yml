@@ -40,12 +40,16 @@ jobs:
         if: steps.sync.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
-          commit-message: "chore: sync ok-nte dungeon numbers from upstream"
-          title: "chore: 同步异环副本数字"
+          commit-message: "chore: sync ok-nte dungeon lists from upstream"
+          title: "chore: 同步异环副本（数字 + 追猎目标）"
           body: |
-            检测到异环副本数量有更新，已从 ok-nte 的 `AnomalyTask.py`（`_ID_RANGE`）同步到 `config/dungeon_list.yml`。
+            检测到异环副本有更新，已从 ok-nte 上游同步到 `config/dungeon_list.yml`：
+
+            - 异象界域（数字）：`AnomalyTask.py` 的 `_ID_RANGE`
+            - 追猎目标（boss 名）：`AnomalyHunter.py` 的 `HUNTER_TARGETS`
 
             - 新增数字的 display 为占位数字，**请人工改成友好名**（如 光暗/鸟/苹果）
-            - 移除的数字仅报告不删除（避免上游短暂回退时丢配置）
+            - 新增的追猎目标为 boss 中文名，**请人工核对**是否与游戏内一致
+            - 移除的项仅报告不删除（避免上游短暂回退时丢配置）
           branch: auto-sync/oknte-dungeons
           delete-branch: true
