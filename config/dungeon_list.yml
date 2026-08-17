@@ -296,6 +296,22 @@ ok-nte:
       value: 4
     - display: 戏剧
       value: 5
+  - name: 追猎目标
+    sequences:
+    - display: 音霸魔王
+      value: 音霸魔王
+    - display: 无首铁驭
+      value: 无首铁驭
+    - display: 塞润尼缇
+      value: 塞润尼缇
+    - display: 黑之书
+      value: 黑之书
+    - display: 海囚
+      value: 海囚
+    - display: 围巢鸟
+      value: 围巢鸟
+    - display: 斑蝶
+      value: 斑蝶
 MAA:
   dungeons:
   - name: 未选择

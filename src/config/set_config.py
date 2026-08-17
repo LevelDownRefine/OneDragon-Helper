@@ -70,6 +70,24 @@ def safe_update(
     return True
 
 
+def get_field(
+    config: dict,
+    key: str,
+    display_name: str,
+    type: type | None = None,
+    context: str = "",
+):
+    """取必填字段，缺字段或类型错误（指定 type 时）均 assert 暴露；context 标注所属操作。"""
+    prefix = f"[set_config][{display_name}]"
+    if context:
+        prefix += f"[{context}]"
+    assert key in config, f"{prefix} 缺少 {key} 字段"
+    value = config[key]
+    if type is not None:
+        assert isinstance(value, type), f"{prefix} {key} 必须是 {type.__name__}"
+    return value
+
+
 # ============================================================
 # 基类
 # ============================================================
@@ -162,26 +180,28 @@ class ScriptConfig:
     config」的矛盾行为。
     """
 
-    def _load(self) -> dict:
-        config = load_config(self._script_name, self._config_rel_path)
+    def _load(self, rel_path: str | None = None) -> dict:
+        rel_path = rel_path or self._config_rel_path
+        config = load_config(self._script_name, rel_path)
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
         return config
 
-    def _save(self, config: dict) -> None:
+    def _save(self, config: dict, rel_path: str | None = None) -> None:
+        rel_path = rel_path or self._config_rel_path
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
         if not self.enabled:
             logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
             return
-        save_config(self._script_name, self._config_rel_path, config)
-        self._verify_saved(config)
+        save_config(self._script_name, rel_path, config)
+        self._verify_saved(config, rel_path)
 
-    def _verify_saved(self, expected: dict) -> None:
+    def _verify_saved(self, expected: dict, rel_path: str | None = None) -> None:
         """保存后重新读取，确认落盘内容与预期一致（校验写盘确实生效）。"""
-        reloaded = self._load()
+        reloaded = self._load(rel_path)
         assert reloaded == expected, (
             f"[set_config][{self.display_name}] 配置保存后校验失败："
             f"重新读取的内容与预期不一致"
@@ -230,10 +250,9 @@ class ScriptConfig:
         """
         assert self._task_key, f"[set_config][{self.display_name}] 子类必须设 _task_key"
         if self._task_map:
-            assert dungeon_name in self._task_map, (
-                f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+            task = get_field(
+                self._task_map, dungeon_name, self.display_name, context="update_task"
             )
-            task = self._task_map[dungeon_name]
         else:
             task = dungeon_name
         return safe_update(config, self._task_key, task, self.display_name)
@@ -538,12 +557,8 @@ class WutheringWavesConfig(ScriptConfig):
         停用 → 从列表中移除。列表本身缺失属配置错误，assert 暴露。
         """
         config = self._load()
-        assert "Additional Tasks to Run After Daily Task" in config, (
-            f"[set_config][{self.display_name}] config 缺少 Additional Tasks 字段"
-        )
-        tasks = config["Additional Tasks to Run After Daily Task"]
-        assert isinstance(tasks, list), (
-            f"[set_config][{self.display_name}] Additional Tasks 必须是列表"
+        tasks = get_field(
+            config, "Additional Tasks to Run After Daily Task", self.display_name, list
         )
         contains = self._weekly_task_name in tasks
         if enabled == contains:
@@ -706,13 +721,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
         条目缺失属配置错误，assert 暴露。
         """
         config = self._load_weekly()
-        assert "app_list" in config, (
-            f"[set_config][{self.display_name}] _group.yml 缺少 app_list"
-        )
-        app_list = config["app_list"]
-        assert isinstance(app_list, list), (
-            f"[set_config][{self.display_name}] app_list 必须是列表"
-        )
+        app_list = get_field(config, "app_list", self.display_name, list)
         target = next(
             (app for app in app_list if app.get("app_id") == self._weekly_task_name),
             None,
@@ -756,45 +765,27 @@ class StarRailConfig(ScriptConfig):
 class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
     _config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+    _routine_config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTask.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     bilibili = "3546636978489848"
     github = "BnanZ0/ok-nte"
     homepage = "https://yh.wanmei.com/"
     _daily_section = "daily_anomaly"
-    """日常任务配置所在顶层子对象（新格式：任务类型/序号字段嵌在其下）。"""
+    """日常任务配置顶层子对象名（由 _bind_section 按副本切换）。"""
+    _exclusive_routine_items = ("daily_anomaly", "daily_anomaly_hunter")
+    """互斥的两个日常 routine item id（DailyRoutineTask.json）。"""
 
     _launcher_rel_path = "NTELauncher.exe"
-    """启动器可执行文件名（相对游戏安装根目录）。
-
-    异环的「启动游戏」打开官方启动器（NTELauncher.exe）而非游戏本体
-    （HTGame.exe），与鸣潮/终末地等打开游戏本体的行为不同，故重写
-    ``get_game_exe_path``。启动器位于游戏安装根目录（如
-    ``D:\\Neverness To Everness\\NTELauncher.exe``），从游戏本体路径
-    逐级向上查找定位。
-    """
+    """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
 
     def __init__(self):
         self.display_name = "异环"
-        self._task_key = "任务类型"
-        self._seq_key_map = {
-            "异能升级材料": "异能材料序号",
-            "空幕": "空幕序号",
-            "弧盘突破材料": "弧盘材料序号",
-        }
+        # 动态字段由 _bind_section 绑定
 
     @classmethod
     def get_game_exe_path(cls, script_name: str) -> str | None:
-        """异环重写：返回官方启动器（NTELauncher.exe）路径，非游戏本体。
-
-        先读游戏本体路径（devices.json 的 pc_full_path），再从其目录逐级
-        向上查找 ``_launcher_rel_path``（启动器在游戏安装根目录，如
-        ``D:\\Neverness To Everness\\NTELauncher.exe``）；启动器不存在
-        （上溯到盘符根仍无）→ None，GUI 提示「未找到游戏路径」。
-
-        Args:
-            script_name: 脚本唯一标识（ok-nte）。
-        """
+        """异环重写：从游戏本体路径向上查找启动器，找不到返回 None。"""
         game_exe = super().get_game_exe_path(script_name)
         if not game_exe:
             return None
@@ -813,21 +804,15 @@ class NTEConfig(ScriptConfig):
         return None
 
     def _daily_section_dict(self, config: dict) -> dict:
-        """取日常任务配置子对象（新格式字段嵌在 daily_anomaly 下）。
-
-        顶层缺 ``_daily_section`` 属配置错误（旧版 DailyTask.json 已废弃），assert 暴露。
-        """
-        assert self._daily_section in config, (
-            f"[set_config][{self.display_name}] config 缺少 {self._daily_section}"
+        """取日常任务配置子对象；缺段或类型错误均 assert 暴露。"""
+        return get_field(
+            config, self._daily_section, self.display_name, dict, "daily_section"
         )
-        section = config[self._daily_section]
-        assert isinstance(section, dict), (
-            f"[set_config][{self.display_name}] {self._daily_section} 必须是 dict"
-        )
-        return section
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
-        """任务类型写入 daily_anomaly 子对象（值即中文副本名）。"""
+        """写任务类型字段（值=中文副本名）；追猎目标无此字段，跳过。"""
+        if dungeon_name == "追猎目标":
+            return False
         return safe_update(
             self._daily_section_dict(config),
             self._task_key,
@@ -837,13 +822,55 @@ class NTEConfig(ScriptConfig):
 
     def _update_sequence(self, config, dungeon_name, sequence) -> bool:
         assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
-        assert dungeon_name in self._seq_key_map, (
-            f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        key = get_field(
+            self._seq_key_map,
+            dungeon_name,
+            self.display_name,
+            context="update_sequence",
         )
-        key = self._seq_key_map[dungeon_name]
         return safe_update(
             self._daily_section_dict(config), key, sequence, self.display_name
         )
+
+    def _bind_section(self, dungeon_name: str) -> None:
+        """按所选副本切换日常配置段与字段映射。"""
+        if dungeon_name == "追猎目标":
+            self._daily_section = "daily_anomaly_hunter"
+            self._seq_key_map = {"追猎目标": "追猎目标"}
+        else:
+            self._daily_section = "daily_anomaly"
+            self._seq_key_map = {
+                "异能升级材料": "异能材料序号",
+                "空幕": "空幕序号",
+                "弧盘突破材料": "弧盘材料序号",
+            }
+            self._task_key = "任务类型"
+
+    def _update_routine_exclusion(self, routine: dict) -> bool:
+        """追猎目标与异象界域互斥：启用所选、停用另一，返回是否修改。"""
+        items = get_field(routine, "Routine Items", self.display_name, list)
+        ids = {item["id"] for item in items}
+        assert self._daily_section in ids, (
+            f"[set_config][{self.display_name}] Routine Items 缺少 {self._daily_section}（无法启用所选玩法）"
+        )
+        changed = False
+        for item in items:
+            task_id = item["id"]
+            if task_id not in self._exclusive_routine_items:
+                continue
+            changed |= safe_update(
+                item, "enabled", task_id == self._daily_section, self.display_name
+            )
+        return changed
+
+    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
+        """动态绑定段与字段后委托基类写配置，再切换第二份文件的互斥启用状态。"""
+        self._bind_section(dungeon_name)
+        super().set_dungeon(dungeon_name, sequence)
+        if self.enabled:
+            routine = self._load(self._routine_config_rel_path)
+            if self._update_routine_exclusion(routine):
+                self._save(routine, self._routine_config_rel_path)
 
 
 # ---- 明日方舟 Arknights（粥）----
