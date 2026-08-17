@@ -73,11 +73,27 @@
 | 原神 | 否 | `DomainName` | 否 | — |
 | 终末地 | 否 | `体力本` | 否 | — |
 | 崩铁 | 否 | `instance_type` | 否 | — |
-| 异环 | 否 | `任务类型` | 是 | 用 `_seq_key_map`（副本→序列字段名）驱动 |
+| 异环 | 否（覆盖 `set_dungeon` 做互斥切换） | `任务类型` | 是 | 副本→序列字段名 `_seq_key_map`；另在 `DailyRoutineTask.json` 切换 `daily_anomaly`↔`daily_anomaly_hunter` 互斥启用（直接复用基类 `_load`/`_save`，仅路径 `_routine_config_rel_path` 不同） |
 | 绝区零 | 是（空实现，仅 print「zzz无需适配」） | — | — | 无需适配副本选择 |
 | 粥 | 是（完全自定义） | — | — | 禁用全部→启用剿灭+选定+土，直接操作 `TaskQueue` |
 
 > 标准流程：不覆盖 `set_dungeon`，靠 `_task_key` + 可选 `_update_sequence` 适配。需完全自定义（粥）或无需适配（绝区零）才覆盖。
+
+### 异环：追猎目标与异象界域互斥
+
+异环的日常玩法分两类，二者互斥、不能同时跑：
+
+- **异象界域**（`DailyRoutineTaskConfigs.json` 的 `daily_anomaly` 段，副本=空幕/异能升级材料/弧盘突破材料）；
+- **追猎目标**（`DailyRoutineTaskConfigs.json` 的 `daily_anomaly_hunter` 段，具体 boss 写 `追猎目标` 字段）。「追猎目标」既是 GUI 目录名（与空幕等平级），也是 config 字段名。
+
+互斥开关写在 `DailyRoutineTask.json` 的 `Routine Items` 列表（`id`=`daily_anomaly`/`daily_anomaly_hunter` 的 `enabled`）。NTEConfig 覆盖 `set_dungeon`：
+
+- 选空幕/异能升级材料/弧盘突破材料 → 写 `daily_anomaly` 的 `任务类型`+序号，并启用 `daily_anomaly`、停用 `daily_anomaly_hunter`；
+- 选追猎目标（并选具体 boss）→ 在 `daily_anomaly_hunter` 段写 `追猎目标`（boss 名），**不写** `daily_anomaly` 的 `任务类型`，并启用 `daily_anomaly_hunter`、停用 `daily_anomaly`。
+
+对用户无感：GUI 下拉里追猎目标只是与空幕等平级的目录，选定后底层互斥由 `_update_routine_exclusion` 按所选副本（追猎目标→`daily_anomaly_hunter`，其余→`daily_anomaly`）决定启用哪个 routine item 实现。`set_dungeon` 先调 `_bind_section(dungeon_name)` 动态绑定段——追猎目标把 `_daily_section` 切到 `daily_anomaly_hunter`、其字段映射为「追猎目标→追猎目标」（`_seq_key_map`，字段名与目录名一致）走 `_update_sequence` 写入；异象界域副本则 `_daily_section=daily_anomaly`、任务类型走 `_update_task`。
+
+**代码复用**：`_bind_section` 完成动态绑定后，`set_dungeon` 直接 `super().set_dungeon()` 把**第一份文件**（`DailyRoutineTaskConfigs.json`）的「load → _update_task or _update_sequence → save」整套委托基类，自身只额外负责第二份文件（互斥）。这是「动态绑定字段 → 复用基类 machinery」的典型用法，避免把基类 `set_dungeon` 流程重抄一遍。相关路径/常量声明在 `NTEConfig`：`_routine_config_rel_path`、`_anomaly_dungeons`、`_exclusive_routine_items`、`_anomaly_seq_key_map`。
 
 ## 安全字段更新 `safe_update`
 

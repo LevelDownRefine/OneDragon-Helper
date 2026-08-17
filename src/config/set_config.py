@@ -1,10 +1,4 @@
-"""
-副本配置适配器（外观模式）
-对外提供统一的 set_config 接口，内部封装各自动化脚本的 config 读写逻辑。
-
-每个脚本的 config 格式、路径、字段名都不同，
-各脚本子类单独适配，上层无需关心差异。
-"""
+"""副本配置适配器（外观模式）：统一 set_config 接口，按各脚本格式封装 config 读写。"""
 
 import logging
 import os
@@ -37,16 +31,20 @@ def safe_update(
     display_name: str = "",
     assert_key_exists: bool = True,
 ) -> bool:
-    """
-    安全更新单个字段，返回是否修改。
-    检查类型一致性，用 type() 严格比较，避免 bool/int 混淆。
+    """安全更新单字段，返回是否发生实际修改。
 
     Args:
-        config: 配置字典
-        key: 要更新的键
-        value: 新值
-        display_name: 脚本显示名称，用于日志
-        assert_key_exists: 是否 assert key 存在；为 False 时允许添加新 key，此时会记录 warning 日志
+        config: 待修改的 config dict。
+        key: 目标字段名。
+        value: 目标值，类型须与现字段严格一致（type() 比较，避免 bool/int 混淆）。
+        display_name: 日志与报错用的脚本展示名。
+        assert_key_exists: True 时缺字段直接 assert；False 时缺字段则新增。
+
+    Returns:
+        字段值是否发生了改变。
+
+    Raises:
+        AssertionError: 缺字段（assert_key_exists=True）或新旧类型不一致。
     """
     if assert_key_exists:
         assert key in config, f"[set_config][{display_name}] config 中缺少字段: {key}"
@@ -70,6 +68,38 @@ def safe_update(
     return True
 
 
+def get_field(
+    config: dict,
+    key: str,
+    display_name: str,
+    type: type | None = None,
+    context: str = "",
+):
+    """取必填字段，缺字段或类型不符时 assert 暴露。
+
+    Args:
+        config: 待读取的 dict。
+        key: 字段名。
+        display_name: 日志与报错用的脚本展示名。
+        type: 期望类型；非 None 时做 isinstance 校验。
+        context: 报错上下文标签（如所属操作名），用于定位。
+
+    Returns:
+        config[key] 的值。
+
+    Raises:
+        AssertionError: 缺字段，或指定 type 后类型不符。
+    """
+    prefix = f"[set_config][{display_name}]"
+    if context:
+        prefix += f"[{context}]"
+    assert key in config, f"{prefix} 缺少 {key} 字段"
+    value = config[key]
+    if type is not None:
+        assert isinstance(value, type), f"{prefix} {key} 必须是 {type.__name__}"
+    return value
+
+
 # ============================================================
 # 基类
 # ============================================================
@@ -79,116 +109,116 @@ class ScriptConfig:
     """单个自动化脚本的 config 操作基类"""
 
     _script_name: str = ""
-    """内部标识：script_path basename 去后缀（如 ok-ww / BetterGI），全链路适配 key
-    （_CONFIGS 注册表索引，外部代码不直接访问）"""
+    """内部标识：script_path basename 去后缀，_CONFIGS 注册表索引。"""
     display_name: str = ""
-    """GUI 展示名（如 鸣潮），仅用于展示/日志"""
+    """GUI 展示名（如 鸣潮）。"""
     _task_key: str = ""
-    """config 中副本类型对应的字段名，设了即启用 _update_task"""
+    """config 中副本类型字段名，设了即启用 _update_task。"""
     _task_map: dict[str, Any] = {}
-    """副本中文名 → config 值的映射，空 dict 表示直接用 dungeon_name"""
+    """副本中文名 → config 值；空 dict 表示直接用 dungeon_name。"""
 
     _game_path_keys: tuple[str, ...] = ()
-    """游戏 exe 路径在游戏配置（_game_config_rel_path 指向的文件）中的嵌套键路径。
-
-    空元组表示该脚本未适配「打开游戏」。各子类按需声明，如 ``("pc_full_path",)``。
-    """
+    """游戏 exe 路径在游戏配置中的嵌套键路径；空元组表示未适配「打开游戏」。"""
 
     _config_rel_path: str = ""
-    """config 文件相对脚本根目录的路径（必填，子类必须声明）。"""
+    """config 文件相对脚本根目录路径。"""
 
     _game_config_rel_path: str = ""
-    """游戏路径配置文件相对脚本根目录的路径（声明了 ``_game_path_keys`` 则必填）。"""
+    """游戏路径配置文件路径（声明 _game_path_keys 时必填）。"""
 
     _template_rel_path: str = ""
-    """模板文件相对 config/ 目录的路径（走模板初始化的子类必须声明）。"""
+    """模板文件路径（走模板初始化的子类必填）。"""
 
     bg_img: str = ""
-    """启动器背景图相对脚本根目录的路径（如 assets/ui/static_background.webp）。
-
-    空字符串表示未配置，GUI 走渐变占位背景。由 GUI 通过 ``get_game_bg_img``
-    只读获取，不实例化子类。
-    """
+    """启动器背景图相对脚本根目录路径；空字符串走渐变占位。"""
 
     bilibili: str = ""
-    """游戏官方 B 站空间 UID（如 1955897084，不含域名前缀）。
-
-    空字符串表示未配置，GUI 走通用占位链接。由 GUI 通过 ``get_game_bilibili``
-    只读获取（基类拼接完整 https://space.bilibili.com/<uid>），不实例化子类。
-    """
+    """官方 B 站 UID；空字符串走通用占位。"""
 
     github: str = ""
-    """游戏对应脚本项目的 GitHub repo 路径（如 ok-oldking/ok-wuthering-waves，不含域名前缀）。
-
-    空字符串表示未配置，GUI 走通用占位链接。由 GUI 通过 ``get_game_github``
-    只读获取（基类拼接完整 https://github.com/<repo>），不实例化子类。
-    """
+    """脚本 GitHub repo 路径（不含域名）；空字符串走通用占位。"""
 
     homepage: str = ""
-    """游戏官方主页链接（官网首页，区别于脚本项目 GitHub）。
-
-    空字符串表示未配置，GUI 走通用占位链接。由 GUI 通过 ``get_game_homepage``
-    只读获取，不实例化子类。
-    """
+    """官方主页链接；空字符串走通用占位。"""
 
     _weekly_task_name: str = ""
-    """周常任务在脚本配置中的标识名（非空即表示该脚本支持周常「周几以后开始执行」）。
-
-    各脚本含义不同（如崩铁 config 字段名 currencywars_enable、鸣潮 Additional
-    Tasks 列表任务名 Check Weekly Garden、绝区零 _group.yml 的 app_id lost_void），
-    但统一用本字段非空判定是否支持周常。GUI 通过 ``supports_weekly`` 只读查询，
-    不实例化子类。
-    """
+    """周常任务标识名（非空即支持周常）；各脚本含义不同。"""
 
     _weekly_config_rel_path: str = ""
-    """周常配置文件相对脚本根目录的路径（如 ``config/01/one_dragon/_group.yml``）。
-
-    空字符串表示周常配置与 ``_config_rel_path`` 同一文件（声明了 ``_weekly_task_name``
-    的子类按需声明；缺省复用主 config 文件）。
-    """
+    """周常配置文件路径；空字符串复用主 config。"""
 
     confirm_before_save: Callable[[str], bool] | None = None
-    """保存前确认回调（由 GUI 注入，参数为 display_name，返回 True 才落盘）。
-
-    None 表示未注入（CLI/测试等无 GUI 环境），此时直接保存保持原行为。
-    """
+    """保存前确认回调（GUI 注入，返回 False 则不落盘）。"""
 
     enabled: bool = True
-    """本次实例是否可操作 config。默认 True（每次新建实例即重置）。
+    """实例是否可操作 config；拒绝保存后置 False 使后续写入一并失效。"""
 
-    用户在 ``_confirm_save`` 中拒绝（回调返回 False）后置为 False，
-    此时该实例「什么都不做」：``_save`` 统一检查该标记，使本次运行中后续
-    ``set_dungeon`` 等写入一并失效，避免「刚拒绝更新、另一入口又改写同一
-    config」的矛盾行为。
-    """
+    def _load(self, rel_path: str | None = None) -> dict:
+        """读取脚本 config 并校验为 dict。
 
-    def _load(self) -> dict:
-        config = load_config(self._script_name, self._config_rel_path)
+        Args:
+            rel_path: 相对脚本根目录的路径；缺省用 _config_rel_path。
+
+        Returns:
+            解析后的 config dict。
+
+        Raises:
+            AssertionError: 解析结果非 dict。
+        """
+        rel_path = rel_path or self._config_rel_path
+        config = load_config(self._script_name, rel_path)
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
         return config
 
-    def _save(self, config: dict) -> None:
+    def _save(self, config: dict, rel_path: str | None = None) -> None:
+        """保存 config 并回读校验落盘一致。
+
+        enabled=False 时跳过（用户拒绝更新）。
+
+        Args:
+            config: 待保存的 dict。
+            rel_path: 相对脚本根目录的路径；缺省用 _config_rel_path。
+
+        Raises:
+            AssertionError: config 非 dict 或保存后回读不一致。
+        """
+        rel_path = rel_path or self._config_rel_path
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
         if not self.enabled:
             logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
             return
-        save_config(self._script_name, self._config_rel_path, config)
-        self._verify_saved(config)
+        save_config(self._script_name, rel_path, config)
+        self._verify_saved(config, rel_path)
 
-    def _verify_saved(self, expected: dict) -> None:
-        """保存后重新读取，确认落盘内容与预期一致（校验写盘确实生效）。"""
-        reloaded = self._load()
+    def _verify_saved(self, expected: dict, rel_path: str | None = None) -> None:
+        """保存后回读校验落盘与预期一致。
+
+        Args:
+            expected: 期望落盘的 config dict。
+            rel_path: 相对脚本根目录的路径；缺省用 _config_rel_path。
+
+        Raises:
+            AssertionError: 重新读取的内容与预期不一致。
+        """
+        reloaded = self._load(rel_path)
         assert reloaded == expected, (
             f"[set_config][{self.display_name}] 配置保存后校验失败："
             f"重新读取的内容与预期不一致"
         )
 
     def _load_weekly(self) -> dict:
-        """加载周常配置文件（``_weekly_config_rel_path``，缺省复用主 config）。"""
+        """加载周常配置文件（缺省复用主 config）。
+
+        Returns:
+            解析后的 config dict。
+
+        Raises:
+            AssertionError: 解析结果非 dict。
+        """
         config = load_config(
             self._script_name, self._weekly_config_rel_path or self._config_rel_path
         )
@@ -198,7 +228,16 @@ class ScriptConfig:
         return config
 
     def _save_weekly(self, config: dict) -> None:
-        """保存周常配置文件并校验落盘（同主 config 的保存后校验语义）。"""
+        """保存周常配置并回读校验落盘一致。
+
+        enabled=False 时跳过（用户拒绝更新）。
+
+        Args:
+            config: 待保存的 dict。
+
+        Raises:
+            AssertionError: config 非 dict 或保存后回读不一致。
+        """
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] 周常 config 必须是 dict"
         )
@@ -217,23 +256,37 @@ class ScriptConfig:
         )
 
     def _load_template(self) -> dict:
-        """加载模板文件（相对 config/ 目录），支持 JSON 和 YAML 格式"""
+        """加载模板文件（JSON/YAML）。
+
+        Returns:
+            模板 dict。
+
+        Raises:
+            AssertionError: 未声明 _template_rel_path 或解析结果非 dict。
+        """
         assert self._template_rel_path, (
             f"[set_config][{self.display_name}] 未声明 _template_rel_path"
         )
         return load_template(self._script_name, self._template_rel_path)
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
-        """
-        更新副本类型字段。返回是否修改。
-        子类设 _task_key 即启用，_task_map 为空时直接赋 dungeon_name。
+        """写入副本类型字段，返回是否修改。
+
+        Args:
+            config: 目标 config dict。
+            dungeon_name: 副本中文名；_task_map 为空时直接作为字段值。
+
+        Returns:
+            字段是否发生实际修改。
+
+        Raises:
+            AssertionError: 子类未声明 _task_key，或 dungeon_name 不在 _task_map。
         """
         assert self._task_key, f"[set_config][{self.display_name}] 子类必须设 _task_key"
         if self._task_map:
-            assert dungeon_name in self._task_map, (
-                f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+            task = get_field(
+                self._task_map, dungeon_name, self.display_name, context="update_task"
             )
-            task = self._task_map[dungeon_name]
         else:
             task = dungeon_name
         return safe_update(config, self._task_key, task, self.display_name)
@@ -241,21 +294,31 @@ class ScriptConfig:
     def _update_sequence(
         self, config: dict, dungeon_name: str, sequence: str | int | None
     ) -> bool:
-        """更新序列字段。返回是否修改。默认不启用。"""
+        """写入序列字段，返回是否修改。基类默认不启用。
+
+        Args:
+            config: 目标 config dict。
+            dungeon_name: 副本中文名。
+            sequence: 序列值；基类默认必须为 None。
+
+        Returns:
+            字段是否发生实际修改。
+
+        Raises:
+            AssertionError: 子类未适配却传入 sequence。
+        """
         assert sequence is None, (
             f"[set_config][{self.display_name}] 不支持 sequence 参数"
         )
         return False
 
     def _confirm_save(self) -> bool:
-        """保存前询问用户确认；未注入回调时默认放行（保持 CLI/测试行为不变）。
+        """保存前确认，返回是否允许落盘。
 
-        注意必须经 ``type(self).confirm_before_save`` 取类属性：若用 ``self.confirm_before_save``
-        访问，普通函数会被描述符绑定成实例方法（多传 self），导致
-        ``confirm_config_update(self, display_name)`` 的 TypeError。
+        未注入回调默认放行；拒绝后置 enabled=False 使后续写入一并失效。
 
-        用户拒绝（回调返回 False）时置 ``enabled = False``，使本次实例后续所有
-        ``_save`` 调用（含 ``set_dungeon``）一并失效。
+        Returns:
+            用户是否接受保存。
         """
         callback = type(self).confirm_before_save
         if callback is None:
@@ -266,12 +329,9 @@ class ScriptConfig:
         return accepted
 
     def _init_config(self) -> None:
-        """
-        通用的 config 初始化逻辑：加载 config 和 template，检查对齐，合并更新。
-        子类重写 _is_aligned 以实现特殊比较逻辑。
+        """对齐检查并合并模板字段到 config。
 
-        先确认再改内存/落盘：用户拒绝或限时超时（enabled=False）→ 不添加字段、
-        不落盘、不打「已更新」日志（未确认前不产生任何修改与更新日志）。
+        已对齐或未确认（enabled=False）时不动 config。
         """
         config = self._load()
         template = self._load_template()
@@ -290,10 +350,16 @@ class ScriptConfig:
         logger.info(f"[init_config][{self.display_name}] config 已更新")
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
-        """
-        默认对齐检查：递归比较模板中的所有 key。
-        对于 dict 递归检查，对于 list 按索引逐一比较，其余直接比较值。
-        子类重写以实现特殊比较逻辑。
+        """递归比较 config 是否涵盖模板全部结构。
+
+        dict 递归、list 按索引、其余直接比值。
+
+        Args:
+            config: 当前 config dict。
+            template: 模板 dict。
+
+        Returns:
+            config 是否已与模板对齐。
         """
 
         def _aligned(a, b):
@@ -310,12 +376,13 @@ class ScriptConfig:
         )
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
-        """
-        设置副本。默认流程：_update_task → _update_sequence → save。
-        子类直接覆盖 set_dungeon 则完全自定义（如粥）。
+        """设置副本：更新任务类型与序列后落盘。
 
-        用户已拒绝（enabled=False）时直接短路：本实例「什么都不做」，
-        连 _load/_update_task 等也不执行，仅记日志。
+        enabled=False 时短路（用户拒绝更新）。
+
+        Args:
+            dungeon_name: 副本中文名。
+            sequence: 序列值；不传则仅设置任务类型。
         """
         if not self.enabled:
             logger.info(
@@ -323,9 +390,9 @@ class ScriptConfig:
             )
             return
         config = self._load()
-        changed = self._update_task(config, dungeon_name) or self._update_sequence(
-            config, dungeon_name, sequence
-        )
+        task_changed = self._update_task(config, dungeon_name)
+        seq_changed = self._update_sequence(config, dungeon_name, sequence)
+        changed = task_changed or seq_changed
         if changed:
             logger.info(f"[set_dungeon][{self.display_name}] config 已更新")
             self._save(config)
@@ -333,16 +400,15 @@ class ScriptConfig:
             logger.info(f"[set_dungeon][{self.display_name}] config 无需更新")
 
     def set_weekly(self, start_day: int) -> None:
-        """设置周常起始日（周几以后开始执行），今天周几 >= 起始日则启用周常。
+        """设置周常起始日并写入开关。
 
-        周常开关（enabled）是 GUI 内存态，不参与本方法；无论开关如何，
-        都按 start_day 判断写入脚本配置（与日常副本选择落盘不受日常开关
-        影响的模型一致）。子类声明 _weekly_task_name 并实现 _write_weekly(enabled)。
-
-        用户已拒绝（enabled=False）时直接短路（同 ``set_dungeon``）。
+        enabled=False 时短路。周常开关为 GUI 内存态，不直写 config。
 
         Args:
-            start_day: 周常起始日（1=周一 ~ 7=周日）。
+            start_day: 周几以后启用（1~7，1=周一）。
+
+        Raises:
+            AssertionError: 未适配周常，或 start_day 不在 1~7。
         """
         if not self.enabled:
             logger.info(f"[set_weekly][{self.display_name}] 用户拒绝更新，跳过周常设置")
@@ -356,29 +422,25 @@ class ScriptConfig:
         self._write_weekly(is_weekly_start_reached(start_day))
 
     def _write_weekly(self, enabled: bool) -> None:
-        """写周常开关到脚本配置（子类实现）。默认不支持，未声明 _weekly_task_name 的子类
-        调用本方法属编程错误，直接 assert 暴露。
-
-        仅由 ``set_weekly`` 内部调用，enabled 为「今天周几 >= 起始日」的判断结果；
-        GUI 周常开关（enabled 内存态）不直写本方法。
+        """写入周常开关。基类默认不支持（未适配子类不应走到此处）。
 
         Args:
-            enabled: True 表示启用周常，False 表示停用周常。
+            enabled: 是否启用周常。
+
+        Raises:
+            AssertionError: 基类默认调用（未适配周常的脚本）。
         """
         assert False, f"[set_config][{self.display_name}] 未支持周常配置"  # noqa: B011  # 故意：未适配脚本不应走到周常写入
 
     @classmethod
     def get_game_exe_path(cls, script_name: str) -> str | None:
-        """
-        读取脚本配置中的游戏可执行文件路径（类方法，不实例化，无写盘副作用）。
-
-        - 未适配（``_game_path_keys`` 为空）→ None
-        - 游戏配置缺失 / 字段缺失 / 值为空 → None
-        - 成功 → 游戏 exe 路径字符串（可能是 .lnk 快捷方式）
+        """读取游戏 exe 路径（类方法，无需实例化）。
 
         Args:
-            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name），
-                用于读对应脚本的游戏配置。
+            script_name: 脚本标识名。
+
+        Returns:
+            exe 绝对路径；未适配、缺失或为空时返回 None。
         """
         if not cls._game_path_keys:
             return None
@@ -403,20 +465,13 @@ class ScriptConfig:
 
     @classmethod
     def get_game_bg_img(cls, script_name: str) -> str:
-        """
-        读取脚本配置中的启动器背景图绝对路径（类方法，不实例化）。
-
-        背景图相对脚本根目录（script_path 父目录）声明，本方法完成
-        相对 → 绝对解析并校验文件存在。以下情况返回空字符串（GUI 走渐变占位）：
-        - 未声明（``bg_img`` 为空）
-        - 脚本根目录取不到（config.yml 无此脚本 / script_path 为空）
-        - 背景图文件不存在
-
-        注意：个别子类覆盖本方法时会先尝试下载远程背景图（网络操作，
-        见子类 docstring），此时并非纯只读。
+        """读取背景图绝对路径（类方法，无需实例化）。
 
         Args:
-            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+            script_name: 脚本标识名。
+
+        Returns:
+            背景图绝对路径；未声明或文件缺失时返回空字符串（渐变占位）。
         """
         if not cls.bg_img:
             return ""
@@ -430,42 +485,17 @@ class ScriptConfig:
 
     @classmethod
     def get_game_bilibili(cls, script_name: str) -> str:
-        """
-        读取游戏官方 B 站空间链接（类方法，不实例化，无副作用）。
-
-        子类 ``bilibili`` 只存 UID（如 ``1955897084``），本方法拼接完整
-        ``https://space.bilibili.com/<uid>``。未声明（``bilibili`` 为空）→
-        返回空字符串，GUI 走通用占位链接。
-
-        Args:
-            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
-        """
+        """读 B 站空间链接（子类存 UID，本方法拼 URL）；未声明 → 空字符串。"""
         return f"https://space.bilibili.com/{cls.bilibili}" if cls.bilibili else ""
 
     @classmethod
     def get_game_github(cls, script_name: str) -> str:
-        """
-        读取脚本项目的 GitHub 主页链接（类方法，不实例化，无副作用）。
-
-        子类 ``github`` 只存 repo 路径（如 ``ok-oldking/ok-wuthering-waves``），
-        本方法拼接完整 ``https://github.com/<repo>``。未声明（``github`` 为空）→
-        返回空字符串，GUI 走通用占位链接。
-
-        Args:
-            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
-        """
+        """读 GitHub 链接（子类存 repo 路径，本方法拼 URL）；未声明 → 空字符串。"""
         return f"https://github.com/{cls.github}" if cls.github else ""
 
     @classmethod
     def get_game_homepage(cls, script_name: str) -> str:
-        """
-        读取游戏官方主页链接（类方法，不实例化，无副作用）。
-
-        未声明（``homepage`` 为空）→ 返回空字符串，GUI 走通用占位链接。
-
-        Args:
-            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
-        """
+        """读官方主页链接；未声明 → 空字符串。"""
         return cls.homepage
 
 
@@ -478,13 +508,17 @@ _CONFIGS: dict[str, type[ScriptConfig]] = {}
 
 
 def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
-    """显式注册 ScriptConfig 子类到 ``_CONFIGS``（装饰器）。
+    """注册子类到 _CONFIGS，并校验必要声明。
 
-    子类声明 ``_script_name`` 与路径类属性后加 ``@register`` 即完成登记。
-    路径/周常声明不完整属编程错误，import 时立即 assert 暴露，
-    避免新增脚本漏配后静默缺功能：
-    - 缺 ``_config_rel_path``、或声明了 ``_game_path_keys`` 却缺 ``_game_config_rel_path``
-    - 声明了 ``_weekly_task_name``（支持周常）却未实现 ``_write_weekly``
+    Args:
+        cls: 待注册的 ScriptConfig 子类。
+
+    Returns:
+        原样返回 cls（便于装饰器使用）。
+
+    Raises:
+        AssertionError: 缺少 _script_name/_config_rel_path，或声明了
+            _game_path_keys/_weekly_task_name 但未补全对应声明/实现。
     """
     assert cls._script_name, f"[set_config][{cls.__name__}] 必须声明 _script_name"
     assert cls._config_rel_path, (
@@ -516,34 +550,31 @@ class WutheringWavesConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    display_name = "鸣潮"
+    _task_key = "Which to Farm"
+    _task_map = {
+        "凝素领域": "Forgery Challenge",
+        "模拟领域": "Simulation Challenge",
+        "无音区": "Tacet Suppression",
+    }
     bilibili = "1955897084"
     github = "ok-oldking/ok-wuthering-waves"
     homepage = "https://mc.kurogames.com/"
     _weekly_task_name = "Check Weekly Garden"
-    """周常（每周花园）在 Additional Tasks 列表中的任务名。"""
-
-    def __init__(self):
-        self.display_name = "鸣潮"
-        self._task_key = "Which to Farm"
-        self._task_map = {
-            "凝素领域": "Forgery Challenge",
-            "模拟领域": "Simulation Challenge",
-            "无音区": "Tacet Suppression",
-        }
 
     def _write_weekly(self, enabled: bool) -> None:
-        """鸣潮周常开关：控制 Additional Tasks 列表中「Check Weekly Garden」的增删。
+        """控制「Check Weekly Garden」在 Additional Tasks 中的增删。
 
-        启用 → 任务名加入 ``Additional Tasks to Run After Daily Task`` 列表；
-        停用 → 从列表中移除。列表本身缺失属配置错误，assert 暴露。
+        Args:
+            enabled: True 追加任务，False 移除任务。
+
+        Raises:
+            AssertionError: 缺少 Additional Tasks 列表字段。
         """
         config = self._load()
-        assert "Additional Tasks to Run After Daily Task" in config, (
-            f"[set_config][{self.display_name}] config 缺少 Additional Tasks 字段"
-        )
-        tasks = config["Additional Tasks to Run After Daily Task"]
-        assert isinstance(tasks, list), (
-            f"[set_config][{self.display_name}] Additional Tasks 必须是列表"
+        # 周常（乐园）在 Additional Tasks 列表中任务名 _weekly_task_name。
+        tasks = get_field(
+            config, "Additional Tasks to Run After Daily Task", self.display_name, list
         )
         contains = self._weekly_task_name in tasks
         if enabled == contains:
@@ -563,6 +594,19 @@ class WutheringWavesConfig(ScriptConfig):
     def _update_sequence(
         self, config: dict, dungeon_name: str, sequence: str | int | None
     ) -> bool:
+        """按副本映射写入二级序列字段，返回是否修改。
+
+        Args:
+            config: 目标 config dict。
+            dungeon_name: 副本中文名（决定映射键与取值方式）。
+            sequence: 序列值；无二级映射时直接作为字段值。
+
+        Returns:
+            字段是否发生实际修改。
+
+        Raises:
+            AssertionError: 未适配的副本或序列。
+        """
         assert sequence is not None, (
             f"[set_dungeon][{self.display_name}] sequence 不能为空"
         )
@@ -600,6 +644,8 @@ class WutheringWavesConfig(ScriptConfig):
 @register
 class GenshinConfig(ScriptConfig):
     _script_name = "BetterGI"
+    display_name = "原神"
+    _task_key = "DomainName"
     _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
@@ -614,21 +660,17 @@ class GenshinConfig(ScriptConfig):
     """BetterGI 官方仓库 banner（与 BetterGI.exe 内嵌主界面横幅同一张）。"""
 
     def __init__(self):
-        self.display_name = "原神"
-        self._task_key = "DomainName"
         self._init_config()
 
     @classmethod
     def get_game_bg_img(cls, script_name: str) -> str:
-        """原神背景：项目 assets/banner.jpg（无则从官方仓库下载）。
-
-        原始图 = 项目根 assets/banner.jpg（官方仓库 banner，与 exe 内嵌
-        主界面横幅同一张，2538x1157 超宽，由 GUI cover 裁剪显示）。
-        assets 无原始图 → 从 jsDelivr 官方仓库下载；下载失败 → 空（渐变占位）。
-        仅在脚本已注册（_CONFIGS 含 BetterGI，模块级接口已兜底）时被调用。
+        """读取原神背景图：优先项目 assets/banner.jpg，缺失则从官方仓库下载。
 
         Args:
-            script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
+            script_name: 脚本标识名。
+
+        Returns:
+            背景图绝对路径；下载失败返回空字符串（渐变占位）。
         """
         assets_file = resolve_script_path("assets/banner.jpg")
         if not os.path.isfile(assets_file):
@@ -637,10 +679,11 @@ class GenshinConfig(ScriptConfig):
         return assets_file
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
-        """设置原神副本：副本按「目录 → 副本」两级组织，实际写入的是二级副本名。
+        """原神副本两级组织：有二级时写入二级副本名，否则回退一级。
 
-        dungeon_list.yml 中一级为类型目录，二级才是具体副本名。
-        DomainName 字段存副本名；无二级时（兼容旧单层配置）回退写一级名。
+        Args:
+            dungeon_name: 一级副本名。
+            sequence: 二级副本名；None 时回退一级。
         """
         target = sequence if sequence is not None else dungeon_name
         super().set_dungeon(target)
@@ -650,6 +693,8 @@ class GenshinConfig(ScriptConfig):
 @register
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
+    display_name = "终末地"
+    _task_key = "体力本"
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
@@ -658,8 +703,6 @@ class EndfieldConfig(ScriptConfig):
     homepage = "https://endfield.hypergryph.com/"
 
     def __init__(self):
-        self.display_name = "终末地"
-        self._task_key = "体力本"
         self._init_config()
 
     def _init_config(self):
@@ -667,10 +710,11 @@ class EndfieldConfig(ScriptConfig):
         pass
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
-        """设置终末地副本：副本按「类型 → 副本」两级组织（假一级目录），实际写入的是二级副本名。
+        """终末地副本两级组织：有二级时写入二级副本名，否则回退一级。
 
-        dungeon_list.yml 中一级为类型目录，二级才是具体副本名。
-        体力本 字段存副本名；无二级时（兼容旧单层配置）回退写一级名。
+        Args:
+            dungeon_name: 一级副本名。
+            sequence: 二级副本名；None 时回退一级。
         """
         target = sequence if sequence is not None else dungeon_name
         super().set_dungeon(target)
@@ -680,6 +724,7 @@ class EndfieldConfig(ScriptConfig):
 @register
 class ZenlessZoneZeroConfig(ScriptConfig):
     _script_name = "OneDragon-Launcher"
+    display_name = "绝区零"
     _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
     _template_rel_path = "ZZZ一条龙.yml"
@@ -690,29 +735,25 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     github = "DoctorReid/ZenlessZoneZero-OneDragon"
     homepage = "https://zzz.mihoyo.com/"
     _weekly_task_name = "lost_void"
-    """周常（遗失的虚空）在 _group.yml app_list 中的 app_id。"""
 
     def __init__(self):
-        self.display_name = "绝区零"
         self._init_config()
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         logger.info(f"[set_config][{self.display_name}] zzz无需适配")
 
     def _write_weekly(self, enabled: bool) -> None:
-        """绝区零周常开关：控制 _group.yml 中 lost_void 应用的 enabled。
+        """控制 _group.yml 中 lost_void 的 enabled 开关。
 
-        在 app_list 中按 ``_weekly_task_name`` 定位条目并更新 enabled；
-        条目缺失属配置错误，assert 暴露。
+        Args:
+            enabled: 是否启用周常。
+
+        Raises:
+            AssertionError: app_list 缺少 lost_void 条目。
         """
         config = self._load_weekly()
-        assert "app_list" in config, (
-            f"[set_config][{self.display_name}] _group.yml 缺少 app_list"
-        )
-        app_list = config["app_list"]
-        assert isinstance(app_list, list), (
-            f"[set_config][{self.display_name}] app_list 必须是列表"
-        )
+        # 周常（迷失之地）在 _group.yml app_list 中的 app_id。
+        app_list = get_field(config, "app_list", self.display_name, list)
         target = next(
             (app for app in app_list if app.get("app_id") == self._weekly_task_name),
             None,
@@ -728,6 +769,8 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 @register
 class StarRailConfig(ScriptConfig):
     _script_name = "March7th-Assistant"
+    display_name = "崩铁"
+    _task_key = "instance_type"
     _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
     _template_rel_path = "M7A一条龙.yml"
@@ -737,16 +780,18 @@ class StarRailConfig(ScriptConfig):
     github = "moesnow/March7thAssistant"
     homepage = "https://sr.mihoyo.com/"
     _weekly_task_name = "currencywars_enable"
-    """周常（货币战争）在 config.yaml 中的开关字段名。"""
 
     def __init__(self):
-        self.display_name = "崩铁"
-        self._task_key = "instance_type"
         self._init_config()
 
     def _write_weekly(self, enabled: bool) -> None:
-        """崩铁周常开关：控制 config.yaml 的 currencywars_enable 字段。"""
+        """控制 config.yaml 的 currencywars_enable 周常开关。
+
+        Args:
+            enabled: 是否启用周常。
+        """
         config = self._load()
+        # 周常（货币战争）在 config.yaml 中的开关_weekly_task_name。
         safe_update(config, self._weekly_task_name, enabled, self.display_name)
         self._save(config)
 
@@ -756,44 +801,28 @@ class StarRailConfig(ScriptConfig):
 class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
     _config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+    _routine_config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTask.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    display_name = "异环"
     bilibili = "3546636978489848"
     github = "BnanZ0/ok-nte"
     homepage = "https://yh.wanmei.com/"
-    _daily_section = "daily_anomaly"
-    """日常任务配置所在顶层子对象（新格式：任务类型/序号字段嵌在其下）。"""
+    _exclusive_routine_items = ("daily_anomaly", "daily_anomaly_hunter")
+    """互斥的两个日常 routine item id（DailyRoutineTask.json）。"""
 
     _launcher_rel_path = "NTELauncher.exe"
-    """启动器可执行文件名（相对游戏安装根目录）。
-
-    异环的「启动游戏」打开官方启动器（NTELauncher.exe）而非游戏本体
-    （HTGame.exe），与鸣潮/终末地等打开游戏本体的行为不同，故重写
-    ``get_game_exe_path``。启动器位于游戏安装根目录（如
-    ``D:\\Neverness To Everness\\NTELauncher.exe``），从游戏本体路径
-    逐级向上查找定位。
-    """
-
-    def __init__(self):
-        self.display_name = "异环"
-        self._task_key = "任务类型"
-        self._seq_key_map = {
-            "异能升级材料": "异能材料序号",
-            "空幕": "空幕序号",
-            "弧盘突破材料": "弧盘材料序号",
-        }
+    """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
 
     @classmethod
     def get_game_exe_path(cls, script_name: str) -> str | None:
-        """异环重写：返回官方启动器（NTELauncher.exe）路径，非游戏本体。
-
-        先读游戏本体路径（devices.json 的 pc_full_path），再从其目录逐级
-        向上查找 ``_launcher_rel_path``（启动器在游戏安装根目录，如
-        ``D:\\Neverness To Everness\\NTELauncher.exe``）；启动器不存在
-        （上溯到盘符根仍无）→ None，GUI 提示「未找到游戏路径」。
+        """重写：从游戏本体路径向上查找异环启动器。
 
         Args:
-            script_name: 脚本唯一标识（ok-nte）。
+            script_name: 脚本标识名。
+
+        Returns:
+            启动器绝对路径；本体缺失或找不到启动器时返回 None。
         """
         game_exe = super().get_game_exe_path(script_name)
         if not game_exe:
@@ -813,21 +842,44 @@ class NTEConfig(ScriptConfig):
         return None
 
     def _daily_section_dict(self, config: dict) -> dict:
-        """取日常任务配置子对象（新格式字段嵌在 daily_anomaly 下）。
+        """取当前绑定的日常任务配置子对象。
 
-        顶层缺 ``_daily_section`` 属配置错误（旧版 DailyTask.json 已废弃），assert 暴露。
+        Args:
+            config: 顶层 config dict。
+
+        Returns:
+            日常任务配置子 dict。
+
+        Raises:
+            AssertionError: 缺段或类型非 dict。
         """
-        assert self._daily_section in config, (
-            f"[set_config][{self.display_name}] config 缺少 {self._daily_section}"
+        return get_field(
+            config, self._daily_section, self.display_name, dict, "daily_section"
         )
-        section = config[self._daily_section]
-        assert isinstance(section, dict), (
-            f"[set_config][{self.display_name}] {self._daily_section} 必须是 dict"
-        )
-        return section
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
-        """任务类型写入 daily_anomaly 子对象（值即中文副本名）。"""
+        """写入任务类型字段（值=中文副本名）。
+
+        追猎目标无任务类型通道，直接跳过。
+
+        Args:
+            config: 目标 config dict。
+            dungeon_name: 副本中文名。
+
+        Returns:
+            是否发生实际修改。
+
+        Raises:
+            AssertionError: 段/通道绑定不一致（如追猎目标却设了任务类型）。
+        """
+        if dungeon_name == "追猎目标":
+            assert not self._task_key, (
+                f"[set_config][{self.display_name}] 追猎目标不应绑定任务类型通道"
+            )
+            return False
+        assert self._task_key, (
+            f"[set_config][{self.display_name}] 异象界域必须绑定任务类型通道"
+        )
         return safe_update(
             self._daily_section_dict(config),
             self._task_key,
@@ -836,20 +888,99 @@ class NTEConfig(ScriptConfig):
         )
 
     def _update_sequence(self, config, dungeon_name, sequence) -> bool:
+        """按副本映射写入序号字段，返回是否修改。
+
+        Args:
+            config: 目标 config dict。
+            dungeon_name: 副本中文名（决定 _seq_key_map 的键）。
+            sequence: 序号值。
+
+        Returns:
+            字段是否发生实际修改。
+
+        Raises:
+            AssertionError: sequence 为空或副本无对应序号键。
+        """
         assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
-        assert dungeon_name in self._seq_key_map, (
-            f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        key = get_field(
+            self._seq_key_map,
+            dungeon_name,
+            self.display_name,
+            context="update_sequence",
         )
-        key = self._seq_key_map[dungeon_name]
         return safe_update(
             self._daily_section_dict(config), key, sequence, self.display_name
         )
+
+    def _bind_section(self, dungeon_name: str) -> None:
+        """按所选副本切换日常配置段与字段映射。
+
+        追猎目标绑定 daily_anomaly_hunter 且仅走序列通道；
+        其余副本绑定 daily_anomaly 并启用任务类型通道。
+
+        Args:
+            dungeon_name: 副本中文名。
+        """
+        if dungeon_name == "追猎目标":
+            self._daily_section = "daily_anomaly_hunter"
+            self._seq_key_map = {"追猎目标": "追猎目标"}
+            self._task_key = None  # 追猎目标走序列通道，无任务类型字段
+        else:
+            self._daily_section = "daily_anomaly"
+            self._seq_key_map = {
+                "异能升级材料": "异能材料序号",
+                "空幕": "空幕序号",
+                "弧盘突破材料": "弧盘材料序号",
+            }
+            self._task_key = "任务类型"
+
+    def _update_routine_exclusion(self, routine: dict) -> bool:
+        """互斥切换追猎目标与异象界域的 Routine Item 启用状态。
+
+        Args:
+            routine: DailyRoutineTask.json 的 dict。
+
+        Returns:
+            启用状态是否发生实际修改。
+
+        Raises:
+            AssertionError: Routine Items 缺少当前所选玩法段。
+        """
+        items = get_field(routine, "Routine Items", self.display_name, list)
+        ids = {item["id"] for item in items}
+        assert self._daily_section in ids, (
+            f"[set_config][{self.display_name}] Routine Items 缺少 {self._daily_section}（无法启用所选玩法）"
+        )
+        changed = False
+        for item in items:
+            task_id = item["id"]
+            if task_id not in self._exclusive_routine_items:
+                continue
+            changed |= safe_update(
+                item, "enabled", task_id == self._daily_section, self.display_name
+            )
+        return changed
+
+    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
+        """绑定段与字段后委托基类写配置，再切换第二份文件的互斥启用状态。
+
+        Args:
+            dungeon_name: 副本中文名。
+            sequence: 序列值。
+        """
+        self._bind_section(dungeon_name)
+        super().set_dungeon(dungeon_name, sequence)
+        if self.enabled:
+            routine = self._load(self._routine_config_rel_path)
+            if self._update_routine_exclusion(routine):
+                self._save(routine, self._routine_config_rel_path)
 
 
 # ---- 明日方舟 Arknights（粥）----
 @register
 class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
+    display_name = "粥"
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
     _template_rel_path = "MAA一条龙.json"
@@ -865,21 +996,11 @@ class ArknightsConfig(ScriptConfig):
     )
 
     def __init__(self):
-        self.display_name = "粥"
         self._init_task_map()
         self._init_config()
 
     def _init_task_map(self):
-        """
-        self._task_map = {
-            "剿灭":   {"index": 1, "stage": "Annihilation"},
-            "红票":   {"index": 2, "stage": "AP-5"},
-            "经验":   {"index": 3, "stage": "LS-6"},
-            "龙门币": {"index": 4, "stage": "CE-6"},
-            "活动土": {"index": 5, "stage": None},
-            "土":     {"index": 6, "stage": "1-7"},
-        }
-        """
+        """从模板 TaskQueue 提取 FightTask，构建 副本名 → {index, stage} 映射。"""
         template = self._load_template()
         task_config = template["Configurations"]["Default"]["TaskQueue"]
         self._task_map = {}
@@ -895,9 +1016,17 @@ class ArknightsConfig(ScriptConfig):
                     self._task_map[name] = {"index": index, "stage": stage}
 
     def _update_task(self, config: dict, dungeon_name: str) -> bool:
-        """
-        粥的副本设置逻辑：禁用所有副本 → 启用剿灭任务（周常） → 启用选定副本 → 启用刷土清理剩余体力。
-        只有状态变化时返回 True。
+        """粥副本设置：禁用全部后启用剿灭/土/活动土/选定副本。
+
+        Args:
+            config: 目标 config dict。
+            dungeon_name: 选定副本中文名。
+
+        Returns:
+            是否有任意任务项状态发生变化。
+
+        Raises:
+            AssertionError: 未适配的副本，或 TaskQueue 索引/名称/关卡不匹配。
         """
         task_config = config["Configurations"]["Default"]["TaskQueue"]
         assert dungeon_name in self._task_map, (
@@ -931,13 +1060,6 @@ class ArknightsConfig(ScriptConfig):
 
 
 # ============================================================
-# 注册表
-# ============================================================
-# 见基类上方定义：由 register() 装饰器显式填充，
-# 新增脚本只需声明子类（_script_name + 路径类属性）并加 @register。
-
-
-# ============================================================
 # 外观接口
 # ============================================================
 
@@ -948,25 +1070,20 @@ def set_config(
     sequence: str | int | None = None,
     weekly_start: int | None = None,
 ) -> None:
-    """
-    外观接口：为指定脚本设置副本、刷取序列与周常起始日
+    """外观接口：设置副本 / 序列 / 周常起始日。
+
+    未选副本且无周常，或脚本未适配（自定义脚本）时优雅跳过。
 
     Args:
-        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
-            python/bat 为 display_name）
-        dungeon_name: 副本名称（来自 dungeon_list.yml），None 或 "未选择" 时跳过副本
-        sequence: 刷取序列（字符串或整数），None 表示无序列
-        weekly_start: 周常起始日（1=周一 ~ 7=周日），None 表示不处理周常。
-            无论 GUI 周常开关（enabled，纯内存 UI 态）如何，都按
-            「今天周几 >= 起始日」判断启用/停用写入脚本配置——与日常副本
-            选择落盘不受日常开关影响的模型一致。
+        script_name: 脚本标识名。
+        dungeon_name: 副本中文名；None 或「未选择」表示不设置副本。
+        sequence: 序列值；仅部分脚本支持。
+        weekly_start: 周常起始日（1~7）；None 表示不设置周常。
     """
-    # 未选择副本且未指定周常时，不做更改
     if (not dungeon_name or dungeon_name == "未选择") and weekly_start is None:
         return
 
-    # 自定义脚本（用户在 GUI 中新增）没有副本适配，不在注册表中，直接跳过。
-    # 这类脚本本就没有副本选项，正常不会带 dungeon_name 走到这里；即便带了也优雅跳过。
+    # 自定义脚本（不在注册表）跳过
     if script_name not in _CONFIGS:
         logger.info(f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过")
         return
@@ -980,123 +1097,63 @@ def set_config(
 
 
 def get_config_path(script_name: str) -> str:
-    """
-    外观接口：按脚本唯一标识取脚本 config 绝对路径（供 GUI「打开配置文件」用）。
-
-    未适配脚本 → AssertionError（消息与 subscript 原语义一致，供上层捕获提示）。
-    路径（``_config_rel_path``）由对应子类声明，本函数只做分发。
+    """取 config 绝对路径（供 GUI 打开）。
 
     Args:
-        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
-            python/bat 为 display_name）。
+        script_name: 脚本标识名。
+
+    Returns:
+        config 绝对路径。
+
+    Raises:
+        AssertionError: 脚本未适配。
     """
     assert script_name in _CONFIGS, f"[set_config] 未适配脚本: {script_name}"
     return _get_config_path_impl(script_name, _CONFIGS[script_name]._config_rel_path)
 
 
 def get_game_exe_path(script_name: str) -> str | None:
-    """
-    外观接口：读取指定脚本对应的游戏可执行文件路径（供 GUI「打开游戏」用）。
-
-    只读查询，不实例化子类（避免 __init__ 触发的 _init_config 写盘副作用）。
-    未适配 / 游戏配置缺失 / 字段缺失 / 值为空时返回 None，GUI 据此隐藏菜单项。
-
-    Args:
-        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
-            python/bat 为 display_name）。
-    """
+    """读游戏 exe 路径（供 GUI 打开）；未适配/缺失 → None。"""
     if script_name not in _CONFIGS:
         return None
     return _CONFIGS[script_name].get_game_exe_path(script_name)
 
 
 def get_game_bg_img(script_name: str) -> str:
-    """
-    外观接口：读取指定脚本对应的启动器背景图绝对路径（供 GUI 渲染背景用）。
-
-    不实例化子类。未适配 / 未声明 / 根目录取不到 / 文件不存在
-    → 返回空字符串，GUI 据此走渐变占位背景。
-    注意：个别脚本（原神）首次调用时会尝试下载远程背景图（网络操作，
-    见 GenshinConfig.get_game_bg_img），并非纯只读。
-
-    Args:
-        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
-            python/bat 为 display_name）。
-    """
+    """读背景图绝对路径（供 GUI 渲染）；未适配/缺失 → 空字符串。原神首次调用会下载。"""
     if script_name not in _CONFIGS:
         return ""
     return _CONFIGS[script_name].get_game_bg_img(script_name)
 
 
 def get_game_bilibili(script_name: str) -> str:
-    """
-    外观接口：读取指定脚本对应的游戏官方 B 站空间链接（供 GUI 打开 B 站用）。
-
-    只读查询，不实例化子类。未适配 / 未声明 → 返回空字符串，GUI 走通用占位链接。
-
-    Args:
-        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
-            python/bat 为 display_name）。
-    """
+    """读 B 站链接（供 GUI 打开）；未适配/未声明 → 空字符串。"""
     if script_name not in _CONFIGS:
         return ""
     return _CONFIGS[script_name].get_game_bilibili(script_name)
 
 
 def get_game_github(script_name: str) -> str:
-    """
-    外观接口：读取指定脚本项目的 GitHub 主页链接（供 GUI 打开 GitHub 用）。
-
-    只读查询，不实例化子类。未适配 / 未声明 → 返回空字符串，GUI 走通用占位链接。
-
-    Args:
-        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
-            python/bat 为 display_name）。
-    """
+    """读 GitHub 链接（供 GUI 打开）；未适配/未声明 → 空字符串。"""
     if script_name not in _CONFIGS:
         return ""
     return _CONFIGS[script_name].get_game_github(script_name)
 
 
 def get_game_homepage(script_name: str) -> str:
-    """
-    外观接口：读取指定脚本对应的游戏官方主页链接（供 GUI 打开官网用）。
-
-    只读查询，不实例化子类。未适配 / 未声明 → 返回空字符串，GUI 走通用占位链接。
-
-    Args:
-        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
-            python/bat 为 display_name）。
-    """
+    """读官网链接（供 GUI 打开）；未适配/未声明 → 空字符串。"""
     if script_name not in _CONFIGS:
         return ""
     return _CONFIGS[script_name].get_game_homepage(script_name)
 
 
 def is_adapted(script_name: str) -> bool:
-    """
-    外观接口：查询脚本是否已注册副本配置适配（供 GUI 决定是否显示任务卡）。
-
-    只读查询，不实例化子类。未适配（不在 _CONFIGS 注册表）→ False。
-
-    Args:
-        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
-            python/bat 为 display_name）。
-    """
+    """查询脚本是否已注册副本适配（供 GUI 决定是否显示任务卡）。"""
     return script_name in _CONFIGS
 
 
 def supports_weekly(script_name: str) -> bool:
-    """
-    外观接口：查询脚本是否支持周常（周几以后开始执行）配置（供 GUI 控制周常行可选性）。
-
-    只读查询，不实例化子类。未适配 / 未声明 ``_weekly_task_name`` → False，
-    GUI 据此保持周常行「未支持」禁用态。
-
-    Args:
-        script_name: 脚本唯一标识（exe 为进程名如 ok-ww / BetterGI，
-            python/bat 为 display_name）。
-    """
+    """查询脚本是否支持周常（供 GUI 控制周常行可选性）。"""
     if script_name not in _CONFIGS:
         return False
     return bool(_CONFIGS[script_name]._weekly_task_name)
