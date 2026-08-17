@@ -845,11 +845,18 @@ class TestNTEConfig(unittest.TestCase):
             self.cfg._update_routine_exclusion(routine)
 
     def test_bind_section_hunt(self):
-        """追猎目标：段切到 daily_anomaly_hunter，追猎目标进入序列映射；无任务类型字段故不设 _task_key。"""
+        """追猎目标：段切到 daily_anomaly_hunter，追猎目标进入序列映射；任务类型通道绑定为 None（无有效值）。"""
         self.cfg._bind_section("追猎目标")
         self.assertEqual(self.cfg._daily_section, "daily_anomaly_hunter")
         self.assertEqual(self.cfg._seq_key_map, {"追猎目标": "追猎目标"})
-        self.assertNotIn("_task_key", vars(self.cfg))
+        self.assertIsNone(self.cfg._task_key)
+
+    def test_bind_section_reuse_clears_task_key(self):
+        """同实例先绑定异象界域（设 _task_key）再绑追猎目标：_task_key 必须清回 None，不残留。"""
+        self.cfg._bind_section("空幕")
+        self.assertEqual(self.cfg._task_key, "任务类型")
+        self.cfg._bind_section("追猎目标")
+        self.assertIsNone(self.cfg._task_key)
 
     def test_bind_section_anomaly(self):
         """异象界域：段为 daily_anomaly，序列映射含各副本序号字段，并设 _task_key=任务类型。"""
