@@ -10,8 +10,14 @@ import subprocess
 import sys
 import webbrowser
 
-from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Property, QObject, QRect, QPointF, QRectF, Qt, QUrl, Signal, Slot
+from PySide6.QtGui import (
+    QColor,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtQuick import QQuickImageProvider
 
 from src.config.dungeon_config import get_display_name, parse_dungeon_config
@@ -31,8 +37,10 @@ from src.gui.theme import (
     DEFAULT_BG,
     WEEKDAY_NAMES,
 )
+from src.gui.icons import _GITHUB_SVG
 from src.gui.video_backdrop import is_video
 from src.service.chain_service import ChainService
+from src.utils import get_config_yml_path_under_root
 from src.utils_runner import build_script_command
 from src.utils_weekly import is_weekly_start_reached
 
@@ -76,6 +84,170 @@ class ScriptIconProvider(QQuickImageProvider):
         return self._cache.get(id, QPixmap())
 
 
+# UI 通用矢量图标（重绘版）：旧 icons.py 的 draw_* 造型不佳且无法直接用于 QML，
+# 此处用干净的矢量重画，经 image://uiicon/<name> 提供给 QML Image。
+# 每个 draw 方法把 painter translate 到画布中心，在 48x48 画布内绘制（白图形）。
+_WHITE = QColor("#FFFFFF")
+_CUT = QColor("#1F2937")  # 图标内部"挖空"色，对齐按钮底色，使镂空处透出按钮背景
+
+
+class UiIconProvider(QQuickImageProvider):
+    """QML 通用 UI 矢量图标源：`image://uiicon/<name>`。
+
+    name → 重绘矢量图标。静态图标，无需游戏数据，构造即就绪。
+    支持：home / game / folder / bili / github / wallpaper / settings / min / close。
+    """
+
+    _SIZE = 48
+
+    def __init__(self):
+        super().__init__(QQuickImageProvider.Pixmap)
+        self._cache: dict[str, QPixmap] = {}
+        self._github_renderer = None
+        self._drawers = {
+            "home": self._draw_home,
+            "game": self._draw_game,
+            "folder": self._draw_folder,
+            "bili": self._draw_bili,
+            "github": self._draw_github,
+            "wallpaper": self._draw_wallpaper,
+            "settings": self._draw_settings,
+            "min": self._draw_min,
+            "close": self._draw_close,
+        }
+
+    def _render(self, name: str) -> QPixmap:
+        pm = QPixmap(self._SIZE, self._SIZE)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.translate(self._SIZE / 2, self._SIZE / 2)
+        self._drawers[name](p)
+        p.end()
+        return pm
+
+    def requestPixmap(self, id: str, size, requestedSize):
+        if id not in self._drawers:
+            return QPixmap()
+        if id not in self._cache:
+            self._cache[id] = self._render(id)
+        return self._cache[id]
+
+    # ═══════════════ 各图标矢量绘制（中心原点，半径≈16）══════════════
+    def _draw_home(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        roof = QPainterPath()
+        roof.moveTo(-13, -1)
+        roof.lineTo(0, -13)
+        roof.lineTo(13, -1)
+        p.drawPath(roof)  # 屋顶
+        p.drawLine(-10, -1, -10, 12)  # 左墙
+        p.drawLine(10, -1, 10, 12)  # 右墙
+        p.drawLine(-10, 12, 10, 12)  # 地
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        p.drawRect(QRectF(-3, 4, 6, 8))  # 门
+
+    def _draw_game(self, p: QPainter):
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        # 手柄主体 + 两侧握把
+        p.drawRoundedRect(QRectF(-13, -7, 26, 14), 7, 7)
+        p.drawRoundedRect(QRectF(-16, 1, 6, 11), 3, 3)
+        p.drawRoundedRect(QRectF(10, 1, 6, 11), 3, 3)
+        # 十字键（镂空，左下）
+        p.setBrush(_CUT)
+        p.drawRect(QRectF(-11, -3, 3, 9))
+        p.drawRect(QRectF(-14, 0, 9, 3))
+        # AB 圆点（镂空，右上斜排）
+        p.drawEllipse(QRectF(5, -4, 3, 3))
+        p.drawEllipse(QRectF(9, -1, 3, 3))
+
+    def _draw_folder(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 2.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        path = QPainterPath()
+        path.moveTo(-15, -9)
+        path.lineTo(-5, -9)
+        path.lineTo(-1, -4)
+        path.lineTo(11, -4)
+        path.lineTo(15, -1)
+        path.lineTo(15, 11)
+        path.lineTo(-15, 11)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    def _draw_bili(self, p: QPainter):
+        # B站小电视：天线 + 圆角机身 + 屏幕双眼
+        pen = QPen(_WHITE, 2.4, Qt.SolidLine, Qt.RoundCap)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawLine(-7, -11, -11, -15)  # 左天线
+        p.drawLine(7, -11, 11, -15)  # 右天线
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        p.drawRoundedRect(QRectF(-14, -12, 28, 22), 5, 5)  # 机身
+        p.setBrush(_CUT)
+        p.drawRoundedRect(QRectF(-11, -9, 22, 16), 3, 3)  # 屏幕
+        p.setBrush(_WHITE)
+        p.drawEllipse(QRectF(-6, -4, 3, 3))  # 左眼
+        p.drawEllipse(QRectF(3, -4, 3, 3))  # 右眼
+
+    def _draw_github(self, p: QPainter):
+        # Octocat 单色 logo：缩放至与其他图标一致的视觉尺寸（半径≈15，画布 48
+        # 内占 30），不复用 icons.draw_github（其渲染区仅 20×20，相对偏小）。
+        from PySide6.QtCore import QByteArray
+        from PySide6.QtSvg import QSvgRenderer
+
+        if self._github_renderer is None:
+            self._github_renderer = QSvgRenderer(QByteArray(_GITHUB_SVG.encode()))
+        self._github_renderer.render(p, QRect(-15, -15, 30, 30))
+
+    def _draw_wallpaper(self, p: QPainter):
+        # 图片框 + 太阳 + 山形
+        pen = QPen(_WHITE, 2.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(-14, -11, 28, 22), 4, 4)  # 相框
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        p.drawEllipse(QRectF(-9, -8, 5, 5))  # 太阳
+        mountain = QPainterPath()
+        mountain.moveTo(-14, 11)
+        mountain.lineTo(-4, -2)
+        mountain.lineTo(2, 5)
+        mountain.lineTo(8, -1)
+        mountain.lineTo(14, 11)
+        mountain.closeSubpath()
+        p.drawPath(mountain)  # 山
+
+    def _draw_settings(self, p: QPainter):
+        # 齿轮：8 外齿 + 主体圆 + 内孔
+        import math
+
+        pen = QPen(_WHITE, 2, Qt.SolidLine, Qt.RoundCap)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        for i in range(8):
+            a = math.radians(i * 45)
+            p.drawLine(
+                QPointF(7 * math.cos(a), 7 * math.sin(a)),
+                QPointF(11 * math.cos(a), 11 * math.sin(a)),
+            )
+        p.drawEllipse(QRectF(-8, -8, 16, 16))
+        p.drawEllipse(QRectF(-3, -3, 6, 6))
+
+    def _draw_min(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 2.4, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(-8, 0, 8, 0)
+
+    def _draw_close(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 2.4, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(-7, -7, 7, 7)
+        p.drawLine(7, -7, -7, 7)
+
+
 class QmlBridge(QObject):
     """QML 应用与 Python 业务逻辑的桥接对象（context property: `bridge`）。"""
 
@@ -108,6 +280,9 @@ class QmlBridge(QObject):
         self._weekly_toggle_state: dict[str, bool] = {}
         self._master_on = True
         self._reload_games()
+        # 启动时按 weekly_start 还原各游戏周常开关（对齐旧 GUI._init_weekly_toggle_states）；
+        # 此前漏迁移，周常行始终显示关闭。需放在 _reload_games 之后（依赖 self._games）。
+        self._weekly_toggle_state = self._init_weekly_toggle_states()
         self._apply_current()
 
     # ── 脚本列表 ─────────────────────────────────────────────────────────
@@ -406,6 +581,25 @@ class QmlBridge(QObject):
                 )
         return result
 
+    def _init_weekly_toggle_states(self) -> dict:
+        """初始化各脚本周常开关（纯内存 UI 态，不持久化、不写脚本配置）。
+
+        启动时由 weekly_start 决定：已设置「周几起」且今天周几 >= 起始日 → True，
+        否则 False。对齐旧 GUI._init_weekly_toggle_states（QML 版此前漏迁移，
+        导致周常行始终显示关闭）。
+        """
+        states: dict[str, bool] = {}
+        for game in self._games:
+            script_name = game["script_name"]
+            if not _supports_weekly(script_name):
+                continue
+            saved = self._ui_state.get(script_name)
+            weekly_start = saved.get("weekly_start") if saved else None
+            states[script_name] = weekly_start is not None and is_weekly_start_reached(
+                weekly_start
+            )
+        return states
+
     @Slot(bool)
     def toggleMaster(self, on: bool):
         """总开关：一键同步日常/周本（支持周常时周常开关一并置位）。"""
@@ -596,6 +790,16 @@ class QmlBridge(QObject):
         self.toastRequested.emit(f"已打开 {game['display_name']} 脚本目录")
 
     @Slot()
+    def openSettings(self):
+        """打开总配置文件 config.yml（系统默认程序）；缺失时 toast 提示（对齐旧 GUI）。"""
+        config_path = get_config_yml_path_under_root()
+        if not os.path.isfile(config_path):
+            self.toastRequested.emit("未找到 config/config.yml")
+            return
+        os.startfile(config_path)  # noqa: S606 打开总配置文件
+        self.toastRequested.emit("已打开总配置文件 config.yml")
+
+    @Slot()
     def openWallpaper(self):
         """更改当前脚本壁纸并持久化到 config/wallpaper.json（对齐旧 GUI）。"""
         from PySide6.QtWidgets import QFileDialog
@@ -727,4 +931,4 @@ class QmlBridge(QObject):
 
 
 # 供 context 共享的类型引用（QML 不直接实例化，仅为类型安全预留）
-__all__ = ["QmlBridge", "ScriptIconProvider"]
+__all__ = ["QmlBridge", "ScriptIconProvider", "UiIconProvider"]

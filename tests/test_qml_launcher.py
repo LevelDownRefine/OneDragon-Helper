@@ -20,7 +20,11 @@ os.environ.setdefault("QML_DISABLE_DISK_CACHE", "1")
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from src.gui import qml_bridge  # noqa: E402
-from src.gui.qml_bridge import QmlBridge, ScriptIconProvider  # noqa: E402
+from src.gui.qml_bridge import (  # noqa: E402
+    QmlBridge,
+    ScriptIconProvider,
+    UiIconProvider,
+)
 
 # 清理损坏的 QML 磁盘缓存（需在 QQmlApplicationEngine 创建前，保证干净编译）
 _local_appdata = os.environ.get("LOCALAPPDATA", "")
@@ -207,6 +211,27 @@ class TestFloatBar(unittest.TestCase):
             b.launchGame()
         spy.assert_called_once()
 
+    def test_open_settings_starts_config(self):
+        b = _make_bridge()
+        with (
+            patch.object(qml_bridge, "get_config_yml_path_under_root", return_value="C:/cfg/config.yml"),
+            patch.object(qml_bridge.os.path, "isfile", return_value=True),
+            patch("os.startfile", create=True) as start,
+        ):
+            b.openSettings()
+        start.assert_called_once_with("C:/cfg/config.yml")
+
+    def test_open_settings_missing_toasts(self):
+        b = _make_bridge()
+        spy = MagicMock()
+        b.toastRequested.connect(spy)
+        with (
+            patch.object(qml_bridge, "get_config_yml_path_under_root", return_value="C:/cfg/config.yml"),
+            patch.object(qml_bridge.os.path, "isfile", return_value=False),
+        ):
+            b.openSettings()
+        spy.assert_called_once()
+
     def test_open_wallpaper_persists_and_switches(self):
         b = _make_bridge()
         b._save_wallpapers = MagicMock()
@@ -268,7 +293,7 @@ class TestQmlApp(unittest.TestCase):
             from PySide6.QtWidgets import QApplication
             from src.config.subscript import resolve_script_path
             from src.gui import qml_bridge
-            from src.gui.qml_bridge import QmlBridge, ScriptIconProvider
+            from src.gui.qml_bridge import QmlBridge, ScriptIconProvider, UiIconProvider
 
             app = QApplication([])
             scripts = [
@@ -285,6 +310,7 @@ class TestQmlApp(unittest.TestCase):
             qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
             engine.addImageProvider("scripticon", ScriptIconProvider(bridge.games))
+            engine.addImageProvider("uiicon", UiIconProvider())
             engine.load(QUrl.fromLocalFile(resolve_script_path("assets/qml/main.qml")))
             # 跑几帧事件循环：Loader 异步加载 TaskCard 后才会求值其绑定，
             # 缺 import OneDragonHelper 会导致 ReferenceError: Bridge is not defined
@@ -349,6 +375,35 @@ class TestScriptIconProvider(unittest.TestCase):
         )
         self.assertIs(provider.requestPixmap("a", None, QSize()), pmap_a)
         self.assertFalse(provider.requestPixmap("b", None, QSize()).isNull())
+
+
+class TestUiIconProvider(unittest.TestCase):
+    """通用 UI 矢量图标（image://uiicon/<name>）全部 name 都能渲染出非透明 pixmap。"""
+
+    def test_all_named_icons_render_non_null(self):
+        from PySide6.QtCore import QSize
+
+        names = [
+            "home",
+            "game",
+            "folder",
+            "bili",
+            "github",
+            "wallpaper",
+            "settings",
+            "min",
+            "close",
+        ]
+        provider = UiIconProvider()
+        for name in names:
+            pm = provider.requestPixmap(name, None, QSize())
+            self.assertFalse(pm.isNull(), f"图标 {name} 渲染为空")
+            self.assertEqual((pm.width(), pm.height()), (48, 48))
+
+    def test_unknown_name_returns_null(self):
+        from PySide6.QtCore import QSize
+
+        self.assertTrue(UiIconProvider().requestPixmap("nope", None, QSize()).isNull())
 
 
 if __name__ == "__main__":

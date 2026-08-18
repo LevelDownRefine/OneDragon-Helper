@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QApplication
 from src.config.set_config import ScriptConfig
 from src.config.subscript import resolve_script_path
 from src.gui.dialogs import confirm_config_update
-from src.gui.qml_bridge import QmlBridge, ScriptIconProvider
+from src.gui.qml_bridge import QmlBridge, ScriptIconProvider, UiIconProvider
 from src.gui.theme import FONT_FAMILY
 
 
@@ -55,6 +55,7 @@ def main():
 
     engine = QQmlApplicationEngine()
     engine.addImageProvider("scripticon", provider)
+    engine.addImageProvider("uiicon", UiIconProvider())
     qml_path = resolve_script_path("assets/qml/main.qml")
     assert qml_path and os.path.isfile(qml_path), f"[qml_launcher] QML 缺失: {qml_path}"
     # 阶段日志：定位启动卡点（正常顺序 engine loading → loaded → running）

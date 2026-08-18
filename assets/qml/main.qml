@@ -268,14 +268,14 @@ Window {
         }
     }
 
-    // 窗口控制（右上：最小化/关闭）——内联实现。
+    // 窗口控制（右上：最小化 / 设置 / 关闭）——内联实现，图标用 image://uiicon 矢量绘制。
     // 不引用 IconButton 组件类型：PySide6 下自定义 .qml 组件类型解析存在
     // 非确定性 bug（Type IconButton unavailable / Cannot assign to "data"），
     // 内联后 main.qml 加载完全稳定。
     Item {
-        x: 1200
+        x: 1164
         y: 8
-        width: 80
+        width: 116
         height: 36
         z: 30
         // 最小化
@@ -285,12 +285,12 @@ Window {
             height: 36
             radius: 12
             color: minBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
-            Text {
+            Image {
                 anchors.centerIn: parent
-                text: "—"
-                color: "#FFFFFF"
-                font.pixelSize: 22
-                font.weight: Font.Medium
+                width: 22
+                height: 22
+                source: "image://uiicon/min"
+                fillMode: Image.PreserveAspectFit
             }
             MouseArea {
                 id: minBtnMouse
@@ -299,19 +299,40 @@ Window {
                 onClicked: Bridge.minimize()
             }
         }
+        // 设置（打开总配置 config.yml）
+        Rectangle {
+            x: 40
+            width: 36
+            height: 36
+            radius: 12
+            color: setBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
+            Image {
+                anchors.centerIn: parent
+                width: 22
+                height: 22
+                source: "image://uiicon/settings"
+                fillMode: Image.PreserveAspectFit
+            }
+            MouseArea {
+                id: setBtnMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: Bridge.openSettings()
+            }
+        }
         // 关闭
         Rectangle {
-            x: 44
+            x: 80
             width: 36
             height: 36
             radius: 12
             color: closeBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
-            Text {
+            Image {
                 anchors.centerIn: parent
-                text: "×"
-                color: "#FFFFFF"
-                font.pixelSize: 22
-                font.weight: Font.Medium
+                width: 22
+                height: 22
+                source: "image://uiicon/close"
+                fillMode: Image.PreserveAspectFit
             }
             MouseArea {
                 id: closeBtnMouse
@@ -388,7 +409,7 @@ Window {
         }
     }
 
-    // 右侧悬浮图标条（主页/启动游戏/文件夹/B站/GitHub/壁纸）
+    // 右侧悬浮图标条（主页/启动游戏/文件夹/B站/GitHub/壁纸）——图标用 image://uiicon 矢量绘制
     Item {
         x: 1220
         y: 80
@@ -396,7 +417,14 @@ Window {
         height: 300
         z: 20
         Repeater {
-            model: ["⌂", "▶", "▸", "◉", "◎", "▣"]
+            model: [
+                { icon: "home", act: () => Bridge.openHome() },
+                { icon: "game", act: () => Bridge.launchGame() },
+                { icon: "folder", act: () => Bridge.openScriptFolder() },
+                { icon: "bili", act: () => Bridge.openBilibili() },
+                { icon: "github", act: () => Bridge.openGithub() },
+                { icon: "wallpaper", act: () => Bridge.openWallpaper() },
+            ]
             Rectangle {
                 x: 12
                 y: 22 + index * 48
@@ -404,25 +432,18 @@ Window {
                 height: 36
                 radius: 12
                 color: iconMouse.containsMouse ? "#2B3A52" : "#1F2937"
-                Text {
+                Image {
                     anchors.centerIn: parent
-                    text: modelData
-                    color: "#FFFFFF"
-                    font.pixelSize: 18
+                    width: 22
+                    height: 22
+                    source: "image://uiicon/" + modelData.icon
+                    fillMode: Image.PreserveAspectFit
                 }
                 MouseArea {
                     id: iconMouse
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: {
-                        // 与悬浮条图标顺序一致：主页/启动游戏/文件夹/B站/GitHub/壁纸
-                        if (index === 0) Bridge.openHome()
-                        else if (index === 1) Bridge.launchGame()
-                        else if (index === 2) Bridge.openScriptFolder()
-                        else if (index === 3) Bridge.openBilibili()
-                        else if (index === 4) Bridge.openGithub()
-                        else if (index === 5) Bridge.openWallpaper()
-                    }
+                    onClicked: modelData.act()
                 }
             }
         }
