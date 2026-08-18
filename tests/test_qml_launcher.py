@@ -263,7 +263,7 @@ class TestQmlApp(unittest.TestCase):
             os.environ["QT_QPA_PLATFORM"] = "offscreen"
             os.environ["QML_DISABLE_DISK_CACHE"] = "1"
             from unittest.mock import patch
-            from PySide6.QtCore import QUrl
+            from PySide6.QtCore import QUrl, QTimer
             from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
             from PySide6.QtWidgets import QApplication
             from src.config.subscript import resolve_script_path
@@ -286,6 +286,10 @@ class TestQmlApp(unittest.TestCase):
             engine = QQmlApplicationEngine()
             engine.addImageProvider("scripticon", ScriptIconProvider(bridge.games))
             engine.load(QUrl.fromLocalFile(resolve_script_path("assets/qml/main.qml")))
+            # 跑几帧事件循环：Loader 异步加载 TaskCard 后才会求值其绑定，
+            # 缺 import OneDragonHelper 会导致 ReferenceError: Bridge is not defined
+            QTimer.singleShot(600, app.quit)
+            app.exec()
             print("ROOT_OBJECTS", len(engine.rootObjects()), flush=True)
             """
         )
@@ -297,6 +301,9 @@ class TestQmlApp(unittest.TestCase):
             cwd=os.getcwd(),
         )
         self.assertIn("ROOT_OBJECTS 1", proc.stdout)
+        # 回归守卫：子组件（TaskCard 等）必须 import OneDragonHelper 才能在
+        # 事件循环中解析 Bridge；缺 import 会让所有 Bridge.xxx 绑定 ReferenceError。
+        self.assertNotIn("ReferenceError", proc.stderr)
 
 
 class TestScriptIconProvider(unittest.TestCase):

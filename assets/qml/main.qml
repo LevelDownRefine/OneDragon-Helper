@@ -365,6 +365,27 @@ Window {
             hoverEnabled: true
             onClicked: Bridge.launchScript()
         }
+        // 右侧 ☰ 配置圆（与 ▶ 对称，56×56）——点击打开当前脚本配置弹窗
+        Rectangle {
+            x: 156
+            y: 4
+            width: 56
+            height: 56
+            radius: 28
+            color: cfgBtn.containsMouse ? "#0F3A6B" : "#0F2A4D"
+            Text {
+                anchors.centerIn: parent
+                text: "≡"
+                color: "#FFFFFF"
+                font.pixelSize: 30
+            }
+            MouseArea {
+                id: cfgBtn
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: Bridge.configCurrent()
+            }
+        }
     }
 
     // 右侧悬浮图标条（主页/启动游戏/文件夹/B站/GitHub/壁纸）
@@ -429,6 +450,15 @@ Window {
         id: toastTimer
         interval: 3000
         onTriggered: toast.visible = false
+    }
+
+    // 任务调度卡（日常副本 / 周常周几）：Loader 按路径懒加载，复用视频层同样的
+    // "独立 .qml + Loader source" 稳定模式（不把类型 import 进 main.qml 本体）。
+    Loader {
+        id: taskCardLoader
+        x: 128
+        y: 392
+        source: "TaskCard.qml"
     }
 
     // toast / 添加脚本 / 重排信号连接（不用 Connections 组件，避免单例 target 解析的潜在问题）

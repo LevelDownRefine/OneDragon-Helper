@@ -14,17 +14,27 @@ from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 from PySide6.QtGui import QPixmap
 from PySide6.QtQuick import QQuickImageProvider
 
+from src.config.dungeon_config import get_display_name, parse_dungeon_config
 from src.config.set_config import get_game_bg_img as _get_game_bg_img
 from src.config.set_config import get_game_bilibili as _get_game_bilibili
 from src.config.set_config import get_game_exe_path as _get_game_exe_path
 from src.config.set_config import get_game_github as _get_game_github
 from src.config.set_config import get_game_homepage as _get_game_homepage
+from src.config.set_config import is_adapted
+from src.config.set_config import supports_weekly as _supports_weekly
 from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.game_list_model import GameListModel
-from src.gui.theme import _URL_BILIBILI, _URL_HOME, C_GAME_DIM, DEFAULT_BG
+from src.gui.theme import (
+    _URL_BILIBILI,
+    _URL_HOME,
+    C_GAME_DIM,
+    DEFAULT_BG,
+    WEEKDAY_NAMES,
+)
 from src.gui.video_backdrop import is_video
 from src.service.chain_service import ChainService
 from src.utils_runner import build_script_command
+from src.utils_weekly import is_weekly_start_reached
 
 
 class ScriptIconProvider(QQuickImageProvider):
@@ -75,6 +85,7 @@ class QmlBridge(QObject):
     controlModeChanged = Signal()  # ⊞ 控制模式切换
     toastRequested = Signal(str)  # 右下角 toast 浮层文本
     gameAdded = Signal()  # 添加脚本成功（QML 用于滚动列表到底部）
+    taskStateChanged = Signal()  # 任务卡（日常/周常）状态变化
 
     def __init__(self):
         super().__init__()
@@ -91,6 +102,11 @@ class QmlBridge(QObject):
         self._bg_url = ""
         self._grad_color = C_GAME_DIM
         self._grad_char = ""
+        # 任务卡状态：gui_state.json 的副本/序列/周常（按 script_name 索引）
+        self._ui_state = self.service.load_ui_state()
+        # 周常开关 UI 态（纯内存，不持久化）；总开关为全局 UI 态（驱动日常行开关）
+        self._weekly_toggle_state: dict[str, bool] = {}
+        self._master_on = True
         self._reload_games()
         self._apply_current()
 
@@ -244,6 +260,194 @@ class QmlBridge(QObject):
         self.toastRequested.emit(f"已添加 {script_data['display_name']}")
         self.gameAdded.emit()
 
+    @Slot()
+    def configCurrent(self):
+        """打开当前脚本配置弹窗（复用 SingleScriptConfigDialog，对齐旧 GUI）。
+
+        保存成功（Accepted）→ ChainService.update_script 落盘并重载脚本列表；
+        删除（close，非 Accepted）不落盘、不进保存分支。
+        """
+        if not self._games:
+            return
+        game = self._games[self.current_index]
+        from PySide6.QtWidgets import QDialog
+
+        from src.gui.dialogs import SingleScriptConfigDialog
+
+        dialog = SingleScriptConfigDialog(
+            game["script_name"],
+            game["display_name"],
+            game["script_data"].get("script_path", ""),
+            None,
+            script_service=self.service._script_service,
+        )
+        dialog.delete_requested.connect(self._on_delete_script)
+        if dialog.exec() == QDialog.Accepted:
+            assert dialog.pending_changes is not None, (
+                "[qml_bridge] 配置弹窗 accept 但 pending_changes 为空"
+            )
+            changes = dialog.pending_changes
+            self.service.update_script(
+                changes["old_script_name"],
+                changes["new_display_name"],
+                changes["config_patch"],
+                changes["weekly_timeouts"],
+            )
+            self._reload_games()
+            self.toastRequested.emit(f"已保存 {changes['new_display_name']} 配置")
+
+    def _on_delete_script(self, script_name: str):
+        """配置弹窗确认删除：落盘后重载脚本列表（对齐旧 GUI）。"""
+        self.service.remove_script(script_name)
+        self._reload_games()
+
+    # ── 任务卡（日常 / 周常）──────────────────────────────────────────────
+    @Property(str, notify=taskStateChanged)
+    def taskTitle(self) -> str:
+        """当前游戏显示名（任务卡标题）。"""
+        return self._games[self.current_index]["display_name"]
+
+    @Property(bool, notify=taskStateChanged)
+    def taskAdapted(self) -> bool:
+        """当前游戏是否已注册副本适配（决定日常/周常行显隐）。"""
+        return is_adapted(self._games[self.current_index]["script_name"])
+
+    @Property(bool, notify=taskStateChanged)
+    def dailySupported(self) -> bool:
+        """当前游戏是否有可配置日常副本（dungeon_map 有配置 → 显示日常行）。
+
+        区别于 taskAdapted（是否在 _CONFIGS 注册）：部分游戏虽已注册，但
+        dungeon_list 无实际副本（如原神仅检查、终末地骨架），无需日常行。
+        """
+        return bool(self.service.dungeon_map().get(self._games[self.current_index]["script_name"]))
+
+    @Property(str, notify=taskStateChanged)
+    def dailyDungeonText(self) -> str:
+        """日常副本 chip 文字（持久化于 gui_state.json）。"""
+        game = self._games[self.current_index]
+        saved = self._ui_state.get(game["script_name"], {})
+        if not saved.get("dungeon"):
+            return "选择副本"
+        dungeon_cfg = self.service.dungeon_map().get(game["script_name"])
+        return self._dungeon_chip_text(
+            dungeon_cfg, saved.get("dungeon"), saved.get("sequence")
+        )
+
+    @Property(bool, notify=taskStateChanged)
+    def weeklySupported(self) -> bool:
+        """当前游戏是否支持周常（决定周常行可选性 / 整行样式）。"""
+        return _supports_weekly(self._games[self.current_index]["script_name"])
+
+    @Property(str, notify=taskStateChanged)
+    def weeklyStartLabel(self) -> str:
+        """周常 chip 文字（周几起 / 选择周几）。"""
+        game = self._games[self.current_index]
+        saved = self._ui_state.get(game["script_name"], {})
+        start_day = saved.get("weekly_start")
+        return "选择周几" if start_day is None else f"{WEEKDAY_NAMES[start_day]}起"
+
+    @Property(bool, notify=taskStateChanged)
+    def masterOn(self) -> bool:
+        """总开关状态（全局 UI 态；驱动日常行开关）。"""
+        return self._master_on
+
+    @Property(bool, notify=taskStateChanged)
+    def dailyOn(self) -> bool:
+        """日常行开关（镜像总开关，由 toggleMaster 驱动）。"""
+        return self._master_on
+
+    @Property(bool, notify=taskStateChanged)
+    def weeklyOn(self) -> bool:
+        """周常行开关（内存态，由 toggleMaster / selectWeekly 置位）。"""
+        return self._weekly_toggle_state.get(
+            self._games[self.current_index]["script_name"], False
+        )
+
+    @Property("QVariantList", notify=taskStateChanged)
+    def dungeonOptions(self) -> list:
+        """日常副本下拉数据：[{name, clear, sequences:[{label,value}]}, ...]。"""
+        return self._build_dungeon_options(self._games[self.current_index]["script_name"])
+
+    def _refresh_task_card(self):
+        """切换游戏后刷新任务卡（标题/适配态/日常/周常由 Property getter 实时读取）。
+
+        仅发信号触发 QML 重读；无需缓存字段。
+        """
+        self.taskStateChanged.emit()
+
+    def _dungeon_chip_text(self, dungeon_cfg, dungeon_name: str, sequence) -> str:
+        """副本 chip 文字：有二级序列且选了二级 → 二级展示名；否则副本名本身。"""
+        if dungeon_name is None:
+            return "选择副本"
+        if dungeon_cfg:
+            _, seq_map, _ = parse_dungeon_config(dungeon_cfg)
+            if sequence is not None and dungeon_name in seq_map:
+                return get_display_name(seq_map, dungeon_name, sequence)
+        return dungeon_name
+
+    def _build_dungeon_options(self, script_name: str) -> list:
+        """构建日常副本下拉数据（一级副本 → 二级序列）。"""
+        dungeon_cfg = self.service.dungeon_map().get(script_name)
+        if not dungeon_cfg:
+            return []
+        options, seq_map, _ = parse_dungeon_config(dungeon_cfg)
+        result = []
+        for name in options:
+            if name == "未选择":
+                result.append({"name": "未选择", "clear": True, "sequences": []})
+            else:
+                seqs = seq_map.get(name, [])
+                result.append(
+                    {
+                        "name": name,
+                        "clear": False,
+                        "sequences": [{"label": lbl, "value": val} for lbl, val in seqs],
+                    }
+                )
+        return result
+
+    @Slot(bool)
+    def toggleMaster(self, on: bool):
+        """总开关：一键同步日常/周本（支持周常时周常开关一并置位）。"""
+        self._master_on = on
+        script_name = self._games[self.current_index]["script_name"]
+        if _supports_weekly(script_name):
+            self._weekly_toggle_state[script_name] = on
+        self.taskStateChanged.emit()
+
+    @Slot(bool)
+    def toggleWeekly(self, on: bool):
+        """周常开关（内存态，不持久化；与日常开关模型一致）。"""
+        script_name = self._games[self.current_index]["script_name"]
+        self._weekly_toggle_state[script_name] = on
+        self.taskStateChanged.emit()
+
+    @Slot(str, "QVariant")
+    def selectDungeon(self, dungeon_name: str, sequence):
+        """选择日常副本（持久化到 gui_state.json 的 dungeon/sequence）。"""
+        script_name = self._games[self.current_index]["script_name"]
+        saved = self._ui_state.setdefault(script_name, {})
+        if not dungeon_name or dungeon_name == "未选择":
+            saved.pop("dungeon", None)
+            saved.pop("sequence", None)
+        else:
+            saved["dungeon"] = dungeon_name
+            saved["sequence"] = sequence
+        self.service.save_ui_state(self._ui_state)
+        self._refresh_task_card()
+
+    @Slot(int)
+    def selectWeekly(self, start_day: int):
+        """选择周常起始日（持久化 weekly_start；周常开关按「今天>=起始日」置位）。"""
+        assert start_day in WEEKDAY_NAMES, f"[qml_bridge] 非法周几: {start_day}"
+        script_name = self._games[self.current_index]["script_name"]
+        saved = self._ui_state.setdefault(script_name, {})
+        saved["weekly_start"] = start_day
+        enabled = is_weekly_start_reached(start_day)
+        self._weekly_toggle_state[script_name] = enabled
+        self.service.save_ui_state(self._ui_state)
+        self._refresh_task_card()
+
     # ── 启动 / 运行 ─────────────────────────────────────────────────────
     @Slot()
     def launchAll(self):
@@ -313,7 +517,7 @@ class QmlBridge(QObject):
 
     def _run_chain(self, config_data: dict, enabled_keys: set, label: str) -> None:
         """生成并运行脚本链（真实 ChainService）。"""
-        ui_state = {name: dict(entry) for name, entry in self._ui_state().items()}
+        ui_state = {name: dict(entry) for name, entry in self._ui_state.items()}
         chain_path = self.service.generate_chain(
             config_data, enabled_keys, chain_name="today", ui_state=ui_state
         )
@@ -327,10 +531,6 @@ class QmlBridge(QObject):
             creationflags=creationflags,
         )
         self.toastRequested.emit(f"{label}：已生成并运行链 ({len(enabled_keys)} 个脚本)")
-
-    def _ui_state(self) -> dict:
-        """读取持久化 ui_state（副本/序列/周常起始），供运行链时使用。"""
-        return self.service.load_ui_state()
 
     # ── 悬浮条 ─────────────────────────────────────────────────────────
     def _current_game(self) -> dict:
@@ -455,6 +655,7 @@ class QmlBridge(QObject):
         self._grad_color = game["color"]
         self._grad_char = game["char"]
         self.backgroundChanged.emit()
+        self._refresh_task_card()
 
     def _load_bg(self, game: dict) -> str | None:
         """返回该脚本应使用的背景路径（自定义壁纸 → 脚本背景 → DEFAULT_BG）。
