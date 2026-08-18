@@ -58,13 +58,13 @@ class TestConfigRelPaths(unittest.TestCase):
             )
 
     def test_template_rel_path_only_for_template_scripts(self):
-        """模板路径只覆盖 4 个走模板初始化的脚本"""
+        """模板路径只覆盖 5 个走模板初始化的脚本"""
         with_template = {
             name for name, cls in set_config._CONFIGS.items() if cls._template_rel_path
         }
         self.assertEqual(
             with_template,
-            {"BetterGI", "OneDragon-Launcher", "MAA", "March7th-Assistant"},
+            {"BetterGI", "OneDragon-Launcher", "MAA", "March7th-Assistant", "ok-ef"},
         )
 
     def test_weekly_task_name_requires_write_weekly(self):
