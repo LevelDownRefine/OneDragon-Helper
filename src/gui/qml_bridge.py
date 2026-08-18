@@ -10,7 +10,17 @@ import subprocess
 import sys
 import webbrowser
 
-from PySide6.QtCore import Property, QObject, QRect, QPointF, QRectF, Qt, QUrl, Signal, Slot
+from PySide6.QtCore import (
+    Property,
+    QObject,
+    QPointF,
+    QRect,
+    QRectF,
+    Qt,
+    QUrl,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import (
     QColor,
     QPainter,
@@ -30,6 +40,7 @@ from src.config.set_config import is_adapted
 from src.config.set_config import supports_weekly as _supports_weekly
 from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.game_list_model import GameListModel
+from src.gui.icons import _GITHUB_SVG
 from src.gui.theme import (
     _URL_BILIBILI,
     _URL_HOME,
@@ -37,7 +48,6 @@ from src.gui.theme import (
     DEFAULT_BG,
     WEEKDAY_NAMES,
 )
-from src.gui.icons import _GITHUB_SVG
 from src.gui.video_backdrop import is_video
 from src.service.chain_service import ChainService
 from src.utils import get_config_yml_path_under_root

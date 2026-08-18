@@ -194,46 +194,119 @@ Item {
         }
     }
 
-    // ── 日常副本下拉（二级）──
+    // ── 日常副本下拉（多级级联：一级副本 → 二级序列，对齐旧 QMenu 子菜单）──
+    // 左列列一级副本；带二级项的行 hover 即在右列展开序列（仿原生子菜单弹出），
+    // 既支持「副本→序列」两级，也兼容纯一级副本（点击即选）。
+    //
+    // 宽度按内容自适应（仿旧 QMenu 自动按最长项撑开，不再截断长副本名），
+    // 内容过高则 Flickable 内部滚动（仿旧 QMenu 超长滚动）。
     Item {
         id: dungeonPopup
         z: 100
         visible: false
         x: dailyChip.x
         y: dailyRow.y + 56 + 4
-        width: 200
-        height: dungeonList.height + 8
+        // 宽高随内容：宽 = 左列 +（右列出现时）+ 内边距，封顶 440 避免出屏；
+        // 高 = 内容高度封顶 380，超出由 Flickable 滚动。
+        property int contentW: dungeonList.implicitWidth
+                               + (seqList.visible ? popupRow.spacing + seqList.implicitWidth : 0)
+        width: Math.min(contentW + 8, 440)
+        height: Math.min(popupRow.implicitHeight, 380) + 8
 
         Rectangle {
             anchors.fill: parent; radius: 10
             color: "#0F1A2E"; border.width: 1; border.color: "#33517A"
         }
-        Column {
-            id: dungeonList
-            x: 4; y: 4; width: parent.width - 8; spacing: 2
-            Repeater {
-                model: dungeonPopup.visible ? Bridge.dungeonOptions : []
-                Rectangle {
-                    width: dungeonList.width; height: 30; radius: 6
-                    color: optMouse.containsMouse ? "#1A3A7A" : "transparent"
-                    Text {
-                        anchors.fill: parent; leftPadding: 10
-                        verticalAlignment: Text.AlignVCenter
-                        text: modelData.name
-                        color: modelData.clear ? "#FF9E9E" : "#FFFFFF"; font.pixelSize: 13
+        Flickable {
+            id: popupFlick
+            x: 4; y: 4
+            width: parent.width - 8
+            height: parent.height - 8
+            contentWidth: popupRow.implicitWidth
+            contentHeight: popupRow.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            Row {
+                id: popupRow
+                spacing: 4
+                // 左列：一级副本（宽随最长项自适应；TextMetrics 量字宽）
+                Column {
+                    id: dungeonList
+                    spacing: 2
+                    Repeater {
+                        model: dungeonPopup.visible ? Bridge.dungeonOptions : []
+                        Rectangle {
+                            property int padL: 10
+                            property int padR: 18
+                            TextMetrics { id: optTm; font.pixelSize: 13; text: modelData.name }
+                            implicitWidth: optTm.width + padL + padR
+                            width: implicitWidth
+                            implicitHeight: 30
+                            height: 30
+                            radius: 6
+                            color: (optMouse.containsMouse || dungeonPopup.selName === modelData.name)
+                                   ? "#1A3A7A" : "transparent"
+                            Text {
+                                anchors.fill: parent; leftPadding: 10
+                                verticalAlignment: Text.AlignVCenter
+                                text: modelData.name
+                                color: modelData.clear ? "#FF9E9E" : "#FFFFFF"; font.pixelSize: 13
+                            }
+                            // 有二级序列的副本标注 ▸，提示有子菜单
+                            Text {
+                                anchors.right: parent.right; rightPadding: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "▸"; color: "#7DA8FF"; font.pixelSize: 12
+                                visible: modelData.sequences.length > 0
+                            }
+                            MouseArea {
+                                id: optMouse; anchors.fill: parent; hoverEnabled: true
+                                onEntered: {
+                                    // 进入带子项副本 → 展开右列；进入叶子副本 → 收起右列
+                                    dungeonPopup.selName = modelData.sequences.length > 0 ? modelData.name : ""
+                                }
+                                onClicked: {
+                                    if (modelData.clear) {
+                                        Bridge.selectDungeon("未选择", null)
+                                        dungeonPopup.visible = false
+                                    } else if (modelData.sequences.length > 0) {
+                                        dungeonPopup.selName = modelData.name
+                                    } else {
+                                        Bridge.selectDungeon(modelData.name, null)
+                                        dungeonPopup.visible = false
+                                    }
+                                }
+                            }
+                        }
                     }
-                    MouseArea {
-                        id: optMouse; anchors.fill: parent; hoverEnabled: true
-                        onClicked: {
-                            if (modelData.clear) {
-                                Bridge.selectDungeon("未选择", null)
-                                dungeonPopup.visible = false
-                            } else if (modelData.sequences.length > 0) {
-                                dungeonPopup.level = 2
-                                dungeonPopup.selName = modelData.name
-                            } else {
-                                Bridge.selectDungeon(modelData.name, null)
-                                dungeonPopup.visible = false
+                }
+                // 右列：二级序列（仅当选中带子项的一级副本时出现）
+                Column {
+                    id: seqList
+                    spacing: 2
+                    visible: dungeonPopup.selName !== "" && dungeonPopup.selSequences.length > 0
+                    Repeater {
+                        model: dungeonPopup.selSequences
+                        Rectangle {
+                            TextMetrics { id: seqTm; font.pixelSize: 13; text: modelData.label }
+                            implicitWidth: seqTm.width + 20
+                            width: implicitWidth
+                            implicitHeight: 30
+                            height: 30
+                            radius: 6
+                            color: seqMouse.containsMouse ? "#1A3A7A" : "transparent"
+                            Text {
+                                anchors.fill: parent; leftPadding: 10
+                                verticalAlignment: Text.AlignVCenter
+                                text: modelData.label
+                                color: "#FFFFFF"; font.pixelSize: 13
+                            }
+                            MouseArea {
+                                id: seqMouse; anchors.fill: parent; hoverEnabled: true
+                                onClicked: {
+                                    Bridge.selectDungeon(dungeonPopup.selName, modelData.value)
+                                    dungeonPopup.visible = false
+                                }
                             }
                         }
                     }
@@ -241,45 +314,21 @@ Item {
             }
         }
 
-        property int level: 1
         property string selName: ""
-        property var sequences: []
-        onLevelChanged: {
-            if (level === 2) {
-                for (var i = 0; i < Bridge.dungeonOptions.length; i++) {
-                    if (Bridge.dungeonOptions[i].name === selName) {
-                        sequences = Bridge.dungeonOptions[i].sequences
-                        break
-                    }
+        property var selSequences: []
+        onSelNameChanged: {
+            selSequences = []
+            for (var i = 0; i < Bridge.dungeonOptions.length; i++) {
+                if (Bridge.dungeonOptions[i].name === selName) {
+                    selSequences = Bridge.dungeonOptions[i].sequences
+                    break
                 }
             }
         }
-
-        // 二级序列列表（仅当 level===2 显示）
-        Column {
-            id: seqList
-            x: 4; y: 4; width: parent.width - 8; spacing: 2
-            visible: dungeonPopup.level === 2
-            Repeater {
-                model: dungeonPopup.level === 2 ? dungeonPopup.sequences : []
-                Rectangle {
-                    width: seqList.width; height: 30; radius: 6
-                    color: seqMouse.containsMouse ? "#1A3A7A" : "transparent"
-                    Text {
-                        anchors.fill: parent; leftPadding: 10
-                        verticalAlignment: Text.AlignVCenter
-                        text: modelData.label
-                        color: "#FFFFFF"; font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: seqMouse; anchors.fill: parent; hoverEnabled: true
-                        onClicked: {
-                            Bridge.selectDungeon(dungeonPopup.selName, modelData.value)
-                            dungeonPopup.visible = false
-                            dungeonPopup.level = 1
-                        }
-                    }
-                }
+        onVisibleChanged: {
+            if (!visible) {
+                selName = ""
+                selSequences = []
             }
         }
     }
@@ -317,6 +366,20 @@ Item {
                     }
                 }
             }
+        }
+
+    // ── 点击空白处关闭下拉（对齐旧 QMenu：弹窗外任意点击即关闭）──
+    // 全窗透明捕获层，仅当任一弹窗打开时激活；位于弹窗(z:100)之下、卡片内容(z:0)之上，
+    // 故「弹窗内」点击由弹窗自身处理，「弹窗外」点击被本层拦截并关闭两个弹窗。
+    MouseArea {
+        id: popupCatcher
+        x: -128; y: -392; width: 1280; height: 720
+        z: 99
+        visible: dungeonPopup.visible || weeklyPopup.visible
+        enabled: dungeonPopup.visible || weeklyPopup.visible
+        onClicked: {
+            dungeonPopup.visible = false
+            weeklyPopup.visible = false
         }
     }
 }

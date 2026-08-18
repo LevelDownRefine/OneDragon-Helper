@@ -405,6 +405,67 @@ class TestUiIconProvider(unittest.TestCase):
 
         self.assertTrue(UiIconProvider().requestPixmap("nope", None, QSize()).isNull())
 
+    def test_github_icon_paints_at_same_scale_as_others(self):
+        """GitHub 图标应与同组图标视觉尺寸一致（此前仅渲染 20×20，明显偏小）。
+
+        测量非透明像素包围盒跨度：github 应 ≈30px，与其余图标（22~32）同级，
+        明显大于修复前的 20px。
+        """
+        from PySide6.QtCore import QSize
+
+        provider = UiIconProvider()
+        img = provider.requestPixmap("github", None, QSize()).toImage()
+        xs = [
+            x
+            for y in range(img.height())
+            for x in range(img.width())
+            if img.pixelColor(x, y).alpha() > 0
+        ]
+        span = (max(xs) - min(xs) + 1) if xs else 0
+        self.assertGreaterEqual(span, 26)
+        self.assertLessEqual(span, 32)
+
+
+class TestWeeklyToggleInit(unittest.TestCase):
+    """周常开关应在启动时按 weekly_start 还原（对齐旧 GUI，此前漏迁移）。"""
+
+    def test_init_from_weekly_start(self):
+        # 鸣潮 是 exe 脚本，script_name = 进程名 ok-ww（非 display_name）
+        b = _make_bridge()
+        b._ui_state = {"ok-ww": {"weekly_start": 2}}
+        with (
+            patch.object(qml_bridge, "_supports_weekly", return_value=True),
+            patch.object(qml_bridge, "is_weekly_start_reached", return_value=True),
+        ):
+            states = b._init_weekly_toggle_states()
+        self.assertEqual(states.get("ok-ww"), True)
+
+    def test_unsupported_or_no_start_is_false(self):
+        b = _make_bridge()
+        b._ui_state = {"ok-ww": {"weekly_start": 2}}
+        with patch.object(qml_bridge, "_supports_weekly", return_value=False):
+            states = b._init_weekly_toggle_states()
+        self.assertEqual(states.get("ok-ww", "absent"), "absent")
+
+    def test_bridge_init_populates_toggle_state(self):
+        with (
+            patch.object(
+                qml_bridge.ChainService,
+                "load_config",
+                return_value={"script_list": list(_SCRIPTS)},
+            ),
+            patch.object(
+                qml_bridge.ChainService,
+                "load_ui_state",
+                return_value={"ok-ww": {"weekly_start": 2}},
+            ),
+            patch.object(qml_bridge, "_supports_weekly", return_value=True),
+            patch.object(qml_bridge, "is_weekly_start_reached", return_value=True),
+            patch.object(QmlBridge, "_wallpapers", return_value={}),
+        ):
+            b = QmlBridge()
+        self.assertEqual(b._weekly_toggle_state.get("ok-ww"), True)
+
 
 if __name__ == "__main__":
     unittest.main()
