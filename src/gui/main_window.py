@@ -84,6 +84,7 @@ from src.gui.theme import (
     make_font,
     rgba,
 )
+from src.gui.video_backdrop import VideoBackdrop, is_video
 from src.gui.widgets import GameIcon, RailContainer
 from src.service.chain_service import ChainService
 from src.utils import get_config_yml_path_under_root
@@ -99,7 +100,6 @@ class LauncherWindow(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setFixedSize(CANVAS_W, CANVAS_H)
         self.setWindowTitle("OneDragon-Helper · 游戏自动化调度器")
-        self.setAttribute(Qt.WA_TranslucentBackground, False)
         self._drag_offset = None
         self.service = ChainService()
         self.games = self._load_games()
@@ -113,7 +113,13 @@ class LauncherWindow(QWidget):
         self._dungeon_state: dict = self.service.load_ui_state()
         self._weekly_toggle_state: dict[str, bool] = self._init_weekly_toggle_states()
         self._custom_bg: dict[str, str] = self._load_wallpapers()  # 脚本 → 壁纸路径
-        self._bg = QPixmap()  # 按选中游戏延迟加载
+        # 背景状态：图片/渐变由本窗口 paintEvent 绘制（零回归）；视频懒创建
+        # VideoBackdrop（QQuickWidget 场景图合成，不建系统 Overlay、不盖 UI）
+        self._bg = QPixmap()
+        self._grad_color = C_GAME_DIM
+        self._grad_char = ""
+        self._video_active = False  # 视频模式：paintEvent 只铺底色兜底
+        self._video_backdrop: VideoBackdrop | None = None
         self._build_ui()
         self._apply_current_game()
         # 周常开关（enabled）是纯内存态：启动时由 weekly_start 初始化（_init_weekly_toggle_states），
@@ -164,23 +170,63 @@ class LauncherWindow(QWidget):
         日常 chip、周常 chip 与开关、背景图。"""
         game = self.games[self._current_index]
         self.task_card.refresh(game)
-        self._bg = self._load_bg(game)
+        bg_path = self._load_bg(game)
+        self._set_background(bg_path, color=game["color"], char=game["char"])
+
+    def _set_background(self, path: str | None, *, color=None, char: str = ""):
+        """按路径分流：视频走 VideoBackdrop（QQuickWidget 场景图合成，不盖 UI），
+        图片/缺失走本窗口 paintEvent（cover 裁剪 / 渐变占位，零回归）。"""
+        if path and is_video(path):
+            if os.path.isfile(path):
+                self._show_video_backdrop(path)
+                return
+            path = None  # 视频文件缺失 → 走渐变
+        self._hide_video_backdrop()
+        self._bg = QPixmap(path) if path else QPixmap()
+        self._grad_color = color or C_GAME_DIM
+        self._grad_char = char
         self.update()
 
-    def _load_bg(self, game: dict) -> QPixmap:
-        """加载背景图：自定义壁纸（_open_wallpaper）→ 脚本背景（set_config）
-        → 兜底 assets/ds.jpg → 空（渐变）。
+    def _show_video_backdrop(self, path: str):
+        """懒创建并显示视频背景层（放最底，hero/rail 叠其上）。"""
+        if self._video_backdrop is None:
+            self._video_backdrop = VideoBackdrop(self)
+            self._video_backdrop.setGeometry(0, 0, CANVAS_W, CANVAS_H)
+            # Windows 需显式创建句柄初始化 EGL 上下文（否则视频首帧黑屏）；
+            # 启动即视频背景时走 showEvent，切游戏/换壁纸时在此调用
+            self._video_backdrop.winId()
+            self._video_backdrop.lower()
+            self._video_backdrop.fallback_requested.connect(self._on_video_fallback)
+        self._video_active = True
+        self._video_backdrop.setGeometry(0, 0, CANVAS_W, CANVAS_H)
+        self._video_backdrop.play(path)
 
-        所有脚本通用：未配置背景图（get_game_bg_img 返回空）时用项目根
-        assets/ds.jpg；该文件也缺失时才返回空走渐变占位。
+    def _hide_video_backdrop(self):
+        """停止并隐藏视频背景层（切图片/渐变时）。"""
+        self._video_active = False
+        if self._video_backdrop is not None:
+            self._video_backdrop.stop()
+
+    def _on_video_fallback(self, reason: str):
+        """视频背景不可用：回退到当前游戏的渐变占位。"""
+        assert self._current_index >= 0, "[main_window] 视频回退时无选中脚本"
+        game = self.games[self._current_index]
+        self._set_background(None, color=game["color"], char=game["char"])
+
+    def _load_bg(self, game: dict) -> str | None:
+        """返回该游戏应使用的背景路径：自定义壁纸（_open_wallpaper）→
+        脚本背景（set_config）→ 兜底 assets/ds.jpg。
+
+        文件不存在返回 None，由主窗口走渐变占位。视频/图片扩展名都走
+        同一路径返回；调用方按扩展名分发。
         """
         bg_path = self._custom_bg.get(game["script_name"]) or (
             _get_game_bg_img(game["script_name"]) or DEFAULT_BG
         )
         resolved = resolve_script_path(bg_path)
         if not os.path.isfile(resolved):
-            return QPixmap()
-        return QPixmap(resolved)
+            return None
+        return resolved
 
     # ── 无边框窗口拖动（按住空白处移动窗口）─────────────────────────────
     def mousePressEvent(self, event):
@@ -200,6 +246,49 @@ class LauncherWindow(QWidget):
     def mouseReleaseEvent(self, event):
         self._drag_offset = None
         super().mouseReleaseEvent(event)
+
+    # ── 背景绘制（视频由 VideoBackdrop 场景图合成铺满；图片/渐变在此绘制）──
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        p.fillRect(self.rect(), QColor(C_WINDOW_BG))
+        if self._video_active:
+            return  # 视频由 VideoBackdrop 铺满显示，本窗口只铺底色兜底
+        if not self._bg.isNull():
+            self._draw_cover(p, self.rect())
+        else:
+            self._draw_gradient(p, self.rect())
+
+    def _draw_cover(self, p: QPainter, target: QRect):
+        """cover 裁剪绘制：按目标比例截取源图中心，避免超宽/超高图拉伸变形。"""
+        src_w, src_h = self._bg.width(), self._bg.height()
+        target_ratio = target.width() / target.height()
+        src_ratio = src_w / src_h
+        if src_ratio > target_ratio:
+            crop_w = int(src_h * target_ratio)
+            src_rect = QRect((src_w - crop_w) // 2, 0, crop_w, src_h)
+        else:
+            crop_h = int(src_w / target_ratio)
+            src_rect = QRect(0, (src_h - crop_h) // 2, src_w, crop_h)
+        p.drawPixmap(target, self._bg, src_rect)
+
+    def _draw_gradient(self, p: QPainter, rect: QRect):
+        base = QColor(self._grad_color)
+        grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        grad.setColorAt(0.0, base.lighter(130))
+        grad.setColorAt(1.0, QColor(C_WINDOW_BG))
+        p.fillRect(rect, grad)
+        p.setFont(make_font(260, 900))
+        p.setPen(QColor(255, 255, 255, 22))
+        p.drawText(rect, Qt.AlignCenter, self._grad_char)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._video_backdrop is not None:
+            # Windows 需显式创建句柄以初始化 EGL 上下文（否则视频首帧黑屏）
+            self._video_backdrop.winId()
+            self._video_backdrop.setGeometry(0, 0, CANVAS_W, CANVAS_H)
 
     # ── UI 构建 ──────────────────────────────────────────────────────────
     def _build_ui(self):
@@ -351,7 +440,8 @@ class LauncherWindow(QWidget):
     def _build_hero(self):
         """HERO 区：全画布 1280x720（子元素用画布绝对坐标）。
 
-        背景图由 LauncherWindow.paintEvent 铺满全画布（16:9 零裁切）；
+        背景图由 LauncherWindow.paintEvent 铺满全画布（16:9 零裁切）；视频帧
+        也由 paintEvent 经 QVideoSink 取帧后当普通位图绘制（UI 在其上叠加）。
         hero 只是子元素容器（透明），坐标与画布绝对坐标一致。"""
         self.hero = QWidget(self)
         self.hero.setGeometry(0, 0, CANVAS_W, CANVAS_H)
@@ -863,7 +953,7 @@ class LauncherWindow(QWidget):
             self,
             f"选择 {game['display_name']} 壁纸",
             "",
-            "图片 (*.png *.jpg *.jpeg *.webp *.bmp)",
+            "图片/视频 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.webm *.mkv *.mov)",
         )
         if not path:
             return
@@ -934,45 +1024,11 @@ class LauncherWindow(QWidget):
         self.toast_lbl.raise_()
         self._toast_timer.start(3000)
 
-    # ── 背景绘制（官方图 / 渐变占位）──────────────────────────────────────
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-        p.setRenderHint(
-            QPainter.SmoothPixmapTransform, True
-        )  # 平滑缩放背景图，抑制颗粒感
-        # 画布底
-        p.fillRect(self.rect(), QColor(C_WINDOW_BG))
-        # 背景铺满全画布（16:9 零裁切）；左侧栏半透明覆盖在背景上（双画布叠加）
-        target = QRect(0, 0, CANVAS_W, CANVAS_H)
-        if not self._bg.isNull():
-            # cover 裁剪：按目标比例截取源图（中心对齐），避免超宽/超高图拉伸变形
-            # （如崩铁 bg37 2560x1162 超宽，全图压到 16:9 会纵向压扁）
-            src_w, src_h = self._bg.width(), self._bg.height()
-            target_ratio = target.width() / target.height()
-            src_ratio = src_w / src_h
-            if src_ratio > target_ratio:
-                crop_w = int(src_h * target_ratio)
-                src_rect = QRect((src_w - crop_w) // 2, 0, crop_w, src_h)
-            else:
-                crop_h = int(src_w / target_ratio)
-                src_rect = QRect(0, (src_h - crop_h) // 2, src_w, crop_h)
-            p.drawPixmap(target, self._bg, src_rect)
-        else:
-            self._draw_gradient_bg(p, target)
-
-    def _draw_gradient_bg(self, p: QPainter, rect: QRect):
-        """渐变占位背景：游戏主色 → 深色，中央大号游戏名（背景图未实现的过渡方案）。"""
-        game = self._current_game()
-        base = QColor(game["color"])
-        grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        grad.setColorAt(0.0, base.lighter(130))
-        grad.setColorAt(1.0, QColor(C_WINDOW_BG))
-        p.fillRect(rect, grad)
-        # 中央水印：游戏名首字，低透明度
-        p.setFont(make_font(260, 900))
-        p.setPen(QColor(255, 255, 255, 22))
-        p.drawText(rect, Qt.AlignCenter, game["char"])
+    def closeEvent(self, event):
+        """窗口关闭：停止视频背景层（停止解码），再交给父类。"""
+        if self._video_backdrop is not None:
+            self._video_backdrop.stop()
+        super().closeEvent(event)
 
 
 def main():

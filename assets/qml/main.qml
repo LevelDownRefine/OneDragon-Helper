@@ -1,0 +1,447 @@
+import QtQuick
+import QtQuick.Window
+import OneDragonHelper 1.0
+
+// OneDragon-Helper 主场景：frameless 1280x720 启动器。
+// 背景三层（视频 / 图片 / 渐变）由 Bridge.backgroundMode 切换；
+// UI 层（左侧栏 / 启动胶囊 / 悬浮条 / toast）叠加其上，场景图同管线合成，
+// 视频作为场景图节点不会像 QVideoWidget 那样盖住 UI。
+Window {
+    id: root
+    width: 1280
+    height: 720
+    flags: Qt.FramelessWindowHint | Qt.Window
+    color: "#0A0E1A"
+    visible: true
+    title: "OneDragon-Helper · 游戏自动化调度器"
+
+    // ═══════════════ 背景层（最底）═══════════════
+    // 视频背景：Loader 按文件路径懒加载 VideoBackground.qml。
+    // main.qml 本体不引用 QtMultimedia 类型——MediaPlayer 类型注册在部分
+    // 环境/进程下不稳定（Type unavailable），隔离到子组件后 main.qml 解析
+    // 完全稳定；视频层失败只影响背景视频，UI 不受影响。
+    Loader {
+        id: videoBgLoader
+        anchors.fill: parent
+        visible: status === Loader.Ready
+        source: Bridge.backgroundMode === "video" ? "VideoBackground.qml" : ""
+    }
+
+    // 图片背景（cover 裁剪）
+    Image {
+        id: bgImage
+        anchors.fill: parent
+        fillMode: Image.PreserveAspectCrop
+        visible: Bridge.backgroundMode === "image"
+        source: Bridge.backgroundMode === "image" ? Bridge.backgroundUrl : ""
+    }
+
+    // 渐变兜底（游戏主色 → 深色 + 中央水印字）
+    Rectangle {
+        id: bgGradient
+        anchors.fill: parent
+        visible: Bridge.backgroundMode === "gradient"
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Bridge.gradientColor }
+            GradientStop { position: 1.0; color: "#0A0E1A" }
+        }
+        Text {
+            anchors.centerIn: parent
+            text: Bridge.gradientChar
+            color: Qt.rgba(1, 1, 1, 0.06)
+            font.pixelSize: 320
+            font.weight: Font.Bold
+        }
+    }
+
+    // ═══════════════ UI 层 ═══════════════
+    // 空白区域拖动窗口（背景之上、UI 之下）：系统原生拖动（DWM 接管，最流畅）
+    MouseArea {
+        anchors.fill: parent
+        z: 1
+        onPressed: Bridge.startWindowMove()
+    }
+
+    // 左侧栏背景（80 宽半透明底 + 右边框）
+    Rectangle {
+        x: 0
+        y: 0
+        width: 80
+        height: root.height
+        z: 10
+        color: "#070A14"
+        opacity: 0.72
+        Rectangle {
+            x: 79
+            width: 1
+            height: parent.height
+            color: "#0F1524"
+            opacity: 0.8
+        }
+    }
+
+    // 控制模式按钮行（全选/清空/添加，仅 ⊞ 控制模式显示）
+    Row {
+        x: 6
+        y: 8
+        spacing: 6
+        z: 16
+        visible: Bridge.controlMode
+        Repeater {
+            model: [
+                { label: "全", act: () => Bridge.selectAll() },
+                { label: "清", act: () => Bridge.deselectAll() },
+                { label: "＋", act: () => Bridge.addScript() },
+            ]
+            Rectangle {
+                width: 20
+                height: 20
+                radius: 6
+                color: btnMouse.containsMouse ? "#2B3A52" : "#1F2937"
+                Text {
+                    anchors.centerIn: parent
+                    text: modelData.label
+                    color: "#FFFFFF"
+                    font.pixelSize: 12
+                }
+                MouseArea {
+                    id: btnMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: modelData.act()
+                }
+            }
+        }
+    }
+
+    // 左侧脚本图标列表（可滚动；点击切换/启停；拖拽重排）
+    ListView {
+        id: gameList
+        x: 12
+        y: Bridge.controlMode ? 34 : 12
+        width: 56
+        height: root.height - (Bridge.controlMode ? 120 : 90)
+        z: 15
+        model: Bridge.gameModel
+        spacing: 8
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        delegate: Rectangle {
+            id: iconBox
+            width: 56
+            height: 56
+            radius: 16
+            color: "transparent"
+            border.width: index === Bridge.currentIndex ? 3 : 0
+            border.color: "#FFFFFF"
+
+            // 停用黑盖（⊞ 控制模式 + 停用状态）
+            Rectangle {
+                anchors.fill: parent
+                radius: 16
+                color: "#000000"
+                opacity: Bridge.enabledStates[index] ? 0 : 0.55
+                visible: Bridge.controlMode
+            }
+
+            // exe 图标（image://scripticon/<script_name>：按游戏身份解析，
+            // 重排后行 index 不变也能取到正确图标）
+            Image {
+                anchors.centerIn: parent
+                width: 48
+                height: 48
+                source: "image://scripticon/" + model.scriptName
+                fillMode: Image.PreserveAspectFit
+            }
+
+            // ⊞ 控制模式下停用角标
+            Text {
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                text: "✕"
+                color: "#FF6B6B"
+                font.pixelSize: 14
+                visible: Bridge.controlMode && !Bridge.enabledStates[index]
+            }
+
+            MouseArea {
+                id: iconMouseArea
+                anchors.fill: parent
+                // preventStealing：不让 Flickable(列表滚动) 抢走拖动事件，
+                // 否则 onMouseYChanged 不触发、拖拽永远走 selectGame。
+                preventStealing: true
+                property real pressY: 0         // 局部 y，仅用于阈值判定
+                property real origY: 0          // 按下时 box.y（contentItem 坐标）
+                property real pressCursorY: 0   // 按下时光标在 contentItem 坐标系的 y（稳定参照）
+                property bool dragging: false
+                onPressed: (mouse) => {
+                    pressY = mouse.y
+                    origY = parent.y
+                    // 光标在 ListView contentItem 坐标系中的位置（不随 box 移动而变）
+                    pressCursorY = iconMouseArea.mapToItem(gameList.contentItem, mouse.x, mouse.y).y
+                    dragging = false
+                }
+                // onPositionChanged（事件参数）比 onMouseYChanged（属性）可靠：
+                // 属性更新有丢帧/延迟，导致拖拽判定时好时坏。
+                onPositionChanged: (mouse) => {
+                    if (!dragging && Math.abs(mouse.y - pressY) > 12) {
+                        dragging = true
+                        parent.z = 100  // 拖拽中浮起
+                    }
+                    if (dragging) {
+                        // 用稳定坐标系求真实位移：局部 mouse.y 会随 box 移动而翻转，
+                        // 直接用会陷入「移动 box ↔ 局部 y 反向」的反馈抖动（每两次才动一下）。
+                        var cur = iconMouseArea.mapToItem(gameList.contentItem, mouse.x, mouse.y).y
+                        parent.y = origY + (cur - pressCursorY)  // 视觉精确跟随
+                    }
+                }
+                onReleased: (mouse) => {
+                    // 用稳定坐标系的总位移估算目标 index（item 高 56 + spacing 8）
+                    var cur = iconMouseArea.mapToItem(gameList.contentItem, mouse.x, mouse.y).y
+                    var dy = cur - pressCursorY
+                    parent.y = origY  // 复位（model.move 后 ListView 重排）
+                    parent.z = 0
+                    if (dragging) {
+                        var target = index + Math.round(dy / 64)
+                        target = Math.max(0, Math.min(Bridge.games.length - 1, target))
+                        if (target !== index) {
+                            Bridge.reorderGames(index, target)
+                        }
+                    } else {
+                        Bridge.selectGame(index)
+                    }
+                }
+            }
+        }
+    }
+
+    // 左侧底部固定区（⊞ 模式切换 + 启动全部）
+    Rectangle {
+        x: 0
+        y: root.height - 70
+        width: 80
+        height: 70
+        z: 16
+        color: "#070A14"
+        opacity: 0.85
+        // ⊞ 模式切换
+        Rectangle {
+            x: 10
+            y: 6
+            width: 60
+            height: 28
+            radius: 6
+            color: modeBtn.containsMouse ? "#2B3A52" : "#1A2233"
+            Text {
+                anchors.centerIn: parent
+                text: Bridge.controlMode ? "⊞ 控制" : "⊞ 浏览"
+                color: "#FFFFFF"
+                font.pixelSize: 11
+            }
+            MouseArea {
+                id: modeBtn
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: Bridge.toggleMode()
+            }
+        }
+        // 启动全部（黄色）
+        Rectangle {
+            x: 10
+            y: 36
+            width: 60
+            height: 26
+            radius: 6
+            color: launchAllBtn.containsMouse ? "#FFD95C" : "#F5C542"
+            Text {
+                anchors.centerIn: parent
+                text: "▶ 启动全部"
+                color: "#1A1A1A"
+                font.pixelSize: 10
+            }
+            MouseArea {
+                id: launchAllBtn
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: Bridge.launchAll()
+            }
+        }
+    }
+
+    // 窗口控制（右上：最小化/关闭）——内联实现。
+    // 不引用 IconButton 组件类型：PySide6 下自定义 .qml 组件类型解析存在
+    // 非确定性 bug（Type IconButton unavailable / Cannot assign to "data"），
+    // 内联后 main.qml 加载完全稳定。
+    Item {
+        x: 1200
+        y: 8
+        width: 80
+        height: 36
+        z: 30
+        // 最小化
+        Rectangle {
+            x: 0
+            width: 36
+            height: 36
+            radius: 12
+            color: minBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
+            Text {
+                anchors.centerIn: parent
+                text: "—"
+                color: "#FFFFFF"
+                font.pixelSize: 22
+                font.weight: Font.Medium
+            }
+            MouseArea {
+                id: minBtnMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: Bridge.minimize()
+            }
+        }
+        // 关闭
+        Rectangle {
+            x: 44
+            width: 36
+            height: 36
+            radius: 12
+            color: closeBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
+            Text {
+                anchors.centerIn: parent
+                text: "×"
+                color: "#FFFFFF"
+                font.pixelSize: 22
+                font.weight: Font.Medium
+            }
+            MouseArea {
+                id: closeBtnMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                onClicked: Bridge.closeWindow()
+            }
+        }
+    }
+
+    // 右下启动胶囊（蓝色大按钮，点击启动当前脚本）
+    Rectangle {
+        x: 960
+        y: 636
+        width: 216
+        height: 64
+        radius: 32
+        z: 20
+        color: launchCapsule.containsMouse ? "#35A2F5" : "#2196F3"
+        // 左 ▶ 圆
+        Rectangle {
+            x: 4
+            y: 4
+            width: 56
+            height: 56
+            radius: 28
+            color: "#0F2A4D"
+            Text {
+                anchors.centerIn: parent
+                text: "▶"
+                color: "#FFFFFF"
+                font.pixelSize: 22
+            }
+        }
+        // 中间文字
+        Text {
+            x: 60
+            y: 0
+            width: 96
+            height: 64
+            text: "启动脚本"
+            color: "#FFFFFF"
+            font.pixelSize: 18
+            font.weight: Font.Bold
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+        MouseArea {
+            id: launchCapsule
+            anchors.fill: parent
+            hoverEnabled: true
+            onClicked: Bridge.launchScript()
+        }
+    }
+
+    // 右侧悬浮图标条（主页/启动游戏/文件夹/B站/GitHub/壁纸）
+    Item {
+        x: 1220
+        y: 80
+        width: 60
+        height: 300
+        z: 20
+        Repeater {
+            model: ["⌂", "▶", "▸", "◉", "◎", "▣"]
+            Rectangle {
+                x: 12
+                y: 22 + index * 48
+                width: 36
+                height: 36
+                radius: 12
+                color: iconMouse.containsMouse ? "#2B3A52" : "#1F2937"
+                Text {
+                    anchors.centerIn: parent
+                    text: modelData
+                    color: "#FFFFFF"
+                    font.pixelSize: 18
+                }
+                MouseArea {
+                    id: iconMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: {
+                        // 与悬浮条图标顺序一致：主页/启动游戏/文件夹/B站/GitHub/壁纸
+                        if (index === 0) Bridge.openHome()
+                        else if (index === 1) Bridge.launchGame()
+                        else if (index === 2) Bridge.openScriptFolder()
+                        else if (index === 3) Bridge.openBilibili()
+                        else if (index === 4) Bridge.openGithub()
+                        else if (index === 5) Bridge.openWallpaper()
+                    }
+                }
+            }
+        }
+    }
+
+    // toast 浮层（Bridge.toastRequested 信号 → 显示 3 秒）
+    Rectangle {
+        id: toast
+        visible: false
+        z: 50
+        y: root.height - 40
+        x: (root.width - width) / 2
+        width: toastText.paintedWidth + 36
+        height: 40
+        radius: 12
+        color: Qt.rgba(10 / 255, 16 / 255, 32 / 255, 0.92)
+        Text {
+            id: toastText
+            anchors.centerIn: parent
+            color: "#FFFFFF"
+            font.pixelSize: 14
+        }
+    }
+    Timer {
+        id: toastTimer
+        interval: 3000
+        onTriggered: toast.visible = false
+    }
+
+    // toast / 添加脚本 / 重排信号连接（不用 Connections 组件，避免单例 target 解析的潜在问题）
+    Component.onCompleted: {
+        Bridge.toastRequested.connect(function(text) {
+            toastText.text = text
+            toast.visible = true
+            toastTimer.restart()
+        })
+        Bridge.gameAdded.connect(function() {
+            gameList.positionViewAtEnd()
+        })
+        // 重排/增删由 GameListModel 的 beginMoveRows/beginResetModel 信号精确驱动
+        // （Python 侧 reorderGames 里 move + set_games 兜底 reset）。
+    }
+}
