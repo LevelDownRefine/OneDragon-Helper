@@ -135,15 +135,6 @@ Window {
             border.width: index === Bridge.currentIndex ? 3 : 0
             border.color: "#FFFFFF"
 
-            // 停用黑盖（⊞ 控制模式 + 停用状态）
-            Rectangle {
-                anchors.fill: parent
-                radius: 16
-                color: "#000000"
-                opacity: Bridge.enabledStates[index] ? 0 : 0.55
-                visible: Bridge.controlMode
-            }
-
             // exe 图标（image://scripticon/<script_name>：按游戏身份解析，
             // 重排后行 index 不变也能取到正确图标）
             Image {
@@ -154,14 +145,17 @@ Window {
                 fillMode: Image.PreserveAspectFit
             }
 
-            // ⊞ 控制模式下停用角标
-            Text {
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                text: "✕"
-                color: "#FF6B6B"
-                font.pixelSize: 14
-                visible: Bridge.controlMode && !Bridge.enabledStates[index]
+            // 停用灰盖：未启用的脚本图标整体压暗（覆盖在图标之上，对齐旧 GUI
+            // paintEvent 的 fillRect(4,4,48,48,黑150/255≈0.59) 变灰表现，无 ✕ 角标；
+            // 两种模式都显示）。必须声明在 Image 之后，使其位于图标上层才能压暗，
+            // 否则会被图标盖住、只露成"背后黑块"而非变灰。
+            Rectangle {
+                anchors.centerIn: parent
+                width: 48
+                height: 48
+                radius: 10
+                color: "#000000"
+                opacity: Bridge.enabledStates[index] ? 0 : 0.58
             }
 
             MouseArea {
