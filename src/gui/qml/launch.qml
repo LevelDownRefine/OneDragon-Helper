@@ -11,7 +11,7 @@ Rectangle {
     Rectangle {
         x: 4; y: 4; width: 56; height: 56; radius: 28
         color: "#0F2A4D"
-        Text { anchors.centerIn: parent; text: "▶"; color: "#FFFFFF"; font.pixelSize: 22 }
+        Text { anchors.centerIn: parent; text: "▶"; color: "#FFFFFF"; font.pixelSize: 30 }
     }
     // 中间文字
     Text {

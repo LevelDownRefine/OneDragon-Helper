@@ -39,7 +39,7 @@ Item {
         Rectangle {
             x: 12; y: 0; width: 36; height: 36; radius: 10
             color: "#F4C242"
-            Text { anchors.centerIn: parent; text: "▶"; color: "#1A1A1A"; font.pixelSize: 16 }
+            Text { anchors.centerIn: parent; text: "▶"; color: "#1A1A1A"; font.pixelSize: 22 }
         }
         Text {
             x: 58; y: 5; width: 260; height: 26
