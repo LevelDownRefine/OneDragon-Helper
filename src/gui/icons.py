@@ -169,7 +169,7 @@ def draw_github(p: QPainter):
         from PySide6.QtSvg import QSvgRenderer
 
         _github_renderer = QSvgRenderer(QByteArray(_GITHUB_SVG.encode()))
-    _github_renderer.render(p, QRect(-10, -10, 20, 20))
+    _github_renderer.render(p, QRect(-15, -15, 30, 30))
 
 
 def draw_wallpaper(p: QPainter):

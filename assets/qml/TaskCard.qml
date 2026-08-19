@@ -194,96 +194,6 @@ Item {
         }
     }
 
-    // ── 日常副本下拉（二级）──
-    Item {
-        id: dungeonPopup
-        z: 100
-        visible: false
-        x: dailyChip.x
-        y: dailyRow.y + 56 + 4
-        width: 200
-        height: dungeonList.height + 8
-
-        Rectangle {
-            anchors.fill: parent; radius: 10
-            color: "#0F1A2E"; border.width: 1; border.color: "#33517A"
-        }
-        Column {
-            id: dungeonList
-            x: 4; y: 4; width: parent.width - 8; spacing: 2
-            Repeater {
-                model: dungeonPopup.visible ? Bridge.dungeonOptions : []
-                Rectangle {
-                    width: dungeonList.width; height: 30; radius: 6
-                    color: optMouse.containsMouse ? "#1A3A7A" : "transparent"
-                    Text {
-                        anchors.fill: parent; leftPadding: 10
-                        verticalAlignment: Text.AlignVCenter
-                        text: modelData.name
-                        color: modelData.clear ? "#FF9E9E" : "#FFFFFF"; font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: optMouse; anchors.fill: parent; hoverEnabled: true
-                        onClicked: {
-                            if (modelData.clear) {
-                                Bridge.selectDungeon("未选择", null)
-                                dungeonPopup.visible = false
-                            } else if (modelData.sequences.length > 0) {
-                                dungeonPopup.level = 2
-                                dungeonPopup.selName = modelData.name
-                            } else {
-                                Bridge.selectDungeon(modelData.name, null)
-                                dungeonPopup.visible = false
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        property int level: 1
-        property string selName: ""
-        property var sequences: []
-        onLevelChanged: {
-            if (level === 2) {
-                for (var i = 0; i < Bridge.dungeonOptions.length; i++) {
-                    if (Bridge.dungeonOptions[i].name === selName) {
-                        sequences = Bridge.dungeonOptions[i].sequences
-                        break
-                    }
-                }
-            }
-        }
-
-        // 二级序列列表（仅当 level===2 显示）
-        Column {
-            id: seqList
-            x: 4; y: 4; width: parent.width - 8; spacing: 2
-            visible: dungeonPopup.level === 2
-            Repeater {
-                model: dungeonPopup.level === 2 ? dungeonPopup.sequences : []
-                Rectangle {
-                    width: seqList.width; height: 30; radius: 6
-                    color: seqMouse.containsMouse ? "#1A3A7A" : "transparent"
-                    Text {
-                        anchors.fill: parent; leftPadding: 10
-                        verticalAlignment: Text.AlignVCenter
-                        text: modelData.label
-                        color: "#FFFFFF"; font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: seqMouse; anchors.fill: parent; hoverEnabled: true
-                        onClicked: {
-                            Bridge.selectDungeon(dungeonPopup.selName, modelData.value)
-                            dungeonPopup.visible = false
-                            dungeonPopup.level = 1
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // ── 周常周几下拉 ──
     Item {
         id: weeklyPopup
@@ -317,6 +227,183 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // ── 日常副本下拉（多级级联：一级副本 → 二级序列，对齐旧 QMenu 子菜单）──
+    // 左列一级副本、右列二级序列，两列各自独立 Flickable 滚动（互不挤压、
+    // 长列表都能滑到底），分别解决「二级目录显示不全」与「滚动到头也漏项」。
+    // 宽度/高度在 openMenu() 中按下拉内容一次性算定（仅 1 个 TextMetrics，
+    // 避免每行测量导致的 hover 重布局抖动 → 卡顿）。
+    Item {
+        id: dungeonPopup
+        z: 100
+        visible: false
+        x: dailyChip.x
+        y: dailyRow.y + 56 + 4
+        // 宽度随一级列 +（出现二级列时）；高度封顶避免出屏，超出由各列 Flickable 独立滚动
+        width: dungeonPopup.rightW > 0
+               ? (dungeonPopup.leftW + 4 + dungeonPopup.rightW + 8)
+               : (dungeonPopup.leftW + 8)
+        height: dungeonPopup.popupHeight
+
+        property int leftW: 200
+        property int rightW: 0
+        property int popupHeight: 360
+        property int viewportH: height - 8
+        property string selName: ""
+        property var selSequences: []
+
+        Rectangle {
+            anchors.fill: parent; radius: 10
+            color: "#0F1A2E"; border.width: 1; border.color: "#33517A"
+        }
+
+        // 单个复用测量器：仅 openMenu 调用一次，避免每行 TextMetrics 的 hover 抖动
+        TextMetrics { id: measTm; font.pixelSize: 13 }
+
+        function openMenu() {
+            var opts = Bridge.dungeonOptions
+            var maxW = 60
+            for (var i = 0; i < opts.length; i++) {
+                measTm.text = opts[i].name
+                if (measTm.width > maxW) maxW = measTm.width
+            }
+            leftW = Math.min(maxW + 28, 240)
+            popupHeight = Math.min(opts.length * 32 + 8, 360)
+            selName = ""
+            selSequences = []
+            rightW = 0
+        }
+
+        onSelNameChanged: {
+            var opts = Bridge.dungeonOptions
+            selSequences = []
+            for (var i = 0; i < opts.length; i++) {
+                if (opts[i].name === selName) {
+                    selSequences = opts[i].sequences
+                    break
+                }
+            }
+            rightW = (selSequences.length > 0)
+                     ? Math.min(200, 424 - leftW)
+                     : 0
+        }
+
+        onVisibleChanged: {
+            if (visible) openMenu()
+            else { selName = ""; selSequences = []; rightW = 0 }
+        }
+
+        Row {
+            x: 4; y: 4; spacing: 4
+            // 左列：一级副本（独立滚动，必能滑到底）
+            Flickable {
+                id: leftFlick
+                width: dungeonPopup.leftW
+                height: dungeonPopup.viewportH
+                contentWidth: leftCol.width
+                contentHeight: leftCol.height
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                Column {
+                    id: leftCol
+                    width: dungeonPopup.leftW
+                    spacing: 2
+                    Repeater {
+                        model: dungeonPopup.visible ? Bridge.dungeonOptions : []
+                        Rectangle {
+                            width: dungeonPopup.leftW
+                            height: 30
+                            radius: 6
+                            color: (optMouse.containsMouse || dungeonPopup.selName === modelData.name)
+                                   ? "#1A3A7A" : "transparent"
+                            Text {
+                                anchors.fill: parent; leftPadding: 10
+                                verticalAlignment: Text.AlignVCenter
+                                text: modelData.name
+                                color: modelData.clear ? "#FF9E9E" : "#FFFFFF"; font.pixelSize: 13
+                            }
+                            Text {
+                                anchors.right: parent.right; rightPadding: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "▸"; color: "#7DA8FF"; font.pixelSize: 12
+                                visible: modelData.sequences.length > 0
+                            }
+                            MouseArea {
+                                id: optMouse; anchors.fill: parent; hoverEnabled: true
+                                onEntered: {
+                                    dungeonPopup.selName = modelData.sequences.length > 0 ? modelData.name : ""
+                                }
+                                onClicked: {
+                                    if (modelData.clear) {
+                                        Bridge.selectDungeon("未选择", null)
+                                        dungeonPopup.visible = false
+                                    } else if (modelData.sequences.length > 0) {
+                                        dungeonPopup.selName = modelData.name
+                                    } else {
+                                        Bridge.selectDungeon(modelData.name, null)
+                                        dungeonPopup.visible = false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // 右列：二级序列（独立滚动；仅当选中带子项的副本时出现）
+            Flickable {
+                id: rightFlick
+                visible: dungeonPopup.rightW > 0
+                width: dungeonPopup.rightW
+                height: dungeonPopup.viewportH
+                contentWidth: seqCol.width
+                contentHeight: seqCol.height
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                Column {
+                    id: seqCol
+                    width: dungeonPopup.rightW
+                    spacing: 2
+                    Repeater {
+                        model: dungeonPopup.selSequences
+                        Rectangle {
+                            width: dungeonPopup.rightW
+                            height: 30
+                            radius: 6
+                            color: seqMouse.containsMouse ? "#1A3A7A" : "transparent"
+                            Text {
+                                anchors.fill: parent; leftPadding: 10
+                                verticalAlignment: Text.AlignVCenter
+                                text: modelData.label
+                                color: "#FFFFFF"; font.pixelSize: 13
+                            }
+                            MouseArea {
+                                id: seqMouse; anchors.fill: parent; hoverEnabled: true
+                                onClicked: {
+                                    Bridge.selectDungeon(dungeonPopup.selName, modelData.value)
+                                    dungeonPopup.visible = false
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── 点击空白处关闭下拉（对齐旧 QMenu：弹窗外任意点击即关闭）──
+    // 全窗透明捕获层，仅当任一弹窗打开时激活；位于弹窗(z:100)之下、卡片内容(z:0)之上，
+    // 故「弹窗内」点击由弹窗自身处理，「弹窗外」点击被本层拦截并关闭两个弹窗。
+    MouseArea {
+        id: popupCatcher
+        x: -128; y: -392; width: 1280; height: 720
+        z: 99
+        visible: dungeonPopup.visible || weeklyPopup.visible
+        enabled: dungeonPopup.visible || weeklyPopup.visible
+        onClicked: {
+            dungeonPopup.visible = false
+            weeklyPopup.visible = false
         }
     }
 }

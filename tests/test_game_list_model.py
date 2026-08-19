@@ -82,7 +82,9 @@ class TestGameListModel(unittest.TestCase):
 
     def test_append_and_pop(self):
         m = GameListModel(_games())
-        m.append({"display_name": "丁", "script_name": "d", "char": "丁", "color": "#444444"})
+        m.append(
+            {"display_name": "丁", "script_name": "d", "char": "丁", "color": "#444444"}
+        )
         self.assertEqual(m.rowCount(), 4)
         self.assertEqual(m.data(m.index(3, 0), m.DisplayNameRole), "丁")
         popped = m.pop(0)

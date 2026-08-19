@@ -4,6 +4,7 @@
 ui_state / 壁纸 I/O；is_adapted / supports_weekly / dungeon_map / parse_dungeon_config
 按用例 patch，验证 QML 任务卡所需的数据与写回行为。
 """
+
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -52,11 +53,14 @@ class TestTaskCard(unittest.TestCase):
     def test_select_dungeon_persists(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
-        b.selectDungeon("副本A", "seq1")
+        with patch.object(b.service, "save_ui_state") as m_save:
+            b.selectDungeon("副本A", "seq1")
         self.assertEqual(b._ui_state[name]["dungeon"], "副本A")
         self.assertEqual(b._ui_state[name]["sequence"], "seq1")
         # 无 seq_map → chip 文字回退为副本名
         self.assertEqual(b.dailyDungeonText, "副本A")
+        # 对齐旧 GUI：日常副本选择持久化到 gui_state.json
+        m_save.assert_called_once()
 
     @patch.object(qml_bridge, "is_adapted", return_value=True)
     @patch.object(qml_bridge, "_supports_weekly", return_value=False)
@@ -77,10 +81,13 @@ class TestTaskCard(unittest.TestCase):
     def test_select_weekly_persists_and_toggle(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
-        b.selectWeekly(3)
+        with patch.object(b.service, "save_ui_state") as m_save:
+            b.selectWeekly(3)
         self.assertEqual(b._ui_state[name]["weekly_start"], 3)
         self.assertTrue(b.weeklyOn)
         self.assertEqual(b.weeklyStartLabel, "周三起")
+        # 对齐旧 GUI：周常起始日持久化到 gui_state.json
+        m_save.assert_called_once()
 
     @patch.object(qml_bridge, "is_adapted", return_value=True)
     @patch.object(qml_bridge, "_supports_weekly", return_value=False)
@@ -88,24 +95,30 @@ class TestTaskCard(unittest.TestCase):
     def test_toggle_weekly_memory_only(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
-        b.toggleWeekly(True)
+        with patch.object(b.service, "save_ui_state") as m_save:
+            b.toggleWeekly(True)
         self.assertTrue(b.weeklyOn)
         # 不持久化（脚本未支持周常也不写 weekly_start）
         self.assertNotIn("weekly_start", b._ui_state.get(name, {}))
+        # 对齐旧 GUI：周常开关是纯内存态，不写 gui_state.json
+        m_save.assert_not_called()
 
     @patch.object(qml_bridge, "is_adapted", return_value=True)
     @patch.object(qml_bridge, "_supports_weekly", return_value=True)
     @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
     def test_toggle_master_syncs_weekly_when_supported(self, *_):
         b = _make_bridge()
-        b.toggleMaster(False)
-        self.assertFalse(b.masterOn)
-        self.assertFalse(b.dailyOn)
-        self.assertFalse(b.weeklyOn)
-        b.toggleMaster(True)
-        self.assertTrue(b.masterOn)
-        self.assertTrue(b.dailyOn)
-        self.assertTrue(b.weeklyOn)
+        with patch.object(b.service, "save_ui_state") as m_save:
+            b.toggleMaster(False)
+            self.assertFalse(b.masterOn)
+            self.assertFalse(b.dailyOn)
+            self.assertFalse(b.weeklyOn)
+            b.toggleMaster(True)
+            self.assertTrue(b.masterOn)
+            self.assertTrue(b.dailyOn)
+            self.assertTrue(b.weeklyOn)
+        # 对齐旧 GUI：总开关是全局 UI 态，不持久化
+        m_save.assert_not_called()
 
     @patch.object(qml_bridge, "is_adapted", return_value=True)
     @patch.object(
@@ -123,13 +136,9 @@ class TestTaskCard(unittest.TestCase):
             m_dm.return_value = _Map()
             b = _make_bridge()
         opts = b.dungeonOptions
-        self.assertEqual(
-            opts[0], {"name": "未选择", "clear": True, "sequences": []}
-        )
+        self.assertEqual(opts[0], {"name": "未选择", "clear": True, "sequences": []})
         self.assertEqual(opts[1]["name"], "副本A")
-        self.assertEqual(
-            opts[1]["sequences"], [{"label": "难1", "value": "s1"}]
-        )
+        self.assertEqual(opts[1]["sequences"], [{"label": "难1", "value": "s1"}])
 
     @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
     def test_dungeon_options_empty_when_no_cfg(self, *_):
@@ -138,7 +147,9 @@ class TestTaskCard(unittest.TestCase):
 
     @patch("src.gui.dialogs.SingleScriptConfigDialog")
     @patch("PySide6.QtWidgets.QDialog")
-    def test_config_current_accept_saves_and_reloads(self, mock_qdialog, mock_dialog_cls):
+    def test_config_current_accept_saves_and_reloads(
+        self, mock_qdialog, mock_dialog_cls
+    ):
         b = _make_bridge()
         toasts = []
         b.toastRequested.connect(lambda t: toasts.append(t))

@@ -5,6 +5,7 @@ VideoBackdrop 是背景视频的成熟方案：QML VideoOutput 走 Qt 场景图�
 基类（offscreen 下可实例化），拦截 setSource 避免真实加载，状态变化直接调
 _on_status 模拟（PySide6 Signal 是 shiboken 属性，无法被 mock patch）。
 """
+
 import os
 import unittest
 import warnings
@@ -53,6 +54,7 @@ def _make_ready_backdrop():
 
 class TestIsVideo(unittest.TestCase):
     """is_video：按扩展名识别视频背景。"""
+
     def test_video_exts(self):
         for ext in (".mp4", ".webm", ".mkv", ".mov"):
             self.assertTrue(is_video(f"clip{ext}"))

@@ -9,6 +9,7 @@ ListView 通过 beginMoveRows/endMoveRows/beginInsertRows 等信号**精确**响
 - 图标走 image://scripticon/<scriptName>：以 script_name 这个**稳定标识**为
   cache key（而非行 index），否则重排后行 index 不变、每格图标仍是启动时的旧图标。
 """
+
 from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
 
 
@@ -69,7 +70,9 @@ class GameListModel(QAbstractListModel):
 
     def move(self, src: int, dst: int):
         """重排：src 移到 dst 位置（ListView 精确刷新）。"""
-        if src == dst or not (0 <= src < len(self._games) and 0 <= dst < len(self._games)):
+        if src == dst or not (
+            0 <= src < len(self._games) and 0 <= dst < len(self._games)
+        ):
             return
         self.beginMoveRows(
             QModelIndex(),

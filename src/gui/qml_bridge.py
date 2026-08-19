@@ -5,12 +5,23 @@ QML 侧通过 context property `bridge` 访问脚本列表与背景状态；脚�
 避免 QML 直接读 exe 图标）。旧 Widgets GUI（main_window.py）保留不动，
 直到 QML 迁移全部就绪再切换入口。
 """
+
 import os
 import subprocess
 import sys
 import webbrowser
 
-from PySide6.QtCore import Property, QObject, QRect, QPointF, QRectF, Qt, QUrl, Signal, Slot
+from PySide6.QtCore import (
+    Property,
+    QObject,
+    QRect,
+    QPointF,
+    QRectF,
+    Qt,
+    QUrl,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import (
     QColor,
     QPainter,
@@ -276,6 +287,11 @@ class QmlBridge(QObject):
         self._grad_char = ""
         # 任务卡状态：gui_state.json 的副本/序列/周常（按 script_name 索引）
         self._ui_state = self.service.load_ui_state()
+        # 副本下拉数据缓存：dungeon_list.yml 解析较贵（磁盘读 + YAML 解析），
+        # 且运行期内容不变 → 在 _reload_games 时一次性构建，避免在 QML 循环/
+        # 绑定反复访问 dungeonOptions 时每次重新读盘解析（曾致下拉打开卡顿）。
+        self._dungeon_map_cache: dict = {}
+        self._dungeon_options_cache: dict[str, list] = {}
         # 周常开关 UI 态（纯内存，不持久化）；总开关为全局 UI 态（驱动日常行开关）
         self._weekly_toggle_state: dict[str, bool] = {}
         self._master_on = True
@@ -327,6 +343,12 @@ class QmlBridge(QObject):
         self._games = games
         self._game_model.set_games(games)  # 同步 QML ListView model
         self.current_index = min(self.current_index, len(games) - 1)
+        # 一次性解析 dungeon_list.yml 并构建所有脚本的副本下拉数据（运行期不变）
+        self._dungeon_map_cache = self.service.dungeon_map()
+        self._dungeon_options_cache = {
+            g["script_name"]: self._build_dungeon_options(g["script_name"])
+            for g in games
+        }
         # 新增脚本默认启用；已存在脚本保留原状态（与旧 GUI 重建语义一致）
         self._enabled = [
             self._enabled[i] if i < len(self._enabled) else True
@@ -340,7 +362,9 @@ class QmlBridge(QObject):
     @Slot(int)
     def selectGame(self, index: int):
         """QML 点击左侧脚本图标：控制模式切换启停，浏览模式切换选中+刷新背景。"""
-        assert 0 <= index < len(self._games), f"[qml_bridge] index out of range: {index}"
+        assert 0 <= index < len(self._games), (
+            f"[qml_bridge] index out of range: {index}"
+        )
         if self._control_mode:
             self._enabled[index] = not self._enabled[index]
             self.enabledChanged.emit()
@@ -360,7 +384,9 @@ class QmlBridge(QObject):
         self._control_mode = not self._control_mode
         self.controlModeChanged.emit()
         self.toastRequested.emit(
-            "控制模式：点击图标切换启用/停用" if self._control_mode else "浏览模式：点击图标选择脚本"
+            "控制模式：点击图标切换启用/停用"
+            if self._control_mode
+            else "浏览模式：点击图标选择脚本"
         )
 
     @Slot()
@@ -380,9 +406,15 @@ class QmlBridge(QObject):
     @Slot(int, int)
     def reorderGames(self, src_index: int, dst_index: int):
         """拖拽重排：把 src 移到 dst 位置，同步 UI 与 config.yml（对齐旧 GUI）。"""
-        assert 0 <= src_index < len(self._games), f"[qml_bridge] src out of range: {src_index}"
-        assert 0 <= dst_index < len(self._games), f"[qml_bridge] dst out of range: {dst_index}"
-        cur_name = self._games[self.current_index]["script_name"]  # 重排后按名字恢复选中
+        assert 0 <= src_index < len(self._games), (
+            f"[qml_bridge] src out of range: {src_index}"
+        )
+        assert 0 <= dst_index < len(self._games), (
+            f"[qml_bridge] dst out of range: {dst_index}"
+        )
+        cur_name = self._games[self.current_index][
+            "script_name"
+        ]  # 重排后按名字恢复选中
         game = self._games.pop(src_index)
         self._games.insert(dst_index, game)
         # QML ListView 精确重排。注意：只发 rowsMoved（move）——PySide6 的
@@ -396,7 +428,11 @@ class QmlBridge(QObject):
         config_data = self.service.load_config()
         scripts = config_data["script_list"]
         s_idx = next(
-            (i for i, s in enumerate(scripts) if get_script_name(s) == game["script_name"]),
+            (
+                i
+                for i, s in enumerate(scripts)
+                if get_script_name(s) == game["script_name"]
+            ),
             None,
         )
         assert s_idx is not None, "[qml_bridge] config 中找不到源脚本"
@@ -429,7 +465,9 @@ class QmlBridge(QObject):
             return
         file_path = os.path.normpath(file_path)
         existing = {g["script_name"] for g in self._games}
-        script_data = self.service._script_service.build_script_entry(file_path, existing)
+        script_data = self.service._script_service.build_script_entry(
+            file_path, existing
+        )
         self.service.add_script(script_data)
         self._reload_games()
         self.toastRequested.emit(f"已添加 {script_data['display_name']}")
@@ -494,7 +532,9 @@ class QmlBridge(QObject):
         区别于 taskAdapted（是否在 _CONFIGS 注册）：部分游戏虽已注册，但
         dungeon_list 无实际副本（如原神仅检查、终末地骨架），无需日常行。
         """
-        return bool(self.service.dungeon_map().get(self._games[self.current_index]["script_name"]))
+        return bool(
+            self._dungeon_map_cache.get(self._games[self.current_index]["script_name"])
+        )
 
     @Property(str, notify=taskStateChanged)
     def dailyDungeonText(self) -> str:
@@ -503,7 +543,7 @@ class QmlBridge(QObject):
         saved = self._ui_state.get(game["script_name"], {})
         if not saved.get("dungeon"):
             return "选择副本"
-        dungeon_cfg = self.service.dungeon_map().get(game["script_name"])
+        dungeon_cfg = self._dungeon_map_cache.get(game["script_name"])
         return self._dungeon_chip_text(
             dungeon_cfg, saved.get("dungeon"), saved.get("sequence")
         )
@@ -540,8 +580,13 @@ class QmlBridge(QObject):
 
     @Property("QVariantList", notify=taskStateChanged)
     def dungeonOptions(self) -> list:
-        """日常副本下拉数据：[{name, clear, sequences:[{label,value}]}, ...]。"""
-        return self._build_dungeon_options(self._games[self.current_index]["script_name"])
+        """日常副本下拉数据：[{name, clear, sequences:[{label,value}]}, ...]。
+
+        从缓存读取（_reload_games 时构建），避免每次访问重新读盘解析。
+        """
+        return self._dungeon_options_cache.get(
+            self._games[self.current_index]["script_name"], []
+        )
 
     def _refresh_task_card(self):
         """切换游戏后刷新任务卡（标题/适配态/日常/周常由 Property getter 实时读取）。
@@ -562,7 +607,7 @@ class QmlBridge(QObject):
 
     def _build_dungeon_options(self, script_name: str) -> list:
         """构建日常副本下拉数据（一级副本 → 二级序列）。"""
-        dungeon_cfg = self.service.dungeon_map().get(script_name)
+        dungeon_cfg = self._dungeon_map_cache.get(script_name)
         if not dungeon_cfg:
             return []
         options, seq_map, _ = parse_dungeon_config(dungeon_cfg)
@@ -576,7 +621,9 @@ class QmlBridge(QObject):
                     {
                         "name": name,
                         "clear": False,
-                        "sequences": [{"label": lbl, "value": val} for lbl, val in seqs],
+                        "sequences": [
+                            {"label": lbl, "value": val} for lbl, val in seqs
+                        ],
                     }
                 )
         return result
@@ -724,7 +771,9 @@ class QmlBridge(QObject):
             env=env,
             creationflags=creationflags,
         )
-        self.toastRequested.emit(f"{label}：已生成并运行链 ({len(enabled_keys)} 个脚本)")
+        self.toastRequested.emit(
+            f"{label}：已生成并运行链 ({len(enabled_keys)} 个脚本)"
+        )
 
     # ── 悬浮条 ─────────────────────────────────────────────────────────
     def _current_game(self) -> dict:

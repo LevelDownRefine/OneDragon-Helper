@@ -3,6 +3,7 @@
 运行：项目根下 `python -m src.gui.qml_launcher`。
 与旧 Widgets GUI（python -m src.gui.main_window）并存，迁移完成后切换入口。
 """
+
 import os
 import sys
 

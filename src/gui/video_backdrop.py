@@ -13,6 +13,7 @@ Overlay，因此不盖 UI、不卡。
 
 VideoBackdrop 只承载视频模式；图片/渐变仍由主窗口 paintEvent 绘制（零回归）。
 """
+
 import os
 import warnings
 

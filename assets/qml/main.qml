@@ -479,6 +479,7 @@ Window {
         id: taskCardLoader
         x: 128
         y: 392
+        z: 20  // 高于拖拽层，避免开关/副本按钮首次点击被抢（双击感）
         source: "TaskCard.qml"
     }
 
