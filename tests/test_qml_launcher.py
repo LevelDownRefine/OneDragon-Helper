@@ -149,12 +149,13 @@ class TestLeftRail(unittest.TestCase):
         self.assertEqual(b.currentIndex, 1)
         self.assertEqual(b.enabledStates, [True, True])  # 浏览模式不改 enabled
 
-    def test_select_game_emits_games_changed(self):
-        # 白圈（index === Bridge.currentIndex）靠 gamesChanged 通知 QML 重算；
-        # 若 selectGame 漏 emit，QML 端选中位永远不跟随（Python 层 property 读取测不出）。
+    def test_select_game_emits_current_index_changed(self):
+        # 白圈（index === Bridge.currentIndex）靠 currentIndexChanged 通知 QML 重算；
+        # currentIndex 现已用独立 notify 信号（不再复用 gamesChanged）。若 selectGame
+        # 漏 emit，QML 端选中位永远不跟随（Python 层 property 读取测不出）。
         b = _make_bridge()
         emissions = []
-        b.gamesChanged.connect(lambda: emissions.append(1))
+        b.currentIndexChanged.connect(lambda: emissions.append(1))
         b.selectGame(1)  # 0 → 1，切换选中
         self.assertEqual(len(emissions), 1)
         emissions.clear()
@@ -180,7 +181,7 @@ class TestLeftRail(unittest.TestCase):
     def test_launch_all_no_enabled_toasts(self):
         b = _make_bridge()
         b.deselectAll()
-        with patch.object(b, "_confirm_run") as confirm:
+        with patch.object(b.launch, "_confirm_run") as confirm:
             b.launchAll()
         confirm.assert_not_called()
 
@@ -224,9 +225,7 @@ class TestFloatBar(unittest.TestCase):
     def test_launch_game_starts_exe(self):
         b = _make_bridge()
         with (
-            patch.object(
-                links, "_get_game_exe_path", return_value="D:/Game/game.exe"
-            ),
+            patch.object(links, "_get_game_exe_path", return_value="D:/Game/game.exe"),
             patch("os.startfile", create=True) as start,
         ):
             b.launchGame()

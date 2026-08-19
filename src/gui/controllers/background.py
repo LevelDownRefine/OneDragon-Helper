@@ -1,72 +1,68 @@
 """背景控制器：背景模式（视频/图片/渐变）/ 壁纸 / 视频错误回退。
 
-共享状态（_games / _grad_* / icon_provider）由 BridgeBase 持有。_apply_current
-按当前选中脚本刷新背景，并联动刷新任务卡（_refresh_task_card 由 TaskCardController
-提供，经门面 QmlBridge 的 MRO 在运行时解析）。
+独立 QObject，自管状态（_bg_mode / _bg_url / _grad_color / _grad_char）。
+按当前选中脚本刷新背景，并联动刷新任务卡（task_card 经构造注入引用）。
+壁纸文件的读写仍走 QmlBridge 门面（_load_bg / _wallpapers / _save_wallpapers），
+使测试可 mock 这些门面方法。
 """
 
 import os
 
-from PySide6.QtCore import Property, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, QUrl, Signal, Slot
 
-from src.config.set_config import get_game_bg_img as _get_game_bg_img
 from src.config.subscript import resolve_script_path
-from src.gui.controllers.base import BridgeBase
 from src.gui.providers import is_video
-from src.gui.theme import DEFAULT_BG
 
 
-class BackgroundController(BridgeBase):
-    # notify 信号就地定义（与 property 同类），避免 PySide6 跨类 notify 段错误
+class BackgroundController(QObject):
     backgroundChanged = Signal()
+    toastRequested = Signal(str)
 
-    @Property(str, notify=backgroundChanged)
-    def backgroundMode(self) -> str:
+    def __init__(self, game_list, task_card, toast, parent=None):
+        super().__init__(parent)
+        self._game_list = game_list
+        self._task_card = task_card
+        self._toast = toast
+        # 默认（apply_current 会在构造末尾按选中脚本刷新，此处防首帧 undefined）
+        self._bg_mode = "gradient"
+        self._bg_url = ""
+        self._grad_color = "#3a3f52"
+        self._grad_char = ""
+
+    # ── 读接口（供 QmlBridge 委托）────────────────────────────────────
+    @property
+    def background_mode(self) -> str:
         return self._bg_mode
 
-    @Property(str, notify=backgroundChanged)
-    def backgroundUrl(self) -> str:
+    @property
+    def background_url(self) -> str:
         return self._bg_url
 
-    @Property(str, notify=backgroundChanged)
-    def gradientColor(self) -> str:
+    @property
+    def gradient_color(self) -> str:
         return self._grad_color
 
-    @Property(str, notify=backgroundChanged)
-    def gradientChar(self) -> str:
+    @property
+    def gradient_char(self) -> str:
         return self._grad_char
 
-    def _apply_current(self):
+    def apply_current(self, game: dict, bg_path: str | None):
         """按当前选中脚本刷新背景：自定义壁纸 → 脚本背景 → 渐变兜底。"""
-        game = self._games[self.current_index]
-        path = self._load_bg(game)
-        if path and is_video(path) and os.path.isfile(path):
+        if bg_path and is_video(bg_path) and os.path.isfile(bg_path):
             self._bg_mode = "video"
-            self._bg_url = QUrl.fromLocalFile(path).toString()
-        elif path and os.path.isfile(path):
+            self._bg_url = QUrl.fromLocalFile(bg_path).toString()
+        elif bg_path and os.path.isfile(bg_path):
             self._bg_mode = "image"
-            self._bg_url = QUrl.fromLocalFile(path).toString()
+            self._bg_url = QUrl.fromLocalFile(bg_path).toString()
         else:
             self._bg_mode = "gradient"
             self._bg_url = ""
         self._grad_color = game["color"]
         self._grad_char = game["char"]
         self.backgroundChanged.emit()
-        self._refresh_task_card()
+        self._task_card.refresh()
 
-    def _load_bg(self, game: dict) -> str | None:
-        """返回该脚本应使用的背景路径（自定义壁纸 → 脚本背景 → DEFAULT_BG）。
-
-        文件不存在返回 None（走渐变）；扩展名由调用方分发（视频/图片）。
-        """
-        custom = self._wallpapers().get(game["script_name"])
-        bg_path = custom or (_get_game_bg_img(game["script_name"]) or DEFAULT_BG)
-        resolved = resolve_script_path(bg_path)
-        if not os.path.isfile(resolved):
-            return None
-        return resolved
-
-    def _wallpapers(self) -> dict:
+    def read_wallpapers(self) -> dict:
         """读取 config/wallpaper.json（脚本 → 壁纸路径）；缺失返回空。"""
         import json
 
@@ -76,27 +72,7 @@ class BackgroundController(BridgeBase):
         with open(path, encoding="utf-8") as f:
             return json.load(f)
 
-    @Slot()
-    def openWallpaper(self):
-        """更改当前脚本壁纸并持久化到 config/wallpaper.json（对齐旧 GUI）。"""
-        from PySide6.QtWidgets import QFileDialog
-
-        game = self._current_game()
-        path, _ = QFileDialog.getOpenFileName(
-            None,
-            f"选择 {game['display_name']} 壁纸",
-            "",
-            "图片/视频 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.webm *.mkv *.mov)",
-        )
-        if not path:
-            return
-        wallpapers = self._wallpapers()
-        wallpapers[game["script_name"]] = path
-        self._save_wallpapers(wallpapers)
-        self._apply_current()
-        self.toastRequested.emit(f"已更换 {game['display_name']} 壁纸")
-
-    def _save_wallpapers(self, wallpapers: dict):
+    def write_wallpapers(self, wallpapers: dict):
         import json
 
         path = resolve_script_path("config/wallpaper.json")

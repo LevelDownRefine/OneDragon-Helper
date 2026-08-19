@@ -1,36 +1,321 @@
-"""QML GUI 中央控制器（单例）：组合各职责 mixin，编排启动初始化。
+"""QML GUI 中央控制器（单例）：组合各职责控制器，编排启动初始化。
 
 QML 经 qmlRegisterSingletonInstance 注册为 `Bridge`，经 `Bridge.*` 访问（绝不用
 setContextProperty，否则事件循环中 Python 对象被 GC 致 QML 读到 null）。
 
-各职责拆到 src/gui/controllers/ 下独立 mixin（background / game_list /
-task_card / launch / links / window），本文件只持有 QmlBridge 门面与 __init__
-编排：重建脚本列表 → 还原周常开关 → 刷新背景。共享状态与信号集中在
-controllers/base.BridgeBase。
+各职责拆到 src/gui/controllers/ 下独立 QObject（background / game_list /
+task_card / launch / links / window），本文件只持有 QmlBridge 门面：组合各控制器、
+声明 QML 所需的 property/slot/signal（委托到子控制器）、编排跨控制器流程
+（选脚本 → 刷背景 + 任务卡）。
 """
 
+import os
 
-# 重导出：launcher 与测试经本模块便捷导入门面与依赖
-from src.gui.controllers.base import ChainService
+from PySide6.QtCore import Property, QObject, Signal, Slot
+
+from src.config.set_config import get_game_bg_img as _get_game_bg_img
+from src.config.subscript import resolve_script_path
+from src.gui.controllers.background import BackgroundController
+from src.gui.controllers.game_list import GameListController
+from src.gui.controllers.launch import LaunchController
+from src.gui.controllers.links import LinksController
+from src.gui.controllers.task_card import TaskCardController
 from src.gui.controllers.window import WindowController
 from src.gui.providers import ScriptIconProvider, UiIconProvider
+from src.gui.theme import DEFAULT_BG
+from src.service.chain_service import ChainService
 
 
-class QmlBridge(WindowController):
-    """QML 应用与 Python 业务逻辑的桥接对象（context property: `Bridge`）。
-
-    线性继承（WindowController → LinkController → … → BackgroundController →
-    BridgeBase(QObject)），单 QObject 根，避免菱形多继承致 PySide6 只注册首条
-    QObject 链上的信号/槽/属性、或构建非法 metaobject（QML 加载崩溃）。
-    """
+class QmlBridge(QObject):
+    # QML 面向 Bridge 的信号（转发自子控制器）
+    toastRequested = Signal(str)
+    gamesChanged = Signal()
+    currentIndexChanged = Signal()
+    enabledChanged = Signal()
+    controlModeChanged = Signal()
+    backgroundChanged = Signal()
+    taskStateChanged = Signal()
+    gameAdded = Signal()
 
     def __init__(self):
         super().__init__()
+        self.service = ChainService()
+        # 组合各职责控制器：每个自管状态 + 信号；经构造注入显式依赖
+        self.game_list = GameListController(
+            service=self.service,
+            toast=self.toastRequested.emit,
+            on_reload=lambda: self._reload_games(),
+        )
+        self.task_card = TaskCardController(
+            game_list=self.game_list,
+            service=self.service,
+            toast=self.toastRequested.emit,
+        )
+        self.background = BackgroundController(
+            game_list=self.game_list,
+            task_card=self.task_card,
+            toast=self.toastRequested.emit,
+        )
+        self.launch = LaunchController(
+            game_list=self.game_list,
+            task_card=self.task_card,
+            service=self.service,
+            toast=self.toastRequested.emit,
+        )
+        self.links = LinksController(
+            game_list=self.game_list,
+            toast=self.toastRequested.emit,
+        )
+        self.window = WindowController()
+
+        # 转发子控制器信号 → Bridge 同名信号（供 QML 绑定）
+        self.game_list.gamesChanged.connect(self.gamesChanged.emit)
+        self.game_list.currentIndexChanged.connect(self.currentIndexChanged.emit)
+        self.game_list.currentIndexChanged.connect(self._on_current_changed)
+        self.game_list.enabledChanged.connect(self.enabledChanged.emit)
+        self.game_list.controlModeChanged.connect(self.controlModeChanged.emit)
+        self.game_list.gameAdded.connect(self.gameAdded.emit)
+        self.game_list.toastRequested.connect(self.toastRequested.emit)
+        self.background.backgroundChanged.connect(self.backgroundChanged.emit)
+        self.background.toastRequested.connect(self.toastRequested.emit)
+        self.task_card.taskStateChanged.connect(self.taskStateChanged.emit)
+        self.task_card.toastRequested.connect(self.toastRequested.emit)
+        self.launch.toastRequested.connect(self.toastRequested.emit)
+        self.links.toastRequested.connect(self.toastRequested.emit)
+
+        # 编排启动：重建列表 → 构建副本缓存 → 还原周常开关 → 刷新当前
         self._reload_games()
-        # 启动时按 weekly_start 还原各游戏周常开关（对齐旧 GUI._init_weekly_toggle_states）；
-        # 此前漏迁移，周常行始终显示关闭。需放在 _reload_games 之后（依赖 self._games）。
-        self._weekly_toggle_state = self._init_weekly_toggle_states()
+        self.task_card.init_weekly_toggle_states()
+        self._on_current_changed()
+
+    # ── QML 属性（委托到子控制器）────────────────────────────────────
+    games = Property(
+        "QVariantList", lambda self: self.game_list.games, notify=gamesChanged
+    )
+    gameModel = Property(
+        QObject, lambda self: self.game_list.game_model, notify=gamesChanged
+    )
+    currentIndex = Property(
+        int, lambda self: self.game_list.current_index, notify=currentIndexChanged
+    )
+    enabledStates = Property(
+        "QVariantList", lambda self: self.game_list.enabled, notify=enabledChanged
+    )
+    controlMode = Property(
+        bool, lambda self: self.game_list.control_mode, notify=controlModeChanged
+    )
+    backgroundMode = Property(
+        str, lambda self: self.background.background_mode, notify=backgroundChanged
+    )
+    backgroundUrl = Property(
+        str, lambda self: self.background.background_url, notify=backgroundChanged
+    )
+    gradientColor = Property(
+        str, lambda self: self.background.gradient_color, notify=backgroundChanged
+    )
+    gradientChar = Property(
+        str, lambda self: self.background.gradient_char, notify=backgroundChanged
+    )
+    taskTitle = Property(
+        str, lambda self: self.task_card.task_title, notify=taskStateChanged
+    )
+    taskAdapted = Property(
+        bool, lambda self: self.task_card.task_adapted, notify=taskStateChanged
+    )
+    dailySupported = Property(
+        bool, lambda self: self.task_card.daily_supported, notify=taskStateChanged
+    )
+    dailyDungeonText = Property(
+        str, lambda self: self.task_card.daily_dungeon_text, notify=taskStateChanged
+    )
+    weeklySupported = Property(
+        bool, lambda self: self.task_card.weekly_supported, notify=taskStateChanged
+    )
+    weeklyStartLabel = Property(
+        str, lambda self: self.task_card.weekly_start_label, notify=taskStateChanged
+    )
+    masterOn = Property(
+        bool, lambda self: self.task_card.master_on, notify=taskStateChanged
+    )
+    dailyOn = Property(
+        bool, lambda self: self.task_card.daily_on, notify=taskStateChanged
+    )
+    weeklyOn = Property(
+        bool, lambda self: self.task_card.weekly_on, notify=taskStateChanged
+    )
+    dungeonOptions = Property(
+        "QVariantList",
+        lambda self: self.task_card.dungeon_options,
+        notify=taskStateChanged,
+    )
+
+    # ── QML 槽（委托到子控制器）──────────────────────────────────────
+    @Slot(int)
+    def selectGame(self, index):
+        self.game_list.selectGame(index)
+
+    @Slot()
+    def toggleMode(self):
+        self.game_list.toggleMode()
+
+    @Slot()
+    def selectAll(self):
+        self.game_list.selectAll()
+
+    @Slot()
+    def deselectAll(self):
+        self.game_list.deselectAll()
+
+    @Slot(int, int)
+    def reorderGames(self, src, dst):
+        self.game_list.reorderGames(src, dst)
+
+    @Slot()
+    def addScript(self):
+        self.game_list.addScript()
+
+    @Slot()
+    def configCurrent(self):
+        self.game_list.configCurrent()
+
+    @Slot()
+    def launchAll(self):
+        self.launch.launchAll()
+
+    @Slot()
+    def launchScript(self):
+        self.launch.launchScript()
+
+    @Slot()
+    def launchGame(self):
+        self.links.launchGame()
+
+    @Slot()
+    def openHome(self):
+        self.links.openHome()
+
+    @Slot()
+    def openBilibili(self):
+        self.links.openBilibili()
+
+    @Slot()
+    def openGithub(self):
+        self.links.openGithub()
+
+    @Slot()
+    def openScriptFolder(self):
+        self.links.openScriptFolder()
+
+    @Slot()
+    def openSettings(self):
+        self.links.openSettings()
+
+    @Slot()
+    def startWindowMove(self):
+        self.window.startWindowMove()
+
+    @Slot()
+    def minimize(self):
+        self.window.minimize()
+
+    @Slot()
+    def closeWindow(self):
+        self.window.closeWindow()
+
+    @Slot(bool)
+    def toggleMaster(self, on):
+        self.task_card.toggleMaster(on)
+
+    @Slot(bool)
+    def toggleWeekly(self, on):
+        self.task_card.toggleWeekly(on)
+
+    @Slot(str, "QVariant")
+    def selectDungeon(self, name, seq):
+        self.task_card.selectDungeon(name, seq)
+
+    @Slot(int)
+    def selectWeekly(self, day):
+        self.task_card.selectWeekly(day)
+
+    @Slot(str)
+    def videoError(self, reason):
+        self.background.videoError(reason)
+
+    @Slot()
+    def openWallpaper(self):
+        self._open_wallpaper()
+
+    # ── 编排 / 门面协调方法（保持既有测试可直接调用）─────────────────
+    def _reload_games(self):
+        """重建脚本列表 + 构建副本下拉缓存（编排 game_list 与 task_card）。"""
+        self.game_list.reload_games()
+        self.task_card.build_dungeon_cache(self.game_list.games)
+
+    def _on_current_changed(self):
+        """当前选中变化 → 刷新背景 + 任务卡（跨控制器编排集中于此）。"""
         self._apply_current()
+
+    def _apply_current(self):
+        game = self.game_list.current_game
+        path = self._load_bg(game)
+        self.background.apply_current(game, path)
+
+    def _load_bg(self, game) -> str | None:
+        """返回该脚本应使用的背景路径（自定义壁纸 → 脚本背景 → DEFAULT_BG）。
+
+        文件不存在返回 None（走渐变）；扩展名由 background.apply_current 分发。
+        """
+        custom = self.background.read_wallpapers().get(game["script_name"])
+        bg_path = custom or (_get_game_bg_img(game["script_name"]) or DEFAULT_BG)
+        resolved = resolve_script_path(bg_path)
+        if not os.path.isfile(resolved):
+            return None
+        return resolved
+
+    def _wallpapers(self) -> dict:
+        return self.background.read_wallpapers()
+
+    def _save_wallpapers(self, wallpapers: dict):
+        self.background.write_wallpapers(wallpapers)
+
+    def _open_wallpaper(self):
+        from PySide6.QtWidgets import QFileDialog
+
+        game = self.game_list.current_game
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            f"选择 {game['display_name']} 壁纸",
+            "",
+            "图片/视频 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.webm *.mkv *.mov)",
+        )
+        if not path:
+            return
+        wallpapers = self._wallpapers()
+        wallpapers[game["script_name"]] = path
+        self._save_wallpapers(wallpapers)
+        self._apply_current()
+        self.toastRequested.emit(f"已更换 {game['display_name']} 壁纸")
+
+    # 测试友好：内部状态访问（实际归属 task_card）
+    @property
+    def _ui_state(self):
+        return self.task_card._ui_state
+
+    @_ui_state.setter
+    def _ui_state(self, value):
+        self.task_card._ui_state = value
+
+    @property
+    def _weekly_toggle_state(self):
+        return self.task_card._weekly_toggle_state
+
+    @_weekly_toggle_state.setter
+    def _weekly_toggle_state(self, value):
+        self.task_card._weekly_toggle_state = value
+
+    def _init_weekly_toggle_states(self):
+        return self.task_card.init_weekly_toggle_states()
 
 
 __all__ = ["QmlBridge", "ChainService", "ScriptIconProvider", "UiIconProvider"]

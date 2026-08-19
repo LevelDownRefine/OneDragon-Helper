@@ -1,53 +1,68 @@
 """脚本列表控制器：脚本列表 / 当前选中 / 启用态 / 控制模式 / 重排 / 增删 / 配置弹窗。
 
-共享状态（_games / _enabled / _control_mode / current_index / _game_model /
-icon_provider / _dungeon_*_cache）由 BridgeBase 持有；本 mixin 负责增删改与
-选中逻辑，并在 _reload_games 时构建副本下拉缓存（依赖 TaskCardController 的
-_build_dungeon_options，经门面 QmlBridge 的 MRO 在运行时解析）。
+独立 QObject，自管状态（_games / _enabled / _control_mode / current_index /
+_game_model / icon_provider）。其它控制器经构造注入的 game_list 引用读取当前游戏。
+跨控制器流程（切选中→刷背景/任务卡）由 main_window.QmlBridge 经信号/回调编排。
 """
 
 import os
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import QObject, Signal, Slot
 
 from src.config.subscript import get_script_name
-from src.gui.controllers.background import BackgroundController
+from src.gui.game_list_model import GameListModel
 from src.gui.theme import C_GAME_DIM
 
 
-class GameListController(BackgroundController):
-    # notify 信号就地定义（与 property 同类），避免 PySide6 跨类 notify 段错误
+class GameListController(QObject):
+    # 数据变化信号（供 QmlBridge 转发给 QML 绑定）
     gamesChanged = Signal()
+    currentIndexChanged = Signal()
     enabledChanged = Signal()
     controlModeChanged = Signal()
+    toastRequested = Signal(str)
+    gameAdded = Signal()
 
-    @Property("QVariantList", notify=gamesChanged)
+    def __init__(self, service, toast, on_reload, parent=None):
+        super().__init__(parent)
+        self._service = service
+        self._toast = toast
+        self._on_reload = (
+            on_reload  # 增删/改配置后触发门面级重载（动态调用，便于测试 mock）
+        )
+        self._games: list = []
+        self._game_model = GameListModel()
+        self.icon_provider = None
+        self._enabled: list = [True]
+        self._control_mode = False
+        self.current_index = 0
+
+    # ── 读接口（供 QmlBridge 委托与跨控制器读取）────────────────────────
+    @property
     def games(self) -> list:
-        """全部脚本条目：{display_name, script_name, char, color}。"""
         return self._games
 
-    @Property(QObject, notify=gamesChanged)
-    def gameModel(self):
-        """QML ListView 的 model（QAbstractListModel，重排/增删精确刷新）。"""
-        return self._game_model
+    @property
+    def current_game(self) -> dict:
+        return self._games[self.current_index]
 
-    @Property(int, notify=gamesChanged)
-    def currentIndex(self) -> int:
-        return self.current_index
-
-    @Property("QVariantList", notify=enabledChanged)
-    def enabledStates(self) -> list:
-        """各脚本启用状态（与 games 一一对应；纯内存态，重启默认全开）。"""
+    @property
+    def enabled(self) -> list:
         return self._enabled
 
-    @Property(bool, notify=controlModeChanged)
-    def controlMode(self) -> bool:
+    @property
+    def control_mode(self) -> bool:
         return self._control_mode
 
-    def _reload_games(self):
+    @property
+    def game_model(self):
+        return self._game_model
+
+    # ── 加载 / 增删改 ───────────────────────────────────────────────────
+    def reload_games(self):
         """从 config.yml 重建脚本列表（对齐旧 GUI._load_games）。"""
         games = []
-        for script in self.service.load_config().get("script_list", []):
+        for script in self._service.load_config().get("script_list", []):
             display_name = script["display_name"]
             games.append(
                 {
@@ -60,14 +75,8 @@ class GameListController(BackgroundController):
             )
         assert games, "[bridge] config.yml 中没有脚本"
         self._games = games
-        self._game_model.set_games(games)  # 同步 QML ListView model
+        self._game_model.set_games(games)
         self.current_index = min(self.current_index, len(games) - 1)
-        # 一次性解析 dungeon_list.yml 并构建所有脚本的副本下拉数据（运行期不变）
-        self._dungeon_map_cache = self.service.dungeon_map()
-        self._dungeon_options_cache = {
-            g["script_name"]: self._build_dungeon_options(g["script_name"])
-            for g in games
-        }
         # 新增脚本默认启用；已存在脚本保留原状态（与旧 GUI 重建语义一致）
         self._enabled = [
             self._enabled[i] if i < len(self._enabled) else True
@@ -78,19 +87,15 @@ class GameListController(BackgroundController):
             self.icon_provider.refresh(self._games)
         self.gamesChanged.emit()
 
-    def _current_game(self) -> dict:
-        return self._games[self.current_index]
-
+    # ── 交互 ───────────────────────────────────────────────────────────
     @Slot(int)
     def selectGame(self, index: int):
-        """QML 点击左侧脚本图标：控制模式切换启停，浏览模式切换选中+刷新背景。"""
-        assert 0 <= index < len(self._games), (
-            f"[bridge] index out of range: {index}"
-        )
+        """QML 点击左侧脚本图标：控制模式切换启停，浏览模式切换选中（emit currentIndexChanged）。"""
+        assert 0 <= index < len(self._games), f"[bridge] index out of range: {index}"
         if self._control_mode:
             self._enabled[index] = not self._enabled[index]
             self.enabledChanged.emit()
-            self.toastRequested.emit(
+            self._toast(
                 f"{self._games[index]['display_name']}："
                 f"{'启用' if self._enabled[index] else '停用'}"
             )
@@ -98,15 +103,14 @@ class GameListController(BackgroundController):
         if index == self.current_index:
             return
         self.current_index = index
-        self.gamesChanged.emit()  # 通知 QML 当前选中变化（左侧白圈跟随）
-        self._apply_current()
+        self.currentIndexChanged.emit()
 
     @Slot()
     def toggleMode(self):
         """⊞ 模式切换：浏览（点图标选脚本）⇄ 控制（点图标切换启用/停用）。"""
         self._control_mode = not self._control_mode
         self.controlModeChanged.emit()
-        self.toastRequested.emit(
+        self._toast(
             "控制模式：点击图标切换启用/停用"
             if self._control_mode
             else "浏览模式：点击图标选择脚本"
@@ -117,14 +121,14 @@ class GameListController(BackgroundController):
         """全选：所有脚本设为启用（纯内存态，不持久化）。"""
         self._enabled = [True] * len(self._games)
         self.enabledChanged.emit()
-        self.toastRequested.emit("已全选（全部启用）")
+        self._toast("已全选（全部启用）")
 
     @Slot()
     def deselectAll(self):
         """清空：所有脚本设为停用（纯内存态，不持久化）。"""
         self._enabled = [False] * len(self._games)
         self.enabledChanged.emit()
-        self.toastRequested.emit("已清空（全部停用）")
+        self._toast("已清空（全部停用）")
 
     @Slot(int, int)
     def reorderGames(self, src_index: int, dst_index: int):
@@ -148,7 +152,7 @@ class GameListController(BackgroundController):
         self._enabled.insert(dst_index, enabled)
 
         # 同步 config.yml 顺序（以 UI 顺序为准），持久化
-        config_data = self.service.load_config()
+        config_data = self._service.load_config()
         scripts = config_data["script_list"]
         s_idx = next(
             (
@@ -161,17 +165,19 @@ class GameListController(BackgroundController):
         assert s_idx is not None, "[bridge] config 中找不到源脚本"
         script = scripts.pop(s_idx)
         scripts.insert(dst_index, script)
-        self.service.save_config(config_data)
+        self._service.save_config(config_data)
 
         # 恢复选中（新 index 可能已变）
-        self.current_index = next(
+        new_index = next(
             (i for i, g in enumerate(self._games) if g["script_name"] == cur_name),
             len(self._games) - 1,
         )
         self.gamesChanged.emit()
         self.enabledChanged.emit()
-        self._apply_current()
-        self.toastRequested.emit("已调整脚本顺序")
+        if new_index != self.current_index:
+            self.current_index = new_index
+            self.currentIndexChanged.emit()
+        self._toast("已调整脚本顺序")
 
     @Slot()
     def addScript(self):
@@ -188,12 +194,12 @@ class GameListController(BackgroundController):
             return
         file_path = os.path.normpath(file_path)
         existing = {g["script_name"] for g in self._games}
-        script_data = self.service._script_service.build_script_entry(
+        script_data = self._service._script_service.build_script_entry(
             file_path, existing
         )
-        self.service.add_script(script_data)
-        self._reload_games()
-        self.toastRequested.emit(f"已添加 {script_data['display_name']}")
+        self._service.add_script(script_data)
+        self._on_reload()
+        self._toast(f"已添加 {script_data['display_name']}")
         self.gameAdded.emit()
 
     @Slot()
@@ -205,7 +211,7 @@ class GameListController(BackgroundController):
         """
         if not self._games:
             return
-        game = self._games[self.current_index]
+        game = self.current_game
         from PySide6.QtWidgets import QDialog
 
         from src.gui.dialogs import SingleScriptConfigDialog
@@ -215,7 +221,7 @@ class GameListController(BackgroundController):
             game["display_name"],
             game["script_data"].get("script_path", ""),
             None,
-            script_service=self.service._script_service,
+            script_service=self._service._script_service,
         )
         dialog.delete_requested.connect(self._on_delete_script)
         if dialog.exec() == QDialog.Accepted:
@@ -223,16 +229,16 @@ class GameListController(BackgroundController):
                 "[bridge] 配置弹窗 accept 但 pending_changes 为空"
             )
             changes = dialog.pending_changes
-            self.service.update_script(
+            self._service.update_script(
                 changes["old_script_name"],
                 changes["new_display_name"],
                 changes["config_patch"],
                 changes["weekly_timeouts"],
             )
-            self._reload_games()
-            self.toastRequested.emit(f"已保存 {changes['new_display_name']} 配置")
+            self._on_reload()
+            self._toast(f"已保存 {changes['new_display_name']} 配置")
 
     def _on_delete_script(self, script_name: str):
         """配置弹窗确认删除：落盘后重载脚本列表（对齐旧 GUI）。"""
-        self.service.remove_script(script_name)
-        self._reload_games()
+        self._service.remove_script(script_name)
+        self._on_reload()

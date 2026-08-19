@@ -1,15 +1,16 @@
 """窗口控制控制器：系统原生拖动 / 最小化 / 关闭。
 
-窗口对象经 Qt 应用实例获取（QGuiApplication / QApplication），均为惰性 import，
-避免在非 GUI（测试 / CLI）路径下无谓依赖 QtWidgets。
+独立 QObject。窗口对象经 Qt 应用实例获取（QGuiApplication / QApplication），
+均为惰性 import，避免在非 GUI（测试 / CLI）路径下无谓依赖 QtWidgets。
 """
 
-from PySide6.QtCore import Slot
-
-from src.gui.controllers.links import LinkController
+from PySide6.QtCore import QObject, Slot
 
 
-class WindowController(LinkController):
+class WindowController(QObject):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
     @Slot()
     def startWindowMove(self):
         """系统原生窗口拖动（Windows DWM 接管，最流畅）。
