@@ -8,14 +8,17 @@
 
 | 模块 | 职责 | 项目内依赖 |
 |------|------|-----------|
-| `main_window` | 主窗口 LauncherWindow（正式入口） | task_card / widgets / icons / theme / dialogs / config / service |
-| `task_card` | TaskCardPanel 任务卡（副本/周常调度） | theme / widgets / config / service / utils_weekly |
-| `widgets` | RailContainer / Toggle / GameIcon 自绘控件 | theme / icons |
-| `icons` | glyph 绘制 + 脚本 exe 图标获取 | theme / config.subscript / utils |
-| `theme` | 设计稿常量（颜色/尺寸/字体/链接） | （无，纯样式层） |
-| `dialogs` | SingleScriptConfigDialog 弹窗 + 确认回调 | config / service（自包含样式与工具） |
+| `main_window` (QmlBridge) | QML 门面单例：组合各控制器 + 委托 property/slot + 编排 | controllers/* / icons / service |
+| `controllers/game_list` | 脚本列表 / 选中 / 增删 / 配置弹窗 / 图标提供器 | config / icons |
+| `controllers/background` | 背景（视频/图片/渐变）/ 壁纸 / 背景路径解析 | config / subscript |
+| `controllers/task_card` | 日常副本 / 周常周几（数据 + 选择持久化） | config / service / utils_weekly |
+| `controllers/launch` | 启动胶囊（启动当前 / 启动全部） | game_list / task_card / service |
+| `controllers/links` | 悬浮条（主页/B站/GitHub/目录/设置/启动游戏） | config / subscript / utils |
+| `controllers/window` | 窗口控制（最小化/关闭/拖动） | （无） |
+| `icons` | 脚本 exe 图标 + QML 矢量图标提供器 | config.subscript |
+| `dialogs` | 单脚本配置弹窗 + 确认回调 | config / service（自包含） |
 
-依赖单向：`main_window` 是入口，各模块不反向引用主窗口；`theme` 被各模块引用但不依赖业务模块。
+依赖单向：`main_window` 组合各控制器，控制器间经构造注入依赖；`QmlBridge` 是 QML 唯一门面（见 launcher.py 注册）。`src/gui/qml/` 下组件经 `Loader` 相对路径加载，文件名与 `controllers/` 同名（单文件不套子目录）。
 
 ## 主窗口（`main_window.py`）
 
@@ -47,3 +50,18 @@
 
 `gui_state.json` 存 `dungeon`/`sequence`/`weekly_start`。`enabled`（开关）是纯
 内存态，重启恢复全开。经由 `ChainService.load_ui_state` / `save_ui_state` 读写。
+
+## 添加功能配方（架构约定）
+
+QML 仅经 `Bridge.<slot>()` 与 Python 交互，`QmlBridge`(main_window.py) 是二者间
+唯一桥。新增一个功能按以下三步，逻辑归位于所属控制器，门面只做薄委托：
+
+1. **逻辑**：加到所属 `controllers/` 控制器（新能力无固定归属时，按"屏幕区域"
+   就近放；跨区域则新建一个独立控制器）。门面不放业务/UI 逻辑。
+2. **暴露**：在 `main_window.py` 的 `QmlBridge` 加一行 `@Slot` 委托
+   （`def xxx(self, ...): self.<controller>.xxx(...)`）。
+3. **界面**：在对应 `src/gui/qml/<name>.qml` 组件里加 `Rectangle`/`MouseArea`，
+   调用 `Bridge.xxx(...)`；复用的旧能力只改 QML，无需碰 Python。
+
+示例：右上角加「截图」按钮 → `window.py` 加 `@Slot def screenshot()` →
+`QmlBridge.screenshot` 一行委托 → `qml/window.qml` 加按钮。
