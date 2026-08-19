@@ -7,7 +7,7 @@ Item {
 
     // 最小化
     Rectangle {
-        x: 0; y: 0; width: 36; height: 36; radius: 12
+        x: 40; y: 0; width: 36; height: 36; radius: 12
         color: minBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
         Image {
             anchors.centerIn: parent; width: 22; height: 22
@@ -20,7 +20,7 @@ Item {
     }
     // 设置（打开总配置 config.yml）
     Rectangle {
-        x: 40; y: 0; width: 36; height: 36; radius: 12
+        x: 0; y: 0; width: 36; height: 36; radius: 12
         color: setBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
         Image {
             anchors.centerIn: parent; width: 22; height: 22
