@@ -165,9 +165,7 @@ def _apply_hunter(targets: list[str]) -> None:
     existing = {s["value"] for s in dungeon.get("sequences", [])}
     for name in targets:
         if name not in existing:
-            dungeon.setdefault("sequences", []).append(
-                {"display": name, "value": name}
-            )
+            dungeon.setdefault("sequences", []).append({"display": name, "value": name})
     _write_yaml(data)
 
 
