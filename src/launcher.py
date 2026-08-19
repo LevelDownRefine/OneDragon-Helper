@@ -1,6 +1,6 @@
 """启动器入口：GUI 启动 + 无头 CLI 出口。
 
-GUI 走 QML（src/gui/qml_bridge 桥接业务逻辑，assets/qml/main.qml 渲染）；
+GUI 走 QML（src/gui/main_window 桥接业务逻辑，assets/qml/main.qml 渲染）；
 单脚本配置弹窗在 src/gui/dialogs.py。
 无头 CLI 出口见 :mod:`src.cli`（本模块的 --generate-chain / --run-chain 等命令行参数）。
 """
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QApplication
 from src.cli import build_parser, run_cli
 from src.config.subscript import generate_config_from_example, resolve_script_path
 from src.gui.dialogs import inject_config_confirm
-from src.gui.qml_bridge import QmlBridge, ScriptIconProvider, UiIconProvider
+from src.gui.main_window import QmlBridge, ScriptIconProvider, UiIconProvider
 from src.gui.theme import FONT_FAMILY
 from src.utils import get_config_yml_path_under_root
 from src.utils_logger import setup_logging

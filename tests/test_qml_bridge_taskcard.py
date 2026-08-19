@@ -2,29 +2,31 @@
 
 复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 ChainService 的 config /
 ui_state / 壁纸 I/O；is_adapted / supports_weekly / dungeon_map / parse_dungeon_config
-按用例 patch，验证 QML 任务卡所需的数据与写回行为。
+按用例 patch（这些名字实际由 task_card 子模块引用，patch 目标指向 task_card），
+验证 QML 任务卡所需的数据与写回行为。
 """
 
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.gui import qml_bridge
+from src.gui import main_window
+from src.gui.controllers import task_card
 from tests.test_qml_launcher import _make_bridge
 
 
 class TestTaskCard(unittest.TestCase):
     """任务卡数据 / 写回：与旧 task_card.py 对齐。"""
 
-    @patch.object(qml_bridge, "is_adapted", return_value=True)
-    @patch.object(qml_bridge, "_supports_weekly", return_value=True)
-    @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
+    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch.object(task_card, "_supports_weekly", return_value=True)
+    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_daily_text_default_is_placeholder(self, *_):
         b = _make_bridge()
         self.assertEqual(b.dailyDungeonText, "选择副本")
         self.assertEqual(b.weeklyStartLabel, "选择周几")
 
-    @patch.object(qml_bridge, "is_adapted", return_value=False)
-    @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
+    @patch.object(task_card, "is_adapted", return_value=False)
+    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_task_adapted_reflects_is_adapted(self, *_):
         b = _make_bridge()
         self.assertFalse(b.taskAdapted)
@@ -35,21 +37,21 @@ class TestTaskCard(unittest.TestCase):
         def get(self, key, default=None):
             return 1
 
-    @patch.object(qml_bridge, "is_adapted", return_value=True)
-    @patch.object(qml_bridge.ChainService, "dungeon_map", return_value=_AnyMap())
+    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch.object(main_window.ChainService, "dungeon_map", return_value=_AnyMap())
     def test_daily_supported_true_when_dungeon_cfg_present(self, *_):
         b = _make_bridge()
         self.assertTrue(b.dailySupported)
 
-    @patch.object(qml_bridge, "is_adapted", return_value=True)
-    @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
+    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_daily_supported_false_when_no_dungeon_cfg(self, *_):
         b = _make_bridge()
         self.assertFalse(b.dailySupported)
 
-    @patch.object(qml_bridge, "is_adapted", return_value=True)
-    @patch.object(qml_bridge, "_supports_weekly", return_value=False)
-    @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
+    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch.object(task_card, "_supports_weekly", return_value=False)
+    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_select_dungeon_persists(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
@@ -62,9 +64,9 @@ class TestTaskCard(unittest.TestCase):
         # 对齐旧 GUI：日常副本选择持久化到 gui_state.json
         m_save.assert_called_once()
 
-    @patch.object(qml_bridge, "is_adapted", return_value=True)
-    @patch.object(qml_bridge, "_supports_weekly", return_value=False)
-    @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
+    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch.object(task_card, "_supports_weekly", return_value=False)
+    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_select_dungeon_clear_removes(self, *_):
         b = _make_bridge()
         b.selectDungeon("副本A", "seq1")
@@ -74,10 +76,10 @@ class TestTaskCard(unittest.TestCase):
         self.assertNotIn("sequence", b._ui_state.get(name, {}))
         self.assertEqual(b.dailyDungeonText, "选择副本")
 
-    @patch.object(qml_bridge, "is_adapted", return_value=True)
-    @patch.object(qml_bridge, "_supports_weekly", return_value=True)
-    @patch.object(qml_bridge, "is_weekly_start_reached", return_value=True)
-    @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
+    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch.object(task_card, "_supports_weekly", return_value=True)
+    @patch.object(task_card, "is_weekly_start_reached", return_value=True)
+    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_select_weekly_persists_and_toggle(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
@@ -89,9 +91,9 @@ class TestTaskCard(unittest.TestCase):
         # 对齐旧 GUI：周常起始日持久化到 gui_state.json
         m_save.assert_called_once()
 
-    @patch.object(qml_bridge, "is_adapted", return_value=True)
-    @patch.object(qml_bridge, "_supports_weekly", return_value=False)
-    @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
+    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch.object(task_card, "_supports_weekly", return_value=False)
+    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_toggle_weekly_memory_only(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
@@ -103,9 +105,9 @@ class TestTaskCard(unittest.TestCase):
         # 对齐旧 GUI：周常开关是纯内存态，不写 gui_state.json
         m_save.assert_not_called()
 
-    @patch.object(qml_bridge, "is_adapted", return_value=True)
-    @patch.object(qml_bridge, "_supports_weekly", return_value=True)
-    @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
+    @patch.object(task_card, "is_adapted", return_value=True)
+    @patch.object(task_card, "_supports_weekly", return_value=True)
+    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_toggle_master_syncs_weekly_when_supported(self, *_):
         b = _make_bridge()
         with patch.object(b.service, "save_ui_state") as m_save:
@@ -120,9 +122,9 @@ class TestTaskCard(unittest.TestCase):
         # 对齐旧 GUI：总开关是全局 UI 态，不持久化
         m_save.assert_not_called()
 
-    @patch.object(qml_bridge, "is_adapted", return_value=True)
+    @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(
-        qml_bridge,
+        task_card,
         "parse_dungeon_config",
         return_value=(["未选择", "副本A"], {"副本A": [("难1", "s1")]}, None),
     )
@@ -132,7 +134,7 @@ class TestTaskCard(unittest.TestCase):
             def get(self, key, default=None):
                 return 1
 
-        with patch.object(qml_bridge.ChainService, "dungeon_map") as m_dm:
+        with patch.object(main_window.ChainService, "dungeon_map") as m_dm:
             m_dm.return_value = _Map()
             b = _make_bridge()
         opts = b.dungeonOptions
@@ -140,7 +142,7 @@ class TestTaskCard(unittest.TestCase):
         self.assertEqual(opts[1]["name"], "副本A")
         self.assertEqual(opts[1]["sequences"], [{"label": "难1", "value": "s1"}])
 
-    @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
+    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_dungeon_options_empty_when_no_cfg(self, *_):
         b = _make_bridge()
         self.assertEqual(b.dungeonOptions, [])

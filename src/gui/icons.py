@@ -4,12 +4,12 @@
   脚本用 exe 自带图标（崩铁优先同目录 March7th Launcher.exe），python 脚本用
   默认图标（Python 解释器图标，取不到回退 assets/ds.ico）。
 - ``_GITHUB_SVG``：GitHub Octocat 单色 SVG（Simple Icons 路径，白色），供
-  QML 的 ``UiIconProvider`` 渲染（qml_bridge 导入）。
+  QML 的 ``UiIconProvider`` 渲染（main_window 导入）。
 
 旧 GUI（main_window.py / widgets.py 自绘控件）所用自绘 ``GlyphButton`` /
 ``IconButton`` 与 ``draw_*`` 绘制函数已随旧 GUI 移除，本模块不再含 Qt 绘制逻辑。
 
-依赖单向：icons → config.subscript / utils；qml_bridge → icons。
+依赖单向：icons → config.subscript / utils；main_window → icons。
 """
 
 import logging

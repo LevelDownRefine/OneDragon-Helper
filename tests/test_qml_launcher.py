@@ -1,8 +1,13 @@
-"""测试 src.gui.qml_bridge 与 QML 应用骨架：脚本列表、背景切换、视频回退。
+"""测试 src.gui.main_window 与 QML 应用骨架：脚本列表、背景切换、视频回退。
 
 QML 引擎在 offscreen 下可加载场景（无视频渲染，但场景对象建立）；桥接逻辑
 用 mock 隔离 ChainService 文件 I/O。脚本图标 provider 不在加载时触发（Image
 渲染时才调用），避免 offscreen 依赖 exe 图标。
+
+各职责已拆到 src/gui/controllers/ 下 mixin；monkeypatch 目标需指向实际引用
+该名字的子模块（os/subprocess/webbrowser 指向标准库模块；ChainService 为类方法
+patch 指向重导出的 main_window.ChainService；build_script_command 在 launch，
+链接相关函数在 links，周常/适配相关函数在 task_card）。
 """
 
 import os
@@ -11,6 +16,7 @@ import subprocess
 import sys
 import textwrap
 import unittest
+import webbrowser
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -20,8 +26,9 @@ os.environ.setdefault("QML_DISABLE_DISK_CACHE", "1")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from src.gui import qml_bridge  # noqa: E402
-from src.gui.qml_bridge import (  # noqa: E402
+from src.gui import main_window  # noqa: E402
+from src.gui.controllers import launch, links, task_card  # noqa: E402
+from src.gui.main_window import (  # noqa: E402
     QmlBridge,
     ScriptIconProvider,
     UiIconProvider,
@@ -56,11 +63,11 @@ def _make_bridge():
     # 构造时类级 patch 在 with 退出后失效，故写盘屏蔽改为实例赋值（持久生效）。
     with (
         patch.object(
-            qml_bridge.ChainService,
+            main_window.ChainService,
             "load_config",
             return_value={"script_list": list(_SCRIPTS)},
         ),
-        patch.object(qml_bridge.ChainService, "load_ui_state", return_value={}),
+        patch.object(main_window.ChainService, "load_ui_state", return_value={}),
         patch.object(QmlBridge, "_wallpapers", return_value={}),
     ):
         b = QmlBridge()
@@ -87,7 +94,7 @@ class TestBridge(unittest.TestCase):
     def test_video_mode_when_bg_is_mp4(self):
         with (
             patch.object(QmlBridge, "_load_bg", return_value="C:/fake/clip.mp4"),
-            patch.object(qml_bridge.os.path, "isfile", return_value=True),
+            patch.object(os.path, "isfile", return_value=True),
         ):
             b = _make_bridge()
         self.assertEqual(b.backgroundMode, "video")
@@ -96,7 +103,7 @@ class TestBridge(unittest.TestCase):
     def test_image_mode_when_bg_is_jpg(self):
         with (
             patch.object(QmlBridge, "_load_bg", return_value="C:/fake/img.jpg"),
-            patch.object(qml_bridge.os.path, "isfile", return_value=True),
+            patch.object(os.path, "isfile", return_value=True),
         ):
             b = _make_bridge()
         self.assertEqual(b.backgroundMode, "image")
@@ -142,6 +149,18 @@ class TestLeftRail(unittest.TestCase):
         self.assertEqual(b.currentIndex, 1)
         self.assertEqual(b.enabledStates, [True, True])  # 浏览模式不改 enabled
 
+    def test_select_game_emits_games_changed(self):
+        # 白圈（index === Bridge.currentIndex）靠 gamesChanged 通知 QML 重算；
+        # 若 selectGame 漏 emit，QML 端选中位永远不跟随（Python 层 property 读取测不出）。
+        b = _make_bridge()
+        emissions = []
+        b.gamesChanged.connect(lambda: emissions.append(1))
+        b.selectGame(1)  # 0 → 1，切换选中
+        self.assertEqual(len(emissions), 1)
+        emissions.clear()
+        b.selectGame(1)  # 同项，不切选中
+        self.assertEqual(emissions, [])
+
     def test_select_all_and_deselect_all(self):
         b = _make_bridge()
         b.deselectAll()
@@ -169,13 +188,13 @@ class TestLeftRail(unittest.TestCase):
         b = _make_bridge()
         b.selectGame(1)  # 测试脚本（python）
         with (
-            patch.object(qml_bridge.os.path, "isfile", return_value=True),
+            patch.object(os.path, "isfile", return_value=True),
             patch.object(
-                qml_bridge,
+                launch,
                 "build_script_command",
                 return_value=(["python", "--script", "x"], ".", {}),
             ),
-            patch.object(qml_bridge.subprocess, "Popen") as popen,
+            patch.object(subprocess, "Popen") as popen,
         ):
             b.launchScript()
         popen.assert_called_once()
@@ -187,8 +206,8 @@ class TestFloatBar(unittest.TestCase):
     def test_open_home_uses_bridge(self):
         b = _make_bridge()
         with (
-            patch.object(qml_bridge, "_get_game_homepage", return_value=""),
-            patch.object(qml_bridge.webbrowser, "open") as wb,
+            patch.object(links, "_get_game_homepage", return_value=""),
+            patch.object(webbrowser, "open") as wb,
         ):
             b.openHome()
         wb.assert_called_once()
@@ -196,8 +215,8 @@ class TestFloatBar(unittest.TestCase):
     def test_open_bilibili_uses_bridge(self):
         b = _make_bridge()
         with (
-            patch.object(qml_bridge, "_get_game_bilibili", return_value=""),
-            patch.object(qml_bridge.webbrowser, "open") as wb,
+            patch.object(links, "_get_game_bilibili", return_value=""),
+            patch.object(webbrowser, "open") as wb,
         ):
             b.openBilibili()
         wb.assert_called_once()
@@ -206,7 +225,7 @@ class TestFloatBar(unittest.TestCase):
         b = _make_bridge()
         with (
             patch.object(
-                qml_bridge, "_get_game_exe_path", return_value="D:/Game/game.exe"
+                links, "_get_game_exe_path", return_value="D:/Game/game.exe"
             ),
             patch("os.startfile", create=True) as start,
         ):
@@ -217,7 +236,7 @@ class TestFloatBar(unittest.TestCase):
         b = _make_bridge()
         spy = MagicMock()
         b.toastRequested.connect(spy)
-        with patch.object(qml_bridge, "_get_game_exe_path", return_value=None):
+        with patch.object(links, "_get_game_exe_path", return_value=None):
             b.launchGame()
         spy.assert_called_once()
 
@@ -225,11 +244,11 @@ class TestFloatBar(unittest.TestCase):
         b = _make_bridge()
         with (
             patch.object(
-                qml_bridge,
+                links,
                 "get_config_yml_path_under_root",
                 return_value="C:/cfg/config.yml",
             ),
-            patch.object(qml_bridge.os.path, "isfile", return_value=True),
+            patch.object(os.path, "isfile", return_value=True),
             patch("os.startfile", create=True) as start,
         ):
             b.openSettings()
@@ -241,11 +260,11 @@ class TestFloatBar(unittest.TestCase):
         b.toastRequested.connect(spy)
         with (
             patch.object(
-                qml_bridge,
+                links,
                 "get_config_yml_path_under_root",
                 return_value="C:/cfg/config.yml",
             ),
-            patch.object(qml_bridge.os.path, "isfile", return_value=False),
+            patch.object(os.path, "isfile", return_value=False),
         ):
             b.openSettings()
         spy.assert_called_once()
@@ -310,8 +329,8 @@ class TestQmlApp(unittest.TestCase):
             from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
             from PySide6.QtWidgets import QApplication
             from src.config.subscript import resolve_script_path
-            from src.gui import qml_bridge
-            from src.gui.qml_bridge import QmlBridge, ScriptIconProvider, UiIconProvider
+            from src.gui import main_window
+            from src.gui.main_window import QmlBridge, ScriptIconProvider, UiIconProvider
 
             app = QApplication([])
             scripts = [
@@ -319,8 +338,8 @@ class TestQmlApp(unittest.TestCase):
                 {"display_name": "测试脚本", "script_path": "scripts/t.py", "script_type": "python"},
             ]
             with (
-                patch.object(qml_bridge.ChainService, "load_config", return_value={"script_list": scripts}),
-                patch.object(qml_bridge.ChainService, "load_ui_state", return_value={}),
+                patch.object(main_window.ChainService, "load_config", return_value={"script_list": scripts}),
+                patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(QmlBridge, "_wallpapers", return_value={}),
                 patch.object(QmlBridge, "_load_bg", return_value=None),
             ):
@@ -452,8 +471,8 @@ class TestWeeklyToggleInit(unittest.TestCase):
         b = _make_bridge()
         b._ui_state = {"ok-ww": {"weekly_start": 2}}
         with (
-            patch.object(qml_bridge, "_supports_weekly", return_value=True),
-            patch.object(qml_bridge, "is_weekly_start_reached", return_value=True),
+            patch.object(task_card, "_supports_weekly", return_value=True),
+            patch.object(task_card, "is_weekly_start_reached", return_value=True),
         ):
             states = b._init_weekly_toggle_states()
         self.assertEqual(states.get("ok-ww"), True)
@@ -461,24 +480,24 @@ class TestWeeklyToggleInit(unittest.TestCase):
     def test_unsupported_or_no_start_is_false(self):
         b = _make_bridge()
         b._ui_state = {"ok-ww": {"weekly_start": 2}}
-        with patch.object(qml_bridge, "_supports_weekly", return_value=False):
+        with patch.object(task_card, "_supports_weekly", return_value=False):
             states = b._init_weekly_toggle_states()
         self.assertEqual(states.get("ok-ww", "absent"), "absent")
 
     def test_bridge_init_populates_toggle_state(self):
         with (
             patch.object(
-                qml_bridge.ChainService,
+                main_window.ChainService,
                 "load_config",
                 return_value={"script_list": list(_SCRIPTS)},
             ),
             patch.object(
-                qml_bridge.ChainService,
+                main_window.ChainService,
                 "load_ui_state",
                 return_value={"ok-ww": {"weekly_start": 2}},
             ),
-            patch.object(qml_bridge, "_supports_weekly", return_value=True),
-            patch.object(qml_bridge, "is_weekly_start_reached", return_value=True),
+            patch.object(task_card, "_supports_weekly", return_value=True),
+            patch.object(task_card, "is_weekly_start_reached", return_value=True),
             patch.object(QmlBridge, "_wallpapers", return_value={}),
         ):
             b = QmlBridge()

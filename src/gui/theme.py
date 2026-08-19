@@ -1,6 +1,6 @@
 """主题常量：当前 QML GUI 使用的颜色/字体/星期名/元数据链接。
 
-单一来源，供 qml_bridge / launcher 引用。旧 Widgets GUI（main_window/widgets/
+单一来源，供 main_window / launcher 引用。旧 Widgets GUI（main_window/widgets/
 task_card）已删除，相关常量一并移除。
 """
 
