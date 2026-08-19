@@ -228,7 +228,7 @@ Window {
             color: modeBtn.containsMouse ? "#2B3A52" : "#1A2233"
             Text {
                 anchors.centerIn: parent
-                text: Bridge.controlMode ? "⊞ 控制" : "⊞ 浏览"
+                text: Bridge.controlMode ? "⊞ 控制模式" : "⊞ 浏览模式"
                 color: "#FFFFFF"
                 font.pixelSize: 11
             }
