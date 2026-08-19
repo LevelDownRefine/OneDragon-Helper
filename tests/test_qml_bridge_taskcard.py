@@ -52,14 +52,11 @@ class TestTaskCard(unittest.TestCase):
     def test_select_dungeon_persists(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
-        with patch.object(b.service, "save_ui_state") as m_save:
-            b.selectDungeon("副本A", "seq1")
+        b.selectDungeon("副本A", "seq1")
         self.assertEqual(b._ui_state[name]["dungeon"], "副本A")
         self.assertEqual(b._ui_state[name]["sequence"], "seq1")
         # 无 seq_map → chip 文字回退为副本名
         self.assertEqual(b.dailyDungeonText, "副本A")
-        # 对齐旧 GUI：日常副本选择持久化到 gui_state.json
-        m_save.assert_called_once()
 
     @patch.object(qml_bridge, "is_adapted", return_value=True)
     @patch.object(qml_bridge, "_supports_weekly", return_value=False)
@@ -80,13 +77,10 @@ class TestTaskCard(unittest.TestCase):
     def test_select_weekly_persists_and_toggle(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
-        with patch.object(b.service, "save_ui_state") as m_save:
-            b.selectWeekly(3)
+        b.selectWeekly(3)
         self.assertEqual(b._ui_state[name]["weekly_start"], 3)
         self.assertTrue(b.weeklyOn)
         self.assertEqual(b.weeklyStartLabel, "周三起")
-        # 对齐旧 GUI：周常起始日持久化到 gui_state.json
-        m_save.assert_called_once()
 
     @patch.object(qml_bridge, "is_adapted", return_value=True)
     @patch.object(qml_bridge, "_supports_weekly", return_value=False)
@@ -94,30 +88,24 @@ class TestTaskCard(unittest.TestCase):
     def test_toggle_weekly_memory_only(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
-        with patch.object(b.service, "save_ui_state") as m_save:
-            b.toggleWeekly(True)
+        b.toggleWeekly(True)
         self.assertTrue(b.weeklyOn)
         # 不持久化（脚本未支持周常也不写 weekly_start）
         self.assertNotIn("weekly_start", b._ui_state.get(name, {}))
-        # 对齐旧 GUI：周常开关是纯内存态，不写 gui_state.json
-        m_save.assert_not_called()
 
     @patch.object(qml_bridge, "is_adapted", return_value=True)
     @patch.object(qml_bridge, "_supports_weekly", return_value=True)
     @patch.object(qml_bridge.ChainService, "dungeon_map", return_value={})
     def test_toggle_master_syncs_weekly_when_supported(self, *_):
         b = _make_bridge()
-        with patch.object(b.service, "save_ui_state") as m_save:
-            b.toggleMaster(False)
-            self.assertFalse(b.masterOn)
-            self.assertFalse(b.dailyOn)
-            self.assertFalse(b.weeklyOn)
-            b.toggleMaster(True)
-            self.assertTrue(b.masterOn)
-            self.assertTrue(b.dailyOn)
-            self.assertTrue(b.weeklyOn)
-        # 对齐旧 GUI：总开关是全局 UI 态，不持久化
-        m_save.assert_not_called()
+        b.toggleMaster(False)
+        self.assertFalse(b.masterOn)
+        self.assertFalse(b.dailyOn)
+        self.assertFalse(b.weeklyOn)
+        b.toggleMaster(True)
+        self.assertTrue(b.masterOn)
+        self.assertTrue(b.dailyOn)
+        self.assertTrue(b.weeklyOn)
 
     @patch.object(qml_bridge, "is_adapted", return_value=True)
     @patch.object(

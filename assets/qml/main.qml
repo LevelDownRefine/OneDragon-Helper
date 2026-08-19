@@ -475,13 +475,10 @@ Window {
 
     // 任务调度卡（日常副本 / 周常周几）：Loader 按路径懒加载，复用视频层同样的
     // "独立 .qml + Loader source" 稳定模式（不把类型 import 进 main.qml 本体）。
-    // z:20 叠在全局拖拽 MouseArea(z:1) 之上——否则卡片内按钮（副本 chip / 开关 /
-    // 弹窗）的首次点击会被窗口拖拽处理器抢走，表现为「要双击才生效」。
     Loader {
         id: taskCardLoader
         x: 128
         y: 392
-        z: 20
         source: "TaskCard.qml"
     }
 
