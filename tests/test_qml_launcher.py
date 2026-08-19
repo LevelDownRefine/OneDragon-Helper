@@ -66,7 +66,6 @@ def _make_bridge():
             return_value={"script_list": list(_SCRIPTS)},
         ),
         patch.object(main_window.ChainService, "load_ui_state", return_value={}),
-        patch.object(QmlBridge, "_wallpapers", return_value={}),
     ):
         b = QmlBridge()
     # 隔离写盘：避免测试污染真实 config/gui_state.json / config.yml
@@ -84,14 +83,20 @@ class TestBridge(unittest.TestCase):
 
     def test_background_mode_default_gradient(self):
         # 脚本无 bg 配置且 DEFAULT_BG 不存在时走渐变兜底
-        with patch.object(QmlBridge, "_load_bg", return_value=None):
+        with patch.object(
+            main_window.BackgroundController, "resolve_bg", return_value=None
+        ):
             b = _make_bridge()
         self.assertEqual(b.backgroundMode, "gradient")
         self.assertEqual(b.gradientChar, "鸣")
 
     def test_video_mode_when_bg_is_mp4(self):
         with (
-            patch.object(QmlBridge, "_load_bg", return_value="C:/fake/clip.mp4"),
+            patch.object(
+                main_window.BackgroundController,
+                "resolve_bg",
+                return_value="C:/fake/clip.mp4",
+            ),
             patch.object(os.path, "isfile", return_value=True),
         ):
             b = _make_bridge()
@@ -100,7 +105,11 @@ class TestBridge(unittest.TestCase):
 
     def test_image_mode_when_bg_is_jpg(self):
         with (
-            patch.object(QmlBridge, "_load_bg", return_value="C:/fake/img.jpg"),
+            patch.object(
+                main_window.BackgroundController,
+                "resolve_bg",
+                return_value="C:/fake/img.jpg",
+            ),
             patch.object(os.path, "isfile", return_value=True),
         ):
             b = _make_bridge()
@@ -108,7 +117,7 @@ class TestBridge(unittest.TestCase):
 
     def test_select_game_switches_background(self):
         b = _make_bridge()
-        with patch.object(b, "_load_bg", return_value=None):
+        with patch.object(b.background, "resolve_bg", return_value=None):
             b.selectGame(1)
         self.assertEqual(b.currentIndex, 1)
         self.assertEqual(b.gradientChar, "测")
@@ -268,18 +277,15 @@ class TestFloatBar(unittest.TestCase):
 
     def test_open_wallpaper_persists_and_switches(self):
         b = _make_bridge()
-        b._save_wallpapers = MagicMock()
-        b._apply_current = MagicMock()
-        with (
-            patch(
-                "PySide6.QtWidgets.QFileDialog.getOpenFileName",
-                return_value=("C:/w.mp4", ""),
-            ),
-            patch.object(b, "_wallpapers", return_value={}),
+        b.background.write_wallpapers = MagicMock()
+        b.background.apply_current = MagicMock()
+        with patch(
+            "PySide6.QtWidgets.QFileDialog.getOpenFileName",
+            return_value=("C:/w.mp4", ""),
         ):
             b.openWallpaper()
-        b._save_wallpapers.assert_called_once()
-        b._apply_current.assert_called_once()
+        b.background.write_wallpapers.assert_called_once()
+        b.background.apply_current.assert_called_once()
 
     def test_add_script_emits_game_added(self):
         b = _make_bridge()
@@ -339,8 +345,7 @@ class TestQmlApp(unittest.TestCase):
             with (
                 patch.object(main_window.ChainService, "load_config", return_value={"script_list": scripts}),
                 patch.object(main_window.ChainService, "load_ui_state", return_value={}),
-                patch.object(QmlBridge, "_wallpapers", return_value={}),
-                patch.object(QmlBridge, "_load_bg", return_value=None),
+                patch.object(main_window.BackgroundController, "resolve_bg", return_value=None),
             ):
                 bridge = QmlBridge()
             qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
@@ -468,19 +473,19 @@ class TestWeeklyToggleInit(unittest.TestCase):
     def test_init_from_weekly_start(self):
         # 鸣潮 是 exe 脚本，script_name = 进程名 ok-ww（非 display_name）
         b = _make_bridge()
-        b._ui_state = {"ok-ww": {"weekly_start": 2}}
+        b.task_card._ui_state = {"ok-ww": {"weekly_start": 2}}
         with (
             patch.object(task_card, "_supports_weekly", return_value=True),
             patch.object(task_card, "is_weekly_start_reached", return_value=True),
         ):
-            states = b._init_weekly_toggle_states()
+            states = b.task_card.init_weekly_toggle_states()
         self.assertEqual(states.get("ok-ww"), True)
 
     def test_unsupported_or_no_start_is_false(self):
         b = _make_bridge()
-        b._ui_state = {"ok-ww": {"weekly_start": 2}}
+        b.task_card._ui_state = {"ok-ww": {"weekly_start": 2}}
         with patch.object(task_card, "_supports_weekly", return_value=False):
-            states = b._init_weekly_toggle_states()
+            states = b.task_card.init_weekly_toggle_states()
         self.assertEqual(states.get("ok-ww", "absent"), "absent")
 
     def test_bridge_init_populates_toggle_state(self):
@@ -497,10 +502,9 @@ class TestWeeklyToggleInit(unittest.TestCase):
             ),
             patch.object(task_card, "_supports_weekly", return_value=True),
             patch.object(task_card, "is_weekly_start_reached", return_value=True),
-            patch.object(QmlBridge, "_wallpapers", return_value={}),
         ):
             b = QmlBridge()
-        self.assertEqual(b._weekly_toggle_state.get("ok-ww"), True)
+        self.assertEqual(b.task_card._weekly_toggle_state.get("ok-ww"), True)
 
 
 if __name__ == "__main__":

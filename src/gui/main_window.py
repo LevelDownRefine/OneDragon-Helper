@@ -5,13 +5,9 @@
 （选脚本 → 刷背景 + 任务卡）。
 """
 
-import os
-
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
-from src.config.set_config import get_game_bg_img as _get_game_bg_img
-from src.config.subscript import resolve_script_path
-from src.gui.controllers.background import DEFAULT_BG, BackgroundController
+from src.gui.controllers.background import BackgroundController
 from src.gui.controllers.game_list import GameListController
 from src.gui.controllers.launch import LaunchController
 from src.gui.controllers.links import LinksController
@@ -247,7 +243,7 @@ class QmlBridge(QObject):
 
     @Slot()
     def openWallpaper(self):
-        self._open_wallpaper()
+        self.background.open_wallpaper()
 
     # ── 编排 / 门面协调方法（保持既有测试可直接调用）─────────────────
     def _reload_games(self):
@@ -260,65 +256,7 @@ class QmlBridge(QObject):
         self._apply_current()
 
     def _apply_current(self):
-        game = self.game_list.current_game
-        path = self._load_bg(game)
-        self.background.apply_current(game, path)
-
-    def _load_bg(self, game) -> str | None:
-        """返回该脚本应使用的背景路径（自定义壁纸 → 脚本背景 → DEFAULT_BG）。
-
-        文件不存在返回 None（走渐变）；扩展名由 background.apply_current 分发。
-        """
-        custom = self.background.read_wallpapers().get(game["script_name"])
-        bg_path = custom or (_get_game_bg_img(game["script_name"]) or DEFAULT_BG)
-        resolved = resolve_script_path(bg_path)
-        if not os.path.isfile(resolved):
-            return None
-        return resolved
-
-    def _wallpapers(self) -> dict:
-        return self.background.read_wallpapers()
-
-    def _save_wallpapers(self, wallpapers: dict):
-        self.background.write_wallpapers(wallpapers)
-
-    def _open_wallpaper(self):
-        from PySide6.QtWidgets import QFileDialog
-
-        game = self.game_list.current_game
-        path, _ = QFileDialog.getOpenFileName(
-            None,
-            f"选择 {game['display_name']} 壁纸",
-            "",
-            "图片/视频 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.webm *.mkv *.mov)",
-        )
-        if not path:
-            return
-        wallpapers = self._wallpapers()
-        wallpapers[game["script_name"]] = path
-        self._save_wallpapers(wallpapers)
-        self._apply_current()
-        self.toastRequested.emit(f"已更换 {game['display_name']} 壁纸")
-
-    # 测试友好：内部状态访问（实际归属 task_card）
-    @property
-    def _ui_state(self):
-        return self.task_card._ui_state
-
-    @_ui_state.setter
-    def _ui_state(self, value):
-        self.task_card._ui_state = value
-
-    @property
-    def _weekly_toggle_state(self):
-        return self.task_card._weekly_toggle_state
-
-    @_weekly_toggle_state.setter
-    def _weekly_toggle_state(self, value):
-        self.task_card._weekly_toggle_state = value
-
-    def _init_weekly_toggle_states(self):
-        return self.task_card.init_weekly_toggle_states()
+        self.background.apply_current(self.game_list.current_game)
 
 
 __all__ = ["QmlBridge", "ChainService", "UiIconProvider"]

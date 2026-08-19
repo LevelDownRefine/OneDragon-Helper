@@ -57,8 +57,8 @@ class TestTaskCard(unittest.TestCase):
         name = b.games[0]["script_name"]
         with patch.object(b.service, "save_ui_state") as m_save:
             b.selectDungeon("副本A", "seq1")
-        self.assertEqual(b._ui_state[name]["dungeon"], "副本A")
-        self.assertEqual(b._ui_state[name]["sequence"], "seq1")
+        self.assertEqual(b.task_card._ui_state[name]["dungeon"], "副本A")
+        self.assertEqual(b.task_card._ui_state[name]["sequence"], "seq1")
         # 无 seq_map → chip 文字回退为副本名
         self.assertEqual(b.dailyDungeonText, "副本A")
         # 对齐旧 GUI：日常副本选择持久化到 gui_state.json
@@ -72,8 +72,8 @@ class TestTaskCard(unittest.TestCase):
         b.selectDungeon("副本A", "seq1")
         name = b.games[0]["script_name"]
         b.selectDungeon("未选择", None)
-        self.assertNotIn("dungeon", b._ui_state.get(name, {}))
-        self.assertNotIn("sequence", b._ui_state.get(name, {}))
+        self.assertNotIn("dungeon", b.task_card._ui_state.get(name, {}))
+        self.assertNotIn("sequence", b.task_card._ui_state.get(name, {}))
         self.assertEqual(b.dailyDungeonText, "选择副本")
 
     @patch.object(task_card, "is_adapted", return_value=True)
@@ -85,7 +85,7 @@ class TestTaskCard(unittest.TestCase):
         name = b.games[0]["script_name"]
         with patch.object(b.service, "save_ui_state") as m_save:
             b.selectWeekly(3)
-        self.assertEqual(b._ui_state[name]["weekly_start"], 3)
+        self.assertEqual(b.task_card._ui_state[name]["weekly_start"], 3)
         self.assertTrue(b.weeklyOn)
         self.assertEqual(b.weeklyStartLabel, "周三起")
         # 对齐旧 GUI：周常起始日持久化到 gui_state.json
@@ -101,7 +101,7 @@ class TestTaskCard(unittest.TestCase):
             b.toggleWeekly(True)
         self.assertTrue(b.weeklyOn)
         # 不持久化（脚本未支持周常也不写 weekly_start）
-        self.assertNotIn("weekly_start", b._ui_state.get(name, {}))
+        self.assertNotIn("weekly_start", b.task_card._ui_state.get(name, {}))
         # 对齐旧 GUI：周常开关是纯内存态，不写 gui_state.json
         m_save.assert_not_called()
 

@@ -24,7 +24,7 @@ Window {
         id: videoBgLoader
         anchors.fill: parent
         visible: status === Loader.Ready
-        source: Bridge.backgroundMode === "video" ? "background/VideoBackground.qml" : ""
+        source: Bridge.backgroundMode === "video" ? "background.qml" : ""
     }
 
     // 图片背景（cover 裁剪）
@@ -262,145 +262,16 @@ Window {
         }
     }
 
-    // 窗口控制（右上：最小化 / 设置 / 关闭）——内联实现，图标用 image://uiicon 矢量绘制。
-    // 不引用 IconButton 组件类型：PySide6 下自定义 .qml 组件类型解析存在
-    // 非确定性 bug（Type IconButton unavailable / Cannot assign to "data"），
-    // 内联后 main.qml 加载完全稳定。
-    Item {
-        x: 1164
-        y: 8
-        width: 116
-        height: 36
-        z: 30
-        // 最小化
-        Rectangle {
-            x: 0
-            width: 36
-            height: 36
-            radius: 12
-            color: minBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
-            Image {
-                anchors.centerIn: parent
-                width: 22
-                height: 22
-                source: "image://uiicon/min"
-                fillMode: Image.PreserveAspectFit
-            }
-            MouseArea {
-                id: minBtnMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: Bridge.minimize()
-            }
-        }
-        // 设置（打开总配置 config.yml）
-        Rectangle {
-            x: 40
-            width: 36
-            height: 36
-            radius: 12
-            color: setBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
-            Image {
-                anchors.centerIn: parent
-                width: 22
-                height: 22
-                source: "image://uiicon/settings"
-                fillMode: Image.PreserveAspectFit
-            }
-            MouseArea {
-                id: setBtnMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: Bridge.openSettings()
-            }
-        }
-        // 关闭
-        Rectangle {
-            x: 80
-            width: 36
-            height: 36
-            radius: 12
-            color: closeBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
-            Image {
-                anchors.centerIn: parent
-                width: 22
-                height: 22
-                source: "image://uiicon/close"
-                fillMode: Image.PreserveAspectFit
-            }
-            MouseArea {
-                id: closeBtnMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: Bridge.closeWindow()
-            }
-        }
+    // 窗口控制（右上：最小化 / 设置 / 关闭）——独立组件，Loader 加载。
+    Loader {
+        x: 1164; y: 8; width: 116; height: 36; z: 30
+        source: "window.qml"
     }
 
-    // 右下启动胶囊（蓝色大按钮，点击启动当前脚本）
-    Rectangle {
-        x: 960
-        y: 636
-        width: 216
-        height: 64
-        radius: 32
-        z: 20
-        color: launchCapsule.containsMouse ? "#35A2F5" : "#2196F3"
-        // 左 ▶ 圆
-        Rectangle {
-            x: 4
-            y: 4
-            width: 56
-            height: 56
-            radius: 28
-            color: "#0F2A4D"
-            Text {
-                anchors.centerIn: parent
-                text: "▶"
-                color: "#FFFFFF"
-                font.pixelSize: 22
-            }
-        }
-        // 中间文字
-        Text {
-            x: 60
-            y: 0
-            width: 96
-            height: 64
-            text: "启动脚本"
-            color: "#FFFFFF"
-            font.pixelSize: 18
-            font.weight: Font.Bold
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-        MouseArea {
-            id: launchCapsule
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: Bridge.launchScript()
-        }
-        // 右侧 ☰ 配置圆（与 ▶ 对称，56×56）——点击打开当前脚本配置弹窗
-        Rectangle {
-            x: 156
-            y: 4
-            width: 56
-            height: 56
-            radius: 28
-            color: cfgBtn.containsMouse ? "#0F3A6B" : "#0F2A4D"
-            Text {
-                anchors.centerIn: parent
-                text: "≡"
-                color: "#FFFFFF"
-                font.pixelSize: 30
-            }
-            MouseArea {
-                id: cfgBtn
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: Bridge.configCurrent()
-            }
-        }
+    // 右下启动胶囊（蓝色大按钮，点击启动当前脚本）——独立组件，Loader 加载。
+    Loader {
+        x: 960; y: 636; width: 216; height: 64; z: 20
+        source: "launch.qml"
     }
 
     // 右侧悬浮图标条（主页/启动游戏/文件夹/B站/GitHub/壁纸）——图标用 image://uiicon 矢量绘制
@@ -474,7 +345,7 @@ Window {
         x: 128
         y: 392
         z: 20  // 高于拖拽层，避免开关/副本按钮首次点击被抢（双击感）
-        source: "task_card/TaskCard.qml"
+        source: "task_card.qml"
     }
 
     // toast / 添加脚本 / 重排信号连接（不用 Connections 组件，避免单例 target 解析的潜在问题）
