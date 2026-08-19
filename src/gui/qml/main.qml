@@ -24,7 +24,7 @@ Window {
         id: videoBgLoader
         anchors.fill: parent
         visible: status === Loader.Ready
-        source: Bridge.backgroundMode === "video" ? "VideoBackground.qml" : ""
+        source: Bridge.backgroundMode === "video" ? "background/VideoBackground.qml" : ""
     }
 
     // 图片背景（cover 裁剪）
@@ -474,7 +474,7 @@ Window {
         x: 128
         y: 392
         z: 20  // 高于拖拽层，避免开关/副本按钮首次点击被抢（双击感）
-        source: "TaskCard.qml"
+        source: "task_card/TaskCard.qml"
     }
 
     // toast / 添加脚本 / 重排信号连接（不用 Connections 组件，避免单例 target 解析的潜在问题）

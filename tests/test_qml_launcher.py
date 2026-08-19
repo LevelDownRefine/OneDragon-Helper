@@ -347,7 +347,7 @@ class TestQmlApp(unittest.TestCase):
             engine = QQmlApplicationEngine()
             engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
             engine.addImageProvider("uiicon", UiIconProvider())
-            engine.load(QUrl.fromLocalFile(resolve_script_path("assets/qml/main.qml")))
+            engine.load(QUrl.fromLocalFile(resolve_script_path("src/gui/qml/main.qml")))
             # 跑几帧事件循环：Loader 异步加载 TaskCard 后才会求值其绑定，
             # 缺 import OneDragonHelper 会导致 ReferenceError: Bridge is not defined
             QTimer.singleShot(600, app.quit)

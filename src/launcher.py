@@ -1,6 +1,6 @@
 """启动器入口：GUI 启动 + 无头 CLI 出口。
 
-GUI 走 QML（src/gui/main_window 桥接业务逻辑，assets/qml/main.qml 渲染）；
+GUI 走 QML（src/gui/main_window 桥接业务逻辑，src/gui/qml/main.qml 渲染）；
 单脚本配置弹窗在 src/gui/dialogs.py。
 无头 CLI 出口见 :mod:`src.cli`（本模块的 --generate-chain / --run-chain 等命令行参数）。
 """
@@ -108,7 +108,7 @@ def _launch_qml():
     # 通用 UI 矢量图标源由组合根 QmlBridge 暴露。
     engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
     engine.addImageProvider("uiicon", bridge.ui_icon_provider)
-    qml_path = resolve_script_path("assets/qml/main.qml")
+    qml_path = resolve_script_path("src/gui/qml/main.qml")
     assert qml_path and os.path.isfile(qml_path), f"[launcher] QML 缺失: {qml_path}"
     # 阶段日志：定位启动卡点（正常顺序 engine loading → loaded → running）
     print("[qml] engine loading:", qml_path, flush=True)
