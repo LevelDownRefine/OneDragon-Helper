@@ -53,6 +53,7 @@ _SCRIPTS = [
 
 
 def _make_bridge():
+    # 构造时类级 patch 在 with 退出后失效，故写盘屏蔽改为实例赋值（持久生效）。
     with (
         patch.object(
             qml_bridge.ChainService,
@@ -62,7 +63,11 @@ def _make_bridge():
         patch.object(qml_bridge.ChainService, "load_ui_state", return_value={}),
         patch.object(QmlBridge, "_wallpapers", return_value={}),
     ):
-        return QmlBridge()
+        b = QmlBridge()
+    # 隔离写盘：避免测试污染真实 config/gui_state.json / config.yml
+    b.service.save_ui_state = MagicMock()
+    b.service.save_config = MagicMock()
+    return b
 
 
 class TestBridge(unittest.TestCase):
