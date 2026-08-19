@@ -1043,9 +1043,6 @@ class ArknightsConfig(ScriptConfig):
                 )
 
             should_enable = name in ["剿灭", "土", "活动土", dungeon_name]
-            logger.info(
-                f"[set_config][{self.display_name}] task_config[{idx}] {task_config[idx]}"
-            )
             changed |= safe_update(
                 task_config[idx],
                 "IsEnable",
