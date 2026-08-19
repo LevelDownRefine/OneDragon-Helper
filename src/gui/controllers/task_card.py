@@ -2,7 +2,7 @@
 
 独立 QObject，自管状态（_ui_state / _dungeon_*_cache / _weekly_toggle_state /
 _master_on）。当前游戏经构造注入的 game_list 引用读取。dungeonOptions 从缓存读取
-（build_dungeon_cache 时构建），避免每次访问重新读盘解析。
+（build_dungeon_cache 时构建）。
 """
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -10,8 +10,18 @@ from PySide6.QtCore import QObject, Signal, Slot
 from src.config.dungeon_config import get_display_name, parse_dungeon_config
 from src.config.set_config import is_adapted
 from src.config.set_config import supports_weekly as _supports_weekly
-from src.gui.theme import WEEKDAY_NAMES
 from src.utils_weekly import is_weekly_start_reached
+
+# 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
+WEEKDAY_NAMES = {
+    1: "周一",
+    2: "周二",
+    3: "周三",
+    4: "周四",
+    5: "周五",
+    6: "周六",
+    7: "周日",
+}
 
 
 class TaskCardController(QObject):
@@ -25,9 +35,8 @@ class TaskCardController(QObject):
         self._toast = toast
         # 任务卡状态：gui_state.json 的副本/序列/周常（按 script_name 索引）
         self._ui_state = self._service.load_ui_state()
-        # 副本下拉数据缓存：dungeon_list.yml 解析较贵（磁盘读 + YAML 解析），
-        # 且运行期内容不变 → 在 build_dungeon_cache 时一次性构建，避免在 QML 循环/
-        # 绑定反复访问 dungeonOptions 时每次重新读盘解析（曾致下拉打开卡顿）。
+        # 副本下拉数据缓存：dungeon_list.yml 解析较贵且运行期不变，
+        # build_dungeon_cache 时一次性构建。
         self._dungeon_map_cache: dict = {}
         self._dungeon_options_cache: dict[str, list] = {}
         # 周常开关 UI 态（纯内存，不持久化）；总开关为全局 UI 态（驱动日常行开关）
@@ -51,11 +60,7 @@ class TaskCardController(QObject):
 
     @property
     def daily_supported(self) -> bool:
-        """当前游戏是否有可配置日常副本（dungeon_map 有配置 → 显示日常行）。
-
-        区别于 task_adapted（是否在 _CONFIGS 注册）：部分游戏虽已注册，但
-        dungeon_list 无实际副本（如原神仅检查、终末地骨架），无需日常行。
-        """
+        """当前游戏是否有可配置日常副本（dungeon_map 有配置才显示日常行）。"""
         return bool(self._dungeon_map_cache.get(self._current["script_name"]))
 
     @property
@@ -100,10 +105,7 @@ class TaskCardController(QObject):
 
     @property
     def dungeon_options(self) -> list:
-        """日常副本下拉数据：[{name, clear, sequences:[{label,value}]}, ...]。
-
-        从缓存读取（build_dungeon_cache 时构建），避免每次访问重新读盘解析。
-        """
+        """日常副本下拉数据：[{name, clear, sequences:[{label,value}]}, ...]，从缓存读取。"""
         return self._dungeon_options_cache.get(self._current["script_name"], [])
 
     @property
@@ -120,10 +122,7 @@ class TaskCardController(QObject):
         }
 
     def refresh(self):
-        """切换游戏后刷新任务卡（标题/适配态/日常/周常由 Property getter 实时读取）。
-
-        仅发信号触发 QML 重读；无需缓存字段。
-        """
+        """切换游戏后发信号触发 QML 重读任务卡。"""
         self.taskStateChanged.emit()
 
     def _dungeon_chip_text(self, dungeon_cfg, dungeon_name: str, sequence) -> str:
@@ -160,11 +159,9 @@ class TaskCardController(QObject):
         return result
 
     def init_weekly_toggle_states(self) -> dict:
-        """初始化各脚本周常开关（纯内存 UI 态，不持久化、不写脚本配置）。
+        """初始化各脚本周常开关（纯内存 UI 态，不持久化）。
 
-        启动时由 weekly_start 决定：已设置「周几起」且今天周几 >= 起始日 → True，
-        否则 False。对齐旧 GUI._init_weekly_toggle_states（QML 版此前漏迁移，
-        导致周常行始终显示关闭）。
+        已设置「周几起」且今天 >= 起始日 → True，否则 False。
         """
         states: dict[str, bool] = {}
         for game in self._game_list.games:

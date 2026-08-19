@@ -1,8 +1,6 @@
 """启动 / 运行控制器：启动全部 / 启动当前脚本 / 运行前校验 / 生成并运行链。
 
-独立 QObject，依赖 game_list（读当前游戏/启用态）、task_card（读 ui_state）、
-service（落盘 / 生成链）。落盘经由 ChainService（测试须 mock 其写盘方法，避免
-污染真实配置文件）。
+独立 QObject，依赖 game_list / task_card / service（落盘与生成链）。
 """
 
 import os
@@ -28,7 +26,7 @@ class LaunchController(QObject):
 
     @Slot()
     def launchAll(self):
-        """启动全部：生成仅含启用脚本的链并运行（对齐旧 GUI enabled 语义）。"""
+        """启动全部：生成仅含启用脚本的链并运行。"""
         keys = {
             g["script_name"]
             for g, on in zip(
@@ -46,7 +44,7 @@ class LaunchController(QObject):
 
     @Slot()
     def launchScript(self):
-        """启动当前选中脚本（直接运行，不走链；对齐旧 GUI 图标左键语义）。"""
+        """启动当前选中脚本（直接运行，不走链）。"""
         game = self._game_list.current_game
         script = game["script_data"]
         if script.get("script_type") == "python":
@@ -66,7 +64,7 @@ class LaunchController(QObject):
         self._toast(f"已启动 {game['display_name']}")
 
     def _confirm_run(self, enabled_keys: set) -> bool:
-        """运行前校验（对齐旧 GUI）+ 确认弹窗。True 继续，False 取消。"""
+        """运行前校验并确认。Returns: True 继续，False 取消。"""
         config_data = self._service.load_config()
         enabled_scripts = [
             s for s in config_data["script_list"] if get_script_name(s) in enabled_keys

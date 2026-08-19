@@ -1,7 +1,6 @@
 """悬浮条控制器：主页 / B站 / GitHub / 脚本目录 / 设置 / 启动游戏。
 
-独立 QObject，依赖 game_list（读当前游戏）。脚本路径解析（resolve_script_path）
-与链接回退地址（_URL_HOME / _URL_BILIBILI）由 theme / subscript 提供。
+独立 QObject，依赖 game_list（读当前游戏）。脚本路径解析由 subscript 提供。
 """
 
 import os
@@ -14,8 +13,11 @@ from src.config.set_config import get_game_exe_path as _get_game_exe_path
 from src.config.set_config import get_game_github as _get_game_github
 from src.config.set_config import get_game_homepage as _get_game_homepage
 from src.config.subscript import resolve_script_path
-from src.gui.theme import _URL_BILIBILI, _URL_HOME
 from src.utils import get_config_yml_path_under_root
+
+# 通用占位链接（对应内容未配置时使用）
+_URL_HOME = "https://github.com/LevelDownRefine/OneDragon-Helper"
+_URL_BILIBILI = "https://www.bilibili.com/"
 
 
 class LinksController(QObject):
@@ -87,7 +89,7 @@ class LinksController(QObject):
 
     @Slot()
     def openSettings(self):
-        """打开总配置文件 config.yml（系统默认程序）；缺失时 toast 提示（对齐旧 GUI）。"""
+        """打开总配置文件 config.yml（系统默认程序），缺失时提示。"""
         config_path = get_config_yml_path_under_root()
         if not os.path.isfile(config_path):
             self._toast("未找到 config/config.yml")

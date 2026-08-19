@@ -1,11 +1,7 @@
-"""QML GUI 中央控制器（单例）：组合各职责控制器，编排启动初始化。
+"""QML GUI 中央控制器（单例）：组合各职责控制器，编排初始化与跨控制器流程。
 
-QML 经 qmlRegisterSingletonInstance 注册为 `Bridge`，经 `Bridge.*` 访问（绝不用
-setContextProperty，否则事件循环中 Python 对象被 GC 致 QML 读到 null）。
-
-各职责拆到 src/gui/controllers/ 下独立 QObject（background / game_list /
-task_card / launch / links / window），本文件只持有 QmlBridge 门面：组合各控制器、
-声明 QML 所需的 property/slot/signal（委托到子控制器）、编排跨控制器流程
+经 qmlRegisterSingletonInstance 注册为 QML 的 `Bridge`（见 launcher.py）。
+各职责在 src/gui/controllers/ 下独立实现，本门面只做组合、委托与编排
 （选脚本 → 刷背景 + 任务卡）。
 """
 
@@ -15,14 +11,13 @@ from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from src.config.set_config import get_game_bg_img as _get_game_bg_img
 from src.config.subscript import resolve_script_path
-from src.gui.controllers.background import BackgroundController
+from src.gui.controllers.background import DEFAULT_BG, BackgroundController
 from src.gui.controllers.game_list import GameListController
 from src.gui.controllers.launch import LaunchController
 from src.gui.controllers.links import LinksController
 from src.gui.controllers.task_card import TaskCardController
 from src.gui.controllers.window import WindowController
-from src.gui.providers import ScriptIconProvider, UiIconProvider
-from src.gui.theme import DEFAULT_BG
+from src.gui.icons import UiIconProvider
 from src.service.chain_service import ChainService
 
 
@@ -67,6 +62,8 @@ class QmlBridge(QObject):
             toast=self.toastRequested.emit,
         )
         self.window = WindowController()
+        # UI 矢量图标提供器（无状态，门面持有）
+        self._ui_icon_provider = UiIconProvider()
 
         # 转发子控制器信号 → Bridge 同名信号（供 QML 绑定）
         self.game_list.gamesChanged.connect(self.gamesChanged.emit)
@@ -148,6 +145,12 @@ class QmlBridge(QObject):
         lambda self: self.task_card.dungeon_options,
         notify=taskStateChanged,
     )
+
+    # ── QML 图像提供器（供 launcher 注册到引擎）──────────────────────
+    @property
+    def ui_icon_provider(self):
+        """通用 UI 矢量图标源 `image://uiicon`（无状态，门面持有）。"""
+        return self._ui_icon_provider
 
     # ── QML 槽（委托到子控制器）──────────────────────────────────────
     @Slot(int)
@@ -253,7 +256,7 @@ class QmlBridge(QObject):
         self.task_card.build_dungeon_cache(self.game_list.games)
 
     def _on_current_changed(self):
-        """当前选中变化 → 刷新背景 + 任务卡（跨控制器编排集中于此）。"""
+        """当前选中变化 → 刷新背景 + 任务卡（编排集中于此）。"""
         self._apply_current()
 
     def _apply_current(self):
@@ -318,4 +321,4 @@ class QmlBridge(QObject):
         return self.task_card.init_weekly_toggle_states()
 
 
-__all__ = ["QmlBridge", "ChainService", "ScriptIconProvider", "UiIconProvider"]
+__all__ = ["QmlBridge", "ChainService", "UiIconProvider"]

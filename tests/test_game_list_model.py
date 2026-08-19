@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-from src.gui.game_list_model import GameListModel
+from src.gui.controllers.game_list import GameListModel
 
 _app = QApplication.instance() or QApplication([])
 

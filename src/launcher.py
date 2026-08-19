@@ -19,10 +19,12 @@ from PySide6.QtWidgets import QApplication
 from src.cli import build_parser, run_cli
 from src.config.subscript import generate_config_from_example, resolve_script_path
 from src.gui.dialogs import inject_config_confirm
-from src.gui.main_window import QmlBridge, ScriptIconProvider, UiIconProvider
-from src.gui.theme import FONT_FAMILY
+from src.gui.main_window import QmlBridge
 from src.utils import get_config_yml_path_under_root
 from src.utils_logger import setup_logging
+
+# 全局默认字体：QML Text 默认字体中文字符 fallback；与旧 GUI 一致
+FONT_FAMILY = "Microsoft YaHei"
 
 logger = logging.getLogger(__name__)
 
@@ -99,13 +101,13 @@ def _launch_qml():
     # bridge 注册为 QML 单例（不是 setContextProperty）：单例由 QML 引擎强持有，
     # 事件循环中不会被 GC——context property 传 Python 对象时，QML 侧会读到 null。
     bridge = QmlBridge()
-    provider = ScriptIconProvider(bridge.games)
-    bridge.icon_provider = provider
     qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
 
     engine = QQmlApplicationEngine()
-    engine.addImageProvider("scripticon", provider)
-    engine.addImageProvider("uiicon", UiIconProvider())
+    # 脚本图标源：数据归属 game_list，直接取其实例持有的 provider；
+    # 通用 UI 矢量图标源由组合根 QmlBridge 暴露。
+    engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
+    engine.addImageProvider("uiicon", bridge.ui_icon_provider)
     qml_path = resolve_script_path("assets/qml/main.qml")
     assert qml_path and os.path.isfile(qml_path), f"[launcher] QML 缺失: {qml_path}"
     # 阶段日志：定位启动卡点（正常顺序 engine loading → loaded → running）

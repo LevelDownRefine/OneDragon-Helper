@@ -28,11 +28,9 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from src.gui import main_window  # noqa: E402
 from src.gui.controllers import launch, links, task_card  # noqa: E402
-from src.gui.main_window import (  # noqa: E402
-    QmlBridge,
-    ScriptIconProvider,
-    UiIconProvider,
-)
+from src.gui.controllers.game_list import ScriptIconProvider  # noqa: E402
+from src.gui.icons import UiIconProvider  # noqa: E402
+from src.gui.main_window import QmlBridge  # noqa: E402
 
 # 清理损坏的 QML 磁盘缓存（需在 QQmlApplicationEngine 创建前，保证干净编译）
 _local_appdata = os.environ.get("LOCALAPPDATA", "")
@@ -329,7 +327,9 @@ class TestQmlApp(unittest.TestCase):
             from PySide6.QtWidgets import QApplication
             from src.config.subscript import resolve_script_path
             from src.gui import main_window
-            from src.gui.main_window import QmlBridge, ScriptIconProvider, UiIconProvider
+            from src.gui.controllers.game_list import ScriptIconProvider
+            from src.gui.icons import UiIconProvider
+            from src.gui.main_window import QmlBridge
 
             app = QApplication([])
             scripts = [
@@ -345,7 +345,7 @@ class TestQmlApp(unittest.TestCase):
                 bridge = QmlBridge()
             qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
-            engine.addImageProvider("scripticon", ScriptIconProvider(bridge.games))
+            engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
             engine.addImageProvider("uiicon", UiIconProvider())
             engine.load(QUrl.fromLocalFile(resolve_script_path("assets/qml/main.qml")))
             # 跑几帧事件循环：Loader 异步加载 TaskCard 后才会求值其绑定，

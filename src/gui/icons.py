@@ -1,15 +1,7 @@
-"""图标模块：脚本 exe 图标获取 + GitHub SVG 常量。
+"""脚本图标获取与 QML 通用 UI 矢量图标提供器。
 
-- 脚本图标（从 src/gui/icons.py 合并）：``get_script_icon`` 同步链——external
-  脚本用 exe 自带图标（崩铁优先同目录 March7th Launcher.exe），python 脚本用
-  默认图标（Python 解释器图标，取不到回退 assets/ds.ico）。
-- ``_GITHUB_SVG``：GitHub Octocat 单色 SVG（Simple Icons 路径，白色），供
-  QML 的 ``UiIconProvider`` 渲染（main_window 导入）。
-
-旧 GUI（main_window.py / widgets.py 自绘控件）所用自绘 ``GlyphButton`` /
-``IconButton`` 与 ``draw_*`` 绘制函数已随旧 GUI 移除，本模块不再含 Qt 绘制逻辑。
-
-依赖单向：icons → config.subscript / utils；main_window → icons。
+提供脚本 exe 图标获取（``get_script_icon``）、GitHub SVG 常量（``_GITHUB_SVG``）
+及 QML 矢量图标源 ``UiIconProvider``（``image://uiicon/<name>``）。
 """
 
 import logging
@@ -17,8 +9,10 @@ import os
 import sys
 from functools import lru_cache
 
-from PySide6.QtCore import QFileInfo
-from PySide6.QtGui import QIcon
+from PySide6.QtCore import QByteArray, QFileInfo, QPointF, QRect, QRectF, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtQuick import QQuickImageProvider
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QFileIconProvider
 
 from src.config.subscript import resolve_script_path
@@ -111,3 +105,161 @@ def get_script_icon(script_data: dict) -> QIcon:
         if icon is not None:
             return icon
     return _default_icon()
+
+
+# UI 通用矢量图标：各 draw 方法把 painter translate 到画布中心，在 48x48 内绘制白图形。
+_WHITE = QColor("#FFFFFF")
+_CUT = QColor("#1F2937")  # 图标内部镂空色，透出按钮底色
+
+
+class UiIconProvider(QQuickImageProvider):
+    """QML 通用 UI 矢量图标源：`image://uiicon/<name>`。
+
+    name → 重绘矢量图标。静态图标，无需游戏数据，构造即就绪。
+    支持：home / game / folder / bili / github / wallpaper / settings / min / close。
+    """
+
+    _SIZE = 48
+
+    def __init__(self):
+        super().__init__(QQuickImageProvider.Pixmap)
+        self._cache: dict[str, QPixmap] = {}
+        self._github_renderer = None
+        self._drawers = {
+            "home": self._draw_home,
+            "game": self._draw_game,
+            "folder": self._draw_folder,
+            "bili": self._draw_bili,
+            "github": self._draw_github,
+            "wallpaper": self._draw_wallpaper,
+            "settings": self._draw_settings,
+            "min": self._draw_min,
+            "close": self._draw_close,
+        }
+
+    def _render(self, name: str) -> QPixmap:
+        pm = QPixmap(self._SIZE, self._SIZE)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.translate(self._SIZE / 2, self._SIZE / 2)
+        self._drawers[name](p)
+        p.end()
+        return pm
+
+    def requestPixmap(self, id: str, size, requestedSize):
+        if id not in self._drawers:
+            return QPixmap()
+        if id not in self._cache:
+            self._cache[id] = self._render(id)
+        return self._cache[id]
+
+    # ═══════════════ 各图标矢量绘制（中心原点，半径≈16）══════════════
+    def _draw_home(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        roof = QPainterPath()
+        roof.moveTo(-13, -1)
+        roof.lineTo(0, -13)
+        roof.lineTo(13, -1)
+        p.drawPath(roof)  # 屋顶
+        p.drawLine(-10, -1, -10, 12)  # 左墙
+        p.drawLine(10, -1, 10, 12)  # 右墙
+        p.drawLine(-10, 12, 10, 12)  # 地
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        p.drawRect(QRectF(-3, 4, 6, 8))  # 门
+
+    def _draw_game(self, p: QPainter):
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        # 手柄主体 + 两侧握把
+        p.drawRoundedRect(QRectF(-13, -7, 26, 14), 7, 7)
+        p.drawRoundedRect(QRectF(-16, 1, 6, 11), 3, 3)
+        p.drawRoundedRect(QRectF(10, 1, 6, 11), 3, 3)
+        # 十字键（镂空，左下）
+        p.setBrush(_CUT)
+        p.drawRect(QRectF(-11, -3, 3, 9))
+        p.drawRect(QRectF(-14, 0, 9, 3))
+        # AB 圆点（镂空，右上斜排）
+        p.drawEllipse(QRectF(5, -4, 3, 3))
+        p.drawEllipse(QRectF(9, -1, 3, 3))
+
+    def _draw_folder(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 2.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        path = QPainterPath()
+        path.moveTo(-15, -9)
+        path.lineTo(-5, -9)
+        path.lineTo(-1, -4)
+        path.lineTo(11, -4)
+        path.lineTo(15, -1)
+        path.lineTo(15, 11)
+        path.lineTo(-15, 11)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    def _draw_bili(self, p: QPainter):
+        # B站小电视：天线 + 圆角机身 + 屏幕双眼
+        pen = QPen(_WHITE, 2.4, Qt.SolidLine, Qt.RoundCap)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawLine(-7, -11, -11, -15)  # 左天线
+        p.drawLine(7, -11, 11, -15)  # 右天线
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        p.drawRoundedRect(QRectF(-14, -12, 28, 22), 5, 5)  # 机身
+        p.setBrush(_CUT)
+        p.drawRoundedRect(QRectF(-11, -9, 22, 16), 3, 3)  # 屏幕
+        p.setBrush(_WHITE)
+        p.drawEllipse(QRectF(-6, -4, 3, 3))  # 左眼
+        p.drawEllipse(QRectF(3, -4, 3, 3))  # 右眼
+
+    def _draw_github(self, p: QPainter):
+        # Octocat 单色 logo，缩放至与其他图标一致的视觉尺寸（半径≈15）。
+        if self._github_renderer is None:
+            self._github_renderer = QSvgRenderer(QByteArray(_GITHUB_SVG.encode()))
+        self._github_renderer.render(p, QRect(-15, -15, 30, 30))
+
+    def _draw_wallpaper(self, p: QPainter):
+        # 图片框 + 太阳 + 山形
+        pen = QPen(_WHITE, 2.6, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(-14, -11, 28, 22), 4, 4)  # 相框
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        p.drawEllipse(QRectF(-9, -8, 5, 5))  # 太阳
+        mountain = QPainterPath()
+        mountain.moveTo(-14, 11)
+        mountain.lineTo(-4, -2)
+        mountain.lineTo(2, 5)
+        mountain.lineTo(8, -1)
+        mountain.lineTo(14, 11)
+        mountain.closeSubpath()
+        p.drawPath(mountain)  # 山
+
+    def _draw_settings(self, p: QPainter):
+        # 齿轮：8 外齿 + 主体圆 + 内孔
+        import math
+
+        pen = QPen(_WHITE, 2, Qt.SolidLine, Qt.RoundCap)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        for i in range(8):
+            a = math.radians(i * 45)
+            p.drawLine(
+                QPointF(7 * math.cos(a), 7 * math.sin(a)),
+                QPointF(11 * math.cos(a), 11 * math.sin(a)),
+            )
+        p.drawEllipse(QRectF(-8, -8, 16, 16))
+        p.drawEllipse(QRectF(-3, -3, 6, 6))
+
+    def _draw_min(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 2.4, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(-8, 0, 8, 0)
+
+    def _draw_close(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 2.4, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(-7, -7, 7, 7)
+        p.drawLine(7, -7, -7, 7)
