@@ -1,24 +1,27 @@
-"""启动器入口：GUI 启动。
+"""启动器入口：GUI 启动 + 无头 CLI 出口。
 
-GUI 主窗口在 src/gui（LauncherWindow）；单脚本配置弹窗在 src/gui/dialogs.py。
+GUI 走 QML（src/gui/qml_bridge 桥接业务逻辑，assets/qml/main.qml 渲染）；
+单脚本配置弹窗在 src/gui/dialogs.py。
 无头 CLI 出口见 :mod:`src.cli`（本模块的 --generate-chain / --run-chain 等命令行参数）。
 """
 
 import logging
 import os
+import shutil
 import sys
 import time
 
-from PySide6.QtCore import QTimer
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QFont
+from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 from PySide6.QtWidgets import QApplication
 
 from src.cli import build_parser, run_cli
-from src.config.subscript import generate_config_from_example
+from src.config.subscript import generate_config_from_example, resolve_script_path
 from src.gui.dialogs import inject_config_confirm
-from src.gui.main_window import LauncherWindow
+from src.gui.qml_bridge import QmlBridge, ScriptIconProvider, UiIconProvider
 from src.gui.theme import FONT_FAMILY
-from src.utils import get_config_yml_path_under_root, get_path_under_root
+from src.utils import get_config_yml_path_under_root
 from src.utils_logger import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -33,6 +36,19 @@ def _log_startup(stage: str) -> None:
     logger.info("[startup] %-30s %8.1f ms", stage, elapsed_ms)
 
 
+def _clear_qml_cache():
+    """删除 PySide6 的 QML 编译缓存目录（%LOCALAPPDATA%/python/cache/qmlcache）。
+
+    旧缓存会读取损坏/过时的 .qmlc 编译结果导致类型解析错乱；每次启动清理
+    保证 QML 场景按当前源码重新编译。目录不存在时静默跳过。
+    """
+    local_appdata = os.environ.get("LOCALAPPDATA", "")
+    if not local_appdata:
+        return
+    cache_dir = os.path.join(local_appdata, "python", "cache", "qmlcache")
+    shutil.rmtree(cache_dir, ignore_errors=True)
+
+
 def need_config_workflow() -> bool:
     """判断是否需要先执行 config_workflow（首次运行时 config.yml 不存在）"""
     return not os.path.exists(get_config_yml_path_under_root())
@@ -43,18 +59,6 @@ def config_workflow():
     config_path = get_config_yml_path_under_root()
     if not os.path.exists(config_path):
         generate_config_from_example()
-
-
-def _set_app_window_icon(app):
-    """把 assets/ds.ico 设为应用窗口图标（标题栏/任务栏）。
-
-    在 dev 与冻结（PyInstaller）两种模式下都能定位：dev 时 assets/ 在项目根，
-    冻结时 build.bat 已把 assets/ 拷到 exe 同级目录，get_path_under_root 据此解析。
-    图标缺失时静默跳过，不影响启动。
-    """
-    icon_path = get_path_under_root("assets", "ds.ico")
-    if os.path.exists(icon_path):
-        app.setWindowIcon(QIcon(icon_path))
 
 
 def main():
@@ -76,30 +80,41 @@ def main():
         sys.exit(exit_code)
     _log_startup("run_cli")
 
-    # GUI 主路径
+    _launch_qml()
+
+
+def _launch_qml():
+    # 禁用 QML 磁盘缓存 + 清理已有缓存：旧版编译缓存会导致类型解析错乱
+    # （"Type IconButton unavailable" / "Cannot assign object to list property data"
+    # 等误报），且删除前不重新生成——保证每次启动都是干净编译。
+    os.environ["QML_DISABLE_DISK_CACHE"] = "1"
+    _clear_qml_cache()
+
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
-    # 新 GUI 的 QSS 只设 font-size 未设 font-family，需显式设置应用默认字体
-    # （与 main_window.main() 一致），否则中文字符会 fallback 到宋体
+    # 全局默认字体：QML Text 默认字体中文字符 fallback；与旧 GUI 一致
     app.setFont(QFont(FONT_FAMILY))
-    _set_app_window_icon(app)
-    _log_startup("QApplication + setStyle + icon")
-
+    # 对齐旧 GUI：config 与模板不一致时弹窗确认（CLI/测试不注入）
     inject_config_confirm()
-    _log_startup("inject_config_confirm")
 
-    window = LauncherWindow()
-    _log_startup("LauncherWindow 构造")
+    # bridge 注册为 QML 单例（不是 setContextProperty）：单例由 QML 引擎强持有，
+    # 事件循环中不会被 GC——context property 传 Python 对象时，QML 侧会读到 null。
+    bridge = QmlBridge()
+    provider = ScriptIconProvider(bridge.games)
+    bridge.icon_provider = provider
+    qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
 
-    window.show()
-    _log_startup("window.show()")
-
-    # 仅用于启动耗时自动测量：设置 ODH_AUTOQUIT_MS 后，show 完定时退出事件循环。
-    # 正常运行（未设置该环境变量）时不影响任何行为。
-    autoquit_ms = os.environ.get("ODH_AUTOQUIT_MS")
-    if autoquit_ms:
-        QTimer.singleShot(int(autoquit_ms), app.quit)
-
+    engine = QQmlApplicationEngine()
+    engine.addImageProvider("scripticon", provider)
+    engine.addImageProvider("uiicon", UiIconProvider())
+    qml_path = resolve_script_path("assets/qml/main.qml")
+    assert qml_path and os.path.isfile(qml_path), f"[launcher] QML 缺失: {qml_path}"
+    # 阶段日志：定位启动卡点（正常顺序 engine loading → loaded → running）
+    print("[qml] engine loading:", qml_path, flush=True)
+    engine.load(QUrl.fromLocalFile(qml_path))
+    print("[qml] engine loaded, rootObjects =", len(engine.rootObjects()), flush=True)
+    if not engine.rootObjects():
+        sys.exit(1)
+    print("[qml] entering event loop", flush=True)
     sys.exit(app.exec())
 
 

@@ -1,9 +1,9 @@
 """QML 应用桥接：把 Python 业务逻辑（ChainService / set_config）暴露给 QML。
 
-QML 侧通过 context property `bridge` 访问脚本列表与背景状态；脚本图标经
-`image://scripticon/<index>` 由 ScriptIconProvider 提供（复用 get_script_icon，
-避免 QML 直接读 exe 图标）。旧 Widgets GUI（main_window.py）保留不动，
-直到 QML 迁移全部就绪再切换入口。
+QML 侧通过 context property `Bridge` 访问脚本列表与背景状态；脚本图标经
+`image://scripticon/<script_name>` 由 ScriptIconProvider 提供（复用 get_script_icon，
+避免 QML 直接读 exe 图标）。旧 Widgets GUI（main_window/widgets/task_card）已删除，
+QML GUI 为正式入口。
 """
 
 import os
@@ -14,8 +14,8 @@ import webbrowser
 from PySide6.QtCore import (
     Property,
     QObject,
-    QRect,
     QPointF,
+    QRect,
     QRectF,
     Qt,
     QUrl,
@@ -41,6 +41,7 @@ from src.config.set_config import is_adapted
 from src.config.set_config import supports_weekly as _supports_weekly
 from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.game_list_model import GameListModel
+from src.gui.icons import _GITHUB_SVG
 from src.gui.theme import (
     _URL_BILIBILI,
     _URL_HOME,
@@ -48,12 +49,18 @@ from src.gui.theme import (
     DEFAULT_BG,
     WEEKDAY_NAMES,
 )
-from src.gui.icons import _GITHUB_SVG
-from src.gui.video_backdrop import is_video
 from src.service.chain_service import ChainService
 from src.utils import get_config_yml_path_under_root
 from src.utils_runner import build_script_command
 from src.utils_weekly import is_weekly_start_reached
+
+# 走 QML VideoOutput 的扩展名（其余一律按图片处理）
+VIDEO_EXTS = {".mp4", ".webm", ".mkv", ".mov"}
+
+
+def is_video(path: str) -> bool:
+    """扩展名识别是否走视频背景。"""
+    return os.path.splitext(path)[1].lower() in VIDEO_EXTS
 
 
 class ScriptIconProvider(QQuickImageProvider):
