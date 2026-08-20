@@ -31,6 +31,8 @@ Window {
     // sourceSize 约束解码尺寸：按显示区实际像素（含高分屏 DPR）解码，
     // 避免大图整体上传为 GPU 纹理触发 GL_MAX_TEXTURE_SIZE 降采样而发糊；
     // mipmap 提升缩小渲染质量。图片小于 sourceSize 时按原生尺寸加载，不会反向放大。
+    // source 末尾追加 #v<版本号>：换壁纸时缓存路径不变，靠版本号改变 source 身份，
+    // 强制 Image 重新读盘（QML 按 source 字符串缓存，否则不重载）。
     Image {
         id: bgImage
         anchors.fill: parent
@@ -39,7 +41,9 @@ Window {
         sourceSize.width: root.width * Screen.devicePixelRatio
         sourceSize.height: root.height * Screen.devicePixelRatio
         visible: Bridge.backgroundMode === "image"
-        source: Bridge.backgroundMode === "image" ? Bridge.backgroundUrl : ""
+        source: Bridge.backgroundMode === "image"
+               ? Bridge.backgroundUrl + "#v" + Bridge.backgroundVersion
+               : ""
     }
 
     // 渐变兜底（游戏主色 → 深色 + 中央水印字）

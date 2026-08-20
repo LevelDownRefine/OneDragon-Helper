@@ -43,6 +43,7 @@ class BackgroundController(QObject):
         # 默认（apply_current 会在构造末尾按选中脚本刷新，此处防首帧 undefined）
         self._bg_mode = "gradient"
         self._bg_url = ""
+        self._bg_version = 0  # 每次刷新背景自增，供 QML 强制重载图片（见 main.qml）
         self._grad_color = "#3a3f52"
         self._grad_char = ""
 
@@ -62,6 +63,10 @@ class BackgroundController(QObject):
     @property
     def gradient_char(self) -> str:
         return self._grad_char
+
+    @property
+    def background_version(self) -> int:
+        return self._bg_version
 
     def resolve_bg(self, game: dict) -> str | None:
         """返回该脚本应使用的背景路径（自定义壁纸缓存 → 自定义壁纸 → 脚本背景 → DEFAULT_BG）。
@@ -95,18 +100,36 @@ class BackgroundController(QObject):
             return src_path  # 视频壁纸不缓存：直接用源路径，交 QML 播放
         return self._build_wallpaper_cache(src_path, script_name) or src_path
 
-    def _build_wallpaper_cache(self, src_path: str, script_name: str) -> str | None:
-        """确保某自定义壁纸（调用方已确认是图像且存在）的缓存可用：存在且较新直接返回，
-        否则压到 WALLPAPER_MAX_SIDE 内重建。失败/无需缓存返回 None（用原图）。
+    def _build_wallpaper_cache(
+        self, src_path: str, script_name: str, force: bool = False
+    ) -> str | None:
+        """确保某自定义壁纸（调用方已确认是图像且存在）的缓存可用。
+
+        force=False（解析 / 复用路径）：缓存存在且较新直接返回，避免重复压缩大图。
+        force=True（用户刚更换壁纸）：源文件已变，先删旧缓存再重建，杜绝旧缓存被当成较新返回。
 
         Args:
             src_path: 用户原图路径（图像）。
             script_name: 脚本标识（缓存文件名）。
+            force: 是否强制重建（换壁纸时 True）。
         """
         if not os.path.isfile(src_path):
             return None
-        cache = os.path.join(resolve_script_path(WALLPAPER_CACHE_DIR), f"{script_name}.jpg")
-        if os.path.isfile(cache) and os.path.getmtime(cache) >= os.path.getmtime(src_path):
+        cache = os.path.join(
+            resolve_script_path(WALLPAPER_CACHE_DIR), f"{script_name}.jpg"
+        )
+        if force and os.path.isfile(cache):
+            try:
+                os.remove(cache)  # 换壁纸：清掉旧缓存，避免旧内容（不同源）被误用
+            except OSError as e:
+                logger.warning(
+                    "[bg] 旧壁纸缓存删除失败（可能被占用），将覆盖：%s", type(e).__name__
+                )
+        if (
+            not force
+            and os.path.isfile(cache)
+            and os.path.getmtime(cache) >= os.path.getmtime(src_path)
+        ):
             return cache
         try:
             img = QImage(src_path)
@@ -128,8 +151,10 @@ class BackgroundController(QObject):
             if not out.save(cache, "JPG", quality=90):
                 logger.warning("[bg] 壁纸缓存写入失败：%s", cache)
                 return None
-        except Exception as e:
-            logger.warning("[bg] 壁纸缓存生成失败（%s），回退原图", type(e).__name__, exc_info=True)
+        except (OSError, MemoryError) as e:
+            logger.warning(
+                "[bg] 壁纸缓存生成失败（%s），回退原图", type(e).__name__, exc_info=True
+            )
             return None
         return cache
 
@@ -139,6 +164,9 @@ class BackgroundController(QObject):
         Args:
             game: 当前脚本数据（提供颜色与首字）。
         """
+        self._bg_version += (
+            1  # 即便 source 路径不变（换壁纸复用同缓存），也强制 QML 重载
+        )
         bg_path = self.resolve_bg(game)
         if bg_path and is_video(bg_path) and os.path.isfile(bg_path):
             self._bg_mode = "video"
@@ -170,7 +198,9 @@ class BackgroundController(QObject):
         wallpapers[game["script_name"]] = path
         self.write_wallpapers(wallpapers)
         if not is_video(path):
-            self._build_wallpaper_cache(path, game["script_name"])  # 大图预压缓存（失败静默回退）
+            self._build_wallpaper_cache(
+                path, game["script_name"], force=True
+            )  # 换壁纸：强制重建覆盖旧缓存
         self.apply_current(game)
         self._toast(f"已更换 {game['display_name']} 壁纸")
 

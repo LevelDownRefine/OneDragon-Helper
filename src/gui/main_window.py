@@ -103,6 +103,9 @@ class QmlBridge(QObject):
     backgroundUrl = Property(
         str, lambda self: self.background.background_url, notify=backgroundChanged
     )
+    backgroundVersion = Property(
+        int, lambda self: self.background.background_version, notify=backgroundChanged
+    )
     gradientColor = Property(
         str, lambda self: self.background.gradient_color, notify=backgroundChanged
     )
