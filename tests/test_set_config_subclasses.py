@@ -1434,8 +1434,8 @@ class TestGetGameExePath(unittest.TestCase):
         self.assertIsNone(got)
 
 
-class TestGetGameExePathFacade(unittest.TestCase):
-    """测试外观接口 get_game_exe_path 的分发逻辑"""
+class TestGetGameExePathAdapter(unittest.TestCase):
+    """测试适配器接口 get_game_exe_path 的分发逻辑"""
 
     def test_unknown_process_returns_none(self):
         """未注册（自定义）进程 → None"""
@@ -1689,8 +1689,8 @@ class TestSetWeekly(unittest.TestCase):
             cfg.set_weekly(4)
 
 
-class TestSetConfigFacade(unittest.TestCase):
-    """测试外观接口 set_config() 的分发逻辑"""
+class TestSetConfigAdapter(unittest.TestCase):
+    """测试适配器接口 set_config() 的分发逻辑"""
 
     def test_skip_when_dungeon_name_none(self):
         """dungeon_name 为 None 时直接返回，不创建实例"""

@@ -4,6 +4,11 @@
 2026-08-17 更名 main_window.py；旧 GUI 的 runner / widgets 已删，
 弹窗样式/工具已并入 dialogs.py）。
 
+**架构边界**：`src/gui/` 只放**只跟图形界面有关**的东西（QML / 控制器 / 弹窗）。
+业务逻辑、config 读写、脚本链生成与运行一律不在此层——分别归
+`set_config`（适配器）、`runner`（运行器）、`service`（外观层，整合并支撑 CLI）。
+GUI 不写盘，写盘统一经 `service`。详见 [`../AGENTS.md`](../AGENTS.md) 第 4 节。
+
 ## 文件与依赖
 
 | 模块 | 职责 | 项目内依赖 |

@@ -1,6 +1,8 @@
 # set_config — 副本配置适配器
 
-对外提供统一的 `set_config()` 外观接口，内部封装各游戏脚本千差万别的 config 读写逻辑。每个脚本的 config 格式、路径、字段名都不同，由各 `ScriptConfig` 子类单独适配，上层（GUI）无需关心差异。
+对外提供统一的 `set_config()` 适配器接口，内部封装各游戏脚本千差万别的 config 读写逻辑。每个脚本的 config 格式、路径、字段名都不同，由各 `ScriptConfig` 子类单独适配，上层（service）无需关心差异。
+
+> **设计定位**：`set_config` 是**适配器（adapter）**——把各脚本异构的 config 接口适配成统一调用。**不是外观模式（facade）**，外观整合职责属于 `src/service/` 的 ChainService。
 
 > **脚本唯一标识 script_name（2026-08-10 定稿）**：全链路内部 key 统一为 `get_script_name(script)`（见 `subscript.py`），与 `get_process_name`（进程名）区分——
 > - **exe 脚本** → script_name 即进程名（script_path basename 去后缀，如 `ok-ww` / `BetterGI` / `MAA`）
@@ -10,10 +12,10 @@
 
 ## 架构
 
-**外观模式 + 类层级**（非模板方法）：
+**适配器 + 类层级**（非模板方法）：
 
 ```
-上层调用 ─▶ set_config(name, dungeon_name, sequence)  # 外观接口（name=脚本唯一标识）
+上层调用 ─▶ set_config(name, dungeon_name, sequence)  # 适配器接口（name=脚本唯一标识）
                 │ 判空跳过 → 查 _CONFIGS 注册表 → 构造子类 → set_dungeon()
                 ▼
           ScriptConfig（基类）
@@ -121,7 +123,7 @@ set_config("ok-ww", dungeon_name="未选择")  # 跳过
 
 | 文件 | 作用 |
 |------|------|
-| `set_config.py` | 本适配器（外观 + 类层级）；各脚本路径（config/游戏配置/模板）由子类声明，`@register` 显式注册 |
+| `set_config.py` | 本适配器（适配器接口 + 类层级）；各脚本路径（config/游戏配置/模板）由子类声明，`@register` 显式注册 |
 | `subscript.py` | config 读写基础设施（`get_script_name` / `load` / `save` / `load_template`），只接收 `rel_path` 入参，不感知具体脚本 |
 | `dungeon_config.py` | `dungeon_list.yml` 解析（一级/二级选项） |
 | `config/dungeon_list.yml` | 各脚本支持的副本及序列展示名（key 为 script_name） |

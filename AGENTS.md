@@ -22,11 +22,12 @@ src/utils.py               # 路径工具
 src/utils_logger.py        # setup_logging()：控制台 + 文件轮转
 src/gui/                   # GUI 包：主窗口（main_window.py）+ task_card/widgets/icons/theme + dialogs.py（弹窗）
 src/config/
-  set_config.py             # 副本配置适配器：外观接口 + ScriptConfig 类层级（设计见 set_config.md）
+  set_config.py             # 副本配置适配器：适配器接口 set_config() + ScriptConfig 类层级（设计见 set_config.md）
   subscript.py              # config 读写子脚本基础设施（load/save/template）
   dungeon_config.py         # dungeon_list.yml 解析
   bgi.py                    # 暂时未使用
-src/runner/                 # 用于运行脚本链；git submodule → OneDragonRunner
+src/runner/                 # 脚本链运行器；git submodule → OneDragonRunner（参考 千机链 / AUTO-MAS）
+src/service/                # server / 外观层：整合 config 读写·UI 状态·链生成·校验·runner 命令；支撑 GUI 与 CLI（无 Qt 依赖）
 scripts/              # 脚本链运行器执行的实际脚本（独立脚本，不 import 项目模块）
 tools/                # 开发/CI 工具（副本同步脚本，总览见 tools/README.md）
 config/                     # 各种配置文件
@@ -35,9 +36,13 @@ tests/                      # 测试文件
 
 ## 4. 核心架构
 
-- **GUI**：`LauncherWindow`（src/gui/main_window.py）——左侧脚本栏（图标 + ⊞ 控制模式 + 启动全部）+ 任务卡（日常副本/周常周几起）+ 启动胶囊 + 悬浮图标条；运行直接 `subprocess.Popen` 开独立控制台窗口跑链。单脚本配置弹窗在 src/gui/dialogs.py。详见 [`src/gui/README.md`](src/gui/README.md) 与 `src/gui/` 各模块 docstring。
-- **副本配置适配器**：外观接口 `set_config()` + `ScriptConfig` 类层级，各游戏一个子类。详见 [`src/config/set_config.md`](src/config/set_config.md)。
-- **运行器**：`src/runner/` 逐条执行脚本链，`block` 字段控制阻塞/非阻塞。详见 [`src/runner/README.md`](src/runner/README.md)。
+本项目的代码由四个核心部分组成，职责单向、互不越界：
+
+1. **set_config（副本配置适配器）** — 处理各子脚本的 config 信息。`set_config()` 是统一**适配器接口**，把各游戏脚本千差万别的 config 格式 / 路径 / 字段名适配成统一调用；由各 `ScriptConfig` 子类单独适配，上层（service）无需关心差异。**这是适配器（adapter），不是外观模式**（外观职责归 service）。详见 [`src/config/set_config.md`](src/config/set_config.md)。
+2. **runner（脚本链运行器）** — 逐条执行脚本链，`block` 字段控制阻塞 / 非阻塞。设计参考了 [千机链 OneDragon-ScriptChainer](https://github.com/OneDragon-Anything/OneDragon-ScriptChainer) 与 [AUTO-MAS](https://gitcode.com/gh_mirrors/au/AUTO-MAS) 的脚本编排思路。详见 [`src/runner/README.md`](src/runner/README.md)。
+3. **gui（图形界面）** — 当且仅当一个东西**只跟图形界面有关**，才放入 `src/gui/`（QML + 控制器 + 弹窗）。不承载业务逻辑 / 写盘，写盘统一经 service。详见 [`src/gui/README.md`](src/gui/README.md)。
+4. **service（server / 外观层）** — 整合上述内容的**外观（facade）**：config.yml 完整读写、UI 状态持久化、脚本链生成、合法性校验、runner 命令构造全部内聚于此，对 GUI 与 CLI 暴露统一薄接口。从 gui 中分离而出，无 Qt 依赖，同时支撑 GUI 与 CLI（`launcher.py`）。详见 [`src/service/`](src/service/)。
+
 - **初始化**：首次 `config.yml` 缺失时 `config_workflow()`模板生成。
 - **日志解析**：由独立脚本`scripts/collect_log.py`解析，并由独立脚本`scripts/rerun.py`重新运行脚本。
 - **副本列表更新**：`config/dungeon_list.yml` 各游戏维护方式不同——终末地/鸣潮/异环由 GitHub Action 自动检测并开 PR，原神走手动 skill（`sync-bgi-dungeons`，display 需人工），其余固定。总览见 [`tools/README.md`](tools/README.md)。
