@@ -257,3 +257,5 @@ assets/banner.jpg
 
 # 用户自定义壁纸（记录原路径，不入库）
 config/wallpaper.json
+# 自定义壁纸缓存（选图时按上限预压，派生数据，不入库）
+config/wallpaper_cache/

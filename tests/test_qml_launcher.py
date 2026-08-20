@@ -129,7 +129,7 @@ class TestBridge(unittest.TestCase):
 
     def test_video_error_falls_back_gradient(self):
         b = _make_bridge()
-        with self.assertWarns(RuntimeWarning):
+        with self.assertLogs(b.background.__class__.__module__, level="WARNING"):
             b.videoError("boom")
         self.assertEqual(b.backgroundMode, "gradient")
 

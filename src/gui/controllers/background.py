@@ -4,16 +4,26 @@
 壁纸读写（read_wallpapers / write_wallpapers）与路径解析（resolve_bg）均归本控制器。
 """
 
+import logging
 import os
 
-from PySide6.QtCore import QObject, QUrl, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QUrl, Signal, Slot
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QFileDialog
 
 from src.config.set_config import get_game_bg_img as _get_game_bg_img
 from src.config.subscript import resolve_script_path
 
+logger = logging.getLogger(__name__)
+
 # 兜底背景：脚本未配置背景图时使用（相对项目根）
 DEFAULT_BG = "assets/ds.jpg"
+
+# 自定义壁纸缓存：用户选图时按最长边压到 WALLPAPER_MAX_SIDE 后存于
+# config/wallpaper_cache/<script_name>.jpg，resolve_bg 优先返回缓存，避免大图
+# 直接进 GPU 纹理（与 main.qml 的 sourceSize 互补）。视频壁纸不缓存。
+WALLPAPER_CACHE_DIR = "config/wallpaper_cache"
+WALLPAPER_MAX_SIDE = 1920
 
 
 def is_video(path: str) -> bool:
@@ -54,19 +64,74 @@ class BackgroundController(QObject):
         return self._grad_char
 
     def resolve_bg(self, game: dict) -> str | None:
-        """返回该脚本应使用的背景路径（自定义壁纸 → 脚本背景 → DEFAULT_BG）。
+        """返回该脚本应使用的背景路径（自定义壁纸缓存 → 自定义壁纸 → 脚本背景 → DEFAULT_BG）。
 
         文件不存在返回 None（走渐变兜底）。
 
         Args:
             game: 当前脚本数据。
         """
-        custom = self.read_wallpapers().get(game["script_name"])
-        bg_path = custom or (_get_game_bg_img(game["script_name"]) or DEFAULT_BG)
-        resolved = resolve_script_path(bg_path)
+        resolved = resolve_script_path(self._wallpaper_for(game))
         if not os.path.isfile(resolved):
             return None
         return resolved
+
+    def _wallpaper_for(self, game: dict) -> str:
+        """解析某脚本应使用的背景路径：定位源（自定义壁纸 → 脚本背景图 → DEFAULT_BG），
+        并判定图像/视频。图像交给 _build_wallpaper_cache 确保缓存，视频直接用源路径。
+        resolve_bg 负责 resolve + isfile 守卫。
+
+        Args:
+            game: 当前脚本数据。
+        """
+        script_name = game["script_name"]
+        wallpapers = self.read_wallpapers()
+        if script_name not in wallpapers:
+            return _get_game_bg_img(script_name) or DEFAULT_BG
+        src_path = wallpapers[script_name]
+        if not os.path.isfile(src_path):
+            return src_path  # 源图缺失：交回 resolve_bg 的 isfile 守卫，走渐变兜底
+        if is_video(src_path):
+            return src_path  # 视频壁纸不缓存：直接用源路径，交 QML 播放
+        return self._build_wallpaper_cache(src_path, script_name) or src_path
+
+    def _build_wallpaper_cache(self, src_path: str, script_name: str) -> str | None:
+        """确保某自定义壁纸（调用方已确认是图像且存在）的缓存可用：存在且较新直接返回，
+        否则压到 WALLPAPER_MAX_SIDE 内重建。失败/无需缓存返回 None（用原图）。
+
+        Args:
+            src_path: 用户原图路径（图像）。
+            script_name: 脚本标识（缓存文件名）。
+        """
+        if not os.path.isfile(src_path):
+            return None
+        cache = os.path.join(resolve_script_path(WALLPAPER_CACHE_DIR), f"{script_name}.jpg")
+        if os.path.isfile(cache) and os.path.getmtime(cache) >= os.path.getmtime(src_path):
+            return cache
+        try:
+            img = QImage(src_path)
+            if img.isNull():
+                logger.warning("[bg] 壁纸解码失败，跳过缓存：%s", src_path)
+                return None
+            src_w, src_h = img.width(), img.height()
+            longest = max(src_w, src_h)
+            if longest <= WALLPAPER_MAX_SIDE:
+                return None
+            scale = WALLPAPER_MAX_SIDE / longest
+            out = img.scaled(
+                max(1, round(src_w * scale)),
+                max(1, round(src_h * scale)),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            ).convertToFormat(QImage.Format_RGB888)
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            if not out.save(cache, "JPG", quality=90):
+                logger.warning("[bg] 壁纸缓存写入失败：%s", cache)
+                return None
+        except Exception as e:
+            logger.warning("[bg] 壁纸缓存生成失败（%s），回退原图", type(e).__name__, exc_info=True)
+            return None
+        return cache
 
     def apply_current(self, game: dict):
         """按当前选中脚本刷新背景（路径经 resolve_bg 解析）。
@@ -104,6 +169,8 @@ class BackgroundController(QObject):
         wallpapers = self.read_wallpapers()
         wallpapers[game["script_name"]] = path
         self.write_wallpapers(wallpapers)
+        if not is_video(path):
+            self._build_wallpaper_cache(path, game["script_name"])  # 大图预压缓存（失败静默回退）
         self.apply_current(game)
         self._toast(f"已更换 {game['display_name']} 壁纸")
 
@@ -131,13 +198,7 @@ class BackgroundController(QObject):
         Args:
             reason: QML MediaPlayer 上报的错误描述。
         """
-        import warnings
-
-        warnings.warn(
-            f"[qml] 视频背景不可用，回退：{reason or '媒体解码错误'}",
-            RuntimeWarning,
-            stacklevel=2,
-        )
+        logger.warning("[qml] 视频背景不可用，回退：%s", reason or "媒体解码错误")
         self._bg_mode = "gradient"
         self._bg_url = ""
         self.backgroundChanged.emit()

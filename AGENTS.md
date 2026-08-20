@@ -46,7 +46,7 @@ tests/                      # 测试文件
 
 1. **严格 `assert`** 表达「不该发生」的编程错误；可恢复情况才 `return False`/跳过。
 2. **字典访问不用 `.get()`**：先 `assert key in dict` 再直接 `dict[key]`。
-3. **不静默吞异常**：except 用 `warnings.warn`，不 `pass`。
+3. **不静默吞异常**：except 用 `logger.warning` 记录（含 `type(e).__name__`，必要时 `exc_info=True`），不 `pass`、不裸吞。与 #8 的 `logging` 约定一致。
 4. **命名显式明确**（`self.display_name` 优于 `self.name`）；不留兼容别名。
 5. **多实体共享/注册优先 OOP 类层级**，而非 `function + dict`。
 6. **重构只在有明确收益时做**，反对 scope-creep；1 处调用点不抽函数。
