@@ -123,7 +123,8 @@ class BackgroundController(QObject):
                 os.remove(cache)  # 换壁纸：清掉旧缓存，避免旧内容（不同源）被误用
             except OSError as e:
                 logger.warning(
-                    "[bg] 旧壁纸缓存删除失败（可能被占用），将覆盖：%s", type(e).__name__
+                    "[bg] 旧壁纸缓存删除失败（可能被占用），将覆盖：%s",
+                    type(e).__name__,
                 )
         if (
             not force
