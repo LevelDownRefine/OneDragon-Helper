@@ -51,7 +51,7 @@ tests/                      # 测试文件
 
 1. **严格 `assert`** 表达「不该发生」的编程错误；可恢复情况才 `return False`/跳过。
 2. **字典访问不用 `.get()`**：先 `assert key in dict` 再直接 `dict[key]`。
-3. **不静默吞异常**：except 用 `logger.warning` 记录（含 `type(e).__name__`，必要时 `exc_info=True`），不 `pass`、不裸吞。与 #8 的 `logging` 约定一致。
+3. **不静默吞异常**：`except` 分支不得 `pass`、不得裸吞；被捕获的异常必须显式处理（记录 / 回退 / 重抛），不得悄无声息地消失。至于"用 `logger` 还是别的方式记录"属于 #8 的日志约定，与"是否用 try"是两个独立问题。
 4. **命名显式明确**（`self.display_name` 优于 `self.name`）；不留兼容别名。
 5. **多实体共享/注册优先 OOP 类层级**，而非 `function + dict`。
 6. **重构只在有明确收益时做**，反对 scope-creep；1 处调用点不抽函数。
@@ -60,7 +60,7 @@ tests/                      # 测试文件
 9. GUI 持久化：`gui_state.json` 只存 `dungeon`/`sequence`；`enabled` 纯内存态（重启恢复全开）。
 10. **不随意修改 `.bak` / 备份文件**，需改动时先征得用户同意。
 11. 新增/修改功能后**必须补测试并跑全套**。尤其是动了共享接口 / 多模块 / 做了重构的**大改动**，必须用与 CI 一致的命令跑**全量** `unittest discover`，不能只跑改动相关的几个文件：`PYTHONPATH=src python -m unittest discover -s tests -p "test*.py"`（`PYTHONPATH=src` 不可省，否则 `test_bgi`/`test_utils` 顶层导入会误报 import 错）。
-12. **避免使用try-except**，仅在必要时捕获异常。尽可能改用if判断。
+12. **克制使用 try-except**：仅在确有必要时才捕获，使用前须有明确理由；`except` 应尽可能显式指定异常类型（避免 `except Exception`），优先用 `if` 判断规避可预见的错误。被捕获异常的处理方式（是否 `logger.warning`）与"是否用 try"正交，见 #3。
 13. **Commit 规范且简短**：Conventional Commits 前缀（`feat`/`fix`/`refactor`/`chore`/`docs`/`test`/`style`）+ 一句话主题（≤50 字符），如 `refactor: 抽取 service 层`。
 14. **备注/日志规范且简短**：工作日志、代码注释、`[startup]` 等备注一律只记要点（改动、原因、效果），不写过程叙述、流水账与复述性说明。
 
