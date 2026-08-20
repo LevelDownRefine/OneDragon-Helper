@@ -28,10 +28,16 @@ Window {
     }
 
     // 图片背景（cover 裁剪）
+    // sourceSize 约束解码尺寸：按显示区实际像素（含高分屏 DPR）解码，
+    // 避免大图整体上传为 GPU 纹理触发 GL_MAX_TEXTURE_SIZE 降采样而发糊；
+    // mipmap 提升缩小渲染质量。图片小于 sourceSize 时按原生尺寸加载，不会反向放大。
     Image {
         id: bgImage
         anchors.fill: parent
         fillMode: Image.PreserveAspectCrop
+        mipmap: true
+        sourceSize.width: root.width * Screen.devicePixelRatio
+        sourceSize.height: root.height * Screen.devicePixelRatio
         visible: Bridge.backgroundMode === "image"
         source: Bridge.backgroundMode === "image" ? Bridge.backgroundUrl : ""
     }
