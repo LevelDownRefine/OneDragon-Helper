@@ -257,4 +257,5 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
+shutdown_after_run: true
 shutdown_delay_seconds: 45
