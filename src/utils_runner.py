@@ -238,11 +238,13 @@ def run_chain_command(
 
 
 def build_shutdown_extra_args(config_data: dict) -> list[str]:
-    """按 config 的 shutdown_after_run / shutdown_delay_seconds 生成 ``--shutdown`` 参数。
+    """按 config 生成 ``--shutdown`` 参数；shutdown_after_run 默认开启、delay 须为正整型。
 
-    shutdown_after_run 默认开启（字段缺失视为开启，保持向后兼容）；仅当该字段为布尔
-    ``True`` 才关机，非布尔（如字符串 ``"false"``）或 ``False`` 均不关机。
-    仅当开启且 shutdown_delay_seconds 为正整型时返回 ``["--shutdown", N]``；否则返回空列表。
+    Args:
+        config_data: 完整配置字典。
+
+    Returns:
+        满足条件时返回 ``["--shutdown", N]``，否则返回空列表。
     """
     if "shutdown_after_run" in config_data and (
         not isinstance(config_data["shutdown_after_run"], bool)

@@ -363,7 +363,9 @@ class TestBuildShutdownExtraArgs(unittest.TestCase):
         self.assertEqual(build_shutdown_extra_args({"shutdown_delay_seconds": -1}), [])
 
     def test_non_int_delay_returns_empty(self):
-        self.assertEqual(build_shutdown_extra_args({"shutdown_delay_seconds": "45"}), [])
+        self.assertEqual(
+            build_shutdown_extra_args({"shutdown_delay_seconds": "45"}), []
+        )
 
     def test_positive_delay_returns_shutdown_flag(self):
         self.assertEqual(
