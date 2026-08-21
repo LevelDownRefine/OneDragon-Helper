@@ -25,30 +25,31 @@
 - 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`。`_task_key` / `_task_map` 按需覆盖。
 - 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`；路径声明不完整会在 import 时 assert 暴露。
 
-## 两个独立流程
+## 三个独立流程
 
 | 流程 | 触发时机 | 作用 |
 |------|----------|------|
-| 初始化 init | 子类 `__init__` 中调用 | 确保脚本 config 与模板对齐，补全/覆盖缺失结构 |
+| 初始化 init | 子类 `__init__` 中调用 | 确保脚本 config 与模板对齐，补全缺失结构 |
 | 设置副本 set_dungeon | 外部调用 `set_config()` 时 | 按用户选择的副本/序列修改 config |
+| 设置周常 set_weekly | 外部调用 `set_config()` 时 | 按周常起始日写周常开关，仅适配脚本支持 |
 
-两者独立：初始化是防御性对齐，设置副本是功能性响应。
+三者独立：初始化是防御性对齐，设置副本与周常是功能性响应。
 
 ## 初始化流程 init
 
-`ScriptConfig._init_config()` 默认：加载 config 与 template → 若 `_is_aligned` 则跳过；否则遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全 → 保存。`_is_aligned` 默认递归比较，dict 递归、list 按索引、其余直接比，子类可覆盖。
+`ScriptConfig._init_config()`：加载 config 与 template → 若 `_is_aligned` 一致则跳过；否则经 `_confirm_save()` 询问用户，确认后才遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。
 
-各脚本 init 策略：
+仅在子类 `__init__` 显式调用；未定义 `__init__` 的脚本不初始化。各脚本：
 
-| 脚本 | 模板 | 对齐方式 | 状态 |
-|------|------|----------|------|
-| 鸣潮 | 无 | 不初始化；正确性由 `set_dungeon` 的 assert 隐式保证 | 完成 |
-| 原神 | `BGI一条龙.json` | `_init_config` 只检查：assert 存在 `PartyName` 且 `_is_aligned` 一致，不修改 | 仅检查 |
-| 终末地 | 无 | `_init_config` 目前 `pass` | 骨架 |
-| 绝区零 | `ZZZ一条龙.yml` | `_init_config` 严格校验 `plan_list` 顺序，不一致则整体覆盖 | 完成 |
-| 崩铁 | `M7A一条龙.yml` | 走基类默认对齐 | 基础 |
-| 异环 | 无 | 不初始化；正确性由 `set_dungeon` 的 assert 隐式保证 | 完成 |
-| 粥 | `MAA一条龙.json` | `_init_task_map` 从模板 `TaskQueue` 动态生成 `_task_map`，只取 `$type=="FightTask"`；基类 `_is_aligned` 比对 | 完成 |
+| 脚本 | 调 _init_config | 模板 | 说明 |
+|------|----------------|------|------|
+| 鸣潮 | 否 | — | 无 `__init__`，不初始化 |
+| 原神 | 是 | `BGI一条龙.json` | 基类默认对齐 |
+| 终末地 | 是 | `okef一条龙.json` | 基类默认对齐 |
+| 绝区零 | 是 | `ZZZ一条龙.yml` | 基类默认对齐 |
+| 崩铁 | 是 | `M7A一条龙.yml` | 基类默认对齐 |
+| 异环 | 否 | — | 无 `__init__`，不初始化 |
+| 粥 | 是 | `MAA一条龙.json` | 额外 `_init_task_map` 从模板 `TaskQueue` 取 `$type=="FightTask"` 构建 `_task_map` |
 
 ## 设置副本流程 set_dungeon
 
@@ -83,6 +84,12 @@ NTEConfig 覆盖 `set_dungeon`：选空幕等异象界域副本 → 写 `daily_a
 
 `_bind_section(dungeon_name)` 动态绑定段后，`set_dungeon` 直接 `super().set_dungeon()` 把第一份文件整套委托基类，自身只负责第二份互斥文件。相关路径/常量在 `NTEConfig`：`_routine_config_rel_path`、`_anomaly_dungeons`、`_exclusive_routine_items`、`_anomaly_seq_key_map`。
 
+## 设置周常流程 set_weekly
+
+`set_weekly(start_day)`：`enabled=False` 短路；`assert` 脚本声明了 `_weekly_task_name` 且 `start_day` 在 1~7，再经 `_write_weekly(is_weekly_start_reached(start_day))` 写开关。周常开关为 GUI 内存态，不直写 config。
+
+仅 ok-ww、OneDragon-Launcher、March7th-Assistant 声明 `_weekly_task_name` 并实现 `_write_weekly`，其余脚本调用即断言失败。
+
 ## 安全字段更新 safe_update
 
 `safe_update(config, key, value, display_name="", assert_key_exists=True) -> bool`：
@@ -96,14 +103,15 @@ NTEConfig 覆盖 `set_dungeon`：选空幕等异象界域副本 → 写 `daily_a
 ```python
 from src.config.set_config import set_config
 
-set_config("ok-ww", dungeon_name="无音区")       # 无序列
-set_config("ok-ww", dungeon_name="凝素领域", sequence=17)   # 序列为数字
-set_config("ok-ww", dungeon_name="模拟领域", sequence="贝币")  # 序列为字符串
-set_config("ok-ww", dungeon_name=None)          # 跳过
-set_config("ok-ww", dungeon_name="未选择")       # 跳过
+set_config("ok-ww", dungeon_name="无音区")                         # 无序列
+set_config("ok-ww", dungeon_name="凝素领域", sequence=17)          # 序列为数字
+set_config("ok-ww", dungeon_name="模拟领域", sequence="贝币")       # 序列为字符串
+set_config("ok-ww", weekly_start=3)                                # 周常起始日，仅适配脚本生效
+set_config("ok-ww", dungeon_name=None)                             # 跳过
+set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 ```
 
-`set_config()` 接收 script_name；python/bat 脚本文件不在注册表内，chain_gen 传 display_name 时优雅跳过。每次调用实例化对应子类并触发初始化。
+`set_config()` 接收 script_name；python/bat 脚本文件不在注册表内时优雅跳过。每次调用实例化对应子类并触发初始化；`weekly_start` 非 None 才写周常。
 
 ## 相关文件
 

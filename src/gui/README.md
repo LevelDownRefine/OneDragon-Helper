@@ -20,7 +20,7 @@
 
 ## 主窗口 main_window.py
 
-LauncherWindow：1280x720 frameless 启动器式界面，左侧脚本栏、HERO 背景区、任务卡、启动胶囊、悬浮图标条。运行直接 subprocess.Popen 开独立控制台窗口跑链。
+`QmlBridge`：QML 中央控制器单例，经 `qmlRegisterSingletonInstance` 注册为 QML 的 `Bridge`，组合各职责控制器并编排跨控制器流程（选脚本 → 刷背景 + 任务卡）。窗口几何与布局在 `qml/main.qml`，运行直接 subprocess.Popen 开独立控制台窗口跑链。
 
 ## 弹窗 dialogs.py
 
