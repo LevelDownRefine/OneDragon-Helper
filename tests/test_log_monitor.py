@@ -847,17 +847,34 @@ class TestFourFieldExtraction(unittest.TestCase):
         self.assertEqual(len(p.collect_error_lines(content)), 2)
 
     def test_zzz_stamina_daily_exit_errors(self):
+        # 仅「等待大世界画面 未到达大世界」属重试瞬时噪声应排除；其余单步失败
+        # （如「代理人方案培养 找不到」）仍应计入报错，交由状态判定真相。
         p = ZZZLogParser()
         content = (
             "[charge_plan_app.py 141] [INFO]: 剩余电量 119 储蓄电量 888 以太电池 44\n"
             "指令[ 一条龙 ] 执行成功 返回状态 全部结束\n"
             "[operation.py 677] [ERROR]: 指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界\n"
+            "[operation.py 677] [ERROR]: 指令[ 快捷手册 选择副本类型 代理人方案培养 ] 执行失败 返回状态 找不到 代理人方案培养\n"
         )
         self.assertEqual(p.parse_stamina(content), "119")
         self.assertTrue(p.parse_daily(content))
         self.assertTrue(p.parse_exit(content))
-        self.assertEqual(len(p.collect_error_lines(content)), 1)
-        self.assertIn("执行失败", p.collect_error_lines(content)[0])
+        errs = p.collect_error_lines(content)
+        # 仅屏蔽「等待大世界画面」那行；「代理人方案培养」仍被收集。
+        self.assertEqual(len(errs), 1)
+        self.assertIn("代理人方案培养", errs[0])
+        self.assertNotIn("等待大世界画面", errs[0])
+
+    def test_zzz_collects_non_transient_errors(self):
+        # 非「等待大世界画面」噪声的 [ERROR] 仍应被收集，不误伤真实错误。
+        p = ZZZLogParser()
+        content = (
+            "指令[ 一条龙 ] 执行成功 返回状态 全部结束\n"
+            "[ERROR]: OCR 模型加载失败，识别功能不可用\n"
+        )
+        errs = p.collect_error_lines(content)
+        self.assertEqual(len(errs), 1)
+        self.assertIn("OCR 模型加载失败", errs[0])
 
     def test_zzz_daily_false_on_exec_failure(self):
         p = ZZZLogParser()

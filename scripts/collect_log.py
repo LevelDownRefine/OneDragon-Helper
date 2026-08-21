@@ -451,6 +451,9 @@ class M7ALogParser(BaseLogParser):
 class ZZZLogParser(BaseLogParser):
     script_name = "OneDragon-Launcher"
     error_markers = ("[ERROR]",)
+    # 仅「指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界」这一具体重试瞬时错误
+    # 计入会误报 WARN（整轮仍以「一条龙 执行成功」收尾），故精确排除该噪声行。
+    error_noise = ("指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界",)
 
     def _get_log_dir(self, script_path: str) -> Path:
         zzz_dir = Path(script_path).parent
