@@ -371,12 +371,6 @@ class TestBuildShutdownExtraArgs(unittest.TestCase):
             ["--shutdown", "45"],
         )
 
-    def test_switch_missing_defaults_to_enabled(self):
-        self.assertEqual(
-            build_shutdown_extra_args({"shutdown_delay_seconds": 45}),
-            ["--shutdown", "45"],
-        )
-
     def test_switch_explicit_false_disables_shutdown(self):
         self.assertEqual(
             build_shutdown_extra_args(
@@ -391,6 +385,14 @@ class TestBuildShutdownExtraArgs(unittest.TestCase):
                 {"shutdown_after_run": True, "shutdown_delay_seconds": 45}
             ),
             ["--shutdown", "45"],
+        )
+
+    def test_switch_non_bool_disables_shutdown(self):
+        self.assertEqual(
+            build_shutdown_extra_args(
+                {"shutdown_after_run": "false", "shutdown_delay_seconds": 45}
+            ),
+            [],
         )
 
 
