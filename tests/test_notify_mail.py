@@ -62,92 +62,6 @@ class TestLoadMailConfig(unittest.TestCase):
         self.assertEqual(config, {"email": "a@qq.com", "password": "secret"})
 
 
-class TestCollectFailedDetails(unittest.TestCase):
-    """测试失败详情收集：从 config.yml 反查 script_path 再补取日志内容。"""
-
-    def test_collect_failed_details_lookup_and_parse(self):
-        tmp = tempfile.mkdtemp()
-        cfg_dir = os.path.join(tmp, "config")
-        os.makedirs(cfg_dir, exist_ok=True)
-        with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump(
-                {
-                    "script_list": [
-                        {"display_name": "崩铁", "script_path": "D:/fake/star.exe"},
-                        {"display_name": "原神", "script_path": "D:/fake/bgi.exe"},
-                    ]
-                },
-                f,
-            )
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
-        try:
-            with mock.patch.object(
-                collect_log,
-                "parse_log",
-                return_value={
-                    "status": "Failed",
-                    "log_path": "D:/fake/log.txt",
-                    "log_content": "ERROR: boom",
-                },
-            ) as parse:
-                details = notify_mail._collect_failed_details(["崩铁", "原神"])
-        finally:
-            collect_log._get_root_dir = orig
-
-        # 按 config.yml 中反查到的 script_path 逐个 parse
-        self.assertEqual(
-            [call.args[0] for call in parse.call_args_list], ["崩铁", "原神"]
-        )
-        self.assertEqual(
-            [call.args[1] for call in parse.call_args_list],
-            ["D:/fake/star.exe", "D:/fake/bgi.exe"],
-        )
-        self.assertEqual(details[0]["display_name"], "崩铁")
-        self.assertEqual(details[0]["log_content"], "ERROR: boom")
-
-    def test_collect_failed_details_no_log_result(self):
-        """NO_LOG 结果（无 log_content 键）→ log_content 置空串，不抛 KeyError。"""
-        tmp = tempfile.mkdtemp()
-        cfg_dir = os.path.join(tmp, "config")
-        os.makedirs(cfg_dir, exist_ok=True)
-        with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump(
-                {
-                    "script_list": [
-                        {"display_name": "崩铁", "script_path": "D:/fake/star.exe"}
-                    ]
-                },
-                f,
-            )
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
-        try:
-            with mock.patch.object(
-                collect_log,
-                "parse_log",
-                return_value={"status": "NoLog", "log_path": None},
-            ):
-                details = notify_mail._collect_failed_details(["崩铁"])
-        finally:
-            collect_log._get_root_dir = orig
-
-        self.assertEqual(details[0]["status"], "NoLog")
-        self.assertIsNone(details[0]["log_path"])
-        self.assertEqual(details[0]["log_content"], "")
-
-    def test_collect_failed_details_config_missing_returns_empty(self):
-        """config.yml 不存在时告警并返回空列表，不抛异常（通知环节不中断）。"""
-        tmp = tempfile.mkdtemp()  # 无 config/config.yml
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
-        try:
-            details = notify_mail._collect_failed_details(["崩铁"])
-        finally:
-            collect_log._get_root_dir = orig
-        self.assertEqual(details, [])
-
-
 class TestBuildSubjectBody(unittest.TestCase):
     """测试邮件标题与正文构造。"""
 
@@ -156,54 +70,87 @@ class TestBuildSubjectBody(unittest.TestCase):
         self.assertIn("崩铁", subject)
         self.assertIn("原神", subject)
 
-    def test_build_body_includes_log_path_and_content(self):
-        body = notify_mail._build_body(
-            [
-                {
-                    "display_name": "崩铁",
-                    "status": "Failed",
-                    "log_path": "D:/fake/log.txt",
-                    "log_content": "ERROR: boom",
-                }
-            ]
-        )
+    def test_build_body_includes_report_and_diagnostic(self):
+        """邮件正文应含运行日期、整表汇总表格，以及复用的诊断文本。"""
+        body = notify_mail._build_body("脚本运行状况汇总表格", "各脚本报错明细\n...")
         self.assertIn("运行日期", body)
-        self.assertIn("崩铁", body)
-        self.assertIn("Failed", body)
-        self.assertIn("D:/fake/log.txt", body)
-        self.assertIn("ERROR: boom", body)
+        self.assertIn("脚本运行状况汇总表格", body)
+        self.assertIn("各脚本报错明细", body)
 
-    def test_build_body_no_log_path_omits_log_line(self):
-        """NO_LOG 结果（log_path 为 None）不应输出「日志:」行。"""
-        body = notify_mail._build_body(
-            [
-                {
-                    "display_name": "崩铁",
-                    "status": "NoLog",
-                    "log_path": None,
-                    "log_content": "",
-                }
-            ]
-        )
-        self.assertIn("崩铁", body)
-        self.assertNotIn("日志:", body)
+    def test_build_body_empty_diagnostic_shows_no_error_note(self):
+        """无诊断文本（无报错脚本）时正文给出「本次无脚本报错」提示。"""
+        body = notify_mail._build_body("脚本运行状况汇总表格", "")
+        self.assertIn("本次无脚本报错", body)
 
-    def test_build_body_collapses_repeated_lines(self):
-        """邮件正文中的日志尾部应折叠连续重复行，避免刷屏占满内容。"""
-        body = notify_mail._build_body(
-            [
-                {
-                    "display_name": "崩铁",
-                    "status": "Failed",
-                    "log_path": "D:/fake/log.txt",
-                    "log_content": "FeatureSet:load\nFeatureSet:load\nFeatureSet:load\nERROR: boom",
-                }
-            ]
+
+class TestDiagnosticSections(unittest.TestCase):
+    """测试诊断文本生成：复用 collect_log._format_diagnostic_sections（报错信息在前、日志尾部在后）。"""
+
+    def _entry(self, display_name, status, errors, log_content="", log_path="D:/x.log"):
+        return {
+            "script_name": display_name,
+            "display_name": display_name,
+            "result": {
+                "status": status,
+                "log_path": log_path,
+                "log_content": log_content,
+                "errors": errors,
+            },
+        }
+
+    def test_diagnostic_sections_two_sections_in_order(self):
+        """报错信息（各脚本报错）整体位于日志尾部之前；两段均含报错脚本。"""
+        entries = [
+            self._entry("崩铁", "Failed", ["ERROR: boom"], "tail-A"),
+            self._entry("原神", "Success", ["WARNING: 未领取"], "tail-B"),
+            self._entry("鸣潮", "Success", [], "tail-C"),  # 无报错，不出现
+        ]
+        text = collect_log._format_diagnostic_sections(entries)
+        self.assertIn("各脚本报错明细", text)
+        self.assertIn("各脚本日志尾部", text)
+        self.assertIn("ERROR: boom", text)
+        self.assertIn("WARNING: 未领取", text)
+        # 日志尾部仅 FAILED：崩铁(Failed) 的尾部出现，原神(Success+报错→WARN) 不出现。
+        self.assertIn("tail-A", text)
+        self.assertNotIn("tail-B", text)
+        self.assertNotIn("tail-C", text)  # 无报错脚本不进入诊断
+        self.assertLess(text.index("各脚本报错明细"), text.index("各脚本日志尾部"))
+
+    def test_diagnostic_sections_collapses_repeated_lines(self):
+        """传入 collapse_fn 时，日志尾部连续重复行被折叠。"""
+        entries = [
+            self._entry(
+                "崩铁", "Failed", ["ERROR: boom"],
+                "FeatureSet:load\nFeatureSet:load\nFeatureSet:load\nERROR: boom",
+            )
+        ]
+        text = collect_log._format_diagnostic_sections(
+            entries, collapse_fn=notify_mail._collapse_repeated_lines
         )
-        self.assertIn("FeatureSet:load（重复 3 次）", body)
-        self.assertIn("ERROR: boom", body)
-        # 折叠后只出现一次折叠行 + 一个错误行
-        self.assertEqual(body.count("FeatureSet:load"), 1)
+        self.assertIn("FeatureSet:load（重复 3 次）", text)
+        self.assertIn("ERROR: boom", text)
+
+    def test_diagnostic_sections_empty_when_no_errors(self):
+        """无任何报错脚本时返回空字符串，邮件/控制台均不输出诊断段。"""
+        entries = [self._entry("鸣潮", "Success", []), self._entry("原神", "NoLog", [])]
+        self.assertEqual(collect_log._format_diagnostic_sections(entries), "")
+
+    def test_warn_only_gets_error_detail_not_tail(self):
+        """WARN（成功但有报错）脚本进入报错明细，但日志尾部段整体不出现（仅 FAILED 才有）。"""
+        entries = [self._entry("原神", "Success", ["WARNING: 未领取"], "tail-only")]
+        text = collect_log._format_diagnostic_sections(entries)
+        self.assertIn("各脚本报错明细", text)
+        self.assertIn("WARNING: 未领取", text)
+        self.assertNotIn("各脚本日志尾部", text)
+        self.assertNotIn("tail-only", text)
+
+    def test_failed_without_errors_gets_tail_only(self):
+        """FAILED 但无显式报错行的脚本仍进入日志尾部（辅助排查），报错明细段不出现。"""
+        entries = [self._entry("崩铁", "Failed", [], "tail-failed")]
+        text = collect_log._format_diagnostic_sections(entries)
+        self.assertIn("各脚本日志尾部", text)
+        self.assertIn("tail-failed", text)
+        self.assertNotIn("各脚本报错明细", text)
 
 
 class TestCollapseRepeatedLines(unittest.TestCase):
@@ -288,7 +235,9 @@ class TestNotifyFailedGames(unittest.TestCase):
     def test_notify_failed_games_noop_when_no_failures(self):
         """无失败脚本时不发信。"""
         with (
-            mock.patch.object(collect_log, "parse_logs", return_value=[]),
+            mock.patch.object(
+                collect_log, "parse_logs", return_value={"rerun": [], "notify": [], "entries": []}
+            ),
             mock.patch.object(notify_mail, "_send_mail") as send,
         ):
             notify_mail.notify_failed_games()
@@ -297,7 +246,11 @@ class TestNotifyFailedGames(unittest.TestCase):
     def test_notify_failed_games_skips_when_config_missing(self):
         """有失败但邮件配置缺失时跳过发送。"""
         with (
-            mock.patch.object(collect_log, "parse_logs", return_value=["崩铁"]),
+            mock.patch.object(
+                collect_log,
+                "parse_logs",
+                return_value={"rerun": [], "notify": ["崩铁"], "report": "", "entries": []},
+            ),
             mock.patch.object(notify_mail, "_load_mail_config", return_value=None),
             mock.patch.object(notify_mail, "_send_mail") as send,
         ):
@@ -305,25 +258,33 @@ class TestNotifyFailedGames(unittest.TestCase):
         send.assert_not_called()
 
     def test_notify_failed_games_sends_mail(self):
-        """有失败且配置齐全时发送，主题含失败游戏名。"""
+        """有失败且配置齐全时发送，正文复用诊断文本（报错信息在前、日志尾部在后）。"""
         with (
-            mock.patch.object(collect_log, "parse_logs", return_value=["崩铁"]),
+            mock.patch.object(
+                collect_log,
+                "parse_logs",
+                return_value={
+                    "rerun": [],
+                    "notify": ["崩铁"],
+                    "report": "脚本运行状况汇总表格\n崩铁 失败 ...",
+                    "entries": [
+                        {
+                            "script_name": "崩铁",
+                            "display_name": "崩铁",
+                            "result": {
+                                "status": "Failed",
+                                "log_path": "D:/fake/log.txt",
+                                "log_content": "ERROR: boom",
+                                "errors": ["ERROR: boom"],
+                            },
+                        }
+                    ],
+                },
+            ),
             mock.patch.object(
                 notify_mail,
                 "_load_mail_config",
                 return_value={"email": "a@qq.com", "password": "code"},
-            ),
-            mock.patch.object(
-                notify_mail,
-                "_collect_failed_details",
-                return_value=[
-                    {
-                        "display_name": "崩铁",
-                        "status": "Failed",
-                        "log_path": "D:/fake/log.txt",
-                        "log_content": "ERROR: boom",
-                    }
-                ],
             ),
             mock.patch.object(notify_mail, "_send_mail", return_value=True) as send,
         ):
@@ -333,6 +294,14 @@ class TestNotifyFailedGames(unittest.TestCase):
         self.assertEqual(args[0], "a@qq.com")
         self.assertEqual(args[1], "code")
         self.assertIn("崩铁", args[2])
+        # 正文应包含整张汇总表格（report）。
+        self.assertIn("脚本运行状况汇总表格", args[3])
+        # 正文应复用诊断文本：两段结构、报错信息在日志尾部之前。
+        body = args[3]
+        self.assertIn("各脚本报错明细", body)
+        self.assertIn("各脚本日志尾部", body)
+        self.assertIn("ERROR: boom", body)
+        self.assertLess(body.index("各脚本报错明细"), body.index("各脚本日志尾部"))
 
 
 if __name__ == "__main__":
