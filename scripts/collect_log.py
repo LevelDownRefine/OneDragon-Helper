@@ -74,15 +74,17 @@ def _resolve_daily(daily_raw: bool | None, status: str) -> bool:
 
 
 def _resolve_exited(exited_raw: bool | None, status: str) -> bool:
-    """推导是否正常退出：日志有明确信号（True/False）时直接用；
+    """推导是否正常退出（进程是否正常收尾，与结果成败正交）：
 
-    无日志（None）时按整体运行状态推断——整体跑成即视为已退出，
-    失败 / 无日志即未正常退出。避免「未知」这类模棱两可的呈现。
+    - 日志有明确信号（True/False）时直接用，不推断；
+    - 仅在 parse_exit 判定不了（None）时，按状态做保守推断——
+      无日志（NO_LOG）视为未正常退出，成功（SUCCESS）视为已退出。
+    注意「正常退出」≠「成功」：结果失败但进程正常收尾（如部分失败）仍算正常退出；
+    非正常退出（被杀/崩溃/异常结束）才是 FAILED 的一种成因，parse_exit 应判 False。
     """
     if exited_raw is not None:
         return exited_raw
     return status == ScriptLogStatus.SUCCESS
-
 
 
 _LOG_TAIL_LINES = 200
@@ -379,7 +381,9 @@ class OkEfLogParser(BaseLogParser):
         return None
 
     def parse_exit(self, content: str) -> bool | None:
-        # 完成 / 部分失败 → 已正常跑完整轮；异常结束 / 运行中 → 异常退出。
+        # 正常退出 = 进程跑完整轮自行收尾（完成 / 部分失败皆属此类）；
+        # 异常结束 / 运行中（被杀 / 崩溃）属非正常退出。parse_exit 只看进程是否正常退出，
+        # 与结果成败正交——部分失败是「正常退出 + 结果失败」，仍算正常退出。
         if "执行状态: 完成" in content or "执行状态: 部分失败" in content:
             return True
         return False
@@ -551,7 +555,9 @@ def parse_log(script_name: str, script_path: str = "") -> dict:
     """
     # 不支持的脚本在 parse_logs 入口已过滤，到此处即不可能。
     supported_names = {cls.script_name for cls in _PARSERS if cls.script_name}
-    assert script_name in supported_names, f"不支持的脚本不应进入 parse_log: {script_name}"
+    assert script_name in supported_names, (
+        f"不支持的脚本不应进入 parse_log: {script_name}"
+    )
     for parser_cls in _PARSERS:
         if script_name == parser_cls.script_name:
             result = parser_cls().parse(script_path)
@@ -593,7 +599,9 @@ def _format_diagnostic_sections(entries: list[dict], collapse_fn=None) -> str:
     log_info 打印，邮件调用方拼入正文（并传入 collapse_fn 折叠连续重复行防刷屏）。
     """
     error_entries = [e for e in entries if e["result"]["errors"]]
-    failed_entries = [e for e in entries if e["result"]["status"] == ScriptLogStatus.FAILED]
+    failed_entries = [
+        e for e in entries if e["result"]["status"] == ScriptLogStatus.FAILED
+    ]
     if not error_entries and not failed_entries:
         return ""
     lines: list[str] = []
@@ -682,15 +690,20 @@ def _build_summary_report(
         exited = result["exited"]
         # 所有展示状态均已纳入 status_cn；未覆盖即属不可能，直接断言。
         assert display_status in status_cn, f"未覆盖的展示状态: {display_status}"
-        emit(_pad_row([
-            entry["display_name"],
-            status_cn[display_status],
-            str(stamina) if stamina is not None else "—",
-            "是" if daily else "否",
-            "是" if exited else "否",
-            str(len(errors)),
-            str(extra) if extra is not None else "—",
-        ], widths))
+        emit(
+            _pad_row(
+                [
+                    entry["display_name"],
+                    status_cn[display_status],
+                    str(stamina) if stamina is not None else "—",
+                    "是" if daily else "否",
+                    "是" if exited else "否",
+                    str(len(errors)),
+                    str(extra) if extra is not None else "—",
+                ],
+                widths,
+            )
+        )
     emit("=" * total)
 
     emit(
@@ -743,16 +756,23 @@ def parse_logs(do_log: bool = True) -> dict[str, list[str] | str]:
         script_name = get_script_name(script)
         if not script_name or script_name not in supported:
             continue
-        entries.append({
-            "script_name": script_name,
-            "display_name": script.get("display_name", script_name),
-            "result": parse_log(script_name, script.get("script_path", "")),
-        })
+        entries.append(
+            {
+                "script_name": script_name,
+                "display_name": script.get("display_name", script_name),
+                "result": parse_log(script_name, script.get("script_path", "")),
+            }
+        )
 
     rerun_list, notify_list = _prepare_action_lists(entries)
     report = _build_summary_report(entries, rerun_list, notify_list, do_log)
 
-    return {"rerun": rerun_list, "notify": notify_list, "report": report, "entries": entries}
+    return {
+        "rerun": rerun_list,
+        "notify": notify_list,
+        "report": report,
+        "entries": entries,
+    }
 
 
 if __name__ == "__main__":

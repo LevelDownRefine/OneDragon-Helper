@@ -120,7 +120,9 @@ class TestDiagnosticSections(unittest.TestCase):
         """传入 collapse_fn 时，日志尾部连续重复行被折叠。"""
         entries = [
             self._entry(
-                "崩铁", "Failed", ["ERROR: boom"],
+                "崩铁",
+                "Failed",
+                ["ERROR: boom"],
                 "FeatureSet:load\nFeatureSet:load\nFeatureSet:load\nERROR: boom",
             )
         ]
@@ -236,7 +238,9 @@ class TestNotifyFailedGames(unittest.TestCase):
         """无失败脚本时不发信。"""
         with (
             mock.patch.object(
-                collect_log, "parse_logs", return_value={"rerun": [], "notify": [], "entries": []}
+                collect_log,
+                "parse_logs",
+                return_value={"rerun": [], "notify": [], "entries": []},
             ),
             mock.patch.object(notify_mail, "_send_mail") as send,
         ):
@@ -249,7 +253,12 @@ class TestNotifyFailedGames(unittest.TestCase):
             mock.patch.object(
                 collect_log,
                 "parse_logs",
-                return_value={"rerun": [], "notify": ["崩铁"], "report": "", "entries": []},
+                return_value={
+                    "rerun": [],
+                    "notify": ["崩铁"],
+                    "report": "",
+                    "entries": [],
+                },
             ),
             mock.patch.object(notify_mail, "_load_mail_config", return_value=None),
             mock.patch.object(notify_mail, "_send_mail") as send,

@@ -279,7 +279,9 @@ class TestParseLogsRerunList(unittest.TestCase):
         """无日志（NO_LOG）的游戏应被纳入重跑列表（可能未正常启动）。"""
         tmp = tempfile.mkdtemp()
         script_path = self._fake_exe(tmp, "March7th Assistant.exe")
-        self._make_config(tmp, [{"display_name": "崩坏：星穹铁道", "script_path": script_path}])
+        self._make_config(
+            tmp, [{"display_name": "崩坏：星穹铁道", "script_path": script_path}]
+        )
         # 脚本唯一标识为进程名 March7th-Assistant（非 display_name）。
         result = self._run_parse(tmp)
         # 无日志 → 未正常退出 → 纳入重跑；但无报错 → 不纳入通知。
@@ -290,7 +292,9 @@ class TestParseLogsRerunList(unittest.TestCase):
         """do_log=False 时不应调用 logger.info，但仍返回重跑列表。"""
         tmp = tempfile.mkdtemp()
         script_path = self._fake_exe(tmp, "March7th Assistant.exe")
-        self._make_config(tmp, [{"display_name": "崩坏：星穹铁道", "script_path": script_path}])
+        self._make_config(
+            tmp, [{"display_name": "崩坏：星穹铁道", "script_path": script_path}]
+        )
         with mock.patch.object(collect_log.logger, "info") as info:
             result = self._run_parse(tmp, do_log=False)
         info.assert_not_called()
@@ -315,7 +319,9 @@ class TestParseLogsRerunList(unittest.TestCase):
                         },
                         {
                             "display_name": "B",
-                            "script_path": os.path.join(tmp, "BetterGI", "BetterGI.exe"),
+                            "script_path": os.path.join(
+                                tmp, "BetterGI", "BetterGI.exe"
+                            ),
                         },
                     ]
                 },
@@ -325,13 +331,34 @@ class TestParseLogsRerunList(unittest.TestCase):
         def fake_parse(script_name, script_path=""):
             # 返回 parse_log 的真实契约：完整归一化结构（八键）。
             if script_name == "ok-ww":
-                return {"status": "Failed", "log_path": "x", "exited": True,
-                        "errors": ["ERR x"], "stamina": None, "daily_done": False, "extra": None}
+                return {
+                    "status": "Failed",
+                    "log_path": "x",
+                    "exited": True,
+                    "errors": ["ERR x"],
+                    "stamina": None,
+                    "daily_done": False,
+                    "extra": None,
+                }
             if script_name == "BetterGI":
-                return {"status": "Failed", "log_path": "y", "exited": False,
-                        "errors": [], "stamina": None, "daily_done": False, "extra": None}
-            return {"status": "NoLog", "log_path": None, "exited": None,
-                    "errors": [], "stamina": None, "daily_done": False, "extra": None}
+                return {
+                    "status": "Failed",
+                    "log_path": "y",
+                    "exited": False,
+                    "errors": [],
+                    "stamina": None,
+                    "daily_done": False,
+                    "extra": None,
+                }
+            return {
+                "status": "NoLog",
+                "log_path": None,
+                "exited": None,
+                "errors": [],
+                "stamina": None,
+                "daily_done": False,
+                "extra": None,
+            }
 
         orig = collect_log._get_root_dir
         collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
@@ -367,7 +394,9 @@ class TestParseLogsRerunList(unittest.TestCase):
                     "script_list": [
                         {
                             "display_name": "A",
-                            "script_path": os.path.join(tmp, "BetterGI", "BetterGI.exe"),
+                            "script_path": os.path.join(
+                                tmp, "BetterGI", "BetterGI.exe"
+                            ),
                         },
                     ]
                 },
@@ -377,8 +406,15 @@ class TestParseLogsRerunList(unittest.TestCase):
         def fake_parse(script_name, script_path=""):
             # 正常退出、但有报错：应归为 WARN，不进 rerun、进 notify。
             # 返回 parse_log 真实契约：完整归一化结构。
-            return {"status": "Success", "log_path": "x", "exited": True,
-                    "errors": ["ERR x"], "stamina": None, "daily_done": False, "extra": None}
+            return {
+                "status": "Success",
+                "log_path": "x",
+                "exited": True,
+                "errors": ["ERR x"],
+                "stamina": None,
+                "daily_done": False,
+                "extra": None,
+            }
 
         orig = collect_log._get_root_dir
         collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
@@ -424,7 +460,9 @@ class TestParseLogsRerunList(unittest.TestCase):
         """推断下沉到 parse() 层：日志未明确每日信号时按本类 status 定稿 daily_done。"""
         p = OkWwLogParser()
         # 成功但无 Daily Task Completed 标记 → 按成功推断为「是」。
-        with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False, encoding="utf-8") as tf:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".log", delete=False, encoding="utf-8"
+        ) as tf:
             tf.write("Successfully Executed Task, Exiting Game and App!")
             path = tf.name
         try:
@@ -435,7 +473,9 @@ class TestParseLogsRerunList(unittest.TestCase):
         finally:
             os.unlink(path)
         # 失败且无每日标记 → 推断为「否」。
-        with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False, encoding="utf-8") as tf:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".log", delete=False, encoding="utf-8"
+        ) as tf:
             tf.write("ERROR something failed, no daily marker")
             path = tf.name
         try:
@@ -457,7 +497,9 @@ class TestParseLogsRerunList(unittest.TestCase):
                     "script_list": [
                         {
                             "display_name": "A",
-                            "script_path": os.path.join(tmp, "BetterGI", "BetterGI.exe"),
+                            "script_path": os.path.join(
+                                tmp, "BetterGI", "BetterGI.exe"
+                            ),
                         },
                     ]
                 },
@@ -467,8 +509,15 @@ class TestParseLogsRerunList(unittest.TestCase):
         def fake_parse(script_name, script_path=""):
             # 已定稿的 daily_done（True）；聚合方只消费，不应再出现「未知」。
             # 返回 parse_log 真实契约：完整归一化结构。
-            return {"status": "Success", "log_path": "x", "exited": True,
-                    "errors": [], "daily_done": True, "stamina": None, "extra": None}
+            return {
+                "status": "Success",
+                "log_path": "x",
+                "exited": True,
+                "errors": [],
+                "daily_done": True,
+                "stamina": None,
+                "extra": None,
+            }
 
         orig = collect_log._get_root_dir
         collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
@@ -492,13 +541,21 @@ class TestActionListsAndReport(unittest.TestCase):
 
     @staticmethod
     def _entry(script_name, display_name, result):
-        return {"script_name": script_name, "display_name": display_name, "result": result}
+        return {
+            "script_name": script_name,
+            "display_name": display_name,
+            "result": result,
+        }
 
     def test_prepare_action_lists_splits_rerun_and_notify(self):
         # 退出与否、有无报错两轴独立：ok-ww 退出但有错→仅 notify；BetterGI 未退且无错→仅 rerun。
         entries = [
-            self._entry("ok-ww", "A", {"status": "Failed", "exited": True, "errors": ["e"]}),
-            self._entry("BetterGI", "B", {"status": "Failed", "exited": False, "errors": []}),
+            self._entry(
+                "ok-ww", "A", {"status": "Failed", "exited": True, "errors": ["e"]}
+            ),
+            self._entry(
+                "BetterGI", "B", {"status": "Failed", "exited": False, "errors": []}
+            ),
         ]
         rerun, notify = collect_log._prepare_action_lists(entries)
         self.assertEqual(rerun, ["BetterGI"])
@@ -506,10 +563,18 @@ class TestActionListsAndReport(unittest.TestCase):
 
     def test_build_summary_report_renders_rows_without_unknown(self):
         entries = [
-            self._entry("BetterGI", "原神", {
-                "status": "Success", "exited": True, "errors": [],
-                "daily_done": True, "stamina": "120", "extra": None,
-            }),
+            self._entry(
+                "BetterGI",
+                "原神",
+                {
+                    "status": "Success",
+                    "exited": True,
+                    "errors": [],
+                    "daily_done": True,
+                    "stamina": "120",
+                    "extra": None,
+                },
+            ),
         ]
         report = collect_log._build_summary_report(entries, [], [], do_log=False)
         self.assertIn("原神", report)
@@ -519,10 +584,18 @@ class TestActionListsAndReport(unittest.TestCase):
     def test_build_summary_report_exited_none_renders_no_unknown(self):
         # 无日志条目 exited=None（调用方直接喂入）也应定稿为「否」，不得出现「未知」。
         entries = [
-            self._entry("BetterGI", "原神", {
-                "status": "NoLog", "exited": None, "errors": [],
-                "daily_done": False, "stamina": None, "extra": None,
-            }),
+            self._entry(
+                "BetterGI",
+                "原神",
+                {
+                    "status": "NoLog",
+                    "exited": None,
+                    "errors": [],
+                    "daily_done": False,
+                    "stamina": None,
+                    "extra": None,
+                },
+            ),
         ]
         report = collect_log._build_summary_report(entries, [], [], do_log=False)
         self.assertIn("原神", report)
@@ -532,25 +605,47 @@ class TestActionListsAndReport(unittest.TestCase):
     def test_build_summary_report_prints_error_lines_then_log_tails(self):
         """各脚本报错信息先打印，全部结束后才打印各脚本日志尾部；两段均不进 report 文本。"""
         entries = [
-            self._entry("ok-ww", "A", {
-                "status": "Failed", "exited": False,
-                "log_path": "D:/log/A.log",
-                "errors": ["ERROR: x", "ERROR: y"],
-                "log_content": "a-line1\na-line2\na-line3",
-                "daily_done": False, "stamina": None, "extra": None,
-            }),
-            self._entry("BetterGI", "B", {
-                "status": "Success", "exited": True,
-                "log_path": "D:/log/B.log",
-                "errors": ["WARNING: 未领取"],
-                "log_content": "tail-only-B",
-                "daily_done": True, "stamina": "120", "extra": None,
-            }),
-            self._entry("ok-nte", "C", {
-                "status": "Success", "exited": True, "errors": [],
-                "log_path": "D:/log/C.log",
-                "daily_done": True, "stamina": None, "extra": None,
-            }),
+            self._entry(
+                "ok-ww",
+                "A",
+                {
+                    "status": "Failed",
+                    "exited": False,
+                    "log_path": "D:/log/A.log",
+                    "errors": ["ERROR: x", "ERROR: y"],
+                    "log_content": "a-line1\na-line2\na-line3",
+                    "daily_done": False,
+                    "stamina": None,
+                    "extra": None,
+                },
+            ),
+            self._entry(
+                "BetterGI",
+                "B",
+                {
+                    "status": "Success",
+                    "exited": True,
+                    "log_path": "D:/log/B.log",
+                    "errors": ["WARNING: 未领取"],
+                    "log_content": "tail-only-B",
+                    "daily_done": True,
+                    "stamina": "120",
+                    "extra": None,
+                },
+            ),
+            self._entry(
+                "ok-nte",
+                "C",
+                {
+                    "status": "Success",
+                    "exited": True,
+                    "errors": [],
+                    "log_path": "D:/log/C.log",
+                    "daily_done": True,
+                    "stamina": None,
+                    "extra": None,
+                },
+            ),
         ]
         with mock.patch.object(collect_log, "log_info") as mock_log:
             report = collect_log._build_summary_report(entries, [], [], do_log=True)
@@ -794,9 +889,7 @@ class TestFourFieldExtraction(unittest.TestCase):
             "DailyRoutineTask:结束执行日常任务\n"
         )
         self.assertFalse(p.parse_daily(content))
-        self.assertIsNone(
-            OkNteLogParser().parse_daily("完全没有日常相关标记")
-        )
+        self.assertIsNone(OkNteLogParser().parse_daily("完全没有日常相关标记"))
 
     def test_oef_report_fields(self):
         p = OkEfLogParser()
@@ -815,8 +908,11 @@ class TestFourFieldExtraction(unittest.TestCase):
             ["- ⭐刷体力 : 二次寻路失败：没有找到按钮"],
         )
 
-        content_partial = "执行状态: 部分失败\n失败任务:\n  - ⭐买信用商店 : 购买失败: 信用不足\n"
+        content_partial = (
+            "执行状态: 部分失败\n失败任务:\n  - ⭐买信用商店 : 购买失败: 信用不足\n"
+        )
         self.assertFalse(p.parse_daily(content_partial))
+        # 部分失败 = 进程正常跑完、仅结果部分失败 → 仍算正常退出（与结果成败正交）。
         self.assertTrue(p.parse_exit(content_partial))
 
         content_abnormal = "执行状态: 异常结束\n当前正在执行的任务:\n  ⭐送礼\n"
@@ -955,8 +1051,14 @@ class TestFourFieldExtraction(unittest.TestCase):
         os.makedirs(cfg_dir, exist_ok=True)
         with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
             yaml.safe_dump(
-                {"script_list": [{"display_name": "A",
-                                  "script_path": os.path.join(tmp, "ok-ww", "ok-ww.exe")}]},
+                {
+                    "script_list": [
+                        {
+                            "display_name": "A",
+                            "script_path": os.path.join(tmp, "ok-ww", "ok-ww.exe"),
+                        }
+                    ]
+                },
                 f,
             )
         orig = collect_log._get_root_dir
@@ -982,11 +1084,23 @@ class TestScriptNameIdentifier(unittest.TestCase):
     def test_parse_log_dispatches_by_script_name(self):
         """parse_log 按 script_name 分派到对应 Parser（已合入原 _find_parser 的查找）。"""
         # 受支持标识分派命中对应 Parser，返回真实状态（非不支持哨兵）。
-        for name in ("March7th-Assistant", "ok-ww", "BetterGI", "OneDragon-Launcher", "ok-ef", "ok-nte"):
+        for name in (
+            "March7th-Assistant",
+            "ok-ww",
+            "BetterGI",
+            "OneDragon-Launcher",
+            "ok-ef",
+            "ok-nte",
+        ):
             res = parse_log(name)
             self.assertIn(
                 res["status"],
-                (ScriptLogStatus.SUCCESS, ScriptLogStatus.FAILED, ScriptLogStatus.NO_LOG, ScriptLogStatus.WARN),
+                (
+                    ScriptLogStatus.SUCCESS,
+                    ScriptLogStatus.FAILED,
+                    ScriptLogStatus.NO_LOG,
+                    ScriptLogStatus.WARN,
+                ),
                 name,
             )
 
