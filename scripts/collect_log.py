@@ -198,10 +198,20 @@ class BaseLogParser:
         return mtime >= yesterday_4am
 
     # ---- 四类补充信息提取（各子类按需覆写） ----
+    # 体力提取正则：第一个捕获组为剩余体力数字；不设置（为空）表示日志不含体力。
+    stamina_pattern: str = ""
 
     def parse_stamina(self, content: str) -> str | None:
-        """剩余体力（各游戏称谓不同）。提取不到返回 None。"""
-        return None
+        """剩余体力（各游戏称谓不同）。子类以 stamina_pattern 提供提取正则，
+        取最后一个匹配的第一个数字组；不设置 stamina_pattern 或提取不到返回 None。"""
+        if not self.stamina_pattern:
+            return None
+        matches = re.findall(self.stamina_pattern, content)
+        if not matches:
+            return None
+        last = matches[-1]
+        # 单组正则返回 str，多组正则返回 tuple；统一取首个数字组。
+        return last[0] if isinstance(last, tuple) else last
 
     def parse_daily(self, content: str) -> bool | None:
         """是否做完每日：完成=True，未完成/部分失败=False，日志未提及=None（由表格层按整体状态推断）。"""
@@ -263,6 +273,8 @@ class BaseLogParser:
 
 class OkWwLogParser(BaseLogParser):
     script_name = "ok-ww"
+    # 仅取剩余体力数字（current_stamina），不记录总体力 / 储备。
+    stamina_pattern = r"info_set current_stamina (\d+)"
     # 启动瞬断 / 战斗复检 / 关机收尾产生的 ERROR 属良性噪声，不计入报错。
     error_markers = ("ERROR",)
     error_noise = (
@@ -286,13 +298,6 @@ class OkWwLogParser(BaseLogParser):
             return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
 
-    def parse_stamina(self, content: str) -> str | None:
-        # 仅取剩余体力数字（current_stamina），不记录总体力 / 储备。
-        cur = re.findall(r"info_set current_stamina (\d+)", content)
-        if not cur:
-            return None
-        return cur[-1]
-
     def parse_daily(self, content: str) -> bool | None:
         if "Daily Task Completed" in content:
             return True
@@ -312,6 +317,8 @@ class OkWwLogParser(BaseLogParser):
 
 class OkNteLogParser(BaseLogParser):
     script_name = "ok-nte"
+    # 仅取剩余体力数字（当前体力），不记录其它。
+    stamina_pattern = r"info_set 当前体力 (\d+)"
     # 战斗复检 / 关机收尾产生的 ERROR 属良性噪声，不计入报错。
     error_markers = ("ERROR",)
     error_noise = (
@@ -330,13 +337,6 @@ class OkNteLogParser(BaseLogParser):
         if "Successfully Executed Task" in content or "Task completed" in content:
             return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
-
-    def parse_stamina(self, content: str) -> str | None:
-        # 仅取剩余体力数字（当前体力），不记录其它。
-        m = re.findall(r"info_set 当前体力 (\d+)", content)
-        if not m:
-            return None
-        return m[-1]
 
     def parse_daily(self, content: str) -> bool | None:
         if "结束执行日常任务" not in content:
@@ -358,6 +358,7 @@ class OkNteLogParser(BaseLogParser):
 class OkEfLogParser(BaseLogParser):
     script_name = "ok-ef"
     # 日志为结构化汇总报告：无体力数字；报错以「- 」缩进明细行列出。
+    # 不设 stamina_pattern（为空），故 parse_stamina 返回 None。
 
     def _get_log_dir(self, script_path: str) -> Path:
         return Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
@@ -369,10 +370,6 @@ class OkEfLogParser(BaseLogParser):
         if "执行状态: 完成" in content:
             return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
-
-    def parse_stamina(self, content: str) -> str | None:
-        # 终末地日志不记录体力数字，无法提取。
-        return None
 
     def parse_daily(self, content: str) -> bool | None:
         if "执行状态: 完成" in content:
@@ -401,6 +398,8 @@ class OkEfLogParser(BaseLogParser):
 
 class M7ALogParser(BaseLogParser):
     script_name = "March7th-Assistant"  # 由 script_path(含空格) 的 get_script_name 推导
+    # 仅取剩余开拓力数字，不记录总体力。
+    stamina_pattern = r"开拓力[：:]\s*(\d+)/(\d+)"
     error_markers = ("ERROR",)
 
     def _get_log_dir(self, script_path: str) -> Path:
@@ -430,13 +429,6 @@ class M7ALogParser(BaseLogParser):
             return content
         return content[:term_idx]
 
-    def parse_stamina(self, content: str) -> str | None:
-        # 仅取剩余开拓力数字，不记录总体力。
-        m = re.findall(r"开拓力[：:]\s*(\d+)/(\d+)", content)
-        if not m:
-            return None
-        return m[-1][0]
-
     def parse_daily(self, content: str) -> bool | None:
         if "每日实训已完成" in content:
             return True
@@ -450,6 +442,8 @@ class M7ALogParser(BaseLogParser):
 
 class ZZZLogParser(BaseLogParser):
     script_name = "OneDragon-Launcher"
+    # 仅取剩余电量数字，不记录储蓄电量 / 以太电池。
+    stamina_pattern = r"剩余电量 (\d+) 储蓄电量 (\d+) 以太电池 (\d+)"
     error_markers = ("[ERROR]",)
     # 仅「指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界」这一具体重试瞬时错误
     # 计入会误报 WARN（整轮仍以「一条龙 执行成功」收尾），故精确排除该噪声行。
@@ -472,13 +466,6 @@ class ZZZLogParser(BaseLogParser):
             return ScriptLogStatus.FAILED
         return ScriptLogStatus.FAILED
 
-    def parse_stamina(self, content: str) -> str | None:
-        # 仅取剩余电量数字，不记录储蓄电量 / 以太电池。
-        m = re.findall(r"剩余电量 (\d+) 储蓄电量 (\d+) 以太电池 (\d+)", content)
-        if not m:
-            return None
-        return m[-1][0]
-
     def parse_daily(self, content: str) -> bool | None:
         if (
             "指令[ 一条龙 ] 执行成功" in content
@@ -497,6 +484,8 @@ class ZZZLogParser(BaseLogParser):
 
 class BGILogParser(BaseLogParser):
     script_name = "BetterGI"
+    # 仅取原粹树脂（剩余体力）数字，不记录浓缩树脂。
+    stamina_pattern = r"原粹树脂：(\d+)，浓缩树脂：(\d+)"
     # 仅把显式报错标记纳入：用「异常:」(带冒号) 排除游戏内正常术语「地脉异常」等。
     error_markers = ("[ERR]", "异常:", "异常：")
 
@@ -515,13 +504,6 @@ class BGILogParser(BaseLogParser):
         if "[ERR]" in content or "异常" in content:
             return ScriptLogStatus.FAILED
         return ScriptLogStatus.FAILED
-
-    def parse_stamina(self, content: str) -> str | None:
-        # 仅取原粹树脂（剩余体力）数字，不记录浓缩树脂。
-        m = re.findall(r"原粹树脂：(\d+)，浓缩树脂：(\d+)", content)
-        if not m:
-            return None
-        return m[-1][0]
 
     def parse_extra(self, content: str) -> str | None:
         # 原神特有：浓缩树脂非 0 时记录到额外信息（还有多少可换体力的储备）。
