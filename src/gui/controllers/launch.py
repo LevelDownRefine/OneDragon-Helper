@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QMessageBox
 
 from src.config.subscript import get_script_name, resolve_script_path
-from src.utils_runner import build_script_command
+from src.utils_runner import build_script_command, build_shutdown_extra_args
 
 
 class LaunchController(QObject):
@@ -100,6 +100,7 @@ class LaunchController(QObject):
         )
         command, cwd, env = build_script_command(["--chain", chain_path])
         command[0] = command[0].replace("pythonw.exe", "python.exe")
+        command += build_shutdown_extra_args(config_data)
         creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
         subprocess.Popen(
             command,

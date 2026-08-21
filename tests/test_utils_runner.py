@@ -12,6 +12,7 @@ from src.utils_runner import (
     _to_signed_32,
     build_chain_command,
     build_script_command,
+    build_shutdown_extra_args,
     collect_invalid_script_messages,
     run_chain_command,
     script_invalid_message,
@@ -347,6 +348,28 @@ class TestBuildScriptInvocationFrozen(unittest.TestCase):
         self.assertIn("--script", command)
         self.assertEqual(command[command.index("--script") + 1], self.SCRIPT)
         self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
+
+
+class TestBuildShutdownExtraArgs(unittest.TestCase):
+    """build_shutdown_extra_args：按 config 生成 --shutdown 参数。"""
+
+    def test_missing_field_returns_empty(self):
+        self.assertEqual(build_shutdown_extra_args({}), [])
+
+    def test_zero_delay_returns_empty(self):
+        self.assertEqual(build_shutdown_extra_args({"shutdown_delay_seconds": 0}), [])
+
+    def test_negative_delay_returns_empty(self):
+        self.assertEqual(build_shutdown_extra_args({"shutdown_delay_seconds": -1}), [])
+
+    def test_non_int_delay_returns_empty(self):
+        self.assertEqual(build_shutdown_extra_args({"shutdown_delay_seconds": "45"}), [])
+
+    def test_positive_delay_returns_shutdown_flag(self):
+        self.assertEqual(
+            build_shutdown_extra_args({"shutdown_delay_seconds": 45}),
+            ["--shutdown", "45"],
+        )
 
 
 if __name__ == "__main__":

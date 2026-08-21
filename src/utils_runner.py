@@ -235,3 +235,16 @@ def run_chain_command(
     )
     time.sleep(10)
     return 0
+
+
+def build_shutdown_extra_args(config_data: dict) -> list[str]:
+    """按 config 的 shutdown_delay_seconds 生成 ``--shutdown`` 参数。
+
+    仅在配置该字段且为正整型时返回 ``["--shutdown", N]``；否则返回空列表（不关机）。
+    """
+    if "shutdown_delay_seconds" not in config_data:
+        return []
+    delay = config_data["shutdown_delay_seconds"]
+    if not isinstance(delay, int) or delay <= 0:
+        return []
+    return ["--shutdown", str(delay)]
