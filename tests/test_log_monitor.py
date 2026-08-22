@@ -239,7 +239,8 @@ class TestCollectLogSetup(unittest.TestCase):
             added_count = sum(
                 1
                 for h in _logging.getLogger().handlers
-                if id(h) in added and "onedragon_helper.log" in getattr(h, "baseFilename", "")
+                if id(h) in added
+                and "onedragon_helper.log" in getattr(h, "baseFilename", "")
             )
             self.assertEqual(added_count, 1)
         finally:
