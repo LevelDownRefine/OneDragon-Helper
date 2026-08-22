@@ -414,6 +414,20 @@ class TestEndfieldConfig(unittest.TestCase):
             cfg.set_dungeon("能量淤积点", sequence="枢纽区")
         mock_save.assert_called_once_with({"体力本": "枢纽区"})
 
+    def test_write_weekly_inverts_buy_only_flag(self):
+        """周常（卖出物资）enabled 与游戏「只买不卖」反相：开→false，关→true。"""
+        with patch.object(EndfieldConfig, "_init_config"):
+            cfg = EndfieldConfig()
+        for enabled, expected in ((True, False), (False, True)):
+            config = {"只买不卖": not expected}
+            with (
+                patch.object(cfg, "_load", return_value=config),
+                patch.object(cfg, "_save") as mock_save,
+            ):
+                cfg._write_weekly(enabled)
+            self.assertEqual(config["只买不卖"], expected)
+            mock_save.assert_called_once_with(config)
+
     def test_init_config_aligned_no_save(self):
         """config 与模板对齐（含模板外的自定义 key）时不保存"""
         template = {"购物白名单": ["精锻"], "是否买礼物": False}
@@ -1473,18 +1487,19 @@ class TestSupportsWeekly(unittest.TestCase):
         self.assertFalse(set_config.supports_weekly("不存在"))
 
     def test_weekly_supported_scripts(self):
-        """已适配周常的脚本：崩铁（货币战争）/ 鸣潮（每周花园）/ 绝区零（lost_void）"""
+        """已适配周常的脚本：崩铁（货币战争）/ 鸣潮（每周花园）/ 绝区零（lost_void）/ 终末地（卖出物资）"""
         for name in (
             "March7th-Assistant",
             "ok-ww",
             "OneDragon-Launcher",
+            "ok-ef",
         ):
             self.assertTrue(set_config.supports_weekly(name), f"{name} 应支持周常")
 
     def test_other_scripts_default_false(self):
         """其余脚本未适配周常 → False"""
         for name in set_config._CONFIGS:
-            if name in ("March7th-Assistant", "ok-ww", "OneDragon-Launcher"):
+            if name in ("March7th-Assistant", "ok-ww", "OneDragon-Launcher", "ok-ef"):
                 continue
             self.assertFalse(set_config.supports_weekly(name), f"{name} 不应支持周常")
 

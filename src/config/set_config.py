@@ -624,6 +624,8 @@ class EndfieldConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    _weekly_task_name = "只买不卖"
+    """周常（卖出物资）在 DailyTask.json 中的开关键；true=只买不卖=不卖=周常关。"""
 
     def __init__(self):
         self._init_config()
@@ -637,6 +639,20 @@ class EndfieldConfig(ScriptConfig):
         """
         target = sequence if sequence is not None else dungeon_name
         super().set_dungeon(target)
+
+    def _write_weekly(self, enabled: bool) -> None:
+        """控制 DailyTask.json 的「只买不卖」周常开关（语义反相）。
+
+        游戏约定：只买不卖=true → 不卖出 → 周常（卖出物资）关闭；
+        故 enabled 需反相写入。
+
+        Args:
+            enabled: 是否启用周常（卖出物资）。
+        """
+        config = self._load()
+        # 反相：enabled=True（卖出）→ 只买不卖=false
+        safe_update(config, self._weekly_task_name, not enabled, self.display_name)
+        self._save(config)
 
 
 # ---- 绝区零 Zenless Zone Zero ----
