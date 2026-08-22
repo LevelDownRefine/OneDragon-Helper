@@ -11,8 +11,8 @@ from PySide6.QtCore import QObject, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QFileDialog
 
-from src.config.set_config import get_game_bg_img as _get_game_bg_img
-from src.config.subscript import resolve_script_path
+from src.config.set_config import _CONFIGS
+from src.config.subscript import _get_script_root_dir_soft, resolve_script_path
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,26 @@ class BackgroundController(QObject):
             return None
         return resolved
 
+    def _script_background(self, script_name: str) -> str:
+        """读取脚本默认背景图绝对路径（声明在 ScriptConfig.background，相对脚本根目录）。
+
+        Args:
+            script_name: 脚本标识名。
+
+        Returns:
+            背景图绝对路径；未适配/未声明/文件缺失 → 空字符串（交 DEFAULT_BG 兜底）。
+        """
+        if script_name not in _CONFIGS:
+            return ""
+        rel = _CONFIGS[script_name].background
+        if not rel:
+            return ""
+        root = _get_script_root_dir_soft(script_name)
+        if not root:
+            return ""
+        path = os.path.join(root, rel)
+        return path if os.path.isfile(path) else ""
+
     def _wallpaper_for(self, game: dict) -> str:
         """解析某脚本应使用的背景路径：定位源（自定义壁纸 → 脚本背景图 → DEFAULT_BG），
         并判定图像/视频。图像交给 _build_wallpaper_cache 确保缓存，视频直接用源路径。
@@ -92,7 +112,7 @@ class BackgroundController(QObject):
         script_name = game["script_name"]
         wallpapers = self.read_wallpapers()
         if script_name not in wallpapers:
-            return _get_game_bg_img(script_name) or DEFAULT_BG
+            return self._script_background(script_name) or DEFAULT_BG
         src_path = wallpapers[script_name]
         if not os.path.isfile(src_path):
             return src_path  # 源图缺失：交回 resolve_bg 的 isfile 守卫，走渐变兜底

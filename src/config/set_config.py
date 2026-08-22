@@ -6,18 +6,13 @@ from collections.abc import Callable
 from typing import Any
 
 from src.config.subscript import (
-    _get_script_root_dir_soft,
+    get_config_path as _get_config_path_impl,
+)
+from src.config.subscript import (
     load_config,
     load_game_config,
     load_template,
-    resolve_script_path,
     save_config,
-)
-from src.config.subscript import (
-    download_file as _download_file,
-)
-from src.config.subscript import (
-    get_config_path as _get_config_path_impl,
 )
 from src.utils_weekly import is_weekly_start_reached
 
@@ -129,17 +124,8 @@ class ScriptConfig:
     _template_rel_path: str = ""
     """模板文件路径（走模板初始化的子类必填）。"""
 
-    bg_img: str = ""
+    background: str = ""
     """启动器背景图相对脚本根目录路径；空字符串走渐变占位。"""
-
-    bilibili: str = ""
-    """官方 B 站 UID；空字符串走通用占位。"""
-
-    github: str = ""
-    """脚本 GitHub repo 路径（不含域名）；空字符串走通用占位。"""
-
-    homepage: str = ""
-    """官方主页链接；空字符串走通用占位。"""
 
     _weekly_task_name: str = ""
     """周常任务标识名（非空即支持周常）；各脚本含义不同。"""
@@ -150,7 +136,7 @@ class ScriptConfig:
     confirm_before_save: Callable[[str], bool] | None = None
     """保存前确认回调（GUI 注入，返回 False 则不落盘）。"""
 
-    enabled: bool = True
+    _enabled: bool = True
     """实例是否可操作 config；拒绝保存后置 False 使后续写入一并失效。"""
 
     def _load(self, rel_path: str | None = None) -> dict:
@@ -188,7 +174,7 @@ class ScriptConfig:
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
-        if not self.enabled:
+        if not self._enabled:
             logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
             return
         save_config(self._script_name, rel_path, config)
@@ -241,7 +227,7 @@ class ScriptConfig:
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] 周常 config 必须是 dict"
         )
-        if not self.enabled:
+        if not self._enabled:
             logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
             return
         save_config(
@@ -325,7 +311,7 @@ class ScriptConfig:
             return True
         accepted = callback(self.display_name)
         if not accepted:
-            self.enabled = False
+            self._enabled = False
         return accepted
 
     def _init_config(self) -> None:
@@ -384,7 +370,7 @@ class ScriptConfig:
             dungeon_name: 副本中文名。
             sequence: 序列值；不传则仅设置任务类型。
         """
-        if not self.enabled:
+        if not self._enabled:
             logger.info(
                 f"[set_dungeon][{self.display_name}] 用户拒绝更新，跳过副本设置"
             )
@@ -410,7 +396,7 @@ class ScriptConfig:
         Raises:
             AssertionError: 未适配周常，或 start_day 不在 1~7。
         """
-        if not self.enabled:
+        if not self._enabled:
             logger.info(f"[set_weekly][{self.display_name}] 用户拒绝更新，跳过周常设置")
             return
         assert self._weekly_task_name, (
@@ -463,41 +449,6 @@ class ScriptConfig:
             return None
         return node
 
-    @classmethod
-    def get_game_bg_img(cls, script_name: str) -> str:
-        """读取背景图绝对路径（类方法，无需实例化）。
-
-        Args:
-            script_name: 脚本标识名。
-
-        Returns:
-            背景图绝对路径；未声明或文件缺失时返回空字符串（渐变占位）。
-        """
-        if not cls.bg_img:
-            return ""
-        script_root = _get_script_root_dir_soft(script_name)
-        if not script_root:
-            return ""
-        bg_path = os.path.join(script_root, cls.bg_img)
-        if not os.path.isfile(bg_path):
-            return ""
-        return bg_path
-
-    @classmethod
-    def get_game_bilibili(cls, script_name: str) -> str:
-        """读 B 站空间链接（子类存 UID，本方法拼 URL）；未声明 → 空字符串。"""
-        return f"https://space.bilibili.com/{cls.bilibili}" if cls.bilibili else ""
-
-    @classmethod
-    def get_game_github(cls, script_name: str) -> str:
-        """读 GitHub 链接（子类存 repo 路径，本方法拼 URL）；未声明 → 空字符串。"""
-        return f"https://github.com/{cls.github}" if cls.github else ""
-
-    @classmethod
-    def get_game_homepage(cls, script_name: str) -> str:
-        """读官方主页链接；未声明 → 空字符串。"""
-        return cls.homepage
-
 
 # ============================================================
 # 注册表
@@ -510,6 +461,9 @@ _CONFIGS: dict[str, type[ScriptConfig]] = {}
 def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
     """注册子类到 _CONFIGS，并校验必要声明。
 
+    必填属性须由子类在 ``cls.__dict__`` 中显式声明（而非继承基类默认值）；
+    声明了条件属性（_game_path_keys / _weekly_task_name）必须补全对应依赖。
+
     Args:
         cls: 待注册的 ScriptConfig 子类。
 
@@ -517,15 +471,13 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
         原样返回 cls（便于装饰器使用）。
 
     Raises:
-        AssertionError: 缺少 _script_name/_config_rel_path，或声明了
+        AssertionError: 缺少 _script_name/_config_rel_path 显式声明，或声明了
             _game_path_keys/_weekly_task_name 但未补全对应声明/实现。
     """
-    assert cls._script_name, f"[set_config][{cls.__name__}] 必须声明 _script_name"
-    assert cls._config_rel_path, (
-        f"[set_config][{cls.__name__}] 必须声明 _config_rel_path"
-    )
+    for attr in ("_script_name", "_config_rel_path"):
+        assert attr in cls.__dict__, f"[set_config][{cls.__name__}] 必须声明 {attr}"
     if cls._game_path_keys:
-        assert cls._game_config_rel_path, (
+        assert "_game_config_rel_path" in cls.__dict__, (
             f"[set_config][{cls.__name__}] 声明了 _game_path_keys 必须声明 "
             f"_game_config_rel_path"
         )
@@ -557,9 +509,6 @@ class WutheringWavesConfig(ScriptConfig):
         "模拟领域": "Simulation Challenge",
         "无音区": "Tacet Suppression",
     }
-    bilibili = "1955897084"
-    github = "ok-oldking/ok-wuthering-waves"
-    homepage = "https://mc.kurogames.com/"
     _weekly_task_name = "Check Weekly Garden"
 
     def _write_weekly(self, enabled: bool) -> None:
@@ -650,33 +599,9 @@ class GenshinConfig(ScriptConfig):
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
     _game_path_keys = ("genshinStartConfig", "installPath")
-    bilibili = "401742377"
-    github = "babalae/better-genshin-impact"
-    homepage = "https://ys.mihoyo.com/"
-    banner_url = (
-        "https://cdn.jsdelivr.net/gh/babalae/better-genshin-impact@0.63.0/"
-        "BetterGenshinImpact/Resources/Images/banner.jpg"
-    )
-    """BetterGI 官方仓库 banner（与 BetterGI.exe 内嵌主界面横幅同一张）。"""
 
     def __init__(self):
         self._init_config()
-
-    @classmethod
-    def get_game_bg_img(cls, script_name: str) -> str:
-        """读取原神背景图：优先项目 assets/banner.jpg，缺失则从官方仓库下载。
-
-        Args:
-            script_name: 脚本标识名。
-
-        Returns:
-            背景图绝对路径；下载失败返回空字符串（渐变占位）。
-        """
-        assets_file = resolve_script_path("assets/banner.jpg")
-        if not os.path.isfile(assets_file):
-            if not _download_file(cls.banner_url, assets_file):
-                return ""
-        return assets_file
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
         """原神副本两级组织：有二级时写入二级副本名，否则回退一级。
@@ -699,9 +624,6 @@ class EndfieldConfig(ScriptConfig):
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
-    bilibili = "1265652806"
-    github = "AliceJump/ok-end-field"
-    homepage = "https://endfield.hypergryph.com/"
 
     def __init__(self):
         self._init_config()
@@ -727,10 +649,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _template_rel_path = "ZZZ一条龙.yml"
     _weekly_config_rel_path = "config/01/one_dragon/_group.yml"
     _game_path_keys = ("game_path",)
-    bg_img = "assets/ui/static_background.webp"
-    bilibili = "1636034895"
-    github = "DoctorReid/ZenlessZoneZero-OneDragon"
-    homepage = "https://zzz.mihoyo.com/"
+    background = "assets/ui/static_background.webp"
     _weekly_task_name = "lost_void"
 
     def __init__(self):
@@ -772,10 +691,7 @@ class StarRailConfig(ScriptConfig):
     _game_config_rel_path = "config.yaml"
     _template_rel_path = "M7A一条龙.yml"
     _game_path_keys = ("game_path",)
-    bg_img = "assets/app/images/bg37.jpg"
-    bilibili = "1340190821"
-    github = "moesnow/March7thAssistant"
-    homepage = "https://sr.mihoyo.com/"
+    background = "assets/app/images/bg37.jpg"
     _weekly_task_name = "currencywars_enable"
 
     def __init__(self):
@@ -802,9 +718,6 @@ class NTEConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "异环"
-    bilibili = "3546636978489848"
-    github = "BnanZ0/ok-nte"
-    homepage = "https://yh.wanmei.com/"
     _exclusive_routine_items = ("daily_anomaly", "daily_anomaly_hunter")
     """互斥的两个日常 routine item id（DailyRoutineTask.json）。"""
 
@@ -967,7 +880,7 @@ class NTEConfig(ScriptConfig):
         """
         self._bind_section(dungeon_name)
         super().set_dungeon(dungeon_name, sequence)
-        if self.enabled:
+        if self._enabled:
             routine = self._load(self._routine_config_rel_path)
             if self._update_routine_exclusion(routine):
                 self._save(routine, self._routine_config_rel_path)
@@ -981,9 +894,6 @@ class ArknightsConfig(ScriptConfig):
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
     _template_rel_path = "MAA一条龙.json"
-    bilibili = "161775300"
-    github = "MaaAssistantArknights/MaaAssistantArknights"
-    homepage = "https://ak.hypergryph.com/"
     _game_path_keys = (
         "Configurations",
         "Default",
@@ -1111,34 +1021,6 @@ def get_game_exe_path(script_name: str) -> str | None:
     if script_name not in _CONFIGS:
         return None
     return _CONFIGS[script_name].get_game_exe_path(script_name)
-
-
-def get_game_bg_img(script_name: str) -> str:
-    """读背景图绝对路径（供 GUI 渲染）；未适配/缺失 → 空字符串。原神首次调用会下载。"""
-    if script_name not in _CONFIGS:
-        return ""
-    return _CONFIGS[script_name].get_game_bg_img(script_name)
-
-
-def get_game_bilibili(script_name: str) -> str:
-    """读 B 站链接（供 GUI 打开）；未适配/未声明 → 空字符串。"""
-    if script_name not in _CONFIGS:
-        return ""
-    return _CONFIGS[script_name].get_game_bilibili(script_name)
-
-
-def get_game_github(script_name: str) -> str:
-    """读 GitHub 链接（供 GUI 打开）；未适配/未声明 → 空字符串。"""
-    if script_name not in _CONFIGS:
-        return ""
-    return _CONFIGS[script_name].get_game_github(script_name)
-
-
-def get_game_homepage(script_name: str) -> str:
-    """读官网链接（供 GUI 打开）；未适配/未声明 → 空字符串。"""
-    if script_name not in _CONFIGS:
-        return ""
-    return _CONFIGS[script_name].get_game_homepage(script_name)
 
 
 def is_adapted(script_name: str) -> bool:

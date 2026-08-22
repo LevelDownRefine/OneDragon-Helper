@@ -214,7 +214,7 @@ class TestFloatBar(unittest.TestCase):
     def test_open_home_uses_bridge(self):
         b = _make_bridge()
         with (
-            patch.object(links, "_get_game_homepage", return_value=""),
+            patch.object(links, "_get_game_link", return_value=""),
             patch.object(webbrowser, "open") as wb,
         ):
             b.openHome()
@@ -223,7 +223,7 @@ class TestFloatBar(unittest.TestCase):
     def test_open_bilibili_uses_bridge(self):
         b = _make_bridge()
         with (
-            patch.object(links, "_get_game_bilibili", return_value=""),
+            patch.object(links, "_get_game_link", return_value=""),
             patch.object(webbrowser, "open") as wb,
         ):
             b.openBilibili()

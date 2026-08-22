@@ -120,6 +120,7 @@ set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 | `set_config.py` | 本适配器，适配器接口 + 类层级；各脚本路径由子类声明，`@register` 显式注册 |
 | `subscript.py` | config 读写基础设施，`get_script_name` / `load` / `save` / `load_template`，只接收 `rel_path`，不感知具体脚本 |
 | `dungeon_config.py` | `dungeon_list.yml` 解析 |
+| `src/link.py` | 游戏/脚本链接集中管理（官网、B 站、GitHub、banner 下载）；与 config 适配解耦。沿用基类 `GameLink` + 各脚本子类（`WutheringWavesLink`/`GenshinLink` 等）继承结构，`@register` 注册到 `_LINKS`，key 为 `_script_name`；本地背景图路径（`background`）仍声明在 set_config 子类，经 `_CONFIGS` 读取 |
 | `config/dungeon_list.yml` | 各脚本支持的副本及序列展示名，key 为 script_name |
 | `config/MAA一条龙.json` 等 | 各脚本 init 模板 |
 

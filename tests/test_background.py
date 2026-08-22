@@ -226,6 +226,46 @@ class TestOpenWallpaper(unittest.TestCase):
         )
 
 
+class TestScriptBackground(unittest.TestCase):
+    """_script_background：读 set_config.background（相对脚本根），isfile 守卫。"""
+
+    def setUp(self):
+        self._app = QApplication.instance() or QApplication([])
+        self.ctrl = BackgroundController(
+            game_list=MagicMock(), task_card=MagicMock(), toast=MagicMock()
+        )
+
+    @patch.object(
+        bgmod, "_CONFIGS", {"ok-ww": type("C", (), {"background": "assets/x.webp"})()}
+    )
+    @patch.object(bgmod, "_get_script_root_dir_soft", return_value="/script/root")
+    def test_declared_and_present(self, _mock_root):
+        # 声明且文件存在：返回脚本根拼接的绝对路径
+        with patch.object(bgmod.os.path, "isfile", return_value=True):
+            self.assertEqual(
+                self.ctrl._script_background("ok-ww"),
+                os.path.join("/script/root", "assets/x.webp"),
+            )
+
+    @patch.object(
+        bgmod, "_CONFIGS", {"ok-ww": type("C", (), {"background": "assets/x.webp"})()}
+    )
+    @patch.object(bgmod, "_get_script_root_dir_soft", return_value="/script/root")
+    def test_declared_but_missing(self, _mock_root):
+        # 声明但文件缺失：返回空字符串（交 DEFAULT_BG 兜底）
+        with patch.object(bgmod.os.path, "isfile", return_value=False):
+            self.assertEqual(self.ctrl._script_background("ok-ww"), "")
+
+    @patch.object(bgmod, "_CONFIGS", {"BetterGI": type("C", (), {"background": ""})()})
+    def test_not_declared(self):
+        # 子类未声明 background（如原神）：返回空字符串
+        self.assertEqual(self.ctrl._script_background("BetterGI"), "")
+
+    def test_unadapted_script(self):
+        # 未适配脚本：返回空字符串
+        self.assertEqual(self.ctrl._script_background("不存在"), "")
+
+
 class TestResolveBg(unittest.TestCase):
     """resolve_bg：自定义壁纸缓存优先于原图，缺失文件安全回退。"""
 

@@ -8,11 +8,9 @@ import webbrowser
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from src.config.set_config import get_game_bilibili as _get_game_bilibili
 from src.config.set_config import get_game_exe_path as _get_game_exe_path
-from src.config.set_config import get_game_github as _get_game_github
-from src.config.set_config import get_game_homepage as _get_game_homepage
 from src.config.subscript import resolve_script_path
+from src.link import get_game_link as _get_game_link
 from src.log import get_log_dir
 from src.utils import get_config_yml_path_under_root
 
@@ -47,27 +45,27 @@ class LinksController(QObject):
 
     @Slot()
     def openHome(self):
-        """打开当前游戏官方主页（set_config 声明，空则通用占位）。"""
+        """打开当前游戏官方主页（link 声明，空则通用占位）。"""
         self._open_url(
-            _get_game_homepage(self._game_list.current_game["script_name"]),
+            _get_game_link(self._game_list.current_game["script_name"], "homepage"),
             _URL_HOME,
             "主页",
         )
 
     @Slot()
     def openBilibili(self):
-        """打开当前游戏官方 B 站（set_config 声明，空则通用占位）。"""
+        """打开当前游戏官方 B 站（link 声明，空则通用占位）。"""
         self._open_url(
-            _get_game_bilibili(self._game_list.current_game["script_name"]),
+            _get_game_link(self._game_list.current_game["script_name"], "bilibili"),
             _URL_BILIBILI,
             "B站",
         )
 
     @Slot()
     def openGithub(self):
-        """打开当前脚本项目 GitHub 主页（set_config 声明，空则通用占位）。"""
+        """打开当前脚本项目 GitHub 主页（link 声明，空则通用占位）。"""
         self._open_url(
-            _get_game_github(self._game_list.current_game["script_name"]),
+            _get_game_link(self._game_list.current_game["script_name"], "github"),
             _URL_HOME,
             "GitHub",
         )

@@ -1532,7 +1532,7 @@ class TestSetWeekly(unittest.TestCase):
         """用户已拒绝（enabled=False）→ 直接跳过，不调 _write_weekly（同 set_dungeon）"""
         with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
-        cfg.enabled = False
+        cfg._enabled = False
         with patch.object(cfg, "_write_weekly") as mock_write:
             cfg.set_weekly(4)
         mock_write.assert_not_called()

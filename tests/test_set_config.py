@@ -385,7 +385,7 @@ class TestGenshinSetDungeon(unittest.TestCase):
         self.config = GenshinConfig.__new__(GenshinConfig)
         self.config.display_name = "原神"
         self.config._task_key = "DomainName"
-        self.config.enabled = True
+        self.config._enabled = True
         self.config._config_data = {"DomainName": "旧副本", "TaskEnabledList": []}
         self.config._verify_saved = lambda *a: None
         # 统一注入 mock IO：load 返回内存态，save 不落盘
@@ -471,7 +471,7 @@ class TestConfirmSave(unittest.TestCase):
 
         self.original = ScriptConfig.confirm_before_save
         self.addCleanup(self._restore_callback)
-        self.original_enabled = ScriptConfig.enabled
+        self.original_enabled = ScriptConfig._enabled
         self.addCleanup(self._restore_enabled)
 
     def _restore_callback(self):
@@ -482,7 +482,7 @@ class TestConfirmSave(unittest.TestCase):
     def _restore_enabled(self):
         from src.config.set_config import ScriptConfig
 
-        ScriptConfig.enabled = self.original_enabled
+        ScriptConfig._enabled = self.original_enabled
 
     def _make_config(self):
         from src.config.set_config import ScriptConfig
@@ -496,7 +496,7 @@ class TestConfirmSave(unittest.TestCase):
         config = self._make_config()
         with patch.object(type(config), "confirm_before_save", None):
             self.assertTrue(config._confirm_save())
-            self.assertTrue(config.enabled)
+            self.assertTrue(config._enabled)
 
     def test_callback_called_with_display_name(self):
         """注入普通函数回调时只传 display_name（回归：曾因描述符绑定多传 self 报 TypeError）"""
@@ -522,7 +522,7 @@ class TestConfirmSave(unittest.TestCase):
         ScriptConfig.confirm_before_save = lambda name: True
         config = self._make_config()
         self.assertTrue(config._confirm_save())
-        self.assertTrue(config.enabled)
+        self.assertTrue(config._enabled)
 
     def test_reject_disables(self):
         """回调返回 False（用户拒绝）时 enabled 置 False，_save 跳过"""
@@ -531,7 +531,7 @@ class TestConfirmSave(unittest.TestCase):
         ScriptConfig.confirm_before_save = lambda name: False
         config = self._make_config()
         self.assertFalse(config._confirm_save())
-        self.assertFalse(config.enabled)
+        self.assertFalse(config._enabled)
 
         with (
             patch.object(
@@ -568,13 +568,13 @@ class TestConfirmSave(unittest.TestCase):
             config.set_dungeon("武陵城")
 
     def test_new_instance_defaults_enabled(self):
-        """每次新建实例 enabled 默认为 True（类初始化重置）"""
+        """每次新建实例 _enabled 默认为 True（类初始化重置）"""
         config = self._make_config()
-        self.assertTrue(config.enabled)
-        config.enabled = False
-        self.assertFalse(config.enabled)
+        self.assertTrue(config._enabled)
+        config._enabled = False
+        self.assertFalse(config._enabled)
         # 新实例不受旧实例影响
-        self.assertTrue(self._make_config().enabled)
+        self.assertTrue(self._make_config()._enabled)
 
 
 class TestIsAdapted(unittest.TestCase):
