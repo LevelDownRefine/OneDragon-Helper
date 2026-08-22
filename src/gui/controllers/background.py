@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QFileDialog
 
-from src.config.set_config import _CONFIGS
+from src.config.set_config import get_background_rel_path
 from src.config.subscript import _get_script_root_dir_soft, resolve_script_path
 
 logger = logging.getLogger(__name__)
@@ -90,9 +90,7 @@ class BackgroundController(QObject):
         Returns:
             背景图绝对路径；未适配/未声明/文件缺失 → 空字符串（交 DEFAULT_BG 兜底）。
         """
-        if script_name not in _CONFIGS:
-            return ""
-        rel = _CONFIGS[script_name].background
+        rel = get_background_rel_path(script_name)
         if not rel:
             return ""
         root = _get_script_root_dir_soft(script_name)

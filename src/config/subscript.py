@@ -3,13 +3,10 @@
 提供脚本根目录解析、config 路径推导、配置文件读写等功能。
 """
 
-import contextlib
 import json
 import logging
 import os
 import re
-import urllib.error
-import urllib.request
 
 import yaml
 

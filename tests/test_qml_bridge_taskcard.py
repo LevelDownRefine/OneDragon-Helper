@@ -1,9 +1,9 @@
 """测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。
 
 复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 ChainService 的 config /
-ui_state / 壁纸 I/O；is_adapted / supports_weekly / dungeon_map / parse_dungeon_config
-按用例 patch（这些名字实际由 task_card 子模块引用，patch 目标指向 task_card），
-验证 QML 任务卡所需的数据与写回行为。
+ui_state / 壁纸 I/O；is_adapted / ScriptService.get_weekly_defs / dungeon_map /
+parse_dungeon_config 按用例 patch（这些名字实际由 task_card 子模块引用，
+patch 目标指向 task_card），验证 QML 任务卡所需的数据与写回行为。
 """
 
 import unittest
@@ -18,7 +18,9 @@ class TestTaskCard(unittest.TestCase):
     """任务卡数据 / 写回：与旧 task_card.py 对齐。"""
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card, "_supports_weekly", return_value=True)
+    @patch.object(
+        task_card.ScriptService, "get_weekly_defs", return_value=[{"name": "周常"}]
+    )
     @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_daily_text_default_is_placeholder(self, *_):
         b = _make_bridge()
@@ -50,7 +52,7 @@ class TestTaskCard(unittest.TestCase):
         self.assertFalse(b.dailySupported)
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card, "_supports_weekly", return_value=False)
+    @patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[])
     @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_select_dungeon_persists(self, *_):
         b = _make_bridge()
@@ -65,7 +67,7 @@ class TestTaskCard(unittest.TestCase):
         m_save.assert_called_once()
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card, "_supports_weekly", return_value=False)
+    @patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[])
     @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_select_dungeon_clear_removes(self, *_):
         b = _make_bridge()
@@ -77,7 +79,9 @@ class TestTaskCard(unittest.TestCase):
         self.assertEqual(b.dailyDungeonText, "选择副本")
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card, "_supports_weekly", return_value=True)
+    @patch.object(
+        task_card.ScriptService, "get_weekly_defs", return_value=[{"name": "周常"}]
+    )
     @patch.object(task_card, "is_weekly_start_reached", return_value=True)
     @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_select_weekly_persists_and_toggle(self, *_):
@@ -92,7 +96,7 @@ class TestTaskCard(unittest.TestCase):
         m_save.assert_called_once()
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card, "_supports_weekly", return_value=False)
+    @patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[])
     @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_toggle_weekly_memory_only(self, *_):
         b = _make_bridge()
@@ -106,7 +110,9 @@ class TestTaskCard(unittest.TestCase):
         m_save.assert_not_called()
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card, "_supports_weekly", return_value=True)
+    @patch.object(
+        task_card.ScriptService, "get_weekly_defs", return_value=[{"name": "周常"}]
+    )
     @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_toggle_master_syncs_weekly_when_supported(self, *_):
         b = _make_bridge()

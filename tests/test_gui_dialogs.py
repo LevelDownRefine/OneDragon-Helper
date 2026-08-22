@@ -347,12 +347,17 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
             )
 
     def test_hidden_when_weekly_unsupported(self):
-        """不支持周常的脚本周几起行应隐藏"""
+        """不支持周常的脚本周几起行应隐藏。
+
+        combo 以 dialog 为父控件，仅「不进布局」不够——未布局的子控件会按默认
+        位置 (0,0) 绘制并盖住左上角字段。必须 isHidden() 为真（未 show 的 dialog
+        上 isVisible() 恒为 False，断不出这个 bug）。
+        """
         dlg = self._make_dialog(
             "collect_log", "日志分析", _FakeChainService(), supported=False
         )
         self.assertFalse(dlg._weekly_start_supported)
-        self.assertFalse(dlg.weekly_start_combo.isVisible())
+        self.assertTrue(dlg.weekly_start_combo.isHidden())
 
     def test_visible_and_loaded_when_weekly_supported(self):
         """支持周常的脚本周几起行可见，且加载 gui_state 的 weekly_start"""

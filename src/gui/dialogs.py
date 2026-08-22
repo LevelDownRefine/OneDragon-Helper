@@ -488,7 +488,6 @@ class SingleScriptConfigDialog(_FormDialogBase):
         # 周几起：仅支持周常的脚本显示（选择落到 gui_state.json 的 weekly_start）。
         # 不支持时整行不进布局，超时行上移到行 7，避免空行留白。
         self._weekly_start_supported = supports_weekly(self.script_name)
-        weekly_row = 7 if self._weekly_start_supported else -1
         timeout_row = 8 if self._weekly_start_supported else 7
 
         # 周几起（行 7）
@@ -496,10 +495,13 @@ class SingleScriptConfigDialog(_FormDialogBase):
             ["不设置"] + [f"周{WEEKDAY_SHORT_NAMES[i]}起" for i in range(7)]
         )
         self.weekly_start_combo.setStyleSheet(combo_box_qss())
-        self._weekly_start_row = self.weekly_start_combo
         if self._weekly_start_supported:
-            grid.addWidget(self._make_label("周常周几起:"), weekly_row, 0)
-            grid.addWidget(self.weekly_start_combo, weekly_row, 1, 1, 2)
+            grid.addWidget(self._make_label("周常周几起:"), 7, 0)
+            grid.addWidget(self.weekly_start_combo, 7, 1, 1, 2)
+        else:
+            # _make_combo 以 self 为父：控件已是 dialog 子控件，不进布局也会按默认
+            # 位置 (0,0) 绘制并盖住左上角字段，必须显式 hide()。
+            self.weekly_start_combo.hide()
 
         # 每周超时（4×2 Grid 让同列等宽，数字右对齐）
         timeout_grid = QGridLayout()

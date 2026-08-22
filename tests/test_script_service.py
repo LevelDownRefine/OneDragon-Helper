@@ -18,9 +18,13 @@ class ScriptServiceTestBase(unittest.TestCase):
         self.addCleanup(self.tmp_dir.cleanup)
         self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
         self.weekly_path = os.path.join(self.tmp_dir.name, "weekly_timeouts.yml")
+        self.weekly_list_path = os.path.join(self.tmp_dir.name, "weekly_list.yml")
         self._write_config(
             {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]}
         )
+        # weekly_timeouts.yml 随包发布、必存在，默认建一个空 {} 文件，
+        # 贴近真实部署；缺失→{} 的兜底已移除（改 assert 暴露）。
+        self._write_weekly({})
         patchers = [
             patch(
                 "src.service.script_service.require_config_yml_path",
@@ -30,6 +34,10 @@ class ScriptServiceTestBase(unittest.TestCase):
                 "src.service.script_service.get_weekly_timeouts_yml_path_under_root",
                 return_value=self.weekly_path,
             ),
+            patch(
+                "src.service.script_service.get_weekly_list_yml_path_under_root",
+                return_value=self.weekly_list_path,
+            ),
         ]
         for p in patchers:
             p.start()
@@ -37,6 +45,10 @@ class ScriptServiceTestBase(unittest.TestCase):
 
     def _write_config(self, data):
         with open(self.config_path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+
+    def _write_weekly(self, data):
+        with open(self.weekly_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
 
     def _read_config(self):
@@ -102,9 +114,9 @@ class TestRenameWeeklyInTimeouts(ScriptServiceTestBase):
         self.assertEqual(self._read_weekly()["a"], [60] * 7)
 
     def test_old_entry_missing_noop(self):
-        """旧名无 weekly 条目 → no-op（不报错，不写文件）。"""
+        """旧名无 weekly 条目 → no-op（不报错、不改文件，保持空 {}）。"""
         ScriptService().rename_weekly_in_timeouts("none", "b")
-        self.assertIsNone(self._read_weekly())
+        self.assertEqual(self._read_weekly(), {})
 
 
 class TestEnsureWeeklyEntry(ScriptServiceTestBase):
@@ -292,9 +304,9 @@ class TestDeleteWeekly(ScriptServiceTestBase):
         self.assertEqual(weekly, {"mute": [120] * 7})
 
     def test_delete_weekly_noop_when_absent(self):
-        """脚本无 weekly 条目时清理为 no-op（不报错）"""
+        """脚本无 weekly 条目时清理为 no-op（不报错，文件保持空 {}）"""
         ScriptService().delete_weekly("不存在")
-        self.assertIsNone(self._read_weekly())
+        self.assertEqual(self._read_weekly(), {})
 
 
 if __name__ == "__main__":
