@@ -2,7 +2,7 @@
 
 本模块是"重跑"职责的入口，依赖 collect_log（只做日志收集与打印）来判定哪些游戏失败。
 本项目允许复用核心代码（未来将迁入主流程），故直接复用脚本唯一标识 get_script_name
-来匹配脚本链条目；其余仅依赖标准库与 yaml。
+来匹配脚本链条目；其余仅依赖标准库与 ruamel.yaml（经 src.config.yaml_rt 读写 config）。
 """
 
 import logging
@@ -15,9 +15,9 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-import src.log.monitor as collect_log
-import yaml
+import src.log.monitor as collect_log  # noqa: E402
 from src.config.subscript import get_script_name  # noqa: E402
+from src.config.yaml_rt import load_yaml  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def _find_chain_index(script_name: str, chain_path: str) -> int | None:
     """
     try:
         with open(chain_path, encoding="utf-8") as f:
-            chain_data = yaml.safe_load(f) or {}
+            chain_data = load_yaml(f) or {}
     except FileNotFoundError:
         logger.warning("[rerun] 脚本链配置不存在，跳过失败重跑: %s", chain_path)
         return None

@@ -13,10 +13,9 @@ import json
 import logging
 import os
 
-import yaml
-
 from src.config.dungeon_config import load_dungeon_map
 from src.config.subscript import check_script_name_uniqueness, get_script_name
+from src.config.yaml_rt import dump_yaml, load_yaml
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.script_service import ScriptService
 from src.utils import (
@@ -61,8 +60,7 @@ class ChainService:
         且脚本唯一标识唯一，``script_list`` 内部数据此后可安全用直接访问。
         """
         config_path = require_config_yml_path()
-        with open(config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+        data = load_yaml(config_path)
         assert isinstance(data, dict) and "script_list" in data, (
             "[service] config.yml 缺少 script_list 字段"
         )
@@ -95,7 +93,7 @@ class ChainService:
         )
         config_path = get_config_yml_path_under_root()
         with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+            dump_yaml(data, f)
 
     def add_script(self, script_data: dict) -> None:
         """向 config.yml 的 script_list 追加一个脚本条目，并自动创建 weekly 默认条目。

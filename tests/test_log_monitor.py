@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import yaml
+from src.config.yaml_rt import dump_yaml
 
 # scripts/ 位于项目根（非 src/ 下），追加 scripts/ 到 sys.path 以便扁平导入。
 sys.path.append(
@@ -260,7 +260,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
         with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump({"script_list": scripts}, f)
+            dump_yaml({"script_list": scripts}, f)
 
     def _fake_exe(self, tmp: str, name: str = "fake.exe") -> str:
         # 游戏父目录不放 logs，使 parse 判定为 NO_LOG（未正常启动）。
@@ -323,7 +323,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
         with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump(
+            dump_yaml(
                 {
                     "script_list": [
                         {
@@ -402,7 +402,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
         with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump(
+            dump_yaml(
                 {
                     "script_list": [
                         {
@@ -518,7 +518,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
         with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump(
+            dump_yaml(
                 {
                     "script_list": [
                         {
@@ -709,7 +709,7 @@ class TestRerunFailed(unittest.TestCase):
         with tempfile.NamedTemporaryFile(
             "w", suffix=suffix, delete=False, encoding="utf-8"
         ) as chain:
-            yaml.safe_dump({"script_list": script_list}, chain)
+            dump_yaml({"script_list": script_list}, chain)
         return chain.name
 
     def test_find_chain_index_matches_enabled(self):
@@ -1076,7 +1076,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
         with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump(
+            dump_yaml(
                 {
                     "script_list": [
                         {

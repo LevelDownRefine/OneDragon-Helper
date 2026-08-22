@@ -5,8 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-import yaml
-
+from src.config.yaml_rt import dump_yaml, load_yaml
 from src.service.chain_service import ChainService
 
 
@@ -25,7 +24,7 @@ class TestLoadSaveConfig(unittest.TestCase):
             ]
         }
         with open(self.config_path, "w", encoding="utf-8") as f:
-            yaml.dump(fake_data, f, allow_unicode=True)
+            dump_yaml(fake_data, f)
         with patch(
             "src.service.chain_service.require_config_yml_path",
             return_value=self.config_path,
@@ -35,7 +34,7 @@ class TestLoadSaveConfig(unittest.TestCase):
 
     def test_load_config_asserts_script_list(self):
         with open(self.config_path, "w", encoding="utf-8") as f:
-            yaml.dump({"a": 1}, f, allow_unicode=True)
+            dump_yaml({"a": 1}, f)
         with (
             patch(
                 "src.service.chain_service.require_config_yml_path",
@@ -52,7 +51,7 @@ class TestLoadSaveConfig(unittest.TestCase):
         ):
             ChainService().save_config({"script_list": [{"display_name": "测试"}]})
         with open(self.config_path, encoding="utf-8") as f:
-            saved = yaml.safe_load(f)
+            saved = load_yaml(f)
         self.assertEqual(saved["script_list"][0]["display_name"], "测试")
 
     def test_save_config_asserts_script_list(self):
@@ -192,17 +191,15 @@ class TestAddRemoveScript(unittest.TestCase):
         self.addCleanup(self.tmp_dir.cleanup)
         self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
         with open(self.config_path, "w", encoding="utf-8") as f:
-            yaml.dump(
+            dump_yaml(
                 {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]},
                 f,
-                allow_unicode=True,
-                sort_keys=False,
             )
         self.mock_script = MagicMock()
 
     def _read(self):
         with open(self.config_path, encoding="utf-8") as f:
-            return yaml.safe_load(f)
+            return load_yaml(f)
 
     def test_add_script_appends(self):
         """add_script 在 script_list 末尾追加条目、落盘，并内部调 ensure_weekly_entry。"""

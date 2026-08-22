@@ -5,8 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import yaml
-
+from src.config.yaml_rt import dump_yaml, load_yaml
 from src.service.script_service import ScriptService
 
 
@@ -52,31 +51,31 @@ class ScriptServiceTestBase(unittest.TestCase):
 
     def _write_config(self, data):
         with open(self.config_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+            dump_yaml(data, f)
 
     def _write_weekly(self, data):
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+            dump_yaml(data, f)
 
     def _write_weekly_start(self, data):
         with open(self.weekly_start_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+            dump_yaml(data, f)
 
     def _read_config(self):
         with open(self.config_path, encoding="utf-8") as f:
-            return yaml.safe_load(f)
+            return load_yaml(f)
 
     def _read_weekly(self):
         if not os.path.exists(self.weekly_path):
             return None
         with open(self.weekly_path, encoding="utf-8") as f:
-            return yaml.safe_load(f)
+            return load_yaml(f)
 
     def _read_weekly_start(self):
         if not os.path.exists(self.weekly_start_path):
             return None
         with open(self.weekly_start_path, encoding="utf-8") as f:
-            return yaml.safe_load(f)
+            return load_yaml(f)
 
 
 class TestGetScript(ScriptServiceTestBase):
@@ -117,7 +116,7 @@ class TestRenameWeeklyInTimeouts(ScriptServiceTestBase):
 
     def test_rename_migrates_entry(self):
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"a": [1] * 7}, f, allow_unicode=True)
+            dump_yaml({"a": [1] * 7}, f)
         ScriptService().rename_weekly_in_timeouts("a", "b")
         weekly = self._read_weekly()
         self.assertNotIn("a", weekly)
@@ -126,7 +125,7 @@ class TestRenameWeeklyInTimeouts(ScriptServiceTestBase):
     def test_same_name_noop(self):
         """同名的 rename 为 no-op，不影响已有 weekly 条目。"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"a": [60] * 7}, f, allow_unicode=True)
+            dump_yaml({"a": [60] * 7}, f)
         ScriptService().rename_weekly_in_timeouts("a", "a")
         self.assertEqual(self._read_weekly()["a"], [60] * 7)
 
@@ -143,7 +142,7 @@ class TestEnsureWeeklyEntry(ScriptServiceTestBase):
 
     def test_existing_entry_untouched(self):
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"a": [60] * 7}, f, allow_unicode=True)
+            dump_yaml({"a": [60] * 7}, f)
         ScriptService().ensure_weekly_entry("a")
         self.assertEqual(self._read_weekly()["a"], [60] * 7)
 
@@ -154,13 +153,13 @@ class TestWeeklyInputs(ScriptServiceTestBase):
 
     def test_existing_entry_kept(self):
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"a": [1, 2, 3, 4, 5, 6, 7]}, f, allow_unicode=True)
+            dump_yaml({"a": [1, 2, 3, 4, 5, 6, 7]}, f)
         self.assertEqual(ScriptService().weekly_inputs("a"), [1, 2, 3, 4, 5, 6, 7])
 
     def test_short_entry_padded_with_default(self):
         """不足 7 格 → 用默认超时补齐。"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"a": [10, 20]}, f, allow_unicode=True)
+            dump_yaml({"a": [10, 20]}, f)
         self.assertEqual(
             ScriptService().weekly_inputs("a"),
             [10, 20, 3600, 3600, 3600, 3600, 3600],
@@ -195,7 +194,7 @@ class TestCheckWeekly(ScriptServiceTestBase):
     def test_ok_when_aligned(self):
         """weekly 有 7 格条目且无孤儿 → status=ok。"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"a": [3600] * 7}, f, allow_unicode=True)
+            dump_yaml({"a": [3600] * 7}, f)
         result = ScriptService().check_weekly()
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["missing_or_short"], [])
@@ -210,7 +209,7 @@ class TestCheckWeekly(ScriptServiceTestBase):
     def test_orphan_key_reported(self):
         """weekly 有 config 已删除的 key → 进 orphans。"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"a": [3600] * 7, "gone": [3600] * 7}, f, allow_unicode=True)
+            dump_yaml({"a": [3600] * 7, "gone": [3600] * 7}, f)
         result = ScriptService().check_weekly()
         self.assertEqual(result["status"], "inconsistent")
         self.assertEqual(result["orphans"], ["gone"])
@@ -300,7 +299,7 @@ class TestDeleteWeekly(ScriptServiceTestBase):
     def test_delete_weekly_cleans_orphan(self):
         """删除后 weekly_timeouts.yml 中该脚本的孤儿条目被移除"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump({"a": [100] * 7}, f, allow_unicode=True, sort_keys=False)
+            dump_yaml({"a": [100] * 7}, f)
         ScriptService().delete_weekly("a")
         weekly = self._read_weekly()
         self.assertNotIn("a", weekly)
@@ -309,11 +308,9 @@ class TestDeleteWeekly(ScriptServiceTestBase):
     def test_delete_weekly_keeps_others(self):
         """删除单个脚本不影响 weekly_timeouts.yml 中其它条目"""
         with open(self.weekly_path, "w", encoding="utf-8") as f:
-            yaml.dump(
+            dump_yaml(
                 {"a": [100] * 7, "mute": [120] * 7},
                 f,
-                allow_unicode=True,
-                sort_keys=False,
             )
         ScriptService().delete_weekly("a")
         weekly = self._read_weekly()
@@ -336,9 +333,9 @@ class TestSetWeeklyStart(unittest.TestCase):
         self.weekly_list_path = os.path.join(self.tmp_dir.name, "weekly_list.yml")
         # weekly_list.yml 必存在（_load_weekly_defs 断言），但本测试不依赖其内容。
         with open(self.weekly_list_path, "w", encoding="utf-8") as f:
-            yaml.dump({}, f, allow_unicode=True)
+            dump_yaml({}, f)
         with open(self.weekly_start_path, "w", encoding="utf-8") as f:
-            yaml.dump({}, f, allow_unicode=True)
+            dump_yaml({}, f)
         patchers = [
             patch(
                 "src.service.script_service.get_weekly_start_yml_path_under_root",
@@ -355,14 +352,14 @@ class TestSetWeeklyStart(unittest.TestCase):
 
     def _read_start(self):
         with open(self.weekly_start_path, encoding="utf-8") as f:
-            return yaml.safe_load(f)
+            return load_yaml(f)
 
     def test_set_writes_to_weekly_start_file_only(self):
         """set_weekly_start 写入 weekly_start.yml，不污染 weekly_list.yml。"""
         ScriptService().set_weekly_start("a", 4)
         self.assertEqual(self._read_start(), {"a": 4})
         with open(self.weekly_list_path, encoding="utf-8") as f:
-            self.assertEqual(yaml.safe_load(f), {})
+            self.assertEqual(load_yaml(f), {})
 
     def test_get_returns_set_value(self):
         ScriptService().set_weekly_start("a", 3)

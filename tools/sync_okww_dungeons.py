@@ -26,7 +26,7 @@ import sys
 import urllib.error
 import urllib.request
 
-import yaml
+from src.config.yaml_rt import dump_yaml, load_yaml
 
 _FORGERY_URL = (
     "https://raw.githubusercontent.com/ok-oldking/ok-wuthering-waves/"
@@ -75,7 +75,7 @@ def _fetch_totals() -> dict[str, int]:
 def _load_okww() -> dict[str, list[int]]:
     """读取 dungeon_list.yml 中 ok-ww 的纯数字分类 → 数字 value 列表。"""
     with open(_DUNGEON_PATH, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        data = load_yaml(f)
     assert isinstance(data, dict) and _OKWW_KEY in data, (
         f"dungeon_list.yml 缺少 {_OKWW_KEY} 配置"
     )
@@ -96,7 +96,7 @@ def _apply_new(upstream: dict[str, int], current: dict[str, list[int]]) -> None:
     直接 load→改→dump 即可，重写后 diff 只含真实增量。
     """
     with open(_DUNGEON_PATH, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        data = load_yaml(f)
     for cat, total in upstream.items():
         dungeon = next(d for d in data[_OKWW_KEY]["dungeons"] if d["name"] == cat)
         existing = {s["value"] for s in dungeon["sequences"]}
@@ -104,7 +104,7 @@ def _apply_new(upstream: dict[str, int], current: dict[str, list[int]]) -> None:
             if num not in existing:
                 dungeon["sequences"].append({"display": str(num), "value": num})
     with open(_DUNGEON_PATH, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+        dump_yaml(data, f)
 
 
 def main() -> int:

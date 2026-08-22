@@ -1,7 +1,7 @@
 """失败脚本邮件通知：先调 collect_log 收集当日失败脚本，有失败则以 SMTP 发送邮件。
 
 本模块是"邮件通知"职责的入口，依赖 collect_log（只做日志收集与打印）来判定哪些游戏失败，
-并复用其汇总表格与诊断文本（报错信息 + 日志尾部）。其余仅依赖标准库与 yaml。
+并复用其汇总表格与诊断文本（报错信息 + 日志尾部）。其余仅依赖标准库与 ruamel.yaml（经 src.config.yaml_rt 读写 config）。
 发送失败 / 配置缺失时仅告警，不影响脚本链其余环节。
 """
 
@@ -20,8 +20,8 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-import src.log.monitor as collect_log
-import yaml
+import src.log.monitor as collect_log  # noqa: E402
+from src.config.yaml_rt import load_yaml  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ def _load_mail_config() -> dict | None:
 
     try:
         with open(config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+            data = load_yaml(f) or {}
     except Exception:
         logger.exception(
             "[notify_mail] 读取邮件配置失败，跳过失败通知: %s", config_path

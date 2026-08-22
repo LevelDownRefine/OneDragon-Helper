@@ -13,8 +13,6 @@ import copy
 import logging
 from typing import Any
 
-import yaml
-
 from src.config.dungeon_config import (
     load_dungeon_map,
     parse_dungeon_config,
@@ -22,6 +20,7 @@ from src.config.dungeon_config import (
 )
 from src.config.set_config import set_config
 from src.config.subscript import DEFAULT_RUN_TIMEOUT, get_script_name
+from src.config.yaml_rt import dump_yaml
 from src.utils import (
     get_path_under_root,
     safe_path_join,
@@ -192,5 +191,5 @@ def generate_chain_config(
         get_path_under_root("config", "script_chain"), f"{chain_name}.yml"
     )
     with open(output_file, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+        dump_yaml(data, f)
     return output_file

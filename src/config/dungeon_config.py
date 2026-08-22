@@ -1,8 +1,7 @@
 import os
 from typing import Any
 
-import yaml
-
+from src.config.yaml_rt import load_yaml
 from src.utils import get_root_dir, safe_path_join
 
 DungeonOptions = list[str]
@@ -16,8 +15,7 @@ def get_dungeon_config_path() -> str:
 def load_dungeon_map() -> dict[str, Any]:
     dungeon_file = get_dungeon_config_path()
     if os.path.exists(dungeon_file):
-        with open(dungeon_file, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        return load_yaml(dungeon_file) or {}
     return {}
 
 

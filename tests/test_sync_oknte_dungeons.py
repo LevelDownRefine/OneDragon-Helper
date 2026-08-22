@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-import yaml
+from src.config.yaml_rt import load_yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 import sync_oknte_dungeons as m
@@ -111,7 +111,7 @@ class SyncOknteTest(unittest.TestCase):
         m._apply_numeric(m._fetch_anomaly_totals())
         m._apply_hunter(m._fetch_hunter_targets())
         with open(self.tmp_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+            data = load_yaml(f)
         by_name = {d["name"]: d for d in data["ok-nte"]["dungeons"]}
         self.assertEqual(
             [s["value"] for s in by_name["空幕"]["sequences"]], [1, 2, 3, 4, 5, 6]

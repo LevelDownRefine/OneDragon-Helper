@@ -10,7 +10,7 @@
 本模块为 `src.log` 包的子模块，由 `scripts/collect_log.py`（独立入口）或 GUI 以 `import
 src.log.monitor` 方式调用，不单独运行。除复用脚本唯一标识 `get_script_name`（见
 `src.config.subscript`）外，不依赖项目内其余模块；根目录由 `_get_root_dir` 推导，并直接
-`yaml.safe_load` 读取 `config.yml`。
+`load_yaml`（ruamel.yaml 往返模式）读取 `config.yml`。
 """
 
 import logging
@@ -22,9 +22,8 @@ import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import yaml
-
 from src.config.subscript import get_script_name
+from src.config.yaml_rt import load_yaml
 from src.utils_logger import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -638,7 +637,7 @@ def parse_logs(do_log: bool = True) -> dict[str, list[str] | str]:
     assert config_path.exists(), f"[log_monitor] config.yml 不存在: {config_path}"
 
     with open(config_path, encoding="utf-8") as f:
-        config_data = yaml.safe_load(f) or {}
+        config_data = load_yaml(f) or {}
 
     script_list = config_data.get("script_list", [])
     # 受支持脚本由各 parser 的 script_name 推导，与全链路标识一致。

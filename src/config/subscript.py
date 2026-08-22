@@ -8,21 +8,14 @@ import logging
 import os
 import re
 
-import yaml
-from ruamel.yaml import YAML
-
+from src.config.yaml_rt import _yaml as _game_yaml
+from src.config.yaml_rt import dump_yaml, load_yaml
 from src.utils import (
     get_config_yml_path_under_root,
     get_root_dir,
     require_config_yml_path,
     safe_path_join,
 )
-
-# 游戏 config 往返读写实例：保留注释 / 键序 / 原引号，并按 YAML 1.2 解析，
-# 避免 PyYAML 1.1 把 04:00 这类时间误当六十进制数（→ 240.0）污染落盘。
-_game_yaml = YAML(typ="rt")
-_game_yaml.preserve_quotes = True
-_game_yaml.width = 4096  # 防止长行（长注释 / 列表）被折行破坏原排版
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +29,7 @@ DEFAULT_RUN_TIMEOUT = 3600
 
 def _load_config_yml() -> dict:
     """读取主配置 config.yml"""
-    with open(require_config_yml_path(), encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    return load_yaml(require_config_yml_path())
 
 
 # ============================================================
@@ -175,7 +167,7 @@ def load_template(script_name: str, rel_path: str) -> dict | list:
         if ext == ".json":
             template = json.load(f)
         elif ext in (".yaml", ".yml"):
-            template = yaml.safe_load(f)
+            template = load_yaml(template_path)
         else:
             raise ValueError(f"[set_config][{script_name}] 不支持的模板格式: {ext}")
     return template
@@ -298,7 +290,5 @@ def generate_config_from_example() -> None:
     example_path = safe_path_join(get_root_dir(), "config", "config.example.yml")
     config_path = get_config_yml_path_under_root()
     assert os.path.exists(example_path), f"[subscript] 模板不存在: {example_path}"
-    with open(example_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+    data = load_yaml(example_path)
+    dump_yaml(data, config_path)

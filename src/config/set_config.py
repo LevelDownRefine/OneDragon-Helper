@@ -41,6 +41,13 @@ def _scalar_kind(value: Any) -> type:
         return float
     if isinstance(value, str):
         return str
+    # ruamel.yaml 往返会把 list/dict 读成 CommentedSeq/CommentedMap 等子类，
+    # 与 config 文件中已是普通 list/dict 的字段比较时，type() 会误判不一致。
+    # 这里按真实容器类型归一化（list / dict），与标量处理保持一致。
+    if isinstance(value, list):
+        return list
+    if isinstance(value, dict):
+        return dict
     return type(value)
 
 

@@ -5,8 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-import yaml
-
+from src.config.yaml_rt import dump_yaml
 from src.gui.controllers import task_card as task_card_mod
 from src.gui.controllers.task_card import TaskCardController
 
@@ -21,7 +20,7 @@ def _write_defs(tmp, data):
     """写临时 weekly_list.yml（周常声明配置）。"""
     path = os.path.join(tmp.name, "weekly_list.yml")
     with open(path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+        dump_yaml(data, f)
     return path
 
 

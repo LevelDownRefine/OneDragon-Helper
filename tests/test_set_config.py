@@ -15,9 +15,8 @@ import tempfile
 import unittest
 from unittest.mock import mock_open, patch
 
-import yaml
-
 from src.config import set_config, subscript
+from src.config.yaml_rt import dump_yaml_text, load_yaml_text
 from src.utils import safe_path_join
 
 
@@ -249,7 +248,7 @@ class TestLoadConfig(unittest.TestCase):
         """应正确解析 YAML 格式的 config"""
         fake_data = {"key": "value", "list": [1, 2, 3]}
         fake_path = r"C:\fake\script\config.yaml"
-        yaml_str = yaml.dump(fake_data, allow_unicode=True)
+        yaml_str = dump_yaml_text(fake_data)
 
         with (
             patch.object(subscript, "get_config_path", return_value=fake_path),
@@ -281,7 +280,7 @@ class TestLoadConfig(unittest.TestCase):
             if ext == ".json":
                 file_content = json.dumps(fake_data, ensure_ascii=False)
             else:
-                file_content = yaml.dump(fake_data, allow_unicode=True)
+                file_content = dump_yaml_text(fake_data)
 
             with (
                 patch.object(
@@ -337,7 +336,7 @@ class TestSaveConfig(unittest.TestCase):
         # 验证写入的内容是有效的 YAML
         handle = m()
         written = "".join(call.args[0] for call in handle.write.call_args_list)
-        self.assertEqual(yaml.safe_load(written), data)
+        self.assertEqual(load_yaml_text(written), data)
 
     def test_save_raises_when_path_is_none(self):
         """get_config_path 返回 None 时应抛出异常"""

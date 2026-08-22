@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-import yaml
+from src.config.yaml_rt import dump_yaml
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -113,7 +113,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         d = tempfile.mkdtemp()
         wt = os.path.join(d, "weekly_timeouts.yml")
         with open(wt, "w", encoding="utf-8") as f:
-            yaml.safe_dump(weekly_map, f, allow_unicode=True)
+            dump_yaml(weekly_map, f)
         return wt
 
     def _make_config_file(self):
@@ -121,7 +121,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         d = tempfile.mkdtemp()
         cfg = os.path.join(d, "config.yml")
         with open(cfg, "w", encoding="utf-8") as f:
-            yaml.safe_dump({"script_list": []}, f, allow_unicode=True)
+            dump_yaml({"script_list": []}, f)
         return cfg
 
     def test_load_seeds_from_default_when_no_weekly_entry(self):
@@ -179,7 +179,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
         d = tempfile.mkdtemp()
         cfg = os.path.join(d, "config.yml")
         with open(cfg, "w", encoding="utf-8") as f:
-            yaml.safe_dump({"script_list": script_list}, f, allow_unicode=True)
+            dump_yaml({"script_list": script_list}, f)
         return cfg
 
     def test_load_sets_block_from_config(self):
