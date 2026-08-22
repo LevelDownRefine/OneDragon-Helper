@@ -492,7 +492,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             self.assertLessEqual(
                 top + height, win_h, f"{name} 底部超出窗口（top={top} h={height}）"
             )
-        # 周常下拉应放得下全部副本（9*32+8=296），不被余量截断
+        # 周常下拉高度 = 选项数 * 32 + 8，应完整放下不被截断
         self.assertEqual(measured["weeklyDungeonPopup"][1], n_opts * 32 + 8)
 
 
@@ -564,9 +564,9 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
         self.assertEqual(
             visible, "False", f"无周常脚本应隐藏周常区，stdout={proc.stdout}"
         )
-        # 134 = 标题(54) + 分隔线 + 日常行(56) + 留白，不含周常区
+        # 128 = 标题+分隔线+日常行(56) 的固定高度，不含周常区（与周常上沿对齐）
         self.assertEqual(
-            height, 134, f"无周常脚本卡片高度应为 134，stdout={proc.stdout}"
+            height, 128, f"无周常脚本卡片高度应为 128，stdout={proc.stdout}"
         )
 
 
@@ -643,10 +643,10 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 wk_h = int(parts[3])
                 card_h = int(parts[5])
         self.assertEqual(visible, "True", f"崩铁应显示周常区，stdout={proc.stdout}")
-        # 周常区 = 项数(2) * 行高(40) + 底部留白(16) = 96（父标题已去除）
-        # 卡片 = 134 + 周常区 + 卡片底部留白(16) = 246
-        self.assertEqual(wk_h, 96, f"周常区高度应=96，stdout={proc.stdout}")
-        self.assertEqual(card_h, 246, f"卡片高度应=246，stdout={proc.stdout}")
+        # 周常区 = 项数(2) * 行高(56) + 底部留白(16) = 128
+        # 卡片 = 128 + 周常区 + 卡片底部留白(16) = 272
+        self.assertEqual(wk_h, 128, f"周常区高度应=128，stdout={proc.stdout}")
+        self.assertEqual(card_h, 272, f"卡片高度应=272，stdout={proc.stdout}")
 
 
 class TestScriptIconProvider(unittest.TestCase):

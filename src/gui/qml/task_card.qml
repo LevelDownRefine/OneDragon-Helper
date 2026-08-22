@@ -26,10 +26,14 @@ Item {
     id: cardRoot
     objectName: "cardRoot"
     width: 480
-    // 高度随适配态：未适配 84（仅标题）；适配时标题+分隔线+日常(56)占 134，
-    // 再加周常区动态高度 + 卡片底部留白(16)。不支持周常时周常区隐藏，高度缩到 134。
-    // 周常区 = 每项(40) * 项数 + 底部留白(16)。
-    height: Bridge.taskAdapted ? (weeklyArea.visible ? (134 + weeklyArea.height + 16) : 134) : 84
+    // 副本/周常 chip 水平位置：在标签（58+64）右侧剩余空间内居中，
+    // 使选项卡片在横向空白块内左右留白一致。
+    readonly property int chipX: 181
+    // 高度随适配态：未适配 84（仅标题）；适配时标题+分隔线+日常(56)占 128，
+    // 再加周常区动态高度 + 卡片底部留白(16)。不支持周常时周常区隐藏，高度缩到 128。
+    // 周常区 = 每项(56) * 项数 + 底部留白(16)。
+    // 周常区上沿(128)与每日行底(124)对齐其它段间距，纵向节奏统一（文字块间均 34px）。
+    height: Bridge.taskAdapted ? (weeklyArea.visible ? (128 + weeklyArea.height + 16) : 128) : 84
 
     // 窗口边界在卡片坐标系中的常量：卡片由 main.qml 的 Loader 固定在 (128, 392)，
     // 窗口固定 1280x720（popupCatcher 用的是同一套常量）。下拉据此判断上下余量。
@@ -102,10 +106,17 @@ Item {
         }
         Rectangle {
             id: dailyChip
-            x: 130; y: 15; width: 300; height: 26; radius: 13
+            x: cardRoot.chipX; y: 15
+            width: 200
+            height: 26; radius: 13
             color: "#0F1A2E"; border.width: 1; border.color: "#33517A"
             Text {
-                anchors.centerIn: parent; text: Bridge.dailyDungeonText
+                anchors.fill: parent
+                leftPadding: 12; rightPadding: 12
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+                text: Bridge.dailyDungeonText
                 color: "#7DA8FF"; font.pixelSize: 11
             }
             MouseArea {
@@ -125,14 +136,14 @@ Item {
     // ── 周常区（y=134 起；不支持周常时整区隐藏）──
     // 颜色与每日任务行共用同一色板（白标题 / 蓝图标底 / 蓝图标字 / 蓝 chip 字）。
     // 仅列出各周常子项（如「货币战争」「历战余响」），父分类标题已去除；
-    // 每项统一左对齐每日 chip（x=130），与日常行选项在同一垂线上。
+    // 每行尺寸、图标、文字、chip 的 y 都与「每日任务」行严格对齐，保证视觉统一。
     Item {
         id: weeklyArea
         objectName: "weeklyArea"
-        x: 20; y: 134; width: 440
+        x: 20; y: 128; width: 440
         visible: Bridge.taskAdapted && Bridge.weeklySupported
         property bool supported: Bridge.weeklySupported
-        property int rowH: 40
+        property int rowH: 56
         // 高度由数据模型长度推导：Column 无 count 属性（那是 Repeater 的），
         // 用 Bridge.weeklyItems.length 才可靠；每项固定 rowH。
         height: Bridge.weeklyItems.length * rowH + 16
@@ -149,7 +160,7 @@ Item {
                     width: weeklyArea.width; height: weeklyArea.rowH
                     property bool hasDungeon: modelData.has_dungeon
                     Rectangle {
-                        x: 12; y: 7; width: 36; height: 26; radius: 8
+                        x: 12; y: 10; width: 36; height: 36; radius: 10
                         color: weeklyArea.supported ? "#1A3A7A" : "#2A3040"
                         Text {
                             anchors.centerIn: parent; text: "📅"
@@ -158,21 +169,27 @@ Item {
                         }
                     }
                     Text {
-                        x: 58; y: 9; width: 64; height: 22
+                        x: 58; y: 15; width: 64; height: 26
                         text: modelData.name
                         color: weeklyArea.supported ? "#FFFFFF" : "#4A5568"
-                        font.pixelSize: 14; font.weight: Font.DemiBold
+                        font.pixelSize: 15; font.weight: Font.Bold
                         verticalAlignment: Text.AlignVCenter
                     }
                     Rectangle {
                         id: wkChip
-                        x: 130; y: 7; width: 300; height: 26; radius: 13
+                        x: cardRoot.chipX; y: 15
+                        width: 200
+                        height: 26; radius: 13
                         visible: hasDungeon
                         color: weeklyArea.supported ? "#0F1A2E" : "#1A2028"
                         border.width: 1
                         border.color: weeklyArea.supported ? "#33517A" : "#2A3850"
                         Text {
-                            anchors.centerIn: parent
+                            anchors.fill: parent
+                            leftPadding: 12; rightPadding: 12
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
                             text: modelData.dungeon_label
                             color: weeklyArea.supported ? "#7DA8FF" : "#4A5568"
                             font.pixelSize: 11
@@ -183,6 +200,9 @@ Item {
                             enabled: weeklyArea.supported
                             onClicked: {
                                 weeklyDungeonPopup.weeklyName = modelData.name
+                                var rowTop = weeklyArea.y + index * weeklyArea.rowH
+                                weeklyDungeonPopup.anchorTop = rowTop
+                                weeklyDungeonPopup.anchorBottom = rowTop + weeklyArea.rowH
                                 weeklyDungeonPopup.visible = !weeklyDungeonPopup.visible
                                 dungeonPopup.visible = false
                             }
@@ -364,19 +384,21 @@ Item {
     }
 
     // ── 周常副本下拉（单级：副本名列表，来自 Bridge.weeklyDungeonOptions）──
-    // 复用 dungeonPopup 的测量/封顶滚动模式，宽度按内容一次性算定。
+    // 锚点从整个周常区底部改为被点击的具体子项行，弹出位置与点击行对齐。
     Item {
         id: weeklyDungeonPopup
         objectName: "weeklyDungeonPopup"
         z: 100
         visible: false
-        x: 130
+        x: cardRoot.chipX
         y: weeklyDungeonPopup.popupY
         width: instW + 8
         height: popupHeight
         property string weeklyName: ""
         property int instW: 200
-        property int popupY: weeklyArea.y + weeklyArea.height + 4
+        property int anchorTop: weeklyArea.y
+        property int anchorBottom: weeklyArea.y + weeklyArea.height
+        property int popupY: anchorBottom + 4
         property int popupHeight: 360
         property int viewportH: height - 8
 
@@ -393,8 +415,7 @@ Item {
                 if (instTm.width > maxW) maxW = instTm.width
             }
             instW = Math.min(maxW + 28, 240)
-            var geom = cardRoot.placePopup(
-                weeklyArea.y, weeklyArea.y + weeklyArea.height,
+            var geom = cardRoot.placePopup(anchorTop, anchorBottom,
                 Math.min(opts.length * 32 + 8, 360))
             popupY = geom.y
             popupHeight = geom.h
