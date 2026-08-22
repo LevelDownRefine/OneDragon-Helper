@@ -62,17 +62,6 @@ def _pad_row(cells: list[str], widths: list[int]) -> str:
     return "".join(parts)
 
 
-def _resolve_daily(daily_raw: bool | None, status: str) -> bool:
-    """推导每日是否做完：日志有明确信号（True/False）时直接用；
-
-    日志未提及（None）时按整体运行状态推断——每日脚本整体跑成即视为当日做完，
-    失败 / 无日志即未做。避免「未知」这类模棱两可的呈现。
-    """
-    if daily_raw is not None:
-        return daily_raw
-    return status == ScriptLogStatus.SUCCESS
-
-
 def _resolve_exited(exited_raw: bool | None, status: str) -> bool:
     """推导是否正常退出（进程是否正常收尾，与结果成败正交）：
 
@@ -152,22 +141,27 @@ class BaseLogParser:
     # 命中 error_markers 但实为良性噪声（启动瞬断 / 战斗复检 / 关机收尾等）的子串，
     # 含这些子串的行不计入报错。
     error_noise: tuple[str, ...] = ()
+    # 日志文件名 glob 模式（各子类按需覆写）。
+    log_pattern: str = ""
+    # 体力提取正则：第一个捕获组为剩余体力数字；不设置（为空）表示日志不含体力。
+    stamina_pattern: str = ""
+    # 判定当日是否做完的「成功」标记；命中任一即视为做完，否则（含未提及）视为未完成。
+    daily_success_marker: tuple[str, ...] = ()
+    # 正常退出的判定标记（进程是否收尾，与结果成败正交）；命中任一即视为正常退出。
+    exit_markers: tuple[str, ...] = ()
 
     def get_log_path(self, script_path: str) -> Path | None:
         log_dir = self._get_log_dir(script_path)
         if not log_dir or not log_dir.exists():
             return None
 
-        log_files = sorted(log_dir.glob(self._get_log_pattern()), reverse=True)
+        log_files = sorted(log_dir.glob(self.log_pattern), reverse=True)
         for log_file in log_files:
             if self._is_valid_log(log_file):
                 return log_file
         return None
 
     def _get_log_dir(self, script_path: str) -> Path:
-        raise NotImplementedError
-
-    def _get_log_pattern(self) -> str:
         raise NotImplementedError
 
     def parse_content(self, content: str) -> str:
@@ -199,10 +193,6 @@ class BaseLogParser:
         )
         return mtime >= yesterday_4am
 
-    # ---- 四类补充信息提取（各子类按需覆写） ----
-    # 体力提取正则：第一个捕获组为剩余体力数字；不设置（为空）表示日志不含体力。
-    stamina_pattern: str = ""
-
     def parse_stamina(self, content: str) -> str | None:
         """剩余体力（各游戏称谓不同）。子类以 stamina_pattern 提供提取正则，
         取最后一个匹配的第一个数字组；不设置 stamina_pattern 或提取不到返回 None。"""
@@ -215,13 +205,13 @@ class BaseLogParser:
         # 单组正则返回 str，多组正则返回 tuple；统一取首个数字组。
         return last[0] if isinstance(last, tuple) else last
 
-    def parse_daily(self, content: str) -> bool | None:
-        """是否做完每日：完成=True，未完成/部分失败=False，日志未提及=None（由表格层按整体状态推断）。"""
-        return None
+    def parse_daily(self, content: str) -> bool:
+        """当日每日是否做完：命中任一成功标记=True，否则=False（无标记即失败）。"""
+        return any(m in content for m in self.daily_success_marker)
 
-    def parse_exit(self, content: str) -> bool | None:
-        """是否正常退出：是=True，异常退出=False，无法判定=None。"""
-        return None
+    def parse_exit(self, content: str) -> bool:
+        """是否正常退出：命中任一 exit_markers=True，否则=False（与结果成败正交）。"""
+        return any(m in content for m in self.exit_markers)
 
     def parse_extra(self, content: str) -> str | None:
         """额外信息（游戏特定）。默认无；子类（如原神浓缩树脂）按需覆写。"""
@@ -257,9 +247,9 @@ class BaseLogParser:
 
         content = self._read_file(log_path)
         status = self.parse_content(content)
-        # daily_done 在此层定稿：parse_daily 是每类自己的方法（产出日志原话信号），
-        # 缺信号时按本类 status 推断（成功=做了每日），保证出厂即为确定 bool。
-        daily_done = _resolve_daily(self.parse_daily(content), status)
+        # daily_done 直接由 parse_daily 定稿：命中成功标记=True，否则=False（无标记即失败），
+        # parse_daily 恒返 bool，无需再按 status 兜底。
+        daily_done = self.parse_daily(content)
         return {
             "status": status,
             "log_path": str(log_path),
@@ -287,34 +277,24 @@ class OkWwLogParser(BaseLogParser):
         "waiting for game to start error",  # 启动瞬断
         "capture_by_bitblt invalid params",  # 启动瞬断（hwnd=0）
     )
+    log_pattern = "ok-script.log"
+    # 命中「Daily Task Completed」即视为当日做完；未命中一律视为未完成。
+    daily_success_marker = ("Daily Task Completed",)
+    # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
+    exit_markers = (
+        "Successfully Executed Task, Exiting Game and App!",
+        "ok:quit app",
+        "Window closed",
+    )
 
     def _get_log_dir(self, script_path: str) -> Path:
         ok_ww_dir = Path(script_path).parent
         return ok_ww_dir / "data" / "apps" / "ok-ww" / "working" / "logs"
 
-    def _get_log_pattern(self) -> str:
-        return "ok-script.log"
-
     def parse_content(self, content: str) -> str:
         if "Successfully Executed Task" in content or "Task completed" in content:
             return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
-
-    def parse_daily(self, content: str) -> bool | None:
-        if "Daily Task Completed" in content:
-            return True
-        if "Daily Task exception stopped" in content:
-            return False
-        return None
-
-    def parse_exit(self, content: str) -> bool | None:
-        if (
-            "Successfully Executed Task, Exiting Game and App!" in content
-            or "ok:quit app" in content
-            or "Window closed" in content
-        ):
-            return True
-        return False
 
 
 class OkNteLogParser(BaseLogParser):
@@ -327,66 +307,45 @@ class OkNteLogParser(BaseLogParser):
         "target_enemy failed",  # 战斗复检，可自行恢复
         "Failed to terminate process",  # 关机收尾
     )
+    log_pattern = "ok-script.log"
+    # 以「info_set failed []」（无失败项）为当日做完的成功标记；
+    # 未命中（含部分失败 / 未执行日常）一律视为未完成。
+    daily_success_marker = ("info_set failed []",)
+    # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
+    exit_markers = (
+        "Successfully Executed Task, Exiting Game and App!",
+        "ok:quit app",
+    )
 
     def _get_log_dir(self, script_path: str) -> Path:
         ok_nte_dir = Path(script_path).parent
         return ok_nte_dir / "data" / "apps" / "ok-nte" / "working" / "logs"
-
-    def _get_log_pattern(self) -> str:
-        return "ok-script.log"
 
     def parse_content(self, content: str) -> str:
         if "Successfully Executed Task" in content or "Task completed" in content:
             return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
 
-    def parse_daily(self, content: str) -> bool | None:
-        if "结束执行日常任务" not in content:
-            return None
-        # info_set failed [] 表示无失败项；否则（含失败任务）视为未完全完成。
-        if "info_set failed []" in content:
-            return True
-        return False
-
-    def parse_exit(self, content: str) -> bool | None:
-        if (
-            "Successfully Executed Task, Exiting Game and App!" in content
-            or "ok:quit app" in content
-        ):
-            return True
-        return False
-
 
 class OkEfLogParser(BaseLogParser):
     script_name = "ok-ef"
+    log_pattern = "日常任务_*.txt"
+    # 命中「执行状态: 完成」即视为当日做完；部分失败 / 异常结束 / 未提及均视为未完成。
+    daily_success_marker = ("执行状态: 完成",)
     # 日志为结构化汇总报告：无体力数字；报错以「- 」缩进明细行列出。
     # 不设 stamina_pattern（为空），故 parse_stamina 返回 None。
+    # 正常退出 = 进程跑完整轮自行收尾（完成 / 部分失败皆属此类）；
+    # 异常结束 / 运行中（被杀 / 崩溃）属非正常退出。exit_markers 只看进程是否正常退出，
+    # 与结果成败正交——部分失败是「正常退出 + 结果失败」，仍算正常退出。
+    exit_markers = ("执行状态: 完成", "执行状态: 部分失败")
 
     def _get_log_dir(self, script_path: str) -> Path:
         return Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
-
-    def _get_log_pattern(self) -> str:
-        return "日常任务_*.txt"
 
     def parse_content(self, content: str) -> str:
         if "执行状态: 完成" in content:
             return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
-
-    def parse_daily(self, content: str) -> bool | None:
-        if "执行状态: 完成" in content:
-            return True
-        if "执行状态: 部分失败" in content or "执行状态: 异常结束" in content:
-            return False
-        return None
-
-    def parse_exit(self, content: str) -> bool | None:
-        # 正常退出 = 进程跑完整轮自行收尾（完成 / 部分失败皆属此类）；
-        # 异常结束 / 运行中（被杀 / 崩溃）属非正常退出。parse_exit 只看进程是否正常退出，
-        # 与结果成败正交——部分失败是「正常退出 + 结果失败」，仍算正常退出。
-        if "执行状态: 完成" in content or "执行状态: 部分失败" in content:
-            return True
-        return False
 
     def collect_error_lines(self, content: str, limit: int = 10) -> list[str]:
         # 报告中的失败明细以缩进的「- 」列表项给出，直接收集这些行。
@@ -405,13 +364,14 @@ class M7ALogParser(BaseLogParser):
     # 仅取剩余开拓力数字，不记录总体力。
     stamina_pattern = r"开拓力[：:]\s*(\d+)/(\d+)"
     error_markers = ("ERROR",)
+    log_pattern = "*.log"
+    daily_success_marker = ("每日实训已完成",)
+    # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
+    exit_markers = ("游戏终止",)
 
     def _get_log_dir(self, script_path: str) -> Path:
         m7a_dir = Path(script_path).parent
         return m7a_dir / "logs"
-
-    def _get_log_pattern(self) -> str:
-        return "*.log"
 
     def parse_content(self, content: str) -> str:
         # 游戏正常终止后，助手还会做收尾善后（如「获取培养目标」），
@@ -433,16 +393,6 @@ class M7ALogParser(BaseLogParser):
             return content
         return content[:term_idx]
 
-    def parse_daily(self, content: str) -> bool | None:
-        if "每日实训已完成" in content:
-            return True
-        return None
-
-    def parse_exit(self, content: str) -> bool | None:
-        if "游戏终止" in content:
-            return True
-        return False
-
 
 class ZZZLogParser(BaseLogParser):
     script_name = "OneDragon-Launcher"
@@ -452,13 +402,19 @@ class ZZZLogParser(BaseLogParser):
     # 仅「指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界」这一具体重试瞬时错误
     # 计入会误报 WARN（整轮仍以「一条龙 执行成功」收尾），故精确排除该噪声行。
     error_noise = ("指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界",)
+    log_pattern = "log.txt"
+    # 命中「一条龙 / 应用组 one_dragon 执行成功」任一即视为当日做完；
+    # 未命中（含执行失败）视为未完成。
+    daily_success_marker = (
+        "指令[ 一条龙 ] 执行成功",
+        "指令[ 执行应用组 one_dragon ] 执行成功",
+    )
+    # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
+    exit_markers = ("返回状态 全部结束", "关闭游戏成功")
 
     def _get_log_dir(self, script_path: str) -> Path:
         zzz_dir = Path(script_path).parent
         return zzz_dir / ".log"
-
-    def _get_log_pattern(self) -> str:
-        return "log.txt"
 
     def parse_content(self, content: str) -> str:
         if (
@@ -470,21 +426,6 @@ class ZZZLogParser(BaseLogParser):
             return ScriptLogStatus.FAILED
         return ScriptLogStatus.FAILED
 
-    def parse_daily(self, content: str) -> bool | None:
-        if (
-            "指令[ 一条龙 ] 执行成功" in content
-            or "指令[ 执行应用组 one_dragon ] 执行成功" in content
-        ):
-            return True
-        if "执行失败" in content:
-            return False
-        return None
-
-    def parse_exit(self, content: str) -> bool | None:
-        if "返回状态 全部结束" in content or "关闭游戏成功" in content:
-            return True
-        return False
-
 
 class BGILogParser(BaseLogParser):
     script_name = "BetterGI"
@@ -492,13 +433,15 @@ class BGILogParser(BaseLogParser):
     stamina_pattern = r"原粹树脂：(\d+)，浓缩树脂：(\d+)"
     # 仅把显式报错标记纳入：用「异常:」(带冒号) 排除游戏内正常术语「地脉异常」等。
     error_markers = ("[ERR]", "异常:", "异常：")
+    log_pattern = "better-genshin-impact*.log"
+    # 命中「今日奖励已领取」即视为当日做完；未领取 / 未提及均视为未完成。
+    daily_success_marker = ("今日奖励已领取",)
+    # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
+    exit_markers = ("一条龙和配置组任务结束", "主窗体退出", "游戏已退出")
 
     def _get_log_dir(self, script_path: str) -> Path:
         bgi_dir = Path(script_path).parent
         return bgi_dir / "log"
-
-    def _get_log_pattern(self) -> str:
-        return "better-genshin-impact*.log"
 
     def parse_content(self, content: str) -> str:
         if "一条龙和配置组任务结束" in content:
@@ -518,22 +461,6 @@ class BGILogParser(BaseLogParser):
         if conc == 0:
             return None
         return f"浓缩树脂: {conc}"
-
-    def parse_daily(self, content: str) -> bool | None:
-        if "今日奖励已领取" in content:
-            return True
-        if "未领取" in content:
-            return False
-        return None
-
-    def parse_exit(self, content: str) -> bool | None:
-        if (
-            "一条龙和配置组任务结束" in content
-            or "主窗体退出" in content
-            or "游戏已退出" in content
-        ):
-            return True
-        return False
 
 
 _PARSERS = [

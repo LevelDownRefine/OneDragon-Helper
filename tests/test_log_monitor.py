@@ -436,15 +436,17 @@ class TestParseLogsRerunList(unittest.TestCase):
         # 表格状态列呈现「有报错」以抓潜在问题，而非「成功」。
         self.assertIn("有报错", result["report"])
 
-    def test_resolve_daily_infers_from_status_when_unknown(self):
-        """日志未明确每日信号（None）时按整体状态推断；有明确信号时不覆盖。"""
-        # 缺失信号 → 成功=是，失败/无日志=否。
-        self.assertTrue(collect_log._resolve_daily(None, ScriptLogStatus.SUCCESS))
-        self.assertFalse(collect_log._resolve_daily(None, ScriptLogStatus.FAILED))
-        self.assertFalse(collect_log._resolve_daily(None, ScriptLogStatus.NO_LOG))
-        # 明确信号不被状态覆盖。
-        self.assertFalse(collect_log._resolve_daily(False, ScriptLogStatus.SUCCESS))
-        self.assertTrue(collect_log._resolve_daily(True, ScriptLogStatus.FAILED))
+    def test_parse_daily_returns_bool_driven_by_marker(self):
+        """parse_daily 仅由 daily_success_marker 决定：命中标记=True，否则=False，绝不返回 None。"""
+        for parser_cls in collect_log._PARSERS:
+            p = parser_cls()
+            # 中性内容（无任一成功标记）→ 一律 False（无标记即失败）。
+            self.assertFalse(p.parse_daily("启动但啥也没发生，没有任何每日标记"))
+            # 返回类型恒为 bool，绝不 None。
+            self.assertIsInstance(p.parse_daily(""), bool)
+            # 各成功标记命中应返 True。
+            for marker in p.daily_success_marker:
+                self.assertTrue(p.parse_daily(marker))
 
     def test_resolve_exited_infers_from_status_when_unknown(self):
         """日志未明确退出信号（None）时按整体状态推断；有明确信号时不覆盖。"""
@@ -456,10 +458,10 @@ class TestParseLogsRerunList(unittest.TestCase):
         self.assertFalse(collect_log._resolve_exited(False, ScriptLogStatus.SUCCESS))
         self.assertTrue(collect_log._resolve_exited(True, ScriptLogStatus.FAILED))
 
-    def test_parse_resolves_daily_from_status(self):
-        """推断下沉到 parse() 层：日志未明确每日信号时按本类 status 定稿 daily_done。"""
+    def test_parse_daily_done_driven_by_marker(self):
+        """daily_done 直接由 parse_daily 决定：命中每日成功标记=True，否则（含脚本成功但无标记）=False。"""
         p = OkWwLogParser()
-        # 成功但无 Daily Task Completed 标记 → 按成功推断为「是」。
+        # 脚本整体成功但无 Daily Task Completed 标记 → 未做完每日（无标记即失败）。
         with tempfile.NamedTemporaryFile(
             "w", suffix=".log", delete=False, encoding="utf-8"
         ) as tf:
@@ -467,22 +469,21 @@ class TestParseLogsRerunList(unittest.TestCase):
             path = tf.name
         try:
             p.get_log_path = lambda sp="": Path(path)  # type: ignore[method-assign]
-            res_ok = p.parse("")
-            self.assertEqual(res_ok["status"], ScriptLogStatus.SUCCESS)
-            self.assertTrue(res_ok["daily_done"])
+            res = p.parse("")
+            self.assertEqual(res["status"], ScriptLogStatus.SUCCESS)
+            self.assertFalse(res["daily_done"])
         finally:
             os.unlink(path)
-        # 失败且无每日标记 → 推断为「否」。
+        # 命中 Daily Task Completed 标记 → 当日做完。
         with tempfile.NamedTemporaryFile(
             "w", suffix=".log", delete=False, encoding="utf-8"
         ) as tf:
-            tf.write("ERROR something failed, no daily marker")
+            tf.write("DailyTask:Daily Task Completed")
             path = tf.name
         try:
             p.get_log_path = lambda sp="": Path(path)  # type: ignore[method-assign]
-            res_fail = p.parse("")
-            self.assertEqual(res_fail["status"], ScriptLogStatus.FAILED)
-            self.assertFalse(res_fail["daily_done"])
+            res = p.parse("")
+            self.assertTrue(res["daily_done"])
         finally:
             os.unlink(path)
 
@@ -854,7 +855,7 @@ class TestFourFieldExtraction(unittest.TestCase):
 
     def test_oww_daily_none_and_false(self):
         p = OkWwLogParser()
-        self.assertIsNone(p.parse_daily("没有任何每日标记"))
+        self.assertFalse(p.parse_daily("没有任何每日标记"))
         self.assertFalse(p.parse_daily("ERROR Daily Task exception stopped"))
 
     def test_oww_stamina_takes_last_occurrence(self):
@@ -889,7 +890,7 @@ class TestFourFieldExtraction(unittest.TestCase):
             "DailyRoutineTask:结束执行日常任务\n"
         )
         self.assertFalse(p.parse_daily(content))
-        self.assertIsNone(OkNteLogParser().parse_daily("完全没有日常相关标记"))
+        self.assertFalse(OkNteLogParser().parse_daily("完全没有日常相关标记"))
 
     def test_oef_report_fields(self):
         p = OkEfLogParser()
@@ -975,7 +976,7 @@ class TestFourFieldExtraction(unittest.TestCase):
     def test_zzz_daily_false_on_exec_failure(self):
         p = ZZZLogParser()
         self.assertFalse(p.parse_daily("指令[ 一条龙 ] 执行失败 返回状态 xxx"))
-        self.assertIsNone(p.parse_daily("启动但啥也没发生"))
+        self.assertFalse(p.parse_daily("启动但啥也没发生"))
 
     def test_bgi_stamina_daily_exit_errors(self):
         p = BGILogParser()
