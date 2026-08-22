@@ -1,16 +1,15 @@
 """任务卡控制器：日常副本 / 周常周几（数据 + 选择持久化）。
 
-独立 QObject，自管状态（_ui_state / _dungeon_*_cache / _weekly_toggle_state /
-_master_on）。当前游戏经构造注入的 game_list 引用读取。dungeonOptions 从缓存读取
-（build_dungeon_cache 时构建）。
+独立 QObject，自管状态（_ui_state / _dungeon_*_cache）。当前游戏经构造注入的
+game_list 引用读取。dungeonOptions 从缓存读取（build_dungeon_cache 时构建）。
+启用控制不在此处：日常靠控制模式、周常靠周几起（均在别处实现）。
 """
 
 from PySide6.QtCore import QObject, Signal, Slot
 
 from src.config.dungeon_config import get_display_name, parse_dungeon_config
-from src.config.set_config import is_adapted
-from src.config.set_config import supports_weekly as _supports_weekly
-from src.utils_weekly import is_weekly_start_reached
+from src.config.set_config import is_adapted, set_weekly_dungeon
+from src.service.script_service import ScriptService
 
 # 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
 WEEKDAY_NAMES = {
@@ -33,15 +32,14 @@ class TaskCardController(QObject):
         self._game_list = game_list
         self._service = service
         self._toast = toast
+        # 周常声明只读服务：weekly_list.yml（支持哪些周常 / 是否需选副本 / 副本清单）
+        self._script_service = ScriptService()
         # 任务卡状态：gui_state.json 的副本/序列/周常（按 script_name 索引）
         self._ui_state = self._service.load_ui_state()
         # 副本下拉数据缓存：dungeon_list.yml 解析较贵且运行期不变，
         # build_dungeon_cache 时一次性构建。
         self._dungeon_map_cache: dict = {}
         self._dungeon_options_cache: dict[str, list] = {}
-        # 周常开关 UI 态（纯内存，不持久化）；总开关为全局 UI 态（驱动日常行开关）
-        self._weekly_toggle_state: dict[str, bool] = {}
-        self._master_on = True
 
     # ── 读接口（供 QmlBridge 委托）────────────────────────────────────
     @property
@@ -77,31 +75,86 @@ class TaskCardController(QObject):
 
     @property
     def weekly_supported(self) -> bool:
-        """当前游戏是否支持周常（决定周常行可选性 / 整行样式）。"""
-        return _supports_weekly(self._current["script_name"])
+        """当前游戏是否支持周常（决定周常行显隐）。
+
+        唯一真相源为 weekly_list.yml：声明了该脚本周常即支持。
+        """
+        return bool(self._script_service.get_weekly_defs(self._current["script_name"]))
 
     @property
     def weekly_start_label(self) -> str:
-        """周常 chip 文字（周几起 / 选择周几）。"""
+        """周常起始日文字（周几起），供单脚本配置弹窗显示当前选择。"""
         game = self._current
-        saved = self._ui_state.get(game["script_name"], {})
-        start_day = saved.get("weekly_start")
+        start_day = self._script_service.get_weekly_start(game["script_name"])
         return "选择周几" if start_day is None else f"{WEEKDAY_NAMES[start_day]}起"
 
     @property
-    def master_on(self) -> bool:
-        """总开关状态（全局 UI 态；驱动日常行开关）。"""
-        return self._master_on
+    def weekly_items(self) -> list[dict]:
+        """当前脚本支持的周常列表（供 QML 多周常布局）。
 
-    @property
-    def daily_on(self) -> bool:
-        """日常行开关（镜像总开关，由 toggle_master 驱动）。"""
-        return self._master_on
+        每种周常：{name, has_dungeon, dungeon_label}。has_dungeon 由声明是否含
+        dungeons 字段（且有内容）推导，不再用 needs_instance 布尔字段；
+        dungeon_label 为已选副本名，需选而未选时返回「选择副本」、无需选返回空。
+        声明（支持哪些周常/可选副本）来自 weekly_list.yml，已选副本来自
+        gui_state.json 的 weekly_dungeons（与副本/序列同为 UI 状态）。
+        """
+        script_name = self._current["script_name"]
+        defs = self._script_service.get_weekly_defs(script_name)
+        if not defs:
+            return []
+        saved_dungeons = self._weekly_dungeons(script_name)
+        items = []
+        for d in defs:
+            name = d["name"]
+            has_dungeon = "dungeons" in d and bool(d["dungeons"])
+            label = ""
+            if has_dungeon:
+                # 需选副本：已选则显示副本名，未选显示占位提示
+                label = "选择副本"
+                if name in saved_dungeons and saved_dungeons[name]:
+                    label = saved_dungeons[name]
+            items.append(
+                {"name": name, "has_dungeon": has_dungeon, "dungeon_label": label}
+            )
+        return items
 
-    @property
-    def weekly_on(self) -> bool:
-        """周常行开关（内存态，由 toggle_master / select_weekly 置位）。"""
-        return self._weekly_toggle_state.get(self._current["script_name"], False)
+    def _weekly_dungeons(self, script_name: str) -> dict:
+        """读某脚本各周常已选副本（gui_state.json 的 weekly_dungeons）。
+
+        Args:
+            script_name: 脚本唯一标识。
+
+        Returns:
+            {周常名: 已选副本名}；无记录时返回空 dict。
+        """
+        if script_name not in self._ui_state:
+            return {}
+        saved = self._ui_state[script_name]
+        if "weekly_dungeons" not in saved:
+            return {}
+        dungeons = saved["weekly_dungeons"]
+        if not isinstance(dungeons, dict):
+            return {}
+        return dungeons
+
+    def weekly_dungeon_options(self, weekly_name: str) -> list[str]:
+        """某周常的可选副本名列表（如历战余响的全体副本）。
+
+        来自 weekly_list.yml 声明（该周常的 dungeons 字段）；不再依赖游戏脚本
+        私有配置。未声明或无需副本返回空列表。
+
+        Args:
+            weekly_name: 周常名（如「历战余响」）。
+
+        Returns:
+            副本名列表（含「无」）；该周常未声明副本清单时返回空列表。
+        """
+        script_name = self._current["script_name"]
+        for d in self._script_service.get_weekly_defs(script_name):
+            if d["name"] != weekly_name:
+                continue
+            return list(d["dungeons"]) if "dungeons" in d else []
+        return []
 
     @property
     def dungeon_options(self) -> list:
@@ -158,41 +211,7 @@ class TaskCardController(QObject):
                 )
         return result
 
-    def init_weekly_toggle_states(self) -> dict:
-        """初始化各脚本周常开关（纯内存 UI 态，不持久化）。
-
-        已设置「周几起」且今天 >= 起始日 → True，否则 False。
-        """
-        states: dict[str, bool] = {}
-        for game in self._game_list.games:
-            script_name = game["script_name"]
-            if not _supports_weekly(script_name):
-                continue
-            saved = self._ui_state.get(script_name)
-            weekly_start = saved.get("weekly_start") if saved else None
-            states[script_name] = weekly_start is not None and is_weekly_start_reached(
-                weekly_start
-            )
-        self._weekly_toggle_state = states
-        return states
-
     # ── 交互 ───────────────────────────────────────────────────────────
-    @Slot(bool)
-    def toggleMaster(self, on: bool):
-        """总开关：一键同步日常/周本（支持周常时周常开关一并置位）。"""
-        self._master_on = on
-        script_name = self._current["script_name"]
-        if _supports_weekly(script_name):
-            self._weekly_toggle_state[script_name] = on
-        self.taskStateChanged.emit()
-
-    @Slot(bool)
-    def toggleWeekly(self, on: bool):
-        """周常开关（内存态，不持久化；与日常开关模型一致）。"""
-        script_name = self._current["script_name"]
-        self._weekly_toggle_state[script_name] = on
-        self.taskStateChanged.emit()
-
     @Slot(str, "QVariant")
     def selectDungeon(self, dungeon_name: str, sequence):
         """选择日常副本（持久化到 gui_state.json 的 dungeon/sequence）。"""
@@ -209,12 +228,28 @@ class TaskCardController(QObject):
 
     @Slot(int)
     def selectWeekly(self, start_day: int):
-        """选择周常起始日（持久化 weekly_start；周常开关按「今天>=起始日」置位）。"""
+        """选择周常起始日（持久化到 weekly_start.yml）。
+
+        周常是否启用由「今天>=起始日」在链生成时独立计算，本方法只持久化该起始日。
+        """
         assert start_day in WEEKDAY_NAMES, f"[bridge] 非法周几: {start_day}"
         script_name = self._current["script_name"]
+        self._script_service.set_weekly_start(script_name, start_day)
+        self.refresh()
+
+    @Slot(str, str)
+    def selectWeeklyDungeon(self, weekly_name: str, dungeon_name: str):
+        """选择某周常的副本（持久化 gui_state.json 并写脚本自身 config）。
+
+        Args:
+            weekly_name: 周常名（如「历战余响」）。
+            dungeon_name: 选中的副本名（来自 weekly_dungeon_options）。
+        """
+        script_name = self._current["script_name"]
+        # 1) 持久化到 gui_state.json 的 weekly_dungeons（与副本/序列同为 UI 状态）
         saved = self._ui_state.setdefault(script_name, {})
-        saved["weekly_start"] = start_day
-        enabled = is_weekly_start_reached(start_day)
-        self._weekly_toggle_state[script_name] = enabled
+        saved.setdefault("weekly_dungeons", {})[weekly_name] = dungeon_name
         self._service.save_ui_state(self._ui_state)
+        # 2) 写回脚本自身 config（如 M7A config.yaml 的 instance_names[weekly_name]）
+        set_weekly_dungeon(script_name, weekly_name, dungeon_name)
         self.refresh()

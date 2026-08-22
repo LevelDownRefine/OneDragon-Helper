@@ -1,0 +1,25 @@
+# 各脚本支持的周常声明（静态配置，进 git）。
+# 结构：每脚本一个列表，每项：
+#   name: 周常展示名（与 dungeon_list.yml 一致用中文名）
+#   dungeons?: 可选副本名清单（存在且有内容即表示该周常需选副本；含「无」表示跳过）
+# 周常「周几起」另存于 config/weekly_start.yml（{脚本标识: 1~7}），不在此文件。
+# 用户已选副本（运行时状态）不在此文件，存于 gui_state.json 的 weekly_dungeons。
+# 副本名清单取自各脚本自身配置（如 M7A 的 assets/config/instance_names.json），
+# 在此静态声明，避免运行时依赖游戏脚本已安装。
+ok-ww:
+  - name: 幻梦游园
+OneDragon-Launcher:
+  - name: 迷失之地
+March7th-Assistant:
+  - name: 货币战争
+  - name: 历战余响
+    dungeons:
+      - 无
+      - 铁骸的锈冢
+      - 晨昏的回眸
+      - 心兽的战场
+      - 尘梦的赞礼
+      - 蛀星的旧靥
+      - 不死的神实
+      - 寒潮的落幕
+      - 毁灭的开端

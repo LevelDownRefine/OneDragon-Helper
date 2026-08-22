@@ -27,7 +27,7 @@ os.environ.setdefault("QML_DISABLE_DISK_CACHE", "1")
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from src.gui import main_window  # noqa: E402
-from src.gui.controllers import launch, links, task_card  # noqa: E402
+from src.gui.controllers import launch, links  # noqa: E402
 from src.gui.controllers.game_list import ScriptIconProvider  # noqa: E402
 from src.gui.icons import UiIconProvider  # noqa: E402
 from src.gui.main_window import QmlBridge  # noqa: E402
@@ -399,6 +399,256 @@ class TestQmlApp(unittest.TestCase):
         self.assertNotIn("ReferenceError", proc.stderr)
 
 
+class TestTaskCardPopupGeometry(unittest.TestCase):
+    """下拉必须完整落在窗口内：超出窗口的部分不可见且滚不到（副本显示不全）。
+
+    崩铁历战余响 9 个副本原先锚在周常区下方（卡片 y≈242 → 窗口 y≈634），
+    弹窗高 296 越过 720 底边；又因内容(286) < 视口(288) 而无法滚动，
+    实际只看得到 3 个。placePopup 在下方装不下时上翻并按余量封顶高度。
+    """
+
+    def test_popups_fit_inside_window(self):
+        """离屏加载 main.qml，打开两个下拉，断言几何完整落在窗口内。"""
+        code = textwrap.dedent(
+            """
+            import os
+            os.environ["QT_QPA_PLATFORM"] = "offscreen"
+            os.environ["QML_DISABLE_DISK_CACHE"] = "1"
+            from unittest.mock import patch
+            from PySide6.QtCore import QUrl, QTimer, QPointF
+            from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+            from PySide6.QtQuick import QQuickItem
+            from PySide6.QtWidgets import QApplication
+            from src.config.subscript import resolve_script_path
+            from src.gui import main_window
+            from src.gui.icons import UiIconProvider
+            from src.gui.main_window import QmlBridge
+
+            app = QApplication([])
+            # 崩铁：真实 config/weekly_list.yml 里历战余响声明了 9 个副本
+            scripts = [{
+                "display_name": "崩坏：星穹铁道",
+                "script_path": "scripts/March7th-Assistant/March7th-Assistant.exe",
+                "script_type": "external",
+            }]
+            with (
+                patch.object(main_window.ChainService, "load_config",
+                             return_value={"script_list": scripts}),
+                patch.object(main_window.ChainService, "load_ui_state", return_value={}),
+                patch.object(main_window.BackgroundController, "resolve_bg",
+                             return_value=None),
+            ):
+                bridge = QmlBridge()
+            qmlRegisterSingletonInstance(
+                QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+            engine = QQmlApplicationEngine()
+            engine.addImageProvider("uiicon", UiIconProvider())
+            engine.load(QUrl.fromLocalFile(resolve_script_path("src/gui/qml/main.qml")))
+            win = engine.rootObjects()[0]
+
+            def report(name):
+                item = win.findChild(QQuickItem, name)
+                top = item.mapToScene(QPointF(0, 0)).y()
+                print(f"{name} TOP {top:.0f} H {item.height():.0f} "
+                      f"WIN {win.height()}", flush=True)
+
+            def measure():
+                wk = win.findChild(QQuickItem, "weeklyDungeonPopup")
+                wk.setProperty("weeklyName", "历战余响")
+                wk.setProperty("visible", True)
+                dg = win.findChild(QQuickItem, "dungeonPopup")
+                dg.setProperty("visible", True)
+                QTimer.singleShot(200, lambda: (report("weeklyDungeonPopup"),
+                                                report("dungeonPopup"),
+                                                app.quit()))
+
+            QTimer.singleShot(600, measure)
+            app.exec()
+            print("OPTS", len(bridge.weeklyDungeonOptions("历战余响")), flush=True)
+            """
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=os.getcwd(),
+        )
+        self.assertNotIn("ReferenceError", proc.stderr)
+        opts_line = [ln for ln in proc.stdout.splitlines() if ln.startswith("OPTS")]
+        self.assertTrue(opts_line, f"未取到副本数，stdout={proc.stdout}")
+        n_opts = int(opts_line[0].split()[1])
+        self.assertGreater(n_opts, 3, "副本清单应多于 3（否则测不出显示不全）")
+
+        measured = {}
+        for line in proc.stdout.splitlines():
+            parts = line.split()
+            if len(parts) == 7 and parts[1] == "TOP":
+                measured[parts[0]] = (int(parts[2]), int(parts[4]), int(parts[6]))
+        for name in ("weeklyDungeonPopup", "dungeonPopup"):
+            self.assertIn(name, measured, f"未测到 {name}，stdout={proc.stdout}")
+            top, height, win_h = measured[name]
+            self.assertGreaterEqual(top, 0, f"{name} 顶部超出窗口上沿")
+            self.assertLessEqual(
+                top + height, win_h, f"{name} 底部超出窗口（top={top} h={height}）"
+            )
+        # 周常下拉高度 = 选项数 * 32 + 8，应完整放下不被截断
+        self.assertEqual(measured["weeklyDungeonPopup"][1], n_opts * 32 + 8)
+
+
+class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
+    """无周常的已适配脚本不应显示周常区及总开关（回归 issue）。"""
+
+    def test_weekly_area_hidden_when_not_supported(self):
+        code = textwrap.dedent(
+            r"""
+            from PySide6.QtCore import QTimer, QUrl
+            from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+            from PySide6.QtQuick import QQuickItem
+            from PySide6.QtWidgets import QApplication
+            from unittest.mock import patch
+            from src.config.subscript import resolve_script_path
+            from src.gui import main_window
+            from src.gui.icons import UiIconProvider
+            from src.gui.main_window import QmlBridge
+
+            app = QApplication([])
+            # 异环 ok-nte：已适配（在 set_config 注册）但 weekly_list.yml 未声明周常
+            scripts = [{
+                "display_name": "异环",
+                "script_path": "scripts/ok-nte/ok-nte.exe",
+                "script_type": "external",
+            }]
+            with (
+                patch.object(main_window.ChainService, "load_config",
+                             return_value={"script_list": scripts}),
+                patch.object(main_window.ChainService, "load_ui_state", return_value={}),
+                patch.object(main_window.BackgroundController, "resolve_bg",
+                             return_value=None),
+            ):
+                bridge = QmlBridge()
+            qmlRegisterSingletonInstance(
+                QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+            engine = QQmlApplicationEngine()
+            engine.addImageProvider("uiicon", UiIconProvider())
+            engine.load(QUrl.fromLocalFile(resolve_script_path("src/gui/qml/main.qml")))
+            win = engine.rootObjects()[0]
+
+            def report():
+                wk_area = win.findChild(QQuickItem, "weeklyArea")
+                card = win.findChild(QQuickItem, "cardRoot")
+                print(f"WEEKLY_VISIBLE {wk_area.isVisible()} CARD_H {card.height():.0f}")
+                app.quit()
+
+            # 等 Loader 自动加载第 0 个脚本的任务卡
+            QTimer.singleShot(600, report)
+            app.exec()
+            """
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=os.getcwd(),
+        )
+        self.assertNotIn("ReferenceError", proc.stderr)
+        # 输出样例：WEEKLY_VISIBLE false CARD_H 134
+        visible = None
+        height = None
+        for line in proc.stdout.splitlines():
+            if line.startswith("WEEKLY_VISIBLE"):
+                parts = line.split()
+                visible = parts[1]
+                height = int(parts[3])
+        self.assertEqual(
+            visible, "False", f"无周常脚本应隐藏周常区，stdout={proc.stdout}"
+        )
+        # 128 = 标题+分隔线+日常行(56) 的固定高度，不含周常区（与周常上沿对齐）
+        self.assertEqual(
+            height, 128, f"无周常脚本卡片高度应为 128，stdout={proc.stdout}"
+        )
+
+
+class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
+    """有周常的已适配脚本：周常区高度必须由数据模型长度推导（回归 issue）。
+
+    历史 bug：周常区高度曾绑定 `weeklyItemsCol.count`，但 Column 类型并无
+    count 属性（那是 Repeater 的），绑定求值出错回退为 0，导致卡片背景被
+    算成 134+0+padding、把周常内容截短（"背景不够长"）。正确来源是
+    Bridge.weeklyItems.length（与 Repeater 渲染数一致）。此测试把高度钉死，
+    防止再次回退到 Column.count / 写错模型长度。
+    """
+
+    def test_weekly_area_height_matches_item_count(self):
+        code = textwrap.dedent(
+            r"""
+            from PySide6.QtCore import QTimer, QUrl
+            from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+            from PySide6.QtQuick import QQuickItem
+            from PySide6.QtWidgets import QApplication
+            from unittest.mock import patch
+            from src.config.subscript import resolve_script_path
+            from src.gui import main_window
+            from src.gui.icons import UiIconProvider
+            from src.gui.main_window import QmlBridge
+
+            app = QApplication([])
+            # 崩铁 March7th-Assistant：weekly_list.yml 声明 2 种周常
+            # （货币战争 / 历战余响），历战余响需选副本
+            scripts = [{
+                "display_name": "崩坏：星穹铁道",
+                "script_path": "scripts/March7th-Assistant/March7th-Assistant.exe",
+                "script_type": "external",
+            }]
+            with (
+                patch.object(main_window.ChainService, "load_config",
+                             return_value={"script_list": scripts}),
+                patch.object(main_window.ChainService, "load_ui_state", return_value={}),
+                patch.object(main_window.BackgroundController, "resolve_bg",
+                             return_value=None),
+            ):
+                bridge = QmlBridge()
+            qmlRegisterSingletonInstance(
+                QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+            engine = QQmlApplicationEngine()
+            engine.addImageProvider("uiicon", UiIconProvider())
+            engine.load(QUrl.fromLocalFile(resolve_script_path("src/gui/qml/main.qml")))
+            win = engine.rootObjects()[0]
+
+            def report():
+                wk_area = win.findChild(QQuickItem, "weeklyArea")
+                card = win.findChild(QQuickItem, "cardRoot")
+                print(f"WEEKLY_VISIBLE {wk_area.isVisible()} "
+                      f"WK_H {wk_area.height():.0f} CARD_H {card.height():.0f}")
+                app.quit()
+
+            QTimer.singleShot(600, report)
+            app.exec()
+            """
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=os.getcwd(),
+        )
+        self.assertNotIn("ReferenceError", proc.stderr)
+        visible = wk_h = card_h = None
+        for line in proc.stdout.splitlines():
+            if line.startswith("WEEKLY_VISIBLE"):
+                parts = line.split()
+                visible = parts[1]
+                wk_h = int(parts[3])
+                card_h = int(parts[5])
+        self.assertEqual(visible, "True", f"崩铁应显示周常区，stdout={proc.stdout}")
+        # 周常区 = 项数(2) * 行高(56) + 底部留白(16) = 128
+        # 卡片 = 128 + 周常区 + 卡片底部留白(16) = 272
+        self.assertEqual(wk_h, 128, f"周常区高度应=128，stdout={proc.stdout}")
+        self.assertEqual(card_h, 272, f"卡片高度应=272，stdout={proc.stdout}")
+
+
 class TestScriptIconProvider(unittest.TestCase):
     """图标缓存按 script_name（稳定身份）索引，而非行 index。
 
@@ -491,46 +741,6 @@ class TestUiIconProvider(unittest.TestCase):
         span = (max(xs) - min(xs) + 1) if xs else 0
         self.assertGreaterEqual(span, 26)
         self.assertLessEqual(span, 32)
-
-
-class TestWeeklyToggleInit(unittest.TestCase):
-    """周常开关应在启动时按 weekly_start 还原（对齐旧 GUI，此前漏迁移）。"""
-
-    def test_init_from_weekly_start(self):
-        # 鸣潮 是 exe 脚本，script_name = 进程名 ok-ww（非 display_name）
-        b = _make_bridge()
-        b.task_card._ui_state = {"ok-ww": {"weekly_start": 2}}
-        with (
-            patch.object(task_card, "_supports_weekly", return_value=True),
-            patch.object(task_card, "is_weekly_start_reached", return_value=True),
-        ):
-            states = b.task_card.init_weekly_toggle_states()
-        self.assertEqual(states.get("ok-ww"), True)
-
-    def test_unsupported_or_no_start_is_false(self):
-        b = _make_bridge()
-        b.task_card._ui_state = {"ok-ww": {"weekly_start": 2}}
-        with patch.object(task_card, "_supports_weekly", return_value=False):
-            states = b.task_card.init_weekly_toggle_states()
-        self.assertEqual(states.get("ok-ww", "absent"), "absent")
-
-    def test_bridge_init_populates_toggle_state(self):
-        with (
-            patch.object(
-                main_window.ChainService,
-                "load_config",
-                return_value={"script_list": list(_SCRIPTS)},
-            ),
-            patch.object(
-                main_window.ChainService,
-                "load_ui_state",
-                return_value={"ok-ww": {"weekly_start": 2}},
-            ),
-            patch.object(task_card, "_supports_weekly", return_value=True),
-            patch.object(task_card, "is_weekly_start_reached", return_value=True),
-        ):
-            b = QmlBridge()
-        self.assertEqual(b.task_card._weekly_toggle_state.get("ok-ww"), True)
 
 
 if __name__ == "__main__":

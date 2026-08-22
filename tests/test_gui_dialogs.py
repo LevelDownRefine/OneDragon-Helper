@@ -248,14 +248,28 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
 class _FakeService:
     """极简 ScriptService 替身：供弹窗构造时读取脚本数据，避免依赖真实 config。"""
 
-    def __init__(self, script_type, script_path):
-        self._data = {"script_type": script_type, "script_path": script_path}
+    def __init__(
+        self, script_type, script_path, display_name="日志分析", weekly_start=None
+    ):
+        self._data = {
+            "script_type": script_type,
+            "script_path": script_path,
+            "display_name": display_name,
+        }
+        self._weekly_start = weekly_start
+        self.saved_weekly_start = None
 
     def get_script(self, name):
         return self._data
 
     def weekly_inputs(self, name):
         return [3600] * 7
+
+    def get_weekly_start(self, script_name):
+        return self._weekly_start
+
+    def set_weekly_start(self, script_name, start_day):
+        self.saved_weekly_start = start_day
 
 
 class TestSingleScriptConfigDialogOpenConfig(unittest.TestCase):
@@ -312,6 +326,63 @@ class TestSingleScriptConfigDialogOpenConfig(unittest.TestCase):
             dlg._open_config_file()
         mock_start.assert_not_called()
         mock_box.assert_called_once()
+
+
+class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
+    """测试配置弹窗的「周几起」行：仅支持周常脚本显示，读写 weekly_list.yml。"""
+
+    def _make_dialog(self, script_name, display_name, weekly_start, supported):
+        with patch("src.gui.dialogs.supports_weekly", return_value=supported):
+            return SingleScriptConfigDialog(
+                script_name,
+                display_name,
+                "C:/games/run.exe",
+                script_service=_FakeService(
+                    "external", "C:/games/run.exe", display_name, weekly_start
+                ),
+            )
+
+    def test_hidden_when_weekly_unsupported(self):
+        """不支持周常的脚本周几起行应隐藏。
+
+        combo 以 dialog 为父控件，仅「不进布局」不够——未布局的子控件会按默认
+        位置 (0,0) 绘制并盖住左上角字段。必须 isHidden() 为真（未 show 的 dialog
+        上 isVisible() 恒为 False，断不出这个 bug）。
+        """
+        dlg = self._make_dialog("collect_log", "日志分析", None, supported=False)
+        self.assertFalse(dlg._weekly_start_supported)
+        self.assertTrue(dlg.weekly_start_combo.isHidden())
+
+    def test_visible_and_loaded_when_weekly_supported(self):
+        """支持周常的脚本周几起行可见，且加载 weekly_start.yml 的 weekly_start"""
+        dlg = self._make_dialog("run", "鸣潮", 3, supported=True)
+        self.assertTrue(dlg._weekly_start_supported)
+        # 未 show 时 isVisible 受父链影响为 False，用 isHidden 反映自身 visible 属性
+        self.assertFalse(dlg.weekly_start_combo.isHidden())
+        # combo index 3 → 周三起
+        self.assertEqual(dlg.weekly_start_combo.currentIndex(), 3)
+
+    def test_save_writes_weekly_start(self):
+        """保存时把周几起（周三起）经 ScriptService 持久化（写 weekly_start.yml）"""
+        dlg = self._make_dialog("run", "鸣潮", None, supported=True)
+        dlg.weekly_start_combo.setCurrentIndex(3)
+        with (
+            patch("src.gui.dialogs.QMessageBox.warning"),
+            patch.object(SingleScriptConfigDialog, "accept"),
+        ):
+            dlg.save_data()
+        self.assertEqual(dlg._script_service.saved_weekly_start, 3)
+
+    def test_save_clears_weekly_start_when_unset(self):
+        """选择「不设置」时经 ScriptService 清除（传 None）"""
+        dlg = self._make_dialog("run", "鸣潮", 5, supported=True)
+        dlg.weekly_start_combo.setCurrentIndex(0)
+        with (
+            patch("src.gui.dialogs.QMessageBox.warning"),
+            patch.object(SingleScriptConfigDialog, "accept"),
+        ):
+            dlg.save_data()
+        self.assertIsNone(dlg._script_service.saved_weekly_start)
 
 
 class TestSingleScriptConfigDialogDelete(unittest.TestCase):

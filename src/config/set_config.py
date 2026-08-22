@@ -708,6 +708,26 @@ class StarRailConfig(ScriptConfig):
         safe_update(config, self._weekly_task_name, enabled, self.display_name)
         self._save(config)
 
+    def set_weekly_dungeon(self, weekly_name: str, dungeon_name: str) -> None:
+        """写入某周常当前选中的副本名到 config.yaml 的 instance_names。
+
+        副本名清单的展示与下拉选项由 OneDragon-Helper 的 weekly_list.yml 声明
+        （dungeons 字段）负责，本方法只承担把用户所选写回 M7A 游戏配置的本分。
+
+        Args:
+            weekly_name: 周常名（如「历战余响」）；即 instance_names 的键。
+            dungeon_name: 选中的副本名（来自 weekly_list.yml 声明）。
+        """
+        config = self._load()
+        # instance_names 是 M7A 约定键名（{周常名: 副本名} 的 dict），保持不动；
+        # 缺字段则新建。
+        instance_names = config.get("instance_names")
+        if not isinstance(instance_names, dict):
+            instance_names = {}
+            config["instance_names"] = instance_names
+        instance_names[weekly_name] = dungeon_name
+        self._save(config)
+
 
 # ---- 异环 Neverness to Everness (NTE) ----
 @register
@@ -1033,3 +1053,35 @@ def supports_weekly(script_name: str) -> bool:
     if script_name not in _CONFIGS:
         return False
     return bool(_CONFIGS[script_name]._weekly_task_name)
+
+
+def get_background_rel_path(script_name: str) -> str:
+    """读脚本默认背景图相对路径（相对脚本根目录，供 GUI 背景控制器）。
+
+    Args:
+        script_name: 脚本标识名。
+
+    Returns:
+        背景图相对路径；未适配或未声明背景图时返回空字符串。
+    """
+    if script_name not in _CONFIGS:
+        return ""
+    return _CONFIGS[script_name].background
+
+
+def set_weekly_dungeon(script_name: str, weekly_name: str, dungeon_name: str) -> None:
+    """适配器接口：写某周常当前选中的副本名到脚本自身 config。
+
+    未适配或该脚本无「周常选副本」概念（子类未实现）时优雅跳过。
+
+    Args:
+        script_name: 脚本标识名。
+        weekly_name: 周常名（如「历战余响」）。
+        dungeon_name: 选中的副本名。
+    """
+    if script_name not in _CONFIGS:
+        return
+    cfg_cls = _CONFIGS[script_name]
+    if not hasattr(cfg_cls, "set_weekly_dungeon"):
+        return
+    cfg_cls().set_weekly_dungeon(weekly_name, dungeon_name)

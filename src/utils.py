@@ -45,6 +45,30 @@ def get_weekly_timeouts_yml_path_under_root() -> str:
     return safe_path_join(get_root_dir(), "config", "weekly_timeouts.yml")
 
 
+def get_weekly_list_yml_path_under_root() -> str:
+    """
+    获取根目录下的config/weekly_list.yml文件路径。
+
+    该文件是周常声明配置（静态，进 git）：每脚本支持哪些周常、每种是否需选副本。
+    与 weekly_timeouts.yml 同级的周常侧配置文件。
+
+    :return: 根目录下的config/weekly_list.yml文件路径
+    """
+    return safe_path_join(get_root_dir(), "config", "weekly_list.yml")
+
+
+def get_weekly_start_yml_path_under_root() -> str:
+    """
+    获取根目录下的config/weekly_start.yml文件路径。
+
+    该文件持久化各脚本的周常起始日（周几起，{脚本标识: 1~7}），与周常声明
+    （weekly_list.yml）、周常超时（weekly_timeouts.yml）平级，三套周常侧配置各自独立。
+
+    :return: 根目录下的config/weekly_start.yml文件路径
+    """
+    return safe_path_join(get_root_dir(), "config", "weekly_start.yml")
+
+
 @lru_cache
 def get_root_dir() -> str:
     """

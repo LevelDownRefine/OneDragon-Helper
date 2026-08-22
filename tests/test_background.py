@@ -235,11 +235,9 @@ class TestScriptBackground(unittest.TestCase):
             game_list=MagicMock(), task_card=MagicMock(), toast=MagicMock()
         )
 
-    @patch.object(
-        bgmod, "_CONFIGS", {"ok-ww": type("C", (), {"background": "assets/x.webp"})()}
-    )
+    @patch.object(bgmod, "get_background_rel_path", return_value="assets/x.webp")
     @patch.object(bgmod, "_get_script_root_dir_soft", return_value="/script/root")
-    def test_declared_and_present(self, _mock_root):
+    def test_declared_and_present(self, _mock_root, _mock_rel):
         # 声明且文件存在：返回脚本根拼接的绝对路径
         with patch.object(bgmod.os.path, "isfile", return_value=True):
             self.assertEqual(
@@ -247,22 +245,20 @@ class TestScriptBackground(unittest.TestCase):
                 os.path.join("/script/root", "assets/x.webp"),
             )
 
-    @patch.object(
-        bgmod, "_CONFIGS", {"ok-ww": type("C", (), {"background": "assets/x.webp"})()}
-    )
+    @patch.object(bgmod, "get_background_rel_path", return_value="assets/x.webp")
     @patch.object(bgmod, "_get_script_root_dir_soft", return_value="/script/root")
-    def test_declared_but_missing(self, _mock_root):
+    def test_declared_but_missing(self, _mock_root, _mock_rel):
         # 声明但文件缺失：返回空字符串（交 DEFAULT_BG 兜底）
         with patch.object(bgmod.os.path, "isfile", return_value=False):
             self.assertEqual(self.ctrl._script_background("ok-ww"), "")
 
-    @patch.object(bgmod, "_CONFIGS", {"BetterGI": type("C", (), {"background": ""})()})
-    def test_not_declared(self):
+    @patch.object(bgmod, "get_background_rel_path", return_value="")
+    def test_not_declared(self, _mock_rel):
         # 子类未声明 background（如原神）：返回空字符串
         self.assertEqual(self.ctrl._script_background("BetterGI"), "")
 
     def test_unadapted_script(self):
-        # 未适配脚本：返回空字符串
+        # 未适配脚本：返回空字符串（get_background_rel_path 返回 ""）
         self.assertEqual(self.ctrl._script_background("不存在"), "")
 
 

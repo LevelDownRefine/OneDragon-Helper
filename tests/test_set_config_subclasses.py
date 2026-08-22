@@ -647,6 +647,19 @@ class TestStarRailConfig(unittest.TestCase):
                 cfg.set_dungeon("新本")
             mock_save.assert_called_once_with({"instance_type": "新本"})
 
+    def test_set_weekly_dungeon_writes_instance_names(self):
+        """set_weekly_dungeon 写 config.yaml 的 instance_names[周常名]，容错建 dict。"""
+        with patch.object(StarRailConfig, "_init_config"):
+            cfg = StarRailConfig()
+            config: dict = {}
+            with (
+                patch.object(cfg, "_load", return_value=config),
+                patch.object(cfg, "_save") as mock_save,
+            ):
+                cfg.set_weekly_dungeon("历战余响", "铁骸的锈冢")
+            mock_save.assert_called_once()
+            self.assertEqual(config["instance_names"]["历战余响"], "铁骸的锈冢")
+
 
 # ============================================================
 # 异环 NTEConfig

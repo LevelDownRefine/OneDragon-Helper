@@ -13,7 +13,6 @@
   避免副作用、并使其不依赖本机是否装有游戏。
 """
 
-import copy
 import json
 import os
 import sys
@@ -434,13 +433,17 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
         self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
 
     def test_weekly_start_override_merged_into_ui_state(self):
-        """--weekly-start 覆盖值合并到传给 generate_chain 的 ui_state（int）。"""
+        """--weekly-start 调用 service.set_weekly_start 持久化（周几跑是长期配置），
+        且不并入传给 generate_chain 的内存 ui_state。"""
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(
-                cli.ChainService, "generate_chain", return_value=out
-            ) as mock_gen:
+            with (
+                patch.object(
+                    cli.ChainService, "generate_chain", return_value=out
+                ) as mock_gen,
+                patch.object(cli.ChainService, "set_weekly_start") as mock_set,
+            ):
                 _run_main(
                     [
                         "--generate-chain",
@@ -453,31 +456,22 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
                     ],
                     expect_exit=0,
                 )
+            mock_set.assert_called_once_with(self._target, 4)
+            # 内存 ui_state 不再承载 weekly_start（仅 --dungeon/--sequence 临时覆盖）
             ui_state = mock_gen.call_args.args[3]
-            self.assertEqual(ui_state[self._target]["weekly_start"], 4)
+            self.assertNotIn("weekly_start", ui_state.get(self._target, {}))
         finally:
             if os.path.exists(out):
                 os.remove(out)
 
     def test_weekly_start_persisted(self):
-        """--weekly-start 持久化到 gui_state.json（周几跑是长期配置，同 GUI 改周几起），
+        """--weekly-start 持久化到 weekly_start.yml（set_weekly_start），
         且不把 --dungeon 临时覆盖写回。"""
-        saved = []
-        base_state = {self._target: {"dungeon": "基线副本"}}
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
             with (
-                patch.object(
-                    cli.ChainService,
-                    "load_ui_state",
-                    side_effect=lambda: copy.deepcopy(base_state),
-                ),
-                patch.object(
-                    cli.ChainService,
-                    "save_ui_state",
-                    side_effect=lambda state: saved.append(state),
-                ),
+                patch.object(cli.ChainService, "set_weekly_start") as mock_set,
                 patch.object(
                     cli.ChainService, "generate_chain", return_value=out
                 ) as mock_gen,
@@ -496,15 +490,12 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
                     ],
                     expect_exit=0,
                 )
-            # 落盘版本：含 weekly_start=4，不含 --dungeon 临时覆盖
-            self.assertEqual(
-                saved,
-                [{self._target: {"dungeon": "基线副本", "weekly_start": 4}}],
-            )
-            # 内存 ui_state（传 generate_chain）：含 dungeon 覆盖 + weekly_start
+            # 周几起经 set_weekly_start 持久化（不再落 gui_state.json）
+            mock_set.assert_called_once_with(self._target, 4)
+            # 内存 ui_state（传 generate_chain）：含 dungeon 覆盖，不含 weekly_start
             ui_state = mock_gen.call_args.args[3]
             self.assertEqual(ui_state[self._target]["dungeon"], "凝素领域")
-            self.assertEqual(ui_state[self._target]["weekly_start"], 4)
+            self.assertNotIn("weekly_start", ui_state.get(self._target, {}))
         finally:
             if os.path.exists(out):
                 os.remove(out)

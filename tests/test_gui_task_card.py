@@ -1,0 +1,210 @@
+"""测试 src/gui/controllers/task_card.py：多周常 items 与选副本持久化。"""
+
+import os
+import tempfile
+import unittest
+from unittest.mock import MagicMock, patch
+
+import yaml
+
+from src.gui.controllers import task_card as task_card_mod
+from src.gui.controllers.task_card import TaskCardController
+
+
+class _FakeGameList:
+    def __init__(self, games):
+        self.games = games
+        self.current_game = games[0]
+
+
+def _write_defs(tmp, data):
+    """写临时 weekly_list.yml（周常声明配置）。"""
+    path = os.path.join(tmp.name, "weekly_list.yml")
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+    return path
+
+
+def _make_controller(
+    script_name="March7th-Assistant", display_name="崩铁", ui_state=None
+):
+    games = [{"script_name": script_name, "display_name": display_name}]
+    game_list = _FakeGameList(games)
+    service = MagicMock()
+    service.load_ui_state.return_value = {} if ui_state is None else ui_state
+    toast = MagicMock()
+    ctrl = TaskCardController(game_list, service, toast)
+    return ctrl
+
+
+class TestWeeklyItems(unittest.TestCase):
+    def test_weekly_items_for_star_rail(self):
+        """崩铁两种周常（来自 weekly_list.yml）：货币战争(无副本) + 历战余响(有副本)。"""
+        tmp = tempfile.TemporaryDirectory()
+        defs_path = _write_defs(
+            tmp,
+            {
+                "March7th-Assistant": [
+                    {"name": "货币战争"},
+                    {
+                        "name": "历战余响",
+                        "dungeons": ["无", "铁骸的锈冢", "晨昏的回眸"],
+                    },
+                ]
+            },
+        )
+        with patch(
+            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            return_value=defs_path,
+        ):
+            ctrl = _make_controller()
+            items = ctrl.weekly_items
+        tmp.cleanup()
+        self.assertEqual(len(items), 2)
+        self.assertEqual(items[0]["name"], "货币战争")
+        self.assertFalse(items[0]["has_dungeon"])
+        self.assertEqual(items[0]["dungeon_label"], "")
+        self.assertEqual(items[1]["name"], "历战余响")
+        self.assertTrue(items[1]["has_dungeon"])
+        self.assertEqual(items[1]["dungeon_label"], "选择副本")
+
+    def test_weekly_dungeon_options_reads_from_config(self):
+        """副本清单来自 weekly_list.yml 的 dungeons 字段，不再依赖游戏脚本配置。"""
+        tmp = tempfile.TemporaryDirectory()
+        defs_path = _write_defs(
+            tmp,
+            {
+                "March7th-Assistant": [
+                    {
+                        "name": "历战余响",
+                        "dungeons": ["无", "铁骸的锈冢", "晨昏的回眸"],
+                    },
+                ]
+            },
+        )
+        with patch(
+            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            return_value=defs_path,
+        ):
+            ctrl = _make_controller()
+            options = ctrl.weekly_dungeon_options("历战余响")
+        tmp.cleanup()
+        self.assertEqual(options, ["无", "铁骸的锈冢", "晨昏的回眸"])
+
+    def test_weekly_dungeon_options_unknown_weekly_returns_empty(self):
+        """未声明的周常名 → 空列表。"""
+        tmp = tempfile.TemporaryDirectory()
+        defs_path = _write_defs(
+            tmp,
+            {
+                "March7th-Assistant": [
+                    {"name": "历战余响", "dungeons": ["无", "铁骸的锈冢"]},
+                ]
+            },
+        )
+        with patch(
+            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            return_value=defs_path,
+        ):
+            ctrl = _make_controller()
+            self.assertEqual(ctrl.weekly_dungeon_options("不存在"), [])
+        tmp.cleanup()
+
+    def test_weekly_dungeon_options_without_dungeons_key(self):
+        """无 dungeons 字段的周常 → 空列表（不报 KeyError）。"""
+        tmp = tempfile.TemporaryDirectory()
+        defs_path = _write_defs(
+            tmp,
+            {
+                "March7th-Assistant": [
+                    {"name": "货币战争"},
+                ]
+            },
+        )
+        with patch(
+            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            return_value=defs_path,
+        ):
+            ctrl = _make_controller()
+            self.assertEqual(ctrl.weekly_dungeon_options("货币战争"), [])
+        tmp.cleanup()
+
+    def test_weekly_supported_follows_config(self):
+        """weekly_supported 唯一真相源为 weekly_list.yml：声明即支持，未声明即不支持。"""
+        # 崩铁声明、鸣潮未声明
+        tmp = tempfile.TemporaryDirectory()
+        defs_path = _write_defs(
+            tmp,
+            {
+                "March7th-Assistant": [
+                    {"name": "历战余响", "dungeons": ["无"]},
+                ]
+            },
+        )
+        with patch(
+            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            return_value=defs_path,
+        ):
+            ctrl_star = _make_controller("March7th-Assistant", "崩铁")
+            ctrl_ww = _make_controller("ok-ww", "鸣潮")
+            self.assertTrue(ctrl_star.weekly_supported)
+            self.assertFalse(ctrl_ww.weekly_supported)
+        tmp.cleanup()
+
+    def test_weekly_items_empty_for_non_weekly_script(self):
+        tmp = tempfile.TemporaryDirectory()
+        # ok-ww 不在 weekly_list.yml 声明 → 空列表
+        defs_path = _write_defs(tmp, {})
+        with patch(
+            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            return_value=defs_path,
+        ):
+            ctrl = _make_controller("ok-ww", "鸣潮")
+            self.assertEqual(ctrl.weekly_items, [])
+        tmp.cleanup()
+
+    def test_weekly_items_reflects_saved_dungeon(self):
+        """已选副本（gui_state.json 的 weekly_dungeons）应反映在 dungeon_label。"""
+        tmp = tempfile.TemporaryDirectory()
+        defs_path = _write_defs(
+            tmp,
+            {
+                "March7th-Assistant": [
+                    {"name": "货币战争"},
+                    {"name": "历战余响", "dungeons": ["无", "铁骸的锈冢"]},
+                ]
+            },
+        )
+        ui_state = {
+            "March7th-Assistant": {"weekly_dungeons": {"历战余响": "铁骸的锈冢"}}
+        }
+        with patch(
+            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            return_value=defs_path,
+        ):
+            ctrl = _make_controller(ui_state=ui_state)
+            items = ctrl.weekly_items
+        tmp.cleanup()
+        echo = [i for i in items if i["name"] == "历战余响"][0]
+        self.assertEqual(echo["dungeon_label"], "铁骸的锈冢")
+
+
+class TestSelectWeeklyDungeon(unittest.TestCase):
+    def test_select_weekly_dungeon_persists_and_writes_config(self):
+        """选副本：写 gui_state.json 的 weekly_dungeons + 调 set_config 适配器接口。"""
+        ctrl = _make_controller()
+        with patch.object(task_card_mod, "set_weekly_dungeon") as mock_set:
+            ctrl.selectWeeklyDungeon("历战余响", "铁骸的锈冢")
+
+        # 1) 持久化到 gui_state.json 的 weekly_dungeons
+        self.assertEqual(
+            ctrl.ui_state["March7th-Assistant"]["weekly_dungeons"]["历战余响"],
+            "铁骸的锈冢",
+        )
+        ctrl._service.save_ui_state.assert_called_once_with(ctrl.ui_state)
+        # 2) 写脚本自身 config 的 instance_names（M7A 约定键名）
+        mock_set.assert_called_once_with("March7th-Assistant", "历战余响", "铁骸的锈冢")
+
+
+if __name__ == "__main__":
+    unittest.main()

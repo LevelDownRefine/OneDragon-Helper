@@ -25,6 +25,8 @@ from src.config.subscript import (
     resolve_script_path,
 )
 from src.utils import (
+    get_weekly_list_yml_path_under_root,
+    get_weekly_start_yml_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
     require_config_yml_path,
 )
@@ -44,12 +46,18 @@ def _load_config() -> dict:
 
 
 def _load_weekly() -> dict:
-    """读取 weekly_timeouts.yml（不存在时返回空 dict）。"""
+    """读取 weekly_timeouts.yml（随包发布、必存在）。
+
+    与 _load_weekly_defs 同款：assert 存在且为 dict，损坏直接暴露而非静默兜底。
+    """
     weekly_path = get_weekly_timeouts_yml_path_under_root()
-    if not os.path.exists(weekly_path):
-        return {}
+    assert os.path.exists(weekly_path), f"[service] 周常超时配置缺失: {weekly_path}"
     with open(weekly_path, encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        data = yaml.safe_load(f)
+    assert isinstance(data, dict), (
+        f"[service] 周常超时配置应为 dict（空文件或格式错误）: {weekly_path}"
+    )
+    return data
 
 
 def _dump_weekly(weekly_map: dict) -> None:
@@ -57,6 +65,51 @@ def _dump_weekly(weekly_map: dict) -> None:
     weekly_path = get_weekly_timeouts_yml_path_under_root()
     with open(weekly_path, "w", encoding="utf-8") as f:
         yaml.dump(weekly_map, f, allow_unicode=True, sort_keys=False)
+
+
+def _load_weekly_start() -> dict:
+    """读取 weekly_start.yml（周常起始日持久化配置，进 git，必存在）。
+
+    结构：{script_name: 1~7}。与 _load_weekly / _load_weekly_defs 同款：
+    assert 存在且为 dict，损坏直接暴露而非静默兜底。
+    """
+    weekly_start_path = get_weekly_start_yml_path_under_root()
+    assert os.path.exists(weekly_start_path), (
+        f"[service] 周常起始日配置缺失: {weekly_start_path}"
+    )
+    with open(weekly_start_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    assert isinstance(data, dict), (
+        f"[service] 周常起始日配置应为 dict（空文件或格式错误）: {weekly_start_path}"
+    )
+    return data
+
+
+def _dump_weekly_start(data: dict) -> None:
+    """写回 weekly_start.yml（覆盖式，与 _dump_weekly 同款）。"""
+    weekly_start_path = get_weekly_start_yml_path_under_root()
+    with open(weekly_start_path, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+
+
+def _load_weekly_defs() -> dict:
+    """读取 weekly_list.yml（周常声明配置，进 git，必存在）。
+
+    结构：{script_name: [{"name", "dungeons"?}, ...]}。dungeons 存在且有内容即
+    表示该周常需选副本（不再用 needs_instance 布尔字段）。周常起始日（周几起）
+    另存于 weekly_start.yml，不在本文件。
+    """
+    weekly_list_path = get_weekly_list_yml_path_under_root()
+    assert os.path.exists(weekly_list_path), (
+        f"[service] 周常声明配置缺失: {weekly_list_path}"
+    )
+    with open(weekly_list_path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    # 空文件或内容非 dict 都是声明配置损坏，直接暴露而非静默当成「无声明」。
+    assert isinstance(data, dict), (
+        f"[service] 周常声明配置应为 dict（空文件或格式错误）: {weekly_list_path}"
+    )
+    return data
 
 
 def _resolve_weekly_timeouts(timeouts: list[int | None]) -> list[int]:
@@ -81,11 +134,75 @@ class ScriptService:
     """
 
     def load_all_weekly(self) -> dict:
-        """返回 weekly_timeouts.yml 的完整字典（文件不存在时返回空 dict）。
+        """返回 weekly_timeouts.yml 的完整字典（文件随包发布，必存在）。
 
         key 为脚本唯一标识。
         """
         return _load_weekly()
+
+    def get_weekly_defs(self, script_name: str) -> list:
+        """返回某脚本支持的周常声明清单（weekly_list.yml）。
+
+        每项：{"name", "dungeons"?}。dungeons 存在即有可选副本。文件缺失或该脚本
+        无声明时返回空列表。
+
+        Args:
+            script_name: 脚本唯一标识。
+
+        Returns:
+            周常声明列表；无声明时为空列表。
+        """
+        defs_map = _load_weekly_defs()
+        return list(defs_map[script_name]) if script_name in defs_map else []
+
+    def get_weekly_start(self, script_name: str) -> int | None:
+        """返回某脚本的周常起始日（1~7），未设置返回 None。
+
+        Args:
+            script_name: 脚本唯一标识。
+
+        Returns:
+            周常起始日（1~7），未设置返回 None。
+        """
+        start_map = _load_weekly_start()
+        if script_name not in start_map:
+            return None
+        start_day = start_map[script_name]
+        if start_day is None:
+            return None
+        assert isinstance(start_day, int), (
+            f"[service] {script_name} 非法 weekly_start: {start_day!r}（应为整数 1~7）"
+        )
+        assert 1 <= start_day <= 7, (
+            f"[service] {script_name} 非法 weekly_start: {start_day}（应为 1~7）"
+        )
+        return start_day
+
+    def get_weekly_start_map(self) -> dict:
+        """返回 weekly_start.yml 全量（{脚本标识: 1~7}）。"""
+        return _load_weekly_start()
+
+    def set_weekly_start(self, script_name: str, start_day: int | None) -> None:
+        """持久化某脚本的周常起始日（周几起）到 weekly_start.yml。
+
+        start_day 为 1~7 时写入；为 None 时移除该脚本条目（对应弹窗「不设置」）。
+
+        Args:
+            script_name: 脚本唯一标识。
+            start_day: 周常起始日（1~7）；None 表示清除。
+        """
+        if start_day is not None:
+            assert 1 <= start_day <= 7, (
+                f"[service] 非法 weekly_start: {start_day}（应为 1~7）"
+            )
+        data = _load_weekly_start()
+        if start_day is None:
+            if script_name not in data:
+                return
+            data.pop(script_name, None)
+        else:
+            data[script_name] = start_day
+        _dump_weekly_start(data)
 
     def get_script(self, script_name: str) -> dict | None:
         """按脚本唯一标识读取单个脚本条目。
