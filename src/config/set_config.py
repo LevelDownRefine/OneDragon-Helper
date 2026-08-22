@@ -482,9 +482,11 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
             f"_game_config_rel_path"
         )
     if cls._weekly_task_name:
-        assert cls._write_weekly is not ScriptConfig._write_weekly, (
+        assert cls._write_weekly is not ScriptConfig._write_weekly or (
+            cls.set_weekly is not ScriptConfig.set_weekly
+        ), (
             f"[set_config][{cls.__name__}] 声明了 _weekly_task_name 必须实现 "
-            f"_write_weekly"
+            f"_write_weekly 或覆写 set_weekly（周常写入的落点）"
         )
     _CONFIGS[cls._script_name] = cls
     return cls
@@ -713,15 +715,36 @@ class StarRailConfig(ScriptConfig):
     def __init__(self):
         self._init_config()
 
-    def _write_weekly(self, enabled: bool) -> None:
-        """控制 config.yaml 的 currencywars_enable 周常开关。
+    def set_weekly(self, start_day: int) -> None:
+        """崩铁周常：周几起对所有周本生效。
+
+        - 货币战争（开关型）：M7A 无自身周几起门控，由 launcher 按周几起落盘
+          currencywars_enable。
+        - 历战余响（dungeon 型）：把周几起写入 M7A 的 echo_of_war_start_day_of_week，
+          由 M7A 自身按该日门控；副本选型 instance_names 正交，不在这里改动。
 
         Args:
-            enabled: 是否启用周常。
+            start_day: 周几以后启用（1~7，1=周一）。
         """
+        if not self._enabled:
+            logger.info(f"[set_weekly][{self.display_name}] 用户拒绝更新，跳过周常设置")
+            return
+        assert self._weekly_task_name, (
+            f"[set_config][{self.display_name}] 未支持周常配置"
+        )
+        assert 1 <= start_day <= 7, (
+            f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
+        )
         config = self._load()
-        # 周常（货币战争）在 config.yaml 中的开关_weekly_task_name。
-        safe_update(config, self._weekly_task_name, enabled, self.display_name)
+        # 货币战争：今天是否已到起始日
+        safe_update(
+            config,
+            self._weekly_task_name,
+            is_weekly_start_reached(start_day),
+            self.display_name,
+        )
+        # 历战余响：周几起交给 M7A 自身门控，与副本选型 instance_names 正交
+        config["echo_of_war_start_day_of_week"] = start_day
         self._save(config)
 
     def set_weekly_dungeon(self, weekly_name: str, dungeon_name: str) -> None:

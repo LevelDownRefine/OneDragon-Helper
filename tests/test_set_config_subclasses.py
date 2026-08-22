@@ -1534,44 +1534,22 @@ class TestSetWeekly(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(AssertionError):
                 cfg.set_weekly(bad)
 
-    def test_set_weekly_today_reached_enables(self):
-        """今天周四（get_week_num=3），start_day=4 → _write_weekly(True)"""
-        with patch.object(StarRailConfig, "_init_config"):
-            cfg = StarRailConfig()
-        with (
-            patch("src.utils_weekly.get_week_num", return_value=3),
-            patch.object(cfg, "_write_weekly") as mock_write,
-        ):
-            cfg.set_weekly(4)
-        mock_write.assert_called_once_with(True)
-
-    def test_set_weekly_today_before_disables(self):
-        """今天周二（get_week_num=1），start_day=4 → _write_weekly(False)"""
-        with patch.object(StarRailConfig, "_init_config"):
-            cfg = StarRailConfig()
-        with (
-            patch("src.utils_weekly.get_week_num", return_value=1),
-            patch.object(cfg, "_write_weekly") as mock_write,
-        ):
-            cfg.set_weekly(4)
-        mock_write.assert_called_once_with(False)
-
     def test_set_weekly_enabled_false_short_circuits(self):
-        """用户已拒绝（enabled=False）→ 直接跳过，不调 _write_weekly（同 set_dungeon）"""
+        """用户已拒绝（enabled=False）→ 直接跳过，不落盘（同 set_dungeon）"""
         with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
         cfg._enabled = False
-        with patch.object(cfg, "_write_weekly") as mock_write:
+        with patch.object(cfg, "_save") as mock_save:
             cfg.set_weekly(4)
-        mock_write.assert_not_called()
+        mock_save.assert_not_called()
 
     # ---- 崩铁：currencywars_enable ----
 
     def test_star_rail_enable_writes_true(self):
-        """崩铁启用周常（今天已到起始日）→ currencywars_enable=True"""
+        """崩铁今天已到起始日 → currencywars_enable=True 且 echo_of_war_start_day_of_week=起始日（历战余响）"""
         with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
-        config = {"currencywars_enable": False}
+        config = {"currencywars_enable": False, "echo_of_war_start_day_of_week": 1}
         with (
             patch("src.utils_weekly.get_week_num", return_value=3),
             patch.object(cfg, "_load", return_value=config),
@@ -1579,13 +1557,14 @@ class TestSetWeekly(unittest.TestCase):
         ):
             cfg.set_weekly(4)
         self.assertTrue(config["currencywars_enable"])
+        self.assertEqual(config["echo_of_war_start_day_of_week"], 4)
         mock_save.assert_called_once()
 
     def test_star_rail_disable_writes_false(self):
-        """崩铁停用周常（今天未到起始日）→ currencywars_enable=False"""
+        """崩铁今天未到起始日 → currencywars_enable=False，但 echo_of_war_start_day_of_week 仍写起始日（由 M7A 自身门控）"""
         with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
-        config = {"currencywars_enable": True}
+        config = {"currencywars_enable": True, "echo_of_war_start_day_of_week": 1}
         with (
             patch("src.utils_weekly.get_week_num", return_value=1),
             patch.object(cfg, "_load", return_value=config),
@@ -1593,6 +1572,7 @@ class TestSetWeekly(unittest.TestCase):
         ):
             cfg.set_weekly(4)
         self.assertFalse(config["currencywars_enable"])
+        self.assertEqual(config["echo_of_war_start_day_of_week"], 4)
         mock_save.assert_called_once()
 
     # ---- 鸣潮：Additional Tasks 列表增删 Check Weekly Garden ----

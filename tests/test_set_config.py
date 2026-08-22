@@ -68,13 +68,15 @@ class TestConfigRelPaths(unittest.TestCase):
         )
 
     def test_weekly_task_name_requires_write_weekly(self):
-        """声明 _weekly_task_name 的子类必须实现 _write_weekly（register 完整性校验）"""
+        """声明 _weekly_task_name 的子类必须落实周常写入：覆写 _write_weekly 或 set_weekly
+        （register 完整性校验）"""
         for name, cls in set_config._CONFIGS.items():
             if cls._weekly_task_name:
-                self.assertIsNot(
-                    cls._write_weekly,
-                    set_config.ScriptConfig._write_weekly,
-                    f"{name} 声明了 _weekly_task_name 但未实现 _write_weekly",
+                self.assertTrue(
+                    cls._write_weekly is not set_config.ScriptConfig._write_weekly
+                    or cls.set_weekly is not set_config.ScriptConfig.set_weekly,
+                    f"{name} 声明了 _weekly_task_name 但未落实周常写入"
+                    f"（既未实现 _write_weekly 也未覆写 set_weekly）",
                 )
 
     def test_register_rejects_weekly_without_write(self):
