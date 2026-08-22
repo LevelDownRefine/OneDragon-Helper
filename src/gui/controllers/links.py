@@ -13,6 +13,7 @@ from src.config.set_config import get_game_exe_path as _get_game_exe_path
 from src.config.set_config import get_game_github as _get_game_github
 from src.config.set_config import get_game_homepage as _get_game_homepage
 from src.config.subscript import resolve_script_path
+from src.log import get_log_dir
 from src.utils import get_config_yml_path_under_root
 
 # 通用占位链接（对应内容未配置时使用）
@@ -86,6 +87,25 @@ class LinksController(QObject):
             return
         os.startfile(folder)  # noqa: S606 打开脚本所在目录
         self._toast(f"已打开 {game['display_name']} 脚本目录")
+
+    @Slot()
+    def openLogFolder(self):
+        """打开当前脚本运行日志目录（资源管理器）；无匹配解析器或目录缺失时提示。"""
+        game = self._game_list.current_game
+        script_path = game["script_data"].get("script_path", "")
+        resolved = resolve_script_path(script_path) if script_path else None
+        if not resolved:
+            self._toast(f"{game['display_name']}：未找到脚本路径")
+            return
+        log_dir = get_log_dir(game["script_name"], resolved)
+        if log_dir is None:
+            self._toast(f"{game['display_name']}：暂不支持日志跳转")
+            return
+        if not os.path.isdir(log_dir):
+            self._toast(f"{game['display_name']}：日志目录不存在")
+            return
+        os.startfile(log_dir)  # noqa: S606 打开日志目录
+        self._toast(f"已打开 {game['display_name']} 日志目录")
 
     @Slot()
     def openSettings(self):

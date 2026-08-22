@@ -209,6 +209,10 @@ class QmlBridge(QObject):
         self.links.openScriptFolder()
 
     @Slot()
+    def openLogFolder(self):
+        self.links.openLogFolder()
+
+    @Slot()
     def openSettings(self):
         self.links.openSettings()
 

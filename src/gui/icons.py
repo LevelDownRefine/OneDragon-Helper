@@ -116,7 +116,7 @@ class UiIconProvider(QQuickImageProvider):
     """QML 通用 UI 矢量图标源：`image://uiicon/<name>`。
 
     name → 重绘矢量图标。静态图标，无需游戏数据，构造即就绪。
-    支持：home / game / folder / bili / github / wallpaper / settings / min / close。
+    支持：home / game / folder / bili / github / wallpaper / settings / min / close / log。
     """
 
     _SIZE = 48
@@ -135,6 +135,7 @@ class UiIconProvider(QQuickImageProvider):
             "settings": self._draw_settings,
             "min": self._draw_min,
             "close": self._draw_close,
+            "log": self._draw_log,
         }
 
     def _render(self, name: str) -> QPixmap:
@@ -263,3 +264,14 @@ class UiIconProvider(QQuickImageProvider):
         p.setPen(QPen(_WHITE, 2.4, Qt.SolidLine, Qt.RoundCap))
         p.drawLine(-7, -7, 7, 7)
         p.drawLine(7, -7, -7, 7)
+
+    def _draw_log(self, p: QPainter):
+        # 日志文档：圆角页框 + 多行文本线
+        pen = QPen(_WHITE, 2.4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(-12, -14, 24, 28), 4, 4)  # 页框
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        for y in (-7, -1, 5):
+            p.drawRoundedRect(QRectF(-7, y - 1, 14, 2), 1, 1)  # 文本行

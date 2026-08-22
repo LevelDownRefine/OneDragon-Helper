@@ -10,13 +10,13 @@ import os
 import subprocess
 import sys
 
-import collect_log
-import yaml
-
-# 与 collect_log 一致：把项目根加入 sys.path，以便复用核心代码 get_script_name。
+# 把项目根加入 sys.path，以便 import src.log / src.config。
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
+
+import src.log.monitor as collect_log
+import yaml
 from src.config.subscript import get_script_name  # noqa: E402
 
 logger = logging.getLogger(__name__)

@@ -15,9 +15,11 @@ sys.path.append(
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 )
 
-import collect_log
 import rerun
-from collect_log import (
+
+import src.log.monitor as collect_log
+import src.utils_logger
+from src.log import (
     BGILogParser,
     M7ALogParser,
     OkEfLogParser,
@@ -185,20 +187,21 @@ class TestCollectLogSetup(unittest.TestCase):
             os.path.isfile(os.path.join(root, "config", "config.example.yml"))
         )
 
-    def test_setup_logging_writes_to_logs_collect_log(self):
-        """_setup_logging 应把日志写入 <root>/logs/collect_log.log（用临时根避免污染真实 logs）。"""
+    def test_setup_logging_writes_to_framework_log(self):
+        """monitor 复用框架 setup_logging，日志写入 <root>/logs/onedragon_helper.log
+        （用临时根避免污染真实 logs），且不写 collect_log.log。"""
         tmp = tempfile.mkdtemp()
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
-        collect_log._LOG_CONFIGURED = False
+        orig = src.utils_logger.get_root_dir
+        src.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
+        src.utils_logger._configured = False
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
-            collect_log._setup_logging()
+            collect_log.setup_logging()
             _logging.getLogger("__test_collect_log__").info("HELLO_FROM_TEST")
             for h in _logging.getLogger().handlers:
                 h.flush()
 
-            log_file = os.path.join(tmp, "logs", "collect_log.log")
+            log_file = os.path.join(tmp, "logs", "onedragon_helper.log")
             self.assertTrue(os.path.exists(log_file))
             with open(log_file, encoding="utf-8") as f:
                 self.assertIn("HELLO_FROM_TEST", f.read())
@@ -206,40 +209,41 @@ class TestCollectLogSetup(unittest.TestCase):
             targets = [
                 getattr(h, "baseFilename", "") for h in _logging.getLogger().handlers
             ]
-            self.assertTrue(any("collect_log.log" in t for t in targets))
+            self.assertTrue(any("onedragon_helper.log" in t for t in targets))
+            self.assertFalse(any("collect_log.log" in t for t in targets))
         finally:
             after = {id(h) for h in _logging.getLogger().handlers}
             for h in list(_logging.getLogger().handlers):
                 if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._LOG_CONFIGURED = False
-            collect_log._get_root_dir = orig
+            src.utils_logger._configured = False
+            src.utils_logger.get_root_dir = orig
 
     def test_setup_logging_is_idempotent(self):
-        """重复调用 _setup_logging 不会重复添加指向 collect_log.log 的 handler。"""
+        """重复调用复用框架 setup_logging 不会重复添加 onedragon_helper.log handler。"""
         tmp = tempfile.mkdtemp()
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
-        collect_log._LOG_CONFIGURED = False
+        orig = src.utils_logger.get_root_dir
+        src.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
+        src.utils_logger._configured = False
+        before = {id(h) for h in _logging.getLogger().handlers}
         try:
-            collect_log._setup_logging()
-            collect_log._setup_logging()
+            collect_log.setup_logging()
+            collect_log.setup_logging()
             count = sum(
                 1
                 for h in _logging.getLogger().handlers
-                if "collect_log.log" in getattr(h, "baseFilename", "")
+                if "onedragon_helper.log" in getattr(h, "baseFilename", "")
             )
             self.assertEqual(count, 1)
         finally:
-            before_ids = {id(h) for h in _logging.getLogger().handlers}
+            after = {id(h) for h in _logging.getLogger().handlers}
             for h in list(_logging.getLogger().handlers):
-                if "collect_log.log" in getattr(h, "baseFilename", ""):
+                if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._LOG_CONFIGURED = False
-            collect_log._get_root_dir = orig
-            _ = before_ids
+            src.utils_logger._configured = False
+            src.utils_logger.get_root_dir = orig
 
 
 class TestParseLogsRerunList(unittest.TestCase):
@@ -262,18 +266,20 @@ class TestParseLogsRerunList(unittest.TestCase):
         return script_path
 
     def _run_parse(self, tmp: str, do_log: bool = True) -> list[str]:
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
-        collect_log._LOG_CONFIGURED = False
+        orig = src.utils_logger.get_root_dir
+        src.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
+        src.utils_logger._configured = False
+        before = {id(h) for h in _logging.getLogger().handlers}
         try:
             return collect_log.parse_logs(do_log=do_log)
         finally:
+            after = {id(h) for h in _logging.getLogger().handlers}
             for h in list(_logging.getLogger().handlers):
-                if "collect_log.log" in getattr(h, "baseFilename", ""):
+                if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._LOG_CONFIGURED = False
-            collect_log._get_root_dir = orig
+            src.utils_logger._configured = False
+            src.utils_logger.get_root_dir = orig
 
     def test_parse_logs_includes_no_log_in_rerun_list(self):
         """无日志（NO_LOG）的游戏应被纳入重跑列表（可能未正常启动）。"""
@@ -360,19 +366,21 @@ class TestParseLogsRerunList(unittest.TestCase):
                 "extra": None,
             }
 
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
-        collect_log._LOG_CONFIGURED = False
+        orig = src.utils_logger.get_root_dir
+        src.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
+        src.utils_logger._configured = False
+        before = {id(h) for h in _logging.getLogger().handlers}
         try:
             with mock.patch.object(collect_log, "parse_log", side_effect=fake_parse):
                 result = collect_log.parse_logs(do_log=False)
         finally:
+            after = {id(h) for h in _logging.getLogger().handlers}
             for h in list(_logging.getLogger().handlers):
-                if "collect_log.log" in getattr(h, "baseFilename", ""):
+                if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._LOG_CONFIGURED = False
-            collect_log._get_root_dir = orig
+            src.utils_logger._configured = False
+            src.utils_logger.get_root_dir = orig
 
         self.assertEqual(result["rerun"], ["BetterGI"])
         self.assertEqual(result["notify"], ["ok-ww"])
@@ -416,19 +424,21 @@ class TestParseLogsRerunList(unittest.TestCase):
                 "extra": None,
             }
 
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
-        collect_log._LOG_CONFIGURED = False
+        orig = src.utils_logger.get_root_dir
+        src.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
+        src.utils_logger._configured = False
+        before = {id(h) for h in _logging.getLogger().handlers}
         try:
             with mock.patch.object(collect_log, "parse_log", side_effect=fake_parse):
                 result = collect_log.parse_logs(do_log=False)
         finally:
+            after = {id(h) for h in _logging.getLogger().handlers}
             for h in list(_logging.getLogger().handlers):
-                if "collect_log.log" in getattr(h, "baseFilename", ""):
+                if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._LOG_CONFIGURED = False
-            collect_log._get_root_dir = orig
+            src.utils_logger._configured = False
+            src.utils_logger.get_root_dir = orig
 
         # WARN 不影响决策：正常退出 → 不重跑；有报错 → 通知。
         self.assertEqual(result["rerun"], [])
@@ -461,7 +471,7 @@ class TestParseLogsRerunList(unittest.TestCase):
     def test_parse_daily_done_driven_by_marker(self):
         """daily_done 直接由 parse_daily 决定：命中每日成功标记=True，否则（含脚本成功但无标记）=False。"""
         p = OkWwLogParser()
-        # 脚本整体成功但无 Daily Task Completed 标记 → 未做完每日（无标记即失败）。
+        # 脚本整体成功但无每日完成标记 → 未做完每日（无标记即失败）。
         with tempfile.NamedTemporaryFile(
             "w", suffix=".log", delete=False, encoding="utf-8"
         ) as tf:
@@ -474,11 +484,23 @@ class TestParseLogsRerunList(unittest.TestCase):
             self.assertFalse(res["daily_done"])
         finally:
             os.unlink(path)
-        # 命中 Daily Task Completed 标记 → 当日做完。
+        # 命中「claim daily reward via  coordinate」标记 → 当日做完。
         with tempfile.NamedTemporaryFile(
             "w", suffix=".log", delete=False, encoding="utf-8"
         ) as tf:
-            tf.write("DailyTask:Daily Task Completed")
+            tf.write("DailyTask:claim daily reward via  coordinate")
+            path = tf.name
+        try:
+            p.get_log_path = lambda sp="": Path(path)  # type: ignore[method-assign]
+            res = p.parse("")
+            self.assertTrue(res["daily_done"])
+        finally:
+            os.unlink(path)
+        # 命中「current daily progress 180」（每日进度满分）兜底标记 → 当日做完。
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".log", delete=False, encoding="utf-8"
+        ) as tf:
+            tf.write("DailyTask:info_set current daily progress 180")
             path = tf.name
         try:
             p.get_log_path = lambda sp="": Path(path)  # type: ignore[method-assign]
@@ -520,19 +542,21 @@ class TestParseLogsRerunList(unittest.TestCase):
                 "extra": None,
             }
 
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
-        collect_log._LOG_CONFIGURED = False
+        orig = src.utils_logger.get_root_dir
+        src.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
+        src.utils_logger._configured = False
+        before = {id(h) for h in _logging.getLogger().handlers}
         try:
             with mock.patch.object(collect_log, "parse_log", side_effect=fake_parse):
                 result = collect_log.parse_logs(do_log=False)
         finally:
+            after = {id(h) for h in _logging.getLogger().handlers}
             for h in list(_logging.getLogger().handlers):
-                if "collect_log.log" in getattr(h, "baseFilename", ""):
+                if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._LOG_CONFIGURED = False
-            collect_log._get_root_dir = orig
+            src.utils_logger._configured = False
+            src.utils_logger.get_root_dir = orig
 
         self.assertNotIn("未知", result["report"])
 
@@ -839,7 +863,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         content = (
             "info_set current_stamina 240\n"
             "info_set back_up_stamina 79\n"
-            "DailyTask:Daily Task Completed\n"
+            "DailyTask:claim daily reward via  coordinate\n"
             "TaskExecutor:Successfully Executed Task, Exiting Game and App!\n"
             "ERROR CombatCheck:target_enemy failed, try recheck\n"  # 噪声：战斗复检
             "ERROR TaskExecutor:Daily Task exception stopped Traceback\n"  # 真实报错
@@ -1010,7 +1034,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         ) as tf:
             tf.write(
                 "info_set current_stamina 100\n"
-                "Daily Task Completed\n"
+                "DailyTask:claim daily reward via  coordinate\n"
                 "Successfully Executed Task, Exiting Game and App!"
             )
             path = tf.name
@@ -1062,14 +1086,20 @@ class TestFourFieldExtraction(unittest.TestCase):
                 },
                 f,
             )
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
-        collect_log._LOG_CONFIGURED = False
+        orig = src.utils_logger.get_root_dir
+        src.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
+        src.utils_logger._configured = False
+        before = {id(h) for h in _logging.getLogger().handlers}
         try:
             res = parse_log("ok-ww", os.path.join(tmp, "ok-ww", "ok-ww.exe"))
         finally:
-            collect_log._get_root_dir = orig
-            collect_log._LOG_CONFIGURED = False
+            after = {id(h) for h in _logging.getLogger().handlers}
+            for h in list(_logging.getLogger().handlers):
+                if id(h) in (after - before):
+                    _logging.getLogger().removeHandler(h)
+                    h.close()
+            src.utils_logger._configured = False
+            src.utils_logger.get_root_dir = orig
         self.assertEqual(res["status"], ScriptLogStatus.NO_LOG)
         self.assertFalse(res["exited"])
         self.assertIsInstance(res["exited"], bool)

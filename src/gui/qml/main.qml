@@ -296,6 +296,7 @@ Window {
                 { icon: "home", act: () => Bridge.openHome() },
                 { icon: "game", act: () => Bridge.launchGame() },
                 { icon: "folder", act: () => Bridge.openScriptFolder() },
+                { icon: "log", act: () => Bridge.openLogFolder() },
                 { icon: "bili", act: () => Bridge.openBilibili() },
                 { icon: "github", act: () => Bridge.openGithub() },
                 { icon: "wallpaper", act: () => Bridge.openWallpaper() },

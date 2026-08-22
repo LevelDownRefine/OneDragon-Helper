@@ -275,6 +275,32 @@ class TestFloatBar(unittest.TestCase):
             b.openSettings()
         spy.assert_called_once()
 
+    def test_open_log_folder_starts_dir(self):
+        b = _make_bridge()
+        with (
+            patch.object(
+                links, "resolve_script_path", return_value="D:/Game/ok-ww.exe"
+            ),
+            patch.object(links, "get_log_dir", return_value="D:/Game/logs"),
+            patch.object(os.path, "isdir", return_value=True),
+            patch("os.startfile", create=True) as start,
+        ):
+            b.openLogFolder()
+        start.assert_called_once_with("D:/Game/logs")
+
+    def test_open_log_folder_no_parser_toasts(self):
+        b = _make_bridge()
+        spy = MagicMock()
+        b.toastRequested.connect(spy)
+        with (
+            patch.object(
+                links, "resolve_script_path", return_value="D:/Game/ok-ww.exe"
+            ),
+            patch.object(links, "get_log_dir", return_value=None),
+        ):
+            b.openLogFolder()
+        spy.assert_called_once()
+
     def test_open_wallpaper_persists_and_switches(self):
         b = _make_bridge()
         b.background.write_wallpapers = MagicMock()

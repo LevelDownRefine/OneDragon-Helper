@@ -14,8 +14,9 @@ sys.path.append(
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 )
 
-import collect_log
 import notify_mail
+
+import src.log.monitor as collect_log
 
 
 class TestLoadMailConfig(unittest.TestCase):

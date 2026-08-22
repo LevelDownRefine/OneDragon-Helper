@@ -6,14 +6,21 @@
 """
 
 import logging
+import os
 import smtplib
+import sys
 from datetime import datetime
 from email.header import Header
 from email.mime.text import MIMEText
 from email.utils import formataddr
 from pathlib import Path
 
-import collect_log
+# 把项目根加入 sys.path，以便 import src.log。
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+import src.log.monitor as collect_log
 import yaml
 
 logger = logging.getLogger(__name__)
