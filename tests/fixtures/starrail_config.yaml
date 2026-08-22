@@ -1,0 +1,30 @@
+# March7th Assistant 配置（测试夹具，模拟崩铁 M7A config.yaml）
+# 用于验证「读后写回应与原 config 保真」：注释保留、04:00 不变成 float、数据等价。
+
+# 语言设置
+ui_language: auto   # 可选值：auto / zh-CN / en
+
+# 周常设置
+currencywars_enable: true            # 货币战争总开关（开关型周本）
+currencywars_type: 1
+echo_of_war_enable: true             # 历战余响总开关
+echo_of_war_start_day_of_week: 1     # 历战余响周几起（正交的 enable 维度）
+
+# 定时（时间字段，不可被解析成六十进制 float）
+scheduled_time: 4:00                 # 每日定时（无前导零）
+scheduled_run_time: 04:00            # 旧配置：单一定时运行时间，格式 HH:mm
+
+# 副本选型（dungeon 型周本，与周几起正交）
+instance_names:
+  历战余响: 无
+
+# 路径（带引号空串，ruamel 会读成 str 子类，不得误判类型不一致）
+python_exe_path: ''
+
+# 通知方式（列表，验证序列往返）
+notify_list:
+  - bark
+  - mail
+
+# 通知图标（单行 URL，值不得被截断/折行破坏）
+notify_bark_icon: https://cdn.jsdelivr.net/gh/moesnow/March7thAssistant@main/assets/app/images/March7th.jpg

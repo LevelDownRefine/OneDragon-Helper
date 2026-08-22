@@ -19,6 +19,31 @@ from src.utils_weekly import is_weekly_start_reached
 logger = logging.getLogger(__name__)
 
 
+def _scalar_kind(value: Any) -> type:
+    """归一化标量类型，用于类型一致性比较。
+
+    ruamel.yaml 往返会把带引号字符串读成 ``str`` 的子类
+    （如 ``DoubleQuotedScalarString``）、保留字读成对应子类。直接 ``type()``
+    比较会误判为「类型不一致」。这里按真实语义归类，同时保留 ``bool`` 与
+    ``int`` 的区分（``bool`` 是 ``int`` 的子类，但语义不同，必须分别对待）。
+
+    Args:
+        value: 待归类的标量值。
+
+    Returns:
+        归一化后的类型（bool / int / float / str 或原 type）。
+    """
+    if isinstance(value, bool):
+        return bool
+    if isinstance(value, int):
+        return int
+    if isinstance(value, float):
+        return float
+    if isinstance(value, str):
+        return str
+    return type(value)
+
+
 def safe_update(
     config: dict,
     key: str,
@@ -31,7 +56,8 @@ def safe_update(
     Args:
         config: 待修改的 config dict。
         key: 目标字段名。
-        value: 目标值，类型须与现字段严格一致（type() 比较，避免 bool/int 混淆）。
+        value: 目标值，类型须与现字段语义一致（按 _scalar_kind 归一化比较，
+            容忍 ruamel 的 str/bool 子类，同时避免 bool/int 混淆）。
         display_name: 日志与报错用的脚本展示名。
         assert_key_exists: True 时缺字段直接 assert；False 时缺字段则新增。
 
@@ -50,9 +76,10 @@ def safe_update(
         config[key] = value
         return True
 
-    assert type(config[key]) is type(value), (
+    assert _scalar_kind(config[key]) is _scalar_kind(value), (
         f"[set_config][{display_name}] 类型不一致: key={key}, "
-        f"config={type(config[key]).__name__}, value={type(value).__name__}"
+        f"config={_scalar_kind(config[key]).__name__}, "
+        f"value={_scalar_kind(value).__name__}"
     )
 
     if config[key] == value:

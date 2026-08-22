@@ -9,6 +9,7 @@ import os
 import re
 
 import yaml
+from ruamel.yaml import YAML
 
 from src.utils import (
     get_config_yml_path_under_root,
@@ -16,6 +17,12 @@ from src.utils import (
     require_config_yml_path,
     safe_path_join,
 )
+
+# 游戏 config 往返读写实例：保留注释 / 键序 / 原引号，并按 YAML 1.2 解析，
+# 避免 PyYAML 1.1 把 04:00 这类时间误当六十进制数（→ 240.0）污染落盘。
+_game_yaml = YAML(typ="rt")
+_game_yaml.preserve_quotes = True
+_game_yaml.width = 4096  # 防止长行（长注释 / 列表）被折行破坏原排版
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +194,7 @@ def load_config(script_name: str, rel_path: str) -> dict | list:
         if ext == ".json":
             return json.load(f)
         elif ext in (".yaml", ".yml"):
-            return yaml.safe_load(f)
+            return _game_yaml.load(f)
         raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
 
@@ -212,7 +219,7 @@ def load_game_config(script_name: str, rel_path: str) -> dict | None:
         if ext == ".json":
             return json.load(f)
         elif ext in (".yaml", ".yml"):
-            return yaml.safe_load(f)
+            return _game_yaml.load(f)
         raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
 
@@ -228,7 +235,7 @@ def save_config(script_name: str, rel_path: str, data: dict | list) -> None:
         if ext == ".json":
             json.dump(data, f, ensure_ascii=False, indent=4)
         elif ext in (".yaml", ".yml"):
-            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+            _game_yaml.dump(data, f)
         else:
             raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
