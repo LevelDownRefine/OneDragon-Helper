@@ -482,9 +482,12 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
             f"_game_config_rel_path"
         )
     if cls._weekly_task_name:
-        assert cls._write_weekly is not ScriptConfig._write_weekly, (
-            f"[set_config][{cls.__name__}] 声明了 _weekly_task_name 必须实现 "
-            f"_write_weekly"
+        assert (
+            cls._write_weekly is not ScriptConfig._write_weekly
+            or cls.set_weekly is not ScriptConfig.set_weekly
+        ), (
+            f"[set_config][{cls.__name__}] 声明了 _weekly_task_name 必须在 "
+            f"_write_weekly 或 set_weekly 中落实周常写入"
         )
     _CONFIGS[cls._script_name] = cls
     return cls
@@ -713,15 +716,29 @@ class StarRailConfig(ScriptConfig):
     def __init__(self):
         self._init_config()
 
-    def _write_weekly(self, enabled: bool) -> None:
-        """控制 config.yaml 的 currencywars_enable 周常开关。
+    def set_weekly(self, start_day: int) -> None:
+        """崩铁周常：游戏配置自身支持「周几后刷本」，无需 launcher 按到达日期门控。
+
+        无论当前日期是否到达 start_day，均直接落下周常开关（改动才写）。
 
         Args:
-            enabled: 是否启用周常。
+            start_day: 周几以后启用（1~7，1=周一）；崩铁侧仅做校验，门控交由游戏。
+
+        Raises:
+            AssertionError: 未适配周常，或 start_day 不在 1~7。
         """
+        if not self._enabled:
+            logger.info(f"[set_weekly][{self.display_name}] 用户拒绝更新，跳过周常设置")
+            return
+        assert self._weekly_task_name, (
+            f"[set_config][{self.display_name}] 未支持周常配置"
+        )
+        assert 1 <= start_day <= 7, (
+            f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
+        )
+        # 崩铁游戏配置自身支持「周几后刷本」，launcher 只负责置位开关（改动才写）。
         config = self._load()
-        # 周常（货币战争）在 config.yaml 中的开关_weekly_task_name。
-        safe_update(config, self._weekly_task_name, enabled, self.display_name)
+        safe_update(config, self._weekly_task_name, True, self.display_name)
         self._save(config)
 
     def set_weekly_dungeon(self, weekly_name: str, dungeon_name: str) -> None:
