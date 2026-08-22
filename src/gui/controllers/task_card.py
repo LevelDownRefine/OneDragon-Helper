@@ -82,11 +82,20 @@ class TaskCardController(QObject):
 
     @property
     def weekly_start_label(self) -> str:
-        """周常 chip 文字（周几起 / 选择周几）。"""
+        """周常起始日文字（周几起），供单脚本配置弹窗显示当前选择。"""
         game = self._current
         saved = self._ui_state.get(game["script_name"], {})
         start_day = saved.get("weekly_start")
         return "选择周几" if start_day is None else f"{WEEKDAY_NAMES[start_day]}起"
+
+    @property
+    def weekly_name_label(self) -> str:
+        """周常行 chip 文字（周常名占位）。
+
+        当前周常副本选择尚未实现，固定返回占位「选择周常」。后续支持多种周常时，
+        此处改为读取具体周常名列表（组织形式可能大变，预留此接口）。
+        """
+        return "选择周常"
 
     @property
     def master_on(self) -> bool:

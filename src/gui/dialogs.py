@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from src.config.set_config import ScriptConfig
+from src.config.set_config import ScriptConfig, supports_weekly
 from src.config.subscript import get_script_name
 from src.service.script_service import ScriptService
 
@@ -398,6 +398,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         script_path="",
         parent=None,
         script_service=None,
+        chain_service=None,
     ):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {display_name}")
@@ -409,6 +410,9 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.display_name = display_name  # 展示名
         self.script_path = script_path
         self._script_service = script_service or ScriptService()
+        # chain_service 用于读写 gui_state.json 的 weekly_start（周几起），
+        # 与 task_card 的 selectWeekly 走同一持久化路径；不传则跳过周常读写。
+        self._chain_service = chain_service
         self.pending_changes = None  # accept() 后供调用方取表单字段与 weekly
 
         self.init_ui()
@@ -481,7 +485,23 @@ class SingleScriptConfigDialog(_FormDialogBase):
         grid.addWidget(self._make_label("游戏进程:"), 6, 0)
         grid.addWidget(self.game_process_input, 6, 1, 1, 2)
 
-        # 行 7：每周超时（4×2 Grid 让同列等宽，数字右对齐）
+        # 周几起：仅支持周常的脚本显示（选择落到 gui_state.json 的 weekly_start）。
+        # 不支持时整行不进布局，超时行上移到行 7，避免空行留白。
+        self._weekly_start_supported = supports_weekly(self.script_name)
+        weekly_row = 7 if self._weekly_start_supported else -1
+        timeout_row = 8 if self._weekly_start_supported else 7
+
+        # 周几起（行 7）
+        self.weekly_start_combo = self._make_combo(
+            ["不设置"] + [f"周{WEEKDAY_SHORT_NAMES[i]}起" for i in range(7)]
+        )
+        self.weekly_start_combo.setStyleSheet(combo_box_qss())
+        self._weekly_start_row = self.weekly_start_combo
+        if self._weekly_start_supported:
+            grid.addWidget(self._make_label("周常周几起:"), weekly_row, 0)
+            grid.addWidget(self.weekly_start_combo, weekly_row, 1, 1, 2)
+
+        # 每周超时（4×2 Grid 让同列等宽，数字右对齐）
         timeout_grid = QGridLayout()
         timeout_grid.setHorizontalSpacing(4)
         timeout_grid.setVerticalSpacing(2)
@@ -503,8 +523,8 @@ class SingleScriptConfigDialog(_FormDialogBase):
             timeout_grid.addWidget(day_label, row, col)
             timeout_grid.addWidget(timeout_edit, row, col + 1)
             self.timeout_inputs.append(timeout_edit)
-        grid.addWidget(self._make_label("每周超时:"), 7, 0)
-        grid.addLayout(timeout_grid, 7, 1, 1, 2)
+        grid.addWidget(self._make_label("每周超时:"), timeout_row, 0)
+        grid.addLayout(timeout_grid, timeout_row, 1, 1, 2)
 
         # 底部按钮行：左次要（配置文件 / 删除脚本）+ 右主操作（取消 / 保存）
         open_cfg_btn = self._make_left_button(
@@ -548,6 +568,15 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.game_process_input.setEnabled(self.kill_game_cb.isChecked())
         # 阻塞运行：缺字段视为 True（默认阻塞）
         self.block_cb.setChecked(script_data.get("block", True))
+
+        # 周几起（从 gui_state.json 读 weekly_start；不支持周常时跳过）
+        if self._weekly_start_supported and self._chain_service is not None:
+            ui_state = self._chain_service.load_ui_state()
+            saved = ui_state.get(self.script_name)
+            start_day = saved.get("weekly_start") if saved else None
+            self.weekly_start_combo.setCurrentIndex(
+                0 if start_day is None else int(start_day)
+            )
 
         # 每周超时
         timeouts = self._script_service.weekly_inputs(self.script_name)
@@ -595,6 +624,18 @@ class SingleScriptConfigDialog(_FormDialogBase):
         for timeout_edit in self.timeout_inputs:
             text = timeout_edit.text().strip()
             timeouts.append(int(text) if text else None)
+
+        # 周几起：直接写 gui_state.json 的 weekly_start（与 task_card.selectWeekly 同源）。
+        # index 0 = 不设置（None），1~7 对应周一~周日。
+        if self._weekly_start_supported and self._chain_service is not None:
+            idx = self.weekly_start_combo.currentIndex()
+            ui_state = self._chain_service.load_ui_state()
+            saved = ui_state.setdefault(self.script_name, {})
+            if idx <= 0:
+                saved.pop("weekly_start", None)
+            else:
+                saved["weekly_start"] = idx
+            self._chain_service.save_ui_state(ui_state)
 
         self.pending_changes = {
             "old_script_name": self.script_name,

@@ -1,11 +1,13 @@
 import QtQuick
 import OneDragonHelper 1.0
 
-// 任务调度卡（日常副本 / 周常周几）：复刻旧 src/gui/task_card.py 的视觉与行为契约。
+// 任务调度卡（日常副本 / 周常）：复刻旧 src/gui/task_card.py 的视觉与行为契约。
 // 数据经 Bridge 暴露：taskTitle / taskAdapted / weeklySupported / dailyDungeonText /
-// weeklyStartLabel / masterOn / dailyOn / weeklyOn / dungeonOptions；
-// 写回经 selectDungeon / selectWeekly / toggleMaster / toggleWeekly
+// weeklyNameLabel / masterOn / dailyOn / weeklyOn / dungeonOptions；
+// 写回经 selectDungeon / toggleMaster / toggleWeekly
 // （dungeon/sequence/weekly_start 持久化到 gui_state.json；开关内存态）。
+//
+// 「周几起」选择已迁至单脚本配置弹窗（≡ 按钮打开），本卡只显示周常名占位。
 //
 // 布局严格按旧版固定坐标（标题 y=18 / 分隔线 y=56 / 日常 y=68 / 周常 y=134），
 // 只用 visible 切显隐、绝不动态改行 y —— 旧版 _set_task_rows_visible 就是这么做的，
@@ -14,6 +16,9 @@ import OneDragonHelper 1.0
 // 显隐规则（对齐旧 _set_task_rows_visible / _refresh_weekly_chip）：
 // - taskAdapted 为假 → 仅显示标题，隐藏分隔线/两行（卡片收缩）。
 // - 周常行：weeklySupported 为真才亮蓝可点；否则整行置灰、chip 写「未支持」、开关禁用。
+//
+// 颜色约定：日常行与周常行共用同一套色板（标题白 / 图标底蓝 / 图标字蓝 / chip 文字蓝），
+// 保证两行视觉一致（旧版周常标题用了淡蓝与日常白色不一致，已统一）。
 //
 // 下拉用纯 QML 自绘（不引 QtQuick.Controls 的 Menu 组件类型）：项目早期在
 // 自定义 .qml 组件类型解析上有非确定失败（Type unavailable），自绘更稳。
@@ -104,7 +109,6 @@ Item {
                         Bridge.toastRequested("暂无副本选项")
                     } else {
                         dungeonPopup.visible = !dungeonPopup.visible
-                        weeklyPopup.visible = false
                     }
                 }
             }
@@ -131,6 +135,7 @@ Item {
     }
 
     // ── 周常行（固定 y=134；不支持时整行置灰，对齐旧 _refresh_weekly_chip）──
+    // 颜色与日常行共用同一色板（白标题 / 蓝图标底 / 蓝图标字 / 蓝 chip 字），保证一致。
     Item {
         id: weeklyRow
         x: 20; y: 134; width: 440; height: 56
@@ -147,7 +152,7 @@ Item {
         Text {
             x: 58; y: 15; width: 60; height: 26
             text: "周常"
-            color: weeklyRow.supported ? "#7DA8FF" : "#4A5568"
+            color: weeklyRow.supported ? "#FFFFFF" : "#4A5568"
             font.pixelSize: 15; font.weight: Font.DemiBold
         }
         Rectangle {
@@ -158,17 +163,14 @@ Item {
             border.color: weeklyRow.supported ? "#33517A" : "#2A3850"
             Text {
                 anchors.centerIn: parent
-                text: weeklyRow.supported ? Bridge.weeklyStartLabel : "未支持"
+                text: weeklyRow.supported ? Bridge.weeklyNameLabel : "未支持"
                 color: weeklyRow.supported ? "#7DA8FF" : "#4A5568"; font.pixelSize: 11
             }
             MouseArea {
                 anchors.fill: parent
                 hoverEnabled: true
                 enabled: weeklyRow.supported
-                onClicked: {
-                    weeklyPopup.visible = !weeklyPopup.visible
-                    dungeonPopup.visible = false
-                }
+                onClicked: Bridge.toastRequested("周常副本选择尚未实现")
             }
         }
         // 周常开关（内存态，由 toggleMaster / selectWeekly 置位；不支持时禁用置灰）
@@ -194,41 +196,7 @@ Item {
         }
     }
 
-    // ── 周常周几下拉 ──
-    Item {
-        id: weeklyPopup
-        z: 100
-        visible: false
-        x: weeklyChip.x
-        y: weeklyRow.y + 56 + 4
-        width: 160
-        property int todayDay: (new Date().getDay() + 6) % 7 + 1  // 周一=1..周日=7
-        height: weeklyList.height + 8
-
-        Rectangle { anchors.fill: parent; radius: 10; color: "#0F1A2E"; border.width: 1; border.color: "#33517A" }
-        Column {
-            id: weeklyList
-            x: 4; y: 4; width: parent.width - 8; spacing: 2
-            Repeater {
-                model: weeklyPopup.visible ? [1, 2, 3, 4, 5, 6, 7] : []
-                Rectangle {
-                    width: weeklyList.width; height: 30; radius: 6
-                    color: wMouse.containsMouse ? "#1A3A7A" : "transparent"
-                    Text {
-                        anchors.fill: parent; leftPadding: 10
-                        verticalAlignment: Text.AlignVCenter
-                        text: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][modelData - 1]
-                              + (modelData === weeklyPopup.todayDay ? "（今天）" : "")
-                        color: "#FFFFFF"; font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: wMouse; anchors.fill: parent; hoverEnabled: true
-                        onClicked: { Bridge.selectWeekly(modelData); weeklyPopup.visible = false }
-                    }
-                }
-            }
-        }
-    }
+    // 「周几起」选择已迁至单脚本配置弹窗（≡ 按钮触发），本卡不再内嵌周几下拉。
 
     // ── 日常副本下拉（多级级联：一级副本 → 二级序列，对齐旧 QMenu 子菜单）──
     // 左列一级副本、右列二级序列，两列各自独立 Flickable 滚动（互不挤压、
@@ -399,11 +367,10 @@ Item {
         id: popupCatcher
         x: -128; y: -392; width: 1280; height: 720
         z: 99
-        visible: dungeonPopup.visible || weeklyPopup.visible
-        enabled: dungeonPopup.visible || weeklyPopup.visible
+        visible: dungeonPopup.visible
+        enabled: dungeonPopup.visible
         onClicked: {
             dungeonPopup.visible = false
-            weeklyPopup.visible = false
         }
     }
 }

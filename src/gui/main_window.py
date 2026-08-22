@@ -130,6 +130,9 @@ class QmlBridge(QObject):
     weeklyStartLabel = Property(
         str, lambda self: self.task_card.weekly_start_label, notify=taskStateChanged
     )
+    weeklyNameLabel = Property(
+        str, lambda self: self.task_card.weekly_name_label, notify=taskStateChanged
+    )
     masterOn = Property(
         bool, lambda self: self.task_card.master_on, notify=taskStateChanged
     )
