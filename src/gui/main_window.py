@@ -76,9 +76,8 @@ class QmlBridge(QObject):
         self.launch.toastRequested.connect(self.toastRequested.emit)
         self.links.toastRequested.connect(self.toastRequested.emit)
 
-        # 编排启动：重建列表 → 构建副本缓存 → 还原周常开关 → 刷新当前
+        # 编排启动：重建列表 → 构建副本缓存 → 刷新当前
         self._reload_games()
-        self.task_card.init_weekly_toggle_states()
         self._on_current_changed()
 
     # ── QML 属性（委托到子控制器）────────────────────────────────────
@@ -134,15 +133,6 @@ class QmlBridge(QObject):
         "QVariantList",
         lambda self: self.task_card.weekly_items,
         notify=taskStateChanged,
-    )
-    masterOn = Property(
-        bool, lambda self: self.task_card.master_on, notify=taskStateChanged
-    )
-    dailyOn = Property(
-        bool, lambda self: self.task_card.daily_on, notify=taskStateChanged
-    )
-    weeklyOn = Property(
-        bool, lambda self: self.task_card.weekly_on, notify=taskStateChanged
     )
     dungeonOptions = Property(
         "QVariantList",
@@ -232,14 +222,6 @@ class QmlBridge(QObject):
     @Slot()
     def closeWindow(self):
         self.window.closeWindow()
-
-    @Slot(bool)
-    def toggleMaster(self, on):
-        self.task_card.toggleMaster(on)
-
-    @Slot(bool)
-    def toggleWeekly(self, on):
-        self.task_card.toggleWeekly(on)
 
     @Slot(str, "QVariant")
     def selectDungeon(self, name, seq):

@@ -1,8 +1,8 @@
 """任务卡控制器：日常副本 / 周常周几（数据 + 选择持久化）。
 
-独立 QObject，自管状态（_ui_state / _dungeon_*_cache / _weekly_toggle_state /
-_master_on）。当前游戏经构造注入的 game_list 引用读取。dungeonOptions 从缓存读取
-（build_dungeon_cache 时构建）。
+独立 QObject，自管状态（_ui_state / _dungeon_*_cache）。当前游戏经构造注入的
+game_list 引用读取。dungeonOptions 从缓存读取（build_dungeon_cache 时构建）。
+启用控制不在此处：日常靠控制模式、周常靠周几起（均在别处实现）。
 """
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -10,7 +10,6 @@ from PySide6.QtCore import QObject, Signal, Slot
 from src.config.dungeon_config import get_display_name, parse_dungeon_config
 from src.config.set_config import is_adapted, set_weekly_dungeon
 from src.service.script_service import ScriptService
-from src.utils_weekly import is_weekly_start_reached
 
 # 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
 WEEKDAY_NAMES = {
@@ -41,9 +40,6 @@ class TaskCardController(QObject):
         # build_dungeon_cache 时一次性构建。
         self._dungeon_map_cache: dict = {}
         self._dungeon_options_cache: dict[str, list] = {}
-        # 周常开关 UI 态（纯内存，不持久化）；总开关为全局 UI 态（驱动日常行开关）
-        self._weekly_toggle_state: dict[str, bool] = {}
-        self._master_on = True
 
     # ── 读接口（供 QmlBridge 委托）────────────────────────────────────
     @property
@@ -161,21 +157,6 @@ class TaskCardController(QObject):
         return []
 
     @property
-    def master_on(self) -> bool:
-        """总开关状态（全局 UI 态；驱动日常行开关）。"""
-        return self._master_on
-
-    @property
-    def daily_on(self) -> bool:
-        """日常行开关（镜像总开关，由 toggle_master 驱动）。"""
-        return self._master_on
-
-    @property
-    def weekly_on(self) -> bool:
-        """周常行开关（内存态，由 toggle_master / select_weekly 置位）。"""
-        return self._weekly_toggle_state.get(self._current["script_name"], False)
-
-    @property
     def dungeon_options(self) -> list:
         """日常副本下拉数据：[{name, clear, sequences:[{label,value}]}, ...]，从缓存读取。"""
         return self._dungeon_options_cache.get(self._current["script_name"], [])
@@ -230,41 +211,7 @@ class TaskCardController(QObject):
                 )
         return result
 
-    def init_weekly_toggle_states(self) -> dict:
-        """初始化各脚本周常开关（纯内存 UI 态，不持久化）。
-
-        已设置「周几起」且今天 >= 起始日 → True，否则 False。周几起来自
-        weekly_list.yml（ScriptService 持久化），不再存于 gui_state.json。
-        """
-        states: dict[str, bool] = {}
-        for game in self._game_list.games:
-            script_name = game["script_name"]
-            if not self._script_service.get_weekly_defs(script_name):
-                continue
-            weekly_start = self._script_service.get_weekly_start(script_name)
-            states[script_name] = weekly_start is not None and is_weekly_start_reached(
-                weekly_start
-            )
-        self._weekly_toggle_state = states
-        return states
-
     # ── 交互 ───────────────────────────────────────────────────────────
-    @Slot(bool)
-    def toggleMaster(self, on: bool):
-        """总开关：一键同步日常/周本（支持周常时周常开关一并置位）。"""
-        self._master_on = on
-        script_name = self._current["script_name"]
-        if self._script_service.get_weekly_defs(script_name):
-            self._weekly_toggle_state[script_name] = on
-        self.taskStateChanged.emit()
-
-    @Slot(bool)
-    def toggleWeekly(self, on: bool):
-        """周常开关（内存态，不持久化；与日常开关模型一致）。"""
-        script_name = self._current["script_name"]
-        self._weekly_toggle_state[script_name] = on
-        self.taskStateChanged.emit()
-
     @Slot(str, "QVariant")
     def selectDungeon(self, dungeon_name: str, sequence):
         """选择日常副本（持久化到 gui_state.json 的 dungeon/sequence）。"""
@@ -283,13 +230,11 @@ class TaskCardController(QObject):
     def selectWeekly(self, start_day: int):
         """选择周常起始日（持久化到 weekly_start.yml）。
 
-        周常开关按「今天>=起始日」置位（内存态，不随持久化落盘）。
+        周常是否启用由「今天>=起始日」在链生成时独立计算，本方法只持久化该起始日。
         """
         assert start_day in WEEKDAY_NAMES, f"[bridge] 非法周几: {start_day}"
         script_name = self._current["script_name"]
         self._script_service.set_weekly_start(script_name, start_day)
-        enabled = is_weekly_start_reached(start_day)
-        self._weekly_toggle_state[script_name] = enabled
         self.refresh()
 
     @Slot(str, str)

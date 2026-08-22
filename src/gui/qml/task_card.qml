@@ -3,9 +3,9 @@ import OneDragonHelper 1.0
 
 // 任务调度卡（日常副本 / 周常）：复刻旧 src/gui/task_card.py 的视觉与行为契约。
 // 数据经 Bridge 暴露：taskTitle / taskAdapted / weeklySupported / dailyDungeonText /
-// weeklyItems / masterOn / dailyOn / weeklyOn / dungeonOptions；
-// 写回经 selectDungeon / selectWeeklyDungeon / toggleMaster / toggleWeekly
-// （dungeon/sequence/weekly_start 持久化到 gui_state.json；开关内存态）。
+// weeklyItems / dungeonOptions；写回经 selectDungeon / selectWeeklyDungeon / selectWeekly。
+// dungeon/sequence 持久化到 gui_state.json；周几起（weekly_start）持久化到 weekly_start.yml。
+// 启用控制不在此卡：日常靠控制模式、周常靠周几起（均在别处实现），本卡只做副本选择。
 //
 // 「周几起」选择已迁至单脚本配置弹窗（≡ 按钮打开），本卡只显示周常名占位。
 //
@@ -15,10 +15,10 @@ import OneDragonHelper 1.0
 //
 // 显隐规则（对齐旧 _set_task_rows_visible / _refresh_weekly_chip）：
 // - taskAdapted 为假 → 仅显示标题，隐藏分隔线/两行（卡片收缩）。
-// - 周常行：weeklySupported 为真才亮蓝可点；否则整行置灰、chip 写「未支持」、开关禁用。
+// - 周常区：weeklySupported 为真才显示子项；否则整区隐藏。
 //
 // 颜色约定：日常行与周常行共用同一套色板（标题白 / 图标底蓝 / 图标字蓝 / chip 文字蓝），
-// 保证两行视觉一致（旧版周常标题用了淡蓝与日常白色不一致，已统一）。
+// 保证两行视觉一致。
 //
 // 下拉用纯 QML 自绘（不引 QtQuick.Controls 的 Menu 组件类型）：项目早期在
 // 自定义 .qml 组件类型解析上有非确定失败（Type unavailable），自绘更稳。
@@ -26,9 +26,9 @@ Item {
     id: cardRoot
     objectName: "cardRoot"
     width: 480
-    // 高度随适配态：未适配 84（仅标题）；适配时标题(54)+分隔线+日常(56)+周常区动态高度。
-    // 该脚本不支持周常时，周常区整区隐藏，高度直接缩到日常区以下。
-    // 周常区含独立头部（36）+ 每项（40）+ 底部留白（16），卡片底部再留 16。
+    // 高度随适配态：未适配 84（仅标题）；适配时标题+分隔线+日常(56)占 134，
+    // 再加周常区动态高度 + 卡片底部留白(16)。不支持周常时周常区隐藏，高度缩到 134。
+    // 周常区 = 每项(40) * 项数 + 底部留白(16)。
     height: Bridge.taskAdapted ? (weeklyArea.visible ? (134 + weeklyArea.height + 16) : 134) : 84
 
     // 窗口边界在卡片坐标系中的常量：卡片由 main.qml 的 Loader 固定在 (128, 392)，
@@ -77,25 +77,6 @@ Item {
             text: Bridge.taskTitle
             color: "#FFFFFF"; font.pixelSize: 19; font.weight: Font.Bold
         }
-        // 总开关（一键同步日常/周本；对齐旧 master_toggle）
-        Item {
-            id: masterToggle
-            x: 388; y: 7; width: 40; height: 22
-            property bool on: Bridge.masterOn
-            Rectangle {
-                anchors.fill: parent; radius: 11
-                color: masterToggle.on ? "#2196F3" : "#2A3850"
-            }
-            Rectangle {
-                x: masterToggle.on ? 20 : 2; y: 2; width: 18; height: 18; radius: 9
-                color: "#FFFFFF"
-                Behavior on x { NumberAnimation { duration: 120 } }
-            }
-            MouseArea {
-                anchors.fill: parent
-                onClicked: Bridge.toggleMaster(!masterToggle.on)
-            }
-        }
     }
 
     // 分隔线（仅适配时显示）
@@ -121,7 +102,7 @@ Item {
         }
         Rectangle {
             id: dailyChip
-            x: 130; y: 15; width: 120; height: 26; radius: 13
+            x: 130; y: 15; width: 300; height: 26; radius: 13
             color: "#0F1A2E"; border.width: 1; border.color: "#33517A"
             Text {
                 anchors.centerIn: parent; text: Bridge.dailyDungeonText
@@ -139,32 +120,12 @@ Item {
                 }
             }
         }
-        // 每日任务开关（镜像总开关；点击即切总开关，对齐旧 daily_toggle 不独立接线）
-        Item {
-            id: dailyToggle
-            x: 388; y: 17; width: 40; height: 22
-            property bool on: Bridge.masterOn
-            Rectangle {
-                anchors.fill: parent; radius: 11
-                color: dailyToggle.on ? "#2196F3" : "#2A3850"
-            }
-            Rectangle {
-                x: dailyToggle.on ? 20 : 2; y: 2; width: 18; height: 18; radius: 9
-                color: "#FFFFFF"
-                Behavior on x { NumberAnimation { duration: 120 } }
-            }
-            MouseArea {
-                anchors.fill: parent
-                onClicked: Bridge.toggleMaster(!dailyToggle.on)
-            }
-        }
     }
 
     // ── 周常区（y=134 起；不支持周常时整区隐藏）──
     // 颜色与每日任务行共用同一色板（白标题 / 蓝图标底 / 蓝图标字 / 蓝 chip 字）。
-    // 布局改为「头部行 + 周常列表」：头部左侧显示「周常」并放置总开关，
-    // 避免原先总开关贴在第一项右侧、看起来只控制第一项的歧义。
-    // 每项统一左对齐日常 chip（x=130），保证两行选项在同一垂线上。
+    // 仅列出各周常子项（如「货币战争」「历战余响」），父分类标题已去除；
+    // 每项统一左对齐每日 chip（x=130），与日常行选项在同一垂线上。
     Item {
         id: weeklyArea
         objectName: "weeklyArea"
@@ -174,55 +135,12 @@ Item {
         property int rowH: 40
         // 高度由数据模型长度推导：Column 无 count 属性（那是 Repeater 的），
         // 用 Bridge.weeklyItems.length 才可靠；每项固定 rowH。
-        height: weeklyHeader.height + Bridge.weeklyItems.length * rowH + 16
-
-        // 周常头部：📅 图标 + 「周常」标题 + 总开关
-        Item {
-            id: weeklyHeader
-            x: 0; y: 0; width: parent.width; height: 36
-            Rectangle {
-                x: 12; y: 5; width: 36; height: 26; radius: 8
-                color: weeklyArea.supported ? "#1A3A7A" : "#2A3040"
-                Text {
-                    anchors.centerIn: parent; text: "📅"
-                    color: weeklyArea.supported ? "#7DA8FF" : "#4A5568"
-                    font.pixelSize: 14
-                }
-            }
-            Text {
-                x: 58; y: 8; width: 64; height: 22
-                text: "周常"
-                color: weeklyArea.supported ? "#FFFFFF" : "#4A5568"
-                font.pixelSize: 15; font.weight: Font.DemiBold
-                verticalAlignment: Text.AlignVCenter
-            }
-            // 周常总开关（内存态，由 toggleMaster / selectWeekly 置位）
-            Item {
-                id: weeklyToggle
-                x: 388; y: 7; width: 40; height: 22
-                property bool on: Bridge.weeklyOn
-                Rectangle {
-                    anchors.fill: parent; radius: 11
-                    color: !weeklyArea.supported ? "#2A3040"
-                         : (weeklyToggle.on ? "#2196F3" : "#2A3850")
-                }
-                Rectangle {
-                    x: weeklyToggle.on ? 20 : 2; y: 2; width: 18; height: 18; radius: 9
-                    color: "#FFFFFF"
-                    Behavior on x { NumberAnimation { duration: 120 } }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    enabled: weeklyArea.supported
-                    onClicked: Bridge.toggleWeekly(!weeklyToggle.on)
-                }
-            }
-        }
+        height: Bridge.weeklyItems.length * rowH + 16
 
         // 周常列表：每种一行
         Column {
             id: weeklyItemsCol
-            y: weeklyHeader.height
+            y: 0
             width: parent.width
             spacing: 0
             Repeater {
@@ -248,7 +166,7 @@ Item {
                     }
                     Rectangle {
                         id: wkChip
-                        x: 130; y: 7; width: 120; height: 26; radius: 13
+                        x: 130; y: 7; width: 300; height: 26; radius: 13
                         visible: hasDungeon
                         color: weeklyArea.supported ? "#0F1A2E" : "#1A2028"
                         border.width: 1

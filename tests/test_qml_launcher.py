@@ -27,7 +27,7 @@ os.environ.setdefault("QML_DISABLE_DISK_CACHE", "1")
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from src.gui import main_window  # noqa: E402
-from src.gui.controllers import launch, links, task_card  # noqa: E402
+from src.gui.controllers import launch, links  # noqa: E402
 from src.gui.controllers.game_list import ScriptIconProvider  # noqa: E402
 from src.gui.icons import UiIconProvider  # noqa: E402
 from src.gui.main_window import QmlBridge  # noqa: E402
@@ -643,10 +643,10 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 wk_h = int(parts[3])
                 card_h = int(parts[5])
         self.assertEqual(visible, "True", f"崩铁应显示周常区，stdout={proc.stdout}")
-        # 周常区 = 头部(36) + 项数(2) * 行高(40) + 底部留白(16) = 132
-        # 卡片 = 134 + 周常区 + 卡片底部留白(16) = 282
-        self.assertEqual(wk_h, 132, f"周常区高度应=132，stdout={proc.stdout}")
-        self.assertEqual(card_h, 282, f"卡片高度应=282，stdout={proc.stdout}")
+        # 周常区 = 项数(2) * 行高(40) + 底部留白(16) = 96（父标题已去除）
+        # 卡片 = 134 + 周常区 + 卡片底部留白(16) = 246
+        self.assertEqual(wk_h, 96, f"周常区高度应=96，stdout={proc.stdout}")
+        self.assertEqual(card_h, 246, f"卡片高度应=246，stdout={proc.stdout}")
 
 
 class TestScriptIconProvider(unittest.TestCase):
@@ -741,49 +741,6 @@ class TestUiIconProvider(unittest.TestCase):
         span = (max(xs) - min(xs) + 1) if xs else 0
         self.assertGreaterEqual(span, 26)
         self.assertLessEqual(span, 32)
-
-
-class TestWeeklyToggleInit(unittest.TestCase):
-    """周常开关应在启动时按 weekly_start 还原（来源 weekly_start.yml）。"""
-
-    def test_init_from_weekly_start(self):
-        # 鸣潮 是 exe 脚本，script_name = 进程名 ok-ww（非 display_name）
-        b = _make_bridge()
-        with (
-            patch.object(
-                task_card.ScriptService,
-                "get_weekly_defs",
-                return_value=[{"name": "周常花园"}],
-            ),
-            patch.object(task_card.ScriptService, "get_weekly_start", return_value=2),
-            patch.object(task_card, "is_weekly_start_reached", return_value=True),
-        ):
-            states = b.task_card.init_weekly_toggle_states()
-        self.assertEqual(states.get("ok-ww"), True)
-
-    def test_unsupported_or_no_start_is_false(self):
-        b = _make_bridge()
-        with patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[]):
-            states = b.task_card.init_weekly_toggle_states()
-        self.assertEqual(states.get("ok-ww", "absent"), "absent")
-
-    def test_bridge_init_populates_toggle_state(self):
-        with (
-            patch.object(
-                main_window.ChainService,
-                "load_config",
-                return_value={"script_list": list(_SCRIPTS)},
-            ),
-            patch.object(
-                task_card.ScriptService,
-                "get_weekly_defs",
-                return_value=[{"name": "周常花园"}],
-            ),
-            patch.object(task_card.ScriptService, "get_weekly_start", return_value=2),
-            patch.object(task_card, "is_weekly_start_reached", return_value=True),
-        ):
-            b = QmlBridge()
-        self.assertEqual(b.task_card._weekly_toggle_state.get("ok-ww"), True)
 
 
 if __name__ == "__main__":

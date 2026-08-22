@@ -83,51 +83,16 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(
         task_card.ScriptService, "get_weekly_defs", return_value=[{"name": "周常"}]
     )
-    @patch.object(task_card, "is_weekly_start_reached", return_value=True)
     @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     @patch.object(task_card.ScriptService, "set_weekly_start")
     @patch.object(task_card.ScriptService, "get_weekly_start", return_value=3)
-    def test_select_weekly_persists_and_toggle(self, *_):
+    def test_select_weekly_persists(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
         b.selectWeekly(3)
         task_card.ScriptService.set_weekly_start.assert_called_once_with(name, 3)
-        self.assertTrue(b.weeklyOn)
         self.assertEqual(b.weeklyStartLabel, "周三起")
         # 周常起始日持久化到 weekly_start.yml（不再经 gui_state）
-
-    @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[])
-    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
-    def test_toggle_weekly_memory_only(self, *_):
-        b = _make_bridge()
-        name = b.games[0]["script_name"]
-        with patch.object(b.service, "save_ui_state") as m_save:
-            b.toggleWeekly(True)
-        self.assertTrue(b.weeklyOn)
-        # 不持久化（脚本未支持周常也不写 weekly_start）
-        self.assertNotIn("weekly_start", b.task_card._ui_state.get(name, {}))
-        # 对齐旧 GUI：周常开关是纯内存态，不写 gui_state.json
-        m_save.assert_not_called()
-
-    @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(
-        task_card.ScriptService, "get_weekly_defs", return_value=[{"name": "周常"}]
-    )
-    @patch.object(main_window.ChainService, "dungeon_map", return_value={})
-    def test_toggle_master_syncs_weekly_when_supported(self, *_):
-        b = _make_bridge()
-        with patch.object(b.service, "save_ui_state") as m_save:
-            b.toggleMaster(False)
-            self.assertFalse(b.masterOn)
-            self.assertFalse(b.dailyOn)
-            self.assertFalse(b.weeklyOn)
-            b.toggleMaster(True)
-            self.assertTrue(b.masterOn)
-            self.assertTrue(b.dailyOn)
-            self.assertTrue(b.weeklyOn)
-        # 对齐旧 GUI：总开关是全局 UI 态，不持久化
-        m_save.assert_not_called()
 
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(
