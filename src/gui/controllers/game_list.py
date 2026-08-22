@@ -347,7 +347,6 @@ class GameListController(QObject):
             game["script_data"].get("script_path", ""),
             None,
             script_service=self._service._script_service,
-            chain_service=self._service,
         )
         dialog.delete_requested.connect(self._on_delete_script)
         if dialog.exec() == QDialog.Accepted:

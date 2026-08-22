@@ -370,8 +370,9 @@ def _run_generate_chain(args) -> int:
             ui_state[script_name] = {}
         ui_state[script_name]["sequence"] = sequence_overrides[script_name]
 
-    # 命令行覆盖：--weekly-start 合并到内存 ui_state，并持久化（周几跑是长期配置，
-    # 同 GUI 改周几起 _set_weekly 语义；与 --dungeon/--sequence 的临时覆盖不同）
+    # 命令行覆盖：--weekly-start 持久化到 weekly_start.yml
+    # （周几跑是长期配置，同 GUI 改周几起语义；与 --dungeon/--sequence 的临时覆盖不同）。
+    # 校验失败（未知脚本/未支持周常/非整数/越界）在写盘前拦截并返回 1。
     try:
         weekly_overrides = _parse_overrides(args.weekly_start)
     except ValueError as exc:
@@ -404,18 +405,8 @@ def _run_generate_chain(args) -> int:
                 f"--weekly-start 中 {script_name} 的值越界: {start_day}（应为 1~7）",
             )
             return 1
-        if script_name not in ui_state:
-            ui_state[script_name] = {}
-        ui_state[script_name]["weekly_start"] = start_day
-
-    if weekly_overrides:
-        # 基于持久化状态（重新读取）合并周几起再落盘，
-        # 避免把 --dungeon / --sequence 临时覆盖写回 gui_state.json
-        persist_state = service.load_ui_state()
-        for script_name, raw in weekly_overrides.items():
-            entry = persist_state.setdefault(script_name, {})
-            entry["weekly_start"] = int(raw)
-        service.save_ui_state(persist_state)
+        # 仅做持久化，不并入内存 ui_state（ui_state 只承载 --dungeon/--sequence 临时覆盖）
+        service.set_weekly_start(script_name, start_day)
 
     out = args.out
     if out:

@@ -231,6 +231,7 @@ class ChainService:
             输出文件路径。
         """
         weekly_timeouts = self._script_service.load_all_weekly()
+        weekly_start_map = self._script_service.get_weekly_start_map()
         return _generate_chain_config(
             all_config_data,
             enabled_keys,
@@ -238,7 +239,17 @@ class ChainService:
             ui_state,
             out_path,
             weekly_timeouts=weekly_timeouts,
+            weekly_start_map=weekly_start_map,
         )
+
+    # ---------- 周常起始日（weekly_start）----------
+
+    def set_weekly_start(self, script_name: str, start_day: int | None) -> None:
+        """持久化某脚本的周常起始日到 weekly_start.yml（None 表示「不设置」）。
+
+        委托内部 ScriptService，调用方（CLI）不感知底层文件。
+        """
+        self._script_service.set_weekly_start(script_name, start_day)
 
     def collect_invalid_scripts(self, script_list: list[dict]) -> list[tuple[str, str]]:
         """收集脚本列表中配置不合法的条目。

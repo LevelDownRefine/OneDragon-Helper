@@ -21,6 +21,7 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(
         task_card.ScriptService, "get_weekly_defs", return_value=[{"name": "周常"}]
     )
+    @patch.object(task_card.ScriptService, "get_weekly_start", return_value=None)
     @patch.object(main_window.ChainService, "dungeon_map", return_value={})
     def test_daily_text_default_is_placeholder(self, *_):
         b = _make_bridge()
@@ -84,16 +85,16 @@ class TestTaskCard(unittest.TestCase):
     )
     @patch.object(task_card, "is_weekly_start_reached", return_value=True)
     @patch.object(main_window.ChainService, "dungeon_map", return_value={})
+    @patch.object(task_card.ScriptService, "set_weekly_start")
+    @patch.object(task_card.ScriptService, "get_weekly_start", return_value=3)
     def test_select_weekly_persists_and_toggle(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
-        with patch.object(b.service, "save_ui_state") as m_save:
-            b.selectWeekly(3)
-        self.assertEqual(b.task_card._ui_state[name]["weekly_start"], 3)
+        b.selectWeekly(3)
+        task_card.ScriptService.set_weekly_start.assert_called_once_with(name, 3)
         self.assertTrue(b.weeklyOn)
         self.assertEqual(b.weeklyStartLabel, "周三起")
-        # 对齐旧 GUI：周常起始日持久化到 gui_state.json
-        m_save.assert_called_once()
+        # 周常起始日持久化到 weekly_start.yml（不再经 gui_state）
 
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[])

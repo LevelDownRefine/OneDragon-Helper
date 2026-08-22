@@ -64,24 +64,29 @@ def _resolve_daily_run(script: dict, weekly_timeouts: dict) -> bool:
     return True
 
 
-def _resolve_weekly_start(ui_state: dict, script_name: str) -> int | None:
+def _resolve_weekly_start(weekly_start_map: dict, script_name: str) -> int | None:
     """取脚本的周常起始日（1=周一 ~ 7=周日），未设置返回 None。
 
     周常开关（enabled）是 GUI 内存态，不参与链生成；GUI 与 CLI 统一按
     「今天周几 >= 起始日」由 set_config 判断启用/停用写入脚本配置
     （与日常副本选择落盘不受日常开关影响的模型一致）。
 
+    起始日来源为 weekly_start.yml（运行时由 ScriptService 持久化），经
+    weekly_start_map 传入，不再来自 gui_state.json。
+
     Args:
-        ui_state: gui_state.json 的 UI 状态，key 为脚本唯一标识。
+        weekly_start_map: weekly_start.yml 的全量映射（{脚本标识: 1~7}）。
         script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
 
     Returns:
         周常起始日（1~7），未设置返回 None。
     """
-    saved = ui_state.get(script_name)
-    weekly_start = saved.get("weekly_start") if saved else None
-    if weekly_start is None:
+    if script_name not in weekly_start_map:
         return None
+    weekly_start = weekly_start_map[script_name]
+    assert isinstance(weekly_start, int), (
+        f"[chain_gen] {script_name} 非法 weekly_start: {weekly_start!r}（应为整数 1~7）"
+    )
     assert 1 <= weekly_start <= 7, (
         f"[chain_gen] {script_name} 非法 weekly_start: {weekly_start}（应为 1~7）"
     )
@@ -133,11 +138,12 @@ def generate_chain_config(
     ui_state: dict | None = None,
     out_path: str | None = None,
     weekly_timeouts: dict | None = None,
+    weekly_start_map: dict | None = None,
 ) -> str:
     """生成 ScriptChainer 配置文件（仅含启用的脚本）。
 
-    weekly_timeouts 由调用方（ChainService）通过 ScriptService 加载后传入，
-    不再直接读取磁盘文件。
+    weekly_timeouts 与 weekly_start_map 均由调用方（ChainService）通过
+    ScriptService 加载后传入，不再直接读取磁盘文件。
 
     Args:
         all_config_data: config.yml 完整数据（含 script_list）。
@@ -146,12 +152,14 @@ def generate_chain_config(
         ui_state: gui_state.json 的 UI 状态（副本/序列选择），key 为脚本唯一标识。
         out_path: 输出路径；None 时默认 config/script_chain/<chain_name>.yml。
         weekly_timeouts: weekly_timeouts.yml 的全量字典（默认空 dict）。
+        weekly_start_map: weekly_start.yml 的全量映射（{脚本标识: 1~7}）。
 
     Returns:
         输出文件路径。
     """
     ui_state = ui_state or {}
     weekly_timeouts = weekly_timeouts or {}
+    weekly_start_map = weekly_start_map or {}
     dungeon_map = load_dungeon_map()
 
     enabled_dungeons, enabled_sequences = _collect_enabled_selections(
@@ -168,7 +176,7 @@ def generate_chain_config(
         if script_name in enabled_keys:
             if not _resolve_daily_run(script, weekly_timeouts):
                 continue
-            weekly_start = _resolve_weekly_start(ui_state, script_name)
+            weekly_start = _resolve_weekly_start(weekly_start_map, script_name)
             set_config(
                 script_name,
                 dungeon_name=enabled_dungeons.get(script_name),

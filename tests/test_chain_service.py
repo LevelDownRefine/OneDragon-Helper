@@ -76,6 +76,7 @@ class TestChainGeneration(unittest.TestCase):
         data = {"script_list": []}
         mock_script = MagicMock()
         mock_script.load_all_weekly.return_value = {}
+        mock_script.get_weekly_start_map.return_value = {}
         with patch(
             "src.service.chain_service._generate_chain_config", return_value="out.yml"
         ) as m:
@@ -84,7 +85,13 @@ class TestChainGeneration(unittest.TestCase):
             )
         self.assertEqual(out, "out.yml")
         m.assert_called_once_with(
-            data, {"A"}, "88", {"A": {}}, "out.yml", weekly_timeouts={}
+            data,
+            {"A"},
+            "88",
+            {"A": {}},
+            "out.yml",
+            weekly_timeouts={},
+            weekly_start_map={},
         )
 
     def test_collect_invalid_scripts_delegates(self):
@@ -99,9 +106,9 @@ class TestChainGeneration(unittest.TestCase):
 
 
 class TestGenerateChainWeeklyStart(unittest.TestCase):
-    """generate_chain_config：ui_state 的 weekly_start 原样传给 set_config（CLI 兜底，不判断今天）"""
+    """generate_chain_config：weekly_start_map 的 weekly_start 原样传给 set_config（CLI 兜底，不判断今天）"""
 
-    def _run_chain(self, ui_state):
+    def _run_chain(self, weekly_start_map):
         from src.service import chain_gen
 
         data = {
@@ -126,13 +133,16 @@ class TestGenerateChainWeeklyStart(unittest.TestCase):
             patch("builtins.open"),
         ):
             chain_gen.generate_chain_config(
-                data, {"测试"}, ui_state=ui_state, out_path="out.yml"
+                data,
+                {"测试"},
+                weekly_start_map=weekly_start_map,
+                out_path="out.yml",
             )
         return mock_set_config
 
     def test_weekly_start_passed_through(self):
         """weekly_start=4 → set_config 收到（CLI 无 GUI 时按周几兜底）"""
-        mock = self._run_chain({"测试": {"weekly_start": 4}})
+        mock = self._run_chain({"测试": 4})
         mock.assert_called_once_with(
             "测试",
             dungeon_name=None,
@@ -142,7 +152,7 @@ class TestGenerateChainWeeklyStart(unittest.TestCase):
 
     def test_no_weekly_start_skips(self):
         """未设置周常 → set_config(weekly_start=None)，不处理周常"""
-        mock = self._run_chain({"测试": {"dungeon": "副本"}})
+        mock = self._run_chain({})
         mock.assert_called_once_with(
             "测试",
             dungeon_name=None,

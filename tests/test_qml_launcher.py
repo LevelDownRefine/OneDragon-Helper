@@ -744,18 +744,18 @@ class TestUiIconProvider(unittest.TestCase):
 
 
 class TestWeeklyToggleInit(unittest.TestCase):
-    """周常开关应在启动时按 weekly_start 还原（对齐旧 GUI，此前漏迁移）。"""
+    """周常开关应在启动时按 weekly_start 还原（来源 weekly_start.yml）。"""
 
     def test_init_from_weekly_start(self):
         # 鸣潮 是 exe 脚本，script_name = 进程名 ok-ww（非 display_name）
         b = _make_bridge()
-        b.task_card._ui_state = {"ok-ww": {"weekly_start": 2}}
         with (
             patch.object(
                 task_card.ScriptService,
                 "get_weekly_defs",
                 return_value=[{"name": "周常花园"}],
             ),
+            patch.object(task_card.ScriptService, "get_weekly_start", return_value=2),
             patch.object(task_card, "is_weekly_start_reached", return_value=True),
         ):
             states = b.task_card.init_weekly_toggle_states()
@@ -763,7 +763,6 @@ class TestWeeklyToggleInit(unittest.TestCase):
 
     def test_unsupported_or_no_start_is_false(self):
         b = _make_bridge()
-        b.task_card._ui_state = {"ok-ww": {"weekly_start": 2}}
         with patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[]):
             states = b.task_card.init_weekly_toggle_states()
         self.assertEqual(states.get("ok-ww", "absent"), "absent")
@@ -776,15 +775,11 @@ class TestWeeklyToggleInit(unittest.TestCase):
                 return_value={"script_list": list(_SCRIPTS)},
             ),
             patch.object(
-                main_window.ChainService,
-                "load_ui_state",
-                return_value={"ok-ww": {"weekly_start": 2}},
-            ),
-            patch.object(
                 task_card.ScriptService,
                 "get_weekly_defs",
                 return_value=[{"name": "周常花园"}],
             ),
+            patch.object(task_card.ScriptService, "get_weekly_start", return_value=2),
             patch.object(task_card, "is_weekly_start_reached", return_value=True),
         ):
             b = QmlBridge()

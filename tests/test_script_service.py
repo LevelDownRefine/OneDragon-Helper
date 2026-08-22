@@ -19,12 +19,15 @@ class ScriptServiceTestBase(unittest.TestCase):
         self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
         self.weekly_path = os.path.join(self.tmp_dir.name, "weekly_timeouts.yml")
         self.weekly_list_path = os.path.join(self.tmp_dir.name, "weekly_list.yml")
+        self.weekly_start_path = os.path.join(self.tmp_dir.name, "weekly_start.yml")
         self._write_config(
             {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]}
         )
         # weekly_timeouts.yml 随包发布、必存在，默认建一个空 {} 文件，
         # 贴近真实部署；缺失→{} 的兜底已移除（改 assert 暴露）。
         self._write_weekly({})
+        # weekly_start.yml 同样随包发布、必存在，默认空 {}。
+        self._write_weekly_start({})
         patchers = [
             patch(
                 "src.service.script_service.require_config_yml_path",
@@ -37,6 +40,10 @@ class ScriptServiceTestBase(unittest.TestCase):
             patch(
                 "src.service.script_service.get_weekly_list_yml_path_under_root",
                 return_value=self.weekly_list_path,
+            ),
+            patch(
+                "src.service.script_service.get_weekly_start_yml_path_under_root",
+                return_value=self.weekly_start_path,
             ),
         ]
         for p in patchers:
@@ -51,6 +58,10 @@ class ScriptServiceTestBase(unittest.TestCase):
         with open(self.weekly_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
 
+    def _write_weekly_start(self, data):
+        with open(self.weekly_start_path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+
     def _read_config(self):
         with open(self.config_path, encoding="utf-8") as f:
             return yaml.safe_load(f)
@@ -59,6 +70,12 @@ class ScriptServiceTestBase(unittest.TestCase):
         if not os.path.exists(self.weekly_path):
             return None
         with open(self.weekly_path, encoding="utf-8") as f:
+            return yaml.safe_load(f)
+
+    def _read_weekly_start(self):
+        if not os.path.exists(self.weekly_start_path):
+            return None
+        with open(self.weekly_start_path, encoding="utf-8") as f:
             return yaml.safe_load(f)
 
 
@@ -307,6 +324,62 @@ class TestDeleteWeekly(ScriptServiceTestBase):
         """脚本无 weekly 条目时清理为 no-op（不报错，文件保持空 {}）"""
         ScriptService().delete_weekly("不存在")
         self.assertEqual(self._read_weekly(), {})
+
+
+class TestSetWeeklyStart(unittest.TestCase):
+    """set_weekly_start / get_weekly_start：读写独立文件 weekly_start.yml（不污染 weekly_list.yml）。"""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
+        self.weekly_start_path = os.path.join(self.tmp_dir.name, "weekly_start.yml")
+        self.weekly_list_path = os.path.join(self.tmp_dir.name, "weekly_list.yml")
+        # weekly_list.yml 必存在（_load_weekly_defs 断言），但本测试不依赖其内容。
+        with open(self.weekly_list_path, "w", encoding="utf-8") as f:
+            yaml.dump({}, f, allow_unicode=True)
+        with open(self.weekly_start_path, "w", encoding="utf-8") as f:
+            yaml.dump({}, f, allow_unicode=True)
+        patchers = [
+            patch(
+                "src.service.script_service.get_weekly_start_yml_path_under_root",
+                return_value=self.weekly_start_path,
+            ),
+            patch(
+                "src.service.script_service.get_weekly_list_yml_path_under_root",
+                return_value=self.weekly_list_path,
+            ),
+        ]
+        for p in patchers:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _read_start(self):
+        with open(self.weekly_start_path, encoding="utf-8") as f:
+            return yaml.safe_load(f)
+
+    def test_set_writes_to_weekly_start_file_only(self):
+        """set_weekly_start 写入 weekly_start.yml，不污染 weekly_list.yml。"""
+        ScriptService().set_weekly_start("a", 4)
+        self.assertEqual(self._read_start(), {"a": 4})
+        with open(self.weekly_list_path, encoding="utf-8") as f:
+            self.assertEqual(yaml.safe_load(f), {})
+
+    def test_get_returns_set_value(self):
+        ScriptService().set_weekly_start("a", 3)
+        self.assertEqual(ScriptService().get_weekly_start("a"), 3)
+        self.assertIsNone(ScriptService().get_weekly_start("缺失"))
+
+    def test_set_none_clears_entry(self):
+        """start_day=None → 移除该脚本条目。"""
+        ScriptService().set_weekly_start("a", 2)
+        ScriptService().set_weekly_start("a", None)
+        self.assertIsNone(ScriptService().get_weekly_start("a"))
+        self.assertEqual(self._read_start(), {})
+
+    def test_invalid_day_raises(self):
+        for bad in (0, 8):
+            with self.subTest(bad=bad), self.assertRaises(AssertionError):
+                ScriptService().set_weekly_start("a", bad)
 
 
 if __name__ == "__main__":

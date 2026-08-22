@@ -89,8 +89,7 @@ class TaskCardController(QObject):
     def weekly_start_label(self) -> str:
         """周常起始日文字（周几起），供单脚本配置弹窗显示当前选择。"""
         game = self._current
-        saved = self._ui_state.get(game["script_name"], {})
-        start_day = saved.get("weekly_start")
+        start_day = self._script_service.get_weekly_start(game["script_name"])
         return "选择周几" if start_day is None else f"{WEEKDAY_NAMES[start_day]}起"
 
     @property
@@ -234,15 +233,15 @@ class TaskCardController(QObject):
     def init_weekly_toggle_states(self) -> dict:
         """初始化各脚本周常开关（纯内存 UI 态，不持久化）。
 
-        已设置「周几起」且今天 >= 起始日 → True，否则 False。
+        已设置「周几起」且今天 >= 起始日 → True，否则 False。周几起来自
+        weekly_list.yml（ScriptService 持久化），不再存于 gui_state.json。
         """
         states: dict[str, bool] = {}
         for game in self._game_list.games:
             script_name = game["script_name"]
             if not self._script_service.get_weekly_defs(script_name):
                 continue
-            saved = self._ui_state.get(script_name)
-            weekly_start = saved.get("weekly_start") if saved else None
+            weekly_start = self._script_service.get_weekly_start(script_name)
             states[script_name] = weekly_start is not None and is_weekly_start_reached(
                 weekly_start
             )
@@ -282,14 +281,15 @@ class TaskCardController(QObject):
 
     @Slot(int)
     def selectWeekly(self, start_day: int):
-        """选择周常起始日（持久化 weekly_start；周常开关按「今天>=起始日」置位）。"""
+        """选择周常起始日（持久化到 weekly_start.yml）。
+
+        周常开关按「今天>=起始日」置位（内存态，不随持久化落盘）。
+        """
         assert start_day in WEEKDAY_NAMES, f"[bridge] 非法周几: {start_day}"
         script_name = self._current["script_name"]
-        saved = self._ui_state.setdefault(script_name, {})
-        saved["weekly_start"] = start_day
+        self._script_service.set_weekly_start(script_name, start_day)
         enabled = is_weekly_start_reached(start_day)
         self._weekly_toggle_state[script_name] = enabled
-        self._service.save_ui_state(self._ui_state)
         self.refresh()
 
     @Slot(str, str)

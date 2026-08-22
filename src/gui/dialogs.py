@@ -398,7 +398,6 @@ class SingleScriptConfigDialog(_FormDialogBase):
         script_path="",
         parent=None,
         script_service=None,
-        chain_service=None,
     ):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {display_name}")
@@ -410,9 +409,6 @@ class SingleScriptConfigDialog(_FormDialogBase):
         self.display_name = display_name  # 展示名
         self.script_path = script_path
         self._script_service = script_service or ScriptService()
-        # chain_service 用于读写 gui_state.json 的 weekly_start（周几起），
-        # 与 task_card 的 selectWeekly 走同一持久化路径；不传则跳过周常读写。
-        self._chain_service = chain_service
         self.pending_changes = None  # accept() 后供调用方取表单字段与 weekly
 
         self.init_ui()
@@ -485,7 +481,7 @@ class SingleScriptConfigDialog(_FormDialogBase):
         grid.addWidget(self._make_label("游戏进程:"), 6, 0)
         grid.addWidget(self.game_process_input, 6, 1, 1, 2)
 
-        # 周几起：仅支持周常的脚本显示（选择落到 gui_state.json 的 weekly_start）。
+        # 周几起：仅支持周常的脚本显示（选择落到 weekly_start.yml）。
         # 不支持时整行不进布局，超时行上移到行 7，避免空行留白。
         self._weekly_start_supported = supports_weekly(self.script_name)
         timeout_row = 8 if self._weekly_start_supported else 7
@@ -571,11 +567,9 @@ class SingleScriptConfigDialog(_FormDialogBase):
         # 阻塞运行：缺字段视为 True（默认阻塞）
         self.block_cb.setChecked(script_data.get("block", True))
 
-        # 周几起（从 gui_state.json 读 weekly_start；不支持周常时跳过）
-        if self._weekly_start_supported and self._chain_service is not None:
-            ui_state = self._chain_service.load_ui_state()
-            saved = ui_state.get(self.script_name)
-            start_day = saved.get("weekly_start") if saved else None
+        # 周几起（从 weekly_start.yml 读；不支持周常时跳过）
+        if self._weekly_start_supported:
+            start_day = self._script_service.get_weekly_start(self.script_name)
             self.weekly_start_combo.setCurrentIndex(
                 0 if start_day is None else int(start_day)
             )
@@ -627,17 +621,13 @@ class SingleScriptConfigDialog(_FormDialogBase):
             text = timeout_edit.text().strip()
             timeouts.append(int(text) if text else None)
 
-        # 周几起：直接写 gui_state.json 的 weekly_start（与 task_card.selectWeekly 同源）。
+        # 周几起：持久化到 weekly_start.yml（与 task_card.selectWeekly 同源）。
         # index 0 = 不设置（None），1~7 对应周一~周日。
-        if self._weekly_start_supported and self._chain_service is not None:
+        if self._weekly_start_supported:
             idx = self.weekly_start_combo.currentIndex()
-            ui_state = self._chain_service.load_ui_state()
-            saved = ui_state.setdefault(self.script_name, {})
-            if idx <= 0:
-                saved.pop("weekly_start", None)
-            else:
-                saved["weekly_start"] = idx
-            self._chain_service.save_ui_state(ui_state)
+            self._script_service.set_weekly_start(
+                self.script_name, None if idx <= 0 else idx
+            )
 
         self.pending_changes = {
             "old_script_name": self.script_name,
