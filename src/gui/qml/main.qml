@@ -99,7 +99,7 @@ Window {
         x: 0
         y: 12
         width: 80
-        height: root.height - 132
+        height: root.height - 112
         z: 15
         model: Bridge.gameModel
         spacing: 8
@@ -227,9 +227,9 @@ Window {
     Rectangle {
         id: deleteZone
         x: 0
-        y: root.height - 120
+        y: root.height - 100
         width: 80
-        height: 120
+        height: 100
         z: 18
         radius: 6
         color: gameList.overDelete ? "#E74C3C" : "#922B21"
@@ -257,26 +257,27 @@ Window {
     // 半透明策略：底部区本身不画独立背景（color:transparent），直接复用其背后
     // 左侧栏背景条(0.72)的半透明——这样整条左侧栏（含底部）是统一的 0.72 半透明，
     // 不会再出现「底部叠一层更实的同色块」导致局部更不透明的问题。
+    // 紧凑布局：按钮 30×30，行距收紧，整条高度 100。
     Rectangle {
         x: 0
-        y: root.height - 120
+        y: root.height - 100
         width: 80
-        height: 120
+        height: 100
         z: 16
         color: "transparent"
         // 上排：全 / 清（居中）
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 10
-            spacing: 8
+            y: 6
+            spacing: 6
             Repeater {
                 model: [
                     { label: "全", act: () => Bridge.selectAll() },
                     { label: "清", act: () => Bridge.deselectAll() },
                 ]
                 Rectangle {
-                    width: 34
-                    height: 34
+                    width: 30
+                    height: 30
                     radius: 6
                     color: btnMouseTop.containsMouse ? "#2B3A52" : "#1F2937"
                     Text {
@@ -297,16 +298,16 @@ Window {
         // 下排：⊞ / ＋（居中）
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 50
-            spacing: 8
+            y: 38
+            spacing: 6
             Repeater {
                 model: [
                     { label: "⊞", act: () => Bridge.toggleMode() },
                     { label: "＋", act: () => Bridge.addScript() },
                 ]
                 Rectangle {
-                    width: 34
-                    height: 34
+                    width: 30
+                    height: 30
                     radius: 6
                     color: btnMouseBot.containsMouse ? "#2B3A52" : "#1F2937"
                     Text {
@@ -326,10 +327,10 @@ Window {
         }
         // 启动全部（黄色）
         Rectangle {
-            x: 5
-            y: 86
-            width: 70
-            height: 30
+            x: 8
+            y: 72
+            width: 64
+            height: 26
             radius: 6
             color: launchAllBtn.containsMouse ? "#FFD95C" : "#F5C542"
             Text {
