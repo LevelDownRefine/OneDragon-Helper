@@ -16,8 +16,10 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import src.log.monitor as collect_log
-import yaml
+from ruamel.yaml import YAML
 from src.config.subscript import get_script_name  # noqa: E402
+
+_yaml = YAML()
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ def _find_chain_index(script_name: str, chain_path: str) -> int | None:
     """
     try:
         with open(chain_path, encoding="utf-8") as f:
-            chain_data = yaml.safe_load(f) or {}
+            chain_data = _yaml.load(f) or {}
     except FileNotFoundError:
         logger.warning("[rerun] 脚本链配置不存在，跳过失败重跑: %s", chain_path)
         return None
