@@ -249,9 +249,7 @@ class TestRunChainMute(unittest.TestCase):
     def test_mute_enabled_passes_flag(self):
         """mute.enabled=True：runner 命令含 --mute。"""
         ctrl, service = self._make_ctrl({"script_list": [], "mute": {"enabled": True}})
-        with mock.patch(
-            "src.gui.controllers.launch.subprocess.Popen"
-        ) as popen:
+        with mock.patch("src.gui.controllers.launch.subprocess.Popen") as popen:
             ctrl._run_chain("config/script_chain/today.yml", {"demo"}, "启动全部")
             cmd = popen.call_args[0][0]
         self.assertIn("--mute", cmd)
@@ -260,9 +258,7 @@ class TestRunChainMute(unittest.TestCase):
     def test_mute_disabled_omits_flag(self):
         """mute.enabled=False：runner 命令不含 --mute。"""
         ctrl, service = self._make_ctrl({"script_list": [], "mute": {"enabled": False}})
-        with mock.patch(
-            "src.gui.controllers.launch.subprocess.Popen"
-        ) as popen:
+        with mock.patch("src.gui.controllers.launch.subprocess.Popen") as popen:
             ctrl._run_chain("config/script_chain/today.yml", {"demo"}, "启动全部")
             cmd = popen.call_args[0][0]
         self.assertNotIn("--mute", cmd)
@@ -276,9 +272,7 @@ class TestRunChainMute(unittest.TestCase):
                 "mute": {"enabled": True},
             }
         )
-        with mock.patch(
-            "src.gui.controllers.launch.subprocess.Popen"
-        ) as popen:
+        with mock.patch("src.gui.controllers.launch.subprocess.Popen") as popen:
             ctrl._run_chain("config/script_chain/today.yml", {"demo"}, "启动全部")
             cmd = popen.call_args[0][0]
         self.assertIn("--shutdown", cmd)

@@ -1,4 +1,4 @@
-"""测试 src/gui/dialogs.RunConfirmDialog：「启动全部」确认弹窗。
+"""测试 src/gui/run_confirm_dialog.RunConfirmDialog：「启动全部」确认弹窗。
 
 验证：回显 config 当前自动关机/定时配置、accept 收集勾选项、取消 result 为 None。
 UI 测试在 offscreen 平台下运行（CI 无显示器）。
@@ -12,7 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
-from src.gui.dialogs import RunConfirmDialog
+from src.gui.run_confirm_dialog import RunConfirmDialog
 
 # 模块级 QApplication 单例：widget 需要 GUI 应用，进程退出时随解释器销毁。
 if QApplication.instance() is None:

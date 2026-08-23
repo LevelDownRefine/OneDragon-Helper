@@ -10,14 +10,14 @@ safe_startfile，原 src/gui/utils.py）已并入本文件（2026-08-16），src
   ``pending_changes`` 返回，写盘由调用方委托 ``ChainService.update_script``。
 - ``confirm_config_update`` / ``inject_config_confirm``：config 与模板不一致时的
   保存前确认回调（30s 限时，超时按拒绝处理），GUI 入口注入。
-- ``RunConfirmDialog``：「启动全部」前的确认弹窗，内嵌自动关机与定时计划配置，
-  accept 后经 ``result`` 返回勾选项，写盘由调用方委托 ``ChainService.save_config``。
+- 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
+  （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
 """
 
 import os
 import warnings
 
-from PySide6.QtCore import Qt, QTime, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -25,21 +25,17 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QSpinBox,
-    QTimeEdit,
     QVBoxLayout,
 )
 
 from src.config.set_config import ScriptConfig, supports_weekly
 from src.config.subscript import get_script_name
 from src.service.script_service import ScriptService
-from src.utils_runner import _TIME_RE
 
 # ═══════════════════════ 弹窗样式（原 src/gui/theme.py 子集，2026-08-16 并入）═══════
 DARK_BLUE = "#333957"  # 深空蓝
@@ -659,194 +655,3 @@ class SingleScriptConfigDialog(_FormDialogBase):
             return
         self.delete_requested.emit(self.script_name)
         self.close()
-
-
-class RunConfirmDialog(_FormDialogBase):
-    """「启动全部」前的确认弹窗，内嵌自动关机与定时计划配置。
-
-    复用 ``_FormDialogBase`` 的样式与控件构造；accept 后经 ``result`` 属性返回
-    ``(shutdown_enabled, shutdown_delay, timed_enabled, timed_target)``，写盘由
-    调用方委托 ``ChainService.save_config``。取消（reject）不返回、不落盘。
-    """
-
-    def __init__(
-        self,
-        enabled_count: int,
-        *,
-        shutdown_enabled: bool,
-        shutdown_delay: int,
-        timed_enabled: bool,
-        timed_target: str,
-        mute_enabled: bool = False,
-        parent=None,
-    ):
-        super().__init__(parent)
-        self.setWindowTitle("确认运行")
-        self.setStyleSheet(f"background-color: {BG_CARD};")
-
-        self.enabled_count = enabled_count
-        self._result = None  # accept 后供调用方读取勾选项
-
-        self.setMinimumWidth(400)
-        self.init_ui(
-            shutdown_enabled=shutdown_enabled,
-            shutdown_delay=shutdown_delay,
-            timed_enabled=timed_enabled,
-            timed_target=timed_target,
-            mute_enabled=mute_enabled,
-        )
-
-    def init_ui(
-        self,
-        *,
-        shutdown_enabled: bool,
-        shutdown_delay: int,
-        timed_enabled: bool,
-        timed_target: str,
-        mute_enabled: bool,
-    ) -> None:
-        """构造布局：确认文案 + 自动关机区 + 定时计划区 + 运行中静音区 + 底部按钮行。"""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(14)
-
-        # 顶部确认文案
-        hint = QLabel(f"即将运行 {self.enabled_count} 个脚本，是否继续？")
-        hint.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
-        hint.setStyleSheet(f"color: {TEXT}; background: transparent;")
-        layout.addWidget(hint)
-
-        layout.addWidget(self._make_shutdown_group(shutdown_enabled, shutdown_delay))
-        layout.addWidget(self._make_timed_group(timed_enabled, timed_target))
-        layout.addWidget(self._make_mute_group(mute_enabled))
-
-        layout.addStretch()
-        layout.addLayout(
-            self._make_footer("确认运行", self._on_accept, left_widgets=())
-        )
-
-    def _make_shutdown_group(self, enabled: bool, delay: int) -> QGroupBox:
-        """自动关机分组：复选框 + 延迟秒数数字框（延时框禁用随复选框联动）。"""
-        box = QGroupBox("自动关机")
-        box.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
-        box.setStyleSheet(
-            f"QGroupBox {{ color: {TEXT}; border: {BORDER_WIDTH} solid {BORDER}; "
-            f"border-radius: 8px; margin-top: 12px; }} "
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 6px; }}"
-        )
-        row = QHBoxLayout(box)
-        row.setContentsMargins(14, 20, 14, 14)
-        row.setSpacing(12)
-
-        self.shutdown_cb = self._make_checkbox("运行后关机")
-        self.shutdown_cb.setChecked(enabled)
-        row.addWidget(self.shutdown_cb)
-
-        delay_label = QLabel("延迟秒数")
-        delay_label.setFont(make_font(size=FONT_SIZE_BODY))
-        delay_label.setFixedWidth(56)
-        delay_label.setStyleSheet(f"color: {TEXT}; background: transparent;")
-        row.addWidget(delay_label)
-
-        self.shutdown_delay_spin = QSpinBox(self)
-        self.shutdown_delay_spin.setFont(make_font(size=FONT_SIZE_BODY))
-        self.shutdown_delay_spin.setRange(0, 86400)
-        self.shutdown_delay_spin.setValue(delay if delay and delay > 0 else 0)
-        self.shutdown_delay_spin.setFixedWidth(90)
-        self.shutdown_delay_spin.setFixedHeight(INPUT_FIXED_H)
-        self.shutdown_delay_spin.setStyleSheet(
-            "QSpinBox { border: 1px solid #C4D8F2; border-radius: 8px; "
-            "padding: 4px 4px; background: white; color: #333957; }"
-        )
-        self.shutdown_delay_spin.setEnabled(enabled)
-        self.shutdown_cb.toggled.connect(self.shutdown_delay_spin.setEnabled)
-        row.addWidget(self.shutdown_delay_spin)
-
-        row.addStretch()
-        return box
-
-    def _make_timed_group(self, enabled: bool, target: str) -> QGroupBox:
-        """定时计划分组：复选框 + 目标时刻时间框（时间框禁用随复选框联动）。"""
-        box = QGroupBox("定时计划")
-        box.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
-        box.setStyleSheet(
-            f"QGroupBox {{ color: {TEXT}; border: {BORDER_WIDTH} solid {BORDER}; "
-            f"border-radius: 8px; margin-top: 12px; }} "
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 6px; }}"
-        )
-        row = QHBoxLayout(box)
-        row.setContentsMargins(14, 20, 14, 14)
-        row.setSpacing(12)
-
-        self.timed_cb = self._make_checkbox("启用定时")
-        self.timed_cb.setChecked(enabled)
-        row.addWidget(self.timed_cb)
-
-        target_label = QLabel("目标时刻")
-        target_label.setFont(make_font(size=FONT_SIZE_BODY))
-        target_label.setFixedWidth(56)
-        target_label.setStyleSheet(f"color: {TEXT}; background: transparent;")
-        row.addWidget(target_label)
-
-        self.timed_time = QTimeEdit(self)
-        self.timed_time.setFont(make_font(size=FONT_SIZE_BODY))
-        self.timed_time.setDisplayFormat("HH:mm")
-        self.timed_time.setFixedWidth(100)
-        self.timed_time.setFixedHeight(INPUT_FIXED_H)
-        if target and _TIME_RE.match(target):
-            h, m = (int(x) for x in target.split(":"))
-            self.timed_time.setTime(QTime(h, m))
-        else:
-            self.timed_time.setTime(QTime(4, 10))
-        self.timed_time.setStyleSheet(
-            "QTimeEdit { border: 1px solid #C4D8F2; border-radius: 8px; "
-            "padding: 4px 4px; background: white; color: #333957; }"
-        )
-        self.timed_time.setEnabled(enabled)
-        self.timed_cb.toggled.connect(self.timed_time.setEnabled)
-        row.addWidget(self.timed_time)
-
-        row.addStretch()
-        return box
-
-    def _make_mute_group(self, enabled: bool) -> QGroupBox:
-        """运行中静音分组：单个复选框（运行前静音、运行后恢复，由主仓 service 执行）。"""
-        box = QGroupBox("运行中静音")
-        box.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
-        box.setStyleSheet(
-            f"QGroupBox {{ color: {TEXT}; border: {BORDER_WIDTH} solid {BORDER}; "
-            f"border-radius: 8px; margin-top: 12px; }} "
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 6px; }}"
-        )
-        row = QHBoxLayout(box)
-        row.setContentsMargins(14, 20, 14, 14)
-        row.setSpacing(12)
-
-        self.mute_cb = self._make_checkbox("运行中静音（运行前静音，运行后恢复）")
-        self.mute_cb.setChecked(enabled)
-        row.addWidget(self.mute_cb)
-
-        row.addStretch()
-        return box
-
-    @property
-    def result(self) -> dict | None:
-        """accept 后的勾选项；取消时返回 None。
-
-        Returns:
-            含 shutdown_enabled / shutdown_delay / timed_enabled / timed_target /
-            mute_enabled 的 dict。
-        """
-        return self._result
-
-    def _on_accept(self) -> None:
-        """确认运行：收集勾选项并 accept。"""
-        t = self.timed_time.time()
-        self._result = {
-            "shutdown_enabled": self.shutdown_cb.isChecked(),
-            "shutdown_delay": self.shutdown_delay_spin.value(),
-            "timed_enabled": self.timed_cb.isChecked(),
-            "timed_target": f"{t.hour():02d}:{t.minute():02d}",
-            "mute_enabled": self.mute_cb.isChecked(),
-        }
-        self.accept()

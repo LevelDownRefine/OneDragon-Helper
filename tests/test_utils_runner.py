@@ -495,9 +495,7 @@ class TestBuildMuteExtraArgs(unittest.TestCase):
     """build_mute_extra_args：mute 意图 -> runner 命令行参数（薄封装）。"""
 
     def test_enabled_passes_flag(self):
-        self.assertEqual(
-            build_mute_extra_args({"mute": {"enabled": True}}), ["--mute"]
-        )
+        self.assertEqual(build_mute_extra_args({"mute": {"enabled": True}}), ["--mute"])
 
     def test_disabled_returns_empty(self):
         self.assertEqual(build_mute_extra_args({"mute": {"enabled": False}}), [])

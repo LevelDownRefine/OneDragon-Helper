@@ -12,7 +12,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from PySide6.QtWidgets import QDialog, QMessageBox
 
 from src.config.subscript import get_script_name, resolve_script_path
-from src.gui.dialogs import RunConfirmDialog
+from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils_runner import (
     apply_mute_config,
     apply_shutdown_config,
