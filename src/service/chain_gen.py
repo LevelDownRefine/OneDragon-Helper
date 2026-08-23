@@ -13,8 +13,6 @@ import copy
 import logging
 from typing import Any
 
-import yaml
-
 from src.config.dungeon_config import (
     load_dungeon_map,
     parse_dungeon_config,
@@ -27,6 +25,7 @@ from src.utils import (
     safe_path_join,
 )
 from src.utils_weekly import get_week_num
+from src.utils_yaml import dump_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +190,5 @@ def generate_chain_config(
     output_file = out_path or safe_path_join(
         get_path_under_root("config", "script_chain"), f"{chain_name}.yml"
     )
-    with open(output_file, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+    dump_yaml(output_file, data)
     return output_file

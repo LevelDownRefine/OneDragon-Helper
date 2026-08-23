@@ -14,8 +14,6 @@ ScriptItem 卡片与配置弹窗（SingleScriptConfigDialog）。
 import logging
 import os
 
-import yaml
-
 from src.config.set_config import get_config_path
 from src.config.subscript import (
     DEFAULT_RUN_TIMEOUT,
@@ -30,6 +28,7 @@ from src.utils import (
     get_weekly_timeouts_yml_path_under_root,
     require_config_yml_path,
 )
+from src.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +36,7 @@ logger = logging.getLogger(__name__)
 def _load_config() -> dict:
     """读取 config.yml（断言存在），校验每个条目含 display_name 与 script_path。"""
     config_path = require_config_yml_path()
-    with open(config_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+    data = load_yaml(config_path)
     for s in data.get("script_list", []):
         assert "display_name" in s, f"[service] script_list 条目缺少 display_name: {s}"
         assert "script_path" in s, f"[service] script_list 条目缺少 script_path: {s}"
@@ -52,8 +50,7 @@ def _load_weekly() -> dict:
     """
     weekly_path = get_weekly_timeouts_yml_path_under_root()
     assert os.path.exists(weekly_path), f"[service] 周常超时配置缺失: {weekly_path}"
-    with open(weekly_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+    data = load_yaml(weekly_path)
     assert isinstance(data, dict), (
         f"[service] 周常超时配置应为 dict（空文件或格式错误）: {weekly_path}"
     )
@@ -63,8 +60,7 @@ def _load_weekly() -> dict:
 def _dump_weekly(weekly_map: dict) -> None:
     """写回 weekly_timeouts.yml。"""
     weekly_path = get_weekly_timeouts_yml_path_under_root()
-    with open(weekly_path, "w", encoding="utf-8") as f:
-        yaml.dump(weekly_map, f, allow_unicode=True, sort_keys=False)
+    dump_yaml(weekly_path, weekly_map)
 
 
 def _load_weekly_start() -> dict:
@@ -77,8 +73,7 @@ def _load_weekly_start() -> dict:
     assert os.path.exists(weekly_start_path), (
         f"[service] 周常起始日配置缺失: {weekly_start_path}"
     )
-    with open(weekly_start_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+    data = load_yaml(weekly_start_path)
     assert isinstance(data, dict), (
         f"[service] 周常起始日配置应为 dict（空文件或格式错误）: {weekly_start_path}"
     )
@@ -88,8 +83,7 @@ def _load_weekly_start() -> dict:
 def _dump_weekly_start(data: dict) -> None:
     """写回 weekly_start.yml（覆盖式，与 _dump_weekly 同款）。"""
     weekly_start_path = get_weekly_start_yml_path_under_root()
-    with open(weekly_start_path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+    dump_yaml(weekly_start_path, data)
 
 
 def _load_weekly_defs() -> dict:
@@ -103,8 +97,7 @@ def _load_weekly_defs() -> dict:
     assert os.path.exists(weekly_list_path), (
         f"[service] 周常声明配置缺失: {weekly_list_path}"
     )
-    with open(weekly_list_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+    data = load_yaml(weekly_list_path)
     # 空文件或内容非 dict 都是声明配置损坏，直接暴露而非静默当成「无声明」。
     assert isinstance(data, dict), (
         f"[service] 周常声明配置应为 dict（空文件或格式错误）: {weekly_list_path}"

@@ -8,23 +8,16 @@ import logging
 import os
 import re
 
-import yaml
-from ruamel.yaml import YAML
-
 from src.utils import (
     get_config_yml_path_under_root,
     get_root_dir,
     require_config_yml_path,
     safe_path_join,
 )
-
-# 游戏 config 往返读写实例：保留注释 / 键序 / 原引号，并按 YAML 1.2 解析，
-# 避免 PyYAML 1.1 把 04:00 这类时间误当六十进制数（→ 240.0）污染落盘。
-_game_yaml = YAML(typ="rt")
-_game_yaml.preserve_quotes = True
-_game_yaml.width = 4096  # 防止长行（长注释 / 列表）被折行破坏原排版
+from src.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
+
 
 DEFAULT_RUN_TIMEOUT = 3600
 """脚本运行默认超时秒数。当 weekly_timeouts.yml 无条目或不足 7 格时作为 fallback。"""
@@ -35,9 +28,13 @@ DEFAULT_RUN_TIMEOUT = 3600
 
 
 def _load_config_yml() -> dict:
-    """读取主配置 config.yml"""
-    with open(require_config_yml_path(), encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    """读取主配置 config.yml（ruamel，按 YAML 1.2 解析）。
+
+    用 ruamel 而非 PyYAML：PyYAML 1.1 把 ``04:10`` 这类时间字面量误当六十进制数
+    解析成 ``250.0``，污染后续读取；ruamel 按 YAML 1.2 解析并保持 ``"04:10"`` 为字符串。
+    config.yml 为必需文件，缺失 / 空 / 非 dict 由 ``load_yaml`` 直接 assert 暴露。
+    """
+    return load_yaml(require_config_yml_path())
 
 
 # ============================================================
@@ -175,7 +172,7 @@ def load_template(script_name: str, rel_path: str) -> dict | list:
         if ext == ".json":
             template = json.load(f)
         elif ext in (".yaml", ".yml"):
-            template = yaml.safe_load(f)
+            template = load_yaml(template_path)
         else:
             raise ValueError(f"[set_config][{script_name}] 不支持的模板格式: {ext}")
     return template
@@ -194,7 +191,7 @@ def load_config(script_name: str, rel_path: str) -> dict | list:
         if ext == ".json":
             return json.load(f)
         elif ext in (".yaml", ".yml"):
-            return _game_yaml.load(f)
+            return load_yaml(path)
         raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
 
@@ -219,7 +216,7 @@ def load_game_config(script_name: str, rel_path: str) -> dict | None:
         if ext == ".json":
             return json.load(f)
         elif ext in (".yaml", ".yml"):
-            return _game_yaml.load(f)
+            return load_yaml(game_config_path)
         raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
 
@@ -231,13 +228,13 @@ def save_config(script_name: str, rel_path: str, data: dict | list) -> None:
     """
     path = get_config_path(script_name, rel_path)
     ext = os.path.splitext(path)[1].lower()
-    with open(path, "w", encoding="utf-8") as f:
-        if ext == ".json":
+    if ext == ".json":
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-        elif ext in (".yaml", ".yml"):
-            _game_yaml.dump(data, f)
-        else:
-            raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
+    elif ext in (".yaml", ".yml"):
+        dump_yaml(path, data)
+    else:
+        raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
 
 def _is_absolute_path(p: str) -> bool:
@@ -298,7 +295,5 @@ def generate_config_from_example() -> None:
     example_path = safe_path_join(get_root_dir(), "config", "config.example.yml")
     config_path = get_config_yml_path_under_root()
     assert os.path.exists(example_path), f"[subscript] 模板不存在: {example_path}"
-    with open(example_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+    data = load_yaml(example_path)
+    dump_yaml(config_path, data)

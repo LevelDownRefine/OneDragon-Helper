@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from unittest import mock
 
 from src.utils import get_root_dir
@@ -14,6 +15,8 @@ from src.utils_runner import (
     build_script_command,
     build_shutdown_extra_args,
     collect_invalid_script_messages,
+    next_target_datetime,
+    parse_timed_run,
     run_chain_command,
     script_invalid_message,
 )
@@ -400,3 +403,56 @@ class TestBuildShutdownExtraArgs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestParseTimedRun(unittest.TestCase):
+    """parse_timed_run：缺失/非法配置安全降级。
+
+    统一经 ruamel（YAML 1.2）读写 config.yml，target_time 始终为字符串，
+    无需再处理 PyYAML 1.1 把 08:00 误成 480.0 的旧兼容分支。
+    """
+
+    def test_disabled_when_missing_block(self):
+        self.assertEqual(parse_timed_run({"script_list": []}), (False, None))
+
+    def test_disabled_when_enabled_false(self):
+        cfg = {"timed_run": {"enabled": False, "target_time": "08:00"}}
+        self.assertEqual(parse_timed_run(cfg), (False, None))
+
+    def test_enabled_with_valid_time(self):
+        cfg = {"timed_run": {"enabled": True, "target_time": "08:30"}}
+        self.assertEqual(parse_timed_run(cfg), (True, "08:30"))
+
+    def test_illegal_time_string_degrades(self):
+        cfg = {"timed_run": {"enabled": True, "target_time": "25:99"}}
+        self.assertEqual(parse_timed_run(cfg), (False, None))
+
+    def test_numeric_target_degrades(self):
+        """ruamel 下 target_time 不会是数值；若配置损坏出现数值则安全降级。"""
+        cfg = {"timed_run": {"enabled": True, "target_time": 480.0}}
+        self.assertEqual(parse_timed_run(cfg), (False, None))
+
+
+class TestNextTargetDatetime(unittest.TestCase):
+    """next_target_datetime：今天未到取今天，已过取明天（跨午夜）。"""
+
+    def test_later_today(self):
+        now = datetime(2026, 8, 23, 7, 0)
+        self.assertEqual(
+            next_target_datetime("08:00", now=now),
+            datetime(2026, 8, 23, 8, 0),
+        )
+
+    def test_already_passed_rolls_to_tomorrow(self):
+        now = datetime(2026, 8, 23, 9, 0)
+        self.assertEqual(
+            next_target_datetime("08:00", now=now),
+            datetime(2026, 8, 24, 8, 0),
+        )
+
+    def test_exactly_now_runs_tomorrow(self):
+        now = datetime(2026, 8, 23, 8, 0)
+        self.assertEqual(
+            next_target_datetime("08:00", now=now),
+            datetime(2026, 8, 24, 8, 0),
+        )

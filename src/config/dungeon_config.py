@@ -1,9 +1,7 @@
-import os
 from typing import Any
 
-import yaml
-
 from src.utils import get_root_dir, safe_path_join
+from src.utils_yaml import load_yaml_optional
 
 DungeonOptions = list[str]
 SequenceOptionsMap = dict[str, list[tuple[str, Any]]]
@@ -14,11 +12,7 @@ def get_dungeon_config_path() -> str:
 
 
 def load_dungeon_map() -> dict[str, Any]:
-    dungeon_file = get_dungeon_config_path()
-    if os.path.exists(dungeon_file):
-        with open(dungeon_file, encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    return {}
+    return load_yaml_optional(get_dungeon_config_path())
 
 
 def parse_dungeon_config(
