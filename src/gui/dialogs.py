@@ -10,6 +10,8 @@ safe_startfile，原 src/gui/utils.py）已并入本文件（2026-08-16），src
   ``pending_changes`` 返回，写盘由调用方委托 ``ChainService.update_script``。
 - ``confirm_config_update`` / ``inject_config_confirm``：config 与模板不一致时的
   保存前确认回调（30s 限时，超时按拒绝处理），GUI 入口注入。
+- 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
+  （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
 """
 
 import os
@@ -202,7 +204,7 @@ def safe_startfile(parent, path, fail_text):
     """用系统默认程序打开 path；任何异常都转成清晰可读的提示，不让 GUI 崩溃。"""
     try:
         os.startfile(path)
-    except OSError as e:
+    except (OSError, AttributeError) as e:
         warnings.warn(f"{fail_text}: {e}", RuntimeWarning, stacklevel=2)
         styled_msg_box(
             parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}"

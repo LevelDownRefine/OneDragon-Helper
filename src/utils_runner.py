@@ -243,22 +243,25 @@ def run_chain_command(
 
 
 def build_shutdown_extra_args(config_data: dict) -> list[str]:
-    """按 config 生成 ``--shutdown`` 参数；shutdown_after_run 默认开启、delay 须为正整型。
+    """按 config 的 shutdown 配置生成 ``--shutdown`` 参数；after_run 默认关闭、delay 须为正整型。
 
     Args:
-        config_data: 完整配置字典。
+        config_data: 完整配置字典（load_config 结果）。
 
     Returns:
         满足条件时返回 ``["--shutdown", N]``，否则返回空列表。
+
+    说明：shutdown 与 timed_run 同为顶层嵌套映射（子键缩进），读取风格统一——
+    缺失/非 dict 视为未配置，after_run 默认 False，enabled 但 delay 缺失/非法
+    同样视为未启用，不抛异常、不告警。
     """
-    if "shutdown_after_run" in config_data and (
-        not isinstance(config_data["shutdown_after_run"], bool)
-        or not config_data["shutdown_after_run"]
-    ):
+    raw = config_data.get("shutdown")
+    if not isinstance(raw, dict):
         return []
-    if "shutdown_delay_seconds" not in config_data:
+    enabled = raw.get("after_run", False)
+    if not isinstance(enabled, bool) or not enabled:
         return []
-    delay = config_data["shutdown_delay_seconds"]
+    delay = raw.get("delay_seconds")
     if not isinstance(delay, int) or delay <= 0:
         return []
     return ["--shutdown", str(delay)]
@@ -295,6 +298,87 @@ def parse_timed_run(config_data: dict) -> tuple[bool, str | None]:
     if not isinstance(target, str) or not _TIME_RE.match(target):
         return (False, None)
     return (True, target)
+
+
+def apply_shutdown_config(
+    config_data: dict, *, enabled: bool, delay_seconds: int
+) -> None:
+    """把自动关机配置写回 config（原地修改顶层 shutdown 映射）。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果），原地修改。
+        enabled: 是否运行后关机。
+        delay_seconds: 关机延迟秒数；enabled 为 True 时须为正整型，否则视为不启用。
+    """
+    config_data["shutdown"] = {
+        "after_run": bool(enabled),
+        "delay_seconds": int(delay_seconds) if enabled else 0,
+    }
+
+
+def apply_timed_run_config(
+    config_data: dict, *, enabled: bool, target_time: str
+) -> None:
+    """把定时计划配置写回 config（原地修改顶层 timed_run 映射）。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果），原地修改。
+        enabled: 是否启用定时运行。
+        target_time: 目标时刻 ``"HH:MM"``；enabled 为 True 但格式非法时回退默认 04:10。
+    """
+    if enabled and not _TIME_RE.match(target_time or ""):
+        target_time = "04:10"
+    config_data["timed_run"] = {
+        "enabled": bool(enabled),
+        "target_time": target_time if enabled else "",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 运行中静音（执行已下沉 runner：run_chain(mute=...) 链前后静音/恢复）
+# 主仓仅做参数转发：parse/apply 读 config，build_*_extra_args 拼 --mute。
+# ---------------------------------------------------------------------------
+
+
+def build_mute_extra_args(config_data: dict) -> list[str]:
+    """按 config 的 mute 配置生成 ``--mute`` 参数；未启用返回空列表。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果）。
+
+    Returns:
+        启用时返回 ``["--mute"]``，否则返回空列表。
+
+    说明：静音执行已由 runner 在脚本链运行前后完成（覆盖异常/强制关闭窗口），
+    主仓只负责把「是否静音」的意图透传为命令行参数，不触碰音频 API。
+    """
+    return ["--mute"] if parse_mute_run(config_data) else []
+
+
+def parse_mute_run(config_data: dict) -> bool:
+    """解析 config 的 mute 配置，返回是否运行中静音。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果）。
+
+    Returns:
+        启用返回 True，否则 False（缺失/非 dict/非 bool 一律视为未启用，不抛异常）。
+    """
+    raw = config_data.get("mute")
+    if not isinstance(raw, dict):
+        return False
+    enabled = raw.get("enabled", False)
+    return isinstance(enabled, bool) and enabled
+
+
+def apply_mute_config(config_data: dict, *, enabled: bool) -> None:
+    """把运行中静音配置写回 config（原地修改顶层 mute 映射）。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果），原地修改。
+        enabled: 是否运行中静音。
+    """
+    config_data["mute"] = {"enabled": bool(enabled)}
 
 
 def next_target_datetime(target_time: str, now: datetime | None = None) -> datetime:

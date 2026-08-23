@@ -31,13 +31,13 @@ class TestLinksOpenScriptConfig(unittest.TestCase):
         return ctrl, svc, toast
 
     def test_opens_resolved_config(self):
-        """service 返回 config 路径：以 os.startfile 打开，toast 成功。"""
+        """service 返回 config 路径：以 open_in_explorer 打开，toast 成功。"""
         ctrl, svc, toast = self._make_controller(
             ("C:/games/config/DailyTask.json", None)
         )
-        with patch("src.gui.controllers.links.os.startfile") as mock_start:
+        with patch("src.gui.controllers.links.open_in_explorer") as mock_open:
             ctrl.openScriptConfig()
-        mock_start.assert_called_once_with("C:/games/config/DailyTask.json")
+        mock_open.assert_called_once_with("C:/games/config/DailyTask.json")
         svc.config_file_path.assert_called_once_with("ok-ww")
         toast.assert_called_once_with("已打开 鸣潮 配置文件")
 
@@ -46,9 +46,9 @@ class TestLinksOpenScriptConfig(unittest.TestCase):
         ctrl, svc, toast = self._make_controller(
             (None, "该脚本暂未适配配置文件，无法打开")
         )
-        with patch("src.gui.controllers.links.os.startfile") as mock_start:
+        with patch("src.gui.controllers.links.open_in_explorer") as mock_open:
             ctrl.openScriptConfig()
-        mock_start.assert_not_called()
+        mock_open.assert_not_called()
         toast.assert_called_once_with("鸣潮：该脚本暂未适配配置文件，无法打开")
 
 

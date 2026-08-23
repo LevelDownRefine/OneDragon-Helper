@@ -236,7 +236,7 @@ class TestFloatBar(unittest.TestCase):
         b = _make_bridge()
         with (
             patch.object(links, "_get_game_exe_path", return_value="D:/Game/game.exe"),
-            patch("os.startfile", create=True) as start,
+            patch.object(links, "open_in_explorer") as start,
         ):
             b.launchGame()
         start.assert_called_once_with("D:/Game/game.exe")
@@ -258,7 +258,7 @@ class TestFloatBar(unittest.TestCase):
                 return_value="C:/cfg/config.yml",
             ),
             patch.object(os.path, "isfile", return_value=True),
-            patch("os.startfile", create=True) as start,
+            patch.object(links, "open_in_explorer") as start,
         ):
             b.openSettings()
         start.assert_called_once_with("C:/cfg/config.yml")
@@ -286,7 +286,7 @@ class TestFloatBar(unittest.TestCase):
             ),
             patch.object(links, "get_log_dir", return_value="D:/Game/logs"),
             patch.object(os.path, "isdir", return_value=True),
-            patch("os.startfile", create=True) as start,
+            patch.object(links, "open_in_explorer") as start,
         ):
             b.openLogFolder()
         start.assert_called_once_with("D:/Game/logs")

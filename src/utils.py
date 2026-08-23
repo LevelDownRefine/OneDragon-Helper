@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 from functools import lru_cache
 
@@ -127,3 +128,19 @@ def join_dir_path_with_mk(base: str, *subs) -> str:
         if not os.path.exists(acc):
             os.mkdir(acc)
     return target
+
+
+def open_in_explorer(path: str) -> None:
+    """用系统默认程序打开文件或目录（跨平台）。
+
+    Windows 走 ``os.startfile``；其他平台走 ``xdg-open`` / ``open``。
+    非 Windows 环境无图形界面时命令可能失败，由调用方 toast 兜底提示。
+
+    Args:
+        path: 待打开的文件或目录路径。
+    """
+    if sys.platform == "win32":
+        os.startfile(path)  # noqa: S606 系统默认程序打开
+        return
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    subprocess.run([opener, path], check=False)
