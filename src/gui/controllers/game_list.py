@@ -328,6 +328,12 @@ class GameListController(QObject):
         self._toast(f"已添加 {script_data['display_name']}")
         self.gameAdded.emit()
 
+    @Slot(int)
+    def deleteScript(self, index: int):
+        """左侧拖拽到删除区：按 index 删除脚本并落盘重载。"""
+        assert 0 <= index < len(self._games), f"[bridge] index out of range: {index}"
+        self._on_delete_script(self._games[index]["script_name"])
+
     @Slot()
     def configCurrent(self):
         """打开当前脚本配置弹窗（SingleScriptConfigDialog）。

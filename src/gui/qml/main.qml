@@ -88,108 +88,167 @@ Window {
             color: "#0F1524"
             opacity: 0.8
         }
-        // 左侧栏背景条自身的拖动层：覆盖 80 宽全高，仅响应拖动（不拦截点击）。
-        // 图标格(z:15)与底部按钮(z:16)的更高 z MouseArea 仍优先吃点击/图标拖拽，
-        // 空白处按下则统一走整窗拖动，消除「背景条比图标命中区宽、空隙穿透到
-        // z:1 全窗拖动层」导致的拖动目标不一致。
-        MouseArea {
-            anchors.fill: parent
-            z: 10
-            onPressed: Bridge.startWindowMove()
-        }
     }
 
     // 左侧脚本图标列表（可滚动；点击切换/启停；拖拽重排）
+    // 命中区拓宽到整条背景宽(0~80)：在左侧栏内任意位置（含原两侧空隙
+    // x:0~12 / x:68~80）拖动都能滚动列表，不再穿透到 z:1 全窗层触发整窗移动。
+    // 图标格(iconBox)56 宽居中，负责图标重排；图标格之外的列表区负责滚动。
     ListView {
         id: gameList
-        x: 12
+        x: 0
         y: 12
-        width: 56
+        width: 80
         height: root.height - 132
         z: 15
         model: Bridge.gameModel
         spacing: 8
+        // 拖拽删除状态：dragActive 控制删除区显隐，overDelete 标记图标是否悬停删除区
+        property bool dragActive: false
+        property bool overDelete: false
         clip: true
-        boundsBehavior: Flickable.StopAtBounds
+        // DragAndOvershootBounds：保留滚动到边界时的过头回弹 + fling 惯性
+        // （StopAtBounds 会禁掉过冲，使列表拖到顶/底立即停死，无惯性感）。
+        boundsBehavior: Flickable.DragAndOvershootBounds
         delegate: Rectangle {
             id: iconBox
-            width: 56
+            width: 80
             height: 56
-            radius: 16
             color: "transparent"
-            border.width: index === Bridge.currentIndex ? 3 : 0
-            border.color: "#FFFFFF"
+            // 内部图标容器 56 宽居中：图标、边框、拖拽命中区都在这，
+            // 两侧各 12px 留给 ListView Flickable 做列表滚动。
+            Rectangle {
+                id: iconInner
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 56
+                height: 56
+                radius: 16
+                color: "transparent"
+                border.width: index === Bridge.currentIndex ? 3 : 0
+                border.color: "#FFFFFF"
 
-            // exe 图标（image://scripticon/<script_name>：按游戏身份解析，
-            // 重排后行 index 不变也能取到正确图标）
+                // exe 图标（image://scripticon/<script_name>：按游戏身份解析，
+                // 重排后行 index 不变也能取到正确图标）
+                Image {
+                    anchors.centerIn: parent
+                    width: 48
+                    height: 48
+                    source: "image://scripticon/" + model.scriptName
+                    fillMode: Image.PreserveAspectFit
+                }
+
+                // 停用灰盖：未启用的脚本图标整体压暗（覆盖在图标之上，对齐旧 GUI
+                // paintEvent 的 fillRect(4,4,48,48,黑150/255≈0.59) 变灰表现，无 ✕ 角标；
+                // 两种模式都显示）。必须声明在 Image 之后，使其位于图标上层才能压暗，
+                // 否则会被图标盖住、只露成"背后黑块"而非变灰。
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 48
+                    height: 48
+                    radius: 10
+                    color: "#000000"
+                    opacity: Bridge.enabledStates[index] ? 0 : 0.58
+                }
+
+                MouseArea {
+                    id: iconMouseArea
+                    anchors.fill: parent
+                    // preventStealing：不让 Flickable(列表滚动) 抢走拖动事件，
+                    // 否则 onMouseYChanged 不触发、拖拽永远走 selectGame。
+                    preventStealing: true
+                    property real pressY: 0         // 局部 y，仅用于阈值判定
+                    property real origY: 0          // 按下时 box.y（contentItem 坐标）
+                    property real pressCursorY: 0   // 按下时光标在 contentItem 坐标系的 y（稳定参照）
+                    property bool dragging: false
+                    onPressed: (mouse) => {
+                        pressY = mouse.y
+                        origY = parent.y
+                        // 光标在 ListView contentItem 坐标系中的位置（不随 box 移动而变）
+                        pressCursorY = iconMouseArea.mapToItem(gameList.contentItem, mouse.x, mouse.y).y
+                        dragging = false
+                        gameList.dragActive = false
+                        gameList.overDelete = false
+                    }
+                    // onPositionChanged（事件参数）比 onMouseYChanged（属性）可靠：
+                    // 属性更新有丢帧/延迟，导致拖拽判定时好时坏。
+                    onPositionChanged: (mouse) => {
+                        if (!dragging && Math.abs(mouse.y - pressY) > 12) {
+                            dragging = true
+                            parent.z = 100  // 拖拽中浮起
+                            gameList.dragActive = true  // 显示删除区
+                        }
+                        if (dragging) {
+                            // 用稳定坐标系求真实位移：局部 mouse.y 会随 box 移动而翻转，
+                            // 直接用会陷入「移动 box ↔ 局部 y 反向」的反馈抖动（每两次才动一下）。
+                            var cur = iconMouseArea.mapToItem(gameList.contentItem, mouse.x, mouse.y).y
+                            parent.y = origY + (cur - pressCursorY)  // 视觉精确跟随
+                            // 检测图标中心是否落入删除区：直接映射到 deleteZone 本地坐标系，
+                            // 判断本地坐标是否落在其 [0,0]~[width,height] 边界内。
+                            // 注意 mapToItem 第一参数必须是 QQuickItem（Item），
+                            // 不能传 Window（root 是 Window 而非 Item），故直接用 deleteZone。
+                            var c = iconInner.mapToItem(deleteZone, iconInner.width / 2, iconInner.height / 2)
+                            gameList.overDelete = (c.x >= 0 && c.x <= deleteZone.width
+                                                  && c.y >= 0 && c.y <= deleteZone.height)
+                        }
+                    }
+                    onReleased: (mouse) => {
+                        // 用稳定坐标系的总位移估算目标 index（item 高 56 + spacing 8）
+                        var cur = iconMouseArea.mapToItem(gameList.contentItem, mouse.x, mouse.y).y
+                        var dy = cur - pressCursorY
+                        // 拖到删除区：直接删除（落盘，不可撤销），不再走重排
+                        if (dragging && gameList.overDelete) {
+                            gameList.dragActive = false
+                            gameList.overDelete = false
+                            Bridge.deleteScript(index)
+                            return
+                        }
+                        parent.y = origY  // 复位（model.move 后 ListView 重排）
+                        parent.z = 0
+                        gameList.dragActive = false
+                        gameList.overDelete = false
+                        if (dragging) {
+                            var target = index + Math.round(dy / 64)
+                            target = Math.max(0, Math.min(Bridge.games.length - 1, target))
+                            if (target !== index) {
+                                Bridge.reorderGames(index, target)
+                            }
+                        } else {
+                            Bridge.selectGame(index)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 拖拽删除区：拖拽图标时覆盖底部固定区显示，图标中心落入即删除（红色高亮反馈）。
+    // 平时隐藏，底部 4 按钮正常可见；拖拽时整条底部变删除区（设计性覆盖底部按钮，
+    // 非意外重合），列表区完全留给重排，避免删除区盖住列表底干扰末位重排。
+    Rectangle {
+        id: deleteZone
+        x: 0
+        y: root.height - 120
+        width: 80
+        height: 120
+        z: 18
+        radius: 6
+        color: gameList.overDelete ? "#E74C3C" : "#922B21"
+        visible: gameList.dragActive
+        Column {
+            anchors.centerIn: parent
+            spacing: 4
             Image {
-                anchors.centerIn: parent
-                width: 48
-                height: 48
-                source: "image://scripticon/" + model.scriptName
+                anchors.horizontalCenter: parent.horizontalCenter
+                source: "image://uiicon/trash"
+                width: 36
+                height: 36
                 fillMode: Image.PreserveAspectFit
             }
-
-            // 停用灰盖：未启用的脚本图标整体压暗（覆盖在图标之上，对齐旧 GUI
-            // paintEvent 的 fillRect(4,4,48,48,黑150/255≈0.59) 变灰表现，无 ✕ 角标；
-            // 两种模式都显示）。必须声明在 Image 之后，使其位于图标上层才能压暗，
-            // 否则会被图标盖住、只露成"背后黑块"而非变灰。
-            Rectangle {
-                anchors.centerIn: parent
-                width: 48
-                height: 48
-                radius: 10
-                color: "#000000"
-                opacity: Bridge.enabledStates[index] ? 0 : 0.58
-            }
-
-            MouseArea {
-                id: iconMouseArea
-                anchors.fill: parent
-                // preventStealing：不让 Flickable(列表滚动) 抢走拖动事件，
-                // 否则 onMouseYChanged 不触发、拖拽永远走 selectGame。
-                preventStealing: true
-                property real pressY: 0         // 局部 y，仅用于阈值判定
-                property real origY: 0          // 按下时 box.y（contentItem 坐标）
-                property real pressCursorY: 0   // 按下时光标在 contentItem 坐标系的 y（稳定参照）
-                property bool dragging: false
-                onPressed: (mouse) => {
-                    pressY = mouse.y
-                    origY = parent.y
-                    // 光标在 ListView contentItem 坐标系中的位置（不随 box 移动而变）
-                    pressCursorY = iconMouseArea.mapToItem(gameList.contentItem, mouse.x, mouse.y).y
-                    dragging = false
-                }
-                // onPositionChanged（事件参数）比 onMouseYChanged（属性）可靠：
-                // 属性更新有丢帧/延迟，导致拖拽判定时好时坏。
-                onPositionChanged: (mouse) => {
-                    if (!dragging && Math.abs(mouse.y - pressY) > 12) {
-                        dragging = true
-                        parent.z = 100  // 拖拽中浮起
-                    }
-                    if (dragging) {
-                        // 用稳定坐标系求真实位移：局部 mouse.y 会随 box 移动而翻转，
-                        // 直接用会陷入「移动 box ↔ 局部 y 反向」的反馈抖动（每两次才动一下）。
-                        var cur = iconMouseArea.mapToItem(gameList.contentItem, mouse.x, mouse.y).y
-                        parent.y = origY + (cur - pressCursorY)  // 视觉精确跟随
-                    }
-                }
-                onReleased: (mouse) => {
-                    // 用稳定坐标系的总位移估算目标 index（item 高 56 + spacing 8）
-                    var cur = iconMouseArea.mapToItem(gameList.contentItem, mouse.x, mouse.y).y
-                    var dy = cur - pressCursorY
-                    parent.y = origY  // 复位（model.move 后 ListView 重排）
-                    parent.z = 0
-                    if (dragging) {
-                        var target = index + Math.round(dy / 64)
-                        target = Math.max(0, Math.min(Bridge.games.length - 1, target))
-                        if (target !== index) {
-                            Bridge.reorderGames(index, target)
-                        }
-                    } else {
-                        Bridge.selectGame(index)
-                    }
-                }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "拖到此处删除"
+                color: "#FFFFFF"
+                font.pixelSize: 11
             }
         }
     }
@@ -198,8 +257,6 @@ Window {
     // 半透明策略：底部区本身不画独立背景（color:transparent），直接复用其背后
     // 左侧栏背景条(0.72)的半透明——这样整条左侧栏（含底部）是统一的 0.72 半透明，
     // 不会再出现「底部叠一层更实的同色块」导致局部更不透明的问题。
-    // 拖动层：给整个底部区加 MouseArea，覆盖按钮间隙与两侧空白，按下统一走
-    // startWindowMove()，避免这些空白处穿透到 z:1 的全窗拖动层触发整窗移动。
     Rectangle {
         x: 0
         y: root.height - 120
@@ -207,11 +264,6 @@ Window {
         height: 120
         z: 16
         color: "transparent"
-        MouseArea {
-            anchors.fill: parent
-            z: 16
-            onPressed: Bridge.startWindowMove()
-        }
         // 上排：全 / 清（居中）
         Row {
             anchors.horizontalCenter: parent.horizontalCenter

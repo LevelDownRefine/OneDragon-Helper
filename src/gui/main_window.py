@@ -173,6 +173,10 @@ class QmlBridge(QObject):
     def addScript(self):
         self.game_list.addScript()
 
+    @Slot(int)
+    def deleteScript(self, index):
+        self.game_list.deleteScript(index)
+
     @Slot()
     def configCurrent(self):
         self.game_list.configCurrent()
