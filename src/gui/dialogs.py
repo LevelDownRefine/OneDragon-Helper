@@ -204,7 +204,7 @@ def safe_startfile(parent, path, fail_text):
     """用系统默认程序打开 path；任何异常都转成清晰可读的提示，不让 GUI 崩溃。"""
     try:
         os.startfile(path)
-    except OSError as e:
+    except (OSError, AttributeError) as e:
         warnings.warn(f"{fail_text}: {e}", RuntimeWarning, stacklevel=2)
         styled_msg_box(
             parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}"

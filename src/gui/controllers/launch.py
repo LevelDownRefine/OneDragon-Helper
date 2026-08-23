@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 
 from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.run_confirm_dialog import RunConfirmDialog
+from src.utils import open_in_explorer
 from src.utils_runner import (
     apply_mute_config,
     apply_shutdown_config,
@@ -102,7 +103,7 @@ class LaunchController(QObject):
             if not resolved or not os.path.isfile(resolved):
                 self._toast(f"找不到脚本：{exe_path}")
                 return
-            os.startfile(resolved)  # noqa: S606 启动脚本本体
+            open_in_explorer(resolved)  # noqa: S606 启动脚本本体
         self._toast(f"已启动 {game['display_name']}")
 
     def _confirm_run(self, enabled_keys: set) -> bool:
