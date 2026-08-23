@@ -205,29 +205,67 @@ class TestRunChainOnce(unittest.TestCase):
         svc.generate_chain.assert_called_once_with(
             {"script_list": [{"display_name": "A"}]}, {"A"}, "today", {}
         )
-        build.assert_called_once_with("out.yml", shutdown=None, mute=False)
+        build.assert_called_once_with("out.yml", mute=False)
         popen.assert_called_once()
 
-    def test_subset_with_shutdown_mute_block_returns_code(self):
+    def test_subset_with_mute_launches_nonblocking(self):
+        """非阻塞启动：按子集生成+运行，mute 透传，返回 None，后台线程启动。"""
         svc = self._make_service([{"display_name": "A"}, {"display_name": "B"}])
         with (
             patch(
                 "src.service.chain_service._build_run_chain_command",
                 return_value=(["cmd"], "cwd", None),
             ) as build,
-            patch("src.service.chain_service.subprocess.run") as run,
+            patch("src.service.chain_service.subprocess.Popen") as popen,
+            patch("src.service.chain_service.threading.Thread") as thread,
         ):
-            run.return_value.returncode = 7
-            code = svc.run_chain_once({"A"}, shutdown=60, mute=True, block=True)
-        self.assertEqual(code, 7)
+            result = svc.run_chain_once({"A"}, mute=True)
+        self.assertIsNone(result)
         svc.generate_chain.assert_called_once_with(
             {"script_list": [{"display_name": "A"}, {"display_name": "B"}]},
             {"A"},
             "today",
             {},
         )
-        build.assert_called_once_with("out.yml", shutdown=60, mute=True)
-        run.assert_called_once()
+        build.assert_called_once_with("out.yml", mute=True)
+        popen.assert_called_once()
+        thread.assert_called_once()
+
+    def test_run_executes_post_run_after_chain(self):
+        """post_run 在链运行结束后（无论成败）按序触发（非阻塞 watcher 线程）。"""
+        svc = self._make_service([{"display_name": "A"}])
+        order = []
+
+        def step() -> None:
+            order.append("done")
+
+        class _SyncThread:
+            """测试替身：start() 同步执行目标，避免后台线程泄漏。"""
+
+            def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+                self._target = target
+                self._args = args
+                self._kwargs = kwargs or {}
+
+            def start(self):
+                self._target(*self._args, **self._kwargs)
+
+            def join(self, *a, **k):
+                pass
+
+        with (
+            patch(
+                "src.service.chain_service._build_run_chain_command",
+                return_value=(["cmd"], "cwd", None),
+            ),
+            patch(
+                "src.service.chain_service.subprocess.Popen",
+                return_value=MagicMock(),
+            ),
+            patch("src.service.chain_service.threading.Thread", _SyncThread),
+        ):
+            svc.run_chain_once({"A"}, post_run=[step])
+        self.assertEqual(order, ["done"])
 
     def test_empty_script_list_asserts(self):
         svc = self._make_service([])
@@ -236,111 +274,57 @@ class TestRunChainOnce(unittest.TestCase):
 
 
 class TestScheduleRun(unittest.TestCase):
-    """schedule_run：调度核心（等待+到点触发）下沉 service。"""
+    """schedule_run：server 侧真实实现（等待→生成→运行→关机 post_run）。"""
 
     def _make_service(self, script_list):
         svc = ChainService()
         svc.load_config = MagicMock(return_value={"script_list": script_list})
         svc.load_ui_state = MagicMock(return_value={})
         svc.generate_chain = MagicMock(return_value="out.yml")
-        svc.run_chain_once = MagicMock()
+        svc.run_chain_command = MagicMock(return_value=0)
         return svc
 
-    def test_pregenerates_and_starts_timer(self):
-        svc = self._make_service([{"display_name": "demo"}])
-        target = datetime(2030, 1, 1, 8, 0)
-        on_set = MagicMock()
+    def _run(self, svc, target_time="08:00", **kwargs):
         with (
+            patch("src.service.chain_service.time.sleep") as mock_sleep,
             patch(
-                "src.service.chain_service.next_target_datetime", return_value=target
+                "src.service.chain_service.next_target_datetime",
+                return_value=datetime(2030, 1, 1, 8, 0),
             ),
-            patch("src.service.chain_service.threading.Timer") as Timer,
+            patch("src.service.chain_service.shutdown_sys") as mock_shutdown,
         ):
-            timer = svc.schedule_run(
-                {"demo"},
-                "08:00",
-                shutdown=60,
-                mute=True,
-                on_set=on_set,
-                post_run=[MagicMock()],
-            )
-        # 预生成一次 + 启动 daemon 定时器；尚未到点运行
+            svc.schedule_run({"demo"}, target_time, **kwargs)
+        return mock_sleep, mock_shutdown
+
+    def test_waits_generates_runs(self):
+        svc = self._make_service([{"display_name": "demo"}])
+        mock_sleep, mock_shutdown = self._run(svc)
+        mock_sleep.assert_called_once()  # pre_run 等待
         svc.generate_chain.assert_called_once()
-        Timer.assert_called_once()
-        on_set.assert_called_once_with(target)
-        svc.run_chain_once.assert_not_called()
-        self.assertIs(timer, Timer.return_value)
-
-    def test_pregenerate_failure_returns_none(self):
-        svc = self._make_service([{"display_name": "demo"}])
-        svc.generate_chain.side_effect = RuntimeError("boom")
-        with (
-            patch(
-                "src.service.chain_service.next_target_datetime",
-                return_value=datetime(2030, 1, 1, 8, 0),
-            ),
-            patch("src.service.chain_service.threading.Timer") as Timer,
-        ):
-            timer = svc.schedule_run({"demo"}, "08:00")
-        # 预生成失败：不启动定时器、不运行、返回 None
-        self.assertIsNone(timer)
-        Timer.assert_not_called()
-        svc.run_chain_once.assert_not_called()
-
-    def test_fire_runs_chain_and_calls_post_run(self):
-        svc = self._make_service([{"display_name": "demo"}])
-        captured = {}
-
-        def _timer(delay, fn):
-            captured["delay"] = delay
-            captured["fn"] = fn
-            return MagicMock()
-
-        post_run_step = MagicMock()
-        with (
-            patch(
-                "src.service.chain_service.next_target_datetime",
-                return_value=datetime(2030, 1, 1, 8, 0),
-            ),
-            patch("src.service.chain_service.threading.Timer", side_effect=_timer),
-        ):
-            svc.schedule_run(
-                {"demo"}, "08:00", shutdown=60, mute=True, post_run=[post_run_step]
-            )
-        # 模拟到点：执行定时器回调
-        captured["fn"]()
-        svc.run_chain_once.assert_called_once_with(
-            {"demo"}, chain_name="today", shutdown=60, mute=True
+        args = svc.generate_chain.call_args
+        self.assertEqual(args.args[1], {"demo"})  # 启用脚本集合
+        self.assertEqual(args.args[2], "today")  # chain_name
+        svc.run_chain_command.assert_called_once_with(
+            "out.yml", block=True, extra_args=None
         )
-        post_run_step.assert_called_once()
+        mock_shutdown.assert_not_called()
 
-    def test_fire_runs_post_run_in_order(self):
-        """后置步骤按列表顺序执行，挂接多个运行后动作（关机/日志分析/重跑/邮件）。"""
+    def test_shutdown_triggers_post_run(self):
         svc = self._make_service([{"display_name": "demo"}])
-        captured = {}
+        _, mock_shutdown = self._run(svc, shutdown_delay=60)
+        mock_shutdown.assert_called_once_with(60)
 
-        def _timer(delay, fn):
-            captured["fn"] = fn
-            return MagicMock()
+    def test_mute_passed(self):
+        svc = self._make_service([{"display_name": "demo"}])
+        self._run(svc, mute=True)
+        svc.run_chain_command.assert_called_once_with(
+            "out.yml", block=True, extra_args=["--mute"]
+        )
 
-        order = []
-
-        def step_a():
-            order.append("a")
-
-        def step_b():
-            order.append("b")
-
-        with (
-            patch(
-                "src.service.chain_service.next_target_datetime",
-                return_value=datetime(2030, 1, 1, 8, 0),
-            ),
-            patch("src.service.chain_service.threading.Timer", side_effect=_timer),
-        ):
-            svc.schedule_run({"demo"}, "08:00", post_run=[step_a, step_b])
-        captured["fn"]()
-        self.assertEqual(order, ["a", "b"])
+    def test_no_shutdown_when_none(self):
+        svc = self._make_service([{"display_name": "demo"}])
+        _, mock_shutdown = self._run(svc, shutdown_delay=None)
+        mock_shutdown.assert_not_called()
 
 
 class TestAddRemoveScript(unittest.TestCase):

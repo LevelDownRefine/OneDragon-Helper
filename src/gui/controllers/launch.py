@@ -5,6 +5,7 @@
 
 import os
 import subprocess
+from collections.abc import Callable
 
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QDialog, QMessageBox
@@ -17,10 +18,13 @@ from src.utils_runner import (
     apply_shutdown_config,
     apply_timed_run_config,
     build_script_command,
+    next_target_datetime,
     parse_mute_run,
     parse_shutdown,
     parse_timed_run,
+    spawn_schedule_run,
 )
+from src.utils_shutdown import shutdown_sys
 
 
 class LaunchController(QObject):
@@ -38,8 +42,8 @@ class LaunchController(QObject):
         """启动全部：先校验，再按需等待后运行。
 
         生成+运行+关机/静音命令构造、定时等待与到点触发统一交由 service
-        （``run_chain_once`` / ``schedule_run``）；本方法仅负责 UI 流程：
-        计算启用集合、弹确认窗、解析定时配置，并把定时等待委托给 service。
+        （即时 ``run_chain_once`` / 定时 ``spawn_schedule_run``+``ChainService.schedule_run``）；
+        本方法仅负责 UI 流程：计算启用集合、弹确认窗、解析定时配置，并把定时等待委托出去。
         """
         enabled_script_names = {
             g["script_name"]
@@ -58,8 +62,9 @@ class LaunchController(QObject):
         mute = parse_mute_run(config_data)
         timed_enabled, timed_target = parse_timed_run(config_data)
         if not timed_enabled:
+            post_run = self._build_post_run(shutdown_delay)
             self._service.run_chain_once(
-                enabled_script_names, shutdown=shutdown_delay, mute=mute
+                enabled_script_names, mute=mute, post_run=post_run
             )
             self._toast(
                 f"启动全部：已生成并运行链 ({len(enabled_script_names)} 个脚本)"
@@ -67,21 +72,36 @@ class LaunchController(QObject):
             return
         # parse_timed_run 保证 timed_enabled=True 时 timed_target 必为合法 HH:MM。
         assert timed_target is not None, "timed_enabled=True 但 timed_target 缺失"
-        self._service.schedule_run(
+        # 定时运行起独立控制台进程（关闭控制台即取消，关程序不影响），
+        # 真实实现见 ChainService.schedule_run（等待→生成→运行→关机）。
+        spawn_schedule_run(
             enabled_script_names,
             timed_target,
-            shutdown=shutdown_delay,
             mute=mute,
-            on_set=lambda dt: self._toast(
-                f"已设置定时运行：将于 {dt:%Y-%m-%d %H:%M} 重新生成脚本链并运行"
-                f"（关闭程序将取消）"
-            ),
-            post_run=[
-                lambda: self._toast(
-                    f"定时运行：已生成并运行链 ({len(enabled_script_names)} 个脚本)"
-                )
-            ],
+            shutdown_delay=shutdown_delay,
         )
+        target_dt = next_target_datetime(timed_target)
+        self._toast(
+            f"已设置定时运行：将于 {target_dt:%Y-%m-%d %H:%M} 重新生成脚本链并运行"
+            f"（关闭控制台即取消）"
+        )
+
+    def _build_post_run(self, shutdown_delay: int | None) -> list[Callable[[], None]]:
+        """构造运行后动作列表；启用关机时把关机作为最后一项追加。
+
+        关机必须等全部运行（含重跑）结束才执行，故放在 post_run 末位，交由
+        service 在链运行结束后统一触发，而非经 runner 的 --shutdown 子进程关机。
+
+        Args:
+            shutdown_delay: 关机延迟秒数；None/0 表示不关机。
+
+        Returns:
+            后置步骤列表（可能为空）。
+        """
+        post_run: list[Callable[[], None]] = []
+        if shutdown_delay:
+            post_run.append(lambda: shutdown_sys(shutdown_delay))
+        return post_run
 
     @Slot()
     def launchScript(self):

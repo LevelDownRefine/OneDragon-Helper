@@ -1,7 +1,8 @@
 """CLI 出口：无头命令行子命令（不进入 GUI 事件循环）。
 
 提供 --help / --version / --selftest / --generate-chain / --run-chain /
---check-config / --list-scripts / --get-script / --dump-config / --check-weekly 等出口，
+--schedule-run / --check-config / --list-scripts / --get-script / --dump-config /
+--check-weekly 等出口，
 供打包产物集成测试与排障使用。windowed exe 的 stdout/stderr 被丢弃，
 因此 --help/--version 等结果会**同时写文件**（见 _emit_cli / _emit_json）。
 
@@ -10,6 +11,7 @@ GUI 主路径见 :mod:`src.launcher`，本模块不依赖 Qt。
 
 import argparse
 import json
+import logging
 import os
 import tempfile
 import tomllib
@@ -19,6 +21,9 @@ from src.config.set_config import supports_weekly
 from src.config.subscript import get_script_name
 from src.service.chain_service import ChainService
 from src.service.script_service import ScriptService
+from src.utils_shutdown import shutdown_sys
+
+logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,6 +85,12 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="运行指定路径的脚本链配置并退出（透传 --shutdown 等参数给 Runner）",
     )
+    action.add_argument(
+        "--schedule-run",
+        metavar="HH:MM",
+        help="等待到目标时刻再生成并运行脚本链（独立进程，关闭控制台即取消；"
+        "配合 --enable 指定脚本、--shutdown 指定关机延迟）",
+    )
     parser.add_argument(
         "--enable",
         type=str,
@@ -102,12 +113,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--shutdown",
         type=int,
         default=None,
-        help="配合 --run-chain，运行结束后多少秒关机（透传给 Runner）",
+        help="配合 --run-chain，运行结束后多少秒关机（由主仓库编排，链运行结束后触发）",
     )
     parser.add_argument(
         "--no-block",
         action="store_true",
         help="配合 --run-chain，即起即返（后台非阻塞运行整条链）",
+    )
+    parser.add_argument(
+        "--mute",
+        action="store_true",
+        help="运行期间静音（透传 --mute 给 Runner）",
     )
     parser.add_argument(
         "--dungeon",
@@ -426,9 +442,6 @@ def _run_run_chain(args) -> int:
         return 1
 
     extra_args = []
-    if args.shutdown is not None:
-        extra_args += ["--shutdown", str(args.shutdown)]
-
     service = ChainService()
     command, cwd, _env = service.build_chain_command(chain_path, extra_args)
     _emit_cli("run_chain", f"运行: {cwd} {' '.join(command)}")
@@ -439,7 +452,34 @@ def _run_run_chain(args) -> int:
         _emit_cli("run_chain", f"脚本链已后台启动，启动状态码: {code}")
     else:
         _emit_cli("run_chain", f"脚本链退出码: {code}")
+    # 关机由主仓库编排：等链运行结束（block 模式已等待）后再触发确认关机，
+    # 不再透传 runner 的 --shutdown（会抢在重跑前关机）。非阻塞模式不触发关机。
+    if args.shutdown is not None and not args.no_block:
+        shutdown_sys(args.shutdown)
     return code
+
+
+def _run_scheduled(args) -> int:
+    """CLI 出口：调度运行入口，真实实现见 ``ChainService.schedule_run``。
+
+    本函数在独立控制台进程中运行（由 ``utils_runner.spawn_schedule_run`` 以
+    ``CREATE_NEW_CONSOLE`` 起），故等待阻塞无害；关闭该控制台即取消。链在点火时
+    才生成（按当天星期）。
+    """
+    service = ChainService()
+    enabled_keys = (
+        {n.strip() for n in args.enable.split(",") if n.strip()}
+        if args.enable
+        else None
+    )
+    service.schedule_run(
+        enabled_keys,
+        args.schedule_run,
+        chain_name=args.name or "today",
+        mute=args.mute,
+        shutdown_delay=args.shutdown,
+    )
+    return 0
 
 
 def run_cli(args) -> int | None:
@@ -473,4 +513,6 @@ def run_cli(args) -> int | None:
         return _run_generate_chain(args)
     if args.run_chain is not None:
         return _run_run_chain(args)
+    if args.schedule_run is not None:
+        return _run_scheduled(args)
     return None

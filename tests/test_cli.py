@@ -18,6 +18,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 # 必须在导入 PySide6 / launcher 之前设置 offscreen 平台插件（CI 无显示器环境）
@@ -577,6 +578,43 @@ class TestCliRunChain(unittest.TestCase):
         self.assertEqual(code, 1)
         mock_run.assert_not_called()  # 缺文件时不该真正启动 Runner
         self.assertIn("脚本链配置不存在", _read_cli_file("run_chain"))
+
+
+class TestCliScheduledRun(unittest.TestCase):
+    """--schedule-run 出口：解析参数并委托 ChainService.schedule_run。"""
+
+    def _run(self, argv):
+        with (
+            patch.object(
+                cli.ChainService,
+                "load_config",
+                return_value={"script_list": [{"display_name": "demo"}]},
+            ),
+            patch.object(cli.ChainService, "schedule_run") as mock_sched,
+        ):
+            code = _run_main(argv, expect_exit=0)
+        return code, mock_sched
+
+    def test_schedule_run_delegates_with_options(self):
+        code, mock_sched = self._run(
+            ["--schedule-run", "08:00", "--enable", "demo", "--shutdown", "60"]
+        )
+        self.assertEqual(code, 0)
+        mock_sched.assert_called_once()
+        args = mock_sched.call_args
+        self.assertEqual(args.args[0], {"demo"})  # enabled_keys 来自 --enable
+        self.assertEqual(args.args[1], "08:00")  # target_time
+        self.assertEqual(args.kwargs["chain_name"], "today")
+        self.assertFalse(args.kwargs["mute"])
+        self.assertEqual(args.kwargs["shutdown_delay"], 60)
+
+    def test_schedule_run_defaults(self):
+        code, mock_sched = self._run(["--schedule-run", "08:00"])
+        self.assertEqual(code, 0)
+        mock_sched.assert_called_once()
+        self.assertIsNone(mock_sched.call_args.args[0])  # 无 --enable → 全部
+        self.assertFalse(mock_sched.call_args.kwargs["mute"])
+        self.assertIsNone(mock_sched.call_args.kwargs["shutdown_delay"])
 
 
 class TestCliCheckConfig(unittest.TestCase):
