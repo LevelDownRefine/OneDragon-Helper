@@ -10,8 +10,6 @@ import os
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
 
-import yaml
-
 from src.config import set_config
 from src.config.set_config import (
     ArknightsConfig,
@@ -23,6 +21,7 @@ from src.config.set_config import (
     WutheringWavesConfig,
     ZenlessZoneZeroConfig,
 )
+from src.utils_yaml import dump_yaml_str
 
 # ============================================================
 # 基类 ScriptConfig
@@ -470,7 +469,7 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         with (
             patch.object(ZenlessZoneZeroConfig, "_load", return_value=template),
             patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=yaml.dump(template))),
+            patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
             patch.object(ZenlessZoneZeroConfig, "_save"),
         ):
             cfg = ZenlessZoneZeroConfig()
@@ -491,7 +490,7 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         with (
             patch.object(ZenlessZoneZeroConfig, "_load", return_value=config),
             patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=yaml.dump(template))),
+            patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
             patch.object(ZenlessZoneZeroConfig, "_save") as mock_save,
         ):
             ZenlessZoneZeroConfig()
@@ -510,7 +509,7 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         with (
             patch.object(ZenlessZoneZeroConfig, "_load", return_value=config),
             patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=yaml.dump(template))),
+            patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
             patch.object(ZenlessZoneZeroConfig, "_save") as mock_save,
         ):
             ZenlessZoneZeroConfig()

@@ -1,22 +1,4 @@
 script_list:
-- display_name: 定时
-  game_label: ''
-  script_type: python
-  script_path: scripts/wait_until_0410.py
-  script_process_name: []
-  game_process_name: ''
-  launcher_mode: false
-  check_done: script_closed
-  kill_script_after_done: true
-  kill_game_after_done: false
-  script_arguments: ''
-  notify_start: false
-  notify_done: false
-  notify_log_interval: 0
-  attach_direction: ''
-  no_log_timeout_seconds: 0
-  no_log_max_retries: 3
-  block: true
 - display_name: 静音
   game_label: ''
   script_type: python

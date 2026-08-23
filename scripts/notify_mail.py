@@ -21,7 +21,9 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 import src.log.monitor as collect_log
-import yaml
+from ruamel.yaml import YAML
+
+_yaml = YAML()
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +47,7 @@ def _load_mail_config() -> dict | None:
 
     try:
         with open(config_path, encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
+            data = _yaml.load(f) or {}
     except Exception:
         logger.exception(
             "[notify_mail] 读取邮件配置失败，跳过失败通知: %s", config_path

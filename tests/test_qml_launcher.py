@@ -58,7 +58,9 @@ _SCRIPTS = [
 
 
 def _make_bridge():
-    # 构造时类级 patch 在 with 退出后失效，故写盘屏蔽改为实例赋值（持久生效）。
+    # 构造期用 with 屏蔽读盘（QmlBridge 初始化即读 config.yml）；
+    # with 退出后失效，故构造后再持久 mock load_config，覆盖 reorderGames/
+    # addScript 等构造后真实读盘路径（CI 环境无 config.yml，必须持续屏蔽）。
     with (
         patch.object(
             main_window.ChainService,
@@ -68,9 +70,10 @@ def _make_bridge():
         patch.object(main_window.ChainService, "load_ui_state", return_value={}),
     ):
         b = QmlBridge()
+    b.service.load_config = MagicMock(return_value={"script_list": list(_SCRIPTS)})
     # 隔离写盘：避免测试污染真实 config/gui_state.json / config.yml
-    b.service.save_ui_state = MagicMock()
     b.service.save_config = MagicMock()
+    b.service.save_ui_state = MagicMock()
     return b
 
 

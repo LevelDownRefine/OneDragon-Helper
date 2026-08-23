@@ -21,7 +21,7 @@ import sys
 import tempfile
 import unittest
 
-import yaml
+from src.utils_yaml import load_yaml
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -116,8 +116,7 @@ class TestGuiExe(unittest.TestCase):
         result = self._run_exe("--generate-chain", "--out", out)
         self.assertEqual(result.returncode, 0, msg=result.stderr[:500])
         self.assertTrue(os.path.isfile(out), f"--generate-chain 未产出 yml: {out}")
-        with open(out, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
+        data = load_yaml(out)
         self.assertIn("script_list", data, msg=data)
         self.assertIsInstance(data["script_list"], list, msg=data)
 

@@ -24,7 +24,9 @@ import sys
 import urllib.error
 import urllib.request
 
-import yaml
+from ruamel.yaml import YAML
+
+_yaml = YAML()
 
 _WORLD_MAP_URL = (
     "https://raw.githubusercontent.com/AliceJump/ok-end-field/"
@@ -61,7 +63,7 @@ def _fetch_stages() -> dict[str, list[str]]:
 def _load_okef() -> dict[str, list[str]]:
     """读取 dungeon_list.yml 中 ok-ef 的分类 → 关卡 value 列表。"""
     with open(_DUNGEON_PATH, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        data = _yaml.load(f)
     assert isinstance(data, dict) and _OKEF_KEY in data, (
         f"dungeon_list.yml 缺少 {_OKEF_KEY} 配置"
     )
@@ -79,7 +81,7 @@ def _apply_new(upstream: dict[str, list[str]], current: dict[str, list[str]]) ->
     直接 load→改→dump 即可，重写后 diff 只含真实增量。
     """
     with open(_DUNGEON_PATH, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        data = _yaml.load(f)
     okef = data[_OKEF_KEY]
     existing_names = {d["name"] for d in okef["dungeons"]}
     for cat, stages in upstream.items():
@@ -97,7 +99,7 @@ def _apply_new(upstream: dict[str, list[str]], current: dict[str, list[str]]) ->
             if stage not in existing_values:
                 dungeon["sequences"].append({"display": stage, "value": stage})
     with open(_DUNGEON_PATH, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+        _yaml.dump(data, f)
 
 
 def main() -> int:

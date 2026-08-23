@@ -10,9 +10,11 @@
 import ctypes
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
+from datetime import datetime, timedelta
 from pathlib import PureWindowsPath
 
 from src.config.subscript import resolve_script_path
@@ -21,6 +23,9 @@ from src.utils import get_root_dir
 logger = logging.getLogger(__name__)
 
 _CHECK_DONE_VALUES = {"game_closed", "script_closed", "game_or_script_closed"}
+
+# 定时运行的目标时刻格式：HH:MM（24 小时制）。
+_TIME_RE = re.compile(r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$")
 
 
 # ---------------------------------------------------------------------------
@@ -257,3 +262,54 @@ def build_shutdown_extra_args(config_data: dict) -> list[str]:
     if not isinstance(delay, int) or delay <= 0:
         return []
     return ["--shutdown", str(delay)]
+
+
+# ---------------------------------------------------------------------------
+# 定时运行（按 config 的 timed_run 决定「启动全部」是否先等待再重生成链）
+# ---------------------------------------------------------------------------
+
+
+def parse_timed_run(config_data: dict) -> tuple[bool, str | None]:
+    """解析 config 的 timed_run 配置，返回 (是否启用, 目标时刻 HH:MM 字符串)。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果）。
+
+    Returns:
+        ``(True, "HH:MM")`` 表示启用且目标时刻合法；其余情况返回 ``(False, None)``，
+        即「不定时、立即运行」。缺失/非法配置一律返回未启用，不抛异常、不告警。
+
+    说明：config.yml 统一经 ruamel（YAML 1.2）读写，``04:10`` 始终解析为字符串，
+    不会出现 PyYAML 1.1 把 ``04:10`` 误当六十进制数 ``250.0`` 的情形，故此处只需
+    校验 ``HH:MM`` 格式。目标时刻必须形如 ``HH:MM``（24 小时制）。
+    """
+    raw = config_data.get("timed_run")
+    if not isinstance(raw, dict):
+        return (False, None)
+    enabled = raw.get("enabled", False)
+    if not isinstance(enabled, bool) or not enabled:
+        return (False, None)
+
+    target = raw.get("target_time")
+    # enabled=True 但 target_time 缺失/非法：视为「未配置定时」，立即运行而非告警。
+    if not isinstance(target, str) or not _TIME_RE.match(target):
+        return (False, None)
+    return (True, target)
+
+
+def next_target_datetime(target_time: str, now: datetime | None = None) -> datetime:
+    """返回下一个等于 target_time 的时刻：今天未到取今天，已过取明天（跨午夜）。
+
+    Args:
+        target_time: ``"HH:MM"`` 形式的目标时刻。
+        now: 基准时间，默认当前时间（可注入以便测试）。
+
+    Returns:
+        下一个 ``target_time`` 对应的 ``datetime``。
+    """
+    hours, minutes = (int(x) for x in target_time.split(":"))
+    now = now or datetime.now()
+    candidate = now.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+    if now < candidate:
+        return candidate
+    return candidate + timedelta(days=1)

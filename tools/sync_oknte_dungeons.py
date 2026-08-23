@@ -34,7 +34,9 @@ import sys
 import urllib.error
 import urllib.request
 
-import yaml
+from ruamel.yaml import YAML
+
+_yaml = YAML()
 
 _ANOMALY_URL = (
     "https://raw.githubusercontent.com/BnanZ0/ok-nte/main/src/tasks/AnomalyTask.py"
@@ -102,7 +104,7 @@ def _fetch_hunter_targets() -> list[str]:
 def _read_yaml() -> dict:
     """读取 dungeon_list.yml 全量。"""
     with open(_DUNGEON_PATH, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        data = _yaml.load(f)
     assert isinstance(data, dict) and _OKNTE_KEY in data, (
         f"dungeon_list.yml 缺少 {_OKNTE_KEY} 配置"
     )
@@ -112,7 +114,7 @@ def _read_yaml() -> dict:
 def _write_yaml(data: dict) -> None:
     """写回 dungeon_list.yml（无注释、格式幂等，diff 只含真实增量）。"""
     with open(_DUNGEON_PATH, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+        _yaml.dump(data, f)
 
 
 def _oknte_dungeons() -> list[dict]:

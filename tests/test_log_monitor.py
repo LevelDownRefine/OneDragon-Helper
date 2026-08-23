@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import yaml
+from src.utils_yaml import dump_yaml_file
 
 # scripts/ 位于项目根（非 src/ 下），追加 scripts/ 到 sys.path 以便扁平导入。
 sys.path.append(
@@ -259,8 +259,7 @@ class TestParseLogsRerunList(unittest.TestCase):
     def _make_config(self, tmp: str, scripts: list[dict]) -> None:
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump({"script_list": scripts}, f)
+        dump_yaml_file(os.path.join(cfg_dir, "config.yml"), {"script_list": scripts})
 
     def _fake_exe(self, tmp: str, name: str = "fake.exe") -> str:
         # 游戏父目录不放 logs，使 parse 判定为 NO_LOG（未正常启动）。
@@ -322,24 +321,21 @@ class TestParseLogsRerunList(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump(
-                {
-                    "script_list": [
-                        {
-                            "display_name": "A",
-                            "script_path": os.path.join(tmp, "ok-ww", "ok-ww.exe"),
-                        },
-                        {
-                            "display_name": "B",
-                            "script_path": os.path.join(
-                                tmp, "BetterGI", "BetterGI.exe"
-                            ),
-                        },
-                    ]
-                },
-                f,
-            )
+        dump_yaml_file(
+            os.path.join(cfg_dir, "config.yml"),
+            {
+                "script_list": [
+                    {
+                        "display_name": "A",
+                        "script_path": os.path.join(tmp, "ok-ww", "ok-ww.exe"),
+                    },
+                    {
+                        "display_name": "B",
+                        "script_path": os.path.join(tmp, "BetterGI", "BetterGI.exe"),
+                    },
+                ]
+            },
+        )
 
         def fake_parse(script_name, script_path=""):
             # 返回 parse_log 的真实契约：完整归一化结构（八键）。
@@ -401,20 +397,17 @@ class TestParseLogsRerunList(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump(
-                {
-                    "script_list": [
-                        {
-                            "display_name": "A",
-                            "script_path": os.path.join(
-                                tmp, "BetterGI", "BetterGI.exe"
-                            ),
-                        },
-                    ]
-                },
-                f,
-            )
+        dump_yaml_file(
+            os.path.join(cfg_dir, "config.yml"),
+            {
+                "script_list": [
+                    {
+                        "display_name": "A",
+                        "script_path": os.path.join(tmp, "BetterGI", "BetterGI.exe"),
+                    },
+                ]
+            },
+        )
 
         def fake_parse(script_name, script_path=""):
             # 正常退出、但有报错：应归为 WARN，不进 rerun、进 notify。
@@ -517,20 +510,17 @@ class TestParseLogsRerunList(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump(
-                {
-                    "script_list": [
-                        {
-                            "display_name": "A",
-                            "script_path": os.path.join(
-                                tmp, "BetterGI", "BetterGI.exe"
-                            ),
-                        },
-                    ]
-                },
-                f,
-            )
+        dump_yaml_file(
+            os.path.join(cfg_dir, "config.yml"),
+            {
+                "script_list": [
+                    {
+                        "display_name": "A",
+                        "script_path": os.path.join(tmp, "BetterGI", "BetterGI.exe"),
+                    },
+                ]
+            },
+        )
 
         def fake_parse(script_name, script_path=""):
             # 已定稿的 daily_done（True）；聚合方只消费，不应再出现「未知」。
@@ -709,8 +699,8 @@ class TestRerunFailed(unittest.TestCase):
         with tempfile.NamedTemporaryFile(
             "w", suffix=suffix, delete=False, encoding="utf-8"
         ) as chain:
-            yaml.safe_dump({"script_list": script_list}, chain)
-        return chain.name
+            dump_yaml_file(chain.name, {"script_list": script_list})
+            return chain.name
 
     def test_find_chain_index_matches_enabled(self):
         """按 display_name 命中 enabled 脚本，返回其在 script_list 中的下标。"""
@@ -1075,18 +1065,17 @@ class TestFourFieldExtraction(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        with open(os.path.join(cfg_dir, "config.yml"), "w", encoding="utf-8") as f:
-            yaml.safe_dump(
-                {
-                    "script_list": [
-                        {
-                            "display_name": "A",
-                            "script_path": os.path.join(tmp, "ok-ww", "ok-ww.exe"),
-                        }
-                    ]
-                },
-                f,
-            )
+        dump_yaml_file(
+            os.path.join(cfg_dir, "config.yml"),
+            {
+                "script_list": [
+                    {
+                        "display_name": "A",
+                        "script_path": os.path.join(tmp, "ok-ww", "ok-ww.exe"),
+                    }
+                ]
+            },
+        )
         orig = collect_log._get_root_dir
         collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}

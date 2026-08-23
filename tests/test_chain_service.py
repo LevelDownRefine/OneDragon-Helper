@@ -5,9 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-import yaml
-
 from src.service.chain_service import ChainService
+from src.utils_yaml import dump_yaml_file, load_yaml
 
 
 class TestLoadSaveConfig(unittest.TestCase):
@@ -24,8 +23,7 @@ class TestLoadSaveConfig(unittest.TestCase):
                 {"display_name": "测试", "script_path": "C:/x.exe"},
             ]
         }
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            yaml.dump(fake_data, f, allow_unicode=True)
+        dump_yaml_file(self.config_path, fake_data)
         with patch(
             "src.service.chain_service.require_config_yml_path",
             return_value=self.config_path,
@@ -34,8 +32,7 @@ class TestLoadSaveConfig(unittest.TestCase):
         self.assertEqual(data, fake_data)
 
     def test_load_config_asserts_script_list(self):
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            yaml.dump({"a": 1}, f, allow_unicode=True)
+        dump_yaml_file(self.config_path, {"a": 1})
         with (
             patch(
                 "src.service.chain_service.require_config_yml_path",
@@ -51,8 +48,7 @@ class TestLoadSaveConfig(unittest.TestCase):
             return_value=self.config_path,
         ):
             ChainService().save_config({"script_list": [{"display_name": "测试"}]})
-        with open(self.config_path, encoding="utf-8") as f:
-            saved = yaml.safe_load(f)
+        saved = load_yaml(self.config_path)
         self.assertEqual(saved["script_list"][0]["display_name"], "测试")
 
     def test_save_config_asserts_script_list(self):
@@ -191,18 +187,14 @@ class TestAddRemoveScript(unittest.TestCase):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp_dir.cleanup)
         self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            yaml.dump(
-                {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]},
-                f,
-                allow_unicode=True,
-                sort_keys=False,
-            )
+        dump_yaml_file(
+            self.config_path,
+            {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]},
+        )
         self.mock_script = MagicMock()
 
     def _read(self):
-        with open(self.config_path, encoding="utf-8") as f:
-            return yaml.safe_load(f)
+        return load_yaml(self.config_path)
 
     def test_add_script_appends(self):
         """add_script 在 script_list 末尾追加条目、落盘，并内部调 ensure_weekly_entry。"""

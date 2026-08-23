@@ -1,6 +1,6 @@
 """YAML 往返读写回归测试。
 
-验证游戏 config 的读写（src.config.subscript 的 _game_yaml 往返实例）：
+验证游戏 config 的读写（src.utils_yaml.YAML_INSTANCE 往返实例）：
 - 保留注释（含行内注释）；
 - 按 YAML 1.2 解析，使 04:00 这类时间保持字符串而非六十进制 float（240.0）；
 - ruamel 把带引号的空串读成 str 子类时，不破坏 safe_update 的类型检查；
@@ -10,8 +10,8 @@
 import io
 import unittest
 
-from src.config import subscript
 from src.config.set_config import safe_update
+from src.utils_yaml import YAML_INSTANCE
 
 
 class TestYamlRoundTrip(unittest.TestCase):
@@ -24,11 +24,11 @@ class TestYamlRoundTrip(unittest.TestCase):
     )
 
     def _round_trip(self, text: str):
-        loaded = subscript._game_yaml.load(text)
+        loaded = YAML_INSTANCE.load(text)
         buf = io.StringIO()
-        subscript._game_yaml.dump(loaded, buf)
+        YAML_INSTANCE.dump(loaded, buf)
         dumped = buf.getvalue()
-        reloaded = subscript._game_yaml.load(dumped)
+        reloaded = YAML_INSTANCE.load(dumped)
         return loaded, dumped, reloaded
 
     def test_comment_preserved(self):
