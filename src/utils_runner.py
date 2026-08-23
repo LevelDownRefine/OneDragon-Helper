@@ -242,6 +242,50 @@ def run_chain_command(
     return 0
 
 
+def build_run_chain_command(
+    chain_path: str, *, shutdown: int | None = None, mute: bool = False
+) -> tuple[list[str], str, dict | None]:
+    """构造『运行脚本链』命令（统一关机/静音参数构造，GUI 不再拼命令）。
+
+    关机走 runner 的 ``--shutdown N`` flag；静音拼 ``--mute``。统一做
+    ``pythonw.exe`` -> ``python.exe`` 替换，避免冻结态 GUI exe 无控制台。
+
+    Args:
+        chain_path: 脚本链配置文件路径。
+        shutdown: 运行后关机延迟秒数；None 表示不关机。
+        mute: 是否运行中静音。
+
+    Returns:
+        (命令列表, 工作目录, 环境变量)。
+    """
+    extra = ["--chain", chain_path]
+    if shutdown is not None:
+        extra += ["--shutdown", str(shutdown)]
+    if mute:
+        extra += ["--mute"]
+    command, cwd, env = build_script_command(extra)
+    # 冻结态 GUI exe 可能为 pythonw.exe，替换为 python.exe 以保证子进程有控制台。
+    command = [command[0].replace("pythonw.exe", "python.exe"), *command[1:]]
+    return command, cwd, env
+
+
+def parse_shutdown(config_data: dict) -> int | None:
+    """解析 config 的 shutdown 配置，返回运行后关机延迟秒数；未启用返回 None。
+
+    缺失/非 dict / after_run 非真 / delay 缺失或非法（非正整型）一律视为未启用，
+    返回 None，不抛异常、不告警。
+    """
+    raw = config_data.get("shutdown")
+    if not isinstance(raw, dict):
+        return None
+    if not isinstance(raw.get("after_run"), bool) or not raw["after_run"]:
+        return None
+    delay = raw.get("delay_seconds")
+    if not isinstance(delay, int) or delay <= 0:
+        return None
+    return delay
+
+
 def build_shutdown_extra_args(config_data: dict) -> list[str]:
     """按 config 的 shutdown 配置生成 ``--shutdown`` 参数；after_run 默认关闭、delay 须为正整型。
 

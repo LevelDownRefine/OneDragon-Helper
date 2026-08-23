@@ -16,11 +16,13 @@ from src.utils_runner import (
     apply_timed_run_config,
     build_chain_command,
     build_mute_extra_args,
+    build_run_chain_command,
     build_script_command,
     build_shutdown_extra_args,
     collect_invalid_script_messages,
     next_target_datetime,
     parse_mute_run,
+    parse_shutdown,
     parse_timed_run,
     run_chain_command,
     script_invalid_message,
@@ -358,6 +360,45 @@ class TestBuildScriptInvocationFrozen(unittest.TestCase):
         self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
 
 
+class TestBuildRunChainCommand(unittest.TestCase):
+    """build_run_chain_command：统一关机/静音参数构造（runner --shutdown flag）。
+
+    GUI 不再拼命令；关机走 --shutdown N，静音拼 --mute，并做 pythonw->python 替换。
+    """
+
+    def test_plain_chain_no_extra_flags(self):
+        command, cwd, env = build_run_chain_command(CHAIN_PATH)
+        self.assertIn("--chain", command)
+        self.assertIn(CHAIN_PATH, command)
+        self.assertNotIn("--shutdown", command)
+        self.assertNotIn("--mute", command)
+
+    def test_shutdown_appends_flag(self):
+        command, cwd, env = build_run_chain_command(CHAIN_PATH, shutdown=60)
+        self.assertIn("--shutdown", command)
+        self.assertIn("60", command)
+
+    def test_mute_appends_flag(self):
+        command, cwd, env = build_run_chain_command(CHAIN_PATH, mute=True)
+        self.assertIn("--mute", command)
+
+    def test_shutdown_and_mute_coexist(self):
+        command, cwd, env = build_run_chain_command(CHAIN_PATH, shutdown=60, mute=True)
+        self.assertIn("--shutdown", command)
+        self.assertIn("60", command)
+        self.assertIn("--mute", command)
+
+    def test_pythonw_replaced_with_python(self):
+        """冻结态 GUI exe 若为 pythonw.exe，应替换为 python.exe 以保证子进程控制台。"""
+        with mock.patch(
+            "src.utils_runner.build_script_command",
+            return_value=(["/app/pythonw.exe", "--chain", CHAIN_PATH], "/app", None),
+        ):
+            command, cwd, env = build_run_chain_command(CHAIN_PATH)
+        self.assertEqual(command[0], "/app/python.exe")
+        self.assertNotIn("pythonw.exe", command[0])
+
+
 class TestBuildShutdownExtraArgs(unittest.TestCase):
     """build_shutdown_extra_args：按 config 的 shutdown 嵌套配置生成 --shutdown 参数。
 
@@ -428,6 +469,50 @@ class TestBuildShutdownExtraArgs(unittest.TestCase):
                 {"shutdown": {"after_run": "false", "delay_seconds": 45}}
             ),
             [],
+        )
+
+
+class TestParseShutdown(unittest.TestCase):
+    """parse_shutdown：config 的 shutdown 嵌套配置 -> 延迟秒数（None 表示不关机）。
+
+    与 build_shutdown_extra_args 同源判断：after_run 默认 False，delay 须为正整型，
+    否则 None（不关机）。供 service.run_chain_once 直接消费延迟秒数。
+    """
+
+    def test_missing_field_returns_none(self):
+        self.assertIsNone(parse_shutdown({}))
+
+    def test_after_run_default_false(self):
+        self.assertIsNone(parse_shutdown({"shutdown": {"delay_seconds": 45}}))
+
+    def test_zero_delay_returns_none(self):
+        self.assertIsNone(
+            parse_shutdown({"shutdown": {"after_run": True, "delay_seconds": 0}})
+        )
+
+    def test_negative_delay_returns_none(self):
+        self.assertIsNone(
+            parse_shutdown({"shutdown": {"after_run": True, "delay_seconds": -1}})
+        )
+
+    def test_non_int_delay_returns_none(self):
+        self.assertIsNone(
+            parse_shutdown({"shutdown": {"after_run": True, "delay_seconds": "45"}})
+        )
+
+    def test_positive_delay_returns_int(self):
+        self.assertEqual(
+            parse_shutdown({"shutdown": {"after_run": True, "delay_seconds": 45}}), 45
+        )
+
+    def test_switch_explicit_false_returns_none(self):
+        self.assertIsNone(
+            parse_shutdown({"shutdown": {"after_run": False, "delay_seconds": 45}})
+        )
+
+    def test_switch_non_bool_returns_none(self):
+        self.assertIsNone(
+            parse_shutdown({"shutdown": {"after_run": "false", "delay_seconds": 45}})
         )
 
 

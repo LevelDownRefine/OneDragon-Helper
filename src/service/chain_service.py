@@ -12,6 +12,10 @@ weekly_timeouts 同步由内部 ScriptService 处理，调用方不感知。GUI�
 import json
 import logging
 import os
+import subprocess
+import threading
+from collections.abc import Callable, Sequence
+from datetime import datetime
 
 from src.config.dungeon_config import load_dungeon_map
 from src.config.subscript import (
@@ -27,10 +31,15 @@ from src.utils import (
     safe_path_join,
 )
 from src.utils_runner import (
+    _to_signed_32,
+    collect_invalid_script_messages,
+    next_target_datetime,
+)
+from src.utils_runner import (
     build_chain_command as _build_chain_command,
 )
 from src.utils_runner import (
-    collect_invalid_script_messages,
+    build_run_chain_command as _build_run_chain_command,
 )
 from src.utils_runner import (
     run_chain_command as _run_chain_command,
@@ -53,6 +62,9 @@ class ChainService:
             script_service: 可注入的 ScriptService；None 时自建默认实例。
         """
         self._script_service = script_service or ScriptService()
+        # UI 状态（gui_state.json）单一实例：懒加载，load/save 均围绕它，
+        # 避免各处独立 load 出不同内存副本、在 save 时互相覆盖。
+        self._ui_state: dict | None = None
 
     # ---------- 配置读写 ----------
 
@@ -186,24 +198,37 @@ class ChainService:
         self._script_service.save_weekly(new_script_name, weekly_timeouts)
 
     def load_ui_state(self) -> dict:
-        """读取 gui_state.json（UI 状态：副本/序列选择）。
+        """返回 UI 状态单一实例（懒加载自 gui_state.json）。
+
+        多次调用返回同一对象：消除各处独立 load 出的不同内存副本在 save 时
+        互相覆盖的风险（如一处在 save 前改了内存态、另一处 load 出旧盘内容）。
+        文件不存在时返回空 dict 并缓存。
 
         Returns:
             状态字典；文件不存在时返回空 dict。
         """
-        if os.path.exists(_STATE_FILE):
-            with open(_STATE_FILE, encoding="utf-8") as f:
-                return json.load(f)
-        return {}
+        if self._ui_state is None:
+            if os.path.exists(_STATE_FILE):
+                with open(_STATE_FILE, encoding="utf-8") as f:
+                    self._ui_state = json.load(f)
+            else:
+                self._ui_state = {}
+        return self._ui_state
 
-    def save_ui_state(self, state: dict) -> None:
-        """保存 UI 状态。
+    def save_ui_state(self, state: dict | None = None) -> None:
+        """将 UI 状态写回 gui_state.json。
+
+        state 省略时写当前单一实例（self._ui_state）；显式传入时先替换实例再写。
+        写前会同步 self._ui_state，保证后续 load_ui_state 返回已保存内容。
 
         Args:
-            state: 要写入 gui_state.json 的状态字典。
+            state: 要写入 gui_state.json 的状态字典；None 时写当前实例。
         """
+        if state is not None:
+            self._ui_state = state
+        assert self._ui_state is not None, "save_ui_state 调用前需先 load_ui_state"
         with open(_STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(state, f, ensure_ascii=False, indent=2)
+            json.dump(self._ui_state, f, ensure_ascii=False, indent=2)
 
     # ---------- 链生成与校验 ----------
 
@@ -278,3 +303,112 @@ class ChainService:
     ) -> int:
         """运行一条脚本链，返回退出码。"""
         return _run_chain_command(chain_config_path, block, extra_args)
+
+    def run_chain_once(
+        self,
+        enabled_keys: set[str] | None = None,
+        *,
+        chain_name: str = "today",
+        ui_state: dict | None = None,
+        shutdown: int | None = None,
+        mute: bool = False,
+        block: bool = False,
+    ) -> int | None:
+        """生成脚本链并运行（单发原子）：service 侧『生成+运行+关机/静音命令』原子。
+
+        GUI『启动全部』的即时运行与定时到点运行都经此；关机（runner ``--shutdown``
+        flag）与静音（``--mute``）的命令构造在此统一，GUI 不再拼命令。
+
+        Args:
+            enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
+            chain_name: 链配置文件名（不含扩展名，默认 today）。
+            ui_state: 任务卡 UI 状态；None 时从 service 加载。
+            shutdown: 运行后关机延迟秒数；None 表示不关机。
+            mute: 是否运行中静音。
+            block: True 等待子进程结束并返回退出码（CLI 用）；
+                False 即起即返（GUI 用），返回 None。
+
+        Returns:
+            block=True 时返回退出码（有符号 32 位）；block=False 时返回 None。
+        """
+        all_config = self.load_config()
+        known = {get_script_name(s) for s in all_config["script_list"]}
+        assert known, "[chain] config 无脚本，无法生成链"
+        if enabled_keys is None:
+            enabled_keys = set(known)
+        if ui_state is None:
+            ui_state = self.load_ui_state()
+        chain_path = self.generate_chain(all_config, enabled_keys, chain_name, ui_state)
+        command, cwd, env = _build_run_chain_command(
+            chain_path, shutdown=shutdown, mute=mute
+        )
+        logger.info("[chain] 生成并运行脚本链: %s (block=%s)", chain_path, block)
+        creationflags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+        if block:
+            proc = subprocess.run(
+                command, cwd=cwd, env=env, creationflags=creationflags
+            )
+            return _to_signed_32(proc.returncode)
+        subprocess.Popen(command, cwd=cwd, env=env, creationflags=creationflags)
+        return None
+
+    def schedule_run(
+        self,
+        enabled_keys: set[str] | None,
+        target_time: str,
+        *,
+        chain_name: str = "today",
+        shutdown: int | None = None,
+        mute: bool = False,
+        on_set: Callable[[datetime], None] | None = None,
+        post_run: Sequence[Callable[[], None]] = (),
+    ) -> threading.Timer | None:
+        """调度运行：统一调度入口（当前实现为运行前按目标时刻等待）。在后台 daemon 线程等待，到点生成+运行链。
+
+        等待在 ``threading.Timer``（daemon）中进行，不阻塞调用方（GUI 主线程）。
+        进程退出时 daemon 线程随之中止，等价于「关闭程序即取消等待」。
+
+        Args:
+            enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
+            target_time: 目标时刻 ``"HH:MM"``（24 小时制），须合法（调用方已校验）。
+            chain_name: 链配置文件名（不含扩展名，默认 today）。
+            shutdown: 运行后关机延迟秒数；None 表示不关机。
+            mute: 是否运行中静音。
+            on_set: 调度成功（已算出目标时刻）时回调，参数为目标 datetime；用于 UI 反馈。
+            post_run: 运行结束后按序执行的「后置步骤」列表（无论运行成败均触发，
+                失败已记日志）；用于挂接关机、日志分析、重跑、邮件等运行后动作。
+
+        Returns:
+            已启动的 daemon ``threading.Timer``；若预生成失败返回 None。
+        """
+        all_config = self.load_config()
+        known = {get_script_name(s) for s in all_config["script_list"]}
+        assert known, "[chain] config 无脚本，无法生成链"
+        keys = enabled_keys if enabled_keys is not None else set(known)
+        ui_state = self.load_ui_state()
+        # 预生成一次以 fail-fast：漫长等待前先暴露生成错误（反馈走日志）。
+        try:
+            self.generate_chain(all_config, keys, chain_name, ui_state)
+        except Exception:
+            logger.exception("[chain] 定时运行：预生成脚本链失败")
+            return None
+
+        def _fire() -> None:
+            try:
+                self.run_chain_once(
+                    keys, chain_name=chain_name, shutdown=shutdown, mute=mute
+                )
+            except Exception:
+                logger.exception("[chain] 定时运行：生成或运行脚本链失败")
+            for step in post_run:
+                step()
+
+        target_dt = next_target_datetime(target_time)
+        wait_seconds = (target_dt - datetime.now()).total_seconds()
+        timer = threading.Timer(max(wait_seconds, 0.0), _fire)
+        timer.daemon = True
+        timer.start()
+        logger.info("[chain] 已设置定时运行：%s", target_dt)
+        if on_set is not None:
+            on_set(target_dt)
+        return timer
