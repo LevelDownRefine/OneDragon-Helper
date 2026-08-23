@@ -5,10 +5,9 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-import yaml
-
 from src.gui.controllers import task_card as task_card_mod
 from src.gui.controllers.task_card import TaskCardController
+from src.utils_yaml import SAFE_YAML
 
 
 class _FakeGameList:
@@ -21,7 +20,7 @@ def _write_defs(tmp, data):
     """写临时 weekly_list.yml（周常声明配置）。"""
     path = os.path.join(tmp.name, "weekly_list.yml")
     with open(path, "w", encoding="utf-8") as f:
-        yaml.dump(data, f, allow_unicode=True, sort_keys=False)
+        SAFE_YAML.dump(data, f)
     return path
 
 

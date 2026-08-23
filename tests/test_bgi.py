@@ -3,9 +3,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import yaml
-
 from src.config import bgi
+from src.utils_yaml import SAFE_YAML
 
 
 class TestCopyBettergiConfig(unittest.TestCase):
@@ -40,7 +39,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
             ]
         }
         with open(self.mock_config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config_data, f)
+            SAFE_YAML.dump(config_data, f)
 
         res = bgi.get_BGI_user_dir()
         expected = os.path.join(self.temp_dir.name, "BetterGI", "User")
@@ -57,7 +56,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
             ]
         }
         with open(self.mock_config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config_data, f)
+            SAFE_YAML.dump(config_data, f)
 
         res = bgi.get_BGI_user_dir()
         self.assertIsNone(res)

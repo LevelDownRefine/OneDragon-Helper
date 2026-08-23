@@ -75,3 +75,29 @@ def dump_yaml(path: str, data: dict | list) -> None:
     assert isinstance(data, (dict, list)), f"[yaml] 待写入内容应为 dict/list: {path}"
     with open(path, "w", encoding="utf-8") as f:
         _yaml.dump(data, f)
+
+
+# 纯数据读写实例（测试 /tools 用）：typ="safe" 返回原生 dict/list，不保留注释，
+# 行为与 PyYAML 的 safe_load/safe_dump 对齐，供迁移 PyYAML 残留时无缝替换。
+SAFE_YAML = YAML(typ="safe")
+SAFE_YAML.allow_unicode = True
+SAFE_YAML.sort_keys = False
+
+
+def safe_dump_str(data: dict | list) -> str:
+    """将 dict / list 序列化为 YAML 字符串（safe 引擎，用于测试构造 mock 文件内容）。
+
+    PyYAML 的 ``yaml.dump(data)`` 直接返回字符串；ruamel 的 ``dump`` 需显式收集
+    到流，本函数补齐该差异，使迁移无需逐处改写 stream 处理。
+
+    Args:
+        data: 待序列化的 dict 或 list。
+
+    Returns:
+        YAML 文本字符串。
+    """
+    import io
+
+    buf = io.StringIO()
+    SAFE_YAML.dump(data, buf)
+    return buf.getvalue()

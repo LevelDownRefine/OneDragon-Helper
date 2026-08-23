@@ -20,7 +20,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install pyyaml
+        run: pip install ruamel.yaml
 
       - name: Check and apply new stages
         id: sync
