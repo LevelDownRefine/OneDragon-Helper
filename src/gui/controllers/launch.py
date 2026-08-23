@@ -14,11 +14,14 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.dialogs import RunConfirmDialog
 from src.utils_runner import (
+    apply_mute_config,
     apply_shutdown_config,
     apply_timed_run_config,
+    build_mute_extra_args,
     build_script_command,
     build_shutdown_extra_args,
     next_target_datetime,
+    parse_mute_run,
     parse_timed_run,
 )
 
@@ -132,6 +135,7 @@ class LaunchController(QObject):
             else 0
         )
         timed_enabled, timed_target = parse_timed_run(config_data)
+        mute_enabled = parse_mute_run(config_data)
 
         dialog = RunConfirmDialog(
             len(enabled_keys),
@@ -139,6 +143,7 @@ class LaunchController(QObject):
             shutdown_delay=shutdown_delay,
             timed_enabled=timed_enabled,
             timed_target=timed_target or "04:10",
+            mute_enabled=mute_enabled,
         )
         if dialog.exec() != QDialog.Accepted:
             return False
@@ -156,6 +161,7 @@ class LaunchController(QObject):
             enabled=res["timed_enabled"],
             target_time=res["timed_target"],
         )
+        apply_mute_config(config_data, enabled=res["mute_enabled"])
         self._service.save_config(config_data)
         return True
 
@@ -173,11 +179,17 @@ class LaunchController(QObject):
         )
 
     def _run_chain(self, chain_path: str, enabled_keys: set, label: str) -> None:
-        """运行已生成的脚本链（真实 ChainService）。"""
-        command, cwd, env = build_script_command(["--chain", chain_path])
-        command[0] = command[0].replace("pythonw.exe", "python.exe")
+        """运行已生成的脚本链（真实 ChainService）。
+
+        若 config 的 mute.enabled 为真，给 runner 命令拼 ``--mute``，由 runner 在链运行前后
+        静音/恢复（覆盖异常与强制关闭窗口）。静音执行已下沉 runner，主仓仅做参数转发。
+        """
         config_data = self._service.load_config()
-        command += build_shutdown_extra_args(config_data)
+        extra_args = ["--chain", chain_path]
+        extra_args += build_shutdown_extra_args(config_data)
+        extra_args += build_mute_extra_args(config_data)
+        command, cwd, env = build_script_command(extra_args)
+        command[0] = command[0].replace("pythonw.exe", "python.exe")
         creationflags = subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
         subprocess.Popen(
             command,

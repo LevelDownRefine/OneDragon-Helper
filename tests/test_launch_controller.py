@@ -192,6 +192,7 @@ class TestConfirmRunDialog(unittest.TestCase):
                 "shutdown_delay": 120,
                 "timed_enabled": True,
                 "timed_target": "04:10",
+                "mute_enabled": True,
             }
             out = ctrl._confirm_run({"demo"})
 
@@ -199,6 +200,7 @@ class TestConfirmRunDialog(unittest.TestCase):
         saved = service.save_config.call_args[0][0]
         self.assertEqual(saved["shutdown"], {"after_run": True, "delay_seconds": 120})
         self.assertEqual(saved["timed_run"], {"enabled": True, "target_time": "04:10"})
+        self.assertEqual(saved["mute"], {"enabled": True})
 
     def test_accept_disabled_drops_delay_and_target(self):
         """关闭自动关机/定时：delay 归 0、target 置空，不残留旧值。"""
@@ -216,12 +218,72 @@ class TestConfirmRunDialog(unittest.TestCase):
                 "shutdown_delay": 45,  # 关闭后不应写回
                 "timed_enabled": False,
                 "timed_target": "08:00",  # 关闭后不应写回
+                "mute_enabled": False,
             }
             ctrl._confirm_run({"demo"})
 
         saved = service.save_config.call_args[0][0]
         self.assertEqual(saved["shutdown"], {"after_run": False, "delay_seconds": 0})
         self.assertEqual(saved["timed_run"], {"enabled": False, "target_time": ""})
+        self.assertEqual(saved["mute"], {"enabled": False})
+
+
+class TestRunChainMute(unittest.TestCase):
+    """_run_chain：运行中静音仅做参数转发，把 mute 意图拼成 runner 的 --mute。
+
+    静音执行已下沉 runner（run_chain(mute=...)），主仓不再触碰音频 API、
+    不再起守护线程；本类验证「mute 配置 -> 命令行参数」这一薄封装层。
+    """
+
+    def _make_ctrl(self, config_data):
+        game_list = mock.MagicMock()
+        game_list.games = [{"script_name": "demo"}]
+        game_list.enabled = [True]
+        task_card = mock.MagicMock()
+        task_card.ui_state = {}
+        service = mock.MagicMock()
+        service.load_config.return_value = config_data
+        toast = mock.MagicMock()
+        return LaunchController(game_list, task_card, service, toast), service
+
+    def test_mute_enabled_passes_flag(self):
+        """mute.enabled=True：runner 命令含 --mute。"""
+        ctrl, service = self._make_ctrl({"script_list": [], "mute": {"enabled": True}})
+        with mock.patch(
+            "src.gui.controllers.launch.subprocess.Popen"
+        ) as popen:
+            ctrl._run_chain("config/script_chain/today.yml", {"demo"}, "启动全部")
+            cmd = popen.call_args[0][0]
+        self.assertIn("--mute", cmd)
+        self.assertIn("--chain", cmd)
+
+    def test_mute_disabled_omits_flag(self):
+        """mute.enabled=False：runner 命令不含 --mute。"""
+        ctrl, service = self._make_ctrl({"script_list": [], "mute": {"enabled": False}})
+        with mock.patch(
+            "src.gui.controllers.launch.subprocess.Popen"
+        ) as popen:
+            ctrl._run_chain("config/script_chain/today.yml", {"demo"}, "启动全部")
+            cmd = popen.call_args[0][0]
+        self.assertNotIn("--mute", cmd)
+
+    def test_shutdown_and_mute_flags_coexist(self):
+        """shutdown 与 mute 同时启用：命令同时含 --shutdown N 与 --mute。"""
+        ctrl, service = self._make_ctrl(
+            {
+                "script_list": [],
+                "shutdown": {"after_run": True, "delay_seconds": 60},
+                "mute": {"enabled": True},
+            }
+        )
+        with mock.patch(
+            "src.gui.controllers.launch.subprocess.Popen"
+        ) as popen:
+            ctrl._run_chain("config/script_chain/today.yml", {"demo"}, "启动全部")
+            cmd = popen.call_args[0][0]
+        self.assertIn("--shutdown", cmd)
+        self.assertIn("60", cmd)
+        self.assertIn("--mute", cmd)
 
 
 if __name__ == "__main__":

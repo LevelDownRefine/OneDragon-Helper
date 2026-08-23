@@ -26,7 +26,7 @@ for _dll in ('ffi-8.dll', 'liblzma.dll', 'libbz2.dll', 'libexpat.dll'):
 # --- 隐式导入 ---
 hiddenimports = []
 hiddenimports += collect_submodules('pynput')
-# scripts/mute.py、unmute.py 在运行时才 import pycaw，静态分析抓不到。
+# run_chain(mute=...) 在运行时才 import pycaw，静态分析抓不到。
 # pycaw 仅依赖 comtypes 核心与 comtypes.automation（其源码里为静态 import），
 # 由 collect_submodules('pycaw') 顺带收集，无需把 comtypes.test 等一并打包。
 hiddenimports += collect_submodules('pycaw')

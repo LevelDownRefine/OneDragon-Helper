@@ -334,6 +334,53 @@ def apply_timed_run_config(
     }
 
 
+# ---------------------------------------------------------------------------
+# 运行中静音（执行已下沉 runner：run_chain(mute=...) 链前后静音/恢复）
+# 主仓仅做参数转发：parse/apply 读 config，build_*_extra_args 拼 --mute。
+# ---------------------------------------------------------------------------
+
+
+def build_mute_extra_args(config_data: dict) -> list[str]:
+    """按 config 的 mute 配置生成 ``--mute`` 参数；未启用返回空列表。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果）。
+
+    Returns:
+        启用时返回 ``["--mute"]``，否则返回空列表。
+
+    说明：静音执行已由 runner 在脚本链运行前后完成（覆盖异常/强制关闭窗口），
+    主仓只负责把「是否静音」的意图透传为命令行参数，不触碰音频 API。
+    """
+    return ["--mute"] if parse_mute_run(config_data) else []
+
+
+def parse_mute_run(config_data: dict) -> bool:
+    """解析 config 的 mute 配置，返回是否运行中静音。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果）。
+
+    Returns:
+        启用返回 True，否则 False（缺失/非 dict/非 bool 一律视为未启用，不抛异常）。
+    """
+    raw = config_data.get("mute")
+    if not isinstance(raw, dict):
+        return False
+    enabled = raw.get("enabled", False)
+    return isinstance(enabled, bool) and enabled
+
+
+def apply_mute_config(config_data: dict, *, enabled: bool) -> None:
+    """把运行中静音配置写回 config（原地修改顶层 mute 映射）。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果），原地修改。
+        enabled: 是否运行中静音。
+    """
+    config_data["mute"] = {"enabled": bool(enabled)}
+
+
 def next_target_datetime(target_time: str, now: datetime | None = None) -> datetime:
     """返回下一个等于 target_time 的时刻：今天未到取今天，已过取明天（跨午夜）。
 

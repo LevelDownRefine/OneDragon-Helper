@@ -11,13 +11,16 @@ from unittest import mock
 from src.utils import get_root_dir
 from src.utils_runner import (
     _to_signed_32,
+    apply_mute_config,
     apply_shutdown_config,
     apply_timed_run_config,
     build_chain_command,
+    build_mute_extra_args,
     build_script_command,
     build_shutdown_extra_args,
     collect_invalid_script_messages,
     next_target_datetime,
+    parse_mute_run,
     parse_timed_run,
     run_chain_command,
     script_invalid_message,
@@ -463,6 +466,47 @@ class TestApplyTimedRunConfig(unittest.TestCase):
         data: dict = {}
         apply_timed_run_config(data, enabled=True, target_time="25:99")
         self.assertEqual(data["timed_run"], {"enabled": True, "target_time": "04:10"})
+
+
+class TestMuteConfig(unittest.TestCase):
+    """parse_mute_run / apply_mute_config：顶层 mute 映射读写。"""
+
+    def test_parse_enabled(self):
+        self.assertTrue(parse_mute_run({"mute": {"enabled": True}}))
+
+    def test_parse_missing_block_disabled(self):
+        self.assertFalse(parse_mute_run({"script_list": []}))
+
+    def test_parse_non_bool_disabled(self):
+        self.assertFalse(parse_mute_run({"mute": {"enabled": "yes"}}))
+
+    def test_apply_writes_enabled(self):
+        data: dict = {}
+        apply_mute_config(data, enabled=True)
+        self.assertEqual(data["mute"], {"enabled": True})
+
+    def test_apply_disabled(self):
+        data = {"mute": {"enabled": True}}
+        apply_mute_config(data, enabled=False)
+        self.assertEqual(data["mute"], {"enabled": False})
+
+
+class TestBuildMuteExtraArgs(unittest.TestCase):
+    """build_mute_extra_args：mute 意图 -> runner 命令行参数（薄封装）。"""
+
+    def test_enabled_passes_flag(self):
+        self.assertEqual(
+            build_mute_extra_args({"mute": {"enabled": True}}), ["--mute"]
+        )
+
+    def test_disabled_returns_empty(self):
+        self.assertEqual(build_mute_extra_args({"mute": {"enabled": False}}), [])
+
+    def test_missing_block_returns_empty(self):
+        self.assertEqual(build_mute_extra_args({"script_list": []}), [])
+
+    def test_non_bool_returns_empty(self):
+        self.assertEqual(build_mute_extra_args({"mute": {"enabled": "yes"}}), [])
 
 
 class TestParseTimedRun(unittest.TestCase):

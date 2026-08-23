@@ -677,6 +677,7 @@ class RunConfirmDialog(_FormDialogBase):
         shutdown_delay: int,
         timed_enabled: bool,
         timed_target: str,
+        mute_enabled: bool = False,
         parent=None,
     ):
         super().__init__(parent)
@@ -692,6 +693,7 @@ class RunConfirmDialog(_FormDialogBase):
             shutdown_delay=shutdown_delay,
             timed_enabled=timed_enabled,
             timed_target=timed_target,
+            mute_enabled=mute_enabled,
         )
 
     def init_ui(
@@ -701,8 +703,9 @@ class RunConfirmDialog(_FormDialogBase):
         shutdown_delay: int,
         timed_enabled: bool,
         timed_target: str,
+        mute_enabled: bool,
     ) -> None:
-        """构造布局：确认文案 + 自动关机区 + 定时计划区 + 底部按钮行。"""
+        """构造布局：确认文案 + 自动关机区 + 定时计划区 + 运行中静音区 + 底部按钮行。"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
@@ -715,6 +718,7 @@ class RunConfirmDialog(_FormDialogBase):
 
         layout.addWidget(self._make_shutdown_group(shutdown_enabled, shutdown_delay))
         layout.addWidget(self._make_timed_group(timed_enabled, timed_target))
+        layout.addWidget(self._make_mute_group(mute_enabled))
 
         layout.addStretch()
         layout.addLayout(
@@ -805,12 +809,33 @@ class RunConfirmDialog(_FormDialogBase):
         row.addStretch()
         return box
 
+    def _make_mute_group(self, enabled: bool) -> QGroupBox:
+        """运行中静音分组：单个复选框（运行前静音、运行后恢复，由主仓 service 执行）。"""
+        box = QGroupBox("运行中静音")
+        box.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
+        box.setStyleSheet(
+            f"QGroupBox {{ color: {TEXT}; border: {BORDER_WIDTH} solid {BORDER}; "
+            f"border-radius: 8px; margin-top: 12px; }} "
+            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 6px; }}"
+        )
+        row = QHBoxLayout(box)
+        row.setContentsMargins(14, 20, 14, 14)
+        row.setSpacing(12)
+
+        self.mute_cb = self._make_checkbox("运行中静音（运行前静音，运行后恢复）")
+        self.mute_cb.setChecked(enabled)
+        row.addWidget(self.mute_cb)
+
+        row.addStretch()
+        return box
+
     @property
     def result(self) -> dict | None:
         """accept 后的勾选项；取消时返回 None。
 
         Returns:
-            含 shutdown_enabled / shutdown_delay / timed_enabled / timed_target 的 dict。
+            含 shutdown_enabled / shutdown_delay / timed_enabled / timed_target /
+            mute_enabled 的 dict。
         """
         return self._result
 
@@ -822,5 +847,6 @@ class RunConfirmDialog(_FormDialogBase):
             "shutdown_delay": self.shutdown_delay_spin.value(),
             "timed_enabled": self.timed_cb.isChecked(),
             "timed_target": f"{t.hour():02d}:{t.minute():02d}",
+            "mute_enabled": self.mute_cb.isChecked(),
         }
         self.accept()

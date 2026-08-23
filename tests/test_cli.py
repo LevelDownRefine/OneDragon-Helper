@@ -618,12 +618,15 @@ class TestCliGetScript(unittest.TestCase):
         self._names = _known_script_names()
 
     def test_get_existing_script(self):
-        """存在的脚本 → status=ok 且条目完整。"""
-        code = _run_main(["--get-script", self._names[0]], expect_exit=0)
+        """存在的脚本 → status=ok 且返回的正是所查标识的条目。"""
+        name = self._names[0]
+        code = _run_main(["--get-script", name], expect_exit=0)
         self.assertEqual(code, 0)
         data = _read_cli_json("get_script")
         self.assertEqual(data["status"], "ok")
-        self.assertEqual(data["script"]["display_name"], self._names[0])
+        # 按脚本唯一标识比较（exe 用进程名、python/bat 用 display_name），
+        # 而非 display_name，避免 external 脚本标识与展示名不一致导致的误判。
+        self.assertEqual(get_script_name(data["script"]), name)
 
     def test_get_missing_script_exits_one(self):
         """不存在的脚本 → status=not_found 且退出码 1。"""
