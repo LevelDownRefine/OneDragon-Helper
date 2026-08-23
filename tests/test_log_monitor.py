@@ -2,20 +2,10 @@
 
 import logging as _logging
 import os
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
-
-from src.utils_yaml import dump_yaml_file
-
-# scripts/ 位于项目根（非 src/ 下），追加 scripts/ 到 sys.path 以便扁平导入。
-sys.path.append(
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
-)
-
-import rerun
 
 import src.log.monitor as collect_log
 import src.utils_logger
@@ -29,6 +19,7 @@ from src.log import (
     ZZZLogParser,
     parse_log,
 )
+from src.utils_yaml import dump_yaml_file
 
 
 class TestLogParser(unittest.TestCase):
@@ -686,164 +677,6 @@ class TestActionListsAndReport(unittest.TestCase):
         )
         # 无报错脚本（C）不出现于这两段。
         self.assertNotIn("] C [", printed)
-
-
-class TestRerunFailed(unittest.TestCase):
-    """测试失败重跑的底层函数（定位下标 / 命令构造 / 触发 subprocess）。
-
-    全部通过 monkeypatch subprocess.run 或 _rerun_failed_script 验证，不真正启动游戏。
-    编排层（先调 collect_log 分析再重跑）见 TestRerunGames。
-    """
-
-    def _write_chain(self, script_list: list[dict], suffix: str = ".yml") -> str:
-        with tempfile.NamedTemporaryFile(
-            "w", suffix=suffix, delete=False, encoding="utf-8"
-        ) as chain:
-            dump_yaml_file(chain.name, {"script_list": script_list})
-            return chain.name
-
-    def test_find_chain_index_matches_enabled(self):
-        """按 display_name 命中 enabled 脚本，返回其在 script_list 中的下标。"""
-        path = self._write_chain(
-            [
-                {"display_name": "静音", "enabled": True},
-                {"display_name": "原神", "enabled": True},
-            ]
-        )
-        self.assertEqual(rerun._find_chain_index("静音", path), 0)
-        self.assertEqual(rerun._find_chain_index("原神", path), 1)
-
-    def test_find_chain_index_missing_returns_none(self):
-        """display_name 不在脚本链中时返回 None，调用方据此跳过。"""
-        path = self._write_chain([{"display_name": "原神", "enabled": True}])
-        self.assertIsNone(rerun._find_chain_index("崩铁", path))
-
-    def test_find_chain_index_skips_disabled(self):
-        """被禁用（enabled: false）的脚本不计入重跑候选，返回 None。"""
-        path = self._write_chain([{"display_name": "原神", "enabled": False}])
-        self.assertIsNone(rerun._find_chain_index("原神", path))
-
-    def test_find_chain_index_matches_exe_script_name(self):
-        """exe 脚本按进程名（script_name）命中，即便 display_name 不同也正确定位。
-
-        还原真实场景：config.yml 中崩铁 display_name=「崩坏：星穹铁道」、
-        script_path 指向 March7th Assistant.exe，其脚本标识是进程名 March7th-Assistant。
-        """
-        path = self._write_chain(
-            [
-                {
-                    "display_name": "崩坏：星穹铁道",
-                    "script_path": "D:/x/March7th Assistant.exe",
-                    "enabled": True,
-                }
-            ]
-        )
-        # 脚本唯一标识是进程名 March7th-Assistant，而非 display_name。
-        self.assertEqual(rerun._find_chain_index("March7th-Assistant", path), 0)
-        # display_name 不再作为定位依据。
-        self.assertIsNone(rerun._find_chain_index("崩坏：星穹铁道", path))
-
-    def test_find_chain_index_missing_file_returns_none(self):
-        """脚本链文件不存在时优雅返回 None（仅告警），不抛异常。"""
-        self.assertIsNone(rerun._find_chain_index("原神", "/no/such/file.yml"))
-
-    def test_build_rerun_command_dev(self):
-        """开发模式：构造 `python -m src.runner.launcher --chain <abs> --debug-index N`。"""
-        with mock.patch.object(sys, "frozen", False, create=True):
-            cmd, cwd, env = rerun._build_rerun_command(2, "/tmp/88.yml")
-        self.assertEqual(cmd[:3], [sys.executable, "-m", "src.runner.launcher"])
-        self.assertEqual(
-            cmd[3:],
-            ["--chain", os.path.abspath("/tmp/88.yml"), "--debug-index", "2"],
-        )
-        self.assertEqual(cwd, collect_log._get_root_dir())
-        self.assertIsNotNone(env)
-        self.assertIn("PYTHONPATH", env)
-
-    def test_build_rerun_command_frozen(self):
-        """冻结模式：构造 `<exe_dir>/OneDragon-Helper-Runner.exe --chain <abs> --debug-index N`。"""
-        with (
-            mock.patch.object(sys, "frozen", True, create=True),
-            mock.patch.object(
-                sys,
-                "executable",
-                "/fake/exe/OneDragon-Helper-Runner.exe",
-                create=True,
-            ),
-        ):
-            cmd, cwd, env = rerun._build_rerun_command(3, "/tmp/88.yml")
-        # os.path.join 在 Windows 上用反斜杠，用 normpath 归一化后再比，避免分隔符差异。
-        self.assertEqual(
-            os.path.normpath(cmd[0]),
-            os.path.normpath("/fake/exe/OneDragon-Helper-Runner.exe"),
-        )
-        self.assertEqual(
-            cmd[1:],
-            ["--chain", os.path.abspath("/tmp/88.yml"), "--debug-index", "3"],
-        )
-        self.assertEqual(cwd, "/fake/exe")
-        self.assertIsNone(env)
-
-    def test_rerun_failed_script_invokes_subprocess(self):
-        """_rerun_failed_script 应定位下标并真正发起一次 subprocess.run。"""
-        path = self._write_chain(
-            [
-                {"display_name": "崩铁", "enabled": True},
-                {"display_name": "原神", "enabled": True},
-            ]
-        )
-        calls: list = []
-
-        def fake_run(cmd, cwd, env, check):
-            calls.append((cmd, cwd, env))
-            return None
-
-        with mock.patch.object(rerun.subprocess, "run", fake_run):
-            ok = rerun._rerun_failed_script("原神", path)
-        self.assertTrue(ok)
-        self.assertEqual(len(calls), 1)
-        # 原神在 script_list 下标 1
-        self.assertEqual(calls[0][0][-2:], ["--debug-index", "1"])
-
-    def test_rerun_failed_script_skips_when_not_found(self):
-        """定位不到可重跑脚本时返回 False，且不应发起 subprocess。"""
-        path = self._write_chain([{"display_name": "原神", "enabled": True}])
-        calls: list = []
-        with mock.patch.object(
-            rerun.subprocess, "run", lambda *a, **k: calls.append(a)
-        ):
-            ok = rerun._rerun_failed_script("崩铁", path)
-        self.assertFalse(ok)
-        self.assertEqual(calls, [])
-
-
-class TestRerunGames(unittest.TestCase):
-    """测试 rerun.py 的编排：先调 collect_log 分析拿需重跑列表（FAILED + NO_LOG），再逐个重跑。"""
-
-    def test_rerun_failed_games_reruns_collected_failures(self):
-        """rerun_failed_games 应把 collect_log.parse_logs 返回的需重跑项逐个重跑。"""
-        with (
-            mock.patch.object(
-                collect_log,
-                "parse_logs",
-                return_value={"rerun": ["原神", "崩铁"], "notify": []},
-            ),
-            mock.patch.object(rerun, "_rerun_failed_script", return_value=True) as run,
-        ):
-            rerun.rerun_failed_games()
-        called = [c.args[0] for c in run.call_args_list]
-        self.assertEqual(set(called), {"原神", "崩铁"})
-
-    def test_rerun_failed_games_noop_when_no_failures(self):
-        """无失败脚本时不应发起任何重跑。"""
-        with (
-            mock.patch.object(
-                collect_log, "parse_logs", return_value={"rerun": [], "notify": []}
-            ),
-            mock.patch.object(rerun, "_rerun_failed_script") as run,
-        ):
-            rerun.rerun_failed_games()
-        run.assert_not_called()
 
 
 class TestFourFieldExtraction(unittest.TestCase):

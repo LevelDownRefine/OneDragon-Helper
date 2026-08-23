@@ -265,7 +265,9 @@ class TestRunChainOnce(unittest.TestCase):
                 "src.service.chain_service._build_run_chain_command",
                 return_value=(["cmd"], "cwd", None),
             ),
-            patch("src.service.chain_service.subprocess.Popen", return_value=MagicMock()),
+            patch(
+                "src.service.chain_service.subprocess.Popen", return_value=MagicMock()
+            ),
         ):
             svc.run_chain_once({"A"}, post_run=[lambda: order.append("post")])
         self.assertEqual(order, ["post"])
@@ -347,7 +349,12 @@ class TestScheduleRun(unittest.TestCase):
             ),
             patch(
                 "src.service.chain_service.parse_logs",
-                return_value={"rerun": ["demo"], "notify": [], "report": "", "entries": []},
+                return_value={
+                    "rerun": ["demo"],
+                    "notify": [],
+                    "report": "",
+                    "entries": [],
+                },
             ),
             patch(
                 "src.service.chain_service.rerun_failed",
@@ -360,6 +367,57 @@ class TestScheduleRun(unittest.TestCase):
         ):
             svc.schedule_run({"demo"}, "08:00", shutdown_delay=60)
         self.assertEqual(order, ["rerun", "mail"])
+
+    def test_rerun_skipped_when_disabled(self):
+        """config.rerun.enabled=false：链跑完后不进入重跑轮。"""
+        svc = self._make_service([{"display_name": "demo"}])
+        svc.load_config = MagicMock(
+            return_value={
+                "script_list": [{"display_name": "demo"}],
+                "rerun": {"enabled": False},
+            }
+        )
+        with (
+            patch("src.service.chain_service.time.sleep"),
+            patch(
+                "src.service.chain_service.next_target_datetime",
+                return_value=datetime(2030, 1, 1, 8, 0),
+            ),
+            patch("src.service.chain_service.rerun_failed") as rerun,
+            patch("src.service.chain_service.build_post_run_pipeline", return_value=[]),
+        ):
+            svc.schedule_run({"demo"}, "08:00")
+        rerun.assert_not_called()
+
+    def test_mail_skipped_when_disabled(self):
+        """notify.enabled=false：传给 build_post_run_pipeline 的 smtp_config 为 None（不发信）。"""
+        svc = self._make_service([{"display_name": "demo"}])
+        svc.load_config = MagicMock(
+            return_value={
+                "script_list": [{"display_name": "demo"}],
+                "notify": {"enabled": False, "email": "a@qq.com", "password": "pw"},
+            }
+        )
+        captured = {}
+
+        def _fake_pipeline(*, shutdown_delay, smtp_config):
+            captured["smtp_config"] = smtp_config
+            return []
+
+        with (
+            patch("src.service.chain_service.time.sleep"),
+            patch(
+                "src.service.chain_service.next_target_datetime",
+                return_value=datetime(2030, 1, 1, 8, 0),
+            ),
+            patch(
+                "src.service.chain_service.build_post_run_pipeline",
+                side_effect=_fake_pipeline,
+            ) as pipeline,
+        ):
+            svc.schedule_run({"demo"}, "08:00")
+        pipeline.assert_called_once()
+        self.assertIsNone(captured["smtp_config"])
 
 
 class TestBuildPostRunPipeline(unittest.TestCase):
@@ -391,7 +449,8 @@ class TestBuildPostRunPipeline(unittest.TestCase):
     def test_full_pipeline_order_and_calls(self):
         """有 SMTP+关机：分析(最终态)→邮件→关机，均触发；重跑不在 pipeline 内。"""
         parse, mail, shutdown = self._run(
-            shutdown_delay=60, smtp_config={"smtp_host": "h", "to": "a", "from_": "b"}
+            shutdown_delay=60,
+            smtp_config={"enabled": True, "email": "a@qq.com", "password": "pw"},
         )
         parse.assert_any_call(do_log=False)
         self.assertEqual(parse.call_count, 1)  # 仅最终态分析
@@ -410,7 +469,8 @@ class TestBuildPostRunPipeline(unittest.TestCase):
     def test_no_shutdown_trims_steps(self):
         """shutdown_delay=None：末位关机步骤不出现（仍可发邮件）。"""
         parse, mail, shutdown = self._run(
-            shutdown_delay=None, smtp_config={"smtp_host": "h", "to": "a", "from_": "b"}
+            shutdown_delay=None,
+            smtp_config={"enabled": True, "email": "a@qq.com", "password": "pw"},
         )
         mail.assert_called_once()  # 邮件仍执行
         shutdown.assert_not_called()
@@ -430,7 +490,12 @@ class TestRerunRound(unittest.TestCase):
         with (
             patch(
                 "src.service.chain_service.parse_logs",
-                return_value={"rerun": ["demo"], "notify": [], "report": "", "entries": []},
+                return_value={
+                    "rerun": ["demo"],
+                    "notify": [],
+                    "report": "",
+                    "entries": [],
+                },
             ),
             patch("src.service.chain_service.rerun_failed") as rerun,
         ):

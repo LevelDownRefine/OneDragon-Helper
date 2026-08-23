@@ -54,6 +54,23 @@ logger = logging.getLogger(__name__)
 _STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
 
 
+def _resolve_mail_config(all_config: dict) -> dict | None:
+    """从 config 解析有效邮件配置：notify.enabled 非 true 或 email/password 缺失返回 None。
+
+    ``schedule_run`` 在链路点火后调用，将结果透传 ``build_post_run_pipeline``；返回 None
+    表示不发邮件（默认关闭），与旧 notify_mail.yml「缺字段即跳过」语义一致。
+    """
+    notify = all_config.get("notify")
+    if not isinstance(notify, dict) or not notify.get("enabled", False):
+        return None
+    email = (notify.get("email") or "").strip()
+    password = (notify.get("password") or "").strip()
+    if not email or not password:
+        logger.warning("[chain] 邮件未启用或 email/password 缺失，跳过: %s", notify)
+        return None
+    return notify
+
+
 def build_post_run_pipeline(
     *,
     shutdown_delay: int | None,
@@ -472,11 +489,15 @@ class ChainService:
         # 重跑路径完全一致（均阻塞），仅脚本集合（全部启用 vs 失败子集）与链名不同。
         self.run_chain_once(keys, chain_name=chain_name, mute=mute)
         # 主流程重跑轮：链跑完后解析日志、对失败脚本二次运行（先于 post_run）。
-        self._rerun_round(mute=mute)
+        # 受 config.rerun.enabled 控制；键缺失视为开启（保持既有默认行为）。
+        rerun_cfg = all_config.get("rerun") or {}
+        if rerun_cfg.get("enabled", True):
+            self._rerun_round(mute=mute)
         # post_run 编排（日志分析最终态 → 邮件 → 关机末位）：
         # 在链与重跑均结束后触发，关机不会抢在链/重跑之前。
+        mail_config = _resolve_mail_config(all_config)
         for step in build_post_run_pipeline(
             shutdown_delay=shutdown_delay,
-            smtp_config=all_config.get("notify"),
+            smtp_config=mail_config,
         ):
             step()

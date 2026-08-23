@@ -149,60 +149,6 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: 日志
-  game_label: ''
-  script_type: python
-  script_path: scripts/collect_log.py
-  script_process_name: []
-  game_process_name: ''
-  launcher_mode: false
-  check_done: script_closed
-  kill_script_after_done: true
-  kill_game_after_done: false
-  script_arguments: ''
-  notify_start: false
-  notify_done: false
-  notify_log_interval: 0
-  attach_direction: ''
-  no_log_timeout_seconds: 0
-  no_log_max_retries: 3
-  block: true
-- display_name: 邮件
-  game_label: ''
-  script_type: python
-  script_path: scripts/notify_mail.py
-  script_process_name: []
-  game_process_name: ''
-  launcher_mode: false
-  check_done: script_closed
-  kill_script_after_done: true
-  kill_game_after_done: false
-  script_arguments: ''
-  notify_start: false
-  notify_done: false
-  notify_log_interval: 0
-  attach_direction: ''
-  no_log_timeout_seconds: 0
-  no_log_max_retries: 3
-  block: true
-- display_name: 重跑
-  game_label: ''
-  script_type: python
-  script_path: scripts/rerun.py
-  script_process_name: []
-  game_process_name: ''
-  launcher_mode: false
-  check_done: script_closed
-  kill_script_after_done: true
-  kill_game_after_done: false
-  script_arguments: ''
-  notify_start: false
-  notify_done: false
-  notify_log_interval: 0
-  attach_direction: ''
-  no_log_timeout_seconds: 0
-  no_log_max_retries: 3
-  block: true
 shutdown:
   after_run: true
   delay_seconds: 45
@@ -211,3 +157,12 @@ timed_run:
   target_time: "04:10"
 mute:
   enabled: true
+rerun:
+  enabled: true
+# 运行后邮件通知（默认关闭）：schedule_run 流程末发送运行汇总邮件。
+# 仅当 enabled=true 且 email/password 齐全时发送；QQ 邮箱「收发同号」自己发给自己。
+# 授权码获取：QQ 邮箱网页版 → 设置 → 账号 → 开启 SMTP 服务 → 生成授权码（16 位，非登录密码）。
+notify:
+  enabled: false
+  email: ""
+  password: ""

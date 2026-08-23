@@ -65,7 +65,6 @@ except subprocess.TimeoutExpired as e:
 
 `logger = logging.getLogger(__name__)`；入口调 `setup_logging()`，控制台加文件轮转。禁止裸 `print`。
 
-- 唯一例外：`scripts/collect_log.py` 因独立性约束，仅用 `basicConfig` 控制台输出，不引入项目日志模块。
 - runner 子模块有独立日志系统 `.log/`，遵循其自身约定。
 
 ## 9. GUI 持久化边界

@@ -40,7 +40,9 @@ def rerun_failed(
     known = {get_script_name(s) for s in all_config["script_list"]}
     keys = {n for n in script_names if n in known}
     if not keys:
-        logger.warning("[rerun] rerun_list 中的脚本均不在 config，跳过重跑: %s", script_names)
+        logger.warning(
+            "[rerun] rerun_list 中的脚本均不在 config，跳过重跑: %s", script_names
+        )
         return
     logger.info("[rerun] 重跑 %d 个脚本: %s", len(keys), sorted(keys))
     # 复用 run_chain_once（生成+运行原子），阻塞等重跑结束，

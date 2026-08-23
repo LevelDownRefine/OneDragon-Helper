@@ -53,9 +53,7 @@ class TestLaunchAllTimed(unittest.TestCase):
 
     def test_not_timed_runs_immediately(self):
         ctrl, service, toast = _make_controller(enabled=False, target_time=None)
-        with mock.patch(
-            "src.gui.controllers.launch.spawn_schedule_run"
-        ) as mock_spawn:
+        with mock.patch("src.gui.controllers.launch.spawn_schedule_run") as mock_spawn:
             self._run_launch(ctrl)
         # 非定时：也经 spawn_schedule_run 运行（target=now，不等待），
         # 不直连 service.run_chain_once / schedule_run。

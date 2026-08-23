@@ -19,14 +19,14 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 3. **gui** — 只放纯图形界面，即 QML、控制器与弹窗；**不写盘、不承载业务逻辑**，写盘统一经 service。详见 `src/gui/README.md`。
 4. **service，外观/facade** — 整合 config 读写·UI 状态·链生成·校验·runner 命令，对 GUI/CLI 暴露统一薄接口，无 Qt 依赖，从 gui 分出。详见 `src/service/README.md`。
 
-> 副本列表 `config/dungeon_list.yml` 各游戏维护方式不同：终末地/鸣潮/异环走 GitHub Action，原神走手动 skill，其余固定；日志解析 `scripts/collect_log.py`、失败重跑 `scripts/rerun.py`；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
+> 副本列表 `config/dungeon_list.yml` 各游戏维护方式不同：终末地/鸣潮/异环走 GitHub Action，原神走手动 skill，其余固定；日志解析/失败重跑/邮件汇总之运行后动作内联于 `src/log` 与 `service`（由 `schedule_run` 统一编排，详见 `src/service/README.md`）；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
 
 ## 铁律：违反即打回
 
 - 不可能发生的事用 `assert`；可恢复才 `return False`/跳过。
 - 字典先 `assert key in d` 再 `d[key]`，不用 `.get()`。
 - 不静默吞异常：`except` 不许 `pass`/裸吞，必须显式处理；克制用 try，except 尽量显式类型。
-- 日志用 `logging`，`logger = logging.getLogger(__name__)`，禁止裸 `print`，`collect_log.py` 例外。
+- 日志用 `logging`，`logger = logging.getLogger(__name__)`，禁止裸 `print`。
 - 改完必须补测试 + 跑全套：`PYTHONPATH=src python -m unittest discover -s tests -p "test*.py"` 且 `ruff check src tests`。
 - 不动 `.bak`/备份文件，除非先问用户。
 - Commit 用 Conventional Commits 前缀 + ≤50 字主题；备注/注释只写要点。
