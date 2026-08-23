@@ -88,39 +88,14 @@ Window {
             color: "#0F1524"
             opacity: 0.8
         }
-    }
-
-    // 控制模式按钮行（全选/清空/添加，仅 ⊞ 控制模式显示）
-    Row {
-        x: 6
-        y: 8
-        spacing: 6
-        z: 16
-        visible: Bridge.controlMode
-        Repeater {
-            model: [
-                { label: "全", act: () => Bridge.selectAll() },
-                { label: "清", act: () => Bridge.deselectAll() },
-                { label: "＋", act: () => Bridge.addScript() },
-            ]
-            Rectangle {
-                width: 20
-                height: 20
-                radius: 6
-                color: btnMouse.containsMouse ? "#2B3A52" : "#1F2937"
-                Text {
-                    anchors.centerIn: parent
-                    text: modelData.label
-                    color: "#FFFFFF"
-                    font.pixelSize: 12
-                }
-                MouseArea {
-                    id: btnMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: modelData.act()
-                }
-            }
+        // 左侧栏背景条自身的拖动层：覆盖 80 宽全高，仅响应拖动（不拦截点击）。
+        // 图标格(z:15)与底部按钮(z:16)的更高 z MouseArea 仍优先吃点击/图标拖拽，
+        // 空白处按下则统一走整窗拖动，消除「背景条比图标命中区宽、空隙穿透到
+        // z:1 全窗拖动层」导致的拖动目标不一致。
+        MouseArea {
+            anchors.fill: parent
+            z: 10
+            onPressed: Bridge.startWindowMove()
         }
     }
 
@@ -128,9 +103,9 @@ Window {
     ListView {
         id: gameList
         x: 12
-        y: Bridge.controlMode ? 34 : 12
+        y: 12
         width: 56
-        height: root.height - (Bridge.controlMode ? 120 : 90)
+        height: root.height - 132
         z: 15
         model: Bridge.gameModel
         spacing: 8
@@ -219,49 +194,97 @@ Window {
         }
     }
 
-    // 左侧底部固定区（⊞ 模式切换 + 启动全部）
+    // 左侧底部固定区（全/清 + ⊞/＋ + 启动全部）
+    // 半透明策略：底部区本身不画独立背景（color:transparent），直接复用其背后
+    // 左侧栏背景条(0.72)的半透明——这样整条左侧栏（含底部）是统一的 0.72 半透明，
+    // 不会再出现「底部叠一层更实的同色块」导致局部更不透明的问题。
+    // 拖动层：给整个底部区加 MouseArea，覆盖按钮间隙与两侧空白，按下统一走
+    // startWindowMove()，避免这些空白处穿透到 z:1 的全窗拖动层触发整窗移动。
     Rectangle {
         x: 0
-        y: root.height - 70
+        y: root.height - 120
         width: 80
-        height: 70
+        height: 120
         z: 16
-        color: "#070A14"
-        opacity: 0.85
-        // ⊞ 模式切换
-        Rectangle {
-            x: 10
-            y: 6
-            width: 60
-            height: 28
-            radius: 6
-            color: modeBtn.containsMouse ? "#2B3A52" : "#1A2233"
-            Text {
-                anchors.centerIn: parent
-                text: Bridge.controlMode ? "⊞ 控制模式" : "⊞ 浏览模式"
-                color: "#FFFFFF"
-                font.pixelSize: 11
+        color: "transparent"
+        MouseArea {
+            anchors.fill: parent
+            z: 16
+            onPressed: Bridge.startWindowMove()
+        }
+        // 上排：全 / 清（居中）
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 10
+            spacing: 8
+            Repeater {
+                model: [
+                    { label: "全", act: () => Bridge.selectAll() },
+                    { label: "清", act: () => Bridge.deselectAll() },
+                ]
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 6
+                    color: btnMouseTop.containsMouse ? "#2B3A52" : "#1F2937"
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: "#FFFFFF"
+                        font.pixelSize: 13
+                    }
+                    MouseArea {
+                        id: btnMouseTop
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: modelData.act()
+                    }
+                }
             }
-            MouseArea {
-                id: modeBtn
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: Bridge.toggleMode()
+        }
+        // 下排：⊞ / ＋（居中）
+        Row {
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: 50
+            spacing: 8
+            Repeater {
+                model: [
+                    { label: "⊞", act: () => Bridge.toggleMode() },
+                    { label: "＋", act: () => Bridge.addScript() },
+                ]
+                Rectangle {
+                    width: 34
+                    height: 34
+                    radius: 6
+                    color: btnMouseBot.containsMouse ? "#2B3A52" : "#1F2937"
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: "#FFFFFF"
+                        font.pixelSize: 27
+                    }
+                    MouseArea {
+                        id: btnMouseBot
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: modelData.act()
+                    }
+                }
             }
         }
         // 启动全部（黄色）
         Rectangle {
-            x: 10
-            y: 36
-            width: 60
-            height: 26
+            x: 5
+            y: 86
+            width: 70
+            height: 30
             radius: 6
             color: launchAllBtn.containsMouse ? "#FFD95C" : "#F5C542"
             Text {
                 anchors.centerIn: parent
                 text: "▶ 启动全部"
                 color: "#1A1A1A"
-                font.pixelSize: 10
+                font.pixelSize: 12
             }
             MouseArea {
                 id: launchAllBtn
