@@ -13,6 +13,7 @@
 
 from PySide6.QtCore import QTime
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -122,12 +123,9 @@ class RunConfirmDialog(_FormDialogBase):
         self.shutdown_delay_spin.setFont(make_font(size=11))
         self.shutdown_delay_spin.setRange(0, 86400)
         self.shutdown_delay_spin.setValue(delay if delay and delay > 0 else 0)
+        self.shutdown_delay_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.shutdown_delay_spin.setFixedWidth(90)
         self.shutdown_delay_spin.setFixedHeight(INPUT_FIXED_H)
-        self.shutdown_delay_spin.setStyleSheet(
-            "QSpinBox { border: 1px solid #C4D8F2; border-radius: 8px; "
-            "padding: 4px 4px; background: white; color: #333957; }"
-        )
         self.shutdown_delay_spin.setEnabled(enabled)
         self.shutdown_cb.toggled.connect(self.shutdown_delay_spin.setEnabled)
         row.addWidget(self.shutdown_delay_spin)
@@ -161,17 +159,14 @@ class RunConfirmDialog(_FormDialogBase):
         self.timed_time = QTimeEdit(self)
         self.timed_time.setFont(make_font(size=11))
         self.timed_time.setDisplayFormat("HH:mm")
-        self.timed_time.setFixedWidth(100)
+        self.timed_time.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.timed_time.setFixedWidth(90)
         self.timed_time.setFixedHeight(INPUT_FIXED_H)
         if target and _TIME_RE.match(target):
             h, m = (int(x) for x in target.split(":"))
             self.timed_time.setTime(QTime(h, m))
         else:
             self.timed_time.setTime(QTime(4, 10))
-        self.timed_time.setStyleSheet(
-            "QTimeEdit { border: 1px solid #C4D8F2; border-radius: 8px; "
-            "padding: 4px 4px; background: white; color: #333957; }"
-        )
         self.timed_time.setEnabled(enabled)
         self.timed_cb.toggled.connect(self.timed_time.setEnabled)
         row.addWidget(self.timed_time)
