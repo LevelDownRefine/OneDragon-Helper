@@ -9,10 +9,13 @@ import sys
 from datetime import datetime
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QDialog, QMessageBox
 
 from src.config.subscript import get_script_name, resolve_script_path
+from src.gui.dialogs import RunConfirmDialog
 from src.utils_runner import (
+    apply_shutdown_config,
+    apply_timed_run_config,
     build_script_command,
     build_shutdown_extra_args,
     next_target_datetime,
@@ -61,7 +64,7 @@ class LaunchController(QObject):
         config_data = self._service.load_config()
         # 先生成一次，确保链能生成（避免在漫长等待后才失败）。
         try:
-            chain_path = self._generate_chain(config_data, keys)
+            chain_path = self._generate_chain(keys)
         except Exception as e:  # 生成失败：立即反馈，不进入等待
             self._toast(f"生成脚本链失败：{e}")
             return
@@ -100,7 +103,7 @@ class LaunchController(QObject):
         self._toast(f"已启动 {game['display_name']}")
 
     def _confirm_run(self, enabled_keys: set) -> bool:
-        """运行前校验并确认。Returns: True 继续，False 取消。"""
+        """运行前校验并确认（含自动关机 / 定时计划配置）。Returns: True 继续，False 取消。"""
         config_data = self._service.load_config()
         enabled_scripts = [
             s for s in config_data["script_list"] if get_script_name(s) in enabled_keys
@@ -117,14 +120,44 @@ class LaunchController(QObject):
             )
             if reply != QMessageBox.Yes:
                 return False
-        reply = QMessageBox.question(
-            None,
-            "确认运行",
-            f"即将运行 {len(enabled_keys)} 个脚本，是否继续？",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+
+        # 回显 config 当前自动关机 / 定时计划配置到确认弹窗。
+        shutdown_cfg = config_data.get("shutdown")
+        shutdown_enabled = bool(
+            isinstance(shutdown_cfg, dict) and shutdown_cfg.get("after_run", False)
         )
-        return reply == QMessageBox.Yes
+        shutdown_delay = (
+            int(shutdown_cfg.get("delay_seconds", 0))
+            if isinstance(shutdown_cfg, dict)
+            else 0
+        )
+        timed_enabled, timed_target = parse_timed_run(config_data)
+
+        dialog = RunConfirmDialog(
+            len(enabled_keys),
+            shutdown_enabled=shutdown_enabled,
+            shutdown_delay=shutdown_delay,
+            timed_enabled=timed_enabled,
+            timed_target=timed_target or "04:10",
+        )
+        if dialog.exec() != QDialog.Accepted:
+            return False
+
+        # 把弹窗勾选项写回 config.yml（与现有 service 写盘路径一致）。
+        res = dialog.result
+        assert res is not None, "[launch] 弹窗 accept 但 result 为 None"
+        apply_shutdown_config(
+            config_data,
+            enabled=res["shutdown_enabled"],
+            delay_seconds=res["shutdown_delay"],
+        )
+        apply_timed_run_config(
+            config_data,
+            enabled=res["timed_enabled"],
+            target_time=res["timed_target"],
+        )
+        self._service.save_config(config_data)
+        return True
 
     def _generate_chain(self, enabled_keys: set) -> str:
         """生成仅含启用脚本的 today.yml（按当前星期挑选），返回链文件路径。
