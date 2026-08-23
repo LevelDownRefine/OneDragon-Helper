@@ -524,16 +524,11 @@ class SingleScriptConfigDialog(_FormDialogBase):
         grid.addWidget(self._make_label("每周超时:"), timeout_row, 0)
         grid.addLayout(timeout_grid, timeout_row, 1, 1, 2)
 
-        # 底部按钮行：左次要（配置文件 / 删除脚本）+ 右主操作（取消 / 保存）
-        open_cfg_btn = self._make_left_button(
-            "配置文件", self._SECONDARY_BTN_STYLE, self._open_config_file
-        )
+        # 底部按钮行：左次要（删除脚本）+ 右主操作（取消 / 保存）
         delete_btn = self._make_left_button(
             "删除脚本", self._DANGER_BTN_STYLE, self._on_delete_clicked
         )
-        footer = self._make_footer(
-            "保存", self.save_data, left_widgets=(open_cfg_btn, delete_btn)
-        )
+        footer = self._make_footer("保存", self.save_data, left_widgets=(delete_btn,))
 
         layout.addLayout(grid)
         layout.addLayout(footer)
@@ -645,14 +640,6 @@ class SingleScriptConfigDialog(_FormDialogBase):
             "weekly_timeouts": timeouts,
         }
         self.accept()
-
-    def _open_config_file(self):
-        """打开本脚本的配置文件：路径计算委托 ScriptService，GUI 只负责打开或提示。"""
-        path, error = self._script_service.config_file_path(self.script_name)
-        if error is not None:
-            styled_msg_box(self, QMessageBox.Warning, "提示", error).exec()
-            return
-        safe_startfile(self, path, "无法打开配置文件")
 
     def _on_delete_clicked(self):
         """删除本脚本：二次确认后通知外部并关闭弹窗。"""

@@ -116,7 +116,7 @@ class UiIconProvider(QQuickImageProvider):
     """QML 通用 UI 矢量图标源：`image://uiicon/<name>`。
 
     name → 重绘矢量图标。静态图标，无需游戏数据，构造即就绪。
-    支持：home / game / folder / bili / github / wallpaper / settings / min / close / log。
+    支持：home / game / folder / bili / github / wallpaper / settings / min / close / log / configfile。
     """
 
     _SIZE = 48
@@ -136,6 +136,7 @@ class UiIconProvider(QQuickImageProvider):
             "min": self._draw_min,
             "close": self._draw_close,
             "log": self._draw_log,
+            "configfile": self._draw_configfile,
         }
 
     def _render(self, name: str) -> QPixmap:
@@ -275,3 +276,30 @@ class UiIconProvider(QQuickImageProvider):
         p.setBrush(_WHITE)
         for y in (-7, -1, 5):
             p.drawRoundedRect(QRectF(-7, y - 1, 14, 2), 1, 1)  # 文本行
+
+    def _draw_configfile(self, p: QPainter):
+        # 脚本配置文件：文档页（带两行文本）叠加右上小齿轮，区别于纯齿轮的总配置
+        import math
+
+        pen = QPen(_WHITE, 2.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        p.setPen(pen)
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(-15, -12, 22, 26), 3, 3)  # 页框（偏左下）
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        for y in (-5, 1):
+            p.drawRoundedRect(QRectF(-11, y - 1, 12, 2), 1, 1)  # 文本行
+        # 右上小齿轮：6 外齿 + 主体圆 + 内孔
+        p.setPen(QPen(_WHITE, 2, Qt.SolidLine, Qt.RoundCap))
+        p.setBrush(Qt.NoBrush)
+        cx, cy, r1, r2 = 9, -9, 4, 7
+        for i in range(6):
+            a = math.radians(i * 60)
+            p.drawLine(
+                QPointF(cx + r1 * math.cos(a), cy + r1 * math.sin(a)),
+                QPointF(cx + r2 * math.cos(a), cy + r2 * math.sin(a)),
+            )
+        p.drawEllipse(QRectF(cx - 5, cy - 5, 10, 10))
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        p.drawEllipse(QRectF(cx - 2, cy - 2, 4, 4))

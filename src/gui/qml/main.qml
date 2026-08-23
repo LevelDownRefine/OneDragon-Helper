@@ -284,12 +284,12 @@ Window {
         source: "launch.qml"
     }
 
-    // 右侧悬浮图标条（主页/启动游戏/文件夹/B站/GitHub/壁纸）——图标用 image://uiicon 矢量绘制
+    // 右侧悬浮图标条（主页/启动游戏/文件夹/日志/脚本配置/B站/GitHub/壁纸）——图标用 image://uiicon 矢量绘制
     Item {
         x: 1220
         y: 80
         width: 60
-        height: 300
+        height: 348
         z: 20
         Repeater {
             model: [
@@ -297,6 +297,7 @@ Window {
                 { icon: "game", act: () => Bridge.launchGame() },
                 { icon: "folder", act: () => Bridge.openScriptFolder() },
                 { icon: "log", act: () => Bridge.openLogFolder() },
+                { icon: "configfile", act: () => Bridge.openScriptConfig() },
                 { icon: "bili", act: () => Bridge.openBilibili() },
                 { icon: "github", act: () => Bridge.openGithub() },
                 { icon: "wallpaper", act: () => Bridge.openWallpaper() },

@@ -15,6 +15,7 @@ from src.gui.controllers.task_card import TaskCardController
 from src.gui.controllers.window import WindowController
 from src.gui.icons import UiIconProvider
 from src.service.chain_service import ChainService
+from src.service.script_service import ScriptService
 
 
 class QmlBridge(QObject):
@@ -56,6 +57,7 @@ class QmlBridge(QObject):
         self.links = LinksController(
             game_list=self.game_list,
             toast=self.toastRequested.emit,
+            script_service=ScriptService(),
         )
         self.window = WindowController()
         # UI 矢量图标提供器（无状态，门面持有）
@@ -210,6 +212,10 @@ class QmlBridge(QObject):
     @Slot()
     def openSettings(self):
         self.links.openSettings()
+
+    @Slot()
+    def openScriptConfig(self):
+        self.links.openScriptConfig()
 
     @Slot()
     def startWindowMove(self):

@@ -3,7 +3,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.utils_yaml import dump_yaml_file
 
@@ -267,62 +267,6 @@ class _FakeService:
 
     def set_weekly_start(self, script_name, start_day):
         self.saved_weekly_start = start_day
-
-
-class TestSingleScriptConfigDialogOpenConfig(unittest.TestCase):
-    """测试弹窗内「配置文件」动作：委托 ScriptService.config_file_path。"""
-
-    def _make_dialog(self, config_return):
-        dlg = SingleScriptConfigDialog(
-            "ok-ww",
-            "鸣潮",
-            "C:/games/run.exe",
-            script_service=_FakeService("external", "C:/games/run.exe"),
-        )
-        svc = MagicMock()
-        svc.config_file_path.return_value = config_return
-        dlg._script_service = svc
-        return dlg
-
-    def test_external_opens_resolved_config(self):
-        """service 返回 external config 路径：以 safe_startfile 打开"""
-        dlg = self._make_dialog(("C:/games/config/DailyTask.json", None))
-        with patch("src.gui.dialogs.safe_startfile") as mock_start:
-            dlg._open_config_file()
-        mock_start.assert_called_once_with(
-            dlg, "C:/games/config/DailyTask.json", "无法打开配置文件"
-        )
-
-    def test_external_missing_shows_msg(self):
-        """service 返回错误：弹窗提示且不打开文件"""
-        dlg = self._make_dialog((None, "该脚本暂未适配配置文件，无法打开"))
-        with (
-            patch("src.gui.dialogs.safe_startfile") as mock_start,
-            patch("src.gui.dialogs.styled_msg_box") as mock_box,
-        ):
-            dlg._open_config_file()
-        mock_start.assert_not_called()
-        mock_box.assert_called_once()
-
-    def test_python_opens_py_file(self):
-        """service 返回 python .py 路径：以 safe_startfile 打开"""
-        dlg = self._make_dialog(("C:/proj/src/scripts/mute.py", None))
-        with patch("src.gui.dialogs.safe_startfile") as mock_start:
-            dlg._open_config_file()
-        mock_start.assert_called_once_with(
-            dlg, "C:/proj/src/scripts/mute.py", "无法打开配置文件"
-        )
-
-    def test_python_missing_file_shows_msg(self):
-        """service 返回错误：弹窗提示且不打开文件"""
-        dlg = self._make_dialog((None, "找不到脚本文件"))
-        with (
-            patch("src.gui.dialogs.safe_startfile") as mock_start,
-            patch("src.gui.dialogs.styled_msg_box") as mock_box,
-        ):
-            dlg._open_config_file()
-        mock_start.assert_not_called()
-        mock_box.assert_called_once()
 
 
 class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
