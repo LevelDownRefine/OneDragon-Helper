@@ -18,7 +18,6 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import datetime
 from unittest.mock import patch
 
 # 必须在导入 PySide6 / launcher 之前设置 offscreen 平台插件（CI 无显示器环境）

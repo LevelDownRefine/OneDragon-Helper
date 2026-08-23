@@ -89,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--schedule-run",
         metavar="HH:MM",
         help="等待到目标时刻再生成并运行脚本链（独立进程，关闭控制台即取消；"
-        "配合 --enable 指定脚本、--shutdown 指定关机延迟）",
+        "配合 --enable 指定脚本、--shutdown 指定关机延迟）。传 'now' 表示即时运行（不等待）",
     )
     parser.add_argument(
         "--enable",

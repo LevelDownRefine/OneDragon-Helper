@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-from src.service.chain_service import ChainService
+from src.service.chain_service import ChainService, build_post_run_pipeline
 from src.utils_yaml import dump_yaml_file, load_yaml
 
 
@@ -208,8 +208,8 @@ class TestRunChainOnce(unittest.TestCase):
         build.assert_called_once_with("out.yml", mute=False)
         popen.assert_called_once()
 
-    def test_subset_with_mute_launches_nonblocking(self):
-        """非阻塞启动：按子集生成+运行，mute 透传，返回 None，后台线程启动。"""
+    def test_subset_with_mute_launches_blocking(self):
+        """阻塞启动：按子集生成+运行，mute 透传，返回 None。"""
         svc = self._make_service([{"display_name": "A"}, {"display_name": "B"}])
         with (
             patch(
@@ -217,7 +217,6 @@ class TestRunChainOnce(unittest.TestCase):
                 return_value=(["cmd"], "cwd", None),
             ) as build,
             patch("src.service.chain_service.subprocess.Popen") as popen,
-            patch("src.service.chain_service.threading.Thread") as thread,
         ):
             result = svc.run_chain_once({"A"}, mute=True)
         self.assertIsNone(result)
@@ -229,29 +228,14 @@ class TestRunChainOnce(unittest.TestCase):
         )
         build.assert_called_once_with("out.yml", mute=True)
         popen.assert_called_once()
-        thread.assert_called_once()
 
     def test_run_executes_post_run_after_chain(self):
-        """post_run 在链运行结束后（无论成败）按序触发（非阻塞 watcher 线程）。"""
+        """post_run 在链运行结束后（无论成败）按序触发。"""
         svc = self._make_service([{"display_name": "A"}])
         order = []
 
         def step() -> None:
             order.append("done")
-
-        class _SyncThread:
-            """测试替身：start() 同步执行目标，避免后台线程泄漏。"""
-
-            def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-                self._target = target
-                self._args = args
-                self._kwargs = kwargs or {}
-
-            def start(self):
-                self._target(*self._args, **self._kwargs)
-
-            def join(self, *a, **k):
-                pass
 
         with (
             patch(
@@ -262,7 +246,6 @@ class TestRunChainOnce(unittest.TestCase):
                 "src.service.chain_service.subprocess.Popen",
                 return_value=MagicMock(),
             ),
-            patch("src.service.chain_service.threading.Thread", _SyncThread),
         ):
             svc.run_chain_once({"A"}, post_run=[step])
         self.assertEqual(order, ["done"])
@@ -272,6 +255,21 @@ class TestRunChainOnce(unittest.TestCase):
         with self.assertRaises(AssertionError):
             svc.run_chain_once()
 
+    def test_post_run_after_chain_no_rerun(self):
+        """即时路径（run_chain_once）链结束后只触发 post_run，不重跑（重跑归定时路径）。"""
+        svc = self._make_service([{"display_name": "A"}])
+        order = []
+
+        with (
+            patch(
+                "src.service.chain_service._build_run_chain_command",
+                return_value=(["cmd"], "cwd", None),
+            ),
+            patch("src.service.chain_service.subprocess.Popen", return_value=MagicMock()),
+        ):
+            svc.run_chain_once({"A"}, post_run=[lambda: order.append("post")])
+        self.assertEqual(order, ["post"])
+
 
 class TestScheduleRun(unittest.TestCase):
     """schedule_run：server 侧真实实现（等待→生成→运行→关机 post_run）。"""
@@ -280,8 +278,7 @@ class TestScheduleRun(unittest.TestCase):
         svc = ChainService()
         svc.load_config = MagicMock(return_value={"script_list": script_list})
         svc.load_ui_state = MagicMock(return_value={})
-        svc.generate_chain = MagicMock(return_value="out.yml")
-        svc.run_chain_command = MagicMock(return_value=0)
+        svc.run_chain_once = MagicMock(return_value=None)
         return svc
 
     def _run(self, svc, target_time="08:00", **kwargs):
@@ -300,12 +297,9 @@ class TestScheduleRun(unittest.TestCase):
         svc = self._make_service([{"display_name": "demo"}])
         mock_sleep, mock_shutdown = self._run(svc)
         mock_sleep.assert_called_once()  # pre_run 等待
-        svc.generate_chain.assert_called_once()
-        args = svc.generate_chain.call_args
-        self.assertEqual(args.args[1], {"demo"})  # 启用脚本集合
-        self.assertEqual(args.args[2], "today")  # chain_name
-        svc.run_chain_command.assert_called_once_with(
-            "out.yml", block=True, extra_args=None
+        # 第一次跑复用 run_chain_once，与重跑路径一致（仅脚本集合/链名不同）。
+        svc.run_chain_once.assert_called_once_with(
+            {"demo"}, chain_name="today", mute=False
         )
         mock_shutdown.assert_not_called()
 
@@ -317,14 +311,144 @@ class TestScheduleRun(unittest.TestCase):
     def test_mute_passed(self):
         svc = self._make_service([{"display_name": "demo"}])
         self._run(svc, mute=True)
-        svc.run_chain_command.assert_called_once_with(
-            "out.yml", block=True, extra_args=["--mute"]
+        svc.run_chain_once.assert_called_once_with(
+            {"demo"}, chain_name="today", mute=True
         )
+
+    def test_now_skips_wait(self):
+        """target_time='now'（即时运行）跳过等待，直接点火运行。"""
+        svc = self._make_service([{"display_name": "demo"}])
+        with (
+            patch("src.service.chain_service.time.sleep") as mock_sleep,
+            patch(
+                "src.service.chain_service.next_target_datetime",
+                return_value=datetime(2030, 1, 1, 8, 0),
+            ),
+            patch("src.service.chain_service.shutdown_sys"),
+        ):
+            svc.schedule_run({"demo"}, "now")
+        mock_sleep.assert_not_called()  # 即时：不等待
+        svc.run_chain_once.assert_called_once()  # 仍点火运行
 
     def test_no_shutdown_when_none(self):
         svc = self._make_service([{"display_name": "demo"}])
         _, mock_shutdown = self._run(svc, shutdown_delay=None)
         mock_shutdown.assert_not_called()
+
+    def test_rerun_round_before_post_run(self):
+        """schedule_run：链跑完后先重跑失败脚本，再执行 post_run（邮件/关机）。"""
+        svc = self._make_service([{"display_name": "demo"}])
+        order = []
+        with (
+            patch("src.service.chain_service.time.sleep"),
+            patch(
+                "src.service.chain_service.next_target_datetime",
+                return_value=datetime(2030, 1, 1, 8, 0),
+            ),
+            patch(
+                "src.service.chain_service.parse_logs",
+                return_value={"rerun": ["demo"], "notify": [], "report": "", "entries": []},
+            ),
+            patch(
+                "src.service.chain_service.rerun_failed",
+                side_effect=lambda *a, **k: order.append("rerun"),
+            ),
+            patch(
+                "src.service.chain_service.build_post_run_pipeline",
+                return_value=[lambda: order.append("mail")],
+            ),
+        ):
+            svc.schedule_run({"demo"}, "08:00", shutdown_delay=60)
+        self.assertEqual(order, ["rerun", "mail"])
+
+
+class TestBuildPostRunPipeline(unittest.TestCase):
+    """build_post_run_pipeline：日志分析(最终态) → 邮件 → 关机(末位)（重跑已移出）。"""
+
+    def _result(self, *, rerun=("demo",), notify=("demo",)):
+        return {
+            "rerun": list(rerun),
+            "notify": list(notify),
+            "report": "R",
+            "entries": [],
+        }
+
+    def _run(self, *, rerun=("demo",), notify=("demo",), **kwargs):
+        """构建并执行 pipeline，返回各 mock。rerun/notify 控制 parse_logs 产物。"""
+        with (
+            patch(
+                "src.service.chain_service.parse_logs",
+                return_value=self._result(rerun=rerun, notify=notify),
+            ) as parse,
+            patch("src.service.chain_service.send_mail") as mail,
+            patch("src.service.chain_service.shutdown_sys") as shutdown,
+        ):
+            steps = build_post_run_pipeline(**kwargs)
+            for step in steps:
+                step()
+        return parse, mail, shutdown
+
+    def test_full_pipeline_order_and_calls(self):
+        """有 SMTP+关机：分析(最终态)→邮件→关机，均触发；重跑不在 pipeline 内。"""
+        parse, mail, shutdown = self._run(
+            shutdown_delay=60, smtp_config={"smtp_host": "h", "to": "a", "from_": "b"}
+        )
+        parse.assert_any_call(do_log=False)
+        self.assertEqual(parse.call_count, 1)  # 仅最终态分析
+        mail.assert_called_once()
+        shutdown.assert_called_once_with(60)
+
+    def test_empty_rerun_skips_rerun_and_reparse(self):
+        """rerun 名单为空不影响：邮件/关机按配置；pipeline 内部本就不含重跑。"""
+        parse, mail, shutdown = self._run(
+            rerun=(), shutdown_delay=None, smtp_config=None
+        )
+        self.assertEqual(parse.call_count, 1)
+        mail.assert_not_called()
+        shutdown.assert_not_called()
+
+    def test_no_shutdown_trims_steps(self):
+        """shutdown_delay=None：末位关机步骤不出现（仍可发邮件）。"""
+        parse, mail, shutdown = self._run(
+            shutdown_delay=None, smtp_config={"smtp_host": "h", "to": "a", "from_": "b"}
+        )
+        mail.assert_called_once()  # 邮件仍执行
+        shutdown.assert_not_called()
+
+    def test_mail_skipped_without_smtp_config(self):
+        """未配置 SMTP：邮件步骤静默跳过（默认关闭）。"""
+        parse, mail, shutdown = self._run(shutdown_delay=None, smtp_config=None)
+        mail.assert_not_called()
+
+
+class TestRerunRound(unittest.TestCase):
+    """ChainService._rerun_round：链结束后解析日志，对失败脚本二次运行（主流程）。"""
+
+    def test_reruns_when_rerun_list_nonempty(self):
+        """parse_logs 产出 rerun 非空 → rerun_failed 以 self 为 service 调一次。"""
+        svc = ChainService()
+        with (
+            patch(
+                "src.service.chain_service.parse_logs",
+                return_value={"rerun": ["demo"], "notify": [], "report": "", "entries": []},
+            ),
+            patch("src.service.chain_service.rerun_failed") as rerun,
+        ):
+            svc._rerun_round(mute=True)
+        rerun.assert_called_once_with(["demo"], service=svc, mute=True)
+
+    def test_no_rerun_when_list_empty(self):
+        """rerun 为空列表 → rerun_failed 不调用。"""
+        svc = ChainService()
+        with (
+            patch(
+                "src.service.chain_service.parse_logs",
+                return_value={"rerun": [], "notify": [], "report": "", "entries": []},
+            ),
+            patch("src.service.chain_service.rerun_failed") as rerun,
+        ):
+            svc._rerun_round()
+        rerun.assert_not_called()
 
 
 class TestAddRemoveScript(unittest.TestCase):

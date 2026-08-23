@@ -53,9 +53,19 @@ class TestLaunchAllTimed(unittest.TestCase):
 
     def test_not_timed_runs_immediately(self):
         ctrl, service, toast = _make_controller(enabled=False, target_time=None)
-        self._run_launch(ctrl)
-        # 非定时：直接经 service.run_chain_once 运行，不委托定时调度
-        service.run_chain_once.assert_called_once()
+        with mock.patch(
+            "src.gui.controllers.launch.spawn_schedule_run"
+        ) as mock_spawn:
+            self._run_launch(ctrl)
+        # 非定时：也经 spawn_schedule_run 运行（target=now，不等待），
+        # 不直连 service.run_chain_once / schedule_run。
+        mock_spawn.assert_called_once()
+        args = mock_spawn.call_args
+        self.assertEqual(args.args[0], {"demo"})  # 启用脚本集合
+        self.assertEqual(args.args[1], "now")  # 即时：不等待
+        self.assertFalse(args.kwargs["mute"])
+        self.assertIsNone(args.kwargs["shutdown_delay"])
+        service.run_chain_once.assert_not_called()
         service.schedule_run.assert_not_called()
 
     def test_timed_spawns_schedule_process(self):
