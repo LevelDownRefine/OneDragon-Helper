@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from src.utils_yaml import SAFE_YAML
+from src.utils_yaml import dump_yaml_file
 
 # scripts/ 位于项目根（非 src/ 下），追加 scripts/ 到 sys.path 以便扁平导入。
 sys.path.append(
@@ -25,8 +25,7 @@ class TestLoadMailConfig(unittest.TestCase):
     def _write_mail_config(self, tmp: str, data: dict) -> None:
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        with open(os.path.join(cfg_dir, "notify_mail.yml"), "w", encoding="utf-8") as f:
-            SAFE_YAML.dump(data, f)
+        dump_yaml_file(os.path.join(cfg_dir, "notify_mail.yml"), data)
 
     def test_load_mail_config_missing_file_returns_none(self):
         """notify_mail.yml 不存在时返回 None（仅告警，不抛异常）。"""

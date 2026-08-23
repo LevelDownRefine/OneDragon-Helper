@@ -26,7 +26,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from src import cli, launcher
 from src.config.subscript import get_script_name
 from src.service import chain_gen as service_chain_gen
-from src.utils_yaml import SAFE_YAML
+from src.utils_yaml import load_yaml
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -92,8 +92,7 @@ def _known_script_names():
     if launcher.need_config_workflow():
         launcher.config_workflow()
     config_path = launcher.get_config_yml_path_under_root()
-    with open(config_path, encoding="utf-8") as f:
-        data = SAFE_YAML.load(f)
+    data = load_yaml(config_path)
     return [get_script_name(s) for s in data.get("script_list", [])]
 
 
@@ -158,8 +157,7 @@ class TestCliGenerateChain(unittest.TestCase):
                 code = _run_main(["--generate-chain", "--out", out], expect_exit=0)
             self.assertEqual(code, 0)
             self.assertTrue(os.path.isfile(out), f"--generate-chain 未产出 yml: {out}")
-            with open(out, encoding="utf-8") as f:
-                data = SAFE_YAML.load(f)
+            data = load_yaml(out)
             self.assertIn("script_list", data, msg=data)
             produced = [get_script_name(s) for s in data["script_list"]]
             self.assertEqual(set(produced), set(self._names), msg=produced)
@@ -180,8 +178,7 @@ class TestCliGenerateChain(unittest.TestCase):
                     expect_exit=0,
                 )
             self.assertEqual(code, 0)
-            with open(out, encoding="utf-8") as f:
-                data = SAFE_YAML.load(f)
+            data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
             self.assertEqual(produced, [target], msg=produced)
         finally:
@@ -208,8 +205,7 @@ class TestCliGenerateChain(unittest.TestCase):
                     expect_exit=0,
                 )
             self.assertEqual(code, 0)
-            with open(out, encoding="utf-8") as f:
-                data = SAFE_YAML.load(f)
+            data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
             self.assertEqual(set(produced), set(self._names) - {target}, msg=produced)
         finally:
@@ -237,8 +233,7 @@ class TestCliGenerateChain(unittest.TestCase):
                     expect_exit=0,
                 )
             self.assertEqual(code, 0)
-            with open(out, encoding="utf-8") as f:
-                data = SAFE_YAML.load(f)
+            data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
             self.assertEqual(produced, [other], msg=produced)
         finally:
@@ -648,8 +643,7 @@ class TestCliDumpConfig(unittest.TestCase):
         data = _read_cli_json("dump_config")
         # 与 config.yml 的 display_name 列表一致（dump 是原始 config.yml 导出）
         config_path = launcher.get_config_yml_path_under_root()
-        with open(config_path, encoding="utf-8") as f:
-            source = SAFE_YAML.load(f)
+        source = load_yaml(config_path)
         self.assertEqual(
             [s["display_name"] for s in data["script_list"]],
             [s["display_name"] for s in source.get("script_list", [])],

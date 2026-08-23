@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from src.config import bgi
-from src.utils_yaml import SAFE_YAML
+from src.utils_yaml import dump_yaml_file
 
 
 class TestCopyBettergiConfig(unittest.TestCase):
@@ -38,8 +38,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
                 },
             ]
         }
-        with open(self.mock_config_path, "w", encoding="utf-8") as f:
-            SAFE_YAML.dump(config_data, f)
+        dump_yaml_file(self.mock_config_path, config_data)
 
         res = bgi.get_BGI_user_dir()
         expected = os.path.join(self.temp_dir.name, "BetterGI", "User")
@@ -55,8 +54,7 @@ class TestCopyBettergiConfig(unittest.TestCase):
                 {"display_name": "鸣潮", "script_path": "C:\\Games\\ok-ww\\ok-ww.exe"}
             ]
         }
-        with open(self.mock_config_path, "w", encoding="utf-8") as f:
-            SAFE_YAML.dump(config_data, f)
+        dump_yaml_file(self.mock_config_path, config_data)
 
         res = bgi.get_BGI_user_dir()
         self.assertIsNone(res)

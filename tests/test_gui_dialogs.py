@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.utils_yaml import SAFE_YAML
+from src.utils_yaml import dump_yaml_file
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -112,16 +112,14 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
     def _make_weekly_file(self, weekly_map):
         d = tempfile.mkdtemp()
         wt = os.path.join(d, "weekly_timeouts.yml")
-        with open(wt, "w", encoding="utf-8") as f:
-            SAFE_YAML.dump(weekly_map, f)
+        dump_yaml_file(wt, weekly_map)
         return wt
 
     def _make_config_file(self):
         """构造一个最小、存在的 config.yml 供对话框读取（对话框依赖 config.yml 已存在）。"""
         d = tempfile.mkdtemp()
         cfg = os.path.join(d, "config.yml")
-        with open(cfg, "w", encoding="utf-8") as f:
-            SAFE_YAML.dump({"script_list": []}, f)
+        dump_yaml_file(cfg, {"script_list": []})
         return cfg
 
     def test_load_seeds_from_default_when_no_weekly_entry(self):
@@ -178,8 +176,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
     def _make_config_file(self, script_list):
         d = tempfile.mkdtemp()
         cfg = os.path.join(d, "config.yml")
-        with open(cfg, "w", encoding="utf-8") as f:
-            SAFE_YAML.dump({"script_list": script_list}, f)
+        dump_yaml_file(cfg, {"script_list": script_list})
         return cfg
 
     def test_load_sets_block_from_config(self):
