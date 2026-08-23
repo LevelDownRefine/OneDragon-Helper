@@ -13,7 +13,7 @@ from src.config.subscript import resolve_script_path
 from src.link import get_game_link as _get_game_link
 from src.log import get_log_dir
 from src.service.script_service import ScriptService
-from src.utils import get_config_yml_path_under_root
+from src.utils import get_config_yml_path_under_root, open_in_explorer
 
 # 通用占位链接（对应内容未配置时使用）
 _URL_HOME = "https://github.com/LevelDownRefine/OneDragon-Helper"
@@ -37,7 +37,7 @@ class LinksController(QObject):
         if not exe_path:
             self._toast(f"{game['display_name']}：未找到游戏路径")
             return
-        os.startfile(exe_path)  # noqa: S606 启动游戏
+        open_in_explorer(exe_path)
         self._toast(f"正在启动 {game['display_name']}…")
 
     def _open_url(self, url: str, fallback: str, label: str):
@@ -85,7 +85,7 @@ class LinksController(QObject):
         if not os.path.isdir(folder):
             self._toast(f"{game['display_name']}：脚本目录不存在")
             return
-        os.startfile(folder)  # noqa: S606 打开脚本所在目录
+        open_in_explorer(folder)
         self._toast(f"已打开 {game['display_name']} 脚本目录")
 
     @Slot()
@@ -104,7 +104,7 @@ class LinksController(QObject):
         if not os.path.isdir(log_dir):
             self._toast(f"{game['display_name']}：日志目录不存在")
             return
-        os.startfile(log_dir)  # noqa: S606 打开日志目录
+        open_in_explorer(log_dir)
         self._toast(f"已打开 {game['display_name']} 日志目录")
 
     @Slot()
@@ -114,7 +114,7 @@ class LinksController(QObject):
         if not os.path.isfile(config_path):
             self._toast("未找到 config/config.yml")
             return
-        os.startfile(config_path)  # noqa: S606 打开总配置文件
+        open_in_explorer(config_path)
         self._toast("已打开总配置文件 config.yml")
 
     @Slot()
@@ -125,5 +125,5 @@ class LinksController(QObject):
         if error is not None:
             self._toast(f"{game['display_name']}：{error}")
             return
-        os.startfile(path)  # noqa: S606 打开当前脚本配置文件
+        open_in_explorer(path)
         self._toast(f"已打开 {game['display_name']} 配置文件")
