@@ -229,48 +229,23 @@ class TestRunChainOnce(unittest.TestCase):
         build.assert_called_once_with("out.yml", mute=True)
         popen.assert_called_once()
 
-    def test_run_executes_post_run_after_chain(self):
-        """post_run 在链运行结束后（无论成败）按序触发。"""
-        svc = self._make_service([{"display_name": "A"}])
-        order = []
-
-        def step() -> None:
-            order.append("done")
-
-        with (
-            patch(
-                "src.service.chain_service._build_run_chain_command",
-                return_value=(["cmd"], "cwd", None),
-            ),
-            patch(
-                "src.service.chain_service.subprocess.Popen",
-                return_value=MagicMock(),
-            ),
-        ):
-            svc.run_chain_once({"A"}, post_run=[step])
-        self.assertEqual(order, ["done"])
-
     def test_empty_script_list_asserts(self):
         svc = self._make_service([])
         with self.assertRaises(AssertionError):
             svc.run_chain_once()
 
-    def test_post_run_after_chain_no_rerun(self):
-        """即时路径（run_chain_once）链结束后只触发 post_run，不重跑（重跑归定时路径）。"""
-        svc = self._make_service([{"display_name": "A"}])
+    def test_run_post_run_isolates_step_failures(self):
+        """_run_post_run：单步失败不影响后续步骤，均记日志。"""
+        svc = ChainService()
         order = []
 
-        with (
-            patch(
-                "src.service.chain_service._build_run_chain_command",
-                return_value=(["cmd"], "cwd", None),
-            ),
-            patch(
-                "src.service.chain_service.subprocess.Popen", return_value=MagicMock()
-            ),
-        ):
-            svc.run_chain_once({"A"}, post_run=[lambda: order.append("post")])
-        self.assertEqual(order, ["post"])
+        def boom() -> None:
+            raise RuntimeError("step failed")
+
+        with patch("src.service.chain_service.logger") as mock_logger:
+            svc._run_post_run([lambda: order.append("a"), boom, lambda: order.append("b")])
+        self.assertEqual(order, ["a", "b"])
+        mock_logger.exception.assert_called_once()
 
 
 class TestScheduleRun(unittest.TestCase):

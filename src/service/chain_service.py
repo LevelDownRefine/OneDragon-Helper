@@ -369,27 +369,22 @@ class ChainService:
         chain_name: str = "today",
         ui_state: dict | None = None,
         mute: bool = False,
-        post_run: Sequence[Callable[[], None]] = (),
     ) -> None:
         """生成脚本链并运行（单发原子）：service 侧『生成+运行』原子。
 
-        阻塞运行：先生成链，以 ``subprocess.Popen`` 启动（``CREATE_NEW_CONSOLE`` 起独立
-        控制台），再于**调用方线程内** ``proc.wait()`` 等结束、随后按序触发 ``post_run``。
-        调用方若需保持响应（如 GUI 主线程），应自行把本方法放进后台线程。
-
-        注：重跑轮（对失败脚本二次运行）仅定时路径（``schedule_run``）触发，即时路径
-        只跑链、不重跑、不挂运行后动作；``post_run`` 默认空即纯跑链。
+        阻塞运行：先生成链，以 ``subprocess.run`` 启动（``CREATE_NEW_CONSOLE`` 起独立
+        控制台）并等结束。调用方若需保持响应（如 GUI 主线程），应自行把本方法放进后台
+        线程。运行后动作（日志分析/重跑/邮件/关机）由调用方（仅 ``schedule_run``）在
+        本方法返回后另行编排，本方法不挂任何 post_run。
 
         Args:
             enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
             chain_name: 链配置文件名（不含扩展名，默认 today）。
             ui_state: 任务卡 UI 状态；None 时从 service 加载。
             mute: 是否运行中静音。
-            post_run: 链运行结束后按序执行的「后置步骤」列表（无论运行成败均触发，
-                失败已记日志）；默认空表示无运行后动作。
 
         Returns:
-            始终返回 None（退出码经 ``post_run`` 自行处理，无需调用方同步等待）。
+            始终返回 None（纯跑链，运行后动作交由调用方）。
         """
         all_config = self.load_config()
         known = {get_script_name(s) for s in all_config["script_list"]}
@@ -402,31 +397,18 @@ class ChainService:
         command, cwd, env = _build_run_chain_command(chain_path, mute=mute)
         logger.info("[chain] 生成并运行脚本链: %s", chain_path)
         creationflags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
-        proc = subprocess.Popen(command, cwd=cwd, env=env, creationflags=creationflags)
-        self._wait_and_run_post_run(proc, post_run)
-        return None
-
-    def _wait_and_run_post_run(
-        self,
-        proc: subprocess.Popen,
-        post_run: Sequence[Callable[[], None]],
-    ) -> None:
-        """等待脚本链子进程结束，再按序触发 post_run（在调用方线程内执行）。
-
-        重跑轮（``_rerun_round``）仅定时路径（``schedule_run``）调用，故此处不触发重跑。
-        """
+        # 始终阻塞：subprocess.run 内部即 Popen+wait，proc 不外传故无需手动 Popen。
         try:
-            proc.wait()
+            subprocess.run(command, cwd=cwd, env=env, creationflags=creationflags)
         except Exception:
-            logger.exception("[chain] 等待脚本链子进程失败")
-        finally:
-            self._run_post_run(post_run)
+            logger.exception("[chain] 运行脚本链子进程失败")
+        return None
 
     def _rerun_round(self, *, mute: bool = False) -> None:
         """主流程重跑轮：链运行结束后解析日志，对未正常退出的脚本二次运行。
 
-        重跑需再调一次 ``run_chain_once(block=True)`` 阻塞运行，属于运行主环节而非
-        post_run，故置于 post_run 之前；后续邮件/关机在重跑结束后才触发。
+        重跑经 ``rerun_failed`` 阻塞运行失败子集，属于运行主环节而非 post_run，故置于
+        post_run 之前；后续邮件/关机在重跑结束后才触发。
         """
         result = parse_logs(do_log=False)
         rerun_list = result.get("rerun") or []
@@ -496,8 +478,9 @@ class ChainService:
         # post_run 编排（日志分析最终态 → 邮件 → 关机末位）：
         # 在链与重跑均结束后触发，关机不会抢在链/重跑之前。
         mail_config = _resolve_mail_config(all_config)
-        for step in build_post_run_pipeline(
-            shutdown_delay=shutdown_delay,
-            smtp_config=mail_config,
-        ):
-            step()
+        self._run_post_run(
+            build_post_run_pipeline(
+                shutdown_delay=shutdown_delay,
+                smtp_config=mail_config,
+            )
+        )
