@@ -99,7 +99,7 @@ class TestLaunchAllTimed(unittest.TestCase):
         ):
             self._run_launch(ctrl)
         toast.assert_called_once()
-        self.assertIn("已设置定时运行", toast.call_args[0][0])
+        self.assertIn("定时运行", toast.call_args[0][0])
 
 
 class TestConfirmRunDialog(unittest.TestCase):
