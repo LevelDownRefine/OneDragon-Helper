@@ -348,7 +348,7 @@ Window {
         }
     }
 
-    // 窗口控制（右上：最小化 / 设置 / 关闭）——独立组件，Loader 加载。
+    // 窗口控制（右上：最小化 / 关闭）——独立组件，Loader 加载。
     Loader {
         x: 1164; y: 8; width: 116; height: 36; z: 30
         source: "window.qml"

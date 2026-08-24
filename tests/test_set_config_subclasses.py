@@ -649,16 +649,17 @@ class TestStarRailConfig(unittest.TestCase):
             self.assertTrue(changed)
             self.assertEqual(config["instance_type"], "新本")
 
-    def test_set_dungeon_changed_saves(self):
+    def test_set_dungeon_noop_does_not_save(self):
+        """崩铁（M7A）副本无需适配：set_dungeon 是 no-op，不读不写。"""
         with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
-            config = {"instance_type": "旧本"}
-            with (
-                patch.object(cfg, "_load", return_value=config),
-                patch.object(cfg, "_save") as mock_save,
-            ):
-                cfg.set_dungeon("新本")
-            mock_save.assert_called_once_with({"instance_type": "新本"})
+        with (
+            patch.object(cfg, "_load") as mock_load,
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg.set_dungeon("培养目标")
+        mock_load.assert_not_called()
+        mock_save.assert_not_called()
 
     def test_set_weekly_dungeon_writes_instance_names(self):
         """set_weekly_dungeon 写 config.yaml 的 instance_names[周常名]，容错建 dict。"""

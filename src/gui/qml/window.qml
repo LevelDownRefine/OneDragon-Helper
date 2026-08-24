@@ -1,7 +1,7 @@
 import QtQuick
 import OneDragonHelper 1.0
 
-// 窗口控制栏（最小化 / 设置 / 关闭），由 main.qml 的 Loader 加载。
+// 窗口控制栏（最小化 / 关闭），由 main.qml 的 Loader 加载。
 Item {
     anchors.fill: parent
 
@@ -16,19 +16,6 @@ Item {
         MouseArea {
             id: minBtnMouse; anchors.fill: parent; hoverEnabled: true
             onClicked: Bridge.minimize()
-        }
-    }
-    // 设置（打开总配置 config.yml）
-    Rectangle {
-        x: 0; y: 0; width: 36; height: 36; radius: 12
-        color: setBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
-        Image {
-            anchors.centerIn: parent; width: 22; height: 22
-            source: "image://uiicon/settings"; fillMode: Image.PreserveAspectFit
-        }
-        MouseArea {
-            id: setBtnMouse; anchors.fill: parent; hoverEnabled: true
-            onClicked: Bridge.openSettings()
         }
     }
     // 关闭

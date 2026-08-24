@@ -748,6 +748,9 @@ class StarRailConfig(ScriptConfig):
     def __init__(self):
         self._init_config()
 
+    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
+        logger.info(f"[set_config][{self.display_name}] M7A无需适配")
+
     def set_weekly(self, start_day: int) -> None:
         """崩铁周常：周几起对所有周本生效。
 
