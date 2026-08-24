@@ -290,6 +290,11 @@ class TestScheduleRun(unittest.TestCase):
                 "src.service.chain_service.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
+            patch(
+                "src.service.chain_service.parse_logs",
+                return_value={"rerun": [], "notify": [], "report": "", "entries": []},
+            ),
+            patch("src.service.chain_service.rerun_failed"),
             patch("src.service.chain_service.shutdown_sys") as mock_shutdown,
         ):
             svc.schedule_run({"demo"}, target_time, **kwargs)
@@ -326,6 +331,11 @@ class TestScheduleRun(unittest.TestCase):
                 "src.service.chain_service.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
+            patch(
+                "src.service.chain_service.parse_logs",
+                return_value={"rerun": [], "notify": [], "report": "", "entries": []},
+            ),
+            patch("src.service.chain_service.rerun_failed"),
             patch("src.service.chain_service.shutdown_sys"),
         ):
             svc.schedule_run({"demo"}, "now")
@@ -409,6 +419,10 @@ class TestScheduleRun(unittest.TestCase):
             patch(
                 "src.service.chain_service.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
+            ),
+            patch(
+                "src.service.chain_service.parse_logs",
+                return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
             patch(
                 "src.service.chain_service.build_post_run_pipeline",
