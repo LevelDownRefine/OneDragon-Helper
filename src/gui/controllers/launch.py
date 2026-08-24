@@ -17,12 +17,12 @@ from src.utils_runner import (
     apply_shutdown_config,
     apply_timed_run_config,
     build_script_command,
-    next_target_datetime,
     parse_mute_run,
     parse_shutdown,
     parse_timed_run,
     spawn_schedule_run,
 )
+from src.utils_weekly import next_target_datetime
 
 
 class LaunchController(QObject):

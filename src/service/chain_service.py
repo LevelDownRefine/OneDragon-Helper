@@ -13,9 +13,6 @@ import json
 import logging
 import os
 import subprocess
-import time
-from collections.abc import Callable, Sequence
-from datetime import datetime
 
 from src.config.dungeon_config import load_dungeon_map
 from src.config.subscript import (
@@ -23,7 +20,6 @@ from src.config.subscript import (
     get_script_name,
 )
 from src.log.monitor import parse_logs
-from src.log.notify_mail import send_mail
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.script_service import ScriptService
 from src.utils import (
@@ -40,12 +36,10 @@ from src.utils_runner import (
 )
 from src.utils_runner import (
     collect_invalid_script_messages,
-    next_target_datetime,
 )
 from src.utils_runner import (
     run_chain_command as _run_chain_command,
 )
-from src.utils_shutdown import shutdown_sys
 from src.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
@@ -68,44 +62,6 @@ def _resolve_mail_config(all_config: dict) -> dict | None:
         logger.warning("[chain] 邮件未启用或 email/password 缺失，跳过: %s", notify)
         return None
     return notify
-
-
-def build_post_run_pipeline(
-    *,
-    shutdown_delay: int | None,
-    smtp_config: dict | None = None,
-) -> list[Callable[[], None]]:
-    """按序构建运行后动作：日志分析(最终态) → 邮件 → 关机(末位)。
-
-    重跑已移出本 pipeline，作为运行主环节由 ``ChainService._rerun_round`` 在链运行
-    结束后、本 pipeline 触发前完成；此处只需对最终态做日志分析供邮件汇总，并在末位关机。
-
-    Args:
-        shutdown_delay: 关机延迟秒数；None/0 表示不关机。
-        smtp_config: SMTP 配置；None 表示不发邮件（默认关闭）。
-
-    Returns:
-        后置步骤列表（可能仅含关机或为空）。各步骤经共享闭包 ``shared`` 传递日志分析结果。
-    """
-    shared: dict = {}
-
-    def _analyze() -> None:
-        shared["result"] = parse_logs(do_log=False)
-
-    steps: list[Callable[[], None]] = [_analyze]
-
-    def _do_mail() -> None:
-        result = shared.get("result")
-        if not result or smtp_config is None:
-            return
-        send_mail(result, smtp_config=smtp_config)
-
-    steps.append(_do_mail)
-
-    if shutdown_delay:
-        steps.append(lambda: shutdown_sys(shutdown_delay))
-
-    return steps
 
 
 class ChainService:
@@ -419,15 +375,6 @@ class ChainService:
         # 使后续邮件/关机基于重跑后的最终态。
         _run_chain_once_impl(all_config, keys, chain_name="rerun", mute=mute)
 
-    @staticmethod
-    def _run_post_run(post_run: Sequence[Callable[[], None]]) -> None:
-        """按序执行后置步骤；单步失败不影响后续步骤，均记日志。"""
-        for step in post_run:
-            try:
-                step()
-            except Exception:
-                logger.exception("[chain] post_run 步骤执行失败")
-
     def schedule_run(
         self,
         enabled_keys: set[str] | None,
@@ -437,58 +384,30 @@ class ChainService:
         mute: bool = False,
         shutdown_delay: int | None = None,
     ) -> None:
-        """调度运行：server 侧真实实现（等待到点 → 点火生成 → 运行 → 关机 post_run）。
+        """调度运行：组装 ``ScheduledRun`` 并执行的薄工厂。
 
-        本方法设计为在独立控制台进程（由 ``utils_runner.spawn_schedule_run`` 以
-        ``CREATE_NEW_CONSOLE`` 起）中运行，故前置阻塞等待（``time.sleep``）无害；
-        关闭该控制台即取消。进程在 GUI 退出后依旧存活，故定时运行不受关程序影响。
-        链在**点火时**才生成（按当天星期），因此本方法不做提前固定链配置。
-
-        运行后关机（post_run 末位）由本方法在 ``run_chain_once`` 返回（链跑完）之后
-        触发，故关机不会抢在链/重跑之前。
+        完整编排（等待到点 → 生成并运行 → 可选重跑 → post_run）由
+        ``src.service.scheduled_run.ScheduledRun`` 拥有；本方法仅作 facade 入口，
+        设计为在独立控制台进程（``utils_runner.spawn_schedule_run`` 以
+        ``CREATE_NEW_CONSOLE`` 起）中运行。
 
         Args:
             enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
-            target_time: 目标时刻 ``"HH:MM"``（24 小时制，须合法，调用方已校验）；
-                传 ``"now"`` 表示即时运行（跳过等待，直接点火）。
+            target_time: 目标时刻 ``"HH:MM"``；``"now"`` 表示即时运行（跳过等待）。
             chain_name: 链配置文件名（不含扩展名，默认 today）。
             mute: 是否运行中静音（透传 ``--mute``）。
             shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
-
-        Returns:
-            始终返回 None（阻塞运行至结束；退出码等由调用方/CLI 处理）。
         """
-        # pre_run：等待到目标时刻（阻塞，独立进程内无害）。
-        # target_time="now"（即时运行）跳过等待，直接点火。
-        if target_time and target_time != "now":
-            target_dt = next_target_datetime(target_time)
-            wait_seconds = (target_dt - datetime.now()).total_seconds()
-            if wait_seconds > 0:
-                time.sleep(wait_seconds)
-        # 点火时生成链（按当天星期），不提前固定链配置。
-        all_config = self.load_config()
-        known = {get_script_name(s) for s in all_config["script_list"]}
-        assert known, "[chain] config 无脚本，无法生成链"
-        keys = enabled_keys if enabled_keys is not None else set(known)
-        # 第一次跑：复用 run_chain_once 原子（生成+运行），与 ``_rerun_round`` 内的
-        # 重跑路径完全一致（均阻塞），仅脚本集合（全部启用 vs 失败子集）与链名不同。
-        self.run_chain_once(keys, chain_name=chain_name, mute=mute)
-        # 主流程重跑轮：链跑完后解析日志、对失败脚本二次运行（先于 post_run）。
-        # 受 config.rerun.enabled 控制（契约键，缺失即 assert 崩，不降级）。
-        assert "rerun" in all_config, "[chain] config 缺 rerun 块"
-        rerun_cfg = all_config["rerun"]
-        assert "enabled" in rerun_cfg, "[chain] config.rerun 缺 enabled 键"
-        if rerun_cfg["enabled"]:
-            self._rerun_round(mute=mute, all_config=all_config)
-        # post_run 编排（日志分析最终态 → 邮件 → 关机末位）：
-        # 在链与重跑均结束后触发，关机不会抢在链/重跑之前。
-        mail_config = _resolve_mail_config(all_config)
-        self._run_post_run(
-            build_post_run_pipeline(
-                shutdown_delay=shutdown_delay,
-                smtp_config=mail_config,
-            )
-        )
+        from src.service.scheduled_run import ScheduledRun
+
+        ScheduledRun(
+            self,
+            enabled_keys,
+            target_time,
+            chain_name=chain_name,
+            mute=mute,
+            shutdown_delay=shutdown_delay,
+        ).run()
 
 
 def _run_chain_once_impl(

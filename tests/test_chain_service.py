@@ -6,7 +6,8 @@ import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
-from src.service.chain_service import ChainService, build_post_run_pipeline
+from src.service.chain_service import ChainService
+from src.service.scheduled_run import ScheduledRun, build_post_run_pipeline
 from src.utils_yaml import dump_yaml_file, load_yaml
 
 
@@ -254,16 +255,15 @@ class TestRunChainOnce(unittest.TestCase):
         with self.assertRaises(AssertionError):
             svc.run_chain_once()
 
-    def test_run_post_run_isolates_step_failures(self):
-        """_run_post_run：单步失败不影响后续步骤，均记日志。"""
-        svc = ChainService()
+    def test_run_steps_isolates_step_failures(self):
+        """ScheduledRun._run_steps：单步失败不影响后续步骤，均记日志。"""
         order = []
 
         def boom() -> None:
             raise RuntimeError("step failed")
 
-        with patch("src.service.chain_service.logger") as mock_logger:
-            svc._run_post_run(
+        with patch("src.service.scheduled_run.logger") as mock_logger:
+            ScheduledRun._run_steps(
                 [lambda: order.append("a"), boom, lambda: order.append("b")]
             )
         self.assertEqual(order, ["a", "b"])
@@ -284,9 +284,9 @@ class TestScheduleRun(unittest.TestCase):
 
     def _run(self, svc, target_time="08:00", **kwargs):
         with (
-            patch("src.service.chain_service.time.sleep") as mock_sleep,
+            patch("src.service.scheduled_run.time.sleep") as mock_sleep,
             patch(
-                "src.service.chain_service.next_target_datetime",
+                "src.service.scheduled_run.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch(
@@ -294,7 +294,8 @@ class TestScheduleRun(unittest.TestCase):
                 return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
             patch("src.service.chain_service._run_chain_once_impl"),
-            patch("src.service.chain_service.shutdown_sys") as mock_shutdown,
+            patch("src.service.scheduled_run.build_post_run_pipeline", return_value=[]),
+            patch("src.service.scheduled_run.shutdown_sys") as mock_shutdown,
         ):
             svc.schedule_run({"demo"}, target_time, **kwargs)
         return mock_sleep, mock_shutdown
@@ -310,9 +311,20 @@ class TestScheduleRun(unittest.TestCase):
         mock_shutdown.assert_not_called()
 
     def test_shutdown_triggers_post_run(self):
+        """shutdown_delay 非 None 时透传给 build_post_run_pipeline（末位挂关机 step）。"""
         svc = self._make_service([{"display_name": "demo"}])
-        _, mock_shutdown = self._run(svc, shutdown_delay=60)
-        mock_shutdown.assert_called_once_with(60)
+        with (
+            patch("src.service.scheduled_run.time.sleep"),
+            patch(
+                "src.service.scheduled_run.next_target_datetime",
+                return_value=datetime(2030, 1, 1, 8, 0),
+            ),
+            patch("src.service.chain_service.parse_logs", return_value={"rerun": []}),
+            patch("src.service.chain_service._run_chain_once_impl"),
+            patch("src.service.scheduled_run.build_post_run_pipeline") as mock_pipeline,
+        ):
+            svc.schedule_run({"demo"}, "08:00", shutdown_delay=60)
+        mock_pipeline.assert_called_once_with(shutdown_delay=60, smtp_config=None)
 
     def test_mute_passed(self):
         svc = self._make_service([{"display_name": "demo"}])
@@ -325,9 +337,9 @@ class TestScheduleRun(unittest.TestCase):
         """target_time='now'（即时运行）跳过等待，直接点火运行。"""
         svc = self._make_service([{"display_name": "demo"}])
         with (
-            patch("src.service.chain_service.time.sleep") as mock_sleep,
+            patch("src.service.scheduled_run.time.sleep") as mock_sleep,
             patch(
-                "src.service.chain_service.next_target_datetime",
+                "src.service.scheduled_run.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch(
@@ -335,7 +347,7 @@ class TestScheduleRun(unittest.TestCase):
                 return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
             patch("src.service.chain_service._run_chain_once_impl"),
-            patch("src.service.chain_service.shutdown_sys"),
+            patch("src.service.scheduled_run.shutdown_sys"),
         ):
             svc.schedule_run({"demo"}, "now")
         mock_sleep.assert_not_called()  # 即时：不等待
@@ -351,9 +363,9 @@ class TestScheduleRun(unittest.TestCase):
         svc = self._make_service([{"display_name": "demo"}])
         order = []
         with (
-            patch("src.service.chain_service.time.sleep"),
+            patch("src.service.scheduled_run.time.sleep"),
             patch(
-                "src.service.chain_service.next_target_datetime",
+                "src.service.scheduled_run.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch(
@@ -370,7 +382,7 @@ class TestScheduleRun(unittest.TestCase):
                 side_effect=lambda *a, **k: order.append("rerun"),
             ),
             patch(
-                "src.service.chain_service.build_post_run_pipeline",
+                "src.service.scheduled_run.build_post_run_pipeline",
                 return_value=[lambda: order.append("mail")],
             ),
         ):
@@ -387,13 +399,13 @@ class TestScheduleRun(unittest.TestCase):
             }
         )
         with (
-            patch("src.service.chain_service.time.sleep"),
+            patch("src.service.scheduled_run.time.sleep"),
             patch(
-                "src.service.chain_service.next_target_datetime",
+                "src.service.scheduled_run.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch("src.service.chain_service._run_chain_once_impl") as rerun,
-            patch("src.service.chain_service.build_post_run_pipeline", return_value=[]),
+            patch("src.service.scheduled_run.build_post_run_pipeline", return_value=[]),
         ):
             svc.schedule_run({"demo"}, "08:00")
         rerun.assert_not_called()
@@ -415,9 +427,9 @@ class TestScheduleRun(unittest.TestCase):
             return []
 
         with (
-            patch("src.service.chain_service.time.sleep"),
+            patch("src.service.scheduled_run.time.sleep"),
             patch(
-                "src.service.chain_service.next_target_datetime",
+                "src.service.scheduled_run.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch(
@@ -425,7 +437,7 @@ class TestScheduleRun(unittest.TestCase):
                 return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
             patch(
-                "src.service.chain_service.build_post_run_pipeline",
+                "src.service.scheduled_run.build_post_run_pipeline",
                 side_effect=_fake_pipeline,
             ) as pipeline,
         ):
@@ -449,11 +461,11 @@ class TestBuildPostRunPipeline(unittest.TestCase):
         """构建并执行 pipeline，返回各 mock。rerun/notify 控制 parse_logs 产物。"""
         with (
             patch(
-                "src.service.chain_service.parse_logs",
+                "src.service.scheduled_run.parse_logs",
                 return_value=self._result(rerun=rerun, notify=notify),
             ) as parse,
-            patch("src.service.chain_service.send_mail") as mail,
-            patch("src.service.chain_service.shutdown_sys") as shutdown,
+            patch("src.service.scheduled_run.send_mail") as mail,
+            patch("src.service.scheduled_run.shutdown_sys") as shutdown,
         ):
             steps = build_post_run_pipeline(**kwargs)
             for step in steps:

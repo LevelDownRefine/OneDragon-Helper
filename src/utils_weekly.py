@@ -3,6 +3,24 @@
 from datetime import datetime, timedelta
 
 
+def next_target_datetime(target_time: str, now: datetime | None = None) -> datetime:
+    """返回下一个等于 target_time 的时刻：今天未到取今天，已过取明天（跨午夜）。
+
+    Args:
+        target_time: ``"HH:MM"`` 形式的目标时刻。
+        now: 基准时间，默认当前时间（可注入以便测试）。
+
+    Returns:
+        下一个 ``target_time`` 对应的 ``datetime``。
+    """
+    hours, minutes = (int(x) for x in target_time.split(":"))
+    now = now or datetime.now()
+    candidate = now.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+    if now < candidate:
+        return candidate
+    return candidate + timedelta(days=1)
+
+
 def get_week_num() -> int:
     """返回星期数字：0周一 ~ 6周日（凌晨 4 点为界，4 点前归前一天）。
 

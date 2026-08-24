@@ -19,7 +19,6 @@ from src.utils_runner import (
     build_run_chain_command,
     build_script_command,
     collect_invalid_script_messages,
-    next_target_datetime,
     parse_mute_run,
     parse_shutdown,
     parse_timed_run,
@@ -27,6 +26,7 @@ from src.utils_runner import (
     script_invalid_message,
     spawn_schedule_run,
 )
+from src.utils_weekly import next_target_datetime
 
 CHAIN_PATH = "config/script_chain/01.yml"
 
