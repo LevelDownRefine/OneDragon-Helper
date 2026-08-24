@@ -665,6 +665,44 @@ class GenshinConfig(ScriptConfig):
         target = sequence if sequence is not None else dungeon_name
         super().set_dungeon(target)
 
+    @classmethod
+    def get_dungeon_lists(cls, task_name: str, source: str) -> list[str]:
+        """读 BetterGI 的 tp.json，取某秘境分类（周常/日常）的副本名清单。
+
+        Args:
+            task_name: 秘境分类（yml 中的中文名，如「圣遗物」）。
+            source: tp.json 相对脚本根目录的路径。
+
+        Returns:
+            副本名列表（即 tp.json 的 ``name`` 字段）；文件缺失/空时返回 ``[]``。
+        """
+        # tp.json 按地图场景分组、秘境类别用英文 type；与 dungeon_list.yml 的中文
+        # 分类名（圣遗物/武器/天赋）不同，故在此维护「中文分类 → tp.json type」映射。
+        # type 含义：BlessDomain=圣遗物本，ForgeryDomain=武器本，MasteryDomain=天赋本。
+        tp_domain_type_by_category = {
+            "圣遗物": "BlessDomain",
+            "武器": "ForgeryDomain",
+            "天赋": "MasteryDomain",
+        }
+        data = load_game_config(cls._script_name, source)
+        if not data:
+            return []
+        assert isinstance(data, dict), f"[set_config][{cls.display_name}] tp.json 应为 dict"
+        tp_type = tp_domain_type_by_category.get(task_name)
+        assert tp_type is not None, (
+            f"[set_config][{cls.display_name}] 未适配的秘境分类: {task_name!r}"
+        )
+        names: list[str] = []
+        for scene in data.get("data", []):
+            if not isinstance(scene, dict):
+                continue
+            for pt in scene.get("points", []):
+                if isinstance(pt, dict) and pt.get("type") == tp_type:
+                    name = pt.get("name")
+                    if name:
+                        names.append(name)
+        return names
+
 
 # ---- 终末地 Arknights: Endfield ----
 @register
