@@ -142,12 +142,14 @@ class BaseLogParser:
         now = datetime.now()
         mtime = datetime.fromtimestamp(log_path.stat().st_mtime)
 
+        # 运行日从 04:00 切分（定时运行在 04:10）：
+        # - 现在 >= 4 点：认「今天 04:00 之后」产生的日志；
+        # - 现在 < 4 点（凌晨）：认「昨天运行日」，即「昨天 04:00 之后」产生的日志。
+        # 无后缀 log.txt 的 mtime 无法区分「昨天 04:00 后那轮」与更早的，但按运行日
+        # 边界统一以 4 点为界，凌晨不会把今天 0-4 点之前的日志误当成今天。
+        today_4am = now.replace(hour=4, minute=0, second=0, microsecond=0)
         if now.hour >= 4:
-            return mtime.date() == now.date()
-
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if mtime >= today_start:
-            return True
+            return mtime >= today_4am
 
         yesterday_4am = (now - timedelta(days=1)).replace(
             hour=4, minute=0, second=0, microsecond=0

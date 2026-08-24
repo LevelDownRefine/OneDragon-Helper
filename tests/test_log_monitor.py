@@ -4,6 +4,7 @@ import logging as _logging
 import os
 import tempfile
 import unittest
+from datetime import datetime as _dt_real
 from pathlib import Path
 from unittest import mock
 
@@ -988,6 +989,82 @@ class TestExtraAndReportTable(unittest.TestCase):
     def test_pad_row_reaches_total_width(self):
         row = collect_log._pad_row(["原神", "成功", "22"], [14, 8, 10])
         self.assertEqual(collect_log._cell_width(row), 14 + 8 + 10)
+
+
+class TestIsValidLog(unittest.TestCase):
+    """_is_valid_log 是每日/体力/报错/额外解析共用的前置日期闸门，运行日从
+    04:00 切分（定时运行在 04:10）：现在 >= 4 点只认「今天 04:00 之后」，现在
+    < 4 点（凌晨）只认「昨天运行日」（昨天 04:00 之后）。两个分支都以 4 点为界，
+    避免把更早的日志误判成当前运行日。"""
+
+    def _make_log(self, mtime: float) -> Path:
+        d = Path(tempfile.mkdtemp())
+        log = d / "log.txt"
+        log.write_text("x", encoding="utf-8")
+        os.utime(log, (mtime, mtime))
+        return log
+
+    def _dt(self, y, mo, d, h=9, mi=0):
+        return _dt_real(y, mo, d, h, mi)
+
+    def _patch_now(self, fake_now):
+        real_dt = collect_log.datetime
+        fake = mock.MagicMock(wraps=real_dt)
+        fake.now = mock.Mock(return_value=fake_now)
+        return mock.patch.object(collect_log, "datetime", fake)
+
+    # ---- 现在 >= 4 点：只认「今天 04:00 之后」----
+    def test_hour_ge_4_today_after_4am_valid(self):
+        with self._patch_now(self._dt(2026, 8, 24, 9)):
+            log = self._make_log(self._dt(2026, 8, 24, 4, 10).timestamp())
+            self.assertTrue(ZZZLogParser()._is_valid_log(log))
+
+    def test_hour_ge_4_today_before_4am_invalid(self):
+        # 今天 03:00 产生的日志：4 点前属昨天运行日，>=4 点时不应认
+        with self._patch_now(self._dt(2026, 8, 24, 9)):
+            log = self._make_log(self._dt(2026, 8, 24, 3, 0).timestamp())
+            self.assertFalse(ZZZLogParser()._is_valid_log(log))
+
+    def test_hour_ge_4_yesterday_invalid(self):
+        with self._patch_now(self._dt(2026, 8, 24, 9)):
+            log = self._make_log(self._dt(2026, 8, 23, 13, 12).timestamp())
+            self.assertFalse(ZZZLogParser()._is_valid_log(log))
+
+    def test_hour_ge_4_day_before_yesterday_invalid(self):
+        with self._patch_now(self._dt(2026, 8, 24, 9)):
+            log = self._make_log(self._dt(2026, 8, 22, 13, 12).timestamp())
+            self.assertFalse(ZZZLogParser()._is_valid_log(log))
+
+    # ---- 现在 < 4 点（凌晨）：只认「昨天运行日」即昨天 04:00 之后 ----
+    def test_hour_lt_4_yesterday_after_4am_valid(self):
+        # 昨天 13:12 属昨天运行日，凌晨 parse 应认（这是预期的昨天那一轮）
+        with self._patch_now(self._dt(2026, 8, 24, 2)):
+            log = self._make_log(self._dt(2026, 8, 23, 13, 12).timestamp())
+            self.assertTrue(ZZZLogParser()._is_valid_log(log))
+
+    def test_hour_lt_4_yesterday_before_4am_invalid(self):
+        # 昨天 03:00 早于昨天运行日起点，不应认
+        with self._patch_now(self._dt(2026, 8, 24, 2)):
+            log = self._make_log(self._dt(2026, 8, 23, 3, 0).timestamp())
+            self.assertFalse(ZZZLogParser()._is_valid_log(log))
+
+    def test_hour_lt_4_today_after_midnight_valid(self):
+        # 今天 00:05 属今天 0-4 点，按运行日边界归入「昨天运行日」，凌晨 parse 应认
+        with self._patch_now(self._dt(2026, 8, 24, 2)):
+            log = self._make_log(self._dt(2026, 8, 24, 0, 5).timestamp())
+            self.assertTrue(ZZZLogParser()._is_valid_log(log))
+
+    def test_hour_lt_4_day_before_yesterday_invalid(self):
+        with self._patch_now(self._dt(2026, 8, 24, 2)):
+            log = self._make_log(self._dt(2026, 8, 22, 13, 12).timestamp())
+            self.assertFalse(ZZZLogParser()._is_valid_log(log))
+
+    def test_applies_to_all_parsers(self):
+        # 同一个日期闸门对所有脚本类型一致生效
+        with self._patch_now(self._dt(2026, 8, 24, 9)):
+            log = self._make_log(self._dt(2026, 8, 23, 13, 12).timestamp())
+            for parser in (OkEfLogParser(), M7ALogParser(), OkWwLogParser(), BGILogParser(), ZZZLogParser()):
+                self.assertFalse(parser._is_valid_log(log), parser.__class__.__name__)
 
 
 if __name__ == "__main__":
