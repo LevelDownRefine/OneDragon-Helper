@@ -675,6 +675,96 @@ class TestStarRailConfig(unittest.TestCase):
             self.assertEqual(config["instance_names"]["历战余响"], "铁骸的锈冢")
 
 
+class TestStarRailGetDungeonLists(unittest.TestCase):
+    """崩铁 get_dungeon_lists：从 instance_names.json 读副本清单（类方法，不实例化）。"""
+
+    _DATA = {
+        "历战余响": {"无": "跳过", "铁骸的锈冢": "描述1", "晨昏的回眸": "描述2"},
+        "其他周常": {"甲": "x"},
+    }
+
+    def test_reads_keys_of_weekly_entry(self):
+        """正常读取：返回该任务条目的键列表（即副本名，含「无」占位）。"""
+        with patch(
+            "src.config.set_config.load_game_config", return_value=self._DATA
+        ) as mock_load:
+            names = StarRailConfig.get_dungeon_lists(
+                "历战余响", "assets/config/instance_names.json"
+            )
+        self.assertEqual(names, ["无", "铁骸的锈冢", "晨昏的回眸"])
+        mock_load.assert_called_once_with(
+            "March7th-Assistant", "assets/config/instance_names.json"
+        )
+
+    def test_does_not_instantiate_or_init_config(self):
+        """类方法调用不触发 _init_config（否则纯读会写盘/弹确认框）。"""
+        with (
+            patch.object(StarRailConfig, "_init_config") as mock_init,
+            patch("src.config.set_config.load_game_config", return_value=self._DATA),
+        ):
+            StarRailConfig.get_dungeon_lists(
+                "历战余响", "assets/config/instance_names.json"
+            )
+        mock_init.assert_not_called()
+
+    def test_source_is_used_as_rel_path(self):
+        """source 即相对脚本根目录的路径，直接透传给 load_game_config（无额外白名单）。"""
+        with patch(
+            "src.config.set_config.load_game_config", return_value=None
+        ) as mock_load:
+            self.assertEqual(
+                StarRailConfig.get_dungeon_lists("历战余响", "some/other/path.json"),
+                [],
+            )
+        mock_load.assert_called_once_with("March7th-Assistant", "some/other/path.json")
+
+    def test_script_not_installed_returns_empty(self):
+        """M7A 未安装（load_game_config 软降级为 None）→ data 为空 → 返回 []。"""
+        with patch("src.config.set_config.load_game_config", return_value=None):
+            self.assertEqual(
+                StarRailConfig.get_dungeon_lists(
+                    "历战余响", "assets/config/instance_names.json"
+                ),
+                [],
+            )
+
+    def test_missing_task_key_asserts(self):
+        """data 不含该任务键 → assert 触发（不静默兜底）。"""
+        with (
+            patch("src.config.set_config.load_game_config", return_value=self._DATA),
+            self.assertRaises(AssertionError),
+        ):
+            StarRailConfig.get_dungeon_lists(
+                "不存在的周常", "assets/config/instance_names.json"
+            )
+
+    def test_malformed_entry_asserts(self):
+        """该任务条目不是 dict（格式异常）→ assert 触发（不静默兜底）。"""
+        with (
+            patch(
+                "src.config.set_config.load_game_config",
+                return_value={"历战余响": ["铁骸的锈冢"]},
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            StarRailConfig.get_dungeon_lists(
+                "历战余响", "assets/config/instance_names.json"
+            )
+
+
+class TestBaseGetDungeonLists(unittest.TestCase):
+    """基类默认未适配副本清单读取 → None（调用方降级为无可选副本）。"""
+
+    def test_base_default_returns_none(self):
+        self.assertIsNone(
+            ScriptConfig.get_dungeon_lists("历战余响", "instance_names.json")
+        )
+
+    def test_unadapted_subclass_returns_none(self):
+        """未覆写的子类（如异环）走基类默认实现。"""
+        self.assertIsNone(NTEConfig.get_dungeon_lists("任意周常", "any.json"))
+
+
 # ============================================================
 # 异环 NTEConfig
 # ============================================================

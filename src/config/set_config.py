@@ -482,6 +482,23 @@ class ScriptConfig:
             return None
         return node
 
+    @classmethod
+    def get_dungeon_lists(cls, task_name: str, source: str) -> list[str] | None:
+        """读取某任务（周常/日常）的可选副本名清单（类方法，无需实例化）。
+
+        Args:
+            task_name: 任务名（周常/日常均可，如「历战余响」）。
+            source: 来源标记，即 weekly_list.yml 的 ``dungeons_source``。
+
+        Returns:
+            副本名列表（含「无」等占位）；未适配或源不可达时返回 None。
+        """
+        logger.warning(
+            f"[set_config][{cls.display_name}] 未适配副本清单读取: source={source!r}"
+        )
+        # 基类默认未适配副本清单读取，返回 None 由调用方降级为「该任务无可选副本」。
+        return None
+
 
 # ============================================================
 # 注册表
@@ -747,6 +764,32 @@ class StarRailConfig(ScriptConfig):
 
     def __init__(self):
         self._init_config()
+
+    @classmethod
+    def get_dungeon_lists(cls, task_name: str, source: str) -> list[str]:
+        """读取某任务（周常/日常）的可选副本名清单。
+
+        Args:
+            task_name: 任务名（即文件中的键，如「历战余响」）。
+            source: 副本清单文件相对脚本根目录的路径。
+
+        Returns:
+            副本名列表（含「无」等占位）；data 为空（未安装/缺失/空文件）时返回空列表。
+        """
+        data = load_game_config(cls._script_name, source)
+        if not data:
+            return []
+        assert isinstance(data, dict), (
+            f"[set_config][{cls.display_name}] 副本清单 {source} 非 dict: {type(data)}"
+        )
+        assert task_name in data, (
+            f"[set_config][{cls.display_name}] 副本清单 {source} 缺任务 {task_name!r}"
+        )
+        entry = data[task_name]
+        assert isinstance(entry, dict), (
+            f"[set_config][{cls.display_name}] 任务 {task_name!r} 条目非 dict: {type(entry)}"
+        )
+        return list(entry.keys())
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         logger.info(f"[set_config][{self.display_name}] M7A无需适配")
@@ -1093,6 +1136,26 @@ def set_config(
         cfg.set_dungeon(dungeon_name, sequence)
     if weekly_start is not None:
         cfg.set_weekly(weekly_start)
+
+
+def get_dungeon_lists(
+    script_name: str, task_name: str, source: str
+) -> list[str] | None:
+    """适配器接口：副本清单源在游戏脚本自身配置里，从中读某任务的可选副本名清单，委托给对应脚本的 config 类。
+
+    「从哪读、怎么解析」的知识归各 ``ScriptConfig`` 子类，本函数只做分发。
+
+    Args:
+        script_name: 脚本唯一标识（如 ``March7th-Assistant``）。
+        task_name: 任务名（周常/日常均可，如「历战余响」）。
+        source: 来源标记，即 weekly_list.yml 的 ``dungeons_source``。
+
+    Returns:
+        副本名列表（含「无」等占位）；不可用时返回 None。
+    """
+    if script_name not in _CONFIGS:
+        return None
+    return _CONFIGS[script_name].get_dungeon_lists(task_name, source)
 
 
 def get_config_path(script_name: str) -> str:

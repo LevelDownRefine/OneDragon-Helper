@@ -14,7 +14,7 @@ ScriptItem 卡片与配置弹窗（SingleScriptConfigDialog）。
 import logging
 import os
 
-from src.config.set_config import get_config_path
+from src.config.set_config import get_config_path, get_dungeon_lists
 from src.config.subscript import (
     DEFAULT_RUN_TIMEOUT,
     _is_exe_script,
@@ -136,8 +136,12 @@ class ScriptService:
     def get_weekly_defs(self, script_name: str) -> list:
         """返回某脚本支持的周常声明清单（weekly_list.yml）。
 
-        每项：{"name", "dungeons"?}。dungeons 存在即有可选副本。文件缺失或该脚本
-        无声明时返回空列表。
+        每项：{"name", "dungeons"?}。dungeons 存在且有内容即有可选副本。文件缺失或该
+        脚本无声明时返回空列表。
+
+        声明项若带 ``dungeons_source`` 标记，则副本清单取自游戏脚本自身配置（运行期
+        读取，见 ``set_config.get_dungeon_lists``），不再手写维护；读不到时降级
+        为 ``dungeons: []``（该周常无需/无法选副本）。
 
         Args:
             script_name: 脚本唯一标识。
@@ -146,7 +150,17 @@ class ScriptService:
             周常声明列表；无声明时为空列表。
         """
         defs_map = _load_weekly_defs()
-        return list(defs_map[script_name]) if script_name in defs_map else []
+        if script_name not in defs_map:
+            return []
+        defs = list(defs_map[script_name])
+        for d in defs:
+            source = d.get("dungeons_source")
+            if source:
+                # 副本清单来自外部（如 M7A 的 instance_names.json），运行时读取，
+                # 不再手动维护；读不到则降级为无可选副本（has_dungeon=False）。
+                names = get_dungeon_lists(script_name, d["name"], source)
+                d["dungeons"] = names if names is not None else []
+        return defs
 
     def get_weekly_start(self, script_name: str) -> int | None:
         """返回某脚本的周常起始日（1~7），未设置返回 None。

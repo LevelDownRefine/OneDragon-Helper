@@ -598,7 +598,10 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
 
             app = QApplication([])
             # 崩铁 March7th-Assistant：weekly_list.yml 声明 2 种周常
-            # （货币战争 / 历战余响），历战余响需选副本
+            # （货币战争 / 历战余响），历战余响 dungeons_source=assets/config/instance_names.json
+            # 运行期从 M7A 的 instance_names.json 读取。CI 无 M7A，此处 patch 模拟已装，
+            # 返回历战余响的 9 个副本键（与真实 instance_names.json 一致），验证副本下拉
+            # 几何（>3 个需 placePopup 上翻封顶）。
             scripts = [{
                 "display_name": "崩坏：星穹铁道",
                 "script_path": "scripts/March7th-Assistant/March7th-Assistant.exe",
@@ -610,6 +613,10 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
+                patch("src.service.script_service.get_dungeon_lists",
+                             return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
+                                           "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
+                                           "不死的神实", "寒潮的落幕", "毁灭的开端"]),
             ):
                 bridge = QmlBridge()
             qmlRegisterSingletonInstance(

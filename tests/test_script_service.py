@@ -357,5 +357,80 @@ class TestSetWeeklyStart(unittest.TestCase):
                 ScriptService().set_weekly_start("a", bad)
 
 
+class TestGetWeeklyDefs(unittest.TestCase):
+    """get_weekly_defs：静态 dungeons 保持，dungeons_source 运行期从外部读取/降级。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.weekly_list_path = os.path.join(self.tmp.name, "weekly_list.yml")
+        patcher = patch(
+            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            return_value=self.weekly_list_path,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _write(self, data):
+        dump_yaml_file(self.weekly_list_path, data)
+
+    def test_static_dungeons_untouched(self):
+        """带 dungeons（无 dungeons_source）的项保持原样，不触发外部读取。"""
+        self._write(
+            {
+                "March7th-Assistant": [
+                    {"name": "历战余响", "dungeons": ["无", "铁骸的锈冢"]}
+                ]
+            }
+        )
+        with patch("src.service.script_service.get_dungeon_lists") as mock_ext:
+            defs = ScriptService().get_weekly_defs("March7th-Assistant")
+        self.assertEqual(defs[0]["dungeons"], ["无", "铁骸的锈冢"])
+        mock_ext.assert_not_called()  # 无 dungeons_source 不读外部
+
+    def test_external_source_filled_when_reachable(self):
+        """dungeons_source=assets/config/instance_names.json 且外部可读 → 用外部副本清单填充。"""
+        self._write(
+            {
+                "March7th-Assistant": [
+                    {
+                        "name": "历战余响",
+                        "dungeons_source": "assets/config/instance_names.json",
+                    }
+                ]
+            }
+        )
+        names = ["无", "铁骸的锈冢", "晨昏的回眸"]
+        with patch(
+            "src.service.script_service.get_dungeon_lists", return_value=names
+        ) as mock_ext:
+            defs = ScriptService().get_weekly_defs("March7th-Assistant")
+        mock_ext.assert_called_once_with(
+            "March7th-Assistant", "历战余响", "assets/config/instance_names.json"
+        )
+        self.assertEqual(defs[0]["dungeons"], names)
+        self.assertTrue(defs[0]["dungeons"])  # 供 GUI 推导 has_dungeon
+
+    def test_external_source_empty_when_unreachable(self):
+        """外部读不到（返回 None）→ 降级 dungeons=[]，该周常无需选副本。"""
+        self._write(
+            {
+                "March7th-Assistant": [
+                    {
+                        "name": "历战余响",
+                        "dungeons_source": "assets/config/instance_names.json",
+                    }
+                ]
+            }
+        )
+        with patch("src.service.script_service.get_dungeon_lists", return_value=None):
+            defs = ScriptService().get_weekly_defs("March7th-Assistant")
+        self.assertEqual(defs[0]["dungeons"], [])
+
+    def test_unknown_script_returns_empty(self):
+        self._write({"March7th-Assistant": [{"name": "货币战争"}]})
+        self.assertEqual(ScriptService().get_weekly_defs("不存在"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
