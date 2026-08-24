@@ -188,46 +188,66 @@ class TestRunChainOnce(unittest.TestCase):
         svc = ChainService()
         svc.load_config = MagicMock(return_value={"script_list": script_list})
         svc.load_ui_state = MagicMock(return_value={})
-        svc.generate_chain = MagicMock(return_value="out.yml")
         return svc
 
-    def test_defaults_all_scripts_and_popens(self):
-        svc = self._make_service([{"display_name": "A"}])
+    def test_defaults_all_scripts_and_runs(self):
+        svc = self._make_service([{"display_name": "A", "script_path": "A.exe"}])
         with (
+            patch(
+                "src.service.chain_service._generate_chain_config",
+                return_value="out.yml",
+            ) as gen,
             patch(
                 "src.service.chain_service._build_run_chain_command",
                 return_value=(["cmd"], "cwd", None),
             ) as build,
-            patch("src.service.chain_service.subprocess.Popen") as popen,
+            patch("src.service.chain_service.subprocess.run") as run,
         ):
             svc.run_chain_once()
         # 默认启用全部脚本、chain_name=today、不关机不静音
-        svc.generate_chain.assert_called_once_with(
-            {"script_list": [{"display_name": "A"}]}, {"A"}, "today", {}
+        gen.assert_called_once_with(
+            {"script_list": [{"display_name": "A", "script_path": "A.exe"}]},
+            {"A"},
+            "today",
+            {},
         )
         build.assert_called_once_with("out.yml", mute=False)
-        popen.assert_called_once()
+        run.assert_called_once()
 
     def test_subset_with_mute_launches_blocking(self):
         """阻塞启动：按子集生成+运行，mute 透传，返回 None。"""
-        svc = self._make_service([{"display_name": "A"}, {"display_name": "B"}])
+        svc = self._make_service(
+            [
+                {"display_name": "A", "script_path": "A.exe"},
+                {"display_name": "B", "script_path": "B.exe"},
+            ]
+        )
         with (
+            patch(
+                "src.service.chain_service._generate_chain_config",
+                return_value="out.yml",
+            ) as gen,
             patch(
                 "src.service.chain_service._build_run_chain_command",
                 return_value=(["cmd"], "cwd", None),
             ) as build,
-            patch("src.service.chain_service.subprocess.Popen") as popen,
+            patch("src.service.chain_service.subprocess.run") as run,
         ):
             result = svc.run_chain_once({"A"}, mute=True)
         self.assertIsNone(result)
-        svc.generate_chain.assert_called_once_with(
-            {"script_list": [{"display_name": "A"}, {"display_name": "B"}]},
+        gen.assert_called_once_with(
+            {
+                "script_list": [
+                    {"display_name": "A", "script_path": "A.exe"},
+                    {"display_name": "B", "script_path": "B.exe"},
+                ]
+            },
             {"A"},
             "today",
             {},
         )
         build.assert_called_once_with("out.yml", mute=True)
-        popen.assert_called_once()
+        run.assert_called_once()
 
     def test_empty_script_list_asserts(self):
         svc = self._make_service([])
@@ -273,7 +293,7 @@ class TestScheduleRun(unittest.TestCase):
                 "src.service.chain_service.parse_logs",
                 return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
-            patch("src.service.chain_service.rerun_failed"),
+            patch("src.service.chain_service._run_chain_once_impl"),
             patch("src.service.chain_service.shutdown_sys") as mock_shutdown,
         ):
             svc.schedule_run({"demo"}, target_time, **kwargs)
@@ -314,7 +334,7 @@ class TestScheduleRun(unittest.TestCase):
                 "src.service.chain_service.parse_logs",
                 return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
-            patch("src.service.chain_service.rerun_failed"),
+            patch("src.service.chain_service._run_chain_once_impl"),
             patch("src.service.chain_service.shutdown_sys"),
         ):
             svc.schedule_run({"demo"}, "now")
@@ -346,7 +366,7 @@ class TestScheduleRun(unittest.TestCase):
                 },
             ),
             patch(
-                "src.service.chain_service.rerun_failed",
+                "src.service.chain_service._run_chain_once_impl",
                 side_effect=lambda *a, **k: order.append("rerun"),
             ),
             patch(
@@ -372,7 +392,7 @@ class TestScheduleRun(unittest.TestCase):
                 "src.service.chain_service.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
-            patch("src.service.chain_service.rerun_failed") as rerun,
+            patch("src.service.chain_service._run_chain_once_impl") as rerun,
             patch("src.service.chain_service.build_post_run_pipeline", return_value=[]),
         ):
             svc.schedule_run({"demo"}, "08:00")
@@ -476,11 +496,19 @@ class TestBuildPostRunPipeline(unittest.TestCase):
 
 
 class TestRerunRound(unittest.TestCase):
-    """ChainService._rerun_round：链结束后解析日志，对失败脚本二次运行（主流程）。"""
+    """ChainService._rerun_round：链结束后解析日志，对失败脚本二次运行（主流程）。
+
+    逻辑已内联（不再经 src.log.rerun），此处直接验证其与 _run_chain_once_impl 的交互。
+    """
+
+    def _svc_with_config(self, script_list):
+        svc = ChainService()
+        svc.load_config = MagicMock(return_value={"script_list": script_list})
+        return svc
 
     def test_reruns_when_rerun_list_nonempty(self):
-        """parse_logs 产出 rerun 非空 → rerun_failed 以 self 为 service 调一次。"""
-        svc = ChainService()
+        """parse_logs 产出 rerun 非空 → 以 chain_name='rerun' 阻塞重跑失败子集。"""
+        svc = self._svc_with_config([{"display_name": "demo", "script_path": "demo"}])
         with (
             patch(
                 "src.service.chain_service.parse_logs",
@@ -491,23 +519,47 @@ class TestRerunRound(unittest.TestCase):
                     "entries": [],
                 },
             ),
-            patch("src.service.chain_service.rerun_failed") as rerun,
+            patch("src.service.chain_service._run_chain_once_impl") as run_impl,
         ):
-            svc._rerun_round(mute=True)
-        rerun.assert_called_once_with(["demo"], service=svc, mute=True)
+            svc._rerun_round(mute=True, all_config=svc.load_config())
+        run_impl.assert_called_once()
+        args, kwargs = run_impl.call_args
+        self.assertEqual(args[1], {"demo"})  # 启用脚本集合
+        self.assertEqual(kwargs["chain_name"], "rerun")
+        self.assertTrue(kwargs["mute"])
 
     def test_no_rerun_when_list_empty(self):
-        """rerun 为空列表 → rerun_failed 不调用。"""
-        svc = ChainService()
+        """rerun 为空列表 → _run_chain_once_impl 不调用。"""
+        svc = self._svc_with_config([{"display_name": "demo", "script_path": "demo"}])
         with (
             patch(
                 "src.service.chain_service.parse_logs",
                 return_value={"rerun": [], "notify": [], "report": "", "entries": []},
             ),
-            patch("src.service.chain_service.rerun_failed") as rerun,
+            patch("src.service.chain_service._run_chain_once_impl") as run_impl,
         ):
-            svc._rerun_round()
-        rerun.assert_not_called()
+            svc._rerun_round(all_config=svc.load_config())
+        run_impl.assert_not_called()
+
+    def test_filters_unknown_script_names(self):
+        """rerun_list 含不在 config 的脚本名时，仅对已知脚本重跑。"""
+        svc = self._svc_with_config([{"display_name": "demo", "script_path": "demo"}])
+        with (
+            patch(
+                "src.service.chain_service.parse_logs",
+                return_value={
+                    "rerun": ["demo", "ghost"],
+                    "notify": [],
+                    "report": "",
+                    "entries": [],
+                },
+            ),
+            patch("src.service.chain_service._run_chain_once_impl") as run_impl,
+        ):
+            svc._rerun_round(all_config=svc.load_config())
+        run_impl.assert_called_once()
+        args, _ = run_impl.call_args
+        self.assertEqual(args[1], {"demo"})  # 过滤掉的 ghost 不在 config
 
 
 class TestAddRemoveScript(unittest.TestCase):
