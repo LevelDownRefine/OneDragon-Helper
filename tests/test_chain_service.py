@@ -243,7 +243,9 @@ class TestRunChainOnce(unittest.TestCase):
             raise RuntimeError("step failed")
 
         with patch("src.service.chain_service.logger") as mock_logger:
-            svc._run_post_run([lambda: order.append("a"), boom, lambda: order.append("b")])
+            svc._run_post_run(
+                [lambda: order.append("a"), boom, lambda: order.append("b")]
+            )
         self.assertEqual(order, ["a", "b"])
         mock_logger.exception.assert_called_once()
 
@@ -253,7 +255,9 @@ class TestScheduleRun(unittest.TestCase):
 
     def _make_service(self, script_list):
         svc = ChainService()
-        svc.load_config = MagicMock(return_value={"script_list": script_list})
+        svc.load_config = MagicMock(
+            return_value={"script_list": script_list, "rerun": {"enabled": True}}
+        )
         svc.load_ui_state = MagicMock(return_value={})
         svc.run_chain_once = MagicMock(return_value=None)
         return svc
@@ -380,6 +384,7 @@ class TestScheduleRun(unittest.TestCase):
         svc.load_config = MagicMock(
             return_value={
                 "script_list": [{"display_name": "demo"}],
+                "rerun": {"enabled": True},
                 "notify": {"enabled": False, "email": "a@qq.com", "password": "pw"},
             }
         )

@@ -411,7 +411,8 @@ class ChainService:
         post_run 之前；后续邮件/关机在重跑结束后才触发。
         """
         result = parse_logs(do_log=False)
-        rerun_list = result.get("rerun") or []
+        assert "rerun" in result, "[chain] parse_logs 返回缺 rerun 键"
+        rerun_list = result["rerun"]
         if not rerun_list:
             return
         rerun_failed(rerun_list, service=self, mute=mute)
@@ -471,9 +472,11 @@ class ChainService:
         # 重跑路径完全一致（均阻塞），仅脚本集合（全部启用 vs 失败子集）与链名不同。
         self.run_chain_once(keys, chain_name=chain_name, mute=mute)
         # 主流程重跑轮：链跑完后解析日志、对失败脚本二次运行（先于 post_run）。
-        # 受 config.rerun.enabled 控制；键缺失视为开启（保持既有默认行为）。
-        rerun_cfg = all_config.get("rerun") or {}
-        if rerun_cfg.get("enabled", True):
+        # 受 config.rerun.enabled 控制（契约键，缺失即 assert 崩，不降级）。
+        assert "rerun" in all_config, "[chain] config 缺 rerun 块"
+        rerun_cfg = all_config["rerun"]
+        assert "enabled" in rerun_cfg, "[chain] config.rerun 缺 enabled 键"
+        if rerun_cfg["enabled"]:
             self._rerun_round(mute=mute)
         # post_run 编排（日志分析最终态 → 邮件 → 关机末位）：
         # 在链与重跑均结束后触发，关机不会抢在链/重跑之前。
