@@ -319,14 +319,17 @@ def apply_shutdown_config(
 ) -> None:
     """把自动关机配置写回 config（原地修改顶层 shutdown 映射）。
 
+    启用或关闭都直接落盘完整块：开关与延迟数值一并写入，不回读旧值、不区分分支。
+    延迟数值以弹窗给定值为准（关闭时同样是用户最后一次设定的值），行为单一稳定。
+
     Args:
         config_data: 完整配置字典（load_config 结果），原地修改。
         enabled: 是否运行后关机。
-        delay_seconds: 关机延迟秒数；enabled 为 True 时须为正整型，否则视为不启用。
+        delay_seconds: 关机延迟秒数（原样写入）。
     """
     config_data["shutdown"] = {
         "after_run": bool(enabled),
-        "delay_seconds": int(delay_seconds) if enabled else 0,
+        "delay_seconds": int(delay_seconds),
     }
 
 

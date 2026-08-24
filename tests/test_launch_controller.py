@@ -165,8 +165,8 @@ class TestConfirmRunDialog(unittest.TestCase):
         # 邮件通知：仅更新 enabled 开关，保留既有 email/password 凭据。
         self.assertEqual(saved["notify"], {"enabled": True})
 
-    def test_accept_disabled_drops_delay_and_target(self):
-        """关闭自动关机/定时：delay 归 0、target 置空，不残留旧值。"""
+    def test_accept_disabled_keeps_delay_value(self):
+        """关闭自动关机：delay_seconds 保留原值（不强制归 0），仅 after_run 置 False。"""
         base = {
             "script_list": [],
             "shutdown": {"after_run": True, "delay_seconds": 45},
@@ -178,9 +178,9 @@ class TestConfirmRunDialog(unittest.TestCase):
             dlg.exec.return_value = QDialog.Accepted
             dlg.result = {
                 "shutdown_enabled": False,
-                "shutdown_delay": 45,  # 关闭后不应写回
+                "shutdown_delay": 45,  # 关闭后不写回，但保留 config 原有值
                 "timed_enabled": False,
-                "timed_target": "08:00",  # 关闭后不应写回
+                "timed_target": "08:00",
                 "mute_enabled": False,
                 "rerun_enabled": False,
                 "notify_enabled": False,
@@ -188,7 +188,10 @@ class TestConfirmRunDialog(unittest.TestCase):
             ctrl._confirm_run({"demo"})
 
         saved = service.save_config.call_args[0][0]
-        self.assertEqual(saved["shutdown"], {"after_run": False, "delay_seconds": 0})
+        # 是否关机只看 after_run；delay_seconds 保留原值 45，不归零。
+        self.assertEqual(
+            saved["shutdown"], {"after_run": False, "delay_seconds": 45}
+        )
         self.assertEqual(saved["timed_run"], {"enabled": False, "target_time": ""})
         self.assertEqual(saved["mute"], {"enabled": False})
         self.assertEqual(saved["rerun"], {"enabled": False})

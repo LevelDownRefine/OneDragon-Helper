@@ -164,6 +164,7 @@ class LaunchController(QObject):
         # 把弹窗勾选项写回 config.yml（与现有 service 写盘路径一致）。
         res = dialog.result
         assert res is not None, "[launch] 弹窗 accept 但 result 为 None"
+        # 关机：启用/关闭都直接落盘（含延迟数值），行为单一稳定。
         apply_shutdown_config(
             config_data,
             enabled=res["shutdown_enabled"],

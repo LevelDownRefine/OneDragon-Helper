@@ -433,17 +433,18 @@ if __name__ == "__main__":
 
 
 class TestApplyShutdownConfig(unittest.TestCase):
-    """apply_shutdown_config：原地写回顶层 shutdown 映射。"""
+    """apply_shutdown_config：启用/关闭都直接落盘完整块。"""
 
     def test_enabled_writes_after_run_and_delay(self):
         data: dict = {}
         apply_shutdown_config(data, enabled=True, delay_seconds=120)
         self.assertEqual(data["shutdown"], {"after_run": True, "delay_seconds": 120})
 
-    def test_disabled_drops_delay_to_zero(self):
-        data = {"shutdown": {"after_run": True, "delay_seconds": 45}}
+    def test_disabled_writes_after_run_and_delay(self):
+        # 关闭也落盘：delay_seconds 以弹窗给定值原样写入，行为单一稳定。
+        data: dict = {}
         apply_shutdown_config(data, enabled=False, delay_seconds=45)
-        self.assertEqual(data["shutdown"], {"after_run": False, "delay_seconds": 0})
+        self.assertEqual(data["shutdown"], {"after_run": False, "delay_seconds": 45})
 
 
 class TestApplyTimedRunConfig(unittest.TestCase):
