@@ -426,20 +426,27 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             from src.gui import main_window
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
+            import src.service.script_service as script_service
 
             app = QApplication([])
-            # 崩铁：真实 config/weekly_list.yml 里历战余响声明了 9 个副本
+            # 崩铁：真实 config/weekly_list.yml 里历战余响声明了 9 个副本。
+            # 但副本清单现由游戏脚本外部文件（instance_names.json）运行期读取，
+            # CI 未安装游戏故读不到；此处直接桩掉派发器，提供确定性的 9 个副本，
+            # 仅用于验证弹窗几何（与真实清单内容无关）。
             scripts = [{
                 "display_name": "崩坏：星穹铁道",
                 "script_path": "scripts/March7th-Assistant/March7th-Assistant.exe",
                 "script_type": "external",
             }]
+            fake_dungeons = [f"副本{i}" for i in range(1, 10)]
             with (
                 patch.object(main_window.ChainService, "load_config",
                              return_value={"script_list": scripts}),
                 patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
+                patch.object(script_service, "get_dungeon_lists",
+                             return_value=fake_dungeons),
             ):
                 bridge = QmlBridge()
             qmlRegisterSingletonInstance(
