@@ -65,32 +65,18 @@ class LaunchController(QObject):
         shutdown_delay = parse_shutdown(config_data)
         mute = parse_mute_run(config_data)
         timed_enabled, timed_target = parse_timed_run(config_data)
+        run_target = timed_target if timed_enabled else "now"
         if timed_enabled:
-            # parse_timed_run 保证 timed_enabled=True 时 timed_target 必为合法 HH:MM。
-            assert timed_target is not None, "timed_enabled=True 但 timed_target 缺失"
-            # 定时运行：等待到点后运行（关闭控制台即取消，关程序不影响）。
-            spawn_schedule_run(
-                enabled_script_names,
-                timed_target,
-                mute=mute,
-                shutdown_delay=shutdown_delay,
-            )
-            target_dt = next_target_datetime(timed_target)
-            self._toast(
-                f"已设置定时运行：将于 {target_dt:%Y-%m-%d %H:%M} 重新生成脚本链并运行"
-                f"（关闭控制台即取消）"
-            )
-            return
-        # 即时运行：同样经 spawn_schedule_run → schedule_run，仅不等待（target=now）。
+            target_dt = next_target_datetime(run_target)
+            msg = f"定时运行：将于 {target_dt:%Y-%m-%d %H:%M} 重新生成脚本链并运行"
+        else:
+            msg = f"启动全部：已在新控制台窗口生成并运行链 ({len(enabled_script_names)} 个脚本)"
+        self._toast(f"{msg}（关闭控制台即取消）")
         spawn_schedule_run(
             enabled_script_names,
-            "now",
+            run_target,
             mute=mute,
             shutdown_delay=shutdown_delay,
-        )
-        self._toast(
-            f"启动全部：已在新控制台窗口生成并运行链 ({len(enabled_script_names)} 个脚本)"
-            f"（关闭控制台即取消）"
         )
 
     @Slot()

@@ -42,7 +42,13 @@ def build_pre_run_pipeline(
         target_dt = next_target_datetime(target_time)
         wait_seconds = (target_dt - datetime.now()).total_seconds()
         if wait_seconds > 0:
+            logger.info(
+                "[chain] 定时运行已设置，将等待至 %s 再运行（剩余约 %.0f 秒）",
+                target_dt.strftime("%Y-%m-%d %H:%M"),
+                wait_seconds,
+            )
             time.sleep(wait_seconds)
+        logger.info("[chain] 已到达目标时刻 %s，开始运行", target_time)
 
     steps.append(_wait)
     return steps

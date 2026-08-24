@@ -189,9 +189,7 @@ class TestConfirmRunDialog(unittest.TestCase):
 
         saved = service.save_config.call_args[0][0]
         # 是否关机只看 after_run；delay_seconds 保留原值 45，不归零。
-        self.assertEqual(
-            saved["shutdown"], {"after_run": False, "delay_seconds": 45}
-        )
+        self.assertEqual(saved["shutdown"], {"after_run": False, "delay_seconds": 45})
         self.assertEqual(saved["timed_run"], {"enabled": False, "target_time": ""})
         self.assertEqual(saved["mute"], {"enabled": False})
         self.assertEqual(saved["rerun"], {"enabled": False})
