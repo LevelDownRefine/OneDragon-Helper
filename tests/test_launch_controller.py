@@ -30,13 +30,13 @@ def _make_controller(enabled: bool, target_time: str | None):
     task_card = mock.MagicMock()
     task_card.ui_state = {}
     service = mock.MagicMock()
-    service.load_config.return_value = {
-        "script_list": [],
+    service.load_config.return_value = {"script_list": []}
+    service.load_schedule.return_value = {
         "timed_run": (
             {"enabled": enabled, "target_time": target_time}
             if target_time is not None
             else {"enabled": enabled}
-        ),
+        )
     }
     toast = mock.MagicMock()
     ctrl = LaunchController(game_list, task_card, service, toast)
@@ -106,14 +106,25 @@ class TestConfirmRunDialog(unittest.TestCase):
     """_confirm_run：保留不合法脚本告警，新增自动关机/定时计划回显与写回。"""
 
     def _make_ctrl(self, config_data):
-        """构造 controller，注入 mock 依赖并给定 load_config 返回值。"""
+        """构造 controller，注入 mock 依赖。
+
+        调度参数（shutdown/timed_run/mute/rerun/notify）已迁入 schedule.yml，
+        经 ``load_schedule`` 读取；脚本链声明（script_list）仍经 ``load_config`` 读取。
+        """
         game_list = mock.MagicMock()
         game_list.games = [{"script_name": "demo"}]
         game_list.enabled = [True]
         task_card = mock.MagicMock()
         task_card.ui_state = {}
         service = mock.MagicMock()
-        service.load_config.return_value = config_data
+        # script_list 留在 config；其余调度块归 schedule。
+        schedule_keys = {"shutdown", "timed_run", "mute", "rerun", "notify"}
+        service.load_config.return_value = {
+            "script_list": config_data.get("script_list", [])
+        }
+        service.load_schedule.return_value = {
+            k: v for k, v in config_data.items() if k in schedule_keys
+        }
         # 避免 collect_invalid_scripts 默认返回 truthy 的 MagicMock，误触发真实
         # QMessageBox.warning（offscreen 下会阻塞/崩溃）。
         service.collect_invalid_scripts.return_value = []
@@ -132,10 +143,10 @@ class TestConfirmRunDialog(unittest.TestCase):
             dlg.exec.return_value = QDialog.Rejected
             out = ctrl._confirm_run({"demo"})
         self.assertFalse(out)
-        service.save_config.assert_not_called()
+        service.save_schedule.assert_not_called()
 
     def test_accept_writes_shutdown_and_timed_config(self):
-        """确认运行：把弹窗勾选项写回 config.yml（经 service.save_config）。"""
+        """确认运行：把弹窗勾选项写回 schedule.yml（经 service.save_schedule）。"""
         base = {
             "script_list": [],
             "shutdown": {"after_run": False, "delay_seconds": 0},
@@ -157,7 +168,7 @@ class TestConfirmRunDialog(unittest.TestCase):
             out = ctrl._confirm_run({"demo"})
 
         self.assertTrue(out)
-        saved = service.save_config.call_args[0][0]
+        saved = service.save_schedule.call_args[0][0]
         self.assertEqual(saved["shutdown"], {"after_run": True, "delay_seconds": 120})
         self.assertEqual(saved["timed_run"], {"enabled": True, "target_time": "04:10"})
         self.assertEqual(saved["mute"], {"enabled": True})
@@ -187,7 +198,7 @@ class TestConfirmRunDialog(unittest.TestCase):
             }
             ctrl._confirm_run({"demo"})
 
-        saved = service.save_config.call_args[0][0]
+        saved = service.save_schedule.call_args[0][0]
         # 是否关机只看 after_run；delay_seconds 保留原值 45，不归零。
         self.assertEqual(saved["shutdown"], {"after_run": False, "delay_seconds": 45})
         self.assertEqual(saved["timed_run"], {"enabled": False, "target_time": ""})

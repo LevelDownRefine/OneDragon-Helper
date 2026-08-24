@@ -59,6 +59,7 @@ def build_post_run_pipeline(
     shutdown_delay: int | None,
     smtp_config: dict | None = None,
     mute: bool = False,
+    enabled_keys: set[str] | None = None,
 ) -> list[Callable[[], None]]:
     """按序构建运行后动作：日志分析(最终态) → 邮件 → 关机(末位)。
 
@@ -68,6 +69,8 @@ def build_post_run_pipeline(
     Args:
         shutdown_delay: 关机延迟秒数；None/0 表示不关机。
         smtp_config: SMTP 配置；None 表示不发邮件（默认关闭）。
+        enabled_keys: 本次启用的脚本标识集合；传入后日志分析只覆盖启用脚本，
+            使邮件通知仅汇总启用脚本的运行结果（未启用脚本不计入）。
 
     Returns:
         后置步骤列表（可能仅含关机或为空）。各步骤经共享闭包 ``shared`` 传递日志分析结果。
@@ -75,7 +78,7 @@ def build_post_run_pipeline(
     shared: dict = {}
 
     def _analyze() -> None:
-        shared["result"] = parse_logs(do_log=False)
+        shared["result"] = parse_logs(do_log=False, enabled_keys=enabled_keys)
 
     steps: list[Callable[[], None]] = [_analyze]
 
@@ -134,12 +137,14 @@ class ScheduledRun:
         )
 
         # post_run：日志分析最终态 → 邮件 → 恢复声音 → 关机（末位），由 build_post_run_pipeline 产出。
-        all_config = service.load_config()
-        mail_config = _resolve_mail_config(all_config)
+        # 邮件配置来自 schedule.yml 的 notify 块（已从 config.yml 迁出）。
+        schedule = service.load_schedule()
+        mail_config = _resolve_mail_config(schedule)
         self.post_run: list[Callable[[], None]] = build_post_run_pipeline(
             shutdown_delay=shutdown_delay,
             smtp_config=mail_config,
             mute=mute,
+            enabled_keys=self.enabled_keys,
         )
 
     def run(self) -> None:
@@ -158,12 +163,16 @@ class ScheduledRun:
         # 重跑路径完全一致（均阻塞），仅脚本集合（全部启用 vs 失败子集）与链名不同。
         self.service.run_chain_once(keys, chain_name=self.chain_name)
         # 重跑轮：链跑完后解析日志、对失败脚本二次运行（先于 post_run）。
-        # 受 config.rerun.enabled 控制（契约键，缺失即 assert 崩，不降级）。
-        assert "rerun" in all_config, "[chain] config 缺 rerun 块"
-        rerun_cfg = all_config["rerun"]
-        assert "enabled" in rerun_cfg, "[chain] config.rerun 缺 enabled 键"
+        # 受 schedule.yml 的 rerun.enabled 控制（契约键，缺失即 assert 崩，不降级）。
+        schedule = self.service.load_schedule()
+        rerun_cfg = schedule.get("rerun")
+        assert isinstance(rerun_cfg, dict) and "enabled" in rerun_cfg, (
+            "[chain] schedule 缺 rerun.enabled"
+        )
         if rerun_cfg["enabled"]:
-            self.service._rerun_round(all_config=all_config)
+            self.service._rerun_round(
+                all_config=all_config, enabled_keys=self.enabled_keys
+            )
 
     @staticmethod
     def _run_steps(steps: Sequence[Callable[[], None]]) -> None:

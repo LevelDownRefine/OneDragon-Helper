@@ -61,10 +61,10 @@ class LaunchController(QObject):
             return
         if not self._confirm_run(enabled_script_names):
             return
-        config_data = self._service.load_config()
-        shutdown_delay = parse_shutdown(config_data)
-        mute = parse_mute_run(config_data)
-        timed_enabled, timed_target = parse_timed_run(config_data)
+        schedule_data = self._service.load_schedule()
+        shutdown_delay = parse_shutdown(schedule_data)
+        mute = parse_mute_run(schedule_data)
+        timed_enabled, timed_target = parse_timed_run(schedule_data)
         run_target = timed_target if timed_enabled else "now"
         if timed_enabled:
             target_dt = next_target_datetime(run_target)
@@ -119,8 +119,9 @@ class LaunchController(QObject):
             if reply != QMessageBox.Yes:
                 return False
 
-        # 回显 config 当前自动关机 / 定时计划配置到确认弹窗。
-        shutdown_cfg = config_data.get("shutdown")
+        # 回显 schedule 当前自动关机 / 定时计划配置到确认弹窗。
+        schedule_data = self._service.load_schedule()
+        shutdown_cfg = schedule_data.get("shutdown")
         shutdown_enabled = bool(
             isinstance(shutdown_cfg, dict) and shutdown_cfg.get("after_run", False)
         )
@@ -129,10 +130,10 @@ class LaunchController(QObject):
             if isinstance(shutdown_cfg, dict)
             else 0
         )
-        timed_enabled, timed_target = parse_timed_run(config_data)
-        mute_enabled = parse_mute_run(config_data)
-        rerun_enabled = parse_rerun_config(config_data)
-        notify_enabled = parse_notify_enabled(config_data)
+        timed_enabled, timed_target = parse_timed_run(schedule_data)
+        mute_enabled = parse_mute_run(schedule_data)
+        rerun_enabled = parse_rerun_config(schedule_data)
+        notify_enabled = parse_notify_enabled(schedule_data)
 
         dialog = RunConfirmDialog(
             len(enabled_keys),
@@ -147,22 +148,22 @@ class LaunchController(QObject):
         if dialog.exec() != QDialog.Accepted:
             return False
 
-        # 把弹窗勾选项写回 config.yml（与现有 service 写盘路径一致）。
+        # 把弹窗勾选项写回 schedule.yml（调度参数独立存放）。
         res = dialog.result
         assert res is not None, "[launch] 弹窗 accept 但 result 为 None"
         # 关机：启用/关闭都直接落盘（含延迟数值），行为单一稳定。
         apply_shutdown_config(
-            config_data,
+            schedule_data,
             enabled=res["shutdown_enabled"],
             delay_seconds=res["shutdown_delay"],
         )
         apply_timed_run_config(
-            config_data,
+            schedule_data,
             enabled=res["timed_enabled"],
             target_time=res["timed_target"],
         )
-        apply_mute_config(config_data, enabled=res["mute_enabled"])
-        apply_rerun_config(config_data, enabled=res["rerun_enabled"])
-        apply_notify_config(config_data, enabled=res["notify_enabled"])
-        self._service.save_config(config_data)
+        apply_mute_config(schedule_data, enabled=res["mute_enabled"])
+        apply_rerun_config(schedule_data, enabled=res["rerun_enabled"])
+        apply_notify_config(schedule_data, enabled=res["notify_enabled"])
+        self._service.save_schedule(schedule_data)
         return True

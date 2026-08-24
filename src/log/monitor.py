@@ -617,7 +617,9 @@ def _build_summary_report(
     return "\n".join(report_lines)
 
 
-def parse_logs(do_log: bool = True) -> dict[str, list[str] | str]:
+def parse_logs(
+    do_log: bool = True, enabled_keys: set[str] | None = None
+) -> dict[str, list[str] | str]:
     """汇总各脚本当日运行情况：收集解析结果，得到汇总表格并准备需处理脚本列表。
 
     按脚本唯一标识 script_name（exe=进程名 / python=display_name）匹配各 Parser；
@@ -629,6 +631,11 @@ def parse_logs(do_log: bool = True) -> dict[str, list[str] | str]:
     表格状态列：正常完成但含报错显示为 WARN「有报错」，仅呈现层；
     rerun/notify 仍按 exited/errors 判定。
     do_log=False 时不打印报告。
+
+    Args:
+        enabled_keys: 仅纳入「本次启用的脚本」的标识集合；None 表示全部脚本
+            （兼容旧调用方）。调度运行传入实际启用的脚本集合，使重跑与邮件通知
+            只考虑启用的脚本，不被未启用脚本的历史/残留日志干扰。
     """
     setup_logging()
     # Windows 控制台默认 GBK 编码，日志中可能含 emoji 等字符
@@ -649,6 +656,9 @@ def parse_logs(do_log: bool = True) -> dict[str, list[str] | str]:
     for script in script_list:
         script_name = get_script_name(script)
         if not script_name or script_name not in supported:
+            continue
+        # 仅纳入启用的脚本：未启用的脚本不参与本次重跑/邮件汇总。
+        if enabled_keys is not None and script_name not in enabled_keys:
             continue
         entries.append(
             {

@@ -25,6 +25,7 @@ from src.service.script_service import ScriptService
 from src.utils import (
     get_config_yml_path_under_root,
     get_root_dir,
+    get_schedule_yml_path_under_root,
     require_config_yml_path,
     safe_path_join,
 )
@@ -121,6 +122,24 @@ class ChainService:
         )
         config_path = get_config_yml_path_under_root()
         dump_yaml(config_path, data)
+
+    def load_schedule(self) -> dict:
+        """读取 schedule.yml（缺失时从 schedule.example.yml 生成），返回调度运行参数。
+
+        调度参数（shutdown / timed_run / mute / rerun / notify）已从 config.yml 迁出，
+        独立存放于此，避免与脚本链声明（script_list）耦合。
+        """
+        return load_yaml(get_schedule_yml_path_under_root())
+
+    def save_schedule(self, data: dict) -> None:
+        """写回 schedule.yml（生成目标，不要求已存在）。
+
+        Args:
+            data: 完整调度运行参数字典（由 apply_* 原地修改后传入）。
+        """
+        assert isinstance(data, dict), "[service] 待保存的 schedule 非 dict"
+        schedule_path = get_schedule_yml_path_under_root()
+        dump_yaml(schedule_path, data)
 
     def add_script(self, script_data: dict) -> None:
         """向 config.yml 的 script_list 追加一个脚本条目，并自动创建 weekly 默认条目。
@@ -348,14 +367,21 @@ class ChainService:
         )
         return None
 
-    def _rerun_round(self, *, all_config: dict) -> None:
+    def _rerun_round(
+        self, *, all_config: dict, enabled_keys: set[str] | None = None
+    ) -> None:
         """主流程重跑轮：链运行结束后解析日志，对未正常退出的脚本二次运行。
 
         重跑经 ``_run_chain_once_impl`` 阻塞运行失败子集（chain_name="rerun"），属于运行
         主环节而非 post_run，故置于 post_run 之前；后续邮件/关机在重跑结束后才触发。
         config 由调用方传入（避免重复加载）。
+
+        Args:
+            enabled_keys: 本次启用的脚本标识集合；传入后 ``parse_logs`` 只解析
+                启用脚本的日志，使重跑仅针对启用的失败脚本（未启用脚本的历史/
+                残留日志不触发重跑）。None 表示不过滤（兼容旧调用方）。
         """
-        result = parse_logs(do_log=False)
+        result = parse_logs(do_log=False, enabled_keys=enabled_keys)
         assert "rerun" in result, "[chain] parse_logs 返回缺 rerun 键"
         rerun_list = result["rerun"]
         if not rerun_list:

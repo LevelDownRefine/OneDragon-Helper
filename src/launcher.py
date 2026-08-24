@@ -17,10 +17,14 @@ from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 from PySide6.QtWidgets import QApplication
 
 from src.cli import build_parser, run_cli
-from src.config.subscript import generate_config_from_example, resolve_script_path
+from src.config.subscript import (
+    generate_config_from_example,
+    generate_schedule_from_example,
+    resolve_script_path,
+)
 from src.gui.dialogs import inject_config_confirm
 from src.gui.main_window import QmlBridge
-from src.utils import get_config_yml_path_under_root
+from src.utils import get_config_yml_path_under_root, get_schedule_yml_path_under_root
 from src.utils_logger import setup_logging
 
 # 全局默认字体：QML Text 默认字体中文字符 fallback；与旧 GUI 一致
@@ -51,22 +55,20 @@ def _clear_qml_cache():
     shutil.rmtree(cache_dir, ignore_errors=True)
 
 
-def need_config_workflow() -> bool:
-    """判断是否需要先执行 config_workflow（首次运行时 config.yml 不存在）"""
-    return not os.path.exists(get_config_yml_path_under_root())
-
-
 def config_workflow():
-    # 首次运行时从模板生成 config.yml（相对 script_path 解析为绝对路径）
+    # 首次运行时从模板生成 config.yml 与 schedule.yml（相对 script_path 解析为绝对路径）。
+    # 两者缺哪个补哪个，与 generate_*_from_example「缺失才生成」语义一致。
     config_path = get_config_yml_path_under_root()
     if not os.path.exists(config_path):
         generate_config_from_example()
+    schedule_path = get_schedule_yml_path_under_root()
+    if not os.path.exists(schedule_path):
+        generate_schedule_from_example()
 
 
 def main():
     # 首次运行时，拷贝配置模板到用户目录
-    if need_config_workflow():
-        config_workflow()
+    config_workflow()
 
     args = build_parser().parse_args()
     # 提前配置日志：CLI 出口（如 run_chain_command）也依赖 logger，
