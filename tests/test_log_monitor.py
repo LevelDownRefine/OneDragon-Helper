@@ -1063,7 +1063,13 @@ class TestIsValidLog(unittest.TestCase):
         # 同一个日期闸门对所有脚本类型一致生效
         with self._patch_now(self._dt(2026, 8, 24, 9)):
             log = self._make_log(self._dt(2026, 8, 23, 13, 12).timestamp())
-            for parser in (OkEfLogParser(), M7ALogParser(), OkWwLogParser(), BGILogParser(), ZZZLogParser()):
+            for parser in (
+                OkEfLogParser(),
+                M7ALogParser(),
+                OkWwLogParser(),
+                BGILogParser(),
+                ZZZLogParser(),
+            ):
                 self.assertFalse(parser._is_valid_log(log), parser.__class__.__name__)
 
 
