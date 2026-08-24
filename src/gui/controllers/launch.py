@@ -14,10 +14,14 @@ from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
 from src.utils_runner import (
     apply_mute_config,
+    apply_notify_config,
+    apply_rerun_config,
     apply_shutdown_config,
     apply_timed_run_config,
     build_script_command,
     parse_mute_run,
+    parse_notify_enabled,
+    parse_rerun_config,
     parse_shutdown,
     parse_timed_run,
     spawn_schedule_run,
@@ -141,14 +145,18 @@ class LaunchController(QObject):
         )
         timed_enabled, timed_target = parse_timed_run(config_data)
         mute_enabled = parse_mute_run(config_data)
+        rerun_enabled = parse_rerun_config(config_data)
+        notify_enabled = parse_notify_enabled(config_data)
 
         dialog = RunConfirmDialog(
             len(enabled_keys),
             shutdown_enabled=shutdown_enabled,
             shutdown_delay=shutdown_delay,
             timed_enabled=timed_enabled,
-            timed_target=timed_target or "04:10",
+            timed_target=timed_target,
             mute_enabled=mute_enabled,
+            rerun_enabled=rerun_enabled,
+            notify_enabled=notify_enabled,
         )
         if dialog.exec() != QDialog.Accepted:
             return False
@@ -167,5 +175,7 @@ class LaunchController(QObject):
             target_time=res["timed_target"],
         )
         apply_mute_config(config_data, enabled=res["mute_enabled"])
+        apply_rerun_config(config_data, enabled=res["rerun_enabled"])
+        apply_notify_config(config_data, enabled=res["notify_enabled"])
         self._service.save_config(config_data)
         return True

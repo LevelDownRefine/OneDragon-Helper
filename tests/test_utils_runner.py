@@ -15,7 +15,6 @@ from src.utils_runner import (
     apply_shutdown_config,
     apply_timed_run_config,
     build_chain_command,
-    build_mute_extra_args,
     build_run_chain_command,
     build_script_command,
     collect_invalid_script_messages,
@@ -361,10 +360,10 @@ class TestBuildScriptInvocationFrozen(unittest.TestCase):
 
 
 class TestBuildRunChainCommand(unittest.TestCase):
-    """build_run_chain_command：统一静音参数构造（GUI 不再拼命令）。
+    """build_run_chain_command：构造脚本链启动命令（GUI 不再拼命令）。
 
-    静音拼 --mute，并做 pythonw->python 替换；关机不再经此（改由 service 的
-    post_run 在全部运行结束后触发，见 src.utils_shutdown）。
+    关机不再经此（改由 service 的 post_run 在全部运行结束后触发，见 src.utils_shutdown）；
+    静音由主仓在 pre_run/post_run 直接操作系统音频，不再透传 --mute 给 runner。
     """
 
     def test_plain_chain_no_extra_flags(self):
@@ -373,10 +372,6 @@ class TestBuildRunChainCommand(unittest.TestCase):
         self.assertIn(CHAIN_PATH, command)
         self.assertNotIn("--shutdown", command)
         self.assertNotIn("--mute", command)
-
-    def test_mute_appends_flag(self):
-        command, cwd, env = build_run_chain_command(CHAIN_PATH, mute=True)
-        self.assertIn("--mute", command)
 
     def test_pythonw_replaced_with_python(self):
         """冻结态 GUI exe 若为 pythonw.exe，应替换为 python.exe 以保证子进程控制台。"""
@@ -468,45 +463,6 @@ class TestApplyTimedRunConfig(unittest.TestCase):
         data: dict = {}
         apply_timed_run_config(data, enabled=True, target_time="25:99")
         self.assertEqual(data["timed_run"], {"enabled": True, "target_time": "04:10"})
-
-
-class TestMuteConfig(unittest.TestCase):
-    """parse_mute_run / apply_mute_config：顶层 mute 映射读写。"""
-
-    def test_parse_enabled(self):
-        self.assertTrue(parse_mute_run({"mute": {"enabled": True}}))
-
-    def test_parse_missing_block_disabled(self):
-        self.assertFalse(parse_mute_run({"script_list": []}))
-
-    def test_parse_non_bool_disabled(self):
-        self.assertFalse(parse_mute_run({"mute": {"enabled": "yes"}}))
-
-    def test_apply_writes_enabled(self):
-        data: dict = {}
-        apply_mute_config(data, enabled=True)
-        self.assertEqual(data["mute"], {"enabled": True})
-
-    def test_apply_disabled(self):
-        data = {"mute": {"enabled": True}}
-        apply_mute_config(data, enabled=False)
-        self.assertEqual(data["mute"], {"enabled": False})
-
-
-class TestBuildMuteExtraArgs(unittest.TestCase):
-    """build_mute_extra_args：mute 意图 -> runner 命令行参数（薄封装）。"""
-
-    def test_enabled_passes_flag(self):
-        self.assertEqual(build_mute_extra_args({"mute": {"enabled": True}}), ["--mute"])
-
-    def test_disabled_returns_empty(self):
-        self.assertEqual(build_mute_extra_args({"mute": {"enabled": False}}), [])
-
-    def test_missing_block_returns_empty(self):
-        self.assertEqual(build_mute_extra_args({"script_list": []}), [])
-
-    def test_non_bool_returns_empty(self):
-        self.assertEqual(build_mute_extra_args({"mute": {"enabled": "yes"}}), [])
 
 
 class TestParseTimedRun(unittest.TestCase):
@@ -620,3 +576,26 @@ class TestSpawnScheduleRun(unittest.TestCase):
         """enabled_keys=None 时不拼 --enable（子进程侧解释为『全部脚本』）。"""
         cmd = self._capture_command(frozen=False, enabled_keys=None)
         self.assertNotIn("--enable", cmd)
+
+
+class TestMuteConfig(unittest.TestCase):
+    """parse_mute_run / apply_mute_config：顶层 mute 映射读写。"""
+
+    def test_parse_enabled(self):
+        self.assertTrue(parse_mute_run({"mute": {"enabled": True}}))
+
+    def test_parse_missing_block_disabled(self):
+        self.assertFalse(parse_mute_run({"script_list": []}))
+
+    def test_parse_non_bool_disabled(self):
+        self.assertFalse(parse_mute_run({"mute": {"enabled": "yes"}}))
+
+    def test_apply_writes_enabled(self):
+        data: dict = {}
+        apply_mute_config(data, enabled=True)
+        self.assertEqual(data["mute"], {"enabled": True})
+
+    def test_apply_disabled(self):
+        data = {"mute": {"enabled": True}}
+        apply_mute_config(data, enabled=False)
+        self.assertEqual(data["mute"], {"enabled": False})

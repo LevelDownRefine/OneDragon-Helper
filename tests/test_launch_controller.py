@@ -151,6 +151,8 @@ class TestConfirmRunDialog(unittest.TestCase):
                 "timed_enabled": True,
                 "timed_target": "04:10",
                 "mute_enabled": True,
+                "rerun_enabled": True,
+                "notify_enabled": True,
             }
             out = ctrl._confirm_run({"demo"})
 
@@ -159,6 +161,9 @@ class TestConfirmRunDialog(unittest.TestCase):
         self.assertEqual(saved["shutdown"], {"after_run": True, "delay_seconds": 120})
         self.assertEqual(saved["timed_run"], {"enabled": True, "target_time": "04:10"})
         self.assertEqual(saved["mute"], {"enabled": True})
+        self.assertEqual(saved["rerun"], {"enabled": True})
+        # 邮件通知：仅更新 enabled 开关，保留既有 email/password 凭据。
+        self.assertEqual(saved["notify"], {"enabled": True})
 
     def test_accept_disabled_drops_delay_and_target(self):
         """关闭自动关机/定时：delay 归 0、target 置空，不残留旧值。"""
@@ -177,6 +182,8 @@ class TestConfirmRunDialog(unittest.TestCase):
                 "timed_enabled": False,
                 "timed_target": "08:00",  # 关闭后不应写回
                 "mute_enabled": False,
+                "rerun_enabled": False,
+                "notify_enabled": False,
             }
             ctrl._confirm_run({"demo"})
 
@@ -184,6 +191,8 @@ class TestConfirmRunDialog(unittest.TestCase):
         self.assertEqual(saved["shutdown"], {"after_run": False, "delay_seconds": 0})
         self.assertEqual(saved["timed_run"], {"enabled": False, "target_time": ""})
         self.assertEqual(saved["mute"], {"enabled": False})
+        self.assertEqual(saved["rerun"], {"enabled": False})
+        self.assertEqual(saved["notify"], {"enabled": False})
 
 
 if __name__ == "__main__":

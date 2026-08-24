@@ -17,21 +17,26 @@ from src.config.subscript import get_script_name
 from src.log.monitor import parse_logs
 from src.log.notify_mail import send_mail
 from src.service.chain_service import _resolve_mail_config
+from src.utils_mute import mute_off, mute_on
 from src.utils_shutdown import shutdown_sys
 from src.utils_weekly import next_target_datetime
 
 logger = logging.getLogger(__name__)
 
 
-def build_pre_run_pipeline(*, target_time: str) -> list[Callable[[], None]]:
-    """运行前 step：定时计划（等待到目标时刻，即时运行为空）。
+def build_pre_run_pipeline(
+    *, target_time: str, mute: bool = False
+) -> list[Callable[[], None]]:
+    """运行前 step：定时计划（等待到目标时刻，即时运行为空）+ 可选静音。
 
     与 ``build_post_run_pipeline`` 同形——均产出 ``list[Callable]``，由 ``_run_steps``
-    统一执行。仅 step 内容不同：此处为定时等待，post_run 为分析/邮件/关机。
+    统一执行。仅 step 内容不同：此处为定时等待（+静音），post_run 为恢复/分析/邮件/关机。
     """
-    if not target_time or target_time == "now":
-        return []
     steps: list[Callable[[], None]] = []
+    if mute:
+        steps.append(mute_on)
+    if not target_time or target_time == "now":
+        return steps
 
     def _wait() -> None:
         target_dt = next_target_datetime(target_time)
@@ -47,6 +52,7 @@ def build_post_run_pipeline(
     *,
     shutdown_delay: int | None,
     smtp_config: dict | None = None,
+    mute: bool = False,
 ) -> list[Callable[[], None]]:
     """按序构建运行后动作：日志分析(最终态) → 邮件 → 关机(末位)。
 
@@ -75,6 +81,10 @@ def build_post_run_pipeline(
 
     steps.append(_do_mail)
 
+    if mute:
+        # 运行后恢复声音：须在关机之前（关机后恢复无意义）。
+        steps.append(mute_off)
+
     if shutdown_delay:
         steps.append(lambda: shutdown_sys(shutdown_delay))
 
@@ -90,7 +100,7 @@ class ScheduledRun:
         target_time: 目标时刻 ``"HH:MM"``（24 小时制，须合法，调用方已校验）；
             传 ``"now"`` 表示即时运行（跳过等待，直接点火）。
         chain_name: 链配置文件名（不含扩展名，默认 today）。
-        mute: 是否运行中静音（透传 ``--mute``）。
+        mute: 是否运行中静音（由 pre_run 静音、post_run 恢复，主仓直接操作系统音频）。
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
     """
 
@@ -108,21 +118,22 @@ class ScheduledRun:
         self.enabled_keys = enabled_keys
         self.target_time = target_time
         self.chain_name = chain_name
-        self.mute = mute
         self.shutdown_delay = shutdown_delay
 
         # pre_run / post_run：均为 step 列表（同形），分别经工厂组装、由 _run_steps 执行。
         # 仅所处位置不同（run 前 / 后），机制完全一致。
         self.pre_run: list[Callable[[], None]] = build_pre_run_pipeline(
-            target_time=target_time
+            target_time=target_time,
+            mute=mute,
         )
 
-        # post_run：日志分析最终态 → 邮件 → 关机（末位），由 build_post_run_pipeline 产出。
+        # post_run：日志分析最终态 → 邮件 → 恢复声音 → 关机（末位），由 build_post_run_pipeline 产出。
         all_config = service.load_config()
         mail_config = _resolve_mail_config(all_config)
         self.post_run: list[Callable[[], None]] = build_post_run_pipeline(
             shutdown_delay=shutdown_delay,
             smtp_config=mail_config,
+            mute=mute,
         )
 
     def run(self) -> None:
@@ -139,14 +150,14 @@ class ScheduledRun:
         keys = self.enabled_keys if self.enabled_keys is not None else set(known)
         # 第一次跑：复用 run_chain_once 原子（生成+运行），与 ``_rerun_round`` 内的
         # 重跑路径完全一致（均阻塞），仅脚本集合（全部启用 vs 失败子集）与链名不同。
-        self.service.run_chain_once(keys, chain_name=self.chain_name, mute=self.mute)
+        self.service.run_chain_once(keys, chain_name=self.chain_name)
         # 重跑轮：链跑完后解析日志、对失败脚本二次运行（先于 post_run）。
         # 受 config.rerun.enabled 控制（契约键，缺失即 assert 崩，不降级）。
         assert "rerun" in all_config, "[chain] config 缺 rerun 块"
         rerun_cfg = all_config["rerun"]
         assert "enabled" in rerun_cfg, "[chain] config.rerun 缺 enabled 键"
         if rerun_cfg["enabled"]:
-            self.service._rerun_round(mute=self.mute, all_config=all_config)
+            self.service._rerun_round(all_config=all_config)
 
     @staticmethod
     def _run_steps(steps: Sequence[Callable[[], None]]) -> None:

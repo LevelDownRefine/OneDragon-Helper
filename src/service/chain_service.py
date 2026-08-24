@@ -323,7 +323,6 @@ class ChainService:
         *,
         chain_name: str = "today",
         ui_state: dict | None = None,
-        mute: bool = False,
     ) -> None:
         """生成脚本链并运行（单发原子）：service 侧 facade，委托 ``_run_chain_once_impl``。
 
@@ -334,7 +333,6 @@ class ChainService:
             enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
             chain_name: 链配置文件名（不含扩展名，默认 today）。
             ui_state: 任务卡 UI 状态；None 时从 service 加载。
-            mute: 是否运行中静音。
 
         Returns:
             始终返回 None（纯跑链，运行后动作交由调用方）。
@@ -347,11 +345,10 @@ class ChainService:
             enabled_keys,
             chain_name=chain_name,
             ui_state=ui_state,
-            mute=mute,
         )
         return None
 
-    def _rerun_round(self, *, mute: bool = False, all_config: dict) -> None:
+    def _rerun_round(self, *, all_config: dict) -> None:
         """主流程重跑轮：链运行结束后解析日志，对未正常退出的脚本二次运行。
 
         重跑经 ``_run_chain_once_impl`` 阻塞运行失败子集（chain_name="rerun"），属于运行
@@ -373,7 +370,7 @@ class ChainService:
         logger.info("[chain] 重跑 %d 个脚本: %s", len(keys), sorted(keys))
         # 复用 _run_chain_once_impl（生成+运行原子），阻塞等重跑结束，
         # 使后续邮件/关机基于重跑后的最终态。
-        _run_chain_once_impl(all_config, keys, chain_name="rerun", mute=mute)
+        _run_chain_once_impl(all_config, keys, chain_name="rerun")
 
     def schedule_run(
         self,
@@ -395,7 +392,7 @@ class ChainService:
             enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
             target_time: 目标时刻 ``"HH:MM"``；``"now"`` 表示即时运行（跳过等待）。
             chain_name: 链配置文件名（不含扩展名，默认 today）。
-            mute: 是否运行中静音（透传 ``--mute``）。
+            mute: 是否运行中静音（由 ScheduledRun 的 pre_run/post_run 执行）。
             shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
         """
         from src.service.scheduled_run import ScheduledRun
@@ -416,7 +413,6 @@ def _run_chain_once_impl(
     *,
     chain_name: str = "today",
     ui_state: dict | None = None,
-    mute: bool = False,
 ) -> None:
     """生成脚本链并运行（单发原子）：不依赖 service 实例的纯函数实现。
 
@@ -429,7 +425,6 @@ def _run_chain_once_impl(
         enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
         chain_name: 链配置文件名（不含扩展名，默认 today）。
         ui_state: 任务卡 UI 状态；None 时当空（无副本/序列覆盖）。
-        mute: 是否运行中静音。
 
     Returns:
         始终返回 None（纯跑链）。
@@ -441,7 +436,7 @@ def _run_chain_once_impl(
     chain_path = _generate_chain_config(
         all_config, enabled_keys, chain_name, ui_state or {}
     )
-    command, cwd, env = _build_run_chain_command(chain_path, mute=mute)
+    command, cwd, env = _build_run_chain_command(chain_path)
     logger.info("[chain] 生成并运行脚本链: %s", chain_path)
     creationflags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
     # 始终阻塞：subprocess.run 内部即 Popen+wait，proc 不外传故无需手动 Popen。

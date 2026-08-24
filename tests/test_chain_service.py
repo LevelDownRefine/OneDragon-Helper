@@ -212,11 +212,11 @@ class TestRunChainOnce(unittest.TestCase):
             "today",
             {},
         )
-        build.assert_called_once_with("out.yml", mute=False)
+        build.assert_called_once_with("out.yml")
         run.assert_called_once()
 
-    def test_subset_with_mute_launches_blocking(self):
-        """阻塞启动：按子集生成+运行，mute 透传，返回 None。"""
+    def test_subset_launches_blocking(self):
+        """阻塞启动：按子集生成+运行，返回 None（静音已不再经此透传）。"""
         svc = self._make_service(
             [
                 {"display_name": "A", "script_path": "A.exe"},
@@ -234,7 +234,7 @@ class TestRunChainOnce(unittest.TestCase):
             ) as build,
             patch("src.service.chain_service.subprocess.run") as run,
         ):
-            result = svc.run_chain_once({"A"}, mute=True)
+            result = svc.run_chain_once({"A"})
         self.assertIsNone(result)
         gen.assert_called_once_with(
             {
@@ -247,7 +247,7 @@ class TestRunChainOnce(unittest.TestCase):
             "today",
             {},
         )
-        build.assert_called_once_with("out.yml", mute=True)
+        build.assert_called_once_with("out.yml")
         run.assert_called_once()
 
     def test_empty_script_list_asserts(self):
@@ -305,9 +305,7 @@ class TestScheduleRun(unittest.TestCase):
         mock_sleep, mock_shutdown = self._run(svc)
         mock_sleep.assert_called_once()  # pre_run 等待
         # 第一次跑复用 run_chain_once，与重跑路径一致（仅脚本集合/链名不同）。
-        svc.run_chain_once.assert_called_once_with(
-            {"demo"}, chain_name="today", mute=False
-        )
+        svc.run_chain_once.assert_called_once_with({"demo"}, chain_name="today")
         mock_shutdown.assert_not_called()
 
     def test_shutdown_triggers_post_run(self):
@@ -324,14 +322,32 @@ class TestScheduleRun(unittest.TestCase):
             patch("src.service.scheduled_run.build_post_run_pipeline") as mock_pipeline,
         ):
             svc.schedule_run({"demo"}, "08:00", shutdown_delay=60)
-        mock_pipeline.assert_called_once_with(shutdown_delay=60, smtp_config=None)
-
-    def test_mute_passed(self):
-        svc = self._make_service([{"display_name": "demo"}])
-        self._run(svc, mute=True)
-        svc.run_chain_once.assert_called_once_with(
-            {"demo"}, chain_name="today", mute=True
+        mock_pipeline.assert_called_once_with(
+            shutdown_delay=60, smtp_config=None, mute=False
         )
+
+    def test_mute_passed_to_pipelines(self):
+        """mute=True：透传给 pre_run/post_run 工厂（由其挂静音/恢复 step），不再透传 run_chain_once。"""
+        svc = self._make_service([{"display_name": "demo"}])
+        with (
+            patch("src.service.scheduled_run.time.sleep"),
+            patch(
+                "src.service.scheduled_run.next_target_datetime",
+                return_value=datetime(2030, 1, 1, 8, 0),
+            ),
+            patch("src.service.chain_service.parse_logs", return_value={"rerun": []}),
+            patch("src.service.chain_service._run_chain_once_impl"),
+            patch("src.service.scheduled_run.build_pre_run_pipeline") as mock_pre,
+            patch("src.service.scheduled_run.build_post_run_pipeline") as mock_post,
+        ):
+            svc.schedule_run({"demo"}, "08:00", mute=True)
+        mock_pre.assert_called_once_with(target_time="08:00", mute=True)
+        mock_post.assert_called_once_with(
+            shutdown_delay=None, smtp_config=None, mute=True
+        )
+        # 静音不再经 run_chain_once 透传
+        _, kwargs = svc.run_chain_once.call_args
+        self.assertNotIn("mute", kwargs)
 
     def test_now_skips_wait(self):
         """target_time='now'（即时运行）跳过等待，直接点火运行。"""
@@ -422,7 +438,7 @@ class TestScheduleRun(unittest.TestCase):
         )
         captured = {}
 
-        def _fake_pipeline(*, shutdown_delay, smtp_config):
+        def _fake_pipeline(*, shutdown_delay, smtp_config, mute=False):
             captured["smtp_config"] = smtp_config
             return []
 
@@ -533,12 +549,12 @@ class TestRerunRound(unittest.TestCase):
             ),
             patch("src.service.chain_service._run_chain_once_impl") as run_impl,
         ):
-            svc._rerun_round(mute=True, all_config=svc.load_config())
+            svc._rerun_round(all_config=svc.load_config())
         run_impl.assert_called_once()
         args, kwargs = run_impl.call_args
         self.assertEqual(args[1], {"demo"})  # 启用脚本集合
         self.assertEqual(kwargs["chain_name"], "rerun")
-        self.assertTrue(kwargs["mute"])
+        self.assertNotIn("mute", kwargs)  # 静音已不在重跑路径透传
 
     def test_no_rerun_when_list_empty(self):
         """rerun 为空列表 → _run_chain_once_impl 不调用。"""

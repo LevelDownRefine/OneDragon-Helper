@@ -242,24 +242,22 @@ def run_chain_command(
 
 
 def build_run_chain_command(
-    chain_path: str, *, mute: bool = False
+    chain_path: str,
 ) -> tuple[list[str], str, dict | None]:
-    """构造『运行脚本链』命令（统一静音参数构造，GUI 不再拼命令）。
+    """构造『运行脚本链』命令（GUI 不再拼命令）。
 
-    静音拼 ``--mute``；关机不再经 runner 的 ``--shutdown``（会抢在重跑前关机），
+    关机不再经 runner 的 ``--shutdown``（会抢在重跑前关机），
     改由 service 的 ``post_run`` 在全部运行结束后统一触发（见 ``src.utils_shutdown``）。
+    静音由主仓在 ``pre_run``/``post_run`` 直接操作系统音频，不再透传 ``--mute`` 给 runner。
     统一做 ``pythonw.exe`` -> ``python.exe`` 替换，避免冻结态 GUI exe 无控制台。
 
     Args:
         chain_path: 脚本链配置文件路径。
-        mute: 是否运行中静音。
 
     Returns:
         (命令列表, 工作目录, 环境变量)。
     """
     extra = ["--chain", chain_path]
-    if mute:
-        extra += ["--mute"]
     command, cwd, env = build_script_command(extra)
     # 冻结态 GUI exe 可能为 pythonw.exe，替换为 python.exe 以保证子进程有控制台。
     command = [command[0].replace("pythonw.exe", "python.exe"), *command[1:]]
@@ -350,25 +348,66 @@ def apply_timed_run_config(
     }
 
 
-# ---------------------------------------------------------------------------
-# 运行中静音（执行已下沉 runner：run_chain(mute=...) 链前后静音/恢复）
-# 主仓仅做参数转发：parse/apply 读 config，build_*_extra_args 拼 --mute。
-# ---------------------------------------------------------------------------
-
-
-def build_mute_extra_args(config_data: dict) -> list[str]:
-    """按 config 的 mute 配置生成 ``--mute`` 参数；未启用返回空列表。
+def parse_rerun_config(config_data: dict) -> bool:
+    """解析 config 的 rerun 配置，返回是否运行后重跑失败脚本。
 
     Args:
         config_data: 完整配置字典（load_config 结果）。
 
     Returns:
-        启用时返回 ``["--mute"]``，否则返回空列表。
-
-    说明：静音执行已由 runner 在脚本链运行前后完成（覆盖异常/强制关闭窗口），
-    主仓只负责把「是否静音」的意图透传为命令行参数，不触碰音频 API。
+        启用返回 True，否则 False（缺失/非 dict/非 bool 一律视为未启用，不抛异常）。
     """
-    return ["--mute"] if parse_mute_run(config_data) else []
+    raw = config_data.get("rerun")
+    if not isinstance(raw, dict):
+        return False
+    enabled = raw.get("enabled", False)
+    return isinstance(enabled, bool) and enabled
+
+
+def apply_rerun_config(config_data: dict, *, enabled: bool) -> None:
+    """把重跑配置写回 config（原地修改顶层 rerun 映射）。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果），原地修改。
+        enabled: 是否运行后重跑失败脚本。
+    """
+    config_data["rerun"] = {"enabled": bool(enabled)}
+
+
+def parse_notify_enabled(config_data: dict) -> bool:
+    """解析 config 的 notify 配置，返回是否运行后发送邮件通知（仅看 enabled 开关）。
+
+    邮件能否真正发送还需 email/password 齐全（由 ``chain_service._resolve_mail_config``
+    在运行期校验）；本函数只解析确认弹窗关心的 enabled 勾选初始值。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果）。
+
+    Returns:
+        启用返回 True，否则 False（缺失/非 dict/非 bool 一律视为未启用，不抛异常）。
+    """
+    raw = config_data.get("notify")
+    if not isinstance(raw, dict):
+        return False
+    enabled = raw.get("enabled", False)
+    return isinstance(enabled, bool) and enabled
+
+
+def apply_notify_config(config_data: dict, *, enabled: bool) -> None:
+    """把邮件通知开关写回 config（原地修改顶层 notify 映射的 enabled）。
+
+    仅更新 ``enabled`` 开关，保留 notify 已有的 email/password 等字段，不因关闭
+    通知而清空凭据。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果），原地修改。
+        enabled: 是否运行后发送邮件通知。
+    """
+    notify = config_data.get("notify")
+    if not isinstance(notify, dict):
+        notify = {}
+        config_data["notify"] = notify
+    notify["enabled"] = bool(enabled)
 
 
 def parse_mute_run(config_data: dict) -> bool:
