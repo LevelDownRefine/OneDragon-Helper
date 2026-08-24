@@ -13,7 +13,6 @@ import time
 from collections.abc import Callable, Sequence
 from datetime import datetime
 
-from src.config.subscript import get_script_name
 from src.log.monitor import parse_logs
 from src.log.notify_mail import send_mail
 from src.service.chain_service import _resolve_mail_config
@@ -59,6 +58,7 @@ def build_post_run_pipeline(
     shutdown_delay: int | None,
     smtp_config: dict | None = None,
     mute: bool = False,
+    enabled_keys: set[str] | None = None,
 ) -> list[Callable[[], None]]:
     """按序构建运行后动作：日志分析(最终态) → 邮件 → 关机(末位)。
 
@@ -68,6 +68,9 @@ def build_post_run_pipeline(
     Args:
         shutdown_delay: 关机延迟秒数；None/0 表示不关机。
         smtp_config: SMTP 配置；None 表示不发邮件（默认关闭）。
+        enabled_keys: 本次启用的脚本标识集合（即 ``parse_logs`` 的候选列表）；
+            None/空集合表示不纳入任何脚本，邮件直接跳过（不解析日志）。调用方想全量时
+            显式传入 config 全部脚本集合。
 
     Returns:
         后置步骤列表（可能仅含关机或为空）。各步骤经共享闭包 ``shared`` 传递日志分析结果。
@@ -75,7 +78,8 @@ def build_post_run_pipeline(
     shared: dict = {}
 
     def _analyze() -> None:
-        shared["result"] = parse_logs(do_log=False)
+        # 候选集即启用脚本：只解析这些，邮件汇总自然只含其中的失败/报错项。
+        shared["result"] = parse_logs(do_log=False, candidate_script_names=enabled_keys)
 
     steps: list[Callable[[], None]] = [_analyze]
 
@@ -102,7 +106,8 @@ class ScheduledRun:
 
     Args:
         service: 提供 ``load_config`` / ``run_chain_once`` 的 ChainService 实例。
-        enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
+        enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
+            （跳过运行、重跑与邮件）。调用方想全量时显式传入 config 全部脚本集合。
         target_time: 目标时刻 ``"HH:MM"``（24 小时制，须合法，调用方已校验）；
             传 ``"now"`` 表示即时运行（跳过等待，直接点火）。
         chain_name: 链配置文件名（不含扩展名，默认 today）。
@@ -126,6 +131,11 @@ class ScheduledRun:
         self.chain_name = chain_name
         self.shutdown_delay = shutdown_delay
 
+        # 候选集合 = 启用脚本集合（同一概念）。直接透传，不做 None→集合 的隐式归一化；
+        # None/空集合 在下游各函数（run_chain_once / _rerun_round / parse_logs）按「跳过」
+        # 语义处理，由调用方显式传入全量集合表达「全部」。
+        self.candidate_keys = enabled_keys
+
         # pre_run / post_run：均为 step 列表（同形），分别经工厂组装、由 _run_steps 执行。
         # 仅所处位置不同（run 前 / 后），机制完全一致。
         self.pre_run: list[Callable[[], None]] = build_pre_run_pipeline(
@@ -134,12 +144,14 @@ class ScheduledRun:
         )
 
         # post_run：日志分析最终态 → 邮件 → 恢复声音 → 关机（末位），由 build_post_run_pipeline 产出。
-        all_config = service.load_config()
-        mail_config = _resolve_mail_config(all_config)
+        # 邮件配置来自 schedule.yml 的 notify 块（已从 config.yml 迁出）。
+        schedule = service.load_schedule()
+        mail_config = _resolve_mail_config(schedule)
         self.post_run: list[Callable[[], None]] = build_post_run_pipeline(
             shutdown_delay=shutdown_delay,
             smtp_config=mail_config,
             mute=mute,
+            enabled_keys=self.candidate_keys,
         )
 
     def run(self) -> None:
@@ -151,19 +163,21 @@ class ScheduledRun:
     def _run_core(self) -> None:
         """生成脚本链并运行，随后按需重跑失败脚本（先于 post_run）。"""
         all_config = self.service.load_config()
-        known = {get_script_name(s) for s in all_config["script_list"]}
-        assert known, "[chain] config 无脚本，无法生成链"
-        keys = self.enabled_keys if self.enabled_keys is not None else set(known)
         # 第一次跑：复用 run_chain_once 原子（生成+运行），与 ``_rerun_round`` 内的
         # 重跑路径完全一致（均阻塞），仅脚本集合（全部启用 vs 失败子集）与链名不同。
-        self.service.run_chain_once(keys, chain_name=self.chain_name)
+        # candidate_keys 为 None/空集合时 run_chain_once 按「跳过」语义不运行任何脚本。
+        self.service.run_chain_once(self.candidate_keys, chain_name=self.chain_name)
         # 重跑轮：链跑完后解析日志、对失败脚本二次运行（先于 post_run）。
-        # 受 config.rerun.enabled 控制（契约键，缺失即 assert 崩，不降级）。
-        assert "rerun" in all_config, "[chain] config 缺 rerun 块"
-        rerun_cfg = all_config["rerun"]
-        assert "enabled" in rerun_cfg, "[chain] config.rerun 缺 enabled 键"
+        # 受 schedule.yml 的 rerun.enabled 控制（契约键，缺失即 assert 崩，不降级）。
+        schedule = self.service.load_schedule()
+        rerun_cfg = schedule.get("rerun")
+        assert isinstance(rerun_cfg, dict) and "enabled" in rerun_cfg, (
+            "[chain] schedule 缺 rerun.enabled"
+        )
         if rerun_cfg["enabled"]:
-            self.service._rerun_round(all_config=all_config)
+            self.service._rerun_round(
+                all_config=all_config, enabled_keys=self.candidate_keys
+            )
 
     @staticmethod
     def _run_steps(steps: Sequence[Callable[[], None]]) -> None:

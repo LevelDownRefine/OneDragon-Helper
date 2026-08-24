@@ -25,6 +25,7 @@ from src.service.script_service import ScriptService
 from src.utils import (
     get_config_yml_path_under_root,
     get_root_dir,
+    get_schedule_yml_path_under_root,
     require_config_yml_path,
     safe_path_join,
 )
@@ -121,6 +122,24 @@ class ChainService:
         )
         config_path = get_config_yml_path_under_root()
         dump_yaml(config_path, data)
+
+    def load_schedule(self) -> dict:
+        """读取 schedule.yml（缺失时从 schedule.example.yml 生成），返回调度运行参数。
+
+        调度参数（shutdown / timed_run / mute / rerun / notify）已从 config.yml 迁出，
+        独立存放于此，避免与脚本链声明（script_list）耦合。
+        """
+        return load_yaml(get_schedule_yml_path_under_root())
+
+    def save_schedule(self, data: dict) -> None:
+        """写回 schedule.yml（生成目标，不要求已存在）。
+
+        Args:
+            data: 完整调度运行参数字典（由 apply_* 原地修改后传入）。
+        """
+        assert isinstance(data, dict), "[service] 待保存的 schedule 非 dict"
+        schedule_path = get_schedule_yml_path_under_root()
+        dump_yaml(schedule_path, data)
 
     def add_script(self, script_data: dict) -> None:
         """向 config.yml 的 script_list 追加一个脚本条目，并自动创建 weekly 默认条目。
@@ -330,7 +349,8 @@ class ChainService:
         在本方法返回后另行编排，本方法不挂任何 post_run。
 
         Args:
-            enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
+            enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
+                （跳过运行）。调用方想全量时显式传入 config 全部脚本集合。
             chain_name: 链配置文件名（不含扩展名，默认 today）。
             ui_state: 任务卡 UI 状态；None 时从 service 加载。
 
@@ -348,26 +368,34 @@ class ChainService:
         )
         return None
 
-    def _rerun_round(self, *, all_config: dict) -> None:
+    def _rerun_round(
+        self, *, all_config: dict, enabled_keys: set[str] | None = None
+    ) -> None:
         """主流程重跑轮：链运行结束后解析日志，对未正常退出的脚本二次运行。
 
         重跑经 ``_run_chain_once_impl`` 阻塞运行失败子集（chain_name="rerun"），属于运行
         主环节而非 post_run，故置于 post_run 之前；后续邮件/关机在重跑结束后才触发。
         config 由调用方传入（避免重复加载）。
+
+        Args:
+            enabled_keys: 本次启用的脚本标识集合（作为 ``parse_logs`` 的候选列表），
+                只在该候选内挑选「需重跑」的脚本，未启用脚本不进入重跑范围。
+                None/空集合表示不纳入任何脚本，直接跳过重跑。
         """
-        result = parse_logs(do_log=False)
+        # None/空集合 = 不干活：跳过重跑轮的日志解析与重跑。
+        if not enabled_keys:
+            return
+        # 候选集即启用脚本：parse_logs 只解析这些，rerun 名单自然只含其中的失败项。
+        # 兜底过滤：rerun 名单须落在「config 已知脚本 ∩ 候选集」内，剔除越界/未知项。
+        result = parse_logs(do_log=False, candidate_script_names=enabled_keys)
         assert "rerun" in result, "[chain] parse_logs 返回缺 rerun 键"
-        rerun_list = result["rerun"]
+        known = {get_script_name(s) for s in all_config.get("script_list", [])}
+        rerun_list = [s for s in result["rerun"] if s in known]
+        rerun_list = [s for s in rerun_list if s in enabled_keys]
         if not rerun_list:
             return
-        known = {get_script_name(s) for s in all_config["script_list"]}
-        keys = {n for n in rerun_list if n in known}
-        if not keys:
-            logger.warning(
-                "[chain] rerun_list 中的脚本均不在 config，跳过重跑: %s", rerun_list
-            )
-            return
-        logger.info("[chain] 重跑 %d 个脚本: %s", len(keys), sorted(keys))
+        logger.info("[chain] 重跑 %d 个脚本: %s", len(rerun_list), sorted(rerun_list))
+        keys = set(rerun_list)
         # 复用 _run_chain_once_impl（生成+运行原子），阻塞等重跑结束，
         # 使后续邮件/关机基于重跑后的最终态。
         _run_chain_once_impl(all_config, keys, chain_name="rerun")
@@ -389,7 +417,8 @@ class ChainService:
         ``CREATE_NEW_CONSOLE`` 起）中运行。
 
         Args:
-            enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
+            enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
+                （跳过运行）。调用方想全量时显式传入 config 全部脚本集合。
             target_time: 目标时刻 ``"HH:MM"``；``"now"`` 表示即时运行（跳过等待）。
             chain_name: 链配置文件名（不含扩展名，默认 today）。
             mute: 是否运行中静音（由 ScheduledRun 的 pre_run/post_run 执行）。
@@ -422,17 +451,19 @@ def _run_chain_once_impl(
 
     Args:
         all_config: config.yml 完整数据（含 script_list）。
-        enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
+        enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
+            （跳过运行）。调用方想全量时显式传入 config 全部脚本集合。
         chain_name: 链配置文件名（不含扩展名，默认 today）。
         ui_state: 任务卡 UI 状态；None 时当空（无副本/序列覆盖）。
 
     Returns:
         始终返回 None（纯跑链）。
     """
+    # None/空集合 = 不干活：跳过链生成与运行。
+    if not enabled_keys:
+        return
     known = {get_script_name(s) for s in all_config["script_list"]}
     assert known, "[chain] config 无脚本，无法生成链"
-    if enabled_keys is None:
-        enabled_keys = set(known)
     chain_path = _generate_chain_config(
         all_config, enabled_keys, chain_name, ui_state or {}
     )

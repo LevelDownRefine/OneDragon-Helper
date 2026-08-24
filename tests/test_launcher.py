@@ -12,30 +12,35 @@ from src import launcher
 
 
 class TestInitConfig(unittest.TestCase):
-    """测试首次初始化流程（config_workflow / need_config_workflow）"""
+    """测试首次初始化流程（config_workflow）"""
 
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
 
+    @patch("src.launcher.generate_schedule_from_example")
     @patch("src.launcher.generate_config_from_example")
     @patch("src.launcher.os.path.exists", return_value=False)
     @patch("src.launcher.get_config_yml_path_under_root")
-    def test_config_workflow(self, mock_config_path, mock_exists, mock_generate):
-        # 模拟首次运行：config.yml 不存在，触发从模板生成
+    @patch("src.launcher.get_schedule_yml_path_under_root")
+    def test_config_workflow(
+        self,
+        mock_schedule_path,
+        mock_config_path,
+        mock_exists,
+        mock_generate_config,
+        mock_generate_schedule,
+    ):
+        # 模拟首次运行：config.yml 与 schedule.yml 均不存在，触发从模板生成
         mock_config_path.return_value = os.path.join(self.temp_dir.name, "config.yml")
+        mock_schedule_path.return_value = os.path.join(
+            self.temp_dir.name, "schedule.yml"
+        )
         launcher.config_workflow()
 
-        # config.yml 不存在时，应从模板生成（相对路径解析为绝对）
-        mock_generate.assert_called_once()
-
-    def test_need_config_workflow_true_when_missing(self):
-        with patch("src.launcher.os.path.exists", return_value=False):
-            self.assertTrue(launcher.need_config_workflow())
-
-    def test_need_config_workflow_false_when_present(self):
-        with patch("src.launcher.os.path.exists", return_value=True):
-            self.assertFalse(launcher.need_config_workflow())
+        # 首次运行时，config.yml 与 schedule.yml 均应从模板生成
+        mock_generate_config.assert_called_once()
+        mock_generate_schedule.assert_called_once()
 
 
 if __name__ == "__main__":

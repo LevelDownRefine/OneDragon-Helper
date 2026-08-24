@@ -94,8 +94,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--enable",
         type=str,
-        default=None,
-        help="配合 --generate-chain，逗号分隔的脚本标识白名单（默认：全部脚本）",
+        default="all",
+        help="纳入链的脚本标识白名单（逗号分隔）；默认 all（全部脚本）。"
+        "也可显式写 all 表示全部。未知标识会报错退出。",
     )
     parser.add_argument(
         "--exclude",
@@ -337,20 +338,37 @@ def _parse_overrides(raw: str | None) -> dict[str, str]:
     return result
 
 
+def _resolve_enable_keys(
+    raw: str | None, known: set[str]
+) -> tuple[set[str], str | None]:
+    """把 --enable 解析为脚本标识集合（--generate-chain / --schedule-run 共用）。
+
+    - None 或 "all"（大小写不敏感，兼容默认） → 全部已知脚本 set(known)；
+    - 否则按逗号拆分成白名单；含不在 known 的标识时返回 ("", 错误信息)。
+
+    这样「全部」由显式 all / 缺省 表达，绝不用 None 隐式代表全部；
+    内层 run_chain_once / parse_logs 的 None=跳过 语义不被本层覆盖。
+    """
+    value = (raw or "all").strip().lower()
+    if value == "all":
+        return set(known), None
+    enabled = {n.strip() for n in (raw or "").split(",") if n.strip()}
+    unknown = enabled - known
+    if unknown:
+        return set(), f"未知的脚本标识: {sorted(unknown)}"
+    return enabled, None
+
+
 def _run_generate_chain(args) -> int:
     """CLI: 生成脚本链配置。返回退出码 0=成功 / 1=失败。"""
     service = ChainService()
     all_config_data = service.load_config()
 
     known = {get_script_name(s) for s in all_config_data["script_list"]}
-    if args.enable:
-        enabled_keys = {n.strip() for n in args.enable.split(",") if n.strip()}
-        unknown = enabled_keys - known
-        if unknown:
-            _emit_cli("generate_chain", f"未知的脚本标识: {sorted(unknown)}")
-            return 1
-    else:
-        enabled_keys = set(known)
+    enabled_keys, err = _resolve_enable_keys(args.enable, known)
+    if err:
+        _emit_cli("generate_chain", err)
+        return 1
 
     if args.exclude:
         excluded = {n.strip() for n in args.exclude.split(",") if n.strip()}
@@ -467,11 +485,12 @@ def _run_scheduled(args) -> int:
     才生成（按当天星期）。
     """
     service = ChainService()
-    enabled_keys = (
-        {n.strip() for n in args.enable.split(",") if n.strip()}
-        if args.enable
-        else None
-    )
+    all_config_data = service.load_config()
+    known = {get_script_name(s) for s in all_config_data["script_list"]}
+    enabled_keys, err = _resolve_enable_keys(args.enable, known)
+    if err:
+        _emit_cli("schedule_run", err)
+        return 1
     service.schedule_run(
         enabled_keys,
         args.schedule_run,

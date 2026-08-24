@@ -573,10 +573,10 @@ class TestSpawnScheduleRun(unittest.TestCase):
         idx = cmd.index("--enable")
         self.assertEqual(cmd[idx + 1], "a,b,c")  # 排序后逗号连接
 
-    def test_no_enable_when_keys_none(self):
-        """enabled_keys=None 时不拼 --enable（子进程侧解释为『全部脚本』）。"""
-        cmd = self._capture_command(frozen=False, enabled_keys=None)
-        self.assertNotIn("--enable", cmd)
+    def test_enable_none_raises(self):
+        """enabled_keys 必须显式传入具体集合；None 是契约错误（不再表示『全部』）。"""
+        with self.assertRaises(AssertionError):
+            self._capture_command(frozen=False, enabled_keys=None)
 
 
 class TestMuteConfig(unittest.TestCase):

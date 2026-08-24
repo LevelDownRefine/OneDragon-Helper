@@ -37,8 +37,7 @@ def setUpModule():
     config.yml 被 .gitignore 排除，CI 环境缺失；本模块多数 CLI 出口依赖真实 config，
     故模块加载时先按需生成，避免隐式依赖某个测试先触发（如 _known_script_names）。
     """
-    if launcher.need_config_workflow():
-        launcher.config_workflow()
+    launcher.config_workflow()
 
 
 def _cli_file(kind: str) -> str:
@@ -84,13 +83,12 @@ def _read_cli_json(kind: str) -> dict:
 
 
 def _known_script_names():
-    # 确保 config.yml 存在：复用 launcher 自身的首次运行逻辑（与 main() 一致，
-    # 即「若 need_config_workflow 则 config_workflow」），不手动复制文件。
+    # 确保 config.yml 存在：复用 launcher 自身的首次运行逻辑（与 main() 一致），
+    # 不手动复制文件。config_workflow() 内部已做「缺失才生成」判断。
     # 随后直接读取 --generate-chain 实际使用的同一份 config.yml，保证期望集合与
     # 产出集合同源（本地真实 config 可能含 example 没有的脚本，如 MAS）。
     # 返回脚本唯一标识（exe 用进程名，python/bat 用 display_name）。
-    if launcher.need_config_workflow():
-        launcher.config_workflow()
+    launcher.config_workflow()
     config_path = launcher.get_config_yml_path_under_root()
     data = load_yaml(config_path)
     return [get_script_name(s) for s in data.get("script_list", [])]
@@ -163,6 +161,40 @@ class TestCliGenerateChain(unittest.TestCase):
             self.assertEqual(set(produced), set(self._names), msg=produced)
             # _emit_cli 也应写了结果文件
             self.assertIn("已生成脚本链配置", _read_cli_file("generate_chain"))
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+    def test_generate_chain_enable_all_is_explicit_all(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            with patch.object(service_chain_gen, "set_config"):
+                code = _run_main(
+                    ["--generate-chain", "--enable", "all", "--out", out],
+                    expect_exit=0,
+                )
+            self.assertEqual(code, 0)
+            data = load_yaml(out)
+            produced = [get_script_name(s) for s in data["script_list"]]
+            self.assertEqual(set(produced), set(self._names), msg=produced)
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+    def test_generate_chain_enable_all_is_case_insensitive(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            with patch.object(service_chain_gen, "set_config"):
+                code = _run_main(
+                    ["--generate-chain", "--enable", "ALL", "--out", out],
+                    expect_exit=0,
+                )
+            self.assertEqual(code, 0)
+            data = load_yaml(out)
+            produced = [get_script_name(s) for s in data["script_list"]]
+            self.assertEqual(set(produced), set(self._names), msg=produced)
         finally:
             if os.path.exists(out):
                 os.remove(out)
@@ -611,9 +643,33 @@ class TestCliScheduledRun(unittest.TestCase):
         code, mock_sched = self._run(["--schedule-run", "08:00"])
         self.assertEqual(code, 0)
         mock_sched.assert_called_once()
-        self.assertIsNone(mock_sched.call_args.args[0])  # 无 --enable → 全部
+        self.assertEqual(
+            mock_sched.call_args.args[0], {"demo"}
+        )  # 无 --enable → 全部（显式集合，来自 mock config）
         self.assertFalse(mock_sched.call_args.kwargs["mute"])
         self.assertIsNone(mock_sched.call_args.kwargs["shutdown_delay"])
+
+    def test_schedule_run_enable_all_is_explicit_all(self):
+        code, mock_sched = self._run(["--schedule-run", "08:00", "--enable", "all"])
+        self.assertEqual(code, 0)
+        mock_sched.assert_called_once()
+        self.assertEqual(mock_sched.call_args.args[0], {"demo"})  # --enable all → 全部
+
+    def test_schedule_run_unknown_enable_exits_one(self):
+        with (
+            patch.object(
+                cli.ChainService,
+                "load_config",
+                return_value={"script_list": [{"display_name": "demo"}]},
+            ),
+            patch.object(cli.ChainService, "schedule_run") as mock_sched,
+        ):
+            code = _run_main(
+                ["--schedule-run", "08:00", "--enable", "ghost"], expect_exit=1
+            )
+        self.assertEqual(code, 1)
+        mock_sched.assert_not_called()
+        self.assertIn("未知的脚本标识", _read_cli_file("schedule_run"))
 
 
 class TestCliCheckConfig(unittest.TestCase):

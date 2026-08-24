@@ -10,6 +10,7 @@ from unittest import mock
 
 import src.log.monitor as collect_log
 import src.utils_logger
+from src.config.subscript import get_script_name
 from src.log import (
     BGILogParser,
     M7ALogParser,
@@ -20,7 +21,7 @@ from src.log import (
     ZZZLogParser,
     parse_log,
 )
-from src.utils_yaml import dump_yaml_file
+from src.utils_yaml import dump_yaml_file, load_yaml
 
 
 class TestLogParser(unittest.TestCase):
@@ -268,9 +269,14 @@ class TestParseLogsRerunList(unittest.TestCase):
         # src.utils_logger.get_root_dir，故此处 patch 前者才能让临时 config 生效。
         orig = collect_log._get_root_dir
         collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
+        # 诊断视图覆盖全部脚本：显式传 config 全部脚本集合（parse_logs 的 None/空=跳过）。
+        config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
+        candidate = {get_script_name(s) for s in config_data.get("script_list", [])}
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
-            return collect_log.parse_logs(do_log=do_log)
+            return collect_log.parse_logs(
+                do_log=do_log, candidate_script_names=candidate
+            )
         finally:
             after = {id(h) for h in _logging.getLogger().handlers}
             for h in list(_logging.getLogger().handlers):
@@ -365,8 +371,12 @@ class TestParseLogsRerunList(unittest.TestCase):
         collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
+            config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
+            candidate = {get_script_name(s) for s in config_data.get("script_list", [])}
             with mock.patch.object(collect_log, "parse_log", side_effect=fake_parse):
-                result = collect_log.parse_logs(do_log=False)
+                result = collect_log.parse_logs(
+                    do_log=False, candidate_script_names=candidate
+                )
         finally:
             after = {id(h) for h in _logging.getLogger().handlers}
             for h in list(_logging.getLogger().handlers):
@@ -418,8 +428,12 @@ class TestParseLogsRerunList(unittest.TestCase):
         collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
+            config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
+            candidate = {get_script_name(s) for s in config_data.get("script_list", [])}
             with mock.patch.object(collect_log, "parse_log", side_effect=fake_parse):
-                result = collect_log.parse_logs(do_log=False)
+                result = collect_log.parse_logs(
+                    do_log=False, candidate_script_names=candidate
+                )
         finally:
             after = {id(h) for h in _logging.getLogger().handlers}
             for h in list(_logging.getLogger().handlers):
@@ -531,8 +545,12 @@ class TestParseLogsRerunList(unittest.TestCase):
         collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
+            config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
+            candidate = {get_script_name(s) for s in config_data.get("script_list", [])}
             with mock.patch.object(collect_log, "parse_log", side_effect=fake_parse):
-                result = collect_log.parse_logs(do_log=False)
+                result = collect_log.parse_logs(
+                    do_log=False, candidate_script_names=candidate
+                )
         finally:
             after = {id(h) for h in _logging.getLogger().handlers}
             for h in list(_logging.getLogger().handlers):

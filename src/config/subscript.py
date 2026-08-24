@@ -11,6 +11,7 @@ import re
 from src.utils import (
     get_config_yml_path_under_root,
     get_root_dir,
+    get_schedule_yml_path_under_root,
     require_config_yml_path,
     safe_path_join,
 )
@@ -297,3 +298,17 @@ def generate_config_from_example() -> None:
     assert os.path.exists(example_path), f"[subscript] 模板不存在: {example_path}"
     data = load_yaml(example_path)
     dump_yaml(config_path, data)
+
+
+def generate_schedule_from_example() -> None:
+    """从 config/schedule.example.yml 复制生成 config/schedule.yml。
+
+    调度运行参数（shutdown / timed_run / mute / rerun / notify）独立于 config.yml，
+    与脚本链声明（script_list）解耦；首次运行时由 ``launcher.config_workflow``
+    与 config.yml 一并生成。模板见 config/schedule.example.yml。
+    """
+    example_path = safe_path_join(get_root_dir(), "config", "schedule.example.yml")
+    schedule_path = get_schedule_yml_path_under_root()
+    assert os.path.exists(example_path), f"[subscript] 模板不存在: {example_path}"
+    data = load_yaml(example_path)
+    dump_yaml(schedule_path, data)

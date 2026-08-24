@@ -617,7 +617,9 @@ def _build_summary_report(
     return "\n".join(report_lines)
 
 
-def parse_logs(do_log: bool = True) -> dict[str, list[str] | str]:
+def parse_logs(
+    do_log: bool = True, candidate_script_names: set[str] | None = None
+) -> dict[str, list[str] | str]:
     """汇总各脚本当日运行情况：收集解析结果，得到汇总表格并准备需处理脚本列表。
 
     按脚本唯一标识 script_name（exe=进程名 / python=display_name）匹配各 Parser；
@@ -628,8 +630,17 @@ def parse_logs(do_log: bool = True) -> dict[str, list[str] | str]:
       - "entries": 各脚本解析结果（含 display_name / result），供 notify_mail.py 复用诊断文本。
     表格状态列：正常完成但含报错显示为 WARN「有报错」，仅呈现层；
     rerun/notify 仍按 exited/errors 判定。
+
+    Args:
+        candidate_script_names: 候选脚本标识集合（即本次启用的脚本）。传入后只在该
+            集合内解析日志、挑选「需重跑/需通知」的脚本，根本不去碰未启用脚本
+            的日志（无需事后取交集）。None 或空集合表示不纳入任何脚本——跳过解析、
+            直接返回空结果（调用方想全量时显式传入 config 全部脚本集合）。
     do_log=False 时不打印报告。
     """
+    # None/空集合 = 不干活：跳过日志解析，返回空结果。
+    if not candidate_script_names:
+        return {"rerun": [], "notify": [], "report": "", "entries": []}
     setup_logging()
     # Windows 控制台默认 GBK 编码，日志中可能含 emoji 等字符
     if hasattr(sys.stdout, "reconfigure"):
@@ -649,6 +660,9 @@ def parse_logs(do_log: bool = True) -> dict[str, list[str] | str]:
     for script in script_list:
         script_name = get_script_name(script)
         if not script_name or script_name not in supported:
+            continue
+        # 仅解析候选脚本：未启用的脚本不进入本次重跑/邮件的挑选范围。
+        if script_name not in candidate_script_names:
             continue
         entries.append(
             {

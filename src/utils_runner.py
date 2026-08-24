@@ -440,7 +440,7 @@ def apply_mute_config(config_data: dict, *, enabled: bool) -> None:
 
 
 def spawn_schedule_run(
-    enabled_keys: set[str] | None,
+    enabled_keys: set[str],
     target_time: str,
     *,
     chain_name: str = "today",
@@ -462,7 +462,9 @@ def spawn_schedule_run(
     （不是 ``--at``）。
 
     Args:
-        enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
+        enabled_keys: 纳入链的脚本唯一标识集合（**必须显式传入具体集合**）；
+            None 不被允许——CLI 已把 ``--enable`` 的缺省/``all`` 物化为全部脚本集合，
+            GUI 永远传非空真实集合，故跨进程壳层不再用 None 表达「全部」。
         target_time: 目标时刻 ``"HH:MM"``（24 小时制），须合法（调用方已校验）。
         chain_name: 链配置文件名（不含扩展名，默认 today）。
         mute: 是否运行中静音（透传 ``--mute``）。
@@ -471,6 +473,9 @@ def spawn_schedule_run(
     Returns:
         已启动的 CLI ``subprocess.Popen``；启动失败返回 None。
     """
+    # 跨进程壳层不再接受 None：调用方（CLI 已物化 ``all``、GUI 永远传真实集合）
+    # 必须显式传入具体集合。None 在此是契约错误，而非「全部」的同义。
+    assert enabled_keys is not None
     if getattr(sys, "frozen", False):
         command: list[str] = [sys.executable]
     else:

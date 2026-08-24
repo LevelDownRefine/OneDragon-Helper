@@ -149,20 +149,3 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-shutdown:
-  after_run: true
-  delay_seconds: 45
-timed_run:
-  enabled: false
-  target_time: "04:10"
-mute:
-  enabled: true
-rerun:
-  enabled: true
-# 运行后邮件通知（默认关闭）：schedule_run 流程末发送运行汇总邮件。
-# 仅当 enabled=true 且 email/password 齐全时发送；QQ 邮箱「收发同号」自己发给自己。
-# 授权码获取：QQ 邮箱网页版 → 设置 → 账号 → 开启 SMTP 服务 → 生成授权码（16 位，非登录密码）。
-notify:
-  enabled: false
-  email: ""
-  password: ""

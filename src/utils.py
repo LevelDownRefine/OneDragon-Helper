@@ -20,6 +20,17 @@ def get_config_yml_path_under_root() -> str:
     return safe_path_join(get_root_dir(), "config", "config.yml")
 
 
+def get_schedule_yml_path_under_root() -> str:
+    """
+    获取根目录下的config/schedule.yml文件路径（运行时生成，含邮件授权码，不追溯git）。
+
+    调度运行参数（shutdown / timed_run / mute / rerun / notify）独立存放于此，
+    与 config.yml（脚本链声明）解耦；模板见 config/schedule.example.yml。
+    :return: 根目录下的config/schedule.yml文件路径
+    """
+    return safe_path_join(get_root_dir(), "config", "schedule.yml")
+
+
 def require_config_yml_path() -> str:
     """
     返回 config.yml 路径，并断言该文件已存在。
@@ -30,7 +41,7 @@ def require_config_yml_path() -> str:
 
     注意：本函数仅在 config.yml 应当已存在时调用。以下场景应使用
     `get_config_yml_path_under_root()`（纯路径，不做存在性断言）：
-    - 探测是否存在（launcher.need_config_workflow / config_workflow）；
+    - 探测/首次生成（launcher.config_workflow）；
     - 作为写入/生成目标（subscript.generate_config_from_example 首次生成 config.yml）。
     """
     path = get_config_yml_path_under_root()

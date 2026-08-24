@@ -204,7 +204,7 @@ class TestRunChainOnce(unittest.TestCase):
             ) as build,
             patch("src.service.chain_service.subprocess.run") as run,
         ):
-            svc.run_chain_once()
+            svc.run_chain_once({"A"})
         # 默认启用全部脚本、chain_name=today、不关机不静音
         gen.assert_called_once_with(
             {"script_list": [{"display_name": "A", "script_path": "A.exe"}]},
@@ -253,7 +253,7 @@ class TestRunChainOnce(unittest.TestCase):
     def test_empty_script_list_asserts(self):
         svc = self._make_service([])
         with self.assertRaises(AssertionError):
-            svc.run_chain_once()
+            svc.run_chain_once({"A"})
 
     def test_run_steps_isolates_step_failures(self):
         """ScheduledRun._run_steps：单步失败不影响后续步骤，均记日志。"""
@@ -275,8 +275,10 @@ class TestScheduleRun(unittest.TestCase):
 
     def _make_service(self, script_list):
         svc = ChainService()
-        svc.load_config = MagicMock(
-            return_value={"script_list": script_list, "rerun": {"enabled": True}}
+        svc.load_config = MagicMock(return_value={"script_list": script_list})
+        # rerun 已迁入 schedule.yml，经 load_schedule 读取。
+        svc.load_schedule = MagicMock(
+            return_value={"rerun": {"enabled": True}, "notify": {"enabled": False}}
         )
         svc.load_ui_state = MagicMock(return_value={})
         svc.run_chain_once = MagicMock(return_value=None)
@@ -323,7 +325,7 @@ class TestScheduleRun(unittest.TestCase):
         ):
             svc.schedule_run({"demo"}, "08:00", shutdown_delay=60)
         mock_pipeline.assert_called_once_with(
-            shutdown_delay=60, smtp_config=None, mute=False
+            shutdown_delay=60, smtp_config=None, mute=False, enabled_keys={"demo"}
         )
 
     def test_mute_passed_to_pipelines(self):
@@ -343,7 +345,7 @@ class TestScheduleRun(unittest.TestCase):
             svc.schedule_run({"demo"}, "08:00", mute=True)
         mock_pre.assert_called_once_with(target_time="08:00", mute=True)
         mock_post.assert_called_once_with(
-            shutdown_delay=None, smtp_config=None, mute=True
+            shutdown_delay=None, smtp_config=None, mute=True, enabled_keys={"demo"}
         )
         # 静音不再经 run_chain_once 透传
         _, kwargs = svc.run_chain_once.call_args
@@ -406,13 +408,10 @@ class TestScheduleRun(unittest.TestCase):
         self.assertEqual(order, ["rerun", "mail"])
 
     def test_rerun_skipped_when_disabled(self):
-        """config.rerun.enabled=false：链跑完后不进入重跑轮。"""
+        """schedule.rerun.enabled=false：链跑完后不进入重跑轮。"""
         svc = self._make_service([{"display_name": "demo"}])
-        svc.load_config = MagicMock(
-            return_value={
-                "script_list": [{"display_name": "demo"}],
-                "rerun": {"enabled": False},
-            }
+        svc.load_schedule = MagicMock(
+            return_value={"rerun": {"enabled": False}, "notify": {"enabled": False}}
         )
         with (
             patch("src.service.scheduled_run.time.sleep"),
@@ -427,18 +426,19 @@ class TestScheduleRun(unittest.TestCase):
         rerun.assert_not_called()
 
     def test_mail_skipped_when_disabled(self):
-        """notify.enabled=false：传给 build_post_run_pipeline 的 smtp_config 为 None（不发信）。"""
+        """notify.enabled=false（即便配了 email/password）：smtp_config 为 None（不发信）。"""
         svc = self._make_service([{"display_name": "demo"}])
-        svc.load_config = MagicMock(
+        svc.load_schedule = MagicMock(
             return_value={
-                "script_list": [{"display_name": "demo"}],
                 "rerun": {"enabled": True},
                 "notify": {"enabled": False, "email": "a@qq.com", "password": "pw"},
             }
         )
         captured = {}
 
-        def _fake_pipeline(*, shutdown_delay, smtp_config, mute=False):
+        def _fake_pipeline(
+            *, shutdown_delay, smtp_config, mute=False, enabled_keys=None
+        ):
             captured["smtp_config"] = smtp_config
             return []
 
@@ -494,8 +494,8 @@ class TestBuildPostRunPipeline(unittest.TestCase):
             shutdown_delay=60,
             smtp_config={"enabled": True, "email": "a@qq.com", "password": "pw"},
         )
-        parse.assert_any_call(do_log=False)
         self.assertEqual(parse.call_count, 1)  # 仅最终态分析
+        self.assertEqual(parse.call_args.kwargs.get("do_log"), False)
         mail.assert_called_once()
         shutdown.assert_called_once_with(60)
 
@@ -521,6 +521,16 @@ class TestBuildPostRunPipeline(unittest.TestCase):
         """未配置 SMTP：邮件步骤静默跳过（默认关闭）。"""
         parse, mail, shutdown = self._run(shutdown_delay=None, smtp_config=None)
         mail.assert_not_called()
+
+    def test_enabled_keys_passed_as_candidate_to_parse_logs(self):
+        """build_post_run_pipeline 把本次启用的脚本集合作为候选列表传给 parse_logs：
+        邮件汇总只在候选（启用）脚本内挑选，未启用脚本不计入。"""
+        parse, mail, shutdown = self._run(
+            shutdown_delay=None,
+            smtp_config={"enabled": True, "email": "a@qq.com", "password": "pw"},
+            enabled_keys={"demo"},
+        )
+        parse.assert_called_once_with(do_log=False, candidate_script_names={"demo"})
 
 
 class TestRerunRound(unittest.TestCase):
@@ -549,7 +559,7 @@ class TestRerunRound(unittest.TestCase):
             ),
             patch("src.service.chain_service._run_chain_once_impl") as run_impl,
         ):
-            svc._rerun_round(all_config=svc.load_config())
+            svc._rerun_round(all_config=svc.load_config(), enabled_keys={"demo"})
         run_impl.assert_called_once()
         args, kwargs = run_impl.call_args
         self.assertEqual(args[1], {"demo"})  # 启用脚本集合
@@ -566,7 +576,7 @@ class TestRerunRound(unittest.TestCase):
             ),
             patch("src.service.chain_service._run_chain_once_impl") as run_impl,
         ):
-            svc._rerun_round(all_config=svc.load_config())
+            svc._rerun_round(all_config=svc.load_config(), enabled_keys={"demo"})
         run_impl.assert_not_called()
 
     def test_filters_unknown_script_names(self):
@@ -584,10 +594,27 @@ class TestRerunRound(unittest.TestCase):
             ),
             patch("src.service.chain_service._run_chain_once_impl") as run_impl,
         ):
-            svc._rerun_round(all_config=svc.load_config())
+            svc._rerun_round(all_config=svc.load_config(), enabled_keys={"demo"})
         run_impl.assert_called_once()
         args, _ = run_impl.call_args
         self.assertEqual(args[1], {"demo"})  # 过滤掉的 ghost 不在 config
+
+    def test_passes_enabled_keys_to_parse_logs(self):
+        """_rerun_round 把本次启用的脚本集合透传给 parse_logs，使重跑仅针对启用脚本。"""
+        svc = self._svc_with_config([{"display_name": "demo", "script_path": "demo"}])
+        with (
+            patch(
+                "src.service.chain_service.parse_logs",
+                return_value={"rerun": [], "notify": [], "report": "", "entries": []},
+            ) as parse,
+            patch("src.service.chain_service._run_chain_once_impl"),
+        ):
+            svc._rerun_round(
+                all_config=svc.load_config(), enabled_keys={"demo", "other"}
+            )
+        parse.assert_called_once_with(
+            do_log=False, candidate_script_names={"demo", "other"}
+        )
 
 
 class TestAddRemoveScript(unittest.TestCase):
