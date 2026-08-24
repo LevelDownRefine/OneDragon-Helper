@@ -14,6 +14,7 @@ ScriptItem 卡片与配置弹窗（SingleScriptConfigDialog）。
 import logging
 import os
 
+from src.config.dungeon_config import load_dungeon_map
 from src.config.set_config import get_config_path, get_dungeon_lists
 from src.config.subscript import (
     DEFAULT_RUN_TIMEOUT,
@@ -161,6 +162,33 @@ class ScriptService:
                 names = get_dungeon_lists(script_name, d["name"], source)
                 d["dungeons"] = names if names is not None else []
         return defs
+
+    def get_dungeon_map(self) -> dict:
+        """返回日常副本/序列配置映射（dungeon_list.yml）。
+
+        声明项若带 ``dungeons_source`` 标记，其二级序列（副本名清单）取自游戏脚本
+        自身配置（运行期读取，见 ``get_dungeon_lists``），不再手写维护；读不到时
+        降级为 ``sequences: []``（该副本无需/无法选二级）。
+
+        Returns:
+            脚本唯一标识 → 副本配置的映射（文件缺失时返回空 dict）。
+        """
+        data = load_dungeon_map()
+        for script_name, cfg in data.items():
+            if not isinstance(cfg, dict):
+                continue
+            for d in cfg.get("dungeons", []):
+                if not isinstance(d, dict):
+                    continue
+                source = d.get("dungeons_source")
+                if source:
+                    # 二级序列来自外部（如 ok-ef 的 world_map.json），运行期读取，
+                    # 不手动维护；读不到则降级为无可选序列（show_seq=False）。
+                    names = get_dungeon_lists(script_name, d["name"], source)
+                    d["sequences"] = (
+                        [{"display": n, "value": n} for n in names] if names else []
+                    )
+        return data
 
     def get_weekly_start(self, script_name: str) -> int | None:
         """返回某脚本的周常起始日（1~7），未设置返回 None。

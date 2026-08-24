@@ -180,69 +180,15 @@ ok-ef:
   dungeons:
   - name: 未选择
   - name: 干员养成
-    sequences:
-    - display: 干员经验
-      value: 干员经验
-    - display: 干员进阶
-      value: 干员进阶
-    - display: 钱币收集
-      value: 钱币收集
-    - display: 技能提升
-      value: 技能提升
+    dungeons_source: data/apps/ok-ef/working/assets/data/world_map.json
   - name: 武器养成
-    sequences:
-    - display: 武器经验
-      value: 武器经验
-    - display: 武器进阶
-      value: 武器进阶
+    dungeons_source: data/apps/ok-ef/working/assets/data/world_map.json
   - name: 危境再现
-    sequences:
-    - display: 罗丹
-      value: 罗丹
-    - display: 三位一体
-      value: 三位一体
-    - display: 白垩界卫
-      value: 白垩界卫
-    - display: 阮一
-      value: 阮一
-    - display: 聂菲斯
-      value: 聂菲斯
+    dungeons_source: data/apps/ok-ef/working/assets/data/world_map.json
   - name: 危境预演
-    sequences:
-    - display: D96钢
-      value: D96钢
-    - display: 超距辉映管
-      value: 超距辉映管
-    - display: 快子遴捡晶格
-      value: 快子遴捡晶格
-    - display: 象限拟合液
-      value: 象限拟合液
-    - display: 三相纳米片
-      value: 三相纳米片
+    dungeons_source: data/apps/ok-ef/working/assets/data/world_map.json
   - name: 能量淤积点
-    sequences:
-    - display: 枢纽区
-      value: 枢纽区
-    - display: 源石研究园
-      value: 源石研究园
-    - display: 试验园区
-      value: 试验园区
-    - display: 矿脉源区
-      value: 矿脉源区
-    - display: 供能高地
-      value: 供能高地
-    - display: 武陵城
-      value: 武陵城
-    - display: 清波寨
-      value: 清波寨
-    - display: 首墩
-      value: 首墩
-    - display: 藏剑谷
-      value: 藏剑谷
-    - display: 应龙关
-      value: 应龙关
-    - display: 北部禁区
-      value: 北部禁区
+    dungeons_source: data/apps/ok-ef/working/assets/data/world_map.json
 OneDragon-Launcher:
   dungeons:
   - name: 未选择

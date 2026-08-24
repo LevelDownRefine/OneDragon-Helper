@@ -706,6 +706,36 @@ class EndfieldConfig(ScriptConfig):
         safe_update(config, self._weekly_task_name, not enabled, self.display_name)
         self._save(config)
 
+    @classmethod
+    def get_dungeon_lists(cls, task_name: str, source: str) -> list[str]:
+        """读取体力本的可选副本名清单。
+
+        Args:
+            task_name: 日常类别名（即 stages_dict 的键，如「能量淤积点」）。
+            source: world_map.json 相对脚本根目录的路径。
+
+        Returns:
+            副本名列表；未安装/缺失/空文件时返回 []。
+        """
+        data = load_game_config(cls._script_name, source)
+        if not data:
+            return []
+        assert isinstance(data, dict), (
+            f"[set_config][{cls.display_name}] world_map.json 顶层应为 dict: {source}"
+        )
+        stages = data.get("stages_dict")
+        assert isinstance(stages, dict), (
+            f"[set_config][{cls.display_name}] world_map.json 缺少 stages_dict: {source}"
+        )
+        assert task_name in stages, (
+            f"[set_config][{cls.display_name}] 未知日常类别: {task_name!r} (source={source})"
+        )
+        entry = stages[task_name]
+        assert isinstance(entry, list), (
+            f"[set_config][{cls.display_name}] stages_dict[{task_name!r}] 应为 list: {source}"
+        )
+        return list(entry)
+
 
 # ---- 绝区零 Zenless Zone Zero ----
 @register

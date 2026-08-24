@@ -14,7 +14,6 @@ import logging
 import os
 import subprocess
 
-from src.config.dungeon_config import load_dungeon_map
 from src.config.subscript import (
     check_script_name_uniqueness,
     get_script_name,
@@ -102,14 +101,6 @@ class ChainService:
             )
         check_script_name_uniqueness(data)
         return data
-
-    def dungeon_map(self) -> dict:
-        """读取 dungeon_list.yml 的副本/序列配置映射。
-
-        Returns:
-            脚本唯一标识 → 副本配置的映射（文件缺失时返回空 dict）。
-        """
-        return load_dungeon_map()
 
     def save_config(self, data: dict) -> None:
         """写回 config.yml（生成目标，不要求已存在）。

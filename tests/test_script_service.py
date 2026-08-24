@@ -428,8 +428,91 @@ class TestGetWeeklyDefs(unittest.TestCase):
         self.assertEqual(defs[0]["dungeons"], [])
 
     def test_unknown_script_returns_empty(self):
+        """未知脚本 → get_weekly_defs 返回空列表（不抛错、不读外部）。"""
         self._write({"March7th-Assistant": [{"name": "货币战争"}]})
         self.assertEqual(ScriptService().get_weekly_defs("不存在"), [])
+
+
+class TestGetDungeonMap(unittest.TestCase):
+    """get_dungeon_map：静态 sequences 保持，dungeons_source 运行期从外部读取/降级。"""
+
+    def test_static_sequences_untouched(self):
+        """带 dungeons（无 dungeons_source）的项保持原样，不触发外部读取。"""
+        raw = {
+            "ok-ef": {
+                "dungeons": [
+                    {
+                        "name": "干员养成",
+                        "sequences": [{"display": "干员经验", "value": "干员经验"}],
+                    }
+                ]
+            }
+        }
+        with (
+            patch("src.service.script_service.load_dungeon_map", return_value=raw),
+            patch("src.service.script_service.get_dungeon_lists") as mock_ext,
+        ):
+            result = ScriptService().get_dungeon_map()
+        self.assertEqual(
+            result["ok-ef"]["dungeons"][0]["sequences"],
+            [{"display": "干员经验", "value": "干员经验"}],
+        )
+        mock_ext.assert_not_called()  # 无 dungeons_source 不读外部
+
+    def test_fills_sequences_from_dungeons_source(self):
+        """带 dungeons_source 的声明项，其二级序列由 get_dungeon_lists 运行期填充。"""
+        raw = {
+            "ok-ef": {
+                "dungeons": [
+                    {"name": "未选择"},
+                    {
+                        "name": "能量淤积点",
+                        "dungeons_source": "data/apps/ok-ef/working/assets/data/world_map.json",
+                    },
+                ]
+            }
+        }
+        with (
+            patch("src.service.script_service.load_dungeon_map", return_value=raw),
+            patch(
+                "src.service.script_service.get_dungeon_lists",
+                return_value=["枢纽区", "武陵城"],
+            ) as mock_ext,
+        ):
+            result = ScriptService().get_dungeon_map()
+        # 未选择（无 dungeons_source）保持无序列
+        self.assertEqual(result["ok-ef"]["dungeons"][0].get("sequences"), None)
+        # 带 dungeons_source 的项被填充为 {display,value} 序列
+        seqs = result["ok-ef"]["dungeons"][1]["sequences"]
+        self.assertEqual(
+            seqs,
+            [
+                {"display": "枢纽区", "value": "枢纽区"},
+                {"display": "武陵城", "value": "武陵城"},
+            ],
+        )
+        mock_ext.assert_called_once_with(
+            "ok-ef", "能量淤积点", "data/apps/ok-ef/working/assets/data/world_map.json"
+        )
+
+    def test_dungeons_source_unreachable_degrades_to_empty(self):
+        """dungeons_source 读不到（get_dungeon_lists 返回 []）→ 降级为空序列。"""
+        raw = {
+            "ok-ef": {
+                "dungeons": [
+                    {
+                        "name": "能量淤积点",
+                        "dungeons_source": "data/apps/ok-ef/working/assets/data/world_map.json",
+                    }
+                ]
+            }
+        }
+        with (
+            patch("src.service.script_service.load_dungeon_map", return_value=raw),
+            patch("src.service.script_service.get_dungeon_lists", return_value=[]),
+        ):
+            result = ScriptService().get_dungeon_map()
+        self.assertEqual(result["ok-ef"]["dungeons"][0]["sequences"], [])
 
 
 if __name__ == "__main__":

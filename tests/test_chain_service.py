@@ -58,15 +58,6 @@ class TestLoadSaveConfig(unittest.TestCase):
             ChainService().save_config({"a": 1})
 
 
-class TestDungeonMap(unittest.TestCase):
-    """dungeon_map：转发 load_dungeon_map 读取副本配置。"""
-
-    @patch("src.service.chain_service.load_dungeon_map", return_value={"ok-ww": {}})
-    def test_returns_dungeon_map(self, mock_load):
-        self.assertEqual(ChainService().dungeon_map(), {"ok-ww": {}})
-        mock_load.assert_called_once()
-
-
 class TestChainGeneration(unittest.TestCase):
     """链生成与校验：转发"""
 

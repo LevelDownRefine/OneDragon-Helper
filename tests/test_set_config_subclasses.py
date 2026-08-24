@@ -765,6 +765,81 @@ class TestBaseGetDungeonLists(unittest.TestCase):
         self.assertIsNone(NTEConfig.get_dungeon_lists("任意周常", "any.json"))
 
 
+class TestEndfieldGetDungeonLists(unittest.TestCase):
+    """EndfieldConfig.get_dungeon_lists：读 world_map.json 的 stages_dict（二级目录）。"""
+
+    _DATA = {
+        "stages_dict": {
+            "能量淤积点": ["枢纽区", "源石研究园", "武陵城"],
+            "干员养成": ["干员经验", "干员进阶"],
+        }
+    }
+    _SRC = "data/apps/ok-ef/working/assets/data/world_map.json"
+
+    def test_reads_stages_list(self):
+        """正常读取：返回 stages_dict[task_name]（二级目录副本名列表）。"""
+        with patch(
+            "src.config.set_config.load_game_config", return_value=self._DATA
+        ) as mock_load:
+            names = EndfieldConfig.get_dungeon_lists("能量淤积点", self._SRC)
+        self.assertEqual(names, ["枢纽区", "源石研究园", "武陵城"])
+        mock_load.assert_called_once_with("ok-ef", self._SRC)
+
+    def test_does_not_instantiate_or_init_config(self):
+        """类方法调用不触发 _init_config（否则纯读会写盘/弹确认框）。"""
+        with (
+            patch.object(EndfieldConfig, "_init_config") as mock_init,
+            patch("src.config.set_config.load_game_config", return_value=self._DATA),
+        ):
+            EndfieldConfig.get_dungeon_lists("能量淤积点", self._SRC)
+        mock_init.assert_not_called()
+
+    def test_source_is_used_as_rel_path(self):
+        """source 即相对脚本根目录的路径，直接透传给 load_game_config（无额外白名单）。"""
+        with patch(
+            "src.config.set_config.load_game_config", return_value=None
+        ) as mock_load:
+            self.assertEqual(
+                EndfieldConfig.get_dungeon_lists("能量淤积点", "some/other/path.json"),
+                [],
+            )
+        mock_load.assert_called_once_with("ok-ef", "some/other/path.json")
+
+    def test_script_not_installed_returns_empty(self):
+        """ok-ef 未安装（load_game_config 软降级为 None）→ data 为空 → 返回 []。"""
+        with patch("src.config.set_config.load_game_config", return_value=None):
+            self.assertEqual(
+                EndfieldConfig.get_dungeon_lists("能量淤积点", self._SRC), []
+            )
+
+    def test_missing_stages_dict_asserts(self):
+        """顶层不含 stages_dict → assert 触发（不静默兜底）。"""
+        with (
+            patch("src.config.set_config.load_game_config", return_value={"foo": 1}),
+            self.assertRaises(AssertionError),
+        ):
+            EndfieldConfig.get_dungeon_lists("能量淤积点", self._SRC)
+
+    def test_missing_task_key_asserts(self):
+        """stages_dict 不含该类别 → assert 触发（不静默兜底）。"""
+        with (
+            patch("src.config.set_config.load_game_config", return_value=self._DATA),
+            self.assertRaises(AssertionError),
+        ):
+            EndfieldConfig.get_dungeon_lists("不存在的类别", self._SRC)
+
+    def test_malformed_entry_asserts(self):
+        """stages_dict[task_name] 不是 list（格式异常）→ assert 触发（不静默兜底）。"""
+        with (
+            patch(
+                "src.config.set_config.load_game_config",
+                return_value={"stages_dict": {"能量淤积点": {"枢纽区": "x"}}},
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            EndfieldConfig.get_dungeon_lists("能量淤积点", self._SRC)
+
+
 # ============================================================
 # 异环 NTEConfig
 # ============================================================

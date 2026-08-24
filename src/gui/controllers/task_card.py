@@ -168,7 +168,7 @@ class TaskCardController(QObject):
     # ── 缓存构建（运行期不变）──────────────────────────────────────────
     def build_dungeon_cache(self, games: list):
         """一次性解析 dungeon_list.yml 并构建所有脚本的副本下拉数据（运行期不变）。"""
-        self._dungeon_map_cache = self._service.dungeon_map()
+        self._dungeon_map_cache = self._script_service.get_dungeon_map()
         self._dungeon_options_cache = {
             g["script_name"]: self._build_dungeon_options(g["script_name"])
             for g in games
