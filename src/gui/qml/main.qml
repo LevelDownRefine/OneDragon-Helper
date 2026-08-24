@@ -195,7 +195,7 @@ Window {
                         // 用稳定坐标系的总位移估算目标 index（item 高 56 + spacing 8）
                         var cur = iconMouseArea.mapToItem(gameList.contentItem, mouse.x, mouse.y).y
                         var dy = cur - pressCursorY
-                        // 拖到删除区：直接删除（落盘，不可撤销），不再走重排
+                        // 拖到删除区：触发删除（Python 侧弹二次确认后再落盘），不再走重排
                         if (dragging && gameList.overDelete) {
                             gameList.dragActive = false
                             gameList.overDelete = false

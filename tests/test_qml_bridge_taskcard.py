@@ -7,7 +7,7 @@ patch 目标指向 task_card），验证 QML 任务卡所需的数据与写回�
 """
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from src.gui import main_window
 from src.gui.controllers import task_card
@@ -128,7 +128,6 @@ class TestTaskCard(unittest.TestCase):
         toasts = []
         b.toastRequested.connect(lambda t: toasts.append(t))
         dlg = mock_dialog_cls.return_value
-        dlg.delete_requested = MagicMock()
         dlg.exec.return_value = mock_qdialog.Accepted
         dlg.pending_changes = {
             "old_script_name": "ok-ww",
@@ -150,7 +149,6 @@ class TestTaskCard(unittest.TestCase):
     def test_config_current_cancel_does_not_save(self, mock_qdialog, mock_dialog_cls):
         b = _make_bridge()
         dlg = mock_dialog_cls.return_value
-        dlg.delete_requested = MagicMock()
         dlg.exec.return_value = mock_qdialog.Rejected  # 取消/关闭
         with (
             patch.object(b.service, "update_script") as mock_update,

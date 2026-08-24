@@ -326,47 +326,5 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
         self.assertIsNone(dlg._script_service.saved_weekly_start)
 
 
-class TestSingleScriptConfigDialogDelete(unittest.TestCase):
-    """测试弹窗内「删除脚本」动作。"""
-
-    def _make_dialog(self):
-        return SingleScriptConfigDialog(
-            "ok-ww",
-            "鸣潮",
-            "C:/games/run.exe",
-            script_service=_FakeService("external", "C:/games/run.exe"),
-        )
-
-    def test_delete_emits_signal_and_closes(self):
-        """确认删除后发出 delete_requested 并关闭弹窗"""
-        dlg = self._make_dialog()
-        received = []
-        dlg.delete_requested.connect(lambda n: received.append(n))
-        with (
-            patch("src.gui.dialogs.QMessageBox") as mock_box,
-            patch.object(dlg, "close") as mock_close,
-        ):
-            mock_box.Ok = "OK"
-            mock_box.return_value.exec.return_value = "OK"
-            dlg._on_delete_clicked()
-        self.assertEqual(received, ["ok-ww"])
-        mock_close.assert_called_once()
-
-    def test_delete_cancelled_does_not_emit(self):
-        """取消删除时不发信号、不关闭弹窗"""
-        dlg = self._make_dialog()
-        received = []
-        dlg.delete_requested.connect(lambda n: received.append(n))
-        with (
-            patch("src.gui.dialogs.QMessageBox") as mock_box,
-            patch.object(dlg, "close") as mock_close,
-        ):
-            mock_box.Ok = "OK"
-            mock_box.return_value.exec.return_value = "CANCEL"
-            dlg._on_delete_clicked()
-        self.assertEqual(received, [])
-        mock_close.assert_not_called()
-
-
 if __name__ == "__main__":
     unittest.main()

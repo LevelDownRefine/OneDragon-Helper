@@ -2,7 +2,7 @@
 
 import os
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -40,11 +40,24 @@ def _make_controller():
 
 class TestDeleteScript(unittest.TestCase):
     def test_delete_script_removes_and_reloads(self):
-        """按 index 删除：调 remove_script（按名字）并触发一次门面级重载。"""
+        """按 index 删除：二次确认后调 remove_script（按名字）并触发一次门面级重载。"""
         ctrl, service, reload_spy = _make_controller()
-        ctrl.deleteScript(0)
+        with patch("src.gui.controllers.game_list.QMessageBox") as mock_box:
+            mock_box.Ok = "OK"
+            mock_box.return_value.exec.return_value = "OK"
+            ctrl.deleteScript(0)
         service.remove_script.assert_called_once_with("a")
         reload_spy.assert_called_once()
+
+    def test_delete_script_cancel_does_not_remove(self):
+        """确认弹窗取消时，不删除、不重载。"""
+        ctrl, service, reload_spy = _make_controller()
+        with patch("src.gui.controllers.game_list.QMessageBox") as mock_box:
+            mock_box.Ok = "OK"
+            mock_box.return_value.exec.return_value = "CANCEL"
+            ctrl.deleteScript(0)
+        service.remove_script.assert_not_called()
+        reload_spy.assert_not_called()
 
     def test_delete_script_out_of_range_asserts(self):
         """越界 index 直接断言失败，不触碰 service。"""

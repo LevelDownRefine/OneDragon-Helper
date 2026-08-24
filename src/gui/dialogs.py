@@ -6,8 +6,8 @@ safe_startfile，原 src/gui/utils.py）已并入本文件（2026-08-16），src
 
 对外接口：
 - ``SingleScriptConfigDialog``：单脚本配置弹窗（名称/路径/类型/参数/完成检测/
-  关闭脚本/关闭游戏/阻塞/游戏进程/每周超时/配置文件/删除脚本），保存后经
-  ``pending_changes`` 返回，写盘由调用方委托 ``ChainService.update_script``。
+  关闭脚本/关闭游戏/阻塞/游戏进程/每周超时），保存后经 ``pending_changes`` 返回，
+  写盘由调用方委托 ``ChainService.update_script``。脚本删除改由左侧列表交互完成。
 - ``confirm_config_update`` / ``inject_config_confirm``：config 与模板不一致时的
   保存前确认回调（30s 限时，超时按拒绝处理），GUI 入口注入。
 - 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
@@ -17,7 +17,7 @@ safe_startfile，原 src/gui/utils.py）已并入本文件（2026-08-16），src
 import os
 import warnings
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -41,7 +41,6 @@ from src.service.script_service import ScriptService
 DARK_BLUE = "#333957"  # 深空蓝
 BLUE = "#5D74A2"  # 钢蓝
 SKY_BLUE = "#C4D8F2"  # 雾蓝
-CRIMSON = "#8E2D30"  # 酒红
 
 TEXT = DARK_BLUE  # 正文
 TEXT_MUTED = DARK_BLUE  # 次要文字
@@ -281,15 +280,6 @@ class _FormDialogBase(QDialog):
         color=TEXT,
         padding="0 16px",
     )
-    _DANGER_BTN_STYLE = outlined_qss(
-        selector="QPushButton",
-        accent=CRIMSON,
-        radius=10,
-        font_size=FONT_SIZE_BODY,
-        color=CRIMSON,
-        border="#D8B4B6",
-        padding="0 24px",
-    )
 
     def _make_label(self, text) -> QLabel:
         """构造固定宽度的表单字段标签（无边框透明背景）。"""
@@ -337,18 +327,6 @@ class _FormDialogBase(QDialog):
         cb.setStyleSheet(self._CHECK_STYLE)
         return cb
 
-    def _make_left_button(
-        self, text: str, style: str, slot, width: int = 90
-    ) -> QPushButton:
-        """构造底部左侧按钮（配置文件 / 删除脚本，与 footer 右侧按钮同高）。"""
-        btn = QPushButton(text)
-        btn.setFixedHeight(28)
-        btn.setMinimumWidth(width)
-        btn.setFont(make_font(size=FONT_SIZE_BODY))
-        btn.setStyleSheet(style)
-        btn.clicked.connect(slot)
-        return btn
-
     def _make_footer(
         self,
         primary_text: str,
@@ -387,9 +365,7 @@ class _FormDialogBase(QDialog):
 
 
 class SingleScriptConfigDialog(_FormDialogBase):
-    """单个脚本的配置弹窗（路径选择 + 每周超时时间 + 配置文件 / 删除脚本）"""
-
-    delete_requested = Signal(str)
+    """单个脚本的配置弹窗（路径选择 + 每周超时时间，删除改由左侧列表交互完成）。"""
 
     _TIMEOUT_INPUT_STYLE = small_line_edit_qss(text_align="right")
 
@@ -526,11 +502,8 @@ class SingleScriptConfigDialog(_FormDialogBase):
         grid.addWidget(self._make_label("每周超时:"), timeout_row, 0)
         grid.addLayout(timeout_grid, timeout_row, 1, 1, 2)
 
-        # 底部按钮行：左次要（删除脚本）+ 右主操作（取消 / 保存）
-        delete_btn = self._make_left_button(
-            "删除脚本", self._DANGER_BTN_STYLE, self._on_delete_clicked
-        )
-        footer = self._make_footer("保存", self.save_data, left_widgets=(delete_btn,))
+        # 底部按钮行：右主操作（取消 / 保存）
+        footer = self._make_footer("保存", self.save_data)
 
         layout.addLayout(grid)
         layout.addLayout(footer)
@@ -642,16 +615,3 @@ class SingleScriptConfigDialog(_FormDialogBase):
             "weekly_timeouts": timeouts,
         }
         self.accept()
-
-    def _on_delete_clicked(self):
-        """删除本脚本：二次确认后通知外部并关闭弹窗。"""
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle("删除脚本")
-        box.setText(f"确定删除「{self.display_name}」？此操作不可撤销。")
-        box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
-        box.setDefaultButton(QMessageBox.Cancel)
-        if box.exec() != QMessageBox.Ok:
-            return
-        self.delete_requested.emit(self.script_name)
-        self.close()

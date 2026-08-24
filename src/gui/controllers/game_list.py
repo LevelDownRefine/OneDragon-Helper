@@ -16,6 +16,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QPixmap
 from PySide6.QtQuick import QQuickImageProvider
+from PySide6.QtWidgets import QMessageBox
 
 from src.config.subscript import get_script_name
 from src.gui.icons import get_script_icon
@@ -330,9 +331,19 @@ class GameListController(QObject):
 
     @Slot(int)
     def deleteScript(self, index: int):
-        """左侧拖拽到删除区：按 index 删除脚本并落盘重载。"""
+        """左侧拖拽到删除区：二次确认后按 index 删除脚本并落盘重载。"""
         assert 0 <= index < len(self._games), f"[bridge] index out of range: {index}"
-        self._on_delete_script(self._games[index]["script_name"])
+        script_name = self._games[index]["script_name"]
+        display = self._games[index].get("display_name", script_name)
+        box = QMessageBox()
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("删除脚本")
+        box.setText(f"确定删除「{display}」？此操作不可撤销。")
+        box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        box.setDefaultButton(QMessageBox.Cancel)
+        if box.exec() != QMessageBox.Ok:
+            return
+        self._on_delete_script(script_name)
 
     @Slot()
     def configCurrent(self):
@@ -354,7 +365,6 @@ class GameListController(QObject):
             None,
             script_service=self._service._script_service,
         )
-        dialog.delete_requested.connect(self._on_delete_script)
         if dialog.exec() == QDialog.Accepted:
             assert dialog.pending_changes is not None, (
                 "[bridge] 配置弹窗 accept 但 pending_changes 为空"
