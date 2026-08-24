@@ -7,7 +7,7 @@
 （重跑 / 通知）。失败重跑由同目录 `rerun.py`、报错邮件由同目录 `notify_mail.py` 负责，二者均调用
 本文件 `parse_logs`（后者复用其返回的汇总表格做整表通知）。
 
-本模块为 `src.log` 包的子模块，由 `scripts/collect_log.py`（独立入口）或 GUI 以 `import
+本模块为 `src.log` 包的子模块，由 `python -m src.log`（__main__ 入口）或 GUI/service 以 `import
 src.log.monitor` 方式调用，不单独运行。除复用脚本唯一标识 `get_script_name`（见
 `src.config.subscript`）外，不依赖项目内其余模块；根目录由 `_get_root_dir` 推导，并直接
 读取 `config.yml`（经 `src.utils_yaml.load_yaml`，ruamel YAML 1.2 解析）。
@@ -142,12 +142,14 @@ class BaseLogParser:
         now = datetime.now()
         mtime = datetime.fromtimestamp(log_path.stat().st_mtime)
 
+        # 运行日从 04:00 切分（定时运行在 04:10）：
+        # - 现在 >= 4 点：认「今天 04:00 之后」产生的日志；
+        # - 现在 < 4 点（凌晨）：认「昨天运行日」，即「昨天 04:00 之后」产生的日志。
+        # 无后缀 log.txt 的 mtime 无法区分「昨天 04:00 后那轮」与更早的，但按运行日
+        # 边界统一以 4 点为界，凌晨不会把今天 0-4 点之前的日志误当成今天。
+        today_4am = now.replace(hour=4, minute=0, second=0, microsecond=0)
         if now.hour >= 4:
-            return mtime.date() == now.date()
-
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if mtime >= today_start:
-            return True
+            return mtime >= today_4am
 
         yesterday_4am = (now - timedelta(days=1)).replace(
             hour=4, minute=0, second=0, microsecond=0

@@ -62,7 +62,7 @@ class TestRunConfirmDialog(unittest.TestCase):
         self.assertFalse(dlg.timed_time.isEnabled())
 
     def test_accept_collects_selections(self):
-        """确认运行：收集复选框与控件值并写入 result（含静音选项）。"""
+        """确认运行：收集复选框与控件值并写入 result（含静音/重跑/邮件通知）。"""
         dlg = RunConfirmDialog(
             2,
             shutdown_enabled=False,
@@ -70,12 +70,16 @@ class TestRunConfirmDialog(unittest.TestCase):
             timed_enabled=False,
             timed_target="04:10",
             mute_enabled=False,
+            rerun_enabled=True,
+            notify_enabled=False,
         )
         dlg.shutdown_cb.setChecked(True)
         dlg.shutdown_delay_spin.setValue(120)
         dlg.timed_cb.setChecked(True)
         dlg.timed_time.setTime(dlg.timed_time.time().__class__(4, 10))
         dlg.mute_cb.setChecked(True)
+        dlg.rerun_cb.setChecked(False)
+        dlg.notify_cb.setChecked(True)
         dlg._on_accept()
         self.assertEqual(
             dlg.result,
@@ -85,6 +89,8 @@ class TestRunConfirmDialog(unittest.TestCase):
                 "timed_enabled": True,
                 "timed_target": "04:10",
                 "mute_enabled": True,
+                "rerun_enabled": False,
+                "notify_enabled": True,
             },
         )
 
@@ -99,6 +105,30 @@ class TestRunConfirmDialog(unittest.TestCase):
             mute_enabled=True,
         )
         self.assertTrue(dlg.mute_cb.isChecked())
+
+    def test_echoes_current_rerun_config(self):
+        """打开弹窗时回显 config 当前重跑配置（勾选状态）。"""
+        dlg = RunConfirmDialog(
+            3,
+            shutdown_enabled=False,
+            shutdown_delay=0,
+            timed_enabled=False,
+            timed_target="04:10",
+            rerun_enabled=False,
+        )
+        self.assertFalse(dlg.rerun_cb.isChecked())
+
+    def test_echoes_current_notify_config(self):
+        """打开弹窗时回显 config 当前邮件通知配置（勾选状态）。"""
+        dlg = RunConfirmDialog(
+            3,
+            shutdown_enabled=False,
+            shutdown_delay=0,
+            timed_enabled=False,
+            timed_target="04:10",
+            notify_enabled=True,
+        )
+        self.assertTrue(dlg.notify_cb.isChecked())
 
     def test_cancel_leaves_result_none(self):
         """取消（reject）：result 保持 None，不收集。"""

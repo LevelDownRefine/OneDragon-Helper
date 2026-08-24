@@ -13,15 +13,13 @@ import json
 import logging
 import os
 import subprocess
-import threading
-from collections.abc import Callable, Sequence
-from datetime import datetime
 
 from src.config.dungeon_config import load_dungeon_map
 from src.config.subscript import (
     check_script_name_uniqueness,
     get_script_name,
 )
+from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.script_service import ScriptService
 from src.utils import (
@@ -31,15 +29,13 @@ from src.utils import (
     safe_path_join,
 )
 from src.utils_runner import (
-    _to_signed_32,
-    collect_invalid_script_messages,
-    next_target_datetime,
-)
-from src.utils_runner import (
     build_chain_command as _build_chain_command,
 )
 from src.utils_runner import (
     build_run_chain_command as _build_run_chain_command,
+)
+from src.utils_runner import (
+    collect_invalid_script_messages,
 )
 from src.utils_runner import (
     run_chain_command as _run_chain_command,
@@ -49,6 +45,23 @@ from src.utils_yaml import dump_yaml, load_yaml
 logger = logging.getLogger(__name__)
 
 _STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
+
+
+def _resolve_mail_config(all_config: dict) -> dict | None:
+    """从 config 解析有效邮件配置：notify.enabled 非 true 或 email/password 缺失返回 None。
+
+    ``schedule_run`` 在链路点火后调用，将结果透传 ``build_post_run_pipeline``；返回 None
+    表示不发邮件（默认关闭），与旧 notify_mail.yml「缺字段即跳过」语义一致。
+    """
+    notify = all_config.get("notify")
+    if not isinstance(notify, dict) or not notify.get("enabled", False):
+        return None
+    email = (notify.get("email") or "").strip()
+    password = (notify.get("password") or "").strip()
+    if not email or not password:
+        logger.warning("[chain] 邮件未启用或 email/password 缺失，跳过: %s", notify)
+        return None
+    return notify
 
 
 class ChainService:
@@ -310,47 +323,54 @@ class ChainService:
         *,
         chain_name: str = "today",
         ui_state: dict | None = None,
-        shutdown: int | None = None,
-        mute: bool = False,
-        block: bool = False,
-    ) -> int | None:
-        """生成脚本链并运行（单发原子）：service 侧『生成+运行+关机/静音命令』原子。
+    ) -> None:
+        """生成脚本链并运行（单发原子）：service 侧 facade，委托 ``_run_chain_once_impl``。
 
-        GUI『启动全部』的即时运行与定时到点运行都经此；关机（runner ``--shutdown``
-        flag）与静音（``--mute``）的命令构造在此统一，GUI 不再拼命令。
+        阻塞运行；运行后动作（日志分析/重跑/邮件/关机）由调用方（仅 ``schedule_run``）
+        在本方法返回后另行编排，本方法不挂任何 post_run。
 
         Args:
             enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
             chain_name: 链配置文件名（不含扩展名，默认 today）。
             ui_state: 任务卡 UI 状态；None 时从 service 加载。
-            shutdown: 运行后关机延迟秒数；None 表示不关机。
-            mute: 是否运行中静音。
-            block: True 等待子进程结束并返回退出码（CLI 用）；
-                False 即起即返（GUI 用），返回 None。
 
         Returns:
-            block=True 时返回退出码（有符号 32 位）；block=False 时返回 None。
+            始终返回 None（纯跑链，运行后动作交由调用方）。
         """
         all_config = self.load_config()
-        known = {get_script_name(s) for s in all_config["script_list"]}
-        assert known, "[chain] config 无脚本，无法生成链"
-        if enabled_keys is None:
-            enabled_keys = set(known)
         if ui_state is None:
             ui_state = self.load_ui_state()
-        chain_path = self.generate_chain(all_config, enabled_keys, chain_name, ui_state)
-        command, cwd, env = _build_run_chain_command(
-            chain_path, shutdown=shutdown, mute=mute
+        _run_chain_once_impl(
+            all_config,
+            enabled_keys,
+            chain_name=chain_name,
+            ui_state=ui_state,
         )
-        logger.info("[chain] 生成并运行脚本链: %s (block=%s)", chain_path, block)
-        creationflags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
-        if block:
-            proc = subprocess.run(
-                command, cwd=cwd, env=env, creationflags=creationflags
-            )
-            return _to_signed_32(proc.returncode)
-        subprocess.Popen(command, cwd=cwd, env=env, creationflags=creationflags)
         return None
+
+    def _rerun_round(self, *, all_config: dict) -> None:
+        """主流程重跑轮：链运行结束后解析日志，对未正常退出的脚本二次运行。
+
+        重跑经 ``_run_chain_once_impl`` 阻塞运行失败子集（chain_name="rerun"），属于运行
+        主环节而非 post_run，故置于 post_run 之前；后续邮件/关机在重跑结束后才触发。
+        config 由调用方传入（避免重复加载）。
+        """
+        result = parse_logs(do_log=False)
+        assert "rerun" in result, "[chain] parse_logs 返回缺 rerun 键"
+        rerun_list = result["rerun"]
+        if not rerun_list:
+            return
+        known = {get_script_name(s) for s in all_config["script_list"]}
+        keys = {n for n in rerun_list if n in known}
+        if not keys:
+            logger.warning(
+                "[chain] rerun_list 中的脚本均不在 config，跳过重跑: %s", rerun_list
+            )
+            return
+        logger.info("[chain] 重跑 %d 个脚本: %s", len(keys), sorted(keys))
+        # 复用 _run_chain_once_impl（生成+运行原子），阻塞等重跑结束，
+        # 使后续邮件/关机基于重跑后的最终态。
+        _run_chain_once_impl(all_config, keys, chain_name="rerun")
 
     def schedule_run(
         self,
@@ -358,57 +378,70 @@ class ChainService:
         target_time: str,
         *,
         chain_name: str = "today",
-        shutdown: int | None = None,
         mute: bool = False,
-        on_set: Callable[[datetime], None] | None = None,
-        post_run: Sequence[Callable[[], None]] = (),
-    ) -> threading.Timer | None:
-        """调度运行：统一调度入口（当前实现为运行前按目标时刻等待）。在后台 daemon 线程等待，到点生成+运行链。
+        shutdown_delay: int | None = None,
+    ) -> None:
+        """调度运行：组装 ``ScheduledRun`` 并执行的薄工厂。
 
-        等待在 ``threading.Timer``（daemon）中进行，不阻塞调用方（GUI 主线程）。
-        进程退出时 daemon 线程随之中止，等价于「关闭程序即取消等待」。
+        完整编排（等待到点 → 生成并运行 → 可选重跑 → post_run）由
+        ``src.service.scheduled_run.ScheduledRun`` 拥有；本方法仅作 facade 入口，
+        设计为在独立控制台进程（``utils_runner.spawn_schedule_run`` 以
+        ``CREATE_NEW_CONSOLE`` 起）中运行。
 
         Args:
             enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
-            target_time: 目标时刻 ``"HH:MM"``（24 小时制），须合法（调用方已校验）。
+            target_time: 目标时刻 ``"HH:MM"``；``"now"`` 表示即时运行（跳过等待）。
             chain_name: 链配置文件名（不含扩展名，默认 today）。
-            shutdown: 运行后关机延迟秒数；None 表示不关机。
-            mute: 是否运行中静音。
-            on_set: 调度成功（已算出目标时刻）时回调，参数为目标 datetime；用于 UI 反馈。
-            post_run: 运行结束后按序执行的「后置步骤」列表（无论运行成败均触发，
-                失败已记日志）；用于挂接关机、日志分析、重跑、邮件等运行后动作。
-
-        Returns:
-            已启动的 daemon ``threading.Timer``；若预生成失败返回 None。
+            mute: 是否运行中静音（由 ScheduledRun 的 pre_run/post_run 执行）。
+            shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
         """
-        all_config = self.load_config()
-        known = {get_script_name(s) for s in all_config["script_list"]}
-        assert known, "[chain] config 无脚本，无法生成链"
-        keys = enabled_keys if enabled_keys is not None else set(known)
-        ui_state = self.load_ui_state()
-        # 预生成一次以 fail-fast：漫长等待前先暴露生成错误（反馈走日志）。
-        try:
-            self.generate_chain(all_config, keys, chain_name, ui_state)
-        except Exception:
-            logger.exception("[chain] 定时运行：预生成脚本链失败")
-            return None
+        from src.service.scheduled_run import ScheduledRun
 
-        def _fire() -> None:
-            try:
-                self.run_chain_once(
-                    keys, chain_name=chain_name, shutdown=shutdown, mute=mute
-                )
-            except Exception:
-                logger.exception("[chain] 定时运行：生成或运行脚本链失败")
-            for step in post_run:
-                step()
+        ScheduledRun(
+            self,
+            enabled_keys,
+            target_time,
+            chain_name=chain_name,
+            mute=mute,
+            shutdown_delay=shutdown_delay,
+        ).run()
 
-        target_dt = next_target_datetime(target_time)
-        wait_seconds = (target_dt - datetime.now()).total_seconds()
-        timer = threading.Timer(max(wait_seconds, 0.0), _fire)
-        timer.daemon = True
-        timer.start()
-        logger.info("[chain] 已设置定时运行：%s", target_dt)
-        if on_set is not None:
-            on_set(target_dt)
-        return timer
+
+def _run_chain_once_impl(
+    all_config: dict,
+    enabled_keys: set[str] | None,
+    *,
+    chain_name: str = "today",
+    ui_state: dict | None = None,
+) -> None:
+    """生成脚本链并运行（单发原子）：不依赖 service 实例的纯函数实现。
+
+    阻塞运行：先生成链，以 ``subprocess.run`` 启动（``CREATE_NEW_CONSOLE`` 起独立
+    控制台）并等结束。调用方若需保持响应（如 GUI 主线程），应自行把本调用放进后台线程。
+    运行后动作由调用方另行编排，本函数不挂任何 post_run。
+
+    Args:
+        all_config: config.yml 完整数据（含 script_list）。
+        enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
+        chain_name: 链配置文件名（不含扩展名，默认 today）。
+        ui_state: 任务卡 UI 状态；None 时当空（无副本/序列覆盖）。
+
+    Returns:
+        始终返回 None（纯跑链）。
+    """
+    known = {get_script_name(s) for s in all_config["script_list"]}
+    assert known, "[chain] config 无脚本，无法生成链"
+    if enabled_keys is None:
+        enabled_keys = set(known)
+    chain_path = _generate_chain_config(
+        all_config, enabled_keys, chain_name, ui_state or {}
+    )
+    command, cwd, env = _build_run_chain_command(chain_path)
+    logger.info("[chain] 生成并运行脚本链: %s", chain_path)
+    creationflags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+    # 始终阻塞：subprocess.run 内部即 Popen+wait，proc 不外传故无需手动 Popen。
+    try:
+        subprocess.run(command, cwd=cwd, env=env, creationflags=creationflags)
+    except Exception:
+        logger.exception("[chain] 运行脚本链子进程失败")
+    return None

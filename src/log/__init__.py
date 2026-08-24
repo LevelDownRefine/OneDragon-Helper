@@ -1,7 +1,8 @@
-"""日志解析核心包：各游戏脚本运行日志的解析与汇总。
+"""日志解析核心包：各游戏脚本运行日志的解析与汇总（parse_log / parse_logs 等）。
 
-迁移自原 `scripts/collect_log.py`：核心解析逻辑（Parser 类、辅助函数、
-`parse_log` / `parse_logs`）现置于本包，`scripts/collect_log.py` 仅作 CLI 入口薄壳。
+迁移自原 `scripts/collect_log.py`；核心解析逻辑（Parser 类、辅助函数、
+`parse_log` / `parse_logs`）现置于本包。诊断入口为 `python -m src.log`
+（`__main__` 调用 `parse_logs(do_log=True)` 打印当日汇总报告）。
 本包不依赖项目其余运行时模块（除 `src.config.subscript.get_script_name`），
 保持独立可测试。
 

@@ -14,13 +14,19 @@ from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
 from src.utils_runner import (
     apply_mute_config,
+    apply_notify_config,
+    apply_rerun_config,
     apply_shutdown_config,
     apply_timed_run_config,
     build_script_command,
     parse_mute_run,
+    parse_notify_enabled,
+    parse_rerun_config,
     parse_shutdown,
     parse_timed_run,
+    spawn_schedule_run,
 )
+from src.utils_weekly import next_target_datetime
 
 
 class LaunchController(QObject):
@@ -35,11 +41,13 @@ class LaunchController(QObject):
 
     @Slot()
     def launchAll(self):
-        """启动全部：先校验，再按需等待后运行。
+        """启动全部：先校验，再经 spawn_schedule_run 运行。
 
-        生成+运行+关机/静音命令构造、定时等待与到点触发统一交由 service
-        （``run_chain_once`` / ``schedule_run``）；本方法仅负责 UI 流程：
-        计算启用集合、弹确认窗、解析定时配置，并把定时等待委托给 service。
+        即时与定时两条路径统一经 ``spawn_schedule_run`` 起独立控制台进程，由
+        ``ChainService.schedule_run`` 处理逻辑（生成→运行→重跑→邮件/关机）；二者差异
+        仅在于是否等待：定时等待到目标时刻，即时（target=now）不等待。关闭控制台即取消、
+        GUI 退出不影响（进程独立存活）。
+        本方法仅负责 UI 流程：计算启用集合、弹确认窗、解析定时/关机/静音配置。
         """
         enabled_script_names = {
             g["script_name"]
@@ -57,30 +65,18 @@ class LaunchController(QObject):
         shutdown_delay = parse_shutdown(config_data)
         mute = parse_mute_run(config_data)
         timed_enabled, timed_target = parse_timed_run(config_data)
-        if not timed_enabled:
-            self._service.run_chain_once(
-                enabled_script_names, shutdown=shutdown_delay, mute=mute
-            )
-            self._toast(
-                f"启动全部：已生成并运行链 ({len(enabled_script_names)} 个脚本)"
-            )
-            return
-        # parse_timed_run 保证 timed_enabled=True 时 timed_target 必为合法 HH:MM。
-        assert timed_target is not None, "timed_enabled=True 但 timed_target 缺失"
-        self._service.schedule_run(
+        run_target = timed_target if timed_enabled else "now"
+        if timed_enabled:
+            target_dt = next_target_datetime(run_target)
+            msg = f"定时运行：将于 {target_dt:%Y-%m-%d %H:%M} 重新生成脚本链并运行"
+        else:
+            msg = f"启动全部：已在新控制台窗口生成并运行链 ({len(enabled_script_names)} 个脚本)"
+        self._toast(f"{msg}（关闭控制台即取消）")
+        spawn_schedule_run(
             enabled_script_names,
-            timed_target,
-            shutdown=shutdown_delay,
+            run_target,
             mute=mute,
-            on_set=lambda dt: self._toast(
-                f"已设置定时运行：将于 {dt:%Y-%m-%d %H:%M} 重新生成脚本链并运行"
-                f"（关闭程序将取消）"
-            ),
-            post_run=[
-                lambda: self._toast(
-                    f"定时运行：已生成并运行链 ({len(enabled_script_names)} 个脚本)"
-                )
-            ],
+            shutdown_delay=shutdown_delay,
         )
 
     @Slot()
@@ -135,14 +131,18 @@ class LaunchController(QObject):
         )
         timed_enabled, timed_target = parse_timed_run(config_data)
         mute_enabled = parse_mute_run(config_data)
+        rerun_enabled = parse_rerun_config(config_data)
+        notify_enabled = parse_notify_enabled(config_data)
 
         dialog = RunConfirmDialog(
             len(enabled_keys),
             shutdown_enabled=shutdown_enabled,
             shutdown_delay=shutdown_delay,
             timed_enabled=timed_enabled,
-            timed_target=timed_target or "04:10",
+            timed_target=timed_target,
             mute_enabled=mute_enabled,
+            rerun_enabled=rerun_enabled,
+            notify_enabled=notify_enabled,
         )
         if dialog.exec() != QDialog.Accepted:
             return False
@@ -150,6 +150,7 @@ class LaunchController(QObject):
         # 把弹窗勾选项写回 config.yml（与现有 service 写盘路径一致）。
         res = dialog.result
         assert res is not None, "[launch] 弹窗 accept 但 result 为 None"
+        # 关机：启用/关闭都直接落盘（含延迟数值），行为单一稳定。
         apply_shutdown_config(
             config_data,
             enabled=res["shutdown_enabled"],
@@ -161,5 +162,7 @@ class LaunchController(QObject):
             target_time=res["timed_target"],
         )
         apply_mute_config(config_data, enabled=res["mute_enabled"])
+        apply_rerun_config(config_data, enabled=res["rerun_enabled"])
+        apply_notify_config(config_data, enabled=res["notify_enabled"])
         self._service.save_config(config_data)
         return True

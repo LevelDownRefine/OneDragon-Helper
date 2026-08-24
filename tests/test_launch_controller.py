@@ -44,7 +44,7 @@ def _make_controller(enabled: bool, target_time: str | None):
 
 
 class TestLaunchAllTimed(unittest.TestCase):
-    """launchAll：定时/非定时分支与 service 调用正确性（调度核心已下沉 service）。"""
+    """launchAll：定时/非定时分支与 service 调用正确性（定时已下沉 spawn_schedule_run）。"""
 
     def _run_launch(self, ctrl):
         """让真实 launchAll 跑通到 service 层（不 mock service）。"""
@@ -53,38 +53,53 @@ class TestLaunchAllTimed(unittest.TestCase):
 
     def test_not_timed_runs_immediately(self):
         ctrl, service, toast = _make_controller(enabled=False, target_time=None)
-        self._run_launch(ctrl)
-        # 非定时：直接经 service.run_chain_once 运行，不委托定时调度
-        service.run_chain_once.assert_called_once()
+        with mock.patch("src.gui.controllers.launch.spawn_schedule_run") as mock_spawn:
+            self._run_launch(ctrl)
+        # 非定时：也经 spawn_schedule_run 运行（target=now，不等待），
+        # 不直连 service.run_chain_once / schedule_run。
+        mock_spawn.assert_called_once()
+        args = mock_spawn.call_args
+        self.assertEqual(args.args[0], {"demo"})  # 启用脚本集合
+        self.assertEqual(args.args[1], "now")  # 即时：不等待
+        self.assertFalse(args.kwargs["mute"])
+        self.assertIsNone(args.kwargs["shutdown_delay"])
+        service.run_chain_once.assert_not_called()
         service.schedule_run.assert_not_called()
 
-    def test_timed_delegates_to_service(self):
+    def test_timed_spawns_schedule_process(self):
         ctrl, service, toast = _make_controller(enabled=True, target_time="08:00")
-        self._run_launch(ctrl)
-        # 定时：不立即运行，改委托 service.schedule_run
-        # （带启动快照 keys / 目标时刻 / 关机 / 静音 / 回调）
+        with (
+            mock.patch("src.gui.controllers.launch.spawn_schedule_run") as mock_spawn,
+            mock.patch(
+                "src.gui.controllers.launch.next_target_datetime",
+                return_value=datetime(2030, 1, 1, 8, 0),
+            ),
+        ):
+            self._run_launch(ctrl)
+        # 定时：不立即运行，起独立控制台进程（spawn_schedule_run），
+        # 真实实现在 ChainService.schedule_run 中（独立进程内运行）。
         service.run_chain_once.assert_not_called()
-        service.schedule_run.assert_called_once()
-        args = service.schedule_run.call_args
-        self.assertEqual(args.args[0], {"demo"})  # 快照 enabled_keys
+        service.schedule_run.assert_not_called()
+        mock_spawn.assert_called_once()
+        args = mock_spawn.call_args
+        self.assertEqual(args.args[0], {"demo"})  # 启用脚本集合
         self.assertEqual(args.args[1], "08:00")  # 目标时刻
-        self.assertIsNone(args.kwargs["shutdown"])
         self.assertFalse(args.kwargs["mute"])
-        self.assertIsNotNone(args.kwargs["on_set"])
-        self.assertIsNotNone(args.kwargs["post_run"])
+        self.assertIsNone(args.kwargs["shutdown_delay"])
 
-    def test_timed_on_set_fires_gui_toast(self):
-        """定时委托时 on_set 回调收到目标 datetime，驱动 GUI『已设置定时』反馈。"""
+    def test_timed_toast_fires(self):
+        """定时：spawn 后立即弹『已设置定时运行』反馈（含目标时刻）。"""
         ctrl, service, toast = _make_controller(enabled=True, target_time="08:00")
-
-        def _capture(enabled_keys, target_time, *, shutdown, mute, on_set, post_run):
-            on_set(datetime(2030, 1, 1, 8, 0))
-            return mock.MagicMock()
-
-        service.schedule_run.side_effect = _capture
-        self._run_launch(ctrl)
+        with (
+            mock.patch("src.gui.controllers.launch.spawn_schedule_run"),
+            mock.patch(
+                "src.gui.controllers.launch.next_target_datetime",
+                return_value=datetime(2030, 1, 1, 8, 0),
+            ),
+        ):
+            self._run_launch(ctrl)
         toast.assert_called_once()
-        self.assertIn("已设置定时运行", toast.call_args[0][0])
+        self.assertIn("定时运行", toast.call_args[0][0])
 
 
 class TestConfirmRunDialog(unittest.TestCase):
@@ -136,6 +151,8 @@ class TestConfirmRunDialog(unittest.TestCase):
                 "timed_enabled": True,
                 "timed_target": "04:10",
                 "mute_enabled": True,
+                "rerun_enabled": True,
+                "notify_enabled": True,
             }
             out = ctrl._confirm_run({"demo"})
 
@@ -144,9 +161,12 @@ class TestConfirmRunDialog(unittest.TestCase):
         self.assertEqual(saved["shutdown"], {"after_run": True, "delay_seconds": 120})
         self.assertEqual(saved["timed_run"], {"enabled": True, "target_time": "04:10"})
         self.assertEqual(saved["mute"], {"enabled": True})
+        self.assertEqual(saved["rerun"], {"enabled": True})
+        # 邮件通知：仅更新 enabled 开关，保留既有 email/password 凭据。
+        self.assertEqual(saved["notify"], {"enabled": True})
 
-    def test_accept_disabled_drops_delay_and_target(self):
-        """关闭自动关机/定时：delay 归 0、target 置空，不残留旧值。"""
+    def test_accept_disabled_keeps_delay_value(self):
+        """关闭自动关机：delay_seconds 保留原值（不强制归 0），仅 after_run 置 False。"""
         base = {
             "script_list": [],
             "shutdown": {"after_run": True, "delay_seconds": 45},
@@ -158,17 +178,22 @@ class TestConfirmRunDialog(unittest.TestCase):
             dlg.exec.return_value = QDialog.Accepted
             dlg.result = {
                 "shutdown_enabled": False,
-                "shutdown_delay": 45,  # 关闭后不应写回
+                "shutdown_delay": 45,  # 关闭后不写回，但保留 config 原有值
                 "timed_enabled": False,
-                "timed_target": "08:00",  # 关闭后不应写回
+                "timed_target": "08:00",
                 "mute_enabled": False,
+                "rerun_enabled": False,
+                "notify_enabled": False,
             }
             ctrl._confirm_run({"demo"})
 
         saved = service.save_config.call_args[0][0]
-        self.assertEqual(saved["shutdown"], {"after_run": False, "delay_seconds": 0})
+        # 是否关机只看 after_run；delay_seconds 保留原值 45，不归零。
+        self.assertEqual(saved["shutdown"], {"after_run": False, "delay_seconds": 45})
         self.assertEqual(saved["timed_run"], {"enabled": False, "target_time": ""})
         self.assertEqual(saved["mute"], {"enabled": False})
+        self.assertEqual(saved["rerun"], {"enabled": False})
+        self.assertEqual(saved["notify"], {"enabled": False})
 
 
 if __name__ == "__main__":

@@ -14,7 +14,6 @@ import re
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
 from pathlib import PureWindowsPath
 
 from src.config.subscript import resolve_script_path
@@ -243,26 +242,22 @@ def run_chain_command(
 
 
 def build_run_chain_command(
-    chain_path: str, *, shutdown: int | None = None, mute: bool = False
+    chain_path: str,
 ) -> tuple[list[str], str, dict | None]:
-    """构造『运行脚本链』命令（统一关机/静音参数构造，GUI 不再拼命令）。
+    """构造『运行脚本链』命令（GUI 不再拼命令）。
 
-    关机走 runner 的 ``--shutdown N`` flag；静音拼 ``--mute``。统一做
-    ``pythonw.exe`` -> ``python.exe`` 替换，避免冻结态 GUI exe 无控制台。
+    关机不再经 runner 的 ``--shutdown``（会抢在重跑前关机），
+    改由 service 的 ``post_run`` 在全部运行结束后统一触发（见 ``src.utils_shutdown``）。
+    静音由主仓在 ``pre_run``/``post_run`` 直接操作系统音频，不再透传 ``--mute`` 给 runner。
+    统一做 ``pythonw.exe`` -> ``python.exe`` 替换，避免冻结态 GUI exe 无控制台。
 
     Args:
         chain_path: 脚本链配置文件路径。
-        shutdown: 运行后关机延迟秒数；None 表示不关机。
-        mute: 是否运行中静音。
 
     Returns:
         (命令列表, 工作目录, 环境变量)。
     """
     extra = ["--chain", chain_path]
-    if shutdown is not None:
-        extra += ["--shutdown", str(shutdown)]
-    if mute:
-        extra += ["--mute"]
     command, cwd, env = build_script_command(extra)
     # 冻结态 GUI exe 可能为 pythonw.exe，替换为 python.exe 以保证子进程有控制台。
     command = [command[0].replace("pythonw.exe", "python.exe"), *command[1:]]
@@ -284,31 +279,6 @@ def parse_shutdown(config_data: dict) -> int | None:
     if not isinstance(delay, int) or delay <= 0:
         return None
     return delay
-
-
-def build_shutdown_extra_args(config_data: dict) -> list[str]:
-    """按 config 的 shutdown 配置生成 ``--shutdown`` 参数；after_run 默认关闭、delay 须为正整型。
-
-    Args:
-        config_data: 完整配置字典（load_config 结果）。
-
-    Returns:
-        满足条件时返回 ``["--shutdown", N]``，否则返回空列表。
-
-    说明：shutdown 与 timed_run 同为顶层嵌套映射（子键缩进），读取风格统一——
-    缺失/非 dict 视为未配置，after_run 默认 False，enabled 但 delay 缺失/非法
-    同样视为未启用，不抛异常、不告警。
-    """
-    raw = config_data.get("shutdown")
-    if not isinstance(raw, dict):
-        return []
-    enabled = raw.get("after_run", False)
-    if not isinstance(enabled, bool) or not enabled:
-        return []
-    delay = raw.get("delay_seconds")
-    if not isinstance(delay, int) or delay <= 0:
-        return []
-    return ["--shutdown", str(delay)]
 
 
 # ---------------------------------------------------------------------------
@@ -349,14 +319,17 @@ def apply_shutdown_config(
 ) -> None:
     """把自动关机配置写回 config（原地修改顶层 shutdown 映射）。
 
+    启用或关闭都直接落盘完整块：开关与延迟数值一并写入，不回读旧值、不区分分支。
+    延迟数值以弹窗给定值为准（关闭时同样是用户最后一次设定的值），行为单一稳定。
+
     Args:
         config_data: 完整配置字典（load_config 结果），原地修改。
         enabled: 是否运行后关机。
-        delay_seconds: 关机延迟秒数；enabled 为 True 时须为正整型，否则视为不启用。
+        delay_seconds: 关机延迟秒数（原样写入）。
     """
     config_data["shutdown"] = {
         "after_run": bool(enabled),
-        "delay_seconds": int(delay_seconds) if enabled else 0,
+        "delay_seconds": int(delay_seconds),
     }
 
 
@@ -378,25 +351,66 @@ def apply_timed_run_config(
     }
 
 
-# ---------------------------------------------------------------------------
-# 运行中静音（执行已下沉 runner：run_chain(mute=...) 链前后静音/恢复）
-# 主仓仅做参数转发：parse/apply 读 config，build_*_extra_args 拼 --mute。
-# ---------------------------------------------------------------------------
-
-
-def build_mute_extra_args(config_data: dict) -> list[str]:
-    """按 config 的 mute 配置生成 ``--mute`` 参数；未启用返回空列表。
+def parse_rerun_config(config_data: dict) -> bool:
+    """解析 config 的 rerun 配置，返回是否运行后重跑失败脚本。
 
     Args:
         config_data: 完整配置字典（load_config 结果）。
 
     Returns:
-        启用时返回 ``["--mute"]``，否则返回空列表。
-
-    说明：静音执行已由 runner 在脚本链运行前后完成（覆盖异常/强制关闭窗口），
-    主仓只负责把「是否静音」的意图透传为命令行参数，不触碰音频 API。
+        启用返回 True，否则 False（缺失/非 dict/非 bool 一律视为未启用，不抛异常）。
     """
-    return ["--mute"] if parse_mute_run(config_data) else []
+    raw = config_data.get("rerun")
+    if not isinstance(raw, dict):
+        return False
+    enabled = raw.get("enabled", False)
+    return isinstance(enabled, bool) and enabled
+
+
+def apply_rerun_config(config_data: dict, *, enabled: bool) -> None:
+    """把重跑配置写回 config（原地修改顶层 rerun 映射）。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果），原地修改。
+        enabled: 是否运行后重跑失败脚本。
+    """
+    config_data["rerun"] = {"enabled": bool(enabled)}
+
+
+def parse_notify_enabled(config_data: dict) -> bool:
+    """解析 config 的 notify 配置，返回是否运行后发送邮件通知（仅看 enabled 开关）。
+
+    邮件能否真正发送还需 email/password 齐全（由 ``chain_service._resolve_mail_config``
+    在运行期校验）；本函数只解析确认弹窗关心的 enabled 勾选初始值。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果）。
+
+    Returns:
+        启用返回 True，否则 False（缺失/非 dict/非 bool 一律视为未启用，不抛异常）。
+    """
+    raw = config_data.get("notify")
+    if not isinstance(raw, dict):
+        return False
+    enabled = raw.get("enabled", False)
+    return isinstance(enabled, bool) and enabled
+
+
+def apply_notify_config(config_data: dict, *, enabled: bool) -> None:
+    """把邮件通知开关写回 config（原地修改顶层 notify 映射的 enabled）。
+
+    仅更新 ``enabled`` 开关，保留 notify 已有的 email/password 等字段，不因关闭
+    通知而清空凭据。
+
+    Args:
+        config_data: 完整配置字典（load_config 结果），原地修改。
+        enabled: 是否运行后发送邮件通知。
+    """
+    notify = config_data.get("notify")
+    if not isinstance(notify, dict):
+        notify = {}
+        config_data["notify"] = notify
+    notify["enabled"] = bool(enabled)
 
 
 def parse_mute_run(config_data: dict) -> bool:
@@ -425,19 +439,54 @@ def apply_mute_config(config_data: dict, *, enabled: bool) -> None:
     config_data["mute"] = {"enabled": bool(enabled)}
 
 
-def next_target_datetime(target_time: str, now: datetime | None = None) -> datetime:
-    """返回下一个等于 target_time 的时刻：今天未到取今天，已过取明天（跨午夜）。
+def spawn_schedule_run(
+    enabled_keys: set[str] | None,
+    target_time: str,
+    *,
+    chain_name: str = "today",
+    mute: bool = False,
+    shutdown_delay: int | None = None,
+) -> subprocess.Popen | None:
+    """起独立控制台进程运行 ``schedule-run``（等待到点后生成并运行链）。
+
+    等待与运行全在独立控制台进程（``CREATE_NEW_CONSOLE``）中进行，不阻塞调用方
+    （GUI 主线程）；关闭该控制台即取消。进程在 GUI 退出后依旧存活，故定时运行不受
+    关程序影响。链在**点火时**才生成（按当天星期），因此本方法不固定链配置。
+
+    本函数是「壳」：只负责拼命令并拉起独立进程；真实实现（等待→生成→运行→关机）
+    在 ``ChainService.schedule_run`` 中。
+
+    子进程须走与 GUI 相同的入口（``src.launcher``，其 ``main`` 会解析参数并路由到
+    ``run_cli``）：开发态用 ``python -m src.launcher``，冻结态直接复用 ``sys.executable``
+    （打包 exe 的入口即 ``launcher.main``）。``--schedule-run`` 的参数是目标时刻 ``HH:MM``
+    （不是 ``--at``）。
 
     Args:
-        target_time: ``"HH:MM"`` 形式的目标时刻。
-        now: 基准时间，默认当前时间（可注入以便测试）。
+        enabled_keys: 纳入链的脚本唯一标识集合；None 表示全部脚本。
+        target_time: 目标时刻 ``"HH:MM"``（24 小时制），须合法（调用方已校验）。
+        chain_name: 链配置文件名（不含扩展名，默认 today）。
+        mute: 是否运行中静音（透传 ``--mute``）。
+        shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
 
     Returns:
-        下一个 ``target_time`` 对应的 ``datetime``。
+        已启动的 CLI ``subprocess.Popen``；启动失败返回 None。
     """
-    hours, minutes = (int(x) for x in target_time.split(":"))
-    now = now or datetime.now()
-    candidate = now.replace(hour=hours, minute=minutes, second=0, microsecond=0)
-    if now < candidate:
-        return candidate
-    return candidate + timedelta(days=1)
+    if getattr(sys, "frozen", False):
+        command: list[str] = [sys.executable]
+    else:
+        command = [sys.executable, "-m", "src.launcher"]
+    command += ["--schedule-run", target_time, "--name", chain_name]
+    if mute:
+        command.append("--mute")
+    if shutdown_delay is not None:
+        command += ["--shutdown", str(shutdown_delay)]
+    if enabled_keys:
+        command += ["--enable", ",".join(sorted(enabled_keys))]
+    creationflags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+    # 开发态需把 cwd 设到项目根，保证 ``python -m src.launcher`` 能导入 src 包。
+    cwd = None if getattr(sys, "frozen", False) else get_root_dir()
+    try:
+        return subprocess.Popen(command, creationflags=creationflags, cwd=cwd)
+    except Exception:
+        logger.exception("[runner] 调度运行：启动 CLI 失败")
+        return None

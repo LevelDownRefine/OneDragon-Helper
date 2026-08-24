@@ -15,18 +15,17 @@ from src.utils_runner import (
     apply_shutdown_config,
     apply_timed_run_config,
     build_chain_command,
-    build_mute_extra_args,
     build_run_chain_command,
     build_script_command,
-    build_shutdown_extra_args,
     collect_invalid_script_messages,
-    next_target_datetime,
     parse_mute_run,
     parse_shutdown,
     parse_timed_run,
     run_chain_command,
     script_invalid_message,
+    spawn_schedule_run,
 )
+from src.utils_weekly import next_target_datetime
 
 CHAIN_PATH = "config/script_chain/01.yml"
 
@@ -361,9 +360,10 @@ class TestBuildScriptInvocationFrozen(unittest.TestCase):
 
 
 class TestBuildRunChainCommand(unittest.TestCase):
-    """build_run_chain_command：统一关机/静音参数构造（runner --shutdown flag）。
+    """build_run_chain_command：构造脚本链启动命令（GUI 不再拼命令）。
 
-    GUI 不再拼命令；关机走 --shutdown N，静音拼 --mute，并做 pythonw->python 替换。
+    关机不再经此（改由 service 的 post_run 在全部运行结束后触发，见 src.utils_shutdown）；
+    静音由主仓在 pre_run/post_run 直接操作系统音频，不再透传 --mute 给 runner。
     """
 
     def test_plain_chain_no_extra_flags(self):
@@ -372,21 +372,6 @@ class TestBuildRunChainCommand(unittest.TestCase):
         self.assertIn(CHAIN_PATH, command)
         self.assertNotIn("--shutdown", command)
         self.assertNotIn("--mute", command)
-
-    def test_shutdown_appends_flag(self):
-        command, cwd, env = build_run_chain_command(CHAIN_PATH, shutdown=60)
-        self.assertIn("--shutdown", command)
-        self.assertIn("60", command)
-
-    def test_mute_appends_flag(self):
-        command, cwd, env = build_run_chain_command(CHAIN_PATH, mute=True)
-        self.assertIn("--mute", command)
-
-    def test_shutdown_and_mute_coexist(self):
-        command, cwd, env = build_run_chain_command(CHAIN_PATH, shutdown=60, mute=True)
-        self.assertIn("--shutdown", command)
-        self.assertIn("60", command)
-        self.assertIn("--mute", command)
 
     def test_pythonw_replaced_with_python(self):
         """冻结态 GUI exe 若为 pythonw.exe，应替换为 python.exe 以保证子进程控制台。"""
@@ -399,84 +384,11 @@ class TestBuildRunChainCommand(unittest.TestCase):
         self.assertNotIn("pythonw.exe", command[0])
 
 
-class TestBuildShutdownExtraArgs(unittest.TestCase):
-    """build_shutdown_extra_args：按 config 的 shutdown 嵌套配置生成 --shutdown 参数。
-
-    与 parse_timed_run 风格一致：shutdown 为顶层嵌套映射，after_run 默认 False，
-    缺失/非 dict/未启用/delay 非法均返回空列表（不启用关机）。
-    """
-
-    def test_missing_field_returns_empty(self):
-        self.assertEqual(build_shutdown_extra_args({}), [])
-
-    def test_after_run_default_false(self):
-        """未显式 after_run（仅给 delay）：默认不关机。"""
-        self.assertEqual(
-            build_shutdown_extra_args({"shutdown": {"delay_seconds": 45}}), []
-        )
-
-    def test_zero_delay_returns_empty(self):
-        self.assertEqual(
-            build_shutdown_extra_args(
-                {"shutdown": {"after_run": True, "delay_seconds": 0}}
-            ),
-            [],
-        )
-
-    def test_negative_delay_returns_empty(self):
-        self.assertEqual(
-            build_shutdown_extra_args(
-                {"shutdown": {"after_run": True, "delay_seconds": -1}}
-            ),
-            [],
-        )
-
-    def test_non_int_delay_returns_empty(self):
-        self.assertEqual(
-            build_shutdown_extra_args(
-                {"shutdown": {"after_run": True, "delay_seconds": "45"}}
-            ),
-            [],
-        )
-
-    def test_positive_delay_returns_shutdown_flag(self):
-        self.assertEqual(
-            build_shutdown_extra_args(
-                {"shutdown": {"after_run": True, "delay_seconds": 45}}
-            ),
-            ["--shutdown", "45"],
-        )
-
-    def test_switch_explicit_false_disables_shutdown(self):
-        self.assertEqual(
-            build_shutdown_extra_args(
-                {"shutdown": {"after_run": False, "delay_seconds": 45}}
-            ),
-            [],
-        )
-
-    def test_switch_explicit_true_enables_shutdown(self):
-        self.assertEqual(
-            build_shutdown_extra_args(
-                {"shutdown": {"after_run": True, "delay_seconds": 45}}
-            ),
-            ["--shutdown", "45"],
-        )
-
-    def test_switch_non_bool_disables_shutdown(self):
-        self.assertEqual(
-            build_shutdown_extra_args(
-                {"shutdown": {"after_run": "false", "delay_seconds": 45}}
-            ),
-            [],
-        )
-
-
 class TestParseShutdown(unittest.TestCase):
     """parse_shutdown：config 的 shutdown 嵌套配置 -> 延迟秒数（None 表示不关机）。
 
-    与 build_shutdown_extra_args 同源判断：after_run 默认 False，delay 须为正整型，
-    否则 None（不关机）。供 service.run_chain_once 直接消费延迟秒数。
+    after_run 默认 False，delay 须为正整型，否则 None（不关机）。
+    供 GUI 读取延迟秒数后作为 post_run 关机步骤（见 src.utils_shutdown）。
     """
 
     def test_missing_field_returns_none(self):
@@ -521,17 +433,18 @@ if __name__ == "__main__":
 
 
 class TestApplyShutdownConfig(unittest.TestCase):
-    """apply_shutdown_config：原地写回顶层 shutdown 映射。"""
+    """apply_shutdown_config：启用/关闭都直接落盘完整块。"""
 
     def test_enabled_writes_after_run_and_delay(self):
         data: dict = {}
         apply_shutdown_config(data, enabled=True, delay_seconds=120)
         self.assertEqual(data["shutdown"], {"after_run": True, "delay_seconds": 120})
 
-    def test_disabled_drops_delay_to_zero(self):
-        data = {"shutdown": {"after_run": True, "delay_seconds": 45}}
+    def test_disabled_writes_after_run_and_delay(self):
+        # 关闭也落盘：delay_seconds 以弹窗给定值原样写入，行为单一稳定。
+        data: dict = {}
         apply_shutdown_config(data, enabled=False, delay_seconds=45)
-        self.assertEqual(data["shutdown"], {"after_run": False, "delay_seconds": 0})
+        self.assertEqual(data["shutdown"], {"after_run": False, "delay_seconds": 45})
 
 
 class TestApplyTimedRunConfig(unittest.TestCase):
@@ -551,45 +464,6 @@ class TestApplyTimedRunConfig(unittest.TestCase):
         data: dict = {}
         apply_timed_run_config(data, enabled=True, target_time="25:99")
         self.assertEqual(data["timed_run"], {"enabled": True, "target_time": "04:10"})
-
-
-class TestMuteConfig(unittest.TestCase):
-    """parse_mute_run / apply_mute_config：顶层 mute 映射读写。"""
-
-    def test_parse_enabled(self):
-        self.assertTrue(parse_mute_run({"mute": {"enabled": True}}))
-
-    def test_parse_missing_block_disabled(self):
-        self.assertFalse(parse_mute_run({"script_list": []}))
-
-    def test_parse_non_bool_disabled(self):
-        self.assertFalse(parse_mute_run({"mute": {"enabled": "yes"}}))
-
-    def test_apply_writes_enabled(self):
-        data: dict = {}
-        apply_mute_config(data, enabled=True)
-        self.assertEqual(data["mute"], {"enabled": True})
-
-    def test_apply_disabled(self):
-        data = {"mute": {"enabled": True}}
-        apply_mute_config(data, enabled=False)
-        self.assertEqual(data["mute"], {"enabled": False})
-
-
-class TestBuildMuteExtraArgs(unittest.TestCase):
-    """build_mute_extra_args：mute 意图 -> runner 命令行参数（薄封装）。"""
-
-    def test_enabled_passes_flag(self):
-        self.assertEqual(build_mute_extra_args({"mute": {"enabled": True}}), ["--mute"])
-
-    def test_disabled_returns_empty(self):
-        self.assertEqual(build_mute_extra_args({"mute": {"enabled": False}}), [])
-
-    def test_missing_block_returns_empty(self):
-        self.assertEqual(build_mute_extra_args({"script_list": []}), [])
-
-    def test_non_bool_returns_empty(self):
-        self.assertEqual(build_mute_extra_args({"mute": {"enabled": "yes"}}), [])
 
 
 class TestParseTimedRun(unittest.TestCase):
@@ -643,3 +517,86 @@ class TestNextTargetDatetime(unittest.TestCase):
             next_target_datetime("08:00", now=now),
             datetime(2026, 8, 24, 8, 0),
         )
+
+
+class TestSpawnScheduleRun(unittest.TestCase):
+    """spawn_schedule_run：子进程命令拼装（dev / frozen 两种入口，参数透传）。
+
+    本类是对「定时计划闪退」回归的护栏：命令必须走与 GUI 相同的入口
+    （开发态 ``python -m src.launcher`` / 冻结态 ``sys.executable``），且目标时刻
+    须作为 ``--schedule-run`` 的参数（**不是** ``--at``），否则子进程会被 argparse
+    拒掉而一启动就退出。此前缺失该测试，导致命令拼写错误未被任何用例捕获。
+    """
+
+    def _capture_command(self, *, frozen=False, enabled_keys="today", **kwargs):
+        """调用 spawn_schedule_run 并返回实际拼出的命令列表。"""
+        with (
+            mock.patch("subprocess.Popen", return_value=mock.MagicMock()) as popen_mock,
+            mock.patch.object(sys, "frozen", frozen, create=True),
+        ):
+            spawn_schedule_run(enabled_keys, "08:00", **kwargs)
+        return popen_mock.call_args.args[0]
+
+    def test_dev_entry_uses_src_launcher(self):
+        cmd = self._capture_command(frozen=False)
+        self.assertEqual(cmd[0], sys.executable)
+        self.assertEqual(cmd[1:3], ["-m", "src.launcher"])
+        self.assertIn("--schedule-run", cmd)
+        self.assertNotIn("src.cli", cmd)  # 入口必须是 launcher，不是 cli 模块
+
+    def test_frozen_entry_uses_exe_directly(self):
+        cmd = self._capture_command(frozen=True)
+        self.assertEqual(cmd[0], sys.executable)
+        # 冻结态无 ``-m src.launcher``，直接复用 exe（其入口即 launcher.main）。
+        self.assertNotIn("-m", cmd)
+        self.assertNotIn("src.launcher", cmd)
+
+    def test_target_time_is_schedule_run_value(self):
+        cmd = self._capture_command(frozen=False)
+        idx = cmd.index("--schedule-run")
+        self.assertEqual(cmd[idx + 1], "08:00")  # 目标时刻是 --schedule-run 的值
+        self.assertNotIn("--at", cmd)  # ← 曾用 --at 导致 argparse 拒掉而闪退
+
+    def test_name_flag(self):
+        cmd = self._capture_command(frozen=False, chain_name="weekend")
+        idx = cmd.index("--name")
+        self.assertEqual(cmd[idx + 1], "weekend")
+
+    def test_mute_and_shutdown_passthrough(self):
+        cmd = self._capture_command(frozen=False, mute=True, shutdown_delay=60)
+        self.assertIn("--mute", cmd)
+        idx = cmd.index("--shutdown")
+        self.assertEqual(cmd[idx + 1], "60")
+
+    def test_enable_sorted_comma_joined(self):
+        cmd = self._capture_command(frozen=False, enabled_keys={"b", "a", "c"})
+        idx = cmd.index("--enable")
+        self.assertEqual(cmd[idx + 1], "a,b,c")  # 排序后逗号连接
+
+    def test_no_enable_when_keys_none(self):
+        """enabled_keys=None 时不拼 --enable（子进程侧解释为『全部脚本』）。"""
+        cmd = self._capture_command(frozen=False, enabled_keys=None)
+        self.assertNotIn("--enable", cmd)
+
+
+class TestMuteConfig(unittest.TestCase):
+    """parse_mute_run / apply_mute_config：顶层 mute 映射读写。"""
+
+    def test_parse_enabled(self):
+        self.assertTrue(parse_mute_run({"mute": {"enabled": True}}))
+
+    def test_parse_missing_block_disabled(self):
+        self.assertFalse(parse_mute_run({"script_list": []}))
+
+    def test_parse_non_bool_disabled(self):
+        self.assertFalse(parse_mute_run({"mute": {"enabled": "yes"}}))
+
+    def test_apply_writes_enabled(self):
+        data: dict = {}
+        apply_mute_config(data, enabled=True)
+        self.assertEqual(data["mute"], {"enabled": True})
+
+    def test_apply_disabled(self):
+        data = {"mute": {"enabled": True}}
+        apply_mute_config(data, enabled=False)
+        self.assertEqual(data["mute"], {"enabled": False})
