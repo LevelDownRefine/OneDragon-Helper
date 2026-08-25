@@ -1,5 +1,6 @@
 """副本配置适配器：统一 set_config 适配接口，按各脚本格式封装 config 读写。"""
 
+import copy
 import logging
 import os
 from collections.abc import Callable
@@ -348,7 +349,7 @@ class ScriptConfig:
         return accepted
 
     def _init_config(self) -> None:
-        """对齐检查并合并模板字段到 config。
+        """对齐检查并把模板 config 同步到用户 config。
 
         已对齐或未确认（enabled=False）时不动 config。
         """
@@ -687,7 +688,9 @@ class GenshinConfig(ScriptConfig):
         data = load_game_config(cls._script_name, source)
         if not data:
             return []
-        assert isinstance(data, dict), f"[set_config][{cls.display_name}] tp.json 应为 dict"
+        assert isinstance(data, dict), (
+            f"[set_config][{cls.display_name}] 副本名应为 dict"
+        )
         tp_type = tp_domain_type_by_category.get(task_name)
         assert tp_type is not None, (
             f"[set_config][{cls.display_name}] 未适配的秘境分类: {task_name!r}"
@@ -1107,6 +1110,7 @@ class ArknightsConfig(ScriptConfig):
         "StartUpSettings",
         "EmulatorPath",
     )
+    _weekly_task_name = "理智药剂"
 
     def __init__(self):
         self._init_task_map()
@@ -1166,6 +1170,138 @@ class ArknightsConfig(ScriptConfig):
                 f"{self.display_name}[TaskQueue[{idx}]]",
             )
 
+        return changed
+
+    def set_weekly(self, start_day: int) -> None:
+        """周常「理智药剂」：按周几起写过期理智药使用窗口，并随副本启停同步开关。
+
+        与基类二值开关不同，本方法每次调用都直接写入（不按「今天是否到起始日」门控）：
+        - 开启的 FightTask 设 UseExpiringMedicine=true，其余设 false；
+        - 剿灭不吃理智药：即便开启也强制 UseExpiringMedicine=false（照常运行，只是不吃药）；
+        - MedicineExpireDays 由周几起推算：周几起 = 7 - MedicineExpireDays + 1
+          ⇒ MedicineExpireDays = 8 - 周几起（周几起∈1~7，1=周一）。
+
+        Args:
+            start_day: 周几起（1~7，1=周一）。
+
+        Raises:
+            AssertionError: 未适配周常，或 start_day 不在 1~7。
+        """
+        if not self._enabled:
+            logger.info(f"[set_weekly][{self.display_name}] 用户拒绝更新，跳过周常设置")
+            return
+        assert self._weekly_task_name, (
+            f"[set_config][{self.display_name}] 未支持周常配置"
+        )
+        assert 1 <= start_day <= 7, (
+            f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
+        )
+        config = self._load()
+        task_queue = get_field(
+            get_field(
+                get_field(config, "Configurations", self.display_name, dict, "weekly"),
+                "Default",
+                self.display_name,
+                dict,
+                "weekly",
+            ),
+            "TaskQueue",
+            self.display_name,
+            list,
+            "weekly",
+        )
+        # 周几起 = 7 - MedicineExpireDays + 1  ⇒  MedicineExpireDays = 8 - 周几起
+        expire_days = 8 - start_day
+        changed = False
+        for task in task_queue:
+            if task.get("$type") != "FightTask":
+                continue
+            enabled = bool(task.get("IsEnable", False))
+            # 剿灭不吃理智药：开启但仍强制 false
+            use_medicine = enabled and task.get("Name") != "剿灭"
+            changed |= safe_update(
+                task,
+                "UseExpiringMedicine",
+                use_medicine,
+                self.display_name,
+                assert_key_exists=False,
+            )
+            changed |= safe_update(
+                task,
+                "MedicineExpireDays",
+                expire_days,
+                self.display_name,
+                assert_key_exists=False,
+            )
+        if changed:
+            logger.info(f"[set_weekly][{self.display_name}] 理智药剂配置已更新")
+            self._save(config)
+        else:
+            logger.info(f"[set_weekly][{self.display_name}] 理智药剂配置无需更新")
+
+    def _init_config(self) -> None:
+        """仅对齐 TaskQueue 结构字段，绝不整块替换 config 或触碰其他内容。"""
+        config = self._load()
+        template = self._load_template()
+
+        if self._reconcile_task_queue(config, template):
+            if not self._confirm_save():
+                logger.info(f"[init_config][{self.display_name}] 用户拒绝更新，跳过")
+                return
+            self._save(config)
+            logger.info(f"[init_config][{self.display_name}] TaskQueue 已对齐")
+        else:
+            logger.info(
+                f"[init_config][{self.display_name}] TaskQueue 已对齐，无需更新"
+            )
+
+    def _reconcile_task_queue(self, config: dict, template: dict) -> bool:
+        """把 TaskQueue 逐项对齐到模板的结构字段（Name/$type/StagePlan）。
+
+        规则：
+        - 按模板索引 i 对齐 real[i]：仅当 Name/$type/StagePlan 与模板不符时才写，
+          用户其余字段（MedicineCount 等）一律保留；
+        - 模板索引超出 real 长度（缺失槽位）→ 在 i 处插入模板任务（deepcopy）；
+        - real 比模板长的尾部（用户自定义任务）→ 保留，不截断、不重排；
+        - TaskQueue 之外的所有内容（Gui/Timers/其他顶层键）完全不碰。
+
+        Args:
+            config: 当前 config dict（就地修改 TaskQueue）。
+            template: 模板 dict。
+
+        Returns:
+            是否发生了实际对齐修改。
+        """
+        real_default = get_field(
+            get_field(config, "Configurations", self.display_name, dict, "init"),
+            "Default",
+            self.display_name,
+            dict,
+            "init",
+        )
+        real_tq = get_field(real_default, "TaskQueue", self.display_name, list, "init")
+        tmpl_default = get_field(
+            get_field(template, "Configurations", self.display_name, dict, "init"),
+            "Default",
+            self.display_name,
+            dict,
+            "init",
+        )
+        tmpl_tq = get_field(tmpl_default, "TaskQueue", self.display_name, list, "init")
+
+        struct_keys = ("Name", "$type", "StagePlan")
+        changed = False
+        for i, tmpl_task in enumerate(tmpl_tq):
+            if i >= len(real_tq):
+                real_tq.insert(i, copy.deepcopy(tmpl_task))
+                changed = True
+                continue
+            for f in struct_keys:
+                if f not in tmpl_task:
+                    continue
+                if real_tq[i].get(f) != tmpl_task[f]:
+                    real_tq[i][f] = copy.deepcopy(tmpl_task[f])
+                    changed = True
         return changed
 
 

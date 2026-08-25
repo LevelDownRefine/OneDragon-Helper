@@ -180,6 +180,9 @@ class TestRunChainOnce(unittest.TestCase):
         svc = ChainService()
         svc.load_config = MagicMock(return_value={"script_list": script_list})
         svc.load_ui_state = MagicMock(return_value={})
+        svc._script_service = MagicMock()
+        svc._script_service.load_all_weekly.return_value = {}
+        svc._script_service.get_weekly_start_map.return_value = {}
         return svc
 
     def test_defaults_all_scripts_and_runs(self):
@@ -202,9 +205,37 @@ class TestRunChainOnce(unittest.TestCase):
             {"A"},
             "today",
             {},
+            weekly_timeouts={},
+            weekly_start_map={},
         )
         build.assert_called_once_with("out.yml")
         run.assert_called_once()
+
+    def test_run_chain_once_forwards_weekly_start_map(self):
+        """回归：运行路径必须把 weekly_start_map 透传给链生成（否则 set_weekly 不执行）。"""
+        svc = self._make_service([{"display_name": "A", "script_path": "A.exe"}])
+        svc._script_service.get_weekly_start_map.return_value = {"A": 3}
+        svc._script_service.load_all_weekly.return_value = {"A": 100}
+        with (
+            patch(
+                "src.service.chain_service._generate_chain_config",
+                return_value="out.yml",
+            ) as gen,
+            patch(
+                "src.service.chain_service._build_run_chain_command",
+                return_value=(["cmd"], "cwd", None),
+            ),
+            patch("src.service.chain_service.subprocess.run"),
+        ):
+            svc.run_chain_once({"A"})
+        gen.assert_called_once_with(
+            {"script_list": [{"display_name": "A", "script_path": "A.exe"}]},
+            {"A"},
+            "today",
+            {},
+            weekly_timeouts={"A": 100},
+            weekly_start_map={"A": 3},
+        )
 
     def test_subset_launches_blocking(self):
         """阻塞启动：按子集生成+运行，返回 None（静音已不再经此透传）。"""
@@ -237,6 +268,8 @@ class TestRunChainOnce(unittest.TestCase):
             {"A"},
             "today",
             {},
+            weekly_timeouts={},
+            weekly_start_map={},
         )
         build.assert_called_once_with("out.yml")
         run.assert_called_once()
@@ -533,6 +566,9 @@ class TestRerunRound(unittest.TestCase):
     def _svc_with_config(self, script_list):
         svc = ChainService()
         svc.load_config = MagicMock(return_value={"script_list": script_list})
+        svc._script_service = MagicMock()
+        svc._script_service.load_all_weekly.return_value = {}
+        svc._script_service.get_weekly_start_map.return_value = {}
         return svc
 
     def test_reruns_when_rerun_list_nonempty(self):

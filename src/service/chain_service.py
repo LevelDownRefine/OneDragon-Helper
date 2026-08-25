@@ -351,11 +351,15 @@ class ChainService:
         all_config = self.load_config()
         if ui_state is None:
             ui_state = self.load_ui_state()
+        weekly_timeouts = self._script_service.load_all_weekly()
+        weekly_start_map = self._script_service.get_weekly_start_map()
         _run_chain_once_impl(
             all_config,
             enabled_keys,
             chain_name=chain_name,
             ui_state=ui_state,
+            weekly_timeouts=weekly_timeouts,
+            weekly_start_map=weekly_start_map,
         )
         return None
 
@@ -389,7 +393,15 @@ class ChainService:
         keys = set(rerun_list)
         # 复用 _run_chain_once_impl（生成+运行原子），阻塞等重跑结束，
         # 使后续邮件/关机基于重跑后的最终态。
-        _run_chain_once_impl(all_config, keys, chain_name="rerun")
+        weekly_timeouts = self._script_service.load_all_weekly()
+        weekly_start_map = self._script_service.get_weekly_start_map()
+        _run_chain_once_impl(
+            all_config,
+            keys,
+            chain_name="rerun",
+            weekly_timeouts=weekly_timeouts,
+            weekly_start_map=weekly_start_map,
+        )
 
     def schedule_run(
         self,
@@ -433,6 +445,8 @@ def _run_chain_once_impl(
     *,
     chain_name: str = "today",
     ui_state: dict | None = None,
+    weekly_timeouts: dict | None = None,
+    weekly_start_map: dict | None = None,
 ) -> None:
     """生成脚本链并运行（单发原子）：不依赖 service 实例的纯函数实现。
 
@@ -456,7 +470,12 @@ def _run_chain_once_impl(
     known = {get_script_name(s) for s in all_config["script_list"]}
     assert known, "[chain] config 无脚本，无法生成链"
     chain_path = _generate_chain_config(
-        all_config, enabled_keys, chain_name, ui_state or {}
+        all_config,
+        enabled_keys,
+        chain_name,
+        ui_state or {},
+        weekly_timeouts=weekly_timeouts,
+        weekly_start_map=weekly_start_map,
     )
     command, cwd, env = _build_run_chain_command(chain_path)
     logger.info("[chain] 生成并运行脚本链: %s", chain_path)

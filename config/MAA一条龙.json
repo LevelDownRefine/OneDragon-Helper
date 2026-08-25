@@ -36,16 +36,12 @@
                 },
                 {
                     "$type": "FightTask",
-                    "UseExpiringMedicine": true,
-                    "MedicineExpireDays": 2,
                     "Name": "活动土",
                     "TaskType": "Fight"
                 },
                 {
                     "$type": "FightTask",
                     "StagePlan": ["1-7"],
-                    "UseExpiringMedicine": true,
-                    "MedicineExpireDays": 2,
                     "Name": "土",
                     "TaskType": "Fight"
                 },

@@ -86,9 +86,11 @@ NTEConfig 覆盖 `set_dungeon`：选空幕等异象界域副本 → 写 `daily_a
 
 ## 设置周常流程 set_weekly
 
-`set_weekly(start_day)`：`enabled=False` 短路；`assert` 脚本声明了 `_weekly_task_name` 且 `start_day` 在 1~7，再经 `_write_weekly(is_weekly_start_reached(start_day))` 写开关。周常开关为 GUI 内存态，不直写 config。
+`set_weekly(start_day)`：`enabled=False` 短路；`assert` 脚本声明了 `_weekly_task_name` 且 `start_day` 在 1~7，再写开关。
 
-仅 ok-ww、OneDragon-Launcher、March7th-Assistant 声明 `_weekly_task_name` 并实现 `_write_weekly`，其余脚本调用即断言失败。
+多数脚本经 `_write_weekly(is_weekly_start_reached(start_day))` 写二值开关（周几起决定今天是否启用）。明日方舟（MAA）覆写 `set_weekly`：不按「今天是否到起始日」门控，每次调用直接写 `gui.new.json`——开启的 FightTask 设 `UseExpiringMedicine=true`（其余 false），`MedicineExpireDays` 由周几起推算（周几起 = 7 - MedicineExpireDays + 1）。
+
+声明 `_weekly_task_name` 的脚本：ok-ww、OneDragon-Launcher、March7th-Assistant、ok-ef、崩铁、绝区零、明日方舟（MAA）；其余脚本调用即断言失败。
 
 ## 安全字段更新 safe_update
 

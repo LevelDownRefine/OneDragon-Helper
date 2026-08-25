@@ -15,3 +15,5 @@ March7th-Assistant:
     dungeons_source: assets/config/instance_names.json
 ok-ef:
   - name: 卖出物资
+MAA:
+  - name: 理智药剂

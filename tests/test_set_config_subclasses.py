@@ -334,14 +334,15 @@ class TestGenshinConfig(unittest.TestCase):
         mock_save.assert_not_called()
 
     def test_init_config_misaligned_saves(self):
-        """config 与模板不对齐时用模板值回填并保存"""
+        """config 与模板不对齐时，用模板值 reconcile（覆盖不一致、补缺失、保留多余）并保存"""
         template = {
             "TaskEnabledList": {"领取邮件": True},
             "CompletionAction": "关闭游戏",
         }
         config = {
-            "TaskEnabledList": {"领取邮件": False},
-            "CompletionAction": "不操作",
+            "TaskEnabledList": {"领取邮件": False},  # 不一致 → 覆盖为模板值
+            "CompletionAction": "不操作",  # 不一致 → 覆盖为模板值
+            "ExtraKey": 1,  # 模板无 → 保留
         }
         with (
             patch.object(GenshinConfig, "_load", return_value=config),
@@ -350,7 +351,13 @@ class TestGenshinConfig(unittest.TestCase):
             patch.object(GenshinConfig, "_save") as mock_save,
         ):
             GenshinConfig()
-        mock_save.assert_called_once_with(template)
+        mock_save.assert_called_once()
+        saved = mock_save.call_args[0][0]
+        # 不一致项被模板值覆盖
+        self.assertEqual(saved["TaskEnabledList"], {"领取邮件": True})
+        self.assertEqual(saved["CompletionAction"], "关闭游戏")
+        # 多余项保留
+        self.assertEqual(saved["ExtraKey"], 1)
 
     def test_update_task_uses_dungeon_name_directly(self):
         """原神 _task_map 为空，直接用 dungeon_name"""
@@ -445,9 +452,13 @@ class TestEndfieldConfig(unittest.TestCase):
         mock_save.assert_not_called()
 
     def test_init_config_misaligned_saves(self):
-        """config 与模板不对齐时用模板值回填并保存"""
+        """config 与模板不对齐时，用模板值 reconcile（覆盖不一致、补缺失、保留多余）并保存"""
         template = {"购物白名单": ["精锻"], "是否买礼物": False}
-        config = {"购物白名单": ["碎矿"], "是否买礼物": True}
+        config = {
+            "购物白名单": ["碎矿"],  # 不一致 → 覆盖为模板值
+            "是否买礼物": True,  # 不一致 → 覆盖为模板值
+            "ExtraKey": 1,  # 模板无 → 保留
+        }
         with (
             patch.object(EndfieldConfig, "_load", return_value=config),
             patch("os.path.exists", return_value=True),
@@ -455,7 +466,11 @@ class TestEndfieldConfig(unittest.TestCase):
             patch.object(EndfieldConfig, "_save") as mock_save,
         ):
             EndfieldConfig()
-        mock_save.assert_called_once_with(template)
+        mock_save.assert_called_once()
+        saved = mock_save.call_args[0][0]
+        self.assertEqual(saved["购物白名单"], ["精锻"])
+        self.assertEqual(saved["是否买礼物"], False)
+        self.assertEqual(saved["ExtraKey"], 1)
 
 
 # ============================================================
@@ -497,14 +512,15 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         mock_save.assert_not_called()
 
     def test_init_config_misaligned_saves(self):
-        """config 与模板不对齐时 save 模板"""
+        """config 与模板不对齐时，用模板值 reconcile（覆盖不一致、补缺失、保留多余）并保存"""
         template = {
             "plan_list": [{"tab_name": "A", "category_name": "x"}],
             "double_reward": True,
         }
         config = {
-            "plan_list": [{"tab_name": "B", "category_name": "y"}],
-            "double_reward": False,
+            "plan_list": [{"tab_name": "B", "category_name": "y"}],  # 不一致 → 覆盖
+            "double_reward": False,  # 不一致 → 覆盖
+            "ExtraKey": 1,  # 模板无 → 保留
         }
         with (
             patch.object(ZenlessZoneZeroConfig, "_load", return_value=config),
@@ -513,7 +529,11 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
             patch.object(ZenlessZoneZeroConfig, "_save") as mock_save,
         ):
             ZenlessZoneZeroConfig()
-        mock_save.assert_called_once_with(template)
+        mock_save.assert_called_once()
+        saved = mock_save.call_args[0][0]
+        self.assertEqual(saved["plan_list"], [{"tab_name": "A", "category_name": "x"}])
+        self.assertEqual(saved["double_reward"], True)
+        self.assertEqual(saved["ExtraKey"], 1)
 
     def test_set_dungeon_only_prints(self):
         """set_dungeon 应只 print 不做修改"""
@@ -876,25 +896,19 @@ class TestGenshinGetDungeonLists(unittest.TestCase):
 
     def test_reads_forgery_domain(self):
         """武器 → ForgeryDomain：仅收集该 type 的副本名。"""
-        with patch(
-            "src.config.set_config.load_game_config", return_value=self._DATA
-        ):
+        with patch("src.config.set_config.load_game_config", return_value=self._DATA):
             names = GenshinConfig.get_dungeon_lists("武器", self._SRC)
         self.assertEqual(names, ["塞西莉亚苗圃"])
 
     def test_reads_mastery_domain(self):
         """天赋 → MasteryDomain。"""
-        with patch(
-            "src.config.set_config.load_game_config", return_value=self._DATA
-        ):
+        with patch("src.config.set_config.load_game_config", return_value=self._DATA):
             names = GenshinConfig.get_dungeon_lists("天赋", self._SRC)
         self.assertEqual(names, ["太山府"])
 
     def test_ignores_other_types(self):
         """TeleportWaypoint / 未命中 type 的 point 不计入清单。"""
-        with patch(
-            "src.config.set_config.load_game_config", return_value=self._DATA
-        ):
+        with patch("src.config.set_config.load_game_config", return_value=self._DATA):
             names = GenshinConfig.get_dungeon_lists("圣遗物", self._SRC)
         self.assertNotIn("传送锚点", names)
 
@@ -1409,22 +1423,32 @@ class TestArknightsConfig(unittest.TestCase):
         mock_save.assert_not_called()
 
     def test_init_config_misaligned_saves(self):
-        """TaskQueue 不对齐时 save"""
+        """TaskQueue 逐项对齐结构字段（Name/$type/StagePlan），保留用户其余设置与尾部自定义任务。
+
+        方舟专属 reconcile：按模板索引对齐 real[i] 的结构字段，用户其余字段（如
+        MedicineCount）原样保留；模板缺失槽位（real 比模板短）插入；real 比模板长的
+        尾部自定义任务保留、不截断。
+        """
         cfg = self._make_cfg()
         template_queue = [
             {"Name": "开始唤醒", "$type": "StartUpTask"},
             {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]},
             {"Name": "红票", "$type": "FightTask", "StagePlan": ["AP-5"]},
-            {"Name": "经验", "$type": "FightTask", "StagePlan": ["LS-6"]},
-            {"Name": "龙门币", "$type": "FightTask", "StagePlan": ["CE-6"]},
-            {"Name": "土", "$type": "FightTask", "StagePlan": ["1-7"]},
-            {"Name": "自动公招", "$type": "RecruitTask"},
-            {"Name": "基建换班", "$type": "InfrastTask"},
-            {"Name": "信用收支", "$type": "MallTask"},
-            {"Name": "领取奖励", "$type": "AwardTask"},
         ]
         template = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
-        cur_queue = [{"Name": "wrong", "$type": "Unknown"}]
+        # real 与模板前缀对齐（开始唤醒/剿灭/红票），剿灭 StagePlan 漂移且带用户字段
+        # MedicineCount；末尾还有模板外的自定义任务「我的日常」（append 在模板长度之后）
+        cur_queue = [
+            {"Name": "开始唤醒", "$type": "StartUpTask"},
+            {
+                "Name": "剿灭",
+                "$type": "FightTask",
+                "StagePlan": ["WRONG"],
+                "MedicineCount": 5,
+            },
+            {"Name": "红票", "$type": "FightTask", "StagePlan": ["AP-5"]},
+            {"Name": "我的日常", "$type": "FightTask", "UserField": "keep"},
+        ]
         config = {"Configurations": {"Default": {"TaskQueue": cur_queue}}}
         with (
             patch.object(cfg, "_load", return_value=config),
@@ -1436,10 +1460,18 @@ class TestArknightsConfig(unittest.TestCase):
         mock_save.assert_called_once()
         saved = mock_save.call_args[0][0]
         saved_queue = saved["Configurations"]["Default"]["TaskQueue"]
-        self.assertEqual(len(saved_queue), 10)
+        # 长度 = 模板3 + 尾部自定义1 = 4
+        self.assertEqual(len(saved_queue), 4)
+        # 索引 0：结构字段本就对齐，不变
         self.assertEqual(saved_queue[0]["Name"], "开始唤醒")
-        self.assertEqual(saved_queue[1]["Name"], "剿灭")
-        self.assertEqual(saved_queue[5]["Name"], "土")
+        # 索引 1：StagePlan 修正为模板值，用户字段 MedicineCount 保留
+        self.assertEqual(saved_queue[1]["StagePlan"], ["Annihilation"])
+        self.assertEqual(saved_queue[1]["MedicineCount"], 5)
+        # 索引 2：模板对齐项（红票）原样保留
+        self.assertEqual(saved_queue[2]["Name"], "红票")
+        # 索引 3：尾部自定义任务原样保留（config「可以有更多，那些不动」）
+        self.assertEqual(saved_queue[3]["Name"], "我的日常")
+        self.assertEqual(saved_queue[3]["UserField"], "keep")
 
     def test_init_config_rejected_does_not_modify(self):
         """确认被拒绝（enabled=False）→ 不添加字段、不落盘、不改内存 config"""
@@ -1751,19 +1783,27 @@ class TestSupportsWeekly(unittest.TestCase):
         self.assertFalse(set_config.supports_weekly("不存在"))
 
     def test_weekly_supported_scripts(self):
-        """已适配周常的脚本：崩铁（货币战争）/ 鸣潮（每周花园）/ 绝区零（lost_void）/ 终末地（卖出物资）"""
+        """已适配周常的脚本：崩铁（货币战争）/ 鸣潮（每周花园）/ 绝区零（lost_void）/ 终末地（卖出物资）/ 明日方舟（理智药剂）"""
         for name in (
             "March7th-Assistant",
             "ok-ww",
             "OneDragon-Launcher",
             "ok-ef",
+            "MAA",
         ):
             self.assertTrue(set_config.supports_weekly(name), f"{name} 应支持周常")
 
     def test_other_scripts_default_false(self):
         """其余脚本未适配周常 → False"""
+        supported = (
+            "March7th-Assistant",
+            "ok-ww",
+            "OneDragon-Launcher",
+            "ok-ef",
+            "MAA",
+        )
         for name in set_config._CONFIGS:
-            if name in ("March7th-Assistant", "ok-ww", "OneDragon-Launcher", "ok-ef"):
+            if name in supported:
                 continue
             self.assertFalse(set_config.supports_weekly(name), f"{name} 不应支持周常")
 
@@ -1959,6 +1999,122 @@ class TestSetWeekly(unittest.TestCase):
             self.assertRaises(AssertionError),
         ):
             cfg.set_weekly(4)
+
+    # ---- 明日方舟：理智药剂（UseExpiringMedicine + MedicineExpireDays）----
+
+    def _make_maa_cfg(self):
+        with patch.object(ArknightsConfig, "_init_config"):
+            return ArknightsConfig()
+
+    def _maa_queue(self, enabled_names):
+        """构造 gui.new.json 风格的 TaskQueue：FightTask 的 IsEnable 由 enabled_names 决定。"""
+        names = ["剿灭", "红票", "经验", "土", "活动土"]
+        tasks = [{"$type": "StartUpTask", "Name": "开始唤醒", "IsEnable": True}]
+        for name in names:
+            task = {"$type": "FightTask", "Name": name}
+            if name in enabled_names:
+                task["IsEnable"] = True
+            else:
+                task["IsEnable"] = False
+            tasks.append(task)
+        return tasks
+
+    def _maa_config(self, enabled_names):
+        return {
+            "Configurations": {"Default": {"TaskQueue": self._maa_queue(enabled_names)}}
+        }
+
+    def test_arknights_weekly_syncs_use_expiring_medicine(self):
+        """开启的 FightTask → UseExpiringMedicine=true，其余 false（随 IsEnable 同步）；剿灭不吃药强制 false"""
+        cfg = self._make_maa_cfg()
+        config = self._maa_config({"剿灭", "土", "活动土"})
+        with (
+            patch("src.config.set_config.load_config", return_value=config),
+            patch("src.config.set_config.save_config") as mock_save,
+        ):
+            cfg.set_weekly(3)
+        by_name = {
+            t["Name"]: t
+            for t in config["Configurations"]["Default"]["TaskQueue"]
+            if t.get("$type") == "FightTask"
+        }
+        # 剿灭开启但强制不吃药
+        self.assertFalse(by_name["剿灭"]["UseExpiringMedicine"])
+        self.assertTrue(by_name["土"]["UseExpiringMedicine"])
+        self.assertTrue(by_name["活动土"]["UseExpiringMedicine"])
+        self.assertFalse(by_name["红票"]["UseExpiringMedicine"])
+        self.assertFalse(by_name["经验"]["UseExpiringMedicine"])
+        mock_save.assert_called_once()
+
+    def test_arknights_weekly_annihilation_no_medicine(self):
+        """剿灭不吃理智药：即便 IsEnable=true，UseExpiringMedicine 强制 false，但照常运行"""
+        cfg = self._make_maa_cfg()
+        # 仅开启剿灭
+        config = self._maa_config({"剿灭"})
+        with (
+            patch("src.config.set_config.load_config", return_value=config),
+            patch("src.config.set_config.save_config"),
+        ):
+            cfg.set_weekly(2)
+        annih = next(
+            t
+            for t in config["Configurations"]["Default"]["TaskQueue"]
+            if t["Name"] == "剿灭"
+        )
+        self.assertTrue(annih["IsEnable"], "剿灭应照常开启运行")
+        self.assertFalse(annih["UseExpiringMedicine"], "剿灭不吃理智药")
+        self.assertEqual(annih["MedicineExpireDays"], 6)  # 周几起=2 ⇒ 8-2
+
+    def test_arknights_weekly_expire_days_from_start_day(self):
+        """MedicineExpireDays = 8 - 周几起：周几起=1→7，周几起=7→1，周几起=3→5"""
+        cfg = self._make_maa_cfg()
+        for start_day, expect in ((1, 7), (3, 5), (7, 1)):
+            with self.subTest(start_day=start_day):
+                config = self._maa_config({"土"})
+                with (
+                    patch("src.config.set_config.load_config", return_value=config),
+                    patch("src.config.set_config.save_config"),
+                ):
+                    cfg.set_weekly(start_day)
+                tasks = config["Configurations"]["Default"]["TaskQueue"]
+                for t in tasks:
+                    if t.get("$type") == "FightTask":
+                        self.assertEqual(t["MedicineExpireDays"], expect)
+
+    def test_arknights_weekly_ignores_non_fight_task(self):
+        """StartUpTask 等非 FightTask 不受 UseExpiringMedicine/MedicineExpireDays 影响"""
+        cfg = self._make_maa_cfg()
+        config = self._maa_config({"土"})
+        with (
+            patch("src.config.set_config.load_config", return_value=config),
+            patch("src.config.set_config.save_config"),
+        ):
+            cfg.set_weekly(3)
+        startup = next(
+            t
+            for t in config["Configurations"]["Default"]["TaskQueue"]
+            if t.get("$type") != "FightTask"
+        )
+        self.assertNotIn("UseExpiringMedicine", startup)
+        self.assertNotIn("MedicineExpireDays", startup)
+
+    def test_arknights_weekly_no_change_skips_save(self):
+        """配置已符合预期（开启项 true、关闭项 false、剿灭强制 false、MedicineExpireDays 一致）→ 不落盘"""
+        cfg = self._make_maa_cfg()
+        config = self._maa_config({"剿灭", "土", "活动土"})
+        for t in config["Configurations"]["Default"]["TaskQueue"]:
+            if t.get("$type") == "FightTask":
+                enabled = t["IsEnable"]
+                # 剿灭不吃药，即便开启也强制 false
+                use_medicine = enabled and t["Name"] != "剿灭"
+                t["UseExpiringMedicine"] = use_medicine
+                t["MedicineExpireDays"] = 8 - 3  # 周几起=3
+        with (
+            patch("src.config.set_config.load_config", return_value=config),
+            patch("src.config.set_config.save_config") as mock_save,
+        ):
+            cfg.set_weekly(3)
+        mock_save.assert_not_called()
 
 
 class TestSetConfigAdapter(unittest.TestCase):
