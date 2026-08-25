@@ -317,7 +317,11 @@ class TestParseOverrides(unittest.TestCase):
 
 
 class TestCliGenerateChainOverrides(unittest.TestCase):
-    """--dungeon / --sequence 命令行覆盖：合并到 ui_state 后传给 generate_chain。"""
+    """--weekly-start 命令行覆盖的落盘语义。
+
+    - --weekly-start：经 service.set_weekly_start 持久化到 weekly_start.yml
+      （周几跑是长期配置），不实时写子脚本 config、也不并入 generate_chain 内存 ui_state。
+    """
 
     def setUp(self):
         self._names = _known_script_names()
@@ -325,149 +329,14 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
         self._target = "ok-ww"
         assert self._target in self._names, f"config.yml 缺少 {self._target}"
 
-    def test_dungeon_override_merged_into_ui_state(self):
-        """--dungeon 覆盖值合并到传给 generate_chain 的 ui_state。"""
-        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
-            out = fh.name
-        try:
-            with patch.object(
-                cli.ChainService, "generate_chain", return_value=out
-            ) as mock_gen:
-                _run_main(
-                    [
-                        "--generate-chain",
-                        "--enable",
-                        self._target,
-                        "--dungeon",
-                        f"{self._target}=凝素领域",
-                        "--out",
-                        out,
-                    ],
-                    expect_exit=0,
-                )
-            mock_gen.assert_called_once()
-            # generate_chain(self, all_config_data, enabled_names, chain_name, ui_state, out_path=)
-            ui_state = mock_gen.call_args.args[3]
-            self.assertEqual(ui_state[self._target]["dungeon"], "凝素领域")
-        finally:
-            if os.path.exists(out):
-                os.remove(out)
-
-    def test_sequence_override_merged_into_ui_state(self):
-        """--sequence 覆盖值合并到传给 generate_chain 的 ui_state。"""
-        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
-            out = fh.name
-        try:
-            with patch.object(
-                cli.ChainService, "generate_chain", return_value=out
-            ) as mock_gen:
-                _run_main(
-                    [
-                        "--generate-chain",
-                        "--enable",
-                        self._target,
-                        "--dungeon",
-                        f"{self._target}=凝素领域",
-                        "--sequence",
-                        f"{self._target}=5",
-                        "--out",
-                        out,
-                    ],
-                    expect_exit=0,
-                )
-            ui_state = mock_gen.call_args.args[3]
-            self.assertEqual(ui_state[self._target]["sequence"], "5")
-        finally:
-            if os.path.exists(out):
-                os.remove(out)
-
-    def test_overrides_do_not_persist_to_gui_state(self):
-        """--dungeon / --sequence 仅本次生效，不写回 gui_state.json。
-
-        gui_state.json 由首次运行生成、不纳入版本控制，CI 无此文件，故 mock
-        load/save_ui_state 验证覆盖仅作用于内存 ui_state、不触发任何持久化写入。
-        """
-        saved = []
-        base_state = {self._target: {"dungeon": "基线副本", "sequence": "0"}}
-        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
-            out = fh.name
-        try:
-            with (
-                patch.object(
-                    cli.ChainService, "load_ui_state", return_value=dict(base_state)
-                ),
-                patch.object(
-                    cli.ChainService,
-                    "save_ui_state",
-                    side_effect=lambda state: saved.append(state),
-                ),
-                patch.object(
-                    cli.ChainService, "generate_chain", return_value=out
-                ) as mock_gen,
-            ):
-                _run_main(
-                    [
-                        "--generate-chain",
-                        "--enable",
-                        self._target,
-                        "--dungeon",
-                        f"{self._target}=凝素领域",
-                        "--sequence",
-                        f"{self._target}=5",
-                        "--out",
-                        out,
-                    ],
-                    expect_exit=0,
-                )
-            ui_state = mock_gen.call_args.args[3]
-            self.assertEqual(ui_state[self._target]["dungeon"], "凝素领域")
-            self.assertEqual(ui_state[self._target]["sequence"], "5")
-            self.assertEqual(saved, [], "CLI 覆盖参数不应写回 gui_state.json")
-        finally:
-            if os.path.exists(out):
-                os.remove(out)
-
-    def test_bad_format_exits_one(self):
-        with patch.object(service_chain_gen, "set_config"):
-            code = _run_main(
-                [
-                    "--generate-chain",
-                    "--enable",
-                    self._target,
-                    "--dungeon",
-                    "鸣潮凝素领域",
-                ],
-                expect_exit=1,
-            )
-        self.assertEqual(code, 1)
-        self.assertIn("格式错误", _read_cli_file("generate_chain"))
-
-    def test_unknown_script_in_dungeon_exits_one(self):
-        bogus = "此脚本一定不存在_XYZ"
-        with patch.object(service_chain_gen, "set_config"):
-            code = _run_main(
-                [
-                    "--generate-chain",
-                    "--enable",
-                    self._target,
-                    "--dungeon",
-                    f"{bogus}=凝素领域",
-                ],
-                expect_exit=1,
-            )
-        self.assertEqual(code, 1)
-        self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
-
-    def test_weekly_start_override_merged_into_ui_state(self):
+    def test_weekly_start_persists_via_set_weekly_start(self):
         """--weekly-start 调用 service.set_weekly_start 持久化（周几跑是长期配置），
-        且不并入传给 generate_chain 的内存 ui_state。"""
+        不实时写子脚本 config、不并入 generate_chain 内存 ui_state。"""
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
             with (
-                patch.object(
-                    cli.ChainService, "generate_chain", return_value=out
-                ) as mock_gen,
+                patch.object(cli.ChainService, "generate_chain", return_value=out),
                 patch.object(cli.ChainService, "set_weekly_start") as mock_set,
             ):
                 _run_main(
@@ -483,69 +352,29 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
                     expect_exit=0,
                 )
             mock_set.assert_called_once_with(self._target, 4)
-            # 内存 ui_state 不再承载 weekly_start（仅 --dungeon/--sequence 临时覆盖）
-            ui_state = mock_gen.call_args.args[3]
-            self.assertNotIn("weekly_start", ui_state.get(self._target, {}))
-        finally:
-            if os.path.exists(out):
-                os.remove(out)
-
-    def test_weekly_start_persisted(self):
-        """--weekly-start 持久化到 weekly_start.yml（set_weekly_start），
-        且不把 --dungeon 临时覆盖写回。"""
-        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
-            out = fh.name
-        try:
-            with (
-                patch.object(cli.ChainService, "set_weekly_start") as mock_set,
-                patch.object(
-                    cli.ChainService, "generate_chain", return_value=out
-                ) as mock_gen,
-            ):
-                _run_main(
-                    [
-                        "--generate-chain",
-                        "--enable",
-                        self._target,
-                        "--dungeon",
-                        f"{self._target}=凝素领域",
-                        "--weekly-start",
-                        f"{self._target}=4",
-                        "--out",
-                        out,
-                    ],
-                    expect_exit=0,
-                )
-            # 周几起经 set_weekly_start 持久化（不再落 gui_state.json）
-            mock_set.assert_called_once_with(self._target, 4)
-            # 内存 ui_state（传 generate_chain）：含 dungeon 覆盖，不含 weekly_start
-            ui_state = mock_gen.call_args.args[3]
-            self.assertEqual(ui_state[self._target]["dungeon"], "凝素领域")
-            self.assertNotIn("weekly_start", ui_state.get(self._target, {}))
         finally:
             if os.path.exists(out):
                 os.remove(out)
 
     def test_weekly_start_non_int_exits_one(self):
         """--weekly-start 值不是整数 → 退出 1 并报错。"""
-        with patch.object(service_chain_gen, "set_config"):
-            code = _run_main(
-                [
-                    "--generate-chain",
-                    "--enable",
-                    self._target,
-                    "--weekly-start",
-                    f"{self._target}=abc",
-                ],
-                expect_exit=1,
-            )
+        code = _run_main(
+            [
+                "--generate-chain",
+                "--enable",
+                self._target,
+                "--weekly-start",
+                f"{self._target}=abc",
+            ],
+            expect_exit=1,
+        )
         self.assertEqual(code, 1)
         self.assertIn("不是整数", _read_cli_file("generate_chain"))
 
     def test_weekly_start_out_of_range_exits_one(self):
         """--weekly-start 值越界（0 / 8）→ 退出 1 并报错。"""
         for bad in ("0", "8"):
-            with self.subTest(bad=bad), patch.object(service_chain_gen, "set_config"):
+            with self.subTest(bad=bad):
                 code = _run_main(
                     [
                         "--generate-chain",
@@ -556,23 +385,22 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
                     ],
                     expect_exit=1,
                 )
-            self.assertEqual(code, 1)
-            self.assertIn("越界", _read_cli_file("generate_chain"))
+                self.assertEqual(code, 1)
+                self.assertIn("越界", _read_cli_file("generate_chain"))
 
     def test_unknown_script_in_weekly_start_exits_one(self):
         """--weekly-start 中未知脚本标识 → 退出 1 并报错。"""
         bogus = "此脚本一定不存在_XYZ"
-        with patch.object(service_chain_gen, "set_config"):
-            code = _run_main(
-                [
-                    "--generate-chain",
-                    "--enable",
-                    self._target,
-                    "--weekly-start",
-                    f"{bogus}=4",
-                ],
-                expect_exit=1,
-            )
+        code = _run_main(
+            [
+                "--generate-chain",
+                "--enable",
+                self._target,
+                "--weekly-start",
+                f"{bogus}=4",
+            ],
+            expect_exit=1,
+        )
         self.assertEqual(code, 1)
         self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
 
@@ -582,17 +410,16 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
         from src.config.set_config import _CONFIGS
 
         unsupported = next(n for n in _CONFIGS if not _CONFIGS[n]._weekly_task_name)
-        with patch.object(service_chain_gen, "set_config"):
-            code = _run_main(
-                [
-                    "--generate-chain",
-                    "--enable",
-                    self._target,
-                    "--weekly-start",
-                    f"{unsupported}=4",
-                ],
-                expect_exit=1,
-            )
+        code = _run_main(
+            [
+                "--generate-chain",
+                "--enable",
+                self._target,
+                "--weekly-start",
+                f"{unsupported}=4",
+            ],
+            expect_exit=1,
+        )
         self.assertEqual(code, 1)
         self.assertIn("未支持周常", _read_cli_file("generate_chain"))
 

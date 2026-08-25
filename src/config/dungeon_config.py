@@ -98,34 +98,3 @@ def get_display_name(
         if val == actual_value:
             return display_name
     return str(actual_value)
-
-
-def restore_sequence_type(saved: dict, seq_map: SequenceOptionsMap) -> dict:
-    """
-    恢复 sequence 的正确类型：从原始选项列表中匹配值相等的项，
-    确保类型与 dungeon_list.yml 中定义的一致。
-
-    Args:
-        saved: 保存的状态字典
-        seq_map: 副本名 → [(display_name, actual_value), ...]
-
-    Returns:
-        类型修复后的状态字典（新对象，不修改原字典）
-    """
-    seq_val = saved.get("sequence")  # optional: 用户可能从未选择过序列
-    if seq_val is None:
-        return saved
-
-    dungeon_name = saved.get("dungeon")  # optional: 用户可能从未选择过副本
-    seq_options = seq_map.get(
-        dungeon_name, []
-    )  # 防御性：配置可能更新导致保存的副本名称过时
-    if not seq_options:
-        return saved
-
-    saved = saved.copy()
-    for _display_name, actual_value in seq_options:
-        if str(actual_value) == str(seq_val):
-            saved["sequence"] = actual_value
-            break
-    return saved

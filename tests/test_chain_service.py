@@ -70,14 +70,13 @@ class TestChainGeneration(unittest.TestCase):
             "src.service.chain_service._generate_chain_config", return_value="out.yml"
         ) as m:
             out = ChainService(script_service=mock_script).generate_chain(
-                data, {"A"}, "88", {"A": {}}, "out.yml"
+                data, {"A"}, "88", out_path="out.yml"
             )
         self.assertEqual(out, "out.yml")
         m.assert_called_once_with(
             data,
             {"A"},
             "88",
-            {"A": {}},
             "out.yml",
             weekly_timeouts={},
             weekly_start_map={},
@@ -109,7 +108,6 @@ class TestGenerateChainWeeklyStart(unittest.TestCase):
             ]
         }
         with (
-            patch.object(chain_gen, "load_dungeon_map", return_value={"测试": {}}),
             patch.object(chain_gen, "set_config") as mock_set_config,
             patch(
                 "src.service.chain_gen.safe_path_join",
@@ -134,8 +132,6 @@ class TestGenerateChainWeeklyStart(unittest.TestCase):
         mock = self._run_chain({"测试": 4})
         mock.assert_called_once_with(
             "测试",
-            dungeon_name=None,
-            sequence=None,
             weekly_start=4,
         )
 
@@ -144,8 +140,6 @@ class TestGenerateChainWeeklyStart(unittest.TestCase):
         mock = self._run_chain({})
         mock.assert_called_once_with(
             "测试",
-            dungeon_name=None,
-            sequence=None,
             weekly_start=None,
         )
 
@@ -204,7 +198,6 @@ class TestRunChainOnce(unittest.TestCase):
             {"script_list": [{"display_name": "A", "script_path": "A.exe"}]},
             {"A"},
             "today",
-            {},
             weekly_timeouts={},
             weekly_start_map={},
         )
@@ -232,7 +225,6 @@ class TestRunChainOnce(unittest.TestCase):
             {"script_list": [{"display_name": "A", "script_path": "A.exe"}]},
             {"A"},
             "today",
-            {},
             weekly_timeouts={"A": 100},
             weekly_start_map={"A": 3},
         )
@@ -267,7 +259,6 @@ class TestRunChainOnce(unittest.TestCase):
             },
             {"A"},
             "today",
-            {},
             weekly_timeouts={},
             weekly_start_map={},
         )

@@ -260,7 +260,6 @@ class ChainService:
         all_config_data: dict,
         enabled_keys: set[str],
         chain_name: str = "today",
-        ui_state: dict | None = None,
         out_path: str | None = None,
     ) -> str:
         """生成 ScriptChainer 配置文件（仅含启用脚本）。
@@ -272,7 +271,6 @@ class ChainService:
             all_config_data: config.yml 完整数据（含 script_list）。
             enabled_keys: 要纳入链的脚本唯一标识集合。
             chain_name: 链配置文件名（不含扩展名）。
-            ui_state: gui_state.json 的 UI 状态（副本/序列选择），key 为脚本唯一标识。
             out_path: 输出路径；None 时默认 config/script_chain/<chain_name>.yml。
 
         Returns:
@@ -284,7 +282,6 @@ class ChainService:
             all_config_data,
             enabled_keys,
             chain_name,
-            ui_state,
             out_path,
             weekly_timeouts=weekly_timeouts,
             weekly_start_map=weekly_start_map,
@@ -332,7 +329,6 @@ class ChainService:
         enabled_keys: set[str] | None = None,
         *,
         chain_name: str = "today",
-        ui_state: dict | None = None,
     ) -> None:
         """生成脚本链并运行（单发原子）：service 侧 facade，委托 ``_run_chain_once_impl``。
 
@@ -343,21 +339,17 @@ class ChainService:
             enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
                 （跳过运行）。调用方想全量时显式传入 config 全部脚本集合。
             chain_name: 链配置文件名（不含扩展名，默认 today）。
-            ui_state: 任务卡 UI 状态；None 时从 service 加载。
 
         Returns:
             始终返回 None（纯跑链，运行后动作交由调用方）。
         """
         all_config = self.load_config()
-        if ui_state is None:
-            ui_state = self.load_ui_state()
         weekly_timeouts = self._script_service.load_all_weekly()
         weekly_start_map = self._script_service.get_weekly_start_map()
         _run_chain_once_impl(
             all_config,
             enabled_keys,
             chain_name=chain_name,
-            ui_state=ui_state,
             weekly_timeouts=weekly_timeouts,
             weekly_start_map=weekly_start_map,
         )
@@ -444,7 +436,6 @@ def _run_chain_once_impl(
     enabled_keys: set[str] | None,
     *,
     chain_name: str = "today",
-    ui_state: dict | None = None,
     weekly_timeouts: dict | None = None,
     weekly_start_map: dict | None = None,
 ) -> None:
@@ -459,7 +450,6 @@ def _run_chain_once_impl(
         enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
             （跳过运行）。调用方想全量时显式传入 config 全部脚本集合。
         chain_name: 链配置文件名（不含扩展名，默认 today）。
-        ui_state: 任务卡 UI 状态；None 时当空（无副本/序列覆盖）。
 
     Returns:
         始终返回 None（纯跑链）。
@@ -473,7 +463,6 @@ def _run_chain_once_impl(
         all_config,
         enabled_keys,
         chain_name,
-        ui_state or {},
         weekly_timeouts=weekly_timeouts,
         weekly_start_map=weekly_start_map,
     )

@@ -204,5 +204,21 @@ class TestSelectWeeklyDungeon(unittest.TestCase):
         mock_set.assert_called_once_with("March7th-Assistant", "历战余响", "铁骸的锈冢")
 
 
+class TestSelectDungeonWritesSubscriptConfig(unittest.TestCase):
+    """日常副本选择：实时落盘子脚本 config（与链生成解耦，不再依赖运行全体）。"""
+
+    def test_select_dungeon_writes_subscript_config(self):
+        """选中日常副本：实时经 set_config 落盘子脚本 config。"""
+        ctrl = _make_controller("ok-ww", "鸣潮")
+        with patch.object(task_card_mod, "set_config") as mock_set:
+            ctrl.selectDungeon("凝素领域", "5")
+        # 实时落盘：dungeon_name + sequence（鸣潮要求 sequence 非空）
+        mock_set.assert_called_once_with("ok-ww", dungeon_name="凝素领域", sequence="5")
+        # 同时持久化到 gui_state.json 的副本/序列字段
+        self.assertEqual(ctrl.ui_state["ok-ww"]["dungeon"], "凝素领域")
+        self.assertEqual(ctrl.ui_state["ok-ww"]["sequence"], "5")
+        ctrl._service.save_ui_state.assert_called_once_with(ctrl.ui_state)
+
+
 if __name__ == "__main__":
     unittest.main()

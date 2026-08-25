@@ -8,7 +8,7 @@ game_list 引用读取。dungeonOptions 从缓存读取（build_dungeon_cache �
 from PySide6.QtCore import QObject, Signal, Slot
 
 from src.config.dungeon_config import get_display_name, parse_dungeon_config
-from src.config.set_config import is_adapted, set_weekly_dungeon
+from src.config.set_config import is_adapted, set_config, set_weekly_dungeon
 from src.service.script_service import ScriptService
 
 # 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
@@ -196,34 +196,28 @@ class TaskCardController(QObject):
         options, seq_map, _ = parse_dungeon_config(dungeon_cfg)
         result = []
         for name in options:
-            if name == "未选择":
-                result.append({"name": "未选择", "clear": True, "sequences": []})
-            else:
-                seqs = seq_map.get(name, [])
-                result.append(
-                    {
-                        "name": name,
-                        "clear": False,
-                        "sequences": [
-                            {"label": lbl, "value": val} for lbl, val in seqs
-                        ],
-                    }
-                )
+            seqs = seq_map.get(name, [])
+            result.append(
+                {
+                    "name": name,
+                    "sequences": [{"label": lbl, "value": val} for lbl, val in seqs],
+                }
+            )
         return result
 
     # ── 交互 ───────────────────────────────────────────────────────────
     @Slot(str, "QVariant")
     def selectDungeon(self, dungeon_name: str, sequence):
-        """选择日常副本（持久化到 gui_state.json 的 dungeon/sequence）。"""
+        """选择日常副本（持久化到 gui_state.json，并实时落盘子脚本 config）。"""
         script_name = self._current["script_name"]
         saved = self._ui_state.setdefault(script_name, {})
-        if not dungeon_name or dungeon_name == "未选择":
-            saved.pop("dungeon", None)
-            saved.pop("sequence", None)
-        else:
-            saved["dungeon"] = dungeon_name
-            saved["sequence"] = sequence
+        saved["dungeon"] = dungeon_name
+        saved["sequence"] = sequence
         self._service.save_ui_state(self._ui_state)
+        # 实时落盘子脚本 config（与周常副本 selectWeeklyDungeon 一致）；
+        # 未选择选项已移除，下拉只含真实副本，此处不再区分清空调度。
+        if dungeon_name:
+            set_config(script_name, dungeon_name=dungeon_name, sequence=sequence)
         self.refresh()
 
     @Slot(int)

@@ -464,7 +464,7 @@ class TestGetDungeonMap(unittest.TestCase):
         raw = {
             "ok-ef": {
                 "dungeons": [
-                    {"name": "未选择"},
+                    {"name": "培养目标"},
                     {
                         "name": "能量淤积点",
                         "dungeons_source": "data/apps/ok-ef/working/assets/data/world_map.json",
@@ -480,7 +480,7 @@ class TestGetDungeonMap(unittest.TestCase):
             ) as mock_ext,
         ):
             result = ScriptService().get_dungeon_map()
-        # 未选择（无 dungeons_source）保持无序列
+        # 培养目标（无 dungeons_source）保持无序列
         self.assertEqual(result["ok-ef"]["dungeons"][0].get("sequences"), None)
         # 带 dungeons_source 的项被填充为 {display,value} 序列
         seqs = result["ok-ef"]["dungeons"][1]["sequences"]

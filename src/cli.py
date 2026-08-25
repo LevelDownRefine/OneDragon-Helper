@@ -127,18 +127,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="运行期间静音（透传 --mute 给 Runner）",
     )
     parser.add_argument(
-        "--dungeon",
-        type=str,
-        default=None,
-        help="配合 --generate-chain，覆盖副本选择，格式 '脚本标识=副本名'（逗号分隔多个）",
-    )
-    parser.add_argument(
-        "--sequence",
-        type=str,
-        default=None,
-        help="配合 --generate-chain，覆盖序列选择，格式 '脚本标识=序列值'（逗号分隔多个）",
-    )
-    parser.add_argument(
         "--weekly-start",
         type=str,
         default=None,
@@ -378,34 +366,8 @@ def _run_generate_chain(args) -> int:
             return 1
         enabled_keys -= excluded
 
-    ui_state = service.load_ui_state()
-
-    # 命令行覆盖：--dungeon / --sequence 合并到内存 ui_state，仅本次生效、不持久化
-    try:
-        dungeon_overrides = _parse_overrides(args.dungeon)
-        sequence_overrides = _parse_overrides(args.sequence)
-    except ValueError as exc:
-        _emit_cli("generate_chain", str(exc))
-        return 1
-
-    for script_name in dungeon_overrides:
-        if script_name not in known:
-            _emit_cli("generate_chain", f"--dungeon 中未知的脚本标识: {script_name}")
-            return 1
-        if script_name not in ui_state:
-            ui_state[script_name] = {}
-        ui_state[script_name]["dungeon"] = dungeon_overrides[script_name]
-
-    for script_name in sequence_overrides:
-        if script_name not in known:
-            _emit_cli("generate_chain", f"--sequence 中未知的脚本标识: {script_name}")
-            return 1
-        if script_name not in ui_state:
-            ui_state[script_name] = {}
-        ui_state[script_name]["sequence"] = sequence_overrides[script_name]
-
     # 命令行覆盖：--weekly-start 持久化到 weekly_start.yml
-    # （周几跑是长期配置，同 GUI 改周几起语义；与 --dungeon/--sequence 的临时覆盖不同）。
+    # （周几跑是长期配置，同 GUI 改周几起语义）。
     # 校验失败（未知脚本/未支持周常/非整数/越界）在写盘前拦截并返回 1。
     try:
         weekly_overrides = _parse_overrides(args.weekly_start)
@@ -439,15 +401,13 @@ def _run_generate_chain(args) -> int:
                 f"--weekly-start 中 {script_name} 的值越界: {start_day}（应为 1~7）",
             )
             return 1
-        # 仅做持久化，不并入内存 ui_state（ui_state 只承载 --dungeon/--sequence 临时覆盖）
+        # 仅做持久化（周几跑是长期配置），不实时写子脚本 config
         service.set_weekly_start(script_name, start_day)
 
     out = args.out
     if out:
         out = os.path.abspath(out)
-    out = service.generate_chain(
-        all_config_data, enabled_keys, args.name, ui_state, out_path=out
-    )
+    out = service.generate_chain(all_config_data, enabled_keys, args.name, out_path=out)
     _emit_cli("generate_chain", f"已生成脚本链配置: {out}")
     return 0
 

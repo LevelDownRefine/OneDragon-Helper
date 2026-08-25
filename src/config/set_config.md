@@ -35,6 +35,22 @@
 
 三者独立：初始化是防御性对齐，设置副本与周常是功能性响应。
 
+## 落盘时机（何时调用 set_config）
+
+子脚本 config 的落盘点按「能否在编辑期确定」分两类：
+
+| 配置类型 | 落盘时机 | 说明 |
+|----------|----------|------|
+| 日常副本 / 序列（`dungeon_name` / `sequence`） | **编辑期实时** | GUI 选副本（`TaskCardController.selectDungeon`）、CLI `--dungeon`/`--sequence` 覆盖，均直接调 `set_config` 实时写子脚本 config。无需等到运行全体。 |
+| 周常副本（`set_weekly_dungeon`） | **编辑期实时** | GUI 选周常副本（`selectWeeklyDungeon`）直接写子脚本 config。 |
+| 周常起始日（`weekly_start` → 周本开关） | **运行期** | 启用与否 = `today_weekday >= start_day`，只能在运行期按当天星期计算。故仅在 `generate_chain_config` 中经 `set_config(weekly_start=...)` 透传，由 `set_weekly` 写开关。 |
+
+**关键结论**：除「按周几起决定开启/关闭」的周本开关必须在运行期落盘外，其余日常副本/序列、周常副本均在编辑期实时落盘子脚本 config。`generate_chain_config` 因此**不再重复写** dungeon/sequence——它只负责把 `weekly_start` 透传给 `set_config`。
+
+> 未选择（`dungeon_name` 为空或「未选择」）保持 no-op：不清空、不触碰子脚本 config。这里不做「清空支持」，避免误删用户在他处的手动配置。
+
+> 历史包袱：早期子脚本 config 唯一的写盘点是「运行全体」时 `generate_chain_config` 内的 `set_config` 循环，导致编辑期改副本要等运行全体才生效。现改为编辑期实时落盘，运行全体路径不再负责 dungeon/sequence 落盘（仅周本开关）。
+
 ## 初始化流程 init
 
 `ScriptConfig._init_config()`：加载 config 与 template → 若 `_is_aligned` 一致则跳过；否则经 `_confirm_save()` 询问用户，确认后才遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。

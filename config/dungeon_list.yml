@@ -1,6 +1,5 @@
 ok-ww:
   dungeons:
-  - name: 未选择
   - name: 凝素领域
     sequences:
     - display: 梦州-迅刀
@@ -93,7 +92,6 @@ ok-ww:
       value: 19
 BetterGI:
   dungeons:
-  - name: 未选择
   - name: 圣遗物
     dungeons_source: GameTask/AutoTrackPath/Assets/tp.json
   - name: 武器
@@ -102,7 +100,6 @@ BetterGI:
     dungeons_source: GameTask/AutoTrackPath/Assets/tp.json
 ok-ef:
   dungeons:
-  - name: 未选择
   - name: 干员养成
     dungeons_source: data/apps/ok-ef/working/assets/data/world_map.json
   - name: 武器养成
@@ -115,15 +112,12 @@ ok-ef:
     dungeons_source: data/apps/ok-ef/working/assets/data/world_map.json
 OneDragon-Launcher:
   dungeons:
-  - name: 未选择
   - name: 培养方案
 March7th-Assistant:
   dungeons:
-  - name: 未选择
   - name: 培养目标
 ok-nte:
   dungeons:
-  - name: 未选择
   - name: 空幕
     sequences:
     - display: 光暗
@@ -180,7 +174,6 @@ ok-nte:
       value: 斑蝶
 MAA:
   dungeons:
-  - name: 未选择
   - name: 红票
   - name: 经验
   - name: 龙门币

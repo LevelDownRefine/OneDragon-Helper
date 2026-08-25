@@ -313,7 +313,7 @@ Item {
                                 anchors.fill: parent; leftPadding: 10
                                 verticalAlignment: Text.AlignVCenter
                                 text: modelData.name
-                                color: modelData.clear ? "#FF9E9E" : "#FFFFFF"; font.pixelSize: 13
+                                color: "#FFFFFF"; font.pixelSize: 13
                             }
                             Text {
                                 anchors.right: parent.right; rightPadding: 6
@@ -327,10 +327,7 @@ Item {
                                     dungeonPopup.selName = modelData.sequences.length > 0 ? modelData.name : ""
                                 }
                                 onClicked: {
-                                    if (modelData.clear) {
-                                        Bridge.selectDungeon("未选择", null)
-                                        dungeonPopup.visible = false
-                                    } else if (modelData.sequences.length > 0) {
+                                    if (modelData.sequences.length > 0) {
                                         dungeonPopup.selName = modelData.name
                                     } else {
                                         Bridge.selectDungeon(modelData.name, null)

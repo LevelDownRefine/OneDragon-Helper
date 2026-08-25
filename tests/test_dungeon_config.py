@@ -5,7 +5,6 @@ import unittest
 from src.config.dungeon_config import (
     get_display_name,
     parse_dungeon_config,
-    restore_sequence_type,
 )
 
 
@@ -147,56 +146,6 @@ class TestGetDisplayName(unittest.TestCase):
         seq_map = {"凝素领域": [("第1层", 1)]}
         with self.assertRaises(AssertionError):
             get_display_name(seq_map, "不存在", 1)
-
-
-class TestRestoreSequenceType(unittest.TestCase):
-    """测试 restore_sequence_type"""
-
-    def test_no_sequence(self):
-        """没有 sequence 时返回原字典"""
-        saved = {"dungeon": "凝素领域"}
-        seq_map = {"凝素领域": [("第1层", 1), ("第17层", 17)]}
-        result = restore_sequence_type(saved, seq_map)
-        self.assertIs(result, saved)
-
-    def test_no_dungeon(self):
-        """没有 dungeon 时返回原字典"""
-        saved = {"sequence": "17"}
-        seq_map = {"凝素领域": [("第1层", 1), ("第17层", 17)]}
-        result = restore_sequence_type(saved, seq_map)
-        self.assertIs(result, saved)
-
-    def test_dungeon_not_in_map(self):
-        """副本不在映射中时返回原字典"""
-        saved = {"dungeon": "不存在", "sequence": "17"}
-        seq_map = {"凝素领域": [("第1层", 1), ("第17层", 17)]}
-        result = restore_sequence_type(saved, seq_map)
-        self.assertIs(result, saved)
-
-    def test_string_to_integer_conversion(self):
-        """字符串 "17" 转换为整数 17"""
-        saved = {"dungeon": "凝素领域", "sequence": "17"}
-        seq_map = {"凝素领域": [("第1层", 1), ("第17层", 17)]}
-        result = restore_sequence_type(saved, seq_map)
-        self.assertIsNot(result, saved)
-        self.assertEqual(result["sequence"], 17)
-        self.assertEqual(type(result["sequence"]), int)
-
-    def test_no_conversion_needed(self):
-        """已经是正确类型时不转换"""
-        saved = {"dungeon": "凝素领域", "sequence": 17}
-        seq_map = {"凝素领域": [("第1层", 1), ("第17层", 17)]}
-        result = restore_sequence_type(saved, seq_map)
-        self.assertIsNot(result, saved)
-        self.assertEqual(result["sequence"], 17)
-
-    def test_string_value_no_conversion(self):
-        """字符串类型的值不转换"""
-        saved = {"dungeon": "模拟领域", "sequence": "武器经验"}
-        seq_map = {"模拟领域": [("共鸣者经验", "共鸣者经验"), ("武器经验", "武器经验")]}
-        result = restore_sequence_type(saved, seq_map)
-        self.assertIsNot(result, saved)
-        self.assertEqual(result["sequence"], "武器经验")
 
 
 if __name__ == "__main__":

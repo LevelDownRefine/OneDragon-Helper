@@ -51,6 +51,7 @@ class TestTaskCard(unittest.TestCase):
         b = _make_bridge()
         self.assertFalse(b.dailySupported)
 
+    @patch.object(task_card, "set_config")  # 实时落盘子脚本 config
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[])
     @patch.object(task_card.ScriptService, "get_dungeon_map", return_value={})
@@ -63,20 +64,12 @@ class TestTaskCard(unittest.TestCase):
         self.assertEqual(b.task_card._ui_state[name]["sequence"], "seq1")
         # 无 seq_map → chip 文字回退为副本名
         self.assertEqual(b.dailyDungeonText, "副本A")
+        # 实时落盘子脚本 config（日常副本编辑期即生效，不再依赖运行全体）
+        task_card.set_config.assert_called_once_with(
+            name, dungeon_name="副本A", sequence="seq1"
+        )
         # 对齐旧 GUI：日常副本选择持久化到 gui_state.json
         m_save.assert_called_once()
-
-    @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[])
-    @patch.object(task_card.ScriptService, "get_dungeon_map", return_value={})
-    def test_select_dungeon_clear_removes(self, *_):
-        b = _make_bridge()
-        b.selectDungeon("副本A", "seq1")
-        name = b.games[0]["script_name"]
-        b.selectDungeon("未选择", None)
-        self.assertNotIn("dungeon", b.task_card._ui_state.get(name, {}))
-        self.assertNotIn("sequence", b.task_card._ui_state.get(name, {}))
-        self.assertEqual(b.dailyDungeonText, "选择副本")
 
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(
@@ -97,7 +90,7 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(
         task_card,
         "parse_dungeon_config",
-        return_value=(["未选择", "副本A"], {"副本A": [("难1", "s1")]}, None),
+        return_value=(["副本A"], {"副本A": [("难1", "s1")]}, None),
     )
     def test_dungeon_options_shape(self, *_):
         # get_dungeon_map().get(script_name) 恒返回 truthy，使 _build_dungeon_options 进入解析分支
@@ -109,9 +102,8 @@ class TestTaskCard(unittest.TestCase):
             m_dm.return_value = _Map()
             b = _make_bridge()
         opts = b.dungeonOptions
-        self.assertEqual(opts[0], {"name": "未选择", "clear": True, "sequences": []})
-        self.assertEqual(opts[1]["name"], "副本A")
-        self.assertEqual(opts[1]["sequences"], [{"label": "难1", "value": "s1"}])
+        self.assertEqual(opts[0]["name"], "副本A")
+        self.assertEqual(opts[0]["sequences"], [{"label": "难1", "value": "s1"}])
 
     @patch.object(task_card.ScriptService, "get_dungeon_map", return_value={})
     def test_dungeon_options_empty_when_no_cfg(self, *_):
