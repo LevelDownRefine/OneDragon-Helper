@@ -21,7 +21,7 @@
  ok-ww  BetterGI/ok-ef OneDragon-Launcher/March7th-Assistant ok-nte  MAA
 ```
 
-- 基类 `ScriptConfig` 提供通用能力：`_load` / `_save` / `_verify_saved` / `_update_task` / `_update_sequence` / `_init_config` / `_is_aligned` / `set_dungeon` / `safe_update`。
+- 基类 `ScriptConfig` 提供通用能力：`_load` / `_save` / `_verify_saved` / `_update_task`（含二级序列）/ `_init_config` / `_is_aligned` / `set_dungeon` / `safe_update`。
 - 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`。`_task_key` / `_task_map` 按需覆盖。
 - 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`；路径声明不完整会在 import 时 assert 暴露。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `supports_weekly` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `set_config` / `set_weekly_dungeon`）。
 
@@ -29,7 +29,7 @@
 
 | 流程 | 触发时机 | 作用 |
 |------|----------|------|
-| 初始化 init | 子类 `__init__` 中调用 | 确保脚本 config 与模板对齐，补全缺失结构 |
+| 初始化 init | 暂不在 `__init__` 自动调用（review 后定落点） | 确保脚本 config 与模板对齐，补全缺失结构 |
 | 设置副本 set_dungeon | 外部调用 `set_config()` 时 | 按用户选择的副本/序列修改 config |
 | 设置周常 set_weekly | 外部调用 `set_config()` 时 | 按周常起始日写周常开关，仅适配脚本支持 |
 
@@ -53,44 +53,43 @@
 
 ## 初始化流程 init
 
-`ScriptConfig._init_config()`：加载 config 与 template → 若 `_is_aligned` 一致则跳过；否则经 `_confirm_save()` 询问用户，确认后才遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。
+`ScriptConfig._init_config()`：仅对声明了 `_template_rel_path` 的脚本生效。先判模板是否存在（无模板直接返回），再 `self._load(allow_missing=True)` 读当前 config（脚本未安装/未配置返回 None 时直接返回，不触碰 config），然后 `_load_template()` 加载模板 → 若 `_is_aligned` 一致则跳过；否则经 `_confirm_save()` 询问用户，确认后才遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。
 
-仅在子类 `__init__` 显式调用；未定义 `__init__` 的脚本不初始化。各脚本：
+落点（触发时机）：写路径 facade——`set_config` / `set_weekly_dungeon` / `set_weekly_start_day` 在实例化后、写字段前各调一次 `cfg._init_config()`。仅写路径触发，反读 facade（`get_dungeon` 等）不触发，故反读保持纯只读、无写盘/弹确认副作用。无模板脚本（鸣潮/异环/粥）与 config 缺失时 `_init_config` 为 no-op。
 
-| 脚本 | 调 _init_config | 模板 | 说明 |
-|------|----------------|------|------|
-| 鸣潮 | 否 | — | 无 `__init__`，不初始化 |
-| 原神 | 是 | `BGI一条龙.json` | 基类默认对齐 |
-| 终末地 | 是 | `okef一条龙.json` | 基类默认对齐 |
-| 绝区零 | 是 | `ZZZ一条龙.yml` | 基类默认对齐 |
-| 崩铁 | 是 | `M7A一条龙.yml` | 基类默认对齐 |
-| 异环 | 否 | — | 无 `__init__`，不初始化 |
-| 粥 | 是 | `MAA一条龙.json` | 额外 `_init_task_map` 从模板 `TaskQueue` 取 `$type=="FightTask"` 构建 `_task_map` |
+| 脚本 | 写时调 _init_config | 模板 | 说明 |
+|------|---------------------|------|------|
+| 鸣潮 | no-op（无模板） | — | 写时调但因无模板直接返回 |
+| 原神 | 是 | `BGI一条龙.json` | 经 `set_config` 等写 facade 触发 |
+| 终末地 | 是 | `okef一条龙.json` | 同上 |
+| 绝区零 | 是 | `ZZZ一条龙.yml` | 同上 |
+| 崩铁 | 是 | `M7A一条龙.yml` | 同上 |
+| 异环 | no-op（无模板） | — | 同鸣潮 |
+| 粥 | no-op（无模板） | — | `_task_map` 固化为类属性（原由模板 `MAA一条龙.json` 推导，现不再加载模板）|
 
 ## 设置副本流程 set_dungeon
 
-基类模板流程：`_load()` → `_update_task()` → `_update_sequence()` → 有改动则 `_save()`，保存后 `_verify_saved()` 重读校验落盘一致性。
+基类模板流程：`_load()` → `_update_task(config, dungeon_name, sequence)`（含二级序列）→ 有改动则 `_save()`，保存后 `_verify_saved()` 重读校验落盘一致性。
 
 > 写盘校验：`_save()` 是唯一落盘点，写后 `_verify_saved()` 重读并与预期整段相等断言。save_config 为同步阻塞写，重读必为新内容，无需 sleep。校验失败属不该发生，用 assert。
 
 | 钩子 | 作用 | 默认 |
 |------|------|------|
-| `_update_task(config, dungeon_name)` | 更新副本类型字段 | 设 `_task_key` 即启用，用 `_task_map` 映射，空 map 用 `dungeon_name` 原值 |
-| `_update_sequence(config, dungeon_name, sequence)` | 更新序列字段 | `assert sequence is None` |
+| `_update_task(config, dungeon_name, sequence)` | 更新副本类型字段与二级序列 | 设 `_task_key` 即启用，用 `_task_map` 映射，空 map 用 `dungeon_name` 原值；sequence 非 None 即 assert（基类无二级序列通道） |
 
 各脚本策略：
 
-| 脚本 | 覆盖 set_dungeon | _task_key | 覆盖 _update_sequence | 说明 |
+| 脚本 | 覆盖 set_dungeon | _task_key | 覆盖 _update_task | 说明 |
 |------|-------------------|-------------|------------------------|------|
-| 鸣潮 | 否 | `Which to Farm` | 是 | 模拟领域需映射值，凝素/无音区直接用 sequence |
+| 鸣潮 | 否 | `Which to Farm` | 是 | 经 `super()._update_task(config, dungeon_name, None)` 复用副本写入，再按 `_sequence_map` 写序列；模拟领域需映射值，凝素/无音区直接用 sequence |
 | 原神 | 否 | `DomainName` | 否 | — |
 | 终末地 | 否 | `体力本` | 否 | — |
-| 崩铁 | 否 | `instance_type` | 否 | — |
-| 异环 | 否，覆盖做互斥切换 | `任务类型` | 是 | 副本→序列字段名 `_seq_key_map`；`DailyRoutineTask.json` 切换 `daily_anomaly`↔`daily_anomaly_hunter` 互斥启用，复用基类 `_load`/`_save`，仅路径 `_routine_config_rel_path` 不同 |
+| 崩铁 | 否 | — | 否 | 日常无需适配（set_dungeon 为 no-op），反读回退 gui_state |
+| 异环 | 否，覆盖做互斥切换 | `任务类型` | 是 | 完全自定义（不调 super）：副本→序列字段名 `_seq_key_map`；`DailyRoutineTask.json` 切换 `daily_anomaly`↔`daily_anomaly_hunter` 互斥启用，复用基类 `_load`/`_save`，仅路径 `_routine_config_rel_path` 不同 |
 | 绝区零 | 是，空实现仅 print | — | — | 无需适配副本选择 |
-| 粥 | 是，完全自定义 | — | — | 禁用全部→启用剿灭+选定+土，直接操作 `TaskQueue` |
+| 粥 | 是，完全自定义 | — | 是 | 操作 `TaskQueue` 禁用全部→启用剿灭+选定+土，不写二级序列 |
 
-标准流程：不覆盖 set_dungeon，靠 `_task_key` + 可选 `_update_sequence` 适配；需完全自定义如粥或无需适配如绝区零才覆盖。
+标准流程：不覆盖 set_dungeon，靠 `_task_key` 适配；需二级序列支持则覆盖 `_update_task`（在 `super()._update_task(config, dungeon_name, None)` 后补序列）；需完全自定义如粥或无需适配如绝区零才覆盖 set_dungeon。
 
 ### 异环：追猎目标与异象界域互斥
 
@@ -144,8 +143,8 @@ set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 
 ## 如何新增一个游戏适配
 
-1. `set_config.py` 新建子类继承 `ScriptConfig` 并加 `@register`：设 `_script_name`、`display_name` 与路径类属性 `_config_rel_path` 必填、`_game_config_rel_path` 声明 `_game_path_keys` 时必填、`_template_rel_path` 需模板初始化才设。
-2. 需初始化则实现 `_init_config` 并在 `__init__` 调用；设 `_task_key` / `_task_map`，需序列支持则覆盖 `_update_sequence`，标准流程不够则覆盖 `set_dungeon`。
+1. `set_config.py` 新建子类继承 `ScriptConfig` 并加 `@register`：设 `_script_name`、`display_name` 与路径类属性 `_config_rel_path` 必填、`_game_config_rel_path` 声明 `_game_path_keys` 时必填；需模板初始化才设 `_template_rel_path`，且 `_task_map` 优先固化为类属性（避免反读/写路径依赖模板加载）。
+2. 设 `_task_key` / `_task_map`，需序列支持则覆盖 `_update_task`（在 `super()._update_task(config, dungeon_name, None)` 后补序列），标准流程不够则覆盖 `set_dungeon`；`_init_config` 由写 facade（`set_config` / `set_weekly_dungeon` / `set_weekly_start_day`）在写前自动触发，无需显式调用；无 `_template_rel_path` 时为空操作。
 3. `config/dungeon_list.yml` 加副本/序列选项，key 用 script_name。
 4. 补测试 `tests/test_set_config_subclasses.py`。
 

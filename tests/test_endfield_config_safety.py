@@ -91,10 +91,11 @@ class TestEndfieldConfigSafety(unittest.TestCase):
     def tearDown(self):
         patch.stopall()
 
-    # ---- init_config：绝不该改任何东西 ----
+    # ---- _init_config：绝不该改任何东西（不再由 __init__ 自动触发）----
     def test_init_config_touches_nothing(self):
-        """init_config 对一份已与模板对齐的真实 config 应零改动。"""
-        EndfieldConfig()  # __init__ 内跑 _init_config
+        """_init_config 对一份已与模板对齐的真实 config 应零改动（需显式调用）。"""
+        cfg = EndfieldConfig()
+        cfg._init_config()
         diff = diff_paths(
             self.seed, self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         )

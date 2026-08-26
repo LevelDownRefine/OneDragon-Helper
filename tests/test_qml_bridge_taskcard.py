@@ -16,6 +16,8 @@ from tests.test_qml_launcher import _make_bridge
 class TestTaskCard(unittest.TestCase):
     """任务卡数据 / 写回：与旧 task_card.py 对齐。"""
 
+    @patch.object(task_card, "get_dungeon", return_value=None)
+    @patch.object(task_card, "get_sequence", return_value=None)
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(
         task_card.ScriptService, "get_weekly_defs", return_value=[{"name": "周常"}]
@@ -52,6 +54,8 @@ class TestTaskCard(unittest.TestCase):
         self.assertFalse(b.dailySupported)
 
     @patch.object(task_card, "set_config")  # 实时落盘子脚本 config
+    @patch.object(task_card, "get_dungeon", return_value=None)
+    @patch.object(task_card, "get_sequence", return_value=None)
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[])
     @patch.object(task_card.ScriptService, "get_dungeon_map", return_value={})
@@ -62,7 +66,7 @@ class TestTaskCard(unittest.TestCase):
             b.selectDungeon("副本A", "seq1")
         self.assertEqual(b.task_card._ui_state[name]["dungeon"], "副本A")
         self.assertEqual(b.task_card._ui_state[name]["sequence"], "seq1")
-        # 无 seq_map → chip 文字回退为副本名
+        # 无配置真相（get_dungeon/get_sequence 回退为 None）→ chip 文字取 gui_state 副本名
         self.assertEqual(b.dailyDungeonText, "副本A")
         # 实时落盘子脚本 config（日常副本编辑期即生效，不再依赖运行全体）
         task_card.set_config.assert_called_once_with(
@@ -70,21 +74,6 @@ class TestTaskCard(unittest.TestCase):
         )
         # 对齐旧 GUI：日常副本选择持久化到 gui_state.json
         m_save.assert_called_once()
-
-    @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(
-        task_card.ScriptService, "get_weekly_defs", return_value=[{"name": "周常"}]
-    )
-    @patch.object(task_card.ScriptService, "get_dungeon_map", return_value={})
-    @patch.object(task_card.ScriptService, "set_weekly_start")
-    @patch.object(task_card.ScriptService, "get_weekly_start", return_value=3)
-    def test_select_weekly_persists(self, *_):
-        b = _make_bridge()
-        name = b.games[0]["script_name"]
-        b.selectWeekly(3)
-        task_card.ScriptService.set_weekly_start.assert_called_once_with(name, 3)
-        self.assertEqual(b.weeklyStartLabel, "周三起")
-        # 周常起始日持久化到 weekly_start.yml（不再经 gui_state）
 
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(

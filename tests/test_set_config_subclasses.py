@@ -1,7 +1,7 @@
 """
 测试 set_config.py 中各 ScriptConfig 子类的行为。
 
-覆盖每个子类的 _update_task / _update_sequence / set_dungeon / _init_config / _is_aligned 等方法。
+覆盖每个子类的 _update_task（含二级序列）/ set_dungeon / _init_config / _is_aligned 等方法。
 所有文件 I/O 均通过 mock 隔离，不依赖真实 config 文件。
 """
 
@@ -29,7 +29,7 @@ from src.utils_yaml import dump_yaml_str
 
 
 class TestScriptConfigBase(unittest.TestCase):
-    """测试基类 _update_task / _update_sequence / set_dungeon 的默认行为"""
+    """测试基类 _update_task / set_dungeon 的默认行为"""
 
     def test_update_task_without_map_assigns_dungeon_name(self):
         """_task_map 为空时直接用 dungeon_name 赋值"""
@@ -90,18 +90,12 @@ class TestScriptConfigBase(unittest.TestCase):
         with self.assertRaises(AssertionError):
             cfg._update_task({}, "副本")
 
-    def test_update_sequence_default_rejects_sequence(self):
-        """基类默认 _update_sequence 不接受非 None 的 sequence"""
+    def test_update_task_rejects_sequence(self):
+        """基类默认 _update_task 不接受非 None 的 sequence"""
         cfg = ScriptConfig()
         cfg.display_name = "测试"
         with self.assertRaises(AssertionError):
-            cfg._update_sequence({}, "副本", "序列")
-
-    def test_update_sequence_default_none_returns_false(self):
-        """基类默认 _update_sequence 接受 None 并返回 False"""
-        cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        self.assertFalse(cfg._update_sequence({}, "副本", None))
+            cfg._update_task({}, "副本", "序列")
 
     def test_set_dungeon_changed_saves(self):
         """set_dungeon 有修改时应调用 _save"""
@@ -199,16 +193,16 @@ class TestWutheringWavesConfig(unittest.TestCase):
         self.assertIn("无音区", self.cfg._task_map)
 
     def test_update_task_maps_dungeon(self):
-        config = {"Which to Farm": "old"}
-        changed = self.cfg._update_task(config, "无音区")
+        config = {"Which to Farm": "old", "Which Tacet Suppression to Farm": 1}
+        changed = self.cfg._update_task(config, "无音区", 3)
         self.assertTrue(changed)
         self.assertEqual(config["Which to Farm"], "Tacet Suppression")
 
-    # ---- _update_sequence: 模拟领域 ----
+    # ---- _update_task: 模拟领域 ----
 
     def test_update_sequence_simulation(self):
         config = {"Which to Farm": "Simulation Challenge", "Material Selection": "old"}
-        changed = self.cfg._update_sequence(config, "模拟领域", "共鸣者经验")
+        changed = self.cfg._update_task(config, "模拟领域", "共鸣者经验")
         self.assertTrue(changed)
         self.assertEqual(config["Material Selection"], "Resonator EXP")
 
@@ -217,22 +211,22 @@ class TestWutheringWavesConfig(unittest.TestCase):
             "Which to Farm": "Simulation Challenge",
             "Material Selection": "Weapon EXP",
         }
-        changed = self.cfg._update_sequence(config, "模拟领域", "武器经验")
+        changed = self.cfg._update_task(config, "模拟领域", "武器经验")
         self.assertFalse(changed)
 
     def test_update_sequence_simulation_unknown_raises(self):
         config = {"Which to Farm": "Simulation Challenge", "Material Selection": "old"}
         with self.assertRaises(AssertionError):
-            self.cfg._update_sequence(config, "模拟领域", "不存在")
+            self.cfg._update_task(config, "模拟领域", "不存在")
 
-    # ---- _update_sequence: 无音区 ----
+    # ---- _update_task: 无音区 ----
 
     def test_update_sequence_tacet(self):
         config = {
             "Which to Farm": "Tacet Suppression",
             "Which Tacet Suppression to Farm": 1,
         }
-        changed = self.cfg._update_sequence(config, "无音区", 3)
+        changed = self.cfg._update_task(config, "无音区", 3)
         self.assertTrue(changed)
         self.assertEqual(config["Which Tacet Suppression to Farm"], 3)
 
@@ -241,17 +235,17 @@ class TestWutheringWavesConfig(unittest.TestCase):
             "Which to Farm": "Tacet Suppression",
             "Which Tacet Suppression to Farm": 2,
         }
-        changed = self.cfg._update_sequence(config, "无音区", 2)
+        changed = self.cfg._update_task(config, "无音区", 2)
         self.assertFalse(changed)
 
-    # ---- _update_sequence: 凝素领域 ----
+    # ---- _update_task: 凝素领域 ----
 
     def test_update_sequence_forgery(self):
         config = {
             "Which to Farm": "Forgery Challenge",
             "Which Forgery Challenge to Farm": 1,
         }
-        changed = self.cfg._update_sequence(config, "凝素领域", 4)
+        changed = self.cfg._update_task(config, "凝素领域", 4)
         self.assertTrue(changed)
         self.assertEqual(config["Which Forgery Challenge to Farm"], 4)
 
@@ -260,22 +254,22 @@ class TestWutheringWavesConfig(unittest.TestCase):
             "Which to Farm": "Forgery Challenge",
             "Which Forgery Challenge to Farm": 2,
         }
-        changed = self.cfg._update_sequence(config, "凝素领域", 2)
+        changed = self.cfg._update_task(config, "凝素领域", 2)
         self.assertFalse(changed)
 
-    # ---- _update_sequence: None ----
+    # ---- _update_task: None ----
 
     def test_update_sequence_none_raises(self):
         config = {"Which to Farm": "Simulation Challenge"}
         with self.assertRaises(AssertionError):
-            self.cfg._update_sequence(config, "模拟领域", None)
+            self.cfg._update_task(config, "模拟领域", None)
 
-    # ---- _update_sequence: 未知副本类型 ----
+    # ---- _update_task: 未知副本类型 ----
 
     def test_update_sequence_unknown_dungeon_type_raises(self):
         config = {"Which to Farm": "Unknown Type"}
         with self.assertRaises(AssertionError):
-            self.cfg._update_sequence(config, "未知", "1")
+            self.cfg._update_task(config, "未知", "1")
 
     # ---- set_dungeon 集成 ----
 
@@ -304,7 +298,6 @@ class TestGenshinConfig(unittest.TestCase):
     def test_init_attributes(self):
         template = {"DomainName": "测试", "PartyName": "队伍1"}
         with (
-            patch.object(GenshinConfig, "_init_config"),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
         ):
@@ -330,7 +323,8 @@ class TestGenshinConfig(unittest.TestCase):
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
             patch.object(GenshinConfig, "_save") as mock_save,
         ):
-            GenshinConfig()
+            cfg = GenshinConfig()
+            cfg._init_config()
         mock_save.assert_not_called()
 
     def test_init_config_misaligned_saves(self):
@@ -350,7 +344,8 @@ class TestGenshinConfig(unittest.TestCase):
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
             patch.object(GenshinConfig, "_save") as mock_save,
         ):
-            GenshinConfig()
+            cfg = GenshinConfig()
+            cfg._init_config()
         mock_save.assert_called_once()
         saved = mock_save.call_args[0][0]
         # 不一致项被模板值覆盖
@@ -359,10 +354,21 @@ class TestGenshinConfig(unittest.TestCase):
         # 多余项保留
         self.assertEqual(saved["ExtraKey"], 1)
 
+    def test_init_config_missing_config_is_noop(self):
+        """config 缺失（首次写入前）时 _init_config 不崩溃、不写盘。"""
+        with (
+            patch.object(GenshinConfig, "_load", return_value=None),
+            patch.object(GenshinConfig, "_load_template") as mock_template,
+            patch.object(GenshinConfig, "_save") as mock_save,
+        ):
+            cfg = GenshinConfig()
+            cfg._init_config()
+        mock_template.assert_not_called()
+        mock_save.assert_not_called()
+
     def test_update_task_uses_dungeon_name_directly(self):
         """原神 _task_map 为空，直接用 dungeon_name"""
         with (
-            patch.object(GenshinConfig, "_init_config"),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data="{}")),
         ):
@@ -448,7 +454,8 @@ class TestEndfieldConfig(unittest.TestCase):
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
             patch.object(EndfieldConfig, "_save") as mock_save,
         ):
-            EndfieldConfig()
+            cfg = EndfieldConfig()
+            cfg._init_config()
         mock_save.assert_not_called()
 
     def test_init_config_misaligned_saves(self):
@@ -465,7 +472,8 @@ class TestEndfieldConfig(unittest.TestCase):
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
             patch.object(EndfieldConfig, "_save") as mock_save,
         ):
-            EndfieldConfig()
+            cfg = EndfieldConfig()
+            cfg._init_config()
         mock_save.assert_called_once()
         saved = mock_save.call_args[0][0]
         self.assertEqual(saved["购物白名单"], ["精锻"])
@@ -508,7 +516,8 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
             patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
             patch.object(ZenlessZoneZeroConfig, "_save") as mock_save,
         ):
-            ZenlessZoneZeroConfig()
+            cfg = ZenlessZoneZeroConfig()
+            cfg._init_config()
         mock_save.assert_not_called()
 
     def test_init_config_misaligned_saves(self):
@@ -528,7 +537,8 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
             patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
             patch.object(ZenlessZoneZeroConfig, "_save") as mock_save,
         ):
-            ZenlessZoneZeroConfig()
+            cfg = ZenlessZoneZeroConfig()
+            cfg._init_config()
         mock_save.assert_called_once()
         saved = mock_save.call_args[0][0]
         self.assertEqual(saved["plan_list"], [{"tab_name": "A", "category_name": "x"}])
@@ -538,7 +548,6 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
     def test_set_dungeon_only_prints(self):
         """set_dungeon 应只 print 不做修改"""
         with (
-            patch.object(ZenlessZoneZeroConfig, "_init_config"),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data="{}")),
         ):
@@ -658,16 +667,8 @@ class TestStarRailConfig(unittest.TestCase):
             cfg = StarRailConfig()
             self.assertEqual(cfg.display_name, "崩铁")
             self.assertEqual(cfg._script_name, "March7th-Assistant")
-            self.assertEqual(cfg._task_key, "instance_type")
+            self.assertEqual(cfg._task_key, "")
             self.assertEqual(cfg._task_map, {})
-
-    def test_update_task_direct_assign(self):
-        with patch.object(StarRailConfig, "_init_config"):
-            cfg = StarRailConfig()
-            config = {"instance_type": "旧本"}
-            changed = cfg._update_task(config, "新本")
-            self.assertTrue(changed)
-            self.assertEqual(config["instance_type"], "新本")
 
     def test_set_dungeon_noop_does_not_save(self):
         """崩铁（M7A）副本无需适配：set_dungeon 是 no-op，不读不写。"""
@@ -693,6 +694,24 @@ class TestStarRailConfig(unittest.TestCase):
                 cfg.set_weekly_dungeon("历战余响", "铁骸的锈冢")
             mock_save.assert_called_once()
             self.assertEqual(config["instance_names"]["历战余响"], "铁骸的锈冢")
+
+    def test_set_weekly_start_day_writes_echo_field_only(self):
+        """set_weekly_start_day 只写 echo_of_war_start_day_of_week，不动 currencywars_enable。
+
+        编辑期改周几起即应落盘起始日，无需等链运行；开关型周本的运行期门控
+        （currencywars_enable）由链生成时另行计算，不在编辑期落盘。
+        """
+        with patch.object(StarRailConfig, "_init_config"):
+            cfg = StarRailConfig()
+            config: dict = {"currencywars_enable": True}
+            with (
+                patch.object(cfg, "_load", return_value=config),
+                patch.object(cfg, "_save") as mock_save,
+            ):
+                cfg.set_weekly_start_day(4)
+            mock_save.assert_called_once()
+            self.assertEqual(config["echo_of_war_start_day_of_week"], 4)
+            self.assertTrue(config["currencywars_enable"])
 
 
 class TestStarRailGetDungeonLists(unittest.TestCase):
@@ -981,35 +1000,36 @@ class TestNTEConfig(unittest.TestCase):
     def test_update_sequence_changes_value(self):
         config = {"daily_anomaly": {"空幕序号": 1}}
         self.cfg._bind_section("空幕")
-        changed = self.cfg._update_sequence(config, "空幕", 3)
+        changed = self.cfg._update_task(config, "空幕", 3)
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly"]["空幕序号"], 3)
 
-    def test_update_sequence_no_change(self):
-        config = {"daily_anomaly": {"空幕序号": 2}}
+    def test_update_task_no_change(self):
+        """任务类型与序号均已对齐时返回 False（双通道都无改动）"""
+        config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 2}}
         self.cfg._bind_section("空幕")
-        changed = self.cfg._update_sequence(config, "空幕", 2)
+        changed = self.cfg._update_task(config, "空幕", 2)
         self.assertFalse(changed)
 
-    def test_update_sequence_none_raises(self):
+    def test_update_task_none_raises(self):
         """异环要求 sequence 不能为 None"""
         config = {"daily_anomaly": {"空幕序号": 1}}
         self.cfg._bind_section("空幕")
         with self.assertRaises(AssertionError):
-            self.cfg._update_sequence(config, "空幕", None)
+            self.cfg._update_task(config, "空幕", None)
 
-    def test_update_sequence_unknown_dungeon_raises(self):
+    def test_update_task_unknown_dungeon_raises(self):
         config = {"daily_anomaly": {"未知序号": 1}}
         self.cfg._bind_section("空幕")
         with self.assertRaises(AssertionError):
-            self.cfg._update_sequence(config, "不存在", "1")
+            self.cfg._update_task(config, "不存在", "1")
 
-    def test_update_sequence_all_mapped_dungeons(self):
+    def test_update_task_all_mapped_dungeons(self):
         """测试 _seq_key_map 中所有副本都能正确更新"""
         self.cfg._bind_section("空幕")  # 异象界域映射由 _bind_section 动态绑定
         for dungeon_name, seq_key in self.cfg._seq_key_map.items():
             config = {"daily_anomaly": {seq_key: 0}}
-            changed = self.cfg._update_sequence(config, dungeon_name, 5)
+            changed = self.cfg._update_task(config, dungeon_name, 5)
             self.assertTrue(changed, f"{dungeon_name} 未正确更新")
             self.assertEqual(config["daily_anomaly"][seq_key], 5)
 
@@ -1025,7 +1045,7 @@ class TestNTEConfig(unittest.TestCase):
     def _patch_load(self, main_config, routine):
         """按路径区分：主配置返回 main_config，routine 配置返回 routine（模拟两份文件）。"""
 
-        def side_effect(rel_path=None):
+        def side_effect(rel_path=None, **_k):
             if rel_path == self.cfg._routine_config_rel_path:
                 return routine
             return main_config
@@ -1105,8 +1125,7 @@ class TestNTEConfig(unittest.TestCase):
     def test_set_dungeon_switch_and_sequence_writes_both(self):
         """从异能升级材料切到空幕并选序号：任务类型与序号两通道都必须写入。
 
-        基类改用非短路取或前，_update_task 返回 True 会吞掉 _update_sequence，
-        导致 空幕序号 不写（缺字段）。本断言钉死双通道都执行。
+        _update_task 合并后内部同时写任务类型与序号两通道，本断言钉死双通道都执行。
         """
         config = {
             "daily_anomaly": {
@@ -1130,7 +1149,7 @@ class TestNTEConfig(unittest.TestCase):
         """任务类型写入 daily_anomaly 子对象（值即中文副本名）"""
         self.cfg._bind_section("异能升级材料")
         config = {"daily_anomaly": {"任务类型": "空幕"}}
-        changed = self.cfg._update_task(config, "异能升级材料")
+        changed = self.cfg._update_task(config, "异能升级材料", 1)
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly"]["任务类型"], "异能升级材料")
 
@@ -1205,24 +1224,29 @@ class TestNTEConfig(unittest.TestCase):
         self.assertEqual(self.cfg._task_key, "任务类型")
 
     def test_update_sequence_hunt_writes_boss(self):
-        """追猎目标经 _update_sequence 在 daily_anomaly_hunter 写 追猎目标（boss）。"""
+        """追猎目标经 _update_task 在 daily_anomaly_hunter 写 追猎目标（boss）。"""
         self.cfg._bind_section("追猎目标")
         config = {"daily_anomaly_hunter": {"追猎目标": "音霸魔王"}}
-        changed = self.cfg._update_sequence(config, "追猎目标", "海囚")
+        changed = self.cfg._update_task(config, "追猎目标", "海囚")
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly_hunter"]["追猎目标"], "海囚")
 
     def test_update_task_skips_hunt(self):
-        """追猎目标不写任务类型字段（_update_task 直接返回 False）。"""
-        config = {"daily_anomaly": {"任务类型": "空幕"}}
-        self.assertFalse(self.cfg._update_task(config, "追猎目标"))
+        """追猎目标不写任务类型字段（仅写 boss 序号、不写 任务类型）。"""
+        config = {
+            "daily_anomaly": {"任务类型": "空幕"},
+            "daily_anomaly_hunter": {"追猎目标": "音霸魔王"},
+        }
+        self.cfg._bind_section("追猎目标")
+        changed = self.cfg._update_task(config, "追猎目标", "海囚")
+        self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly"]["任务类型"], "空幕")
 
     def test_update_sequence_hunt_no_boss_raises(self):
         """未选具体 boss（sequence=None）→ assert。"""
         self.cfg._bind_section("追猎目标")
         with self.assertRaises(AssertionError):
-            self.cfg._update_sequence({}, "追猎目标", None)
+            self.cfg._update_task({}, "追猎目标", None)
 
 
 # ============================================================
@@ -1253,6 +1277,17 @@ class TestArknightsConfig(unittest.TestCase):
         self.assertIn("剿灭", cfg._task_map)
         self.assertEqual(cfg._task_map["剿灭"]["index"], 1)
         self.assertEqual(cfg._task_map["土"]["index"], 5)
+
+    def test_init_config_no_template_is_noop(self):
+        """粥无模板（_template_rel_path 为空）：_init_config 不应加载模板或写盘。"""
+        cfg = ArknightsConfig()
+        with (
+            patch.object(ArknightsConfig, "_load_template") as mock_template,
+            patch.object(ArknightsConfig, "_save") as mock_save,
+        ):
+            cfg._init_config()
+        mock_template.assert_not_called()
+        mock_save.assert_not_called()
 
     # ---- _is_aligned ----
 
@@ -1392,111 +1427,6 @@ class TestArknightsConfig(unittest.TestCase):
             }
         }
         self.assertTrue(cfg._is_aligned(config, template))
-
-    # ---- _init_config ----
-
-    def test_init_config_aligned_no_save(self):
-        """TaskQueue 已与模板对齐时不 save"""
-        cfg = self._make_cfg()
-        template_queue = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]},
-            {"Name": "红票", "$type": "FightTask", "StagePlan": ["AP-5"]},
-            {"Name": "经验", "$type": "FightTask", "StagePlan": ["LS-6"]},
-            {"Name": "龙门币", "$type": "FightTask", "StagePlan": ["CE-6"]},
-            {"Name": "土", "$type": "FightTask", "StagePlan": ["1-7"]},
-            {"Name": "自动公招", "$type": "RecruitTask"},
-            {"Name": "基建换班", "$type": "InfrastTask"},
-            {"Name": "信用收支", "$type": "MallTask"},
-            {"Name": "领取奖励", "$type": "AwardTask"},
-        ]
-        template = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
-
-        config = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
-        with (
-            patch.object(cfg, "_load", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch.object(cfg, "_save") as mock_save,
-        ):
-            cfg._init_config()
-        mock_save.assert_not_called()
-
-    def test_init_config_misaligned_saves(self):
-        """TaskQueue 逐项对齐结构字段（Name/$type/StagePlan），保留用户其余设置与尾部自定义任务。
-
-        方舟专属 reconcile：按模板索引对齐 real[i] 的结构字段，用户其余字段（如
-        MedicineCount）原样保留；模板缺失槽位（real 比模板短）插入；real 比模板长的
-        尾部自定义任务保留、不截断。
-        """
-        cfg = self._make_cfg()
-        template_queue = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]},
-            {"Name": "红票", "$type": "FightTask", "StagePlan": ["AP-5"]},
-        ]
-        template = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
-        # real 与模板前缀对齐（开始唤醒/剿灭/红票），剿灭 StagePlan 漂移且带用户字段
-        # MedicineCount；末尾还有模板外的自定义任务「我的日常」（append 在模板长度之后）
-        cur_queue = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {
-                "Name": "剿灭",
-                "$type": "FightTask",
-                "StagePlan": ["WRONG"],
-                "MedicineCount": 5,
-            },
-            {"Name": "红票", "$type": "FightTask", "StagePlan": ["AP-5"]},
-            {"Name": "我的日常", "$type": "FightTask", "UserField": "keep"},
-        ]
-        config = {"Configurations": {"Default": {"TaskQueue": cur_queue}}}
-        with (
-            patch.object(cfg, "_load", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch.object(cfg, "_save") as mock_save,
-        ):
-            cfg._init_config()
-        mock_save.assert_called_once()
-        saved = mock_save.call_args[0][0]
-        saved_queue = saved["Configurations"]["Default"]["TaskQueue"]
-        # 长度 = 模板3 + 尾部自定义1 = 4
-        self.assertEqual(len(saved_queue), 4)
-        # 索引 0：结构字段本就对齐，不变
-        self.assertEqual(saved_queue[0]["Name"], "开始唤醒")
-        # 索引 1：StagePlan 修正为模板值，用户字段 MedicineCount 保留
-        self.assertEqual(saved_queue[1]["StagePlan"], ["Annihilation"])
-        self.assertEqual(saved_queue[1]["MedicineCount"], 5)
-        # 索引 2：模板对齐项（红票）原样保留
-        self.assertEqual(saved_queue[2]["Name"], "红票")
-        # 索引 3：尾部自定义任务原样保留（config「可以有更多，那些不动」）
-        self.assertEqual(saved_queue[3]["Name"], "我的日常")
-        self.assertEqual(saved_queue[3]["UserField"], "keep")
-
-    def test_init_config_rejected_does_not_modify(self):
-        """确认被拒绝（enabled=False）→ 不添加字段、不落盘、不改内存 config"""
-        cfg = self._make_cfg()
-        template_queue = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["Annihilation"]},
-        ]
-        template = {"Configurations": {"Default": {"TaskQueue": template_queue}}}
-        cur_queue = [{"Name": "wrong", "$type": "Unknown"}]
-        config = {"Configurations": {"Default": {"TaskQueue": cur_queue}}}
-        with (
-            patch.object(cfg, "_load", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch.object(cfg, "_confirm_save", return_value=False),
-            patch.object(cfg, "_save") as mock_save,
-        ):
-            cfg._init_config()
-        mock_save.assert_not_called()
-        # 内存 config 未被改动（无模板字段插入，不产生「添加新字段」日志）
-        self.assertEqual(
-            config,
-            {"Configurations": {"Default": {"TaskQueue": cur_queue}}},
-        )
 
     # ---- set_dungeon ----
 

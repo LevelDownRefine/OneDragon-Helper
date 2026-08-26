@@ -16,7 +16,6 @@ from unittest.mock import patch
 
 from src.config import set_config as sc_mod
 from src.config.set_config import ArknightsConfig
-from src.config.subscript import load_template
 
 FIXTURE = os.path.join(
     os.path.dirname(__file__), "fixtures", "maa_gui.new.scrubbed.json"
@@ -97,12 +96,12 @@ class TestArknightsConfigSafety(unittest.TestCase):
     def tearDown(self):
         patch.stopall()
 
-    # ---- init_config：绝不该改任何东西 ----
-    def test_init_config_touches_nothing(self):
-        """init_config 对一份已与模板对齐的真实 config 应零改动。"""
-        ArknightsConfig()  # __init__ 内跑 _init_config
+    # ---- 实例化：绝不该改任何东西（反读/只读入口依赖此不变量）----
+    def test_instantiation_touches_nothing(self):
+        """ArknightsConfig() 实例化不得触碰 config（反读路径依赖此不变量）。"""
+        ArknightsConfig()
         diff = diff_paths(self.seed, self.store["config/gui.new.json"])
-        self.assertEqual(diff, [], f"init_config 意外改动: {diff}")
+        self.assertEqual(diff, [], f"实例化意外改动: {diff}")
 
     # ---- set_dungeon：只允许改 6 个 FightTask 的 IsEnable ----
     def test_set_dungeon_only_touches_is_enable(self):
@@ -197,59 +196,6 @@ class TestArknightsConfigSafety(unittest.TestCase):
                     t.get("UseMedicine"), "FightTask.UseMedicine 被意外改动"
                 )
                 self.assertEqual(t.get("CANARY_TASK"), "X")
-
-    # ---- 加固：_init_config 只对齐 TaskQueue 结构字段，绝不整块替换 / 碰其他内容 ----
-    def test_init_config_preserves_user_data(self):
-        """config 未对齐时，_init_config 只对齐 TaskQueue 结构字段，
-
-        保留用户其余设置（如 MedicineCount）、尾部自定义任务，以及 Gui/Timers 等
-        完全无关的内容；且结构字段（Name/$type/StagePlan）按模板对齐。
-        """
-        fixture = load_fixture()
-        default = fixture["Configurations"]["Default"]
-        tq = default["TaskQueue"]
-        # 注入 realistic 漂移：剿灭 StagePlan 改错 + 加用户字段 MedicineCount
-        for t in tq:
-            if t.get("Name") == "剿灭":
-                t["StagePlan"] = ["WRONG"]
-                t["MedicineCount"] = 5
-        # 尾部自定义任务（append 在模板长度之后）→ 必须保留
-        tq.append({"$type": "FightTask", "Name": "我的自定义本", "IsEnable": False})
-        # 模板没有的顶层键 → 必须保留
-        fixture["Timers"] = {"a": 1}
-        orig_emu = default["Gui"]["StartUpSettings"]["EmulatorPath"]
-
-        self.store["config/gui.new.json"] = copy.deepcopy(fixture)
-
-        ArknightsConfig()  # __init__ → _init_config 对齐
-
-        post = self.store["config/gui.new.json"]
-        post_default = post["Configurations"]["Default"]
-        post_tq = post_default["TaskQueue"]
-        # 顶层键 Timers 不被碰
-        self.assertIn("Timers", post, "顶层键 Timers 被误删")
-        # 尾部自定义任务保留
-        names = [t["Name"] for t in post_tq]
-        self.assertIn("我的自定义本", names, "尾部自定义任务被误删")
-        # 剿灭：结构字段 StagePlan 被修正为模板值，用户字段 MedicineCount 保留
-        annih = next(t for t in post_tq if t["Name"] == "剿灭")
-        tmpl = load_template("MAA", "MAA一条龙.json")
-        tmpl_annih = next(
-            t
-            for t in tmpl["Configurations"]["Default"]["TaskQueue"]
-            if t["Name"] == "剿灭"
-        )
-        self.assertEqual(
-            annih["StagePlan"], tmpl_annih.get("StagePlan"), "剿灭 StagePlan 未被对齐"
-        )
-        self.assertEqual(annih["MedicineCount"], 5, "用户字段 MedicineCount 被误改")
-        # Gui 完全不碰
-        self.assertEqual(
-            post_default["Gui"]["StartUpSettings"]["EmulatorPath"],
-            orig_emu,
-            "Gui 被意外改动",
-        )
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

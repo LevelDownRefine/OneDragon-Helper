@@ -304,26 +304,30 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
         self.assertEqual(dlg.weekly_start_combo.currentIndex(), 3)
 
     def test_save_writes_weekly_start(self):
-        """保存时把周几起（周三起）经 ScriptService 持久化（写 weekly_start.yml）"""
+        """保存时把周几起（周三起）经 ScriptService 持久化，并落盘脚本自身 config 起始日"""
         dlg = self._make_dialog("run", "鸣潮", None, supported=True)
         dlg.weekly_start_combo.setCurrentIndex(3)
         with (
             patch("src.gui.dialogs.QMessageBox.warning"),
             patch.object(SingleScriptConfigDialog, "accept"),
+            patch("src.gui.dialogs.set_weekly_start_day") as mock_set,
         ):
             dlg.save_data()
         self.assertEqual(dlg._script_service.saved_weekly_start, 3)
+        mock_set.assert_called_once_with("run", 3)
 
     def test_save_clears_weekly_start_when_unset(self):
-        """选择「不设置」时经 ScriptService 清除（传 None）"""
+        """选择「不设置」时经 ScriptService 清除（传 None），且不去落盘脚本 config 起始日"""
         dlg = self._make_dialog("run", "鸣潮", 5, supported=True)
         dlg.weekly_start_combo.setCurrentIndex(0)
         with (
             patch("src.gui.dialogs.QMessageBox.warning"),
             patch.object(SingleScriptConfigDialog, "accept"),
+            patch("src.gui.dialogs.set_weekly_start_day") as mock_set,
         ):
             dlg.save_data()
         self.assertIsNone(dlg._script_service.saved_weekly_start)
+        mock_set.assert_not_called()
 
 
 if __name__ == "__main__":

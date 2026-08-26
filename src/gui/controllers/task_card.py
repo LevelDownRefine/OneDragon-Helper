@@ -8,7 +8,14 @@ game_list 引用读取。dungeonOptions 从缓存读取（build_dungeon_cache �
 from PySide6.QtCore import QObject, Signal, Slot
 
 from src.config.dungeon_config import get_display_name, parse_dungeon_config
-from src.config.set_config import is_adapted, set_config, set_weekly_dungeon
+from src.config.set_config import (
+    get_dungeon,
+    get_sequence,
+    get_weekly_dungeon,
+    is_adapted,
+    set_config,
+    set_weekly_dungeon,
+)
 from src.service.script_service import ScriptService
 
 # 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
@@ -63,15 +70,26 @@ class TaskCardController(QObject):
 
     @property
     def daily_dungeon_text(self) -> str:
-        """日常副本 chip 文字（持久化于 gui_state.json）。"""
+        """日常副本 chip 文字（优先反读子脚本 config，无真相回退 gui_state.json）。
+
+        子脚本 config 是日常副本的真相源（selectDungeon 已实时落盘）；
+        绝区零/崩铁日常无副本适配（set_dungeon 为 no-op），只能回退 gui_state.json。
+        """
         game = self._current
-        saved = self._ui_state.get(game["script_name"], {})
-        if not saved.get("dungeon"):
+        script_name = game["script_name"]
+        # 1) 优先反读子脚本 config（真相源）
+        dungeon = get_dungeon(script_name)
+        sequence = get_sequence(script_name)
+        # 2) 无真相/未设置：回退 gui_state.json（覆盖 no-op 脚本）
+        saved = self._ui_state.get(script_name, {})
+        if dungeon is None:
+            dungeon = saved.get("dungeon")
+        if sequence is None:
+            sequence = saved.get("sequence")
+        if not dungeon:
             return "选择副本"
-        dungeon_cfg = self._dungeon_map_cache.get(game["script_name"])
-        return self._dungeon_chip_text(
-            dungeon_cfg, saved.get("dungeon"), saved.get("sequence")
-        )
+        dungeon_cfg = self._dungeon_map_cache.get(script_name)
+        return self._dungeon_chip_text(dungeon_cfg, dungeon, sequence)
 
     @property
     def weekly_supported(self) -> bool:
@@ -109,9 +127,13 @@ class TaskCardController(QObject):
             has_dungeon = "dungeons" in d and bool(d["dungeons"])
             label = ""
             if has_dungeon:
-                # 需选副本：已选则显示副本名，未选显示占位提示
+                # 优先反读子脚本 config（真相源，如 M7A instance_names）；
+                # 无真相/未设置回退 gui_state.json 的 weekly_dungeons。
                 label = "选择副本"
-                if name in saved_dungeons and saved_dungeons[name]:
+                cfg_dungeon = get_weekly_dungeon(script_name, name)
+                if cfg_dungeon:
+                    label = cfg_dungeon
+                elif name in saved_dungeons and saved_dungeons[name]:
                     label = saved_dungeons[name]
             items.append(
                 {"name": name, "has_dungeon": has_dungeon, "dungeon_label": label}
@@ -179,13 +201,17 @@ class TaskCardController(QObject):
         self.taskStateChanged.emit()
 
     def _dungeon_chip_text(self, dungeon_cfg, dungeon_name: str, sequence) -> str:
-        """副本 chip 文字：有二级序列且选了二级 → 二级展示名；否则副本名本身。"""
+        """副本 chip 文字：副本名 + 已选二级序号（如「空幕 · 轨道之夜」）。
+
+        异环等游戏的二级序号（如轨道之夜）不自包含副本名，必须连同副本名一起
+        展示，否则会误把序号当成副本本身。无二级序号时仅显示副本名。
+        """
         if dungeon_name is None:
             return "选择副本"
-        if dungeon_cfg:
+        if dungeon_cfg and sequence is not None:
             _, seq_map, _ = parse_dungeon_config(dungeon_cfg)
-            if sequence is not None and dungeon_name in seq_map:
-                return get_display_name(seq_map, dungeon_name, sequence)
+            if dungeon_name in seq_map:
+                return f"{dungeon_name} · {get_display_name(seq_map, dungeon_name, sequence)}"
         return dungeon_name
 
     def _build_dungeon_options(self, script_name: str) -> list:
@@ -218,17 +244,6 @@ class TaskCardController(QObject):
         # 未选择选项已移除，下拉只含真实副本，此处不再区分清空调度。
         if dungeon_name:
             set_config(script_name, dungeon_name=dungeon_name, sequence=sequence)
-        self.refresh()
-
-    @Slot(int)
-    def selectWeekly(self, start_day: int):
-        """选择周常起始日（持久化到 weekly_start.yml）。
-
-        周常是否启用由「今天>=起始日」在链生成时独立计算，本方法只持久化该起始日。
-        """
-        assert start_day in WEEKDAY_NAMES, f"[bridge] 非法周几: {start_day}"
-        script_name = self._current["script_name"]
-        self._script_service.set_weekly_start(script_name, start_day)
         self.refresh()
 
     @Slot(str, str)

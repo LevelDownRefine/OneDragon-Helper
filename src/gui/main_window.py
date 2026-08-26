@@ -237,10 +237,6 @@ class QmlBridge(QObject):
     def selectDungeon(self, name, seq):
         self.task_card.selectDungeon(name, seq)
 
-    @Slot(int)
-    def selectWeekly(self, day):
-        self.task_card.selectWeekly(day)
-
     @Slot(str, str)
     def selectWeeklyDungeon(self, weekly_name, dungeon_name):
         self.task_card.selectWeeklyDungeon(weekly_name, dungeon_name)

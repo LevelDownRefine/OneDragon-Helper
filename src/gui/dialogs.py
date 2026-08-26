@@ -33,7 +33,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from src.config.set_config import ScriptConfig, supports_weekly
+from src.config.set_config import (
+    ScriptConfig,
+    set_weekly_start_day,
+    supports_weekly,
+)
 from src.config.subscript import get_script_name
 from src.service.script_service import ScriptService
 
@@ -591,13 +595,14 @@ class SingleScriptConfigDialog(_FormDialogBase):
             text = timeout_edit.text().strip()
             timeouts.append(int(text) if text else None)
 
-        # 周几起：持久化到 weekly_start.yml（与 task_card.selectWeekly 同源）。
-        # index 0 = 不设置（None），1~7 对应周一~周日。
+        # 周几起：持久化到 weekly_start.yml，并同步落盘到脚本自身 config 起始日
+        # （如 M7A echo_of_war_start_day_of_week）；index 0 = 不设置（None），1~7 对应周一~周日。
         if self._weekly_start_supported:
             idx = self.weekly_start_combo.currentIndex()
-            self._script_service.set_weekly_start(
-                self.script_name, None if idx <= 0 else idx
-            )
+            start_day = None if idx <= 0 else idx
+            self._script_service.set_weekly_start(self.script_name, start_day)
+            if start_day is not None:
+                set_weekly_start_day(self.script_name, start_day)
 
         self.pending_changes = {
             "old_script_name": self.script_name,
