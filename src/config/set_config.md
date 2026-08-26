@@ -29,7 +29,7 @@
 
 | 流程 | 触发时机 | 作用 |
 |------|----------|------|
-| 初始化 init | 暂不在 `__init__` 自动调用（review 后定落点） | 确保脚本 config 与模板对齐，补全缺失结构 |
+| 初始化 init | 已就绪但未接入任何触发点（调用时机待 review 定） | 确保脚本 config 与模板对齐，补全缺失结构 |
 | 设置副本 set_dungeon | 外部调用 `set_config()` 时 | 按用户选择的副本/序列修改 config |
 | 设置周常 set_weekly | 外部调用 `set_config()` 时 | 按周常起始日写周常开关，仅适配脚本支持 |
 
@@ -55,16 +55,16 @@
 
 `ScriptConfig._init_config()`：仅对声明了 `_template_rel_path` 的脚本生效。先判模板是否存在（无模板直接返回），再 `self._load(allow_missing=True)` 读当前 config（脚本未安装/未配置返回 None 时直接返回，不触碰 config），然后 `_load_template()` 加载模板 → 若 `_is_aligned` 一致则跳过；否则经 `_confirm_save()` 询问用户，确认后才遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。
 
-落点（触发时机）：写路径 facade——`set_config` / `set_weekly_dungeon` / `set_weekly_start_day` 在实例化后、写字段前各调一次 `cfg._init_config()`。仅写路径触发，反读 facade（`get_dungeon` 等）不触发，故反读保持纯只读、无写盘/弹确认副作用。无模板脚本（鸣潮/异环/粥）与 config 缺失时 `_init_config` 为 no-op。
+落点（触发时机）：**当前未在 facade 中调用**——`_init_config` 方法已就绪（含守卫：无 `_template_rel_path` 直接返回、`self._load(allow_missing=True)` 缺失返回），但调用时机尚未定，暂不在任何 facade 触发。后续由 review 决定如何接入（曾在写路径 facade `set_config` / `set_weekly_dungeon` / `set_weekly_start_day` 实例化后、写字段前各调一次；因模板脚本 config 错位时编辑期会经 `_confirm_save()` 弹确认框，副作用需先评估，故暂撤回）。反读 facade（`get_dungeon` 等）一律不触发，保持纯只读。
 
-| 脚本 | 写时调 _init_config | 模板 | 说明 |
+| 脚本 | 当前调用 _init_config | 模板 | 说明 |
 |------|---------------------|------|------|
-| 鸣潮 | no-op（无模板） | — | 写时调但因无模板直接返回 |
-| 原神 | 是 | `BGI一条龙.json` | 经 `set_config` 等写 facade 触发 |
-| 终末地 | 是 | `okef一条龙.json` | 同上 |
-| 绝区零 | 是 | `ZZZ一条龙.yml` | 同上 |
-| 崩铁 | 是 | `M7A一条龙.yml` | 同上 |
-| 异环 | no-op（无模板） | — | 同鸣潮 |
+| 鸣潮 | 否（未接入，且无模板→no-op） | — | 方法就绪但未在任何 facade 触发 |
+| 原神 | 否（未接入） | `BGI一条龙.json` | 模板存在，待定何时触发 |
+| 终末地 | 否（未接入） | `okef一条龙.json` | 同上 |
+| 绝区零 | 否（未接入） | `ZZZ一条龙.yml` | 同上 |
+| 崩铁 | 否（未接入） | `M7A一条龙.yml` | 同上 |
+| 异环 | 否（未接入，且无模板→no-op） | — | 同鸣潮 |
 | 粥 | no-op（无模板） | — | `_task_map` 固化为类属性（原由模板 `MAA一条龙.json` 推导，现不再加载模板）|
 
 ## 设置副本流程 set_dungeon
@@ -85,7 +85,7 @@
 | 原神 | 否 | `DomainName` | 否 | — |
 | 终末地 | 否 | `体力本` | 否 | — |
 | 崩铁 | 否 | — | 否 | 日常无需适配（set_dungeon 为 no-op），反读回退 gui_state |
-| 异环 | 否，覆盖做互斥切换 | `任务类型` | 是 | 完全自定义（不调 super）：副本→序列字段名 `_seq_key_map`；`DailyRoutineTask.json` 切换 `daily_anomaly`↔`daily_anomaly_hunter` 互斥启用，复用基类 `_load`/`_save`，仅路径 `_routine_config_rel_path` 不同 |
+| 异环 | 否，覆盖做互斥切换 | `任务类型`（声明于 `_mode_specs`） | 是 | 完全自定义（不调 super）：副本→模式经 `_dungeon_to_mode` 反查 `_mode_specs` 声明式映射（含 `task_field`+`seq_fields`）；`DailyRoutineTask.json` 切换 `daily_anomaly`↔`daily_anomaly_hunter` 互斥启用，复用基类 `_load`/`_save`，仅路径 `_routine_config_rel_path` 不同 |
 | 绝区零 | 是，空实现仅 print | — | — | 无需适配副本选择 |
 | 粥 | 是，完全自定义 | — | 是 | 操作 `TaskQueue` 禁用全部→启用剿灭+选定+土，不写二级序列 |
 
@@ -97,7 +97,7 @@
 
 NTEConfig 覆盖 `set_dungeon`：选空幕等异象界域副本 → 写 `daily_anomaly` 的 `任务类型`+序号，启用 `daily_anomaly`、停用 `daily_anomaly_hunter`；选追猎目标并选 boss → 在 `daily_anomaly_hunter` 写 `追猎目标`，启用 `daily_anomaly_hunter`、停用 `daily_anomaly`。
 
-`_bind_section(dungeon_name)` 动态绑定段后，`set_dungeon` 直接 `super().set_dungeon()` 把第一份文件整套委托基类，自身只负责第二份互斥文件。相关路径/常量在 `NTEConfig`：`_routine_config_rel_path`、`_anomaly_dungeons`、`_exclusive_routine_items`、`_anomaly_seq_key_map`。
+NTEConfig 覆盖 `set_dungeon`：按 `_dungeon_to_mode` 反查所选副本所属模式（`daily_anomaly` / `daily_anomaly_hunter`），委托基类写第一份文件（经 `_mode_specs` 声明式字段映射写入 `任务类型`+序号或 `追猎目标`），自身再切换第二份互斥文件 `DailyRoutineTask.json` 的 Routine Item 启用状态。相关路径/常量在 `NTEConfig`：`_routine_config_rel_path`、`_exclusive_routine_items`、`_anomaly_seq_key_map`、`_mode_specs`、`_dungeon_to_mode`。
 
 ## 设置周常流程 set_weekly
 
@@ -144,13 +144,13 @@ set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 ## 如何新增一个游戏适配
 
 1. `set_config.py` 新建子类继承 `ScriptConfig` 并加 `@register`：设 `_script_name`、`display_name` 与路径类属性 `_config_rel_path` 必填、`_game_config_rel_path` 声明 `_game_path_keys` 时必填；需模板初始化才设 `_template_rel_path`，且 `_task_map` 优先固化为类属性（避免反读/写路径依赖模板加载）。
-2. 设 `_task_key` / `_task_map`，需序列支持则覆盖 `_update_task`（在 `super()._update_task(config, dungeon_name, None)` 后补序列），标准流程不够则覆盖 `set_dungeon`；`_init_config` 由写 facade（`set_config` / `set_weekly_dungeon` / `set_weekly_start_day`）在写前自动触发，无需显式调用；无 `_template_rel_path` 时为空操作。
+2. 设 `_task_key` / `_task_map`，需序列支持则覆盖 `_update_task`（在 `super()._update_task(config, dungeon_name, None)` 后补序列），标准流程不够则覆盖 `set_dungeon`；`_init_config` 已就绪但**当前未在任何 facade 触发**（调用时机待定），新增脚本无需显式调用；无 `_template_rel_path` 时为空操作。
 3. `config/dungeon_list.yml` 加副本/序列选项，key 用 script_name。
 4. 补测试 `tests/test_set_config_subclasses.py`。
 
 ## 设计原则
 
 - 两流程分离：初始化对齐模板与设置副本响应选择独立，不混。
-- 克制：无明确收益不抽抽象。异环多副本共用才抽 `_seq_key_map`，鸣潮单副本不抽。
+- 克制：无明确收益不抽抽象。异环多副本共用的映射才抽 `_mode_specs`/`_dungeon_to_mode` 声明式表，鸣潮单副本不抽。
 - 严格 assert：配置不一致立即报错，不静默容忍。字典访问先 assert key 再直接访问，不用 `.get()`。
 - 类型一致：sequence 类型由 `dungeon_list.yml` 的 value 决定，不做额外转换。

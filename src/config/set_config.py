@@ -1042,11 +1042,25 @@ class NTEConfig(ScriptConfig):
         "空幕": "空幕序号",
         "弧盘突破材料": "弧盘材料序号",
     }
-    """异象界域模式：副本中文名 → DailyRoutineTaskConfigs.json 二级序号字段名。
 
-    追猎目标模式的序号字段在 _bind_section 内联（副本名即 boss 名，字段固定为
-    「追猎目标」）；此表仅覆盖异象界域多副本各自的序号字段。
-    """
+    # 日常两种互斥模式：键 = 互斥 routine item id = DailyRoutineTaskConfigs.json 段名。
+    _mode_specs = {
+        "daily_anomaly": {
+            "task_field": "任务类型",  # 副本中文名存此字段；追猎模式为 None
+            "seq_fields": _anomaly_seq_key_map,  # 副本 → 序号字段
+        },
+        "daily_anomaly_hunter": {
+            "task_field": None,
+            "seq_fields": {"追猎目标": "追猎目标"},  # 副本名即 boss 名
+        },
+    }
+
+    # 副本中文名 → 所属模式 id（写路径按 dungeon 反查模式，避免可变实例状态）。
+    _dungeon_to_mode = {
+        **dict.fromkeys(_anomaly_seq_key_map, "daily_anomaly"),
+        "追猎目标": "daily_anomaly_hunter",
+    }
+    """副本中文名 → 日常模式 id（即 _mode_specs 的键）。"""
 
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
@@ -1078,11 +1092,12 @@ class NTEConfig(ScriptConfig):
         )
         return None
 
-    def _daily_section_dict(self, config: dict) -> dict:
-        """取当前绑定的日常任务配置子对象。
+    def _daily_section_dict(self, config: dict, section: str) -> dict:
+        """取指定日常任务配置段子对象（config 文件）。
 
         Args:
             config: 顶层 config dict。
+            section: 段名（即模式 id，如 daily_anomaly / daily_anomaly_hunter）。
 
         Returns:
             日常任务配置子 dict。
@@ -1090,17 +1105,15 @@ class NTEConfig(ScriptConfig):
         Raises:
             AssertionError: 缺段或类型非 dict。
         """
-        return get_field(
-            config, self._daily_section, self.display_name, dict, "daily_section"
-        )
+        return get_field(config, section, self.display_name, dict, "daily_section")
 
     def _update_task(
         self, config: dict, dungeon_name: str, sequence: str | int | None = None
     ) -> bool:
-        """写入任务类型字段与序号字段，返回是否修改（与 _read_dungeon 对称）。
+        """写入副本类型字段与序号字段，返回是否修改（与 _read_dungeon 对称）。
 
-        追猎目标无任务类型通道，直接跳过；序号按副本映射写入
-        （追猎目标写 boss 名，异象界域按副本取序号字段）。
+        由 dungeon 经 ``_dungeon_to_mode`` 反查日常模式（异象界域 / 追猎目标），
+        再按 ``_mode_specs`` 声明的字段映射写入；不依赖可变实例状态。
 
         Args:
             config: 目标 config dict。
@@ -1111,64 +1124,40 @@ class NTEConfig(ScriptConfig):
             是否发生实际修改。
 
         Raises:
-            AssertionError: 段/通道绑定不一致（如追猎目标却设了任务类型），
-                或 sequence 为空/副本无对应序号键。
+            AssertionError: 未适配的副本，序列为空，或副本无对应序号键。
         """
-        if dungeon_name == "追猎目标":
-            assert not self._task_key, (
-                f"[set_config][{self.display_name}] 追猎目标不应绑定任务类型通道"
-            )
-            dungeon_changed = False
-        else:
-            assert self._task_key, (
-                f"[set_config][{self.display_name}] 异象界域必须绑定任务类型通道"
-            )
+        assert dungeon_name in self._dungeon_to_mode, (
+            f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        )
+        mode_id = self._dungeon_to_mode[dungeon_name]
+        mode = self._mode_specs[mode_id]
+        section_dict = self._daily_section_dict(config, mode_id)
+        task_field = mode["task_field"]
+        if task_field is not None:
             dungeon_changed = safe_update(
-                self._daily_section_dict(config),
-                self._task_key,
+                section_dict,
+                task_field,
                 dungeon_name,
                 self.display_name,
                 assert_key_exists=False,
             )
+        else:
+            dungeon_changed = False
         assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
         key = get_field(
-            self._seq_key_map,
-            dungeon_name,
-            self.display_name,
-            context="update_task",
+            mode["seq_fields"], dungeon_name, self.display_name, context="update_task"
         )
         seq_changed = safe_update(
-            self._daily_section_dict(config),
-            key,
-            sequence,
-            self.display_name,
-            assert_key_exists=False,
+            section_dict, key, sequence, self.display_name, assert_key_exists=False
         )
         return dungeon_changed or seq_changed
 
-    def _bind_section(self, dungeon_name: str) -> None:
-        """按所选副本切换日常配置段与字段映射。
-
-        追猎目标绑定 daily_anomaly_hunter 且仅走序列通道；
-        其余副本绑定 daily_anomaly 并启用任务类型通道。
-
-        Args:
-            dungeon_name: 副本中文名。
-        """
-        if dungeon_name == "追猎目标":
-            self._daily_section = "daily_anomaly_hunter"
-            self._seq_key_map = {"追猎目标": "追猎目标"}
-            self._task_key = None  # 追猎目标走序列通道，无任务类型字段
-        else:
-            self._daily_section = "daily_anomaly"
-            self._seq_key_map = dict(self._anomaly_seq_key_map)
-            self._task_key = "任务类型"
-
-    def _update_routine_exclusion(self, routine: dict) -> bool:
+    def _update_routine_exclusion(self, routine: dict, mode_id: str) -> bool:
         """互斥切换追猎目标与异象界域的 Routine Item 启用状态。
 
         Args:
             routine: DailyRoutineTask.json 的 dict。
+            mode_id: 当前所选日常模式 id（_mode_specs 的键）。
 
         Returns:
             启用状态是否发生实际修改。
@@ -1178,8 +1167,8 @@ class NTEConfig(ScriptConfig):
         """
         items = get_field(routine, "Routine Items", self.display_name, list)
         ids = {item["id"] for item in items}
-        assert self._daily_section in ids, (
-            f"[set_config][{self.display_name}] Routine Items 缺少 {self._daily_section}（无法启用所选玩法）"
+        assert mode_id in ids, (
+            f"[set_config][{self.display_name}] Routine Items 缺少 {mode_id}（无法启用所选玩法）"
         )
         changed = False
         for item in items:
@@ -1187,38 +1176,37 @@ class NTEConfig(ScriptConfig):
             if task_id not in self._exclusive_routine_items:
                 continue
             changed |= safe_update(
-                item, "enabled", task_id == self._daily_section, self.display_name
+                item, "enabled", task_id == mode_id, self.display_name
             )
         return changed
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
-        """绑定段与字段后委托基类写配置，再切换第二份文件的互斥启用状态。
+        """委托基类写配置（按 _dungeon_to_mode 反查模式），再切换第二份文件的互斥启用状态。
 
         Args:
             dungeon_name: 副本中文名。
             sequence: 序列值。
         """
-        self._bind_section(dungeon_name)
+        mode_id = self._dungeon_to_mode[dungeon_name]
         super().set_dungeon(dungeon_name, sequence)
         if self._enabled:
             routine = self._load(self._routine_config_rel_path)
-            if self._update_routine_exclusion(routine):
+            if self._update_routine_exclusion(routine, mode_id):
                 self._save(routine, self._routine_config_rel_path)
 
     def _read_dungeon(self) -> tuple[str | None, str | int | None]:
         """反读当前日常副本与二级序号（与 set_dungeon / _update_task 对称）。
 
-        副本由 DailyRoutineTask.json 的 Routine Items 启用状态判定：
-        daily_anomaly_hunter 启用 → 追猎目标；daily_anomaly 启用 → 读其
-        「任务类型」字段。追猎目标无任务类型通道，set_dungeon 不会清掉
-        daily_anomaly.任务类型（陈旧值），故必须优先用启用状态，不能直接读 任务类型。
+        当前玩法由 DailyRoutineTask.json 的 Routine Items 启用状态判定，经 ``_mode_specs``
+        查表解析当前模式（异象界域 / 追猎目标）。追猎目标无任务类型通道，set_dungeon
+        不写 daily_anomaly.任务类型（陈旧值），故必须优先用启用状态，不能直接读 任务类型。
 
-        序号按副本取对应字段：追猎目标读 daily_anomaly_hunter.追猎目标；
-        异象界域按副本取序号字段名（_anomaly_seq_key_map）读 daily_anomaly 段对应值。
+        两种模式数据落点不同（NTE 既有结构）：追猎目标 boss 存于 routine 文件
+        DailyRoutineTask.json 的 daily_anomaly_hunter 段；异象界域副本名+序号存于
+        config 文件 DailyRoutineTaskConfigs.json 的 daily_anomaly 段。故按模式 id 分流读取。
 
-        NTE 无标准存储结构（无 _task_key，不依赖 _task_key + _task_map 反转），
-        故完全自行实现而不调 super。脚本未安装（routine 缺失）返回 (None, None)；
-        routine/config 损坏属异常，assert 暴露。
+        NTE 无标准存储结构（不依赖 _task_key + _task_map 反转），完全自行实现。
+        脚本未安装（routine 缺失）返回 (None, None)；routine/config 损坏属异常，assert 暴露。
 
         Returns:
             (副本中文名, 序号值)；无启用玩法/未安装/未选择返回 (None, None)。
@@ -1234,30 +1222,44 @@ class NTEConfig(ScriptConfig):
             for item in routine.get("Routine Items", [])
             if isinstance(item, dict) and item.get("enabled")
         }
-        if "daily_anomaly_hunter" in enabled:
+        # 追猎目标优先（与既有解析顺序一致）；互斥场景下仅一个 enabled。
+        mode_id = next(
+            (mid for mid in ("daily_anomaly_hunter", "daily_anomaly") if mid in enabled),
+            None,
+        )
+        if mode_id is None:
+            return None, None  # 无启用玩法 → 未选择副本
+        if mode_id == "daily_anomaly_hunter":
+            # 追猎目标：boss 名存于 routine 文件 daily_anomaly_hunter 段。
+            # 该段/字段可能尚未落盘（用户在 NTE 自身 UI 启用追猎但未选 boss，
+            # 不经本工具 set_dungeon 写入）：段或字段缺失按「已识别模式、未选 boss」
+            # 处理为 None，而非断言——与读路径「容忍未配置」一致；结构性损坏（段
+            # 类型非 dict）已在下方 isinstance 断言覆盖。
             section = routine.get("daily_anomaly_hunter", {})
             assert isinstance(section, dict), (
                 f"[set_config][{self.display_name}] daily_anomaly_hunter 段必须是 dict"
             )
-            return "追猎目标", section.get("追猎目标")  # 序号可能为 None（未选目标）
-        if "daily_anomaly" in enabled:
-            config = self._load(allow_missing=True)
-            if config is None:
-                return None, None  # 脚本未安装/未配置
-            assert isinstance(config, dict), (
-                f"[set_config][{self.display_name}] DailyTask config.yaml 必须是 dict"
-            )
-            section = config.get("daily_anomaly", {})
-            assert isinstance(section, dict), (
-                f"[set_config][{self.display_name}] daily_anomaly 段必须是 dict"
-            )
-            dungeon = section.get("任务类型")  # 可能为 None（未选具体副本）
-            if dungeon is None:
-                return None, None
-            key = self._anomaly_seq_key_map.get(dungeon)
-            sequence = section.get(key) if key else None
-            return dungeon, sequence
-        return None, None  # 无启用玩法 → 未选择副本
+            boss = section.get("追猎目标")
+            return "追猎目标", boss if boss not in (None, "") else None
+        # 异象界域：副本名+序号存于 config 文件 daily_anomaly 段。
+        config = self._load(allow_missing=True)
+        if config is None:
+            return None, None  # 脚本未安装/未配置
+        assert isinstance(config, dict), (
+            f"[set_config][{self.display_name}] DailyTask config.yaml 必须是 dict"
+        )
+        # daily_anomaly 段缺失按「未选副本」处理（读路径容忍未配置；段类型非 dict
+        # 的结构性损坏由下方 isinstance 断言覆盖，字段级缺失不视为损坏）。
+        section = config.get("daily_anomaly", {})
+        assert isinstance(section, dict), (
+            f"[set_config][{self.display_name}] daily_anomaly 段必须是 dict"
+        )
+        dungeon = section.get("任务类型")  # 段缺失时为 None（未选副本）
+        if dungeon in (None, ""):  # 值为空串同样视为未选具体副本
+            return None, None
+        key = self._anomaly_seq_key_map.get(dungeon)
+        sequence = section.get(key) if key else None
+        return dungeon, sequence
 
 
 # ---- 明日方舟 Arknights（粥）----
@@ -1452,7 +1454,6 @@ def set_config(
 
     cfg_cls = _CONFIGS[script_name]
     cfg = cfg_cls()
-    cfg._init_config()
     if dungeon_name and dungeon_name != "未选择":
         cfg.set_dungeon(dungeon_name, sequence)
     if weekly_start is not None:
@@ -1544,7 +1545,6 @@ def set_weekly_dungeon(script_name: str, weekly_name: str, dungeon_name: str) ->
     if not hasattr(cfg_cls, "set_weekly_dungeon"):
         return
     cfg = cfg_cls()
-    cfg._init_config()
     cfg.set_weekly_dungeon(weekly_name, dungeon_name)
 
 
@@ -1563,7 +1563,6 @@ def set_weekly_start_day(script_name: str, start_day: int) -> None:
     if not hasattr(cfg_cls, "set_weekly_start_day"):
         return
     cfg = cfg_cls()
-    cfg._init_config()
     cfg.set_weekly_start_day(start_day)
 
 

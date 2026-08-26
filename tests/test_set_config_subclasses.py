@@ -999,7 +999,6 @@ class TestNTEConfig(unittest.TestCase):
 
     def test_update_sequence_changes_value(self):
         config = {"daily_anomaly": {"空幕序号": 1}}
-        self.cfg._bind_section("空幕")
         changed = self.cfg._update_task(config, "空幕", 3)
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly"]["空幕序号"], 3)
@@ -1007,27 +1006,25 @@ class TestNTEConfig(unittest.TestCase):
     def test_update_task_no_change(self):
         """任务类型与序号均已对齐时返回 False（双通道都无改动）"""
         config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 2}}
-        self.cfg._bind_section("空幕")
         changed = self.cfg._update_task(config, "空幕", 2)
         self.assertFalse(changed)
 
     def test_update_task_none_raises(self):
         """异环要求 sequence 不能为 None"""
         config = {"daily_anomaly": {"空幕序号": 1}}
-        self.cfg._bind_section("空幕")
         with self.assertRaises(AssertionError):
             self.cfg._update_task(config, "空幕", None)
 
     def test_update_task_unknown_dungeon_raises(self):
         config = {"daily_anomaly": {"未知序号": 1}}
-        self.cfg._bind_section("空幕")
         with self.assertRaises(AssertionError):
             self.cfg._update_task(config, "不存在", "1")
 
     def test_update_task_all_mapped_dungeons(self):
-        """测试 _seq_key_map 中所有副本都能正确更新"""
-        self.cfg._bind_section("空幕")  # 异象界域映射由 _bind_section 动态绑定
-        for dungeon_name, seq_key in self.cfg._seq_key_map.items():
+        """测试 _mode_specs[daily_anomaly].seq_fields 中所有副本都能正确更新"""
+        for dungeon_name, seq_key in self.cfg._mode_specs["daily_anomaly"][
+            "seq_fields"
+        ].items():
             config = {"daily_anomaly": {seq_key: 0}}
             changed = self.cfg._update_task(config, dungeon_name, 5)
             self.assertTrue(changed, f"{dungeon_name} 未正确更新")
@@ -1147,7 +1144,6 @@ class TestNTEConfig(unittest.TestCase):
 
     def test_update_task_writes_dungeon_name(self):
         """任务类型写入 daily_anomaly 子对象（值即中文副本名）"""
-        self.cfg._bind_section("异能升级材料")
         config = {"daily_anomaly": {"任务类型": "空幕"}}
         changed = self.cfg._update_task(config, "异能升级材料", 1)
         self.assertTrue(changed)
@@ -1155,7 +1151,6 @@ class TestNTEConfig(unittest.TestCase):
 
     def test_missing_daily_section_raises(self):
         """顶层缺 daily_anomaly（旧版 DailyTask.json 结构）→ assert"""
-        self.cfg._bind_section("空幕")
         config = {"任务类型": "空幕"}
         with self.assertRaises(AssertionError):
             self.cfg._update_task(config, "空幕")
@@ -1164,9 +1159,8 @@ class TestNTEConfig(unittest.TestCase):
 
     def test_update_routine_exclusion_flips_to_hunter(self):
         """追猎目标：启用 hunter、停用 anomaly，返回已修改。"""
-        self.cfg._bind_section("追猎目标")
         routine = self._make_routine()
-        changed = self.cfg._update_routine_exclusion(routine)
+        changed = self.cfg._update_routine_exclusion(routine, "daily_anomaly_hunter")
         self.assertTrue(changed)
         enabled = {it["id"]: it["enabled"] for it in routine["Routine Items"]}
         self.assertTrue(enabled["daily_anomaly_hunter"])
@@ -1174,9 +1168,8 @@ class TestNTEConfig(unittest.TestCase):
 
     def test_update_routine_exclusion_flips_to_anomaly(self):
         """异象界域副本：启用 anomaly、停用 hunter，返回已修改。"""
-        self.cfg._bind_section("空幕")
         routine = self._make_routine(anomaly_enabled=False, hunter_enabled=True)
-        changed = self.cfg._update_routine_exclusion(routine)
+        changed = self.cfg._update_routine_exclusion(routine, "daily_anomaly")
         self.assertTrue(changed)
         enabled = {it["id"]: it["enabled"] for it in routine["Routine Items"]}
         self.assertTrue(enabled["daily_anomaly"])
@@ -1184,67 +1177,50 @@ class TestNTEConfig(unittest.TestCase):
 
     def test_update_routine_exclusion_no_change(self):
         """已对齐时返回 False（无写盘）。"""
-        self.cfg._bind_section("空幕")
         routine = self._make_routine()
-        self.assertFalse(self.cfg._update_routine_exclusion(routine))
-        self.cfg._bind_section("追猎目标")
+        self.assertFalse(
+            self.cfg._update_routine_exclusion(routine, "daily_anomaly")
+        )
         routine = self._make_routine(anomaly_enabled=False, hunter_enabled=True)
-        self.assertFalse(self.cfg._update_routine_exclusion(routine))
+        self.assertFalse(
+            self.cfg._update_routine_exclusion(routine, "daily_anomaly_hunter")
+        )
 
     def test_update_routine_exclusion_missing_routine_items_raises(self):
         with self.assertRaises(AssertionError):
-            self.cfg._update_routine_exclusion({})
+            self.cfg._update_routine_exclusion({}, "daily_anomaly")
 
     def test_update_routine_exclusion_missing_target_raises(self):
         """Routine Items 缺目标 item（无法启用所选玩法）→ assert。"""
-        self.cfg._bind_section("追猎目标")
         routine = {"Routine Items": [{"id": "daily_anomaly", "enabled": True}]}
         with self.assertRaises(AssertionError):
-            self.cfg._update_routine_exclusion(routine)
+            self.cfg._update_routine_exclusion(routine, "daily_anomaly_hunter")
 
-    def test_bind_section_hunt(self):
-        """追猎目标：段切到 daily_anomaly_hunter，追猎目标进入序列映射；任务类型通道绑定为 None（无有效值）。"""
-        self.cfg._bind_section("追猎目标")
-        self.assertEqual(self.cfg._daily_section, "daily_anomaly_hunter")
-        self.assertEqual(self.cfg._seq_key_map, {"追猎目标": "追猎目标"})
-        self.assertIsNone(self.cfg._task_key)
-
-    def test_bind_section_reuse_clears_task_key(self):
-        """同实例先绑定异象界域（设 _task_key）再绑追猎目标：_task_key 必须清回 None，不残留。"""
-        self.cfg._bind_section("空幕")
-        self.assertEqual(self.cfg._task_key, "任务类型")
-        self.cfg._bind_section("追猎目标")
-        self.assertIsNone(self.cfg._task_key)
-
-    def test_bind_section_anomaly(self):
-        """异象界域：段为 daily_anomaly，序列映射含各副本序号字段，并设 _task_key=任务类型。"""
-        self.cfg._bind_section("空幕")
-        self.assertEqual(self.cfg._daily_section, "daily_anomaly")
-        self.assertIn("空幕", self.cfg._seq_key_map)
-        self.assertEqual(self.cfg._task_key, "任务类型")
+    def test_dungeon_to_mode_mapping(self):
+        """副本中文名经 _dungeon_to_mode 正确反查模式（异象界域副本→daily_anomaly，追猎目标→daily_anomaly_hunter）。"""
+        for dungeon in self.cfg._mode_specs["daily_anomaly"]["seq_fields"]:
+            self.assertEqual(self.cfg._dungeon_to_mode[dungeon], "daily_anomaly")
+        self.assertEqual(self.cfg._dungeon_to_mode["追猎目标"], "daily_anomaly_hunter")
 
     def test_update_sequence_hunt_writes_boss(self):
-        """追猎目标经 _update_task 在 daily_anomaly_hunter 写 追猎目标（boss）。"""
-        self.cfg._bind_section("追猎目标")
+        """追猎目标经 _update_task 在 daily_anomaly_hunter 写 追猎目标（boss），不依赖 _bind_section。"""
         config = {"daily_anomaly_hunter": {"追猎目标": "音霸魔王"}}
         changed = self.cfg._update_task(config, "追猎目标", "海囚")
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly_hunter"]["追猎目标"], "海囚")
 
     def test_update_task_skips_hunt(self):
-        """追猎目标不写任务类型字段（仅写 boss 序号、不写 任务类型）。"""
+        """追猎目标不写任务类型字段（仅写 boss 序号、不写 任务类型），不依赖 _bind_section。"""
         config = {
             "daily_anomaly": {"任务类型": "空幕"},
             "daily_anomaly_hunter": {"追猎目标": "音霸魔王"},
         }
-        self.cfg._bind_section("追猎目标")
         changed = self.cfg._update_task(config, "追猎目标", "海囚")
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly"]["任务类型"], "空幕")
 
     def test_update_sequence_hunt_no_boss_raises(self):
         """未选具体 boss（sequence=None）→ assert。"""
-        self.cfg._bind_section("追猎目标")
         with self.assertRaises(AssertionError):
             self.cfg._update_task({}, "追猎目标", None)
 
