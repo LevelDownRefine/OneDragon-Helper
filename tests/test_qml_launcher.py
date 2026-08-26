@@ -449,32 +449,32 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                              return_value=fake_dungeons),
             ):
                 bridge = QmlBridge()
-            qmlRegisterSingletonInstance(
-                QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
-            engine = QQmlApplicationEngine()
-            engine.addImageProvider("uiicon", UiIconProvider())
-            engine.load(QUrl.fromLocalFile(resolve_script_path("src/gui/qml/main.qml")))
-            win = engine.rootObjects()[0]
+                qmlRegisterSingletonInstance(
+                    QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+                engine = QQmlApplicationEngine()
+                engine.addImageProvider("uiicon", UiIconProvider())
+                engine.load(QUrl.fromLocalFile(resolve_script_path("src/gui/qml/main.qml")))
+                win = engine.rootObjects()[0]
 
-            def report(name):
-                item = win.findChild(QQuickItem, name)
-                top = item.mapToScene(QPointF(0, 0)).y()
-                print(f"{name} TOP {top:.0f} H {item.height():.0f} "
-                      f"WIN {win.height()}", flush=True)
+                def report(name):
+                    item = win.findChild(QQuickItem, name)
+                    top = item.mapToScene(QPointF(0, 0)).y()
+                    print(f"{name} TOP {top:.0f} H {item.height():.0f} "
+                          f"WIN {win.height()}", flush=True)
 
-            def measure():
-                wk = win.findChild(QQuickItem, "weeklyDungeonPopup")
-                wk.setProperty("weeklyName", "历战余响")
-                wk.setProperty("visible", True)
-                dg = win.findChild(QQuickItem, "dungeonPopup")
-                dg.setProperty("visible", True)
-                QTimer.singleShot(200, lambda: (report("weeklyDungeonPopup"),
-                                                report("dungeonPopup"),
-                                                app.quit()))
+                def measure():
+                    wk = win.findChild(QQuickItem, "weeklyDungeonPopup")
+                    wk.setProperty("weeklyName", "历战余响")
+                    wk.setProperty("visible", True)
+                    dg = win.findChild(QQuickItem, "dungeonPopup")
+                    dg.setProperty("visible", True)
+                    QTimer.singleShot(200, lambda: (report("weeklyDungeonPopup"),
+                                                    report("dungeonPopup"),
+                                                    app.quit()))
 
-            QTimer.singleShot(600, measure)
-            app.exec()
-            print("OPTS", len(bridge.weeklyDungeonOptions("历战余响")), flush=True)
+                QTimer.singleShot(600, measure)
+                app.exec()
+                print("OPTS", len(bridge.weeklyDungeonOptions("历战余响")), flush=True)
             """
         )
         proc = subprocess.run(

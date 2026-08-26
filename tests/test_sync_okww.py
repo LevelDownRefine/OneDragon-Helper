@@ -76,9 +76,7 @@ class TestApplyNewFrontInsert(unittest.TestCase):
                     },
                     {
                         "name": "模拟领域",
-                        "sequences": [
-                            {"display": "共鸣者经验", "value": "共鸣者经验"}
-                        ],
+                        "sequences": [{"display": "共鸣者经验", "value": "共鸣者经验"}],
                     },
                 ]
             }
