@@ -333,9 +333,27 @@ class M7ALogParser(BaseLogParser):
     stamina_pattern = r"开拓力[：:]\s*(\d+)/(\d+)"
     error_markers = ("ERROR",)
     log_pattern = "*.log"
-    daily_success_marker = ("每日实训已完成",)
+    # 命中「每日实训已完成」或「每日实训奖励完成」任一即视为当日做完；
+    # 两版本均稳定出现，互为兜底，未命中（含未执行日常）一律视为未完成。
+    daily_success_marker = ("每日实训已完成", "每日实训奖励完成")
     # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
-    exit_markers = ("游戏终止",)
+    # 不同 M7A 版本终止横幅措辞不一——旧版用「停止运行」、新版用「游戏终止」，
+    # 两者皆纳入，避免某版本缺失「游戏终止」时被误判为未正常结束。
+    exit_markers = ("游戏终止", "停止运行")
+
+    def _term_index(self, content: str) -> int:
+        """返回最后一个终止横幅的位置；候选皆无则返回 -1。
+
+        终止横幅即 exit_markers（正常退出标记），复用之——
+        取最后出现位置作为「游戏终止」分界点，截断其后的良性收尾报错，
+        并据其有无判定是否正常退出（与 parse_exit 共享同一组标记）。
+        """
+        idx = -1
+        for marker in self.exit_markers:
+            pos = content.rfind(marker)
+            if pos > idx:
+                idx = pos
+        return idx
 
     def _get_log_dir(self, script_path: str) -> Path:
         m7a_dir = Path(script_path).parent
@@ -345,9 +363,9 @@ class M7ALogParser(BaseLogParser):
         # 游戏正常终止后，助手还会做收尾善后（如「获取培养目标」），
         # 此时游戏窗口已关闭，会固定产生 WinError 233 / 截图失败 等报错。
         # 这些「终止后」的报错属良性，不应计入当日成败，只统计终止之前的报错。
-        term_idx = content.rfind("游戏终止")
+        term_idx = self._term_index(content)
         if term_idx < 0:
-            # 没有「游戏终止」标记：游戏未正常结束（很可能超时 / 被强杀），判失败。
+            # 没有任何终止横幅：游戏未正常结束（很可能超时 / 被强杀），判失败。
             return ScriptLogStatus.FAILED
         body = content[:term_idx]
         if body.count("ERROR") <= 1:
@@ -355,8 +373,8 @@ class M7ALogParser(BaseLogParser):
         return ScriptLogStatus.FAILED
 
     def _error_body(self, content: str) -> str:
-        # 游戏正常终止后的收尾报错属良性，报错收集同样截断到「游戏终止」之前。
-        term_idx = content.rfind("游戏终止")
+        # 游戏正常终止后的收尾报错属良性，报错收集同样截断到终止横幅之前。
+        term_idx = self._term_index(content)
         if term_idx < 0:
             return content
         return content[:term_idx]

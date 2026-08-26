@@ -301,7 +301,9 @@ class TestWeeklyItemsReadback(unittest.TestCase):
                 "src.service.script_service.get_weekly_list_yml_path_under_root",
                 return_value=defs_path,
             ),
-            patch.object(task_card_mod, "get_weekly_dungeon", return_value="铁骸的锈冢"),
+            patch.object(
+                task_card_mod, "get_weekly_dungeon", return_value="铁骸的锈冢"
+            ),
         ):
             ctrl = _make_controller()
             items = ctrl.weekly_items

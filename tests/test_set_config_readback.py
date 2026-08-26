@@ -160,10 +160,30 @@ class TestReadbackMAA(unittest.TestCase):
             "Configurations": {
                 "Default": {
                     "TaskQueue": [
-                        {"Name": "剿灭", "IsEnable": False},
-                        {"Name": "土", "IsEnable": False},
-                        {"Name": "活动土", "IsEnable": False},
-                        {"Name": "龙门币", "IsEnable": False},
+                        {
+                            "Name": "剿灭",
+                            "$type": "FightTask",
+                            "IsEnable": False,
+                            "StagePlan": ["Annihilation"],
+                        },
+                        {
+                            "Name": "土",
+                            "$type": "FightTask",
+                            "IsEnable": False,
+                            "StagePlan": ["1-7"],
+                        },
+                        {
+                            "Name": "活动土",
+                            "$type": "FightTask",
+                            "IsEnable": False,
+                            "StagePlan": [""],
+                        },
+                        {
+                            "Name": "龙门币",
+                            "$type": "FightTask",
+                            "IsEnable": False,
+                            "StagePlan": ["CE-6"],
+                        },
                     ]
                 }
             }
@@ -175,13 +195,58 @@ class TestReadbackMAA(unittest.TestCase):
         ):
             cfg = ArknightsConfig()
             cfg._task_map = {
-                "剿灭": {"index": 0, "stage": None},
-                "土": {"index": 1, "stage": None},
-                "活动土": {"index": 2, "stage": None},
-                "龙门币": {"index": 3, "stage": None},
+                "Annihilation": "剿灭",
+                "1-7": "土",
+                "CE-6": "龙门币",
             }
             cfg.set_dungeon("龙门币")
             self.assertEqual(cfg._read_dungeon()[0], "龙门币")
+
+    def test_read_dungeon_all_disabled_but_has_1_7_returns_土(self):
+        """所有维护关卡都未启用，但有1-7 → 读为土"""
+        config = {
+            "Configurations": {
+                "Default": {
+                    "TaskQueue": [
+                        {
+                            "Name": "剿灭",
+                            "$type": "FightTask",
+                            "IsEnable": True,
+                            "StagePlan": ["Annihilation"],
+                        },
+                        {
+                            "Name": "土",
+                            "$type": "FightTask",
+                            "IsEnable": False,
+                            "StagePlan": ["1-7"],
+                        },
+                        {
+                            "Name": "活动土",
+                            "$type": "FightTask",
+                            "IsEnable": True,
+                            "StagePlan": [""],
+                        },
+                        {
+                            "Name": "龙门币",
+                            "$type": "FightTask",
+                            "IsEnable": False,
+                            "StagePlan": ["CE-6"],
+                        },
+                    ]
+                }
+            }
+        }
+        with (
+            patch.object(ArknightsConfig, "_load", return_value=config),
+            patch.object(ArknightsConfig, "_save"),
+        ):
+            cfg = ArknightsConfig()
+            cfg._task_map = {
+                "Annihilation": "剿灭",
+                "1-7": "土",
+                "CE-6": "龙门币",
+            }
+            self.assertEqual(cfg._read_dungeon()[0], "土")
 
 
 class TestReadbackStarRailWeekly(unittest.TestCase):

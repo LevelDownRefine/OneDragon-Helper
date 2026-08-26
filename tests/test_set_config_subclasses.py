@@ -1178,9 +1178,7 @@ class TestNTEConfig(unittest.TestCase):
     def test_update_routine_exclusion_no_change(self):
         """已对齐时返回 False（无写盘）。"""
         routine = self._make_routine()
-        self.assertFalse(
-            self.cfg._update_routine_exclusion(routine, "daily_anomaly")
-        )
+        self.assertFalse(self.cfg._update_routine_exclusion(routine, "daily_anomaly"))
         routine = self._make_routine(anomaly_enabled=False, hunter_enabled=True)
         self.assertFalse(
             self.cfg._update_routine_exclusion(routine, "daily_anomaly_hunter")
@@ -1238,11 +1236,11 @@ class TestArknightsConfig(unittest.TestCase):
         with patch.object(ArknightsConfig, "_init_config"):
             cfg = ArknightsConfig()
             cfg._task_map = {
-                "剿灭": {"index": 1, "stage": "Annihilation"},
-                "红票": {"index": 2, "stage": "AP-5"},
-                "经验": {"index": 3, "stage": "LS-6"},
-                "龙门币": {"index": 4, "stage": "CE-6"},
-                "土": {"index": 5, "stage": "1-7"},
+                "Annihilation": "剿灭",
+                "AP-5": "红票",
+                "LS-6": "经验",
+                "CE-6": "龙门币",
+                "1-7": "土",
             }
             return cfg
 
@@ -1250,9 +1248,9 @@ class TestArknightsConfig(unittest.TestCase):
         cfg = self._make_cfg()
         self.assertEqual(cfg.display_name, "粥")
         self.assertEqual(cfg._script_name, "MAA")
-        self.assertIn("剿灭", cfg._task_map)
-        self.assertEqual(cfg._task_map["剿灭"]["index"], 1)
-        self.assertEqual(cfg._task_map["土"]["index"], 5)
+        self.assertIn("Annihilation", cfg._task_map)
+        self.assertEqual(cfg._task_map["Annihilation"], "剿灭")
+        self.assertEqual(cfg._task_map["1-7"], "土")
 
     def test_init_config_no_template_is_noop(self):
         """粥无模板（_template_rel_path 为空）：_init_config 不应加载模板或写盘。"""
@@ -1408,20 +1406,46 @@ class TestArknightsConfig(unittest.TestCase):
 
     def test_set_dungeon_disables_all_enables_selected_and_土(self):
         cfg = self._make_cfg()
-        # 构造合法的 TaskQueue
-        queue = [None] * 10
-        queue[0] = {"Name": "开始唤醒", "$type": "StartUpTask"}
-        for name, info in cfg._task_map.items():
-            queue[info["index"]] = {
-                "Name": name,
+        # 构造合法的 TaskQueue（顺序任意，通过 StagePlan[0] 识别）
+        queue = [
+            {"Name": "开始唤醒", "$type": "StartUpTask"},
+            {
+                "Name": "剿灭",
                 "$type": "FightTask",
-                "StagePlan": [info["stage"]],
+                "StagePlan": ["Annihilation"],
                 "IsEnable": True,
-            }
-        queue[6] = {"Name": "自动公招", "$type": "RecruitTask"}
-        queue[7] = {"Name": "基建换班", "$type": "InfrastTask"}
-        queue[8] = {"Name": "信用收支", "$type": "MallTask"}
-        queue[9] = {"Name": "领取奖励", "$type": "AwardTask"}
+            },
+            {
+                "Name": "红票",
+                "$type": "FightTask",
+                "StagePlan": ["AP-5"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "经验",
+                "$type": "FightTask",
+                "StagePlan": ["LS-6"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "龙门币",
+                "$type": "FightTask",
+                "StagePlan": ["CE-6"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "活动土",
+                "$type": "FightTask",
+                "StagePlan": [""],
+                "IsEnable": True,
+            },
+            {
+                "Name": "土",
+                "$type": "FightTask",
+                "StagePlan": ["1-7"],
+                "IsEnable": True,
+            },
+        ]
 
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
@@ -1434,15 +1458,18 @@ class TestArknightsConfig(unittest.TestCase):
         saved_queue = mock_save.call_args[0][0]["Configurations"]["Default"][
             "TaskQueue"
         ]
+        by_name = {t["Name"]: t for t in saved_queue}
         # 红票启用
-        self.assertTrue(saved_queue[2]["IsEnable"])
+        self.assertTrue(by_name["红票"]["IsEnable"])
         # 土启用（清理剩余体力）
-        self.assertTrue(saved_queue[5]["IsEnable"])
+        self.assertTrue(by_name["土"]["IsEnable"])
         # 剿灭始终启用（周常）
-        self.assertTrue(saved_queue[1]["IsEnable"])  # 剿灭
+        self.assertTrue(by_name["剿灭"]["IsEnable"])
+        # 活动土不动（未维护）
+        self.assertTrue(by_name["活动土"]["IsEnable"])
         # 其他副本禁用
-        self.assertFalse(saved_queue[3]["IsEnable"])  # 经验
-        self.assertFalse(saved_queue[4]["IsEnable"])  # 龙门币
+        self.assertFalse(by_name["经验"]["IsEnable"])
+        self.assertFalse(by_name["龙门币"]["IsEnable"])
 
     def test_set_dungeon_unknown_raises(self):
         cfg = self._make_cfg()
@@ -1456,19 +1483,45 @@ class TestArknightsConfig(unittest.TestCase):
     def test_set_dungeon_elimination_only_enables_elimination_and_土(self):
         """选择剿灭时，只启用剿灭和土，其他副本禁用"""
         cfg = self._make_cfg()
-        queue = [None] * 10
-        queue[0] = {"Name": "开始唤醒", "$type": "StartUpTask"}
-        for name, info in cfg._task_map.items():
-            queue[info["index"]] = {
-                "Name": name,
+        queue = [
+            {"Name": "开始唤醒", "$type": "StartUpTask"},
+            {
+                "Name": "剿灭",
                 "$type": "FightTask",
-                "StagePlan": [info["stage"]],
+                "StagePlan": ["Annihilation"],
                 "IsEnable": True,
-            }
-        queue[6] = {"Name": "自动公招", "$type": "RecruitTask"}
-        queue[7] = {"Name": "基建换班", "$type": "InfrastTask"}
-        queue[8] = {"Name": "信用收支", "$type": "MallTask"}
-        queue[9] = {"Name": "领取奖励", "$type": "AwardTask"}
+            },
+            {
+                "Name": "红票",
+                "$type": "FightTask",
+                "StagePlan": ["AP-5"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "经验",
+                "$type": "FightTask",
+                "StagePlan": ["LS-6"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "龙门币",
+                "$type": "FightTask",
+                "StagePlan": ["CE-6"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "活动土",
+                "$type": "FightTask",
+                "StagePlan": [""],
+                "IsEnable": True,
+            },
+            {
+                "Name": "土",
+                "$type": "FightTask",
+                "StagePlan": ["1-7"],
+                "IsEnable": True,
+            },
+        ]
 
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
@@ -1481,31 +1534,44 @@ class TestArknightsConfig(unittest.TestCase):
         saved_queue = mock_save.call_args[0][0]["Configurations"]["Default"][
             "TaskQueue"
         ]
+        by_name = {t["Name"]: t for t in saved_queue}
         # 剿灭启用
-        self.assertTrue(saved_queue[1]["IsEnable"])  # 剿灭
+        self.assertTrue(by_name["剿灭"]["IsEnable"])
         # 土启用（清理剩余体力）
-        self.assertTrue(saved_queue[5]["IsEnable"])  # 土
+        self.assertTrue(by_name["土"]["IsEnable"])
+        # 活动土不动（未维护）
+        self.assertTrue(by_name["活动土"]["IsEnable"])
         # 其他副本禁用
-        self.assertFalse(saved_queue[2]["IsEnable"])  # 红票
-        self.assertFalse(saved_queue[3]["IsEnable"])  # 经验
-        self.assertFalse(saved_queue[4]["IsEnable"])  # 龙门币
+        self.assertFalse(by_name["红票"]["IsEnable"])
+        self.assertFalse(by_name["经验"]["IsEnable"])
+        self.assertFalse(by_name["龙门币"]["IsEnable"])
 
-    def test_set_dungeon_name_mismatch_raises(self):
-        """TaskQueue 中 Name 不匹配应 assert"""
+    def test_set_dungeon_unknown_stage_skipped(self):
+        """未维护的关卡（StagePlan[0] 不在 _task_map）应跳过，不改 IsEnable"""
         cfg = self._make_cfg()
-        queue = [None] * 10
-        queue[1] = {
-            "Name": "wrong",
-            "$type": "FightTask",
-            "StagePlan": ["Annihilation"],
-            "IsEnable": True,
-        }
+        queue = [
+            {"Name": "开始唤醒", "$type": "StartUpTask"},
+            {
+                "Name": "未知关卡",
+                "$type": "FightTask",
+                "StagePlan": ["unknown"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "剿灭",
+                "$type": "FightTask",
+                "StagePlan": ["Annihilation"],
+                "IsEnable": True,
+            },
+        ]
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
             patch.object(cfg, "_load", return_value=config),
-            self.assertRaises(AssertionError),
+            patch.object(cfg, "_save"),
         ):
             cfg.set_dungeon("剿灭")
+        unknown = [t for t in queue if t.get("StagePlan") == ["unknown"]][0]
+        self.assertTrue(unknown["IsEnable"])
 
 
 # ============================================================
@@ -2021,6 +2087,31 @@ class TestSetWeekly(unittest.TestCase):
         ):
             cfg.set_weekly(3)
         mock_save.assert_not_called()
+
+    def test_arknights_weekly_start_day_writes_expire_days_only(self):
+        """set_weekly_start_day 只写 MedicineExpireDays（= 8 - 周几起），不动 UseExpiringMedicine。
+
+        编辑期改周几起即应落盘过期窗口，无需等链运行；是否吃药的开关依赖各任务的
+        启用状态，由运行期 set_weekly 另行计算，不在编辑期落盘。
+        """
+        cfg = self._make_maa_cfg()
+        config = self._maa_config({"土"})
+        # 给各 FightTask 预设假的 UseExpiringMedicine 与不同 MedicineExpireDays，验证前者不动、后者被改写
+        for t in config["Configurations"]["Default"]["TaskQueue"]:
+            if t.get("$type") == "FightTask":
+                t["UseExpiringMedicine"] = "SHOULD_NOT_CHANGE"
+                t["MedicineExpireDays"] = 99
+        with (
+            patch("src.config.set_config.load_config", return_value=config),
+            patch("src.config.set_config.save_config") as mock_save,
+        ):
+            cfg.set_weekly_start_day(3)  # 周几起=3 ⇒ MedicineExpireDays=5
+        mock_save.assert_called_once()
+        tasks = config["Configurations"]["Default"]["TaskQueue"]
+        for t in tasks:
+            if t.get("$type") == "FightTask":
+                self.assertEqual(t["MedicineExpireDays"], 5)
+                self.assertEqual(t["UseExpiringMedicine"], "SHOULD_NOT_CHANGE")
 
 
 class TestSetConfigAdapter(unittest.TestCase):

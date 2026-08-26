@@ -103,7 +103,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         diff = diff_paths(self.seed, self.store["config/gui.new.json"])
         self.assertEqual(diff, [], f"实例化意外改动: {diff}")
 
-    # ---- set_dungeon：只允许改 6 个 FightTask 的 IsEnable ----
+    # ---- set_dungeon：只允许改 FightTask 的 IsEnable ----
     def test_set_dungeon_only_touches_is_enable(self):
         cfg = ArknightsConfig()
         # 强制差异：先把所有 FightTask IsEnable 拨错，逼 set_dungeon 真正落盘
@@ -119,10 +119,9 @@ class TestArknightsConfigSafety(unittest.TestCase):
         post = self.store["config/gui.new.json"]
         diff = diff_paths(pre, post)
         paths = {p for p, _, _ in diff}
-        # 期望恰好改 3 个：剿灭/土/活动土 → true（其余本就是 false，无变化）
+        # 期望恰好改 2 个：剿灭/土 → true（活动土未维护，不动）
         expected = {
             "Configurations.Default.TaskQueue[1].IsEnable",
-            "Configurations.Default.TaskQueue[5].IsEnable",
             "Configurations.Default.TaskQueue[6].IsEnable",
         }
         self.assertEqual(
@@ -130,12 +129,11 @@ class TestArknightsConfigSafety(unittest.TestCase):
             expected,
             f"set_dungeon 改动与预期不符: 多了{paths - expected} 少了{expected - paths}",
         )
-        # 正向校验：开启项符合预期（剿灭/土/活动土）
+        # 正向校验：开启项符合预期（剿灭/土）
         tq = post["Configurations"]["Default"]["TaskQueue"]
         by_name = {t["Name"]: t for t in tq if t.get("$type") == "FightTask"}
         self.assertTrue(by_name["剿灭"]["IsEnable"])
         self.assertTrue(by_name["土"]["IsEnable"])
-        self.assertTrue(by_name["活动土"]["IsEnable"])
         self.assertFalse(by_name["红票"]["IsEnable"])
         self.assertFalse(by_name["经验"]["IsEnable"])
         self.assertFalse(by_name["龙门币"]["IsEnable"])
@@ -196,6 +194,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
                     t.get("UseMedicine"), "FightTask.UseMedicine 被意外改动"
                 )
                 self.assertEqual(t.get("CANARY_TASK"), "X")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

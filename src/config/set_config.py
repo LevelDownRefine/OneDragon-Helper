@@ -172,7 +172,9 @@ class ScriptConfig:
     _enabled: bool = True
     """实例是否可操作 config；拒绝保存后置 False 使后续写入一并失效。"""
 
-    def _load(self, rel_path: str | None = None, *, allow_missing: bool = False) -> dict | None:
+    def _load(
+        self, rel_path: str | None = None, *, allow_missing: bool = False
+    ) -> dict | None:
         """读取脚本 config 并校验为 dict。
 
         写路径（初始化/落盘校验）要求 config 必须存在且为 dict，缺失即错误；
@@ -1224,7 +1226,11 @@ class NTEConfig(ScriptConfig):
         }
         # 追猎目标优先（与既有解析顺序一致）；互斥场景下仅一个 enabled。
         mode_id = next(
-            (mid for mid in ("daily_anomaly_hunter", "daily_anomaly") if mid in enabled),
+            (
+                mid
+                for mid in ("daily_anomaly_hunter", "daily_anomaly")
+                if mid in enabled
+            ),
             None,
         )
         if mode_id is None:
@@ -1277,22 +1283,22 @@ class ArknightsConfig(ScriptConfig):
         "EmulatorPath",
     )
     _weekly_task_name = "理智药剂"
-    # 副本中文名 → TaskQueue 中 FightTask 的索引与关卡。
-    # 原由模板 MAA一条龙.json 动态推导，现固化为类属性，
-    # 使反读/写路径不再依赖模板加载（实例化不得触碰模板或写盘，详见 review）。
+    # 关卡代码 → 中文名。基于 StagePlan[0] 识别任务，不再依赖 TaskQueue 顺序。
+    # 只维护这5个关卡，其余 FightTask 不动。
     _task_map = {
-        "剿灭": {"index": 1, "stage": "Annihilation"},
-        "土": {"index": 6, "stage": "1-7"},
-        "活动土": {"index": 5, "stage": None},
-        "红票": {"index": 2, "stage": "AP-5"},
-        "经验": {"index": 3, "stage": "LS-6"},
-        "龙门币": {"index": 4, "stage": "CE-6"},
+        "Annihilation": "剿灭",
+        "AP-5": "红票",
+        "LS-6": "经验",
+        "CE-6": "龙门币",
+        "1-7": "土",
     }
 
     def _update_task(
         self, config: dict, dungeon_name: str, sequence: str | int | None = None
     ) -> bool:
-        """粥副本设置：禁用全部后启用剿灭/土/活动土/选定副本。
+        """粥副本设置：基于 StagePlan[0] 识别任务，启用剿灭/土/选定副本。
+
+        只处理 _task_map 中的5个关卡，其余 FightTask 不动。
 
         Args:
             config: 目标 config dict。
@@ -1302,31 +1308,34 @@ class ArknightsConfig(ScriptConfig):
             是否有任意任务项状态发生变化。
 
         Raises:
-            AssertionError: 未适配的副本，或 TaskQueue 索引/名称/关卡不匹配。
+            AssertionError: 未适配的副本，或 StagePlan 格式不匹配。
         """
         task_config = config["Configurations"]["Default"]["TaskQueue"]
-        assert dungeon_name in self._task_map, (
+        # 反查：中文名 → 关卡代码
+        stage_by_name = {name: stage for stage, name in self._task_map.items()}
+        assert dungeon_name in stage_by_name, (
             f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
         )
 
+        fixed_names = {"剿灭", "土"}
         changed = False
-        for name, info in self._task_map.items():
-            idx = info["index"]
-            assert task_config[idx]["Name"] == name, (
-                f"[set_config][{self.display_name}] TaskQueue[{idx}] Name 不匹配: 期望 {name}, 实际 {task_config[idx]['Name']}"
-            )
-            stage = info["stage"]
-            if stage is not None:
-                assert task_config[idx]["StagePlan"] == [stage], (
-                    f"[set_config][{self.display_name}] TaskQueue[{idx}] StagePlan 不匹配: 期望 {[stage]}, 实际 {task_config[idx]['StagePlan']}"
-                )
+        for task in task_config:
+            if task.get("$type") != "FightTask":
+                continue
+            stage_plan = task.get("StagePlan")
+            if not isinstance(stage_plan, list) or len(stage_plan) != 1:
+                continue
+            stage = stage_plan[0]
+            if stage not in self._task_map:
+                continue  # 未维护的关卡，不动
+            name = self._task_map[stage]
 
-            should_enable = name in ["剿灭", "土", "活动土", dungeon_name]
+            should_enable = name in fixed_names or name == dungeon_name
             changed |= safe_update(
-                task_config[idx],
+                task,
                 "IsEnable",
                 should_enable,
-                f"{self.display_name}[TaskQueue[{idx}]]",
+                f"{self.display_name}[{name}]",
             )
 
         return changed
@@ -1334,8 +1343,9 @@ class ArknightsConfig(ScriptConfig):
     def _read_dungeon(self) -> tuple[str | None, str | int | None]:
         """反读当前日常副本（与 _update_task 对称）。
 
-        _task_map 中的 FightTask 项，除固定启用的剿灭/土/活动土外，
-        被勾选 IsEnable 的那一项即当前副本。粥无二级序列通道，序列恒为 None。
+        遍历 TaskQueue，除固定启用的剿灭/土外，
+        被勾选 IsEnable 的那一项即当前副本。
+        特殊：若所有维护关卡都未启用，但有 StagePlan=["1-7"] 的任务，则读为「土」。
 
         Returns:
             (副本中文名, None)；未设置返回 (None, None)。
@@ -1347,13 +1357,27 @@ class ArknightsConfig(ScriptConfig):
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
         task_config = config["Configurations"]["Default"]["TaskQueue"]
-        fixed = {"剿灭", "土", "活动土"}
-        for name, info in self._task_map.items():
-            if name in fixed:
+        fixed_names = {"剿灭", "土"}
+        has_1_7 = False
+        for task in task_config:
+            if task.get("$type") != "FightTask":
                 continue
-            idx = info["index"]
-            if task_config[idx].get("IsEnable"):
+            stage_plan = task.get("StagePlan")
+            if not isinstance(stage_plan, list) or len(stage_plan) != 1:
+                continue
+            stage = stage_plan[0]
+            if stage == "1-7":
+                has_1_7 = True
+            if stage not in self._task_map:
+                continue
+            name = self._task_map[stage]
+            if name in fixed_names:
+                continue
+            if task.get("IsEnable"):
                 return name, None
+        # 所有维护关卡都未启用，但有1-7 → 读为土
+        if has_1_7:
+            return "土", None
         return None, None
 
     def set_weekly(self, start_day: int) -> None:
@@ -1422,6 +1446,57 @@ class ArknightsConfig(ScriptConfig):
             self._save(config)
         else:
             logger.info(f"[set_weekly][{self.display_name}] 理智药剂配置无需更新")
+
+    def set_weekly_start_day(self, start_day: int) -> None:
+        """编辑期落盘周几起字面起始日到 MedicineExpireDays。
+
+        与 set_weekly 不同：本方法只写 MedicineExpireDays（由周几起推算：
+        MedicineExpireDays = 8 - 周几起），不写 UseExpiringMedicine（是否吃药的
+        开关依赖各 FightTask 的启用状态，需运行期按当日副本选型经 set_weekly 计算）。
+        编辑期改周几起即应落盘此值，无需等待链运行。
+
+        Args:
+            start_day: 周几以后启用（1~7，1=周一）。
+        """
+        assert 1 <= start_day <= 7, (
+            f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
+        )
+        config = self._load()
+        task_queue = get_field(
+            get_field(
+                get_field(config, "Configurations", self.display_name, dict, "weekly"),
+                "Default",
+                self.display_name,
+                dict,
+                "weekly",
+            ),
+            "TaskQueue",
+            self.display_name,
+            list,
+            "weekly",
+        )
+        expire_days = 8 - start_day
+        changed = False
+        for task in task_queue:
+            if task.get("$type") != "FightTask":
+                continue
+            changed |= safe_update(
+                task,
+                "MedicineExpireDays",
+                expire_days,
+                self.display_name,
+                assert_key_exists=False,
+            )
+        if changed:
+            logger.info(
+                f"[set_weekly_start_day][{self.display_name}] 理智药剂过期窗口已更新"
+            )
+            self._save(config)
+        else:
+            logger.info(
+                f"[set_weekly_start_day][{self.display_name}] 理智药剂过期窗口无需更新"
+            )
+
 
 # ============================================================
 # 适配器接口
