@@ -21,7 +21,7 @@ FIXTURE = os.path.join(
     os.path.dirname(__file__), "fixtures", "maa_gui.new.scrubbed.json"
 )
 
-# TaskQueue 中 6 个 FightTask 的索引（与模板 MAA一条龙.json 一致）
+# TaskQueue 中 6 个 FightTask 的索引
 FIGHT_IDX = (1, 2, 3, 4, 5, 6)  # 剿灭, 红票, 经验, 龙门币, 活动土, 土
 
 # set_dungeon 只允许改动的字段路径集合

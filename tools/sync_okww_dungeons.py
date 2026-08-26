@@ -7,15 +7,21 @@ F2 面板按页展示副本，structure 是每页数量，`total_number = sum(st
     src/task/ForgeryTask.py  → structure → 凝素领域总数（当前 20）
     src/task/TacetTask.py    → structure → 无音区总数（当前 19）
 
-对比 dungeon_list.yml 中 ok-ww 的纯数字分类（凝素领域/无音区；模拟领域是
-固定英文选项不参与），检测数字上限变化；--apply 时把新增数字以占位条目
-（display=数字）追加到对应分类末尾，供人工确认后改友好名（梦州-迅刀 等）。
+不变式（关键）：鸣潮新增副本**恒插在最前方**（F2 面板位置 1），已有副本
+整体后移。因此别名与副本的绑定靠「跟随滑动」维持——新增 delta 个时，所有
+已有别名的 value += delta，最前方补 delta 个占位（value=1..delta，display
+先填数字待人工改友好名，如 梦州-迅刀）。模拟领域是固定英文选项，不参与数字
+重排。
+
+对比 dungeon_list.yml 中 ok-ww 的纯数字分类（凝素领域/无音区），按总数差
+delta 判定：delta>0 为最前插入，--apply 时重排；delta<0 为移除，仅报告不
+删除（无法安全重排，交人工核对）。
 
 本文件不 import 项目任何模块，独立可运行（位于 tools/ 下）。
 
 用法：
     python tools/sync_okww_dungeons.py            # 只检测，输出差异报告
-    python tools/sync_okww_dungeons.py --apply    # 检测并自动补齐新增数字
+    python tools/sync_okww_dungeons.py --apply    # 检测并自动重排
 
 退出码：0 = 无差异（或已应用）；1 = 有差异未应用；2 = 抓取/解析失败（跳过本次）。
 """
@@ -91,20 +97,44 @@ def _load_okww() -> dict[str, list[int]]:
     return result
 
 
+def _rebase_sequences(seqs: list[dict], delta: int) -> list[dict]:
+    """最前插入 delta 个新副本时重排序列（纯函数，便于单测）。
+
+    鸣潮新增副本恒插在最前方（F2 面板位置 1），已有副本整体后移 delta 位。
+    因此别名与其副本的绑定靠「跟随滑动」维持：已有条目 ``value += delta``，
+    最前方补 delta 个占位（``value = 1..delta``，display 先填数字待人工改名）。
+
+    Args:
+        seqs: 当前序列条目列表（每条含 ``display``/``value``）。
+        delta: 新增副本数（必须 > 0）。
+
+    Returns:
+        重排后的序列列表，按 ``value`` 升序。
+    """
+    assert delta > 0, "[sync_okww] delta 必须为正"
+    rebased: list[dict] = [{"display": str(v), "value": v} for v in range(1, delta + 1)]
+    for s in seqs:
+        rebased.append({"display": s["display"], "value": s["value"] + delta})
+    rebased.sort(key=lambda s: s["value"])
+    return rebased
+
+
 def _apply_new(upstream: dict[str, int], current: dict[str, list[int]]) -> None:
-    """把新增数字补齐到 yml（display=数字占位，待人工改友好名）。
+    """按最前插入模型重排 yml 中的 ok-ww 数字分类。
 
     dungeon_list.yml 已由 yaml 统一管理（无注释、格式幂等），
-    直接 load→改→dump 即可，重写后 diff 只含真实增量。
+    直接 load→改→dump 即可，重写后 diff 只含真实增量。仅处理新增
+    （delta>0）类别；移除（delta<0）不在此处理，交由报告人工核对。
     """
     with open(_DUNGEON_PATH, encoding="utf-8") as f:
         data = _yaml.load(f)
     for cat, total in upstream.items():
+        old_count = len(current.get(cat, []))
+        delta = total - old_count
+        if delta <= 0:
+            continue  # 无新增；移除不在此处理
         dungeon = next(d for d in data[_OKWW_KEY]["dungeons"] if d["name"] == cat)
-        existing = {s["value"] for s in dungeon["sequences"]}
-        for num in range(1, total + 1):
-            if num not in existing:
-                dungeon["sequences"].append({"display": str(num), "value": num})
+        dungeon["sequences"] = _rebase_sequences(dungeon["sequences"], delta)
     with open(_DUNGEON_PATH, "w", encoding="utf-8") as f:
         _yaml.dump(data, f)
 
@@ -114,15 +144,14 @@ def main() -> int:
     upstream = _fetch_totals()
     current = _load_okww()
 
-    new_numbers = {}
-    removed = {}
+    deltas: dict[str, int] = {}
     for cat, total in upstream.items():
-        expected = set(range(1, total + 1))
-        existing = set(current.get(cat, []))
-        new_numbers[cat] = sorted(expected - existing)
-        removed[cat] = sorted(existing - expected)
+        old_count = len(current.get(cat, []))
+        delta = total - old_count
+        if delta != 0:
+            deltas[cat] = delta
 
-    if not any(new_numbers.values()) and not any(removed.values()):
+    if not deltas:
         print("[sync_okww_dungeons] 无差异")
         return 0
 
@@ -130,18 +159,23 @@ def main() -> int:
         "[sync_okww_dungeons] 上游总数："
         + "、".join(f"{cat}={total}" for cat, total in upstream.items())
     )
-    for cat in upstream:
-        if new_numbers[cat]:
-            print(f"新增数字 [{cat}]：{new_numbers[cat]}（display 待人工改友好名）")
-        if removed[cat]:
-            print(f"移除数字（仅报告不删除）[{cat}]：{removed[cat]}")
+    for cat, delta in deltas.items():
+        if delta > 0:
+            print(
+                f"最前新增 {delta} 个副本 [{cat}]：位置 1..{delta} 为占位（待人工改友好名），"
+                f"已有别名整体后移 {delta} 位"
+            )
+        else:
+            print(
+                f"移除 {-delta} 个副本（仅报告不删除）[{cat}]：别名无法安全重排，请人工核对"
+            )
 
     if not apply:
-        print("[sync_okww_dungeons] 检测到差异，未应用（加 --apply 自动补齐）")
+        print("[sync_okww_dungeons] 检测到差异，未应用（加 --apply 自动重排）")
         return 1
 
     _apply_new(upstream, current)
-    print("[sync_okww_dungeons] 已自动补齐新增数字（display=数字占位）")
+    print("[sync_okww_dungeons] 已重排：新增副本插最前、已有别名后移")
     return 0
 
 

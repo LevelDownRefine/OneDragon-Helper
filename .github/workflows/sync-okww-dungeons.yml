@@ -45,7 +45,8 @@ jobs:
           body: |
             检测到鸣潮副本数量有更新，已从 ok-wuthering-waves 的 `ForgeryTask.py`/`TacetTask.py`（`self.structure`）同步到 `config/dungeon_list.yml`。
 
-            - 新增数字的 display 为占位数字，**请人工改成友好名**（如 梦州-迅刀）
-            - 移除的数字仅报告不删除（避免上游短暂回退时丢配置）
+            - 鸣潮新增副本插在**最前方**，已有别名已自动整体后移对应位数
+            - 最前方新增的占位 display 为数字，**请人工改成友好名**（如 梦州-迅刀）
+            - 移除的数字仅报告不删除（无法安全重排，请人工核对）
           branch: auto-sync/okww-dungeons
           delete-branch: true

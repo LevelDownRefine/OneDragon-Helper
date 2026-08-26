@@ -65,7 +65,7 @@
 | 绝区零 | 否（未接入） | `ZZZ一条龙.yml` | 同上 |
 | 崩铁 | 否（未接入） | `M7A一条龙.yml` | 同上 |
 | 异环 | 否（未接入，且无模板→no-op） | — | 同鸣潮 |
-| 粥 | no-op（无模板） | — | `_task_map` 固化为类属性（原由模板 `MAA一条龙.json` 推导，现不再加载模板）|
+| 粥 | no-op（无模板） | — | `_task_map` 固化为类属性（不再加载模板；原 `MAA一条龙.json` 模板已删除）|
 
 ## 设置副本流程 set_dungeon
 
@@ -139,7 +139,7 @@ set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 | `dungeon_config.py` | `dungeon_list.yml` 解析 |
 | `src/link.py` | 游戏/脚本链接集中管理（官网、B 站、GitHub、banner 下载）；与 config 适配解耦。沿用基类 `GameLink` + 各脚本子类（`WutheringWavesLink`/`GenshinLink` 等）继承结构，`@register` 注册到 `_LINKS`，key 为 `_script_name`；本地背景图路径（`background`）仍声明在 set_config 子类，经 `_CONFIGS` 读取 |
 | `config/dungeon_list.yml` | 各脚本支持的副本及序列展示名，key 为 script_name |
-| `config/MAA一条龙.json` 等 | 各脚本 init 模板 |
+| `config/BGI一条龙.json` 等 | 各脚本 init 模板（粥无模板，`_task_map` 固化类属性）|
 
 ## 如何新增一个游戏适配
 
