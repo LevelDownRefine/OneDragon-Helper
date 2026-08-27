@@ -7,7 +7,6 @@
 import logging
 import os
 import sys
-from functools import lru_cache
 
 from PySide6.QtCore import QByteArray, QFileInfo, QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
@@ -60,20 +59,32 @@ def _default_icon() -> QIcon:
     return _DEFAULT_ICON
 
 
-@lru_cache
+# exe 图标缓存：仅缓存成功结果，缺失/失败不缓存。
+# 不缓存缺失结果，以容忍「脚本创建时 exe 尚未就位、随后才出现」的情况——
+# 否则首次取不到会永久缓存失败态，需重启整个进程才刷新。
+_EXE_ICON_CACHE: dict[str, QIcon] = {}
+
+
 def _exe_icon(path: str) -> QIcon | None:
     """返回 exe 自带图标（OS 文件图标，即程序内嵌图标）。
 
     文件缺失 / 取不到时返回 None；异常也一并吞掉，不让列表渲染崩溃。
+    成功结果缓存，缺失/失败不缓存（见 _EXE_ICON_CACHE 说明）。
     """
     if not path or not os.path.isfile(path):
         return None
+    cached = _EXE_ICON_CACHE.get(path)
+    if cached is not None:
+        return cached
     try:
         icon = _ICON_PROVIDER.icon(QFileInfo(path))
     except Exception:  # noqa: BLE001  # 取图标失败不应影响整个列表
         logger.warning("取 %s 的图标失败", path, exc_info=True)
         return None
-    return icon if (icon is not None and not icon.isNull()) else None
+    if icon is not None and not icon.isNull():
+        _EXE_ICON_CACHE[path] = icon
+        return icon
+    return None
 
 
 def get_icon_source(script_data: dict) -> str | None:
@@ -97,7 +108,8 @@ def get_script_icon(script_data: dict) -> QIcon:
       取不到（文件缺失 / 无图标）时回退默认图标。
     - python 脚本及其他：使用默认图标。
 
-    调用方（GameIcon）可缓存结果，本函数仅做轻量解析与缓存。
+    图标由 ScriptIconProvider 在 reload 时经 refresh 全量重算并缓存；
+    本函数仅做轻量解析（成功结果由 _exe_icon 缓存，缺失不缓存）。
     """
     source = get_icon_source(script_data)
     if source:
