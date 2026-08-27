@@ -145,13 +145,21 @@ def _get_script_root_dir_soft(script_name: str) -> str | None:
 def get_config_path(script_name: str, rel_path: str) -> str:
     """
     获取指定脚本的 config 文件绝对路径。
+
     拼接脚本根目录 + config 相对路径（rel_path 由适配层声明，本模块不感知具体脚本）。
-    并确保 config 文件存在。
+
+    使用 soft 解析脚本根目录（不校验游戏 exe 是否已安装）：config 文件位置仅由
+    script_path 的父目录决定，与 exe 是否存在无关。编辑/写入游戏原生 config 不应
+    以「游戏 exe 必须安装」为前提，否则会出现「旧路径失效 → 保存即崩」的鸡生蛋死结。
+
+    root 无法解析（config.yml 中无此脚本或 script_path 为空）属编程错误，显式 assert；
+    config 文件是否存在交由 load_config / save_config 各自处理。
     """
-    root = _get_script_root_dir(script_name)
-    config_path = safe_path_join(root, rel_path)
-    assert os.path.exists(config_path), f"[set_config] config 文件不存在: {config_path}"
-    return config_path
+    root = _get_script_root_dir_soft(script_name)
+    assert root is not None, (
+        f"[set_config] 无法解析脚本根目录（config.yml 中无 {script_name} 或 script_path 为空）"
+    )
+    return safe_path_join(root, rel_path)
 
 
 # ============================================================

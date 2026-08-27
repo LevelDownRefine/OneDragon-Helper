@@ -63,7 +63,10 @@ class TestRunnerExe(unittest.TestCase):
             [RUNNER_EXE, *args],
             cwd=PROJECT_ROOT,
             capture_output=True,
-            text=True,
+            # 与 test_gui_exe 同源：exe 的 stderr 可能含 GBK 中文，text=True(utf-8) 解码
+            # 会失败使 result.stderr 变 None 并可能死锁。统一 errors='replace' 解码。
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
 

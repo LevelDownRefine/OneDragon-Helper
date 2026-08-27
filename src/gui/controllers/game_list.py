@@ -18,6 +18,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWidgets import QMessageBox
 
+from src.config.set_config import set_weekly_start_day
 from src.config.subscript import get_script_name
 from src.gui.icons import get_script_icon
 
@@ -370,14 +371,30 @@ class GameListController(QObject):
                 "[bridge] 配置弹窗 accept 但 pending_changes 为空"
             )
             changes = dialog.pending_changes
-            self._service.update_script(
+            new_script_name = self._service.update_script(
                 changes["old_script_name"],
                 changes["new_display_name"],
                 changes["config_patch"],
                 changes["weekly_timeouts"],
             )
+            # config.yml 已落盘新路径：此刻同步游戏侧原生 config 起始日，目录解析才正确。
+            start_day = changes.get("weekly_start_day")
+            if start_day is not None:
+                self._sync_weekly_start_day(new_script_name, start_day)
             self._on_reload()
             self._toast(f"已保存 {changes['new_display_name']} 配置")
+
+    def _sync_weekly_start_day(self, script_name: str, start_day: int) -> None:
+        """落盘后把周几起同步到游戏原生 config。
+
+        目录解析依赖 config.yml 已落盘的新 script_path，故必须在
+        ChainService.update_script 之后调用。游戏侧同步为 best-effort：
+        原生 config 目录因路径无效/未装游戏缺失时仅提示，不阻塞已完成的主保存。
+        """
+        try:
+            set_weekly_start_day(script_name, start_day)
+        except OSError as e:
+            self._toast(f"周几起已保存，但未能同步到游戏配置：{e}")
 
     def _on_delete_script(self, script_name: str):
         """配置弹窗确认删除：落盘后重载脚本列表。"""

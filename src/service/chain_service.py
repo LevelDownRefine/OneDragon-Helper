@@ -175,7 +175,7 @@ class ChainService:
         new_display_name: str,
         config_patch: dict,
         weekly_timeouts: list[int | None],
-    ) -> None:
+    ) -> str:
         """更新单个脚本条目字段并同步 weekly_timeouts。
 
         以脚本唯一标识定位条目；自动处理标识变更（含 weekly 迁移）与
@@ -186,6 +186,10 @@ class ChainService:
             new_display_name: 新 display_name（展示名，可保留原名）。
             config_patch: 要写入条目顶层字段的映射（如 script_path/check_done）。
             weekly_timeouts: 7 格超时输入值，空输入为 None（落盘前转默认超时）。
+
+        Returns:
+            落盘后的脚本唯一标识（标识可能因 script_path/display_name 变更而改变），
+            供调用方在落盘后触发依赖新路径的后续动作（如游戏侧周几起同步）。
         """
         assert new_display_name, "[service] 脚本名称不能为空"
         config = self.load_config()
@@ -219,6 +223,7 @@ class ChainService:
                 old_script_name, new_script_name
             )
         self._script_service.save_weekly(new_script_name, weekly_timeouts)
+        return new_script_name
 
     def load_ui_state(self) -> dict:
         """返回 UI 状态单一实例（懒加载自 gui_state.json）。

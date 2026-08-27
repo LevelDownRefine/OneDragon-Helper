@@ -32,15 +32,19 @@ datas = collect_data_files('qfluentwidgets')
 # --- 可安全排除的模块（实测 GUI 运行时走不到）---
 # numpy: 仅 qfluentwidgets.acrylic_label 以 try/except ImportError 懒加载，
 #        本 GUI 不使用 AcrylicLabel，缺失时回退 QPixmap，安全排除（省 ~42M）。
-# QtQml/QtQuick + QtMultimedia: GUI 与 qfluentwidgets 均不使用 QML / 媒体播放，
-#        顺带省下 FFmpeg 的 av*.dll（省 ~30M）。
+# QtQml/QtQuick: GUI 已迁移到 QML（launcher.py 用 QQmlApplicationEngine 加载
+#        src/gui/qml/main.qml，game_list.py / icons.py 用 QQuickImageProvider），
+#        必须保留，不可排除，否则冻结后启动即 ModuleNotFoundError。
+# QtMultimedia: background.qml 用 import QtMultimedia 实现视频壁纸（仅 video 模式加载
+#        background.qml），必须保留，不可排除，否则视频壁纸运行时 QML import 失败。
+#        代价是打入 FFmpeg 的 av*.dll（约 +30M）。
+#        PySide6.QtMultimediaWidgets 未被使用（QML 视频用 QtMultimedia QML 类型而非
+#        QVideoWidget），可安全排除。
 # pynput 跨平台后端: Windows 仅用 win32，其余后端永不加载。
 # 其余为标准库未使用模块。
 excludes = [
     'numpy',
-    'PySide6.QtQml', 'PySide6.QtQuick', 'PySide6.QtQmlModels',
-    'PySide6.QtQmlMeta', 'PySide6.QtQmlWorkerScript',
-    'PySide6.QtMultimedia', 'PySide6.QtMultimediaWidgets',
+    'PySide6.QtMultimediaWidgets',
     'pynput.keyboard._darwin', 'pynput.keyboard._xorg',
     'pynput.mouse._darwin', 'pynput.mouse._xorg',
     'pynput._util.darwin', 'pynput._util.xorg', 'pynput._util.xorg_keys',

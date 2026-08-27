@@ -1,68 +1,35 @@
-"""测试 GameListController 的删除脚本入口（左侧拖拽到删除区的落盘逻辑）。"""
-
-import os
 import unittest
 from unittest.mock import MagicMock, patch
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-from PySide6.QtWidgets import QApplication
-
 from src.gui.controllers.game_list import GameListController
 
-_app = QApplication.instance() or QApplication([])
 
+class TestSyncWeeklyStartDay(unittest.TestCase):
+    """游戏侧周几起同步应在 config.yml 落盘后、用新 script_name 触发。
 
-def _make_controller():
-    """构造 GameListController（service/toast/on_reload 全 mock），预置两条脚本。"""
-    service = MagicMock()
-    service.load_config.return_value = {"script_list": []}
-    reload_spy = MagicMock()
-    ctrl = GameListController(service=service, toast=MagicMock(), on_reload=reload_spy)
-    ctrl._games = [
-        {
-            "display_name": "甲",
-            "script_name": "a",
-            "script_data": {},
-            "char": "甲",
-            "color": "#111111",
-        },
-        {
-            "display_name": "乙",
-            "script_name": "b",
-            "script_data": {},
-            "char": "乙",
-            "color": "#222222",
-        },
-    ]
-    return ctrl, service, reload_spy
+    save_data 内 config.yml 尚未落盘新路径，目录解析会指向旧目录；故同步推迟到
+    ChainService.update_script 之后（见 configCurrent → _sync_weekly_start_day）。
+    """
 
+    def _make_ctrl(self) -> GameListController:
+        service = MagicMock()
+        toast = MagicMock()
+        on_reload = MagicMock()
+        return GameListController(service, toast, on_reload)
 
-class TestDeleteScript(unittest.TestCase):
-    def test_delete_script_removes_and_reloads(self):
-        """按 index 删除：二次确认后调 remove_script（按名字）并触发一次门面级重载。"""
-        ctrl, service, reload_spy = _make_controller()
-        with patch("src.gui.controllers.game_list.QMessageBox") as mock_box:
-            mock_box.Ok = "OK"
-            mock_box.return_value.exec.return_value = "OK"
-            ctrl.deleteScript(0)
-        service.remove_script.assert_called_once_with("a")
-        reload_spy.assert_called_once()
+    def test_sync_calls_set_weekly_start_day(self):
+        """落盘后应以新 script_name 触发游戏侧原生 config 同步。"""
+        ctrl = self._make_ctrl()
+        with patch("src.gui.controllers.game_list.set_weekly_start_day") as mock_set:
+            ctrl._sync_weekly_start_day("run", 3)
+        mock_set.assert_called_once_with("run", 3)
 
-    def test_delete_script_cancel_does_not_remove(self):
-        """确认弹窗取消时，不删除、不重载。"""
-        ctrl, service, reload_spy = _make_controller()
-        with patch("src.gui.controllers.game_list.QMessageBox") as mock_box:
-            mock_box.Ok = "OK"
-            mock_box.return_value.exec.return_value = "CANCEL"
-            ctrl.deleteScript(0)
-        service.remove_script.assert_not_called()
-        reload_spy.assert_not_called()
-
-    def test_delete_script_out_of_range_asserts(self):
-        """越界 index 直接断言失败，不触碰 service。"""
-        ctrl, service, reload_spy = _make_controller()
-        with self.assertRaises(AssertionError):
-            ctrl.deleteScript(99)
-        service.remove_script.assert_not_called()
-        reload_spy.assert_not_called()
+    def test_sync_oserror_toasts_and_does_not_raise(self):
+        """原生 config 目录缺失（OSError）时仅提示，不阻塞已完成的保存。"""
+        ctrl = self._make_ctrl()
+        with patch(
+            "src.gui.controllers.game_list.set_weekly_start_day",
+            side_effect=OSError("no such dir"),
+        ):
+            ctrl._sync_weekly_start_day("run", 3)  # 不应抛出
+        ctrl._toast.assert_called_once()

@@ -35,7 +35,6 @@ from PySide6.QtWidgets import (
 
 from src.config.set_config import (
     ScriptConfig,
-    set_weekly_start_day,
     supports_weekly,
 )
 from src.config.subscript import get_script_name
@@ -595,14 +594,15 @@ class SingleScriptConfigDialog(_FormDialogBase):
             text = timeout_edit.text().strip()
             timeouts.append(int(text) if text else None)
 
-        # 周几起：持久化到 weekly_start.yml，并同步落盘到脚本自身 config 起始日
-        # （如 M7A echo_of_war_start_day_of_week）；index 0 = 不设置（None），1~7 对应周一~周日。
+        # 周几起：权威值持久化到 weekly_start.yml（经 ScriptService）。游戏侧原生 config
+        # 起始日的同步不在此处进行——save_data 内 config.yml 的 script_path 尚未落盘，
+        # 此时解析目录会拿到旧路径，导致写到错误/失效目录。统一由调用方在
+        # ChainService.update_script 落盘新路径后触发（见 game_list.configCurrent）。
+        start_day = None
         if self._weekly_start_supported:
             idx = self.weekly_start_combo.currentIndex()
             start_day = None if idx <= 0 else idx
             self._script_service.set_weekly_start(self.script_name, start_day)
-            if start_day is not None:
-                set_weekly_start_day(self.script_name, start_day)
 
         self.pending_changes = {
             "old_script_name": self.script_name,
@@ -618,5 +618,6 @@ class SingleScriptConfigDialog(_FormDialogBase):
                 "block": self.block_cb.isChecked(),
             },
             "weekly_timeouts": timeouts,
+            "weekly_start_day": start_day,
         }
         self.accept()

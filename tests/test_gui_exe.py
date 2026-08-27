@@ -21,6 +21,7 @@ import sys
 import tempfile
 import unittest
 
+from src.config.subscript import get_script_name
 from src.utils_yaml import load_yaml
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -63,6 +64,28 @@ _SKIP_REASON = "需要 Windows + 管理员权限 + 存在的 GUI exe 才能真�
 )
 
 
+def _game_exes_present() -> bool:
+    """generate-chain 会对每个启用脚本调 set_config，其底层断言游戏 exe 存在。
+
+    未安装游戏（CI / 开发机）时该测试无法跑通，应 skip 而非失败。
+    config.yml 由 build.bat 从 config.example.yml 生成，script_path 指向实际游戏目录。
+    """
+    if not CAN_RUN_EXE:
+        return False
+    cfg = os.path.join(os.path.dirname(GUI_EXE), "config", "config.yml")
+    if not os.path.isfile(cfg):
+        return False
+    try:
+        data = load_yaml(cfg)
+    except Exception:
+        return False
+    for s in data.get("script_list", []):
+        sp = s.get("script_path")
+        if sp and not os.path.exists(sp):
+            return False
+    return True
+
+
 @unittest.skipUnless(CAN_RUN_EXE, _SKIP_REASON)
 class TestGuiExe(unittest.TestCase):
     """真实启动 OneDragon-Helper.exe 的集成测试。"""
@@ -72,7 +95,11 @@ class TestGuiExe(unittest.TestCase):
             [GUI_EXE, *args],
             cwd=PROJECT_ROOT,
             capture_output=True,
-            text=True,
+            # 窗口化 exe（console=False）的 stderr 含 GBK 中文日志，用 text=True(utf-8)
+            # 解码会抛 UnicodeDecodeError 使 result.stderr 变 None、并因管道无人 draining
+            # 引发死锁。统一以 errors='replace' 解码，保证 stderr/stdout 永远是 str。
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
 
@@ -109,6 +136,10 @@ class TestGuiExe(unittest.TestCase):
         self.assertIn("script_count", checks, msg=checks)
         self.assertTrue(checks.get("config_loaded"), msg=checks)
 
+    @unittest.skipUnless(
+        _game_exes_present(),
+        "generate-chain 需要已安装的游戏 exe（config.yml 的 script_path 存在）才能跑通",
+    )
     def test_exe_generate_chain(self):
         """--generate-chain 应退出 0，并把脚本链配置写到 --out 指定的路径。"""
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
@@ -156,7 +187,10 @@ class TestGuiExe(unittest.TestCase):
         with open(out, encoding="utf-8") as f:
             data = json.load(f)
         self.assertEqual(data["status"], "ok", msg=data)
-        self.assertEqual(data["script"]["display_name"], names[0])
+        # --list-scripts 返回的是脚本唯一标识（由 script_path 派生），--get-script 也按标识查询。
+        # 返回的 script 字典本身不含 script_name 字段，需用 get_script_name 从 script_path 反推，
+        # 与入参标识比对，验证「按标识查询」round-trip 正确；display_name 是另一字段不可混用。
+        self.assertEqual(get_script_name(data["script"]), names[0])
 
     def test_exe_check_config(self):
         """--check-config 应退出 0/1 且 JSON 结构完整（invalid 元素可断言）。"""

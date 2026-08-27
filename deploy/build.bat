@@ -53,13 +53,11 @@ if errorlevel 1 (
 )
 
 echo.
-echo [4/5] 拷贝 config 模板、assets 和 scripts 到 exe 同级目录...
+echo [4/5] 拷贝 config 模板、assets 到 exe 同级目录...
 set "SRC_CONFIG=%~dp0..\config"
 set "SRC_ASSETS=%~dp0..\assets"
-set "SRC_SCRIPTS=%~dp0..\scripts"
 set "DST_CONFIG=%GUI_DIR%\config"
 set "DST_ASSETS=%GUI_DIR%\assets"
-set "DST_SCRIPTS=%GUI_DIR%\scripts"
 
 REM 整体拷贝 config（含共享资源：dungeon_list.yml / weekly_timeouts.yml / script_chain / BGI_User 等）
 xcopy /E /I /Y "%SRC_CONFIG%" "%DST_CONFIG%" >nul
@@ -86,13 +84,20 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-REM scripts 是用户脚本，作为松散文件随包发布（不打包进 exe），供 Runner 在运行时加载
-xcopy /E /I /Y "%SRC_SCRIPTS%" "%DST_SCRIPTS%" >nul
+REM QML 界面文件：GUI 已迁移到 QML（launcher.py 用 QQmlApplicationEngine 加载
+REM src/gui/qml/main.qml，且 main.qml 以相对 source 引用其余 .qml）。冻结模式下
+REM resolve_script_path 按 exe 同级目录解析，故必须随包发布到 <exedir>/src/gui/qml/，
+REM 否则启动即 assert 崩溃。
+set "SRC_QML=%~dp0..\src\gui\qml"
+set "DST_QML=%GUI_DIR%\src\gui\qml"
+xcopy /E /I /Y "%SRC_QML%" "%DST_QML%" >nul
 if errorlevel 1 (
-    echo [ERROR] 拷贝 scripts 失败
+    echo [ERROR] 拷贝 QML 失败
     pause
     exit /b 1
 )
+REM 用户脚本（如 wait_until_0410 等待到每日重置）的能力已由 launcher 的「定时计划」
+REM 内置（运行前阻塞到目标时刻，默认 04:10），无需再随包发布松散脚本文件。
 
 echo.
 echo [5/5] 验证打包产物 exe（非阻断，结果见上方输出）...
@@ -115,7 +120,6 @@ echo   - OneDragon-Helper.exe        (GUI 主程序)
 echo   - OneDragon-Helper-Runner.exe  (脚本运行器)
 echo   - config\                      (配置目录)
 echo   - assets\                      (资源目录)
-echo   - scripts\               (用户脚本，松散文件)
 echo ============================================
 echo.
 pause

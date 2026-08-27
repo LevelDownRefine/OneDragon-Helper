@@ -226,6 +226,61 @@ class TestGetConfigPath(unittest.TestCase):
                         part, path, f"{name} 路径缺少相对路径段 '{part}': {path}"
                     )
 
+    def test_does_not_require_exe_to_exist(self):
+        """回归：get_config_path 不应校验游戏 exe 是否存在。
+
+        旧实现经 _get_script_root_dir → get_script_path 断言 exe 存在，
+        当用户正要修正失效的旧路径时，任何保存（含周起始日同步）都会崩溃。
+        新实现用 soft 解析，exe 是否存在与 config 文件位置无关。
+        """
+        fake_config = {
+            "script_list": [
+                {
+                    "display_name": "崩铁",
+                    "script_path": r"D:\game_helper\March7thAssistant\March7th Assistant.exe",
+                },
+            ]
+        }
+        rel = set_config.StarRailConfig._config_rel_path
+        with (
+            patch.object(subscript, "_load_config_yml", return_value=fake_config),
+            patch("os.path.exists", return_value=False),  # 模拟 exe 不存在
+        ):
+            # 旧实现此处会因 get_script_path 的 assert os.path.exists(exe) 崩溃；
+            # 新实现应正常返回路径（不依赖 exe 是否存在）。
+            path = subscript.get_config_path("March7th-Assistant", rel)
+        self.assertIn("config.yaml", path)
+
+
+class TestStarRailWeeklyStartDayRobustness(unittest.TestCase):
+    """回归：崩铁 set_weekly_start_day 的读路径不应因 exe 路径失效而崩溃（soft 解析）。
+
+    旧实现 get_config_path → get_script_path 断言 exe 存在；用户正要修正失效的旧路径时
+    保存即崩。修复后 get_config_path 用 soft 解析（不校验 exe），读路径不再因路径失效
+    而断言。写游戏侧 config 视为前置条件（游戏已安装、路径有效，由 GUI 保证），不再做
+    存在性兜底盘；非法周起始日仍由 assert 拦截。
+    """
+
+    def test_invalid_day_still_asserted(self):
+        """非法周起始日（非 1~7）仍应被系统拦截。"""
+        cfg = set_config.StarRailConfig()
+        with self.assertRaises(AssertionError):
+            cfg.set_weekly_start_day(99)
+
+
+class TestArknightsWeeklyStartDayRobustness(unittest.TestCase):
+    """回归：MAA(明日方舟) set_weekly_start_day 的读路径不再因 exe 路径失效而崩溃。
+
+    与 TestStarRailWeeklyStartDayRobustness 同源修复（get_config_path soft 解析）。
+    写游戏侧 config 视为前置条件（游戏已安装、路径有效，由 GUI 保证），原生 config
+    缺失即断言失败，不再 best-effort 跳过；非法周起始日仍由 assert 拦截。
+    """
+
+    def test_invalid_day_still_asserted(self):
+        cfg = set_config.ArknightsConfig()
+        with self.assertRaises(AssertionError):
+            cfg.set_weekly_start_day(0)
+
 
 class TestLoadConfig(unittest.TestCase):
     """测试 load_config"""

@@ -980,7 +980,9 @@ class StarRailConfig(ScriptConfig):
         assert 1 <= start_day <= 7, (
             f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
         )
-        config = self._load()
+        # 前置条件：游戏原生 config 路径有效（游戏已安装、script_path 正确），由 GUI 侧
+        # 调用前保证；本方法假设该前置成立，不做存在性兜底盘。
+        config = self._load(allow_missing=True) or {}
         config["echo_of_war_start_day_of_week"] = start_day
         self._save(config)
 
@@ -1461,6 +1463,8 @@ class ArknightsConfig(ScriptConfig):
         assert 1 <= start_day <= 7, (
             f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
         )
+        # 前置条件：游戏原生 config 已存在（游戏已安装、script_path 正确），由 GUI 侧调用前
+        # 保证；缺失即前置不成立，直接断言失败，不做存在性兜底盘。
         config = self._load()
         task_queue = get_field(
             get_field(
