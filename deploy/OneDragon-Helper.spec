@@ -52,6 +52,23 @@ excludes = [
     'tkinter', 'unittest', 'doctest', 'pydoc', 'lib2to3',
     'curses', 'ensurepip', 'distutils', 'venv', 'idlelib',
     'turtledemo', 'test', 'pty', 'tty', 'wsgiref',
+    # WebEngine（Chromium 内核，~149M）从未被本项目使用，纯属 PyInstaller 默认收集。
+    # 排除 Python 模块名 + 下方手动过滤 Qt DLL 双保险。若未来引入 QWebEngineView 需移除此处。
+    'PySide6.QtWebEngineCore',
+    'PySide6.QtWebEngineQuick',
+    'PySide6.QtWebEngineQuickDelegatesQml',
+    # 以下为本项目从未使用的 Qt 模块（PyInstaller 默认 collect_submodules 全量收集，
+    # 代码不 import，QFluentWidgets 也不依赖）。分批排除，每批需重打包并跑 test_gui_exe 验证。
+    # 若未来引入对应功能需移除此处并同步清除下方 a.binaries/a.datas 过滤关键词。
+    'PySide6.QtPdf', 'PySide6.QtPdfQuick',
+    'PySide6.Qt3DCore', 'PySide6.Qt3DExtras', 'PySide6.Qt3DRender',
+    'PySide6.Qt3DAnimation', 'PySide6.Qt3DInput', 'PySide6.Qt3DLogic',
+    'PySide6.Qt3DQuick', 'PySide6.Qt3DQuickExtras', 'PySide6.Qt3DQuickInput',
+    'PySide6.Qt3DQuickRender', 'PySide6.Qt3DQuickScene2D',
+    'PySide6.QtCharts', 'PySide6.QtDataVisualization', 'PySide6.QtGraphs',
+    'PySide6.QtLocation',
+    'PySide6.QtQuick3D', 'PySide6.QtQuick3DRuntimeRender',
+    'PySide6.QtQuick3DXr', 'PySide6.QtQuick3DParticles', 'PySide6.QtQuick3DUtils',
 ]
 
 # config/ 和 assets/ 不打入 _internal/，由 build.bat 后处理拷贝到 exe 同级目录，
@@ -71,6 +88,28 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+
+# --- 排除未使用的 Qt 二进制（双保险）---
+# PyInstaller 会扫描整个 Qt 安装目录并收集所有 Qt DLL（不依赖 Python import），
+# 仅靠上方 excludes 模块名不足以剔除这些从未使用的模块。本项目 GUI（QFluentWidgets +
+# QML）用不到以下模块，在此手动过滤 a.binaries / a.datas 中路径含这些关键词的条目。
+# 若未来引入对应功能需移除此处并同步清除上方 excludes 模块名。分批排除，每批需重打包
+# 并跑 test_gui_exe 验证 GUI 仍可启动。
+_UNUSED_QT_KEYWORDS = (
+    'WebEngine',                 # Chromium 内核（~149M）
+    'Qt6Pdf', 'QtPdf',           # PDF，无引用
+    'Qt63D', 'Qt3D',             # 3D 渲染
+    'Qt6Quick3D', 'QtQuick3D',   # 3D 渲染 (Quick)
+    'Qt6Charts', 'QtCharts',     # 图表
+    'Qt6DataVisualization', 'QtDataVisualization',  # 图表
+    'Qt6Graphs', 'QtGraphs',     # 图表
+    'Qt6Location', 'QtLocation', # 定位
+)
+for _attr in ('binaries', 'datas'):
+    _seq = getattr(a, _attr)
+    _filtered = [x for x in _seq if not any(k in x[0] for k in _UNUSED_QT_KEYWORDS)]
+    setattr(a, _attr, _filtered)
+
 pyz = PYZ(a.pure)
 
 exe = EXE(

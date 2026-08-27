@@ -135,6 +135,10 @@ Window {
                     height: 48
                     source: "image://scripticon/" + model.scriptName
                     fillMode: Image.PreserveAspectFit
+                    // 脚本路径变更/创建后需即时刷新：禁用 QML 按 URL 的图标缓存，
+                    // 让 delegate 重建时（reload 触发 beginResetModel）重新向
+                    // provider 请求，否则同名 URL 直接走缓存、图标不更新。
+                    cache: false
                 }
 
                 // 停用灰盖：未启用的脚本图标整体压暗（覆盖在图标之上，对齐旧 GUI

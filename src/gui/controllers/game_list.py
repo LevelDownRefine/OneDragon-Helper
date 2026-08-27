@@ -44,11 +44,17 @@ class ScriptIconProvider(QQuickImageProvider):
         return icon.pixmap(48, 48)
 
     def refresh(self, games: list):
-        """增量更新图标缓存：仅提取新脚本图标，已有脚本复用缓存。"""
+        """全量重算脚本图标到缓存。
+
+        脚本路径变更、exe 后续就位于同一路径等场景都需即时刷新图标；
+        脚本数量有限（reload 时调用一次），全量重算成本可忽略。exe 图标
+        取结果由 icons._exe_icon 缓存（仅成功结果，缺失不缓存）。
+        """
+        # 清空后全量重算：移除已删除脚本的残留 key，避免陈旧图标滞留进程。
+        self._cache = {}
         for game in games:
             name = game["script_name"]
-            if name not in self._cache:
-                self._cache[name] = self._load_icon(game["script_data"])
+            self._cache[name] = self._load_icon(game["script_data"])
 
     def requestPixmap(self, id: str, size, requestedSize):
         return self._cache.get(id, QPixmap())
@@ -206,6 +212,10 @@ class GameListController(QObject):
             )
         assert games, "[bridge] config.yml 中没有脚本"
         self._games = games
+        # 图标缓存必须先于模型重置刷新：set_games 触发 ListView 重建 delegate，
+        # 重建即向提供器请求 pixmap；若刷新在其后，首帧取到空/陈旧缓存（新脚本
+        # 首次即空白），刷新后不会自动重取，须重启进程才修正。
+        self.icon_provider.refresh(self._games)
         self._game_model.set_games(games)
         self.current_index = min(self.current_index, len(games) - 1)
         # 新增脚本默认启用；已存在脚本保留原状态
@@ -213,8 +223,6 @@ class GameListController(QObject):
             self._enabled[i] if i < len(self._enabled) else True
             for i in range(len(games))
         ]
-        # 增删脚本后补齐图标缓存
-        self.icon_provider.refresh(self._games)
         self.gamesChanged.emit()
 
     # ── 交互 ───────────────────────────────────────────────────────────

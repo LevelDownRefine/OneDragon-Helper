@@ -693,22 +693,26 @@ class TestScriptIconProvider(unittest.TestCase):
         # 旧语义（按行 index）已失效：index 字符串取不到图标
         self.assertTrue(provider.requestPixmap("0", None, QSize()).isNull())
 
-    def test_refresh_adds_missing_only(self):
+    def test_refresh_recomputes_all(self):
         from PySide6.QtCore import QSize
         from PySide6.QtGui import QPixmap
 
         provider = ScriptIconProvider([{"script_name": "a", "script_data": {}}])
-        pmap_a = QPixmap(1, 1)
-        provider._cache = {"a": pmap_a}
-        # 增量刷新：保留已有 a，新增 b
-        provider.refresh(
-            [
-                {"script_name": "a", "script_data": {}},
-                {"script_name": "b", "script_data": {}},
-            ]
-        )
-        self.assertIs(provider.requestPixmap("a", None, QSize()), pmap_a)
-        self.assertFalse(provider.requestPixmap("b", None, QSize()).isNull())
+        provider._cache = {"a": QPixmap(1, 1)}
+        # 全量重算：既有 a 也重新取图标（改路径后需即时刷新），而非仅新增 b
+        with patch.object(
+            ScriptIconProvider, "_load_icon", return_value=QPixmap(5, 5)
+        ) as mock_load:
+            provider.refresh(
+                [
+                    {"script_name": "a", "script_data": {}},
+                    {"script_name": "b", "script_data": {}},
+                ]
+            )
+        # a、b 都被重新提取（全量重算，不跳过既有项）
+        self.assertEqual(mock_load.call_count, 2)
+        self.assertEqual(provider.requestPixmap("a", None, QSize()).width(), 5)
+        self.assertEqual(provider.requestPixmap("b", None, QSize()).width(), 5)
 
 
 class TestUiIconProvider(unittest.TestCase):
