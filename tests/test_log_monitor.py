@@ -817,6 +817,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         content = (
             "[charge_plan_app.py 141] [INFO]: 剩余电量 119 储蓄电量 888 以太电池 44\n"
             "指令[ 一条龙 ] 执行成功 返回状态 全部结束\n"
+            "[operation.py 678] [INFO]: 日常奖励领取成功\n"
             "[operation.py 677] [ERROR]: 指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界\n"
             "[operation.py 677] [ERROR]: 指令[ 快捷手册 选择副本类型 代理人方案培养 ] 执行失败 返回状态 找不到 代理人方案培养\n"
         )
@@ -844,6 +845,18 @@ class TestFourFieldExtraction(unittest.TestCase):
         p = ZZZLogParser()
         self.assertFalse(p.parse_daily("指令[ 一条龙 ] 执行失败 返回状态 xxx"))
         self.assertFalse(p.parse_daily("启动但啥也没发生"))
+
+    def test_zzz_daily_true_only_on_reward_claimed(self):
+        # ZZZ「领取每日」标志为「日常奖励领取成功」，与整轮「一条龙 执行成功」
+        # （属 success_markers / 整体成败判定）区分：仅一条龙成功、无领取标记
+        # 不算当日做完，避免把未实际领取当成已完成。
+        p = ZZZLogParser()
+        self.assertTrue(
+            p.parse_daily(
+                "指令[ 执行应用组 one_dragon ] 执行成功\n[INFO]: 日常奖励领取成功"
+            )
+        )
+        self.assertFalse(p.parse_daily("指令[ 一条龙 ] 执行成功 返回状态 全部结束"))
 
     def test_bgi_stamina_daily_exit_errors(self):
         p = BGILogParser()
@@ -1089,6 +1102,46 @@ class TestIsValidLog(unittest.TestCase):
                 ZZZLogParser(),
             ):
                 self.assertFalse(parser._is_valid_log(log), parser.__class__.__name__)
+
+
+class TestLogAnalysisConfigDriven(unittest.TestCase):
+    """日志分析关键词应来自 config/log_analysis.yml，而非 hardcode 在 Parser 子类。
+
+    回归护栏：确保重构后关键词确由配置注入，且配置与代码中的脚本标识保持一致。
+    """
+
+    def test_config_covers_all_parsers(self):
+        """_PARSERS 中每个脚本标识都应在 log_analysis.yml 有对应条目，反之亦然。"""
+        cfg = collect_log._load_log_analysis_config()
+        parsers = cfg.get("parsers", {})
+        configured = set(parsers.keys())
+        declared = {cls.script_name for cls in collect_log._PARSERS if cls.script_name}
+        self.assertEqual(configured, declared)
+
+    def test_keywords_loaded_from_config(self):
+        """Parser 实例的判定关键词应由配置注入，而非依赖类属性 hardcode。"""
+        oww = OkWwLogParser()
+        self.assertEqual(oww.log_pattern, "ok-script.log")
+        self.assertEqual(oww.error_markers, ("ERROR",))
+        # 双空格领奖标记必须原样保留。
+        self.assertEqual(
+            oww.daily_success_marker,
+            ("claim daily reward via  coordinate", "current daily progress 180"),
+        )
+        self.assertEqual(
+            oww.success_markers, ("Successfully Executed Task", "Task completed")
+        )
+
+        bgi = BGILogParser()
+        self.assertEqual(bgi.error_markers, ("[ERR]", "异常:", "异常："))
+        self.assertEqual(bgi.success_markers, ("一条龙和配置组任务结束",))
+        self.assertEqual(bgi.fail_markers, ("未领取",))
+
+    def test_ok_ef_has_no_error_markers(self):
+        """终末地靠「- 」缩进明细收集报错，配置不含 error_markers → 应为空元组。"""
+        oef = OkEfLogParser()
+        self.assertEqual(oef.error_markers, ())
+        self.assertEqual(oef.daily_success_marker, ("执行状态: 完成",))
 
 
 if __name__ == "__main__":

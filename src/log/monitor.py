@@ -24,7 +24,7 @@ from pathlib import Path
 
 from src.config.subscript import get_script_name
 from src.utils_logger import setup_logging
-from src.utils_yaml import load_yaml
+from src.utils_yaml import load_yaml, load_yaml_optional
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,32 @@ def log_info(msg, *args, do_log: bool = True) -> None:
 def _get_root_dir() -> str:
     """推导项目根目录（向上 3 层：src/log/monitor.py → 项目根）。"""
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+# 项目根在模块导入时捕获一次：日志分析关键词配置（config/log_analysis.yml）属项目级
+# 静态配置，测试中对 _get_root_dir 的 patch（仅针对 config.yml）不应影响它的读取路径。
+_PROJECT_ROOT = _get_root_dir()
+
+_LOG_ANALYSIS_YAML = "log_analysis.yml"
+# 缓存：配置文件小而稳定，进程内只解析一次。global 仅在模块内使用。
+_LOG_ANALYSIS_CONFIG: dict | None = None
+
+
+def _load_log_analysis_config() -> dict:
+    """读取 config/log_analysis.yml（可选文件，缺失返回空 dict）。结果进程内缓存。"""
+    global _LOG_ANALYSIS_CONFIG
+    if _LOG_ANALYSIS_CONFIG is None:
+        path = os.path.join(_PROJECT_ROOT, "config", _LOG_ANALYSIS_YAML)
+        _LOG_ANALYSIS_CONFIG = load_yaml_optional(path)
+    return _LOG_ANALYSIS_CONFIG
+
+
+def _keywords_for(script_name: str) -> dict:
+    """取某脚本的日志分析关键词配置；缺失即断言失败（配置遗漏属编程错误，快速暴露）。"""
+    cfg = _load_log_analysis_config()
+    parsers = cfg.get("parsers", {})
+    assert script_name in parsers, f"[log_monitor] 缺少日志分析配置: {script_name}"
+    return parsers[script_name]
 
 
 def _cell_width(text: str) -> int:
@@ -97,6 +123,9 @@ class BaseLogParser:
     # exe 脚本=进程名（script_path basename 去后缀，空格→-），python 脚本=display_name。
     # parse_log 与 supported 推导都按它匹配，不再依赖易变的 display_name。
     script_name: str = ""
+    # 以下判定关键词（含成功 / 失败 / 退出 / 体力提取正则 / 日志文件名）均来自
+    # config/log_analysis.yml，由 __init__ 经 _apply_keywords 注入；此处仅留类型与缺省，
+    # 真正的取值以配置文件为准。具体语义见 log_analysis.yml 顶部注释。
     # 判定某行是否为报错的子串标记。
     error_markers: tuple[str, ...] = ("ERROR",)
     # 命中 error_markers 但实为良性噪声（启动瞬断 / 战斗复检 / 关机收尾等）的子串，
@@ -110,6 +139,25 @@ class BaseLogParser:
     daily_success_marker: tuple[str, ...] = ()
     # 正常退出的判定标记（进程是否收尾，与结果成败正交）；命中任一即视为正常退出。
     exit_markers: tuple[str, ...] = ()
+    # parse_content 成功 / 失败判定词（success 命中即 SUCCESS；部分游戏还有 fail 排除词）。
+    # 默认空，由配置注入；各 Parser 的 parse_content 读取之。
+    success_markers: tuple[str, ...] = ()
+    fail_markers: tuple[str, ...] = ()
+
+    def __init__(self) -> None:
+        self._apply_keywords()
+
+    def _apply_keywords(self) -> None:
+        """从 config/log_analysis.yml 注入本脚本的判定关键词；缺失字段以空值兜底。"""
+        kw = _keywords_for(self.script_name)
+        self.log_pattern = kw.get("log_pattern", "")
+        self.stamina_pattern = kw.get("stamina_pattern", "")
+        self.error_markers = tuple(kw.get("error_markers", ()))
+        self.error_noise = tuple(kw.get("error_noise", ()))
+        self.daily_success_marker = tuple(kw.get("daily_success_marker", ()))
+        self.exit_markers = tuple(kw.get("exit_markers", ()))
+        self.success_markers = tuple(kw.get("success_markers", ()))
+        self.fail_markers = tuple(kw.get("fail_markers", ()))
 
     def get_log_path(self, script_path: str) -> Path | None:
         log_dir = self._get_log_dir(script_path)
@@ -228,90 +276,38 @@ class BaseLogParser:
 
 class OkWwLogParser(BaseLogParser):
     script_name = "ok-ww"
-    # 仅取剩余体力数字（current_stamina），不记录总体力 / 储备。
-    stamina_pattern = r"info_set current_stamina (\d+)"
-    # 启动瞬断 / 战斗复检 / 关机收尾产生的 ERROR 属良性噪声，不计入报错。
-    error_markers = ("ERROR",)
-    error_noise = (
-        "target_enemy failed",  # 战斗复检，可自行恢复
-        "combat check not in combat",  # 同上
-        "Failed to terminate process",  # 关机收尾
-        "Game window is not connected",  # 启动瞬断
-        "waiting for game to start error",  # 启动瞬断
-        "capture_by_bitblt invalid params",  # 启动瞬断（hwnd=0）
-    )
-    log_pattern = "ok-script.log"
-    # 当日每日做完标记：ok-ww 新版（v3.6.x）废弃了旧版「Daily Task Completed」，
-    # 改为领奖行「claim daily reward via  coordinate」（coordinate 前双空格，严格匹配）
-    # 或以每日进度满分「current daily progress 180」兜底（文案变更时仍可靠）。命中任一即视为做完。
-    daily_success_marker = (
-        "claim daily reward via  coordinate",
-        "current daily progress 180",
-    )
-    # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
-    exit_markers = (
-        "Successfully Executed Task, Exiting Game and App!",
-        "ok:quit app",
-        "Window closed",
-    )
 
     def _get_log_dir(self, script_path: str) -> Path:
         ok_ww_dir = Path(script_path).parent
         return ok_ww_dir / "data" / "apps" / "ok-ww" / "working" / "logs"
 
     def parse_content(self, content: str) -> str:
-        if "Successfully Executed Task" in content or "Task completed" in content:
+        if any(m in content for m in self.success_markers):
             return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
 
 
 class OkNteLogParser(BaseLogParser):
     script_name = "ok-nte"
-    # 仅取剩余体力数字（当前体力），不记录其它。
-    stamina_pattern = r"info_set 当前体力 (\d+)"
-    # 战斗复检 / 关机收尾产生的 ERROR 属良性噪声，不计入报错。
-    error_markers = ("ERROR",)
-    error_noise = (
-        "target_enemy failed",  # 战斗复检，可自行恢复
-        "Failed to terminate process",  # 关机收尾
-    )
-    log_pattern = "ok-script.log"
-    # 以「info_set failed []」（无失败项）为当日做完的成功标记；
-    # 未命中（含部分失败 / 未执行日常）一律视为未完成。
-    daily_success_marker = ("info_set failed []",)
-    # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
-    exit_markers = (
-        "Successfully Executed Task, Exiting Game and App!",
-        "ok:quit app",
-    )
 
     def _get_log_dir(self, script_path: str) -> Path:
         ok_nte_dir = Path(script_path).parent
         return ok_nte_dir / "data" / "apps" / "ok-nte" / "working" / "logs"
 
     def parse_content(self, content: str) -> str:
-        if "Successfully Executed Task" in content or "Task completed" in content:
+        if any(m in content for m in self.success_markers):
             return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
 
 
 class OkEfLogParser(BaseLogParser):
     script_name = "ok-ef"
-    log_pattern = "日常任务_*.txt"
-    # 命中「执行状态: 完成」即视为当日做完；部分失败 / 异常结束 / 未提及均视为未完成。
-    daily_success_marker = ("执行状态: 完成",)
-    # 日志为结构化汇总报告：无体力数字；报错以「- 」缩进明细行列出。
-    # 不设 stamina_pattern（为空），故 parse_stamina 返回 None。
-    # 正常退出 = 进程跑完整轮自行收尾（完成 / 部分失败皆属此类）；
-    # 异常结束 / 运行中（被杀 / 崩溃）属非正常退出。exit_markers 只看进程是否正常退出，
-    # 与结果成败正交——部分失败是「正常退出 + 结果失败」，仍算正常退出。
-    exit_markers = ("执行状态: 完成", "执行状态: 部分失败")
 
     def _get_log_dir(self, script_path: str) -> Path:
         return Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
 
     def parse_content(self, content: str) -> str:
-        if "执行状态: 完成" in content:
+        if any(m in content for m in self.success_markers):
             return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
 
@@ -329,17 +325,6 @@ class OkEfLogParser(BaseLogParser):
 
 class M7ALogParser(BaseLogParser):
     script_name = "March7th-Assistant"  # 由 script_path(含空格) 的 get_script_name 推导
-    # 仅取剩余开拓力数字，不记录总体力。
-    stamina_pattern = r"开拓力[：:]\s*(\d+)/(\d+)"
-    error_markers = ("ERROR",)
-    log_pattern = "*.log"
-    # 命中「每日实训已完成」或「每日实训奖励完成」任一即视为当日做完；
-    # 两版本均稳定出现，互为兜底，未命中（含未执行日常）一律视为未完成。
-    daily_success_marker = ("每日实训已完成", "每日实训奖励完成")
-    # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
-    # 不同 M7A 版本终止横幅措辞不一——旧版用「停止运行」、新版用「游戏终止」，
-    # 两者皆纳入，避免某版本缺失「游戏终止」时被误判为未正常结束。
-    exit_markers = ("游戏终止", "停止运行")
 
     def _term_index(self, content: str) -> int:
         """返回最后一个终止横幅的位置；候选皆无则返回 -1。
@@ -368,7 +353,8 @@ class M7ALogParser(BaseLogParser):
             # 没有任何终止横幅：游戏未正常结束（很可能超时 / 被强杀），判失败。
             return ScriptLogStatus.FAILED
         body = content[:term_idx]
-        if body.count("ERROR") <= 1:
+        # 终止横幅之前每出现一个 error_markers 计一次；阈值沿用原判定（<=1 即成功）。
+        if sum(body.count(m) for m in self.error_markers) <= 1:
             return ScriptLogStatus.SUCCESS
         return ScriptLogStatus.FAILED
 
@@ -382,59 +368,32 @@ class M7ALogParser(BaseLogParser):
 
 class ZZZLogParser(BaseLogParser):
     script_name = "OneDragon-Launcher"
-    # 仅取剩余电量数字，不记录储蓄电量 / 以太电池。
-    stamina_pattern = r"剩余电量 (\d+) 储蓄电量 (\d+) 以太电池 (\d+)"
-    error_markers = ("[ERROR]",)
-    # 仅「指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界」这一具体重试瞬时错误
-    # 计入会误报 WARN（整轮仍以「一条龙 执行成功」收尾），故精确排除该噪声行。
-    error_noise = ("指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界",)
-    log_pattern = "log.txt"
-    # 命中「一条龙 / 应用组 one_dragon 执行成功」任一即视为当日做完；
-    # 未命中（含执行失败）视为未完成。
-    daily_success_marker = (
-        "指令[ 一条龙 ] 执行成功",
-        "指令[ 执行应用组 one_dragon ] 执行成功",
-    )
-    # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
-    exit_markers = ("返回状态 全部结束", "关闭游戏成功")
 
     def _get_log_dir(self, script_path: str) -> Path:
         zzz_dir = Path(script_path).parent
         return zzz_dir / ".log"
 
     def parse_content(self, content: str) -> str:
-        if (
-            "指令[ 一条龙 ] 执行成功" in content
-            or "指令[ 执行应用组 one_dragon ] 执行成功" in content
-        ):
+        if any(m in content for m in self.success_markers):
             return ScriptLogStatus.SUCCESS
-        if "[ERROR]" in content:
+        if any(m in content for m in self.error_markers):
             return ScriptLogStatus.FAILED
         return ScriptLogStatus.FAILED
 
 
 class BGILogParser(BaseLogParser):
     script_name = "BetterGI"
-    # 仅取原粹树脂（剩余体力）数字，不记录浓缩树脂。
-    stamina_pattern = r"原粹树脂：(\d+)，浓缩树脂：(\d+)"
-    # 仅把显式报错标记纳入：用「异常:」(带冒号) 排除游戏内正常术语「地脉异常」等。
-    error_markers = ("[ERR]", "异常:", "异常：")
-    log_pattern = "better-genshin-impact*.log"
-    # 命中「今日奖励已领取」即视为当日做完；未领取 / 未提及均视为未完成。
-    daily_success_marker = ("今日奖励已领取",)
-    # 进程正常退出的收尾标记（与结果成败正交）：命中任一即视为正常退出。
-    exit_markers = ("一条龙和配置组任务结束", "主窗体退出", "游戏已退出")
 
     def _get_log_dir(self, script_path: str) -> Path:
         bgi_dir = Path(script_path).parent
         return bgi_dir / "log"
 
     def parse_content(self, content: str) -> str:
-        if "一条龙和配置组任务结束" in content:
-            if "未领取" in content:
+        if any(m in content for m in self.success_markers):
+            if any(f in content for f in self.fail_markers):
                 return ScriptLogStatus.FAILED
             return ScriptLogStatus.SUCCESS
-        if "[ERR]" in content or "异常" in content:
+        if any(m in content for m in self.error_markers):
             return ScriptLogStatus.FAILED
         return ScriptLogStatus.FAILED
 
