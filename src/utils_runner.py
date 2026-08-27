@@ -71,18 +71,21 @@ def _normalize_process_names(value) -> list[str]:
 
 
 def _process_name_equals(left: str | None, right: str | None) -> bool:
-    """判断两个进程名是否相等，Windows 下按不区分大小写处理。
+    """判断两个进程名是否相等，按不区分大小写处理。
+
+    配置里写的进程名与运行期实际进程名大小写可能不一致（如 ``Game.exe`` vs
+    ``game.exe``），故比较始终忽略大小写；跨平台一致（Windows 进程名本就不区分
+    大小写，Linux 下则作为健壮性处理）。``.exe`` 后缀补全是 Windows 专属，仍由
+    :func:`_normalize_process_name` 单独处理。
 
     对齐 runner script_chainer.utils.process_name_utils.process_name_equals。
     """
     if left is None or right is None:
         return left == right
-    if sys.platform == "win32":
-        return (
-            _normalize_process_name(left).lower()
-            == _normalize_process_name(right).lower()
-        )
-    return _normalize_process_name(left) == _normalize_process_name(right)
+    return (
+        _normalize_process_name(left).lower()
+        == _normalize_process_name(right).lower()
+    )
 
 
 def _collect_process_names(script: dict) -> list[str]:
@@ -91,7 +94,7 @@ def _collect_process_names(script: dict) -> list[str]:
     - 脚本自身进程：``script_process_name`` 显式配置，或 ``script_path`` 文件名
       （直接 exe 形态；.py 形态下文件名不会匹配 ``python.exe``，安全 no-op）；
     - 对应游戏进程：``game_process_name`` 显式配置。
-    结果按 Windows 不区分大小写去重；无任何配置项时返回空列表。
+    结果按不区分大小写去重（配置名与进程名大小写可能不一致）；无任何配置项时返回空列表。
     """
     names: list[str] = []
     names += _normalize_process_names(script.get("script_process_name", ""))
@@ -102,7 +105,7 @@ def _collect_process_names(script: dict) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
     for name in names:
-        key = name.lower() if sys.platform == "win32" else name
+        key = name.lower()
         if key not in seen:
             seen.add(key)
             out.append(name)
