@@ -26,7 +26,13 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CANDIDATES = [
     os.environ.get("ODH_RUNNER_EXE"),
     os.path.join(PROJECT_ROOT, "deploy", "dist_opt", "OneDragon-Helper-Runner.exe"),
-    os.path.join(PROJECT_ROOT, "deploy", "dist", "OneDragon-Helper", "OneDragon-Helper-Runner.exe"),
+    os.path.join(
+        PROJECT_ROOT,
+        "deploy",
+        "dist",
+        "OneDragon-Helper",
+        "OneDragon-Helper-Runner.exe",
+    ),
     os.path.join(PROJECT_ROOT, "deploy", "dist_new", "OneDragon-Helper-Runner.exe"),
     os.path.join(
         PROJECT_ROOT,
