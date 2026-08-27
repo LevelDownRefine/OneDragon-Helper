@@ -851,7 +851,11 @@ class TestFourFieldExtraction(unittest.TestCase):
         # （属 success_markers / 整体成败判定）区分：仅一条龙成功、无领取标记
         # 不算当日做完，避免把未实际领取当成已完成。
         p = ZZZLogParser()
-        self.assertTrue(p.parse_daily("指令[ 执行应用组 one_dragon ] 执行成功\n[INFO]: 日常奖励领取成功"))
+        self.assertTrue(
+            p.parse_daily(
+                "指令[ 执行应用组 one_dragon ] 执行成功\n[INFO]: 日常奖励领取成功"
+            )
+        )
         self.assertFalse(p.parse_daily("指令[ 一条龙 ] 执行成功 返回状态 全部结束"))
 
     def test_bgi_stamina_daily_exit_errors(self):
