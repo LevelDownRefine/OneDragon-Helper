@@ -1045,6 +1045,7 @@ class NTEConfig(ScriptConfig):
         "异能升级材料": "异能材料序号",
         "空幕": "空幕序号",
         "弧盘突破材料": "弧盘材料序号",
+        "经验与甲硬币": "具体奖励目标",
     }
 
     # 日常两种互斥模式：键 = 互斥 routine item id = DailyRoutineTaskConfigs.json 段名。
