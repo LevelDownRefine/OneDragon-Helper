@@ -83,8 +83,7 @@ def _process_name_equals(left: str | None, right: str | None) -> bool:
     if left is None or right is None:
         return left == right
     return (
-        _normalize_process_name(left).lower()
-        == _normalize_process_name(right).lower()
+        _normalize_process_name(left).lower() == _normalize_process_name(right).lower()
     )
 
 
