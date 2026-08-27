@@ -817,6 +817,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         content = (
             "[charge_plan_app.py 141] [INFO]: 剩余电量 119 储蓄电量 888 以太电池 44\n"
             "指令[ 一条龙 ] 执行成功 返回状态 全部结束\n"
+            "[operation.py 678] [INFO]: 日常奖励领取成功\n"
             "[operation.py 677] [ERROR]: 指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界\n"
             "[operation.py 677] [ERROR]: 指令[ 快捷手册 选择副本类型 代理人方案培养 ] 执行失败 返回状态 找不到 代理人方案培养\n"
         )
@@ -844,6 +845,14 @@ class TestFourFieldExtraction(unittest.TestCase):
         p = ZZZLogParser()
         self.assertFalse(p.parse_daily("指令[ 一条龙 ] 执行失败 返回状态 xxx"))
         self.assertFalse(p.parse_daily("启动但啥也没发生"))
+
+    def test_zzz_daily_true_only_on_reward_claimed(self):
+        # ZZZ「领取每日」标志为「日常奖励领取成功」，与整轮「一条龙 执行成功」
+        # （属 success_markers / 整体成败判定）区分：仅一条龙成功、无领取标记
+        # 不算当日做完，避免把未实际领取当成已完成。
+        p = ZZZLogParser()
+        self.assertTrue(p.parse_daily("指令[ 执行应用组 one_dragon ] 执行成功\n[INFO]: 日常奖励领取成功"))
+        self.assertFalse(p.parse_daily("指令[ 一条龙 ] 执行成功 返回状态 全部结束"))
 
     def test_bgi_stamina_daily_exit_errors(self):
         p = BGILogParser()
