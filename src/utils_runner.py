@@ -7,6 +7,7 @@
 无 Qt 的纯逻辑，被 GUI 与 service 多处直接引用，收拢到 src 顶层便于共用。
 """
 
+import contextlib
 import ctypes
 import logging
 import os
@@ -15,6 +16,8 @@ import subprocess
 import sys
 import time
 from pathlib import PureWindowsPath
+
+import psutil
 
 from src.config.subscript import resolve_script_path
 from src.utils import get_root_dir
@@ -80,6 +83,68 @@ def _process_name_equals(left: str | None, right: str | None) -> bool:
             == _normalize_process_name(right).lower()
         )
     return _normalize_process_name(left) == _normalize_process_name(right)
+
+
+def _collect_process_names(script: dict) -> list[str]:
+    """汇总某脚本需要关闭的进程名：脚本自身进程 + 对应游戏进程。
+
+    - 脚本自身进程：``script_process_name`` 显式配置，或 ``script_path`` 文件名
+      （直接 exe 形态；.py 形态下文件名不会匹配 ``python.exe``，安全 no-op）；
+    - 对应游戏进程：``game_process_name`` 显式配置。
+    结果按 Windows 不区分大小写去重；无任何配置项时返回空列表。
+    """
+    names: list[str] = []
+    names += _normalize_process_names(script.get("script_process_name", ""))
+    script_path = script.get("script_path") or ""
+    if script_path:
+        names.append(PureWindowsPath(script_path).name)
+    names += _normalize_process_names(script.get("game_process_name", ""))
+    seen: set[str] = set()
+    out: list[str] = []
+    for name in names:
+        key = name.lower() if sys.platform == "win32" else name
+        if key not in seen:
+            seen.add(key)
+            out.append(name)
+    return out
+
+
+def kill_processes_by_names(names: list[str] | str | None) -> int:
+    """优雅终止所有进程名匹配（不区分大小写，Windows 补 .exe）的进程。
+
+    用于运行前清理残留的脚本/游戏进程：先 ``terminate`` 再等待，超时则 ``kill``。
+    无匹配、进程已退出或无权访问时安全跳过，不影响其他进程。
+
+    Args:
+        names: 进程名或进程名列表；空/None 直接返回 0。
+
+    Returns:
+        实际被终止的进程数。
+    """
+    targets = _normalize_process_names(names)
+    if not targets:
+        return 0
+    killed = 0
+    for proc in psutil.process_iter(["pid", "name"]):
+        try:
+            proc_name = proc.name()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        if not any(_process_name_equals(proc_name, t) for t in targets):
+            continue
+        try:
+            proc.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        try:
+            proc.wait(timeout=3)
+        except psutil.TimeoutExpired:
+            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                proc.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        killed += 1
+    return killed
 
 
 def script_invalid_message(script: dict) -> str | None:
