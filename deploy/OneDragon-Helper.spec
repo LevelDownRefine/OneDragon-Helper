@@ -52,6 +52,11 @@ excludes = [
     'tkinter', 'unittest', 'doctest', 'pydoc', 'lib2to3',
     'curses', 'ensurepip', 'distutils', 'venv', 'idlelib',
     'turtledemo', 'test', 'pty', 'tty', 'wsgiref',
+    # WebEngine（Chromium 内核，~149M）从未被本项目使用，纯属 PyInstaller 默认收集。
+    # 排除 Python 模块名 + 下方手动过滤 Qt DLL 双保险。若未来引入 QWebEngineView 需移除此处。
+    'PySide6.QtWebEngineCore',
+    'PySide6.QtWebEngineQuick',
+    'PySide6.QtWebEngineQuickDelegatesQml',
 ]
 
 # config/ 和 assets/ 不打入 _internal/，由 build.bat 后处理拷贝到 exe 同级目录，
@@ -71,6 +76,17 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+
+# --- 排除 WebEngine 相关二进制（双保险）---
+# PyInstaller 会扫描整个 Qt 安装目录并收集所有 Qt DLL（不依赖 Python import），
+# 仅靠上方 excludes 模块名不足以剔除 Qt6WebEngineCore.dll（~148M）。本项目从未使用
+# WebEngine，在此手动过滤 a.binaries / a.datas 中路径含 'WebEngine' 的条目。
+_WE_FILTER = ('WebEngine',)
+for _attr in ('binaries', 'datas'):
+    _seq = getattr(a, _attr)
+    _filtered = [x for x in _seq if not any(k in x[0] for k in _WE_FILTER)]
+    setattr(a, _attr, _filtered)
+
 pyz = PYZ(a.pure)
 
 exe = EXE(

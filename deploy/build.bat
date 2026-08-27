@@ -52,6 +52,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM onefile 构建在 dist/ 顶层生成的 Runner 已拷入 GUI 目录，删除顶层冗余残留，
+REM 避免发布包重复携带（节省 ~21M）。Runner 真实位置：<GUI_DIR>\OneDragon-Helper-Runner.exe
+if exist "%RUNNER_EXE%" del /Q "%RUNNER_EXE%"
+
 echo.
 echo [4/5] 拷贝 config 模板、assets 到 exe 同级目录...
 set "SRC_CONFIG=%~dp0..\config"
