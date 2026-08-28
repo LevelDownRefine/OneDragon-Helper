@@ -450,11 +450,13 @@ class _FakeProc:
         self.info = {"pid": self.pid, "ppid": self.ppid}
         self.terminated = False
         self.killed = False
+        self.cmdline_calls = 0
 
     def name(self):
         return self._name
 
     def cmdline(self):
+        self.cmdline_calls += 1
         return self._cmdline
 
     def terminate(self):
@@ -548,6 +550,32 @@ class TestKillProcesses(unittest.TestCase):
             killed = kill_processes([ProcessTarget(name="game.exe")])
         self.assertEqual(killed, [f"game.exe({target.pid})"])
         self.assertTrue(target.killed)
+
+    def test_cmdline_fetched_once_per_process(self):
+        # cmdline() 约 5.9ms/进程，是唯一昂贵调用：每条匹配条件各取一次会让开销
+        # 随条件数线性增长（8 条 cmdline 条件 × 349 进程 ≈ 16s）。
+        worker = _FakeProc("pythonw.exe", cmdline=[r"D:\ok\main.py"])
+        with (
+            self._patch_iter([worker]),
+            self._patch_wait([worker], []),
+        ):
+            kill_processes([ProcessTarget(cmdline_contains=r"D:\ok")] * 3)
+        self.assertEqual(worker.cmdline_calls, 1)
+
+    def test_cmdline_skipped_when_name_matches(self):
+        # name 型条件命中即短路，不再付出 cmdline 的系统调用成本。
+        target = _FakeProc("game.exe", cmdline=[r"D:\x\y"])
+        with (
+            self._patch_iter([target]),
+            self._patch_wait([target], []),
+        ):
+            kill_processes(
+                [
+                    ProcessTarget(name="game.exe"),
+                    ProcessTarget(cmdline_contains=r"D:\x"),
+                ]
+            )
+        self.assertEqual(target.cmdline_calls, 0)
 
     def test_scan_count_independent_of_match_count(self):
         # 全系统遍历固定 2 次（匹配 1 + 建树 1），与命中进程数无关——
