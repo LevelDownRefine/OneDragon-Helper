@@ -8,6 +8,7 @@ import unittest
 from unittest import mock
 
 from src.service.scheduled_run import ScheduledRun, build_pre_run_pipeline
+from src.utils_runner import ProcessTarget
 
 
 class TestPreRunWaitLogs(unittest.TestCase):
@@ -91,7 +92,7 @@ class TestBuildPreRunClose(unittest.TestCase):
         )
         self.assertEqual(steps, [])
 
-    def test_step_kills_collected_names(self):
+    def test_step_kills_collected_targets(self):
         scripts = [
             {
                 "display_name": "A",
@@ -99,17 +100,19 @@ class TestBuildPreRunClose(unittest.TestCase):
                 "game_process_name": "AGame.exe",
             },
         ]
-        with mock.patch("src.service.run_actions.kill_processes_by_names") as mock_kill:
+        with mock.patch("src.service.run_actions.kill_processes") as mock_kill:
             steps = build_pre_run_pipeline(
                 target_time="now", scripts=scripts, close_running=True
             )
             self.assertEqual(len(steps), 1)
             steps[0]()  # 执行 step
-        mock_kill.assert_called_once_with(["ABot.exe", "AGame.exe"])
+        mock_kill.assert_called_once_with(
+            [ProcessTarget(name="ABot.exe"), ProcessTarget(name="AGame.exe")]
+        )
 
     def test_no_names_script_skips_kill(self):
         scripts = [{"display_name": "A"}]
-        with mock.patch("src.service.run_actions.kill_processes_by_names") as mock_kill:
+        with mock.patch("src.service.run_actions.kill_processes") as mock_kill:
             steps = build_pre_run_pipeline(
                 target_time="now", scripts=scripts, close_running=True
             )
@@ -119,7 +122,7 @@ class TestBuildPreRunClose(unittest.TestCase):
     def test_close_running_false_excludes_close_step(self):
         # close_running=False：即便给了 enabled_scripts 也不产生关闭 step。
         scripts = [{"display_name": "A", "script_process_name": "ABot.exe"}]
-        with mock.patch("src.service.run_actions.kill_processes_by_names") as mock_kill:
+        with mock.patch("src.service.run_actions.kill_processes") as mock_kill:
             steps = build_pre_run_pipeline(
                 target_time="now", scripts=scripts, close_running=False
             )
@@ -139,7 +142,7 @@ class TestPreRunOrder(unittest.TestCase):
                 "src.service.scheduled_run.mute_on", lambda: calls.append("mute")
             ),
             mock.patch(
-                "src.service.run_actions.kill_processes_by_names",
+                "src.service.run_actions.kill_processes",
                 lambda names: calls.append("kill"),
             ),
             mock.patch(
@@ -169,7 +172,7 @@ class TestPreRunOrder(unittest.TestCase):
         calls: list[str] = []
         with (
             mock.patch(
-                "src.service.run_actions.kill_processes_by_names",
+                "src.service.run_actions.kill_processes",
                 lambda names: calls.append("kill"),
             ),
             mock.patch(

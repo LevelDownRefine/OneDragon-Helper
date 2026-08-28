@@ -15,7 +15,7 @@ from src.config.set_config import set_config
 from src.log.monitor import parse_logs
 from src.log.notify_mail import send_mail
 from src.service.chain_gen import _resolve_weekly_start
-from src.utils_runner import _collect_process_names, kill_processes_by_names
+from src.utils_runner import _collect_process_targets, kill_processes
 from src.utils_weekly import next_target_datetime
 
 logger = logging.getLogger(__name__)
@@ -40,17 +40,19 @@ def wait_until_target(target_time: str) -> None:
 
 
 def close_running_scripts(scripts: list[dict]) -> None:
-    """关闭各脚本残留的脚本自身进程与对应游戏进程（优雅终止）。
-    传入 config 的全量脚本（不按本次启用集合过滤）
+    """关闭各脚本残留的脚本进程、启动器真身与对应游戏进程（优雅终止 + 子进程树）。
+
+    传入 config 的全量脚本（不按本次启用集合过滤）：残留多为「昨天跑、今天不跑」的
+    脚本遗留，按启用集合过滤恰好抓不住这类。
 
     Args:
-        scripts: 脚本配置 dict 列表；无进程名配置的脚本跳过。
+        scripts: 脚本配置 dict 列表；无匹配条件的脚本跳过。
     """
     for script in scripts:
-        names = _collect_process_names(script)
-        if not names:
+        targets = _collect_process_targets(script)
+        if not targets:
             continue
-        killed = kill_processes_by_names(names)
+        killed = kill_processes(targets)
         if killed:
             logger.info(
                 "[chain] 已关闭 %s 的残留进程 %d 个",
