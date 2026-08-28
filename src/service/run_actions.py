@@ -39,13 +39,14 @@ def wait_until_target(target_time: str) -> None:
     logger.info("[chain] 已到达目标时刻 %s，开始运行", target_time)
 
 
-def close_running_scripts(enabled_scripts: list[dict]) -> None:
+def close_running_scripts(scripts: list[dict]) -> None:
     """关闭各脚本残留的脚本自身进程与对应游戏进程（优雅终止）。
+    传入 config 的全量脚本（不按本次启用集合过滤）
 
     Args:
-        enabled_scripts: 纳入链的脚本配置 dict 列表；无进程名配置的脚本跳过。
+        scripts: 脚本配置 dict 列表；无进程名配置的脚本跳过。
     """
-    for script in enabled_scripts:
+    for script in scripts:
         names = _collect_process_names(script)
         if not names:
             continue
