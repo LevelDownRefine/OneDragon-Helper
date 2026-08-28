@@ -156,6 +156,14 @@ ok-nte:
       value: 4
     - display: 戏剧
       value: 5
+  - name: "经验与甲硬币"        
+    sequences:
+      - display: "角色经验"
+        value: "角色经验"
+      - display: "弧盘经验"
+        value: "弧盘经验"
+      - display: "甲硬币"
+        value: "甲硬币"
   - name: 追猎目标
     sequences:
     - display: 音霸魔王
