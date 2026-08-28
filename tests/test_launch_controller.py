@@ -118,7 +118,14 @@ class TestConfirmRunDialog(unittest.TestCase):
         task_card.ui_state = {}
         service = mock.MagicMock()
         # script_list 留在 config；其余调度块归 schedule。
-        schedule_keys = {"shutdown", "timed_run", "mute", "rerun", "notify"}
+        schedule_keys = {
+            "shutdown",
+            "timed_run",
+            "mute",
+            "close_running",
+            "rerun",
+            "notify",
+        }
         service.load_config.return_value = {
             "script_list": config_data.get("script_list", [])
         }
@@ -162,6 +169,7 @@ class TestConfirmRunDialog(unittest.TestCase):
                 "timed_enabled": True,
                 "timed_target": "04:10",
                 "mute_enabled": True,
+                "close_running_enabled": True,
                 "rerun_enabled": True,
                 "notify_enabled": True,
             }
@@ -172,6 +180,7 @@ class TestConfirmRunDialog(unittest.TestCase):
         self.assertEqual(saved["shutdown"], {"after_run": True, "delay_seconds": 120})
         self.assertEqual(saved["timed_run"], {"enabled": True, "target_time": "04:10"})
         self.assertEqual(saved["mute"], {"enabled": True})
+        self.assertEqual(saved["close_running"], {"enabled": True})
         self.assertEqual(saved["rerun"], {"enabled": True})
         # 邮件通知：仅更新 enabled 开关，保留既有 email/password 凭据。
         self.assertEqual(saved["notify"], {"enabled": True})
@@ -193,6 +202,7 @@ class TestConfirmRunDialog(unittest.TestCase):
                 "timed_enabled": False,
                 "timed_target": "08:00",
                 "mute_enabled": False,
+                "close_running_enabled": False,
                 "rerun_enabled": False,
                 "notify_enabled": False,
             }
@@ -203,6 +213,7 @@ class TestConfirmRunDialog(unittest.TestCase):
         self.assertEqual(saved["shutdown"], {"after_run": False, "delay_seconds": 45})
         self.assertEqual(saved["timed_run"], {"enabled": False, "target_time": ""})
         self.assertEqual(saved["mute"], {"enabled": False})
+        self.assertEqual(saved["close_running"], {"enabled": False})
         self.assertEqual(saved["rerun"], {"enabled": False})
         self.assertEqual(saved["notify"], {"enabled": False})
 

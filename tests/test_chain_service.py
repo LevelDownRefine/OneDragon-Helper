@@ -247,9 +247,9 @@ class TestScheduleRun(unittest.TestCase):
 
     def _run(self, svc, target_time="08:00", **kwargs):
         with (
-            patch("src.service.scheduled_run.time.sleep") as mock_sleep,
+            patch("src.service.run_actions.time.sleep") as mock_sleep,
             patch(
-                "src.service.scheduled_run.next_target_datetime",
+                "src.service.run_actions.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch(
@@ -275,9 +275,9 @@ class TestScheduleRun(unittest.TestCase):
         """shutdown_delay 非 None 时透传给 build_post_run_pipeline（末位挂关机 step）。"""
         svc = self._make_service([{"display_name": "demo"}])
         with (
-            patch("src.service.scheduled_run.time.sleep"),
+            patch("src.service.run_actions.time.sleep"),
             patch(
-                "src.service.scheduled_run.next_target_datetime",
+                "src.service.run_actions.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch("src.service.chain_service.parse_logs", return_value={"rerun": []}),
@@ -293,9 +293,9 @@ class TestScheduleRun(unittest.TestCase):
         """mute=True：透传给 pre_run/post_run 工厂（由其挂静音/恢复 step），不再透传 run_chain_once。"""
         svc = self._make_service([{"display_name": "demo"}])
         with (
-            patch("src.service.scheduled_run.time.sleep"),
+            patch("src.service.run_actions.time.sleep"),
             patch(
-                "src.service.scheduled_run.next_target_datetime",
+                "src.service.run_actions.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch("src.service.chain_service.parse_logs", return_value={"rerun": []}),
@@ -304,7 +304,11 @@ class TestScheduleRun(unittest.TestCase):
             patch("src.service.scheduled_run.build_post_run_pipeline") as mock_post,
         ):
             svc.schedule_run({"demo"}, "08:00", mute=True)
-        mock_pre.assert_called_once_with(target_time="08:00", mute=True)
+        # mute 经 pre_run 工厂透传（由其挂静音 step），不再经 run_chain_once
+        self.assertTrue(mock_pre.called)
+        pre_kwargs = mock_pre.call_args.kwargs
+        self.assertEqual(pre_kwargs["target_time"], "08:00")
+        self.assertTrue(pre_kwargs["mute"])
         mock_post.assert_called_once_with(
             shutdown_delay=None, smtp_config=None, mute=True, enabled_keys={"demo"}
         )
@@ -316,9 +320,9 @@ class TestScheduleRun(unittest.TestCase):
         """target_time='now'（即时运行）跳过等待，直接点火运行。"""
         svc = self._make_service([{"display_name": "demo"}])
         with (
-            patch("src.service.scheduled_run.time.sleep") as mock_sleep,
+            patch("src.service.run_actions.time.sleep") as mock_sleep,
             patch(
-                "src.service.scheduled_run.next_target_datetime",
+                "src.service.run_actions.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch(
@@ -342,9 +346,9 @@ class TestScheduleRun(unittest.TestCase):
         svc = self._make_service([{"display_name": "demo"}])
         order = []
         with (
-            patch("src.service.scheduled_run.time.sleep"),
+            patch("src.service.run_actions.time.sleep"),
             patch(
-                "src.service.scheduled_run.next_target_datetime",
+                "src.service.run_actions.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch(
@@ -375,9 +379,9 @@ class TestScheduleRun(unittest.TestCase):
             return_value={"rerun": {"enabled": False}, "notify": {"enabled": False}}
         )
         with (
-            patch("src.service.scheduled_run.time.sleep"),
+            patch("src.service.run_actions.time.sleep"),
             patch(
-                "src.service.scheduled_run.next_target_datetime",
+                "src.service.run_actions.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch("src.service.chain_service._run_chain_once_impl") as rerun,
@@ -404,9 +408,9 @@ class TestScheduleRun(unittest.TestCase):
             return []
 
         with (
-            patch("src.service.scheduled_run.time.sleep"),
+            patch("src.service.run_actions.time.sleep"),
             patch(
-                "src.service.scheduled_run.next_target_datetime",
+                "src.service.run_actions.next_target_datetime",
                 return_value=datetime(2030, 1, 1, 8, 0),
             ),
             patch(
@@ -438,10 +442,10 @@ class TestBuildPostRunPipeline(unittest.TestCase):
         """构建并执行 pipeline，返回各 mock。rerun/notify 控制 parse_logs 产物。"""
         with (
             patch(
-                "src.service.scheduled_run.parse_logs",
+                "src.service.run_actions.parse_logs",
                 return_value=self._result(rerun=rerun, notify=notify),
             ) as parse,
-            patch("src.service.scheduled_run.send_mail") as mail,
+            patch("src.service.run_actions.send_mail") as mail,
             patch("src.service.scheduled_run.shutdown_sys") as shutdown,
         ):
             steps = build_post_run_pipeline(**kwargs)
