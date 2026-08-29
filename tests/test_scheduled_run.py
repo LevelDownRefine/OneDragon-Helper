@@ -7,8 +7,23 @@
 import unittest
 from unittest import mock
 
-from src.service.scheduled_run import ScheduledRun, build_pre_run_pipeline
+from src.service.scheduled_run import (
+    ScheduledRun,
+    build_post_run_pipeline,
+    build_pre_run_pipeline,
+)
 from src.utils_runner import ProcessTarget
+from tests.process_sim import ProcessSim
+
+
+def _make_service(script_list=None, *, schedule=None):
+    """构造 ScheduledRun 用的 service 桩：只提供编排读取的几个入口。"""
+    svc = mock.MagicMock()
+    svc.load_config.return_value = {"script_list": script_list or []}
+    default = {"rerun": {"enabled": False}, "notify": {"enabled": False}}
+    svc.load_schedule.return_value = default if schedule is None else schedule
+    svc.get_weekly_start_map.return_value = {}
+    return svc
 
 
 class TestPreRunWaitLogs(unittest.TestCase):
@@ -83,6 +98,91 @@ class TestBuildPreRunWriteConfig(unittest.TestCase):
         mock_set.assert_not_called()
 
 
+class TestCloseRunningScenario(unittest.TestCase):
+    """运行前清场的真实场景：多个脚本，每个脚本各启动了自己的游戏。
+
+    进程表按真机残留形态模拟（详见 tests/process_sim.py）：每个脚本一个启动器真身
+    （多脚本共用 pythonw.exe，只能靠命令行里的安装根目录认出）+ 一个由它启动的
+    游戏；另有两个无关进程（未纳入 config 的同名解释器、系统进程）不得误伤。
+
+    跑的是 pre_run 产出的 step 本身，故「按配置收集条件 → 扫描 → 终止」整条链
+    都在内，而非只断言传给 kill_processes 的参数。
+    """
+
+    KEYS = ("ok-ww", "ok-ef", "BetterGI")
+
+    def _scenario(self, **kwargs):
+        """造 3 脚本场景，返回 (sim, 未纳入 config 的解释器进程, 系统进程)。"""
+        sim = ProcessSim()
+        for key in self.KEYS:
+            sim.add_script(key, **kwargs)
+        foreign = sim.add_other(
+            "pythonw.exe", [r"D:\OtherTool\pythonw.exe", r"D:\OtherTool\main.py"]
+        )
+        system = sim.add_other("explorer.exe")
+        return sim, foreign, system
+
+    @staticmethod
+    def _run_pre_run(sim: ProcessSim) -> None:
+        """执行 pre_run 的关闭 step（now + 无启用集合 → 只产出这一个 step）。"""
+        steps = build_pre_run_pipeline(
+            target_time="now", scripts=sim.scripts, close_running=True
+        )
+        assert len(steps) == 1, f"预期只有关闭 step，实际 {len(steps)} 个"
+        steps[0]()
+
+    def test_each_script_body_and_game_killed(self):
+        """每个脚本的真身与它启动的游戏都被关掉。"""
+        sim, _, _ = self._scenario()
+        with sim.install():
+            self._run_pre_run(sim)
+        for key in self.KEYS:
+            self.assertTrue(sim.bodies[key].terminated, f"{key} 真身未被关")
+            self.assertTrue(sim.games[key].terminated, f"{key} 游戏未被关")
+
+    def test_unrelated_processes_survive(self):
+        """无关进程不得误杀：同名的 pythonw.exe 靠安装根目录区分。"""
+        sim, foreign, system = self._scenario()
+        with sim.install():
+            self._run_pre_run(sim)
+        self.assertFalse(foreign.terminated, "未纳入 config 的脚本被误杀")
+        self.assertFalse(system.terminated, "系统进程被误杀")
+
+    def test_orphan_game_killed_by_name(self):
+        """脚本已退出、游戏成孤儿：没有父进程可连带，仍按进程名命中。"""
+        sim, _, _ = self._scenario(orphan_game=True)
+        with sim.install():
+            self._run_pre_run(sim)
+        for key in self.KEYS:
+            self.assertTrue(sim.games[key].terminated, f"{key} 孤儿游戏未被关")
+
+    def test_body_child_killed_with_tree(self):
+        """真身拉起的、不匹配任何条件的子进程随进程树一并清掉。"""
+        sim, _, _ = self._scenario()
+        helper = sim.add_other("helper.exe", parent=sim.bodies["ok-ww"])
+        with sim.install():
+            self._run_pre_run(sim)
+        self.assertTrue(helper.terminated)
+
+    def test_shared_game_killed_once(self):
+        """两脚本配同一游戏（真机 ok-ef 与 MAS 同为 Endfield.exe）：只关一次。
+
+        两脚本各贡献一条同名条件，但同一游戏只有一个进程；日志里该进程只应出现
+        一次——按 pid 去重，而非按条件数重复终止。
+        """
+        sim = ProcessSim()
+        for key in ("ok-ef", "MAS"):
+            sim.add_script(key, game_name="Endfield.exe")
+        with (
+            self.assertLogs("src.service.run_actions", level="INFO") as cm,
+            sim.install(),
+        ):
+            self._run_pre_run(sim)
+        joined = "\n".join(cm.output)
+        self.assertIn("已关闭残留进程 3 个", joined)  # 2 真身 + 1 共用游戏
+        self.assertEqual(joined.count("Endfield.exe"), 1)
+
+
 class TestBuildPreRunClose(unittest.TestCase):
     """build_pre_run_pipeline 的关闭残留进程 step（受 close_running 控制）。"""
 
@@ -91,24 +191,6 @@ class TestBuildPreRunClose(unittest.TestCase):
             target_time="now", scripts=[], close_running=True
         )
         self.assertEqual(steps, [])
-
-    def test_step_kills_collected_targets(self):
-        scripts = [
-            {
-                "display_name": "A",
-                "script_process_name": "ABot.exe",
-                "game_process_name": "AGame.exe",
-            },
-        ]
-        with mock.patch("src.service.run_actions.kill_processes") as mock_kill:
-            steps = build_pre_run_pipeline(
-                target_time="now", scripts=scripts, close_running=True
-            )
-            self.assertEqual(len(steps), 1)
-            steps[0]()  # 执行 step
-        mock_kill.assert_called_once_with(
-            [ProcessTarget(name="ABot.exe"), ProcessTarget(name="AGame.exe")]
-        )
 
     def test_multiple_scripts_merge_into_one_kill(self):
         # 每个脚本各扫一遍全系统是 8× 开销（实测 17s），故合并成一次调用。
@@ -213,21 +295,93 @@ class TestPreRunOrder(unittest.TestCase):
         self.assertEqual(calls, ["config"])
 
 
+class TestScheduledRunOrder(unittest.TestCase):
+    """ScheduledRun.run：pre_run → 核心编排 → post_run。"""
+
+    def test_pre_core_post_in_order(self):
+        calls: list[str] = []
+        svc = _make_service([{"display_name": "A"}])
+        with mock.patch.object(
+            ScheduledRun, "_run_core", lambda self: calls.append("core")
+        ):
+            sched = ScheduledRun(svc, {"A"}, "now")
+            sched.pre_run = [lambda: calls.append("pre")]
+            sched.post_run = [lambda: calls.append("post")]
+            sched.run()
+        self.assertEqual(calls, ["pre", "core", "post"])
+
+
+class TestScheduledRunCore(unittest.TestCase):
+    """ScheduledRun._run_core：先跑链，再按 schedule.rerun.enabled 决定是否重跑。"""
+
+    def test_runs_chain_then_rerun_when_enabled(self):
+        svc = _make_service(
+            [{"display_name": "A"}],
+            schedule={"rerun": {"enabled": True}, "notify": {"enabled": False}},
+        )
+        ScheduledRun(svc, {"A"}, "now", chain_name="today")._run_core()
+        svc.run_chain_once.assert_called_once_with({"A"}, chain_name="today")
+        svc._rerun_round.assert_called_once()
+        kwargs = svc._rerun_round.call_args.kwargs
+        self.assertEqual(kwargs["enabled_keys"], {"A"})
+        self.assertIn("all_config", kwargs)
+
+    def test_rerun_skipped_when_disabled(self):
+        svc = _make_service(
+            [{"display_name": "A"}],
+            schedule={"rerun": {"enabled": False}, "notify": {"enabled": False}},
+        )
+        ScheduledRun(svc, {"A"}, "now")._run_core()
+        svc.run_chain_once.assert_called_once()
+        svc._rerun_round.assert_not_called()
+
+    def test_missing_rerun_block_asserts(self):
+        """schedule 缺 rerun.enabled 是契约错误：直接崩，不降级跳过。"""
+        svc = _make_service(
+            [{"display_name": "A"}], schedule={"notify": {"enabled": False}}
+        )
+        with self.assertRaises(AssertionError):
+            ScheduledRun(svc, {"A"}, "now")._run_core()
+
+
+class TestPostRunMuteRestore(unittest.TestCase):
+    """build_post_run_pipeline 的静音恢复 step：须在关机之前（关机后恢复无意义）。"""
+
+    def _run(self, **kwargs) -> list[str]:
+        """构建并执行 post_run，返回各 step 的调用记号。"""
+        calls: list[str] = []
+        with (
+            mock.patch(
+                "src.service.run_actions.parse_logs",
+                return_value={"rerun": [], "notify": [], "report": "", "entries": []},
+            ),
+            mock.patch(
+                "src.service.scheduled_run.mute_off", lambda: calls.append("mute_off")
+            ),
+            mock.patch(
+                "src.service.scheduled_run.shutdown_sys",
+                lambda delay: calls.append("shutdown"),
+            ),
+        ):
+            for step in build_post_run_pipeline(**kwargs):
+                step()
+        return calls
+
+    def test_mute_off_before_shutdown(self):
+        self.assertEqual(
+            self._run(shutdown_delay=60, mute=True, enabled_keys={"A"}),
+            ["mute_off", "shutdown"],
+        )
+
+    def test_mute_off_absent_when_not_muted(self):
+        self.assertEqual(self._run(shutdown_delay=60, enabled_keys={"A"}), ["shutdown"])
+
+
 class TestClosePassesAllConfigScripts(unittest.TestCase):
     """close 步骤拿到的是 config 全量脚本，不按本次启用集合过滤。
 
     回归：残留多为「昨天跑、今天不跑」的脚本遗留，按启用集合过滤恰好抓不住这类。
     """
-
-    def _make_service(self, script_list):
-        svc = mock.MagicMock()
-        svc.load_config.return_value = {"script_list": script_list}
-        svc.load_schedule.return_value = {
-            "rerun": {"enabled": False},
-            "notify": {"enabled": False},
-        }
-        svc.get_weekly_start_map.return_value = {}
-        return svc
 
     def test_all_scripts_passed_even_when_not_enabled(self):
         # A 在启用集合内、B 不在；两者（含 B）都应出现在 scripts 中。
@@ -235,7 +389,7 @@ class TestClosePassesAllConfigScripts(unittest.TestCase):
             {"display_name": "A", "script_path": "C:/a/run.py"},
             {"display_name": "B", "script_path": "C:/b/run.py"},
         ]
-        svc = self._make_service(all_scripts)
+        svc = _make_service(all_scripts)
         with mock.patch(
             "src.service.scheduled_run.build_pre_run_pipeline", return_value=[]
         ) as mock_build:
