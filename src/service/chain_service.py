@@ -3,8 +3,8 @@
 承载「真实实现」：config.yml 完整读写（含单脚本字段更新）、UI 状态持久化
 （gui_state.json）、脚本链生成、合法性校验、runner 命令构造。
 
-weekly_timeouts 同步由内部 ScriptService 处理，调用方不感知。GUI（MainWindow）
-与 CLI（launcher.py）都作为薄适配器依赖本服务。
+weekly_timeouts / weekly_start 同步由内部 WeeklyService 处理，调用方不感知。
+GUI（MainWindow）与 CLI（launcher.py）都作为薄适配器依赖本服务。
 
 本模块不承载 UI 渲染/弹窗逻辑，无 Qt 依赖。
 """
@@ -21,6 +21,7 @@ from src.config.subscript import (
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.script_service import ScriptService
+from src.service.weekly_service import WeeklyService
 from src.utils import (
     get_config_yml_path_under_root,
     get_root_dir,
@@ -66,15 +67,17 @@ def _resolve_mail_config(all_config: dict) -> dict | None:
 
 class ChainService:
     """脚本链核心服务：config.yml 读写、链生成、校验、运行命令构造，
-    内部集成 ScriptService 处理 weekly_timeouts 同步。"""
+    内部集成 WeeklyService 处理 weekly_timeouts / weekly_start 同步。"""
 
-    def __init__(self, script_service=None):
+    def __init__(self, script_service=None, weekly_service=None):
         """初始化 ChainService。
 
         Args:
             script_service: 可注入的 ScriptService；None 时自建默认实例。
+            weekly_service: 可注入的 WeeklyService；None 时自建默认实例。
         """
         self._script_service = script_service or ScriptService()
+        self._weekly_service = weekly_service or WeeklyService()
         # UI 状态（gui_state.json）单一实例：懒加载，load/save 均围绕它，
         # 避免各处独立 load 出不同内存副本、在 save 时互相覆盖。
         self._ui_state: dict | None = None
@@ -150,7 +153,7 @@ class ChainService:
         )
         scripts.append(script_data)
         self.save_config(config)
-        self._script_service.ensure_weekly_entry(new_script_name)
+        self._weekly_service.ensure_weekly_entry(new_script_name)
 
     def remove_script(self, script_name: str) -> None:
         """从 config.yml 的 script_list 移除指定脚本条目，并自动清理 weekly 孤儿。
@@ -167,7 +170,7 @@ class ChainService:
         assert target is not None, f"[service] 找不到脚本: {script_name}"
         scripts.remove(target)
         self.save_config(config)
-        self._script_service.delete_weekly(script_name)
+        self._weekly_service.delete_weekly(script_name)
 
     def update_script(
         self,
@@ -219,10 +222,10 @@ class ChainService:
         self.save_config(config)
 
         if new_script_name != old_script_name:
-            self._script_service.rename_weekly_in_timeouts(
+            self._weekly_service.rename_weekly_in_timeouts(
                 old_script_name, new_script_name
             )
-        self._script_service.save_weekly(new_script_name, weekly_timeouts)
+        self._weekly_service.save_weekly(new_script_name, weekly_timeouts)
         return new_script_name
 
     def load_ui_state(self) -> dict:
@@ -269,7 +272,7 @@ class ChainService:
     ) -> str:
         """生成 ScriptChainer 配置文件（仅含启用脚本）。
 
-        weekly_timeouts 通过 ScriptService 加载后传入 chain_gen，不再由
+        weekly_timeouts 通过 WeeklyService 加载后传入 chain_gen，不再由
         chain_gen 直接读取磁盘文件。
 
         Args:
@@ -281,7 +284,7 @@ class ChainService:
         Returns:
             输出文件路径。
         """
-        weekly_timeouts = self._script_service.load_all_weekly()
+        weekly_timeouts = self._weekly_service.load_all_weekly()
         return _generate_chain_config(
             all_config_data,
             enabled_keys,
@@ -295,13 +298,13 @@ class ChainService:
     def set_weekly_start(self, script_name: str, start_day: int | None) -> None:
         """持久化某脚本的周常起始日到 weekly_start.yml（None 表示「不设置」）。
 
-        委托内部 ScriptService，调用方（CLI）不感知底层文件。
+        委托内部 WeeklyService，调用方（CLI）不感知底层文件。
         """
-        self._script_service.set_weekly_start(script_name, start_day)
+        self._weekly_service.set_weekly_start(script_name, start_day)
 
     def get_weekly_start_map(self) -> dict:
         """读取 weekly_start.yml 全量映射（{脚本标识: 1~7}），供运行前 pre_run 写回子脚本 config。"""
-        return self._script_service.get_weekly_start_map()
+        return self._weekly_service.get_weekly_start_map()
 
     def collect_invalid_scripts(self, script_list: list[dict]) -> list[tuple[str, str]]:
         """收集脚本列表中配置不合法的条目。
@@ -351,7 +354,7 @@ class ChainService:
             始终返回 None（纯跑链，运行后动作交由调用方）。
         """
         all_config = self.load_config()
-        weekly_timeouts = self._script_service.load_all_weekly()
+        weekly_timeouts = self._weekly_service.load_all_weekly()
         _run_chain_once_impl(
             all_config,
             enabled_keys,
@@ -390,7 +393,7 @@ class ChainService:
         keys = set(rerun_list)
         # 复用 _run_chain_once_impl（生成+运行原子），阻塞等重跑结束，
         # 使后续邮件/关机基于重跑后的最终态。
-        weekly_timeouts = self._script_service.load_all_weekly()
+        weekly_timeouts = self._weekly_service.load_all_weekly()
         _run_chain_once_impl(
             all_config,
             keys,
