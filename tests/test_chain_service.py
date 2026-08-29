@@ -64,14 +64,14 @@ class TestChainGeneration(unittest.TestCase):
     def test_generate_chain_delegates(self):
         data = {"script_list": []}
         mock_script = MagicMock()
-        mock_script.load_all_weekly.return_value = {}
-        mock_script.get_weekly_start_map.return_value = {}
+        mock_weekly = MagicMock()
+        mock_weekly.load_all_weekly.return_value = {}
         with patch(
             "src.service.chain_service._generate_chain_config", return_value="out.yml"
         ) as m:
-            out = ChainService(script_service=mock_script).generate_chain(
-                data, {"A"}, "88", out_path="out.yml"
-            )
+            out = ChainService(
+                script_service=mock_script, weekly_service=mock_weekly
+            ).generate_chain(data, {"A"}, "88", out_path="out.yml")
         self.assertEqual(out, "out.yml")
         m.assert_called_once_with(
             data,
@@ -122,9 +122,9 @@ class TestRunChainOnce(unittest.TestCase):
         svc = ChainService()
         svc.load_config = MagicMock(return_value={"script_list": script_list})
         svc.load_ui_state = MagicMock(return_value={})
-        svc._script_service = MagicMock()
-        svc._script_service.load_all_weekly.return_value = {}
-        svc._script_service.get_weekly_start_map.return_value = {}
+        svc._weekly_service = MagicMock()
+        svc._weekly_service.load_all_weekly.return_value = {}
+        svc._weekly_service.get_weekly_start_map.return_value = {}
         return svc
 
     def test_defaults_all_scripts_and_runs(self):
@@ -155,8 +155,8 @@ class TestRunChainOnce(unittest.TestCase):
         """回归：weekly_start→子脚本 config 的写盘已移到 ScheduledRun.pre_run，
         run_chain_once 不再把 weekly_start_map 透传给链生成。"""
         svc = self._make_service([{"display_name": "A", "script_path": "A.exe"}])
-        svc._script_service.get_weekly_start_map.return_value = {"A": 3}
-        svc._script_service.load_all_weekly.return_value = {"A": 100}
+        svc._weekly_service.get_weekly_start_map.return_value = {"A": 3}
+        svc._weekly_service.load_all_weekly.return_value = {"A": 100}
         with (
             patch(
                 "src.service.chain_service._generate_chain_config",
@@ -597,6 +597,7 @@ class TestAddRemoveScript(unittest.TestCase):
             {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]},
         )
         self.mock_script = MagicMock()
+        self.mock_weekly = MagicMock()
 
     def _read(self):
         return load_yaml(self.config_path)
@@ -613,12 +614,12 @@ class TestAddRemoveScript(unittest.TestCase):
                 return_value=self.config_path,
             ),
         ):
-            ChainService(script_service=self.mock_script).add_script(
-                {"display_name": "鸣潮", "script_path": "C:/b.exe"}
-            )
+            ChainService(
+                script_service=self.mock_script, weekly_service=self.mock_weekly
+            ).add_script({"display_name": "鸣潮", "script_path": "C:/b.exe"})
         names = [s["display_name"] for s in self._read()["script_list"]]
         self.assertEqual(names, ["原神", "鸣潮"])
-        self.mock_script.ensure_weekly_entry.assert_called_once_with("b")
+        self.mock_weekly.ensure_weekly_entry.assert_called_once_with("b")
 
     def test_remove_script_removes(self):
         """remove_script 从 script_list 移除指定进程条目、落盘，并内部清 weekly 孤儿。"""
@@ -632,9 +633,11 @@ class TestAddRemoveScript(unittest.TestCase):
                 return_value=self.config_path,
             ),
         ):
-            ChainService(script_service=self.mock_script).remove_script("a")
+            ChainService(
+                script_service=self.mock_script, weekly_service=self.mock_weekly
+            ).remove_script("a")
         self.assertEqual(self._read()["script_list"], [])
-        self.mock_script.delete_weekly.assert_called_once_with("a")
+        self.mock_weekly.delete_weekly.assert_called_once_with("a")
 
     def test_remove_script_missing_raises(self):
         """remove_script 移除不存在的脚本属非法调用：assert 表达不该发生"""

@@ -132,7 +132,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
                 return_value=cfg,
             ),
             patch(
-                "src.service.script_service.get_weekly_timeouts_yml_path_under_root",
+                "src.service.weekly_service.get_weekly_timeouts_yml_path_under_root",
                 return_value=wt,
             ),
         ):
@@ -150,7 +150,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
                 return_value=cfg,
             ),
             patch(
-                "src.service.script_service.get_weekly_timeouts_yml_path_under_root",
+                "src.service.weekly_service.get_weekly_timeouts_yml_path_under_root",
                 return_value=wt,
             ),
         ):
@@ -273,14 +273,16 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
     """测试配置弹窗的「周几起」行：仅支持周常脚本显示，读写 weekly_list.yml。"""
 
     def _make_dialog(self, script_name, display_name, weekly_start, supported):
+        fake_service = _FakeService(
+            "external", "C:/games/run.exe", display_name, weekly_start
+        )
         with patch("src.gui.dialogs.supports_weekly", return_value=supported):
             return SingleScriptConfigDialog(
                 script_name,
                 display_name,
                 "C:/games/run.exe",
-                script_service=_FakeService(
-                    "external", "C:/games/run.exe", display_name, weekly_start
-                ),
+                script_service=fake_service,
+                weekly_service=fake_service,
             )
 
     def test_hidden_when_weekly_unsupported(self):
@@ -316,7 +318,7 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
-        self.assertEqual(dlg._script_service.saved_weekly_start, 3)
+        self.assertEqual(dlg._weekly_service.saved_weekly_start, 3)
         self.assertEqual(dlg.pending_changes["weekly_start_day"], 3)
 
     def test_save_clears_weekly_start_when_unset(self):
@@ -328,7 +330,7 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
-        self.assertIsNone(dlg._script_service.saved_weekly_start)
+        self.assertIsNone(dlg._weekly_service.saved_weekly_start)
         self.assertIsNone(dlg.pending_changes["weekly_start_day"])
 
 
