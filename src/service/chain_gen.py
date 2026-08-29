@@ -12,7 +12,6 @@
 import copy
 import logging
 
-from src.config.set_config import set_config
 from src.config.subscript import DEFAULT_RUN_TIMEOUT, get_script_name
 from src.utils import (
     get_path_under_root,
@@ -92,16 +91,15 @@ def generate_chain_config(
     chain_name: str = "today",
     out_path: str | None = None,
     weekly_timeouts: dict | None = None,
-    weekly_start_map: dict | None = None,
 ) -> str:
     """生成 ScriptChainer 配置文件（仅含启用的脚本）。
 
-    脚本自身的副本/序列配置由 GUI / CLI 在编辑期实时落盘（见 ``set_config``），
-    本函数不再重复写入；仅保留「按周几起决定开启/关闭」这类必须在运行期按当天
-    星期计算的周常开关写盘（``weekly_start`` 经 ``set_config`` 透传）。
+    脚本自身的副本/序列、周常起始日对应的周本开关，均由 GUI / CLI 在编辑期实时落盘
+    （见 ``set_config``）；其中「按周几起决定开启/关闭」这类必须在运行期按当天星期
+    计算的周本开关写盘，已抽出为 ``ScheduledRun`` 的 pre_run 步骤（``build_subscript_config_pipeline``），
+    故本函数只负责按星期过滤脚本并生成链 yml，不再写任何子脚本 config。
 
-    weekly_timeouts 与 weekly_start_map 均由调用方（ChainService）通过
-    ScriptService 加载后传入，不再直接读取磁盘文件。
+    weekly_timeouts 由调用方（ChainService）通过 ScriptService 加载后传入，不再直接读取磁盘文件。
 
     Args:
         all_config_data: config.yml 完整数据（含 script_list）。
@@ -109,14 +107,11 @@ def generate_chain_config(
         chain_name: 链配置文件名（不含扩展名）。
         out_path: 输出路径；None 时默认 config/script_chain/<chain_name>.yml。
         weekly_timeouts: weekly_timeouts.yml 的全量字典（默认空 dict）。
-        weekly_start_map: weekly_start.yml 的全量映射（{脚本标识: 1~7}）。
 
     Returns:
         输出文件路径。
     """
     weekly_timeouts = weekly_timeouts or {}
-    weekly_start_map = weekly_start_map or {}
-
     data = copy.deepcopy(all_config_data)
     filtered = []
     for script in data["script_list"]:
@@ -127,11 +122,6 @@ def generate_chain_config(
         if script_name in enabled_keys:
             if not _resolve_daily_run(script, weekly_timeouts):
                 continue
-            weekly_start = _resolve_weekly_start(weekly_start_map, script_name)
-            set_config(
-                script_name,
-                weekly_start=weekly_start,
-            )
             script.setdefault("block", True)
             filtered.append(script)
 

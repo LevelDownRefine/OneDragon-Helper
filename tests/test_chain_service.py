@@ -79,7 +79,6 @@ class TestChainGeneration(unittest.TestCase):
             "88",
             "out.yml",
             weekly_timeouts={},
-            weekly_start_map={},
         )
 
     def test_collect_invalid_scripts_delegates(self):
@@ -91,57 +90,6 @@ class TestChainGeneration(unittest.TestCase):
         ) as m:
             self.assertEqual(ChainService().collect_invalid_scripts(scripts), invalid)
         m.assert_called_once_with(scripts)
-
-
-class TestGenerateChainWeeklyStart(unittest.TestCase):
-    """generate_chain_config：weekly_start_map 的 weekly_start 原样传给 set_config（CLI 兜底，不判断今天）"""
-
-    def _run_chain(self, weekly_start_map):
-        from src.service import chain_gen
-
-        data = {
-            "script_list": [
-                {
-                    "display_name": "测试",
-                    "script_path": "scripts/test.py",
-                }
-            ]
-        }
-        with (
-            patch.object(chain_gen, "set_config") as mock_set_config,
-            patch(
-                "src.service.chain_gen.safe_path_join",
-                return_value="out.yml",
-            ),
-            patch(
-                "src.service.chain_gen.get_path_under_root",
-                return_value="root",
-            ),
-            patch("builtins.open"),
-        ):
-            chain_gen.generate_chain_config(
-                data,
-                {"测试"},
-                weekly_start_map=weekly_start_map,
-                out_path="out.yml",
-            )
-        return mock_set_config
-
-    def test_weekly_start_passed_through(self):
-        """weekly_start=4 → set_config 收到（CLI 无 GUI 时按周几兜底）"""
-        mock = self._run_chain({"测试": 4})
-        mock.assert_called_once_with(
-            "测试",
-            weekly_start=4,
-        )
-
-    def test_no_weekly_start_skips(self):
-        """未设置周常 → set_config(weekly_start=None)，不处理周常"""
-        mock = self._run_chain({})
-        mock.assert_called_once_with(
-            "测试",
-            weekly_start=None,
-        )
 
 
 class TestRunChain(unittest.TestCase):
@@ -199,13 +147,13 @@ class TestRunChainOnce(unittest.TestCase):
             {"A"},
             "today",
             weekly_timeouts={},
-            weekly_start_map={},
         )
         build.assert_called_once_with("out.yml")
         run.assert_called_once()
 
-    def test_run_chain_once_forwards_weekly_start_map(self):
-        """回归：运行路径必须把 weekly_start_map 透传给链生成（否则 set_weekly 不执行）。"""
+    def test_run_chain_once_does_not_forward_weekly_start_map(self):
+        """回归：weekly_start→子脚本 config 的写盘已移到 ScheduledRun.pre_run，
+        run_chain_once 不再把 weekly_start_map 透传给链生成。"""
         svc = self._make_service([{"display_name": "A", "script_path": "A.exe"}])
         svc._script_service.get_weekly_start_map.return_value = {"A": 3}
         svc._script_service.load_all_weekly.return_value = {"A": 100}
@@ -226,7 +174,6 @@ class TestRunChainOnce(unittest.TestCase):
             {"A"},
             "today",
             weekly_timeouts={"A": 100},
-            weekly_start_map={"A": 3},
         )
 
     def test_subset_launches_blocking(self):
@@ -260,7 +207,6 @@ class TestRunChainOnce(unittest.TestCase):
             {"A"},
             "today",
             weekly_timeouts={},
-            weekly_start_map={},
         )
         build.assert_called_once_with("out.yml")
         run.assert_called_once()

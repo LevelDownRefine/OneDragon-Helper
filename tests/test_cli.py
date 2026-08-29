@@ -8,9 +8,8 @@
 - CLI 出口都通过 ``sys.exit`` 返回，故用 ``assertRaises(SystemExit)`` 捕获退出码。
 - --help/--version/--generate-chain/--run-chain 的结果经 ``cli._emit_cli`` 写临时文件，
   测试读这些文件验证实质行为（与 windowed exe 的可观测方式一致）。
-- --generate-chain 会经 ``generate_chain_config`` 调 ``set_config``，可能回写真实脚本
-  配置（依赖游戏 exe 存在）。源码测试里 patch 掉 ``src.service.chain_gen.set_config``，
-  避免副作用、并使其不依赖本机是否装有游戏。
+- --generate-chain 现仅生成链配置（副本/周常配置已由编辑期实时落盘，周常起始日写盘
+  已抽到 ScheduledRun.pre_run），不再调 ``set_config``，不依赖本机是否装有游戏。
 """
 
 import json
@@ -151,8 +150,7 @@ class TestCliGenerateChain(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(service_chain_gen, "set_config"):
-                code = _run_main(["--generate-chain", "--out", out], expect_exit=0)
+            code = _run_main(["--generate-chain", "--out", out], expect_exit=0)
             self.assertEqual(code, 0)
             self.assertTrue(os.path.isfile(out), f"--generate-chain 未产出 yml: {out}")
             data = load_yaml(out)
@@ -169,11 +167,10 @@ class TestCliGenerateChain(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(service_chain_gen, "set_config"):
-                code = _run_main(
-                    ["--generate-chain", "--enable", "all", "--out", out],
-                    expect_exit=0,
-                )
+            code = _run_main(
+                ["--generate-chain", "--enable", "all", "--out", out],
+                expect_exit=0,
+            )
             self.assertEqual(code, 0)
             data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
@@ -186,11 +183,10 @@ class TestCliGenerateChain(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(service_chain_gen, "set_config"):
-                code = _run_main(
-                    ["--generate-chain", "--enable", "ALL", "--out", out],
-                    expect_exit=0,
-                )
+            code = _run_main(
+                ["--generate-chain", "--enable", "ALL", "--out", out],
+                expect_exit=0,
+            )
             self.assertEqual(code, 0)
             data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
@@ -204,11 +200,10 @@ class TestCliGenerateChain(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(service_chain_gen, "set_config"):
-                code = _run_main(
-                    ["--generate-chain", "--enable", target, "--out", out],
-                    expect_exit=0,
-                )
+            code = _run_main(
+                ["--generate-chain", "--enable", target, "--out", out],
+                expect_exit=0,
+            )
             self.assertEqual(code, 0)
             data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
@@ -220,8 +215,7 @@ class TestCliGenerateChain(unittest.TestCase):
     def test_generate_chain_unknown_name_exits_one(self):
         bogus = "此脚本一定不存在_XYZ"
         assert bogus not in self._names
-        with patch.object(service_chain_gen, "set_config"):
-            code = _run_main(["--generate-chain", "--enable", bogus], expect_exit=1)
+        code = _run_main(["--generate-chain", "--enable", bogus], expect_exit=1)
         self.assertEqual(code, 1)
         self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
 
@@ -231,11 +225,10 @@ class TestCliGenerateChain(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(service_chain_gen, "set_config"):
-                code = _run_main(
-                    ["--generate-chain", "--exclude", target, "--out", out],
-                    expect_exit=0,
-                )
+            code = _run_main(
+                ["--generate-chain", "--exclude", target, "--out", out],
+                expect_exit=0,
+            )
             self.assertEqual(code, 0)
             data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
@@ -251,19 +244,18 @@ class TestCliGenerateChain(unittest.TestCase):
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
-            with patch.object(service_chain_gen, "set_config"):
-                code = _run_main(
-                    [
-                        "--generate-chain",
-                        "--enable",
-                        f"{target},{other}",
-                        "--exclude",
-                        target,
-                        "--out",
-                        out,
-                    ],
-                    expect_exit=0,
-                )
+            code = _run_main(
+                [
+                    "--generate-chain",
+                    "--enable",
+                    f"{target},{other}",
+                    "--exclude",
+                    target,
+                    "--out",
+                    out,
+                ],
+                expect_exit=0,
+            )
             self.assertEqual(code, 0)
             data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
@@ -276,8 +268,7 @@ class TestCliGenerateChain(unittest.TestCase):
         """--exclude 含未知标识时报错退出 1"""
         bogus = "此脚本一定不存在_XYZ"
         assert bogus not in self._names
-        with patch.object(service_chain_gen, "set_config"):
-            code = _run_main(["--generate-chain", "--exclude", bogus], expect_exit=1)
+        code = _run_main(["--generate-chain", "--exclude", bogus], expect_exit=1)
         self.assertEqual(code, 1)
         self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
 

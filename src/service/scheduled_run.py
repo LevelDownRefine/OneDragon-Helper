@@ -13,10 +13,14 @@ import time
 from collections.abc import Callable, Sequence
 from datetime import datetime
 
+from src.config.set_config import set_config
+from src.config.subscript import get_script_name
 from src.log.monitor import parse_logs
 from src.log.notify_mail import send_mail
+from src.service.chain_gen import _resolve_weekly_start
 from src.service.chain_service import _resolve_mail_config
 from src.utils_mute import mute_off, mute_on
+from src.utils_runner import _collect_process_names, kill_processes_by_names
 from src.utils_shutdown import shutdown_sys
 from src.utils_weekly import next_target_datetime
 
@@ -50,6 +54,76 @@ def build_pre_run_pipeline(
         logger.info("[chain] 已到达目标时刻 %s，开始运行", target_time)
 
     steps.append(_wait)
+    return steps
+
+
+def build_subscript_config_pipeline(
+    enabled_keys: set[str] | None,
+    weekly_start_map: dict,
+) -> list[Callable[[], None]]:
+    """运行前 step：把 weekly_start（按当天星期算出的周本开关）写回各子脚本 config。
+
+    原内联于 ``generate_chain_config`` 的 ``set_config(weekly_start=...)`` 调用已抽出到此：
+    - 即时与定时两条路径统一经 ``ScheduledRun``，故一次应用即覆盖两种调用场景，
+      重跑轮（``_rerun_round``）不再重复写盘；
+    - ``generate_chain_config`` 因此变纯（只按星期过滤脚本 + 生成 yml），不再写子脚本 config。
+
+    未启用脚本（``enabled_keys`` 为空）、未适配脚本（自定义脚本）由 ``set_config`` 内部
+    优雅跳过；``weekly_start`` 为 None 时 ``set_config`` 不写周常。
+
+    Args:
+        enabled_keys: 纳入链的脚本唯一标识集合；None/空集合返回空 step 列表（不写盘）。
+        weekly_start_map: weekly_start.yml 全量映射（{脚本标识: 1~7}）。
+
+    Returns:
+        运行前步骤列表（可能为空）。
+    """
+    if not enabled_keys:
+        return []
+    steps: list[Callable[[], None]] = []
+
+    def _apply() -> None:
+        for name in enabled_keys:
+            weekly_start = _resolve_weekly_start(weekly_start_map, name)
+            set_config(name, weekly_start=weekly_start)
+
+    steps.append(_apply)
+    return steps
+
+
+def build_close_running_pipeline(
+    enabled_scripts: list[dict],
+) -> list[Callable[[], None]]:
+    """运行前 step：关闭已打开的脚本进程与对应游戏进程（运行前清理）。
+
+    针对每个启用脚本，结束其仍在运行的脚本自身进程（script_process_name / script_path
+    文件名）与对应游戏进程（game_process_name）。采用优雅终止（terminate→wait→kill）。
+    进程名经 ``_collect_process_names`` 汇总去重；某脚本无任何进程名配置时跳过。
+
+    Args:
+        enabled_scripts: 纳入链的脚本配置 dict 列表（已由调用方按启用集合过滤）。
+
+    Returns:
+        运行前步骤列表（可能为空）。
+    """
+    if not enabled_scripts:
+        return []
+    steps: list[Callable[[], None]] = []
+
+    def _close() -> None:
+        for script in enabled_scripts:
+            names = _collect_process_names(script)
+            if not names:
+                continue
+            killed = kill_processes_by_names(names)
+            if killed:
+                logger.info(
+                    "[chain] 已关闭 %s 的残留进程 %d 个",
+                    script.get("display_name", "?"),
+                    killed,
+                )
+
+    steps.append(_close)
     return steps
 
 
@@ -138,10 +212,23 @@ class ScheduledRun:
 
         # pre_run / post_run：均为 step 列表（同形），分别经工厂组装、由 _run_steps 执行。
         # 仅所处位置不同（run 前 / 后），机制完全一致。
-        self.pre_run: list[Callable[[], None]] = build_pre_run_pipeline(
-            target_time=target_time,
-            mute=mute,
+        # pre_run 顺序：关闭残留进程 → 写回子脚本 config → 等待+静音。
+        # 关闭须最先：运行前清场，避免上一轮残留脚本/游戏进程干扰本次运行。
+        all_scripts = self.service.load_config().get("script_list", [])
+        enabled_scripts = [
+            s
+            for s in all_scripts
+            if get_script_name(s) in (self.candidate_keys or set())
+        ]
+        self.pre_run: list[Callable[[], None]] = build_close_running_pipeline(
+            enabled_scripts
         )
+        # 运行前把 weekly_start 解析结果写回各子脚本 config（原内联于 generate_chain_config）。
+        # 即时/定时两条路径统一经 ScheduledRun，故此处一次应用即覆盖；重跑轮不再重复写盘。
+        self.pre_run += build_subscript_config_pipeline(
+            self.candidate_keys, self.service.get_weekly_start_map()
+        )
+        self.pre_run += build_pre_run_pipeline(target_time=target_time, mute=mute)
 
         # post_run：日志分析最终态 → 邮件 → 恢复声音 → 关机（末位），由 build_post_run_pipeline 产出。
         # 邮件配置来自 schedule.yml 的 notify 块（已从 config.yml 迁出）。
