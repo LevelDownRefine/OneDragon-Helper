@@ -44,10 +44,7 @@ from src.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
 
-
-def _state_file() -> str:
-    """gui_state.json 路径；惰性求值，项目根被 ``set_root_dir`` 改向时随之改向。"""
-    return safe_path_join(get_root_dir(), "config", "gui_state.json")
+_STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
 
 
 def _resolve_mail_config(all_config: dict) -> dict | None:
@@ -239,8 +236,8 @@ class ChainService:
             状态字典；文件不存在时返回空 dict。
         """
         if self._ui_state is None:
-            if os.path.exists(_state_file()):
-                with open(_state_file(), encoding="utf-8") as f:
+            if os.path.exists(_STATE_FILE):
+                with open(_STATE_FILE, encoding="utf-8") as f:
                     self._ui_state = json.load(f)
             else:
                 self._ui_state = {}
@@ -258,7 +255,7 @@ class ChainService:
         if state is not None:
             self._ui_state = state
         assert self._ui_state is not None, "save_ui_state 调用前需先 load_ui_state"
-        with open(_state_file(), "w", encoding="utf-8") as f:
+        with open(_STATE_FILE, "w", encoding="utf-8") as f:
             json.dump(self._ui_state, f, ensure_ascii=False, indent=2)
 
     # ---------- 链生成与校验 ----------
