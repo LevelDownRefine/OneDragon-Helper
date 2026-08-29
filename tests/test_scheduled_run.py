@@ -7,7 +7,8 @@
 import unittest
 from unittest import mock
 
-from src.service.scheduled_run import build_pre_run_pipeline
+from src.service.scheduled_run import ScheduledRun, build_pre_run_pipeline
+from src.utils_runner import ProcessTarget
 
 
 class TestPreRunWaitLogs(unittest.TestCase):
@@ -87,11 +88,11 @@ class TestBuildPreRunClose(unittest.TestCase):
 
     def test_empty_scripts_returns_no_steps(self):
         steps = build_pre_run_pipeline(
-            target_time="now", enabled_scripts=[], close_running=True
+            target_time="now", scripts=[], close_running=True
         )
         self.assertEqual(steps, [])
 
-    def test_step_kills_collected_names(self):
+    def test_step_kills_collected_targets(self):
         scripts = [
             {
                 "display_name": "A",
@@ -99,19 +100,21 @@ class TestBuildPreRunClose(unittest.TestCase):
                 "game_process_name": "AGame.exe",
             },
         ]
-        with mock.patch("src.service.run_actions.kill_processes_by_names") as mock_kill:
+        with mock.patch("src.service.run_actions.kill_processes") as mock_kill:
             steps = build_pre_run_pipeline(
-                target_time="now", enabled_scripts=scripts, close_running=True
+                target_time="now", scripts=scripts, close_running=True
             )
             self.assertEqual(len(steps), 1)
             steps[0]()  # 执行 step
-        mock_kill.assert_called_once_with(["ABot.exe", "AGame.exe"])
+        mock_kill.assert_called_once_with(
+            [ProcessTarget(name="ABot.exe"), ProcessTarget(name="AGame.exe")]
+        )
 
     def test_no_names_script_skips_kill(self):
         scripts = [{"display_name": "A"}]
-        with mock.patch("src.service.run_actions.kill_processes_by_names") as mock_kill:
+        with mock.patch("src.service.run_actions.kill_processes") as mock_kill:
             steps = build_pre_run_pipeline(
-                target_time="now", enabled_scripts=scripts, close_running=True
+                target_time="now", scripts=scripts, close_running=True
             )
             steps[0]()
         mock_kill.assert_not_called()
@@ -119,9 +122,9 @@ class TestBuildPreRunClose(unittest.TestCase):
     def test_close_running_false_excludes_close_step(self):
         # close_running=False：即便给了 enabled_scripts 也不产生关闭 step。
         scripts = [{"display_name": "A", "script_process_name": "ABot.exe"}]
-        with mock.patch("src.service.run_actions.kill_processes_by_names") as mock_kill:
+        with mock.patch("src.service.run_actions.kill_processes") as mock_kill:
             steps = build_pre_run_pipeline(
-                target_time="now", enabled_scripts=scripts, close_running=False
+                target_time="now", scripts=scripts, close_running=False
             )
         self.assertEqual(steps, [])
         mock_kill.assert_not_called()
@@ -139,7 +142,7 @@ class TestPreRunOrder(unittest.TestCase):
                 "src.service.scheduled_run.mute_on", lambda: calls.append("mute")
             ),
             mock.patch(
-                "src.service.run_actions.kill_processes_by_names",
+                "src.service.run_actions.kill_processes",
                 lambda names: calls.append("kill"),
             ),
             mock.patch(
@@ -153,7 +156,7 @@ class TestPreRunOrder(unittest.TestCase):
         ):
             steps = build_pre_run_pipeline(
                 target_time="08:00",
-                enabled_scripts=svc_scripts,
+                scripts=svc_scripts,
                 enabled_keys={"A"},
                 weekly_start_map={"A": 3},
                 close_running=True,
@@ -169,7 +172,7 @@ class TestPreRunOrder(unittest.TestCase):
         calls: list[str] = []
         with (
             mock.patch(
-                "src.service.run_actions.kill_processes_by_names",
+                "src.service.run_actions.kill_processes",
                 lambda names: calls.append("kill"),
             ),
             mock.patch(
@@ -184,9 +187,7 @@ class TestPreRunOrder(unittest.TestCase):
         ):
             steps = build_pre_run_pipeline(
                 target_time="08:00",
-                enabled_scripts=[
-                    {"display_name": "A", "script_process_name": "ABot.exe"}
-                ],
+                scripts=[{"display_name": "A", "script_process_name": "ABot.exe"}],
                 enabled_keys={"A"},
                 weekly_start_map={"A": 3},
                 close_running=False,
@@ -195,6 +196,36 @@ class TestPreRunOrder(unittest.TestCase):
                 step()
         # 仅 [等待, 写config]：无关闭调用。
         self.assertEqual(calls, ["config"])
+
+
+class TestClosePassesAllConfigScripts(unittest.TestCase):
+    """close 步骤拿到的是 config 全量脚本，不按本次启用集合过滤。
+
+    回归：残留多为「昨天跑、今天不跑」的脚本遗留，按启用集合过滤恰好抓不住这类。
+    """
+
+    def _make_service(self, script_list):
+        svc = mock.MagicMock()
+        svc.load_config.return_value = {"script_list": script_list}
+        svc.load_schedule.return_value = {
+            "rerun": {"enabled": False},
+            "notify": {"enabled": False},
+        }
+        svc.get_weekly_start_map.return_value = {}
+        return svc
+
+    def test_all_scripts_passed_even_when_not_enabled(self):
+        # A 在启用集合内、B 不在；两者（含 B）都应出现在 scripts 中。
+        all_scripts = [
+            {"display_name": "A", "script_path": "C:/a/run.py"},
+            {"display_name": "B", "script_path": "C:/b/run.py"},
+        ]
+        svc = self._make_service(all_scripts)
+        with mock.patch(
+            "src.service.scheduled_run.build_pre_run_pipeline", return_value=[]
+        ) as mock_build:
+            ScheduledRun(svc, {"A"}, "now", close_running=True)
+        self.assertEqual(mock_build.call_args.kwargs["scripts"], all_scripts)
 
 
 if __name__ == "__main__":
