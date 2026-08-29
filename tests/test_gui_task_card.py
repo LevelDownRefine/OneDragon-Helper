@@ -53,7 +53,7 @@ class TestWeeklyItems(unittest.TestCase):
         )
         with (
             patch(
-                "src.service.script_service.get_weekly_list_yml_path_under_root",
+                "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(task_card_mod, "get_weekly_dungeon", return_value=None),
@@ -85,7 +85,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -105,7 +105,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -124,7 +124,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -144,7 +144,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl_star = _make_controller("March7th-Assistant", "崩铁")
@@ -158,7 +158,7 @@ class TestWeeklyItems(unittest.TestCase):
         # ok-ww 不在 weekly_list.yml 声明 → 空列表
         defs_path = _write_defs(tmp, {})
         with patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller("ok-ww", "鸣潮")
@@ -182,7 +182,7 @@ class TestWeeklyItems(unittest.TestCase):
         }
         with (
             patch(
-                "src.service.script_service.get_weekly_list_yml_path_under_root",
+                "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             # 反读 None → 回退 gui_state 的 weekly_dungeons（保留既有语义）
@@ -298,7 +298,7 @@ class TestWeeklyItemsReadback(unittest.TestCase):
         )
         with (
             patch(
-                "src.service.script_service.get_weekly_list_yml_path_under_root",
+                "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(
