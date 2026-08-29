@@ -8,11 +8,10 @@ import unittest
 from datetime import datetime
 from unittest import mock
 
-import psutil
-
 from src.utils import get_root_dir
 from src.utils_runner import (
-    _collect_process_names,
+    ProcessTarget,
+    _collect_process_targets,
     _to_signed_32,
     apply_mute_config,
     apply_shutdown_config,
@@ -21,7 +20,7 @@ from src.utils_runner import (
     build_run_chain_command,
     build_script_command,
     collect_invalid_script_messages,
-    kill_processes_by_names,
+    kill_processes,
     parse_mute_run,
     parse_shutdown,
     parse_timed_run,
@@ -433,71 +432,127 @@ class TestParseShutdown(unittest.TestCase):
 
 
 class _FakeProc:
-    """模拟 psutil.Process：记录 terminate/wait/kill 调用，name() 返回预设名。"""
+    """模拟 psutil.Process：pid/name()/cmdline()/children() 可预设，记录 terminate/kill。
 
-    def __init__(self, name, on_wait_raise=None):
+    pid 取高位段，避免与真实的「本进程及祖先」PID 集合撞上导致误排除。
+    """
+
+    _next_pid = 900000
+
+    def __init__(self, name, cmdline=None, children=None):
+        _FakeProc._next_pid += 1
+        self.pid = _FakeProc._next_pid
         self._name = name
+        self._cmdline = cmdline or []
+        self._children = children or []
         self.terminated = False
         self.killed = False
-        self._on_wait_raise = on_wait_raise
 
     def name(self):
         return self._name
 
+    def cmdline(self):
+        return self._cmdline
+
+    def children(self, recursive=False):
+        if not recursive:
+            return list(self._children)
+        # 模拟 psutil 的 recursive=True：返回全部子孙（深度优先）。
+        out: list[_FakeProc] = []
+        for child in self._children:
+            out.append(child)
+            out.extend(child.children(recursive=True))
+        return out
+
     def terminate(self):
         self.terminated = True
-
-    def wait(self, timeout=None):
-        if self._on_wait_raise is not None:
-            raise self._on_wait_raise
-        return 0
 
     def kill(self):
         self.killed = True
 
 
-class TestKillProcessesByNames(unittest.TestCase):
-    """kill_processes_by_names：优雅终止匹配的进程，安全跳过无关/已退出进程。"""
+class TestKillProcesses(unittest.TestCase):
+    """kill_processes：按匹配条件终止进程及其子进程树，安全跳过无关/已退出进程。"""
 
     def _patch_iter(self, procs):
         return mock.patch(
             "src.utils_runner.psutil.process_iter", return_value=iter(procs)
         )
 
-    def test_empty_names_no_iteration(self):
+    def _patch_wait(self, gone, alive):
+        return mock.patch(
+            "src.utils_runner.psutil.wait_procs", return_value=(gone, alive)
+        )
+
+    def test_empty_targets_no_iteration(self):
         with self._patch_iter([_FakeProc("x.exe")]) as mock_iter:
             # 列表为空时立即返回 0，且不遍历进程。
-            self.assertEqual(kill_processes_by_names([]), 0)
+            self.assertEqual(kill_processes([]), 0)
         mock_iter.assert_not_called()
 
     def test_terminates_matching_case_insensitive(self):
         target = _FakeProc("GAME.EXE")
         other = _FakeProc("unrelated.exe")
-        with self._patch_iter([other, target]):
-            killed = kill_processes_by_names("game.exe")
+        with (
+            self._patch_iter([other, target]),
+            self._patch_wait([target], []),
+        ):
+            killed = kill_processes([ProcessTarget(name="game.exe")])
         self.assertEqual(killed, 1)
         self.assertTrue(target.terminated)
         self.assertFalse(other.terminated)
 
-    def test_kill_on_wait_timeout(self):
-        # wait 超时（TimeoutExpired）→ 退化为 kill。
-        target = _FakeProc(
-            "game.exe", on_wait_raise=psutil.TimeoutExpired("game.exe", 3)
+    def test_matches_cmdline_substring_case_insensitive(self):
+        # 启动器真身：进程名是通用解释器，只能靠命令行里的安装根目录识别。
+        worker = _FakeProc(
+            "pythonw.exe",
+            cmdline=[r"D:\ok\python\pythonw.exe", r"D:\ok\working\main.py"],
         )
-        with self._patch_iter([target]):
-            killed = kill_processes_by_names(["game.exe"])
+        other = _FakeProc("pythonw.exe", cmdline=[r"D:\other\main.py"])
+        with (
+            self._patch_iter([other, worker]),
+            self._patch_wait([worker], []),
+        ):
+            killed = kill_processes([ProcessTarget(cmdline_contains=r"D:\ok")])
+        self.assertEqual(killed, 1)
+        self.assertTrue(worker.terminated)
+        self.assertFalse(other.terminated)
+
+    def test_kills_children_tree(self):
+        # 子进程树一并终止：启动器拉起的孤儿进程不留残留。
+        grandchild = _FakeProc("gc.exe")
+        child = _FakeProc("child.exe", children=[grandchild])
+        parent = _FakeProc("launcher.exe", children=[child])
+        with (
+            self._patch_iter([parent]),
+            self._patch_wait([parent, child, grandchild], []),
+        ):
+            killed = kill_processes([ProcessTarget(name="launcher.exe")])
+        self.assertEqual(killed, 3)
+        self.assertTrue(parent.terminated)
+        self.assertTrue(child.terminated)
+        self.assertTrue(grandchild.terminated)
+
+    def test_kill_when_wait_timeout(self):
+        # wait_procs 超时后仍存活的进程 → 强制 kill。
+        target = _FakeProc("game.exe")
+        with (
+            self._patch_iter([target]),
+            self._patch_wait([], [target]),
+        ):
+            killed = kill_processes([ProcessTarget(name="game.exe")])
         self.assertEqual(killed, 1)
         self.assertTrue(target.killed)
 
     def test_no_match_returns_zero(self):
         with self._patch_iter([_FakeProc("other.exe")]):
-            self.assertEqual(kill_processes_by_names(["game.exe"]), 0)
+            self.assertEqual(kill_processes([ProcessTarget(name="game.exe")]), 0)
 
 
-class TestCollectProcessNames(unittest.TestCase):
-    """_collect_process_names：汇总脚本自身进程 + 游戏进程，去重。"""
+class TestCollectProcessTargets(unittest.TestCase):
+    """_collect_process_targets：脚本进程 + 启动器真身(cmdline) + 游戏进程，去重。"""
 
-    def test_exe_script_and_game(self):
+    def test_exe_script_and_game_and_root_cmdline(self):
         script = {
             "display_name": "A",
             "script_process_name": "ABot.exe",
@@ -505,24 +560,34 @@ class TestCollectProcessNames(unittest.TestCase):
             "game_process_name": "AGame.exe",
         }
         self.assertEqual(
-            _collect_process_names(script),
-            ["ABot.exe", "run.exe", "AGame.exe"],
+            _collect_process_targets(script),
+            [
+                ProcessTarget(name="ABot.exe"),
+                ProcessTarget(name="run.exe"),
+                ProcessTarget(cmdline_contains=r"C:\x"),
+                ProcessTarget(name="AGame.exe"),
+            ],
         )
 
-    def test_python_script_path_is_noop_name(self):
-        # .py 形态：script_path 文件名不会匹配 python.exe，仅作占位。
+    def test_python_script_still_gets_root_cmdline(self):
+        # .py 形态：无独立进程名，但安装根目录仍可认出启动器拉起的真身。
         script = {"display_name": "A", "script_path": "scripts/foo.py"}
-        self.assertEqual(_collect_process_names(script), ["foo.py"])
+        self.assertEqual(
+            _collect_process_targets(script),
+            [ProcessTarget(name="foo.py"), ProcessTarget(cmdline_contains="scripts")],
+        )
 
-    def test_empty_when_no_names(self):
-        self.assertEqual(_collect_process_names({"display_name": "A"}), [])
+    def test_empty_when_no_config(self):
+        self.assertEqual(_collect_process_targets({"display_name": "A"}), [])
 
     def test_dedup_case_insensitive(self):
         script = {
             "script_process_name": "Game.exe",
             "game_process_name": "game.exe",
         }
-        self.assertEqual(_collect_process_names(script), ["Game.exe"])
+        self.assertEqual(
+            _collect_process_targets(script), [ProcessTarget(name="Game.exe")]
+        )
 
 
 if __name__ == "__main__":

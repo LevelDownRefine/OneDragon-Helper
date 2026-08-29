@@ -15,6 +15,8 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import PureWindowsPath
 
 import psutil
@@ -87,66 +89,146 @@ def _process_name_equals(left: str | None, right: str | None) -> bool:
     )
 
 
-def _collect_process_names(script: dict) -> list[str]:
-    """汇总某脚本需要关闭的进程名：脚本自身进程 + 对应游戏进程。
+@dataclass(frozen=True)
+class ProcessTarget:
+    """进程匹配条件（对齐 runner 子模块 ``ProcessInfo`` 的 AND 语义）。
 
-    - 脚本自身进程：``script_process_name`` 显式配置，或 ``script_path`` 文件名
-      （直接 exe 形态；.py 形态下文件名不会匹配 ``python.exe``，安全 no-op）；
-    - 对应游戏进程：``game_process_name`` 显式配置。
-    结果按不区分大小写去重（配置名与进程名大小写可能不一致）；无任何配置项时返回空列表。
+    Attributes:
+        name: 进程名（不区分大小写，Windows 补 ``.exe``）。
+        cmdline_contains: 命令行须包含的子串（不区分大小写）。用于认出「启动器拉起的
+            真身」——启动器 exe（如 ``ok-nte.exe``）常只负责拉起真身（自带
+            ``pythonw.exe`` 跑 ``working/main.py``），真身进程名与启动器无关且多为
+            通用解释器名，只能靠命令行里的脚本安装根目录识别，无需额外配置。
+            runner 用的是 cmdline 全等，此处放宽为子串：启动参数顺序 / 大小写变化
+            不影响匹配。
     """
-    names: list[str] = []
-    names += _normalize_process_names(script.get("script_process_name", ""))
+
+    name: str | None = None
+    cmdline_contains: str | None = None
+
+
+def _safe_name(proc: psutil.Process) -> str:
+    """读取进程名；无权访问或已退出返回空串。"""
+    try:
+        return proc.name() or ""
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return ""
+
+
+def _safe_cmdline(proc: psutil.Process) -> str:
+    """读取进程命令行；无权访问或已退出返回空串。"""
+    try:
+        return " ".join(proc.cmdline())
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return ""
+
+
+def _match_process(proc: psutil.Process, target: ProcessTarget) -> bool:
+    """所有非 None 条件都满足才算匹配（对齐 runner ``match_process``）。"""
+    if target.name is not None and not _process_name_equals(
+        _safe_name(proc), target.name
+    ):
+        return False
+    if target.cmdline_contains is not None:
+        if target.cmdline_contains.lower() not in _safe_cmdline(proc).lower():
+            return False
+    return True
+
+
+def _collect_process_targets(script: dict) -> list[ProcessTarget]:
+    """汇总某脚本需要关闭的进程匹配条件：脚本进程 + 启动器真身 + 游戏进程。
+
+    - 脚本进程：``script_process_name`` 显式配置，或 ``script_path`` 文件名（启动器本体）；
+    - 启动器真身：命令行含 ``script_path`` 的**安装根目录**（详见
+      :class:`ProcessTarget` 的 ``cmdline_contains``）；
+    - 游戏进程：``game_process_name`` 显式配置。
+    结果按（进程名小写, 命令行标记）去重；无任何配置项时返回空列表。
+    """
+    targets: list[ProcessTarget] = []
+    for name in _normalize_process_names(script.get("script_process_name", "")):
+        targets.append(ProcessTarget(name=name))
     script_path = script.get("script_path") or ""
     if script_path:
-        names.append(PureWindowsPath(script_path).name)
-    names += _normalize_process_names(script.get("game_process_name", ""))
-    seen: set[str] = set()
-    out: list[str] = []
-    for name in names:
-        key = name.lower()
+        targets.append(ProcessTarget(name=PureWindowsPath(script_path).name))
+        root_dir = str(PureWindowsPath(script_path).parent)
+        if root_dir and root_dir != ".":
+            targets.append(ProcessTarget(cmdline_contains=root_dir))
+    for name in _normalize_process_names(script.get("game_process_name", "")):
+        targets.append(ProcessTarget(name=name))
+    seen: set[tuple[str | None, str | None]] = set()
+    out: list[ProcessTarget] = []
+    for target in targets:
+        key = (target.name.lower() if target.name else None, target.cmdline_contains)
         if key not in seen:
             seen.add(key)
-            out.append(name)
+            out.append(target)
     return out
 
 
-def kill_processes_by_names(names: list[str] | str | None) -> int:
-    """优雅终止所有进程名匹配（不区分大小写，Windows 补 .exe）的进程。
+def _self_and_ancestor_pids() -> set[int]:
+    """本进程及其祖先的 PID：清理时须排除，避免把自己杀掉。"""
+    pids: set[int] = set()
+    proc: psutil.Process | None = psutil.Process()
+    while proc is not None:
+        pids.add(proc.pid)
+        try:
+            proc = proc.parent()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            break
+    return pids
 
-    用于运行前清理残留的脚本/游戏进程：先 ``terminate`` 再等待，超时则 ``kill``。
-    无匹配、进程已退出或无权访问时安全跳过，不影响其他进程。
+
+def _find_processes(targets: Sequence[ProcessTarget]) -> list[psutil.Process]:
+    """按匹配条件找出所有进程（排除本进程及其祖先）；无匹配返回空列表。"""
+    if not targets:
+        return []
+    excluded = _self_and_ancestor_pids()
+    found: dict[int, psutil.Process] = {}
+    for proc in psutil.process_iter(["pid"]):
+        if proc.pid in excluded or proc.pid in found:
+            continue
+        if any(_match_process(proc, target) for target in targets):
+            found[proc.pid] = proc
+    return list(found.values())
+
+
+def _process_tree(proc: psutil.Process) -> list[psutil.Process]:
+    """进程自身 + 全部子孙（对齐 runner ``_kill_children`` 的树杀范围）。"""
+    with contextlib.suppress(
+        psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess
+    ):
+        return [proc, *proc.children(recursive=True)]
+    return [proc]
+
+
+def kill_processes(targets: Sequence[ProcessTarget]) -> int:
+    """优雅终止所有匹配进程及其子进程树（对齐 runner ``ProcessManager.kill``）。
+
+    先对整棵树 ``terminate``，等 3 秒，仍存活的强制 ``kill``。无匹配、进程已退出或
+    无权访问时安全跳过，不影响其他进程。
 
     Args:
-        names: 进程名或进程名列表；空/None 直接返回 0。
+        targets: 进程匹配条件序列；空直接返回 0。
 
     Returns:
-        实际被终止的进程数。
+        被终止的进程总数（含子进程树）。
     """
-    targets = _normalize_process_names(names)
-    if not targets:
+    matched = _find_processes(targets)
+    if not matched:
         return 0
-    killed = 0
-    for proc in psutil.process_iter(["pid", "name"]):
-        try:
-            proc_name = proc.name()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-        if not any(_process_name_equals(proc_name, t) for t in targets):
-            continue
-        try:
+    tree: dict[int, psutil.Process] = {}
+    for proc in matched:
+        for item in _process_tree(proc):
+            tree.setdefault(item.pid, item)
+    pending = list(tree.values())
+    for proc in pending:
+        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
             proc.terminate()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-        try:
-            proc.wait(timeout=3)
-        except psutil.TimeoutExpired:
-            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
-                proc.kill()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        killed += 1
-    return killed
+    _gone, alive = psutil.wait_procs(pending, timeout=3)
+    for proc in alive:
+        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            proc.kill()
+    return len(tree)
 
 
 def script_invalid_message(script: dict) -> str | None:

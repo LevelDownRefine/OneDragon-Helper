@@ -14,7 +14,6 @@ pre_run / post_run 为可扩展的 step 列表（Callable 序列），由本模�
 import logging
 from collections.abc import Callable, Sequence
 
-from src.config.subscript import get_script_name
 from src.service.chain_service import _resolve_mail_config
 from src.service.run_actions import (
     analyze_logs,
@@ -32,7 +31,7 @@ logger = logging.getLogger(__name__)
 def build_pre_run_pipeline(
     *,
     target_time: str,
-    enabled_scripts: list[dict] | None = None,
+    scripts: list[dict] | None = None,
     enabled_keys: set[str] | None = None,
     weekly_start_map: dict | None = None,
     close_running: bool = False,
@@ -51,7 +50,7 @@ def build_pre_run_pipeline(
 
     Args:
         target_time: 目标时刻 ``"HH:MM"``；``"now"`` 表示即时运行（跳过等待）。
-        enabled_scripts: 纳入链的脚本配置 dict 列表（已按启用集合过滤），close 步骤用；
+        scripts: config 的脚本配置 dict 列表（全量，不按启用集合过滤），close 步骤用；
             None/空表示不关闭。
         enabled_keys: 纳入链的脚本唯一标识集合，写 config 步骤用；None/空表示不写。
         weekly_start_map: weekly_start.yml 全量映射（{脚本标识: 1~7}），写 config 步骤用。
@@ -70,8 +69,9 @@ def build_pre_run_pipeline(
         steps.append(lambda: wait_until_target(target_time))
 
     # 关闭残留：紧贴运行前，清掉等待期可能新起的脚本/游戏进程。
-    if close_running and enabled_scripts:
-        steps.append(lambda: close_running_scripts(enabled_scripts))
+    # 关的是 config 全量脚本。用于关闭用户手动开的脚本/游戏。
+    if close_running and scripts:
+        steps.append(lambda: close_running_scripts(scripts))
 
     # 写回子脚本 config：关闭之后写，避开残留进程可能持有的文件锁；
     # 须早于核心运行（游戏/脚本启动时读 config）。
@@ -171,18 +171,12 @@ class ScheduledRun:
         # - 关闭残留紧贴运行前（即等待之后）：等待期内用户可能手动开了脚本/游戏，
         #   若在最开头就关闭会漏掉等待期新起的进程，须等真正运行前再清场，受 close_running 开关控制；
         # - 写子脚本 config 在关闭之后：避开残留进程可能持有的文件锁，须早于核心运行。
-        # close_running 为真时，先按启用集合解析脚本配置（供 close 步骤用），再整体传入工厂。
-        enabled_scripts: list[dict] = []
-        if close_running:
-            all_scripts = self.service.load_config().get("script_list", [])
-            enabled_scripts = [
-                s
-                for s in all_scripts
-                if get_script_name(s) in (self.candidate_keys or set())
-            ]
+        # close 步骤关的是 config 全量脚本（不按启用集合过滤）：残留多为「昨天跑、今天不跑」
+        # 的脚本遗留，按启用集合过滤恰好抓不住这类，故全量传入工厂。
+        all_scripts = self.service.load_config().get("script_list", [])
         self.pre_run: list[Callable[[], None]] = build_pre_run_pipeline(
             target_time=target_time,
-            enabled_scripts=enabled_scripts,
+            scripts=all_scripts,
             enabled_keys=self.candidate_keys,
             weekly_start_map=self.service.get_weekly_start_map(),
             close_running=close_running,
