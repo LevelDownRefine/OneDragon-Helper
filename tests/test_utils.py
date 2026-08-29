@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from src import utils
+from src.service.chain_service import _state_file
 
 
 class TestUtils(unittest.TestCase):
@@ -122,6 +123,48 @@ class TestGetRootDirFrozen(unittest.TestCase):
             # 非冻结模式应返回 src/ 的父目录（项目根）
             self.assertTrue(os.path.isdir(result))
             self.assertTrue(os.path.isdir(os.path.join(result, "src")))
+
+
+class TestSetRootDir(unittest.TestCase):
+    """set_root_dir：测试期把整棵配置树指向临时目录，不污染本机配置。
+
+    配置读写方（config/*.yml、gui_state.json、链输出）全部由 get_root_dir() 派生，
+    故改这一个入口即整体改向，无需各模块各自 patch 路径函数。
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(utils.set_root_dir, None)  # 无论如何都还原真实项目根
+        self.addCleanup(self.tmp_dir.cleanup)
+
+    def test_override_redirects_every_config_path(self):
+        utils.set_root_dir(self.tmp_dir.name)
+        root = utils.get_root_dir()
+        self.assertEqual(root, os.path.abspath(self.tmp_dir.name))
+        for path in (
+            utils.get_config_yml_path_under_root(),
+            utils.get_schedule_yml_path_under_root(),
+            utils.get_weekly_start_yml_path_under_root(),
+            utils.get_weekly_timeouts_yml_path_under_root(),
+            utils.get_path_under_root("config", "script_chain"),
+            _state_file(),
+        ):
+            self.assertTrue(path.startswith(root + os.sep), path)
+            self.assertEqual(os.path.dirname(path), os.path.join(root, "config"))
+
+    def test_none_restores_real_root(self):
+        real = utils.get_root_dir()
+        utils.set_root_dir(self.tmp_dir.name)
+        self.assertNotEqual(utils.get_root_dir(), real)
+        utils.set_root_dir(None)
+        self.assertEqual(utils.get_root_dir(), real)
+
+    def test_override_wins_over_frozen(self):
+        """打包形态下仍以覆盖值为准：注入不因 sys.frozen 失效。"""
+        fake_exe = os.path.join(os.sep, "app", "OneDragon-Helper.exe")
+        with patch("sys.frozen", True, create=True), patch("sys.executable", fake_exe):
+            utils.set_root_dir(self.tmp_dir.name)
+            self.assertEqual(utils.get_root_dir(), os.path.abspath(self.tmp_dir.name))
 
 
 if __name__ == "__main__":
