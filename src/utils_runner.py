@@ -506,6 +506,35 @@ def apply_mute_config(config_data: dict, *, enabled: bool) -> None:
     config_data["mute"] = {"enabled": bool(enabled)}
 
 
+def parse_close_running(config_data: dict) -> bool:
+    """解析 config 的 close_running 配置，返回运行前是否关闭残留进程。
+
+    默认启用（True）：与历史行为一致（运行前始终清场）；缺失/非 dict/非 bool
+    一律视为启用，不抛异常。
+
+    Args:
+        config_data: 完整配置字典（load_schedule 结果）。
+
+    Returns:
+        启用返回 True，否则 False。
+    """
+    raw = config_data.get("close_running")
+    if not isinstance(raw, dict):
+        return True
+    enabled = raw.get("enabled", True)
+    return isinstance(enabled, bool) and enabled
+
+
+def apply_close_running_config(config_data: dict, *, enabled: bool) -> None:
+    """把运行前关闭残留进程开关写回 config（原地修改顶层 close_running 映射）。
+
+    Args:
+        config_data: 完整配置字典（load_schedule 结果），原地修改。
+        enabled: 是否运行前关闭残留进程。
+    """
+    config_data["close_running"] = {"enabled": bool(enabled)}
+
+
 def spawn_schedule_run(
     enabled_keys: set[str],
     target_time: str,
@@ -513,6 +542,7 @@ def spawn_schedule_run(
     chain_name: str = "today",
     mute: bool = False,
     shutdown_delay: int | None = None,
+    close_running: bool = True,
 ) -> subprocess.Popen | None:
     """起独立控制台进程运行 ``schedule-run``（等待到点后生成并运行链）。
 
@@ -536,6 +566,7 @@ def spawn_schedule_run(
         chain_name: 链配置文件名（不含扩展名，默认 today）。
         mute: 是否运行中静音（透传 ``--mute``）。
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
+        close_running: 是否运行前关闭残留进程（透传 ``--close-running``，默认启用）。
 
     Returns:
         已启动的 CLI ``subprocess.Popen``；启动失败返回 None。
@@ -550,6 +581,8 @@ def spawn_schedule_run(
     command += ["--schedule-run", target_time, "--name", chain_name]
     if mute:
         command.append("--mute")
+    if close_running:
+        command.append("--close-running")
     if shutdown_delay is not None:
         command += ["--shutdown", str(shutdown_delay)]
     if enabled_keys:

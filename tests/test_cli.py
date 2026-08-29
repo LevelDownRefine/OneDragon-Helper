@@ -456,6 +456,7 @@ class TestCliScheduledRun(unittest.TestCase):
         self.assertEqual(args.kwargs["chain_name"], "today")
         self.assertFalse(args.kwargs["mute"])
         self.assertEqual(args.kwargs["shutdown_delay"], 60)
+        self.assertFalse(args.kwargs["close_running"])
 
     def test_schedule_run_defaults(self):
         code, mock_sched = self._run(["--schedule-run", "08:00"])
@@ -466,6 +467,15 @@ class TestCliScheduledRun(unittest.TestCase):
         )  # 无 --enable → 全部（显式集合，来自 mock config）
         self.assertFalse(mock_sched.call_args.kwargs["mute"])
         self.assertIsNone(mock_sched.call_args.kwargs["shutdown_delay"])
+        self.assertFalse(mock_sched.call_args.kwargs["close_running"])
+
+    def test_schedule_run_close_running_flag(self):
+        # --close-running 透传为 close_running=True；不传则默认 True。
+        code, mock_sched = self._run(
+            ["--schedule-run", "08:00", "--enable", "demo", "--close-running"]
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(mock_sched.call_args.kwargs["close_running"])
 
     def test_schedule_run_enable_all_is_explicit_all(self):
         code, mock_sched = self._run(["--schedule-run", "08:00", "--enable", "all"])

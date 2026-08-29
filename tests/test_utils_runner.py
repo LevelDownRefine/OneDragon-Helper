@@ -665,6 +665,13 @@ class TestSpawnScheduleRun(unittest.TestCase):
         idx = cmd.index("--shutdown")
         self.assertEqual(cmd[idx + 1], "60")
 
+    def test_close_running_passthrough(self):
+        # 默认启用 → 透传 --close-running；显式关闭 → 不传。
+        cmd_on = self._capture_command(frozen=False, close_running=True)
+        self.assertIn("--close-running", cmd_on)
+        cmd_off = self._capture_command(frozen=False, close_running=False)
+        self.assertNotIn("--close-running", cmd_off)
+
     def test_enable_sorted_comma_joined(self):
         cmd = self._capture_command(frozen=False, enabled_keys={"b", "a", "c"})
         idx = cmd.index("--enable")
