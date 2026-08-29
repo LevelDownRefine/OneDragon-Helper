@@ -217,7 +217,13 @@ class BaseLogParser:
         return last[0] if isinstance(last, tuple) else last
 
     def parse_daily(self, content: str) -> bool:
-        """当日每日是否做完：命中任一成功标记=True，否则=False（无标记即失败）。"""
+        """当日每日是否做完：命中任一成功标记=True，否则=False（无标记即失败）。
+
+        未配 ``daily_success_marker`` 的脚本无法判定，返回 True：若返回 False，
+        重跑判据（日常没做完即重跑）会让它每次都进重跑名单。
+        """
+        if not self.daily_success_marker:
+            return True
         return any(m in content for m in self.daily_success_marker)
 
     def parse_exit(self, content: str) -> bool:
@@ -448,15 +454,19 @@ def parse_log(script_name: str, script_path: str = "") -> dict:
 def _prepare_action_lists(entries: list[dict]) -> tuple[list[str], list[str]]:
     """准备需处理脚本的标识列表，供下游自动化：
 
-    - rerun:  未正常退出（exited 不为 True，含无日志），供 rerun.py 重跑；
+    - rerun:  没有确凿证据表明这次跑成功了——未正常退出（``exited`` 不为 True，含无日志）
+      **或**日常没做完（``daily_done`` 不为 True），供 rerun.py 重跑；
     - notify: 存在报错日志（errors 非空），供 notify_mail.py 发邮件。
+
+    退出与日常两轴都看的原因：正常退出 ≠ 做完了。脚本完全可能跑完流程正常收尾、
+    却一项日常都没做成（如 ok-ef「部分失败」仍会写退出标记），只看退出会漏掉这类。
     """
     rerun_list = []
     notify_list = []
     for entry in entries:
         result = entry["result"]
-        # 重跑依据=未正常退出；通知依据=有报错。两轴独立，可同时触发于同一脚本。
-        if result["exited"] is not True:
+        # 重跑依据=未正常退出 或 日常没做完；通知依据=有报错。两轴独立，可同时触发。
+        if result["exited"] is not True or result["daily_done"] is not True:
             rerun_list.append(entry["script_name"])
         if result["errors"]:
             notify_list.append(entry["script_name"])
