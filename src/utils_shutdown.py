@@ -8,7 +8,6 @@
 """
 
 import logging
-import os
 import subprocess
 import sys
 
@@ -30,13 +29,19 @@ def shutdown_sys(seconds: int) -> None:
         return
     if _run_shutdown_confirm(seconds):
         logger.info("准备关机")
-        os.system("shutdown /s /f /t 0")
+        subprocess.run(
+            ["shutdown", "/s", "/f", "/t", "0"],
+            creationflags=_CREATE_NO_WINDOW,
+        )
     else:
         logger.info("已取消关机")
 
 
 def _run_shutdown_confirm(countdown: int) -> bool:
-    """拉起独立确认窗子进程，确认返回 True、取消/超时返回 False。
+    """在当前进程内弹出 PySide6 倒计时确认窗。
+
+    本函数在子进程（CREATE_NEW_CONSOLE）中运行，须自行创建 QApplication。
+    对话框模态阻塞，用户确认/取消/超时后返回。
 
     Args:
         countdown: 倒计时秒数。
@@ -44,37 +49,90 @@ def _run_shutdown_confirm(countdown: int) -> bool:
     Returns:
         确认返回 True，取消/超时返回 False。
     """
-    confirm_script = os.path.join(
-        os.path.dirname(__file__), "win_exe", "shutdown_confirm.py"
-    )
-    if not os.path.isfile(confirm_script):
-        logger.error("关机确认窗脚本缺失 %s，降级直接关机", confirm_script)
-        return True
     try:
-        proc = subprocess.run(
-            [sys.executable, confirm_script, str(countdown)],
-            creationflags=_CREATE_NO_WINDOW,
-            capture_output=True,
-            text=True,
-            timeout=countdown + 30,
+        from PySide6.QtCore import QTimer  # noqa: F811
+        from PySide6.QtWidgets import (  # noqa: F811
+            QApplication,
+            QDialog,
+            QHBoxLayout,
+            QLabel,
+            QPushButton,
+            QVBoxLayout,
         )
-        out = (proc.stdout or "").strip()
-        if out:
-            for line in out.splitlines():
-                logger.info("[关机确认窗] %s", line)
-        logger.info("关机确认窗退出码=%d", proc.returncode)
-        return proc.returncode == 0
-    except subprocess.TimeoutExpired as e:
-        proc = getattr(e, "subprocess", None)
-        if proc is not None:
-            proc.kill()
-        logger.error("关机确认窗超时未响应，视为取消")
-        return False
-    except OSError as e:
-        logger.error("启动关机确认窗失败 %s，降级直接关机", e)
+    except ImportError:
+        logger.warning("PySide6 不可用，降级直接关机")
         return True
+
+    class _ShutdownConfirmDialog(QDialog):
+        """关机确认窗：倒计时归零自动确认，点「立即关机」立即确认，关窗/取消则取消。"""
+
+        def __init__(self, countdown: int) -> None:
+            super().__init__()
+            self.confirmed = False
+            self._remain = countdown
+            self.setWindowTitle("即将关机")
+            self.setWindowFlags(
+                self.windowFlags() | 0x00000008  # WindowStaysOnTopHint
+            )
+            self.setFixedSize(380, 170)
+
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(18, 18, 18, 18)
+            layout.setSpacing(14)
+
+            self._label = QLabel(f"系统将在 {countdown} 秒后关机")
+            self._label.setStyleSheet("font-size: 13px;")
+            layout.addWidget(self._label, alignment=0x0004)  # AlignCenter
+
+            btn_layout = QHBoxLayout()
+            btn_layout.setSpacing(10)
+            shutdown_btn = QPushButton("立即关机")
+            shutdown_btn.setFixedWidth(120)
+            shutdown_btn.clicked.connect(self._on_shutdown)
+            btn_layout.addWidget(shutdown_btn)
+            cancel_btn = QPushButton("取消")
+            cancel_btn.setFixedWidth(120)
+            cancel_btn.clicked.connect(self._on_cancel)
+            btn_layout.addWidget(cancel_btn)
+            layout.addLayout(btn_layout)
+
+            self._timer = QTimer(self)
+            self._timer.timeout.connect(self._tick)
+            self._timer.start(1000)
+
+        def _tick(self) -> None:
+            self._remain -= 1
+            if self._remain <= 0:
+                self._timer.stop()
+                self.confirmed = True
+                self.accept()
+                return
+            self._label.setText(f"系统将在 {self._remain} 秒后关机")
+
+        def _on_shutdown(self) -> None:
+            self.confirmed = True
+            self.accept()
+
+        def _on_cancel(self) -> None:
+            self.confirmed = False
+            self.reject()
+
+        def closeEvent(self, event) -> None:
+            self.confirmed = False
+            event.accept()
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
+    dialog = _ShutdownConfirmDialog(countdown)
+    dialog.show()
+    app.exec()
+    return dialog.confirmed
 
 
 def cancel_shutdown_sys() -> None:
     """取消计划的自动关机（shutdown /a）。"""
-    os.system("shutdown /a")
+    subprocess.run(
+        ["shutdown", "/a"],
+        creationflags=_CREATE_NO_WINDOW,
+    )
