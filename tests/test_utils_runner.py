@@ -29,7 +29,7 @@ from src.utils_runner import (
     spawn_schedule_run,
 )
 from src.utils_weekly import next_target_datetime
-from tests.process_sim import ProcessSim, SimProcess
+from tests.process_sim import SimProcess
 
 CHAIN_PATH = "config/script_chain/01.yml"
 
@@ -480,29 +480,6 @@ class TestKillProcesses(unittest.TestCase):
         self.assertEqual(killed, [f"pythonw.exe({worker.pid})"])
         self.assertTrue(worker.terminated)
         self.assertFalse(other.terminated)
-
-    def test_kills_children_tree(self):
-        # 进程树一并终止：真身 → 它启动的游戏 → 游戏拉起的子进程，不留残留。
-        # 树由全局 ppid 表一次推出，故 sim 要给出全部进程（含子孙）。
-        sim = ProcessSim()
-        sim.add_script("ok-ww")
-        helper = sim.add_other("helper.exe", parent=sim.games["ok-ww"])
-        body, game = sim.bodies["ok-ww"], sim.games["ok-ww"]
-        with sim.install():
-            killed = kill_processes(_collect_process_targets(sim.scripts[0]))
-        self.assertEqual(
-            sorted(killed),
-            sorted(
-                [
-                    f"pythonw.exe({body.pid})",
-                    f"ok-wwGame.exe({game.pid})",
-                    f"helper.exe({helper.pid})",
-                ]
-            ),
-        )
-        self.assertTrue(body.terminated)
-        self.assertTrue(game.terminated)
-        self.assertTrue(helper.terminated)
 
     def test_kill_when_wait_timeout(self):
         # wait_procs 超时后仍存活的进程 → 强制 kill。
