@@ -310,11 +310,11 @@ class TestParseLogsRerunList(unittest.TestCase):
         info.assert_not_called()
         self.assertEqual(result["rerun"], ["March7th-Assistant"])
 
-    def test_parse_logs_rerun_by_exit_notify_by_errors(self):
-        """重跑依据=未正常退出 或 日常没做完；通知依据=有报错（两者独立、可分离）。
+    def test_parse_logs_rerun_by_daily_notify_by_errors(self):
+        """重跑依据=日常没做完；通知依据=有报错（两者独立、可分离）。
 
-        - ok-ww：正常退出且日常做完、但有报错 → 仅 notify（不 rerun）。
-        - BetterGI：未退出且无报错 → 仅 rerun（不 notify）。
+        - ok-ww：日常做完、但有报错 → 仅 notify（不 rerun）。
+        - BetterGI：日常没做完、无报错 → 仅 rerun（不 notify）。
         """
         tmp = tempfile.mkdtemp()
         cfg_dir = os.path.join(tmp, "config")
@@ -336,32 +336,30 @@ class TestParseLogsRerunList(unittest.TestCase):
         )
 
         def fake_parse(script_name, script_path=""):
-            # 返回 parse_log 的真实契约：完整归一化结构（八键）。
+            # 返回 parse_log 的真实契约：完整归一化结构（七键）。
             if script_name == "ok-ww":
-                # 正常退出且日常做完：仅剩「有报错」这一条，故只进 notify。
+                # 日常做完：仅剩「有报错」这一条，故只进 notify。
                 return {
                     "status": "Failed",
                     "log_path": "x",
-                    "exited": True,
                     "errors": ["ERR x"],
                     "stamina": None,
                     "daily_done": True,
                     "extra": None,
                 }
             if script_name == "BetterGI":
+                # 日常没做完：进 rerun；无报错故不进 notify。
                 return {
                     "status": "Failed",
                     "log_path": "y",
-                    "exited": False,
                     "errors": [],
                     "stamina": None,
-                    "daily_done": True,
+                    "daily_done": False,
                     "extra": None,
                 }
             return {
                 "status": "NoLog",
                 "log_path": None,
-                "exited": None,
                 "errors": [],
                 "stamina": None,
                 "daily_done": False,
@@ -394,8 +392,8 @@ class TestParseLogsRerunList(unittest.TestCase):
         self.assertIn("脚本运行状况汇总报告", result["report"])
 
     def test_parse_logs_warn_when_success_with_errors(self):
-        """正常完成（SUCCESS）但含报错 → 表格显示「成功(有报错)」WARN，
-        仅通知不重跑（rerun 看 exited 与 daily_done，notify 看 errors，均不受 WARN 影响）。
+        """正常完成（SUCCESS）但含报错 → 表格显示「警告」WARN，
+        仅通知不重跑（rerun 看 daily_done，notify 看 errors，均不受 WARN 影响）。
         """
         tmp = tempfile.mkdtemp()
         cfg_dir = os.path.join(tmp, "config")
@@ -418,7 +416,6 @@ class TestParseLogsRerunList(unittest.TestCase):
             return {
                 "status": "Success",
                 "log_path": "x",
-                "exited": True,
                 "errors": ["ERR x"],
                 "stamina": None,
                 "daily_done": True,
@@ -443,11 +440,11 @@ class TestParseLogsRerunList(unittest.TestCase):
                     h.close()
             collect_log._get_root_dir = orig
 
-        # WARN 不影响决策：正常退出 → 不重跑；有报错 → 通知。
+        # WARN 不影响决策：日常做完 → 不重跑；有报错 → 通知。
         self.assertEqual(result["rerun"], [])
         self.assertEqual(result["notify"], ["BetterGI"])
-        # 表格状态列呈现「有报错」以抓潜在问题，而非「成功」。
-        self.assertIn("有报错", result["report"])
+        # 表格状态列呈现「警告」以抓潜在问题，而非「成功」。
+        self.assertIn("警告", result["report"])
 
     def test_parse_daily_returns_bool_driven_by_marker(self):
         """parse_daily 仅由 daily_success_marker 决定：命中标记=True，否则=False，绝不返回 None。"""
@@ -469,16 +466,6 @@ class TestParseLogsRerunList(unittest.TestCase):
         p = OkWwLogParser()
         p.daily_success_marker = []
         self.assertTrue(p.parse_daily("没有任何标记的内容"))
-
-    def test_resolve_exited_infers_from_status_when_unknown(self):
-        """日志未明确退出信号（None）时按整体状态推断；有明确信号时不覆盖。"""
-        # 缺失信号 → 成功=已退出，失败/无日志=未正常退出。
-        self.assertTrue(collect_log._resolve_exited(None, ScriptLogStatus.SUCCESS))
-        self.assertFalse(collect_log._resolve_exited(None, ScriptLogStatus.FAILED))
-        self.assertFalse(collect_log._resolve_exited(None, ScriptLogStatus.NO_LOG))
-        # 明确信号不被状态覆盖。
-        self.assertFalse(collect_log._resolve_exited(False, ScriptLogStatus.SUCCESS))
-        self.assertTrue(collect_log._resolve_exited(True, ScriptLogStatus.FAILED))
 
     def test_parse_daily_done_driven_by_marker(self):
         """daily_done 直接由 parse_daily 决定：命中每日成功标记=True，否则（含脚本成功但无标记）=False。"""
@@ -544,7 +531,6 @@ class TestParseLogsRerunList(unittest.TestCase):
             return {
                 "status": "Success",
                 "log_path": "x",
-                "exited": True,
                 "errors": [],
                 "daily_done": True,
                 "stamina": None,
@@ -584,15 +570,14 @@ class TestActionListsAndReport(unittest.TestCase):
         }
 
     def test_prepare_action_lists_splits_rerun_and_notify(self):
-        # 退出与否、有无报错两轴独立：ok-ww 退出且做完了但有错→仅 notify；
-        # BetterGI 未退且无错→仅 rerun。
+        # 日常与报错两轴独立：ok-ww 做完了但有错→仅 notify；
+        # BetterGI 没做完且无错→仅 rerun。
         entries = [
             self._entry(
                 "ok-ww",
                 "A",
                 {
                     "status": "Failed",
-                    "exited": True,
                     "errors": ["e"],
                     "daily_done": True,
                 },
@@ -602,9 +587,8 @@ class TestActionListsAndReport(unittest.TestCase):
                 "B",
                 {
                     "status": "Failed",
-                    "exited": False,
                     "errors": [],
-                    "daily_done": True,
+                    "daily_done": False,
                 },
             ),
         ]
@@ -612,16 +596,15 @@ class TestActionListsAndReport(unittest.TestCase):
         self.assertEqual(rerun, ["BetterGI"])
         self.assertEqual(notify, ["ok-ww"])
 
-    def test_prepare_action_lists_reruns_when_exited_but_daily_not_done(self):
-        # 正常退出 ≠ 做完了：脚本可能跑完流程正常收尾、却一项日常都没做成
-        # （ok-ef「部分失败」仍会写退出标记），只看退出会漏掉这类。
+    def test_prepare_action_lists_reruns_when_daily_not_done(self):
+        # 重跑只看日常是否做完：脚本可能跑完流程正常收尾、却一项日常都没做成
+        # （ok-ef「部分失败」仍会写退出标记），看进程收尾会漏掉这类。
         entries = [
             self._entry(
                 "ok-ef",
                 "A",
                 {
                     "status": "Failed",
-                    "exited": True,
                     "errors": [],
                     "daily_done": False,
                 },
@@ -631,14 +614,13 @@ class TestActionListsAndReport(unittest.TestCase):
         self.assertEqual(rerun, ["ok-ef"])
         self.assertEqual(notify, [])
 
-    def test_prepare_action_lists_no_rerun_when_exited_and_daily_done(self):
+    def test_prepare_action_lists_no_rerun_when_daily_done(self):
         entries = [
             self._entry(
                 "ok-ww",
                 "A",
                 {
                     "status": "Success",
-                    "exited": True,
                     "errors": [],
                     "daily_done": True,
                 },
@@ -654,7 +636,6 @@ class TestActionListsAndReport(unittest.TestCase):
                 "原神",
                 {
                     "status": "Success",
-                    "exited": True,
                     "errors": [],
                     "daily_done": True,
                     "stamina": "120",
@@ -667,27 +648,6 @@ class TestActionListsAndReport(unittest.TestCase):
         self.assertIn("脚本运行状况汇总报告", report)
         self.assertNotIn("未知", report)
 
-    def test_build_summary_report_exited_none_renders_no_unknown(self):
-        # 无日志条目 exited=None（调用方直接喂入）也应定稿为「否」，不得出现「未知」。
-        entries = [
-            self._entry(
-                "BetterGI",
-                "原神",
-                {
-                    "status": "NoLog",
-                    "exited": None,
-                    "errors": [],
-                    "daily_done": False,
-                    "stamina": None,
-                    "extra": None,
-                },
-            ),
-        ]
-        report = collect_log._build_summary_report(entries, [], [], do_log=False)
-        self.assertIn("原神", report)
-        self.assertNotIn("未知", report)
-        self.assertIn("否", report)
-
     def test_build_summary_report_prints_error_lines_then_log_tails(self):
         """各脚本报错信息先打印，全部结束后才打印各脚本日志尾部；两段均不进 report 文本。"""
         entries = [
@@ -696,7 +656,6 @@ class TestActionListsAndReport(unittest.TestCase):
                 "A",
                 {
                     "status": "Failed",
-                    "exited": False,
                     "log_path": "D:/log/A.log",
                     "errors": ["ERROR: x", "ERROR: y"],
                     "log_content": "a-line1\na-line2\na-line3",
@@ -710,7 +669,6 @@ class TestActionListsAndReport(unittest.TestCase):
                 "B",
                 {
                     "status": "Success",
-                    "exited": True,
                     "log_path": "D:/log/B.log",
                     "errors": ["WARNING: 未领取"],
                     "log_content": "tail-only-B",
@@ -724,7 +682,6 @@ class TestActionListsAndReport(unittest.TestCase):
                 "C",
                 {
                     "status": "Success",
-                    "exited": True,
                     "errors": [],
                     "log_path": "D:/log/C.log",
                     "daily_done": True,
@@ -759,9 +716,9 @@ class TestActionListsAndReport(unittest.TestCase):
 
 
 class TestFourFieldExtraction(unittest.TestCase):
-    """验证各 Parser 的四类补充信息提取（体力 / 每日 / 退出 / 报错）。"""
+    """验证各 Parser 的补充信息提取（体力 / 每日 / 报错）。"""
 
-    def test_oww_stamina_daily_exit_errors(self):
+    def test_oww_stamina_daily_errors(self):
         p = OkWwLogParser()
         content = (
             "info_set current_stamina 240\n"
@@ -773,7 +730,6 @@ class TestFourFieldExtraction(unittest.TestCase):
         )
         self.assertEqual(p.parse_stamina(content), "240")
         self.assertTrue(p.parse_daily(content))
-        self.assertTrue(p.parse_exit(content))
         # 战斗复检噪声应被过滤，仅保留真实报错。
         self.assertEqual(
             p.collect_error_lines(content),
@@ -790,7 +746,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         content = "info_set current_stamina 240\ninfo_set current_stamina 102\ninfo_set back_up_stamina 118\n"
         self.assertEqual(p.parse_stamina(content), "102")
 
-    def test_onte_stamina_daily_exit_errors(self):
+    def test_onte_stamina_daily_errors(self):
         p = OkNteLogParser()
         content = (
             "AnomalyHunter:info_set 当前体力 355\n"
@@ -803,7 +759,6 @@ class TestFourFieldExtraction(unittest.TestCase):
         )
         self.assertEqual(p.parse_stamina(content), "355")
         self.assertTrue(p.parse_daily(content))
-        self.assertTrue(p.parse_exit(content))
         self.assertEqual(
             p.collect_error_lines(content),
             ["ERROR DailyRoutineTask:任务运行失败: 喷泉签到 Traceback"],
@@ -829,7 +784,6 @@ class TestFourFieldExtraction(unittest.TestCase):
         )
         self.assertIsNone(p.parse_stamina(content_done))  # 终末地日志无体力数字
         self.assertTrue(p.parse_daily(content_done))
-        self.assertTrue(p.parse_exit(content_done))
         # 报错取「- 」缩进明细行（含刷体力失败原因）。
         self.assertEqual(
             p.collect_error_lines(content_done),
@@ -839,15 +793,13 @@ class TestFourFieldExtraction(unittest.TestCase):
         content_partial = (
             "执行状态: 部分失败\n失败任务:\n  - ⭐买信用商店 : 购买失败: 信用不足\n"
         )
+        # 部分失败 = 有任务没做成 → 日常不算做完（这正是重跑判据要抓的情形）。
         self.assertFalse(p.parse_daily(content_partial))
-        # 部分失败 = 进程正常跑完、仅结果部分失败 → 仍算正常退出（与结果成败正交）。
-        self.assertTrue(p.parse_exit(content_partial))
 
         content_abnormal = "执行状态: 异常结束\n当前正在执行的任务:\n  ⭐送礼\n"
         self.assertFalse(p.parse_daily(content_abnormal))
-        self.assertFalse(p.parse_exit(content_abnormal))
 
-    def test_m7a_stamina_daily_exit_and_error_truncation(self):
+    def test_m7a_stamina_daily_and_error_truncation(self):
         p = M7ALogParser()
         content = (
             "开拓力: 249/300\n"
@@ -858,7 +810,6 @@ class TestFourFieldExtraction(unittest.TestCase):
         )
         self.assertEqual(p.parse_stamina(content), "249")
         self.assertTrue(p.parse_daily(content))
-        self.assertTrue(p.parse_exit(content))
         # 「游戏终止」之后的收尾报错（WinError 233）属良性，应被截断过滤。
         self.assertEqual(
             p.collect_error_lines(content),
@@ -870,7 +821,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         content = "ERROR 当前界面：未知\nERROR 获取当前界面超时\n"
         self.assertEqual(len(p.collect_error_lines(content)), 2)
 
-    def test_zzz_stamina_daily_exit_errors(self):
+    def test_zzz_stamina_daily_errors(self):
         # 仅「等待大世界画面 未到达大世界」属重试瞬时噪声应排除；其余单步失败
         # （如「代理人方案培养 找不到」）仍应计入报错，交由状态判定真相。
         p = ZZZLogParser()
@@ -883,7 +834,6 @@ class TestFourFieldExtraction(unittest.TestCase):
         )
         self.assertEqual(p.parse_stamina(content), "119")
         self.assertTrue(p.parse_daily(content))
-        self.assertTrue(p.parse_exit(content))
         errs = p.collect_error_lines(content)
         # 仅屏蔽「等待大世界画面」那行；「代理人方案培养」仍被收集。
         self.assertEqual(len(errs), 1)
@@ -918,7 +868,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         )
         self.assertFalse(p.parse_daily("指令[ 一条龙 ] 执行成功 返回状态 全部结束"))
 
-    def test_bgi_stamina_daily_exit_errors(self):
+    def test_bgi_stamina_daily_errors(self):
         p = BGILogParser()
         content = (
             "原粹树脂：22，浓缩树脂：0\n"
@@ -930,7 +880,6 @@ class TestFourFieldExtraction(unittest.TestCase):
         )
         self.assertEqual(p.parse_stamina(content), "22")
         self.assertTrue(p.parse_daily(content))
-        self.assertTrue(p.parse_exit(content))
         errs = p.collect_error_lines(content)
         self.assertEqual(len(errs), 2)
         self.assertIn("[ERR] 任务执行失败", errs)
@@ -960,7 +909,6 @@ class TestFourFieldExtraction(unittest.TestCase):
             self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
             self.assertEqual(result["stamina"], "100")
             self.assertTrue(result["daily_done"])
-            self.assertTrue(result["exited"])
             self.assertEqual(result["errors"], [])
             for key in (
                 "status",
@@ -968,7 +916,6 @@ class TestFourFieldExtraction(unittest.TestCase):
                 "log_content",
                 "stamina",
                 "daily_done",
-                "exited",
                 "errors",
                 "extra",
             ):
@@ -984,9 +931,10 @@ class TestFourFieldExtraction(unittest.TestCase):
         self.assertEqual(result["status"], ScriptLogStatus.NO_LOG)
         self.assertNotIn("stamina", result)
 
-    def test_parse_log_no_log_resolves_exited_false(self):
-        """无日志路径在 parse_log 层定稿 exited 为确定 bool（False），不向显示层漏 None。"""
-        # ok-ww 指向不存在的日志 → NO_LOG，聚合方应拿到 exited=False 而非 None。
+    def test_parse_log_no_log_resolves_daily_done_false(self):
+        """无日志路径在 parse_log 层定稿 daily_done 为确定 bool（False），不向显示层漏 None。"""
+        # ok-ww 指向不存在的日志 → NO_LOG，聚合方应拿到 daily_done=False 而非 None，
+        # 否则「日常没做完即重跑」的判据会把 None 当成待重跑而误判。
         tmp = tempfile.mkdtemp()
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
@@ -1014,8 +962,8 @@ class TestFourFieldExtraction(unittest.TestCase):
                     h.close()
             collect_log._get_root_dir = orig
         self.assertEqual(res["status"], ScriptLogStatus.NO_LOG)
-        self.assertFalse(res["exited"])
-        self.assertIsInstance(res["exited"], bool)
+        self.assertFalse(res["daily_done"])
+        self.assertIsInstance(res["daily_done"], bool)
 
 
 class TestScriptNameIdentifier(unittest.TestCase):

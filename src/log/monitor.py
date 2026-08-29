@@ -83,20 +83,6 @@ def _pad_row(cells: list[str], widths: list[int]) -> str:
     return "".join(parts)
 
 
-def _resolve_exited(exited_raw: bool | None, status: str) -> bool:
-    """推导是否正常退出（进程是否正常收尾，与结果成败正交）：
-
-    - 日志有明确信号（True/False）时直接用，不推断；
-    - 仅在 parse_exit 判定不了（None）时，按状态做保守推断——
-      无日志（NO_LOG）视为未正常退出，成功（SUCCESS）视为已退出。
-    注意「正常退出」≠「成功」：结果失败但进程正常收尾（如部分失败）仍算正常退出；
-    非正常退出（被杀/崩溃/异常结束）才是 FAILED 的一种成因，parse_exit 应判 False。
-    """
-    if exited_raw is not None:
-        return exited_raw
-    return status == ScriptLogStatus.SUCCESS
-
-
 _LOG_TAIL_LINES = 200
 
 
@@ -114,7 +100,7 @@ status_cn = {
     ScriptLogStatus.SUCCESS: "成功",
     ScriptLogStatus.FAILED: "失败",
     ScriptLogStatus.NO_LOG: "无日志",
-    ScriptLogStatus.WARN: "有报错",
+    ScriptLogStatus.WARN: "警告",
 }
 
 
@@ -137,7 +123,7 @@ class BaseLogParser:
     stamina_pattern: str = ""
     # 判定当日是否做完的「成功」标记；命中任一即视为做完，否则（含未提及）视为未完成。
     daily_success_marker: tuple[str, ...] = ()
-    # 正常退出的判定标记（进程是否收尾，与结果成败正交）；命中任一即视为正常退出。
+    # 终止横幅标记（崩铁用于截断「游戏终止」之后的良性报错），命中任一取其最后位置。
     exit_markers: tuple[str, ...] = ()
     # parse_content 成功 / 失败判定词（success 命中即 SUCCESS；部分游戏还有 fail 排除词）。
     # 默认空，由配置注入；各 Parser 的 parse_content 读取之。
@@ -226,10 +212,6 @@ class BaseLogParser:
             return True
         return any(m in content for m in self.daily_success_marker)
 
-    def parse_exit(self, content: str) -> bool:
-        """是否正常退出：命中任一 exit_markers=True，否则=False（与结果成败正交）。"""
-        return any(m in content for m in self.exit_markers)
-
     def parse_extra(self, content: str) -> str | None:
         """额外信息（游戏特定）。默认无；子类（如原神浓缩树脂）按需覆写。"""
         return None
@@ -274,7 +256,6 @@ class BaseLogParser:
             # 四类补充信息，向后兼容：旧消费者只用 status/log_path/log_content。
             "stamina": self.parse_stamina(content),
             "daily_done": daily_done,
-            "exited": _resolve_exited(self.parse_exit(content), status),
             "errors": self.collect_error_lines(content),
             "extra": self.parse_extra(content),
         }
@@ -335,9 +316,8 @@ class M7ALogParser(BaseLogParser):
     def _term_index(self, content: str) -> int:
         """返回最后一个终止横幅的位置；候选皆无则返回 -1。
 
-        终止横幅即 exit_markers（正常退出标记），复用之——
-        取最后出现位置作为「游戏终止」分界点，截断其后的良性收尾报错，
-        并据其有无判定是否正常退出（与 parse_exit 共享同一组标记）。
+        终止横幅即 exit_markers，复用之——
+        取最后出现位置作为「游戏终止」分界点，截断其后的良性收尾报错。
         """
         idx = -1
         for marker in self.exit_markers:
@@ -427,8 +407,8 @@ _PARSERS = [
 def parse_log(script_name: str, script_path: str = "") -> dict:
     """解析单个脚本当日日志：按 script_name 找到对应 Parser 并解析，返回统一结构。
 
-    返回 dict 恒含 status / log_path / log_content / stamina / daily_done / exited /
-    errors / extra 八键；无日志（NO_LOG）为缺省值，使消费方直接 d[key]。
+    返回 dict 恒含 status / log_path / log_content / stamina / daily_done /
+    errors / extra 七键；无日志（NO_LOG）为缺省值，使消费方直接 d[key]。
     script_name 必为受支持脚本（parse_logs 入口已过滤），不支持即不可能。
     """
     # 不支持的脚本在 parse_logs 入口已过滤，到此处即不可能。
@@ -439,13 +419,12 @@ def parse_log(script_name: str, script_path: str = "") -> dict:
     for parser_cls in _PARSERS:
         if script_name == parser_cls.script_name:
             result = parser_cls().parse(script_path)
-            # parse() 在 NO_LOG 时只返 status/log_path（四类字段缺省），补全缺省值使结构统一；
+            # parse() 在 NO_LOG 时只返 status/log_path（其余字段缺省），补全缺省值使结构统一；
             # 仅对缺省键 setdefault，不覆盖调用方（如测试）已提供的字段。
             if "stamina" not in result:
                 result.setdefault("log_content", "")
                 result.setdefault("stamina", None)
                 result.setdefault("daily_done", False)
-                result.setdefault("exited", _resolve_exited(None, result["status"]))
                 result.setdefault("errors", [])
                 result.setdefault("extra", None)
             return result
@@ -454,19 +433,18 @@ def parse_log(script_name: str, script_path: str = "") -> dict:
 def _prepare_action_lists(entries: list[dict]) -> tuple[list[str], list[str]]:
     """准备需处理脚本的标识列表，供下游自动化：
 
-    - rerun:  没有确凿证据表明这次跑成功了——未正常退出（``exited`` 不为 True，含无日志）
-      **或**日常没做完（``daily_done`` 不为 True），供 rerun.py 重跑；
+    - rerun:  日常没做完（``daily_done`` 不为 True，含无日志），供 rerun.py 重跑；
     - notify: 存在报错日志（errors 非空），供 notify_mail.py 发邮件。
 
-    退出与日常两轴都看的原因：正常退出 ≠ 做完了。脚本完全可能跑完流程正常收尾、
-    却一项日常都没做成（如 ok-ef「部分失败」仍会写退出标记），只看退出会漏掉这类。
+    只看日常、不看进程是否收尾：正常退出 ≠ 做完了。脚本完全可能跑完流程正常收尾、
+    却一项日常都没做成（如 ok-ef「部分失败」仍会写退出标记），看退出会漏掉这类。
     """
     rerun_list = []
     notify_list = []
     for entry in entries:
         result = entry["result"]
-        # 重跑依据=未正常退出 或 日常没做完；通知依据=有报错。两轴独立，可同时触发。
-        if result["exited"] is not True or result["daily_done"] is not True:
+        # 重跑依据=日常没做完；通知依据=有报错。两轴独立，可同时触发于同一脚本。
+        if result["daily_done"] is not True:
             rerun_list.append(entry["script_name"])
         if result["errors"]:
             notify_list.append(entry["script_name"])
@@ -476,7 +454,7 @@ def _prepare_action_lists(entries: list[dict]) -> tuple[list[str], list[str]]:
 def _format_diagnostic_sections(entries: list[dict], collapse_fn=None) -> str:
     """生成「各脚本报错明细」+「各脚本日志尾部」两段诊断文本（固定顺序），供控制台与邮件复用。
 
-    第一段覆盖 errors 非空的脚本（含 WARN「有报错」与 FAILED），打印各脚本报错信息；
+    第一段覆盖 errors 非空的脚本（含 WARN「警告」与 FAILED），打印各脚本报错信息；
     第二段仅覆盖 FAILED 脚本，打印日志尾部（深入排查失败原因）；报错信息整体位于日志尾部之前。
     log_info 打印，邮件调用方拼入正文（并传入 collapse_fn 折叠连续重复行防刷屏）。
     """
@@ -494,7 +472,7 @@ def _format_diagnostic_sections(entries: list[dict], collapse_fn=None) -> str:
         lines.append("=" * 60)
         for entry in error_entries:
             result = entry["result"]
-            # 正常完成但含报错 → WARN「有报错」，与汇总表格呈现一致。
+            # 正常完成但含报错 → WARN「警告」，与汇总表格呈现一致。
             display_status = (
                 ScriptLogStatus.WARN
                 if (result["status"] == ScriptLogStatus.SUCCESS and result["errors"])
@@ -532,8 +510,8 @@ def _build_summary_report(
     entries: list[dict], rerun_list: list[str], notify_list: list[str], do_log: bool
 ) -> str:
     """汇总表格文本：标题 / 表头 / 各脚本行 / 统计。report_lines 同时供邮件整表通知复用。"""
-    headers = ["脚本", "状态", "剩余体力", "每日", "退出", "报错", "额外信息"]
-    widths = [16, 8, 10, 6, 6, 6, 24]
+    headers = ["脚本", "状态", "剩余体力", "每日", "报错", "额外信息"]
+    widths = [16, 8, 10, 6, 6, 24]
     total = sum(widths)
     report_lines: list[str] = []
 
@@ -560,7 +538,7 @@ def _build_summary_report(
     for entry in entries:
         result = entry["result"]
         errors = result["errors"]
-        # 显示状态：正常完成但含报错 → WARN「有报错」（仅呈现层，抓潜在问题）。
+        # 显示状态：正常完成但含报错 → WARN「警告」（仅呈现层，抓潜在问题）。
         display_status = (
             ScriptLogStatus.WARN
             if (result["status"] == ScriptLogStatus.SUCCESS and errors)
@@ -569,7 +547,6 @@ def _build_summary_report(
         stamina = result["stamina"]
         daily = result["daily_done"]
         extra = result["extra"]
-        exited = result["exited"]
         # 所有展示状态均已纳入 status_cn；未覆盖即属不可能，直接断言。
         assert display_status in status_cn, f"未覆盖的展示状态: {display_status}"
         emit(
@@ -579,7 +556,6 @@ def _build_summary_report(
                     status_cn[display_status],
                     str(stamina) if stamina is not None else "—",
                     "是" if daily else "否",
-                    "是" if exited else "否",
                     str(len(errors)),
                     str(extra) if extra is not None else "—",
                 ],
@@ -611,12 +587,12 @@ def parse_logs(
 
     按脚本唯一标识 script_name（exe=进程名 / python=display_name）匹配各 Parser；
     返回 dict：
-      - "rerun":  未正常退出的脚本标识（含无日志），供 rerun.py 重跑；
+      - "rerun":  日常没做完的脚本标识（含无日志），供 rerun.py 重跑；
       - "notify": 存在报错日志的脚本标识，供 notify_mail.py 发邮件；
       - "report": 汇总表格文本，供 notify_mail.py 整表通知；
       - "entries": 各脚本解析结果（含 display_name / result），供 notify_mail.py 复用诊断文本。
-    表格状态列：正常完成但含报错显示为 WARN「有报错」，仅呈现层；
-    rerun/notify 仍按 exited/errors 判定。
+    表格状态列：正常完成但含报错显示为 WARN「警告」，仅呈现层；
+    rerun/notify 仍按 daily_done/errors 判定。
 
     Args:
         candidate_script_names: 候选脚本标识集合（即本次启用的脚本）。传入后只在该

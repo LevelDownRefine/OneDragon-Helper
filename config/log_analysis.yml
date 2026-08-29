@@ -1,7 +1,7 @@
 # 各游戏脚本运行日志的「关键词匹配」配置，由 src/log/monitor.py 读取。
 #
 # 原先 hardcode 在 monitor.py 各 *LogParser 子类里的判定关键词（报错标记 / 良性噪声 /
-# 每日完成标记 / 正常退出标记 / 体力提取正则 / 日志文件名 / 成功与失败判定词）统一集中
+# 每日完成标记 / 终止横幅标记（崩铁专用） / 体力提取正则 / 日志文件名 / 成功与失败判定词）统一集中
 # 于此，便于在不改代码的情况下调整判定口径。新增游戏时：在下面 parsers 下加一个
 # 以脚本唯一标识（与 config.yml script_path 推导的 get_script_name 一致）为键的条目即可。
 #
@@ -9,6 +9,8 @@
 # - 各字段均为子串（substring）匹配，非正则（stamina_pattern 除外，它是正则）。
 # - 命中任一即成立（any）。error_noise 命中则该行不计入报错。
 # - success_markers / fail_markers 仅用于 parse_content 的成败判定（见各 Parser 逻辑）。
+# - exit_markers 仅崩铁（March7th-Assistant）消费：作「游戏终止」横幅、截断其后的良性收尾报错；
+#   其余游戏不读取它（parse_exit 已移除，无其它消费者）。
 # - 缺失字段以空值兜底（如某游戏无体力提取，省略 stamina_pattern）。
 
 parsers:
@@ -27,10 +29,6 @@ parsers:
     daily_success_marker:
       - 'claim daily reward via  coordinate'
       - 'current daily progress 180'
-    exit_markers:
-      - 'Successfully Executed Task, Exiting Game and App!'
-      - 'ok:quit app'
-      - 'Window closed'
     success_markers:
       - 'Successfully Executed Task'
       - 'Task completed'
@@ -45,9 +43,6 @@ parsers:
       - 'Failed to terminate process'
     daily_success_marker:
       - 'info_set failed []'
-    exit_markers:
-      - 'Successfully Executed Task, Exiting Game and App!'
-      - 'ok:quit app'
     success_markers:
       - 'Successfully Executed Task'
       - 'Task completed'
@@ -56,9 +51,6 @@ parsers:
     log_pattern: '日常任务_*.txt'
     daily_success_marker:
       - '执行状态: 完成'
-    exit_markers:
-      - '执行状态: 完成'
-      - '执行状态: 部分失败'
     success_markers:
       - '执行状态: 完成'
 
@@ -83,9 +75,6 @@ parsers:
       - '指令[ 等待大世界画面 ] 执行失败 返回状态 未到达大世界'
     daily_success_marker:
       - '日常奖励领取成功'
-    exit_markers:
-      - '返回状态 全部结束'
-      - '关闭游戏成功'
     success_markers:
       - '指令[ 一条龙 ] 执行成功'
       - '指令[ 执行应用组 one_dragon ] 执行成功'
@@ -99,10 +88,6 @@ parsers:
       - '异常：'
     daily_success_marker:
       - '今日奖励已领取'
-    exit_markers:
-      - '一条龙和配置组任务结束'
-      - '主窗体退出'
-      - '游戏已退出'
     success_markers:
       - '一条龙和配置组任务结束'
     fail_markers:
