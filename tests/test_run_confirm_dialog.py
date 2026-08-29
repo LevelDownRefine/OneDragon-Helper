@@ -89,6 +89,7 @@ class TestRunConfirmDialog(unittest.TestCase):
                 "timed_enabled": True,
                 "timed_target": "04:10",
                 "mute_enabled": True,
+                "close_running_enabled": True,
                 "rerun_enabled": False,
                 "notify_enabled": True,
             },
@@ -129,6 +130,18 @@ class TestRunConfirmDialog(unittest.TestCase):
             notify_enabled=True,
         )
         self.assertTrue(dlg.notify_cb.isChecked())
+
+    def test_echoes_current_close_running_config(self):
+        """打开弹窗时回显 config 当前运行前关闭残留进程配置（勾选状态）。"""
+        dlg = RunConfirmDialog(
+            3,
+            shutdown_enabled=False,
+            shutdown_delay=0,
+            timed_enabled=False,
+            timed_target="04:10",
+            close_running_enabled=False,
+        )
+        self.assertFalse(dlg.close_running_cb.isChecked())
 
     def test_cancel_leaves_result_none(self):
         """取消（reject）：result 保持 None，不收集。"""

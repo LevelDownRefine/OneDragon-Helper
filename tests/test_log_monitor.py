@@ -311,9 +311,9 @@ class TestParseLogsRerunList(unittest.TestCase):
         self.assertEqual(result["rerun"], ["March7th-Assistant"])
 
     def test_parse_logs_rerun_by_exit_notify_by_errors(self):
-        """重跑依据=未正常退出；通知依据=有报错（两者独立、可分离）。
+        """重跑依据=未正常退出 或 日常没做完；通知依据=有报错（两者独立、可分离）。
 
-        - ok-ww：正常退出但有报错 → 仅 notify（不 rerun）。
+        - ok-ww：正常退出且日常做完、但有报错 → 仅 notify（不 rerun）。
         - BetterGI：未退出且无报错 → 仅 rerun（不 notify）。
         """
         tmp = tempfile.mkdtemp()
@@ -338,13 +338,14 @@ class TestParseLogsRerunList(unittest.TestCase):
         def fake_parse(script_name, script_path=""):
             # 返回 parse_log 的真实契约：完整归一化结构（八键）。
             if script_name == "ok-ww":
+                # 正常退出且日常做完：仅剩「有报错」这一条，故只进 notify。
                 return {
                     "status": "Failed",
                     "log_path": "x",
                     "exited": True,
                     "errors": ["ERR x"],
                     "stamina": None,
-                    "daily_done": False,
+                    "daily_done": True,
                     "extra": None,
                 }
             if script_name == "BetterGI":
@@ -354,7 +355,7 @@ class TestParseLogsRerunList(unittest.TestCase):
                     "exited": False,
                     "errors": [],
                     "stamina": None,
-                    "daily_done": False,
+                    "daily_done": True,
                     "extra": None,
                 }
             return {
@@ -394,7 +395,7 @@ class TestParseLogsRerunList(unittest.TestCase):
 
     def test_parse_logs_warn_when_success_with_errors(self):
         """正常完成（SUCCESS）但含报错 → 表格显示「成功(有报错)」WARN，
-        仅通知不重跑（rerun 看 exited，notify 看 errors，均不受 WARN 影响）。
+        仅通知不重跑（rerun 看 exited 与 daily_done，notify 看 errors，均不受 WARN 影响）。
         """
         tmp = tempfile.mkdtemp()
         cfg_dir = os.path.join(tmp, "config")
@@ -412,7 +413,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         )
 
         def fake_parse(script_name, script_path=""):
-            # 正常退出、但有报错：应归为 WARN，不进 rerun、进 notify。
+            # 正常退出、日常做完、但有报错：应归为 WARN，不进 rerun、进 notify。
             # 返回 parse_log 真实契约：完整归一化结构。
             return {
                 "status": "Success",
@@ -420,7 +421,7 @@ class TestParseLogsRerunList(unittest.TestCase):
                 "exited": True,
                 "errors": ["ERR x"],
                 "stamina": None,
-                "daily_done": False,
+                "daily_done": True,
                 "extra": None,
             }
 
@@ -459,6 +460,15 @@ class TestParseLogsRerunList(unittest.TestCase):
             # 各成功标记命中应返 True。
             for marker in p.daily_success_marker:
                 self.assertTrue(p.parse_daily(marker))
+
+    def test_parse_daily_no_marker_returns_true(self):
+        """未配 daily_success_marker 的脚本无法判定，返回 True。
+
+        若返回 False，重跑判据（日常没做完即重跑）会让它每次都进重跑名单。
+        """
+        p = OkWwLogParser()
+        p.daily_success_marker = []
+        self.assertTrue(p.parse_daily("没有任何标记的内容"))
 
     def test_resolve_exited_infers_from_status_when_unknown(self):
         """日志未明确退出信号（None）时按整体状态推断；有明确信号时不覆盖。"""
@@ -574,18 +584,68 @@ class TestActionListsAndReport(unittest.TestCase):
         }
 
     def test_prepare_action_lists_splits_rerun_and_notify(self):
-        # 退出与否、有无报错两轴独立：ok-ww 退出但有错→仅 notify；BetterGI 未退且无错→仅 rerun。
+        # 退出与否、有无报错两轴独立：ok-ww 退出且做完了但有错→仅 notify；
+        # BetterGI 未退且无错→仅 rerun。
         entries = [
             self._entry(
-                "ok-ww", "A", {"status": "Failed", "exited": True, "errors": ["e"]}
+                "ok-ww",
+                "A",
+                {
+                    "status": "Failed",
+                    "exited": True,
+                    "errors": ["e"],
+                    "daily_done": True,
+                },
             ),
             self._entry(
-                "BetterGI", "B", {"status": "Failed", "exited": False, "errors": []}
+                "BetterGI",
+                "B",
+                {
+                    "status": "Failed",
+                    "exited": False,
+                    "errors": [],
+                    "daily_done": True,
+                },
             ),
         ]
         rerun, notify = collect_log._prepare_action_lists(entries)
         self.assertEqual(rerun, ["BetterGI"])
         self.assertEqual(notify, ["ok-ww"])
+
+    def test_prepare_action_lists_reruns_when_exited_but_daily_not_done(self):
+        # 正常退出 ≠ 做完了：脚本可能跑完流程正常收尾、却一项日常都没做成
+        # （ok-ef「部分失败」仍会写退出标记），只看退出会漏掉这类。
+        entries = [
+            self._entry(
+                "ok-ef",
+                "A",
+                {
+                    "status": "Failed",
+                    "exited": True,
+                    "errors": [],
+                    "daily_done": False,
+                },
+            ),
+        ]
+        rerun, notify = collect_log._prepare_action_lists(entries)
+        self.assertEqual(rerun, ["ok-ef"])
+        self.assertEqual(notify, [])
+
+    def test_prepare_action_lists_no_rerun_when_exited_and_daily_done(self):
+        entries = [
+            self._entry(
+                "ok-ww",
+                "A",
+                {
+                    "status": "Success",
+                    "exited": True,
+                    "errors": [],
+                    "daily_done": True,
+                },
+            ),
+        ]
+        rerun, _ = collect_log._prepare_action_lists(entries)
+        self.assertEqual(rerun, [])
 
     def test_build_summary_report_renders_rows_without_unknown(self):
         entries = [

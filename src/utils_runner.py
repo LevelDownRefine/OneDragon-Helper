@@ -15,6 +15,8 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import PureWindowsPath
 
 import psutil
@@ -87,65 +89,200 @@ def _process_name_equals(left: str | None, right: str | None) -> bool:
     )
 
 
-def _collect_process_names(script: dict) -> list[str]:
-    """汇总某脚本需要关闭的进程名：脚本自身进程 + 对应游戏进程。
+@dataclass(frozen=True)
+class ProcessTarget:
+    """进程匹配条件（对齐 runner 子模块 ``ProcessInfo`` 的 AND 语义）。
 
-    - 脚本自身进程：``script_process_name`` 显式配置，或 ``script_path`` 文件名
-      （直接 exe 形态；.py 形态下文件名不会匹配 ``python.exe``，安全 no-op）；
-    - 对应游戏进程：``game_process_name`` 显式配置。
-    结果按不区分大小写去重（配置名与进程名大小写可能不一致）；无任何配置项时返回空列表。
+    Attributes:
+        name: 进程名（不区分大小写，Windows 补 ``.exe``）。
+        cmdline_contains: 命令行须包含的子串（不区分大小写）。用于认出「启动器拉起的
+            真身」——启动器 exe（如 ``ok-nte.exe``）常只负责拉起真身（自带
+            ``pythonw.exe`` 跑 ``working/main.py``），真身进程名与启动器无关且多为
+            通用解释器名，只能靠命令行里的脚本安装根目录识别，无需额外配置。
+            runner 用的是 cmdline 全等，此处放宽为子串：启动参数顺序 / 大小写变化
+            不影响匹配。
     """
-    names: list[str] = []
-    names += _normalize_process_names(script.get("script_process_name", ""))
+
+    name: str | None = None
+    cmdline_contains: str | None = None
+
+
+def _safe_name(proc: psutil.Process) -> str:
+    """读取进程名；无权访问或已退出返回空串。"""
+    try:
+        return proc.name() or ""
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return ""
+
+
+def _safe_cmdline(proc: psutil.Process) -> str:
+    """读取进程命令行；无权访问或已退出返回空串。"""
+    try:
+        return " ".join(proc.cmdline())
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return ""
+
+
+def _describe(proc: psutil.Process) -> str:
+    """进程描述：``名字(pid)``；名字不可读时退化为 ``pid=<pid>``。"""
+    name = _safe_name(proc)
+    return f"{name}({proc.pid})" if name else f"pid={proc.pid}"
+
+
+def _match_process(target: ProcessTarget, name: str, cmdline: str) -> bool:
+    """所有非 None 条件都满足才算匹配（对齐 runner ``match_process``）。
+
+    ``name`` / ``cmdline`` 由调用方**按进程预算好**再传入：二者都是系统调用，
+    逐 target 各取一次会让开销随 target 数线性增长（``cmdline()`` 约 5.9ms/次，
+    8 条 cmdline 条件 × 349 进程 ≈ 16s）。
+
+    Args:
+        target: 匹配条件。
+        name: 该进程名，取不到时为空串。
+        cmdline: 该进程命令行，取不到时为空串。
+    """
+    if target.name is not None and not _process_name_equals(name, target.name):
+        return False
+    if target.cmdline_contains is not None:
+        if target.cmdline_contains.lower() not in cmdline.lower():
+            return False
+    return True
+
+
+def _collect_process_targets(script: dict) -> list[ProcessTarget]:
+    """汇总某脚本需要关闭的进程匹配条件：脚本进程 + 启动器真身 + 游戏进程。
+
+    - 脚本进程：``script_process_name`` 显式配置，或 ``script_path`` 文件名（启动器本体）；
+    - 启动器真身：命令行含 ``script_path`` 的**安装根目录**（详见
+      :class:`ProcessTarget` 的 ``cmdline_contains``）；
+    - 游戏进程：``game_process_name`` 显式配置。
+    结果按（进程名小写, 命令行标记）去重；无任何配置项时返回空列表。
+    """
+    targets: list[ProcessTarget] = []
+    for name in _normalize_process_names(script.get("script_process_name", "")):
+        targets.append(ProcessTarget(name=name))
     script_path = script.get("script_path") or ""
     if script_path:
-        names.append(PureWindowsPath(script_path).name)
-    names += _normalize_process_names(script.get("game_process_name", ""))
-    seen: set[str] = set()
-    out: list[str] = []
-    for name in names:
-        key = name.lower()
+        targets.append(ProcessTarget(name=PureWindowsPath(script_path).name))
+        root_dir = str(PureWindowsPath(script_path).parent)
+        if root_dir and root_dir != ".":
+            targets.append(ProcessTarget(cmdline_contains=root_dir))
+    for name in _normalize_process_names(script.get("game_process_name", "")):
+        targets.append(ProcessTarget(name=name))
+    seen: set[tuple[str | None, str | None]] = set()
+    out: list[ProcessTarget] = []
+    for target in targets:
+        key = (target.name.lower() if target.name else None, target.cmdline_contains)
         if key not in seen:
             seen.add(key)
-            out.append(name)
+            out.append(target)
     return out
 
 
-def kill_processes_by_names(names: list[str] | str | None) -> int:
-    """优雅终止所有进程名匹配（不区分大小写，Windows 补 .exe）的进程。
+def _self_and_ancestor_pids() -> set[int]:
+    """本进程及其祖先的 PID：清理时须排除，避免把自己杀掉。"""
+    pids: set[int] = set()
+    proc: psutil.Process | None = psutil.Process()
+    while proc is not None:
+        pids.add(proc.pid)
+        try:
+            proc = proc.parent()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            break
+    return pids
 
-    用于运行前清理残留的脚本/游戏进程：先 ``terminate`` 再等待，超时则 ``kill``。
-    无匹配、进程已退出或无权访问时安全跳过，不影响其他进程。
+
+def _find_processes(targets: Sequence[ProcessTarget]) -> list[psutil.Process]:
+    """按匹配条件找出所有进程（排除本进程及其祖先）；无匹配返回空列表。"""
+    if not targets:
+        return []
+    excluded = _self_and_ancestor_pids()
+    found: dict[int, psutil.Process] = {}
+    for proc in psutil.process_iter(["pid"]):
+        if proc.pid in excluded or proc.pid in found:
+            continue
+        name = _safe_name(proc)
+        # cmdline 惰性且至多一次：name 型条件已命中就无需再取（它比 name() 贵约千倍）。
+        cmdline: str | None = None
+        for target in targets:
+            if target.cmdline_contains is not None and cmdline is None:
+                cmdline = _safe_cmdline(proc)
+            if _match_process(target, name, cmdline or ""):
+                found[proc.pid] = proc
+                break
+    return list(found.values())
+
+
+def _build_child_map() -> dict[int, list[psutil.Process]]:
+    """一次遍历建立 ``ppid -> 子进程列表``，供树查找复用。
+
+    替代逐个调用 ``children(recursive=True)``——后者每调一次就是一遍全量遍历，
+    命中 k 个进程即 k 遍。``ppid`` 与 ``name()`` 同级属廉价属性，实测整表约 0.02s
+    （真正的开销是 ``cmdline()``，约 5.9ms/进程）。
+    """
+    kids: dict[int, list[psutil.Process]] = {}
+    for proc in psutil.process_iter(["pid", "ppid"]):
+        ppid = proc.info.get("ppid")
+        if ppid is not None:
+            kids.setdefault(ppid, []).append(proc)
+    return kids
+
+
+def _process_tree(
+    proc: psutil.Process, child_map: dict[int, list[psutil.Process]]
+) -> list[psutil.Process]:
+    """进程自身 + 全部子孙（按 :func:`_build_child_map` 的 ppid 表下溯）。
 
     Args:
-        names: 进程名或进程名列表；空/None 直接返回 0。
+        proc: 树根进程。
+        child_map: ``ppid -> 子进程列表``，由 :func:`_build_child_map` 一次建好。
 
     Returns:
-        实际被终止的进程数。
+        树根及其全部子孙；``seen`` 保证环或重复挂载下每个 pid 只出现一次。
     """
-    targets = _normalize_process_names(names)
-    if not targets:
-        return 0
-    killed = 0
-    for proc in psutil.process_iter(["pid", "name"]):
-        try:
-            proc_name = proc.name()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+    out: list[psutil.Process] = []
+    seen: set[int] = set()
+    stack = [proc]
+    while stack:
+        item = stack.pop()
+        if item.pid in seen:
             continue
-        if not any(_process_name_equals(proc_name, t) for t in targets):
-            continue
-        try:
+        seen.add(item.pid)
+        out.append(item)
+        stack.extend(child_map.get(item.pid, ()))
+    return out
+
+
+def kill_processes(targets: Sequence[ProcessTarget]) -> int:
+    """优雅终止所有匹配进程及其子进程树（对齐 runner ``ProcessManager.kill``）。
+
+    先对整棵树 ``terminate``，等 3 秒，仍存活的强制 ``kill``。无匹配、进程已退出或
+    无权访问时安全跳过，不影响其他进程。
+
+    Args:
+        targets: 进程匹配条件序列；空直接返回空列表。
+
+    Returns:
+        被终止进程的描述列表 ``["名字(pid)", ...]``（含子进程树）。
+        描述在 terminate 之前采集——进程退出后名字就读不到了。
+    """
+    matched = _find_processes(targets)
+    if not matched:
+        return []
+    child_map = _build_child_map()
+    tree: dict[int, psutil.Process] = {}
+    for proc in matched:
+        for item in _process_tree(proc, child_map):
+            tree.setdefault(item.pid, item)
+    pending = list(tree.values())
+    killed = [_describe(proc) for proc in pending]
+    for proc in pending:
+        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
             proc.terminate()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-        try:
-            proc.wait(timeout=3)
-        except psutil.TimeoutExpired:
-            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
-                proc.kill()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        killed += 1
+    _gone, alive = psutil.wait_procs(pending, timeout=3)
+    for proc in alive:
+        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            proc.kill()
     return killed
 
 
@@ -506,6 +643,35 @@ def apply_mute_config(config_data: dict, *, enabled: bool) -> None:
     config_data["mute"] = {"enabled": bool(enabled)}
 
 
+def parse_close_running(config_data: dict) -> bool:
+    """解析 config 的 close_running 配置，返回运行前是否关闭残留进程。
+
+    默认启用（True）：与历史行为一致（运行前始终清场）；缺失/非 dict/非 bool
+    一律视为启用，不抛异常。
+
+    Args:
+        config_data: 完整配置字典（load_schedule 结果）。
+
+    Returns:
+        启用返回 True，否则 False。
+    """
+    raw = config_data.get("close_running")
+    if not isinstance(raw, dict):
+        return True
+    enabled = raw.get("enabled", True)
+    return isinstance(enabled, bool) and enabled
+
+
+def apply_close_running_config(config_data: dict, *, enabled: bool) -> None:
+    """把运行前关闭残留进程开关写回 config（原地修改顶层 close_running 映射）。
+
+    Args:
+        config_data: 完整配置字典（load_schedule 结果），原地修改。
+        enabled: 是否运行前关闭残留进程。
+    """
+    config_data["close_running"] = {"enabled": bool(enabled)}
+
+
 def spawn_schedule_run(
     enabled_keys: set[str],
     target_time: str,
@@ -513,6 +679,7 @@ def spawn_schedule_run(
     chain_name: str = "today",
     mute: bool = False,
     shutdown_delay: int | None = None,
+    close_running: bool = True,
 ) -> subprocess.Popen | None:
     """起独立控制台进程运行 ``schedule-run``（等待到点后生成并运行链）。
 
@@ -536,6 +703,7 @@ def spawn_schedule_run(
         chain_name: 链配置文件名（不含扩展名，默认 today）。
         mute: 是否运行中静音（透传 ``--mute``）。
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
+        close_running: 是否运行前关闭残留进程（透传 ``--close-running``，默认启用）。
 
     Returns:
         已启动的 CLI ``subprocess.Popen``；启动失败返回 None。
@@ -550,6 +718,8 @@ def spawn_schedule_run(
     command += ["--schedule-run", target_time, "--name", chain_name]
     if mute:
         command.append("--mute")
+    if close_running:
+        command.append("--close-running")
     if shutdown_delay is not None:
         command += ["--shutdown", str(shutdown_delay)]
     if enabled_keys:

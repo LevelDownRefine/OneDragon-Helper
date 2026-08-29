@@ -5,125 +5,79 @@
 故前置阻塞等待（``time.sleep``）无害；关闭该控制台即取消。
 
 编排固定为：pre_run → （等待到点）→ 生成脚本链并运行 → 可选重跑轮 → post_run。
-pre_run / post_run 为可扩展的 step 列表（Callable 序列），初始化时组装。
+pre_run / post_run 为可扩展的 step 列表（Callable 序列），由本模块的
+``build_pre_run_pipeline`` / ``build_post_run_pipeline`` 在初始化时组装：
+两个工厂只负责「按什么顺序、在什么条件下跑哪些步骤」，各步骤的具体动作
+在 ``src.service.run_actions``。
 """
 
 import logging
-import time
 from collections.abc import Callable, Sequence
-from datetime import datetime
 
-from src.config.set_config import set_config
-from src.config.subscript import get_script_name
-from src.log.monitor import parse_logs
-from src.log.notify_mail import send_mail
-from src.service.chain_gen import _resolve_weekly_start
 from src.service.chain_service import _resolve_mail_config
+from src.service.run_actions import (
+    analyze_logs,
+    apply_subscript_config,
+    close_running_scripts,
+    send_summary_mail,
+    wait_until_target,
+)
 from src.utils_mute import mute_off, mute_on
-from src.utils_runner import _collect_process_names, kill_processes_by_names
 from src.utils_shutdown import shutdown_sys
-from src.utils_weekly import next_target_datetime
 
 logger = logging.getLogger(__name__)
 
 
 def build_pre_run_pipeline(
-    *, target_time: str, mute: bool = False
+    *,
+    target_time: str,
+    scripts: list[dict] | None = None,
+    enabled_keys: set[str] | None = None,
+    weekly_start_map: dict | None = None,
+    close_running: bool = False,
+    mute: bool = False,
 ) -> list[Callable[[], None]]:
-    """运行前 step：定时计划（等待到目标时刻，即时运行为空）+ 可选静音。
+    """运行前 step 列表（单一工厂，与 build_post_run_pipeline 同形）。
 
-    与 ``build_post_run_pipeline`` 同形——均产出 ``list[Callable]``，由 ``_run_steps``
-    统一执行。仅 step 内容不同：此处为定时等待（+静音），post_run 为恢复/分析/邮件/关机。
+    固定顺序：等待到点(+可选静音) → 关闭残留进程 → 写回子脚本 config。各 step 均为
+    无参 Callable，由 ``ScheduledRun._run_steps`` 统一顺序执行。
+    - 等待+静音置顶：定时运行整段含等待期全程静音，避免等待期噪音；
+    - 关闭残留紧贴运行前（等待之后）：等待期内用户可能手动开了脚本/游戏，
+      若在最开头就关闭会漏掉等待期新起的进程，须等真正运行前再清场；
+      受 ``close_running`` 开关控制（默认关闭）。
+    - 写回子脚本 config：关闭之后写，避开残留进程可能持有的文件锁；
+      须早于核心运行（游戏/脚本启动时读 config）。
+
+    Args:
+        target_time: 目标时刻 ``"HH:MM"``；``"now"`` 表示即时运行（跳过等待）。
+        scripts: config 的脚本配置 dict 列表（全量，不按启用集合过滤），close 步骤用；
+            None/空表示不关闭。
+        enabled_keys: 纳入链的脚本唯一标识集合，写 config 步骤用；None/空表示不写。
+        weekly_start_map: weekly_start.yml 全量映射（{脚本标识: 1~7}），写 config 步骤用。
+        close_running: 是否运行前关闭残留进程。
+        mute: 是否运行中静音（pre_run 静音、post_run 恢复）。
+
+    Returns:
+        运行前步骤列表（可能为空）。
     """
     steps: list[Callable[[], None]] = []
+
+    # 等待+静音置顶：定时运行整段含等待期全程静音，避免等待期噪音。
     if mute:
         steps.append(mute_on)
-    if not target_time or target_time == "now":
-        return steps
+    if target_time and target_time != "now":
+        steps.append(lambda: wait_until_target(target_time))
 
-    def _wait() -> None:
-        target_dt = next_target_datetime(target_time)
-        wait_seconds = (target_dt - datetime.now()).total_seconds()
-        if wait_seconds > 0:
-            logger.info(
-                "[chain] 定时运行已设置，将等待至 %s 再运行（剩余约 %.0f 秒）",
-                target_dt.strftime("%Y-%m-%d %H:%M"),
-                wait_seconds,
-            )
-            time.sleep(wait_seconds)
-        logger.info("[chain] 已到达目标时刻 %s，开始运行", target_time)
+    # 关闭残留：紧贴运行前，清掉等待期可能新起的脚本/游戏进程。
+    # 关的是 config 全量脚本。用于关闭用户手动开的脚本/游戏。
+    if close_running and scripts:
+        steps.append(lambda: close_running_scripts(scripts))
 
-    steps.append(_wait)
-    return steps
+    # 写回子脚本 config：关闭之后写，避开残留进程可能持有的文件锁；
+    # 须早于核心运行（游戏/脚本启动时读 config）。
+    if enabled_keys:
+        steps.append(lambda: apply_subscript_config(enabled_keys, weekly_start_map))
 
-
-def build_subscript_config_pipeline(
-    enabled_keys: set[str] | None,
-    weekly_start_map: dict,
-) -> list[Callable[[], None]]:
-    """运行前 step：把 weekly_start（按当天星期算出的周本开关）写回各子脚本 config。
-
-    原内联于 ``generate_chain_config`` 的 ``set_config(weekly_start=...)`` 调用已抽出到此：
-    - 即时与定时两条路径统一经 ``ScheduledRun``，故一次应用即覆盖两种调用场景，
-      重跑轮（``_rerun_round``）不再重复写盘；
-    - ``generate_chain_config`` 因此变纯（只按星期过滤脚本 + 生成 yml），不再写子脚本 config。
-
-    未启用脚本（``enabled_keys`` 为空）、未适配脚本（自定义脚本）由 ``set_config`` 内部
-    优雅跳过；``weekly_start`` 为 None 时 ``set_config`` 不写周常。
-
-    Args:
-        enabled_keys: 纳入链的脚本唯一标识集合；None/空集合返回空 step 列表（不写盘）。
-        weekly_start_map: weekly_start.yml 全量映射（{脚本标识: 1~7}）。
-
-    Returns:
-        运行前步骤列表（可能为空）。
-    """
-    if not enabled_keys:
-        return []
-    steps: list[Callable[[], None]] = []
-
-    def _apply() -> None:
-        for name in enabled_keys:
-            weekly_start = _resolve_weekly_start(weekly_start_map, name)
-            set_config(name, weekly_start=weekly_start)
-
-    steps.append(_apply)
-    return steps
-
-
-def build_close_running_pipeline(
-    enabled_scripts: list[dict],
-) -> list[Callable[[], None]]:
-    """运行前 step：关闭已打开的脚本进程与对应游戏进程（运行前清理）。
-
-    针对每个启用脚本，结束其仍在运行的脚本自身进程（script_process_name / script_path
-    文件名）与对应游戏进程（game_process_name）。采用优雅终止（terminate→wait→kill）。
-    进程名经 ``_collect_process_names`` 汇总去重；某脚本无任何进程名配置时跳过。
-
-    Args:
-        enabled_scripts: 纳入链的脚本配置 dict 列表（已由调用方按启用集合过滤）。
-
-    Returns:
-        运行前步骤列表（可能为空）。
-    """
-    if not enabled_scripts:
-        return []
-    steps: list[Callable[[], None]] = []
-
-    def _close() -> None:
-        for script in enabled_scripts:
-            names = _collect_process_names(script)
-            if not names:
-                continue
-            killed = kill_processes_by_names(names)
-            if killed:
-                logger.info(
-                    "[chain] 已关闭 %s 的残留进程 %d 个",
-                    script.get("display_name", "?"),
-                    killed,
-                )
-
-    steps.append(_close)
     return steps
 
 
@@ -139,6 +93,9 @@ def build_post_run_pipeline(
     重跑已移出本 pipeline，作为运行主环节由 ``ChainService._rerun_round`` 在链运行
     结束后、本 pipeline 触发前完成；此处只需对最终态做日志分析供邮件汇总，并在末位关机。
 
+    日志分析结果经共享闭包 ``shared`` 从分析步骤流向邮件步骤——数据流属组装关注点，
+    故留在工厂内，动作函数本身（``analyze_logs`` / ``send_summary_mail``）保持无状态。
+
     Args:
         shutdown_delay: 关机延迟秒数；None/0 表示不关机。
         smtp_config: SMTP 配置；None 表示不发邮件（默认关闭）。
@@ -147,21 +104,17 @@ def build_post_run_pipeline(
             显式传入 config 全部脚本集合。
 
     Returns:
-        后置步骤列表（可能仅含关机或为空）。各步骤经共享闭包 ``shared`` 传递日志分析结果。
+        后置步骤列表（可能仅含关机或为空）。
     """
     shared: dict = {}
 
     def _analyze() -> None:
-        # 候选集即启用脚本：只解析这些，邮件汇总自然只含其中的失败/报错项。
-        shared["result"] = parse_logs(do_log=False, candidate_script_names=enabled_keys)
+        shared["result"] = analyze_logs(enabled_keys)
 
     steps: list[Callable[[], None]] = [_analyze]
 
     def _do_mail() -> None:
-        result = shared.get("result")
-        if not result or smtp_config is None:
-            return
-        send_mail(result, smtp_config=smtp_config)
+        send_summary_mail(shared.get("result"), smtp_config)
 
     steps.append(_do_mail)
 
@@ -198,6 +151,7 @@ class ScheduledRun:
         chain_name: str = "today",
         mute: bool = False,
         shutdown_delay: int | None = None,
+        close_running: bool = True,
     ) -> None:
         self.service = service
         self.enabled_keys = enabled_keys
@@ -210,25 +164,24 @@ class ScheduledRun:
         # 语义处理，由调用方显式传入全量集合表达「全部」。
         self.candidate_keys = enabled_keys
 
-        # pre_run / post_run：均为 step 列表（同形），分别经工厂组装、由 _run_steps 执行。
+        # pre_run / post_run：均为 step 列表（同形），分别经单一工厂组装、由 _run_steps 执行。
         # 仅所处位置不同（run 前 / 后），机制完全一致。
-        # pre_run 顺序：关闭残留进程 → 写回子脚本 config → 等待+静音。
-        # 关闭须最先：运行前清场，避免上一轮残留脚本/游戏进程干扰本次运行。
+        # pre_run 顺序（由 build_pre_run_pipeline 内部固定）：等待+静音 → 关闭残留 → 写子脚本 config。
+        # - 等待+静音置顶：定时运行整段含等待期全程静音，避免等待期噪音；
+        # - 关闭残留紧贴运行前（即等待之后）：等待期内用户可能手动开了脚本/游戏，
+        #   若在最开头就关闭会漏掉等待期新起的进程，须等真正运行前再清场，受 close_running 开关控制；
+        # - 写子脚本 config 在关闭之后：避开残留进程可能持有的文件锁，须早于核心运行。
+        # close 步骤关的是 config 全量脚本（不按启用集合过滤）：残留多为「昨天跑、今天不跑」
+        # 的脚本遗留，按启用集合过滤恰好抓不住这类，故全量传入工厂。
         all_scripts = self.service.load_config().get("script_list", [])
-        enabled_scripts = [
-            s
-            for s in all_scripts
-            if get_script_name(s) in (self.candidate_keys or set())
-        ]
-        self.pre_run: list[Callable[[], None]] = build_close_running_pipeline(
-            enabled_scripts
+        self.pre_run: list[Callable[[], None]] = build_pre_run_pipeline(
+            target_time=target_time,
+            scripts=all_scripts,
+            enabled_keys=self.candidate_keys,
+            weekly_start_map=self.service.get_weekly_start_map(),
+            close_running=close_running,
+            mute=mute,
         )
-        # 运行前把 weekly_start 解析结果写回各子脚本 config（原内联于 generate_chain_config）。
-        # 即时/定时两条路径统一经 ScheduledRun，故此处一次应用即覆盖；重跑轮不再重复写盘。
-        self.pre_run += build_subscript_config_pipeline(
-            self.candidate_keys, self.service.get_weekly_start_map()
-        )
-        self.pre_run += build_pre_run_pipeline(target_time=target_time, mute=mute)
 
         # post_run：日志分析最终态 → 邮件 → 恢复声音 → 关机（末位），由 build_post_run_pipeline 产出。
         # 邮件配置来自 schedule.yml 的 notify 块（已从 config.yml 迁出）。

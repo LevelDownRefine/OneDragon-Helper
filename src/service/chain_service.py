@@ -406,6 +406,7 @@ class ChainService:
         chain_name: str = "today",
         mute: bool = False,
         shutdown_delay: int | None = None,
+        close_running: bool = True,
     ) -> None:
         """调度运行：组装 ``ScheduledRun`` 并执行的薄工厂。
 
@@ -421,6 +422,7 @@ class ChainService:
             chain_name: 链配置文件名（不含扩展名，默认 today）。
             mute: 是否运行中静音（由 ScheduledRun 的 pre_run/post_run 执行）。
             shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
+            close_running: 是否运行前关闭残留进程（由 ScheduledRun 的 pre_run 执行）。
         """
         from src.service.scheduled_run import ScheduledRun
 
@@ -431,6 +433,7 @@ class ChainService:
             chain_name=chain_name,
             mute=mute,
             shutdown_delay=shutdown_delay,
+            close_running=close_running,
         ).run()
 
 
