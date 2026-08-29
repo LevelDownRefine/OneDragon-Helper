@@ -110,6 +110,21 @@ class TestBuildPreRunClose(unittest.TestCase):
             [ProcessTarget(name="ABot.exe"), ProcessTarget(name="AGame.exe")]
         )
 
+    def test_multiple_scripts_merge_into_one_kill(self):
+        # 每个脚本各扫一遍全系统是 8× 开销（实测 17s），故合并成一次调用。
+        scripts = [
+            {"display_name": "A", "script_process_name": "ABot.exe"},
+            {"display_name": "B", "script_process_name": "BBot.exe"},
+        ]
+        with mock.patch("src.service.run_actions.kill_processes") as mock_kill:
+            steps = build_pre_run_pipeline(
+                target_time="now", scripts=scripts, close_running=True
+            )
+            steps[0]()
+        mock_kill.assert_called_once_with(
+            [ProcessTarget(name="ABot.exe"), ProcessTarget(name="BBot.exe")]
+        )
+
     def test_no_names_script_skips_kill(self):
         scripts = [{"display_name": "A"}]
         with mock.patch("src.service.run_actions.kill_processes") as mock_kill:
@@ -143,7 +158,7 @@ class TestPreRunOrder(unittest.TestCase):
             ),
             mock.patch(
                 "src.service.run_actions.kill_processes",
-                lambda names: calls.append("kill"),
+                lambda targets: calls.append("kill") or ["ABot.exe(1)"],
             ),
             mock.patch(
                 "src.service.run_actions.set_config",
@@ -173,7 +188,7 @@ class TestPreRunOrder(unittest.TestCase):
         with (
             mock.patch(
                 "src.service.run_actions.kill_processes",
-                lambda names: calls.append("kill"),
+                lambda targets: calls.append("kill") or ["ABot.exe(1)"],
             ),
             mock.patch(
                 "src.service.run_actions.set_config",

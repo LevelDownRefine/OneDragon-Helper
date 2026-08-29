@@ -123,14 +123,28 @@ def _safe_cmdline(proc: psutil.Process) -> str:
         return ""
 
 
-def _match_process(proc: psutil.Process, target: ProcessTarget) -> bool:
-    """所有非 None 条件都满足才算匹配（对齐 runner ``match_process``）。"""
-    if target.name is not None and not _process_name_equals(
-        _safe_name(proc), target.name
-    ):
+def _describe(proc: psutil.Process) -> str:
+    """进程描述：``名字(pid)``；名字不可读时退化为 ``pid=<pid>``。"""
+    name = _safe_name(proc)
+    return f"{name}({proc.pid})" if name else f"pid={proc.pid}"
+
+
+def _match_process(target: ProcessTarget, name: str, cmdline: str) -> bool:
+    """所有非 None 条件都满足才算匹配（对齐 runner ``match_process``）。
+
+    ``name`` / ``cmdline`` 由调用方**按进程预算好**再传入：二者都是系统调用，
+    逐 target 各取一次会让开销随 target 数线性增长（``cmdline()`` 约 5.9ms/次，
+    8 条 cmdline 条件 × 349 进程 ≈ 16s）。
+
+    Args:
+        target: 匹配条件。
+        name: 该进程名，取不到时为空串。
+        cmdline: 该进程命令行，取不到时为空串。
+    """
+    if target.name is not None and not _process_name_equals(name, target.name):
         return False
     if target.cmdline_contains is not None:
-        if target.cmdline_contains.lower() not in _safe_cmdline(proc).lower():
+        if target.cmdline_contains.lower() not in cmdline.lower():
             return False
     return True
 
@@ -187,18 +201,56 @@ def _find_processes(targets: Sequence[ProcessTarget]) -> list[psutil.Process]:
     for proc in psutil.process_iter(["pid"]):
         if proc.pid in excluded or proc.pid in found:
             continue
-        if any(_match_process(proc, target) for target in targets):
-            found[proc.pid] = proc
+        name = _safe_name(proc)
+        # cmdline 惰性且至多一次：name 型条件已命中就无需再取（它比 name() 贵约千倍）。
+        cmdline: str | None = None
+        for target in targets:
+            if target.cmdline_contains is not None and cmdline is None:
+                cmdline = _safe_cmdline(proc)
+            if _match_process(target, name, cmdline or ""):
+                found[proc.pid] = proc
+                break
     return list(found.values())
 
 
-def _process_tree(proc: psutil.Process) -> list[psutil.Process]:
-    """进程自身 + 全部子孙（对齐 runner ``_kill_children`` 的树杀范围）。"""
-    with contextlib.suppress(
-        psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess
-    ):
-        return [proc, *proc.children(recursive=True)]
-    return [proc]
+def _build_child_map() -> dict[int, list[psutil.Process]]:
+    """一次遍历建立 ``ppid -> 子进程列表``，供树查找复用。
+
+    替代逐个调用 ``children(recursive=True)``——后者每调一次就是一遍全量遍历，
+    命中 k 个进程即 k 遍。``ppid`` 与 ``name()`` 同级属廉价属性，实测整表约 0.02s
+    （真正的开销是 ``cmdline()``，约 5.9ms/进程）。
+    """
+    kids: dict[int, list[psutil.Process]] = {}
+    for proc in psutil.process_iter(["pid", "ppid"]):
+        ppid = proc.info.get("ppid")
+        if ppid is not None:
+            kids.setdefault(ppid, []).append(proc)
+    return kids
+
+
+def _process_tree(
+    proc: psutil.Process, child_map: dict[int, list[psutil.Process]]
+) -> list[psutil.Process]:
+    """进程自身 + 全部子孙（按 :func:`_build_child_map` 的 ppid 表下溯）。
+
+    Args:
+        proc: 树根进程。
+        child_map: ``ppid -> 子进程列表``，由 :func:`_build_child_map` 一次建好。
+
+    Returns:
+        树根及其全部子孙；``seen`` 保证环或重复挂载下每个 pid 只出现一次。
+    """
+    out: list[psutil.Process] = []
+    seen: set[int] = set()
+    stack = [proc]
+    while stack:
+        item = stack.pop()
+        if item.pid in seen:
+            continue
+        seen.add(item.pid)
+        out.append(item)
+        stack.extend(child_map.get(item.pid, ()))
+    return out
 
 
 def kill_processes(targets: Sequence[ProcessTarget]) -> int:
@@ -208,19 +260,22 @@ def kill_processes(targets: Sequence[ProcessTarget]) -> int:
     无权访问时安全跳过，不影响其他进程。
 
     Args:
-        targets: 进程匹配条件序列；空直接返回 0。
+        targets: 进程匹配条件序列；空直接返回空列表。
 
     Returns:
-        被终止的进程总数（含子进程树）。
+        被终止进程的描述列表 ``["名字(pid)", ...]``（含子进程树）。
+        描述在 terminate 之前采集——进程退出后名字就读不到了。
     """
     matched = _find_processes(targets)
     if not matched:
-        return 0
+        return []
+    child_map = _build_child_map()
     tree: dict[int, psutil.Process] = {}
     for proc in matched:
-        for item in _process_tree(proc):
+        for item in _process_tree(proc, child_map):
             tree.setdefault(item.pid, item)
     pending = list(tree.values())
+    killed = [_describe(proc) for proc in pending]
     for proc in pending:
         with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
             proc.terminate()
@@ -228,7 +283,7 @@ def kill_processes(targets: Sequence[ProcessTarget]) -> int:
     for proc in alive:
         with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
             proc.kill()
-    return len(tree)
+    return killed
 
 
 def script_invalid_message(script: dict) -> str | None:

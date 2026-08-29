@@ -15,7 +15,7 @@ from src.config.set_config import set_config
 from src.log.monitor import parse_logs
 from src.log.notify_mail import send_mail
 from src.service.chain_gen import _resolve_weekly_start
-from src.utils_runner import _collect_process_targets, kill_processes
+from src.utils_runner import ProcessTarget, _collect_process_targets, kill_processes
 from src.utils_weekly import next_target_datetime
 
 logger = logging.getLogger(__name__)
@@ -45,20 +45,23 @@ def close_running_scripts(scripts: list[dict]) -> None:
     传入 config 的全量脚本（不按本次启用集合过滤）：残留多为「昨天跑、今天不跑」的
     脚本遗留，按启用集合过滤恰好抓不住这类。
 
+    日志只报**实际被终止的进程**，不报归属脚本名——多个脚本常共用同一解释器进程名
+    （如 ok 系列同为 pythonw.exe），按脚本归类必然张冠李戴。
+
+    全部脚本的匹配条件**汇总后一次扫描**：逐脚本各扫一遍是 N 遍全系统遍历
+    （8 个脚本实测 17s，``cmdline()`` 约 5.9ms/进程是唯一瓶颈），合并后固定一次。
+
     Args:
-        scripts: 脚本配置 dict 列表；无匹配条件的脚本跳过。
+        scripts: 脚本配置 dict 列表；无匹配条件的脚本不产生条件。
     """
+    targets: list[ProcessTarget] = []
     for script in scripts:
-        targets = _collect_process_targets(script)
-        if not targets:
-            continue
-        killed = kill_processes(targets)
-        if killed:
-            logger.info(
-                "[chain] 已关闭 %s 的残留进程 %d 个",
-                script.get("display_name", "?"),
-                killed,
-            )
+        targets += _collect_process_targets(script)
+    if not targets:
+        return
+    killed = kill_processes(targets)
+    if killed:
+        logger.info("[chain] 已关闭残留进程 %d 个：%s", len(killed), "、".join(killed))
 
 
 def apply_subscript_config(
