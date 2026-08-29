@@ -16,7 +16,7 @@ from src.config.set_config import (
     set_config,
     set_weekly_dungeon,
 )
-from src.service.script_service import ScriptService
+from src.service.dungeon_service import DungeonService
 from src.service.weekly_service import WeeklyService
 
 # 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
@@ -41,7 +41,7 @@ class TaskCardController(QObject):
         self._service = service
         self._toast = toast
         # 周常声明只读服务：weekly_list.yml（支持哪些周常 / 是否需选副本 / 副本清单）
-        self._script_service = ScriptService()
+        self._dungeon_service = DungeonService()
         self._weekly_service = WeeklyService()
         # 任务卡状态：gui_state.json 的副本/序列/周常（按 script_name 索引）
         self._ui_state = self._service.load_ui_state()
@@ -99,7 +99,7 @@ class TaskCardController(QObject):
 
         唯一真相源为 weekly_list.yml：声明了该脚本周常即支持。
         """
-        return bool(self._script_service.get_weekly_defs(self._current["script_name"]))
+        return bool(self._dungeon_service.get_weekly_map(self._current["script_name"]))
 
     @property
     def weekly_start_label(self) -> str:
@@ -119,7 +119,7 @@ class TaskCardController(QObject):
         gui_state.json 的 weekly_dungeons（与副本/序列同为 UI 状态）。
         """
         script_name = self._current["script_name"]
-        defs = self._script_service.get_weekly_defs(script_name)
+        defs = self._dungeon_service.get_weekly_map(script_name)
         if not defs:
             return []
         saved_dungeons = self._weekly_dungeons(script_name)
@@ -174,7 +174,7 @@ class TaskCardController(QObject):
             副本名列表（含「无」）；该周常未声明副本清单时返回空列表。
         """
         script_name = self._current["script_name"]
-        for d in self._script_service.get_weekly_defs(script_name):
+        for d in self._dungeon_service.get_weekly_map(script_name):
             if d["name"] != weekly_name:
                 continue
             return list(d["dungeons"]) if "dungeons" in d else []
@@ -192,7 +192,7 @@ class TaskCardController(QObject):
     # ── 缓存构建（运行期不变）──────────────────────────────────────────
     def build_dungeon_cache(self, games: list):
         """一次性解析 dungeon_list.yml 并构建所有脚本的副本下拉数据（运行期不变）。"""
-        self._dungeon_map_cache = self._script_service.get_dungeon_map()
+        self._dungeon_map_cache = self._dungeon_service.get_dungeon_map()
         self._dungeon_options_cache = {
             g["script_name"]: self._build_dungeon_options(g["script_name"])
             for g in games
