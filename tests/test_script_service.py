@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from src.service.dungeon_service import DungeonService
 from src.service.script_service import ScriptService
 from src.utils_yaml import dump_yaml_file, load_yaml
 
@@ -16,20 +17,13 @@ class ScriptServiceTestBase(unittest.TestCase):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp_dir.cleanup)
         self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
-        self.weekly_list_path = os.path.join(self.tmp_dir.name, "weekly_list.yml")
         self._write_config(
             {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]}
         )
-        # weekly_list.yml 必存在（_load_weekly_defs 断言），但本测试不依赖其内容。
-        dump_yaml_file(self.weekly_list_path, {})
         patchers = [
             patch(
                 "src.service.script_service.require_config_yml_path",
                 return_value=self.config_path,
-            ),
-            patch(
-                "src.service.script_service.get_weekly_list_yml_path_under_root",
-                return_value=self.weekly_list_path,
             ),
         ]
         for p in patchers:
@@ -147,14 +141,14 @@ class TestConfigFilePath(ScriptServiceTestBase):
 
 
 class TestGetWeeklyDefs(unittest.TestCase):
-    """get_weekly_defs：静态 dungeons 保持，dungeons_source 运行期从外部读取/降级。"""
+    """get_weekly_map：静态 dungeons 保持，dungeons_source 运行期从外部读取/降级。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.weekly_list_path = os.path.join(self.tmp.name, "weekly_list.yml")
         patcher = patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=self.weekly_list_path,
         )
         patcher.start()
@@ -172,8 +166,8 @@ class TestGetWeeklyDefs(unittest.TestCase):
                 ]
             }
         )
-        with patch("src.service.script_service.get_dungeon_lists") as mock_ext:
-            defs = ScriptService().get_weekly_defs("March7th-Assistant")
+        with patch("src.service.dungeon_service.get_dungeon_lists") as mock_ext:
+            defs = DungeonService().get_weekly_map("March7th-Assistant")
         self.assertEqual(defs[0]["dungeons"], ["无", "铁骸的锈冢"])
         mock_ext.assert_not_called()  # 无 dungeons_source 不读外部
 
@@ -191,9 +185,9 @@ class TestGetWeeklyDefs(unittest.TestCase):
         )
         names = ["无", "铁骸的锈冢", "晨昏的回眸"]
         with patch(
-            "src.service.script_service.get_dungeon_lists", return_value=names
+            "src.service.dungeon_service.get_dungeon_lists", return_value=names
         ) as mock_ext:
-            defs = ScriptService().get_weekly_defs("March7th-Assistant")
+            defs = DungeonService().get_weekly_map("March7th-Assistant")
         mock_ext.assert_called_once_with(
             "March7th-Assistant", "历战余响", "assets/config/instance_names.json"
         )
@@ -212,14 +206,14 @@ class TestGetWeeklyDefs(unittest.TestCase):
                 ]
             }
         )
-        with patch("src.service.script_service.get_dungeon_lists", return_value=None):
-            defs = ScriptService().get_weekly_defs("March7th-Assistant")
+        with patch("src.service.dungeon_service.get_dungeon_lists", return_value=None):
+            defs = DungeonService().get_weekly_map("March7th-Assistant")
         self.assertEqual(defs[0]["dungeons"], [])
 
     def test_unknown_script_returns_empty(self):
-        """未知脚本 → get_weekly_defs 返回空列表（不抛错、不读外部）。"""
+        """未知脚本 → get_weekly_map 返回空列表（不抛错、不读外部）。"""
         self._write({"March7th-Assistant": [{"name": "货币战争"}]})
-        self.assertEqual(ScriptService().get_weekly_defs("不存在"), [])
+        self.assertEqual(DungeonService().get_weekly_map("不存在"), [])
 
 
 class TestGetDungeonMap(unittest.TestCase):
@@ -238,10 +232,10 @@ class TestGetDungeonMap(unittest.TestCase):
             }
         }
         with (
-            patch("src.service.script_service.load_dungeon_map", return_value=raw),
-            patch("src.service.script_service.get_dungeon_lists") as mock_ext,
+            patch("src.service.dungeon_service.load_dungeon_map", return_value=raw),
+            patch("src.service.dungeon_service.get_dungeon_lists") as mock_ext,
         ):
-            result = ScriptService().get_dungeon_map()
+            result = DungeonService().get_dungeon_map()
         self.assertEqual(
             result["ok-ef"]["dungeons"][0]["sequences"],
             [{"display": "干员经验", "value": "干员经验"}],
@@ -262,13 +256,13 @@ class TestGetDungeonMap(unittest.TestCase):
             }
         }
         with (
-            patch("src.service.script_service.load_dungeon_map", return_value=raw),
+            patch("src.service.dungeon_service.load_dungeon_map", return_value=raw),
             patch(
-                "src.service.script_service.get_dungeon_lists",
+                "src.service.dungeon_service.get_dungeon_lists",
                 return_value=["枢纽区", "武陵城"],
             ) as mock_ext,
         ):
-            result = ScriptService().get_dungeon_map()
+            result = DungeonService().get_dungeon_map()
         # 培养目标（无 dungeons_source）保持无序列
         self.assertEqual(result["ok-ef"]["dungeons"][0].get("sequences"), None)
         # 带 dungeons_source 的项被填充为 {display,value} 序列
@@ -297,10 +291,10 @@ class TestGetDungeonMap(unittest.TestCase):
             }
         }
         with (
-            patch("src.service.script_service.load_dungeon_map", return_value=raw),
-            patch("src.service.script_service.get_dungeon_lists", return_value=[]),
+            patch("src.service.dungeon_service.load_dungeon_map", return_value=raw),
+            patch("src.service.dungeon_service.get_dungeon_lists", return_value=[]),
         ):
-            result = ScriptService().get_dungeon_map()
+            result = DungeonService().get_dungeon_map()
         self.assertEqual(result["ok-ef"]["dungeons"][0]["sequences"], [])
 
 
