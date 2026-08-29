@@ -81,37 +81,15 @@ def get_weekly_start_yml_path_under_root() -> str:
     return safe_path_join(get_root_dir(), "config", "weekly_start.yml")
 
 
-# 项目根覆盖（默认 None = 真实项目根）。仅供测试指定临时配置目录：配置读写方
-# 全部经 get_root_dir() 派生路径，故改这一个入口即整体改向，无需逐个 patch。
-_root_dir_override: str | None = None
-
-
 @lru_cache
 def get_root_dir() -> str:
     """
     获取项目根目录
     :return: 项目根目录（src/ 的父目录）；冻结（PyInstaller）时为 exe 所在目录
     """
-    if _root_dir_override is not None:
-        return _root_dir_override
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def set_root_dir(path: str | None) -> None:
-    """
-    覆盖项目根（测试用），传 None 还原真实项目根。
-
-    config/*.yml、gui_state.json、链输出、日志目录等全部由 get_root_dir() 派生，
-    故改此一处即整体改向，测试可指向临时目录而不污染本机配置。
-    覆盖值取绝对路径：下游 safe_path_join 以根为信任基准做路径穿越校验。
-
-    :param path: 用作项目根的目录；None 表示还原。
-    """
-    global _root_dir_override
-    _root_dir_override = None if path is None else os.path.abspath(path)
-    get_root_dir.cache_clear()
 
 
 def get_path_under_root(*subs) -> str:
