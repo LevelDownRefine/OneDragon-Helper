@@ -29,6 +29,7 @@ from src.utils_runner import (
     spawn_schedule_run,
 )
 from src.utils_weekly import next_target_datetime
+from tests.process_sim import ProcessSim, SimProcess
 
 CHAIN_PATH = "config/script_chain/01.yml"
 
@@ -431,41 +432,6 @@ class TestParseShutdown(unittest.TestCase):
         )
 
 
-class _FakeProc:
-    """模拟 psutil.Process：pid/ppid/name()/cmdline() 可预设，记录 terminate/kill。
-
-    pid 取高位段，避免与真实的「本进程及祖先」PID 集合撞上导致误排除。
-    ppid 经 ``info`` 暴露，对齐 psutil ``process_iter(attrs)`` 的取值方式——
-    子进程树据此一次建表得出，不再逐个调 ``children()``（那是每进程一遍全量遍历）。
-    """
-
-    _next_pid = 900000
-
-    def __init__(self, name, cmdline=None, parent=None):
-        _FakeProc._next_pid += 1
-        self.pid = _FakeProc._next_pid
-        self._name = name
-        self._cmdline = cmdline or []
-        self.ppid = parent.pid if parent is not None else None
-        self.info = {"pid": self.pid, "ppid": self.ppid}
-        self.terminated = False
-        self.killed = False
-        self.cmdline_calls = 0
-
-    def name(self):
-        return self._name
-
-    def cmdline(self):
-        self.cmdline_calls += 1
-        return self._cmdline
-
-    def terminate(self):
-        self.terminated = True
-
-    def kill(self):
-        self.killed = True
-
-
 class TestKillProcesses(unittest.TestCase):
     """kill_processes：按匹配条件终止进程及其子进程树，安全跳过无关/已退出进程。"""
 
@@ -482,14 +448,14 @@ class TestKillProcesses(unittest.TestCase):
         )
 
     def test_empty_targets_no_iteration(self):
-        with self._patch_iter([_FakeProc("x.exe")]) as mock_iter:
+        with self._patch_iter([SimProcess("x.exe")]) as mock_iter:
             # 列表为空时立即返回空列表，且不遍历进程。
             self.assertEqual(kill_processes([]), [])
         mock_iter.assert_not_called()
 
     def test_terminates_matching_case_insensitive(self):
-        target = _FakeProc("GAME.EXE")
-        other = _FakeProc("unrelated.exe")
+        target = SimProcess("GAME.EXE")
+        other = SimProcess("unrelated.exe")
         with (
             self._patch_iter([other, target]),
             self._patch_wait([target], []),
@@ -501,11 +467,11 @@ class TestKillProcesses(unittest.TestCase):
 
     def test_matches_cmdline_substring_case_insensitive(self):
         # 启动器真身：进程名是通用解释器，只能靠命令行里的安装根目录识别。
-        worker = _FakeProc(
+        worker = SimProcess(
             "pythonw.exe",
             cmdline=[r"D:\ok\python\pythonw.exe", r"D:\ok\working\main.py"],
         )
-        other = _FakeProc("pythonw.exe", cmdline=[r"D:\other\main.py"])
+        other = SimProcess("pythonw.exe", cmdline=[r"D:\other\main.py"])
         with (
             self._patch_iter([other, worker]),
             self._patch_wait([worker], []),
@@ -516,33 +482,31 @@ class TestKillProcesses(unittest.TestCase):
         self.assertFalse(other.terminated)
 
     def test_kills_children_tree(self):
-        # 子进程树一并终止：启动器拉起的孤儿进程不留残留。
-        # 树由全局 ppid 表一次推出，故 process_iter 要给出全部进程（含子孙）。
-        parent = _FakeProc("launcher.exe")
-        child = _FakeProc("child.exe", parent=parent)
-        grandchild = _FakeProc("gc.exe", parent=child)
-        with (
-            self._patch_iter([parent, child, grandchild]),
-            self._patch_wait([parent, child, grandchild], []),
-        ):
-            killed = kill_processes([ProcessTarget(name="launcher.exe")])
+        # 进程树一并终止：真身 → 它启动的游戏 → 游戏拉起的子进程，不留残留。
+        # 树由全局 ppid 表一次推出，故 sim 要给出全部进程（含子孙）。
+        sim = ProcessSim()
+        sim.add_script("ok-ww")
+        helper = sim.add_other("helper.exe", parent=sim.games["ok-ww"])
+        body, game = sim.bodies["ok-ww"], sim.games["ok-ww"]
+        with sim.install():
+            killed = kill_processes(_collect_process_targets(sim.scripts[0]))
         self.assertEqual(
             sorted(killed),
             sorted(
                 [
-                    f"launcher.exe({parent.pid})",
-                    f"child.exe({child.pid})",
-                    f"gc.exe({grandchild.pid})",
+                    f"pythonw.exe({body.pid})",
+                    f"ok-wwGame.exe({game.pid})",
+                    f"helper.exe({helper.pid})",
                 ]
             ),
         )
-        self.assertTrue(parent.terminated)
-        self.assertTrue(child.terminated)
-        self.assertTrue(grandchild.terminated)
+        self.assertTrue(body.terminated)
+        self.assertTrue(game.terminated)
+        self.assertTrue(helper.terminated)
 
     def test_kill_when_wait_timeout(self):
         # wait_procs 超时后仍存活的进程 → 强制 kill。
-        target = _FakeProc("game.exe")
+        target = SimProcess("game.exe")
         with (
             self._patch_iter([target]),
             self._patch_wait([], [target]),
@@ -554,7 +518,7 @@ class TestKillProcesses(unittest.TestCase):
     def test_cmdline_fetched_once_per_process(self):
         # cmdline() 约 5.9ms/进程，是唯一昂贵调用：每条匹配条件各取一次会让开销
         # 随条件数线性增长（8 条 cmdline 条件 × 349 进程 ≈ 16s）。
-        worker = _FakeProc("pythonw.exe", cmdline=[r"D:\ok\main.py"])
+        worker = SimProcess("pythonw.exe", cmdline=[r"D:\ok\main.py"])
         with (
             self._patch_iter([worker]),
             self._patch_wait([worker], []),
@@ -564,7 +528,7 @@ class TestKillProcesses(unittest.TestCase):
 
     def test_cmdline_skipped_when_name_matches(self):
         # name 型条件命中即短路，不再付出 cmdline 的系统调用成本。
-        target = _FakeProc("game.exe", cmdline=[r"D:\x\y"])
+        target = SimProcess("game.exe", cmdline=[r"D:\x\y"])
         with (
             self._patch_iter([target]),
             self._patch_wait([target], []),
@@ -580,7 +544,7 @@ class TestKillProcesses(unittest.TestCase):
     def test_scan_count_independent_of_match_count(self):
         # 全系统遍历固定 2 次（匹配 1 + 建树 1），与命中进程数无关——
         # 旧实现按命中进程逐个 children()，命中 k 个就是 k 遍全量遍历。
-        roots = [_FakeProc(f"r{i}.exe") for i in range(3)]
+        roots = [SimProcess(f"r{i}.exe") for i in range(3)]
         with (
             self._patch_iter(roots) as mock_iter,
             self._patch_wait(roots, []),
@@ -589,7 +553,7 @@ class TestKillProcesses(unittest.TestCase):
         self.assertEqual(mock_iter.call_count, 2)
 
     def test_no_match_returns_empty(self):
-        with self._patch_iter([_FakeProc("other.exe")]):
+        with self._patch_iter([SimProcess("other.exe")]):
             self.assertEqual(kill_processes([ProcessTarget(name="game.exe")]), [])
 
 
