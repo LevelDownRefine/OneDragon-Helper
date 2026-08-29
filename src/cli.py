@@ -127,6 +127,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="运行期间静音（透传 --mute 给 Runner）",
     )
     parser.add_argument(
+        "--close-running",
+        action="store_true",
+        help="运行前关闭残留的脚本/游戏进程（透传 --close-running 给 Runner）",
+    )
+    parser.add_argument(
         "--weekly-start",
         type=str,
         default=None,
@@ -457,6 +462,7 @@ def _run_scheduled(args) -> int:
         chain_name=args.name or "today",
         mute=args.mute,
         shutdown_delay=args.shutdown,
+        close_running=args.close_running,
     )
     return 0
 

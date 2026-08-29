@@ -6,10 +6,10 @@
 主题常量（单一来源，不在本文件重复定义）。
 
 对外接口：
-- ``RunConfirmDialog``：运行确认弹窗，构造签名含 enabled_count 与五项勾选的初始值，
+- ``RunConfirmDialog``：运行确认弹窗，构造签名含 enabled_count 与勾选的初始值，
   ``result`` 返回 dict（shutdown_enabled / shutdown_delay / timed_enabled /
-  timed_target / mute_enabled / rerun_enabled / notify_enabled）；取消（reject）
-  不返回、不落盘。
+  timed_target / mute_enabled / close_running_enabled / rerun_enabled /
+  notify_enabled）；取消（reject）不返回、不落盘。
 """
 
 from PySide6.QtCore import QTime
@@ -35,8 +35,8 @@ from src.utils_runner import _TIME_RE
 
 
 class RunConfirmDialog(_FormDialogBase):
-    """「启动全部」前的确认弹窗，内嵌自动关机 / 定时计划 / 运行中静音 / 重跑 /
-    邮件通知五项勾选。
+    """「启动全部」前的确认弹窗，内嵌自动关机 / 定时计划 / 运行中静音 /
+    运行前关闭残留进程 / 重跑 / 邮件通知六项勾选。
 
     复用 ``_FormDialogBase`` 的样式与控件构造；accept 后经 ``result`` 属性返回
     勾选项，写盘由调用方委托 ``ChainService.save_config``。取消（reject）不返回、不落盘。
@@ -51,6 +51,7 @@ class RunConfirmDialog(_FormDialogBase):
         timed_enabled: bool,
         timed_target: str,
         mute_enabled: bool = False,
+        close_running_enabled: bool = True,
         rerun_enabled: bool = True,
         notify_enabled: bool = False,
         parent=None,
@@ -69,6 +70,7 @@ class RunConfirmDialog(_FormDialogBase):
             timed_enabled=timed_enabled,
             timed_target=timed_target,
             mute_enabled=mute_enabled,
+            close_running_enabled=close_running_enabled,
             rerun_enabled=rerun_enabled,
             notify_enabled=notify_enabled,
         )
@@ -81,11 +83,12 @@ class RunConfirmDialog(_FormDialogBase):
         timed_enabled: bool,
         timed_target: str,
         mute_enabled: bool,
+        close_running_enabled: bool,
         rerun_enabled: bool,
         notify_enabled: bool,
     ) -> None:
-        """构造布局：确认文案 + 自动关机区 + 定时计划区 + 运行中静音区 +
-        运行后动作区（重跑 / 邮件通知）+ 底部按钮行。
+        """构造布局：确认文案 + 自动关机区 + 定时计划区 + 运行前动作区（静音/关闭残留）
+        + 运行后动作区（重跑 / 邮件通知）+ 底部按钮行。
         """
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
@@ -99,7 +102,7 @@ class RunConfirmDialog(_FormDialogBase):
 
         layout.addWidget(self._make_shutdown_group(shutdown_enabled, shutdown_delay))
         layout.addWidget(self._make_timed_group(timed_enabled, timed_target))
-        layout.addWidget(self._make_mute_group(mute_enabled))
+        layout.addWidget(self._make_pre_run_group(mute_enabled, close_running_enabled))
         layout.addWidget(self._make_post_actions_group(rerun_enabled, notify_enabled))
 
         layout.addStretch()
@@ -185,24 +188,29 @@ class RunConfirmDialog(_FormDialogBase):
         row.addStretch()
         return box
 
-    def _make_mute_group(self, enabled: bool) -> QGroupBox:
-        """运行中静音分组：单个复选框（运行前静音、运行后恢复，由主仓执行）。"""
-        box = QGroupBox("运行中静音")
+    def _make_pre_run_group(
+        self, mute_enabled: bool, close_running_enabled: bool
+    ) -> QGroupBox:
+        """运行前动作分组：运行中静音 + 运行前关闭残留进程（同组两行复选框）。"""
+        box = QGroupBox("运行前动作")
         box.setFont(make_font(size=11, bold=True))
         box.setStyleSheet(
             f"QGroupBox {{ color: {TEXT}; border: {BORDER_WIDTH} solid #C4D8F2; "
             f"border-radius: 8px; margin-top: 12px; }} "
             f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 6px; }}"
         )
-        row = QHBoxLayout(box)
-        row.setContentsMargins(14, 20, 14, 14)
-        row.setSpacing(12)
+        col = QVBoxLayout(box)
+        col.setContentsMargins(14, 20, 14, 14)
+        col.setSpacing(10)
 
         self.mute_cb = self._make_checkbox("运行中静音（运行前静音，运行后恢复）")
-        self.mute_cb.setChecked(enabled)
-        row.addWidget(self.mute_cb)
+        self.mute_cb.setChecked(mute_enabled)
+        col.addWidget(self.mute_cb)
 
-        row.addStretch()
+        self.close_running_cb = self._make_checkbox("运行前关闭残留进程")
+        self.close_running_cb.setChecked(close_running_enabled)
+        col.addWidget(self.close_running_cb)
+
         return box
 
     def _make_post_actions_group(
@@ -236,7 +244,7 @@ class RunConfirmDialog(_FormDialogBase):
 
         Returns:
             含 shutdown_enabled / shutdown_delay / timed_enabled / timed_target /
-            mute_enabled / rerun_enabled / notify_enabled 的 dict。
+            mute_enabled / close_running_enabled / rerun_enabled / notify_enabled 的 dict。
         """
         return self._result
 
@@ -249,6 +257,7 @@ class RunConfirmDialog(_FormDialogBase):
             "timed_enabled": self.timed_cb.isChecked(),
             "timed_target": f"{t.hour():02d}:{t.minute():02d}",
             "mute_enabled": self.mute_cb.isChecked(),
+            "close_running_enabled": self.close_running_cb.isChecked(),
             "rerun_enabled": self.rerun_cb.isChecked(),
             "notify_enabled": self.notify_cb.isChecked(),
         }

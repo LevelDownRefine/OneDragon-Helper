@@ -13,12 +13,14 @@ from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
 from src.utils_runner import (
+    apply_close_running_config,
     apply_mute_config,
     apply_notify_config,
     apply_rerun_config,
     apply_shutdown_config,
     apply_timed_run_config,
     build_script_command,
+    parse_close_running,
     parse_mute_run,
     parse_notify_enabled,
     parse_rerun_config,
@@ -64,6 +66,7 @@ class LaunchController(QObject):
         schedule_data = self._service.load_schedule()
         shutdown_delay = parse_shutdown(schedule_data)
         mute = parse_mute_run(schedule_data)
+        close_running = parse_close_running(schedule_data)
         timed_enabled, timed_target = parse_timed_run(schedule_data)
         run_target = timed_target if timed_enabled else "now"
         if timed_enabled:
@@ -77,6 +80,7 @@ class LaunchController(QObject):
             run_target,
             mute=mute,
             shutdown_delay=shutdown_delay,
+            close_running=close_running,
         )
 
     @Slot()
@@ -132,6 +136,7 @@ class LaunchController(QObject):
         )
         timed_enabled, timed_target = parse_timed_run(schedule_data)
         mute_enabled = parse_mute_run(schedule_data)
+        close_running_enabled = parse_close_running(schedule_data)
         rerun_enabled = parse_rerun_config(schedule_data)
         notify_enabled = parse_notify_enabled(schedule_data)
 
@@ -142,6 +147,7 @@ class LaunchController(QObject):
             timed_enabled=timed_enabled,
             timed_target=timed_target,
             mute_enabled=mute_enabled,
+            close_running_enabled=close_running_enabled,
             rerun_enabled=rerun_enabled,
             notify_enabled=notify_enabled,
         )
@@ -163,6 +169,7 @@ class LaunchController(QObject):
             target_time=res["timed_target"],
         )
         apply_mute_config(schedule_data, enabled=res["mute_enabled"])
+        apply_close_running_config(schedule_data, enabled=res["close_running_enabled"])
         apply_rerun_config(schedule_data, enabled=res["rerun_enabled"])
         apply_notify_config(schedule_data, enabled=res["notify_enabled"])
         self._service.save_schedule(schedule_data)
