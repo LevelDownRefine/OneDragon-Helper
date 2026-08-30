@@ -21,6 +21,7 @@ from src.config.set_config import supports_weekly
 from src.config.subscript import get_script_name
 from src.service.chain_service import ChainService
 from src.service.script_service import ScriptService
+from src.service.weekly_service import WeeklyService
 from src.utils_shutdown import shutdown_sys
 
 logger = logging.getLogger(__name__)
@@ -296,7 +297,9 @@ def _run_check_weekly(out_path: str | None) -> int:
 
     返回退出码 0=一致 / 1=存在不一致。
     """
-    result = ScriptService().check_weekly()
+    config = ChainService().load_config()
+    config_keys = [get_script_name(s) for s in config.get("script_list", [])]
+    result = WeeklyService().check_weekly(config_keys)
     _emit_json("check_weekly", result, out_path)
     assert "status" in result, "[cli] check_weekly 结果缺少 status"
     return 0 if result["status"] == "ok" else 1

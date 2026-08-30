@@ -17,6 +17,7 @@ from src.config.set_config import (
     set_weekly_dungeon,
 )
 from src.service.script_service import ScriptService
+from src.service.weekly_service import WeeklyService
 
 # 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
 WEEKDAY_NAMES = {
@@ -41,6 +42,7 @@ class TaskCardController(QObject):
         self._toast = toast
         # 周常声明只读服务：weekly_list.yml（支持哪些周常 / 是否需选副本 / 副本清单）
         self._script_service = ScriptService()
+        self._weekly_service = WeeklyService()
         # 任务卡状态：gui_state.json 的副本/序列/周常（按 script_name 索引）
         self._ui_state = self._service.load_ui_state()
         # 副本下拉数据缓存：dungeon_list.yml 解析较贵且运行期不变，
@@ -103,7 +105,7 @@ class TaskCardController(QObject):
     def weekly_start_label(self) -> str:
         """周常起始日文字（周几起），供单脚本配置弹窗显示当前选择。"""
         game = self._current
-        start_day = self._script_service.get_weekly_start(game["script_name"])
+        start_day = self._weekly_service.get_weekly_start(game["script_name"])
         return "选择周几" if start_day is None else f"{WEEKDAY_NAMES[start_day]}起"
 
     @property
