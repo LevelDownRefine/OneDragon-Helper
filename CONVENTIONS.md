@@ -34,16 +34,16 @@ script_type = script["script_type"]
 
 ```python
 try:
-    proc = subprocess.run(..., timeout=countdown + 30)
+    proc = subprocess.run(command, timeout=30)
 except subprocess.TimeoutExpired as e:
     proc = getattr(e, "subprocess", None)
     if proc is not None:
         proc.kill()
-    log.error("关机确认窗超时未响应，视为取消")
+    logger.error("命令超时未响应：%s", command)
     return False
 ```
 
-> 边界：headless / 无桌面等环境下 tkinter 初始化失败属可预见，须包 try 并打印诊断，不能 `except Exception: pass` 让失败静默成「取消」且无日志。
+> 边界：headless / 无桌面等环境下 GUI（Qt 等）初始化失败属可预见，须包 try 并记诊断，不能 `except Exception: pass` 让失败静默成「取消」且无日志（如 ``utils_shutdown._confirm_shutdown`` 按取消处理并记 error）。
 
 ## 4. 命名显式明确
 
