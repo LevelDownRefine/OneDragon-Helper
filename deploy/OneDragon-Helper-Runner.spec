@@ -55,7 +55,12 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    # 冻结后运行在英文 locale(cp1252) 的 Windows 上，Runner 经 colorama 往 stdout
+    # 打印中文会抛 'charmap' codec can't encode characters 使进程崩溃（GitHub Windows
+    # runner 即此场景）。此 hook 在 main 导入 colorama 之前把标准流强制为 UTF-8，
+    # 与 src/launcher.py 的 _force_utf8_stdio 同源修复。
+    # 注意：build.bat 以 deploy/ 为 CWD 调 pyinstaller，故相对路径不带 deploy/ 前缀。
+    runtime_hooks=['runtime_hook_utf8.py'],
     excludes=excludes,
     noarchive=False,
     optimize=0,

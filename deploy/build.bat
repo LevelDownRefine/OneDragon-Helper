@@ -23,7 +23,7 @@ echo [1/5] 构建 GUI 主程序 (onedir)...
 %PY% --noconfirm --clean "OneDragon-Helper.spec"
 if errorlevel 1 (
     echo [ERROR] GUI 构建失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -32,7 +32,7 @@ echo [2/5] 构建 Runner (onefile)...
 %PY% --noconfirm --clean "OneDragon-Helper-Runner.spec"
 if errorlevel 1 (
     echo [ERROR] Runner 构建失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -42,13 +42,13 @@ set "GUI_DIR=%~dp0dist\OneDragon-Helper"
 set "RUNNER_EXE=%~dp0dist\OneDragon-Helper-Runner.exe"
 if not exist "%RUNNER_EXE%" (
     echo [ERROR] 未找到 Runner exe: %RUNNER_EXE%
-    pause
+    if not defined CI pause
     exit /b 1
 )
 copy /Y "%RUNNER_EXE%" "%GUI_DIR%\"
 if errorlevel 1 (
     echo [ERROR] 拷贝 Runner 失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -67,7 +67,7 @@ REM 整体拷贝 config（含共享资源：dungeon_list.yml / weekly_timeouts.y
 xcopy /E /I /Y "%SRC_CONFIG%" "%DST_CONFIG%" >nul
 if errorlevel 1 (
     echo [ERROR] 拷贝 config 失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 REM 安全：绝不要把开发机的个人配置打进包（config.yml / config.yml.bak 含账号、路径等私密，
@@ -79,13 +79,13 @@ REM 改用模板生成干净的默认 config.yml（不含任何个人信息）�
 copy /Y "%SRC_CONFIG%\config.example.yml" "%DST_CONFIG%\config.yml" >nul
 if errorlevel 1 (
     echo [ERROR] 生成默认 config.yml 失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 xcopy /E /I /Y "%SRC_ASSETS%" "%DST_ASSETS%" >nul
 if errorlevel 1 (
     echo [ERROR] 拷贝 assets 失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 REM QML 界面文件：GUI 已迁移到 QML（launcher.py 用 QQmlApplicationEngine 加载
@@ -97,7 +97,7 @@ set "DST_QML=%GUI_DIR%\src\gui\qml"
 xcopy /E /I /Y "%SRC_QML%" "%DST_QML%" >nul
 if errorlevel 1 (
     echo [ERROR] 拷贝 QML 失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 REM 用户脚本（如 wait_until_0410 等待到每日重置）的能力已由 launcher 的「定时计划」
@@ -114,6 +114,11 @@ if exist "%VENV_PY%" (
 ) else (
     uv run python -m unittest discover -s tests -p "test_*_exe.py"
 )
+REM exe 测试失败需在 CI 阻断构建（errorlevel 1 → exit /b 1）；本地手动运行仍保持非阻断（仅提示）。
+if errorlevel 1 (
+    echo [ERROR] exe 集成测试失败
+    if not defined CI ( pause ) else ( exit /b 1 )
+)
 popd
 
 echo.
@@ -126,4 +131,4 @@ echo   - config\                      (配置目录)
 echo   - assets\                      (资源目录)
 echo ============================================
 echo.
-pause
+if not defined CI pause

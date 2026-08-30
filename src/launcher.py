@@ -5,6 +5,7 @@ GUI 走 QML（src/gui/main_window 桥接业务逻辑，src/gui/qml/main.qml 渲�
 无头 CLI 出口见 :mod:`src.cli`（本模块的 --generate-chain / --run-chain 等命令行参数）。
 """
 
+import contextlib
 import logging
 import os
 import shutil
@@ -41,6 +42,21 @@ def _log_startup(stage: str) -> None:
     logger.info("[startup] %-30s %8.1f ms", stage, elapsed_ms)
 
 
+def _force_utf8_stdio() -> None:
+    """强制 stdout/stderr 为 UTF-8，避免非中文 locale 下输出中文崩溃。
+
+    冻结后的 exe 在英文 locale（cp1252）运行时，``print``/``logging`` 输出中文会因
+    控制台编码抛 ``UnicodeEncodeError``（见 CI build-exe 失败日志：``'charmap' codec
+    can't encode characters``）。真实用户在非中文 Windows 上同样会崩。入口处 reconfigure
+    为 UTF-8 + replace，使中文可观测（windowed exe 主要靠写文件，见 ``src.cli._emit_cli``）。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None:
+            continue
+        with contextlib.suppress(AttributeError, ValueError, OSError):
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+
+
 def _clear_qml_cache():
     """删除 PySide6 的 QML 编译缓存目录（%LOCALAPPDATA%/python/cache/qmlcache）。
 
@@ -70,6 +86,8 @@ def config_workflow():
 
 
 def main():
+    # 非中文 locale 下强制 UTF-8，避免后续 print/logging 输出中文崩溃
+    _force_utf8_stdio()
     # 首次运行时，拷贝配置模板到用户目录
     config_workflow()
 
