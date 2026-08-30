@@ -22,7 +22,6 @@ from src.config.subscript import (
     generate_schedule_from_example,
     resolve_script_path,
 )
-from src.gui.dialogs import inject_config_confirm
 from src.gui.main_window import QmlBridge
 from src.utils import get_config_yml_path_under_root, get_schedule_yml_path_under_root
 from src.utils_logger import setup_logging
@@ -101,8 +100,6 @@ def _launch_qml():
     app = QApplication(sys.argv)
     # 全局默认字体：QML Text 默认字体中文字符 fallback；与旧 GUI 一致
     app.setFont(QFont(FONT_FAMILY))
-    # 对齐旧 GUI：config 与模板不一致时弹窗确认（CLI/测试不注入）
-    inject_config_confirm()
 
     # bridge 注册为 QML 单例（不是 setContextProperty）：单例由 QML 引擎强持有，
     # 事件循环中不会被 GC——context property 传 Python 对象时，QML 侧会读到 null。

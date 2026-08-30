@@ -2,7 +2,6 @@
 
 import logging
 import os
-from collections.abc import Callable
 from typing import Any
 
 from src.config.subscript import (
@@ -165,9 +164,6 @@ class ScriptConfig:
 
     _weekly_config_rel_path: str = ""
     """周常配置文件路径；空字符串复用主 config。"""
-
-    confirm_before_save: Callable[[str], bool] | None = None
-    """保存前确认回调（GUI 注入，返回 False 则不落盘）。"""
 
     _enabled: bool = True
     """实例是否可操作 config；拒绝保存后置 False 使后续写入一并失效。"""
@@ -377,22 +373,6 @@ class ScriptConfig:
             当前选中的副本名；无真相/未设置返回 None。
         """
         return None
-
-    def _confirm_save(self) -> bool:
-        """保存前确认，返回是否允许落盘。
-
-        未注入回调默认放行；拒绝后置 enabled=False 使后续写入一并失效。
-
-        Returns:
-            用户是否接受保存。
-        """
-        callback = type(self).confirm_before_save
-        if callback is None:
-            return True
-        accepted = callback(self.display_name)
-        if not accepted:
-            self._enabled = False
-        return accepted
 
     def _init_config(self) -> None:
         """对齐检查并把模板 config 同步到用户 config。

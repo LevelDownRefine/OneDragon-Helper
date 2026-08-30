@@ -25,7 +25,6 @@
 ## 弹窗 dialogs.py
 
 - SingleScriptConfigDialog：单脚本配置弹窗，保存后经 pending_changes 返回，写盘委托 ChainService.update_script。
-- confirm_config_update / inject_config_confirm：config 与模板不一致时的保存前确认回调，30s 限时，超时按拒绝。
 
 ## 写盘路径
 

@@ -1,4 +1,4 @@
-"""单脚本配置弹窗（SingleScriptConfigDialog）与保存前确认回调。
+"""单脚本配置弹窗（SingleScriptConfigDialog）。
 
 自包含模块：样式常量（原 src/gui/theme.py 子集）与工具函数（styled_msg_box /
 safe_startfile，原 src/gui/utils.py）已并入本文件（2026-08-16），src/gui 其余
@@ -8,8 +8,6 @@ safe_startfile，原 src/gui/utils.py）已并入本文件（2026-08-16），src
 - ``SingleScriptConfigDialog``：单脚本配置弹窗（名称/路径/类型/参数/完成检测/
   关闭脚本/关闭游戏/阻塞/游戏进程/每周超时），保存后经 ``pending_changes`` 返回，
   写盘由调用方委托 ``ChainService.update_script``。脚本删除改由左侧列表交互完成。
-- ``confirm_config_update`` / ``inject_config_confirm``：config 与模板不一致时的
-  保存前确认回调（30s 限时，超时按拒绝处理），GUI 入口注入。
 - 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
   （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
 """
@@ -17,7 +15,7 @@ safe_startfile，原 src/gui/utils.py）已并入本文件（2026-08-16），src
 import os
 import warnings
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIntValidator
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -34,7 +32,6 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.set_config import (
-    ScriptConfig,
     supports_weekly,
 )
 from src.config.subscript import get_script_name
@@ -230,34 +227,6 @@ CHECK_DONE_OPTIONS = ["game_or_script_closed", "script_closed", "game_closed"]
 # 每周超时：周一到周日 7 个数字框，秒数上限 24h
 WEEKDAY_SHORT_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
 MAX_DAILY_TIMEOUT_SECONDS = 86400
-
-
-def confirm_config_update(display_name: str, timeout_ms: int = 30_000) -> bool:
-    """GUI 确认回调：config 与模板不一致时，询问用户是否更新并保存。
-
-    弹窗限时 ``timeout_ms``（默认 30 秒）：超时未选择自动按「拒绝」处理
-    （QMessageBox.done(No) 关闭），回调返回 False → config 层把本次实例
-    ``enabled`` 置 False（disable），后续写入一并跳过、不落盘。
-
-    Args:
-        display_name: 脚本显示名（弹窗提示用）。
-        timeout_ms: 限时毫秒数（默认 30_000；测试可传小值）。
-    """
-    box = QMessageBox()
-    box.setIcon(QMessageBox.Question)
-    box.setWindowTitle("更新配置")
-    box.setText(f"「{display_name}」的配置文件与模板不一致，是否更新并保存？")
-    box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-    box.setDefaultButton(QMessageBox.No)
-    # 限时未选择 → done(No) 关闭并置结果 No（不落盘、disable 本次实例）
-    QTimer.singleShot(timeout_ms, lambda: box.done(QMessageBox.No))
-    box.exec()
-    return box.result() == QMessageBox.Yes
-
-
-def inject_config_confirm() -> None:
-    """把 GUI 确认弹窗注入 config 层的保存前回调（无头 CLI 不注入）。"""
-    ScriptConfig.confirm_before_save = confirm_config_update
 
 
 def _browse_script_file(parent, target_edit):
