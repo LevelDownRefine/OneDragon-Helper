@@ -2152,5 +2152,5 @@ class TestSetConfigAdapter(unittest.TestCase):
         mock_cls = MagicMock(return_value=mock_instance)
         with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
             set_config.set_config("ok-ww", "无音区", "1")
-        self.assertEqual(mock_cls.call_count, 2)
+        mock_cls.assert_called_once()
         mock_instance.set_dungeon.assert_called_once_with("无音区", "1")
