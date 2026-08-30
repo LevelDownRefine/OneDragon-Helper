@@ -461,6 +461,7 @@ class ScriptConfig:
                 f"[set_dungeon][{self.display_name}] 用户拒绝更新，跳过副本设置"
             )
             return
+        self._init_config()
         config = self._load()
         changed = self._update_task(config, dungeon_name, sequence)
         if changed:
@@ -489,6 +490,7 @@ class ScriptConfig:
         assert 1 <= start_day <= 7, (
             f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
         )
+        self._init_config()
         self._write_weekly(is_weekly_start_reached(start_day))
 
     def _write_weekly(self, enabled: bool) -> None:
@@ -980,6 +982,7 @@ class StarRailConfig(ScriptConfig):
         assert 1 <= start_day <= 7, (
             f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
         )
+        self._init_config()
         # 前置条件：游戏原生 config 路径有效（游戏已安装、script_path 正确），由 GUI 侧
         # 调用前保证；本方法假设该前置成立，不做存在性兜底盘。
         config = self._load(allow_missing=True) or {}
@@ -996,6 +999,7 @@ class StarRailConfig(ScriptConfig):
             weekly_name: 周常名（如「历战余响」）；即 instance_names 的键。
             dungeon_name: 选中的副本名（来自 weekly_list.yml 声明）。
         """
+        self._init_config()
         config = self._load()
         # instance_names 是 M7A 约定键名（{周常名: 副本名} 的 dict），保持不动；
         # 缺字段则新建。
@@ -1464,6 +1468,7 @@ class ArknightsConfig(ScriptConfig):
         assert 1 <= start_day <= 7, (
             f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
         )
+        self._init_config()
         # 前置条件：游戏原生 config 已存在（游戏已安装、script_path 正确），由 GUI 侧调用前
         # 保证；缺失即前置不成立，直接断言失败，不做存在性兜底盘。
         config = self._load()
@@ -1534,7 +1539,6 @@ def set_config(
 
     cfg_cls = _CONFIGS[script_name]
     cfg = cfg_cls()
-    cfg._init_config()
     if dungeon_name and dungeon_name != "未选择":
         cfg.set_dungeon(dungeon_name, sequence)
     if weekly_start is not None:
@@ -1626,7 +1630,6 @@ def set_weekly_dungeon(script_name: str, weekly_name: str, dungeon_name: str) ->
     if not hasattr(cfg_cls, "set_weekly_dungeon"):
         return
     cfg = cfg_cls()
-    cfg._init_config()
     cfg.set_weekly_dungeon(weekly_name, dungeon_name)
 
 
@@ -1645,7 +1648,6 @@ def set_weekly_start_day(script_name: str, start_day: int) -> None:
     if not hasattr(cfg_cls, "set_weekly_start_day"):
         return
     cfg = cfg_cls()
-    cfg._init_config()
     cfg.set_weekly_start_day(start_day)
 
 

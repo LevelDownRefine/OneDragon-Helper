@@ -408,6 +408,7 @@ class TestEndfieldConfig(unittest.TestCase):
             cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
         with (
+            patch.object(cfg, "_init_config"),
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as mock_save,
         ):
@@ -420,6 +421,7 @@ class TestEndfieldConfig(unittest.TestCase):
             cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
         with (
+            patch.object(cfg, "_init_config"),
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as mock_save,
         ):
@@ -1934,6 +1936,7 @@ class TestSetWeekly(unittest.TestCase):
             ]
         }
         with (
+            patch.object(cfg, "_init_config"),
             patch("src.utils_weekly.get_week_num", return_value=3),
             patch("src.config.set_config.load_config", return_value=config),
             patch("src.config.set_config.save_config") as mock_save,
@@ -1952,6 +1955,7 @@ class TestSetWeekly(unittest.TestCase):
             ]
         }
         with (
+            patch.object(cfg, "_init_config"),
             patch("src.utils_weekly.get_week_num", return_value=1),
             patch("src.config.set_config.load_config", return_value=config),
             patch("src.config.set_config.save_config") as mock_save,
