@@ -1,0 +1,33 @@
+name: Build EXE & Run Exe Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-exe:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync
+
+      # build.bat 会：① 用 PyInstaller 打包 GUI(onedir) + Runner(onefile)
+      # ② 把 Runner 拷入 GUI 目录、拷贝 config/assets/QML ③ 跑 tests/test_*_exe.py
+      # （真实启动打包产物做集成测试，需 Windows 管理员态，GitHub Windows runner 默认满足）。
+      # CI 环境变量使 build.bat 跳过交互式 pause；exe 测试失败则 build.bat 以非 0 退出，
+      # call 把退出码透传给本步骤，使构建失败。
+      - name: Build EXE and run exe integration tests
+        shell: cmd
+        run: call deploy\build.bat
