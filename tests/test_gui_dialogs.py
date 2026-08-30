@@ -1,4 +1,4 @@
-"""测试 src/gui/dialogs.py：配置确认回调与 SingleScriptConfigDialog。"""
+"""测试 src/gui/dialogs.py：SingleScriptConfigDialog。"""
 
 import os
 import tempfile
@@ -10,100 +10,14 @@ from src.utils_yaml import dump_yaml_file
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
 from src.gui.dialogs import (
     SingleScriptConfigDialog,
-    inject_config_confirm,
 )
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
-
-
-class TestInjectConfigConfirm(unittest.TestCase):
-    """测试 inject_config_confirm：把 GUI 确认弹窗注入 config 层回调"""
-
-    def setUp(self):
-        from src.config.set_config import ScriptConfig
-
-        self.original = ScriptConfig.confirm_before_save
-        self.addCleanup(self._restore)
-
-    def _restore(self):
-        from src.config.set_config import ScriptConfig
-
-        ScriptConfig.confirm_before_save = self.original
-
-    def test_inject_sets_callback(self):
-        """注入后 ScriptConfig.confirm_before_save 指向 GUI 弹窗回调"""
-        from src.config.set_config import ScriptConfig
-
-        inject_config_confirm()
-        callback = ScriptConfig.confirm_before_save
-        self.assertIsNotNone(callback)
-        # 回调是可调用函数且签名只收 display_name（描述符绑定回归防护）
-        with (
-            patch("src.gui.dialogs.QMessageBox") as mock_box,
-            patch("src.gui.dialogs.QTimer.singleShot") as mock_timer,
-        ):
-            mock_box.Yes = QMessageBox.Yes
-            instance = mock_box.return_value
-            instance.exec.return_value = None
-            instance.result.return_value = QMessageBox.Yes
-            result = callback("测试脚本")
-        self.assertTrue(result)
-        self.assertEqual(
-            instance.setText.call_args[0][0],
-            "「测试脚本」的配置文件与模板不一致，是否更新并保存？",
-        )
-        # 限时 30 秒
-        mock_timer.assert_called_once()
-        self.assertEqual(mock_timer.call_args[0][0], 30_000)
-
-    def test_inject_callback_returns_false_on_no(self):
-        """用户点 No 时回调返回 False（对应 config 层 enabled 置 False）"""
-        from src.config.set_config import ScriptConfig
-
-        inject_config_confirm()
-        callback = ScriptConfig.confirm_before_save
-        with (
-            patch("src.gui.dialogs.QMessageBox") as mock_box,
-            patch("src.gui.dialogs.QTimer.singleShot"),
-        ):
-            mock_box.No = QMessageBox.No
-            instance = mock_box.return_value
-            instance.exec.return_value = None
-            instance.result.return_value = QMessageBox.No
-            self.assertFalse(callback("测试脚本"))
-
-    def test_timeout_auto_rejects(self):
-        """超时未选择 → 自动按拒绝（done(No)）处理，回调返回 False"""
-        from src.config.set_config import ScriptConfig
-
-        inject_config_confirm()
-        callback = ScriptConfig.confirm_before_save
-        with (
-            patch("src.gui.dialogs.QMessageBox") as mock_box,
-            patch("src.gui.dialogs.QTimer.singleShot") as mock_timer,
-        ):
-            mock_box.No = QMessageBox.No
-            instance = mock_box.return_value
-            instance.exec.return_value = None
-            instance.result.return_value = QMessageBox.No
-            # 模拟超时：singleShot 的延时回调立即触发（box.done(No)）
-            mock_timer.side_effect = lambda _ms, fn: fn()
-            result = callback("测试脚本")
-        self.assertFalse(result)
-        instance.done.assert_called_once_with(QMessageBox.No)
-
-    def test_timeout_real_auto_closes(self):
-        """真实弹窗小超时：exec 事件循环中 QTimer 到期自动 done(No) → 返回 False"""
-        from src.gui.dialogs import confirm_config_update
-
-        # 真实 QMessageBox（未 mock），200ms 超时后自动按拒绝关闭
-        result = confirm_config_update("测试脚本", timeout_ms=200)
-        self.assertFalse(result)
 
 
 class TestSingleScriptConfigDialogLoad(unittest.TestCase):
