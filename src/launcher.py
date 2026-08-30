@@ -66,6 +66,7 @@ def config_workflow():
         generate_schedule_from_example()
     # 每次启动对齐所有已注册脚本的 config 与模板
     from src.config.set_config import init_config_all
+
     init_config_all()
 
 

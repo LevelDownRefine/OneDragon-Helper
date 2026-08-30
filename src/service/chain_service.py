@@ -152,6 +152,7 @@ class ChainService:
         self.save_config(config)
         self._script_service.ensure_weekly_entry(new_script_name)
         from src.config.set_config import init_config
+
         init_config(new_script_name)
 
     def remove_script(self, script_name: str) -> None:
@@ -226,6 +227,7 @@ class ChainService:
             )
         self._script_service.save_weekly(new_script_name, weekly_timeouts)
         from src.config.set_config import init_config
+
         init_config(new_script_name)
         return new_script_name
 
