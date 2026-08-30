@@ -1534,6 +1534,7 @@ def set_config(
 
     cfg_cls = _CONFIGS[script_name]
     cfg = cfg_cls()
+    cfg._init_config()
     if dungeon_name and dungeon_name != "未选择":
         cfg.set_dungeon(dungeon_name, sequence)
     if weekly_start is not None:
@@ -1625,6 +1626,7 @@ def set_weekly_dungeon(script_name: str, weekly_name: str, dungeon_name: str) ->
     if not hasattr(cfg_cls, "set_weekly_dungeon"):
         return
     cfg = cfg_cls()
+    cfg._init_config()
     cfg.set_weekly_dungeon(weekly_name, dungeon_name)
 
 
@@ -1643,6 +1645,7 @@ def set_weekly_start_day(script_name: str, start_day: int) -> None:
     if not hasattr(cfg_cls, "set_weekly_start_day"):
         return
     cfg = cfg_cls()
+    cfg._init_config()
     cfg.set_weekly_start_day(start_day)
 
 
