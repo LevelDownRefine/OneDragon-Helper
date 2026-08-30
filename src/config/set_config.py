@@ -398,8 +398,7 @@ class ScriptConfig:
         """对齐检查并把模板 config 同步到用户 config。
 
         仅对有模板（声明 ``_template_rel_path``）的脚本生效；无模板脚本或脚本尚未
-        安装/未配置（config 缺失）时直接返回，不触碰 config。已对齐或未确认
-        （enabled=False）时也不动 config。
+        安装/未配置（config 缺失）时直接返回，不触碰 config。已对齐时不动 config。
         """
         if not self._template_rel_path:
             return
@@ -410,10 +409,6 @@ class ScriptConfig:
 
         if self._is_aligned(config, template):
             logger.info(f"[init_config][{self.display_name}] config 已对齐，无需更新")
-            return
-
-        if not self._confirm_save():
-            logger.info(f"[init_config][{self.display_name}] 用户拒绝更新，跳过")
             return
 
         for key, val in template.items():
