@@ -154,6 +154,8 @@ class ChainService:
         scripts.append(script_data)
         self.save_config(config)
         self._weekly_service.ensure_weekly_entry(new_script_name)
+        from src.config.set_config import init_config
+        init_config(new_script_name)
 
     def remove_script(self, script_name: str) -> None:
         """从 config.yml 的 script_list 移除指定脚本条目，并自动清理 weekly 孤儿。
@@ -226,6 +228,8 @@ class ChainService:
                 old_script_name, new_script_name
             )
         self._weekly_service.save_weekly(new_script_name, weekly_timeouts)
+        from src.config.set_config import init_config
+        init_config(new_script_name)
         return new_script_name
 
     def load_ui_state(self) -> dict:
