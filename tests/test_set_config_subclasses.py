@@ -408,7 +408,6 @@ class TestEndfieldConfig(unittest.TestCase):
             cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
         with (
-            patch.object(cfg, "_init_config"),
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as mock_save,
         ):
@@ -421,7 +420,6 @@ class TestEndfieldConfig(unittest.TestCase):
             cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
         with (
-            patch.object(cfg, "_init_config"),
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as mock_save,
         ):
@@ -1936,7 +1934,6 @@ class TestSetWeekly(unittest.TestCase):
             ]
         }
         with (
-            patch.object(cfg, "_init_config"),
             patch("src.utils_weekly.get_week_num", return_value=3),
             patch("src.config.set_config.load_config", return_value=config),
             patch("src.config.set_config.save_config") as mock_save,
@@ -1955,7 +1952,6 @@ class TestSetWeekly(unittest.TestCase):
             ]
         }
         with (
-            patch.object(cfg, "_init_config"),
             patch("src.utils_weekly.get_week_num", return_value=1),
             patch("src.config.set_config.load_config", return_value=config),
             patch("src.config.set_config.save_config") as mock_save,
@@ -2156,5 +2152,5 @@ class TestSetConfigAdapter(unittest.TestCase):
         mock_cls = MagicMock(return_value=mock_instance)
         with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
             set_config.set_config("ok-ww", "无音区", "1")
-        mock_cls.assert_called_once()
+        self.assertEqual(mock_cls.call_count, 2)
         mock_instance.set_dungeon.assert_called_once_with("无音区", "1")

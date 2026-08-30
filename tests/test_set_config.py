@@ -444,7 +444,6 @@ class TestGenshinSetDungeon(unittest.TestCase):
         self.config._enabled = True
         self.config._config_data = {"DomainName": "旧副本", "TaskEnabledList": []}
         self.config._verify_saved = lambda *a: None
-        self.config._init_config = lambda: None
         # 统一注入 mock IO：load 返回内存态，save 不落盘
         self.mock_save = self.enterContext(
             patch("src.config.set_config.save_config", return_value=None)
