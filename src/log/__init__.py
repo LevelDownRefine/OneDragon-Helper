@@ -6,13 +6,13 @@
 本包不依赖项目其余运行时模块（除 `src.config.subscript.get_script_name`），
 保持独立可测试。
 
-为兼容下游 `import src.log as collect_log` 后按 `collect_log._xxx` 访问内部符号，
-以下私有符号一并显式再导出（列入 `__all__` 以声明再导出意图）。
+本包对外暴露的公开符号列入 `__all__`，下游可 `import src.log as collect_log`
+后按 `collect_log.xxx` 直接访问。`monitor` 模块内的汇总/排版辅助函数（`_build_summary_report`、
+`_cell_width`、`_pad_row`、`_prepare_action_lists`、常量 `_LOG_TAIL_LINES` / `_PARSERS` 等）
+保持 `_` 私有，仅供本包与白盒测试使用，不在包级再导出。
 """
 
 from .monitor import (
-    _LOG_TAIL_LINES,
-    _PARSERS,
     BaseLogParser,
     BGILogParser,
     M7ALogParser,
@@ -21,12 +21,7 @@ from .monitor import (
     OkWwLogParser,
     ScriptLogStatus,
     ZZZLogParser,
-    _build_summary_report,
-    _cell_width,
-    _format_diagnostic_sections,
-    _get_root_dir,
-    _pad_row,
-    _prepare_action_lists,
+    format_diagnostic_sections,
     get_log_dir,
     get_script_name,
     log_info,
@@ -45,14 +40,7 @@ __all__ = [
     "OkWwLogParser",
     "ScriptLogStatus",
     "ZZZLogParser",
-    "_LOG_TAIL_LINES",
-    "_PARSERS",
-    "_build_summary_report",
-    "_cell_width",
-    "_format_diagnostic_sections",
-    "_get_root_dir",
-    "_pad_row",
-    "_prepare_action_lists",
+    "format_diagnostic_sections",
     "get_log_dir",
     "get_script_name",
     "log_info",

@@ -11,7 +11,6 @@ from unittest import mock
 from src.utils import get_root_dir
 from src.utils_runner import (
     ProcessTarget,
-    _collect_process_targets,
     _to_signed_32,
     apply_mute_config,
     apply_shutdown_config,
@@ -20,6 +19,7 @@ from src.utils_runner import (
     build_run_chain_command,
     build_script_command,
     collect_invalid_script_messages,
+    collect_process_targets,
     kill_processes,
     parse_mute_run,
     parse_shutdown,
@@ -535,7 +535,7 @@ class TestKillProcesses(unittest.TestCase):
 
 
 class TestCollectProcessTargets(unittest.TestCase):
-    """_collect_process_targets：脚本进程 + 启动器真身(cmdline) + 游戏进程，去重。"""
+    """collect_process_targets：脚本进程 + 启动器真身(cmdline) + 游戏进程，去重。"""
 
     def test_exe_script_and_game_and_root_cmdline(self):
         script = {
@@ -545,7 +545,7 @@ class TestCollectProcessTargets(unittest.TestCase):
             "game_process_name": "AGame.exe",
         }
         self.assertEqual(
-            _collect_process_targets(script),
+            collect_process_targets(script),
             [
                 ProcessTarget(name="ABot.exe"),
                 ProcessTarget(name="run.exe"),
@@ -558,12 +558,12 @@ class TestCollectProcessTargets(unittest.TestCase):
         # .py 形态：无独立进程名，但安装根目录仍可认出启动器拉起的真身。
         script = {"display_name": "A", "script_path": "scripts/foo.py"}
         self.assertEqual(
-            _collect_process_targets(script),
+            collect_process_targets(script),
             [ProcessTarget(name="foo.py"), ProcessTarget(cmdline_contains="scripts")],
         )
 
     def test_empty_when_no_config(self):
-        self.assertEqual(_collect_process_targets({"display_name": "A"}), [])
+        self.assertEqual(collect_process_targets({"display_name": "A"}), [])
 
     def test_dedup_case_insensitive(self):
         script = {
@@ -571,7 +571,7 @@ class TestCollectProcessTargets(unittest.TestCase):
             "game_process_name": "game.exe",
         }
         self.assertEqual(
-            _collect_process_targets(script), [ProcessTarget(name="Game.exe")]
+            collect_process_targets(script), [ProcessTarget(name="Game.exe")]
         )
 
 

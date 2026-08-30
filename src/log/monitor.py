@@ -451,7 +451,7 @@ def _prepare_action_lists(entries: list[dict]) -> tuple[list[str], list[str]]:
     return rerun_list, notify_list
 
 
-def _format_diagnostic_sections(entries: list[dict], collapse_fn=None) -> str:
+def format_diagnostic_sections(entries: list[dict], collapse_fn=None) -> str:
     """生成「各脚本报错明细」+「各脚本日志尾部」两段诊断文本（固定顺序），供控制台与邮件复用。
 
     第一段覆盖 errors 非空的脚本（含 WARN「警告」与 FAILED），打印各脚本报错信息；
@@ -570,10 +570,10 @@ def _build_summary_report(
     )
     emit(f"将重跑: {len(rerun_list)} 个 | 将通知: {len(notify_list)} 个")
 
-    # 末尾两段控制台明细（仅打印，不进 report 文本）：复用 _format_diagnostic_sections，
+    # 末尾两段控制台明细（仅打印，不进 report 文本）：复用 format_diagnostic_sections，
     # 与 notify_mail 邮件逐脚本详情同结构（报错信息在前、日志尾部在后）。
     if do_log:
-        diagnostic = _format_diagnostic_sections(entries)
+        diagnostic = format_diagnostic_sections(entries)
         if diagnostic:
             log_info("\n" + diagnostic, do_log=do_log)
 

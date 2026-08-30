@@ -269,7 +269,7 @@ def _browse_script_file(parent, target_edit):
         target_edit.setText(os.path.normpath(file_path))
 
 
-class _FormDialogBase(QDialog):
+class FormDialogBase(QDialog):
     """表单弹窗基类：共享样式常量与控件/label/按钮行构造。"""
 
     _LINE_EDIT_STYLE = line_edit_qss()
@@ -367,7 +367,7 @@ class _FormDialogBase(QDialog):
         _browse_script_file(self, self.path_input)
 
 
-class SingleScriptConfigDialog(_FormDialogBase):
+class SingleScriptConfigDialog(FormDialogBase):
     """单个脚本的配置弹窗（路径选择 + 每周超时时间，删除改由左侧列表交互完成）。"""
 
     _TIMEOUT_INPUT_STYLE = small_line_edit_qss(text_align="right")

@@ -194,7 +194,7 @@ class TestLoadGameConfig(unittest.TestCase):
     def test_root_missing_returns_none(self):
         """config.yml 中无此进程（根目录解析失败）→ None"""
         with mock.patch(
-            "src.config.subscript._get_script_root_dir_soft", return_value=None
+            "src.config.subscript.get_script_root_dir_soft", return_value=None
         ):
             got = load_game_config(
                 "ok-ww", "data/apps/ok-ww/working/configs/devices.json"
@@ -205,7 +205,7 @@ class TestLoadGameConfig(unittest.TestCase):
         """游戏配置文件不存在 → None（不 assert）"""
         with (
             mock.patch(
-                "src.config.subscript._get_script_root_dir_soft",
+                "src.config.subscript.get_script_root_dir_soft",
                 return_value="C:/root",
             ),
             mock.patch("src.config.subscript.os.path.exists", return_value=False),
@@ -220,7 +220,7 @@ class TestLoadGameConfig(unittest.TestCase):
         fake_path = "C:/root/data/apps/ok-ww/working/configs/devices.json"
         with (
             mock.patch(
-                "src.config.subscript._get_script_root_dir_soft",
+                "src.config.subscript.get_script_root_dir_soft",
                 return_value="C:/root",
             ),
             mock.patch("src.config.subscript.os.path.exists", return_value=True),
@@ -243,7 +243,7 @@ class TestLoadGameConfig(unittest.TestCase):
         fake_path = "C:/root/config/01/game_account.yml"
         with (
             mock.patch(
-                "src.config.subscript._get_script_root_dir_soft",
+                "src.config.subscript.get_script_root_dir_soft",
                 return_value="C:/root",
             ),
             mock.patch("src.config.subscript.os.path.exists", return_value=True),

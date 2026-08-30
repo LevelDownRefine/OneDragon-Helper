@@ -28,7 +28,7 @@ from src.gui.dialogs import (
     BG_CARD,
     FONT_SIZE_BODY,
     TEXT,
-    _FormDialogBase,
+    FormDialogBase,
     make_font,
 )
 
@@ -95,10 +95,10 @@ def _run_shutdown_command(args: list[str]) -> None:
         )
 
 
-class ShutdownConfirmDialog(_FormDialogBase):
+class ShutdownConfirmDialog(FormDialogBase):
     """关机倒计时确认窗：倒计时归零或点「立即关机」→ accept；取消/关窗 → reject。
 
-    复用 ``_FormDialogBase`` 的样式与底部按钮行（取消 / 立即关机）；倒计时由
+    复用 ``FormDialogBase`` 的样式与底部按钮行（取消 / 立即关机）；倒计时由
     ``QTimer`` 每秒递减，归零即 accept。是否真关机由调用方据 ``exec()`` 结果决定。
 
     Args:

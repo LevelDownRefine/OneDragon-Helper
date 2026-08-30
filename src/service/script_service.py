@@ -18,9 +18,9 @@ from src.config.dungeon_config import load_dungeon_map
 from src.config.set_config import get_config_path, get_dungeon_lists
 from src.config.subscript import (
     DEFAULT_RUN_TIMEOUT,
-    _is_exe_script,
     default_script_entry,
     get_script_name,
+    is_exe_script,
     resolve_script_path,
 )
 from src.utils import (
@@ -405,7 +405,7 @@ class ScriptService:
                     f"找不到脚本文件：{script_path or '(未设置路径)'}",
                 )
             return resolved, None
-        if _is_exe_script(script_path):
+        if is_exe_script(script_path):
             try:
                 config_path = get_config_path(get_script_name(script))
             except AssertionError as e:

@@ -9,7 +9,7 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 
-from src.log.monitor import _format_diagnostic_sections
+from src.log.monitor import format_diagnostic_sections
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def send_mail(result: dict, *, smtp_config: dict | None = None) -> None:
 
 def _build_body(result: dict) -> str:
     """拼接邮件正文：汇总表 + 各脚本诊断明细（报错信息在前、日志尾部在后）。"""
-    diagnostic = _format_diagnostic_sections(result.get("entries", []))
+    diagnostic = format_diagnostic_sections(result.get("entries", []))
     report = result.get("report", "")
     return report + ("\n\n" + diagnostic if diagnostic else "")
 

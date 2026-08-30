@@ -26,7 +26,7 @@ if QApplication.instance() is None:
 
 
 def _button(dialog: QDialog, text: str) -> QPushButton:
-    """按文字取弹窗按钮（按钮由 _FormDialogBase._make_footer 构造，无公开引用）。"""
+    """按文字取弹窗按钮（按钮由 FormDialogBase._make_footer 构造，无公开引用）。"""
     return next(b for b in dialog.findChildren(QPushButton) if b.text() == text)
 
 

@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 _STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
 
 
-def _resolve_mail_config(all_config: dict) -> dict | None:
+def resolve_mail_config(all_config: dict) -> dict | None:
     """从 config 解析有效邮件配置：notify.enabled 非 true 或 email/password 缺失返回 None。
 
     ``schedule_run`` 在链路点火后调用，将结果透传 ``build_post_run_pipeline``；返回 None

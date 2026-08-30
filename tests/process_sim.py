@@ -13,7 +13,7 @@
 ``close_running_scripts`` 这类「按配置扫进程再杀」的逻辑跑在贴近真机的输入上：
 进程名 / 命令行 / 父子关系全部由脚本配置推导，而非各测试各自手写。
 
-路径一律用 Windows 形态（``D:\\...``）：``_collect_process_targets`` 内部按
+路径一律用 Windows 形态（``D:\\...``）：``collect_process_targets`` 内部按
 ``PureWindowsPath`` 解析，与测试所在平台无关，写成 Windows 形态才对得上真机配置。
 """
 

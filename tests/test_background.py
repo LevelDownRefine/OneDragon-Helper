@@ -236,7 +236,7 @@ class TestScriptBackground(unittest.TestCase):
         )
 
     @patch.object(bgmod, "get_background_rel_path", return_value="assets/x.webp")
-    @patch.object(bgmod, "_get_script_root_dir_soft", return_value="/script/root")
+    @patch.object(bgmod, "get_script_root_dir_soft", return_value="/script/root")
     def test_declared_and_present(self, _mock_root, _mock_rel):
         # 声明且文件存在：返回脚本根拼接的绝对路径
         with patch.object(bgmod.os.path, "isfile", return_value=True):
@@ -246,7 +246,7 @@ class TestScriptBackground(unittest.TestCase):
             )
 
     @patch.object(bgmod, "get_background_rel_path", return_value="assets/x.webp")
-    @patch.object(bgmod, "_get_script_root_dir_soft", return_value="/script/root")
+    @patch.object(bgmod, "get_script_root_dir_soft", return_value="/script/root")
     def test_declared_but_missing(self, _mock_root, _mock_rel):
         # 声明但文件缺失：返回空字符串（交 DEFAULT_BG 兜底）
         with patch.object(bgmod.os.path, "isfile", return_value=False):

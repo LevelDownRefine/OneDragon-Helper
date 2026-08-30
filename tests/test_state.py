@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from src.config.subscript import DEFAULT_RUN_TIMEOUT
-from src.service.chain_gen import _resolve_daily_run, _resolve_weekly_start
+from src.service.chain_gen import _resolve_daily_run, resolve_weekly_start
 
 
 def _script(display_name="测试"):
@@ -79,23 +79,23 @@ class TestApplyWeeklyTimeout(unittest.TestCase):
 
 
 class TestResolveWeeklyStart(unittest.TestCase):
-    """_resolve_weekly_start：从 weekly_start_map（weekly_start.yml 全量映射）取周常起始日（1=周一~7=周日），不判断今天。"""
+    """resolve_weekly_start：从 weekly_start_map（weekly_start.yml 全量映射）取周常起始日（1=周一~7=周日），不判断今天。"""
 
     def test_missing_weekly_start_returns_none(self):
         """未设置 weekly_start → None（不处理周常，保持脚本配置原样）"""
-        self.assertIsNone(_resolve_weekly_start({}, "ok-ww"))
-        self.assertIsNone(_resolve_weekly_start({"other": 4}, "ok-ww"))
+        self.assertIsNone(resolve_weekly_start({}, "ok-ww"))
+        self.assertIsNone(resolve_weekly_start({"other": 4}, "ok-ww"))
 
     def test_returns_weekly_start_value(self):
         """已设置 weekly_start → 返回原值（启用/停用由 set_config 自行判断）"""
-        result = _resolve_weekly_start({"ok-ww": 4}, "ok-ww")
+        result = resolve_weekly_start({"ok-ww": 4}, "ok-ww")
         self.assertEqual(result, 4)
 
     def test_invalid_weekly_start_raises(self):
         """weekly_start 越界（0 / 8）→ assert"""
         for bad in (0, 8):
             with self.subTest(bad=bad), self.assertRaises(AssertionError):
-                _resolve_weekly_start({"ok-ww": bad}, "ok-ww")
+                resolve_weekly_start({"ok-ww": bad}, "ok-ww")
 
 
 if __name__ == "__main__":

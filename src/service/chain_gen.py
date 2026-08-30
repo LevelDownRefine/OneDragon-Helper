@@ -56,7 +56,7 @@ def _resolve_daily_run(script: dict, weekly_timeouts: dict) -> bool:
     return True
 
 
-def _resolve_weekly_start(weekly_start_map: dict, script_name: str) -> int | None:
+def resolve_weekly_start(weekly_start_map: dict, script_name: str) -> int | None:
     """取脚本的周常起始日（1=周一 ~ 7=周日），未设置返回 None。
 
     周常开关（enabled）是 GUI 内存态，不参与链生成；GUI 与 CLI 统一按

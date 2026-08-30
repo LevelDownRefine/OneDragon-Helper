@@ -14,7 +14,7 @@ pre_run / post_run 为可扩展的 step 列表（Callable 序列），由本模�
 import logging
 from collections.abc import Callable, Sequence
 
-from src.service.chain_service import _resolve_mail_config
+from src.service.chain_service import resolve_mail_config
 from src.service.run_actions import (
     analyze_logs,
     apply_subscript_config,
@@ -186,7 +186,7 @@ class ScheduledRun:
         # post_run：日志分析最终态 → 邮件 → 恢复声音 → 关机（末位），由 build_post_run_pipeline 产出。
         # 邮件配置来自 schedule.yml 的 notify 块（已从 config.yml 迁出）。
         schedule = service.load_schedule()
-        mail_config = _resolve_mail_config(schedule)
+        mail_config = resolve_mail_config(schedule)
         self.post_run: list[Callable[[], None]] = build_post_run_pipeline(
             shutdown_delay=shutdown_delay,
             smtp_config=mail_config,

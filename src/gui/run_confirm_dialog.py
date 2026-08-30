@@ -28,17 +28,17 @@ from src.gui.dialogs import (
     BORDER_WIDTH,
     INPUT_FIXED_H,
     TEXT,
-    _FormDialogBase,
+    FormDialogBase,
     make_font,
 )
 from src.utils_runner import _TIME_RE
 
 
-class RunConfirmDialog(_FormDialogBase):
+class RunConfirmDialog(FormDialogBase):
     """「启动全部」前的确认弹窗，内嵌自动关机 / 定时计划 / 运行中静音 /
     运行前关闭残留进程 / 重跑 / 邮件通知六项勾选。
 
-    复用 ``_FormDialogBase`` 的样式与控件构造；accept 后经 ``result`` 属性返回
+    复用 ``FormDialogBase`` 的样式与控件构造；accept 后经 ``result`` 属性返回
     勾选项，写盘由调用方委托 ``ChainService.save_config``。取消（reject）不返回、不落盘。
     """
 

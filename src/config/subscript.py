@@ -66,7 +66,7 @@ def get_process_name(script_path: str) -> str:
     return base.strip().replace(" ", "-")
 
 
-def _is_exe_script(script_path: str) -> bool:
+def is_exe_script(script_path: str) -> bool:
     """判断脚本路径是否 exe 可执行文件（大小写不敏感）。"""
     return script_path.lower().endswith(".exe")
 
@@ -81,7 +81,7 @@ def get_script_name(script: dict) -> str:
         script: config.yml 的 script_list 条目（含 display_name / script_path）。
     """
     script_path = script.get("script_path", "")
-    if _is_exe_script(script_path):
+    if is_exe_script(script_path):
         return get_process_name(script_path)
     return script.get("display_name", "")
 
@@ -125,7 +125,7 @@ def _get_script_root_dir(script_name: str) -> str:
     return os.path.dirname(get_script_path(script_name))
 
 
-def _get_script_root_dir_soft(script_name: str) -> str | None:
+def get_script_root_dir_soft(script_name: str) -> str | None:
     """
     从 config.yml 解析脚本根目录，**不校验文件存在**（游戏路径只读查询用）。
 
@@ -155,7 +155,7 @@ def get_config_path(script_name: str, rel_path: str) -> str:
     root 无法解析（config.yml 中无此脚本或 script_path 为空）属编程错误，显式 assert；
     config 文件是否存在交由 load_config / save_config 各自处理。
     """
-    root = _get_script_root_dir_soft(script_name)
+    root = get_script_root_dir_soft(script_name)
     assert root is not None, (
         f"[set_config] 无法解析脚本根目录（config.yml 中无 {script_name} 或 script_path 为空）"
     )
@@ -211,7 +211,7 @@ def load_game_config(script_name: str, rel_path: str) -> dict | None:
     与 load_config 的区别：面向「打开游戏」功能的只读查询，**不 assert 文件存在**。
     文件缺失/根目录解析失败时返回 None，由调用方（GUI）优雅降级。
     """
-    root = _get_script_root_dir_soft(script_name)
+    root = get_script_root_dir_soft(script_name)
     if root is None:
         return None
     game_config_path = safe_path_join(root, rel_path)

@@ -14,8 +14,8 @@ from datetime import datetime
 from src.config.set_config import set_config
 from src.log.monitor import parse_logs
 from src.log.notify_mail import send_mail
-from src.service.chain_gen import _resolve_weekly_start
-from src.utils_runner import ProcessTarget, _collect_process_targets, kill_processes
+from src.service.chain_gen import resolve_weekly_start
+from src.utils_runner import ProcessTarget, collect_process_targets, kill_processes
 from src.utils_weekly import next_target_datetime
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ def close_running_scripts(scripts: list[dict]) -> None:
     """
     targets: list[ProcessTarget] = []
     for script in scripts:
-        targets += _collect_process_targets(script)
+        targets += collect_process_targets(script)
     if not targets:
         return
     killed = kill_processes(targets)
@@ -74,7 +74,7 @@ def apply_subscript_config(
         weekly_start_map: weekly_start.yml 全量映射（{脚本标识: 1~7}）；None 按空处理。
     """
     for name in enabled_keys:
-        weekly_start = _resolve_weekly_start(weekly_start_map or {}, name)
+        weekly_start = resolve_weekly_start(weekly_start_map or {}, name)
         set_config(name, weekly_start=weekly_start)
 
 

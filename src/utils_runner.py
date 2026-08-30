@@ -149,7 +149,7 @@ def _match_process(target: ProcessTarget, name: str, cmdline: str) -> bool:
     return True
 
 
-def _collect_process_targets(script: dict) -> list[ProcessTarget]:
+def collect_process_targets(script: dict) -> list[ProcessTarget]:
     """汇总某脚本需要关闭的进程匹配条件：脚本进程 + 启动器真身 + 游戏进程。
 
     - 脚本进程：``script_process_name`` 显式配置，或 ``script_path`` 文件名（启动器本体）；
@@ -584,7 +584,7 @@ def apply_rerun_config(config_data: dict, *, enabled: bool) -> None:
 def parse_notify_enabled(config_data: dict) -> bool:
     """解析 config 的 notify 配置，返回是否运行后发送邮件通知（仅看 enabled 开关）。
 
-    邮件能否真正发送还需 email/password 齐全（由 ``chain_service._resolve_mail_config``
+    邮件能否真正发送还需 email/password 齐全（由 ``chain_service.resolve_mail_config``
     在运行期校验）；本函数只解析确认弹窗关心的 enabled 勾选初始值。
 
     Args:
