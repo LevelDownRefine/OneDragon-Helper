@@ -1508,6 +1508,25 @@ class ArknightsConfig(ScriptConfig):
 # ============================================================
 
 
+def init_config(script_name: str) -> None:
+    """对齐脚本 config 与模板，补全缺失字段。
+
+    仅对声明了 ``_template_rel_path`` 的脚本生效；无模板或脚本未安装/未配置时为空操作。
+
+    Args:
+        script_name: 脚本标识名。
+    """
+    if script_name not in _CONFIGS:
+        return
+    _CONFIGS[script_name]()._init_config()
+
+
+def init_config_all() -> None:
+    """对齐所有已注册脚本的 config 与模板（启动时调用）。"""
+    for script_name in _CONFIGS:
+        init_config(script_name)
+
+
 def set_config(
     script_name: str,
     dungeon_name: str | None = None,

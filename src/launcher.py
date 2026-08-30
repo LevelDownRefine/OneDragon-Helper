@@ -64,6 +64,9 @@ def config_workflow():
     schedule_path = get_schedule_yml_path_under_root()
     if not os.path.exists(schedule_path):
         generate_schedule_from_example()
+    # 每次启动对齐所有已注册脚本的 config 与模板
+    from src.config.set_config import init_config_all
+    init_config_all()
 
 
 def main():

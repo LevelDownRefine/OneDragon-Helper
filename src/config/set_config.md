@@ -55,16 +55,16 @@
 
 `ScriptConfig._init_config()`：仅对声明了 `_template_rel_path` 的脚本生效。先判模板是否存在（无模板直接返回），再 `self._load(allow_missing=True)` 读当前 config（脚本未安装/未配置返回 None 时直接返回，不触碰 config），然后 `_load_template()` 加载模板 → 若 `_is_aligned` 一致则跳过；否则经 `_confirm_save()` 询问用户，确认后才遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。
 
-落点（触发时机）：**当前未在 facade 中调用**——`_init_config` 方法已就绪（含守卫：无 `_template_rel_path` 直接返回、`self._load(allow_missing=True)` 缺失返回），但调用时机尚未定，暂不在任何 facade 触发。后续由 review 决定如何接入（曾在写路径 facade `set_config` / `set_weekly_dungeon` / `set_weekly_start_day` 实例化后、写字段前各调一次；因模板脚本 config 错位时编辑期会经 `_confirm_save()` 弹确认框，副作用需先评估，故暂撤回）。反读 facade（`get_dungeon` 等）一律不触发，保持纯只读。
+落点（触发时机）：`config_workflow()` 在每次启动时调用 `init_config_all()`，遍历所有已注册脚本对齐 config 与模板。新增/修改脚本路径时（`add_script` / `update_script`）也调用 `init_config`。无 `_template_rel_path` 直接返回、`self._load(allow_missing=True)` 缺失返回——守卫确保无模板或脚本未安装时为空操作。反读适配器（`get_dungeon` 等）一律不触发，保持纯只读。
 
 | 脚本 | 当前调用 _init_config | 模板 | 说明 |
 |------|---------------------|------|------|
-| 鸣潮 | 否（未接入，且无模板→no-op） | — | 方法就绪但未在任何 facade 触发 |
-| 原神 | 否（未接入） | `BGI一条龙.json` | 模板存在，待定何时触发 |
-| 终末地 | 否（未接入） | `okef一条龙.json` | 同上 |
-| 绝区零 | 否（未接入） | `ZZZ一条龙.yml` | 同上 |
-| 崩铁 | 否（未接入） | `M7A一条龙.yml` | 同上 |
-| 异环 | 否（未接入，且无模板→no-op） | — | 同鸣潮 |
+| 鸣潮 | 是（no-op，无模板→直接返回） | — | 启动时自动触发，无模板时为空操作 |
+| 原神 | 是 | `BGI一条龙.json` | 启动时自动触发，模板对齐补全缺失字段 |
+| 终末地 | 是 | `okef一条龙.json` | 同上 |
+| 绝区零 | 是 | `ZZZ一条龙.yml` | 同上 |
+| 崩铁 | 是 | `M7A一条龙.yml` | 同上 |
+| 异环 | 是（no-op，无模板→直接返回） | — | 同鸣潮 |
 | 粥 | no-op（无模板） | — | `_task_map` 固化为类属性（不再加载模板；原 `MAA一条龙.json` 模板已删除）|
 
 ## 设置副本流程 set_dungeon
@@ -144,7 +144,7 @@ set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 ## 如何新增一个游戏适配
 
 1. `set_config.py` 新建子类继承 `ScriptConfig` 并加 `@register`：设 `_script_name`、`display_name` 与路径类属性 `_config_rel_path` 必填、`_game_config_rel_path` 声明 `_game_path_keys` 时必填；需模板初始化才设 `_template_rel_path`，且 `_task_map` 优先固化为类属性（避免反读/写路径依赖模板加载）。
-2. 设 `_task_key` / `_task_map`，需序列支持则覆盖 `_update_task`（在 `super()._update_task(config, dungeon_name, None)` 后补序列），标准流程不够则覆盖 `set_dungeon`；`_init_config` 已就绪但**当前未在任何 facade 触发**（调用时机待定），新增脚本无需显式调用；无 `_template_rel_path` 时为空操作。
+2. 设 `_task_key` / `_task_map`，需序列支持则覆盖 `_update_task`（在 `super()._update_task(config, dungeon_name, None)` 后补序列），标准流程不够则覆盖 `set_dungeon`；`_init_config` 已在启动时自动触发，新增脚本无需显式调用；无 `_template_rel_path` 时为空操作。
 3. `config/dungeon_list.yml` 加副本/序列选项，key 用 script_name。
 4. 补测试 `tests/test_set_config_subclasses.py`。
 
