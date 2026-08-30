@@ -203,6 +203,10 @@ Window {
                         if (dragging && gameList.overDelete) {
                             gameList.dragActive = false
                             gameList.overDelete = false
+                            // 先复位图标视觉位置（拖拽中改过 parent=iconInner 的 y/z），
+                            // 取消删除时图标才回原位；确认删除由 model 重载兜底复位。
+                            parent.y = origY
+                            parent.z = 0
                             Bridge.deleteScript(index)
                             return
                         }

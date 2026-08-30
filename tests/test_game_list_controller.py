@@ -58,6 +58,52 @@ class TestScriptIconProviderRefresh(unittest.TestCase):
         mock_icon.assert_called_once()
 
 
+class TestDeleteScriptConfirmCancel(unittest.TestCase):
+    """拖拽删除二次确认：取消必须保留数据，确认才落盘重载。
+
+    数据层正确性（对应 QML 取消后图标视觉复位 bug 的底层保障）：
+    cancel → 不调用 remove_script / on_reload；ok → 二者都被调用。
+    """
+
+    def _make_ctrl(self) -> GameListController:
+        service = MagicMock()
+        ctrl = GameListController(service, MagicMock(), MagicMock())
+        ctrl._games = [
+            {
+                "display_name": "鸣潮",
+                "script_name": "wu",
+                "script_data": {"script_type": "external", "script_path": "C:/wu.exe"},
+                "char": "鸣",
+                "color": "#161C28",
+            }
+        ]
+        return ctrl
+
+    @patch("src.gui.controllers.game_list.QMessageBox")
+    def test_cancel_keeps_data(self, mock_box):
+        """取消确认时不删除、不重载（图标数据保留，仅视觉需复位）。"""
+        mock_box.Ok = 1
+        mock_box.Cancel = 2
+        instance = mock_box.return_value
+        instance.exec.return_value = 2  # Cancel
+        ctrl = self._make_ctrl()
+        ctrl.deleteScript(0)
+        ctrl._service.remove_script.assert_not_called()
+        ctrl._on_reload.assert_not_called()
+
+    @patch("src.gui.controllers.game_list.QMessageBox")
+    def test_ok_removes_and_reloads(self, mock_box):
+        """确认删除时按 script_name 落盘移除并触发重载。"""
+        mock_box.Ok = 1
+        mock_box.Cancel = 2
+        instance = mock_box.return_value
+        instance.exec.return_value = 1  # Ok
+        ctrl = self._make_ctrl()
+        ctrl.deleteScript(0)
+        ctrl._service.remove_script.assert_called_once_with("wu")
+        ctrl._on_reload.assert_called_once()
+
+
 class TestReloadGamesIconOrder(unittest.TestCase):
     """reload_games 必须在 set_games 之前刷新图标缓存，否则新脚本首帧空白。
 
