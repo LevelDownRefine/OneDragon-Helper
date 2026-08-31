@@ -454,9 +454,14 @@ class TestParseLogsRerunList(unittest.TestCase):
             self.assertFalse(p.parse_daily("启动但啥也没发生，没有任何每日标记"))
             # 返回类型恒为 bool，绝不 None。
             self.assertIsInstance(p.parse_daily(""), bool)
-            # 各成功标记命中应返 True。
+            # 各成功标记命中应返 True。ok-ef 判定限定在「成功任务」栏内，需构造该栏。
             for marker in p.daily_success_marker:
-                self.assertTrue(p.parse_daily(marker))
+                content = (
+                    f"成功任务:\n  {marker}\n"
+                    if parser_cls is OkEfLogParser
+                    else marker
+                )
+                self.assertTrue(p.parse_daily(content))
 
     def test_parse_daily_no_marker_returns_true(self):
         """未配 daily_success_marker 的脚本无法判定，返回 True。
@@ -776,9 +781,12 @@ class TestFourFieldExtraction(unittest.TestCase):
 
     def test_oef_report_fields(self):
         p = OkEfLogParser()
+        # 成功任务栏含 ⭐日常奖励 → 日常做完（终末地判定依据）。
         content_done = (
             "日常任务执行情况汇总 - 2026-08-18 05:26:41\n"
             "执行状态: 完成\n"
+            "成功任务:\n"
+            "  ⭐送礼, ⭐日常奖励, ⭐刷体力\n"
             "失败任务:\n"
             "  - ⭐刷体力 : 二次寻路失败：没有找到按钮\n"
         )
@@ -790,12 +798,27 @@ class TestFourFieldExtraction(unittest.TestCase):
             ["- ⭐刷体力 : 二次寻路失败：没有找到按钮"],
         )
 
+        # 部分失败但成功任务栏含 ⭐日常奖励 → 日常仍算做完（非日常类小任务失败不应误判）。
         content_partial = (
-            "执行状态: 部分失败\n失败任务:\n  - ⭐买信用商店 : 购买失败: 信用不足\n"
+            "执行状态: 部分失败\n"
+            "成功任务:\n"
+            "  ⭐送礼, ⭐日常奖励, ⭐刷体力\n"
+            "失败任务:\n"
+            "  - ⭐买信用商店 : 购买失败: 信用不足\n"
         )
-        # 部分失败 = 有任务没做成 → 日常不算做完（这正是重跑判据要抓的情形）。
-        self.assertFalse(p.parse_daily(content_partial))
+        self.assertTrue(p.parse_daily(content_partial))
 
+        # 日常奖励本身失败（成功任务栏不含 ⭐日常奖励，仅出现在失败任务栏）→ 日常没做完。
+        content_daily_failed = (
+            "执行状态: 部分失败\n"
+            "成功任务:\n"
+            "  ⭐送礼, ⭐刷体力\n"
+            "失败任务:\n"
+            "  - ⭐日常奖励 : 未找到通行证奖励入口，任务失败\n"
+        )
+        self.assertFalse(p.parse_daily(content_daily_failed))
+
+        # 无成功任务栏（异常结束）→ 无法判定为做完。
         content_abnormal = "执行状态: 异常结束\n当前正在执行的任务:\n  ⭐送礼\n"
         self.assertFalse(p.parse_daily(content_abnormal))
 
@@ -1149,7 +1172,7 @@ class TestLogAnalysisConfigDriven(unittest.TestCase):
         """终末地靠「- 」缩进明细收集报错，配置不含 error_markers → 应为空元组。"""
         oef = OkEfLogParser()
         self.assertEqual(oef.error_markers, ())
-        self.assertEqual(oef.daily_success_marker, ("执行状态: 完成",))
+        self.assertEqual(oef.daily_success_marker, ("⭐日常奖励",))
 
 
 if __name__ == "__main__":

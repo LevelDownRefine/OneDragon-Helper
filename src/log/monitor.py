@@ -309,6 +309,26 @@ class OkEfLogParser(BaseLogParser):
                     break
         return errors
 
+    def parse_daily(self, content: str) -> bool:
+        """终末地「每日做完」=『成功任务』栏含 ⭐日常奖励。
+
+        整体执行状态（部分失败 / 异常结束）不代表日常没做——日常奖励领到即可。
+        且 ⭐日常奖励 也可能出现在「失败任务」栏（日常奖励本身失败，见首跑日志），
+        故必须精确限定在「成功任务」栏内判定，不能全文搜或看整体状态。
+        """
+        marker = (
+            self.daily_success_marker[0] if self.daily_success_marker else "⭐日常奖励"
+        )
+        # 截取「成功任务:」到下一栏（失败任务 / 跳过任务）或文末的段落。
+        m = re.search(
+            r"成功任务:\s*\n\s*(.*?)(?=\n\s*(?:失败任务|跳过任务):|\Z)",
+            content,
+            re.S,
+        )
+        if not m:
+            return False
+        return marker in m.group(1)
+
 
 class M7ALogParser(BaseLogParser):
     script_name = "March7th-Assistant"  # 由 script_path(含空格) 的 get_script_name 推导

@@ -49,8 +49,11 @@ parsers:
 
   ok-ef:
     log_pattern: '日常任务_*.txt'
+    # 终末地「每日做完」=『成功任务』栏含 ⭐日常奖励（OkEfLogParser.parse_daily 限定在该栏内判定）。
+    # 整体执行状态（部分失败/异常结束）不代表日常没做；且 ⭐日常奖励 也可能出现在失败任务栏，
+    # 故不可直接用整体状态或全文匹配。此 marker 为栏内判定的关键词，由覆写消费。
     daily_success_marker:
-      - '执行状态: 完成'
+      - '⭐日常奖励'
     success_markers:
       - '执行状态: 完成'
 
