@@ -1181,9 +1181,9 @@ class NTEConfig(ScriptConfig):
         查表解析当前模式（异象界域 / 追猎目标）。追猎目标无任务类型通道，set_dungeon
         不写 daily_anomaly.任务类型（陈旧值），故必须优先用启用状态，不能直接读 任务类型。
 
-        两种模式数据落点不同（NTE 既有结构）：追猎目标 boss 存于 routine 文件
-        DailyRoutineTask.json 的 daily_anomaly_hunter 段；异象界域副本名+序号存于
-        config 文件 DailyRoutineTaskConfigs.json 的 daily_anomaly 段。故按模式 id 分流读取。
+        两种模式的副本/序列数据**都落在 config 文件** DailyRoutineTaskConfigs.json
+        （与写入侧 ``_update_task`` 的 ``_daily_section_dict`` 对称）；routine 文件
+        DailyRoutineTask.json 只用于判定当前启用的模式。故按模式 id 分流读取段名。
 
         NTE 无标准存储结构（不依赖 _task_key + _task_map 反转），完全自行实现。
         脚本未安装（routine 缺失）返回 (None, None)；routine/config 损坏属异常，assert 暴露。
@@ -1213,25 +1213,27 @@ class NTEConfig(ScriptConfig):
         )
         if mode_id is None:
             return None, None  # 无启用玩法 → 未选择副本
-        if mode_id == "daily_anomaly_hunter":
-            # 追猎目标：boss 名存于 routine 文件 daily_anomaly_hunter 段。
-            # 该段/字段可能尚未落盘（用户在 NTE 自身 UI 启用追猎但未选 boss，
-            # 不经本工具 set_dungeon 写入）：段或字段缺失按「已识别模式、未选 boss」
-            # 处理为 None，而非断言——与读路径「容忍未配置」一致；结构性损坏（段
-            # 类型非 dict）已在下方 isinstance 断言覆盖。
-            section = routine.get("daily_anomaly_hunter", {})
-            assert isinstance(section, dict), (
-                f"[set_config][{self.display_name}] daily_anomaly_hunter 段必须是 dict"
-            )
-            boss = section.get("追猎目标")
-            return "追猎目标", boss if boss not in (None, "") else None
-        # 异象界域：副本名+序号存于 config 文件 daily_anomaly 段。
+        # 两种模式的副本/序列数据都落在 config 文件（与写入侧 _daily_section_dict
+        # 对称），故在此一次性加载；routine 文件只用于判定启用的模式。
         config = self._load(allow_missing=True)
         if config is None:
             return None, None  # 脚本未安装/未配置
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] DailyTask config.yaml 必须是 dict"
         )
+        if mode_id == "daily_anomaly_hunter":
+            # 追猎目标：boss 名存于 config 文件 daily_anomaly_hunter 段。
+            # 该段/字段可能尚未落盘（用户在 NTE 自身 UI 启用追猎但未选 boss，
+            # 不经本工具 set_dungeon 写入）：段或字段缺失按「已识别模式、未选 boss」
+            # 处理为 None，而非断言——与读路径「容忍未配置」一致；结构性损坏（段
+            # 类型非 dict）已在下方 isinstance 断言覆盖。
+            section = config.get("daily_anomaly_hunter", {})
+            assert isinstance(section, dict), (
+                f"[set_config][{self.display_name}] daily_anomaly_hunter 段必须是 dict"
+            )
+            boss = section.get("追猎目标")
+            return "追猎目标", boss if boss not in (None, "") else None
+        # 异象界域：副本名+序号存于 config 文件 daily_anomaly 段。
         # daily_anomaly 段缺失按「未选副本」处理（读路径容忍未配置；段类型非 dict
         # 的结构性损坏由下方 isinstance 断言覆盖，字段级缺失不视为损坏）。
         section = config.get("daily_anomaly", {})
