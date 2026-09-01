@@ -330,9 +330,7 @@ class GameListController(QObject):
             return
         file_path = os.path.normpath(file_path)
         existing = {g["script_name"] for g in self._games}
-        script_data = self._app_service.build_script_entry(
-            file_path, existing
-        )
+        script_data = self._app_service.build_script_entry(file_path, existing)
         self._app_service.add_script(script_data)
         self._on_reload()
         self._toast(f"已添加 {script_data['display_name']}")

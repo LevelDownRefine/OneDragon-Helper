@@ -412,7 +412,9 @@ def _run_generate_chain(args) -> int:
     out = args.out
     if out:
         out = os.path.abspath(out)
-    out = app_service.generate_chain(all_config_data, enabled_keys, args.name, out_path=out)
+    out = app_service.generate_chain(
+        all_config_data, enabled_keys, args.name, out_path=out
+    )
     _emit_cli("generate_chain", f"已生成脚本链配置: {out}")
     return 0
 
