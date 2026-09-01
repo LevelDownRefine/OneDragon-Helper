@@ -1179,16 +1179,10 @@ class NTEConfig(ScriptConfig):
     def _read_dungeon(self) -> tuple[str | None, str | int | None]:
         """反读当前日常副本与二级序号（与 set_dungeon / _update_task 对称）。
 
-        当前玩法由 DailyRoutineTask.json 的 Routine Items 启用状态判定，经 ``_mode_specs``
-        查表解析当前模式（异象界域 / 追猎目标）。追猎目标无任务类型通道，set_dungeon
-        不写 daily_anomaly.任务类型（陈旧值），故必须优先用启用状态，不能直接读 任务类型。
-
-        两种模式的副本/序列数据**都落在 config 文件** DailyRoutineTaskConfigs.json
-        （与写入侧 ``_update_task`` 的 ``_daily_section_dict`` 对称）；routine 文件
-        DailyRoutineTask.json 只用于判定当前启用的模式。故按模式 id 分流读取段名。
-
-        NTE 无标准存储结构（不依赖 _task_key + _task_map 反转），完全自行实现。
-        脚本未安装（routine 缺失）返回 (None, None)；routine/config 损坏属异常，assert 暴露。
+        当前玩法由 DailyRoutineTask.json 的 Routine Items 启用状态判定（非 任务类型 字段），
+        经 ``_mode_specs`` 查表解析模式；两种模式的副本/序列数据均落 config 文件
+        DailyRoutineTaskConfigs.json，routine 文件仅用于判定启用模式。脚本未安装或 routine
+        缺失返回 (None, None)；routine/config 损坏属异常，assert 暴露。
 
         Returns:
             (副本中文名, 序号值)；无启用玩法/未安装/未选择返回 (None, None)。

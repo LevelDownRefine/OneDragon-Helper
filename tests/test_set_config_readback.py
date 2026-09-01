@@ -158,8 +158,8 @@ class TestReadbackNTE(unittest.TestCase):
     def test_hunter_boss_roundtrip_through_config(self):
         """回归：boss 名写入 config 文件的 daily_anomaly_hunter 段，读取须同文件取回。
 
-        曾误从 routine 文件读该段（写入侧 _update_task 经 _daily_section_dict 写的是
-        config 文件），导致追猎目标模式下二级副本名恒为 None，chip 只显示「追猎目标」。
+        写入侧 _update_task 经 _daily_section_dict 落点 config 文件，读取须从同文件取回，
+        否则追猎目标模式下二级副本名恒为 None（chip 只显示「追猎目标」）。
         """
         config = {
             "daily_anomaly": {"任务类型": "", "异能材料序号": ""},

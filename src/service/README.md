@@ -37,6 +37,5 @@ MainWindow  GUI  ┘                        ├─▶ DungeonService（副本 / 
 
 调用方不感知 weekly 同步、链合法性校验、runner 命令构造等细节，全部内聚在 service/。
 
-历史坑（已修）：`utils_shutdown.py` 曾内嵌 GUI 对话框类，致 `schedule → utils_shutdown →
-gui.dialogs → app_service → chain_service → schedule` 成环，当时只能靠延迟 import 绕开。
-现已把确认窗归位到 `src/gui/shutdown_dialog.py`，`utils_shutdown` 不再模块级依赖 GUI，环消除。
+`utils_shutdown.py` 不得模块级依赖 GUI 层：否则 `schedule → utils_shutdown →
+gui.dialogs → app_service → chain_service → schedule` 成环，确认窗实现于 `src/gui/shutdown_dialog.py`，`utils_shutdown` 仅延迟 import 它。

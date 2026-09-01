@@ -1,6 +1,6 @@
 """测试 src/utils_shutdown.py：关机命令编排与确认分支（纯逻辑，不加载 Qt）。
 
-确认窗的 GUI 实现已归位到 ``src/gui/shutdown_dialog.py``，其测试见
+确认窗的 GUI 实现位于 ``src/gui/shutdown_dialog.py``，其测试见
 ``test_gui_shutdown_dialog.py``；本文件只测「确认后执行 shutdown」的编排逻辑。
 """
 

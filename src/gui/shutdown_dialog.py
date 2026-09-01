@@ -1,12 +1,9 @@
 """关机倒计时确认窗（GUI 层）。
 
-归位自此前的 ``src.utils_shutdown``：确认窗是 PySide6 实现，属 GUI 关注点，放在
-utils 层会让底层反向依赖上层——该依赖经 ``gui.dialogs → service.app_service`` 再回到
-service 层，构成 ``schedule → utils_shutdown → gui.dialogs → app_service →
-chain_service → schedule`` 的环。
-
-归位后 ``utils_shutdown`` 只保留「确认后执行 shutdown 命令」的纯逻辑，并在需要弹窗时
-延迟 import 本模块。样式复用 ``src.gui.dialogs`` 的主题常量与弹窗基类（单一来源）。
+确认窗是 PySide6 实现，样式复用 ``src.gui.dialogs`` 的主题常量与弹窗基类（单一来源）。
+``utils_shutdown`` 只保留「确认后执行 shutdown 命令」的纯逻辑，弹窗经**延迟 import**
+引入本模块，避免底层反向依赖上层（否则 ``schedule → utils_shutdown →
+gui.dialogs → app_service → chain_service → schedule`` 成环）。
 """
 
 import logging

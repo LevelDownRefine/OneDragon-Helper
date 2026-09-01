@@ -78,7 +78,7 @@ class AppService:
 
     # ── 周常运行期参数（WeeklyService）──
     # weekly_start.yml（周几起）与 weekly_timeouts.yml（每周超时）由平级 WeeklyService
-    # 拥有；读写一律直连它，不再经 ChainService 转发（此前读路直连、写路转发不对称）。
+    # 拥有；读写一律直连它，不再经 ChainService 转发。
     def get_weekly_start(self, script_name: str):
         """返回某脚本的周常起始日（1~7），未设置返回 None。"""
         return self._weekly_service.get_weekly_start(script_name)
@@ -98,12 +98,14 @@ class AppService:
     def check_weekly(self) -> dict:
         """校验 weekly_timeouts.yml 与 config.yml 脚本条目的一致性。
 
-        跨 weekly 与 config 两份配置：由组合根取 config 后交 WeeklyService 判定，
-        避免 WeeklyService 反向依赖 ScriptService。
+        跨 weekly 与 config 两份配置，由组合根取 config 后交 WeeklyService 判定。
+
+        Returns:
+            一致性结果字典（含 status / missing_or_short / orphans）。
         """
         return self._weekly_service.check_weekly(self._script_service.load_config())
 
-    # ── 配置读写（ScriptService，P2 已归位）──
+    # ── 配置读写（ScriptService）──
     # config.yml 读写（含脚本条目增删改）由 ScriptService 拥有；此处仅作薄委托。
     def load_config(self) -> dict:
         return self._script_service.load_config()

@@ -212,9 +212,6 @@ class WeeklyService:
     def check_weekly(self, config: dict) -> dict:
         """校验 weekly_timeouts.yml 与 config.yml 脚本条目的一致性。
 
-        config 由调用方读入后传入：一致性校验需跨 weekly 与 config 两份配置，
-        由组合根（:class:`AppService`）装配两者，避免本服务反向依赖 ScriptService。
-
         Args:
             config: config.yml 完整数据（含 script_list）。
 
@@ -237,9 +234,6 @@ class WeeklyService:
 
     def delete_weekly(self, script_name: str) -> None:
         """删除脚本时清理 weekly_timeouts.yml 中该脚本的孤儿条目。
-
-        config.yml 的总配置移除由 :class:`ScriptService` 负责；此处仅清理
-        脚本级配置（weekly 超时条目），使删除行为完整、无残留。
 
         Args:
             script_name: 要清理 weekly 条目的脚本唯一标识。

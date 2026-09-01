@@ -1,10 +1,10 @@
 """ChainService：链编排领域服务（平级 peer，非协调器）。
 
 承载链领域实现：脚本链生成、合法性校验、runner 命令构造、调度运行的编排。
-config.yml 的读写（P2 已迁出）现由 :class:`ScriptService` 拥有，本服务仅保留
-``load_config`` 委托供运行时取配置；schedule.yml 读写（P3 已迁出）现归
-:mod:`src.service.schedule` 所有——与调度编排同处一模一样。UI 状态文件
-（gui_state.json）已整体删除：日常副本真源为子脚本 config，set_dungeon 为
+config.yml 的读写由 :class:`ScriptService` 拥有，本服务仅保留
+``load_config`` 委托供运行时取配置；schedule.yml 读写归
+:mod:`src.service.schedule` 所有——与调度编排同处本模块。本服务不读取
+UI 状态文件；日常副本真源为子脚本 config，set_dungeon 为
 no-op 的脚本取 dungeon_list.yml 声明项。本服务
 **不再担任** GUI/CLI 的顶层门面/协调器——
 该角色由 :class:`AppService`（组合根）承担，本类只是被其组合的一个 peer。
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 class ChainService:
     """链编排领域服务（平级 peer）：链生成、校验、运行命令构造、调度运行编排。
 
-    config.yml 读写（P2 已迁出）由 ScriptService 拥有，本服务仅委托 ``load_config``
+    config.yml 读写由 ScriptService 拥有，本服务仅委托 ``load_config``
     供运行时取配置；weekly_timeouts / weekly_start 由平级 WeeklyService 拥有，本服务
     仅作 collaborator 调用（链生成取超时、调度运行取周几起）。
     """

@@ -1,8 +1,8 @@
 """测试 src/service/weekly_service.py：周常起始日与每周超时的读写与迁移。
 
-weekly_start.yml（周几起）与 weekly_timeouts.yml（每周 7 格超时）的读写曾属
-ScriptService，抽出后归本服务。**不含周本声明**——各游戏「有哪些周常、可选哪些
-副本」由 DungeonService 读 weekly_list.yml 提供，见 test_dungeon_service.py。
+weekly_start.yml（周几起）与 weekly_timeouts.yml（每周 7 格超时）的读写由本服务负责。
+**不含周本声明**——各游戏「有哪些周常、可选哪些副本」由 DungeonService 读
+weekly_list.yml 提供，见 test_dungeon_service.py。
 """
 
 import os
@@ -98,7 +98,7 @@ class TestRenameWeeklyInTimeouts(WeeklyServiceTestBase):
         self.assertEqual(self._read_weekly()["a"], [60] * 7)
 
     def test_old_entry_missing_noop(self):
-        """旧名无 weekly 条目 → no-op（不报错、不改文件，保持空 {}）。"""
+        """无对应 weekly 条目 → no-op（不报错、不改文件，保持空 {}）。"""
         WeeklyService().rename_weekly_in_timeouts("none", "b")
         self.assertEqual(self._read_weekly(), {})
 

@@ -77,7 +77,7 @@ class TestBuildPreRunWriteConfig(unittest.TestCase):
     def test_applies_weekly_start_per_enabled_script(self):
         weekly_start_map = {"A": 3, "B": 4}
         with mock.patch("src.service.run_actions.set_config") as mock_set:
-            # target=now / close_running=False → 仅产生写 config step
+            # target=now、未传 scripts → 仅产生写 config step（关闭残留需 scripts 非空）
             steps = build_pre_run_pipeline(
                 target_time="now",
                 enabled_keys={"A", "B"},

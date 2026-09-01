@@ -1,7 +1,7 @@
 """测试 src/gui/shutdown_dialog.py：关机确认窗与 Qt 失败降级。
 
 确认窗为进程内 PySide6 弹窗，UI 测试在 offscreen 平台下运行（CI 无显示器）。
-GUI 实现自 ``src.utils_shutdown`` 归位而来（纯逻辑测试见 test_utils_shutdown.py）。
+关机确认窗实现于 ``src.gui.shutdown_dialog``，纯逻辑测试见 ``test_utils_shutdown.py``。
 """
 
 import os

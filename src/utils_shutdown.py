@@ -1,13 +1,12 @@
 """自动关机：运行全部结束后由 service 作为 post_run 最后一项触发。
 
-迁自 runner 的 ``script_chainer.utils.cmd_utils.shutdown_sys``：关机必须由主仓库
-编排（在所有运行含重跑结束之后），不能再交给 runner 子进程的 ``--shutdown``，否则
-首次运行结束即拉起关机倒计时，会抢在重跑前关掉机器。
+关机必须由主仓库编排（在所有运行含重跑结束之后），不能再交给 runner 子进程的
+``--shutdown``，否则首次运行结束即拉起关机倒计时，会抢在重跑前关掉机器。
 
-确认窗是 PySide6 实现，已归位到 GUI 层（``src.gui.shutdown_dialog``）——放在本模块会
-让底层反向依赖上层，并经由 ``gui.dialogs → service.app_service`` 回到 service 层成环
-（详见该模块 docstring）。本模块只保留「确认后执行 shutdown 命令」的纯逻辑，弹窗经
-**延迟 import** 引入。
+确认窗是 PySide6 实现，位于 ``src.gui.shutdown_dialog``；本模块只保留「确认后执行
+shutdown 命令」的纯逻辑，弹窗经**延迟 import** 引入，避免底层反向依赖上层（否则
+``schedule → utils_shutdown → gui.dialogs → app_service → chain_service →
+schedule`` 成环）。
 
 仅 Windows 下真正关机；非 Windows（CI/Linux/macOS）仅记日志跳过关机。
 """
