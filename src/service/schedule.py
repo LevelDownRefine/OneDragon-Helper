@@ -1,4 +1,9 @@
-"""定时/即时运行编排：ScheduledRun 持有 pre_run / 核心编排 / post_run。
+"""调度运行编排 + schedule.yml 读写：ScheduledRun 持有 pre_run / 核心编排 / post_run。
+
+schedule.yml（调度运行参数：shutdown / timed_run / mute / rerun / notify）的读写归
+本模块——``load_schedule`` / ``save_schedule``，其 notify 块经 ``resolve_mail_config``
+解析为 SMTP 配置。此前由 ChainService 托管，因消费方几乎全在调度链路（重跑轮读
+rerun、post_run 读 notify），故与编排同处一模一样。
 
 ``ScheduledRun`` 是一个带生命周期的对象，而非纯函数：它在独立控制台进程
 （由 ``utils_runner.spawn_schedule_run`` 以 ``CREATE_NEW_CONSOLE`` 起）中运行，
@@ -14,7 +19,6 @@ pre_run / post_run 为可扩展的 step 列表（Callable 序列），由本模�
 import logging
 from collections.abc import Callable, Sequence
 
-from src.service.chain_service import resolve_mail_config
 from src.service.run_actions import (
     analyze_logs,
     apply_subscript_config,
@@ -22,10 +26,54 @@ from src.service.run_actions import (
     send_summary_mail,
     wait_until_target,
 )
+from src.utils import get_schedule_yml_path_under_root
 from src.utils_mute import mute_off, mute_on
 from src.utils_shutdown import shutdown_sys
+from src.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
+
+
+def load_schedule() -> dict:
+    """读取 schedule.yml（缺失时从 schedule.example.yml 生成），返回调度运行参数。
+
+    调度参数（shutdown / timed_run / mute / rerun / notify）独立于 config.yml 存放，
+    避免与脚本链声明（script_list）耦合。
+    """
+    return load_yaml(get_schedule_yml_path_under_root())
+
+
+def save_schedule(data: dict) -> None:
+    """写回 schedule.yml（生成目标，不要求已存在）。
+
+    Args:
+        data: 完整调度运行参数字典（由调用方原地修改后传入）。
+    """
+    assert isinstance(data, dict), "[schedule] 待保存的 schedule 非 dict"
+    dump_yaml(get_schedule_yml_path_under_root(), data)
+
+
+def resolve_mail_config(schedule: dict) -> dict | None:
+    """从 schedule.yml 数据解析有效邮件配置；未启用或字段缺失返回 None。
+
+    ``notify.enabled`` 非 true、或 email/password 缺失时返回 None，表示不发邮件
+    （默认关闭），与旧 notify_mail.yml「缺字段即跳过」语义一致。
+
+    Args:
+        schedule: schedule.yml 全量数据（含 notify 块）。
+
+    Returns:
+        有效的 notify 配置字典；不发邮件时返回 None。
+    """
+    notify = schedule.get("notify")
+    if not isinstance(notify, dict) or not notify.get("enabled", False):
+        return None
+    email = (notify.get("email") or "").strip()
+    password = (notify.get("password") or "").strip()
+    if not email or not password:
+        logger.warning("[schedule] 邮件未启用或 email/password 缺失，跳过: %s", notify)
+        return None
+    return notify
 
 
 def build_pre_run_pipeline(
@@ -185,7 +233,7 @@ class ScheduledRun:
 
         # post_run：日志分析最终态 → 邮件 → 恢复声音 → 关机（末位），由 build_post_run_pipeline 产出。
         # 邮件配置来自 schedule.yml 的 notify 块（已从 config.yml 迁出）。
-        schedule = service.load_schedule()
+        schedule = load_schedule()
         mail_config = resolve_mail_config(schedule)
         self.post_run: list[Callable[[], None]] = build_post_run_pipeline(
             shutdown_delay=shutdown_delay,
@@ -209,7 +257,7 @@ class ScheduledRun:
         self.service.run_chain_once(self.candidate_keys, chain_name=self.chain_name)
         # 重跑轮：链跑完后解析日志、对失败脚本二次运行（先于 post_run）。
         # 受 schedule.yml 的 rerun.enabled 控制（契约键，缺失即 assert 崩，不降级）。
-        schedule = self.service.load_schedule()
+        schedule = load_schedule()
         rerun_cfg = schedule.get("rerun")
         assert isinstance(rerun_cfg, dict) and "enabled" in rerun_cfg, (
             "[chain] schedule 缺 rerun.enabled"

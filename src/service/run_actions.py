@@ -1,6 +1,6 @@
 """运行前/后各 step 的具体动作（pre_run / post_run 的「做什么」）。
 
-每个函数做一件事、参数全部显式传入（不依赖闭包捕获），由 ``scheduled_run`` 的
+每个函数做一件事、参数全部显式传入（不依赖闭包捕获），由 ``schedule`` 的
 ``build_pre_run_pipeline`` / ``build_post_run_pipeline`` 组装成 step 序列并决定顺序。
 
 步骤间的数据流（如日志分析结果 → 邮件）属组装关注点，留在 pipeline 内；本模块只提供

@@ -2,9 +2,10 @@
 
 承载链领域实现：脚本链生成、合法性校验、runner 命令构造、调度运行的编排。
 config.yml 的读写（P2 已迁出）现由 :class:`ScriptService` 拥有，本服务仅保留
-``load_config`` 委托供运行时取配置；schedule.yml 读写当前仍由本服务提供
-（后续 P3 会下沉到对应 peer）。UI 状态文件（gui_state.json）已整体删除：日常副本真源
-为子脚本 config，set_dungeon 为 no-op 的脚本取 dungeon_list.yml 声明项。本服务
+``load_config`` 委托供运行时取配置；schedule.yml 读写（P3 已迁出）现归
+:mod:`src.service.schedule` 所有——与调度编排同处一模一样。UI 状态文件
+（gui_state.json）已整体删除：日常副本真源为子脚本 config，set_dungeon 为
+no-op 的脚本取 dungeon_list.yml 声明项。本服务
 **不再担任** GUI/CLI 的顶层门面/协调器——
 该角色由 :class:`AppService`（组合根）承担，本类只是被其组合的一个 peer。
 
@@ -22,8 +23,8 @@ from src.config.subscript import (
 )
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
+from src.service.schedule import ScheduledRun
 from src.service.script_service import ScriptService
-from src.utils import get_schedule_yml_path_under_root
 from src.utils_runner import (
     build_chain_command as _build_chain_command,
 )
@@ -36,26 +37,8 @@ from src.utils_runner import (
 from src.utils_runner import (
     run_chain_command as _run_chain_command,
 )
-from src.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
-
-
-def resolve_mail_config(all_config: dict) -> dict | None:
-    """从 config 解析有效邮件配置：notify.enabled 非 true 或 email/password 缺失返回 None。
-
-    ``schedule_run`` 在链路点火后调用，将结果透传 ``build_post_run_pipeline``；返回 None
-    表示不发邮件（默认关闭），与旧 notify_mail.yml「缺字段即跳过」语义一致。
-    """
-    notify = all_config.get("notify")
-    if not isinstance(notify, dict) or not notify.get("enabled", False):
-        return None
-    email = (notify.get("email") or "").strip()
-    password = (notify.get("password") or "").strip()
-    if not email or not password:
-        logger.warning("[chain] 邮件未启用或 email/password 缺失，跳过: %s", notify)
-        return None
-    return notify
 
 
 class ChainService:
@@ -80,24 +63,6 @@ class ChainService:
     def load_config(self) -> dict:
         """委托 ScriptService 读取 config.yml（实现见 :class:`ScriptService`）。"""
         return self._script_service.load_config()
-
-    def load_schedule(self) -> dict:
-        """读取 schedule.yml（缺失时从 schedule.example.yml 生成），返回调度运行参数。
-
-        调度参数（shutdown / timed_run / mute / rerun / notify）已从 config.yml 迁出，
-        独立存放于此，避免与脚本链声明（script_list）耦合。
-        """
-        return load_yaml(get_schedule_yml_path_under_root())
-
-    def save_schedule(self, data: dict) -> None:
-        """写回 schedule.yml（生成目标，不要求已存在）。
-
-        Args:
-            data: 完整调度运行参数字典（由 apply_* 原地修改后传入）。
-        """
-        assert isinstance(data, dict), "[service] 待保存的 schedule 非 dict"
-        schedule_path = get_schedule_yml_path_under_root()
-        dump_yaml(schedule_path, data)
 
     # ---------- 链生成与校验 ----------
 
@@ -252,7 +217,7 @@ class ChainService:
         """调度运行：组装 ``ScheduledRun`` 并执行的薄工厂。
 
         完整编排（等待到点 → 生成并运行 → 可选重跑 → post_run）由
-        ``src.service.scheduled_run.ScheduledRun`` 拥有；本方法仅作 facade 入口，
+        ``src.service.schedule.ScheduledRun`` 拥有；本方法仅作 facade 入口，
         设计为在独立控制台进程（``utils_runner.spawn_schedule_run`` 以
         ``CREATE_NEW_CONSOLE`` 起）中运行。
 
@@ -265,8 +230,6 @@ class ChainService:
             shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
             close_running: 是否运行前关闭残留进程（由 ScheduledRun 的 pre_run 执行）。
         """
-        from src.service.scheduled_run import ScheduledRun
-
         ScheduledRun(
             self,
             enabled_keys,

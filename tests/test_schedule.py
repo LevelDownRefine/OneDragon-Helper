@@ -1,4 +1,4 @@
-"""测试 src/service/scheduled_run.py：定时运行的 pre_run / core / post_run 流水线。
+"""测试 src/service/schedule.py：定时运行的 pre_run / core / post_run 流水线。
 
 覆盖：
 - 工厂装配契约（build_pre_run_pipeline 合并成一次 kill、写配置按启用集、
@@ -14,7 +14,7 @@ import datetime
 import unittest
 from unittest import mock
 
-from src.service.scheduled_run import (
+from src.service.schedule import (
     ScheduledRun,
     build_pre_run_pipeline,
 )
@@ -27,7 +27,9 @@ def _make_service(script_list=None, *, schedule=None):
     svc = mock.MagicMock()
     svc.load_config.return_value = {"script_list": script_list or []}
     default = {"rerun": {"enabled": False}, "notify": {"enabled": False}}
-    svc.load_schedule.return_value = default if schedule is None else schedule
+    # schedule 数据不再经 service 桩注入（ScheduledRun 直接调本模块 load_schedule），
+    # 挂到 svc 上供用例 patch src.service.schedule.load_schedule 时取用。
+    svc.schedule_data = default if schedule is None else schedule
     svc.get_weekly_start_map.return_value = {}
     return svc
 
@@ -170,7 +172,11 @@ class TestScheduledRunPreRunClose(unittest.TestCase):
         post_done: list[str] = []
         with (
             mock.patch(
-                "src.service.scheduled_run.build_post_run_pipeline",
+                "src.service.schedule.load_schedule",
+                return_value=svc.schedule_data,
+            ),
+            mock.patch(
+                "src.service.schedule.build_post_run_pipeline",
                 return_value=[lambda: post_done.append("post")],
             ),
             sim.install(),
@@ -227,17 +233,20 @@ class TestScheduledRunPreRunClose(unittest.TestCase):
         sim = ProcessSim()
         for key in ("ok-ef", "MAS"):
             sim.add_script(key, game_name="Endfield.exe")
+        svc = _make_service(sim.scripts)
         with (
             mock.patch(
-                "src.service.scheduled_run.build_post_run_pipeline",
+                "src.service.schedule.load_schedule",
+                return_value=svc.schedule_data,
+            ),
+            mock.patch(
+                "src.service.schedule.build_post_run_pipeline",
                 return_value=[lambda: None],
             ),
             self.assertLogs("src.service.run_actions", level="INFO") as cm,
             sim.install(),
         ):
-            ScheduledRun(
-                _make_service(sim.scripts), None, "now", close_running=True
-            ).run()
+            ScheduledRun(svc, None, "now", close_running=True).run()
         joined = "\n".join(cm.output)
         self.assertIn("已关闭残留进程 3 个", joined)  # 2 真身 + 1 共用游戏
         self.assertEqual(joined.count("Endfield.exe"), 1)
@@ -261,7 +270,11 @@ class TestScheduledRunPreRunClose(unittest.TestCase):
         post_done: list[str] = []
         with (
             mock.patch(
-                "src.service.scheduled_run.build_post_run_pipeline",
+                "src.service.schedule.load_schedule",
+                return_value=svc.schedule_data,
+            ),
+            mock.patch(
+                "src.service.schedule.build_post_run_pipeline",
                 return_value=[lambda: post_done.append("post")],
             ),
             sim.install(),
@@ -295,10 +308,12 @@ class TestScheduledRunOrder(unittest.TestCase):
         svc._rerun_round.side_effect = lambda *a, **k: calls.append("rerun")
         with (
             mock.patch(
-                "src.service.scheduled_run.mute_on", lambda: calls.append("mute_on")
+                "src.service.schedule.load_schedule",
+                return_value=svc.schedule_data,
             ),
+            mock.patch("src.service.schedule.mute_on", lambda: calls.append("mute_on")),
             mock.patch(
-                "src.service.scheduled_run.mute_off", lambda: calls.append("mute_off")
+                "src.service.schedule.mute_off", lambda: calls.append("mute_off")
             ),
             mock.patch(
                 "src.service.run_actions.kill_processes",
@@ -314,15 +329,15 @@ class TestScheduledRunOrder(unittest.TestCase):
             ),
             mock.patch("src.service.run_actions.time.sleep"),
             mock.patch(
-                "src.service.scheduled_run.analyze_logs",
+                "src.service.schedule.analyze_logs",
                 lambda enabled_keys: calls.append("analyze") or {"entries": []},
             ),
             mock.patch(
-                "src.service.scheduled_run.send_summary_mail",
+                "src.service.schedule.send_summary_mail",
                 lambda result, smtp_config: calls.append("mail"),
             ),
             mock.patch(
-                "src.service.scheduled_run.shutdown_sys",
+                "src.service.schedule.shutdown_sys",
                 lambda delay: calls.append("shutdown"),
             ),
         ):
@@ -376,7 +391,10 @@ class TestScheduledRunCore(unittest.TestCase):
             [{"display_name": "A"}],
             schedule={"rerun": {"enabled": True}, "notify": {"enabled": False}},
         )
-        ScheduledRun(svc, {"A"}, "now", chain_name="today")._run_core()
+        with mock.patch(
+            "src.service.schedule.load_schedule", return_value=svc.schedule_data
+        ):
+            ScheduledRun(svc, {"A"}, "now", chain_name="today")._run_core()
         svc.run_chain_once.assert_called_once_with({"A"}, chain_name="today")
         svc._rerun_round.assert_called_once()
         kwargs = svc._rerun_round.call_args.kwargs
@@ -388,7 +406,10 @@ class TestScheduledRunCore(unittest.TestCase):
             [{"display_name": "A"}],
             schedule={"rerun": {"enabled": False}, "notify": {"enabled": False}},
         )
-        ScheduledRun(svc, {"A"}, "now")._run_core()
+        with mock.patch(
+            "src.service.schedule.load_schedule", return_value=svc.schedule_data
+        ):
+            ScheduledRun(svc, {"A"}, "now")._run_core()
         svc.run_chain_once.assert_called_once()
         svc._rerun_round.assert_not_called()
 
@@ -397,7 +418,12 @@ class TestScheduledRunCore(unittest.TestCase):
         svc = _make_service(
             [{"display_name": "A"}], schedule={"notify": {"enabled": False}}
         )
-        with self.assertRaises(AssertionError):
+        with (
+            mock.patch(
+                "src.service.schedule.load_schedule", return_value=svc.schedule_data
+            ),
+            self.assertRaises(AssertionError),
+        ):
             ScheduledRun(svc, {"A"}, "now")._run_core()
 
 
