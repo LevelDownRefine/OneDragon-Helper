@@ -296,7 +296,7 @@ def _run_check_weekly(out_path: str | None) -> int:
 
     返回退出码 0=一致 / 1=存在不一致。
     """
-    result = ScriptService().check_weekly()
+    result = AppService().check_weekly()
     _emit_json("check_weekly", result, out_path)
     assert "status" in result, "[cli] check_weekly 结果缺少 status"
     return 0 if result["status"] == "ok" else 1

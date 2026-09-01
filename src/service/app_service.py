@@ -19,6 +19,7 @@ from src.service.chain_service import ChainService
 from src.service.dungeon_service import DungeonService
 from src.service.schedule import load_schedule, save_schedule
 from src.service.script_service import ScriptService
+from src.service.weekly_service import WeeklyService
 
 logger = logging.getLogger(__name__)
 
@@ -26,18 +27,31 @@ logger = logging.getLogger(__name__)
 class AppService:
     """组合根：装配平级 service peer 并向外暴露统一接口（GUI/CLI 唯一门面）。"""
 
-    def __init__(self, script_service=None, dungeon_service=None, chain_service=None):
+    def __init__(
+        self,
+        script_service=None,
+        dungeon_service=None,
+        weekly_service=None,
+        chain_service=None,
+    ):
         """装配各 peer。
 
         Args:
-            script_service: 可注入的 ScriptService；None 时自建默认实例。
+            script_service: 可注入的 ScriptService；None 时自建（注入 weekly_service）。
             dungeon_service: 可注入的 DungeonService；None 时自建默认实例。
-            chain_service: 可注入的 ChainService；None 时自建（注入 script_service）。
+            weekly_service: 可注入的 WeeklyService；None 时自建默认实例。
+            chain_service: 可注入的 ChainService；None 时自建（注入 script_service
+                与 weekly_service 作 collaborator）。
         """
-        self._script_service = script_service or ScriptService()
+        # weekly 先建：ScriptService 与 ChainService 都以它为 collaborator，
+        # 共享同一实例，避免各自另起一份。
+        self._weekly_service = weekly_service or WeeklyService()
+        self._script_service = script_service or ScriptService(
+            weekly_service=self._weekly_service
+        )
         self._dungeon_service = dungeon_service or DungeonService()
         self._chain_service = chain_service or ChainService(
-            script_service=self._script_service
+            script_service=self._script_service, weekly_service=self._weekly_service
         )
 
     # ── 副本 / 周常声明（DungeonService）──────────────────────────────
@@ -49,7 +63,7 @@ class AppService:
         """委托 DungeonService 读取 dungeon_list.yml 的副本/序列配置。"""
         return self._dungeon_service.get_dungeon_map()
 
-    # ── 单脚本配置 / 周常起始日（ScriptService）────────────────────────
+    # ── 单脚本配置（ScriptService）────────────────────────────────────
     def get_script(self, script_name: str):
         """按脚本唯一标识读取单个脚本条目。"""
         return self._script_service.get_script(script_name)
@@ -62,13 +76,32 @@ class AppService:
         """返回该脚本「配置文件」的本地路径（用于外部打开）与失败原因。"""
         return self._script_service.config_file_path(script_name)
 
+    # ── 周常运行期参数（WeeklyService）──
+    # weekly_start.yml（周几起）与 weekly_timeouts.yml（每周超时）由平级 WeeklyService
+    # 拥有；读写一律直连它，不再经 ChainService 转发（此前读路直连、写路转发不对称）。
     def get_weekly_start(self, script_name: str):
         """返回某脚本的周常起始日（1~7），未设置返回 None。"""
-        return self._script_service.get_weekly_start(script_name)
+        return self._weekly_service.get_weekly_start(script_name)
 
     def weekly_inputs(self, script_name: str) -> list:
         """返回配置弹窗 7 个超时输入框的初始值。"""
-        return self._script_service.weekly_inputs(script_name)
+        return self._weekly_service.weekly_inputs(script_name)
+
+    def set_weekly_start(self, script_name: str, start_day) -> None:
+        """持久化某脚本的周常起始日（周几起）到 weekly_start.yml。"""
+        return self._weekly_service.set_weekly_start(script_name, start_day)
+
+    def get_weekly_start_map(self) -> dict:
+        """读取 weekly_start.yml 全量映射（{脚本标识: 1~7}）。"""
+        return self._weekly_service.get_weekly_start_map()
+
+    def check_weekly(self) -> dict:
+        """校验 weekly_timeouts.yml 与 config.yml 脚本条目的一致性。
+
+        跨 weekly 与 config 两份配置：由组合根取 config 后交 WeeklyService 判定，
+        避免 WeeklyService 反向依赖 ScriptService。
+        """
+        return self._weekly_service.check_weekly(self._script_service.load_config())
 
     # ── 配置读写（ScriptService，P2 已归位）──
     # config.yml 读写（含脚本条目增删改）由 ScriptService 拥有；此处仅作薄委托。
@@ -103,12 +136,6 @@ class AppService:
 
     def save_schedule(self, data: dict) -> None:
         return save_schedule(data)
-
-    def set_weekly_start(self, script_name: str, start_day) -> None:
-        return self._chain_service.set_weekly_start(script_name, start_day)
-
-    def get_weekly_start_map(self) -> dict:
-        return self._chain_service.get_weekly_start_map()
 
     def collect_invalid_scripts(self, script_list: list) -> list:
         return self._chain_service.collect_invalid_scripts(script_list)

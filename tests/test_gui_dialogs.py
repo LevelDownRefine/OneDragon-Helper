@@ -46,7 +46,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
                 return_value=cfg,
             ),
             patch(
-                "src.service.script_service.get_weekly_timeouts_yml_path_under_root",
+                "src.service.weekly_service.get_weekly_timeouts_yml_path_under_root",
                 return_value=wt,
             ),
         ):
@@ -64,7 +64,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
                 return_value=cfg,
             ),
             patch(
-                "src.service.script_service.get_weekly_timeouts_yml_path_under_root",
+                "src.service.weekly_service.get_weekly_timeouts_yml_path_under_root",
                 return_value=wt,
             ),
         ):
