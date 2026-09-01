@@ -2,8 +2,8 @@
 
 复刻 ``MainWindow._generate_config`` 的核心，但去掉 QWidget 依赖：
 - 启用脚本集合由调用方以 ``enabled_names`` 传入；
-- 副本/序列选择从 ``gui_state.json``（UI 状态）读取，并按 dungeon_list 选项校验，
-  与 ``ScriptItem.__init__`` 构造时的取数逻辑一致。
+- 副本/序列选择来自子脚本 config（GUI/CLI 编辑期经 set_config 实时落盘），
+  按 dungeon_list 选项校验。
 
 脚本配置合法性校验（对齐 runner invalid_message）见 ``src.utils_runner``。
 自 ``src.gui.chain`` 迁出：不依赖 Qt，收编到 service 层便于无头测试与 GUI/CLI 共用。
@@ -64,7 +64,7 @@ def resolve_weekly_start(weekly_start_map: dict, script_name: str) -> int | None
     （与日常副本选择落盘不受日常开关影响的模型一致）。
 
     起始日来源为 weekly_start.yml（运行时由 ScriptService 持久化），经
-    weekly_start_map 传入，不再来自 gui_state.json。
+    weekly_start_map 传入。
 
     Args:
         weekly_start_map: weekly_start.yml 的全量映射（{脚本标识: 1~7}）。

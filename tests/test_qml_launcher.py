@@ -7,8 +7,7 @@ QML 引擎在 offscreen 下可加载场景（无视频渲染，但场景对象�
 各职责已拆到 src/gui/controllers/ 下 mixin；monkeypatch 目标需指向实际引用
 该名字的子模块（os/subprocess/webbrowser 指向标准库模块；config 读取走 ScriptService
 ——AppService.load_config 已委托 ScriptService，故 load_config 类方法 patch 指向
-ScriptService；load_ui_state 仍由 ChainService 承载，patch 指向重导出的
-main_window.ChainService；build_script_command 在 launch，链接相关函数在 links，
+ScriptService；build_script_command 在 launch，链接相关函数在 links，
 周常/适配相关函数在 task_card）。
 """
 
@@ -64,19 +63,15 @@ def _make_bridge():
     # 构造期用 with 屏蔽读盘（QmlBridge 初始化即读 config.yml）；
     # with 退出后失效，故构造后再持久 mock load_config，覆盖 reorderGames/
     # addScript 等构造后真实读盘路径（CI 环境无 config.yml，必须持续屏蔽）。
-    with (
-        patch.object(
-            ScriptService,
-            "load_config",
-            return_value={"script_list": list(_SCRIPTS)},
-        ),
-        patch.object(main_window.ChainService, "load_ui_state", return_value={}),
+    with patch.object(
+        ScriptService,
+        "load_config",
+        return_value={"script_list": list(_SCRIPTS)},
     ):
         b = QmlBridge()
     b.app_service.load_config = MagicMock(return_value={"script_list": list(_SCRIPTS)})
-    # 隔离写盘：避免测试污染真实 config/gui_state.json / config.yml
+    # 隔离写盘：避免测试污染真实 config.yml
     b.app_service.save_config = MagicMock()
-    b.app_service.save_ui_state = MagicMock()
     return b
 
 
@@ -377,7 +372,6 @@ class TestQmlApp(unittest.TestCase):
             ]
             with (
                 patch.object(ScriptService, "load_config", return_value={"script_list": scripts}),
-                patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg", return_value=None),
             ):
                 bridge = QmlBridge()
@@ -447,7 +441,6 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             with (
                 patch.object(ScriptService, "load_config",
                              return_value={"script_list": scripts}),
-                patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
                 patch.object(dungeon_service, "get_dungeon_lists",
@@ -538,7 +531,6 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             with (
                 patch.object(ScriptService, "load_config",
                              return_value={"script_list": scripts}),
-                patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
             ):
@@ -624,7 +616,6 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             with (
                 patch.object(ScriptService, "load_config",
                              return_value={"script_list": scripts}),
-                patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
                 patch("src.service.dungeon_service.get_dungeon_lists",

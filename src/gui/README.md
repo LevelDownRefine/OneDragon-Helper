@@ -39,7 +39,9 @@ config.yml 写入权统一归 ChainService，GUI 弹窗不直接写盘：
 
 ## UI 状态持久化
 
-gui_state.json 存 dungeon/sequence/weekly_start。enabled 是纯内存态，重启恢复全开，经 ChainService.load_ui_state / save_ui_state 读写。
+日常副本/序列的真源是子脚本 config（编辑期实时落盘，无 UI 状态文件）；set_dungeon 为
+no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 dungeon_list.yml
+声明的唯一选项。enabled 是纯内存态，重启恢复全开。
 
 ## 添加功能配方
 

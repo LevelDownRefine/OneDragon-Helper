@@ -338,7 +338,7 @@ class ScriptConfig:
         （无 ``_task_key`` / 非 ``_task_key`` + ``_task_map``），可完全自行实现而不调 super。
 
         仅「脚本未安装」与「用户未选择」的副本部分返回 None；config 损坏或字段值未知
-        属异常，直接 assert 暴露，不静默回退（否则会被 gui_state 兜底掩盖）。
+        属异常，直接 assert 暴露，不静默回退（否则会被日常副本的声明项回退掩盖）。
 
         Returns:
             ``(副本中文名, 序列值)``；无 _task_key（无适应）/ 脚本未安装 / 未选择时

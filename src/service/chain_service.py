@@ -2,8 +2,10 @@
 
 承载链领域实现：脚本链生成、合法性校验、runner 命令构造、调度运行的编排。
 config.yml 的读写（P2 已迁出）现由 :class:`ScriptService` 拥有，本服务仅保留
-``load_config`` 委托供运行时取配置；schedule.yml 读写与 ui_state 持久化当前仍由本服务
-提供（后续 P3/P4 会下沉到对应 peer）。本服务**不再担任** GUI/CLI 的顶层门面/协调器——
+``load_config`` 委托供运行时取配置；schedule.yml 读写当前仍由本服务提供
+（后续 P3 会下沉到对应 peer）。UI 状态文件（gui_state.json）已整体删除：日常副本真源
+为子脚本 config，set_dungeon 为 no-op 的脚本取 dungeon_list.yml 声明项。本服务
+**不再担任** GUI/CLI 的顶层门面/协调器——
 该角色由 :class:`AppService`（组合根）承担，本类只是被其组合的一个 peer。
 
 weekly_timeouts 同步委托内部 script_service 处理，调用方不感知。
@@ -11,7 +13,6 @@ weekly_timeouts 同步委托内部 script_service 处理，调用方不感知。
 本模块不承载 UI 渲染/弹窗逻辑，无 Qt 依赖。
 """
 
-import json
 import logging
 import os
 import subprocess
@@ -22,11 +23,7 @@ from src.config.subscript import (
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.script_service import ScriptService
-from src.utils import (
-    get_root_dir,
-    get_schedule_yml_path_under_root,
-    safe_path_join,
-)
+from src.utils import get_schedule_yml_path_under_root
 from src.utils_runner import (
     build_chain_command as _build_chain_command,
 )
@@ -42,8 +39,6 @@ from src.utils_runner import (
 from src.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
-
-_STATE_FILE = safe_path_join(get_root_dir(), "config", "gui_state.json")
 
 
 def resolve_mail_config(all_config: dict) -> dict | None:
@@ -77,9 +72,6 @@ class ChainService:
             script_service: 可注入的 ScriptService；None 时自建默认实例。
         """
         self._script_service = script_service or ScriptService()
-        # UI 状态（gui_state.json）单一实例：懒加载，load/save 均围绕它，
-        # 避免各处独立 load 出不同内存副本、在 save 时互相覆盖。
-        self._ui_state: dict | None = None
 
     # ---------- 配置读取（委托 ScriptService）----------
     # config.yml 的读写实现已迁至 ScriptService（见 :class:`ScriptService`）；此处仅保留
@@ -106,39 +98,6 @@ class ChainService:
         assert isinstance(data, dict), "[service] 待保存的 schedule 非 dict"
         schedule_path = get_schedule_yml_path_under_root()
         dump_yaml(schedule_path, data)
-
-    def load_ui_state(self) -> dict:
-        """返回 UI 状态单一实例（懒加载自 gui_state.json）。
-
-        多次调用返回同一对象：消除各处独立 load 出的不同内存副本在 save 时
-        互相覆盖的风险（如一处在 save 前改了内存态、另一处 load 出旧盘内容）。
-        文件不存在时返回空 dict 并缓存。
-
-        Returns:
-            状态字典；文件不存在时返回空 dict。
-        """
-        if self._ui_state is None:
-            if os.path.exists(_STATE_FILE):
-                with open(_STATE_FILE, encoding="utf-8") as f:
-                    self._ui_state = json.load(f)
-            else:
-                self._ui_state = {}
-        return self._ui_state
-
-    def save_ui_state(self, state: dict | None = None) -> None:
-        """将 UI 状态写回 gui_state.json。
-
-        state 省略时写当前单一实例（self._ui_state）；显式传入时先替换实例再写。
-        写前会同步 self._ui_state，保证后续 load_ui_state 返回已保存内容。
-
-        Args:
-            state: 要写入 gui_state.json 的状态字典；None 时写当前实例。
-        """
-        if state is not None:
-            self._ui_state = state
-        assert self._ui_state is not None, "save_ui_state 调用前需先 load_ui_state"
-        with open(_STATE_FILE, "w", encoding="utf-8") as f:
-            json.dump(self._ui_state, f, ensure_ascii=False, indent=2)
 
     # ---------- 链生成与校验 ----------
 

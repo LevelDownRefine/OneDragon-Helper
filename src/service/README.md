@@ -1,6 +1,6 @@
 # src/service — 外观层 facade
 
-整合其余部分的外观：把 set_config、runner、gui_state.json、链生成与校验内聚为统一薄接口，对 GUI 与 CLI 暴露同一套调用面。从 src/gui/ 分离而出，无 Qt 依赖，故 GUI 与 CLI 共用同一实现，也便于无头测试。
+整合其余部分的外观：把 set_config、runner、链生成与校验内聚为统一薄接口，对 GUI 与 CLI 暴露同一套调用面。从 src/gui/ 分离而出，无 Qt 依赖，故 GUI 与 CLI 共用同一实现，也便于无头测试。
 
 ## 设计定位
 
@@ -15,9 +15,9 @@
 
 | 模块 | 职责 |
 |------|------|
-| chain_service.py | 核心 facade：config.yml 完整读写、UI 状态持久化、脚本链生成、合法性校验、runner 命令构造 |
+| chain_service.py | 核心 facade：config.yml 完整读写、脚本链生成、合法性校验、runner 命令构造 |
 | script_service.py | 单脚本视角：config.yml 单条目只读、weekly_timeouts.yml 读写与改名迁移 |
-| chain_gen.py | 脚本链配置生成：由 enabled_names + gui_state 生成链配置并校验 |
+| chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
 
 ## 依赖方向
 

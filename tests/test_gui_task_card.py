@@ -24,13 +24,10 @@ def _write_defs(tmp, data):
     return path
 
 
-def _make_controller(
-    script_name="March7th-Assistant", display_name="崩铁", ui_state=None
-):
+def _make_controller(script_name="March7th-Assistant", display_name="崩铁"):
     games = [{"script_name": script_name, "display_name": display_name}]
     game_list = _FakeGameList(games)
     service = MagicMock()
-    service.load_ui_state.return_value = {} if ui_state is None else ui_state
     # 副本/周常声明经真实 DungeonService 读取（weekly_list.yml 路径已由用例 patch），
     # 复刻重构前 task_card 自持 ScriptService 读 dungeon 的行为。
     dungeon = DungeonService()
@@ -38,8 +35,7 @@ def _make_controller(
     service.get_dungeon_map.side_effect = dungeon.get_dungeon_map
     service.get_weekly_start.return_value = None
     toast = MagicMock()
-    ctrl = TaskCardController(game_list, service, toast)
-    return ctrl
+    return TaskCardController(game_list, service, toast)
 
 
 class TestWeeklyItems(unittest.TestCase):
@@ -74,7 +70,7 @@ class TestWeeklyItems(unittest.TestCase):
         self.assertEqual(items[0]["dungeon_label"], "")
         self.assertEqual(items[1]["name"], "历战余响")
         self.assertTrue(items[1]["has_dungeon"])
-        # 无配置/未选：反读 None → 回退 gui_state（此处无 gui_state）→ 占位提示
+        # 无配置/未选：反读 None → 占位提示（周常侧不设回退）
         self.assertEqual(items[1]["dungeon_label"], "选择副本")
 
     def test_weekly_dungeon_options_reads_from_config(self):
@@ -172,50 +168,14 @@ class TestWeeklyItems(unittest.TestCase):
             self.assertEqual(ctrl.weekly_items, [])
         tmp.cleanup()
 
-    def test_weekly_items_reflects_saved_dungeon(self):
-        """已选副本（gui_state.json 的 weekly_dungeons）应反映在 dungeon_label。"""
-        tmp = tempfile.TemporaryDirectory()
-        defs_path = _write_defs(
-            tmp,
-            {
-                "March7th-Assistant": [
-                    {"name": "货币战争"},
-                    {"name": "历战余响", "dungeons": ["无", "铁骸的锈冢"]},
-                ]
-            },
-        )
-        ui_state = {
-            "March7th-Assistant": {"weekly_dungeons": {"历战余响": "铁骸的锈冢"}}
-        }
-        with (
-            patch(
-                "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
-                return_value=defs_path,
-            ),
-            # 反读 None → 回退 gui_state 的 weekly_dungeons（保留既有语义）
-            patch.object(task_card_mod, "get_weekly_dungeon", return_value=None),
-        ):
-            ctrl = _make_controller(ui_state=ui_state)
-            items = ctrl.weekly_items
-        tmp.cleanup()
-        echo = [i for i in items if i["name"] == "历战余响"][0]
-        self.assertEqual(echo["dungeon_label"], "铁骸的锈冢")
-
 
 class TestSelectWeeklyDungeon(unittest.TestCase):
-    def test_select_weekly_dungeon_persists_and_writes_config(self):
-        """选副本：写 gui_state.json 的 weekly_dungeons + 调 set_config 适配器接口。"""
+    def test_select_weekly_dungeon_writes_config(self):
+        """选副本：调 set_weekly_dungeon 写脚本自身 config（周常侧无 no-op 脚本）。"""
         ctrl = _make_controller()
         with patch.object(task_card_mod, "set_weekly_dungeon") as mock_set:
             ctrl.selectWeeklyDungeon("历战余响", "铁骸的锈冢")
-
-        # 1) 持久化到 gui_state.json 的 weekly_dungeons
-        self.assertEqual(
-            ctrl.ui_state["March7th-Assistant"]["weekly_dungeons"]["历战余响"],
-            "铁骸的锈冢",
-        )
-        ctrl._app_service.save_ui_state.assert_called_once_with(ctrl.ui_state)
-        # 2) 写脚本自身 config 的 instance_names（M7A 约定键名）
+        # 写脚本自身 config 的 instance_names（M7A 约定键名）
         mock_set.assert_called_once_with("March7th-Assistant", "历战余响", "铁骸的锈冢")
 
 
@@ -229,22 +189,16 @@ class TestSelectDungeonWritesSubscriptConfig(unittest.TestCase):
             ctrl.selectDungeon("凝素领域", "5")
         # 实时落盘：dungeon_name + sequence（鸣潮要求 sequence 非空）
         mock_set.assert_called_once_with("ok-ww", dungeon_name="凝素领域", sequence="5")
-        # 同时持久化到 gui_state.json 的副本/序列字段
-        self.assertEqual(ctrl.ui_state["ok-ww"]["dungeon"], "凝素领域")
-        self.assertEqual(ctrl.ui_state["ok-ww"]["sequence"], "5")
-        ctrl._app_service.save_ui_state.assert_called_once_with(ctrl.ui_state)
 
 
 class TestDailyDungeonTextReadback(unittest.TestCase):
-    """daily_dungeon_text 优先反读子脚本 config，无真相回退 gui_state.json。"""
+    """daily_dungeon_text 优先反读子脚本 config，无真相回退声明的唯一选项。"""
 
-    def test_prefers_subscript_config_over_gui_state(self):
-        ctrl = _make_controller(
-            "ok-ww",
-            "鸣潮",
-            ui_state={"ok-ww": {"dungeon": "旧副本", "sequence": "旧序列"}},
-        )
+    def test_prefers_subscript_config_over_declared(self):
+        """config 有真相时以 config 为准，不走声明项回退。"""
+        ctrl = _make_controller("ok-ww", "鸣潮")
         ctrl._dungeon_map_cache = {}
+        ctrl._dungeon_options_cache = {"ok-ww": [{"name": "声明项"}]}
         with (
             patch.object(task_card_mod, "get_dungeon", return_value="凝素领域"),
             patch.object(task_card_mod, "get_sequence", return_value="5"),
@@ -264,11 +218,7 @@ class TestDailyDungeonTextReadback(unittest.TestCase):
                 }
             ]
         }
-        ctrl = _make_controller(
-            "ok-nte",
-            "异环",
-            ui_state={"ok-nte": {"dungeon": "旧副本", "sequence": "旧序列"}},
-        )
+        ctrl = _make_controller("ok-nte", "异环")
         ctrl._dungeon_map_cache = {"ok-nte": dungeon_cfg}
         with (
             patch.object(task_card_mod, "get_dungeon", return_value="空幕"),
@@ -276,18 +226,29 @@ class TestDailyDungeonTextReadback(unittest.TestCase):
         ):
             self.assertEqual(ctrl.daily_dungeon_text, "空幕 · 轨道之夜")
 
-    def test_falls_back_to_gui_state_when_config_none(self):
-        ctrl = _make_controller(
-            "OneDragon-Launcher",
-            "绝区零",
-            ui_state={"OneDragon-Launcher": {"dungeon": "副本A", "sequence": None}},
-        )
+    def test_falls_back_to_declared_option_when_config_none(self):
+        """no-op 脚本（绝区零）反读无真相 → 回退声明的唯一选项，呈现为已选。"""
+        ctrl = _make_controller("OneDragon-Launcher", "绝区零")
         ctrl._dungeon_map_cache = {}
+        ctrl._dungeon_options_cache = {
+            "OneDragon-Launcher": [{"name": "培养方案", "sequences": []}]
+        }
         with (
             patch.object(task_card_mod, "get_dungeon", return_value=None),
             patch.object(task_card_mod, "get_sequence", return_value=None),
         ):
-            self.assertEqual(ctrl.daily_dungeon_text, "副本A")
+            self.assertEqual(ctrl.daily_dungeon_text, "培养方案")
+
+    def test_placeholder_when_no_config_and_no_declaration(self):
+        """config 无真相且 dungeon_list.yml 未声明 → 占位「选择副本」。"""
+        ctrl = _make_controller("ok-ww", "鸣潮")
+        ctrl._dungeon_map_cache = {}
+        ctrl._dungeon_options_cache = {}
+        with (
+            patch.object(task_card_mod, "get_dungeon", return_value=None),
+            patch.object(task_card_mod, "get_sequence", return_value=None),
+        ):
+            self.assertEqual(ctrl.daily_dungeon_text, "选择副本")
 
 
 class TestWeeklyItemsReadback(unittest.TestCase):

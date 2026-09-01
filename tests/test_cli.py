@@ -311,7 +311,7 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
     """--weekly-start 命令行覆盖的落盘语义。
 
     - --weekly-start：经 service.set_weekly_start 持久化到 weekly_start.yml
-      （周几跑是长期配置），不实时写子脚本 config、也不并入 generate_chain 内存 ui_state。
+      （周几跑是长期配置），不实时写子脚本 config、不并入任何 UI 状态。
     """
 
     def setUp(self):
@@ -322,7 +322,7 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
 
     def test_weekly_start_persists_via_set_weekly_start(self):
         """--weekly-start 调用 service.set_weekly_start 持久化（周几跑是长期配置），
-        不实时写子脚本 config、不并入 generate_chain 内存 ui_state。"""
+        不实时写子脚本 config、不并入任何 UI 状态。"""
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:

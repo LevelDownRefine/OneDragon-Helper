@@ -1,7 +1,6 @@
 """测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。
 
-复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 ChainService 的 config /
-ui_state / 壁纸 I/O；is_adapted / DungeonService.get_weekly_map / get_dungeon_map /
+复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / DungeonService.get_weekly_map / get_dungeon_map /
 parse_dungeon_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
 真实 peer 类），验证 QML 任务卡所需的数据与写回行为。
 """
@@ -59,21 +58,17 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(DungeonService, "get_weekly_map", return_value=[])
     @patch.object(DungeonService, "get_dungeon_map", return_value={})
-    def test_select_dungeon_persists(self, *_):
+    def test_select_dungeon_writes_config(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
-        with patch.object(b.app_service, "save_ui_state") as m_save:
-            b.selectDungeon("副本A", "seq1")
-        self.assertEqual(b.task_card._ui_state[name]["dungeon"], "副本A")
-        self.assertEqual(b.task_card._ui_state[name]["sequence"], "seq1")
-        # 无配置真相（get_dungeon/get_sequence 回退为 None）→ chip 文字取 gui_state 副本名
+        # 无配置真相（get_dungeon/get_sequence 回退为 None）→ chip 回退声明的唯一选项
+        b.task_card._dungeon_options_cache = {name: [{"name": "副本A"}]}
+        b.selectDungeon("副本A", "seq1")
         self.assertEqual(b.dailyDungeonText, "副本A")
         # 实时落盘子脚本 config（日常副本编辑期即生效，不再依赖运行全体）
         task_card.set_config.assert_called_once_with(
             name, dungeon_name="副本A", sequence="seq1"
         )
-        # 对齐旧 GUI：日常副本选择持久化到 gui_state.json
-        m_save.assert_called_once()
 
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(

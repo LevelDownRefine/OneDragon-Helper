@@ -1,6 +1,6 @@
 """任务卡控制器：日常副本 / 周常周几（数据 + 选择持久化）。
 
-独立 QObject，自管状态（_ui_state / _dungeon_*_cache）。当前游戏经构造注入的
+独立 QObject，自管状态（_dungeon_map_cache / _dungeon_options_cache）。当前游戏经构造注入的
 game_list 引用读取。dungeonOptions 从缓存读取（build_dungeon_cache 时构建）。
 启用控制不在此处：日常靠控制模式、周常靠周几起（均在别处实现）。
 """
@@ -38,8 +38,6 @@ class TaskCardController(QObject):
         self._game_list = game_list
         self._app_service = app_service
         self._toast = toast
-        # 任务卡状态：gui_state.json 的副本/序列/周常（按 script_name 索引）
-        self._ui_state = self._app_service.load_ui_state()
         # 副本下拉数据缓存：dungeon_list.yml 解析较贵且运行期不变，
         # build_dungeon_cache 时一次性构建。
         self._dungeon_map_cache: dict = {}
@@ -67,22 +65,22 @@ class TaskCardController(QObject):
 
     @property
     def daily_dungeon_text(self) -> str:
-        """日常副本 chip 文字（优先反读子脚本 config，无真相回退 gui_state.json）。
+        """日常副本 chip 文字（优先反读子脚本 config，无真相回退声明的唯一选项）。
 
-        子脚本 config 是日常副本的真相源（selectDungeon 已实时落盘）；
-        绝区零/崩铁日常无副本适配（set_dungeon 为 no-op），只能回退 gui_state.json。
+        子脚本 config 是日常副本的真相源（selectDungeon 已实时落盘）；绝区零/崩铁
+        的 set_dungeon 为 no-op（上游自身已支持到无需本工具配置），反读恒无真相，
+        故回退 dungeon_list.yml 声明的首个选项——即 UI 上直接呈现为已选状态。
         """
         game = self._current
         script_name = game["script_name"]
         # 1) 优先反读子脚本 config（真相源）
         dungeon = get_dungeon(script_name)
         sequence = get_sequence(script_name)
-        # 2) 无真相/未设置：回退 gui_state.json（覆盖 no-op 脚本）
-        saved = self._ui_state.get(script_name, {})
+        # 2) 无真相：回退声明的首个选项（no-op 脚本的已选态，不再持久化）
         if dungeon is None:
-            dungeon = saved.get("dungeon")
-        if sequence is None:
-            sequence = saved.get("sequence")
+            options = self.dungeon_options
+            if options:
+                dungeon = options[0]["name"]
         if not dungeon:
             return "选择副本"
         dungeon_cfg = self._dungeon_map_cache.get(script_name)
@@ -110,51 +108,28 @@ class TaskCardController(QObject):
         每种周常：{name, has_dungeon, dungeon_label}。has_dungeon 由声明是否含
         dungeons 字段（且有内容）推导，不再用 needs_instance 布尔字段；
         dungeon_label 为已选副本名，需选而未选时返回「选择副本」、无需选返回空。
-        声明（支持哪些周常/可选副本）来自 weekly_list.yml，已选副本来自
-        gui_state.json 的 weekly_dungeons（与副本/序列同为 UI 状态）。
+        声明（支持哪些周常/可选副本）来自 weekly_list.yml；已选副本反读子脚本
+        config（如 M7A instance_names）——周常侧无 no-op 脚本，故不设回退。
         """
         script_name = self._current["script_name"]
         defs = self._app_service.get_weekly_map(script_name)
         if not defs:
             return []
-        saved_dungeons = self._weekly_dungeons(script_name)
         items = []
         for d in defs:
             name = d["name"]
             has_dungeon = "dungeons" in d and bool(d["dungeons"])
             label = ""
             if has_dungeon:
-                # 优先反读子脚本 config（真相源，如 M7A instance_names）；
-                # 无真相/未设置回退 gui_state.json 的 weekly_dungeons。
+                # 反读子脚本 config（真相源，如 M7A instance_names）
                 label = "选择副本"
                 cfg_dungeon = get_weekly_dungeon(script_name, name)
                 if cfg_dungeon:
                     label = cfg_dungeon
-                elif name in saved_dungeons and saved_dungeons[name]:
-                    label = saved_dungeons[name]
             items.append(
                 {"name": name, "has_dungeon": has_dungeon, "dungeon_label": label}
             )
         return items
-
-    def _weekly_dungeons(self, script_name: str) -> dict:
-        """读某脚本各周常已选副本（gui_state.json 的 weekly_dungeons）。
-
-        Args:
-            script_name: 脚本唯一标识。
-
-        Returns:
-            {周常名: 已选副本名}；无记录时返回空 dict。
-        """
-        if script_name not in self._ui_state:
-            return {}
-        saved = self._ui_state[script_name]
-        if "weekly_dungeons" not in saved:
-            return {}
-        dungeons = saved["weekly_dungeons"]
-        if not isinstance(dungeons, dict):
-            return {}
-        return dungeons
 
     def weekly_dungeon_options(self, weekly_name: str) -> list[str]:
         """某周常的可选副本名列表（如历战余响的全体副本）。
@@ -179,10 +154,6 @@ class TaskCardController(QObject):
     def dungeon_options(self) -> list:
         """日常副本下拉数据：[{name, clear, sequences:[{label,value}]}, ...]，从缓存读取。"""
         return self._dungeon_options_cache.get(self._current["script_name"], [])
-
-    @property
-    def ui_state(self) -> dict:
-        return self._ui_state
 
     # ── 缓存构建（运行期不变）──────────────────────────────────────────
     def build_dungeon_cache(self, games: list):
@@ -231,12 +202,12 @@ class TaskCardController(QObject):
     # ── 交互 ───────────────────────────────────────────────────────────
     @Slot(str, "QVariant")
     def selectDungeon(self, dungeon_name: str, sequence):
-        """选择日常副本（持久化到 gui_state.json，并实时落盘子脚本 config）。"""
+        """选择日常副本（实时落盘子脚本 config）。
+
+        绝区零/崩铁的 set_dungeon 为 no-op（上游已支持到无需本工具配置），
+        其日常副本直接取 dungeon_list.yml 声明选项，不经本方法持久化。
+        """
         script_name = self._current["script_name"]
-        saved = self._ui_state.setdefault(script_name, {})
-        saved["dungeon"] = dungeon_name
-        saved["sequence"] = sequence
-        self._app_service.save_ui_state(self._ui_state)
         # 实时落盘子脚本 config（与周常副本 selectWeeklyDungeon 一致）；
         # 未选择选项已移除，下拉只含真实副本，此处不再区分清空调度。
         if dungeon_name:
@@ -245,17 +216,13 @@ class TaskCardController(QObject):
 
     @Slot(str, str)
     def selectWeeklyDungeon(self, weekly_name: str, dungeon_name: str):
-        """选择某周常的副本（持久化 gui_state.json 并写脚本自身 config）。
+        """选择某周常的副本（写回脚本自身 config）。
 
         Args:
             weekly_name: 周常名（如「历战余响」）。
             dungeon_name: 选中的副本名（来自 weekly_dungeon_options）。
         """
         script_name = self._current["script_name"]
-        # 1) 持久化到 gui_state.json 的 weekly_dungeons（与副本/序列同为 UI 状态）
-        saved = self._ui_state.setdefault(script_name, {})
-        saved.setdefault("weekly_dungeons", {})[weekly_name] = dungeon_name
-        self._app_service.save_ui_state(self._ui_state)
-        # 2) 写回脚本自身 config（如 M7A config.yaml 的 instance_names[weekly_name]）
+        # 写回脚本自身 config（如 M7A config.yaml 的 instance_names[weekly_name]）
         set_weekly_dungeon(script_name, weekly_name, dungeon_name)
         self.refresh()

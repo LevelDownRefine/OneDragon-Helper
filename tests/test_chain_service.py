@@ -71,7 +71,6 @@ class TestRunChainOnce(unittest.TestCase):
     def _make_service(self, script_list):
         svc = ChainService()
         svc.load_config = MagicMock(return_value={"script_list": script_list})
-        svc.load_ui_state = MagicMock(return_value={})
         svc._script_service = MagicMock()
         svc._script_service.load_all_weekly.return_value = {}
         svc._script_service.get_weekly_start_map.return_value = {}
@@ -191,7 +190,6 @@ class TestScheduleRun(unittest.TestCase):
         svc.load_schedule = MagicMock(
             return_value={"rerun": {"enabled": True}, "notify": {"enabled": False}}
         )
-        svc.load_ui_state = MagicMock(return_value={})
         svc.run_chain_once = MagicMock(return_value=None)
         return svc
 

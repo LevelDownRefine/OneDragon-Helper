@@ -28,7 +28,6 @@ def _make_controller(enabled: bool, target_time: str | None):
     game_list.games = [{"script_name": "demo"}]
     game_list.enabled = [True]
     task_card = mock.MagicMock()
-    task_card.ui_state = {}
     service = mock.MagicMock()
     service.load_config.return_value = {"script_list": []}
     service.load_schedule.return_value = {
@@ -115,7 +114,6 @@ class TestConfirmRunDialog(unittest.TestCase):
         game_list.games = [{"script_name": "demo"}]
         game_list.enabled = [True]
         task_card = mock.MagicMock()
-        task_card.ui_state = {}
         service = mock.MagicMock()
         # script_list 留在 config；其余调度块归 schedule。
         schedule_keys = {

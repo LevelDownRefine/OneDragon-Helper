@@ -293,7 +293,7 @@ class TestReadbackFacade(unittest.TestCase):
 
 
 class TestReadbackCorruption(unittest.TestCase):
-    """损坏数据应 assert 暴露，而非静默返回 None（否则被 gui_state 兜底掩盖）。"""
+    """损坏数据应 assert 暴露，而非静默返回 None（否则被日常副本的声明项回退掩盖）。"""
 
     def test_unknown_task_value_raises(self):
         config = {"Which to Farm": "未知副本值"}

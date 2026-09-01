@@ -6,7 +6,7 @@
 peer：
 - ScriptService：单脚本配置（config.yml 读写含脚本条目增删改 + 周常起始日/超时）
 - DungeonService：副本与周常声明读取（dungeon_list.yml / weekly_list.yml）
-- ChainService：链编排领域服务（生成/运行/调度/校验；仍托管 schedule.yml 与 ui_state）
+- ChainService：链编排领域服务（生成/运行/调度/校验；仍托管 schedule.yml）
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
 未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
@@ -93,8 +93,8 @@ class AppService:
             old_script_name, new_display_name, config_patch, weekly_timeouts
         )
 
-    # ── 调度 / UI 状态（ChainService，后续 P3/P4 会下沉到对应 peer）──
-    # 注：schedule.yml 读写、ui_state 当前仍由 ChainService 承载，
+    # ── 调度（ChainService，后续 P3 会下沉到对应 peer）──
+    # 注：schedule.yml 读写当前仍由 ChainService 承载，
     # 此处仅作薄委托，对外接口保持稳定、避免 GUI/CLI 直接依赖链领域实现。
     def load_schedule(self) -> dict:
         return self._chain_service.load_schedule()
@@ -107,12 +107,6 @@ class AppService:
 
     def get_weekly_start_map(self) -> dict:
         return self._chain_service.get_weekly_start_map()
-
-    def load_ui_state(self) -> dict:
-        return self._chain_service.load_ui_state()
-
-    def save_ui_state(self, state=None) -> None:
-        return self._chain_service.save_ui_state(state)
 
     def collect_invalid_scripts(self, script_list: list) -> list:
         return self._chain_service.collect_invalid_scripts(script_list)
