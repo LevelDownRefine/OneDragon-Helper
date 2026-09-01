@@ -1028,10 +1028,12 @@ class NTEConfig(ScriptConfig):
         "daily_anomaly": {
             "task_field": "任务类型",  # 副本中文名存此字段；追猎模式为 None
             "seq_fields": _anomaly_seq_key_map,  # 副本 → 序号字段
+            "label": None,  # 副本名由 task_field 字段给出
         },
         "daily_anomaly_hunter": {
-            "task_field": None,
+            "task_field": None,  # 追猎目标无任务类型通道
             "seq_fields": {"追猎目标": "追猎目标"},  # 副本名即 boss 名
+            "label": "追猎目标",  # 模式固定标签即副本名（task_field 为 None 时回退）
         },
     }
 
@@ -1228,15 +1230,15 @@ class NTEConfig(ScriptConfig):
         assert isinstance(section, dict), (
             f"[set_config][{self.display_name}] {mode_id} 段必须是 dict"
         )
-        if mode_id == "daily_anomaly_hunter":
-            # 追猎目标：无 task_field，副本名即 boss 字段名（seq_fields 的唯一键）。
-            # 该字段可能尚未落盘（用户在 NTE 自身 UI 启用追猎但未选 boss，
-            # 不经本工具 set_dungeon 写入）：按「已识别模式、未选 boss」返回 None，而非断言。
-            boss = section.get("追猎目标")
-            return "追猎目标", boss if boss not in (None, "") else None
-        # 异象界域：副本名在 task_field 声明的字段，序号经 seq_fields 反查。
-        dungeon = section.get(mode["task_field"])  # 段缺失时为 None（未选副本）
-        if dungeon in (None, ""):  # 值为空串同样视为未选具体副本
+        # 两种模式共用同一套「取副本名 + 经 seq_fields 反查序号」逻辑：
+        # 异象界域的副本名来自 task_field 字段；追猎目标无 task_field 通道，
+        # 由模式 label 兜底（即「追猎目标」），boss 名即 seq_fields 的唯一键。
+        dungeon = (
+            mode["label"]
+            if mode["task_field"] is None
+            else section.get(mode["task_field"])
+        )
+        if dungeon in (None, ""):  # 段缺失/字段为空串均视为未选具体副本
             return None, None
         key = mode["seq_fields"].get(dungeon)
         sequence = section.get(key) if key else None
