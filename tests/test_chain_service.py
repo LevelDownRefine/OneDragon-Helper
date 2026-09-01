@@ -1,61 +1,11 @@
 """测试 src/service/chain_service.py：无头测试，全部 mock 被包装函数。"""
 
-import os
-import tempfile
 import unittest
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from src.service.chain_service import ChainService
 from src.service.scheduled_run import ScheduledRun, build_post_run_pipeline
-from src.utils_yaml import dump_yaml_file, load_yaml
-
-
-class TestLoadSaveConfig(unittest.TestCase):
-    """config.yml 读写：转发 + 结构断言（用临时文件，不碰真实 config）"""
-
-    def setUp(self):
-        self.tmp_dir = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp_dir.cleanup)
-        self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
-
-    def test_load_config_reads_yaml(self):
-        fake_data = {
-            "script_list": [
-                {"display_name": "测试", "script_path": "C:/x.exe"},
-            ]
-        }
-        dump_yaml_file(self.config_path, fake_data)
-        with patch(
-            "src.service.chain_service.require_config_yml_path",
-            return_value=self.config_path,
-        ):
-            data = ChainService().load_config()
-        self.assertEqual(data, fake_data)
-
-    def test_load_config_asserts_script_list(self):
-        dump_yaml_file(self.config_path, {"a": 1})
-        with (
-            patch(
-                "src.service.chain_service.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            self.assertRaises(AssertionError),
-        ):
-            ChainService().load_config()
-
-    def test_save_config_writes_yaml(self):
-        with patch(
-            "src.service.chain_service.get_config_yml_path_under_root",
-            return_value=self.config_path,
-        ):
-            ChainService().save_config({"script_list": [{"display_name": "测试"}]})
-        saved = load_yaml(self.config_path)
-        self.assertEqual(saved["script_list"][0]["display_name"], "测试")
-
-    def test_save_config_asserts_script_list(self):
-        with self.assertRaises(AssertionError):
-            ChainService().save_config({"a": 1})
 
 
 class TestChainGeneration(unittest.TestCase):
@@ -583,73 +533,6 @@ class TestRerunRound(unittest.TestCase):
         parse.assert_called_once_with(
             do_log=False, candidate_script_names={"demo", "other"}
         )
-
-
-class TestAddRemoveScript(unittest.TestCase):
-    """add_script / remove_script / update_script：操作 config.yml 并同步 weekly。"""
-
-    def setUp(self):
-        self.tmp_dir = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp_dir.cleanup)
-        self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
-        dump_yaml_file(
-            self.config_path,
-            {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]},
-        )
-        self.mock_script = MagicMock()
-
-    def _read(self):
-        return load_yaml(self.config_path)
-
-    def test_add_script_appends(self):
-        """add_script 在 script_list 末尾追加条目、落盘，并内部调 ensure_weekly_entry。"""
-        with (
-            patch(
-                "src.service.chain_service.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            patch(
-                "src.service.chain_service.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-        ):
-            ChainService(script_service=self.mock_script).add_script(
-                {"display_name": "鸣潮", "script_path": "C:/b.exe"}
-            )
-        names = [s["display_name"] for s in self._read()["script_list"]]
-        self.assertEqual(names, ["原神", "鸣潮"])
-        self.mock_script.ensure_weekly_entry.assert_called_once_with("b")
-
-    def test_remove_script_removes(self):
-        """remove_script 从 script_list 移除指定进程条目、落盘，并内部清 weekly 孤儿。"""
-        with (
-            patch(
-                "src.service.chain_service.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            patch(
-                "src.service.chain_service.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-        ):
-            ChainService(script_service=self.mock_script).remove_script("a")
-        self.assertEqual(self._read()["script_list"], [])
-        self.mock_script.delete_weekly.assert_called_once_with("a")
-
-    def test_remove_script_missing_raises(self):
-        """remove_script 移除不存在的脚本属非法调用：assert 表达不该发生"""
-        with (
-            patch(
-                "src.service.chain_service.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            patch(
-                "src.service.chain_service.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-            self.assertRaises(AssertionError),
-        ):
-            ChainService(script_service=self.mock_script).remove_script("不存在")
 
 
 if __name__ == "__main__":

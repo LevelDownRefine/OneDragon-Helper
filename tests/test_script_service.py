@@ -357,6 +357,124 @@ class TestSetWeeklyStart(unittest.TestCase):
                 ScriptService().set_weekly_start("a", bad)
 
 
+class TestLoadSaveConfig(unittest.TestCase):
+    """config.yml 读写（ScriptService 实现）：结构断言（用临时文件，不碰真实 config）"""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
+        self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
+
+    def test_load_config_reads_yaml(self):
+        fake_data = {
+            "script_list": [
+                {"display_name": "测试", "script_path": "C:/x.exe"},
+            ]
+        }
+        dump_yaml_file(self.config_path, fake_data)
+        with patch(
+            "src.service.script_service.require_config_yml_path",
+            return_value=self.config_path,
+        ):
+            data = ScriptService().load_config()
+        self.assertEqual(data, fake_data)
+
+    def test_load_config_asserts_script_list(self):
+        dump_yaml_file(self.config_path, {"a": 1})
+        with (
+            patch(
+                "src.service.script_service.require_config_yml_path",
+                return_value=self.config_path,
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            ScriptService().load_config()
+
+    def test_save_config_writes_yaml(self):
+        with patch(
+            "src.service.script_service.get_config_yml_path_under_root",
+            return_value=self.config_path,
+        ):
+            ScriptService().save_config({"script_list": [{"display_name": "测试"}]})
+        saved = load_yaml(self.config_path)
+        self.assertEqual(saved["script_list"][0]["display_name"], "测试")
+
+    def test_save_config_asserts_script_list(self):
+        with self.assertRaises(AssertionError):
+            ScriptService().save_config({"a": 1})
+
+
+class TestAddRemoveScript(unittest.TestCase):
+    """add_script / remove_script：操作 config.yml 并同步 weekly（ScriptService 实现）。"""
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
+        self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
+        dump_yaml_file(
+            self.config_path,
+            {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]},
+        )
+
+    def _read(self):
+        return load_yaml(self.config_path)
+
+    def test_add_script_appends(self):
+        """add_script 在 script_list 末尾追加条目、落盘，并内部调 ensure_weekly_entry + init_config。"""
+        with (
+            patch(
+                "src.service.script_service.require_config_yml_path",
+                return_value=self.config_path,
+            ),
+            patch(
+                "src.service.script_service.get_config_yml_path_under_root",
+                return_value=self.config_path,
+            ),
+            patch(
+                "src.service.script_service.ScriptService.ensure_weekly_entry"
+            ) as mock_ensure,
+            patch("src.service.script_service.init_config") as mock_init,
+        ):
+            ScriptService().add_script(
+                {"display_name": "鸣潮", "script_path": "C:/b.exe"}
+            )
+        names = [s["display_name"] for s in self._read()["script_list"]]
+        self.assertEqual(names, ["原神", "鸣潮"])
+        mock_ensure.assert_called_once_with("b")
+        mock_init.assert_called_once_with("b")
+
+    def test_remove_script_removes(self):
+        """remove_script 从 script_list 移除指定进程条目、落盘，并内部清 weekly 孤儿。"""
+        with (
+            patch(
+                "src.service.script_service.require_config_yml_path",
+                return_value=self.config_path,
+            ),
+            patch(
+                "src.service.script_service.get_config_yml_path_under_root",
+                return_value=self.config_path,
+            ),
+            patch("src.service.script_service.ScriptService.delete_weekly") as mock_del,
+        ):
+            ScriptService().remove_script("a")
+        self.assertEqual(self._read()["script_list"], [])
+        mock_del.assert_called_once_with("a")
+
+    def test_remove_script_missing_raises(self):
+        """remove_script 移除不存在的脚本属非法调用：assert 表达不该发生"""
+        with (
+            patch(
+                "src.service.script_service.require_config_yml_path",
+                return_value=self.config_path,
+            ),
+            patch(
+                "src.service.script_service.get_config_yml_path_under_root",
+                return_value=self.config_path,
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            ScriptService().remove_script("不存在")
+
 
 if __name__ == "__main__":
     unittest.main()

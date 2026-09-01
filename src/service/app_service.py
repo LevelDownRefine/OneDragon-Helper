@@ -4,9 +4,9 @@
 ——它只是被本类组合的一个链领域 peer，自身只负责链的生成/运行/校验。
 
 peer：
-- ScriptService：单脚本配置（config.yml 读写 + 周常起始日/超时）
+- ScriptService：单脚本配置（config.yml 读写含脚本条目增删改 + 周常起始日/超时）
 - DungeonService：副本与周常声明读取（dungeon_list.yml / weekly_list.yml）
-- ChainService：链编排领域服务（生成/运行/调度/校验）
+- ChainService：链编排领域服务（生成/运行/调度/校验；仍托管 schedule.yml 与 ui_state）
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
 未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
@@ -68,26 +68,19 @@ class AppService:
         """返回配置弹窗 7 个超时输入框的初始值。"""
         return self._script_service.weekly_inputs(script_name)
 
-    # ── 链 / 配置 / 调度 / UI 状态（ChainService，后续 P2-P4 会下沉到对应 peer）──
-    # 注：config.yml 读写、schedule.yml 读写、ui_state 当前仍由 ChainService 承载，
-    # 此处仅作薄委托，对外接口保持稳定、避免 GUI/CLI 直接依赖链领域实现。
+    # ── 配置读写（ScriptService，P2 已归位）──
+    # config.yml 读写（含脚本条目增删改）由 ScriptService 拥有；此处仅作薄委托。
     def load_config(self) -> dict:
-        return self._chain_service.load_config()
+        return self._script_service.load_config()
 
     def save_config(self, data: dict) -> None:
-        return self._chain_service.save_config(data)
-
-    def load_schedule(self) -> dict:
-        return self._chain_service.load_schedule()
-
-    def save_schedule(self, data: dict) -> None:
-        return self._chain_service.save_schedule(data)
+        return self._script_service.save_config(data)
 
     def add_script(self, script_data: dict) -> None:
-        return self._chain_service.add_script(script_data)
+        return self._script_service.add_script(script_data)
 
     def remove_script(self, script_name: str) -> None:
-        return self._chain_service.remove_script(script_name)
+        return self._script_service.remove_script(script_name)
 
     def update_script(
         self,
@@ -96,9 +89,18 @@ class AppService:
         config_patch: dict,
         weekly_timeouts: list,
     ):
-        return self._chain_service.update_script(
+        return self._script_service.update_script(
             old_script_name, new_display_name, config_patch, weekly_timeouts
         )
+
+    # ── 调度 / UI 状态（ChainService，后续 P3/P4 会下沉到对应 peer）──
+    # 注：schedule.yml 读写、ui_state 当前仍由 ChainService 承载，
+    # 此处仅作薄委托，对外接口保持稳定、避免 GUI/CLI 直接依赖链领域实现。
+    def load_schedule(self) -> dict:
+        return self._chain_service.load_schedule()
+
+    def save_schedule(self, data: dict) -> None:
+        return self._chain_service.save_schedule(data)
 
     def set_weekly_start(self, script_name: str, start_day) -> None:
         return self._chain_service.set_weekly_start(script_name, start_day)
@@ -129,10 +131,16 @@ class AppService:
     def build_chain_command(self, chain_config_path: str, extra_args=None):
         return self._chain_service.build_chain_command(chain_config_path, extra_args)
 
-    def run_chain_command(self, chain_config_path: str, block: bool = True, extra_args=None):
-        return self._chain_service.run_chain_command(chain_config_path, block, extra_args)
+    def run_chain_command(
+        self, chain_config_path: str, block: bool = True, extra_args=None
+    ):
+        return self._chain_service.run_chain_command(
+            chain_config_path, block, extra_args
+        )
 
-    def run_chain_once(self, enabled_keys: set | None = None, *, chain_name: str = "today"):
+    def run_chain_once(
+        self, enabled_keys: set | None = None, *, chain_name: str = "today"
+    ):
         return self._chain_service.run_chain_once(enabled_keys, chain_name=chain_name)
 
     def schedule_run(

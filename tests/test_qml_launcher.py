@@ -5,9 +5,11 @@ QML 引擎在 offscreen 下可加载场景（无视频渲染，但场景对象�
 渲染时才调用），避免 offscreen 依赖 exe 图标。
 
 各职责已拆到 src/gui/controllers/ 下 mixin；monkeypatch 目标需指向实际引用
-该名字的子模块（os/subprocess/webbrowser 指向标准库模块；ChainService 为类方法
-patch 指向重导出的 main_window.ChainService；build_script_command 在 launch，
-链接相关函数在 links，周常/适配相关函数在 task_card）。
+该名字的子模块（os/subprocess/webbrowser 指向标准库模块；config 读取走 ScriptService
+——AppService.load_config 已委托 ScriptService，故 load_config 类方法 patch 指向
+ScriptService；load_ui_state 仍由 ChainService 承载，patch 指向重导出的
+main_window.ChainService；build_script_command 在 launch，链接相关函数在 links，
+周常/适配相关函数在 task_card）。
 """
 
 import os
@@ -31,6 +33,7 @@ from src.gui.controllers import launch, links  # noqa: E402
 from src.gui.controllers.game_list import ScriptIconProvider  # noqa: E402
 from src.gui.icons import UiIconProvider  # noqa: E402
 from src.gui.main_window import QmlBridge  # noqa: E402
+from src.service.script_service import ScriptService  # noqa: E402
 
 # 清理损坏的 QML 磁盘缓存（需在 QQmlApplicationEngine 创建前，保证干净编译）
 _local_appdata = os.environ.get("LOCALAPPDATA", "")
@@ -63,7 +66,7 @@ def _make_bridge():
     # addScript 等构造后真实读盘路径（CI 环境无 config.yml，必须持续屏蔽）。
     with (
         patch.object(
-            main_window.ChainService,
+            ScriptService,
             "load_config",
             return_value={"script_list": list(_SCRIPTS)},
         ),
@@ -362,6 +365,7 @@ class TestQmlApp(unittest.TestCase):
             from PySide6.QtWidgets import QApplication
             from src.config.subscript import resolve_script_path
             from src.gui import main_window
+            from src.service.script_service import ScriptService
             from src.gui.controllers.game_list import ScriptIconProvider
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
@@ -372,7 +376,7 @@ class TestQmlApp(unittest.TestCase):
                 {"display_name": "测试脚本", "script_path": "scripts/t.py", "script_type": "python"},
             ]
             with (
-                patch.object(main_window.ChainService, "load_config", return_value={"script_list": scripts}),
+                patch.object(ScriptService, "load_config", return_value={"script_list": scripts}),
                 patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg", return_value=None),
             ):
@@ -424,6 +428,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             from PySide6.QtWidgets import QApplication
             from src.config.subscript import resolve_script_path
             from src.gui import main_window
+            from src.service.script_service import ScriptService
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
             import src.service.dungeon_service as dungeon_service
@@ -440,7 +445,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             }]
             fake_dungeons = [f"副本{i}" for i in range(1, 10)]
             with (
-                patch.object(main_window.ChainService, "load_config",
+                patch.object(ScriptService, "load_config",
                              return_value={"script_list": scripts}),
                 patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
@@ -519,6 +524,7 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             from unittest.mock import patch
             from src.config.subscript import resolve_script_path
             from src.gui import main_window
+            from src.service.script_service import ScriptService
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
 
@@ -530,7 +536,7 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
                 "script_type": "external",
             }]
             with (
-                patch.object(main_window.ChainService, "load_config",
+                patch.object(ScriptService, "load_config",
                              return_value={"script_list": scripts}),
                 patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
@@ -600,6 +606,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             from unittest.mock import patch
             from src.config.subscript import resolve_script_path
             from src.gui import main_window
+            from src.service.script_service import ScriptService
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
 
@@ -615,7 +622,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 "script_type": "external",
             }]
             with (
-                patch.object(main_window.ChainService, "load_config",
+                patch.object(ScriptService, "load_config",
                              return_value={"script_list": scripts}),
                 patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg",

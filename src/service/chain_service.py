@@ -1,9 +1,10 @@
 """ChainService：链编排领域服务（平级 peer，非协调器）。
 
 承载链领域实现：脚本链生成、合法性校验、runner 命令构造、调度运行的编排。
-config.yml / schedule.yml 读写与 ui_state 持久化当前仍由本服务提供（后续 P2-P4 会
-下沉到对应 peer），但本服务**不再担任** GUI/CLI 的顶层门面/协调器——该角色由
-:class:`AppService`（组合根）承担，本类只是被其组合的一个 peer。
+config.yml 的读写（P2 已迁出）现由 :class:`ScriptService` 拥有，本服务仅保留
+``load_config`` 委托供运行时取配置；schedule.yml 读写与 ui_state 持久化当前仍由本服务
+提供（后续 P3/P4 会下沉到对应 peer）。本服务**不再担任** GUI/CLI 的顶层门面/协调器——
+该角色由 :class:`AppService`（组合根）承担，本类只是被其组合的一个 peer。
 
 weekly_timeouts 同步委托内部 script_service 处理，调用方不感知。
 
@@ -16,17 +17,14 @@ import os
 import subprocess
 
 from src.config.subscript import (
-    check_script_name_uniqueness,
     get_script_name,
 )
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.script_service import ScriptService
 from src.utils import (
-    get_config_yml_path_under_root,
     get_root_dir,
     get_schedule_yml_path_under_root,
-    require_config_yml_path,
     safe_path_join,
 )
 from src.utils_runner import (
@@ -66,8 +64,11 @@ def resolve_mail_config(all_config: dict) -> dict | None:
 
 
 class ChainService:
-    """脚本链核心服务：config.yml 读写、链生成、校验、运行命令构造，
-    内部集成 ScriptService 处理 weekly_timeouts 同步。"""
+    """链编排领域服务（平级 peer）：链生成、校验、运行命令构造、调度运行编排。
+
+    config.yml 读写（P2 已迁出）由 ScriptService 拥有，本服务仅委托 ``load_config``
+    供运行时取配置；内部集成 ScriptService 处理 weekly_timeouts / weekly_start 同步。
+    """
 
     def __init__(self, script_service=None):
         """初始化 ChainService。
@@ -80,40 +81,13 @@ class ChainService:
         # 避免各处独立 load 出不同内存副本、在 save 时互相覆盖。
         self._ui_state: dict | None = None
 
-    # ---------- 配置读写 ----------
+    # ---------- 配置读取（委托 ScriptService）----------
+    # config.yml 的读写实现已迁至 ScriptService（见 :class:`ScriptService`）；此处仅保留
+    # load_config 委托，供本服务运行时（run_chain_once / ScheduledRun）取配置。
 
     def load_config(self) -> dict:
-        """读取 config.yml（断言存在），返回完整 script_list 配置。
-
-        结果从外部 YAML 载入——入口处一次性校验每个条目含 display_name/script_path
-        且脚本唯一标识唯一，``script_list`` 内部数据此后可安全用直接访问。
-        """
-        config_path = require_config_yml_path()
-        data = load_yaml(config_path)
-        assert isinstance(data, dict) and "script_list" in data, (
-            "[service] config.yml 缺少 script_list 字段"
-        )
-        for s in data["script_list"]:
-            assert "display_name" in s, (
-                f"[service] script_list 条目缺少 display_name: {s}"
-            )
-            assert "script_path" in s, (
-                f"[service] script_list 条目缺少 script_path: {s}"
-            )
-        check_script_name_uniqueness(data)
-        return data
-
-    def save_config(self, data: dict) -> None:
-        """写回 config.yml（生成目标，不要求已存在）。
-
-        Args:
-            data: 完整 script_list 配置字典。
-        """
-        assert isinstance(data, dict) and "script_list" in data, (
-            "[service] 待保存的 config 缺少 script_list 字段"
-        )
-        config_path = get_config_yml_path_under_root()
-        dump_yaml(config_path, data)
+        """委托 ScriptService 读取 config.yml（实现见 :class:`ScriptService`）。"""
+        return self._script_service.load_config()
 
     def load_schedule(self) -> dict:
         """读取 schedule.yml（缺失时从 schedule.example.yml 生成），返回调度运行参数。
@@ -132,105 +106,6 @@ class ChainService:
         assert isinstance(data, dict), "[service] 待保存的 schedule 非 dict"
         schedule_path = get_schedule_yml_path_under_root()
         dump_yaml(schedule_path, data)
-
-    def add_script(self, script_data: dict) -> None:
-        """向 config.yml 的 script_list 追加一个脚本条目，并自动创建 weekly 默认条目。
-
-        脚本唯一标识（get_script_name）不得与已有条目重复（数据完整性约束）。
-
-        Args:
-            script_data: 完整脚本条目 dict（含 display_name / script_path 等）。
-        """
-        assert "display_name" in script_data, "[service] script_data 缺少 display_name"
-        assert "script_path" in script_data, "[service] script_data 缺少 script_path"
-        config = self.load_config()
-        scripts = config.setdefault("script_list", [])
-        new_script_name = get_script_name(script_data)
-        assert all(get_script_name(s) != new_script_name for s in scripts), (
-            f"[service] 脚本标识已存在: {new_script_name}"
-        )
-        scripts.append(script_data)
-        self.save_config(config)
-        self._script_service.ensure_weekly_entry(new_script_name)
-        from src.config.set_config import init_config
-
-        init_config(new_script_name)
-
-    def remove_script(self, script_name: str) -> None:
-        """从 config.yml 的 script_list 移除指定脚本条目，并自动清理 weekly 孤儿。
-
-        Args:
-            script_name: 要移除的脚本唯一标识。
-        """
-        config = self.load_config()
-        scripts = config.setdefault("script_list", [])
-        target = next(
-            (s for s in scripts if get_script_name(s) == script_name),
-            None,
-        )
-        assert target is not None, f"[service] 找不到脚本: {script_name}"
-        scripts.remove(target)
-        self.save_config(config)
-        self._script_service.delete_weekly(script_name)
-
-    def update_script(
-        self,
-        old_script_name: str,
-        new_display_name: str,
-        config_patch: dict,
-        weekly_timeouts: list[int | None],
-    ) -> str:
-        """更新单个脚本条目字段并同步 weekly_timeouts。
-
-        以脚本唯一标识定位条目；自动处理标识变更（含 weekly 迁移）与
-        kill_game_after_done 自洽（未设置 game_process_name 时强制 False）。
-
-        Args:
-            old_script_name: 原脚本唯一标识（用于定位条目）。
-            new_display_name: 新 display_name（展示名，可保留原名）。
-            config_patch: 要写入条目顶层字段的映射（如 script_path/check_done）。
-            weekly_timeouts: 7 格超时输入值，空输入为 None（落盘前转默认超时）。
-
-        Returns:
-            落盘后的脚本唯一标识（标识可能因 script_path/display_name 变更而改变），
-            供调用方在落盘后触发依赖新路径的后续动作（如游戏侧周几起同步）。
-        """
-        assert new_display_name, "[service] 脚本名称不能为空"
-        config = self.load_config()
-        target = None
-        for script in config.setdefault("script_list", []):
-            if get_script_name(script) == old_script_name:
-                target = script
-                break
-        assert target is not None, f"[service] 找不到脚本: {old_script_name}"
-
-        for key, value in config_patch.items():
-            target[key] = value
-        target["display_name"] = new_display_name
-
-        new_script_name = get_script_name(target)
-        if new_script_name != old_script_name:
-            assert all(
-                get_script_name(s) != new_script_name
-                for s in config["script_list"]
-                if s is not target
-            ), f"[service] 脚本标识已存在: {new_script_name}"
-
-        # 配置自洽：未设置游戏进程名时「运行后关闭游戏」强制 False
-        if not target.get("game_process_name", ""):
-            target["kill_game_after_done"] = False
-
-        self.save_config(config)
-
-        if new_script_name != old_script_name:
-            self._script_service.rename_weekly_in_timeouts(
-                old_script_name, new_script_name
-            )
-        self._script_service.save_weekly(new_script_name, weekly_timeouts)
-        from src.config.set_config import init_config
-
-        init_config(new_script_name)
-        return new_script_name
 
     def load_ui_state(self) -> dict:
         """返回 UI 状态单一实例（懒加载自 gui_state.json）。
