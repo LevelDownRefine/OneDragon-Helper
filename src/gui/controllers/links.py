@@ -12,7 +12,7 @@ from src.config.set_config import get_game_exe_path as _get_game_exe_path
 from src.config.subscript import resolve_script_path
 from src.link import get_game_link as _get_game_link
 from src.log import get_log_dir
-from src.service.script_service import ScriptService
+from src.service.app_service import AppService
 from src.utils import get_config_yml_path_under_root, open_in_explorer
 
 # 通用占位链接（对应内容未配置时使用）
@@ -23,11 +23,11 @@ _URL_BILIBILI = "https://www.bilibili.com/"
 class LinksController(QObject):
     toastRequested = Signal(str)
 
-    def __init__(self, game_list, toast, script_service=None, parent=None):
+    def __init__(self, game_list, toast, app_service=None, parent=None):
         super().__init__(parent)
         self._game_list = game_list
         self._toast = toast
-        self._script_service = script_service or ScriptService()
+        self._app_service = app_service or AppService()
 
     @Slot()
     def launchGame(self):
@@ -121,7 +121,7 @@ class LinksController(QObject):
     def openScriptConfig(self):
         """打开当前脚本专属配置文件（python→源码；exe→内部 config），未适配或缺失时提示。"""
         game = self._game_list.current_game
-        path, error = self._script_service.config_file_path(game["script_name"])
+        path, error = self._app_service.config_file_path(game["script_name"])
         if error is not None:
             self._toast(f"{game['display_name']}：{error}")
             return

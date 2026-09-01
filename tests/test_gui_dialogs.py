@@ -192,7 +192,7 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
                 script_name,
                 display_name,
                 "C:/games/run.exe",
-                script_service=_FakeService(
+                app_service=_FakeService(
                     "external", "C:/games/run.exe", display_name, weekly_start
                 ),
             )
@@ -230,7 +230,7 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
-        self.assertEqual(dlg._script_service.saved_weekly_start, 3)
+        self.assertEqual(dlg._app_service.saved_weekly_start, 3)
         self.assertEqual(dlg.pending_changes["weekly_start_day"], 3)
 
     def test_save_clears_weekly_start_when_unset(self):
@@ -242,7 +242,7 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
-        self.assertIsNone(dlg._script_service.saved_weekly_start)
+        self.assertIsNone(dlg._app_service.saved_weekly_start)
         self.assertIsNone(dlg.pending_changes["weekly_start_day"])
 
 

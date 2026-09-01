@@ -88,7 +88,7 @@ class TestDeleteScriptConfirmCancel(unittest.TestCase):
         instance.exec.return_value = 2  # Cancel
         ctrl = self._make_ctrl()
         ctrl.deleteScript(0)
-        ctrl._service.remove_script.assert_not_called()
+        ctrl._app_service.remove_script.assert_not_called()
         ctrl._on_reload.assert_not_called()
 
     @patch("src.gui.controllers.game_list.QMessageBox")
@@ -100,7 +100,7 @@ class TestDeleteScriptConfirmCancel(unittest.TestCase):
         instance.exec.return_value = 1  # Ok
         ctrl = self._make_ctrl()
         ctrl.deleteScript(0)
-        ctrl._service.remove_script.assert_called_once_with("wu")
+        ctrl._app_service.remove_script.assert_called_once_with("wu")
         ctrl._on_reload.assert_called_once()
 
 
@@ -113,7 +113,7 @@ class TestReloadGamesIconOrder(unittest.TestCase):
 
     def test_refresh_before_set_games(self):
         ctrl = GameListController(MagicMock(), MagicMock(), MagicMock())
-        ctrl._service.load_config.return_value = {
+        ctrl._app_service.load_config.return_value = {
             "script_list": [
                 {
                     "display_name": "鸣潮",

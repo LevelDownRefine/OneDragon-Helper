@@ -35,7 +35,7 @@ from src.config.set_config import (
     supports_weekly,
 )
 from src.config.subscript import get_script_name
-from src.service.script_service import ScriptService
+from src.service.app_service import AppService
 
 # ═══════════════════════ 弹窗样式（原 src/gui/theme.py 子集，2026-08-16 并入）═══════
 DARK_BLUE = "#333957"  # 深空蓝
@@ -347,7 +347,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         display_name,
         script_path="",
         parent=None,
-        script_service=None,
+        app_service=None,
     ):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {display_name}")
@@ -358,7 +358,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         )
         self.display_name = display_name  # 展示名
         self.script_path = script_path
-        self._script_service = script_service or ScriptService()
+        self._app_service = app_service or AppService()
         self.pending_changes = None  # accept() 后供调用方取表单字段与 weekly
 
         self.init_ui()
@@ -485,7 +485,7 @@ class SingleScriptConfigDialog(FormDialogBase):
 
     def _find_script_data(self) -> dict:
         """从 config.yml 读取本脚本的完整数据字典；脚本不在表中返回空 dict。"""
-        script = self._script_service.get_script(self.script_name)
+        script = self._app_service.get_script(self.script_name)
         return script if script is not None else {}
 
     def load_data(self):
@@ -511,13 +511,13 @@ class SingleScriptConfigDialog(FormDialogBase):
 
         # 周几起（从 weekly_start.yml 读；不支持周常时跳过）
         if self._weekly_start_supported:
-            start_day = self._script_service.get_weekly_start(self.script_name)
+            start_day = self._app_service.get_weekly_start(self.script_name)
             self.weekly_start_combo.setCurrentIndex(
                 0 if start_day is None else int(start_day)
             )
 
         # 每周超时
-        timeouts = self._script_service.weekly_inputs(self.script_name)
+        timeouts = self._app_service.weekly_inputs(self.script_name)
         for idx, timeout_edit in enumerate(self.timeout_inputs):
             timeout_edit.setText(str(timeouts[idx]))
 
@@ -539,7 +539,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         new_script_name = get_script_name(
             {"display_name": new_display_name, "script_path": path_val}
         )
-        existing = self._script_service.get_script(new_script_name)
+        existing = self._app_service.get_script(new_script_name)
         if existing is not None and new_script_name != self.script_name:
             assert "display_name" in existing, (
                 "[dialogs] config 脚本数据缺少 display_name"
@@ -571,7 +571,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         if self._weekly_start_supported:
             idx = self.weekly_start_combo.currentIndex()
             start_day = None if idx <= 0 else idx
-            self._script_service.set_weekly_start(self.script_name, start_day)
+            self._app_service.set_weekly_start(self.script_name, start_day)
 
         self.pending_changes = {
             "old_script_name": self.script_name,

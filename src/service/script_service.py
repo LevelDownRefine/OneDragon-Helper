@@ -14,8 +14,7 @@ ScriptItem 卡片与配置弹窗（SingleScriptConfigDialog）。
 import logging
 import os
 
-from src.config.dungeon_config import load_dungeon_map
-from src.config.set_config import get_config_path, get_dungeon_lists
+from src.config.set_config import get_config_path
 from src.config.subscript import (
     DEFAULT_RUN_TIMEOUT,
     default_script_entry,
@@ -24,7 +23,6 @@ from src.config.subscript import (
     resolve_script_path,
 )
 from src.utils import (
-    get_weekly_list_yml_path_under_root,
     get_weekly_start_yml_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
     require_config_yml_path,
@@ -47,7 +45,7 @@ def _load_config() -> dict:
 def _load_weekly() -> dict:
     """读取 weekly_timeouts.yml（随包发布、必存在）。
 
-    与 _load_weekly_defs 同款：assert 存在且为 dict，损坏直接暴露而非静默兜底。
+    与 _load_weekly_map 同款：assert 存在且为 dict，损坏直接暴露而非静默兜底。
     """
     weekly_path = get_weekly_timeouts_yml_path_under_root()
     assert os.path.exists(weekly_path), f"[service] 周常超时配置缺失: {weekly_path}"
@@ -67,7 +65,7 @@ def _dump_weekly(weekly_map: dict) -> None:
 def _load_weekly_start() -> dict:
     """读取 weekly_start.yml（周常起始日持久化配置，进 git，必存在）。
 
-    结构：{script_name: 1~7}。与 _load_weekly / _load_weekly_defs 同款：
+    结构：{script_name: 1~7}。与 _load_weekly / _load_weekly_map 同款：
     assert 存在且为 dict，损坏直接暴露而非静默兜底。
     """
     weekly_start_path = get_weekly_start_yml_path_under_root()
@@ -87,25 +85,6 @@ def _dump_weekly_start(data: dict) -> None:
     dump_yaml(weekly_start_path, data)
 
 
-def _load_weekly_defs() -> dict:
-    """读取 weekly_list.yml（周常声明配置，进 git，必存在）。
-
-    结构：{script_name: [{"name", "dungeons"?}, ...]}。dungeons 存在且有内容即
-    表示该周常需选副本（不再用 needs_instance 布尔字段）。周常起始日（周几起）
-    另存于 weekly_start.yml，不在本文件。
-    """
-    weekly_list_path = get_weekly_list_yml_path_under_root()
-    assert os.path.exists(weekly_list_path), (
-        f"[service] 周常声明配置缺失: {weekly_list_path}"
-    )
-    data = load_yaml(weekly_list_path)
-    # 空文件或内容非 dict 都是声明配置损坏，直接暴露而非静默当成「无声明」。
-    assert isinstance(data, dict), (
-        f"[service] 周常声明配置应为 dict（空文件或格式错误）: {weekly_list_path}"
-    )
-    return data
-
-
 def _resolve_weekly_timeouts(timeouts: list[int | None]) -> list[int]:
     """把弹窗输入的超时列表规范化：None（空输入）转默认超时，低值（<10）原样保留。
 
@@ -121,11 +100,18 @@ def _resolve_weekly_timeouts(timeouts: list[int | None]) -> list[int]:
 
 
 class ScriptService:
-    """单脚本配置服务：config.yml 只读查询 + weekly_timeouts 管理。
+    """单脚本配置服务：config.yml 只读查询 + 周常/副本配置管理。
 
     脚本内部标识为**脚本唯一标识**（get_script_name）：exe 脚本用进程名，
     python/bat 等脚本文件用 display_name。所有方法入参均为此标识。
+
+    副本与周常声明（dungeon_list.yml / weekly_list.yml）的读取由平级
+    :class:`DungeonService` 负责（经 :class:`AppService` 组合暴露）；本服务只管
+    单脚本配置与周常起始日/超时（weekly_start.yml / weekly_timeouts.yml）。
     """
+
+    def __init__(self) -> None:
+        pass
 
     def load_all_weekly(self) -> dict:
         """返回 weekly_timeouts.yml 的完整字典（文件随包发布，必存在）。
@@ -133,62 +119,6 @@ class ScriptService:
         key 为脚本唯一标识。
         """
         return _load_weekly()
-
-    def get_weekly_defs(self, script_name: str) -> list:
-        """返回某脚本支持的周常声明清单（weekly_list.yml）。
-
-        每项：{"name", "dungeons"?}。dungeons 存在且有内容即有可选副本。文件缺失或该
-        脚本无声明时返回空列表。
-
-        声明项若带 ``dungeons_source`` 标记，则副本清单取自游戏脚本自身配置（运行期
-        读取，见 ``set_config.get_dungeon_lists``），不再手写维护；读不到时降级
-        为 ``dungeons: []``（该周常无需/无法选副本）。
-
-        Args:
-            script_name: 脚本唯一标识。
-
-        Returns:
-            周常声明列表；无声明时为空列表。
-        """
-        defs_map = _load_weekly_defs()
-        if script_name not in defs_map:
-            return []
-        defs = list(defs_map[script_name])
-        for d in defs:
-            source = d.get("dungeons_source")
-            if source:
-                # 副本清单来自外部（如 M7A 的 instance_names.json），运行时读取，
-                # 不再手动维护；读不到则降级为无可选副本（has_dungeon=False）。
-                names = get_dungeon_lists(script_name, d["name"], source)
-                d["dungeons"] = names if names is not None else []
-        return defs
-
-    def get_dungeon_map(self) -> dict:
-        """返回日常副本/序列配置映射（dungeon_list.yml）。
-
-        声明项若带 ``dungeons_source`` 标记，其二级序列（副本名清单）取自游戏脚本
-        自身配置（运行期读取，见 ``get_dungeon_lists``），不再手写维护；读不到时
-        降级为 ``sequences: []``（该副本无需/无法选二级）。
-
-        Returns:
-            脚本唯一标识 → 副本配置的映射（文件缺失时返回空 dict）。
-        """
-        data = load_dungeon_map()
-        for script_name, cfg in data.items():
-            if not isinstance(cfg, dict):
-                continue
-            for d in cfg.get("dungeons", []):
-                if not isinstance(d, dict):
-                    continue
-                source = d.get("dungeons_source")
-                if source:
-                    # 二级序列来自外部（如 ok-ef 的 world_map.json），运行期读取，
-                    # 不手动维护；读不到则降级为无可选序列（show_seq=False）。
-                    names = get_dungeon_lists(script_name, d["name"], source)
-                    d["sequences"] = (
-                        [{"display": n, "value": n} for n in names] if names else []
-                    )
-        return data
 
     def get_weekly_start(self, script_name: str) -> int | None:
         """返回某脚本的周常起始日（1~7），未设置返回 None。

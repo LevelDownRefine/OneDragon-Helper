@@ -161,9 +161,9 @@ class GameListController(QObject):
     toastRequested = Signal(str)
     gameAdded = Signal()
 
-    def __init__(self, service, toast, on_reload, parent=None):
+    def __init__(self, app_service, toast, on_reload, parent=None):
         super().__init__(parent)
-        self._service = service
+        self._app_service = app_service
         self._toast = toast
         self._on_reload = on_reload  # 增删/改配置后触发门面级重载
         self._games: list = []
@@ -199,7 +199,7 @@ class GameListController(QObject):
     def reload_games(self):
         """从 config.yml 重建脚本列表。"""
         games = []
-        for script in self._service.load_config().get("script_list", []):
+        for script in self._app_service.load_config().get("script_list", []):
             display_name = script["display_name"]
             games.append(
                 {
@@ -288,7 +288,7 @@ class GameListController(QObject):
         self._enabled.insert(dst_index, enabled)
 
         # 同步 config.yml 顺序（以 UI 顺序为准），持久化
-        config_data = self._service.load_config()
+        config_data = self._app_service.load_config()
         scripts = config_data["script_list"]
         s_idx = next(
             (
@@ -301,7 +301,7 @@ class GameListController(QObject):
         assert s_idx is not None, "[bridge] config 中找不到源脚本"
         script = scripts.pop(s_idx)
         scripts.insert(dst_index, script)
-        self._service.save_config(config_data)
+        self._app_service.save_config(config_data)
 
         # 恢复选中（新 index 可能已变）
         new_index = next(
@@ -330,10 +330,10 @@ class GameListController(QObject):
             return
         file_path = os.path.normpath(file_path)
         existing = {g["script_name"] for g in self._games}
-        script_data = self._service._script_service.build_script_entry(
+        script_data = self._app_service.build_script_entry(
             file_path, existing
         )
-        self._service.add_script(script_data)
+        self._app_service.add_script(script_data)
         self._on_reload()
         self._toast(f"已添加 {script_data['display_name']}")
         self.gameAdded.emit()
@@ -372,14 +372,14 @@ class GameListController(QObject):
             game["display_name"],
             game["script_data"].get("script_path", ""),
             None,
-            script_service=self._service._script_service,
+            app_service=self._app_service,
         )
         if dialog.exec() == QDialog.Accepted:
             assert dialog.pending_changes is not None, (
                 "[bridge] 配置弹窗 accept 但 pending_changes 为空"
             )
             changes = dialog.pending_changes
-            new_script_name = self._service.update_script(
+            new_script_name = self._app_service.update_script(
                 changes["old_script_name"],
                 changes["new_display_name"],
                 changes["config_patch"],
@@ -406,5 +406,5 @@ class GameListController(QObject):
 
     def _on_delete_script(self, script_name: str):
         """配置弹窗确认删除：落盘后重载脚本列表。"""
-        self._service.remove_script(script_name)
+        self._app_service.remove_script(script_name)
         self._on_reload()

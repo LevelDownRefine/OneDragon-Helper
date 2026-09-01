@@ -70,10 +70,10 @@ def _make_bridge():
         patch.object(main_window.ChainService, "load_ui_state", return_value={}),
     ):
         b = QmlBridge()
-    b.service.load_config = MagicMock(return_value={"script_list": list(_SCRIPTS)})
+    b.app_service.load_config = MagicMock(return_value={"script_list": list(_SCRIPTS)})
     # 隔离写盘：避免测试污染真实 config/gui_state.json / config.yml
-    b.service.save_config = MagicMock()
-    b.service.save_ui_state = MagicMock()
+    b.app_service.save_config = MagicMock()
+    b.app_service.save_ui_state = MagicMock()
     return b
 
 
@@ -181,12 +181,12 @@ class TestLeftRail(unittest.TestCase):
 
     def test_reorder_games_syncs_config_and_enabled(self):
         b = _make_bridge()
-        b.service.save_config = MagicMock()
+        b.app_service.save_config = MagicMock()
         b.deselectAll()
         b.selectAll()
         b.reorderGames(0, 1)  # 鸣潮 → 测试脚本之后
         self.assertEqual([g["display_name"] for g in b.games], ["测试脚本", "鸣潮"])
-        b.service.save_config.assert_called_once()
+        b.app_service.save_config.assert_called_once()
 
     def test_launch_all_no_enabled_toasts(self):
         b = _make_bridge()
@@ -331,14 +331,14 @@ class TestFloatBar(unittest.TestCase):
                 return_value=("C:/scripts/new.py", ""),
             ),
             patch.object(
-                b.service._script_service,
+                b.app_service._script_service,
                 "build_script_entry",
                 return_value=entry,
             ),
-            patch.object(b.service, "add_script"),
+            patch.object(b.app_service, "add_script"),
         ):
             b.addScript()
-            b.service.add_script.assert_called_once_with(entry)
+            b.app_service.add_script.assert_called_once_with(entry)
         spy.assert_called_once()
 
 
@@ -426,7 +426,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             from src.gui import main_window
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
-            import src.service.script_service as script_service
+            import src.service.dungeon_service as dungeon_service
 
             app = QApplication([])
             # 崩铁：真实 config/weekly_list.yml 里历战余响声明了 9 个副本。
@@ -445,7 +445,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                 patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch.object(script_service, "get_dungeon_lists",
+                patch.object(dungeon_service, "get_dungeon_lists",
                              return_value=fake_dungeons),
             ):
                 bridge = QmlBridge()
@@ -620,7 +620,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 patch.object(main_window.ChainService, "load_ui_state", return_value={}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch("src.service.script_service.get_dungeon_lists",
+                patch("src.service.dungeon_service.get_dungeon_lists",
                              return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                            "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                            "不死的神实", "寒潮的落幕", "毁灭的开端"]),

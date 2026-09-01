@@ -26,7 +26,7 @@ class TestLinksOpenScriptConfig(unittest.TestCase):
         svc.config_file_path.return_value = config_return
         toast = MagicMock()
         ctrl = LinksController(
-            game_list=_FakeGameList(game), toast=toast, script_service=svc
+            game_list=_FakeGameList(game), toast=toast, app_service=svc
         )
         return ctrl, svc, toast
 

@@ -327,8 +327,8 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
             out = fh.name
         try:
             with (
-                patch.object(cli.ChainService, "generate_chain", return_value=out),
-                patch.object(cli.ChainService, "set_weekly_start") as mock_set,
+                patch.object(cli.AppService, "generate_chain", return_value=out),
+                patch.object(cli.AppService, "set_weekly_start") as mock_set,
             ):
                 _run_main(
                     [
@@ -435,11 +435,11 @@ class TestCliScheduledRun(unittest.TestCase):
     def _run(self, argv):
         with (
             patch.object(
-                cli.ChainService,
+                cli.AppService,
                 "load_config",
                 return_value={"script_list": [{"display_name": "demo"}]},
             ),
-            patch.object(cli.ChainService, "schedule_run") as mock_sched,
+            patch.object(cli.AppService, "schedule_run") as mock_sched,
         ):
             code = _run_main(argv, expect_exit=0)
         return code, mock_sched
@@ -486,11 +486,11 @@ class TestCliScheduledRun(unittest.TestCase):
     def test_schedule_run_unknown_enable_exits_one(self):
         with (
             patch.object(
-                cli.ChainService,
+                cli.AppService,
                 "load_config",
                 return_value={"script_list": [{"display_name": "demo"}]},
             ),
-            patch.object(cli.ChainService, "schedule_run") as mock_sched,
+            patch.object(cli.AppService, "schedule_run") as mock_sched,
         ):
             code = _run_main(
                 ["--schedule-run", "08:00", "--enable", "ghost"], expect_exit=1

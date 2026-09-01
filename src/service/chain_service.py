@@ -1,10 +1,11 @@
-"""ChainService：脚本链核心服务（GUI / CLI 唯一 facade）。
+"""ChainService：链编排领域服务（平级 peer，非协调器）。
 
-承载「真实实现」：config.yml 完整读写（含单脚本字段更新）、UI 状态持久化
-（gui_state.json）、脚本链生成、合法性校验、runner 命令构造。
+承载链领域实现：脚本链生成、合法性校验、runner 命令构造、调度运行的编排。
+config.yml / schedule.yml 读写与 ui_state 持久化当前仍由本服务提供（后续 P2-P4 会
+下沉到对应 peer），但本服务**不再担任** GUI/CLI 的顶层门面/协调器——该角色由
+:class:`AppService`（组合根）承担，本类只是被其组合的一个 peer。
 
-weekly_timeouts 同步由内部 ScriptService 处理，调用方不感知。GUI（MainWindow）
-与 CLI（launcher.py）都作为薄适配器依赖本服务。
+weekly_timeouts 同步委托内部 script_service 处理，调用方不感知。
 
 本模块不承载 UI 渲染/弹窗逻辑，无 Qt 依赖。
 """

@@ -16,7 +16,6 @@ from src.config.set_config import (
     set_config,
     set_weekly_dungeon,
 )
-from src.service.script_service import ScriptService
 
 # 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
 WEEKDAY_NAMES = {
@@ -34,15 +33,13 @@ class TaskCardController(QObject):
     taskStateChanged = Signal()
     toastRequested = Signal(str)
 
-    def __init__(self, game_list, service, toast, parent=None):
+    def __init__(self, game_list, app_service, toast, parent=None):
         super().__init__(parent)
         self._game_list = game_list
-        self._service = service
+        self._app_service = app_service
         self._toast = toast
-        # 周常声明只读服务：weekly_list.yml（支持哪些周常 / 是否需选副本 / 副本清单）
-        self._script_service = ScriptService()
         # 任务卡状态：gui_state.json 的副本/序列/周常（按 script_name 索引）
-        self._ui_state = self._service.load_ui_state()
+        self._ui_state = self._app_service.load_ui_state()
         # 副本下拉数据缓存：dungeon_list.yml 解析较贵且运行期不变，
         # build_dungeon_cache 时一次性构建。
         self._dungeon_map_cache: dict = {}
@@ -97,13 +94,13 @@ class TaskCardController(QObject):
 
         唯一真相源为 weekly_list.yml：声明了该脚本周常即支持。
         """
-        return bool(self._script_service.get_weekly_defs(self._current["script_name"]))
+        return bool(self._app_service.get_weekly_map(self._current["script_name"]))
 
     @property
     def weekly_start_label(self) -> str:
         """周常起始日文字（周几起），供单脚本配置弹窗显示当前选择。"""
         game = self._current
-        start_day = self._script_service.get_weekly_start(game["script_name"])
+        start_day = self._app_service.get_weekly_start(game["script_name"])
         return "选择周几" if start_day is None else f"{WEEKDAY_NAMES[start_day]}起"
 
     @property
@@ -117,7 +114,7 @@ class TaskCardController(QObject):
         gui_state.json 的 weekly_dungeons（与副本/序列同为 UI 状态）。
         """
         script_name = self._current["script_name"]
-        defs = self._script_service.get_weekly_defs(script_name)
+        defs = self._app_service.get_weekly_map(script_name)
         if not defs:
             return []
         saved_dungeons = self._weekly_dungeons(script_name)
@@ -172,7 +169,7 @@ class TaskCardController(QObject):
             副本名列表（含「无」）；该周常未声明副本清单时返回空列表。
         """
         script_name = self._current["script_name"]
-        for d in self._script_service.get_weekly_defs(script_name):
+        for d in self._app_service.get_weekly_map(script_name):
             if d["name"] != weekly_name:
                 continue
             return list(d["dungeons"]) if "dungeons" in d else []
@@ -190,7 +187,7 @@ class TaskCardController(QObject):
     # ── 缓存构建（运行期不变）──────────────────────────────────────────
     def build_dungeon_cache(self, games: list):
         """一次性解析 dungeon_list.yml 并构建所有脚本的副本下拉数据（运行期不变）。"""
-        self._dungeon_map_cache = self._script_service.get_dungeon_map()
+        self._dungeon_map_cache = self._app_service.get_dungeon_map()
         self._dungeon_options_cache = {
             g["script_name"]: self._build_dungeon_options(g["script_name"])
             for g in games
@@ -239,7 +236,7 @@ class TaskCardController(QObject):
         saved = self._ui_state.setdefault(script_name, {})
         saved["dungeon"] = dungeon_name
         saved["sequence"] = sequence
-        self._service.save_ui_state(self._ui_state)
+        self._app_service.save_ui_state(self._ui_state)
         # 实时落盘子脚本 config（与周常副本 selectWeeklyDungeon 一致）；
         # 未选择选项已移除，下拉只含真实副本，此处不再区分清空调度。
         if dungeon_name:
@@ -258,7 +255,7 @@ class TaskCardController(QObject):
         # 1) 持久化到 gui_state.json 的 weekly_dungeons（与副本/序列同为 UI 状态）
         saved = self._ui_state.setdefault(script_name, {})
         saved.setdefault("weekly_dungeons", {})[weekly_name] = dungeon_name
-        self._service.save_ui_state(self._ui_state)
+        self._app_service.save_ui_state(self._ui_state)
         # 2) 写回脚本自身 config（如 M7A config.yaml 的 instance_names[weekly_name]）
         set_weekly_dungeon(script_name, weekly_name, dungeon_name)
         self.refresh()

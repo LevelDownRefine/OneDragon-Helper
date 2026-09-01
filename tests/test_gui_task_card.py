@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from src.gui.controllers import task_card as task_card_mod
 from src.gui.controllers.task_card import TaskCardController
+from src.service.dungeon_service import DungeonService
 from src.utils_yaml import dump_yaml_file
 
 
@@ -30,6 +31,12 @@ def _make_controller(
     game_list = _FakeGameList(games)
     service = MagicMock()
     service.load_ui_state.return_value = {} if ui_state is None else ui_state
+    # 副本/周常声明经真实 DungeonService 读取（weekly_list.yml 路径已由用例 patch），
+    # 复刻重构前 task_card 自持 ScriptService 读 dungeon 的行为。
+    dungeon = DungeonService()
+    service.get_weekly_map.side_effect = dungeon.get_weekly_map
+    service.get_dungeon_map.side_effect = dungeon.get_dungeon_map
+    service.get_weekly_start.return_value = None
     toast = MagicMock()
     ctrl = TaskCardController(game_list, service, toast)
     return ctrl
@@ -53,7 +60,7 @@ class TestWeeklyItems(unittest.TestCase):
         )
         with (
             patch(
-                "src.service.script_service.get_weekly_list_yml_path_under_root",
+                "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(task_card_mod, "get_weekly_dungeon", return_value=None),
@@ -85,7 +92,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -105,7 +112,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -124,7 +131,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -144,7 +151,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl_star = _make_controller("March7th-Assistant", "崩铁")
@@ -158,7 +165,7 @@ class TestWeeklyItems(unittest.TestCase):
         # ok-ww 不在 weekly_list.yml 声明 → 空列表
         defs_path = _write_defs(tmp, {})
         with patch(
-            "src.service.script_service.get_weekly_list_yml_path_under_root",
+            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller("ok-ww", "鸣潮")
@@ -182,7 +189,7 @@ class TestWeeklyItems(unittest.TestCase):
         }
         with (
             patch(
-                "src.service.script_service.get_weekly_list_yml_path_under_root",
+                "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             # 反读 None → 回退 gui_state 的 weekly_dungeons（保留既有语义）
@@ -207,7 +214,7 @@ class TestSelectWeeklyDungeon(unittest.TestCase):
             ctrl.ui_state["March7th-Assistant"]["weekly_dungeons"]["历战余响"],
             "铁骸的锈冢",
         )
-        ctrl._service.save_ui_state.assert_called_once_with(ctrl.ui_state)
+        ctrl._app_service.save_ui_state.assert_called_once_with(ctrl.ui_state)
         # 2) 写脚本自身 config 的 instance_names（M7A 约定键名）
         mock_set.assert_called_once_with("March7th-Assistant", "历战余响", "铁骸的锈冢")
 
@@ -225,7 +232,7 @@ class TestSelectDungeonWritesSubscriptConfig(unittest.TestCase):
         # 同时持久化到 gui_state.json 的副本/序列字段
         self.assertEqual(ctrl.ui_state["ok-ww"]["dungeon"], "凝素领域")
         self.assertEqual(ctrl.ui_state["ok-ww"]["sequence"], "5")
-        ctrl._service.save_ui_state.assert_called_once_with(ctrl.ui_state)
+        ctrl._app_service.save_ui_state.assert_called_once_with(ctrl.ui_state)
 
 
 class TestDailyDungeonTextReadback(unittest.TestCase):
@@ -298,7 +305,7 @@ class TestWeeklyItemsReadback(unittest.TestCase):
         )
         with (
             patch(
-                "src.service.script_service.get_weekly_list_yml_path_under_root",
+                "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(

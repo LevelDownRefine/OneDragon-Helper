@@ -1,15 +1,17 @@
 """测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。
 
 复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 ChainService 的 config /
-ui_state / 壁纸 I/O；is_adapted / ScriptService.get_weekly_defs / get_dungeon_map /
-parse_dungeon_config 按用例 patch（这些名字实际由 task_card 子模块引用，
-patch 目标指向 task_card），验证 QML 任务卡所需的数据与写回行为。
+ui_state / 壁纸 I/O；is_adapted / DungeonService.get_weekly_map / get_dungeon_map /
+parse_dungeon_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
+真实 peer 类），验证 QML 任务卡所需的数据与写回行为。
 """
 
 import unittest
 from unittest.mock import patch
 
 from src.gui.controllers import task_card
+from src.service.dungeon_service import DungeonService
+from src.service.script_service import ScriptService
 from tests.test_qml_launcher import _make_bridge
 
 
@@ -20,17 +22,17 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(task_card, "get_sequence", return_value=None)
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(
-        task_card.ScriptService, "get_weekly_defs", return_value=[{"name": "周常"}]
+        DungeonService, "get_weekly_map", return_value=[{"name": "周常"}]
     )
-    @patch.object(task_card.ScriptService, "get_weekly_start", return_value=None)
-    @patch.object(task_card.ScriptService, "get_dungeon_map", return_value={})
+    @patch.object(ScriptService, "get_weekly_start", return_value=None)
+    @patch.object(DungeonService, "get_dungeon_map", return_value={})
     def test_daily_text_default_is_placeholder(self, *_):
         b = _make_bridge()
         self.assertEqual(b.dailyDungeonText, "选择副本")
         self.assertEqual(b.weeklyStartLabel, "选择周几")
 
     @patch.object(task_card, "is_adapted", return_value=False)
-    @patch.object(task_card.ScriptService, "get_dungeon_map", return_value={})
+    @patch.object(DungeonService, "get_dungeon_map", return_value={})
     def test_task_adapted_reflects_is_adapted(self, *_):
         b = _make_bridge()
         self.assertFalse(b.taskAdapted)
@@ -42,13 +44,13 @@ class TestTaskCard(unittest.TestCase):
             return 1
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card.ScriptService, "get_dungeon_map", return_value=_AnyMap())
+    @patch.object(DungeonService, "get_dungeon_map", return_value=_AnyMap())
     def test_daily_supported_true_when_dungeon_cfg_present(self, *_):
         b = _make_bridge()
         self.assertTrue(b.dailySupported)
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card.ScriptService, "get_dungeon_map", return_value={})
+    @patch.object(DungeonService, "get_dungeon_map", return_value={})
     def test_daily_supported_false_when_no_dungeon_cfg(self, *_):
         b = _make_bridge()
         self.assertFalse(b.dailySupported)
@@ -57,12 +59,12 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(task_card, "get_dungeon", return_value=None)
     @patch.object(task_card, "get_sequence", return_value=None)
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(task_card.ScriptService, "get_weekly_defs", return_value=[])
-    @patch.object(task_card.ScriptService, "get_dungeon_map", return_value={})
+    @patch.object(DungeonService, "get_weekly_map", return_value=[])
+    @patch.object(DungeonService, "get_dungeon_map", return_value={})
     def test_select_dungeon_persists(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
-        with patch.object(b.service, "save_ui_state") as m_save:
+        with patch.object(b.app_service, "save_ui_state") as m_save:
             b.selectDungeon("副本A", "seq1")
         self.assertEqual(b.task_card._ui_state[name]["dungeon"], "副本A")
         self.assertEqual(b.task_card._ui_state[name]["sequence"], "seq1")
@@ -87,14 +89,14 @@ class TestTaskCard(unittest.TestCase):
             def get(self, key, default=None):
                 return 1
 
-        with patch.object(task_card.ScriptService, "get_dungeon_map") as m_dm:
+        with patch.object(DungeonService, "get_dungeon_map") as m_dm:
             m_dm.return_value = _Map()
             b = _make_bridge()
         opts = b.dungeonOptions
         self.assertEqual(opts[0]["name"], "副本A")
         self.assertEqual(opts[0]["sequences"], [{"label": "难1", "value": "s1"}])
 
-    @patch.object(task_card.ScriptService, "get_dungeon_map", return_value={})
+    @patch.object(DungeonService, "get_dungeon_map", return_value={})
     def test_dungeon_options_empty_when_no_cfg(self, *_):
         b = _make_bridge()
         self.assertEqual(b.dungeonOptions, [])
@@ -116,7 +118,7 @@ class TestTaskCard(unittest.TestCase):
             "weekly_timeouts": {"1": [1]},
         }
         with (
-            patch.object(b.service, "update_script") as mock_update,
+            patch.object(b.app_service, "update_script") as mock_update,
             patch.object(b, "_reload_games") as mock_reload,
         ):
             b.configCurrent()
@@ -131,7 +133,7 @@ class TestTaskCard(unittest.TestCase):
         dlg = mock_dialog_cls.return_value
         dlg.exec.return_value = mock_qdialog.Rejected  # 取消/关闭
         with (
-            patch.object(b.service, "update_script") as mock_update,
+            patch.object(b.app_service, "update_script") as mock_update,
             patch.object(b, "_reload_games") as mock_reload,
         ):
             b.configCurrent()
