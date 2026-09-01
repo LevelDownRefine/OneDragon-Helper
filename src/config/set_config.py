@@ -1221,29 +1221,24 @@ class NTEConfig(ScriptConfig):
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] DailyTask config.yaml 必须是 dict"
         )
+        # 段名 = 模式 id，字段名由 _mode_specs 声明——与写入侧 _update_task 同源，
+        # 读写对称。段缺失按「未配置」处理（容忍未落盘），段类型非 dict 属损坏、assert。
+        mode = self._mode_specs[mode_id]
+        section = config.get(mode_id, {})
+        assert isinstance(section, dict), (
+            f"[set_config][{self.display_name}] {mode_id} 段必须是 dict"
+        )
         if mode_id == "daily_anomaly_hunter":
-            # 追猎目标：boss 名存于 config 文件 daily_anomaly_hunter 段。
-            # 该段/字段可能尚未落盘（用户在 NTE 自身 UI 启用追猎但未选 boss，
-            # 不经本工具 set_dungeon 写入）：段或字段缺失按「已识别模式、未选 boss」
-            # 处理为 None，而非断言——与读路径「容忍未配置」一致；结构性损坏（段
-            # 类型非 dict）已在下方 isinstance 断言覆盖。
-            section = config.get("daily_anomaly_hunter", {})
-            assert isinstance(section, dict), (
-                f"[set_config][{self.display_name}] daily_anomaly_hunter 段必须是 dict"
-            )
+            # 追猎目标：无 task_field，副本名即 boss 字段名（seq_fields 的唯一键）。
+            # 该字段可能尚未落盘（用户在 NTE 自身 UI 启用追猎但未选 boss，
+            # 不经本工具 set_dungeon 写入）：按「已识别模式、未选 boss」返回 None，而非断言。
             boss = section.get("追猎目标")
             return "追猎目标", boss if boss not in (None, "") else None
-        # 异象界域：副本名+序号存于 config 文件 daily_anomaly 段。
-        # daily_anomaly 段缺失按「未选副本」处理（读路径容忍未配置；段类型非 dict
-        # 的结构性损坏由下方 isinstance 断言覆盖，字段级缺失不视为损坏）。
-        section = config.get("daily_anomaly", {})
-        assert isinstance(section, dict), (
-            f"[set_config][{self.display_name}] daily_anomaly 段必须是 dict"
-        )
-        dungeon = section.get("任务类型")  # 段缺失时为 None（未选副本）
+        # 异象界域：副本名在 task_field 声明的字段，序号经 seq_fields 反查。
+        dungeon = section.get(mode["task_field"])  # 段缺失时为 None（未选副本）
         if dungeon in (None, ""):  # 值为空串同样视为未选具体副本
             return None, None
-        key = self._anomaly_seq_key_map.get(dungeon)
+        key = mode["seq_fields"].get(dungeon)
         sequence = section.get(key) if key else None
         return dungeon, sequence
 
