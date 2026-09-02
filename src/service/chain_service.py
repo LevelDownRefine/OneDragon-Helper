@@ -6,7 +6,7 @@ config.yml 的读写由 :class:`ScriptService` 拥有，本服务仅保留
 :mod:`src.service.schedule` 所有——与调度编排同处本模块。本服务不读取
 UI 状态文件；日常副本真源为子脚本 config，set_dungeon 为
 no-op 的脚本取 dungeon_list.yml 声明项。本服务
-**不再担任** GUI/CLI 的顶层门面/协调器——
+不充当 GUI/CLI 的顶层门面/协调器——
 该角色由 :class:`AppService`（组合根）承担，本类只是被其组合的一个 peer。
 
 weekly_timeouts 同步委托内部 script_service 处理，调用方不感知。

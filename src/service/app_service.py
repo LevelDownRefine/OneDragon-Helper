@@ -1,7 +1,6 @@
 """AppService：组合根（composition root），GUI/CLI 唯一服务入口。
 
-持有平级 peer 并薄委托，使各 peer 互不越界、ChainService 不再是「组装其他服务的协调器」
-——它只是被本类组合的一个链领域 peer，自身只负责链的生成/运行/校验。
+持有平级 peer 并薄委托，使各 peer 互不越界——ChainService 只是被本类组合的一个链领域 peer，自身只负责链的生成/运行/校验。
 
 peer：
 - ScriptService：单脚本配置（config.yml 读写含脚本条目增删改 + 周常起始日/超时）
@@ -97,8 +96,6 @@ class AppService:
 
     def check_weekly(self) -> dict:
         """校验 weekly_timeouts.yml 与 config.yml 脚本条目的一致性。
-
-        跨 weekly 与 config 两份配置，由组合根取 config 后交 WeeklyService 判定。
 
         Returns:
             一致性结果字典（含 status / missing_or_short / orphans）。
