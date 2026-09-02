@@ -42,7 +42,7 @@ class LaunchController(QObject):
         self._toast = toast
 
     @Slot()
-    def launchAll(self):
+    def launchAll(self, confirm: bool = True):
         """启动全部：先校验，再经 spawn_schedule_run 运行。
 
         即时与定时两条路径统一经 ``spawn_schedule_run`` 起独立控制台进程，由
@@ -50,6 +50,10 @@ class LaunchController(QObject):
         仅在于是否等待：定时等待到目标时刻，即时（target=now）不等待。关闭控制台即取消、
         GUI 退出不影响（进程独立存活）。
         本方法仅负责 UI 流程：计算启用集合、弹确认窗、解析定时/关机/静音配置。
+
+        Args:
+            confirm: 是否弹运行前确认窗（含不合法告警与调度配置回显）。GUI 打开后的
+                无人值守启动传 ``False``，直接按上次落盘的 schedule/config 启动全部。
         """
         enabled_script_names = {
             g["script_name"]
@@ -61,7 +65,7 @@ class LaunchController(QObject):
         if not enabled_script_names:
             self._toast("没有启用的脚本")
             return
-        if not self._confirm_run(enabled_script_names):
+        if confirm and not self._confirm_run(enabled_script_names):
             return
         schedule_data = self._app_service.load_schedule()
         shutdown_delay = parse_shutdown(schedule_data)

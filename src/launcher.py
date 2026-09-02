@@ -119,6 +119,9 @@ def _launch_qml():
     print("[qml] engine loaded, rootObjects =", len(engine.rootObjects()), flush=True)
     if not engine.rootObjects():
         sys.exit(1)
+    # GUI 打开即弹 60s 倒计时确认：取消则无事发生，归零/「立即启动」按上次配置启动全部。
+    # 须在进入事件循环前同步弹模态窗（QDialog.exec 自带局部事件循环）。
+    bridge.maybe_auto_launch()
     print("[qml] entering event loop", flush=True)
     sys.exit(app.exec())
 

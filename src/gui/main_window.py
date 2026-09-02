@@ -184,6 +184,20 @@ class QmlBridge(QObject):
     def launchAll(self):
         self.launch.launchAll()
 
+    def maybe_auto_launch(self) -> None:
+        """GUI 打开时弹 60s 倒计时确认；取消则无事发生，归零或点「立即启动」按上次配置启动全部。
+
+        与自动关机（shutdown_dialog）同款 UX：倒计时归零/点「立即启动」→ 启动全部，
+        取消/关窗 → 不启动。无人值守启动跳过运行前确认窗（``confirm=False``），直接按
+        已落盘的 config/schedule 启动当前启用的脚本。无启用脚本时无需弹窗。
+        """
+        if not any(self.game_list.enabled):
+            return
+        from src.gui.startup_dialog import confirm_startup
+
+        if confirm_startup(60):
+            self.launch.launchAll(confirm=False)
+
     @Slot()
     def launchScript(self):
         self.launch.launchScript()

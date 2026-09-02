@@ -216,5 +216,26 @@ class TestConfirmRunDialog(unittest.TestCase):
         self.assertEqual(saved["notify"], {"enabled": False})
 
 
+class TestLaunchAllUnattended(unittest.TestCase):
+    """launchAll(confirm=False)：跳过运行前确认窗，按上次配置直接启动全部。"""
+
+    def test_unattended_skips_confirm_and_spawns(self):
+        ctrl, service, toast = _make_controller(enabled=False, target_time=None)
+        # 无人值守：确认窗不应被弹出（不告警、不回显调度配置）。
+        ctrl._confirm_run = mock.MagicMock()
+        with mock.patch("src.gui.controllers.launch.spawn_schedule_run") as mock_spawn:
+            ctrl.launchAll(confirm=False)
+        ctrl._confirm_run.assert_not_called()
+        # 仍按上次配置经 spawn_schedule_run 启动（即时、无 special 参数）。
+        mock_spawn.assert_called_once()
+        args = mock_spawn.call_args
+        self.assertEqual(args.args[0], {"demo"})
+        self.assertEqual(args.args[1], "now")
+        self.assertFalse(args.kwargs["mute"])
+        self.assertIsNone(args.kwargs["shutdown_delay"])
+        toast.assert_called_once()
+        self.assertIn("启动全部", toast.call_args[0][0])
+
+
 if __name__ == "__main__":
     unittest.main()
