@@ -1,8 +1,8 @@
 """邮件通知：消费 monitor.parse_logs 产出的 report/entries/notify，经 QQ SMTP 发送运行汇总。
 
 默认关闭：未配置 ``notify`` 段、``enabled`` 非 true、或 email/password 缺失时直接跳过。
-仅在有失败脚本时发送（``notify`` 列表为空即「本次无报错」，不发），沿用旧
-notify_mail.yml 的「仅失败才通知」语义。QQ 邮箱约定——收发同号（自己发给自己）。
+邮件在链运行结束后始终发送（含全成功）：有报错时主题标注『脚本运行报错:<脚本名>』，
+全成功时标注『脚本运行汇总』。QQ 邮箱约定——收发同号（自己发给自己）。
 """
 
 import logging
@@ -18,15 +18,15 @@ _SMTP_HOST = "smtp.qq.com"
 _SMTP_PORT = 465
 # socket 超时：防止 SMTP 连接挂起时脚本无限阻塞、被 runner 按 run_timeout 强杀
 _SMTP_TIMEOUT_SECONDS = 10
-_DEFAULT_SUBJECT_PREFIX = "[OneDragon-Helper] 脚本运行报错: "
+_SUBJECT_PREFIX = "[OneDragon-Helper] "
 
 
 def send_mail(result: dict, *, smtp_config: dict | None = None) -> None:
-    """发送运行汇总邮件（默认关闭，且仅失败时发）。
+    """发送运行汇总邮件（默认关闭；开启后无论成败均发送）。
 
     Args:
         result: ``monitor.parse_logs`` 的返回值（含 ``report`` / ``entries`` / ``notify``）。
-        smtp_config: ``config.yml`` 的 ``notify`` 段；需 ``enabled=true`` 且
+        smtp_config: ``schedule.yml`` 的 ``notify`` 段；需 ``enabled=true`` 且
             ``email``/``password`` 齐全才发送，否则跳过（默认关闭）。
     """
     if not smtp_config or not smtp_config.get("enabled", False):
@@ -36,12 +36,13 @@ def send_mail(result: dict, *, smtp_config: dict | None = None) -> None:
     if not email or not password:
         logger.warning("[mail] 邮件未启用或 email/password 缺失，跳过: %s", smtp_config)
         return
-    # 仅失败才发：notify 为空表示本次无报错脚本，无需通知。
+    # 始终发送汇总邮件：无论成败均回报本次运行结果。
+    # 有报错时主题带报错脚本名，全成功时标注『脚本运行汇总』。
     notify_list = result.get("notify") or []
-    if not notify_list:
-        logger.info("[mail] 无报错脚本，无需发送邮件")
-        return
-    subject = _DEFAULT_SUBJECT_PREFIX + "、".join(notify_list)
+    if notify_list:
+        subject = f"{_SUBJECT_PREFIX}脚本运行报错: {'、'.join(notify_list)}"
+    else:
+        subject = f"{_SUBJECT_PREFIX}脚本运行汇总"
     body = _build_body(result)
     _send(email, password, email, email, subject, body)
 
