@@ -24,149 +24,131 @@ from src.utils_sub_config import get_script_name
 from src.utils_yaml import dump_yaml_file, load_yaml
 
 
+def _parse_content(parser, content: str) -> dict:
+    """把 content 当作日志正文走 parser.parse()，返回解析结果（绕过真实日志文件读写）。
+
+    Args:
+        parser: 各 *LogParser 实例。
+        content: 充当日志正文的文本。
+
+    Returns:
+        parse() 的解析结果 dict。
+    """
+    tmp = tempfile.mkdtemp()
+    log_file = Path(tmp) / "test.log"
+    log_file.write_text("", encoding="utf-8")
+    with (
+        mock.patch.object(type(parser), "get_log_path", return_value=log_file),
+        mock.patch.object(type(parser), "_read_file", return_value=content),
+    ):
+        return parser.parse()
+
+
 class TestLogParser(unittest.TestCase):
-    def test_parse_ok_ef_success(self):
+    def test_ok_ef_daily_done_is_success(self):
+        """终末地：成功任务栏含 ⭐日常奖励 → 每日做完 → SUCCESS。"""
         parser = OkEfLogParser()
-        log_content = """日常任务执行情况汇总 - 2026-07-19 21:08:34
-==================================================
-执行状态: 完成
-执行轮数: 1"""
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
+        result = _parse_content(parser, "成功任务:\n  ⭐日常奖励")
+        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
+        self.assertTrue(result["daily_done"])
 
-    def test_parse_ok_ef_failed(self):
+    def test_ok_ef_daily_missing_is_failed(self):
+        """终末地：整体『执行状态: 完成』但日常奖励落在失败任务栏 → 仍判 FAILED。"""
         parser = OkEfLogParser()
-        log_content = """日常任务执行情况汇总 - 2026-07-19 21:08:34
-==================================================
-执行状态: 异常结束"""
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
+        result = _parse_content(parser, "执行状态: 完成\n失败任务:\n  ⭐日常奖励")
+        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
+        self.assertFalse(result["daily_done"])
 
-    def test_parse_ok_ef_exception_message(self):
-        parser = OkEfLogParser()
-        log_content = """日常任务执行情况汇总
-异常信息: xxx"""
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
-
-    def test_parse_ok_ww_success(self):
+    def test_ok_ww_daily_done_is_success(self):
+        """鸣潮：命中每日完成标记 → SUCCESS。"""
         parser = OkWwLogParser()
-        log_content = "2026-07-19 14:15:01,484 INFO TaskExecutor TaskExecutor:Successfully Executed Task"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
+        result = _parse_content(parser, "INFO claim daily reward via  coordinate")
+        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
+        self.assertTrue(result["daily_done"])
 
-    def test_parse_ok_ww_task_completed(self):
-        parser = OkWwLogParser()
-        log_content = (
-            "2026-07-19 14:15:01,481 INFO TaskExecutor DailyTask:Task completed"
-        )
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
+    def test_ok_ww_completed_but_daily_missing_is_failed(self):
+        """鸣潮：脚本自身报『Successfully Executed Task』但每日没做完 → FAILED。
 
-    def test_parse_ok_ww_failed(self):
-        parser = OkWwLogParser()
-        log_content = "ERROR: Something went wrong"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
-
-    def test_parse_m7a_success(self):
-        parser = M7ALogParser()
-        log_content = """2026-07-19 15:24:49,204 | INFO | 游戏终止：StarRail
-------------------------------------------------------- 完成 --------------------------------------------------------
-2026-07-19 15:24:50,234 | ERROR | 发生错误 [WinError 233]"""
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
-
-    def test_parse_m7a_failed(self):
-        parser = M7ALogParser()
-        log_content = """ERROR: 任务执行失败
-ERROR: 另一个错误"""
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
-
-    def test_parse_m7a_no_game_terminate(self):
-        parser = M7ALogParser()
-        log_content = "INFO: 开始执行任务"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
-
-    def test_parse_m7a_ignores_errors_after_terminate(self):
-        """游戏终止后的收尾报错（WinError 233 + 截图失败）属良性，应忽略 → SUCCESS。
-
-        对应真实场景：游戏正常跑完后关闭，助手收尾步骤碰不到已关闭的窗口而产生
-        多个 ERROR，但这些不应把整日判为失败。注意报错位于「游戏终止」之后。
+        本次判据变更的核心：成败只看每日是否做完，不再看脚本自身执行状态。
         """
-        parser = M7ALogParser()
-        log_content = """2026-08-02 05:24:33,436 | INFO | 切换到：星际和平指南-生存索引
-游戏终止：StarRail
-------------------------------------------------------- 完成 --------------------------------------------------------
-2026-08-02 05:31:23,466 | ERROR | 发生错误 [WinError 233] 管道的另一端上无任何进程。
-2026-08-02 05:31:23,467 | ERROR | 截图失败：没有找到游戏窗口"""
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
+        parser = OkWwLogParser()
+        result = _parse_content(parser, "INFO TaskExecutor:Successfully Executed Task")
+        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
+        self.assertFalse(result["daily_done"])
 
-    def test_parse_m7a_fails_on_errors_before_terminate(self):
-        """游戏终止之前确有多个真实错误（如界面无法识别）时仍应判失败。"""
+    def test_m7a_daily_done_is_success(self):
+        """崩铁：每日实训已完成 → SUCCESS（不再按终止前报错条数阈值判定）。"""
         parser = M7ALogParser()
-        log_content = """2026-07-30 06:08:43,639 | WARNING | 未识别出任何界面
-2026-07-30 06:09:09,076 | ERROR | 当前界面：未知
-2026-07-30 06:09:10,078 | ERROR | 获取当前界面超时
-游戏终止：StarRail"""
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
+        result = _parse_content(parser, "游戏终止：StarRail\n每日实训已完成")
+        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
+        self.assertTrue(result["daily_done"])
+
+    def test_m7a_clean_but_daily_missing_is_failed(self):
+        """崩铁：游戏正常终止、全程无报错，但每日实训没做完 → FAILED。"""
+        parser = M7ALogParser()
+        result = _parse_content(parser, "游戏终止：StarRail")
+        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
+        self.assertFalse(result["daily_done"])
 
     def test_parse_log_rejects_unsupported(self):
         """不支持的脚本在 parse_logs 入口已过滤，进入 parse_log 即不可能 → 断言失败。"""
         with self.assertRaises(AssertionError):
             parse_log("MAA")
 
-    def test_parse_ok_nte_success(self):
+    def test_ok_nte_daily_done_is_success(self):
+        """异环：命中每日完成标记（info_set failed []）→ SUCCESS。"""
         parser = OkNteLogParser()
-        log_content = "2026-07-19 14:15:01,484 INFO TaskExecutor TaskExecutor:Successfully Executed Task"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
+        result = _parse_content(parser, "INFO info_set failed []")
+        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
+        self.assertTrue(result["daily_done"])
 
-    def test_parse_ok_nte_task_completed(self):
+    def test_ok_nte_completed_but_daily_missing_is_failed(self):
+        """异环：『Task completed』但每日没做完 → FAILED。"""
         parser = OkNteLogParser()
-        log_content = (
-            "2026-07-19 14:15:01,481 INFO TaskExecutor DailyTask:Task completed"
+        result = _parse_content(parser, "INFO TaskExecutor DailyTask:Task completed")
+        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
+        self.assertFalse(result["daily_done"])
+
+    def test_bgi_daily_claimed_is_success(self):
+        """原神（BGI）：今日奖励已领取 → SUCCESS。"""
+        parser = BGILogParser()
+        result = _parse_content(parser, "今日奖励已领取\n一条龙和配置组任务结束")
+        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
+        self.assertTrue(result["daily_done"])
+
+    def test_bgi_unclaimed_is_failed(self):
+        """原神：每日奖励未领取 → 每日没做完 → FAILED。"""
+        parser = BGILogParser()
+        result = _parse_content(
+            parser, '检查每日奖励结果："未领取"，请手动检查！\n一条龙和配置组任务结束'
         )
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
+        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
+        self.assertFalse(result["daily_done"])
 
-    def test_parse_ok_nte_failed(self):
-        parser = OkNteLogParser()
-        log_content = "ERROR: Something went wrong"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
-
-    def test_parse_bgi_success(self):
-        parser = BGILogParser()
-        log_content = "[13:56:13.291] [INF] BetterGenshinImpact.ViewModel.Pages.OneDragonFlowViewModel\n一条龙和配置组任务结束"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
-
-    def test_parse_bgi_failed_unclaimed(self):
-        parser = BGILogParser()
-        log_content = '[13:56:11.603] [WRN] BetterGenshinImpact.GameTask.Common.TaskControl\n检查每日奖励结果："未领取"，请手动检查！\n[13:56:13.291] [INF] BetterGenshinImpact.ViewModel.Pages.OneDragonFlowViewModel\n一条龙和配置组任务结束'
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
-
-    def test_parse_bgi_failed_error(self):
-        parser = BGILogParser()
-        log_content = "[ERR] 任务执行失败"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
-
-    def test_parse_bgi_failed_exception(self):
-        parser = BGILogParser()
-        log_content = "异常: 未知错误"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
-
-    def test_parse_zzz_success(self):
+    def test_zzz_daily_claimed_is_success(self):
+        """绝区零：日常奖励领取成功 → SUCCESS。"""
         parser = ZZZLogParser()
-        log_content = "[15:06:58.724] [operation.py 675] [INFO]: 指令[ 一条龙 ] 执行成功 返回状态 全部结束"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
-
-    def test_parse_zzz_success_app_group(self):
-        parser = ZZZLogParser()
-        log_content = "[15:06:58.722] [operation.py 675] [INFO]: 指令[ 执行应用组 one_dragon ] 执行成功 返回状态 全部结束"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.SUCCESS)
-
-    def test_parse_zzz_failed_error(self):
-        parser = ZZZLogParser()
-        log_content = "[ERROR] 任务执行失败"
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
-
-    def test_parse_zzz_failed_no_success(self):
-        parser = ZZZLogParser()
-        log_content = (
-            "[20:08:32.067] [one_dragon_context.py 471] [INFO]: 开始加载实例配置 1"
+        result = _parse_content(
+            parser,
+            "[INFO]: 指令[ 一条龙 ] 执行成功 返回状态 全部结束\n日常奖励领取成功",
         )
-        self.assertEqual(parser.parse_content(log_content), ScriptLogStatus.FAILED)
+        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
+        self.assertTrue(result["daily_done"])
+
+    def test_zzz_completed_but_daily_missing_is_failed(self):
+        """绝区零：一条龙执行成功但日常奖励没领到 → FAILED。"""
+        parser = ZZZLogParser()
+        result = _parse_content(
+            parser, "[INFO]: 指令[ 一条龙 ] 执行成功 返回状态 全部结束"
+        )
+        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
+        self.assertFalse(result["daily_done"])
+
+    def test_result_has_no_extra_key(self):
+        """extra 已全链路移除：解析结果不再含该键。"""
+        parser = OkWwLogParser()
+        result = _parse_content(parser, "INFO claim daily reward via  coordinate")
+        self.assertNotIn("extra", result)
 
 
 class TestCollectLogSetup(unittest.TestCase):
@@ -484,7 +466,8 @@ class TestParseLogsRerunList(unittest.TestCase):
         try:
             p.get_log_path = lambda sp="": Path(path)  # type: ignore[method-assign]
             res = p.parse("")
-            self.assertEqual(res["status"], ScriptLogStatus.SUCCESS)
+            # 成败判据已改为只看每日：脚本整体成功但每日没做完 → FAILED。
+            self.assertEqual(res["status"], ScriptLogStatus.FAILED)
             self.assertFalse(res["daily_done"])
         finally:
             os.unlink(path)
@@ -880,9 +863,9 @@ class TestFourFieldExtraction(unittest.TestCase):
         self.assertFalse(p.parse_daily("启动但啥也没发生"))
 
     def test_zzz_daily_true_only_on_reward_claimed(self):
-        # ZZZ「领取每日」标志为「日常奖励领取成功」，与整轮「一条龙 执行成功」
-        # （属 success_markers / 整体成败判定）区分：仅一条龙成功、无领取标记
-        # 不算当日做完，避免把未实际领取当成已完成。
+        # ZZZ「领取每日」标志为「日常奖励领取成功」，与整轮「一条龙 执行成功」区分：
+        # 仅一条龙成功、无领取标记不算当日做完（成败判据即每日），
+        # 避免把未实际领取当成已完成。
         p = ZZZLogParser()
         self.assertTrue(
             p.parse_daily(
@@ -915,7 +898,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         self.assertFalse(p.parse_daily('检查每日奖励结果："未领取"，请手动检查！'))
 
     def test_parse_returns_all_four_fields(self):
-        """parse() 应在保留旧键（status/log_path/log_content）的同时并入四类信息。"""
+        """parse() 应在保留旧键（status/log_path/log_content）的同时并入三类信息。"""
         p = OkWwLogParser()
         with tempfile.NamedTemporaryFile(
             "w", suffix=".log", delete=False, encoding="utf-8"
@@ -940,7 +923,6 @@ class TestFourFieldExtraction(unittest.TestCase):
                 "stamina",
                 "daily_done",
                 "errors",
-                "extra",
             ):
                 self.assertIn(key, result)
         finally:
@@ -992,8 +974,9 @@ class TestFourFieldExtraction(unittest.TestCase):
 class TestScriptNameIdentifier(unittest.TestCase):
     """验证各 Parser 以脚本唯一标识 script_name 定位（exe=进程名 / python=display_name）。
 
-    这同时修复此前的 bug：config.yml 的崩铁名为「崩坏：星穹铁道」、script_path 指向
-    March7th Assistant.exe，其脚本标识为进程名 March7th-Assistant，必须能命中 M7ALogParser。
+    这同时修复此前的 bug：崩铁 display_name 为「崩坏：星穹铁道」（全称，与展示用的
+    「崩铁」无关）、script_path 指向 March7th Assistant.exe，其脚本标识仍为进程名
+    March7th-Assistant，必须能命中 M7ALogParser——故按 display_name 查找必然落空。
     """
 
     def test_parse_log_dispatches_by_script_name(self):
@@ -1025,23 +1008,8 @@ class TestScriptNameIdentifier(unittest.TestCase):
         self.assertIn("ok-ww", supported)
 
 
-class TestExtraAndReportTable(unittest.TestCase):
-    """验证额外信息（原神浓缩树脂）与汇总表格对齐辅助函数。"""
-
-    def test_bgi_extra_records_condensed_when_nonzero(self):
-        p = BGILogParser()
-        self.assertEqual(p.parse_extra("原粹树脂：22，浓缩树脂：3\n"), "浓缩树脂: 3")
-
-    def test_bgi_extra_none_when_condensed_zero(self):
-        p = BGILogParser()
-        self.assertIsNone(p.parse_extra("原粹树脂：22，浓缩树脂：0\n"))
-
-    def test_bgi_extra_none_when_no_marker(self):
-        p = BGILogParser()
-        self.assertIsNone(p.parse_extra("没有任何树脂标记"))
-
-    def test_base_extra_default_none(self):
-        self.assertIsNone(OkWwLogParser().parse_extra("whatever"))
+class TestReportTableHelpers(unittest.TestCase):
+    """验证汇总表格对齐辅助函数。"""
 
     def test_cell_width_counts_cjk_as_two(self):
         self.assertEqual(collect_log._cell_width("中"), 2)
@@ -1154,19 +1122,15 @@ class TestLogAnalysisConfigDriven(unittest.TestCase):
         oww = OkWwLogParser()
         self.assertEqual(oww.log_pattern, "ok-script.log")
         self.assertEqual(oww.error_markers, ("ERROR",))
-        # 双空格领奖标记必须原样保留。
+        # 双空格领奖标记必须原样保留（成败判据即此标记）。
         self.assertEqual(
             oww.daily_success_marker,
             ("claim daily reward via  coordinate", "current daily progress 180"),
         )
-        self.assertEqual(
-            oww.success_markers, ("Successfully Executed Task", "Task completed")
-        )
 
         bgi = BGILogParser()
         self.assertEqual(bgi.error_markers, ("[ERR]", "异常:", "异常："))
-        self.assertEqual(bgi.success_markers, ("一条龙和配置组任务结束",))
-        self.assertEqual(bgi.fail_markers, ("未领取",))
+        self.assertEqual(bgi.daily_success_marker, ("今日奖励已领取",))
 
     def test_ok_ef_has_no_error_markers(self):
         """终末地靠「- 」缩进明细收集报错，配置不含 error_markers → 应为空元组。"""

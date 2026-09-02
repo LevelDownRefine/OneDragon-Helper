@@ -125,10 +125,6 @@ class BaseLogParser:
     daily_success_marker: tuple[str, ...] = ()
     # 终止横幅标记（崩铁用于截断「游戏终止」之后的良性报错），命中任一取其最后位置。
     exit_markers: tuple[str, ...] = ()
-    # parse_content 成功 / 失败判定词（success 命中即 SUCCESS；部分游戏还有 fail 排除词）。
-    # 默认空，由配置注入；各 Parser 的 parse_content 读取之。
-    success_markers: tuple[str, ...] = ()
-    fail_markers: tuple[str, ...] = ()
 
     def __init__(self) -> None:
         self._apply_keywords()
@@ -142,8 +138,6 @@ class BaseLogParser:
         self.error_noise = tuple(kw.get("error_noise", ()))
         self.daily_success_marker = tuple(kw.get("daily_success_marker", ()))
         self.exit_markers = tuple(kw.get("exit_markers", ()))
-        self.success_markers = tuple(kw.get("success_markers", ()))
-        self.fail_markers = tuple(kw.get("fail_markers", ()))
 
     def get_log_path(self, script_path: str) -> Path | None:
         log_dir = self._get_log_dir(script_path)
@@ -157,9 +151,6 @@ class BaseLogParser:
         return None
 
     def _get_log_dir(self, script_path: str) -> Path:
-        raise NotImplementedError
-
-    def parse_content(self, content: str) -> str:
         raise NotImplementedError
 
     def _read_file(self, path: Path) -> str:
@@ -212,10 +203,6 @@ class BaseLogParser:
             return True
         return any(m in content for m in self.daily_success_marker)
 
-    def parse_extra(self, content: str) -> str | None:
-        """额外信息（游戏特定）。默认无；子类（如原神浓缩树脂）按需覆写。"""
-        return None
-
     def _error_body(self, content: str) -> str:
         """报错扫描的作用区间。默认整段；子类（如崩铁）可截断到「游戏终止」之前。"""
         return content
@@ -245,19 +232,17 @@ class BaseLogParser:
             }
 
         content = self._read_file(log_path)
-        status = self.parse_content(content)
-        # daily_done 直接由 parse_daily 定稿：命中成功标记=True，否则=False（无标记即失败），
-        # parse_daily 恒返 bool，无需再按 status 兜底。
+        # 成败唯一判据=当日每日是否做完（与重跑判据同口径）：跑完流程但日常没做完仍算
+        # 失败，避免漏重跑。parse_daily 恒返 bool，无需再按脚本自身状态兜底。
         daily_done = self.parse_daily(content)
         return {
-            "status": status,
+            "status": ScriptLogStatus.SUCCESS if daily_done else ScriptLogStatus.FAILED,
             "log_path": str(log_path),
             "log_content": content[-2000:] if len(content) > 2000 else content,
-            # 四类补充信息，向后兼容：旧消费者只用 status/log_path/log_content。
+            # 三类补充信息，向后兼容：旧消费者只用 status/log_path/log_content。
             "stamina": self.parse_stamina(content),
             "daily_done": daily_done,
             "errors": self.collect_error_lines(content),
-            "extra": self.parse_extra(content),
         }
 
 
@@ -268,11 +253,6 @@ class OkWwLogParser(BaseLogParser):
         ok_ww_dir = Path(script_path).parent
         return ok_ww_dir / "data" / "apps" / "ok-ww" / "working" / "logs"
 
-    def parse_content(self, content: str) -> str:
-        if any(m in content for m in self.success_markers):
-            return ScriptLogStatus.SUCCESS
-        return ScriptLogStatus.FAILED
-
 
 class OkNteLogParser(BaseLogParser):
     script_name = "ok-nte"
@@ -281,22 +261,12 @@ class OkNteLogParser(BaseLogParser):
         ok_nte_dir = Path(script_path).parent
         return ok_nte_dir / "data" / "apps" / "ok-nte" / "working" / "logs"
 
-    def parse_content(self, content: str) -> str:
-        if any(m in content for m in self.success_markers):
-            return ScriptLogStatus.SUCCESS
-        return ScriptLogStatus.FAILED
-
 
 class OkEfLogParser(BaseLogParser):
     script_name = "ok-ef"
 
     def _get_log_dir(self, script_path: str) -> Path:
         return Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
-
-    def parse_content(self, content: str) -> str:
-        if any(m in content for m in self.success_markers):
-            return ScriptLogStatus.SUCCESS
-        return ScriptLogStatus.FAILED
 
     def collect_error_lines(self, content: str, limit: int = 10) -> list[str]:
         # 报告中的失败明细以缩进的「- 」列表项给出，直接收集这些行。
@@ -350,20 +320,6 @@ class M7ALogParser(BaseLogParser):
         m7a_dir = Path(script_path).parent
         return m7a_dir / "logs"
 
-    def parse_content(self, content: str) -> str:
-        # 游戏正常终止后，助手还会做收尾善后（如「获取培养目标」），
-        # 此时游戏窗口已关闭，会固定产生 WinError 233 / 截图失败 等报错。
-        # 这些「终止后」的报错属良性，不应计入当日成败，只统计终止之前的报错。
-        term_idx = self._term_index(content)
-        if term_idx < 0:
-            # 没有任何终止横幅：游戏未正常结束（很可能超时 / 被强杀），判失败。
-            return ScriptLogStatus.FAILED
-        body = content[:term_idx]
-        # 终止横幅之前每出现一个 error_markers 计一次；阈值沿用原判定（<=1 即成功）。
-        if sum(body.count(m) for m in self.error_markers) <= 1:
-            return ScriptLogStatus.SUCCESS
-        return ScriptLogStatus.FAILED
-
     def _error_body(self, content: str) -> str:
         # 游戏正常终止后的收尾报错属良性，报错收集同样截断到终止横幅之前。
         term_idx = self._term_index(content)
@@ -379,13 +335,6 @@ class ZZZLogParser(BaseLogParser):
         zzz_dir = Path(script_path).parent
         return zzz_dir / ".log"
 
-    def parse_content(self, content: str) -> str:
-        if any(m in content for m in self.success_markers):
-            return ScriptLogStatus.SUCCESS
-        if any(m in content for m in self.error_markers):
-            return ScriptLogStatus.FAILED
-        return ScriptLogStatus.FAILED
-
 
 class BGILogParser(BaseLogParser):
     script_name = "BetterGI"
@@ -393,25 +342,6 @@ class BGILogParser(BaseLogParser):
     def _get_log_dir(self, script_path: str) -> Path:
         bgi_dir = Path(script_path).parent
         return bgi_dir / "log"
-
-    def parse_content(self, content: str) -> str:
-        if any(m in content for m in self.success_markers):
-            if any(f in content for f in self.fail_markers):
-                return ScriptLogStatus.FAILED
-            return ScriptLogStatus.SUCCESS
-        if any(m in content for m in self.error_markers):
-            return ScriptLogStatus.FAILED
-        return ScriptLogStatus.FAILED
-
-    def parse_extra(self, content: str) -> str | None:
-        # 原神特有：浓缩树脂非 0 时记录到额外信息（还有多少可换体力的储备）。
-        m = re.findall(r"原粹树脂：(\d+)，浓缩树脂：(\d+)", content)
-        if not m:
-            return None
-        conc = int(m[-1][1])
-        if conc == 0:
-            return None
-        return f"浓缩树脂: {conc}"
 
 
 _PARSERS = [
@@ -428,7 +358,7 @@ def parse_log(script_name: str, script_path: str = "") -> dict:
     """解析单个脚本当日日志：按 script_name 找到对应 Parser 并解析，返回统一结构。
 
     返回 dict 恒含 status / log_path / log_content / stamina / daily_done /
-    errors / extra 七键；无日志（NO_LOG）为缺省值，使消费方直接 d[key]。
+    errors 六键；无日志（NO_LOG）为缺省值，使消费方直接 d[key]。
     script_name 必为受支持脚本（parse_logs 入口已过滤），不支持即不可能。
     """
     # 不支持的脚本在 parse_logs 入口已过滤，到此处即不可能。
@@ -446,7 +376,6 @@ def parse_log(script_name: str, script_path: str = "") -> dict:
                 result.setdefault("stamina", None)
                 result.setdefault("daily_done", False)
                 result.setdefault("errors", [])
-                result.setdefault("extra", None)
             return result
 
 
@@ -530,8 +459,8 @@ def _build_summary_report(
     entries: list[dict], rerun_list: list[str], notify_list: list[str], do_log: bool
 ) -> str:
     """汇总表格文本：标题 / 表头 / 各脚本行 / 统计。report_lines 同时供邮件整表通知复用。"""
-    headers = ["脚本", "状态", "剩余体力", "每日", "报错", "额外信息"]
-    widths = [16, 8, 10, 6, 6, 24]
+    headers = ["脚本", "每日状态", "剩余体力", "报错"]
+    widths = [16, 10, 10, 6]
     total = sum(widths)
     report_lines: list[str] = []
 
@@ -565,8 +494,6 @@ def _build_summary_report(
             else result["status"]
         )
         stamina = result["stamina"]
-        daily = result["daily_done"]
-        extra = result["extra"]
         # 所有展示状态均已纳入 status_cn；未覆盖即属不可能，直接断言。
         assert display_status in status_cn, f"未覆盖的展示状态: {display_status}"
         emit(
@@ -575,9 +502,7 @@ def _build_summary_report(
                     entry["display_name"],
                     status_cn[display_status],
                     str(stamina) if stamina is not None else "—",
-                    "是" if daily else "否",
                     str(len(errors)),
-                    str(extra) if extra is not None else "—",
                 ],
                 widths,
             )
