@@ -21,7 +21,7 @@ import sys
 import tempfile
 import unittest
 
-from src.config.subscript import get_script_name
+from src.utils_sub_config import get_script_name
 from src.utils_yaml import load_yaml
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

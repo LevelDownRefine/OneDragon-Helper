@@ -14,11 +14,11 @@ import logging
 import os
 from datetime import datetime, timedelta
 
-from src.config.subscript import DEFAULT_RUN_TIMEOUT, get_script_name
 from src.utils import (
     get_weekly_start_yml_path_under_root,
     get_weekly_timeouts_yml_path_under_root,
 )
+from src.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
 from src.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)

@@ -9,7 +9,6 @@ import subprocess
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
 from src.utils_runner import (
@@ -28,6 +27,7 @@ from src.utils_runner import (
     parse_timed_run,
     spawn_schedule_run,
 )
+from src.utils_sub_config import get_script_name, resolve_script_path
 from src.utils_weekly import next_target_datetime
 
 

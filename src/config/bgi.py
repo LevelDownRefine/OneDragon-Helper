@@ -2,16 +2,16 @@ import logging
 import os
 import shutil
 
-from src.config.subscript import (
-    get_process_name,
-    resolve_script_path,
-)
 from src.utils import (
     get_our_bgi_user_dir,
     require_config_yml_path,
     safe_path_join,
 )
 from src.utils_logger import setup_logging
+from src.utils_sub_config import (
+    get_process_name,
+    resolve_script_path,
+)
 from src.utils_yaml import load_yaml
 
 logger = logging.getLogger(__name__)

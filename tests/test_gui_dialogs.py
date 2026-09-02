@@ -42,7 +42,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         cfg = self._make_config_file()
         with (
             patch(
-                "src.service.script_service.require_config_yml_path",
+                "src.utils_config.require_config_yml_path",
                 return_value=cfg,
             ),
             patch(
@@ -60,7 +60,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         cfg = self._make_config_file()
         with (
             patch(
-                "src.service.script_service.require_config_yml_path",
+                "src.utils_config.require_config_yml_path",
                 return_value=cfg,
             ),
             patch(
@@ -76,7 +76,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         """config.yml 缺失属内部错误：构造对话框必须 assert，而非静默返回空数据"""
         with (
             patch(
-                "src.service.script_service.require_config_yml_path",
+                "src.utils_config.require_config_yml_path",
                 side_effect=AssertionError("config.yml 缺失"),
             ),
             self.assertRaises(AssertionError),
@@ -106,7 +106,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
             ]
         )
         with patch(
-            "src.service.script_service.require_config_yml_path",
+            "src.utils_config.require_config_yml_path",
             return_value=cfg,
         ):
             dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
@@ -124,7 +124,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
             ]
         )
         with patch(
-            "src.service.script_service.require_config_yml_path",
+            "src.utils_config.require_config_yml_path",
             return_value=cfg,
         ):
             dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
@@ -143,7 +143,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
         )
         with (
             patch(
-                "src.service.script_service.require_config_yml_path",
+                "src.utils_config.require_config_yml_path",
                 return_value=cfg,
             ),
             patch("src.gui.dialogs.QMessageBox.warning"),
@@ -157,7 +157,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
 
 
 class _FakeService:
-    """极简 ScriptService 替身：供弹窗构造时读取脚本数据，避免依赖真实 config。"""
+    """极简 AppService 替身：供弹窗构造时读取脚本数据，避免依赖真实 config。"""
 
     def __init__(
         self, script_type, script_path, display_name="日志分析", weekly_start=None
@@ -218,7 +218,7 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
         self.assertEqual(dlg.weekly_start_combo.currentIndex(), 3)
 
     def test_save_writes_weekly_start(self):
-        """保存时把周几起（周三起）经 ScriptService 持久化，并暂存到 pending_changes
+        """保存时把周几起（周三起）经 AppService 持久化，并暂存到 pending_changes
 
         游戏侧原生 config 的同步不在 save_data 内进行（那时 config.yml 尚未落盘新路径，
         目录解析会指向旧目录）；由调用方落盘后触发，见 game_list.configCurrent。
@@ -234,7 +234,7 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
         self.assertEqual(dlg.pending_changes["weekly_start_day"], 3)
 
     def test_save_clears_weekly_start_when_unset(self):
-        """选择「不设置」时经 ScriptService 清除（传 None），pending_changes 记为 None"""
+        """选择「不设置」时经 AppService 清除（传 None），pending_changes 记为 None"""
         dlg = self._make_dialog("run", "鸣潮", 5, supported=True)
         dlg.weekly_start_combo.setCurrentIndex(0)
         with (

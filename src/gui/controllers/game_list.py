@@ -19,8 +19,8 @@ from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWidgets import QMessageBox
 
 from src.config.set_config import set_weekly_start_day
-from src.config.subscript import get_script_name
 from src.gui.icons import get_script_icon
+from src.utils_sub_config import get_script_name
 
 # 游戏图标停用底色（渐变兜底水印等场景复用）
 C_GAME_DIM = "#161C28"

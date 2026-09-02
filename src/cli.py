@@ -18,10 +18,10 @@ import tomllib
 import warnings
 
 from src.config.set_config import supports_weekly
-from src.config.subscript import get_script_name
 from src.service.app_service import AppService
-from src.service.script_service import ScriptService
+from src.utils_config import get_script
 from src.utils_shutdown import shutdown_sys
+from src.utils_sub_config import get_script_name
 
 logger = logging.getLogger(__name__)
 
@@ -267,7 +267,7 @@ def _run_get_script(script_name: str, out_path: str | None) -> int:
 
     返回退出码 0=找到 / 1=不存在。
     """
-    script = ScriptService().get_script(script_name)
+    script = get_script(script_name)
     if script is None:
         _emit_json(
             "get_script",

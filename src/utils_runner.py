@@ -21,8 +21,8 @@ from pathlib import PureWindowsPath
 
 import psutil
 
-from src.config.subscript import resolve_script_path
 from src.utils import get_root_dir
+from src.utils_sub_config import resolve_script_path
 
 logger = logging.getLogger(__name__)
 

@@ -143,7 +143,7 @@ class TestWeeklyInputs(UtilsWeeklyTestBase):
 class TestCheckWeekly(UtilsWeeklyTestBase):
     """check_weekly：weekly_timeouts.yml 与传入 config 脚本条目的一致性。
 
-    config 由调用方（组合根 AppService）读入后传入，本服务不反向依赖 ScriptService，
+    config 由调用方（组合根 AppService）读入后传入，本模块不反向依赖 utils_config，
     故此处直接构造 config，不读盘。
     """
 
@@ -179,7 +179,7 @@ class TestCheckWeekly(UtilsWeeklyTestBase):
 
 
 class TestDeleteWeekly(UtilsWeeklyTestBase):
-    """delete_weekly：仅清理 weekly_timeouts.yml 孤儿（总 config 移除归 ScriptService）。"""
+    """delete_weekly：仅清理 weekly_timeouts.yml 孤儿（总 config 移除归 AppService / utils_config）。"""
 
     def test_delete_weekly_cleans_orphan(self):
         """删除后 weekly_timeouts.yml 中该脚本的孤儿条目被移除。"""

@@ -11,9 +11,9 @@
 | controllers/background | 背景视频/图片/渐变、壁纸、背景路径解析 | config / subscript |
 | controllers/task_card | 日常副本 / 周常周几，数据 + 选择持久化 | config / service / utils_weekly |
 | controllers/launch | 启动胶囊，启动当前 / 启动全部 | game_list / task_card / service |
-| controllers/links | 悬浮条：主页/B站/GitHub/目录/设置/启动游戏 | config / subscript / utils |
+| controllers/links | 悬浮条：主页/B站/GitHub/目录/设置/启动游戏 | config / utils_sub_config / utils |
 | controllers/window | 窗口控制：最小化/关闭/拖动 | 无 |
-| icons | 脚本 exe 图标 + QML 矢量图标提供器 | config.subscript |
+| icons | 脚本 exe 图标 + QML 矢量图标提供器 | utils_sub_config |
 | dialogs | 单脚本配置弹窗 + 确认回调 | config / service |
 
 依赖单向：main_window 组合各控制器，控制器间构造注入；QmlBridge 是 QML 唯一门面。qml/ 组件经 Loader 相对路径加载，文件名与 controllers/ 同名。

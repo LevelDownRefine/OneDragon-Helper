@@ -10,7 +10,6 @@ from unittest import mock
 
 import src.log.monitor as collect_log
 import src.utils_logger
-from src.config.subscript import get_script_name
 from src.log import (
     BGILogParser,
     M7ALogParser,
@@ -21,6 +20,7 @@ from src.log import (
     ZZZLogParser,
     parse_log,
 )
+from src.utils_sub_config import get_script_name
 from src.utils_yaml import dump_yaml_file, load_yaml
 
 

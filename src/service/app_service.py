@@ -3,7 +3,7 @@
 持有平级 peer 并薄委托，使各 peer 互不越界——ChainService 只是被本类组合的一个链领域 peer，自身只负责链的生成/运行/校验。
 
 peer：
-- ScriptService：单脚本配置（config.yml 读写含脚本条目增删改）
+- 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils_config` 模块函数
 - 副本与周常声明读取（dungeon_list.yml / weekly_list.yml）：归 :mod:`src.config.dungeon_config` 模块函数
 - ChainService：链编排领域服务（生成/运行/调度/校验）
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
@@ -18,7 +18,16 @@ import logging
 from src.config.dungeon_config import get_dungeon_map, get_weekly_map
 from src.service.chain_service import ChainService
 from src.service.schedule import load_schedule, save_schedule
-from src.service.script_service import ScriptService
+from src.utils_config import (
+    add_script,
+    build_script_entry,
+    config_file_path,
+    get_script,
+    load_config,
+    remove_script,
+    save_config,
+    update_script,
+)
 from src.utils_weekly import (
     check_weekly,
     get_weekly_start,
@@ -35,20 +44,14 @@ class AppService:
 
     def __init__(
         self,
-        script_service=None,
         chain_service=None,
     ):
         """装配各 peer。
 
         Args:
-            script_service: 可注入的 ScriptService；None 时自建默认实例。
-            chain_service: 可注入的 ChainService；None 时自建（注入 script_service
-                作 collaborator）。
+            chain_service: 可注入的 ChainService；None 时自建。
         """
-        self._script_service = script_service or ScriptService()
-        self._chain_service = chain_service or ChainService(
-            script_service=self._script_service
-        )
+        self._chain_service = chain_service or ChainService()
 
     # ── 副本 / 周常声明（src.config.dungeon_config 模块函数）────────────
     def get_weekly_map(self, script_name: str) -> list:
@@ -59,18 +62,18 @@ class AppService:
         """读取 dungeon_list.yml 的副本/序列配置。"""
         return get_dungeon_map()
 
-    # ── 单脚本配置（ScriptService）────────────────────────────────────
+    # ── 单脚本配置（src.utils_config 模块函数）─────────────────────────
     def get_script(self, script_name: str):
         """按脚本唯一标识读取单个脚本条目。"""
-        return self._script_service.get_script(script_name)
+        return get_script(script_name)
 
     def build_script_entry(self, file_path: str, existing_script_names: set) -> dict:
         """按文件路径构造脚本条目（去重命名 + 类型推断 + 默认字段补全）。"""
-        return self._script_service.build_script_entry(file_path, existing_script_names)
+        return build_script_entry(file_path, existing_script_names)
 
     def config_file_path(self, script_name: str):
         """返回该脚本「配置文件」的本地路径（用于外部打开）与失败原因。"""
-        return self._script_service.config_file_path(script_name)
+        return config_file_path(script_name)
 
     # ── 周常运行期参数（src.utils_weekly 模块函数）──
     # weekly_start.yml（周几起）与 weekly_timeouts.yml（每周超时）由 src.utils_weekly
@@ -97,21 +100,21 @@ class AppService:
         Returns:
             一致性结果字典（含 status / missing_or_short / orphans）。
         """
-        return check_weekly(self._script_service.load_config())
+        return check_weekly(load_config())
 
-    # ── 配置读写（ScriptService）──
-    # config.yml 读写（含脚本条目增删改）由 ScriptService 拥有；此处仅作薄委托。
+    # ── 配置读写（src.utils_config 模块函数）──
+    # config.yml 读写（含脚本条目增删改）归 :mod:`src.utils_config`；此处仅作薄委托。
     def load_config(self) -> dict:
-        return self._script_service.load_config()
+        return load_config()
 
     def save_config(self, data: dict) -> None:
-        return self._script_service.save_config(data)
+        return save_config(data)
 
     def add_script(self, script_data: dict) -> None:
-        return self._script_service.add_script(script_data)
+        return add_script(script_data)
 
     def remove_script(self, script_name: str) -> None:
-        return self._script_service.remove_script(script_name)
+        return remove_script(script_name)
 
     def update_script(
         self,
@@ -120,7 +123,7 @@ class AppService:
         config_patch: dict,
         weekly_timeouts: list,
     ):
-        return self._script_service.update_script(
+        return update_script(
             old_script_name, new_display_name, config_patch, weekly_timeouts
         )
 

@@ -1,9 +1,10 @@
-"""测试 src/config/subscript.py：脚本唯一标识、路径解析、脚本路径读取、默认条目构造"""
+"""测试 src/utils_sub_config.py：脚本唯一标识、路径解析、脚本路径读取、默认条目构造"""
 
 import unittest
 from unittest import mock
 
-from src.config.subscript import (
+from src.utils import get_root_dir, safe_path_join
+from src.utils_sub_config import (
     check_script_name_uniqueness,
     default_script_entry,
     get_process_name,
@@ -12,7 +13,6 @@ from src.config.subscript import (
     load_game_config,
     resolve_script_path,
 )
-from src.utils import get_root_dir, safe_path_join
 
 
 class TestGetProcessName(unittest.TestCase):
@@ -120,8 +120,8 @@ class TestGetScriptPath(unittest.TestCase):
             ]
         }
         with (
-            mock.patch("src.config.subscript._load_config_yml", return_value=fake),
-            mock.patch("src.config.subscript.os.path.exists", return_value=True),
+            mock.patch("src.utils_sub_config._load_config_yml", return_value=fake),
+            mock.patch("src.utils_sub_config.os.path.exists", return_value=True),
         ):
             got = get_script_path("自动关机")
         expected = safe_path_join(get_root_dir(), "scripts/shutdown.bat").replace(
@@ -136,8 +136,8 @@ class TestGetScriptPath(unittest.TestCase):
             ]
         }
         with (
-            mock.patch("src.config.subscript._load_config_yml", return_value=fake),
-            mock.patch("src.config.subscript.os.path.exists", return_value=True),
+            mock.patch("src.utils_sub_config._load_config_yml", return_value=fake),
+            mock.patch("src.utils_sub_config.os.path.exists", return_value=True),
         ):
             got = get_script_path("BetterGI")
         self.assertEqual(got, "D:/games/BetterGI.exe")
@@ -145,7 +145,7 @@ class TestGetScriptPath(unittest.TestCase):
     def test_missing_script_raises(self):
         fake = {"script_list": []}
         with (
-            mock.patch("src.config.subscript._load_config_yml", return_value=fake),
+            mock.patch("src.utils_sub_config._load_config_yml", return_value=fake),
             self.assertRaises(AssertionError),
         ):
             get_script_path("不存在")
@@ -194,7 +194,7 @@ class TestLoadGameConfig(unittest.TestCase):
     def test_root_missing_returns_none(self):
         """config.yml 中无此进程（根目录解析失败）→ None"""
         with mock.patch(
-            "src.config.subscript.get_script_root_dir_soft", return_value=None
+            "src.utils_sub_config.get_script_root_dir_soft", return_value=None
         ):
             got = load_game_config(
                 "ok-ww", "data/apps/ok-ww/working/configs/devices.json"
@@ -205,10 +205,10 @@ class TestLoadGameConfig(unittest.TestCase):
         """游戏配置文件不存在 → None（不 assert）"""
         with (
             mock.patch(
-                "src.config.subscript.get_script_root_dir_soft",
+                "src.utils_sub_config.get_script_root_dir_soft",
                 return_value="C:/root",
             ),
-            mock.patch("src.config.subscript.os.path.exists", return_value=False),
+            mock.patch("src.utils_sub_config.os.path.exists", return_value=False),
         ):
             got = load_game_config(
                 "ok-ww", "data/apps/ok-ww/working/configs/devices.json"
@@ -220,12 +220,12 @@ class TestLoadGameConfig(unittest.TestCase):
         fake_path = "C:/root/data/apps/ok-ww/working/configs/devices.json"
         with (
             mock.patch(
-                "src.config.subscript.get_script_root_dir_soft",
+                "src.utils_sub_config.get_script_root_dir_soft",
                 return_value="C:/root",
             ),
-            mock.patch("src.config.subscript.os.path.exists", return_value=True),
+            mock.patch("src.utils_sub_config.os.path.exists", return_value=True),
             mock.patch(
-                "src.config.subscript.safe_path_join",
+                "src.utils_sub_config.safe_path_join",
                 return_value=fake_path,
             ),
             mock.patch(
@@ -243,12 +243,12 @@ class TestLoadGameConfig(unittest.TestCase):
         fake_path = "C:/root/config/01/game_account.yml"
         with (
             mock.patch(
-                "src.config.subscript.get_script_root_dir_soft",
+                "src.utils_sub_config.get_script_root_dir_soft",
                 return_value="C:/root",
             ),
-            mock.patch("src.config.subscript.os.path.exists", return_value=True),
+            mock.patch("src.utils_sub_config.os.path.exists", return_value=True),
             mock.patch(
-                "src.config.subscript.safe_path_join",
+                "src.utils_sub_config.safe_path_join",
                 return_value=fake_path,
             ),
             mock.patch(

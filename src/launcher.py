@@ -17,14 +17,14 @@ from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 from PySide6.QtWidgets import QApplication
 
 from src.cli import build_parser, run_cli
-from src.config.subscript import (
+from src.gui.main_window import QmlBridge
+from src.utils import get_config_yml_path_under_root, get_schedule_yml_path_under_root
+from src.utils_logger import setup_logging
+from src.utils_sub_config import (
     generate_config_from_example,
     generate_schedule_from_example,
     resolve_script_path,
 )
-from src.gui.main_window import QmlBridge
-from src.utils import get_config_yml_path_under_root, get_schedule_yml_path_under_root
-from src.utils_logger import setup_logging
 
 # 全局默认字体：QML Text 默认字体中文字符 fallback；与旧 GUI 一致
 FONT_FAMILY = "Microsoft YaHei"

@@ -1,7 +1,7 @@
 """ChainService：链编排领域服务（平级 peer，非协调器）。
 
 承载链领域实现：脚本链生成、合法性校验、runner 命令构造、调度运行的编排。
-config.yml 的读写由 :class:`ScriptService` 拥有，本服务仅保留
+config.yml 的读写由 :mod:`src.utils_config` 拥有，本服务仅保留
 ``load_config`` 委托供运行时取配置；schedule.yml 读写归
 :mod:`src.service.schedule` 所有——与调度编排同处本模块。本服务不读取
 UI 状态文件；日常副本真源为子脚本 config，set_dungeon 为
@@ -19,13 +19,10 @@ import logging
 import os
 import subprocess
 
-from src.config.subscript import (
-    get_script_name,
-)
+from src import utils_config
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.schedule import ScheduledRun
-from src.service.script_service import ScriptService
 from src.utils_runner import (
     build_chain_command as _build_chain_command,
 )
@@ -38,6 +35,9 @@ from src.utils_runner import (
 from src.utils_runner import (
     run_chain_command as _run_chain_command,
 )
+from src.utils_sub_config import (
+    get_script_name,
+)
 from src.utils_weekly import get_weekly_start_map, load_all_weekly, set_weekly_start
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 class ChainService:
     """链编排领域服务（平级 peer）：链生成、校验、运行命令构造、调度运行编排。
 
-    config.yml 读写由 ScriptService 拥有，本服务仅委托 ``load_config``
+    config.yml 读写由 :mod:`src.utils_config` 拥有，本服务仅委托 ``load_config``
     供运行时取配置；weekly_timeouts / weekly_start 由 :mod:`src.utils_weekly` 提供，
     本服务直接调用模块函数（链生成取超时、调度运行取周几起）。
     """
@@ -55,16 +55,17 @@ class ChainService:
         """初始化 ChainService。
 
         Args:
-            script_service: 可注入的 ScriptService；None 时自建默认实例。
+            script_service: 可注入的 config 加载器（须提供 ``load_config``）；None 时
+                默认用 :mod:`src.utils_config` 模块。
         """
-        self._script_service = script_service or ScriptService()
+        self._script_service = script_service or utils_config
 
-    # ---------- 配置读取（委托 ScriptService）----------
-    # config.yml 的读写实现已迁至 ScriptService（见 :class:`ScriptService`）；此处仅保留
+    # ---------- 配置读取（委托 config 加载器）----------
+    # config.yml 的读写实现已迁至 :mod:`src.utils_config`；此处仅保留
     # load_config 委托，供本服务运行时（run_chain_once / ScheduledRun）取配置。
 
     def load_config(self) -> dict:
-        """委托 ScriptService 读取 config.yml（实现见 :class:`ScriptService`）。"""
+        """委托 config 加载器读取 config.yml（默认 :mod:`src.utils_config`）。"""
         return self._script_service.load_config()
 
     # ---------- 链生成与校验 ----------
@@ -78,7 +79,7 @@ class ChainService:
     ) -> str:
         """生成 ScriptChainer 配置文件（仅含启用脚本）。
 
-        weekly_timeouts 通过 ScriptService 加载后传入 chain_gen，不再由
+        weekly_timeouts 通过 utils_config 加载后传入 chain_gen，不再由
         chain_gen 直接读取磁盘文件。
 
         Args:

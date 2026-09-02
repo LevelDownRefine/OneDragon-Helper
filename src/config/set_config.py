@@ -4,10 +4,10 @@ import logging
 import os
 from typing import Any
 
-from src.config.subscript import (
-    get_config_path as _get_config_path_impl,
+from src.utils_sub_config import (
+    get_sub_config_path as _get_config_path_impl,
 )
-from src.config.subscript import (
+from src.utils_sub_config import (
     load_config,
     load_game_config,
     load_template,

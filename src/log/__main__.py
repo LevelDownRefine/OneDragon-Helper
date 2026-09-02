@@ -7,8 +7,8 @@
 import logging
 from pathlib import Path
 
-from src.config.subscript import get_script_name
 from src.log.monitor import parse_logs
+from src.utils_sub_config import get_script_name
 from src.utils_yaml import load_yaml
 
 if __name__ == "__main__":

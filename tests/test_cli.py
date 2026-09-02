@@ -23,8 +23,8 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from src import cli, launcher
-from src.config.subscript import get_script_name
 from src.service import chain_gen as service_chain_gen
+from src.utils_sub_config import get_script_name
 from src.utils_yaml import load_yaml
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
