@@ -76,7 +76,7 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: 崩坏：星穹铁道
+- display_name: 崩铁
   game_label: ''
   script_type: external
   script_path: D:\game_helper\March7thAssistant\March7th Assistant.exe
