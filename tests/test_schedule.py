@@ -430,8 +430,7 @@ class TestScheduledRunCore(unittest.TestCase):
     def test_missing_rerun_block_asserts(self):
         """schedule 缺 rerun.enabled 是契约错误：直接崩，不降级跳过。"""
         svc = _make_service(
-            self,
-            [{"display_name": "A"}], schedule={"notify": {"enabled": False}}
+            self, [{"display_name": "A"}], schedule={"notify": {"enabled": False}}
         )
         with (
             mock.patch(
