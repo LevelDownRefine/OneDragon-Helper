@@ -317,11 +317,17 @@ Window {
                     width: 30
                     height: 30
                     radius: 6
-                    color: btnMouseBot.containsMouse ? "#2B3A52" : "#1F2937"
+                    // 控制模式激活时 ⊞ 按钮常亮高亮（index 0），给出持久态提示；
+                    // 颜色/边框严格走主题色，非模板文件零硬编码除主题外颜色。
+                    color: btnMouseBot.containsMouse
+                           ? "#2B3A52"
+                           : (index === 0 && Bridge.controlMode ? "#3A5A8C" : "#1F2937")
+                    border.width: index === 0 && Bridge.controlMode ? 2 : 0
+                    border.color: index === 0 && Bridge.controlMode ? "#7FB0FF" : "transparent"
                     Text {
                         anchors.centerIn: parent
                         text: modelData.label
-                        color: "#FFFFFF"
+                        color: index === 0 && Bridge.controlMode ? "#CDE3FF" : "#FFFFFF"
                         font.pixelSize: 27
                     }
                     MouseArea {
