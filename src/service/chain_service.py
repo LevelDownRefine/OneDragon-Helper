@@ -9,7 +9,8 @@ no-op 的脚本取 dungeon_list.yml 声明项。本服务
 不充当 GUI/CLI 的顶层门面/协调器——
 该角色由 :class:`AppService`（组合根）承担，本类只是被其组合的一个 peer。
 
-weekly_timeouts 同步委托内部 script_service 处理，调用方不感知。
+weekly 运行期参数（weekly_start.yml / weekly_timeouts.yml）由 :mod:`src.utils_weekly`
+模块函数提供，调用方不感知。
 
 本模块不承载 UI 渲染/弹窗逻辑，无 Qt 依赖。
 """
@@ -25,7 +26,6 @@ from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.schedule import ScheduledRun
 from src.service.script_service import ScriptService
-from src.service.weekly_service import WeeklyService
 from src.utils_runner import (
     build_chain_command as _build_chain_command,
 )
@@ -38,6 +38,7 @@ from src.utils_runner import (
 from src.utils_runner import (
     run_chain_command as _run_chain_command,
 )
+from src.utils_weekly import get_weekly_start_map, load_all_weekly, set_weekly_start
 
 logger = logging.getLogger(__name__)
 
@@ -46,19 +47,17 @@ class ChainService:
     """链编排领域服务（平级 peer）：链生成、校验、运行命令构造、调度运行编排。
 
     config.yml 读写由 ScriptService 拥有，本服务仅委托 ``load_config``
-    供运行时取配置；weekly_timeouts / weekly_start 由平级 WeeklyService 拥有，本服务
-    仅作 collaborator 调用（链生成取超时、调度运行取周几起）。
+    供运行时取配置；weekly_timeouts / weekly_start 由 :mod:`src.utils_weekly` 提供，
+    本服务直接调用模块函数（链生成取超时、调度运行取周几起）。
     """
 
-    def __init__(self, script_service=None, weekly_service=None):
+    def __init__(self, script_service=None):
         """初始化 ChainService。
 
         Args:
             script_service: 可注入的 ScriptService；None 时自建默认实例。
-            weekly_service: 可注入的 WeeklyService；None 时自建默认实例。
         """
         self._script_service = script_service or ScriptService()
-        self._weekly_service = weekly_service or WeeklyService()
 
     # ---------- 配置读取（委托 ScriptService）----------
     # config.yml 的读写实现已迁至 ScriptService（见 :class:`ScriptService`）；此处仅保留
@@ -91,7 +90,7 @@ class ChainService:
         Returns:
             输出文件路径。
         """
-        weekly_timeouts = self._weekly_service.load_all_weekly()
+        weekly_timeouts = load_all_weekly()
         return _generate_chain_config(
             all_config_data,
             enabled_keys,
@@ -105,13 +104,13 @@ class ChainService:
     def set_weekly_start(self, script_name: str, start_day: int | None) -> None:
         """持久化某脚本的周常起始日到 weekly_start.yml（None 表示「不设置」）。
 
-        委托平级 WeeklyService，调用方（CLI）不感知底层文件。
+        委托 src.utils_weekly，调用方（CLI）不感知底层文件。
         """
-        self._weekly_service.set_weekly_start(script_name, start_day)
+        set_weekly_start(script_name, start_day)
 
     def get_weekly_start_map(self) -> dict:
         """读取 weekly_start.yml 全量映射（{脚本标识: 1~7}），供运行前 pre_run 写回子脚本 config。"""
-        return self._weekly_service.get_weekly_start_map()
+        return get_weekly_start_map()
 
     def collect_invalid_scripts(self, script_list: list[dict]) -> list[tuple[str, str]]:
         """收集脚本列表中配置不合法的条目。
@@ -161,7 +160,7 @@ class ChainService:
             始终返回 None（纯跑链，运行后动作交由调用方）。
         """
         all_config = self.load_config()
-        weekly_timeouts = self._weekly_service.load_all_weekly()
+        weekly_timeouts = load_all_weekly()
         _run_chain_once_impl(
             all_config,
             enabled_keys,
@@ -200,7 +199,7 @@ class ChainService:
         keys = set(rerun_list)
         # 复用 _run_chain_once_impl（生成+运行原子），阻塞等重跑结束，
         # 使后续邮件/关机基于重跑后的最终态。
-        weekly_timeouts = self._weekly_service.load_all_weekly()
+        weekly_timeouts = load_all_weekly()
         _run_chain_once_impl(
             all_config,
             keys,

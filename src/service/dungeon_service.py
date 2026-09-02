@@ -1,8 +1,8 @@
 """DungeonService：副本与周常声明读取（无 Qt 依赖）。
 
 读取 dungeon_list.yml（日常副本/序列配置）与 weekly_list.yml（周常声明），二者均为
-随包发布、进 git 的声明式配置。周常起始日与超时管理不在此处（见 ScriptService /
-未来的 WeeklyService）。
+随包发布、进 git 的声明式配置。周常运行期参数（周几起 / 每周超时）不在此处，由
+:mod:`src.utils_weekly` 负责。
 
 对应 GUI 的 ScriptItem 副本选择与周常声明展示。
 """

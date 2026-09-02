@@ -1,8 +1,8 @@
 """ScriptService：单脚本配置服务（无 Qt 依赖）。
 
 承载「单脚本」视角的实现：config.yml 的读写（含脚本条目增删改）、单脚本条目查询
-与路径解析。周常运行期参数（weekly_start.yml / weekly_timeouts.yml）已抽出为平级
-:class:`WeeklyService`，由本服务协作调用（如新增脚本时建默认 weekly 条目）。
+与路径解析。周常运行期参数（weekly_start.yml / weekly_timeouts.yml）的读写由
+:mod:`src.utils_weekly` 负责，本服务协作调用（如新增脚本时建默认 weekly 条目）。
 
 内部标识统一用**脚本唯一标识 script_name**（exe 脚本为进程名、脚本文件为
 display_name），display_name 仅用于展示。config.yml 的读写权统一归本 Service；
@@ -23,10 +23,15 @@ from src.config.subscript import (
     is_exe_script,
     resolve_script_path,
 )
-from src.service.weekly_service import WeeklyService
 from src.utils import (
     get_config_yml_path_under_root,
     require_config_yml_path,
+)
+from src.utils_weekly import (
+    delete_weekly,
+    ensure_weekly_entry,
+    rename_weekly_in_timeouts,
+    save_weekly,
 )
 from src.utils_yaml import dump_yaml, load_yaml
 
@@ -41,17 +46,12 @@ class ScriptService:
 
     副本与周本声明（dungeon_list.yml / weekly_list.yml）的读取由平级
     :class:`DungeonService` 负责；周常运行期参数（weekly_start.yml /
-    weekly_timeouts.yml）由平级 :class:`WeeklyService` 负责，本服务仅作协作调用
+    weekly_timeouts.yml）由 :mod:`src.utils_weekly` 负责，本服务仅作协作调用
     （条目增删改时同步 weekly），不拥有其读写。
     """
 
-    def __init__(self, weekly_service=None) -> None:
-        """初始化 ScriptService。
-
-        Args:
-            weekly_service: 可注入的 WeeklyService；None 时自建默认实例。
-        """
-        self._weekly_service = weekly_service or WeeklyService()
+    def __init__(self) -> None:
+        """初始化 ScriptService。"""
 
     # ---------- config.yml 读写 ----------
 
@@ -106,7 +106,7 @@ class ScriptService:
         )
         scripts.append(script_data)
         self.save_config(config)
-        self._weekly_service.ensure_weekly_entry(new_script_name)
+        ensure_weekly_entry(new_script_name)
         init_config(new_script_name)
 
     def remove_script(self, script_name: str) -> None:
@@ -124,7 +124,7 @@ class ScriptService:
         assert target is not None, f"[service] 找不到脚本: {script_name}"
         scripts.remove(target)
         self.save_config(config)
-        self._weekly_service.delete_weekly(script_name)
+        delete_weekly(script_name)
 
     def update_script(
         self,
@@ -176,10 +176,8 @@ class ScriptService:
         self.save_config(config)
 
         if new_script_name != old_script_name:
-            self._weekly_service.rename_weekly_in_timeouts(
-                old_script_name, new_script_name
-            )
-        self._weekly_service.save_weekly(new_script_name, weekly_timeouts)
+            rename_weekly_in_timeouts(old_script_name, new_script_name)
+        save_weekly(new_script_name, weekly_timeouts)
         init_config(new_script_name)
         return new_script_name
 

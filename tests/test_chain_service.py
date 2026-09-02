@@ -14,15 +14,17 @@ class TestChainGeneration(unittest.TestCase):
     def test_generate_chain_delegates(self):
         data = {"script_list": []}
         mock_script = MagicMock()
-        mock_weekly = MagicMock()
-        mock_weekly.load_all_weekly.return_value = {}
-        mock_weekly.get_weekly_start_map.return_value = {}
-        with patch(
-            "src.service.chain_service._generate_chain_config", return_value="out.yml"
-        ) as m:
-            out = ChainService(
-                script_service=mock_script, weekly_service=mock_weekly
-            ).generate_chain(data, {"A"}, "88", out_path="out.yml")
+        with (
+            patch(
+                "src.service.chain_service._generate_chain_config",
+                return_value="out.yml",
+            ) as m,
+            patch("src.service.chain_service.load_all_weekly", return_value={}),
+            patch("src.service.chain_service.get_weekly_start_map", return_value={}),
+        ):
+            out = ChainService(script_service=mock_script).generate_chain(
+                data, {"A"}, "88", out_path="out.yml"
+            )
         self.assertEqual(out, "out.yml")
         m.assert_called_once_with(
             data,
@@ -73,9 +75,13 @@ class TestRunChainOnce(unittest.TestCase):
         svc = ChainService()
         svc.load_config = MagicMock(return_value={"script_list": script_list})
         svc._script_service = MagicMock()
-        svc._weekly_service = MagicMock()
-        svc._weekly_service.load_all_weekly.return_value = {}
-        svc._weekly_service.get_weekly_start_map.return_value = {}
+        self._weekly_load = patch(
+            "src.service.chain_service.load_all_weekly", return_value={}
+        ).start()
+        self._weekly_start = patch(
+            "src.service.chain_service.get_weekly_start_map", return_value={}
+        ).start()
+        self.addCleanup(patch.stopall)
         return svc
 
     def test_defaults_all_scripts_and_runs(self):
@@ -106,8 +112,8 @@ class TestRunChainOnce(unittest.TestCase):
         """回归：weekly_start→子脚本 config 的写盘已移到 ScheduledRun.pre_run，
         run_chain_once 不再把 weekly_start_map 透传给链生成。"""
         svc = self._make_service([{"display_name": "A", "script_path": "A.exe"}])
-        svc._weekly_service.get_weekly_start_map.return_value = {"A": 3}
-        svc._weekly_service.load_all_weekly.return_value = {"A": 100}
+        self._weekly_start.return_value = {"A": 3}
+        self._weekly_load.return_value = {"A": 100}
         with (
             patch(
                 "src.service.chain_service._generate_chain_config",
@@ -464,9 +470,13 @@ class TestRerunRound(unittest.TestCase):
         svc = ChainService()
         svc.load_config = MagicMock(return_value={"script_list": script_list})
         svc._script_service = MagicMock()
-        svc._weekly_service = MagicMock()
-        svc._weekly_service.load_all_weekly.return_value = {}
-        svc._weekly_service.get_weekly_start_map.return_value = {}
+        self._weekly_load = patch(
+            "src.service.chain_service.load_all_weekly", return_value={}
+        ).start()
+        self._weekly_start = patch(
+            "src.service.chain_service.get_weekly_start_map", return_value={}
+        ).start()
+        self.addCleanup(patch.stopall)
         return svc
 
     def test_reruns_when_rerun_list_nonempty(self):

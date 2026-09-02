@@ -221,9 +221,7 @@ class TestAddRemoveScript(unittest.TestCase):
                 "src.service.script_service.get_config_yml_path_under_root",
                 return_value=self.config_path,
             ),
-            patch(
-                "src.service.weekly_service.WeeklyService.ensure_weekly_entry"
-            ) as mock_ensure,
+            patch("src.service.script_service.ensure_weekly_entry") as mock_ensure,
             patch("src.service.script_service.init_config") as mock_init,
         ):
             ScriptService().add_script(
@@ -245,7 +243,7 @@ class TestAddRemoveScript(unittest.TestCase):
                 "src.service.script_service.get_config_yml_path_under_root",
                 return_value=self.config_path,
             ),
-            patch("src.service.weekly_service.WeeklyService.delete_weekly") as mock_del,
+            patch("src.service.script_service.delete_weekly") as mock_del,
         ):
             ScriptService().remove_script("a")
         self.assertEqual(self._read()["script_list"], [])

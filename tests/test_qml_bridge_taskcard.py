@@ -9,8 +9,8 @@ import unittest
 from unittest.mock import patch
 
 from src.gui.controllers import task_card
+from src.service import app_service
 from src.service.dungeon_service import DungeonService
-from src.service.weekly_service import WeeklyService
 from tests.test_qml_launcher import _make_bridge
 
 
@@ -21,7 +21,7 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(task_card, "get_sequence", return_value=None)
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(DungeonService, "get_weekly_map", return_value=[{"name": "周常"}])
-    @patch.object(WeeklyService, "get_weekly_start", return_value=None)
+    @patch.object(app_service, "get_weekly_start", return_value=None)
     @patch.object(DungeonService, "get_dungeon_map", return_value={})
     def test_daily_text_default_is_placeholder(self, *_):
         b = _make_bridge()

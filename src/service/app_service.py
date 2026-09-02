@@ -3,10 +3,11 @@
 持有平级 peer 并薄委托，使各 peer 互不越界——ChainService 只是被本类组合的一个链领域 peer，自身只负责链的生成/运行/校验。
 
 peer：
-- ScriptService：单脚本配置（config.yml 读写含脚本条目增删改 + 周常起始日/超时）
+- ScriptService：单脚本配置（config.yml 读写含脚本条目增删改）
 - DungeonService：副本与周常声明读取（dungeon_list.yml / weekly_list.yml）
 - ChainService：链编排领域服务（生成/运行/调度/校验）
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
+- 周常运行期参数（weekly_start.yml / weekly_timeouts.yml）：归 :mod:`src.utils_weekly` 模块函数
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
 未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
@@ -18,7 +19,13 @@ from src.service.chain_service import ChainService
 from src.service.dungeon_service import DungeonService
 from src.service.schedule import load_schedule, save_schedule
 from src.service.script_service import ScriptService
-from src.service.weekly_service import WeeklyService
+from src.utils_weekly import (
+    check_weekly,
+    get_weekly_start,
+    get_weekly_start_map,
+    set_weekly_start,
+    weekly_inputs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,27 +37,20 @@ class AppService:
         self,
         script_service=None,
         dungeon_service=None,
-        weekly_service=None,
         chain_service=None,
     ):
         """装配各 peer。
 
         Args:
-            script_service: 可注入的 ScriptService；None 时自建（注入 weekly_service）。
+            script_service: 可注入的 ScriptService；None 时自建默认实例。
             dungeon_service: 可注入的 DungeonService；None 时自建默认实例。
-            weekly_service: 可注入的 WeeklyService；None 时自建默认实例。
             chain_service: 可注入的 ChainService；None 时自建（注入 script_service
-                与 weekly_service 作 collaborator）。
+                作 collaborator）。
         """
-        # weekly 先建：ScriptService 与 ChainService 都以它为 collaborator，
-        # 共享同一实例，避免各自另起一份。
-        self._weekly_service = weekly_service or WeeklyService()
-        self._script_service = script_service or ScriptService(
-            weekly_service=self._weekly_service
-        )
+        self._script_service = script_service or ScriptService()
         self._dungeon_service = dungeon_service or DungeonService()
         self._chain_service = chain_service or ChainService(
-            script_service=self._script_service, weekly_service=self._weekly_service
+            script_service=self._script_service
         )
 
     # ── 副本 / 周常声明（DungeonService）──────────────────────────────
@@ -75,24 +75,24 @@ class AppService:
         """返回该脚本「配置文件」的本地路径（用于外部打开）与失败原因。"""
         return self._script_service.config_file_path(script_name)
 
-    # ── 周常运行期参数（WeeklyService）──
-    # weekly_start.yml（周几起）与 weekly_timeouts.yml（每周超时）由平级 WeeklyService
-    # 拥有；读写一律直连它，不再经 ChainService 转发。
+    # ── 周常运行期参数（src.utils_weekly 模块函数）──
+    # weekly_start.yml（周几起）与 weekly_timeouts.yml（每周超时）由 src.utils_weekly
+    # 拥有；读写直接调模块函数，不经 ChainService 转发。
     def get_weekly_start(self, script_name: str):
         """返回某脚本的周常起始日（1~7），未设置返回 None。"""
-        return self._weekly_service.get_weekly_start(script_name)
+        return get_weekly_start(script_name)
 
     def weekly_inputs(self, script_name: str) -> list:
         """返回配置弹窗 7 个超时输入框的初始值。"""
-        return self._weekly_service.weekly_inputs(script_name)
+        return weekly_inputs(script_name)
 
     def set_weekly_start(self, script_name: str, start_day) -> None:
         """持久化某脚本的周常起始日（周几起）到 weekly_start.yml。"""
-        return self._weekly_service.set_weekly_start(script_name, start_day)
+        return set_weekly_start(script_name, start_day)
 
     def get_weekly_start_map(self) -> dict:
         """读取 weekly_start.yml 全量映射（{脚本标识: 1~7}）。"""
-        return self._weekly_service.get_weekly_start_map()
+        return get_weekly_start_map()
 
     def check_weekly(self) -> dict:
         """校验 weekly_timeouts.yml 与 config.yml 脚本条目的一致性。
@@ -100,7 +100,7 @@ class AppService:
         Returns:
             一致性结果字典（含 status / missing_or_short / orphans）。
         """
-        return self._weekly_service.check_weekly(self._script_service.load_config())
+        return check_weekly(self._script_service.load_config())
 
     # ── 配置读写（ScriptService）──
     # config.yml 读写（含脚本条目增删改）由 ScriptService 拥有；此处仅作薄委托。
