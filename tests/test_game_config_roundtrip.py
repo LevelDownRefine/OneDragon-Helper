@@ -23,7 +23,9 @@ FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "starrail_config.y
 class TestGameConfigRoundTrip(unittest.TestCase):
     def _load_fixture(self):
         """经由真实 load_config 读夹具（mock 路径解析，避免依赖游戏目录）。"""
-        with patch.object(utils_sub_config, "get_sub_config_path", return_value=FIXTURE):
+        with patch.object(
+            utils_sub_config, "get_sub_config_path", return_value=FIXTURE
+        ):
             return utils_sub_config.load_config("starrail-test", "config.yaml")
 
     def _save_to_temp(self, data):
@@ -31,7 +33,9 @@ class TestGameConfigRoundTrip(unittest.TestCase):
             "w", suffix=".yaml", encoding="utf-8", delete=False
         ) as tmp:
             tmp_path = tmp.name
-        with patch.object(utils_sub_config, "get_sub_config_path", return_value=tmp_path):
+        with patch.object(
+            utils_sub_config, "get_sub_config_path", return_value=tmp_path
+        ):
             utils_sub_config.save_config("starrail-test", "config.yaml", data)
         return tmp_path
 
@@ -53,7 +57,9 @@ class TestGameConfigRoundTrip(unittest.TestCase):
         cfg = self._load_fixture()
         tmp_path = self._save_to_temp(cfg)
 
-        with patch.object(utils_sub_config, "get_sub_config_path", return_value=tmp_path):
+        with patch.object(
+            utils_sub_config, "get_sub_config_path", return_value=tmp_path
+        ):
             reloaded = utils_sub_config.load_config("starrail-test", "config.yaml")
 
         self.assertEqual(reloaded, cfg)  # 数据等价（reloaded == original）
@@ -75,7 +81,9 @@ class TestGameConfigRoundTrip(unittest.TestCase):
 
         tmp_path = self._save_to_temp(cfg)
 
-        with patch.object(utils_sub_config, "get_sub_config_path", return_value=tmp_path):
+        with patch.object(
+            utils_sub_config, "get_sub_config_path", return_value=tmp_path
+        ):
             reloaded = utils_sub_config.load_config("starrail-test", "config.yaml")
 
         self.assertEqual(reloaded, cfg)

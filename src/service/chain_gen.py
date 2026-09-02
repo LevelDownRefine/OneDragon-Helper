@@ -99,7 +99,7 @@ def generate_chain_config(
     计算的周本开关写盘，已抽出为 ``ScheduledRun`` 的 pre_run 步骤（由 ``build_pre_run_pipeline`` 在运行前统一写回），
     故本函数只负责按星期过滤脚本并生成链 yml，不再写任何子脚本 config。
 
-    weekly_timeouts 由调用方（ChainService）通过 src.utils_config 加载后传入，不再直接读取磁盘文件。
+    weekly_timeouts 由调用方（chain_service 模块）通过 src.utils_config 加载后传入，不再直接读取磁盘文件。
 
     Args:
         all_config_data: config.yml 完整数据（含 script_list）。

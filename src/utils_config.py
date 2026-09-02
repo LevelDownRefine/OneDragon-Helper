@@ -6,7 +6,7 @@
 
 内部标识统一用**脚本唯一标识 script_name**（exe 脚本为进程名、脚本文件为
 display_name），display_name 仅用于展示。config.yml 的读写权统一归本模块；
-ChainService 仅作运行时委托（其内部 ScheduledRun 经 ``load_config`` 取配置）。
+chain_service 模块仅作运行时委托（其内部 ScheduledRun 经 ``load_config`` 取配置）。
 对应 GUI 的 ScriptItem 卡片与配置弹窗（SingleScriptConfigDialog）。
 
 链编排（脚本列表/生成/运行）见 :mod:`src.service.chain_service`。

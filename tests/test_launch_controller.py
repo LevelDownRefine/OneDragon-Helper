@@ -76,7 +76,7 @@ class TestLaunchAllTimed(unittest.TestCase):
         ):
             self._run_launch(ctrl)
         # 定时：不立即运行，起独立控制台进程（spawn_schedule_run），
-        # 真实实现在 ChainService.schedule_run 中（独立进程内运行）。
+        # 真实实现在 chain_service.schedule_run 中（独立进程内运行）。
         service.run_chain_once.assert_not_called()
         service.schedule_run.assert_not_called()
         mock_spawn.assert_called_once()

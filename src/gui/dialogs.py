@@ -1,19 +1,18 @@
 """单脚本配置弹窗（SingleScriptConfigDialog）。
 
-自包含模块：样式常量（原 src/gui/theme.py 子集）与工具函数（styled_msg_box /
-safe_startfile，原 src/gui/utils.py）已并入本文件（2026-08-16），src/gui 其余
+自包含模块：样式常量（原 src/gui/theme.py 子集）与工具函数（styled_msg_box，
+原 src/gui/utils.py）已并入本文件（2026-08-16），src/gui 其余
 模块随之删除。依赖仅剩 config/service 业务层与 PySide6。
 
 对外接口：
 - ``SingleScriptConfigDialog``：单脚本配置弹窗（名称/路径/类型/参数/完成检测/
   关闭脚本/关闭游戏/阻塞/游戏进程/每周超时），保存后经 ``pending_changes`` 返回，
-  写盘由调用方委托 ``ChainService.update_script``。脚本删除改由左侧列表交互完成。
+  写盘由调用方经 ``AppService.update_script`` 委托 ``src.utils_config.update_script``。脚本删除改由左侧列表交互完成。
 - 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
   （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
 """
 
 import os
-import warnings
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIntValidator
@@ -197,17 +196,6 @@ def styled_msg_box(parent, icon, title, text):
     box.setTextFormat(Qt.PlainText)
     box.setStyleSheet(message_box_qss())
     return box
-
-
-def safe_startfile(parent, path, fail_text):
-    """用系统默认程序打开 path；任何异常都转成清晰可读的提示，不让 GUI 崩溃。"""
-    try:
-        os.startfile(path)
-    except (OSError, AttributeError) as e:
-        warnings.warn(f"{fail_text}: {e}", RuntimeWarning, stacklevel=2)
-        styled_msg_box(
-            parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}"
-        ).exec()
 
 
 # ═══════════════════════ 弹窗逻辑 ═══════════════════════════════════════════
@@ -524,8 +512,8 @@ class SingleScriptConfigDialog(FormDialogBase):
     def save_data(self):
         """收集表单数据存入 self.pending_changes 后 accept()；写盘由调用方完成。
 
-        不再直接调 src.utils_config.update_script() 写 config.yml——config.yml
-        的写入权归 ChainService。weekly_timeouts 也由调用方决定是否持久化。
+        不直接在此弹窗写 config.yml——config.yml 的写入权归 ``src.utils_config``（经调用方
+        ``AppService.update_script`` 委托）。weekly_timeouts 也由调用方决定是否持久化。
         """
         path_val = self.path_input.text().strip()
         if not path_val:
@@ -566,7 +554,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         # 周几起：权威值持久化到 weekly_start.yml（经 AppService.set_weekly_start / src.utils_weekly）。游戏侧原生 config
         # 起始日的同步不在此处进行——save_data 内 config.yml 的 script_path 尚未落盘，
         # 此时解析目录会拿到旧路径，导致写到错误/失效目录。统一由调用方在
-        # ChainService.update_script 落盘新路径后触发（见 game_list.configCurrent）。
+        # AppService.update_script 落盘新路径后触发（见 game_list.configCurrent）。
         start_day = None
         if self._weekly_start_supported:
             idx = self.weekly_start_combo.currentIndex()

@@ -356,7 +356,7 @@ class GameListController(QObject):
     def configCurrent(self):
         """打开当前脚本配置弹窗（SingleScriptConfigDialog）。
 
-        Accepted → ChainService.update_script 落盘并重载；否则不落盘。
+        Accepted → AppService.update_script 落盘并重载；否则不落盘。
         """
         if not self._games:
             return
@@ -394,7 +394,7 @@ class GameListController(QObject):
         """落盘后把周几起同步到游戏原生 config。
 
         目录解析依赖 config.yml 已落盘的新 script_path，故必须在
-        ChainService.update_script 之后调用。游戏侧同步为 best-effort：
+        AppService.update_script 之后调用。游戏侧同步为 best-effort：
         原生 config 目录因路径无效/未装游戏缺失时仅提示，不阻塞已完成的主保存。
         """
         try:

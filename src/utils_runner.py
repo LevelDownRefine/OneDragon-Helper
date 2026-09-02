@@ -688,7 +688,7 @@ def spawn_schedule_run(
     关程序影响。链在**点火时**才生成（按当天星期），因此本方法不固定链配置。
 
     本函数是「壳」：只负责拼命令并拉起独立进程；真实实现（等待→生成→运行→关机）
-    在 ``ChainService.schedule_run`` 中。
+    在 ``chain_service.schedule_run`` 中。
 
     子进程须走与 GUI 相同的入口（``src.launcher``，其 ``main`` 会解析参数并路由到
     ``run_cli``）：开发态用 ``python -m src.launcher``，冻结态直接复用 ``sys.executable``

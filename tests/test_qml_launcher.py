@@ -1,7 +1,7 @@
 """测试 src.gui.main_window 与 QML 应用骨架：脚本列表、背景切换、视频回退。
 
 QML 引擎在 offscreen 下可加载场景（无视频渲染，但场景对象建立）；桥接逻辑
-用 mock 隔离 ChainService 文件 I/O。脚本图标 provider 不在加载时触发（Image
+用 mock 隔离 chain_service 模块文件 I/O。脚本图标 provider 不在加载时触发（Image
 渲染时才调用），避免 offscreen 依赖 exe 图标。
 
 各职责已拆到 src/gui/controllers/ 下 mixin；monkeypatch 目标需指向实际引用

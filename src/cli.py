@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument(
         "--selftest",
         action="store_true",
-        help="无头自检：校验 ChainService 配置/脚本列表，结果写 JSON 后退出",
+        help="无头自检：校验 AppService 配置/脚本列表，结果写 JSON 后退出",
     )
     action.add_argument(
         "--check-config",
@@ -210,7 +210,7 @@ def get_version() -> str:
 
 
 def _run_selftest(out_path: str | None) -> int:
-    """无头自检：校验 ChainService 关键依赖/配置/脚本列表。
+    """无头自检：经 AppService 校验关键依赖/配置/脚本列表。
 
     结果写入 JSON（默认 %TEMP%/odh_gui_selftest.json），返回退出码 0=OK / 1=失败。
     供打包产物集成测试 test_gui_exe.py 读取验证实质行为。
@@ -445,7 +445,7 @@ def _run_run_chain(args) -> int:
 
 
 def _run_scheduled(args) -> int:
-    """CLI 出口：调度运行入口，真实实现见 ``ChainService.schedule_run``。
+    """CLI 出口：调度运行入口，真实实现见 ``chain_service.schedule_run``。
 
     本函数在独立控制台进程中运行（由 ``utils_runner.spawn_schedule_run`` 以
     ``CREATE_NEW_CONSOLE`` 起），故等待阻塞无害；关闭该控制台即取消。链在点火时

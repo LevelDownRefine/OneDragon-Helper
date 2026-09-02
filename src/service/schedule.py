@@ -19,6 +19,8 @@ pre_run / post_run 为可扩展的 step 列表（Callable 序列），由本模�
 import logging
 from collections.abc import Callable, Sequence
 
+import src.utils_config as utils_config
+import src.utils_weekly as utils_weekly
 from src.service.run_actions import (
     analyze_logs,
     apply_subscript_config,
@@ -133,7 +135,7 @@ def build_post_run_pipeline(
 ) -> list[Callable[[], None]]:
     """按序构建运行后动作：日志分析(最终态) → 邮件 → 关机(末位)。
 
-    重跑不在此处，由 ``ChainService._rerun_round`` 在链运行结束后、本 pipeline 前完成；
+    重跑不在此处，由 ``chain_service.rerun_round`` 在链运行结束后、本 pipeline 前完成；
     此处对最终态做日志分析供邮件汇总，并在末位关机。
 
     Args:
@@ -172,7 +174,9 @@ class ScheduledRun:
     """一次调度运行：拥有 pre_run / 核心编排 / post_run 的完整生命周期。
 
     Args:
-        service: 提供 ``load_config`` / ``run_chain_once`` 的 ChainService 实例。
+        service: 提供 ``run_chain_once`` / ``rerun_round`` 的 chain_service 模块对象
+            （或等价 facade）；``load_config`` / ``get_weekly_start_map`` 由本模块直接
+            import 对应 utils 调用，不经 service。
         enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
             （跳过运行、重跑与邮件）。调用方想全量时显式传入 config 全部脚本集合。
         target_time: 目标时刻 ``"HH:MM"``（24 小时制，须合法，调用方已校验）；
@@ -200,19 +204,19 @@ class ScheduledRun:
         self.shutdown_delay = shutdown_delay
 
         # 候选集合 = 启用脚本集合（同一概念）。直接透传，不做 None→集合 的隐式归一化；
-        # None/空集合 在下游各函数（run_chain_once / _rerun_round / parse_logs）按「跳过」
+        # None/空集合 在下游各函数（run_chain_once / rerun_round / parse_logs）按「跳过」
         # 语义处理，由调用方显式传入全量集合表达「全部」。
         self.candidate_keys = enabled_keys
 
         # pre_run / post_run 均为 step 列表（同形），分别经单一工厂组装、由 _run_steps 执行，
         # 仅所处位置不同（run 前 / 后）。pre_run 顺序与每步取舍见 build_pre_run_pipeline 内联注释。
         # 关残留传全量脚本（非启用集合）：残留多为「昨天跑、今天不跑」的脚本，按启用集过滤抓不到。
-        all_scripts = self.service.load_config().get("script_list", [])
+        all_scripts = utils_config.load_config().get("script_list", [])
         self.pre_run: list[Callable[[], None]] = build_pre_run_pipeline(
             target_time=target_time,
             scripts=all_scripts,
             enabled_keys=self.candidate_keys,
-            weekly_start_map=self.service.get_weekly_start_map(),
+            weekly_start_map=utils_weekly.get_weekly_start_map(),
             close_running=close_running,
             mute=mute,
         )
@@ -235,7 +239,7 @@ class ScheduledRun:
 
     def _run_core(self) -> None:
         """生成脚本链并运行，随后按需重跑失败脚本（先于 post_run）。"""
-        all_config = self.service.load_config()
+        all_config = utils_config.load_config()
         # 首次运行复用 run_chain_once（生成+运行原子）；candidate_keys 为 None/空集合时按「跳过」语义不运行任何脚本。
         self.service.run_chain_once(self.candidate_keys, chain_name=self.chain_name)
         # 重跑轮：链跑完后解析日志、对失败脚本二次运行（先于 post_run）。
@@ -246,7 +250,7 @@ class ScheduledRun:
             "[chain] schedule 缺 rerun.enabled"
         )
         if rerun_cfg["enabled"]:
-            self.service._rerun_round(
+            self.service.rerun_round(
                 all_config=all_config, enabled_keys=self.candidate_keys
             )
 

@@ -15,9 +15,6 @@ from src.gui.controllers.task_card import TaskCardController
 from src.gui.controllers.window import WindowController
 from src.gui.icons import UiIconProvider
 from src.service.app_service import AppService
-from src.service.chain_service import (
-    ChainService,  # noqa: F401  # 重导出供测试 patch（test_qml_launcher 经 main_window.ChainService 打桩）
-)
 
 
 class QmlBridge(QObject):
@@ -269,4 +266,4 @@ class QmlBridge(QObject):
         self.background.apply_current(self.game_list.current_game)
 
 
-__all__ = ["QmlBridge", "ChainService", "UiIconProvider"]
+__all__ = ["QmlBridge", "UiIconProvider"]

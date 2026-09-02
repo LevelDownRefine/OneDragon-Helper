@@ -304,7 +304,9 @@ class TestLoadConfig(unittest.TestCase):
         fake_path = r"C:\fake\script\config.json"
 
         with (
-            patch.object(utils_sub_config, "get_sub_config_path", return_value=fake_path),
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(fake_data))),
         ):
@@ -319,7 +321,9 @@ class TestLoadConfig(unittest.TestCase):
         yaml_str = dump_yaml_str(fake_data)
 
         with (
-            patch.object(utils_sub_config, "get_sub_config_path", return_value=fake_path),
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=yaml_str)),
         ):
@@ -375,7 +379,9 @@ class TestSaveConfig(unittest.TestCase):
 
         m = mock_open()
         with (
-            patch.object(utils_sub_config, "get_sub_config_path", return_value=fake_path),
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
             patch("builtins.open", m),
         ):
             result = utils_sub_config.save_config("ok-ww", "DailyTask.json", data)
@@ -394,7 +400,9 @@ class TestSaveConfig(unittest.TestCase):
 
         m = mock_open()
         with (
-            patch.object(utils_sub_config, "get_sub_config_path", return_value=fake_path),
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
             patch("builtins.open", m),
         ):
             result = utils_sub_config.save_config(

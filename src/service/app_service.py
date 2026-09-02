@@ -1,11 +1,11 @@
 """AppService：组合根（composition root），GUI/CLI 唯一服务入口。
 
-持有平级 peer 并薄委托，使各 peer 互不越界——ChainService 只是被本类组合的一个链领域 peer，自身只负责链的生成/运行/校验。
+持有平级 peer 并薄委托，使各 peer 互不越界——链编排归 :mod:`src.service.chain_service` 模块函数（生成/运行/调度/校验），本类只组合它。
 
 peer：
 - 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils_config` 模块函数
 - 副本与周常声明读取（dungeon_list.yml / weekly_list.yml）：归 :mod:`src.config.dungeon_config` 模块函数
-- ChainService：链编排领域服务（生成/运行/调度/校验）
+- 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
 - 周常运行期参数（weekly_start.yml / weekly_timeouts.yml）：归 :mod:`src.utils_weekly` 模块函数
 
@@ -15,8 +15,8 @@ GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经
 
 import logging
 
+import src.service.chain_service as chain_service
 from src.config.dungeon_config import get_dungeon_map, get_weekly_map
-from src.service.chain_service import ChainService
 from src.service.schedule import load_schedule, save_schedule
 from src.utils_config import (
     add_script,
@@ -27,6 +27,11 @@ from src.utils_config import (
     remove_script,
     save_config,
     update_script,
+)
+from src.utils_runner import (
+    build_chain_command,
+    collect_invalid_script_messages,
+    run_chain_command,
 )
 from src.utils_weekly import (
     check_weekly,
@@ -42,16 +47,8 @@ logger = logging.getLogger(__name__)
 class AppService:
     """组合根：装配平级 service peer 并向外暴露统一接口（GUI/CLI 唯一门面）。"""
 
-    def __init__(
-        self,
-        chain_service=None,
-    ):
-        """装配各 peer。
-
-        Args:
-            chain_service: 可注入的 ChainService；None 时自建。
-        """
-        self._chain_service = chain_service or ChainService()
+    def __init__(self):
+        """装配各 peer。"""
 
     # ── 副本 / 周常声明（src.config.dungeon_config 模块函数）────────────
     def get_weekly_map(self, script_name: str) -> list:
@@ -77,7 +74,7 @@ class AppService:
 
     # ── 周常运行期参数（src.utils_weekly 模块函数）──
     # weekly_start.yml（周几起）与 weekly_timeouts.yml（每周超时）由 src.utils_weekly
-    # 拥有；读写直接调模块函数，不经 ChainService 转发。
+    # 拥有；读写直接调模块函数，不经 chain_service 转发。
     def get_weekly_start(self, script_name: str):
         """返回某脚本的周常起始日（1~7），未设置返回 None。"""
         return get_weekly_start(script_name)
@@ -137,7 +134,7 @@ class AppService:
         return save_schedule(data)
 
     def collect_invalid_scripts(self, script_list: list) -> list:
-        return self._chain_service.collect_invalid_scripts(script_list)
+        return collect_invalid_script_messages(script_list)
 
     def generate_chain(
         self,
@@ -146,24 +143,22 @@ class AppService:
         chain_name: str = "today",
         out_path: str | None = None,
     ) -> str:
-        return self._chain_service.generate_chain(
+        return chain_service.generate_chain(
             all_config_data, enabled_keys, chain_name, out_path
         )
 
     def build_chain_command(self, chain_config_path: str, extra_args=None):
-        return self._chain_service.build_chain_command(chain_config_path, extra_args)
+        return build_chain_command(chain_config_path, extra_args)
 
     def run_chain_command(
         self, chain_config_path: str, block: bool = True, extra_args=None
     ):
-        return self._chain_service.run_chain_command(
-            chain_config_path, block, extra_args
-        )
+        return run_chain_command(chain_config_path, block, extra_args)
 
     def run_chain_once(
         self, enabled_keys: set | None = None, *, chain_name: str = "today"
     ):
-        return self._chain_service.run_chain_once(enabled_keys, chain_name=chain_name)
+        return chain_service.run_chain_once(enabled_keys, chain_name=chain_name)
 
     def schedule_run(
         self,
@@ -175,7 +170,7 @@ class AppService:
         shutdown_delay=None,
         close_running: bool = True,
     ):
-        return self._chain_service.schedule_run(
+        return chain_service.schedule_run(
             enabled_keys,
             target_time,
             chain_name=chain_name,

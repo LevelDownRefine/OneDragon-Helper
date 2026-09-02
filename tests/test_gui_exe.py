@@ -122,7 +122,7 @@ class TestGuiExe(unittest.TestCase):
             self.assertTrue(f.read().strip(), "--version 文件为空")
 
     def test_exe_selftest(self):
-        """--selftest 应无头校验 ChainService 并写 JSON 结果（status=ok、关键检查通过）。"""
+        """--selftest 应无头校验 AppService 并写 JSON 结果（status=ok、关键检查通过）。"""
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
             out = fh.name
         result = self._run_exe("--selftest", "--out", out)

@@ -46,7 +46,7 @@ class LaunchController(QObject):
         """启动全部：先校验，再经 spawn_schedule_run 运行。
 
         即时与定时两条路径统一经 ``spawn_schedule_run`` 起独立控制台进程，由
-        ``ChainService.schedule_run`` 处理逻辑（生成→运行→重跑→邮件/关机）；二者差异
+        ``chain_service.schedule_run`` 处理逻辑（生成→运行→重跑→邮件/关机）；二者差异
         仅在于是否等待：定时等待到目标时刻，即时（target=now）不等待。关闭控制台即取消、
         GUI 退出不影响（进程独立存活）。
         本方法仅负责 UI 流程：计算启用集合、弹确认窗、解析定时/关机/静音配置。

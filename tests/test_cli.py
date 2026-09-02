@@ -111,7 +111,7 @@ class TestCliHelpVersion(unittest.TestCase):
 
 
 class TestCliSelftest(unittest.TestCase):
-    """--selftest 出口：无头校验 ChainService，退出 0 且 JSON 标记 OK。"""
+    """--selftest 出口：无头校验 AppService，退出 0 且 JSON 标记 OK。"""
 
     def test_selftest_ok(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
@@ -430,7 +430,7 @@ class TestCliRunChain(unittest.TestCase):
 
 
 class TestCliScheduledRun(unittest.TestCase):
-    """--schedule-run 出口：解析参数并委托 ChainService.schedule_run。"""
+    """--schedule-run 出口：解析参数并委托 chain_service.schedule_run。"""
 
     def _run(self, argv):
         with (
