@@ -4,10 +4,10 @@ import logging
 import os
 from typing import Any
 
-from src.config.subscript import (
-    get_config_path as _get_config_path_impl,
+from src.utils_sub_config import (
+    get_sub_config_path as _get_config_path_impl,
 )
-from src.config.subscript import (
+from src.utils_sub_config import (
     load_config,
     load_game_config,
     load_template,
@@ -338,7 +338,7 @@ class ScriptConfig:
         （无 ``_task_key`` / 非 ``_task_key`` + ``_task_map``），可完全自行实现而不调 super。
 
         仅「脚本未安装」与「用户未选择」的副本部分返回 None；config 损坏或字段值未知
-        属异常，直接 assert 暴露，不静默回退（否则会被 gui_state 兜底掩盖）。
+        属异常，直接 assert 暴露，不静默回退（否则会被日常副本的声明项回退掩盖）。
 
         Returns:
             ``(副本中文名, 序列值)``；无 _task_key（无适应）/ 脚本未安装 / 未选择时
@@ -1030,7 +1030,7 @@ class NTEConfig(ScriptConfig):
             "seq_fields": _anomaly_seq_key_map,  # 副本 → 序号字段
         },
         "daily_anomaly_hunter": {
-            "task_field": None,
+            "task_field": None,  # 追猎目标无任务类型通道
             "seq_fields": {"追猎目标": "追猎目标"},  # 副本名即 boss 名
         },
     }
@@ -1177,16 +1177,10 @@ class NTEConfig(ScriptConfig):
     def _read_dungeon(self) -> tuple[str | None, str | int | None]:
         """反读当前日常副本与二级序号（与 set_dungeon / _update_task 对称）。
 
-        当前玩法由 DailyRoutineTask.json 的 Routine Items 启用状态判定，经 ``_mode_specs``
-        查表解析当前模式（异象界域 / 追猎目标）。追猎目标无任务类型通道，set_dungeon
-        不写 daily_anomaly.任务类型（陈旧值），故必须优先用启用状态，不能直接读 任务类型。
-
-        两种模式数据落点不同（NTE 既有结构）：追猎目标 boss 存于 routine 文件
-        DailyRoutineTask.json 的 daily_anomaly_hunter 段；异象界域副本名+序号存于
-        config 文件 DailyRoutineTaskConfigs.json 的 daily_anomaly 段。故按模式 id 分流读取。
-
-        NTE 无标准存储结构（不依赖 _task_key + _task_map 反转），完全自行实现。
-        脚本未安装（routine 缺失）返回 (None, None)；routine/config 损坏属异常，assert 暴露。
+        当前玩法由 DailyRoutineTask.json 的 Routine Items 启用状态判定（非 任务类型 字段），
+        经 ``_mode_specs`` 查表解析模式；两种模式的副本/序列数据均落 config 文件
+        DailyRoutineTaskConfigs.json，routine 文件仅用于判定启用模式。脚本未安装或 routine
+        缺失返回 (None, None)；routine/config 损坏属异常，assert 暴露。
 
         Returns:
             (副本中文名, 序号值)；无启用玩法/未安装/未选择返回 (None, None)。
@@ -1213,33 +1207,26 @@ class NTEConfig(ScriptConfig):
         )
         if mode_id is None:
             return None, None  # 无启用玩法 → 未选择副本
-        if mode_id == "daily_anomaly_hunter":
-            # 追猎目标：boss 名存于 routine 文件 daily_anomaly_hunter 段。
-            # 该段/字段可能尚未落盘（用户在 NTE 自身 UI 启用追猎但未选 boss，
-            # 不经本工具 set_dungeon 写入）：段或字段缺失按「已识别模式、未选 boss」
-            # 处理为 None，而非断言——与读路径「容忍未配置」一致；结构性损坏（段
-            # 类型非 dict）已在下方 isinstance 断言覆盖。
-            section = routine.get("daily_anomaly_hunter", {})
-            assert isinstance(section, dict), (
-                f"[set_config][{self.display_name}] daily_anomaly_hunter 段必须是 dict"
-            )
-            boss = section.get("追猎目标")
-            return "追猎目标", boss if boss not in (None, "") else None
-        # 异象界域：副本名+序号存于 config 文件 daily_anomaly 段。
+        # 两种模式的副本/序列数据都落在 config 文件（与写入侧 _daily_section_dict
+        # 对称），故在此一次性加载；routine 文件只用于判定启用的模式。
         config = self._load(allow_missing=True)
         if config is None:
             return None, None  # 脚本未安装/未配置
         assert isinstance(config, dict), (
-            f"[set_config][{self.display_name}] DailyTask config.yaml 必须是 dict"
+            f"[set_config][{self.display_name}] DailyRoutineTaskConfigs.json 必须是 dict"
         )
-        # daily_anomaly 段缺失按「未选副本」处理（读路径容忍未配置；段类型非 dict
-        # 的结构性损坏由下方 isinstance 断言覆盖，字段级缺失不视为损坏）。
-        section = config.get("daily_anomaly", {})
+        # 段名 = 模式 id；段缺失按「未配置」处理（容忍未落盘），段类型非 dict 属损坏、assert。
+        section = config.get(mode_id, {})
         assert isinstance(section, dict), (
-            f"[set_config][{self.display_name}] daily_anomaly 段必须是 dict"
+            f"[set_config][{self.display_name}] {mode_id} 段必须是 dict"
         )
-        dungeon = section.get("任务类型")  # 段缺失时为 None（未选副本）
-        if dungeon in (None, ""):  # 值为空串同样视为未选具体副本
+        if mode_id == "daily_anomaly_hunter":
+            # 追猎目标：副本名即 boss 字段名（段缺失/空串按未选 boss，容忍未落盘）。
+            boss = section.get("追猎目标")
+            return "追猎目标", boss if boss else None
+        # 异象界域：副本名在 任务类型 字段，序号经 _anomaly_seq_key_map 反查。
+        dungeon = section.get("任务类型")
+        if dungeon in (None, ""):  # 段缺失/字段为空串均视为未选具体副本
             return None, None
         key = self._anomaly_seq_key_map.get(dungeon)
         sequence = section.get(key) if key else None

@@ -18,10 +18,10 @@ import tomllib
 import warnings
 
 from src.config.set_config import supports_weekly
-from src.config.subscript import get_script_name
-from src.service.chain_service import ChainService
-from src.service.script_service import ScriptService
+from src.service.app_service import AppService
+from src.utils_config import get_script
 from src.utils_shutdown import shutdown_sys
+from src.utils_sub_config import get_script_name
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument(
         "--selftest",
         action="store_true",
-        help="无头自检：校验 ChainService 配置/脚本列表，结果写 JSON 后退出",
+        help="无头自检：校验 AppService 配置/脚本列表，结果写 JSON 后退出",
     )
     action.add_argument(
         "--check-config",
@@ -210,15 +210,15 @@ def get_version() -> str:
 
 
 def _run_selftest(out_path: str | None) -> int:
-    """无头自检：校验 ChainService 关键依赖/配置/脚本列表。
+    """无头自检：经 AppService 校验关键依赖/配置/脚本列表。
 
     结果写入 JSON（默认 %TEMP%/odh_gui_selftest.json），返回退出码 0=OK / 1=失败。
     供打包产物集成测试 test_gui_exe.py 读取验证实质行为。
     """
     result: dict = {"status": "fail", "checks": {}}
     try:
-        service = ChainService()
-        data = service.load_config()
+        app_service = AppService()
+        data = app_service.load_config()
         result["checks"]["service_ready"] = True
         result["checks"]["script_count"] = len(data["script_list"])
         result["checks"]["config_loaded"] = True
@@ -237,9 +237,9 @@ def _run_check_config(out_path: str | None) -> int:
     返回退出码 0=全部合法 / 1=存在不合法项。
     """
     try:
-        service = ChainService()
-        all_config_data = service.load_config()
-        invalid = service.collect_invalid_scripts(all_config_data["script_list"])
+        app_service = AppService()
+        all_config_data = app_service.load_config()
+        invalid = app_service.collect_invalid_scripts(all_config_data["script_list"])
         result = {
             "status": "ok" if not invalid else "invalid",
             "script_count": len(all_config_data["script_list"]),
@@ -254,8 +254,8 @@ def _run_check_config(out_path: str | None) -> int:
 
 def _run_list_scripts(out_path: str | None) -> int:
     """CLI: 列出所有脚本唯一标识（exe 用进程名，脚本文件用 display_name）。"""
-    service = ChainService()
-    all_config_data = service.load_config()
+    app_service = AppService()
+    all_config_data = app_service.load_config()
     names = [get_script_name(s) for s in all_config_data["script_list"]]
     result = {"script_count": len(names), "scripts": names}
     _emit_json("list_scripts", result, out_path)
@@ -267,7 +267,7 @@ def _run_get_script(script_name: str, out_path: str | None) -> int:
 
     返回退出码 0=找到 / 1=不存在。
     """
-    script = ScriptService().get_script(script_name)
+    script = get_script(script_name)
     if script is None:
         _emit_json(
             "get_script",
@@ -281,8 +281,8 @@ def _run_get_script(script_name: str, out_path: str | None) -> int:
 
 def _run_dump_config(out_path: str | None) -> int:
     """CLI: 导出完整 config.yml（JSON）。"""
-    service = ChainService()
-    all_config_data = service.load_config()
+    app_service = AppService()
+    all_config_data = app_service.load_config()
     _emit_json("dump_config", all_config_data, out_path)
     return 0
 
@@ -296,7 +296,7 @@ def _run_check_weekly(out_path: str | None) -> int:
 
     返回退出码 0=一致 / 1=存在不一致。
     """
-    result = ScriptService().check_weekly()
+    result = AppService().check_weekly()
     _emit_json("check_weekly", result, out_path)
     assert "status" in result, "[cli] check_weekly 结果缺少 status"
     return 0 if result["status"] == "ok" else 1
@@ -354,8 +354,8 @@ def _resolve_enable_keys(
 
 def _run_generate_chain(args) -> int:
     """CLI: 生成脚本链配置。返回退出码 0=成功 / 1=失败。"""
-    service = ChainService()
-    all_config_data = service.load_config()
+    app_service = AppService()
+    all_config_data = app_service.load_config()
 
     known = {get_script_name(s) for s in all_config_data["script_list"]}
     enabled_keys, err = _resolve_enable_keys(args.enable, known)
@@ -407,12 +407,14 @@ def _run_generate_chain(args) -> int:
             )
             return 1
         # 仅做持久化（周几跑是长期配置），不实时写子脚本 config
-        service.set_weekly_start(script_name, start_day)
+        app_service.set_weekly_start(script_name, start_day)
 
     out = args.out
     if out:
         out = os.path.abspath(out)
-    out = service.generate_chain(all_config_data, enabled_keys, args.name, out_path=out)
+    out = app_service.generate_chain(
+        all_config_data, enabled_keys, args.name, out_path=out
+    )
     _emit_cli("generate_chain", f"已生成脚本链配置: {out}")
     return 0
 
@@ -425,10 +427,10 @@ def _run_run_chain(args) -> int:
         return 1
 
     extra_args = []
-    service = ChainService()
-    command, cwd, _env = service.build_chain_command(chain_path, extra_args)
+    app_service = AppService()
+    command, cwd, _env = app_service.build_chain_command(chain_path, extra_args)
     _emit_cli("run_chain", f"运行: {cwd} {' '.join(command)}")
-    code = service.run_chain_command(
+    code = app_service.run_chain_command(
         chain_path, block=not args.no_block, extra_args=extra_args
     )
     if args.no_block:
@@ -443,20 +445,20 @@ def _run_run_chain(args) -> int:
 
 
 def _run_scheduled(args) -> int:
-    """CLI 出口：调度运行入口，真实实现见 ``ChainService.schedule_run``。
+    """CLI 出口：调度运行入口，真实实现见 ``chain_service.schedule_run``。
 
     本函数在独立控制台进程中运行（由 ``utils_runner.spawn_schedule_run`` 以
     ``CREATE_NEW_CONSOLE`` 起），故等待阻塞无害；关闭该控制台即取消。链在点火时
     才生成（按当天星期）。
     """
-    service = ChainService()
-    all_config_data = service.load_config()
+    app_service = AppService()
+    all_config_data = app_service.load_config()
     known = {get_script_name(s) for s in all_config_data["script_list"]}
     enabled_keys, err = _resolve_enable_keys(args.enable, known)
     if err:
         _emit_cli("schedule_run", err)
         return 1
-    service.schedule_run(
+    app_service.schedule_run(
         enabled_keys,
         args.schedule_run,
         chain_name=args.name or "today",

@@ -1,6 +1,6 @@
 """游戏 config 往返保真测试（以「类似崩铁 M7A」的夹具驱动真实读写路径）。
 
-验证 src.config.subscript 的 load_config / save_config：
+验证 src.utils_sub_config 的 load_config / save_config：
 - 读后写回，解析结果与原 config 数据等价（reloaded == original）；
 - 注释（含行内注释）保留；
 - 04:00 / 4:00 这类时间保持字符串，绝不变 240.0 浮点污染；
@@ -15,7 +15,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.config import subscript
+from src import utils_sub_config
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "starrail_config.yaml")
 
@@ -23,16 +23,20 @@ FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "starrail_config.y
 class TestGameConfigRoundTrip(unittest.TestCase):
     def _load_fixture(self):
         """经由真实 load_config 读夹具（mock 路径解析，避免依赖游戏目录）。"""
-        with patch.object(subscript, "get_config_path", return_value=FIXTURE):
-            return subscript.load_config("starrail-test", "config.yaml")
+        with patch.object(
+            utils_sub_config, "get_sub_config_path", return_value=FIXTURE
+        ):
+            return utils_sub_config.load_config("starrail-test", "config.yaml")
 
     def _save_to_temp(self, data):
         with tempfile.NamedTemporaryFile(
             "w", suffix=".yaml", encoding="utf-8", delete=False
         ) as tmp:
             tmp_path = tmp.name
-        with patch.object(subscript, "get_config_path", return_value=tmp_path):
-            subscript.save_config("starrail-test", "config.yaml", data)
+        with patch.object(
+            utils_sub_config, "get_sub_config_path", return_value=tmp_path
+        ):
+            utils_sub_config.save_config("starrail-test", "config.yaml", data)
         return tmp_path
 
     def test_loaded_values_match_original(self):
@@ -53,8 +57,10 @@ class TestGameConfigRoundTrip(unittest.TestCase):
         cfg = self._load_fixture()
         tmp_path = self._save_to_temp(cfg)
 
-        with patch.object(subscript, "get_config_path", return_value=tmp_path):
-            reloaded = subscript.load_config("starrail-test", "config.yaml")
+        with patch.object(
+            utils_sub_config, "get_sub_config_path", return_value=tmp_path
+        ):
+            reloaded = utils_sub_config.load_config("starrail-test", "config.yaml")
 
         self.assertEqual(reloaded, cfg)  # 数据等价（reloaded == original）
 
@@ -75,8 +81,10 @@ class TestGameConfigRoundTrip(unittest.TestCase):
 
         tmp_path = self._save_to_temp(cfg)
 
-        with patch.object(subscript, "get_config_path", return_value=tmp_path):
-            reloaded = subscript.load_config("starrail-test", "config.yaml")
+        with patch.object(
+            utils_sub_config, "get_sub_config_path", return_value=tmp_path
+        ):
+            reloaded = utils_sub_config.load_config("starrail-test", "config.yaml")
 
         self.assertEqual(reloaded, cfg)
         self.assertTrue(reloaded["currencywars_enable"])

@@ -14,8 +14,7 @@ from src.gui.controllers.links import LinksController
 from src.gui.controllers.task_card import TaskCardController
 from src.gui.controllers.window import WindowController
 from src.gui.icons import UiIconProvider
-from src.service.chain_service import ChainService
-from src.service.script_service import ScriptService
+from src.service.app_service import AppService
 
 
 class QmlBridge(QObject):
@@ -31,16 +30,16 @@ class QmlBridge(QObject):
 
     def __init__(self):
         super().__init__()
-        self.service = ChainService()
+        self.app_service = AppService()
         # 组合各职责控制器：每个自管状态 + 信号；经构造注入显式依赖
         self.game_list = GameListController(
-            service=self.service,
+            app_service=self.app_service,
             toast=self.toastRequested.emit,
             on_reload=lambda: self._reload_games(),
         )
         self.task_card = TaskCardController(
             game_list=self.game_list,
-            service=self.service,
+            app_service=self.app_service,
             toast=self.toastRequested.emit,
         )
         self.background = BackgroundController(
@@ -51,13 +50,13 @@ class QmlBridge(QObject):
         self.launch = LaunchController(
             game_list=self.game_list,
             task_card=self.task_card,
-            service=self.service,
+            app_service=self.app_service,
             toast=self.toastRequested.emit,
         )
         self.links = LinksController(
             game_list=self.game_list,
             toast=self.toastRequested.emit,
-            script_service=ScriptService(),
+            app_service=self.app_service,
         )
         self.window = WindowController()
         # UI 矢量图标提供器（无状态，门面持有）
@@ -267,4 +266,4 @@ class QmlBridge(QObject):
         self.background.apply_current(self.game_list.current_game)
 
 
-__all__ = ["QmlBridge", "ChainService", "UiIconProvider"]
+__all__ = ["QmlBridge", "UiIconProvider"]

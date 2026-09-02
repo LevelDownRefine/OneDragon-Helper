@@ -1,19 +1,18 @@
 """单脚本配置弹窗（SingleScriptConfigDialog）。
 
-自包含模块：样式常量（原 src/gui/theme.py 子集）与工具函数（styled_msg_box /
-safe_startfile，原 src/gui/utils.py）已并入本文件（2026-08-16），src/gui 其余
+自包含模块：样式常量（原 src/gui/theme.py 子集）与工具函数（styled_msg_box，
+原 src/gui/utils.py）已并入本文件（2026-08-16），src/gui 其余
 模块随之删除。依赖仅剩 config/service 业务层与 PySide6。
 
 对外接口：
 - ``SingleScriptConfigDialog``：单脚本配置弹窗（名称/路径/类型/参数/完成检测/
   关闭脚本/关闭游戏/阻塞/游戏进程/每周超时），保存后经 ``pending_changes`` 返回，
-  写盘由调用方委托 ``ChainService.update_script``。脚本删除改由左侧列表交互完成。
+  写盘由调用方经 ``AppService.update_script`` 委托 ``src.utils_config.update_script``。脚本删除改由左侧列表交互完成。
 - 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
   （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
 """
 
 import os
-import warnings
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QIntValidator
@@ -34,8 +33,8 @@ from PySide6.QtWidgets import (
 from src.config.set_config import (
     supports_weekly,
 )
-from src.config.subscript import get_script_name
-from src.service.script_service import ScriptService
+from src.service.app_service import AppService
+from src.utils_sub_config import get_script_name
 
 # ═══════════════════════ 弹窗样式（原 src/gui/theme.py 子集，2026-08-16 并入）═══════
 DARK_BLUE = "#333957"  # 深空蓝
@@ -199,17 +198,6 @@ def styled_msg_box(parent, icon, title, text):
     return box
 
 
-def safe_startfile(parent, path, fail_text):
-    """用系统默认程序打开 path；任何异常都转成清晰可读的提示，不让 GUI 崩溃。"""
-    try:
-        os.startfile(path)
-    except (OSError, AttributeError) as e:
-        warnings.warn(f"{fail_text}: {e}", RuntimeWarning, stacklevel=2)
-        styled_msg_box(
-            parent, QMessageBox.Warning, "提示", f"{fail_text}：\n{e}"
-        ).exec()
-
-
 # ═══════════════════════ 弹窗逻辑 ═══════════════════════════════════════════
 # 脚本文件选择过滤器（路径选择弹窗用）
 SCRIPT_FILE_FILTER = (
@@ -347,7 +335,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         display_name,
         script_path="",
         parent=None,
-        script_service=None,
+        app_service=None,
     ):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {display_name}")
@@ -358,7 +346,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         )
         self.display_name = display_name  # 展示名
         self.script_path = script_path
-        self._script_service = script_service or ScriptService()
+        self._app_service = app_service or AppService()
         self.pending_changes = None  # accept() 后供调用方取表单字段与 weekly
 
         self.init_ui()
@@ -485,7 +473,7 @@ class SingleScriptConfigDialog(FormDialogBase):
 
     def _find_script_data(self) -> dict:
         """从 config.yml 读取本脚本的完整数据字典；脚本不在表中返回空 dict。"""
-        script = self._script_service.get_script(self.script_name)
+        script = self._app_service.get_script(self.script_name)
         return script if script is not None else {}
 
     def load_data(self):
@@ -511,21 +499,21 @@ class SingleScriptConfigDialog(FormDialogBase):
 
         # 周几起（从 weekly_start.yml 读；不支持周常时跳过）
         if self._weekly_start_supported:
-            start_day = self._script_service.get_weekly_start(self.script_name)
+            start_day = self._app_service.get_weekly_start(self.script_name)
             self.weekly_start_combo.setCurrentIndex(
                 0 if start_day is None else int(start_day)
             )
 
         # 每周超时
-        timeouts = self._script_service.weekly_inputs(self.script_name)
+        timeouts = self._app_service.weekly_inputs(self.script_name)
         for idx, timeout_edit in enumerate(self.timeout_inputs):
             timeout_edit.setText(str(timeouts[idx]))
 
     def save_data(self):
         """收集表单数据存入 self.pending_changes 后 accept()；写盘由调用方完成。
 
-        不再直接调 ScriptService.update_script() 写 config.yml——config.yml
-        的写入权归 ChainService。weekly_timeouts 也由调用方决定是否持久化。
+        不直接在此弹窗写 config.yml——config.yml 的写入权归 ``src.utils_config``（经调用方
+        ``AppService.update_script`` 委托）。weekly_timeouts 也由调用方决定是否持久化。
         """
         path_val = self.path_input.text().strip()
         if not path_val:
@@ -539,7 +527,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         new_script_name = get_script_name(
             {"display_name": new_display_name, "script_path": path_val}
         )
-        existing = self._script_service.get_script(new_script_name)
+        existing = self._app_service.get_script(new_script_name)
         if existing is not None and new_script_name != self.script_name:
             assert "display_name" in existing, (
                 "[dialogs] config 脚本数据缺少 display_name"
@@ -563,15 +551,15 @@ class SingleScriptConfigDialog(FormDialogBase):
             text = timeout_edit.text().strip()
             timeouts.append(int(text) if text else None)
 
-        # 周几起：权威值持久化到 weekly_start.yml（经 ScriptService）。游戏侧原生 config
+        # 周几起：权威值持久化到 weekly_start.yml（经 AppService.set_weekly_start / src.utils_weekly）。游戏侧原生 config
         # 起始日的同步不在此处进行——save_data 内 config.yml 的 script_path 尚未落盘，
         # 此时解析目录会拿到旧路径，导致写到错误/失效目录。统一由调用方在
-        # ChainService.update_script 落盘新路径后触发（见 game_list.configCurrent）。
+        # AppService.update_script 落盘新路径后触发（见 game_list.configCurrent）。
         start_day = None
         if self._weekly_start_supported:
             idx = self.weekly_start_combo.currentIndex()
             start_day = None if idx <= 0 else idx
-            self._script_service.set_weekly_start(self.script_name, start_day)
+            self._app_service.set_weekly_start(self.script_name, start_day)
 
         self.pending_changes = {
             "old_script_name": self.script_name,

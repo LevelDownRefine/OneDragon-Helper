@@ -9,7 +9,6 @@ import subprocess
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from src.config.subscript import get_script_name, resolve_script_path
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
 from src.utils_runner import (
@@ -28,17 +27,18 @@ from src.utils_runner import (
     parse_timed_run,
     spawn_schedule_run,
 )
+from src.utils_sub_config import get_script_name, resolve_script_path
 from src.utils_weekly import next_target_datetime
 
 
 class LaunchController(QObject):
     toastRequested = Signal(str)
 
-    def __init__(self, game_list, task_card, service, toast, parent=None):
+    def __init__(self, game_list, task_card, app_service, toast, parent=None):
         super().__init__(parent)
         self._game_list = game_list
         self._task_card = task_card
-        self._service = service
+        self._app_service = app_service
         self._toast = toast
 
     @Slot()
@@ -46,7 +46,7 @@ class LaunchController(QObject):
         """启动全部：先校验，再经 spawn_schedule_run 运行。
 
         即时与定时两条路径统一经 ``spawn_schedule_run`` 起独立控制台进程，由
-        ``ChainService.schedule_run`` 处理逻辑（生成→运行→重跑→邮件/关机）；二者差异
+        ``chain_service.schedule_run`` 处理逻辑（生成→运行→重跑→邮件/关机）；二者差异
         仅在于是否等待：定时等待到目标时刻，即时（target=now）不等待。关闭控制台即取消、
         GUI 退出不影响（进程独立存活）。
         本方法仅负责 UI 流程：计算启用集合、弹确认窗、解析定时/关机/静音配置。
@@ -63,7 +63,7 @@ class LaunchController(QObject):
             return
         if not self._confirm_run(enabled_script_names):
             return
-        schedule_data = self._service.load_schedule()
+        schedule_data = self._app_service.load_schedule()
         shutdown_delay = parse_shutdown(schedule_data)
         mute = parse_mute_run(schedule_data)
         close_running = parse_close_running(schedule_data)
@@ -106,11 +106,11 @@ class LaunchController(QObject):
 
     def _confirm_run(self, enabled_keys: set) -> bool:
         """运行前校验并确认（含自动关机 / 定时计划配置）。Returns: True 继续，False 取消。"""
-        config_data = self._service.load_config()
+        config_data = self._app_service.load_config()
         enabled_scripts = [
             s for s in config_data["script_list"] if get_script_name(s) in enabled_keys
         ]
-        invalid = self._service.collect_invalid_scripts(enabled_scripts)
+        invalid = self._app_service.collect_invalid_scripts(enabled_scripts)
         if invalid:
             details = "\n".join(f"· {name}：{msg}" for name, msg in invalid)
             reply = QMessageBox.warning(
@@ -124,7 +124,7 @@ class LaunchController(QObject):
                 return False
 
         # 回显 schedule 当前自动关机 / 定时计划配置到确认弹窗。
-        schedule_data = self._service.load_schedule()
+        schedule_data = self._app_service.load_schedule()
         shutdown_cfg = schedule_data.get("shutdown")
         shutdown_enabled = bool(
             isinstance(shutdown_cfg, dict) and shutdown_cfg.get("after_run", False)
@@ -172,5 +172,5 @@ class LaunchController(QObject):
         apply_close_running_config(schedule_data, enabled=res["close_running_enabled"])
         apply_rerun_config(schedule_data, enabled=res["rerun_enabled"])
         apply_notify_config(schedule_data, enabled=res["notify_enabled"])
-        self._service.save_schedule(schedule_data)
+        self._app_service.save_schedule(schedule_data)
         return True

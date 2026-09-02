@@ -222,8 +222,6 @@ __marimo__/
 # Backup files
 *.bak
 
-# GUI 状态持久化（用户本地偏好）
-gui_state.json
 config/config.yml
 
 # 调度运行参数（运行时由 schedule.example.yml 拷贝生成，含邮件授权码，不进版本库；模板见 config/schedule.example.yml）

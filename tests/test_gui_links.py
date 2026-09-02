@@ -14,7 +14,7 @@ class _FakeGameList:
 
 
 class TestLinksOpenScriptConfig(unittest.TestCase):
-    """openScriptConfig：委托 ScriptService.config_file_path 打开当前脚本配置文件。"""
+    """openScriptConfig：委托 AppService.config_file_path 打开当前脚本配置文件。"""
 
     def _make_controller(self, config_return):
         game = {
@@ -26,7 +26,7 @@ class TestLinksOpenScriptConfig(unittest.TestCase):
         svc.config_file_path.return_value = config_return
         toast = MagicMock()
         ctrl = LinksController(
-            game_list=_FakeGameList(game), toast=toast, script_service=svc
+            game_list=_FakeGameList(game), toast=toast, app_service=svc
         )
         return ctrl, svc, toast
 

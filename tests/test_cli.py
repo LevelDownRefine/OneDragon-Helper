@@ -23,8 +23,8 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from src import cli, launcher
-from src.config.subscript import get_script_name
 from src.service import chain_gen as service_chain_gen
+from src.utils_sub_config import get_script_name
 from src.utils_yaml import load_yaml
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -111,7 +111,7 @@ class TestCliHelpVersion(unittest.TestCase):
 
 
 class TestCliSelftest(unittest.TestCase):
-    """--selftest 出口：无头校验 ChainService，退出 0 且 JSON 标记 OK。"""
+    """--selftest 出口：无头校验 AppService，退出 0 且 JSON 标记 OK。"""
 
     def test_selftest_ok(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
@@ -311,7 +311,7 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
     """--weekly-start 命令行覆盖的落盘语义。
 
     - --weekly-start：经 service.set_weekly_start 持久化到 weekly_start.yml
-      （周几跑是长期配置），不实时写子脚本 config、也不并入 generate_chain 内存 ui_state。
+      （周几跑是长期配置），不实时写子脚本 config、不并入任何 UI 状态。
     """
 
     def setUp(self):
@@ -322,13 +322,13 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
 
     def test_weekly_start_persists_via_set_weekly_start(self):
         """--weekly-start 调用 service.set_weekly_start 持久化（周几跑是长期配置），
-        不实时写子脚本 config、不并入 generate_chain 内存 ui_state。"""
+        不实时写子脚本 config、不并入任何 UI 状态。"""
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
             with (
-                patch.object(cli.ChainService, "generate_chain", return_value=out),
-                patch.object(cli.ChainService, "set_weekly_start") as mock_set,
+                patch.object(cli.AppService, "generate_chain", return_value=out),
+                patch.object(cli.AppService, "set_weekly_start") as mock_set,
             ):
                 _run_main(
                     [
@@ -430,16 +430,16 @@ class TestCliRunChain(unittest.TestCase):
 
 
 class TestCliScheduledRun(unittest.TestCase):
-    """--schedule-run 出口：解析参数并委托 ChainService.schedule_run。"""
+    """--schedule-run 出口：解析参数并委托 chain_service.schedule_run。"""
 
     def _run(self, argv):
         with (
             patch.object(
-                cli.ChainService,
+                cli.AppService,
                 "load_config",
                 return_value={"script_list": [{"display_name": "demo"}]},
             ),
-            patch.object(cli.ChainService, "schedule_run") as mock_sched,
+            patch.object(cli.AppService, "schedule_run") as mock_sched,
         ):
             code = _run_main(argv, expect_exit=0)
         return code, mock_sched
@@ -486,11 +486,11 @@ class TestCliScheduledRun(unittest.TestCase):
     def test_schedule_run_unknown_enable_exits_one(self):
         with (
             patch.object(
-                cli.ChainService,
+                cli.AppService,
                 "load_config",
                 return_value={"script_list": [{"display_name": "demo"}]},
             ),
-            patch.object(cli.ChainService, "schedule_run") as mock_sched,
+            patch.object(cli.AppService, "schedule_run") as mock_sched,
         ):
             code = _run_main(
                 ["--schedule-run", "08:00", "--enable", "ghost"], expect_exit=1

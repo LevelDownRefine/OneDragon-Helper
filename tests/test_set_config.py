@@ -4,7 +4,7 @@
 覆盖函数：
   - _CONFIGS（子类路径声明完整性）
   - _get_script_root_dir
-  - get_config_path
+  - get_sub_config_path
   - load_config
   - save_config（mock 文件写入，不真正写回脚本 config）
 """
@@ -15,7 +15,8 @@ import tempfile
 import unittest
 from unittest.mock import mock_open, patch
 
-from src.config import set_config, subscript
+from src import utils_sub_config
+from src.config import set_config
 from src.utils import safe_path_join
 from src.utils_yaml import dump_yaml_str, load_yaml_str
 
@@ -116,10 +117,12 @@ class TestGetScriptRootDir(unittest.TestCase):
         # _get_script_root_dir 内部会统一为正斜杠，期望值也要一致
         expected_root = os.path.dirname(fake_path.replace("\\", "/"))
         with (
-            patch.object(subscript, "_load_config_yml", return_value=fake_config),
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value=fake_config
+            ),
             patch("os.path.exists", return_value=True),
         ):
-            root = subscript._get_script_root_dir("ok-ww")
+            root = utils_sub_config._get_script_root_dir("ok-ww")
         self.assertEqual(root, expected_root)
 
     def test_handles_windows_path_on_any_platform(self):
@@ -133,20 +136,24 @@ class TestGetScriptRootDir(unittest.TestCase):
             ]
         }
         with (
-            patch.object(subscript, "_load_config_yml", return_value=fake_config),
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value=fake_config
+            ),
             patch("os.path.exists", return_value=True),
         ):
-            root = subscript._get_script_root_dir("ok-ww")
+            root = utils_sub_config._get_script_root_dir("ok-ww")
         self.assertEqual(root, "C:/Users/test/ok-ww")
 
     def test_raises_for_unknown_script(self):
         """未在 config.yml 中的脚本应触发 AssertionError"""
         fake_config = {"script_list": []}
         with (
-            patch.object(subscript, "_load_config_yml", return_value=fake_config),
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value=fake_config
+            ),
             self.assertRaises(AssertionError),
         ):
-            subscript._get_script_root_dir("none")
+            utils_sub_config._get_script_root_dir("none")
 
     def test_raises_for_empty_script_path(self):
         """script_path 为空时应触发 AssertionError"""
@@ -156,14 +163,16 @@ class TestGetScriptRootDir(unittest.TestCase):
             ]
         }
         with (
-            patch.object(subscript, "_load_config_yml", return_value=fake_config),
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value=fake_config
+            ),
             self.assertRaises(AssertionError),
         ):
-            subscript._get_script_root_dir("empty")
+            utils_sub_config._get_script_root_dir("empty")
 
 
 class TestGetConfigPath(unittest.TestCase):
-    """测试 get_config_path"""
+    """测试 get_sub_config_path"""
 
     def test_joins_root_and_rel(self):
         """应正确拼接脚本根目录和 config 相对路径"""
@@ -175,12 +184,14 @@ class TestGetConfigPath(unittest.TestCase):
         }
         rel = "data/apps/ok-ww/working/configs/DailyTask.json"
         with (
-            patch.object(subscript, "_load_config_yml", return_value=fake_config),
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value=fake_config
+            ),
             patch("os.path.exists", return_value=True),
         ):
-            path = subscript.get_config_path("ok-ww", rel)
+            path = utils_sub_config.get_sub_config_path("ok-ww", rel)
 
-        # get_config_path 内部用 safe_path_join，会归一化为绝对路径（Windows 为反斜杠），
+        # get_sub_config_path 内部用 safe_path_join，会归一化为绝对路径（Windows 为反斜杠），
         # 故 expected 需用同一归一化方式，避免分隔符不一致导致断言失败。
         expected = safe_path_join("C:/fake/ok-ww", rel)
         self.assertEqual(path, expected)
@@ -189,11 +200,11 @@ class TestGetConfigPath(unittest.TestCase):
         """config.yml 中无此脚本应触发 AssertionError"""
         with (
             patch.object(
-                subscript, "_load_config_yml", return_value={"script_list": []}
+                utils_sub_config, "_load_config_yml", return_value={"script_list": []}
             ),
             self.assertRaises(AssertionError),
         ):
-            subscript.get_config_path("none", "whatever.json")
+            utils_sub_config.get_sub_config_path("none", "whatever.json")
 
     def test_all_registered_scripts_resolve_with_mock_config(self):
         """对所有已注册脚本，用 mock 的 config.yml 验证路径推导成功
@@ -209,7 +220,7 @@ class TestGetConfigPath(unittest.TestCase):
         ]
         with (
             patch.object(
-                subscript,
+                utils_sub_config,
                 "_load_config_yml",
                 return_value={"script_list": fake_script_list},
             ),
@@ -217,7 +228,7 @@ class TestGetConfigPath(unittest.TestCase):
         ):
             for name in scripts:
                 rel = set_config._CONFIGS[name]._config_rel_path
-                path = subscript.get_config_path(name, rel)
+                path = utils_sub_config.get_sub_config_path(name, rel)
                 self.assertIsNotNone(path, f"{name} 路径推导失败")
                 # 路径中应包含相对路径的各段（不依赖具体分隔符）
                 rel_parts = rel.split("/")
@@ -227,7 +238,7 @@ class TestGetConfigPath(unittest.TestCase):
                     )
 
     def test_does_not_require_exe_to_exist(self):
-        """回归：get_config_path 不应校验游戏 exe 是否存在。
+        """回归：get_sub_config_path 不应校验游戏 exe 是否存在。
 
         旧实现经 _get_script_root_dir → get_script_path 断言 exe 存在，
         当用户正要修正失效的旧路径时，任何保存（含周起始日同步）都会崩溃。
@@ -243,20 +254,22 @@ class TestGetConfigPath(unittest.TestCase):
         }
         rel = set_config.StarRailConfig._config_rel_path
         with (
-            patch.object(subscript, "_load_config_yml", return_value=fake_config),
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value=fake_config
+            ),
             patch("os.path.exists", return_value=False),  # 模拟 exe 不存在
         ):
             # 旧实现此处会因 get_script_path 的 assert os.path.exists(exe) 崩溃；
             # 新实现应正常返回路径（不依赖 exe 是否存在）。
-            path = subscript.get_config_path("March7th-Assistant", rel)
+            path = utils_sub_config.get_sub_config_path("March7th-Assistant", rel)
         self.assertIn("config.yaml", path)
 
 
 class TestStarRailWeeklyStartDayRobustness(unittest.TestCase):
     """回归：崩铁 set_weekly_start_day 的读路径不应因 exe 路径失效而崩溃（soft 解析）。
 
-    旧实现 get_config_path → get_script_path 断言 exe 存在；用户正要修正失效的旧路径时
-    保存即崩。修复后 get_config_path 用 soft 解析（不校验 exe），读路径不再因路径失效
+    旧实现 get_sub_config_path → get_script_path 断言 exe 存在；用户正要修正失效的旧路径时
+    保存即崩。修复后 get_sub_config_path 用 soft 解析（不校验 exe），读路径不再因路径失效
     而断言。写游戏侧 config 视为前置条件（游戏已安装、路径有效，由 GUI 保证），不再做
     存在性兜底盘；非法周起始日仍由 assert 拦截。
     """
@@ -271,7 +284,7 @@ class TestStarRailWeeklyStartDayRobustness(unittest.TestCase):
 class TestArknightsWeeklyStartDayRobustness(unittest.TestCase):
     """回归：MAA(明日方舟) set_weekly_start_day 的读路径不再因 exe 路径失效而崩溃。
 
-    与 TestStarRailWeeklyStartDayRobustness 同源修复（get_config_path soft 解析）。
+    与 TestStarRailWeeklyStartDayRobustness 同源修复（get_sub_config_path soft 解析）。
     写游戏侧 config 视为前置条件（游戏已安装、路径有效，由 GUI 保证），原生 config
     缺失即断言失败，不再 best-effort 跳过；非法周起始日仍由 assert 拦截。
     """
@@ -291,11 +304,13 @@ class TestLoadConfig(unittest.TestCase):
         fake_path = r"C:\fake\script\config.json"
 
         with (
-            patch.object(subscript, "get_config_path", return_value=fake_path),
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(fake_data))),
         ):
-            result = subscript.load_config("ok-ww", "DailyTask.json")
+            result = utils_sub_config.load_config("ok-ww", "DailyTask.json")
 
         self.assertEqual(result, fake_data)
 
@@ -306,11 +321,15 @@ class TestLoadConfig(unittest.TestCase):
         yaml_str = dump_yaml_str(fake_data)
 
         with (
-            patch.object(subscript, "get_config_path", return_value=fake_path),
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=yaml_str)),
         ):
-            result = subscript.load_config("OneDragon-Launcher", "charge_plan.yml")
+            result = utils_sub_config.load_config(
+                "OneDragon-Launcher", "charge_plan.yml"
+            )
 
         self.assertEqual(result, fake_data)
 
@@ -339,12 +358,12 @@ class TestLoadConfig(unittest.TestCase):
 
             with (
                 patch.object(
-                    subscript, "_load_config_yml", return_value=fake_config_yml
+                    utils_sub_config, "_load_config_yml", return_value=fake_config_yml
                 ),
                 patch("os.path.exists", return_value=True),
                 patch("builtins.open", mock_open(read_data=file_content)),
             ):
-                result = subscript.load_config(name, rel)
+                result = utils_sub_config.load_config(name, rel)
 
             self.assertIsNotNone(result, f"{name} config 读取失败")
             self.assertEqual(result, fake_data, f"{name} config 读取内容不匹配")
@@ -360,10 +379,12 @@ class TestSaveConfig(unittest.TestCase):
 
         m = mock_open()
         with (
-            patch.object(subscript, "get_config_path", return_value=fake_path),
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
             patch("builtins.open", m),
         ):
-            result = subscript.save_config("ok-ww", "DailyTask.json", data)
+            result = utils_sub_config.save_config("ok-ww", "DailyTask.json", data)
 
         self.assertIsNone(result)
         m.assert_called_once_with(fake_path, "w", encoding="utf-8")
@@ -379,10 +400,12 @@ class TestSaveConfig(unittest.TestCase):
 
         m = mock_open()
         with (
-            patch.object(subscript, "get_config_path", return_value=fake_path),
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
             patch("builtins.open", m),
         ):
-            result = subscript.save_config(
+            result = utils_sub_config.save_config(
                 "OneDragon-Launcher", "charge_plan.yml", data
             )
 
@@ -394,12 +417,12 @@ class TestSaveConfig(unittest.TestCase):
         self.assertEqual(load_yaml_str(written), data)
 
     def test_save_raises_when_path_is_none(self):
-        """get_config_path 返回 None 时应抛出异常"""
+        """get_sub_config_path 返回 None 时应抛出异常"""
         with (
-            patch.object(subscript, "get_config_path", return_value=None),
+            patch.object(utils_sub_config, "get_sub_config_path", return_value=None),
             self.assertRaises((TypeError, AssertionError)),
         ):
-            subscript.save_config("none", "whatever.json", {"key": "val"})
+            utils_sub_config.save_config("none", "whatever.json", {"key": "val"})
 
     def test_save_and_reload_roundtrip_json(self):
         """JSON 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
@@ -407,12 +430,14 @@ class TestSaveConfig(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             fake_path = os.path.join(tmp, "config.json")
-            with patch.object(subscript, "get_config_path", return_value=fake_path):
+            with patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ):
                 # save
-                ok = subscript.save_config("ok-ww", "DailyTask.json", data)
+                ok = utils_sub_config.save_config("ok-ww", "DailyTask.json", data)
                 self.assertIsNone(ok)
                 # load
-                loaded = subscript.load_config("ok-ww", "DailyTask.json")
+                loaded = utils_sub_config.load_config("ok-ww", "DailyTask.json")
                 self.assertEqual(loaded, data)
 
     def test_save_and_reload_roundtrip_yaml(self):
@@ -421,14 +446,18 @@ class TestSaveConfig(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             fake_path = os.path.join(tmp, "config.yaml")
-            with patch.object(subscript, "get_config_path", return_value=fake_path):
+            with patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ):
                 # save
-                ok = subscript.save_config(
+                ok = utils_sub_config.save_config(
                     "OneDragon-Launcher", "charge_plan.yml", data
                 )
                 self.assertIsNone(ok)
                 # load
-                loaded = subscript.load_config("OneDragon-Launcher", "charge_plan.yml")
+                loaded = utils_sub_config.load_config(
+                    "OneDragon-Launcher", "charge_plan.yml"
+                )
                 self.assertEqual(loaded, data)
 
 

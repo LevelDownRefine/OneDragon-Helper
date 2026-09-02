@@ -9,7 +9,7 @@
 
 本模块为 `src.log` 包的子模块，由 `python -m src.log`（__main__ 入口）或 GUI/service 以 `import
 src.log.monitor` 方式调用，不单独运行。除复用脚本唯一标识 `get_script_name`（见
-`src.config.subscript`）外，不依赖项目内其余模块；根目录由 `_get_root_dir` 推导，并直接
+`src.utils_sub_config`）外，不依赖项目内其余模块；根目录由 `_get_root_dir` 推导，并直接
 读取 `config.yml`（经 `src.utils_yaml.load_yaml`，ruamel YAML 1.2 解析）。
 """
 
@@ -22,8 +22,8 @@ import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from src.config.subscript import get_script_name
 from src.utils_logger import setup_logging
+from src.utils_sub_config import get_script_name
 from src.utils_yaml import load_yaml, load_yaml_optional
 
 logger = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ status_cn = {
 
 
 class BaseLogParser:
-    # 脚本唯一标识（与全链路一致，见 src.config.subscript.get_script_name）：
+    # 脚本唯一标识（与全链路一致，见 src.utils_sub_config.get_script_name）：
     # exe 脚本=进程名（script_path basename 去后缀，空格→-），python 脚本=display_name。
     # parse_log 与 supported 推导都按它匹配，不再依赖易变的 display_name。
     script_name: str = ""

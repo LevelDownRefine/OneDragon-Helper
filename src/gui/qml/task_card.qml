@@ -5,7 +5,7 @@ import OneDragonHelper 1.0
 // 数据经 Bridge 暴露：taskTitle / taskAdapted / weeklySupported / dailyDungeonText /
 // weeklyItems / dungeonOptions；副本写回经 selectDungeon / selectWeeklyDungeon；
 // 周几起（weekly_start）经单脚本配置弹窗（dialogs）落盘 weekly_start.yml。
-// dungeon/sequence 持久化到 gui_state.json；周几起（weekly_start）持久化到 weekly_start.yml。
+// dungeon/sequence 持久化到子脚本 config；周几起（weekly_start）持久化到 weekly_start.yml。
 // 启用控制不在此卡：日常靠控制模式、周常靠周几起（均在别处实现），本卡只做副本选择。
 //
 // 「周几起」选择已迁至单脚本配置弹窗（≡ 按钮打开），本卡只显示周常名占位。

@@ -2,9 +2,9 @@
 
 统一 `set_config()` 适配器接口，内部封装各游戏脚本异构的 config 读写。各脚本的 config 格式、路径、字段名不同，由各 `ScriptConfig` 子类适配，上层 service 不感知差异。
 
-> 设计定位：`set_config` 是适配器，把异构 config 适配成统一调用；不是外观模式，外观整合职责归 `src/service/` 的 ChainService。
+> 设计定位：`set_config` 是适配器，把异构 config 适配成统一调用；不是外观模式，外观整合职责归组合根 `AppService`（编排 `src.service.chain_service` 与 `src.utils_config` 等模块）。
 
-> script_name 为全链路内部唯一标识，由 `get_script_name(script)` 获取，与进程名 `get_process_name` 区分。exe 脚本的 script_name 即进程名 basename 去后缀，如 `ok-ww`；python/bat 脚本文件的 script_name 即 display_name。注册表、`dungeon_list.yml`、`gui_state.json`、`weekly_timeouts.yml` 的 key 全用 script_name，display_name 仅用于展示。config.yml 加载经 `check_script_name_uniqueness` 断言唯一。
+> script_name 为全链路内部唯一标识，由 `get_script_name(script)` 获取，与进程名 `get_process_name` 区分。exe 脚本的 script_name 即进程名 basename 去后缀，如 `ok-ww`；python/bat 脚本文件的 script_name 即 display_name。注册表、`dungeon_list.yml`、`weekly_timeouts.yml` 的 key 全用 script_name，display_name 仅用于展示。config.yml 加载经 `check_script_name_uniqueness` 断言唯一。
 
 ## 架构
 
@@ -84,9 +84,9 @@
 | 鸣潮 | 否 | `Which to Farm` | 是 | 经 `super()._update_task(config, dungeon_name, None)` 复用副本写入，再按 `_sequence_map` 写序列；模拟领域需映射值，凝素/无音区直接用 sequence |
 | 原神 | 否 | `DomainName` | 否 | — |
 | 终末地 | 否 | `体力本` | 否 | — |
-| 崩铁 | 否 | — | 否 | 日常无需适配（set_dungeon 为 no-op），反读回退 gui_state |
+| 崩铁 | 否 | — | 否 | 日常无需适配（set_dungeon 为 no-op，上游自身已支持），chip 呈现声明项 |
 | 异环 | 否，覆盖做互斥切换 | `任务类型`（声明于 `_mode_specs`） | 是 | 完全自定义（不调 super）：副本→模式经 `_dungeon_to_mode` 反查 `_mode_specs` 声明式映射（含 `task_field`+`seq_fields`）；`DailyRoutineTask.json` 切换 `daily_anomaly`↔`daily_anomaly_hunter` 互斥启用，复用基类 `_load`/`_save`，仅路径 `_routine_config_rel_path` 不同 |
-| 绝区零 | 是，空实现仅 print | — | — | 无需适配副本选择 |
+| 绝区零 | 是，空实现仅 print | — | — | 无需适配副本选择（上游自身已支持） |
 | 粥 | 是，完全自定义 | — | 是 | 操作 `TaskQueue` 禁用全部→启用剿灭+选定+土，不写二级序列 |
 
 标准流程：不覆盖 set_dungeon，靠 `_task_key` 适配；需二级序列支持则覆盖 `_update_task`（在 `super()._update_task(config, dungeon_name, None)` 后补序列）；需完全自定义如粥或无需适配如绝区零才覆盖 set_dungeon。

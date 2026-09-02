@@ -105,7 +105,8 @@ class TestReadbackNTE(unittest.TestCase):
             self.assertEqual(cfg._read_dungeon()[0], "异能升级材料")
             self.assertEqual(cfg._read_dungeon()[1], "3")
 
-    def test_hunter_readback_via_routine(self):
+    def test_hunter_readback_without_boss(self):
+        """启用追猎目标但尚未选 boss：模式由 routine 判定，boss 为 None（容忍未配置）。"""
         config = {"daily_anomaly": {}}
         routine = {
             "Routine Items": [
@@ -123,7 +124,7 @@ class TestReadbackNTE(unittest.TestCase):
             patch.object(set_config_mod, "safe_update", _setter),
         ):
             cfg = NTEConfig()
-            self.assertEqual(cfg._read_dungeon()[0], "追猎目标")
+            self.assertEqual(cfg._read_dungeon(), ("追猎目标", None))
 
     def test_hunter_readback_ignores_stale_anomaly_task_type(self):
         """从异象界域切到追猎目标后，daily_anomaly.任务类型 仍残留陈旧值，
@@ -131,13 +132,14 @@ class TestReadbackNTE(unittest.TestCase):
         """
         config = {
             "daily_anomaly": {"任务类型": "空幕", "空幕序号": 6},
+            # boss 随副本/序列写入 **config 文件**（_update_task 落点），非 routine 文件
+            "daily_anomaly_hunter": {"追猎目标": "黑之书"},
         }
         routine = {
             "Routine Items": [
                 {"id": "daily_anomaly", "enabled": False},
                 {"id": "daily_anomaly_hunter", "enabled": True},
             ],
-            "daily_anomaly_hunter": {"追猎目标": "黑之书"},
         }
         with (
             patch.object(
@@ -152,6 +154,35 @@ class TestReadbackNTE(unittest.TestCase):
             # 即便 任务类型 残留「空幕」、空幕序号=6（轨道之夜），也应读追猎目标
             self.assertEqual(cfg._read_dungeon()[0], "追猎目标")
             self.assertEqual(cfg._read_dungeon()[1], "黑之书")
+
+    def test_hunter_boss_roundtrip_through_config(self):
+        """回归：boss 名写入 config 文件的 daily_anomaly_hunter 段，读取须同文件取回。
+
+        写入侧 _update_task 经 _daily_section_dict 落点 config 文件，读取须从同文件取回，
+        否则追猎目标模式下二级副本名恒为 None（chip 只显示「追猎目标」）。
+        """
+        config = {
+            "daily_anomaly": {"任务类型": "", "异能材料序号": ""},
+            "daily_anomaly_hunter": {"目标消耗体力": 240},
+        }
+        routine = {
+            "Routine Items": [
+                {"id": "daily_anomaly", "enabled": False},
+                {"id": "daily_anomaly_hunter", "enabled": True},
+            ],
+        }
+        with (
+            patch.object(
+                NTEConfig,
+                "_load",
+                side_effect=lambda p=None, **_k: config if p is None else routine,
+            ),
+            patch.object(NTEConfig, "_save"),
+            patch.object(set_config_mod, "safe_update", _setter),
+        ):
+            cfg = NTEConfig()
+            cfg.set_dungeon("追猎目标", "音霸魔王")
+            self.assertEqual(cfg._read_dungeon(), ("追猎目标", "音霸魔王"))
 
 
 class TestReadbackMAA(unittest.TestCase):
@@ -293,7 +324,7 @@ class TestReadbackFacade(unittest.TestCase):
 
 
 class TestReadbackCorruption(unittest.TestCase):
-    """损坏数据应 assert 暴露，而非静默返回 None（否则被 gui_state 兜底掩盖）。"""
+    """损坏数据应 assert 暴露，而非静默返回 None（否则被日常副本的声明项回退掩盖）。"""
 
     def test_unknown_task_value_raises(self):
         config = {"Which to Farm": "未知副本值"}

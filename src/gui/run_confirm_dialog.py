@@ -39,7 +39,8 @@ class RunConfirmDialog(FormDialogBase):
     """「启动全部」前的确认弹窗，按生命周期三段（运行前/中/后配置）排列六项勾选。
 
     复用 ``FormDialogBase`` 的样式与控件构造；accept 后经 ``result`` 属性返回
-    勾选项，写盘由调用方委托 ``ChainService.save_config``。取消（reject）不返回、不落盘。
+    勾选项，写盘由调用方经 ``AppService.save_schedule`` 委托 ``src.service.schedule.save_schedule``
+    （写 schedule.yml）。取消（reject）不返回、不落盘。
     """
 
     def __init__(

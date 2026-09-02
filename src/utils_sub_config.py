@@ -1,5 +1,6 @@
 """
-脚本配置读写模块
+脚本配置读写模块（原 src/config/subscript.py，已迁移至 src/utils_sub_config.py）。
+
 提供脚本根目录解析、config 路径推导、配置文件读写等功能。
 """
 
@@ -96,7 +97,7 @@ def check_script_name_uniqueness(config_data: dict) -> None:
         display_name = script.get("display_name", script_name)
         if script_name in seen:
             raise AssertionError(
-                f"[subscript] 脚本标识重复: {script_name}（{seen[script_name]} 与 {display_name}）"
+                f"[sub_config] 脚本标识重复: {script_name}（{seen[script_name]} 与 {display_name}）"
             )
         seen[script_name] = display_name
 
@@ -142,7 +143,7 @@ def get_script_root_dir_soft(script_name: str) -> str | None:
     return None
 
 
-def get_config_path(script_name: str, rel_path: str) -> str:
+def get_sub_config_path(script_name: str, rel_path: str) -> str:
     """
     获取指定脚本的 config 文件绝对路径。
 
@@ -193,7 +194,7 @@ def load_config(script_name: str, rel_path: str) -> dict | list:
     支持 .json 和 .yaml/.yml 格式。
     assert 文件存在。
     """
-    path = get_config_path(script_name, rel_path)
+    path = get_sub_config_path(script_name, rel_path)
     assert os.path.exists(path), f"[set_config] config 文件不存在: {path}"
     ext = os.path.splitext(path)[1].lower()
     with open(path, encoding="utf-8") as f:
@@ -235,7 +236,7 @@ def save_config(script_name: str, rel_path: str, data: dict | list) -> None:
     保持原始格式（json / yaml）。
     并确保 config 文件已存在且能被写入。
     """
-    path = get_config_path(script_name, rel_path)
+    path = get_sub_config_path(script_name, rel_path)
     ext = os.path.splitext(path)[1].lower()
     if ext == ".json":
         with open(path, "w", encoding="utf-8") as f:
@@ -303,7 +304,7 @@ def generate_config_from_example() -> None:
     """
     example_path = safe_path_join(get_root_dir(), "config", "config.example.yml")
     config_path = get_config_yml_path_under_root()
-    assert os.path.exists(example_path), f"[subscript] 模板不存在: {example_path}"
+    assert os.path.exists(example_path), f"[sub_config] 模板不存在: {example_path}"
     data = load_yaml(example_path)
     dump_yaml(config_path, data)
 
@@ -317,6 +318,6 @@ def generate_schedule_from_example() -> None:
     """
     example_path = safe_path_join(get_root_dir(), "config", "schedule.example.yml")
     schedule_path = get_schedule_yml_path_under_root()
-    assert os.path.exists(example_path), f"[subscript] 模板不存在: {example_path}"
+    assert os.path.exists(example_path), f"[sub_config] 模板不存在: {example_path}"
     data = load_yaml(example_path)
     dump_yaml(schedule_path, data)
