@@ -627,14 +627,52 @@ class TestActionListsAndReport(unittest.TestCase):
                     "errors": [],
                     "daily_done": True,
                     "stamina": "120",
-                    "extra": None,
                 },
             ),
         ]
-        report = collect_log._build_summary_report(entries, [], [], do_log=False)
+        report = collect_log._build_summary_report(entries, do_log=False)
         self.assertIn("原神", report)
         self.assertIn("脚本运行状况汇总报告", report)
         self.assertNotIn("未知", report)
+
+    def test_build_summary_report_counts_without_stale_action_lines(self):
+        """统计行按状态计数；不再列「将重跑 / 将通知」（邮件在重跑之后发，且与表格冗余）。"""
+        entries = [
+            self._entry(
+                "ok-ww",
+                "A",
+                {
+                    "status": "Failed",
+                    "errors": [],
+                    "daily_done": False,
+                    "stamina": None,
+                },
+            ),
+            self._entry(
+                "ok-nte",
+                "B",
+                {
+                    "status": "Success",
+                    "errors": [],
+                    "daily_done": True,
+                    "stamina": None,
+                },
+            ),
+            self._entry(
+                "BetterGI",
+                "C",
+                {
+                    "status": "NoLog",
+                    "errors": [],
+                    "daily_done": False,
+                    "stamina": None,
+                },
+            ),
+        ]
+        report = collect_log._build_summary_report(entries, do_log=False)
+        self.assertIn("总计: 3 个脚本 | 成功: 1 | 失败: 1 | 无日志: 1", report)
+        self.assertNotIn("将重跑", report)
+        self.assertNotIn("将通知", report)
 
     def test_build_summary_report_prints_error_lines_then_log_tails(self):
         """各脚本报错信息先打印，全部结束后才打印各脚本日志尾部；两段均不进 report 文本。"""
@@ -649,7 +687,6 @@ class TestActionListsAndReport(unittest.TestCase):
                     "log_content": "a-line1\na-line2\na-line3",
                     "daily_done": False,
                     "stamina": None,
-                    "extra": None,
                 },
             ),
             self._entry(
@@ -662,7 +699,6 @@ class TestActionListsAndReport(unittest.TestCase):
                     "log_content": "tail-only-B",
                     "daily_done": True,
                     "stamina": "120",
-                    "extra": None,
                 },
             ),
             self._entry(
@@ -674,12 +710,11 @@ class TestActionListsAndReport(unittest.TestCase):
                     "log_path": "D:/log/C.log",
                     "daily_done": True,
                     "stamina": None,
-                    "extra": None,
                 },
             ),
         ]
         with mock.patch.object(collect_log, "log_info") as mock_log:
-            report = collect_log._build_summary_report(entries, [], [], do_log=True)
+            report = collect_log._build_summary_report(entries, do_log=True)
         # 两段均不进入 report 文本（邮件已由 notify_mail 单独发逐脚本详情）。
         self.assertNotIn("ERROR: x", report)
         self.assertNotIn("tail-only-B", report)

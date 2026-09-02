@@ -421,16 +421,11 @@ def format_diagnostic_sections(entries: list[dict], collapse_fn=None) -> str:
         lines.append("=" * 60)
         for entry in error_entries:
             result = entry["result"]
-            # 正常完成但含报错 → WARN「警告」，与汇总表格呈现一致。
-            display_status = (
-                ScriptLogStatus.WARN
-                if (result["status"] == ScriptLogStatus.SUCCESS and result["errors"])
-                else result["status"]
-            )
-            # 展示状态均已纳入 status_cn；未覆盖即属不可能。
-            assert display_status in status_cn, f"未覆盖的展示状态: {display_status}"
+            # 展示态与汇总表格同源（status_cn 覆盖由 summary_table_rows 断言）。
             lines.append("")
-            lines.append(f"[{entry['display_name']}] 状态: {status_cn[display_status]}")
+            lines.append(
+                f"[{entry['display_name']}] 状态: {status_cn[display_status(result)]}"
+            )
             if result["log_path"]:
                 lines.append(f"日志路径: {result['log_path']}")
             lines.append("报错日志:")
@@ -455,12 +450,85 @@ def format_diagnostic_sections(entries: list[dict], collapse_fn=None) -> str:
     return "\n".join(lines)
 
 
-def _build_summary_report(
-    entries: list[dict], rerun_list: list[str], notify_list: list[str], do_log: bool
-) -> str:
+def display_status(result: dict) -> str:
+    """展示用状态：正常完成但含报错 → WARN「警告」（仅呈现层，不影响 rerun/notify）。
+
+    Args:
+        result: 单个脚本的解析结果 dict。
+
+    Returns:
+        ScriptLogStatus 的状态值（可能含展示专用的 WARN）。
+    """
+    if result["status"] == ScriptLogStatus.SUCCESS and result["errors"]:
+        return ScriptLogStatus.WARN
+    return result["status"]
+
+
+# 汇总表格的列定义（列名, 列宽）：HTML 表头与控制台列宽同源于此，避免加删列时漏改列宽。
+_SUMMARY_COLUMNS: tuple[tuple[str, int], ...] = (
+    ("脚本", 16),
+    ("每日状态", 10),
+    ("剩余体力", 10),
+    ("报错", 6),
+)
+
+
+def summary_table_rows(entries: list[dict]) -> tuple[list[str], list[list[str]]]:
+    """汇总表格的表头与各行单元格（控制台纯文本与邮件 HTML 共用同一结构）。
+
+    Args:
+        entries: 各脚本解析结果（含 display_name / result）。
+
+    Returns:
+        (表头单元格列表, 每行单元格列表的列表)；状态取展示态并已转中文。
+    """
+    headers = [name for name, _ in _SUMMARY_COLUMNS]
+    rows: list[list[str]] = []
+    for entry in entries:
+        result = entry["result"]
+        status = display_status(result)
+        # 所有展示状态均已纳入 status_cn；未覆盖即属不可能，直接断言。
+        assert status in status_cn, f"未覆盖的展示状态: {status}"
+        stamina = result["stamina"]
+        rows.append(
+            [
+                entry["display_name"],
+                status_cn[status],
+                str(stamina) if stamina is not None else "—",
+                str(len(result["errors"])),
+            ]
+        )
+    return headers, rows
+
+
+def summary_counts_line(entries: list[dict]) -> str:
+    """汇总统计行：总计 / 成功 / 失败 / 无日志（控制台与邮件 HTML 共用）。
+
+    Args:
+        entries: 各脚本解析结果（含 result / status）。
+
+    Returns:
+        形如「总计: N 个脚本 | 成功: X | 失败: Y | 无日志: Z」的文本。
+    """
+    success = failed = 0
+    for entry in entries:
+        status = entry["result"]["status"]
+        if status == ScriptLogStatus.SUCCESS:
+            success += 1
+        elif status == ScriptLogStatus.FAILED:
+            failed += 1
+    # 非 SUCCESS/FAILED 的状态（目前仅 NO_LOG）归入无日志，与 status_cn 覆盖一致。
+    return (
+        f"总计: {len(entries)} 个脚本"
+        f" | 成功: {success} | 失败: {failed}"
+        f" | 无日志: {len(entries) - success - failed}"
+    )
+
+
+def _build_summary_report(entries: list[dict], do_log: bool) -> str:
     """汇总表格文本：标题 / 表头 / 各脚本行 / 统计。report_lines 同时供邮件整表通知复用。"""
-    headers = ["脚本", "每日状态", "剩余体力", "报错"]
-    widths = [16, 10, 10, 6]
+    headers, rows = summary_table_rows(entries)
+    widths = [width for _, width in _SUMMARY_COLUMNS]
     total = sum(widths)
     report_lines: list[str] = []
 
@@ -471,49 +539,14 @@ def _build_summary_report(
     emit("=" * total)
     emit("脚本运行状况汇总报告")
     emit("=" * total)
-
-    success_count = failed_count = no_log_count = 0
-    for entry in entries:
-        status = entry["result"]["status"]
-        if status == ScriptLogStatus.SUCCESS:
-            success_count += 1
-        elif status == ScriptLogStatus.FAILED:
-            failed_count += 1
-        else:
-            no_log_count += 1
-
     emit(_pad_row(headers, widths))
     emit("-" * total)
-    for entry in entries:
-        result = entry["result"]
-        errors = result["errors"]
-        # 显示状态：正常完成但含报错 → WARN「警告」（仅呈现层，抓潜在问题）。
-        display_status = (
-            ScriptLogStatus.WARN
-            if (result["status"] == ScriptLogStatus.SUCCESS and errors)
-            else result["status"]
-        )
-        stamina = result["stamina"]
-        # 所有展示状态均已纳入 status_cn；未覆盖即属不可能，直接断言。
-        assert display_status in status_cn, f"未覆盖的展示状态: {display_status}"
-        emit(
-            _pad_row(
-                [
-                    entry["display_name"],
-                    status_cn[display_status],
-                    str(stamina) if stamina is not None else "—",
-                    str(len(errors)),
-                ],
-                widths,
-            )
-        )
+    for row in rows:
+        emit(_pad_row(row, widths))
     emit("=" * total)
-
-    emit(
-        f"总计: {success_count + failed_count + no_log_count} 个脚本"
-        f" | 成功: {success_count} | 失败: {failed_count} | 无日志: {no_log_count}"
-    )
-    emit(f"将重跑: {len(rerun_list)} 个 | 将通知: {len(notify_list)} 个")
+    # 不列「将重跑 / 将通知」：邮件在重跑之后发送该行已过期；且改判据后重跑集合
+    # 即非成功行、通知集合即报错非零行，两者均与表格本身冗余。
+    emit(summary_counts_line(entries))
 
     # 末尾两段控制台明细（仅打印，不进 report 文本）：复用 format_diagnostic_sections，
     # 与 notify_mail 邮件逐脚本详情同结构（报错信息在前、日志尾部在后）。
@@ -581,7 +614,7 @@ def parse_logs(
         )
 
     rerun_list, notify_list = _prepare_action_lists(entries)
-    report = _build_summary_report(entries, rerun_list, notify_list, do_log)
+    report = _build_summary_report(entries, do_log)
 
     return {
         "rerun": rerun_list,
