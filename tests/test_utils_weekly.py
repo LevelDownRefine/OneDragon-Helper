@@ -1,8 +1,8 @@
 """测试 src/utils_weekly.py：周常起始日与每周超时的读写与迁移。
 
 weekly_start.yml（周几起）与 weekly_timeouts.yml（每周 7 格超时）的读写由模块函数负责。
-**不含周本声明**——各游戏「有哪些周常、可选哪些副本」由 DungeonService 读
-weekly_list.yml 提供，见 test_dungeon_service.py。
+**不含周本声明**——各游戏「有哪些周常、可选哪些副本」由 src.config.dungeon_config
+模块函数读 weekly_list.yml 提供，见 test_dungeon_config.py。
 """
 
 import os

@@ -4,7 +4,7 @@
 
 peer：
 - ScriptService：单脚本配置（config.yml 读写含脚本条目增删改）
-- DungeonService：副本与周常声明读取（dungeon_list.yml / weekly_list.yml）
+- 副本与周常声明读取（dungeon_list.yml / weekly_list.yml）：归 :mod:`src.config.dungeon_config` 模块函数
 - ChainService：链编排领域服务（生成/运行/调度/校验）
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
 - 周常运行期参数（weekly_start.yml / weekly_timeouts.yml）：归 :mod:`src.utils_weekly` 模块函数
@@ -15,8 +15,8 @@ GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经
 
 import logging
 
+from src.config.dungeon_config import get_dungeon_map, get_weekly_map
 from src.service.chain_service import ChainService
-from src.service.dungeon_service import DungeonService
 from src.service.schedule import load_schedule, save_schedule
 from src.service.script_service import ScriptService
 from src.utils_weekly import (
@@ -36,31 +36,28 @@ class AppService:
     def __init__(
         self,
         script_service=None,
-        dungeon_service=None,
         chain_service=None,
     ):
         """装配各 peer。
 
         Args:
             script_service: 可注入的 ScriptService；None 时自建默认实例。
-            dungeon_service: 可注入的 DungeonService；None 时自建默认实例。
             chain_service: 可注入的 ChainService；None 时自建（注入 script_service
                 作 collaborator）。
         """
         self._script_service = script_service or ScriptService()
-        self._dungeon_service = dungeon_service or DungeonService()
         self._chain_service = chain_service or ChainService(
             script_service=self._script_service
         )
 
-    # ── 副本 / 周常声明（DungeonService）──────────────────────────────
+    # ── 副本 / 周常声明（src.config.dungeon_config 模块函数）────────────
     def get_weekly_map(self, script_name: str) -> list:
-        """委托 DungeonService 读取 weekly_list.yml 的周常声明清单。"""
-        return self._dungeon_service.get_weekly_map(script_name)
+        """读取 weekly_list.yml 的周常声明清单。"""
+        return get_weekly_map(script_name)
 
     def get_dungeon_map(self) -> dict:
-        """委托 DungeonService 读取 dungeon_list.yml 的副本/序列配置。"""
-        return self._dungeon_service.get_dungeon_map()
+        """读取 dungeon_list.yml 的副本/序列配置。"""
+        return get_dungeon_map()
 
     # ── 单脚本配置（ScriptService）────────────────────────────────────
     def get_script(self, script_name: str):

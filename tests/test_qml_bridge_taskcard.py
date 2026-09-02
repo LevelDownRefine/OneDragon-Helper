@@ -1,8 +1,8 @@
 """测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。
 
-复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / DungeonService.get_weekly_map / get_dungeon_map /
+复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / dungeon_config.get_weekly_map / get_dungeon_map /
 parse_dungeon_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
-真实 peer 类），验证 QML 任务卡所需的数据与写回行为。
+真实模块函数），验证 QML 任务卡所需的数据与写回行为。
 """
 
 import unittest
@@ -10,7 +10,6 @@ from unittest.mock import patch
 
 from src.gui.controllers import task_card
 from src.service import app_service
-from src.service.dungeon_service import DungeonService
 from tests.test_qml_launcher import _make_bridge
 
 
@@ -20,16 +19,16 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(task_card, "get_dungeon", return_value=None)
     @patch.object(task_card, "get_sequence", return_value=None)
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(DungeonService, "get_weekly_map", return_value=[{"name": "周常"}])
+    @patch("src.service.app_service.get_weekly_map", return_value=[{"name": "周常"}])
     @patch.object(app_service, "get_weekly_start", return_value=None)
-    @patch.object(DungeonService, "get_dungeon_map", return_value={})
+    @patch("src.service.app_service.get_dungeon_map", return_value={})
     def test_daily_text_default_is_placeholder(self, *_):
         b = _make_bridge()
         self.assertEqual(b.dailyDungeonText, "选择副本")
         self.assertEqual(b.weeklyStartLabel, "选择周几")
 
     @patch.object(task_card, "is_adapted", return_value=False)
-    @patch.object(DungeonService, "get_dungeon_map", return_value={})
+    @patch("src.service.app_service.get_dungeon_map", return_value={})
     def test_task_adapted_reflects_is_adapted(self, *_):
         b = _make_bridge()
         self.assertFalse(b.taskAdapted)
@@ -41,13 +40,13 @@ class TestTaskCard(unittest.TestCase):
             return 1
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(DungeonService, "get_dungeon_map", return_value=_AnyMap())
+    @patch("src.service.app_service.get_dungeon_map", return_value=_AnyMap())
     def test_daily_supported_true_when_dungeon_cfg_present(self, *_):
         b = _make_bridge()
         self.assertTrue(b.dailySupported)
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(DungeonService, "get_dungeon_map", return_value={})
+    @patch("src.service.app_service.get_dungeon_map", return_value={})
     def test_daily_supported_false_when_no_dungeon_cfg(self, *_):
         b = _make_bridge()
         self.assertFalse(b.dailySupported)
@@ -56,8 +55,8 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(task_card, "get_dungeon", return_value=None)
     @patch.object(task_card, "get_sequence", return_value=None)
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch.object(DungeonService, "get_weekly_map", return_value=[])
-    @patch.object(DungeonService, "get_dungeon_map", return_value={})
+    @patch("src.service.app_service.get_weekly_map", return_value=[])
+    @patch("src.service.app_service.get_dungeon_map", return_value={})
     def test_select_dungeon_writes_config(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
@@ -82,14 +81,14 @@ class TestTaskCard(unittest.TestCase):
             def get(self, key, default=None):
                 return 1
 
-        with patch.object(DungeonService, "get_dungeon_map") as m_dm:
+        with patch("src.service.app_service.get_dungeon_map") as m_dm:
             m_dm.return_value = _Map()
             b = _make_bridge()
         opts = b.dungeonOptions
         self.assertEqual(opts[0]["name"], "副本A")
         self.assertEqual(opts[0]["sequences"], [{"label": "难1", "value": "s1"}])
 
-    @patch.object(DungeonService, "get_dungeon_map", return_value={})
+    @patch("src.service.app_service.get_dungeon_map", return_value={})
     def test_dungeon_options_empty_when_no_cfg(self, *_):
         b = _make_bridge()
         self.assertEqual(b.dungeonOptions, [])

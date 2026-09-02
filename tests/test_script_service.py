@@ -30,7 +30,7 @@ class ScriptServiceTestBase(unittest.TestCase):
                 return_value=self.config_path,
             ),
             patch(
-                "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
+                "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
                 return_value=self.weekly_list_path,
             ),
         ]

@@ -4,8 +4,8 @@
 - 日期数学：``next_target_datetime`` / ``get_week_num`` / ``is_weekly_start_reached``（周几判定）；
 - 运行期参数读写：``weekly_start.yml``（周几起）+ ``weekly_timeouts.yml``（每周超时）。
 
-不含周本声明——各游戏「有哪些周常、可选哪些副本」由 DungeonService 读 weekly_list.yml
-提供；本模块只管「周几起 / 每天超时多久」这类运行期参数。
+不含周本声明——各游戏「有哪些周常、可选哪些副本」由 src.config.dungeon_config 模块函数读
+weekly_list.yml 提供；本模块只管「周几起 / 每天超时多久」这类运行期参数。
 
 脚本标识统一用脚本唯一标识 script_name（exe 为进程名、脚本文件为 display_name）。
 """

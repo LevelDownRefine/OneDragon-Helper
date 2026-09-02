@@ -1,151 +1,170 @@
-"""测试 dungeon_config 模块"""
+"""测试 src/config/dungeon_config.py：副本与周常声明读取（get_dungeon_map / get_weekly_map）。"""
 
+import os
+import tempfile
 import unittest
+from unittest.mock import patch
 
-from src.config.dungeon_config import (
-    get_display_name,
-    parse_dungeon_config,
-)
+from src.config.dungeon_config import get_dungeon_map, get_weekly_map
+from src.utils_yaml import dump_yaml_file
 
 
-class TestParseDungeonConfig(unittest.TestCase):
-    """测试 parse_dungeon_config"""
+class TestGetWeeklyDefs(unittest.TestCase):
+    """get_weekly_map：静态 dungeons 保持，dungeons_source 运行期从外部读取/降级。"""
 
-    def test_empty_dungeons(self):
-        """空 dungeons 列表返回空结果"""
-        cfg = {"dungeons": []}
-        options, seq_map, show_seq = parse_dungeon_config(cfg)
-        self.assertEqual(options, [])
-        self.assertEqual(seq_map, {})
-        self.assertFalse(show_seq)
-
-    def test_none_input(self):
-        """None 输入返回空结果"""
-        options, seq_map, show_seq = parse_dungeon_config(None)
-        self.assertEqual(options, [])
-        self.assertEqual(seq_map, {})
-        self.assertFalse(show_seq)
-
-    def test_flat_list(self):
-        """只有一级选项（无 sequences）"""
-        cfg = {
-            "dungeons": [
-                {"name": "未选择"},
-                {"name": "副本A"},
-                {"name": "副本B"},
-            ]
-        }
-        options, seq_map, show_seq = parse_dungeon_config(cfg)
-        self.assertEqual(options, ["未选择", "副本A", "副本B"])
-        self.assertEqual(seq_map, {})
-        self.assertFalse(show_seq)
-
-    def test_with_sequences(self):
-        """有二级选项"""
-        cfg = {
-            "dungeons": [
-                {"name": "未选择"},
-                {
-                    "name": "凝素领域",
-                    "sequences": [
-                        {"display": "第1层", "value": 1},
-                        {"display": "第2层", "value": 2},
-                    ],
-                },
-            ]
-        }
-        options, seq_map, show_seq = parse_dungeon_config(cfg)
-        self.assertEqual(options, ["未选择", "凝素领域"])
-        self.assertEqual(seq_map["凝素领域"], [("第1层", 1), ("第2层", 2)])
-        self.assertTrue(show_seq)
-
-    def test_mixed_formats(self):
-        """混合格式：有二级选项和无二级选项"""
-        cfg = {
-            "dungeons": [
-                {"name": "未选择"},
-                {
-                    "name": "凝素领域",
-                    "sequences": [
-                        {"display": "第1层", "value": 1},
-                        {"display": "第2层", "value": 2},
-                    ],
-                },
-                {
-                    "name": "模拟领域",
-                    "sequences": [
-                        {"display": "共鸣者经验", "value": "共鸣者经验"},
-                        {"display": "武器经验", "value": "武器经验"},
-                    ],
-                },
-            ]
-        }
-        options, seq_map, show_seq = parse_dungeon_config(cfg)
-        self.assertEqual(options, ["未选择", "凝素领域", "模拟领域"])
-        self.assertEqual(seq_map["凝素领域"], [("第1层", 1), ("第2层", 2)])
-        self.assertEqual(
-            seq_map["模拟领域"],
-            [("共鸣者经验", "共鸣者经验"), ("武器经验", "武器经验")],
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.weekly_list_path = os.path.join(self.tmp.name, "weekly_list.yml")
+        patcher = patch(
+            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
+            return_value=self.weekly_list_path,
         )
-        self.assertTrue(show_seq)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
-    def test_invalid_format_no_dungeons_key(self):
-        """缺少 dungeons 键返回空结果"""
-        cfg = {"not_dungeons": []}
-        options, seq_map, show_seq = parse_dungeon_config(cfg)
-        self.assertEqual(options, [])
-        self.assertEqual(seq_map, {})
-        self.assertFalse(show_seq)
+    def _write(self, data):
+        dump_yaml_file(self.weekly_list_path, data)
 
-    def test_directory_structure(self):
-        """一级为目录、二级为具体副本的目录结构（原神 BetterGI）"""
-        cfg = {
-            "dungeons": [
-                {"name": "未选择"},
-                {
-                    "name": "1",
-                    "sequences": [
-                        {"display": "山风的荆冕", "value": "山风的荆冕"},
-                        {"display": "霜凝的机枢", "value": "霜凝的机枢"},
-                    ],
-                },
-            ]
-        }
-        options, seq_map, show_seq = parse_dungeon_config(cfg)
-        self.assertEqual(options, ["未选择", "1"])
-        self.assertEqual(
-            seq_map["1"],
-            [("山风的荆冕", "山风的荆冕"), ("霜凝的机枢", "霜凝的机枢")],
+    def test_static_dungeons_untouched(self):
+        """带 dungeons（无 dungeons_source）的项保持原样，不触发外部读取。"""
+        self._write(
+            {
+                "March7th-Assistant": [
+                    {"name": "历战余响", "dungeons": ["无", "铁骸的锈冢"]}
+                ]
+            }
         )
-        self.assertTrue(show_seq)
+        with patch("src.config.dungeon_config.get_dungeon_lists") as mock_ext:
+            defs = get_weekly_map("March7th-Assistant")
+        self.assertEqual(defs[0]["dungeons"], ["无", "铁骸的锈冢"])
+        mock_ext.assert_not_called()  # 无 dungeons_source 不读外部
+
+    def test_external_source_filled_when_reachable(self):
+        """dungeons_source=assets/config/instance_names.json 且外部可读 → 用外部副本清单填充。"""
+        self._write(
+            {
+                "March7th-Assistant": [
+                    {
+                        "name": "历战余响",
+                        "dungeons_source": "assets/config/instance_names.json",
+                    }
+                ]
+            }
+        )
+        names = ["无", "铁骸的锈冢", "晨昏的回眸"]
+        with patch(
+            "src.config.dungeon_config.get_dungeon_lists", return_value=names
+        ) as mock_ext:
+            defs = get_weekly_map("March7th-Assistant")
+        mock_ext.assert_called_once_with(
+            "March7th-Assistant", "历战余响", "assets/config/instance_names.json"
+        )
+        self.assertEqual(defs[0]["dungeons"], names)
+        self.assertTrue(defs[0]["dungeons"])  # 供 GUI 推导 has_dungeon
+
+    def test_external_source_empty_when_unreachable(self):
+        """外部读不到（返回 None）→ 降级 dungeons=[]，该周常无需选副本。"""
+        self._write(
+            {
+                "March7th-Assistant": [
+                    {
+                        "name": "历战余响",
+                        "dungeons_source": "assets/config/instance_names.json",
+                    }
+                ]
+            }
+        )
+        with patch("src.config.dungeon_config.get_dungeon_lists", return_value=None):
+            defs = get_weekly_map("March7th-Assistant")
+        self.assertEqual(defs[0]["dungeons"], [])
+
+    def test_unknown_script_returns_empty(self):
+        """未知脚本 → get_weekly_map 返回空列表（不抛错、不读外部）。"""
+        self._write({"March7th-Assistant": [{"name": "货币战争"}]})
+        self.assertEqual(get_weekly_map("不存在"), [])
 
 
-class TestGetDisplayName(unittest.TestCase):
-    """测试 get_display_name"""
+class TestGetDungeonMap(unittest.TestCase):
+    """get_dungeon_map：静态 sequences 保持，dungeons_source 运行期从外部读取/降级。"""
 
-    def test_found_integer_value(self):
-        """找到整数类型的实际值"""
-        seq_map = {"凝素领域": [("第1层", 1), ("第17层", 17)]}
-        result = get_display_name(seq_map, "凝素领域", 17)
-        self.assertEqual(result, "第17层")
+    def test_static_sequences_untouched(self):
+        """带 dungeons（无 dungeons_source）的项保持原样，不触发外部读取。"""
+        raw = {
+            "ok-ef": {
+                "dungeons": [
+                    {
+                        "name": "干员养成",
+                        "sequences": [{"display": "干员经验", "value": "干员经验"}],
+                    }
+                ]
+            }
+        }
+        with (
+            patch("src.config.dungeon_config.load_dungeon_map", return_value=raw),
+            patch("src.config.dungeon_config.get_dungeon_lists") as mock_ext,
+        ):
+            result = get_dungeon_map()
+        self.assertEqual(
+            result["ok-ef"]["dungeons"][0]["sequences"],
+            [{"display": "干员经验", "value": "干员经验"}],
+        )
+        mock_ext.assert_not_called()  # 无 dungeons_source 不读外部
 
-    def test_found_string_value(self):
-        """找到字符串类型的实际值"""
-        seq_map = {"模拟领域": [("共鸣者经验", "共鸣者经验"), ("武器经验", "武器经验")]}
-        result = get_display_name(seq_map, "模拟领域", "武器经验")
-        self.assertEqual(result, "武器经验")
+    def test_fills_sequences_from_dungeons_source(self):
+        """带 dungeons_source 的声明项，其二级序列由 get_dungeon_lists 运行期填充。"""
+        raw = {
+            "ok-ef": {
+                "dungeons": [
+                    {"name": "培养目标"},
+                    {
+                        "name": "能量淤积点",
+                        "dungeons_source": "data/apps/ok-ef/working/assets/data/world_map.json",
+                    },
+                ]
+            }
+        }
+        with (
+            patch("src.config.dungeon_config.load_dungeon_map", return_value=raw),
+            patch(
+                "src.config.dungeon_config.get_dungeon_lists",
+                return_value=["枢纽区", "武陵城"],
+            ) as mock_ext,
+        ):
+            result = get_dungeon_map()
+        # 培养目标（无 dungeons_source）保持无序列
+        self.assertEqual(result["ok-ef"]["dungeons"][0].get("sequences"), None)
+        # 带 dungeons_source 的项被填充为 {display,value} 序列
+        seqs = result["ok-ef"]["dungeons"][1]["sequences"]
+        self.assertEqual(
+            seqs,
+            [
+                {"display": "枢纽区", "value": "枢纽区"},
+                {"display": "武陵城", "value": "武陵城"},
+            ],
+        )
+        mock_ext.assert_called_once_with(
+            "ok-ef", "能量淤积点", "data/apps/ok-ef/working/assets/data/world_map.json"
+        )
 
-    def test_not_found_returns_string(self):
-        """找不到时返回实际值的字符串表示"""
-        seq_map = {"凝素领域": [("第1层", 1)]}
-        result = get_display_name(seq_map, "凝素领域", 99)
-        self.assertEqual(result, "99")
-
-    def test_dungeon_not_in_map_raises(self):
-        """副本不在映射中时抛出 AssertionError"""
-        seq_map = {"凝素领域": [("第1层", 1)]}
-        with self.assertRaises(AssertionError):
-            get_display_name(seq_map, "不存在", 1)
+    def test_dungeons_source_unreachable_degrades_to_empty(self):
+        """dungeons_source 读不到（get_dungeon_lists 返回 []）→ 降级为空序列。"""
+        raw = {
+            "ok-ef": {
+                "dungeons": [
+                    {
+                        "name": "能量淤积点",
+                        "dungeons_source": "data/apps/ok-ef/working/assets/data/world_map.json",
+                    }
+                ]
+            }
+        }
+        with (
+            patch("src.config.dungeon_config.load_dungeon_map", return_value=raw),
+            patch("src.config.dungeon_config.get_dungeon_lists", return_value=[]),
+        ):
+            result = get_dungeon_map()
+        self.assertEqual(result["ok-ef"]["dungeons"][0]["sequences"], [])
 
 
 if __name__ == "__main__":

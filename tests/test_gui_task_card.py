@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+from src.config.dungeon_config import get_dungeon_map, get_weekly_map
 from src.gui.controllers import task_card as task_card_mod
 from src.gui.controllers.task_card import TaskCardController
-from src.service.dungeon_service import DungeonService
 from src.utils_yaml import dump_yaml_file
 
 
@@ -28,11 +28,9 @@ def _make_controller(script_name="March7th-Assistant", display_name="崩铁"):
     games = [{"script_name": script_name, "display_name": display_name}]
     game_list = _FakeGameList(games)
     service = MagicMock()
-    # 副本/周常声明经真实 DungeonService 读取（weekly_list.yml 路径已由用例 patch），
-    # 复刻重构前 task_card 自持 ScriptService 读 dungeon 的行为。
-    dungeon = DungeonService()
-    service.get_weekly_map.side_effect = dungeon.get_weekly_map
-    service.get_dungeon_map.side_effect = dungeon.get_dungeon_map
+    # 副本/周常声明经真实 dungeon_config 模块函数读取（weekly_list.yml 路径已由用例 patch）。
+    service.get_weekly_map.side_effect = get_weekly_map
+    service.get_dungeon_map.side_effect = get_dungeon_map
     service.get_weekly_start.return_value = None
     toast = MagicMock()
     return TaskCardController(game_list, service, toast)
@@ -56,7 +54,7 @@ class TestWeeklyItems(unittest.TestCase):
         )
         with (
             patch(
-                "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
+                "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(task_card_mod, "get_weekly_dungeon", return_value=None),
@@ -88,7 +86,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
+            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -108,7 +106,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
+            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -127,7 +125,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
+            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -147,7 +145,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
+            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl_star = _make_controller("March7th-Assistant", "崩铁")
@@ -161,7 +159,7 @@ class TestWeeklyItems(unittest.TestCase):
         # ok-ww 不在 weekly_list.yml 声明 → 空列表
         defs_path = _write_defs(tmp, {})
         with patch(
-            "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
+            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller("ok-ww", "鸣潮")
@@ -266,7 +264,7 @@ class TestWeeklyItemsReadback(unittest.TestCase):
         )
         with (
             patch(
-                "src.service.dungeon_service.get_weekly_list_yml_path_under_root",
+                "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(

@@ -44,8 +44,8 @@ class ScriptService:
     脚本内部标识为**脚本唯一标识**（get_script_name）：exe 脚本用进程名，
     python/bat 等脚本文件用 display_name。所有方法入参均为此标识。
 
-    副本与周本声明（dungeon_list.yml / weekly_list.yml）的读取由平级
-    :class:`DungeonService` 负责；周常运行期参数（weekly_start.yml /
+    副本与周本声明（dungeon_list.yml / weekly_list.yml）的读取由
+    :mod:`src.config.dungeon_config` 模块函数负责；周常运行期参数（weekly_start.yml /
     weekly_timeouts.yml）由 :mod:`src.utils_weekly` 负责，本服务仅作协作调用
     （条目增删改时同步 weekly），不拥有其读写。
     """

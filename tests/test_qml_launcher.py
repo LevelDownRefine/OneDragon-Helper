@@ -425,7 +425,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             from src.service.script_service import ScriptService
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
-            import src.service.dungeon_service as dungeon_service
+            import src.config.dungeon_config as dungeon_config
 
             app = QApplication([])
             # 崩铁：真实 config/weekly_list.yml 里历战余响声明了 9 个副本。
@@ -443,7 +443,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch.object(dungeon_service, "get_dungeon_lists",
+                patch.object(dungeon_config, "get_dungeon_lists",
                              return_value=fake_dungeons),
             ):
                 bridge = QmlBridge()
@@ -618,7 +618,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch("src.service.dungeon_service.get_dungeon_lists",
+                patch("src.config.dungeon_config.get_dungeon_lists",
                              return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                            "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                            "不死的神实", "寒潮的落幕", "毁灭的开端"]),
