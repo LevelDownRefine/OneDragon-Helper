@@ -1,7 +1,7 @@
 """测试 src/service/script_service.py：config.yml 读写与单脚本条目查询。
 
-周常运行期参数（weekly_start.yml / weekly_timeouts.yml）已抽出为 WeeklyService，
-其测试见 test_weekly_service.py；本文件只测 config.yml 与单脚本查询/路径解析。
+周常运行期参数（weekly_start.yml / weekly_timeouts.yml）的读写已抽为 src/utils_weekly.py 模块函数，
+其测试见 test_utils_weekly.py；本文件只测 config.yml 与单脚本查询/路径解析。
 """
 
 import os
