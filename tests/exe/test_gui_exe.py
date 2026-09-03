@@ -23,8 +23,9 @@ import unittest
 
 from src.utils_sub_config import get_script_name
 from src.utils_yaml import load_yaml
+from tests.exe import project_root
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = str(project_root())
 
 
 def _cli_file(kind: str) -> str:

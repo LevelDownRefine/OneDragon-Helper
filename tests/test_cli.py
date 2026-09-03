@@ -1,6 +1,6 @@
 """源码级 CLI 单测（offscreen，CI / 普通终端均可真跑）。
 
-与 tests/test_gui_exe.py（必须 Windows + 管理员 + 已打包 exe 才跑，CI 全 skip）互补：
+与 tests/exe/test_gui_exe.py（必须 Windows + 管理员 + 已打包 exe 才跑，CI 全 skip）互补：
 本文件直接调 ``launcher.main()`` 并 patch ``sys.argv``，验证各 CLI 出口的退出码与
 文件产物，无需打包、无需管理员，CI 也能覆盖。
 

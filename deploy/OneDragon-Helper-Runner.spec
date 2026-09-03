@@ -55,7 +55,12 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    # 冻结后运行在英文 locale(cp1252) 的 Windows 上，Runner 经 colorama 往 stdout 打印中文会
+    # 抛 'charmap' codec can't encode characters 使进程崩溃（GitHub Windows runner 即此场景）。
+    # runtime_hook_utf8.py 在 main 导入 colorama 之前把标准流强制为 UTF-8，是此崩溃的唯一修复点
+    # （Runner 入口是 src/runner/launcher.py，并不包含 src/launcher 的代码）。
+    # 用 SPECPATH 定位 hook，避免依赖 build.bat 的 CWD。
+    runtime_hooks=[os.path.join(SPECPATH, 'runtime_hook_utf8.py')],
     excludes=excludes,
     noarchive=False,
     optimize=0,

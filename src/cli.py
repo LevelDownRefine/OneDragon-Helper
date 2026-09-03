@@ -213,7 +213,7 @@ def _run_selftest(out_path: str | None) -> int:
     """无头自检：经 AppService 校验关键依赖/配置/脚本列表。
 
     结果写入 JSON（默认 %TEMP%/odh_gui_selftest.json），返回退出码 0=OK / 1=失败。
-    供打包产物集成测试 test_gui_exe.py 读取验证实质行为。
+    供打包产物集成测试 tests/exe/test_gui_exe.py 读取验证实质行为。
     """
     result: dict = {"status": "fail", "checks": {}}
     try:
