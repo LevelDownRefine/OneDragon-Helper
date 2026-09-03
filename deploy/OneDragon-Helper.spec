@@ -83,7 +83,12 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    # 冻结后运行在英文 locale(cp1252) 的 Windows 上，GUI exe 经 _emit_cli/_emit_json
+    # 的 print 往 stdout 打印中文会抛 'charmap' codec can't encode characters 使进程
+    # 崩溃（GitHub Windows runner 即此场景，CI build-exe 实测 1 fail + 3 timeout）。
+    # 此 hook 在 main 导入任何会 print 中文的模块之前把标准流强制为 UTF-8。
+    # 注意：build.bat 以 deploy/ 为 CWD 调 pyinstaller，但用 SPECPATH 拼绝对路径更稳。
+    runtime_hooks=[os.path.join(SPECPATH, "runtime_hook_utf8.py")],
     excludes=excludes,
     noarchive=False,
     optimize=0,

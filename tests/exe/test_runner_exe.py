@@ -21,7 +21,9 @@ import sys
 import tempfile
 import unittest
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from tests.exe import project_root
+
+PROJECT_ROOT = str(project_root())
 
 _CANDIDATES = [
     os.environ.get("ODH_RUNNER_EXE"),

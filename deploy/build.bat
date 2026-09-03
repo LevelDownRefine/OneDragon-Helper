@@ -23,7 +23,7 @@ echo [1/5] 构建 GUI 主程序 (onedir)...
 %PY% --noconfirm --clean "OneDragon-Helper.spec"
 if errorlevel 1 (
     echo [ERROR] GUI 构建失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -32,7 +32,7 @@ echo [2/5] 构建 Runner (onefile)...
 %PY% --noconfirm --clean "OneDragon-Helper-Runner.spec"
 if errorlevel 1 (
     echo [ERROR] Runner 构建失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -42,13 +42,13 @@ set "GUI_DIR=%~dp0dist\OneDragon-Helper"
 set "RUNNER_EXE=%~dp0dist\OneDragon-Helper-Runner.exe"
 if not exist "%RUNNER_EXE%" (
     echo [ERROR] 未找到 Runner exe: %RUNNER_EXE%
-    pause
+    if not defined CI pause
     exit /b 1
 )
 copy /Y "%RUNNER_EXE%" "%GUI_DIR%\"
 if errorlevel 1 (
     echo [ERROR] 拷贝 Runner 失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -67,7 +67,7 @@ REM 整体拷贝 config（含共享资源：dungeon_list.yml / weekly_timeouts.y
 xcopy /E /I /Y "%SRC_CONFIG%" "%DST_CONFIG%" >nul
 if errorlevel 1 (
     echo [ERROR] 拷贝 config 失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 REM 安全：绝不要把开发机的个人配置打进包（config.yml / config.yml.bak 含账号、路径等私密，
@@ -79,13 +79,13 @@ REM 改用模板生成干净的默认 config.yml（不含任何个人信息）�
 copy /Y "%SRC_CONFIG%\config.example.yml" "%DST_CONFIG%\config.yml" >nul
 if errorlevel 1 (
     echo [ERROR] 生成默认 config.yml 失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 xcopy /E /I /Y "%SRC_ASSETS%" "%DST_ASSETS%" >nul
 if errorlevel 1 (
     echo [ERROR] 拷贝 assets 失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 REM QML 界面文件：GUI 已迁移到 QML（launcher.py 用 QQmlApplicationEngine 加载
@@ -97,22 +97,27 @@ set "DST_QML=%GUI_DIR%\src\gui\qml"
 xcopy /E /I /Y "%SRC_QML%" "%DST_QML%" >nul
 if errorlevel 1 (
     echo [ERROR] 拷贝 QML 失败
-    pause
+    if not defined CI pause
     exit /b 1
 )
 REM 用户脚本（如 wait_until_0410 等待到每日重置）的能力已由 launcher 的「定时计划」
 REM 内置（运行前阻塞到目标时刻，默认 04:10），无需再随包发布松散脚本文件。
 
 echo.
-echo [5/5] 验证打包产物 exe（非阻断，结果见上方输出）...
+echo [5/5] 验证打包产物 exe（CI 下失败即阻断构建；本地手动运行仅提示，不阻断）...
 pushd "%~dp0.."
-REM 只测与打包产物相关的 exe 集成测试（test_*_exe.py：Runner + GUI），源码单测由 CI 覆盖。
-REM 这些测试仅 import 标准库，无需 PYTHONPATH=src；会自动在 deploy/dist 找到刚打好的 exe。
-REM 注意：需以管理员运行 build.bat，否则因 exe 的 uac_admin manifest 而整文件 skip。
+REM 只测与打包产物相关的 exe 集成测试（tests/exe/test_*_exe.py：Runner + GUI），源码单测由 CI 覆盖。
+REM 经 python -m 从仓库根运行（上方 pushd 使 cwd=仓库根，已在 sys.path，可 import src.*）；
+REM 自动在 deploy/dist 找到刚打好的 exe。需以管理员运行，否则因 uac_admin manifest 整文件 skip。
 if exist "%VENV_PY%" (
     "%VENV_PY%" -m unittest discover -s tests -p "test_*_exe.py"
 ) else (
     uv run python -m unittest discover -s tests -p "test_*_exe.py"
+)
+REM exe 测试失败需在 CI 阻断构建（errorlevel 1 → exit /b 1）；本地手动运行仍保持非阻断（仅提示）。
+if errorlevel 1 (
+    echo [ERROR] exe 集成测试失败
+    if not defined CI ( pause ) else ( exit /b 1 )
 )
 popd
 
@@ -126,4 +131,4 @@ echo   - config\                      (配置目录)
 echo   - assets\                      (资源目录)
 echo ============================================
 echo.
-pause
+if not defined CI pause
