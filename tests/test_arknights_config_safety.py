@@ -195,6 +195,57 @@ class TestArknightsConfigSafety(unittest.TestCase):
                 )
                 self.assertEqual(t.get("CANARY_TASK"), "X")
 
+    # ---- set_dungeon fallback：缺目标关卡时借用槽位改写 StagePlan ----
+    def test_set_dungeon_borrow_only_touches_stageplan(self):
+        """issue #42：红票(AP-5) 缺失时 fallback 借用第一个启用非剿灭槽位改写
+        StagePlan；set_dungeon 仍不得触碰 IsEnable/StagePlan 之外的任何字段。"""
+        cfg = ArknightsConfig()
+        # 构造缺 AP-5 的副本：删除红票 FightTask，使目标关卡在队列中不存在
+        seed = copy.deepcopy(self.seed)
+        tq = seed["Configurations"]["Default"]["TaskQueue"]
+        tq[:] = [
+            t
+            for t in tq
+            if not (t.get("$type") == "FightTask" and t.get("StagePlan") == ["AP-5"])
+        ]
+        inject_canaries(seed)
+        self.store = {"config/gui.new.json": seed}
+        pre = copy.deepcopy(seed)
+
+        cfg.set_dungeon("红票")
+
+        post = self.store["config/gui.new.json"]
+        diff = diff_paths(pre, post)
+        paths = {p for p, _, _ in diff}
+
+        # 只允许改动：任意 FightTask 的 IsEnable，或其 StagePlan（含列表内元素路径）
+        def _allowed(p: str) -> bool:
+            return p.endswith(".IsEnable") or ".StagePlan" in p
+
+        illegal = {p for p in paths if not _allowed(p)}
+        self.assertEqual(illegal, set(), f"set_dungeon 改到了不该改的字段: {illegal}")
+        # 恰好一个 StagePlan 被借用改写
+        stageplan_paths = [p for p in paths if ".StagePlan" in p]
+        self.assertEqual(len(stageplan_paths), 1, f"应仅借用1个槽位: {stageplan_paths}")
+        idx = int(stageplan_paths[0].split("[")[1].split("]")[0])
+        borrowed = post["Configurations"]["Default"]["TaskQueue"][idx]
+        self.assertEqual(borrowed["StagePlan"], ["AP-5"], "借用槽位须指向目标关卡")
+        self.assertTrue(borrowed["IsEnable"], "借用对象须是启用态")
+        # 金丝雀全程不被触碰
+        default = post["Configurations"]["Default"]
+        self.assertEqual(default.get("CANARY_EXTRA"), "KEEP_ME")
+        self.assertEqual(
+            default["Gui"]["StartUpSettings"]["EmulatorPath"], "CANARY_EMULATOR"
+        )
+        self.assertEqual(
+            default["Gui"]["RuntimeSettings"]["PenguinId"], "CANARY_PENGUIN"
+        )
+        self.assertEqual(default["Toolbox"]["PeepTargetFps"], 999)
+        for t in default["TaskQueue"]:
+            if t.get("$type") == "FightTask":
+                self.assertTrue(t.get("UseMedicine"))
+                self.assertEqual(t.get("CANARY_TASK"), "X")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

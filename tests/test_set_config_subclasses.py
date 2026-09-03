@@ -1573,6 +1573,279 @@ class TestArknightsConfig(unittest.TestCase):
         unknown = [t for t in queue if t.get("StagePlan") == ["unknown"]][0]
         self.assertTrue(unknown["IsEnable"])
 
+    def test_set_dungeon_borrows_when_target_stage_absent(self):
+        """issue #42：红票(AP-5) 缺失时，优先借副本列表中的启用槽位（土），
+        改写其 StagePlan；未追踪占位(活动土)不被借用。"""
+        cfg = self._make_cfg()
+        queue = [
+            {"Name": "开始唤醒", "$type": "StartUpTask"},
+            {
+                "Name": "剿灭",
+                "$type": "FightTask",
+                "StagePlan": ["Annihilation"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "经验",
+                "$type": "FightTask",
+                "StagePlan": ["LS-6"],
+                "IsEnable": False,
+            },
+            {
+                "Name": "龙门币",
+                "$type": "FightTask",
+                "StagePlan": ["CE-6"],
+                "IsEnable": False,
+            },
+            {
+                "Name": "活动土",
+                "$type": "FightTask",
+                "StagePlan": [""],
+                "IsEnable": True,
+                "CANARY": 42,
+            },
+            {
+                "Name": "土",
+                "$type": "FightTask",
+                "StagePlan": ["1-7"],
+                "IsEnable": True,
+                "CANARY": 7,
+            },
+        ]
+        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg.set_dungeon("红票")
+        mock_save.assert_called_once()
+        saved = mock_save.call_args[0][0]["Configurations"]["Default"]["TaskQueue"]
+        by_name = {t["Name"]: t for t in saved}
+        # 优先借副本列表中的土：StagePlan 改写为目标关卡，仍启用，金丝雀保留
+        self.assertEqual(by_name["土"]["StagePlan"], ["AP-5"])
+        self.assertTrue(by_name["土"]["IsEnable"])
+        self.assertEqual(by_name["土"]["CANARY"], 7)
+        # 活动土未被借用（土在副本列表中优先命中），保持原样
+        self.assertEqual(by_name["活动土"]["StagePlan"], [""])
+        self.assertTrue(by_name["活动土"]["IsEnable"])
+        self.assertEqual(by_name["活动土"]["CANARY"], 42)
+        # 剿灭/经验/龙门币 状态正确
+        self.assertTrue(by_name["剿灭"]["IsEnable"])
+        self.assertFalse(by_name["经验"]["IsEnable"])
+        self.assertFalse(by_name["龙门币"]["IsEnable"])
+
+    def test_set_dungeon_borrows_土_when_only_土_enabled(self):
+        """用户确认土也在可借用范围：仅土启用时，fallback 借用土槽位改写 StagePlan。"""
+        cfg = self._make_cfg()
+        queue = [
+            {"Name": "开始唤醒", "$type": "StartUpTask"},
+            {
+                "Name": "剿灭",
+                "$type": "FightTask",
+                "StagePlan": ["Annihilation"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "经验",
+                "$type": "FightTask",
+                "StagePlan": ["LS-6"],
+                "IsEnable": False,
+            },
+            {
+                "Name": "龙门币",
+                "$type": "FightTask",
+                "StagePlan": ["CE-6"],
+                "IsEnable": False,
+            },
+            {
+                "Name": "活动土",
+                "$type": "FightTask",
+                "StagePlan": [""],
+                "IsEnable": False,
+            },
+            {
+                "Name": "土",
+                "$type": "FightTask",
+                "StagePlan": ["1-7"],
+                "IsEnable": True,
+            },
+        ]
+        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg.set_dungeon("红票")
+        mock_save.assert_called_once()
+        saved = mock_save.call_args[0][0]["Configurations"]["Default"]["TaskQueue"]
+        by_name = {t["Name"]: t for t in saved}
+        # 土可作借用槽位（非剿灭即可），改写 StagePlan 且保持启用
+        self.assertEqual(by_name["土"]["StagePlan"], ["AP-5"])
+        self.assertTrue(by_name["土"]["IsEnable"])
+        # 其余副本未被借用
+        self.assertEqual(by_name["活动土"]["StagePlan"], [""])
+        self.assertFalse(by_name["活动土"]["IsEnable"])
+        self.assertEqual(by_name["经验"]["StagePlan"], ["LS-6"])
+        self.assertEqual(by_name["龙门币"]["StagePlan"], ["CE-6"])
+
+    def test_set_dungeon_no_fallback_when_stage_present(self):
+        """目标关卡存在时走主路径，不触发 fallback（钉死回归：任何 StagePlan 不被改写）。"""
+        cfg = self._make_cfg()
+        queue = [
+            {"Name": "开始唤醒", "$type": "StartUpTask"},
+            {
+                "Name": "剿灭",
+                "$type": "FightTask",
+                "StagePlan": ["Annihilation"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "红票",
+                "$type": "FightTask",
+                "StagePlan": ["AP-5"],
+                "IsEnable": False,
+            },
+            {
+                "Name": "经验",
+                "$type": "FightTask",
+                "StagePlan": ["LS-6"],
+                "IsEnable": False,
+            },
+            {
+                "Name": "龙门币",
+                "$type": "FightTask",
+                "StagePlan": ["CE-6"],
+                "IsEnable": False,
+            },
+            {
+                "Name": "活动土",
+                "$type": "FightTask",
+                "StagePlan": [""],
+                "IsEnable": True,
+            },
+            {
+                "Name": "土",
+                "$type": "FightTask",
+                "StagePlan": ["1-7"],
+                "IsEnable": True,
+            },
+        ]
+        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save") as mock_save,
+        ):
+            cfg.set_dungeon("红票")
+        mock_save.assert_called_once()
+        saved = mock_save.call_args[0][0]["Configurations"]["Default"]["TaskQueue"]
+        by_name = {t["Name"]: t for t in saved}
+        # 主路径命中红票（IsEnable=True），所有 StagePlan 原封不动
+        self.assertTrue(by_name["红票"]["IsEnable"])
+        self.assertEqual(by_name["红票"]["StagePlan"], ["AP-5"])
+        self.assertEqual(by_name["土"]["StagePlan"], ["1-7"])
+        self.assertEqual(by_name["活动土"]["StagePlan"], [""])
+        self.assertEqual(by_name["经验"]["StagePlan"], ["LS-6"])
+        self.assertEqual(by_name["龙门币"]["StagePlan"], ["CE-6"])
+        self.assertTrue(by_name["剿灭"]["IsEnable"])
+        self.assertTrue(by_name["土"]["IsEnable"])
+        self.assertFalse(by_name["经验"]["IsEnable"])
+        self.assertFalse(by_name["龙门币"]["IsEnable"])
+
+    def test_set_dungeon_roundtrip_borrow_placeholder_then_back_to_土(self):
+        """写→读回往返：红票(AP-5) 缺失优先借副本列表中的土，读回应红票；
+        改回土时 fallback 借未追踪占位装 1-7 恢复，读回应土（has_1_7 恢复）。"""
+        cfg = self._make_cfg()
+        queue = [
+            {
+                "Name": "剿灭",
+                "$type": "FightTask",
+                "StagePlan": ["Annihilation"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "经验",
+                "$type": "FightTask",
+                "StagePlan": ["LS-6"],
+                "IsEnable": False,
+            },
+            {
+                "Name": "活动土",
+                "$type": "FightTask",
+                "StagePlan": [""],
+                "IsEnable": True,
+            },
+            {
+                "Name": "土",
+                "$type": "FightTask",
+                "StagePlan": ["1-7"],
+                "IsEnable": True,
+            },
+        ]
+        store = {
+            "config/gui.new.json": {"Configurations": {"Default": {"TaskQueue": queue}}}
+        }
+
+        def fake_load(rel=None, allow_missing=False):
+            return store["config/gui.new.json"]
+
+        def fake_save(cfg_arg, rel=None):
+            store["config/gui.new.json"] = cfg_arg
+
+        with (
+            patch.object(cfg, "_load", side_effect=fake_load),
+            patch.object(cfg, "_save", side_effect=fake_save),
+        ):
+            cfg._enabled = True
+            cfg.set_dungeon("红票")
+            self.assertEqual(cfg._read_dungeon(), ("红票", None))
+            cfg.set_dungeon("土")
+            self.assertEqual(cfg._read_dungeon(), ("土", None))
+
+    def test_set_dungeon_roundtrip_borrow_土_no_placeholder_lost(self):
+        """已知限制（写→读回）：无占位槽位时 fallback 借走真实日常土，
+        改回土时该槽被禁用且无替补可借，_read_dungeon 返回 (None, None)。
+        这是「土可被改」的固有代价，非 bug；仅文档化，不兜底。"""
+        cfg = self._make_cfg()
+        queue = [
+            {
+                "Name": "剿灭",
+                "$type": "FightTask",
+                "StagePlan": ["Annihilation"],
+                "IsEnable": True,
+            },
+            {
+                "Name": "经验",
+                "$type": "FightTask",
+                "StagePlan": ["LS-6"],
+                "IsEnable": False,
+            },
+            {
+                "Name": "土",
+                "$type": "FightTask",
+                "StagePlan": ["1-7"],
+                "IsEnable": True,
+            },
+        ]
+        store = {
+            "config/gui.new.json": {"Configurations": {"Default": {"TaskQueue": queue}}}
+        }
+
+        def fake_load(rel=None, allow_missing=False):
+            return store["config/gui.new.json"]
+
+        def fake_save(cfg_arg, rel=None):
+            store["config/gui.new.json"] = cfg_arg
+
+        with (
+            patch.object(cfg, "_load", side_effect=fake_load),
+            patch.object(cfg, "_save", side_effect=fake_save),
+        ):
+            cfg._enabled = True
+            cfg.set_dungeon("红票")
+            self.assertEqual(cfg._read_dungeon(), ("红票", None))
+            cfg.set_dungeon("土")
+            self.assertEqual(cfg._read_dungeon(), (None, None))
+
 
 # ============================================================
 # get_game_exe_path（打开游戏只读查询）

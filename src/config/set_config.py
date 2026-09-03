@@ -1263,7 +1263,10 @@ class ArknightsConfig(ScriptConfig):
     ) -> bool:
         """粥副本设置：基于 StagePlan[0] 识别任务，启用剿灭/土/选定副本。
 
-        只处理 _task_map 中的5个关卡，其余 FightTask 不动。
+        主路径只处理 _task_map 中的5个关卡，其余 FightTask 不动。
+
+        若用户 MAA 配置队列中完全不存在 target_stage，
+        则借用一个槽位改写其 StagePlan。
 
         Args:
             config: 目标 config dict。
@@ -1273,7 +1276,7 @@ class ArknightsConfig(ScriptConfig):
             是否有任意任务项状态发生变化。
 
         Raises:
-            AssertionError: 未适配的副本，或 StagePlan 格式不匹配。
+            AssertionError: 未适配的副本（dungeon_name 不在 _task_map）。
         """
         task_config = config["Configurations"]["Default"]["TaskQueue"]
         # 反查：中文名 → 关卡代码
@@ -1281,9 +1284,11 @@ class ArknightsConfig(ScriptConfig):
         assert dungeon_name in stage_by_name, (
             f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
         )
+        target_stage = stage_by_name[dungeon_name]
 
         fixed_names = {"剿灭", "土"}
         changed = False
+        matched_target = False
         for task in task_config:
             if task.get("$type") != "FightTask":
                 continue
@@ -1293,6 +1298,8 @@ class ArknightsConfig(ScriptConfig):
             stage = stage_plan[0]
             if stage not in self._task_map:
                 continue  # 未维护的关卡，不动
+            if stage == target_stage:
+                matched_target = True
             name = self._task_map[stage]
 
             should_enable = name in fixed_names or name == dungeon_name
@@ -1302,6 +1309,31 @@ class ArknightsConfig(ScriptConfig):
                 should_enable,
                 f"{self.display_name}[{name}]",
             )
+
+        # fallback（issue #42）：目标关卡缺失时借槽改写 StagePlan，优先借用
+        # 副本列表内的启用槽（剿灭除外），其次才借未追踪占位槽。仅改 StagePlan。
+        if not matched_target:
+            candidates = [
+                t
+                for t in task_config
+                if t.get("$type") == "FightTask"
+                and t.get("IsEnable")
+                and isinstance(t.get("StagePlan"), list)
+                and len(t["StagePlan"]) == 1
+                and t["StagePlan"][0] != "Annihilation"
+            ]
+            borrow = next(
+                (t for t in candidates if t["StagePlan"][0] in self._task_map),
+                None,
+            ) or next(iter(candidates), None)
+            if borrow is not None:
+                borrowed = borrow.get("Name", self.display_name)
+                changed |= safe_update(
+                    borrow,
+                    "StagePlan",
+                    [target_stage],
+                    f"{self.display_name}[borrow:{borrowed}]",
+                )
 
         return changed
 
