@@ -86,16 +86,25 @@ class TestExeCloseRunning(unittest.TestCase):
     """真实启动 exe，用真实进程验证「运行前关闭残留」确实杀掉了真实 OS 进程。"""
 
     def _spawn_stub(self, workdir: str, name: str) -> subprocess.Popen:
-        """造一个常驻的真实进程 <name>（按名可被 exe 的 close 命中）。"""
+        """造一个常驻的真实进程 <name>（按名可被 exe 的 close 命中）。
+
+        用 System32\\cmd.exe 复制并重命名为 <name> 后跑一个长驻命令，
+        而非复制 sys.executable（venv 的 python.exe）：后者缺 pyvenv.cfg /
+        侧旁 DLL，在临时目录中复制后会立即退出（返回码 106 "No pyvenv.cfg
+        file"），导致 game.poll() 从一开始就是非 None、被误判为「已被杀」，
+        负路径用例随之假失败。cmd.exe 自包含，必为常驻进程，按名匹配稳定。
+        """
         stub = os.path.join(workdir, name)
-        shutil.copy(sys.executable, stub)
+        cmd_exe = os.path.join(os.environ["SYSTEMROOT"], "System32", "cmd.exe")
+        shutil.copy(cmd_exe, stub)
         flags = (
             subprocess.CREATE_NO_WINDOW
             if hasattr(subprocess, "CREATE_NO_WINDOW")
             else 0
         )
+        # ping -n 600 约驻留 600s，足够覆盖正负路径的等待窗口。
         return subprocess.Popen(
-            [stub, "-c", "import time; time.sleep(600)"],
+            [stub, "/c", "ping -n 600 127.0.0.1 > nul"],
             creationflags=flags,
         )
 
@@ -134,23 +143,6 @@ class TestExeCloseRunning(unittest.TestCase):
         dump_yaml(EXE_CONFIG, data)
         return original
 
-    def _debug_dump(self, label: str, cmd, game) -> None:
-        print(f"[ODH-DEBUG {label}] cmd={cmd}")
-        print(f"[ODH-DEBUG {label}] game pid={game.pid}")
-        if EXE_CONFIG and os.path.isfile(EXE_CONFIG):
-            print(f"[ODH-DEBUG {label}] EXE_CONFIG={EXE_CONFIG}")
-            print("--- EXE_CONFIG content ---")
-            with open(EXE_CONFIG, encoding="utf-8") as f:
-                print(f.read())
-        chain = os.path.join(
-            os.path.dirname(GUI_EXE), "config", "script_chain", "today.yml"
-        )
-        if os.path.isfile(chain):
-            print(f"[ODH-DEBUG {label}] chain={chain}")
-            print("--- chain content ---")
-            with open(chain, encoding="utf-8") as f:
-                print(f.read())
-
     def _run_once(self, *, close_running: bool, with_body: bool) -> tuple[bool, bool]:
         """真实启动 exe 跑一次即时调度（--schedule-run now）。
 
@@ -182,7 +174,6 @@ class TestExeCloseRunning(unittest.TestCase):
             cmd = [GUI_EXE, "--schedule-run", "now"]
             if close_running:
                 cmd.append("--close-running")
-            self._debug_dump("pre", cmd, game)
             # windowed exe 经 _emit_cli 写文件，不捕获 stdout 以免管道死锁；
             # 不依赖 exe 退出码（链路可能挂起）。
             exe = subprocess.Popen(
@@ -204,10 +195,6 @@ class TestExeCloseRunning(unittest.TestCase):
                 time.sleep(8)
             game_killed = game.poll() is not None
             body_killed = body.poll() is not None if body is not None else False
-            self._debug_dump("post", cmd, game)
-            print(
-                f"[ODH-DEBUG post] game_killed={game_killed} body_killed={body_killed}"
-            )
             return (game_killed, body_killed)
         finally:
             # 杀掉仍运行的 exe 整棵进程树（含其拉起的 Runner 子进程）：windowed exe
