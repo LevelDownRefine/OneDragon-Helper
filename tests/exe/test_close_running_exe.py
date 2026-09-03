@@ -28,15 +28,19 @@ PROJECT_ROOT = str(project_root())
 
 _CANDIDATES = [
     os.environ.get("ODH_GUI_EXE"),
-    os.path.join(PROJECT_ROOT, "deploy", "dist", "OneDragon-Helper", "OneDragon-Helper.exe"),
-    os.path.join(PROJECT_ROOT, "deploy", "dist_opt", "OneDragon-Helper", "OneDragon-Helper.exe"),
-    os.path.join(PROJECT_ROOT, "deploy", "dist_new", "OneDragon-Helper", "OneDragon-Helper.exe"),
+    os.path.join(
+        PROJECT_ROOT, "deploy", "dist", "OneDragon-Helper", "OneDragon-Helper.exe"
+    ),
+    os.path.join(
+        PROJECT_ROOT, "deploy", "dist_opt", "OneDragon-Helper", "OneDragon-Helper.exe"
+    ),
+    os.path.join(
+        PROJECT_ROOT, "deploy", "dist_new", "OneDragon-Helper", "OneDragon-Helper.exe"
+    ),
 ]
 GUI_EXE = next((p for p in _CANDIDATES if p and os.path.isfile(p)), None)
 EXE_CONFIG = (
-    os.path.join(os.path.dirname(GUI_EXE), "config", "config.yml")
-    if GUI_EXE
-    else None
+    os.path.join(os.path.dirname(GUI_EXE), "config", "config.yml") if GUI_EXE else None
 )
 
 
@@ -67,7 +71,11 @@ class TestExeCloseRunning(unittest.TestCase):
         """造一个常驻的真实进程 <name>（按名可被 exe 的 close 命中）。"""
         stub = os.path.join(workdir, name)
         shutil.copy(sys.executable, stub)
-        flags = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, "CREATE_NO_WINDOW") else 0
+        flags = (
+            subprocess.CREATE_NO_WINDOW
+            if hasattr(subprocess, "CREATE_NO_WINDOW")
+            else 0
+        )
         return subprocess.Popen(
             [stub, "-c", "import time; time.sleep(600)"],
             creationflags=flags,
@@ -103,14 +111,18 @@ class TestExeCloseRunning(unittest.TestCase):
         dump_yaml(EXE_CONFIG, data)
         return original
 
-    def _run_schedule(self, *, close_running: bool) -> tuple[subprocess.Popen, int | None]:
+    def _run_schedule(
+        self, *, close_running: bool
+    ) -> tuple[subprocess.Popen, int | None]:
         """启动 exe 跑一次即时调度（--schedule-run now），返回 (game进程, exe退出码)。
 
         退出码为 None 表示 exe 超时（链运行卡住）；此时 close 已在 pre_run 完成，
         游戏进程应已被杀，调用方仍可按游戏存活与否断言。
         """
         workdir = tempfile.mkdtemp(prefix="odh_close_")
-        with open(os.path.join(workdir, "odh_stub_script.cmd"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(workdir, "odh_stub_script.cmd"), "w", encoding="utf-8"
+        ) as f:
             f.write(_CMD_STUB)
         original = None
         game = None
@@ -142,16 +154,18 @@ class TestExeCloseRunning(unittest.TestCase):
                 with open(EXE_CONFIG, "w", encoding="utf-8") as f:
                     f.write(original)
 
-    def _run_schedule_with_body(self, *, close_running: bool) -> tuple[
-        subprocess.Popen, subprocess.Popen, int | None
-    ]:
+    def _run_schedule_with_body(
+        self, *, close_running: bool
+    ) -> tuple[subprocess.Popen, subprocess.Popen, int | None]:
         """启动 exe 跑即时调度，同时造真实「脚本真身 + 游戏」两个进程，验两者均被杀。
 
         与 _run_schedule 的区别：config 条目的 script_process_name 指向真实存在的
         odh_stub_body.exe 进程（而非空），故 close 应同时命中「真身」与「游戏」两条匹配。
         """
         workdir = tempfile.mkdtemp(prefix="odh_close_")
-        with open(os.path.join(workdir, "odh_stub_script.cmd"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(workdir, "odh_stub_script.cmd"), "w", encoding="utf-8"
+        ) as f:
             f.write(_CMD_STUB)
         original = None
         game = None
