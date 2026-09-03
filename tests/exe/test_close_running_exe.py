@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 from src.utils_yaml import dump_yaml
@@ -81,9 +82,6 @@ class TestExeCloseRunning(unittest.TestCase):
             creationflags=flags,
         )
 
-    def _spawn_game_stub(self, workdir: str) -> subprocess.Popen:
-        return self._spawn_stub(workdir, _GAME_NAME)
-
     def _write_stub_config(self, workdir: str, *, body_name: str | None = None) -> str:
         """把 exe 捆绑的 config.yml 仅替换为一条 stub 脚本条目，返回原内容以便恢复。
 
@@ -111,119 +109,95 @@ class TestExeCloseRunning(unittest.TestCase):
         dump_yaml(EXE_CONFIG, data)
         return original
 
-    def _run_schedule(
-        self, *, close_running: bool
-    ) -> tuple[subprocess.Popen, int | None]:
-        """启动 exe 跑一次即时调度（--schedule-run now），返回 (game进程, exe退出码)。
+    def _run_once(
+        self, *, close_running: bool, with_body: bool
+    ) -> tuple[bool, bool]:
+        """真实启动 exe 跑一次即时调度（--schedule-run now）。
 
-        退出码为 None 表示 exe 超时（链运行卡住）；此时 close 已在 pre_run 完成，
-        游戏进程应已被杀，调用方仍可按游戏存活与否断言。
+        不依赖 exe 退出：exe 整条链路（pre_run→链运行→post_run）可能因链运行/
+        关机/邮件等不立即退出，但 close 在 pre_run 已执行。故以「游戏/真身 stub
+        进程是否已被杀」为唯一判据。
+
+        - close_running=True：最多等 30s 让 close 把 game（及 body）进程按名杀掉。
+        - close_running=False：等待 8s 让 pre_run 运行（close 不生效），再判定存活。
+
+        Returns:
+            (game_killed, body_killed)：close 后两进程是否已被杀（True=已死）。
+            with_body=False 时 body_killed 恒为 False。
+        finally 会杀掉仍在运行的 exe 与残留 stub，并恢复原始 config。
         """
         workdir = tempfile.mkdtemp(prefix="odh_close_")
         with open(
             os.path.join(workdir, "odh_stub_script.cmd"), "w", encoding="utf-8"
         ) as f:
             f.write(_CMD_STUB)
+        game = self._spawn_stub(workdir, _GAME_NAME)
+        body = self._spawn_stub(workdir, _BODY_NAME) if with_body else None
+        exe = None
         original = None
-        game = None
         try:
-            original = self._write_stub_config(workdir)
-            game = self._spawn_game_stub(workdir)
+            original = self._write_stub_config(
+                workdir, body_name=_BODY_NAME if with_body else None
+            )
             cmd = [GUI_EXE, "--schedule-run", "now"]
             if close_running:
                 cmd.append("--close-running")
-            try:
-                result = subprocess.run(
-                    cmd,
-                    cwd=PROJECT_ROOT,
-                    capture_output=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    timeout=120,
-                )
-                code = result.returncode
-            except subprocess.TimeoutExpired as exc:
-                if exc.process is not None:
-                    exc.process.kill()
-                code = None
-            return game, code
+            # windowed exe 经 _emit_cli 写文件，不捕获 stdout 以免管道死锁；
+            # 不依赖 exe 退出码（链路可能挂起）。
+            exe = subprocess.Popen(
+                cmd,
+                cwd=PROJECT_ROOT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            if close_running:
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
+                    if game.poll() is not None and (
+                        body is None or body.poll() is not None
+                    ):
+                        break
+                    time.sleep(0.5)
+            else:
+                # 负路径：给 pre_run 足够时间运行（close 不生效），再判定存活。
+                time.sleep(8)
+            return (
+                game.poll() is not None,
+                body.poll() is not None if body is not None else False,
+            )
         finally:
-            if game is not None and game.poll() is None:
-                game.kill()
+            # 先杀 exe（可能卡在链运行/post_run），再恢复 config，最后清理仍存活的 stub。
+            if exe is not None and exe.poll() is None:
+                exe.kill()
             if original is not None:
                 with open(EXE_CONFIG, "w", encoding="utf-8") as f:
                     f.write(original)
-
-    def _run_schedule_with_body(
-        self, *, close_running: bool
-    ) -> tuple[subprocess.Popen, subprocess.Popen, int | None]:
-        """启动 exe 跑即时调度，同时造真实「脚本真身 + 游戏」两个进程，验两者均被杀。
-
-        与 _run_schedule 的区别：config 条目的 script_process_name 指向真实存在的
-        odh_stub_body.exe 进程（而非空），故 close 应同时命中「真身」与「游戏」两条匹配。
-        """
-        workdir = tempfile.mkdtemp(prefix="odh_close_")
-        with open(
-            os.path.join(workdir, "odh_stub_script.cmd"), "w", encoding="utf-8"
-        ) as f:
-            f.write(_CMD_STUB)
-        original = None
-        game = None
-        body = None
-        try:
-            original = self._write_stub_config(workdir, body_name=_BODY_NAME)
-            game = self._spawn_stub(workdir, _GAME_NAME)
-            body = self._spawn_stub(workdir, _BODY_NAME)
-            cmd = [GUI_EXE, "--schedule-run", "now"]
-            if close_running:
-                cmd.append("--close-running")
-            try:
-                result = subprocess.run(
-                    cmd,
-                    cwd=PROJECT_ROOT,
-                    capture_output=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    timeout=120,
-                )
-                code = result.returncode
-            except subprocess.TimeoutExpired as exc:
-                if exc.process is not None:
-                    exc.process.kill()
-                code = None
-            return game, body, code
-        finally:
             for proc in (game, body):
                 if proc is not None and proc.poll() is None:
                     proc.kill()
-            if original is not None:
-                with open(EXE_CONFIG, "w", encoding="utf-8") as f:
-                    f.write(original)
 
     def test_exe_close_running_kills_real_process(self):
         """--close-running 应让真实 exe 按 game_process_name 杀掉真实残留进程。"""
-        game, _code = self._run_schedule(close_running=True)
-        self.assertIsNotNone(
-            game.poll(), "close-running 未杀掉真实 odh_stub_game.exe 进程"
-        )
+        game_killed, _ = self._run_once(close_running=True, with_body=False)
+        self.assertTrue(game_killed, "close-running 未杀掉真实 odh_stub_game.exe 进程")
 
     def test_exe_without_close_running_spares_real_process(self):
         """不带 --close-running 时，真实 exe 不应杀掉残留进程。"""
-        game, _code = self._run_schedule(close_running=False)
-        self.assertIsNone(
-            game.poll(), "未启用 close-running 却杀掉了真实 odh_stub_game.exe 进程"
+        game_killed, _ = self._run_once(close_running=False, with_body=False)
+        self.assertFalse(
+            game_killed, "未启用 close-running 却杀掉了真实 odh_stub_game.exe 进程"
         )
 
     def test_exe_close_running_kills_body_and_game(self):
         """--close-running 应让真实 exe 同时按 script_process_name 杀掉脚本真身、
         按 game_process_name 杀掉游戏两个真实进程（对应 ProcessSim 的
         test_run_kills_each_body_and_game 在真实二进制层面的重验）。"""
-        game, body, _code = self._run_schedule_with_body(close_running=True)
-        self.assertIsNotNone(
-            body.poll(), "close-running 未杀掉真实 odh_stub_body.exe 脚本真身进程"
+        game_killed, body_killed = self._run_once(close_running=True, with_body=True)
+        self.assertTrue(
+            body_killed, "close-running 未杀掉真实 odh_stub_body.exe 脚本真身进程"
         )
-        self.assertIsNotNone(
-            game.poll(), "close-running 未杀掉真实 odh_stub_game.exe 游戏进程"
+        self.assertTrue(
+            game_killed, "close-running 未杀掉真实 odh_stub_game.exe 游戏进程"
         )
 
 
