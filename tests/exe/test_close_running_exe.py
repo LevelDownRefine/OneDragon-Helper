@@ -54,6 +54,23 @@ def _is_admin() -> bool:
         return False
 
 
+def _kill_process_tree(pid: int) -> None:
+    """结束整个进程树（含子进程）。
+
+    windowed exe 跑 --schedule-run now 时经 CREATE_NEW_CONSOLE 拉起独立 Runner
+    子进程；仅 terminate 父 exe 不会终止 Runner，孤儿 Runner 会继续按
+    game_process_name 杀进程、污染后续用例。故必须用 taskkill /T 结束整棵树。
+    本测试仅在 Windows 运行（CAN_RUN_EXE 已限定），非 Windows 直接返回。
+    """
+    if sys.platform != "win32":
+        return
+    subprocess.run(
+        ["taskkill", "/F", "/T", "/PID", str(pid)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 CAN_RUN_EXE = sys.platform == "win32" and GUI_EXE is not None and _is_admin()
 _SKIP_REASON = "需要 Windows + 管理员权限 + 存在的 GUI exe 才能真实测试打包产物" + (
     f"（未找到 exe，候选: {_CANDIDATES}）" if GUI_EXE is None else ""
@@ -109,9 +126,7 @@ class TestExeCloseRunning(unittest.TestCase):
         dump_yaml(EXE_CONFIG, data)
         return original
 
-    def _run_once(
-        self, *, close_running: bool, with_body: bool
-    ) -> tuple[bool, bool]:
+    def _run_once(self, *, close_running: bool, with_body: bool) -> tuple[bool, bool]:
         """真实启动 exe 跑一次即时调度（--schedule-run now）。
 
         不依赖 exe 退出：exe 整条链路（pre_run→链运行→post_run）可能因链运行/
@@ -166,9 +181,11 @@ class TestExeCloseRunning(unittest.TestCase):
                 body.poll() is not None if body is not None else False,
             )
         finally:
-            # 先杀 exe（可能卡在链运行/post_run），再恢复 config，最后清理仍存活的 stub。
+            # 先杀 exe 整棵进程树（含其拉起的 Runner 子进程）：windowed exe 卡在链运行时，
+            # 仅 kill 父 exe 不会终止 Runner，孤儿 Runner 会继续按 game_process_name 杀进程，
+            # 污染后续用例。必须用 /T 结束整棵树。
             if exe is not None and exe.poll() is None:
-                exe.kill()
+                _kill_process_tree(exe.pid)
             if original is not None:
                 with open(EXE_CONFIG, "w", encoding="utf-8") as f:
                     f.write(original)
