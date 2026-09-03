@@ -134,6 +134,23 @@ class TestExeCloseRunning(unittest.TestCase):
         dump_yaml(EXE_CONFIG, data)
         return original
 
+    def _debug_dump(self, label: str, cmd, game) -> None:
+        print(f"[ODH-DEBUG {label}] cmd={cmd}")
+        print(f"[ODH-DEBUG {label}] game pid={game.pid}")
+        if EXE_CONFIG and os.path.isfile(EXE_CONFIG):
+            print(f"[ODH-DEBUG {label}] EXE_CONFIG={EXE_CONFIG}")
+            print("--- EXE_CONFIG content ---")
+            with open(EXE_CONFIG, encoding="utf-8") as f:
+                print(f.read())
+        chain = os.path.join(
+            os.path.dirname(GUI_EXE), "config", "script_chain", "today.yml"
+        )
+        if os.path.isfile(chain):
+            print(f"[ODH-DEBUG {label}] chain={chain}")
+            print("--- chain content ---")
+            with open(chain, encoding="utf-8") as f:
+                print(f.read())
+
     def _run_once(self, *, close_running: bool, with_body: bool) -> tuple[bool, bool]:
         """真实启动 exe 跑一次即时调度（--schedule-run now）。
 
@@ -165,6 +182,7 @@ class TestExeCloseRunning(unittest.TestCase):
             cmd = [GUI_EXE, "--schedule-run", "now"]
             if close_running:
                 cmd.append("--close-running")
+            self._debug_dump("pre", cmd, game)
             # windowed exe 经 _emit_cli 写文件，不捕获 stdout 以免管道死锁；
             # 不依赖 exe 退出码（链路可能挂起）。
             exe = subprocess.Popen(
@@ -184,10 +202,13 @@ class TestExeCloseRunning(unittest.TestCase):
             else:
                 # 负路径：给 pre_run 足够时间运行（close 不生效），再判定存活。
                 time.sleep(8)
-            return (
-                game.poll() is not None,
-                body.poll() is not None if body is not None else False,
+            game_killed = game.poll() is not None
+            body_killed = body.poll() is not None if body is not None else False
+            self._debug_dump("post", cmd, game)
+            print(
+                f"[ODH-DEBUG post] game_killed={game_killed} body_killed={body_killed}"
             )
+            return (game_killed, body_killed)
         finally:
             # 杀掉仍运行的 exe 整棵进程树（含其拉起的 Runner 子进程）：windowed exe
             # 跑 --schedule-run now 不一定退出，仅 kill 父 exe 会留下孤儿 Runner；
