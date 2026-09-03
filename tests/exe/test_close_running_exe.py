@@ -57,10 +57,10 @@ def _is_admin() -> bool:
 def _kill_process_tree(pid: int) -> None:
     """结束整个进程树（含子进程）。
 
-    windowed exe 跑 --schedule-run now 时经 CREATE_NEW_CONSOLE 拉起独立 Runner
-    子进程；仅 terminate 父 exe 不会终止 Runner，孤儿 Runner 会继续按
-    game_process_name 杀进程、污染后续用例。故必须用 taskkill /T 结束整棵树。
-    本测试仅在 Windows 运行（CAN_RUN_EXE 已限定），非 Windows 直接返回。
+    windowed exe 跑 --schedule-run now 时拉起独立 Runner 子进程且自身不一定退出；
+    仅 terminate 父 exe 会留下孤儿 Runner 占用资源、污染后续用例，故必须用
+    taskkill /T 结束整棵树。本测试仅在 Windows 运行（CAN_RUN_EXE 已限定），
+    非 Windows 直接返回。
     """
     if sys.platform != "win32":
         return
@@ -120,6 +120,14 @@ class TestExeCloseRunning(unittest.TestCase):
                     "script_path": os.path.join(workdir, "odh_stub_script.cmd"),
                     "script_process_name": body_name if body_name else [],
                     "game_process_name": _GAME_NAME,
+                    # 关掉「脚本跑完后由 Runner 主动杀游戏/真身」的默认行为：
+                    # kill_game_after_done / kill_script_after_done 默认均为 True，
+                    # 会让链在 .cmd 退出后按 game_process_name 把 odh_stub_game.exe
+                    # 杀掉，使负路径用例（不带 --close-running 仍期望游戏存活）被误判失败。
+                    # 设为 False 后，杀进程的唯一起因只剩 close_running_scripts，
+                    # 从而精确隔离被测功能。
+                    "kill_game_after_done": False,
+                    "kill_script_after_done": False,
                 }
             ]
         }
@@ -181,9 +189,10 @@ class TestExeCloseRunning(unittest.TestCase):
                 body.poll() is not None if body is not None else False,
             )
         finally:
-            # 先杀 exe 整棵进程树（含其拉起的 Runner 子进程）：windowed exe 卡在链运行时，
-            # 仅 kill 父 exe 不会终止 Runner，孤儿 Runner 会继续按 game_process_name 杀进程，
-            # 污染后续用例。必须用 /T 结束整棵树。
+            # 杀掉仍运行的 exe 整棵进程树（含其拉起的 Runner 子进程）：windowed exe
+            # 跑 --schedule-run now 不一定退出，仅 kill 父 exe 会留下孤儿 Runner；
+            # 用 /T 结束整棵树避免进程泄漏污染后续用例。stub 已关 kill_game_after_done，
+            # 链运行本身不再杀游戏，本步仅做清理。
             if exe is not None and exe.poll() is None:
                 _kill_process_tree(exe.pid)
             if original is not None:
