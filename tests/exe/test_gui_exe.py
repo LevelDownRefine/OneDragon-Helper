@@ -66,10 +66,11 @@ _SKIP_REASON = "需要 Windows + 管理员权限 + 存在的 GUI exe 才能真�
 
 
 def _game_exes_present() -> bool:
-    """generate-chain 会对每个启用脚本调 set_config，其底层断言游戏 exe 存在。
+    """generate-chain 仅要求 config.yml 存在且每个 script_list 条目都带 script_path 键。
 
-    未安装游戏（CI / 开发机）时该测试无法跑通，应 skip 而非失败。
-    config.yml 由 build.bat 从 config.example.yml 生成，script_path 指向实际游戏目录。
+    它只按配置生成脚本链 yml，并不校验游戏 exe 文件存在（也不逐个调 set_config），
+    故无需真实游戏安装即可验证。CI / 开发机只要有 config.yml（build.bat 从
+    config.example.yml 生成，占位路径即满足「键存在」）就能真跑，不应 skip。
     """
     if not CAN_RUN_EXE:
         return False
@@ -80,11 +81,7 @@ def _game_exes_present() -> bool:
         data = load_yaml(cfg)
     except Exception:
         return False
-    for s in data.get("script_list", []):
-        sp = s.get("script_path")
-        if sp and not os.path.exists(sp):
-            return False
-    return True
+    return all(s.get("script_path") for s in data.get("script_list", []))
 
 
 @unittest.skipUnless(CAN_RUN_EXE, _SKIP_REASON)
