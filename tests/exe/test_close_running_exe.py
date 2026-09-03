@@ -21,8 +21,7 @@ import sys
 import tempfile
 import unittest
 
-import yaml
-
+from src.utils_yaml import dump_yaml
 from tests.exe import project_root
 
 PROJECT_ROOT = str(project_root())
@@ -82,23 +81,26 @@ class TestExeCloseRunning(unittest.TestCase):
 
         body_name 非 None 时写入 script_process_name（指向真实存在的脚本真身进程），
         用于验证「真身」也按名被 close 命中；为 None 则留空，只验游戏进程。
+
+        用项目统一的 ruamel dump_yaml 写回（不依赖 PyYAML），与 exe 自己的
+        load_yaml（ruamel）格式一致。
         """
         assert EXE_CONFIG is not None
         with open(EXE_CONFIG, encoding="utf-8") as f:
             original = f.read()
-        data = yaml.safe_load(original) or {}
         # 只留一条 stub：close_running_scripts 扫全量 script_list 会命中其 game_process_name；
         # 链运行（--enable 缺省=all）只跑这条，拉起退出 0 的 .cmd，不碰任何真实程序。
-        data["script_list"] = [
-            {
-                "display_name": "odh_stub_script",
-                "script_path": os.path.join(workdir, "odh_stub_script.cmd"),
-                "script_process_name": body_name if body_name else [],
-                "game_process_name": _GAME_NAME,
-            }
-        ]
-        with open(EXE_CONFIG, "w", encoding="utf-8") as f:
-            yaml.safe_dump(data, f, allow_unicode=True)
+        data = {
+            "script_list": [
+                {
+                    "display_name": "odh_stub_script",
+                    "script_path": os.path.join(workdir, "odh_stub_script.cmd"),
+                    "script_process_name": body_name if body_name else [],
+                    "game_process_name": _GAME_NAME,
+                }
+            ]
+        }
+        dump_yaml(EXE_CONFIG, data)
         return original
 
     def _run_schedule(self, *, close_running: bool) -> tuple[subprocess.Popen, int | None]:
