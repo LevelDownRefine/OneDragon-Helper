@@ -18,7 +18,7 @@
                 │ 继承
    ┌──────┬──────────┬──────────┬──────┬──────┐
    ▼      ▼          ▼          ▼      ▼      ▼
- ok-ww  BetterGI/ok-ef OneDragon-Launcher/March7th-Assistant ok-nte  MAA
+ ok-ww  BetterGI/ok-ef OneDragon-Launcher/March7th-Launcher ok-nte  MAA
 ```
 
 - 基类 `ScriptConfig` 提供通用能力：`_load` / `_save` / `_verify_saved` / `_update_task`（含二级序列）/ `_init_config` / `_is_aligned` / `set_dungeon` / `safe_update`。
@@ -105,7 +105,7 @@ NTEConfig 覆盖 `set_dungeon`：按 `_dungeon_to_mode` 反查所选副本所属
 
 多数脚本经 `_write_weekly(is_weekly_start_reached(start_day))` 写二值开关（周几起决定今天是否启用）。明日方舟（MAA）覆写 `set_weekly`：不按「今天是否到起始日」门控，每次调用直接写 `gui.new.json`——开启的 FightTask 设 `UseExpiringMedicine=true`（其余 false），`MedicineExpireDays` 由周几起推算（周几起 = 7 - MedicineExpireDays + 1）。
 
-声明 `_weekly_task_name` 的脚本：ok-ww、OneDragon-Launcher、March7th-Assistant、ok-ef、崩铁、绝区零、明日方舟（MAA）；其余脚本调用即断言失败。
+声明 `_weekly_task_name` 的脚本：ok-ww、OneDragon-Launcher、March7th-Launcher、ok-ef、崩铁、绝区零、明日方舟（MAA）；其余脚本调用即断言失败。
 
 ## 安全字段更新 safe_update
 

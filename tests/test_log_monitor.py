@@ -238,7 +238,7 @@ class TestParseLogsRerunList(unittest.TestCase):
 
     def _fake_exe(self, tmp: str, name: str = "fake.exe") -> str:
         # 游戏父目录不放 logs，使 parse 判定为 NO_LOG（未正常启动）。
-        # name 默认 fake.exe；传入 "March7th Assistant.exe" 可构造崩铁（脚本标识 March7th-Assistant）。
+        # name 默认 fake.exe；传入 "March7th Assistant.exe" 可构造崩铁（脚本标识 March7th-Launcher）。
         game_dir = os.path.join(tmp, os.path.splitext(name)[0])
         os.makedirs(game_dir, exist_ok=True)
         script_path = os.path.join(game_dir, name)
@@ -270,27 +270,27 @@ class TestParseLogsRerunList(unittest.TestCase):
     def test_parse_logs_includes_no_log_in_rerun_list(self):
         """无日志（NO_LOG）的游戏应被纳入重跑列表（可能未正常启动）。"""
         tmp = tempfile.mkdtemp()
-        script_path = self._fake_exe(tmp, "March7th Assistant.exe")
+        script_path = self._fake_exe(tmp, "March7th Launcher.exe")
         self._make_config(
             tmp, [{"display_name": "崩坏：星穹铁道", "script_path": script_path}]
         )
-        # 脚本唯一标识为进程名 March7th-Assistant（非 display_name）。
+        # 脚本唯一标识为进程名 March7th-Launcher（非 display_name）。
         result = self._run_parse(tmp)
         # 无日志 → 未正常退出 → 纳入重跑；但无报错 → 不纳入通知。
-        self.assertEqual(result["rerun"], ["March7th-Assistant"])
+        self.assertEqual(result["rerun"], ["March7th-Launcher"])
         self.assertEqual(result["notify"], [])
 
     def test_parse_logs_do_log_false_suppresses_print(self):
         """do_log=False 时不应调用 logger.info，但仍返回重跑列表。"""
         tmp = tempfile.mkdtemp()
-        script_path = self._fake_exe(tmp, "March7th Assistant.exe")
+        script_path = self._fake_exe(tmp, "March7th Launcher.exe")
         self._make_config(
             tmp, [{"display_name": "崩坏：星穹铁道", "script_path": script_path}]
         )
         with mock.patch.object(collect_log.logger, "info") as info:
             result = self._run_parse(tmp, do_log=False)
         info.assert_not_called()
-        self.assertEqual(result["rerun"], ["March7th-Assistant"])
+        self.assertEqual(result["rerun"], ["March7th-Launcher"])
 
     def test_parse_logs_rerun_by_daily_notify_by_errors(self):
         """重跑依据=日常没做完；通知依据=有报错（两者独立、可分离）。
@@ -1011,14 +1011,14 @@ class TestScriptNameIdentifier(unittest.TestCase):
 
     这同时修复此前的 bug：崩铁 display_name 为「崩坏：星穹铁道」（全称，与展示用的
     「崩铁」无关）、script_path 指向 March7th Assistant.exe，其脚本标识仍为进程名
-    March7th-Assistant，必须能命中 M7ALogParser——故按 display_name 查找必然落空。
+    March7th-Launcher，必须能命中 M7ALogParser——故按 display_name 查找必然落空。
     """
 
     def test_parse_log_dispatches_by_script_name(self):
         """parse_log 按 script_name 分派到对应 Parser（已合入原 _find_parser 的查找）。"""
         # 受支持标识分派命中对应 Parser，返回真实状态（非不支持哨兵）。
         for name in (
-            "March7th-Assistant",
+            "March7th-Launcher",
             "ok-ww",
             "BetterGI",
             "OneDragon-Launcher",
@@ -1039,7 +1039,7 @@ class TestScriptNameIdentifier(unittest.TestCase):
 
     def test_supported_set_from_script_name(self):
         supported = {cls.script_name for cls in collect_log._PARSERS if cls.script_name}
-        self.assertIn("March7th-Assistant", supported)
+        self.assertIn("March7th-Launcher", supported)
         self.assertIn("ok-ww", supported)
 
 

@@ -88,17 +88,13 @@ def _exe_icon(path: str) -> QIcon | None:
 
 
 def get_icon_source(script_data: dict) -> str | None:
-    """返回脚本图标所用的 exe 路径（崩铁优先同目录 March7th Launcher.exe）。"""
+    """返回脚本图标所用的 exe 路径（external 脚本取其自身 exe）。"""
     if script_data.get("script_type") != "external":
         return None
     raw = script_data.get("script_path", "")
     if not raw:
         return None
-    script_path = resolve_script_path(raw)
-    launcher = os.path.join(os.path.dirname(script_path), "March7th Launcher.exe")
-    if os.path.isfile(launcher):
-        return launcher
-    return script_path
+    return resolve_script_path(raw)
 
 
 def get_script_icon(script_data: dict) -> QIcon:

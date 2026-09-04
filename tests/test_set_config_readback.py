@@ -319,8 +319,8 @@ class TestReadbackFacade(unittest.TestCase):
         with (
             patch.object(StarRailConfig, "_load", return_value={}),
         ):
-            self.assertIsNone(get_dungeon("March7th-Assistant"))
-            self.assertIsNone(get_weekly_dungeon("March7th-Assistant", "历战余响"))
+            self.assertIsNone(get_dungeon("March7th-Launcher"))
+            self.assertIsNone(get_weekly_dungeon("March7th-Launcher", "历战余响"))
 
 
 class TestReadbackCorruption(unittest.TestCase):

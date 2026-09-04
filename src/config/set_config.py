@@ -872,7 +872,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 # ---- 崩铁 Honkai: Star Rail ----
 @register
 class StarRailConfig(ScriptConfig):
-    _script_name = "March7th-Assistant"
+    _script_name = "March7th-Launcher"
     display_name = "崩铁"
     _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
@@ -1561,7 +1561,7 @@ def get_dungeon_lists(
     「从哪读、怎么解析」的知识归各 ``ScriptConfig`` 子类，本函数只做分发。
 
     Args:
-        script_name: 脚本唯一标识（如 ``March7th-Assistant``）。
+        script_name: 脚本唯一标识（如 ``March7th-Launcher``）。
         task_name: 任务名（周常/日常均可，如「历战余响」）。
         source: 来源标记，即 weekly_list.yml 的 ``dungeons_source``。
 

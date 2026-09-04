@@ -9,7 +9,7 @@ ok-ww:
   - name: 幻梦游园
 OneDragon-Launcher:
   - name: 迷失之地
-March7th-Assistant:
+March7th-Launcher:
   - name: 货币战争
   - name: 历战余响
     dungeons_source: assets/config/instance_names.json

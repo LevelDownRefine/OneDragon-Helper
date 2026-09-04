@@ -33,7 +33,7 @@ class TestConfigRelPaths(unittest.TestCase):
                 "BetterGI",
                 "ok-ef",
                 "OneDragon-Launcher",
-                "March7th-Assistant",
+                "March7th-Launcher",
                 "ok-nte",
                 "MAA",
             },
@@ -64,7 +64,7 @@ class TestConfigRelPaths(unittest.TestCase):
         }
         self.assertEqual(
             with_template,
-            {"BetterGI", "OneDragon-Launcher", "March7th-Assistant", "ok-ef"},
+            {"BetterGI", "OneDragon-Launcher", "March7th-Launcher", "ok-ef"},
         )
 
     def test_weekly_task_name_requires_write_weekly(self):
@@ -248,7 +248,7 @@ class TestGetConfigPath(unittest.TestCase):
             "script_list": [
                 {
                     "display_name": "崩铁",
-                    "script_path": r"D:\game_helper\March7thAssistant\March7th Assistant.exe",
+                    "script_path": r"D:\game_helper\March7thAssistant\March7th Launcher.exe",
                 },
             ]
         }
@@ -261,7 +261,7 @@ class TestGetConfigPath(unittest.TestCase):
         ):
             # 旧实现此处会因 get_script_path 的 assert os.path.exists(exe) 崩溃；
             # 新实现应正常返回路径（不依赖 exe 是否存在）。
-            path = utils_sub_config.get_sub_config_path("March7th-Assistant", rel)
+            path = utils_sub_config.get_sub_config_path("March7th-Launcher", rel)
         self.assertIn("config.yaml", path)
 
 

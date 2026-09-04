@@ -666,7 +666,7 @@ class TestStarRailConfig(unittest.TestCase):
         with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
             self.assertEqual(cfg.display_name, "崩铁")
-            self.assertEqual(cfg._script_name, "March7th-Assistant")
+            self.assertEqual(cfg._script_name, "March7th-Launcher")
             self.assertEqual(cfg._task_key, "")
             self.assertEqual(cfg._task_map, {})
 
@@ -732,7 +732,7 @@ class TestStarRailGetDungeonLists(unittest.TestCase):
             )
         self.assertEqual(names, ["无", "铁骸的锈冢", "晨昏的回眸"])
         mock_load.assert_called_once_with(
-            "March7th-Assistant", "assets/config/instance_names.json"
+            "March7th-Launcher", "assets/config/instance_names.json"
         )
 
     def test_does_not_instantiate_or_init_config(self):
@@ -755,7 +755,7 @@ class TestStarRailGetDungeonLists(unittest.TestCase):
                 StarRailConfig.get_dungeon_lists("历战余响", "some/other/path.json"),
                 [],
             )
-        mock_load.assert_called_once_with("March7th-Assistant", "some/other/path.json")
+        mock_load.assert_called_once_with("March7th-Launcher", "some/other/path.json")
 
     def test_script_not_installed_returns_empty(self):
         """M7A 未安装（load_game_config 软降级为 None）→ data 为空 → 返回 []。"""
@@ -1948,7 +1948,7 @@ class TestGetGameExePath(unittest.TestCase):
         """绝区零/崩铁读取顶层 game_path"""
         cases = (
             (ZenlessZoneZeroConfig, "OneDragon-Launcher"),
-            (StarRailConfig, "March7th-Assistant"),
+            (StarRailConfig, "March7th-Launcher"),
         )
         for cls, script_name in cases:
             with patch(
@@ -2030,7 +2030,7 @@ class TestSupportsWeekly(unittest.TestCase):
     def test_weekly_supported_scripts(self):
         """已适配周常的脚本：崩铁（货币战争）/ 鸣潮（每周花园）/ 绝区零（lost_void）/ 终末地（卖出物资）/ 明日方舟（理智药剂）"""
         for name in (
-            "March7th-Assistant",
+            "March7th-Launcher",
             "ok-ww",
             "OneDragon-Launcher",
             "ok-ef",
@@ -2041,7 +2041,7 @@ class TestSupportsWeekly(unittest.TestCase):
     def test_other_scripts_default_false(self):
         """其余脚本未适配周常 → False"""
         supported = (
-            "March7th-Assistant",
+            "March7th-Launcher",
             "ok-ww",
             "OneDragon-Launcher",
             "ok-ef",

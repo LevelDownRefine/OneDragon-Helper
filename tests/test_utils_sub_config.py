@@ -26,9 +26,9 @@ class TestGetProcessName(unittest.TestCase):
     def test_exe_with_spaces(self):
         self.assertEqual(
             get_process_name(
-                "D:/game_helper/March7thAssistant_full/March7th Assistant.exe"
+                "D:/game_helper/March7thAssistant_full/March7th Launcher.exe"
             ),
-            "March7th-Assistant",
+            "March7th-Launcher",
         )
 
     def test_edge_spaces_removed_not_replaced(self):

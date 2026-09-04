@@ -96,7 +96,7 @@ class ZZZLink(GameLink):
 
 @register
 class HSRLink(GameLink):
-    _script_name = "March7th-Assistant"
+    _script_name = "March7th-Launcher"
     _bilibili = "1340190821"
     _github = "moesnow/March7thAssistant"
     _homepage = "https://sr.mihoyo.com/"

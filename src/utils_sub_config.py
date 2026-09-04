@@ -55,7 +55,7 @@ def get_process_name(script_path: str) -> str:
     """从 script_path 解析进程名：取 basename 并去后缀（如 ``ok-ww.exe`` → ``ok-ww``）。
 
     首尾空格先去除（误输入容错），句中空格统一替换为 ``-``
-    （如 ``March7th Assistant.exe`` → ``March7th-Assistant``），保证进程名作为
+    （如 ``March7th Launcher.exe`` → ``March7th-Launcher``），保证进程名作为
     key 时不含空格（拼接路径 / 命令行传参更安全）。
 
     先统一为 ``/`` 分隔再取 basename，使 Windows 反斜杠路径（``D:\\game\\ok-ww.exe``）

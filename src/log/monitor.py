@@ -301,7 +301,7 @@ class OkEfLogParser(BaseLogParser):
 
 
 class M7ALogParser(BaseLogParser):
-    script_name = "March7th-Assistant"  # 由 script_path(含空格) 的 get_script_name 推导
+    script_name = "March7th-Launcher"  # 由 script_path(含空格) 的 get_script_name 推导
 
     def _term_index(self, content: str) -> int:
         """返回最后一个终止横幅的位置；候选皆无则返回 -1。

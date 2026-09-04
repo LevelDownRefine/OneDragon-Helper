@@ -24,7 +24,7 @@ def _write_defs(tmp, data):
     return path
 
 
-def _make_controller(script_name="March7th-Assistant", display_name="崩铁"):
+def _make_controller(script_name="March7th-Launcher", display_name="崩铁"):
     games = [{"script_name": script_name, "display_name": display_name}]
     game_list = _FakeGameList(games)
     service = MagicMock()
@@ -43,7 +43,7 @@ class TestWeeklyItems(unittest.TestCase):
         defs_path = _write_defs(
             tmp,
             {
-                "March7th-Assistant": [
+                "March7th-Launcher": [
                     {"name": "货币战争"},
                     {
                         "name": "历战余响",
@@ -77,7 +77,7 @@ class TestWeeklyItems(unittest.TestCase):
         defs_path = _write_defs(
             tmp,
             {
-                "March7th-Assistant": [
+                "March7th-Launcher": [
                     {
                         "name": "历战余响",
                         "dungeons": ["无", "铁骸的锈冢", "晨昏的回眸"],
@@ -100,7 +100,7 @@ class TestWeeklyItems(unittest.TestCase):
         defs_path = _write_defs(
             tmp,
             {
-                "March7th-Assistant": [
+                "March7th-Launcher": [
                     {"name": "历战余响", "dungeons": ["无", "铁骸的锈冢"]},
                 ]
             },
@@ -119,7 +119,7 @@ class TestWeeklyItems(unittest.TestCase):
         defs_path = _write_defs(
             tmp,
             {
-                "March7th-Assistant": [
+                "March7th-Launcher": [
                     {"name": "货币战争"},
                 ]
             },
@@ -139,7 +139,7 @@ class TestWeeklyItems(unittest.TestCase):
         defs_path = _write_defs(
             tmp,
             {
-                "March7th-Assistant": [
+                "March7th-Launcher": [
                     {"name": "历战余响", "dungeons": ["无"]},
                 ]
             },
@@ -148,7 +148,7 @@ class TestWeeklyItems(unittest.TestCase):
             "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
             return_value=defs_path,
         ):
-            ctrl_star = _make_controller("March7th-Assistant", "崩铁")
+            ctrl_star = _make_controller("March7th-Launcher", "崩铁")
             ctrl_ww = _make_controller("ok-ww", "鸣潮")
             self.assertTrue(ctrl_star.weekly_supported)
             self.assertFalse(ctrl_ww.weekly_supported)
@@ -174,7 +174,7 @@ class TestSelectWeeklyDungeon(unittest.TestCase):
         with patch.object(task_card_mod, "set_weekly_dungeon") as mock_set:
             ctrl.selectWeeklyDungeon("历战余响", "铁骸的锈冢")
         # 写脚本自身 config 的 instance_names（M7A 约定键名）
-        mock_set.assert_called_once_with("March7th-Assistant", "历战余响", "铁骸的锈冢")
+        mock_set.assert_called_once_with("March7th-Launcher", "历战余响", "铁骸的锈冢")
 
 
 class TestSelectDungeonWritesSubscriptConfig(unittest.TestCase):
@@ -257,7 +257,7 @@ class TestWeeklyItemsReadback(unittest.TestCase):
         defs_path = _write_defs(
             tmp,
             {
-                "March7th-Assistant": [
+                "March7th-Launcher": [
                     {"name": "历战余响", "dungeons": ["无", "铁骸的锈冢"]},
                 ]
             },

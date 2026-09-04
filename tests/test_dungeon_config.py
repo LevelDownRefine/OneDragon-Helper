@@ -30,13 +30,13 @@ class TestGetWeeklyDefs(unittest.TestCase):
         """带 dungeons（无 dungeons_source）的项保持原样，不触发外部读取。"""
         self._write(
             {
-                "March7th-Assistant": [
+                "March7th-Launcher": [
                     {"name": "历战余响", "dungeons": ["无", "铁骸的锈冢"]}
                 ]
             }
         )
         with patch("src.config.dungeon_config.get_dungeon_lists") as mock_ext:
-            defs = get_weekly_map("March7th-Assistant")
+            defs = get_weekly_map("March7th-Launcher")
         self.assertEqual(defs[0]["dungeons"], ["无", "铁骸的锈冢"])
         mock_ext.assert_not_called()  # 无 dungeons_source 不读外部
 
@@ -44,7 +44,7 @@ class TestGetWeeklyDefs(unittest.TestCase):
         """dungeons_source=assets/config/instance_names.json 且外部可读 → 用外部副本清单填充。"""
         self._write(
             {
-                "March7th-Assistant": [
+                "March7th-Launcher": [
                     {
                         "name": "历战余响",
                         "dungeons_source": "assets/config/instance_names.json",
@@ -56,9 +56,9 @@ class TestGetWeeklyDefs(unittest.TestCase):
         with patch(
             "src.config.dungeon_config.get_dungeon_lists", return_value=names
         ) as mock_ext:
-            defs = get_weekly_map("March7th-Assistant")
+            defs = get_weekly_map("March7th-Launcher")
         mock_ext.assert_called_once_with(
-            "March7th-Assistant", "历战余响", "assets/config/instance_names.json"
+            "March7th-Launcher", "历战余响", "assets/config/instance_names.json"
         )
         self.assertEqual(defs[0]["dungeons"], names)
         self.assertTrue(defs[0]["dungeons"])  # 供 GUI 推导 has_dungeon
@@ -67,7 +67,7 @@ class TestGetWeeklyDefs(unittest.TestCase):
         """外部读不到（返回 None）→ 降级 dungeons=[]，该周常无需选副本。"""
         self._write(
             {
-                "March7th-Assistant": [
+                "March7th-Launcher": [
                     {
                         "name": "历战余响",
                         "dungeons_source": "assets/config/instance_names.json",
@@ -76,12 +76,12 @@ class TestGetWeeklyDefs(unittest.TestCase):
             }
         )
         with patch("src.config.dungeon_config.get_dungeon_lists", return_value=None):
-            defs = get_weekly_map("March7th-Assistant")
+            defs = get_weekly_map("March7th-Launcher")
         self.assertEqual(defs[0]["dungeons"], [])
 
     def test_unknown_script_returns_empty(self):
         """未知脚本 → get_weekly_map 返回空列表（不抛错、不读外部）。"""
-        self._write({"March7th-Assistant": [{"name": "货币战争"}]})
+        self._write({"March7th-Launcher": [{"name": "货币战争"}]})
         self.assertEqual(get_weekly_map("不存在"), [])
 
 

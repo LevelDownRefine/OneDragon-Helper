@@ -3,7 +3,6 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -48,33 +47,17 @@ class TestGetScriptIcon(unittest.TestCase):
         )
         self.assertFalse(icon.isNull())
 
-    def test_star_rail_swaps_to_launcher_icon(self):
-        """崩铁：同目录存在 March7th Launcher.exe 时，图标源换成它而非自身 exe。"""
+    def test_external_uses_own_exe_as_icon_source(self):
+        """external 脚本：图标源即其解析后的自身 exe 路径（崩铁 canonical 已是 Launcher）。"""
         data = {
             "display_name": "崩铁",
             "script_type": "external",
-            "script_path": "D:/game_helper/March7thAssistant/March7th Assistant.exe",
+            "script_path": "D:/game_helper/March7thAssistant/March7th Launcher.exe",
         }
-        with patch("src.gui.icons.os.path.isfile", return_value=True):
-            self.assertEqual(
-                get_icon_source(data),
-                os.path.join(
-                    "D:/game_helper/March7thAssistant", "March7th Launcher.exe"
-                ),
-            )
-
-    def test_star_rail_launcher_missing_uses_own_exe(self):
-        """崩铁：若同目录没有 March7th Launcher.exe，则仍用自身 exe 作为图标源。"""
-        data = {
-            "display_name": "崩铁",
-            "script_type": "external",
-            "script_path": "D:/game_helper/March7thAssistant/March7th Assistant.exe",
-        }
-        with patch("src.gui.icons.os.path.isfile", return_value=False):
-            self.assertEqual(
-                get_icon_source(data),
-                "D:/game_helper/March7thAssistant/March7th Assistant.exe",
-            )
+        self.assertEqual(
+            get_icon_source(data),
+            "D:/game_helper/March7thAssistant/March7th Launcher.exe",
+        )
 
 
 if __name__ == "__main__":

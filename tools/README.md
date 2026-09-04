@@ -11,7 +11,7 @@ config/dungeon_list.yml 各游戏副本列表维护总览。鸣潮/异环经 Git
 | 异环 | ok-nte | ok-nte AnomalyTask.py 的 _ID_RANGE | sync_oknte_dungeons.py + Action 自动补数字 | 新数字改友好名 |
 | 原神 | BetterGI | better-genshin-impact AutoTrackPath/Assets/tp.json | 手动 skill: sync-bgi-dungeons | 分类 + display 套装配对 |
 | 明日方舟 | MAA | 固定 | 无需更新 | — |
-| 崩铁 | March7th-Assistant | 固定 | 无需更新 | — |
+| 崩铁 | March7th-Launcher | 固定 | 无需更新 | — |
 | 绝区零 | OneDragon-Launcher | 固定 | 无需更新 | — |
 
 ## 通用约定

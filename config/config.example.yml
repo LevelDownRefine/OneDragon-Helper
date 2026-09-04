@@ -79,14 +79,14 @@ script_list:
 - display_name: 崩铁
   game_label: ''
   script_type: external
-  script_path: D:\game_helper\March7thAssistant\March7th Assistant.exe
+  script_path: D:\game_helper\March7thAssistant\March7th Launcher.exe
   script_process_name: []
   game_process_name: StarRail.exe
   launcher_mode: false
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
-  script_arguments: ''
+  script_arguments: 'main -e'
   notify_start: false
   notify_done: false
   notify_log_interval: 0

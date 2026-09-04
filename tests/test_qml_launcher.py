@@ -434,7 +434,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             # 仅用于验证弹窗几何（与真实清单内容无关）。
             scripts = [{
                 "display_name": "崩坏：星穹铁道",
-                "script_path": "scripts/March7th-Assistant/March7th-Assistant.exe",
+                "script_path": "scripts/March7th-Launcher/March7th-Launcher.exe",
                 "script_type": "external",
             }]
             fake_dungeons = [f"副本{i}" for i in range(1, 10)]
@@ -603,14 +603,14 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             from src.gui.main_window import QmlBridge
 
             app = QApplication([])
-            # 崩铁 March7th-Assistant：weekly_list.yml 声明 2 种周常
+            # 崩铁 March7th-Launcher：weekly_list.yml 声明 2 种周常
             # （货币战争 / 历战余响），历战余响 dungeons_source=assets/config/instance_names.json
             # 运行期从 M7A 的 instance_names.json 读取。CI 无 M7A，此处 patch 模拟已装，
             # 返回历战余响的 9 个副本键（与真实 instance_names.json 一致），验证副本下拉
             # 几何（>3 个需 placePopup 上翻封顶）。
             scripts = [{
                 "display_name": "崩坏：星穹铁道",
-                "script_path": "scripts/March7th-Assistant/March7th-Assistant.exe",
+                "script_path": "scripts/March7th-Launcher/March7th-Launcher.exe",
                 "script_type": "external",
             }]
             with (

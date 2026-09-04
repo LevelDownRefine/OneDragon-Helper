@@ -9,7 +9,7 @@
 # - 各字段均为子串（substring）匹配，非正则（stamina_pattern 除外，它是正则）。
 # - 命中任一即成立（any）。error_noise 命中则该行不计入报错。
 # - success_markers / fail_markers 仅用于 parse_content 的成败判定（见各 Parser 逻辑）。
-# - exit_markers 仅崩铁（March7th-Assistant）消费：作「游戏终止」横幅、截断其后的良性收尾报错；
+# - exit_markers 仅崩铁（March7th-Launcher）消费：作「游戏终止」横幅、截断其后的良性收尾报错；
 #   其余游戏不读取它（parse_exit 已移除，无其它消费者）。
 # - 缺失字段以空值兜底（如某游戏无体力提取，省略 stamina_pattern）。
 
@@ -57,7 +57,7 @@ parsers:
     success_markers:
       - '执行状态: 完成'
 
-  March7th-Assistant:
+  March7th-Launcher:
     log_pattern: '*.log'
     stamina_pattern: '开拓力[：:]\s*(\d+)/(\d+)'
     error_markers:
