@@ -3,11 +3,11 @@
 持有平级 peer 并薄委托，使各 peer 互不越界——链编排归 :mod:`src.service.chain_service` 模块函数（生成/运行/调度/校验），本类只组合它。
 
 peer：
-- 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils_config` 模块函数
+- 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils.utils_config` 模块函数
 - 副本与周常声明读取（dungeon_list.yml / weekly_list.yml）：归 :mod:`src.config.dungeon_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
-- 周常运行期参数（weekly_start.yml / weekly_timeouts.yml）：归 :mod:`src.utils_weekly` 模块函数
+- 周常运行期参数（weekly_start.yml / weekly_timeouts.yml）：归 :mod:`src.utils.utils_weekly` 模块函数
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
 未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
@@ -18,7 +18,7 @@ import logging
 import src.service.chain_service as chain_service
 from src.config.dungeon_config import get_dungeon_map, get_weekly_map
 from src.service.schedule import load_schedule, save_schedule
-from src.utils_config import (
+from src.utils.utils_config import (
     add_script,
     build_script_entry,
     config_file_path,
@@ -28,12 +28,12 @@ from src.utils_config import (
     save_config,
     update_script,
 )
-from src.utils_runner import (
+from src.utils.utils_runner import (
     build_chain_command,
     collect_invalid_script_messages,
     run_chain_command,
 )
-from src.utils_weekly import (
+from src.utils.utils_weekly import (
     check_weekly,
     get_weekly_start,
     get_weekly_start_map,
@@ -59,7 +59,7 @@ class AppService:
         """读取 dungeon_list.yml 的副本/序列配置。"""
         return get_dungeon_map()
 
-    # ── 单脚本配置（src.utils_config 模块函数）─────────────────────────
+    # ── 单脚本配置（src.utils.utils_config 模块函数）─────────────────────────
     def get_script(self, script_name: str):
         """按脚本唯一标识读取单个脚本条目。"""
         return get_script(script_name)
@@ -72,8 +72,8 @@ class AppService:
         """返回该脚本「配置文件」的本地路径（用于外部打开）与失败原因。"""
         return config_file_path(script_name)
 
-    # ── 周常运行期参数（src.utils_weekly 模块函数）──
-    # weekly_start.yml（周几起）与 weekly_timeouts.yml（每周超时）由 src.utils_weekly
+    # ── 周常运行期参数（src.utils.utils_weekly 模块函数）──
+    # weekly_start.yml（周几起）与 weekly_timeouts.yml（每周超时）由 src.utils.utils_weekly
     # 拥有；读写直接调模块函数，不经 chain_service 转发。
     def get_weekly_start(self, script_name: str):
         """返回某脚本的周常起始日（1~7），未设置返回 None。"""
@@ -99,8 +99,8 @@ class AppService:
         """
         return check_weekly(load_config())
 
-    # ── 配置读写（src.utils_config 模块函数）──
-    # config.yml 读写（含脚本条目增删改）归 :mod:`src.utils_config`；此处仅作薄委托。
+    # ── 配置读写（src.utils.utils_config 模块函数）──
+    # config.yml 读写（含脚本条目增删改）归 :mod:`src.utils.utils_config`；此处仅作薄委托。
     def load_config(self) -> dict:
         return load_config()
 

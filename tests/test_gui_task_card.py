@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 from src.config.dungeon_config import get_dungeon_map, get_weekly_map
 from src.gui.controllers import task_card as task_card_mod
 from src.gui.controllers.task_card import TaskCardController
-from src.utils_yaml import dump_yaml_file
+from src.utils.utils_yaml import dump_yaml_file
 
 
 class _FakeGameList:

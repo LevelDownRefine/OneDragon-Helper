@@ -8,8 +8,8 @@ import logging
 from pathlib import Path
 
 from src.log.monitor import parse_logs
-from src.utils_sub_config import get_script_name
-from src.utils_yaml import load_yaml
+from src.utils.utils_sub_config import get_script_name
+from src.utils.utils_yaml import load_yaml
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")

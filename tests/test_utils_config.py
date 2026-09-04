@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.utils_config import (
+from src.utils.utils_config import (
     add_script,
     build_script_entry,
     config_file_path,
@@ -18,7 +18,7 @@ from src.utils_config import (
     remove_script,
     save_config,
 )
-from src.utils_yaml import dump_yaml_file, load_yaml
+from src.utils.utils_yaml import dump_yaml_file, load_yaml
 
 
 class UtilsConfigTestBase(unittest.TestCase):
@@ -34,7 +34,7 @@ class UtilsConfigTestBase(unittest.TestCase):
         )
         patchers = [
             patch(
-                "src.utils_config.require_config_yml_path",
+                "src.utils.utils_config.require_config_yml_path",
                 return_value=self.config_path,
             ),
             patch(
@@ -110,10 +110,10 @@ class TestConfigFilePath(UtilsConfigTestBase):
         self._setup_script("原神", "external", "C:/a.exe")
         with (
             patch(
-                "src.utils_config.get_config_path",
+                "src.utils.utils_config.get_config_path",
                 return_value="C:/config/DailyTask.json",
             ),
-            patch("src.utils_config.os.path.isfile", return_value=True),
+            patch("src.utils.utils_config.os.path.isfile", return_value=True),
         ):
             path, error = config_file_path("a")
         self.assertEqual(path, "C:/config/DailyTask.json")
@@ -122,7 +122,7 @@ class TestConfigFilePath(UtilsConfigTestBase):
     def test_external_unadapted_returns_error(self):
         self._setup_script("原神", "external", "C:/a.exe")
         with patch(
-            "src.utils_config.get_config_path",
+            "src.utils.utils_config.get_config_path",
             side_effect=AssertionError("未适配脚本: 原神"),
         ):
             path, error = config_file_path("a")
@@ -133,10 +133,10 @@ class TestConfigFilePath(UtilsConfigTestBase):
         self._setup_script("静音", "python", "C:/proj/mute.py")
         with (
             patch(
-                "src.utils_config.resolve_script_path",
+                "src.utils.utils_config.resolve_script_path",
                 return_value="C:/proj/mute.py",
             ),
-            patch("src.utils_config.os.path.isfile", return_value=True),
+            patch("src.utils.utils_config.os.path.isfile", return_value=True),
         ):
             path, error = config_file_path("静音")
         self.assertEqual(path, "C:/proj/mute.py")
@@ -146,10 +146,10 @@ class TestConfigFilePath(UtilsConfigTestBase):
         self._setup_script("静音", "python", "C:/nope/mute.py")
         with (
             patch(
-                "src.utils_config.resolve_script_path",
+                "src.utils.utils_config.resolve_script_path",
                 return_value="C:/nope/mute.py",
             ),
-            patch("src.utils_config.os.path.isfile", return_value=False),
+            patch("src.utils.utils_config.os.path.isfile", return_value=False),
         ):
             path, error = config_file_path("静音")
         self.assertIsNone(path)
@@ -172,7 +172,7 @@ class TestLoadSaveConfig(unittest.TestCase):
         }
         dump_yaml_file(self.config_path, fake_data)
         with patch(
-            "src.utils_config.require_config_yml_path",
+            "src.utils.utils_config.require_config_yml_path",
             return_value=self.config_path,
         ):
             data = load_config()
@@ -182,7 +182,7 @@ class TestLoadSaveConfig(unittest.TestCase):
         dump_yaml_file(self.config_path, {"a": 1})
         with (
             patch(
-                "src.utils_config.require_config_yml_path",
+                "src.utils.utils_config.require_config_yml_path",
                 return_value=self.config_path,
             ),
             self.assertRaises(AssertionError),
@@ -191,7 +191,7 @@ class TestLoadSaveConfig(unittest.TestCase):
 
     def test_save_config_writes_yaml(self):
         with patch(
-            "src.utils_config.get_config_yml_path_under_root",
+            "src.utils.utils_config.get_config_yml_path_under_root",
             return_value=self.config_path,
         ):
             save_config({"script_list": [{"display_name": "测试"}]})
@@ -222,15 +222,15 @@ class TestAddRemoveScript(unittest.TestCase):
         """add_script 在 script_list 末尾追加条目、落盘，并协作 utils_weekly 建默认条目。"""
         with (
             patch(
-                "src.utils_config.require_config_yml_path",
+                "src.utils.utils_config.require_config_yml_path",
                 return_value=self.config_path,
             ),
             patch(
-                "src.utils_config.get_config_yml_path_under_root",
+                "src.utils.utils_config.get_config_yml_path_under_root",
                 return_value=self.config_path,
             ),
-            patch("src.utils_config.ensure_weekly_entry") as mock_ensure,
-            patch("src.utils_config.init_config") as mock_init,
+            patch("src.utils.utils_config.ensure_weekly_entry") as mock_ensure,
+            patch("src.utils.utils_config.init_config") as mock_init,
         ):
             add_script({"display_name": "鸣潮", "script_path": "C:/b.exe"})
         names = [s["display_name"] for s in self._read()["script_list"]]
@@ -242,14 +242,14 @@ class TestAddRemoveScript(unittest.TestCase):
         """remove_script 从 script_list 移除指定进程条目、落盘，并协作清理 weekly 孤儿。"""
         with (
             patch(
-                "src.utils_config.require_config_yml_path",
+                "src.utils.utils_config.require_config_yml_path",
                 return_value=self.config_path,
             ),
             patch(
-                "src.utils_config.get_config_yml_path_under_root",
+                "src.utils.utils_config.get_config_yml_path_under_root",
                 return_value=self.config_path,
             ),
-            patch("src.utils_config.delete_weekly") as mock_del,
+            patch("src.utils.utils_config.delete_weekly") as mock_del,
         ):
             remove_script("a")
         self.assertEqual(self._read()["script_list"], [])
@@ -259,11 +259,11 @@ class TestAddRemoveScript(unittest.TestCase):
         """remove_script 移除不存在的脚本属非法调用：assert 表达不该发生"""
         with (
             patch(
-                "src.utils_config.require_config_yml_path",
+                "src.utils.utils_config.require_config_yml_path",
                 return_value=self.config_path,
             ),
             patch(
-                "src.utils_config.get_config_yml_path_under_root",
+                "src.utils.utils_config.get_config_yml_path_under_root",
                 return_value=self.config_path,
             ),
             self.assertRaises(AssertionError),

@@ -1,6 +1,6 @@
 """游戏 config 往返保真测试（以「类似崩铁 M7A」的夹具驱动真实读写路径）。
 
-验证 src.utils_sub_config 的 load_config / save_config：
+验证 src.utils.utils_sub_config 的 load_config / save_config：
 - 读后写回，解析结果与原 config 数据等价（reloaded == original）；
 - 注释（含行内注释）保留；
 - 04:00 / 4:00 这类时间保持字符串，绝不变 240.0 浮点污染；
@@ -15,7 +15,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src import utils_sub_config
+from src.utils import utils_sub_config
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "starrail_config.yaml")
 

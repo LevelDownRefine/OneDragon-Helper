@@ -5,7 +5,7 @@
 - 副本/序列选择来自子脚本 config（GUI/CLI 编辑期经 set_config 实时落盘），
   按 dungeon_list 选项校验。
 
-脚本配置合法性校验（对齐 runner invalid_message）见 ``src.utils_runner``。
+脚本配置合法性校验（对齐 runner invalid_message）见 ``src.utils.utils_runner``。
 自 ``src.gui.chain`` 迁出：不依赖 Qt，收编到 service 层便于无头测试与 GUI/CLI 共用。
 """
 
@@ -16,9 +16,9 @@ from src.utils import (
     get_path_under_root,
     safe_path_join,
 )
-from src.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
-from src.utils_weekly import get_week_num
-from src.utils_yaml import dump_yaml
+from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
+from src.utils.utils_weekly import get_week_num
+from src.utils.utils_yaml import dump_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def resolve_weekly_start(weekly_start_map: dict, script_name: str) -> int | None
     「今天周几 >= 起始日」由 set_config 判断启用/停用写入脚本配置
     （与日常副本选择落盘不受日常开关影响的模型一致）。
 
-    起始日来源为 weekly_start.yml（运行时由 src.utils_weekly 持久化），经
+    起始日来源为 weekly_start.yml（运行时由 src.utils.utils_weekly 持久化），经
     weekly_start_map 传入。
 
     Args:
@@ -99,7 +99,7 @@ def generate_chain_config(
     计算的周本开关写盘，已抽出为 ``ScheduledRun`` 的 pre_run 步骤（由 ``build_pre_run_pipeline`` 在运行前统一写回），
     故本函数只负责按星期过滤脚本并生成链 yml，不再写任何子脚本 config。
 
-    weekly_timeouts 由调用方（chain_service 模块）通过 src.utils_config 加载后传入，不再直接读取磁盘文件。
+    weekly_timeouts 由调用方（chain_service 模块）通过 src.utils.utils_config 加载后传入，不再直接读取磁盘文件。
 
     Args:
         all_config_data: config.yml 完整数据（含 script_list）。

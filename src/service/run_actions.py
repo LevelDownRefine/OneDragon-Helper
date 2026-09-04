@@ -15,8 +15,12 @@ from src.config.set_config import set_config
 from src.log.monitor import parse_logs
 from src.log.notify_mail import send_mail
 from src.service.chain_gen import resolve_weekly_start
-from src.utils_runner import ProcessTarget, collect_process_targets, kill_processes
-from src.utils_weekly import next_target_datetime
+from src.utils.utils_runner import (
+    ProcessTarget,
+    collect_process_targets,
+    kill_processes,
+)
+from src.utils.utils_weekly import next_target_datetime
 
 logger = logging.getLogger(__name__)
 

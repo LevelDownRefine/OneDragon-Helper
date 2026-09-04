@@ -32,7 +32,7 @@ from src.gui.dialogs import (
     FormDialogBase,
     make_font,
 )
-from src.utils_runner import _TIME_RE
+from src.utils.utils_runner import _TIME_RE
 
 
 class RunConfirmDialog(FormDialogBase):

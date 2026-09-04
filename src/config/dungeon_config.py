@@ -7,7 +7,7 @@ from src.utils import (
     get_weekly_list_yml_path_under_root,
     safe_path_join,
 )
-from src.utils_yaml import load_yaml, load_yaml_optional
+from src.utils.utils_yaml import load_yaml, load_yaml_optional
 
 DungeonOptions = list[str]
 SequenceOptionsMap = dict[str, list[tuple[str, Any]]]

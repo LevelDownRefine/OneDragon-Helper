@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.utils_weekly import (
+from src.utils.utils_weekly import (
     check_weekly,
     delete_weekly,
     ensure_weekly_entry,
@@ -20,7 +20,7 @@ from src.utils_weekly import (
     set_weekly_start,
     weekly_inputs,
 )
-from src.utils_yaml import dump_yaml_file, load_yaml
+from src.utils.utils_yaml import dump_yaml_file, load_yaml
 
 
 class UtilsWeeklyTestBase(unittest.TestCase):
@@ -37,11 +37,11 @@ class UtilsWeeklyTestBase(unittest.TestCase):
         self._write_weekly_start({})
         patchers = [
             patch(
-                "src.utils_weekly.get_weekly_timeouts_yml_path_under_root",
+                "src.utils.utils_weekly.get_weekly_timeouts_yml_path_under_root",
                 return_value=self.weekly_path,
             ),
             patch(
-                "src.utils_weekly.get_weekly_start_yml_path_under_root",
+                "src.utils.utils_weekly.get_weekly_start_yml_path_under_root",
                 return_value=self.weekly_start_path,
             ),
         ]

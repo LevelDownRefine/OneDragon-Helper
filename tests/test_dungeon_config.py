@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 from src.config.dungeon_config import get_dungeon_map, get_weekly_map
-from src.utils_yaml import dump_yaml_file
+from src.utils.utils_yaml import dump_yaml_file
 
 
 class TestGetWeeklyDefs(unittest.TestCase):

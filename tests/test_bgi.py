@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from src.config import bgi
-from src.utils_yaml import dump_yaml_file
+from src.utils.utils_yaml import dump_yaml_file
 
 
 class TestCopyBettergiConfig(unittest.TestCase):

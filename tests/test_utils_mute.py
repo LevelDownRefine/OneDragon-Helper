@@ -4,7 +4,7 @@ import sys
 import unittest
 from unittest import mock
 
-from src.utils_mute import (
+from src.utils.utils_mute import (
     mute_off,
     mute_on,
     set_system_mute,
@@ -46,24 +46,24 @@ class TestMuteOnOff(unittest.TestCase):
     """mute_on / mute_off：pre_run/post_run step 封装，异常不向上抛。"""
 
     def test_mute_on_calls_set_true(self):
-        with mock.patch("src.utils_mute.set_system_mute") as sm:
+        with mock.patch("src.utils.utils_mute.set_system_mute") as sm:
             mute_on()
             sm.assert_called_once_with(True)
 
     def test_mute_off_calls_set_false(self):
-        with mock.patch("src.utils_mute.set_system_mute") as sm:
+        with mock.patch("src.utils.utils_mute.set_system_mute") as sm:
             mute_off()
             sm.assert_called_once_with(False)
 
     def test_mute_on_swallows_exception(self):
         with mock.patch(
-            "src.utils_mute.set_system_mute", side_effect=RuntimeError("boom")
+            "src.utils.utils_mute.set_system_mute", side_effect=RuntimeError("boom")
         ):
             # 不应抛出；_run_steps 也会兜底，但 step 内部已自包容。
             mute_on()
 
     def test_mute_off_swallows_exception(self):
         with mock.patch(
-            "src.utils_mute.set_system_mute", side_effect=RuntimeError("boom")
+            "src.utils.utils_mute.set_system_mute", side_effect=RuntimeError("boom")
         ):
             mute_off()

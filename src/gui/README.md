@@ -24,17 +24,17 @@
 
 ## 弹窗 dialogs.py
 
-- SingleScriptConfigDialog：单脚本配置弹窗，保存后经 pending_changes 返回，写盘委托 AppService.update_script（内部转 src.utils_config.update_script）。
+- SingleScriptConfigDialog：单脚本配置弹窗，保存后经 pending_changes 返回，写盘委托 AppService.update_script（内部转 src.utils.utils_config.update_script）。
 
 ## 写盘路径
 
-config.yml 写入权统一归 src.utils_config（经 AppService 委托），GUI 弹窗不直接写盘：
+config.yml 写入权统一归 src.utils.utils_config（经 AppService 委托），GUI 弹窗不直接写盘：
 
 | 操作 | GUI 触发 | 写盘路径 |
 |------|----------|---------|
-| 编辑脚本字段 | 弹窗 save_data → pending_changes | AppService.update_script（src.utils_config） |
-| 增删脚本 | _add_script / _on_delete_script | AppService.add_script / remove_script（src.utils_config） |
-| 重排 | 拖拽 | AppService.save_config（src.utils_config） |
+| 编辑脚本字段 | 弹窗 save_data → pending_changes | AppService.update_script（src.utils.utils_config） |
+| 增删脚本 | _add_script / _on_delete_script | AppService.add_script / remove_script（src.utils.utils_config） |
+| 重排 | 拖拽 | AppService.save_config（src.utils.utils_config） |
 | 运行 | 启动全部 | AppService 链生成 → chain_gen（src.service.chain_service.generate_chain） |
 
 ## UI 状态持久化

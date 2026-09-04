@@ -4,16 +4,16 @@ import logging
 import os
 from typing import Any
 
-from src.utils_sub_config import (
+from src.utils.utils_sub_config import (
     get_sub_config_path as _get_config_path_impl,
 )
-from src.utils_sub_config import (
+from src.utils.utils_sub_config import (
     load_config,
     load_game_config,
     load_template,
     save_config,
 )
-from src.utils_weekly import is_weekly_start_reached
+from src.utils.utils_weekly import is_weekly_start_reached
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,7 @@ import sys
 import unittest
 from unittest import mock
 
-from src.utils_shutdown import _run_shutdown_command, shutdown_sys
+from src.utils.utils_shutdown import _run_shutdown_command, shutdown_sys
 
 
 class TestShutdownSys(unittest.TestCase):
@@ -18,8 +18,8 @@ class TestShutdownSys(unittest.TestCase):
         """非 Windows：不弹窗、不执行 shutdown。"""
         with (
             mock.patch.object(sys, "platform", "linux"),
-            mock.patch("src.utils_shutdown.subprocess.run") as run,
-            mock.patch("src.utils_shutdown._confirm_shutdown") as confirm,
+            mock.patch("src.utils.utils_shutdown.subprocess.run") as run,
+            mock.patch("src.utils.utils_shutdown._confirm_shutdown") as confirm,
         ):
             shutdown_sys(45)
         confirm.assert_not_called()
@@ -29,8 +29,8 @@ class TestShutdownSys(unittest.TestCase):
         """确认：执行 shutdown /s /f /t 0。"""
         with (
             mock.patch.object(sys, "platform", "win32"),
-            mock.patch("src.utils_shutdown._confirm_shutdown", return_value=True),
-            mock.patch("src.utils_shutdown.subprocess.run") as run,
+            mock.patch("src.utils.utils_shutdown._confirm_shutdown", return_value=True),
+            mock.patch("src.utils.utils_shutdown.subprocess.run") as run,
         ):
             shutdown_sys(45)
         run.assert_called_once()
@@ -40,9 +40,11 @@ class TestShutdownSys(unittest.TestCase):
         """取消：不执行 shutdown 并记「已取消关机」。"""
         with (
             mock.patch.object(sys, "platform", "win32"),
-            mock.patch("src.utils_shutdown._confirm_shutdown", return_value=False),
-            mock.patch("src.utils_shutdown.subprocess.run") as run,
-            self.assertLogs("src.utils_shutdown", level="INFO") as logs,
+            mock.patch(
+                "src.utils.utils_shutdown._confirm_shutdown", return_value=False
+            ),
+            mock.patch("src.utils.utils_shutdown.subprocess.run") as run,
+            self.assertLogs("src.utils.utils_shutdown", level="INFO") as logs,
         ):
             shutdown_sys(45)
         run.assert_not_called()
@@ -54,7 +56,7 @@ class TestRunShutdownCommand(unittest.TestCase):
 
     def test_command_and_flags(self):
         """命令名 + 参数拼装，且不弹额外控制台窗口。"""
-        with mock.patch("src.utils_shutdown.subprocess.run") as run:
+        with mock.patch("src.utils.utils_shutdown.subprocess.run") as run:
             _run_shutdown_command(["/a"])
         self.assertEqual(run.call_args.args[0], ["shutdown", "/a"])
         self.assertIsNotNone(run.call_args.kwargs["creationflags"])
@@ -63,8 +65,8 @@ class TestRunShutdownCommand(unittest.TestCase):
         """非 0 退出码记 error（不抛，避免打断 post_run 后续步骤）。"""
         failed = mock.Mock(returncode=1, stderr="拒绝访问")
         with (
-            mock.patch("src.utils_shutdown.subprocess.run", return_value=failed),
-            self.assertLogs("src.utils_shutdown", level="ERROR") as logs,
+            mock.patch("src.utils.utils_shutdown.subprocess.run", return_value=failed),
+            self.assertLogs("src.utils.utils_shutdown", level="ERROR") as logs,
         ):
             _run_shutdown_command(["/s"])
         self.assertIn("拒绝访问", "\n".join(logs.output))

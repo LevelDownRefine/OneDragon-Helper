@@ -15,7 +15,7 @@ from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QFileIconProvider
 
 from src.utils import get_root_dir, safe_path_join
-from src.utils_sub_config import resolve_script_path
+from src.utils.utils_sub_config import resolve_script_path
 
 logger = logging.getLogger(__name__)
 

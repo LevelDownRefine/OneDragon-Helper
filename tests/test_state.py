@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from src.service.chain_gen import _resolve_daily_run, resolve_weekly_start
-from src.utils_sub_config import DEFAULT_RUN_TIMEOUT
+from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT
 
 
 def _script(display_name="测试"):

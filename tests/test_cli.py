@@ -24,8 +24,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from src import cli, launcher
 from src.service import chain_gen as service_chain_gen
-from src.utils_sub_config import get_script_name
-from src.utils_yaml import load_yaml
+from src.utils.utils_sub_config import get_script_name
+from src.utils.utils_yaml import load_yaml
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -422,7 +422,7 @@ class TestCliRunChain(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix=".yml", delete=False) as fh:
             missing = fh.name
         os.unlink(missing)  # 故意不创建
-        with patch("src.utils_runner.run_chain_command") as mock_run:
+        with patch("src.utils.utils_runner.run_chain_command") as mock_run:
             code = _run_main(["--run-chain", missing], expect_exit=1)
         self.assertEqual(code, 1)
         mock_run.assert_not_called()  # 缺文件时不该真正启动 Runner

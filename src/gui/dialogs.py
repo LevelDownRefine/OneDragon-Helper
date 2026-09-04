@@ -7,7 +7,7 @@
 对外接口：
 - ``SingleScriptConfigDialog``：单脚本配置弹窗（名称/路径/类型/参数/完成检测/
   关闭脚本/关闭游戏/阻塞/游戏进程/每周超时），保存后经 ``pending_changes`` 返回，
-  写盘由调用方经 ``AppService.update_script`` 委托 ``src.utils_config.update_script``。脚本删除改由左侧列表交互完成。
+  写盘由调用方经 ``AppService.update_script`` 委托 ``src.utils.utils_config.update_script``。脚本删除改由左侧列表交互完成。
 - 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
   （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
 """
@@ -34,7 +34,7 @@ from src.config.set_config import (
     supports_weekly,
 )
 from src.service.app_service import AppService
-from src.utils_sub_config import get_script_name
+from src.utils.utils_sub_config import get_script_name
 
 # ═══════════════════════ 弹窗样式（原 src/gui/theme.py 子集，2026-08-16 并入）═══════
 DARK_BLUE = "#333957"  # 深空蓝
@@ -512,7 +512,7 @@ class SingleScriptConfigDialog(FormDialogBase):
     def save_data(self):
         """收集表单数据存入 self.pending_changes 后 accept()；写盘由调用方完成。
 
-        不直接在此弹窗写 config.yml——config.yml 的写入权归 ``src.utils_config``（经调用方
+        不直接在此弹窗写 config.yml——config.yml 的写入权归 ``src.utils.utils_config``（经调用方
         ``AppService.update_script`` 委托）。weekly_timeouts 也由调用方决定是否持久化。
         """
         path_val = self.path_input.text().strip()
@@ -551,7 +551,7 @@ class SingleScriptConfigDialog(FormDialogBase):
             text = timeout_edit.text().strip()
             timeouts.append(int(text) if text else None)
 
-        # 周几起：权威值持久化到 weekly_start.yml（经 AppService.set_weekly_start / src.utils_weekly）。游戏侧原生 config
+        # 周几起：权威值持久化到 weekly_start.yml（经 AppService.set_weekly_start / src.utils.utils_weekly）。游戏侧原生 config
         # 起始日的同步不在此处进行——save_data 内 config.yml 的 script_path 尚未落盘，
         # 此时解析目录会拿到旧路径，导致写到错误/失效目录。统一由调用方在
         # AppService.update_script 落盘新路径后触发（见 game_list.configCurrent）。

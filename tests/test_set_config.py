@@ -15,10 +15,9 @@ import tempfile
 import unittest
 from unittest.mock import mock_open, patch
 
-from src import utils_sub_config
 from src.config import set_config
-from src.utils import safe_path_join
-from src.utils_yaml import dump_yaml_str, load_yaml_str
+from src.utils import safe_path_join, utils_sub_config
+from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
 
 
 class TestConfigRelPaths(unittest.TestCase):

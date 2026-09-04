@@ -21,7 +21,7 @@ from src.config.set_config import (
     WutheringWavesConfig,
     ZenlessZoneZeroConfig,
 )
-from src.utils_yaml import dump_yaml_str
+from src.utils.utils_yaml import dump_yaml_str
 
 # ============================================================
 # 基类 ScriptConfig
@@ -2100,7 +2100,7 @@ class TestSetWeekly(unittest.TestCase):
             cfg = StarRailConfig()
         config = {"currencywars_enable": False, "echo_of_war_start_day_of_week": 1}
         with (
-            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch("src.utils.utils_weekly.get_week_num", return_value=3),
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as mock_save,
         ):
@@ -2115,7 +2115,7 @@ class TestSetWeekly(unittest.TestCase):
             cfg = StarRailConfig()
         config = {"currencywars_enable": True, "echo_of_war_start_day_of_week": 1}
         with (
-            patch("src.utils_weekly.get_week_num", return_value=1),
+            patch("src.utils.utils_weekly.get_week_num", return_value=1),
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as mock_save,
         ):
@@ -2135,7 +2135,7 @@ class TestSetWeekly(unittest.TestCase):
             ]
         }
         with (
-            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch("src.utils.utils_weekly.get_week_num", return_value=3),
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as mock_save,
         ):
@@ -2156,7 +2156,7 @@ class TestSetWeekly(unittest.TestCase):
             ]
         }
         with (
-            patch("src.utils_weekly.get_week_num", return_value=1),
+            patch("src.utils.utils_weekly.get_week_num", return_value=1),
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as mock_save,
         ):
@@ -2174,7 +2174,7 @@ class TestSetWeekly(unittest.TestCase):
             "Additional Tasks to Run After Daily Task": ["Check Weekly Garden"],
         }
         with (
-            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch("src.utils.utils_weekly.get_week_num", return_value=3),
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as mock_save,
         ):
@@ -2185,7 +2185,7 @@ class TestSetWeekly(unittest.TestCase):
         """鸣潮 config 缺 Additional Tasks 字段 → assert"""
         cfg = WutheringWavesConfig()
         with (
-            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch("src.utils.utils_weekly.get_week_num", return_value=3),
             patch.object(cfg, "_load", return_value={}),
             self.assertRaises(AssertionError),
         ):
@@ -2207,7 +2207,7 @@ class TestSetWeekly(unittest.TestCase):
             ]
         }
         with (
-            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch("src.utils.utils_weekly.get_week_num", return_value=3),
             patch("src.config.set_config.load_config", return_value=config),
             patch("src.config.set_config.save_config") as mock_save,
         ):
@@ -2225,7 +2225,7 @@ class TestSetWeekly(unittest.TestCase):
             ]
         }
         with (
-            patch("src.utils_weekly.get_week_num", return_value=1),
+            patch("src.utils.utils_weekly.get_week_num", return_value=1),
             patch("src.config.set_config.load_config", return_value=config),
             patch("src.config.set_config.save_config") as mock_save,
         ):
@@ -2239,7 +2239,7 @@ class TestSetWeekly(unittest.TestCase):
         cfg = self._make_zzz_cfg()
         config = {"app_list": [{"app_id": "other", "enabled": True}]}
         with (
-            patch("src.utils_weekly.get_week_num", return_value=3),
+            patch("src.utils.utils_weekly.get_week_num", return_value=3),
             patch("src.config.set_config.load_config", return_value=config),
             self.assertRaises(AssertionError),
         ):

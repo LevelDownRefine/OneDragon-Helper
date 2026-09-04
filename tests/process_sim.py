@@ -9,7 +9,7 @@
 - 还有大量无关进程：没纳入 config 的脚本（进程名同样是 pythonw.exe）、系统进程等，
   清理时不得误伤。
 
-本模块按此形态造一张进程表并挂到 ``src.utils_runner.psutil`` 上，让
+本模块按此形态造一张进程表并挂到 ``src.utils.utils_runner.psutil`` 上，让
 ``close_running_scripts`` 这类「按配置扫进程再杀」的逻辑跑在贴近真机的输入上：
 进程名 / 命令行 / 父子关系全部由脚本配置推导，而非各测试各自手写。
 
@@ -149,18 +149,19 @@ class ProcessSim:
 
     @contextmanager
     def install(self) -> Iterator["ProcessSim"]:
-        """把模拟进程表挂到 ``src.utils_runner.psutil`` 上（process_iter / wait_procs）。"""
+        """把模拟进程表挂到 ``src.utils.utils_runner.psutil`` 上（process_iter / wait_procs）。"""
         with ExitStack() as stack:
             # side_effect 而非 return_value：匹配与建树各遍历一次，需每次返回新迭代器。
             stack.enter_context(
                 mock.patch(
-                    "src.utils_runner.psutil.process_iter",
+                    "src.utils.utils_runner.psutil.process_iter",
                     side_effect=lambda *a, **k: iter(list(self.processes)),
                 )
             )
             stack.enter_context(
                 mock.patch(
-                    "src.utils_runner.psutil.wait_procs", side_effect=self._wait_procs
+                    "src.utils.utils_runner.psutil.wait_procs",
+                    side_effect=self._wait_procs,
                 )
             )
             yield self

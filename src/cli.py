@@ -19,9 +19,9 @@ import warnings
 
 from src.config.set_config import supports_weekly
 from src.service.app_service import AppService
-from src.utils_config import get_script
-from src.utils_shutdown import shutdown_sys
-from src.utils_sub_config import get_script_name
+from src.utils.utils_config import get_script
+from src.utils.utils_shutdown import shutdown_sys
+from src.utils.utils_sub_config import get_script_name
 
 logger = logging.getLogger(__name__)
 

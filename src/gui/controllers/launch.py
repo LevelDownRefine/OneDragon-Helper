@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
-from src.utils_runner import (
+from src.utils.utils_runner import (
     apply_close_running_config,
     apply_mute_config,
     apply_notify_config,
@@ -27,8 +27,8 @@ from src.utils_runner import (
     parse_timed_run,
     spawn_schedule_run,
 )
-from src.utils_sub_config import get_script_name, resolve_script_path
-from src.utils_weekly import next_target_datetime
+from src.utils.utils_sub_config import get_script_name, resolve_script_path
+from src.utils.utils_weekly import next_target_datetime
 
 
 class LaunchController(QObject):

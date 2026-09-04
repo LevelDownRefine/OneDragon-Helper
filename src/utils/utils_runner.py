@@ -22,7 +22,7 @@ from pathlib import PureWindowsPath
 import psutil
 
 from src.utils import get_root_dir
-from src.utils_sub_config import resolve_script_path
+from src.utils.utils_sub_config import resolve_script_path
 
 logger = logging.getLogger(__name__)
 
@@ -451,7 +451,7 @@ def build_run_chain_command(
     """构造『运行脚本链』命令（GUI 不再拼命令）。
 
     关机不再经 runner 的 ``--shutdown``（会抢在重跑前关机），
-    改由 service 的 ``post_run`` 在全部运行结束后统一触发（见 ``src.utils_shutdown``）。
+    改由 service 的 ``post_run`` 在全部运行结束后统一触发（见 ``src.utils.utils_shutdown``）。
     静音由主仓在 ``pre_run``/``post_run`` 直接操作系统音频，不再透传 ``--mute`` 给 runner。
     统一做 ``pythonw.exe`` -> ``python.exe`` 替换，避免冻结态 GUI exe 无控制台。
 

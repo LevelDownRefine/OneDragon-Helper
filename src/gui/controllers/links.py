@@ -13,7 +13,7 @@ from src.link import get_game_link as _get_game_link
 from src.log import get_log_dir
 from src.service.app_service import AppService
 from src.utils import get_config_yml_path_under_root, open_in_explorer
-from src.utils_sub_config import resolve_script_path
+from src.utils.utils_sub_config import resolve_script_path
 
 # 通用占位链接（对应内容未配置时使用）
 _URL_HOME = "https://github.com/LevelDownRefine/OneDragon-Helper"

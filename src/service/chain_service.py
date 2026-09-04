@@ -1,15 +1,15 @@
 """链编排领域模块：脚本链生成、校验、运行命令构造、调度运行编排。
 
 承载链领域实现：脚本链生成、合法性校验、runner 命令构造、调度运行的编排。
-config.yml 的读写由 :mod:`src.utils_config` 拥有，运行时取配置由调用方
-（run_chain_once / schedule）直接走 :func:`src.utils_config.load_config`；
+config.yml 的读写由 :mod:`src.utils.utils_config` 拥有，运行时取配置由调用方
+（run_chain_once / schedule）直接走 :func:`src.utils.utils_config.load_config`；
 schedule.yml 读写归 :mod:`src.service.schedule` 所有——与调度编排
 同处该模块。本模块不读取 UI 状态文件；日常副本真源为子脚本 config，set_dungeon
 为 no-op 的脚本取 dungeon_list.yml 声明项。
 本模块不充当 GUI/CLI 的顶层门面/协调器——该角色由
 :class:`src.service.app_service.AppService`（组合根）承担。
 
-weekly 运行期参数（weekly_start.yml / weekly_timeouts.yml）由 :mod:`src.utils_weekly`
+weekly 运行期参数（weekly_start.yml / weekly_timeouts.yml）由 :mod:`src.utils.utils_weekly`
 模块函数提供，调用方不感知。
 
 本模块不承载 UI 渲染/弹窗逻辑，无 Qt 依赖。
@@ -20,17 +20,17 @@ import os
 import subprocess
 import sys
 
-from src import utils_config
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.schedule import ScheduledRun
-from src.utils_runner import (
+from src.utils import utils_config
+from src.utils.utils_runner import (
     build_run_chain_command as _build_run_chain_command,
 )
-from src.utils_sub_config import (
+from src.utils.utils_sub_config import (
     get_script_name,
 )
-from src.utils_weekly import (
+from src.utils.utils_weekly import (
     load_all_weekly,
 )
 
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------- 配置读取 ----------
-# config.yml 的读写实现由 :mod:`src.utils_config` 拥有；运行时取配置
+# config.yml 的读写实现由 :mod:`src.utils.utils_config` 拥有；运行时取配置
 # 由 run_chain_once 与 schedule（各自直接 import utils_config）调用
 # ``utils_config.load_config``。
 

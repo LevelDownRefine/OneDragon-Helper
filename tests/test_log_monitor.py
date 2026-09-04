@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 import src.log.monitor as collect_log
-import src.utils_logger
+import src.utils.utils_logger
 from src.log import (
     BGILogParser,
     M7ALogParser,
@@ -20,8 +20,8 @@ from src.log import (
     ZZZLogParser,
     parse_log,
 )
-from src.utils_sub_config import get_script_name
-from src.utils_yaml import dump_yaml_file, load_yaml
+from src.utils.utils_sub_config import get_script_name
+from src.utils.utils_yaml import dump_yaml_file, load_yaml
 
 
 def _parse_content(parser, content: str) -> dict:
@@ -166,10 +166,10 @@ class TestCollectLogSetup(unittest.TestCase):
         """monitor 复用框架 setup_logging，日志写入 <root>/logs/onedragon_helper.log
         （用临时根避免污染真实 logs），且不写 collect_log.log。"""
         tmp = tempfile.mkdtemp()
-        orig = src.utils_logger.get_root_dir
-        configured_saved = src.utils_logger._configured
-        src.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
-        src.utils_logger._configured = False
+        orig = src.utils.utils_logger.get_root_dir
+        configured_saved = src.utils.utils_logger._configured
+        src.utils.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
+        src.utils.utils_logger._configured = False
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
             collect_log.setup_logging()
@@ -193,16 +193,16 @@ class TestCollectLogSetup(unittest.TestCase):
                 if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            src.utils_logger._configured = configured_saved
-            src.utils_logger.get_root_dir = orig
+            src.utils.utils_logger._configured = configured_saved
+            src.utils.utils_logger.get_root_dir = orig
 
     def test_setup_logging_is_idempotent(self):
         """重复调用复用框架 setup_logging 不会重复添加 onedragon_helper.log handler。"""
         tmp = tempfile.mkdtemp()
-        orig = src.utils_logger.get_root_dir
-        configured_saved = src.utils_logger._configured
-        src.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
-        src.utils_logger._configured = False
+        orig = src.utils.utils_logger.get_root_dir
+        configured_saved = src.utils.utils_logger._configured
+        src.utils.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
+        src.utils.utils_logger._configured = False
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
             collect_log.setup_logging()
@@ -224,8 +224,8 @@ class TestCollectLogSetup(unittest.TestCase):
                 if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            src.utils_logger._configured = configured_saved
-            src.utils_logger.get_root_dir = orig
+            src.utils.utils_logger._configured = configured_saved
+            src.utils.utils_logger.get_root_dir = orig
 
 
 class TestParseLogsRerunList(unittest.TestCase):
@@ -248,7 +248,7 @@ class TestParseLogsRerunList(unittest.TestCase):
 
     def _run_parse(self, tmp: str, do_log: bool = True) -> list[str]:
         # parse_logs 读 config 用的是 collect_log._get_root_dir()，并非
-        # src.utils_logger.get_root_dir，故此处 patch 前者才能让临时 config 生效。
+        # src.utils.utils_logger.get_root_dir，故此处 patch 前者才能让临时 config 生效。
         orig = collect_log._get_root_dir
         collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
         # 诊断视图覆盖全部脚本：显式传 config 全部脚本集合（parse_logs 的 None/空=跳过）。

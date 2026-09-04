@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.utils_yaml import dump_yaml_file
+from src.utils.utils_yaml import dump_yaml_file
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -42,11 +42,11 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         cfg = self._make_config_file()
         with (
             patch(
-                "src.utils_config.require_config_yml_path",
+                "src.utils.utils_config.require_config_yml_path",
                 return_value=cfg,
             ),
             patch(
-                "src.utils_weekly.get_weekly_timeouts_yml_path_under_root",
+                "src.utils.utils_weekly.get_weekly_timeouts_yml_path_under_root",
                 return_value=wt,
             ),
         ):
@@ -60,11 +60,11 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         cfg = self._make_config_file()
         with (
             patch(
-                "src.utils_config.require_config_yml_path",
+                "src.utils.utils_config.require_config_yml_path",
                 return_value=cfg,
             ),
             patch(
-                "src.utils_weekly.get_weekly_timeouts_yml_path_under_root",
+                "src.utils.utils_weekly.get_weekly_timeouts_yml_path_under_root",
                 return_value=wt,
             ),
         ):
@@ -76,7 +76,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         """config.yml 缺失属内部错误：构造对话框必须 assert，而非静默返回空数据"""
         with (
             patch(
-                "src.utils_config.require_config_yml_path",
+                "src.utils.utils_config.require_config_yml_path",
                 side_effect=AssertionError("config.yml 缺失"),
             ),
             self.assertRaises(AssertionError),
@@ -106,7 +106,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
             ]
         )
         with patch(
-            "src.utils_config.require_config_yml_path",
+            "src.utils.utils_config.require_config_yml_path",
             return_value=cfg,
         ):
             dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
@@ -124,7 +124,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
             ]
         )
         with patch(
-            "src.utils_config.require_config_yml_path",
+            "src.utils.utils_config.require_config_yml_path",
             return_value=cfg,
         ):
             dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
@@ -143,7 +143,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
         )
         with (
             patch(
-                "src.utils_config.require_config_yml_path",
+                "src.utils.utils_config.require_config_yml_path",
                 return_value=cfg,
             ),
             patch("src.gui.dialogs.QMessageBox.warning"),

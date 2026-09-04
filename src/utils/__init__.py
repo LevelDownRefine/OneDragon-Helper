@@ -89,7 +89,8 @@ def get_root_dir() -> str:
     """
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # 本文件位于 src/utils/__init__.py，故需上溯三级到项目根目录
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def get_path_under_root(*subs) -> str:

@@ -22,7 +22,7 @@ import tempfile
 import time
 import unittest
 
-from src.utils_yaml import dump_yaml
+from src.utils.utils_yaml import dump_yaml
 from tests.exe import project_root
 
 PROJECT_ROOT = str(project_root())

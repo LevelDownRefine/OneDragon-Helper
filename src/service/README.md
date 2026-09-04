@@ -8,8 +8,8 @@
 | 角色 | 说明 |
 |------|------|
 | 组合根，非协调器 peer | `AppService` 装配各 peer 并薄委托，是 GUI/CLI 唯一入口；各 peer 互不越界 |
-| 平级 peer | 单脚本配置（src.utils_config）/ chain_service（链编排）互不拥有，由组合根装配 |
-| 周常运行期参数 | weekly_start.yml / weekly_timeouts.yml 的读写归 `src.utils_weekly` 模块函数（无状态、无 peer 实例）；schedule.yml 归 schedule 模块函数 |
+| 平级 peer | 单脚本配置（src.utils.utils_config）/ chain_service（链编排）互不拥有，由组合根装配 |
+| 周常运行期参数 | weekly_start.yml / weekly_timeouts.yml 的读写归 `src.utils.utils_weekly` 模块函数（无状态、无 peer 实例）；schedule.yml 归 schedule 模块函数 |
 | 无 Qt 依赖 | 纯业务逻辑，不承载 UI 渲染（关机确认窗归 `src/gui/shutdown_dialog.py`） |
 
 ## 文件
@@ -27,10 +27,10 @@
 
 ```
 launcher.py CLI  ┐
-                 ├─▶ AppService（组合根）─┬─▶ src.utils_config（单脚本配置）─▶ src.utils_weekly（协作同步 weekly）
+                 ├─▶ AppService（组合根）─┬─▶ src.utils.utils_config（单脚本配置）─▶ src.utils.utils_weekly（协作同步 weekly）
 MainWindow  GUI  ┘                        ├─▶ dungeon_config 模块函数（副本 / 周本声明，src.config）
                                           └─▶ chain_service ─▶ chain_gen / schedule / utils_runner
-                                                  └─▶ src.utils_weekly（周常参数读写）
+                                                  └─▶ src.utils.utils_weekly（周常参数读写）
 ```
 
 调用方不感知 weekly 同步、链合法性校验、runner 命令构造等细节，全部内聚在 service/。

@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-from src.utils_yaml import load_yaml
+from src.utils.utils_yaml import load_yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
 import sync_oknte_dungeons as m

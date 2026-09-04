@@ -6,7 +6,7 @@ QML 引擎在 offscreen 下可加载场景（无视频渲染，但场景对象�
 
 各职责已拆到 src/gui/controllers/ 下 mixin；monkeypatch 目标需指向实际引用
 该名字的子模块（os/subprocess/webbrowser 指向标准库模块；config 读取走 AppService——
-其 load_config 已委托 src.utils_config，故 load_config 类方法 patch 指向
+其 load_config 已委托 src.utils.utils_config，故 load_config 类方法 patch 指向
 AppService；build_script_command 在 launch，链接相关函数在 links，
 周常/适配相关函数在 task_card）。
 """
@@ -358,7 +358,7 @@ class TestQmlApp(unittest.TestCase):
             from PySide6.QtCore import QUrl, QTimer
             from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
             from PySide6.QtWidgets import QApplication
-            from src.utils_sub_config import resolve_script_path
+            from src.utils.utils_sub_config import resolve_script_path
             from src.gui import main_window
             from src.service.app_service import AppService
             from src.gui.controllers.game_list import ScriptIconProvider
@@ -420,7 +420,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
             from PySide6.QtQuick import QQuickItem
             from PySide6.QtWidgets import QApplication
-            from src.utils_sub_config import resolve_script_path
+            from src.utils.utils_sub_config import resolve_script_path
             from src.gui import main_window
             from src.service.app_service import AppService
             from src.gui.icons import UiIconProvider
@@ -515,7 +515,7 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             from PySide6.QtQuick import QQuickItem
             from PySide6.QtWidgets import QApplication
             from unittest.mock import patch
-            from src.utils_sub_config import resolve_script_path
+            from src.utils.utils_sub_config import resolve_script_path
             from src.gui import main_window
             from src.service.app_service import AppService
             from src.gui.icons import UiIconProvider
@@ -596,7 +596,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             from PySide6.QtQuick import QQuickItem
             from PySide6.QtWidgets import QApplication
             from unittest.mock import patch
-            from src.utils_sub_config import resolve_script_path
+            from src.utils.utils_sub_config import resolve_script_path
             from src.gui import main_window
             from src.service.app_service import AppService
             from src.gui.icons import UiIconProvider

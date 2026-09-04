@@ -7,12 +7,12 @@ from src.utils import (
     require_config_yml_path,
     safe_path_join,
 )
-from src.utils_logger import setup_logging
-from src.utils_sub_config import (
+from src.utils.utils_logger import setup_logging
+from src.utils.utils_sub_config import (
     get_process_name,
     resolve_script_path,
 )
-from src.utils_yaml import load_yaml
+from src.utils.utils_yaml import load_yaml
 
 logger = logging.getLogger(__name__)
 

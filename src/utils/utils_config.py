@@ -2,7 +2,7 @@
 
 承载「单脚本」视角的实现：config.yml 的读写（含脚本条目增删改）、单脚本条目查询
 与路径解析。周常运行期参数（weekly_start.yml / weekly_timeouts.yml）的读写由
-:mod:`src.utils_weekly` 负责，本模块协作调用（如新增脚本时建默认 weekly 条目）。
+:mod:`src.utils.utils_weekly` 负责，本模块协作调用（如新增脚本时建默认 weekly 条目）。
 
 内部标识统一用**脚本唯一标识 script_name**（exe 脚本为进程名、脚本文件为
 display_name），display_name 仅用于展示。config.yml 的读写权统一归本模块；
@@ -20,20 +20,20 @@ from src.utils import (
     get_config_yml_path_under_root,
     require_config_yml_path,
 )
-from src.utils_sub_config import (
+from src.utils.utils_sub_config import (
     check_script_name_uniqueness,
     default_script_entry,
     get_script_name,
     is_exe_script,
     resolve_script_path,
 )
-from src.utils_weekly import (
+from src.utils.utils_weekly import (
     delete_weekly,
     ensure_weekly_entry,
     rename_weekly_in_timeouts,
     save_weekly,
 )
-from src.utils_yaml import dump_yaml, load_yaml
+from src.utils.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
 

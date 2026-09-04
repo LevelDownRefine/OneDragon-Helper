@@ -18,7 +18,7 @@ from src.service.schedule import (
     ScheduledRun,
     build_pre_run_pipeline,
 )
-from src.utils_runner import ProcessTarget
+from src.utils.utils_runner import ProcessTarget
 from tests.process_sim import ProcessSim
 
 
@@ -34,12 +34,14 @@ def _make_service(testcase, script_list=None, *, schedule=None):
     # 挂到 svc 上供用例 patch src.service.schedule.load_schedule 时取用。
     svc.schedule_data = default if schedule is None else schedule
     p_cfg = mock.patch(
-        "src.utils_config.load_config",
+        "src.utils.utils_config.load_config",
         return_value={"script_list": script_list or []},
     )
     p_cfg.start()
     testcase.addCleanup(p_cfg.stop)
-    p_weekly = mock.patch("src.utils_weekly.get_weekly_start_map", return_value={})
+    p_weekly = mock.patch(
+        "src.utils.utils_weekly.get_weekly_start_map", return_value={}
+    )
     p_weekly.start()
     testcase.addCleanup(p_weekly.stop)
     return svc

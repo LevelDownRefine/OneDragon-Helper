@@ -5,7 +5,7 @@ from datetime import datetime
 from unittest.mock import patch
 
 import src.service.chain_service as chain_service
-import src.utils_config as utils_config
+import src.utils.utils_config as utils_config
 from src.service.schedule import ScheduledRun, build_post_run_pipeline
 
 
@@ -37,7 +37,7 @@ class TestRunChainOnce(unittest.TestCase):
 
     def _make_service(self, script_list):
         self._cfg = patch(
-            "src.utils_config.load_config",
+            "src.utils.utils_config.load_config",
             return_value={"script_list": script_list},
         ).start()
         self._weekly_load = patch(
@@ -164,7 +164,7 @@ class TestScheduleRun(unittest.TestCase):
 
     def _make_service(self, script_list):
         self._cfg = patch(
-            "src.utils_config.load_config",
+            "src.utils.utils_config.load_config",
             return_value={"script_list": script_list},
         ).start()
         self._run_once = patch(
@@ -433,7 +433,7 @@ class TestRerunRound(unittest.TestCase):
 
     def _svc_with_config(self, script_list):
         self._cfg = patch(
-            "src.utils_config.load_config",
+            "src.utils.utils_config.load_config",
             return_value={"script_list": script_list},
         ).start()
         self._weekly_load = patch(

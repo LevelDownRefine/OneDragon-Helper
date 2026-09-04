@@ -1,4 +1,4 @@
-"""运行中静音：系统静音执行（config 读写见 ``src.utils_runner``）。
+"""运行中静音：系统静音执行（config 读写见 ``src.utils.utils_runner``）。
 
 静音的「执行」由主仓在脚本链运行前后完成（覆盖异常/强制关闭窗口），
 通过 ``set_system_mute`` 直接操作系统音频（Windows 专属，按需 import pycaw），

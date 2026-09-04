@@ -16,7 +16,7 @@ from src.utils import (
     require_config_yml_path,
     safe_path_join,
 )
-from src.utils_yaml import dump_yaml, load_yaml
+from src.utils.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
 

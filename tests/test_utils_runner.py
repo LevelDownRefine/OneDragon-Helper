@@ -9,7 +9,7 @@ from datetime import datetime
 from unittest import mock
 
 from src.utils import get_root_dir
-from src.utils_runner import (
+from src.utils.utils_runner import (
     ProcessTarget,
     _to_signed_32,
     apply_mute_config,
@@ -28,7 +28,7 @@ from src.utils_runner import (
     script_invalid_message,
     spawn_schedule_run,
 )
-from src.utils_weekly import next_target_datetime
+from src.utils.utils_weekly import next_target_datetime
 from tests.process_sim import SimProcess
 
 CHAIN_PATH = "config/script_chain/01.yml"
@@ -200,7 +200,7 @@ class TestRunChainCommandInvocation(unittest.TestCase):
     """验证 run_chain_command 整链用法正确透传到 subprocess。"""
 
     def test_whole_chain_passed_to_subprocess(self):
-        with mock.patch("src.utils_runner.subprocess.run") as run:
+        with mock.patch("src.utils.utils_runner.subprocess.run") as run:
             run.return_value.returncode = 0
             rc = run_chain_command(CHAIN_PATH)
         self.assertEqual(rc, 0)
@@ -215,7 +215,7 @@ class TestRunChainCommandInvocation(unittest.TestCase):
 
     def test_large_returncode_clamped_to_signed(self):
         """大无符号退出码（>=2^31）在出口被 clamp，供 Qt Signal(int) 直接 emit。"""
-        with mock.patch("src.utils_runner.subprocess.run") as run:
+        with mock.patch("src.utils.utils_runner.subprocess.run") as run:
             run.return_value.returncode = 0xC0000005
             rc = run_chain_command(CHAIN_PATH)
         self.assertEqual(rc, -1073741819)
@@ -243,8 +243,8 @@ class TestNonBlocking(unittest.TestCase):
 
     def test_nonblock_uses_popen_and_returns_zero(self):
         with (
-            mock.patch("src.utils_runner.subprocess.run") as run,
-            mock.patch("src.utils_runner.subprocess.Popen") as popen,
+            mock.patch("src.utils.utils_runner.subprocess.run") as run,
+            mock.patch("src.utils.utils_runner.subprocess.Popen") as popen,
         ):
             rc = run_chain_command(CHAIN_PATH, block=False)
         self.assertEqual(rc, 0)
@@ -256,8 +256,8 @@ class TestNonBlocking(unittest.TestCase):
 
     def test_block_true_uses_subprocess_run(self):
         with (
-            mock.patch("src.utils_runner.subprocess.run") as run,
-            mock.patch("src.utils_runner.subprocess.Popen") as popen,
+            mock.patch("src.utils.utils_runner.subprocess.run") as run,
+            mock.patch("src.utils.utils_runner.subprocess.Popen") as popen,
         ):
             run.return_value.returncode = 0
             run_chain_command(CHAIN_PATH, block=True)
@@ -366,7 +366,7 @@ class TestBuildScriptInvocationFrozen(unittest.TestCase):
 class TestBuildRunChainCommand(unittest.TestCase):
     """build_run_chain_command：构造脚本链启动命令（GUI 不再拼命令）。
 
-    关机不再经此（改由 service 的 post_run 在全部运行结束后触发，见 src.utils_shutdown）；
+    关机不再经此（改由 service 的 post_run 在全部运行结束后触发，见 src.utils.utils_shutdown）；
     静音由主仓在 pre_run/post_run 直接操作系统音频，不再透传 --mute 给 runner。
     """
 
@@ -380,7 +380,7 @@ class TestBuildRunChainCommand(unittest.TestCase):
     def test_pythonw_replaced_with_python(self):
         """冻结态 GUI exe 若为 pythonw.exe，应替换为 python.exe 以保证子进程控制台。"""
         with mock.patch(
-            "src.utils_runner.build_script_command",
+            "src.utils.utils_runner.build_script_command",
             return_value=(["/app/pythonw.exe", "--chain", CHAIN_PATH], "/app", None),
         ):
             command, cwd, env = build_run_chain_command(CHAIN_PATH)
@@ -392,7 +392,7 @@ class TestParseShutdown(unittest.TestCase):
     """parse_shutdown：config 的 shutdown 嵌套配置 -> 延迟秒数（None 表示不关机）。
 
     after_run 默认 False，delay 须为正整型，否则 None（不关机）。
-    供 GUI 读取延迟秒数后作为 post_run 关机步骤（见 src.utils_shutdown）。
+    供 GUI 读取延迟秒数后作为 post_run 关机步骤（见 src.utils.utils_shutdown）。
     """
 
     def test_missing_field_returns_none(self):
@@ -438,13 +438,13 @@ class TestKillProcesses(unittest.TestCase):
     def _patch_iter(self, procs):
         # side_effect 而非 return_value：匹配与建树各遍历一次，需每次返回新迭代器。
         return mock.patch(
-            "src.utils_runner.psutil.process_iter",
+            "src.utils.utils_runner.psutil.process_iter",
             side_effect=lambda *a, **k: iter(list(procs)),
         )
 
     def _patch_wait(self, gone, alive):
         return mock.patch(
-            "src.utils_runner.psutil.wait_procs", return_value=(gone, alive)
+            "src.utils.utils_runner.psutil.wait_procs", return_value=(gone, alive)
         )
 
     def test_empty_targets_no_iteration(self):
