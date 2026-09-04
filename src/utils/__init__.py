@@ -49,12 +49,20 @@ def require_config_yml_path() -> str:
     return path
 
 
-def get_weekly_timeouts_yml_path_under_root() -> str:
+def get_weekly_yml_path_under_root() -> str:
     """
-    获取根目录下的config/weekly_timeouts.yml文件路径
-    :return: 根目录下的config/weekly_timeouts.yml文件路径
+    获取根目录下的config/weekly.yml文件路径（周常运行期配置，用户文件，不进 git）。
+
+    该文件合并了两份运行期数据，文件内含两个顶层段：
+    - ``weekly_start``：各脚本「周常起始日（周几起）」，{脚本标识: 1~7}；
+    - ``weekly_timeouts``：各脚本「每周 7 格每日超时（秒）」，{脚本标识: [7 个整数]}。
+    首次启动由 ``launcher.config_workflow`` 经 ``generate_weekly_from_example`` 从
+    config/weekly.example.yml 拷贝生成；周常声明（脚本支持哪些周常）在
+    config/weekly_list.yml（静态，进 git），不在此文件。
+
+    :return: 根目录下的config/weekly.yml文件路径
     """
-    return safe_path_join(get_root_dir(), "config", "weekly_timeouts.yml")
+    return safe_path_join(get_root_dir(), "config", "weekly.yml")
 
 
 def get_weekly_list_yml_path_under_root() -> str:
@@ -62,23 +70,12 @@ def get_weekly_list_yml_path_under_root() -> str:
     获取根目录下的config/weekly_list.yml文件路径。
 
     该文件是周常声明配置（静态，进 git）：每脚本支持哪些周常、每种是否需选副本。
-    与 weekly_timeouts.yml 同级的周常侧配置文件。
+    与周常运行期配置 config/weekly.yml（含 weekly_start / weekly_timeouts 两段）平级，
+    但各自独立——声明是静态数据，运行期周几起/超时不在此文件。
 
     :return: 根目录下的config/weekly_list.yml文件路径
     """
     return safe_path_join(get_root_dir(), "config", "weekly_list.yml")
-
-
-def get_weekly_start_yml_path_under_root() -> str:
-    """
-    获取根目录下的config/weekly_start.yml文件路径。
-
-    该文件持久化各脚本的周常起始日（周几起，{脚本标识: 1~7}），与周常声明
-    （weekly_list.yml）、周常超时（weekly_timeouts.yml）平级，三套周常侧配置各自独立。
-
-    :return: 根目录下的config/weekly_start.yml文件路径
-    """
-    return safe_path_join(get_root_dir(), "config", "weekly_start.yml")
 
 
 @lru_cache

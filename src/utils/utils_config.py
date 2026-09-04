@@ -1,7 +1,7 @@
 """单脚本配置读写（原 src/service/script_service.py，已退化为模块函数）。
 
 承载「单脚本」视角的实现：config.yml 的读写（含脚本条目增删改）、单脚本条目查询
-与路径解析。周常运行期参数（weekly_start.yml / weekly_timeouts.yml）的读写由
+与路径解析。周常运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段）的读写由
 :mod:`src.utils.utils_weekly` 负责，本模块协作调用（如新增脚本时建默认 weekly 条目）。
 
 内部标识统一用**脚本唯一标识 script_name**（exe 脚本为进程名、脚本文件为

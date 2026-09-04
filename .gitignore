@@ -227,6 +227,9 @@ config/config.yml
 # 调度运行参数（运行时由 schedule.example.yml 拷贝生成，含邮件授权码，不进版本库；模板见 config/schedule.example.yml）
 config/schedule.yml
 
+# 周常运行期配置（运行期周几起 + 每周超时，运行时由 weekly.example.yml 拷贝生成，不进版本库；模板见 config/weekly.example.yml）
+config/weekly.yml
+
 # 脚本失败邮件通知配置（含 SMTP 授权码，不进版本库；模板见 config/notify_mail.example.yml）
 config/notify_mail.yml
 

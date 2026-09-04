@@ -18,11 +18,16 @@ from PySide6.QtWidgets import QApplication
 
 from src.cli import build_parser, run_cli
 from src.gui.main_window import QmlBridge
-from src.utils import get_config_yml_path_under_root, get_schedule_yml_path_under_root
+from src.utils import (
+    get_config_yml_path_under_root,
+    get_schedule_yml_path_under_root,
+    get_weekly_yml_path_under_root,
+)
 from src.utils.utils_logger import setup_logging
 from src.utils.utils_sub_config import (
     generate_config_from_example,
     generate_schedule_from_example,
+    generate_weekly_from_example,
     resolve_script_path,
 )
 
@@ -55,14 +60,17 @@ def _clear_qml_cache():
 
 
 def config_workflow():
-    # 首次运行时从模板生成 config.yml 与 schedule.yml（相对 script_path 解析为绝对路径）。
-    # 两者缺哪个补哪个，与 generate_*_from_example「缺失才生成」语义一致。
+    # 首次运行时从模板生成 config.yml / schedule.yml / weekly.yml（相对 script_path 解析为绝对路径）。
+    # 三者缺哪个补哪个，与 generate_*_from_example「缺失才生成」语义一致。
     config_path = get_config_yml_path_under_root()
     if not os.path.exists(config_path):
         generate_config_from_example()
     schedule_path = get_schedule_yml_path_under_root()
     if not os.path.exists(schedule_path):
         generate_schedule_from_example()
+    weekly_path = get_weekly_yml_path_under_root()
+    if not os.path.exists(weekly_path):
+        generate_weekly_from_example()
     # 每次启动对齐所有已注册脚本的 config 与模板
     from src.config.set_config import init_config_all
 

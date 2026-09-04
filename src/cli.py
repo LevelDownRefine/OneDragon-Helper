@@ -73,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument(
         "--check-weekly",
         action="store_true",
-        help="校验 weekly_timeouts.yml 与 config 脚本一致性，结果写 JSON 后退出",
+        help="校验 weekly.yml 的 weekly_timeouts 段 与 config 脚本一致性，结果写 JSON 后退出",
     )
     action.add_argument(
         "--generate-chain",
@@ -288,7 +288,7 @@ def _run_dump_config(out_path: str | None) -> int:
 
 
 def _run_check_weekly(out_path: str | None) -> int:
-    """CLI: 校验 weekly_timeouts.yml 与 config 脚本一致性。
+    """CLI: 校验 weekly.yml 的 weekly_timeouts 段 与 config 脚本一致性。
 
     检查项：
     - config 中每脚本在 weekly_timeouts 是否有 7 格条目（缺/不足 7 格视为不一致）；
@@ -371,7 +371,7 @@ def _run_generate_chain(args) -> int:
             return 1
         enabled_keys -= excluded
 
-    # 命令行覆盖：--weekly-start 持久化到 weekly_start.yml
+    # 命令行覆盖：--weekly-start 持久化到 weekly.yml 的 weekly_start 段
     # （周几跑是长期配置，同 GUI 改周几起语义）。
     # 校验失败（未知脚本/未支持周常/非整数/越界）在写盘前拦截并返回 1。
     try:

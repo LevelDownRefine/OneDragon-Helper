@@ -110,7 +110,7 @@ def _load_weekly_map() -> dict:
     """读取 weekly_list.yml（周常声明配置，进 git，必存在）。
 
     结构：{script_name: [{"name", "dungeons"?}, ...]}。周常起始日（周几起）另存于
-    weekly_start.yml，不在本文件。
+    weekly.yml 的 weekly_start 段，不在本文件。
     """
     weekly_list_path = get_weekly_list_yml_path_under_root()
     assert os.path.exists(weekly_list_path), (

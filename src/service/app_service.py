@@ -7,7 +7,7 @@ peer：
 - 副本与周常声明读取（dungeon_list.yml / weekly_list.yml）：归 :mod:`src.config.dungeon_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
-- 周常运行期参数（weekly_start.yml / weekly_timeouts.yml）：归 :mod:`src.utils.utils_weekly` 模块函数
+- 周常运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段）：归 :mod:`src.utils.utils_weekly` 模块函数
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
 未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
@@ -73,7 +73,7 @@ class AppService:
         return config_file_path(script_name)
 
     # ── 周常运行期参数（src.utils.utils_weekly 模块函数）──
-    # weekly_start.yml（周几起）与 weekly_timeouts.yml（每周超时）由 src.utils.utils_weekly
+    # weekly.yml 的 weekly_start 段（周几起）与 weekly.yml 的 weekly_timeouts 段（每周超时）由 src.utils.utils_weekly
     # 拥有；读写直接调模块函数，不经 chain_service 转发。
     def get_weekly_start(self, script_name: str):
         """返回某脚本的周常起始日（1~7），未设置返回 None。"""
@@ -84,15 +84,15 @@ class AppService:
         return weekly_inputs(script_name)
 
     def set_weekly_start(self, script_name: str, start_day) -> None:
-        """持久化某脚本的周常起始日（周几起）到 weekly_start.yml。"""
+        """持久化某脚本的周常起始日（周几起）到 weekly.yml 的 weekly_start 段。"""
         return set_weekly_start(script_name, start_day)
 
     def get_weekly_start_map(self) -> dict:
-        """读取 weekly_start.yml 全量映射（{脚本标识: 1~7}）。"""
+        """读取 weekly.yml 的 weekly_start 段 全量映射（{脚本标识: 1~7}）。"""
         return get_weekly_start_map()
 
     def check_weekly(self) -> dict:
-        """校验 weekly_timeouts.yml 与 config.yml 脚本条目的一致性。
+        """校验 weekly.yml 的 weekly_timeouts 段 与 config.yml 脚本条目的一致性。
 
         Returns:
             一致性结果字典（含 status / missing_or_short / orphans）。

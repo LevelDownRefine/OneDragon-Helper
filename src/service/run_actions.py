@@ -75,7 +75,7 @@ def apply_subscript_config(
 
     Args:
         enabled_keys: 纳入链的脚本唯一标识集合。
-        weekly_start_map: weekly_start.yml 全量映射（{脚本标识: 1~7}）；None 按空处理。
+        weekly_start_map: weekly.yml 的 weekly_start 段 全量映射（{脚本标识: 1~7}）；None 按空处理。
     """
     for name in enabled_keys:
         weekly_start = resolve_weekly_start(weekly_start_map or {}, name)

@@ -9,7 +9,7 @@ schedule.yml 读写归 :mod:`src.service.schedule` 所有——与调度编排
 本模块不充当 GUI/CLI 的顶层门面/协调器——该角色由
 :class:`src.service.app_service.AppService`（组合根）承担。
 
-weekly 运行期参数（weekly_start.yml / weekly_timeouts.yml）由 :mod:`src.utils.utils_weekly`
+weekly 运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段）由 :mod:`src.utils.utils_weekly`
 模块函数提供，调用方不感知。
 
 本模块不承载 UI 渲染/弹窗逻辑，无 Qt 依赖。

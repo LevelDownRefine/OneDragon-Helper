@@ -13,6 +13,7 @@ from src.utils import (
     get_config_yml_path_under_root,
     get_root_dir,
     get_schedule_yml_path_under_root,
+    get_weekly_yml_path_under_root,
     require_config_yml_path,
     safe_path_join,
 )
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_RUN_TIMEOUT = 3600
-"""脚本运行默认超时秒数。当 weekly_timeouts.yml 无条目或不足 7 格时作为 fallback。"""
+"""脚本运行默认超时秒数。当 weekly.yml 的 weekly_timeouts 段 无条目或不足 7 格时作为 fallback。"""
 
 # ============================================================
 # 主配置加载
@@ -321,3 +322,18 @@ def generate_schedule_from_example() -> None:
     assert os.path.exists(example_path), f"[sub_config] 模板不存在: {example_path}"
     data = load_yaml(example_path)
     dump_yaml(schedule_path, data)
+
+
+def generate_weekly_from_example() -> None:
+    """从 config/weekly.example.yml 复制生成 config/weekly.yml。
+
+    合并了运行期周常参数（weekly_start 周几起 + weekly_timeouts 每周超时）的用户文件，
+    与静态周常声明（config/weekly_list.yml，进 git）解耦；首次运行时由
+    ``launcher.config_workflow`` 与 config.yml / schedule.yml 一并生成。模板见
+    config/weekly.example.yml。
+    """
+    example_path = safe_path_join(get_root_dir(), "config", "weekly.example.yml")
+    weekly_path = get_weekly_yml_path_under_root()
+    assert os.path.exists(example_path), f"[sub_config] 模板不存在: {example_path}"
+    data = load_yaml(example_path)
+    dump_yaml(weekly_path, data)

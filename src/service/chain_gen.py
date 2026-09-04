@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_daily_run(script: dict, weekly_timeouts: dict) -> bool:
-    """按 weekly_timeouts.yml 解析脚本当天是否运行，运行时就地设置超时。
+    """按 weekly.yml 的 weekly_timeouts 段 解析脚本当天是否运行，运行时就地设置超时。
 
     weekly_timeouts 的 key 为脚本唯一标识（exe 用进程名，脚本文件用 display_name）。
 
@@ -63,11 +63,11 @@ def resolve_weekly_start(weekly_start_map: dict, script_name: str) -> int | None
     「今天周几 >= 起始日」由 set_config 判断启用/停用写入脚本配置
     （与日常副本选择落盘不受日常开关影响的模型一致）。
 
-    起始日来源为 weekly_start.yml（运行时由 src.utils.utils_weekly 持久化），经
+    起始日来源为 weekly.yml 的 weekly_start 段（运行时由 src.utils.utils_weekly 持久化），经
     weekly_start_map 传入。
 
     Args:
-        weekly_start_map: weekly_start.yml 的全量映射（{脚本标识: 1~7}）。
+        weekly_start_map: weekly.yml 的 weekly_start 段 的全量映射（{脚本标识: 1~7}）。
         script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
 
     Returns:
@@ -106,7 +106,7 @@ def generate_chain_config(
         enabled_keys: 要纳入链的脚本唯一标识集合。
         chain_name: 链配置文件名（不含扩展名）。
         out_path: 输出路径；None 时默认 config/script_chain/<chain_name>.yml。
-        weekly_timeouts: weekly_timeouts.yml 的全量字典（默认空 dict）。
+        weekly_timeouts: weekly.yml 的 weekly_timeouts 段 的全量字典（默认空 dict）。
 
     Returns:
         输出文件路径。

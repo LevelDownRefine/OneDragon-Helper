@@ -2,10 +2,12 @@
 
 两类职责：
 - 日期数学：``next_target_datetime`` / ``get_week_num`` / ``is_weekly_start_reached``（周几判定）；
-- 运行期参数读写：``weekly_start.yml``（周几起）+ ``weekly_timeouts.yml``（每周超时）。
+- 运行期参数读写：``weekly.yml`` 内的 ``weekly_start``（周几起）+ ``weekly_timeouts``（每周超时）两段。
 
 不含周本声明——各游戏「有哪些周常、可选哪些副本」由 src.config.dungeon_config 模块函数读
 weekly_list.yml 提供；本模块只管「周几起 / 每天超时多久」这类运行期参数。
+
+``weekly.yml`` 是单一文件、内含两大段；写回任一段时均保留另一段（读全量→改一段→写全量）。
 
 脚本标识统一用脚本唯一标识 script_name（exe 为进程名、脚本文件为 display_name）。
 """
@@ -14,10 +16,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 
-from src.utils import (
-    get_weekly_start_yml_path_under_root,
-    get_weekly_timeouts_yml_path_under_root,
-)
+from src.utils import get_weekly_yml_path_under_root
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
 from src.utils.utils_yaml import dump_yaml, load_yaml
 
@@ -67,52 +66,58 @@ def is_weekly_start_reached(start_day: int) -> bool:
     return get_week_num() + 1 >= start_day
 
 
-# ---- weekly_start.yml / weekly_timeouts.yml 读写 ----
+# ---- weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段 读写 ----
+
+
+def _load_weekly_file() -> dict:
+    """读取 weekly.yml 全量（含 weekly_start / weekly_timeouts 两段，必存在）。
+
+    assert 文件存在且为 dict，损坏直接暴露而非静默兜底；各段读写经此全量读后再取/改对应段，
+    保证写回时另一段不被覆盖。
+    """
+    weekly_path = get_weekly_yml_path_under_root()
+    assert os.path.exists(weekly_path), f"[utils_weekly] 周常配置缺失: {weekly_path}"
+    data = load_yaml(weekly_path)
+    assert isinstance(data, dict), (
+        f"[utils_weekly] 周常配置应为 dict（空文件或格式错误）: {weekly_path}"
+    )
+    return data
+
+
+def _dump_weekly_file(data: dict) -> None:
+    """写回 weekly.yml 全量（含 weekly_start / weekly_timeouts 两段）。"""
+    weekly_path = get_weekly_yml_path_under_root()
+    dump_yaml(weekly_path, data)
 
 
 def _load_weekly() -> dict:
-    """读取 weekly_timeouts.yml（随包发布、必存在）。
+    """读取 weekly.yml 的 weekly_timeouts 段（各脚本每周 7 格超时）。
 
-    与 _load_weekly_start 同款：assert 存在且为 dict，损坏直接暴露而非静默兜底。
+    文件缺失段时回退空 dict，由调用方（save_weekly / ensure_weekly_entry 等）按需建条目。
     """
-    weekly_path = get_weekly_timeouts_yml_path_under_root()
-    assert os.path.exists(weekly_path), (
-        f"[utils_weekly] 周常超时配置缺失: {weekly_path}"
-    )
-    data = load_yaml(weekly_path)
-    assert isinstance(data, dict), (
-        f"[utils_weekly] 周常超时配置应为 dict（空文件或格式错误）: {weekly_path}"
-    )
-    return data
+    return _load_weekly_file().get("weekly_timeouts", {}) or {}
 
 
-def _dump_weekly(weekly_map: dict) -> None:
-    """写回 weekly_timeouts.yml。"""
-    weekly_path = get_weekly_timeouts_yml_path_under_root()
-    dump_yaml(weekly_path, weekly_map)
+def _dump_weekly(timeouts_map: dict) -> None:
+    """写回 weekly.yml 的 weekly_timeouts 段，保留 weekly_start 段。"""
+    data = _load_weekly_file()
+    data["weekly_timeouts"] = timeouts_map
+    _dump_weekly_file(data)
 
 
 def _load_weekly_start() -> dict:
-    """读取 weekly_start.yml（周常起始日持久化配置，进 git，必存在）。
+    """读取 weekly.yml 的 weekly_start 段（各脚本周常起始日，{script_name: 1~7}）。
 
-    结构：{script_name: 1~7}。与 _load_weekly 同款：assert 存在且为 dict，
-    损坏直接暴露而非静默兜底。
+    文件缺失段时回退空 dict。
     """
-    weekly_start_path = get_weekly_start_yml_path_under_root()
-    assert os.path.exists(weekly_start_path), (
-        f"[utils_weekly] 周常起始日配置缺失: {weekly_start_path}"
-    )
-    data = load_yaml(weekly_start_path)
-    assert isinstance(data, dict), (
-        f"[utils_weekly] 周常起始日配置应为 dict（空文件或格式错误）: {weekly_start_path}"
-    )
-    return data
+    return _load_weekly_file().get("weekly_start", {}) or {}
 
 
-def _dump_weekly_start(data: dict) -> None:
-    """写回 weekly_start.yml（覆盖式，与 _dump_weekly 同款）。"""
-    weekly_start_path = get_weekly_start_yml_path_under_root()
-    dump_yaml(weekly_start_path, data)
+def _dump_weekly_start(start_map: dict) -> None:
+    """写回 weekly.yml 的 weekly_start 段，保留 weekly_timeouts 段。"""
+    data = _load_weekly_file()
+    data["weekly_start"] = start_map
+    _dump_weekly_file(data)
 
 
 def _resolve_weekly_timeouts(timeouts: list[int | None]) -> list[int]:
@@ -130,7 +135,7 @@ def _resolve_weekly_timeouts(timeouts: list[int | None]) -> list[int]:
 
 
 def load_all_weekly() -> dict:
-    """返回 weekly_timeouts.yml 的完整字典（文件随包发布，必存在）。
+    """返回 weekly.yml 的 weekly_timeouts 段完整字典（文件随包发布，必存在）。
 
     key 为脚本唯一标识。
     """
@@ -162,12 +167,12 @@ def get_weekly_start(script_name: str) -> int | None:
 
 
 def get_weekly_start_map() -> dict:
-    """返回 weekly_start.yml 全量（{脚本标识: 1~7}）。"""
+    """返回 weekly.yml 的 weekly_start 段全量（{脚本标识: 1~7}）。"""
     return _load_weekly_start()
 
 
 def set_weekly_start(script_name: str, start_day: int | None) -> None:
-    """持久化某脚本的周常起始日（周几起）到 weekly_start.yml。
+    """持久化某脚本的周常起始日（周几起）到 weekly.yml 的 weekly_start 段。
 
     start_day 为 1~7 时写入；为 None 时移除该脚本条目（对应弹窗「不设置」）。
 
@@ -205,7 +210,7 @@ def save_weekly(script_name: str, timeouts: list[int | None]) -> None:
 
 
 def rename_weekly_in_timeouts(old_script_name: str, new_script_name: str) -> None:
-    """脚本标识变更时迁移 weekly_timeouts.yml 中的条目。
+    """脚本标识变更时迁移 weekly.yml 的 weekly_timeouts 段 中的条目。
 
     旧条目存在则迁移到新名；不存在则无操作。
 
@@ -223,7 +228,7 @@ def rename_weekly_in_timeouts(old_script_name: str, new_script_name: str) -> Non
 
 
 def ensure_weekly_entry(script_name: str) -> None:
-    """为该脚本在 weekly_timeouts.yml 创建 7 格默认条目（已存在则跳过）。
+    """为该脚本在 weekly.yml 的 weekly_timeouts 段 创建 7 格默认条目（已存在则跳过）。
 
     Args:
         script_name: 脚本唯一标识。
@@ -253,7 +258,7 @@ def weekly_inputs(script_name: str) -> list[int]:
 
 
 def check_weekly(config: dict) -> dict:
-    """校验 weekly_timeouts.yml 与 config.yml 脚本条目的一致性。
+    """校验 weekly.yml 的 weekly_timeouts 段与 config.yml 脚本条目的一致性。
 
     Args:
         config: config.yml 完整数据（含 script_list）。
@@ -277,7 +282,7 @@ def check_weekly(config: dict) -> dict:
 
 
 def delete_weekly(script_name: str) -> None:
-    """删除脚本时清理 weekly_timeouts.yml 中该脚本的孤儿条目。
+    """删除脚本时清理 weekly.yml 的 weekly_timeouts 段 中该脚本的孤儿条目。
 
     Args:
         script_name: 要清理 weekly 条目的脚本唯一标识。

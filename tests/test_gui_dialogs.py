@@ -25,8 +25,8 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
 
     def _make_weekly_file(self, weekly_map):
         d = tempfile.mkdtemp()
-        wt = os.path.join(d, "weekly_timeouts.yml")
-        dump_yaml_file(wt, weekly_map)
+        wt = os.path.join(d, "weekly.yml")
+        dump_yaml_file(wt, {"weekly_start": {}, "weekly_timeouts": weekly_map})
         return wt
 
     def _make_config_file(self):
@@ -37,7 +37,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         return cfg
 
     def test_load_seeds_from_default_when_no_weekly_entry(self):
-        """weekly_timeouts 无该脚本条目时，7 格应显示 DEFAULT_RUN_TIMEOUT（3600）"""
+        """weekly.yml 的 weekly_timeouts 无该脚本条目时，7 格应显示 DEFAULT_RUN_TIMEOUT（3600）"""
         wt = self._make_weekly_file({})
         cfg = self._make_config_file()
         with (
@@ -46,7 +46,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
                 return_value=cfg,
             ),
             patch(
-                "src.utils.utils_weekly.get_weekly_timeouts_yml_path_under_root",
+                "src.utils.utils_weekly.get_weekly_yml_path_under_root",
                 return_value=wt,
             ),
         ):
@@ -55,7 +55,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         self.assertEqual(values, ["3600"] * 7)
 
     def test_load_uses_existing_weekly_entry(self):
-        """weekly_timeouts 已有条目时使用已有值"""
+        """weekly.yml 的 weekly_timeouts 已有条目时使用已有值"""
         wt = self._make_weekly_file({"collect_log": [60, 60, 60, 60, 60, 60, 60]})
         cfg = self._make_config_file()
         with (
@@ -64,7 +64,7 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
                 return_value=cfg,
             ),
             patch(
-                "src.utils.utils_weekly.get_weekly_timeouts_yml_path_under_root",
+                "src.utils.utils_weekly.get_weekly_yml_path_under_root",
                 return_value=wt,
             ),
         ):
@@ -184,7 +184,7 @@ class _FakeService:
 
 
 class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
-    """测试配置弹窗的「周几起」行：仅支持周常脚本显示，读写 weekly_list.yml。"""
+    """测试配置弹窗的「周几起」行：仅支持周常脚本显示，读写 weekly.yml 的 weekly_start 段。"""
 
     def _make_dialog(self, script_name, display_name, weekly_start, supported):
         with patch("src.gui.dialogs.supports_weekly", return_value=supported):

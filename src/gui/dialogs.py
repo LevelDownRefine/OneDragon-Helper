@@ -419,7 +419,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         grid.addWidget(self._make_label("游戏进程:"), 6, 0)
         grid.addWidget(self.game_process_input, 6, 1, 1, 2)
 
-        # 周几起：仅支持周常的脚本显示（选择落到 weekly_start.yml）。
+        # 周几起：仅支持周常的脚本显示（选择落到 weekly.yml 的 weekly_start 段）。
         # 不支持时整行不进布局，超时行上移到行 7，避免空行留白。
         self._weekly_start_supported = supports_weekly(self.script_name)
         timeout_row = 8 if self._weekly_start_supported else 7
@@ -497,7 +497,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         # 阻塞运行：缺字段视为 True（默认阻塞）
         self.block_cb.setChecked(script_data.get("block", True))
 
-        # 周几起（从 weekly_start.yml 读；不支持周常时跳过）
+        # 周几起（从 weekly.yml 的 weekly_start 段 读；不支持周常时跳过）
         if self._weekly_start_supported:
             start_day = self._app_service.get_weekly_start(self.script_name)
             self.weekly_start_combo.setCurrentIndex(
@@ -551,7 +551,7 @@ class SingleScriptConfigDialog(FormDialogBase):
             text = timeout_edit.text().strip()
             timeouts.append(int(text) if text else None)
 
-        # 周几起：权威值持久化到 weekly_start.yml（经 AppService.set_weekly_start / src.utils.utils_weekly）。游戏侧原生 config
+        # 周几起：权威值持久化到 weekly.yml 的 weekly_start 段（经 AppService.set_weekly_start / src.utils.utils_weekly）。游戏侧原生 config
         # 起始日的同步不在此处进行——save_data 内 config.yml 的 script_path 尚未落盘，
         # 此时解析目录会拿到旧路径，导致写到错误/失效目录。统一由调用方在
         # AppService.update_script 落盘新路径后触发（见 game_list.configCurrent）。
