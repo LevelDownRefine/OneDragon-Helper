@@ -63,15 +63,35 @@ set "SRC_ASSETS=%~dp0..\assets"
 set "DST_CONFIG=%GUI_DIR%\config"
 set "DST_ASSETS=%GUI_DIR%\assets"
 
-REM 整体拷贝 config（含共享资源：dungeon_list.yml / weekly_timeouts.yml / script_chain / BGI_User 等）
-xcopy /E /I /Y "%SRC_CONFIG%" "%DST_CONFIG%" >nul
+REM config 仅拷贝 git 追踪的文件（git archive 导出），绝不把 .gitignore 忽略的本地/个人
+REM 配置（config.yml / schedule.yml / wallpaper.json / script_chain / wallpaper_cache / *.bak 等）
+REM 打进包——这些含账号、脚本路径等私密或本机生成数据。运行时由 config.example.yml /
+REM schedule.example.yml 自动生成默认 config.yml / schedule.yml，因此包里没有它们也不影响开箱即用。
+set "CFG_TAR=%TEMP%\odh_config_archive.tar"
+REM 注意：build.bat 开头 cd /d %~dp0 已切到 deploy/，故此处用 git -C .. 让 git 在仓库根运行，
+REM 否则 pathspec 'config' 会被相对 deploy/ 解析成 deploy/config 而报 "pathspec did not match"。
+REM 解包用 Python 而非 Windows 自带 tar.exe：后者对 git archive 生成的 pax 格式 tar / 含中文
+REM 路径名的成员会静默失败（exit 0 但解不出任何文件），Python tarfile 稳定可靠。
+REM 路径经环境变量传入 Python，避免 -c 内联时 Windows 路径反斜杠被误转义。
+set "CFG_PY=%VENV_PY%"
+if not exist "%CFG_PY%" set "CFG_PY=python"
+git -C "%~dp0.." archive --output="%CFG_TAR%" HEAD config
 if errorlevel 1 (
-    echo [ERROR] 拷贝 config 失败
+    echo [ERROR] 导出 git 追踪的 config 失败
     if not defined CI pause
     exit /b 1
 )
-REM 安全：绝不要把开发机的个人配置打进包（config.yml / config.yml.bak 含账号、路径等私密，
-REM gui_state.json 是本地 UI 状态）。源文件保持不动，仅从打包产物中清除。
+set "ODH_CFG_TAR=%CFG_TAR%"
+set "ODH_CFG_DST=%GUI_DIR%"
+"%CFG_PY%" -c "import os,tarfile; tarfile.open(os.environ['ODH_CFG_TAR']).extractall(os.environ['ODH_CFG_DST'])"
+if errorlevel 1 (
+    echo [ERROR] 解包 git 追踪的 config 失败
+    if not defined CI pause
+    exit /b 1
+)
+REM 双保险：即便上游误带入也清除个人配置（config.yml / config.yml.bak 含账号、路径等私密，
+REM gui_state.json 是本地 UI 状态）。源文件保持不动。
+if not exist "%DST_CONFIG%" mkdir "%DST_CONFIG%"
 if exist "%DST_CONFIG%\config.yml" del /Q "%DST_CONFIG%\config.yml"
 if exist "%DST_CONFIG%\config.yml.bak" del /Q "%DST_CONFIG%\config.yml.bak"
 if exist "%DST_CONFIG%\gui_state.json" del /Q "%DST_CONFIG%\gui_state.json"
@@ -97,6 +117,13 @@ set "DST_QML=%GUI_DIR%\src\gui\qml"
 xcopy /E /I /Y "%SRC_QML%" "%DST_QML%" >nul
 if errorlevel 1 (
     echo [ERROR] 拷贝 QML 失败
+    if not defined CI pause
+    exit /b 1
+)
+REM 项目说明文档：随包发布，用户解压后即可看到 README
+copy /Y "%~dp0..\README.md" "%GUI_DIR%\README.md" >nul
+if errorlevel 1 (
+    echo [ERROR] 拷贝 README.md 失败
     if not defined CI pause
     exit /b 1
 )
@@ -129,6 +156,7 @@ echo   - OneDragon-Helper.exe        (GUI 主程序)
 echo   - OneDragon-Helper-Runner.exe  (脚本运行器)
 echo   - config\                      (配置目录)
 echo   - assets\                      (资源目录)
+echo   - README.md                    (项目说明)
 echo ============================================
 echo.
 if not defined CI pause
