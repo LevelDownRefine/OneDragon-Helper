@@ -3,6 +3,7 @@
 独立 QObject，依赖 game_list / task_card / service（落盘与生成链）。
 """
 
+import logging
 import os
 import subprocess
 
@@ -29,6 +30,8 @@ from src.utils.utils_runner import (
 )
 from src.utils.utils_sub_config import get_script_name, resolve_script_path
 from src.utils.utils_weekly import next_target_datetime
+
+logger = logging.getLogger(__name__)
 
 
 class LaunchController(QObject):
@@ -143,6 +146,21 @@ class LaunchController(QObject):
         close_running_enabled = parse_close_running(schedule_data)
         rerun_enabled = parse_rerun_config(schedule_data)
         notify_enabled = parse_notify_enabled(schedule_data)
+        notify_cfg = schedule_data.get("notify")
+        notify_email = (
+            notify_cfg.get("email", "") if isinstance(notify_cfg, dict) else ""
+        )
+        # SMTP 主机/端口：缺省回退 QQ（与 schedule.example.yml 默认一致），用户可在弹窗覆盖。
+        notify_smtp_host = (
+            notify_cfg.get("smtp_host", "smtp.qq.com")
+            if isinstance(notify_cfg, dict)
+            else "smtp.qq.com"
+        )
+        notify_smtp_port = (
+            str(notify_cfg.get("smtp_port", 465))
+            if isinstance(notify_cfg, dict)
+            else "465"
+        )
 
         dialog = RunConfirmDialog(
             len(enabled_keys),
@@ -154,6 +172,9 @@ class LaunchController(QObject):
             close_running_enabled=close_running_enabled,
             rerun_enabled=rerun_enabled,
             notify_enabled=notify_enabled,
+            email=notify_email,
+            smtp_host=notify_smtp_host,
+            smtp_port=notify_smtp_port,
         )
         if dialog.exec() != QDialog.Accepted:
             return False
@@ -175,6 +196,21 @@ class LaunchController(QObject):
         apply_mute_config(schedule_data, enabled=res["mute_enabled"])
         apply_close_running_config(schedule_data, enabled=res["close_running_enabled"])
         apply_rerun_config(schedule_data, enabled=res["rerun_enabled"])
-        apply_notify_config(schedule_data, enabled=res["notify_enabled"])
+        apply_notify_config(
+            schedule_data,
+            enabled=res["notify_enabled"],
+            email=res.get("email", ""),
+            smtp_host=res.get("smtp_host", ""),
+            smtp_port=res.get("smtp_port", ""),
+        )
+        # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
+        auth_code = res.get("auth_code", "")
+        if auth_code:
+            try:
+                from src.log.notify_mail import register_credentials
+
+                register_credentials(res.get("email", ""), auth_code)
+            except Exception as exc:  # 凭据管理器不可用等
+                logger.warning("[launch] 授权码写入系统凭据管理器失败(%s)", exc)
         self._app_service.save_schedule(schedule_data)
         return True

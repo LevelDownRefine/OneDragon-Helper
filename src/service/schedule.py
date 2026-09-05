@@ -58,8 +58,8 @@ def save_schedule(data: dict) -> None:
 def resolve_mail_config(schedule: dict) -> dict | None:
     """从 schedule.yml 数据解析有效邮件配置；未启用或字段缺失返回 None。
 
-    ``notify.enabled`` 非 true、或 email/password 缺失时返回 None，表示不发邮件
-    （默认关闭），字段缺失即跳过发送。
+    ``notify.enabled`` 非 true、或 email 缺失时返回 None，表示不发邮件
+    （默认关闭）。授权码只存于系统凭据管理器，不在此校验（由 send_mail 运行期读取）。
 
     Args:
         schedule: schedule.yml 全量数据（含 notify 块）。
@@ -71,9 +71,8 @@ def resolve_mail_config(schedule: dict) -> dict | None:
     if not isinstance(notify, dict) or not notify.get("enabled", False):
         return None
     email = (notify.get("email") or "").strip()
-    password = (notify.get("password") or "").strip()
-    if not email or not password:
-        logger.warning("[schedule] 邮件未启用或 email/password 缺失，跳过: %s", notify)
+    if not email:
+        logger.warning("[schedule] 邮件未启用或 email 缺失，跳过: %s", notify)
         return None
     return notify
 

@@ -92,6 +92,103 @@ class TestRunConfirmDialog(unittest.TestCase):
                 "close_running_enabled": True,
                 "rerun_enabled": False,
                 "notify_enabled": True,
+                "email": "",
+                "auth_code": "",
+                "smtp_host": "",
+                "smtp_port": "",
+            },
+        )
+
+    def test_echoes_and_collects_email(self):
+        """打开弹窗回显邮箱、勾选通知才可编辑邮箱/授权码；accept 收集输入值。"""
+        dlg = RunConfirmDialog(
+            2,
+            shutdown_enabled=False,
+            shutdown_delay=0,
+            timed_enabled=False,
+            timed_target="04:10",
+            notify_enabled=True,
+            email="123456@qq.com",
+        )
+        # 预填邮箱回显
+        self.assertEqual(dlg.email_edit.text(), "123456@qq.com")
+        # 通知已勾选 → 邮箱/授权码可编辑
+        self.assertTrue(dlg.email_edit.isEnabled())
+        self.assertTrue(dlg.auth_edit.isEnabled())
+        dlg.auth_edit.setText("authcode16")
+        dlg._on_accept()
+        self.assertEqual(
+            dlg.result,
+            {
+                "shutdown_enabled": False,
+                "shutdown_delay": 0,
+                "timed_enabled": False,
+                "timed_target": "04:10",
+                "mute_enabled": False,
+                "close_running_enabled": True,
+                "rerun_enabled": True,
+                "notify_enabled": True,
+                "email": "123456@qq.com",
+                "auth_code": "authcode16",
+                "smtp_host": "",
+                "smtp_port": "",
+            },
+        )
+
+    def test_notify_off_disables_email_fields(self):
+        """未勾选邮件通知：邮箱/授权码/SMTP 输入框禁用（与定时/关机联动一致）。"""
+        dlg = RunConfirmDialog(
+            2,
+            shutdown_enabled=False,
+            shutdown_delay=0,
+            timed_enabled=False,
+            timed_target="04:10",
+            notify_enabled=False,
+            email="123456@qq.com",
+        )
+        self.assertFalse(dlg.email_edit.isEnabled())
+        self.assertFalse(dlg.auth_edit.isEnabled())
+        self.assertFalse(dlg.smtp_host_edit.isEnabled())
+        self.assertFalse(dlg.smtp_port_edit.isEnabled())
+
+    def test_echoes_and_collects_smtp(self):
+        """打开弹窗回显 SMTP 主机/端口、accept 收集输入值（与邮箱同处理）。"""
+        dlg = RunConfirmDialog(
+            2,
+            shutdown_enabled=False,
+            shutdown_delay=0,
+            timed_enabled=False,
+            timed_target="04:10",
+            notify_enabled=True,
+            email="123456@qq.com",
+            smtp_host="smtp.qq.com",
+            smtp_port="465",
+        )
+        # 预填 SMTP 配置回显
+        self.assertEqual(dlg.smtp_host_edit.text(), "smtp.qq.com")
+        self.assertEqual(dlg.smtp_port_edit.text(), "465")
+        # 通知已勾选 → SMTP 输入框可编辑
+        self.assertTrue(dlg.smtp_host_edit.isEnabled())
+        self.assertTrue(dlg.smtp_port_edit.isEnabled())
+        # 用户改填其他服务商
+        dlg.smtp_host_edit.setText("smtp.163.com")
+        dlg.smtp_port_edit.setText("994")
+        dlg._on_accept()
+        self.assertEqual(
+            dlg.result,
+            {
+                "shutdown_enabled": False,
+                "shutdown_delay": 0,
+                "timed_enabled": False,
+                "timed_target": "04:10",
+                "mute_enabled": False,
+                "close_running_enabled": True,
+                "rerun_enabled": True,
+                "notify_enabled": True,
+                "email": "123456@qq.com",
+                "auth_code": "",
+                "smtp_host": "smtp.163.com",
+                "smtp_port": "994",
             },
         )
 

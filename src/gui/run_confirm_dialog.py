@@ -9,7 +9,8 @@
 - ``RunConfirmDialog``：运行确认弹窗，构造签名含 enabled_count 与勾选初始值，
   ``result`` 返回 dict（shutdown_enabled / shutdown_delay / timed_enabled /
   timed_target / mute_enabled / close_running_enabled / rerun_enabled /
-  notify_enabled）；取消（reject）不返回、不落盘。
+  notify_enabled / email / auth_code / smtp_host / smtp_port）；取消（reject）
+  不返回、不落盘。
 """
 
 from PySide6.QtCore import QTime
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QSpinBox,
     QTimeEdit,
     QVBoxLayout,
@@ -55,6 +57,9 @@ class RunConfirmDialog(FormDialogBase):
         close_running_enabled: bool = True,
         rerun_enabled: bool = True,
         notify_enabled: bool = False,
+        email: str = "",
+        smtp_host: str = "",
+        smtp_port: str = "",
         parent=None,
     ):
         super().__init__(parent)
@@ -74,6 +79,9 @@ class RunConfirmDialog(FormDialogBase):
             close_running_enabled=close_running_enabled,
             rerun_enabled=rerun_enabled,
             notify_enabled=notify_enabled,
+            email=email,
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
         )
 
     def init_ui(
@@ -87,6 +95,9 @@ class RunConfirmDialog(FormDialogBase):
         close_running_enabled: bool,
         rerun_enabled: bool,
         notify_enabled: bool,
+        email: str,
+        smtp_host: str,
+        smtp_port: str,
     ) -> None:
         """构造布局：确认文案 + 三段生命周期配置（运行前/中/后）+ 底部按钮行。
 
@@ -110,7 +121,14 @@ class RunConfirmDialog(FormDialogBase):
         )
         layout.addWidget(self._make_running_group(mute_enabled, rerun_enabled))
         layout.addWidget(
-            self._make_post_run_group(notify_enabled, shutdown_enabled, shutdown_delay)
+            self._make_post_run_group(
+                notify_enabled,
+                shutdown_enabled,
+                shutdown_delay,
+                email,
+                smtp_host,
+                smtp_port,
+            )
         )
 
         layout.addStretch()
@@ -169,8 +187,11 @@ class RunConfirmDialog(FormDialogBase):
         notify_enabled: bool,
         shutdown_enabled: bool,
         shutdown_delay: int,
+        email: str,
+        smtp_host: str,
+        smtp_port: str,
     ) -> QGroupBox:
-        """运行后配置：邮件通知 · 自动关机（运行后关机 + 延迟秒数）。"""
+        """运行后配置：邮件通知（含邮箱/授权码/SMTP 配置）· 自动关机（运行后关机 + 延迟秒数）。"""
         box = self._make_group("运行后配置")
         col = QVBoxLayout(box)
         col.setContentsMargins(14, 20, 14, 14)
@@ -180,8 +201,67 @@ class RunConfirmDialog(FormDialogBase):
         self.notify_cb.setChecked(notify_enabled)
         col.addWidget(self.notify_cb)
 
+        # 邮件配置：发件人邮箱（落 schedule.yml）+ 授权码（落系统凭据管理器，不落盘明文）
+        # + SMTP 主机/端口（落 schedule.yml，默认 QQ）。仅在勾选通知时可用（与定时/关机联动一致）。
+        self.email_edit = self._make_line_edit(
+            email, placeholder="发件人邮箱（如 123456@qq.com）"
+        )
+        self.auth_edit = self._make_line_edit(
+            "", placeholder="QQ 授权码（16 位，仅首次需填）"
+        )
+        self.auth_edit.setEchoMode(QLineEdit.Password)
+        col.addWidget(self._make_labeled_row("邮箱", self.email_edit))
+        col.addWidget(self._make_labeled_row("授权码", self.auth_edit))
+
+        self.smtp_host_edit = self._make_line_edit(
+            smtp_host, placeholder="SMTP 主机（如 smtp.qq.com）"
+        )
+        self.smtp_port_edit = self._make_line_edit(
+            smtp_port, placeholder="SMTP 端口（默认 465）"
+        )
+        col.addWidget(self._make_labeled_row("SMTP主机", self.smtp_host_edit))
+        col.addWidget(self._make_labeled_row("SMTP端口", self.smtp_port_edit))
+
+        for w in (
+            self.email_edit,
+            self.auth_edit,
+            self.smtp_host_edit,
+            self.smtp_port_edit,
+        ):
+            w.setEnabled(notify_enabled)
+        self.notify_cb.toggled.connect(self._on_notify_toggled)
+
         col.addWidget(self._make_shutdown_row(shutdown_enabled, shutdown_delay))
         return box
+
+    def _on_notify_toggled(self, on: bool) -> None:
+        """邮件通知开关联动邮箱/授权码/SMTP 输入的可编辑状态。"""
+        self.email_edit.setEnabled(on)
+        self.auth_edit.setEnabled(on)
+        self.smtp_host_edit.setEnabled(on)
+        self.smtp_port_edit.setEnabled(on)
+
+    def _make_line_edit(self, text: str, *, placeholder: str = "") -> QLineEdit:
+        """统一样式的单行输入框：尺寸/字号与对话框其他输入控件一致。"""
+        edit = QLineEdit(text)
+        edit.setFont(make_font(size=11))
+        edit.setFixedHeight(INPUT_FIXED_H)
+        edit.setPlaceholderText(placeholder)
+        return edit
+
+    def _make_labeled_row(self, label_text: str, widget: QWidget) -> QWidget:
+        """带标签的输入行（标签固定宽 + 输入框拉伸），与定时/关机行视觉一致。"""
+        row = QWidget()
+        h = QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+        label = QLabel(label_text)
+        label.setFont(make_font(size=11))
+        label.setFixedWidth(56)
+        label.setStyleSheet(f"color: {TEXT}; background: transparent;")
+        h.addWidget(label)
+        h.addWidget(widget)
+        return row
 
     def _make_timed_row(self, enabled: bool, target: str) -> QWidget:
         """运行前配置第一行：启用定时复选框 + 目标时刻时间框（启用联动输入框禁用）。"""
@@ -253,7 +333,8 @@ class RunConfirmDialog(FormDialogBase):
 
         Returns:
             含 shutdown_enabled / shutdown_delay / timed_enabled / timed_target /
-            mute_enabled / close_running_enabled / rerun_enabled / notify_enabled 的 dict。
+            mute_enabled / close_running_enabled / rerun_enabled / notify_enabled /
+            email / auth_code / smtp_host / smtp_port 的 dict。
         """
         return self._result
 
@@ -269,5 +350,9 @@ class RunConfirmDialog(FormDialogBase):
             "close_running_enabled": self.close_running_cb.isChecked(),
             "rerun_enabled": self.rerun_cb.isChecked(),
             "notify_enabled": self.notify_cb.isChecked(),
+            "email": self.email_edit.text().strip(),
+            "auth_code": self.auth_edit.text().strip(),
+            "smtp_host": self.smtp_host_edit.text().strip(),
+            "smtp_port": self.smtp_port_edit.text().strip(),
         }
         self.accept()

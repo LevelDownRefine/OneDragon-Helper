@@ -18,6 +18,7 @@ dependencies = [
     "pyuac==0.0.3",
     "ruff>=0.15.5",
     "ruamel-yaml>=0.18",
+    "keyring>=24.0.0",
 ]
 
 # Ruff configuration

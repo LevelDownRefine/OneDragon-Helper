@@ -170,6 +170,8 @@ class TestConfirmRunDialog(unittest.TestCase):
                 "close_running_enabled": True,
                 "rerun_enabled": True,
                 "notify_enabled": True,
+                "email": "123456@qq.com",
+                "auth_code": "",
             }
             out = ctrl._confirm_run({"demo"})
 
@@ -180,8 +182,8 @@ class TestConfirmRunDialog(unittest.TestCase):
         self.assertEqual(saved["mute"], {"enabled": True})
         self.assertEqual(saved["close_running"], {"enabled": True})
         self.assertEqual(saved["rerun"], {"enabled": True})
-        # 邮件通知：仅更新 enabled 开关，保留既有 email/password 凭据。
-        self.assertEqual(saved["notify"], {"enabled": True})
+        # 邮件通知：写回 enabled 开关与邮箱（授权码存系统凭据管理器，不落 schedule.yml）。
+        self.assertEqual(saved["notify"], {"enabled": True, "email": "123456@qq.com"})
 
     def test_accept_disabled_keeps_delay_value(self):
         """关闭自动关机：delay_seconds 保留原值（不强制归 0），仅 after_run 置 False。"""
@@ -203,6 +205,8 @@ class TestConfirmRunDialog(unittest.TestCase):
                 "close_running_enabled": False,
                 "rerun_enabled": False,
                 "notify_enabled": False,
+                "email": "",
+                "auth_code": "",
             }
             ctrl._confirm_run({"demo"})
 
@@ -214,6 +218,95 @@ class TestConfirmRunDialog(unittest.TestCase):
         self.assertEqual(saved["close_running"], {"enabled": False})
         self.assertEqual(saved["rerun"], {"enabled": False})
         self.assertEqual(saved["notify"], {"enabled": False})
+
+    def test_accept_registers_auth_code_to_keyring(self):
+        """确认运行且填写授权码：经 register_credentials 写入系统凭据管理器；邮箱写回 schedule.yml。"""
+        base = {"script_list": [], "notify": {"enabled": False, "email": ""}}
+        ctrl, service = self._make_ctrl(dict(base))
+        with (
+            self._patch_run_confirm() as dlg_cls,
+            mock.patch("src.log.notify_mail.register_credentials") as reg,
+        ):
+            dlg = dlg_cls.return_value
+            dlg.exec.return_value = QDialog.Accepted
+            dlg.result = {
+                "shutdown_enabled": False,
+                "shutdown_delay": 0,
+                "timed_enabled": False,
+                "timed_target": "04:10",
+                "mute_enabled": False,
+                "close_running_enabled": True,
+                "rerun_enabled": True,
+                "notify_enabled": True,
+                "email": "123456@qq.com",
+                "auth_code": "authcode16",
+            }
+            out = ctrl._confirm_run({"demo"})
+        self.assertTrue(out)
+        reg.assert_called_once_with("123456@qq.com", "authcode16")
+        saved = service.save_schedule.call_args[0][0]
+        self.assertEqual(saved["notify"], {"enabled": True, "email": "123456@qq.com"})
+
+    def test_accept_empty_auth_code_skips_keyring(self):
+        """确认运行但授权码留空：不调用 register_credentials（保留既有凭据）。"""
+        base = {"script_list": [], "notify": {"enabled": False, "email": ""}}
+        ctrl, service = self._make_ctrl(dict(base))
+        with (
+            self._patch_run_confirm() as dlg_cls,
+            mock.patch("src.log.notify_mail.register_credentials") as reg,
+        ):
+            dlg = dlg_cls.return_value
+            dlg.exec.return_value = QDialog.Accepted
+            dlg.result = {
+                "shutdown_enabled": False,
+                "shutdown_delay": 0,
+                "timed_enabled": False,
+                "timed_target": "04:10",
+                "mute_enabled": False,
+                "close_running_enabled": True,
+                "rerun_enabled": True,
+                "notify_enabled": True,
+                "email": "123456@qq.com",
+                "auth_code": "",
+            }
+            out = ctrl._confirm_run({"demo"})
+        self.assertTrue(out)
+        reg.assert_not_called()
+
+    def test_accept_writes_smtp_config(self):
+        """确认运行且填写 SMTP 主机/端口：写回 schedule.yml（端口转整型）。"""
+        base = {"script_list": [], "notify": {"enabled": False, "email": ""}}
+        ctrl, service = self._make_ctrl(dict(base))
+        with self._patch_run_confirm() as dlg_cls:
+            dlg = dlg_cls.return_value
+            dlg.exec.return_value = QDialog.Accepted
+            dlg.result = {
+                "shutdown_enabled": False,
+                "shutdown_delay": 0,
+                "timed_enabled": False,
+                "timed_target": "04:10",
+                "mute_enabled": False,
+                "close_running_enabled": True,
+                "rerun_enabled": True,
+                "notify_enabled": True,
+                "email": "123456@qq.com",
+                "auth_code": "",
+                "smtp_host": "smtp.163.com",
+                "smtp_port": "994",
+            }
+            out = ctrl._confirm_run({"demo"})
+        self.assertTrue(out)
+        saved = service.save_schedule.call_args[0][0]
+        # 邮件通知：开关 + 邮箱 + SMTP 主机/端口（端口转 int）一并写回。
+        self.assertEqual(
+            saved["notify"],
+            {
+                "enabled": True,
+                "email": "123456@qq.com",
+                "smtp_host": "smtp.163.com",
+                "smtp_port": 994,
+            },
+        )
 
 
 class TestLaunchAllUnattended(unittest.TestCase):

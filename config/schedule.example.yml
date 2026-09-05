@@ -12,9 +12,13 @@ mute:
 rerun:
   enabled: true
 # 运行后邮件通知（默认关闭）：schedule_run 流程末发送运行汇总邮件。
-# 仅当 enabled=true 且 email/password 齐全时发送；QQ 邮箱「收发同号」自己发给自己。
-# 授权码获取：QQ 邮箱网页版 → 设置 → 账号 → 开启 SMTP 服务 → 生成授权码（16 位，非登录密码）。
+# 仅当 enabled=true 且 email 齐全时发送；QQ 邮箱「收发同号」自己发给自己。
+# 授权码（16 位，非登录密码）经系统凭据管理器存放，不在此文件：
+#   QQ 邮箱网页版 → 设置 → 账号 → 开启 SMTP 服务 → 生成授权码，
+#   再用 `python -m src.log.notify_mail register <email> <授权码>` 存入。
+# 默认走 QQ（smtp.qq.com:465，隐式 SSL）；用其他服务商时改 smtp_host/smtp_port 两项。
 notify:
   enabled: false
   email: ""
-  password: ""
+  smtp_host: "smtp.qq.com"
+  smtp_port: 465

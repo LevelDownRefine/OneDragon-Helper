@@ -584,7 +584,7 @@ def apply_rerun_config(config_data: dict, *, enabled: bool) -> None:
 def parse_notify_enabled(config_data: dict) -> bool:
     """解析 config 的 notify 配置，返回是否运行后发送邮件通知（仅看 enabled 开关）。
 
-    邮件能否真正发送还需 email/password 齐全（由 ``chain_service.resolve_mail_config``
+    邮件能否真正发送还需 enabled=true 且系统凭据管理器存有该邮箱授权码（由 ``resolve_mail_config``
     在运行期校验）；本函数只解析确认弹窗关心的 enabled 勾选初始值。
 
     Args:
@@ -600,21 +600,41 @@ def parse_notify_enabled(config_data: dict) -> bool:
     return isinstance(enabled, bool) and enabled
 
 
-def apply_notify_config(config_data: dict, *, enabled: bool) -> None:
-    """把邮件通知开关写回 config（原地修改顶层 notify 映射的 enabled）。
+def apply_notify_config(
+    config_data: dict,
+    *,
+    enabled: bool,
+    email: str = "",
+    smtp_host: str = "",
+    smtp_port: str = "",
+) -> None:
+    """把邮件通知开关与发件人邮箱写回 config（原地修改顶层 notify 映射）。
 
-    仅更新 ``enabled`` 开关，保留 notify 已有的 email/password 等字段，不因关闭
-    通知而清空凭据。
+    授权码存于系统凭据管理器、不在 notify 内，不随本函数变动；``email`` / ``smtp_host`` /
+    ``smtp_port`` 默认空串表示仅更新开关、不覆盖既有配置（确认弹窗留空时不回写）。
 
     Args:
         config_data: 完整配置字典（load_config 结果），原地修改。
         enabled: 是否运行后发送邮件通知。
+        email: 发件人邮箱（确认弹窗填写）；空串表示不覆盖既有邮箱。
+        smtp_host: SMTP 主机（确认弹窗填写）；空串表示不覆盖既有主机。
+        smtp_port: SMTP 端口（确认弹窗填写，字符串）；空串表示不覆盖既有端口；
+            非空但非整型时告警并保留原值（不写回异常值）。
     """
     notify = config_data.get("notify")
     if not isinstance(notify, dict):
         notify = {}
         config_data["notify"] = notify
     notify["enabled"] = bool(enabled)
+    if email:
+        notify["email"] = email
+    if smtp_host:
+        notify["smtp_host"] = smtp_host
+    if smtp_port:
+        try:
+            notify["smtp_port"] = int(smtp_port)
+        except ValueError:
+            logger.warning("[runner] smtp_port 非法(%r)，保留原值", smtp_port)
 
 
 def parse_mute_run(config_data: dict) -> bool:
