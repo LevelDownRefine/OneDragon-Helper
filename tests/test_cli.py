@@ -23,7 +23,9 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from src import cli, launcher
+from src.config.generate_config import config_workflow
 from src.service import chain_gen as service_chain_gen
+from src.utils import get_config_yml_path_under_root
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_yaml import load_yaml
 
@@ -87,8 +89,8 @@ def _known_script_names():
     # 随后直接读取 --generate-chain 实际使用的同一份 config.yml，保证期望集合与
     # 产出集合同源（本地真实 config 可能含 example 没有的脚本，如 MAS）。
     # 返回脚本唯一标识（exe 用进程名，python/bat 用 display_name）。
-    launcher.config_workflow()
-    config_path = launcher.get_config_yml_path_under_root()
+    config_workflow()
+    config_path = get_config_yml_path_under_root()
     data = load_yaml(config_path)
     return [get_script_name(s) for s in data.get("script_list", [])]
 
@@ -579,7 +581,7 @@ class TestCliDumpConfig(unittest.TestCase):
         self.assertEqual(code, 0)
         data = _read_cli_json("dump_config")
         # 与 config.yml 的 display_name 列表一致（dump 是原始 config.yml 导出）
-        config_path = launcher.get_config_yml_path_under_root()
+        config_path = get_config_yml_path_under_root()
         source = load_yaml(config_path)
         self.assertEqual(
             [s["display_name"] for s in data["script_list"]],

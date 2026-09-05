@@ -18,13 +18,13 @@ class TestInitConfig(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
 
-    @patch("src.launcher.generate_weekly_from_example")
-    @patch("src.launcher.generate_schedule_from_example")
-    @patch("src.launcher.generate_config_from_example")
-    @patch("src.launcher.os.path.exists", return_value=False)
-    @patch("src.launcher.get_config_yml_path_under_root")
-    @patch("src.launcher.get_schedule_yml_path_under_root")
-    @patch("src.launcher.get_weekly_yml_path_under_root")
+    @patch("src.config.generate_config.generate_weekly_from_example")
+    @patch("src.config.generate_config.generate_schedule_from_example")
+    @patch("src.config.generate_config.generate_config_from_example")
+    @patch("src.config.generate_config.os.path.exists", return_value=False)
+    @patch("src.config.generate_config.get_config_yml_path_under_root")
+    @patch("src.config.generate_config.get_schedule_yml_path_under_root")
+    @patch("src.config.generate_config.get_weekly_yml_path_under_root")
     def test_config_workflow(
         self,
         mock_weekly_path,

@@ -10,10 +10,7 @@ import os
 import re
 
 from src.utils import (
-    get_config_yml_path_under_root,
     get_root_dir,
-    get_schedule_yml_path_under_root,
-    get_weekly_yml_path_under_root,
     require_config_yml_path,
     safe_path_join,
 )
@@ -119,15 +116,7 @@ def get_script_path(script_name: str) -> str:
     assert False, f"[set_config] config.yml 中找不到脚本: {script_name}"  # noqa: B011  # 故意：config.yml 找不到脚本属编程错误，必须用 assert 表达不该发生
 
 
-def _get_script_root_dir(script_name: str) -> str:
-    """
-    从 config.yml 中找到指定脚本的 script_path，取其父目录作为脚本项目根目录。
-    复用 get_script_path，确保脚本文件存在。
-    """
-    return os.path.dirname(get_script_path(script_name))
-
-
-def get_script_root_dir_soft(script_name: str) -> str | None:
+def get_script_root_dir(script_name: str) -> str | None:
     """
     从 config.yml 解析脚本根目录，**不校验文件存在**（游戏路径只读查询用）。
 
@@ -150,14 +139,14 @@ def get_sub_config_path(script_name: str, rel_path: str) -> str:
 
     拼接脚本根目录 + config 相对路径（rel_path 由适配层声明，本模块不感知具体脚本）。
 
-    使用 soft 解析脚本根目录（不校验游戏 exe 是否已安装）：config 文件位置仅由
+    使用 get_script_root_dir 解析（不校验游戏 exe 是否已安装）：config 文件位置仅由
     script_path 的父目录决定，与 exe 是否存在无关。编辑/写入游戏原生 config 不应
     以「游戏 exe 必须安装」为前提，否则会出现「旧路径失效 → 保存即崩」的鸡生蛋死结。
 
     root 无法解析（config.yml 中无此脚本或 script_path 为空）属编程错误，显式 assert；
     config 文件是否存在交由 load_config / save_config 各自处理。
     """
-    root = get_script_root_dir_soft(script_name)
+    root = get_script_root_dir(script_name)
     assert root is not None, (
         f"[set_config] 无法解析脚本根目录（config.yml 中无 {script_name} 或 script_path 为空）"
     )
@@ -213,7 +202,7 @@ def load_game_config(script_name: str, rel_path: str) -> dict | None:
     与 load_config 的区别：面向「打开游戏」功能的只读查询，**不 assert 文件存在**。
     文件缺失/根目录解析失败时返回 None，由调用方（GUI）优雅降级。
     """
-    root = get_script_root_dir_soft(script_name)
+    root = get_script_root_dir(script_name)
     if root is None:
         return None
     game_config_path = safe_path_join(root, rel_path)
@@ -295,45 +284,3 @@ def default_script_entry(display_name, script_type, script_path, script_argument
         "no_log_max_retries": 3,
         "block": True,
     }
-
-
-def generate_config_from_example() -> None:
-    """从 config.example.yml 复制生成 config/config.yml。
-
-    相对 script_path 保留原样，运行时由 resolve_script_path / get_script_path
-    按项目根解析（配置可移植、跨机可用）。
-    """
-    example_path = safe_path_join(get_root_dir(), "config", "config.example.yml")
-    config_path = get_config_yml_path_under_root()
-    assert os.path.exists(example_path), f"[sub_config] 模板不存在: {example_path}"
-    data = load_yaml(example_path)
-    dump_yaml(config_path, data)
-
-
-def generate_schedule_from_example() -> None:
-    """从 config/schedule.example.yml 复制生成 config/schedule.yml。
-
-    调度运行参数（shutdown / timed_run / mute / rerun / notify）独立于 config.yml，
-    与脚本链声明（script_list）解耦；首次运行时由 ``launcher.config_workflow``
-    与 config.yml 一并生成。模板见 config/schedule.example.yml。
-    """
-    example_path = safe_path_join(get_root_dir(), "config", "schedule.example.yml")
-    schedule_path = get_schedule_yml_path_under_root()
-    assert os.path.exists(example_path), f"[sub_config] 模板不存在: {example_path}"
-    data = load_yaml(example_path)
-    dump_yaml(schedule_path, data)
-
-
-def generate_weekly_from_example() -> None:
-    """从 config/weekly.example.yml 复制生成 config/weekly.yml。
-
-    合并了运行期周常参数（weekly_start 周几起 + weekly_timeouts 每周超时）的用户文件，
-    与静态周常声明（config/weekly_list.yml，进 git）解耦；首次运行时由
-    ``launcher.config_workflow`` 与 config.yml / schedule.yml 一并生成。模板见
-    config/weekly.example.yml。
-    """
-    example_path = safe_path_join(get_root_dir(), "config", "weekly.example.yml")
-    weekly_path = get_weekly_yml_path_under_root()
-    assert os.path.exists(example_path), f"[sub_config] 模板不存在: {example_path}"
-    data = load_yaml(example_path)
-    dump_yaml(weekly_path, data)

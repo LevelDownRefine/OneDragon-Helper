@@ -107,14 +107,14 @@ class TestPackagedImageFormats(unittest.TestCase):
         # 混进开发环境的插件会让已删除的格式仍显示在 supportedImageFormats() 里。
         QCoreApplication.setLibraryPaths([os.path.dirname(IMAGEFORMATS)])
 
-        from src.utils.utils_sub_config import get_script_root_dir_soft
+        from src.utils.utils_sub_config import get_script_root_dir
 
         checked = 0
         for name, rel in _declared_backgrounds().items():
             if name == "__default__":
                 path = os.path.join(PROJECT_ROOT, rel)
             else:
-                root = get_script_root_dir_soft(name)
+                root = get_script_root_dir(name)
                 if not root:
                     continue
                 path = os.path.join(root, rel)

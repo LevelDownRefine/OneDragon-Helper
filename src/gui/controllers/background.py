@@ -12,7 +12,7 @@ from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QFileDialog
 
 from src.config.set_config import get_background_rel_path
-from src.utils.utils_sub_config import get_script_root_dir_soft, resolve_script_path
+from src.utils.utils_sub_config import get_script_root_dir, resolve_script_path
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class BackgroundController(QObject):
         rel = get_background_rel_path(script_name)
         if not rel:
             return ""
-        root = get_script_root_dir_soft(script_name)
+        root = get_script_root_dir(script_name)
         if not root:
             return ""
         path = os.path.join(root, rel)

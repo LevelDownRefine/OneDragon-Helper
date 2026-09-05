@@ -41,7 +41,7 @@ def require_config_yml_path() -> str:
 
     注意：本函数仅在 config.yml 应当已存在时调用。以下场景应使用
     `get_config_yml_path_under_root()`（纯路径，不做存在性断言）：
-    - 探测/首次生成（launcher.config_workflow）；
+    - 探测/首次生成（config.generate_config）；
     - 作为写入/生成目标（utils_sub_config.generate_config_from_example 首次生成 config.yml）。
     """
     path = get_config_yml_path_under_root()
@@ -56,7 +56,7 @@ def get_weekly_yml_path_under_root() -> str:
     该文件合并了两份运行期数据，文件内含两个顶层段：
     - ``weekly_start``：各脚本「周常起始日（周几起）」，{脚本标识: 1~7}；
     - ``weekly_timeouts``：各脚本「每周 7 格每日超时（秒）」，{脚本标识: [7 个整数]}。
-    首次启动由 ``launcher.config_workflow`` 经 ``generate_weekly_from_example`` 从
+    首次启动由 ``config.generate_config`` 经 ``generate_weekly_from_example`` 从
     config/weekly.example.yml 拷贝生成；周常声明（脚本支持哪些周常）在
     config/weekly_list.yml（静态，进 git），不在此文件。
 

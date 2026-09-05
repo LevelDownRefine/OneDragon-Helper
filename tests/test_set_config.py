@@ -3,7 +3,6 @@
 
 覆盖函数：
   - _CONFIGS（子类路径声明完整性）
-  - _get_script_root_dir
   - get_sub_config_path
   - load_config
   - save_config（mock 文件写入，不真正写回脚本 config）
@@ -100,74 +99,6 @@ class TestConfigRelPaths(unittest.TestCase):
             self.assertIn(
                 ext, valid_exts, f"{name} 的 config 扩展名 {ext} 不在支持范围内"
             )
-
-
-class TestGetScriptRootDir(unittest.TestCase):
-    """测试 _get_script_root_dir"""
-
-    def test_returns_dirname_of_script_path(self):
-        """应返回 script_path 的父目录"""
-        fake_path = os.path.join("/fake", "ok-ww", "ok-ww.exe")
-        fake_config = {
-            "script_list": [
-                {"display_name": "鸣潮", "script_path": fake_path},
-            ]
-        }
-        # _get_script_root_dir 内部会统一为正斜杠，期望值也要一致
-        expected_root = os.path.dirname(fake_path.replace("\\", "/"))
-        with (
-            patch.object(
-                utils_sub_config, "_load_config_yml", return_value=fake_config
-            ),
-            patch("os.path.exists", return_value=True),
-        ):
-            root = utils_sub_config._get_script_root_dir("ok-ww")
-        self.assertEqual(root, expected_root)
-
-    def test_handles_windows_path_on_any_platform(self):
-        """应正确处理 Windows 风格路径（反斜杠），即使在 Linux 上"""
-        fake_config = {
-            "script_list": [
-                {
-                    "display_name": "鸣潮",
-                    "script_path": r"C:\Users\test\ok-ww\ok-ww.exe",
-                },
-            ]
-        }
-        with (
-            patch.object(
-                utils_sub_config, "_load_config_yml", return_value=fake_config
-            ),
-            patch("os.path.exists", return_value=True),
-        ):
-            root = utils_sub_config._get_script_root_dir("ok-ww")
-        self.assertEqual(root, "C:/Users/test/ok-ww")
-
-    def test_raises_for_unknown_script(self):
-        """未在 config.yml 中的脚本应触发 AssertionError"""
-        fake_config = {"script_list": []}
-        with (
-            patch.object(
-                utils_sub_config, "_load_config_yml", return_value=fake_config
-            ),
-            self.assertRaises(AssertionError),
-        ):
-            utils_sub_config._get_script_root_dir("none")
-
-    def test_raises_for_empty_script_path(self):
-        """script_path 为空时应触发 AssertionError"""
-        fake_config = {
-            "script_list": [
-                {"display_name": "空路径", "script_path": ""},
-            ]
-        }
-        with (
-            patch.object(
-                utils_sub_config, "_load_config_yml", return_value=fake_config
-            ),
-            self.assertRaises(AssertionError),
-        ):
-            utils_sub_config._get_script_root_dir("empty")
 
 
 class TestGetConfigPath(unittest.TestCase):
