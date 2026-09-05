@@ -13,12 +13,11 @@ weekly_list.yml 提供；本模块只管「周几起 / 每天超时多久」这�
 """
 
 import logging
-import os
 from datetime import datetime, timedelta
 
 from src.utils import get_weekly_yml_path_under_root
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
-from src.utils.utils_yaml import dump_yaml, load_yaml
+from src.utils.utils_yaml import dump_yaml, load_yaml_optional
 
 logger = logging.getLogger(__name__)
 
@@ -70,17 +69,18 @@ def is_weekly_start_reached(start_day: int) -> bool:
 
 
 def _load_weekly_file() -> dict:
-    """读取 weekly.yml 全量（含 weekly_start / weekly_timeouts 两段，必存在）。
+    """读取 weekly.yml 全量（含 weekly_start / weekly_timeouts 两段）。
 
-    assert 文件存在且为 dict，损坏直接暴露而非静默兜底；各段读写经此全量读后再取/改对应段，
-    保证写回时另一段不被覆盖。
+    weekly.yml 是运行期生成的用户文件（由 config_workflow 从 weekly.example.yml 生成），
+    CI 干净 checkout 或单测直接走 schedule_run 路径时可能尚未生成；与 schedule.yml 一致，
+    缺失即回退空结构而非 assert 崩溃。文件存在却为空 / 非 dict 仍 assert——损坏属编程错误。
+
+    setdefault 两段空结构：缺失文件或某段缺失时，写回不会把整个段丢掉（等价空 {}）。
     """
     weekly_path = get_weekly_yml_path_under_root()
-    assert os.path.exists(weekly_path), f"[utils_weekly] 周常配置缺失: {weekly_path}"
-    data = load_yaml(weekly_path)
-    assert isinstance(data, dict), (
-        f"[utils_weekly] 周常配置应为 dict（空文件或格式错误）: {weekly_path}"
-    )
+    data = load_yaml_optional(weekly_path)
+    data.setdefault("weekly_start", {})
+    data.setdefault("weekly_timeouts", {})
     return data
 
 

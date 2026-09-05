@@ -69,6 +69,13 @@ excludes = [
     'PySide6.QtLocation',
     'PySide6.QtQuick3D', 'PySide6.QtQuick3DRuntimeRender',
     'PySide6.QtQuick3DXr', 'PySide6.QtQuick3DParticles', 'PySide6.QtQuick3DUtils',
+    # 以下为随上方二进制一并剔除的 Python 绑定（PyInstaller 的 Qt hook 全量收集，
+    # 代码不 import）。各条均经「删完重新打包 → 真实拉起 GUI 验主窗口」实测。
+    'PySide6.QtRemoteObjects', 'PySide6.QtScxml', 'PySide6.QtPositioning',
+    'PySide6.QtTest', 'PySide6.QtQuickTest', 'PySide6.QtStateMachine',
+    'PySide6.QtSql', 'PySide6.QtSensors', 'PySide6.QtWebChannel',
+    'PySide6.QtWebSockets', 'PySide6.QtTextToSpeech', 'PySide6.QtVirtualKeyboard',
+    'PySide6.QtShaderTools', 'PySide6.QtQuickControls2',
 ]
 
 # config/ 和 assets/ 不打入 _internal/，由 build.bat 后处理拷贝到 exe 同级目录，
@@ -109,11 +116,58 @@ _UNUSED_QT_KEYWORDS = (
     'Qt6DataVisualization', 'QtDataVisualization',  # 图表
     'Qt6Graphs', 'QtGraphs',     # 图表
     'Qt6Location', 'QtLocation', # 定位
+    # --- 以下为瘦身项（分批实测，每批重打包后真实拉起 GUI 验主窗口）---
+    # 有意保留、勿当未使用项剔除：
+    #   opengl32sw（19.7M）— Mesa llvmpipe 软件光栅化兜底，无 GPU / 虚拟机 / 远程桌面 /
+    #     驱动异常环境下 Qt Quick 靠它才能起来。删掉本机（有独显）实测正常，但发布给
+    #     他人有起不来的风险，故保留。
+    #   FFmpeg 五个 dll（17.8M）— QtMultimedia 的 MediaPlayer 解码用，视频壁纸依赖它。
+    # Qt 自带翻译（7.8M / 145 个 .qm）: 界面文案全写在 QML 里，不走 Qt 翻译。
+    'translations',
+    # QML 只 import QtQuick / QtQuick.Window / QtMultimedia，下列 QML 模块与其 DLL 从未加载。
+    'Controls', 'NativeStyle', 'Dialogs', 'Templates', 'VirtualKeyboard',
+    'Pdf', 'Scene2D', 'Scene3D', 'Particles', 'Timeline', 'VectorImage',
+    'Shapes', 'Layouts', 'Effects', 'LocalStorage', 'Labs',
+    # 未使用的 Qt 模块与插件。注意 QtOpenGL / QtNetwork 不在此列——它们是 PySide6 的
+    # 内部依赖（src 无显式 import），删掉启动即崩（实测弹 Unhandled exception）。
+    'RemoteObjects', 'Scxml', 'Positioning', 'Qt6Test', 'QuickTest',
+    'StateMachine', 'Qt6Sql', 'Sensors', 'WebChannel', 'WebSockets',
+    'TextToSpeech', 'ShaderTools', 'Qt5Compat',
+    # 平台 / 输入插件精简：只留 qwindows（平台）与 qschannelbackend（TLS）。
+    'qdirect2d', 'qminimal', 'qoffscreen',
+    'virtualkeyboardplugin', 'uiotouch', 'qopensslbackend',
+    # 图片格式插件：qicns / qtga / qtiff / qwbmp 本项目用不到。
+    # 留下的四个：jpeg（默认壁纸 ds.jpg）、svg（QFluentWidgets 图标）、ico、gif。
+    # qwebp 绝不能删 —— ZenlessZoneZeroConfig.background 指向脚本根目录下的
+    # assets/ui/static_background.webp，绝区零背景图就是 WebP；删掉后文件存在但
+    # Qt 解不了码，表现为「壁纸加载不出来」（曾在此翻车一次）。
+    'qicns', 'qtga', 'qtiff', 'qwbmp',
+    'qmltooling',                # QML 调试/性能分析插件，运行时不需要
 )
 for _attr in ('binaries', 'datas'):
     _seq = getattr(a, _attr)
     _filtered = [x for x in _seq if not any(k in x[0] for k in _UNUSED_QT_KEYWORDS)]
     setattr(a, _attr, _filtered)
+
+# --- UPX 排除清单：启动就加载的文件不压缩 ---
+# UPX 省磁盘，但每次启动都要在内存里把加载到的压缩映像还原一遍。实测三种档位：
+#   全量压缩        87M / 启动 2.1s（比不压缩慢约 0.5s）
+#   换 NRV(非lzma)  90M / 启动 1.8s（算法不是主因，只快 0.3s）
+#   只压用不到的   118M / 启动 1.6s（与完全不压缩同速，且比不压缩小 27M）
+# 瓶颈是「启动时解压的数据量」（9.8M）而非文件个数：单独排除 23 个小文件毫无改善。
+# 故策略为——启动就加载的一律不压，只压启动时根本不加载的（opengl32sw、FFmpeg 等），
+# 那些属于白拿收益、零代价。清单采集方法：启动 GUI 后用
+# psutil.Process(pid).memory_maps() 与被压缩文件（PE section 名含 UPX）求交集。
+# 启动路径变动时需重新采集，否则漏网的压缩文件会拖慢启动。
+_UPX_EXCLUDE = [
+    'python312.dll', 'libcrypto-3-x64.dll', 'libssl-3-x64.dll',
+    'QtWidgets.pyd', 'QtOpenGL.pyd', 'QtGui.pyd', 'QtCore.pyd',
+    'QtNetwork.pyd', 'QtQuick.pyd', 'QtQml.pyd', 'QtSvg.pyd',
+    'shiboken6.abi3.dll', 'pyside6.abi3.dll', 'pyside6qml.abi3.dll', 'Shiboken.pyd',
+    '_ssl.pyd', '_hashlib.pyd', '_socket.pyd', '_ctypes.pyd', '_lzma.pyd', '_bz2.pyd',
+    '_queue.pyd', '_psutil_windows.pyd', 'select.pyd', 'unicodedata.pyd',
+    'liblzma.dll', 'libbz2.dll', 'zlib.dll', 'ffi-8.dll',
+]
 
 pyz = PYZ(a.pure)
 
@@ -142,6 +196,6 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    upx_exclude=[],
+    upx_exclude=_UPX_EXCLUDE,
     name='OneDragon-Helper',
 )

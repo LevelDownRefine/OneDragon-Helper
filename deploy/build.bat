@@ -11,16 +11,32 @@ if exist "%VENV_PY%" (
     set "PY=uv run pyinstaller"
 )
 
+REM UPX：两个 spec 里都已设 upx=True，但需本机存在 upx 才生效（此前一直是空转，
+REM 产物完全没压缩）。用环境变量 UPX_DIR 指向 upx.exe 所在目录；未指定则交给
+REM PyInstaller 从 PATH 查找。两种都找不到时不报错，只是产物退回未压缩档。
+set "UPX_OPT="
+if defined UPX_DIR (
+    if exist "%UPX_DIR%\upx.exe" (
+        set "UPX_OPT=--upx-dir "%UPX_DIR%""
+    ) else (
+        echo [WARN] UPX_DIR 下没有 upx.exe，本次不压缩: %UPX_DIR%
+    )
+)
+
 echo ============================================
 echo   OneDragon-Helper 打包脚本
 echo ============================================
 echo.
 
-REM 清理上一轮产物，避免 PyInstaller COLLECT 步骤因旧目录残留而失败
+REM 清理上一轮产物，避免 PyInstaller COLLECT 步骤因旧目录残留而失败。
+REM build/ 也必须一并清掉：PyInstaller 的 --clean 会自己删 build/<name>/localpycs，
+REM 那一批文件数量多，在带批量删除确认的环境下会把构建卡死（报错而非真实失败）。
+REM 用 cmd 原生 rmdir 先清空，--clean 就无旧文件可删。
 if exist "%~dp0dist" rmdir /S /Q "%~dp0dist"
+if exist "%~dp0build" rmdir /S /Q "%~dp0build"
 
 echo [1/5] 构建 GUI 主程序 (onedir)...
-%PY% --noconfirm --clean "OneDragon-Helper.spec"
+%PY% --noconfirm --clean %UPX_OPT% "OneDragon-Helper.spec"
 if errorlevel 1 (
     echo [ERROR] GUI 构建失败
     if not defined CI pause
@@ -29,7 +45,9 @@ if errorlevel 1 (
 
 echo.
 echo [2/5] 构建 Runner (onefile)...
-%PY% --noconfirm --clean "OneDragon-Helper-Runner.spec"
+REM 不加 --clean：它会连带清空 PyInstaller 的 bincache，而上一步 GUI 刚重建过，
+REM 再清一次是重复劳动（且缓存条目多，易触发批量删除的安全确认而中断构建）。
+%PY% --noconfirm %UPX_OPT% "OneDragon-Helper-Runner.spec"
 if errorlevel 1 (
     echo [ERROR] Runner 构建失败
     if not defined CI pause

@@ -34,9 +34,12 @@ hiddenimports += collect_submodules('pycaw')
 # --- 可安全排除的模块 ---
 # pynput 跨平台后端: Windows 仅用 win32，其余后端永不加载。
 # 其余为标准库未使用模块。
-# 注意: 不在此排除 numpy —— Runner 在运行时加载用户脚本(scripts/)，
-#       若脚本 import numpy 需由本包提供。
+# numpy(含 OpenBLAS，解压后 41.4M / 压缩后约 15M) 曾因「用户脚本可能 import」而保留。
+# 现已排除：全项目 src/ 与 scripts/ 均无 numpy 引用，为它多付 15M 不划算。
+# 代价: _exec_python_file 在进程内 exec 的用户 .py 若 import numpy 将 ImportError。
+#       将来真需要时，从本 excludes 中移除 'numpy' 即可恢复。
 excludes = [
+    'numpy',
     'pynput.keyboard._darwin', 'pynput.keyboard._xorg',
     'pynput.mouse._darwin', 'pynput.mouse._xorg',
     'pynput._util.darwin', 'pynput._util.xorg', 'pynput._util.xorg_keys',

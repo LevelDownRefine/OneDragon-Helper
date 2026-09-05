@@ -16,6 +16,7 @@ from src.utils.utils_weekly import (
     delete_weekly,
     ensure_weekly_entry,
     get_weekly_start,
+    get_weekly_start_map,
     rename_weekly_in_timeouts,
     save_weekly,
     set_weekly_start,
@@ -31,8 +32,9 @@ class UtilsWeeklyTestBase(unittest.TestCase):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp_dir.cleanup)
         self.weekly_path = os.path.join(self.tmp_dir.name, "weekly.yml")
-        # 合并后随包发布、必存在，默认建空 {weekly_start: {}, weekly_timeouts: {}} 贴近真实部署
-        # （缺失→{} 的兜底已移除，改 assert 暴露）。
+        # 合并后随包发布、默认建空 {weekly_start: {}, weekly_timeouts: {}} 贴近真实部署。
+        # 注意：weekly.yml 是运行期生成的用户文件（CI 干净 checkout 可能不存在），
+        # 读取器缺失时回退空结构而非崩溃（见 TestMissingWeeklyFile）。
         self._write_weekly({"weekly_start": {}, "weekly_timeouts": {}})
         patcher = patch(
             "src.utils.utils_weekly.get_weekly_yml_path_under_root",
@@ -226,6 +228,37 @@ class TestSetWeeklyStart(UtilsWeeklyTestBase):
         for bad in (0, 8):
             with self.subTest(bad=bad), self.assertRaises(AssertionError):
                 set_weekly_start("a", bad)
+
+
+class TestMissingWeeklyFile(unittest.TestCase):
+    """weekly.yml 缺失（用户文件、CI 干净 checkout 尚未生成）时读取不崩，回退空结构。
+
+    与 schedule.yml 一致：用户文件可能不存在，读取器用 load_yaml_optional 回退空 {}，
+    而非 assert 崩溃（这正是 CI test_chain_service 崩溃的根因修复）。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.missing_path = os.path.join(self.tmp.name, "does_not_exist.yml")
+        patcher = patch(
+            "src.utils.utils_weekly.get_weekly_yml_path_under_root",
+            return_value=self.missing_path,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_reads_return_empty_without_file(self):
+        self.assertEqual(get_weekly_start_map(), {})
+        self.assertEqual(weekly_inputs("a"), [3600] * 7)
+        self.assertIsNone(get_weekly_start("a"))
+
+    def test_save_creates_file_with_both_sections(self):
+        """缺失时首次写回会创建文件，且 weekly_start / weekly_timeouts 两段都在。"""
+        save_weekly("a", [60] * 7)
+        data = load_yaml(self.missing_path)
+        self.assertEqual(data["weekly_timeouts"]["a"], [60] * 7)
+        self.assertEqual(data["weekly_start"], {})
 
 
 if __name__ == "__main__":
