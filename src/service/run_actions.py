@@ -108,4 +108,7 @@ def send_summary_mail(
     """
     if not result or smtp_config is None:
         return
-    send_mail(result, smtp_config=smtp_config)
+    try:
+        send_mail(result, smtp_config=smtp_config)
+    except Exception as exc:  # noqa: BLE001  # 邮件为最佳努力通知，失败须记日志而非中断后续步骤（如关机）
+        logger.error("[mail] 运行汇总邮件发送失败：%s", exc, exc_info=True)

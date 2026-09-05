@@ -9,6 +9,7 @@
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 import os
 import sys
+import warnings
 
 # --- conda base DLL 补全 ---
 # venv 创建自 miniforge3，_ctypes/_lzma/_bz2/pyexpat 等依赖 base 的 Library/bin 下的 DLL，
@@ -19,6 +20,43 @@ for _dll in ('ffi-8.dll', 'liblzma.dll', 'libbz2.dll', 'libexpat.dll'):
     _p = os.path.join(_base_bin, _dll)
     if os.path.isfile(_p):
         _extra_dlls.append((_p, '.'))
+
+# --- OpenSSL 运行时补全（smtplib.SMTP_SSL 发送运行汇总邮件必需）---
+# PyInstaller 自动收集 _ssl.pyd，却未一并收集 libssl/libcrypto：缺失时 SMTP_SSL
+# 建连即失败，邮件被 post_run 静默吞掉，表现为「运行完没收到邮件、也无报错」。
+# OpenSSL 运行时必随打包环境自带，且相对 _ssl.pyd 的位置是确定的两种布局之一：
+#   - 官方 CPython：_ssl.pyd 在 <root>/DLLs，dll 在 <root>（即 _ssl.pyd 的上一级）；
+#   - conda（本机 miniforge3）：_ssl.pyd 在 <root>/DLLs，dll 在 <root>/Library/bin。
+# 故以 _ssl.pyd 为锚，确定性地派生这三个候选目录（同目录 / 上一级 / 上一级的 Library/bin），
+# 命中其一即收集，不做全局搜索。找不到时 warnings.warn 而非中断构建——本机打包环境
+# 必带 OpenSSL，正常不会触发；即便触发也只是出警告、产物可能缺 dll（与缺 assert 同理，
+# 属极端环境兜底，正常打包无影响）。
+# 落位 exe 同级（onedir 顶层）；_UPX_EXCLUDE 已含二者（不压缩）。
+import _ssl as _ssl_mod
+
+_ssl_dir = os.path.dirname(os.path.abspath(_ssl_mod.__file__))
+_ssl_root = os.path.dirname(_ssl_dir)
+_ssl_candidates = [
+    _ssl_dir,
+    _ssl_root,
+    os.path.join(_ssl_root, "Library", "bin"),
+]
+for _ssl_name in ("libssl-3-x64.dll", "libcrypto-3-x64.dll"):
+    _found = next(
+        (os.path.join(_d, _ssl_name)
+         for _d in _ssl_candidates
+         if os.path.isfile(os.path.join(_d, _ssl_name))),
+        None,
+    )
+    if _found is None:
+        warnings.warn(
+            f"OpenSSL 运行时 {_ssl_name} 未找到（已搜索 {_ssl_candidates}）。"
+            f"打包环境缺少 OpenSSL，SMTP_SSL 邮件将静默失败；"
+            f"请在具备 OpenSSL 的环境中打包后重试。",
+            stacklevel=1,
+        )
+        continue
+    _extra_dlls.append((_found, "."))
 
 # --- 隐式导入：PySide6 + Fluent Widgets + 其他动态加载的包 ---
 hiddenimports = []
