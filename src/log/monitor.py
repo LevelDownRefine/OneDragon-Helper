@@ -9,8 +9,9 @@
 
 本模块为 `src.log` 包的子模块，由 `python -m src.log`（__main__ 入口）或 GUI/service 以 `import
 src.log.monitor` 方式调用，不单独运行。除复用脚本唯一标识 `get_script_name`（见
-`src.utils.utils_sub_config`）外，不依赖项目内其余模块；根目录由 `_get_root_dir` 推导，并直接
-读取 `config.yml`（经 `src.utils.utils_yaml.load_yaml`，ruamel YAML 1.2 解析）。
+`src.utils.utils_sub_config`）外，不依赖项目内其余模块；根目录复用 `src.utils.get_root_dir`
+（冻结时为 exe 所在目录，勿按 `__file__` 自算），并直接读取 `config.yml`（经
+`src.utils.utils_yaml.load_yaml`，ruamel YAML 1.2 解析）。
 """
 
 import logging
@@ -22,6 +23,7 @@ import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from src.utils import get_root_dir
 from src.utils.utils_logger import setup_logging
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_yaml import load_yaml, load_yaml_optional
@@ -35,14 +37,11 @@ def log_info(msg, *args, do_log: bool = True) -> None:
         logger.info(msg, *args)
 
 
-def _get_root_dir() -> str:
-    """推导项目根目录（向上 3 层：src/log/monitor.py → 项目根）。"""
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-
 # 项目根在模块导入时捕获一次：日志分析关键词配置（config/log_analysis.yml）属项目级
-# 静态配置，测试中对 _get_root_dir 的 patch（仅针对 config.yml）不应影响它的读取路径。
-_PROJECT_ROOT = _get_root_dir()
+# 静态配置，测试中对 get_root_dir 的 patch（仅针对 config.yml）不应影响它的读取路径。
+# 注意复用 src.utils.get_root_dir，不可按 __file__ 上溯层数自造——冻结后 __file__ 落在
+# <exedir>/_internal/src/log/monitor.py，自算会得到 _internal，而 config/ 在 exe 同级。
+_PROJECT_ROOT = get_root_dir()
 
 _LOG_ANALYSIS_YAML = "log_analysis.yml"
 # 缓存：配置文件小而稳定，进程内只解析一次。global 仅在模块内使用。
@@ -587,7 +586,7 @@ def parse_logs(
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    config_path = Path(_get_root_dir()) / "config" / "config.yml"
+    config_path = Path(get_root_dir()) / "config" / "config.yml"
     assert config_path.exists(), f"[log_monitor] config.yml 不存在: {config_path}"
 
     config_data = load_yaml(str(config_path))

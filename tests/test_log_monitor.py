@@ -155,8 +155,8 @@ class TestCollectLogSetup(unittest.TestCase):
     """测试 collect_log 的日志落盘配置（独立、仅标准库）。"""
 
     def test_get_root_dir_points_to_project_root(self):
-        """_get_root_dir 应落在项目根（含 src/ 与 config/config.example.yml）。"""
-        root = collect_log._get_root_dir()
+        """get_root_dir 应落在项目根（含 src/ 与 config/config.example.yml）。"""
+        root = collect_log.get_root_dir()
         self.assertTrue(os.path.isdir(os.path.join(root, "src")))
         self.assertTrue(
             os.path.isfile(os.path.join(root, "config", "config.example.yml"))
@@ -247,10 +247,10 @@ class TestParseLogsRerunList(unittest.TestCase):
         return script_path
 
     def _run_parse(self, tmp: str, do_log: bool = True) -> list[str]:
-        # parse_logs 读 config 用的是 collect_log._get_root_dir()，并非
+        # parse_logs 读 config 用的是 collect_log.get_root_dir()，并非
         # src.utils.utils_logger.get_root_dir，故此处 patch 前者才能让临时 config 生效。
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
+        orig = collect_log.get_root_dir
+        collect_log.get_root_dir = lambda: tmp  # type: ignore[assignment]
         # 诊断视图覆盖全部脚本：显式传 config 全部脚本集合（parse_logs 的 None/空=跳过）。
         config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
         candidate = {get_script_name(s) for s in config_data.get("script_list", [])}
@@ -265,7 +265,7 @@ class TestParseLogsRerunList(unittest.TestCase):
                 if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._get_root_dir = orig
+            collect_log.get_root_dir = orig
 
     def test_parse_logs_includes_no_log_in_rerun_list(self):
         """无日志（NO_LOG）的游戏应被纳入重跑列表（可能未正常启动）。"""
@@ -348,8 +348,8 @@ class TestParseLogsRerunList(unittest.TestCase):
                 "extra": None,
             }
 
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
+        orig = collect_log.get_root_dir
+        collect_log.get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
             config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
@@ -364,7 +364,7 @@ class TestParseLogsRerunList(unittest.TestCase):
                 if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._get_root_dir = orig
+            collect_log.get_root_dir = orig
 
         self.assertEqual(result["rerun"], ["BetterGI"])
         self.assertEqual(result["notify"], ["ok-ww"])
@@ -404,8 +404,8 @@ class TestParseLogsRerunList(unittest.TestCase):
                 "extra": None,
             }
 
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
+        orig = collect_log.get_root_dir
+        collect_log.get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
             config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
@@ -420,7 +420,7 @@ class TestParseLogsRerunList(unittest.TestCase):
                 if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._get_root_dir = orig
+            collect_log.get_root_dir = orig
 
         # WARN 不影响决策：日常做完 → 不重跑；有报错 → 通知。
         self.assertEqual(result["rerun"], [])
@@ -525,8 +525,8 @@ class TestParseLogsRerunList(unittest.TestCase):
                 "extra": None,
             }
 
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
+        orig = collect_log.get_root_dir
+        collect_log.get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
             config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
@@ -541,7 +541,7 @@ class TestParseLogsRerunList(unittest.TestCase):
                 if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._get_root_dir = orig
+            collect_log.get_root_dir = orig
 
         self.assertNotIn("未知", result["report"])
 
@@ -989,8 +989,8 @@ class TestFourFieldExtraction(unittest.TestCase):
                 ]
             },
         )
-        orig = collect_log._get_root_dir
-        collect_log._get_root_dir = lambda: tmp  # type: ignore[assignment]
+        orig = collect_log.get_root_dir
+        collect_log.get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
             res = parse_log("ok-ww", os.path.join(tmp, "ok-ww", "ok-ww.exe"))
@@ -1000,7 +1000,7 @@ class TestFourFieldExtraction(unittest.TestCase):
                 if id(h) in (after - before):
                     _logging.getLogger().removeHandler(h)
                     h.close()
-            collect_log._get_root_dir = orig
+            collect_log.get_root_dir = orig
         self.assertEqual(res["status"], ScriptLogStatus.NO_LOG)
         self.assertFalse(res["daily_done"])
         self.assertIsInstance(res["daily_done"], bool)

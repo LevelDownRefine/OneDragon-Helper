@@ -109,6 +109,19 @@ class TestCliHelpVersion(unittest.TestCase):
         self.assertTrue(text, "--version 文件为空")
         self.assertEqual(text, cli.get_version())
 
+    def test_get_version_reads_from_root_dir(self):
+        """get_version 的根目录必须走 src.utils.get_root_dir，而非按 __file__ 上溯。
+
+        回归：曾按 __file__ 上溯两层求根，冻结后 __file__ 位于 _internal/src/cli.py，
+        会去 _internal 找 pyproject.toml。改为复用 get_root_dir 后，冻结时落到
+        exe 同级（与 config/assets 一致），未来随包带上 pyproject.toml 即可生效。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "pyproject.toml"), "w", encoding="utf-8") as fh:
+                fh.write('[project]\nversion = "9.9.9"\n')
+            with patch.object(cli, "get_root_dir", return_value=tmp):
+                self.assertEqual(cli.get_version(), "9.9.9")
+
 
 class TestCliSelftest(unittest.TestCase):
     """--selftest 出口：无头校验 AppService，退出 0 且 JSON 标记 OK。"""

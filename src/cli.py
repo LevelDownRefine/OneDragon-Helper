@@ -19,6 +19,7 @@ import warnings
 
 from src.config.set_config import supports_weekly
 from src.service.app_service import AppService
+from src.utils import get_root_dir
 from src.utils.utils_config import get_script
 from src.utils.utils_shutdown import shutdown_sys
 from src.utils.utils_sub_config import get_script_name
@@ -193,7 +194,7 @@ def get_version() -> str:
         版本字符串；pyproject.toml 缺失时返回 "unknown" 并告警
         （打包产物不含源码树属正常场景）。
     """
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = get_root_dir()
     pyproject_path = os.path.join(root, "pyproject.toml")
     if not os.path.exists(pyproject_path):
         warnings.warn(
