@@ -17,7 +17,7 @@ from src.utils.utils_weekly import (
     ensure_weekly_entry,
     get_weekly_start,
     get_weekly_start_map,
-    rename_weekly_in_timeouts,
+    rename_weekly,
     save_weekly,
     set_weekly_start,
     weekly_inputs,
@@ -78,28 +78,48 @@ class TestSaveWeekly(UtilsWeeklyTestBase):
         )
 
 
-class TestRenameWeeklyInTimeouts(UtilsWeeklyTestBase):
-    """rename_weekly_in_timeouts：改名时迁移 weekly.yml 的 weekly_timeouts 段条目。"""
+class TestRenameWeekly(UtilsWeeklyTestBase):
+    """rename_weekly：改名时迁移 weekly.yml 两段（weekly_timeouts / weekly_start）条目。"""
 
     def _seed(self, timeouts):
         self._write_weekly({"weekly_start": {}, "weekly_timeouts": timeouts})
 
     def test_rename_migrates_entry(self):
         self._seed({"a": [1] * 7})
-        rename_weekly_in_timeouts("a", "b")
+        rename_weekly("a", "b")
         weekly = self._read_weekly()["weekly_timeouts"]
         self.assertNotIn("a", weekly)
         self.assertEqual(weekly["b"], [1] * 7)
 
+    def test_rename_migrates_weekly_start_too(self):
+        """weekly_start 段条目一并迁移，避免改名后周几起成孤儿。"""
+        self._write_weekly(
+            {"weekly_start": {"a": 3}, "weekly_timeouts": {"a": [1] * 7}}
+        )
+        rename_weekly("a", "b")
+        weekly = self._read_weekly()
+        self.assertNotIn("a", weekly["weekly_start"])
+        self.assertEqual(weekly["weekly_start"]["b"], 3)
+        self.assertNotIn("a", weekly["weekly_timeouts"])
+        self.assertEqual(weekly["weekly_timeouts"]["b"], [1] * 7)
+
+    def test_rename_start_only_entry(self):
+        """只迁 weekly_start 段条目（weekly_timeouts 无旧条目）也能落盘。"""
+        self._write_weekly({"weekly_start": {"a": 5}, "weekly_timeouts": {}})
+        rename_weekly("a", "b")
+        weekly = self._read_weekly()
+        self.assertEqual(weekly["weekly_start"], {"b": 5})
+        self.assertEqual(weekly["weekly_timeouts"], {})
+
     def test_same_name_noop(self):
         """同名的 rename 为 no-op，不影响已有 weekly 条目。"""
         self._seed({"a": [60] * 7})
-        rename_weekly_in_timeouts("a", "a")
+        rename_weekly("a", "a")
         self.assertEqual(self._read_weekly()["weekly_timeouts"]["a"], [60] * 7)
 
     def test_old_entry_missing_noop(self):
         """无对应 weekly 条目 → no-op（不报错、不改文件，保持空 {}）。"""
-        rename_weekly_in_timeouts("none", "b")
+        rename_weekly("none", "b")
         self.assertEqual(self._read_weekly()["weekly_timeouts"], {})
 
 

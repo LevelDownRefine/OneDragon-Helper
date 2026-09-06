@@ -1,7 +1,8 @@
 """背景控制器：背景模式（视频/图片/渐变）/ 壁纸 / 视频错误回退。
 
 独立 QObject，自管状态（_bg_mode / _bg_url / _grad_color / _grad_char）。
-壁纸读写（read_wallpapers / write_wallpapers）与路径解析（resolve_bg）均归本控制器。
+壁纸表（wallpaper.json）读写经 service（AppService.load/save_wallpapers），
+本控制器只管缓存图生成（Qt 渲染关注点）与背景解析（resolve_bg）。
 """
 
 import logging
@@ -35,10 +36,11 @@ class BackgroundController(QObject):
     backgroundChanged = Signal()
     toastRequested = Signal(str)
 
-    def __init__(self, game_list, task_card, toast, parent=None):
+    def __init__(self, game_list, task_card, app_service, toast, parent=None):
         super().__init__(parent)
         self._game_list = game_list
         self._task_card = task_card
+        self._app_service = app_service
         self._toast = toast
         # 默认（apply_current 会在构造末尾按选中脚本刷新，此处防首帧 undefined）
         self._bg_mode = "gradient"
@@ -224,21 +226,12 @@ class BackgroundController(QObject):
         self._toast(f"已更换 {game['display_name']} 壁纸")
 
     def read_wallpapers(self) -> dict:
-        """读取 config/wallpaper.json（脚本 → 壁纸路径），缺失返回空。"""
-        import json
-
-        path = resolve_script_path("config/wallpaper.json")
-        if not os.path.isfile(path):
-            return {}
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)
+        """读取壁纸表（脚本 → 壁纸路径），缺失/损坏返回空。委托 service。"""
+        return self._app_service.load_wallpapers()
 
     def write_wallpapers(self, wallpapers: dict):
-        import json
-
-        path = resolve_script_path("config/wallpaper.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(wallpapers, f, ensure_ascii=False, indent=2)
+        """写回壁纸表（委托 service，原子写）。"""
+        self._app_service.save_wallpapers(wallpapers)
 
     @Slot(str)
     def videoError(self, reason: str):

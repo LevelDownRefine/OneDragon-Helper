@@ -4,6 +4,7 @@
 _game_model / icon_provider）。
 """
 
+import logging
 import os
 
 from PySide6.QtCore import (
@@ -18,12 +19,13 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWidgets import QMessageBox
 
-from src.config.set_config import set_weekly_start_day
 from src.gui.icons import get_script_icon
 from src.utils.utils_sub_config import get_script_name
 
 # 游戏图标停用底色（渐变兜底水印等场景复用）
 C_GAME_DIM = "#161C28"
+
+logger = logging.getLogger(__name__)
 
 
 class ScriptIconProvider(QQuickImageProvider):
@@ -199,7 +201,7 @@ class GameListController(QObject):
     def reload_games(self):
         """从 config.yml 重建脚本列表。"""
         games = []
-        for script in self._app_service.load_config().get("script_list", []):
+        for script in self._app_service.load_config()["script_list"]:
             display_name = script["display_name"]
             games.append(
                 {
@@ -210,14 +212,17 @@ class GameListController(QObject):
                     "color": C_GAME_DIM,
                 }
             )
-        assert games, "[bridge] config.yml 中没有脚本"
+        if not games:
+            # 手改 config.yml 删空脚本属可恢复的外部输入：降级为空界面而非崩溃
+            # （删最后一个脚本已由 deleteScript 拦截，正常操作不会走到这里）。
+            logger.warning("[bridge] config.yml 中没有脚本")
         self._games = games
         # 图标缓存必须先于模型重置刷新：set_games 触发 ListView 重建 delegate，
         # 重建即向提供器请求 pixmap；若刷新在其后，首帧取到空/陈旧缓存（新脚本
         # 首次即空白），刷新后不会自动重取，须重启进程才修正。
         self.icon_provider.refresh(self._games)
         self._game_model.set_games(games)
-        self.current_index = min(self.current_index, len(games) - 1)
+        self.current_index = min(self.current_index, max(len(games) - 1, 0))
         # 新增脚本默认启用；已存在脚本保留原状态
         self._enabled = [
             self._enabled[i] if i < len(self._enabled) else True
@@ -340,8 +345,12 @@ class GameListController(QObject):
     def deleteScript(self, index: int):
         """左侧拖拽到删除区：二次确认后按 index 删除脚本并落盘重载。"""
         assert 0 <= index < len(self._games), f"[bridge] index out of range: {index}"
+        if len(self._games) <= 1:
+            # 删光脚本会让列表/任务卡失去当前项，属可恢复的用户操作，拦截并提示。
+            self._toast("至少保留一个脚本，无法删除")
+            return
         script_name = self._games[index]["script_name"]
-        display = self._games[index].get("display_name", script_name)
+        display = self._games[index]["display_name"]
         box = QMessageBox()
         box.setIcon(QMessageBox.Warning)
         box.setWindowTitle("删除脚本")
@@ -384,7 +393,7 @@ class GameListController(QObject):
                 changes["weekly_timeouts"],
             )
             # config.yml 已落盘新路径：此刻同步游戏侧原生 config 起始日，目录解析才正确。
-            start_day = changes.get("weekly_start_day")
+            start_day = changes["weekly_start_day"]
             if start_day is not None:
                 self._sync_weekly_start_day(new_script_name, start_day)
             self._on_reload()
@@ -398,7 +407,7 @@ class GameListController(QObject):
         原生 config 目录因路径无效/未装游戏缺失时仅提示，不阻塞已完成的主保存。
         """
         try:
-            set_weekly_start_day(script_name, start_day)
+            self._app_service.set_script_weekly_start_day(script_name, start_day)
         except OSError as e:
             self._toast(f"周几起已保存，但未能同步到游戏配置：{e}")
 

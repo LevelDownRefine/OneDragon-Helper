@@ -30,11 +30,11 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          uv run ruff check src tests
+          uv run ruff check src tests tools
 
       - name: Format check with ruff
         run: |
-          uv run ruff format --check src tests
+          uv run ruff format --check src tests tools
 
       - name: Run tests
         run: |

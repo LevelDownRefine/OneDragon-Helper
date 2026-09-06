@@ -2400,15 +2400,32 @@ class TestSetConfigAdapter(unittest.TestCase):
         mock_instance.set_dungeon.assert_not_called()
 
     def test_skip_when_dungeon_name_empty(self):
-        set_config.set_config("ok-ww", "", None)
+        """dungeon_name 为空串时直接返回，不创建实例（实例化即可能触发读盘/写盘）"""
+        mock_instance = MagicMock()
+        mock_cls = MagicMock(return_value=mock_instance)
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+            set_config.set_config("ok-ww", "", None)
+        mock_cls.assert_not_called()
+        mock_instance.set_dungeon.assert_not_called()
 
     def test_skip_when_dungeon_name_unselected(self):
-        set_config.set_config("ok-ww", "未选择", None)
+        """dungeon_name 为「未选择」时直接返回，不创建实例"""
+        mock_instance = MagicMock()
+        mock_cls = MagicMock(return_value=mock_instance)
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+            set_config.set_config("ok-ww", "未选择", None)
+        mock_cls.assert_not_called()
+        mock_instance.set_dungeon.assert_not_called()
 
     def test_unknown_process_skips_gracefully(self):
         """未注册（自定义）进程即使带副本也优雅跳过，不报错、不实例化任何子类"""
-        # 不应抛异常
-        set_config.set_config("不存在", "副本", "序列")
+        mock_instance = MagicMock()
+        mock_cls = MagicMock(return_value=mock_instance)
+        # 已注册脚本作为「无关脚本」在场：未知标识不得命中任何子类
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+            set_config.set_config("不存在", "副本", "序列")
+        mock_cls.assert_not_called()
+        mock_instance.set_dungeon.assert_not_called()
 
     def test_unknown_process_does_not_touch_registry(self):
         """未注册进程不会命中注册表中的任何子类"""

@@ -18,20 +18,18 @@ class TestSyncWeeklyStartDay(unittest.TestCase):
         return GameListController(service, toast, on_reload)
 
     def test_sync_calls_set_weekly_start_day(self):
-        """落盘后应以新 script_name 触发游戏侧原生 config 同步。"""
+        """落盘后应以新 script_name 经 service 触发游戏侧原生 config 同步。"""
         ctrl = self._make_ctrl()
-        with patch("src.gui.controllers.game_list.set_weekly_start_day") as mock_set:
-            ctrl._sync_weekly_start_day("run", 3)
-        mock_set.assert_called_once_with("run", 3)
+        ctrl._sync_weekly_start_day("run", 3)
+        ctrl._app_service.set_script_weekly_start_day.assert_called_once_with("run", 3)
 
     def test_sync_oserror_toasts_and_does_not_raise(self):
         """原生 config 目录缺失（OSError）时仅提示，不阻塞已完成的保存。"""
         ctrl = self._make_ctrl()
-        with patch(
-            "src.gui.controllers.game_list.set_weekly_start_day",
-            side_effect=OSError("no such dir"),
-        ):
-            ctrl._sync_weekly_start_day("run", 3)  # 不应抛出
+        ctrl._app_service.set_script_weekly_start_day.side_effect = OSError(
+            "no such dir"
+        )
+        ctrl._sync_weekly_start_day("run", 3)  # 不应抛出
         ctrl._toast.assert_called_once()
 
 
@@ -75,7 +73,14 @@ class TestDeleteScriptConfirmCancel(unittest.TestCase):
                 "script_data": {"script_type": "external", "script_path": "C:/wu.exe"},
                 "char": "鸣",
                 "color": "#161C28",
-            }
+            },
+            {
+                "display_name": "测试脚本",
+                "script_name": "demo",
+                "script_data": {"script_type": "python", "script_path": "demo.py"},
+                "char": "测",
+                "color": "#161C28",
+            },
         ]
         return ctrl
 
@@ -102,6 +107,29 @@ class TestDeleteScriptConfirmCancel(unittest.TestCase):
         ctrl.deleteScript(0)
         ctrl._app_service.remove_script.assert_called_once_with("wu")
         ctrl._on_reload.assert_called_once()
+
+
+class TestDeleteScriptLastGuard(unittest.TestCase):
+    """最后一个脚本不可删：删光会让列表/任务卡失去当前项，拦截并提示。"""
+
+    @patch("src.gui.controllers.game_list.QMessageBox")
+    def test_last_script_delete_blocked_with_toast(self, mock_box):
+        ctrl = GameListController(MagicMock(), MagicMock(), MagicMock())
+        ctrl._games = [
+            {
+                "display_name": "鸣潮",
+                "script_name": "wu",
+                "script_data": {"script_type": "external", "script_path": "C:/wu.exe"},
+                "char": "鸣",
+                "color": "#161C28",
+            }
+        ]
+        ctrl.deleteScript(0)
+        # 不弹确认框、不落盘、不重载，仅 toast 提示
+        mock_box.assert_not_called()
+        ctrl._app_service.remove_script.assert_not_called()
+        ctrl._on_reload.assert_not_called()
+        ctrl._toast.assert_called_once()
 
 
 class TestReloadGamesIconOrder(unittest.TestCase):
@@ -137,3 +165,14 @@ class TestReloadGamesIconOrder(unittest.TestCase):
         ):
             ctrl.reload_games()
         self.assertEqual(order, ["refresh", "set_games"])
+
+
+class TestReloadGamesEmpty(unittest.TestCase):
+    """config.yml 无脚本（手改删空）属可恢复外部输入：降级空列表，不崩。"""
+
+    def test_empty_config_downgrades_gracefully(self):
+        ctrl = GameListController(MagicMock(), MagicMock(), MagicMock())
+        ctrl._app_service.load_config.return_value = {"script_list": []}
+        ctrl.reload_games()  # 不应抛出
+        self.assertEqual(ctrl.games, [])
+        self.assertEqual(ctrl.current_index, 0)

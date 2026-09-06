@@ -169,24 +169,26 @@ class TestWeeklyItems(unittest.TestCase):
 
 class TestSelectWeeklyDungeon(unittest.TestCase):
     def test_select_weekly_dungeon_writes_config(self):
-        """选副本：调 set_weekly_dungeon 写脚本自身 config（周常侧无 no-op 脚本）。"""
+        """选副本：经 service 写脚本自身 config（周常侧无 no-op 脚本）。"""
         ctrl = _make_controller()
-        with patch.object(task_card_mod, "set_weekly_dungeon") as mock_set:
-            ctrl.selectWeeklyDungeon("历战余响", "铁骸的锈冢")
-        # 写脚本自身 config 的 instance_names（M7A 约定键名）
-        mock_set.assert_called_once_with("March7th-Launcher", "历战余响", "铁骸的锈冢")
+        ctrl.selectWeeklyDungeon("历战余响", "铁骸的锈冢")
+        # 写脚本自身 config 的 instance_names（M7A 约定键名），经 service 入口
+        ctrl._app_service.set_script_weekly_dungeon.assert_called_once_with(
+            "March7th-Launcher", "历战余响", "铁骸的锈冢"
+        )
 
 
 class TestSelectDungeonWritesSubscriptConfig(unittest.TestCase):
     """日常副本选择：实时落盘子脚本 config（与链生成解耦，不再依赖运行全体）。"""
 
     def test_select_dungeon_writes_subscript_config(self):
-        """选中日常副本：实时经 set_config 落盘子脚本 config。"""
+        """选中日常副本：实时经 service 落盘子脚本 config。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        with patch.object(task_card_mod, "set_config") as mock_set:
-            ctrl.selectDungeon("凝素领域", "5")
-        # 实时落盘：dungeon_name + sequence（鸣潮要求 sequence 非空）
-        mock_set.assert_called_once_with("ok-ww", dungeon_name="凝素领域", sequence="5")
+        ctrl.selectDungeon("凝素领域", "5")
+        # 实时落盘：dungeon_name + sequence（鸣潮要求 sequence 非空），经 service 入口
+        ctrl._app_service.set_script_dungeon.assert_called_once_with(
+            "ok-ww", dungeon_name="凝素领域", sequence="5"
+        )
 
 
 class TestDailyDungeonTextReadback(unittest.TestCase):

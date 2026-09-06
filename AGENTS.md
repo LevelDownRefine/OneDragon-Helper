@@ -27,7 +27,7 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 - 字典先 `assert key in d` 再 `d[key]`，不用 `.get()`。
 - 不静默吞异常：`except` 不许 `pass`/裸吞，必须显式处理；克制用 try，except 尽量显式类型。
 - 日志用 `logging`，`logger = logging.getLogger(__name__)`，禁止裸 `print`。
-- 改完必须补测试 + 跑全套：`PYTHONPATH=src python -m unittest discover -s tests -p "test*.py"` 且 `ruff check src tests`。
+- 改完必须补测试 + 跑全套：`PYTHONPATH=src python -m unittest discover -s tests -p "test*.py"` 且 `ruff check src tests tools`。
 - 不动 `.bak`/备份文件，除非先问用户。
 - Commit 用 Conventional Commits 前缀 + ≤50 字主题；备注/注释只写要点。
 

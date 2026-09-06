@@ -209,10 +209,11 @@ def save_weekly(script_name: str, timeouts: list[int | None]) -> None:
     _dump_weekly(weekly)
 
 
-def rename_weekly_in_timeouts(old_script_name: str, new_script_name: str) -> None:
-    """脚本标识变更时迁移 weekly.yml 的 weekly_timeouts 段 中的条目。
+def rename_weekly(old_script_name: str, new_script_name: str) -> None:
+    """脚本标识变更时迁移 weekly.yml 两段（weekly_timeouts / weekly_start）中的条目。
 
-    旧条目存在则迁移到新名；不存在则无操作。
+    两段一并迁移，避免改名后任一段残留旧名孤儿条目（如周几起在 UI 静默丢失）。
+    各段旧条目存在才迁移；两段都无条目则不写盘。
 
     Args:
         old_script_name: 原脚本唯一标识。
@@ -220,11 +221,15 @@ def rename_weekly_in_timeouts(old_script_name: str, new_script_name: str) -> Non
     """
     if old_script_name == new_script_name:
         return
-    weekly = _load_weekly()
-    old_val = weekly.pop(old_script_name, None)
-    if old_val is not None:
-        weekly[new_script_name] = old_val
-        _dump_weekly(weekly)
+    data = _load_weekly_file()
+    changed = False
+    for section in ("weekly_timeouts", "weekly_start"):
+        old_val = data[section].pop(old_script_name, None)
+        if old_val is not None:
+            data[section][new_script_name] = old_val
+            changed = True
+    if changed:
+        _dump_weekly_file(data)
 
 
 def ensure_weekly_entry(script_name: str) -> None:

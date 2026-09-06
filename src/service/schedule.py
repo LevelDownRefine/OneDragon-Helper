@@ -21,6 +21,7 @@ from collections.abc import Callable, Sequence
 
 import src.utils.utils_config as utils_config
 import src.utils.utils_weekly as utils_weekly
+from src.log.notify_mail import register_credentials
 from src.service.run_actions import (
     analyze_logs,
     apply_subscript_config,
@@ -30,6 +31,14 @@ from src.service.run_actions import (
 )
 from src.utils import get_schedule_yml_path_under_root
 from src.utils.utils_mute import mute_off, mute_on
+from src.utils.utils_runner import (
+    apply_close_running_config,
+    apply_mute_config,
+    apply_notify_config,
+    apply_rerun_config,
+    apply_shutdown_config,
+    apply_timed_run_config,
+)
 from src.utils.utils_shutdown import shutdown_sys
 from src.utils.utils_yaml import dump_yaml, load_yaml
 
@@ -53,6 +62,51 @@ def save_schedule(data: dict) -> None:
     """
     assert isinstance(data, dict), "[schedule] 待保存的 schedule 非 dict"
     dump_yaml(get_schedule_yml_path_under_root(), data)
+
+
+def apply_run_options(options: dict) -> None:
+    """把运行确认窗勾选项写回 schedule.yml，并注册本次填写的授权码（如有）。
+
+    Args:
+        options: 运行确认窗的 result dict（键集见 RunConfirmDialog.result，
+            恒含 shutdown_enabled / shutdown_delay / timed_enabled / timed_target /
+            mute_enabled / close_running_enabled / rerun_enabled / notify_enabled /
+            email / auth_code / smtp_host / smtp_port）。
+    """
+    schedule_data = load_schedule()
+    # 关机：启用/关闭都直接落盘（含延迟数值），行为单一稳定。
+    apply_shutdown_config(
+        schedule_data,
+        enabled=options["shutdown_enabled"],
+        delay_seconds=options["shutdown_delay"],
+    )
+    apply_timed_run_config(
+        schedule_data,
+        enabled=options["timed_enabled"],
+        target_time=options["timed_target"],
+    )
+    apply_mute_config(schedule_data, enabled=options["mute_enabled"])
+    apply_close_running_config(schedule_data, enabled=options["close_running_enabled"])
+    apply_rerun_config(schedule_data, enabled=options["rerun_enabled"])
+    apply_notify_config(
+        schedule_data,
+        enabled=options["notify_enabled"],
+        email=options["email"],
+        smtp_host=options["smtp_host"],
+        smtp_port=options["smtp_port"],
+    )
+    # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
+    auth_code = options["auth_code"]
+    if auth_code:
+        try:
+            register_credentials(options["email"], auth_code)
+        except Exception as exc:  # noqa: BLE001  # 凭据为最佳努力：失败记日志，不阻塞调度参数落盘
+            logger.error(
+                "[schedule] 授权码写入系统凭据管理器失败(%s)：%s",
+                type(exc).__name__,
+                exc,
+            )
+    save_schedule(schedule_data)
 
 
 def resolve_mail_config(schedule: dict) -> dict | None:

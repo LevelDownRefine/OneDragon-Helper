@@ -51,7 +51,10 @@ class TestWallpaperCache(unittest.TestCase):
         self.addCleanup(self._patcher.stop)
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
-            game_list=MagicMock(), task_card=MagicMock(), toast=MagicMock()
+            game_list=MagicMock(),
+            task_card=MagicMock(),
+            app_service=MagicMock(),
+            toast=MagicMock(),
         )
 
     def _fake_resolve(self, path):
@@ -122,7 +125,10 @@ class TestWallpaperFor(unittest.TestCase):
         self.addCleanup(self._patcher.stop)
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
-            game_list=MagicMock(), task_card=MagicMock(), toast=MagicMock()
+            game_list=MagicMock(),
+            task_card=MagicMock(),
+            app_service=MagicMock(),
+            toast=MagicMock(),
         )
 
     def _fake_resolve(self, path):
@@ -181,7 +187,10 @@ class TestOpenWallpaper(unittest.TestCase):
         os.makedirs(self._img_dir)
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
-            game_list=MagicMock(), task_card=MagicMock(), toast=MagicMock()
+            game_list=MagicMock(),
+            task_card=MagicMock(),
+            app_service=MagicMock(),
+            toast=MagicMock(),
         )
 
     def _video(self) -> str:
@@ -232,7 +241,10 @@ class TestScriptBackground(unittest.TestCase):
     def setUp(self):
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
-            game_list=MagicMock(), task_card=MagicMock(), toast=MagicMock()
+            game_list=MagicMock(),
+            task_card=MagicMock(),
+            app_service=MagicMock(),
+            toast=MagicMock(),
         )
 
     @patch.object(bgmod, "get_background_rel_path", return_value="assets/x.webp")
@@ -277,7 +289,10 @@ class TestResolveBg(unittest.TestCase):
         self.addCleanup(self._patcher.stop)
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
-            game_list=MagicMock(), task_card=MagicMock(), toast=MagicMock()
+            game_list=MagicMock(),
+            task_card=MagicMock(),
+            app_service=MagicMock(),
+            toast=MagicMock(),
         )
 
     def _fake_resolve(self, path):
@@ -307,7 +322,10 @@ class TestApplyCurrent(unittest.TestCase):
     def setUp(self):
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
-            game_list=MagicMock(), task_card=MagicMock(), toast=MagicMock()
+            game_list=MagicMock(),
+            task_card=MagicMock(),
+            app_service=MagicMock(),
+            toast=MagicMock(),
         )
 
     def test_version_increments_on_apply(self):

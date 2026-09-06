@@ -102,7 +102,12 @@ class TestLaunchAllTimed(unittest.TestCase):
 
 
 class TestConfirmRunDialog(unittest.TestCase):
-    """_confirm_run：保留不合法脚本告警，新增自动关机/定时计划回显与写回。"""
+    """_confirm_run：不合法脚本告警 + 回显当前 schedule 配置 + 勾选项整体经 service 落盘。
+
+    勾选项的合并写回（shutdown/timed/mute/... → schedule.yml）与授权码注册已下沉
+    src.service.schedule.apply_run_options，其行为由 test_schedule.TestApplyRunOptions
+    覆盖；此处只钉「控制器透传 result、取消不落盘、回显初始值」三个契约。
+    """
 
     def _make_ctrl(self, config_data):
         """构造 controller，注入 mock 依赖。
@@ -148,10 +153,10 @@ class TestConfirmRunDialog(unittest.TestCase):
             dlg.exec.return_value = QDialog.Rejected
             out = ctrl._confirm_run({"demo"})
         self.assertFalse(out)
-        service.save_schedule.assert_not_called()
+        service.apply_run_options.assert_not_called()
 
-    def test_accept_writes_shutdown_and_timed_config(self):
-        """确认运行：把弹窗勾选项写回 schedule.yml（经 service.save_schedule）。"""
+    def test_accept_forwards_result_to_service(self):
+        """确认运行：result dict 整体透传 service.apply_run_options（合并写回归 service）。"""
         base = {
             "script_list": [],
             "shutdown": {"after_run": False, "delay_seconds": 0},
@@ -172,141 +177,31 @@ class TestConfirmRunDialog(unittest.TestCase):
                 "notify_enabled": True,
                 "email": "123456@qq.com",
                 "auth_code": "",
+                "smtp_host": "",
+                "smtp_port": "",
             }
             out = ctrl._confirm_run({"demo"})
 
         self.assertTrue(out)
-        saved = service.save_schedule.call_args[0][0]
-        self.assertEqual(saved["shutdown"], {"after_run": True, "delay_seconds": 120})
-        self.assertEqual(saved["timed_run"], {"enabled": True, "target_time": "04:10"})
-        self.assertEqual(saved["mute"], {"enabled": True})
-        self.assertEqual(saved["close_running"], {"enabled": True})
-        self.assertEqual(saved["rerun"], {"enabled": True})
-        # 邮件通知：写回 enabled 开关与邮箱（授权码存系统凭据管理器，不落 schedule.yml）。
-        self.assertEqual(saved["notify"], {"enabled": True, "email": "123456@qq.com"})
+        service.apply_run_options.assert_called_once_with(dlg.result)
 
-    def test_accept_disabled_keeps_delay_value(self):
-        """关闭自动关机：delay_seconds 保留原值（不强制归 0），仅 after_run 置 False。"""
+    def test_accept_echoes_current_schedule_to_dialog(self):
+        """确认弹窗以 schedule.yml 当前值初始化（含关闭时的延迟数值回显）。"""
         base = {
             "script_list": [],
             "shutdown": {"after_run": True, "delay_seconds": 45},
             "timed_run": {"enabled": True, "target_time": "08:00"},
         }
-        ctrl, service = self._make_ctrl(dict(base))
+        ctrl, _service = self._make_ctrl(dict(base))
         with self._patch_run_confirm() as dlg_cls:
             dlg = dlg_cls.return_value
-            dlg.exec.return_value = QDialog.Accepted
-            dlg.result = {
-                "shutdown_enabled": False,
-                "shutdown_delay": 45,  # 关闭后不写回，但保留 config 原有值
-                "timed_enabled": False,
-                "timed_target": "08:00",
-                "mute_enabled": False,
-                "close_running_enabled": False,
-                "rerun_enabled": False,
-                "notify_enabled": False,
-                "email": "",
-                "auth_code": "",
-            }
+            dlg.exec.return_value = QDialog.Rejected
             ctrl._confirm_run({"demo"})
-
-        saved = service.save_schedule.call_args[0][0]
-        # 是否关机只看 after_run；delay_seconds 保留原值 45，不归零。
-        self.assertEqual(saved["shutdown"], {"after_run": False, "delay_seconds": 45})
-        self.assertEqual(saved["timed_run"], {"enabled": False, "target_time": ""})
-        self.assertEqual(saved["mute"], {"enabled": False})
-        self.assertEqual(saved["close_running"], {"enabled": False})
-        self.assertEqual(saved["rerun"], {"enabled": False})
-        self.assertEqual(saved["notify"], {"enabled": False})
-
-    def test_accept_registers_auth_code_to_keyring(self):
-        """确认运行且填写授权码：经 register_credentials 写入系统凭据管理器；邮箱写回 schedule.yml。"""
-        base = {"script_list": [], "notify": {"enabled": False, "email": ""}}
-        ctrl, service = self._make_ctrl(dict(base))
-        with (
-            self._patch_run_confirm() as dlg_cls,
-            mock.patch("src.log.notify_mail.register_credentials") as reg,
-        ):
-            dlg = dlg_cls.return_value
-            dlg.exec.return_value = QDialog.Accepted
-            dlg.result = {
-                "shutdown_enabled": False,
-                "shutdown_delay": 0,
-                "timed_enabled": False,
-                "timed_target": "04:10",
-                "mute_enabled": False,
-                "close_running_enabled": True,
-                "rerun_enabled": True,
-                "notify_enabled": True,
-                "email": "123456@qq.com",
-                "auth_code": "authcode16",
-            }
-            out = ctrl._confirm_run({"demo"})
-        self.assertTrue(out)
-        reg.assert_called_once_with("123456@qq.com", "authcode16")
-        saved = service.save_schedule.call_args[0][0]
-        self.assertEqual(saved["notify"], {"enabled": True, "email": "123456@qq.com"})
-
-    def test_accept_empty_auth_code_skips_keyring(self):
-        """确认运行但授权码留空：不调用 register_credentials（保留既有凭据）。"""
-        base = {"script_list": [], "notify": {"enabled": False, "email": ""}}
-        ctrl, service = self._make_ctrl(dict(base))
-        with (
-            self._patch_run_confirm() as dlg_cls,
-            mock.patch("src.log.notify_mail.register_credentials") as reg,
-        ):
-            dlg = dlg_cls.return_value
-            dlg.exec.return_value = QDialog.Accepted
-            dlg.result = {
-                "shutdown_enabled": False,
-                "shutdown_delay": 0,
-                "timed_enabled": False,
-                "timed_target": "04:10",
-                "mute_enabled": False,
-                "close_running_enabled": True,
-                "rerun_enabled": True,
-                "notify_enabled": True,
-                "email": "123456@qq.com",
-                "auth_code": "",
-            }
-            out = ctrl._confirm_run({"demo"})
-        self.assertTrue(out)
-        reg.assert_not_called()
-
-    def test_accept_writes_smtp_config(self):
-        """确认运行且填写 SMTP 主机/端口：写回 schedule.yml（端口转整型）。"""
-        base = {"script_list": [], "notify": {"enabled": False, "email": ""}}
-        ctrl, service = self._make_ctrl(dict(base))
-        with self._patch_run_confirm() as dlg_cls:
-            dlg = dlg_cls.return_value
-            dlg.exec.return_value = QDialog.Accepted
-            dlg.result = {
-                "shutdown_enabled": False,
-                "shutdown_delay": 0,
-                "timed_enabled": False,
-                "timed_target": "04:10",
-                "mute_enabled": False,
-                "close_running_enabled": True,
-                "rerun_enabled": True,
-                "notify_enabled": True,
-                "email": "123456@qq.com",
-                "auth_code": "",
-                "smtp_host": "smtp.163.com",
-                "smtp_port": "994",
-            }
-            out = ctrl._confirm_run({"demo"})
-        self.assertTrue(out)
-        saved = service.save_schedule.call_args[0][0]
-        # 邮件通知：开关 + 邮箱 + SMTP 主机/端口（端口转 int）一并写回。
-        self.assertEqual(
-            saved["notify"],
-            {
-                "enabled": True,
-                "email": "123456@qq.com",
-                "smtp_host": "smtp.163.com",
-                "smtp_port": 994,
-            },
-        )
+        kwargs = dlg_cls.call_args[1]
+        self.assertTrue(kwargs["shutdown_enabled"])
+        self.assertEqual(kwargs["shutdown_delay"], 45)
+        self.assertTrue(kwargs["timed_enabled"])
+        self.assertEqual(kwargs["timed_target"], "08:00")
 
 
 class TestLaunchAllUnattended(unittest.TestCase):

@@ -61,6 +61,8 @@ except subprocess.TimeoutExpired as e:
 
 不允许 `skipUnless`、按 `os.name` 分支跳过、注释掉校验等绕过手段。CI 挂的真因要修，不绕过。
 
+> 显式豁免：`tests/exe/` 的集成测试需要 Windows + 管理员 + 已打包 exe 前置（非管理员会弹 UAC 卡死），允许 `skipUnless`；源码 CI（ubuntu）跳过它们，验证由 `build-exe.yml` 在 Windows runner 真跑补上，覆盖并未丢失。主测试目录 `tests/` 不适用本豁免。
+
 ## 8. 日志用 `logging` 模块
 
 `logger = logging.getLogger(__name__)`；入口调 `setup_logging()`，控制台加文件轮转。禁止裸 `print`。
@@ -92,6 +94,7 @@ PYTHONPATH=src python -m unittest discover -s tests -p "test*.py"
 
 - 被捕获异常的处理方式，是否 `logger.warning`，与「是否用 try」正交，见 #3。
 - 宽泛捕获带 `noqa` + 明确理由的，不在本项目约束内的外部模块可酌情放宽，如 runner、cli.py、icons.py。
+- `tools/` 下的独立 CLI 工具（GitHub Action 用，不 import 项目代码）允许裸 `print` 作输出：它们是独立脚本的 stdout 契约，非项目日志。
 
 ## 13. Commit 规范且简短
 

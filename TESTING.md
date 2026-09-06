@@ -22,10 +22,11 @@ python -m 把根目录加入 sys.path，PYTHONPATH=src 让 import launcher 可�
 ## 2. 风格检查 ruff
 
 ```bash
+ruff check src tests tools
 ruff format .
 ```
 
-含 src/runner/，也是我们的代码。
+`check` 与 CI 一致，含 tools/；`format .` 全仓格式化（含 src/runner/，也是我们的代码）。
 
 ## 3. 加依赖
 

@@ -7,18 +7,23 @@
   共用游戏只杀一次/关闭开关负路径）；
 - core 重跑决策（启用/禁用/缺块契约错误）；
 - 全流水线顺序（mute→wait→close→config→core→rerun→analyze→mail→mute_off→shutdown，
-  经 run() 真实装配断言）。
+  经 run() 真实装配断言）；
+- apply_run_options（确认窗勾选项合并写回 schedule.yml + 授权码最佳努力注册）。
 """
 
 import datetime
+import os
+import tempfile
 import unittest
 from unittest import mock
 
 from src.service.schedule import (
     ScheduledRun,
+    apply_run_options,
     build_pre_run_pipeline,
 )
 from src.utils.utils_runner import ProcessTarget
+from src.utils.utils_yaml import dump_yaml, load_yaml
 from tests.process_sim import ProcessSim
 
 
@@ -441,6 +446,92 @@ class TestScheduledRunCore(unittest.TestCase):
             self.assertRaises(AssertionError),
         ):
             ScheduledRun(svc, {"A"}, "now")._run_core()
+
+
+class TestApplyRunOptions(unittest.TestCase):
+    """apply_run_options：确认窗勾选项合并写回 schedule.yml + 授权码注册（最佳努力）。
+
+    GUI 控制器只透传 result dict（见 test_launch_controller）；合并规则在此验证。
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
+        self.schedule_path = os.path.join(self.tmp_dir.name, "schedule.yml")
+        dump_yaml(self.schedule_path, {"notify": {"enabled": False, "email": ""}})
+        patcher = mock.patch(
+            "src.service.schedule.get_schedule_yml_path_under_root",
+            return_value=self.schedule_path,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _read(self):
+        return load_yaml(self.schedule_path)
+
+    @staticmethod
+    def _options(**overrides):
+        base = {
+            "shutdown_enabled": True,
+            "shutdown_delay": 120,
+            "timed_enabled": True,
+            "timed_target": "04:10",
+            "mute_enabled": True,
+            "close_running_enabled": True,
+            "rerun_enabled": True,
+            "notify_enabled": True,
+            "email": "123456@qq.com",
+            "auth_code": "",
+            "smtp_host": "",
+            "smtp_port": "",
+        }
+        base.update(overrides)
+        return base
+
+    def test_writes_all_blocks(self):
+        apply_run_options(self._options())
+        data = self._read()
+        self.assertEqual(data["shutdown"], {"after_run": True, "delay_seconds": 120})
+        self.assertEqual(data["timed_run"], {"enabled": True, "target_time": "04:10"})
+        self.assertEqual(data["mute"], {"enabled": True})
+        self.assertEqual(data["close_running"], {"enabled": True})
+        self.assertEqual(data["rerun"], {"enabled": True})
+        self.assertEqual(data["notify"], {"enabled": True, "email": "123456@qq.com"})
+
+    def test_disabled_keeps_delay_value(self):
+        """关闭自动关机：延迟以弹窗给定值为准一并落盘，不归零。"""
+        apply_run_options(self._options(shutdown_enabled=False, shutdown_delay=45))
+        self.assertEqual(
+            self._read()["shutdown"], {"after_run": False, "delay_seconds": 45}
+        )
+
+    def test_smtp_written_when_filled(self):
+        apply_run_options(self._options(smtp_host="smtp.163.com", smtp_port="994"))
+        notify = self._read()["notify"]
+        self.assertEqual(notify["smtp_host"], "smtp.163.com")
+        self.assertEqual(notify["smtp_port"], 994)
+
+    def test_registers_auth_code(self):
+        with mock.patch("src.service.schedule.register_credentials") as reg:
+            apply_run_options(self._options(auth_code="authcode16"))
+        reg.assert_called_once_with("123456@qq.com", "authcode16")
+        # 授权码只进凭据管理器，不落 schedule.yml
+        self.assertNotIn("auth_code", self._read().get("notify", {}))
+
+    def test_empty_auth_code_skips_keyring(self):
+        """授权码留空：不调凭据管理器（保留既有凭据）。"""
+        with mock.patch("src.service.schedule.register_credentials") as reg:
+            apply_run_options(self._options(auth_code=""))
+        reg.assert_not_called()
+
+    def test_register_failure_still_saves_schedule(self):
+        """凭据写入失败为最佳努力：记日志，调度参数照常落盘。"""
+        with mock.patch(
+            "src.service.schedule.register_credentials",
+            side_effect=RuntimeError("no keyring"),
+        ):
+            apply_run_options(self._options(auth_code="authcode16"))
+        self.assertEqual(self._read()["shutdown"]["delay_seconds"], 120)
 
 
 if __name__ == "__main__":

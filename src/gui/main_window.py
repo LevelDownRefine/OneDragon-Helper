@@ -45,6 +45,7 @@ class QmlBridge(QObject):
         self.background = BackgroundController(
             game_list=self.game_list,
             task_card=self.task_card,
+            app_service=self.app_service,
             toast=self.toastRequested.emit,
         )
         self.launch = LaunchController(
@@ -277,6 +278,8 @@ class QmlBridge(QObject):
         self._apply_current()
 
     def _apply_current(self):
+        if not self.game_list.games:
+            return  # 空列表（手改 config 删空）无当前项，跳过背景刷新
         self.background.apply_current(self.game_list.current_game)
 
 

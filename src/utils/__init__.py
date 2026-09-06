@@ -78,6 +78,16 @@ def get_weekly_list_yml_path_under_root() -> str:
     return safe_path_join(get_root_dir(), "config", "weekly_list.yml")
 
 
+def get_wallpaper_json_path_under_root() -> str:
+    """
+    获取根目录下的config/wallpaper.json文件路径（自定义壁纸表，用户文件，不进 git）。
+
+    内容为 {脚本唯一标识: 壁纸路径}；读写实现见 src.utils.utils_wallpaper。
+    :return: 根目录下的config/wallpaper.json文件路径
+    """
+    return safe_path_join(get_root_dir(), "config", "wallpaper.json")
+
+
 @lru_cache
 def get_root_dir() -> str:
     """

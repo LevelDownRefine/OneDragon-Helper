@@ -3,7 +3,6 @@
 独立 QObject，依赖 game_list / task_card / service（落盘与生成链）。
 """
 
-import logging
 import os
 import subprocess
 
@@ -13,12 +12,6 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
 from src.utils.utils_runner import (
-    apply_close_running_config,
-    apply_mute_config,
-    apply_notify_config,
-    apply_rerun_config,
-    apply_shutdown_config,
-    apply_timed_run_config,
     build_script_command,
     parse_close_running,
     parse_mute_run,
@@ -30,8 +23,6 @@ from src.utils.utils_runner import (
 )
 from src.utils.utils_sub_config import get_script_name, resolve_script_path
 from src.utils.utils_weekly import next_target_datetime
-
-logger = logging.getLogger(__name__)
 
 
 class LaunchController(QObject):
@@ -95,7 +86,8 @@ class LaunchController(QObject):
         """启动当前选中脚本（直接运行，不走链）。"""
         game = self._game_list.current_game
         script = game["script_data"]
-        if script.get("script_type") == "python":
+        # script_type 可缺省（load_config 仅断言 display_name/script_path），缺省按 external
+        if script.get("script_type", "external") == "python":
             resolved = resolve_script_path(script["script_path"])
             if not resolved or not os.path.isfile(resolved):
                 self._toast(f"找不到脚本文件：{script['script_path']}")
@@ -103,7 +95,7 @@ class LaunchController(QObject):
             command, cwd, env = build_script_command(["--script", resolved])
             subprocess.Popen(command, cwd=cwd, env=env)
         else:
-            exe_path = script.get("script_path", "")
+            exe_path = script["script_path"]
             resolved = resolve_script_path(exe_path) if exe_path else None
             if not resolved or not os.path.isfile(resolved):
                 self._toast(f"找不到脚本：{exe_path}")
@@ -179,38 +171,9 @@ class LaunchController(QObject):
         if dialog.exec() != QDialog.Accepted:
             return False
 
-        # 把弹窗勾选项写回 schedule.yml（调度参数独立存放）。
+        # 弹窗勾选项的落盘（schedule.yml + 授权码凭据）整体经 service，
+        # GUI 只透传 result dict（键集见 RunConfirmDialog.result，恒含全部键）。
         res = dialog.result
         assert res is not None, "[launch] 弹窗 accept 但 result 为 None"
-        # 关机：启用/关闭都直接落盘（含延迟数值），行为单一稳定。
-        apply_shutdown_config(
-            schedule_data,
-            enabled=res["shutdown_enabled"],
-            delay_seconds=res["shutdown_delay"],
-        )
-        apply_timed_run_config(
-            schedule_data,
-            enabled=res["timed_enabled"],
-            target_time=res["timed_target"],
-        )
-        apply_mute_config(schedule_data, enabled=res["mute_enabled"])
-        apply_close_running_config(schedule_data, enabled=res["close_running_enabled"])
-        apply_rerun_config(schedule_data, enabled=res["rerun_enabled"])
-        apply_notify_config(
-            schedule_data,
-            enabled=res["notify_enabled"],
-            email=res.get("email", ""),
-            smtp_host=res.get("smtp_host", ""),
-            smtp_port=res.get("smtp_port", ""),
-        )
-        # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
-        auth_code = res.get("auth_code", "")
-        if auth_code:
-            try:
-                from src.log.notify_mail import register_credentials
-
-                register_credentials(res.get("email", ""), auth_code)
-            except Exception as exc:  # 凭据管理器不可用等
-                logger.warning("[launch] 授权码写入系统凭据管理器失败(%s)", exc)
-        self._app_service.save_schedule(schedule_data)
+        self._app_service.apply_run_options(res)
         return True

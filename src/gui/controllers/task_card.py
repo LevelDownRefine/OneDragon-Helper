@@ -13,8 +13,6 @@ from src.config.set_config import (
     get_sequence,
     get_weekly_dungeon,
     is_adapted,
-    set_config,
-    set_weekly_dungeon,
 )
 
 # 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
@@ -208,10 +206,12 @@ class TaskCardController(QObject):
         其日常副本直接取 dungeon_list.yml 声明选项，不经本方法持久化。
         """
         script_name = self._current["script_name"]
-        # 实时落盘子脚本 config（与周常副本 selectWeeklyDungeon 一致）；
+        # 实时落盘子脚本 config（与周常副本 selectWeeklyDungeon 一致，经 service）；
         # 未选择选项已移除，下拉只含真实副本，此处不再区分清空调度。
         if dungeon_name:
-            set_config(script_name, dungeon_name=dungeon_name, sequence=sequence)
+            self._app_service.set_script_dungeon(
+                script_name, dungeon_name=dungeon_name, sequence=sequence
+            )
         self.refresh()
 
     @Slot(str, str)
@@ -223,6 +223,8 @@ class TaskCardController(QObject):
             dungeon_name: 选中的副本名（来自 weekly_dungeon_options）。
         """
         script_name = self._current["script_name"]
-        # 写回脚本自身 config（如 M7A config.yaml 的 instance_names[weekly_name]）
-        set_weekly_dungeon(script_name, weekly_name, dungeon_name)
+        # 写回脚本自身 config（如 M7A config.yaml 的 instance_names[weekly_name]），经 service
+        self._app_service.set_script_weekly_dungeon(
+            script_name, weekly_name, dungeon_name
+        )
         self.refresh()

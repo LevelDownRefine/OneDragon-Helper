@@ -153,14 +153,20 @@ class BaseLogParser:
         raise NotImplementedError
 
     def _read_file(self, path: Path) -> str:
-        try:
-            with open(path, encoding="utf-8") as f:
-                return f.read()
-        except UnicodeDecodeError:
-            with open(path, encoding="gbk") as f:
-                return f.read()
-        except Exception:
-            return ""
+        """读取日志文本：utf-8 失败回退 gbk；读取/解码失败记日志返回空串。"""
+        for encoding in ("utf-8", "gbk"):
+            try:
+                with open(path, encoding=encoding) as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                continue  # 换下一种编码重试
+            except OSError as e:
+                logger.warning(
+                    "[log_monitor] 日志读取失败(%s)：%s %s", type(e).__name__, path, e
+                )
+                return ""
+        logger.warning("[log_monitor] 日志解码失败（utf-8/gbk 均失败）：%s", path)
+        return ""
 
     def _is_valid_log(self, log_path: Path) -> bool:
         now = datetime.now()

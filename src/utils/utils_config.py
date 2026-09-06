@@ -30,7 +30,7 @@ from src.utils.utils_sub_config import (
 from src.utils.utils_weekly import (
     delete_weekly,
     ensure_weekly_entry,
-    rename_weekly_in_timeouts,
+    rename_weekly,
     save_weekly,
 )
 from src.utils.utils_yaml import dump_yaml, load_yaml
@@ -162,7 +162,7 @@ def update_script(
     save_config(config)
 
     if new_script_name != old_script_name:
-        rename_weekly_in_timeouts(old_script_name, new_script_name)
+        rename_weekly(old_script_name, new_script_name)
     save_weekly(new_script_name, weekly_timeouts)
     init_config(new_script_name)
     return new_script_name

@@ -51,7 +51,7 @@ class TestTaskCard(unittest.TestCase):
         b = _make_bridge()
         self.assertFalse(b.dailySupported)
 
-    @patch.object(task_card, "set_config")  # 实时落盘子脚本 config
+    @patch("src.service.app_service.set_config")  # 实时落盘子脚本 config（经 service）
     @patch.object(task_card, "get_dungeon", return_value=None)
     @patch.object(task_card, "get_sequence", return_value=None)
     @patch.object(task_card, "is_adapted", return_value=True)
@@ -64,8 +64,8 @@ class TestTaskCard(unittest.TestCase):
         b.task_card._dungeon_options_cache = {name: [{"name": "副本A"}]}
         b.selectDungeon("副本A", "seq1")
         self.assertEqual(b.dailyDungeonText, "副本A")
-        # 实时落盘子脚本 config（日常副本编辑期即生效，不再依赖运行全体）
-        task_card.set_config.assert_called_once_with(
+        # 实时落盘子脚本 config（日常副本编辑期即生效，不再依赖运行全体），经 service 入口
+        app_service.set_config.assert_called_once_with(
             name, dungeon_name="副本A", sequence="seq1"
         )
 
@@ -108,6 +108,7 @@ class TestTaskCard(unittest.TestCase):
             "new_display_name": "鸣潮",
             "config_patch": {"k": "v"},
             "weekly_timeouts": {"1": [1]},
+            "weekly_start_day": None,
         }
         with (
             patch.object(b.app_service, "update_script") as mock_update,
