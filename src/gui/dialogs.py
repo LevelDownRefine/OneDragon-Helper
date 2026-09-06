@@ -560,15 +560,13 @@ class SingleScriptConfigDialog(FormDialogBase):
             text = timeout_edit.text().strip()
             timeouts.append(int(text) if text else None)
 
-        # 周几起：权威值持久化到 weekly.yml 的 weekly_start 段（经 AppService.set_weekly_start / src.utils.utils_weekly）。游戏侧原生 config
-        # 起始日的同步不在此处进行——save_data 内 config.yml 的 script_path 尚未落盘，
-        # 此时解析目录会拿到旧路径，导致写到错误/失效目录。统一由调用方在
-        # AppService.update_script 落盘新路径后触发（见 game_list.configCurrent）。
+        # 周几起：权威值随 pending_changes 返回，由 AppService.update_script 统一落盘
+        # （weekly.yml weekly_start 段 + 游戏侧原生 config；后者须在 config.yml
+        # 落盘新 script_path 后才解析得到正确目录，故弹窗内不写盘）。
         start_day = None
         if self._weekly_start_supported:
             idx = self.weekly_start_combo.currentIndex()
             start_day = None if idx <= 0 else idx
-            self._app_service.set_weekly_start(self.script_name, start_day)
 
         self.pending_changes = {
             "old_script_name": self.script_name,

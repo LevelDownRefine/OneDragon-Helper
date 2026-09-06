@@ -160,7 +160,6 @@ class GameListController(QObject):
     currentIndexChanged = Signal()
     enabledChanged = Signal()
     controlModeChanged = Signal()
-    toastRequested = Signal(str)
     gameAdded = Signal()
 
     def __init__(self, app_service, toast, on_reload, parent=None):
@@ -222,7 +221,10 @@ class GameListController(QObject):
         # 首次即空白），刷新后不会自动重取，须重启进程才修正。
         self.icon_provider.refresh(self._games)
         self._game_model.set_games(games)
-        self.current_index = min(self.current_index, max(len(games) - 1, 0))
+        new_index = min(self.current_index, max(len(games) - 1, 0))
+        if new_index != self.current_index:
+            self.current_index = new_index
+            self.currentIndexChanged.emit()
         # 新增脚本默认启用；已存在脚本保留原状态
         self._enabled = [
             self._enabled[i] if i < len(self._enabled) else True
@@ -386,30 +388,20 @@ class GameListController(QObject):
                 "[bridge] 配置弹窗 accept 但 pending_changes 为空"
             )
             changes = dialog.pending_changes
-            new_script_name = self._app_service.update_script(
-                changes["old_script_name"],
-                changes["new_display_name"],
-                changes["config_patch"],
-                changes["weekly_timeouts"],
-            )
-            # config.yml 已落盘新路径：此刻同步游戏侧原生 config 起始日，目录解析才正确。
-            start_day = changes["weekly_start_day"]
-            if start_day is not None:
-                self._sync_weekly_start_day(new_script_name, start_day)
+            # 周几起（weekly.yml 段 + 游戏侧同步）由 update_script 统一落盘；
+            # 游戏侧 OSError 属部分失败（config.yml 已落盘），提示不回滚。
+            try:
+                self._app_service.update_script(
+                    changes["old_script_name"],
+                    changes["new_display_name"],
+                    changes["config_patch"],
+                    changes["weekly_timeouts"],
+                    changes["weekly_start_day"],
+                )
+            except OSError as e:
+                self._toast(f"配置已保存，但周几起未能同步到游戏配置：{e}")
             self._on_reload()
             self._toast(f"已保存 {changes['new_display_name']} 配置")
-
-    def _sync_weekly_start_day(self, script_name: str, start_day: int) -> None:
-        """落盘后把周几起同步到游戏原生 config。
-
-        目录解析依赖 config.yml 已落盘的新 script_path，故必须在
-        AppService.update_script 之后调用。游戏侧同步为 best-effort：
-        原生 config 目录因路径无效/未装游戏缺失时仅提示，不阻塞已完成的主保存。
-        """
-        try:
-            self._app_service.set_script_weekly_start_day(script_name, start_day)
-        except OSError as e:
-            self._toast(f"周几起已保存，但未能同步到游戏配置：{e}")
 
     def _on_delete_script(self, script_name: str):
         """配置弹窗确认删除：落盘后重载脚本列表。"""

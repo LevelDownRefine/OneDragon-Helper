@@ -17,6 +17,7 @@ from src.utils.utils_config import (
     load_config,
     remove_script,
     save_config,
+    update_script,
 )
 from src.utils.utils_yaml import dump_yaml_file, load_yaml
 
@@ -269,6 +270,105 @@ class TestAddRemoveScript(unittest.TestCase):
             self.assertRaises(AssertionError),
         ):
             remove_script("不存在")
+
+
+class TestUpdateScript(unittest.TestCase):
+    """update_script：条目更新 + weekly 两段迁移 + 周几起统一落盘的编排顺序。
+
+    weekly.yml 文件行为见 test_utils_weekly；游戏侧适配行为见 test_set_config*。
+    此处钉编排契约：以新标识落盘、None 只清 weekly、OSError 在主保存后传播。
+    """
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp_dir.cleanup)
+        self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
+        dump_yaml_file(
+            self.config_path,
+            {"script_list": [{"display_name": "鸣潮", "script_path": "C:/ww.exe"}]},
+        )
+
+    def _read(self):
+        return load_yaml(self.config_path)
+
+    def _run(self, set_start_day_side_effect=None, **kwargs):
+        """在隔离环境下跑 update_script，返回各协作函数的 mock 字典。"""
+        params = {
+            "old_script_name": "ww",
+            "new_display_name": "鸣潮",
+            "config_patch": {"check_done": "script_closed"},
+            "weekly_timeouts": [60] * 7,
+        }
+        params.update(kwargs)
+        patches = {
+            "require": patch(
+                "src.utils.utils_config.require_config_yml_path",
+                return_value=self.config_path,
+            ),
+            "save_path": patch(
+                "src.utils.utils_config.get_config_yml_path_under_root",
+                return_value=self.config_path,
+            ),
+            "init": patch("src.utils.utils_config.init_config"),
+            "rename": patch("src.utils.utils_config.rename_weekly"),
+            "save_weekly": patch("src.utils.utils_config.save_weekly"),
+            "set_start": patch("src.utils.utils_config.set_weekly_start"),
+            "set_start_day": patch(
+                "src.utils.utils_config.set_weekly_start_day",
+                side_effect=set_start_day_side_effect,
+            ),
+        }
+        mocks = {}
+        with patches["require"], patches["save_path"]:
+            for name in ("init", "rename", "save_weekly", "set_start", "set_start_day"):
+                mocks[name] = patches[name].start()
+                self.addCleanup(patches[name].stop)
+            mocks["result"] = update_script(**params)
+        return mocks
+
+    def test_applies_patch_and_returns_identity(self):
+        mocks = self._run()
+        self.assertEqual(mocks["result"], "ww")
+        entry = self._read()["script_list"][0]
+        self.assertEqual(entry["check_done"], "script_closed")
+        mocks["init"].assert_called_once_with("ww")
+        mocks["save_weekly"].assert_called_once_with("ww", [60] * 7)
+
+    def test_weekly_start_day_syncs_game_side_with_new_name(self):
+        mocks = self._run(weekly_start_day=3)
+        mocks["set_start"].assert_called_once_with("ww", 3)
+        mocks["set_start_day"].assert_called_once_with("ww", 3)
+
+    def test_weekly_start_none_clears_weekly_only(self):
+        """「不设置」只清 weekly.yml 条目，不回写游戏侧（无「未设置」语义）。"""
+        mocks = self._run(weekly_start_day=None)
+        mocks["set_start"].assert_called_once_with("ww", None)
+        mocks["set_start_day"].assert_not_called()
+
+    def test_rename_migrates_weekly_and_syncs_new_identity(self):
+        entry = {"display_name": "新名", "script_path": "C:/new.exe"}
+        mocks = self._run(
+            old_script_name="ww",
+            new_display_name="新名",
+            config_patch={"script_path": "C:/new.exe"},
+            weekly_start_day=5,
+        )
+        mocks["rename"].assert_called_once_with("ww", "new")
+        mocks["set_start"].assert_called_once_with("new", 5)
+        mocks["set_start_day"].assert_called_once_with("new", 5)
+        # kill_game_after_done 自洽：未设置 game_process_name 时强制 False
+        self.assertEqual(
+            self._read()["script_list"][0],
+            {**entry, "kill_game_after_done": False},
+        )
+        self.assertEqual(mocks["result"], "new")
+
+    def test_game_side_oserror_propagates_after_config_saved(self):
+        """游戏侧同步失败：OSError 传播，但 config.yml 已落盘（部分失败不回滚）。"""
+        with self.assertRaises(OSError):
+            self._run(weekly_start_day=3, set_start_day_side_effect=OSError("no dir"))
+        entry = self._read()["script_list"][0]
+        self.assertEqual(entry["check_done"], "script_closed")
 
 
 if __name__ == "__main__":

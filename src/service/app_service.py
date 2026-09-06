@@ -19,12 +19,14 @@ import logging
 
 import src.service.chain_service as chain_service
 from src.config.dungeon_config import get_dungeon_map, get_weekly_map
-from src.config.set_config import (
-    set_config,
-    set_weekly_dungeon,
-    set_weekly_start_day,
+from src.config.set_config import set_config, set_weekly_dungeon
+from src.service.schedule import (
+    RunOptions,
+    apply_run_options,
+    load_run_options,
+    load_schedule,
+    save_schedule,
 )
-from src.service.schedule import apply_run_options, load_schedule, save_schedule
 from src.utils.utils_config import (
     add_script,
     build_script_entry,
@@ -127,9 +129,14 @@ class AppService:
         new_display_name: str,
         config_patch: dict,
         weekly_timeouts: list,
+        weekly_start_day: int | None = None,
     ):
         return update_script(
-            old_script_name, new_display_name, config_patch, weekly_timeouts
+            old_script_name,
+            new_display_name,
+            config_patch,
+            weekly_timeouts,
+            weekly_start_day,
         )
 
     # ── schedule.yml（src.service.schedule 模块函数）──
@@ -141,16 +148,20 @@ class AppService:
     def save_schedule(self, data: dict) -> None:
         return save_schedule(data)
 
-    def apply_run_options(self, options: dict) -> None:
-        """把运行确认窗勾选项写回 schedule.yml，并注册本次填写的授权码（如有）。"""
+    def load_run_options(self) -> RunOptions:
+        """读取 schedule.yml 的运行选项（确认窗回显与启动全部直启共用）。"""
+        return load_run_options()
+
+    def apply_run_options(self, options: RunOptions) -> None:
+        """把运行选项写回 schedule.yml，并注册本次填写的授权码（如有）。"""
         return apply_run_options(options)
 
     def collect_invalid_scripts(self, script_list: list) -> list:
         return collect_invalid_script_messages(script_list)
 
     # ── 游戏侧 config 适配器（src.config.set_config 模块函数）─────────────
-    # 副本/周几起写入各脚本**自身**的 config（适配器层）；与 weekly.yml 段的
-    # set_weekly_start（weekly_start 段）是两套不同落盘，GUI 一律经此处入口。
+    # 副本写入各脚本**自身**的 config（适配器层）；周几起由 update_script
+    # 统一落盘（含游戏侧同步），不经此节入口。
     def set_script_dungeon(
         self,
         script_name: str,
@@ -165,10 +176,6 @@ class AppService:
     ) -> None:
         """写某周常当前选中的副本名到脚本自身 config。"""
         return set_weekly_dungeon(script_name, weekly_name, dungeon_name)
-
-    def set_script_weekly_start_day(self, script_name: str, start_day: int) -> None:
-        """编辑期落盘周几起字面起始日到脚本自身 config（须在 config.yml 落盘新路径后调用）。"""
-        return set_weekly_start_day(script_name, start_day)
 
     # ── 自定义壁纸表（config/wallpaper.json，src.utils.utils_wallpaper）──
     def load_wallpapers(self) -> dict:

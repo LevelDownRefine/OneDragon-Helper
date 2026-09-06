@@ -44,7 +44,6 @@ class QmlBridge(QObject):
         )
         self.background = BackgroundController(
             game_list=self.game_list,
-            task_card=self.task_card,
             app_service=self.app_service,
             toast=self.toastRequested.emit,
         )
@@ -70,7 +69,6 @@ class QmlBridge(QObject):
         self.game_list.enabledChanged.connect(self.enabledChanged.emit)
         self.game_list.controlModeChanged.connect(self.controlModeChanged.emit)
         self.game_list.gameAdded.connect(self.gameAdded.emit)
-        self.game_list.toastRequested.connect(self.toastRequested.emit)
         self.background.backgroundChanged.connect(self.backgroundChanged.emit)
         self.background.toastRequested.connect(self.toastRequested.emit)
         self.task_card.taskStateChanged.connect(self.taskStateChanged.emit)
@@ -78,9 +76,8 @@ class QmlBridge(QObject):
         self.launch.toastRequested.connect(self.toastRequested.emit)
         self.links.toastRequested.connect(self.toastRequested.emit)
 
-        # 编排启动：重建列表 → 构建副本缓存 → 刷新当前
+        # 编排启动：重建列表 → 构建副本缓存 → 刷新当前（_reload_games 收尾即刷）
         self._reload_games()
-        self._on_current_changed()
 
     # ── QML 属性（委托到子控制器）────────────────────────────────────
     games = Property(
@@ -269,13 +266,19 @@ class QmlBridge(QObject):
 
     # ── 编排 / 门面协调方法（保持既有测试可直接调用）─────────────────
     def _reload_games(self):
-        """重建脚本列表 + 构建副本下拉缓存（编排 game_list 与 task_card）。"""
+        """重建脚本列表 + 构建副本下拉缓存 + 刷新当前项（编排集中于此）。
+
+        编辑当前脚本（configCurrent/addScript/deleteScript）后数据已变，
+        必须强制刷新背景与任务卡，否则 UI 停在旧数据直到重新点选。
+        """
         self.game_list.reload_games()
         self.task_card.build_dungeon_cache(self.game_list.games)
+        self._on_current_changed()
 
     def _on_current_changed(self):
         """当前选中变化 → 刷新背景 + 任务卡（编排集中于此）。"""
         self._apply_current()
+        self.task_card.refresh()
 
     def _apply_current(self):
         if not self.game_list.games:

@@ -14,6 +14,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QDialog
 
 from src.gui.controllers.launch import LaunchController
+from src.service.schedule import RunOptions
 
 # widget（RunConfirmDialog）需要一个 QApplication 实例；模块级单例，
 # 进程退出时随解释器销毁，避免 per-class 重建导致 offscreen 下挂起。
@@ -22,7 +23,7 @@ if QApplication.instance() is None:
 
 
 def _make_controller(enabled: bool, target_time: str | None):
-    """构造 LaunchController，注入 mock 依赖并设置 timed_run 配置。"""
+    """构造 LaunchController，注入 mock 依赖并设置 timed_run 选项。"""
     game_list = mock.MagicMock()
     # launchAll 依赖 game_list.games/enabled 计算启用脚本集合，提供一个启用项。
     game_list.games = [{"script_name": "demo"}]
@@ -30,13 +31,11 @@ def _make_controller(enabled: bool, target_time: str | None):
     task_card = mock.MagicMock()
     service = mock.MagicMock()
     service.load_config.return_value = {"script_list": []}
-    service.load_schedule.return_value = {
-        "timed_run": (
-            {"enabled": enabled, "target_time": target_time}
-            if target_time is not None
-            else {"enabled": enabled}
-        )
-    }
+    # launchAll 经 load_run_options 读取运行选项（RunOptions 为单一 schema）。
+    service.load_run_options.return_value = RunOptions(
+        timed_enabled=enabled,
+        timed_target=target_time if target_time is not None else "",
+    )
     toast = mock.MagicMock()
     ctrl = LaunchController(game_list, task_card, service, toast)
     return ctrl, service, toast
@@ -102,39 +101,22 @@ class TestLaunchAllTimed(unittest.TestCase):
 
 
 class TestConfirmRunDialog(unittest.TestCase):
-    """_confirm_run：不合法脚本告警 + 回显当前 schedule 配置 + 勾选项整体经 service 落盘。
+    """_confirm_run：不合法脚本告警 + 回显当前运行选项 + 勾选项整体经 service 落盘。
 
-    勾选项的合并写回（shutdown/timed/mute/... → schedule.yml）与授权码注册已下沉
-    src.service.schedule.apply_run_options，其行为由 test_schedule.TestApplyRunOptions
-    覆盖；此处只钉「控制器透传 result、取消不落盘、回显初始值」三个契约。
+    选项的合并写回与授权码注册已下沉 src.service.schedule（RunOptions 单一 schema），
+    行为由 test_schedule.TestLoadRunOptions / TestApplyRunOptions 覆盖；此处只钉
+    「控制器透传 RunOptions、取消不落盘、回显初始值」三个契约。
     """
 
-    def _make_ctrl(self, config_data):
-        """构造 controller，注入 mock 依赖。
-
-        调度参数（shutdown/timed_run/mute/rerun/notify）已迁入 schedule.yml，
-        经 ``load_schedule`` 读取；脚本链声明（script_list）仍经 ``load_config`` 读取。
-        """
+    def _make_ctrl(self, options: RunOptions | None = None):
+        """构造 controller，注入 mock 依赖（load_run_options 可指定回显值）。"""
         game_list = mock.MagicMock()
         game_list.games = [{"script_name": "demo"}]
         game_list.enabled = [True]
         task_card = mock.MagicMock()
         service = mock.MagicMock()
-        # script_list 留在 config；其余调度块归 schedule。
-        schedule_keys = {
-            "shutdown",
-            "timed_run",
-            "mute",
-            "close_running",
-            "rerun",
-            "notify",
-        }
-        service.load_config.return_value = {
-            "script_list": config_data.get("script_list", [])
-        }
-        service.load_schedule.return_value = {
-            k: v for k, v in config_data.items() if k in schedule_keys
-        }
+        service.load_config.return_value = {"script_list": []}
+        service.load_run_options.return_value = options or RunOptions()
         # 避免 collect_invalid_scripts 默认返回 truthy 的 MagicMock，误触发真实
         # QMessageBox.warning（offscreen 下会阻塞/崩溃）。
         service.collect_invalid_scripts.return_value = []
@@ -146,7 +128,7 @@ class TestConfirmRunDialog(unittest.TestCase):
         return mock.patch("src.gui.controllers.launch.RunConfirmDialog")
 
     def test_cancel_returns_false(self):
-        ctrl, service = self._make_ctrl({"script_list": []})
+        ctrl, service = self._make_ctrl()
         with self._patch_run_confirm() as dlg_cls:
             dlg = dlg_cls.return_value
             # exec 返回非 Accepted（模拟 cancel/reject）
@@ -156,52 +138,34 @@ class TestConfirmRunDialog(unittest.TestCase):
         service.apply_run_options.assert_not_called()
 
     def test_accept_forwards_result_to_service(self):
-        """确认运行：result dict 整体透传 service.apply_run_options（合并写回归 service）。"""
-        base = {
-            "script_list": [],
-            "shutdown": {"after_run": False, "delay_seconds": 0},
-            "timed_run": {"enabled": False, "target_time": ""},
-        }
-        ctrl, service = self._make_ctrl(dict(base))
+        """确认运行：弹窗 result（RunOptions）整体透传 service.apply_run_options。"""
+        res = RunOptions(shutdown_enabled=True, shutdown_delay=120)
+        ctrl, service = self._make_ctrl()
         with self._patch_run_confirm() as dlg_cls:
             dlg = dlg_cls.return_value
             dlg.exec.return_value = QDialog.Accepted
-            dlg.result = {
-                "shutdown_enabled": True,
-                "shutdown_delay": 120,
-                "timed_enabled": True,
-                "timed_target": "04:10",
-                "mute_enabled": True,
-                "close_running_enabled": True,
-                "rerun_enabled": True,
-                "notify_enabled": True,
-                "email": "123456@qq.com",
-                "auth_code": "",
-                "smtp_host": "",
-                "smtp_port": "",
-            }
+            dlg.result = res
             out = ctrl._confirm_run({"demo"})
 
         self.assertTrue(out)
-        service.apply_run_options.assert_called_once_with(dlg.result)
+        service.apply_run_options.assert_called_once_with(res)
 
-    def test_accept_echoes_current_schedule_to_dialog(self):
-        """确认弹窗以 schedule.yml 当前值初始化（含关闭时的延迟数值回显）。"""
-        base = {
-            "script_list": [],
-            "shutdown": {"after_run": True, "delay_seconds": 45},
-            "timed_run": {"enabled": True, "target_time": "08:00"},
-        }
-        ctrl, _service = self._make_ctrl(dict(base))
+    def test_accept_echoes_current_options_to_dialog(self):
+        """确认弹窗以 load_run_options 的当前值初始化（含关闭时的延迟数值回显）。"""
+        options = RunOptions(
+            shutdown_enabled=True,
+            shutdown_delay=45,
+            timed_enabled=True,
+            timed_target="08:00",
+        )
+        ctrl, _service = self._make_ctrl(options)
         with self._patch_run_confirm() as dlg_cls:
             dlg = dlg_cls.return_value
             dlg.exec.return_value = QDialog.Rejected
             ctrl._confirm_run({"demo"})
-        kwargs = dlg_cls.call_args[1]
-        self.assertTrue(kwargs["shutdown_enabled"])
-        self.assertEqual(kwargs["shutdown_delay"], 45)
-        self.assertTrue(kwargs["timed_enabled"])
-        self.assertEqual(kwargs["timed_target"], "08:00")
+        dlg_cls.assert_called_once()
+        self.assertEqual(dlg_cls.call_args.args[0], 1)  # 启用脚本数
+        self.assertIs(dlg_cls.call_args.args[1], options)  # 回显原对象
 
 
 class TestLaunchAllUnattended(unittest.TestCase):

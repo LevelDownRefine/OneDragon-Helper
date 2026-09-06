@@ -36,10 +36,9 @@ class BackgroundController(QObject):
     backgroundChanged = Signal()
     toastRequested = Signal(str)
 
-    def __init__(self, game_list, task_card, app_service, toast, parent=None):
+    def __init__(self, game_list, app_service, toast, parent=None):
         super().__init__(parent)
         self._game_list = game_list
-        self._task_card = task_card
         self._app_service = app_service
         self._toast = toast
         # 默认（apply_current 会在构造末尾按选中脚本刷新，此处防首帧 undefined）
@@ -201,7 +200,6 @@ class BackgroundController(QObject):
         self._grad_color = game["color"]
         self._grad_char = game["char"]
         self.backgroundChanged.emit()
-        self._task_card.refresh()
 
     @Slot()
     def open_wallpaper(self):

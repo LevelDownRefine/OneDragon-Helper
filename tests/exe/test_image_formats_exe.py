@@ -16,6 +16,16 @@ from src.config import set_config
 from src.config.set_config import get_background_rel_path
 from tests.exe import project_root
 
+
+def setUpModule():
+    # 本用例经 get_script_root_dir 读真实 config/config.yml（脚本根目录解析）。
+    # 打包 CI 的 runner 上无生成物（config.yml 不进 git），按首启语义在此补齐
+    # （幂等：已存在则不动）。
+    from src.config.generate_config import config_workflow
+
+    config_workflow()
+
+
 PROJECT_ROOT = str(project_root())
 IMAGEFORMATS = os.path.join(
     PROJECT_ROOT,

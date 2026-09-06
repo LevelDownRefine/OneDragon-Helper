@@ -1,9 +1,10 @@
-"""调度运行编排 + schedule.yml 读写：ScheduledRun 持有 pre_run / 核心编排 / post_run。
+"""调度运行编排 + schedule.yml 读写：RunOptions schema 与 ScheduledRun 生命周期。
 
-schedule.yml（调度运行参数：shutdown / timed_run / mute / rerun / notify）的读写归
-本模块——``load_schedule`` / ``save_schedule``，其 notify 块经 ``resolve_mail_config``
-解析为 SMTP 配置；消费方几乎全在调度链路（重跑轮读 rerun、post_run 读 notify），
-故读写与编排同处本模块。
+schedule.yml（调度运行参数：shutdown / timed_run / mute / rerun / notify /
+close_running）的读写归本模块：``load_schedule`` / ``save_schedule``，
+其 notify 块经 ``resolve_mail_config`` 解析为 SMTP 配置。六个选项块的
+单一 schema 是 :class:`RunOptions`——确认窗回显（``load_run_options``）与
+落盘（``apply_run_options``）共用同一类型，GUI 不感知 yml 键名。
 
 ``ScheduledRun`` 是一个带生命周期的对象，而非纯函数：它在独立控制台进程
 （由 ``utils_runner.spawn_schedule_run`` 以 ``CREATE_NEW_CONSOLE`` 起）中运行，
@@ -17,7 +18,9 @@ pre_run / post_run 为可扩展的 step 列表（Callable 序列），由本模�
 """
 
 import logging
+import re
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 import src.utils.utils_config as utils_config
 import src.utils.utils_weekly as utils_weekly
@@ -31,18 +34,18 @@ from src.service.run_actions import (
 )
 from src.utils import get_schedule_yml_path_under_root
 from src.utils.utils_mute import mute_off, mute_on
-from src.utils.utils_runner import (
-    apply_close_running_config,
-    apply_mute_config,
-    apply_notify_config,
-    apply_rerun_config,
-    apply_shutdown_config,
-    apply_timed_run_config,
-)
 from src.utils.utils_shutdown import shutdown_sys
 from src.utils.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
+
+# 定时运行的目标时刻格式：HH:MM（24 小时制）。
+_TIME_RE = re.compile(r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$")
+
+
+def is_valid_target_time(value: str) -> bool:
+    """判断是否为合法目标时刻 ``HH:MM``（24 小时制）。"""
+    return isinstance(value, str) and bool(_TIME_RE.match(value))
 
 
 def load_schedule() -> dict:
@@ -64,42 +67,127 @@ def save_schedule(data: dict) -> None:
     dump_yaml(get_schedule_yml_path_under_root(), data)
 
 
-def apply_run_options(options: dict) -> None:
-    """把运行确认窗勾选项写回 schedule.yml，并注册本次填写的授权码（如有）。
+@dataclass(frozen=True)
+class RunOptions:
+    """调度运行选项的单一 schema：确认窗回显与落盘共用同一类型。
+
+    字段语义：
+    - 六个开关对应 schedule.yml 六块（shutdown / timed_run / mute /
+      close_running / rerun / notify）；块缺失或 ``enabled`` 非 bool 按关闭处理，
+      唯 close_running 缺失默认启用（与历史「运行前始终清场」一致）。
+    - ``shutdown_delay``：关机延迟秒数；块缺失/非法时为 0。
+    - ``timed_enabled`` 仅在 ``timed_target`` 合法（HH:MM）时为 True。
+    - ``email`` / ``smtp_host`` / ``smtp_port`` 空串 = 不覆盖既有值；
+      ``auth_code`` 空串 = 不动系统凭据。
+    """
+
+    shutdown_enabled: bool = False
+    shutdown_delay: int = 0
+    timed_enabled: bool = False
+    timed_target: str = ""
+    mute_enabled: bool = False
+    close_running_enabled: bool = True
+    rerun_enabled: bool = False
+    notify_enabled: bool = False
+    email: str = ""
+    smtp_host: str = ""
+    smtp_port: str = ""
+    auth_code: str = ""
+
+
+def _block_enabled(data: dict, key: str, default_enabled: bool) -> bool:
+    """读开关块（``{enabled: bool}``）：块缺失按默认，``enabled`` 非 bool 按 False。"""
+    block = data.get(key)
+    if not isinstance(block, dict):
+        return default_enabled
+    enabled = block.get("enabled", default_enabled)
+    return isinstance(enabled, bool) and enabled
+
+
+def load_run_options(schedule: dict | None = None) -> RunOptions:
+    """从 schedule.yml 数据解析运行选项（确认窗回显与 launchAll 直启共用）。
 
     Args:
-        options: 运行确认窗的 result dict（键集见 RunConfirmDialog.result，
-            恒含 shutdown_enabled / shutdown_delay / timed_enabled / timed_target /
-            mute_enabled / close_running_enabled / rerun_enabled / notify_enabled /
-            email / auth_code / smtp_host / smtp_port）。
+        schedule: schedule.yml 全量数据；None 时自行读取。
+    """
+    data = load_schedule() if schedule is None else schedule
+    shutdown = data.get("shutdown")
+    shutdown_delay = 0
+    if (
+        isinstance(shutdown, dict)
+        and isinstance(shutdown.get("delay_seconds"), int)
+        and shutdown["delay_seconds"] > 0
+    ):
+        shutdown_delay = shutdown["delay_seconds"]
+    timed = data.get("timed_run")
+    timed_enabled = isinstance(timed, dict) and timed.get("enabled", False) is True
+    timed_target = timed.get("target_time", "") if isinstance(timed, dict) else ""
+    if not is_valid_target_time(timed_target):
+        # enabled 但时刻非法视为「未配置定时」（对齐原 parse_timed_run 的降级）
+        timed_enabled = False
+        timed_target = ""
+    notify = data.get("notify")
+    email = smtp_host = smtp_port = ""
+    if isinstance(notify, dict):
+        email = str(notify.get("email") or "")
+        smtp_host = str(notify.get("smtp_host") or "")
+        raw_port = notify.get("smtp_port")
+        smtp_port = str(raw_port) if raw_port is not None else ""
+    return RunOptions(
+        shutdown_enabled=isinstance(shutdown, dict)
+        and shutdown.get("after_run", False) is True,
+        shutdown_delay=shutdown_delay,
+        timed_enabled=timed_enabled,
+        timed_target=timed_target,
+        mute_enabled=_block_enabled(data, "mute", False),
+        close_running_enabled=_block_enabled(data, "close_running", True),
+        rerun_enabled=_block_enabled(data, "rerun", False),
+        notify_enabled=_block_enabled(data, "notify", False),
+        email=email,
+        smtp_host=smtp_host,
+        smtp_port=smtp_port,
+    )
+
+
+def apply_run_options(options: RunOptions) -> None:
+    """把运行选项写回 schedule.yml，并注册本次填写的授权码（如有）。
+
+    Args:
+        options: 运行选项（确认窗 accept 的结果或调用方构造）。
     """
     schedule_data = load_schedule()
-    # 关机：启用/关闭都直接落盘（含延迟数值），行为单一稳定。
-    apply_shutdown_config(
-        schedule_data,
-        enabled=options["shutdown_enabled"],
-        delay_seconds=options["shutdown_delay"],
-    )
-    apply_timed_run_config(
-        schedule_data,
-        enabled=options["timed_enabled"],
-        target_time=options["timed_target"],
-    )
-    apply_mute_config(schedule_data, enabled=options["mute_enabled"])
-    apply_close_running_config(schedule_data, enabled=options["close_running_enabled"])
-    apply_rerun_config(schedule_data, enabled=options["rerun_enabled"])
-    apply_notify_config(
-        schedule_data,
-        enabled=options["notify_enabled"],
-        email=options["email"],
-        smtp_host=options["smtp_host"],
-        smtp_port=options["smtp_port"],
-    )
-    # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
-    auth_code = options["auth_code"]
-    if auth_code:
+    schedule_data["shutdown"] = {
+        "after_run": bool(options.shutdown_enabled),
+        "delay_seconds": int(options.shutdown_delay),
+    }
+    target_time = options.timed_target
+    if options.timed_enabled and not is_valid_target_time(target_time):
+        target_time = "04:10"  # 启用但非法：回退默认时刻（行为单一稳定）
+    schedule_data["timed_run"] = {
+        "enabled": bool(options.timed_enabled),
+        "target_time": target_time if options.timed_enabled else "",
+    }
+    schedule_data["mute"] = {"enabled": bool(options.mute_enabled)}
+    schedule_data["close_running"] = {"enabled": bool(options.close_running_enabled)}
+    schedule_data["rerun"] = {"enabled": bool(options.rerun_enabled)}
+    notify = schedule_data.get("notify")
+    if not isinstance(notify, dict):
+        notify = {}
+        schedule_data["notify"] = notify
+    notify["enabled"] = bool(options.notify_enabled)
+    if options.email:
+        notify["email"] = options.email
+    if options.smtp_host:
+        notify["smtp_host"] = options.smtp_host
+    if options.smtp_port:
         try:
-            register_credentials(options["email"], auth_code)
+            notify["smtp_port"] = int(options.smtp_port)
+        except ValueError:
+            logger.warning("[schedule] smtp_port 非法(%r)，保留原值", options.smtp_port)
+    # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
+    if options.auth_code:
+        try:
+            register_credentials(options.email, options.auth_code)
         except Exception as exc:  # noqa: BLE001  # 凭据为最佳努力：失败记日志，不阻塞调度参数落盘
             logger.error(
                 "[schedule] 授权码写入系统凭据管理器失败(%s)：%s",

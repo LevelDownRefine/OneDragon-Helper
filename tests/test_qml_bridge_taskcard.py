@@ -115,7 +115,9 @@ class TestTaskCard(unittest.TestCase):
             patch.object(b, "_reload_games") as mock_reload,
         ):
             b.configCurrent()
-        mock_update.assert_called_once_with("ok-ww", "鸣潮", {"k": "v"}, {"1": [1]})
+        mock_update.assert_called_once_with(
+            "ok-ww", "鸣潮", {"k": "v"}, {"1": [1]}, None
+        )
         mock_reload.assert_called_once()
         self.assertTrue(any("已保存" in s for s in toasts))
 

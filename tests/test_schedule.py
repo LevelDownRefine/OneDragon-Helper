@@ -15,12 +15,15 @@ import datetime
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 from unittest import mock
 
 from src.service.schedule import (
+    RunOptions,
     ScheduledRun,
     apply_run_options,
     build_pre_run_pipeline,
+    load_run_options,
 )
 from src.utils.utils_runner import ProcessTarget
 from src.utils.utils_yaml import dump_yaml, load_yaml
@@ -448,10 +451,87 @@ class TestScheduledRunCore(unittest.TestCase):
             ScheduledRun(svc, {"A"}, "now")._run_core()
 
 
-class TestApplyRunOptions(unittest.TestCase):
-    """apply_run_options：确认窗勾选项合并写回 schedule.yml + 授权码注册（最佳努力）。
+class TestLoadRunOptions(unittest.TestCase):
+    """load_run_options：schedule.yml 六块 → RunOptions 的解析与安全降级。"""
 
-    GUI 控制器只透传 result dict（见 test_launch_controller）；合并规则在此验证。
+    def test_defaults_on_empty_schedule(self):
+        opts = load_run_options({})
+        self.assertFalse(opts.shutdown_enabled)
+        self.assertEqual(opts.shutdown_delay, 0)
+        self.assertFalse(opts.timed_enabled)
+        self.assertEqual(opts.timed_target, "")
+        self.assertFalse(opts.mute_enabled)
+        self.assertTrue(opts.close_running_enabled)  # 历史默认：运行前始终清场
+        self.assertFalse(opts.rerun_enabled)
+        self.assertFalse(opts.notify_enabled)
+
+    def test_shutdown_enabled_with_positive_delay(self):
+        opts = load_run_options({"shutdown": {"after_run": True, "delay_seconds": 45}})
+        self.assertTrue(opts.shutdown_enabled)
+        self.assertEqual(opts.shutdown_delay, 45)
+
+    def test_shutdown_invalid_delay_clamped_to_zero(self):
+        """delay 非法（<=0/非 int）→ delay 归 0；开关仍反映 after_run（启动侧再按 >0 判定）。"""
+        for bad in (0, -1, "45", None):
+            with self.subTest(bad=bad):
+                opts = load_run_options(
+                    {"shutdown": {"after_run": True, "delay_seconds": bad}}
+                )
+                self.assertTrue(opts.shutdown_enabled)
+                self.assertEqual(opts.shutdown_delay, 0)
+
+    def test_shutdown_switch_non_bool_is_off(self):
+        opts = load_run_options(
+            {"shutdown": {"after_run": "false", "delay_seconds": 45}}
+        )
+        self.assertFalse(opts.shutdown_enabled)
+
+    def test_timed_enabled_with_valid_target(self):
+        opts = load_run_options(
+            {"timed_run": {"enabled": True, "target_time": "08:30"}}
+        )
+        self.assertTrue(opts.timed_enabled)
+        self.assertEqual(opts.timed_target, "08:30")
+
+    def test_timed_illegal_target_degrades(self):
+        for bad in ("25:99", 480.0, None):
+            with self.subTest(bad=bad):
+                opts = load_run_options(
+                    {"timed_run": {"enabled": True, "target_time": bad}}
+                )
+                self.assertFalse(opts.timed_enabled)
+                self.assertEqual(opts.timed_target, "")
+
+    def test_mute_block_non_bool_disabled(self):
+        self.assertFalse(load_run_options({"mute": {"enabled": "yes"}}).mute_enabled)
+        self.assertTrue(load_run_options({"mute": {"enabled": True}}).mute_enabled)
+
+    def test_close_running_explicit_false_respected(self):
+        opts = load_run_options({"close_running": {"enabled": False}})
+        self.assertFalse(opts.close_running_enabled)
+
+    def test_notify_fields_extracted(self):
+        opts = load_run_options(
+            {
+                "notify": {
+                    "enabled": True,
+                    "email": "a@qq.com",
+                    "smtp_host": "smtp.163.com",
+                    "smtp_port": 994,
+                }
+            }
+        )
+        self.assertTrue(opts.notify_enabled)
+        self.assertEqual(opts.email, "a@qq.com")
+        self.assertEqual(opts.smtp_host, "smtp.163.com")
+        self.assertEqual(opts.smtp_port, "994")
+
+
+class TestApplyRunOptions(unittest.TestCase):
+    """apply_run_options：运行选项合并写回 schedule.yml + 授权码注册（最佳努力）。
+
+    GUI 控制器只透传 RunOptions（确认窗 result，见 test_launch_controller /
+    test_run_confirm_dialog）；合并规则在此验证。
     """
 
     def setUp(self):
@@ -470,23 +550,19 @@ class TestApplyRunOptions(unittest.TestCase):
         return load_yaml(self.schedule_path)
 
     @staticmethod
-    def _options(**overrides):
-        base = {
-            "shutdown_enabled": True,
-            "shutdown_delay": 120,
-            "timed_enabled": True,
-            "timed_target": "04:10",
-            "mute_enabled": True,
-            "close_running_enabled": True,
-            "rerun_enabled": True,
-            "notify_enabled": True,
-            "email": "123456@qq.com",
-            "auth_code": "",
-            "smtp_host": "",
-            "smtp_port": "",
-        }
-        base.update(overrides)
-        return base
+    def _options(**overrides) -> RunOptions:
+        base = RunOptions(
+            shutdown_enabled=True,
+            shutdown_delay=120,
+            timed_enabled=True,
+            timed_target="04:10",
+            mute_enabled=True,
+            close_running_enabled=True,
+            rerun_enabled=True,
+            notify_enabled=True,
+            email="123456@qq.com",
+        )
+        return replace(base, **overrides) if overrides else base
 
     def test_writes_all_blocks(self):
         apply_run_options(self._options())
@@ -498,11 +574,21 @@ class TestApplyRunOptions(unittest.TestCase):
         self.assertEqual(data["rerun"], {"enabled": True})
         self.assertEqual(data["notify"], {"enabled": True, "email": "123456@qq.com"})
 
-    def test_disabled_keeps_delay_value(self):
-        """关闭自动关机：延迟以弹窗给定值为准一并落盘，不归零。"""
-        apply_run_options(self._options(shutdown_enabled=False, shutdown_delay=45))
+    def test_disabled_drops_target_and_keeps_delay(self):
+        """关闭定时清空 target；关闭关机保留弹窗给定的延迟值（不归零）。"""
+        apply_run_options(
+            self._options(
+                timed_enabled=False, shutdown_enabled=False, shutdown_delay=45
+            )
+        )
+        data = self._read()
+        self.assertEqual(data["timed_run"], {"enabled": False, "target_time": ""})
+        self.assertEqual(data["shutdown"], {"after_run": False, "delay_seconds": 45})
+
+    def test_enabled_with_illegal_target_falls_back(self):
+        apply_run_options(self._options(timed_target="25:99"))
         self.assertEqual(
-            self._read()["shutdown"], {"after_run": False, "delay_seconds": 45}
+            self._read()["timed_run"], {"enabled": True, "target_time": "04:10"}
         )
 
     def test_smtp_written_when_filled(self):
@@ -510,6 +596,16 @@ class TestApplyRunOptions(unittest.TestCase):
         notify = self._read()["notify"]
         self.assertEqual(notify["smtp_host"], "smtp.163.com")
         self.assertEqual(notify["smtp_port"], 994)
+
+    def test_empty_notify_fields_not_written(self):
+        """email/smtp 留空 = 不覆盖既有值。"""
+        apply_run_options(self._options(smtp_host="", smtp_port="", email=""))
+        self.assertEqual(self._read()["notify"], {"enabled": True, "email": ""})
+
+    def test_invalid_smtp_port_keeps_old_value(self):
+        dump_yaml(self.schedule_path, {"notify": {"smtp_port": 465}})
+        apply_run_options(self._options(smtp_port="abc"))
+        self.assertEqual(self._read()["notify"]["smtp_port"], 465)
 
     def test_registers_auth_code(self):
         with mock.patch("src.service.schedule.register_credentials") as reg:

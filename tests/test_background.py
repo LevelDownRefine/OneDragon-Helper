@@ -52,7 +52,6 @@ class TestWallpaperCache(unittest.TestCase):
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
             game_list=MagicMock(),
-            task_card=MagicMock(),
             app_service=MagicMock(),
             toast=MagicMock(),
         )
@@ -126,7 +125,6 @@ class TestWallpaperFor(unittest.TestCase):
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
             game_list=MagicMock(),
-            task_card=MagicMock(),
             app_service=MagicMock(),
             toast=MagicMock(),
         )
@@ -188,7 +186,6 @@ class TestOpenWallpaper(unittest.TestCase):
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
             game_list=MagicMock(),
-            task_card=MagicMock(),
             app_service=MagicMock(),
             toast=MagicMock(),
         )
@@ -242,7 +239,6 @@ class TestScriptBackground(unittest.TestCase):
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
             game_list=MagicMock(),
-            task_card=MagicMock(),
             app_service=MagicMock(),
             toast=MagicMock(),
         )
@@ -290,7 +286,6 @@ class TestResolveBg(unittest.TestCase):
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
             game_list=MagicMock(),
-            task_card=MagicMock(),
             app_service=MagicMock(),
             toast=MagicMock(),
         )
@@ -323,7 +318,6 @@ class TestApplyCurrent(unittest.TestCase):
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
             game_list=MagicMock(),
-            task_card=MagicMock(),
             app_service=MagicMock(),
             toast=MagicMock(),
         )

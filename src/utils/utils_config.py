@@ -15,7 +15,11 @@ chain_service 模块仅作运行时委托（其内部 ScheduledRun 经 ``load_co
 import logging
 import os
 
-from src.config.set_config import get_config_path, init_config
+from src.config.set_config import (
+    get_config_path,
+    init_config,
+    set_weekly_start_day,
+)
 from src.utils import (
     get_config_yml_path_under_root,
     require_config_yml_path,
@@ -32,6 +36,7 @@ from src.utils.utils_weekly import (
     ensure_weekly_entry,
     rename_weekly,
     save_weekly,
+    set_weekly_start,
 )
 from src.utils.utils_yaml import dump_yaml, load_yaml
 
@@ -118,21 +123,30 @@ def update_script(
     new_display_name: str,
     config_patch: dict,
     weekly_timeouts: list[int | None],
+    weekly_start_day: int | None = None,
 ) -> str:
-    """更新单个脚本条目字段并同步 weekly_timeouts。
+    """更新单个脚本条目字段，并统一落盘周常运行期参数与游戏侧周几起。
 
-    以脚本唯一标识定位条目；自动处理标识变更（含 weekly 迁移）与
+    以脚本唯一标识定位条目；自动处理标识变更（含 weekly 两段迁移）与
     kill_game_after_done 自洽（未设置 game_process_name 时强制 False）。
+    周几起（weekly_start_day）的三处落盘收拢在此，调用方无须感知顺序：
+    config.yml 先落盘（游戏侧目录解析依赖新 script_path）→ weekly.yml
+    weekly_timeouts / weekly_start 两段 → 游戏侧原生 config。
 
     Args:
         old_script_name: 原脚本唯一标识（用于定位条目）。
         new_display_name: 新 display_name（展示名，可保留原名）。
         config_patch: 要写入条目顶层字段的映射（如 script_path/check_done）。
         weekly_timeouts: 7 格超时输入值，空输入为 None（落盘前转默认超时）。
+        weekly_start_day: 周几起（1~7）；None 表示不设置（仅清除 weekly.yml
+            条目；游戏侧无「未设置」语义，保留原值无害，不回写）。
 
     Returns:
-        落盘后的脚本唯一标识（标识可能因 script_path/display_name 变更而改变），
-        供调用方在落盘后触发依赖新路径的后续动作（如游戏侧周几起同步）。
+        落盘后的脚本唯一标识（标识可能因 script_path/display_name 变更而改变）。
+
+    Raises:
+        OSError: 游戏侧周几起同步失败。此时 config.yml 与 weekly.yml 均已
+            落盘，属可恢复的部分失败，由调用方提示用户。
     """
     assert new_display_name, "[utils_config] 脚本名称不能为空"
     config = load_config()
@@ -164,7 +178,11 @@ def update_script(
     if new_script_name != old_script_name:
         rename_weekly(old_script_name, new_script_name)
     save_weekly(new_script_name, weekly_timeouts)
+    set_weekly_start(new_script_name, weekly_start_day)
     init_config(new_script_name)
+    if weekly_start_day is not None:
+        # 游戏侧同步必须在 config.yml 落盘新路径之后；失败传播给调用方提示。
+        set_weekly_start_day(new_script_name, weekly_start_day)
     return new_script_name
 
 

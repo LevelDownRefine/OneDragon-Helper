@@ -4,33 +4,64 @@ from unittest.mock import MagicMock, patch
 from src.gui.controllers.game_list import GameListController, ScriptIconProvider
 
 
-class TestSyncWeeklyStartDay(unittest.TestCase):
-    """游戏侧周几起同步应在 config.yml 落盘后、用新 script_name 触发。
-
-    save_data 内 config.yml 尚未落盘新路径，目录解析会指向旧目录；故同步推迟到
-    AppService.update_script 之后（见 configCurrent → _sync_weekly_start_day）。
-    """
+class TestConfigCurrentWeeklyStartSync(unittest.TestCase):
+    """周几起随 update_script 统一落盘：游戏侧 OSError 属部分失败，提示不回滚。"""
 
     def _make_ctrl(self) -> GameListController:
         service = MagicMock()
-        toast = MagicMock()
-        on_reload = MagicMock()
-        return GameListController(service, toast, on_reload)
+        ctrl = GameListController(service, MagicMock(), MagicMock())
+        ctrl._games = [
+            {
+                "display_name": "鸣潮",
+                "script_name": "wu",
+                "script_data": {"script_type": "external", "script_path": "C:/wu.exe"},
+                "char": "鸣",
+                "color": "#161C28",
+            }
+        ]
+        return ctrl
 
-    def test_sync_calls_set_weekly_start_day(self):
-        """落盘后应以新 script_name 经 service 触发游戏侧原生 config 同步。"""
+    def test_update_script_receives_weekly_start_day(self):
         ctrl = self._make_ctrl()
-        ctrl._sync_weekly_start_day("run", 3)
-        ctrl._app_service.set_script_weekly_start_day.assert_called_once_with("run", 3)
-
-    def test_sync_oserror_toasts_and_does_not_raise(self):
-        """原生 config 目录缺失（OSError）时仅提示，不阻塞已完成的保存。"""
-        ctrl = self._make_ctrl()
-        ctrl._app_service.set_script_weekly_start_day.side_effect = OSError(
-            "no such dir"
+        with patch("src.gui.controllers.game_list.QMessageBox") as mock_box:
+            mock_box.Ok = 1
+            mock_box.Cancel = 2
+            mock_box.return_value.exec.return_value = 1
+            with patch("src.gui.dialogs.SingleScriptConfigDialog") as mock_dialog_cls:
+                mock_dialog_cls.return_value.exec.return_value = 1
+                mock_dialog_cls.return_value.pending_changes = {
+                    "old_script_name": "wu",
+                    "new_display_name": "鸣潮",
+                    "config_patch": {"script_path": "C:/wu.exe"},
+                    "weekly_timeouts": [60] * 7,
+                    "weekly_start_day": 3,
+                }
+                ctrl.configCurrent()
+        ctrl._app_service.update_script.assert_called_once_with(
+            "wu", "鸣潮", {"script_path": "C:/wu.exe"}, [60] * 7, 3
         )
-        ctrl._sync_weekly_start_day("run", 3)  # 不应抛出
-        ctrl._toast.assert_called_once()
+
+    def test_update_script_oserror_toasts_and_still_reloads(self):
+        """游戏侧同步 OSError：toast 提示，但 config.yml 已落盘故仍重载。"""
+        ctrl = self._make_ctrl()
+        ctrl._app_service.update_script.side_effect = OSError("no such dir")
+        with patch("src.gui.controllers.game_list.QMessageBox") as mock_box:
+            mock_box.Ok = 1
+            mock_box.Cancel = 2
+            mock_box.return_value.exec.return_value = 1
+            with patch("src.gui.dialogs.SingleScriptConfigDialog") as mock_dialog_cls:
+                mock_dialog_cls.return_value.exec.return_value = 1
+                mock_dialog_cls.return_value.pending_changes = {
+                    "old_script_name": "wu",
+                    "new_display_name": "鸣潮",
+                    "config_patch": {},
+                    "weekly_timeouts": [60] * 7,
+                    "weekly_start_day": 3,
+                }
+                ctrl.configCurrent()  # 不应抛出
+        ctrl._on_reload.assert_called_once()
+        # 部分失败提示 + 成功提示并存（与旧行为一致）
+        self.assertTrue(any("周几起" in c[0][0] for c in ctrl._toast.call_args_list))
 
 
 class TestScriptIconProviderRefresh(unittest.TestCase):

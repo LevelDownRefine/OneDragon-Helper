@@ -11,16 +11,7 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
-from src.utils.utils_runner import (
-    build_script_command,
-    parse_close_running,
-    parse_mute_run,
-    parse_notify_enabled,
-    parse_rerun_config,
-    parse_shutdown,
-    parse_timed_run,
-    spawn_schedule_run,
-)
+from src.utils.utils_runner import build_script_command, spawn_schedule_run
 from src.utils.utils_sub_config import get_script_name, resolve_script_path
 from src.utils.utils_weekly import next_target_datetime
 
@@ -61,13 +52,9 @@ class LaunchController(QObject):
             return
         if confirm and not self._confirm_run(enabled_script_names):
             return
-        schedule_data = self._app_service.load_schedule()
-        shutdown_delay = parse_shutdown(schedule_data)
-        mute = parse_mute_run(schedule_data)
-        close_running = parse_close_running(schedule_data)
-        timed_enabled, timed_target = parse_timed_run(schedule_data)
-        run_target = timed_target if timed_enabled else "now"
-        if timed_enabled:
+        options = self._app_service.load_run_options()
+        run_target = options.timed_target if options.timed_enabled else "now"
+        if options.timed_enabled:
             target_dt = next_target_datetime(run_target)
             msg = f"定时运行：将于 {target_dt:%Y-%m-%d %H:%M} 重新生成脚本链并运行"
         else:
@@ -76,9 +63,13 @@ class LaunchController(QObject):
         spawn_schedule_run(
             enabled_script_names,
             run_target,
-            mute=mute,
-            shutdown_delay=shutdown_delay,
-            close_running=close_running,
+            mute=options.mute_enabled,
+            shutdown_delay=(
+                options.shutdown_delay
+                if options.shutdown_enabled and options.shutdown_delay > 0
+                else None
+            ),
+            close_running=options.close_running_enabled,
         )
 
     @Slot()
@@ -122,57 +113,13 @@ class LaunchController(QObject):
             if reply != QMessageBox.Yes:
                 return False
 
-        # 回显 schedule 当前自动关机 / 定时计划配置到确认弹窗。
-        schedule_data = self._app_service.load_schedule()
-        shutdown_cfg = schedule_data.get("shutdown")
-        shutdown_enabled = bool(
-            isinstance(shutdown_cfg, dict) and shutdown_cfg.get("after_run", False)
-        )
-        shutdown_delay = (
-            int(shutdown_cfg.get("delay_seconds", 0))
-            if isinstance(shutdown_cfg, dict)
-            else 0
-        )
-        timed_enabled, timed_target = parse_timed_run(schedule_data)
-        mute_enabled = parse_mute_run(schedule_data)
-        close_running_enabled = parse_close_running(schedule_data)
-        rerun_enabled = parse_rerun_config(schedule_data)
-        notify_enabled = parse_notify_enabled(schedule_data)
-        notify_cfg = schedule_data.get("notify")
-        notify_email = (
-            notify_cfg.get("email", "") if isinstance(notify_cfg, dict) else ""
-        )
-        # SMTP 主机/端口：缺省回退 QQ（与 schedule.example.yml 默认一致），用户可在弹窗覆盖。
-        notify_smtp_host = (
-            notify_cfg.get("smtp_host", "smtp.qq.com")
-            if isinstance(notify_cfg, dict)
-            else "smtp.qq.com"
-        )
-        notify_smtp_port = (
-            str(notify_cfg.get("smtp_port", 465))
-            if isinstance(notify_cfg, dict)
-            else "465"
-        )
-
-        dialog = RunConfirmDialog(
-            len(enabled_keys),
-            shutdown_enabled=shutdown_enabled,
-            shutdown_delay=shutdown_delay,
-            timed_enabled=timed_enabled,
-            timed_target=timed_target,
-            mute_enabled=mute_enabled,
-            close_running_enabled=close_running_enabled,
-            rerun_enabled=rerun_enabled,
-            notify_enabled=notify_enabled,
-            email=notify_email,
-            smtp_host=notify_smtp_host,
-            smtp_port=notify_smtp_port,
-        )
+        # 回显 schedule 当前运行选项到确认弹窗（RunOptions 为单一 schema）。
+        options = self._app_service.load_run_options()
+        dialog = RunConfirmDialog(len(enabled_keys), options)
         if dialog.exec() != QDialog.Accepted:
             return False
 
-        # 弹窗勾选项的落盘（schedule.yml + 授权码凭据）整体经 service，
-        # GUI 只透传 result dict（键集见 RunConfirmDialog.result，恒含全部键）。
+        # 弹窗勾选项的落盘（schedule.yml + 授权码凭据）整体经 service。
         res = dialog.result
         assert res is not None, "[launch] 弹窗 accept 但 result 为 None"
         self._app_service.apply_run_options(res)

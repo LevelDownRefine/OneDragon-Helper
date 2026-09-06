@@ -12,18 +12,12 @@ from src.utils import get_root_dir
 from src.utils.utils_runner import (
     ProcessTarget,
     _to_signed_32,
-    apply_mute_config,
-    apply_shutdown_config,
-    apply_timed_run_config,
     build_chain_command,
     build_run_chain_command,
     build_script_command,
     collect_invalid_script_messages,
     collect_process_targets,
     kill_processes,
-    parse_mute_run,
-    parse_shutdown,
-    parse_timed_run,
     run_chain_command,
     script_invalid_message,
     spawn_schedule_run,
@@ -388,50 +382,6 @@ class TestBuildRunChainCommand(unittest.TestCase):
         self.assertNotIn("pythonw.exe", command[0])
 
 
-class TestParseShutdown(unittest.TestCase):
-    """parse_shutdown：config 的 shutdown 嵌套配置 -> 延迟秒数（None 表示不关机）。
-
-    after_run 默认 False，delay 须为正整型，否则 None（不关机）。
-    供 GUI 读取延迟秒数后作为 post_run 关机步骤（见 src.utils.utils_shutdown）。
-    """
-
-    def test_missing_field_returns_none(self):
-        self.assertIsNone(parse_shutdown({}))
-
-    def test_after_run_default_false(self):
-        self.assertIsNone(parse_shutdown({"shutdown": {"delay_seconds": 45}}))
-
-    def test_zero_delay_returns_none(self):
-        self.assertIsNone(
-            parse_shutdown({"shutdown": {"after_run": True, "delay_seconds": 0}})
-        )
-
-    def test_negative_delay_returns_none(self):
-        self.assertIsNone(
-            parse_shutdown({"shutdown": {"after_run": True, "delay_seconds": -1}})
-        )
-
-    def test_non_int_delay_returns_none(self):
-        self.assertIsNone(
-            parse_shutdown({"shutdown": {"after_run": True, "delay_seconds": "45"}})
-        )
-
-    def test_positive_delay_returns_int(self):
-        self.assertEqual(
-            parse_shutdown({"shutdown": {"after_run": True, "delay_seconds": 45}}), 45
-        )
-
-    def test_switch_explicit_false_returns_none(self):
-        self.assertIsNone(
-            parse_shutdown({"shutdown": {"after_run": False, "delay_seconds": 45}})
-        )
-
-    def test_switch_non_bool_returns_none(self):
-        self.assertIsNone(
-            parse_shutdown({"shutdown": {"after_run": "false", "delay_seconds": 45}})
-        )
-
-
 class TestKillProcesses(unittest.TestCase):
     """kill_processes：按匹配条件终止进程及其子进程树，安全跳过无关/已退出进程。"""
 
@@ -579,68 +529,6 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class TestApplyShutdownConfig(unittest.TestCase):
-    """apply_shutdown_config：启用/关闭都直接落盘完整块。"""
-
-    def test_enabled_writes_after_run_and_delay(self):
-        data: dict = {}
-        apply_shutdown_config(data, enabled=True, delay_seconds=120)
-        self.assertEqual(data["shutdown"], {"after_run": True, "delay_seconds": 120})
-
-    def test_disabled_writes_after_run_and_delay(self):
-        # 关闭也落盘：delay_seconds 以弹窗给定值原样写入，行为单一稳定。
-        data: dict = {}
-        apply_shutdown_config(data, enabled=False, delay_seconds=45)
-        self.assertEqual(data["shutdown"], {"after_run": False, "delay_seconds": 45})
-
-
-class TestApplyTimedRunConfig(unittest.TestCase):
-    """apply_timed_run_config：原地写回顶层 timed_run 映射。"""
-
-    def test_enabled_writes_valid_target(self):
-        data: dict = {}
-        apply_timed_run_config(data, enabled=True, target_time="04:10")
-        self.assertEqual(data["timed_run"], {"enabled": True, "target_time": "04:10"})
-
-    def test_disabled_drops_target_to_empty(self):
-        data = {"timed_run": {"enabled": True, "target_time": "08:00"}}
-        apply_timed_run_config(data, enabled=False, target_time="08:00")
-        self.assertEqual(data["timed_run"], {"enabled": False, "target_time": ""})
-
-    def test_enabled_with_illegal_target_falls_back(self):
-        data: dict = {}
-        apply_timed_run_config(data, enabled=True, target_time="25:99")
-        self.assertEqual(data["timed_run"], {"enabled": True, "target_time": "04:10"})
-
-
-class TestParseTimedRun(unittest.TestCase):
-    """parse_timed_run：缺失/非法配置安全降级。
-
-    统一经 ruamel（YAML 1.2）读写 config.yml，target_time 始终为字符串，
-    无需再处理 PyYAML 1.1 把 08:00 误成 480.0 的旧兼容分支。
-    """
-
-    def test_disabled_when_missing_block(self):
-        self.assertEqual(parse_timed_run({"script_list": []}), (False, None))
-
-    def test_disabled_when_enabled_false(self):
-        cfg = {"timed_run": {"enabled": False, "target_time": "08:00"}}
-        self.assertEqual(parse_timed_run(cfg), (False, None))
-
-    def test_enabled_with_valid_time(self):
-        cfg = {"timed_run": {"enabled": True, "target_time": "08:30"}}
-        self.assertEqual(parse_timed_run(cfg), (True, "08:30"))
-
-    def test_illegal_time_string_degrades(self):
-        cfg = {"timed_run": {"enabled": True, "target_time": "25:99"}}
-        self.assertEqual(parse_timed_run(cfg), (False, None))
-
-    def test_numeric_target_degrades(self):
-        """ruamel 下 target_time 不会是数值；若配置损坏出现数值则安全降级。"""
-        cfg = {"timed_run": {"enabled": True, "target_time": 480.0}}
-        self.assertEqual(parse_timed_run(cfg), (False, None))
-
-
 class TestNextTargetDatetime(unittest.TestCase):
     """next_target_datetime：今天未到取今天，已过取明天（跨午夜）。"""
 
@@ -731,26 +619,3 @@ class TestSpawnScheduleRun(unittest.TestCase):
         """enabled_keys 必须显式传入具体集合；None 是契约错误（不再表示『全部』）。"""
         with self.assertRaises(AssertionError):
             self._capture_command(frozen=False, enabled_keys=None)
-
-
-class TestMuteConfig(unittest.TestCase):
-    """parse_mute_run / apply_mute_config：顶层 mute 映射读写。"""
-
-    def test_parse_enabled(self):
-        self.assertTrue(parse_mute_run({"mute": {"enabled": True}}))
-
-    def test_parse_missing_block_disabled(self):
-        self.assertFalse(parse_mute_run({"script_list": []}))
-
-    def test_parse_non_bool_disabled(self):
-        self.assertFalse(parse_mute_run({"mute": {"enabled": "yes"}}))
-
-    def test_apply_writes_enabled(self):
-        data: dict = {}
-        apply_mute_config(data, enabled=True)
-        self.assertEqual(data["mute"], {"enabled": True})
-
-    def test_apply_disabled(self):
-        data = {"mute": {"enabled": True}}
-        apply_mute_config(data, enabled=False)
-        self.assertEqual(data["mute"], {"enabled": False})

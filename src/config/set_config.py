@@ -165,9 +165,6 @@ class ScriptConfig:
     _weekly_config_rel_path: str = ""
     """周常配置文件路径；空字符串复用主 config。"""
 
-    _enabled: bool = True
-    """实例是否可操作 config；拒绝保存后置 False 使后续写入一并失效。"""
-
     def _load(
         self, rel_path: str | None = None, *, allow_missing: bool = False
     ) -> dict | None:
@@ -218,9 +215,6 @@ class ScriptConfig:
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
-        if not self._enabled:
-            logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
-            return
         save_config(self._script_name, rel_path, config)
         self._verify_saved(config, rel_path)
 
@@ -271,9 +265,6 @@ class ScriptConfig:
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] 周常 config 必须是 dict"
         )
-        if not self._enabled:
-            logger.info(f"[set_config][{self.display_name}] 用户拒绝更新，跳过保存")
-            return
         save_config(
             self._script_name,
             self._weekly_config_rel_path or self._config_rel_path,
@@ -425,17 +416,10 @@ class ScriptConfig:
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
         """设置副本：更新任务类型与序列后落盘。
 
-        enabled=False 时短路（用户拒绝更新）。
-
         Args:
             dungeon_name: 副本中文名。
             sequence: 序列值；不传则仅设置任务类型。
         """
-        if not self._enabled:
-            logger.info(
-                f"[set_dungeon][{self.display_name}] 用户拒绝更新，跳过副本设置"
-            )
-            return
         config = self._load()
         changed = self._update_task(config, dungeon_name, sequence)
         if changed:
@@ -455,9 +439,6 @@ class ScriptConfig:
         Raises:
             AssertionError: 未适配周常，或 start_day 不在 1~7。
         """
-        if not self._enabled:
-            logger.info(f"[set_weekly][{self.display_name}] 用户拒绝更新，跳过周常设置")
-            return
         assert self._weekly_task_name, (
             f"[set_config][{self.display_name}] 未支持周常配置"
         )
@@ -921,9 +902,6 @@ class StarRailConfig(ScriptConfig):
         Args:
             start_day: 周几以后启用（1~7，1=周一）。
         """
-        if not self._enabled:
-            logger.info(f"[set_weekly][{self.display_name}] 用户拒绝更新，跳过周常设置")
-            return
         assert self._weekly_task_name, (
             f"[set_config][{self.display_name}] 未支持周常配置"
         )
@@ -1169,10 +1147,9 @@ class NTEConfig(ScriptConfig):
         """
         mode_id = self._dungeon_to_mode[dungeon_name]
         super().set_dungeon(dungeon_name, sequence)
-        if self._enabled:
-            routine = self._load(self._routine_config_rel_path)
-            if self._update_routine_exclusion(routine, mode_id):
-                self._save(routine, self._routine_config_rel_path)
+        routine = self._load(self._routine_config_rel_path)
+        if self._update_routine_exclusion(routine, mode_id):
+            self._save(routine, self._routine_config_rel_path)
 
     def _read_dungeon(self) -> tuple[str | None, str | int | None]:
         """反读当前日常副本与二级序号（与 set_dungeon / _update_task 对称）。
@@ -1392,9 +1369,6 @@ class ArknightsConfig(ScriptConfig):
         Raises:
             AssertionError: 未适配周常，或 start_day 不在 1~7。
         """
-        if not self._enabled:
-            logger.info(f"[set_weekly][{self.display_name}] 用户拒绝更新，跳过周常设置")
-            return
         assert self._weekly_task_name, (
             f"[set_config][{self.display_name}] 未支持周常配置"
         )

@@ -1795,7 +1795,6 @@ class TestArknightsConfig(unittest.TestCase):
             patch.object(cfg, "_load", side_effect=fake_load),
             patch.object(cfg, "_save", side_effect=fake_save),
         ):
-            cfg._enabled = True
             cfg.set_dungeon("红票")
             self.assertEqual(cfg._read_dungeon(), ("红票", None))
             cfg.set_dungeon("土")
@@ -1840,7 +1839,6 @@ class TestArknightsConfig(unittest.TestCase):
             patch.object(cfg, "_load", side_effect=fake_load),
             patch.object(cfg, "_save", side_effect=fake_save),
         ):
-            cfg._enabled = True
             cfg.set_dungeon("红票")
             self.assertEqual(cfg._read_dungeon(), ("红票", None))
             cfg.set_dungeon("土")
@@ -2082,15 +2080,6 @@ class TestSetWeekly(unittest.TestCase):
         for bad in (0, 8):
             with self.subTest(bad=bad), self.assertRaises(AssertionError):
                 cfg.set_weekly(bad)
-
-    def test_set_weekly_enabled_false_short_circuits(self):
-        """用户已拒绝（enabled=False）→ 直接跳过，不落盘（同 set_dungeon）"""
-        with patch.object(StarRailConfig, "_init_config"):
-            cfg = StarRailConfig()
-        cfg._enabled = False
-        with patch.object(cfg, "_save") as mock_save:
-            cfg.set_weekly(4)
-        mock_save.assert_not_called()
 
     # ---- 崩铁：currencywars_enable ----
 

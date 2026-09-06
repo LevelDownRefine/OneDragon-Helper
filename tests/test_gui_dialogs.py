@@ -168,7 +168,6 @@ class _FakeService:
             "display_name": display_name,
         }
         self._weekly_start = weekly_start
-        self.saved_weekly_start = None
 
     def get_script(self, name):
         return self._data
@@ -178,9 +177,6 @@ class _FakeService:
 
     def get_weekly_start(self, script_name):
         return self._weekly_start
-
-    def set_weekly_start(self, script_name, start_day):
-        self.saved_weekly_start = start_day
 
 
 class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
@@ -217,11 +213,11 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
         # combo index 3 → 周三起
         self.assertEqual(dlg.weekly_start_combo.currentIndex(), 3)
 
-    def test_save_writes_weekly_start(self):
-        """保存时把周几起（周三起）经 AppService 持久化，并暂存到 pending_changes
+    def test_save_defers_weekly_start_to_pending_changes(self):
+        """保存时周几起只暂存到 pending_changes，不在弹窗内写盘
 
-        游戏侧原生 config 的同步不在 save_data 内进行（那时 config.yml 尚未落盘新路径，
-        目录解析会指向旧目录）；由调用方落盘后触发，见 game_list.configCurrent。
+        weekly.yml weekly_start 段与游戏侧原生 config 的落盘统一归
+        AppService.update_script（游戏侧须在 config.yml 落盘新路径后）。
         """
         dlg = self._make_dialog("run", "鸣潮", None, supported=True)
         dlg.weekly_start_combo.setCurrentIndex(3)
@@ -230,11 +226,10 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
-        self.assertEqual(dlg._app_service.saved_weekly_start, 3)
         self.assertEqual(dlg.pending_changes["weekly_start_day"], 3)
 
     def test_save_clears_weekly_start_when_unset(self):
-        """选择「不设置」时经 AppService 清除（传 None），pending_changes 记为 None"""
+        """选择「不设置」时 pending_changes 记为 None（update_script 据此清 weekly.yml 条目）"""
         dlg = self._make_dialog("run", "鸣潮", 5, supported=True)
         dlg.weekly_start_combo.setCurrentIndex(0)
         with (
@@ -242,7 +237,6 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
-        self.assertIsNone(dlg._app_service.saved_weekly_start)
         self.assertIsNone(dlg.pending_changes["weekly_start_day"])
 
 

@@ -6,11 +6,9 @@
 基类与主题常量（单一来源，不在本文件重复定义）。
 
 对外接口：
-- ``RunConfirmDialog``：运行确认弹窗，构造签名含 enabled_count 与勾选初始值，
-  ``result`` 返回 dict（shutdown_enabled / shutdown_delay / timed_enabled /
-  timed_target / mute_enabled / close_running_enabled / rerun_enabled /
-  notify_enabled / email / auth_code / smtp_host / smtp_port）；取消（reject）
-  不返回、不落盘。
+- ``RunConfirmDialog``：运行确认弹窗，构造签名含 enabled_count 与
+  ``RunOptions``（初始勾选值，经 AppService.load_run_options 取自 schedule.yml），
+  ``result`` 返回用户改后的 ``RunOptions``；取消（reject）不返回、不落盘。
 """
 
 from PySide6.QtCore import QTime
@@ -34,7 +32,12 @@ from src.gui.dialogs import (
     FormDialogBase,
     make_font,
 )
-from src.utils.utils_runner import _TIME_RE
+from src.service.schedule import RunOptions, is_valid_target_time
+
+# SMTP 回显默认（schedule 缺省时的预填值；与 schedule.example.yml 默认一致）。
+# 发送时的缺省主机/端口由 send_mail 自身兜底，此处仅影响弹窗展示。
+SMTP_HOST_DEFAULT = "smtp.qq.com"
+SMTP_PORT_DEFAULT = "465"
 
 
 class RunConfirmDialog(FormDialogBase):
@@ -45,23 +48,7 @@ class RunConfirmDialog(FormDialogBase):
     （写 schedule.yml）。取消（reject）不返回、不落盘。
     """
 
-    def __init__(
-        self,
-        enabled_count: int,
-        *,
-        shutdown_enabled: bool,
-        shutdown_delay: int,
-        timed_enabled: bool,
-        timed_target: str,
-        mute_enabled: bool = False,
-        close_running_enabled: bool = True,
-        rerun_enabled: bool = True,
-        notify_enabled: bool = False,
-        email: str = "",
-        smtp_host: str = "",
-        smtp_port: str = "",
-        parent=None,
-    ):
+    def __init__(self, enabled_count: int, options: RunOptions, parent=None):
         super().__init__(parent)
         self.setWindowTitle("确认运行")
         self.setStyleSheet(f"background-color: {BG_CARD};")
@@ -70,35 +57,9 @@ class RunConfirmDialog(FormDialogBase):
         self._result = None  # accept 后供调用方读取勾选项
 
         self.setMinimumWidth(400)
-        self.init_ui(
-            shutdown_enabled=shutdown_enabled,
-            shutdown_delay=shutdown_delay,
-            timed_enabled=timed_enabled,
-            timed_target=timed_target,
-            mute_enabled=mute_enabled,
-            close_running_enabled=close_running_enabled,
-            rerun_enabled=rerun_enabled,
-            notify_enabled=notify_enabled,
-            email=email,
-            smtp_host=smtp_host,
-            smtp_port=smtp_port,
-        )
+        self.init_ui(options)
 
-    def init_ui(
-        self,
-        *,
-        shutdown_enabled: bool,
-        shutdown_delay: int,
-        timed_enabled: bool,
-        timed_target: str,
-        mute_enabled: bool,
-        close_running_enabled: bool,
-        rerun_enabled: bool,
-        notify_enabled: bool,
-        email: str,
-        smtp_host: str,
-        smtp_port: str,
-    ) -> None:
+    def init_ui(self, options: RunOptions) -> None:
         """构造布局：确认文案 + 三段生命周期配置（运行前/中/后）+ 底部按钮行。
 
         单列纵向：每段一张 QGroupBox，框内多行 checkbox（与原「运行前动作」单
@@ -116,18 +77,22 @@ class RunConfirmDialog(FormDialogBase):
 
         layout.addWidget(
             self._make_running_pre_group(
-                timed_enabled, timed_target, close_running_enabled
+                options.timed_enabled,
+                options.timed_target,
+                options.close_running_enabled,
             )
         )
-        layout.addWidget(self._make_running_group(mute_enabled, rerun_enabled))
+        layout.addWidget(
+            self._make_running_group(options.mute_enabled, options.rerun_enabled)
+        )
         layout.addWidget(
             self._make_post_run_group(
-                notify_enabled,
-                shutdown_enabled,
-                shutdown_delay,
-                email,
-                smtp_host,
-                smtp_port,
+                options.notify_enabled,
+                options.shutdown_enabled,
+                options.shutdown_delay,
+                options.email,
+                options.smtp_host or SMTP_HOST_DEFAULT,
+                options.smtp_port or SMTP_PORT_DEFAULT,
             )
         )
 
@@ -286,7 +251,7 @@ class RunConfirmDialog(FormDialogBase):
         self.timed_time.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.timed_time.setFixedWidth(90)
         self.timed_time.setFixedHeight(INPUT_FIXED_H)
-        if target and _TIME_RE.match(target):
+        if is_valid_target_time(target):
             hour, minute = (int(x) for x in target.split(":"))
             self.timed_time.setTime(QTime(hour, minute))
         else:
@@ -328,31 +293,25 @@ class RunConfirmDialog(FormDialogBase):
         return row
 
     @property
-    def result(self) -> dict | None:
-        """accept 后的勾选项；取消时返回 None。
-
-        Returns:
-            含 shutdown_enabled / shutdown_delay / timed_enabled / timed_target /
-            mute_enabled / close_running_enabled / rerun_enabled / notify_enabled /
-            email / auth_code / smtp_host / smtp_port 的 dict。
-        """
+    def result(self) -> RunOptions | None:
+        """accept 后的勾选项（RunOptions）；取消时返回 None。"""
         return self._result
 
     def _on_accept(self) -> None:
         """确认运行：收集勾选项并 accept。"""
         t = self.timed_time.time()
-        self._result = {
-            "shutdown_enabled": self.shutdown_cb.isChecked(),
-            "shutdown_delay": self.shutdown_delay_spin.value(),
-            "timed_enabled": self.timed_cb.isChecked(),
-            "timed_target": f"{t.hour():02d}:{t.minute():02d}",
-            "mute_enabled": self.mute_cb.isChecked(),
-            "close_running_enabled": self.close_running_cb.isChecked(),
-            "rerun_enabled": self.rerun_cb.isChecked(),
-            "notify_enabled": self.notify_cb.isChecked(),
-            "email": self.email_edit.text().strip(),
-            "auth_code": self.auth_edit.text().strip(),
-            "smtp_host": self.smtp_host_edit.text().strip(),
-            "smtp_port": self.smtp_port_edit.text().strip(),
-        }
+        self._result = RunOptions(
+            shutdown_enabled=self.shutdown_cb.isChecked(),
+            shutdown_delay=self.shutdown_delay_spin.value(),
+            timed_enabled=self.timed_cb.isChecked(),
+            timed_target=f"{t.hour():02d}:{t.minute():02d}",
+            mute_enabled=self.mute_cb.isChecked(),
+            close_running_enabled=self.close_running_cb.isChecked(),
+            rerun_enabled=self.rerun_cb.isChecked(),
+            notify_enabled=self.notify_cb.isChecked(),
+            email=self.email_edit.text().strip(),
+            auth_code=self.auth_edit.text().strip(),
+            smtp_host=self.smtp_host_edit.text().strip(),
+            smtp_port=self.smtp_port_edit.text().strip(),
+        )
         self.accept()

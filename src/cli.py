@@ -125,12 +125,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mute",
         action="store_true",
-        help="运行期间静音（透传 --mute 给 Runner）",
+        help="运行期间静音（配合 --schedule-run，由主仓 pre_run/post_run 执行）",
     )
     parser.add_argument(
         "--close-running",
         action="store_true",
-        help="运行前关闭残留的脚本/游戏进程（透传 --close-running 给 Runner）",
+        help="运行前关闭残留的脚本/游戏进程（配合 --schedule-run）",
     )
     parser.add_argument(
         "--weekly-start",
@@ -427,13 +427,10 @@ def _run_run_chain(args) -> int:
         _emit_cli("run_chain", f"脚本链配置不存在: {chain_path}")
         return 1
 
-    extra_args = []
     app_service = AppService()
-    command, cwd, _env = app_service.build_chain_command(chain_path, extra_args)
+    command, cwd, _env = app_service.build_chain_command(chain_path)
     _emit_cli("run_chain", f"运行: {cwd} {' '.join(command)}")
-    code = app_service.run_chain_command(
-        chain_path, block=not args.no_block, extra_args=extra_args
-    )
+    code = app_service.run_chain_command(chain_path, block=not args.no_block)
     if args.no_block:
         _emit_cli("run_chain", f"脚本链已后台启动，启动状态码: {code}")
     else:
