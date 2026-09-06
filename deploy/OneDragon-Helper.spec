@@ -91,7 +91,12 @@ excludes = [
     'pynput._util.darwin', 'pynput._util.xorg', 'pynput._util.xorg_keys',
     'pynput.keyboard._uinput', 'pynput.mouse._uinput',
     'tkinter', 'unittest', 'doctest', 'pydoc', 'lib2to3',
-    'curses', 'ensurepip', 'distutils', 'venv', 'idlelib',
+    'curses', 'ensurepip', 'venv', 'idlelib',
+    # 注意：'distutils' 不能放 excludes —— PyInstaller 6.x 内置 hook-distutils.py 会
+    # 在任一被分析模块 import distutils 时把它别名成 setuptools 的 vendored distutils；
+    # 若同时列在 excludes，会抛 "Target module distutils already imported as
+    # ExcludedModule" 使构建失败（feat(mail) 引入 collect_submodules('keyring') 后触发）。
+    # Python 3.12 已移除标准库 distutils，PyInstaller 自动处理，无需手动排除。
     'turtledemo', 'test', 'pty', 'tty', 'wsgiref',
     # WebEngine（Chromium 内核，~149M）从未被本项目使用，纯属 PyInstaller 默认收集。
     # 排除 Python 模块名 + 下方手动过滤 Qt DLL 双保险。若未来引入 QWebEngineView 需移除此处。

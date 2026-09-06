@@ -403,7 +403,6 @@ class SingleScriptConfigDialog(FormDialogBase):
         checkbox_row.setSpacing(12)
         self.kill_script_cb = self._make_checkbox("结束后关闭脚本")
         self.kill_game_cb = self._make_checkbox("结束后关闭游戏")
-        self.kill_game_cb.stateChanged.connect(self._on_kill_game_changed)
         self.block_cb = self._make_checkbox("阻塞运行")
         checkbox_row.addWidget(self.kill_script_cb)
         checkbox_row.addWidget(self.kill_game_cb)
@@ -415,7 +414,6 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.game_process_input = self._make_line_edit(
             placeholder="关闭游戏时必填，例如 YuanShen.exe"
         )
-        self.game_process_input.setEnabled(False)
         grid.addWidget(self._make_label("游戏进程:"), 6, 0)
         grid.addWidget(self.game_process_input, 6, 1, 1, 2)
 
@@ -468,9 +466,6 @@ class SingleScriptConfigDialog(FormDialogBase):
         layout.addLayout(grid)
         layout.addLayout(footer)
 
-    def _on_kill_game_changed(self, state):
-        self.game_process_input.setEnabled(state == Qt.Checked)
-
     def _find_script_data(self) -> dict:
         """从 config.yml 读取本脚本的完整数据字典；脚本不在表中返回空 dict。"""
         script = self._app_service.get_script(self.script_name)
@@ -493,7 +488,6 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.kill_script_cb.setChecked(script_data.get("kill_script_after_done", True))
         self.kill_game_cb.setChecked(script_data.get("kill_game_after_done", False))
         self.game_process_input.setText(script_data.get("game_process_name", ""))
-        self.game_process_input.setEnabled(self.kill_game_cb.isChecked())
         # 阻塞运行：缺字段视为 True（默认阻塞）
         self.block_cb.setChecked(script_data.get("block", True))
 
@@ -543,7 +537,7 @@ class SingleScriptConfigDialog(FormDialogBase):
             QMessageBox.warning(
                 self,
                 "提示",
-                "未填写游戏进程名，保存后「结束后关闭游戏」将自动关闭。",
+                "已勾选「结束后关闭游戏」但未填写游戏进程名，保存后该选项将自动取消。",
             )
 
         timeouts = []

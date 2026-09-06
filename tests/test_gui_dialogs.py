@@ -3,7 +3,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from src.utils.utils_yaml import dump_yaml_file
 
@@ -244,6 +244,41 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
             dlg.save_data()
         self.assertIsNone(dlg._app_service.saved_weekly_start)
         self.assertIsNone(dlg.pending_changes["weekly_start_day"])
+
+
+class TestGameProcessInputAlwaysEnabled(unittest.TestCase):
+    """游戏进程输入框应始终可编辑，不受「结束后关闭游戏」复选框门控。
+
+    早期实现默认禁用，需先勾选「结束后关闭游戏」才启用，导致用户误以为无法填写。
+    现改为始终可编辑，仅在勾选关闭游戏且留空时才提示必填。
+    """
+
+    def _make_dialog(self, script_data):
+        app = MagicMock()
+        app.get_script.return_value = script_data
+        app.weekly_inputs.return_value = [3600] * 7
+        app.get_weekly_start.return_value = None
+        return SingleScriptConfigDialog(
+            "collect_log", "日志分析", "C:/x.py", app_service=app
+        )
+
+    def test_enabled_after_construct(self):
+        """构造后游戏进程框即可用"""
+        dlg = self._make_dialog({})
+        self.assertTrue(dlg.game_process_input.isEnabled())
+
+    def test_enabled_when_kill_game_false(self):
+        """未勾选「结束后关闭游戏」时仍可用"""
+        dlg = self._make_dialog({"kill_game_after_done": False})
+        self.assertTrue(dlg.game_process_input.isEnabled())
+
+    def test_enabled_when_kill_game_true(self):
+        """勾选「结束后关闭游戏」后仍可用，且正确回填进程名"""
+        dlg = self._make_dialog(
+            {"kill_game_after_done": True, "game_process_name": "YuanShen.exe"}
+        )
+        self.assertTrue(dlg.game_process_input.isEnabled())
+        self.assertEqual(dlg.game_process_input.text(), "YuanShen.exe")
 
 
 if __name__ == "__main__":
