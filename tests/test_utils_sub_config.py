@@ -178,6 +178,7 @@ class TestDefaultScriptEntry(unittest.TestCase):
             "script_path",
             "script_process_name",
             "game_process_name",
+            "game_path",
             "launcher_mode",
             "check_done",
             "kill_script_after_done",

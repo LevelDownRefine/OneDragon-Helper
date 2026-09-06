@@ -271,6 +271,8 @@ def default_script_entry(display_name, script_type, script_path, script_argument
         "script_path": script_path,
         "script_process_name": [],
         "game_process_name": "",
+        # 非空时 runner 会在启动本脚本前先打开该游戏（仅不自启游戏的脚本需要，如 MaaEnd）
+        "game_path": "",
         "launcher_mode": False,
         "check_done": "script_closed",
         "kill_script_after_done": True,

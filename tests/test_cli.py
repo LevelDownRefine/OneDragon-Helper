@@ -154,7 +154,7 @@ class TestCliGenerateChain(unittest.TestCase):
         self._names = _known_script_names()
         self.assertTrue(self._names, "config.yml 不应为空脚本列表")
         # 固定「当天全部运行」，消除 weekly_timeouts 按星期剔除脚本带来的日期敏感
-        # （如 AUTO-MAS 周三配置 0 不运行，会让"应含全部脚本"的断言随机失败）。
+        # （如某脚本周三超时配 0 表示当天不运行，会让"应含全部脚本"的断言随机失败）。
         self._resolve_daily = patch.object(
             service_chain_gen, "_resolve_daily_run", return_value=True
         )

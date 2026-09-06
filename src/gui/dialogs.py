@@ -417,19 +417,27 @@ class SingleScriptConfigDialog(FormDialogBase):
         grid.addWidget(self._make_label("游戏进程:"), 6, 0)
         grid.addWidget(self.game_process_input, 6, 1, 1, 2)
 
-        # 周几起：仅支持周常的脚本显示（选择落到 weekly.yml 的 weekly_start 段）。
-        # 不支持时整行不进布局，超时行上移到行 7，避免空行留白。
-        self._weekly_start_supported = supports_weekly(self.script_name)
-        timeout_row = 8 if self._weekly_start_supported else 7
+        # 行 7：游戏路径 + game_path_input（横跨 col 1-2）
+        # 非空时 runner 会先打开该游戏再启动本脚本；留空表示由脚本/启动器自行负责。
+        self.game_path_input = self._make_line_edit(
+            placeholder="仅在使用MaaEnd时填，填Endfield.exe路径"
+        )
+        grid.addWidget(self._make_label("游戏路径:"), 7, 0)
+        grid.addWidget(self.game_path_input, 7, 1, 1, 2)
 
-        # 周几起（行 7）
+        # 周几起：仅支持周常的脚本显示（选择落到 weekly.yml 的 weekly_start 段）。
+        # 不支持时整行不进布局，超时行上移，避免空行留白。
+        self._weekly_start_supported = supports_weekly(self.script_name)
+        timeout_row = 9 if self._weekly_start_supported else 8
+
+        # 周几起（行 8）
         self.weekly_start_combo = self._make_combo(
             ["不设置"] + [f"周{WEEKDAY_SHORT_NAMES[i]}起" for i in range(7)]
         )
         self.weekly_start_combo.setStyleSheet(combo_box_qss())
         if self._weekly_start_supported:
-            grid.addWidget(self._make_label("周常周几起:"), 7, 0)
-            grid.addWidget(self.weekly_start_combo, 7, 1, 1, 2)
+            grid.addWidget(self._make_label("周常周几起:"), 8, 0)
+            grid.addWidget(self.weekly_start_combo, 8, 1, 1, 2)
         else:
             # _make_combo 以 self 为父：控件已是 dialog 子控件，不进布局也会按默认
             # 位置 (0,0) 绘制并盖住左上角字段，必须显式 hide()。
@@ -488,6 +496,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.kill_script_cb.setChecked(script_data.get("kill_script_after_done", True))
         self.kill_game_cb.setChecked(script_data.get("kill_game_after_done", False))
         self.game_process_input.setText(script_data.get("game_process_name", ""))
+        self.game_path_input.setText(script_data.get("game_path", ""))
         # 阻塞运行：缺字段视为 True（默认阻塞）
         self.block_cb.setChecked(script_data.get("block", True))
 
@@ -540,6 +549,12 @@ class SingleScriptConfigDialog(FormDialogBase):
                 "已勾选「结束后关闭游戏」但未填写游戏进程名，保存后该选项将自动取消。",
             )
 
+        # 游戏路径：填了就必须存在（留空表示不由本工具启动游戏）
+        game_path_val = self.game_path_input.text().strip()
+        if game_path_val and not os.path.isfile(game_path_val):
+            QMessageBox.warning(self, "警告", f"游戏路径不存在:\n{game_path_val}")
+            return
+
         timeouts = []
         for timeout_edit in self.timeout_inputs:
             text = timeout_edit.text().strip()
@@ -566,6 +581,7 @@ class SingleScriptConfigDialog(FormDialogBase):
                 "kill_script_after_done": self.kill_script_cb.isChecked(),
                 "kill_game_after_done": self.kill_game_cb.isChecked(),
                 "game_process_name": self.game_process_input.text().strip(),
+                "game_path": game_path_val,
                 "block": self.block_cb.isChecked(),
             },
             "weekly_timeouts": timeouts,

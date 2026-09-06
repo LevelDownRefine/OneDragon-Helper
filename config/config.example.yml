@@ -131,17 +131,20 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
-- display_name: MAS
+- display_name: MaaEnd
   game_label: ''
   script_type: external
-  script_path: D:\game_helper\AUTO-MAS\AUTO-MAS.exe
+  script_path: D:\game_helper\MaaEnd\MaaEnd.exe
   script_process_name: []
   game_process_name: Endfield.exe
+  # 非空时 runner 会在启动本脚本前先打开该游戏；MaaEnd 不自启游戏，故必须填
+  game_path: C:\Program Files\Hypergryph Launcher\games\Endfield Game\Endfield.exe
   launcher_mode: false
   check_done: script_closed
   kill_script_after_done: true
-  kill_game_after_done: true
-  script_arguments: ''
+  kill_game_after_done: false
+  # -q：跑完自退（不加则常驻）；-i：MaaEnd 内已存在的实例名（按 name 匹配，非 id）
+  script_arguments: '--autostart -q -i 日常任务'
   notify_start: false
   notify_done: false
   notify_log_interval: 0

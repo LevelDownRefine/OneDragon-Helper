@@ -281,5 +281,75 @@ class TestGameProcessInputAlwaysEnabled(unittest.TestCase):
         self.assertEqual(dlg.game_process_input.text(), "YuanShen.exe")
 
 
+class TestGamePathInput(unittest.TestCase):
+    """测试配置弹窗的「游戏路径」行：读写条目的 game_path。
+
+    非空时 runner 会在启动本脚本前先打开该游戏；留空表示由脚本 / 启动器自行负责。
+    目前只有 MaaEnd 这类不会自启游戏的脚本需要。
+    """
+
+    def _make_dialog(self, script_data):
+        app = MagicMock()
+        # 仅本脚本标识命中：新标识（改名后）返回 None，避免走进「已存在同标识」分支。
+        app.get_script.side_effect = lambda name: (
+            script_data if name == "collect_log" else None
+        )
+        app.weekly_inputs.return_value = [3600] * 7
+        app.get_weekly_start.return_value = None
+        return SingleScriptConfigDialog(
+            "collect_log", "日志分析", "C:/x.py", app_service=app
+        )
+
+    def test_load_restores_game_path(self):
+        """打开弹窗时回填条目里已存的 game_path。"""
+        dlg = self._make_dialog({"game_path": "C:/games/Endfield.exe"})
+        self.assertEqual(dlg.game_path_input.text(), "C:/games/Endfield.exe")
+
+    def test_load_defaults_empty(self):
+        """条目无 game_path 时留空（多数脚本不需要）。"""
+        dlg = self._make_dialog({})
+        self.assertEqual(dlg.game_path_input.text(), "")
+
+    def test_save_stores_game_path(self):
+        """路径存在时正常存入 pending_changes 的 config_patch。"""
+        with tempfile.NamedTemporaryFile(suffix=".exe", delete=False) as tf:
+            path = tf.name
+        try:
+            dlg = self._make_dialog({})
+            dlg.game_path_input.setText(path)
+            with (
+                patch("src.gui.dialogs.QMessageBox.warning") as warn,
+                patch.object(SingleScriptConfigDialog, "accept"),
+            ):
+                dlg.save_data()
+        finally:
+            os.unlink(path)
+        warn.assert_not_called()
+        self.assertEqual(dlg.pending_changes["config_patch"]["game_path"], path)
+
+    def test_save_blocks_when_path_not_exists(self):
+        """填了但文件不存在 → 弹警告并中止保存（不进 accept）。"""
+        dlg = self._make_dialog({})
+        dlg.game_path_input.setText("D:/not/exist/Endfield.exe")
+        with (
+            patch("src.gui.dialogs.QMessageBox.warning") as warn,
+            patch.object(SingleScriptConfigDialog, "accept") as accept,
+        ):
+            dlg.save_data()
+        warn.assert_called_once()
+        accept.assert_not_called()
+
+    def test_empty_skips_existence_check(self):
+        """留空是合法值，不触发存在性校验。"""
+        dlg = self._make_dialog({})
+        with (
+            patch("src.gui.dialogs.QMessageBox.warning") as warn,
+            patch.object(SingleScriptConfigDialog, "accept"),
+        ):
+            dlg.save_data()
+        self.assertEqual(dlg.pending_changes["config_patch"]["game_path"], "")
+        warn.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
