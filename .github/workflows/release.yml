@@ -45,8 +45,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="${GITHUB_REF_NAME}"   # 形如 v0.0.1
+          notes=$(printf '%s\n\n%s' "自动构建发布 $version（对应 commit: $GITHUB_SHA）" "下载 OneDragon-Helper.zip 解压后即可使用。")
           gh release create "$version" \
             --target "$GITHUB_SHA" \
             --title "$version" \
-            --notes "自动构建发布 $version。对应 commit: $GITHUB_SHA" \
+            --notes "$notes" \
             OneDragon-Helper.zip
