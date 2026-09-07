@@ -10,7 +10,7 @@ script_list:
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
-  script_arguments: ' -t 1 -e'
+  script_arguments: '-t 1 -e'
   notify_start: false
   notify_done: false
   notify_log_interval: 0
@@ -48,7 +48,7 @@ script_list:
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
-  script_arguments: ' -t 1 -e'
+  script_arguments: '-t 1 -e'
   notify_start: false
   notify_done: false
   notify_log_interval: 0
@@ -68,7 +68,7 @@ script_list:
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
-  script_arguments: ' -o -c'
+  script_arguments: '-o -c'
   notify_start: false
   notify_done: false
   notify_log_interval: 0
@@ -83,7 +83,7 @@ script_list:
   script_process_name: []
   game_process_name: StarRail.exe
   launcher_mode: false
-  check_done: game_or_script_closed
+  check_done: script_closed
   kill_script_after_done: true
   kill_game_after_done: true
   script_arguments: 'main -e'
@@ -105,7 +105,7 @@ script_list:
   check_done: game_or_script_closed
   kill_script_after_done: true
   kill_game_after_done: true
-  script_arguments: ' -t 2 -e'
+  script_arguments: '-t 2 -e'
   notify_start: false
   notify_done: false
   notify_log_interval: 0
