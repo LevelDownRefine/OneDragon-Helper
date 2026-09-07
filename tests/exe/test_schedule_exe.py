@@ -108,7 +108,8 @@ class TestScheduleExeE2E(unittest.TestCase):
         (NTE_LOG_DIR).mkdir(parents=True)
         (WW_LOG_DIR).mkdir(parents=True)
 
-        # 假游戏：cmd.exe 副本（无参数启动即驻留控制台，单进程，按名清理安全）
+        # 假游戏：cmd.exe 副本（按名清理安全）。常驻方式见下方 leftover 启动——
+        # 不可无参数启动 cmd 副本（无控制台/stdin 环境下会立即退出，见下文注释）。
         shutil.copy(r"C:\Windows\System32\cmd.exe", GAME_EXE)
 
         # 假日常脚本 ok-ww.exe：按真实 log_analysis.yml 规则伪造「今日已完成」
@@ -195,14 +196,17 @@ class TestScheduleExeE2E(unittest.TestCase):
             for p in cls._log_paths()
         }
 
-        # 残留假游戏（「昨晚忘关的」），留给 pre_run 清场杀
+        # 残留假游戏（「之前打开的」），留给 pre_run 清场杀。
+        # 注意：不可无参数启动 cmd 副本——无控制台/stdin 环境下 cmd 会立即读 EOF
+        # 退出，pre_run 清场时它已不在，日志就不会出现 FakeGame.exe（CI 即如此失败）。
+        # 用 ping -n 600 让其稳定常驻，与 test_close_running_exe._spawn_stub 同策略。
         cls.leftover = subprocess.Popen(
-            [str(GAME_EXE)],
+            [str(GAME_EXE), "/c", "ping -n 600 127.0.0.1 > nul"],
             cwd=str(WORK_DIR),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        time.sleep(1)  # cmd 副本启动即驻留，无需解压等待
+        time.sleep(1)  # 等 ping 拉起，确保进程已常驻
 
         now = datetime.now()
         if now.minute <= 57:

@@ -1,10 +1,5 @@
 """打包产物的 Qt 图片插件防回归测试。
 
-背景（2026-09-05 翻车）：瘦身时按「这格式不常用」从 plugins/imageformats 删了
-qwebp.dll。GUI 照常启动、tests/exe 的 13 项 CLI 测试全过，但绝区零壁纸加载不出来——
-``ZenlessZoneZeroConfig.background`` 指向 ``assets/ui/static_background.webp``，
-文件存在、Qt 却解不了码，表现为空白背景且不报错、不写日志。
-
 本测试把「项目声明用到的图片格式」与「打包产物里实际带的 Qt 图片插件」对齐，
 并真实解码一遍，防止再次误删。
 """
