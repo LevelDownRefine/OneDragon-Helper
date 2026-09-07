@@ -52,5 +52,39 @@ class TestLinksOpenScriptConfig(unittest.TestCase):
         toast.assert_called_once_with("鸣潮：该脚本暂未适配配置文件，无法打开")
 
 
+class TestOpenPathOSError(unittest.TestCase):
+    """_open_path：无关联程序等 OSError 转 toast，不逃逸出 QML 槽。"""
+
+    def _make(self):
+        game = {
+            "script_name": "ok-ww",
+            "display_name": "鸣潮",
+            "script_data": {"script_path": "C:/games/run.exe"},
+        }
+        toast = MagicMock()
+        ctrl = LinksController(
+            game_list=_FakeGameList(game), toast=toast, app_service=MagicMock()
+        )
+        return ctrl, toast
+
+    def test_oserror_toasts_failure_only(self):
+        ctrl, toast = self._make()
+        with patch(
+            "src.gui.controllers.links.open_in_explorer",
+            side_effect=OSError("no association"),
+        ):
+            ok = ctrl._open_path("C:/x/settings.yml")
+        self.assertFalse(ok)
+        toast.assert_called_once()
+        self.assertIn("无法打开", toast.call_args[0][0])
+
+    def test_success_returns_true(self):
+        ctrl, toast = self._make()
+        with patch("src.gui.controllers.links.open_in_explorer"):
+            ok = ctrl._open_path("C:/games")
+        self.assertTrue(ok)
+        toast.assert_not_called()  # 成功提示由调用方给文案
+
+
 if __name__ == "__main__":
     unittest.main()

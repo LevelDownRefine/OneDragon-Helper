@@ -6,6 +6,7 @@ GUI 栈的前提下复用同一套首启产物，避免『本地有 config.yml�
 引入 PySide6 的调用方（main GUI 入口）改为 import 本模块。
 """
 
+import logging
 import os
 
 from src.utils import (
@@ -16,6 +17,8 @@ from src.utils import (
     safe_path_join,
 )
 from src.utils.utils_yaml import dump_yaml, load_yaml
+
+logger = logging.getLogger(__name__)
 
 
 def generate_config_from_example() -> None:
@@ -60,21 +63,54 @@ def generate_weekly_from_example() -> None:
     dump_yaml(weekly_path, data)
 
 
-def config_workflow() -> None:
-    """每次启动配置生成：缺失才从模板生成 config/schedule/weekly，并对齐各脚本 config。
+def _backup_corrupt(path: str) -> str:
+    """把损坏文件改名保留为 ``<path>.bak``（重名则 .bak2/.bak3…），返回备份路径。
 
-    三者缺哪个补哪个，与 generate_*_from_example「缺失才生成」语义一致；
+    只改名不改内容：损坏文件留给用户手工抢救（如找回脚本条目）。
+    """
+    backup = f"{path}.bak"
+    n = 1
+    while os.path.exists(backup):
+        n += 1
+        backup = f"{path}.bak{n}"
+    os.rename(path, backup)
+    return backup
+
+
+def _ensure_generated(path: str, generate) -> None:
+    """保证生成物可用：缺失→从模板生成；存在但解析失败→改名保留后重建。
+
+    三个生成物是用户可手改的外部文件，损坏属可恢复外部输入而非编程错误：
+    记日志留现场（.bak），从模板重建使用户无感恢复（load_yaml 的快速失败
+    语义保持不变，恢复只发生在启动期的本函数）。
+    """
+    if not os.path.exists(path):
+        generate()
+        return
+    try:
+        load_yaml(path)
+    except Exception:
+        logger.error(
+            "[generate_config] %s 无法解析（损坏），将从模板重建，原文件改名保留",
+            path,
+            exc_info=True,
+        )
+        backup = _backup_corrupt(path)
+        logger.error("[generate_config] 损坏文件已保留为: %s", backup)
+        generate()
+
+
+def config_workflow() -> None:
+    """每次启动配置生成：缺失或损坏才从模板生成 config/schedule/weekly，并对齐各脚本 config。
+
+    三者缺哪个补哪个、坏哪个换哪个，与 generate_*_from_example 语义一致；
     随后 init_config_all() 对齐所有已注册脚本的 config 与模板（未安装脚本为空操作）。
     """
-    config_path = get_config_yml_path_under_root()
-    if not os.path.exists(config_path):
-        generate_config_from_example()
-    schedule_path = get_schedule_yml_path_under_root()
-    if not os.path.exists(schedule_path):
-        generate_schedule_from_example()
-    weekly_path = get_weekly_yml_path_under_root()
-    if not os.path.exists(weekly_path):
-        generate_weekly_from_example()
+    _ensure_generated(get_config_yml_path_under_root(), generate_config_from_example)
+    _ensure_generated(
+        get_schedule_yml_path_under_root(), generate_schedule_from_example
+    )
+    _ensure_generated(get_weekly_yml_path_under_root(), generate_weekly_from_example)
     # 每次启动对齐所有已注册脚本的 config 与模板
     from src.config.set_config import init_config_all
 

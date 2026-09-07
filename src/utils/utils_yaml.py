@@ -65,6 +65,18 @@ def load_yaml_optional(path: str) -> dict:
     return data
 
 
+def _dump(path: str, data: dict | list) -> None:
+    """rt 引擎写入的公共实现：原子写（tmp + os.replace）。
+
+    写入中断不会留下截断的损坏 YAML——损坏兜底只是最后防线，不应靠它兜主动写入的锅。
+    """
+    assert isinstance(data, (dict, list)), f"[yaml] 待写入内容应为 dict/list: {path}"
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        _yaml.dump(data, f)
+    os.replace(tmp_path, path)
+
+
 def dump_yaml(path: str, data: dict | list) -> None:
     """将 dict / list 写回 YAML 文件（ruamel，保留注释/键序/引号，不重排键）。
 
@@ -72,9 +84,7 @@ def dump_yaml(path: str, data: dict | list) -> None:
         path: 目标 YAML 文件路径。
         data: 待写入的 dict 或 list。
     """
-    assert isinstance(data, (dict, list)), f"[yaml] 待写入内容应为 dict/list: {path}"
-    with open(path, "w", encoding="utf-8") as f:
-        _yaml.dump(data, f)
+    _dump(path, data)
 
 
 def dump_yaml_file(path: str, data: dict | list) -> None:
@@ -84,9 +94,7 @@ def dump_yaml_file(path: str, data: dict | list) -> None:
         path: 目标 YAML 文件路径。
         data: 待写入的 dict 或 list。
     """
-    assert isinstance(data, (dict, list)), f"[yaml] 待写入内容应为 dict/list: {path}"
-    with open(path, "w", encoding="utf-8") as f:
-        _yaml.dump(data, f)
+    _dump(path, data)
 
 
 def load_yaml_str(text: str) -> dict:

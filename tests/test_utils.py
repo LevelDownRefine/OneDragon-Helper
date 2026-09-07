@@ -1,9 +1,13 @@
 import os
+import sys
 import tempfile
+import threading
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from src import utils
+from src.utils.utils_logger import install_crash_hooks
 
 
 class TestUtils(unittest.TestCase):
@@ -122,6 +126,45 @@ class TestGetRootDirFrozen(unittest.TestCase):
             # 非冻结模式应返回 src/ 的父目录（项目根）
             self.assertTrue(os.path.isdir(result))
             self.assertTrue(os.path.isdir(os.path.join(result, "src")))
+
+
+class TestCrashHooks(unittest.TestCase):
+    """install_crash_hooks：主/子线程未捕获异常先记日志再委托原钩子。"""
+
+    def setUp(self):
+        old_sys, old_thread = sys.excepthook, threading.excepthook
+        self.addCleanup(setattr, sys, "excepthook", old_sys)
+        self.addCleanup(setattr, threading, "excepthook", old_thread)
+        install_crash_hooks()
+
+    def test_sys_hook_installed(self):
+        self.assertIsNot(sys.excepthook, sys.__excepthook__)
+
+    def test_sys_hook_logs_and_delegates(self):
+        with (
+            patch("sys.__excepthook__") as delegate,
+            self.assertLogs("src.utils.utils_logger", level="CRITICAL") as captured,
+        ):
+            try:
+                raise ValueError("boom")
+            except ValueError:
+                sys.excepthook(*sys.exc_info())
+        delegate.assert_called_once()
+        self.assertTrue(any("未捕获异常" in line for line in captured.output))
+
+    def test_thread_hook_logs_and_delegates(self):
+        try:
+            raise RuntimeError("thread boom")
+        except RuntimeError:
+            exc = sys.exc_info()
+        args = SimpleNamespace(exc_type=exc[0], exc_value=exc[1], exc_traceback=exc[2])
+        with (
+            patch("threading.__excepthook__") as delegate,
+            self.assertLogs("src.utils.utils_logger", level="CRITICAL") as captured,
+        ):
+            threading.excepthook(args)
+        delegate.assert_called_once()
+        self.assertTrue(any("子线程" in line for line in captured.output))
 
 
 if __name__ == "__main__":

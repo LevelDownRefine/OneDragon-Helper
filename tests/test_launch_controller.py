@@ -85,6 +85,17 @@ class TestLaunchAllTimed(unittest.TestCase):
         self.assertFalse(args.kwargs["mute"])
         self.assertIsNone(args.kwargs["shutdown_delay"])
 
+    def test_spawn_failure_toasts_error(self):
+        """起进程失败（spawn 返回 None）：报失败引导看日志，不报成功。"""
+        ctrl, service, toast = _make_controller(enabled=False, target_time=None)
+        ctrl._confirm_run = mock.MagicMock(return_value=True)
+        with mock.patch(
+            "src.gui.controllers.launch.spawn_schedule_run", return_value=None
+        ) as mock_spawn:
+            ctrl.launchAll()
+        mock_spawn.assert_called_once()
+        self.assertTrue(any("启动失败" in c[0][0] for c in toast.call_args_list))
+
     def test_timed_toast_fires(self):
         """定时：spawn 后立即弹『已设置定时运行』反馈（含目标时刻）。"""
         ctrl, service, toast = _make_controller(enabled=True, target_time="08:00")

@@ -8,6 +8,8 @@ on:
 
 jobs:
   test:
+    # 源码全量测试只在 ubuntu 跑；Windows 侧仅跑打包产物集成测试（tests/exe/），
+    # 由 build-exe.yml 打包后覆盖，避免非打包测试在 Windows 重复跑一遍。
     runs-on: ubuntu-latest
 
     steps:
@@ -37,5 +39,6 @@ jobs:
           uv run ruff format --check src tests tools
 
       - name: Run tests
-        run: |
-          PYTHONPATH=src uv run python -m unittest discover -s tests -p 'test*.py'
+        env:
+          PYTHONPATH: src
+        run: uv run python -m unittest discover -s tests -p 'test*.py'

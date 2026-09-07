@@ -324,7 +324,10 @@ class TestSaveConfig(unittest.TestCase):
         self.assertEqual(json.loads(written), data)
 
     def test_save_yaml_config_does_not_write_real_file(self):
-        """save YAML 时不应写入真实 config 文件"""
+        """save YAML 时不应写入真实 config 文件
+
+        dump_yaml 为原子写：先写同目录 .tmp，再 os.replace 到目标路径。
+        """
         fake_path = r"C:\fake\script\charge_plan.yml"
         data = {"plan_list": [{"category_name": "test"}]}
 
@@ -334,13 +337,16 @@ class TestSaveConfig(unittest.TestCase):
                 utils_sub_config, "get_sub_config_path", return_value=fake_path
             ),
             patch("builtins.open", m),
+            patch("src.utils.utils_yaml.os.replace") as mock_replace,
         ):
             result = utils_sub_config.save_config(
                 "OneDragon-Launcher", "charge_plan.yml", data
             )
 
         self.assertIsNone(result)
-        m.assert_called_once_with(fake_path, "w", encoding="utf-8")
+        # 原子写：写入目标是 .tmp，随后原子替换到目标路径
+        m.assert_called_once_with(fake_path + ".tmp", "w", encoding="utf-8")
+        mock_replace.assert_called_once_with(fake_path + ".tmp", fake_path)
         # 验证写入的内容是有效的 YAML
         handle = m()
         written = "".join(call.args[0] for call in handle.write.call_args_list)

@@ -22,8 +22,11 @@ class WindowController(QObject):
     @Slot()
     def minimize(self):
         app = self._app()
-        if app is not None:
-            app.focusWindow().showMinimized()
+        if app is None:
+            return
+        win = app.focusWindow()
+        if win is not None:
+            win.showMinimized()
 
     @Slot()
     def closeWindow(self):

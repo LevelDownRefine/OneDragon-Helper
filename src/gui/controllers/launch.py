@@ -59,8 +59,7 @@ class LaunchController(QObject):
             msg = f"定时运行：将于 {target_dt:%Y-%m-%d %H:%M} 重新生成脚本链并运行"
         else:
             msg = f"启动全部：已在新控制台窗口生成并运行链 ({len(enabled_script_names)} 个脚本)"
-        self._toast(f"{msg}（关闭控制台即取消）")
-        spawn_schedule_run(
+        proc = spawn_schedule_run(
             enabled_script_names,
             run_target,
             mute=options.mute_enabled,
@@ -71,6 +70,11 @@ class LaunchController(QObject):
             ),
             close_running=options.close_running_enabled,
         )
+        if proc is None:
+            # 起进程失败（Popen 异常已被 spawn 记日志）：不报成功，引导看日志。
+            self._toast("启动失败，详见 logs/onedragon_helper.log")
+            return
+        self._toast(f"{msg}（关闭控制台即取消）")
 
     @Slot()
     def launchScript(self):

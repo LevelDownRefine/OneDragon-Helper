@@ -49,5 +49,20 @@ class TestInitConfig(unittest.TestCase):
         mock_generate_weekly.assert_called_once()
 
 
+class TestQtMessageLogger(unittest.TestCase):
+    """_install_qt_message_logger：Qt/QML 告警路由到 logging（windowed exe 无 stderr）。"""
+
+    def test_qt_warning_routed_to_logger(self):
+        from PySide6.QtCore import qInstallMessageHandler, qWarning
+
+        launcher._install_qt_message_logger()
+        self.addCleanup(qInstallMessageHandler, None)
+        with self.assertLogs("src.launcher", level="WARNING") as captured:
+            qWarning("test-qml-warning")
+        self.assertTrue(
+            any("[qt] test-qml-warning" in line for line in captured.output)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

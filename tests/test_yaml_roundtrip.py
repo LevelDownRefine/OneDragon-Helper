@@ -8,10 +8,12 @@
 """
 
 import io
+import os
+import tempfile
 import unittest
 
 from src.config.set_config import safe_update
-from src.utils.utils_yaml import YAML_INSTANCE
+from src.utils.utils_yaml import YAML_INSTANCE, dump_yaml, load_yaml
 
 
 class TestYamlRoundTrip(unittest.TestCase):
@@ -57,6 +59,18 @@ class TestYamlRoundTrip(unittest.TestCase):
         loaded, _, _ = self._round_trip(self.SAMPLE)
         with self.assertRaises(AssertionError):
             safe_update(loaded, "enabled", 1, "test")  # bool 不能当 int 写
+
+
+class TestAtomicDump(unittest.TestCase):
+    """dump_yaml 原子写（tmp + os.replace）：写入中断不留截断损坏文件。"""
+
+    def test_no_tmp_left_and_content_round_trips(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "atomic.yml")
+        dump_yaml(path, {"a": 1, "b": "文本"})
+        self.assertFalse(os.path.exists(path + ".tmp"))
+        self.assertEqual(load_yaml(path), {"a": 1, "b": "文本"})
 
 
 if __name__ == "__main__":

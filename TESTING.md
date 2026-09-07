@@ -19,6 +19,8 @@ cd <root> && export PYTHONPATH=src && python -m unittest discover -s tests -p "t
 
 python -m 把根目录加入 sys.path，PYTHONPATH=src 让 import launcher 可用；两种 import 风格并存，必须在根目录且带 PYTHONPATH=src 跑。测试文件与源码一一对应；GUI 测试开头设 QT_QPA_PLATFORM=offscreen 无头跑 PySide6。文件 I/O 一律 mock，不依赖真实 config 或游戏脚本路径。新增/修改功能后必须补测试并跑全套再交付。
 
+平台分工：源码全量测试只在本地/CI ubuntu 跑；Windows 下**只跑打包产物集成测试**（tests/exe/test_*_exe.py，由 .github/workflows/build-exe.yml 打包后覆盖），非打包测试不在 Windows 重复跑。
+
 ## 2. 风格检查 ruff
 
 ```bash
@@ -35,3 +37,11 @@ ruff format .
 ## 4. 调试
 
 先看日志再下结论：主程序日志在 logs/onedragon_helper.log，每日 00:00 轮转，保留 14 天。运行器子进程有独立日志系统 .log/。子脚本日志目录见 src/log/monitor 各 Parser 的 _get_log_dir。日志汇总：python -m src.log。
+
+## 5. Windows 全链路真实模拟（手动）
+
+```bash
+PYTHONPATH=src python -m tests.sim_schedule_win
+```
+
+在 %TEMP% 沙箱内以真实进程走完 schedule_run 全编排（定时等待→清场→生成链→runner 子进程→日志解析→重跑→post_run），假脚本/假游戏由脚本内 PyInstaller 现场打包（进程名唯一不误杀），16 项断言逐项核验；不进 CI，不触碰真实 config。

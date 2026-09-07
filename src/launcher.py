@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QApplication
 from src.cli import build_parser, run_cli
 from src.config.generate_config import config_workflow
 from src.gui.main_window import QmlBridge
-from src.utils.utils_logger import setup_logging
+from src.utils.utils_logger import install_crash_hooks, setup_logging
 from src.utils.utils_sub_config import resolve_script_path
 
 # 全局默认字体：QML Text 默认字体中文字符 fallback；与旧 GUI 一致
@@ -58,6 +58,7 @@ def main():
     # 提前配置日志：CLI 出口（如 run_chain_command）也依赖 logger，
     # windowed exe 下 logs/onedragon_helper.log 是主要观测渠道。幂等，GUI 路径复用。
     setup_logging()
+    install_crash_hooks()
     # 模块导入耗时（_STARTUP_T0 之前）由 python -X importtime 观测；
     # 此处起记录 main() 内各阶段耗时。
     _log_startup("main() 初始化（config_workflow/parse_args/setup_logging）")
@@ -71,12 +72,34 @@ def main():
     _launch_qml()
 
 
+def _install_qt_message_logger():
+    """把 Qt/QML 的 debug/warning/critical 路由到 logging。
+
+    windowed exe 无 stderr，QML 类型错误等 Qt 告警默认完全不可见；
+    统一落 logs/onedragon_helper.log 后可事后排查。
+    """
+    from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+
+    def _handler(msg_type, _context, message):
+        log = {
+            QtMsgType.QtDebugMsg: logger.debug,
+            QtMsgType.QtInfoMsg: logger.info,
+            QtMsgType.QtWarningMsg: logger.warning,
+            QtMsgType.QtCriticalMsg: logger.error,
+            QtMsgType.QtFatalMsg: logger.critical,
+        }.get(msg_type, logger.warning)
+        log("[qt] %s", message)
+
+    qInstallMessageHandler(_handler)
+
+
 def _launch_qml():
     # 禁用 QML 磁盘缓存 + 清理已有缓存：旧版编译缓存会导致类型解析错乱
     # （"Type IconButton unavailable" / "Cannot assign object to list property data"
     # 等误报），且删除前不重新生成——保证每次启动都是干净编译。
     os.environ["QML_DISABLE_DISK_CACHE"] = "1"
     _clear_qml_cache()
+    _install_qt_message_logger()
 
     app = QApplication(sys.argv)
     # 全局默认字体：QML Text 默认字体中文字符 fallback；与旧 GUI 一致
@@ -95,15 +118,15 @@ def _launch_qml():
     qml_path = resolve_script_path("src/gui/qml/main.qml")
     assert qml_path and os.path.isfile(qml_path), f"[launcher] QML 缺失: {qml_path}"
     # 阶段日志：定位启动卡点（正常顺序 engine loading → loaded → running）
-    print("[qml] engine loading:", qml_path, flush=True)
+    logger.info("[qml] engine loading: %s", qml_path)
     engine.load(QUrl.fromLocalFile(qml_path))
-    print("[qml] engine loaded, rootObjects =", len(engine.rootObjects()), flush=True)
+    logger.info("[qml] engine loaded, rootObjects = %d", len(engine.rootObjects()))
     if not engine.rootObjects():
         sys.exit(1)
     # GUI 打开即弹 60s 倒计时确认：取消则无事发生，归零/「立即启动」按上次配置启动全部。
     # 须在进入事件循环前同步弹模态窗（QDialog.exec 自带局部事件循环）。
     bridge.maybe_auto_launch()
-    print("[qml] entering event loop", flush=True)
+    logger.info("[qml] entering event loop")
     sys.exit(app.exec())
 
 

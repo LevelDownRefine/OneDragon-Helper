@@ -29,6 +29,19 @@ class LinksController(QObject):
         self._toast = toast
         self._app_service = app_service or AppService()
 
+    def _open_path(self, path: str) -> bool:
+        """用系统默认程序打开；无关联程序等 OSError 转 toast 并返回 False。
+
+        os.startfile 对未关联文件类型（如 .yml 无默认程序）会抛 OSError，
+        从 QML 槽逃逸即崩，故统一在此收口。
+        """
+        try:
+            open_in_explorer(path)
+        except OSError as e:
+            self._toast(f"无法打开：{e}")
+            return False
+        return True
+
     @Slot()
     def launchGame(self):
         """启动游戏：读取当前游戏 exe 路径并打开（未适配时提示）。"""
@@ -37,8 +50,8 @@ class LinksController(QObject):
         if not exe_path:
             self._toast(f"{game['display_name']}：未找到游戏路径")
             return
-        open_in_explorer(exe_path)
-        self._toast(f"正在启动 {game['display_name']}…")
+        if self._open_path(exe_path):
+            self._toast(f"正在启动 {game['display_name']}…")
 
     def _open_url(self, url: str, fallback: str, label: str):
         target = url or fallback
@@ -85,8 +98,8 @@ class LinksController(QObject):
         if not os.path.isdir(folder):
             self._toast(f"{game['display_name']}：脚本目录不存在")
             return
-        open_in_explorer(folder)
-        self._toast(f"已打开 {game['display_name']} 脚本目录")
+        if self._open_path(folder):
+            self._toast(f"已打开 {game['display_name']} 脚本目录")
 
     @Slot()
     def openLogFolder(self):
@@ -104,8 +117,8 @@ class LinksController(QObject):
         if not os.path.isdir(log_dir):
             self._toast(f"{game['display_name']}：日志目录不存在")
             return
-        open_in_explorer(log_dir)
-        self._toast(f"已打开 {game['display_name']} 日志目录")
+        if self._open_path(log_dir):
+            self._toast(f"已打开 {game['display_name']} 日志目录")
 
     @Slot()
     def openSettings(self):
@@ -114,8 +127,8 @@ class LinksController(QObject):
         if not os.path.isfile(config_path):
             self._toast("未找到 config/config.yml")
             return
-        open_in_explorer(config_path)
-        self._toast("已打开总配置文件 config.yml")
+        if self._open_path(config_path):
+            self._toast("已打开总配置文件 config.yml")
 
     @Slot()
     def openScriptConfig(self):
@@ -125,5 +138,5 @@ class LinksController(QObject):
         if error is not None:
             self._toast(f"{game['display_name']}：{error}")
             return
-        open_in_explorer(path)
-        self._toast(f"已打开 {game['display_name']} 配置文件")
+        if self._open_path(path):
+            self._toast(f"已打开 {game['display_name']} 配置文件")
