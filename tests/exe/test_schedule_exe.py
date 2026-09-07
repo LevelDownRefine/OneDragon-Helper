@@ -56,6 +56,13 @@ NTE_LOG_DIR = NTE_DIR / "data" / "apps" / "ok-nte" / "working" / "logs"
 _CONFIG_DIR = Path(PACKAGE_DIR) / "config" if PACKAGE_DIR else None
 _GENERATED = ("config.yml", "schedule.yml", "weekly.yml")
 
+# 测试会在包内额外写盘的位置：链 yml 与两级日志目录。setUp 快照、teardown
+# 精确回滚（旧文件截回原大小、新文件删除、新建目录清空后移除），保证
+# build-exe 上传的 dist 产物不含测试痕迹。
+_CHAIN_DIR = _CONFIG_DIR / "script_chain" if _CONFIG_DIR else None
+_CHAIN_FILES = ("today.yml", "rerun.yml")
+_LOG_DIRS = ("logs", ".log")
+
 _RUN_TIMEOUT = 420  # 定时等待(≤60s) + 两条链 + 日志解析，含冷启动余量
 
 
@@ -146,11 +153,11 @@ class TestScheduleExeE2E(unittest.TestCase):
             encoding="utf-8",
         )
 
-        # 包内 config 生成物：备份 → 写入本测试的假配置
-        cls._config_backup = {}
-        for name in _GENERATED:
-            path = _CONFIG_DIR / name
-            cls._config_backup[name] = path.read_bytes() if path.exists() else None
+        # 包内 config 生成物与链文件：备份 → 写入本测试的假配置。build-exe 跑完
+        # 本测试后会上传 dist 产物，测试写盘必须全部还原，避免测试痕迹进 artifact。
+        cls._config_backup = cls._backup_files(_CONFIG_DIR, _GENERATED)
+        cls._chain_backup = cls._backup_files(_CHAIN_DIR, _CHAIN_FILES)
+        cls._snapshot_logs()
 
         ww = default_script_entry(
             display_name="ok-ww",
@@ -251,17 +258,69 @@ class TestScheduleExeE2E(unittest.TestCase):
             if (p.info["name"] or "").lower() == GAME_NAME.lower():
                 with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
                     p.kill()
-        # 恢复包内 config 生成物（原缺失则删除，还 dist 一个干净状态）
-        for name, backup in cls._config_backup.items():
-            path = _CONFIG_DIR / name
-            if backup is None:
-                with contextlib.suppress(OSError):
-                    path.unlink()
-            else:
-                path.write_bytes(backup)
+        # 恢复包内 config 生成物与链文件（原缺失则删除，还 dist 一个干净状态）
+        cls._restore_files(_CONFIG_DIR, cls._config_backup)
+        cls._restore_files(_CHAIN_DIR, cls._chain_backup)
+        cls._restore_logs()
         shutil.rmtree(WORK_DIR, ignore_errors=True)
 
     # ── 工具 ─────────────────────────────────────────────────────────
+    @classmethod
+    def _backup_files(
+        cls, dir_: Path, names: tuple[str, ...]
+    ) -> dict[str, bytes | None]:
+        """备份一组文件原内容（原缺失记 None，供 _restore_files 回滚）。"""
+        return {
+            name: (dir_ / name).read_bytes() if (dir_ / name).exists() else None
+            for name in names
+        }
+
+    @classmethod
+    def _restore_files(cls, dir_: Path, backup: dict[str, bytes | None]) -> None:
+        """按备份回滚：原缺失删之，原存在写回。"""
+        for name, content in backup.items():
+            path = dir_ / name
+            if content is None:
+                with contextlib.suppress(OSError):
+                    path.unlink()
+            else:
+                path.write_bytes(content)
+
+    @classmethod
+    def _snapshot_logs(cls) -> None:
+        """快照日志文件原大小，并记录本轮缺失的目录（teardown 精确回滚）。"""
+        cls._log_snapshot: dict[str, int] = {}  # 文件路径 -> 原大小
+        cls._created_dirs: list[Path] = []  # 本轮测试新建的目录（清空后移除）
+        for path in (_CHAIN_DIR, *(Path(PACKAGE_DIR) / d for d in _LOG_DIRS)):
+            if not path.is_dir():
+                cls._created_dirs.append(path)
+                continue
+            if path.name in _LOG_DIRS:
+                for f in path.iterdir():
+                    if f.is_file():
+                        cls._log_snapshot[str(f)] = f.stat().st_size
+
+    @classmethod
+    def _restore_logs(cls) -> None:
+        """日志回滚：旧文件截回快照大小（抹掉本轮追加），快照外的新文件
+        （含午夜轮转备份、framework 日志）删除；本轮新建目录已清空则移除。"""
+        for d in _LOG_DIRS:
+            base = Path(PACKAGE_DIR) / d
+            if not base.is_dir():
+                continue
+            for f in base.iterdir():
+                if not f.is_file():
+                    continue
+                if str(f) in cls._log_snapshot:
+                    with open(f, "r+b") as fh:
+                        fh.truncate(cls._log_snapshot[str(f)])
+                else:
+                    with contextlib.suppress(OSError):
+                        f.unlink()
+        for path in cls._created_dirs:
+            with contextlib.suppress(OSError):
+                path.rmdir()
+
     @classmethod
     def _log_paths(cls) -> dict[str, str]:
         return {
