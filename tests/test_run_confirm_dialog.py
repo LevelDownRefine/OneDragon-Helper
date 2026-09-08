@@ -1,7 +1,7 @@
 """测试 src/gui/run_confirm_dialog.RunConfirmDialog：「启动全部」确认弹窗。
 
 验证：回显 RunOptions 初始值（取自 schedule.yml 经 load_run_options）、accept
-收集为 RunOptions、取消 result 为 None。UI 测试在 offscreen 平台下运行（CI 无显示器）。
+收集为 RunOptions、取消 run_options 为 None。UI 测试在 offscreen 平台下运行（CI 无显示器）。
 """
 
 import os
@@ -52,7 +52,7 @@ class TestRunConfirmDialog(unittest.TestCase):
         self.assertFalse(dlg.timed_time.isEnabled())
 
     def test_accept_collects_selections(self):
-        """确认运行：收集复选框与控件值写入 result（含静音/重跑/邮件通知）。"""
+        """确认运行：收集复选框与控件值写入 run_options（含静音/重跑/邮件通知）。"""
         dlg = RunConfirmDialog(2, _opts(timed_target="04:10", rerun_enabled=True))
         dlg.shutdown_cb.setChecked(True)
         dlg.shutdown_delay_spin.setValue(120)
@@ -64,7 +64,7 @@ class TestRunConfirmDialog(unittest.TestCase):
         dlg.notify_cb.setChecked(True)
         dlg._on_accept()
         self.assertEqual(
-            asdict(dlg.result),
+            asdict(dlg.run_options),
             {
                 "shutdown_enabled": True,
                 "shutdown_delay": 120,
@@ -99,9 +99,9 @@ class TestRunConfirmDialog(unittest.TestCase):
         self.assertTrue(dlg.auth_edit.isEnabled())
         dlg.auth_edit.setText("authcode16")
         dlg._on_accept()
-        self.assertEqual(dlg.result.email, "123456@qq.com")
-        self.assertEqual(dlg.result.auth_code, "authcode16")
-        self.assertTrue(dlg.result.notify_enabled)
+        self.assertEqual(dlg.run_options.email, "123456@qq.com")
+        self.assertEqual(dlg.run_options.auth_code, "authcode16")
+        self.assertTrue(dlg.run_options.notify_enabled)
 
     def test_notify_off_disables_email_fields(self):
         """未勾选邮件通知：邮箱/授权码/SMTP 输入框禁用（与定时/关机联动一致）。"""
@@ -132,8 +132,8 @@ class TestRunConfirmDialog(unittest.TestCase):
         dlg.smtp_host_edit.setText("smtp.163.com")
         dlg.smtp_port_edit.setText("994")
         dlg._on_accept()
-        self.assertEqual(dlg.result.smtp_host, "smtp.163.com")
-        self.assertEqual(dlg.result.smtp_port, "994")
+        self.assertEqual(dlg.run_options.smtp_host, "smtp.163.com")
+        self.assertEqual(dlg.run_options.smtp_port, "994")
 
     def test_echoes_current_mute_config(self):
         """打开弹窗时回显当前运行前静音配置（勾选状态）。"""
@@ -160,13 +160,13 @@ class TestRunConfirmDialog(unittest.TestCase):
         dlg = RunConfirmDialog(3, _opts(close_running_enabled=False))
         self.assertFalse(dlg.close_running_cb.isChecked())
 
-    def test_cancel_leaves_result_none(self):
-        """取消（reject）：result 保持 None，不收集。"""
+    def test_cancel_leaves_run_options_none(self):
+        """取消（reject）：run_options 保持 None，不收集。"""
         dlg = RunConfirmDialog(
             2, _opts(shutdown_enabled=True, shutdown_delay=45, mute_enabled=True)
         )
         dlg.reject()
-        self.assertIsNone(dlg.result)
+        self.assertIsNone(dlg.run_options)
 
 
 if __name__ == "__main__":

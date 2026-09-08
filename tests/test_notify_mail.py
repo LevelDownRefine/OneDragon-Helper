@@ -56,12 +56,15 @@ class TestSendMail(unittest.TestCase):
 
     def setUp(self):
         # 冻结 smtplib.SMTP_SSL 与 keyring，避免测试触碰真实网络/系统凭据管理器。
-        self.smtp_cls = mock.patch("smtplib.SMTP_SSL").start()
-        self.get_pw = mock.patch("keyring.get_password", return_value=None).start()
-        self.set_pw = mock.patch("keyring.set_password", return_value=None).start()
-
-    def tearDown(self):
-        mock.patch.stopall()
+        self._smtp_patch = mock.patch("smtplib.SMTP_SSL")
+        self._get_pw_patch = mock.patch("keyring.get_password", return_value=None)
+        self._set_pw_patch = mock.patch("keyring.set_password", return_value=None)
+        self.smtp_cls = self._smtp_patch.start()
+        self.get_pw = self._get_pw_patch.start()
+        self.set_pw = self._set_pw_patch.start()
+        self.addCleanup(self._smtp_patch.stop)
+        self.addCleanup(self._get_pw_patch.stop)
+        self.addCleanup(self._set_pw_patch.stop)
 
     def _sent(self, result, smtp_config, *, keyring_password=None):
         """触发 send_mail 并返回 (SMTP 类 mock, smtp 实例 mock)。

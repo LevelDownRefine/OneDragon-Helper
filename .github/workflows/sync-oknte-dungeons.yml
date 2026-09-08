@@ -25,14 +25,19 @@ jobs:
       - name: Check and apply new numbers
         id: sync
         run: |
+          set -e
           # exit=0 无差异；exit=1 有差异（自动 apply 后开 PR）；
           # exit=2 抓取/解析失败（跳过本次，不误开 PR）
-          python tools/sync_oknte_dungeons.py >/dev/null 2>&1
-          code=$?
+          # 首跑输出保留到 CI 日志（抓取/解析失败时可查原因），不丢 /dev/null。
+          code=0
+          python tools/sync_oknte_dungeons.py || code=$?
           if [ $code -eq 1 ]; then
             python tools/sync_oknte_dungeons.py --apply
             echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif [ $code -eq 0 ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           else
+            # 抓取/解析失败：输出已在上方打印，本次不 apply、不开 PR。
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 

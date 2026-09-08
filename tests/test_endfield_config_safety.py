@@ -89,7 +89,9 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         self._sp.start()
 
     def tearDown(self):
-        patch.stopall()
+        # 只停 setUp 自身 start 的两个 patch，不用全局 stopall（避免误停他方活跃 patch）。
+        self._lp.stop()
+        self._sp.stop()
 
     # ---- _init_config：绝不该改任何东西（不再由 __init__ 自动触发）----
     def test_init_config_touches_nothing(self):
