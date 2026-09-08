@@ -38,16 +38,26 @@ def set_system_mute(mute_status: bool) -> bool:
 
 
 def mute_on() -> None:
-    """运行前静音（pre_run step）：开启系统静音，异常记日志不中断。"""
+    """运行前静音（pre_run step）：开启系统静音，结果记日志不中断。"""
     try:
-        set_system_mute(True)
+        muted = set_system_mute(True)
     except Exception:
         logger.exception("[mute] 运行前静音失败")
+    else:
+        if muted:
+            logger.info("[mute] 已静音")
+        else:
+            logger.warning("[mute] 运行前静音未生效（pycaw 不可用或非 Windows）")
 
 
 def mute_off() -> None:
-    """运行后恢复（post_run step）：关闭系统静音，异常记日志不中断。"""
+    """运行后恢复（post_run step）：关闭系统静音，结果记日志不中断。"""
     try:
-        set_system_mute(False)
+        unmuted = set_system_mute(False)
     except Exception:
         logger.exception("[mute] 运行后恢复声音失败")
+    else:
+        if unmuted:
+            logger.info("[mute] 已恢复声音")
+        else:
+            logger.warning("[mute] 运行后恢复未生效（pycaw 不可用或非 Windows）")

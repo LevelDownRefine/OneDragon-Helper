@@ -101,6 +101,9 @@ class TestScheduleExeE2E(unittest.TestCase):
     runner_tail = ""
     elapsed = 0.0
     leftover_poll = None
+    # mute 观测（test_mute_real）：测试前的系统静音状态，tearDown 兜底还原用户原态
+    # （原静音则测完仍静音，不因本轮 --unmute 永久改其音量）。读不到为 None。
+    initial_mute: bool | None = None
 
     @classmethod
     def setUpClass(cls):
@@ -184,6 +187,7 @@ class TestScheduleExeE2E(unittest.TestCase):
                 "shutdown": {"after_run": False, "delay_seconds": 0},
                 "timed_run": {"enabled": False, "target_time": ""},
                 "mute": {"enabled": False},
+                "unmute": {"enabled": False},
                 "rerun": {"enabled": True},
                 "notify": {"enabled": False, "email": ""},
                 "close_running": {"enabled": True},
@@ -225,6 +229,9 @@ class TestScheduleExeE2E(unittest.TestCase):
             cls.expected_wait = 0.0
 
         t0 = time.time()
+        # 记录测试前静音状态：本轮 --mute/--unmute 会改系统静音，tearDown 按此还原
+        # 用户原态（原静音则测完仍静音，不无端强制恢复非静音）。
+        cls.initial_mute = cls._read_mute_now()
         try:
             subprocess.run(
                 [
@@ -236,6 +243,8 @@ class TestScheduleExeE2E(unittest.TestCase):
                     "--enable",
                     "ok-ww,ok-nte",
                     "--close-running",
+                    "--mute",
+                    "--unmute",
                 ],
                 cwd=PACKAGE_DIR,
                 capture_output=True,
@@ -254,6 +263,14 @@ class TestScheduleExeE2E(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        # 兜底：无论断言成败都还原测试前的静音状态（--unmute 正常则已是非静音，
+        # 幂等；用户本为静音则改回静音）。读不到原始态则跳过（非 Windows/无端点，
+        # 此时 mute 本身也不生效）。
+        if cls.initial_mute is not None:
+            with contextlib.suppress(Exception):
+                from src.utils.utils_mute import set_system_mute
+
+                set_system_mute(cls.initial_mute)
         for p in psutil.process_iter(["name"]):
             if (p.info["name"] or "").lower() == GAME_NAME.lower():
                 with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
@@ -263,6 +280,23 @@ class TestScheduleExeE2E(unittest.TestCase):
         cls._restore_files(_CHAIN_DIR, cls._chain_backup)
         cls._restore_logs()
         shutil.rmtree(WORK_DIR, ignore_errors=True)
+
+    @classmethod
+    def _read_mute_now(cls) -> bool | None:
+        """读取当前系统静音状态；无默认音频端点等不可读时返回 None。"""
+        try:
+            from ctypes import POINTER, cast
+
+            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+
+            device = AudioUtilities.GetSpeakers()
+            volume = cast(
+                device.Activate(IAudioEndpointVolume._iid_, 0, None),
+                POINTER(IAudioEndpointVolume),
+            )
+            return bool(volume.GetMute())
+        except Exception:
+            return None
 
     # ── 工具 ─────────────────────────────────────────────────────────
     @classmethod
@@ -400,10 +434,22 @@ class TestScheduleExeE2E(unittest.TestCase):
         self.assertEqual(alive, [])
 
     def test_safety_boundaries(self):
-        """安全边界：全程无关机、无静音、无邮件。"""
+        """安全边界：全程无关机、无邮件（静音/恢复本轮刻意开启，见 test_mute_real）。"""
         self.assertNotIn("关机", self.fw_tail)
-        self.assertNotIn("静音", self.fw_tail)
         self.assertNotIn("发送", self.fw_tail)
+
+    def test_mute_real(self):
+        """--mute/--unmute 真实生效：exe 收到参数后系统静音、运行结束恢复，日志留痕。
+
+        mute_on/mute_off 调 pycaw 成功才打 ``[mute] 已静音`` / ``[mute] 已恢复声音``，
+        断言这两条即证明静音真实执行。读不到静音状态则跳过（无默认音频端点，
+        环境限制而非产品缺陷）。tearDownClass 依 initial_mute 还原测试前状态：
+        用户本为静音则测完仍静音，不被本轮 --unmute 永久改其音量。
+        """
+        if self.initial_mute is None:
+            self.skipTest("本机读不到系统静音状态（无默认音频端点）")
+        self.assertIn("[mute] 已静音", self.fw_tail)
+        self.assertIn("[mute] 已恢复声音", self.fw_tail)
 
 
 if __name__ == "__main__":

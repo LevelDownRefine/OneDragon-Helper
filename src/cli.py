@@ -125,7 +125,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mute",
         action="store_true",
-        help="运行期间静音（配合 --schedule-run，由主仓 pre_run/post_run 执行）",
+        help="运行前静音（配合 --schedule-run，由主仓 pre_run 执行）",
+    )
+    parser.add_argument(
+        "--unmute",
+        action="store_true",
+        help="运行后开启声音（配合 --schedule-run，由主仓 post_run 执行）",
     )
     parser.add_argument(
         "--close-running",
@@ -461,6 +466,7 @@ def _run_scheduled(args) -> int:
         args.schedule_run,
         chain_name=args.name or "today",
         mute=args.mute,
+        unmute=args.unmute,
         shutdown_delay=args.shutdown,
         close_running=args.close_running,
     )

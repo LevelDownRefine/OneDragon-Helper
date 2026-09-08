@@ -199,6 +199,7 @@ def build_sandbox() -> None:
             "shutdown": {"after_run": False, "delay_seconds": 0},
             "timed_run": {"enabled": False, "target_time": ""},
             "mute": {"enabled": False},
+            "unmute": {"enabled": False},
             "rerun": {"enabled": True},
             "notify": {"enabled": False, "email": ""},
             "close_running": {"enabled": True},

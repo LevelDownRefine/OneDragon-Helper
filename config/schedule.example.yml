@@ -9,6 +9,9 @@ timed_run:
   target_time: "04:10"
 mute:
   enabled: true
+# 运行后开启声音：与 mute（运行前静音）相互独立，可单独勾选。
+unmute:
+  enabled: true
 rerun:
   enabled: true
 # 运行后邮件通知（默认关闭）：schedule_run 流程末发送运行汇总邮件。

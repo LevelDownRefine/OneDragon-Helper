@@ -1,8 +1,8 @@
 """调度运行编排 + schedule.yml 读写：RunOptions schema 与 ScheduledRun 生命周期。
 
-schedule.yml（调度运行参数：shutdown / timed_run / mute / rerun / notify /
-close_running）的读写归本模块：``load_schedule`` / ``save_schedule``，
-其 notify 块经 ``resolve_mail_config`` 解析为 SMTP 配置。六个选项块的
+schedule.yml（调度运行参数：shutdown / timed_run / mute / unmute / rerun /
+notify / close_running）的读写归本模块：``load_schedule`` / ``save_schedule``，
+其 notify 块经 ``resolve_mail_config`` 解析为 SMTP 配置。七个选项块的
 单一 schema 是 :class:`RunOptions`——确认窗回显（``load_run_options``）与
 落盘（``apply_run_options``）共用同一类型，GUI 不感知 yml 键名。
 
@@ -51,8 +51,8 @@ def is_valid_target_time(value: str) -> bool:
 def load_schedule() -> dict:
     """读取 schedule.yml（缺失时从 schedule.example.yml 生成），返回调度运行参数。
 
-    调度参数（shutdown / timed_run / mute / rerun / notify）独立于 config.yml 存放，
-    避免与脚本链声明（script_list）耦合。
+    调度参数（shutdown / timed_run / mute / unmute / rerun / notify）独立于 config.yml
+    存放，避免与脚本链声明（script_list）耦合。
     """
     return load_yaml(get_schedule_yml_path_under_root())
 
@@ -72,7 +72,7 @@ class RunOptions:
     """调度运行选项的单一 schema：确认窗回显与落盘共用同一类型。
 
     字段语义：
-    - 六个开关对应 schedule.yml 六块（shutdown / timed_run / mute /
+    - 七个开关对应 schedule.yml 七块（shutdown / timed_run / mute / unmute /
       close_running / rerun / notify）；块缺失或 ``enabled`` 非 bool 按关闭处理，
       唯 close_running 缺失默认启用（与历史「运行前始终清场」一致）。
     - ``shutdown_delay``：关机延迟秒数；块缺失/非法时为 0。
@@ -86,6 +86,7 @@ class RunOptions:
     timed_enabled: bool = False
     timed_target: str = ""
     mute_enabled: bool = False
+    unmute_enabled: bool = False
     close_running_enabled: bool = True
     rerun_enabled: bool = False
     notify_enabled: bool = False
@@ -140,6 +141,7 @@ def load_run_options(schedule: dict | None = None) -> RunOptions:
         timed_enabled=timed_enabled,
         timed_target=timed_target,
         mute_enabled=_block_enabled(data, "mute", False),
+        unmute_enabled=_block_enabled(data, "unmute", False),
         close_running_enabled=_block_enabled(data, "close_running", True),
         rerun_enabled=_block_enabled(data, "rerun", False),
         notify_enabled=_block_enabled(data, "notify", False),
@@ -168,6 +170,7 @@ def apply_run_options(options: RunOptions) -> None:
         "target_time": target_time if options.timed_enabled else "",
     }
     schedule_data["mute"] = {"enabled": bool(options.mute_enabled)}
+    schedule_data["unmute"] = {"enabled": bool(options.unmute_enabled)}
     schedule_data["close_running"] = {"enabled": bool(options.close_running_enabled)}
     schedule_data["rerun"] = {"enabled": bool(options.rerun_enabled)}
     notify = schedule_data.get("notify")
@@ -241,7 +244,7 @@ def build_pre_run_pipeline(
         enabled_keys: 纳入链的脚本唯一标识集合，写 config 步骤用；None/空表示不写。
         weekly_start_map: weekly.yml 的 weekly_start 段 全量映射（{脚本标识: 1~7}），写 config 步骤用。
         close_running: 是否运行前关闭残留进程。
-        mute: 是否运行中静音（pre_run 静音、post_run 恢复）。
+        mute: 是否运行前静音（pre_run 静音 step）。
 
     Returns:
         运行前步骤列表（可能为空）。
@@ -271,10 +274,10 @@ def build_post_run_pipeline(
     *,
     shutdown_delay: int | None,
     smtp_config: dict | None = None,
-    mute: bool = False,
+    unmute: bool = False,
     enabled_keys: set[str] | None = None,
 ) -> list[Callable[[], None]]:
-    """按序构建运行后动作：日志分析(最终态) → 邮件 → 关机(末位)。
+    """按序构建运行后动作：日志分析(最终态) → 邮件 → 开启声音 → 关机(末位)。
 
     重跑不在此处，由 ``chain_service.rerun_round`` 在链运行结束后、本 pipeline 前完成；
     此处对最终态做日志分析供邮件汇总，并在末位关机。
@@ -282,6 +285,7 @@ def build_post_run_pipeline(
     Args:
         shutdown_delay: 关机延迟秒数；None/0 表示不关机。
         smtp_config: SMTP 配置；None 表示不发邮件（默认关闭）。
+        unmute: 是否运行后开启声音（post_run 恢复 step，与运行前静音相互独立）。
         enabled_keys: 本次启用的脚本标识集合（即 ``parse_logs`` 的候选列表）；
             None/空集合表示不纳入任何脚本，邮件直接跳过（不解析日志）。调用方想全量时
             显式传入 config 全部脚本集合。
@@ -301,8 +305,8 @@ def build_post_run_pipeline(
 
     steps.append(_do_mail)
 
-    if mute:
-        # 运行后恢复声音：须在关机之前（关机后恢复无意义）。
+    if unmute:
+        # 运行后开启声音：须在关机之前（关机后开启无意义）。
         steps.append(mute_off)
 
     if shutdown_delay:
@@ -323,7 +327,8 @@ class ScheduledRun:
         target_time: 目标时刻 ``"HH:MM"``（24 小时制，须合法，调用方已校验）；
             传 ``"now"`` 表示即时运行（跳过等待，直接点火）。
         chain_name: 链配置文件名（不含扩展名，默认 today）。
-        mute: 是否运行中静音（由 pre_run 静音、post_run 恢复，主仓直接操作系统音频）。
+        mute: 是否运行前静音（由 pre_run 执行，主仓直接操作系统音频）。
+        unmute: 是否运行后开启声音（由 post_run 执行，与运行前静音相互独立）。
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
     """
 
@@ -335,6 +340,7 @@ class ScheduledRun:
         *,
         chain_name: str = "today",
         mute: bool = False,
+        unmute: bool = False,
         shutdown_delay: int | None = None,
         close_running: bool = True,
     ) -> None:
@@ -362,13 +368,13 @@ class ScheduledRun:
             mute=mute,
         )
 
-        # post_run：日志分析最终态 → 邮件 → 恢复声音 → 关机（末位），由 build_post_run_pipeline 产出。
+        # post_run：日志分析最终态 → 邮件 → 开启声音 → 关机（末位），由 build_post_run_pipeline 产出。
         schedule = load_schedule()
         mail_config = resolve_mail_config(schedule)
         self.post_run: list[Callable[[], None]] = build_post_run_pipeline(
             shutdown_delay=shutdown_delay,
             smtp_config=mail_config,
-            mute=mute,
+            unmute=unmute,
             enabled_keys=self.candidate_keys,
         )
 

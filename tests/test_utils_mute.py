@@ -67,3 +67,37 @@ class TestMuteOnOff(unittest.TestCase):
             "src.utils.utils_mute.set_system_mute", side_effect=RuntimeError("boom")
         ):
             mute_off()
+
+    def test_mute_on_logs_success(self):
+        """静音成功打 info 日志（exe e2e 靠它断言 mute 真实生效）。"""
+        with (
+            mock.patch("src.utils.utils_mute.set_system_mute", return_value=True),
+            self.assertLogs("src.utils.utils_mute", level="INFO") as logs,
+        ):
+            mute_on()
+        self.assertIn("[mute] 已静音", logs.output[0])
+
+    def test_mute_on_warns_unavailable(self):
+        """pycaw 缺失/非 Windows 的静默降级改为 warning 留痕。"""
+        with (
+            mock.patch("src.utils.utils_mute.set_system_mute", return_value=False),
+            self.assertLogs("src.utils.utils_mute", level="WARNING") as logs,
+        ):
+            mute_on()
+        self.assertIn("[mute] 运行前静音未生效", logs.output[0])
+
+    def test_mute_off_logs_success(self):
+        with (
+            mock.patch("src.utils.utils_mute.set_system_mute", return_value=True),
+            self.assertLogs("src.utils.utils_mute", level="INFO") as logs,
+        ):
+            mute_off()
+        self.assertIn("[mute] 已恢复声音", logs.output[0])
+
+    def test_mute_off_warns_unavailable(self):
+        with (
+            mock.patch("src.utils.utils_mute.set_system_mute", return_value=False),
+            self.assertLogs("src.utils.utils_mute", level="WARNING") as logs,
+        ):
+            mute_off()
+        self.assertIn("[mute] 运行后恢复未生效", logs.output[0])

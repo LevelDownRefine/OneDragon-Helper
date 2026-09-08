@@ -6,7 +6,7 @@
 - close 场景（多脚本各启一个游戏，经 ScheduledRun.run() 真实清场，含误杀防护/树杀/
   共用游戏只杀一次/关闭开关负路径）；
 - core 重跑决策（启用/禁用/缺块契约错误）；
-- 全流水线顺序（mute→wait→close→config→core→rerun→analyze→mail→mute_off→shutdown，
+- 全流水线顺序（mute_on→wait→close→config→core→rerun→analyze→mail→mute_off→shutdown，
   经 run() 真实装配断言）；
 - apply_run_options（确认窗勾选项合并写回 schedule.yml + 授权码最佳努力注册）。
 """
@@ -316,7 +316,9 @@ class TestScheduledRunOrder(unittest.TestCase):
     且 pre_run/post_run 用手塞 lambda，不证明真实装配顺序。
     """
 
-    def _run_and_record(self, *, close_running=True, mute=True, shutdown_delay=60):
+    def _run_and_record(
+        self, *, close_running=True, mute=True, unmute=True, shutdown_delay=60
+    ):
         calls: list[str] = []
         svc = _make_service(
             self,
@@ -369,6 +371,7 @@ class TestScheduledRunOrder(unittest.TestCase):
                 "08:00",
                 close_running=close_running,
                 mute=mute,
+                unmute=unmute,
                 shutdown_delay=shutdown_delay,
             ).run()
         return calls
@@ -398,10 +401,18 @@ class TestScheduledRunOrder(unittest.TestCase):
         self.assertIn("config", calls)
         self.assertIn("shutdown", calls)
 
-    def test_not_muted_skips_mute_restore(self):
-        # mute=False：post_run 无恢复声音 step（须在关机前，但本就不静音）。
-        calls = self._run_and_record(mute=False)
+    def test_unmute_false_keeps_mute_without_restore(self):
+        # unmute=False：仅运行前静音，post_run 不恢复声音（开关拆分后独立）。
+        calls = self._run_and_record(unmute=False)
+        self.assertIn("mute_on", calls)
         self.assertNotIn("mute_off", calls)
+        self.assertIn("shutdown", calls)
+
+    def test_not_muted_skips_mute_on(self):
+        # mute=False（unmute 默认 True）：pre_run 不静音，post_run 仍挂恢复 step（幂等无害）。
+        calls = self._run_and_record(mute=False)
+        self.assertNotIn("mute_on", calls)
+        self.assertIn("mute_off", calls)
         self.assertIn("shutdown", calls)
 
 
@@ -461,6 +472,7 @@ class TestLoadRunOptions(unittest.TestCase):
         self.assertFalse(opts.timed_enabled)
         self.assertEqual(opts.timed_target, "")
         self.assertFalse(opts.mute_enabled)
+        self.assertFalse(opts.unmute_enabled)
         self.assertTrue(opts.close_running_enabled)  # 历史默认：运行前始终清场
         self.assertFalse(opts.rerun_enabled)
         self.assertFalse(opts.notify_enabled)
@@ -502,9 +514,13 @@ class TestLoadRunOptions(unittest.TestCase):
                 self.assertFalse(opts.timed_enabled)
                 self.assertEqual(opts.timed_target, "")
 
-    def test_mute_block_non_bool_disabled(self):
+    def test_mute_unmute_block_non_bool_disabled(self):
         self.assertFalse(load_run_options({"mute": {"enabled": "yes"}}).mute_enabled)
         self.assertTrue(load_run_options({"mute": {"enabled": True}}).mute_enabled)
+        self.assertFalse(
+            load_run_options({"unmute": {"enabled": "yes"}}).unmute_enabled
+        )
+        self.assertTrue(load_run_options({"unmute": {"enabled": True}}).unmute_enabled)
 
     def test_close_running_explicit_false_respected(self):
         opts = load_run_options({"close_running": {"enabled": False}})
@@ -557,6 +573,7 @@ class TestApplyRunOptions(unittest.TestCase):
             timed_enabled=True,
             timed_target="04:10",
             mute_enabled=True,
+            unmute_enabled=True,
             close_running_enabled=True,
             rerun_enabled=True,
             notify_enabled=True,
@@ -570,6 +587,7 @@ class TestApplyRunOptions(unittest.TestCase):
         self.assertEqual(data["shutdown"], {"after_run": True, "delay_seconds": 120})
         self.assertEqual(data["timed_run"], {"enabled": True, "target_time": "04:10"})
         self.assertEqual(data["mute"], {"enabled": True})
+        self.assertEqual(data["unmute"], {"enabled": True})
         self.assertEqual(data["close_running"], {"enabled": True})
         self.assertEqual(data["rerun"], {"enabled": True})
         self.assertEqual(data["notify"], {"enabled": True, "email": "123456@qq.com"})

@@ -1,8 +1,8 @@
 """「启动全部」前的运行确认弹窗（RunConfirmDialog）。
 
 按生命周期三段组织（单列纵向，与原「运行前动作」一张 group 含多个 checkbox 行的
-风格一致）：运行前配置（定时计划 / 关闭残留进程）·运行中配置（静音 / 重跑）·
-运行后配置（邮件通知 / 自动关机）。样式与控件构造复用 ``src.gui.dialogs`` 的
+风格一致）：运行前配置（定时计划 / 关闭残留进程 / 静音）·运行中配置（重跑）·
+运行后配置（邮件通知 / 开启声音 / 自动关机）。样式与控件构造复用 ``src.gui.dialogs`` 的
 基类与主题常量（单一来源，不在本文件重复定义）。
 
 对外接口：
@@ -41,7 +41,7 @@ SMTP_PORT_DEFAULT = "465"
 
 
 class RunConfirmDialog(FormDialogBase):
-    """「启动全部」前的确认弹窗，按生命周期三段（运行前/中/后配置）排列六项勾选。
+    """「启动全部」前的确认弹窗，按生命周期三段（运行前/中/后配置）排列七项勾选。
 
     复用 ``FormDialogBase`` 的样式与控件构造；accept 后经 ``result`` 属性返回
     勾选项，写盘由调用方经 ``AppService.save_schedule`` 委托 ``src.service.schedule.save_schedule``
@@ -80,13 +80,13 @@ class RunConfirmDialog(FormDialogBase):
                 options.timed_enabled,
                 options.timed_target,
                 options.close_running_enabled,
+                options.mute_enabled,
             )
         )
-        layout.addWidget(
-            self._make_running_group(options.mute_enabled, options.rerun_enabled)
-        )
+        layout.addWidget(self._make_running_group(options.rerun_enabled))
         layout.addWidget(
             self._make_post_run_group(
+                options.unmute_enabled,
                 options.notify_enabled,
                 options.shutdown_enabled,
                 options.shutdown_delay,
@@ -117,8 +117,9 @@ class RunConfirmDialog(FormDialogBase):
         timed_enabled: bool,
         timed_target: str,
         close_running_enabled: bool,
+        mute_enabled: bool,
     ) -> QGroupBox:
-        """运行前配置：定时计划（启用定时 + 目标时刻）· 关闭残留进程。"""
+        """运行前配置：定时计划（启用定时 + 目标时刻）· 关闭残留进程 · 静音。"""
         box = self._make_group("运行前配置")
         col = QVBoxLayout(box)
         col.setContentsMargins(14, 20, 14, 14)
@@ -129,18 +130,18 @@ class RunConfirmDialog(FormDialogBase):
         self.close_running_cb = self._make_checkbox("运行前关闭残留进程")
         self.close_running_cb.setChecked(close_running_enabled)
         col.addWidget(self.close_running_cb)
+
+        self.mute_cb = self._make_checkbox("运行前静音")
+        self.mute_cb.setChecked(mute_enabled)
+        col.addWidget(self.mute_cb)
         return box
 
-    def _make_running_group(self, mute_enabled: bool, rerun_enabled: bool) -> QGroupBox:
-        """运行中配置：静音 · 重跑失败脚本。"""
+    def _make_running_group(self, rerun_enabled: bool) -> QGroupBox:
+        """运行中配置：重跑失败脚本。"""
         box = self._make_group("运行中配置")
         col = QVBoxLayout(box)
         col.setContentsMargins(14, 20, 14, 14)
         col.setSpacing(10)
-
-        self.mute_cb = self._make_checkbox("运行中静音（运行前静音，运行后恢复）")
-        self.mute_cb.setChecked(mute_enabled)
-        col.addWidget(self.mute_cb)
 
         self.rerun_cb = self._make_checkbox("运行后重跑失败脚本")
         self.rerun_cb.setChecked(rerun_enabled)
@@ -149,6 +150,7 @@ class RunConfirmDialog(FormDialogBase):
 
     def _make_post_run_group(
         self,
+        unmute_enabled: bool,
         notify_enabled: bool,
         shutdown_enabled: bool,
         shutdown_delay: int,
@@ -156,7 +158,7 @@ class RunConfirmDialog(FormDialogBase):
         smtp_host: str,
         smtp_port: str,
     ) -> QGroupBox:
-        """运行后配置：邮件通知（含邮箱/授权码/SMTP 配置）· 自动关机（运行后关机 + 延迟秒数）。"""
+        """运行后配置：邮件通知（含邮箱/授权码/SMTP 配置）· 开启声音 · 自动关机（运行后关机 + 延迟秒数）。"""
         box = self._make_group("运行后配置")
         col = QVBoxLayout(box)
         col.setContentsMargins(14, 20, 14, 14)
@@ -165,7 +167,6 @@ class RunConfirmDialog(FormDialogBase):
         self.notify_cb = self._make_checkbox("运行后发送邮件通知")
         self.notify_cb.setChecked(notify_enabled)
         col.addWidget(self.notify_cb)
-
         # 邮件配置：发件人邮箱（落 schedule.yml）+ 授权码（落系统凭据管理器，不落盘明文）
         # + SMTP 主机/端口（落 schedule.yml，默认 QQ）。仅在勾选通知时可用（与定时/关机联动一致）。
         self.email_edit = self._make_line_edit(
@@ -195,6 +196,10 @@ class RunConfirmDialog(FormDialogBase):
         ):
             w.setEnabled(notify_enabled)
         self.notify_cb.toggled.connect(self._on_notify_toggled)
+
+        self.unmute_cb = self._make_checkbox("运行后开启声音")
+        self.unmute_cb.setChecked(unmute_enabled)
+        col.addWidget(self.unmute_cb)
 
         col.addWidget(self._make_shutdown_row(shutdown_enabled, shutdown_delay))
         return box
@@ -306,6 +311,7 @@ class RunConfirmDialog(FormDialogBase):
             timed_enabled=self.timed_cb.isChecked(),
             timed_target=f"{t.hour():02d}:{t.minute():02d}",
             mute_enabled=self.mute_cb.isChecked(),
+            unmute_enabled=self.unmute_cb.isChecked(),
             close_running_enabled=self.close_running_cb.isChecked(),
             rerun_enabled=self.rerun_cb.isChecked(),
             notify_enabled=self.notify_cb.isChecked(),

@@ -214,11 +214,11 @@ class TestScheduleRun(unittest.TestCase):
         ):
             chain_service.schedule_run({"demo"}, "08:00", shutdown_delay=60)
         mock_pipeline.assert_called_once_with(
-            shutdown_delay=60, smtp_config=None, mute=False, enabled_keys={"demo"}
+            shutdown_delay=60, smtp_config=None, unmute=False, enabled_keys={"demo"}
         )
 
-    def test_mute_passed_to_pipelines(self):
-        """mute=True：透传给 pre_run/post_run 工厂（由其挂静音/恢复 step），不再透传 run_chain_once。"""
+    def test_mute_unmute_passed_to_pipelines(self):
+        """mute/unmute 独立透传：mute→pre_run 工厂（挂静音 step），unmute→post_run 工厂（挂恢复）。"""
         self._make_service([{"display_name": "demo"}])
         with (
             patch("src.service.run_actions.time.sleep"),
@@ -231,18 +231,18 @@ class TestScheduleRun(unittest.TestCase):
             patch("src.service.schedule.build_pre_run_pipeline") as mock_pre,
             patch("src.service.schedule.build_post_run_pipeline") as mock_post,
         ):
-            chain_service.schedule_run({"demo"}, "08:00", mute=True)
-        # mute 经 pre_run 工厂透传（由其挂静音 step），不再经 run_chain_once
-        self.assertTrue(mock_pre.called)
-        pre_kwargs = mock_pre.call_args.kwargs
-        self.assertEqual(pre_kwargs["target_time"], "08:00")
-        self.assertTrue(pre_kwargs["mute"])
+            chain_service.schedule_run({"demo"}, "08:00", mute=True, unmute=True)
+        # mute 经 pre_run 工厂透传（由其挂静音 step）；unmute 经 post_run 工厂（挂恢复），
+        # 两者互不依赖，均不再经 run_chain_once 透传。
+        self.assertTrue(mock_pre.call_args.kwargs["mute"])
+        self.assertNotIn("unmute", mock_pre.call_args.kwargs)
         mock_post.assert_called_once_with(
-            shutdown_delay=None, smtp_config=None, mute=True, enabled_keys={"demo"}
+            shutdown_delay=None, smtp_config=None, unmute=True, enabled_keys={"demo"}
         )
-        # 静音不再经 run_chain_once 透传
+        # 静音/恢复不再经 run_chain_once 透传
         _, kwargs = self._run_once.call_args
         self.assertNotIn("mute", kwargs)
+        self.assertNotIn("unmute", kwargs)
 
     def test_now_skips_wait(self):
         """target_time='now'（即时运行）跳过等待，直接点火运行。"""
@@ -329,7 +329,7 @@ class TestScheduleRun(unittest.TestCase):
         captured = {}
 
         def _fake_pipeline(
-            *, shutdown_delay, smtp_config, mute=False, enabled_keys=None
+            *, shutdown_delay, smtp_config, unmute=False, enabled_keys=None
         ):
             captured["smtp_config"] = smtp_config
             return []

@@ -157,6 +157,7 @@ def schedule_run(
     *,
     chain_name: str = "today",
     mute: bool = False,
+    unmute: bool = False,
     shutdown_delay: int | None = None,
     close_running: bool = True,
 ) -> None:
@@ -172,7 +173,8 @@ def schedule_run(
             （跳过运行）。调用方想全量时显式传入 config 全部脚本集合。
         target_time: 目标时刻 ``"HH:MM"``；``"now"`` 表示即时运行（跳过等待）。
         chain_name: 链配置文件名（不含扩展名，默认 today）。
-        mute: 是否运行中静音（由 ScheduledRun 的 pre_run/post_run 执行）。
+        mute: 是否运行前静音（由 ScheduledRun 的 pre_run 执行）。
+        unmute: 是否运行后开启声音（由 ScheduledRun 的 post_run 执行，与静音独立）。
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
         close_running: 是否运行前关闭残留进程（由 ScheduledRun 的 pre_run 执行）。
     """
@@ -182,6 +184,7 @@ def schedule_run(
         target_time,
         chain_name=chain_name,
         mute=mute,
+        unmute=unmute,
         shutdown_delay=shutdown_delay,
         close_running=close_running,
     ).run()

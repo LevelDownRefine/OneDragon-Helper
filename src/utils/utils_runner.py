@@ -470,6 +470,7 @@ def spawn_schedule_run(
     *,
     chain_name: str = "today",
     mute: bool = False,
+    unmute: bool = False,
     shutdown_delay: int | None = None,
     close_running: bool = True,
 ) -> subprocess.Popen | None:
@@ -493,7 +494,8 @@ def spawn_schedule_run(
             GUI 永远传非空真实集合，故跨进程壳层不再用 None 表达「全部」。
         target_time: 目标时刻 ``"HH:MM"``（24 小时制），须合法（调用方已校验）。
         chain_name: 链配置文件名（不含扩展名，默认 today）。
-        mute: 是否运行中静音（透传 ``--mute``）。
+        mute: 是否运行前静音（透传 ``--mute``）。
+        unmute: 是否运行后开启声音（透传 ``--unmute``）。
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
         close_running: 是否运行前关闭残留进程（透传 ``--close-running``，默认启用）。
 
@@ -510,6 +512,8 @@ def spawn_schedule_run(
     command += ["--schedule-run", target_time, "--name", chain_name]
     if mute:
         command.append("--mute")
+    if unmute:
+        command.append("--unmute")
     if close_running:
         command.append("--close-running")
     if shutdown_delay is not None:

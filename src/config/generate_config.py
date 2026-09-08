@@ -37,7 +37,7 @@ def generate_config_from_example() -> None:
 def generate_schedule_from_example() -> None:
     """从 config/schedule.example.yml 复制生成 config/schedule.yml。
 
-    调度运行参数（shutdown / timed_run / mute / rerun / notify）独立于 config.yml，
+    调度运行参数（shutdown / timed_run / mute / unmute / rerun / notify）独立于 config.yml，
     与脚本链声明（script_list）解耦；首次运行时由 ``config_workflow`` 与 config.yml
     一并生成。模板见 config/schedule.example.yml。
     """

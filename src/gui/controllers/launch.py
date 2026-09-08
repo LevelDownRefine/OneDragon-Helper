@@ -63,6 +63,7 @@ class LaunchController(QObject):
             enabled_script_names,
             run_target,
             mute=options.mute_enabled,
+            unmute=options.unmute_enabled,
             shutdown_delay=(
                 options.shutdown_delay
                 if options.shutdown_enabled and options.shutdown_delay > 0

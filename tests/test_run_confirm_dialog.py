@@ -59,6 +59,7 @@ class TestRunConfirmDialog(unittest.TestCase):
         dlg.timed_cb.setChecked(True)
         dlg.timed_time.setTime(dlg.timed_time.time().__class__(4, 10))
         dlg.mute_cb.setChecked(True)
+        dlg.unmute_cb.setChecked(True)
         dlg.rerun_cb.setChecked(False)
         dlg.notify_cb.setChecked(True)
         dlg._on_accept()
@@ -70,6 +71,7 @@ class TestRunConfirmDialog(unittest.TestCase):
                 "timed_enabled": True,
                 "timed_target": "04:10",
                 "mute_enabled": True,
+                "unmute_enabled": True,
                 "close_running_enabled": True,
                 "rerun_enabled": False,
                 "notify_enabled": True,
@@ -134,9 +136,14 @@ class TestRunConfirmDialog(unittest.TestCase):
         self.assertEqual(dlg.result.smtp_port, "994")
 
     def test_echoes_current_mute_config(self):
-        """打开弹窗时回显当前静音配置（勾选状态）。"""
+        """打开弹窗时回显当前运行前静音配置（勾选状态）。"""
         dlg = RunConfirmDialog(3, _opts(mute_enabled=True))
         self.assertTrue(dlg.mute_cb.isChecked())
+
+    def test_echoes_current_unmute_config(self):
+        """打开弹窗时回显当前运行后开启声音配置（勾选状态）。"""
+        dlg = RunConfirmDialog(3, _opts(unmute_enabled=True))
+        self.assertTrue(dlg.unmute_cb.isChecked())
 
     def test_echoes_current_rerun_config(self):
         """打开弹窗时回显当前重跑配置（勾选状态）。"""

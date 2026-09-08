@@ -60,6 +60,7 @@ class TestLaunchAllTimed(unittest.TestCase):
         self.assertEqual(args.args[0], {"demo"})  # 启用脚本集合
         self.assertEqual(args.args[1], "now")  # 即时：不等待
         self.assertFalse(args.kwargs["mute"])
+        self.assertFalse(args.kwargs["unmute"])
         self.assertIsNone(args.kwargs["shutdown_delay"])
         service.run_chain_once.assert_not_called()
         service.schedule_run.assert_not_called()
@@ -83,6 +84,7 @@ class TestLaunchAllTimed(unittest.TestCase):
         self.assertEqual(args.args[0], {"demo"})  # 启用脚本集合
         self.assertEqual(args.args[1], "08:00")  # 目标时刻
         self.assertFalse(args.kwargs["mute"])
+        self.assertFalse(args.kwargs["unmute"])
         self.assertIsNone(args.kwargs["shutdown_delay"])
 
     def test_spawn_failure_toasts_error(self):
@@ -195,6 +197,7 @@ class TestLaunchAllUnattended(unittest.TestCase):
         self.assertEqual(args.args[0], {"demo"})
         self.assertEqual(args.args[1], "now")
         self.assertFalse(args.kwargs["mute"])
+        self.assertFalse(args.kwargs["unmute"])
         self.assertIsNone(args.kwargs["shutdown_delay"])
         toast.assert_called_once()
         self.assertIn("启动全部", toast.call_args[0][0])

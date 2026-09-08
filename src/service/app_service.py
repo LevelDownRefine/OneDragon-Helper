@@ -217,6 +217,7 @@ class AppService:
         *,
         chain_name: str = "today",
         mute: bool = False,
+        unmute: bool = False,
         shutdown_delay=None,
         close_running: bool = True,
     ):
@@ -225,6 +226,7 @@ class AppService:
             target_time,
             chain_name=chain_name,
             mute=mute,
+            unmute=unmute,
             shutdown_delay=shutdown_delay,
             close_running=close_running,
         )

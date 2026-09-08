@@ -597,9 +597,12 @@ class TestSpawnScheduleRun(unittest.TestCase):
         idx = cmd.index("--name")
         self.assertEqual(cmd[idx + 1], "weekend")
 
-    def test_mute_and_shutdown_passthrough(self):
-        cmd = self._capture_command(frozen=False, mute=True, shutdown_delay=60)
+    def test_mute_unmute_and_shutdown_passthrough(self):
+        cmd = self._capture_command(
+            frozen=False, mute=True, unmute=True, shutdown_delay=60
+        )
         self.assertIn("--mute", cmd)
+        self.assertIn("--unmute", cmd)
         idx = cmd.index("--shutdown")
         self.assertEqual(cmd[idx + 1], "60")
 
