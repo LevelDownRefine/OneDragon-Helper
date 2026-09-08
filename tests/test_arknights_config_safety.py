@@ -94,7 +94,9 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self._sp.start()
 
     def tearDown(self):
-        patch.stopall()
+        # 只停 setUp 自身 start 的两个 patch，不用全局 stopall（避免误停他方活跃 patch）。
+        self._lp.stop()
+        self._sp.stop()
 
     # ---- 实例化：绝不该改任何东西（反读/只读入口依赖此不变量）----
     def test_instantiation_touches_nothing(self):

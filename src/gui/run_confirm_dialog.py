@@ -8,7 +8,7 @@
 对外接口：
 - ``RunConfirmDialog``：运行确认弹窗，构造签名含 enabled_count 与
   ``RunOptions``（初始勾选值，经 AppService.load_run_options 取自 schedule.yml），
-  ``result`` 返回用户改后的 ``RunOptions``；取消（reject）不返回、不落盘。
+  ``run_options`` 返回用户改后的 ``RunOptions``；取消（reject）不返回、不落盘。
 """
 
 from PySide6.QtCore import QTime
@@ -43,7 +43,7 @@ SMTP_PORT_DEFAULT = "465"
 class RunConfirmDialog(FormDialogBase):
     """「启动全部」前的确认弹窗，按生命周期三段（运行前/中/后配置）排列七项勾选。
 
-    复用 ``FormDialogBase`` 的样式与控件构造；accept 后经 ``result`` 属性返回
+    复用 ``FormDialogBase`` 的样式与控件构造；accept 后经 ``run_options`` 属性返回
     勾选项，写盘由调用方经 ``AppService.save_schedule`` 委托 ``src.service.schedule.save_schedule``
     （写 schedule.yml）。取消（reject）不返回、不落盘。
     """
@@ -54,7 +54,7 @@ class RunConfirmDialog(FormDialogBase):
         self.setStyleSheet(f"background-color: {BG_CARD};")
 
         self.enabled_count = enabled_count
-        self._result = None  # accept 后供调用方读取勾选项
+        self._run_options = None  # accept 后供调用方读取勾选项
 
         self.setMinimumWidth(400)
         self.init_ui(options)
@@ -298,14 +298,16 @@ class RunConfirmDialog(FormDialogBase):
         return row
 
     @property
-    def result(self) -> RunOptions | None:
-        """accept 后的勾选项（RunOptions）；取消时返回 None。"""
-        return self._result
+    def run_options(self) -> RunOptions | None:
+        """accept 后的勾选项（RunOptions）；取消时返回 None。
+
+        避免遮蔽 QDialog.result()（基类结果码方法）。"""
+        return self._run_options
 
     def _on_accept(self) -> None:
         """确认运行：收集勾选项并 accept。"""
         t = self.timed_time.time()
-        self._result = RunOptions(
+        self._run_options = RunOptions(
             shutdown_enabled=self.shutdown_cb.isChecked(),
             shutdown_delay=self.shutdown_delay_spin.value(),
             timed_enabled=self.timed_cb.isChecked(),

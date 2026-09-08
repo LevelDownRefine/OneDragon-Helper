@@ -125,7 +125,7 @@ class LaunchController(QObject):
             return False
 
         # 弹窗勾选项的落盘（schedule.yml + 授权码凭据）整体经 service。
-        res = dialog.result
-        assert res is not None, "[launch] 弹窗 accept 但 result 为 None"
+        res = dialog.run_options
+        assert res is not None, "[launch] 弹窗 accept 但 run_options 为 None"
         self._app_service.apply_run_options(res)
         return True

@@ -318,34 +318,34 @@ class TestParseLogsRerunList(unittest.TestCase):
         )
 
         def fake_parse(script_name, script_path=""):
-            # 返回 parse_log 的真实契约：完整归一化结构（七键）。
+            # 返回 parse_log 的真实契约：完整归一化结构（六键）。
             if script_name == "ok-ww":
                 # 日常做完：仅剩「有报错」这一条，故只进 notify。
                 return {
                     "status": "Failed",
                     "log_path": "x",
+                    "log_content": "",
                     "errors": ["ERR x"],
                     "stamina": None,
                     "daily_done": True,
-                    "extra": None,
                 }
             if script_name == "BetterGI":
                 # 日常没做完：进 rerun；无报错故不进 notify。
                 return {
                     "status": "Failed",
                     "log_path": "y",
+                    "log_content": "",
                     "errors": [],
                     "stamina": None,
                     "daily_done": False,
-                    "extra": None,
                 }
             return {
                 "status": "NoLog",
                 "log_path": None,
+                "log_content": "",
                 "errors": [],
                 "stamina": None,
                 "daily_done": False,
-                "extra": None,
             }
 
         orig = collect_log.get_root_dir
@@ -394,14 +394,14 @@ class TestParseLogsRerunList(unittest.TestCase):
 
         def fake_parse(script_name, script_path=""):
             # 正常退出、日常做完、但有报错：应归为 WARN，不进 rerun、进 notify。
-            # 返回 parse_log 真实契约：完整归一化结构。
+            # 返回 parse_log 真实契约：完整归一化结构（六键）。
             return {
                 "status": "Success",
                 "log_path": "x",
+                "log_content": "",
                 "errors": ["ERR x"],
                 "stamina": None,
                 "daily_done": True,
-                "extra": None,
             }
 
         orig = collect_log.get_root_dir
@@ -515,14 +515,14 @@ class TestParseLogsRerunList(unittest.TestCase):
 
         def fake_parse(script_name, script_path=""):
             # 已定稿的 daily_done（True）；聚合方只消费，不应再出现「未知」。
-            # 返回 parse_log 真实契约：完整归一化结构。
+            # 返回 parse_log 真实契约：完整归一化结构（六键）。
             return {
                 "status": "Success",
                 "log_path": "x",
+                "log_content": "",
                 "errors": [],
                 "daily_done": True,
                 "stamina": None,
-                "extra": None,
             }
 
         orig = collect_log.get_root_dir

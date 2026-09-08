@@ -36,14 +36,17 @@ class TestRunChainOnce(unittest.TestCase):
     """run_chain_once：生成+运行+关机/静音命令构造的模块级原子。"""
 
     def _make_service(self, script_list):
-        self._cfg = patch(
+        self._cfg_patch = patch(
             "src.utils.utils_config.load_config",
             return_value={"script_list": script_list},
-        ).start()
-        self._weekly_load = patch(
+        )
+        self._weekly_patch = patch(
             "src.service.chain_service.load_all_weekly", return_value={}
-        ).start()
-        self.addCleanup(patch.stopall)
+        )
+        self._weekly_load = self._weekly_patch.start()
+        self._cfg = self._cfg_patch.start()
+        self.addCleanup(self._weekly_patch.stop)
+        self.addCleanup(self._cfg_patch.stop)
 
     def test_defaults_all_scripts_and_runs(self):
         self._make_service([{"display_name": "A", "script_path": "A.exe"}])
@@ -163,14 +166,17 @@ class TestScheduleRun(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def _make_service(self, script_list):
-        self._cfg = patch(
+        self._cfg_patch = patch(
             "src.utils.utils_config.load_config",
             return_value={"script_list": script_list},
-        ).start()
-        self._run_once = patch(
+        )
+        self._run_once_patch = patch(
             "src.service.chain_service.run_chain_once", return_value=None
-        ).start()
-        self.addCleanup(patch.stopall)
+        )
+        self._run_once = self._run_once_patch.start()
+        self._cfg = self._cfg_patch.start()
+        self.addCleanup(self._run_once_patch.stop)
+        self.addCleanup(self._cfg_patch.stop)
         return self._run_once
 
     def _run(self, target_time="08:00", **kwargs):
@@ -432,14 +438,17 @@ class TestRerunRound(unittest.TestCase):
     """
 
     def _svc_with_config(self, script_list):
-        self._cfg = patch(
+        self._cfg_patch = patch(
             "src.utils.utils_config.load_config",
             return_value={"script_list": script_list},
-        ).start()
-        self._weekly_load = patch(
+        )
+        self._weekly_patch = patch(
             "src.service.chain_service.load_all_weekly", return_value={}
-        ).start()
-        self.addCleanup(patch.stopall)
+        )
+        self._weekly_load = self._weekly_patch.start()
+        self._cfg = self._cfg_patch.start()
+        self.addCleanup(self._weekly_patch.stop)
+        self.addCleanup(self._cfg_patch.stop)
         return self._cfg
 
     def test_reruns_when_rerun_list_nonempty(self):

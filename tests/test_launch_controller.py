@@ -137,7 +137,7 @@ class TestConfirmRunDialog(unittest.TestCase):
         return LaunchController(game_list, task_card, service, toast), service
 
     def _patch_run_confirm(self):
-        """patch RunConfirmDialog，返回可控的 dialog mock（exec/result）。"""
+        """patch RunConfirmDialog，返回可控的 dialog mock（exec/run_options）。"""
         return mock.patch("src.gui.controllers.launch.RunConfirmDialog")
 
     def test_cancel_returns_false(self):
@@ -151,13 +151,13 @@ class TestConfirmRunDialog(unittest.TestCase):
         service.apply_run_options.assert_not_called()
 
     def test_accept_forwards_result_to_service(self):
-        """确认运行：弹窗 result（RunOptions）整体透传 service.apply_run_options。"""
+        """确认运行：弹窗 run_options（RunOptions）整体透传 service.apply_run_options。"""
         res = RunOptions(shutdown_enabled=True, shutdown_delay=120)
         ctrl, service = self._make_ctrl()
         with self._patch_run_confirm() as dlg_cls:
             dlg = dlg_cls.return_value
             dlg.exec.return_value = QDialog.Accepted
-            dlg.result = res
+            dlg.run_options = res
             out = ctrl._confirm_run({"demo"})
 
         self.assertTrue(out)
