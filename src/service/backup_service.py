@@ -4,12 +4,11 @@
 
     manifest.json               条目清单（kind / rel / src / arc），恢复时按 src 回写
     self/<config 内相对路径>     自身配置（config/ 整个目录，排除备份产物目录）
-    scripts/<脚本名>/<rel_path>  子脚本配置（rel_path 由 set_config 适配层声明）
+    scripts/<脚本名>/<rel_path>  子脚本配置（rel_path 为适配层备份范围的展开结果）
 
-子脚本 config 的「有哪些、在哪」归适配层（:mod:`src.config.set_config`）：
-整目录都是 config 的（如 ok-ww 的 ``working/configs``、BetterGI 的 ``User``）按目录递归
-打包，目录外的单文件（如崩铁的 ``config.yaml``）另按声明补；两者重叠时以目录为准去重。
-脚本未安装 / config 未生成（不存在）时跳过，不中断整包备份。
+子脚本 config 的「配置面在哪」归适配层（:mod:`src.config.set_config`）：每个脚本声明
+``_backup_paths``（元素可为目录或文件），本模块按条展开——目录递归收录、文件直接收录、
+不存在即跳过（脚本未安装属常态）。
 """
 
 import json
@@ -18,7 +17,7 @@ import os
 import zipfile
 from datetime import datetime
 
-from src.config.set_config import iter_config_dir_rel_paths, iter_config_rel_paths
+from src.config.set_config import iter_backup_paths
 from src.utils import get_path_under_root, get_root_dir, safe_path_join
 from src.utils.utils_sub_config import get_script_root_dir
 
@@ -90,56 +89,44 @@ def _script_entry(script_name: str, rel: str, src: str) -> dict:
     }
 
 
-def _dir_entries(script_name: str, root: str, rel_dir: str) -> list[dict]:
-    """递归收集 config 目录下的全部文件（整个目录都是 config）。
+def _path_entries(script_name: str, root: str, rel: str) -> list[dict]:
+    """展开一条备份路径：目录递归收录全部文件，文件则收录该条；不存在即跳过。
 
     Args:
         script_name: 脚本唯一标识。
         root: 脚本根目录。
-        rel_dir: config 目录相对脚本根目录的路径。
+        rel: 备份路径（目录或文件），相对脚本根目录。
 
     Returns:
-        条目列表；目录不存在（脚本未安装 / 尚未生成）时为空列表。
+        条目列表；路径不存在（脚本未安装 / 尚未生成）时为空列表。
     """
-    abs_dir = safe_path_join(root, rel_dir)
-    if not os.path.isdir(abs_dir):
-        return []
+    abs_path = safe_path_join(root, rel)
+    if os.path.isfile(abs_path):
+        return [_script_entry(script_name, rel, abs_path)]
+    if not os.path.isdir(abs_path):
+        return []  # 脚本未安装 / 尚未生成 config：跳过，不中断整包
     entries: list[dict] = []
-    for dirpath, _, filenames in os.walk(abs_dir):
+    for dirpath, _, filenames in os.walk(abs_path):
         for name in filenames:
             src = os.path.join(dirpath, name)
-            rel = f"{rel_dir}/{os.path.relpath(src, abs_dir).replace(os.sep, '/')}"
-            entries.append(_script_entry(script_name, rel, src))
+            file_rel = f"{rel}/{os.path.relpath(src, abs_path).replace(os.sep, '/')}"
+            entries.append(_script_entry(script_name, file_rel, src))
     return entries
 
 
 def _script_entries() -> list[dict]:
-    """遍历各已适配脚本的 config 目录（整目录）与目录外的单文件（缺失即跳过）。
+    """遍历各已适配脚本的备份范围（目录递归 / 单文件收录，缺失即跳过）。
 
     Returns:
         条目列表，每项含 kind="script" / script_name / rel（相对脚本根目录）/ src / arc。
     """
-    dirs = iter_config_dir_rel_paths()
-    files = iter_config_rel_paths()
     entries: list[dict] = []
-    for script_name in sorted(set(dirs) | set(files)):
+    for script_name, rel_paths in sorted(iter_backup_paths().items()):
         root = get_script_root_dir(script_name)
         if root is None:
             continue  # config.yml 无此脚本或 script_path 为空：无从定位，跳过
-        packed = (
-            _dir_entries(script_name, root, dirs[script_name])
-            if script_name in dirs
-            else []
-        )
-        entries.extend(packed)
-        packed_rels = {entry["rel"] for entry in packed}
-        for rel in files.get(script_name, []):
-            if rel in packed_rels:
-                continue  # 已随整目录打包
-            src = safe_path_join(root, rel)
-            if not os.path.exists(src):
-                continue  # 脚本未安装 / 尚未生成 config：跳过，不中断整包
-            entries.append(_script_entry(script_name, rel, src))
+        for rel in rel_paths:
+            entries.extend(_path_entries(script_name, root, rel))
     return entries
 
 

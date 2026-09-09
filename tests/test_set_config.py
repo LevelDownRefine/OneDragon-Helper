@@ -3,7 +3,7 @@
 
 覆盖函数：
   - _CONFIGS（子类路径声明完整性）
-  - iter_config_rel_paths（备份/恢复遍历的 config 路径清单）
+  - iter_backup_paths（备份范围声明）
   - get_sub_config_path
   - load_config
   - save_config（mock 文件写入，不真正写回脚本 config）
@@ -497,28 +497,26 @@ class TestIsAdapted(unittest.TestCase):
         self.assertFalse(set_config.is_adapted("不存在的脚本"))
 
 
-class TestIterConfigRelPaths(unittest.TestCase):
-    """iter_config_rel_paths：各脚本声明的 config 相对路径清单（备份/恢复遍历用）。"""
+class TestIterBackupPaths(unittest.TestCase):
+    """iter_backup_paths：各脚本声明的备份范围（目录或文件），与读写路径解耦。"""
 
-    def test_returns_declared_paths_per_script(self):
-        """已适配脚本（鸣潮）的日常 config 与游戏路径 config 都在清单里。"""
-        paths = set_config.iter_config_rel_paths()
-        self.assertIn("ok-ww", paths)
-        self.assertIn("data/apps/ok-ww/working/configs/DailyTask.json", paths["ok-ww"])
-        self.assertIn("data/apps/ok-ww/working/configs/devices.json", paths["ok-ww"])
+    def test_dir_style_script_declares_whole_dir(self):
+        """整目录都是 config 的脚本（鸣潮 working/configs、原神 User）声明目录。"""
+        paths = set_config.iter_backup_paths()
+        self.assertEqual(paths["ok-ww"], ("data/apps/ok-ww/working/configs",))
+        self.assertEqual(paths["BetterGI"], ("User",))
 
-    def test_config_dir_declared_for_dir_style_scripts(self):
-        """整目录都是 config 的脚本（鸣潮 working/configs、原神 User）声明了 config 目录。"""
-        dirs = set_config.iter_config_dir_rel_paths()
-        self.assertEqual(dirs["ok-ww"], "data/apps/ok-ww/working/configs")
-        self.assertEqual(dirs["BetterGI"], "User")
-        for rel_dir in dirs.values():
-            self.assertTrue(rel_dir)
+    def test_loose_file_script_declares_single_file(self):
+        """散装单文件脚本（崩铁 config.yaml）声明文件，不声明目录。"""
+        paths = set_config.iter_backup_paths()
+        self.assertEqual(paths["March7th-Launcher"], ("config.yaml",))
 
-    def test_paths_deduplicated(self):
-        """同一脚本多个属性指向同一文件（如崩铁 config.yaml）时去重。"""
-        for rel_paths in set_config.iter_config_rel_paths().values():
-            self.assertEqual(len(rel_paths), len(set(rel_paths)))
+    def test_every_registered_script_declares_backup_paths(self):
+        """每个已适配脚本都必须声明非空备份范围（register 断言的对外保证）。"""
+        paths = set_config.iter_backup_paths()
+        self.assertEqual(set(paths), set(set_config._CONFIGS))
+        for script_name, rel_paths in paths.items():
+            self.assertTrue(rel_paths, f"{script_name} 未声明 _backup_paths")
 
 
 if __name__ == "__main__":

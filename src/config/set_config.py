@@ -150,8 +150,12 @@ class ScriptConfig:
     _config_rel_path: str = ""
     """config 文件相对脚本根目录路径。"""
 
-    _config_dir_rel_path: str = ""
-    """config 目录相对脚本根目录路径（该目录整个都是 config，备份时整目录打包）。"""
+    _backup_paths: tuple[str, ...] = ()
+    """备份范围：相对脚本根目录的路径，元素可以是目录（整目录打包）或文件。
+
+    与读写路径解耦：读写关心「哪个文件的哪个字段」，备份关心「该脚本的配置面在哪」；
+    声明了本属性即表示要备份的配置全在这些路径里。
+    """
 
     _game_config_rel_path: str = ""
     """游戏路径配置文件路径（声明 _game_path_keys 时必填）。"""
@@ -531,10 +535,10 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
         原样返回 cls（便于装饰器使用）。
 
     Raises:
-        AssertionError: 缺少 _script_name/_config_rel_path 显式声明，或声明了
-            _game_path_keys/_weekly_task_name 但未补全对应声明/实现。
+        AssertionError: 缺少 _script_name/_config_rel_path/_backup_paths 显式声明，
+            或声明了 _game_path_keys/_weekly_task_name 但未补全对应声明/实现。
     """
-    for attr in ("_script_name", "_config_rel_path"):
+    for attr in ("_script_name", "_config_rel_path", "_backup_paths"):
         assert attr in cls.__dict__, f"[set_config][{cls.__name__}] 必须声明 {attr}"
     if cls._game_path_keys:
         assert "_game_config_rel_path" in cls.__dict__, (
@@ -561,7 +565,7 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
 @register
 class WutheringWavesConfig(ScriptConfig):
     _script_name = "ok-ww"
-    _config_dir_rel_path = "data/apps/ok-ww/working/configs"
+    _backup_paths = ("data/apps/ok-ww/working/configs",)
     _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
@@ -691,7 +695,7 @@ class GenshinConfig(ScriptConfig):
     _script_name = "BetterGI"
     display_name = "原神"
     _task_key = "DomainName"
-    _config_dir_rel_path = "User"
+    _backup_paths = ("User",)
     _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
@@ -755,7 +759,7 @@ class EndfieldConfig(ScriptConfig):
     display_name = "终末地"
     _task_key = "体力本"
     _template_rel_path = "okef一条龙.json"
-    _config_dir_rel_path = "data/apps/ok-ef/working/configs"
+    _backup_paths = ("data/apps/ok-ef/working/configs",)
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
@@ -822,7 +826,7 @@ class EndfieldConfig(ScriptConfig):
 class ZenlessZoneZeroConfig(ScriptConfig):
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
-    _config_dir_rel_path = "config"
+    _backup_paths = ("config",)
     _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
     _template_rel_path = "ZZZ一条龙.yml"
@@ -862,6 +866,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 class StarRailConfig(ScriptConfig):
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
+    _backup_paths = ("config.yaml",)
     _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
     _template_rel_path = "M7A一条龙.yml"
@@ -994,7 +999,7 @@ class StarRailConfig(ScriptConfig):
 @register
 class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
-    _config_dir_rel_path = "data/apps/ok-nte/working/configs"
+    _backup_paths = ("data/apps/ok-nte/working/configs",)
     _config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
     _routine_config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTask.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
@@ -1223,7 +1228,7 @@ class NTEConfig(ScriptConfig):
 class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
     display_name = "粥"
-    _config_dir_rel_path = "config"
+    _backup_paths = ("config",)
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
     _game_path_keys = (
@@ -1572,50 +1577,18 @@ def get_config_path(script_name: str) -> str:
     return _get_config_path_impl(script_name, _CONFIGS[script_name]._config_rel_path)
 
 
-_CONFIG_REL_PATH_ATTRS = (
-    "_config_rel_path",
-    "_game_config_rel_path",
-    "_weekly_config_rel_path",
-    "_routine_config_rel_path",
-)
-"""子类可声明的 config 相对路径属性（备份/恢复遍历用）。"""
+def iter_backup_paths() -> dict[str, tuple[str, ...]]:
+    """遍历各已适配脚本的备份范围（相对脚本根目录，元素可为目录或文件）。
 
-
-def iter_config_rel_paths() -> dict[str, list[str]]:
-    """遍历各已适配脚本声明的 config 相对路径（备份/恢复用）。
-
-    各子类「自己有哪些 config」的知识归适配层，本函数只做汇总；路径相对脚本根目录。
+    「该脚本的配置面在哪」的知识归适配层，本函数只做汇总；展开（目录递归 /
+    单文件收录）由备份层处理。
 
     Returns:
-        {脚本唯一标识: [config 相对路径, ...]}；按属性声明顺序去重。
+        {脚本唯一标识: (备份路径, ...)}。
     """
     return {
-        script_name: _config_rel_paths(cfg_cls)
-        for script_name, cfg_cls in _CONFIGS.items()
+        script_name: cfg_cls._backup_paths for script_name, cfg_cls in _CONFIGS.items()
     }
-
-
-def iter_config_dir_rel_paths() -> dict[str, str]:
-    """遍历各已适配脚本的 config 目录（整个目录都是 config，备份时整目录打包）。
-
-    Returns:
-        {脚本唯一标识: config 目录相对脚本根目录的路径}；未声明的脚本不出现。
-    """
-    return {
-        script_name: cfg_cls._config_dir_rel_path
-        for script_name, cfg_cls in _CONFIGS.items()
-        if cfg_cls._config_dir_rel_path
-    }
-
-
-def _config_rel_paths(cfg_cls: type[ScriptConfig]) -> list[str]:
-    """取单个子类的 config 相对路径清单；未声明的属性（如异环专属 routine）跳过。"""
-    paths: list[str] = []
-    for attr in _CONFIG_REL_PATH_ATTRS:
-        rel_path = getattr(cfg_cls, attr, "")
-        if rel_path and rel_path not in paths:
-            paths.append(rel_path)
-    return paths
 
 
 def get_game_exe_path(script_name: str) -> str | None:
