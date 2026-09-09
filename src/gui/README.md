@@ -27,6 +27,8 @@
 
 主窗口使用蓝灰配色与半透明面板；颜色统一取 `qml/Theme.js`，原生弹窗对应色板在 `dialogs.py`。图标通过 `UiIconProvider` 绘制，避免依赖符号字体；右侧工具栏悬停显示用途，长 toast 自动换行。保持纯 QtQuick，不增加控件或效果库依赖。
 
+左下控制模式按钮开启时，在右侧气泡显示「全 / 清 / ＋」，左侧脚本仍可逐项切换启停；再次点击模式按钮、Esc 或点击右侧内容区退出控制模式。添加脚本前先收起气泡，拖拽期间暂时隐藏气泡。
+
 ## 弹窗 dialogs.py
 
 - SingleScriptConfigDialog：单脚本配置弹窗，保存后经 pending_changes 返回，写盘委托 AppService.update_script（内部转 src.utils.utils_config.update_script）。

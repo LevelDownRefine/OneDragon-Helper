@@ -787,6 +787,7 @@ class TestUiIconProvider(unittest.TestCase):
             "min",
             "close",
             "play",
+            "play_all",
             "chevron_down",
             "grid",
         ]

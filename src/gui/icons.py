@@ -124,7 +124,7 @@ class UiIconProvider(QQuickImageProvider):
     """QML 通用 UI 矢量图标源：`image://uiicon/<name>`。
 
     name → 重绘矢量图标。静态图标，无需游戏数据，构造即就绪。
-    支持：home / game / folder / bili / github / wallpaper / settings / min / close / log / configfile / backup / restore / trash。
+    图标名称与绘制函数统一在 _drawers 中注册。
     """
 
     _SIZE = 48
@@ -149,6 +149,7 @@ class UiIconProvider(QQuickImageProvider):
             "restore": self._draw_restore,
             "trash": self._draw_trash,
             "play": self._draw_play,
+            "play_all": self._draw_play_all,
             "chevron_down": self._draw_chevron_down,
             "grid": self._draw_grid,
         }
@@ -188,6 +189,20 @@ class UiIconProvider(QQuickImageProvider):
         path.moveTo(-9, -4)
         path.lineTo(0, 5)
         path.lineTo(9, -4)
+        p.drawPath(path)
+
+    def _draw_play_all(self, p: QPainter):
+        """黄色批量启动按钮使用的深色圆角播放三角。"""
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#17191C"))
+        path = QPainterPath()
+        path.moveTo(-5, -11)
+        path.quadTo(-9, -13, -9, -8)
+        path.lineTo(-9, 8)
+        path.quadTo(-9, 13, -5, 11)
+        path.lineTo(10, 3)
+        path.quadTo(15, 0, 10, -3)
+        path.closeSubpath()
         p.drawPath(path)
 
     def _draw_grid(self, p: QPainter):
