@@ -8,13 +8,21 @@ from unittest.mock import MagicMock, patch
 from PySide6.QtWidgets import QDialog
 
 from src.gui.controllers.backup import BackupController
+from src.service.schedule import StartupOptions
 
 
 class TestOpenConfig(unittest.TestCase):
+    def setUp(self):
+        self.service = MagicMock()
+        self.service.load_startup_options.return_value = StartupOptions()
+        self.toast = MagicMock()
+        self.ctrl = BackupController(app_service=self.service, toast=self.toast)
+
     @patch("src.gui.controllers.backup.ConfigDialog")
     def test_selection_dispatches_after_dialog_closes(self, dialog_class):
-        ctrl = BackupController(app_service=MagicMock(), toast=MagicMock())
+        ctrl = self.ctrl
         dialog = dialog_class.return_value
+        dialog.startup_options = StartupOptions()
         events = []
         for selected in ("backup", "restore"):
             with self.subTest(action=selected):
@@ -40,11 +48,13 @@ class TestOpenConfig(unittest.TestCase):
                 ):
                     ctrl.openConfig()
                 self.assertEqual(events, ["closed", selected])
+        self.service.apply_startup_options.assert_not_called()
 
     @patch("src.gui.controllers.backup.ConfigDialog")
     def test_cancel_does_not_dispatch(self, dialog_class):
-        ctrl = BackupController(app_service=MagicMock(), toast=MagicMock())
+        ctrl = self.ctrl
         dialog_class.return_value.exec.return_value = QDialog.Rejected
+        dialog_class.return_value.startup_options = StartupOptions()
         with (
             patch.object(ctrl, "backupConfig") as backup,
             patch.object(ctrl, "restoreConfig") as restore,
@@ -52,6 +62,51 @@ class TestOpenConfig(unittest.TestCase):
             ctrl.openConfig()
         backup.assert_not_called()
         restore.assert_not_called()
+
+    @patch("src.gui.controllers.backup.ConfigDialog")
+    def test_closing_saves_preferences_through_service(self, dialog_class):
+        dialog = dialog_class.return_value
+        dialog.exec.return_value = QDialog.Rejected
+        dialog.startup_options = StartupOptions(False, 125)
+        self.ctrl.openConfig()
+        dialog_class.assert_called_once_with(startup_options=StartupOptions())
+        self.service.apply_startup_options.assert_called_once_with(
+            StartupOptions(False, 125)
+        )
+        self.toast.assert_not_called()
+
+    @patch("src.gui.controllers.backup.ConfigDialog")
+    def test_action_saves_preferences_before_dispatch(self, dialog_class):
+        dialog = dialog_class.return_value
+        dialog.exec.return_value = QDialog.Accepted
+        dialog.selected_action = "backup"
+        dialog.startup_options = StartupOptions(True, 125)
+        events = []
+        self.service.apply_startup_options.side_effect = lambda _: events.append("save")
+        with patch.object(
+            self.ctrl, "backupConfig", side_effect=lambda: events.append("backup")
+        ):
+            self.ctrl.openConfig()
+        self.assertEqual(events, ["save", "backup"])
+
+    @patch("src.gui.controllers.backup.ConfigDialog")
+    def test_save_failure_is_reported(self, dialog_class):
+        dialog = dialog_class.return_value
+        dialog.exec.return_value = QDialog.Rejected
+        dialog.startup_options = StartupOptions(False, 30)
+        self.service.apply_startup_options.side_effect = OSError("locked")
+        with self.assertLogs("src.gui.controllers.backup", level="ERROR"):
+            self.ctrl.openConfig()
+        self.toast.assert_called_once_with("保存启动设置失败：locked")
+
+    @patch("src.gui.controllers.backup.ConfigDialog")
+    def test_read_failure_is_reported(self, dialog_class):
+        self.service.load_startup_options.side_effect = OSError("locked")
+        with self.assertLogs("src.gui.controllers.backup", level="ERROR"):
+            self.ctrl.openConfig()
+        dialog_class.assert_not_called()
+        self.service.apply_startup_options.assert_not_called()
+        self.toast.assert_called_once_with("读取启动设置失败：locked")
 
 
 class TestBackupConfig(unittest.TestCase):

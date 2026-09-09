@@ -54,6 +54,7 @@ TEXT_MUTED = "#A4B3C8"  # 次要文字
 TEXT_FAINT = "#4A5568"  # 弱文字 / 占位
 BG_INPUT = "#1D2B40"  # 输入框底（比卡片底略亮）
 BG_CARD = "#121D2E"  # 卡片底
+BG_DIALOG = "#EB121D2E"  # 与 QML Theme.panel 一致，背景半透明，文字保持不透明
 BG_HOVER = "#2B405C"  # 悬停底
 BORDER = "#36465E"  # 中性边框
 DISABLED = "#2A3040"  # 禁用底色
@@ -233,15 +234,15 @@ def check_box_qss(*, size: int = 16) -> str:
 
 
 def rounded_dialog_qss(selector: str, *, radius: int = 12) -> str:
-    """无边框弹窗的圆角深底模板：深底裁切 + 圆角描边（配合透明背景）。
+    """无边框弹窗的半透明深底模板：背景裁切 + 圆角描边。
 
     窗口设为无边框 + ``Qt.WA_TranslucentBackground`` 后，QSS 的 border-radius 把
-    背景裁成圆角矩形、四角透出桌面；radius 须 ≤ 内容布局边距，否则角落内容被裁。
+    背景裁成圆角矩形、四角全透明；radius 须 ≤ 内容布局边距，否则角落内容被裁。
     表单弹窗与深色消息框共用此模板。
     """
     return f"""
         {selector} {{
-            background-color: {BG_CARD};
+            background-color: {BG_DIALOG};
             border: {BORDER_WIDTH} solid {BORDER};
             border-radius: {radius}px;
         }}
@@ -288,7 +289,7 @@ class FramelessWindowMixin:
         body = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         path = QPainterPath()
         path.addRoundedRect(body, radius, radius)
-        painter.fillPath(path, QColor(BG_CARD))
+        painter.fillPath(path, QColor(BG_DIALOG))
         painter.setPen(QPen(QColor(BORDER), 1))
         painter.drawPath(path)
 

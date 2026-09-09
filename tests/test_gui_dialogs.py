@@ -11,10 +11,11 @@ from src.utils.utils_yaml import dump_yaml_file
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from src.gui.dialogs import (
-    BG_CARD,
+    BG_DIALOG,
     SingleScriptConfigDialog,
     _last_dir,
     pick_file,
@@ -415,7 +416,15 @@ class TestFramelessDialogs(unittest.TestCase):
         self.assertTrue(dlg.windowFlags() & Qt.FramelessWindowHint)
         self.assertTrue(dlg.testAttribute(Qt.WA_TranslucentBackground))
         self.assertIn("border-radius", dlg.styleSheet())
-        self.assertIn(BG_CARD, dlg.styleSheet())
+        self.assertIn(BG_DIALOG, dlg.styleSheet())
+        dlg.show()
+        _app.processEvents()
+        # 顶部空白的真实绘制像素必须半透明，不能仅设置透明窗口属性。
+        image = dlg.grab().toImage()
+        self.assertEqual(image.pixelColor(image.width() // 2, 3).alpha(), 235)
+        self.assertEqual(image.pixelColor(0, 0).alpha(), 0)
+        self.assertEqual(dlg.windowOpacity(), 1.0)
+        self.assertEqual(QColor(BG_DIALOG).alpha(), 235)
 
     def _single_script_dialog(self):
         app = MagicMock()
@@ -443,6 +452,20 @@ class TestFramelessDialogs(unittest.TestCase):
         from src.gui.shutdown_dialog import ShutdownConfirmDialog
 
         dlg = ShutdownConfirmDialog(10)
+        self.addCleanup(dlg.close)
+        self._assert_round(dlg)
+
+    def test_startup_dialog_translucent(self):
+        from src.gui.startup_dialog import StartupConfirmDialog
+
+        dlg = StartupConfirmDialog(60)
+        self.addCleanup(dlg.close)
+        self._assert_round(dlg)
+
+    def test_config_dialog_translucent(self):
+        from src.gui.config_dialog import ConfigDialog
+
+        dlg = ConfigDialog()
         self.addCleanup(dlg.close)
         self._assert_round(dlg)
 

@@ -9,6 +9,7 @@ import zipfile
 
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QDialog, QFileDialog
+from ruamel.yaml.error import YAMLError
 
 from src.gui.config_dialog import ConfigDialog
 from src.service.app_service import AppService
@@ -29,9 +30,24 @@ class BackupController(QObject):
 
     @Slot()
     def openConfig(self):
-        """打开配置操作列表，选择后执行对应动作；关闭或取消不执行。"""
-        dialog = ConfigDialog()
-        if dialog.exec() != QDialog.Accepted:
+        """关闭时保存启动设置；选择备份/恢复后再执行对应动作。"""
+        try:
+            options = self._app_service.load_startup_options()
+        except (OSError, YAMLError) as exc:
+            logger.error("读取启动设置失败：%s: %s", type(exc).__name__, exc)
+            self._toast(f"读取启动设置失败：{exc}")
+            return
+        dialog = ConfigDialog(startup_options=options)
+        result = dialog.exec()
+        updated = dialog.startup_options
+        if updated != options:
+            try:
+                self._app_service.apply_startup_options(updated)
+            except (OSError, YAMLError) as exc:
+                logger.error("保存启动设置失败：%s: %s", type(exc).__name__, exc)
+                self._toast(f"保存启动设置失败：{exc}")
+                return
+        if result != QDialog.Accepted:
             return
         actions = {"backup": self.backupConfig, "restore": self.restoreConfig}
         assert dialog.selected_action in actions

@@ -24,9 +24,12 @@ from src.config.dungeon_config import get_dungeon_map, get_weekly_map
 from src.config.set_config import set_config, set_weekly_dungeon
 from src.service.schedule import (
     RunOptions,
+    StartupOptions,
     apply_run_options,
+    apply_startup_options,
     load_run_options,
     load_schedule,
+    load_startup_options,
     save_schedule,
 )
 from src.utils.utils_config import (
@@ -166,6 +169,14 @@ class AppService:
     def apply_run_options(self, options: RunOptions) -> None:
         """把运行选项写回 schedule.yml，并注册本次填写的授权码（如有）。"""
         return apply_run_options(options)
+
+    def load_startup_options(self) -> StartupOptions:
+        """读取打开 GUI 后的自动启动设置。"""
+        return load_startup_options()
+
+    def apply_startup_options(self, options: StartupOptions) -> None:
+        """保存自动启动开关与倒计时。"""
+        return apply_startup_options(options)
 
     def collect_invalid_scripts(self, script_list: list) -> list:
         return collect_invalid_script_messages(script_list)

@@ -143,7 +143,8 @@ class BaseLogParser:
         if not log_dir or not log_dir.exists():
             return None
 
-        log_files = sorted(log_dir.glob(self.log_pattern), reverse=True)
+        # Python 3.11 的 pathlib 不接受 ruamel 保留引号的 str 子类。
+        log_files = sorted(log_dir.glob(str(self.log_pattern)), reverse=True)
         for log_file in log_files:
             if self._is_valid_log(log_file):
                 return log_file

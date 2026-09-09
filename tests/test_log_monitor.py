@@ -21,7 +21,7 @@ from src.log import (
     parse_log,
 )
 from src.utils.utils_sub_config import get_script_name
-from src.utils.utils_yaml import dump_yaml_file, load_yaml
+from src.utils.utils_yaml import dump_yaml_file, load_yaml, load_yaml_str
 
 
 def _parse_content(parser, content: str) -> dict:
@@ -45,6 +45,21 @@ def _parse_content(parser, content: str) -> dict:
 
 
 class TestLogParser(unittest.TestCase):
+    def test_quoted_yaml_pattern_finds_matching_log(self):
+        for quote in ("'", '"'):
+            with self.subTest(quote=quote), tempfile.TemporaryDirectory() as directory:
+                folder = Path(directory)
+                expected = folder / "run.log"
+                expected.write_text("done", encoding="utf-8")
+                (folder / "zzz.txt").write_text("unrelated", encoding="utf-8")
+                keywords = load_yaml_str(f"log_pattern: {quote}*.log{quote}")
+                with mock.patch.object(
+                    collect_log, "_keywords_for", return_value=keywords
+                ):
+                    parser = OkWwLogParser()
+                with mock.patch.object(parser, "_get_log_dir", return_value=folder):
+                    self.assertEqual(parser.get_log_path("unused.exe"), expected)
+
     def test_ok_ef_daily_done_is_success(self):
         """终末地：成功任务栏含 ⭐日常奖励 → 每日做完 → SUCCESS。"""
         parser = OkEfLogParser()

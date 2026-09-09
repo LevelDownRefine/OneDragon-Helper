@@ -5,7 +5,10 @@
 （选脚本 → 刷背景 + 任务卡）。
 """
 
+import logging
+
 from PySide6.QtCore import Property, QObject, Signal, Slot
+from ruamel.yaml.error import YAMLError
 
 from src.gui.controllers.background import BackgroundController
 from src.gui.controllers.backup import BackupController
@@ -16,6 +19,8 @@ from src.gui.controllers.task_card import TaskCardController
 from src.gui.controllers.window import WindowController
 from src.gui.icons import UiIconProvider
 from src.service.app_service import AppService
+
+logger = logging.getLogger(__name__)
 
 
 class QmlBridge(QObject):
@@ -198,7 +203,7 @@ class QmlBridge(QObject):
         self.launch.launchAll()
 
     def maybe_auto_launch(self) -> None:
-        """GUI 打开时弹 60s 倒计时确认；取消则无事发生，归零或点「立即启动」按上次配置启动全部。
+        """按启动设置弹倒计时确认；关闭自动启动或未启用脚本时不弹窗。
 
         与自动关机（shutdown_dialog）同款 UX：倒计时归零/点「立即启动」→ 启动全部，
         取消/关窗 → 不启动。无人值守启动跳过运行前确认窗（``confirm=False``），直接按
@@ -206,9 +211,17 @@ class QmlBridge(QObject):
         """
         if not any(self.game_list.enabled):
             return
+        try:
+            options = self.app_service.load_startup_options()
+        except (OSError, YAMLError) as exc:
+            logger.error("读取启动设置失败：%s: %s", type(exc).__name__, exc)
+            self.toastRequested.emit(f"读取启动设置失败，已取消自动启动：{exc}")
+            return
+        if not options.enabled:
+            return
         from src.gui.startup_dialog import confirm_startup
 
-        if confirm_startup(60):
+        if confirm_startup(options.delay_seconds):
             self.launch.launchAll(confirm=False)
 
     @Slot()

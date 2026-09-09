@@ -6,6 +6,7 @@
 
 import os
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
@@ -14,6 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
 from src.gui.startup_dialog import StartupConfirmDialog, confirm_startup
+from src.service.schedule import StartupOptions
 
 # 模块级 QApplication 单例：widget 需要 GUI 应用，进程退出时随解释器销毁。
 if QApplication.instance() is None:
@@ -99,6 +101,65 @@ class TestStartupConfirmDialog(unittest.TestCase):
         self.assertTrue(dlg._timer.isActive())
         dlg.close()
         self.assertFalse(dlg._timer.isActive())
+
+
+class TestAutoLaunchPreference(unittest.TestCase):
+    def _bridge(self, options):
+        bridge = SimpleNamespace(
+            game_list=SimpleNamespace(enabled=[True]),
+            app_service=mock.Mock(),
+            launch=mock.Mock(),
+            toastRequested=mock.Mock(),
+        )
+        bridge.app_service.load_startup_options.return_value = options
+        return bridge
+
+    @mock.patch("src.gui.startup_dialog.confirm_startup")
+    def test_disabled_never_prompts_or_launches(self, confirm):
+        from src.gui.main_window import QmlBridge
+
+        bridge = self._bridge(StartupOptions(False, 45))
+        QmlBridge.maybe_auto_launch(bridge)
+        confirm.assert_not_called()
+        bridge.launch.launchAll.assert_not_called()
+
+    @mock.patch("src.gui.startup_dialog.confirm_startup")
+    def test_no_enabled_scripts_never_prompts(self, confirm):
+        from src.gui.main_window import QmlBridge
+
+        bridge = self._bridge(StartupOptions())
+        bridge.game_list.enabled = [False]
+        QmlBridge.maybe_auto_launch(bridge)
+        confirm.assert_not_called()
+        bridge.launch.launchAll.assert_not_called()
+
+    @mock.patch("src.gui.startup_dialog.confirm_startup")
+    def test_configured_delay_and_confirmation_control_launch(self, confirm):
+        from src.gui.main_window import QmlBridge
+
+        for accepted in (False, True):
+            with self.subTest(accepted=accepted):
+                bridge = self._bridge(StartupOptions(True, 125))
+                confirm.reset_mock()
+                confirm.return_value = accepted
+                QmlBridge.maybe_auto_launch(bridge)
+                confirm.assert_called_once_with(125)
+                if accepted:
+                    bridge.launch.launchAll.assert_called_once_with(confirm=False)
+                else:
+                    bridge.launch.launchAll.assert_not_called()
+
+    @mock.patch("src.gui.startup_dialog.confirm_startup")
+    def test_read_failure_cancels_startup_and_informs_user(self, confirm):
+        from src.gui.main_window import QmlBridge
+
+        bridge = self._bridge(StartupOptions())
+        bridge.app_service.load_startup_options.side_effect = OSError("locked")
+        with self.assertLogs("src.gui.main_window", level="ERROR"):
+            QmlBridge.maybe_auto_launch(bridge)
+        confirm.assert_not_called()
+        bridge.launch.launchAll.assert_not_called()
+        self.assertIn("已取消自动启动", bridge.toastRequested.emit.call_args.args[0])
 
 
 if __name__ == "__main__":

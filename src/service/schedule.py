@@ -5,6 +5,8 @@ notify / close_running）的读写归本模块：``load_schedule`` / ``save_sche
 其 notify 块经 ``resolve_mail_config`` 解析为 SMTP 配置。七个选项块的
 单一 schema 是 :class:`RunOptions`——确认窗回显（``load_run_options``）与
 落盘（``apply_run_options``）共用同一类型，GUI 不感知 yml 键名。
+``StartupOptions`` 单独管理 startup 块（打开 GUI 后自动启动的开关与秒数），
+缺项默认启用 60 秒倒计时，与运行确认窗的 RunOptions 分开读写。
 
 ``ScheduledRun`` 是一个带生命周期的对象，而非纯函数：它在独立控制台进程
 （由 ``utils_runner.spawn_schedule_run`` 以 ``CREATE_NEW_CONSOLE`` 起）中运行，
@@ -65,6 +67,51 @@ def save_schedule(data: dict) -> None:
     """
     assert isinstance(data, dict), "[schedule] 待保存的 schedule 非 dict"
     dump_yaml(get_schedule_yml_path_under_root(), data)
+
+
+MAX_STARTUP_DELAY_SECONDS = 3600
+
+
+@dataclass(frozen=True)
+class StartupOptions:
+    """打开 GUI 后的自动启动设置；默认保持历史的 60 秒倒计时。"""
+
+    enabled: bool = True
+    delay_seconds: int = 60
+
+    def __post_init__(self):
+        assert type(self.enabled) is bool
+        assert type(self.delay_seconds) is int
+        assert 1 <= self.delay_seconds <= MAX_STARTUP_DELAY_SECONDS
+
+
+def load_startup_options(schedule: dict | None = None) -> StartupOptions:
+    """读取启动设置；旧配置缺项沿用默认，非法值关闭自动启动并记诊断。"""
+    data = load_schedule() if schedule is None else schedule
+    # startup 及其字段对旧配置均为可选，缺失时沿用原有启动行为。
+    block = data.get("startup", {})
+    if isinstance(block, dict):
+        enabled = block.get("enabled", True)
+        delay = block.get("delay_seconds", 60)
+        if (
+            type(enabled) is bool
+            and type(delay) is int
+            and 1 <= delay <= MAX_STARTUP_DELAY_SECONDS
+        ):
+            return StartupOptions(enabled, delay)
+    logger.warning("[startup] 自动启动设置无效，已关闭自动启动，请在配置弹窗重新设置")
+    return StartupOptions(enabled=False)
+
+
+def apply_startup_options(options: StartupOptions) -> None:
+    """仅更新 schedule.yml 的 startup 块，保留其他运行选项。"""
+    assert isinstance(options, StartupOptions)
+    data = load_schedule()
+    data["startup"] = {
+        "enabled": options.enabled,
+        "delay_seconds": options.delay_seconds,
+    }
+    save_schedule(data)
 
 
 @dataclass(frozen=True)

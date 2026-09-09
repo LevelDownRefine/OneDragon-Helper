@@ -10,6 +10,7 @@ from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton  # noqa: E402
 
 from src.gui.config_dialog import ConfigDialog  # noqa: E402
+from src.service.schedule import StartupOptions  # noqa: E402
 
 _APP = QApplication.instance() or QApplication([])
 
@@ -54,6 +55,26 @@ class TestConfigDialog(unittest.TestCase):
         self.assertEqual(self.dialog.result(), QDialog.Rejected)
         self.assertIsNone(self.dialog.selected_action)
         self.assertFalse(self.dialog.isVisible())
+
+    def test_reopens_saved_preferences_and_toggle_preserves_delay(self):
+        dialog = ConfigDialog(startup_options=StartupOptions(False, 125))
+        self.addCleanup(dialog.close)
+        self.assertFalse(dialog.startup_cb.isChecked())
+        self.assertFalse(dialog.startup_delay.isEnabled())
+        self.assertEqual(dialog.startup_delay.value(), 125)
+        dialog.startup_cb.click()
+        self.assertTrue(dialog.startup_delay.isEnabled())
+        self.assertEqual(dialog.startup_options, StartupOptions(True, 125))
+
+    def test_escape_keeps_pending_seconds_for_save(self):
+        edit = self.dialog.startup_delay.lineEdit()
+        self.dialog.startup_delay.setKeyboardTracking(False)
+        edit.setFocus()
+        edit.selectAll()
+        QTest.keyClicks(edit, "125")
+        QTest.keyClick(edit, Qt.Key_Escape)
+        self.assertFalse(self.dialog.isVisible())
+        self.assertEqual(self.dialog.startup_options, StartupOptions(True, 125))
 
 
 if __name__ == "__main__":

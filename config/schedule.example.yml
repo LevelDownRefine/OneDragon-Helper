@@ -1,6 +1,10 @@
 # 调度运行参数（运行时由 schedule.example.yml 拷贝生成为 schedule.yml）。
 # 本文件进 git；schedule.yml 含个人信息（邮件授权码）不进版本库。
 # 这些参数同时被 GUI（运行确认弹窗回显/写回）与子进程 schedule_run 读取。
+# 打开 GUI 后按上次配置启动全部脚本；可在右上角配置弹窗修改。
+startup:
+  enabled: true
+  delay_seconds: 60
 shutdown:
   after_run: true
   delay_seconds: 45
