@@ -11,7 +11,7 @@ from unittest import mock
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from src.gui.controllers.launch import LaunchController
 from src.service.schedule import RunOptions
@@ -179,6 +179,65 @@ class TestConfirmRunDialog(unittest.TestCase):
         dlg_cls.assert_called_once()
         self.assertEqual(dlg_cls.call_args.args[0], 1)  # 启用脚本数
         self.assertIs(dlg_cls.call_args.args[1], options)  # 回显原对象
+
+
+class TestConfirmRunInvalidScripts(unittest.TestCase):
+    """_confirm_run 不合法脚本告警：深色 Yes/No 确认，Yes 继续 / No 取消。"""
+
+    def _make_ctrl(self, invalid):
+        """构造 controller，collect_invalid_scripts 返回指定的不合法脚本列表。"""
+        game_list = mock.MagicMock()
+        game_list.games = [{"script_name": "demo"}]
+        game_list.enabled = [True]
+        task_card = mock.MagicMock()
+        service = mock.MagicMock()
+        service.load_config.return_value = {"script_list": []}
+        service.collect_invalid_scripts.return_value = invalid
+        service.load_run_options.return_value = RunOptions()
+        toast = mock.MagicMock()
+        return LaunchController(game_list, task_card, service, toast), service
+
+    def test_yes_continues(self):
+        """用户点 Yes：仍照常弹确认窗并落盘选项（运行时跳过不合法脚本）。"""
+        ctrl, service = self._make_ctrl([("demo", "exe 不存在")])
+        with (
+            mock.patch("src.gui.controllers.launch.styled_msg_box") as msg_cls,
+            mock.patch("src.gui.controllers.launch.RunConfirmDialog") as dlg_cls,
+        ):
+            box = msg_cls.return_value
+            box.exec.return_value = QMessageBox.Yes
+            dlg = dlg_cls.return_value
+            dlg.exec.return_value = QDialog.Accepted
+            out = ctrl._confirm_run({"demo"})
+        self.assertTrue(out)
+        service.apply_run_options.assert_called_once()
+
+    def test_no_cancels(self):
+        """用户点 No：取消整个运行，不弹确认窗、不落盘。"""
+        ctrl, service = self._make_ctrl([("demo", "exe 不存在")])
+        with (
+            mock.patch("src.gui.controllers.launch.styled_msg_box") as msg_cls,
+            mock.patch("src.gui.controllers.launch.RunConfirmDialog") as dlg_cls,
+        ):
+            box = msg_cls.return_value
+            box.exec.return_value = QMessageBox.No
+            out = ctrl._confirm_run({"demo"})
+        self.assertFalse(out)
+        dlg_cls.assert_not_called()
+        service.apply_run_options.assert_not_called()
+
+    def test_no_invalid_skips_warning(self):
+        """无不合法脚本：不弹告警，直接进确认窗。"""
+        ctrl, service = self._make_ctrl([])
+        with (
+            mock.patch("src.gui.controllers.launch.styled_msg_box") as msg_cls,
+            mock.patch("src.gui.controllers.launch.RunConfirmDialog") as dlg_cls,
+        ):
+            dlg = dlg_cls.return_value
+            dlg.exec.return_value = QDialog.Accepted
+            out = ctrl._confirm_run({"demo"})
+        self.assertTrue(out)
+        msg_cls.assert_not_called()
 
 
 class TestLaunchAllUnattended(unittest.TestCase):

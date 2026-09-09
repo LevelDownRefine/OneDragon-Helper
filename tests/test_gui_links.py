@@ -86,5 +86,35 @@ class TestOpenPathOSError(unittest.TestCase):
         toast.assert_not_called()  # 成功提示由调用方给文案
 
 
+class TestLinksEmptyCurrent(unittest.TestCase):
+    """config 删空（current_game 为 None）时各槽只 toast，不越界触发，不崩。
+
+    旧实现直接 ``current_game["script_name"]`` 取键，空列表会抛 KeyError 逃出槽。
+    """
+
+    ACTIONS = [
+        "launchGame",
+        "openHome",
+        "openBilibili",
+        "openGithub",
+        "openScriptFolder",
+        "openLogFolder",
+        "openScriptConfig",
+    ]
+
+    def _make_ctrl(self) -> LinksController:
+        toast = MagicMock()
+        return LinksController(
+            game_list=_FakeGameList(None), toast=toast, app_service=MagicMock()
+        )
+
+    def test_each_action_degrades_with_toast(self):
+        for action in self.ACTIONS:
+            with self.subTest(action=action):
+                ctrl = self._make_ctrl()
+                getattr(ctrl, action)()
+                ctrl._toast.assert_called_once_with("尚无脚本")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -181,8 +181,11 @@ class GameListController(QObject):
         return self._games
 
     @property
-    def current_game(self) -> dict:
-        return self._games[self.current_index]
+    def current_game(self) -> dict | None:
+        """当前选中脚本；config 删空（无脚本）时 None，调用方据此降级而非崩溃。"""
+        if self._games:
+            return self._games[self.current_index]
+        return None
 
     @property
     def enabled(self) -> list:
@@ -325,14 +328,9 @@ class GameListController(QObject):
     @Slot()
     def addScript(self):
         """弹出文件选择框，选完追加脚本到 config.yml 并重建列表。"""
-        from PySide6.QtWidgets import QFileDialog
+        from src.gui.dialogs import SCRIPT_FILE_FILTER, pick_file
 
-        file_path, _ = QFileDialog.getOpenFileName(
-            None,
-            "选择脚本文件",
-            "",
-            "可执行文件 Executable files (*.exe *.bat *.py);;所有文件 All files (*.*)",
-        )
+        file_path = pick_file(None, "选择脚本文件", SCRIPT_FILE_FILTER)
         if not file_path:
             return
         file_path = os.path.normpath(file_path)
@@ -353,10 +351,14 @@ class GameListController(QObject):
             return
         script_name = self._games[index]["script_name"]
         display = self._games[index]["display_name"]
-        box = QMessageBox()
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle("删除脚本")
-        box.setText(f"确定删除「{display}」？此操作不可撤销。")
+        from src.gui.dialogs import styled_msg_box
+
+        box = styled_msg_box(
+            None,
+            QMessageBox.Warning,
+            "删除脚本",
+            f"确定删除「{display}」？此操作不可撤销。",
+        )
         box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
         box.setDefaultButton(QMessageBox.Cancel)
         if box.exec() != QMessageBox.Ok:

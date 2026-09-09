@@ -78,6 +78,14 @@ class TestWallpaperCache(unittest.TestCase):
         self.assertIsNone(self.ctrl._build_wallpaper_cache(small, "s2"))
         self.assertFalse(os.path.isfile(os.path.join(self._cache_dir, "s2.jpg")))
 
+    def test_small_image_skips_pixel_decode(self):
+        """小图仅凭头部尺寸判定即跳过缓存，不触发整图 QImage 解码（省内存）。"""
+        small = _make_image(os.path.join(self._img_dir, "small2.png"), 640, 360)
+        with patch.object(bgmod, "QImage") as mock_img:
+            result = self.ctrl._build_wallpaper_cache(small, "s5")
+        self.assertIsNone(result)
+        mock_img.assert_not_called()
+
     def test_corrupt_image_warns_and_returns_none(self):
         """损坏图解码失败：记日志并回退 None（不崩溃）。"""
         corrupt = os.path.join(self._img_dir, "bad.png")
@@ -201,7 +209,7 @@ class TestOpenWallpaper(unittest.TestCase):
         video = self._video()
         with (
             patch(
-                "src.gui.controllers.background.QFileDialog.getOpenFileName",
+                "src.gui.dialogs.QFileDialog.getOpenFileName",
                 return_value=(video, ""),
             ),
             patch.object(self.ctrl, "read_wallpapers", return_value={}),
@@ -218,7 +226,7 @@ class TestOpenWallpaper(unittest.TestCase):
         img = _make_image(os.path.join(self._img_dir, "pic.png"), 3000, 2000)
         with (
             patch(
-                "src.gui.controllers.background.QFileDialog.getOpenFileName",
+                "src.gui.dialogs.QFileDialog.getOpenFileName",
                 return_value=(img, ""),
             ),
             patch.object(self.ctrl, "read_wallpapers", return_value={}),
@@ -230,6 +238,20 @@ class TestOpenWallpaper(unittest.TestCase):
         mock_build.assert_called_once_with(
             img, self.ctrl._game_list.current_game["script_name"], force=True
         )
+
+    def test_empty_game_list_toasts_and_skips(self):
+        """config 删空（current_game None）：只 toast，不弹选框、不写壁纸表。"""
+        self.ctrl._game_list = MagicMock()
+        self.ctrl._game_list.current_game = None
+        with (
+            patch("src.gui.dialogs.QFileDialog.getOpenFileName") as mock_dialog,
+            patch.object(self.ctrl, "write_wallpapers") as mock_write,
+            patch.object(self.ctrl, "apply_current"),
+        ):
+            self.ctrl.open_wallpaper()
+        mock_dialog.assert_not_called()
+        mock_write.assert_not_called()
+        self.ctrl._toast.assert_called_once_with("尚无脚本")
 
 
 class TestScriptBackground(unittest.TestCase):

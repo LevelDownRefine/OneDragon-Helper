@@ -42,10 +42,23 @@ class LinksController(QObject):
             return False
         return True
 
+    def _current(self) -> dict | None:
+        """当前脚本；config 删空（无脚本）时 None，调用方据此提示后返回。"""
+        return self._game_list.current_game
+
+    def _current_or_toast(self) -> dict | None:
+        """取当前脚本；无脚本时 toast 提示并返回 None，调用方据此提前 return。"""
+        game = self._current()
+        if game is None:
+            self._toast("尚无脚本")
+        return game
+
     @Slot()
     def launchGame(self):
         """启动游戏：读取当前游戏 exe 路径并打开（未适配时提示）。"""
-        game = self._game_list.current_game
+        game = self._current_or_toast()
+        if game is None:
+            return
         exe_path = _get_game_exe_path(game["script_name"])
         if not exe_path:
             self._toast(f"{game['display_name']}：未找到游戏路径")
@@ -61,8 +74,11 @@ class LinksController(QObject):
     @Slot()
     def openHome(self):
         """打开当前游戏官方主页（link 声明，空则通用占位）。"""
+        game = self._current_or_toast()
+        if game is None:
+            return
         self._open_url(
-            _get_game_link(self._game_list.current_game["script_name"], "homepage"),
+            _get_game_link(game["script_name"], "homepage"),
             _URL_HOME,
             "主页",
         )
@@ -70,8 +86,11 @@ class LinksController(QObject):
     @Slot()
     def openBilibili(self):
         """打开当前游戏官方 B 站（link 声明，空则通用占位）。"""
+        game = self._current_or_toast()
+        if game is None:
+            return
         self._open_url(
-            _get_game_link(self._game_list.current_game["script_name"], "bilibili"),
+            _get_game_link(game["script_name"], "bilibili"),
             _URL_BILIBILI,
             "B站",
         )
@@ -79,8 +98,11 @@ class LinksController(QObject):
     @Slot()
     def openGithub(self):
         """打开当前脚本项目 GitHub 主页（link 声明，空则通用占位）。"""
+        game = self._current_or_toast()
+        if game is None:
+            return
         self._open_url(
-            _get_game_link(self._game_list.current_game["script_name"], "github"),
+            _get_game_link(game["script_name"], "github"),
             _URL_HOME,
             "GitHub",
         )
@@ -88,7 +110,9 @@ class LinksController(QObject):
     @Slot()
     def openScriptFolder(self):
         """打开当前脚本所在目录（script_path 父目录，资源管理器）。"""
-        game = self._game_list.current_game
+        game = self._current_or_toast()
+        if game is None:
+            return
         script_path = game["script_data"].get("script_path", "")
         resolved = resolve_script_path(script_path) if script_path else None
         if not resolved:
@@ -104,7 +128,9 @@ class LinksController(QObject):
     @Slot()
     def openLogFolder(self):
         """打开当前脚本运行日志目录（资源管理器）；无匹配解析器或目录缺失时提示。"""
-        game = self._game_list.current_game
+        game = self._current_or_toast()
+        if game is None:
+            return
         script_path = game["script_data"].get("script_path", "")
         resolved = resolve_script_path(script_path) if script_path else None
         if not resolved:
@@ -133,7 +159,9 @@ class LinksController(QObject):
     @Slot()
     def openScriptConfig(self):
         """打开当前脚本专属配置文件（python→源码；exe→内部 config），未适配或缺失时提示。"""
-        game = self._game_list.current_game
+        game = self._current_or_toast()
+        if game is None:
+            return
         path, error = self._app_service.config_file_path(game["script_name"])
         if error is not None:
             self._toast(f"{game['display_name']}：{error}")

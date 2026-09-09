@@ -25,12 +25,14 @@ from PySide6.QtWidgets import (
 )
 
 from src.gui.dialogs import (
-    BG_CARD,
+    BORDER,
     BORDER_WIDTH,
     INPUT_FIXED_H,
     TEXT,
     FormDialogBase,
+    line_edit_qss,
     make_font,
+    spin_box_qss,
 )
 from src.service.schedule import RunOptions, is_valid_target_time
 
@@ -51,7 +53,6 @@ class RunConfirmDialog(FormDialogBase):
     def __init__(self, enabled_count: int, options: RunOptions, parent=None):
         super().__init__(parent)
         self.setWindowTitle("确认运行")
-        self.setStyleSheet(f"background-color: {BG_CARD};")
 
         self.enabled_count = enabled_count
         self._run_options = None  # accept 后供调用方读取勾选项
@@ -106,7 +107,7 @@ class RunConfirmDialog(FormDialogBase):
         box = QGroupBox(title)
         box.setFont(make_font(size=11, bold=True))
         box.setStyleSheet(
-            f"QGroupBox {{ color: {TEXT}; border: {BORDER_WIDTH} solid #C4D8F2; "
+            f"QGroupBox {{ color: {TEXT}; border: {BORDER_WIDTH} solid {BORDER}; "
             f"border-radius: 8px; margin-top: 12px; }} "
             f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 6px; }}"
         )
@@ -212,11 +213,12 @@ class RunConfirmDialog(FormDialogBase):
         self.smtp_port_edit.setEnabled(on)
 
     def _make_line_edit(self, text: str, *, placeholder: str = "") -> QLineEdit:
-        """统一样式的单行输入框：尺寸/字号与对话框其他输入控件一致。"""
+        """统一样式的单行输入框：深底白字 + 占位文案，随标签行拉伸（邮件/授权码/SMTP 输入）。"""
         edit = QLineEdit(text)
         edit.setFont(make_font(size=11))
         edit.setFixedHeight(INPUT_FIXED_H)
         edit.setPlaceholderText(placeholder)
+        edit.setStyleSheet(line_edit_qss())
         return edit
 
     def _make_labeled_row(self, label_text: str, widget: QWidget) -> QWidget:
@@ -256,6 +258,7 @@ class RunConfirmDialog(FormDialogBase):
         self.timed_time.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.timed_time.setFixedWidth(90)
         self.timed_time.setFixedHeight(INPUT_FIXED_H)
+        self.timed_time.setStyleSheet(spin_box_qss())
         if is_valid_target_time(target):
             hour, minute = (int(x) for x in target.split(":"))
             self.timed_time.setTime(QTime(hour, minute))
@@ -291,6 +294,7 @@ class RunConfirmDialog(FormDialogBase):
         self.shutdown_delay_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.shutdown_delay_spin.setFixedWidth(90)
         self.shutdown_delay_spin.setFixedHeight(INPUT_FIXED_H)
+        self.shutdown_delay_spin.setStyleSheet(spin_box_qss())
         self.shutdown_delay_spin.setEnabled(enabled)
         self.shutdown_cb.toggled.connect(self.shutdown_delay_spin.setEnabled)
         h.addWidget(self.shutdown_delay_spin)
