@@ -24,6 +24,7 @@ from src.utils import (
     get_config_yml_path_under_root,
     require_config_yml_path,
 )
+from src.utils.utils_shortcut import read_shortcut
 from src.utils.utils_sub_config import (
     check_script_name_uniqueness,
     default_script_entry,
@@ -214,7 +215,27 @@ def build_script_entry(file_path: str, existing_script_names: set[str]) -> dict:
 
     Returns:
         完整的 script_list 条目 dict（display_name 不与 existing 重复）。
+
+    Raises:
+        ValueError: 快捷方式失效或依赖不同的工作目录。
+        OSError: 快捷方式读取失败。
     """
+    script_arguments = ""
+    if file_path.lower().endswith(".lnk"):
+        if not os.path.isfile(file_path):
+            raise ValueError("快捷方式文件不存在")
+        file_path, script_arguments, working_dir = read_shortcut(file_path)
+        file_path = os.path.normpath(os.path.expandvars(file_path))
+        if not file_path.lower().endswith((".exe", ".bat", ".py")):
+            raise ValueError("快捷方式未指向 .exe、.bat 或 .py 文件")
+        if not os.path.isfile(file_path):
+            raise ValueError("快捷方式的目标文件不存在")
+        # 运行器固定以目标所在目录启动，不能静默丢弃不同的「起始位置」。
+        if working_dir and os.path.normcase(
+            os.path.realpath(os.path.expandvars(working_dir))
+        ) != os.path.normcase(os.path.realpath(os.path.dirname(file_path))):
+            raise ValueError("快捷方式指定了不同的工作目录，暂不支持导入")
+
     base_name = os.path.splitext(os.path.basename(file_path))[0]
     display_name = base_name
     suffix = 1
@@ -227,6 +248,7 @@ def build_script_entry(file_path: str, existing_script_names: set[str]) -> dict:
         display_name=display_name,
         script_type=script_type,
         script_path=file_path,
+        script_arguments=script_arguments,
     )
 
 

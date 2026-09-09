@@ -12,6 +12,7 @@ from PySide6.QtCore import (
     QModelIndex,
     QObject,
     Qt,
+    QUrl,
     Signal,
     Slot,
 )
@@ -333,13 +334,79 @@ class GameListController(QObject):
         file_path = pick_file(None, "选择脚本文件", SCRIPT_FILE_FILTER)
         if not file_path:
             return
+        _, message = self._add_script_path(file_path)
+        self._toast(message)
+
+    def _script_drop_paths(self, urls: list) -> list[str]:
+        """筛选本地脚本文件；快捷方式的启动信息由 service 解析。"""
+        paths = []
+        for value in urls:
+            url = QUrl(value)
+            path = url.toLocalFile()
+            if not url.isLocalFile() or not os.path.isfile(path):
+                return []
+            if not path.lower().endswith((".exe", ".bat", ".py", ".lnk")):
+                return []
+            paths.append(path)
+        return paths
+
+    @Slot("QVariantList", result=bool)
+    def canDropScripts(self, urls: list) -> bool:
+        return bool(self._script_drop_paths(urls))
+
+    @Slot("QVariantList", result=bool)
+    def dropScripts(self, urls: list) -> bool:
+        """外部文件拖到窗口：复用添加流程，仅记录路径，不移动或运行文件。"""
+        paths = self._script_drop_paths(urls)
+        if not paths:
+            logger.warning("[file_drop] 拖入文件无有效脚本路径：%s", urls)
+            self._toast("请拖入 .exe、.bat、.py 文件或指向这些文件的有效快捷方式")
+            return False
+        logger.info("[file_drop] 添加脚本：%s", paths)
+        results = [self._add_script_path(path) for path in paths]
+        added = sum(status == "added" for status, _ in results)
+        logger.info("[file_drop] 已添加 %d / %d 个脚本", added, len(paths))
+        if len(results) == 1:
+            self._toast(results[0][1])
+        else:
+            duplicate = sum(status == "duplicate" for status, _ in results)
+            failed = sum(status == "failed" for status, _ in results)
+            summary = f"已添加 {added} 个脚本"
+            if duplicate:
+                summary += f"，重复 {duplicate} 个"
+            if failed:
+                summary += f"，失败 {failed} 个"
+            details = [
+                f"{os.path.basename(path)}：{message}"
+                for path, (status, message) in zip(paths, results, strict=True)
+                if status != "added"
+            ]
+            self._toast("\n".join([summary, *details]))
+        return added > 0
+
+    def _add_script_path(self, file_path: str) -> tuple[str, str]:
+        """添加单个脚本并返回状态与提示，调用方统一展示结果。"""
         file_path = os.path.normpath(file_path)
         existing = {g["script_name"] for g in self._games}
-        script_data = self._app_service.build_script_entry(file_path, existing)
-        self._app_service.add_script(script_data)
+        try:
+            script_data = self._app_service.build_script_entry(file_path, existing)
+        except (OSError, ValueError) as exc:
+            logger.warning("读取脚本未完成：%s", file_path, exc_info=True)
+            return "failed", f"无法添加 {os.path.basename(file_path)}：{exc}"
+        # exe 的内部标识固定为进程名，改展示名无法消除重复。
+        if get_script_name(script_data) in existing:
+            return "duplicate", f"脚本已存在：{get_script_name(script_data)}"
+        try:
+            self._app_service.add_script(script_data)
+        except OSError as exc:
+            logger.warning("添加脚本未完成：%s", file_path, exc_info=True)
+            # config.yml 可能已保存，后续子配置初始化才失败，须重读实际状态。
+            self._on_reload()
+            return "failed", f"添加脚本未完成：{exc}"
         self._on_reload()
-        self._toast(f"已添加 {script_data['display_name']}")
+        assert "display_name" in script_data
         self.gameAdded.emit()
+        return "added", f"已添加 {script_data['display_name']}"
 
     @Slot(int)
     def deleteScript(self, index: int):

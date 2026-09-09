@@ -177,6 +177,14 @@ class QmlBridge(QObject):
     def addScript(self):
         self.game_list.addScript()
 
+    @Slot("QVariantList", result=bool)
+    def canDropScripts(self, urls):
+        return self.game_list.canDropScripts(urls)
+
+    @Slot("QVariantList", result=bool)
+    def dropScripts(self, urls):
+        return self.game_list.dropScripts(urls)
+
     @Slot(int)
     def deleteScript(self, index):
         self.game_list.deleteScript(index)

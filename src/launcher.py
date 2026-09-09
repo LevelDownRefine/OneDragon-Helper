@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QApplication
 
 from src.cli import build_parser, run_cli
 from src.config.generate_config import config_workflow
+from src.gui.file_drop import install_file_drop
 from src.gui.main_window import QmlBridge
 from src.utils.utils_logger import install_crash_hooks, setup_logging
 from src.utils.utils_sub_config import resolve_script_path
@@ -123,11 +124,16 @@ def _launch_qml():
     logger.info("[qml] engine loaded, rootObjects = %d", len(engine.rootObjects()))
     if not engine.rootObjects():
         sys.exit(1)
+    # Windows 整窗使用原生文件拖放，兼容普通资源管理器 → 管理员窗口。
+    file_drop = install_file_drop(app, engine.rootObjects()[0], bridge.dropScripts)
     # GUI 打开即弹 60s 倒计时确认：取消则无事发生，归零/「立即启动」按上次配置启动全部。
     # 须在进入事件循环前同步弹模态窗（QDialog.exec 自带局部事件循环）。
     bridge.maybe_auto_launch()
     logger.info("[qml] entering event loop")
-    sys.exit(app.exec())
+    exit_code = app.exec()
+    if file_drop is not None:
+        app.removeNativeEventFilter(file_drop)
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

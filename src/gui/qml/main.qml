@@ -100,6 +100,56 @@ Window {
         }
     }
 
+    // 整个窗口都接收外部脚本文件；内部重排不产生文件 URL。
+    DropArea {
+        id: scriptDropArea
+        objectName: "scriptDropArea"
+        anchors.fill: parent
+        z: 60
+        enabled: !gameList.dragActive
+        onEntered: (drag) => {
+            drag.accepted = (drag.supportedActions & Qt.CopyAction)
+                && drag.hasUrls && Bridge.canDropScripts(drag.urls)
+        }
+        onDropped: (drop) => {
+            if (Bridge.dropScripts(drop.urls)) drop.accept(Qt.CopyAction)
+            else drop.accepted = false
+        }
+        Rectangle {
+            objectName: "scriptDropHighlight"
+            anchors.fill: parent
+            anchors.margins: 4
+            radius: 16
+            color: "#661D2B40"
+            border.width: 2
+            border.color: Theme.accent
+            visible: scriptDropArea.containsDrag
+            Rectangle {
+                anchors.centerIn: parent
+                width: 320; height: 156; radius: 18
+                color: Theme.panel
+                border.width: 1; border.color: Theme.accent
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 10
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "＋"; color: Theme.accent; font.pixelSize: 30
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "松手添加脚本"; color: Theme.text; font.pixelSize: 18
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: ".exe · .bat · .py · 快捷方式"
+                        color: Theme.muted; font.pixelSize: 12
+                    }
+                }
+            }
+        }
+    }
+
     // 左侧脚本图标列表（可滚动；点击切换/启停；拖拽重排）
     // 命中区拓宽到整条背景宽(0~80)：在左侧栏内任意位置（含原两侧空隙
     // x:0~12 / x:68~80）拖动都能滚动列表，不再穿透到 z:1 全窗层触发整窗移动。

@@ -7,6 +7,7 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from src.utils.utils_config import (
@@ -83,6 +84,65 @@ class TestBuildScriptEntry(unittest.TestCase):
     def test_name_dedup_keeps_incrementing(self):
         entry = build_script_entry("C:/foo/bar.exe", {"bar", "bar_1"})
         self.assertEqual(entry["display_name"], "bar_2")
+
+    def test_shortcut_arguments_survive_config_save(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            link, target, config = (
+                root / "daily.lnk",
+                root / "run.exe",
+                root / "config.yml",
+            )
+            link.touch()
+            target.touch()
+            arguments = '--profile "中文 100% #1" --daily'
+            with (
+                patch(
+                    "src.utils.utils_config.read_shortcut",
+                    return_value=(str(target), arguments, directory),
+                ),
+                patch(
+                    "src.utils.utils_config.get_config_yml_path_under_root",
+                    return_value=str(config),
+                ),
+            ):
+                entry = build_script_entry(str(link), set())
+                save_config({"script_list": [entry]})
+            saved = load_yaml(str(config))["script_list"][0]
+            self.assertEqual(saved["script_path"], str(target))
+            self.assertEqual(saved["script_arguments"], arguments)
+
+    def test_shortcut_with_different_working_directory_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            link, target = root / "daily.lnk", root / "run.exe"
+            link.touch()
+            target.touch()
+            with (
+                patch(
+                    "src.utils.utils_config.read_shortcut",
+                    return_value=(str(target), "--daily", str(root / "other")),
+                ),
+                self.assertRaisesRegex(ValueError, "不同的工作目录"),
+            ):
+                build_script_entry(str(link), set())
+
+    def test_equivalent_working_directory_and_environment_are_supported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            link, target = root / "daily.lnk", root / "run.exe"
+            link.touch()
+            target.touch()
+            with (
+                patch.dict(os.environ, {"SHORTCUT_TEST_ROOT": directory}),
+                patch(
+                    "src.utils.utils_config.read_shortcut",
+                    return_value=(str(target), "--daily", "${SHORTCUT_TEST_ROOT}/."),
+                ),
+            ):
+                self.assertEqual(
+                    build_script_entry(str(link), set())["script_arguments"], "--daily"
+                )
 
 
 class TestConfigFilePath(UtilsConfigTestBase):
