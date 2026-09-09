@@ -17,12 +17,15 @@
 | icons | 脚本 exe 图标 + QML 矢量图标提供器 | utils_sub_config |
 | dialogs | 单脚本配置弹窗 + 确认回调 | config / service |
 | config_dialog | 右上角「配置」操作列表，选择备份或恢复 | dialogs / icons |
+| qml/Theme.js | 主窗口、按钮、任务卡与下拉菜单的共享配色 | 无 |
 
 依赖单向：main_window 组合各控制器，控制器间构造注入；QmlBridge 是 QML 唯一门面。qml/ 组件经 Loader 相对路径加载，文件名与 controllers/ 同名。
 
 ## 主窗口 main_window.py
 
 `QmlBridge`：QML 中央控制器单例，经 `qmlRegisterSingletonInstance` 注册为 QML 的 `Bridge`，组合各职责控制器并编排跨控制器流程（选脚本 → 刷背景 + 任务卡）。窗口几何与布局在 `qml/main.qml`，运行直接 subprocess.Popen 开独立控制台窗口跑链。
+
+主窗口使用蓝灰配色与半透明面板；颜色统一取 `qml/Theme.js`，原生弹窗对应色板在 `dialogs.py`。图标通过 `UiIconProvider` 绘制，避免依赖符号字体；右侧工具栏悬停显示用途，长 toast 自动换行。保持纯 QtQuick，不增加控件或效果库依赖。
 
 ## 弹窗 dialogs.py
 

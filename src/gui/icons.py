@@ -148,6 +148,9 @@ class UiIconProvider(QQuickImageProvider):
             "backup": self._draw_backup,
             "restore": self._draw_restore,
             "trash": self._draw_trash,
+            "play": self._draw_play,
+            "chevron_down": self._draw_chevron_down,
+            "grid": self._draw_grid,
         }
 
     def _render(self, name: str) -> QPixmap:
@@ -168,6 +171,32 @@ class UiIconProvider(QQuickImageProvider):
         return self._cache[id]
 
     # ═══════════════ 各图标矢量绘制（中心原点，半径≈16）══════════════
+    def _draw_play(self, p: QPainter):
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        path = QPainterPath()
+        path.moveTo(-10, -14)
+        path.lineTo(14, 0)
+        path.lineTo(-10, 14)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    def _draw_chevron_down(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        path = QPainterPath()
+        path.moveTo(-9, -4)
+        path.lineTo(0, 5)
+        path.lineTo(9, -4)
+        p.drawPath(path)
+
+    def _draw_grid(self, p: QPainter):
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        for x in (-13, 3):
+            for y in (-13, 3):
+                p.drawRoundedRect(QRectF(x, y, 10, 10), 2, 2)
+
     def _draw_home(self, p: QPainter):
         p.setPen(QPen(_WHITE, 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         p.setBrush(Qt.NoBrush)

@@ -388,12 +388,57 @@ class TestQmlApp(unittest.TestCase):
             app.exec()
             print("ROOT_OBJECTS", len(engine.rootObjects()), flush=True)
             window = engine.rootObjects()[0]
-            config = window.findChild(QQuickItem, "configButton")
+            # Repeater 委托的 QObject 所有权不等于视觉父子关系，按视觉树查找。
+            def find_item(name):
+                pending = [window.contentItem()]
+                while pending:
+                    item = pending.pop()
+                    if item.objectName() == name:
+                        return item
+                    pending.extend(item.childItems())
+                raise AssertionError(name)
+
+            # 悬停只改变外观，不能触发重排或显示删除区。
+            icon = find_item("scriptIcon0")
+            original_y = icon.y()
+            for y in (4, 46):
+                point = icon.mapToScene(QPointF(icon.width() / 2, y))
+                QTest.mouseMove(window, point.toPoint())
+            assert icon.y() == original_y
+            assert not find_item("gameList").property("dragActive")
+
+            config = find_item("configButton")
             assert config is not None
             position = config.mapToScene(QPointF(config.width() / 2, config.height() / 2))
             with patch.object(bridge.backup, "openConfig") as open_config:
                 QTest.mouseClick(window, Qt.LeftButton, pos=position.toPoint())
                 open_config.assert_called_once_with()
+            # 主操作与脚本配置相邻，点配置不能误触启动。
+            with (
+                patch.object(bridge.launch, "launchScript") as launch,
+                patch.object(bridge.game_list, "configCurrent") as settings,
+            ):
+                for name in ("scriptSettingsButton", "launchScriptButton"):
+                    item = find_item(name)
+                    assert item is not None
+                    point = item.mapToScene(QPointF(item.width() / 2, item.height() / 2))
+                    QTest.mouseClick(window, Qt.LeftButton, pos=point.toPoint())
+                    if name == "scriptSettingsButton":
+                        settings.assert_called_once_with()
+                        launch.assert_not_called()
+                    else:
+                        launch.assert_called_once_with()
+                        settings.assert_called_once_with()
+            # 长路径提示应换行且完整留在窗口里。
+            bridge.toastRequested.emit("配置已备份：" + "folder/" * 70 + "backup.zip")
+            QTest.qWait(50)
+            toast = window.findChild(QQuickItem, "toast")
+            text = window.findChild(QQuickItem, "toastText")
+            assert toast.isVisible()
+            assert text.property("lineCount") > 1
+            assert toast.x() >= 80 and toast.y() >= 0
+            assert toast.x() + toast.width() <= window.width()
+            assert toast.y() + toast.height() <= window.height()
             """
         )
         proc = subprocess.run(
@@ -408,6 +453,8 @@ class TestQmlApp(unittest.TestCase):
         # 回归守卫：子组件（TaskCard 等）必须 import OneDragonHelper 才能在
         # 事件循环中解析 Bridge；缺 import 会让所有 Bridge.xxx 绑定 ReferenceError。
         self.assertNotIn("ReferenceError", proc.stderr)
+        self.assertNotIn("TypeError", proc.stderr)
+        self.assertNotIn("Binding loop", proc.stderr)
 
 
 class TestTaskCardPopupGeometry(unittest.TestCase):
@@ -739,6 +786,9 @@ class TestUiIconProvider(unittest.TestCase):
             "settings",
             "min",
             "close",
+            "play",
+            "chevron_down",
+            "grid",
         ]
         provider = UiIconProvider()
         for name in names:
