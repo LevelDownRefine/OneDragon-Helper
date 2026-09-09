@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+from PySide6.QtWidgets import QMessageBox
+
 from src.gui.controllers.game_list import GameListController, ScriptIconProvider
 
 
@@ -115,25 +117,23 @@ class TestDeleteScriptConfirmCancel(unittest.TestCase):
         ]
         return ctrl
 
-    @patch("src.gui.controllers.game_list.QMessageBox")
-    def test_cancel_keeps_data(self, mock_box):
+    @patch("src.gui.dialogs.styled_msg_box")
+    def test_cancel_keeps_data(self, mock_styled):
         """取消确认时不删除、不重载（图标数据保留，仅视觉需复位）。"""
-        mock_box.Ok = 1
-        mock_box.Cancel = 2
-        instance = mock_box.return_value
-        instance.exec.return_value = 2  # Cancel
+        box = MagicMock()
+        box.exec.return_value = QMessageBox.Cancel
+        mock_styled.return_value = box
         ctrl = self._make_ctrl()
         ctrl.deleteScript(0)
         ctrl._app_service.remove_script.assert_not_called()
         ctrl._on_reload.assert_not_called()
 
-    @patch("src.gui.controllers.game_list.QMessageBox")
-    def test_ok_removes_and_reloads(self, mock_box):
+    @patch("src.gui.dialogs.styled_msg_box")
+    def test_ok_removes_and_reloads(self, mock_styled):
         """确认删除时按 script_name 落盘移除并触发重载。"""
-        mock_box.Ok = 1
-        mock_box.Cancel = 2
-        instance = mock_box.return_value
-        instance.exec.return_value = 1  # Ok
+        box = MagicMock()
+        box.exec.return_value = QMessageBox.Ok
+        mock_styled.return_value = box
         ctrl = self._make_ctrl()
         ctrl.deleteScript(0)
         ctrl._app_service.remove_script.assert_called_once_with("wu")
@@ -143,8 +143,8 @@ class TestDeleteScriptConfirmCancel(unittest.TestCase):
 class TestDeleteScriptLastGuard(unittest.TestCase):
     """最后一个脚本不可删：删光会让列表/任务卡失去当前项，拦截并提示。"""
 
-    @patch("src.gui.controllers.game_list.QMessageBox")
-    def test_last_script_delete_blocked_with_toast(self, mock_box):
+    @patch("src.gui.dialogs.styled_msg_box")
+    def test_last_script_delete_blocked_with_toast(self, mock_styled):
         ctrl = GameListController(MagicMock(), MagicMock(), MagicMock())
         ctrl._games = [
             {
@@ -157,7 +157,7 @@ class TestDeleteScriptLastGuard(unittest.TestCase):
         ]
         ctrl.deleteScript(0)
         # 不弹确认框、不落盘、不重载，仅 toast 提示
-        mock_box.assert_not_called()
+        mock_styled.assert_not_called()
         ctrl._app_service.remove_script.assert_not_called()
         ctrl._on_reload.assert_not_called()
         ctrl._toast.assert_called_once()
@@ -207,3 +207,4 @@ class TestReloadGamesEmpty(unittest.TestCase):
         ctrl.reload_games()  # 不应抛出
         self.assertEqual(ctrl.games, [])
         self.assertEqual(ctrl.current_index, 0)
+        self.assertIsNone(ctrl.current_game)

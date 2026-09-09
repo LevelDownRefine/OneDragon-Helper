@@ -26,6 +26,15 @@ WEEKDAY_NAMES = {
     7: "周日",
 }
 
+# 无脚本时的哨兵当前项：config 删空后 QML 属性仍可安全求值（空标题 / 空列表，卡收缩）。
+_EMPTY_GAME = {
+    "display_name": "",
+    "script_name": "",
+    "script_data": {},
+    "char": "",
+    "color": "",
+}
+
 
 class TaskCardController(QObject):
     taskStateChanged = Signal()
@@ -44,7 +53,9 @@ class TaskCardController(QObject):
     # ── 读接口（供 QmlBridge 委托）────────────────────────────────────
     @property
     def _current(self) -> dict:
-        return self._game_list.current_game
+        """当前脚本（config 删空时回退哨兵空项，QML 属性安全求值）。"""
+        game = self._game_list.current_game
+        return game if game is not None else _EMPTY_GAME
 
     @property
     def task_title(self) -> str:

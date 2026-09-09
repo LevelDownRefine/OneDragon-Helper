@@ -9,6 +9,7 @@ import subprocess
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QDialog, QMessageBox
 
+from src.gui.dialogs import styled_msg_box
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
 from src.utils.utils_runner import build_script_command, spawn_schedule_run
@@ -81,6 +82,9 @@ class LaunchController(QObject):
     def launchScript(self):
         """启动当前选中脚本（直接运行，不走链）。"""
         game = self._game_list.current_game
+        if game is None:
+            self._toast("尚无脚本")
+            return
         script = game["script_data"]
         # script_type 可缺省（load_config 仅断言 display_name/script_path），缺省按 external
         if script.get("script_type", "external") == "python":
@@ -108,14 +112,15 @@ class LaunchController(QObject):
         invalid = self._app_service.collect_invalid_scripts(enabled_scripts)
         if invalid:
             details = "\n".join(f"· {name}：{msg}" for name, msg in invalid)
-            reply = QMessageBox.warning(
+            box = styled_msg_box(
                 None,
+                QMessageBox.Warning,
                 "脚本配置不合法",
                 f"以下脚本配置不合法，运行时会被跳过：\n{details}\n\n是否仍然运行？",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
             )
-            if reply != QMessageBox.Yes:
+            box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            box.setDefaultButton(QMessageBox.No)
+            if box.exec() != QMessageBox.Yes:
                 return False
 
         # 回显 schedule 当前运行选项到确认弹窗（RunOptions 为单一 schema）。

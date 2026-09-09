@@ -10,14 +10,76 @@ from src.utils.utils_yaml import dump_yaml_file
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from src.gui.dialogs import (
+    BG_CARD,
     SingleScriptConfigDialog,
+    _last_dir,
+    pick_file,
+    styled_msg_box,
 )
 
 # 全局 QApplication 实例（测试共享）
 _app = QApplication.instance() or QApplication([])
+
+
+class TestPickFile(unittest.TestCase):
+    """pick_file：选中后记忆所在目录，取消不改记忆。"""
+
+    def setUp(self):
+        self._saved = _last_dir
+        import src.gui.dialogs as dialogs_mod
+
+        dialogs_mod._last_dir = ""
+        self._mod = dialogs_mod
+
+    def tearDown(self):
+        self._mod._last_dir = self._saved
+
+    def test_remembers_directory_on_success(self):
+        first = [("C:/games/run.exe", "")]
+        second = [("D:/apps/tool.py", "")]
+
+        def success(*a, **k):
+            return first.pop(0)
+
+        def cancel(*a, **k):
+            return second.pop(0)
+
+        with (
+            patch("src.gui.dialogs.QFileDialog.getOpenFileName", side_effect=success),
+        ):
+            self.assertEqual(pick_file(None, "t", "*.exe"), "C:/games/run.exe")
+        self.assertEqual(self._mod._last_dir, "C:/games")
+        with (
+            patch(
+                "src.gui.dialogs.QFileDialog.getOpenFileName",
+                side_effect=cancel,
+            ),
+        ):
+            self.assertEqual(pick_file(None, "t", "*.exe"), "D:/apps/tool.py")
+        self.assertEqual(self._mod._last_dir, "D:/apps")
+
+    def test_cancel_keeps_last_dir(self):
+        with patch(
+            "src.gui.dialogs.QFileDialog.getOpenFileName", return_value=("", "")
+        ):
+            self.assertEqual(pick_file(None, "t", "*.exe"), "")
+        self.assertEqual(self._mod._last_dir, "")
+
+    def test_next_dialog_starts_from_last_dir(self):
+        with patch(
+            "src.gui.dialogs.QFileDialog.getOpenFileName",
+            return_value=("C:/a/b.exe", ""),
+        ):
+            pick_file(None, "t", "*.exe")
+        with patch(
+            "src.gui.dialogs.QFileDialog.getOpenFileName", return_value=("", "")
+        ) as mock_dialog:
+            pick_file(None, "t", "*.exe")
+        self.assertEqual(mock_dialog.call_args[0][2], "C:/a")
 
 
 class TestSingleScriptConfigDialogLoad(unittest.TestCase):
@@ -146,7 +208,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
                 "src.utils.utils_config.require_config_yml_path",
                 return_value=cfg,
             ),
-            patch("src.gui.dialogs.QMessageBox.warning"),
+            patch("src.gui.dialogs.styled_msg_box"),
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg = SingleScriptConfigDialog("日志分析", "日志分析", "C:/y.py")
@@ -222,7 +284,7 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
         dlg = self._make_dialog("run", "鸣潮", None, supported=True)
         dlg.weekly_start_combo.setCurrentIndex(3)
         with (
-            patch("src.gui.dialogs.QMessageBox.warning"),
+            patch("src.gui.dialogs.styled_msg_box"),
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
@@ -233,7 +295,7 @@ class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
         dlg = self._make_dialog("run", "鸣潮", 5, supported=True)
         dlg.weekly_start_combo.setCurrentIndex(0)
         with (
-            patch("src.gui.dialogs.QMessageBox.warning"),
+            patch("src.gui.dialogs.styled_msg_box"),
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
@@ -312,7 +374,7 @@ class TestGamePathInput(unittest.TestCase):
             dlg = self._make_dialog({})
             dlg.game_path_input.setText(path)
             with (
-                patch("src.gui.dialogs.QMessageBox.warning") as warn,
+                patch("src.gui.dialogs.styled_msg_box") as warn,
                 patch.object(SingleScriptConfigDialog, "accept"),
             ):
                 dlg.save_data()
@@ -326,7 +388,7 @@ class TestGamePathInput(unittest.TestCase):
         dlg = self._make_dialog({})
         dlg.game_path_input.setText("D:/not/exist/Endfield.exe")
         with (
-            patch("src.gui.dialogs.QMessageBox.warning") as warn,
+            patch("src.gui.dialogs.styled_msg_box") as warn,
             patch.object(SingleScriptConfigDialog, "accept") as accept,
         ):
             dlg.save_data()
@@ -337,12 +399,57 @@ class TestGamePathInput(unittest.TestCase):
         """留空是合法值，不触发存在性校验。"""
         dlg = self._make_dialog({})
         with (
-            patch("src.gui.dialogs.QMessageBox.warning") as warn,
+            patch("src.gui.dialogs.styled_msg_box") as warn,
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
         self.assertEqual(dlg.pending_changes["config_patch"]["game_path"], "")
         warn.assert_not_called()
+
+
+class TestFramelessDialogs(unittest.TestCase):
+    """弹窗去系统标题栏、透明圆角（无边框深色，四角透出桌面）；空白处可拖动。"""
+
+    def _assert_round(self, dlg):
+        """无边框 + 透明背景 + 圆角深底样式三件套。"""
+        self.assertTrue(dlg.windowFlags() & Qt.FramelessWindowHint)
+        self.assertTrue(dlg.testAttribute(Qt.WA_TranslucentBackground))
+        self.assertIn("border-radius", dlg.styleSheet())
+        self.assertIn(BG_CARD, dlg.styleSheet())
+
+    def _single_script_dialog(self):
+        app = MagicMock()
+        app.get_script.return_value = {}
+        app.weekly_inputs.return_value = [3600] * 7
+        app.get_weekly_start.return_value = None
+        dlg = SingleScriptConfigDialog(
+            "collect_log", "日志分析", "C:/x.py", app_service=app
+        )
+        self.addCleanup(dlg.close)
+        return dlg
+
+    def test_single_script_dialog_frameless(self):
+        self._assert_round(self._single_script_dialog())
+
+    def test_run_confirm_dialog_frameless(self):
+        from src.gui.run_confirm_dialog import RunConfirmDialog
+        from src.service.schedule import RunOptions
+
+        dlg = RunConfirmDialog(1, RunOptions())
+        self.addCleanup(dlg.close)
+        self._assert_round(dlg)
+
+    def test_countdown_dialog_frameless(self):
+        from src.gui.shutdown_dialog import ShutdownConfirmDialog
+
+        dlg = ShutdownConfirmDialog(10)
+        self.addCleanup(dlg.close)
+        self._assert_round(dlg)
+
+    def test_styled_msg_box_frameless_and_styled(self):
+        box = styled_msg_box(None, QMessageBox.Warning, "标题", "内容")
+        self.addCleanup(box.close)
+        self._assert_round(box)
 
 
 if __name__ == "__main__":

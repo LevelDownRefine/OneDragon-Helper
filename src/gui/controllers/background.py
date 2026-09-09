@@ -9,8 +9,7 @@ import logging
 import os
 
 from PySide6.QtCore import QObject, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QImage
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtGui import QImage, QImageReader
 
 from src.config.set_config import get_background_rel_path
 from src.utils.utils_sub_config import get_script_root_dir, resolve_script_path
@@ -152,18 +151,22 @@ class BackgroundController(QObject):
         ):
             return cache
         try:
+            # 只读图像头判断尺寸：长边未超上限时无需生成缓存，跳过整图解码。
+            dims = QImageReader(src_path).size()
+            if dims.width() <= 0 or dims.height() <= 0:
+                logger.warning("[bg] 壁纸解码失败，跳过缓存：%s", src_path)
+                return None
+            longest = max(dims.width(), dims.height())
+            if longest <= WALLPAPER_MAX_SIDE:
+                return None
+            scale = WALLPAPER_MAX_SIDE / longest
             img = QImage(src_path)
             if img.isNull():
                 logger.warning("[bg] 壁纸解码失败，跳过缓存：%s", src_path)
                 return None
-            src_w, src_h = img.width(), img.height()
-            longest = max(src_w, src_h)
-            if longest <= WALLPAPER_MAX_SIDE:
-                return None
-            scale = WALLPAPER_MAX_SIDE / longest
             out = img.scaled(
-                max(1, round(src_w * scale)),
-                max(1, round(src_h * scale)),
+                max(1, round(dims.width() * scale)),
+                max(1, round(dims.height() * scale)),
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation,
             ).convertToFormat(QImage.Format_RGB888)
@@ -205,10 +208,14 @@ class BackgroundController(QObject):
     def open_wallpaper(self):
         """更换当前脚本壁纸：弹文件选择 → 写壁纸表 → 刷新背景。"""
         game = self._game_list.current_game
-        path, _ = QFileDialog.getOpenFileName(
+        if game is None:
+            self._toast("尚无脚本")
+            return
+        from src.gui.dialogs import pick_file
+
+        path = pick_file(
             None,
             f"选择 {game['display_name']} 壁纸",
-            "",
             "图片/视频 (*.png *.jpg *.jpeg *.webp *.bmp *.mp4 *.webm *.mkv *.mov)",
         )
         if not path:

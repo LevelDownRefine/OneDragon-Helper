@@ -17,6 +17,12 @@ class _FakeGameList:
         self.current_game = games[0]
 
 
+class _EmptyGameList:
+    """config 删空后的 game_list 替身：current_game 为 None。"""
+
+    current_game = None
+
+
 def _write_defs(tmp, data):
     """写临时 weekly_list.yml（周常声明配置）。"""
     path = os.path.join(tmp.name, "weekly_list.yml")
@@ -277,6 +283,24 @@ class TestWeeklyItemsReadback(unittest.TestCase):
             items = ctrl.weekly_items
         tmp.cleanup()
         self.assertEqual(items[0]["dungeon_label"], "铁骸的锈冢")
+
+
+class TestEmptyCurrentSentinel(unittest.TestCase):
+    """config 删空（current_game None）时回退哨兵空项：各 QML 属性安全求值。"""
+
+    def test_properties_degrade_without_raising(self):
+        service = MagicMock()
+        service.get_weekly_map.return_value = {}
+        service.get_weekly_start.return_value = None
+        ctrl = TaskCardController(_EmptyGameList(), service, MagicMock())
+        self.assertIs(ctrl._current, task_card_mod._EMPTY_GAME)
+        self.assertEqual(ctrl.task_title, "")
+        self.assertFalse(ctrl.task_adapted)
+        self.assertFalse(ctrl.daily_supported)
+        self.assertFalse(ctrl.weekly_supported)
+        self.assertEqual(ctrl.daily_dungeon_text, "选择副本")
+        self.assertEqual(ctrl.dungeon_options, [])
+        self.assertEqual(ctrl.weekly_items, [])
 
 
 if __name__ == "__main__":

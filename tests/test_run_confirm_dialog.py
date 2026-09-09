@@ -11,8 +11,10 @@ from dataclasses import asdict, replace
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
+from src.gui.dialogs import BG_INPUT, TEXT
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.service.schedule import RunOptions
 
@@ -167,6 +169,33 @@ class TestRunConfirmDialog(unittest.TestCase):
         )
         dlg.reject()
         self.assertIsNone(dlg.run_options)
+
+
+class TestRunConfirmDialogTheme(unittest.TestCase):
+    """深色主题细节：邮件/SMTP 输入框套「深底白字」样式、弹窗无边框。
+
+    弹窗本体 setStyleSheet(background-color) 会向子控件继承深底；若输入框自身不设
+    color，文字取默认调色板（浅色系统下为黑色）→ 黑字深底不可读，故必须显式套样式。
+    """
+
+    def test_email_fields_styled_dark(self):
+        dlg = RunConfirmDialog(1, _opts(notify_enabled=True))
+        self.addCleanup(dlg.close)
+        for edit in (
+            dlg.email_edit,
+            dlg.auth_edit,
+            dlg.smtp_host_edit,
+            dlg.smtp_port_edit,
+        ):
+            self.assertIn(TEXT, edit.styleSheet())
+            self.assertIn(BG_INPUT, edit.styleSheet())
+
+    def test_frameless(self):
+        dlg = RunConfirmDialog(1, _opts())
+        self.addCleanup(dlg.close)
+        self.assertTrue(dlg.windowFlags() & Qt.FramelessWindowHint)
+        self.assertTrue(dlg.testAttribute(Qt.WA_TranslucentBackground))
+        self.assertIn("border-radius", dlg.styleSheet())
 
 
 if __name__ == "__main__":
