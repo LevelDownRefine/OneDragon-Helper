@@ -493,6 +493,18 @@ Window {
                 { icon: "wallpaper", label: "更换壁纸", act: () => Bridge.openWallpaper() },
             ]
             Rectangle {
+                id: linkButton
+                objectName: "linkButton_" + modelData.icon
+                property string gameIconSource: ""
+                function refreshGameIcon() {
+                    gameIconSource = modelData.icon === "game" && iconMouse.containsMouse
+                        ? Bridge.gameIconSource() : ""
+                }
+                Connections {
+                    target: Bridge
+                    function onCurrentIndexChanged() { linkButton.refreshGameIcon() }
+                    function onGamesChanged() { linkButton.refreshGameIcon() }
+                }
                 x: 8
                 y: 12 + index * 48
                 width: 36
@@ -508,24 +520,38 @@ Window {
                     fillMode: Image.PreserveAspectFit
                 }
                 Rectangle {
+                    objectName: "linkHint_" + modelData.icon
+                    property bool hasGameIcon: gameHintIcon.status === Image.Ready
                     anchors.right: parent.left
                     anchors.rightMargin: 18
                     anchors.verticalCenter: parent.verticalCenter
-                    width: hintText.implicitWidth + 24
-                    height: 32
-                    radius: 8
+                    width: hasGameIcon ? 72 : hintText.implicitWidth + 24
+                    height: hasGameIcon ? 72 : 32
+                    radius: hasGameIcon ? 14 : 8
                     color: Theme.control
                     border.width: 1
                     border.color: Theme.border
                     opacity: iconMouse.containsMouse ? 1 : 0
                     visible: opacity > 0
                     Behavior on opacity { NumberAnimation { duration: 140 } }
+                    Image {
+                        id: gameHintIcon
+                        objectName: "linkHintIcon_" + modelData.icon
+                        anchors.centerIn: parent
+                        width: 56
+                        height: 56
+                        source: linkButton.gameIconSource
+                        fillMode: Image.PreserveAspectFit
+                        visible: parent.hasGameIcon
+                    }
                     Text {
                         id: hintText
+                        objectName: "linkHintText_" + modelData.icon
                         anchors.centerIn: parent
                         text: modelData.label
                         color: Theme.text
                         font.pixelSize: 12
+                        visible: !parent.hasGameIcon
                     }
                 }
                 MouseArea {
@@ -533,6 +559,7 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    onEntered: linkButton.refreshGameIcon()
                     onClicked: modelData.act()
                 }
             }

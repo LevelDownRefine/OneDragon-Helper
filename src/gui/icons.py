@@ -4,11 +4,21 @@
 及 QML 矢量图标源 ``UiIconProvider``（``image://uiicon/<name>``）。
 """
 
+import ctypes
 import logging
 import os
 import sys
 
-from PySide6.QtCore import QByteArray, QFileInfo, QPointF, QRect, QRectF, Qt
+from PySide6.QtCore import (
+    QBuffer,
+    QByteArray,
+    QFileInfo,
+    QIODevice,
+    QPointF,
+    QRect,
+    QRectF,
+    Qt,
+)
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtSvg import QSvgRenderer
@@ -113,6 +123,37 @@ def get_script_icon(script_data: dict) -> QIcon:
         if icon is not None:
             return icon
     return _default_icon()
+
+
+def get_exe_icon_url(path: str) -> str:
+    """返回 exe 图标的内存 PNG URL；取不到时返回空串，不使用默认图标。"""
+    if not path or not os.path.isfile(path):
+        return ""
+    if sys.platform == "win32":
+        # 只查询内嵌图标数量，避免 QFileIconProvider 返回通用文件图标。
+        count_icons = ctypes.WinDLL("shell32").ExtractIconExW
+        count_icons.argtypes = [
+            ctypes.c_wchar_p,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_uint,
+        ]
+        count_icons.restype = ctypes.c_uint
+        if count_icons(path, -1, None, None, 0) in (0, 0xFFFFFFFF):
+            return ""
+    icon = _exe_icon(path)
+    if icon is None:
+        return ""
+    pixmap = icon.pixmap(64, 64)
+    if pixmap.isNull():
+        return ""
+    buffer = QBuffer()
+    buffer.open(QIODevice.WriteOnly)
+    if not pixmap.save(buffer, "PNG"):
+        logger.warning("编码 %s 的图标失败", path)
+        return ""
+    return "data:image/png;base64," + bytes(buffer.data().toBase64()).decode("ascii")
 
 
 # UI 通用矢量图标：各 draw 方法把 painter translate 到画布中心，在 48x48 内绘制白图形。

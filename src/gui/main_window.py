@@ -211,6 +211,10 @@ class QmlBridge(QObject):
     def launchGame(self):
         self.links.launchGame()
 
+    @Slot(result=str)
+    def gameIconSource(self):
+        return self.links.gameIconSource()
+
     @Slot()
     def openHome(self):
         self.links.openHome()
