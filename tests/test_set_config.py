@@ -3,6 +3,7 @@
 
 覆盖函数：
   - _CONFIGS（子类路径声明完整性）
+  - iter_backup_paths（备份范围声明）
   - get_sub_config_path
   - load_config
   - save_config（mock 文件写入，不真正写回脚本 config）
@@ -494,6 +495,40 @@ class TestIsAdapted(unittest.TestCase):
     def test_unregistered_script_false(self):
         """未注册适配的脚本（任意未知标识）→ False，不抛异常"""
         self.assertFalse(set_config.is_adapted("不存在的脚本"))
+
+
+class TestIterBackupPaths(unittest.TestCase):
+    """iter_backup_paths：各脚本声明的备份范围（目录或文件），与读写路径解耦。"""
+
+    def test_game_path_declaration_only_matches_its_config(self):
+        self.assertEqual(
+            set_config.get_game_path_keys("BetterGI", "User/config.json"),
+            ("genshinStartConfig", "installPath"),
+        )
+        self.assertEqual(
+            set_config.get_game_path_keys("BetterGI", "User/other.json"), ()
+        )
+        self.assertEqual(
+            set_config.get_game_path_keys("unknown", "User/config.json"), ()
+        )
+
+    def test_dir_style_script_declares_whole_dir(self):
+        """整目录都是 config 的脚本（鸣潮 working/configs、原神 User）声明目录。"""
+        paths = set_config.iter_backup_paths()
+        self.assertEqual(paths["ok-ww"], ("data/apps/ok-ww/working/configs",))
+        self.assertEqual(paths["BetterGI"], ("User",))
+
+    def test_loose_file_script_declares_single_file(self):
+        """散装单文件脚本（崩铁 config.yaml）声明文件，不声明目录。"""
+        paths = set_config.iter_backup_paths()
+        self.assertEqual(paths["March7th-Launcher"], ("config.yaml",))
+
+    def test_every_registered_script_declares_backup_paths(self):
+        """每个已适配脚本都必须声明非空备份范围（register 断言的对外保证）。"""
+        paths = set_config.iter_backup_paths()
+        self.assertEqual(set(paths), set(set_config._CONFIGS))
+        for script_name, rel_paths in paths.items():
+            self.assertTrue(rel_paths, f"{script_name} 未声明 _backup_paths")
 
 
 if __name__ == "__main__":

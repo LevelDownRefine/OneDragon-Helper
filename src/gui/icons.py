@@ -4,11 +4,21 @@
 及 QML 矢量图标源 ``UiIconProvider``（``image://uiicon/<name>``）。
 """
 
+import ctypes
 import logging
 import os
 import sys
 
-from PySide6.QtCore import QByteArray, QFileInfo, QPointF, QRect, QRectF, Qt
+from PySide6.QtCore import (
+    QBuffer,
+    QByteArray,
+    QFileInfo,
+    QIODevice,
+    QPointF,
+    QRect,
+    QRectF,
+    Qt,
+)
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtSvg import QSvgRenderer
@@ -115,6 +125,37 @@ def get_script_icon(script_data: dict) -> QIcon:
     return _default_icon()
 
 
+def get_exe_icon_url(path: str) -> str:
+    """返回 exe 图标的内存 PNG URL；取不到时返回空串，不使用默认图标。"""
+    if not path or not os.path.isfile(path):
+        return ""
+    if sys.platform == "win32":
+        # 只查询内嵌图标数量，避免 QFileIconProvider 返回通用文件图标。
+        count_icons = ctypes.WinDLL("shell32").ExtractIconExW
+        count_icons.argtypes = [
+            ctypes.c_wchar_p,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_uint,
+        ]
+        count_icons.restype = ctypes.c_uint
+        if count_icons(path, -1, None, None, 0) in (0, 0xFFFFFFFF):
+            return ""
+    icon = _exe_icon(path)
+    if icon is None:
+        return ""
+    pixmap = icon.pixmap(64, 64)
+    if pixmap.isNull():
+        return ""
+    buffer = QBuffer()
+    buffer.open(QIODevice.WriteOnly)
+    if not pixmap.save(buffer, "PNG"):
+        logger.warning("编码 %s 的图标失败", path)
+        return ""
+    return "data:image/png;base64," + bytes(buffer.data().toBase64()).decode("ascii")
+
+
 # UI 通用矢量图标：各 draw 方法把 painter translate 到画布中心，在 48x48 内绘制白图形。
 _WHITE = QColor("#FFFFFF")
 _CUT = QColor("#1F2937")  # 图标内部镂空色，透出按钮底色
@@ -124,7 +165,7 @@ class UiIconProvider(QQuickImageProvider):
     """QML 通用 UI 矢量图标源：`image://uiicon/<name>`。
 
     name → 重绘矢量图标。静态图标，无需游戏数据，构造即就绪。
-    支持：home / game / folder / bili / github / wallpaper / settings / min / close / log / configfile / trash。
+    图标名称与绘制函数统一在 _drawers 中注册。
     """
 
     _SIZE = 48
@@ -145,7 +186,13 @@ class UiIconProvider(QQuickImageProvider):
             "close": self._draw_close,
             "log": self._draw_log,
             "configfile": self._draw_configfile,
+            "backup": self._draw_backup,
+            "restore": self._draw_restore,
             "trash": self._draw_trash,
+            "play": self._draw_play,
+            "play_all": self._draw_play_all,
+            "chevron_down": self._draw_chevron_down,
+            "grid": self._draw_grid,
         }
 
     def _render(self, name: str) -> QPixmap:
@@ -166,6 +213,46 @@ class UiIconProvider(QQuickImageProvider):
         return self._cache[id]
 
     # ═══════════════ 各图标矢量绘制（中心原点，半径≈16）══════════════
+    def _draw_play(self, p: QPainter):
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        path = QPainterPath()
+        path.moveTo(-10, -14)
+        path.lineTo(14, 0)
+        path.lineTo(-10, 14)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    def _draw_chevron_down(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        path = QPainterPath()
+        path.moveTo(-9, -4)
+        path.lineTo(0, 5)
+        path.lineTo(9, -4)
+        p.drawPath(path)
+
+    def _draw_play_all(self, p: QPainter):
+        """黄色批量启动按钮使用的深色圆角播放三角。"""
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor("#17191C"))
+        path = QPainterPath()
+        path.moveTo(-5, -11)
+        path.quadTo(-9, -13, -9, -8)
+        path.lineTo(-9, 8)
+        path.quadTo(-9, 13, -5, 11)
+        path.lineTo(10, 3)
+        path.quadTo(15, 0, 10, -3)
+        path.closeSubpath()
+        p.drawPath(path)
+
+    def _draw_grid(self, p: QPainter):
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        for x in (-13, 3):
+            for y in (-13, 3):
+                p.drawRoundedRect(QRectF(x, y, 10, 10), 2, 2)
+
     def _draw_home(self, p: QPainter):
         p.setPen(QPen(_WHITE, 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
         p.setBrush(Qt.NoBrush)
@@ -312,6 +399,40 @@ class UiIconProvider(QQuickImageProvider):
         p.setPen(Qt.NoPen)
         p.setBrush(_WHITE)
         p.drawEllipse(QRectF(cx - 2, cy - 2, 4, 4))
+
+    def _draw_backup(self, p: QPainter):
+        # 备份：云朵（三圆叠加 + 圆角底边）内镂空向下箭头 = 配置存入备份
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        p.drawEllipse(QRectF(-11, -5, 13, 13))
+        p.drawEllipse(QRectF(-2, -12, 15, 15))
+        p.drawEllipse(QRectF(4, -4, 11, 11))
+        p.drawRoundedRect(QRectF(-11, -4, 22, 12), 6, 6)  # 云底
+        p.setBrush(_CUT)  # 镂空向下箭头：竖杆 + 三角
+        p.drawRoundedRect(QRectF(-1.5, -9, 3, 10), 1.5, 1.5)
+        arrow = QPainterPath()
+        arrow.moveTo(-5.5, -1)
+        arrow.lineTo(5.5, -1)
+        arrow.lineTo(0, 6)
+        arrow.closeSubpath()
+        p.drawPath(arrow)
+
+    def _draw_restore(self, p: QPainter):
+        # 恢复：同形云朵内镂空向上箭头 = 备份写回配置（与 backup 互为镜像）
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        p.drawEllipse(QRectF(-11, -5, 13, 13))
+        p.drawEllipse(QRectF(-2, -12, 15, 15))
+        p.drawEllipse(QRectF(4, -4, 11, 11))
+        p.drawRoundedRect(QRectF(-11, -4, 22, 12), 6, 6)  # 云底
+        p.setBrush(_CUT)  # 镂空向上箭头：竖杆 + 三角
+        p.drawRoundedRect(QRectF(-1.5, -1, 3, 10), 1.5, 1.5)
+        arrow = QPainterPath()
+        arrow.moveTo(-5.5, 1)
+        arrow.lineTo(5.5, 1)
+        arrow.lineTo(0, -6)
+        arrow.closeSubpath()
+        p.drawPath(arrow)
 
     def _draw_trash(self, p: QPainter):
         # 垃圾桶（单色白线，与闹钟等 UI 图标一致）：盖沿 + 提手 + 梯形桶身 + 竖纹

@@ -8,6 +8,7 @@
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from src.gui.controllers.background import BackgroundController
+from src.gui.controllers.backup import BackupController
 from src.gui.controllers.game_list import GameListController
 from src.gui.controllers.launch import LaunchController
 from src.gui.controllers.links import LinksController
@@ -58,6 +59,10 @@ class QmlBridge(QObject):
             toast=self.toastRequested.emit,
             app_service=self.app_service,
         )
+        self.backup = BackupController(
+            app_service=self.app_service,
+            toast=self.toastRequested.emit,
+        )
         self.window = WindowController()
         # UI 矢量图标提供器（无状态，门面持有）
         self._ui_icon_provider = UiIconProvider()
@@ -75,6 +80,8 @@ class QmlBridge(QObject):
         self.task_card.toastRequested.connect(self.toastRequested.emit)
         self.launch.toastRequested.connect(self.toastRequested.emit)
         self.links.toastRequested.connect(self.toastRequested.emit)
+        self.backup.toastRequested.connect(self.toastRequested.emit)
+        self.backup.restoreCompleted.connect(self.task_card.refresh)
 
         # 编排启动：重建列表 → 构建副本缓存 → 刷新当前（_reload_games 收尾即刷）
         self._reload_games()
@@ -170,6 +177,14 @@ class QmlBridge(QObject):
     def addScript(self):
         self.game_list.addScript()
 
+    @Slot("QVariantList", result=bool)
+    def canDropScripts(self, urls):
+        return self.game_list.canDropScripts(urls)
+
+    @Slot("QVariantList", result=bool)
+    def dropScripts(self, urls):
+        return self.game_list.dropScripts(urls)
+
     @Slot(int)
     def deleteScript(self, index):
         self.game_list.deleteScript(index)
@@ -203,6 +218,10 @@ class QmlBridge(QObject):
     @Slot()
     def launchGame(self):
         self.links.launchGame()
+
+    @Slot(result=str)
+    def gameIconSource(self):
+        return self.links.gameIconSource()
 
     @Slot()
     def openHome(self):
@@ -263,6 +282,18 @@ class QmlBridge(QObject):
     @Slot()
     def openWallpaper(self):
         self.background.open_wallpaper()
+
+    @Slot()
+    def openConfig(self):
+        self.backup.openConfig()
+
+    @Slot()
+    def backupConfig(self):
+        self.backup.backupConfig()
+
+    @Slot()
+    def restoreConfig(self):
+        self.backup.restoreConfig()
 
     # ── 编排 / 门面协调方法（保持既有测试可直接调用）─────────────────
     def _reload_games(self):

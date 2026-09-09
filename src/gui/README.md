@@ -12,9 +12,13 @@
 | controllers/task_card | 日常副本 / 周常周几，数据 + 选择持久化 | config / service / utils_weekly |
 | controllers/launch | 启动胶囊，启动当前 / 启动全部 | game_list / task_card / service |
 | controllers/links | 悬浮条：主页/B站/GitHub/目录/设置/启动游戏 | config / utils_sub_config / utils |
+| controllers/backup | 配置操作分发、备份 / 恢复与结果提示 | config_dialog / service |
 | controllers/window | 窗口控制：最小化/关闭/拖动 | 无 |
 | icons | 脚本 exe 图标 + QML 矢量图标提供器 | utils_sub_config |
 | dialogs | 单脚本配置弹窗 + 确认回调 | config / service |
+| file_drop | Windows 整窗文件拖入，兼容管理员窗口 | 无 |
+| config_dialog | 右上角「配置」操作列表，选择备份或恢复 | dialogs / icons |
+| qml/Theme.js | 主窗口、按钮、任务卡与下拉菜单的共享配色 | 无 |
 
 依赖单向：main_window 组合各控制器，控制器间构造注入；QmlBridge 是 QML 唯一门面。qml/ 组件经 Loader 相对路径加载，文件名与 controllers/ 同名。
 
@@ -22,9 +26,18 @@
 
 `QmlBridge`：QML 中央控制器单例，经 `qmlRegisterSingletonInstance` 注册为 QML 的 `Bridge`，组合各职责控制器并编排跨控制器流程（选脚本 → 刷背景 + 任务卡）。窗口几何与布局在 `qml/main.qml`，运行直接 subprocess.Popen 开独立控制台窗口跑链。
 
+主窗口使用蓝灰配色与半透明面板；颜色统一取 `qml/Theme.js`，原生弹窗对应色板在 `dialogs.py`。图标通过 `UiIconProvider` 绘制，避免依赖符号字体；右侧工具栏悬停显示用途，长 toast 自动换行。保持纯 QtQuick，不增加控件或效果库依赖。
+
+「启动游戏」悬停时，经 `set_config.get_game_exe_path` 读取当前游戏 exe，在内存中生成图标提示；路径或图标缺失时显示「启动游戏」。切换脚本和再次悬停时刷新，不写图标缓存文件。
+
+左下控制模式按钮开启时，在右侧气泡显示「全 / 清 / ＋」，左侧脚本仍可逐项切换启停；再次点击模式按钮、Esc 或点击右侧内容区退出控制模式。添加脚本前先收起气泡，拖拽期间暂时隐藏气泡。
+
+从资源管理器将 `.exe` / `.bat` / `.py` 文件或快捷方式拖到主窗口任意位置即可添加，支持多个文件，复用「＋」的命名、默认配置和保存流程。快捷方式由 service 读取目标路径与原始启动参数；失效、指向其他类型或指定不同工作目录的快捷方式拒绝添加并说明原因（运行器固定以目标所在目录启动）。同名 exe 提示已存在。批量添加结束后统一显示成功、重复和失败数量，保留未完成文件的名称与原因。仅记录启动信息，不移动或运行文件。Windows 先撤销 Qt 的 OLE 拖放注册，再统一使用 WM_DROPFILES，避免管理员窗口先被 OLE 拒绝；其他平台由整窗 QML DropArea 接收。两条入口均经 Bridge.dropScripts。
+
 ## 弹窗 dialogs.py
 
 - SingleScriptConfigDialog：单脚本配置弹窗，保存后经 pending_changes 返回，写盘委托 AppService.update_script（内部转 src.utils.utils_config.update_script）。
+- ConfigDialog：右上角「配置」入口，选择动作后关闭，由 BackupController 执行。新增操作时补充 `_ACTIONS` 文案和控制器分发，不在弹窗中写业务逻辑。
 
 ## 写盘路径
 

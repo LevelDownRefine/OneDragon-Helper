@@ -1,5 +1,6 @@
 import QtQuick
 import OneDragonHelper 1.0
+import "Theme.js" as Theme
 
 // 任务调度卡（日常副本 / 周常）：复刻旧 src/gui/task_card.py 的视觉与行为契约。
 // 数据经 Bridge 暴露：taskTitle / taskAdapted / weeklySupported / dailyDungeonText /
@@ -59,13 +60,18 @@ Item {
         return { "y": anchorTop - 4 - h, "h": h }
     }
 
-    // 玻璃卡背景（半透明；文本为兄弟节点、不受 opacity 影响）
+    // 卡片投影与背景分层，文字保持清晰。
+    Rectangle {
+        x: 0; y: 5; width: parent.width; height: parent.height
+        radius: 20
+        color: "#28000000"
+    }
     Rectangle {
         anchors.fill: parent
-        radius: 16
-        color: Qt.rgba(10 / 255, 16 / 255, 32 / 255, 0.90)
+        radius: 20
+        color: Theme.panel
         border.width: 1
-        border.color: "#2A3A5C"
+        border.color: Theme.border
     }
 
     // ── 标题行 ──
@@ -74,20 +80,30 @@ Item {
         x: 20; y: 18; width: 440; height: 36
         Rectangle {
             x: 12; y: 0; width: 36; height: 36; radius: 10
-            color: "#F4C242"
-            Text { anchors.centerIn: parent; text: "▶"; color: "#1A1A1A"; font.pixelSize: 22 }
+            color: Theme.accentSoft
+            Image {
+                anchors.centerIn: parent; width: 28; height: 28
+                source: "image://uiicon/game"; fillMode: Image.PreserveAspectFit
+            }
         }
         Text {
-            x: 58; y: 5; width: 260; height: 26
+            x: 58; y: 5; width: 286; height: 26
             text: Bridge.taskTitle
-            color: "#FFFFFF"; font.pixelSize: 19; font.weight: Font.Bold
+            elide: Text.ElideRight
+            color: Theme.text; font.pixelSize: 18; font.weight: Font.DemiBold
+        }
+        Text {
+            anchors.right: parent.right; anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            text: "任务配置"
+            color: Theme.muted; font.pixelSize: 11
         }
     }
 
     // 分隔线（仅适配时显示）
     Rectangle {
         x: 20; y: 56; width: 440; height: 1
-        color: "#2A3850"
+        color: Theme.divider
         visible: Bridge.taskAdapted
     }
 
@@ -98,31 +114,45 @@ Item {
         visible: Bridge.taskAdapted
         Rectangle {
             x: 12; y: 10; width: 36; height: 36; radius: 10
-            color: "#1A3A7A"
-            Text { anchors.centerIn: parent; text: "⚡"; color: "#7DA8FF"; font.pixelSize: 16 }
+            color: Theme.accentSoft
+            Text { anchors.centerIn: parent; text: "日"; color: Theme.accent; font.pixelSize: 13; font.weight: Font.DemiBold }
         }
         Text {
             x: 58; y: 15; width: 64; height: 26
-            text: "每日任务"; color: "#FFFFFF"; font.pixelSize: 15; font.weight: Font.DemiBold
+            text: "每日任务"; color: Theme.text; font.pixelSize: 14; font.weight: Font.DemiBold
+            verticalAlignment: Text.AlignVCenter
         }
         Rectangle {
             id: dailyChip
-            x: cardRoot.chipX; y: 15
-            width: 200
-            height: 26; radius: 13
-            color: "#0F1A2E"; border.width: 1; border.color: "#33517A"
+            objectName: "dailyDungeonButton"
+            x: cardRoot.chipX; y: 10
+            width: 220
+            height: 36; radius: 10
+            color: dailyMouse.containsMouse ? Theme.hover : Theme.control
+            border.width: 1
+            border.color: dungeonPopup.visible ? Theme.accent : Theme.border
+            Behavior on color { ColorAnimation { duration: 140 } }
             Text {
                 anchors.fill: parent
-                leftPadding: 12; rightPadding: 12
-                horizontalAlignment: Text.AlignHCenter
+                leftPadding: 12; rightPadding: 32
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
                 text: Bridge.dailyDungeonText
-                color: "#7DA8FF"; font.pixelSize: 11
+                color: Theme.accent; font.pixelSize: 12
+            }
+            Image {
+                anchors.right: parent.right; anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                width: 20; height: 20
+                source: "image://uiicon/chevron_down"
+                rotation: dungeonPopup.visible ? 180 : 0
+                opacity: 0.7
             }
             MouseArea {
+                id: dailyMouse
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     if (Bridge.dungeonOptions.length === 0) {
                         Bridge.toastRequested("暂无副本选项")
@@ -162,42 +192,54 @@ Item {
                     property bool hasDungeon: modelData.has_dungeon
                     Rectangle {
                         x: 12; y: 10; width: 36; height: 36; radius: 10
-                        color: weeklyArea.supported ? "#1A3A7A" : "#2A3040"
+                        color: Theme.accentSoft
                         Text {
-                            anchors.centerIn: parent; text: "📅"
-                            color: weeklyArea.supported ? "#7DA8FF" : "#4A5568"
-                            font.pixelSize: 14
+                            anchors.centerIn: parent; text: "周"
+                            color: Theme.accent
+                            font.pixelSize: 13; font.weight: Font.DemiBold
                         }
                     }
                     Text {
-                        x: 58; y: 15; width: 64; height: 26
+                        x: 58; y: 15; width: 112; height: 26
                         text: modelData.name
-                        color: weeklyArea.supported ? "#FFFFFF" : "#4A5568"
-                        font.pixelSize: 15; font.weight: Font.Bold
+                        elide: Text.ElideRight
+                        color: Theme.text
+                        font.pixelSize: 14; font.weight: Font.DemiBold
                         verticalAlignment: Text.AlignVCenter
                     }
                     Rectangle {
                         id: wkChip
-                        x: cardRoot.chipX; y: 15
-                        width: 200
-                        height: 26; radius: 13
+                        x: cardRoot.chipX; y: 10
+                        width: 220
+                        height: 36; radius: 10
                         visible: hasDungeon
-                        color: weeklyArea.supported ? "#0F1A2E" : "#1A2028"
+                        color: weeklyMouse.containsMouse ? Theme.hover : Theme.control
                         border.width: 1
-                        border.color: weeklyArea.supported ? "#33517A" : "#2A3850"
+                        border.color: weeklyDungeonPopup.visible && weeklyDungeonPopup.weeklyName === modelData.name
+                                      ? Theme.accent : Theme.border
+                        Behavior on color { ColorAnimation { duration: 140 } }
                         Text {
                             anchors.fill: parent
-                            leftPadding: 12; rightPadding: 12
-                            horizontalAlignment: Text.AlignHCenter
+                            leftPadding: 12; rightPadding: 32
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                             text: modelData.dungeon_label
-                            color: weeklyArea.supported ? "#7DA8FF" : "#4A5568"
-                            font.pixelSize: 11
+                            color: Theme.accent
+                            font.pixelSize: 12
+                        }
+                        Image {
+                            anchors.right: parent.right; anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 20; height: 20
+                            source: "image://uiicon/chevron_down"
+                            rotation: weeklyDungeonPopup.visible && weeklyDungeonPopup.weeklyName === modelData.name ? 180 : 0
+                            opacity: 0.7
                         }
                         MouseArea {
+                            id: weeklyMouse
                             anchors.fill: parent
                             hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
                             enabled: weeklyArea.supported
                             onClicked: {
                                 weeklyDungeonPopup.weeklyName = modelData.name
@@ -226,7 +268,7 @@ Item {
         objectName: "dungeonPopup"
         z: 100
         visible: false
-        x: dailyChip.x
+        x: dailyRow.x + dailyChip.x
         y: dungeonPopup.popupY
         // 宽度随一级列 +（出现二级列时）；高度封顶避免出屏，超出由各列 Flickable 独立滚动
         width: dungeonPopup.rightW > 0
@@ -244,7 +286,7 @@ Item {
 
         Rectangle {
             anchors.fill: parent; radius: 10
-            color: "#0F1A2E"; border.width: 1; border.color: "#33517A"
+            color: Theme.control; border.width: 1; border.color: Theme.border
         }
 
         // 单个复用测量器：仅 openMenu 调用一次，避免每行 TextMetrics 的 hover 抖动
@@ -309,21 +351,25 @@ Item {
                             height: 30
                             radius: 6
                             color: (optMouse.containsMouse || dungeonPopup.selName === modelData.name)
-                                   ? "#1A3A7A" : "transparent"
+                                   ? Theme.accentSoft : "transparent"
                             Text {
                                 anchors.fill: parent; leftPadding: 10
                                 verticalAlignment: Text.AlignVCenter
                                 text: modelData.name
-                                color: "#FFFFFF"; font.pixelSize: 13
+                                color: Theme.text; font.pixelSize: 13
                             }
-                            Text {
-                                anchors.right: parent.right; rightPadding: 6
+                            Image {
+                                anchors.right: parent.right; anchors.rightMargin: 6
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: "▸"; color: "#7DA8FF"; font.pixelSize: 12
+                                width: 16; height: 16
+                                source: "image://uiicon/chevron_down"
+                                rotation: -90
+                                opacity: 0.7
                                 visible: modelData.sequences.length > 0
                             }
                             MouseArea {
                                 id: optMouse; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
                                 onEntered: {
                                     dungeonPopup.selName = modelData.sequences.length > 0 ? modelData.name : ""
                                 }
@@ -360,15 +406,16 @@ Item {
                             width: dungeonPopup.rightW
                             height: 30
                             radius: 6
-                            color: seqMouse.containsMouse ? "#1A3A7A" : "transparent"
+                            color: seqMouse.containsMouse ? Theme.accentSoft : "transparent"
                             Text {
                                 anchors.fill: parent; leftPadding: 10
                                 verticalAlignment: Text.AlignVCenter
                                 text: modelData.label
-                                color: "#FFFFFF"; font.pixelSize: 13
+                                color: Theme.text; font.pixelSize: 13
                             }
                             MouseArea {
                                 id: seqMouse; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     Bridge.selectDungeon(dungeonPopup.selName, modelData.value)
                                     dungeonPopup.visible = false
@@ -388,7 +435,7 @@ Item {
         objectName: "weeklyDungeonPopup"
         z: 100
         visible: false
-        x: cardRoot.chipX
+        x: weeklyArea.x + cardRoot.chipX
         y: weeklyDungeonPopup.popupY
         width: instW + 8
         height: popupHeight
@@ -402,7 +449,7 @@ Item {
 
         Rectangle {
             anchors.fill: parent; radius: 10
-            color: "#0F1A2E"; border.width: 1; border.color: "#33517A"
+            color: Theme.control; border.width: 1; border.color: Theme.border
         }
         TextMetrics { id: instTm; font.pixelSize: 13 }
         function openMenu() {
@@ -437,15 +484,16 @@ Item {
                     Rectangle {
                         width: weeklyDungeonPopup.instW
                         height: 30; radius: 6
-                        color: instMouse.containsMouse ? "#1A3A7A" : "transparent"
+                        color: instMouse.containsMouse ? Theme.accentSoft : "transparent"
                         Text {
                             anchors.fill: parent; leftPadding: 10
                             verticalAlignment: Text.AlignVCenter
                             text: modelData
-                            color: "#FFFFFF"; font.pixelSize: 13
+                            color: Theme.text; font.pixelSize: 13
                         }
                         MouseArea {
                             id: instMouse; anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 Bridge.selectWeeklyDungeon(
                                     weeklyDungeonPopup.weeklyName, modelData)

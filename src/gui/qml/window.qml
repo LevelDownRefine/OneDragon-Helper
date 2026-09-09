@@ -1,34 +1,39 @@
 import QtQuick
 import OneDragonHelper 1.0
+import "Theme.js" as Theme
 
-// 窗口控制栏（最小化 / 关闭），由 main.qml 的 Loader 加载。
-Item {
+// 窗口控制组；保留纯图标入口。
+Rectangle {
     anchors.fill: parent
+    radius: 14
+    color: Theme.panel
+    border.width: 1
+    border.color: Theme.border
 
-    // 最小化
-    Rectangle {
-        x: 40; y: 0; width: 36; height: 36; radius: 12
-        color: minBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
-        Image {
-            anchors.centerIn: parent; width: 22; height: 22
-            source: "image://uiicon/min"; fillMode: Image.PreserveAspectFit
-        }
-        MouseArea {
-            id: minBtnMouse; anchors.fill: parent; hoverEnabled: true
-            onClicked: Bridge.minimize()
-        }
-    }
-    // 关闭
-    Rectangle {
-        x: 80; y: 0; width: 36; height: 36; radius: 12
-        color: closeBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
-        Image {
-            anchors.centerIn: parent; width: 22; height: 22
-            source: "image://uiicon/close"; fillMode: Image.PreserveAspectFit
-        }
-        MouseArea {
-            id: closeBtnMouse; anchors.fill: parent; hoverEnabled: true
-            onClicked: Bridge.closeWindow()
+    Repeater {
+        model: [
+            { icon: "settings", act: () => Bridge.openConfig() },
+            { icon: "min", act: () => Bridge.minimize() },
+            { icon: "close", act: () => Bridge.closeWindow() },
+        ]
+        Rectangle {
+            objectName: index === 0 ? "configButton" : "windowButton" + index
+            x: 6 + index * 40; y: 6; width: 36; height: 32; radius: 9
+            color: buttonMouse.containsMouse
+                   ? (index === 2 ? Theme.danger : Theme.hover) : "transparent"
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Image {
+                anchors.centerIn: parent; width: 28; height: 28
+                source: "image://uiicon/" + modelData.icon
+                fillMode: Image.PreserveAspectFit
+            }
+            MouseArea {
+                id: buttonMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: modelData.act()
+            }
         }
     }
 }

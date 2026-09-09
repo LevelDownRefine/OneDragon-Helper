@@ -44,18 +44,18 @@ from src.service.app_service import AppService
 from src.utils.utils_sub_config import get_script_name
 
 # ═══════════════════════ 弹窗样式（原 src/gui/theme.py 子集，2026-08-16 并入）═══════
-# 主界面 QML 为深色玻璃风（#0A0E1A），弹窗统一同一套深色（2026-09-08）。
-DARK_BLUE = "#1565C0"  # 深蓝（主按钮 hover / pressed）
-BLUE = "#2196F3"  # 钢蓝（主按钮 / 焦点 / 悬停描边）
-SKY_BLUE = "#7DA8FF"  # 雾蓝（高亮文字 / 图标）
+# 与 QML Theme.js 保持同一套蓝灰配色。
+DARK_BLUE = "#306CD0"  # 深蓝（主按钮 hover / pressed）
+BLUE = "#3E83EE"  # 蓝色（主按钮 / 焦点 / 悬停描边）
+SKY_BLUE = "#8CB9FF"  # 高亮文字 / 图标
 
-TEXT = "#FFFFFF"  # 正文
-TEXT_MUTED = "#A0B4D0"  # 次要文字
+TEXT = "#F2F6FC"  # 正文
+TEXT_MUTED = "#A4B3C8"  # 次要文字
 TEXT_FAINT = "#4A5568"  # 弱文字 / 占位
-BG_INPUT = "#1A2333"  # 输入框底（比卡片底略亮）
-BG_CARD = "#0F1A2E"  # 卡片底
-BG_HOVER = "#2B3A52"  # 悬停底
-BORDER = "#33517A"  # 中性边框
+BG_INPUT = "#1D2B40"  # 输入框底（比卡片底略亮）
+BG_CARD = "#121D2E"  # 卡片底
+BG_HOVER = "#2B405C"  # 悬停底
+BORDER = "#36465E"  # 中性边框
 DISABLED = "#2A3040"  # 禁用底色
 BORDER_WIDTH = "1px"  # 统一边框宽度（QSS 模板引用）
 

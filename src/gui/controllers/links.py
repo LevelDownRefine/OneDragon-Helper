@@ -9,6 +9,7 @@ import webbrowser
 from PySide6.QtCore import QObject, Signal, Slot
 
 from src.config.set_config import get_game_exe_path as _get_game_exe_path
+from src.gui.icons import get_exe_icon_url
 from src.link import get_game_link as _get_game_link
 from src.log import get_log_dir
 from src.service.app_service import AppService
@@ -65,6 +66,16 @@ class LinksController(QObject):
             return
         if self._open_path(exe_path):
             self._toast(f"正在启动 {game['display_name']}…")
+
+    @Slot(result=str)
+    def gameIconSource(self) -> str:
+        """悬停时读取当前游戏图标；缺路径或无图标时由 QML 提示启动游戏。"""
+        game = self._current()
+        if game is None:
+            return ""
+        assert "script_name" in game
+        exe_path = _get_game_exe_path(game["script_name"])
+        return get_exe_icon_url(exe_path) if exe_path else ""
 
     def _open_url(self, url: str, fallback: str, label: str):
         target = url or fallback

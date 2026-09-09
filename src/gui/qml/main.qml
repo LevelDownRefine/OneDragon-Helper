@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import OneDragonHelper 1.0
+import "Theme.js" as Theme
 
 // OneDragon-Helper 主场景：frameless 1280x720 启动器。
 // 背景三层（视频 / 图片 / 渐变）由 Bridge.backgroundMode 切换；
@@ -11,7 +12,7 @@ Window {
     width: 1280
     height: 720
     flags: Qt.FramelessWindowHint | Qt.Window
-    color: "#0A0E1A"
+    color: Theme.canvas
     visible: true
     title: "OneDragon-Helper · 游戏自动化调度器"
 
@@ -53,7 +54,7 @@ Window {
         visible: Bridge.backgroundMode === "gradient"
         gradient: Gradient {
             GradientStop { position: 0.0; color: Bridge.gradientColor }
-            GradientStop { position: 1.0; color: "#0A0E1A" }
+            GradientStop { position: 1.0; color: Theme.canvas }
         }
         Text {
             anchors.centerIn: parent
@@ -61,6 +62,16 @@ Window {
             color: Qt.rgba(1, 1, 1, 0.06)
             font.pixelSize: 320
             font.weight: Font.Bold
+        }
+    }
+
+    // 壁纸边缘压暗，保证浅色背景上的控件也有稳定对比度。
+    Rectangle {
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop { position: 0; color: "#1F0B1220" }
+            GradientStop { position: 0.48; color: "#000B1220" }
+            GradientStop { position: 1; color: "#4D0B1220" }
         }
     }
 
@@ -72,21 +83,70 @@ Window {
         onPressed: Bridge.startWindowMove()
     }
 
-    // 左侧栏背景（80 宽半透明底 + 右边框）
+    // 左侧栏：图标列表与底部操作共用背景。
     Rectangle {
         x: 0
         y: 0
         width: 80
         height: root.height
         z: 10
-        color: "#070A14"
-        opacity: 0.72
+        color: "#E6101929"
         Rectangle {
             x: 79
             width: 1
             height: parent.height
-            color: "#0F1524"
-            opacity: 0.8
+            color: Theme.border
+            opacity: 0.55
+        }
+    }
+
+    // 整个窗口都接收外部脚本文件；内部重排不产生文件 URL。
+    DropArea {
+        id: scriptDropArea
+        objectName: "scriptDropArea"
+        anchors.fill: parent
+        z: 60
+        enabled: !gameList.dragActive
+        onEntered: (drag) => {
+            drag.accepted = (drag.supportedActions & Qt.CopyAction)
+                && drag.hasUrls && Bridge.canDropScripts(drag.urls)
+        }
+        onDropped: (drop) => {
+            if (Bridge.dropScripts(drop.urls)) drop.accept(Qt.CopyAction)
+            else drop.accepted = false
+        }
+        Rectangle {
+            objectName: "scriptDropHighlight"
+            anchors.fill: parent
+            anchors.margins: 4
+            radius: 16
+            color: "#661D2B40"
+            border.width: 2
+            border.color: Theme.accent
+            visible: scriptDropArea.containsDrag
+            Rectangle {
+                anchors.centerIn: parent
+                width: 320; height: 156; radius: 18
+                color: Theme.panel
+                border.width: 1; border.color: Theme.accent
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 10
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "＋"; color: Theme.accent; font.pixelSize: 30
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "松手添加脚本"; color: Theme.text; font.pixelSize: 18
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: ".exe · .bat · .py · 快捷方式"
+                        color: Theme.muted; font.pixelSize: 12
+                    }
+                }
+            }
         }
     }
 
@@ -96,10 +156,11 @@ Window {
     // 图标格(iconBox)56 宽居中，负责图标重排；图标格之外的列表区负责滚动。
     ListView {
         id: gameList
+        objectName: "gameList"
         x: 0
-        y: 12
+        y: 20
         width: 80
-        height: root.height - 112
+        height: sidebarBottom.y - y - 8
         z: 15
         model: Bridge.gameModel
         spacing: 8
@@ -115,24 +176,33 @@ Window {
             width: 80
             height: 56
             color: "transparent"
+            Rectangle {
+                x: 3; anchors.verticalCenter: parent.verticalCenter
+                width: 3; height: 24; radius: 2
+                color: Theme.accent
+                visible: index === Bridge.currentIndex
+            }
             // 内部图标容器 56 宽居中：图标、边框、拖拽命中区都在这，
             // 两侧各 12px 留给 ListView Flickable 做列表滚动。
             Rectangle {
                 id: iconInner
+                objectName: "scriptIcon" + index
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: 56
                 height: 56
                 radius: 16
-                color: "transparent"
-                border.width: index === Bridge.currentIndex ? 3 : 0
-                border.color: "#FFFFFF"
+                color: index === Bridge.currentIndex ? Theme.accentSoft
+                       : (iconMouseArea.containsMouse ? Theme.control : "transparent")
+                border.width: 1
+                border.color: index === Bridge.currentIndex ? Theme.accent : "transparent"
+                Behavior on color { ColorAnimation { duration: 140 } }
 
                 // exe 图标（image://scripticon/<script_name>：按游戏身份解析，
                 // 重排后行 index 不变也能取到正确图标）
                 Image {
                     anchors.centerIn: parent
-                    width: 48
-                    height: 48
+                    width: 40
+                    height: 40
                     source: "image://scripticon/" + model.scriptName
                     fillMode: Image.PreserveAspectFit
                     // 脚本路径变更/创建后需即时刷新：禁用 QML 按 URL 的图标缓存，
@@ -157,6 +227,8 @@ Window {
                 MouseArea {
                     id: iconMouseArea
                     anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
                     // preventStealing：不让 Flickable(列表滚动) 抢走拖动事件，
                     // 否则 onMouseYChanged 不触发、拖拽永远走 selectGame。
                     preventStealing: true
@@ -176,6 +248,8 @@ Window {
                     // onPositionChanged（事件参数）比 onMouseYChanged（属性）可靠：
                     // 属性更新有丢帧/延迟，导致拖拽判定时好时坏。
                     onPositionChanged: (mouse) => {
+                        // 开启 hover 后，未按下的移动也会触发本事件。
+                        if (!pressed) return
                         if (!dragging && Math.abs(mouse.y - pressY) > 12) {
                             dragging = true
                             parent.z = 100  // 拖拽中浮起
@@ -230,14 +304,14 @@ Window {
     }
 
     // 拖拽删除区：拖拽图标时覆盖底部固定区显示，图标中心落入即删除（红色高亮反馈）。
-    // 平时隐藏，底部 4 按钮正常可见；拖拽时整条底部变删除区（设计性覆盖底部按钮，
+    // 平时隐藏；拖拽时整条底部变删除区（覆盖底部按钮，
     // 非意外重合），列表区完全留给重排，避免删除区盖住列表底干扰末位重排。
     Rectangle {
         id: deleteZone
         x: 0
-        y: root.height - 100
+        y: sidebarBottom.y
         width: 80
-        height: 100
+        height: sidebarBottom.height
         z: 18
         radius: 6
         color: gameList.overDelete ? "#E74C3C" : "#922B21"
@@ -261,155 +335,281 @@ Window {
         }
     }
 
-    // 左侧底部固定区（全/清 + ⊞/＋ + 启动全部）
-    // 半透明策略：底部区本身不画独立背景（color:transparent），直接复用其背后
-    // 左侧栏背景条(0.72)的半透明——这样整条左侧栏（含底部）是统一的 0.72 半透明，
-    // 不会再出现「底部叠一层更实的同色块」导致局部更不透明的问题。
-    // 紧凑布局：按钮 30×30，行距收紧，整条高度 100。
+    // 左侧底部只保留控制模式与启动全部。
     Rectangle {
+        id: sidebarBottom
         x: 0
-        y: root.height - 100
+        y: root.height - height
         width: 80
-        height: 100
+        height: 120
         z: 16
         color: "transparent"
-        // 上排：全 / 清（居中）
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: 6
-            spacing: 6
-            Repeater {
-                model: [
-                    { label: "全", act: () => Bridge.selectAll() },
-                    { label: "清", act: () => Bridge.deselectAll() },
-                ]
-                Rectangle {
-                    width: 30
-                    height: 30
-                    radius: 6
-                    color: btnMouseTop.containsMouse ? "#2B3A52" : "#1F2937"
-                    Text {
-                        anchors.centerIn: parent
-                        text: modelData.label
-                        color: "#FFFFFF"
-                        font.pixelSize: 13
-                    }
-                    MouseArea {
-                        id: btnMouseTop
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: modelData.act()
-                    }
-                }
-            }
-        }
-        // 下排：⊞ / ＋（居中）
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: 38
-            spacing: 6
-            Repeater {
-                model: [
-                    { label: "⊞", act: () => Bridge.toggleMode() },
-                    { label: "＋", act: () => Bridge.addScript() },
-                ]
-                Rectangle {
-                    width: 30
-                    height: 30
-                    radius: 6
-                    // 控制模式激活时 ⊞ 按钮常亮高亮（index 0），给出持久态提示；
-                    // 颜色/边框严格走主题色，非模板文件零硬编码除主题外颜色。
-                    color: btnMouseBot.containsMouse
-                           ? "#2B3A52"
-                           : (index === 0 && Bridge.controlMode ? "#3A5A8C" : "#1F2937")
-                    border.width: index === 0 && Bridge.controlMode ? 2 : 0
-                    border.color: index === 0 && Bridge.controlMode ? "#7FB0FF" : "transparent"
-                    Text {
-                        anchors.centerIn: parent
-                        text: modelData.label
-                        color: index === 0 && Bridge.controlMode ? "#CDE3FF" : "#FFFFFF"
-                        font.pixelSize: 27
-                    }
-                    MouseArea {
-                        id: btnMouseBot
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        onClicked: modelData.act()
-                    }
-                }
-            }
-        }
-        // 启动全部（黄色）
         Rectangle {
-            x: 8
-            y: 72
-            width: 64
-            height: 26
-            radius: 6
-            color: launchAllBtn.containsMouse ? "#FFD95C" : "#F5C542"
-            Text {
+            x: 12; y: 0; width: 56; height: 1
+            color: Theme.divider
+        }
+        Rectangle {
+            id: controlModeButton
+            objectName: "controlModeButton"
+            x: 16; y: 8; width: 48; height: 48; radius: 14
+            color: modeMouse.containsMouse ? Theme.hover
+                   : (Bridge.controlMode ? Theme.accentSoft : Theme.control)
+            border.width: 1
+            border.color: Bridge.controlMode ? Theme.accent : Theme.border
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Image {
                 anchors.centerIn: parent
-                text: "▶ 启动全部"
-                color: "#1A1A1A"
-                font.pixelSize: 12
+                width: 32; height: 32
+                source: "image://uiicon/grid"
+                opacity: Bridge.controlMode ? 1 : 0.7
+            }
+            MouseArea {
+                id: modeMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Bridge.toggleMode()
+            }
+        }
+        // 黄色圆形按钮搭配深色播放图标，突出批量启动入口。
+        Rectangle {
+            objectName: "launchAllButton"
+            x: 16; y: 64; width: 48; height: 48; radius: width / 2
+            color: launchAllBtn.pressed ? Theme.batchPressed
+                   : (launchAllBtn.containsMouse ? Theme.batchHover : Theme.batch)
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Image {
+                anchors.centerIn: parent
+                anchors.horizontalCenterOffset: 1
+                width: 32; height: 32
+                source: "image://uiicon/play_all"
+                scale: launchAllBtn.pressed ? 0.92 : 1
+                Behavior on scale { NumberAnimation { duration: 80 } }
+            }
+            Rectangle {
+                objectName: "launchAllHint"
+                anchors.left: parent.right; anchors.leftMargin: 28
+                anchors.verticalCenter: parent.verticalCenter
+                width: launchAllHintText.implicitWidth + 24; height: 32; radius: 8
+                color: Theme.control
+                border.width: 1
+                border.color: Theme.border
+                opacity: launchAllBtn.containsMouse ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: 140 } }
+                Text {
+                    id: launchAllHintText
+                    anchors.centerIn: parent
+                    text: "启动全部"
+                    color: Theme.text
+                    font.pixelSize: 12
+                }
             }
             MouseArea {
                 id: launchAllBtn
                 anchors.fill: parent
                 hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
                 onClicked: Bridge.launchAll()
             }
         }
     }
 
-    // 窗口控制（右上：最小化 / 关闭）——独立组件，Loader 加载。
+    // 菜单展开时将提示移到上方，避免遮住操作按钮。
+    Rectangle {
+        objectName: "controlModeHint"
+        x: controlBubble.x
+        y: controlBubble.visible ? controlBubble.y - height - 8
+           : sidebarBottom.y + controlModeButton.y + (controlModeButton.height - height) / 2
+        width: controlModeHintText.implicitWidth + 24; height: 32; radius: 8
+        z: 37
+        color: Theme.control
+        border.width: 1
+        border.color: Theme.border
+        opacity: modeMouse.containsMouse && !gameList.dragActive ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity { NumberAnimation { duration: 140 } }
+        Text {
+            id: controlModeHintText
+            objectName: "controlModeHintText"
+            anchors.centerIn: parent
+            text: Bridge.controlMode ? "退出控制模式" : "控制模式"
+            color: Theme.text
+            font.pixelSize: 12
+        }
+    }
+
+    // 气泡不遮挡左侧脚本列表，控制模式下仍可逐项切换启停。
+    MouseArea {
+        x: 80; y: 0; width: root.width - 80; height: root.height
+        z: 35
+        visible: controlBubble.visible
+        onClicked: Bridge.toggleMode()
+    }
+    Rectangle {
+        id: controlBubble
+        objectName: "controlBubble"
+        x: 92
+        y: sidebarBottom.y + controlModeButton.y + (controlModeButton.height - height) / 2
+        width: 156; height: 60; radius: 16
+        z: 36
+        visible: Bridge.controlMode && !gameList.dragActive
+        color: Theme.panel
+        border.width: 1
+        border.color: Theme.border
+        transformOrigin: Item.Left
+        scale: visible ? 1 : 0.94
+        Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Rectangle {
+            x: -5; anchors.verticalCenter: parent.verticalCenter
+            width: 12; height: 12; rotation: 45; radius: 2
+            color: Theme.panel
+            z: -1
+        }
+        // 气泡内空隙也属于菜单，不能穿透到关闭层。
+        MouseArea { anchors.fill: parent }
+        Row {
+            anchors.centerIn: parent
+            spacing: 8
+            Repeater {
+                model: [
+                    { name: "selectAllButton", label: "全", act: () => Bridge.selectAll() },
+                    { name: "deselectAllButton", label: "清", act: () => Bridge.deselectAll() },
+                    { name: "addScriptButton", label: "＋", act: () => {
+                        Bridge.toggleMode()
+                        Bridge.addScript()
+                    } },
+                ]
+                Rectangle {
+                    objectName: modelData.name
+                    width: 36; height: 36; radius: 10
+                    color: actionMouse.containsMouse ? Theme.hover : Theme.control
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: Theme.text
+                        font.pixelSize: index === 2 ? 23 : 14
+                    }
+                    MouseArea {
+                        id: actionMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: modelData.act()
+                    }
+                }
+            }
+        }
+    }
+    Shortcut {
+        sequence: "Escape"
+        enabled: controlBubble.visible
+        onActivated: Bridge.toggleMode()
+    }
+
+    // 窗口控制（右上：配置 / 最小化 / 关闭）——独立组件，Loader 加载。
     Loader {
-        x: 1164; y: 8; width: 116; height: 36; z: 30
+        x: 1136; y: 16; width: 128; height: 44; z: 30
         source: "window.qml"
     }
 
-    // 右下启动胶囊（蓝色大按钮，点击启动当前脚本）——独立组件，Loader 加载。
+    // 右下主操作：启动当前脚本，右侧入口编辑该脚本配置。
     Loader {
-        x: 960; y: 636; width: 216; height: 64; z: 20
+        x: 960; y: 636; width: 236; height: 60; z: 20
         source: "launch.qml"
     }
 
     // 右侧悬浮图标条（主页/启动游戏/文件夹/日志/脚本配置/B站/GitHub/壁纸）——图标用 image://uiicon 矢量绘制
-    Item {
-        x: 1220
-        y: 80
-        width: 60
-        height: 348
+    Rectangle {
+        x: 1212
+        y: 88
+        width: 52
+        height: 396
         z: 20
+        radius: 18
+        color: Theme.panel
+        border.width: 1
+        border.color: Theme.border
         Repeater {
             model: [
-                { icon: "home", act: () => Bridge.openHome() },
-                { icon: "game", act: () => Bridge.launchGame() },
-                { icon: "folder", act: () => Bridge.openScriptFolder() },
-                { icon: "log", act: () => Bridge.openLogFolder() },
-                { icon: "configfile", act: () => Bridge.openScriptConfig() },
-                { icon: "bili", act: () => Bridge.openBilibili() },
-                { icon: "github", act: () => Bridge.openGithub() },
-                { icon: "wallpaper", act: () => Bridge.openWallpaper() },
+                { icon: "home", label: "项目主页", act: () => Bridge.openHome() },
+                { icon: "game", label: "启动游戏", act: () => Bridge.launchGame() },
+                { icon: "folder", label: "脚本目录", act: () => Bridge.openScriptFolder() },
+                { icon: "log", label: "运行日志", act: () => Bridge.openLogFolder() },
+                { icon: "configfile", label: "脚本配置文件", act: () => Bridge.openScriptConfig() },
+                { icon: "bili", label: "哔哩哔哩", act: () => Bridge.openBilibili() },
+                { icon: "github", label: "GitHub", act: () => Bridge.openGithub() },
+                { icon: "wallpaper", label: "更换壁纸", act: () => Bridge.openWallpaper() },
             ]
             Rectangle {
-                x: 12
-                y: 22 + index * 48
+                id: linkButton
+                objectName: "linkButton_" + modelData.icon
+                property string gameIconSource: ""
+                function refreshGameIcon() {
+                    gameIconSource = modelData.icon === "game" && iconMouse.containsMouse
+                        ? Bridge.gameIconSource() : ""
+                }
+                Connections {
+                    target: Bridge
+                    function onCurrentIndexChanged() { linkButton.refreshGameIcon() }
+                    function onGamesChanged() { linkButton.refreshGameIcon() }
+                }
+                x: 8
+                y: 12 + index * 48
                 width: 36
                 height: 36
-                radius: 12
-                color: iconMouse.containsMouse ? "#2B3A52" : "#1F2937"
+                radius: 10
+                color: iconMouse.containsMouse ? Theme.hover : "transparent"
+                Behavior on color { ColorAnimation { duration: 140 } }
                 Image {
                     anchors.centerIn: parent
-                    width: 22
-                    height: 22
+                    width: 26
+                    height: 26
                     source: "image://uiicon/" + modelData.icon
                     fillMode: Image.PreserveAspectFit
+                }
+                Rectangle {
+                    objectName: "linkHint_" + modelData.icon
+                    property bool hasGameIcon: gameHintIcon.status === Image.Ready
+                    anchors.right: parent.left
+                    anchors.rightMargin: 18
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: hasGameIcon ? 72 : hintText.implicitWidth + 24
+                    height: hasGameIcon ? 72 : 32
+                    radius: hasGameIcon ? 14 : 8
+                    color: Theme.control
+                    border.width: 1
+                    border.color: Theme.border
+                    opacity: iconMouse.containsMouse ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity { NumberAnimation { duration: 140 } }
+                    Image {
+                        id: gameHintIcon
+                        objectName: "linkHintIcon_" + modelData.icon
+                        anchors.centerIn: parent
+                        width: 56
+                        height: 56
+                        source: linkButton.gameIconSource
+                        fillMode: Image.PreserveAspectFit
+                        visible: parent.hasGameIcon
+                    }
+                    Text {
+                        id: hintText
+                        objectName: "linkHintText_" + modelData.icon
+                        anchors.centerIn: parent
+                        text: modelData.label
+                        color: Theme.text
+                        font.pixelSize: 12
+                        visible: !parent.hasGameIcon
+                    }
                 }
                 MouseArea {
                     id: iconMouse
                     anchors.fill: parent
                     hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onEntered: linkButton.refreshGameIcon()
                     onClicked: modelData.act()
                 }
             }
@@ -419,19 +619,25 @@ Window {
     // toast 浮层（Bridge.toastRequested 信号 → 显示 3 秒）
     Rectangle {
         id: toast
+        objectName: "toast"
         visible: false
         z: 50
-        y: root.height - 40
+        y: root.height - height - 24
         x: (root.width - width) / 2
-        width: toastText.paintedWidth + 36
-        height: 40
+        width: Math.min(toastText.implicitWidth + 40, root.width - 240)
+        height: Math.max(44, toastText.contentHeight + 24)
         radius: 12
-        color: Qt.rgba(10 / 255, 16 / 255, 32 / 255, 0.92)
+        color: Theme.panel
+        border.width: 1
+        border.color: Theme.border
         Text {
             id: toastText
+            objectName: "toastText"
             anchors.centerIn: parent
-            color: "#FFFFFF"
-            font.pixelSize: 14
+            width: parent.width - 40
+            wrapMode: Text.Wrap
+            color: Theme.text
+            font.pixelSize: 13
         }
     }
     Timer {

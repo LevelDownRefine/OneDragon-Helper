@@ -1,36 +1,59 @@
 import QtQuick
 import OneDragonHelper 1.0
+import "Theme.js" as Theme
 
-// 启动胶囊（▶ 启动脚本 + ≡ 配置），由 main.qml 的 Loader 加载。
-Rectangle {
+// 当前脚本主操作与配置入口，共用一个按钮组。
+Item {
     anchors.fill: parent
-    radius: 32
-    color: launchCapsule.containsMouse ? "#35A2F5" : "#2196F3"
-
-    // 左 ▶ 圆
     Rectangle {
-        x: 4; y: 4; width: 56; height: 56; radius: 28
-        color: "#0F2A4D"
-        Text { anchors.centerIn: parent; text: "▶"; color: "#FFFFFF"; font.pixelSize: 30 }
+        anchors.fill: parent
+        radius: 18
+        color: launchMouse.containsMouse ? Theme.primaryHover : Theme.primary
+        border.width: 1
+        border.color: launchMouse.containsMouse ? Theme.accent : Theme.border
+        Behavior on color { ColorAnimation { duration: 140 } }
     }
-    // 中间文字
-    Text {
-        x: 60; y: 0; width: 96; height: 64
-        text: "启动脚本"; color: "#FFFFFF"
-        font.pixelSize: 18; font.weight: Font.Bold
-        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-    }
-    MouseArea {
-        id: launchCapsule; anchors.fill: parent; hoverEnabled: true
-        onClicked: Bridge.launchScript()
-    }
-    // 右侧 ≡ 配置圆（点击打开当前脚本配置弹窗）
-    Rectangle {
-        x: 156; y: 4; width: 56; height: 56; radius: 28
-        color: cfgBtn.containsMouse ? "#0F3A6B" : "#0F2A4D"
-        Text { anchors.centerIn: parent; text: "≡"; color: "#FFFFFF"; font.pixelSize: 30 }
+    Item {
+        id: launchAction
+        objectName: "launchScriptButton"
+        width: parent.width - 56; height: parent.height
+        Image {
+            x: 16; anchors.verticalCenter: parent.verticalCenter
+            width: 32; height: 32
+            source: "image://uiicon/play"; fillMode: Image.PreserveAspectFit
+        }
+        Text {
+            x: 54; anchors.verticalCenter: parent.verticalCenter
+            text: "启动脚本"; color: Theme.text
+            font.pixelSize: 17; font.weight: Font.DemiBold
+        }
         MouseArea {
-            id: cfgBtn; anchors.fill: parent; hoverEnabled: true
+            id: launchMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: Bridge.launchScript()
+        }
+    }
+    Rectangle {
+        x: launchAction.width; y: 16; width: 1; height: parent.height - 32
+        color: Theme.border
+    }
+    Rectangle {
+        objectName: "scriptSettingsButton"
+        x: launchAction.width + 6; y: 6
+        width: 44; height: parent.height - 12; radius: 12
+        color: configMouse.containsMouse ? Theme.primaryHover : "transparent"
+        Behavior on color { ColorAnimation { duration: 140 } }
+        Image {
+            anchors.centerIn: parent; width: 28; height: 28
+            source: "image://uiicon/settings"; fillMode: Image.PreserveAspectFit
+        }
+        MouseArea {
+            id: configMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onClicked: Bridge.configCurrent()
         }
     }

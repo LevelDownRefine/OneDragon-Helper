@@ -22,8 +22,8 @@
 ```
 
 - 基类 `ScriptConfig` 提供通用能力：`_load` / `_save` / `_verify_saved` / `_update_task`（含二级序列）/ `_init_config` / `_is_aligned` / `set_dungeon` / `safe_update`。
-- 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`。`_task_key` / `_task_map` 按需覆盖。
-- 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`；路径声明不完整会在 import 时 assert 暴露。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `supports_weekly` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `set_config` / `set_weekly_dungeon`）。
+- 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`；`_backup_paths`（备份范围，目录或文件）必填。`_task_key` / `_task_map` 按需覆盖。
+- 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`；路径声明不完整会在 import 时 assert 暴露。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `supports_weekly` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `iter_backup_paths` / `set_config` / `set_weekly_dungeon`）。
 
 ## 三个独立流程
 
@@ -128,6 +128,10 @@ set_config("ok-ww", dungeon_name=None)                             # 跳过
 set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 ```
 
+`iter_backup_paths()` 返回 {script_name: 备份路径元组}——「该脚本的配置面在哪」的唯一声明处，供配置备份与恢复遍历。元素是**目录**（整目录递归打包）或**文件**（单文件收录），相对脚本根目录。仅用于收集文件，不解析或校验配置内容。
+
+> 与读写路径（``_config_rel_path`` 等）刻意解耦：读写关心「哪个文件的哪个字段」，备份关心「配置面在哪」。声明了 ``_backup_paths`` 即表示该脚本要备份的配置全在这些路径里，备份层按条展开，不再回头拼读写路径。整目录形态用目录（ok-ww/ok-ef/ok-nte 的 ``working/configs``、BetterGI 的 ``User``、绝区零与粥的 ``config``），散装形态用文件（崩铁只要根目录 ``config.yaml``，其 ``config/`` 仅剩 workflows 故不声明）。
+
 `set_config()` 接收 script_name；python/bat 脚本文件不在注册表内时优雅跳过。每次调用实例化对应子类并触发初始化；`weekly_start` 非 None 才写周常。
 
 ## 相关文件
@@ -154,3 +158,5 @@ set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 - 克制：无明确收益不抽抽象。异环多副本共用的映射才抽 `_mode_specs`/`_dungeon_to_mode` 声明式表，鸣潮单副本不抽。
 - 严格 assert：配置不一致立即报错，不静默容忍。字典访问先 assert key 再直接访问，不用 `.get()`。
 - 类型一致：sequence 类型由 `dungeon_list.yml` 的 value 决定，不做额外转换。
+
+`get_game_path_keys(script_name, rel)` 复用打开游戏所用的路径声明，供恢复保留本机游戏路径；其他文件返回空元组。

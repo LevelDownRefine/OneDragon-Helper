@@ -263,3 +263,7 @@ assets/banner.jpg
 config/wallpaper.json
 # 自定义壁纸缓存（选图时按上限预压，派生数据，不入库）
 config/wallpaper_cache/
+# 一键备份产物（打包了自身与子脚本 config，含邮件授权码等隐私，绝不入库）
+config/backups/
+
+闭关降级/
