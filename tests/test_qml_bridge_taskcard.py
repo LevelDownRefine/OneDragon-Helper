@@ -6,7 +6,7 @@ parse_dungeon_config 按用例 patch（task_card 经 AppService 取数，patch �
 """
 
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from src.gui.controllers import task_card
 from src.service import app_service
@@ -15,6 +15,25 @@ from tests.test_qml_launcher import _make_bridge
 
 class TestTaskCard(unittest.TestCase):
     """任务卡数据 / 写回：与旧 task_card.py 对齐。"""
+
+    @patch("src.service.app_service.get_dungeon_map", return_value={})
+    def test_restore_refreshes_task_properties(self, _map):
+        bridge = _make_bridge()
+        changed = MagicMock()
+        bridge.taskStateChanged.connect(changed)
+        bridge.app_service.restore_backup = MagicMock(
+            return_value={"restored": 1, "skipped_scripts": []}
+        )
+        with (
+            patch.object(bridge.backup, "_pick_zip", return_value="backup.zip"),
+            patch.object(task_card, "get_dungeon", return_value="副本A") as dungeon,
+            patch.object(task_card, "get_sequence", return_value=None),
+        ):
+            self.assertEqual(bridge.dailyDungeonText, "副本A")
+            dungeon.return_value = "副本B"
+            bridge.restoreConfig()
+            changed.assert_called_once_with()
+            self.assertEqual(bridge.dailyDungeonText, "副本B")
 
     @patch.object(task_card, "get_dungeon", return_value=None)
     @patch.object(task_card, "get_sequence", return_value=None)

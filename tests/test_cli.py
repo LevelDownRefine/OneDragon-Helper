@@ -98,6 +98,39 @@ def _known_script_names():
 class TestCliHelpVersion(unittest.TestCase):
     """--help / --version 出口：退出 0 且结果写文件。"""
 
+    def test_backup_outputs_service_result_without_reading_manifest(self):
+        result = {"status": "ok", "path": "backup.zip", "file_count": 3}
+        with (
+            patch.object(
+                cli.AppService, "create_backup", return_value=result
+            ) as create,
+            patch.object(cli, "_emit_json") as emit,
+        ):
+            args = cli.build_parser().parse_args(
+                ["--backup-config", "--out", "result.json"]
+            )
+            self.assertEqual(cli.run_cli(args), 0)
+        create.assert_called_once_with()
+        emit.assert_called_once_with("backup_config", result, "result.json")
+
+    def test_restore_outputs_skipped_scripts(self):
+        result = {
+            "status": "partial",
+            "restored": 2,
+            "skipped_scripts": ["missing"],
+            "pre_backup": None,
+        }
+        with (
+            patch.object(
+                cli.AppService, "restore_backup", return_value=result
+            ) as restore,
+            patch.object(cli, "_emit_json") as emit,
+        ):
+            args = cli.build_parser().parse_args(["--restore-config", "input.zip"])
+            self.assertEqual(cli.run_cli(args), 0)
+        restore.assert_called_once_with("input.zip")
+        emit.assert_called_once_with("restore_config", result, None)
+
     def test_help_exit_zero_and_writes_file(self):
         code = _run_main(["--help"], expect_exit=0)
         self.assertEqual(code, 0)

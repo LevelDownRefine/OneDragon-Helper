@@ -128,7 +128,7 @@ set_config("ok-ww", dungeon_name=None)                             # 跳过
 set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 ```
 
-`iter_backup_paths()` 返回 {script_name: 备份路径元组}——「该脚本的配置面在哪」的唯一声明处，供配置备份与恢复遍历。元素是**目录**（整目录递归打包）或**文件**（单文件收录），相对脚本根目录。
+`iter_backup_paths()` 返回 {script_name: 备份路径元组}——「该脚本的配置面在哪」的唯一声明处，供配置备份与恢复遍历。元素是**目录**（整目录递归打包）或**文件**（单文件收录），相对脚本根目录。仅用于收集文件，不解析或校验配置内容。
 
 > 与读写路径（``_config_rel_path`` 等）刻意解耦：读写关心「哪个文件的哪个字段」，备份关心「配置面在哪」。声明了 ``_backup_paths`` 即表示该脚本要备份的配置全在这些路径里，备份层按条展开，不再回头拼读写路径。整目录形态用目录（ok-ww/ok-ef/ok-nte 的 ``working/configs``、BetterGI 的 ``User``、绝区零与粥的 ``config``），散装形态用文件（崩铁只要根目录 ``config.yaml``，其 ``config/`` 仅剩 workflows 故不声明）。
 
@@ -158,3 +158,5 @@ set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 - 克制：无明确收益不抽抽象。异环多副本共用的映射才抽 `_mode_specs`/`_dungeon_to_mode` 声明式表，鸣潮单副本不抽。
 - 严格 assert：配置不一致立即报错，不静默容忍。字典访问先 assert key 再直接访问，不用 `.get()`。
 - 类型一致：sequence 类型由 `dungeon_list.yml` 的 value 决定，不做额外转换。
+
+`get_game_path_keys(script_name, rel)` 复用打开游戏所用的路径声明，供恢复保留本机游戏路径；其他文件返回空元组。

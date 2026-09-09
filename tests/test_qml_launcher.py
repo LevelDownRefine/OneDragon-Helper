@@ -355,8 +355,10 @@ class TestQmlApp(unittest.TestCase):
             os.environ["QT_QPA_PLATFORM"] = "offscreen"
             os.environ["QML_DISABLE_DISK_CACHE"] = "1"
             from unittest.mock import patch
-            from PySide6.QtCore import QUrl, QTimer
+            from PySide6.QtCore import QUrl, QTimer, QPointF, Qt
             from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+            from PySide6.QtQuick import QQuickItem
+            from PySide6.QtTest import QTest
             from PySide6.QtWidgets import QApplication
             from src.utils.utils_sub_config import resolve_script_path
             from src.gui import main_window
@@ -385,6 +387,13 @@ class TestQmlApp(unittest.TestCase):
             QTimer.singleShot(600, app.quit)
             app.exec()
             print("ROOT_OBJECTS", len(engine.rootObjects()), flush=True)
+            window = engine.rootObjects()[0]
+            config = window.findChild(QQuickItem, "configButton")
+            assert config is not None
+            position = config.mapToScene(QPointF(config.width() / 2, config.height() / 2))
+            with patch.object(bridge.backup, "openConfig") as open_config:
+                QTest.mouseClick(window, Qt.LeftButton, pos=position.toPoint())
+                open_config.assert_called_once_with()
             """
         )
         proc = subprocess.run(
@@ -394,6 +403,7 @@ class TestQmlApp(unittest.TestCase):
             timeout=60,
             cwd=os.getcwd(),
         )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("ROOT_OBJECTS 1", proc.stdout)
         # 回归守卫：子组件（TaskCard 等）必须 import OneDragonHelper 才能在
         # 事件循环中解析 Bridge；缺 import 会让所有 Bridge.xxx 绑定 ReferenceError。

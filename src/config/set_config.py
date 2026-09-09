@@ -151,7 +151,7 @@ class ScriptConfig:
     """config 文件相对脚本根目录路径。"""
 
     _backup_paths: tuple[str, ...] = ()
-    """备份范围：相对脚本根目录的路径，元素可以是目录（整目录打包）或文件。
+    """备份范围：相对脚本根目录的路径，元素可为目录（整目录打包）或文件。
 
     与读写路径解耦：读写关心「哪个文件的哪个字段」，备份关心「该脚本的配置面在哪」；
     声明了本属性即表示要备份的配置全在这些路径里。
@@ -1577,22 +1577,15 @@ def get_config_path(script_name: str) -> str:
     return _get_config_path_impl(script_name, _CONFIGS[script_name]._config_rel_path)
 
 
-def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...] | None:
-    """查询某个 config 文件是否承载游戏路径（恢复时该字段要保留现有值）。
-
-    Args:
-        script_name: 脚本标识名。
-        rel: 相对脚本根目录的 config 路径。
-
-    Returns:
-        游戏路径的嵌套键路径；该文件不承载游戏路径（或脚本未适配「打开游戏」）时 None。
-    """
+def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...]:
+    """查询该文件的游戏路径字段；复用打开游戏的声明，其他文件返回空元组。"""
     if script_name not in _CONFIGS:
-        return None
-    cfg_cls = _CONFIGS[script_name]
-    if not cfg_cls._game_path_keys or rel != cfg_cls._game_config_rel_path:
-        return None
-    return cfg_cls._game_path_keys
+        return ()
+    assert script_name in _CONFIGS
+    cls = _CONFIGS[script_name]
+    if rel.casefold() != cls._game_config_rel_path.casefold():
+        return ()
+    return cls._game_path_keys
 
 
 def iter_backup_paths() -> dict[str, tuple[str, ...]]:

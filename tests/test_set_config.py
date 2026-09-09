@@ -500,6 +500,18 @@ class TestIsAdapted(unittest.TestCase):
 class TestIterBackupPaths(unittest.TestCase):
     """iter_backup_paths：各脚本声明的备份范围（目录或文件），与读写路径解耦。"""
 
+    def test_game_path_declaration_only_matches_its_config(self):
+        self.assertEqual(
+            set_config.get_game_path_keys("BetterGI", "User/config.json"),
+            ("genshinStartConfig", "installPath"),
+        )
+        self.assertEqual(
+            set_config.get_game_path_keys("BetterGI", "User/other.json"), ()
+        )
+        self.assertEqual(
+            set_config.get_game_path_keys("unknown", "User/config.json"), ()
+        )
+
     def test_dir_style_script_declares_whole_dir(self):
         """整目录都是 config 的脚本（鸣潮 working/configs、原神 User）声明目录。"""
         paths = set_config.iter_backup_paths()
@@ -517,24 +529,6 @@ class TestIterBackupPaths(unittest.TestCase):
         self.assertEqual(set(paths), set(set_config._CONFIGS))
         for script_name, rel_paths in paths.items():
             self.assertTrue(rel_paths, f"{script_name} 未声明 _backup_paths")
-
-
-class TestGetGamePathKeys(unittest.TestCase):
-    """get_game_path_keys：哪个 config 文件承载游戏路径（恢复时保留现值的依据）。"""
-
-    def test_returns_keys_for_game_path_file(self):
-        """声明了的脚本 + 对应文件 → 返回嵌套键（鸣潮 devices.json 的 pc_full_path）。"""
-        rel = "data/apps/ok-ww/working/configs/devices.json"
-        self.assertEqual(set_config.get_game_path_keys("ok-ww", rel), ("pc_full_path",))
-
-    def test_returns_none_for_other_files(self):
-        """同脚本的其它 config 文件（如 DailyTask.json）不承载游戏路径。"""
-        rel = "data/apps/ok-ww/working/configs/DailyTask.json"
-        self.assertIsNone(set_config.get_game_path_keys("ok-ww", rel))
-
-    def test_returns_none_for_unadapted_script(self):
-        """未适配脚本（MaaEnd）→ None。"""
-        self.assertIsNone(set_config.get_game_path_keys("MaaEnd", "config/x.json"))
 
 
 if __name__ == "__main__":

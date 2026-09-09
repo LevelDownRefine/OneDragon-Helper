@@ -1,297 +1,243 @@
-"""子脚本配置备份与恢复：把各子脚本 config 打包成单个 zip，按需回写。
+"""配置文件搬运：普通 ZIP，目录固定为 scripts/<脚本名>/<相对路径>。
 
-产物为单个 zip（``config/backups/backup_<时间戳>.zip``），内部结构：
-
-    manifest.json                       条目清单（kind / rel / src / arc），恢复时按 src 回写
-    scripts/<脚本名>/<rel_path>         子脚本配置（rel_path 为适配层备份范围的展开结果）
-
-子脚本 config 的「配置面在哪」归适配层（:mod:`src.config.set_config`）：每个脚本声明
-``_backup_paths``（元素可为目录或文件），本模块按条展开——目录递归收录、文件直接收录、
-不存在即跳过（脚本未安装属常态）。
-
-恢复按 manifest 的 ``src`` 回写；子脚本 config 里**已设置**的游戏路径保留现值
-（键路径由适配层 ``get_game_path_keys`` 给出）——游戏路径与机器绑定，换机恢复时旧值多半
-已失效。恢复前先自动备份当前状态，便于回退。
+目录正确性与上游兼容性由用户保证；仅对游戏路径字段保留本机值，无清单或版本协议。
+恢复按当前脚本目录覆盖同名文件，保留额外文件，未配置的脚本跳过并报告。
 """
 
 import json
 import logging
 import os
+import shutil
+import tempfile
 import zipfile
+import zlib
 from datetime import datetime
+from pathlib import Path, PureWindowsPath
+
+from ruamel.yaml.error import YAMLError
 
 from src.config.set_config import get_game_path_keys, iter_backup_paths
-from src.utils import get_path_under_root, safe_path_join
+from src.utils import get_path_under_root
 from src.utils.utils_sub_config import get_script_root_dir
 from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
 
 logger = logging.getLogger(__name__)
 
-MANIFEST_VERSION = 1
-"""manifest 结构版本；恢复侧据此识别（结构变更即升版）。"""
 
-MANIFEST_NAME = "manifest.json"
-"""zip 内清单文件名。"""
-
-_BACKUP_SUBS = ("config", "backups")
-"""备份产物目录（相对项目根）。"""
-
-_SCRIPT_ARC = "scripts"
-"""zip 内子脚本配置的前缀。"""
-
-
-def get_backup_dir() -> str:
-    """备份产物目录（``config/backups``，不存在则创建）。
-
-    Returns:
-        备份目录绝对路径。
-    """
-    return get_path_under_root(*_BACKUP_SUBS)
-
-
-def _script_entry(script_name: str, rel: str, src: str) -> dict:
-    """构造子脚本配置条目（arc 为 zip 内路径）。"""
-    return {
-        "kind": "script",
-        "script_name": script_name,
-        "rel": rel,
-        "src": src,
-        "arc": f"{_SCRIPT_ARC}/{script_name}/{rel}",
-    }
+def _write_zip(files: dict[str, Path]) -> str:
+    """按 ZIP 内相对路径打包原文件，失败时清理本次不完整产物。"""
+    directory = get_path_under_root("config", "backups")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    path = Path(directory, f"backup_{stamp}.zip")
+    created = False
+    try:
+        with path.open("xb") as output:
+            created = True
+            with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
+                for name, source in files.items():
+                    archive.write(source, name)
+    except (OSError, ValueError, zipfile.LargeZipFile):
+        if created:
+            path.unlink()
+        raise
+    logger.info("[backup] 已备份 %d 个文件：%s", len(files), path)
+    return str(path)
 
 
-def _path_entries(script_name: str, root: str, rel: str) -> list[dict]:
-    """展开一条备份路径：目录递归收录全部文件，文件则收录该条；不存在即跳过。
-
-    Args:
-        script_name: 脚本唯一标识。
-        root: 脚本根目录。
-        rel: 备份路径（目录或文件），相对脚本根目录。
-
-    Returns:
-        条目列表；路径不存在（脚本未安装 / 尚未生成）时为空列表。
-    """
-    abs_path = safe_path_join(root, rel)
-    if os.path.isfile(abs_path):
-        return [_script_entry(script_name, rel, abs_path)]
-    if not os.path.isdir(abs_path):
-        return []  # 脚本未安装 / 尚未生成 config：跳过，不中断整包
-    entries: list[dict] = []
-    for dirpath, _, filenames in os.walk(abs_path):
-        for name in filenames:
-            src = os.path.join(dirpath, name)
-            file_rel = f"{rel}/{os.path.relpath(src, abs_path).replace(os.sep, '/')}"
-            entries.append(_script_entry(script_name, file_rel, src))
-    return entries
-
-
-def _script_entries() -> list[dict]:
-    """遍历各已适配脚本的备份范围（目录递归 / 单文件收录，缺失即跳过）。
-
-    Returns:
-        条目列表，每项含 kind="script" / script_name / rel（相对脚本根目录）/ src / arc。
-    """
-    entries: list[dict] = []
-    for script_name, rel_paths in sorted(iter_backup_paths().items()):
+def create_backup() -> dict:
+    """收集声明目录内的全部文件与散装配置，返回 ZIP 路径和文件数。"""
+    files: dict[str, Path] = {}
+    for script_name, paths in iter_backup_paths().items():
         root = get_script_root_dir(script_name)
         if root is None:
-            continue  # config.yml 无此脚本或 script_path 为空：无从定位，跳过
-        for rel in rel_paths:
-            entries.extend(_path_entries(script_name, root, rel))
-    return entries
+            continue
+        for rel in paths:
+            source = Path(root, rel)
+            if source.is_file():
+                files[
+                    f"scripts/{script_name}/{source.relative_to(root).as_posix()}"
+                ] = source
+                continue
+            errors: list[OSError] = []
+            if not source.exists():
+                continue
+            for directory, _, names in os.walk(source, onerror=errors.append):
+                for name in names:
+                    file = Path(directory, name)
+                    files[
+                        f"scripts/{script_name}/{file.relative_to(root).as_posix()}"
+                    ] = file
+            if errors:
+                raise errors[0]
+    if not files:
+        raise ValueError("未找到可备份的配置文件，请检查脚本目录")
+    return {"status": "ok", "path": _write_zip(files), "file_count": len(files)}
 
 
-def collect_entries() -> list[dict]:
-    """汇总待备份条目（各子脚本 config）。
-
-    Returns:
-        条目列表。
-    """
-    return _script_entries()
-
-
-def read_manifest(zip_path: str) -> dict:
-    """读备份产物的清单（供 CLI 回显与后续恢复）。
-
-    Args:
-        zip_path: 备份 zip 路径。
-
-    Returns:
-        manifest dict（含 version / created_at / entries）。
-
-    Raises:
-        KeyError: 压缩包内无 manifest.json（非本工具产物）。
-    """
-    with zipfile.ZipFile(zip_path) as archive:
-        return json.loads(archive.read(MANIFEST_NAME).decode("utf-8"))
+def _target_path(root: str, rel: str) -> Path:
+    """ZIP 输入只允许脚本目录内的普通相对路径，拒绝穿越和链接重定向。"""
+    parts = rel.split("/")
+    if any(
+        not part
+        or part in (".", "..")
+        or part.endswith((".", " "))
+        or PureWindowsPath(part).is_reserved()
+        or any(char in part for char in '\\:*?"<>|')
+        or any(ord(char) < 32 for char in part)
+        for part in parts
+    ):
+        raise ValueError(f"非法配置相对路径: {rel}")
+    target = Path(root).resolve().joinpath(*parts)
+    if target.resolve() != target:
+        raise ValueError(f"配置路径包含链接或目录重定向: {rel}")
+    return target
 
 
-def _next_backup_path(stamp: str) -> str:
-    """按时间戳拼产物路径；同秒重复时追加序号，避免覆盖已有备份。"""
-    backup_dir = get_backup_dir()
-    path = safe_path_join(backup_dir, f"backup_{stamp}.zip")
-    index = 1
-    while os.path.exists(path):
-        index += 1
-        path = safe_path_join(backup_dir, f"backup_{stamp}_{index}.zip")
-    return path
+def _restore_targets(archive: zipfile.ZipFile) -> tuple[dict[str, Path], list[str]]:
+    """由 ZIP 目录直接定位当前脚本；不读取旧包清单，不限制配置文件名。"""
+    files: dict[str, Path] = {}
+    targets: set[str] = set()
+    skipped: set[str] = set()
+    roots: dict[str, str | None] = {}
+    for info in archive.infolist():
+        if info.is_dir() or not info.filename.startswith("scripts/"):
+            continue  # 普通说明文件及旧包的 manifest.json / self 目录不参与恢复。
+        parts = info.filename.split("/", 2)
+        if len(parts) != 3 or not parts[1]:
+            raise ValueError(f"无效的 ZIP 目录: {info.filename}")
+        _, script_name, rel = parts
+        if script_name not in roots:
+            roots[script_name] = get_script_root_dir(script_name)
+        assert script_name in roots
+        root = roots[script_name]
+        if root is None:
+            skipped.add(script_name)
+            continue
+        target = _target_path(root, rel)
+        key = str(target).casefold()
+        if key in targets:
+            raise ValueError(f"ZIP 内存在重复目标: {target}")
+        if target.exists() and not target.is_file():
+            raise ValueError(f"恢复目标不是文件: {target}")
+        targets.add(key)
+        files[info.filename] = target
+    for target in targets:
+        if any(str(parent).casefold() in targets for parent in Path(target).parents):
+            raise ValueError(f"恢复目标存在文件与目录冲突: {target}")
+    if not files and not skipped:
+        raise ValueError("ZIP 内没有 scripts/<脚本名>/<配置路径> 文件")
+    bad_member = archive.testzip()
+    if bad_member is not None:
+        raise ValueError(f"ZIP 校验失败: {bad_member}")
+    return files, sorted(skipped)
 
 
-def create_backup() -> str:
-    """一键备份：把各子脚本 config 打包为单个 zip。
-
-    Returns:
-        产物 zip 的绝对路径。
-
-    Raises:
-        OSError: 产物目录不可创建或 zip 不可写（磁盘满 / 权限不足）。
-    """
-    entries = collect_entries()
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = _next_backup_path(stamp)
-    manifest = {
-        "version": MANIFEST_VERSION,
-        "created_at": stamp,
-        "entries": entries,
-    }
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr(
-            MANIFEST_NAME, json.dumps(manifest, ensure_ascii=False, indent=2)
-        )
-        for entry in entries:
-            archive.write(entry["src"], entry["arc"])
-    logger.info("[backup] 已备份 %d 个子脚本配置文件 → %s", len(entries), path)
-    return path
-
-
-# ============================================================
-# 恢复
-# ============================================================
-
-
-def _parse(text: str, ext: str) -> dict | list:
-    """按扩展名解析配置文本（json / yaml）。"""
-    if ext == ".json":
-        return json.loads(text)
-    if ext in (".yaml", ".yml"):
-        return load_yaml_str(text)
-    raise ValueError(f"[backup] 不支持的 config 格式: {ext}")
-
-
-def _dump(data: dict | list, ext: str) -> str:
-    """按扩展名序列化配置为文本（json / yaml）。"""
-    if ext == ".json":
-        return json.dumps(data, ensure_ascii=False, indent=4)
-    if ext in (".yaml", ".yml"):
-        return dump_yaml_str(data)
-    raise ValueError(f"[backup] 不支持的 config 格式: {ext}")
-
-
-def _game_path_value(data: dict | list, keys: tuple[str, ...]) -> str:
-    """按嵌套键取游戏路径值；结构缺失或值非字符串时返回空字符串。"""
-    node = data
+def _preserve_game_path(target: Path, temporary: Path, keys: tuple[str, ...]) -> None:
+    """仅保留本机游戏路径字段（含空值）；本机缺失时不导入备份里的旧路径。"""
+    assert keys
+    ext = target.suffix.lower()
+    if ext not in (".json", ".yaml", ".yml"):
+        raise ValueError(f"不支持的游戏路径配置格式: {ext}")
+    parse = json.loads if ext == ".json" else load_yaml_str
+    current = parse(target.read_text(encoding="utf-8-sig")) if target.is_file() else {}
+    payload = temporary.read_bytes()
+    restored = parse(payload.decode("utf-8-sig"))
+    if not isinstance(current, dict) or not isinstance(restored, dict):
+        raise ValueError(f"游戏路径配置必须是对象: {target}")
+    missing = object()
+    value = current
     for key in keys:
-        if not isinstance(node, dict) or key not in node:
-            return ""
-        node = node[key]
-    return node if isinstance(node, str) else ""
-
-
-def _keep_game_path(
-    payload: str, target: str, keys: tuple[str, ...], ext: str
-) -> tuple[str, bool]:
-    """目标文件已设置游戏路径时保留现值，其余字段用备份内容覆盖。
-
-    Args:
-        payload: 备份中的文件内容文本。
-        target: 目标文件绝对路径。
-        keys: 游戏路径的嵌套键路径。
-        ext: 文件扩展名（决定解析格式）。
-
-    Returns:
-        (待写入文本, 是否保留了现有游戏路径)；目标不存在、解析失败或现有值为空
-        时不保留，原样返回 payload。
-    """
-    if not os.path.isfile(target):
-        return payload, False
-    try:
-        with open(target, encoding="utf-8") as f:
-            current = _parse(f.read(), ext)
-        data = _parse(payload, ext)
-    except (OSError, ValueError, TypeError):
-        return payload, False
-    value = _game_path_value(current, keys)
-    if not value.strip():
-        return payload, False
-    # 沿键路径下钻；备份结构缺失（脚本版本演进 / 旧备份字段未生成）即放弃保留，
-    # 退回用备份值覆盖，绝不为单条坏数据中断整次恢复。
-    node = data
+        if not isinstance(value, dict):
+            raise ValueError(f"本机游戏路径字段结构不兼容: {target}")
+        if key not in value:
+            value = missing
+            break
+        assert key in value
+        value = value[key]
+    node = restored
     for key in keys[:-1]:
-        if not isinstance(node, dict) or key not in node:
-            logger.warning("[backup] 备份缺少游戏路径中间字段 %s，跳过保留现值", keys)
-            return payload, False
+        if key not in node:
+            if value is missing:
+                return
+            node[key] = {}
+        assert key in node
         node = node[key]
-    if not isinstance(node, dict) or keys[-1] not in node:
-        logger.warning("[backup] 备份缺少游戏路径字段 %s，跳过保留现值", keys)
-        return payload, False
-    node[keys[-1]] = value
-    return _dump(data, ext), True
+        if not isinstance(node, dict):
+            raise ValueError(f"备份游戏路径字段结构不兼容: {target}")
+    key = keys[-1]
+    if value is missing:
+        if key not in node:
+            return
+        del node[key]
+    else:
+        if key in node and node[key] == value:
+            return
+        node[key] = value
+    text = (
+        json.dumps(restored, ensure_ascii=False, indent=4)
+        if ext == ".json"
+        else dump_yaml_str(restored)
+    )
+    encoding = "utf-8-sig" if payload.startswith(b"\xef\xbb\xbf") else "utf-8"
+    temporary.write_bytes(text.encode(encoding))
+
+
+def _copy_member(archive: zipfile.ZipFile, name: str, target: Path) -> None:
+    """以原始字节覆盖单个文件；写完临时文件后替换，避免截断现有配置。"""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=target.parent, prefix=".odh-", delete=False
+    ) as output:
+        temporary = Path(output.name)
+    try:
+        with archive.open(name) as source, temporary.open("wb") as output:
+            shutil.copyfileobj(source, output)
+        _, script_name, rel = name.split("/", 2)
+        keys = get_game_path_keys(script_name, rel)
+        if keys:
+            _preserve_game_path(target, temporary, keys)
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def restore_backup(zip_path: str) -> dict:
-    """一键恢复：按 manifest 把子脚本 config 回写原位置（仅 kind=script 条目；旧备份的 self 条目跳过）。
-
-    恢复前先备份当前状态（便于回退）。子脚本 config 里**已设置**的游戏路径
-    保留现值不覆盖（游戏路径与机器绑定，换机恢复时旧值多半已失效）。
-
-    Args:
-        zip_path: 备份 zip 路径（须存在）。
+    """按当前脚本目录覆盖并保留游戏路径；失败报告进度与覆盖前的 ZIP 位置。
 
     Returns:
-        统计 dict：status / zip / restored / game_path_kept / pre_backup。
-
-    Raises:
-        AssertionError: zip 不存在，或 manifest 版本不受支持。
-        OSError: 目标不可写（权限不足 / 磁盘满）。
+        status / restored / skipped_scripts / pre_backup；全部跳过时不创建备份。
     """
-    assert os.path.isfile(zip_path), f"[backup] 备份文件不存在: {zip_path}"
-    manifest = read_manifest(zip_path)
-    assert manifest["version"] == MANIFEST_VERSION, (
-        f"[backup] 不支持的备份版本: {manifest['version']}"
-    )
-
-    pre_backup = create_backup()
     restored = 0
-    game_path_kept = 0
-    with zipfile.ZipFile(zip_path) as archive:
-        for entry in manifest["entries"]:
-            # 只恢复子脚本 config；旧备份里的 self 条目跳过（与备份口径一致）
-            if entry.get("kind") != "script":
-                continue
-            target = entry["src"]
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            ext = os.path.splitext(target)[1].lower()
-            payload = archive.read(entry["arc"]).decode("utf-8")
-            keys = get_game_path_keys(entry["script_name"], entry["rel"])
-            if keys:
-                payload, kept = _keep_game_path(payload, target, keys, ext)
-                game_path_kept += kept
-            # newline=""：按备份原文的换行落盘，不被 Windows 转成 \r\n
-            with open(target, "w", encoding="utf-8", newline="") as f:
-                f.write(payload)
-            restored += 1
-    if restored == 0:
-        logger.warning("[backup] %s 中无可恢复的子脚本条目", zip_path)
-    logger.info(
-        "[backup] 已从 %s 恢复 %d 个文件（保留游戏路径 %d 处）",
-        zip_path,
-        restored,
-        game_path_kept,
-    )
+    pre_backup = None
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            files, skipped = _restore_targets(archive)
+            existing = {
+                name: target for name, target in files.items() if target.is_file()
+            }
+            if existing:
+                pre_backup = _write_zip(existing)
+            try:
+                for name, target in files.items():
+                    _copy_member(archive, name, target)
+                    restored += 1
+            except (OSError, ValueError, YAMLError) as exc:
+                raise OSError(
+                    f"已恢复 {restored} 个文件，恢复失败且未回滚：{type(exc).__name__}: {exc}；"
+                    f"恢复前备份: {pre_backup or '无（目标原先不存在）'}"
+                ) from exc
+    except (zipfile.BadZipFile, zlib.error, RuntimeError) as exc:
+        raise ValueError(f"备份无法读取：{type(exc).__name__}: {exc}") from exc
+    for script_name in skipped:
+        logger.warning("[backup] 未配置脚本路径，跳过: %s", script_name)
+    logger.info("[backup] 已恢复 %d 个文件，跳过 %d 个脚本", restored, len(skipped))
     return {
-        "status": "ok",
-        "zip": zip_path,
+        "status": "partial"
+        if restored and skipped
+        else "ok"
+        if restored
+        else "skipped",
         "restored": restored,
-        "game_path_kept": game_path_kept,
+        "skipped_scripts": skipped,
         "pre_backup": pre_backup,
     }

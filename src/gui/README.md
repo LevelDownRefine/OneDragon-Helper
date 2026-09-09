@@ -12,9 +12,11 @@
 | controllers/task_card | 日常副本 / 周常周几，数据 + 选择持久化 | config / service / utils_weekly |
 | controllers/launch | 启动胶囊，启动当前 / 启动全部 | game_list / task_card / service |
 | controllers/links | 悬浮条：主页/B站/GitHub/目录/设置/启动游戏 | config / utils_sub_config / utils |
+| controllers/backup | 配置操作分发、备份 / 恢复与结果提示 | config_dialog / service |
 | controllers/window | 窗口控制：最小化/关闭/拖动 | 无 |
 | icons | 脚本 exe 图标 + QML 矢量图标提供器 | utils_sub_config |
 | dialogs | 单脚本配置弹窗 + 确认回调 | config / service |
+| config_dialog | 右上角「配置」操作列表，选择备份或恢复 | dialogs / icons |
 
 依赖单向：main_window 组合各控制器，控制器间构造注入；QmlBridge 是 QML 唯一门面。qml/ 组件经 Loader 相对路径加载，文件名与 controllers/ 同名。
 
@@ -25,6 +27,7 @@
 ## 弹窗 dialogs.py
 
 - SingleScriptConfigDialog：单脚本配置弹窗，保存后经 pending_changes 返回，写盘委托 AppService.update_script（内部转 src.utils.utils_config.update_script）。
+- ConfigDialog：右上角「配置」入口，选择动作后关闭，由 BackupController 执行。新增操作时补充 `_ACTIONS` 文案和控制器分发，不在弹窗中写业务逻辑。
 
 ## 写盘路径
 

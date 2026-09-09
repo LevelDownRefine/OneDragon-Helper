@@ -81,6 +81,7 @@ class QmlBridge(QObject):
         self.launch.toastRequested.connect(self.toastRequested.emit)
         self.links.toastRequested.connect(self.toastRequested.emit)
         self.backup.toastRequested.connect(self.toastRequested.emit)
+        self.backup.restoreCompleted.connect(self.task_card.refresh)
 
         # 编排启动：重建列表 → 构建副本缓存 → 刷新当前（_reload_games 收尾即刷）
         self._reload_games()
@@ -269,6 +270,10 @@ class QmlBridge(QObject):
     @Slot()
     def openWallpaper(self):
         self.background.open_wallpaper()
+
+    @Slot()
+    def openConfig(self):
+        self.backup.openConfig()
 
     @Slot()
     def backupConfig(self):
