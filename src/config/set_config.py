@@ -1577,6 +1577,24 @@ def get_config_path(script_name: str) -> str:
     return _get_config_path_impl(script_name, _CONFIGS[script_name]._config_rel_path)
 
 
+def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...] | None:
+    """查询某个 config 文件是否承载游戏路径（恢复时该字段要保留现有值）。
+
+    Args:
+        script_name: 脚本标识名。
+        rel: 相对脚本根目录的 config 路径。
+
+    Returns:
+        游戏路径的嵌套键路径；该文件不承载游戏路径（或脚本未适配「打开游戏」）时 None。
+    """
+    if script_name not in _CONFIGS:
+        return None
+    cfg_cls = _CONFIGS[script_name]
+    if not cfg_cls._game_path_keys or rel != cfg_cls._game_config_rel_path:
+        return None
+    return cfg_cls._game_path_keys
+
+
 def iter_backup_paths() -> dict[str, tuple[str, ...]]:
     """遍历各已适配脚本的备份范围（相对脚本根目录，元素可为目录或文件）。
 

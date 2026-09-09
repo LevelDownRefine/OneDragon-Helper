@@ -10,7 +10,7 @@ peer：
 - 周常运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段）：归 :mod:`src.utils.utils_weekly` 模块函数
 - 游戏侧 config 适配器（副本/周几起写脚本自身 config）：归 :mod:`src.config.set_config` 模块函数
 - 自定义壁纸表（config/wallpaper.json）：归 :mod:`src.utils.utils_wallpaper` 模块函数
-- 配置备份（自身 config 目录 + 各子脚本 config 打包为 zip）：归 :mod:`src.service.backup_service` 模块函数
+- 配置备份与恢复（各子脚本 config 打包为 zip / 按清单回写）：归 :mod:`src.service.backup_service` 模块函数
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
 未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
@@ -62,10 +62,14 @@ class AppService:
     def __init__(self):
         """装配各 peer。"""
 
-    # ── 配置备份（src.service.backup_service 模块函数）──
+    # ── 配置备份 / 恢复（src.service.backup_service 模块函数）──
     def create_backup(self) -> str:
-        """一键备份自身配置与各子脚本 config，返回产物 zip 路径。"""
+        """一键备份各子脚本 config，返回产物 zip 路径。"""
         return backup_service.create_backup()
+
+    def restore_backup(self, zip_path: str) -> dict:
+        """按备份 zip 恢复配置；已设置过的游戏路径保留现值，返回统计 dict。"""
+        return backup_service.restore_backup(zip_path)
 
     # ── 副本 / 周常声明（src.config.dungeon_config 模块函数）────────────
     def get_weekly_map(self, script_name: str) -> list:

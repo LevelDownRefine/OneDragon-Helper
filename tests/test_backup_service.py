@@ -1,4 +1,4 @@
-"""测试配置备份（src/service/backup_service.py）。
+"""测试配置备份与恢复（src/service/backup_service.py）。
 
 文件系统全部落在临时目录：项目根与脚本根目录经 patch 重定向，
 不触碰真实 config 与各游戏脚本 config。
@@ -46,7 +46,6 @@ class TestBackupService(unittest.TestCase):
         self.solo_root = os.path.join(self.root, "solo_script")
         self._write(os.path.join(self.solo_root, _REL_SOLO), "game_path: x\n")
 
-        self._patch("get_root_dir", return_value=self.root)
         self._patch("get_path_under_root", side_effect=self._under_root)
         self._patch(
             "iter_backup_paths",
@@ -80,16 +79,15 @@ class TestBackupService(unittest.TestCase):
         with zipfile.ZipFile(zip_path) as archive:
             return set(archive.namelist())
 
-    def test_create_backup_packs_self_and_script_configs(self):
-        """自身 config 全目录 + 子脚本备份范围进包；缺失路径与根目录不可解析的脚本跳过。"""
+    def test_create_backup_packs_only_script_configs(self):
+        """只打包子脚本备份范围；自身 config 不进包；缺失路径与根目录不可解析的脚本跳过。"""
         path = backup_service.create_backup()
 
         self.assertTrue(os.path.isfile(path))
         self.assertIn("config", path)
         names = self._names(path)
         self.assertIn("manifest.json", names)
-        self.assertIn("self/config.yml", names)
-        self.assertIn("self/script_chain/today.yml", names)
+        self.assertNotIn("self/config.yml", names)  # 自身 config 不进包
         self.assertIn(f"scripts/ok-ww/{_REL_OK}", names)
         self.assertNotIn(f"scripts/solo/{_REL_SOLO_MISSING}", names)  # 文件缺失
         self.assertNotIn(f"scripts/absent/{_REL_OK}", names)  # 根目录不可解析
@@ -121,7 +119,7 @@ class TestBackupService(unittest.TestCase):
 
         self.assertEqual(manifest["version"], backup_service.MANIFEST_VERSION)
         kinds = {entry["kind"] for entry in manifest["entries"]}
-        self.assertEqual(kinds, {"self", "script"})
+        self.assertEqual(kinds, {"script"})
         script_entry = next(
             e
             for e in manifest["entries"]
@@ -134,24 +132,104 @@ class TestBackupService(unittest.TestCase):
         )
 
     def test_backed_up_content_matches_source(self):
-        """包内文件与源文件字节一致。"""
+        """包内子脚本文件与源文件字节一致。"""
         path = backup_service.create_backup()
         with zipfile.ZipFile(path) as archive:
-            self.assertEqual(
-                archive.read("self/config.yml").decode("utf-8"), "script_list: []\n"
-            )
             self.assertEqual(
                 json.loads(archive.read(f"scripts/ok-ww/{_REL_OK}")), {"task": 1}
             )
 
     def test_backup_excludes_own_artifacts(self):
-        """备份产物目录不进包：连续两次备份，第二个包不含第一个包。"""
+        """备份产物不进包：连续两次备份互不包含对方产物，且自身 config 永不进包。"""
         first = backup_service.create_backup()
         first_name = os.path.basename(first)
         second = backup_service.create_backup()
 
         self.assertNotEqual(first, second)
-        self.assertNotIn(f"self/backups/{first_name}", self._names(second))
+        names = self._names(second)
+        self.assertNotIn(first_name, names)
+        self.assertFalse(any(n.startswith("self/") for n in names))
+
+    # ── 恢复 ──────────────────────────────────────────────────
+    def _declare_game_path(self):
+        """声明 solo 的 config.yaml 承载游戏路径（崩铁同形态）。"""
+        self._patch(
+            "get_game_path_keys",
+            side_effect=lambda _name, rel: ("game_path",) if rel == _REL_SOLO else None,
+        )
+
+    def _read_yaml(self, path):
+        from src.utils.utils_yaml import load_yaml_str
+
+        with open(path, encoding="utf-8") as f:
+            return load_yaml_str(f.read())
+
+    def test_restore_reverts_modified_config(self):
+        """改动过的子脚本 config 恢复回备份内容。"""
+        zip_path = backup_service.create_backup()
+        target = os.path.join(self.script_root, _REL_OK)
+        self._write(target, '{"task": 99}')
+
+        result = backup_service.restore_backup(zip_path)
+
+        self.assertEqual(result["status"], "ok")
+        with open(target, encoding="utf-8") as f:
+            self.assertEqual(f.read(), '{"task": 1}')
+        self.assertTrue(os.path.isfile(result["pre_backup"]))  # 恢复前自动备份
+
+    def test_restore_keeps_existing_game_path(self):
+        """目标已设置游戏路径 → 保留现值，其余字段仍用备份值覆盖。"""
+        self._declare_game_path()
+        target = os.path.join(self.solo_root, _REL_SOLO)
+        self._write(target, "game_path: old\ntask: 1\n")
+        zip_path = backup_service.create_backup()
+        self._write(target, "game_path: new\ntask: 99\n")
+
+        result = backup_service.restore_backup(zip_path)
+
+        restored = self._read_yaml(target)
+        self.assertEqual(restored["game_path"], "new")  # 现值保留
+        self.assertEqual(restored["task"], 1)  # 其余字段来自备份
+        self.assertEqual(result["game_path_kept"], 1)
+
+    def test_restore_uses_backup_game_path_when_unset(self):
+        """目标游戏路径为空 → 不保留，用备份值。"""
+        self._declare_game_path()
+        target = os.path.join(self.solo_root, _REL_SOLO)
+        self._write(target, "game_path: old\ntask: 1\n")
+        zip_path = backup_service.create_backup()
+        self._write(target, "game_path: ''\ntask: 99\n")
+
+        result = backup_service.restore_backup(zip_path)
+
+        restored = self._read_yaml(target)
+        self.assertEqual(restored["game_path"], "old")
+        self.assertEqual(result["game_path_kept"], 0)
+
+    def test_restore_skips_keep_when_backup_lacks_node(self):
+        """备份时游戏路径节点尚未生成、恢复时当前已设置：不崩溃、不保留、其余字段照常恢复。
+
+        模拟「脚本版本演进 / 旧备份」场景：当前文件有 a.b，备份只有 a.c。恢复应跳过
+        保留现值（退回用备份值），而非 assert 中断整次恢复（P1 修复前会崩）。
+        """
+        self._patch(
+            "get_game_path_keys",
+            side_effect=lambda _n, rel: ("a", "b") if rel == _REL_SOLO else None,
+        )
+        target = os.path.join(self.solo_root, _REL_SOLO)
+        # 备份时 a.b 尚未生成
+        self._write(target, "a:\n  c: x\nother: 1\n")
+        zip_path = backup_service.create_backup()
+        # 恢复前：当前已设置 a.b=new，且 other 被改（验证仍被备份覆盖）
+        self._write(target, "a:\n  b: new\n  c: x\nother: 99\n")
+
+        result = backup_service.restore_backup(zip_path)
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["game_path_kept"], 0)  # 未保留现值
+        restored = self._read_yaml(target)
+        self.assertEqual(restored.get("a"), {"c": "x"})  # 用备份内容（无 b 节点）
+        self.assertEqual(restored["other"], 1)  # 其余字段来自备份
 
 
 if __name__ == "__main__":

@@ -274,6 +274,10 @@ class QmlBridge(QObject):
     def backupConfig(self):
         self.backup.backupConfig()
 
+    @Slot()
+    def restoreConfig(self):
+        self.backup.restoreConfig()
+
     # ── 编排 / 门面协调方法（保持既有测试可直接调用）─────────────────
     def _reload_games(self):
         """重建脚本列表 + 构建副本下拉缓存 + 刷新当前项（编排集中于此）。

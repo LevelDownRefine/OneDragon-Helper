@@ -1,14 +1,17 @@
-"""配置备份：把自身 config 目录与各子脚本 config 打包成单个 zip。
+"""子脚本配置备份与恢复：把各子脚本 config 打包成单个 zip，按需回写。
 
 产物为单个 zip（``config/backups/backup_<时间戳>.zip``），内部结构：
 
-    manifest.json               条目清单（kind / rel / src / arc），恢复时按 src 回写
-    self/<config 内相对路径>     自身配置（config/ 整个目录，排除备份产物目录）
-    scripts/<脚本名>/<rel_path>  子脚本配置（rel_path 为适配层备份范围的展开结果）
+    manifest.json                       条目清单（kind / rel / src / arc），恢复时按 src 回写
+    scripts/<脚本名>/<rel_path>         子脚本配置（rel_path 为适配层备份范围的展开结果）
 
 子脚本 config 的「配置面在哪」归适配层（:mod:`src.config.set_config`）：每个脚本声明
 ``_backup_paths``（元素可为目录或文件），本模块按条展开——目录递归收录、文件直接收录、
 不存在即跳过（脚本未安装属常态）。
+
+恢复按 manifest 的 ``src`` 回写；子脚本 config 里**已设置**的游戏路径保留现值
+（键路径由适配层 ``get_game_path_keys`` 给出）——游戏路径与机器绑定，换机恢复时旧值多半
+已失效。恢复前先自动备份当前状态，便于回退。
 """
 
 import json
@@ -17,9 +20,10 @@ import os
 import zipfile
 from datetime import datetime
 
-from src.config.set_config import iter_backup_paths
-from src.utils import get_path_under_root, get_root_dir, safe_path_join
+from src.config.set_config import get_game_path_keys, iter_backup_paths
+from src.utils import get_path_under_root, safe_path_join
 from src.utils.utils_sub_config import get_script_root_dir
+from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +36,6 @@ MANIFEST_NAME = "manifest.json"
 _BACKUP_SUBS = ("config", "backups")
 """备份产物目录（相对项目根）。"""
 
-_SELF_ARC = "self"
-"""zip 内自身配置的前缀。"""
-
 _SCRIPT_ARC = "scripts"
 """zip 内子脚本配置的前缀。"""
 
@@ -46,36 +47,6 @@ def get_backup_dir() -> str:
         备份目录绝对路径。
     """
     return get_path_under_root(*_BACKUP_SUBS)
-
-
-def _self_entries() -> list[dict]:
-    """遍历自身 config 目录下的全部文件（排除备份产物目录）。
-
-    Returns:
-        条目列表，每项含 kind="self" / rel（相对 config 目录）/ src / arc。
-    """
-    config_dir = safe_path_join(get_root_dir(), "config")
-    backup_dir = get_backup_dir()
-    entries: list[dict] = []
-    for dirpath, dirnames, filenames in os.walk(config_dir):
-        # 备份产物目录就地排除：否则备份会把自己嵌套进去
-        dirnames[:] = [
-            d
-            for d in dirnames
-            if os.path.abspath(os.path.join(dirpath, d)) != os.path.abspath(backup_dir)
-        ]
-        for name in filenames:
-            src = os.path.join(dirpath, name)
-            rel = os.path.relpath(src, config_dir).replace(os.sep, "/")
-            entries.append(
-                {
-                    "kind": "self",
-                    "rel": rel,
-                    "src": src,
-                    "arc": f"{_SELF_ARC}/{rel}",
-                }
-            )
-    return entries
 
 
 def _script_entry(script_name: str, rel: str, src: str) -> dict:
@@ -131,12 +102,12 @@ def _script_entries() -> list[dict]:
 
 
 def collect_entries() -> list[dict]:
-    """汇总待备份条目（自身配置 + 各子脚本 config）。
+    """汇总待备份条目（各子脚本 config）。
 
     Returns:
-        条目列表（先自身后子脚本）。
+        条目列表。
     """
-    return _self_entries() + _script_entries()
+    return _script_entries()
 
 
 def read_manifest(zip_path: str) -> dict:
@@ -167,7 +138,7 @@ def _next_backup_path(stamp: str) -> str:
 
 
 def create_backup() -> str:
-    """一键备份：把自身配置与各子脚本 config 打包为单个 zip。
+    """一键备份：把各子脚本 config 打包为单个 zip。
 
     Returns:
         产物 zip 的绝对路径。
@@ -189,11 +160,138 @@ def create_backup() -> str:
         )
         for entry in entries:
             archive.write(entry["src"], entry["arc"])
-    logger.info(
-        "[backup] 已备份 %d 个文件（自身 %d / 子脚本 %d）→ %s",
-        len(entries),
-        sum(1 for e in entries if e["kind"] == "self"),
-        sum(1 for e in entries if e["kind"] == "script"),
-        path,
-    )
+    logger.info("[backup] 已备份 %d 个子脚本配置文件 → %s", len(entries), path)
     return path
+
+
+# ============================================================
+# 恢复
+# ============================================================
+
+
+def _parse(text: str, ext: str) -> dict | list:
+    """按扩展名解析配置文本（json / yaml）。"""
+    if ext == ".json":
+        return json.loads(text)
+    if ext in (".yaml", ".yml"):
+        return load_yaml_str(text)
+    raise ValueError(f"[backup] 不支持的 config 格式: {ext}")
+
+
+def _dump(data: dict | list, ext: str) -> str:
+    """按扩展名序列化配置为文本（json / yaml）。"""
+    if ext == ".json":
+        return json.dumps(data, ensure_ascii=False, indent=4)
+    if ext in (".yaml", ".yml"):
+        return dump_yaml_str(data)
+    raise ValueError(f"[backup] 不支持的 config 格式: {ext}")
+
+
+def _game_path_value(data: dict | list, keys: tuple[str, ...]) -> str:
+    """按嵌套键取游戏路径值；结构缺失或值非字符串时返回空字符串。"""
+    node = data
+    for key in keys:
+        if not isinstance(node, dict) or key not in node:
+            return ""
+        node = node[key]
+    return node if isinstance(node, str) else ""
+
+
+def _keep_game_path(
+    payload: str, target: str, keys: tuple[str, ...], ext: str
+) -> tuple[str, bool]:
+    """目标文件已设置游戏路径时保留现值，其余字段用备份内容覆盖。
+
+    Args:
+        payload: 备份中的文件内容文本。
+        target: 目标文件绝对路径。
+        keys: 游戏路径的嵌套键路径。
+        ext: 文件扩展名（决定解析格式）。
+
+    Returns:
+        (待写入文本, 是否保留了现有游戏路径)；目标不存在、解析失败或现有值为空
+        时不保留，原样返回 payload。
+    """
+    if not os.path.isfile(target):
+        return payload, False
+    try:
+        with open(target, encoding="utf-8") as f:
+            current = _parse(f.read(), ext)
+        data = _parse(payload, ext)
+    except (OSError, ValueError, TypeError):
+        return payload, False
+    value = _game_path_value(current, keys)
+    if not value.strip():
+        return payload, False
+    # 沿键路径下钻；备份结构缺失（脚本版本演进 / 旧备份字段未生成）即放弃保留，
+    # 退回用备份值覆盖，绝不为单条坏数据中断整次恢复。
+    node = data
+    for key in keys[:-1]:
+        if not isinstance(node, dict) or key not in node:
+            logger.warning("[backup] 备份缺少游戏路径中间字段 %s，跳过保留现值", keys)
+            return payload, False
+        node = node[key]
+    if not isinstance(node, dict) or keys[-1] not in node:
+        logger.warning("[backup] 备份缺少游戏路径字段 %s，跳过保留现值", keys)
+        return payload, False
+    node[keys[-1]] = value
+    return _dump(data, ext), True
+
+
+def restore_backup(zip_path: str) -> dict:
+    """一键恢复：按 manifest 把子脚本 config 回写原位置（仅 kind=script 条目；旧备份的 self 条目跳过）。
+
+    恢复前先备份当前状态（便于回退）。子脚本 config 里**已设置**的游戏路径
+    保留现值不覆盖（游戏路径与机器绑定，换机恢复时旧值多半已失效）。
+
+    Args:
+        zip_path: 备份 zip 路径（须存在）。
+
+    Returns:
+        统计 dict：status / zip / restored / game_path_kept / pre_backup。
+
+    Raises:
+        AssertionError: zip 不存在，或 manifest 版本不受支持。
+        OSError: 目标不可写（权限不足 / 磁盘满）。
+    """
+    assert os.path.isfile(zip_path), f"[backup] 备份文件不存在: {zip_path}"
+    manifest = read_manifest(zip_path)
+    assert manifest["version"] == MANIFEST_VERSION, (
+        f"[backup] 不支持的备份版本: {manifest['version']}"
+    )
+
+    pre_backup = create_backup()
+    restored = 0
+    game_path_kept = 0
+    with zipfile.ZipFile(zip_path) as archive:
+        for entry in manifest["entries"]:
+            # 只恢复子脚本 config；旧备份里的 self 条目跳过（与备份口径一致）
+            if entry.get("kind") != "script":
+                continue
+            target = entry["src"]
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            ext = os.path.splitext(target)[1].lower()
+            payload = archive.read(entry["arc"]).decode("utf-8")
+            keys = get_game_path_keys(entry["script_name"], entry["rel"])
+            if keys:
+                payload, kept = _keep_game_path(payload, target, keys, ext)
+                game_path_kept += kept
+            # newline=""：按备份原文的换行落盘，不被 Windows 转成 \r\n
+            with open(target, "w", encoding="utf-8", newline="") as f:
+                f.write(payload)
+            restored += 1
+    if restored == 0:
+        logger.warning("[backup] %s 中无可恢复的子脚本条目", zip_path)
+    logger.info(
+        "[backup] 已从 %s 恢复 %d 个文件（保留游戏路径 %d 处）",
+        zip_path,
+        restored,
+        game_path_kept,
+    )
+    return {
+        "status": "ok",
+        "zip": zip_path,
+        "restored": restored,
+        "game_path_kept": game_path_kept,
+        "pre_backup": pre_backup,
+    }
