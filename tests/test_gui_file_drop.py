@@ -5,6 +5,8 @@ import unittest
 from ctypes import wintypes
 from unittest.mock import MagicMock, call, patch
 
+from PySide6.QtCore import QUrl
+
 from src.gui.file_drop import WindowsFileDrop, install_file_drop
 
 
@@ -68,8 +70,13 @@ class TestWindowsFileDrop(unittest.TestCase):
     def test_native_drop_passes_full_paths(self):
         self.assertEqual(self.message(), (True, 0))
         self.on_drop.assert_called_once()
+        # Linux 的 toLocalFile 会保留盘符前的 /；回调契约是跨平台一致的 URL。
         self.assertEqual(
-            [url.toLocalFile() for url in self.on_drop.call_args.args[0]], self.files
+            self.on_drop.call_args.args[0],
+            [
+                QUrl("file:///C:/中文%20path/100%25%20%231.py"),
+                QUrl("file:///D:/run.exe"),
+            ],
         )
         self.shell.DragFinish.assert_called_once_with(5678)
 
