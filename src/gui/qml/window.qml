@@ -1,10 +1,23 @@
 import QtQuick
 import OneDragonHelper 1.0
 
-// 窗口控制栏（最小化 / 关闭），由 main.qml 的 Loader 加载。
+// 窗口控制栏（备份 / 最小化 / 关闭），由 main.qml 的 Loader 加载。
 Item {
     anchors.fill: parent
 
+    // 备份配置（一键打包自身与子脚本 config）
+    Rectangle {
+        x: 0; y: 0; width: 36; height: 36; radius: 12
+        color: backupBtnMouse.containsMouse ? "#2B3A52" : "#1F2937"
+        Image {
+            anchors.centerIn: parent; width: 22; height: 22
+            source: "image://uiicon/backup"; fillMode: Image.PreserveAspectFit
+        }
+        MouseArea {
+            id: backupBtnMouse; anchors.fill: parent; hoverEnabled: true
+            onClicked: Bridge.backupConfig()
+        }
+    }
     // 最小化
     Rectangle {
         x: 40; y: 0; width: 36; height: 36; radius: 12

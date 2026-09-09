@@ -3,6 +3,7 @@
 
 覆盖函数：
   - _CONFIGS（子类路径声明完整性）
+  - iter_config_rel_paths（备份/恢复遍历的 config 路径清单）
   - get_sub_config_path
   - load_config
   - save_config（mock 文件写入，不真正写回脚本 config）
@@ -494,6 +495,30 @@ class TestIsAdapted(unittest.TestCase):
     def test_unregistered_script_false(self):
         """未注册适配的脚本（任意未知标识）→ False，不抛异常"""
         self.assertFalse(set_config.is_adapted("不存在的脚本"))
+
+
+class TestIterConfigRelPaths(unittest.TestCase):
+    """iter_config_rel_paths：各脚本声明的 config 相对路径清单（备份/恢复遍历用）。"""
+
+    def test_returns_declared_paths_per_script(self):
+        """已适配脚本（鸣潮）的日常 config 与游戏路径 config 都在清单里。"""
+        paths = set_config.iter_config_rel_paths()
+        self.assertIn("ok-ww", paths)
+        self.assertIn("data/apps/ok-ww/working/configs/DailyTask.json", paths["ok-ww"])
+        self.assertIn("data/apps/ok-ww/working/configs/devices.json", paths["ok-ww"])
+
+    def test_config_dir_declared_for_dir_style_scripts(self):
+        """整目录都是 config 的脚本（鸣潮 working/configs、原神 User）声明了 config 目录。"""
+        dirs = set_config.iter_config_dir_rel_paths()
+        self.assertEqual(dirs["ok-ww"], "data/apps/ok-ww/working/configs")
+        self.assertEqual(dirs["BetterGI"], "User")
+        for rel_dir in dirs.values():
+            self.assertTrue(rel_dir)
+
+    def test_paths_deduplicated(self):
+        """同一脚本多个属性指向同一文件（如崩铁 config.yaml）时去重。"""
+        for rel_paths in set_config.iter_config_rel_paths().values():
+            self.assertEqual(len(rel_paths), len(set(rel_paths)))
 
 
 if __name__ == "__main__":

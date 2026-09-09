@@ -21,6 +21,7 @@
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
 | schedule.py | schedule.yml 读写（模块函数）+ ScheduledRun 调度运行编排 |
+| backup_service.py | 配置备份：自身 config 目录 + 各子脚本 config 打包为单个 zip（含 manifest，供恢复） |
 | run_actions.py | pre_run / post_run 各 step 的具体动作 |
 
 ## 依赖方向

@@ -124,7 +124,7 @@ class UiIconProvider(QQuickImageProvider):
     """QML 通用 UI 矢量图标源：`image://uiicon/<name>`。
 
     name → 重绘矢量图标。静态图标，无需游戏数据，构造即就绪。
-    支持：home / game / folder / bili / github / wallpaper / settings / min / close / log / configfile / trash。
+    支持：home / game / folder / bili / github / wallpaper / settings / min / close / log / configfile / backup / trash。
     """
 
     _SIZE = 48
@@ -145,6 +145,7 @@ class UiIconProvider(QQuickImageProvider):
             "close": self._draw_close,
             "log": self._draw_log,
             "configfile": self._draw_configfile,
+            "backup": self._draw_backup,
             "trash": self._draw_trash,
         }
 
@@ -312,6 +313,23 @@ class UiIconProvider(QQuickImageProvider):
         p.setPen(Qt.NoPen)
         p.setBrush(_WHITE)
         p.drawEllipse(QRectF(cx - 2, cy - 2, 4, 4))
+
+    def _draw_backup(self, p: QPainter):
+        # 备份：云朵（三圆叠加 + 圆角底边）内镂空向下箭头 = 配置存入备份
+        p.setPen(Qt.NoPen)
+        p.setBrush(_WHITE)
+        p.drawEllipse(QRectF(-11, -5, 13, 13))
+        p.drawEllipse(QRectF(-2, -12, 15, 15))
+        p.drawEllipse(QRectF(4, -4, 11, 11))
+        p.drawRoundedRect(QRectF(-11, -4, 22, 12), 6, 6)  # 云底
+        p.setBrush(_CUT)  # 镂空向下箭头：竖杆 + 三角
+        p.drawRoundedRect(QRectF(-1.5, -9, 3, 10), 1.5, 1.5)
+        arrow = QPainterPath()
+        arrow.moveTo(-5.5, -1)
+        arrow.lineTo(5.5, -1)
+        arrow.lineTo(0, 6)
+        arrow.closeSubpath()
+        p.drawPath(arrow)
 
     def _draw_trash(self, p: QPainter):
         # 垃圾桶（单色白线，与闹钟等 UI 图标一致）：盖沿 + 提手 + 梯形桶身 + 竖纹

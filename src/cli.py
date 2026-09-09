@@ -2,7 +2,7 @@
 
 提供 --help / --version / --selftest / --generate-chain / --run-chain /
 --schedule-run / --check-config / --list-scripts / --get-script / --dump-config /
---check-weekly 等出口，
+--backup-config / --check-weekly 等出口，
 供打包产物集成测试与排障使用。windowed exe 的 stdout/stderr 被丢弃，
 因此 --help/--version 等结果会**同时写文件**（见 _emit_cli / _emit_json）。
 
@@ -19,6 +19,7 @@ import warnings
 
 from src.config.set_config import supports_weekly
 from src.service.app_service import AppService
+from src.service.backup_service import read_manifest
 from src.utils import get_root_dir
 from src.utils.utils_config import get_script
 from src.utils.utils_shutdown import shutdown_sys
@@ -70,6 +71,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--dump-config",
         action="store_true",
         help="导出完整 config.yml（JSON），结果写文件后退出",
+    )
+    action.add_argument(
+        "--backup-config",
+        action="store_true",
+        help="一键备份配置（自身 config 目录 + 各子脚本 config）为单个 zip，结果写 JSON 后退出",
     )
     action.add_argument(
         "--check-weekly",
@@ -293,6 +299,18 @@ def _run_dump_config(out_path: str | None) -> int:
     return 0
 
 
+def _run_backup_config(out_path: str | None) -> int:
+    """CLI: 一键备份自身配置与子脚本 config，输出产物路径与打包文件数。"""
+    path = AppService().create_backup()
+    manifest = read_manifest(path)
+    _emit_json(
+        "backup_config",
+        {"status": "ok", "path": path, "file_count": len(manifest["entries"])},
+        out_path,
+    )
+    return 0
+
+
 def _run_check_weekly(out_path: str | None) -> int:
     """CLI: 校验 weekly.yml 的 weekly_timeouts 段 与 config 脚本一致性。
 
@@ -498,6 +516,8 @@ def run_cli(args) -> int | None:
         return _run_get_script(args.get_script, args.out)
     if args.dump_config:
         return _run_dump_config(args.out)
+    if args.backup_config:
+        return _run_backup_config(args.out)
     if args.check_weekly:
         return _run_check_weekly(args.out)
     if args.generate_chain:
