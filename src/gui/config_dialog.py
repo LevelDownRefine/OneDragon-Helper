@@ -1,6 +1,6 @@
 """启动设置与配置迁移入口；关闭后由控制器保存设置并执行所选操作。"""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTime
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QFrame,
@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QSpinBox,
+    QTimeEdit,
     QVBoxLayout,
 )
 
@@ -23,6 +24,7 @@ from src.gui.dialogs import (
     spin_box_qss,
 )
 from src.gui.icons import UiIconProvider
+from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import MAX_STARTUP_DELAY_SECONDS, StartupOptions
 
 
@@ -30,14 +32,23 @@ class ConfigDialog(FormDialogBase):
     """配置操作列表；新增入口时在此补充文案，在控制器补充对应动作。"""
 
     _ACTIONS = (
+        ("settings", "运行选项", "设置静音、重跑、通知与关机"),
         ("backup", "备份配置", "保存为 ZIP，便于换机迁移"),
         ("restore", "恢复配置", "从备份恢复，保留本机游戏路径"),
     )
 
-    def __init__(self, parent=None, *, startup_options: StartupOptions | None = None):
+    def __init__(
+        self,
+        parent=None,
+        *,
+        startup_options: StartupOptions | None = None,
+        daily_plan: DailyPlanOptions | None = None,
+    ):
         super().__init__(parent)
         if startup_options is None:
             startup_options = StartupOptions()
+        if daily_plan is None:
+            daily_plan = DailyPlanOptions()
         self.selected_action: str | None = None
         self.setWindowTitle("配置")
         self.setFixedWidth(420)
@@ -49,7 +60,7 @@ class ConfigDialog(FormDialogBase):
         title.setFont(make_font(size=20, bold=True))
         title.setStyleSheet(f"color: {TEXT}; background: transparent; border: none;")
         layout.addWidget(title)
-        subtitle = QLabel("自动启动与配置迁移")
+        subtitle = QLabel("每日计划、运行选项与配置迁移")
         subtitle.setFont(make_font(size=12))
         subtitle.setStyleSheet(
             f"color: {TEXT_MUTED}; background: transparent; border: none;"
@@ -99,6 +110,45 @@ class ConfigDialog(FormDialogBase):
         startup_layout.addLayout(countdown_row)
         layout.addWidget(startup)
 
+        daily = QFrame(self)
+        daily.setObjectName("dailySettings")
+        daily.setStyleSheet(
+            f"QFrame#dailySettings {{ background: rgba(29, 43, 64, 160); "
+            f"border: 1px solid {BORDER}; border-radius: 10px; }}"
+        )
+        daily_layout = QVBoxLayout(daily)
+        daily_layout.setContentsMargins(16, 14, 16, 14)
+        daily_layout.setSpacing(10)
+        daily_row = QHBoxLayout()
+        self.daily_cb = self._make_checkbox("每天自动运行")
+        self.daily_cb.setFont(make_font(size=13, bold=True))
+        self.daily_cb.setChecked(daily_plan.enabled)
+        self.daily_time = QTimeEdit(daily)
+        self.daily_time.setDisplayFormat("HH:mm")
+        self.daily_time.setAccessibleName("每日运行时间")
+        self.daily_time.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.daily_time.setFixedSize(80, 30)
+        self.daily_time.setFont(make_font(size=12))
+        self.daily_time.setStyleSheet(spin_box_qss())
+        hour, minute = map(int, daily_plan.target_time.split(":"))
+        self.daily_time.setTime(QTime(hour, minute))
+        daily_row.addWidget(self.daily_cb)
+        daily_row.addStretch()
+        daily_row.addWidget(self.daily_time)
+        daily_layout.addLayout(daily_row)
+        daily_hint = QLabel(
+            "保存一次，每天按最新配置运行，关闭窗口仍有效。\n"
+            "需电脑开机并登录，错过时间不补跑。"
+        )
+        daily_hint.setWordWrap(True)
+        daily_hint.setFont(make_font(size=11))
+        daily_hint.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
+        daily_layout.addWidget(daily_hint)
+        self.daily_cb.toggled.connect(self._update_startup_controls)
+        self.startup_cb.toggled.connect(self._update_startup_controls)
+        self._update_startup_controls()
+        layout.addWidget(daily)
+
         icons = UiIconProvider()
         for action, label, description in self._ACTIONS:
             button = QPushButton(self)
@@ -146,7 +196,7 @@ class ConfigDialog(FormDialogBase):
             layout.addWidget(button)
 
         footer = QHBoxLayout()
-        save_hint = QLabel("关闭时保存，下次打开生效")
+        save_hint = QLabel("关闭时保存设置")
         save_hint.setFont(make_font(size=11))
         save_hint.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
         footer.addWidget(save_hint)
@@ -161,6 +211,23 @@ class ConfigDialog(FormDialogBase):
         footer.addWidget(close)
         layout.addSpacing(4)
         layout.addLayout(footer)
+
+    @property
+    def daily_plan(self) -> DailyPlanOptions:
+        self.daily_time.interpretText()
+        return DailyPlanOptions(
+            self.daily_cb.isChecked(), self.daily_time.time().toString("HH:mm")
+        )
+
+    def _update_startup_controls(self) -> None:
+        """每日计划启用时，打开 GUI 只编辑配置，避免额外启动一轮。"""
+        daily = self.daily_cb.isChecked()
+        self.daily_time.setEnabled(daily)
+        self.startup_cb.setEnabled(not daily)
+        self.startup_cb.setToolTip(
+            "每日计划开启时，打开窗口不会自动启动" if daily else ""
+        )
+        self.startup_delay.setEnabled(not daily and self.startup_cb.isChecked())
 
     @property
     def startup_options(self) -> StartupOptions:

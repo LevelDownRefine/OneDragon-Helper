@@ -185,7 +185,7 @@ class TestScheduleExeE2E(unittest.TestCase):
             _CONFIG_DIR / "schedule.yml",
             {
                 "shutdown": {"after_run": False, "delay_seconds": 0},
-                "timed_run": {"enabled": False, "target_time": ""},
+                "daily_run": {"enabled": False, "target_time": "04:10"},
                 "mute": {"enabled": False},
                 "unmute": {"enabled": False},
                 "rerun": {"enabled": True},

@@ -469,8 +469,6 @@ class TestLoadRunOptions(unittest.TestCase):
         opts = load_run_options({})
         self.assertFalse(opts.shutdown_enabled)
         self.assertEqual(opts.shutdown_delay, 0)
-        self.assertFalse(opts.timed_enabled)
-        self.assertEqual(opts.timed_target, "")
         self.assertFalse(opts.mute_enabled)
         self.assertFalse(opts.unmute_enabled)
         self.assertTrue(opts.close_running_enabled)  # 历史默认：运行前始终清场
@@ -497,22 +495,6 @@ class TestLoadRunOptions(unittest.TestCase):
             {"shutdown": {"after_run": "false", "delay_seconds": 45}}
         )
         self.assertFalse(opts.shutdown_enabled)
-
-    def test_timed_enabled_with_valid_target(self):
-        opts = load_run_options(
-            {"timed_run": {"enabled": True, "target_time": "08:30"}}
-        )
-        self.assertTrue(opts.timed_enabled)
-        self.assertEqual(opts.timed_target, "08:30")
-
-    def test_timed_illegal_target_degrades(self):
-        for bad in ("25:99", 480.0, None):
-            with self.subTest(bad=bad):
-                opts = load_run_options(
-                    {"timed_run": {"enabled": True, "target_time": bad}}
-                )
-                self.assertFalse(opts.timed_enabled)
-                self.assertEqual(opts.timed_target, "")
 
     def test_mute_unmute_block_non_bool_disabled(self):
         self.assertFalse(load_run_options({"mute": {"enabled": "yes"}}).mute_enabled)
@@ -570,8 +552,6 @@ class TestApplyRunOptions(unittest.TestCase):
         base = RunOptions(
             shutdown_enabled=True,
             shutdown_delay=120,
-            timed_enabled=True,
-            timed_target="04:10",
             mute_enabled=True,
             unmute_enabled=True,
             close_running_enabled=True,
@@ -585,29 +565,17 @@ class TestApplyRunOptions(unittest.TestCase):
         apply_run_options(self._options())
         data = self._read()
         self.assertEqual(data["shutdown"], {"after_run": True, "delay_seconds": 120})
-        self.assertEqual(data["timed_run"], {"enabled": True, "target_time": "04:10"})
         self.assertEqual(data["mute"], {"enabled": True})
         self.assertEqual(data["unmute"], {"enabled": True})
         self.assertEqual(data["close_running"], {"enabled": True})
         self.assertEqual(data["rerun"], {"enabled": True})
         self.assertEqual(data["notify"], {"enabled": True, "email": "123456@qq.com"})
 
-    def test_disabled_drops_target_and_keeps_delay(self):
-        """关闭定时清空 target；关闭关机保留弹窗给定的延迟值（不归零）。"""
-        apply_run_options(
-            self._options(
-                timed_enabled=False, shutdown_enabled=False, shutdown_delay=45
-            )
-        )
+    def test_disabled_shutdown_keeps_delay(self):
+        """关闭关机保留弹窗给定的延迟值（不归零）。"""
+        apply_run_options(self._options(shutdown_enabled=False, shutdown_delay=45))
         data = self._read()
-        self.assertEqual(data["timed_run"], {"enabled": False, "target_time": ""})
         self.assertEqual(data["shutdown"], {"after_run": False, "delay_seconds": 45})
-
-    def test_enabled_with_illegal_target_falls_back(self):
-        apply_run_options(self._options(timed_target="25:99"))
-        self.assertEqual(
-            self._read()["timed_run"], {"enabled": True, "target_time": "04:10"}
-        )
 
     def test_smtp_written_when_filled(self):
         apply_run_options(self._options(smtp_host="smtp.163.com", smtp_port="994"))

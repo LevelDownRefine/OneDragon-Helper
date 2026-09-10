@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QDialog, QFileDialog
 from ruamel.yaml.error import YAMLError
 
 from src.gui.config_dialog import ConfigDialog
+from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.service.app_service import AppService
 from src.utils import get_root_dir
 
@@ -33,12 +34,25 @@ class BackupController(QObject):
         """关闭时保存启动设置；选择备份/恢复后再执行对应动作。"""
         try:
             options = self._app_service.load_startup_options()
+            daily_plan = self._app_service.load_daily_plan()
         except (OSError, YAMLError) as exc:
             logger.error("读取启动设置失败：%s: %s", type(exc).__name__, exc)
             self._toast(f"读取启动设置失败：{exc}")
             return
-        dialog = ConfigDialog(startup_options=options)
+        dialog = ConfigDialog(startup_options=options, daily_plan=daily_plan)
         result = dialog.exec()
+        if dialog.daily_plan != daily_plan:
+            try:
+                self._app_service.apply_daily_plan(dialog.daily_plan)
+            except (OSError, YAMLError) as exc:
+                logger.error("保存每日计划失败：%s: %s", type(exc).__name__, exc)
+                self._toast(f"保存每日计划失败：{exc}")
+                return
+            self._toast(
+                f"已设置每天 {dialog.daily_plan.target_time} 按最新配置运行"
+                if dialog.daily_plan.enabled
+                else "已关闭每日计划"
+            )
         updated = dialog.startup_options
         if updated != options:
             try:
@@ -49,9 +63,29 @@ class BackupController(QObject):
                 return
         if result != QDialog.Accepted:
             return
-        actions = {"backup": self.backupConfig, "restore": self.restoreConfig}
+        actions = {
+            "backup": self.backupConfig,
+            "restore": self.restoreConfig,
+            "settings": self.configureRunOptions,
+        }
         assert dialog.selected_action in actions
         actions[dialog.selected_action]()
+
+    def configureRunOptions(self):
+        """保存共用运行选项，不启动脚本。"""
+        try:
+            dialog = RunConfirmDialog(
+                0, self._app_service.load_run_options(), settings_only=True
+            )
+            if dialog.exec() != QDialog.Accepted:
+                return
+            assert dialog.run_options is not None
+            self._app_service.apply_run_options(dialog.run_options)
+        except (OSError, YAMLError) as exc:
+            logger.error("保存运行选项失败：%s: %s", type(exc).__name__, exc)
+            self._toast(f"保存运行选项失败：{exc}")
+            return
+        self._toast("运行选项已保存，下次运行生效")
 
     @Slot()
     def backupConfig(self):

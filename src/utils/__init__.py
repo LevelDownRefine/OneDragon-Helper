@@ -24,7 +24,7 @@ def get_schedule_yml_path_under_root() -> str:
     """
     获取根目录下的config/schedule.yml文件路径（运行时生成，含邮件授权码，不追溯git）。
 
-    调度运行参数（shutdown / timed_run / mute / unmute / rerun / notify）独立存放于此，
+    调度运行参数（shutdown / daily_run / mute / unmute / rerun / notify）独立存放于此，
     与 config.yml（脚本链声明）解耦；模板见 config/schedule.example.yml。
     :return: 根目录下的config/schedule.yml文件路径
     """

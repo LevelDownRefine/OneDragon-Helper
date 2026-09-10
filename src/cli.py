@@ -2,7 +2,7 @@
 
 提供 --help / --version / --selftest / --generate-chain / --run-chain /
 --schedule-run / --check-config / --list-scripts / --get-script / --dump-config /
---backup-config / --restore-config / --check-weekly 等出口，
+--backup-config / --restore-config / --check-weekly / --run-daily 等出口，
 供打包产物集成测试与排障使用。windowed exe 的 stdout/stderr 被丢弃，
 因此 --help/--version 等结果会**同时写文件**（见 _emit_cli / _emit_json）。
 
@@ -101,6 +101,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="HH:MM",
         help="等待到目标时刻再生成并运行脚本链（独立进程，关闭控制台即取消；"
         "配合 --enable 指定脚本、--shutdown 指定关机延迟）。传 'now' 表示即时运行（不等待）",
+    )
+    action.add_argument(
+        "--run-daily",
+        action="store_true",
+        help="每日计划入口：按当前保存的脚本勾选和运行选项立即运行，不进入 GUI",
     )
     parser.add_argument(
         "--enable",
@@ -533,4 +538,7 @@ def run_cli(args) -> int | None:
         return _run_run_chain(args)
     if args.schedule_run is not None:
         return _run_scheduled(args)
+    if args.run_daily:
+        AppService().run_daily_plan()
+        return 0
     return None

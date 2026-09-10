@@ -37,7 +37,8 @@
 ## 弹窗 dialogs.py
 
 - SingleScriptConfigDialog：单脚本配置弹窗，保存后经 pending_changes 返回，写盘委托 AppService.update_script（内部转 src.utils.utils_config.update_script）。
-- ConfigDialog：右上角图标入口，包含自动启动开关、倒计时和备份/恢复。关闭（含 Esc）或选择操作时，由 BackupController 经 AppService 保存启动设置；下次打开 GUI 生效。新增操作时补充 `_ACTIONS` 文案和控制器分发。
+- ConfigDialog：右上角图标入口，包含每日计划、打开后自动启动、运行选项和备份/恢复。关闭（含 Esc）或选择操作时，由 BackupController 经 AppService 保存设置；每日计划启用时不再触发打开窗口的自动启动。新增操作时补充 `_ACTIONS` 文案和控制器分发。
+- RunConfirmDialog：手动启动前确认，或在「运行选项」中仅保存配置。每日时间独立管理，手动「启动全部」始终立即运行。
 - 表单、启动/关机倒计时及消息框共用半透明背景（与 QML Theme.panel 一致），文字和控件保持清晰；系统文件选择框沿用系统外观。
 
 ## 写盘路径
@@ -50,13 +51,15 @@ config.yml 写入权统一归 src.utils.utils_config（经 AppService 委托）�
 | 增删脚本 | _add_script / _on_delete_script | AppService.add_script / remove_script（src.utils.utils_config） |
 | 重排 | 拖拽 | AppService.save_config（src.utils.utils_config） |
 | 自动启动 | 配置弹窗关闭 | AppService.apply_startup_options → schedule.yml 的 startup 块 |
+| 每日计划 | 配置弹窗关闭 | AppService.apply_daily_plan → Windows 任务计划 + schedule.yml 的 daily_run 块 |
+| 脚本勾选 | 控制模式 / 全选 / 清空 | AppService.set_script_enabled → config.yml 脚本条目的 enabled |
 | 运行 | 启动全部 | AppService 链生成 → chain_gen（src.service.chain_service.generate_chain） |
 
 ## UI 状态持久化
 
 日常副本/序列的真源是子脚本 config（编辑期实时落盘，无 UI 状态文件）；set_dungeon 为
 no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 dungeon_list.yml
-声明的唯一选项。enabled 是纯内存态，重启恢复全开。
+声明的唯一选项。脚本 enabled 保存到 config.yml，重启按脚本身份回显；缺省启用。
 
 ## 添加功能配方
 

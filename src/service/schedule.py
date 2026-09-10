@@ -1,8 +1,8 @@
 """调度运行编排 + schedule.yml 读写：RunOptions schema 与 ScheduledRun 生命周期。
 
-schedule.yml（调度运行参数：shutdown / timed_run / mute / unmute / rerun /
+schedule.yml（调度运行参数：shutdown / mute / unmute / rerun /
 notify / close_running）的读写归本模块：``load_schedule`` / ``save_schedule``，
-其 notify 块经 ``resolve_mail_config`` 解析为 SMTP 配置。七个选项块的
+其 notify 块经 ``resolve_mail_config`` 解析为 SMTP 配置。六个选项块的
 单一 schema 是 :class:`RunOptions`——确认窗回显（``load_run_options``）与
 落盘（``apply_run_options``）共用同一类型，GUI 不感知 yml 键名。
 ``StartupOptions`` 单独管理 startup 块（打开 GUI 后自动启动的开关与秒数），
@@ -53,7 +53,7 @@ def is_valid_target_time(value: str) -> bool:
 def load_schedule() -> dict:
     """读取 schedule.yml（缺失时从 schedule.example.yml 生成），返回调度运行参数。
 
-    调度参数（shutdown / timed_run / mute / unmute / rerun / notify）独立于 config.yml
+    调度参数（shutdown / mute / unmute / rerun / notify）独立于 config.yml
     存放，避免与脚本链声明（script_list）耦合。
     """
     return load_yaml(get_schedule_yml_path_under_root())
@@ -104,7 +104,7 @@ def load_startup_options(schedule: dict | None = None) -> StartupOptions:
 
 
 def apply_startup_options(options: StartupOptions) -> None:
-    """仅更新 schedule.yml 的 startup 块，保留其他运行选项。"""
+    """保存启动设置，保留其他选项。"""
     assert isinstance(options, StartupOptions)
     data = load_schedule()
     data["startup"] = {
@@ -119,19 +119,16 @@ class RunOptions:
     """调度运行选项的单一 schema：确认窗回显与落盘共用同一类型。
 
     字段语义：
-    - 七个开关对应 schedule.yml 七块（shutdown / timed_run / mute / unmute /
+    - 六个开关对应 schedule.yml 六块（shutdown / mute / unmute /
       close_running / rerun / notify）；块缺失或 ``enabled`` 非 bool 按关闭处理，
       唯 close_running 缺失默认启用（与历史「运行前始终清场」一致）。
     - ``shutdown_delay``：关机延迟秒数；块缺失/非法时为 0。
-    - ``timed_enabled`` 仅在 ``timed_target`` 合法（HH:MM）时为 True。
     - ``email`` / ``smtp_host`` / ``smtp_port`` 空串 = 不覆盖既有值；
       ``auth_code`` 空串 = 不动系统凭据。
     """
 
     shutdown_enabled: bool = False
     shutdown_delay: int = 0
-    timed_enabled: bool = False
-    timed_target: str = ""
     mute_enabled: bool = False
     unmute_enabled: bool = False
     close_running_enabled: bool = True
@@ -167,13 +164,6 @@ def load_run_options(schedule: dict | None = None) -> RunOptions:
         and shutdown["delay_seconds"] > 0
     ):
         shutdown_delay = shutdown["delay_seconds"]
-    timed = data.get("timed_run")
-    timed_enabled = isinstance(timed, dict) and timed.get("enabled", False) is True
-    timed_target = timed.get("target_time", "") if isinstance(timed, dict) else ""
-    if not is_valid_target_time(timed_target):
-        # enabled 但时刻非法视为「未配置定时」（对齐原 parse_timed_run 的降级）
-        timed_enabled = False
-        timed_target = ""
     notify = data.get("notify")
     email = smtp_host = smtp_port = ""
     if isinstance(notify, dict):
@@ -185,8 +175,6 @@ def load_run_options(schedule: dict | None = None) -> RunOptions:
         shutdown_enabled=isinstance(shutdown, dict)
         and shutdown.get("after_run", False) is True,
         shutdown_delay=shutdown_delay,
-        timed_enabled=timed_enabled,
-        timed_target=timed_target,
         mute_enabled=_block_enabled(data, "mute", False),
         unmute_enabled=_block_enabled(data, "unmute", False),
         close_running_enabled=_block_enabled(data, "close_running", True),
@@ -208,13 +196,6 @@ def apply_run_options(options: RunOptions) -> None:
     schedule_data["shutdown"] = {
         "after_run": bool(options.shutdown_enabled),
         "delay_seconds": int(options.shutdown_delay),
-    }
-    target_time = options.timed_target
-    if options.timed_enabled and not is_valid_target_time(target_time):
-        target_time = "04:10"  # 启用但非法：回退默认时刻（行为单一稳定）
-    schedule_data["timed_run"] = {
-        "enabled": bool(options.timed_enabled),
-        "target_time": target_time if options.timed_enabled else "",
     }
     schedule_data["mute"] = {"enabled": bool(options.mute_enabled)}
     schedule_data["unmute"] = {"enabled": bool(options.unmute_enabled)}

@@ -212,6 +212,8 @@ class QmlBridge(QObject):
         if not any(self.game_list.enabled):
             return
         try:
+            if self.app_service.load_daily_plan().enabled:
+                return
             options = self.app_service.load_startup_options()
         except (OSError, YAMLError) as exc:
             logger.error("读取启动设置失败：%s: %s", type(exc).__name__, exc)

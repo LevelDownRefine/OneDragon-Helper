@@ -48,7 +48,7 @@ class TestStartupOptions(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory, "schedule.yml"))
             original = {
-                "timed_run": {"enabled": True, "target_time": "04:10"},
+                "daily_run": {"enabled": False, "target_time": "04:10"},
                 "notify": {"enabled": False, "email": "local@example.com"},
                 "future_option": {"keep": "value"},
             }

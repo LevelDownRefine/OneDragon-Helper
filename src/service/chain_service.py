@@ -22,6 +22,7 @@ import sys
 
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
+from src.service.run_lock import run_lock
 from src.service.schedule import ScheduledRun
 from src.utils import utils_config
 from src.utils.utils_runner import (
@@ -178,16 +179,23 @@ def schedule_run(
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
         close_running: 是否运行前关闭残留进程（由 ScheduledRun 的 pre_run 执行）。
     """
-    ScheduledRun(
-        sys.modules[__name__],
-        enabled_keys,
-        target_time,
-        chain_name=chain_name,
-        mute=mute,
-        unmute=unmute,
-        shutdown_delay=shutdown_delay,
-        close_running=close_running,
-    ).run()
+    if not enabled_keys:
+        logger.info("[chain] 没有启用脚本，跳过本次运行")
+        return
+    with run_lock() as acquired:
+        if not acquired:
+            logger.info("[chain] 已有脚本链正在运行，跳过重复启动")
+            return
+        ScheduledRun(
+            sys.modules[__name__],
+            enabled_keys,
+            target_time,
+            chain_name=chain_name,
+            mute=mute,
+            unmute=unmute,
+            shutdown_delay=shutdown_delay,
+            close_running=close_running,
+        ).run()
 
 
 def _run_chain_once_impl(

@@ -20,6 +20,7 @@ import logging
 
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
+import src.service.daily_plan as daily_plan
 from src.config.dungeon_config import get_dungeon_map, get_weekly_map
 from src.config.set_config import set_config, set_weekly_dungeon
 from src.service.schedule import (
@@ -40,6 +41,7 @@ from src.utils.utils_config import (
     load_config,
     remove_script,
     save_config,
+    set_script_enabled,
     update_script,
 )
 from src.utils.utils_runner import (
@@ -131,6 +133,9 @@ class AppService:
     def save_config(self, data: dict) -> None:
         return save_config(data)
 
+    def set_script_enabled(self, changes: dict[str, bool]) -> None:
+        return set_script_enabled(changes)
+
     def add_script(self, script_data: dict) -> None:
         return add_script(script_data)
 
@@ -177,6 +182,15 @@ class AppService:
     def apply_startup_options(self, options: StartupOptions) -> None:
         """保存自动启动开关与倒计时。"""
         return apply_startup_options(options)
+
+    def load_daily_plan(self) -> daily_plan.DailyPlanOptions:
+        return daily_plan.load_daily_plan()
+
+    def apply_daily_plan(self, options: daily_plan.DailyPlanOptions) -> None:
+        return daily_plan.apply_daily_plan(options)
+
+    def run_daily_plan(self) -> None:
+        return daily_plan.run_daily_plan()
 
     def collect_invalid_scripts(self, script_list: list) -> list:
         return collect_invalid_script_messages(script_list)

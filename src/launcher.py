@@ -126,7 +126,7 @@ def _launch_qml():
         sys.exit(1)
     # Windows 整窗使用原生文件拖放，兼容普通资源管理器 → 管理员窗口。
     file_drop = install_file_drop(app, engine.rootObjects()[0], bridge.dropScripts)
-    # GUI 打开即弹 60s 倒计时确认：取消则无事发生，归零/「立即启动」按上次配置启动全部。
+    # 按启动设置决定是否倒计时；每日计划启用时只打开 GUI。
     # 须在进入事件循环前同步弹模态窗（QDialog.exec 自带局部事件循环）。
     bridge.maybe_auto_launch()
     logger.info("[qml] entering event loop")

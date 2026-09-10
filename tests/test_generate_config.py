@@ -28,7 +28,8 @@ class ConfigWorkflowTestBase(unittest.TestCase):
         )
         self._write(
             "schedule.example.yml",
-            "rerun:\n  enabled: false\nnotify:\n  enabled: false\ntimed_run:\n  enabled: false\n  target_time: ''\n",
+            "rerun:\n  enabled: false\nnotify:\n  enabled: false\n"
+            "daily_run:\n  enabled: false\n  target_time: '04:10'\n",
         )
         self._write("weekly.example.yml", "weekly_start: {}\nweekly_timeouts: {}\n")
 
@@ -75,6 +76,10 @@ class TestConfigWorkflowGenerate(ConfigWorkflowTestBase):
         self.assertTrue(os.path.exists(self._path("config.yml")))
         self.assertTrue(os.path.exists(self._path("schedule.yml")))
         self.assertTrue(os.path.exists(self._path("weekly.yml")))
+        self.assertEqual(
+            load_yaml(self._path("schedule.yml"))["daily_run"],
+            {"enabled": False, "target_time": "04:10"},
+        )
         self.assertEqual(
             load_yaml(self._path("config.yml"))["script_list"][0]["display_name"],
             "示例",

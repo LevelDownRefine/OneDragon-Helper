@@ -1,7 +1,7 @@
 """「启动全部」前的运行确认弹窗（RunConfirmDialog）。
 
 按生命周期三段组织（单列纵向，与原「运行前动作」一张 group 含多个 checkbox 行的
-风格一致）：运行前配置（定时计划 / 关闭残留进程 / 静音）·运行中配置（重跑）·
+风格一致）：运行前配置（关闭残留进程 / 静音）·运行中配置（重跑）·
 运行后配置（邮件通知 / 开启声音 / 自动关机）。样式与控件构造复用 ``src.gui.dialogs`` 的
 基类与主题常量（单一来源，不在本文件重复定义）。
 
@@ -11,7 +11,6 @@
   ``run_options`` 返回用户改后的 ``RunOptions``；取消（reject）不返回、不落盘。
 """
 
-from PySide6.QtCore import QTime
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
     QGroupBox,
@@ -19,7 +18,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QSpinBox,
-    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -34,7 +32,7 @@ from src.gui.dialogs import (
     make_font,
     spin_box_qss,
 )
-from src.service.schedule import RunOptions, is_valid_target_time
+from src.service.schedule import RunOptions
 
 # SMTP 回显默认（schedule 缺省时的预填值；与 schedule.example.yml 默认一致）。
 # 发送时的缺省主机/端口由 send_mail 自身兜底，此处仅影响弹窗展示。
@@ -50,9 +48,17 @@ class RunConfirmDialog(FormDialogBase):
     （写 schedule.yml）。取消（reject）不返回、不落盘。
     """
 
-    def __init__(self, enabled_count: int, options: RunOptions, parent=None):
+    def __init__(
+        self,
+        enabled_count: int,
+        options: RunOptions,
+        parent=None,
+        *,
+        settings_only: bool = False,
+    ):
         super().__init__(parent)
-        self.setWindowTitle("确认运行")
+        self.settings_only = settings_only
+        self.setWindowTitle("运行选项" if settings_only else "确认运行")
 
         self.enabled_count = enabled_count
         self._run_options = None  # accept 后供调用方读取勾选项
@@ -64,22 +70,24 @@ class RunConfirmDialog(FormDialogBase):
         """构造布局：确认文案 + 三段生命周期配置（运行前/中/后）+ 底部按钮行。
 
         单列纵向：每段一张 QGroupBox，框内多行 checkbox（与原「运行前动作」单
-        checkbox 行的视觉一致）；带额外控件的行（定时/关机）作为 row widget 嵌入。
+        checkbox 行的视觉一致）；带额外控件的行（关机）作为 row widget 嵌入。
         """
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
         # 顶部确认文案
-        hint = QLabel(f"即将运行 {self.enabled_count} 个脚本，是否继续？")
+        hint = QLabel(
+            "保存后用于每日计划、自动启动和手动运行"
+            if self.settings_only
+            else f"即将运行 {self.enabled_count} 个脚本，是否继续？"
+        )
         hint.setFont(make_font(size=11, bold=True))
         hint.setStyleSheet(f"color: {TEXT}; background: transparent;")
         layout.addWidget(hint)
 
         layout.addWidget(
             self._make_running_pre_group(
-                options.timed_enabled,
-                options.timed_target,
                 options.close_running_enabled,
                 options.mute_enabled,
             )
@@ -99,7 +107,11 @@ class RunConfirmDialog(FormDialogBase):
 
         layout.addStretch()
         layout.addLayout(
-            self._make_footer("确认运行", self._on_accept, left_widgets=())
+            self._make_footer(
+                "保存" if self.settings_only else "确认运行",
+                self._on_accept,
+                left_widgets=(),
+            )
         )
 
     def _make_group(self, title: str) -> QGroupBox:
@@ -115,18 +127,14 @@ class RunConfirmDialog(FormDialogBase):
 
     def _make_running_pre_group(
         self,
-        timed_enabled: bool,
-        timed_target: str,
         close_running_enabled: bool,
         mute_enabled: bool,
     ) -> QGroupBox:
-        """运行前配置：定时计划（启用定时 + 目标时刻）· 关闭残留进程 · 静音。"""
+        """运行前配置：关闭残留进程 · 静音。"""
         box = self._make_group("运行前配置")
         col = QVBoxLayout(box)
         col.setContentsMargins(14, 20, 14, 14)
         col.setSpacing(10)
-
-        col.addWidget(self._make_timed_row(timed_enabled, timed_target))
 
         self.close_running_cb = self._make_checkbox("运行前关闭残留进程")
         self.close_running_cb.setChecked(close_running_enabled)
@@ -169,7 +177,7 @@ class RunConfirmDialog(FormDialogBase):
         self.notify_cb.setChecked(notify_enabled)
         col.addWidget(self.notify_cb)
         # 邮件配置：发件人邮箱（落 schedule.yml）+ 授权码（落系统凭据管理器，不落盘明文）
-        # + SMTP 主机/端口（落 schedule.yml，默认 QQ）。仅在勾选通知时可用（与定时/关机联动一致）。
+        # + SMTP 主机/端口（落 schedule.yml，默认 QQ）。仅在勾选通知时可用（与关机联动一致）。
         self.email_edit = self._make_line_edit(
             email, placeholder="发件人邮箱（如 123456@qq.com）"
         )
@@ -222,7 +230,7 @@ class RunConfirmDialog(FormDialogBase):
         return edit
 
     def _make_labeled_row(self, label_text: str, widget: QWidget) -> QWidget:
-        """带标签的输入行（标签固定宽 + 输入框拉伸），与定时/关机行视觉一致。"""
+        """带标签的输入行（标签固定宽 + 输入框拉伸），与关机行视觉一致。"""
         row = QWidget()
         h = QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
@@ -233,41 +241,6 @@ class RunConfirmDialog(FormDialogBase):
         label.setStyleSheet(f"color: {TEXT}; background: transparent;")
         h.addWidget(label)
         h.addWidget(widget)
-        return row
-
-    def _make_timed_row(self, enabled: bool, target: str) -> QWidget:
-        """运行前配置第一行：启用定时复选框 + 目标时刻时间框（启用联动输入框禁用）。"""
-        row = QWidget()
-        h = QHBoxLayout(row)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(8)
-
-        self.timed_cb = self._make_checkbox("启用定时")
-        self.timed_cb.setChecked(enabled)
-        h.addWidget(self.timed_cb)
-
-        target_label = QLabel("目标时刻")
-        target_label.setFont(make_font(size=11))
-        target_label.setFixedWidth(56)
-        target_label.setStyleSheet(f"color: {TEXT}; background: transparent;")
-        h.addWidget(target_label)
-
-        self.timed_time = QTimeEdit(row)
-        self.timed_time.setFont(make_font(size=11))
-        self.timed_time.setDisplayFormat("HH:mm")
-        self.timed_time.setButtonSymbols(QAbstractSpinBox.NoButtons)
-        self.timed_time.setFixedWidth(90)
-        self.timed_time.setFixedHeight(INPUT_FIXED_H)
-        self.timed_time.setStyleSheet(spin_box_qss())
-        if is_valid_target_time(target):
-            hour, minute = (int(x) for x in target.split(":"))
-            self.timed_time.setTime(QTime(hour, minute))
-        else:
-            self.timed_time.setTime(QTime(4, 10))
-        self.timed_time.setEnabled(enabled)
-        self.timed_cb.toggled.connect(self.timed_time.setEnabled)
-        h.addWidget(self.timed_time)
-        h.addStretch()
         return row
 
     def _make_shutdown_row(self, enabled: bool, delay: int) -> QWidget:
@@ -310,12 +283,9 @@ class RunConfirmDialog(FormDialogBase):
 
     def _on_accept(self) -> None:
         """确认运行：收集勾选项并 accept。"""
-        t = self.timed_time.time()
         self._run_options = RunOptions(
             shutdown_enabled=self.shutdown_cb.isChecked(),
             shutdown_delay=self.shutdown_delay_spin.value(),
-            timed_enabled=self.timed_cb.isChecked(),
-            timed_target=f"{t.hour():02d}:{t.minute():02d}",
             mute_enabled=self.mute_cb.isChecked(),
             unmute_enabled=self.unmute_cb.isChecked(),
             close_running_enabled=self.close_running_cb.isChecked(),

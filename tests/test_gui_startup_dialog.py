@@ -15,6 +15,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QDialog, QPushButton
 
 from src.gui.startup_dialog import StartupConfirmDialog, confirm_startup
+from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import StartupOptions
 
 # 模块级 QApplication 单例：widget 需要 GUI 应用，进程退出时随解释器销毁。
@@ -104,6 +105,16 @@ class TestStartupConfirmDialog(unittest.TestCase):
 
 
 class TestAutoLaunchPreference(unittest.TestCase):
+    @mock.patch("src.gui.startup_dialog.confirm_startup")
+    def test_daily_plan_does_not_start_an_extra_run_when_gui_opens(self, confirm):
+        from src.gui.main_window import QmlBridge
+
+        bridge = self._bridge(StartupOptions())
+        bridge.app_service.load_daily_plan.return_value = DailyPlanOptions(True)
+        QmlBridge.maybe_auto_launch(bridge)
+        confirm.assert_not_called()
+        bridge.launch.launchAll.assert_not_called()
+
     def _bridge(self, options):
         bridge = SimpleNamespace(
             game_list=SimpleNamespace(enabled=[True]),
@@ -112,6 +123,7 @@ class TestAutoLaunchPreference(unittest.TestCase):
             toastRequested=mock.Mock(),
         )
         bridge.app_service.load_startup_options.return_value = options
+        bridge.app_service.load_daily_plan.return_value = DailyPlanOptions()
         return bridge
 
     @mock.patch("src.gui.startup_dialog.confirm_startup")

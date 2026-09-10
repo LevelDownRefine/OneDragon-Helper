@@ -14,7 +14,6 @@ from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
 from src.utils.utils_runner import build_script_command, spawn_schedule_run
 from src.utils.utils_sub_config import get_script_name, resolve_script_path
-from src.utils.utils_weekly import next_target_datetime
 
 
 class LaunchController(QObject):
@@ -31,11 +30,9 @@ class LaunchController(QObject):
     def launchAll(self, confirm: bool = True):
         """启动全部：先校验，再经 spawn_schedule_run 运行。
 
-        即时与定时两条路径统一经 ``spawn_schedule_run`` 起独立控制台进程，由
-        ``chain_service.schedule_run`` 处理逻辑（生成→运行→重跑→邮件/关机）；二者差异
-        仅在于是否等待：定时等待到目标时刻，即时（target=now）不等待。关闭控制台即取消、
-        GUI 退出不影响（进程独立存活）。
-        本方法仅负责 UI 流程：计算启用集合、弹确认窗、解析定时/关机/静音配置。
+        经 ``spawn_schedule_run`` 以 now 起独立控制台进程，
+        ``chain_service.schedule_run`` 处理生成→运行→重跑→邮件/关机。
+        每日触发由系统计划独立负责，手动启动不等待。GUI 退出不影响运行。
 
         Args:
             confirm: 是否弹运行前确认窗（含不合法告警与调度配置回显）。GUI 打开后的
@@ -54,15 +51,10 @@ class LaunchController(QObject):
         if confirm and not self._confirm_run(enabled_script_names):
             return
         options = self._app_service.load_run_options()
-        run_target = options.timed_target if options.timed_enabled else "now"
-        if options.timed_enabled:
-            target_dt = next_target_datetime(run_target)
-            msg = f"定时运行：将于 {target_dt:%Y-%m-%d %H:%M} 重新生成脚本链并运行"
-        else:
-            msg = f"启动全部：已在新控制台窗口生成并运行链 ({len(enabled_script_names)} 个脚本)"
+        msg = f"启动全部：已在新控制台窗口生成并运行链 ({len(enabled_script_names)} 个脚本)"
         proc = spawn_schedule_run(
             enabled_script_names,
-            run_target,
+            "now",
             mute=options.mute_enabled,
             unmute=options.unmute_enabled,
             shutdown_delay=(
@@ -104,7 +96,7 @@ class LaunchController(QObject):
         self._toast(f"已启动 {game['display_name']}")
 
     def _confirm_run(self, enabled_keys: set) -> bool:
-        """运行前校验并确认（含自动关机 / 定时计划配置）。Returns: True 继续，False 取消。"""
+        """运行前校验并确认。Returns: True 继续，False 取消。"""
         config_data = self._app_service.load_config()
         enabled_scripts = [
             s for s in config_data["script_list"] if get_script_name(s) in enabled_keys

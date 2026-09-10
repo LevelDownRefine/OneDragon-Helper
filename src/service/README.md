@@ -21,6 +21,8 @@
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
 | schedule.py | schedule.yml 读写（StartupOptions 自动启动开关/秒数、RunOptions 运行选项）+ ScheduledRun 调度运行编排 |
+| daily_plan.py | 每日计划读写与 Windows 原生任务注册；系统仅保存触发时间和 --run-daily 入口 |
+| run_lock.py | 跨进程运行锁，手动与每日脚本链互斥，包含重跑及收尾；退出后系统释放 |
 | backup_service.py | 配置备份与恢复：普通 ZIP 收集与恢复；按当前脚本目录覆盖，保留游戏路径，未配置脚本跳过 |
 | run_actions.py | pre_run / post_run 各 step 的具体动作 |
 
@@ -51,3 +53,11 @@ MainWindow  GUI  ┘                        ├─▶ dungeon_config 模块函�
 
 `utils_shutdown.py` 不得模块级依赖 GUI 层：否则 `schedule → utils_shutdown →
 gui.dialogs → app_service → chain_service → schedule` 成环，确认窗实现于 `src/gui/shutdown_dialog.py`，`utils_shutdown` 仅延迟 import 它。
+
+## 每日运行
+
+在配置弹窗启用每日计划时注册当前用户的 Windows 交互任务（需管理员权限），仅记录程序入口和每日时间。计划默认关闭，默认时间为 04:10；旧定时配置不迁移，由用户重新设置。GUI 关闭仍会按时触发，电脑需保持开机并登录；不唤醒、不补跑错过的时间。
+
+`--run-daily` 每次读取 daily_run、当前脚本 enabled 和最新 RunOptions，以 now 运行当天链；没有勾选或计划已关闭则无动作。脚本/副本/超时/运行选项修改无需更新系统任务，修改时间或开关才更新任务。旧 CLI `--schedule-run HH:MM` 保留一次性等待用途。
+
+系统任务按安装目录和用户命名。请保持安装目录和可执行文件路径稳定；移动安装前先关闭旧计划，再在新位置启用。任务更新成功才写配置，写入失败时恢复原任务。

@@ -10,6 +10,7 @@ from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication, QDialog, QLabel, QPushButton  # noqa: E402
 
 from src.gui.config_dialog import ConfigDialog  # noqa: E402
+from src.service.daily_plan import DailyPlanOptions  # noqa: E402
 from src.service.schedule import StartupOptions  # noqa: E402
 
 _APP = QApplication.instance() or QApplication([])
@@ -26,7 +27,7 @@ class TestConfigDialog(unittest.TestCase):
         self.dialog.deleteLater()
 
     def test_click_action_label_accepts_and_returns_selection(self):
-        for action in ("backup", "restore"):
+        for action in ("settings", "backup", "restore"):
             with self.subTest(action=action):
                 self.dialog.show()
                 button = self.dialog.findChild(QPushButton, f"{action}Action")
@@ -75,6 +76,19 @@ class TestConfigDialog(unittest.TestCase):
         QTest.keyClick(edit, Qt.Key_Escape)
         self.assertFalse(self.dialog.isVisible())
         self.assertEqual(self.dialog.startup_options, StartupOptions(True, 125))
+
+    def test_daily_plan_echoes_time_and_suppresses_startup_controls(self):
+        dialog = ConfigDialog(daily_plan=DailyPlanOptions(True, "08:30"))
+        self.addCleanup(dialog.close)
+        self.assertEqual(dialog.daily_plan, DailyPlanOptions(True, "08:30"))
+        self.assertTrue(dialog.daily_time.isEnabled())
+        self.assertFalse(dialog.startup_cb.isEnabled())
+        self.assertFalse(dialog.startup_delay.isEnabled())
+        dialog.daily_cb.click()
+        self.assertEqual(dialog.daily_plan, DailyPlanOptions(False, "08:30"))
+        self.assertFalse(dialog.daily_time.isEnabled())
+        self.assertTrue(dialog.startup_cb.isEnabled())
+        self.assertTrue(dialog.startup_delay.isEnabled())
 
 
 if __name__ == "__main__":

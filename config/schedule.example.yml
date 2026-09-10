@@ -8,7 +8,8 @@ startup:
 shutdown:
   after_run: true
   delay_seconds: 45
-timed_run:
+# 每日计划在配置弹窗启用时注册到 Windows 任务计划程序。
+daily_run:
   enabled: false
   target_time: "04:10"
 mute:

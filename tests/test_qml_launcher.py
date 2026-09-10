@@ -72,6 +72,7 @@ def _make_bridge():
     b.app_service.load_config = MagicMock(return_value={"script_list": list(_SCRIPTS)})
     # 隔离写盘：避免测试污染真实 config.yml
     b.app_service.save_config = MagicMock()
+    b.app_service.set_script_enabled = MagicMock()
     return b
 
 

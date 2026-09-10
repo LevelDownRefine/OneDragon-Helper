@@ -71,7 +71,7 @@ except subprocess.TimeoutExpired as e:
 
 ## 9. GUI 持久化边界
 
-无 UI 状态文件：日常副本/序列的真源是子脚本 config（编辑期实时落盘）；`set_dungeon` 为 no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 `dungeon_list.yml` 声明项。`enabled` 纯内存态，重启恢复全开，不持久化。
+无 UI 状态文件：日常副本/序列的真源是子脚本 config（编辑期实时落盘）；`set_dungeon` 为 no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 `dungeon_list.yml` 声明项。脚本勾选 `enabled` 经 service 保存到 config.yml 的脚本条目，重启及每日计划共用，旧条目缺省启用。
 
 ## 10. 不随意修改 `.bak` / 备份文件
 

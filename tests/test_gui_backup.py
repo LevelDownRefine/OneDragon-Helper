@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from PySide6.QtWidgets import QDialog
 
 from src.gui.controllers.backup import BackupController
+from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import StartupOptions
 
 
@@ -15,11 +16,53 @@ class TestOpenConfig(unittest.TestCase):
     def setUp(self):
         self.service = MagicMock()
         self.service.load_startup_options.return_value = StartupOptions()
+        self.service.load_daily_plan.return_value = DailyPlanOptions()
         self.toast = MagicMock()
         self.ctrl = BackupController(app_service=self.service, toast=self.toast)
 
     @patch("src.gui.controllers.backup.ConfigDialog")
+    def test_changed_daily_plan_is_saved_once(self, dialog_class):
+        dialog = dialog_class.return_value
+        dialog.exec.return_value = QDialog.Rejected
+        dialog.startup_options = StartupOptions()
+        dialog.daily_plan = DailyPlanOptions(True, "08:30")
+        self.ctrl.openConfig()
+        self.service.apply_daily_plan.assert_called_once_with(
+            DailyPlanOptions(True, "08:30")
+        )
+        self.assertIn("每天 08:30", self.toast.call_args.args[0])
+
+    @patch("src.gui.controllers.backup.ConfigDialog")
+    def test_unchanged_daily_plan_is_not_registered_again(self, dialog_class):
+        dialog = dialog_class.return_value
+        dialog.exec.return_value = QDialog.Rejected
+        dialog.startup_options = StartupOptions()
+        dialog.daily_plan = DailyPlanOptions()
+        self.ctrl.openConfig()
+        self.service.apply_daily_plan.assert_not_called()
+
+    @patch("src.gui.controllers.backup.ConfigDialog")
+    def test_failed_registration_is_reported_without_success(self, dialog_class):
+        dialog = dialog_class.return_value
+        dialog.exec.return_value = QDialog.Rejected
+        dialog.startup_options = StartupOptions()
+        dialog.daily_plan = DailyPlanOptions(True)
+        self.service.apply_daily_plan.side_effect = OSError("denied")
+        with self.assertLogs("src.gui.controllers.backup", level="ERROR"):
+            self.ctrl.openConfig()
+        self.toast.assert_called_once_with("保存每日计划失败：denied")
+
+    @patch("src.gui.controllers.backup.RunConfirmDialog")
+    def test_run_settings_can_be_saved_without_launch(self, dialog_class):
+        dialog = dialog_class.return_value
+        dialog.exec.return_value = QDialog.Accepted
+        self.ctrl.configureRunOptions()
+        self.service.apply_run_options.assert_called_once_with(dialog.run_options)
+        self.service.schedule_run.assert_not_called()
+
+    @patch("src.gui.controllers.backup.ConfigDialog")
     def test_selection_dispatches_after_dialog_closes(self, dialog_class):
+        dialog_class.return_value.daily_plan = DailyPlanOptions()
         ctrl = self.ctrl
         dialog = dialog_class.return_value
         dialog.startup_options = StartupOptions()
@@ -52,6 +95,7 @@ class TestOpenConfig(unittest.TestCase):
 
     @patch("src.gui.controllers.backup.ConfigDialog")
     def test_cancel_does_not_dispatch(self, dialog_class):
+        dialog_class.return_value.daily_plan = DailyPlanOptions()
         ctrl = self.ctrl
         dialog_class.return_value.exec.return_value = QDialog.Rejected
         dialog_class.return_value.startup_options = StartupOptions()
@@ -65,11 +109,14 @@ class TestOpenConfig(unittest.TestCase):
 
     @patch("src.gui.controllers.backup.ConfigDialog")
     def test_closing_saves_preferences_through_service(self, dialog_class):
+        dialog_class.return_value.daily_plan = DailyPlanOptions()
         dialog = dialog_class.return_value
         dialog.exec.return_value = QDialog.Rejected
         dialog.startup_options = StartupOptions(False, 125)
         self.ctrl.openConfig()
-        dialog_class.assert_called_once_with(startup_options=StartupOptions())
+        dialog_class.assert_called_once_with(
+            startup_options=StartupOptions(), daily_plan=DailyPlanOptions()
+        )
         self.service.apply_startup_options.assert_called_once_with(
             StartupOptions(False, 125)
         )
@@ -77,6 +124,7 @@ class TestOpenConfig(unittest.TestCase):
 
     @patch("src.gui.controllers.backup.ConfigDialog")
     def test_action_saves_preferences_before_dispatch(self, dialog_class):
+        dialog_class.return_value.daily_plan = DailyPlanOptions()
         dialog = dialog_class.return_value
         dialog.exec.return_value = QDialog.Accepted
         dialog.selected_action = "backup"
@@ -91,6 +139,7 @@ class TestOpenConfig(unittest.TestCase):
 
     @patch("src.gui.controllers.backup.ConfigDialog")
     def test_save_failure_is_reported(self, dialog_class):
+        dialog_class.return_value.daily_plan = DailyPlanOptions()
         dialog = dialog_class.return_value
         dialog.exec.return_value = QDialog.Rejected
         dialog.startup_options = StartupOptions(False, 30)
@@ -101,6 +150,7 @@ class TestOpenConfig(unittest.TestCase):
 
     @patch("src.gui.controllers.backup.ConfigDialog")
     def test_read_failure_is_reported(self, dialog_class):
+        dialog_class.return_value.daily_plan = DailyPlanOptions()
         self.service.load_startup_options.side_effect = OSError("locked")
         with self.assertLogs("src.gui.controllers.backup", level="ERROR"):
             self.ctrl.openConfig()

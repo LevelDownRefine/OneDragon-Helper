@@ -12,7 +12,7 @@ from dataclasses import asdict, replace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton, QTimeEdit
 
 from src.gui.dialogs import BG_INPUT, TEXT
 from src.gui.run_confirm_dialog import RunConfirmDialog
@@ -25,12 +25,24 @@ if QApplication.instance() is None:
 
 def _opts(**overrides) -> RunOptions:
     """构造弹窗初始值：空 schedule 的 load_run_options 默认 + 用例覆盖。"""
-    base = RunOptions(timed_target="04:10")
+    base = RunOptions()
     return replace(base, **overrides) if overrides else base
 
 
 class TestRunConfirmDialog(unittest.TestCase):
     """RunConfirmDialog：回显与勾选项收集。"""
+
+    def test_settings_only_saves_without_a_start_button_or_one_shot_timer(self):
+        dlg = RunConfirmDialog(0, _opts(), settings_only=True)
+        self.addCleanup(dlg.close)
+        self.assertEqual(dlg.windowTitle(), "运行选项")
+        self.assertEqual(dlg.findChildren(QTimeEdit), [])
+        buttons = {button.text(): button for button in dlg.findChildren(QPushButton)}
+        self.assertIn("保存", buttons)
+        self.assertNotIn("确认运行", buttons)
+        dlg.mute_cb.setChecked(True)
+        buttons["保存"].click()
+        self.assertTrue(dlg.run_options.mute_enabled)
 
     def test_echoes_current_shutdown_config(self):
         """打开弹窗时回显当前自动关机配置（复选框/延迟）。"""
@@ -39,27 +51,11 @@ class TestRunConfirmDialog(unittest.TestCase):
         self.assertEqual(dlg.shutdown_delay_spin.value(), 45)
         self.assertTrue(dlg.shutdown_delay_spin.isEnabled())
 
-    def test_echoes_current_timed_config(self):
-        """打开弹窗时回显当前定时计划配置（复选框/目标时刻）。"""
-        dlg = RunConfirmDialog(3, _opts(timed_enabled=True, timed_target="08:30"))
-        self.assertTrue(dlg.timed_cb.isChecked())
-        self.assertEqual(dlg.timed_time.time().hour(), 8)
-        self.assertEqual(dlg.timed_time.time().minute(), 30)
-        self.assertTrue(dlg.timed_time.isEnabled())
-
-    def test_disabled_timed_field_unchecked_by_default_when_empty(self):
-        """定时未启用且目标时刻空：复选框不勾选、时间框禁用。"""
-        dlg = RunConfirmDialog(1, _opts(timed_enabled=False, timed_target=""))
-        self.assertFalse(dlg.timed_cb.isChecked())
-        self.assertFalse(dlg.timed_time.isEnabled())
-
     def test_accept_collects_selections(self):
         """确认运行：收集复选框与控件值写入 run_options（含静音/重跑/邮件通知）。"""
-        dlg = RunConfirmDialog(2, _opts(timed_target="04:10", rerun_enabled=True))
+        dlg = RunConfirmDialog(2, _opts(rerun_enabled=True))
         dlg.shutdown_cb.setChecked(True)
         dlg.shutdown_delay_spin.setValue(120)
-        dlg.timed_cb.setChecked(True)
-        dlg.timed_time.setTime(dlg.timed_time.time().__class__(4, 10))
         dlg.mute_cb.setChecked(True)
         dlg.unmute_cb.setChecked(True)
         dlg.rerun_cb.setChecked(False)
@@ -70,8 +66,6 @@ class TestRunConfirmDialog(unittest.TestCase):
             {
                 "shutdown_enabled": True,
                 "shutdown_delay": 120,
-                "timed_enabled": True,
-                "timed_target": "04:10",
                 "mute_enabled": True,
                 "unmute_enabled": True,
                 "close_running_enabled": True,
