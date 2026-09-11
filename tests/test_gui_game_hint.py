@@ -25,11 +25,10 @@ class TestGameIconHint(unittest.TestCase):
 
             icon_path = str(Path("assets/ds.ico").resolve())
             with (
-                patch.object(AppService, "get_dungeon_map", return_value={}),
+                patch.object(AppService, "get_daily_map", return_value={}),
                 patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
-                patch("src.gui.controllers.task_card.get_dungeon", return_value=None),
-                patch("src.gui.controllers.task_card.get_sequence", return_value=None),
+                patch("src.service.app_service.get_daily_task", return_value=(None, None)),
                 patch("src.gui.controllers.links._get_game_exe_path", return_value=icon_path) as read_path,
                 patch("src.gui.icons._exe_icon", return_value=QIcon(icon_path)),
             ):

@@ -3,7 +3,7 @@
 复刻 ``MainWindow._generate_config`` 的核心，但去掉 QWidget 依赖：
 - 启用脚本集合由调用方以 ``enabled_names`` 传入；
 - 副本/序列选择来自子脚本 config（GUI/CLI 编辑期经 set_config 实时落盘），
-  按 dungeon_list 选项校验。
+  按 task_list.yml 的任务选项校验。
 
 脚本配置合法性校验（对齐 runner invalid_message）见 ``src.utils.utils_runner``。
 自 ``src.gui.chain`` 迁出：不依赖 Qt，收编到 service 层便于无头测试与 GUI/CLI 共用。

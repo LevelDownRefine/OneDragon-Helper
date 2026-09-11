@@ -66,30 +66,28 @@ class TestConfigRelPaths(unittest.TestCase):
             {"BetterGI", "OneDragon-Launcher", "March7th-Launcher", "ok-ef"},
         )
 
-    def test_weekly_task_name_requires_write_weekly(self):
-        """声明 _weekly_task_name 的子类必须落实周常写入：覆写 _write_weekly 或 set_weekly
-        （register 完整性校验）"""
+    def test_weekly_declaration_requires_weekly_task(self):
+        """声明周常的脚本必须提供周常更新方法（register 完整性校验）。"""
         for name, cls in set_config._CONFIGS.items():
-            if cls._weekly_task_name:
+            if cls._weekly_configs:
                 self.assertTrue(
-                    cls._write_weekly is not set_config.ScriptConfig._write_weekly
-                    or cls.set_weekly is not set_config.ScriptConfig.set_weekly,
-                    f"{name} 声明了 _weekly_task_name 但未落实周常写入"
-                    f"（既未实现 _write_weekly 也未覆写 set_weekly）",
+                    cls._update_weekly_task
+                    is not set_config.ScriptConfig._update_weekly_task,
+                    f"{name} 声明了周常但未落实周常写入（未实现 _update_weekly_task）",
                 )
 
     def test_register_rejects_weekly_without_write(self):
-        """register 拒绝：声明 _weekly_task_name 但沿用基类 _write_weekly 的子类"""
+        """register 拒绝：声明周常但沿用基类 _update_weekly_task 的子类"""
         bogus = type(
             "BogusWeekly",
             (set_config.ScriptConfig,),
             {
-                "_script_name": "bogus-weekly",
-                "_config_rel_path": "config.json",
-                "_weekly_task_name": "weekly",
+                "_script_name": "ok-ww",
+                "_config_rel_path": "daily.json",
+                "_backup_paths": ("daily.json",),
             },
         )
-        with self.assertRaises(AssertionError):
+        with self.assertRaisesRegex(AssertionError, "必须实现.*weekly_task"):
             set_config.register(bogus)
 
     def test_rel_paths_contain_extension(self):
@@ -399,14 +397,25 @@ class TestSaveConfig(unittest.TestCase):
 
 
 class TestGenshinSetDungeon(unittest.TestCase):
-    """测试 GenshinConfig.set_dungeon：目录→副本两级组织，DomainName 存副本名"""
+    """测试 GenshinConfig.set_daily_task：目录→副本两级组织，DomainName 存副本名"""
 
     def setUp(self):
         from src.config.set_config import GenshinConfig
 
         self.config = GenshinConfig.__new__(GenshinConfig)
         self.config.display_name = "原神"
-        self.config._task_key = "DomainName"
+        self.config._daily_configs = {
+            "每日任务": {
+                "options": {
+                    "values": [
+                        {
+                            "display_name": "1",
+                            "options": {"key": "DomainName", "values": []},
+                        }
+                    ]
+                }
+            }
+        }
         self.config._enabled = True
         self.config._config_data = {"DomainName": "旧副本", "TaskEnabledList": []}
         self.config._verify_saved = lambda *a: None
@@ -423,18 +432,18 @@ class TestGenshinSetDungeon(unittest.TestCase):
 
     def test_has_sequence_writes_secondary_name(self):
         """有二级（目录 → 副本）时 DomainName 写入二级副本名"""
-        self.config.set_dungeon("1", "霜凝的机枢")
+        self.config.set_daily_task("每日任务", "1", "霜凝的机枢")
         self.assertEqual(self.config._config_data["DomainName"], "霜凝的机枢")
 
     def test_no_sequence_writes_dungeon_name(self):
-        """无二级（兼容旧单层配置）时 DomainName 写入一级名"""
-        self.config.set_dungeon("山风的荆冕")
+        """直接提供原生副本名时写入 DomainName"""
+        self.config.set_daily_task("每日任务", "山风的荆冕")
         self.assertEqual(self.config._config_data["DomainName"], "山风的荆冕")
 
     def test_same_value_no_save(self):
         """DomainName 未变化时不落盘"""
         self.config._config_data["DomainName"] = "霜凝的机枢"
-        self.config.set_dungeon("1", "霜凝的机枢")
+        self.config.set_daily_task("每日任务", "1", "霜凝的机枢")
         self.mock_save.assert_not_called()
 
 

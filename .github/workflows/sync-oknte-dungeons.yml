@@ -48,7 +48,7 @@ jobs:
           commit-message: "chore: sync ok-nte dungeon lists from upstream"
           title: "chore: 同步异环副本（数字 + 追猎目标）"
           body: |
-            检测到异环副本有更新，已从 ok-nte 上游同步到 `config/dungeon_list.yml`：
+            检测到异环副本有更新，已从 ok-nte 上游同步到 `config/task_list.yml`：
 
             - 异象界域（数字）：`AnomalyTask.py` 的 `_ID_RANGE`
             - 追猎目标（boss 名）：`AnomalyHunter.py` 的 `HUNTER_TARGETS`

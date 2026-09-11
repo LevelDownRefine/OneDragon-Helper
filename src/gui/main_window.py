@@ -128,11 +128,8 @@ class QmlBridge(QObject):
     taskAdapted = Property(
         bool, lambda self: self.task_card.task_adapted, notify=taskStateChanged
     )
-    dailySupported = Property(
-        bool, lambda self: self.task_card.daily_supported, notify=taskStateChanged
-    )
-    dailyDungeonText = Property(
-        str, lambda self: self.task_card.daily_dungeon_text, notify=taskStateChanged
+    dailyItems = Property(
+        "QVariantList", lambda self: self.task_card.daily_items, notify=taskStateChanged
     )
     weeklySupported = Property(
         bool, lambda self: self.task_card.weekly_supported, notify=taskStateChanged
@@ -143,11 +140,6 @@ class QmlBridge(QObject):
     weeklyItems = Property(
         "QVariantList",
         lambda self: self.task_card.weekly_items,
-        notify=taskStateChanged,
-    )
-    dungeonOptions = Property(
-        "QVariantList",
-        lambda self: self.task_card.dungeon_options,
         notify=taskStateChanged,
     )
 
@@ -278,17 +270,22 @@ class QmlBridge(QObject):
     def closeWindow(self):
         self.window.closeWindow()
 
-    @Slot(str, "QVariant")
-    def selectDungeon(self, name, seq):
-        self.task_card.selectDungeon(name, seq)
+    @Slot(str, str, "QVariant")
+    def selectDailyTask(self, daily_name, name, seq):
+        self.task_card.selectDailyTask(daily_name, name, seq)
+
+    @Slot(str, bool)
+    def setTaskEnabled(self, task_name, enabled):
+        self.task_card.setTaskEnabled(task_name, enabled)
 
     @Slot(str, str)
-    def selectWeeklyDungeon(self, weekly_name, dungeon_name):
-        self.task_card.selectWeeklyDungeon(weekly_name, dungeon_name)
+    @Slot(str, str, "QVariant")
+    def selectWeeklyTaskOption(self, weekly_name, option_name, sequence=None):
+        self.task_card.selectWeeklyTaskOption(weekly_name, option_name, sequence)
 
     @Slot(str, result="QVariantList")
-    def weeklyDungeonOptions(self, weekly_name):
-        return self.task_card.weekly_dungeon_options(weekly_name)
+    def weeklyTaskOptions(self, weekly_name):
+        return self.task_card.weekly_task_options(weekly_name)
 
     @Slot(str)
     def videoError(self, reason):
@@ -318,7 +315,7 @@ class QmlBridge(QObject):
         必须强制刷新背景与任务卡，否则 UI 停在旧数据直到重新点选。
         """
         self.game_list.reload_games()
-        self.task_card.build_dungeon_cache(self.game_list.games)
+        self.task_card.build_daily_cache()
         self._on_current_changed()
 
     def _on_current_changed(self):

@@ -4,7 +4,7 @@
 - 读后写回，解析结果与原 config 数据等价（reloaded == original）；
 - 注释（含行内注释）保留；
 - 04:00 / 4:00 这类时间保持字符串，绝不变 240.0 浮点污染；
-- 模拟 StarRailConfig.set_weekly 的真实写入（currencywars_enable / echo_of_war_start_day_of_week）
+- 模拟 StarRailConfig.set_weekly_tasks 的真实写入（currencywars_enable / echo_of_war_start_day_of_week）
   后，仍保真、注释不丢。
 
 夹具：tests/fixtures/starrail_config.yaml（不依赖真实游戏目录，可移植）。
@@ -73,9 +73,9 @@ class TestGameConfigRoundTrip(unittest.TestCase):
         self.assertNotIn("240.0", text)  # 关键：六十进制污染绝不可出现
 
     def test_starrail_weekly_write_round_trip(self):
-        """模拟 StarRailConfig.set_weekly 的真实写入后，仍保真且注释不丢。"""
+        """模拟 StarRailConfig.set_weekly_tasks 的真实写入后，仍保真且注释不丢。"""
         cfg = self._load_fixture()
-        # 与 set_config.py 中 StarRailConfig.set_weekly 的落盘一致
+        # 与 set_config.py 中 StarRailConfig.set_weekly_tasks 的落盘一致
         cfg["currencywars_enable"] = True
         cfg["echo_of_war_start_day_of_week"] = 3
 

@@ -30,7 +30,7 @@ class UtilsConfigTestBase(unittest.TestCase):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp_dir.cleanup)
         self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
-        self.weekly_list_path = os.path.join(self.tmp_dir.name, "weekly_list.yml")
+        self.weekly_list_path = os.path.join(self.tmp_dir.name, "task_list.yml")
         self._write_config(
             {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]}
         )
@@ -40,7 +40,7 @@ class UtilsConfigTestBase(unittest.TestCase):
                 return_value=self.config_path,
             ),
             patch(
-                "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
+                "src.config.task_config.get_task_list_yml_path_under_root",
                 return_value=self.weekly_list_path,
             ),
         ]

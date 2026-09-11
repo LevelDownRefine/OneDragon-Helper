@@ -1,7 +1,7 @@
 """明日方舟（MAA / 粥）config 安全性测试。
 
 用一份「脱敏后的真实 gui.new.json」当夹具（tests/fixtures/maa_gui.new.scrubbed.json），
-跑 init_config / set_dungeon / set_weekly，对每次落盘做全量字段 diff，
+跑 init_config / set_daily_task / set_weekly_tasks，对每次落盘做全量字段 diff，
 断言「只动了该动的字段，其余（含注入的金丝雀字段）原封不动」。
 
 设计目的：验证 index 定位（_task_map 来自模板）不会把 IsEnable / 药配置
@@ -24,9 +24,9 @@ FIXTURE = os.path.join(
 # TaskQueue 中 6 个 FightTask 的索引
 FIGHT_IDX = (1, 2, 3, 4, 5, 6)  # 剿灭, 红票, 经验, 龙门币, 活动土, 土
 
-# set_dungeon 只允许改动的字段路径集合
+# set_daily_task 只允许改动的字段路径集合
 ALLOWED_DUNGEON = {f"Configurations.Default.TaskQueue[{i}].IsEnable" for i in FIGHT_IDX}
-# set_weekly 只允许改动的字段路径集合
+# set_weekly_tasks 只允许改动的字段路径集合
 ALLOWED_WEEKLY = {
     f"Configurations.Default.TaskQueue[{i}].UseExpiringMedicine" for i in FIGHT_IDX
 } | {f"Configurations.Default.TaskQueue[{i}].MedicineExpireDays" for i in FIGHT_IDX}
@@ -70,7 +70,9 @@ def inject_canaries(cfg: dict) -> None:
     default["Toolbox"]["PeepTargetFps"] = 999
     for t in default["TaskQueue"]:
         if t.get("$type") == "FightTask":
-            t["UseMedicine"] = True  # 药配置相关但绝不该被 set_dungeon/set_weekly 动
+            t["UseMedicine"] = (
+                True  # 药配置相关但绝不该被 set_daily_task/set_weekly_tasks 动
+            )
             t["CANARY_TASK"] = "X"
 
 
@@ -105,10 +107,10 @@ class TestArknightsConfigSafety(unittest.TestCase):
         diff = diff_paths(self.seed, self.store["config/gui.new.json"])
         self.assertEqual(diff, [], f"实例化意外改动: {diff}")
 
-    # ---- set_dungeon：只允许改 FightTask 的 IsEnable ----
-    def test_set_dungeon_only_touches_is_enable(self):
+    # ---- set_daily_task：只允许改 FightTask 的 IsEnable ----
+    def test_set_daily_task_only_touches_is_enable(self):
         cfg = ArknightsConfig()
-        # 强制差异：先把所有 FightTask IsEnable 拨错，逼 set_dungeon 真正落盘
+        # 强制差异：先把所有 FightTask IsEnable 拨错，逼 set_daily_task 真正落盘
         forced = copy.deepcopy(self.store["config/gui.new.json"])
         for t in forced["Configurations"]["Default"]["TaskQueue"]:
             if t.get("$type") == "FightTask":
@@ -116,7 +118,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.store["config/gui.new.json"] = forced
         pre = copy.deepcopy(forced)
 
-        cfg.set_dungeon("土")
+        cfg.set_daily_task("每日任务", "土")
 
         post = self.store["config/gui.new.json"]
         diff = diff_paths(pre, post)
@@ -129,7 +131,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.assertEqual(
             paths,
             expected,
-            f"set_dungeon 改动与预期不符: 多了{paths - expected} 少了{expected - paths}",
+            f"set_daily_task 改动与预期不符: 多了{paths - expected} 少了{expected - paths}",
         )
         # 正向校验：开启项符合预期（剿灭/土）
         tq = post["Configurations"]["Default"]["TaskQueue"]
@@ -140,12 +142,12 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.assertFalse(by_name["经验"]["IsEnable"])
         self.assertFalse(by_name["龙门币"]["IsEnable"])
 
-    # ---- set_weekly：只允许改 6 个 FightTask 的 UseExpiringMedicine / MedicineExpireDays ----
+    # ---- set_weekly_tasks：只允许改 6 个 FightTask 的 UseExpiringMedicine / MedicineExpireDays ----
     def test_set_weekly_only_touches_medicine_fields(self):
         cfg = ArknightsConfig()
-        cfg.set_dungeon("土")  # 先把 IsEnable 设到日常态
+        cfg.set_daily_task("每日任务", "土")  # 先把 IsEnable 设到日常态
 
-        # 制造差异：把药配置先拨到错误值，逼 set_weekly 真正落盘
+        # 制造差异：把药配置先拨到错误值，逼 set_weekly_tasks 真正落盘
         pre = copy.deepcopy(self.store["config/gui.new.json"])
         for t in pre["Configurations"]["Default"]["TaskQueue"]:
             if t.get("$type") == "FightTask":
@@ -154,7 +156,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.store["config/gui.new.json"] = pre
         snapshot = copy.deepcopy(pre)
 
-        cfg.set_weekly(1)  # 周几起=1 ⇒ MedicineExpireDays=7
+        cfg.set_weekly_tasks(1)  # 周几起=1 ⇒ MedicineExpireDays=7
 
         post = self.store["config/gui.new.json"]
         diff = diff_paths(snapshot, post)
@@ -162,7 +164,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.assertLessEqual(
             paths,
             ALLOWED_WEEKLY,
-            f"set_weekly 改到了不该改的字段: {paths - ALLOWED_WEEKLY}",
+            f"set_weekly_tasks 改到了不该改的字段: {paths - ALLOWED_WEEKLY}",
         )
         # 正向校验：开启副本吃药、剿灭不吃、窗口=7
         tq = post["Configurations"]["Default"]["TaskQueue"]
@@ -177,8 +179,8 @@ class TestArknightsConfigSafety(unittest.TestCase):
     # ---- 金丝雀：无关字段全程不被触碰 ----
     def test_canaries_untouched_through_full_flow(self):
         cfg = ArknightsConfig()
-        cfg.set_dungeon("土")
-        cfg.set_weekly(1)
+        cfg.set_daily_task("每日任务", "土")
+        cfg.set_weekly_tasks(1)
 
         post = self.store["config/gui.new.json"]
         default = post["Configurations"]["Default"]
@@ -197,10 +199,10 @@ class TestArknightsConfigSafety(unittest.TestCase):
                 )
                 self.assertEqual(t.get("CANARY_TASK"), "X")
 
-    # ---- set_dungeon fallback：缺目标关卡时借用槽位改写 StagePlan ----
-    def test_set_dungeon_borrow_only_touches_stageplan(self):
+    # ---- set_daily_task fallback：缺目标关卡时借用槽位改写 StagePlan ----
+    def test_set_daily_task_borrow_only_touches_stageplan(self):
         """issue #42：红票(AP-5) 缺失时 fallback 借用第一个启用非剿灭槽位改写
-        StagePlan；set_dungeon 仍不得触碰 IsEnable/StagePlan 之外的任何字段。"""
+        StagePlan；set_daily_task 仍不得触碰 IsEnable/StagePlan 之外的任何字段。"""
         cfg = ArknightsConfig()
         # 构造缺 AP-5 的副本：删除红票 FightTask，使目标关卡在队列中不存在
         seed = copy.deepcopy(self.seed)
@@ -214,7 +216,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.store = {"config/gui.new.json": seed}
         pre = copy.deepcopy(seed)
 
-        cfg.set_dungeon("红票")
+        cfg.set_daily_task("每日任务", "红票")
 
         post = self.store["config/gui.new.json"]
         diff = diff_paths(pre, post)
@@ -225,7 +227,9 @@ class TestArknightsConfigSafety(unittest.TestCase):
             return p.endswith(".IsEnable") or ".StagePlan" in p
 
         illegal = {p for p in paths if not _allowed(p)}
-        self.assertEqual(illegal, set(), f"set_dungeon 改到了不该改的字段: {illegal}")
+        self.assertEqual(
+            illegal, set(), f"set_daily_task 改到了不该改的字段: {illegal}"
+        )
         # 恰好一个 StagePlan 被借用改写
         stageplan_paths = [p for p in paths if ".StagePlan" in p]
         self.assertEqual(len(stageplan_paths), 1, f"应仅借用1个槽位: {stageplan_paths}")

@@ -16,7 +16,7 @@
 
 | 模块 | 职责 |
 |------|------|
-| app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
+| app_service.py | 组合根：装配 peer；组合任务声明、资源选项和当前选择；GUI/CLI 唯一入口 |
 | utils_config.py | 单脚本配置（原 script_service.py 已退化为模块函数）：config.yml 完整读写（含条目增删改）+ get_script / build_script_entry / config_file_path |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
@@ -44,12 +44,16 @@ ZIP 结构固定为 `scripts/<脚本名>/<相对路径>`，无清单或版本协
 ```
 launcher.py CLI  ┐
                  ├─▶ AppService（组合根）─┬─▶ src.utils.utils_config（单脚本配置）─▶ src.utils.utils_weekly（协作同步 weekly）
-MainWindow  GUI  ┘                        ├─▶ dungeon_config 模块函数（副本 / 周本声明，src.config）
+MainWindow  GUI  ┘                        ├─▶ task_config（任务声明）+ set_config（原生配置与资源）
                                           └─▶ chain_service ─▶ chain_gen / schedule / utils_runner
                                                   └─▶ src.utils.utils_weekly（周常参数读写）
 ```
 
 调用方不感知 weekly 同步、链合法性校验、runner 命令构造等细节，全部内聚在 service/。
+
+任务声明加载与校验归 `src.config.task_config`，外部脚本资源解析与当前选择反读归
+`src.config.set_config`。`app_service.py` 的模块函数展开选项、构建菜单，
+`AppService.get_daily_items` / `get_weekly_items` 合并当前选择与展示标签；GUI 直接使用行数据。
 
 `utils_shutdown.py` 不得模块级依赖 GUI 层：否则 `schedule → utils_shutdown →
 gui.dialogs → app_service → chain_service → schedule` 成环，确认窗实现于 `src/gui/shutdown_dialog.py`，`utils_shutdown` 仅延迟 import 它。

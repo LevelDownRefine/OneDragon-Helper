@@ -1,15 +1,15 @@
 """终末地（ok-ef / 粥）config 安全性测试。
 
 用一份「脱敏后的真实 DailyTask.json」当夹具（tests/fixtures/ok_ef_DailyTask.scrubbed.json），
-跑 init_config / set_dungeon / set_weekly，对每次落盘做全量字段 diff，
+跑 init_config / set_daily_task / set_weekly_tasks，对每次落盘做全量字段 diff，
 断言「只动了该动的字段，其余（含注入的金丝雀字段）原封不动」。
 
-设计目的：验证 set_dungeon / set_weekly 不会把副本/周常以外的字段（刷体力、购物、
+设计目的：验证 set_daily_task / set_weekly_tasks 不会把副本/周常以外的字段（刷体力、购物、
 送礼、邮件、帝江号收菜等大量日常开关）误改，也不会波及无关的顶层设置。
 
 允许改动字段集合严格来自 EndfieldConfig 实现：
-- set_dungeon：仅写 _task_key="体力本"（顶层 str），无 sequence 通道；
-- set_weekly：仅写 _weekly_task_name="只买不卖"（顶层 bool，反相写入）。
+- set_daily_task：仅写 field="体力本"（顶层 str），无 sequence 通道；
+- set_weekly_tasks：仅写 _weekly_task_name="只买不卖"（顶层 bool，反相写入）。
 """
 
 import copy
@@ -25,9 +25,9 @@ FIXTURE = os.path.join(
     os.path.dirname(__file__), "fixtures", "ok_ef_DailyTask.scrubbed.json"
 )
 
-# set_dungeon 只允许改动的字段路径集合（严格按 EndfieldConfig._task_key）
+# set_daily_task 只允许改动的字段路径集合（严格按 日常 field 声明）
 ALLOWED_DUNGEON = {"体力本"}
-# set_weekly 只允许改动的字段路径集合（严格按 EndfieldConfig._weekly_task_name）
+# set_weekly_tasks 只允许改动的字段路径集合（严格按 EndfieldConfig._weekly_task_name）
 ALLOWED_WEEKLY = {"只买不卖"}
 
 
@@ -103,10 +103,10 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         )
         self.assertEqual(diff, [], f"init_config 意外改动: {diff}")
 
-    # ---- set_dungeon：只允许改 体力本 ----
-    def test_set_dungeon_only_touches_task_key(self):
+    # ---- set_daily_task：只允许改 体力本 ----
+    def test_set_daily_task_only_touches_task_key(self):
         cfg = EndfieldConfig()
-        # 强制差异：先把 体力本 拨错，逼 set_dungeon 真正落盘
+        # 强制差异：先把 体力本 拨错，逼 set_daily_task 真正落盘
         forced = copy.deepcopy(
             self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         )
@@ -114,7 +114,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         self.store["data/apps/ok-ef/working/configs/DailyTask.json"] = forced
         pre = copy.deepcopy(forced)
 
-        cfg.set_dungeon("枢纽区")
+        cfg.set_daily_task("每日任务", "枢纽区")
 
         post = self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         diff = diff_paths(pre, post)
@@ -122,16 +122,16 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         self.assertEqual(
             paths,
             ALLOWED_DUNGEON,
-            f"set_dungeon 改动与预期不符: 多了{paths - ALLOWED_DUNGEON} 少了{ALLOWED_DUNGEON - paths}",
+            f"set_daily_task 改动与预期不符: 多了{paths - ALLOWED_DUNGEON} 少了{ALLOWED_DUNGEON - paths}",
         )
         # 正向校验：体力本被设为期望值
         self.assertEqual(post["体力本"], "枢纽区")
 
-    # ---- set_weekly：只允许改 只买不卖（反相） ----
+    # ---- set_weekly_tasks：只允许改 只买不卖（反相） ----
     def test_set_weekly_only_touches_weekly_key(self):
         cfg = EndfieldConfig()
 
-        # 制造差异：把周常开关先拨到错误值，逼 set_weekly 真正落盘
+        # 制造差异：把周常开关先拨到错误值，逼 set_weekly_tasks 真正落盘
         pre = copy.deepcopy(
             self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         )
@@ -141,7 +141,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
 
         # 固定周常起始日判定，避免依赖「今天星期几」导致结果不确定
         with patch("src.config.set_config.is_weekly_start_reached", return_value=True):
-            cfg.set_weekly(1)  # 周常启用 ⇒ 只买不卖=false
+            cfg.set_weekly_tasks(1)  # 周常启用 ⇒ 只买不卖=false
 
         post = self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         diff = diff_paths(snapshot, post)
@@ -149,7 +149,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         self.assertEqual(
             paths,
             ALLOWED_WEEKLY,
-            f"set_weekly 改到了不该改的字段: {paths - ALLOWED_WEEKLY}",
+            f"set_weekly_tasks 改到了不该改的字段: {paths - ALLOWED_WEEKLY}",
         )
         # 正向校验：周常启用 ⇒ 只买不卖=false（反相写入）
         self.assertFalse(post["只买不卖"], "周常启用时只买不卖应为 false")
@@ -157,8 +157,8 @@ class TestEndfieldConfigSafety(unittest.TestCase):
     # ---- 金丝雀：无关字段全程不被触碰 ----
     def test_canaries_untouched_through_full_flow(self):
         cfg = EndfieldConfig()
-        cfg.set_dungeon("枢纽区")
-        cfg.set_weekly(1)
+        cfg.set_daily_task("每日任务", "枢纽区")
+        cfg.set_weekly_tasks(1)
 
         post = self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         self.assertEqual(post.get("CANARY_EXTRA"), "KEEP_ME")

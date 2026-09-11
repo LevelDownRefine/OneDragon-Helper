@@ -58,24 +58,16 @@ def get_weekly_yml_path_under_root() -> str:
     - ``weekly_timeouts``：各脚本「每周 7 格每日超时（秒）」，{脚本标识: [7 个整数]}。
     首次启动由 ``config.generate_config`` 经 ``generate_weekly_from_example`` 从
     config/weekly.example.yml 拷贝生成；周常声明（脚本支持哪些周常）在
-    config/weekly_list.yml（静态，进 git），不在此文件。
+    config/task_list.yml（静态，进 git），不在此文件。
 
     :return: 根目录下的config/weekly.yml文件路径
     """
     return safe_path_join(get_root_dir(), "config", "weekly.yml")
 
 
-def get_weekly_list_yml_path_under_root() -> str:
-    """
-    获取根目录下的config/weekly_list.yml文件路径。
-
-    该文件是周常声明配置（静态，进 git）：每脚本支持哪些周常、每种是否需选副本。
-    与周常运行期配置 config/weekly.yml（含 weekly_start / weekly_timeouts 两段）平级，
-    但各自独立——声明是静态数据，运行期周几起/超时不在此文件。
-
-    :return: 根目录下的config/weekly_list.yml文件路径
-    """
-    return safe_path_join(get_root_dir(), "config", "weekly_list.yml")
+def get_task_list_yml_path_under_root() -> str:
+    """取得静态任务声明，任务类型由顶层 type 指定。"""
+    return safe_path_join(get_root_dir(), "config", "task_list.yml")
 
 
 def get_wallpaper_json_path_under_root() -> str:
