@@ -1,12 +1,9 @@
-# type：仅顶层任务声明 daily / weekly。
 # display_name：展示名；physical_name：物理名，省略时使用展示名。
-# options：递归选项组。key 为选项读写字段；values / source 二选一。
-# values 内每个选项可继续包含同样的 options；source 用 path / category 定位资源。
-# 顶层 key 供任务操作使用；allow_disable 声明原生任务可停用。
+# options：递归选项组；key 为原生字段，values / source 二选一。
+# source 用 path / category 定位脚本本地资源；顶层 key 供任务操作使用。
 
 ok-ww:
 - display_name: 每日任务
-  type: daily
   options:
     key: Which to Farm
     values:
@@ -109,13 +106,8 @@ ok-ww:
           physical_name: 18
         - display_name: 今州-暗轻云
           physical_name: 19
-- display_name: 幻梦游园
-  physical_name: Check Weekly Garden
-  type: weekly
-  key: Additional Tasks to Run After Daily Task
 BetterGI:
 - display_name: 每日任务
-  type: daily
   options:
     values:
     - display_name: 圣遗物
@@ -138,7 +130,6 @@ BetterGI:
           category: MasteryDomain
 ok-ef:
 - display_name: 每日任务
-  type: daily
   options:
     values:
     - display_name: 干员养成
@@ -171,39 +162,19 @@ ok-ef:
         source:
           path: data/apps/ok-ef/working/assets/data/world_map.json
           category: 能量淤积点
-- display_name: 卖出物资
-  type: weekly
-  key: 只买不卖
 OneDragon-Launcher:
 - display_name: 每日任务
-  type: daily
   options:
     values:
     - display_name: 培养方案
-- display_name: 迷失之地
-  physical_name: lost_void
-  type: weekly
 March7th-Launcher:
 - display_name: 每日任务
-  type: daily
   options:
     values:
     - display_name: 培养目标
-- display_name: 货币战争
-  type: weekly
-  key: currencywars_enable
-- display_name: 历战余响
-  type: weekly
-  key: echo_of_war_start_day_of_week
-  options:
-    source:
-      path: assets/config/instance_names.json
-      category: 历战余响
 ok-nte:
 - display_name: 异象界域
   physical_name: daily_anomaly
-  type: daily
-  allow_disable: true
   options:
     key: 任务类型
     values:
@@ -260,8 +231,6 @@ ok-nte:
         - display_name: 甲硬币
 - display_name: 追猎目标
   physical_name: daily_anomaly_hunter
-  type: daily
-  allow_disable: true
   options:
     key: 追猎目标
     values:
@@ -274,7 +243,6 @@ ok-nte:
     - display_name: 斑蝶
 MAA:
 - display_name: 每日任务
-  type: daily
   options:
     values:
     - display_name: 红票
@@ -285,5 +253,3 @@ MAA:
       physical_name: CE-6
     - display_name: 土
       physical_name: 1-7
-- display_name: 理智药剂
-  type: weekly

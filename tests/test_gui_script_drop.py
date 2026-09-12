@@ -257,15 +257,14 @@ class TestNativeDropPersistence(unittest.TestCase):
                     "src.utils.utils_weekly.get_weekly_yml_path_under_root",
                     return_value=str(weekly),
                 ),
-                patch.object(AppService, "get_daily_map", return_value={}),
+                patch.object(AppService, "get_dungeon_map", return_value={}),
                 patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch(
                     "src.gui.controllers.background.BackgroundController.resolve_bg",
                     return_value=None,
                 ),
-                patch(
-                    "src.service.app_service.get_daily_task", return_value=(None, None)
-                ),
+                patch("src.gui.controllers.task_card.get_dungeon", return_value=None),
+                patch("src.gui.controllers.task_card.get_sequence", return_value=None),
                 patch(
                     "src.gui.file_drop.ctypes.WinDLL",
                     side_effect=[shell, MagicMock(), MagicMock()],
@@ -321,10 +320,11 @@ class TestQmlScriptDrop(unittest.TestCase):
             app = QApplication.instance()
             with (
                 tempfile.TemporaryDirectory() as directory,
-                patch.object(AppService, "get_daily_map", return_value={}),
+                patch.object(AppService, "get_dungeon_map", return_value={}),
                 patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
-                patch("src.service.app_service.get_daily_task", return_value=(None, None)),
+                patch("src.gui.controllers.task_card.get_dungeon", return_value=None),
+                patch("src.gui.controllers.task_card.get_sequence", return_value=None),
             ):
                 bridge = _make_bridge()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)

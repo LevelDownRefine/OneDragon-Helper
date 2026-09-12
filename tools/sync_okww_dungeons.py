@@ -1,4 +1,4 @@
-"""同步鸣潮（ok-ww）副本数字列表到 config/task_list.yml（CI 自动更新用）。
+"""同步鸣潮（ok-ww）副本数字列表到 config/daily_task_list.yml（CI 自动更新用）。
 
 数据源：ok-wuthering-waves 仓库 src/task/ 下各副本 task 类的 `self.structure`。
 F2 面板按页展示副本，structure 是每页数量，`total_number = sum(structure)`
@@ -13,7 +13,7 @@ F2 面板按页展示副本，structure 是每页数量，`total_number = sum(st
 先填数字待人工改友好名，如 梦州-迅刀）。模拟领域是固定英文选项，不参与数字
 重排。
 
-对比 task_list.yml 中 ok-ww 的纯数字分类（凝素领域/无音区），按总数差
+对比 daily_task_list.yml 中 ok-ww 的纯数字分类（凝素领域/无音区），按总数差
 delta 判定：delta>0 为最前插入，--apply 时重排；delta<0 为移除，仅报告不
 删除（无法安全重排，交人工核对）。
 
@@ -46,7 +46,7 @@ _TACET_URL = (
 )
 # 本文件位于 tools/ 下，需两级 dirname 才到项目根
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DUNGEON_PATH = os.path.join(_PROJECT_ROOT, "config", "task_list.yml")
+_DUNGEON_PATH = os.path.join(_PROJECT_ROOT, "config", "daily_task_list.yml")
 _OKWW_KEY = "ok-ww"
 # 数字分类：上游 task 文件 → yml 分类名
 _NUMERIC_CATEGORIES = {
@@ -86,19 +86,18 @@ def _daily_dungeons(data: dict) -> list[dict]:
     matches = [
         daily
         for daily in data[_OKWW_KEY]
-        if daily["type"] == "daily"
-        and daily.get("physical_name", daily["display_name"]) == "每日任务"
+        if daily.get("physical_name", daily["display_name"]) == "每日任务"
     ]
     assert len(matches) == 1, "必须唯一声明每日任务"
     return matches[0]["options"]["values"]
 
 
 def _load_okww() -> dict[str, list[int]]:
-    """读取 task_list.yml 中 ok-ww 的纯数字分类 → 数字 value 列表。"""
+    """读取 daily_task_list.yml 中 ok-ww 的纯数字分类 → 数字 value 列表。"""
     with open(_DUNGEON_PATH, encoding="utf-8") as f:
         data = _yaml.load(f)
     assert isinstance(data, dict) and _OKWW_KEY in data, (
-        f"task_list.yml 缺少 {_OKWW_KEY} 配置"
+        f"daily_task_list.yml 缺少 {_OKWW_KEY} 配置"
     )
     result = {}
     for dungeon in _daily_dungeons(data):
@@ -146,7 +145,7 @@ def _rebase_sequences(seqs: list[dict], delta: int) -> list[dict]:
 def _apply_new(upstream: dict[str, int], current: dict[str, list[int]]) -> None:
     """按最前插入模型重排 yml 中的 ok-ww 数字分类。
 
-    task_list.yml 已由 yaml 统一管理（无注释、格式幂等），
+    daily_task_list.yml 已由 yaml 统一管理（无注释、格式幂等），
     直接 load→改→dump 即可，重写后 diff 只含真实增量。仅处理新增
     （delta>0）类别；移除（delta<0）不在此处理，交由报告人工核对。
     """

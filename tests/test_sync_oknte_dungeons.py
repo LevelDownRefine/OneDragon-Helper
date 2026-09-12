@@ -51,9 +51,7 @@ def _fake_fetch(url: str) -> str:
 
 _YML = """ok-nte:
 - display_name: 异象界域
-  type: daily
   physical_name: daily_anomaly
-  allow_disable: true
   options:
     key: 任务类型
     values:
@@ -76,9 +74,7 @@ _YML = """ok-nte:
         - display_name: 苹果
           physical_name: 1
 - display_name: 追猎目标
-  type: daily
   physical_name: daily_anomaly_hunter
-  allow_disable: true
   options:
     key: 追猎目标
     values:
@@ -87,7 +83,6 @@ _YML = """ok-nte:
     - display_name: 无首铁驭
       physical_name: 无首铁驭
 - display_name: 另一个日常
-  type: daily
   options:
     values:
     - display_name: 保留
@@ -137,8 +132,6 @@ class SyncOknteTest(unittest.TestCase):
         m._apply_hunter(m._fetch_hunter_targets())
         data = load_yaml(self.tmp_path)
         self.assertEqual(data["ok-nte"][2], before["ok-nte"][2])
-        for daily in data["ok-nte"][:2]:
-            self.assertTrue(daily["allow_disable"])
         by_name = {d["display_name"]: d for d in data["ok-nte"][0]["options"]["values"]}
         self.assertEqual(data["ok-nte"][0]["physical_name"], "daily_anomaly")
         self.assertEqual(data["ok-nte"][0]["options"]["key"], "任务类型")

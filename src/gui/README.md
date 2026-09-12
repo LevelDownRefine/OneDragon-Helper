@@ -57,8 +57,8 @@ config.yml 写入权统一归 src.utils.utils_config（经 AppService 委托）�
 
 ## UI 状态持久化
 
-日常副本/序列的真源是子脚本 config（编辑期实时落盘，无 UI 状态文件）；set_daily_task 为
-no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 task_list.yml
+日常副本/序列的真源是子脚本 config（编辑期实时落盘，无 UI 状态文件）；set_dungeon 为
+no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 daily_task_list.yml
 声明的唯一选项。脚本 enabled 保存到 config.yml，重启按脚本身份回显；缺省启用。
 
 ## 添加功能配方
@@ -70,8 +70,3 @@ QML 仅经 Bridge.<slot>() 与 Python 交互，QmlBridge 是唯一桥。新增�
 3. 界面：在对应 qml/<name>.qml 加 Rectangle/MouseArea，调用 Bridge.xxx()。
 
 示例：右上角加截图按钮 → window.py 加 @Slot def screenshot → QmlBridge.screenshot 一行委托 → qml/window.qml 加按钮。
-
-日常行由 `Bridge.dailyItems` 驱动；每行包含日常名、当前副本标签与选项。
-选择经 `selectDailyTask(daily_name, option_name, sequence)` 转交 service；
-声明解析归 `task_config.py`；资源展开、反读与标签组装由 service 完成。
-周常行同样由 service 提供，GUI 不做副本反读或别名解析。

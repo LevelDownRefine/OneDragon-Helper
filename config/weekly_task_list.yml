@@ -1,0 +1,25 @@
+# display_name：展示名；physical_name：物理名，省略时使用展示名。
+# options：递归选项组；key 为原生字段，values / source 二选一。
+# source 用 path / category 定位脚本本地资源；顶层 key 供任务操作使用。
+
+ok-ww:
+- display_name: 幻梦游园
+  physical_name: Check Weekly Garden
+  key: Additional Tasks to Run After Daily Task
+ok-ef:
+- display_name: 卖出物资
+  key: 只买不卖
+OneDragon-Launcher:
+- display_name: 迷失之地
+  physical_name: lost_void
+March7th-Launcher:
+- display_name: 货币战争
+  key: currencywars_enable
+- display_name: 历战余响
+  key: echo_of_war_start_day_of_week
+  options:
+    source:
+      path: assets/config/instance_names.json
+      category: 历战余响
+MAA:
+- display_name: 理智药剂

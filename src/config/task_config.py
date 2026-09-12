@@ -1,11 +1,14 @@
-"""读取任务声明，校验递归选项组；任务类型仅属于顶层。"""
+"""读取日常、周常声明并校验递归选项；不负责调度或写入子脚本。"""
 
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 
-from src.utils import get_task_list_yml_path_under_root
-from src.utils.utils_yaml import load_yaml
+from src.utils import (
+    get_daily_task_list_yml_path_under_root,
+    get_weekly_task_list_yml_path_under_root,
+)
+from src.utils.utils_yaml import load_yaml_str
 
 
 def get_physical_name(node: dict) -> str | int:
@@ -25,52 +28,12 @@ def get_options(node: dict) -> list[dict]:
     return deepcopy(group.get("values", []))
 
 
-def has_selection_binding(node: dict) -> bool:
-    """递归判断选择绑定，不包含顶层任务操作的 key。"""
-    return "options" in node and (
-        "key" in node["options"]
-        or any(has_selection_binding(option) for option in get_options(node))
-    )
-
-
-def validate_selection_depth(node: dict, remaining: int = 2) -> None:
-    """声明允许递归；当前选择接口和 GUI 只支持两级。"""
-    if "options" not in node:
-        return
-    assert remaining > 0, "当前选择接口最多支持两层选项"
-    for option in get_options(node):
-        validate_selection_depth(option, remaining - 1)
-
-
-def get_selection_key(node: dict) -> str:
-    """取得选择字段；纯展示分组共用实际选项组的 key。"""
-    assert "options" in node, "所选项必须声明 options.key"
-    if "key" in node["options"]:
-        return node["options"]["key"]
-    options = get_options(node)
-    assert options and all(
-        "options" in option and "key" in option["options"] for option in options
-    ), "所选项必须声明 options.key"
-    keys = {option["options"]["key"] for option in options}
-    assert len(keys) == 1, "展示分类写入不同字段，无法唯一反读"
-    return keys.pop()
-
-
-def validate_selection_bindings(definition: dict) -> None:
-    """普通选择的字段必须明确，展示分组的原生值必须唯一。"""
-    validate_selection_depth(definition)
-    get_selection_key(definition)
-    options = get_options(definition)
-    for option in options:
-        if "options" in option:
-            assert "key" in option["options"], "二级选择必须声明 options.key"
-    if "key" not in definition["options"]:
-        values = [
-            get_physical_name(child)
-            for option in options
-            for child in get_options(option)
-        ]
-        assert len(values) == len(set(values)), "展示分类下的原生值重复，无法唯一反读"
+def get_value_map(node: dict) -> dict[str, str | int]:
+    """把一组选项声明转换成展示名到物理名的映射。"""
+    return {
+        option["display_name"]: get_physical_name(option)
+        for option in get_options(node)
+    }
 
 
 def _validate_name(value, context: str) -> None:
@@ -133,9 +96,7 @@ def validate_options(options: list[dict], context: str) -> None:
             _validate_group(option["options"], f"{context}/{name}")
 
 
-def _validate_definitions(
-    script_name: str, definitions: list[dict], task_type: str | None = None
-) -> None:
+def _validate_definitions(script_name: str, definitions: list[dict]) -> None:
     assert isinstance(definitions, list), f"{script_name} 的任务必须是列表"
     names, physical_names = set(), set()
     for definition in definitions:
@@ -145,9 +106,7 @@ def _validate_definitions(
         assert definition.keys() <= {
             "display_name",
             "physical_name",
-            "type",
             "key",
-            "allow_disable",
             "options",
         }, f"{script_name} 含未知任务声明"
         name = definition["display_name"]
@@ -160,47 +119,23 @@ def _validate_definitions(
             f"{script_name} 的任务物理名重复: {physical_name}"
         )
         physical_names.add(physical_name)
-        if task_type is None:
-            assert "type" in definition, "任务必须声明 type"
-        if "type" in definition:
-            assert definition["type"] in ("daily", "weekly"), (
-                "type 必须为 daily 或 weekly"
-            )
-            assert task_type is None or definition["type"] == task_type, (
-                f"{name} 的 type 应为 {task_type}"
-            )
         if "key" in definition:
             _validate_name(definition["key"], f"{name}/key")
-        if "allow_disable" in definition:
-            assert isinstance(definition["allow_disable"], bool), (
-                "allow_disable 必须为 bool"
-            )
         if "options" in definition:
             _validate_group(definition["options"], f"{script_name}/{name}")
 
 
-def validate_daily_definitions(script_name: str, definitions: list[dict]) -> None:
-    """校验日常声明。"""
-    _validate_definitions(script_name, definitions, "daily")
+def load_task_map(path: str) -> dict[str, list[dict]]:
+    """同一份内容只解析一次；调用方取得独立副本。"""
+    file = Path(path)
+    assert file.is_file(), f"任务声明缺失: {path}"
+    return deepcopy(_load_task_map(file.read_text(encoding="utf-8")))
 
 
-def validate_weekly_definitions(script_name: str, definitions: list[dict]) -> None:
-    """校验周常声明，选择规则与日常一致。"""
-    _validate_definitions(script_name, definitions, "weekly")
-
-
-def load_task_map() -> dict[str, list[dict]]:
-    """同一文件版本只解析一次；调用方取得独立副本。"""
-    path = Path(get_task_list_yml_path_under_root())
-    assert path.is_file(), f"任务声明缺失: {path}"
-    stat = path.stat()
-    return deepcopy(_load_task_map(str(path), (stat.st_mtime_ns, stat.st_size)))
-
-
-@lru_cache(maxsize=1)
-def _load_task_map(path: str, version: tuple[int, int]) -> dict[str, list[dict]]:
-    """文件版本参与缓存键；声明变化后重新读取并校验。"""
-    data = load_yaml(path)
+@lru_cache(maxsize=2)
+def _load_task_map(content: str) -> dict[str, list[dict]]:
+    """以内容为缓存键，避免同大小、同时间戳的文件替换读到旧声明。"""
+    data = load_yaml_str(content)
     assert isinstance(data, dict), "任务声明必须是字典"
     for script_name, definitions in data.items():
         _validate_name(script_name, "脚本标识")
@@ -210,16 +145,29 @@ def _load_task_map(path: str, version: tuple[int, int]) -> dict[str, list[dict]]
 
 def load_daily_map() -> dict[str, list[dict]]:
     """取得日常声明。"""
-    return {
-        script: [task for task in tasks if task["type"] == "daily"]
-        for script, tasks in load_task_map().items()
-    }
+    return load_task_map(get_daily_task_list_yml_path_under_root())
 
 
 def load_weekly_map() -> dict[str, list[dict]]:
     """取得周常声明，周几起仍由 weekly.yml 维护。"""
-    return {
-        script: [task for task in tasks if task["type"] == "weekly"]
-        for script, tasks in load_task_map().items()
-        if any(task["type"] == "weekly" for task in tasks)
-    }
+    return load_task_map(get_weekly_task_list_yml_path_under_root())
+
+
+def get_daily_config(script_name: str) -> dict:
+    """取得脚本的单个日常声明；特殊玩法由对应子类处理。"""
+    data = load_daily_map()
+    assert script_name in data, f"缺少日常声明: {script_name}"
+    tasks = data[script_name]
+    assert len(tasks) == 1, f"{script_name} 的多个日常需由子类适配"
+    return tasks[0]
+
+
+def get_weekly_config(script_name: str, weekly_name: str) -> dict:
+    """按展示名取得指定周常声明。"""
+    data = load_weekly_map()
+    assert script_name in data, f"缺少周常声明: {script_name}"
+    matches = [
+        task for task in data[script_name] if task["display_name"] == weekly_name
+    ]
+    assert len(matches) == 1, f"缺少周常声明: {script_name}/{weekly_name}"
+    return matches[0]

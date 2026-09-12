@@ -1,353 +1,198 @@
-"""统一任务声明、具名周常更新及同步工具的边界。"""
+"""声明中的字段、物理名、别名接入原有子类读写流程。"""
 
-import tempfile
+import importlib.util
 import unittest
 from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config import set_config as adapters
 from src.config import task_config
-from src.utils.utils_yaml import dump_yaml, load_yaml
-from tools import sync_oknte_dungeons, sync_okww_dungeons
+from src.config.set_config import ArknightsConfig, NTEConfig, WutheringWavesConfig
 
 
-class TestTaskDeclarations(unittest.TestCase):
+class TestDeclarationBindings(unittest.TestCase):
     def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.path = Path(tmp.name) / "task_list.yml"
-        patcher = patch.object(
-            task_config,
-            "get_task_list_yml_path_under_root",
-            return_value=str(self.path),
+        self.daily = task_config.load_daily_map()
+        self.weekly = task_config.load_weekly_map()
+
+    def load_adapters(self):
+        """隔离注册表，验证类属性在声明改变后仍绑定到正确字段。"""
+        spec = importlib.util.spec_from_file_location(
+            "declaration_test_adapters",
+            Path(task_config.__file__).with_name("set_config.py"),
         )
-        patcher.start()
-        self.addCleanup(patcher.stop)
-
-    def test_type_filters_preserve_order_names_and_native_keys(self):
-        first = {
-            "display_name": "资源",
-            "type": "daily",
-            "options": {"key": "stage", "values": []},
-        }
-        second = {"display_name": "清理", "type": "daily"}
-        weekly = {
-            "display_name": "周本",
-            "physical_name": "native_weekly",
-            "type": "weekly",
-            "key": "start_day",
-        }
-        data = {"example": [first, weekly, second], "daily_only": [first]}
-        dump_yaml(str(self.path), data)
-        self.assertEqual(task_config.load_task_map(), data)
-        self.assertEqual(
-            task_config.load_daily_map(),
-            {"example": [first, second], "daily_only": [first]},
+        module = importlib.util.module_from_spec(spec)
+        daily_patch = patch.object(
+            task_config, "load_daily_map", return_value=self.daily
         )
-        self.assertEqual(task_config.load_weekly_map(), {"example": [weekly]})
-        self.assertEqual(load_yaml(str(self.path)), data)
-
-    def test_daily_and_weekly_share_one_parse_without_sharing_mutable_data(self):
-        daily = {"display_name": "资源", "type": "daily"}
-        weekly = {"display_name": "周本", "type": "weekly"}
-        data = {"example": [daily, weekly]}
-        dump_yaml(str(self.path), data)
-        with patch.object(task_config, "load_yaml", wraps=load_yaml) as read:
-            first = task_config.load_daily_map()
-            first["example"][0]["display_name"] = "改动副本"
-            self.assertEqual(task_config.load_daily_map(), {"example": [daily]})
-            self.assertEqual(task_config.load_weekly_map(), {"example": [weekly]})
-            self.assertEqual(task_config.load_task_map(), data)
-        self.assertEqual(read.call_count, 1)
-
-    def test_changed_declaration_is_reloaded_and_revalidated(self):
-        dump_yaml(
-            str(self.path), {"example": [{"display_name": "甲", "type": "daily"}]}
+        weekly_patch = patch.object(
+            task_config, "load_weekly_map", return_value=self.weekly
         )
-        task_config.load_task_map()
-        updated = {"example": [{"display_name": "改过的任务", "type": "weekly"}]}
-        dump_yaml(str(self.path), updated)
-        self.assertEqual(task_config.load_task_map(), updated)
-        dump_yaml(str(self.path), {"example": [{"display_name": "缺少类型"}]})
-        with self.assertRaisesRegex(AssertionError, "type"):
-            task_config.load_task_map()
+        daily_patch.start()
+        weekly_patch.start()
+        self.addCleanup(daily_patch.stop)
+        self.addCleanup(weekly_patch.stop)
+        spec.loader.exec_module(module)
+        return module
 
-    def test_task_names_are_unique_across_types(self):
-        for extra, error in (
-            ({"display_name": "资源"}, "任务名重复"),
-            ({"display_name": "周本", "physical_name": "资源"}, "任务物理名重复"),
-        ):
-            data = {
-                "example": [
-                    {"display_name": "资源", "type": "daily"},
-                    {**extra, "type": "weekly"},
-                ]
+    def test_wuwa_fields_and_values_come_from_declarations(self):
+        task = self.daily["ok-ww"][0]
+        task["options"]["key"] = "NativeCategory"
+        task["options"]["values"] = [
+            {
+                "display_name": "测试类别",
+                "physical_name": "NativeCategoryValue",
+                "options": {
+                    "key": "NativeStage",
+                    "values": [{"display_name": "测试目标", "physical_name": 9}],
+                },
             }
-            dump_yaml(str(self.path), data)
-            with self.assertRaisesRegex(AssertionError, error):
-                task_config.load_task_map()
-
-    def test_type_is_required_and_known(self):
-        for extra in ({}, {"type": "monthly"}, {"type": None}, {"period": "daily"}):
-            dump_yaml(str(self.path), {"example": [{"display_name": "任务", **extra}]})
-            with self.subTest(extra=extra), self.assertRaises(AssertionError):
-                task_config.load_task_map()
-
-    def test_multiple_native_weeklies_are_allowed(self):
-        tasks = [
-            {"display_name": "甲", "physical_name": "a", "type": "weekly"},
-            {"display_name": "乙", "physical_name": "b", "type": "weekly"},
         ]
-        dump_yaml(str(self.path), {"example": tasks})
-        self.assertEqual(task_config.load_weekly_map(), {"example": tasks})
-
-    def test_type_is_independent_of_native_keys(self):
-        for kind, load in (
-            ("daily", task_config.load_daily_map),
-            ("weekly", task_config.load_weekly_map),
-        ):
-            task = {
-                "display_name": "任务",
-                "type": kind,
-                "key": "same_field",
-                "options": {"key": "selection", "values": []},
-            }
-            dump_yaml(str(self.path), {"example": [task]})
-            self.assertEqual(load(), {"example": [task]})
-
-    def test_no_weekly_tasks_does_not_declare_support(self):
-        dump_yaml(
-            str(self.path),
-            {"example": [{"display_name": "资源", "type": "daily"}], "empty": []},
-        )
-        self.assertEqual(task_config.load_weekly_map(), {})
-
-
-class TestNamedWeeklyTasks(unittest.TestCase):
-    def test_missing_flag_field_does_not_select_date_task(self):
-        cfg = adapters.StarRailConfig()
-        cfg._weekly_configs = {"货币战争": {"display_name": "货币战争"}}
-        with (
-            patch.object(cfg, "_load", return_value={"other": True}),
-            patch.object(cfg, "_save") as save,
-            self.assertRaisesRegex(AssertionError, "key"),
-        ):
-            cfg.set_weekly_task("货币战争", 4)
-        save.assert_not_called()
-
-    def test_echo_of_war_uses_declared_date_field_for_both_entry_points(self):
-        cfg = adapters.StarRailConfig()
-        cfg._weekly_configs = {
-            "历战余响": {"display_name": "历战余响", "key": "custom_start_day"}
-        }
-        initial = {"custom_start_day": 1, "other": True}
-        with (
-            patch.object(cfg, "_load", side_effect=lambda **_: deepcopy(initial)),
-            patch.object(cfg, "_save") as save,
-        ):
-            cfg.set_weekly_task("历战余响", 4)
-            save.assert_called_once_with({**initial, "custom_start_day": 4})
-            save.reset_mock()
-            cfg.set_weekly_start_day(5)
-            save.assert_called_once_with({**initial, "custom_start_day": 5})
-
-    def test_garden_uses_declared_list_field_and_value(self):
-        cfg = adapters.WutheringWavesConfig()
-        cfg._weekly_configs = {
-            "列表任务": {
-                "display_name": "列表任务",
-                "key": "custom_list",
-                "physical_name": "native_task",
-            }
-        }
-        initial = {"custom_list": ["other"], "unrelated": True}
-        with (
-            patch.object(cfg, "_load", return_value=initial),
-            patch.object(cfg, "_save") as save,
-            patch.object(adapters, "is_weekly_start_reached", return_value=True),
-        ):
-            cfg.set_weekly_task("列表任务", 4)
-        save.assert_called_once_with(
-            {"custom_list": ["other", "native_task"], "unrelated": True}
-        )
-        self.assertEqual(initial["custom_list"], ["other"])
-
-    def test_adapter_dispatches_named_weekly_without_updating_other_tasks(self):
-        initial = {"currencywars_enable": False, "other": {"count": 7}}
-        with (
-            patch.object(adapters.StarRailConfig, "_load", return_value=initial),
-            patch.object(adapters.StarRailConfig, "_save") as save,
-            patch.object(adapters, "is_weekly_start_reached", return_value=True),
-        ):
-            adapters.set_config(
-                "March7th-Launcher", weekly_name="货币战争", weekly_start=4
-            )
-        save.assert_called_once_with({**initial, "currencywars_enable": True})
-        self.assertFalse(initial["currencywars_enable"])
-
-    def test_single_currency_task_does_not_require_or_change_echo_of_war(self):
-        cfg = adapters.StarRailConfig()
-        initial = {"currencywars_enable": False, "other": {"count": 7}}
-        with (
-            patch.object(cfg, "_load", return_value=initial),
-            patch.object(cfg, "_save") as save,
-            patch.object(adapters, "is_weekly_start_reached", return_value=True),
-        ):
-            cfg.set_weekly_task("货币战争", 4)
-        save.assert_called_once_with({**initial, "currencywars_enable": True})
-        self.assertFalse(initial["currencywars_enable"])
-
-    def test_single_echo_of_war_does_not_require_currency_flag(self):
-        cfg = adapters.StarRailConfig()
-        initial = {"echo_of_war_start_day_of_week": 1, "other": {"count": 7}}
-        with (
-            patch.object(cfg, "_load", return_value=initial),
-            patch.object(cfg, "_save") as save,
-            patch.object(adapters, "is_weekly_start_reached") as date_check,
-        ):
-            cfg.set_weekly_task("历战余响", 4)
-        save.assert_called_once_with({**initial, "echo_of_war_start_day_of_week": 4})
-        date_check.assert_not_called()
-        self.assertEqual(initial["echo_of_war_start_day_of_week"], 1)
-
-    def test_unknown_weekly_task_is_rejected_before_loading(self):
-        cfg = adapters.StarRailConfig()
-        with (
-            patch.object(cfg, "_load") as read,
-            patch.object(cfg, "_save") as save,
-            self.assertRaisesRegex(AssertionError, "未适配的周常"),
-        ):
-            cfg.set_weekly_task("不存在", 4)
-        read.assert_not_called()
-        save.assert_not_called()
-
-    def test_star_rail_tasks_are_independent_and_save_once(self):
-        definitions = adapters.StarRailConfig._weekly_configs
-        initial = {
-            "currencywars_enable": False,
-            "echo_of_war_start_day_of_week": 1,
-            "instance_names": {"历战余响": "已有副本"},
-            "other": {"enabled": True},
-        }
-        for ordered in (definitions, dict(reversed(list(definitions.items())))):
-            cfg = adapters.StarRailConfig()
-            cfg._weekly_configs = ordered
-            with (
-                self.subTest(order=list(ordered)),
-                patch.object(cfg, "_load", return_value=deepcopy(initial)) as read,
-                patch.object(cfg, "_save") as save,
-                patch.object(adapters, "is_weekly_start_reached", return_value=True),
-            ):
-                cfg.set_weekly_tasks(4)
-                read.assert_called_once_with()
-                save.assert_called_once_with(
-                    {
-                        **initial,
-                        "currencywars_enable": True,
-                        "echo_of_war_start_day_of_week": 4,
-                    }
-                )
-                self.assertEqual(read.return_value, initial)
-
-    def test_weekly_without_options_does_not_read_or_write_instance_names(self):
-        cfg = adapters.StarRailConfig()
-        with patch.object(cfg, "_load") as load, patch.object(cfg, "_save") as save:
-            self.assertEqual(cfg._read_weekly_task("货币战争"), (None, None))
-            load.assert_not_called()
-            with self.assertRaisesRegex(AssertionError, "不支持副本选择"):
-                cfg.set_weekly_task_option("货币战争", "不应写入")
-            save.assert_not_called()
-
-    def test_later_task_failure_does_not_save_or_mutate_loaded_config(self):
-        cfg = adapters.StarRailConfig()
-        cfg._weekly_configs = dict(reversed(list(cfg._weekly_configs.items())))
-        # 日期可更新，但后续开关类型错误；不能保存前一个任务的修改。
-        initial = {"currencywars_enable": "invalid", "echo_of_war_start_day_of_week": 1}
-        config = deepcopy(initial)
+        cfg = self.load_adapters().WutheringWavesConfig()
+        config = {"NativeCategory": "old", "NativeStage": 1, "unrelated": [1, 2]}
+        original = deepcopy(config)
         with (
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as save,
-            patch.object(adapters, "is_weekly_start_reached", return_value=True),
-            self.assertRaisesRegex(AssertionError, "类型不一致"),
         ):
-            cfg.set_weekly_tasks(4)
-        save.assert_not_called()
-        self.assertEqual(config, initial)
+            cfg.set_dungeon("测试类别", 9)
+            self.assertEqual(cfg._read_dungeon(), ("测试类别", 9))
+        self.assertEqual(
+            config,
+            {**original, "NativeCategory": "NativeCategoryValue", "NativeStage": 9},
+        )
+        save.assert_called_once_with(config)
 
-    def test_multiple_weekly_flags_preserve_unrelated_native_tasks(self):
-        cfg = adapters.WutheringWavesConfig()
-        field = "Additional Tasks to Run After Daily Task"
-        cfg._weekly_configs = {
-            "甲": {"display_name": "甲", "key": field, "physical_name": "weekly_a"},
-            "乙": {"display_name": "乙", "key": field, "physical_name": "weekly_b"},
+    def test_display_only_categories_share_declared_field(self):
+        for script in ("BetterGI", "ok-ef"):
+            for option in self.daily[script][0]["options"]["values"]:
+                option["options"]["key"] = "NativeTarget"
+        adapters = self.load_adapters()
+        for cls in (adapters.GenshinConfig, adapters.EndfieldConfig):
+            with self.subTest(cls=cls.__name__):
+                cfg = cls()
+                config = {"NativeTarget": "old", "untouched": True}
+                with (
+                    patch.object(cfg, "_load", return_value=config),
+                    patch.object(cfg, "_save"),
+                ):
+                    cfg.set_dungeon("只供展示的类别", "真实副本")
+                    self.assertEqual(cfg._read_dungeon(), ("真实副本", None))
+                self.assertEqual(
+                    config, {"NativeTarget": "真实副本", "untouched": True}
+                )
+
+    def test_nte_modes_remain_exclusive_with_declared_native_names(self):
+        anomaly, hunter = self.daily["ok-nte"]
+        anomaly["physical_name"] = "native_anomaly"
+        anomaly["options"]["key"] = "NativeType"
+        anomaly["options"]["values"][0]["physical_name"] = "NativeCategory"
+        anomaly["options"]["values"][0]["options"]["key"] = "NativeSequence"
+        hunter["physical_name"] = "native_hunter"
+        hunter["options"]["key"] = "NativeBoss"
+        self.daily["ok-nte"].reverse()
+        cfg = self.load_adapters().NTEConfig()
+        config = {
+            "native_anomaly": {"NativeType": "old", "NativeSequence": 1},
+            "native_hunter": {"NativeBoss": "old"},
         }
-        initial = {field: ["other"]}
-        with (
-            patch.object(cfg, "_load", return_value=initial),
-            patch.object(cfg, "_save") as save,
-            patch.object(adapters, "is_weekly_start_reached", return_value=True),
-        ):
-            cfg.set_weekly_tasks(3)
-        save.assert_called_once_with({field: ["other", "weekly_a", "weekly_b"]})
-        self.assertEqual(initial, {field: ["other"]})
-
-    def test_editing_echo_of_war_does_not_toggle_currency_wars(self):
-        cfg = adapters.StarRailConfig()
-        initial = {"currencywars_enable": False, "echo_of_war_start_day_of_week": 1}
-        with (
-            patch.object(cfg, "_load", return_value=deepcopy(initial)),
-            patch.object(cfg, "_save") as save,
-        ):
-            cfg.set_weekly_start_day(5)
-        save.assert_called_once_with({**initial, "echo_of_war_start_day_of_week": 5})
-
-
-class TestTaskSyncIsolation(unittest.TestCase):
-    def test_sync_preserves_weeklies_other_dailies_and_other_scripts(self):
-        for module, script, daily_name, category in (
-            (sync_okww_dungeons, "ok-ww", "每日任务", "凝素领域"),
-            (sync_oknte_dungeons, "ok-nte", "daily_anomaly", "空幕"),
-        ):
-            tasks = [
-                {
-                    "display_name": "额外日常",
-                    "type": "daily",
-                    "options": {"values": []},
-                },
-                {
-                    "display_name": daily_name,
-                    "type": "daily",
-                    "options": {
-                        "values": [
-                            {
-                                "display_name": category,
-                                "options": {
-                                    "values": [
-                                        {"display_name": "旧本", "physical_name": 1}
-                                    ]
-                                },
-                            }
-                        ]
-                    },
-                },
+        routine = {
+            "Routine Items": [
+                {"id": "native_anomaly", "enabled": False},
+                {"id": "native_hunter", "enabled": True},
+                {"id": "unrelated", "enabled": True},
             ]
-            tasks.append(
-                {"display_name": "周本", "type": "weekly", "key": "weekly_flag"}
+        }
+
+        def load(path=None, **kwargs):
+            return routine if path == cfg._routine_config_rel_path else config
+
+        with patch.object(cfg, "_load", side_effect=load), patch.object(cfg, "_save"):
+            cfg.set_dungeon("空幕", 2)
+            self.assertEqual(cfg._read_dungeon(), ("空幕", 2))
+            self.assertEqual(
+                config["native_anomaly"],
+                {"NativeType": "NativeCategory", "NativeSequence": 2},
             )
-            other = [{"display_name": "任务", "type": "daily"}]
-            original = {script: tasks, "other_script": other}
-            with tempfile.TemporaryDirectory() as tmp, self.subTest(script=script):
-                path = str(Path(tmp) / "task_list.yml")
-                dump_yaml(path, original)
-                with patch.object(module, "_DUNGEON_PATH", path):
-                    if module is sync_okww_dungeons:
-                        module._apply_new({category: 2}, {category: [1]})
-                    else:
-                        module._apply_numeric({category: 2})
-                result = load_yaml(path)
-                self.assertEqual(result[script][2], tasks[2])
-                self.assertEqual(result[script][:1], tasks[:1])
-                self.assertEqual(result["other_script"], other)
-                options = result[script][1]["options"]["values"][0]["options"]["values"]
-                self.assertEqual([item["physical_name"] for item in options], [1, 2])
+            self.assertEqual(
+                [item["enabled"] for item in routine["Routine Items"]],
+                [True, False, True],
+            )
+            cfg.set_dungeon("追猎目标", "音霸魔王")
+            self.assertEqual(cfg._read_dungeon(), ("追猎目标", "音霸魔王"))
+            self.assertEqual(
+                [item["enabled"] for item in routine["Routine Items"]],
+                [False, True, True],
+            )
+
+    def test_weekly_task_name_and_selection_aliases_roundtrip(self):
+        task = self.weekly["March7th-Launcher"][1]
+        task["physical_name"] = "NativeWeekly"
+        task["key"] = "NativeStartDay"
+        task["options"] = {
+            "values": [{"display_name": "副本别名", "physical_name": "NativeStage"}]
+        }
+        cfg = self.load_adapters().StarRailConfig()
+        config = {"currencywars_enable": False, "instance_names": {"untouched": "keep"}}
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save"),
+        ):
+            cfg.set_weekly_dungeon("历战余响", "副本别名")
+            self.assertEqual(cfg._read_weekly_dungeon("历战余响"), "副本别名")
+            cfg.set_weekly_start_day(4)
+        self.assertEqual(config["NativeStartDay"], 4)
+        self.assertEqual(
+            config["instance_names"],
+            {"untouched": "keep", "NativeWeekly": "NativeStage"},
+        )
+
+    def test_weekly_list_membership_uses_declared_field_and_value(self):
+        task = self.weekly["ok-ww"][0]
+        task["physical_name"] = "NativeWeekly"
+        task["key"] = "NativeTasks"
+        cfg = self.load_adapters().WutheringWavesConfig()
+        config = {"NativeTasks": ["unrelated"]}
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save"),
+        ):
+            cfg._write_weekly(True)
+            self.assertEqual(config, {"NativeTasks": ["unrelated", "NativeWeekly"]})
+            cfg._write_weekly(False)
+            self.assertEqual(config, {"NativeTasks": ["unrelated"]})
+
+    def test_maa_fixed_stage_behavior_does_not_depend_on_display_alias(self):
+        for option in self.daily["MAA"][0]["options"]["values"]:
+            if option["physical_name"] == "1-7":
+                option["display_name"] = "新土别名"
+        cfg = self.load_adapters().ArknightsConfig()
+        queue = [
+            {"$type": "FightTask", "StagePlan": [stage], "IsEnable": False}
+            for stage in ("Annihilation", "1-7", "AP-5", "CE-6")
+        ]
+        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
+        with (
+            patch.object(cfg, "_load", return_value=config),
+            patch.object(cfg, "_save"),
+        ):
+            cfg.set_dungeon("新土别名")
+            self.assertEqual(
+                [task["IsEnable"] for task in queue], [True, True, False, False]
+            )
+            self.assertEqual(cfg._read_dungeon(), ("新土别名", None))
+            cfg.set_dungeon("红票")
+            self.assertEqual(
+                [task["IsEnable"] for task in queue], [True, True, True, False]
+            )
+            self.assertEqual(cfg._read_dungeon(), ("红票", None))
+
+    def test_native_single_daily_entry_points_remain_available(self):
+        for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):
+            self.assertTrue(callable(cls.set_dungeon))
+            self.assertTrue(callable(cls._update_task))
+            self.assertFalse(hasattr(cls, "set_daily_task"))
+
+
+if __name__ == "__main__":
+    unittest.main()

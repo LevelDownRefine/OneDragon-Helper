@@ -52,7 +52,7 @@ def generate_weekly_from_example() -> None:
     """从 config/weekly.example.yml 复制生成 config/weekly.yml。
 
     合并了运行期周常参数（weekly_start 周几起 + weekly_timeouts 每周超时）的用户文件，
-    与静态周常声明（config/task_list.yml，进 git）解耦；首次运行时由
+    与静态周常声明（config/weekly_task_list.yml，进 git）解耦；首次运行时由
     ``config_workflow`` 与 config.yml / schedule.yml 一并生成。模板见
     config/weekly.example.yml。
     """

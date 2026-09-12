@@ -445,10 +445,10 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
 
     def test_weekly_start_unsupported_script_exits_one(self):
         """--weekly-start 对未支持周常的脚本 → 退出 1 并报错（不崩溃）。"""
-        # 找一个不支持周常的已注册脚本。
-        from src.config.set_config import _CONFIGS, supports_weekly
+        # 找一个不支持周常的已注册脚本（如 ok-ef 终末地）
+        from src.config.set_config import _CONFIGS
 
-        unsupported = next(n for n in _CONFIGS if not supports_weekly(n))
+        unsupported = next(n for n in _CONFIGS if not _CONFIGS[n]._weekly_task_name)
         code = _run_main(
             [
                 "--generate-chain",

@@ -14,12 +14,12 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 
 ## 架构：四部分，职责单向、互不越界
 
-1. **set_config：任务配置适配器** — 把各游戏脚本异构的 config 格式/路径/字段名适配成统一接口 `set_config()`。它是 adapter 而非 facade，facade 职责归 service。详见 `src/config/set_config.md`。
+1. **set_config：副本配置适配器** — 把各游戏脚本异构的 config 格式/路径/字段名适配成统一接口 `set_config()`。它是 adapter 而非 facade，facade 职责归 service。详见 `src/config/set_config.md`。
 2. **runner：脚本链运行器，submodule** — 逐条执行脚本链，`block` 字段控制阻塞/非阻塞。详见 `src/runner/README.md`。
 3. **gui** — 只放纯图形界面，即 QML、控制器与弹窗；**不写盘、不承载业务逻辑**，写盘统一经 service。详见 `src/gui/README.md`。
 4. **service，外观/facade** — 整合 config 读写·UI 状态·链生成·校验·runner 命令，对 GUI/CLI 暴露统一薄接口，无 Qt 依赖，从 gui 分出。详见 `src/service/README.md`。
 
-> 脚本配置路径等通用参数仍由 `ScriptConfig` 子类声明；具名日常与周常、原生字段、资源相对路径和展示分组由 `config/task_list.yml` 的顶层 `type` 区分并声明；动态副本由适配器读取本机脚本资源；日志解析/失败重跑/邮件汇总之运行后动作内联于 `src/log` 与 `service`（由 `schedule_run` 统一编排，详见 `src/service/README.md`）；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
+> 日常和周常分别声明于 `config/daily_task_list.yml`、`config/weekly_task_list.yml`，统一使用 `display_name / physical_name` 和递归 `options`；原神/终末地反读脚本本地资源，鸣潮/异环通过 GitHub Action 同步选项。当前每脚本仍为一个日常入口，异环的互斥玩法由子类处理。日志解析/失败重跑/邮件汇总之运行后动作内联于 `src/log` 与 `service`（由 `schedule_run` 统一编排，详见 `src/service/README.md`）；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
 
 ## 铁律：违反即打回
 

@@ -1,6 +1,6 @@
-"""同步异环（ok-nte）副本列表到 config/task_list.yml（CI 自动更新用）。
+"""同步异环（ok-nte）副本列表到 config/daily_task_list.yml（CI 自动更新用）。
 
-两个数据源，分别对应 task_list.yml 中 ok-nte 的两个日常：
+两个数据源，分别对应 daily_task_list.yml 中 ok-nte 的两个日常：
 
 1. 异象界域（数字序号）—— 源 ok-nte 仓库 src/tasks/AnomalyTask.py 的
    `{TASK}_ID_RANGE = (1, N)`。数字是任务列表中的序号（1-based），N 即副本总数：
@@ -16,7 +16,7 @@
 
        音霸魔王 / 无首铁驭 / 塞润尼缇 / 黑之书 / 海囚 / 围巢鸟 / 斑蝶
 
-对比 task_list.yml 中 ok-nte 的对应分类，检测新增/移除；--apply 时把
+对比 daily_task_list.yml 中 ok-nte 的对应分类，检测新增/移除；--apply 时把
 新增项以占位条目追加到分类末尾，供人工确认后改友好名（数字类）或核对（boss 名类）。
 
 本文件不 import 项目任何模块，独立可运行（位于 tools/ 下）。
@@ -46,7 +46,7 @@ _HUNTER_URL = (
 )
 # 本文件位于 tools/ 下，需两级 dirname 才到项目根
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DUNGEON_PATH = os.path.join(_PROJECT_ROOT, "config", "task_list.yml")
+_DUNGEON_PATH = os.path.join(_PROJECT_ROOT, "config", "daily_task_list.yml")
 _OKNTE_KEY = "ok-nte"
 _HUNTER_TASK = "daily_anomaly_hunter"
 # 上游 _ID_RANGE 前缀 → yml 分类名（EXP_COIN 使用奖励名称，忽略）
@@ -102,17 +102,17 @@ def _fetch_hunter_targets() -> list[str]:
 
 
 def _read_yaml() -> dict:
-    """读取 task_list.yml 全量。"""
+    """读取 daily_task_list.yml 全量。"""
     with open(_DUNGEON_PATH, encoding="utf-8") as f:
         data = _yaml.load(f)
     assert isinstance(data, dict) and _OKNTE_KEY in data, (
-        f"task_list.yml 缺少 {_OKNTE_KEY} 配置"
+        f"daily_task_list.yml 缺少 {_OKNTE_KEY} 配置"
     )
     return data
 
 
 def _write_yaml(data: dict) -> None:
-    """写回 task_list.yml（无注释、格式幂等，diff 只含真实增量）。"""
+    """写回 daily_task_list.yml（无注释、格式幂等，diff 只含真实增量）。"""
     with open(_DUNGEON_PATH, "w", encoding="utf-8") as f:
         _yaml.dump(data, f)
 
@@ -123,8 +123,7 @@ def _daily_dungeons(data: dict, daily_name: str) -> list[dict]:
     matches = [
         daily
         for daily in data[_OKNTE_KEY]
-        if daily["type"] == "daily"
-        and daily.get("physical_name", daily["display_name"]) == daily_name
+        if daily.get("physical_name", daily["display_name"]) == daily_name
     ]
     assert len(matches) == 1, f"必须唯一声明日常: {daily_name}"
     return matches[0]["options"]["values"]

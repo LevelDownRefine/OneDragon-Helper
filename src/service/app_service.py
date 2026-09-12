@@ -4,7 +4,7 @@
 
 peer：
 - 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils.utils_config` 模块函数
-- 任务声明：由 :mod:`src.config.task_config` 加载；本模块展开资源并组装任务展示数据
+- 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.dungeon_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
 - 周常运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段）：归 :mod:`src.utils.utils_weekly` 模块函数
@@ -17,29 +17,12 @@ GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经
 """
 
 import logging
-from copy import deepcopy
 
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
-from src.config.set_config import (
-    get_daily_task,
-    get_task_enabled,
-    get_task_options,
-    get_weekly_task,
-    set_config,
-    set_task_enabled,
-    set_weekly_task_option,
-)
-from src.config.task_config import (
-    get_options,
-    get_physical_name,
-    has_selection_binding,
-    load_daily_map,
-    load_weekly_map,
-    validate_options,
-    validate_selection_depth,
-)
+from src.config.dungeon_config import get_dungeon_map, get_weekly_map
+from src.config.set_config import set_config, set_weekly_dungeon
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -78,113 +61,6 @@ from src.utils.utils_weekly import (
 logger = logging.getLogger(__name__)
 
 
-def _expand_options(script_name: str, definition: dict) -> dict:
-    """各层共用资源展开规则，结果仍保持同样的选项组结构。"""
-    assert "options" in definition
-    group = deepcopy(definition["options"])
-    if "source" in group:
-        source = group.pop("source")
-        assert "path" in source, "source 必须声明 path"
-        # 来源分类默认沿用物理名；资源另有分类规则时单独声明。
-        category = source.get("category", get_physical_name(definition))
-        names = get_task_options(script_name, category, source["path"])
-        assert names is None or (
-            isinstance(names, list)
-            and all(isinstance(name, str) and name for name in names)
-        ), f"{script_name} 的副本来源必须返回名称列表: {source}"
-        group["values"] = [{"display_name": name} for name in (names or [])]
-        validate_options(group["values"], f"{script_name}/{source}")
-    assert "values" in group
-    for option in group["values"]:
-        if "options" in option:
-            option["options"] = _expand_options(script_name, option)
-    return group
-
-
-def get_weekly_map(script_name: str) -> list[dict]:
-    """读取指定脚本周常，并展开各层资源。"""
-    declarations = load_weekly_map()
-    if script_name not in declarations:
-        return []
-    definitions = deepcopy(declarations[script_name])
-    for definition in definitions:
-        if "options" in definition:
-            definition["options"] = _expand_options(script_name, definition)
-    return definitions
-
-
-def get_daily_map() -> dict[str, list[dict]]:
-    """读取日常声明，并按相同规则展开各层资源。"""
-    data = deepcopy(load_daily_map())
-    for script_name, definitions in data.items():
-        for definition in definitions:
-            if "options" not in definition:
-                continue
-            definition["options"] = _expand_options(script_name, definition)
-    return data
-
-
-def build_task_item(
-    definition: dict,
-    selection: tuple[str | int | None, str | int | None],
-    use_first_option: bool = True,
-    enabled: bool | None = None,
-) -> dict:
-    """合并任务声明与当前选择，生成统一的行和菜单数据。"""
-    assert "display_name" in definition
-    validate_selection_depth(definition)
-    option_name, sequence = selection
-    menu = []
-    options = get_options(definition)
-    for option in options:
-        assert "display_name" in option
-        choices = get_options(option)
-        if "options" in option and not choices:
-            continue  # 资源缺失时，分类不能退化为可直接写入的副本。
-        menu.append(
-            {
-                "name": option["display_name"],
-                "options": [
-                    {"name": choice["display_name"], "value": get_physical_name(choice)}
-                    for choice in choices
-                ],
-            }
-        )
-    # 有原生绑定却没有当前值时不猜选项，避免误显示停用或未选目标。
-    has_binding = has_selection_binding(definition)
-    # 培养方案/目标等无字段的展示项仍使用首项。
-    if use_first_option and not has_binding and option_name is None and menu:
-        option_name = menu[0]["name"]
-    label = str(option_name) if option_name is not None else "选择副本"
-    if sequence is not None:
-        for option in options:
-            if option["display_name"] != option_name:
-                continue
-            aliases = {
-                get_physical_name(choice): choice["display_name"]
-                for choice in get_options(option)
-            }
-            display = str(sequence)
-            if not isinstance(sequence, bool) and sequence in aliases:
-                display = aliases[sequence]
-            label = (
-                f"{option_name} · {display}"
-                if "key" in definition["options"]
-                else display
-            )
-            break
-    if definition.get("allow_disable", False):  # 无此能力时不提供停用操作。
-        menu.insert(0, {"name": "不启用", "options": [], "action": "disable"})
-        if enabled is False:
-            label = "不启用"
-    return {
-        "name": get_physical_name(definition),
-        "display_name": definition["display_name"],
-        "selection_label": label,
-        "options": menu,
-    }
-
-
 class AppService:
     """组合根：装配平级 service peer 并向外暴露统一接口（GUI/CLI 唯一门面）。"""
 
@@ -200,14 +76,14 @@ class AppService:
         """按当前脚本目录恢复并保留游戏路径，返回恢复文件数和跳过的脚本。"""
         return backup_service.restore_backup(zip_path)
 
-    # ── 任务声明与资源选项 ─────────────────────────────────────────
+    # ── 副本 / 周常声明（src.config.dungeon_config 模块函数）────────────
     def get_weekly_map(self, script_name: str) -> list:
-        """读取周常声明并展开本地资源选项。"""
+        """读取 weekly_task_list.yml 的周常声明清单。"""
         return get_weekly_map(script_name)
 
-    def get_daily_map(self) -> dict:
-        """读取日常声明并展开本地资源选项。"""
-        return get_daily_map()
+    def get_dungeon_map(self) -> dict:
+        """读取 daily_task_list.yml 的副本/序列配置。"""
+        return get_dungeon_map()
 
     # ── 单脚本配置（src.utils.utils_config 模块函数）─────────────────────────
     def get_script(self, script_name: str):
@@ -319,92 +195,23 @@ class AppService:
     def collect_invalid_scripts(self, script_list: list) -> list:
         return collect_invalid_script_messages(script_list)
 
-    # ── 任务展示与编辑 ─────────────────────────────────────────────
+    # ── 游戏侧 config 适配器（src.config.set_config 模块函数）─────────────
     # 副本写入各脚本**自身**的 config（适配器层）；周几起由 update_script
     # 统一落盘（含游戏侧同步），不经此节入口。
-    def get_daily_items(self, script_name: str, daily_defs: list[dict]) -> list[dict]:
-        """按声明顺序反读每个日常，返回统一的行和选项数据。"""
-        items = []
-        for daily in daily_defs:
-            assert "display_name" in daily, "日常必须声明 display_name"
-            enabled = (
-                get_task_enabled(script_name, get_physical_name(daily))
-                if daily.get("allow_disable", False)
-                else None
-            )
-            selection = (
-                get_daily_task(script_name, get_physical_name(daily))
-                if enabled is not False
-                else (None, None)
-            )
-            items.append(build_task_item(daily, selection, enabled=enabled))
-        return items
-
-    def get_weekly_items(self, script_name: str) -> list[dict]:
-        """周常与日常共用菜单和回显组装。"""
-        items = []
-        for weekly in self.get_weekly_map(script_name):
-            assert "display_name" in weekly
-            enabled = (
-                get_task_enabled(script_name, get_physical_name(weekly))
-                if weekly.get("allow_disable", False)
-                else None
-            )
-            selection = (
-                get_weekly_task(script_name, get_physical_name(weekly))
-                if get_options(weekly) and enabled is not False
-                else (None, None)
-            )
-            item = build_task_item(
-                weekly, selection, use_first_option=False, enabled=enabled
-            )
-            item["has_options"] = bool(item["options"])
-            if not item["has_options"]:
-                item["selection_label"] = ""
-            items.append(item)
-        return items
-
-    def get_weekly_task_options(self, script_name: str, weekly_name: str) -> list[str]:
-        """返回指定周常的菜单名称；无选项或未声明时为空。"""
-        for weekly in self.get_weekly_map(script_name):
-            assert "display_name" in weekly, "周常必须声明 display_name"
-            if get_physical_name(weekly) == weekly_name:
-                item = build_task_item(weekly, (None, None), use_first_option=False)
-                return [
-                    option["name"]
-                    for option in item["options"]
-                    if "action" not in option
-                ]
-        return []
-
-    def set_task_enabled(self, script_name: str, task_name: str, enabled: bool) -> None:
-        """编辑一个具名任务的原生启用状态。"""
-        set_task_enabled(script_name, task_name, enabled)
-
-    def set_daily_task(
+    def set_script_dungeon(
         self,
         script_name: str,
-        daily_name: str,
-        option_name: str,
+        dungeon_name: str | None = None,
         sequence: str | int | None = None,
     ) -> None:
-        """将指定日常的副本/二级序列实时写回脚本自身配置。"""
-        set_config(
-            script_name,
-            option_name=option_name,
-            sequence=sequence,
-            daily_name=daily_name,
-        )
+        """写当前日常副本/二级序列到脚本自身 config（编辑期实时落盘）。"""
+        return set_config(script_name, dungeon_name=dungeon_name, sequence=sequence)
 
-    def set_weekly_task_option(
-        self,
-        script_name: str,
-        weekly_name: str,
-        option_name: str,
-        sequence: str | int | None = None,
+    def set_script_weekly_dungeon(
+        self, script_name: str, weekly_name: str, dungeon_name: str
     ) -> None:
         """写某周常当前选中的副本名到脚本自身 config。"""
-        return set_weekly_task_option(script_name, weekly_name, option_name, sequence)
+        return set_weekly_dungeon(script_name, weekly_name, dungeon_name)
 
     # ── 自定义壁纸表（config/wallpaper.json，src.utils.utils_wallpaper）──
     def load_wallpapers(self) -> dict:

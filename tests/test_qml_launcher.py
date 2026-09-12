@@ -483,10 +483,10 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             from src.service.app_service import AppService
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
-            import src.service.app_service as app_service
+            import src.config.dungeon_config as dungeon_config
 
             app = QApplication([])
-            # 崩铁：真实 config/task_list.yml 里历战余响声明了 9 个副本。
+            # 崩铁：真实 config/weekly_list.yml 里历战余响声明了 9 个副本。
             # 但副本清单现由游戏脚本外部文件（instance_names.json）运行期读取，
             # CI 未安装游戏故读不到；此处直接桩掉派发器，提供确定性的 9 个副本，
             # 仅用于验证弹窗几何（与真实清单内容无关）。
@@ -501,7 +501,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch.object(app_service, "get_task_options",
+                patch.object(dungeon_config, "get_dungeon_lists",
                              return_value=fake_dungeons),
             ):
                 bridge = QmlBridge()
@@ -519,18 +519,18 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                           f"WIN {win.height()}", flush=True)
 
                 def measure():
-                    wk = win.findChild(QQuickItem, "weeklyTaskPopup")
+                    wk = win.findChild(QQuickItem, "weeklyDungeonPopup")
                     wk.setProperty("weeklyName", "历战余响")
                     wk.setProperty("visible", True)
-                    dg = win.findChild(QQuickItem, "dailyTaskPopup")
+                    dg = win.findChild(QQuickItem, "dungeonPopup")
                     dg.setProperty("visible", True)
-                    QTimer.singleShot(200, lambda: (report("weeklyTaskPopup"),
-                                                    report("dailyTaskPopup"),
+                    QTimer.singleShot(200, lambda: (report("weeklyDungeonPopup"),
+                                                    report("dungeonPopup"),
                                                     app.quit()))
 
                 QTimer.singleShot(600, measure)
                 app.exec()
-                print("OPTS", len(bridge.weeklyTaskOptions("历战余响")), flush=True)
+                print("OPTS", len(bridge.weeklyDungeonOptions("历战余响")), flush=True)
             """
         )
         proc = subprocess.run(
@@ -551,7 +551,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             parts = line.split()
             if len(parts) == 7 and parts[1] == "TOP":
                 measured[parts[0]] = (int(parts[2]), int(parts[4]), int(parts[6]))
-        for name in ("weeklyTaskPopup", "dailyTaskPopup"):
+        for name in ("weeklyDungeonPopup", "dungeonPopup"):
             self.assertIn(name, measured, f"未测到 {name}，stdout={proc.stdout}")
             top, height, win_h = measured[name]
             self.assertGreaterEqual(top, 0, f"{name} 顶部超出窗口上沿")
@@ -559,7 +559,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                 top + height, win_h, f"{name} 底部超出窗口（top={top} h={height}）"
             )
         # 周常下拉高度 = 选项数 * 32 + 8，应完整放下不被截断
-        self.assertEqual(measured["weeklyTaskPopup"][1], n_opts * 32 + 8)
+        self.assertEqual(measured["weeklyDungeonPopup"][1], n_opts * 32 + 8)
 
 
 class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
@@ -580,7 +580,7 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             from src.gui.main_window import QmlBridge
 
             app = QApplication([])
-            # 异环 ok-nte：已适配（在 set_config 注册）但 task_list.yml 未声明周常
+            # 异环 ok-nte：已适配（在 set_config 注册）但 weekly_list.yml 未声明周常
             scripts = [{
                 "display_name": "异环",
                 "script_path": "scripts/ok-nte/ok-nte.exe",
@@ -619,7 +619,7 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             cwd=os.getcwd(),
         )
         self.assertNotIn("ReferenceError", proc.stderr)
-        # 输出样例：WEEKLY_VISIBLE False CARD_H 184
+        # 输出样例：WEEKLY_VISIBLE false CARD_H 134
         visible = None
         height = None
         for line in proc.stdout.splitlines():
@@ -630,9 +630,9 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
         self.assertEqual(
             visible, "False", f"无周常脚本应隐藏周常区，stdout={proc.stdout}"
         )
-        # 184 = 标题和分隔线(72) + 两个日常行(2 * 56)，不含周常区。
+        # 128 = 标题+分隔线+日常行(56) 的固定高度，不含周常区（与周常上沿对齐）
         self.assertEqual(
-            height, 184, f"异环两个日常的卡片高度应为 184，stdout={proc.stdout}"
+            height, 128, f"无周常脚本卡片高度应为 128，stdout={proc.stdout}"
         )
 
 
@@ -661,8 +661,8 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             from src.gui.main_window import QmlBridge
 
             app = QApplication([])
-            # 崩铁 March7th-Launcher：task_list.yml 声明 2 种周常
-            # （货币战争 / 历战余响），历战余响 options.source=assets/config/instance_names.json
+            # 崩铁 March7th-Launcher：weekly_list.yml 声明 2 种周常
+            # （货币战争 / 历战余响），历战余响 dungeons_source=assets/config/instance_names.json
             # 运行期从 M7A 的 instance_names.json 读取。CI 无 M7A，此处 patch 模拟已装，
             # 返回历战余响的 9 个副本键（与真实 instance_names.json 一致），验证副本下拉
             # 几何（>3 个需 placePopup 上翻封顶）。
@@ -676,7 +676,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch("src.service.app_service.get_task_options",
+                patch("src.config.dungeon_config.get_dungeon_lists",
                              return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                            "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                            "不死的神实", "寒潮的落幕", "毁灭的开端"]),
@@ -717,9 +717,9 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 card_h = int(parts[5])
         self.assertEqual(visible, "True", f"崩铁应显示周常区，stdout={proc.stdout}")
         # 周常区 = 项数(2) * 行高(56) + 底部留白(16) = 128
-        # 卡片 = 标题区(68) + 日常(56) + 周常区(128) + 底部(16) = 268
+        # 卡片 = 128 + 周常区 + 卡片底部留白(16) = 272
         self.assertEqual(wk_h, 128, f"周常区高度应=128，stdout={proc.stdout}")
-        self.assertEqual(card_h, 268, f"卡片高度应=268，stdout={proc.stdout}")
+        self.assertEqual(card_h, 272, f"卡片高度应=272，stdout={proc.stdout}")
 
 
 class TestScriptIconProvider(unittest.TestCase):

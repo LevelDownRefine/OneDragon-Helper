@@ -4,8 +4,8 @@
 - 日期数学：``next_target_datetime`` / ``get_week_num`` / ``is_weekly_start_reached``（周几判定）；
 - 运行期参数读写：``weekly.yml`` 内的 ``weekly_start``（周几起）+ ``weekly_timeouts``（每周超时）两段。
 
-不含周本声明——各游戏「有哪些周常、可选哪些副本」由 src.config.task_config 模块函数读
-task_list.yml 提供；本模块只管「周几起 / 每天超时多久」这类运行期参数。
+不含周本声明——各游戏「有哪些周常、可选哪些副本」由 src.config.dungeon_config 模块函数读
+weekly_task_list.yml 提供；本模块只管「周几起 / 每天超时多久」这类运行期参数。
 
 ``weekly.yml`` 是单一文件、内含两大段；写回任一段时均保留另一段（读全量→改一段→写全量）。
 

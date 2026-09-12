@@ -96,7 +96,6 @@ class TestApplyNewFrontInsert(unittest.TestCase):
             "ok-ww": [
                 {
                     "display_name": "每日任务",
-                    "type": "daily",
                     "options": {
                         "key": "Which to Farm",
                         "values": [
@@ -135,7 +134,6 @@ class TestApplyNewFrontInsert(unittest.TestCase):
                 },
                 {
                     "display_name": "另一个日常",
-                    "type": "daily",
                     "options": {"values": [{"display_name": "保留"}]},
                 },
             ]
@@ -188,7 +186,6 @@ class TestApplyNewFrontInsert(unittest.TestCase):
             "ok-ww": [
                 {
                     "display_name": "每日任务",
-                    "type": "daily",
                     "options": {
                         "values": [
                             {
