@@ -300,6 +300,49 @@ class TestLoadConfig(unittest.TestCase):
             self.assertEqual(result, fake_data, f"{name} config 读取内容不匹配")
 
 
+class TestLoadReadPathTolerance(unittest.TestCase):
+    """_load 读路径的失败处理：未安装/缺失静默按未设置，内容损坏留痕后仍按未设置。"""
+
+    def _cfg(self):
+        return set_config.StarRailConfig()
+
+    def test_missing_config_returns_none_without_warning(self):
+        """脚本未安装 / config 缺失（以断言表达）属正常状态 → None 且不告警。"""
+        with (
+            patch.object(
+                set_config,
+                "load_config",
+                side_effect=AssertionError("config 文件不存在"),
+            ),
+            self.assertNoLogs("src.config.set_config", level="WARNING"),
+        ):
+            self.assertIsNone(self._cfg()._load(allow_missing=True))
+
+    def test_corrupt_config_warns_and_returns_none(self):
+        """文件存在但解析失败 → None 且留下 warning（不静默把损坏当未设置）。"""
+        with (
+            patch.object(
+                set_config,
+                "load_config",
+                side_effect=json.JSONDecodeError("bad json", "{", 0),
+            ),
+            self.assertLogs("src.config.set_config", level="WARNING"),
+        ):
+            self.assertIsNone(self._cfg()._load(allow_missing=True))
+
+    def test_write_path_raises_on_corrupt_config(self):
+        """写路径（allow_missing=False）读取失败一律抛出，不降级为 None。"""
+        with (
+            patch.object(
+                set_config,
+                "load_config",
+                side_effect=json.JSONDecodeError("bad json", "{", 0),
+            ),
+            self.assertRaises(json.JSONDecodeError),
+        ):
+            self._cfg()._load()
+
+
 class TestSaveConfig(unittest.TestCase):
     """测试 save_config —— 全部 mock，不真正写回脚本 config"""
 

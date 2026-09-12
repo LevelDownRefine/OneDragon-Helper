@@ -205,6 +205,12 @@ class TestScheduleRun(unittest.TestCase):
         self._run_once.assert_called_once_with({"demo"}, chain_name="today")
         mock_shutdown.assert_not_called()
 
+    def test_empty_selection_does_not_run(self):
+        """enabled_keys 为空时直接跳过：不等待、不生成、不运行。"""
+        with patch("src.service.chain_service.ScheduledRun") as run:
+            chain_service.schedule_run(set(), "now", shutdown_delay=60)
+        run.assert_not_called()
+
     def test_shutdown_triggers_post_run(self):
         """shutdown_delay 非 None 时透传给 build_post_run_pipeline（末位挂关机 step）。"""
         self._make_service([{"display_name": "demo"}])

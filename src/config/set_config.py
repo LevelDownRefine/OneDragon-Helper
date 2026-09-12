@@ -185,27 +185,40 @@ class ScriptConfig:
     ) -> dict | None:
         """读取脚本 config 并校验为 dict。
 
-        写路径（初始化/落盘校验）要求 config 必须存在且为 dict，缺失即错误；
-        读路径（反读日常/周本副本）允许文件缺失或解析失败，此时视为「未设置」返回 None。
+        写路径（初始化/落盘校验）要求 config 必须存在且为 dict，任何读取失败都抛出；
+        读路径（反读日常/周本副本）容忍外部状态，一律返回 None，其中：
+
+        - 脚本未安装（config.yml 中无此脚本）与 config 文件缺失属正常状态，静默跳过；
+        - 文件存在但解析器报错（JSON/YAML 语法错误）不当作「无内容」，留痕后仍返回 None。
 
         Args:
             rel_path: 相对脚本根目录的路径；缺省用 _config_rel_path。
-            allow_missing: True 时文件缺失/解析失败返回 None（读路径）；
-                False 时缺失即报错（写路径，默认）。
+            allow_missing: True 时读取失败返回 None（读路径）；
+                False 时失败即报错（写路径，默认）。
 
         Returns:
             解析后的 config dict；仅 allow_missing=True 且读取失败时为 None。
 
         Raises:
-            AssertionError: allow_missing=False 且文件不存在或解析结果非 dict。
+            AssertionError: allow_missing=False 且文件不存在、内容损坏或解析结果非 dict。
         """
         rel_path = rel_path or self._config_rel_path
         try:
             config = load_config(self._script_name, rel_path)
-        except Exception:  # noqa: BLE001  # 读路径：缺失/损坏视为未设置
-            if allow_missing:
-                return None
-            raise
+        except AssertionError:
+            # 未安装 / 文件缺失由 load_config 以断言表达，读路径按「未设置」处理。
+            if not allow_missing:
+                raise
+            return None
+        except Exception:  # noqa: BLE001  # 文件存在但内容损坏
+            if not allow_missing:
+                raise
+            logger.warning(
+                f"[set_config][{self.display_name}] config 损坏，"
+                f"按未设置处理: {rel_path}",
+                exc_info=True,
+            )
+            return None
         if not isinstance(config, dict):
             if allow_missing:
                 return None
@@ -358,9 +371,11 @@ class ScriptConfig:
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
-        raw = config.get(self._task_key)
+        if self._task_key not in config:
+            return None, None  # 未选择副本（字段未落盘）
+        raw = config[self._task_key]
         if raw is None:
-            return None, None  # 未选择副本
+            return None, None  # 未选择副本（字段为空值）
         if self._task_map:
             inv = {v: k for k, v in self._task_map.items()}
             assert raw in inv, f"[set_config][{self.display_name}] 未知副本值: {raw!r}"
@@ -679,9 +694,11 @@ class WutheringWavesConfig(ScriptConfig):
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
-        raw = config.get(cfg["key"])
+        if cfg["key"] not in config:
+            return dungeon, None  # 未选择序号（字段未落盘）
+        raw = config[cfg["key"]]
         if raw is None:
-            return dungeon, None  # 未选择序号
+            return dungeon, None  # 未选择序号（字段为空值）
         return dungeon, raw
 
 
@@ -732,8 +749,8 @@ class GenshinConfig(ScriptConfig):
             if not isinstance(scene, dict):
                 continue
             for pt in scene.get("points", []):
-                if isinstance(pt, dict) and pt.get("type") == task_name:
-                    name = pt.get("name")
+                if isinstance(pt, dict) and pt.get("type", "") == task_name:
+                    name = pt.get("name", "")
                     if name:
                         names.append(name)
         return names
@@ -797,10 +814,7 @@ class EndfieldConfig(ScriptConfig):
         assert isinstance(data, dict), (
             f"[set_config][{cls.display_name}] world_map.json 顶层应为 dict: {source}"
         )
-        stages = data.get("stages_dict")
-        assert isinstance(stages, dict), (
-            f"[set_config][{cls.display_name}] world_map.json 缺少 stages_dict: {source}"
-        )
+        stages = get_field(data, "stages_dict", cls.display_name, dict, "world_map")
         assert task_name in stages, (
             f"[set_config][{cls.display_name}] 未知日常类别: {task_name!r} (source={source})"
         )
@@ -841,7 +855,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
         # 周常（迷失之地）在 _group.yml app_list 中的 app_id。
         app_list = get_field(config, "app_list", self.display_name, list)
         target = next(
-            (app for app in app_list if app.get("app_id") == self._weekly_task_name),
+            (app for app in app_list if app["app_id"] == self._weekly_task_name),
             None,
         )
         assert target is not None, (
@@ -920,7 +934,7 @@ class StarRailConfig(ScriptConfig):
             self.display_name,
         )
         # 历战余响：周几起交给 M7A 自身门控，与副本选型 instance_names 正交
-        config[self._echo_config["key"]] = start_day
+        safe_update(config, self._echo_config["key"], start_day, self.display_name)
         self._save(config)
 
     def set_weekly_start_day(self, start_day: int) -> None:
@@ -939,7 +953,14 @@ class StarRailConfig(ScriptConfig):
         # 前置条件：游戏原生 config 路径有效（游戏已安装、script_path 正确），由 GUI 侧
         # 调用前保证；本方法假设该前置成立，不做存在性兜底盘。
         config = self._load(allow_missing=True) or {}
-        config[self._echo_config["key"]] = start_day
+        # 空 config 时字段可能尚不存在（本方法容忍 config 缺失），故允许新增。
+        safe_update(
+            config,
+            self._echo_config["key"],
+            start_day,
+            self.display_name,
+            assert_key_exists=False,
+        )
         self._save(config)
 
     def set_weekly_dungeon(self, weekly_name: str, dungeon_name: str) -> None:
@@ -953,12 +974,17 @@ class StarRailConfig(ScriptConfig):
             dungeon_name: 选中的副本名（来自 weekly_task_list.yml 声明）。
         """
         config = self._load()
-        # instance_names 是 M7A 约定键名（{周常名: 副本名} 的 dict），保持不动；
-        # 缺字段则新建。
-        instance_names = config.get("instance_names")
-        if not isinstance(instance_names, dict):
-            instance_names = {}
-            config["instance_names"] = instance_names
+        # instance_names 是 M7A 约定键名（{周常名: 副本名} 的 dict）；仅首次使用时新建，
+        # 已存在则由 get_field 校验类型——与 _read_weekly_dungeon 对称，不静默抹掉损坏值。
+        if "instance_names" not in config:
+            safe_update(
+                config,
+                "instance_names",
+                {},
+                self.display_name,
+                assert_key_exists=False,
+            )
+        instance_names = get_field(config, "instance_names", self.display_name, dict)
         task = get_weekly_config(self._script_name, weekly_name)
         values = get_value_map(task)
         if values:
@@ -982,9 +1008,9 @@ class StarRailConfig(ScriptConfig):
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
-        instance_names = config.get("instance_names")
-        if instance_names is None:
+        if "instance_names" not in config:
             return None  # 未配置周常副本
+        instance_names = config["instance_names"]
         assert isinstance(instance_names, dict), (
             f"[set_config][{self.display_name}] instance_names 必须是 dict"
         )
@@ -1190,11 +1216,8 @@ class NTEConfig(ScriptConfig):
         assert isinstance(routine, dict), (
             f"[set_config][{self.display_name}] DailyRoutineTask.json 必须是 dict"
         )
-        enabled = {
-            item.get("id")
-            for item in routine.get("Routine Items", [])
-            if isinstance(item, dict) and item.get("enabled")
-        }
+        items = get_field(routine, "Routine Items", self.display_name, list)
+        enabled = {item["id"] for item in items if item["enabled"]}
         # 追猎目标优先（与既有解析顺序一致）；互斥场景下仅一个 enabled。
         mode_id = next(
             (mid for mid in reversed(self._exclusive_routine_items) if mid in enabled),
@@ -1217,18 +1240,24 @@ class NTEConfig(ScriptConfig):
         )
         if mode_id == get_physical_name(self._hunter):
             # 追猎目标：副本名即 boss 字段名（段缺失/空串按未选 boss，容忍未落盘）。
-            boss = section.get(self._hunter["options"]["key"])
-            return self._hunter["display_name"], boss if boss else None
+            boss_key = self._hunter["options"]["key"]
+            if boss_key not in section:
+                return self._hunter["display_name"], None  # 未落盘
+            return self._hunter["display_name"], section[boss_key] or None
         # 异象界域：副本名在 任务类型 字段，序号经 _anomaly_seq_key_map 反查。
-        dungeon = section.get(self._anomaly["options"]["key"])
-        if dungeon in (None, ""):  # 段缺失/字段为空串均视为未选具体副本
+        anomaly_key = self._anomaly["options"]["key"]
+        if anomaly_key not in section:
+            return None, None  # 段缺失（未落盘）
+        dungeon = section[anomaly_key]
+        if dungeon in (None, ""):  # 字段为空串视为未选具体副本
             return None, None
         names = {value: name for name, value in self._task_map.items()}
         assert dungeon in names, f"未知异象类别: {dungeon!r}"
         dungeon = names[dungeon]
-        key = self._anomaly_seq_key_map.get(dungeon)
-        sequence = section.get(key) if key else None
-        return dungeon, sequence
+        seq_key = self._anomaly_seq_key_map[dungeon]
+        if seq_key not in section:
+            return dungeon, None  # 序号未落盘
+        return dungeon, section[seq_key]
 
 
 # ---- 明日方舟 Arknights（粥）----
@@ -1289,9 +1318,9 @@ class ArknightsConfig(ScriptConfig):
         changed = False
         matched_target = False
         for task in task_config:
-            if task.get("$type") != "FightTask":
+            if task["$type"] != "FightTask":
                 continue
-            stage_plan = task.get("StagePlan")
+            stage_plan = task["StagePlan"]
             if not isinstance(stage_plan, list) or len(stage_plan) != 1:
                 continue
             stage = stage_plan[0]
@@ -1315,9 +1344,9 @@ class ArknightsConfig(ScriptConfig):
             candidates = [
                 t
                 for t in task_config
-                if t.get("$type") == "FightTask"
-                and t.get("IsEnable")
-                and isinstance(t.get("StagePlan"), list)
+                if t["$type"] == "FightTask"
+                and t["IsEnable"]
+                and isinstance(t["StagePlan"], list)
                 and len(t["StagePlan"]) == 1
                 and t["StagePlan"][0] != "Annihilation"
             ]
@@ -1356,9 +1385,9 @@ class ArknightsConfig(ScriptConfig):
         fixed_stages = {"Annihilation", "1-7"}
         has_1_7 = False
         for task in task_config:
-            if task.get("$type") != "FightTask":
+            if task["$type"] != "FightTask":
                 continue
-            stage_plan = task.get("StagePlan")
+            stage_plan = task["StagePlan"]
             if not isinstance(stage_plan, list) or len(stage_plan) != 1:
                 continue
             stage = stage_plan[0]
@@ -1369,7 +1398,7 @@ class ArknightsConfig(ScriptConfig):
             name = self._task_map[stage]
             if stage in fixed_stages:
                 continue
-            if task.get("IsEnable"):
+            if task["IsEnable"]:
                 return name, None
         # 所有维护关卡都未启用，但有1-7 → 读为土
         if has_1_7:
@@ -1415,11 +1444,11 @@ class ArknightsConfig(ScriptConfig):
         expire_days = 8 - start_day
         changed = False
         for task in task_queue:
-            if task.get("$type") != "FightTask":
+            if task["$type"] != "FightTask":
                 continue
-            enabled = bool(task.get("IsEnable", False))
+            enabled = bool(task["IsEnable"])
             # 剿灭不吃理智药：开启但仍强制 false
-            use_medicine = enabled and task.get("Name") != "剿灭"
+            use_medicine = enabled and task["Name"] != "剿灭"
             changed |= safe_update(
                 task,
                 "UseExpiringMedicine",
@@ -1473,7 +1502,7 @@ class ArknightsConfig(ScriptConfig):
         expire_days = 8 - start_day
         changed = False
         for task in task_queue:
-            if task.get("$type") != "FightTask":
+            if task["$type"] != "FightTask":
                 continue
             changed |= safe_update(
                 task,

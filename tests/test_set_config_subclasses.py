@@ -695,6 +695,19 @@ class TestStarRailConfig(unittest.TestCase):
             mock_save.assert_called_once()
             self.assertEqual(config["instance_names"]["历战余响"], "铁骸的锈冢")
 
+    def test_set_weekly_dungeon_corrupt_instance_names_raises(self):
+        """instance_names 已存在但非 dict → assert（与 _read_weekly_dungeon 对称，不静默重建）。"""
+        with patch.object(StarRailConfig, "_init_config"):
+            cfg = StarRailConfig()
+            config = {"instance_names": "不是dict"}
+            with (
+                patch.object(cfg, "_load", return_value=config),
+                patch.object(cfg, "_save") as mock_save,
+                self.assertRaises(AssertionError),
+            ):
+                cfg.set_weekly_dungeon("历战余响", "铁骸的锈冢")
+            mock_save.assert_not_called()
+
     def test_set_weekly_start_day_writes_echo_field_only(self):
         """set_weekly_start_day 只写 echo_of_war_start_day_of_week，不动 currencywars_enable。
 

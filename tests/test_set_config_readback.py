@@ -351,6 +351,19 @@ class TestReadbackCorruption(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 cfg._read_dungeon()
 
+    def test_nte_routine_missing_items_raises(self):
+        """routine 缺 Routine Items（损坏）→ assert 暴露，不静默判为「无启用玩法」。"""
+        routine = {"不是 Routine Items": []}
+        config: dict = {}
+        with patch.object(
+            NTEConfig,
+            "_load",
+            side_effect=lambda p=None, **_k: config if p is None else routine,
+        ):
+            cfg = NTEConfig()
+            with self.assertRaises(AssertionError):
+                cfg._read_dungeon()
+
     def test_starrail_bad_instance_names_raises(self):
         config = {"instance_names": "不是dict"}
         with (
