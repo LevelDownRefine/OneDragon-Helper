@@ -189,6 +189,9 @@ class AppService:
     def apply_daily_plan(self, options: daily_plan.DailyPlanOptions) -> None:
         return daily_plan.apply_daily_plan(options)
 
+    def list_daily_plan_scripts(self) -> list[tuple[str, str]]:
+        return daily_plan.list_daily_plan_scripts()
+
     def run_daily_plan(self) -> None:
         return daily_plan.run_daily_plan()
 

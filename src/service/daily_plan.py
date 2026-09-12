@@ -30,10 +30,14 @@ logger = logging.getLogger(__name__)
 class DailyPlanOptions:
     enabled: bool = False
     target_time: str = "04:10"
+    script_names: tuple[str, ...] = ()
 
     def __post_init__(self):
         assert type(self.enabled) is bool
         assert is_valid_target_time(self.target_time)
+        assert isinstance(self.script_names, tuple)
+        assert all(isinstance(name, str) and name for name in self.script_names)
+        assert len(set(self.script_names)) == len(self.script_names)
 
 
 def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
@@ -47,7 +51,28 @@ def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
         enabled = block.get("enabled", False)
         target = block.get("target_time", "04:10")
         if type(enabled) is bool and is_valid_target_time(target):
-            return DailyPlanOptions(enabled, target)
+            if "script_names" not in block:
+                # 旧计划只继承一次当前勾选，之后与手动选择独立。
+                names = []
+                if enabled:
+                    config = load_config()
+                    assert "script_list" in config
+                    names = [
+                        get_script_name(script)
+                        for script in config["script_list"]
+                        if script_enabled(script)
+                    ]
+                if schedule is None:
+                    block["script_names"] = names
+                    save_schedule(data)
+            else:
+                names = block["script_names"]
+            if (
+                isinstance(names, list)
+                and all(isinstance(name, str) and name for name in names)
+                and len(set(names)) == len(names)
+            ):
+                return DailyPlanOptions(enabled, target, tuple(names))
     logger.warning("[daily] 每日计划配置无效，按关闭处理")
     return DailyPlanOptions()
 
@@ -146,29 +171,64 @@ def apply_daily_plan(options: DailyPlanOptions) -> None:
     assert isinstance(options, DailyPlanOptions)
     data = load_schedule()
     previous = load_daily_plan(data)
+    if options.enabled:
+        available = {name for name, _label in list_daily_plan_scripts()}
+        if not options.script_names:
+            raise ValueError("请至少选择一个参加每日计划的脚本")
+        missing = set(options.script_names) - available
+        if missing:
+            raise ValueError(f"脚本已移除，请重新选择：{'、'.join(sorted(missing))}")
+    trigger_changed = (options.enabled, options.target_time) != (
+        previous.enabled,
+        previous.target_time,
+    )
     task = WindowsDailyTask()
-    task.sync(options)
-    data["daily_run"] = {"enabled": options.enabled, "target_time": options.target_time}
+    if trigger_changed:
+        task.sync(options)
+    data["daily_run"] = {
+        "enabled": options.enabled,
+        "target_time": options.target_time,
+        "script_names": list(options.script_names),
+    }
     try:
         save_schedule(data)
     except (OSError, YAMLError):
         try:
-            task.sync(previous)
+            if trigger_changed:
+                task.sync(previous)
         except OSError:
             logger.exception("[daily] 保存失败后恢复系统任务也失败，请重新设置每日计划")
         raise
 
 
+def list_daily_plan_scripts() -> list[tuple[str, str]]:
+    """返回可选脚本的标识与展示名，不受手动勾选限制。"""
+    config = load_config()
+    assert "script_list" in config
+    choices = []
+    for script in config["script_list"]:
+        assert "display_name" in script
+        choices.append((get_script_name(script), script["display_name"]))
+    return choices
+
+
 def run_daily_plan() -> None:
-    """每次触发都读取当前开关、勾选与运行选项，并立即运行。"""
-    if not load_daily_plan().enabled:
+    """按计划独立保存的脚本名单运行，副本与运行选项读取最新配置。"""
+    plan = load_daily_plan()
+    if not plan.enabled:
         logger.info("[daily] 每日计划已关闭，跳过此次触发")
         return
     config = load_config()
     assert "script_list" in config
-    enabled = {get_script_name(s) for s in config["script_list"] if script_enabled(s)}
+    available = {get_script_name(s) for s in config["script_list"]}
+    enabled = set(plan.script_names) & available
+    missing = set(plan.script_names) - available
+    if missing:
+        logger.warning(
+            "[daily] 计划中的脚本已移除，跳过：%s", "、".join(sorted(missing))
+        )
     if not enabled:
-        logger.info("[daily] 没有启用的脚本，跳过此次触发")
+        logger.info("[daily] 计划没有可运行的脚本，跳过此次触发")
         return
     options = load_run_options()
     chain_service.schedule_run(

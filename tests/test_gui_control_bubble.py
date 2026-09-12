@@ -71,7 +71,7 @@ class TestControlBubble(unittest.TestCase):
                 mode_hint = find_item("controlModeHint")
                 mode_hint_text = find_item("controlModeHintText")
                 assert mode_hint.isVisible()
-                assert mode_hint_text.property("text") == "控制模式"
+                assert mode_hint_text.property("text") == "选择手动运行的脚本"
                 assert not bridge.controlMode
                 top = launch_button.mapToScene(QPointF(0, 0))
                 mode_bottom = mode_button.mapToScene(QPointF(0, mode_button.height()))
@@ -92,7 +92,7 @@ class TestControlBubble(unittest.TestCase):
                 QTest.mouseMove(window, mode_point.toPoint())
                 QTest.qWait(200)
                 assert mode_hint.isVisible()
-                assert mode_hint_text.property("text") == "退出控制模式"
+                assert mode_hint_text.property("text") == "退出手动选择"
                 assert mode_hint.y() + mode_hint.height() < bubble.y()
                 assert bubble.x() >= 80
                 assert 0 <= bubble.y() <= window.height() - bubble.height()

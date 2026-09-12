@@ -263,7 +263,7 @@ class GameListController(QObject):
                 return
             self._toast(
                 f"{self._games[index]['display_name']}："
-                f"{'启用' if self._enabled[index] else '停用'}"
+                f"{'已加入手动运行' if self._enabled[index] else '已移出手动运行'}"
             )
             return
         if index == self.current_index:
@@ -277,22 +277,22 @@ class GameListController(QObject):
         self._control_mode = not self._control_mode
         self.controlModeChanged.emit()
         self._toast(
-            "控制模式：点击图标切换启用/停用"
+            "手动选择：点击图标选择脚本，不影响每日计划"
             if self._control_mode
             else "浏览模式：点击图标选择脚本"
         )
 
     @Slot()
     def selectAll(self):
-        """全选并保存，供下次启动与每日计划使用。"""
+        """全选并保存手动运行选择。"""
         if self._save_enabled([True] * len(self._games)):
-            self._toast("已全选（全部启用）")
+            self._toast("手动运行已全选")
 
     @Slot()
     def deselectAll(self):
-        """清空并保存；每日计划无勾选时不执行任何运行或收尾动作。"""
+        """清空并保存手动运行选择，不改变每日计划。"""
         if self._save_enabled([False] * len(self._games)):
-            self._toast("已清空（全部停用）")
+            self._toast("手动运行已清空")
 
     @Slot(int, int)
     def reorderGames(self, src_index: int, dst_index: int):

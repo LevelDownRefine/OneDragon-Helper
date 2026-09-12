@@ -274,7 +274,8 @@ class TestNativeDropPersistence(unittest.TestCase):
                     "src.gui.file_drop.QGuiApplication.modalWindow", return_value=None
                 ),
             ):
-                bridge = QmlBridge()
+                with patch("src.service.daily_plan.load_schedule", return_value={}):
+                    bridge = QmlBridge()
                 toasts = []
                 bridge.toastRequested.connect(toasts.append)
                 handler = WindowsFileDrop(window, bridge.dropScripts)

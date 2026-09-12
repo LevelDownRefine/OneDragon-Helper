@@ -46,12 +46,12 @@ class LaunchController(QObject):
             if game_enabled
         }
         if not enabled_script_names:
-            self._toast("没有启用的脚本")
+            self._toast("没有勾选手动运行的脚本")
             return
         if confirm and not self._confirm_run(enabled_script_names):
             return
         options = self._app_service.load_run_options()
-        msg = f"启动全部：已在新控制台窗口生成并运行链 ({len(enabled_script_names)} 个脚本)"
+        msg = f"手动运行：已在新控制台窗口生成并运行链 ({len(enabled_script_names)} 个脚本)"
         proc = spawn_schedule_run(
             enabled_script_names,
             "now",

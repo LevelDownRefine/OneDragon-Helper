@@ -26,8 +26,12 @@ class TestConfigDialog(unittest.TestCase):
         self.dialog.close()
         self.dialog.deleteLater()
 
-    def test_click_action_label_accepts_and_returns_selection(self):
-        for action in ("settings", "backup", "restore"):
+    def test_action_keeps_form_open_without_saving(self):
+        actions = []
+        saves = []
+        self.dialog.actionRequested.connect(actions.append)
+        self.dialog.saveRequested.connect(lambda: saves.append(True))
+        for action in ("daily", "settings", "backup", "restore"):
             with self.subTest(action=action):
                 self.dialog.show()
                 button = self.dialog.findChild(QPushButton, f"{action}Action")
@@ -40,21 +44,21 @@ class TestConfigDialog(unittest.TestCase):
                 QTest.mouseClick(
                     self.dialog.windowHandle(), Qt.LeftButton, pos=position
                 )
-                self.assertEqual(self.dialog.result(), QDialog.Accepted)
-                self.assertEqual(self.dialog.selected_action, action)
-                self.assertFalse(self.dialog.isVisible())
+                self.assertEqual(actions[-1], action)
+                self.assertEqual(saves, [])
+                self.assertTrue(self.dialog.isVisible())
 
     def test_close_leaves_no_selection(self):
-        button = self.dialog.findChild(QPushButton, "closeConfig")
+        button = next(
+            b for b in self.dialog.findChildren(QPushButton) if b.text() == "取消"
+        )
         QTest.mouseClick(button, Qt.LeftButton)
         self.assertEqual(self.dialog.result(), QDialog.Rejected)
-        self.assertIsNone(self.dialog.selected_action)
         self.assertFalse(self.dialog.isVisible())
 
     def test_escape_leaves_no_selection(self):
         QTest.keyClick(self.dialog, Qt.Key_Escape)
         self.assertEqual(self.dialog.result(), QDialog.Rejected)
-        self.assertIsNone(self.dialog.selected_action)
         self.assertFalse(self.dialog.isVisible())
 
     def test_reopens_saved_preferences_and_toggle_preserves_delay(self):
@@ -67,26 +71,29 @@ class TestConfigDialog(unittest.TestCase):
         self.assertTrue(dialog.startup_delay.isEnabled())
         self.assertEqual(dialog.startup_options, StartupOptions(True, 125))
 
-    def test_escape_keeps_pending_seconds_for_save(self):
+    def test_save_submits_pending_seconds(self):
         edit = self.dialog.startup_delay.lineEdit()
         self.dialog.startup_delay.setKeyboardTracking(False)
         edit.setFocus()
         edit.selectAll()
         QTest.keyClicks(edit, "125")
-        QTest.keyClick(edit, Qt.Key_Escape)
-        self.assertFalse(self.dialog.isVisible())
+        button = next(
+            b for b in self.dialog.findChildren(QPushButton) if b.text() == "保存"
+        )
+        saves = []
+        self.dialog.saveRequested.connect(
+            lambda: saves.append(self.dialog.startup_options)
+        )
+        QTest.mouseClick(button, Qt.LeftButton)
+        self.assertEqual(saves, [StartupOptions(True, 125)])
         self.assertEqual(self.dialog.startup_options, StartupOptions(True, 125))
 
-    def test_daily_plan_echoes_time_and_suppresses_startup_controls(self):
-        dialog = ConfigDialog(daily_plan=DailyPlanOptions(True, "08:30"))
+    def test_daily_plan_suppresses_startup_controls(self):
+        dialog = ConfigDialog(daily_plan=DailyPlanOptions(True, "08:30", ("A",)))
         self.addCleanup(dialog.close)
-        self.assertEqual(dialog.daily_plan, DailyPlanOptions(True, "08:30"))
-        self.assertTrue(dialog.daily_time.isEnabled())
         self.assertFalse(dialog.startup_cb.isEnabled())
         self.assertFalse(dialog.startup_delay.isEnabled())
-        dialog.daily_cb.click()
-        self.assertEqual(dialog.daily_plan, DailyPlanOptions(False, "08:30"))
-        self.assertFalse(dialog.daily_time.isEnabled())
+        dialog.set_daily_plan_enabled(False)
         self.assertTrue(dialog.startup_cb.isEnabled())
         self.assertTrue(dialog.startup_delay.isEnabled())
 

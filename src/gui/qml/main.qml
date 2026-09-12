@@ -400,7 +400,7 @@ Window {
                 Text {
                     id: launchAllHintText
                     anchors.centerIn: parent
-                    text: "启动全部"
+                    text: "立即运行勾选脚本"
                     color: Theme.text
                     font.pixelSize: 12
                 }
@@ -433,7 +433,7 @@ Window {
             id: controlModeHintText
             objectName: "controlModeHintText"
             anchors.centerIn: parent
-            text: Bridge.controlMode ? "退出控制模式" : "控制模式"
+            text: Bridge.controlMode ? "退出手动选择" : "选择手动运行的脚本"
             color: Theme.text
             font.pixelSize: 12
         }

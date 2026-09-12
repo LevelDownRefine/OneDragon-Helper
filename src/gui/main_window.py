@@ -87,6 +87,8 @@ class QmlBridge(QObject):
         self.links.toastRequested.connect(self.toastRequested.emit)
         self.backup.toastRequested.connect(self.toastRequested.emit)
         self.backup.restoreCompleted.connect(self.task_card.refresh)
+        # 首次加载固化旧计划名单，之后的手动勾选不影响每日计划。
+        self.game_list.gamesChanged.connect(self.backup.daily_plan.refresh)
 
         # 编排启动：重建列表 → 构建副本缓存 → 刷新当前（_reload_games 收尾即刷）
         self._reload_games()

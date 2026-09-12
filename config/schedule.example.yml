@@ -12,6 +12,8 @@ shutdown:
 daily_run:
   enabled: false
   target_time: "04:10"
+  # 独立于手动勾选；通过每日计划弹窗选择脚本。
+  script_names: []
 mute:
   enabled: true
 # 运行后开启声音：与 mute（运行前静音）相互独立，可单独勾选。

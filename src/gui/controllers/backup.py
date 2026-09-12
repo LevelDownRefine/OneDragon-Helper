@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QDialog, QFileDialog
 from ruamel.yaml.error import YAMLError
 
 from src.gui.config_dialog import ConfigDialog
+from src.gui.controllers.daily_plan import DailyPlanController
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.service.app_service import AppService
 from src.utils import get_root_dir
@@ -28,10 +29,11 @@ class BackupController(QObject):
         super().__init__(parent)
         self._app_service = app_service or AppService()
         self._toast = toast or (lambda _msg: None)
+        self.daily_plan = DailyPlanController(self._app_service, self._toast, self)
 
     @Slot()
     def openConfig(self):
-        """关闭时保存启动设置；选择备份/恢复后再执行对应动作。"""
+        """菜单操作独立打开，启动设置仅点击保存后落盘。"""
         try:
             options = self._app_service.load_startup_options()
             daily_plan = self._app_service.load_daily_plan()
@@ -40,36 +42,35 @@ class BackupController(QObject):
             self._toast(f"读取启动设置失败：{exc}")
             return
         dialog = ConfigDialog(startup_options=options, daily_plan=daily_plan)
-        result = dialog.exec()
-        if dialog.daily_plan != daily_plan:
-            try:
-                self._app_service.apply_daily_plan(dialog.daily_plan)
-            except (OSError, YAMLError) as exc:
-                logger.error("保存每日计划失败：%s: %s", type(exc).__name__, exc)
-                self._toast(f"保存每日计划失败：{exc}")
-                return
-            self._toast(
-                f"已设置每天 {dialog.daily_plan.target_time} 按最新配置运行"
-                if dialog.daily_plan.enabled
-                else "已关闭每日计划"
-            )
-        updated = dialog.startup_options
-        if updated != options:
-            try:
-                self._app_service.apply_startup_options(updated)
-            except (OSError, YAMLError) as exc:
-                logger.error("保存启动设置失败：%s: %s", type(exc).__name__, exc)
-                self._toast(f"保存启动设置失败：{exc}")
-                return
-        if result != QDialog.Accepted:
-            return
         actions = {
+            "daily": self.daily_plan.edit,
             "backup": self.backupConfig,
             "restore": self.restoreConfig,
             "settings": self.configureRunOptions,
         }
-        assert dialog.selected_action in actions
-        actions[dialog.selected_action]()
+
+        def dispatch(action):
+            assert action in actions
+            actions[action]()
+            if action == "daily":
+                self.daily_plan.refresh()
+                dialog.set_daily_plan_enabled(self.daily_plan.plan.enabled)
+
+        def save():
+            updated = dialog.startup_options
+            if updated != options:
+                try:
+                    self._app_service.apply_startup_options(updated)
+                except (OSError, YAMLError) as exc:
+                    logger.error("保存启动设置失败：%s: %s", type(exc).__name__, exc)
+                    dialog.show_error(f"保存失败：{exc}")
+                    return
+            dialog.accept()
+            self._toast("启动设置已保存")
+
+        dialog.actionRequested.connect(dispatch)
+        dialog.saveRequested.connect(save)
+        dialog.exec()
 
     def configureRunOptions(self):
         """保存共用运行选项，不启动脚本。"""

@@ -217,7 +217,7 @@ class TestLaunchAllUnattended(unittest.TestCase):
         self.assertFalse(args.kwargs["unmute"])
         self.assertIsNone(args.kwargs["shutdown_delay"])
         toast.assert_called_once()
-        self.assertIn("启动全部", toast.call_args[0][0])
+        self.assertIn("手动运行", toast.call_args[0][0])
 
 
 if __name__ == "__main__":

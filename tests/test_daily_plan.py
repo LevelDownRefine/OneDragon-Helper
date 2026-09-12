@@ -26,9 +26,20 @@ class TestDailyPlanConfig(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.path = str(Path(directory.name, "schedule.yml"))
         self.original = {
-            "daily_run": {"enabled": False, "target_time": "04:10"},
+            "daily_run": {"enabled": False, "target_time": "04:10", "script_names": []},
             "notify": {"enabled": True, "email": "a@example.com"},
         }
+        config_patcher = patch(
+            "src.service.daily_plan.load_config",
+            return_value={
+                "script_list": [
+                    {"display_name": "A", "script_path": "a.py", "enabled": True},
+                    {"display_name": "B", "script_path": "b.py", "enabled": False},
+                ]
+            },
+        )
+        self.config = config_patcher.start().return_value
+        self.addCleanup(config_patcher.stop)
         dump_yaml(self.path, self.original)
         patcher = patch(
             "src.service.schedule.get_schedule_yml_path_under_root",
@@ -44,10 +55,14 @@ class TestDailyPlanConfig(unittest.TestCase):
         self.assertEqual(
             load_daily_plan(
                 {
-                    "daily_run": {"enabled": True, "target_time": "09:40"},
+                    "daily_run": {
+                        "enabled": True,
+                        "target_time": "09:40",
+                        "script_names": ["A"],
+                    },
                 }
             ),
-            DailyPlanOptions(True, "09:40"),
+            DailyPlanOptions(True, "09:40", ("A",)),
         )
 
     def test_invalid_plan_is_disabled(self):
@@ -56,6 +71,9 @@ class TestDailyPlanConfig(unittest.TestCase):
             "yes",
             {"enabled": "false"},
             {"enabled": True, "target_time": "25:10"},
+            {"enabled": True, "script_names": "A"},
+            {"enabled": True, "script_names": ["A", "A"]},
+            {"enabled": True, "script_names": [None]},
         ):
             with (
                 self.subTest(block=block),
@@ -63,12 +81,66 @@ class TestDailyPlanConfig(unittest.TestCase):
             ):
                 self.assertFalse(load_daily_plan({"daily_run": block}).enabled)
 
+    def test_legacy_plan_freezes_selection_once_and_preserves_time(self):
+        self.original["daily_run"] = {"enabled": True, "target_time": "08:30"}
+        dump_yaml(self.path, self.original)
+        first = load_daily_plan()
+        self.assertEqual(first, DailyPlanOptions(True, "08:30", ("A",)))
+        self.config["script_list"][0]["enabled"] = False
+        self.config["script_list"][1]["enabled"] = True
+        self.assertEqual(load_daily_plan(), first)
+        self.assertEqual(load_yaml(self.path)["daily_run"]["script_names"], ["A"])
+        self.assertEqual(load_yaml(self.path)["notify"], self.original["notify"])
+
+    def test_legacy_migration_failure_is_not_silently_used(self):
+        dump_yaml(self.path, {"daily_run": {"enabled": True, "target_time": "08:30"}})
+        with (
+            patch(
+                "src.service.daily_plan.save_schedule", side_effect=OSError("locked")
+            ),
+            self.assertRaisesRegex(OSError, "locked"),
+        ):
+            load_daily_plan()
+
+    @patch("src.service.daily_plan.WindowsDailyTask")
+    def test_changing_only_scripts_does_not_reregister_trigger(self, task):
+        apply_daily_plan(DailyPlanOptions(True, "08:30", ("A",)))
+        task.return_value.sync.reset_mock()
+        apply_daily_plan(DailyPlanOptions(True, "08:30", ("B",)))
+        task.return_value.sync.assert_not_called()
+        self.assertEqual(load_daily_plan(), DailyPlanOptions(True, "08:30", ("B",)))
+        self.assertTrue(self.config["script_list"][0]["enabled"])
+        self.assertFalse(self.config["script_list"][1]["enabled"])
+
+    @patch("src.service.daily_plan.WindowsDailyTask")
+    def test_empty_or_removed_script_cannot_enable_plan(self, task):
+        for names in ((), ("removed",)):
+            with self.subTest(names=names), self.assertRaises(ValueError):
+                apply_daily_plan(DailyPlanOptions(True, script_names=names))
+        task.return_value.sync.assert_not_called()
+        self.assertEqual(load_yaml(self.path), self.original)
+
+    @patch("src.service.daily_plan.WindowsDailyTask")
+    def test_script_only_save_failure_keeps_old_plan_without_task_changes(self, task):
+        first = DailyPlanOptions(True, "08:30", ("A",))
+        apply_daily_plan(first)
+        task.return_value.sync.reset_mock()
+        with (
+            patch(
+                "src.service.daily_plan.save_schedule", side_effect=OSError("locked")
+            ),
+            self.assertRaises(OSError),
+        ):
+            apply_daily_plan(DailyPlanOptions(True, "08:30", ("B",)))
+        self.assertEqual(load_daily_plan(), first)
+        task.return_value.sync.assert_not_called()
+
     @patch("src.service.daily_plan.WindowsDailyTask")
     def test_enable_update_disable_persist_and_preserve_other_options(self, task):
         for options in (
-            DailyPlanOptions(True, "00:00"),
-            DailyPlanOptions(True, "23:59"),
-            DailyPlanOptions(False, "23:59"),
+            DailyPlanOptions(True, "00:00", ("A",)),
+            DailyPlanOptions(True, "23:59", ("B",)),
+            DailyPlanOptions(False, "23:59", ("B",)),
         ):
             apply_daily_plan(options)
             self.assertEqual(load_daily_plan(), options)
@@ -76,9 +148,9 @@ class TestDailyPlanConfig(unittest.TestCase):
         self.assertEqual(
             [call.args[0] for call in task.return_value.sync.call_args_list],
             [
-                DailyPlanOptions(True, "00:00"),
-                DailyPlanOptions(True, "23:59"),
-                DailyPlanOptions(False, "23:59"),
+                DailyPlanOptions(True, "00:00", ("A",)),
+                DailyPlanOptions(True, "23:59", ("B",)),
+                DailyPlanOptions(False, "23:59", ("B",)),
             ],
         )
 
@@ -86,7 +158,7 @@ class TestDailyPlanConfig(unittest.TestCase):
     def test_registration_failure_leaves_config_unchanged(self, task):
         task.return_value.sync.side_effect = OSError("denied")
         with self.assertRaisesRegex(OSError, "denied"):
-            apply_daily_plan(DailyPlanOptions(True))
+            apply_daily_plan(DailyPlanOptions(True, script_names=("A",)))
         self.assertEqual(load_yaml(self.path), self.original)
 
     @patch("src.service.daily_plan.WindowsDailyTask")
@@ -97,16 +169,39 @@ class TestDailyPlanConfig(unittest.TestCase):
             ),
             self.assertRaises(OSError),
         ):
-            apply_daily_plan(DailyPlanOptions(True, "08:00"))
+            apply_daily_plan(DailyPlanOptions(True, "08:00", ("A",)))
         self.assertEqual(
             [c.args[0] for c in task.return_value.sync.call_args_list],
-            [DailyPlanOptions(True, "08:00"), DailyPlanOptions()],
+            [DailyPlanOptions(True, "08:00", ("A",)), DailyPlanOptions()],
         )
         self.assertEqual(load_yaml(self.path), self.original)
 
 
 class TestDailyRun(unittest.TestCase):
-    def test_each_trigger_uses_current_selection_and_run_options(self):
+    def test_removed_script_is_reported_without_running_unrelated_scripts(self):
+        with (
+            patch(
+                "src.service.daily_plan.load_daily_plan",
+                return_value=DailyPlanOptions(True, script_names=("removed",)),
+            ),
+            patch(
+                "src.service.daily_plan.load_config",
+                return_value={
+                    "script_list": [
+                        {"display_name": "B", "script_path": "b.py", "enabled": True}
+                    ]
+                },
+            ),
+            patch("src.service.daily_plan.chain_service.schedule_run") as run,
+            patch("src.service.daily_plan.load_run_options") as options,
+            self.assertLogs("src.service.daily_plan", level="WARNING") as logs,
+        ):
+            AppService().run_daily_plan()
+        self.assertIn("removed", "\n".join(logs.output))
+        run.assert_not_called()
+        options.assert_not_called()
+
+    def test_manual_selection_does_not_change_plan_and_run_options_stay_current(self):
         service = AppService()
         config = {
             "script_list": [
@@ -117,7 +212,7 @@ class TestDailyRun(unittest.TestCase):
         with (
             patch(
                 "src.service.daily_plan.load_daily_plan",
-                return_value=DailyPlanOptions(True),
+                return_value=DailyPlanOptions(True, script_names=("A",)),
             ),
             patch("src.service.daily_plan.load_config", return_value=config),
             patch(
@@ -139,7 +234,7 @@ class TestDailyRun(unittest.TestCase):
         self.assertEqual(first.args, ({"A"}, "now"))
         self.assertFalse(first.kwargs["mute"])
         self.assertIsNone(first.kwargs["shutdown_delay"])
-        self.assertEqual(second.args, ({"B"}, "now"))
+        self.assertEqual(second.args, ({"A"}, "now"))
         self.assertTrue(second.kwargs["mute"])
         self.assertEqual(second.kwargs["shutdown_delay"], 90)
 

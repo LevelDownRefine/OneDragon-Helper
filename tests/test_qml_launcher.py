@@ -63,14 +63,20 @@ def _make_bridge():
     # 构造期用 with 屏蔽读盘（QmlBridge 初始化即读 config.yml）；
     # with 退出后失效，故构造后再持久 mock load_config，覆盖 reorderGames/
     # addScript 等构造后真实读盘路径（CI 环境无 config.yml，必须持续屏蔽）。
-    with patch.object(
-        AppService,
-        "load_config",
-        return_value={"script_list": list(_SCRIPTS)},
+    with (
+        patch.object(
+            AppService, "load_config", return_value={"script_list": list(_SCRIPTS)}
+        ),
+        patch("src.service.daily_plan.load_schedule", return_value={}),
+        patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
     ):
         b = QmlBridge()
     b.app_service.load_config = MagicMock(return_value={"script_list": list(_SCRIPTS)})
     # 隔离写盘：避免测试污染真实 config.yml
+    from src.service.daily_plan import DailyPlanOptions
+
+    b.app_service.load_daily_plan = MagicMock(return_value=DailyPlanOptions())
+    b.app_service.list_daily_plan_scripts = MagicMock(return_value=[])
     b.app_service.save_config = MagicMock()
     b.app_service.set_script_enabled = MagicMock()
     return b
@@ -377,7 +383,11 @@ class TestQmlApp(unittest.TestCase):
                 patch.object(AppService, "load_config", return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg", return_value=None),
             ):
-                bridge = QmlBridge()
+                with (
+                    patch("src.service.daily_plan.load_schedule", return_value={}),
+                    patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
+                ):
+                    bridge = QmlBridge()
             qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
             engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
@@ -414,6 +424,9 @@ class TestQmlApp(unittest.TestCase):
             with patch.object(bridge.backup, "openConfig") as open_config:
                 QTest.mouseClick(window, Qt.LeftButton, pos=position.toPoint())
                 open_config.assert_called_once_with()
+            # 每日计划只在配置界面编辑，主界面不显示计划卡或快捷按钮。
+            for name in ("dailyPlanCard", "dailyPlanSummary", "editDailyPlanButton", "toggleDailyPlanButton"):
+                assert window.findChild(QQuickItem, name) is None
             # 主操作与脚本配置相邻，点配置不能误触启动。
             with (
                 patch.object(bridge.launch, "launchScript") as launch,
@@ -504,7 +517,11 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                 patch.object(dungeon_config, "get_dungeon_lists",
                              return_value=fake_dungeons),
             ):
-                bridge = QmlBridge()
+                with (
+                    patch("src.service.daily_plan.load_schedule", return_value={}),
+                    patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
+                ):
+                    bridge = QmlBridge()
                 qmlRegisterSingletonInstance(
                     QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlApplicationEngine()
@@ -592,7 +609,11 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
             ):
-                bridge = QmlBridge()
+                with (
+                    patch("src.service.daily_plan.load_schedule", return_value={}),
+                    patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
+                ):
+                    bridge = QmlBridge()
             qmlRegisterSingletonInstance(
                 QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
@@ -681,7 +702,11 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                                            "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                            "不死的神实", "寒潮的落幕", "毁灭的开端"]),
             ):
-                bridge = QmlBridge()
+                with (
+                    patch("src.service.daily_plan.load_schedule", return_value={}),
+                    patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
+                ):
+                    bridge = QmlBridge()
             qmlRegisterSingletonInstance(
                 QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
