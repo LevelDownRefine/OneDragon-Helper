@@ -1,4 +1,4 @@
-name: Sync ok-nte dungeons
+name: Sync ok-nte tasks
 
 on:
   schedule:
@@ -30,9 +30,9 @@ jobs:
           # exit=2 抓取/解析失败（跳过本次，不误开 PR）
           # 首跑输出保留到 CI 日志（抓取/解析失败时可查原因），不丢 /dev/null。
           code=0
-          python tools/sync_oknte_dungeons.py || code=$?
+          python tools/sync_oknte_tasks.py || code=$?
           if [ $code -eq 1 ]; then
-            python tools/sync_oknte_dungeons.py --apply
+            python tools/sync_oknte_tasks.py --apply
             echo "changed=true" >> "$GITHUB_OUTPUT"
           elif [ $code -eq 0 ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -45,7 +45,7 @@ jobs:
         if: steps.sync.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
-          commit-message: "chore: sync ok-nte dungeon lists from upstream"
+          commit-message: "chore: sync ok-nte task lists from upstream"
           title: "chore: 同步异环副本（数字 + 追猎目标）"
           body: |
             检测到异环副本有更新，已从 ok-nte 上游同步到 `config/daily_task_list.yml`：
@@ -56,5 +56,5 @@ jobs:
             - 新增数字的 display 为占位数字，**请人工改成友好名**（如 光暗/鸟/苹果）
             - 新增的追猎目标为 boss 中文名，**请人工核对**是否与游戏内一致
             - 移除的项仅报告不删除（避免上游短暂回退时丢配置）
-          branch: auto-sync/oknte-dungeons
+          branch: auto-sync/oknte-tasks
           delete-branch: true

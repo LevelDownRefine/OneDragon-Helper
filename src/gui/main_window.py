@@ -133,8 +133,8 @@ class QmlBridge(QObject):
     dailySupported = Property(
         bool, lambda self: self.task_card.daily_supported, notify=taskStateChanged
     )
-    dailyDungeonText = Property(
-        str, lambda self: self.task_card.daily_dungeon_text, notify=taskStateChanged
+    dailyTaskText = Property(
+        str, lambda self: self.task_card.daily_task_text, notify=taskStateChanged
     )
     weeklySupported = Property(
         bool, lambda self: self.task_card.weekly_supported, notify=taskStateChanged
@@ -147,9 +147,9 @@ class QmlBridge(QObject):
         lambda self: self.task_card.weekly_items,
         notify=taskStateChanged,
     )
-    dungeonOptions = Property(
+    dailyTaskOptions = Property(
         "QVariantList",
-        lambda self: self.task_card.dungeon_options,
+        lambda self: self.task_card.daily_task_options,
         notify=taskStateChanged,
     )
 
@@ -281,16 +281,16 @@ class QmlBridge(QObject):
         self.window.closeWindow()
 
     @Slot(str, "QVariant")
-    def selectDungeon(self, name, seq):
-        self.task_card.selectDungeon(name, seq)
+    def selectDailyTask(self, name, seq):
+        self.task_card.selectDailyTask(name, seq)
 
     @Slot(str, str)
-    def selectWeeklyDungeon(self, weekly_name, dungeon_name):
-        self.task_card.selectWeeklyDungeon(weekly_name, dungeon_name)
+    def selectWeeklyTask(self, weekly_name, task_name):
+        self.task_card.selectWeeklyTask(weekly_name, task_name)
 
     @Slot(str, result="QVariantList")
-    def weeklyDungeonOptions(self, weekly_name):
-        return self.task_card.weekly_dungeon_options(weekly_name)
+    def weeklyTaskOptions(self, weekly_name):
+        return self.task_card.weekly_task_options(weekly_name)
 
     @Slot(str)
     def videoError(self, reason):
@@ -320,7 +320,7 @@ class QmlBridge(QObject):
         必须强制刷新背景与任务卡，否则 UI 停在旧数据直到重新点选。
         """
         self.game_list.reload_games()
-        self.task_card.build_dungeon_cache(self.game_list.games)
+        self.task_card.build_daily_task_cache(self.game_list.games)
         self._on_current_changed()
 
     def _on_current_changed(self):

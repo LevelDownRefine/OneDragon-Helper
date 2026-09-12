@@ -66,20 +66,18 @@ class TestConfigRelPaths(unittest.TestCase):
             {"BetterGI", "OneDragon-Launcher", "March7th-Launcher", "ok-ef"},
         )
 
-    def test_weekly_task_name_requires_write_weekly(self):
-        """声明 _weekly_task_name 的子类必须落实周常写入：覆写 _write_weekly 或 set_weekly
-        （register 完整性校验）"""
+    def test_weekly_task_name_requires_prepare_weekly_start_day(self):
+        """声明 _weekly_task_name 的子类必须覆写 prepare_weekly_start_day（register 完整性校验）"""
         for name, cls in set_config._CONFIGS.items():
             if cls._weekly_task_name:
                 self.assertTrue(
-                    cls._write_weekly is not set_config.ScriptConfig._write_weekly
-                    or cls.set_weekly is not set_config.ScriptConfig.set_weekly,
-                    f"{name} 声明了 _weekly_task_name 但未落实周常写入"
-                    f"（既未实现 _write_weekly 也未覆写 set_weekly）",
+                    cls.prepare_weekly_start_day
+                    is not set_config.ScriptConfig.prepare_weekly_start_day,
+                    f"{name} 声明了 _weekly_task_name 但未覆写 prepare_weekly_start_day",
                 )
 
     def test_register_rejects_weekly_without_write(self):
-        """register 拒绝：声明 _weekly_task_name 但沿用基类 _write_weekly 的子类"""
+        """register 拒绝：声明 _weekly_task_name 但沿用基类 prepare_weekly_start_day 的子类"""
         bogus = type(
             "BogusWeekly",
             (set_config.ScriptConfig,),
@@ -441,8 +439,8 @@ class TestSaveConfig(unittest.TestCase):
                 self.assertEqual(loaded, data)
 
 
-class TestGenshinSetDungeon(unittest.TestCase):
-    """测试 GenshinConfig.set_dungeon：目录→副本两级组织，DomainName 存副本名"""
+class TestGenshinSetDailyTask(unittest.TestCase):
+    """测试 GenshinConfig.set_daily_task：目录→副本两级组织，DomainName 存副本名"""
 
     def setUp(self):
         from src.config.set_config import GenshinConfig
@@ -466,18 +464,18 @@ class TestGenshinSetDungeon(unittest.TestCase):
 
     def test_has_sequence_writes_secondary_name(self):
         """有二级（目录 → 副本）时 DomainName 写入二级副本名"""
-        self.config.set_dungeon("1", "霜凝的机枢")
+        self.config.set_daily_task("1", "霜凝的机枢")
         self.assertEqual(self.config._config_data["DomainName"], "霜凝的机枢")
 
-    def test_no_sequence_writes_dungeon_name(self):
+    def test_no_sequence_writes_task_name(self):
         """无二级（兼容旧单层配置）时 DomainName 写入一级名"""
-        self.config.set_dungeon("山风的荆冕")
+        self.config.set_daily_task("山风的荆冕")
         self.assertEqual(self.config._config_data["DomainName"], "山风的荆冕")
 
     def test_same_value_no_save(self):
         """DomainName 未变化时不落盘"""
         self.config._config_data["DomainName"] = "霜凝的机枢"
-        self.config.set_dungeon("1", "霜凝的机枢")
+        self.config.set_daily_task("1", "霜凝的机枢")
         self.mock_save.assert_not_called()
 
 

@@ -3,10 +3,10 @@ import OneDragonHelper 1.0
 import "Theme.js" as Theme
 
 // 任务调度卡（日常副本 / 周常）：复刻旧 src/gui/task_card.py 的视觉与行为契约。
-// 数据经 Bridge 暴露：taskTitle / taskAdapted / weeklySupported / dailyDungeonText /
-// weeklyItems / dungeonOptions；副本写回经 selectDungeon / selectWeeklyDungeon；
+// 数据经 Bridge 暴露：taskTitle / taskAdapted / weeklySupported / dailyTaskText /
+// weeklyItems / dailyTaskOptions；副本写回经 selectDailyTask / selectWeeklyTask；
 // 周几起（weekly_start）经单脚本配置弹窗（dialogs）落盘 weekly_start.yml。
-// dungeon/sequence 持久化到子脚本 config；周几起（weekly_start）持久化到 weekly_start.yml。
+// task/sequence 持久化到子脚本 config；周几起（weekly_start）持久化到 weekly_start.yml。
 // 启用控制不在此卡：日常靠控制模式、周常靠周几起（均在别处实现），本卡只做副本选择。
 //
 // 「周几起」选择已迁至单脚本配置弹窗（≡ 按钮打开），本卡只显示周常名占位。
@@ -124,20 +124,20 @@ Item {
         }
         Rectangle {
             id: dailyChip
-            objectName: "dailyDungeonButton"
+            objectName: "dailyTaskButton"
             x: cardRoot.chipX; y: 10
             width: 220
             height: 36; radius: 10
             color: dailyMouse.containsMouse ? Theme.hover : Theme.control
             border.width: 1
-            border.color: dungeonPopup.visible ? Theme.accent : Theme.border
+            border.color: dailyTaskPopup.visible ? Theme.accent : Theme.border
             Behavior on color { ColorAnimation { duration: 140 } }
             Text {
                 anchors.fill: parent
                 leftPadding: 12; rightPadding: 32
                 verticalAlignment: Text.AlignVCenter
                 elide: Text.ElideRight
-                text: Bridge.dailyDungeonText
+                text: Bridge.dailyTaskText
                 color: Theme.accent; font.pixelSize: 12
             }
             Image {
@@ -145,7 +145,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 width: 20; height: 20
                 source: "image://uiicon/chevron_down"
-                rotation: dungeonPopup.visible ? 180 : 0
+                rotation: dailyTaskPopup.visible ? 180 : 0
                 opacity: 0.7
             }
             MouseArea {
@@ -154,10 +154,10 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    if (Bridge.dungeonOptions.length === 0) {
+                    if (Bridge.dailyTaskOptions.length === 0) {
                         Bridge.toastRequested("暂无副本选项")
                     } else {
-                        dungeonPopup.visible = !dungeonPopup.visible
+                        dailyTaskPopup.visible = !dailyTaskPopup.visible
                     }
                 }
             }
@@ -189,7 +189,7 @@ Item {
                 model: Bridge.weeklyItems
                 Item {
                     width: weeklyArea.width; height: weeklyArea.rowH
-                    property bool hasDungeon: modelData.has_dungeon
+                    property bool hasTask: modelData.has_task
                     Rectangle {
                         x: 12; y: 10; width: 36; height: 36; radius: 10
                         color: Theme.accentSoft
@@ -212,10 +212,10 @@ Item {
                         x: cardRoot.chipX; y: 10
                         width: 220
                         height: 36; radius: 10
-                        visible: hasDungeon
+                        visible: hasTask
                         color: weeklyMouse.containsMouse ? Theme.hover : Theme.control
                         border.width: 1
-                        border.color: weeklyDungeonPopup.visible && weeklyDungeonPopup.weeklyName === modelData.name
+                        border.color: weeklyTaskPopup.visible && weeklyTaskPopup.weeklyName === modelData.name
                                       ? Theme.accent : Theme.border
                         Behavior on color { ColorAnimation { duration: 140 } }
                         Text {
@@ -223,7 +223,7 @@ Item {
                             leftPadding: 12; rightPadding: 32
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
-                            text: modelData.dungeon_label
+                            text: modelData.task_label
                             color: Theme.accent
                             font.pixelSize: 12
                         }
@@ -232,7 +232,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 20; height: 20
                             source: "image://uiicon/chevron_down"
-                            rotation: weeklyDungeonPopup.visible && weeklyDungeonPopup.weeklyName === modelData.name ? 180 : 0
+                            rotation: weeklyTaskPopup.visible && weeklyTaskPopup.weeklyName === modelData.name ? 180 : 0
                             opacity: 0.7
                         }
                         MouseArea {
@@ -242,12 +242,12 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             enabled: weeklyArea.supported
                             onClicked: {
-                                weeklyDungeonPopup.weeklyName = modelData.name
+                                weeklyTaskPopup.weeklyName = modelData.name
                                 var rowTop = weeklyArea.y + index * weeklyArea.rowH
-                                weeklyDungeonPopup.anchorTop = rowTop
-                                weeklyDungeonPopup.anchorBottom = rowTop + weeklyArea.rowH
-                                weeklyDungeonPopup.visible = !weeklyDungeonPopup.visible
-                                dungeonPopup.visible = false
+                                weeklyTaskPopup.anchorTop = rowTop
+                                weeklyTaskPopup.anchorBottom = rowTop + weeklyArea.rowH
+                                weeklyTaskPopup.visible = !weeklyTaskPopup.visible
+                                dailyTaskPopup.visible = false
                             }
                         }
                     }
@@ -264,17 +264,17 @@ Item {
     // 宽度/高度在 openMenu() 中按下拉内容一次性算定（仅 1 个 TextMetrics，
     // 避免每行测量导致的 hover 重布局抖动 → 卡顿）。
     Item {
-        id: dungeonPopup
-        objectName: "dungeonPopup"
+        id: dailyTaskPopup
+        objectName: "dailyTaskPopup"
         z: 100
         visible: false
         x: dailyRow.x + dailyChip.x
-        y: dungeonPopup.popupY
+        y: dailyTaskPopup.popupY
         // 宽度随一级列 +（出现二级列时）；高度封顶避免出屏，超出由各列 Flickable 独立滚动
-        width: dungeonPopup.rightW > 0
-               ? (dungeonPopup.leftW + 4 + dungeonPopup.rightW + 8)
-               : (dungeonPopup.leftW + 8)
-        height: dungeonPopup.popupHeight
+        width: dailyTaskPopup.rightW > 0
+               ? (dailyTaskPopup.leftW + 4 + dailyTaskPopup.rightW + 8)
+               : (dailyTaskPopup.leftW + 8)
+        height: dailyTaskPopup.popupHeight
 
         property int leftW: 200
         property int rightW: 0
@@ -293,7 +293,7 @@ Item {
         TextMetrics { id: measTm; font.pixelSize: 13 }
 
         function openMenu() {
-            var opts = Bridge.dungeonOptions
+            var opts = Bridge.dailyTaskOptions
             var maxW = 60
             for (var i = 0; i < opts.length; i++) {
                 measTm.text = opts[i].name
@@ -311,7 +311,7 @@ Item {
         }
 
         onSelNameChanged: {
-            var opts = Bridge.dungeonOptions
+            var opts = Bridge.dailyTaskOptions
             selSequences = []
             for (var i = 0; i < opts.length; i++) {
                 if (opts[i].name === selName) {
@@ -334,23 +334,23 @@ Item {
             // 左列：一级副本（独立滚动，必能滑到底）
             Flickable {
                 id: leftFlick
-                width: dungeonPopup.leftW
-                height: dungeonPopup.viewportH
+                width: dailyTaskPopup.leftW
+                height: dailyTaskPopup.viewportH
                 contentWidth: leftCol.width
                 contentHeight: leftCol.height
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 Column {
                     id: leftCol
-                    width: dungeonPopup.leftW
+                    width: dailyTaskPopup.leftW
                     spacing: 2
                     Repeater {
-                        model: dungeonPopup.visible ? Bridge.dungeonOptions : []
+                        model: dailyTaskPopup.visible ? Bridge.dailyTaskOptions : []
                         Rectangle {
-                            width: dungeonPopup.leftW
+                            width: dailyTaskPopup.leftW
                             height: 30
                             radius: 6
-                            color: (optMouse.containsMouse || dungeonPopup.selName === modelData.name)
+                            color: (optMouse.containsMouse || dailyTaskPopup.selName === modelData.name)
                                    ? Theme.accentSoft : "transparent"
                             Text {
                                 anchors.fill: parent; leftPadding: 10
@@ -371,14 +371,14 @@ Item {
                                 id: optMouse; anchors.fill: parent; hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onEntered: {
-                                    dungeonPopup.selName = modelData.sequences.length > 0 ? modelData.name : ""
+                                    dailyTaskPopup.selName = modelData.sequences.length > 0 ? modelData.name : ""
                                 }
                                 onClicked: {
                                     if (modelData.sequences.length > 0) {
-                                        dungeonPopup.selName = modelData.name
+                                        dailyTaskPopup.selName = modelData.name
                                     } else {
-                                        Bridge.selectDungeon(modelData.name, null)
-                                        dungeonPopup.visible = false
+                                        Bridge.selectDailyTask(modelData.name, null)
+                                        dailyTaskPopup.visible = false
                                     }
                                 }
                             }
@@ -389,21 +389,21 @@ Item {
             // 右列：二级序列（独立滚动；仅当选中带子项的副本时出现）
             Flickable {
                 id: rightFlick
-                visible: dungeonPopup.rightW > 0
-                width: dungeonPopup.rightW
-                height: dungeonPopup.viewportH
+                visible: dailyTaskPopup.rightW > 0
+                width: dailyTaskPopup.rightW
+                height: dailyTaskPopup.viewportH
                 contentWidth: seqCol.width
                 contentHeight: seqCol.height
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 Column {
                     id: seqCol
-                    width: dungeonPopup.rightW
+                    width: dailyTaskPopup.rightW
                     spacing: 2
                     Repeater {
-                        model: dungeonPopup.selSequences
+                        model: dailyTaskPopup.selSequences
                         Rectangle {
-                            width: dungeonPopup.rightW
+                            width: dailyTaskPopup.rightW
                             height: 30
                             radius: 6
                             color: seqMouse.containsMouse ? Theme.accentSoft : "transparent"
@@ -417,8 +417,8 @@ Item {
                                 id: seqMouse; anchors.fill: parent; hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    Bridge.selectDungeon(dungeonPopup.selName, modelData.value)
-                                    dungeonPopup.visible = false
+                                    Bridge.selectDailyTask(dailyTaskPopup.selName, modelData.value)
+                                    dailyTaskPopup.visible = false
                                 }
                             }
                         }
@@ -428,15 +428,15 @@ Item {
         }
     }
 
-    // ── 周常副本下拉（单级：副本名列表，来自 Bridge.weeklyDungeonOptions）──
+    // ── 周常副本下拉（单级：副本名列表，来自 Bridge.weeklyTaskOptions）──
     // 锚点从整个周常区底部改为被点击的具体子项行，弹出位置与点击行对齐。
     Item {
-        id: weeklyDungeonPopup
-        objectName: "weeklyDungeonPopup"
+        id: weeklyTaskPopup
+        objectName: "weeklyTaskPopup"
         z: 100
         visible: false
         x: weeklyArea.x + cardRoot.chipX
-        y: weeklyDungeonPopup.popupY
+        y: weeklyTaskPopup.popupY
         width: instW + 8
         height: popupHeight
         property string weeklyName: ""
@@ -453,7 +453,7 @@ Item {
         }
         TextMetrics { id: instTm; font.pixelSize: 13 }
         function openMenu() {
-            var opts = Bridge.weeklyDungeonOptions(weeklyDungeonPopup.weeklyName)
+            var opts = Bridge.weeklyTaskOptions(weeklyTaskPopup.weeklyName)
             var maxW = 60
             for (var i = 0; i < opts.length; i++) {
                 instTm.text = opts[i]
@@ -467,22 +467,22 @@ Item {
         }
         onVisibleChanged: { if (visible) openMenu() }
         Flickable {
-            width: weeklyDungeonPopup.instW
-            height: weeklyDungeonPopup.viewportH
+            width: weeklyTaskPopup.instW
+            height: weeklyTaskPopup.viewportH
             contentWidth: instCol.width
             contentHeight: instCol.height
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             Column {
                 id: instCol
-                width: weeklyDungeonPopup.instW
+                width: weeklyTaskPopup.instW
                 spacing: 2
                 Repeater {
-                    model: weeklyDungeonPopup.visible
-                          ? Bridge.weeklyDungeonOptions(weeklyDungeonPopup.weeklyName)
+                    model: weeklyTaskPopup.visible
+                          ? Bridge.weeklyTaskOptions(weeklyTaskPopup.weeklyName)
                           : []
                     Rectangle {
-                        width: weeklyDungeonPopup.instW
+                        width: weeklyTaskPopup.instW
                         height: 30; radius: 6
                         color: instMouse.containsMouse ? Theme.accentSoft : "transparent"
                         Text {
@@ -495,9 +495,9 @@ Item {
                             id: instMouse; anchors.fill: parent; hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                Bridge.selectWeeklyDungeon(
-                                    weeklyDungeonPopup.weeklyName, modelData)
-                                weeklyDungeonPopup.visible = false
+                                Bridge.selectWeeklyTask(
+                                    weeklyTaskPopup.weeklyName, modelData)
+                                weeklyTaskPopup.visible = false
                             }
                         }
                     }
@@ -516,11 +516,11 @@ Item {
         width: 1280
         height: cardRoot.winBottomInCard - cardRoot.winTopInCard
         z: 99
-        visible: dungeonPopup.visible || weeklyDungeonPopup.visible
-        enabled: dungeonPopup.visible || weeklyDungeonPopup.visible
+        visible: dailyTaskPopup.visible || weeklyTaskPopup.visible
+        enabled: dailyTaskPopup.visible || weeklyTaskPopup.visible
         onClicked: {
-            dungeonPopup.visible = false
-            weeklyDungeonPopup.visible = false
+            dailyTaskPopup.visible = false
+            weeklyTaskPopup.visible = false
         }
     }
 }

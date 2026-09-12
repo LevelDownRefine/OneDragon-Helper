@@ -7,8 +7,8 @@ config/daily_task_list.yml 各游戏副本列表维护总览。鸣潮/异环经 
 | 游戏 | yml key | 副本数据源 | 更新方式 | 人工环节 |
 |---|---|---|---|---|
 | 终末地 | ok-ef | ok-ef 自身 world_map.json | options.source 运行期读取，无需 Action | 无 |
-| 鸣潮 | ok-ww | ok-wuthering-waves ForgeryTask.py/TacetTask.py 的 self.structure | sync_okww_dungeons.py + Action 自动重排（最前插入，已有别名后移） | 最前新增占位改友好名 |
-| 异环 | ok-nte | ok-nte AnomalyTask.py 的 _ID_RANGE | sync_oknte_dungeons.py + Action 自动补数字 | 新数字改友好名 |
+| 鸣潮 | ok-ww | ok-wuthering-waves ForgeryTask.py/TacetTask.py 的 self.structure | sync_okww_tasks.py + Action 自动重排（最前插入，已有别名后移） | 最前新增占位改友好名 |
+| 异环 | ok-nte | ok-nte AnomalyTask.py 的 _ID_RANGE | sync_oknte_tasks.py + Action 自动补数字 | 新数字改友好名 |
 | 原神 | BetterGI | better-genshin-impact AutoTrackPath/Assets/tp.json | options.source 运行期读取，无需 Action | 无 |
 | 明日方舟 | MAA | 固定 | 无需更新 | — |
 | 崩铁 | March7th-Launcher | 固定 | 无需更新 | — |
@@ -26,8 +26,8 @@ config/daily_task_list.yml 各游戏副本列表维护总览。鸣潮/异环经 
 ## 脚本用法
 
 ```bash
-python tools/sync_okww_dungeons.py --apply
-python tools/sync_oknte_dungeons.py
+python tools/sync_okww_tasks.py --apply
+python tools/sync_oknte_tasks.py
 ```
 
 周常声明单独在 config/weekly_task_list.yml，不由上述两个同步脚本更新。

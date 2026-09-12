@@ -60,7 +60,7 @@ config.yml 写入权统一归 src.utils.utils_config（经 AppService 委托）�
 
 ## UI 状态持久化
 
-日常副本/序列的真源是子脚本 config（编辑期实时落盘，无 UI 状态文件）；set_dungeon 为
+日常副本/序列的真源是子脚本 config（编辑期实时落盘，无 UI 状态文件）；set_daily_task 为
 no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 daily_task_list.yml
 声明的唯一选项。手动脚本 enabled 保存到 config.yml，重启按脚本身份回显；缺省启用。每日计划的脚本名单独立保存到 schedule.yml 的 daily_run.script_names，触发时使用最新副本和运行选项。
 

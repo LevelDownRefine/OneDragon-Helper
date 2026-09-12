@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.config.dungeon_config import get_dungeon_map, get_weekly_map
+from src.config.daily_task_config import get_daily_task_map, get_weekly_map
 from src.gui.controllers import task_card as task_card_mod
 from src.gui.controllers.task_card import TaskCardController
 from src.utils.utils_yaml import dump_yaml_file
@@ -31,9 +31,9 @@ def _write_defs(tmp, data):
         declarations[script_name] = []
         for task in tasks:
             definition = {"display_name": task["name"]}
-            if "dungeons" in task:
+            if "tasks" in task:
                 definition["options"] = {
-                    "values": [{"display_name": name} for name in task["dungeons"]]
+                    "values": [{"display_name": name} for name in task["tasks"]]
                 }
             declarations[script_name].append(definition)
     dump_yaml_file(path, declarations)
@@ -44,9 +44,9 @@ def _make_controller(script_name="March7th-Launcher", display_name="崩铁"):
     games = [{"script_name": script_name, "display_name": display_name}]
     game_list = _FakeGameList(games)
     service = MagicMock()
-    # 副本/周常声明经真实 dungeon_config 模块函数读取（weekly_task_list.yml 路径已由用例 patch）。
+    # 副本/周常声明经真实 task_config 模块函数读取（weekly_task_list.yml 路径已由用例 patch）。
     service.get_weekly_map.side_effect = get_weekly_map
-    service.get_dungeon_map.side_effect = get_dungeon_map
+    service.get_daily_task_map.side_effect = get_daily_task_map
     service.get_weekly_start.return_value = None
     toast = MagicMock()
     return TaskCardController(game_list, service, toast)
@@ -63,7 +63,7 @@ class TestWeeklyItems(unittest.TestCase):
                     {"name": "货币战争"},
                     {
                         "name": "历战余响",
-                        "dungeons": ["无", "铁骸的锈冢", "晨昏的回眸"],
+                        "tasks": ["无", "铁骸的锈冢", "晨昏的回眸"],
                     },
                 ]
             },
@@ -73,22 +73,22 @@ class TestWeeklyItems(unittest.TestCase):
                 "src.config.task_config.get_weekly_task_list_yml_path_under_root",
                 return_value=defs_path,
             ),
-            patch.object(task_card_mod, "get_weekly_dungeon", return_value=None),
+            patch.object(task_card_mod, "get_weekly_task", return_value=None),
         ):
             ctrl = _make_controller()
             items = ctrl.weekly_items
         tmp.cleanup()
         self.assertEqual(len(items), 2)
         self.assertEqual(items[0]["name"], "货币战争")
-        self.assertFalse(items[0]["has_dungeon"])
-        self.assertEqual(items[0]["dungeon_label"], "")
+        self.assertFalse(items[0]["has_task"])
+        self.assertEqual(items[0]["task_label"], "")
         self.assertEqual(items[1]["name"], "历战余响")
-        self.assertTrue(items[1]["has_dungeon"])
+        self.assertTrue(items[1]["has_task"])
         # 无配置/未选：反读 None → 占位提示（周常侧不设回退）
-        self.assertEqual(items[1]["dungeon_label"], "选择副本")
+        self.assertEqual(items[1]["task_label"], "选择副本")
 
-    def test_weekly_dungeon_options_reads_from_config(self):
-        """副本清单来自 weekly_task_list.yml 的 dungeons 字段，不再依赖游戏脚本配置。"""
+    def test_weekly_task_options_reads_from_config(self):
+        """副本清单来自 weekly_task_list.yml 的 tasks 字段，不再依赖游戏脚本配置。"""
         tmp = tempfile.TemporaryDirectory()
         defs_path = _write_defs(
             tmp,
@@ -96,7 +96,7 @@ class TestWeeklyItems(unittest.TestCase):
                 "March7th-Launcher": [
                     {
                         "name": "历战余响",
-                        "dungeons": ["无", "铁骸的锈冢", "晨昏的回眸"],
+                        "tasks": ["无", "铁骸的锈冢", "晨昏的回眸"],
                     },
                 ]
             },
@@ -106,18 +106,18 @@ class TestWeeklyItems(unittest.TestCase):
             return_value=defs_path,
         ):
             ctrl = _make_controller()
-            options = ctrl.weekly_dungeon_options("历战余响")
+            options = ctrl.weekly_task_options("历战余响")
         tmp.cleanup()
         self.assertEqual(options, ["无", "铁骸的锈冢", "晨昏的回眸"])
 
-    def test_weekly_dungeon_options_unknown_weekly_returns_empty(self):
+    def test_weekly_task_options_unknown_weekly_returns_empty(self):
         """未声明的周常名 → 空列表。"""
         tmp = tempfile.TemporaryDirectory()
         defs_path = _write_defs(
             tmp,
             {
                 "March7th-Launcher": [
-                    {"name": "历战余响", "dungeons": ["无", "铁骸的锈冢"]},
+                    {"name": "历战余响", "tasks": ["无", "铁骸的锈冢"]},
                 ]
             },
         )
@@ -126,11 +126,11 @@ class TestWeeklyItems(unittest.TestCase):
             return_value=defs_path,
         ):
             ctrl = _make_controller()
-            self.assertEqual(ctrl.weekly_dungeon_options("不存在"), [])
+            self.assertEqual(ctrl.weekly_task_options("不存在"), [])
         tmp.cleanup()
 
-    def test_weekly_dungeon_options_without_dungeons_key(self):
-        """无 dungeons 字段的周常 → 空列表（不报 KeyError）。"""
+    def test_weekly_task_options_without_tasks_key(self):
+        """无 tasks 字段的周常 → 空列表（不报 KeyError）。"""
         tmp = tempfile.TemporaryDirectory()
         defs_path = _write_defs(
             tmp,
@@ -145,7 +145,7 @@ class TestWeeklyItems(unittest.TestCase):
             return_value=defs_path,
         ):
             ctrl = _make_controller()
-            self.assertEqual(ctrl.weekly_dungeon_options("货币战争"), [])
+            self.assertEqual(ctrl.weekly_task_options("货币战争"), [])
         tmp.cleanup()
 
     def test_weekly_supported_follows_config(self):
@@ -156,7 +156,7 @@ class TestWeeklyItems(unittest.TestCase):
             tmp,
             {
                 "March7th-Launcher": [
-                    {"name": "历战余响", "dungeons": ["无"]},
+                    {"name": "历战余响", "tasks": ["无"]},
                 ]
             },
         )
@@ -183,48 +183,48 @@ class TestWeeklyItems(unittest.TestCase):
         tmp.cleanup()
 
 
-class TestSelectWeeklyDungeon(unittest.TestCase):
-    def test_select_weekly_dungeon_writes_config(self):
+class TestSelectWeeklyTask(unittest.TestCase):
+    def test_select_weekly_daily_task_writes_config(self):
         """选副本：经 service 写脚本自身 config（周常侧无 no-op 脚本）。"""
         ctrl = _make_controller()
-        ctrl.selectWeeklyDungeon("历战余响", "铁骸的锈冢")
+        ctrl.selectWeeklyTask("历战余响", "铁骸的锈冢")
         # 写脚本自身 config 的 instance_names（M7A 约定键名），经 service 入口
-        ctrl._app_service.set_script_weekly_dungeon.assert_called_once_with(
+        ctrl._app_service.set_script_weekly_task.assert_called_once_with(
             "March7th-Launcher", "历战余响", "铁骸的锈冢"
         )
 
 
-class TestSelectDungeonWritesSubscriptConfig(unittest.TestCase):
+class TestSelectDailyTaskWritesSubscriptConfig(unittest.TestCase):
     """日常副本选择：实时落盘子脚本 config（与链生成解耦，不再依赖运行全体）。"""
 
-    def test_select_dungeon_writes_subscript_config(self):
+    def test_select_daily_task_writes_subscript_config(self):
         """选中日常副本：实时经 service 落盘子脚本 config。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        ctrl.selectDungeon("凝素领域", "5")
-        # 实时落盘：dungeon_name + sequence（鸣潮要求 sequence 非空），经 service 入口
-        ctrl._app_service.set_script_dungeon.assert_called_once_with(
-            "ok-ww", dungeon_name="凝素领域", sequence="5"
+        ctrl.selectDailyTask("凝素领域", "5")
+        # 实时落盘：task_name + sequence（鸣潮要求 sequence 非空），经 service 入口
+        ctrl._app_service.set_script_daily_task.assert_called_once_with(
+            "ok-ww", task_name="凝素领域", sequence="5"
         )
 
 
-class TestDailyDungeonTextReadback(unittest.TestCase):
-    """daily_dungeon_text 优先反读子脚本 config，无真相回退声明的唯一选项。"""
+class TestDailyTaskTextReadback(unittest.TestCase):
+    """daily_task_text 优先反读子脚本 config，无真相回退声明的唯一选项。"""
 
     def test_prefers_subscript_config_over_declared(self):
         """config 有真相时以 config 为准，不走声明项回退。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        ctrl._dungeon_map_cache = {}
-        ctrl._dungeon_options_cache = {"ok-ww": [{"name": "声明项"}]}
+        ctrl._daily_task_map_cache = {}
+        ctrl._daily_task_options_cache = {"ok-ww": [{"name": "声明项"}]}
         with (
-            patch.object(task_card_mod, "get_dungeon", return_value="凝素领域"),
+            patch.object(task_card_mod, "get_daily_task", return_value="凝素领域"),
             patch.object(task_card_mod, "get_sequence", return_value="5"),
         ):
-            self.assertEqual(ctrl.daily_dungeon_text, "凝素领域")
+            self.assertEqual(ctrl.daily_task_text, "凝素领域")
 
-    def test_nte_daily_shows_dungeon_and_sequence(self):
+    def test_nte_daily_shows_daily_task_and_sequence(self):
         """异环：空幕 · 轨道之夜（序号不自包含副本名，必须两者同显）。"""
-        dungeon_cfg = {
-            "dungeons": [
+        task_cfg = {
+            "tasks": [
                 {
                     "name": "空幕",
                     "sequences": [
@@ -235,48 +235,48 @@ class TestDailyDungeonTextReadback(unittest.TestCase):
             ]
         }
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._dungeon_map_cache = {"ok-nte": dungeon_cfg}
+        ctrl._daily_task_map_cache = {"ok-nte": task_cfg}
         with (
-            patch.object(task_card_mod, "get_dungeon", return_value="空幕"),
+            patch.object(task_card_mod, "get_daily_task", return_value="空幕"),
             patch.object(task_card_mod, "get_sequence", return_value=6),
         ):
-            self.assertEqual(ctrl.daily_dungeon_text, "空幕 · 轨道之夜")
+            self.assertEqual(ctrl.daily_task_text, "空幕 · 轨道之夜")
 
     def test_falls_back_to_declared_option_when_config_none(self):
         """no-op 脚本（绝区零）反读无真相 → 回退声明的唯一选项，呈现为已选。"""
         ctrl = _make_controller("OneDragon-Launcher", "绝区零")
-        ctrl._dungeon_map_cache = {}
-        ctrl._dungeon_options_cache = {
+        ctrl._daily_task_map_cache = {}
+        ctrl._daily_task_options_cache = {
             "OneDragon-Launcher": [{"name": "培养方案", "sequences": []}]
         }
         with (
-            patch.object(task_card_mod, "get_dungeon", return_value=None),
+            patch.object(task_card_mod, "get_daily_task", return_value=None),
             patch.object(task_card_mod, "get_sequence", return_value=None),
         ):
-            self.assertEqual(ctrl.daily_dungeon_text, "培养方案")
+            self.assertEqual(ctrl.daily_task_text, "培养方案")
 
     def test_placeholder_when_no_config_and_no_declaration(self):
-        """config 无真相且 dungeon_list.yml 未声明 → 占位「选择副本」。"""
+        """config 无真相且 daily_task_list.yml 未声明 → 占位「选择副本」。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        ctrl._dungeon_map_cache = {}
-        ctrl._dungeon_options_cache = {}
+        ctrl._daily_task_map_cache = {}
+        ctrl._daily_task_options_cache = {}
         with (
-            patch.object(task_card_mod, "get_dungeon", return_value=None),
+            patch.object(task_card_mod, "get_daily_task", return_value=None),
             patch.object(task_card_mod, "get_sequence", return_value=None),
         ):
-            self.assertEqual(ctrl.daily_dungeon_text, "选择副本")
+            self.assertEqual(ctrl.daily_task_text, "选择副本")
 
 
 class TestWeeklyItemsReadback(unittest.TestCase):
-    """weekly_items 的 dungeon_label 优先反读子脚本 config。"""
+    """weekly_items 的 task_label 优先反读子脚本 config。"""
 
-    def test_weekly_dungeon_label_prefers_config(self):
+    def test_weekly_daily_task_label_prefers_config(self):
         tmp = tempfile.TemporaryDirectory()
         defs_path = _write_defs(
             tmp,
             {
                 "March7th-Launcher": [
-                    {"name": "历战余响", "dungeons": ["无", "铁骸的锈冢"]},
+                    {"name": "历战余响", "tasks": ["无", "铁骸的锈冢"]},
                 ]
             },
         )
@@ -285,14 +285,12 @@ class TestWeeklyItemsReadback(unittest.TestCase):
                 "src.config.task_config.get_weekly_task_list_yml_path_under_root",
                 return_value=defs_path,
             ),
-            patch.object(
-                task_card_mod, "get_weekly_dungeon", return_value="铁骸的锈冢"
-            ),
+            patch.object(task_card_mod, "get_weekly_task", return_value="铁骸的锈冢"),
         ):
             ctrl = _make_controller()
             items = ctrl.weekly_items
         tmp.cleanup()
-        self.assertEqual(items[0]["dungeon_label"], "铁骸的锈冢")
+        self.assertEqual(items[0]["task_label"], "铁骸的锈冢")
 
 
 class TestEmptyCurrentSentinel(unittest.TestCase):
@@ -308,8 +306,8 @@ class TestEmptyCurrentSentinel(unittest.TestCase):
         self.assertFalse(ctrl.task_adapted)
         self.assertFalse(ctrl.daily_supported)
         self.assertFalse(ctrl.weekly_supported)
-        self.assertEqual(ctrl.daily_dungeon_text, "选择副本")
-        self.assertEqual(ctrl.dungeon_options, [])
+        self.assertEqual(ctrl.daily_task_text, "选择副本")
+        self.assertEqual(ctrl.daily_task_options, [])
         self.assertEqual(ctrl.weekly_items, [])
 
 

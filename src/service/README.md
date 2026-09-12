@@ -43,7 +43,7 @@ ZIP 结构固定为 `scripts/<脚本名>/<相对路径>`，无清单或版本协
 ```
 launcher.py CLI  ┐
                  ├─▶ AppService（组合根）─┬─▶ src.utils.utils_config（单脚本配置）─▶ src.utils.utils_weekly（协作同步 weekly）
-MainWindow  GUI  ┘                        ├─▶ dungeon_config 模块函数（副本 / 周本声明，src.config）
+MainWindow  GUI  ┘                        ├─▶ daily_task_config 模块函数（副本 / 周本声明，src.config）
                                           └─▶ chain_service ─▶ chain_gen / schedule / utils_runner
                                                   └─▶ src.utils.utils_weekly（周常参数读写）
 ```

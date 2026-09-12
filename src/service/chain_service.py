@@ -4,7 +4,7 @@
 config.yml 的读写由 :mod:`src.utils.utils_config` 拥有，运行时取配置由调用方
 （run_chain_once / schedule）直接走 :func:`src.utils.utils_config.load_config`；
 schedule.yml 读写归 :mod:`src.service.schedule` 所有——与调度编排
-同处该模块。本模块不读取 UI 状态文件；日常副本真源为子脚本 config，set_dungeon
+同处该模块。本模块不读取 UI 状态文件；日常副本真源为子脚本 config，set_daily_task
 为 no-op 的脚本取 daily_task_list.yml 声明项。
 本模块不充当 GUI/CLI 的顶层门面/协调器——该角色由
 :class:`src.service.app_service.AppService`（组合根）承担。

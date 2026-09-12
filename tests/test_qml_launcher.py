@@ -496,7 +496,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             from src.service.app_service import AppService
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
-            import src.config.dungeon_config as dungeon_config
+            import src.config.daily_task_config as daily_task_config
 
             app = QApplication([])
             # 崩铁：真实 config/weekly_list.yml 里历战余响声明了 9 个副本。
@@ -508,14 +508,14 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                 "script_path": "scripts/March7th-Launcher/March7th-Launcher.exe",
                 "script_type": "external",
             }]
-            fake_dungeons = [f"副本{i}" for i in range(1, 10)]
+            fake_tasks = [f"副本{i}" for i in range(1, 10)]
             with (
                 patch.object(AppService, "load_config",
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch.object(dungeon_config, "get_dungeon_lists",
-                             return_value=fake_dungeons),
+                patch.object(daily_task_config, "get_task_lists",
+                             return_value=fake_tasks),
             ):
                 with (
                     patch("src.service.daily_plan.load_schedule", return_value={}),
@@ -536,18 +536,18 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                           f"WIN {win.height()}", flush=True)
 
                 def measure():
-                    wk = win.findChild(QQuickItem, "weeklyDungeonPopup")
+                    wk = win.findChild(QQuickItem, "weeklyTaskPopup")
                     wk.setProperty("weeklyName", "历战余响")
                     wk.setProperty("visible", True)
-                    dg = win.findChild(QQuickItem, "dungeonPopup")
+                    dg = win.findChild(QQuickItem, "dailyTaskPopup")
                     dg.setProperty("visible", True)
-                    QTimer.singleShot(200, lambda: (report("weeklyDungeonPopup"),
-                                                    report("dungeonPopup"),
+                    QTimer.singleShot(200, lambda: (report("weeklyTaskPopup"),
+                                                    report("dailyTaskPopup"),
                                                     app.quit()))
 
                 QTimer.singleShot(600, measure)
                 app.exec()
-                print("OPTS", len(bridge.weeklyDungeonOptions("历战余响")), flush=True)
+                print("OPTS", len(bridge.weeklyTaskOptions("历战余响")), flush=True)
             """
         )
         proc = subprocess.run(
@@ -568,7 +568,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             parts = line.split()
             if len(parts) == 7 and parts[1] == "TOP":
                 measured[parts[0]] = (int(parts[2]), int(parts[4]), int(parts[6]))
-        for name in ("weeklyDungeonPopup", "dungeonPopup"):
+        for name in ("weeklyTaskPopup", "dailyTaskPopup"):
             self.assertIn(name, measured, f"未测到 {name}，stdout={proc.stdout}")
             top, height, win_h = measured[name]
             self.assertGreaterEqual(top, 0, f"{name} 顶部超出窗口上沿")
@@ -576,7 +576,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                 top + height, win_h, f"{name} 底部超出窗口（top={top} h={height}）"
             )
         # 周常下拉高度 = 选项数 * 32 + 8，应完整放下不被截断
-        self.assertEqual(measured["weeklyDungeonPopup"][1], n_opts * 32 + 8)
+        self.assertEqual(measured["weeklyTaskPopup"][1], n_opts * 32 + 8)
 
 
 class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
@@ -683,7 +683,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
 
             app = QApplication([])
             # 崩铁 March7th-Launcher：weekly_list.yml 声明 2 种周常
-            # （货币战争 / 历战余响），历战余响 dungeons_source=assets/config/instance_names.json
+            # （货币战争 / 历战余响），历战余响 tasks_source=assets/config/instance_names.json
             # 运行期从 M7A 的 instance_names.json 读取。CI 无 M7A，此处 patch 模拟已装，
             # 返回历战余响的 9 个副本键（与真实 instance_names.json 一致），验证副本下拉
             # 几何（>3 个需 placePopup 上翻封顶）。
@@ -697,7 +697,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch("src.config.dungeon_config.get_dungeon_lists",
+                patch("src.config.daily_task_config.get_task_lists",
                              return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                            "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                            "不死的神实", "寒潮的落幕", "毁灭的开端"]),

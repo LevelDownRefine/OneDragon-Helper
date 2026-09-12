@@ -1,7 +1,7 @@
 """测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。
 
-复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / dungeon_config.get_weekly_map / get_dungeon_map /
-parse_dungeon_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
+复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / daily_task_config.get_weekly_map / get_daily_task_map /
+parse_daily_task_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
 真实模块函数），验证 QML 任务卡所需的数据与写回行为。
 """
 
@@ -16,7 +16,7 @@ from tests.test_qml_launcher import _make_bridge
 class TestTaskCard(unittest.TestCase):
     """任务卡数据 / 写回：与旧 task_card.py 对齐。"""
 
-    @patch("src.service.app_service.get_dungeon_map", return_value={})
+    @patch("src.service.app_service.get_daily_task_map", return_value={})
     def test_restore_refreshes_task_properties(self, _map):
         bridge = _make_bridge()
         changed = MagicMock()
@@ -26,91 +26,91 @@ class TestTaskCard(unittest.TestCase):
         )
         with (
             patch.object(bridge.backup, "_pick_zip", return_value="backup.zip"),
-            patch.object(task_card, "get_dungeon", return_value="副本A") as dungeon,
+            patch.object(task_card, "get_daily_task", return_value="副本A") as task,
             patch.object(task_card, "get_sequence", return_value=None),
         ):
-            self.assertEqual(bridge.dailyDungeonText, "副本A")
-            dungeon.return_value = "副本B"
+            self.assertEqual(bridge.dailyTaskText, "副本A")
+            task.return_value = "副本B"
             bridge.restoreConfig()
             changed.assert_called_once_with()
-            self.assertEqual(bridge.dailyDungeonText, "副本B")
+            self.assertEqual(bridge.dailyTaskText, "副本B")
 
-    @patch.object(task_card, "get_dungeon", return_value=None)
+    @patch.object(task_card, "get_daily_task", return_value=None)
     @patch.object(task_card, "get_sequence", return_value=None)
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch("src.service.app_service.get_weekly_map", return_value=[{"name": "周常"}])
     @patch.object(app_service, "get_weekly_start", return_value=None)
-    @patch("src.service.app_service.get_dungeon_map", return_value={})
+    @patch("src.service.app_service.get_daily_task_map", return_value={})
     def test_daily_text_default_is_placeholder(self, *_):
         b = _make_bridge()
-        self.assertEqual(b.dailyDungeonText, "选择副本")
+        self.assertEqual(b.dailyTaskText, "选择副本")
         self.assertEqual(b.weeklyStartLabel, "选择周几")
 
     @patch.object(task_card, "is_adapted", return_value=False)
-    @patch("src.service.app_service.get_dungeon_map", return_value={})
+    @patch("src.service.app_service.get_daily_task_map", return_value={})
     def test_task_adapted_reflects_is_adapted(self, *_):
         b = _make_bridge()
         self.assertFalse(b.taskAdapted)
 
     class _AnyMap(dict):
-        """get_dungeon_map().get(name) 恒返回 truthy，模拟「该游戏有副本配置」。"""
+        """get_daily_task_map().get(name) 恒返回 truthy，模拟「该游戏有副本配置」。"""
 
         def get(self, key, default=None):
             return 1
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch("src.service.app_service.get_dungeon_map", return_value=_AnyMap())
-    def test_daily_supported_true_when_dungeon_cfg_present(self, *_):
+    @patch("src.service.app_service.get_daily_task_map", return_value=_AnyMap())
+    def test_daily_supported_true_when_task_cfg_present(self, *_):
         b = _make_bridge()
         self.assertTrue(b.dailySupported)
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch("src.service.app_service.get_dungeon_map", return_value={})
-    def test_daily_supported_false_when_no_dungeon_cfg(self, *_):
+    @patch("src.service.app_service.get_daily_task_map", return_value={})
+    def test_daily_supported_false_when_no_task_cfg(self, *_):
         b = _make_bridge()
         self.assertFalse(b.dailySupported)
 
     @patch("src.service.app_service.set_config")  # 实时落盘子脚本 config（经 service）
-    @patch.object(task_card, "get_dungeon", return_value=None)
+    @patch.object(task_card, "get_daily_task", return_value=None)
     @patch.object(task_card, "get_sequence", return_value=None)
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch("src.service.app_service.get_weekly_map", return_value=[])
-    @patch("src.service.app_service.get_dungeon_map", return_value={})
-    def test_select_dungeon_writes_config(self, *_):
+    @patch("src.service.app_service.get_daily_task_map", return_value={})
+    def test_select_daily_task_writes_config(self, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
-        # 无配置真相（get_dungeon/get_sequence 回退为 None）→ chip 回退声明的唯一选项
-        b.task_card._dungeon_options_cache = {name: [{"name": "副本A"}]}
-        b.selectDungeon("副本A", "seq1")
-        self.assertEqual(b.dailyDungeonText, "副本A")
+        # 无配置真相（get_daily_task/get_sequence 回退为 None）→ chip 回退声明的唯一选项
+        b.task_card._daily_task_options_cache = {name: [{"name": "副本A"}]}
+        b.selectDailyTask("副本A", "seq1")
+        self.assertEqual(b.dailyTaskText, "副本A")
         # 实时落盘子脚本 config（日常副本编辑期即生效，不再依赖运行全体），经 service 入口
         app_service.set_config.assert_called_once_with(
-            name, dungeon_name="副本A", sequence="seq1"
+            name, task_name="副本A", sequence="seq1"
         )
 
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch.object(
         task_card,
-        "parse_dungeon_config",
+        "parse_daily_task_config",
         return_value=(["副本A"], {"副本A": [("难1", "s1")]}, None),
     )
-    def test_dungeon_options_shape(self, *_):
-        # get_dungeon_map().get(script_name) 恒返回 truthy，使 _build_dungeon_options 进入解析分支
+    def test_daily_task_options_shape(self, *_):
+        # get_daily_task_map().get(script_name) 恒返回 truthy，使 _build_daily_task_options 进入解析分支
         class _Map(dict):
             def get(self, key, default=None):
                 return 1
 
-        with patch("src.service.app_service.get_dungeon_map") as m_dm:
+        with patch("src.service.app_service.get_daily_task_map") as m_dm:
             m_dm.return_value = _Map()
             b = _make_bridge()
-        opts = b.dungeonOptions
+        opts = b.dailyTaskOptions
         self.assertEqual(opts[0]["name"], "副本A")
         self.assertEqual(opts[0]["sequences"], [{"label": "难1", "value": "s1"}])
 
-    @patch("src.service.app_service.get_dungeon_map", return_value={})
-    def test_dungeon_options_empty_when_no_cfg(self, *_):
+    @patch("src.service.app_service.get_daily_task_map", return_value={})
+    def test_daily_task_options_empty_when_no_cfg(self, *_):
         b = _make_bridge()
-        self.assertEqual(b.dungeonOptions, [])
+        self.assertEqual(b.dailyTaskOptions, [])
 
     @patch("src.gui.dialogs.SingleScriptConfigDialog")
     @patch("PySide6.QtWidgets.QDialog")

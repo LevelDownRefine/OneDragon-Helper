@@ -20,8 +20,8 @@ delta 判定：delta>0 为最前插入，--apply 时重排；delta<0 为移除�
 本文件不 import 项目任何模块，独立可运行（位于 tools/ 下）。
 
 用法：
-    python tools/sync_okww_dungeons.py            # 只检测，输出差异报告
-    python tools/sync_okww_dungeons.py --apply    # 检测并自动重排
+    python tools/sync_okww_tasks.py            # 只检测，输出差异报告
+    python tools/sync_okww_tasks.py --apply    # 检测并自动重排
 
 退出码：0 = 无差异（或已应用）；1 = 有差异未应用；2 = 抓取/解析失败（跳过本次）。
 """
@@ -67,12 +67,12 @@ def _fetch_totals() -> dict[str, int]:
             with urllib.request.urlopen(req, timeout=20) as resp:
                 content = resp.read().decode("utf-8")
         except (urllib.error.URLError, OSError) as exc:
-            print(f"[sync_okww_dungeons] 抓取失败 {url}: {exc}")
+            print(f"[sync_okww_tasks] 抓取失败 {url}: {exc}")
             sys.exit(2)
         match = re.search(r"self\.structure\s*=\s*\[([\d\s,]+)\]", content)
         if match is None:
             print(
-                f"[sync_okww_dungeons] {label} 上游未找到 structure 定义（结构可能变化）"
+                f"[sync_okww_tasks] {label} 上游未找到 structure 定义（结构可能变化）"
             )
             sys.exit(2)
         structure = [int(x) for x in re.findall(r"\d+", match.group(1))]
@@ -80,7 +80,7 @@ def _fetch_totals() -> dict[str, int]:
     return totals
 
 
-def _daily_dungeons(data: dict) -> list[dict]:
+def _daily_tasks(data: dict) -> list[dict]:
     """按日常名定位要同步的副本清单，不依赖其列表位置。"""
     assert _OKWW_KEY in data, "缺少脚本日常配置"
     matches = [
@@ -100,12 +100,12 @@ def _load_okww() -> dict[str, list[int]]:
         f"daily_task_list.yml 缺少 {_OKWW_KEY} 配置"
     )
     result = {}
-    for dungeon in _daily_dungeons(data):
-        if dungeon.get("display_name") == "未选择":
+    for task in _daily_tasks(data):
+        if task.get("display_name") == "未选择":
             continue
-        values = [s["physical_name"] for s in dungeon["options"]["values"]]
+        values = [s["physical_name"] for s in task["options"]["values"]]
         if values and all(isinstance(v, int) for v in values):
-            result[dungeon["display_name"]] = values
+            result[task["display_name"]] = values
     return result
 
 
@@ -156,10 +156,8 @@ def _apply_new(upstream: dict[str, int], current: dict[str, list[int]]) -> None:
         delta = total - old_count
         if delta <= 0:
             continue  # 无新增；移除不在此处理
-        dungeon = next(d for d in _daily_dungeons(data) if d["display_name"] == cat)
-        dungeon["options"]["values"] = _rebase_sequences(
-            dungeon["options"]["values"], delta
-        )
+        task = next(d for d in _daily_tasks(data) if d["display_name"] == cat)
+        task["options"]["values"] = _rebase_sequences(task["options"]["values"], delta)
     with open(_DUNGEON_PATH, "w", encoding="utf-8") as f:
         _yaml.dump(data, f)
 
@@ -177,11 +175,11 @@ def main() -> int:
             deltas[cat] = delta
 
     if not deltas:
-        print("[sync_okww_dungeons] 无差异")
+        print("[sync_okww_tasks] 无差异")
         return 0
 
     print(
-        "[sync_okww_dungeons] 上游总数："
+        "[sync_okww_tasks] 上游总数："
         + "、".join(f"{cat}={total}" for cat, total in upstream.items())
     )
     for cat, delta in deltas.items():
@@ -196,11 +194,11 @@ def main() -> int:
             )
 
     if not apply:
-        print("[sync_okww_dungeons] 检测到差异，未应用（加 --apply 自动重排）")
+        print("[sync_okww_tasks] 检测到差异，未应用（加 --apply 自动重排）")
         return 1
 
     _apply_new(upstream, current)
-    print("[sync_okww_dungeons] 已重排：新增副本插最前、已有别名后移")
+    print("[sync_okww_tasks] 已重排：新增副本插最前、已有别名后移")
     return 0
 
 

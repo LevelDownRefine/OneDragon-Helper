@@ -4,7 +4,7 @@
 
 peer：
 - 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils.utils_config` 模块函数
-- 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.dungeon_config` 模块函数
+- 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.daily_task_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
 - 周常运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段）：归 :mod:`src.utils.utils_weekly` 模块函数
@@ -21,8 +21,8 @@ import logging
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
-from src.config.dungeon_config import get_dungeon_map, get_weekly_map
-from src.config.set_config import set_config, set_weekly_dungeon
+from src.config.daily_task_config import get_daily_task_map, get_weekly_map
+from src.config.set_config import set_config, set_weekly_task
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -76,14 +76,14 @@ class AppService:
         """按当前脚本目录恢复并保留游戏路径，返回恢复文件数和跳过的脚本。"""
         return backup_service.restore_backup(zip_path)
 
-    # ── 副本 / 周常声明（src.config.dungeon_config 模块函数）────────────
+    # ── 副本 / 周常声明（src.config.daily_task_config 模块函数）────────────
     def get_weekly_map(self, script_name: str) -> list:
         """读取 weekly_task_list.yml 的周常声明清单。"""
         return get_weekly_map(script_name)
 
-    def get_dungeon_map(self) -> dict:
+    def get_daily_task_map(self) -> dict:
         """读取 daily_task_list.yml 的副本/序列配置。"""
-        return get_dungeon_map()
+        return get_daily_task_map()
 
     # ── 单脚本配置（src.utils.utils_config 模块函数）─────────────────────────
     def get_script(self, script_name: str):
@@ -201,20 +201,20 @@ class AppService:
     # ── 游戏侧 config 适配器（src.config.set_config 模块函数）─────────────
     # 副本写入各脚本**自身**的 config（适配器层）；周几起由 update_script
     # 统一落盘（含游戏侧同步），不经此节入口。
-    def set_script_dungeon(
+    def set_script_daily_task(
         self,
         script_name: str,
-        dungeon_name: str | None = None,
+        task_name: str | None = None,
         sequence: str | int | None = None,
     ) -> None:
         """写当前日常副本/二级序列到脚本自身 config（编辑期实时落盘）。"""
-        return set_config(script_name, dungeon_name=dungeon_name, sequence=sequence)
+        return set_config(script_name, task_name=task_name, sequence=sequence)
 
-    def set_script_weekly_dungeon(
-        self, script_name: str, weekly_name: str, dungeon_name: str
+    def set_script_weekly_task(
+        self, script_name: str, weekly_name: str, task_name: str
     ) -> None:
         """写某周常当前选中的副本名到脚本自身 config。"""
-        return set_weekly_dungeon(script_name, weekly_name, dungeon_name)
+        return set_weekly_task(script_name, weekly_name, task_name)
 
     # ── 自定义壁纸表（config/wallpaper.json，src.utils.utils_wallpaper）──
     def load_wallpapers(self) -> dict:

@@ -2,8 +2,8 @@
 
 weekly_start（周几起）与 weekly_timeouts（每周 7 格超时）合并存于单一 weekly.yml（双顶层段），
 读写由模块函数负责，写回任一段时保留另一段。
-**不含周本声明**——各游戏「有哪些周常、可选哪些副本」由 src.config.dungeon_config
-模块函数读 weekly_list.yml 提供，见 test_dungeon_config.py。
+**不含周本声明**——各游戏「有哪些周常、可选哪些副本」由 src.config.daily_task_config
+模块函数读 weekly_list.yml 提供，见 test_daily_task_config.py。
 """
 
 import os

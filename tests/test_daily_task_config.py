@@ -4,11 +4,11 @@ import unittest
 from copy import deepcopy
 from unittest.mock import patch
 
-from src.config.dungeon_config import (
+from src.config.daily_task_config import (
+    get_daily_task_map,
     get_display_name,
-    get_dungeon_map,
     get_weekly_map,
-    parse_dungeon_config,
+    parse_daily_task_config,
 )
 from src.config.task_config import load_daily_map
 
@@ -27,13 +27,14 @@ class TestGetWeeklyDefs(unittest.TestCase):
         original = deepcopy(task)
         with (
             patch(
-                "src.config.dungeon_config.load_weekly_map", return_value={"x": [task]}
+                "src.config.daily_task_config.load_weekly_map",
+                return_value={"x": [task]},
             ),
-            patch("src.config.dungeon_config.get_dungeon_lists") as source,
+            patch("src.config.daily_task_config.get_task_lists") as source,
         ):
             self.assertEqual(
                 get_weekly_map("x"),
-                [{"name": "历战余响", "dungeons": ["无", "别名"]}],
+                [{"name": "历战余响", "tasks": ["无", "别名"]}],
             )
         self.assertEqual(task, original)
         source.assert_not_called()
@@ -47,16 +48,16 @@ class TestGetWeeklyDefs(unittest.TestCase):
             with (
                 self.subTest(names=names),
                 patch(
-                    "src.config.dungeon_config.load_weekly_map",
+                    "src.config.daily_task_config.load_weekly_map",
                     return_value={"x": [task]},
                 ),
                 patch(
-                    "src.config.dungeon_config.get_dungeon_lists", return_value=names
+                    "src.config.daily_task_config.get_task_lists", return_value=names
                 ) as source,
             ):
                 result = get_weekly_map("x")
             source.assert_called_once_with("x", "native", "resource/list.json")
-            self.assertEqual(result, [{"name": "展示周常", "dungeons": names or []}])
+            self.assertEqual(result, [{"name": "展示周常", "tasks": names or []}])
 
     def test_source_category_defaults_to_physical_name(self):
         task = {
@@ -66,10 +67,11 @@ class TestGetWeeklyDefs(unittest.TestCase):
         }
         with (
             patch(
-                "src.config.dungeon_config.load_weekly_map", return_value={"x": [task]}
+                "src.config.daily_task_config.load_weekly_map",
+                return_value={"x": [task]},
             ),
             patch(
-                "src.config.dungeon_config.get_dungeon_lists", return_value=[]
+                "src.config.daily_task_config.get_task_lists", return_value=[]
             ) as source,
         ):
             get_weekly_map("x")
@@ -77,37 +79,33 @@ class TestGetWeeklyDefs(unittest.TestCase):
 
     def test_no_options_and_unknown_script(self):
         with patch(
-            "src.config.dungeon_config.load_weekly_map",
+            "src.config.daily_task_config.load_weekly_map",
             return_value={"x": [{"display_name": "开关周常"}]},
         ):
             self.assertEqual(get_weekly_map("x"), [{"name": "开关周常"}])
             self.assertEqual(get_weekly_map("unknown"), [])
 
 
-class TestGetDungeonMap(unittest.TestCase):
+class TestGetDailyTaskMap(unittest.TestCase):
     def test_real_declarations_keep_one_menu_per_script(self):
-        with patch("src.config.dungeon_config.get_dungeon_lists", return_value=[]):
-            menus = get_dungeon_map()
+        with patch("src.config.daily_task_config.get_task_lists", return_value=[]):
+            menus = get_daily_task_map()
         self.assertEqual(set(menus), set(load_daily_map()))
-        options, sequences, show = parse_dungeon_config(menus["MAA"])
+        options, sequences, show = parse_daily_task_config(menus["MAA"])
         self.assertEqual(options, ["红票", "经验", "龙门币", "土"])
         self.assertEqual(sequences, {})
         self.assertFalse(show)
         self.assertEqual(
-            [item["name"] for item in menus["ok-nte"]["dungeons"]],
+            [item["name"] for item in menus["ok-nte"]["tasks"]],
             ["空幕", "异能升级材料", "弧盘突破材料", "经验与甲硬币", "追猎目标"],
         )
-        self.assertEqual(
-            menus["OneDragon-Launcher"], {"dungeons": [{"name": "培养方案"}]}
-        )
-        self.assertEqual(
-            menus["March7th-Launcher"], {"dungeons": [{"name": "培养目标"}]}
-        )
+        self.assertEqual(menus["OneDragon-Launcher"], {"tasks": [{"name": "培养方案"}]})
+        self.assertEqual(menus["March7th-Launcher"], {"tasks": [{"name": "培养目标"}]})
 
     def test_secondary_menu_values_are_native_and_labels_roundtrip(self):
-        with patch("src.config.dungeon_config.get_dungeon_lists", return_value=[]):
-            menus = get_dungeon_map()
-        _, sequences, show = parse_dungeon_config(menus["ok-ww"])
+        with patch("src.config.daily_task_config.get_task_lists", return_value=[]):
+            menus = get_daily_task_map()
+        _, sequences, show = parse_daily_task_config(menus["ok-ww"])
         self.assertTrue(show)
         self.assertEqual(sequences["模拟领域"][0], ("共鸣者经验", "Resonator EXP"))
         self.assertEqual(
@@ -117,16 +115,16 @@ class TestGetDungeonMap(unittest.TestCase):
 
     def test_daily_source_categories_come_from_declaration(self):
         with patch(
-            "src.config.dungeon_config.get_dungeon_lists", return_value=["原生副本"]
+            "src.config.daily_task_config.get_task_lists", return_value=["原生副本"]
         ) as source:
-            menus = get_dungeon_map()
+            menus = get_daily_task_map()
         source.assert_any_call(
             "BetterGI", "BlessDomain", "GameTask/AutoTrackPath/Assets/tp.json"
         )
         source.assert_any_call(
             "ok-ef", "干员养成", "data/apps/ok-ef/working/assets/data/world_map.json"
         )
-        _, sequences, show = parse_dungeon_config(menus["BetterGI"])
+        _, sequences, show = parse_daily_task_config(menus["BetterGI"])
         self.assertTrue(show)
         self.assertEqual(sequences["圣遗物"], [("原生副本", "原生副本")])
 
@@ -135,11 +133,11 @@ class TestGetDungeonMap(unittest.TestCase):
             with (
                 self.subTest(names=names),
                 patch(
-                    "src.config.dungeon_config.get_dungeon_lists", return_value=names
+                    "src.config.daily_task_config.get_task_lists", return_value=names
                 ),
             ):
-                result = get_dungeon_map()
-            self.assertEqual(result["ok-ef"]["dungeons"][0]["sequences"], [])
+                result = get_daily_task_map()
+            self.assertEqual(result["ok-ef"]["tasks"][0]["sequences"], [])
 
     def test_menu_does_not_modify_declarations(self):
         declarations = load_daily_map()
@@ -147,11 +145,11 @@ class TestGetDungeonMap(unittest.TestCase):
         with (
             patch("src.config.task_config.load_daily_map", return_value=declarations),
             patch(
-                "src.config.dungeon_config.get_dungeon_lists", return_value=["测试资源"]
+                "src.config.daily_task_config.get_task_lists", return_value=["测试资源"]
             ),
         ):
-            first = get_dungeon_map()
-            second = get_dungeon_map()
+            first = get_daily_task_map()
+            second = get_daily_task_map()
         self.assertEqual(first, second)
         self.assertEqual(declarations, original)
 
@@ -162,7 +160,7 @@ class TestGetDungeonMap(unittest.TestCase):
             patch("src.config.task_config.load_daily_map", return_value=declarations),
             self.assertRaisesRegex(AssertionError, "多个日常需由子类适配"),
         ):
-            get_dungeon_map()
+            get_daily_task_map()
 
     def test_third_level_is_not_silently_dropped(self):
         options = [
@@ -179,13 +177,16 @@ class TestGetDungeonMap(unittest.TestCase):
             }
         ]
         with (
-            patch("src.config.dungeon_config.load_daily_map", return_value={"x": []}),
             patch(
-                "src.config.dungeon_config.get_dungeon_options", return_value=options
+                "src.config.daily_task_config.load_daily_map", return_value={"x": []}
+            ),
+            patch(
+                "src.config.daily_task_config.get_daily_task_options",
+                return_value=options,
             ),
             self.assertRaisesRegex(AssertionError, "最多支持两级"),
         ):
-            get_dungeon_map()
+            get_daily_task_map()
 
 
 if __name__ == "__main__":

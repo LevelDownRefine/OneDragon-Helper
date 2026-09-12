@@ -150,7 +150,7 @@ class ScriptConfig:
     _task_key: str = ""
     """config 中副本类型字段名，设了即启用 _update_task。"""
     _task_map: dict[str, Any] = {}
-    """副本中文名 → config 值；空 dict 表示直接用 dungeon_name。"""
+    """副本中文名 → config 值；空 dict 表示直接用 task_name。"""
 
     _game_path_keys: tuple[str, ...] = ()
     """游戏 exe 路径在游戏配置中的嵌套键路径；空元组表示未适配「打开游戏」。"""
@@ -319,20 +319,20 @@ class ScriptConfig:
         return load_template(self._script_name, self._template_rel_path)
 
     def _update_task(
-        self, config: dict, dungeon_name: str, sequence: str | int | None = None
+        self, config: dict, task_name: str, sequence: str | int | None = None
     ) -> bool:
         """写入副本类型字段（及二级序列），返回是否修改。
 
         Args:
             config: 目标 config dict。
-            dungeon_name: 副本中文名；_task_map 为空时直接作为字段值。
+            task_name: 副本中文名；_task_map 为空时直接作为字段值。
             sequence: 二级序列值；基类默认必须为 None。
 
         Returns:
             字段是否发生实际修改。
 
         Raises:
-            AssertionError: 子类未声明 _task_key，或 dungeon_name 不在 _task_map，
+            AssertionError: 子类未声明 _task_key，或 task_name 不在 _task_map，
                 或基类收到非 None 的 sequence。
         """
         assert sequence is None, (
@@ -341,19 +341,19 @@ class ScriptConfig:
         assert self._task_key, f"[set_config][{self.display_name}] 子类必须设 _task_key"
         if self._task_map:
             task = get_field(
-                self._task_map, dungeon_name, self.display_name, context="update_task"
+                self._task_map, task_name, self.display_name, context="update_task"
             )
         else:
-            task = dungeon_name
+            task = task_name
         return safe_update(config, self._task_key, task, self.display_name)
 
-    def _read_dungeon(self) -> tuple[str | None, str | int | None]:
+    def _read_daily_task(self) -> tuple[str | None, str | int | None]:
         """反读当前日常副本中文名与二级序列（经 _task_key + _task_map 反转）。
 
         返回 ``(副本中文名, 序列值)`` 二元组：基类仅处理标准存储结构下的副本反转，
         无二级序列通道时序列恒为 None。子类若有非标准存储结构（如 NTE 多 section）
-        或二级序列，应覆写本方法并在内部调用 ``super()._read_dungeon()`` 复用标准反转，
-        再补上自身逻辑后返回 ``(dungeon, sequence)``；若子类无标准存储结构
+        或二级序列，应覆写本方法并在内部调用 ``super()._read_daily_task()`` 复用标准反转，
+        再补上自身逻辑后返回 ``(task, sequence)``；若子类无标准存储结构
         （无 ``_task_key`` / 非 ``_task_key`` + ``_task_map``），可完全自行实现而不调 super。
 
         仅「脚本未安装」与「用户未选择」的副本部分返回 None；config 损坏或字段值未知
@@ -382,8 +382,8 @@ class ScriptConfig:
             return inv[raw], None
         return raw, None
 
-    def _read_weekly_dungeon(self, weekly_name: str) -> str | None:
-        """反读某周常当前选中的副本名（与 set_weekly_dungeon 对称）。
+    def _read_weekly_task(self, weekly_name: str) -> str | None:
+        """反读某周常当前选中的副本名（与 set_weekly_task 对称）。
 
         基类默认无周常副本真相，返回 None；有周常副本的子类（如崩铁）应覆写。
 
@@ -443,25 +443,23 @@ class ScriptConfig:
             key in config and _aligned(config[key], template[key]) for key in template
         )
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
+    def set_daily_task(self, task_name: str, sequence: str | int | None = None) -> None:
         """设置副本：更新任务类型与序列后落盘。
 
         Args:
-            dungeon_name: 副本中文名。
+            task_name: 副本中文名。
             sequence: 序列值；不传则仅设置任务类型。
         """
         config = self._load()
-        changed = self._update_task(config, dungeon_name, sequence)
+        changed = self._update_task(config, task_name, sequence)
         if changed:
-            logger.info(f"[set_dungeon][{self.display_name}] config 已更新")
+            logger.info(f"[set_daily_task][{self.display_name}] config 已更新")
             self._save(config)
         else:
-            logger.info(f"[set_dungeon][{self.display_name}] config 无需更新")
+            logger.info(f"[set_daily_task][{self.display_name}] config 无需更新")
 
-    def set_weekly(self, start_day: int) -> None:
-        """设置周常起始日并写入开关。
-
-        enabled=False 时短路。周常开关为 GUI 内存态，不直写 config。
+    def _check_weekly_start(self, start_day: int) -> None:
+        """校验周常起始日，供各子类的 prepare_weekly_start_day 首行调用。
 
         Args:
             start_day: 周几以后启用（1~7，1=周一）。
@@ -475,17 +473,20 @@ class ScriptConfig:
         assert 1 <= start_day <= 7, (
             f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
         )
-        self._write_weekly(is_weekly_start_reached(start_day))
 
-    def _write_weekly(self, enabled: bool) -> None:
-        """写入周常开关。基类默认不支持（未适配子类不应走到此处）。
+    def prepare_weekly_start_day(self, start_day: int) -> None:
+        """设置周常起始日并写入周常开关，由各子类按自身 config 结构覆写。
+
+        周常开关的形态随脚本而异（Additional Tasks 列表增删、布尔开关、语义反相、
+        _group.yml 的 app 条目），基类无通用落点，故只兜底 assert。
 
         Args:
-            enabled: 是否启用周常。
+            start_day: 周几以后启用（1~7，1=周一）。
 
         Raises:
-            AssertionError: 基类默认调用（未适配周常的脚本）。
+            AssertionError: 未适配周常（未声明 _weekly_task_name）。
         """
+        self._check_weekly_start(start_day)
         assert False, f"[set_config][{self.display_name}] 未支持周常配置"  # noqa: B011  # 故意：未适配脚本不应走到周常写入
 
     @classmethod
@@ -520,12 +521,12 @@ class ScriptConfig:
         return node
 
     @classmethod
-    def get_dungeon_options(cls) -> list[dict]:
+    def get_daily_task_options(cls) -> list[dict]:
         """取得单个日常的选项声明；特殊展示由子类适配。"""
         return get_options(get_daily_config(cls._script_name))
 
     @classmethod
-    def get_dungeon_lists(cls, task_name: str, source: str) -> list[str] | None:
+    def get_task_lists(cls, task_name: str, source: str) -> list[str] | None:
         """读取某任务（周常/日常）的可选副本名清单（类方法，无需实例化）。
 
         Args:
@@ -574,11 +575,11 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
             f"_game_config_rel_path"
         )
     if cls._weekly_task_name:
-        assert cls._write_weekly is not ScriptConfig._write_weekly or (
-            cls.set_weekly is not ScriptConfig.set_weekly
+        assert (
+            cls.prepare_weekly_start_day is not ScriptConfig.prepare_weekly_start_day
         ), (
-            f"[set_config][{cls.__name__}] 声明了 _weekly_task_name 必须实现 "
-            f"_write_weekly 或覆写 set_weekly（周常写入的落点）"
+            f"[set_config][{cls.__name__}] 声明了 _weekly_task_name 必须覆写 "
+            f"prepare_weekly_start_day（周常开关的落点）"
         )
     _CONFIGS[cls._script_name] = cls
     return cls
@@ -608,22 +609,24 @@ class WutheringWavesConfig(ScriptConfig):
     _weekly_config = get_weekly_config(_script_name, "幻梦游园")
     _weekly_task_name = get_physical_name(_weekly_config)
 
-    def _write_weekly(self, enabled: bool) -> None:
+    def prepare_weekly_start_day(self, start_day: int) -> None:
         """控制「Check Weekly Garden」在 Additional Tasks 中的增删。
 
         Args:
-            enabled: True 追加任务，False 移除任务。
+            start_day: 周几以后启用（1~7，1=周一）。
 
         Raises:
-            AssertionError: 缺少 Additional Tasks 列表字段。
+            AssertionError: 未适配周常、起始日越界，或缺少 Additional Tasks 列表字段。
         """
+        self._check_weekly_start(start_day)
+        enabled = is_weekly_start_reached(start_day)
         config = self._load()
         # 周常（乐园）在 Additional Tasks 列表中任务名 _weekly_task_name。
         tasks = get_field(config, self._weekly_config["key"], self.display_name, list)
         contains = self._weekly_task_name in tasks
         if enabled == contains:
             logger.info(
-                f"[set_weekly][{self.display_name}] 周常状态无变化（enabled={enabled}）"
+                f"[prepare_weekly_start_day][{self.display_name}] 周常状态无变化（enabled={enabled}）"
             )
             return
         if enabled:
@@ -631,21 +634,21 @@ class WutheringWavesConfig(ScriptConfig):
         else:
             tasks.remove(self._weekly_task_name)
         logger.info(
-            f"[set_weekly][{self.display_name}] {'启用' if enabled else '停用'}周常"
+            f"[prepare_weekly_start_day][{self.display_name}] {'启用' if enabled else '停用'}周常"
         )
         self._save(config)
 
     def _update_task(
-        self, config: dict, dungeon_name: str, sequence: str | int | None = None
+        self, config: dict, task_name: str, sequence: str | int | None = None
     ) -> bool:
-        """写入副本类型字段与二级序列字段，返回是否修改（与 _read_dungeon 对称）。
+        """写入副本类型字段与二级序列字段，返回是否修改（与 _read_daily_task 对称）。
 
         先经基类标准副本写入（复用 ``_task_key`` + ``_task_map`` 反转），再按当前副本
         从 ``_sequence_map`` 写入二级序列字段。
 
         Args:
             config: 目标 config dict。
-            dungeon_name: 副本中文名（决定映射键与取值方式）。
+            task_name: 副本中文名（决定映射键与取值方式）。
             sequence: 序列值；无二级映射时直接作为字段值。
 
         Returns:
@@ -654,29 +657,29 @@ class WutheringWavesConfig(ScriptConfig):
         Raises:
             AssertionError: 未适配的副本或序列。
         """
-        changed = super()._update_task(config, dungeon_name, None)
+        changed = super()._update_task(config, task_name, None)
         assert sequence is not None, (
-            f"[set_dungeon][{self.display_name}] sequence 不能为空"
+            f"[set_daily_task][{self.display_name}] sequence 不能为空"
         )
-        assert dungeon_name in self._sequence_map, (
-            f"[set_dungeon][{self.display_name}] 未适配的副本: {dungeon_name}"
+        assert task_name in self._sequence_map, (
+            f"[set_daily_task][{self.display_name}] 未适配的副本: {task_name}"
         )
-        cfg = self._sequence_map[dungeon_name]
+        cfg = self._sequence_map[task_name]
 
         values = get_value_map({"options": cfg})
         # 直接调用仍可传展示名；菜单的二级选择已是物理值。
         if sequence in values:
             sequence = values[sequence]
         assert sequence in values.values(), (
-            f"[set_dungeon][{self.display_name}] 未适配的序列: {sequence}"
+            f"[set_daily_task][{self.display_name}] 未适配的序列: {sequence}"
         )
         changed |= safe_update(
             config, cfg["key"], sequence, self.display_name, assert_key_exists=False
         )
         return changed
 
-    def _read_dungeon(self) -> tuple[str | None, str | int | None]:
-        """反读当前日常副本与二级序列值（与 set_dungeon / _update_task 对称）。
+    def _read_daily_task(self) -> tuple[str | None, str | int | None]:
+        """反读当前日常副本与二级序列值（与 set_daily_task / _update_task 对称）。
 
         先经基类标准反转得到副本名，再按当前副本从 ``_sequence_map`` 读回原始序列值
         （展示别名由界面根据声明转换）。
@@ -684,22 +687,22 @@ class WutheringWavesConfig(ScriptConfig):
         Returns:
             ``(副本中文名, 序列值)``；无序列通道/未设置时序列为 None。
         """
-        dungeon, _ = super()._read_dungeon()
-        if dungeon is None or dungeon not in self._sequence_map:
-            return dungeon, None
-        cfg = self._sequence_map[dungeon]
+        task, _ = super()._read_daily_task()
+        if task is None or task not in self._sequence_map:
+            return task, None
+        cfg = self._sequence_map[task]
         config = self._load(allow_missing=True)
         if config is None:
-            return dungeon, None  # 脚本未安装/未配置
+            return task, None  # 脚本未安装/未配置
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
         if cfg["key"] not in config:
-            return dungeon, None  # 未选择序号（字段未落盘）
+            return task, None  # 未选择序号（字段未落盘）
         raw = config[cfg["key"]]
         if raw is None:
-            return dungeon, None  # 未选择序号（字段为空值）
-        return dungeon, raw
+            return task, None  # 未选择序号（字段为空值）
+        return task, raw
 
 
 # ---- 原神 Genshin Impact ----
@@ -717,18 +720,18 @@ class GenshinConfig(ScriptConfig):
     _template_rel_path = "BGI一条龙.json"
     _game_path_keys = ("genshinStartConfig", "installPath")
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
+    def set_daily_task(self, task_name: str, sequence: str | int | None = None) -> None:
         """原神副本两级组织：有二级时写入二级副本名，否则回退一级。
 
         Args:
-            dungeon_name: 一级副本名。
+            task_name: 一级副本名。
             sequence: 二级副本名；None 时回退一级。
         """
-        target = sequence if sequence is not None else dungeon_name
-        super().set_dungeon(target)
+        target = sequence if sequence is not None else task_name
+        super().set_daily_task(target)
 
     @classmethod
-    def get_dungeon_lists(cls, task_name: str, source: str) -> list[str]:
+    def get_task_lists(cls, task_name: str, source: str) -> list[str]:
         """读 BetterGI 的 tp.json，取某秘境分类（周常/日常）的副本名清单。
 
         Args:
@@ -773,32 +776,37 @@ class EndfieldConfig(ScriptConfig):
     _weekly_task_name = get_weekly_config(_script_name, "卖出物资")["key"]
     """周常（卖出物资）在 DailyTask.json 中的开关键；true=只买不卖=不卖=周常关。"""
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
+    def set_daily_task(self, task_name: str, sequence: str | int | None = None) -> None:
         """终末地副本两级组织：有二级时写入二级副本名，否则回退一级。
 
         Args:
-            dungeon_name: 一级副本名。
+            task_name: 一级副本名。
             sequence: 二级副本名；None 时回退一级。
         """
-        target = sequence if sequence is not None else dungeon_name
-        super().set_dungeon(target)
+        target = sequence if sequence is not None else task_name
+        super().set_daily_task(target)
 
-    def _write_weekly(self, enabled: bool) -> None:
+    def prepare_weekly_start_day(self, start_day: int) -> None:
         """控制 DailyTask.json 的「只买不卖」周常开关（语义反相）。
 
         游戏约定：只买不卖=true → 不卖出 → 周常（卖出物资）关闭；
-        故 enabled 需反相写入。
+        故按起始日算出的 enabled 需反相写入。
 
         Args:
-            enabled: 是否启用周常（卖出物资）。
+            start_day: 周几以后启用（1~7，1=周一）。
+
+        Raises:
+            AssertionError: 未适配周常，或起始日越界。
         """
+        self._check_weekly_start(start_day)
+        enabled = is_weekly_start_reached(start_day)
         config = self._load()
         # 反相：enabled=True（卖出）→ 只买不卖=false
         safe_update(config, self._weekly_task_name, not enabled, self.display_name)
         self._save(config)
 
     @classmethod
-    def get_dungeon_lists(cls, task_name: str, source: str) -> list[str]:
+    def get_task_lists(cls, task_name: str, source: str) -> list[str]:
         """读取体力本的可选副本名清单。
 
         Args:
@@ -839,18 +847,20 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     background = "assets/ui/static_background.webp"
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "迷失之地"))
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
+    def set_daily_task(self, task_name: str, sequence: str | int | None = None):
         logger.info(f"[set_config][{self.display_name}] zzz无需适配")
 
-    def _write_weekly(self, enabled: bool) -> None:
+    def prepare_weekly_start_day(self, start_day: int) -> None:
         """控制 _group.yml 中 lost_void 的 enabled 开关。
 
         Args:
-            enabled: 是否启用周常。
+            start_day: 周几以后启用（1~7，1=周一）。
 
         Raises:
-            AssertionError: app_list 缺少 lost_void 条目。
+            AssertionError: 未适配周常、起始日越界，或 app_list 缺少 lost_void 条目。
         """
+        self._check_weekly_start(start_day)
+        enabled = is_weekly_start_reached(start_day)
         config = self._load_weekly()
         # 周常（迷失之地）在 _group.yml app_list 中的 app_id。
         app_list = get_field(config, "app_list", self.display_name, list)
@@ -880,7 +890,7 @@ class StarRailConfig(ScriptConfig):
     _echo_config = get_weekly_config(_script_name, "历战余响")
 
     @classmethod
-    def get_dungeon_lists(cls, task_name: str, source: str) -> list[str]:
+    def get_task_lists(cls, task_name: str, source: str) -> list[str]:
         """读取某任务（周常/日常）的可选副本名清单。
 
         Args:
@@ -905,26 +915,21 @@ class StarRailConfig(ScriptConfig):
         )
         return list(entry.keys())
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
+    def set_daily_task(self, task_name: str, sequence: str | int | None = None):
         logger.info(f"[set_config][{self.display_name}] M7A无需适配")
 
-    def set_weekly(self, start_day: int) -> None:
+    def prepare_weekly_start_day(self, start_day: int) -> None:
         """崩铁周常：周几起对所有周本生效。
 
         - 货币战争（开关型）：M7A 无自身周几起门控，由 launcher 按周几起落盘
           currencywars_enable。
-        - 历战余响（dungeon 型）：把周几起写入 M7A 的 echo_of_war_start_day_of_week，
+        - 历战余响（任务型）：把周几起写入 M7A 的 echo_of_war_start_day_of_week，
           由 M7A 自身按该日门控；副本选型 instance_names 正交，不在这里改动。
 
         Args:
             start_day: 周几以后启用（1~7，1=周一）。
         """
-        assert self._weekly_task_name, (
-            f"[set_config][{self.display_name}] 未支持周常配置"
-        )
-        assert 1 <= start_day <= 7, (
-            f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
-        )
+        self._check_weekly_start(start_day)
         config = self._load()
         # 货币战争：今天是否已到起始日
         safe_update(
@@ -940,8 +945,8 @@ class StarRailConfig(ScriptConfig):
     def set_weekly_start_day(self, start_day: int) -> None:
         """编辑期落盘周几起字面起始日到 echo_of_war_start_day_of_week。
 
-        与 set_weekly 不同：本方法不写 currencywars_enable（开关型周本需运行期按
-        「今天是否已到起始日」计算二进制开关），只写 dungeon 型周本（历战余响）的字面
+        与 prepare_weekly_start_day 不同：本方法不写 currencywars_enable（开关型周本需运行期按
+        「今天是否已到起始日」计算二进制开关），只写 任务型周本（历战余响）的字面
         起始日，由 M7A 自身按该日门控。编辑期改周几起即应落盘此值，无需等待链运行。
 
         Args:
@@ -963,19 +968,19 @@ class StarRailConfig(ScriptConfig):
         )
         self._save(config)
 
-    def set_weekly_dungeon(self, weekly_name: str, dungeon_name: str) -> None:
+    def set_weekly_task(self, weekly_name: str, task_name: str) -> None:
         """写入某周常当前选中的副本名到 config.yaml 的 instance_names。
 
         副本名清单的展示与下拉选项由 OneDragon-Helper 的 weekly_task_list.yml 声明
-        （dungeons 字段）负责，本方法只承担把用户所选写回 M7A 游戏配置的本分。
+        （tasks 字段）负责，本方法只承担把用户所选写回 M7A 游戏配置的本分。
 
         Args:
             weekly_name: 周常名（如「历战余响」）；即 instance_names 的键。
-            dungeon_name: 选中的副本名（来自 weekly_task_list.yml 声明）。
+            task_name: 选中的副本名（来自 weekly_task_list.yml 声明）。
         """
         config = self._load()
         # instance_names 是 M7A 约定键名（{周常名: 副本名} 的 dict）；仅首次使用时新建，
-        # 已存在则由 get_field 校验类型——与 _read_weekly_dungeon 对称，不静默抹掉损坏值。
+        # 已存在则由 get_field 校验类型——与 _read_weekly_task 对称，不静默抹掉损坏值。
         if "instance_names" not in config:
             safe_update(
                 config,
@@ -988,13 +993,13 @@ class StarRailConfig(ScriptConfig):
         task = get_weekly_config(self._script_name, weekly_name)
         values = get_value_map(task)
         if values:
-            assert dungeon_name in values, f"未知周常副本: {dungeon_name!r}"
-            dungeon_name = values[dungeon_name]
-        instance_names[get_physical_name(task)] = dungeon_name
+            assert task_name in values, f"未知周常副本: {task_name!r}"
+            task_name = values[task_name]
+        instance_names[get_physical_name(task)] = task_name
         self._save(config)
 
-    def _read_weekly_dungeon(self, weekly_name: str) -> str | None:
-        """反读某周常当前选中的副本名（与 set_weekly_dungeon 对称）。
+    def _read_weekly_task(self, weekly_name: str) -> str | None:
+        """反读某周常当前选中的副本名（与 set_weekly_task 对称）。
 
         Args:
             weekly_name: 周常名（如「历战余响」）；即 instance_names 的键。
@@ -1058,13 +1063,13 @@ class NTEConfig(ScriptConfig):
             "seq_fields": {_hunter["display_name"]: _hunter["options"]["key"]},
         },
     }
-    _dungeon_to_mode = {
+    _task_to_mode = {
         **dict.fromkeys(_anomaly_seq_key_map, get_physical_name(_anomaly)),
         _hunter["display_name"]: get_physical_name(_hunter),
     }
 
     @classmethod
-    def get_dungeon_options(cls) -> list[dict]:
+    def get_daily_task_options(cls) -> list[dict]:
         """异象类别与追猎目标仍在同一个副本菜单中互斥选择。"""
         return get_options(cls._anomaly) + [cls._hunter]
 
@@ -1114,16 +1119,16 @@ class NTEConfig(ScriptConfig):
         return get_field(config, section, self.display_name, dict, "daily_section")
 
     def _update_task(
-        self, config: dict, dungeon_name: str, sequence: str | int | None = None
+        self, config: dict, task_name: str, sequence: str | int | None = None
     ) -> bool:
-        """写入副本类型字段与序号字段，返回是否修改（与 _read_dungeon 对称）。
+        """写入副本类型字段与序号字段，返回是否修改（与 _read_daily_task 对称）。
 
-        由 dungeon 经 ``_dungeon_to_mode`` 反查日常模式（异象界域 / 追猎目标），
+        由 task 经 ``_task_to_mode`` 反查日常模式（异象界域 / 追猎目标），
         再按 ``_mode_specs`` 声明的字段映射写入；不依赖可变实例状态。
 
         Args:
             config: 目标 config dict。
-            dungeon_name: 副本中文名。
+            task_name: 副本中文名。
             sequence: 序号值。
 
         Returns:
@@ -1132,31 +1137,31 @@ class NTEConfig(ScriptConfig):
         Raises:
             AssertionError: 未适配的副本，序列为空，或副本无对应序号键。
         """
-        assert dungeon_name in self._dungeon_to_mode, (
-            f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        assert task_name in self._task_to_mode, (
+            f"[set_config][{self.display_name}] 未适配的副本: {task_name}"
         )
-        mode_id = self._dungeon_to_mode[dungeon_name]
+        mode_id = self._task_to_mode[task_name]
         mode = self._mode_specs[mode_id]
         section_dict = self._daily_section_dict(config, mode_id)
         task_field = mode["task_field"]
         if task_field is not None:
-            dungeon_changed = safe_update(
+            task_changed = safe_update(
                 section_dict,
                 task_field,
-                self._task_map[dungeon_name],
+                self._task_map[task_name],
                 self.display_name,
                 assert_key_exists=False,
             )
         else:
-            dungeon_changed = False
+            task_changed = False
         assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
         key = get_field(
-            mode["seq_fields"], dungeon_name, self.display_name, context="update_task"
+            mode["seq_fields"], task_name, self.display_name, context="update_task"
         )
         seq_changed = safe_update(
             section_dict, key, sequence, self.display_name, assert_key_exists=False
         )
-        return dungeon_changed or seq_changed
+        return task_changed or seq_changed
 
     def _update_routine_exclusion(self, routine: dict, mode_id: str) -> bool:
         """互斥切换追猎目标与异象界域的 Routine Item 启用状态。
@@ -1186,21 +1191,21 @@ class NTEConfig(ScriptConfig):
             )
         return changed
 
-    def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
-        """委托基类写配置（按 _dungeon_to_mode 反查模式），再切换第二份文件的互斥启用状态。
+    def set_daily_task(self, task_name: str, sequence: str | int | None = None) -> None:
+        """委托基类写配置（按 _task_to_mode 反查模式），再切换第二份文件的互斥启用状态。
 
         Args:
-            dungeon_name: 副本中文名。
+            task_name: 副本中文名。
             sequence: 序列值。
         """
-        mode_id = self._dungeon_to_mode[dungeon_name]
-        super().set_dungeon(dungeon_name, sequence)
+        mode_id = self._task_to_mode[task_name]
+        super().set_daily_task(task_name, sequence)
         routine = self._load(self._routine_config_rel_path)
         if self._update_routine_exclusion(routine, mode_id):
             self._save(routine, self._routine_config_rel_path)
 
-    def _read_dungeon(self) -> tuple[str | None, str | int | None]:
-        """反读当前日常副本与二级序号（与 set_dungeon / _update_task 对称）。
+    def _read_daily_task(self) -> tuple[str | None, str | int | None]:
+        """反读当前日常副本与二级序号（与 set_daily_task / _update_task 对称）。
 
         当前玩法由 DailyRoutineTask.json 的 Routine Items 启用状态判定（非 任务类型 字段），
         经 ``_mode_specs`` 查表解析模式；两种模式的副本/序列数据均落 config 文件
@@ -1248,16 +1253,16 @@ class NTEConfig(ScriptConfig):
         anomaly_key = self._anomaly["options"]["key"]
         if anomaly_key not in section:
             return None, None  # 段缺失（未落盘）
-        dungeon = section[anomaly_key]
-        if dungeon in (None, ""):  # 字段为空串视为未选具体副本
+        task = section[anomaly_key]
+        if task in (None, ""):  # 字段为空串视为未选具体副本
             return None, None
         names = {value: name for name, value in self._task_map.items()}
-        assert dungeon in names, f"未知异象类别: {dungeon!r}"
-        dungeon = names[dungeon]
-        seq_key = self._anomaly_seq_key_map[dungeon]
+        assert task in names, f"未知异象类别: {task!r}"
+        task = names[task]
+        seq_key = self._anomaly_seq_key_map[task]
         if seq_key not in section:
-            return dungeon, None  # 序号未落盘
-        return dungeon, section[seq_key]
+            return task, None  # 序号未落盘
+        return task, section[seq_key]
 
 
 # ---- 明日方舟 Arknights（粥）----
@@ -1287,7 +1292,7 @@ class ArknightsConfig(ScriptConfig):
     }
 
     def _update_task(
-        self, config: dict, dungeon_name: str, sequence: str | int | None = None
+        self, config: dict, task_name: str, sequence: str | int | None = None
     ) -> bool:
         """粥副本设置：基于 StagePlan[0] 识别任务，启用剿灭/土/选定副本。
 
@@ -1298,21 +1303,21 @@ class ArknightsConfig(ScriptConfig):
 
         Args:
             config: 目标 config dict。
-            dungeon_name: 选定副本中文名。
+            task_name: 选定副本中文名。
 
         Returns:
             是否有任意任务项状态发生变化。
 
         Raises:
-            AssertionError: 未适配的副本（dungeon_name 不在 _task_map）。
+            AssertionError: 未适配的副本（task_name 不在 _task_map）。
         """
         task_config = config["Configurations"]["Default"]["TaskQueue"]
         # 反查：中文名 → 关卡代码
         stage_by_name = {name: stage for stage, name in self._task_map.items()}
-        assert dungeon_name in stage_by_name, (
-            f"[set_config][{self.display_name}] 未适配的副本: {dungeon_name}"
+        assert task_name in stage_by_name, (
+            f"[set_config][{self.display_name}] 未适配的副本: {task_name}"
         )
-        target_stage = stage_by_name[dungeon_name]
+        target_stage = stage_by_name[task_name]
 
         fixed_stages = {"Annihilation", "1-7"}
         changed = False
@@ -1330,7 +1335,7 @@ class ArknightsConfig(ScriptConfig):
                 matched_target = True
             name = self._task_map[stage]
 
-            should_enable = stage in fixed_stages or name == dungeon_name
+            should_enable = stage in fixed_stages or name == task_name
             changed |= safe_update(
                 task,
                 "IsEnable",
@@ -1365,7 +1370,7 @@ class ArknightsConfig(ScriptConfig):
 
         return changed
 
-    def _read_dungeon(self) -> tuple[str | None, str | int | None]:
+    def _read_daily_task(self) -> tuple[str | None, str | int | None]:
         """反读当前日常副本（与 _update_task 对称）。
 
         遍历 TaskQueue，除固定启用的剿灭/土外，
@@ -1405,7 +1410,7 @@ class ArknightsConfig(ScriptConfig):
             return self._task_map["1-7"], None
         return None, None
 
-    def set_weekly(self, start_day: int) -> None:
+    def prepare_weekly_start_day(self, start_day: int) -> None:
         """周常「理智药剂」：按周几起写过期理智药使用窗口，并随副本启停同步开关。
 
         与基类二值开关不同，本方法每次调用都直接写入（不按「今天是否到起始日」门控）：
@@ -1420,12 +1425,7 @@ class ArknightsConfig(ScriptConfig):
         Raises:
             AssertionError: 未适配周常，或 start_day 不在 1~7。
         """
-        assert self._weekly_task_name, (
-            f"[set_config][{self.display_name}] 未支持周常配置"
-        )
-        assert 1 <= start_day <= 7, (
-            f"[set_config][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
-        )
+        self._check_weekly_start(start_day)
         config = self._load()
         task_queue = get_field(
             get_field(
@@ -1464,17 +1464,21 @@ class ArknightsConfig(ScriptConfig):
                 assert_key_exists=False,
             )
         if changed:
-            logger.info(f"[set_weekly][{self.display_name}] 理智药剂配置已更新")
+            logger.info(
+                f"[prepare_weekly_start_day][{self.display_name}] 理智药剂配置已更新"
+            )
             self._save(config)
         else:
-            logger.info(f"[set_weekly][{self.display_name}] 理智药剂配置无需更新")
+            logger.info(
+                f"[prepare_weekly_start_day][{self.display_name}] 理智药剂配置无需更新"
+            )
 
     def set_weekly_start_day(self, start_day: int) -> None:
         """编辑期落盘周几起字面起始日到 MedicineExpireDays。
 
-        与 set_weekly 不同：本方法只写 MedicineExpireDays（由周几起推算：
+        与 prepare_weekly_start_day 不同：本方法只写 MedicineExpireDays（由周几起推算：
         MedicineExpireDays = 8 - 周几起），不写 UseExpiringMedicine（是否吃药的
-        开关依赖各 FightTask 的启用状态，需运行期按当日副本选型经 set_weekly 计算）。
+        开关依赖各 FightTask 的启用状态，需运行期按当日副本选型经 prepare_weekly_start_day 计算）。
         编辑期改周几起即应落盘此值，无需等待链运行。
 
         Args:
@@ -1548,7 +1552,7 @@ def init_config_all() -> None:
 
 def set_config(
     script_name: str,
-    dungeon_name: str | None = None,
+    task_name: str | None = None,
     sequence: str | int | None = None,
     weekly_start: int | None = None,
 ) -> None:
@@ -1558,11 +1562,11 @@ def set_config(
 
     Args:
         script_name: 脚本标识名。
-        dungeon_name: 副本中文名；None 或「未选择」表示不设置副本。
+        task_name: 副本中文名；None 或「未选择」表示不设置副本。
         sequence: 序列值；仅部分脚本支持。
         weekly_start: 周常起始日（1~7）；None 表示不设置周常。
     """
-    if (not dungeon_name or dungeon_name == "未选择") and weekly_start is None:
+    if (not task_name or task_name == "未选择") and weekly_start is None:
         return
 
     # 自定义脚本（不在注册表）跳过
@@ -1572,21 +1576,19 @@ def set_config(
 
     cfg_cls = _CONFIGS[script_name]
     cfg = cfg_cls()
-    if dungeon_name and dungeon_name != "未选择":
-        cfg.set_dungeon(dungeon_name, sequence)
+    if task_name and task_name != "未选择":
+        cfg.set_daily_task(task_name, sequence)
     if weekly_start is not None:
-        cfg.set_weekly(weekly_start)
+        cfg.prepare_weekly_start_day(weekly_start)
 
 
-def get_dungeon_options(script_name: str) -> list[dict]:
+def get_daily_task_options(script_name: str) -> list[dict]:
     """取得脚本的日常副本选项声明。"""
     assert script_name in _CONFIGS, f"未适配脚本: {script_name}"
-    return _CONFIGS[script_name].get_dungeon_options()
+    return _CONFIGS[script_name].get_daily_task_options()
 
 
-def get_dungeon_lists(
-    script_name: str, task_name: str, source: str
-) -> list[str] | None:
+def get_task_lists(script_name: str, task_name: str, source: str) -> list[str] | None:
     """适配器接口：副本清单源在游戏脚本自身配置里，从中读某任务的可选副本名清单，委托给对应脚本的 config 类。
 
     「从哪读、怎么解析」的知识归各 ``ScriptConfig`` 子类，本函数只做分发。
@@ -1601,7 +1603,7 @@ def get_dungeon_lists(
     """
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name].get_dungeon_lists(task_name, source)
+    return _CONFIGS[script_name].get_task_lists(task_name, source)
 
 
 def get_config_path(script_name: str) -> str:
@@ -1678,7 +1680,7 @@ def get_background_rel_path(script_name: str) -> str:
     return _CONFIGS[script_name].background
 
 
-def set_weekly_dungeon(script_name: str, weekly_name: str, dungeon_name: str) -> None:
+def set_weekly_task(script_name: str, weekly_name: str, task_name: str) -> None:
     """适配器接口：写某周常当前选中的副本名到脚本自身 config。
 
     未适配或该脚本无「周常选副本」概念（子类未实现）时优雅跳过。
@@ -1686,15 +1688,15 @@ def set_weekly_dungeon(script_name: str, weekly_name: str, dungeon_name: str) ->
     Args:
         script_name: 脚本标识名。
         weekly_name: 周常名（如「历战余响」）。
-        dungeon_name: 选中的副本名。
+        task_name: 选中的副本名。
     """
     if script_name not in _CONFIGS:
         return
     cfg_cls = _CONFIGS[script_name]
-    if not hasattr(cfg_cls, "set_weekly_dungeon"):
+    if not hasattr(cfg_cls, "set_weekly_task"):
         return
     cfg = cfg_cls()
-    cfg.set_weekly_dungeon(weekly_name, dungeon_name)
+    cfg.set_weekly_task(weekly_name, task_name)
 
 
 def set_weekly_start_day(script_name: str, start_day: int) -> None:
@@ -1715,7 +1717,7 @@ def set_weekly_start_day(script_name: str, start_day: int) -> None:
     cfg.set_weekly_start_day(start_day)
 
 
-def get_dungeon(script_name: str) -> str | None:
+def get_daily_task(script_name: str) -> str | None:
     """读当前日常副本中文名（反读子脚本 config）。
 
     无真相（如绝区零/崩铁日常无副本适配）或字段未设置时返回 None。
@@ -1728,7 +1730,7 @@ def get_dungeon(script_name: str) -> str | None:
     """
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name]()._read_dungeon()[0]
+    return _CONFIGS[script_name]()._read_daily_task()[0]
 
 
 def get_sequence(script_name: str) -> str | int | None:
@@ -1744,13 +1746,13 @@ def get_sequence(script_name: str) -> str | int | None:
     """
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name]()._read_dungeon()[1]
+    return _CONFIGS[script_name]()._read_daily_task()[1]
 
 
-def get_weekly_dungeon(script_name: str, weekly_name: str) -> str | None:
+def get_weekly_task(script_name: str, weekly_name: str) -> str | None:
     """读某周常当前选中的副本名（反读子脚本 config）。
 
-    未适配周常副本（无 set_weekly_dungeon）或字段未设置时返回 None。
+    未适配周常副本（无 set_weekly_task）或字段未设置时返回 None。
 
     Args:
         script_name: 脚本标识名。
@@ -1761,4 +1763,4 @@ def get_weekly_dungeon(script_name: str, weekly_name: str) -> str | None:
     """
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name]()._read_weekly_dungeon(weekly_name)
+    return _CONFIGS[script_name]()._read_weekly_task(weekly_name)

@@ -1,4 +1,4 @@
-"""tools/sync_oknte_dungeons.py 离线回归测试（不联网，monkeypatch 抓取）。
+"""tools/sync_oknte_tasks.py 离线回归测试（不联网，monkeypatch 抓取）。
 
 覆盖：异象界域数字解析、追猎目标字符串解析、yml 读取、新增补齐（数字 + boss 名）。
 """
@@ -11,7 +11,7 @@ import unittest
 from src.utils.utils_yaml import load_yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
-import sync_oknte_dungeons as m
+import sync_oknte_tasks as m
 
 _ANOMALY = """
 EXP_COIN_ID_RANGE = (1, 3)

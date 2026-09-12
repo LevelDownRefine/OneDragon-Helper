@@ -1,4 +1,4 @@
-"""sync_okww_dungeons 的单测：聚焦最前插入模型的重排逻辑（不触网）。
+"""sync_okww_tasks 的单测：聚焦最前插入模型的重排逻辑（不触网）。
 
 模块位于 tools/ 下、非 src 包，故手动将项目根加入 sys.path 后按命名空间包导入。
 """
@@ -14,7 +14,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from ruamel.yaml import YAML  # noqa: E402
 
-import tools.sync_okww_dungeons as m  # noqa: E402
+import tools.sync_okww_tasks as m  # noqa: E402
 
 _YAML = YAML()
 

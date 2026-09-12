@@ -55,8 +55,8 @@ class TestDeclarationBindings(unittest.TestCase):
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as save,
         ):
-            cfg.set_dungeon("测试类别", 9)
-            self.assertEqual(cfg._read_dungeon(), ("测试类别", 9))
+            cfg.set_daily_task("测试类别", 9)
+            self.assertEqual(cfg._read_daily_task(), ("测试类别", 9))
         self.assertEqual(
             config,
             {**original, "NativeCategory": "NativeCategoryValue", "NativeStage": 9},
@@ -76,8 +76,8 @@ class TestDeclarationBindings(unittest.TestCase):
                     patch.object(cfg, "_load", return_value=config),
                     patch.object(cfg, "_save"),
                 ):
-                    cfg.set_dungeon("只供展示的类别", "真实副本")
-                    self.assertEqual(cfg._read_dungeon(), ("真实副本", None))
+                    cfg.set_daily_task("只供展示的类别", "真实副本")
+                    self.assertEqual(cfg._read_daily_task(), ("真实副本", None))
                 self.assertEqual(
                     config, {"NativeTarget": "真实副本", "untouched": True}
                 )
@@ -108,8 +108,8 @@ class TestDeclarationBindings(unittest.TestCase):
             return routine if path == cfg._routine_config_rel_path else config
 
         with patch.object(cfg, "_load", side_effect=load), patch.object(cfg, "_save"):
-            cfg.set_dungeon("空幕", 2)
-            self.assertEqual(cfg._read_dungeon(), ("空幕", 2))
+            cfg.set_daily_task("空幕", 2)
+            self.assertEqual(cfg._read_daily_task(), ("空幕", 2))
             self.assertEqual(
                 config["native_anomaly"],
                 {"NativeType": "NativeCategory", "NativeSequence": 2},
@@ -118,8 +118,8 @@ class TestDeclarationBindings(unittest.TestCase):
                 [item["enabled"] for item in routine["Routine Items"]],
                 [True, False, True],
             )
-            cfg.set_dungeon("追猎目标", "音霸魔王")
-            self.assertEqual(cfg._read_dungeon(), ("追猎目标", "音霸魔王"))
+            cfg.set_daily_task("追猎目标", "音霸魔王")
+            self.assertEqual(cfg._read_daily_task(), ("追猎目标", "音霸魔王"))
             self.assertEqual(
                 [item["enabled"] for item in routine["Routine Items"]],
                 [False, True, True],
@@ -138,8 +138,8 @@ class TestDeclarationBindings(unittest.TestCase):
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save"),
         ):
-            cfg.set_weekly_dungeon("历战余响", "副本别名")
-            self.assertEqual(cfg._read_weekly_dungeon("历战余响"), "副本别名")
+            cfg.set_weekly_task("历战余响", "副本别名")
+            self.assertEqual(cfg._read_weekly_task("历战余响"), "副本别名")
             cfg.set_weekly_start_day(4)
         self.assertEqual(config["NativeStartDay"], 4)
         self.assertEqual(
@@ -156,10 +156,15 @@ class TestDeclarationBindings(unittest.TestCase):
         with (
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save"),
+            patch(
+                "src.utils.utils_weekly.get_week_num",
+                side_effect=[1, 0],
+            ),
         ):
-            cfg._write_weekly(True)
+            # 周二(1)+1 >= 2 → 启用；周一(0)+1 < 2 → 停用
+            cfg.prepare_weekly_start_day(2)
             self.assertEqual(config, {"NativeTasks": ["unrelated", "NativeWeekly"]})
-            cfg._write_weekly(False)
+            cfg.prepare_weekly_start_day(2)
             self.assertEqual(config, {"NativeTasks": ["unrelated"]})
 
     def test_maa_fixed_stage_behavior_does_not_depend_on_display_alias(self):
@@ -176,22 +181,21 @@ class TestDeclarationBindings(unittest.TestCase):
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save"),
         ):
-            cfg.set_dungeon("新土别名")
+            cfg.set_daily_task("新土别名")
             self.assertEqual(
                 [task["IsEnable"] for task in queue], [True, True, False, False]
             )
-            self.assertEqual(cfg._read_dungeon(), ("新土别名", None))
-            cfg.set_dungeon("红票")
+            self.assertEqual(cfg._read_daily_task(), ("新土别名", None))
+            cfg.set_daily_task("红票")
             self.assertEqual(
                 [task["IsEnable"] for task in queue], [True, True, True, False]
             )
-            self.assertEqual(cfg._read_dungeon(), ("红票", None))
+            self.assertEqual(cfg._read_daily_task(), ("红票", None))
 
     def test_native_single_daily_entry_points_remain_available(self):
         for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):
-            self.assertTrue(callable(cls.set_dungeon))
+            self.assertTrue(callable(cls.set_daily_task))
             self.assertTrue(callable(cls._update_task))
-            self.assertFalse(hasattr(cls, "set_daily_task"))
 
 
 if __name__ == "__main__":

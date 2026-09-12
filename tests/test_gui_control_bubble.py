@@ -25,10 +25,10 @@ class TestControlBubble(unittest.TestCase):
 
             app = QApplication.instance()
             with (
-                patch.object(AppService, "get_dungeon_map", return_value={}),
+                patch.object(AppService, "get_daily_task_map", return_value={}),
                 patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
-                patch("src.gui.controllers.task_card.get_dungeon", return_value=None),
+                patch("src.gui.controllers.task_card.get_daily_task", return_value=None),
                 patch("src.gui.controllers.task_card.get_sequence", return_value=None),
             ):
                 bridge = _make_bridge()

@@ -1,6 +1,6 @@
 from typing import Any
 
-from src.config.set_config import get_dungeon_lists, get_dungeon_options
+from src.config.set_config import get_daily_task_options, get_task_lists
 from src.config.task_config import (
     get_options,
     get_physical_name,
@@ -8,18 +8,18 @@ from src.config.task_config import (
     load_weekly_map,
 )
 
-DungeonOptions = list[str]
+DailyTaskOptions = list[str]
 SequenceOptionsMap = dict[str, list[tuple[str, Any]]]
 
 
-def parse_dungeon_config(
-    dungeon_cfg: Any,
-) -> tuple[DungeonOptions, SequenceOptionsMap, bool]:
+def parse_daily_task_config(
+    task_cfg: Any,
+) -> tuple[DailyTaskOptions, SequenceOptionsMap, bool]:
     """
     解析单个脚本的副本配置。
 
-    菜单数据格式（由 get_dungeon_map 转换）：
-    dungeons:
+    菜单数据格式（由 get_daily_task_map 转换）：
+    tasks:
       - name: "副本名"
       - name: "有二级选项的副本"
         sequences:
@@ -27,7 +27,7 @@ def parse_dungeon_config(
             value: 实际值
 
     Args:
-        dungeon_cfg: get_dungeon_map 返回的单脚本菜单数据。
+        task_cfg: get_daily_task_map 返回的单脚本菜单数据。
 
     Returns:
         (options, seq_map, show_seq)
@@ -35,24 +35,22 @@ def parse_dungeon_config(
         - seq_map: 副本名 → [(display_name, actual_value), ...]
         - show_seq: 是否有二级选项
     """
-    options: DungeonOptions = []
+    options: DailyTaskOptions = []
     seq_map: SequenceOptionsMap = {}
     show_seq = False
 
-    if isinstance(dungeon_cfg, dict) and "dungeons" in dungeon_cfg:
-        for i, dungeon in enumerate(dungeon_cfg["dungeons"]):
-            assert isinstance(dungeon, dict), (
-                f"第{i}个副本配置必须是字典，实际是 {type(dungeon)}"
+    if isinstance(task_cfg, dict) and "tasks" in task_cfg:
+        for i, task in enumerate(task_cfg["tasks"]):
+            assert isinstance(task, dict), (
+                f"第{i}个副本配置必须是字典，实际是 {type(task)}"
             )
-            assert "name" in dungeon, f"第{i}个副本配置缺少 'name' 字段"
-            assert isinstance(dungeon["name"], str), (
-                f"第{i}个副本的 'name' 必须是字符串"
-            )
+            assert "name" in task, f"第{i}个副本配置缺少 'name' 字段"
+            assert isinstance(task["name"], str), f"第{i}个副本的 'name' 必须是字符串"
 
-            name = dungeon["name"]
+            name = task["name"]
             options.append(name)
 
-            sequences = dungeon.get("sequences")  # optional: 副本可能没有二级选项
+            sequences = task.get("sequences")  # optional: 副本可能没有二级选项
             if sequences:
                 assert isinstance(sequences, list), (
                     f"副本 '{name}' 的 sequences 必须是列表"
@@ -74,23 +72,23 @@ def parse_dungeon_config(
 
 
 def get_display_name(
-    seq_map: SequenceOptionsMap, dungeon_name: str, actual_value: Any
+    seq_map: SequenceOptionsMap, task_name: str, actual_value: Any
 ) -> str:
     """
     根据实际值获取对应的显示名称。
 
     Args:
         seq_map: 副本名 → [(display_name, actual_value), ...]
-        dungeon_name: 副本名称
+        task_name: 副本名称
         actual_value: 实际值
 
     Returns:
         显示名称，如果找不到则返回实际值的字符串表示
     """
-    assert dungeon_name in seq_map, (
-        f"[dungeon_config] 副本 '{dungeon_name}' 不在序列映射中"
+    assert task_name in seq_map, (
+        f"[daily_task_config] 副本 '{task_name}' 不在序列映射中"
     )
-    seq_options = seq_map[dungeon_name]
+    seq_options = seq_map[task_name]
     for display_name, val in seq_options:
         if val == actual_value:
             return display_name
@@ -107,7 +105,7 @@ def _resolve_options(script_name: str, node: dict) -> list[dict]:
     source = group["source"]
     # 资源没有另行指定分类时，以节点物理名定位。
     category = source.get("category", get_physical_name(node))
-    names = get_dungeon_lists(script_name, category, source["path"])
+    names = get_task_lists(script_name, category, source["path"])
     return [{"display_name": name} for name in names] if names else []
 
 
@@ -124,17 +122,17 @@ def get_weekly_map(script_name: str) -> list:
             assert all("options" not in option for option in options), (
                 "当前周常菜单只支持一级选择"
             )
-            item["dungeons"] = [option["display_name"] for option in options]
+            item["tasks"] = [option["display_name"] for option in options]
         defs.append(item)
     return defs
 
 
-def get_dungeon_map() -> dict:
+def get_daily_task_map() -> dict:
     """把日常声明转换为原有单副本菜单，二级选择继续传物理值。"""
     data = {}
     for script_name in load_daily_map():
-        dungeons = []
-        for option in get_dungeon_options(script_name):
+        tasks = []
+        for option in get_daily_task_options(script_name):
             item = {"name": option["display_name"]}
             if "options" in option:
                 children = _resolve_options(script_name, option)
@@ -148,6 +146,6 @@ def get_dungeon_map() -> dict:
                     }
                     for child in children
                 ]
-            dungeons.append(item)
-        data[script_name] = {"dungeons": dungeons}
+            tasks.append(item)
+        data[script_name] = {"tasks": tasks}
     return data

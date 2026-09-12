@@ -1,17 +1,17 @@
 """任务卡控制器：日常副本 / 周常周几（数据 + 选择持久化）。
 
-独立 QObject，自管状态（_dungeon_map_cache / _dungeon_options_cache）。当前游戏经构造注入的
-game_list 引用读取。dungeonOptions 从缓存读取（build_dungeon_cache 时构建）。
+独立 QObject，自管状态（_daily_task_map_cache / _daily_task_options_cache）。当前游戏经构造注入的
+game_list 引用读取。dailyTaskOptions 从缓存读取（build_daily_task_cache 时构建）。
 启用控制不在此处：日常靠控制模式、周常靠周几起（均在别处实现）。
 """
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from src.config.dungeon_config import get_display_name, parse_dungeon_config
+from src.config.daily_task_config import get_display_name, parse_daily_task_config
 from src.config.set_config import (
-    get_dungeon,
+    get_daily_task,
     get_sequence,
-    get_weekly_dungeon,
+    get_weekly_task,
     is_adapted,
 )
 
@@ -46,9 +46,9 @@ class TaskCardController(QObject):
         self._app_service = app_service
         self._toast = toast
         # 副本下拉数据缓存：daily_task_list.yml 解析较贵且运行期不变，
-        # build_dungeon_cache 时一次性构建。
-        self._dungeon_map_cache: dict = {}
-        self._dungeon_options_cache: dict[str, list] = {}
+        # build_daily_task_cache 时一次性构建。
+        self._daily_task_map_cache: dict = {}
+        self._daily_task_options_cache: dict[str, list] = {}
 
     # ── 读接口（供 QmlBridge 委托）────────────────────────────────────
     @property
@@ -69,31 +69,31 @@ class TaskCardController(QObject):
 
     @property
     def daily_supported(self) -> bool:
-        """当前游戏是否有可配置日常副本（dungeon_map 有配置才显示日常行）。"""
-        return bool(self._dungeon_map_cache.get(self._current["script_name"]))
+        """当前游戏是否有可配置日常副本（daily_task_map 有配置才显示日常行）。"""
+        return bool(self._daily_task_map_cache.get(self._current["script_name"]))
 
     @property
-    def daily_dungeon_text(self) -> str:
+    def daily_task_text(self) -> str:
         """日常副本 chip 文字（优先反读子脚本 config，无真相回退声明的唯一选项）。
 
-        子脚本 config 是日常副本的真相源（selectDungeon 已实时落盘）；绝区零/崩铁
-        的 set_dungeon 为 no-op（上游自身已支持到无需本工具配置），反读恒无真相，
+        子脚本 config 是日常副本的真相源（selectDailyTask 已实时落盘）；绝区零/崩铁
+        的 set_daily_task 为 no-op（上游自身已支持到无需本工具配置），反读恒无真相，
         故回退 daily_task_list.yml 声明的首个选项——即 UI 上直接呈现为已选状态。
         """
         game = self._current
         script_name = game["script_name"]
         # 1) 优先反读子脚本 config（真相源）
-        dungeon = get_dungeon(script_name)
+        task = get_daily_task(script_name)
         sequence = get_sequence(script_name)
         # 2) 无真相：回退声明的首个选项（no-op 脚本的已选态，不再持久化）
-        if dungeon is None:
-            options = self.dungeon_options
+        if task is None:
+            options = self.daily_task_options
             if options:
-                dungeon = options[0]["name"]
-        if not dungeon:
+                task = options[0]["name"]
+        if not task:
             return "选择副本"
-        dungeon_cfg = self._dungeon_map_cache.get(script_name)
-        return self._dungeon_chip_text(dungeon_cfg, dungeon, sequence)
+        task_cfg = self._daily_task_map_cache.get(script_name)
+        return self._daily_task_chip_text(task_cfg, task, sequence)
 
     @property
     def weekly_supported(self) -> bool:
@@ -114,9 +114,9 @@ class TaskCardController(QObject):
     def weekly_items(self) -> list[dict]:
         """当前脚本支持的周常列表（供 QML 多周常布局）。
 
-        每种周常：{name, has_dungeon, dungeon_label}。has_dungeon 由声明是否含
-        dungeons 字段（且有内容）推导，不再用 needs_instance 布尔字段；
-        dungeon_label 为已选副本名，需选而未选时返回「选择副本」、无需选返回空。
+        每种周常：{name, has_task, task_label}。has_task 由声明是否含
+        tasks 字段（且有内容）推导，不再用 needs_instance 布尔字段；
+        task_label 为已选副本名，需选而未选时返回「选择副本」、无需选返回空。
         声明（支持哪些周常/可选副本）来自 weekly_task_list.yml；已选副本反读子脚本
         config（如 M7A instance_names）——周常侧无 no-op 脚本，故不设回退。
         """
@@ -127,23 +127,21 @@ class TaskCardController(QObject):
         items = []
         for d in defs:
             name = d["name"]
-            has_dungeon = "dungeons" in d and bool(d["dungeons"])
+            has_task = "tasks" in d and bool(d["tasks"])
             label = ""
-            if has_dungeon:
+            if has_task:
                 # 反读子脚本 config（真相源，如 M7A instance_names）
                 label = "选择副本"
-                cfg_dungeon = get_weekly_dungeon(script_name, name)
-                if cfg_dungeon:
-                    label = cfg_dungeon
-            items.append(
-                {"name": name, "has_dungeon": has_dungeon, "dungeon_label": label}
-            )
+                cfg_task = get_weekly_task(script_name, name)
+                if cfg_task:
+                    label = cfg_task
+            items.append({"name": name, "has_task": has_task, "task_label": label})
         return items
 
-    def weekly_dungeon_options(self, weekly_name: str) -> list[str]:
+    def weekly_task_options(self, weekly_name: str) -> list[str]:
         """某周常的可选副本名列表（如历战余响的全体副本）。
 
-        来自 weekly_task_list.yml 声明（该周常的 dungeons 字段）；不再依赖游戏脚本
+        来自 weekly_task_list.yml 声明（该周常的 tasks 字段）；不再依赖游戏脚本
         私有配置。未声明或无需副本返回空列表。
 
         Args:
@@ -156,20 +154,20 @@ class TaskCardController(QObject):
         for d in self._app_service.get_weekly_map(script_name):
             if d["name"] != weekly_name:
                 continue
-            return list(d["dungeons"]) if "dungeons" in d else []
+            return list(d["tasks"]) if "tasks" in d else []
         return []
 
     @property
-    def dungeon_options(self) -> list:
+    def daily_task_options(self) -> list:
         """日常副本下拉数据：[{name, clear, sequences:[{label,value}]}, ...]，从缓存读取。"""
-        return self._dungeon_options_cache.get(self._current["script_name"], [])
+        return self._daily_task_options_cache.get(self._current["script_name"], [])
 
     # ── 缓存构建（运行期不变）──────────────────────────────────────────
-    def build_dungeon_cache(self, games: list):
+    def build_daily_task_cache(self, games: list):
         """一次性解析 daily_task_list.yml 并构建所有脚本的副本下拉数据（运行期不变）。"""
-        self._dungeon_map_cache = self._app_service.get_dungeon_map()
-        self._dungeon_options_cache = {
-            g["script_name"]: self._build_dungeon_options(g["script_name"])
+        self._daily_task_map_cache = self._app_service.get_daily_task_map()
+        self._daily_task_options_cache = {
+            g["script_name"]: self._build_daily_task_options(g["script_name"])
             for g in games
         }
 
@@ -177,26 +175,26 @@ class TaskCardController(QObject):
         """切换游戏后发信号触发 QML 重读任务卡。"""
         self.taskStateChanged.emit()
 
-    def _dungeon_chip_text(self, dungeon_cfg, dungeon_name: str, sequence) -> str:
+    def _daily_task_chip_text(self, task_cfg, task_name: str, sequence) -> str:
         """副本 chip 文字：副本名 + 已选二级序号（如「空幕 · 轨道之夜」）。
 
         异环等游戏的二级序号（如轨道之夜）不自包含副本名，必须连同副本名一起
         展示，否则会误把序号当成副本本身。无二级序号时仅显示副本名。
         """
-        if dungeon_name is None:
+        if task_name is None:
             return "选择副本"
-        if dungeon_cfg and sequence is not None:
-            _, seq_map, _ = parse_dungeon_config(dungeon_cfg)
-            if dungeon_name in seq_map:
-                return f"{dungeon_name} · {get_display_name(seq_map, dungeon_name, sequence)}"
-        return dungeon_name
+        if task_cfg and sequence is not None:
+            _, seq_map, _ = parse_daily_task_config(task_cfg)
+            if task_name in seq_map:
+                return f"{task_name} · {get_display_name(seq_map, task_name, sequence)}"
+        return task_name
 
-    def _build_dungeon_options(self, script_name: str) -> list:
+    def _build_daily_task_options(self, script_name: str) -> list:
         """构建日常副本下拉数据（一级副本 → 二级序列）。"""
-        dungeon_cfg = self._dungeon_map_cache.get(script_name)
-        if not dungeon_cfg:
+        task_cfg = self._daily_task_map_cache.get(script_name)
+        if not task_cfg:
             return []
-        options, seq_map, _ = parse_dungeon_config(dungeon_cfg)
+        options, seq_map, _ = parse_daily_task_config(task_cfg)
         result = []
         for name in options:
             seqs = seq_map.get(name, [])
@@ -210,32 +208,30 @@ class TaskCardController(QObject):
 
     # ── 交互 ───────────────────────────────────────────────────────────
     @Slot(str, "QVariant")
-    def selectDungeon(self, dungeon_name: str, sequence):
+    def selectDailyTask(self, task_name: str, sequence):
         """选择日常副本（实时落盘子脚本 config）。
 
-        绝区零/崩铁的 set_dungeon 为 no-op（上游已支持到无需本工具配置），
+        绝区零/崩铁的 set_daily_task 为 no-op（上游已支持到无需本工具配置），
         其日常副本直接取 daily_task_list.yml 声明选项，不经本方法持久化。
         """
         script_name = self._current["script_name"]
-        # 实时落盘子脚本 config（与周常副本 selectWeeklyDungeon 一致，经 service）；
+        # 实时落盘子脚本 config（与周常副本 selectWeeklyTask 一致，经 service）；
         # 未选择选项已移除，下拉只含真实副本，此处不再区分清空调度。
-        if dungeon_name:
-            self._app_service.set_script_dungeon(
-                script_name, dungeon_name=dungeon_name, sequence=sequence
+        if task_name:
+            self._app_service.set_script_daily_task(
+                script_name, task_name=task_name, sequence=sequence
             )
         self.refresh()
 
     @Slot(str, str)
-    def selectWeeklyDungeon(self, weekly_name: str, dungeon_name: str):
+    def selectWeeklyTask(self, weekly_name: str, task_name: str):
         """选择某周常的副本（写回脚本自身 config）。
 
         Args:
             weekly_name: 周常名（如「历战余响」）。
-            dungeon_name: 选中的副本名（来自 weekly_dungeon_options）。
+            task_name: 选中的副本名（来自 weekly_task_options）。
         """
         script_name = self._current["script_name"]
         # 写回脚本自身 config（如 M7A config.yaml 的 instance_names[weekly_name]），经 service
-        self._app_service.set_script_weekly_dungeon(
-            script_name, weekly_name, dungeon_name
-        )
+        self._app_service.set_script_weekly_task(script_name, weekly_name, task_name)
         self.refresh()
