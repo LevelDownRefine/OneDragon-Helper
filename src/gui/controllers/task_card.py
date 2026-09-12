@@ -130,12 +130,7 @@ class TaskCardController(QObject):
         """
         script_name = self._current["script_name"]
         # 写回脚本自身 config（如 M7A config.yaml 的 instance_names[weekly_name]），经 service
-        if sequence is None:
-            self._app_service.set_weekly_task_option(
-                script_name, weekly_name, option_name
-            )
-        else:
-            self._app_service.set_weekly_task_option(
-                script_name, weekly_name, option_name, sequence
-            )
+        self._app_service.set_weekly_task_option(
+            script_name, weekly_name, option_name, sequence
+        )
         self.refresh()

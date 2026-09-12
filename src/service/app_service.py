@@ -139,8 +139,7 @@ def build_task_item(
     for option in options:
         assert "display_name" in option
         choices = get_options(option)
-        needs_sub_option = "options" in option
-        if needs_sub_option and not choices:
+        if "options" in option and not choices:
             continue  # 资源缺失时，分类不能退化为可直接写入的副本。
         menu.append(
             {
@@ -161,17 +160,13 @@ def build_task_item(
         for option in options:
             if option["display_name"] != option_name:
                 continue
-            display = next(
-                (
-                    choice["display_name"]
-                    for choice in get_options(option)
-                    if not isinstance(sequence, bool)
-                    and isinstance(get_physical_name(choice), str)
-                    == isinstance(sequence, str)
-                    and get_physical_name(choice) == sequence
-                ),
-                str(sequence),
-            )
+            aliases = {
+                get_physical_name(choice): choice["display_name"]
+                for choice in get_options(option)
+            }
+            display = str(sequence)
+            if not isinstance(sequence, bool) and sequence in aliases:
+                display = aliases[sequence]
             label = (
                 f"{option_name} · {display}"
                 if "key" in definition["options"]

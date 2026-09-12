@@ -219,7 +219,7 @@ class TestSelectWeeklyDungeon(unittest.TestCase):
         ctrl.selectWeeklyTaskOption("历战余响", "铁骸的锈冢")
         # 写脚本自身 config 的 instance_names（M7A 约定键名），经 service 入口
         ctrl._app_service.set_weekly_task_option.assert_called_once_with(
-            "March7th-Launcher", "历战余响", "铁骸的锈冢"
+            "March7th-Launcher", "历战余响", "铁骸的锈冢", None
         )
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.config import set_config as adapters
+from src.config import task_config
 from src.config.set_config import ScriptConfig, get_daily_task, set_config
 from src.config.task_config import load_daily_map
 from src.service.app_service import AppService, build_task_item, get_daily_map
@@ -158,6 +159,7 @@ class TestDailyDeclarations(unittest.TestCase):
             [{"options": []}],
             valid,
         ):
+            task_config._load_task_map.cache_clear()  # 每个 mock 代表一份新声明。
             with (
                 self.subTest(definitions=definitions),
                 patch(

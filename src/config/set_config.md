@@ -29,30 +29,11 @@
 
 `config/task_list.yml` 按脚本组织任务列表，顶层 `type` 区分日常与周常。任务与选项共用 `display_name` / `physical_name`；省略物理名时使用展示名。任务有效物理名在脚本内唯一，列表顺序只控制展示。
 
-```yaml
-示例脚本:
-- display_name: 资源
-  type: daily
-  options:
-    key: kind
-    values:
-    - display_name: 材料
-      physical_name: native_kind
-      options:
-        key: target
-        values:
-        - display_name: 高级
-          physical_name: 2
-- display_name: 周本
-  type: weekly
-  key: native_weekly_enabled
-```
-
 `options` 是递归选项组：`key` 绑定该组选项的原生字段，`values` 与 `source` 二选一。`source: {path, category?}` 从子脚本根目录下的相对路径读取资源；省略 `category` 时沿用所在节点的有效物理名。只有一级选择时，值节点不再嵌套 `options`。纯展示分类省略外层 `options.key`，各分类的实际选项组绑定同一字段。
 
 顶层 `key` 用于原生任务操作，如开关或任务列表；顶层 `allow_disable` 表示任务支持独立停用。子选项没有这两种任务属性，也不声明 `type`。
 
-`task_config.py` 只加载和校验声明。service 展开资源为同结构的 `values` 并生成菜单；原生配置的读写仍由脚本适配器完成。声明允许递归，当前选择接口和 GUI 明确限制为两层。
+`task_config.py` 按文件版本缓存并校验声明，每次返回独立副本。service 展开资源为同结构的 `values` 并生成菜单；原生配置的读写仍由脚本适配器完成。声明允许递归，当前选择接口和 GUI 明确限制为两层。
 
 ## 三个独立流程
 
@@ -70,7 +51,7 @@
 
 | 配置类型 | 落盘时机 | 说明 |
 |----------|----------|------|
-| 日常副本 / 序列（`option_name` / `sequence`） | **编辑期实时** | GUI 选副本（`TaskCardController.selectDailyTask`）、CLI `--dungeon`/`--sequence` 覆盖，均直接调 `set_config` 实时写子脚本 config。无需等到运行全体。 |
+| 日常副本 / 序列（`option_name` / `sequence`） | **编辑期实时** | GUI 选副本（`TaskCardController.selectDailyTask`）经 service 调 `set_config` 实时写子脚本 config。无需等到运行全体。 |
 | 周常副本（`set_weekly_task_option`） | **编辑期实时** | GUI 选周常副本（`selectWeeklyTaskOption`）直接写子脚本 config。 |
 | 周常起始日（`weekly_start` → 周本开关） | **运行期** | 启用与否 = `today_weekday >= start_day`，只能在运行期按当天星期计算。故仅在 `generate_chain_config` 中经 `set_config(weekly_start=...)` 透传，由 `set_weekly_tasks` 写开关。 |
 
@@ -98,7 +79,7 @@
 
 ## 设置日常流程 set_daily_task
 
-`set_daily_task(daily_name, option_name, sequence)` 先按有效物理名定位日常，再 `_load()` → `_update_daily_task(...)` → 有变化则 `_save()`。普通选择共用 `_update_selection`，按 `options.key` 写入选项的有效物理名；`_read_daily_task(daily_name)` 用相同声明反读。没有别名的原生值保持可见，不额外维护映射。
+`set_daily_task(daily_name, option_name, sequence)` 先按有效物理名定位日常，再 `_load()` → `_update_daily_task(...)` → 有变化则 `_save()`。基类 `_update_selection` 按 `options.key` 直接更新字段并返回是否修改；子类先定位自己的配置段，再调用 `super()._update_selection`；`_read_daily_task(daily_name)` 用相同声明反读。没有别名的原生值保持可见，不额外维护映射。
 
 一次选择涉及多个字段时先更新副本，全部校验成功才替换原对象；类型不符或缺少二级选择时不会留下部分修改。保存后 `_verify_saved()` 仍重读校验落盘一致性。
 
@@ -133,9 +114,8 @@
 ```python
 from src.config.set_config import set_config
 
-set_config("ok-ww", daily_name="每日任务", option_name="无音区")                         # 无序列
 set_config("ok-ww", daily_name="每日任务", option_name="凝素领域", sequence=17)          # 序列为数字
-set_config("ok-ww", daily_name="每日任务", option_name="模拟领域", sequence="贝币")       # 序列为字符串
+set_config("ok-ww", daily_name="每日任务", option_name="模拟领域", sequence="Shell Credit")       # 序列为字符串
 set_config("ok-ww", weekly_start=3)                                # 周常起始日，仅适配脚本生效
 set_config("ok-ww", daily_name="每日任务", option_name=None)                             # 跳过
 set_config("ok-ww", daily_name="每日任务", option_name="未选择")                         # 跳过
@@ -153,7 +133,7 @@ set_config("ok-ww", daily_name="每日任务", option_name="未选择")         
 |------|------|
 | `set_config.py` | 本适配器，适配器接口 + 类层级；各脚本路径由子类声明，`@register` 显式注册 |
 | `subscript.py` | config 读写基础设施，`get_script_name` / `load` / `save` / `load_template`，只接收 `rel_path`，不感知具体脚本 |
-| `dungeon_config.py` | `task_list.yml` 解析 |
+| `task_config.py` | `task_list.yml` 解析 |
 | `src/link.py` | 游戏/脚本链接集中管理（官网、B 站、GitHub、banner 下载）；与 config 适配解耦。沿用基类 `GameLink` + 各脚本子类（`WutheringWavesLink`/`GenshinLink` 等）继承结构，`@register` 注册到 `_LINKS`，key 为 `_script_name`；本地背景图路径（`background`）仍声明在 set_config 子类，经 `_CONFIGS` 读取 |
 | `config/task_list.yml` | 各脚本具名日常、周常的绑定字段、资源与选项 |
 | `config/BGI一条龙.json` 等 | 各脚本 init 模板（粥无模板）|

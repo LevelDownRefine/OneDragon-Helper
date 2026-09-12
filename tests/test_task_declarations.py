@@ -48,6 +48,31 @@ class TestTaskDeclarations(unittest.TestCase):
         self.assertEqual(task_config.load_weekly_map(), {"example": [weekly]})
         self.assertEqual(load_yaml(str(self.path)), data)
 
+    def test_daily_and_weekly_share_one_parse_without_sharing_mutable_data(self):
+        daily = {"display_name": "资源", "type": "daily"}
+        weekly = {"display_name": "周本", "type": "weekly"}
+        data = {"example": [daily, weekly]}
+        dump_yaml(str(self.path), data)
+        with patch.object(task_config, "load_yaml", wraps=load_yaml) as read:
+            first = task_config.load_daily_map()
+            first["example"][0]["display_name"] = "改动副本"
+            self.assertEqual(task_config.load_daily_map(), {"example": [daily]})
+            self.assertEqual(task_config.load_weekly_map(), {"example": [weekly]})
+            self.assertEqual(task_config.load_task_map(), data)
+        self.assertEqual(read.call_count, 1)
+
+    def test_changed_declaration_is_reloaded_and_revalidated(self):
+        dump_yaml(
+            str(self.path), {"example": [{"display_name": "甲", "type": "daily"}]}
+        )
+        task_config.load_task_map()
+        updated = {"example": [{"display_name": "改过的任务", "type": "weekly"}]}
+        dump_yaml(str(self.path), updated)
+        self.assertEqual(task_config.load_task_map(), updated)
+        dump_yaml(str(self.path), {"example": [{"display_name": "缺少类型"}]})
+        with self.assertRaisesRegex(AssertionError, "type"):
+            task_config.load_task_map()
+
     def test_task_names_are_unique_across_types(self):
         for extra, error in (
             ({"display_name": "资源"}, "任务名重复"),

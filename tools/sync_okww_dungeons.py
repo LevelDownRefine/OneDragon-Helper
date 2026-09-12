@@ -129,8 +129,17 @@ def _rebase_sequences(seqs: list[dict], delta: int) -> list[dict]:
         {"display_name": str(v), "physical_name": v} for v in range(1, delta + 1)
     ]
     for s in seqs:
-        rebased.append({**s, "physical_name": s["physical_name"] + delta})
+        value = s["physical_name"] + delta
+        name = (
+            str(value)
+            if s["display_name"] == str(s["physical_name"])
+            else s["display_name"]
+        )
+        rebased.append({**s, "display_name": name, "physical_name": value})
     rebased.sort(key=lambda s: s["physical_name"])
+    assert len({s["display_name"] for s in rebased}) == len(rebased), (
+        "重排后的展示名重复"
+    )
     return rebased
 
 

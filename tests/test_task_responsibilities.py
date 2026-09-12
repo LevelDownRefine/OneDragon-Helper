@@ -10,6 +10,31 @@ from src.service.app_service import AppService, build_task_item
 
 
 class TestTaskResponsibilities(unittest.TestCase):
+    def test_nte_can_create_selection_fields_without_replacing_other_tasks(self):
+        script = NTEConfig()
+        config = {"daily_anomaly": {}, "daily_anomaly_hunter": {"追猎目标": "海囚"}}
+        other_task = config["daily_anomaly_hunter"]
+        self.assertTrue(script._update_daily_task(config, "daily_anomaly", "空幕", 2))
+        self.assertEqual(config["daily_anomaly"], {"任务类型": "空幕", "空幕序号": 2})
+        self.assertIs(config["daily_anomaly_hunter"], other_task)
+        self.assertEqual(other_task, {"追猎目标": "海囚"})
+        self.assertFalse(script._update_daily_task(config, "daily_anomaly", "空幕", 2))
+
+    def test_nte_failure_does_not_leave_new_secondary_field_or_enable_task(self):
+        script = NTEConfig()
+        config = {"daily_anomaly": {"任务类型": 1}}
+        routine = {"Routine Items": [{"id": "daily_anomaly", "enabled": False}]}
+        original = deepcopy(config)
+        with (
+            patch.object(script, "_load", side_effect=[routine, config]),
+            patch.object(script, "_save") as save,
+            self.assertRaisesRegex(AssertionError, "类型不一致"),
+        ):
+            script.set_daily_task("daily_anomaly", "空幕", 2)
+        save.assert_not_called()
+        self.assertEqual(config, original)
+        self.assertFalse(routine["Routine Items"][0]["enabled"])
+
     def test_weekly_selection_uses_declared_weekly_file(self):
         script = ScriptConfig()
         script._script_name = "example"

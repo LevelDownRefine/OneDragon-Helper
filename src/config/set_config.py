@@ -305,11 +305,18 @@ class ScriptConfig:
         )
         return load_template(self._script_name, self._template_rel_path)
 
-    def _selection_updates(
-        self, definition: dict, option_name: str, sequence: str | int | None
-    ) -> list[tuple[str, str | int]]:
+    def _update_selection(
+        self,
+        config: dict,
+        definition: dict,
+        option_name: str,
+        sequence: str | int | None = None,
+        assert_key_exists: bool = True,
+    ) -> bool:
+        """按声明更新选择字段，返回是否修改；不负责配置路径或任务启停。"""
         assert isinstance(option_name, str) and option_name, "请选择具体副本"
         validate_selection_bindings(definition)
+        key = get_selection_key(definition)
         options = get_options(definition)
         option = next(
             (item for item in options if item["display_name"] == option_name), None
@@ -321,10 +328,15 @@ class ScriptConfig:
                 assert not options or "source" in definition["options"], (
                     f"未适配的副本: {option_name}"
                 )
-            return [(get_selection_key(definition), option_name)]
-        updates = []
-        if "key" in definition["options"]:
-            updates.append((definition["options"]["key"], get_physical_name(option)))
+            return safe_update(
+                config,
+                key,
+                option_name,
+                self.display_name,
+                assert_key_exists and "key" in definition["options"],
+            )
+        pending = deepcopy(config)
+        changed = False
         if "options" in option:
             assert sequence is not None, (
                 f"{option_name} 请选择具体副本，sequence 不能为空"
@@ -339,32 +351,22 @@ class ScriptConfig:
                 and get_physical_name(choice) == sequence
                 for choice in choices
             ), f"{option_name} 未适配的序列: {sequence}"
-            updates.append((get_selection_key(option), sequence))
+            sub_key = get_selection_key(option)
+            assert "key" not in definition["options"] or key != sub_key, (
+                "两层选择不能写入同一字段"
+            )
+            changed = safe_update(
+                pending, sub_key, sequence, self.display_name, assert_key_exists=False
+            )
         else:
             assert sequence is None, f"{option_name} 不支持 sequence 参数"
-        assert updates, "所选项必须声明 options.key"
-        assert len(updates) == len({field for field, _ in updates}), (
-            "两层选择不能写入同一字段"
-        )
-        return updates
-
-    def _update_selection(
-        self,
-        config: dict,
-        definition: dict,
-        option_name: str,
-        sequence: str | int | None = None,
-    ) -> bool:
-        updates = self._selection_updates(definition, option_name, sequence)
-        pending = deepcopy(config)
-        changed = False
-        for index, (field, value) in enumerate(updates):
+        if "key" in definition["options"]:
             changed |= safe_update(
                 pending,
-                field,
-                value,
+                key,
+                get_physical_name(option),
                 self.display_name,
-                assert_key_exists=index == 0 and "key" in definition["options"],
+                assert_key_exists,
             )
         if changed:
             config.clear()
@@ -965,10 +967,6 @@ class NTEConfig(ScriptConfig):
     _game_path_keys = ("pc_full_path",)
     display_name = "异环"
 
-    # 日常两种互斥模式：键 = 互斥 routine item id = DailyRoutineTaskConfigs.json 段名。
-
-    # 副本中文名 → 所属模式 id（写路径按 dungeon 反查模式，避免可变实例状态）。
-
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
 
@@ -1023,21 +1021,13 @@ class NTEConfig(ScriptConfig):
     ) -> bool:
         assert daily_name in self._daily_configs, f"未适配的日常: {daily_name}"
         definition = self._daily_configs[daily_name]
-        updates = self._selection_updates(definition, option_name, sequence)
-        pending = deepcopy(config)
         native = get_field(
-            pending, get_physical_name(definition), self.display_name, dict
+            config, get_physical_name(definition), self.display_name, dict
         )
         # NTE 在首次配置某种副本时才生成对应字段。
-        for field, value in updates:
-            if field not in native:
-                native[field] = value
-        self._update_selection(native, definition, option_name, sequence)
-        if pending == config:
-            return False
-        config.clear()
-        config.update(pending)
-        return True
+        return super()._update_selection(
+            native, definition, option_name, sequence, assert_key_exists=False
+        )
 
     def _read_task_enabled(self, daily_name: str) -> bool | None:
         routine = self._load(self._routine_config_rel_path, allow_missing=True)

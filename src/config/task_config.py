@@ -1,7 +1,8 @@
 """读取任务声明，校验递归选项组；任务类型仅属于顶层。"""
 
 from copy import deepcopy
-from pathlib import PureWindowsPath
+from functools import lru_cache
+from pathlib import Path, PureWindowsPath
 
 from src.utils import get_task_list_yml_path_under_root
 from src.utils.utils_yaml import load_yaml
@@ -189,8 +190,17 @@ def validate_weekly_definitions(script_name: str, definitions: list[dict]) -> No
 
 
 def load_task_map() -> dict[str, list[dict]]:
-    """读取完整声明，校验跨类型任务名和物理名的唯一性。"""
-    data = load_yaml(get_task_list_yml_path_under_root())
+    """同一文件版本只解析一次；调用方取得独立副本。"""
+    path = Path(get_task_list_yml_path_under_root())
+    assert path.is_file(), f"任务声明缺失: {path}"
+    stat = path.stat()
+    return deepcopy(_load_task_map(str(path), (stat.st_mtime_ns, stat.st_size)))
+
+
+@lru_cache(maxsize=1)
+def _load_task_map(path: str, version: tuple[int, int]) -> dict[str, list[dict]]:
+    """文件版本参与缓存键；声明变化后重新读取并校验。"""
+    data = load_yaml(path)
     assert isinstance(data, dict), "任务声明必须是字典"
     for script_name, definitions in data.items():
         _validate_name(script_name, "脚本标识")

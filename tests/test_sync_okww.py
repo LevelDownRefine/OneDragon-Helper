@@ -20,6 +20,21 @@ _YAML = YAML()
 
 
 class TestRebaseSequences(unittest.TestCase):
+    def test_repeated_growth_renumbers_placeholders_and_preserves_friendly_names(self):
+        from src.config.task_config import validate_options
+
+        options = [{"display_name": "梦州-迅刀", "physical_name": 1}]
+        for delta in (2, 1, 2):
+            options = m._rebase_sequences(options, delta)
+            validate_options(options, "连续同步")
+        self.assertEqual(
+            options,
+            [
+                *[{"display_name": str(v), "physical_name": v} for v in range(1, 6)],
+                {"display_name": "梦州-迅刀", "physical_name": 6},
+            ],
+        )
+
     def test_rebase_preserves_display_alias(self):
         option = {"display_name": "A", "physical_name": 1}
         self.assertEqual(
