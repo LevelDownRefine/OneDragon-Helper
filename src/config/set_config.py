@@ -305,10 +305,10 @@ class ScriptConfig:
         )
         return load_template(self._script_name, self._template_rel_path)
 
-    def _update_task(
+    def _update_daily_task(
         self,
         config: dict,
-        task_name: str,
+        daily_name: str,
         option_name: str,
         sequence: str | int | None = None,
         assert_key_exists: bool = True,
@@ -317,7 +317,7 @@ class ScriptConfig:
 
         Args:
             config: 目标 config dict。
-            task_name: 日常或周常的任务标识。
+            daily_name: 日常任务标识。
             option_name: 副本展示名；未维护别名时使用原生名称。
             sequence: 二级序列的原生值；只有一级选择时必须为 None。
             assert_key_exists: 是否要求一级字段已存在。
@@ -328,9 +328,8 @@ class ScriptConfig:
         Raises:
             AssertionError: 任务或选项未适配，字段缺失或类型不一致。
         """
-        definitions = {**self._daily_configs, **self._weekly_configs}
-        assert task_name in definitions, f"未适配的任务: {task_name}"
-        definition = definitions[task_name]
+        assert daily_name in self._daily_configs, f"未适配的日常: {daily_name}"
+        definition = self._daily_configs[daily_name]
         assert isinstance(option_name, str) and option_name, "请选择具体副本"
         validate_selection_bindings(definition)
         key = get_selection_key(definition)
@@ -399,14 +398,13 @@ class ScriptConfig:
         ), "副本值必须为字符串或整数"
         return None if value == "" else value
 
-    def _read_task(
-        self, config: dict, task_name: str
+    def _read_daily_config(
+        self, config: dict, daily_name: str
     ) -> tuple[str | int | None, str | int | None]:
         """按同一组字段反读展示名和二级原生值，未知值保留类型。"""
         assert isinstance(config, dict), "任务配置必须是 dict"
-        definitions = {**self._daily_configs, **self._weekly_configs}
-        assert task_name in definitions, f"未适配的任务: {task_name}"
-        definition = definitions[task_name]
+        assert daily_name in self._daily_configs, f"未适配的日常: {daily_name}"
+        definition = self._daily_configs[daily_name]
         if not has_selection_binding(definition):
             return None, None
         validate_selection_bindings(definition)
@@ -443,21 +441,13 @@ class ScriptConfig:
         config = self._load(allow_missing=True)
         if config is None:
             return None, None
-        return self._read_task(config, daily_name)
+        return self._read_daily_config(config, daily_name)
 
     def _read_weekly_task(
         self, weekly_name: str
     ) -> tuple[str | int | None, str | int | None]:
-        assert weekly_name in self._weekly_configs, f"未适配的周常: {weekly_name}"
-        definition = self._weekly_configs[weekly_name]
-        if not has_selection_binding(definition):
-            return None, None
-        config = self._load(
-            self._weekly_config_rel_path or self._config_rel_path, allow_missing=True
-        )
-        if config is None:
-            return None, None
-        return self._read_task(config, weekly_name)
+        """无周常副本适配时返回空选择；由具体脚本覆写。"""
+        return None, None
 
     def _init_config(self) -> None:
         """对齐检查并把模板 config 同步到用户 config。
@@ -519,7 +509,7 @@ class ScriptConfig:
         """
         assert daily_name in self._daily_configs, f"未适配的日常: {daily_name}"
         config = self._load()
-        changed = self._update_task(config, daily_name, option_name, sequence)
+        changed = self._update_daily_task(config, daily_name, option_name, sequence)
         if changed:
             logger.info(f"[set_daily_task][{self.display_name}] config 已更新")
             self._save(config)
@@ -555,17 +545,6 @@ class ScriptConfig:
     def _write_weekly(self, config: dict, weekly_name: str, start_day: int) -> bool:
         """写入周常开关。基类默认不支持（未适配子类不应走到此处）。"""
         assert False, f"[set_config][{self.display_name}] 未支持周常配置"  # noqa: B011  # 故意：未适配脚本不应走到周常写入
-
-    def set_weekly_task_option(
-        self, weekly_name: str, option_name: str, sequence: str | int | None = None
-    ) -> None:
-        if not self._weekly_configs:
-            return
-        assert weekly_name in self._weekly_configs, f"未适配的周常: {weekly_name}"
-        path = self._weekly_config_rel_path or self._config_rel_path
-        config = self._load(path)
-        if self._update_task(config, weekly_name, option_name, sequence):
-            self._save(config, path)
 
     @classmethod
     def get_game_exe_path(cls, script_name: str) -> str | None:
@@ -967,8 +946,7 @@ class StarRailConfig(ScriptConfig):
         self, weekly_name: str, option_name: str, sequence: str | int | None = None
     ) -> None:
         """当前上游只保存一个原生副本名。"""
-        if weekly_name != "历战余响":
-            return super().set_weekly_task_option(weekly_name, option_name, sequence)
+        assert weekly_name == "历战余响", "该周常不支持副本选择"
         assert weekly_name in self._weekly_configs, f"未适配的周常: {weekly_name}"
         definition = self._weekly_configs[weekly_name]
         options = get_options(definition)
@@ -1067,25 +1045,21 @@ class NTEConfig(ScriptConfig):
         get_field(item, "enabled", self.display_name, bool)
         return item
 
-    def _update_task(
+    def _update_daily_task(
         self,
         config: dict,
-        task_name: str,
+        daily_name: str,
         option_name: str,
         sequence: str | int | None = None,
-        assert_key_exists: bool = True,
     ) -> bool:
-        if task_name not in self._daily_configs:
-            return super()._update_task(
-                config, task_name, option_name, sequence, assert_key_exists
-            )
-        definition = self._daily_configs[task_name]
+        assert daily_name in self._daily_configs, f"未适配的日常: {daily_name}"
+        definition = self._daily_configs[daily_name]
         native = get_field(
             config, get_physical_name(definition), self.display_name, dict
         )
         # NTE 在首次配置某种副本时才生成对应字段。
-        return super()._update_task(
-            native, task_name, option_name, sequence, assert_key_exists=False
+        return super()._update_daily_task(
+            native, daily_name, option_name, sequence, assert_key_exists=False
         )
 
     def _read_task_enabled(self, daily_name: str) -> bool | None:
@@ -1117,17 +1091,16 @@ class NTEConfig(ScriptConfig):
         if changed:
             self._save(routine, self._routine_config_rel_path)
 
-    def _read_task(
-        self, config: dict, task_name: str
+    def _read_daily_config(
+        self, config: dict, daily_name: str
     ) -> tuple[str | int | None, str | int | None]:
-        if task_name not in self._daily_configs:
-            return super()._read_task(config, task_name)
-        definition = self._daily_configs[task_name]
+        assert daily_name in self._daily_configs, f"未适配的日常: {daily_name}"
+        definition = self._daily_configs[daily_name]
         native = config.get(
             get_physical_name(definition), {}
         )  # 原生任务配置可能尚未生成。
         assert isinstance(native, dict), "NTE 任务配置必须是 dict"
-        return super()._read_task(native, task_name)
+        return super()._read_daily_config(native, daily_name)
 
 
 # ---- 明日方舟 Arknights（粥）----
@@ -1159,13 +1132,12 @@ class ArknightsConfig(ScriptConfig):
             },
         }
 
-    def _update_task(
+    def _update_daily_task(
         self,
         config: dict,
-        task_name: str,
+        daily_name: str,
         option_name: str,
         sequence: str | int | None = None,
-        assert_key_exists: bool = True,
     ) -> bool:
         """粥副本设置：基于 StagePlan[0] 识别任务，启用剿灭/土/选定副本。
 
@@ -1184,11 +1156,8 @@ class ArknightsConfig(ScriptConfig):
         Raises:
             AssertionError: 未适配的副本（option_name 不在 _task_map）。
         """
-        if task_name not in self._daily_configs:
-            return super()._update_task(
-                config, task_name, option_name, sequence, assert_key_exists
-            )
-        task_map = self._daily_task_map(task_name)
+        assert daily_name in self._daily_configs, f"未适配的日常: {daily_name}"
+        task_map = self._daily_task_map(daily_name)
         task_config = config["Configurations"]["Default"]["TaskQueue"]
         # 反查：中文名 → 关卡代码
         stage_by_name = {name: stage for stage, name in task_map.items()}
@@ -1251,7 +1220,7 @@ class ArknightsConfig(ScriptConfig):
     def _read_daily_task(
         self, daily_name: str
     ) -> tuple[str | int | None, str | int | None]:
-        """反读当前日常副本（与 _update_task 对称）。
+        """反读当前日常副本（与 _update_daily_task 对称）。
 
         遍历 TaskQueue，除固定启用的剿灭/土外，
         被勾选 IsEnable 的那一项即当前副本。
@@ -1577,6 +1546,8 @@ def set_weekly_task_option(
     if script_name not in _CONFIGS:
         return
     cfg_cls = _CONFIGS[script_name]
+    if not hasattr(cfg_cls, "set_weekly_task_option"):
+        return
     cfg = cfg_cls()
     cfg.set_weekly_task_option(weekly_name, option_name, sequence)
 

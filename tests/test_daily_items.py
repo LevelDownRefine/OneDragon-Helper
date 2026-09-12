@@ -107,8 +107,8 @@ class TestDailyDeclarations(unittest.TestCase):
         config = {"stage": "旧本", "other": True}
         task = cfg
         task._daily_configs = dict(task._daily_configs)
-        task._update_task(config, "资源", "新本")
-        self.assertEqual(task._read_task(config, "资源"), ("新本", None))
+        task._update_daily_task(config, "资源", "新本")
+        self.assertEqual(task._read_daily_config(config, "资源"), ("新本", None))
         self.assertEqual(config, {"stage": "新本", "other": True})
 
     def test_secondary_value_defaults_to_name_when_writing(self):
@@ -133,8 +133,8 @@ class TestDailyDeclarations(unittest.TestCase):
         config = {"kind": "材料", "stage": "旧本"}
         task = cfg
         task._daily_configs = dict(task._daily_configs)
-        task._update_task(config, "资源", "材料", "高级")
-        self.assertEqual(task._read_task(config, "资源"), ("材料", "高级"))
+        task._update_daily_task(config, "资源", "材料", "高级")
+        self.assertEqual(task._read_daily_config(config, "资源"), ("材料", "高级"))
         self.assertEqual(config["stage"], "高级")
 
     def test_nte_declares_two_dailies_and_other_scripts_keep_one(self):

@@ -21,7 +21,7 @@
  ok-ww  BetterGI/ok-ef OneDragon-Launcher/March7th-Launcher ok-nte  MAA
 ```
 
-- 基类 `ScriptConfig` 提供通用能力：`_load` / `_save` / `_verify_saved` / `_update_task`（含二级序列）/ `_init_config` / `_is_aligned` / `set_daily_task` / `safe_update`。
+- 基类 `ScriptConfig` 提供通用能力：`_load` / `_save` / `_verify_saved` / `_update_daily_task`（含二级序列）/ `_init_config` / `_is_aligned` / `set_daily_task` / `safe_update`。
 - 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`；`_backup_paths`（备份范围，目录或文件）必填。具名日常、周常的字段绑定和选项由 `task_list.yml` 声明。
 - 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`；路径声明不完整会在 import 时 assert 暴露。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `supports_weekly` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `iter_backup_paths` / `set_config` / `set_weekly_task_option`）。
 
@@ -79,7 +79,7 @@
 
 ## 设置日常流程 set_daily_task
 
-`set_daily_task(daily_name, option_name, sequence)` 先按有效物理名定位日常，再 `_load()` → `_update_task(...)` → 有变化则 `_save()`。基类 `_update_task` 按 `options.key` 直接更新字段并返回是否修改；子类先定位自己的配置段，再调用 `super()._update_task`；`_read_daily_task(daily_name)` 用相同声明反读。没有别名的原生值保持可见，不额外维护映射。
+`set_daily_task(daily_name, option_name, sequence)` 先按有效物理名定位日常，再 `_load()` → `_update_daily_task(...)` → 有变化则 `_save()`。基类 `_update_daily_task` 按 `options.key` 直接更新字段并返回是否修改；子类先定位自己的配置段，再调用 `super()._update_daily_task`；`_read_daily_task(daily_name)` 用相同声明反读。没有别名的原生值保持可见，不额外维护映射。
 
 一次选择涉及多个字段时先更新副本，全部校验成功才替换原对象；类型不符或缺少二级选择时不会留下部分修改。保存后 `_verify_saved()` 仍重读校验落盘一致性。
 
@@ -94,6 +94,8 @@
 异环的 `daily_anomaly` 与 `daily_anomaly_hunter` 分别对应「异象界域」「追猎目标」。修改一个日常只更新该段选择并启用对应 Routine Item；「不启用」只关闭对应任务，不清空选择或改变另一个日常。配置与启用状态分属 `DailyRoutineTaskConfigs.json`、`DailyRoutineTask.json`。
 
 ## 设置周常流程
+
+周常副本读写由具体脚本实现，当前只有崩铁的 `instance_names` 适配；不经过日常读写入口。统一声明和菜单可保留相同选项结构，通用周常选项读写不在本轮扩展。
 
 `set_weekly_task(weekly_name, start_day)` 更新单个周常；`set_weekly_tasks(start_day)` 批量更新全部。两者共用保存流程：校验 1~7 → 加载配置 → 在副本上逐项调用 `_write_weekly` → 全部成功且有变化时保存一次。周常声明为空时不支持周常；有独立周常路径则使用该文件。
 
@@ -142,7 +144,7 @@ set_config("ok-ww", daily_name="每日任务", option_name="未选择")         
 
 1. `set_config.py` 新建 `ScriptConfig` 子类并加 `@register`，声明脚本名、配置路径、备份范围和可选模板、游戏路径。
 2. 在 `config/task_list.yml` 添加具名任务及选项；普通日常复用基类，多日常按名称各自绑定。
-3. 特殊原生配置在脚本类覆盖 `_update_task` / `_read_daily_task` 或 `_write_weekly`，保持其他任务数据。
+3. 特殊原生配置在脚本类覆盖 `_update_daily_task` / `_read_daily_task` 或 `_write_weekly`，保持其他任务数据。
 4. 补具名任务往返、失败隔离和 GUI 测试。
 
 ## 设计原则

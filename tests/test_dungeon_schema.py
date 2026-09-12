@@ -183,9 +183,11 @@ class TestDungeonSchema(unittest.TestCase):
             with self.subTest(parent=parent.__name__):
                 task = cls()
                 task._daily_configs = dict(task._daily_configs)
-                task._update_task(config, "资源", "分类", "新副本")
+                task._update_daily_task(config, "资源", "分类", "新副本")
                 self.assertEqual(config, {"kind": "native", "stage": "新副本"})
-                self.assertEqual(task._read_task(config, "资源"), ("分类", "新副本"))
+                self.assertEqual(
+                    task._read_daily_config(config, "资源"), ("分类", "新副本")
+                )
 
     def test_group_without_child_cannot_write_its_display_name(self):
         for cls, field, group in (
@@ -216,7 +218,7 @@ class TestDungeonSchema(unittest.TestCase):
                 load.assert_not_called()
                 config = {"other": True}
                 with self.assertRaisesRegex(AssertionError, "options.key"):
-                    cls()._update_task(config, "资源", "新副本")
+                    cls()._update_daily_task(config, "资源", "新副本")
                 self.assertEqual(config, {"other": True})
 
     def test_missing_source_does_not_offer_group_as_a_leaf(self):

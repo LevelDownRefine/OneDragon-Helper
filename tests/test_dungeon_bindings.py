@@ -91,7 +91,7 @@ class TestDailyDeclarationRoundTrip(unittest.TestCase):
         )
         malformed = {"Which to Farm": "Tacet Suppression", "Material Selection": 1}
         with self.assertRaises(AssertionError):
-            WutheringWavesConfig()._update_task(
+            WutheringWavesConfig()._update_daily_task(
                 malformed, "每日任务", "模拟领域", "Resonator EXP"
             )
         self.assertEqual(
@@ -361,7 +361,7 @@ class TestDailyDeclarationValidation(unittest.TestCase):
                 validate_daily_definitions("example", [definition])
                 cfg = ScriptConfig()
                 cfg._daily_configs = {"每日": definition}
-                cfg._update_task({"kind": "old"}, "每日", "A", 1)
+                cfg._update_daily_task({"kind": "old"}, "每日", "A", 1)
 
     def test_quoted_yaml_values_keep_native_type(self):
         daily = load_yaml_str(
@@ -371,9 +371,11 @@ class TestDailyDeclarationValidation(unittest.TestCase):
         cfg = ScriptConfig()
         cfg._daily_configs = {"每日": daily[0]}
         config = {"kind": "old", "target": "old_target"}
-        cfg._update_task(config, "每日", "展示", "native_target")
+        cfg._update_daily_task(config, "每日", "展示", "native_target")
         self.assertEqual(config, {"kind": "native", "target": "native_target"})
-        self.assertEqual(cfg._read_task(config, "每日"), ("展示", "native_target"))
+        self.assertEqual(
+            cfg._read_daily_config(config, "每日"), ("展示", "native_target")
+        )
         self.assertEqual(
             build_task_item(daily[0], ("展示", "native_target"))["selection_label"],
             "展示 · 标签",
@@ -381,7 +383,7 @@ class TestDailyDeclarationValidation(unittest.TestCase):
         selected = daily[0]["options"]["values"][0]["options"]["values"][0][
             "physical_name"
         ]
-        cfg._update_task(config, "每日", "展示", selected)
+        cfg._update_daily_task(config, "每日", "展示", selected)
         self.assertEqual(config["target"], "native_target")
 
     def test_sequence_type_and_declaration_are_preserved_during_roundtrip(self):
@@ -407,10 +409,10 @@ class TestDailyDeclarationValidation(unittest.TestCase):
         config = {"kind": "old", "target": 2, "other": True}
         for sequence in ("1", True):
             with self.subTest(sequence=sequence), self.assertRaises(AssertionError):
-                cfg._update_task(config, "每日", "材料", sequence)
+                cfg._update_daily_task(config, "每日", "材料", sequence)
             self.assertEqual(config, {"kind": "old", "target": 2, "other": True})
-        cfg._update_task(config, "每日", "材料", 1)
-        self.assertEqual(cfg._read_task(config, "每日"), ("材料", 1))
+        cfg._update_daily_task(config, "每日", "材料", 1)
+        self.assertEqual(cfg._read_daily_config(config, "每日"), ("材料", 1))
         self.assertEqual(definition, original)
         self.assertEqual(
             build_task_item(definition, ("材料", 1))["selection_label"], "材料 · 第一本"

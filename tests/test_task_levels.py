@@ -1,4 +1,4 @@
-"""日常和周常共用的层级字段、原生值与原子写入契约。"""
+"""共用声明结构与具名日常的读写契约。"""
 
 import unittest
 from copy import deepcopy
@@ -26,50 +26,40 @@ class TestTaskLevels(unittest.TestCase):
             for stage in ("Annihilation", "AP-5", "LS-6", "CE-6", "1-7")
         ]
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        task._update_task(config, "每日任务", "新红票")
+        task._update_daily_task(config, "每日任务", "新红票")
         self.assertEqual(
             [entry["IsEnable"] for entry in queue], [True, True, False, False, True]
         )
         with patch.object(script, "_load", return_value=config):
             self.assertEqual(task._read_daily_task("每日任务"), ("新红票", None))
-            task._update_task(config, "每日任务", "新土")
+            task._update_daily_task(config, "每日任务", "新土")
             self.assertEqual(task._read_daily_task("每日任务"), ("新土", None))
 
-    def test_single_level_daily_and_weekly_use_physical_values_or_display_fallback(
-        self,
-    ):
-        for task_type, validate in (
-            ("daily", validate_daily_definitions),
-            ("weekly", validate_weekly_definitions),
+    def test_single_level_daily_uses_physical_values_or_display_fallback(self):
+        for option, old_value in (
+            ({"display_name": "金币"}, "old"),
+            ({"display_name": "金币", "physical_name": "gold"}, "old"),
+            ({"display_name": "金币", "physical_name": 2}, 1),
         ):
-            for option, old_value in (
-                ({"display_name": "金币"}, "old"),
-                ({"display_name": "金币", "physical_name": "gold"}, "old"),
-                ({"display_name": "金币", "physical_name": 2}, 1),
-            ):
-                with self.subTest(task_type=task_type, option=option):
-                    definition = {
-                        "display_name": "资源",
-                        "type": task_type,
-                        "options": {"key": "stage", "values": [option]},
-                    }
-                    validate("example", [definition])
-                    task = ScriptConfig()
-                    setattr(
-                        task,
-                        "_weekly_configs"
-                        if definition.get("type", "daily") == "weekly"
-                        else "_daily_configs",
-                        {"资源": definition},
-                    )
-                    config = {"stage": old_value, "other": True}
-                    task._update_task(config, "资源", "金币")
-                    expected = option.get("physical_name", "金币")
-                    self.assertEqual(config, {"stage": expected, "other": True})
-                    self.assertEqual(task._read_task(config, "资源"), ("金币", None))
-                    self.assertFalse(task._update_task(config, "资源", "金币"))
-                    with self.assertRaisesRegex(AssertionError, "不支持 sequence"):
-                        task._update_task(config, "资源", "金币", 1)
+            with self.subTest(option=option):
+                definition = {
+                    "display_name": "资源",
+                    "type": "daily",
+                    "options": {"key": "stage", "values": [option]},
+                }
+                validate_daily_definitions("example", [definition])
+                task = ScriptConfig()
+                task._daily_configs = {"资源": definition}
+                config = {"stage": old_value, "other": True}
+                task._update_daily_task(config, "资源", "金币")
+                expected = option.get("physical_name", "金币")
+                self.assertEqual(config, {"stage": expected, "other": True})
+                self.assertEqual(
+                    task._read_daily_config(config, "资源"), ("金币", None)
+                )
+                self.assertFalse(task._update_daily_task(config, "资源", "金币"))
+                with self.assertRaisesRegex(AssertionError, "不支持 sequence"):
+                    task._update_daily_task(config, "资源", "金币", 1)
 
     def test_option_named_disable_is_an_ordinary_selection(self):
         definition = {
@@ -89,12 +79,12 @@ class TestTaskLevels(unittest.TestCase):
             {"资源": definition},
         )
         config = {"stage": "old"}
-        task._update_task(config, "资源", "不启用")
+        task._update_daily_task(config, "资源", "不启用")
         self.assertEqual(config, {"stage": "native_stage"})
         service = AppService()
         with patch(
             "src.service.app_service.get_daily_task",
-            return_value=task._read_task(config, "资源"),
+            return_value=task._read_daily_config(config, "资源"),
         ):
             row = service.get_daily_items("example", [definition])[0]
         self.assertNotIn("action", row["options"][0])
@@ -118,52 +108,22 @@ class TestTaskLevels(unittest.TestCase):
             },
         }
 
-    def test_daily_and_weekly_share_nested_roundtrip(self):
-        for task_type, validate in (
-            ("daily", validate_daily_definitions),
-            ("weekly", validate_weekly_definitions),
+    def test_daily_nested_roundtrip_preserves_declaration_and_other_settings(self):
+        definition = self.definition("daily")
+        original = deepcopy(definition)
+        validate_daily_definitions("example", [definition])
+        script = ScriptConfig()
+        script._daily_configs = {"资源": definition}
+        config = {"kind": "old", "target": 1, "other": True}
+        with (
+            patch.object(script, "_load", return_value=config),
+            patch.object(script, "_save") as save,
         ):
-            with self.subTest(task_type=task_type):
-                definition = self.definition(task_type)
-                original = deepcopy(definition)
-                validate("example", [definition])
-                script = ScriptConfig()
-                task = script
-                setattr(
-                    task,
-                    "_weekly_configs"
-                    if definition.get("type", "daily") == "weekly"
-                    else "_daily_configs",
-                    {"资源": definition},
-                )
-                config = {"kind": "old", "target": 1, "other": True}
-                with (
-                    patch.object(script, "_load", return_value=config),
-                    patch.object(script, "_save") as save,
-                ):
-                    (
-                        task.set_weekly_task_option
-                        if definition.get("type", "daily") == "weekly"
-                        else task.set_daily_task
-                    )("资源", "材料", 2)
-                    self.assertEqual(
-                        (
-                            task._read_weekly_task
-                            if definition.get("type", "daily") == "weekly"
-                            else task._read_daily_task
-                        )("资源"),
-                        ("材料", 2),
-                    )
-                    (
-                        task.set_weekly_task_option
-                        if definition.get("type", "daily") == "weekly"
-                        else task.set_daily_task
-                    )("资源", "材料", 2)
-                save.assert_called_once_with(
-                    {"kind": "native", "target": 2, "other": True},
-                    *([script._config_rel_path] if task_type == "weekly" else []),
-                )
-                self.assertEqual(definition, original)
+            script.set_daily_task("资源", "材料", 2)
+            self.assertEqual(script._read_daily_task("资源"), ("材料", 2))
+            script.set_daily_task("资源", "材料", 2)
+        save.assert_called_once_with({"kind": "native", "target": 2, "other": True})
+        self.assertEqual(definition, original)
 
     def test_each_list_owns_its_field_without_inheritance(self):
         definition = self.definition("daily")
@@ -178,17 +138,11 @@ class TestTaskLevels(unittest.TestCase):
     def test_invalid_child_binding_does_not_partially_update_parent(self):
         for missing_binding in (True, False):
             with self.subTest(missing_binding=missing_binding):
-                definition = self.definition("weekly")
+                definition = self.definition("daily")
                 if missing_binding:
                     del definition["options"]["values"][0]["options"]["key"]
                 task = ScriptConfig()
-                setattr(
-                    task,
-                    "_weekly_configs"
-                    if definition.get("type", "daily") == "weekly"
-                    else "_daily_configs",
-                    {"资源": definition},
-                )
+                task._daily_configs = {"资源": definition}
                 config = {"kind": "old", "target": "wrong type"}
                 original = deepcopy(config)
                 with (
@@ -196,11 +150,7 @@ class TestTaskLevels(unittest.TestCase):
                     patch.object(task, "_save") as save,
                     self.assertRaises(AssertionError),
                 ):
-                    (
-                        task.set_weekly_task_option
-                        if definition.get("type", "daily") == "weekly"
-                        else task.set_daily_task
-                    )("资源", "材料", 2)
+                    task.set_daily_task("资源", "材料", 2)
                 save.assert_not_called()
                 self.assertEqual(config, original)
 
@@ -243,12 +193,13 @@ class TestTaskLevels(unittest.TestCase):
                 else "_daily_configs",
                 {"资源": definition},
             )
-            config = {"kind": "old", "target": 1}
-            with self.assertRaisesRegex(AssertionError, "两层"):
-                task._update_task(config, "资源", "材料", 2)
-            self.assertEqual(config, {"kind": "old", "target": 1})
-            with self.assertRaisesRegex(AssertionError, "两层"):
-                task._read_task(config, "资源")
+            if task_type == "daily":
+                config = {"kind": "old", "target": 1}
+                with self.assertRaisesRegex(AssertionError, "两层"):
+                    task._update_daily_task(config, "资源", "材料", 2)
+                self.assertEqual(config, {"kind": "old", "target": 1})
+                with self.assertRaisesRegex(AssertionError, "两层"):
+                    task._read_daily_config(config, "资源")
             with self.assertRaisesRegex(AssertionError, "两层"):
                 build_task_item(definition, ("材料", 2))
 

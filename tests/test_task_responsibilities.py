@@ -10,49 +10,49 @@ from src.service.app_service import AppService, build_task_item
 
 
 class TestTaskResponsibilities(unittest.TestCase):
-    def test_native_daily_hook_does_not_redirect_weekly_selection(self):
-        for script_type in (NTEConfig, ArknightsConfig):
+    def test_unadapted_weekly_selection_never_calls_daily_hooks(self):
+        for script_type in (ScriptConfig, NTEConfig, ArknightsConfig):
+            with (
+                self.subTest(script_type=script_type),
+                patch.dict(adapters._CONFIGS, {"example": script_type}),
+                patch.object(script_type, "_update_daily_task") as update,
+                patch.object(script_type, "_load") as load,
+                patch.object(script_type, "_save") as save,
+            ):
+                adapters.set_weekly_task_option("example", "周本", "新本")
+                self.assertEqual(
+                    adapters.get_weekly_task("example", "周本"), (None, None)
+                )
+                update.assert_not_called()
+                load.assert_not_called()
+                save.assert_not_called()
+
+    def test_daily_lookup_cannot_resolve_a_weekly_name(self):
+        for script_type in (ScriptConfig, NTEConfig, ArknightsConfig):
+            script = script_type()
+            script._weekly_configs = {
+                "独立周常": {
+                    "display_name": "独立周常",
+                    "options": {"key": "stage", "values": [{"display_name": "新本"}]},
+                }
+            }
+            config = {"stage": "old"}
             with self.subTest(script_type=script_type):
-                script = script_type()
-                script._weekly_configs = {
-                    "独立周常": {
-                        "display_name": "独立周常",
-                        "type": "weekly",
-                        "options": {
-                            "key": "weekly_stage",
-                            "values": [
-                                {"display_name": "新本", "physical_name": "new"}
-                            ],
-                        },
-                    }
-                }
-                config = {
-                    "weekly_stage": "old",
-                    "daily_anomaly": {"任务类型": "空幕", "空幕序号": 2},
-                    "Configurations": {"Default": {"TaskQueue": []}},
-                }
-                original = deepcopy(config)
-                with (
-                    patch.object(script, "_load", return_value=config),
-                    patch.object(script, "_save") as save,
-                ):
-                    script.set_weekly_task_option("独立周常", "新本")
-                    self.assertEqual(
-                        script._read_weekly_task("独立周常"), ("新本", None)
-                    )
-                save.assert_called_once_with(config, script._config_rel_path)
-                original["weekly_stage"] = "new"
-                self.assertEqual(config, original)
+                with self.assertRaisesRegex(AssertionError, "未适配的日常"):
+                    script._update_daily_task(config, "独立周常", "新本")
+                with self.assertRaisesRegex(AssertionError, "未适配的日常"):
+                    script._read_daily_config(config, "独立周常")
+                self.assertEqual(config, {"stage": "old"})
 
     def test_nte_can_create_selection_fields_without_replacing_other_tasks(self):
         script = NTEConfig()
         config = {"daily_anomaly": {}, "daily_anomaly_hunter": {"追猎目标": "海囚"}}
         other_task = config["daily_anomaly_hunter"]
-        self.assertTrue(script._update_task(config, "daily_anomaly", "空幕", 2))
+        self.assertTrue(script._update_daily_task(config, "daily_anomaly", "空幕", 2))
         self.assertEqual(config["daily_anomaly"], {"任务类型": "空幕", "空幕序号": 2})
         self.assertIs(config["daily_anomaly_hunter"], other_task)
         self.assertEqual(other_task, {"追猎目标": "海囚"})
-        self.assertFalse(script._update_task(config, "daily_anomaly", "空幕", 2))
+        self.assertFalse(script._update_daily_task(config, "daily_anomaly", "空幕", 2))
 
     def test_nte_failure_does_not_leave_new_secondary_field_or_enable_task(self):
         script = NTEConfig()
@@ -69,15 +69,15 @@ class TestTaskResponsibilities(unittest.TestCase):
         self.assertEqual(config, original)
         self.assertFalse(routine["Routine Items"][0]["enabled"])
 
-    def test_weekly_selection_uses_declared_weekly_file(self):
+    def test_daily_selection_does_not_use_weekly_file(self):
         script = ScriptConfig()
         script._script_name = "example"
         script._config_rel_path = "main.json"
         script._weekly_config_rel_path = "weekly.json"
-        script._weekly_configs = {
+        script._daily_configs = {
             "周本": {
                 "display_name": "周本",
-                "type": "weekly",
+                "type": "daily",
                 "options": {
                     "key": "stage",
                     "values": [{"display_name": "目标", "physical_name": "native"}],
@@ -101,50 +101,42 @@ class TestTaskResponsibilities(unittest.TestCase):
             ),
             patch.object(adapters, "save_config", side_effect=save),
         ):
-            script.set_weekly_task_option("周本", "目标")
-            self.assertEqual(script._read_weekly_task("周本"), ("目标", None))
-        self.assertEqual(files["weekly.json"], {"stage": "native", "other": True})
-        self.assertEqual(files["main.json"], {"stage": "old", "other": True})
+            script.set_daily_task("周本", "目标")
+            self.assertEqual(script._read_daily_task("周本"), ("目标", None))
+        self.assertEqual(files["main.json"], {"stage": "native", "other": True})
+        self.assertEqual(files["weekly.json"], {"stage": "old", "other": True})
 
     def test_incompatible_fields_rejected_before_mutation_and_readback(self):
-        for task_type in ("daily", "weekly"):
-            definition = {
-                "display_name": "资源",
-                "type": task_type,
-                "options": {
-                    "values": [
-                        {
-                            "display_name": "A",
-                            "options": {
-                                "key": "kind",
-                                "values": [{"display_name": "一"}],
-                            },
+        definition = {
+            "display_name": "资源",
+            "type": "daily",
+            "options": {
+                "values": [
+                    {
+                        "display_name": "A",
+                        "options": {
+                            "key": "kind",
+                            "values": [{"display_name": "一"}],
                         },
-                        {
-                            "display_name": "B",
-                            "options": {
-                                "key": "other",
-                                "values": [{"display_name": "二"}],
-                            },
+                    },
+                    {
+                        "display_name": "B",
+                        "options": {
+                            "key": "other",
+                            "values": [{"display_name": "二"}],
                         },
-                    ]
-                },
-            }
-            task = ScriptConfig()
-            setattr(
-                task,
-                "_weekly_configs"
-                if definition.get("type", "daily") == "weekly"
-                else "_daily_configs",
-                {"资源": definition},
-            )
-            config = {"kind": "A", "other": "old"}
-            with self.subTest(task_type=task_type):
-                with self.assertRaisesRegex(AssertionError, "无法唯一反读"):
-                    task._update_task(config, "资源", "B", "二")
-                with self.assertRaisesRegex(AssertionError, "无法唯一反读"):
-                    task._read_task(config, "资源")
-                self.assertEqual(config, {"kind": "A", "other": "old"})
+                    },
+                ]
+            },
+        }
+        task = ScriptConfig()
+        task._daily_configs = {"资源": definition}
+        config = {"kind": "A", "other": "old"}
+        with self.assertRaisesRegex(AssertionError, "无法唯一反读"):
+            task._update_daily_task(config, "资源", "B", "二")
+        with self.assertRaisesRegex(AssertionError, "无法唯一反读"):
+            task._read_daily_config(config, "资源")
+        self.assertEqual(config, {"kind": "A", "other": "old"})
 
     def test_nte_task_value_statically_binds_both_operations(self):
         definition = {
@@ -202,16 +194,10 @@ class TestTaskResponsibilities(unittest.TestCase):
             },
         }
         task = ScriptConfig()
-        setattr(
-            task,
-            "_weekly_configs"
-            if definition.get("type", "daily") == "weekly"
-            else "_daily_configs",
-            {"资源": definition},
-        )
+        task._daily_configs = {"资源": definition}
         native = {"stage": "old"}
-        task._update_task(native, "资源", "分类", "native")
-        selection = task._read_task(native, "资源")
+        task._update_daily_task(native, "资源", "分类", "native")
+        selection = task._read_daily_config(native, "资源")
         self.assertEqual(selection, ("分类", "native"))
         self.assertEqual(
             build_task_item(definition, selection)["selection_label"], "友好名称"
@@ -228,7 +214,7 @@ class TestTaskResponsibilities(unittest.TestCase):
         }
         task = ScriptConfig()
         task._daily_configs = {"资源": definition}
-        selection = task._read_task({"stage": 2}, "资源")
+        selection = task._read_daily_config({"stage": 2}, "资源")
         self.assertEqual(selection, (2, None))
         self.assertEqual(build_task_item(definition, selection)["selection_label"], "2")
 
@@ -324,12 +310,6 @@ class TestTaskResponsibilities(unittest.TestCase):
             },
         }
         task = ScriptConfig()
-        setattr(
-            task,
-            "_weekly_configs"
-            if definition.get("type", "daily") == "weekly"
-            else "_daily_configs",
-            {"资源": definition},
-        )
+        task._daily_configs = {"资源": definition}
         with self.assertRaisesRegex(AssertionError, "无法唯一反读"):
-            task._read_task({"stage": 1}, "资源")
+            task._read_daily_config({"stage": 1}, "资源")

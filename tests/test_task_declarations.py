@@ -255,7 +255,7 @@ class TestNamedWeeklyTasks(unittest.TestCase):
         with patch.object(cfg, "_load") as load, patch.object(cfg, "_save") as save:
             self.assertEqual(cfg._read_weekly_task("货币战争"), (None, None))
             load.assert_not_called()
-            with self.assertRaisesRegex(AssertionError, "options.key"):
+            with self.assertRaisesRegex(AssertionError, "不支持副本选择"):
                 cfg.set_weekly_task_option("货币战争", "不应写入")
             save.assert_not_called()
 
