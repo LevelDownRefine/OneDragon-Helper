@@ -246,7 +246,7 @@ class TestWeeklyBindings(unittest.TestCase):
         load.assert_not_called()
 
     def test_declaring_weekly_requires_writer_even_without_task(self):
-        with self.assertRaisesRegex(AssertionError, "必须实现.*weekly_task"):
+        with self.assertRaisesRegex(AssertionError, "必须实现.*_write_weekly"):
             self._register(adapters.ScriptConfig, [{"display_name": "周常"}])
 
     def test_menu_expansion_does_not_change_shared_definitions(self):

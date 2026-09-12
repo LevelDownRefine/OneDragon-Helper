@@ -5,20 +5,54 @@ from copy import deepcopy
 from unittest.mock import patch
 
 from src.config import set_config as adapters
-from src.config.set_config import NTEConfig, ScriptConfig
+from src.config.set_config import ArknightsConfig, NTEConfig, ScriptConfig
 from src.service.app_service import AppService, build_task_item
 
 
 class TestTaskResponsibilities(unittest.TestCase):
+    def test_native_daily_hook_does_not_redirect_weekly_selection(self):
+        for script_type in (NTEConfig, ArknightsConfig):
+            with self.subTest(script_type=script_type):
+                script = script_type()
+                script._weekly_configs = {
+                    "独立周常": {
+                        "display_name": "独立周常",
+                        "type": "weekly",
+                        "options": {
+                            "key": "weekly_stage",
+                            "values": [
+                                {"display_name": "新本", "physical_name": "new"}
+                            ],
+                        },
+                    }
+                }
+                config = {
+                    "weekly_stage": "old",
+                    "daily_anomaly": {"任务类型": "空幕", "空幕序号": 2},
+                    "Configurations": {"Default": {"TaskQueue": []}},
+                }
+                original = deepcopy(config)
+                with (
+                    patch.object(script, "_load", return_value=config),
+                    patch.object(script, "_save") as save,
+                ):
+                    script.set_weekly_task_option("独立周常", "新本")
+                    self.assertEqual(
+                        script._read_weekly_task("独立周常"), ("新本", None)
+                    )
+                save.assert_called_once_with(config, script._config_rel_path)
+                original["weekly_stage"] = "new"
+                self.assertEqual(config, original)
+
     def test_nte_can_create_selection_fields_without_replacing_other_tasks(self):
         script = NTEConfig()
         config = {"daily_anomaly": {}, "daily_anomaly_hunter": {"追猎目标": "海囚"}}
         other_task = config["daily_anomaly_hunter"]
-        self.assertTrue(script._update_daily_task(config, "daily_anomaly", "空幕", 2))
+        self.assertTrue(script._update_task(config, "daily_anomaly", "空幕", 2))
         self.assertEqual(config["daily_anomaly"], {"任务类型": "空幕", "空幕序号": 2})
         self.assertIs(config["daily_anomaly_hunter"], other_task)
         self.assertEqual(other_task, {"追猎目标": "海囚"})
-        self.assertFalse(script._update_daily_task(config, "daily_anomaly", "空幕", 2))
+        self.assertFalse(script._update_task(config, "daily_anomaly", "空幕", 2))
 
     def test_nte_failure_does_not_leave_new_secondary_field_or_enable_task(self):
         script = NTEConfig()
@@ -107,9 +141,9 @@ class TestTaskResponsibilities(unittest.TestCase):
             config = {"kind": "A", "other": "old"}
             with self.subTest(task_type=task_type):
                 with self.assertRaisesRegex(AssertionError, "无法唯一反读"):
-                    task._update_selection(config, definition, "B", "二")
+                    task._update_task(config, "资源", "B", "二")
                 with self.assertRaisesRegex(AssertionError, "无法唯一反读"):
-                    task._read_selection_config(config, definition)
+                    task._read_task(config, "资源")
                 self.assertEqual(config, {"kind": "A", "other": "old"})
 
     def test_nte_task_value_statically_binds_both_operations(self):
@@ -176,8 +210,8 @@ class TestTaskResponsibilities(unittest.TestCase):
             {"资源": definition},
         )
         native = {"stage": "old"}
-        task._update_selection(native, definition, "分类", "native")
-        selection = task._read_selection_config(native, definition)
+        task._update_task(native, "资源", "分类", "native")
+        selection = task._read_task(native, "资源")
         self.assertEqual(selection, ("分类", "native"))
         self.assertEqual(
             build_task_item(definition, selection)["selection_label"], "友好名称"
@@ -192,7 +226,9 @@ class TestTaskResponsibilities(unittest.TestCase):
                 "values": [{"display_name": "一", "physical_name": 1}],
             },
         }
-        selection = ScriptConfig()._read_selection_config({"stage": 2}, definition)
+        task = ScriptConfig()
+        task._daily_configs = {"资源": definition}
+        selection = task._read_task({"stage": 2}, "资源")
         self.assertEqual(selection, (2, None))
         self.assertEqual(build_task_item(definition, selection)["selection_label"], "2")
 
@@ -296,4 +332,4 @@ class TestTaskResponsibilities(unittest.TestCase):
             {"资源": definition},
         )
         with self.assertRaisesRegex(AssertionError, "无法唯一反读"):
-            task._read_selection_config({"stage": 1}, definition)
+            task._read_task({"stage": 1}, "资源")

@@ -71,13 +71,12 @@ class TestConfigRelPaths(unittest.TestCase):
         for name, cls in set_config._CONFIGS.items():
             if cls._weekly_configs:
                 self.assertTrue(
-                    cls._update_weekly_task
-                    is not set_config.ScriptConfig._update_weekly_task,
-                    f"{name} 声明了周常但未落实周常写入（未实现 _update_weekly_task）",
+                    cls._write_weekly is not set_config.ScriptConfig._write_weekly,
+                    f"{name} 声明了周常但未落实周常写入（未实现 _write_weekly）",
                 )
 
     def test_register_rejects_weekly_without_write(self):
-        """register 拒绝：声明周常但沿用基类 _update_weekly_task 的子类"""
+        """register 拒绝：声明周常但沿用基类 _write_weekly 的子类"""
         bogus = type(
             "BogusWeekly",
             (set_config.ScriptConfig,),
@@ -87,7 +86,7 @@ class TestConfigRelPaths(unittest.TestCase):
                 "_backup_paths": ("daily.json",),
             },
         )
-        with self.assertRaisesRegex(AssertionError, "必须实现.*weekly_task"):
+        with self.assertRaisesRegex(AssertionError, "必须实现.*_write_weekly"):
             set_config.register(bogus)
 
     def test_rel_paths_contain_extension(self):

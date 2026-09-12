@@ -26,13 +26,13 @@ class TestTaskLevels(unittest.TestCase):
             for stage in ("Annihilation", "AP-5", "LS-6", "CE-6", "1-7")
         ]
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        task._update_daily_task(config, "每日任务", "新红票")
+        task._update_task(config, "每日任务", "新红票")
         self.assertEqual(
             [entry["IsEnable"] for entry in queue], [True, True, False, False, True]
         )
         with patch.object(script, "_load", return_value=config):
             self.assertEqual(task._read_daily_task("每日任务"), ("新红票", None))
-            task._update_daily_task(config, "每日任务", "新土")
+            task._update_task(config, "每日任务", "新土")
             self.assertEqual(task._read_daily_task("每日任务"), ("新土", None))
 
     def test_single_level_daily_and_weekly_use_physical_values_or_display_fallback(
@@ -63,15 +63,13 @@ class TestTaskLevels(unittest.TestCase):
                         {"资源": definition},
                     )
                     config = {"stage": old_value, "other": True}
-                    task._update_selection(config, definition, "金币")
+                    task._update_task(config, "资源", "金币")
                     expected = option.get("physical_name", "金币")
                     self.assertEqual(config, {"stage": expected, "other": True})
-                    self.assertEqual(
-                        task._read_selection_config(config, definition), ("金币", None)
-                    )
-                    self.assertFalse(task._update_selection(config, definition, "金币"))
+                    self.assertEqual(task._read_task(config, "资源"), ("金币", None))
+                    self.assertFalse(task._update_task(config, "资源", "金币"))
                     with self.assertRaisesRegex(AssertionError, "不支持 sequence"):
-                        task._update_selection(config, definition, "金币", 1)
+                        task._update_task(config, "资源", "金币", 1)
 
     def test_option_named_disable_is_an_ordinary_selection(self):
         definition = {
@@ -91,12 +89,12 @@ class TestTaskLevels(unittest.TestCase):
             {"资源": definition},
         )
         config = {"stage": "old"}
-        task._update_selection(config, definition, "不启用")
+        task._update_task(config, "资源", "不启用")
         self.assertEqual(config, {"stage": "native_stage"})
         service = AppService()
         with patch(
             "src.service.app_service.get_daily_task",
-            return_value=task._read_selection_config(config, definition),
+            return_value=task._read_task(config, "资源"),
         ):
             row = service.get_daily_items("example", [definition])[0]
         self.assertNotIn("action", row["options"][0])
@@ -247,10 +245,10 @@ class TestTaskLevels(unittest.TestCase):
             )
             config = {"kind": "old", "target": 1}
             with self.assertRaisesRegex(AssertionError, "两层"):
-                task._update_selection(config, definition, "材料", 2)
+                task._update_task(config, "资源", "材料", 2)
             self.assertEqual(config, {"kind": "old", "target": 1})
             with self.assertRaisesRegex(AssertionError, "两层"):
-                task._read_selection_config(config, definition)
+                task._read_task(config, "资源")
             with self.assertRaisesRegex(AssertionError, "两层"):
                 build_task_item(definition, ("材料", 2))
 
