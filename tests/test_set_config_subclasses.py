@@ -909,26 +909,26 @@ class TestGenshinGetDungeonLists(unittest.TestCase):
         with patch(
             "src.config.set_config.load_game_config", return_value=self._DATA
         ) as mock_load:
-            names = GenshinConfig.get_dungeon_lists("圣遗物", self._SRC)
+            names = GenshinConfig.get_dungeon_lists("BlessDomain", self._SRC)
         self.assertEqual(names, ["仲夏庭园", "铭记之谷", "芬德尼尔之顶"])
         mock_load.assert_called_once_with("BetterGI", self._SRC)
 
     def test_reads_forgery_domain(self):
         """武器 → ForgeryDomain：仅收集该 type 的副本名。"""
         with patch("src.config.set_config.load_game_config", return_value=self._DATA):
-            names = GenshinConfig.get_dungeon_lists("武器", self._SRC)
+            names = GenshinConfig.get_dungeon_lists("ForgeryDomain", self._SRC)
         self.assertEqual(names, ["塞西莉亚苗圃"])
 
     def test_reads_mastery_domain(self):
         """天赋 → MasteryDomain。"""
         with patch("src.config.set_config.load_game_config", return_value=self._DATA):
-            names = GenshinConfig.get_dungeon_lists("天赋", self._SRC)
+            names = GenshinConfig.get_dungeon_lists("MasteryDomain", self._SRC)
         self.assertEqual(names, ["太山府"])
 
     def test_ignores_other_types(self):
         """TeleportWaypoint / 未命中 type 的 point 不计入清单。"""
         with patch("src.config.set_config.load_game_config", return_value=self._DATA):
-            names = GenshinConfig.get_dungeon_lists("圣遗物", self._SRC)
+            names = GenshinConfig.get_dungeon_lists("BlessDomain", self._SRC)
         self.assertNotIn("传送锚点", names)
 
     def test_does_not_instantiate_or_init_config(self):
@@ -937,7 +937,7 @@ class TestGenshinGetDungeonLists(unittest.TestCase):
             patch.object(GenshinConfig, "_init_config") as mock_init,
             patch("src.config.set_config.load_game_config", return_value=self._DATA),
         ):
-            GenshinConfig.get_dungeon_lists("圣遗物", self._SRC)
+            GenshinConfig.get_dungeon_lists("BlessDomain", self._SRC)
         mock_init.assert_not_called()
 
     def test_source_is_used_as_rel_path(self):
@@ -946,22 +946,24 @@ class TestGenshinGetDungeonLists(unittest.TestCase):
             "src.config.set_config.load_game_config", return_value=None
         ) as mock_load:
             self.assertEqual(
-                GenshinConfig.get_dungeon_lists("圣遗物", "some/other/path.json"), []
+                GenshinConfig.get_dungeon_lists("BlessDomain", "some/other/path.json"),
+                [],
             )
         mock_load.assert_called_once_with("BetterGI", "some/other/path.json")
 
     def test_script_not_installed_returns_empty(self):
         """BetterGI 未安装（load_game_config 软降级为 None）→ data 为空 → 返回 []。"""
         with patch("src.config.set_config.load_game_config", return_value=None):
-            self.assertEqual(GenshinConfig.get_dungeon_lists("圣遗物", self._SRC), [])
+            self.assertEqual(
+                GenshinConfig.get_dungeon_lists("BlessDomain", self._SRC), []
+            )
 
-    def test_unknown_category_asserts(self):
-        """yml 配了未适配映射的秘境分类 → assert 触发（不静默兜底）。"""
-        with (
-            patch("src.config.set_config.load_game_config", return_value=self._DATA),
-            self.assertRaises(AssertionError),
-        ):
-            GenshinConfig.get_dungeon_lists("周本", self._SRC)
+    def test_category_without_native_entries_returns_empty(self):
+        """不维护类别白名单；资源中没有匹配类别时返回空列表。"""
+        with patch("src.config.set_config.load_game_config", return_value=self._DATA):
+            self.assertEqual(
+                GenshinConfig.get_dungeon_lists("WeeklyDomain", self._SRC), []
+            )
 
     def test_top_level_not_dict_asserts(self):
         """tp.json 顶层非 dict（格式异常）→ assert 触发（不静默兜底）。"""
@@ -969,7 +971,7 @@ class TestGenshinGetDungeonLists(unittest.TestCase):
             patch("src.config.set_config.load_game_config", return_value=[1, 2]),
             self.assertRaises(AssertionError),
         ):
-            GenshinConfig.get_dungeon_lists("圣遗物", self._SRC)
+            GenshinConfig.get_dungeon_lists("BlessDomain", self._SRC)
 
 
 # ============================================================

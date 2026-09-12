@@ -1,0 +1,255 @@
+# display_name：展示名；physical_name：物理名，省略时使用展示名。
+# options：递归选项组；key 为原生字段，values / source 二选一。
+# source 用 path / category 定位脚本本地资源；顶层 key 供任务操作使用。
+
+ok-ww:
+- display_name: 每日任务
+  options:
+    key: Which to Farm
+    values:
+    - display_name: 凝素领域
+      physical_name: Forgery Challenge
+      options:
+        key: Which Forgery Challenge to Farm
+        values:
+        - display_name: 梦州-迅刀
+          physical_name: 1
+        - display_name: 梦州-音感仪
+          physical_name: 2
+        - display_name: 梦州-长刃
+          physical_name: 3
+        - display_name: 梦州-臂铠
+          physical_name: 4
+        - display_name: 梦州-佩枪
+          physical_name: 5
+        - display_name: 拉海洛-迅刀
+          physical_name: 6
+        - display_name: 拉海洛-音感仪
+          physical_name: 7
+        - display_name: 拉海洛-长刃
+          physical_name: 8
+        - display_name: 拉海洛-臂铠
+          physical_name: 9
+        - display_name: 拉海洛-佩枪
+          physical_name: 10
+        - display_name: 黎那汐塔-迅刀
+          physical_name: 11
+        - display_name: 黎那汐塔-音感仪
+          physical_name: 12
+        - display_name: 黎那汐塔-长刃
+          physical_name: 13
+        - display_name: 黎那汐塔-臂铠
+          physical_name: 14
+        - display_name: 黎那汐塔-佩枪
+          physical_name: 15
+        - display_name: 今州-迅刀
+          physical_name: 16
+        - display_name: 今州-音感仪
+          physical_name: 17
+        - display_name: 今州-长刃
+          physical_name: 18
+        - display_name: 今州-臂铠
+          physical_name: 19
+        - display_name: 今州-佩枪
+          physical_name: 20
+    - display_name: 模拟领域
+      physical_name: Simulation Challenge
+      options:
+        key: Material Selection
+        values:
+        - display_name: 共鸣者经验
+          physical_name: Resonator EXP
+        - display_name: 武器经验
+          physical_name: Weapon EXP
+        - display_name: 贝币
+          physical_name: Shell Credit
+    - display_name: 无音区
+      physical_name: Tacet Suppression
+      options:
+        key: Which Tacet Suppression to Farm
+        values:
+        - display_name: 梦州-盾
+          physical_name: 1
+        - display_name: 梦州-风
+          physical_name: 2
+        - display_name: 拉海洛-冰
+          physical_name: 3
+        - display_name: 拉海洛-风
+          physical_name: 4
+        - display_name: 拉海洛-火
+          physical_name: 5
+        - display_name: 拉海洛-光
+          physical_name: 6
+        - display_name: 拉海洛-奶
+          physical_name: 7
+        - display_name: 黎那汐塔-荣光火
+          physical_name: 8
+        - display_name: 黎那汐塔-流云暗
+          physical_name: 9
+        - display_name: 黎那汐塔-充能
+          physical_name: 10
+        - display_name: 黎那汐塔-冰
+          physical_name: 11
+        - display_name: 黎那汐塔-高天暗
+          physical_name: 12
+        - display_name: 今州-奶
+          physical_name: 13
+        - display_name: 今州-冰风
+          physical_name: 14
+        - display_name: 今州-冰雷
+          physical_name: 15
+        - display_name: 今州-光
+          physical_name: 16
+        - display_name: 今州-火奶
+          physical_name: 17
+        - display_name: 今州-雷火
+          physical_name: 18
+        - display_name: 今州-暗轻云
+          physical_name: 19
+BetterGI:
+- display_name: 每日任务
+  options:
+    values:
+    - display_name: 圣遗物
+      options:
+        key: DomainName
+        source:
+          path: GameTask/AutoTrackPath/Assets/tp.json
+          category: BlessDomain
+    - display_name: 武器
+      options:
+        key: DomainName
+        source:
+          path: GameTask/AutoTrackPath/Assets/tp.json
+          category: ForgeryDomain
+    - display_name: 天赋
+      options:
+        key: DomainName
+        source:
+          path: GameTask/AutoTrackPath/Assets/tp.json
+          category: MasteryDomain
+ok-ef:
+- display_name: 每日任务
+  options:
+    values:
+    - display_name: 干员养成
+      options:
+        key: 体力本
+        source:
+          path: data/apps/ok-ef/working/assets/data/world_map.json
+          category: 干员养成
+    - display_name: 武器养成
+      options:
+        key: 体力本
+        source:
+          path: data/apps/ok-ef/working/assets/data/world_map.json
+          category: 武器养成
+    - display_name: 危境再现
+      options:
+        key: 体力本
+        source:
+          path: data/apps/ok-ef/working/assets/data/world_map.json
+          category: 危境再现
+    - display_name: 危境预演
+      options:
+        key: 体力本
+        source:
+          path: data/apps/ok-ef/working/assets/data/world_map.json
+          category: 危境预演
+    - display_name: 能量淤积点
+      options:
+        key: 体力本
+        source:
+          path: data/apps/ok-ef/working/assets/data/world_map.json
+          category: 能量淤积点
+OneDragon-Launcher:
+- display_name: 每日任务
+  options:
+    values:
+    - display_name: 培养方案
+March7th-Launcher:
+- display_name: 每日任务
+  options:
+    values:
+    - display_name: 培养目标
+ok-nte:
+- display_name: 异象界域
+  physical_name: daily_anomaly
+  options:
+    key: 任务类型
+    values:
+    - display_name: 空幕
+      options:
+        key: 空幕序号
+        values:
+        - display_name: 光暗
+          physical_name: 1
+        - display_name: 魂相
+          physical_name: 2
+        - display_name: 灵咒
+          physical_name: 3
+        - display_name: 守卫萝卜
+          physical_name: 4
+        - display_name: 精神图谱
+          physical_name: 5
+        - display_name: 轨道之夜
+          physical_name: 6
+    - display_name: 异能升级材料
+      options:
+        key: 异能材料序号
+        values:
+        - display_name: 鸟
+          physical_name: 1
+        - display_name: 花
+          physical_name: 2
+        - display_name: 帽
+          physical_name: 3
+        - display_name: 心
+          physical_name: 4
+        - display_name: 杯
+          physical_name: 5
+    - display_name: 弧盘突破材料
+      options:
+        key: 弧盘材料序号
+        values:
+        - display_name: 苹果
+          physical_name: 1
+        - display_name: 弦乐
+          physical_name: 2
+        - display_name: 梦
+          physical_name: 3
+        - display_name: 点心
+          physical_name: 4
+        - display_name: 戏剧
+          physical_name: 5
+    - display_name: 经验与甲硬币
+      options:
+        key: 具体奖励目标
+        values:
+        - display_name: 角色经验
+        - display_name: 弧盘经验
+        - display_name: 甲硬币
+- display_name: 追猎目标
+  physical_name: daily_anomaly_hunter
+  options:
+    key: 追猎目标
+    values:
+    - display_name: 音霸魔王
+    - display_name: 无首铁驭
+    - display_name: 塞润尼缇
+    - display_name: 黑之书
+    - display_name: 海囚
+    - display_name: 围巢鸟
+    - display_name: 斑蝶
+MAA:
+- display_name: 每日任务
+  options:
+    values:
+    - display_name: 红票
+      physical_name: AP-5
+    - display_name: 经验
+      physical_name: LS-6
+    - display_name: 龙门币
+      physical_name: CE-6
+    - display_name: 土
+      physical_name: 1-7

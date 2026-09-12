@@ -49,24 +49,43 @@ def _fake_fetch(url: str) -> str:
     raise AssertionError(url)
 
 
-_YML = """
-ok-nte:
-  dungeons:
-  - name: 未选择
-  - name: 空幕
-    sequences:
-    - {display: 光暗, value: 1}
-    - {display: 魂相, value: 2}
-  - name: 异能升级材料
-    sequences:
-    - {display: 鸟, value: 1}
-  - name: 弧盘突破材料
-    sequences:
-    - {display: 苹果, value: 1}
-  - name: 追猎目标
-    sequences:
-    - {display: 音霸魔王, value: 音霸魔王}
-    - {display: 无首铁驭, value: 无首铁驭}
+_YML = """ok-nte:
+- display_name: 异象界域
+  physical_name: daily_anomaly
+  options:
+    key: 任务类型
+    values:
+    - display_name: 空幕
+      options:
+        key: 空幕序号
+        values:
+        - display_name: 光暗
+          physical_name: 1
+        - display_name: 魂相
+          physical_name: 2
+    - display_name: 异能升级材料
+      options:
+        values:
+        - display_name: 鸟
+          physical_name: 1
+    - display_name: 弧盘突破材料
+      options:
+        values:
+        - display_name: 苹果
+          physical_name: 1
+- display_name: 追猎目标
+  physical_name: daily_anomaly_hunter
+  options:
+    key: 追猎目标
+    values:
+    - display_name: 音霸魔王
+      physical_name: 音霸魔王
+    - display_name: 无首铁驭
+      physical_name: 无首铁驭
+- display_name: 另一个日常
+  options:
+    values:
+    - display_name: 保留
 """
 
 
@@ -108,21 +127,34 @@ class SyncOknteTest(unittest.TestCase):
         self.assertEqual(m._load_hunter(), ["音霸魔王", "无首铁驭"])
 
     def test_apply_numeric_and_hunter(self) -> None:
+        before = load_yaml(self.tmp_path)
         m._apply_numeric(m._fetch_anomaly_totals())
         m._apply_hunter(m._fetch_hunter_targets())
         data = load_yaml(self.tmp_path)
-        by_name = {d["name"]: d for d in data["ok-nte"]["dungeons"]}
+        self.assertEqual(data["ok-nte"][2], before["ok-nte"][2])
+        by_name = {d["display_name"]: d for d in data["ok-nte"][0]["options"]["values"]}
+        self.assertEqual(data["ok-nte"][0]["physical_name"], "daily_anomaly")
+        self.assertEqual(data["ok-nte"][0]["options"]["key"], "任务类型")
+        self.assertEqual(by_name["空幕"]["options"]["key"], "空幕序号")
+        self.assertEqual(data["ok-nte"][1]["physical_name"], "daily_anomaly_hunter")
+        self.assertEqual(data["ok-nte"][1]["options"]["key"], "追猎目标")
         self.assertEqual(
-            [s["value"] for s in by_name["空幕"]["sequences"]], [1, 2, 3, 4, 5, 6]
+            [s["physical_name"] for s in by_name["空幕"]["options"]["values"]],
+            [1, 2, 3, 4, 5, 6],
         )
         self.assertEqual(
-            [s["value"] for s in by_name["异能升级材料"]["sequences"]], [1, 2, 3, 4, 5]
+            [s["physical_name"] for s in by_name["异能升级材料"]["options"]["values"]],
+            [1, 2, 3, 4, 5],
         )
         self.assertEqual(
-            [s["value"] for s in by_name["弧盘突破材料"]["sequences"]], [1, 2, 3, 4, 5]
+            [s["physical_name"] for s in by_name["弧盘突破材料"]["options"]["values"]],
+            [1, 2, 3, 4, 5],
         )
         self.assertEqual(
-            [s["value"] for s in by_name["追猎目标"]["sequences"]],
+            [
+                s.get("physical_name", s["display_name"])
+                for s in data["ok-nte"][1]["options"]["values"]
+            ],
             ["音霸魔王", "无首铁驭", "塞润尼缇", "黑之书", "海囚", "围巢鸟", "斑蝶"],
         )
 

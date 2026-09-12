@@ -38,9 +38,9 @@ class TestReadbackWuWa(unittest.TestCase):
             patch.object(set_config_mod, "safe_update", _setter),
         ):
             cfg = WutheringWavesConfig()
-            cfg.set_dungeon("凝素领域", "5")
+            cfg.set_dungeon("凝素领域", 5)
             self.assertEqual(cfg._read_dungeon()[0], "凝素领域")
-            self.assertEqual(cfg._read_dungeon()[1], "5")
+            self.assertEqual(cfg._read_dungeon()[1], 5)
 
     def test_mapped_sequence_roundtrip(self):
         config: dict = {}
@@ -52,8 +52,8 @@ class TestReadbackWuWa(unittest.TestCase):
             cfg = WutheringWavesConfig()
             cfg.set_dungeon("模拟领域", "共鸣者经验")
             self.assertEqual(cfg._read_dungeon()[0], "模拟领域")
-            # 序列经 values 映射存为英文，反读应反转回中文
-            self.assertEqual(cfg._read_dungeon()[1], "共鸣者经验")
+            # 二级选择反读原生值，菜单根据声明显示中文别名
+            self.assertEqual(cfg._read_dungeon()[1], "Resonator EXP")
 
 
 class TestReadbackGenshin(unittest.TestCase):
@@ -302,9 +302,9 @@ class TestReadbackFacade(unittest.TestCase):
             patch.object(set_config_mod, "safe_update", _setter),
         ):
             cfg = WutheringWavesConfig()
-            cfg.set_dungeon("凝素领域", "5")
+            cfg.set_dungeon("凝素领域", 5)
             self.assertEqual(get_dungeon("ok-ww"), "凝素领域")
-            self.assertEqual(get_sequence("ok-ww"), "5")
+            self.assertEqual(get_sequence("ok-ww"), 5)
 
     def test_facade_unknown_script_returns_none(self):
         self.assertIsNone(get_dungeon("不存在的脚本"))

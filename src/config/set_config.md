@@ -4,7 +4,7 @@
 
 > 设计定位：`set_config` 是适配器，把异构 config 适配成统一调用；不是外观模式，外观整合职责归组合根 `AppService`（编排 `src.service.chain_service` 与 `src.utils.utils_config` 等模块）。
 
-> script_name 为全链路内部唯一标识，由 `get_script_name(script)` 获取，与进程名 `get_process_name` 区分。exe 脚本的 script_name 即进程名 basename 去后缀，如 `ok-ww`；python/bat 脚本文件的 script_name 即 display_name。注册表、`dungeon_list.yml`、`weekly_timeouts.yml` 的 key 全用 script_name，display_name 仅用于展示。config.yml 加载经 `check_script_name_uniqueness` 断言唯一。
+> script_name 为全链路内部唯一标识，由 `get_script_name(script)` 获取，与进程名 `get_process_name` 区分。exe 脚本的 script_name 即进程名 basename 去后缀，如 `ok-ww`；python/bat 脚本文件的 script_name 即 display_name。注册表、`daily_task_list.yml`、`weekly_timeouts.yml` 的 key 全用 script_name，display_name 仅用于展示。config.yml 加载经 `check_script_name_uniqueness` 断言唯一。
 
 ## 架构
 
@@ -69,6 +69,22 @@
 
 ## 设置副本流程 set_dungeon
 
+### 任务声明
+
+日常声明在 `config/daily_task_list.yml`，周常声明在 `config/weekly_task_list.yml`。
+两份文件按脚本分组，组内使用相同的任务列表结构；文件区分日常、周常，不再声明 `type`。
+用户的周几起、超时仍保存在 `weekly.yml`。
+
+- `display_name` 是展示名；`physical_name` 是写入原生配置的值，省略时使用展示名。
+- `options` 是选项组；`key` 指定原生字段，`values` 列举选项，或以 `source.path / category` 定位本机脚本资源。
+- 每个选项可继续包含 `options`。纯展示分类省略该层 `key`，实际副本的子组选项绑定原生字段。
+- 顶层任务 `key` 供对应子类的任务操作使用，如周常开关、列表字段或起始日字段。
+
+`task_config.py` 只读取、校验声明和取得名字映射；`dungeon_config.py` 把声明转换为原有菜单数据。
+`set_config.py` 子类从声明取得字段和别名，沿用原来的写入、反读和周常处理流程。
+目前仍是每脚本一个日常选择入口，异环的两个声明仅由 `NTEConfig` 合并到同一菜单并互斥启用。
+声明允许递归，当前日常菜单支持两级、周常菜单支持一级；更多层的界面接入留到后续。
+
 基类模板流程：`_load()` → `_update_task(config, dungeon_name, sequence)`（含二级序列）→ 有改动则 `_save()`，保存后 `_verify_saved()` 重读校验落盘一致性。
 
 > 写盘校验：`_save()` 是唯一落盘点，写后 `_verify_saved()` 重读并与预期整段相等断言。save_config 为同步阻塞写，重读必为新内容，无需 sleep。校验失败属不该发生，用 assert。
@@ -81,7 +97,7 @@
 
 | 脚本 | 覆盖 set_dungeon | _task_key | 覆盖 _update_task | 说明 |
 |------|-------------------|-------------|------------------------|------|
-| 鸣潮 | 否 | `Which to Farm` | 是 | 经 `super()._update_task(config, dungeon_name, None)` 复用副本写入，再按 `_sequence_map` 写序列；模拟领域需映射值，凝素/无音区直接用 sequence |
+| 鸣潮 | 否 | `Which to Farm` | 是 | 经 `super()._update_task(config, dungeon_name, None)` 复用副本写入，再按声明写序列；二级选择传物理值，直接调用也可传展示名 |
 | 原神 | 否 | `DomainName` | 否 | — |
 | 终末地 | 否 | `体力本` | 否 | — |
 | 崩铁 | 否 | — | 否 | 日常无需适配（set_dungeon 为 no-op，上游自身已支持），chip 呈现声明项 |
@@ -140,16 +156,17 @@ set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 |------|------|
 | `set_config.py` | 本适配器，适配器接口 + 类层级；各脚本路径由子类声明，`@register` 显式注册 |
 | `subscript.py` | config 读写基础设施，`get_script_name` / `load` / `save` / `load_template`，只接收 `rel_path`，不感知具体脚本 |
-| `dungeon_config.py` | `dungeon_list.yml` 解析 |
+| `task_config.py` | 两份任务声明的读取、校验、字段和名字映射 |
+| `dungeon_config.py` | 把任务声明和本机资源转换为现有单副本、周常菜单数据 |
 | `src/link.py` | 游戏/脚本链接集中管理（官网、B 站、GitHub、banner 下载）；与 config 适配解耦。沿用基类 `GameLink` + 各脚本子类（`WutheringWavesLink`/`GenshinLink` 等）继承结构，`@register` 注册到 `_LINKS`，key 为 `_script_name`；本地背景图路径（`background`）仍声明在 set_config 子类，经 `_CONFIGS` 读取 |
-| `config/dungeon_list.yml` | 各脚本支持的副本及序列展示名，key 为 script_name |
+| `config/daily_task_list.yml` | 各脚本支持的副本及序列展示名，key 为 script_name |
 | `config/BGI一条龙.json` 等 | 各脚本 init 模板（粥无模板，`_task_map` 固化类属性）|
 
 ## 如何新增一个游戏适配
 
 1. `set_config.py` 新建子类继承 `ScriptConfig` 并加 `@register`：设 `_script_name`、`display_name` 与路径类属性 `_config_rel_path` 必填、`_game_config_rel_path` 声明 `_game_path_keys` 时必填；需模板初始化才设 `_template_rel_path`，且 `_task_map` 优先固化为类属性（避免反读/写路径依赖模板加载）。
 2. 设 `_task_key` / `_task_map`，需序列支持则覆盖 `_update_task`（在 `super()._update_task(config, dungeon_name, None)` 后补序列），标准流程不够则覆盖 `set_dungeon`；`_init_config` 已在启动时自动触发，新增脚本无需显式调用；无 `_template_rel_path` 时为空操作。
-3. `config/dungeon_list.yml` 加副本/序列选项，key 用 script_name。
+3. `config/daily_task_list.yml` 加副本/序列选项，key 用 script_name。
 4. 补测试 `tests/test_set_config_subclasses.py`。
 
 ## 设计原则
@@ -157,6 +174,6 @@ set_config("ok-ww", dungeon_name="未选择")                         # 跳过
 - 两流程分离：初始化对齐模板与设置副本响应选择独立，不混。
 - 克制：无明确收益不抽抽象。异环多副本共用的映射才抽 `_mode_specs`/`_dungeon_to_mode` 声明式表，鸣潮单副本不抽。
 - 严格 assert：配置不一致立即报错，不静默容忍。字典访问先 assert key 再直接访问，不用 `.get()`。
-- 类型一致：sequence 类型由 `dungeon_list.yml` 的 value 决定，不做额外转换。
+- 类型一致：sequence 类型由 `daily_task_list.yml` 的 physical_name 决定，不把数字转为字符串。
 
 `get_game_path_keys(script_name, rel)` 复用打开游戏所用的路径声明，供恢复保留本机游戏路径；其他文件返回空元组。

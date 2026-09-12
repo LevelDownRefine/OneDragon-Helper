@@ -45,7 +45,7 @@ class TaskCardController(QObject):
         self._game_list = game_list
         self._app_service = app_service
         self._toast = toast
-        # 副本下拉数据缓存：dungeon_list.yml 解析较贵且运行期不变，
+        # 副本下拉数据缓存：daily_task_list.yml 解析较贵且运行期不变，
         # build_dungeon_cache 时一次性构建。
         self._dungeon_map_cache: dict = {}
         self._dungeon_options_cache: dict[str, list] = {}
@@ -78,7 +78,7 @@ class TaskCardController(QObject):
 
         子脚本 config 是日常副本的真相源（selectDungeon 已实时落盘）；绝区零/崩铁
         的 set_dungeon 为 no-op（上游自身已支持到无需本工具配置），反读恒无真相，
-        故回退 dungeon_list.yml 声明的首个选项——即 UI 上直接呈现为已选状态。
+        故回退 daily_task_list.yml 声明的首个选项——即 UI 上直接呈现为已选状态。
         """
         game = self._current
         script_name = game["script_name"]
@@ -99,7 +99,7 @@ class TaskCardController(QObject):
     def weekly_supported(self) -> bool:
         """当前游戏是否支持周常（决定周常行显隐）。
 
-        唯一真相源为 weekly_list.yml：声明了该脚本周常即支持。
+        唯一真相源为 weekly_task_list.yml：声明了该脚本周常即支持。
         """
         return bool(self._app_service.get_weekly_map(self._current["script_name"]))
 
@@ -117,7 +117,7 @@ class TaskCardController(QObject):
         每种周常：{name, has_dungeon, dungeon_label}。has_dungeon 由声明是否含
         dungeons 字段（且有内容）推导，不再用 needs_instance 布尔字段；
         dungeon_label 为已选副本名，需选而未选时返回「选择副本」、无需选返回空。
-        声明（支持哪些周常/可选副本）来自 weekly_list.yml；已选副本反读子脚本
+        声明（支持哪些周常/可选副本）来自 weekly_task_list.yml；已选副本反读子脚本
         config（如 M7A instance_names）——周常侧无 no-op 脚本，故不设回退。
         """
         script_name = self._current["script_name"]
@@ -143,7 +143,7 @@ class TaskCardController(QObject):
     def weekly_dungeon_options(self, weekly_name: str) -> list[str]:
         """某周常的可选副本名列表（如历战余响的全体副本）。
 
-        来自 weekly_list.yml 声明（该周常的 dungeons 字段）；不再依赖游戏脚本
+        来自 weekly_task_list.yml 声明（该周常的 dungeons 字段）；不再依赖游戏脚本
         私有配置。未声明或无需副本返回空列表。
 
         Args:
@@ -166,7 +166,7 @@ class TaskCardController(QObject):
 
     # ── 缓存构建（运行期不变）──────────────────────────────────────────
     def build_dungeon_cache(self, games: list):
-        """一次性解析 dungeon_list.yml 并构建所有脚本的副本下拉数据（运行期不变）。"""
+        """一次性解析 daily_task_list.yml 并构建所有脚本的副本下拉数据（运行期不变）。"""
         self._dungeon_map_cache = self._app_service.get_dungeon_map()
         self._dungeon_options_cache = {
             g["script_name"]: self._build_dungeon_options(g["script_name"])
@@ -214,7 +214,7 @@ class TaskCardController(QObject):
         """选择日常副本（实时落盘子脚本 config）。
 
         绝区零/崩铁的 set_dungeon 为 no-op（上游已支持到无需本工具配置），
-        其日常副本直接取 dungeon_list.yml 声明选项，不经本方法持久化。
+        其日常副本直接取 daily_task_list.yml 声明选项，不经本方法持久化。
         """
         script_name = self._current["script_name"]
         # 实时落盘子脚本 config（与周常副本 selectWeeklyDungeon 一致，经 service）；

@@ -1,24 +1,15 @@
-import os
 from typing import Any
 
-from src.config.set_config import get_dungeon_lists
-from src.utils import (
-    get_root_dir,
-    get_weekly_list_yml_path_under_root,
-    safe_path_join,
+from src.config.set_config import get_dungeon_lists, get_dungeon_options
+from src.config.task_config import (
+    get_options,
+    get_physical_name,
+    load_daily_map,
+    load_weekly_map,
 )
-from src.utils.utils_yaml import load_yaml, load_yaml_optional
 
 DungeonOptions = list[str]
 SequenceOptionsMap = dict[str, list[tuple[str, Any]]]
-
-
-def get_dungeon_config_path() -> str:
-    return safe_path_join(get_root_dir(), "config", "dungeon_list.yml")
-
-
-def load_dungeon_map() -> dict[str, Any]:
-    return load_yaml_optional(get_dungeon_config_path())
 
 
 def parse_dungeon_config(
@@ -27,7 +18,7 @@ def parse_dungeon_config(
     """
     解析单个脚本的副本配置。
 
-    配置格式（结构化）：
+    菜单数据格式（由 get_dungeon_map 转换）：
     dungeons:
       - name: "副本名"
       - name: "有二级选项的副本"
@@ -36,7 +27,7 @@ def parse_dungeon_config(
             value: 实际值
 
     Args:
-        dungeon_cfg: 从 dungeon_list.yml 读取的配置项
+        dungeon_cfg: get_dungeon_map 返回的单脚本菜单数据。
 
     Returns:
         (options, seq_map, show_seq)
@@ -106,64 +97,57 @@ def get_display_name(
     return str(actual_value)
 
 
-def _load_weekly_map() -> dict:
-    """读取 weekly_list.yml（周常声明配置，进 git，必存在）。
-
-    结构：{script_name: [{"name", "dungeons"?}, ...]}。周常起始日（周几起）另存于
-    weekly.yml 的 weekly_start 段，不在本文件。
-    """
-    weekly_list_path = get_weekly_list_yml_path_under_root()
-    assert os.path.exists(weekly_list_path), (
-        f"[dungeon_config] 周常声明配置缺失: {weekly_list_path}"
-    )
-    data = load_yaml(weekly_list_path)
-    # 空文件或内容非 dict 都是声明配置损坏，直接暴露而非静默当成「无声明」。
-    assert isinstance(data, dict), (
-        f"[dungeon_config] 周常声明配置应为 dict（空文件或格式错误）: {weekly_list_path}"
-    )
-    return data
+def _resolve_options(script_name: str, node: dict) -> list[dict]:
+    """展开一组选项的本地资源，保留选项的展示名和物理值。"""
+    if "options" not in node:
+        return []
+    group = node["options"]
+    if "source" not in group:
+        return get_options(node)
+    source = group["source"]
+    # 资源没有另行指定分类时，以节点物理名定位。
+    category = source.get("category", get_physical_name(node))
+    names = get_dungeon_lists(script_name, category, source["path"])
+    return [{"display_name": name} for name in names] if names else []
 
 
 def get_weekly_map(script_name: str) -> list:
-    """返回某脚本支持的周常声明清单（weekly_list.yml）。
-
-    每项：{"name", "dungeons"?}。dungeons 存在且有内容即表示该周常需选副本。
-    声明项若带 ``dungeons_source`` 标记，副本清单取自游戏脚本自身配置（运行期读取，
-    get_dungeon_lists），读不到时降级为 dungeons=[]。文件缺失或该脚本无声明时返回空列表。
-    """
-    defs_map = _load_weekly_map()
+    """把周常声明转换为原有菜单数据；本地资源缺失时没有可选副本。"""
+    defs_map = load_weekly_map()
     if script_name not in defs_map:
         return []
-    defs = list(defs_map[script_name])
-    for d in defs:
-        source = d.get("dungeons_source")
-        if source:
-            # 副本清单来自外部（如 M7A 的 instance_names.json），运行期读取，不再手动维护；
-            # 读不到则降级为无可选副本（has_dungeon=False）。
-            names = get_dungeon_lists(script_name, d["name"], source)
-            d["dungeons"] = names if names is not None else []
+    defs = []
+    for task in defs_map[script_name]:
+        item = {"name": task["display_name"]}
+        if "options" in task:
+            options = _resolve_options(script_name, task)
+            assert all("options" not in option for option in options), (
+                "当前周常菜单只支持一级选择"
+            )
+            item["dungeons"] = [option["display_name"] for option in options]
+        defs.append(item)
     return defs
 
 
 def get_dungeon_map() -> dict:
-    """返回日常副本/序列配置映射（dungeon_list.yml）。
-
-    声明项若带 ``dungeons_source`` 标记，其二级序列取自游戏脚本自身配置（运行期读取，
-    get_dungeon_lists），读不到时降级为 sequences=[]。文件缺失时返回空 dict。
-    """
-    data = load_dungeon_map()
-    for script_name, cfg in data.items():
-        if not isinstance(cfg, dict):
-            continue
-        for d in cfg.get("dungeons", []):
-            if not isinstance(d, dict):
-                continue
-            source = d.get("dungeons_source")
-            if source:
-                # 二级序列来自外部（如 ok-ef 的 world_map.json），运行期读取，不手动维护；
-                # 读不到则降级为无可选序列（show_seq=False）。
-                names = get_dungeon_lists(script_name, d["name"], source)
-                d["sequences"] = (
-                    [{"display": n, "value": n} for n in names] if names else []
+    """把日常声明转换为原有单副本菜单，二级选择继续传物理值。"""
+    data = {}
+    for script_name in load_daily_map():
+        dungeons = []
+        for option in get_dungeon_options(script_name):
+            item = {"name": option["display_name"]}
+            if "options" in option:
+                children = _resolve_options(script_name, option)
+                assert all("options" not in child for child in children), (
+                    "当前日常菜单最多支持两级选择"
                 )
+                item["sequences"] = [
+                    {
+                        "display": child["display_name"],
+                        "value": get_physical_name(child),
+                    }
+                    for child in children
+                ]
+            dungeons.append(item)
+        data[script_name] = {"dungeons": dungeons}
     return data

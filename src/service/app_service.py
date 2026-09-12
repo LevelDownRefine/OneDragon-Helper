@@ -4,7 +4,7 @@
 
 peer：
 - 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils.utils_config` 模块函数
-- 副本与周常声明读取（dungeon_list.yml / weekly_list.yml）：归 :mod:`src.config.dungeon_config` 模块函数
+- 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.dungeon_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
 - 周常运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段）：归 :mod:`src.utils.utils_weekly` 模块函数
@@ -78,11 +78,11 @@ class AppService:
 
     # ── 副本 / 周常声明（src.config.dungeon_config 模块函数）────────────
     def get_weekly_map(self, script_name: str) -> list:
-        """读取 weekly_list.yml 的周常声明清单。"""
+        """读取 weekly_task_list.yml 的周常声明清单。"""
         return get_weekly_map(script_name)
 
     def get_dungeon_map(self) -> dict:
-        """读取 dungeon_list.yml 的副本/序列配置。"""
+        """读取 daily_task_list.yml 的副本/序列配置。"""
         return get_dungeon_map()
 
     # ── 单脚本配置（src.utils.utils_config 模块函数）─────────────────────────

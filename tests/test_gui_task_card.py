@@ -24,9 +24,19 @@ class _EmptyGameList:
 
 
 def _write_defs(tmp, data):
-    """写临时 weekly_list.yml（周常声明配置）。"""
-    path = os.path.join(tmp.name, "weekly_list.yml")
-    dump_yaml_file(path, data)
+    """写临时 weekly_task_list.yml（周常声明配置）。"""
+    path = os.path.join(tmp.name, "weekly_task_list.yml")
+    declarations = {}
+    for script_name, tasks in data.items():
+        declarations[script_name] = []
+        for task in tasks:
+            definition = {"display_name": task["name"]}
+            if "dungeons" in task:
+                definition["options"] = {
+                    "values": [{"display_name": name} for name in task["dungeons"]]
+                }
+            declarations[script_name].append(definition)
+    dump_yaml_file(path, declarations)
     return path
 
 
@@ -34,7 +44,7 @@ def _make_controller(script_name="March7th-Launcher", display_name="崩铁"):
     games = [{"script_name": script_name, "display_name": display_name}]
     game_list = _FakeGameList(games)
     service = MagicMock()
-    # 副本/周常声明经真实 dungeon_config 模块函数读取（weekly_list.yml 路径已由用例 patch）。
+    # 副本/周常声明经真实 dungeon_config 模块函数读取（weekly_task_list.yml 路径已由用例 patch）。
     service.get_weekly_map.side_effect = get_weekly_map
     service.get_dungeon_map.side_effect = get_dungeon_map
     service.get_weekly_start.return_value = None
@@ -44,7 +54,7 @@ def _make_controller(script_name="March7th-Launcher", display_name="崩铁"):
 
 class TestWeeklyItems(unittest.TestCase):
     def test_weekly_items_for_star_rail(self):
-        """崩铁两种周常（来自 weekly_list.yml）：货币战争(无副本) + 历战余响(有副本)。"""
+        """崩铁两种周常（来自 weekly_task_list.yml）：货币战争(无副本) + 历战余响(有副本)。"""
         tmp = tempfile.TemporaryDirectory()
         defs_path = _write_defs(
             tmp,
@@ -60,7 +70,7 @@ class TestWeeklyItems(unittest.TestCase):
         )
         with (
             patch(
-                "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
+                "src.config.task_config.get_weekly_task_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(task_card_mod, "get_weekly_dungeon", return_value=None),
@@ -78,7 +88,7 @@ class TestWeeklyItems(unittest.TestCase):
         self.assertEqual(items[1]["dungeon_label"], "选择副本")
 
     def test_weekly_dungeon_options_reads_from_config(self):
-        """副本清单来自 weekly_list.yml 的 dungeons 字段，不再依赖游戏脚本配置。"""
+        """副本清单来自 weekly_task_list.yml 的 dungeons 字段，不再依赖游戏脚本配置。"""
         tmp = tempfile.TemporaryDirectory()
         defs_path = _write_defs(
             tmp,
@@ -92,7 +102,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
+            "src.config.task_config.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -112,7 +122,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
+            "src.config.task_config.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -131,7 +141,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
+            "src.config.task_config.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -139,7 +149,7 @@ class TestWeeklyItems(unittest.TestCase):
         tmp.cleanup()
 
     def test_weekly_supported_follows_config(self):
-        """weekly_supported 唯一真相源为 weekly_list.yml：声明即支持，未声明即不支持。"""
+        """weekly_supported 唯一真相源为 weekly_task_list.yml：声明即支持，未声明即不支持。"""
         # 崩铁声明、鸣潮未声明
         tmp = tempfile.TemporaryDirectory()
         defs_path = _write_defs(
@@ -151,7 +161,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
+            "src.config.task_config.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl_star = _make_controller("March7th-Launcher", "崩铁")
@@ -162,10 +172,10 @@ class TestWeeklyItems(unittest.TestCase):
 
     def test_weekly_items_empty_for_non_weekly_script(self):
         tmp = tempfile.TemporaryDirectory()
-        # ok-ww 不在 weekly_list.yml 声明 → 空列表
+        # ok-ww 不在 weekly_task_list.yml 声明 → 空列表
         defs_path = _write_defs(tmp, {})
         with patch(
-            "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
+            "src.config.task_config.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller("ok-ww", "鸣潮")
@@ -272,7 +282,7 @@ class TestWeeklyItemsReadback(unittest.TestCase):
         )
         with (
             patch(
-                "src.config.dungeon_config.get_weekly_list_yml_path_under_root",
+                "src.config.task_config.get_weekly_task_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(

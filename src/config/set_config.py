@@ -4,6 +4,14 @@ import logging
 import os
 from typing import Any
 
+from src.config.task_config import (
+    get_daily_config,
+    get_options,
+    get_physical_name,
+    get_value_map,
+    get_weekly_config,
+    load_daily_map,
+)
 from src.utils.utils_sub_config import (
     get_sub_config_path as _get_config_path_impl,
 )
@@ -497,12 +505,17 @@ class ScriptConfig:
         return node
 
     @classmethod
+    def get_dungeon_options(cls) -> list[dict]:
+        """取得单个日常的选项声明；特殊展示由子类适配。"""
+        return get_options(get_daily_config(cls._script_name))
+
+    @classmethod
     def get_dungeon_lists(cls, task_name: str, source: str) -> list[str] | None:
         """读取某任务（周常/日常）的可选副本名清单（类方法，无需实例化）。
 
         Args:
             task_name: 任务名（周常/日常均可，如「历战余响」）。
-            source: 来源标记，即 weekly_list.yml 的 ``dungeons_source``。
+            source: options.source.path 声明的脚本内相对路径。
 
         Returns:
             副本名列表（含「无」等占位）；未适配或源不可达时返回 None。
@@ -570,25 +583,15 @@ class WutheringWavesConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "鸣潮"
-    _task_key = "Which to Farm"
-    _task_map = {
-        "凝素领域": "Forgery Challenge",
-        "模拟领域": "Simulation Challenge",
-        "无音区": "Tacet Suppression",
-    }
+    _daily_config = get_daily_config(_script_name)
+    _task_key = _daily_config["options"]["key"]
+    _task_map = get_value_map(_daily_config)
     _sequence_map = {
-        "模拟领域": {
-            "key": "Material Selection",
-            "values": {
-                "共鸣者经验": "Resonator EXP",
-                "武器经验": "Weapon EXP",
-                "贝币": "Shell Credit",
-            },
-        },
-        "无音区": {"key": "Which Tacet Suppression to Farm", "values": None},
-        "凝素领域": {"key": "Which Forgery Challenge to Farm", "values": None},
+        option["display_name"]: option["options"]
+        for option in get_options(_daily_config)
     }
-    _weekly_task_name = "Check Weekly Garden"
+    _weekly_config = get_weekly_config(_script_name, "幻梦游园")
+    _weekly_task_name = get_physical_name(_weekly_config)
 
     def _write_weekly(self, enabled: bool) -> None:
         """控制「Check Weekly Garden」在 Additional Tasks 中的增删。
@@ -601,9 +604,7 @@ class WutheringWavesConfig(ScriptConfig):
         """
         config = self._load()
         # 周常（乐园）在 Additional Tasks 列表中任务名 _weekly_task_name。
-        tasks = get_field(
-            config, "Additional Tasks to Run After Daily Task", self.display_name, list
-        )
+        tasks = get_field(config, self._weekly_config["key"], self.display_name, list)
         contains = self._weekly_task_name in tasks
         if enabled == contains:
             logger.info(
@@ -647,16 +648,15 @@ class WutheringWavesConfig(ScriptConfig):
         )
         cfg = self._sequence_map[dungeon_name]
 
-        if cfg["values"] is not None:
-            assert sequence in cfg["values"], (
-                f"[set_dungeon][{self.display_name}] 未适配的序列: {sequence}"
-            )
-            target = cfg["values"][sequence]
-        else:
-            target = sequence
-
+        values = get_value_map({"options": cfg})
+        # 直接调用仍可传展示名；菜单的二级选择已是物理值。
+        if sequence in values:
+            sequence = values[sequence]
+        assert sequence in values.values(), (
+            f"[set_dungeon][{self.display_name}] 未适配的序列: {sequence}"
+        )
         changed |= safe_update(
-            config, cfg["key"], target, self.display_name, assert_key_exists=False
+            config, cfg["key"], sequence, self.display_name, assert_key_exists=False
         )
         return changed
 
@@ -664,7 +664,7 @@ class WutheringWavesConfig(ScriptConfig):
         """反读当前日常副本与二级序列值（与 set_dungeon / _update_task 对称）。
 
         先经基类标准反转得到副本名，再按当前副本从 ``_sequence_map`` 读回原始序列值
-        （``values`` 映射反转回中文）。
+        （展示别名由界面根据声明转换）。
 
         Returns:
             ``(副本中文名, 序列值)``；无序列通道/未设置时序列为 None。
@@ -682,10 +682,6 @@ class WutheringWavesConfig(ScriptConfig):
         raw = config.get(cfg["key"])
         if raw is None:
             return dungeon, None  # 未选择序号
-        if cfg["values"] is not None:
-            inv = {v: k for k, v in cfg["values"].items()}
-            assert raw in inv, f"[set_config][{self.display_name}] 未知序列值: {raw!r}"
-            return dungeon, inv[raw]
         return dungeon, raw
 
 
@@ -694,7 +690,10 @@ class WutheringWavesConfig(ScriptConfig):
 class GenshinConfig(ScriptConfig):
     _script_name = "BetterGI"
     display_name = "原神"
-    _task_key = "DomainName"
+    _daily_config = get_daily_config(_script_name)
+    _task_keys = {option["options"]["key"] for option in get_options(_daily_config)}
+    assert len(_task_keys) == 1, "展示分类必须共用一个原生字段"
+    _task_key = _task_keys.pop()
     _backup_paths = ("User",)
     _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
@@ -716,36 +715,24 @@ class GenshinConfig(ScriptConfig):
         """读 BetterGI 的 tp.json，取某秘境分类（周常/日常）的副本名清单。
 
         Args:
-            task_name: 秘境分类（yml 中的中文名，如「圣遗物」）。
+            task_name: source.category 中的原生秘境分类（如 BlessDomain）。
             source: tp.json 相对脚本根目录的路径。
 
         Returns:
             副本名列表（即 tp.json 的 ``name`` 字段）；文件缺失/空时返回 ``[]``。
         """
-        # tp.json 按地图场景分组、秘境类别用英文 type；与 dungeon_list.yml 的中文
-        # 分类名（圣遗物/武器/天赋）不同，故在此维护「中文分类 → tp.json type」映射。
-        # type 含义：BlessDomain=圣遗物本，ForgeryDomain=武器本，MasteryDomain=天赋本。
-        tp_domain_type_by_category = {
-            "圣遗物": "BlessDomain",
-            "武器": "ForgeryDomain",
-            "天赋": "MasteryDomain",
-        }
         data = load_game_config(cls._script_name, source)
         if not data:
             return []
         assert isinstance(data, dict), (
             f"[set_config][{cls.display_name}] 副本名应为 dict"
         )
-        tp_type = tp_domain_type_by_category.get(task_name)
-        assert tp_type is not None, (
-            f"[set_config][{cls.display_name}] 未适配的秘境分类: {task_name!r}"
-        )
         names: list[str] = []
         for scene in data.get("data", []):
             if not isinstance(scene, dict):
                 continue
             for pt in scene.get("points", []):
-                if isinstance(pt, dict) and pt.get("type") == tp_type:
+                if isinstance(pt, dict) and pt.get("type") == task_name:
                     name = pt.get("name")
                     if name:
                         names.append(name)
@@ -757,13 +744,16 @@ class GenshinConfig(ScriptConfig):
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
-    _task_key = "体力本"
+    _daily_config = get_daily_config(_script_name)
+    _task_keys = {option["options"]["key"] for option in get_options(_daily_config)}
+    assert len(_task_keys) == 1, "展示分类必须共用一个原生字段"
+    _task_key = _task_keys.pop()
     _template_rel_path = "okef一条龙.json"
     _backup_paths = ("data/apps/ok-ef/working/configs",)
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
-    _weekly_task_name = "只买不卖"
+    _weekly_task_name = get_weekly_config(_script_name, "卖出物资")["key"]
     """周常（卖出物资）在 DailyTask.json 中的开关键；true=只买不卖=不卖=周常关。"""
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None) -> None:
@@ -833,7 +823,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _weekly_config_rel_path = "config/01/one_dragon/_group.yml"
     _game_path_keys = ("game_path",)
     background = "assets/ui/static_background.webp"
-    _weekly_task_name = "lost_void"
+    _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "迷失之地"))
 
     def set_dungeon(self, dungeon_name: str, sequence: str | int | None = None):
         logger.info(f"[set_config][{self.display_name}] zzz无需适配")
@@ -872,7 +862,8 @@ class StarRailConfig(ScriptConfig):
     _template_rel_path = "M7A一条龙.yml"
     _game_path_keys = ("game_path",)
     background = "assets/app/images/bg37.jpg"
-    _weekly_task_name = "currencywars_enable"
+    _weekly_task_name = get_weekly_config(_script_name, "货币战争")["key"]
+    _echo_config = get_weekly_config(_script_name, "历战余响")
 
     @classmethod
     def get_dungeon_lists(cls, task_name: str, source: str) -> list[str]:
@@ -929,7 +920,7 @@ class StarRailConfig(ScriptConfig):
             self.display_name,
         )
         # 历战余响：周几起交给 M7A 自身门控，与副本选型 instance_names 正交
-        config["echo_of_war_start_day_of_week"] = start_day
+        config[self._echo_config["key"]] = start_day
         self._save(config)
 
     def set_weekly_start_day(self, start_day: int) -> None:
@@ -948,18 +939,18 @@ class StarRailConfig(ScriptConfig):
         # 前置条件：游戏原生 config 路径有效（游戏已安装、script_path 正确），由 GUI 侧
         # 调用前保证；本方法假设该前置成立，不做存在性兜底盘。
         config = self._load(allow_missing=True) or {}
-        config["echo_of_war_start_day_of_week"] = start_day
+        config[self._echo_config["key"]] = start_day
         self._save(config)
 
     def set_weekly_dungeon(self, weekly_name: str, dungeon_name: str) -> None:
         """写入某周常当前选中的副本名到 config.yaml 的 instance_names。
 
-        副本名清单的展示与下拉选项由 OneDragon-Helper 的 weekly_list.yml 声明
+        副本名清单的展示与下拉选项由 OneDragon-Helper 的 weekly_task_list.yml 声明
         （dungeons 字段）负责，本方法只承担把用户所选写回 M7A 游戏配置的本分。
 
         Args:
             weekly_name: 周常名（如「历战余响」）；即 instance_names 的键。
-            dungeon_name: 选中的副本名（来自 weekly_list.yml 声明）。
+            dungeon_name: 选中的副本名（来自 weekly_task_list.yml 声明）。
         """
         config = self._load()
         # instance_names 是 M7A 约定键名（{周常名: 副本名} 的 dict），保持不动；
@@ -968,7 +959,12 @@ class StarRailConfig(ScriptConfig):
         if not isinstance(instance_names, dict):
             instance_names = {}
             config["instance_names"] = instance_names
-        instance_names[weekly_name] = dungeon_name
+        task = get_weekly_config(self._script_name, weekly_name)
+        values = get_value_map(task)
+        if values:
+            assert dungeon_name in values, f"未知周常副本: {dungeon_name!r}"
+            dungeon_name = values[dungeon_name]
+        instance_names[get_physical_name(task)] = dungeon_name
         self._save(config)
 
     def _read_weekly_dungeon(self, weekly_name: str) -> str | None:
@@ -992,7 +988,12 @@ class StarRailConfig(ScriptConfig):
         assert isinstance(instance_names, dict), (
             f"[set_config][{self.display_name}] instance_names 必须是 dict"
         )
-        return instance_names.get(weekly_name)  # 可能为 None（未选周常副本）
+        task = get_weekly_config(self._script_name, weekly_name)
+        # 未选周常副本时返回 None。
+        value = instance_names.get(get_physical_name(task), None)
+        names = {value: name for name, value in get_value_map(task).items()}
+        # 未维护别名的上游副本直接显示原生值。
+        return names.get(value, value)
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
@@ -1005,33 +1006,41 @@ class NTEConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "异环"
-    _exclusive_routine_items = ("daily_anomaly", "daily_anomaly_hunter")
+    _daily_configs = load_daily_map()[_script_name]
+    _anomaly = next(
+        task for task in _daily_configs if task["display_name"] == "异象界域"
+    )
+    _hunter = next(
+        task for task in _daily_configs if task["display_name"] == "追猎目标"
+    )
+    _exclusive_routine_items = (get_physical_name(_anomaly), get_physical_name(_hunter))
     """互斥的两个日常 routine item id（DailyRoutineTask.json）。"""
+    _task_map = get_value_map(_anomaly)
     _anomaly_seq_key_map = {
-        "异能升级材料": "异能材料序号",
-        "空幕": "空幕序号",
-        "弧盘突破材料": "弧盘材料序号",
-        "经验与甲硬币": "具体奖励目标",
+        option["display_name"]: option["options"]["key"]
+        for option in get_options(_anomaly)
     }
 
-    # 日常两种互斥模式：键 = 互斥 routine item id = DailyRoutineTaskConfigs.json 段名。
+    # 保留两种互斥玩法，由本子类把声明接入单副本入口。
     _mode_specs = {
-        "daily_anomaly": {
-            "task_field": "任务类型",  # 副本中文名存此字段；追猎模式为 None
-            "seq_fields": _anomaly_seq_key_map,  # 副本 → 序号字段
+        get_physical_name(_anomaly): {
+            "task_field": _anomaly["options"]["key"],
+            "seq_fields": _anomaly_seq_key_map,
         },
-        "daily_anomaly_hunter": {
-            "task_field": None,  # 追猎目标无任务类型通道
-            "seq_fields": {"追猎目标": "追猎目标"},  # 副本名即 boss 名
+        get_physical_name(_hunter): {
+            "task_field": None,
+            "seq_fields": {_hunter["display_name"]: _hunter["options"]["key"]},
         },
+    }
+    _dungeon_to_mode = {
+        **dict.fromkeys(_anomaly_seq_key_map, get_physical_name(_anomaly)),
+        _hunter["display_name"]: get_physical_name(_hunter),
     }
 
-    # 副本中文名 → 所属模式 id（写路径按 dungeon 反查模式，避免可变实例状态）。
-    _dungeon_to_mode = {
-        **dict.fromkeys(_anomaly_seq_key_map, "daily_anomaly"),
-        "追猎目标": "daily_anomaly_hunter",
-    }
-    """副本中文名 → 日常模式 id（即 _mode_specs 的键）。"""
+    @classmethod
+    def get_dungeon_options(cls) -> list[dict]:
+        """异象类别与追猎目标仍在同一个副本菜单中互斥选择。"""
+        return get_options(cls._anomaly) + [cls._hunter]
 
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
@@ -1108,7 +1117,7 @@ class NTEConfig(ScriptConfig):
             dungeon_changed = safe_update(
                 section_dict,
                 task_field,
-                dungeon_name,
+                self._task_map[dungeon_name],
                 self.display_name,
                 assert_key_exists=False,
             )
@@ -1188,11 +1197,7 @@ class NTEConfig(ScriptConfig):
         }
         # 追猎目标优先（与既有解析顺序一致）；互斥场景下仅一个 enabled。
         mode_id = next(
-            (
-                mid
-                for mid in ("daily_anomaly_hunter", "daily_anomaly")
-                if mid in enabled
-            ),
+            (mid for mid in reversed(self._exclusive_routine_items) if mid in enabled),
             None,
         )
         if mode_id is None:
@@ -1210,14 +1215,17 @@ class NTEConfig(ScriptConfig):
         assert isinstance(section, dict), (
             f"[set_config][{self.display_name}] {mode_id} 段必须是 dict"
         )
-        if mode_id == "daily_anomaly_hunter":
+        if mode_id == get_physical_name(self._hunter):
             # 追猎目标：副本名即 boss 字段名（段缺失/空串按未选 boss，容忍未落盘）。
-            boss = section.get("追猎目标")
-            return "追猎目标", boss if boss else None
+            boss = section.get(self._hunter["options"]["key"])
+            return self._hunter["display_name"], boss if boss else None
         # 异象界域：副本名在 任务类型 字段，序号经 _anomaly_seq_key_map 反查。
-        dungeon = section.get("任务类型")
+        dungeon = section.get(self._anomaly["options"]["key"])
         if dungeon in (None, ""):  # 段缺失/字段为空串均视为未选具体副本
             return None, None
+        names = {value: name for name, value in self._task_map.items()}
+        assert dungeon in names, f"未知异象类别: {dungeon!r}"
+        dungeon = names[dungeon]
         key = self._anomaly_seq_key_map.get(dungeon)
         sequence = section.get(key) if key else None
         return dungeon, sequence
@@ -1238,15 +1246,15 @@ class ArknightsConfig(ScriptConfig):
         "StartUpSettings",
         "EmulatorPath",
     )
-    _weekly_task_name = "理智药剂"
+    _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "理智药剂"))
     # 关卡代码 → 中文名。基于 StagePlan[0] 识别任务，不再依赖 TaskQueue 顺序。
     # 只维护这5个关卡，其余 FightTask 不动。
     _task_map = {
         "Annihilation": "剿灭",
-        "AP-5": "红票",
-        "LS-6": "经验",
-        "CE-6": "龙门币",
-        "1-7": "土",
+        **{
+            get_physical_name(option): option["display_name"]
+            for option in get_options(get_daily_config(_script_name))
+        },
     }
 
     def _update_task(
@@ -1277,7 +1285,7 @@ class ArknightsConfig(ScriptConfig):
         )
         target_stage = stage_by_name[dungeon_name]
 
-        fixed_names = {"剿灭", "土"}
+        fixed_stages = {"Annihilation", "1-7"}
         changed = False
         matched_target = False
         for task in task_config:
@@ -1293,7 +1301,7 @@ class ArknightsConfig(ScriptConfig):
                 matched_target = True
             name = self._task_map[stage]
 
-            should_enable = name in fixed_names or name == dungeon_name
+            should_enable = stage in fixed_stages or name == dungeon_name
             changed |= safe_update(
                 task,
                 "IsEnable",
@@ -1345,7 +1353,7 @@ class ArknightsConfig(ScriptConfig):
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
         task_config = config["Configurations"]["Default"]["TaskQueue"]
-        fixed_names = {"剿灭", "土"}
+        fixed_stages = {"Annihilation", "1-7"}
         has_1_7 = False
         for task in task_config:
             if task.get("$type") != "FightTask":
@@ -1359,13 +1367,13 @@ class ArknightsConfig(ScriptConfig):
             if stage not in self._task_map:
                 continue
             name = self._task_map[stage]
-            if name in fixed_names:
+            if stage in fixed_stages:
                 continue
             if task.get("IsEnable"):
                 return name, None
         # 所有维护关卡都未启用，但有1-7 → 读为土
         if has_1_7:
-            return "土", None
+            return self._task_map["1-7"], None
         return None, None
 
     def set_weekly(self, start_day: int) -> None:
@@ -1541,6 +1549,12 @@ def set_config(
         cfg.set_weekly(weekly_start)
 
 
+def get_dungeon_options(script_name: str) -> list[dict]:
+    """取得脚本的日常副本选项声明。"""
+    assert script_name in _CONFIGS, f"未适配脚本: {script_name}"
+    return _CONFIGS[script_name].get_dungeon_options()
+
+
 def get_dungeon_lists(
     script_name: str, task_name: str, source: str
 ) -> list[str] | None:
@@ -1551,7 +1565,7 @@ def get_dungeon_lists(
     Args:
         script_name: 脚本唯一标识（如 ``March7th-Launcher``）。
         task_name: 任务名（周常/日常均可，如「历战余响」）。
-        source: 来源标记，即 weekly_list.yml 的 ``dungeons_source``。
+        source: options.source.path 声明的脚本内相对路径。
 
     Returns:
         副本名列表（含「无」等占位）；不可用时返回 None。

@@ -19,7 +19,7 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 3. **gui** — 只放纯图形界面，即 QML、控制器与弹窗；**不写盘、不承载业务逻辑**，写盘统一经 service。详见 `src/gui/README.md`。
 4. **service，外观/facade** — 整合 config 读写·UI 状态·链生成·校验·runner 命令，对 GUI/CLI 暴露统一薄接口，无 Qt 依赖，从 gui 分出。详见 `src/service/README.md`。
 
-> 副本列表 `config/dungeon_list.yml` 各游戏维护方式不同：终末地/鸣潮/异环走 GitHub Action，原神走手动 skill，其余固定；日志解析/失败重跑/邮件汇总之运行后动作内联于 `src/log` 与 `service`（由 `schedule_run` 统一编排，详见 `src/service/README.md`）；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
+> 日常和周常分别声明于 `config/daily_task_list.yml`、`config/weekly_task_list.yml`，统一使用 `display_name / physical_name` 和递归 `options`；原神/终末地反读脚本本地资源，鸣潮/异环通过 GitHub Action 同步选项。当前每脚本仍为一个日常入口，异环的互斥玩法由子类处理。日志解析/失败重跑/邮件汇总之运行后动作内联于 `src/log` 与 `service`（由 `schedule_run` 统一编排，详见 `src/service/README.md`）；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
 
 ## 铁律：违反即打回
 
