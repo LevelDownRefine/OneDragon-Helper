@@ -4,8 +4,8 @@ import "Theme.js" as Theme
 
 // 任务调度卡（日常副本 / 周常）：复刻旧 src/gui/task_card.py 的视觉与行为契约。
 // 数据经 Bridge 暴露：taskTitle / taskAdapted / weeklySupported / dailyItems / weeklyItems；
-// 下拉数据经 dailyTaskOptions(dailyName) / weeklyTaskOptions(weeklyName)；
-// 副本写回经 selectDailyTask(dailyName, taskName, sequence) / selectWeeklyTask；
+// 下拉数据经 dailyOptions(dailyName) / weeklyOptions(weeklyName)；
+// 副本写回经 selectDaily(dailyName, taskName, sequence) / selectWeekly；
 // 日常开关（仅声明了开关的脚本，如异环）经 setDailyEnabled(dailyName, enabled)。
 // task/sequence 持久化到子脚本 config；周几起（weekly_start）持久化到 weekly_start.yml。
 //
@@ -149,14 +149,14 @@ Item {
                     Rectangle {
                         id: dailyChip
                         // 首行沿用旧 objectName（单日常脚本的既有契约）；多日常脚本逐行区分。
-                        objectName: index === 0 ? "dailyTaskButton"
-                                                : "dailyTaskButton" + index
+                        objectName: index === 0 ? "dailyButton"
+                                                : "dailyButton" + index
                         x: cardRoot.chipX; y: 10
                         width: 220
                         height: 36; radius: 10
                         color: dailyMouse.containsMouse ? Theme.hover : Theme.control
                         border.width: 1
-                        border.color: dailyTaskPopup.visible && dailyTaskPopup.dailyName === modelData.name
+                        border.color: dailyPopup.visible && dailyPopup.dailyName === modelData.name
                                       ? Theme.accent : Theme.border
                         Behavior on color { ColorAnimation { duration: 140 } }
                         Text {
@@ -173,7 +173,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 20; height: 20
                             source: "image://uiicon/chevron_down"
-                            rotation: dailyTaskPopup.visible && dailyTaskPopup.dailyName === modelData.name ? 180 : 0
+                            rotation: dailyPopup.visible && dailyPopup.dailyName === modelData.name ? 180 : 0
                             opacity: 0.7
                         }
                         MouseArea {
@@ -182,24 +182,24 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (Bridge.dailyTaskOptions(modelData.name).length === 0) {
+                                if (Bridge.dailyOptions(modelData.name).length === 0) {
                                     Bridge.toastRequested("暂无副本选项")
                                     return
                                 }
-                                var sameRow = dailyTaskPopup.visible
-                                              && dailyTaskPopup.dailyName === modelData.name
-                                dailyTaskPopup.dailyName = modelData.name
-                                dailyTaskPopup.canDisable = modelData.can_disable
-                                dailyTaskPopup.anchorTop = dailyArea.y + index * dailyArea.rowH
-                                dailyTaskPopup.anchorBottom = dailyTaskPopup.anchorTop + dailyArea.rowH
-                                weeklyTaskPopup.visible = false
+                                var sameRow = dailyPopup.visible
+                                              && dailyPopup.dailyName === modelData.name
+                                dailyPopup.dailyName = modelData.name
+                                dailyPopup.canDisable = modelData.can_disable
+                                dailyPopup.anchorTop = dailyArea.y + index * dailyArea.rowH
+                                dailyPopup.anchorBottom = dailyPopup.anchorTop + dailyArea.rowH
+                                weeklyPopup.visible = false
                                 // 同一行再点=收起；换一行=就地换菜单（visible 不变，须手动重取）
                                 if (sameRow) {
-                                    dailyTaskPopup.visible = false
-                                } else if (dailyTaskPopup.visible) {
-                                    dailyTaskPopup.openMenu()
+                                    dailyPopup.visible = false
+                                } else if (dailyPopup.visible) {
+                                    dailyPopup.openMenu()
                                 } else {
-                                    dailyTaskPopup.visible = true
+                                    dailyPopup.visible = true
                                 }
                             }
                         }
@@ -260,7 +260,7 @@ Item {
                         visible: hasTask
                         color: weeklyMouse.containsMouse ? Theme.hover : Theme.control
                         border.width: 1
-                        border.color: weeklyTaskPopup.visible && weeklyTaskPopup.weeklyName === modelData.name
+                        border.color: weeklyPopup.visible && weeklyPopup.weeklyName === modelData.name
                                       ? Theme.accent : Theme.border
                         Behavior on color { ColorAnimation { duration: 140 } }
                         Text {
@@ -277,7 +277,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 20; height: 20
                             source: "image://uiicon/chevron_down"
-                            rotation: weeklyTaskPopup.visible && weeklyTaskPopup.weeklyName === modelData.name ? 180 : 0
+                            rotation: weeklyPopup.visible && weeklyPopup.weeklyName === modelData.name ? 180 : 0
                             opacity: 0.7
                         }
                         MouseArea {
@@ -287,12 +287,12 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             enabled: weeklyArea.supported
                             onClicked: {
-                                weeklyTaskPopup.weeklyName = modelData.name
+                                weeklyPopup.weeklyName = modelData.name
                                 var rowTop = weeklyArea.y + index * weeklyArea.rowH
-                                weeklyTaskPopup.anchorTop = rowTop
-                                weeklyTaskPopup.anchorBottom = rowTop + weeklyArea.rowH
-                                weeklyTaskPopup.visible = !weeklyTaskPopup.visible
-                                dailyTaskPopup.visible = false
+                                weeklyPopup.anchorTop = rowTop
+                                weeklyPopup.anchorBottom = rowTop + weeklyArea.rowH
+                                weeklyPopup.visible = !weeklyPopup.visible
+                                dailyPopup.visible = false
                             }
                         }
                     }
@@ -310,17 +310,17 @@ Item {
     // 避免每行测量导致的 hover 重布局抖动 → 卡顿）。
     // 每个日常一个弹窗实例：dailyName 标记当前是哪个日常，选项在 openMenu 时取定。
     Item {
-        id: dailyTaskPopup
-        objectName: "dailyTaskPopup"
+        id: dailyPopup
+        objectName: "dailyPopup"
         z: 100
         visible: false
         x: dailyArea.x + cardRoot.chipX
-        y: dailyTaskPopup.popupY
+        y: dailyPopup.popupY
         // 宽度随一级列 +（出现二级列时）；高度封顶避免出屏，超出由各列 Flickable 独立滚动
-        width: dailyTaskPopup.rightW > 0
-               ? (dailyTaskPopup.leftW + 4 + dailyTaskPopup.rightW + 8)
-               : (dailyTaskPopup.leftW + 8)
-        height: dailyTaskPopup.popupHeight
+        width: dailyPopup.rightW > 0
+               ? (dailyPopup.leftW + 4 + dailyPopup.rightW + 8)
+               : (dailyPopup.leftW + 8)
+        height: dailyPopup.popupHeight
 
         property string dailyName: ""
         property bool canDisable: false
@@ -344,7 +344,7 @@ Item {
         TextMetrics { id: measTm; font.pixelSize: 13 }
 
         function openMenu() {
-            options = Bridge.dailyTaskOptions(dailyTaskPopup.dailyName)
+            options = Bridge.dailyOptions(dailyPopup.dailyName)
             var maxW = 60
             for (var i = 0; i < options.length; i++) {
                 measTm.text = options[i].name
@@ -388,23 +388,23 @@ Item {
             // 左列：一级副本（独立滚动，必能滑到底）
             Flickable {
                 id: leftFlick
-                width: dailyTaskPopup.leftW
-                height: dailyTaskPopup.viewportH
+                width: dailyPopup.leftW
+                height: dailyPopup.viewportH
                 contentWidth: leftCol.width
                 contentHeight: leftCol.height
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 Column {
                     id: leftCol
-                    width: dailyTaskPopup.leftW
+                    width: dailyPopup.leftW
                     spacing: 2
                     Repeater {
-                        model: dailyTaskPopup.options
+                        model: dailyPopup.options
                         Rectangle {
-                            width: dailyTaskPopup.leftW
+                            width: dailyPopup.leftW
                             height: 30
                             radius: 6
-                            color: (optMouse.containsMouse || dailyTaskPopup.selName === modelData.name)
+                            color: (optMouse.containsMouse || dailyPopup.selName === modelData.name)
                                    ? Theme.accentSoft : "transparent"
                             Text {
                                 anchors.fill: parent; leftPadding: 10
@@ -425,15 +425,15 @@ Item {
                                 id: optMouse; anchors.fill: parent; hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onEntered: {
-                                    dailyTaskPopup.selName = modelData.sequences.length > 0 ? modelData.name : ""
+                                    dailyPopup.selName = modelData.sequences.length > 0 ? modelData.name : ""
                                 }
                                 onClicked: {
                                     if (modelData.sequences.length > 0) {
-                                        dailyTaskPopup.selName = modelData.name
+                                        dailyPopup.selName = modelData.name
                                     } else {
-                                        Bridge.selectDailyTask(
-                                            dailyTaskPopup.dailyName, modelData.name, null)
-                                        dailyTaskPopup.visible = false
+                                        Bridge.selectDaily(
+                                            dailyPopup.dailyName, modelData.name, null)
+                                        dailyPopup.visible = false
                                     }
                                 }
                             }
@@ -441,9 +441,9 @@ Item {
                     }
                     // 该日常可停用时，一级列末尾追加「不启用」（点即生效，无需二级）
                     Rectangle {
-                        width: dailyTaskPopup.leftW
+                        width: dailyPopup.leftW
                         height: 30; radius: 6
-                        visible: dailyTaskPopup.canDisable
+                        visible: dailyPopup.canDisable
                         color: disableMouse.containsMouse ? Theme.accentSoft : "transparent"
                         Text {
                             anchors.fill: parent; leftPadding: 10
@@ -455,8 +455,8 @@ Item {
                             id: disableMouse; anchors.fill: parent; hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                Bridge.setDailyEnabled(dailyTaskPopup.dailyName, false)
-                                dailyTaskPopup.visible = false
+                                Bridge.setDailyEnabled(dailyPopup.dailyName, false)
+                                dailyPopup.visible = false
                             }
                         }
                     }
@@ -465,21 +465,21 @@ Item {
             // 右列：二级选项（独立滚动；仅当选中带子项的副本时出现）
             Flickable {
                 id: rightFlick
-                visible: dailyTaskPopup.rightW > 0
-                width: dailyTaskPopup.rightW
-                height: dailyTaskPopup.viewportH
+                visible: dailyPopup.rightW > 0
+                width: dailyPopup.rightW
+                height: dailyPopup.viewportH
                 contentWidth: seqCol.width
                 contentHeight: seqCol.height
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 Column {
                     id: seqCol
-                    width: dailyTaskPopup.rightW
+                    width: dailyPopup.rightW
                     spacing: 2
                     Repeater {
-                        model: dailyTaskPopup.selSequences
+                        model: dailyPopup.selSequences
                         Rectangle {
-                            width: dailyTaskPopup.rightW
+                            width: dailyPopup.rightW
                             height: 30
                             radius: 6
                             color: seqMouse.containsMouse ? Theme.accentSoft : "transparent"
@@ -493,10 +493,10 @@ Item {
                                 id: seqMouse; anchors.fill: parent; hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    Bridge.selectDailyTask(
-                                        dailyTaskPopup.dailyName,
-                                        dailyTaskPopup.selName, modelData.value)
-                                    dailyTaskPopup.visible = false
+                                    Bridge.selectDaily(
+                                        dailyPopup.dailyName,
+                                        dailyPopup.selName, modelData.value)
+                                    dailyPopup.visible = false
                                 }
                             }
                         }
@@ -506,15 +506,15 @@ Item {
         }
     }
 
-    // ── 周常副本下拉（单级：副本名列表，来自 Bridge.weeklyTaskOptions）──
+    // ── 周常副本下拉（单级：副本名列表，来自 Bridge.weeklyOptions）──
     // 锚点从整个周常区底部改为被点击的具体子项行，弹出位置与点击行对齐。
     Item {
-        id: weeklyTaskPopup
-        objectName: "weeklyTaskPopup"
+        id: weeklyPopup
+        objectName: "weeklyPopup"
         z: 100
         visible: false
         x: weeklyArea.x + cardRoot.chipX
-        y: weeklyTaskPopup.popupY
+        y: weeklyPopup.popupY
         width: instW + 8
         height: popupHeight
         property string weeklyName: ""
@@ -531,7 +531,7 @@ Item {
         }
         TextMetrics { id: instTm; font.pixelSize: 13 }
         function openMenu() {
-            var opts = Bridge.weeklyTaskOptions(weeklyTaskPopup.weeklyName)
+            var opts = Bridge.weeklyOptions(weeklyPopup.weeklyName)
             var maxW = 60
             for (var i = 0; i < opts.length; i++) {
                 instTm.text = opts[i]
@@ -545,22 +545,22 @@ Item {
         }
         onVisibleChanged: { if (visible) openMenu() }
         Flickable {
-            width: weeklyTaskPopup.instW
-            height: weeklyTaskPopup.viewportH
+            width: weeklyPopup.instW
+            height: weeklyPopup.viewportH
             contentWidth: instCol.width
             contentHeight: instCol.height
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             Column {
                 id: instCol
-                width: weeklyTaskPopup.instW
+                width: weeklyPopup.instW
                 spacing: 2
                 Repeater {
-                    model: weeklyTaskPopup.visible
-                          ? Bridge.weeklyTaskOptions(weeklyTaskPopup.weeklyName)
+                    model: weeklyPopup.visible
+                          ? Bridge.weeklyOptions(weeklyPopup.weeklyName)
                           : []
                     Rectangle {
-                        width: weeklyTaskPopup.instW
+                        width: weeklyPopup.instW
                         height: 30; radius: 6
                         color: instMouse.containsMouse ? Theme.accentSoft : "transparent"
                         Text {
@@ -573,9 +573,9 @@ Item {
                             id: instMouse; anchors.fill: parent; hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                Bridge.selectWeeklyTask(
-                                    weeklyTaskPopup.weeklyName, modelData)
-                                weeklyTaskPopup.visible = false
+                                Bridge.selectWeekly(
+                                    weeklyPopup.weeklyName, modelData)
+                                weeklyPopup.visible = false
                             }
                         }
                     }
@@ -594,11 +594,11 @@ Item {
         width: 1280
         height: cardRoot.winBottomInCard - cardRoot.winTopInCard
         z: 99
-        visible: dailyTaskPopup.visible || weeklyTaskPopup.visible
-        enabled: dailyTaskPopup.visible || weeklyTaskPopup.visible
+        visible: dailyPopup.visible || weeklyPopup.visible
+        enabled: dailyPopup.visible || weeklyPopup.visible
         onClicked: {
-            dailyTaskPopup.visible = false
-            weeklyTaskPopup.visible = false
+            dailyPopup.visible = false
+            weeklyPopup.visible = false
         }
     }
 }

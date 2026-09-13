@@ -257,7 +257,7 @@ class TestNativeDropPersistence(unittest.TestCase):
                     "src.utils.utils_weekly.get_weekly_yml_path_under_root",
                     return_value=str(weekly),
                 ),
-                patch.object(AppService, "get_daily_task_map", return_value={}),
+                patch.object(AppService, "get_daily_map", return_value={}),
                 patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch(
                     "src.gui.controllers.background.BackgroundController.resolve_bg",
@@ -322,7 +322,7 @@ class TestQmlScriptDrop(unittest.TestCase):
             app = QApplication.instance()
             with (
                 tempfile.TemporaryDirectory() as directory,
-                patch.object(AppService, "get_daily_task_map", return_value={}),
+                patch.object(AppService, "get_daily_map", return_value={}),
                 patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
                 patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),

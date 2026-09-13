@@ -4,10 +4,10 @@ import unittest
 from copy import deepcopy
 from unittest.mock import patch
 
-from src.config.daily_task_config import (
-    get_daily_task_map,
+from src.config.daily_config import (
+    get_daily_map,
     get_weekly_map,
-    parse_daily_task_config,
+    parse_daily_config,
 )
 from src.config.task_config import load_daily_map
 
@@ -26,10 +26,10 @@ class TestGetWeeklyDefs(unittest.TestCase):
         original = deepcopy(task)
         with (
             patch(
-                "src.config.daily_task_config.load_weekly_map",
+                "src.config.daily_config.load_weekly_map",
                 return_value={"x": [task]},
             ),
-            patch("src.config.daily_task_config.get_task_lists") as source,
+            patch("src.config.daily_config.get_task_lists") as source,
         ):
             self.assertEqual(
                 get_weekly_map("x"),
@@ -47,11 +47,11 @@ class TestGetWeeklyDefs(unittest.TestCase):
             with (
                 self.subTest(names=names),
                 patch(
-                    "src.config.daily_task_config.load_weekly_map",
+                    "src.config.daily_config.load_weekly_map",
                     return_value={"x": [task]},
                 ),
                 patch(
-                    "src.config.daily_task_config.get_task_lists", return_value=names
+                    "src.config.daily_config.get_task_lists", return_value=names
                 ) as source,
             ):
                 result = get_weekly_map("x")
@@ -66,33 +66,31 @@ class TestGetWeeklyDefs(unittest.TestCase):
         }
         with (
             patch(
-                "src.config.daily_task_config.load_weekly_map",
+                "src.config.daily_config.load_weekly_map",
                 return_value={"x": [task]},
             ),
-            patch(
-                "src.config.daily_task_config.get_task_lists", return_value=[]
-            ) as source,
+            patch("src.config.daily_config.get_task_lists", return_value=[]) as source,
         ):
             get_weekly_map("x")
         source.assert_called_once_with("x", "native_weekly", "resource/list.json")
 
     def test_no_options_and_unknown_script(self):
         with patch(
-            "src.config.daily_task_config.load_weekly_map",
+            "src.config.daily_config.load_weekly_map",
             return_value={"x": [{"display_name": "开关周常"}]},
         ):
             self.assertEqual(get_weekly_map("x"), [{"name": "开关周常"}])
             self.assertEqual(get_weekly_map("unknown"), [])
 
 
-class TestGetDailyTaskMap(unittest.TestCase):
+class TestGetDailyMap(unittest.TestCase):
     def test_real_declarations_keep_one_menu_per_daily(self):
-        with patch("src.config.daily_task_config.get_task_lists", return_value=[]):
-            menus = get_daily_task_map()
+        with patch("src.config.daily_config.get_task_lists", return_value=[]):
+            menus = get_daily_map()
         self.assertEqual(set(menus), set(load_daily_map()))
         maa = menus["MAA"]["dailies"][0]
         self.assertEqual(maa["name"], "每日任务")
-        options, sequences, show = parse_daily_task_config(maa)
+        options, sequences, show = parse_daily_config(maa)
         self.assertEqual(options, ["红票", "经验", "龙门币", "土"])
         self.assertEqual(sequences, {})
         self.assertFalse(show)
@@ -114,25 +112,25 @@ class TestGetDailyTaskMap(unittest.TestCase):
         )
 
     def test_secondary_menu_values_are_native(self):
-        with patch("src.config.daily_task_config.get_task_lists", return_value=[]):
-            menus = get_daily_task_map()
-        _, sequences, show = parse_daily_task_config(menus["ok-ww"]["dailies"][0])
+        with patch("src.config.daily_config.get_task_lists", return_value=[]):
+            menus = get_daily_map()
+        _, sequences, show = parse_daily_config(menus["ok-ww"]["dailies"][0])
         self.assertTrue(show)
         self.assertEqual(sequences["模拟领域"][0], ("共鸣者经验", "Resonator EXP"))
         self.assertEqual(sequences["凝素领域"][0], ("梦州-迅刀", 1))
 
     def test_daily_source_categories_come_from_declaration(self):
         with patch(
-            "src.config.daily_task_config.get_task_lists", return_value=["原生副本"]
+            "src.config.daily_config.get_task_lists", return_value=["原生副本"]
         ) as source:
-            menus = get_daily_task_map()
+            menus = get_daily_map()
         source.assert_any_call(
             "BetterGI", "BlessDomain", "GameTask/AutoTrackPath/Assets/tp.json"
         )
         source.assert_any_call(
             "ok-ef", "干员养成", "data/apps/ok-ef/working/assets/data/world_map.json"
         )
-        _, sequences, show = parse_daily_task_config(menus["BetterGI"]["dailies"][0])
+        _, sequences, show = parse_daily_config(menus["BetterGI"]["dailies"][0])
         self.assertTrue(show)
         self.assertEqual(sequences["圣遗物"], [("原生副本", "原生副本")])
 
@@ -140,11 +138,9 @@ class TestGetDailyTaskMap(unittest.TestCase):
         for names in ([], None):
             with (
                 self.subTest(names=names),
-                patch(
-                    "src.config.daily_task_config.get_task_lists", return_value=names
-                ),
+                patch("src.config.daily_config.get_task_lists", return_value=names),
             ):
-                result = get_daily_task_map()
+                result = get_daily_map()
             self.assertEqual(result["ok-ef"]["dailies"][0]["tasks"][0]["sequences"], [])
 
     def test_menu_does_not_modify_declarations(self):
@@ -152,12 +148,10 @@ class TestGetDailyTaskMap(unittest.TestCase):
         original = deepcopy(declarations)
         with (
             patch("src.config.task_config.load_daily_map", return_value=declarations),
-            patch(
-                "src.config.daily_task_config.get_task_lists", return_value=["测试资源"]
-            ),
+            patch("src.config.daily_config.get_task_lists", return_value=["测试资源"]),
         ):
-            first = get_daily_task_map()
-            second = get_daily_task_map()
+            first = get_daily_map()
+            second = get_daily_map()
         self.assertEqual(first, second)
         self.assertEqual(declarations, original)
 
@@ -172,11 +166,9 @@ class TestGetDailyTaskMap(unittest.TestCase):
         )
         with (
             patch("src.config.task_config.load_daily_map", return_value=declarations),
-            patch(
-                "src.config.daily_task_config.get_task_lists", return_value=["测试资源"]
-            ),
+            patch("src.config.daily_config.get_task_lists", return_value=["测试资源"]),
         ):
-            menus = get_daily_task_map()
+            menus = get_daily_map()
         self.assertEqual(
             [daily["name"] for daily in menus["ok-ww"]["dailies"]],
             ["每日任务", "另一个日常"],
@@ -201,16 +193,14 @@ class TestGetDailyTaskMap(unittest.TestCase):
             }
         ]
         with (
+            patch("src.config.daily_config.load_daily_map", return_value={"x": []}),
             patch(
-                "src.config.daily_task_config.load_daily_map", return_value={"x": []}
-            ),
-            patch(
-                "src.config.daily_task_config.get_daily_task_options",
+                "src.config.daily_config.get_daily_options",
                 return_value=[{"daily_display_name": "日常", "options": options}],
             ),
             self.assertRaisesRegex(AssertionError, "最多支持两级"),
         ):
-            get_daily_task_map()
+            get_daily_map()
 
 
 if __name__ == "__main__":

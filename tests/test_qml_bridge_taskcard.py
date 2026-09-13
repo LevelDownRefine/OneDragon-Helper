@@ -1,7 +1,7 @@
 """测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。
 
-复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / daily_task_config.get_weekly_map / get_daily_task_map /
-parse_daily_task_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
+复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / daily_config.get_weekly_map / get_daily_map /
+parse_daily_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
 真实模块函数），验证 QML 任务卡所需的数据与写回行为。
 """
 
@@ -16,11 +16,11 @@ from tests.test_qml_launcher import _make_bridge
 class TestTaskCard(unittest.TestCase):
     """任务卡数据 / 写回：与旧 task_card.py 对齐。"""
 
-    @patch("src.service.app_service.get_daily_task_map", return_value={})
+    @patch("src.service.app_service.get_daily_map", return_value={})
     def test_restore_refreshes_task_properties(self, _map):
         bridge = _make_bridge()
         name = bridge.games[0]["script_name"]
-        bridge.task_card._daily_task_options_cache = {
+        bridge.task_card._daily_options_cache = {
             name: [
                 {"name": "每日任务", "options": [{"name": "副本A", "sequences": []}]}
             ]
@@ -48,14 +48,14 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch("src.service.app_service.get_weekly_map", return_value=[{"name": "周常"}])
     @patch.object(app_service, "get_weekly_start", return_value=None)
-    @patch("src.service.app_service.get_daily_task_map", return_value={})
+    @patch("src.service.app_service.get_daily_map", return_value={})
     @patch.object(task_card, "get_daily_readback", return_value=[])
     def test_daily_items_default_is_empty(self, *_):
         b = _make_bridge()
         self.assertEqual(b.dailyItems, [])
         self.assertEqual(b.weeklyStartLabel, "选择周几")
 
-    @patch("src.service.app_service.get_daily_task_map", return_value={})
+    @patch("src.service.app_service.get_daily_map", return_value={})
     def test_set_daily_enabled_writes_through_service(self, *_):
         """日常开关经 Bridge → service 落盘（开关无副本名可反查，显式带日常）。"""
         b = _make_bridge()
@@ -67,7 +67,7 @@ class TestTaskCard(unittest.TestCase):
         )
 
     @patch.object(task_card, "is_adapted", return_value=False)
-    @patch("src.service.app_service.get_daily_task_map", return_value={})
+    @patch("src.service.app_service.get_daily_map", return_value={})
     def test_task_adapted_reflects_is_adapted(self, *_):
         b = _make_bridge()
         self.assertFalse(b.taskAdapted)
@@ -75,13 +75,13 @@ class TestTaskCard(unittest.TestCase):
     @patch("src.service.app_service.set_config")  # 实时落盘子脚本 config（经 service）
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch("src.service.app_service.get_weekly_map", return_value=[])
-    @patch("src.service.app_service.get_daily_task_map", return_value={})
+    @patch("src.service.app_service.get_daily_map", return_value={})
     @patch.object(task_card, "get_daily_readback")
     def test_select_daily_task_writes_config(self, readback, *_):
         b = _make_bridge()
         name = b.games[0]["script_name"]
         # 反读无真相 → chip 回退声明的首个选项
-        b.task_card._daily_task_options_cache = {
+        b.task_card._daily_options_cache = {
             name: [
                 {"name": "每日任务", "options": [{"name": "副本A", "sequences": []}]}
             ]
@@ -89,7 +89,7 @@ class TestTaskCard(unittest.TestCase):
         readback.return_value = [
             {"name": "每日任务", "task": None, "sequence": None, "enabled": None}
         ]
-        b.selectDailyTask("每日任务", "副本A", "seq1")
+        b.selectDaily("每日任务", "副本A", "seq1")
         self.assertEqual(b.dailyItems[0]["task_label"], "副本A")
         # 实时落盘子脚本 config（日常副本编辑期即生效，不再依赖运行全体），经 service 入口；
         # 日常名由该行（GUI 手上就有）带出
@@ -125,17 +125,17 @@ class TestTaskCard(unittest.TestCase):
                 "enabled": False,
             },
         ]
-        with patch("src.service.app_service.get_daily_task_map", return_value=menu):
+        with patch("src.service.app_service.get_daily_map", return_value=menu):
             b = _make_bridge()
         self.assertEqual(
             [item["name"] for item in b.dailyItems], ["异象界域", "追猎目标"]
         )
         self.assertEqual(
-            b.dailyTaskOptions("追猎目标"), [{"name": "追猎目标", "sequences": []}]
+            b.dailyOptions("追猎目标"), [{"name": "追猎目标", "sequences": []}]
         )
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    def test_daily_task_options_shape(self, *_):
+    def test_daily_options_shape(self, *_):
         menu = {
             "ok-ww": {
                 "dailies": [
@@ -151,16 +151,16 @@ class TestTaskCard(unittest.TestCase):
                 ]
             }
         }
-        with patch("src.service.app_service.get_daily_task_map", return_value=menu):
+        with patch("src.service.app_service.get_daily_map", return_value=menu):
             b = _make_bridge()
-        opts = b.dailyTaskOptions("每日任务")
+        opts = b.dailyOptions("每日任务")
         self.assertEqual(opts[0]["name"], "副本A")
         self.assertEqual(opts[0]["sequences"], [{"label": "难1", "value": "s1"}])
 
-    @patch("src.service.app_service.get_daily_task_map", return_value={})
-    def test_daily_task_options_empty_when_no_cfg(self, *_):
+    @patch("src.service.app_service.get_daily_map", return_value={})
+    def test_daily_options_empty_when_no_cfg(self, *_):
         b = _make_bridge()
-        self.assertEqual(b.dailyTaskOptions("每日任务"), [])
+        self.assertEqual(b.dailyOptions("每日任务"), [])
 
     @patch("src.gui.dialogs.SingleScriptConfigDialog")
     @patch("PySide6.QtWidgets.QDialog")

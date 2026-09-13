@@ -223,12 +223,12 @@ class TestGetDailyConfig(unittest.TestCase):
             self.config(definitions, "不存在")
 
 
-class TestGetDailyTasks(unittest.TestCase):
-    """get_daily_tasks：从声明推导每个日常的选项落点。"""
+class TestGetDailyConfigs(unittest.TestCase):
+    """get_daily_configs：从声明推导每个日常的选项落点。"""
 
     def tasks(self, definitions):
         with patch.object(m, "load_daily_map", return_value={"script": definitions}):
-            return m.get_daily_tasks("script")
+            return m.get_daily_configs("script")
 
     def test_two_layer_daily_uses_top_key(self):
         """两层级且顶层声明 key：一级写顶层 key，二级写各选项的 options.key。"""
@@ -352,7 +352,7 @@ class TestGetDailyTasks(unittest.TestCase):
 
     def test_real_ok_nte_declaration(self):
         """真实异环声明：两个日常的落点与推导一致。"""
-        tasks = m.get_daily_tasks("ok-nte")
+        tasks = m.get_daily_configs("ok-nte")
         self.assertEqual(set(tasks), {"daily_anomaly", "daily_anomaly_hunter"})
         anomaly = tasks["daily_anomaly"]
         self.assertEqual(anomaly["name"], "异象界域")

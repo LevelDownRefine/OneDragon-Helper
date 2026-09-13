@@ -41,8 +41,8 @@
 
 | 配置类型 | 落盘时机 | 说明 |
 |----------|----------|------|
-| 日常副本 / 序列（`task_name` / `sequence`） | **编辑期实时** | GUI 选副本（`TaskCardController.selectDailyTask`）、CLI `--task`/`--sequence` 覆盖，均直接调 `set_config` 实时写子脚本 config。无需等到运行全体。 |
-| 周常副本（`set_weekly_task`） | **编辑期实时** | GUI 选周常副本（`selectWeeklyTask`）直接写子脚本 config。 |
+| 日常副本 / 序列（`task_name` / `sequence`） | **编辑期实时** | GUI 选副本（`TaskCardController.selectDaily`）、CLI `--task`/`--sequence` 覆盖，均直接调 `set_config` 实时写子脚本 config。无需等到运行全体。 |
+| 周常副本（`set_weekly_task`） | **编辑期实时** | GUI 选周常副本（`selectWeekly`）直接写子脚本 config。 |
 | 周常起始日（`weekly_start` → 周本开关） | **运行期** | 启用与否 = `today_weekday >= start_day`，只能在运行期按当天星期计算。故仅在 `generate_chain_config` 中经 `set_config(weekly_start=...)` 透传，由 `prepare_weekly_start_day` 写开关。 |
 
 **关键结论**：除「按周几起决定开启/关闭」的周本开关必须在运行期落盘外，其余日常副本/序列、周常副本均在编辑期实时落盘子脚本 config。`generate_chain_config` 因此**不再重复写** task/sequence——它只负责把 `weekly_start` 透传给 `set_config`。
@@ -80,9 +80,9 @@
 - 每个选项可继续包含 `options`。纯展示分类省略该层 `key`，实际副本的子组选项绑定原生字段。
 - 顶层任务 `key` 供对应子类的任务操作使用，如周常开关、列表字段或起始日字段。
 
-`task_config.py` 只读取、校验声明和取得名字映射；`daily_task_config.py` 把声明转换为原有菜单数据。
+`task_config.py` 只读取、校验声明和取得名字映射；`daily_config.py` 把声明转换为原有菜单数据。
 `set_config.py` 子类从声明取得字段和别名，沿用原来的写入、反读和周常处理流程。
-日常菜单按日常分组：`get_daily_task_options()` 返回 `[{daily_display_name, options}, ...]`（异环两项、单日常脚本一项），界面上每个日常一行，行内各自选择副本。
+日常菜单按日常分组：`get_daily_options()` 返回 `[{daily_display_name, options}, ...]`（异环两项、单日常脚本一项），界面上每个日常一行，行内各自选择副本。
 日常接口分两侧：写入侧 `set_daily_task(daily_display_name, task_name, sequence)` —— 参数顺序即菜单层级（日常 → 一级项 → 二级项）。`daily_display_name` **恒非空**：单日常脚本也要给（界面逐行渲染，一行即一个日常，该行行名就是它，所以任何脚本都给得出），基类入口会 assert，不存在「单日常就省掉」或「由适配器补名」的形态；分段脚本据此选段。读取侧 `_read_daily_tasks()` 一次反读该脚本全部日常（facade `get_daily_readback`），每项 `{name, task, sequence, enabled}`，界面按名字对齐行。日常展示名 → 物理名（段名 / routine item id）的换算只有一处：`_daily_physical_name(daily_display_name)`。反读不看启用状态（用于呈现未启用的日常）。
 声明允许递归，当前日常菜单支持两级、周常菜单支持一级；更多层的界面接入留到后续。
 
@@ -116,7 +116,7 @@
 
 NTEConfig 覆盖 `set_daily_task`：写 `daily_display_name` 指定日常的副本/序号后，把该日常的 Routine Item 置为启用；**另一个日常的 `enabled` 不动**——工具层不再做互斥，两个日常可同时启用（是否只跑一个由游戏侧决定）。「不启用」走 `set_daily_enabled(daily, enabled)`（只动开关、不动副本选择）。三个入口的日常名都显式给出：分段脚本没有「唯一日常」可默认，且界面逐行渲染时本就拿得到那一行的日常名。
 
-字段落点由 `_daily_tasks` 给出——它是 `task_config.get_daily_tasks` 从声明推导的结果（`task_field` / `task_map` / `option_fields`），子类不再手写映射表；写路径的日常段由 `_daily_physical_name(daily_display_name)` 定出——它是全仓唯一的「日常展示名 → 物理名」换算点（基类，读写开关三路共用）。菜单由**基类**的 `get_daily_task_options()` 按日常分组推导（`[{daily_display_name, options}, ...]`，无需子类覆写）：每个日常取声明里的 values 作一级项；单层日常（值直接写自身字段、无一级字段）时整组即唯一的一级项（展示名用日常名），values 作二级——与写入侧同源，全部来自 `get_daily_tasks` 的落点。`daily_task_config.get_daily_task_map` 据此产出 `{script: {"dailies": [{name, tasks}, ...]}}`。
+字段落点由 `_daily_tasks` 给出——它是 `task_config.get_daily_configs` 从声明推导的结果（`task_field` / `task_map` / `option_fields`），子类不再手写映射表；写路径的日常段由 `_daily_physical_name(daily_display_name)` 定出——它是全仓唯一的「日常展示名 → 物理名」换算点（基类，读写开关三路共用）。菜单由**基类**的 `get_daily_options()` 按日常分组推导（`[{daily_display_name, options}, ...]`，无需子类覆写）：每个日常取声明里的 values 作一级项；单层日常（值直接写自身字段、无一级字段）时整组即唯一的一级项（展示名用日常名），values 作二级——与写入侧同源，全部来自 `get_daily_configs` 的落点。`daily_config.get_daily_map` 据此产出 `{script: {"dailies": [{name, tasks}, ...]}}`。
 
 反读：`_read_daily_task(daily)` 只看副本与二级（不看是否启用），`_read_daily_enabled(daily)` 看开关，基类 `_read_daily_tasks()` 把两者按日常合成一份记录（facade `get_daily_readback`）。脚本未安装（文件缺失）视为**无真相**：副本/序列为 None、开关也为 None，不谎报「已停用」；无日常开关字段的脚本开关恒为 None，界面据此不提供「不启用」。相关常量：`_routine_config_rel_path`、`_daily_tasks`。
 
@@ -174,7 +174,7 @@ set_config("ok-ww", task_name="未选择")  # 跳过
 | `set_config.py` | 本适配器，适配器接口 + 类层级；各脚本路径由子类声明，`@register` 显式注册 |
 | `subscript.py` | config 读写基础设施，`get_script_name` / `load` / `save` / `load_template`，只接收 `rel_path`，不感知具体脚本 |
 | `task_config.py` | 两份任务声明的读取、校验、字段和名字映射 |
-| `daily_task_config.py` | 把任务声明和本机资源转换为现有单副本、周常菜单数据 |
+| `daily_config.py` | 把任务声明和本机资源转换为现有单副本、周常菜单数据 |
 | `src/link.py` | 游戏/脚本链接集中管理（官网、B 站、GitHub、banner 下载）；与 config 适配解耦。沿用基类 `GameLink` + 各脚本子类（`WutheringWavesLink`/`GenshinLink` 等）继承结构，`@register` 注册到 `_LINKS`，key 为 `_script_name`；本地背景图路径（`background`）仍声明在 set_config 子类，经 `_CONFIGS` 读取 |
 | `config/daily_task_list.yml` | 各脚本支持的副本及序列展示名，key 为 script_name |
 | `config/BGI一条龙.json` 等 | 各脚本 init 模板（粥无模板，`_task_map` 固化类属性）|
@@ -189,7 +189,7 @@ set_config("ok-ww", task_name="未选择")  # 跳过
 ## 设计原则
 
 - 两流程分离：初始化对齐模板与设置副本响应选择独立，不混。
-- 声明即真相：字段落点能从 `daily_task_list.yml` 推导的不在子类手写映射表（异环的 `_daily_tasks` 由 `task_config.get_daily_tasks` 推导），子类只声明声明层表达不了的东西（脚本内路径、文件内键名）。
+- 声明即真相：字段落点能从 `daily_task_list.yml` 推导的不在子类手写映射表（异环的 `_daily_tasks` 由 `task_config.get_daily_configs` 推导），子类只声明声明层表达不了的东西（脚本内路径、文件内键名）。
 - 严格 assert：配置不一致立即报错，不静默容忍。字典访问先 assert key 再直接访问，不用 `.get()`。
 - 类型一致：sequence 类型由 `daily_task_list.yml` 的 physical_name 决定，不把数字转为字符串。
 

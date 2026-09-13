@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.config.daily_task_config import get_daily_task_map, get_weekly_map
+from src.config.daily_config import get_daily_map, get_weekly_map
 from src.gui.controllers import task_card as task_card_mod
 from src.gui.controllers.task_card import TaskCardController
 from src.utils.utils_yaml import dump_yaml_file
@@ -46,7 +46,7 @@ def _make_controller(script_name="March7th-Launcher", display_name="崩铁"):
     service = MagicMock()
     # 副本/周常声明经真实 task_config 模块函数读取（weekly_task_list.yml 路径已由用例 patch）。
     service.get_weekly_map.side_effect = get_weekly_map
-    service.get_daily_task_map.side_effect = get_daily_task_map
+    service.get_daily_map.side_effect = get_daily_map
     service.get_weekly_start.return_value = None
     toast = MagicMock()
     return TaskCardController(game_list, service, toast)
@@ -187,20 +187,20 @@ class TestSelectWeeklyTask(unittest.TestCase):
     def test_select_weekly_daily_task_writes_config(self):
         """选副本：经 service 写脚本自身 config（周常侧无 no-op 脚本）。"""
         ctrl = _make_controller()
-        ctrl.selectWeeklyTask("历战余响", "铁骸的锈冢")
+        ctrl.selectWeekly("历战余响", "铁骸的锈冢")
         # 写脚本自身 config 的 instance_names（M7A 约定键名），经 service 入口
         ctrl._app_service.set_script_weekly_task.assert_called_once_with(
             "March7th-Launcher", "历战余响", "铁骸的锈冢"
         )
 
 
-class TestSelectDailyTaskWritesSubscriptConfig(unittest.TestCase):
+class TestSelectDailyWritesSubscriptConfig(unittest.TestCase):
     """日常副本选择：实时落盘子脚本 config（与链生成解耦，不再依赖运行全体）。"""
 
     def test_select_daily_task_writes_subscript_config(self):
         """选中日常副本：实时经 service 落盘子脚本 config，并带上该行所属日常。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        ctrl.selectDailyTask("每日任务", "凝素领域", "5")
+        ctrl.selectDaily("每日任务", "凝素领域", "5")
         # 实时落盘：task_name + sequence（鸣潮要求 sequence 非空），经 service 入口
         ctrl._app_service.set_script_daily_task.assert_called_once_with(
             "ok-ww",
@@ -231,7 +231,7 @@ class TestDailyItems(unittest.TestCase):
     def test_prefers_readback_over_declared(self):
         """反读有真相时以反读为准，不走声明项回退。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        ctrl._daily_task_options_cache = {
+        ctrl._daily_options_cache = {
             "ok-ww": [
                 {"name": "每日任务", "options": [{"name": "声明项", "sequences": []}]}
             ]
@@ -252,7 +252,7 @@ class TestDailyItems(unittest.TestCase):
     def test_nte_daily_shows_daily_task_and_sequence(self):
         """异环：空幕 · 轨道之夜（选项不自包含副本名，必须两者同显）。"""
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._daily_task_options_cache = {
+        ctrl._daily_options_cache = {
             "ok-nte": [
                 {
                     "name": "异象界域",
@@ -277,7 +277,7 @@ class TestDailyItems(unittest.TestCase):
     def test_daily_name_is_exposed_for_multi_daily_row(self):
         """多日常：每行带自己的日常展示名（QML 据此区分下拉）。"""
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._daily_task_options_cache = {
+        ctrl._daily_options_cache = {
             "ok-nte": [
                 {"name": "异象界域", "options": []},
                 {"name": "追猎目标", "options": []},
@@ -295,7 +295,7 @@ class TestDailyItems(unittest.TestCase):
     def test_disabled_daily_shows_disabled_and_can_disable(self):
         """被停用的日常：chip 显示「不启用」，该行提供「不启用」入口。"""
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._daily_task_options_cache = {
+        ctrl._daily_options_cache = {
             "ok-nte": [
                 {
                     "name": "追猎目标",
@@ -321,7 +321,7 @@ class TestDailyItems(unittest.TestCase):
     def test_uninstalled_daily_is_not_reported_as_disabled(self):
         """脚本未安装（整条记录无真相）→ 不谎报「不启用」，也不提供该入口。"""
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._daily_task_options_cache = {
+        ctrl._daily_options_cache = {
             "ok-nte": [
                 {
                     "name": "追猎目标",
@@ -340,7 +340,7 @@ class TestDailyItems(unittest.TestCase):
     def test_falls_back_to_declared_option_when_no_truth(self):
         """no-op 脚本（绝区零）反读无真相 → 回退声明的首个选项，呈现为已选。"""
         ctrl = _make_controller("OneDragon-Launcher", "绝区零")
-        ctrl._daily_task_options_cache = {
+        ctrl._daily_options_cache = {
             "OneDragon-Launcher": [
                 {"name": "每日任务", "options": [{"name": "培养方案", "sequences": []}]}
             ]
@@ -354,9 +354,7 @@ class TestDailyItems(unittest.TestCase):
     def test_placeholder_when_daily_has_no_options(self):
         """该日常声明里没有选项 → 占位「选择副本」。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        ctrl._daily_task_options_cache = {
-            "ok-ww": [{"name": "每日任务", "options": []}]
-        }
+        ctrl._daily_options_cache = {"ok-ww": [{"name": "每日任务", "options": []}]}
         items = self._items(
             ctrl,
             [{"name": "每日任务", "task": None, "sequence": None, "enabled": None}],
@@ -366,13 +364,13 @@ class TestDailyItems(unittest.TestCase):
     def test_no_items_without_dailies(self):
         """脚本无日常声明（反读为空）→ 无日常行。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        ctrl._daily_task_options_cache = {}
+        ctrl._daily_options_cache = {}
         self.assertEqual(self._items(ctrl, []), [])
 
-    def test_daily_task_options_by_daily_name(self):
+    def test_daily_options_by_daily_name(self):
         """下拉数据按日常取；未知日常返回空列表。"""
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._daily_task_options_cache = {
+        ctrl._daily_options_cache = {
             "ok-nte": [
                 {"name": "异象界域", "options": [{"name": "空幕", "sequences": []}]},
                 {
@@ -382,15 +380,15 @@ class TestDailyItems(unittest.TestCase):
             ]
         }
         self.assertEqual(
-            ctrl.daily_task_options("追猎目标"), [{"name": "追猎目标", "sequences": []}]
+            ctrl.daily_options("追猎目标"), [{"name": "追猎目标", "sequences": []}]
         )
-        self.assertEqual(ctrl.daily_task_options("不存在"), [])
+        self.assertEqual(ctrl.daily_options("不存在"), [])
 
 
 class TestWeeklyItemsReadback(unittest.TestCase):
     """weekly_items 的 task_label 优先反读子脚本 config。"""
 
-    def test_weekly_daily_task_label_prefers_config(self):
+    def test_weekly_daily_label_prefers_config(self):
         tmp = tempfile.TemporaryDirectory()
         defs_path = _write_defs(
             tmp,
@@ -426,7 +424,7 @@ class TestEmptyCurrentSentinel(unittest.TestCase):
         self.assertFalse(ctrl.task_adapted)
         self.assertFalse(ctrl.weekly_supported)
         self.assertEqual(ctrl.daily_items, [])
-        self.assertEqual(ctrl.daily_task_options("每日任务"), [])
+        self.assertEqual(ctrl.daily_options("每日任务"), [])
         self.assertEqual(ctrl.weekly_items, [])
 
 
