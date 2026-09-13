@@ -9,7 +9,7 @@ game_list 引用读取。日常菜单的选项从缓存读取（build_daily_task
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from src.config.daily_task_config import parse_daily_task_config
+from src.config.daily_config import parse_daily_config
 from src.config.set_config import (
     get_daily_readback,
     get_weekly_task,
@@ -178,7 +178,7 @@ class TaskCardController(QObject):
     # ── 缓存构建（运行期不变）──────────────────────────────────────────
     def build_daily_task_cache(self, games: list):
         """一次性解析 daily_task_list.yml 并构建各脚本的日常菜单（运行期不变）。"""
-        self._daily_task_map_cache = self._app_service.get_daily_task_map()
+        self._daily_task_map_cache = self._app_service.get_daily_map()
         self._daily_task_options_cache = {
             g["script_name"]: self._build_daily_options(g["script_name"]) for g in games
         }
@@ -237,7 +237,7 @@ class TaskCardController(QObject):
 
     def _build_daily_task_options(self, daily: dict) -> list:
         """构建单个日常的副本下拉数据（一级副本 → 二级选项）。"""
-        options, seq_map, _ = parse_daily_task_config(daily)
+        options, seq_map, _ = parse_daily_config(daily)
         return [
             {
                 "name": name,

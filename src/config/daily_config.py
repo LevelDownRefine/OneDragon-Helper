@@ -1,6 +1,6 @@
 from typing import Any
 
-from src.config.set_config import get_daily_task_options, get_task_lists
+from src.config.set_config import get_daily_options, get_task_lists
 from src.config.task_config import (
     get_options,
     get_physical_name,
@@ -8,17 +8,17 @@ from src.config.task_config import (
     load_weekly_map,
 )
 
-DailyTaskOptions = list[str]
+DailyOptions = list[str]
 SequenceOptionsMap = dict[str, list[tuple[str, Any]]]
 
 
-def parse_daily_task_config(
+def parse_daily_config(
     task_cfg: Any,
-) -> tuple[DailyTaskOptions, SequenceOptionsMap, bool]:
+) -> tuple[DailyOptions, SequenceOptionsMap, bool]:
     """
     解析单个日常的副本配置。
 
-    菜单数据格式（get_daily_task_map 的 `dailies[i]`）：
+    菜单数据格式（get_daily_map 的 `dailies[i]`）：
     name: "日常展示名"
     tasks:
       - name: "副本名"
@@ -36,7 +36,7 @@ def parse_daily_task_config(
         - seq_map: 副本名 → [(display_name, actual_value), ...]
         - show_seq: 是否有二级选项
     """
-    options: DailyTaskOptions = []
+    options: DailyOptions = []
     seq_map: SequenceOptionsMap = {}
     show_seq = False
 
@@ -104,7 +104,7 @@ def get_weekly_map(script_name: str) -> list:
     return defs
 
 
-def get_daily_task_map() -> dict:
+def get_daily_map() -> dict:
     """把日常声明转换为按日常分组的菜单，二级选择继续传物理值。
 
     每个脚本一组日常，每个日常一份一级副本列表（含二级序列）：
@@ -113,7 +113,7 @@ def get_daily_task_map() -> dict:
     data = {}
     for script_name in load_daily_map():
         dailies = []
-        for daily in get_daily_task_options(script_name):
+        for daily in get_daily_options(script_name):
             tasks = []
             for option in daily["options"]:
                 item = {"name": option["display_name"]}

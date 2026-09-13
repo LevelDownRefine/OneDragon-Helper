@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.config.daily_task_config import get_daily_task_map, get_weekly_map
+from src.config.daily_config import get_daily_map, get_weekly_map
 from src.gui.controllers import task_card as task_card_mod
 from src.gui.controllers.task_card import TaskCardController
 from src.utils.utils_yaml import dump_yaml_file
@@ -46,7 +46,7 @@ def _make_controller(script_name="March7th-Launcher", display_name="崩铁"):
     service = MagicMock()
     # 副本/周常声明经真实 task_config 模块函数读取（weekly_task_list.yml 路径已由用例 patch）。
     service.get_weekly_map.side_effect = get_weekly_map
-    service.get_daily_task_map.side_effect = get_daily_task_map
+    service.get_daily_map.side_effect = get_daily_map
     service.get_weekly_start.return_value = None
     toast = MagicMock()
     return TaskCardController(game_list, service, toast)

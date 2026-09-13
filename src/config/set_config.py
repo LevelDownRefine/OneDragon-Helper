@@ -6,7 +6,7 @@ from typing import Any
 
 from src.config.task_config import (
     get_daily_config,
-    get_daily_tasks,
+    get_daily_configs,
     get_options,
     get_physical_name,
     get_value_map,
@@ -382,7 +382,7 @@ class ScriptConfig:
             [{name, task, sequence, enabled}, ...]，顺序与声明一致。
         """
         records = []
-        for daily in get_daily_tasks(self._script_name).values():
+        for daily in get_daily_configs(self._script_name).values():
             task, sequence = self._read_daily_task(daily["name"])
             records.append(
                 {
@@ -610,17 +610,17 @@ class ScriptConfig:
         return node
 
     @classmethod
-    def get_daily_task_options(cls) -> list[dict]:
+    def get_daily_options(cls) -> list[dict]:
         """取得各日常的菜单选项；单日常脚本即一项。
 
         每个日常的选项取声明里的 values：各有分类层（各 value 自带 options）时每个
         value 各成一个一级项；单层日常（值直接写自身字段、无一级字段）时整组即唯一的
         一级项（展示名用日常名），其 values 作二级。判断依据与写入侧同源——各日常的
-        落点（``task_config.get_daily_tasks`` 的 ``task_field`` / ``option_fields``），
+        落点（``task_config.get_daily_configs`` 的 ``task_field`` / ``option_fields``），
         不按展示名硬编码。
         """
         dailies = []
-        for daily in get_daily_tasks(cls._script_name).values():
+        for daily in get_daily_configs(cls._script_name).values():
             decl = get_daily_config(cls._script_name, daily["name"])
             if daily["task_field"] is None and daily["option_fields"]:
                 options = [decl]  # 单层日常：一级项即日常本身，values 作二级
@@ -1173,8 +1173,8 @@ class NTEConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "异环"
-    _daily_tasks = get_daily_tasks(_script_name)
-    """各日常的选项落点，由声明推导（见 task_config.get_daily_tasks）。"""
+    _daily_tasks = get_daily_configs(_script_name)
+    """各日常的选项落点，由声明推导（见 task_config.get_daily_configs）。"""
 
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
@@ -1739,10 +1739,10 @@ def set_config(
         cfg.prepare_weekly_start_day(weekly_start)
 
 
-def get_daily_task_options(script_name: str) -> list[dict]:
+def get_daily_options(script_name: str) -> list[dict]:
     """取得脚本的日常副本选项声明。"""
     assert script_name in _CONFIGS, f"未适配脚本: {script_name}"
-    return _CONFIGS[script_name].get_daily_task_options()
+    return _CONFIGS[script_name].get_daily_options()
 
 
 def get_task_lists(script_name: str, task_name: str, source: str) -> list[str] | None:

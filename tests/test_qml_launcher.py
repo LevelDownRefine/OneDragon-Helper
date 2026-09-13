@@ -496,7 +496,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             from src.service.app_service import AppService
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
-            import src.config.daily_task_config as daily_task_config
+            import src.config.daily_config as daily_config
 
             app = QApplication([])
             # 崩铁：真实 config/weekly_list.yml 里历战余响声明了 9 个副本。
@@ -514,7 +514,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch.object(daily_task_config, "get_task_lists",
+                patch.object(daily_config, "get_task_lists",
                              return_value=fake_tasks),
             ):
                 with (
@@ -697,7 +697,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch("src.config.daily_task_config.get_task_lists",
+                patch("src.config.daily_config.get_task_lists",
                              return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                            "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                            "不死的神实", "寒潮的落幕", "毁灭的开端"]),

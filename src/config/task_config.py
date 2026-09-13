@@ -178,7 +178,7 @@ def get_daily_config(script_name: str, daily_display_name: str | None = None) ->
     return matches[0]
 
 
-def get_daily_tasks(script_name: str) -> dict[str, dict]:
+def get_daily_configs(script_name: str) -> dict[str, dict]:
     """从日常声明推导每个日常的选项落点，返回 日常物理名 → 该日常的选项落点。
 
     每条记录的键：

@@ -21,7 +21,7 @@ from src.config.set_config import (
     WutheringWavesConfig,
     ZenlessZoneZeroConfig,
 )
-from src.config.task_config import get_daily_tasks
+from src.config.task_config import get_daily_configs
 from src.utils.utils_yaml import dump_yaml_str
 
 # ============================================================
@@ -101,7 +101,7 @@ class TestScriptConfigBase(unittest.TestCase):
     def test_daily_physical_name_on_base(self):
         """日常展示名 → 物理名 的换算在基类上（非异环专属）：单日常脚本同样可用。"""
         cfg = WutheringWavesConfig()
-        daily = next(iter(get_daily_tasks(cfg._script_name).values()))
+        daily = next(iter(get_daily_configs(cfg._script_name).values()))
         # 单日常脚本未声明 physical_name → 物理名回落展示名
         self.assertEqual(cfg._daily_physical_name(daily["name"]), daily["name"])
         with self.assertRaisesRegex(AssertionError, "缺少日常声明"):
