@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 from src.config import set_config as sc_mod
 from src.config.set_config import EndfieldConfig
+from tests.config_diff import diff_paths
 
 FIXTURE = os.path.join(
     os.path.dirname(__file__), "fixtures", "ok_ef_DailyTask.scrubbed.json"
@@ -34,24 +35,6 @@ ALLOWED_WEEKLY = {"只买不卖"}
 def load_fixture() -> dict:
     with open(FIXTURE, encoding="utf-8") as f:
         return json.load(f)
-
-
-def diff_paths(before: dict, after: dict) -> list[tuple[str, object, object]]:
-    """返回所有取值变化的 (json-path, before, after) 列表（点分路径）。"""
-    diffs: list[tuple[str, object, object]] = []
-
-    def walk(a, b, path):
-        if a == b:
-            return
-        if isinstance(a, dict) and isinstance(b, dict):
-            for k in set(a) | set(b):
-                child = k if path == "" else f"{path}.{k}"
-                walk(a.get(k, "<MISSING>"), b.get(k, "<MISSING>"), child)
-        else:
-            diffs.append((path, a, b))
-
-    walk(before, after, "")
-    return diffs
 
 
 def inject_canaries(cfg: dict) -> None:
