@@ -1,7 +1,7 @@
 """任务卡控制器：日常副本 / 周常周几（数据 + 选择持久化）。
 
-独立 QObject，自管状态（_daily_task_map_cache / _daily_task_options_cache）。当前游戏经构造注入的
-game_list 引用读取。日常菜单的选项从缓存读取（build_daily_task_cache 时构建）；日常行的 chip 文案
+独立 QObject，自管状态（_daily_map_cache / _daily_options_cache）。当前游戏经构造注入的
+game_list 引用读取。日常菜单的选项从缓存读取（build_daily_cache 时构建）；日常行的 chip 文案
 每次求值时经 get_daily_readback 反读一次（一次覆盖该脚本全部日常）。
 启用控制：脚本级启用靠控制模式、日常级开关靠 setDailyEnabled（仅声明了日常开关的脚本，如异环）、
 周常靠周几起（均在别处实现）。
@@ -47,9 +47,9 @@ class TaskCardController(QObject):
         self._app_service = app_service
         self._toast = toast
         # 副本下拉数据缓存：daily_task_list.yml 解析较贵且运行期不变，
-        # build_daily_task_cache 时一次性构建。
-        self._daily_task_map_cache: dict = {}
-        self._daily_task_options_cache: dict[str, list] = {}
+        # build_daily_cache 时一次性构建。
+        self._daily_map_cache: dict = {}
+        self._daily_options_cache: dict[str, list] = {}
 
     # ── 读接口（供 QmlBridge 委托）────────────────────────────────────
     @property
@@ -82,7 +82,7 @@ class TaskCardController(QObject):
         script_name = self._current["script_name"]
         options_by_daily = {
             daily["name"]: daily["options"]
-            for daily in self._daily_task_options_cache.get(script_name, [])
+            for daily in self._daily_options_cache.get(script_name, [])
         }
         items = []
         for record in get_daily_readback(script_name):
@@ -91,14 +91,14 @@ class TaskCardController(QObject):
             items.append(
                 {
                     "name": name,
-                    "task_label": self._daily_task_label(record, options),
+                    "task_label": self._daily_label(record, options),
                     "can_disable": record["enabled"] is not None,
                     "disabled": record["enabled"] is False,
                 }
             )
         return items
 
-    def daily_task_options(self, daily_name: str) -> list:
+    def daily_options(self, daily_name: str) -> list:
         """某日常的副本下拉数据（QML 按行调用）。
 
         Args:
@@ -108,7 +108,7 @@ class TaskCardController(QObject):
             该日常的 [{name, sequences:[{label,value}]}, ...]；未知日常返回空列表。
         """
         script_name = self._current["script_name"]
-        for daily in self._daily_task_options_cache.get(script_name, []):
+        for daily in self._daily_options_cache.get(script_name, []):
             if daily["name"] == daily_name:
                 return daily["options"]
         return []
@@ -176,10 +176,10 @@ class TaskCardController(QObject):
         return []
 
     # ── 缓存构建（运行期不变）──────────────────────────────────────────
-    def build_daily_task_cache(self, games: list):
+    def build_daily_cache(self, games: list):
         """一次性解析 daily_task_list.yml 并构建各脚本的日常菜单（运行期不变）。"""
-        self._daily_task_map_cache = self._app_service.get_daily_map()
-        self._daily_task_options_cache = {
+        self._daily_map_cache = self._app_service.get_daily_map()
+        self._daily_options_cache = {
             g["script_name"]: self._build_daily_options(g["script_name"]) for g in games
         }
 
@@ -187,7 +187,7 @@ class TaskCardController(QObject):
         """切换游戏后发信号触发 QML 重读任务卡。"""
         self.taskStateChanged.emit()
 
-    def _daily_task_label(self, record: dict, options: list) -> str:
+    def _daily_label(self, record: dict, options: list) -> str:
         """某日常的 chip 文字：停用 →「不启用」，否则反读副本（+二级选项）。
 
         反读无真相（如绝区零/崩铁的 no-op 日常）时回退该日常声明的首个选项，
@@ -207,9 +207,9 @@ class TaskCardController(QObject):
             task = options[0]["name"]
         if not task:
             return "选择副本"
-        return self._daily_task_chip_text(options, task, record["sequence"])
+        return self._daily_chip_text(options, task, record["sequence"])
 
-    def _daily_task_chip_text(self, options: list, task_name: str, sequence) -> str:
+    def _daily_chip_text(self, options: list, task_name: str, sequence) -> str:
         """副本 chip 文字：副本名 + 已选二级选项（如「空幕 · 轨道之夜」）。
 
         异环等游戏的二级选项（如轨道之夜）不自包含副本名，必须连同副本名一起
@@ -228,11 +228,11 @@ class TaskCardController(QObject):
 
     def _build_daily_options(self, script_name: str) -> list:
         """构建某脚本各日常的下拉数据：[{name, options:[{name, sequences}]}, ...]。"""
-        if script_name not in self._daily_task_map_cache:
+        if script_name not in self._daily_map_cache:
             return []
         return [
             {"name": daily["name"], "options": self._build_daily_task_options(daily)}
-            for daily in self._daily_task_map_cache[script_name]["dailies"]
+            for daily in self._daily_map_cache[script_name]["dailies"]
         ]
 
     def _build_daily_task_options(self, daily: dict) -> list:
@@ -250,7 +250,7 @@ class TaskCardController(QObject):
 
     # ── 交互 ───────────────────────────────────────────────────────────
     @Slot(str, str, "QVariant")
-    def selectDailyTask(self, daily_name: str, task_name: str, sequence):
+    def selectDaily(self, daily_name: str, task_name: str, sequence):
         """选择某日常的副本（实时落盘子脚本 config，并启用该日常）。
 
         绝区零/崩铁的 set_daily_task 为 no-op（上游已支持到无需本工具配置），
@@ -258,11 +258,11 @@ class TaskCardController(QObject):
 
         Args:
             daily_name: 日常展示名（该行所属日常）。
-            task_name: 选中的副本名（来自 daily_task_options）。
+            task_name: 选中的副本名（来自 daily_options）。
             sequence: 选中的二级选项值；该副本无二级选项时为 None。
         """
         script_name = self._current["script_name"]
-        # 实时落盘子脚本 config（与周常副本 selectWeeklyTask 一致，经 service）；
+        # 实时落盘子脚本 config（与周常副本 selectWeekly 一致，经 service）；
         # 未选择选项已移除，下拉只含真实副本，此处不再区分清空调度。
         if task_name:
             self._app_service.set_script_daily_task(
@@ -286,7 +286,7 @@ class TaskCardController(QObject):
         self.refresh()
 
     @Slot(str, str)
-    def selectWeeklyTask(self, weekly_name: str, task_name: str):
+    def selectWeekly(self, weekly_name: str, task_name: str):
         """选择某周常的副本（写回脚本自身 config）。
 
         Args:

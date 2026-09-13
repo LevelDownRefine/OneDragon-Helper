@@ -273,23 +273,23 @@ class QmlBridge(QObject):
         self.window.closeWindow()
 
     @Slot(str, str, "QVariant")
-    def selectDailyTask(self, daily_name, task_name, seq):
-        self.task_card.selectDailyTask(daily_name, task_name, seq)
+    def selectDaily(self, daily_name, task_name, seq):
+        self.task_card.selectDaily(daily_name, task_name, seq)
 
     @Slot(str, bool)
     def setDailyEnabled(self, daily_name, enabled):
         self.task_card.setDailyEnabled(daily_name, enabled)
 
     @Slot(str, result="QVariantList")
-    def dailyTaskOptions(self, daily_name):
-        return self.task_card.daily_task_options(daily_name)
+    def dailyOptions(self, daily_name):
+        return self.task_card.daily_options(daily_name)
 
     @Slot(str, str)
-    def selectWeeklyTask(self, weekly_name, task_name):
-        self.task_card.selectWeeklyTask(weekly_name, task_name)
+    def selectWeekly(self, weekly_name, task_name):
+        self.task_card.selectWeekly(weekly_name, task_name)
 
     @Slot(str, result="QVariantList")
-    def weeklyTaskOptions(self, weekly_name):
+    def weeklyOptions(self, weekly_name):
         return self.task_card.weekly_task_options(weekly_name)
 
     @Slot(str)
@@ -320,7 +320,7 @@ class QmlBridge(QObject):
         必须强制刷新背景与任务卡，否则 UI 停在旧数据直到重新点选。
         """
         self.game_list.reload_games()
-        self.task_card.build_daily_task_cache(self.game_list.games)
+        self.task_card.build_daily_cache(self.game_list.games)
         self._on_current_changed()
 
     def _on_current_changed(self):

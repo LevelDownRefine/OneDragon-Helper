@@ -41,8 +41,8 @@
 
 | 配置类型 | 落盘时机 | 说明 |
 |----------|----------|------|
-| 日常副本 / 序列（`task_name` / `sequence`） | **编辑期实时** | GUI 选副本（`TaskCardController.selectDailyTask`）、CLI `--task`/`--sequence` 覆盖，均直接调 `set_config` 实时写子脚本 config。无需等到运行全体。 |
-| 周常副本（`set_weekly_task`） | **编辑期实时** | GUI 选周常副本（`selectWeeklyTask`）直接写子脚本 config。 |
+| 日常副本 / 序列（`task_name` / `sequence`） | **编辑期实时** | GUI 选副本（`TaskCardController.selectDaily`）、CLI `--task`/`--sequence` 覆盖，均直接调 `set_config` 实时写子脚本 config。无需等到运行全体。 |
+| 周常副本（`set_weekly_task`） | **编辑期实时** | GUI 选周常副本（`selectWeekly`）直接写子脚本 config。 |
 | 周常起始日（`weekly_start` → 周本开关） | **运行期** | 启用与否 = `today_weekday >= start_day`，只能在运行期按当天星期计算。故仅在 `generate_chain_config` 中经 `set_config(weekly_start=...)` 透传，由 `prepare_weekly_start_day` 写开关。 |
 
 **关键结论**：除「按周几起决定开启/关闭」的周本开关必须在运行期落盘外，其余日常副本/序列、周常副本均在编辑期实时落盘子脚本 config。`generate_chain_config` 因此**不再重复写** task/sequence——它只负责把 `weekly_start` 透传给 `set_config`。

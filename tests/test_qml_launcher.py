@@ -536,18 +536,18 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                           f"WIN {win.height()}", flush=True)
 
                 def measure():
-                    wk = win.findChild(QQuickItem, "weeklyTaskPopup")
+                    wk = win.findChild(QQuickItem, "weeklyPopup")
                     wk.setProperty("weeklyName", "历战余响")
                     wk.setProperty("visible", True)
-                    dg = win.findChild(QQuickItem, "dailyTaskPopup")
+                    dg = win.findChild(QQuickItem, "dailyPopup")
                     dg.setProperty("visible", True)
-                    QTimer.singleShot(200, lambda: (report("weeklyTaskPopup"),
-                                                    report("dailyTaskPopup"),
+                    QTimer.singleShot(200, lambda: (report("weeklyPopup"),
+                                                    report("dailyPopup"),
                                                     app.quit()))
 
                 QTimer.singleShot(600, measure)
                 app.exec()
-                print("OPTS", len(bridge.weeklyTaskOptions("历战余响")), flush=True)
+                print("OPTS", len(bridge.weeklyOptions("历战余响")), flush=True)
             """
         )
         proc = subprocess.run(
@@ -568,7 +568,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             parts = line.split()
             if len(parts) == 7 and parts[1] == "TOP":
                 measured[parts[0]] = (int(parts[2]), int(parts[4]), int(parts[6]))
-        for name in ("weeklyTaskPopup", "dailyTaskPopup"):
+        for name in ("weeklyPopup", "dailyPopup"):
             self.assertIn(name, measured, f"未测到 {name}，stdout={proc.stdout}")
             top, height, win_h = measured[name]
             self.assertGreaterEqual(top, 0, f"{name} 顶部超出窗口上沿")
@@ -576,7 +576,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                 top + height, win_h, f"{name} 底部超出窗口（top={top} h={height}）"
             )
         # 周常下拉高度 = 选项数 * 32 + 8，应完整放下不被截断
-        self.assertEqual(measured["weeklyTaskPopup"][1], n_opts * 32 + 8)
+        self.assertEqual(measured["weeklyPopup"][1], n_opts * 32 + 8)
 
 
 class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):

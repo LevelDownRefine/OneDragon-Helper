@@ -20,7 +20,7 @@ class TestTaskCard(unittest.TestCase):
     def test_restore_refreshes_task_properties(self, _map):
         bridge = _make_bridge()
         name = bridge.games[0]["script_name"]
-        bridge.task_card._daily_task_options_cache = {
+        bridge.task_card._daily_options_cache = {
             name: [
                 {"name": "每日任务", "options": [{"name": "副本A", "sequences": []}]}
             ]
@@ -81,7 +81,7 @@ class TestTaskCard(unittest.TestCase):
         b = _make_bridge()
         name = b.games[0]["script_name"]
         # 反读无真相 → chip 回退声明的首个选项
-        b.task_card._daily_task_options_cache = {
+        b.task_card._daily_options_cache = {
             name: [
                 {"name": "每日任务", "options": [{"name": "副本A", "sequences": []}]}
             ]
@@ -89,7 +89,7 @@ class TestTaskCard(unittest.TestCase):
         readback.return_value = [
             {"name": "每日任务", "task": None, "sequence": None, "enabled": None}
         ]
-        b.selectDailyTask("每日任务", "副本A", "seq1")
+        b.selectDaily("每日任务", "副本A", "seq1")
         self.assertEqual(b.dailyItems[0]["task_label"], "副本A")
         # 实时落盘子脚本 config（日常副本编辑期即生效，不再依赖运行全体），经 service 入口；
         # 日常名由该行（GUI 手上就有）带出
@@ -131,11 +131,11 @@ class TestTaskCard(unittest.TestCase):
             [item["name"] for item in b.dailyItems], ["异象界域", "追猎目标"]
         )
         self.assertEqual(
-            b.dailyTaskOptions("追猎目标"), [{"name": "追猎目标", "sequences": []}]
+            b.dailyOptions("追猎目标"), [{"name": "追猎目标", "sequences": []}]
         )
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    def test_daily_task_options_shape(self, *_):
+    def test_daily_options_shape(self, *_):
         menu = {
             "ok-ww": {
                 "dailies": [
@@ -153,14 +153,14 @@ class TestTaskCard(unittest.TestCase):
         }
         with patch("src.service.app_service.get_daily_map", return_value=menu):
             b = _make_bridge()
-        opts = b.dailyTaskOptions("每日任务")
+        opts = b.dailyOptions("每日任务")
         self.assertEqual(opts[0]["name"], "副本A")
         self.assertEqual(opts[0]["sequences"], [{"label": "难1", "value": "s1"}])
 
     @patch("src.service.app_service.get_daily_map", return_value={})
-    def test_daily_task_options_empty_when_no_cfg(self, *_):
+    def test_daily_options_empty_when_no_cfg(self, *_):
         b = _make_bridge()
-        self.assertEqual(b.dailyTaskOptions("每日任务"), [])
+        self.assertEqual(b.dailyOptions("每日任务"), [])
 
     @patch("src.gui.dialogs.SingleScriptConfigDialog")
     @patch("PySide6.QtWidgets.QDialog")

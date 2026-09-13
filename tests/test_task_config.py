@@ -223,7 +223,7 @@ class TestGetDailyConfig(unittest.TestCase):
             self.config(definitions, "不存在")
 
 
-class TestGetDailyTasks(unittest.TestCase):
+class TestGetDailyConfigs(unittest.TestCase):
     """get_daily_configs：从声明推导每个日常的选项落点。"""
 
     def tasks(self, definitions):
