@@ -82,16 +82,19 @@
 
 `task_config.py` 只读取、校验声明和取得名字映射；`daily_task_config.py` 把声明转换为原有菜单数据。
 `set_config.py` 子类从声明取得字段和别名，沿用原来的写入、反读和周常处理流程。
-目前仍是每脚本一个日常选择入口，异环的两个声明仅由 `NTEConfig` 合并到同一菜单并互斥启用。
+日常菜单按日常分组：`get_daily_task_options()` 返回 `[{daily_display_name, options}, ...]`（异环两项、单日常脚本一项），界面上每个日常一行，行内各自选择副本。
+日常接口分两侧：写入侧 `set_daily_task(daily_display_name, task_name, sequence)` —— 参数顺序即菜单层级（日常 → 一级项 → 二级项）。`daily_display_name` **恒非空**：单日常脚本也要给（界面逐行渲染，一行即一个日常，该行行名就是它，所以任何脚本都给得出），基类入口会 assert，不存在「单日常就省掉」或「由适配器补名」的形态；分段脚本据此选段。读取侧 `_read_daily_tasks()` 一次反读该脚本全部日常（facade `get_daily_readback`），每项 `{name, task, sequence, enabled}`，界面按名字对齐行。日常展示名 → 物理名（段名 / routine item id）的换算只有一处：`_daily_physical_name(daily_display_name)`。反读不看启用状态（用于呈现未启用的日常）。
 声明允许递归，当前日常菜单支持两级、周常菜单支持一级；更多层的界面接入留到后续。
 
-基类模板流程：`_load()` → `_update_task(config, task_name, sequence)`（含二级序列）→ 有改动则 `_save()`，保存后 `_verify_saved()` 重读校验落盘一致性。
+基类模板流程：`_load()` → `_update_task(config, daily_display_name, task_name, sequence)`（含二级序列）→ 有改动则 `_save()`，保存后 `_verify_saved()` 重读校验落盘一致性。
 
 > 写盘校验：`_save()` 是唯一落盘点，写后 `_verify_saved()` 重读并与预期整段相等断言。save_config 为同步阻塞写，重读必为新内容，无需 sleep。校验失败属不该发生，用 assert。
 
 | 钩子 | 作用 | 默认 |
 |------|------|------|
-| `_update_task(config, task_name, sequence)` | 更新副本类型字段与二级序列 | 设 `_task_key` 即启用，用 `_task_map` 映射，空 map 用 `task_name` 原值；sequence 非 None 即 assert（基类无二级序列通道） |
+| `_update_task(config, daily_display_name, task_name, sequence)` | 更新副本类型字段与二级序列 | 设 `_task_key` 即启用，用 `_task_map` 映射，空 map 用 `task_name` 原值；sequence 非 None 即 assert（基类无二级序列通道）；`daily_display_name` 基类忽略取值（单日常）但仍须给出，分段脚本用它经 `_daily_physical_name` 定位日常段 |
+| `_read_daily_task(daily_display_name)` | 反读某日常的副本与二级 | 基类经 `_task_key` + `_task_map` 反转；分段脚本按日常段读 |
+| `_read_daily_tasks()` | 反读全部日常（含开关） | 基类遍历声明逐日常调 `_read_daily_task` + `_read_daily_enabled`，子类通常无需覆写 |
 
 各脚本策略：
 
@@ -101,19 +104,21 @@
 | 原神 | 否 | `DomainName` | 否 | — |
 | 终末地 | 否 | `体力本` | 否 | — |
 | 崩铁 | 否 | — | 否 | 日常无需适配（set_daily_task 为 no-op，上游自身已支持），chip 呈现声明项 |
-| 异环 | 否，覆盖做互斥切换 | `任务类型`（声明于 `_mode_specs`） | 是 | 完全自定义（不调 super）：副本→模式经 `_task_to_mode` 反查 `_mode_specs` 声明式映射（含 `task_field`+`seq_fields`）；`DailyRoutineTask.json` 切换 `daily_anomaly`↔`daily_anomaly_hunter` 互斥启用，复用基类 `_load`/`_save`，仅路径 `_routine_config_rel_path` 不同 |
+| 异环 | 是，写第二份文件的启用状态 | `任务类型`（由 `_daily_tasks` 给出） | 是 | 完全自定义（不调 super）：日常段由 `daily_display_name` 经 `_daily_physical_name` 定出（非异环日常即 assert）；字段落点取 `_daily_tasks`（由声明推导，含 `task_field`/`task_map`/`option_fields`）；`DailyRoutineTask.json` 里只把所选日常的 Routine Item 置为启用、**不动另一个日常**（互斥已取消），复用基类 `_load`/`_save`，仅路径 `_routine_config_rel_path` 不同 |
 | 绝区零 | 是，空实现仅 print | — | — | 无需适配副本选择（上游自身已支持） |
 | 粥 | 是，完全自定义 | — | 是 | 操作 `TaskQueue` 禁用全部→启用剿灭+选定+土，不写二级序列 |
 
 标准流程：不覆盖 set_daily_task，靠 `_task_key` 适配；需二级序列支持则覆盖 `_update_task`（在 `super()._update_task(config, task_name, None)` 后补序列）；需完全自定义如粥或无需适配如绝区零才覆盖 set_daily_task。
 
-### 异环：追猎目标与异象界域互斥
+### 异环：两个日常各自独立启用
 
-异环日常玩法两类互斥：异象界域在 `DailyRoutineTaskConfigs.json` 的 `daily_anomaly` 段，追猎目标在 `daily_anomaly_hunter` 段。互斥开关写在 `DailyRoutineTask.json` 的 `Routine Items`，`id` 为 `daily_anomaly`/`daily_anomaly_hunter` 的 `enabled`。
+异环日常玩法两类：异象界域在 `DailyRoutineTaskConfigs.json` 的 `daily_anomaly` 段，追猎目标在 `daily_anomaly_hunter` 段。开关写在 `DailyRoutineTask.json` 的 `Routine Items`，`id` 为 `daily_anomaly`/`daily_anomaly_hunter` 的 `enabled`。
 
-NTEConfig 覆盖 `set_daily_task`：选空幕等异象界域副本 → 写 `daily_anomaly` 的 `任务类型`+序号，启用 `daily_anomaly`、停用 `daily_anomaly_hunter`；选追猎目标并选 boss → 在 `daily_anomaly_hunter` 写 `追猎目标`，启用 `daily_anomaly_hunter`、停用 `daily_anomaly`。
+NTEConfig 覆盖 `set_daily_task`：写 `daily_display_name` 指定日常的副本/序号后，把该日常的 Routine Item 置为启用；**另一个日常的 `enabled` 不动**——工具层不再做互斥，两个日常可同时启用（是否只跑一个由游戏侧决定）。「不启用」走 `set_daily_enabled(daily, enabled)`（只动开关、不动副本选择）。三个入口的日常名都显式给出：分段脚本没有「唯一日常」可默认，且界面逐行渲染时本就拿得到那一行的日常名。
 
-NTEConfig 覆盖 `set_daily_task`：按 `_task_to_mode` 反查所选副本所属模式（`daily_anomaly` / `daily_anomaly_hunter`），委托基类写第一份文件（经 `_mode_specs` 声明式字段映射写入 `任务类型`+序号或 `追猎目标`），自身再切换第二份互斥文件 `DailyRoutineTask.json` 的 Routine Item 启用状态。相关路径/常量在 `NTEConfig`：`_routine_config_rel_path`、`_exclusive_routine_items`、`_anomaly_seq_key_map`、`_mode_specs`、`_task_to_mode`。
+字段落点由 `_daily_tasks` 给出——它是 `task_config.get_daily_tasks` 从声明推导的结果（`task_field` / `task_map` / `option_fields`），子类不再手写映射表；写路径的日常段由 `_daily_physical_name(daily_display_name)` 定出——它是全仓唯一的「日常展示名 → 物理名」换算点（基类，读写开关三路共用）。菜单由**基类**的 `get_daily_task_options()` 按日常分组推导（`[{daily_display_name, options}, ...]`，无需子类覆写）：每个日常取声明里的 values 作一级项；单层日常（值直接写自身字段、无一级字段）时整组即唯一的一级项（展示名用日常名），values 作二级——与写入侧同源，全部来自 `get_daily_tasks` 的落点。`daily_task_config.get_daily_task_map` 据此产出 `{script: {"dailies": [{name, tasks}, ...]}}`。
+
+反读：`_read_daily_task(daily)` 只看副本与二级（不看是否启用），`_read_daily_enabled(daily)` 看开关，基类 `_read_daily_tasks()` 把两者按日常合成一份记录（facade `get_daily_readback`）。脚本未安装（文件缺失）视为**无真相**：副本/序列为 None、开关也为 None，不谎报「已停用」；无日常开关字段的脚本开关恒为 None，界面据此不提供「不启用」。相关常量：`_routine_config_rel_path`、`_daily_tasks`。
 
 ## 设置周常流程 prepare_weekly_start_day
 
@@ -184,7 +189,7 @@ set_config("ok-ww", task_name="未选择")                         # 跳过
 ## 设计原则
 
 - 两流程分离：初始化对齐模板与设置副本响应选择独立，不混。
-- 克制：无明确收益不抽抽象。异环多副本共用的映射才抽 `_mode_specs`/`_task_to_mode` 声明式表，鸣潮单副本不抽。
+- 声明即真相：字段落点能从 `daily_task_list.yml` 推导的不在子类手写映射表（异环的 `_daily_tasks` 由 `task_config.get_daily_tasks` 推导），子类只声明声明层表达不了的东西（脚本内路径、文件内键名）。
 - 严格 assert：配置不一致立即报错，不静默容忍。字典访问先 assert key 再直接访问，不用 `.get()`。
 - 类型一致：sequence 类型由 `daily_task_list.yml` 的 physical_name 决定，不把数字转为字符串。
 

@@ -16,9 +16,10 @@ def parse_daily_task_config(
     task_cfg: Any,
 ) -> tuple[DailyTaskOptions, SequenceOptionsMap, bool]:
     """
-    解析单个脚本的副本配置。
+    解析单个日常的副本配置。
 
-    菜单数据格式（由 get_daily_task_map 转换）：
+    菜单数据格式（get_daily_task_map 的 `dailies[i]`）：
+    name: "日常展示名"
     tasks:
       - name: "副本名"
       - name: "有二级选项的副本"
@@ -27,7 +28,7 @@ def parse_daily_task_config(
             value: 实际值
 
     Args:
-        task_cfg: get_daily_task_map 返回的单脚本菜单数据。
+        task_cfg: 某个日常的菜单数据（`{name, tasks}`）。
 
     Returns:
         (options, seq_map, show_seq)
@@ -128,24 +129,31 @@ def get_weekly_map(script_name: str) -> list:
 
 
 def get_daily_task_map() -> dict:
-    """把日常声明转换为原有单副本菜单，二级选择继续传物理值。"""
+    """把日常声明转换为按日常分组的菜单，二级选择继续传物理值。
+
+    每个脚本一组日常，每个日常一份一级副本列表（含二级序列）：
+    {script: {"dailies": [{"name": 日常展示名, "tasks": [{name, sequences?}, ...]}, ...]}}。
+    """
     data = {}
     for script_name in load_daily_map():
-        tasks = []
-        for option in get_daily_task_options(script_name):
-            item = {"name": option["display_name"]}
-            if "options" in option:
-                children = _resolve_options(script_name, option)
-                assert all("options" not in child for child in children), (
-                    "当前日常菜单最多支持两级选择"
-                )
-                item["sequences"] = [
-                    {
-                        "display": child["display_name"],
-                        "value": get_physical_name(child),
-                    }
-                    for child in children
-                ]
-            tasks.append(item)
-        data[script_name] = {"tasks": tasks}
+        dailies = []
+        for daily in get_daily_task_options(script_name):
+            tasks = []
+            for option in daily["options"]:
+                item = {"name": option["display_name"]}
+                if "options" in option:
+                    children = _resolve_options(script_name, option)
+                    assert all("options" not in child for child in children), (
+                        "当前日常菜单最多支持两级选择"
+                    )
+                    item["sequences"] = [
+                        {
+                            "display": child["display_name"],
+                            "value": get_physical_name(child),
+                        }
+                        for child in children
+                    ]
+                tasks.append(item)
+            dailies.append({"name": daily["daily_display_name"], "tasks": tasks})
+        data[script_name] = {"dailies": dailies}
     return data

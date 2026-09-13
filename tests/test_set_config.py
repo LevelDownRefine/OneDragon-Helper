@@ -464,18 +464,18 @@ class TestGenshinSetDailyTask(unittest.TestCase):
 
     def test_has_sequence_writes_secondary_name(self):
         """有二级（目录 → 副本）时 DomainName 写入二级副本名"""
-        self.config.set_daily_task("1", "霜凝的机枢")
+        self.config.set_daily_task("每日任务", "1", "霜凝的机枢")
         self.assertEqual(self.config._config_data["DomainName"], "霜凝的机枢")
 
     def test_no_sequence_writes_task_name(self):
         """无二级（兼容旧单层配置）时 DomainName 写入一级名"""
-        self.config.set_daily_task("山风的荆冕")
+        self.config.set_daily_task("每日任务", "山风的荆冕")
         self.assertEqual(self.config._config_data["DomainName"], "山风的荆冕")
 
     def test_same_value_no_save(self):
         """DomainName 未变化时不落盘"""
         self.config._config_data["DomainName"] = "霜凝的机枢"
-        self.config.set_daily_task("1", "霜凝的机枢")
+        self.config.set_daily_task("每日任务", "1", "霜凝的机枢")
         self.mock_save.assert_not_called()
 
 

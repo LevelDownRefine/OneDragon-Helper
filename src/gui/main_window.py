@@ -133,8 +133,8 @@ class QmlBridge(QObject):
     dailySupported = Property(
         bool, lambda self: self.task_card.daily_supported, notify=taskStateChanged
     )
-    dailyTaskText = Property(
-        str, lambda self: self.task_card.daily_task_text, notify=taskStateChanged
+    dailyItems = Property(
+        "QVariantList", lambda self: self.task_card.daily_items, notify=taskStateChanged
     )
     weeklySupported = Property(
         bool, lambda self: self.task_card.weekly_supported, notify=taskStateChanged
@@ -145,11 +145,6 @@ class QmlBridge(QObject):
     weeklyItems = Property(
         "QVariantList",
         lambda self: self.task_card.weekly_items,
-        notify=taskStateChanged,
-    )
-    dailyTaskOptions = Property(
-        "QVariantList",
-        lambda self: self.task_card.daily_task_options,
         notify=taskStateChanged,
     )
 
@@ -280,9 +275,17 @@ class QmlBridge(QObject):
     def closeWindow(self):
         self.window.closeWindow()
 
-    @Slot(str, "QVariant")
-    def selectDailyTask(self, name, seq):
-        self.task_card.selectDailyTask(name, seq)
+    @Slot(str, str, "QVariant")
+    def selectDailyTask(self, daily_name, task_name, seq):
+        self.task_card.selectDailyTask(daily_name, task_name, seq)
+
+    @Slot(str, bool)
+    def setDailyEnabled(self, daily_name, enabled):
+        self.task_card.setDailyEnabled(daily_name, enabled)
+
+    @Slot(str, result="QVariantList")
+    def dailyTaskOptions(self, daily_name):
+        return self.task_card.daily_task_options(daily_name)
 
     @Slot(str, str)
     def selectWeeklyTask(self, weekly_name, task_name):

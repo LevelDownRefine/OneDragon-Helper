@@ -264,9 +264,8 @@ class TestNativeDropPersistence(unittest.TestCase):
                     return_value=None,
                 ),
                 patch(
-                    "src.gui.controllers.task_card.get_daily_task", return_value=None
+                    "src.gui.controllers.task_card.get_daily_readback", return_value=[]
                 ),
-                patch("src.gui.controllers.task_card.get_sequence", return_value=None),
                 patch(
                     "src.gui.file_drop.ctypes.WinDLL",
                     side_effect=[shell, MagicMock(), MagicMock()],
@@ -326,8 +325,7 @@ class TestQmlScriptDrop(unittest.TestCase):
                 patch.object(AppService, "get_daily_task_map", return_value={}),
                 patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
-                patch("src.gui.controllers.task_card.get_daily_task", return_value=None),
-                patch("src.gui.controllers.task_card.get_sequence", return_value=None),
+                patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),
             ):
                 bridge = _make_bridge()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)

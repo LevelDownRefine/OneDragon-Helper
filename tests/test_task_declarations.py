@@ -55,8 +55,8 @@ class TestDeclarationBindings(unittest.TestCase):
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save") as save,
         ):
-            cfg.set_daily_task("测试类别", 9)
-            self.assertEqual(cfg._read_daily_task(), ("测试类别", 9))
+            cfg.set_daily_task("每日任务", "测试类别", 9)
+            self.assertEqual(cfg._read_daily_task("每日任务"), ("测试类别", 9))
         self.assertEqual(
             config,
             {**original, "NativeCategory": "NativeCategoryValue", "NativeStage": 9},
@@ -76,13 +76,15 @@ class TestDeclarationBindings(unittest.TestCase):
                     patch.object(cfg, "_load", return_value=config),
                     patch.object(cfg, "_save"),
                 ):
-                    cfg.set_daily_task("只供展示的类别", "真实副本")
-                    self.assertEqual(cfg._read_daily_task(), ("真实副本", None))
+                    cfg.set_daily_task("每日任务", "只供展示的类别", "真实副本")
+                    self.assertEqual(
+                        cfg._read_daily_task("每日任务"), ("真实副本", None)
+                    )
                 self.assertEqual(
                     config, {"NativeTarget": "真实副本", "untouched": True}
                 )
 
-    def test_nte_modes_remain_exclusive_with_declared_native_names(self):
+    def test_nte_daily_selection_follows_declared_native_names(self):
         anomaly, hunter = self.daily["ok-nte"]
         anomaly["physical_name"] = "native_anomaly"
         anomaly["options"]["key"] = "NativeType"
@@ -108,21 +110,23 @@ class TestDeclarationBindings(unittest.TestCase):
             return routine if path == cfg._routine_config_rel_path else config
 
         with patch.object(cfg, "_load", side_effect=load), patch.object(cfg, "_save"):
-            cfg.set_daily_task("空幕", 2)
-            self.assertEqual(cfg._read_daily_task(), ("空幕", 2))
+            cfg.set_daily_task("异象界域", "空幕", 2)
+            self.assertEqual(cfg._read_daily_task("异象界域"), ("空幕", 2))
             self.assertEqual(
                 config["native_anomaly"],
                 {"NativeType": "NativeCategory", "NativeSequence": 2},
             )
+            # 只启用所选日常：另一个日常与无关项都不动
             self.assertEqual(
                 [item["enabled"] for item in routine["Routine Items"]],
-                [True, False, True],
+                [True, True, True],
             )
-            cfg.set_daily_task("追猎目标", "音霸魔王")
-            self.assertEqual(cfg._read_daily_task(), ("追猎目标", "音霸魔王"))
+            routine["Routine Items"][0]["enabled"] = False  # 异象界域被用户停用
+            cfg.set_daily_task("追猎目标", "追猎目标", "音霸魔王")
+            self.assertEqual(cfg._read_daily_task("追猎目标"), ("追猎目标", "音霸魔王"))
             self.assertEqual(
                 [item["enabled"] for item in routine["Routine Items"]],
-                [False, True, True],
+                [False, True, True],  # 停用的异象界域保持停用（工具层不再互斥）
             )
 
     def test_weekly_task_name_and_selection_aliases_roundtrip(self):
@@ -181,16 +185,16 @@ class TestDeclarationBindings(unittest.TestCase):
             patch.object(cfg, "_load", return_value=config),
             patch.object(cfg, "_save"),
         ):
-            cfg.set_daily_task("新土别名")
+            cfg.set_daily_task("每日任务", "新土别名")
             self.assertEqual(
                 [task["IsEnable"] for task in queue], [True, True, False, False]
             )
-            self.assertEqual(cfg._read_daily_task(), ("新土别名", None))
-            cfg.set_daily_task("红票")
+            self.assertEqual(cfg._read_daily_task("每日任务"), ("新土别名", None))
+            cfg.set_daily_task("每日任务", "红票")
             self.assertEqual(
                 [task["IsEnable"] for task in queue], [True, True, True, False]
             )
-            self.assertEqual(cfg._read_daily_task(), ("红票", None))
+            self.assertEqual(cfg._read_daily_task("每日任务"), ("红票", None))
 
     def test_native_single_daily_entry_points_remain_available(self):
         for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):

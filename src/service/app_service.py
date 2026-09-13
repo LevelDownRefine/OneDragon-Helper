@@ -22,7 +22,7 @@ import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 from src.config.daily_task_config import get_daily_task_map, get_weekly_map
-from src.config.set_config import set_config, set_weekly_task
+from src.config.set_config import set_config, set_daily_enabled, set_weekly_task
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -204,11 +204,23 @@ class AppService:
     def set_script_daily_task(
         self,
         script_name: str,
+        daily_display_name: str | None = None,
         task_name: str | None = None,
         sequence: str | int | None = None,
     ) -> None:
-        """写当前日常副本/二级序列到脚本自身 config（编辑期实时落盘）。"""
-        return set_config(script_name, task_name=task_name, sequence=sequence)
+        """写日常副本/二级序列到脚本自身 config（编辑期实时落盘）。"""
+        return set_config(
+            script_name,
+            daily_display_name=daily_display_name,
+            task_name=task_name,
+            sequence=sequence,
+        )
+
+    def set_script_daily_enabled(
+        self, script_name: str, daily_display_name: str, enabled: bool
+    ) -> None:
+        """启用/停用某日常（写子脚本 config 的日常开关，编辑期实时落盘）。"""
+        return set_daily_enabled(script_name, daily_display_name, enabled)
 
     def set_script_weekly_task(
         self, script_name: str, weekly_name: str, task_name: str

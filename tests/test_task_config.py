@@ -195,5 +195,173 @@ class TestTaskDeclarations(unittest.TestCase):
                 m.get_weekly_config("s", "不存在")
 
 
+class TestGetDailyConfig(unittest.TestCase):
+    """get_daily_config：按展示名取日常声明；不传展示名时要求脚本只有一个日常。"""
+
+    def config(self, definitions, daily_display_name=None):
+        with patch.object(m, "load_daily_map", return_value={"script": definitions}):
+            return m.get_daily_config("script", daily_display_name)
+
+    def test_single_daily_without_name_returns_it(self):
+        definitions = [{"display_name": "日常"}]
+        self.assertEqual(self.config(definitions), {"display_name": "日常"})
+
+    def test_lookup_uses_name_instead_of_position(self):
+        definitions = [{"display_name": "另一日常"}, {"display_name": "指定日常"}]
+        self.assertEqual(
+            self.config(definitions, "指定日常"), {"display_name": "指定日常"}
+        )
+
+    def test_multiple_dailies_without_name_raises(self):
+        definitions = [{"display_name": "日常一"}, {"display_name": "日常二"}]
+        with self.assertRaisesRegex(AssertionError, "需指定日常展示名"):
+            self.config(definitions)
+
+    def test_unknown_name_raises(self):
+        definitions = [{"display_name": "日常"}]
+        with self.assertRaisesRegex(AssertionError, "缺少日常声明"):
+            self.config(definitions, "不存在")
+
+
+class TestGetDailyTasks(unittest.TestCase):
+    """get_daily_tasks：从声明推导每个日常的选项落点。"""
+
+    def tasks(self, definitions):
+        with patch.object(m, "load_daily_map", return_value={"script": definitions}):
+            return m.get_daily_tasks("script")
+
+    def test_two_layer_daily_uses_top_key(self):
+        """两层级且顶层声明 key：一级写顶层 key，二级写各选项的 options.key。"""
+        tasks = self.tasks(
+            [
+                {
+                    "display_name": "日常",
+                    "physical_name": "daily",
+                    "options": {
+                        "key": "一级字段",
+                        "values": [
+                            {
+                                "display_name": "分类",
+                                "physical_name": "native_category",
+                                "options": {
+                                    "key": "二级字段",
+                                    "values": [{"display_name": "子项"}],
+                                },
+                            }
+                        ],
+                    },
+                }
+            ]
+        )
+        self.assertEqual(tasks["daily"]["name"], "日常")
+        self.assertEqual(tasks["daily"]["task_field"], "一级字段")
+        self.assertEqual(tasks["daily"]["task_map"], {"分类": "native_category"})
+        self.assertEqual(tasks["daily"]["option_fields"], {"分类": "二级字段"})
+
+    def test_two_layer_daily_without_top_key_uses_child_key(self):
+        """顶层未声明 key 的两层日常：取各选项共用的二级 key。"""
+        tasks = self.tasks(
+            [
+                {
+                    "display_name": "日常",
+                    "options": {
+                        "values": [
+                            {
+                                "display_name": "分类",
+                                "options": {
+                                    "key": "共用字段",
+                                    "values": [{"display_name": "子项"}],
+                                },
+                            }
+                        ]
+                    },
+                }
+            ]
+        )
+        self.assertEqual(tasks["日常"]["task_field"], "共用字段")
+
+    def test_single_layer_daily_has_no_task_field(self):
+        """单层日常（选项都是叶子）：无一级字段，选择结果直接写组的 key。"""
+        tasks = self.tasks(
+            [
+                {
+                    "display_name": "追猎",
+                    "physical_name": "hunter",
+                    "options": {
+                        "key": "追猎目标",
+                        "values": [{"display_name": "boss"}],
+                    },
+                }
+            ]
+        )
+        self.assertIsNone(tasks["hunter"]["task_field"])
+        self.assertEqual(tasks["hunter"]["option_fields"], {"追猎": "追猎目标"})
+
+    def test_single_layer_daily_without_key_has_no_fields(self):
+        """单层且顶层无 key 的日常：没有任何字段落点。"""
+        tasks = self.tasks(
+            [
+                {
+                    "display_name": "日常",
+                    "options": {"values": [{"display_name": "选项"}]},
+                }
+            ]
+        )
+        self.assertIsNone(tasks["日常"]["task_field"])
+        self.assertEqual(tasks["日常"]["option_fields"], {})
+
+    def test_mixed_layers_rejected(self):
+        """同一日常混用单层与两层 → assert。"""
+        definitions = [
+            {
+                "display_name": "日常",
+                "options": {
+                    "key": "一级字段",
+                    "values": [
+                        {
+                            "display_name": "分类",
+                            "options": {
+                                "key": "二级字段",
+                                "values": [{"display_name": "子项"}],
+                            },
+                        },
+                        {"display_name": "叶子"},
+                    ],
+                },
+            }
+        ]
+        with self.assertRaises(AssertionError):
+            self.tasks(definitions)
+
+    def test_duplicate_daily_physical_names_rejected(self):
+        """日常物理名重复 → assert。"""
+        definitions = [
+            {
+                "display_name": "甲",
+                "physical_name": "same",
+                "options": {"values": [{"display_name": "x"}]},
+            },
+            {
+                "display_name": "乙",
+                "physical_name": "same",
+                "options": {"values": [{"display_name": "y"}]},
+            },
+        ]
+        with self.assertRaises(AssertionError):
+            self.tasks(definitions)
+
+    def test_real_ok_nte_declaration(self):
+        """真实异环声明：两个日常的落点与推导一致。"""
+        tasks = m.get_daily_tasks("ok-nte")
+        self.assertEqual(set(tasks), {"daily_anomaly", "daily_anomaly_hunter"})
+        anomaly = tasks["daily_anomaly"]
+        self.assertEqual(anomaly["name"], "异象界域")
+        self.assertEqual(anomaly["task_field"], "任务类型")
+        self.assertIn("空幕", anomaly["option_fields"])
+        hunter = tasks["daily_anomaly_hunter"]
+        self.assertIsNone(hunter["task_field"])
+        self.assertEqual(hunter["option_fields"], {"追猎目标": "追猎目标"})
+
+
 if __name__ == "__main__":
     unittest.main()

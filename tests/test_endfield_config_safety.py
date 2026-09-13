@@ -114,7 +114,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         self.store["data/apps/ok-ef/working/configs/DailyTask.json"] = forced
         pre = copy.deepcopy(forced)
 
-        cfg.set_daily_task("枢纽区")
+        cfg.set_daily_task("每日任务", "枢纽区")
 
         post = self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         diff = diff_paths(pre, post)
@@ -157,7 +157,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
     # ---- 金丝雀：无关字段全程不被触碰 ----
     def test_canaries_untouched_through_full_flow(self):
         cfg = EndfieldConfig()
-        cfg.set_daily_task("枢纽区")
+        cfg.set_daily_task("每日任务", "枢纽区")
         cfg.prepare_weekly_start_day(1)
 
         post = self.store["data/apps/ok-ef/working/configs/DailyTask.json"]

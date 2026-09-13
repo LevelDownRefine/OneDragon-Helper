@@ -153,13 +153,94 @@ def load_weekly_map() -> dict[str, list[dict]]:
     return load_task_map(get_weekly_task_list_yml_path_under_root())
 
 
-def get_daily_config(script_name: str) -> dict:
-    """取得脚本的单个日常声明；特殊玩法由对应子类处理。"""
+def get_daily_config(script_name: str, daily_display_name: str | None = None) -> dict:
+    """取得日常声明：给了展示名取那一份，否则要求脚本只有一个日常。
+
+    Args:
+        script_name: 脚本标识名。
+        daily_display_name: 日常展示名；None 表示取脚本的唯一日常。
+
+    Returns:
+        日常声明 dict。
+
+    Raises:
+        AssertionError: 缺少脚本声明；（未给展示名时）脚本不止一个日常；
+            或（给了展示名时）查不到该日常。
+    """
     data = load_daily_map()
     assert script_name in data, f"缺少日常声明: {script_name}"
     tasks = data[script_name]
-    assert len(tasks) == 1, f"{script_name} 的多个日常需由子类适配"
-    return tasks[0]
+    if daily_display_name is None:
+        assert len(tasks) == 1, f"{script_name} 有多个日常，需指定日常展示名"
+        return tasks[0]
+    matches = [task for task in tasks if task["display_name"] == daily_display_name]
+    assert len(matches) == 1, f"缺少日常声明: {script_name}/{daily_display_name}"
+    return matches[0]
+
+
+def get_daily_tasks(script_name: str) -> dict[str, dict]:
+    """从日常声明推导每个日常的选项落点，返回 日常物理名 → 该日常的选项落点。
+
+    每条记录的键：
+
+    - `name`：日常展示名；
+    - `task_field`：一级选项写入的原生字段；单层日常为 None；
+    - `task_map`：一级项展示名 → 一级物理值；
+    - `option_fields`：一级项展示名 → 二级选项写入的原生字段。
+
+    两层日常（选项各自带 `options`）由顶层 `key` 作一级字段，各选项的 `options.key`
+    作二级字段；顶层未声明 `key` 时取各选项共用的二级 key。单层日常（选项都是叶子）
+    没有一级字段，选择结果直接写组的 `key`，一级项即日常本身。
+
+    Args:
+        script_name: 脚本标识名。
+
+    Returns:
+        {日常物理名: 选项落点}。
+
+    Raises:
+        AssertionError: 缺少日常声明、日常物理名重复、未声明选项、层级混用，
+            或顶层无 `key` 时各选项的二级 key 不唯一。
+    """
+    data = load_daily_map()
+    assert script_name in data, f"缺少日常声明: {script_name}"
+    tasks: dict[str, dict] = {}
+    for daily in data[script_name]:
+        daily_id = get_physical_name(daily)
+        assert daily_id not in tasks, f"{script_name} 的日常物理名重复: {daily_id}"
+        options = get_options(daily)
+        assert options, f"{script_name}/{daily_id} 必须声明选项"
+        group = daily["options"]
+        layered = ["options" in option for option in options]
+        assert all(layered) or not any(layered), (
+            f"{script_name}/{daily_id} 的选项不能混用单层与两层"
+        )
+        if all(layered):
+            keys = {option["options"]["key"] for option in options}
+            if "key" in group:
+                task_field = group["key"]
+            else:
+                assert len(keys) == 1, (
+                    f"{script_name}/{daily_id} 未声明顶层 key 时各选项的二级 key 必须唯一"
+                )
+                task_field = keys.pop()
+            task_map = get_value_map(daily)
+            option_fields = {
+                option["display_name"]: option["options"]["key"] for option in options
+            }
+        else:
+            task_field = None
+            task_map = {}
+            option_fields = (
+                {daily["display_name"]: group["key"]} if "key" in group else {}
+            )
+        tasks[daily_id] = {
+            "name": daily["display_name"],
+            "task_field": task_field,
+            "task_map": task_map,
+            "option_fields": option_fields,
+        }
+    return tasks
 
 
 def get_weekly_config(script_name: str, weekly_name: str) -> dict:

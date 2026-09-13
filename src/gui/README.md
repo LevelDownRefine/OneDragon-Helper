@@ -60,9 +60,16 @@ config.yml 写入权统一归 src.utils.utils_config（经 AppService 委托）�
 
 ## UI 状态持久化
 
-日常副本/序列的真源是子脚本 config（编辑期实时落盘，无 UI 状态文件）；set_daily_task 为
-no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 daily_task_list.yml
-声明的唯一选项。手动脚本 enabled 保存到 config.yml，重启按脚本身份回显；缺省启用。每日计划的脚本名单独立保存到 schedule.yml 的 daily_run.script_names，触发时使用最新副本和运行选项。
+日常副本/序列的真源是子脚本 config（编辑期实时落盘，无 UI 状态文件）；日常菜单按日常分组，
+每个日常一行（异环两行、其余脚本一行），下拉经 `Bridge.dailyTaskOptions(dailyName)` 按日常取，
+每行的 chip 文案由 `Bridge.dailyItems` 一次反读全部日常得到（`get_daily_readback`）。
+写回经 `Bridge.selectDailyTask(dailyName, taskName, sequence)` —— 日常名与该行的副本名一起带下去，
+与「不启用」的 `Bridge.setDailyEnabled(dailyName, enabled)` 同形，适配器不做「副本→所属日常」的猜测。
+set_daily_task 为 no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现该日常
+声明的首个选项。声明了日常开关的脚本（异环，反读记录里 `enabled` 非 None）在下拉末尾多一项
+「不启用」，选中即经 `AppService.set_script_daily_enabled` 落 `enabled=false`，chip 显示「不启用」；
+脚本未安装（整条记录无真相）时既不算「不启用」、也不提供该入口。
+手动脚本 enabled 保存到 config.yml，重启按脚本身份回显；缺省启用。每日计划的脚本名单独立保存到 schedule.yml 的 daily_run.script_names，触发时使用最新副本和运行选项。
 
 ## 添加功能配方
 

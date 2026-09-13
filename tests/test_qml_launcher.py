@@ -651,9 +651,9 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
         self.assertEqual(
             visible, "False", f"无周常脚本应隐藏周常区，stdout={proc.stdout}"
         )
-        # 128 = 标题+分隔线+日常行(56) 的固定高度，不含周常区（与周常上沿对齐）
+        # 68（分隔线后日常区上沿）+ 56*2（异环两个日常各一行）+ 4 = 184，不含周常区
         self.assertEqual(
-            height, 128, f"无周常脚本卡片高度应为 128，stdout={proc.stdout}"
+            height, 184, f"无周常脚本卡片高度应为 184，stdout={proc.stdout}"
         )
 
 

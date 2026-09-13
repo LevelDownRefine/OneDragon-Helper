@@ -118,7 +118,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.store["config/gui.new.json"] = forced
         pre = copy.deepcopy(forced)
 
-        cfg.set_daily_task("土")
+        cfg.set_daily_task("每日任务", "土")
 
         post = self.store["config/gui.new.json"]
         diff = diff_paths(pre, post)
@@ -145,7 +145,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
     # ---- prepare_weekly_start_day：只允许改 6 个 FightTask 的 UseExpiringMedicine / MedicineExpireDays ----
     def test_set_weekly_only_touches_medicine_fields(self):
         cfg = ArknightsConfig()
-        cfg.set_daily_task("土")  # 先把 IsEnable 设到日常态
+        cfg.set_daily_task("每日任务", "土")  # 先把 IsEnable 设到日常态
 
         # 制造差异：把药配置先拨到错误值，逼 prepare_weekly_start_day 真正落盘
         pre = copy.deepcopy(self.store["config/gui.new.json"])
@@ -179,7 +179,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
     # ---- 金丝雀：无关字段全程不被触碰 ----
     def test_canaries_untouched_through_full_flow(self):
         cfg = ArknightsConfig()
-        cfg.set_daily_task("土")
+        cfg.set_daily_task("每日任务", "土")
         cfg.prepare_weekly_start_day(1)
 
         post = self.store["config/gui.new.json"]
@@ -216,7 +216,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.store = {"config/gui.new.json": seed}
         pre = copy.deepcopy(seed)
 
-        cfg.set_daily_task("红票")
+        cfg.set_daily_task("每日任务", "红票")
 
         post = self.store["config/gui.new.json"]
         diff = diff_paths(pre, post)

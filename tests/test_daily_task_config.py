@@ -87,25 +87,37 @@ class TestGetWeeklyDefs(unittest.TestCase):
 
 
 class TestGetDailyTaskMap(unittest.TestCase):
-    def test_real_declarations_keep_one_menu_per_script(self):
+    def test_real_declarations_keep_one_menu_per_daily(self):
         with patch("src.config.daily_task_config.get_task_lists", return_value=[]):
             menus = get_daily_task_map()
         self.assertEqual(set(menus), set(load_daily_map()))
-        options, sequences, show = parse_daily_task_config(menus["MAA"])
+        maa = menus["MAA"]["dailies"][0]
+        self.assertEqual(maa["name"], "每日任务")
+        options, sequences, show = parse_daily_task_config(maa)
         self.assertEqual(options, ["红票", "经验", "龙门币", "土"])
         self.assertEqual(sequences, {})
         self.assertFalse(show)
+        # 异环两个日常各一份菜单（不再合并）
+        nte = menus["ok-nte"]["dailies"]
+        self.assertEqual([daily["name"] for daily in nte], ["异象界域", "追猎目标"])
         self.assertEqual(
-            [item["name"] for item in menus["ok-nte"]["tasks"]],
-            ["空幕", "异能升级材料", "弧盘突破材料", "经验与甲硬币", "追猎目标"],
+            [item["name"] for item in nte[0]["tasks"]],
+            ["空幕", "异能升级材料", "弧盘突破材料", "经验与甲硬币"],
         )
-        self.assertEqual(menus["OneDragon-Launcher"], {"tasks": [{"name": "培养方案"}]})
-        self.assertEqual(menus["March7th-Launcher"], {"tasks": [{"name": "培养目标"}]})
+        self.assertEqual([item["name"] for item in nte[1]["tasks"]], ["追猎目标"])
+        self.assertEqual(
+            menus["OneDragon-Launcher"]["dailies"],
+            [{"name": "每日任务", "tasks": [{"name": "培养方案"}]}],
+        )
+        self.assertEqual(
+            menus["March7th-Launcher"]["dailies"],
+            [{"name": "每日任务", "tasks": [{"name": "培养目标"}]}],
+        )
 
     def test_secondary_menu_values_are_native_and_labels_roundtrip(self):
         with patch("src.config.daily_task_config.get_task_lists", return_value=[]):
             menus = get_daily_task_map()
-        _, sequences, show = parse_daily_task_config(menus["ok-ww"])
+        _, sequences, show = parse_daily_task_config(menus["ok-ww"]["dailies"][0])
         self.assertTrue(show)
         self.assertEqual(sequences["模拟领域"][0], ("共鸣者经验", "Resonator EXP"))
         self.assertEqual(
@@ -124,7 +136,7 @@ class TestGetDailyTaskMap(unittest.TestCase):
         source.assert_any_call(
             "ok-ef", "干员养成", "data/apps/ok-ef/working/assets/data/world_map.json"
         )
-        _, sequences, show = parse_daily_task_config(menus["BetterGI"])
+        _, sequences, show = parse_daily_task_config(menus["BetterGI"]["dailies"][0])
         self.assertTrue(show)
         self.assertEqual(sequences["圣遗物"], [("原生副本", "原生副本")])
 
@@ -137,7 +149,7 @@ class TestGetDailyTaskMap(unittest.TestCase):
                 ),
             ):
                 result = get_daily_task_map()
-            self.assertEqual(result["ok-ef"]["tasks"][0]["sequences"], [])
+            self.assertEqual(result["ok-ef"]["dailies"][0]["tasks"][0]["sequences"], [])
 
     def test_menu_does_not_modify_declarations(self):
         declarations = load_daily_map()
@@ -153,14 +165,30 @@ class TestGetDailyTaskMap(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(declarations, original)
 
-    def test_extra_daily_requires_explicit_subclass_support(self):
+    def test_extra_daily_is_grouped_generically(self):
+        """任何脚本多声明一个日常，菜单按日常分组展开（基类通用，无需子类适配）。"""
         declarations = load_daily_map()
-        declarations["ok-ww"].append({"display_name": "另一个日常"})
+        declarations["ok-ww"].append(
+            {
+                "display_name": "另一个日常",
+                "options": {"values": [{"display_name": "别的副本"}]},
+            }
+        )
         with (
             patch("src.config.task_config.load_daily_map", return_value=declarations),
-            self.assertRaisesRegex(AssertionError, "多个日常需由子类适配"),
+            patch(
+                "src.config.daily_task_config.get_task_lists", return_value=["测试资源"]
+            ),
         ):
-            get_daily_task_map()
+            menus = get_daily_task_map()
+        self.assertEqual(
+            [daily["name"] for daily in menus["ok-ww"]["dailies"]],
+            ["每日任务", "另一个日常"],
+        )
+        self.assertEqual(
+            [item["name"] for item in menus["ok-ww"]["dailies"][1]["tasks"]],
+            ["别的副本"],
+        )
 
     def test_third_level_is_not_silently_dropped(self):
         options = [
@@ -182,7 +210,7 @@ class TestGetDailyTaskMap(unittest.TestCase):
             ),
             patch(
                 "src.config.daily_task_config.get_daily_task_options",
-                return_value=options,
+                return_value=[{"daily_display_name": "日常", "options": options}],
             ),
             self.assertRaisesRegex(AssertionError, "最多支持两级"),
         ):
