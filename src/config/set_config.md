@@ -55,7 +55,7 @@
 
 `ScriptConfig._init_config()`：仅对声明了 `_template_rel_path` 的脚本生效。先判模板是否存在（无模板直接返回），再 `self._load(allow_missing=True)` 读当前 config（脚本未安装/未配置返回 None 时直接返回，不触碰 config），然后 `_load_template()` 加载模板 → 若 `_is_aligned` 一致则跳过；否则遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。
 
-落点（触发时机）：`config_workflow()` 在每次启动时调用 `init_config_all()`，遍历所有已注册脚本对齐 config 与模板。新增/修改脚本路径时（`add_script` / `update_script`）也调用 `init_config`。无 `_template_rel_path` 直接返回、`self._load(allow_missing=True)` 缺失返回——守卫确保无模板或脚本未安装时为空操作。反读适配器（`get_daily_task` 等）一律不触发，保持纯只读。
+落点（触发时机）：`config_workflow()` 在每次启动时调用 `init_config_all()`，遍历所有已注册脚本对齐 config 与模板。新增/修改脚本路径时（`add_script` / `update_script`）也调用 `init_config`。无 `_template_rel_path` 直接返回、`self._load(allow_missing=True)` 缺失返回——守卫确保无模板或脚本未安装时为空操作。反读适配器（`get_daily_readback` 等）一律不触发，保持纯只读。
 
 | 脚本 | 当前调用 _init_config | 模板 | 说明 |
 |------|---------------------|------|------|
@@ -153,12 +153,12 @@ NTEConfig 覆盖 `set_daily_task`：写 `daily_display_name` 指定日常的副�
 ```python
 from src.config.set_config import set_config
 
-set_config("ok-ww", task_name="无音区")                         # 无序列
-set_config("ok-ww", task_name="凝素领域", sequence=17)          # 序列为数字
-set_config("ok-ww", task_name="模拟领域", sequence="贝币")       # 序列为字符串
-set_config("ok-ww", weekly_start=3)                                # 周常起始日，仅适配脚本生效
-set_config("ok-ww", task_name=None)                             # 跳过
-set_config("ok-ww", task_name="未选择")                         # 跳过
+set_config("ok-ww", task_name="无音区")  # 无序列
+set_config("ok-ww", task_name="凝素领域", sequence=17)  # 序列为数字
+set_config("ok-ww", task_name="模拟领域", sequence="贝币")  # 序列为字符串
+set_config("ok-ww", weekly_start=3)  # 周常起始日，仅适配脚本生效
+set_config("ok-ww", task_name=None)  # 跳过
+set_config("ok-ww", task_name="未选择")  # 跳过
 ```
 
 `iter_backup_paths()` 返回 {script_name: 备份路径元组}——「该脚本的配置面在哪」的唯一声明处，供配置备份与恢复遍历。元素是**目录**（整目录递归打包）或**文件**（单文件收录），相对脚本根目录。仅用于收集文件，不解析或校验配置内容。
