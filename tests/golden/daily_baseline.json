@@ -1,0 +1,1584 @@
+{
+  "menus": {
+    "BetterGI": {
+      "每日任务": {
+        "圣遗物": [
+          [
+            "BlessDomain-甲",
+            "BlessDomain-甲"
+          ],
+          [
+            "BlessDomain-乙",
+            "BlessDomain-乙"
+          ]
+        ],
+        "天赋": [
+          [
+            "MasteryDomain-甲",
+            "MasteryDomain-甲"
+          ],
+          [
+            "MasteryDomain-乙",
+            "MasteryDomain-乙"
+          ]
+        ],
+        "武器": [
+          [
+            "ForgeryDomain-甲",
+            "ForgeryDomain-甲"
+          ],
+          [
+            "ForgeryDomain-乙",
+            "ForgeryDomain-乙"
+          ]
+        ]
+      }
+    },
+    "MAA": {
+      "每日任务": {
+        "土": [],
+        "红票": [],
+        "经验": [],
+        "龙门币": []
+      }
+    },
+    "March7th-Launcher": {
+      "每日任务": {
+        "培养目标": []
+      }
+    },
+    "OneDragon-Launcher": {
+      "每日任务": {
+        "培养方案": []
+      }
+    },
+    "ok-ef": {
+      "每日任务": {
+        "危境再现": [
+          [
+            "危境再现-甲",
+            "危境再现-甲"
+          ],
+          [
+            "危境再现-乙",
+            "危境再现-乙"
+          ]
+        ],
+        "危境预演": [
+          [
+            "危境预演-甲",
+            "危境预演-甲"
+          ],
+          [
+            "危境预演-乙",
+            "危境预演-乙"
+          ]
+        ],
+        "干员养成": [
+          [
+            "干员养成-甲",
+            "干员养成-甲"
+          ],
+          [
+            "干员养成-乙",
+            "干员养成-乙"
+          ]
+        ],
+        "武器养成": [
+          [
+            "武器养成-甲",
+            "武器养成-甲"
+          ],
+          [
+            "武器养成-乙",
+            "武器养成-乙"
+          ]
+        ],
+        "能量淤积点": [
+          [
+            "能量淤积点-甲",
+            "能量淤积点-甲"
+          ],
+          [
+            "能量淤积点-乙",
+            "能量淤积点-乙"
+          ]
+        ]
+      }
+    },
+    "ok-nte": {
+      "异象界域": {
+        "异能升级材料": [
+          [
+            "鸟",
+            1
+          ],
+          [
+            "花",
+            2
+          ],
+          [
+            "帽",
+            3
+          ],
+          [
+            "心",
+            4
+          ],
+          [
+            "杯",
+            5
+          ]
+        ],
+        "弧盘突破材料": [
+          [
+            "苹果",
+            1
+          ],
+          [
+            "弦乐",
+            2
+          ],
+          [
+            "梦",
+            3
+          ],
+          [
+            "点心",
+            4
+          ],
+          [
+            "戏剧",
+            5
+          ]
+        ],
+        "空幕": [
+          [
+            "光暗",
+            1
+          ],
+          [
+            "魂相",
+            2
+          ],
+          [
+            "灵咒",
+            3
+          ],
+          [
+            "守卫萝卜",
+            4
+          ],
+          [
+            "精神图谱",
+            5
+          ],
+          [
+            "轨道之夜",
+            6
+          ]
+        ],
+        "经验与甲硬币": [
+          [
+            "角色经验",
+            "角色经验"
+          ],
+          [
+            "弧盘经验",
+            "弧盘经验"
+          ],
+          [
+            "甲硬币",
+            "甲硬币"
+          ]
+        ]
+      },
+      "追猎目标": {
+        "追猎目标": [
+          [
+            "音霸魔王",
+            "音霸魔王"
+          ],
+          [
+            "无首铁驭",
+            "无首铁驭"
+          ],
+          [
+            "塞润尼缇",
+            "塞润尼缇"
+          ],
+          [
+            "黑之书",
+            "黑之书"
+          ],
+          [
+            "海囚",
+            "海囚"
+          ],
+          [
+            "围巢鸟",
+            "围巢鸟"
+          ],
+          [
+            "斑蝶",
+            "斑蝶"
+          ]
+        ]
+      }
+    },
+    "ok-ww": {
+      "每日任务": {
+        "凝素领域": [
+          [
+            "梦州-迅刀",
+            1
+          ],
+          [
+            "梦州-音感仪",
+            2
+          ],
+          [
+            "梦州-长刃",
+            3
+          ],
+          [
+            "梦州-臂铠",
+            4
+          ],
+          [
+            "梦州-佩枪",
+            5
+          ],
+          [
+            "拉海洛-迅刀",
+            6
+          ],
+          [
+            "拉海洛-音感仪",
+            7
+          ],
+          [
+            "拉海洛-长刃",
+            8
+          ],
+          [
+            "拉海洛-臂铠",
+            9
+          ],
+          [
+            "拉海洛-佩枪",
+            10
+          ],
+          [
+            "黎那汐塔-迅刀",
+            11
+          ],
+          [
+            "黎那汐塔-音感仪",
+            12
+          ],
+          [
+            "黎那汐塔-长刃",
+            13
+          ],
+          [
+            "黎那汐塔-臂铠",
+            14
+          ],
+          [
+            "黎那汐塔-佩枪",
+            15
+          ],
+          [
+            "今州-迅刀",
+            16
+          ],
+          [
+            "今州-音感仪",
+            17
+          ],
+          [
+            "今州-长刃",
+            18
+          ],
+          [
+            "今州-臂铠",
+            19
+          ],
+          [
+            "今州-佩枪",
+            20
+          ]
+        ],
+        "无音区": [
+          [
+            "梦州-盾",
+            1
+          ],
+          [
+            "梦州-风",
+            2
+          ],
+          [
+            "拉海洛-冰",
+            3
+          ],
+          [
+            "拉海洛-风",
+            4
+          ],
+          [
+            "拉海洛-火",
+            5
+          ],
+          [
+            "拉海洛-光",
+            6
+          ],
+          [
+            "拉海洛-奶",
+            7
+          ],
+          [
+            "黎那汐塔-荣光火",
+            8
+          ],
+          [
+            "黎那汐塔-流云暗",
+            9
+          ],
+          [
+            "黎那汐塔-充能",
+            10
+          ],
+          [
+            "黎那汐塔-冰",
+            11
+          ],
+          [
+            "黎那汐塔-高天暗",
+            12
+          ],
+          [
+            "今州-奶",
+            13
+          ],
+          [
+            "今州-冰风",
+            14
+          ],
+          [
+            "今州-冰雷",
+            15
+          ],
+          [
+            "今州-光",
+            16
+          ],
+          [
+            "今州-火奶",
+            17
+          ],
+          [
+            "今州-雷火",
+            18
+          ],
+          [
+            "今州-暗轻云",
+            19
+          ]
+        ],
+        "模拟领域": [
+          [
+            "共鸣者经验",
+            "Resonator EXP"
+          ],
+          [
+            "武器经验",
+            "Weapon EXP"
+          ],
+          [
+            "贝币",
+            "Shell Credit"
+          ]
+        ]
+      }
+    }
+  },
+  "reads": {
+    "BetterGI": {
+      "after": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": null,
+          "task": "MasteryDomain-乙"
+        }
+      ],
+      "before": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": null,
+          "task": "天赋"
+        }
+      ]
+    },
+    "MAA": {
+      "after": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": null,
+          "task": "土"
+        }
+      ],
+      "before": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": null,
+          "task": "土"
+        }
+      ]
+    },
+    "March7th-Launcher": {
+      "after": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": null,
+          "task": null
+        }
+      ],
+      "before": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": null,
+          "task": null
+        }
+      ]
+    },
+    "OneDragon-Launcher": {
+      "after": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": null,
+          "task": null
+        }
+      ],
+      "before": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": null,
+          "task": null
+        }
+      ]
+    },
+    "ok-ef": {
+      "after": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": null,
+          "task": "能量淤积点-乙"
+        }
+      ],
+      "before": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": null,
+          "task": "能量淤积点"
+        }
+      ]
+    },
+    "ok-nte": {
+      "after": [
+        {
+          "enabled": true,
+          "name": "异象界域",
+          "sequence": "甲硬币",
+          "task": "经验与甲硬币"
+        },
+        {
+          "enabled": true,
+          "name": "追猎目标",
+          "sequence": "斑蝶",
+          "task": "追猎目标"
+        }
+      ],
+      "before": [
+        {
+          "enabled": false,
+          "name": "异象界域",
+          "sequence": "甲硬币",
+          "task": "经验与甲硬币"
+        },
+        {
+          "enabled": true,
+          "name": "追猎目标",
+          "sequence": "斑蝶",
+          "task": "追猎目标"
+        }
+      ]
+    },
+    "ok-ww": {
+      "after": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": 19,
+          "task": "无音区"
+        }
+      ],
+      "before": [
+        {
+          "enabled": null,
+          "name": "每日任务",
+          "sequence": 19,
+          "task": "无音区"
+        }
+      ]
+    }
+  },
+  "writes": {
+    "BetterGI": [
+      {
+        "daily": "每日任务",
+        "diff": {
+          "User/OneDragon/默认配置.json.DomainName": [
+            "天赋",
+            "BlessDomain-甲"
+          ]
+        },
+        "sequence": "BlessDomain-甲",
+        "task": "圣遗物"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "User/OneDragon/默认配置.json.DomainName": [
+            "BlessDomain-甲",
+            "BlessDomain-乙"
+          ]
+        },
+        "sequence": "BlessDomain-乙",
+        "task": "圣遗物"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "User/OneDragon/默认配置.json.DomainName": [
+            "BlessDomain-乙",
+            "ForgeryDomain-甲"
+          ]
+        },
+        "sequence": "ForgeryDomain-甲",
+        "task": "武器"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "User/OneDragon/默认配置.json.DomainName": [
+            "ForgeryDomain-甲",
+            "ForgeryDomain-乙"
+          ]
+        },
+        "sequence": "ForgeryDomain-乙",
+        "task": "武器"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "User/OneDragon/默认配置.json.DomainName": [
+            "ForgeryDomain-乙",
+            "MasteryDomain-甲"
+          ]
+        },
+        "sequence": "MasteryDomain-甲",
+        "task": "天赋"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "User/OneDragon/默认配置.json.DomainName": [
+            "MasteryDomain-甲",
+            "MasteryDomain-乙"
+          ]
+        },
+        "sequence": "MasteryDomain-乙",
+        "task": "天赋"
+      }
+    ],
+    "MAA": [
+      {
+        "daily": "每日任务",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[2].IsEnable": [
+            false,
+            true
+          ]
+        },
+        "sequence": null,
+        "task": "红票"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[2].IsEnable": [
+            true,
+            false
+          ],
+          "config/gui.new.json.Configurations.Default.TaskQueue[3].IsEnable": [
+            false,
+            true
+          ]
+        },
+        "sequence": null,
+        "task": "经验"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[3].IsEnable": [
+            true,
+            false
+          ],
+          "config/gui.new.json.Configurations.Default.TaskQueue[4].IsEnable": [
+            false,
+            true
+          ]
+        },
+        "sequence": null,
+        "task": "龙门币"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[4].IsEnable": [
+            true,
+            false
+          ]
+        },
+        "sequence": null,
+        "task": "土"
+      }
+    ],
+    "March7th-Launcher": [
+      {
+        "daily": "每日任务",
+        "diff": {},
+        "sequence": null,
+        "task": "培养目标"
+      }
+    ],
+    "OneDragon-Launcher": [
+      {
+        "daily": "每日任务",
+        "diff": {},
+        "sequence": null,
+        "task": "培养方案"
+      }
+    ],
+    "ok-ef": [
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+            "能量淤积点",
+            "干员养成-甲"
+          ]
+        },
+        "sequence": "干员养成-甲",
+        "task": "干员养成"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+            "干员养成-甲",
+            "干员养成-乙"
+          ]
+        },
+        "sequence": "干员养成-乙",
+        "task": "干员养成"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+            "干员养成-乙",
+            "武器养成-甲"
+          ]
+        },
+        "sequence": "武器养成-甲",
+        "task": "武器养成"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+            "武器养成-甲",
+            "武器养成-乙"
+          ]
+        },
+        "sequence": "武器养成-乙",
+        "task": "武器养成"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+            "武器养成-乙",
+            "危境再现-甲"
+          ]
+        },
+        "sequence": "危境再现-甲",
+        "task": "危境再现"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+            "危境再现-甲",
+            "危境再现-乙"
+          ]
+        },
+        "sequence": "危境再现-乙",
+        "task": "危境再现"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+            "危境再现-乙",
+            "危境预演-甲"
+          ]
+        },
+        "sequence": "危境预演-甲",
+        "task": "危境预演"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+            "危境预演-甲",
+            "危境预演-乙"
+          ]
+        },
+        "sequence": "危境预演-乙",
+        "task": "危境预演"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+            "危境预演-乙",
+            "能量淤积点-甲"
+          ]
+        },
+        "sequence": "能量淤积点-甲",
+        "task": "能量淤积点"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+            "能量淤积点-甲",
+            "能量淤积点-乙"
+          ]
+        },
+        "sequence": "能量淤积点-乙",
+        "task": "能量淤积点"
+      }
+    ],
+    "ok-nte": [
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTask.json.Routine Items[0].enabled": [
+            false,
+            true
+          ],
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.任务类型": [
+            "经验与甲硬币",
+            "空幕"
+          ],
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.空幕序号": [
+            6,
+            1
+          ]
+        },
+        "sequence": 1,
+        "task": "空幕"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.空幕序号": [
+            1,
+            2
+          ]
+        },
+        "sequence": 2,
+        "task": "空幕"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.空幕序号": [
+            2,
+            3
+          ]
+        },
+        "sequence": 3,
+        "task": "空幕"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.空幕序号": [
+            3,
+            4
+          ]
+        },
+        "sequence": 4,
+        "task": "空幕"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.空幕序号": [
+            4,
+            5
+          ]
+        },
+        "sequence": 5,
+        "task": "空幕"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.空幕序号": [
+            5,
+            6
+          ]
+        },
+        "sequence": 6,
+        "task": "空幕"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.任务类型": [
+            "空幕",
+            "异能升级材料"
+          ],
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.异能材料序号": [
+            5,
+            1
+          ]
+        },
+        "sequence": 1,
+        "task": "异能升级材料"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.异能材料序号": [
+            1,
+            2
+          ]
+        },
+        "sequence": 2,
+        "task": "异能升级材料"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.异能材料序号": [
+            2,
+            3
+          ]
+        },
+        "sequence": 3,
+        "task": "异能升级材料"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.异能材料序号": [
+            3,
+            4
+          ]
+        },
+        "sequence": 4,
+        "task": "异能升级材料"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.异能材料序号": [
+            4,
+            5
+          ]
+        },
+        "sequence": 5,
+        "task": "异能升级材料"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.任务类型": [
+            "异能升级材料",
+            "弧盘突破材料"
+          ],
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.弧盘材料序号": [
+            5,
+            1
+          ]
+        },
+        "sequence": 1,
+        "task": "弧盘突破材料"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.弧盘材料序号": [
+            1,
+            2
+          ]
+        },
+        "sequence": 2,
+        "task": "弧盘突破材料"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.弧盘材料序号": [
+            2,
+            3
+          ]
+        },
+        "sequence": 3,
+        "task": "弧盘突破材料"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.弧盘材料序号": [
+            3,
+            4
+          ]
+        },
+        "sequence": 4,
+        "task": "弧盘突破材料"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.弧盘材料序号": [
+            4,
+            5
+          ]
+        },
+        "sequence": 5,
+        "task": "弧盘突破材料"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.任务类型": [
+            "弧盘突破材料",
+            "经验与甲硬币"
+          ],
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.具体奖励目标": [
+            "甲硬币",
+            "角色经验"
+          ]
+        },
+        "sequence": "角色经验",
+        "task": "经验与甲硬币"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.具体奖励目标": [
+            "角色经验",
+            "弧盘经验"
+          ]
+        },
+        "sequence": "弧盘经验",
+        "task": "经验与甲硬币"
+      },
+      {
+        "daily": "异象界域",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly.具体奖励目标": [
+            "弧盘经验",
+            "甲硬币"
+          ]
+        },
+        "sequence": "甲硬币",
+        "task": "经验与甲硬币"
+      },
+      {
+        "daily": "追猎目标",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly_hunter.追猎目标": [
+            "斑蝶",
+            "音霸魔王"
+          ]
+        },
+        "sequence": "音霸魔王",
+        "task": "追猎目标"
+      },
+      {
+        "daily": "追猎目标",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly_hunter.追猎目标": [
+            "音霸魔王",
+            "无首铁驭"
+          ]
+        },
+        "sequence": "无首铁驭",
+        "task": "追猎目标"
+      },
+      {
+        "daily": "追猎目标",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly_hunter.追猎目标": [
+            "无首铁驭",
+            "塞润尼缇"
+          ]
+        },
+        "sequence": "塞润尼缇",
+        "task": "追猎目标"
+      },
+      {
+        "daily": "追猎目标",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly_hunter.追猎目标": [
+            "塞润尼缇",
+            "黑之书"
+          ]
+        },
+        "sequence": "黑之书",
+        "task": "追猎目标"
+      },
+      {
+        "daily": "追猎目标",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly_hunter.追猎目标": [
+            "黑之书",
+            "海囚"
+          ]
+        },
+        "sequence": "海囚",
+        "task": "追猎目标"
+      },
+      {
+        "daily": "追猎目标",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly_hunter.追猎目标": [
+            "海囚",
+            "围巢鸟"
+          ]
+        },
+        "sequence": "围巢鸟",
+        "task": "追猎目标"
+      },
+      {
+        "daily": "追猎目标",
+        "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly_hunter.追猎目标": [
+            "围巢鸟",
+            "斑蝶"
+          ]
+        },
+        "sequence": "斑蝶",
+        "task": "追猎目标"
+      }
+    ],
+    "ok-ww": [
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            20,
+            1
+          ],
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which to Farm": [
+            "Tacet Suppression",
+            "Forgery Challenge"
+          ]
+        },
+        "sequence": 1,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            1,
+            2
+          ]
+        },
+        "sequence": 2,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            2,
+            3
+          ]
+        },
+        "sequence": 3,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            3,
+            4
+          ]
+        },
+        "sequence": 4,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            4,
+            5
+          ]
+        },
+        "sequence": 5,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            5,
+            6
+          ]
+        },
+        "sequence": 6,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            6,
+            7
+          ]
+        },
+        "sequence": 7,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            7,
+            8
+          ]
+        },
+        "sequence": 8,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            8,
+            9
+          ]
+        },
+        "sequence": 9,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            9,
+            10
+          ]
+        },
+        "sequence": 10,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            10,
+            11
+          ]
+        },
+        "sequence": 11,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            11,
+            12
+          ]
+        },
+        "sequence": 12,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            12,
+            13
+          ]
+        },
+        "sequence": 13,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            13,
+            14
+          ]
+        },
+        "sequence": 14,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            14,
+            15
+          ]
+        },
+        "sequence": 15,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            15,
+            16
+          ]
+        },
+        "sequence": 16,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            16,
+            17
+          ]
+        },
+        "sequence": 17,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            17,
+            18
+          ]
+        },
+        "sequence": 18,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            18,
+            19
+          ]
+        },
+        "sequence": 19,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Forgery Challenge to Farm": [
+            19,
+            20
+          ]
+        },
+        "sequence": 20,
+        "task": "凝素领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Material Selection": [
+            "Shell Credit",
+            "Resonator EXP"
+          ],
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which to Farm": [
+            "Forgery Challenge",
+            "Simulation Challenge"
+          ]
+        },
+        "sequence": "Resonator EXP",
+        "task": "模拟领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Material Selection": [
+            "Resonator EXP",
+            "Weapon EXP"
+          ]
+        },
+        "sequence": "Weapon EXP",
+        "task": "模拟领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Material Selection": [
+            "Weapon EXP",
+            "Shell Credit"
+          ]
+        },
+        "sequence": "Shell Credit",
+        "task": "模拟领域"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            19,
+            1
+          ],
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which to Farm": [
+            "Simulation Challenge",
+            "Tacet Suppression"
+          ]
+        },
+        "sequence": 1,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            1,
+            2
+          ]
+        },
+        "sequence": 2,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            2,
+            3
+          ]
+        },
+        "sequence": 3,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            3,
+            4
+          ]
+        },
+        "sequence": 4,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            4,
+            5
+          ]
+        },
+        "sequence": 5,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            5,
+            6
+          ]
+        },
+        "sequence": 6,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            6,
+            7
+          ]
+        },
+        "sequence": 7,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            7,
+            8
+          ]
+        },
+        "sequence": 8,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            8,
+            9
+          ]
+        },
+        "sequence": 9,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            9,
+            10
+          ]
+        },
+        "sequence": 10,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            10,
+            11
+          ]
+        },
+        "sequence": 11,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            11,
+            12
+          ]
+        },
+        "sequence": 12,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            12,
+            13
+          ]
+        },
+        "sequence": 13,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            13,
+            14
+          ]
+        },
+        "sequence": 14,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            14,
+            15
+          ]
+        },
+        "sequence": 15,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            15,
+            16
+          ]
+        },
+        "sequence": 16,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            16,
+            17
+          ]
+        },
+        "sequence": 17,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            17,
+            18
+          ]
+        },
+        "sequence": 18,
+        "task": "无音区"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "data/apps/ok-ww/working/configs/DailyTask.json.Which Tacet Suppression to Farm": [
+            18,
+            19
+          ]
+        },
+        "sequence": 19,
+        "task": "无音区"
+      }
+    ]
+  }
+}
