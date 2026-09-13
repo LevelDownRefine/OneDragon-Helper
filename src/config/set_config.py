@@ -72,11 +72,8 @@ class ScriptConfig:
     _weekly_config_rel_path: str = ""
     """周常配置文件路径；空字符串复用主 config。"""
 
-    _daily_cls: type[Daily] = Daily
-    """该脚本日常的实现类；特殊脚本换成对应子类（分段/粥/无适配）。"""
-
     _daily_types: dict[str, type[Daily]] = {}
-    """按日常展示名指定的实现类；非空时须与声明里的日常**一一对应**（多一个少一个都报错）。"""
+    """该脚本「日常展示名 → 实现类」；**必须与声明里的日常一一对应**（少一个/多一个都报错）。"""
 
     _routine_config_rel_path: str = ""
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
@@ -226,30 +223,28 @@ class ScriptConfig:
     def _build_dailies(cls) -> list[Daily]:
         """由声明构造该脚本的全部日常（顺序与声明一致）。
 
-        日常数由声明给出，每个日常一个对象：给了 ``_daily_types`` 的脚本逐个日常取它指定的
-        实现类，其余脚本用 ``_daily_cls``。
+        日常数由声明给出、类数由 ``_daily_types`` 给出，两者必须一一对应：一个日常一个
+        实现类、一个对象。
 
         Returns:
             该脚本的日常列表；单日常脚本长度为 1。
 
         Raises:
-            AssertionError: 缺少脚本声明，或日常物理名重复，或声明了 ``_daily_types``
-                却有日常未指定实现类（含声明里多出/少掉日常）。
+            AssertionError: 缺少脚本声明，或 ``_daily_types`` 与声明里的日常不一致
+                （少一个、多一个、名字写错都算），或日常物理名重复。
         """
         declarations = get_daily_configs(cls._script_name)
-        if cls._daily_types:
-            declared = sorted(d["display_name"] for d in declarations)
-            assert declared == sorted(cls._daily_types), (
-                f"[set_config][{cls.display_name}] _daily_types 与声明的日常不一致: "
-                f"声明 {declared}、已指定 {sorted(cls._daily_types)}"
-            )
+        declared = sorted(d["display_name"] for d in declarations)
+        assert declared == sorted(cls._daily_types), (
+            f"[set_config][{cls.display_name}] _daily_types 与声明的日常不一致: "
+            f"声明 {declared}、已指定 {sorted(cls._daily_types)}"
+        )
         dailies: list[Daily] = []
         seen: set[str] = set()
         for declaration in declarations:
-            daily_cls = cls._daily_types.get(
-                declaration["display_name"], cls._daily_cls
+            daily = cls._daily_types[declaration["display_name"]](
+                cls._script_name, declaration
             )
-            daily = daily_cls(cls._script_name, declaration)
             assert daily.physical_name not in seen, (
                 f"{cls._script_name} 的日常物理名重复: {daily.physical_name}"
             )
@@ -516,12 +511,19 @@ class ScriptConfig:
 
         每个日常的选项直接取它的声明解析结果（``Daily.options``）：各有分类层时每个
         value 各成一个一级项；单层日常（值直接写自身字段、无一级字段）时整组即唯一的
-        一级项（展示名用日常名），其 values 作二级。判断依据与写入侧同源——同一个
-        ``Daily`` 对象，不按展示名硬编码。
+        一级项（展示名用日常名），其 values 作二级。判断依据与写入侧同源（同一份声明），
+        不按展示名硬编码。
+
+        菜单只需要声明，故用声明 + 基类 ``Daily`` 解析，**不经过 ``_daily_types``**：
+        声明里新增一个日常时菜单照常显示，而落点（要按该日常的读写机制来）仍由各脚本的
+        ``_daily_types`` 决定、不齐即报错。
         """
         return [
-            {"daily_display_name": daily.name, "options": daily.options}
-            for daily in cls._build_dailies()
+            {
+                "daily_display_name": declaration["display_name"],
+                "options": Daily(cls._script_name, declaration).options,
+            }
+            for declaration in get_daily_configs(cls._script_name)
         ]
 
     @classmethod
@@ -598,6 +600,7 @@ class WutheringWavesConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "鸣潮"
+    _daily_types = {"每日任务": Daily}
     _weekly_config = get_weekly_config(_script_name, "幻梦游园")
     _weekly_task_name = get_physical_name(_weekly_config)
 
@@ -636,6 +639,7 @@ class WutheringWavesConfig(ScriptConfig):
 class GenshinConfig(ScriptConfig):
     _script_name = "BetterGI"
     display_name = "原神"
+    _daily_types = {"每日任务": Daily}
     _backup_paths = ("User",)
     _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
@@ -676,6 +680,7 @@ class GenshinConfig(ScriptConfig):
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
+    _daily_types = {"每日任务": Daily}
     _template_rel_path = "okef一条龙.json"
     _backup_paths = ("data/apps/ok-ef/working/configs",)
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
@@ -736,6 +741,7 @@ class EndfieldConfig(ScriptConfig):
 class ZenlessZoneZeroConfig(ScriptConfig):
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
+    _daily_types = {"每日任务": NoopDaily}
     _backup_paths = ("config",)
     _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
@@ -744,7 +750,6 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _game_path_keys = ("game_path",)
     background = "assets/ui/static_background.webp"
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "迷失之地"))
-    _daily_cls = NoopDaily
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """控制 _group.yml 中 lost_void 的 enabled 开关。
@@ -776,6 +781,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 class StarRailConfig(ScriptConfig):
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
+    _daily_types = {"每日任务": NoopDaily}
     _backup_paths = ("config.yaml",)
     _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
@@ -810,8 +816,6 @@ class StarRailConfig(ScriptConfig):
             f"[set_config][{cls.display_name}] 任务 {task_name!r} 条目非 dict: {type(entry)}"
         )
         return list(entry.keys())
-
-    _daily_cls = NoopDaily
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """崩铁周常：周几起对所有周本生效。
@@ -970,6 +974,7 @@ class NTEConfig(ScriptConfig):
 class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
     display_name = "粥"
+    _daily_types = {"每日任务": MaaDaily}
     _backup_paths = ("config",)
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
@@ -981,7 +986,6 @@ class ArknightsConfig(ScriptConfig):
         "EmulatorPath",
     )
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "理智药剂"))
-    _daily_cls = MaaDaily
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """周常「理智药剂」：按周几起写过期理智药使用窗口，并随副本启停同步开关。

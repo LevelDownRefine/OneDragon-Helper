@@ -66,19 +66,29 @@ class TestDispatch(unittest.TestCase):
         self.assertIsInstance(_CONFIGS["MAA"]()._build_dailies()[0], MaaDaily)
 
     def test_daily_types_must_cover_declarations(self):
-        """给了 _daily_types 的脚本，声明里多出一个日常即报错（不漏掉任何一种日常）。"""
+        """每个脚本的 _daily_types 都必须与声明的日常一一对应：多出一个即报错。"""
         declarations = copy.deepcopy(load_daily_map())
-        declarations["ok-nte"].append(
-            {"display_name": "第三个日常", "physical_name": "daily_third"}
-        )
-        with (
-            patch(
-                "src.config.set_config.get_daily_configs",
-                return_value=declarations["ok-nte"],
-            ),
-            self.assertRaisesRegex(AssertionError, "与声明的日常不一致"),
-        ):
-            _CONFIGS["ok-nte"]._build_dailies()
+        for script_name in ("ok-nte", "ok-ww"):
+            with self.subTest(script=script_name):
+                extra = copy.deepcopy(declarations[script_name])
+                extra.append(
+                    {"display_name": "多出来的日常", "physical_name": "daily_x"}
+                )
+                with (
+                    patch(
+                        "src.config.set_config.get_daily_configs",
+                        return_value=extra,
+                    ),
+                    self.assertRaisesRegex(AssertionError, "与声明的日常不一致"),
+                ):
+                    _CONFIGS[script_name]._build_dailies()
+
+    def test_every_script_declares_its_daily_type(self):
+        """日常数 = 类数：每个脚本的表都恰好覆盖它声明的日常。"""
+        for script_name, cls in sorted(_CONFIGS.items()):
+            with self.subTest(script=script_name):
+                declared = [d["display_name"] for d in load_daily_map()[script_name]]
+                self.assertEqual(sorted(cls._daily_types), sorted(declared))
 
 
 class TestLandingPoints(unittest.TestCase):

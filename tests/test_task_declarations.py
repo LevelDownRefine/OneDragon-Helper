@@ -212,9 +212,7 @@ class TestDeclarationBindings(unittest.TestCase):
         for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):
             self.assertTrue(callable(cls.set_daily_task))
             for declaration in get_daily_configs(cls._script_name):
-                daily_cls = cls._daily_types.get(
-                    declaration["display_name"], cls._daily_cls
-                )
+                daily_cls = cls._daily_types[declaration["display_name"]]
                 self.assertTrue(callable(daily_cls.write))
 
 
