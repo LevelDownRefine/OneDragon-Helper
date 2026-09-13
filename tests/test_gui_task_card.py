@@ -424,7 +424,6 @@ class TestEmptyCurrentSentinel(unittest.TestCase):
         self.assertIs(ctrl._current, task_card_mod._EMPTY_GAME)
         self.assertEqual(ctrl.task_title, "")
         self.assertFalse(ctrl.task_adapted)
-        self.assertFalse(ctrl.daily_supported)
         self.assertFalse(ctrl.weekly_supported)
         self.assertEqual(ctrl.daily_items, [])
         self.assertEqual(ctrl.daily_task_options("每日任务"), [])

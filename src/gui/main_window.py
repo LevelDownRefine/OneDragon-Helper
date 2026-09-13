@@ -130,9 +130,6 @@ class QmlBridge(QObject):
     taskAdapted = Property(
         bool, lambda self: self.task_card.task_adapted, notify=taskStateChanged
     )
-    dailySupported = Property(
-        bool, lambda self: self.task_card.daily_supported, notify=taskStateChanged
-    )
     dailyItems = Property(
         "QVariantList", lambda self: self.task_card.daily_items, notify=taskStateChanged
     )
