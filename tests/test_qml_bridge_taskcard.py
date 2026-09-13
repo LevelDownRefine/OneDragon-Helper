@@ -72,24 +72,6 @@ class TestTaskCard(unittest.TestCase):
         b = _make_bridge()
         self.assertFalse(b.taskAdapted)
 
-    class _AnyMap(dict):
-        """get_daily_task_map().get(name) 恒返回 truthy，模拟「该游戏有副本配置」。"""
-
-        def get(self, key, default=None):
-            return 1
-
-    @patch.object(task_card, "is_adapted", return_value=True)
-    @patch("src.service.app_service.get_daily_task_map", return_value=_AnyMap())
-    def test_daily_supported_true_when_task_cfg_present(self, *_):
-        b = _make_bridge()
-        self.assertTrue(b.dailySupported)
-
-    @patch.object(task_card, "is_adapted", return_value=True)
-    @patch("src.service.app_service.get_daily_task_map", return_value={})
-    def test_daily_supported_false_when_no_task_cfg(self, *_):
-        b = _make_bridge()
-        self.assertFalse(b.dailySupported)
-
     @patch("src.service.app_service.set_config")  # 实时落盘子脚本 config（经 service）
     @patch.object(task_card, "is_adapted", return_value=True)
     @patch("src.service.app_service.get_weekly_map", return_value=[])

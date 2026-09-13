@@ -72,30 +72,6 @@ def parse_daily_task_config(
     return options, seq_map, show_seq
 
 
-def get_display_name(
-    seq_map: SequenceOptionsMap, task_name: str, actual_value: Any
-) -> str:
-    """
-    根据实际值获取对应的显示名称。
-
-    Args:
-        seq_map: 副本名 → [(display_name, actual_value), ...]
-        task_name: 副本名称
-        actual_value: 实际值
-
-    Returns:
-        显示名称，如果找不到则返回实际值的字符串表示
-    """
-    assert task_name in seq_map, (
-        f"[daily_task_config] 副本 '{task_name}' 不在序列映射中"
-    )
-    seq_options = seq_map[task_name]
-    for display_name, val in seq_options:
-        if val == actual_value:
-            return display_name
-    return str(actual_value)
-
-
 def _resolve_options(script_name: str, node: dict) -> list[dict]:
     """展开一组选项的本地资源，保留选项的展示名和物理值。"""
     if "options" not in node:

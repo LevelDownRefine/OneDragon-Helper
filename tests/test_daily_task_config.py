@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 from src.config.daily_task_config import (
     get_daily_task_map,
-    get_display_name,
     get_weekly_map,
     parse_daily_task_config,
 )
@@ -114,15 +113,12 @@ class TestGetDailyTaskMap(unittest.TestCase):
             [{"name": "每日任务", "tasks": [{"name": "培养目标"}]}],
         )
 
-    def test_secondary_menu_values_are_native_and_labels_roundtrip(self):
+    def test_secondary_menu_values_are_native(self):
         with patch("src.config.daily_task_config.get_task_lists", return_value=[]):
             menus = get_daily_task_map()
         _, sequences, show = parse_daily_task_config(menus["ok-ww"]["dailies"][0])
         self.assertTrue(show)
         self.assertEqual(sequences["模拟领域"][0], ("共鸣者经验", "Resonator EXP"))
-        self.assertEqual(
-            get_display_name(sequences, "模拟领域", "Resonator EXP"), "共鸣者经验"
-        )
         self.assertEqual(sequences["凝素领域"][0], ("梦州-迅刀", 1))
 
     def test_daily_source_categories_come_from_declaration(self):

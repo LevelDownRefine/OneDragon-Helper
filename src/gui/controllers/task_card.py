@@ -69,11 +69,6 @@ class TaskCardController(QObject):
         return is_adapted(self._current["script_name"])
 
     @property
-    def daily_supported(self) -> bool:
-        """当前游戏是否有可配置日常副本（daily_task_map 有配置才显示日常行）。"""
-        return bool(self._daily_task_map_cache.get(self._current["script_name"]))
-
-    @property
     def daily_items(self) -> list[dict]:
         """当前脚本的日常列表（供 QML 多日常布局）。
 
