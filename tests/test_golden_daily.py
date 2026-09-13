@@ -36,7 +36,6 @@ from unittest.mock import patch
 from src.config import set_config as sc_mod
 from src.config.daily_config import get_daily_map
 from src.config.set_config import _CONFIGS, get_daily_readback
-from src.config.task_config import get_daily_configs
 from tests.config_diff import diff_paths
 
 GOLDEN_PATH = os.path.join(os.path.dirname(__file__), "golden", "daily_baseline.json")
@@ -77,22 +76,22 @@ def seed_of(script_name: str, cfg) -> dict:
     if script_name == "MAA":
         with open(MAA_FIXTURE, encoding="utf-8") as f:
             return json.load(f)
-    daily_cfgs = get_daily_configs(script_name)
-    if not any(daily_cfg["task_field"] for daily_cfg in daily_cfgs.values()):
+    dailies = cfg._build_dailies()
+    if not any(daily.task_field is not None for daily in dailies):
         return {}  # 绝区零 / 崩铁：声明无落点，写入为 no-op
 
     menus = menu_of(script_name)
     seed: dict = {}
-    for mode, daily_cfg in daily_cfgs.items():
-        container = seed.setdefault(mode, {}) if script_name in SEGMENTED else seed
-        task_field = daily_cfg["task_field"]
-        if task_field is not None:
-            container[task_field] = list(daily_cfg["task_map"].values())[-1]
-        daily_name = next(
-            name for name in menus if cfg._daily_physical_name(name) == mode
+    for daily in dailies:
+        container = (
+            seed.setdefault(daily.physical_name, {})
+            if script_name in SEGMENTED
+            else seed
         )
-        for task_name, field in daily_cfg["option_fields"].items():
-            sequences = menus[daily_name][task_name]
+        if daily.task_field is not None:
+            container[daily.task_field] = list(daily.task_map.values())[-1]
+        for task_name, field in daily.option_fields.items():
+            sequences = menus[daily.name][task_name]
             if sequences and field not in container:
                 container[field] = sequences[-1][1]
     return seed

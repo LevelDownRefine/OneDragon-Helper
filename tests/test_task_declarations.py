@@ -8,6 +8,16 @@ from unittest.mock import patch
 
 from src.config import task_config
 from src.config.set_config import ArknightsConfig, NTEConfig, WutheringWavesConfig
+from src.config.task_config import get_daily_configs
+
+
+def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
+    """按新架构反读：宿主读盘 → 取该日常的数据段 → 日常解析（未落盘返回 (None, None)）。"""
+    daily = cfg._dispatch_daily(daily_name)
+    data = cfg._load(allow_missing=True)
+    if data is None or not daily.section_exists(data):
+        return None, None
+    return daily.read(daily.section(data))
 
 
 class TestDeclarationBindings(unittest.TestCase):
@@ -56,7 +66,7 @@ class TestDeclarationBindings(unittest.TestCase):
             patch.object(cfg, "_save") as save,
         ):
             cfg.set_daily_task("每日任务", "测试类别", 9)
-            self.assertEqual(cfg._read_daily_task("每日任务"), ("测试类别", 9))
+            self.assertEqual(_read(cfg, "每日任务"), ("测试类别", 9))
         self.assertEqual(
             config,
             {**original, "NativeCategory": "NativeCategoryValue", "NativeStage": 9},
@@ -68,7 +78,10 @@ class TestDeclarationBindings(unittest.TestCase):
             for option in self.daily[script][0]["options"]["values"]:
                 option["options"]["key"] = "NativeTarget"
         adapters = self.load_adapters()
-        for cls in (adapters.GenshinConfig, adapters.EndfieldConfig):
+        for cls, task_name in (
+            (adapters.GenshinConfig, "圣遗物"),
+            (adapters.EndfieldConfig, "干员养成"),
+        ):
             with self.subTest(cls=cls.__name__):
                 cfg = cls()
                 config = {"NativeTarget": "old", "untouched": True}
@@ -76,10 +89,8 @@ class TestDeclarationBindings(unittest.TestCase):
                     patch.object(cfg, "_load", return_value=config),
                     patch.object(cfg, "_save"),
                 ):
-                    cfg.set_daily_task("每日任务", "只供展示的类别", "真实副本")
-                    self.assertEqual(
-                        cfg._read_daily_task("每日任务"), ("真实副本", None)
-                    )
+                    cfg.set_daily_task("每日任务", task_name, "真实副本")
+                    self.assertEqual(_read(cfg, "每日任务"), ("真实副本", None))
                 self.assertEqual(
                     config, {"NativeTarget": "真实副本", "untouched": True}
                 )
@@ -111,7 +122,7 @@ class TestDeclarationBindings(unittest.TestCase):
 
         with patch.object(cfg, "_load", side_effect=load), patch.object(cfg, "_save"):
             cfg.set_daily_task("异象界域", "空幕", 2)
-            self.assertEqual(cfg._read_daily_task("异象界域"), ("空幕", 2))
+            self.assertEqual(_read(cfg, "异象界域"), ("空幕", 2))
             self.assertEqual(
                 config["native_anomaly"],
                 {"NativeType": "NativeCategory", "NativeSequence": 2},
@@ -123,7 +134,7 @@ class TestDeclarationBindings(unittest.TestCase):
             )
             routine["Routine Items"][0]["enabled"] = False  # 异象界域被用户停用
             cfg.set_daily_task("追猎目标", "追猎目标", "音霸魔王")
-            self.assertEqual(cfg._read_daily_task("追猎目标"), ("追猎目标", "音霸魔王"))
+            self.assertEqual(_read(cfg, "追猎目标"), ("追猎目标", "音霸魔王"))
             self.assertEqual(
                 [item["enabled"] for item in routine["Routine Items"]],
                 [False, True, True],  # 停用的异象界域保持停用（工具层不再互斥）
@@ -189,17 +200,20 @@ class TestDeclarationBindings(unittest.TestCase):
             self.assertEqual(
                 [task["IsEnable"] for task in queue], [True, True, False, False]
             )
-            self.assertEqual(cfg._read_daily_task("每日任务"), ("新土别名", None))
+            self.assertEqual(_read(cfg, "每日任务"), ("新土别名", None))
             cfg.set_daily_task("每日任务", "红票")
             self.assertEqual(
                 [task["IsEnable"] for task in queue], [True, True, True, False]
             )
-            self.assertEqual(cfg._read_daily_task("每日任务"), ("红票", None))
+            self.assertEqual(_read(cfg, "每日任务"), ("红票", None))
 
     def test_native_single_daily_entry_points_remain_available(self):
+        """单日常脚本的写/读入口仍在（都委托给该脚本解析出的日常）。"""
         for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):
             self.assertTrue(callable(cls.set_daily_task))
-            self.assertTrue(callable(cls._update_task))
+            for declaration in get_daily_configs(cls._script_name):
+                daily_cls = cls._daily_type(declaration["display_name"])
+                self.assertTrue(callable(daily_cls.write))
 
 
 if __name__ == "__main__":

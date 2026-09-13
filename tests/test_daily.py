@@ -1,20 +1,12 @@
-"""Daily（声明规则层）与现有各脚本实现的行为等价性 —— 接线前的差分验证。
+"""Daily（声明规则层）：声明解析出的落点、读写规则、特殊日常的覆写点。
 
-`Daily` 把「声明 → 落点 → 读写规则」从 7 个脚本子类的手写实现里抽出来。这组测试拿**现有
-实现当独立裁判**：解析结果逐字段对比现有的落点读取器；写入 / 反读 / 开关逐次对比现有的公开
-入口（`set_daily_task` / `_read_daily_task` / `set_daily_enabled` / `_read_daily_enabled`），
-且都在同一份种子上跑、比全量 config。
-
-这组测试是**临时脚手架**：接线后（ScriptConfig 改由 `Daily` 承担读写）上述入口会被删除，
-等价性交给 `tests/golden/daily_baseline.json` 接管。
+端到端等价（写入落点、反读、菜单内容）由 ``tests/test_golden_daily.py`` 的基线守；本文件
+只测 ``Daily`` 自身的语义，不经过 ``ScriptConfig`` 的文件 I/O。
 """
 
-import contextlib
 import copy
 import unittest
-from unittest.mock import patch
 
-from src.config import set_config as sc_mod
 from src.config.daily import (
     AnomalyDaily,
     AnomalyHunterDaily,
@@ -23,217 +15,187 @@ from src.config.daily import (
     NoopDaily,
 )
 from src.config.set_config import _CONFIGS
-from src.config.task_config import get_daily_configs, load_daily_map
-from tests.test_golden_daily import menu_of, resource_stub, seed_of
+from src.config.task_config import load_daily_map
 
-# 接线前「哪个日常用哪个类」的映射（接线后由 ScriptConfig 声明）；差分测试顺带验证它。
-SPLIT_DAILIES = {
-    "ok-nte": {"异象界域": AnomalyDaily, "追猎目标": AnomalyHunterDaily},
-}
-NO_OP_SCRIPTS = frozenset({"OneDragon-Launcher", "March7th-Launcher"})
-STRUCTURED_SCRIPTS = frozenset({"MAA"})
-
-ROUTINE_SEED = {
-    "Routine Items": [
-        {"id": "daily_anomaly", "enabled": False},
-        {"id": "daily_anomaly_hunter", "enabled": True},
-    ]
-}
+NO_OP_SCRIPTS = ("OneDragon-Launcher", "March7th-Launcher")
 
 
-def daily_class(script_name: str, daily_name: str) -> type[Daily]:
-    """该脚本该日常该用哪个类（接线前的映射）。"""
-    if script_name in SPLIT_DAILIES:
-        return SPLIT_DAILIES[script_name][daily_name]
-    if script_name in STRUCTURED_SCRIPTS:
-        return MaaDaily
-    if script_name in NO_OP_SCRIPTS:
-        return NoopDaily
-    return Daily
+def daily_of(script_name: str, daily_name: str) -> Daily:
+    """取某脚本某日常的对象（经 ScriptConfig 的类型分发）。"""
+    return _CONFIGS[script_name]()._dispatch_daily(daily_name)
 
 
-def build(script_name: str) -> list[Daily]:
-    """按声明造出该脚本的全部日常对象。"""
-    return [
-        daily_class(script_name, declaration["display_name"])(script_name, declaration)
-        for declaration in load_daily_map()[script_name]
-    ]
+class TestDispatch(unittest.TestCase):
+    """日常集合由声明推导，实现类按脚本/日常分发。"""
 
+    def test_every_script_follows_its_declaration(self):
+        for script_name in sorted(_CONFIGS):
+            cfg = _CONFIGS[script_name]()
+            dailies = cfg._dailies
+            with self.subTest(script=script_name):
+                self.assertEqual(
+                    [daily.name for daily in dailies],
+                    [decl["display_name"] for decl in load_daily_map()[script_name]],
+                )
+                # 日常对象懒加载一次后复用（同一实例），且可按展示名定位
+                self.assertIs(cfg._dailies, dailies)
+                for daily in dailies:
+                    self.assertTrue(daily.physical_name)
+                    self.assertIs(cfg._dispatch_daily(daily.name), daily)
 
-def cases(script_name: str) -> list[tuple[str, str, object]]:
-    """该脚本菜单给出的全部 (日常, 一级项, 二级项) 组合（无二级时为 None）。"""
-    return [
-        (daily_name, task_name, sequence)
-        for daily_name, tasks in menu_of(script_name).items()
-        for task_name, sequences in tasks.items()
-        for sequence in [seq[1] for seq in sequences] or [None]
-    ]
+    def test_unknown_daily_raises(self):
+        with self.assertRaisesRegex(AssertionError, "未知日常"):
+            _CONFIGS["ok-ww"]()._dispatch_daily("不存在的日常")
 
-
-@contextlib.contextmanager
-def sandbox(script_name: str):
-    """可控环境：种子 store + config I/O 与子脚本资源读取的替身；产出 (cfg, store)。
-
-    与 golden 基线用同一套种子逻辑，故两边说的「同一份 config」是同一件事。
-    """
-    cfg = _CONFIGS[script_name]()
-    with patch("src.config.daily_config.get_task_lists", side_effect=resource_stub):
-        seed = seed_of(script_name, cfg)
-    store = {cfg._config_rel_path: copy.deepcopy(seed)}
-    routine_path = getattr(cfg, "_routine_config_rel_path", "")
-    if routine_path:
-        store[routine_path] = copy.deepcopy(ROUTINE_SEED)
-
-    def load_config(_script_name, rel_path=None):
-        return copy.deepcopy(store[rel_path or cfg._config_rel_path])
-
-    def save_config(_script_name, rel_path, data):
-        store[rel_path] = copy.deepcopy(data)
-
-    with (
-        patch.object(sc_mod, "load_config", load_config),
-        patch.object(sc_mod, "save_config", save_config),
-        patch("src.config.daily_config.get_task_lists", side_effect=resource_stub),
-    ):
-        yield cfg, store
+    def test_special_classes(self):
+        for script_name in NO_OP_SCRIPTS:
+            with self.subTest(script=script_name):
+                daily = _CONFIGS[script_name]()._build_dailies()[0]
+                self.assertIsInstance(daily, NoopDaily)
+                self.assertTrue(daily.no_op)
+        anomaly, hunter = _CONFIGS["ok-nte"]()._build_dailies()
+        self.assertIsInstance(anomaly, AnomalyDaily)
+        self.assertIsInstance(hunter, AnomalyHunterDaily)
+        self.assertTrue(anomaly.enable_on_select and hunter.enable_on_select)
+        self.assertIsInstance(_CONFIGS["MAA"]()._build_dailies()[0], MaaDaily)
 
 
 class TestLandingPoints(unittest.TestCase):
-    """声明解析出的落点必须与现有落点读取器逐字段一致。"""
+    """落点由声明解析：一级/二级字段、两级同字段的合并。"""
 
-    def test_matches_landing_reader(self):
-        for script_name in sorted(_CONFIGS):
-            expected = get_daily_configs(script_name)
-            dailies = build(script_name)
-            self.assertEqual(
-                [daily.physical_name for daily in dailies],
-                list(expected),
-                f"{script_name} 的日常与落点读取器不一致",
-            )
-            for daily in dailies:
-                want = expected[daily.physical_name]
-                with self.subTest(script=script_name, daily=daily.name):
-                    self.assertEqual(daily.task_field, want["task_field"])
-                    self.assertEqual(daily.task_map, want["task_map"])
-                    self.assertEqual(daily.option_fields, want["option_fields"])
+    def test_two_level(self):
+        daily = daily_of("ok-ww", "每日任务")
+        self.assertEqual(daily.task_field, "Which to Farm")
+        self.assertEqual(
+            daily.fields("凝素领域", 1),
+            {
+                "Which to Farm": "Forgery Challenge",
+                "Which Forgery Challenge to Farm": 1,
+            },
+        )
+        self.assertEqual(
+            daily.fields("无音区", 3),
+            {
+                "Which to Farm": "Tacet Suppression",
+                "Which Tacet Suppression to Farm": 3,
+            },
+        )
 
+    def test_two_level_sharing_one_field_takes_secondary(self):
+        """原神两级写同一字段（DomainName）：二级覆盖一级，只留一个键。"""
+        daily = daily_of("BetterGI", "每日任务")
+        self.assertEqual(daily.task_field, "DomainName")
+        self.assertEqual(daily.fields("圣遗物", "铭记之谷"), {"DomainName": "铭记之谷"})
+        self.assertEqual(daily.fields("圣遗物"), {"DomainName": "圣遗物"})
 
-class TestWrite(unittest.TestCase):
-    """按声明落点写入的结果必须与现有实现一致（逐组合比全量 config）。"""
+    def test_single_level_uses_own_name(self):
+        """单层日常（组内有 key）：整组自身即唯一一级项，展示名用日常名。"""
+        daily = daily_of("ok-nte", "追猎目标")
+        self.assertIsNone(daily.task_field)
+        self.assertEqual(
+            [option["display_name"] for option in daily.options], ["追猎目标"]
+        )
+        self.assertEqual(daily.fields("追猎目标", "音霸魔王"), {"追猎目标": "音霸魔王"})
 
-    def test_write_matches_current_implementation(self):
-        for script_name in sorted(_CONFIGS):
-            if script_name in NO_OP_SCRIPTS:
-                continue
-            by_name = {daily.name: daily for daily in build(script_name)}
-            with sandbox(script_name) as (cfg, store):
-                path = cfg._config_rel_path
-                seed = copy.deepcopy(store[path])
-                for daily_name, task_name, sequence in cases(script_name):
-                    where = f"{script_name}/{daily_name}/{task_name}/{sequence}"
-                    daily = by_name[daily_name]
-                    store[path] = copy.deepcopy(seed)
-                    daily.write(
-                        daily.section(store[path]),
-                        task_name,
-                        sequence,
-                        cfg.display_name,
-                    )
-                    mine = store[path]
-                    store[path] = copy.deepcopy(seed)
-                    cfg.set_daily_task(daily_name, task_name, sequence)
-                    self.assertEqual(store[path], mine, f"写入结果不一致: {where}")
+    def test_secondary_display_name_is_accepted(self):
+        """静态枚举的二级可直接传展示名（菜单给的是物理值）。"""
+        daily = daily_of("ok-ww", "每日任务")
+        self.assertEqual(
+            daily.fields("模拟领域", "共鸣者经验")["Material Selection"],
+            "Resonator EXP",
+        )
+        with self.assertRaisesRegex(AssertionError, "未适配的二级值"):
+            daily.fields("模拟领域", "不存在的材料")
+
+    def test_secondary_required_but_missing_raises(self):
+        with self.assertRaisesRegex(AssertionError, "缺少二级选项"):
+            daily_of("ok-ww", "每日任务").fields("模拟领域")
 
 
 class TestRead(unittest.TestCase):
-    """反读结果必须与现有实现一致（种子态与写入态各测一遍）。"""
+    """从数据段反读：标准反转、同字段不反转、无落点无真相。"""
 
-    def test_read_matches_current_implementation(self):
-        for script_name in sorted(_CONFIGS):
-            by_name = {daily.name: daily for daily in build(script_name)}
-            with sandbox(script_name) as (cfg, store):
-                path = cfg._config_rel_path
-                seed = copy.deepcopy(store[path])
-                for daily_name, task_name, sequence in cases(script_name):
-                    where = f"{script_name}/{daily_name}/{task_name}/{sequence}"
-                    daily = by_name[daily_name]
-                    store[path] = copy.deepcopy(seed)
-                    section = daily.section(store[path])
-                    self.assertEqual(
-                        daily.read(section),
-                        cfg._read_daily_task(daily_name),
-                        f"种子态反读不一致: {where}",
-                    )
-                    if script_name in NO_OP_SCRIPTS:
-                        continue
-                    daily.write(section, task_name, sequence, cfg.display_name)
-                    self.assertEqual(
-                        daily.read(section),
-                        cfg._read_daily_task(daily_name),
-                        f"写入后反读不一致: {where}",
-                    )
+    def test_reverse_lookup(self):
+        daily = daily_of("ok-ww", "每日任务")
+        section = {
+            "Which to Farm": "Forgery Challenge",
+            "Which Forgery Challenge to Farm": 3,
+        }
+        self.assertEqual(daily.read(section), ("凝素领域", 3))
+        with self.assertRaisesRegex(AssertionError, "未知副本值"):
+            daily.read({"Which to Farm": "不存在的值"})
+
+    def test_shared_field_is_not_reversed(self):
+        daily = daily_of("BetterGI", "每日任务")
+        self.assertEqual(daily.read({"DomainName": "铭记之谷"}), ("铭记之谷", None))
+
+    def test_unset_returns_none(self):
+        daily = daily_of("ok-ww", "每日任务")
+        self.assertEqual(daily.read({}), (None, None))
+        self.assertEqual(daily.read({"Which to Farm": ""}), (None, None))
+
+    def test_without_landing_point_has_no_truth(self):
+        for script_name in NO_OP_SCRIPTS:
+            with self.subTest(script=script_name):
+                daily = _CONFIGS[script_name]()._build_dailies()[0]
+                self.assertEqual(daily.read({}), (None, None))
+                with self.assertRaisesRegex(AssertionError, "无选项落点"):
+                    daily.write({}, "任何副本", None, "测试")
 
 
 class TestEnabled(unittest.TestCase):
-    """日常开关的读写必须与现有实现一致；无开关文件的脚本恒为 None。"""
+    """日常开关：只有分段脚本有第二份文件，只动自己那一条。"""
 
-    def test_read_enabled_matches_current_implementation(self):
-        for script_name in sorted(_CONFIGS):
-            with sandbox(script_name) as (cfg, _store):
-                routine_path = getattr(cfg, "_routine_config_rel_path", "")
-                routine = cfg._load(routine_path, allow_missing=True)
-                for daily in build(script_name):
-                    self.assertEqual(
-                        daily.read_enabled(routine),
-                        cfg._read_daily_enabled(daily.name),
-                        f"开关反读不一致: {script_name}/{daily.name}",
-                    )
+    def test_without_routine_file_it_is_unsupported(self):
+        daily = daily_of("ok-ww", "每日任务")
+        self.assertIsNone(daily.read_enabled(None))
+        with self.assertRaisesRegex(AssertionError, "未支持停用日常"):
+            daily.set_enabled({}, True)
 
-    def test_set_enabled_matches_current_implementation(self):
-        script_name = "ok-nte"
-        by_name = {daily.name: daily for daily in build(script_name)}
-        with sandbox(script_name) as (cfg, store):
-            path = cfg._routine_config_rel_path
-            seed = copy.deepcopy(store[path])
-            for daily_name in by_name:
-                mode_id = cfg._daily_physical_name(daily_name)
-                for enabled in (True, False):
-                    for seed_enabled in (True, False):
-                        where = f"{daily_name}/{enabled}/{seed_enabled}"
-                        store[path] = copy.deepcopy(seed)
-                        next(
-                            i
-                            for i in store[path]["Routine Items"]
-                            if i["id"] == mode_id
-                        )["enabled"] = seed_enabled
-                        mine_changed = by_name[daily_name].set_enabled(
-                            store[path], enabled
-                        )
-                        mine = store[path]
-                        store[path] = copy.deepcopy(seed)
-                        next(
-                            i
-                            for i in store[path]["Routine Items"]
-                            if i["id"] == mode_id
-                        )["enabled"] = seed_enabled
-                        before = copy.deepcopy(store[path])
-                        cfg.set_daily_enabled(daily_name, enabled)
-                        self.assertEqual(store[path], mine, f"开关写入不一致: {where}")
-                        # 现有实现只在有变化时落盘，故「有变化」⇔「落盘发生了」
-                        self.assertEqual(
-                            mine_changed,
-                            store[path] != before,
-                            f"「有无变化」判定不一致: {where}",
-                        )
+    def test_anomaly_toggles_only_its_own_item(self):
+        routine = {
+            "Routine Items": [
+                {"id": "daily_anomaly", "enabled": False},
+                {"id": "daily_anomaly_hunter", "enabled": True},
+            ]
+        }
+        for daily_name, item_id in (
+            ("异象界域", "daily_anomaly"),
+            ("追猎目标", "daily_anomaly_hunter"),
+        ):
+            with self.subTest(daily=daily_name):
+                target = copy.deepcopy(routine)
+                daily = daily_of("ok-nte", daily_name)
+                own = next(i for i in target["Routine Items"] if i["id"] == item_id)
+                seed_enabled = own["enabled"]
+                self.assertEqual(daily.read_enabled(target), seed_enabled)
+                # 置反必然有改变、且只动自己那条；对同值再置一次则无改变
+                self.assertTrue(daily.set_enabled(target, not seed_enabled))
+                self.assertEqual(own["enabled"], not seed_enabled)
+                self.assertFalse(daily.set_enabled(target, not seed_enabled))
+                other = next(i for i in target["Routine Items"] if i["id"] != item_id)
+                self.assertEqual(
+                    other["enabled"],
+                    next(i for i in routine["Routine Items"] if i["id"] != item_id)[
+                        "enabled"
+                    ],
+                    "另一个日常的开关不应被动到",
+                )
 
-    def test_read_enabled_is_none_without_routine_file(self):
-        """无开关文件的脚本：读恒为 None，写报错（界面据此不提供「不启用」）。"""
-        with sandbox("ok-ww") as (cfg, store):
-            daily = build("ok-ww")[0]
-            self.assertIsNone(daily.read_enabled(None))
-            self.assertIsNone(cfg._read_daily_enabled(daily.name))
-            with self.assertRaisesRegex(AssertionError, "未支持停用日常"):
-                daily.set_enabled(store[cfg._config_rel_path], True)
+    def test_read_enabled_without_file_has_no_truth(self):
+        for daily_name in ("异象界域", "追猎目标"):
+            with self.subTest(daily=daily_name):
+                self.assertIsNone(daily_of("ok-nte", daily_name).read_enabled(None))
+
+    def test_section_is_the_daily_own_segment(self):
+        config = {"daily_anomaly": {"a": 1}, "daily_anomaly_hunter": {"b": 2}}
+        anomaly = daily_of("ok-nte", "异象界域")
+        hunter = daily_of("ok-nte", "追猎目标")
+        self.assertEqual(anomaly.section(config), {"a": 1})
+        self.assertEqual(hunter.section(config), {"b": 2})
+        self.assertTrue(anomaly.section_exists(config))
+        self.assertFalse(anomaly.section_exists({}))
+        self.assertEqual(anomaly.section({}), {})
 
 
 class TestDeclarationErrors(unittest.TestCase):

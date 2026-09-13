@@ -447,7 +447,6 @@ class TestGenshinSetDailyTask(unittest.TestCase):
 
         self.config = GenshinConfig.__new__(GenshinConfig)
         self.config.display_name = "原神"
-        self.config._task_key = "DomainName"
         self.config._enabled = True
         self.config._config_data = {"DomainName": "旧副本", "TaskEnabledList": []}
         self.config._verify_saved = lambda *a: None
@@ -464,18 +463,18 @@ class TestGenshinSetDailyTask(unittest.TestCase):
 
     def test_has_sequence_writes_secondary_name(self):
         """有二级（目录 → 副本）时 DomainName 写入二级副本名"""
-        self.config.set_daily_task("每日任务", "1", "霜凝的机枢")
+        self.config.set_daily_task("每日任务", "圣遗物", "霜凝的机枢")
         self.assertEqual(self.config._config_data["DomainName"], "霜凝的机枢")
 
     def test_no_sequence_writes_task_name(self):
         """无二级（兼容旧单层配置）时 DomainName 写入一级名"""
-        self.config.set_daily_task("每日任务", "山风的荆冕")
-        self.assertEqual(self.config._config_data["DomainName"], "山风的荆冕")
+        self.config.set_daily_task("每日任务", "圣遗物")
+        self.assertEqual(self.config._config_data["DomainName"], "圣遗物")
 
     def test_same_value_no_save(self):
         """DomainName 未变化时不落盘"""
         self.config._config_data["DomainName"] = "霜凝的机枢"
-        self.config.set_daily_task("每日任务", "1", "霜凝的机枢")
+        self.config.set_daily_task("每日任务", "圣遗物", "霜凝的机枢")
         self.mock_save.assert_not_called()
 
 
@@ -484,7 +483,7 @@ class TestSafeUpdate(unittest.TestCase):
 
     def test_update_changes_value(self):
         """值不同时更新并返回 True"""
-        from src.config.set_config import safe_update
+        from src.utils.utils_dict import safe_update
 
         config = {"key": "old"}
         result = safe_update(config, "key", "new", "test")
@@ -493,7 +492,7 @@ class TestSafeUpdate(unittest.TestCase):
 
     def test_no_change_when_same_value(self):
         """值相同时不更新并返回 False"""
-        from src.config.set_config import safe_update
+        from src.utils.utils_dict import safe_update
 
         config = {"key": "same"}
         result = safe_update(config, "key", "same", "test")
@@ -502,7 +501,7 @@ class TestSafeUpdate(unittest.TestCase):
 
     def test_key_not_exists_raises(self):
         """key 不存在时 assert（默认）"""
-        from src.config.set_config import safe_update
+        from src.utils.utils_dict import safe_update
 
         config = {}
         with self.assertRaises(AssertionError):
@@ -510,7 +509,7 @@ class TestSafeUpdate(unittest.TestCase):
 
     def test_key_not_exists_adds_with_flag(self):
         """assert_key_exists=False 时允许添加新 key"""
-        from src.config.set_config import safe_update
+        from src.utils.utils_dict import safe_update
 
         config = {"a": 1}
         result = safe_update(config, "b", "new", "test", assert_key_exists=False)
@@ -519,7 +518,7 @@ class TestSafeUpdate(unittest.TestCase):
 
     def test_type_mismatch_raises(self):
         """类型不一致时 assert"""
-        from src.config.set_config import safe_update
+        from src.utils.utils_dict import safe_update
 
         config = {"a": 1}
         with self.assertRaises(AssertionError):
