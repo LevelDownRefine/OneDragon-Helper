@@ -72,8 +72,9 @@ class ScriptConfig:
     _weekly_config_rel_path: str = ""
     """周常配置文件路径；空字符串复用主 config。"""
 
-    _daily_types: dict[str, type[Daily]] = {}
-    """该脚本「日常展示名 → 实现类」；**必须与声明里的日常一一对应**（少一个/多一个都报错）。"""
+    _daily_types: dict[str, type[Daily]]
+    """该脚本「日常展示名 → 实现类」；**每个脚本都必须声明**，且与声明里的日常一一对应
+    （少一个、多一个、名字写错都报错）。基类不给默认值，免得漏声明时静默用了别的类。"""
 
     _routine_config_rel_path: str = ""
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
@@ -230,9 +231,13 @@ class ScriptConfig:
             该脚本的日常列表；单日常脚本长度为 1。
 
         Raises:
-            AssertionError: 缺少脚本声明，或 ``_daily_types`` 与声明里的日常不一致
-                （少一个、多一个、名字写错都算），或日常物理名重复。
+            AssertionError: 缺少脚本声明，或该脚本未声明 ``_daily_types``，或
+                ``_daily_types`` 与声明里的日常不一致（少一个、多一个、名字写错都算），
+                或日常物理名重复。
         """
+        assert hasattr(cls, "_daily_types"), (
+            f"[set_config][{cls.display_name}] 未声明 _daily_types"
+        )
         declarations = get_daily_configs(cls._script_name)
         declared = sorted(d["display_name"] for d in declarations)
         assert declared == sorted(cls._daily_types), (

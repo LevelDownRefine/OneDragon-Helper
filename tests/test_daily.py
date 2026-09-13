@@ -16,7 +16,7 @@ from src.config.daily import (
     NoopDaily,
     SegmentedDaily,
 )
-from src.config.set_config import _CONFIGS
+from src.config.set_config import _CONFIGS, ScriptConfig
 from src.config.task_config import load_daily_map
 
 NO_OP_SCRIPTS = ("OneDragon-Launcher", "March7th-Launcher")
@@ -89,6 +89,16 @@ class TestDispatch(unittest.TestCase):
             with self.subTest(script=script_name):
                 declared = [d["display_name"] for d in load_daily_map()[script_name]]
                 self.assertEqual(sorted(cls._daily_types), sorted(declared))
+
+    def test_missing_daily_types_is_rejected(self):
+        """基类不给 _daily_types 默认值：漏声明的脚本必须报错，不能静默用了别的类。"""
+
+        class _Bare(ScriptConfig):
+            _script_name = "ok-ww"
+            display_name = "测试脚本"
+
+        with self.assertRaisesRegex(AssertionError, "未声明 _daily_types"):
+            _Bare._build_dailies()
 
 
 class TestLandingPoints(unittest.TestCase):
