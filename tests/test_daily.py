@@ -6,6 +6,7 @@
 
 import copy
 import unittest
+from unittest.mock import patch
 
 from src.config.daily import (
     AnomalyDaily,
@@ -13,6 +14,7 @@ from src.config.daily import (
     Daily,
     MaaDaily,
     NoopDaily,
+    SegmentedDaily,
 )
 from src.config.set_config import _CONFIGS
 from src.config.task_config import load_daily_map
@@ -53,11 +55,30 @@ class TestDispatch(unittest.TestCase):
                 daily = _CONFIGS[script_name]()._build_dailies()[0]
                 self.assertIsInstance(daily, NoopDaily)
                 self.assertTrue(daily.no_op)
+        # 一个日常一个类：共同实现留在 SegmentedDaily，两个日常各一个子类
         anomaly, hunter = _CONFIGS["ok-nte"]()._build_dailies()
-        self.assertIsInstance(anomaly, AnomalyDaily)
-        self.assertIsInstance(hunter, AnomalyHunterDaily)
+        self.assertIs(type(anomaly), AnomalyDaily)
+        self.assertIs(type(hunter), AnomalyHunterDaily)
+        self.assertIsInstance(anomaly, SegmentedDaily)
+        self.assertIsInstance(hunter, SegmentedDaily)
         self.assertTrue(anomaly.enable_on_select and hunter.enable_on_select)
+        self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
         self.assertIsInstance(_CONFIGS["MAA"]()._build_dailies()[0], MaaDaily)
+
+    def test_daily_types_must_cover_declarations(self):
+        """给了 _daily_types 的脚本，声明里多出一个日常即报错（不漏掉任何一种日常）。"""
+        declarations = copy.deepcopy(load_daily_map())
+        declarations["ok-nte"].append(
+            {"display_name": "第三个日常", "physical_name": "daily_third"}
+        )
+        with (
+            patch(
+                "src.config.set_config.get_daily_configs",
+                return_value=declarations["ok-nte"],
+            ),
+            self.assertRaisesRegex(AssertionError, "与声明的日常不一致"),
+        ):
+            _CONFIGS["ok-nte"]._build_dailies()
 
 
 class TestLandingPoints(unittest.TestCase):

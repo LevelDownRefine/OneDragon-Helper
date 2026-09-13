@@ -73,10 +73,10 @@ class ScriptConfig:
     """周常配置文件路径；空字符串复用主 config。"""
 
     _daily_cls: type[Daily] = Daily
-    """该脚本日常的缺省实现类；特殊脚本换成对应子类（粥/无适配）。"""
+    """该脚本日常的实现类；特殊脚本换成对应子类（分段/粥/无适配）。"""
 
     _daily_types: dict[str, type[Daily]] = {}
-    """按日常展示名指定的实现类（覆盖 ``_daily_cls``）：一个日常一个类的脚本给这个。"""
+    """按日常展示名指定的实现类；非空时须与声明里的日常**一一对应**（多一个少一个都报错）。"""
 
     _routine_config_rel_path: str = ""
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
@@ -223,33 +223,33 @@ class ScriptConfig:
         return load_template(self._script_name, self._template_rel_path)
 
     @classmethod
-    def _daily_type(cls, daily_display_name: str) -> type[Daily]:
-        """取某日常的实现类。
-
-        Args:
-            daily_display_name: 日常展示名（声明里的主键）。
-
-        Returns:
-            该日常的实现类；未在 ``_daily_types`` 里指定的用 ``_daily_cls``。
-        """
-        return cls._daily_types.get(daily_display_name, cls._daily_cls)
-
-    @classmethod
     def _build_dailies(cls) -> list[Daily]:
         """由声明构造该脚本的全部日常（顺序与声明一致）。
+
+        日常数由声明给出，每个日常一个对象：给了 ``_daily_types`` 的脚本逐个日常取它指定的
+        实现类，其余脚本用 ``_daily_cls``。
 
         Returns:
             该脚本的日常列表；单日常脚本长度为 1。
 
         Raises:
-            AssertionError: 缺少脚本声明，或日常物理名重复。
+            AssertionError: 缺少脚本声明，或日常物理名重复，或声明了 ``_daily_types``
+                却有日常未指定实现类（含声明里多出/少掉日常）。
         """
+        declarations = get_daily_configs(cls._script_name)
+        if cls._daily_types:
+            declared = sorted(d["display_name"] for d in declarations)
+            assert declared == sorted(cls._daily_types), (
+                f"[set_config][{cls.display_name}] _daily_types 与声明的日常不一致: "
+                f"声明 {declared}、已指定 {sorted(cls._daily_types)}"
+            )
         dailies: list[Daily] = []
         seen: set[str] = set()
-        for declaration in get_daily_configs(cls._script_name):
-            daily = cls._daily_type(declaration["display_name"])(
-                cls._script_name, declaration
+        for declaration in declarations:
+            daily_cls = cls._daily_types.get(
+                declaration["display_name"], cls._daily_cls
             )
+            daily = daily_cls(cls._script_name, declaration)
             assert daily.physical_name not in seen, (
                 f"{cls._script_name} 的日常物理名重复: {daily.physical_name}"
             )

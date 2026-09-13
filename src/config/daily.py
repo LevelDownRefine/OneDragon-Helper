@@ -6,9 +6,9 @@
 不认识 ``ScriptConfig``——文件 I/O 归它（唯一碰盘的一层）：读盘后把数据段交给日常，
 再按返回值决定要不要落盘。
 
-声明表达不了的由子类覆写：异环的日常分段（``section``）与第二份文件里的开关
-（两个日常各一个类）、粥的 TaskQueue（``write`` / ``read``）、绝区零/崩铁的不适配
-（``no_op``）。
+声明表达不了的由子类覆写：日常数据在自己那段、开关在第二份文件里（``SegmentedDaily``
+提供共同实现，该脚本每个日常各一个子类）、粥的 TaskQueue（``write`` / ``read``）、
+绝区零/崩铁的不适配（``no_op``）。
 """
 
 import logging
@@ -287,11 +287,11 @@ class NoopDaily(Daily):
     no_op = True
 
 
-class AnomalyDaily(Daily):
-    """异环的异象界域：数据在 ``DailyRoutineTaskConfigs.json`` 的 ``daily_anomaly`` 段。
+class SegmentedDaily(Daily):
+    """数据在自己那段、开关在第二份文件里的日常（异环的两个日常）。
 
-    段名与 Routine Items 的 id 都取本日常声明的物理名；开关写在第二份文件
-    ``DailyRoutineTask.json`` 里自己那条 Routine Item 上，另一个日常不动。
+    段名与 Routine Items 的 id 都取本日常声明的物理名；选完副本顺带启用自己那条，
+    另一个日常的开关不动（是否只跑一个由游戏侧决定）。
     """
 
     enable_on_select = True
@@ -376,93 +376,12 @@ class AnomalyDaily(Daily):
         return self.physical_name in config
 
 
-class AnomalyHunterDaily(Daily):
-    """异环的追猎目标：数据在 ``DailyRoutineTaskConfigs.json`` 的 ``daily_anomaly_hunter`` 段。
+class AnomalyDaily(SegmentedDaily):
+    """异环的异象界域日常（段名与开关 id 取本日常声明的物理名）。"""
 
-    段名与 Routine Items 的 id 都取本日常声明的物理名；开关写在第二份文件
-    ``DailyRoutineTask.json`` 里自己那条 Routine Item 上，另一个日常不动。
-    """
 
-    enable_on_select = True
-
-    def read_enabled(self, routine: dict | None) -> bool | None:
-        """反读本日常的 Routine Item 是否启用；开关文件缺失（无真相）返回 None。
-
-        Args:
-            routine: DailyRoutineTask.json 的 dict；文件缺失时为 None。
-
-        Returns:
-            是否启用；开关文件缺失返回 None。
-
-        Raises:
-            AssertionError: Routine Items 缺少或重复本日常的物理名。
-        """
-        if routine is None:
-            return None  # 开关文件缺失：无真相，不谎报「已停用」
-        return bool(self._routine_item(routine)["enabled"])
-
-    def set_enabled(self, routine: dict, enabled: bool) -> bool:
-        """置本日常的 Routine Item 启用状态（只改内存），另一个日常不动。
-
-        Args:
-            routine: DailyRoutineTask.json 的 dict。
-            enabled: 目标启用状态。
-
-        Returns:
-            是否有实际修改（无变化即不落盘）。
-
-        Raises:
-            AssertionError: Routine Items 缺少或重复本日常的物理名。
-        """
-        return safe_update(self._routine_item(routine), "enabled", enabled, self.name)
-
-    def _routine_item(self, routine: dict) -> dict:
-        """取 Routine Items 里本日常的 item。
-
-        Args:
-            routine: DailyRoutineTask.json 的 dict。
-
-        Returns:
-            本日常的 Routine Item dict。
-
-        Raises:
-            AssertionError: Routine Items 缺少或重复本日常的物理名。
-        """
-        items = get_field(routine, "Routine Items", self.name, list)
-        target = [item for item in items if item["id"] == self.physical_name]
-        assert len(target) == 1, (
-            f"[daily][{self.name}] Routine Items 缺少或重复 {self.physical_name}"
-        )
-        return target[0]
-
-    def section(self, config: dict) -> dict:
-        """取本日常自己的段（段名 = 本日常物理名）。
-
-        Args:
-            config: 顶层 config dict。
-
-        Returns:
-            本日常的段；段缺失返回空 dict（按未落盘处理）。
-
-        Raises:
-            AssertionError: 段存在但类型非 dict（损坏）。
-        """
-        section = config.get(self.physical_name)
-        assert section is None or isinstance(section, dict), (
-            f"[daily][{self.name}] {self.physical_name} 段必须是 dict"
-        )
-        return section if section is not None else {}
-
-    def section_exists(self, config: dict) -> bool:
-        """本日常的段是否已落盘。
-
-        Args:
-            config: 顶层 config dict。
-
-        Returns:
-            段是否存在。
-        """
-        return self.physical_name in config
+class AnomalyHunterDaily(SegmentedDaily):
+    """异环的追猎目标日常（段名与开关 id 取本日常声明的物理名）。"""
 
 
 class MaaDaily(Daily):

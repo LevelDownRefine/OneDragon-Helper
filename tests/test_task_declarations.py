@@ -208,11 +208,13 @@ class TestDeclarationBindings(unittest.TestCase):
             self.assertEqual(_read(cfg, "每日任务"), ("红票", None))
 
     def test_native_single_daily_entry_points_remain_available(self):
-        """单日常脚本的写/读入口仍在（都委托给该脚本解析出的日常）。"""
+        """单日常脚本的写/读入口仍在（都委托给该脚本解析出的日常实现类）。"""
         for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):
             self.assertTrue(callable(cls.set_daily_task))
             for declaration in get_daily_configs(cls._script_name):
-                daily_cls = cls._daily_type(declaration["display_name"])
+                daily_cls = cls._daily_types.get(
+                    declaration["display_name"], cls._daily_cls
+                )
                 self.assertTrue(callable(daily_cls.write))
 
 
