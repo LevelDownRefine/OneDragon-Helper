@@ -52,14 +52,13 @@ def _clear_qml_cache():
 
 
 def main():
-    # 首次运行时，拷贝配置模板到用户目录
-    config_workflow()
-
     args = build_parser().parse_args()
-    # 提前配置日志：CLI 出口（如 run_chain_command）也依赖 logger，
-    # windowed exe 下 logs/onedragon_helper.log 是主要观测渠道。幂等，GUI 路径复用。
+    # 日志先于 config_workflow：init 对齐产生的 WARNING（如补缺失字段）必须进
+    # 日志文件可追溯；否则走 logging 兜底裸印 stderr，无时间戳且 windowed exe
+    # 下彻底丢失。幂等，GUI 路径复用。
     setup_logging()
     install_crash_hooks()
+    config_workflow()
     # 模块导入耗时（_STARTUP_T0 之前）由 python -X importtime 观测；
     # 此处起记录 main() 内各阶段耗时。
     _log_startup("main() 初始化（config_workflow/parse_args/setup_logging）")

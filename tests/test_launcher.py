@@ -1,6 +1,7 @@
 """测试 src/launcher.py：首次初始化流程"""
 
 import os
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -47,6 +48,39 @@ class TestInitConfig(unittest.TestCase):
         mock_generate_config.assert_called_once()
         mock_generate_schedule.assert_called_once()
         mock_generate_weekly.assert_called_once()
+
+
+class TestMainStartupOrder(unittest.TestCase):
+    """main() 初始化顺序：日志必须先于 config_workflow。"""
+
+    def test_setup_logging_precedes_config_workflow(self):
+        """config_workflow 的 init 对齐会产生 WARNING（如补缺失字段），
+        若晚于 setup_logging 则进日志文件可追溯；顺序回归即本测试红。"""
+        order = []
+        with (
+            patch.object(
+                launcher,
+                "setup_logging",
+                side_effect=lambda: order.append("setup_logging"),
+            ),
+            patch.object(
+                launcher,
+                "install_crash_hooks",
+                side_effect=lambda: order.append("install_crash_hooks"),
+            ),
+            patch.object(
+                launcher,
+                "config_workflow",
+                side_effect=lambda: order.append("config_workflow"),
+            ),
+            patch.object(launcher, "run_cli", return_value=0),
+            patch.object(sys, "argv", ["OneDragon-Helper"]),
+            self.assertRaises(SystemExit),
+        ):
+            launcher.main()
+        self.assertEqual(
+            order, ["setup_logging", "install_crash_hooks", "config_workflow"]
+        )
 
 
 class TestQtMessageLogger(unittest.TestCase):
