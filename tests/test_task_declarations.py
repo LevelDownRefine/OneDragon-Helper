@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 from src.config import task_config
 from src.config.set_config import ArknightsConfig, NTEConfig, WutheringWavesConfig
-from src.config.task_config import get_daily_configs
 
 
 def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
@@ -211,9 +210,8 @@ class TestDeclarationBindings(unittest.TestCase):
         """单日常脚本的写/读入口仍在（都委托给该脚本解析出的日常实现类）。"""
         for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):
             self.assertTrue(callable(cls.set_daily_task))
-            for declaration in get_daily_configs(cls._script_name):
-                daily_cls = cls._daily_types[declaration["display_name"]]
-                self.assertTrue(callable(daily_cls.write))
+            for daily_type in cls._daily_types:
+                self.assertTrue(callable(daily_type.write))
 
 
 if __name__ == "__main__":

@@ -4,11 +4,10 @@ import logging
 import os
 
 from src.config.daily import (
-    AnomalyDaily,
-    AnomalyHunterDaily,
     Daily,
     MaaDaily,
     NoopDaily,
+    SegmentedDaily,
 )
 from src.config.task_config import (
     get_daily_configs,
@@ -72,9 +71,10 @@ class ScriptConfig:
     _weekly_config_rel_path: str = ""
     """周常配置文件路径；空字符串复用主 config。"""
 
-    _daily_types: dict[str, type[Daily]]
-    """该脚本「日常展示名 → 实现类」；**每个脚本都必须声明**，且与声明里的日常一一对应
-    （少一个、多一个、名字写错都报错）。基类不给默认值，免得漏声明时静默用了别的类。"""
+    _daily_types: tuple[type[Daily], ...]
+    """该脚本各日常的实现类（一个日常一个类）；**每个脚本都必须声明**，各类的身份
+    （``daily_display_name``）须与声明里的日常一一对应（少一个、多一个、写错都报错）。
+    基类不给默认值，免得漏声明时静默用了别的类。"""
 
     _routine_config_rel_path: str = ""
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
@@ -225,29 +225,40 @@ class ScriptConfig:
         """由声明构造该脚本的全部日常（顺序与声明一致）。
 
         日常数由声明给出、类数由 ``_daily_types`` 给出，两者必须一一对应：一个日常一个
-        实现类、一个对象。
+        实现类、一个对象。绑定按各类自己声明的 ``daily_display_name``。
 
         Returns:
             该脚本的日常列表；单日常脚本长度为 1。
 
         Raises:
-            AssertionError: 缺少脚本声明，或该脚本未声明 ``_daily_types``，或
-                ``_daily_types`` 与声明里的日常不一致（少一个、多一个、名字写错都算），
-                或日常物理名重复。
+            AssertionError: 缺少脚本声明，或该脚本未声明 ``_daily_types``，或某个日常类
+                未声明 ``daily_display_name``／与之重复，或与声明里的日常对不上
+                （少一个、多一个、写错都算），或日常物理名重复。
         """
         assert hasattr(cls, "_daily_types"), (
             f"[set_config][{cls.display_name}] 未声明 _daily_types"
         )
+        daily_types: dict[str, type[Daily]] = {}
+        for daily_type in cls._daily_types:
+            name = getattr(daily_type, "daily_display_name", None)
+            assert name, (
+                f"[set_config][{cls.display_name}] {daily_type.__name__} 未声明 "
+                "daily_display_name"
+            )
+            assert name not in daily_types, (
+                f"[set_config][{cls.display_name}] daily_display_name 重复: {name}"
+            )
+            daily_types[name] = daily_type
         declarations = get_daily_configs(cls._script_name)
         declared = sorted(d["display_name"] for d in declarations)
-        assert declared == sorted(cls._daily_types), (
-            f"[set_config][{cls.display_name}] _daily_types 与声明的日常不一致: "
-            f"声明 {declared}、已指定 {sorted(cls._daily_types)}"
+        assert declared == sorted(daily_types), (
+            f"[set_config][{cls.display_name}] 日常实现类与声明的日常不一致: "
+            f"声明 {declared}、已实现 {sorted(daily_types)}"
         )
         dailies: list[Daily] = []
         seen: set[str] = set()
         for declaration in declarations:
-            daily = cls._daily_types[declaration["display_name"]](
+            daily = daily_types[declaration["display_name"]](
                 cls._script_name, declaration
             )
             assert daily.physical_name not in seen, (
@@ -597,6 +608,12 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
 
 
 # ---- 鸣潮 Wuthering Waves ----
+class WutheringWavesDaily(Daily):
+    """鸣潮的日常：落点全由声明给出。"""
+
+    daily_display_name = "每日任务"
+
+
 @register
 class WutheringWavesConfig(ScriptConfig):
     _script_name = "ok-ww"
@@ -605,7 +622,7 @@ class WutheringWavesConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "鸣潮"
-    _daily_types = {"每日任务": Daily}
+    _daily_types = (WutheringWavesDaily,)
     _weekly_config = get_weekly_config(_script_name, "幻梦游园")
     _weekly_task_name = get_physical_name(_weekly_config)
 
@@ -640,11 +657,17 @@ class WutheringWavesConfig(ScriptConfig):
 
 
 # ---- 原神 Genshin Impact ----
+class GenshinDaily(Daily):
+    """原神的日常：落点全由声明给出（两级共用一级字段）。"""
+
+    daily_display_name = "每日任务"
+
+
 @register
 class GenshinConfig(ScriptConfig):
     _script_name = "BetterGI"
     display_name = "原神"
-    _daily_types = {"每日任务": Daily}
+    _daily_types = (GenshinDaily,)
     _backup_paths = ("User",)
     _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
@@ -681,11 +704,17 @@ class GenshinConfig(ScriptConfig):
 
 
 # ---- 终末地 Arknights: Endfield ----
+class EndfieldDaily(Daily):
+    """终末地的日常：落点全由声明给出（两级共用一级字段）。"""
+
+    daily_display_name = "每日任务"
+
+
 @register
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
-    _daily_types = {"每日任务": Daily}
+    _daily_types = (EndfieldDaily,)
     _template_rel_path = "okef一条龙.json"
     _backup_paths = ("data/apps/ok-ef/working/configs",)
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
@@ -742,11 +771,17 @@ class EndfieldConfig(ScriptConfig):
 
 
 # ---- 绝区零 Zenless Zone Zero ----
+class ZenlessZoneZeroDaily(NoopDaily):
+    """绝区零的日常：上游自身已支持副本选择，本工具不写 config。"""
+
+    daily_display_name = "每日任务"
+
+
 @register
 class ZenlessZoneZeroConfig(ScriptConfig):
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
-    _daily_types = {"每日任务": NoopDaily}
+    _daily_types = (ZenlessZoneZeroDaily,)
     _backup_paths = ("config",)
     _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
@@ -782,11 +817,17 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 
 
 # ---- 崩铁 Honkai: Star Rail ----
+class StarRailDaily(NoopDaily):
+    """崩铁的日常：上游自身已支持副本选择，本工具不写 config。"""
+
+    daily_display_name = "每日任务"
+
+
 @register
 class StarRailConfig(ScriptConfig):
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
-    _daily_types = {"每日任务": NoopDaily}
+    _daily_types = (StarRailDaily,)
     _backup_paths = ("config.yaml",)
     _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
@@ -932,6 +973,18 @@ class StarRailConfig(ScriptConfig):
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
+class AnomalyDaily(SegmentedDaily):
+    """异环的异象界域日常：数据在自己那段，开关在第二份文件里自己那条 Routine Item 上。"""
+
+    daily_display_name = "异象界域"
+
+
+class AnomalyHunterDaily(SegmentedDaily):
+    """异环的追猎目标日常：数据在自己那段，开关在第二份文件里自己那条 Routine Item 上。"""
+
+    daily_display_name = "追猎目标"
+
+
 @register
 class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
@@ -941,7 +994,7 @@ class NTEConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "异环"
-    _daily_types = {"异象界域": AnomalyDaily, "追猎目标": AnomalyHunterDaily}
+    _daily_types = (AnomalyDaily, AnomalyHunterDaily)
 
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
@@ -975,11 +1028,17 @@ class NTEConfig(ScriptConfig):
 
 
 # ---- 明日方舟 Arknights（粥）----
+class ArknightsDaily(MaaDaily):
+    """粥的日常：副本以 TaskQueue / StagePlan 表达。"""
+
+    daily_display_name = "每日任务"
+
+
 @register
 class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
     display_name = "粥"
-    _daily_types = {"每日任务": MaaDaily}
+    _daily_types = (ArknightsDaily,)
     _backup_paths = ("config",)
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"

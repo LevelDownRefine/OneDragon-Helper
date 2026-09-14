@@ -7,8 +7,9 @@
 再按返回值决定要不要落盘。
 
 声明表达不了的由子类覆写：日常数据在自己那段、开关在第二份文件里（``SegmentedDaily``
-提供共同实现，该脚本每个日常各一个子类）、粥的 TaskQueue（``write`` / ``read``）、
-绝区零/崩铁的不适配（``no_op``）。
+提供共同实现）、粥的 TaskQueue（``write`` / ``read``）、绝区零/崩铁的不适配（``no_op``）。
+每个日常的实现类都自带身份 ``daily_display_name``（与声明里的日常绑定的键），各脚本的
+实现类定义在 ``set_config.py`` 里自己 config 旁边。
 """
 
 import logging
@@ -29,7 +30,8 @@ class Daily:
 
     Attributes:
         script_name: 所属脚本标识名（报错定位用）。
-        name: 日常展示名（界面行名，也是调用方使用的标识）。
+        daily_display_name: 本类代表的日常展示名（类属性；每个日常的实现类必须声明）。
+        name: 本实例解析出的日常展示名（来自声明，即所属类的 ``daily_display_name``）。
         physical_name: 日常物理名（子脚本 config 的段名 / routine item id）。
         options: 该日常的一级项声明（菜单数据来源）；单层日常即该日常自身。
         task_field: 一级项写入的原生字段；单层日常（无一级字段）为 None。
@@ -38,6 +40,9 @@ class Daily:
         no_op: 是否无需本工具写 config（上游自身已支持副本选择）。
         enable_on_select: 选副本后是否顺带启用本日常的开关。
     """
+
+    daily_display_name: str
+    """本类代表的日常展示名（界面行名）；每个日常的实现类都必须声明，也是与声明绑定的键。"""
 
     no_op: bool = False
     """无需本工具写 config 的日常：副本选择完全由上游脚本自己管（绝区零/崩铁）。"""
@@ -374,14 +379,6 @@ class SegmentedDaily(Daily):
             段是否存在。
         """
         return self.physical_name in config
-
-
-class AnomalyDaily(SegmentedDaily):
-    """异环的异象界域日常（段名与开关 id 取本日常声明的物理名）。"""
-
-
-class AnomalyHunterDaily(SegmentedDaily):
-    """异环的追猎目标日常（段名与开关 id 取本日常声明的物理名）。"""
 
 
 class MaaDaily(Daily):

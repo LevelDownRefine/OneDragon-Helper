@@ -8,15 +8,13 @@ import copy
 import unittest
 from unittest.mock import patch
 
-from src.config.daily import (
+from src.config.daily import Daily, MaaDaily, NoopDaily, SegmentedDaily
+from src.config.set_config import (
+    _CONFIGS,
     AnomalyDaily,
     AnomalyHunterDaily,
-    Daily,
-    MaaDaily,
-    NoopDaily,
-    SegmentedDaily,
+    ScriptConfig,
 )
-from src.config.set_config import _CONFIGS, ScriptConfig
 from src.config.task_config import load_daily_map
 
 NO_OP_SCRIPTS = ("OneDragon-Launcher", "March7th-Launcher")
@@ -55,12 +53,14 @@ class TestDispatch(unittest.TestCase):
                 daily = _CONFIGS[script_name]()._build_dailies()[0]
                 self.assertIsInstance(daily, NoopDaily)
                 self.assertTrue(daily.no_op)
-        # 一个日常一个类：共同实现留在 SegmentedDaily，两个日常各一个子类
+        # 一个日常一个类：共同实现留在 SegmentedDaily，身份写在各自的类上
         anomaly, hunter = _CONFIGS["ok-nte"]()._build_dailies()
         self.assertIs(type(anomaly), AnomalyDaily)
         self.assertIs(type(hunter), AnomalyHunterDaily)
         self.assertIsInstance(anomaly, SegmentedDaily)
         self.assertIsInstance(hunter, SegmentedDaily)
+        self.assertEqual(type(anomaly).daily_display_name, "异象界域")
+        self.assertEqual(type(hunter).daily_display_name, "追猎目标")
         self.assertTrue(anomaly.enable_on_select and hunter.enable_on_select)
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
         self.assertIsInstance(_CONFIGS["MAA"]()._build_dailies()[0], MaaDaily)
@@ -84,11 +84,29 @@ class TestDispatch(unittest.TestCase):
                     _CONFIGS[script_name]._build_dailies()
 
     def test_every_script_declares_its_daily_type(self):
-        """日常数 = 类数：每个脚本的表都恰好覆盖它声明的日常。"""
+        """日常数 = 类数：每个脚本的实现类恰好覆盖它声明的日常，且身份写在类上。"""
         for script_name, cls in sorted(_CONFIGS.items()):
             with self.subTest(script=script_name):
                 declared = [d["display_name"] for d in load_daily_map()[script_name]]
-                self.assertEqual(sorted(cls._daily_types), sorted(declared))
+                implemented = [t.daily_display_name for t in cls._daily_types]
+                self.assertEqual(len(implemented), len(declared))
+                self.assertEqual(sorted(implemented), sorted(declared))
+                for daily_type in cls._daily_types:
+                    self.assertTrue(issubclass(daily_type, Daily))
+
+    def test_daily_class_without_identity_is_rejected(self):
+        """日常类必须自带 daily_display_name，否则无法与声明里的日常绑定。"""
+
+        class _Anonymous(Daily):
+            pass
+
+        class _Cfg(ScriptConfig):
+            _script_name = "ok-ww"
+            display_name = "测试脚本"
+            _daily_types = (_Anonymous,)
+
+        with self.assertRaisesRegex(AssertionError, "未声明 daily_display_name"):
+            _Cfg._build_dailies()
 
     def test_missing_daily_types_is_rejected(self):
         """基类不给 _daily_types 默认值：漏声明的脚本必须报错，不能静默用了别的类。"""
