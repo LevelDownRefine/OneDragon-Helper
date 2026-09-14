@@ -220,12 +220,11 @@ class ScriptConfig:
         )
         return load_template(self._script_name, self._template_rel_path)
 
-    @classmethod
-    def _build_dailies(cls) -> list[Daily]:
+    def _build_dailies(self) -> list[Daily]:
         """由声明构造该脚本的全部日常（顺序与声明一致）。
 
-        机制类是脚本级的（``_daily_type``），实例按声明逐个构造；
-        分段日常的段名（物理名）必须互不相同。
+        机制类是脚本级的（``_daily_type``），实例按声明逐个构造并接管本适配器
+        （子配置文件路径与读写原语）；分段日常的段名（物理名）必须互不相同。
 
         Returns:
             该脚本的日常列表；单日常脚本长度为 1。
@@ -234,13 +233,13 @@ class ScriptConfig:
             AssertionError: 缺少脚本声明，或日常物理名重复。
         """
         dailies = [
-            cls._daily_type(cls._script_name, declaration)
-            for declaration in get_daily_configs(cls._script_name)
+            self._daily_type(self._script_name, declaration, self)
+            for declaration in get_daily_configs(self._script_name)
         ]
         seen: set[str] = set()
         for daily in dailies:
             assert daily.physical_name not in seen, (
-                f"{cls._script_name} 的日常物理名重复: {daily.physical_name}"
+                f"{self._script_name} 的日常物理名重复: {daily.physical_name}"
             )
             seen.add(daily.physical_name)
         return dailies
@@ -284,19 +283,15 @@ class ScriptConfig:
         Returns:
             [{name, task, sequence, enabled}, ...]，顺序与声明一致。
         """
-        data = self._load(allow_missing=True)
-        routine = None
-        if data is not None and self._routine_config_rel_path:
-            routine = self._load(self._routine_config_rel_path, allow_missing=True)
         records = []
         for daily in self._dailies:
-            task, sequence = daily.read(data)
+            task, sequence = daily.read()
             records.append(
                 {
                     "name": daily.name,
                     "task": task,
                     "sequence": sequence,
-                    "enabled": daily.read_enabled(routine),
+                    "enabled": daily.read_enabled(),
                 }
             )
         return records
@@ -383,13 +378,7 @@ class ScriptConfig:
                 该日常在 config 里缺少段、无落点、一级项未声明、二级必填却缺失。
         """
         assert daily_display_name, f"[set_config][{self.display_name}] 必须指定日常"
-        daily = self._dispatch_daily(daily_display_name)
-        data = self._load(allow_missing=True)
-        if daily.update(data, task_name, sequence, self.display_name):
-            logger.info(f"[daily][{daily.name}] config 已更新")
-            self._save(data)
-        else:
-            logger.info(f"[daily][{daily.name}] config 无需更新")
+        self._dispatch_daily(daily_display_name).update(task_name, sequence)
         self.set_daily_enabled(daily_display_name, True)
 
     def set_daily_enabled(self, daily_display_name: str, enabled: bool) -> None:
@@ -407,10 +396,7 @@ class ScriptConfig:
         daily = self._dispatch_daily(daily_display_name)
         if not self._routine_config_rel_path:
             return  # 无日常开关文件：选择即启用
-        path = self._routine_config_rel_path
-        routine = self._load(path)
-        if daily.set_enabled(routine, enabled):
-            self._save(routine, path)
+        daily.set_enabled(enabled)
 
     def _check_weekly_start(self, start_day: int) -> None:
         """校验周常起始日，供各子类的 prepare_weekly_start_day 首行调用。

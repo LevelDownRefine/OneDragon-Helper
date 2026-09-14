@@ -1,11 +1,12 @@
 """Daily（声明规则层）：声明解析出的落点、读写规则、特殊日常的覆写点。
 
 端到端等价（写入落点、反读、菜单内容）由 ``tests/test_golden_daily.py`` 的基线守；本文件
-只测 ``Daily`` 自身的语义，不经过 ``ScriptConfig`` 的文件 I/O。
+只测 ``Daily`` 自身的语义。读盘一律打桩 ``daily._cfg._load``，不触真实文件。
 """
 
 import copy
 import unittest
+from unittest.mock import patch
 
 from src.config.daily import Daily, MaaDaily, NoopDaily, SegmentedDaily
 from src.config.set_config import _CONFIGS
@@ -20,7 +21,7 @@ def daily_of(script_name: str, daily_name: str) -> Daily:
 
 
 class TestDispatch(unittest.TestCase):
-    """日常集合由声明推导，实现类按脚本/日常分发。"""
+    """日常集合由声明推导，机制类按脚本分发。"""
 
     def test_every_script_follows_its_declaration(self):
         for script_name in sorted(_CONFIGS):
@@ -47,7 +48,7 @@ class TestDispatch(unittest.TestCase):
             with self.subTest(script=script_name):
                 daily = _CONFIGS[script_name]()._build_dailies()[0]
                 self.assertIsInstance(daily, NoopDaily)
-                self.assertFalse(daily.update({}, "任意", None, "测试"))
+                self.assertFalse(daily.update("任意"))
         anomaly, hunter = _CONFIGS["ok-nte"]()._build_dailies()
         self.assertIsInstance(anomaly, SegmentedDaily)
         self.assertIsInstance(hunter, SegmentedDaily)
@@ -116,34 +117,43 @@ class TestLandingPoints(unittest.TestCase):
 
 
 class TestRead(unittest.TestCase):
-    """从数据段反读：标准反转、同字段不反转、无落点无真相。"""
+    """反读：标准反转、同字段不反转、未落盘/无落点无真相。"""
 
     def test_reverse_lookup(self):
         daily = daily_of("ok-ww", "每日任务")
-        section = {
+        config = {
             "Which to Farm": "Forgery Challenge",
             "Which Forgery Challenge to Farm": 3,
         }
-        self.assertEqual(daily.read(section), ("凝素领域", 3))
-        with self.assertRaisesRegex(AssertionError, "未知副本值"):
-            daily.read({"Which to Farm": "不存在的值"})
+        with patch.object(daily._cfg, "_load", return_value=config):
+            self.assertEqual(daily.read(), ("凝素领域", 3))
+        with patch.object(
+            daily._cfg, "_load", return_value={"Which to Farm": "不存在的值"}
+        ), self.assertRaisesRegex(AssertionError, "未知副本值"):
+            daily.read()
 
     def test_shared_field_is_not_reversed(self):
         daily = daily_of("BetterGI", "每日任务")
-        self.assertEqual(daily.read({"DomainName": "铭记之谷"}), ("铭记之谷", None))
+        with patch.object(daily._cfg, "_load", return_value={"DomainName": "铭记之谷"}):
+            self.assertEqual(daily.read(), ("铭记之谷", None))
 
     def test_unset_returns_none(self):
         daily = daily_of("ok-ww", "每日任务")
-        self.assertEqual(daily.read({}), (None, None))
-        self.assertEqual(daily.read({"Which to Farm": ""}), (None, None))
+        for config in ({}, {"Which to Farm": ""}):
+            with (
+                self.subTest(config=config),
+                patch.object(daily._cfg, "_load", return_value=config),
+            ):
+                self.assertEqual(daily.read(), (None, None))
 
     def test_without_landing_point_has_no_truth(self):
         for script_name in NO_OP_SCRIPTS:
             with self.subTest(script=script_name):
                 daily = _CONFIGS[script_name]()._build_dailies()[0]
-                self.assertEqual(daily.read({}), (None, None))
-                # 无落点日常（NoopDaily）覆写 update：恒无改动，不抛断言
-                self.assertFalse(daily.update({}, "任何副本", None, "测试"))
+                with patch.object(daily._cfg, "_load", return_value={}):
+                    self.assertEqual(daily.read(), (None, None))
+                # 无落点日常（NoopDaily）覆写 update：不读不写，恒无改动
+                self.assertFalse(daily.update("任何副本"))
 
 
 class TestEnabled(unittest.TestCase):
@@ -152,8 +162,8 @@ class TestEnabled(unittest.TestCase):
     def test_without_routine_file_it_is_noop(self):
         """无日常开关文件的脚本：反读无真相，置开关不做事。"""
         daily = daily_of("ok-ww", "每日任务")
-        self.assertIsNone(daily.read_enabled(None))
-        self.assertFalse(daily.set_enabled({}, True))
+        self.assertIsNone(daily.read_enabled())
+        self.assertFalse(daily.set_enabled(True))
 
     def test_anomaly_toggles_only_its_own_item(self):
         routine = {
@@ -171,11 +181,16 @@ class TestEnabled(unittest.TestCase):
                 daily = daily_of("ok-nte", daily_name)
                 own = next(i for i in target["Routine Items"] if i["id"] == item_id)
                 seed_enabled = own["enabled"]
-                self.assertEqual(daily.read_enabled(target), seed_enabled)
-                # 置反必然有改变、且只动自己那条；对同值再置一次则无改变
-                self.assertTrue(daily.set_enabled(target, not seed_enabled))
+                with (
+                    patch.object(daily._cfg, "_load", return_value=target),
+                    patch.object(daily._cfg, "_save") as mock_save,
+                ):
+                    self.assertEqual(daily.read_enabled(), seed_enabled)
+                    # 置反必然有改变、且只动自己那条；对同值再置一次则无改变
+                    self.assertTrue(daily.set_enabled(not seed_enabled))
+                    self.assertFalse(daily.set_enabled(not seed_enabled))
+                    mock_save.assert_called_once()
                 self.assertEqual(own["enabled"], not seed_enabled)
-                self.assertFalse(daily.set_enabled(target, not seed_enabled))
                 other = next(i for i in target["Routine Items"] if i["id"] != item_id)
                 self.assertEqual(
                     other["enabled"],
@@ -188,7 +203,9 @@ class TestEnabled(unittest.TestCase):
     def test_read_enabled_without_file_has_no_truth(self):
         for daily_name in ("异象界域", "追猎目标"):
             with self.subTest(daily=daily_name):
-                self.assertIsNone(daily_of("ok-nte", daily_name).read_enabled(None))
+                daily = daily_of("ok-nte", daily_name)
+                with patch.object(daily._cfg, "_load", return_value=None):
+                    self.assertIsNone(daily.read_enabled())
 
     def test_section_is_the_daily_own_segment(self):
         config = {"daily_anomaly": {"a": 1}, "daily_anomaly_hunter": {"b": 2}}
@@ -206,7 +223,7 @@ class TestDeclarationErrors(unittest.TestCase):
 
     def test_empty_options_rejected(self):
         with self.assertRaisesRegex(AssertionError, "必须声明选项"):
-            Daily("脚本", {"display_name": "日常", "options": {"values": []}})
+            Daily("脚本", {"display_name": "日常", "options": {"values": []}}, None)
 
     def test_mixed_layers_rejected(self):
         """单层与两层混用：基类按单层形态拒绝，分段机制类按混用拒绝。"""
@@ -220,9 +237,9 @@ class TestDeclarationErrors(unittest.TestCase):
             },
         }
         with self.assertRaisesRegex(AssertionError, "单层形态"):
-            Daily("脚本", declaration)
+            Daily("脚本", declaration, None)
         with self.assertRaisesRegex(AssertionError, "不能混用单层与两层"):
-            SegmentedDaily("脚本", declaration)
+            SegmentedDaily("脚本", declaration, None)
 
 
 if __name__ == "__main__":

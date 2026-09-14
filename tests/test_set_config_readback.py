@@ -25,10 +25,8 @@ from src.config.set_config import (
 
 
 def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
-    """按新架构反读：宿主读盘 → 取该日常的数据段 → 日常解析（未落盘返回 (None, None)）。"""
-    daily = cfg._dispatch_daily(daily_name)
-    data = cfg._load(allow_missing=True)
-    return daily.read(data)
+    """反读：经 Daily.read 的 I/O 闭环（读盘打桩由用例负责）。"""
+    return cfg._dispatch_daily(daily_name).read()
 
 
 def _bind_maa_daily(cfg, mapping: dict):

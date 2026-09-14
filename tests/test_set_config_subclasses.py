@@ -25,16 +25,15 @@ from src.utils.utils_yaml import dump_yaml_str
 
 
 def _update(cfg, config: dict, daily_name: str, task_name: str, sequence=None) -> bool:
-    """按新架构写入：取该日常对象、定位它的数据段、交给它写内存（返回是否有修改）。"""
+    """写入：读盘打桩为 config，经 Daily.update 的 I/O 闭环（_save 由用例自行打桩）。"""
     daily = cfg._dispatch_daily(daily_name)
-    return daily.update(config, task_name, sequence, cfg.display_name)
+    with patch.object(daily._cfg, "_load", return_value=config):
+        return daily.update(task_name, sequence)
 
 
 def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
-    """按新架构反读：宿主读盘 → 取该日常的数据段 → 日常解析（未落盘返回 (None, None)）。"""
-    daily = cfg._dispatch_daily(daily_name)
-    data = cfg._load(allow_missing=True)
-    return daily.read(data)
+    """反读：经 Daily.read 的 I/O 闭环（读盘打桩由用例负责）。"""
+    return cfg._dispatch_daily(daily_name).read()
 
 
 def _bind_maa_daily(cfg, mapping: dict):
@@ -536,7 +535,7 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         self.assertEqual(saved["ExtraKey"], 1)
 
     def test_set_daily_task_only_prints(self):
-        """绝区零副本无需适配：读盘一次，NoopDaily.update 恒无改动、不落盘。"""
+        """绝区零副本无需适配：NoopDaily.update 不读不写。"""
         with (
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data="{}")),
@@ -547,7 +546,7 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
             patch.object(cfg, "_save") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "任何副本", "任何序列")
-        mock_load.assert_called_once()
+        mock_load.assert_not_called()
         mock_save.assert_not_called()
 
     # ---- _is_aligned 单元测试 ----
@@ -662,7 +661,7 @@ class TestStarRailConfig(unittest.TestCase):
             )
 
     def test_set_daily_task_noop_does_not_save(self):
-        """崩铁（M7A）副本无需适配：读盘一次，NoopDaily.update 恒无改动、不落盘。"""
+        """崩铁（M7A）副本无需适配：NoopDaily.update 不读不写。"""
         with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
         with (
@@ -670,7 +669,7 @@ class TestStarRailConfig(unittest.TestCase):
             patch.object(cfg, "_save") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "培养目标")
-        mock_load.assert_called_once()
+        mock_load.assert_not_called()
         mock_save.assert_not_called()
 
     def test_set_weekly_task_writes_instance_names(self):

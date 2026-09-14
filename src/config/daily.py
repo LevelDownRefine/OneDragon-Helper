@@ -13,7 +13,7 @@
 """
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.config.task_config import (
     get_options,
@@ -21,6 +21,9 @@ from src.config.task_config import (
     get_value_map,
 )
 from src.utils.utils_dict import get_field, safe_update
+
+if TYPE_CHECKING:
+    from src.config.set_config import ScriptConfig
 
 logger = logging.getLogger(__name__)
 
@@ -40,19 +43,27 @@ class Daily:
     声明形态由各机制类负责：基类只解析标准两层形态（各一级项自带 ``options``），
     单层带 ``key``（分段脚本）见 ``SegmentedDaily``；无落点（``NoopDaily``）与
     TaskQueue（``MaaDaily``）跳过通用解析。
+
+    日常持有所属 ``ScriptConfig``（``_cfg``）：子配置文件的路径与读写原语
+    （``_load`` / ``_save``，含保存后回读校验）由它提供，``update`` / ``read`` /
+    ``set_enabled`` 各自完成「读盘 → 改内存 → 有改动才落盘」的闭环。
     """
 
-    def __init__(self, script_name: str, declaration: dict) -> None:
+    def __init__(
+        self, script_name: str, declaration: dict, cfg: "ScriptConfig"
+    ) -> None:
         """解析一条标准两层日常声明。
 
         Args:
             script_name: 所属脚本标识名（报错定位用）。
             declaration: ``daily_task_list.yml`` 里该日常的声明节点。
+            cfg: 所属 ScriptConfig（子配置文件路径与读写原语的提供方）。
 
         Raises:
             AssertionError: 未声明选项、选项是单层形态（不适用本基类），或顶层无
                 ``key`` 时各一级项的二级 key 不唯一。
         """
+        self._cfg = cfg
         self.script_name = script_name
         self.name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
@@ -134,24 +145,16 @@ class Daily:
             values[self.option_fields[task_name]] = sequence
         return values
 
-    def update(
-        self,
-        config: dict,
-        task_name: str,
-        sequence: str | int | None,
-        display_name: str,
-    ) -> bool:
-        """把该次选择写进 config 里本日常的数据段（只改内存），返回是否有改动。
+    def update(self, task_name: str, sequence: str | int | None = None) -> bool:
+        """设置该日常的副本：读 config → 写数据段 → 有改动才落盘。
 
         默认实现按 ``_fields`` 写平面字段；结构化改写（粥的 TaskQueue）覆写本方法。
         段必须已落盘——``section`` 对缺失段返回游离的新 dict，直接写入会静默丢失，
         故在此断言。
 
         Args:
-            config: 顶层 config dict；脚本未安装/未配置时为 None。
             task_name: 一级项展示名（副本名）。
             sequence: 二级项值；无二级时为 None。
-            display_name: 脚本展示名（字段写入的日志用）。
 
         Returns:
             是否有实际修改。
@@ -160,24 +163,31 @@ class Daily:
             AssertionError: config 未安装/未配置、段未落盘、无选项落点、
                 一级项未声明、二级必填却缺失，或静态枚举的二级取值不在声明里。
         """
-        assert config is not None, (
+        data = self._cfg._load(allow_missing=True)
+        assert data is not None, (
             f"[daily][{self.name}] config 未安装/未配置，不能写入副本"
         )
-        assert self.section_exists(config), (
+        assert self.section_exists(data), (
             f"[daily][{self.name}] config 缺少 {self.physical_name} 段"
         )
         changed = False
         for key, value in self._fields(task_name, sequence).items():
             changed |= safe_update(
-                self.section(config), key, value, display_name, assert_key_exists=False
+                self.section(data),
+                key,
+                value,
+                self._cfg.display_name,
+                assert_key_exists=False,
             )
+        if changed:
+            self._cfg._save(data)
+            logger.info(f"[daily][{self.name}] config 已更新")
+        else:
+            logger.info(f"[daily][{self.name}] config 无需更新")
         return changed
 
-    def read(self, config: dict | None) -> tuple[str | None, str | int | None]:
-        """从 config 反读该日常已选的 (一级项展示名, 二级值)。
-
-        Args:
-            config: 顶层 config dict；脚本未安装/未配置时为 None。
+    def read(self) -> tuple[str | None, str | int | None]:
+        """反读该日常已选的 (一级项展示名, 二级值)。
 
         Returns:
             (一级项展示名, 二级值)；config 缺失 / 段未落盘 / 无落点 / 未选择 /
@@ -186,9 +196,10 @@ class Daily:
         Raises:
             AssertionError: 字段里的副本值不在声明里（config 损坏或版本不符）。
         """
-        if config is None or not self.section_exists(config):
+        data = self._cfg._load(allow_missing=True)
+        if data is None or not self.section_exists(data):
             return None, None  # 未安装或段未落盘：无真相
-        section = self.section(config)
+        section = self.section(data)
         if not self.option_fields:
             return None, None  # 无落点（如绝区零/崩铁日常）：无副本真相
         if self.task_field is None:
@@ -210,22 +221,18 @@ class Daily:
             return task, None
         return task, section[seq_field]
 
-    def read_enabled(self, routine: dict | None) -> bool | None:
+    def read_enabled(self) -> bool | None:
         """反读该日常是否启用；无日常开关文件的脚本返回 None。
-
-        Args:
-            routine: 开关文件的 dict；该脚本无开关文件或文件缺失时为 None。
 
         Returns:
             是否启用；无开关文件返回 None（界面据此不提供「不启用」）。
         """
         return None
 
-    def set_enabled(self, routine: dict, enabled: bool) -> bool:
-        """置该日常的启用状态（只改内存）；无日常开关机制的日常不做事。
+    def set_enabled(self, enabled: bool) -> bool:
+        """置该日常的启用状态；无日常开关机制的日常不做事。
 
         Args:
-            routine: 开关文件的 dict（本实现忽略）。
             enabled: 目标启用状态（本实现忽略）。
 
         Returns:
@@ -262,13 +269,17 @@ class NoopDaily(Daily):
     声明里没有落点（单层无 ``key``），故跳过通用解析，也没有可写的字段。
     """
 
-    def __init__(self, script_name: str, declaration: dict) -> None:
+    def __init__(
+        self, script_name: str, declaration: dict, cfg: "ScriptConfig"
+    ) -> None:
         """只取名字，不解析选项——无落点日常没有可写的字段。
 
         Args:
             script_name: 所属脚本标识名（报错定位用）。
             declaration: 该日常的声明节点。
+            cfg: 所属 ScriptConfig（本实现不做 I/O）。
         """
+        self._cfg = cfg
         self.script_name = script_name
         self.name = declaration["display_name"]
         self.physical_name = get_physical_name(declaration)
@@ -276,20 +287,12 @@ class NoopDaily(Daily):
         self.task_map: dict[str, Any] = {}
         self.option_fields: dict[str, str] = {}
 
-    def update(
-        self,
-        config: dict,
-        task_name: str,
-        sequence: str | int | None,
-        display_name: str,
-    ) -> bool:
+    def update(self, task_name: str, sequence: str | int | None = None) -> bool:
         """无需适配副本选择：不读不写，恒无改动。
 
         Args:
-            config: 顶层 config dict（本实现忽略）。
             task_name: 一级项展示名（本实现忽略）。
             sequence: 二级项值（本实现忽略）。
-            display_name: 脚本展示名（本实现忽略）。
 
         Returns:
             恒为 False（无改动，不落盘）。
@@ -307,17 +310,21 @@ class SegmentedDaily(Daily):
     声明形态两种都有（异象界域两层、追猎目标单层带 ``key``），据此分派解析。
     """
 
-    def __init__(self, script_name: str, declaration: dict) -> None:
+    def __init__(
+        self, script_name: str, declaration: dict, cfg: "ScriptConfig"
+    ) -> None:
         """解析分段日常：两层声明走基类，单层带 ``key`` 自己解析。
 
         Args:
             script_name: 所属脚本标识名（报错定位用）。
             declaration: 该日常的声明节点。
+            cfg: 所属 ScriptConfig（子配置文件路径与读写原语的提供方）。
 
         Raises:
             AssertionError: 未声明选项、选项混用单层与两层，或单层未声明 ``key``
                 （分段日常必须有落点）。
         """
+        self._cfg = cfg
         self.script_name = script_name
         self.name = declaration["display_name"]
         self.physical_name = get_physical_name(declaration)
@@ -328,7 +335,7 @@ class SegmentedDaily(Daily):
             f"{script_name}/{self.physical_name} 的选项不能混用单层与两层"
         )
         if all(layered):
-            super().__init__(script_name, declaration)
+            super().__init__(script_name, declaration, cfg)
             return
         group = declaration["options"]
         assert "key" in group, (
@@ -344,11 +351,8 @@ class SegmentedDaily(Daily):
         self._sequence_required = "values" in group
         self._single_field = False
 
-    def read_enabled(self, routine: dict | None) -> bool | None:
+    def read_enabled(self) -> bool | None:
         """反读本日常的 Routine Item 是否启用；开关文件缺失（无真相）返回 None。
-
-        Args:
-            routine: DailyRoutineTask.json 的 dict；文件缺失时为 None。
 
         Returns:
             是否启用；开关文件缺失返回 None。
@@ -356,15 +360,17 @@ class SegmentedDaily(Daily):
         Raises:
             AssertionError: Routine Items 缺少或重复本日常的物理名。
         """
+        routine = self._cfg._load(
+            self._cfg._routine_config_rel_path, allow_missing=True
+        )
         if routine is None:
             return None  # 开关文件缺失：无真相，不谎报「已停用」
         return bool(self._routine_item(routine)["enabled"])
 
-    def set_enabled(self, routine: dict, enabled: bool) -> bool:
-        """置本日常的 Routine Item 启用状态（只改内存），另一个日常不动。
+    def set_enabled(self, enabled: bool) -> bool:
+        """置本日常的 Routine Item 启用状态并落盘，另一个日常不动。
 
         Args:
-            routine: DailyRoutineTask.json 的 dict。
             enabled: 目标启用状态。
 
         Returns:
@@ -373,7 +379,12 @@ class SegmentedDaily(Daily):
         Raises:
             AssertionError: Routine Items 缺少或重复本日常的物理名。
         """
-        return safe_update(self._routine_item(routine), "enabled", enabled, self.name)
+        path = self._cfg._routine_config_rel_path
+        routine = self._cfg._load(path)
+        if safe_update(self._routine_item(routine), "enabled", enabled, self.name):
+            self._cfg._save(routine, path)
+            return True
+        return False
 
     def _routine_item(self, routine: dict) -> dict:
         """取 Routine Items 里本日常的 item。
@@ -437,13 +448,17 @@ class MaaDaily(Daily):
     task_field: str | None = None
     """粥无通用落点：update/read 全部覆写，通用解析跳过。"""
 
-    def __init__(self, script_name: str, declaration: dict) -> None:
+    def __init__(
+        self, script_name: str, declaration: dict, cfg: "ScriptConfig"
+    ) -> None:
         """解析粥日常：只取名字并建「关卡代码 ↔ 中文名」映射，不走通用落点解析。
 
         Args:
             script_name: 所属脚本标识名。
             declaration: 该日常的声明节点。
+            cfg: 所属 ScriptConfig（子配置文件路径与读写原语的提供方）。
         """
+        self._cfg = cfg
         self.script_name = script_name
         self.name = declaration["display_name"]
         self.physical_name = get_physical_name(declaration)
@@ -458,22 +473,14 @@ class MaaDaily(Daily):
             name: stage for stage, name in self._name_by_stage.items()
         }
 
-    def update(
-        self,
-        config: dict,
-        task_name: str,
-        sequence: str | int | None,
-        display_name: str,
-    ) -> bool:
-        """启用剿灭/土/选定副本：改 TaskQueue 各项的 ``IsEnable``（只改内存）。
+    def update(self, task_name: str, sequence: str | int | None = None) -> bool:
+        """启用剿灭/土/选定副本：改 TaskQueue 各项的 ``IsEnable``，有改动才落盘。
 
         队列里完全没有目标关卡时借一个槽位改写其 StagePlan（只改 StagePlan）。
 
         Args:
-            config: MAA config dict。
             task_name: 选定副本中文名。
             sequence: 粥无二级序列，恒为 None。
-            display_name: 脚本展示名（字段写入的日志用）。
 
         Returns:
             是否有实际修改。
@@ -484,6 +491,7 @@ class MaaDaily(Daily):
         assert task_name in self._stage_by_name, (
             f"[daily][{self.name}] 未适配的副本: {task_name}"
         )
+        config = self._cfg._load()
         target_stage = self._stage_by_name[task_name]
         task_queue = self._task_queue(config)
 
@@ -506,27 +514,30 @@ class MaaDaily(Daily):
                 task,
                 "IsEnable",
                 should_enable,
-                f"{display_name}[{name}]",
+                f"{self._cfg.display_name}[{name}]",
             )
 
         # 目标关卡缺失时借槽改写 StagePlan，优先借副本列表内已启用的槽（剿灭除外），
         # 其次才借未追踪占位槽。
         if not matched_target:
-            changed |= self._borrow_slot(task_queue, target_stage, display_name)
+            changed |= self._borrow_slot(task_queue, target_stage)
+        if changed:
+            self._cfg._save(config)
+            logger.info(f"[daily][{self.name}] config 已更新")
+        else:
+            logger.info(f"[daily][{self.name}] config 无需更新")
         return changed
 
-    def read(self, config: dict | None) -> tuple[str | None, str | int | None]:
+    def read(self) -> tuple[str | None, str | int | None]:
         """反读当前副本与二级序列。
 
         遍历 TaskQueue，除固定启用的剿灭/土外，被勾选 ``IsEnable`` 的那一项即当前
         副本；特殊：维护关卡都未启用但有 ``StagePlan=["1-7"]`` 的任务时读为「土」。
 
-        Args:
-            config: MAA config dict；脚本未安装/未配置时为 None。
-
         Returns:
             (副本中文名, 序列值)；未设置返回 (None, None)。
         """
+        config = self._cfg._load(allow_missing=True)
         if config is None:
             return None, None  # 未安装/未配置：无真相
         has_1_7 = False
@@ -547,15 +558,12 @@ class MaaDaily(Daily):
             return self._name_by_stage["1-7"], None
         return None, None
 
-    def _borrow_slot(
-        self, task_queue: list, target_stage: str, display_name: str
-    ) -> bool:
+    def _borrow_slot(self, task_queue: list, target_stage: str) -> bool:
         """借一个已启用槽位改写 StagePlan（只改 StagePlan，不动 IsEnable）。
 
         Args:
             task_queue: MAA config 的 TaskQueue 列表。
             target_stage: 目标关卡代码。
-            display_name: 日志用脚本展示名。
 
         Returns:
             是否发生实际修改。
@@ -579,9 +587,12 @@ class MaaDaily(Daily):
         ) or next(iter(candidates), None)
         if borrow is None:
             return False
-        borrowed = borrow.get("Name", display_name)
+        borrowed = borrow.get("Name", self._cfg.display_name)
         return safe_update(
-            borrow, "StagePlan", [target_stage], f"{display_name}[borrow:{borrowed}]"
+            borrow,
+            "StagePlan",
+            [target_stage],
+            f"{self._cfg.display_name}[borrow:{borrowed}]",
         )
 
     @staticmethod
