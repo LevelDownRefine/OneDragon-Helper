@@ -88,28 +88,44 @@ class TestGetDailyMap(unittest.TestCase):
             menus = get_daily_map()
         self.assertEqual(set(menus), set(load_daily_map()))
         maa = menus["MAA"]["dailies"][0]
-        self.assertEqual(maa["name"], "每日任务")
+        self.assertEqual(maa["display_name"], "每日任务")
+        values = maa["options"]["values"]
         self.assertEqual(
-            [option["name"] for option in maa["options"]],
+            [option["display_name"] for option in values],
             ["红票", "经验", "龙门币", "土"],
         )
-        self.assertTrue(all(option["sequences"] == [] for option in maa["options"]))
+        # 物化补齐缺省物理名（MAA 声明自带关卡代码，原样保留）；叶子选项不带子选项组
+        self.assertTrue(all("physical_name" in option for option in values))
+        self.assertTrue(all("options" not in option for option in values))
         # 异环两个日常各一份菜单（不再合并）
         nte = menus["ok-nte"]["dailies"]
-        self.assertEqual([daily["name"] for daily in nte], ["异象界域", "追猎目标"])
         self.assertEqual(
-            [option["name"] for option in nte[0]["options"]],
-            ["空幕", "异能升级材料", "弧盘突破材料", "经验与甲硬币"],
+            [daily["display_name"] for daily in nte], ["异象界域", "追猎目标"]
         )
         self.assertEqual(
-            [option["name"] for option in nte[1]["options"]], ["追猎目标"]
+            [option["display_name"] for option in nte[0]["options"]["values"]],
+            ["空幕", "异能升级材料", "弧盘突破材料", "经验与甲硬币"],
+        )
+        # 单层带 key（追猎目标）：整组即唯一一级项，values 作二级
+        hunter = nte[1]["options"]["values"]
+        self.assertEqual([option["display_name"] for option in hunter], ["追猎目标"])
+        self.assertEqual(
+            [child["display_name"] for child in hunter[0]["options"]["values"]],
+            ["音霸魔王", "无首铁驭", "塞润尼缇", "黑之书", "海囚", "围巢鸟", "斑蝶"],
         )
         self.assertEqual(
             menus["OneDragon-Launcher"]["dailies"],
             [
                 {
-                    "name": "每日任务",
-                    "options": [{"name": "培养方案", "sequences": []}],
+                    "display_name": "每日任务",
+                    "options": {
+                        "values": [
+                            {
+                                "display_name": "培养方案",
+                                "physical_name": "培养方案",
+                            }
+                        ]
+                    },
                 }
             ],
         )
@@ -117,8 +133,15 @@ class TestGetDailyMap(unittest.TestCase):
             menus["March7th-Launcher"]["dailies"],
             [
                 {
-                    "name": "每日任务",
-                    "options": [{"name": "培养目标", "sequences": []}],
+                    "display_name": "每日任务",
+                    "options": {
+                        "values": [
+                            {
+                                "display_name": "培养目标",
+                                "physical_name": "培养目标",
+                            }
+                        ]
+                    },
                 }
             ],
         )
@@ -126,12 +149,18 @@ class TestGetDailyMap(unittest.TestCase):
     def test_secondary_menu_values_are_native(self):
         with patch("src.config.daily_config.get_task_lists", return_value=[]):
             menus = get_daily_map()
-        options = {
-            option["name"]: option["sequences"]
-            for option in menus["ok-ww"]["dailies"][0]["options"]
+        values = {
+            option["display_name"]: option
+            for option in menus["ok-ww"]["dailies"][0]["options"]["values"]
         }
-        self.assertEqual(options["模拟领域"][0], {"label": "共鸣者经验", "value": "Resonator EXP"})
-        self.assertEqual(options["凝素领域"][0], {"label": "梦州-迅刀", "value": 1})
+        self.assertEqual(
+            values["模拟领域"]["options"]["values"][0],
+            {"display_name": "共鸣者经验", "physical_name": "Resonator EXP"},
+        )
+        self.assertEqual(
+            values["凝素领域"]["options"]["values"][0],
+            {"display_name": "梦州-迅刀", "physical_name": 1},
+        )
 
     def test_daily_source_categories_come_from_declaration(self):
         with patch(
@@ -144,11 +173,14 @@ class TestGetDailyMap(unittest.TestCase):
         source.assert_any_call(
             "ok-ef", "干员养成", "data/apps/ok-ef/working/assets/data/world_map.json"
         )
-        options = {
-            option["name"]: option["sequences"]
-            for option in menus["BetterGI"]["dailies"][0]["options"]
+        values = {
+            option["display_name"]: option
+            for option in menus["BetterGI"]["dailies"][0]["options"]["values"]
         }
-        self.assertEqual(options["圣遗物"], [{"label": "原生副本", "value": "原生副本"}])
+        self.assertEqual(
+            values["圣遗物"]["options"]["values"],
+            [{"display_name": "原生副本", "physical_name": "原生副本"}],
+        )
 
     def test_missing_resource_gives_empty_secondary_menu(self):
         for names in ([], None):
@@ -158,7 +190,10 @@ class TestGetDailyMap(unittest.TestCase):
             ):
                 result = get_daily_map()
             self.assertEqual(
-                result["ok-ef"]["dailies"][0]["options"][0]["sequences"], []
+                result["ok-ef"]["dailies"][0]["options"]["values"][0]["options"][
+                    "values"
+                ],
+                [],
             )
 
     def test_menu_does_not_modify_declarations(self):
@@ -188,11 +223,14 @@ class TestGetDailyMap(unittest.TestCase):
         ):
             menus = get_daily_map()
         self.assertEqual(
-            [daily["name"] for daily in menus["ok-ww"]["dailies"]],
+            [daily["display_name"] for daily in menus["ok-ww"]["dailies"]],
             ["每日任务", "另一个日常"],
         )
         self.assertEqual(
-            [option["name"] for option in menus["ok-ww"]["dailies"][1]["options"]],
+            [
+                option["display_name"]
+                for option in menus["ok-ww"]["dailies"][1]["options"]["values"]
+            ],
             ["别的副本"],
         )
 
@@ -213,9 +251,7 @@ class TestGetDailyMap(unittest.TestCase):
                                             "display_name": "二级",
                                             "options": {
                                                 "key": "三级字段",
-                                                "values": [
-                                                    {"display_name": "三级"}
-                                                ],
+                                                "values": [{"display_name": "三级"}],
                                             },
                                         }
                                     ],

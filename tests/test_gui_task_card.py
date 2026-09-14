@@ -235,8 +235,12 @@ class TestDailyItems(unittest.TestCase):
             "ok-ww": {
                 "dailies": [
                     {
-                        "name": "每日任务",
-                        "options": [{"name": "声明项", "sequences": []}],
+                        "display_name": "每日任务",
+                        "options": {
+                            "values": [
+                                {"display_name": "声明项", "physical_name": "声明项"}
+                            ]
+                        },
                     }
                 ]
             }
@@ -261,16 +265,27 @@ class TestDailyItems(unittest.TestCase):
             "ok-nte": {
                 "dailies": [
                     {
-                        "name": "异象界域",
-                        "options": [
-                            {
-                                "name": "空幕",
-                                "sequences": [
-                                    {"label": "光暗", "value": 1},
-                                    {"label": "轨道之夜", "value": 6},
-                                ],
-                            }
-                        ],
+                        "display_name": "异象界域",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "空幕",
+                                    "physical_name": "空幕",
+                                    "options": {
+                                        "values": [
+                                            {
+                                                "display_name": "光暗",
+                                                "physical_name": 1,
+                                            },
+                                            {
+                                                "display_name": "轨道之夜",
+                                                "physical_name": 6,
+                                            },
+                                        ]
+                                    },
+                                }
+                            ]
+                        },
                     }
                 ]
             }
@@ -287,8 +302,8 @@ class TestDailyItems(unittest.TestCase):
         ctrl._daily_map_cache = {
             "ok-nte": {
                 "dailies": [
-                    {"name": "异象界域", "options": []},
-                    {"name": "追猎目标", "options": []},
+                    {"display_name": "异象界域", "options": {"values": []}},
+                    {"display_name": "追猎目标", "options": {"values": []}},
                 ]
             }
         }
@@ -308,8 +323,15 @@ class TestDailyItems(unittest.TestCase):
             "ok-nte": {
                 "dailies": [
                     {
-                        "name": "追猎目标",
-                        "options": [{"name": "追猎目标", "sequences": []}],
+                        "display_name": "追猎目标",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "追猎目标",
+                                    "physical_name": "追猎目标",
+                                }
+                            ]
+                        },
                     }
                 ]
             }
@@ -336,8 +358,15 @@ class TestDailyItems(unittest.TestCase):
             "ok-nte": {
                 "dailies": [
                     {
-                        "name": "追猎目标",
-                        "options": [{"name": "追猎目标", "sequences": []}],
+                        "display_name": "追猎目标",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "追猎目标",
+                                    "physical_name": "追猎目标",
+                                }
+                            ]
+                        },
                     }
                 ]
             }
@@ -357,8 +386,15 @@ class TestDailyItems(unittest.TestCase):
             "OneDragon-Launcher": {
                 "dailies": [
                     {
-                        "name": "每日任务",
-                        "options": [{"name": "培养方案", "sequences": []}],
+                        "display_name": "每日任务",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "培养方案",
+                                    "physical_name": "培养方案",
+                                }
+                            ]
+                        },
                     }
                 ]
             }
@@ -373,7 +409,9 @@ class TestDailyItems(unittest.TestCase):
         """该日常声明里没有选项 → 占位「选择副本」。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
         ctrl._daily_map_cache = {
-            "ok-ww": {"dailies": [{"name": "每日任务", "options": []}]}
+            "ok-ww": {
+                "dailies": [{"display_name": "每日任务", "options": {"values": []}}]
+            }
         }
         items = self._items(
             ctrl,
@@ -394,18 +432,30 @@ class TestDailyItems(unittest.TestCase):
             "ok-nte": {
                 "dailies": [
                     {
-                        "name": "异象界域",
-                        "options": [{"name": "空幕", "sequences": []}],
+                        "display_name": "异象界域",
+                        "options": {
+                            "values": [
+                                {"display_name": "空幕", "physical_name": "空幕"}
+                            ]
+                        },
                     },
                     {
-                        "name": "追猎目标",
-                        "options": [{"name": "追猎目标", "sequences": []}],
+                        "display_name": "追猎目标",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "追猎目标",
+                                    "physical_name": "追猎目标",
+                                }
+                            ]
+                        },
                     },
                 ]
             }
         }
         self.assertEqual(
-            ctrl.daily_options("追猎目标"), [{"name": "追猎目标", "sequences": []}]
+            ctrl.daily_options("追猎目标"),
+            [{"display_name": "追猎目标", "physical_name": "追猎目标"}],
         )
         self.assertEqual(ctrl.daily_options("不存在"), [])
 

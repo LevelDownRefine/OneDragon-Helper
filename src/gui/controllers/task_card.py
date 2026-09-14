@@ -79,7 +79,7 @@ class TaskCardController(QObject):
         """
         script_name = self._current["script_name"]
         options_by_daily = {
-            daily["name"]: daily["options"]
+            daily["display_name"]: daily["options"]["values"]
             for daily in self._dailies_of(script_name)
         }
         items = []
@@ -97,7 +97,7 @@ class TaskCardController(QObject):
         return items
 
     def _dailies_of(self, script_name: str) -> list:
-        """某脚本各日常的菜单数据（GUI 最终形状）；无数据返回空列表。"""
+        """某脚本各日常的物化声明（词汇与声明一致）；无数据返回空列表。"""
         return self._daily_map_cache.get(script_name, {}).get("dailies", [])
 
     def daily_options(self, daily_name: str) -> list:
@@ -107,12 +107,13 @@ class TaskCardController(QObject):
             daily_name: 日常展示名。
 
         Returns:
-            该日常的 [{name, sequences:[{label,value}]}, ...]；未知日常返回空列表。
+            该日常一级选项的物化声明列表（display_name/physical_name/子选项组）；
+            未知日常返回空列表。
         """
         script_name = self._current["script_name"]
         for daily in self._dailies_of(script_name):
-            if daily["name"] == daily_name:
-                return daily["options"]
+            if daily["display_name"] == daily_name:
+                return daily["options"]["values"]
         return []
 
     @property
@@ -186,15 +187,15 @@ class TaskCardController(QObject):
         """切换游戏后发信号触发 QML 重读任务卡。"""
         self.taskStateChanged.emit()
 
-    def _daily_label(self, record: dict, options: list) -> str:
+    def _daily_label(self, record: dict, values: list) -> str:
         """某日常的 chip 文字：停用 →「不启用」，否则反读副本（+二级选项）。
 
-        反读无真相（如绝区零/崩铁的 no-op 日常）时回退该日常声明的首个选项，
+        反读无真相（如绝区零/崩铁的 no-op 日常）时回退声明的首个选项，
         即 UI 上呈现为已选状态（不再持久化）。
 
         Args:
             record: 该日常的反读记录（{name, task, sequence, enabled}）。
-            options: 该日常的下拉数据（用于把二级值翻成展示名）。
+            values: 该日常一级选项的物化声明（用于二级物理值翻展示名）。
 
         Returns:
             chip 文字。
@@ -202,13 +203,13 @@ class TaskCardController(QObject):
         if record["enabled"] is False:
             return "不启用"
         task = record["task"]
-        if task is None and options:
-            task = options[0]["name"]
+        if task is None and values:
+            task = values[0]["display_name"]
         if not task:
             return "选择副本"
-        return self._daily_chip_text(options, task, record["sequence"])
+        return self._daily_chip_text(values, task, record["sequence"])
 
-    def _daily_chip_text(self, options: list, task_name: str, sequence) -> str:
+    def _daily_chip_text(self, values: list, task_name: str, sequence) -> str:
         """副本 chip 文字：副本名 + 已选二级选项（如「空幕 · 轨道之夜」）。
 
         异环等游戏的二级选项（如轨道之夜）不自包含副本名，必须连同副本名一起
@@ -217,12 +218,12 @@ class TaskCardController(QObject):
         if task_name is None:
             return "选择副本"
         if sequence is not None:
-            for option in options:
-                if option["name"] != task_name:
+            for option in values:
+                if option["display_name"] != task_name or "options" not in option:
                     continue
-                for seq in option["sequences"]:
-                    if seq["value"] == sequence:
-                        return f"{task_name} · {seq['label']}"
+                for child in option["options"]["values"]:
+                    if child["physical_name"] == sequence:
+                        return f"{task_name} · {child['display_name']}"
         return task_name
 
     # ── 交互 ───────────────────────────────────────────────────────────

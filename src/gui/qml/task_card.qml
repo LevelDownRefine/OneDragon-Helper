@@ -347,7 +347,7 @@ Item {
             options = Bridge.dailyOptions(dailyPopup.dailyName)
             var maxW = 60
             for (var i = 0; i < options.length; i++) {
-                measTm.text = options[i].name
+                measTm.text = options[i].display_name
                 if (measTm.width > maxW) maxW = measTm.width
             }
             if (canDisable) {
@@ -368,8 +368,10 @@ Item {
         onSelNameChanged: {
             selSequences = []
             for (var i = 0; i < options.length; i++) {
-                if (options[i].name === selName) {
-                    selSequences = options[i].sequences
+                if (options[i].display_name === selName) {
+                    if (options[i].options !== undefined) {
+                        selSequences = options[i].options.values
+                    }
                     break
                 }
             }
@@ -401,15 +403,19 @@ Item {
                     Repeater {
                         model: dailyPopup.options
                         Rectangle {
+                            // 该选项是否带二级子选项（声明词汇：options.values 递归）
+                            property bool hasSub:
+                                modelData.options !== undefined
+                                && modelData.options.values.length > 0
                             width: dailyPopup.leftW
                             height: 30
                             radius: 6
-                            color: (optMouse.containsMouse || dailyPopup.selName === modelData.name)
+                            color: (optMouse.containsMouse || dailyPopup.selName === modelData.display_name)
                                    ? Theme.accentSoft : "transparent"
                             Text {
                                 anchors.fill: parent; leftPadding: 10
                                 verticalAlignment: Text.AlignVCenter
-                                text: modelData.name
+                                text: modelData.display_name
                                 color: Theme.text; font.pixelSize: 13
                             }
                             Image {
@@ -419,20 +425,20 @@ Item {
                                 source: "image://uiicon/chevron_down"
                                 rotation: -90
                                 opacity: 0.7
-                                visible: modelData.sequences.length > 0
+                                visible: hasSub
                             }
                             MouseArea {
                                 id: optMouse; anchors.fill: parent; hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onEntered: {
-                                    dailyPopup.selName = modelData.sequences.length > 0 ? modelData.name : ""
+                                    dailyPopup.selName = hasSub ? modelData.display_name : ""
                                 }
                                 onClicked: {
-                                    if (modelData.sequences.length > 0) {
-                                        dailyPopup.selName = modelData.name
+                                    if (hasSub) {
+                                        dailyPopup.selName = modelData.display_name
                                     } else {
                                         Bridge.selectDaily(
-                                            dailyPopup.dailyName, modelData.name, null)
+                                            dailyPopup.dailyName, modelData.display_name, null)
                                         dailyPopup.visible = false
                                     }
                                 }
@@ -486,7 +492,7 @@ Item {
                             Text {
                                 anchors.fill: parent; leftPadding: 10
                                 verticalAlignment: Text.AlignVCenter
-                                text: modelData.label
+                                text: modelData.display_name
                                 color: Theme.text; font.pixelSize: 13
                             }
                             MouseArea {
@@ -495,7 +501,7 @@ Item {
                                 onClicked: {
                                     Bridge.selectDaily(
                                         dailyPopup.dailyName,
-                                        dailyPopup.selName, modelData.value)
+                                        dailyPopup.selName, modelData.physical_name)
                                     dailyPopup.visible = false
                                 }
                             }

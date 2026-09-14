@@ -61,11 +61,14 @@ def menu_of(script_name: str) -> dict[str, dict[str, list]]:
     """该脚本菜单的归一内容：{日常: {一级项: [[二级展示名, 二级物理值], ...]}}。"""
     menu = get_daily_map().get(script_name, {"dailies": []})["dailies"]
     return {
-        daily["name"]: {
-            task["name"]: [
-                [seq["label"], seq["value"]] for seq in task["sequences"]
+        daily["display_name"]: {
+            option["display_name"]: [
+                [child["display_name"], child["physical_name"]]
+                for child in (
+                    option["options"]["values"] if "options" in option else []
+                )
             ]
-            for task in daily["options"]
+            for option in daily["options"]["values"]
         }
         for daily in menu
     }
