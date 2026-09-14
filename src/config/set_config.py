@@ -444,21 +444,6 @@ class ScriptConfig:
         if daily.set_enabled(routine, enabled):
             self._save(routine, path)
 
-    def _read_daily_enabled(self, daily_display_name: str) -> bool | None:
-        """反读某日常是否启用；无日常开关文件的脚本返回 None（界面据此不提供「不启用」）。
-
-        Args:
-            daily_display_name: 日常展示名。
-
-        Returns:
-            是否启用；无开关文件返回 None。
-        """
-        daily = self._dispatch_daily(daily_display_name)
-        if not self._routine_config_rel_path:
-            return None
-        routine = self._load(self._routine_config_rel_path, allow_missing=True)
-        return daily.read_enabled(routine)
-
     def _check_weekly_start(self, start_day: int) -> None:
         """校验周常起始日，供各子类的 prepare_weekly_start_day 首行调用。
 

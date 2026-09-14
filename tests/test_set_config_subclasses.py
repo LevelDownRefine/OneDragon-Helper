@@ -1102,9 +1102,13 @@ class TestNTEConfig(unittest.TestCase):
         with self._patch_load(config, routine):
             self.assertEqual(_read(self.cfg, "追猎目标"), ("追猎目标", "音霸魔王"))
             self.assertEqual(_read(self.cfg, "异象界域"), ("空幕", 3))
-            # 是否启用不影响反读，另走 _read_daily_enabled
-            self.assertTrue(self.cfg._read_daily_enabled("异象界域"))
-            self.assertFalse(self.cfg._read_daily_enabled("追猎目标"))
+            # 是否启用不影响反读，走 _read_daily_tasks 记录里的 enabled
+            enabled = {
+                record["name"]: record["enabled"]
+                for record in self.cfg._read_daily_tasks()
+            }
+            self.assertTrue(enabled["异象界域"])
+            self.assertFalse(enabled["追猎目标"])
 
     def test_read_daily_tasks_returns_every_daily(self):
         """一次反读覆盖全部日常（副本/序列 + 开关），顺序与声明一致。"""
@@ -1288,17 +1292,28 @@ class TestNTEConfig(unittest.TestCase):
         ):
             self.cfg.set_daily_enabled("不存在", False)
 
-    def test_read_daily_enabled_reads_each_daily(self):
-        """逐日常反读启用状态（不看副本选择）。"""
+    def test_read_daily_tasks_reads_enabled_per_daily(self):
+        """一次反读覆盖全部日常的启用状态（不看副本选择）。"""
         routine = self._make_routine(anomaly_enabled=False, hunter_enabled=True)
-        with self._patch_load({"daily_anomaly": {}}, routine):
-            self.assertFalse(self.cfg._read_daily_enabled("异象界域"))
-            self.assertTrue(self.cfg._read_daily_enabled("追猎目标"))
+        with self._patch_load(
+            {"daily_anomaly": {}, "daily_anomaly_hunter": {}}, routine
+        ):
+            enabled = {
+                record["name"]: record["enabled"]
+                for record in self.cfg._read_daily_tasks()
+            }
+            self.assertFalse(enabled["异象界域"])
+            self.assertTrue(enabled["追猎目标"])
 
-    def test_read_daily_enabled_without_routine_returns_none(self):
-        """脚本未安装（routine 缺失）→ None：无真相，不谎报「已停用」。"""
-        with patch.object(self.cfg, "_load", return_value=None):
-            self.assertIsNone(self.cfg._read_daily_enabled("异象界域"))
+    def test_read_daily_tasks_without_routine_reports_none(self):
+        """脚本未安装（routine 缺失）→ enabled None：无真相，不谎报「已停用」。"""
+        with self._patch_load({"daily_anomaly": {}, "daily_anomaly_hunter": {}}, None):
+            enabled = {
+                record["name"]: record["enabled"]
+                for record in self.cfg._read_daily_tasks()
+            }
+            self.assertIsNone(enabled["异象界域"])
+            self.assertIsNone(enabled["追猎目标"])
 
     def test_update_sequence_hunt_writes_boss(self):
         """追猎目标经 _update_task 在 daily_anomaly_hunter 写 追猎目标（boss），不依赖 _bind_section。"""
