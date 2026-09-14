@@ -8,7 +8,13 @@ import copy
 import unittest
 from unittest.mock import patch
 
-from src.config.daily import Daily, MaaDaily, NoopDaily, SegmentedDaily
+from src.config.daily import (
+    AnomalyHunterDaily,
+    Daily,
+    MaaDaily,
+    NoopDaily,
+    SegmentedDaily,
+)
 from src.config.set_config import _CONFIGS
 from src.config.task_config import load_daily_map
 
@@ -58,6 +64,17 @@ class TestDispatch(unittest.TestCase):
         self.assertIsInstance(_CONFIGS["MAA"]()._build_dailies()[0], MaaDaily)
         # 标准两层脚本用默认机制类
         self.assertIs(type(_CONFIGS["ok-ww"]()._build_dailies()[0]), Daily)
+
+    def test_for_declaration_polymorphic_dispatch(self):
+        """形态分派是机制类的多态职责：基类恒返回自己，分段类按形态选子类。"""
+        layered = {
+            "display_name": "日常",
+            "options": {"values": [{"display_name": "甲", "options": {"key": "k"}}]},
+        }
+        flat = {"display_name": "日常", "options": {"key": "k", "values": []}}
+        self.assertIs(Daily.for_declaration(layered), Daily)
+        self.assertIs(SegmentedDaily.for_declaration(layered), SegmentedDaily)
+        self.assertIs(SegmentedDaily.for_declaration(flat), AnomalyHunterDaily)
 
 
 class TestLandingPoints(unittest.TestCase):

@@ -4,7 +4,6 @@ import logging
 import os
 
 from src.config.daily import (
-    AnomalyHunterDaily,
     Daily,
     MaaDaily,
     NoopDaily,
@@ -12,7 +11,6 @@ from src.config.daily import (
 )
 from src.config.task_config import (
     get_daily_configs,
-    get_options,
     get_physical_name,
     get_value_map,
     get_weekly_config,
@@ -74,10 +72,8 @@ class ScriptConfig:
     """周常配置文件路径；空字符串复用主 config。"""
 
     _daily_type: type[Daily] = Daily
-    """两层形态（各一级项自带 ``options``）的日常机制类。"""
-    _daily_flat_type: type[Daily] = Daily
-    """单层形态（选项都是叶子）的日常机制类：有 ``key`` 可写（追猎目标）、
-    无 ``key`` 无落点（NoopDaily）、TaskQueue（MaaDaily）按脚本选择。"""
+    """该脚本的日常机制类；声明形态差异（两层/单层）由机制类的
+    ``for_declaration`` 多态分派（如 ``SegmentedDaily`` 把单层交给子类），不在此调度。"""
 
     _routine_config_rel_path: str = ""
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
@@ -235,12 +231,12 @@ class ScriptConfig:
         Raises:
             AssertionError: 缺少脚本声明，或日常物理名重复。
         """
-        dailies = []
-        for declaration in get_daily_configs(self._script_name):
-            options = get_options(declaration)
-            layered = options and all("options" in option for option in options)
-            daily_cls = self._daily_type if layered else self._daily_flat_type
-            dailies.append(daily_cls(self._script_name, declaration, self))
+        dailies = [
+            self._daily_type.for_declaration(declaration)(
+                self._script_name, declaration, self
+            )
+            for declaration in get_daily_configs(self._script_name)
+        ]
         seen: set[str] = set()
         for daily in dailies:
             assert daily.physical_name not in seen, (
@@ -673,7 +669,7 @@ class EndfieldConfig(ScriptConfig):
 # ---- 绝区零 Zenless Zone Zero ----
 @register
 class ZenlessZoneZeroConfig(ScriptConfig):
-    _daily_flat_type = NoopDaily
+    _daily_type = NoopDaily
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
     _backup_paths = ("config",)
@@ -713,7 +709,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 # ---- 崩铁 Honkai: Star Rail ----
 @register
 class StarRailConfig(ScriptConfig):
-    _daily_flat_type = NoopDaily
+    _daily_type = NoopDaily
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
     _backup_paths = ("config.yaml",)
@@ -864,7 +860,6 @@ class StarRailConfig(ScriptConfig):
 @register
 class NTEConfig(ScriptConfig):
     _daily_type = SegmentedDaily
-    _daily_flat_type = AnomalyHunterDaily
     _script_name = "ok-nte"
     _backup_paths = ("data/apps/ok-nte/working/configs",)
     _config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
@@ -907,7 +902,7 @@ class NTEConfig(ScriptConfig):
 # ---- 明日方舟 Arknights（粥）----
 @register
 class ArknightsConfig(ScriptConfig):
-    _daily_flat_type = MaaDaily
+    _daily_type = MaaDaily
     _script_name = "MAA"
     display_name = "粥"
     _backup_paths = ("config",)

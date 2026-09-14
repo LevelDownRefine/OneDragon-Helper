@@ -36,6 +36,18 @@ class Daily:
     I/O 原语（``_load`` / ``_save``，含保存后回读校验）由 ``_cfg`` 提供。
     """
 
+    @classmethod
+    def for_declaration(cls, declaration: dict) -> type["Daily"]:
+        """按声明形态返回机制类；基类只解析两层，恒返回自己。
+
+        Args:
+            declaration: ``daily_task_list.yml`` 里该日常的声明节点。
+
+        Returns:
+            处理该声明的机制类。
+        """
+        return cls
+
     def __init__(
         self, script_name: str, declaration: dict, cfg: "ScriptConfig"
     ) -> None:
@@ -277,6 +289,21 @@ class SegmentedDaily(Daily):
     段名与 Routine Items 的 id 都取本日常声明的物理名；选完副本顺带启用自己那条，
     另一个日常的开关不动。单层带 ``key`` 的形态由 ``AnomalyHunterDaily`` 解析。
     """
+
+    @classmethod
+    def for_declaration(cls, declaration: dict) -> type[Daily]:
+        """两层声明（异象界域）用本类，单层声明（追猎目标）交给子类。
+
+        Args:
+            declaration: 该日常的声明节点。
+
+        Returns:
+            处理该声明的机制类。
+        """
+        options = get_options(declaration)
+        if options and all("options" in option for option in options):
+            return cls
+        return AnomalyHunterDaily
 
     def read_enabled(self) -> bool | None:
         """反读本日常的 Routine Item 是否启用；开关文件缺失返回 None。
