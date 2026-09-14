@@ -407,7 +407,6 @@ class TestSetDailyEnabledFacade(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "未适配脚本"):
             set_daily_enabled("不存在的脚本", "每日任务", False)
 
-    def test_script_without_daily_switch_raises(self):
-        """未声明日常开关的脚本（ok-ww）→ 基类兜底 assert。"""
-        with self.assertRaisesRegex(AssertionError, "未支持停用日常"):
-            set_daily_enabled("ok-ww", "每日任务", False)
+    def test_script_without_daily_switch_is_noop(self):
+        """未声明日常开关的脚本（ok-ww）→ 静默不做事（选择即启用）。"""
+        set_daily_enabled("ok-ww", "每日任务", False)  # 不抛即通过

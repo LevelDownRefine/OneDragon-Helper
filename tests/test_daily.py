@@ -6,15 +6,9 @@
 
 import copy
 import unittest
-from unittest.mock import patch
 
 from src.config.daily import Daily, MaaDaily, NoopDaily, SegmentedDaily
-from src.config.set_config import (
-    _CONFIGS,
-    AnomalyDaily,
-    AnomalyHunterDaily,
-    ScriptConfig,
-)
+from src.config.set_config import _CONFIGS
 from src.config.task_config import load_daily_map
 
 NO_OP_SCRIPTS = ("OneDragon-Launcher", "March7th-Launcher")
@@ -48,75 +42,21 @@ class TestDispatch(unittest.TestCase):
             _CONFIGS["ok-ww"]()._dispatch_daily("不存在的日常")
 
     def test_special_classes(self):
+        """各脚本按机制类分发：无落点 Noop、分段 Segmented（两日常同机制不同段）、粥 Maa。"""
         for script_name in NO_OP_SCRIPTS:
             with self.subTest(script=script_name):
                 daily = _CONFIGS[script_name]()._build_dailies()[0]
                 self.assertIsInstance(daily, NoopDaily)
                 self.assertFalse(daily.update({}, "任意", None, "测试"))
-        # 一个日常一个类：共同实现留在 SegmentedDaily，身份写在各自的类上
         anomaly, hunter = _CONFIGS["ok-nte"]()._build_dailies()
-        self.assertIs(type(anomaly), AnomalyDaily)
-        self.assertIs(type(hunter), AnomalyHunterDaily)
         self.assertIsInstance(anomaly, SegmentedDaily)
         self.assertIsInstance(hunter, SegmentedDaily)
-        self.assertEqual(type(anomaly).daily_display_name, "异象界域")
-        self.assertEqual(type(hunter).daily_display_name, "追猎目标")
-        self.assertTrue(anomaly.enable_on_select and hunter.enable_on_select)
+        self.assertEqual(anomaly.name, "异象界域")
+        self.assertEqual(hunter.name, "追猎目标")
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
         self.assertIsInstance(_CONFIGS["MAA"]()._build_dailies()[0], MaaDaily)
-
-    def test_daily_types_must_cover_declarations(self):
-        """每个脚本的 _daily_types 都必须与声明的日常一一对应：多出一个即报错。"""
-        declarations = copy.deepcopy(load_daily_map())
-        for script_name in ("ok-nte", "ok-ww"):
-            with self.subTest(script=script_name):
-                extra = copy.deepcopy(declarations[script_name])
-                extra.append(
-                    {"display_name": "多出来的日常", "physical_name": "daily_x"}
-                )
-                with (
-                    patch(
-                        "src.config.set_config.get_daily_configs",
-                        return_value=extra,
-                    ),
-                    self.assertRaisesRegex(AssertionError, "与声明的日常不一致"),
-                ):
-                    _CONFIGS[script_name]._build_dailies()
-
-    def test_every_script_declares_its_daily_type(self):
-        """日常数 = 类数：每个脚本的实现类恰好覆盖它声明的日常，且身份写在类上。"""
-        for script_name, cls in sorted(_CONFIGS.items()):
-            with self.subTest(script=script_name):
-                declared = [d["display_name"] for d in load_daily_map()[script_name]]
-                implemented = [t.daily_display_name for t in cls._daily_types]
-                self.assertEqual(len(implemented), len(declared))
-                self.assertEqual(sorted(implemented), sorted(declared))
-                for daily_type in cls._daily_types:
-                    self.assertTrue(issubclass(daily_type, Daily))
-
-    def test_daily_class_without_identity_is_rejected(self):
-        """日常类必须自带 daily_display_name，否则无法与声明里的日常绑定。"""
-
-        class _Anonymous(Daily):
-            pass
-
-        class _Cfg(ScriptConfig):
-            _script_name = "ok-ww"
-            display_name = "测试脚本"
-            _daily_types = (_Anonymous,)
-
-        with self.assertRaisesRegex(AssertionError, "未声明 daily_display_name"):
-            _Cfg._build_dailies()
-
-    def test_missing_daily_types_is_rejected(self):
-        """基类不给 _daily_types 默认值：漏声明的脚本必须报错，不能静默用了别的类。"""
-
-        class _Bare(ScriptConfig):
-            _script_name = "ok-ww"
-            display_name = "测试脚本"
-
-        with self.assertRaisesRegex(AssertionError, "未声明 _daily_types"):
-            _Bare._build_dailies()
+        # 标准两层脚本用默认机制类
+        self.assertIs(type(_CONFIGS["ok-ww"]()._build_dailies()[0]), Daily)
 
 
 class TestLandingPoints(unittest.TestCase):
@@ -209,11 +149,11 @@ class TestRead(unittest.TestCase):
 class TestEnabled(unittest.TestCase):
     """日常开关：只有分段脚本有第二份文件，只动自己那一条。"""
 
-    def test_without_routine_file_it_is_unsupported(self):
+    def test_without_routine_file_it_is_noop(self):
+        """无日常开关文件的脚本：反读无真相，置开关不做事。"""
         daily = daily_of("ok-ww", "每日任务")
         self.assertIsNone(daily.read_enabled(None))
-        with self.assertRaisesRegex(AssertionError, "未支持停用日常"):
-            daily.set_enabled({}, True)
+        self.assertFalse(daily.set_enabled({}, True))
 
     def test_anomaly_toggles_only_its_own_item(self):
         routine = {
@@ -269,6 +209,7 @@ class TestDeclarationErrors(unittest.TestCase):
             Daily("脚本", {"display_name": "日常", "options": {"values": []}})
 
     def test_mixed_layers_rejected(self):
+        """单层与两层混用：基类按单层形态拒绝，分段机制类按混用拒绝。"""
         declaration = {
             "display_name": "日常",
             "options": {
@@ -278,8 +219,10 @@ class TestDeclarationErrors(unittest.TestCase):
                 ]
             },
         }
-        with self.assertRaisesRegex(AssertionError, "不能混用单层与两层"):
+        with self.assertRaisesRegex(AssertionError, "单层形态"):
             Daily("脚本", declaration)
+        with self.assertRaisesRegex(AssertionError, "不能混用单层与两层"):
+            SegmentedDaily("脚本", declaration)
 
 
 if __name__ == "__main__":

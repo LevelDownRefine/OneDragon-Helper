@@ -30,32 +30,28 @@ class Daily:
 
     Attributes:
         script_name: 所属脚本标识名（报错定位用）。
-        daily_display_name: 本类代表的日常展示名（类属性；每个日常的实现类必须声明）。
-        name: 本实例解析出的日常展示名（来自声明，即所属类的 ``daily_display_name``）。
+        name: 日常展示名（来自声明；全链路界面行名与匹配键）。
         physical_name: 日常物理名（子脚本 config 的段名 / routine item id）。
-        options: 该日常的一级项声明（菜单数据来源）；单层日常即该日常自身。
-        task_field: 一级项写入的原生字段；单层日常（无一级字段）为 None。
+        options: 该日常的一级项声明（菜单数据来源）。
+        task_field: 一级项写入的原生字段。
         task_map: 一级项展示名 → 一级物理值。
         option_fields: 一级项展示名 → 二级项写入的原生字段。
-        enable_on_select: 选副本后是否顺带启用本日常的开关。
+
+    声明形态由各机制类负责：基类只解析标准两层形态（各一级项自带 ``options``），
+    单层带 ``key``（分段脚本）见 ``SegmentedDaily``；无落点（``NoopDaily``）与
+    TaskQueue（``MaaDaily``）跳过通用解析。
     """
 
-    daily_display_name: str
-    """本类代表的日常展示名（界面行名）；每个日常的实现类都必须声明，也是与声明绑定的键。"""
-
-    enable_on_select: bool = False
-    """选副本后顺带启用本日常：选了就是想跑它（分段脚本的语义）。"""
-
     def __init__(self, script_name: str, declaration: dict) -> None:
-        """解析一条日常声明。
+        """解析一条标准两层日常声明。
 
         Args:
             script_name: 所属脚本标识名（报错定位用）。
             declaration: ``daily_task_list.yml`` 里该日常的声明节点。
 
         Raises:
-            AssertionError: 未声明选项、选项混用单层与两层，或（两层且顶层无 key 时）
-                各一级项的二级 key 不唯一。
+            AssertionError: 未声明选项、选项是单层形态（不适用本基类），或顶层无
+                ``key`` 时各一级项的二级 key 不唯一。
         """
         self.script_name = script_name
         self.name: str = declaration["display_name"]
@@ -63,26 +59,10 @@ class Daily:
         options = get_options(declaration)
         assert options, f"{script_name}/{self.physical_name} 必须声明选项"
         layered = ["options" in option for option in options]
-        assert all(layered) or not any(layered), (
-            f"{script_name}/{self.physical_name} 的选项不能混用单层与两层"
+        assert all(layered), (
+            f"{script_name}/{self.physical_name} 的选项是单层形态，"
+            "标准两层日常不适用（为该脚本选择匹配的机制类）"
         )
-        if all(layered):
-            self._parse_layered(declaration, options)
-        else:
-            self._parse_flat(declaration, options)
-        # 两级写同一字段（如原神/终末地的 DomainName / 体力本）：字段里存的是
-        # 「二级优先、否则一级」的最终副本名，读时不做一级映射。
-        self._single_field = self.task_field is not None and all(
-            field == self.task_field for field in self.option_fields.values()
-        )
-
-    def _parse_layered(self, declaration: dict, options: list[dict]) -> None:
-        """解析两层日常（各一级项自带 ``options``）。
-
-        Args:
-            declaration: 日常声明节点。
-            options: 一级项声明列表。
-        """
         keys = {option["options"]["key"] for option in options}
         group = declaration["options"]
         if "key" in group:
@@ -105,27 +85,11 @@ class Daily:
             else {}
         )
         self._sequence_required = static
-
-    def _parse_flat(self, declaration: dict, options: list[dict]) -> None:
-        """解析单层日常（各一级项都是叶子）。
-
-        组内有 ``key`` 时选择结果直接写它、整组自身即唯一一级项（如追猎目标）；
-        组内无 ``key`` 时该日常无落点，values 仍作一级项（如绝区零/崩铁）。
-
-        Args:
-            declaration: 日常声明节点。
-            options: 一级项声明列表。
-        """
-        group = declaration["options"]
-        self.task_field = None
-        self.task_map = {}
-        self.option_fields = {self.name: group["key"]} if "key" in group else {}
-        self.options = [declaration] if self.option_fields else options
-        static = "values" in group
-        self._sequence_values = (
-            {self.name: get_value_map(declaration)} if static else {}
+        # 两级写同一字段（如原神/终末地的 DomainName / 体力本）：字段里存的是
+        # 「二级优先、否则一级」的最终副本名，读时不做一级映射。
+        self._single_field = all(
+            field == self.task_field for field in self.option_fields.values()
         )
-        self._sequence_required = static
 
     def _fields(
         self, task_name: str, sequence: str | int | None = None
@@ -258,17 +222,16 @@ class Daily:
         return None
 
     def set_enabled(self, routine: dict, enabled: bool) -> bool:
-        """置该日常的启用状态（只改内存）；无日常开关文件的脚本不支持。
+        """置该日常的启用状态（只改内存）；无日常开关机制的日常不做事。
 
         Args:
             routine: 开关文件的 dict（本实现忽略）。
             enabled: 目标启用状态（本实现忽略）。
 
-        Raises:
-            AssertionError: 该脚本未支持停用日常。
+        Returns:
+            恒为 False（无改动，不落盘）。
         """
-        # 未适配脚本不该走到开关写入；显式 raise 而非 assert False，避免 B011 例外。
-        raise AssertionError(f"[daily][{self.name}] 未支持停用日常")
+        return False
 
     def section(self, config: dict) -> dict:
         """该日常在 config 里的数据段；基类为整份 config。
@@ -294,7 +257,24 @@ class Daily:
 
 
 class NoopDaily(Daily):
-    """无需本工具适配副本的日常（绝区零/崩铁：上游自身已支持）：副本选择不落盘。"""
+    """无需本工具适配副本的日常（绝区零/崩铁：上游自身已支持）：副本选择不落盘。
+
+    声明里没有落点（单层无 ``key``），故跳过通用解析，也没有可写的字段。
+    """
+
+    def __init__(self, script_name: str, declaration: dict) -> None:
+        """只取名字，不解析选项——无落点日常没有可写的字段。
+
+        Args:
+            script_name: 所属脚本标识名（报错定位用）。
+            declaration: 该日常的声明节点。
+        """
+        self.script_name = script_name
+        self.name = declaration["display_name"]
+        self.physical_name = get_physical_name(declaration)
+        self.task_field = None
+        self.task_map: dict[str, Any] = {}
+        self.option_fields: dict[str, str] = {}
 
     def update(
         self,
@@ -323,9 +303,46 @@ class SegmentedDaily(Daily):
 
     段名与 Routine Items 的 id 都取本日常声明的物理名；选完副本顺带启用自己那条，
     另一个日常的开关不动（是否只跑一个由游戏侧决定）。
+
+    声明形态两种都有（异象界域两层、追猎目标单层带 ``key``），据此分派解析。
     """
 
-    enable_on_select = True
+    def __init__(self, script_name: str, declaration: dict) -> None:
+        """解析分段日常：两层声明走基类，单层带 ``key`` 自己解析。
+
+        Args:
+            script_name: 所属脚本标识名（报错定位用）。
+            declaration: 该日常的声明节点。
+
+        Raises:
+            AssertionError: 未声明选项、选项混用单层与两层，或单层未声明 ``key``
+                （分段日常必须有落点）。
+        """
+        self.script_name = script_name
+        self.name = declaration["display_name"]
+        self.physical_name = get_physical_name(declaration)
+        options = get_options(declaration)
+        assert options, f"{script_name}/{self.physical_name} 必须声明选项"
+        layered = ["options" in option for option in options]
+        assert all(layered) or not any(layered), (
+            f"{script_name}/{self.physical_name} 的选项不能混用单层与两层"
+        )
+        if all(layered):
+            super().__init__(script_name, declaration)
+            return
+        group = declaration["options"]
+        assert "key" in group, (
+            f"{script_name}/{self.physical_name} 的单层分段日常必须声明 key 作为落点"
+        )
+        self.task_field = None
+        self.task_map: dict[str, Any] = {}
+        self.option_fields: dict[str, str] = {self.name: group["key"]}
+        self.options: list[dict] = [declaration]
+        self._sequence_values: dict[str, dict[str, Any]] = (
+            {self.name: get_value_map(declaration)} if "values" in group else {}
+        )
+        self._sequence_required = "values" in group
+        self._single_field = False
 
     def read_enabled(self, routine: dict | None) -> bool | None:
         """反读本日常的 Routine Item 是否启用；开关文件缺失（无真相）返回 None。
@@ -417,14 +434,19 @@ class MaaDaily(Daily):
     _fixed_stages = ("Annihilation", "1-7")
     """固定启用的关卡代码：剿灭恒启用；``1-7`` 是「土」的落点。"""
 
+    task_field: str | None = None
+    """粥无通用落点：update/read 全部覆写，通用解析跳过。"""
+
     def __init__(self, script_name: str, declaration: dict) -> None:
-        """解析粥日常：额外建「关卡代码 ↔ 中文名」映射。
+        """解析粥日常：只取名字并建「关卡代码 ↔ 中文名」映射，不走通用落点解析。
 
         Args:
             script_name: 所属脚本标识名。
             declaration: 该日常的声明节点。
         """
-        super().__init__(script_name, declaration)
+        self.script_name = script_name
+        self.name = declaration["display_name"]
+        self.physical_name = get_physical_name(declaration)
         self._name_by_stage: dict[str, str] = {
             "Annihilation": "剿灭",
             **{

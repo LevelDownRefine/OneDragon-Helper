@@ -71,10 +71,10 @@ class ScriptConfig:
     _weekly_config_rel_path: str = ""
     """周常配置文件路径；空字符串复用主 config。"""
 
-    _daily_types: tuple[type[Daily], ...]
-    """该脚本各日常的实现类（一个日常一个类）；**每个脚本都必须声明**，各类的身份
-    （``daily_display_name``）须与声明里的日常一一对应（少一个、多一个、写错都报错）。
-    基类不给默认值，免得漏声明时静默用了别的类。"""
+    _daily_type: type[Daily] = Daily
+    """该脚本的日常机制类（脚本级，一份声明一个实例）：标准两层用默认 ``Daily``；
+    单层带 ``key`` 的分段脚本用 ``SegmentedDaily``，TaskQueue 用 ``MaaDaily``，
+    无需适配用 ``NoopDaily``。声明形态由机制类自己解析。"""
 
     _routine_config_rel_path: str = ""
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
@@ -224,48 +224,25 @@ class ScriptConfig:
     def _build_dailies(cls) -> list[Daily]:
         """由声明构造该脚本的全部日常（顺序与声明一致）。
 
-        日常数由声明给出、类数由 ``_daily_types`` 给出，两者必须一一对应：一个日常一个
-        实现类、一个对象。绑定按各类自己声明的 ``daily_display_name``。
+        机制类是脚本级的（``_daily_type``），实例按声明逐个构造；
+        分段日常的段名（物理名）必须互不相同。
 
         Returns:
             该脚本的日常列表；单日常脚本长度为 1。
 
         Raises:
-            AssertionError: 缺少脚本声明，或该脚本未声明 ``_daily_types``，或某个日常类
-                未声明 ``daily_display_name``／与之重复，或与声明里的日常对不上
-                （少一个、多一个、写错都算），或日常物理名重复。
+            AssertionError: 缺少脚本声明，或日常物理名重复。
         """
-        assert hasattr(cls, "_daily_types"), (
-            f"[set_config][{cls.display_name}] 未声明 _daily_types"
-        )
-        daily_types: dict[str, type[Daily]] = {}
-        for daily_type in cls._daily_types:
-            name = getattr(daily_type, "daily_display_name", None)
-            assert name, (
-                f"[set_config][{cls.display_name}] {daily_type.__name__} 未声明 "
-                "daily_display_name"
-            )
-            assert name not in daily_types, (
-                f"[set_config][{cls.display_name}] daily_display_name 重复: {name}"
-            )
-            daily_types[name] = daily_type
-        declarations = get_daily_configs(cls._script_name)
-        declared = sorted(d["display_name"] for d in declarations)
-        assert declared == sorted(daily_types), (
-            f"[set_config][{cls.display_name}] 日常实现类与声明的日常不一致: "
-            f"声明 {declared}、已实现 {sorted(daily_types)}"
-        )
-        dailies: list[Daily] = []
+        dailies = [
+            cls._daily_type(cls._script_name, declaration)
+            for declaration in get_daily_configs(cls._script_name)
+        ]
         seen: set[str] = set()
-        for declaration in declarations:
-            daily = daily_types[declaration["display_name"]](
-                cls._script_name, declaration
-            )
+        for daily in dailies:
             assert daily.physical_name not in seen, (
                 f"{cls._script_name} 的日常物理名重复: {daily.physical_name}"
             )
             seen.add(daily.physical_name)
-            dailies.append(daily)
         return dailies
 
     @property
@@ -391,9 +368,10 @@ class ScriptConfig:
         task_name: str,
         sequence: str | int | None = None,
     ) -> None:
-        """设置副本：读盘 → 交给该日常写内存 → 有改动才落盘。
+        """设置副本：读盘 → 交给该日常写内存 → 有改动才落盘 → 顺带启用该日常。
 
-        `enable_on_select` 的日常（分段脚本）在写完后顺带启用自己那一行。
+        启用经 ``set_daily_enabled``：无日常开关文件的脚本静默跳过，
+        分段脚本（``SegmentedDaily``）真实写自己那条 Routine Item。
 
         Args:
             daily_display_name: 副本所属日常展示名（界面逐行渲染时即该行行名）。
@@ -412,24 +390,23 @@ class ScriptConfig:
             self._save(data)
         else:
             logger.info(f"[daily][{daily.name}] config 无需更新")
-        if daily.enable_on_select:
-            self.set_daily_enabled(daily_display_name, True)
+        self.set_daily_enabled(daily_display_name, True)
 
     def set_daily_enabled(self, daily_display_name: str, enabled: bool) -> None:
         """启用/停用某日常：读开关文件 → 交给该日常改内存 → 有改动才落盘。
+
+        该脚本无日常开关文件时不做事（选择即启用，无开关可写）。
 
         Args:
             daily_display_name: 日常展示名。
             enabled: 目标启用状态。
 
         Raises:
-            AssertionError: 该日常未知，或该脚本未声明开关文件（不支持停用日常）、
-                Routine Items 缺少或重复该日常的物理名。
+            AssertionError: 该日常未知，或 Routine Items 缺少或重复该日常的物理名。
         """
         daily = self._dispatch_daily(daily_display_name)
-        assert self._routine_config_rel_path, (
-            f"[set_config][{self.display_name}] 未支持停用日常"
-        )
+        if not self._routine_config_rel_path:
+            return  # 无日常开关文件：选择即启用
         path = self._routine_config_rel_path
         routine = self._load(path)
         if daily.set_enabled(routine, enabled):
@@ -563,12 +540,6 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
 
 
 # ---- 鸣潮 Wuthering Waves ----
-class WutheringWavesDaily(Daily):
-    """鸣潮的日常：落点全由声明给出。"""
-
-    daily_display_name = "每日任务"
-
-
 @register
 class WutheringWavesConfig(ScriptConfig):
     _script_name = "ok-ww"
@@ -577,7 +548,6 @@ class WutheringWavesConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "鸣潮"
-    _daily_types = (WutheringWavesDaily,)
     _weekly_config = get_weekly_config(_script_name, "幻梦游园")
     _weekly_task_name = get_physical_name(_weekly_config)
 
@@ -612,17 +582,10 @@ class WutheringWavesConfig(ScriptConfig):
 
 
 # ---- 原神 Genshin Impact ----
-class GenshinDaily(Daily):
-    """原神的日常：落点全由声明给出（两级共用一级字段）。"""
-
-    daily_display_name = "每日任务"
-
-
 @register
 class GenshinConfig(ScriptConfig):
     _script_name = "BetterGI"
     display_name = "原神"
-    _daily_types = (GenshinDaily,)
     _backup_paths = ("User",)
     _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
@@ -659,17 +622,10 @@ class GenshinConfig(ScriptConfig):
 
 
 # ---- 终末地 Arknights: Endfield ----
-class EndfieldDaily(Daily):
-    """终末地的日常：落点全由声明给出（两级共用一级字段）。"""
-
-    daily_display_name = "每日任务"
-
-
 @register
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
-    _daily_types = (EndfieldDaily,)
     _template_rel_path = "okef一条龙.json"
     _backup_paths = ("data/apps/ok-ef/working/configs",)
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
@@ -726,17 +682,11 @@ class EndfieldConfig(ScriptConfig):
 
 
 # ---- 绝区零 Zenless Zone Zero ----
-class ZenlessZoneZeroDaily(NoopDaily):
-    """绝区零的日常：上游自身已支持副本选择，本工具不写 config。"""
-
-    daily_display_name = "每日任务"
-
-
 @register
 class ZenlessZoneZeroConfig(ScriptConfig):
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
-    _daily_types = (ZenlessZoneZeroDaily,)
+    _daily_type = NoopDaily
     _backup_paths = ("config",)
     _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
@@ -772,17 +722,11 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 
 
 # ---- 崩铁 Honkai: Star Rail ----
-class StarRailDaily(NoopDaily):
-    """崩铁的日常：上游自身已支持副本选择，本工具不写 config。"""
-
-    daily_display_name = "每日任务"
-
-
 @register
 class StarRailConfig(ScriptConfig):
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
-    _daily_types = (StarRailDaily,)
+    _daily_type = NoopDaily
     _backup_paths = ("config.yaml",)
     _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
@@ -928,18 +872,6 @@ class StarRailConfig(ScriptConfig):
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
-class AnomalyDaily(SegmentedDaily):
-    """异环的异象界域日常：数据在自己那段，开关在第二份文件里自己那条 Routine Item 上。"""
-
-    daily_display_name = "异象界域"
-
-
-class AnomalyHunterDaily(SegmentedDaily):
-    """异环的追猎目标日常：数据在自己那段，开关在第二份文件里自己那条 Routine Item 上。"""
-
-    daily_display_name = "追猎目标"
-
-
 @register
 class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
@@ -949,7 +881,7 @@ class NTEConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "异环"
-    _daily_types = (AnomalyDaily, AnomalyHunterDaily)
+    _daily_type = SegmentedDaily
 
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
@@ -983,17 +915,11 @@ class NTEConfig(ScriptConfig):
 
 
 # ---- 明日方舟 Arknights（粥）----
-class ArknightsDaily(MaaDaily):
-    """粥的日常：副本以 TaskQueue / StagePlan 表达。"""
-
-    daily_display_name = "每日任务"
-
-
 @register
 class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
     display_name = "粥"
-    _daily_types = (ArknightsDaily,)
+    _daily_type = MaaDaily
     _backup_paths = ("config",)
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"

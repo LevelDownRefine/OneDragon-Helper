@@ -100,8 +100,8 @@ def get_daily_map() -> dict:
 
     {script: {"dailies": [日常声明节点, ...]}}，其中每个日常的 ``options.values``
     已物化：``source`` 展开为具体副本、各选项带 ``physical_name``。菜单只需要声明，
-    **不经过 ``_daily_types``**：声明里新增一个日常时菜单照常显示，而落点（要按该
-    日常的读写机制来）由各脚本的 ``_daily_types`` 决定、不齐即报错。
+    **不经过 ``_daily_type``**：声明里新增一个日常时菜单照常显示，而落点（要按该
+    日常的读写机制来）由各脚本的机制类决定、不齐即报错。
     """
     return {
         script_name: {
