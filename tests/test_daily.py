@@ -127,9 +127,12 @@ class TestRead(unittest.TestCase):
         }
         with patch.object(daily._cfg, "_load", return_value=config):
             self.assertEqual(daily.read(), ("凝素领域", 3))
-        with patch.object(
-            daily._cfg, "_load", return_value={"Which to Farm": "不存在的值"}
-        ), self.assertRaisesRegex(AssertionError, "未知副本值"):
+        with (
+            patch.object(
+                daily._cfg, "_load", return_value={"Which to Farm": "不存在的值"}
+            ),
+            self.assertRaisesRegex(AssertionError, "未知副本值"),
+        ):
             daily.read()
 
     def test_shared_field_is_not_reversed(self):
@@ -226,7 +229,7 @@ class TestDeclarationErrors(unittest.TestCase):
             Daily("脚本", {"display_name": "日常", "options": {"values": []}}, None)
 
     def test_mixed_layers_rejected(self):
-        """单层与两层混用：基类按单层形态拒绝，分段机制类按混用拒绝。"""
+        """单个日常内单层与两层混用：一律按单层形态拒绝（跨日常混用合法，如异环）。"""
         declaration = {
             "display_name": "日常",
             "options": {
@@ -238,7 +241,7 @@ class TestDeclarationErrors(unittest.TestCase):
         }
         with self.assertRaisesRegex(AssertionError, "单层形态"):
             Daily("脚本", declaration, None)
-        with self.assertRaisesRegex(AssertionError, "不能混用单层与两层"):
+        with self.assertRaisesRegex(AssertionError, "单层形态"):
             SegmentedDaily("脚本", declaration, None)
 
 

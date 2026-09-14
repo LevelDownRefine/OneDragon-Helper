@@ -4,6 +4,7 @@ import logging
 import os
 
 from src.config.daily import (
+    AnomalyHunterDaily,
     Daily,
     MaaDaily,
     NoopDaily,
@@ -11,6 +12,7 @@ from src.config.daily import (
 )
 from src.config.task_config import (
     get_daily_configs,
+    get_options,
     get_physical_name,
     get_value_map,
     get_weekly_config,
@@ -72,14 +74,15 @@ class ScriptConfig:
     """周常配置文件路径；空字符串复用主 config。"""
 
     _daily_type: type[Daily] = Daily
-    """该脚本的日常机制类（脚本级，一份声明一个实例）：标准两层用默认 ``Daily``；
-    单层带 ``key`` 的分段脚本用 ``SegmentedDaily``，TaskQueue 用 ``MaaDaily``，
-    无需适配用 ``NoopDaily``。声明形态由机制类自己解析。"""
+    """两层形态（各一级项自带 ``options``）的日常机制类。"""
+    _daily_flat_type: type[Daily] = Daily
+    """单层形态（选项都是叶子）的日常机制类：有 ``key`` 可写（追猎目标）、
+    无 ``key`` 无落点（NoopDaily）、TaskQueue（MaaDaily）按脚本选择。"""
 
     _routine_config_rel_path: str = ""
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
 
-    _dailies_cache: list[Daily] | None = None
+    _dailies_data: list[Daily] | None = None
     """该脚本的日常对象缓存（首次访问 ``_dailies`` 时由声明构造）。"""
 
     def _load(
@@ -223,8 +226,8 @@ class ScriptConfig:
     def _build_dailies(self) -> list[Daily]:
         """由声明构造该脚本的全部日常（顺序与声明一致）。
 
-        机制类是脚本级的（``_daily_type``），实例按声明逐个构造并接管本适配器
-        （子配置文件路径与读写原语）；分段日常的段名（物理名）必须互不相同。
+        机制类是脚本级的（``_daily_type``），实例按声明逐个构造并接管本适配器的
+        读写原语；分段日常的段名（物理名）必须互不相同。
 
         Returns:
             该脚本的日常列表；单日常脚本长度为 1。
@@ -232,10 +235,12 @@ class ScriptConfig:
         Raises:
             AssertionError: 缺少脚本声明，或日常物理名重复。
         """
-        dailies = [
-            self._daily_type(self._script_name, declaration, self)
-            for declaration in get_daily_configs(self._script_name)
-        ]
+        dailies = []
+        for declaration in get_daily_configs(self._script_name):
+            options = get_options(declaration)
+            layered = options and all("options" in option for option in options)
+            daily_cls = self._daily_type if layered else self._daily_flat_type
+            dailies.append(daily_cls(self._script_name, declaration, self))
         seen: set[str] = set()
         for daily in dailies:
             assert daily.physical_name not in seen, (
@@ -247,9 +252,9 @@ class ScriptConfig:
     @property
     def _dailies(self) -> list[Daily]:
         """该脚本的全部日常（顺序与声明一致；懒加载，见 ``_build_dailies``）。"""
-        if self._dailies_cache is None:
-            self._dailies_cache = self._build_dailies()
-        return self._dailies_cache
+        if self._dailies_data is None:
+            self._dailies_data = self._build_dailies()
+        return self._dailies_data
 
     def _dispatch_daily(self, daily_display_name: str) -> Daily:
         """按日常展示名取日常对象。
@@ -272,8 +277,7 @@ class ScriptConfig:
     def _read_daily_tasks(self) -> list[dict]:
         """反读该脚本全部日常的已选项与开关（界面按日常逐行呈现）。
 
-        读盘一次，把各日常的数据段交给它们自己解析（分段脚本各取自己的段），
-        日常集合由声明推导，故调用方无需指定日常。每项一条记录：
+        日常集合由声明推导，调用方无需指定日常。每项一条记录：
 
         - ``name``：日常展示名；
         - ``task``：已选一级项展示名；未选择/无真相为 None；
@@ -365,8 +369,7 @@ class ScriptConfig:
     ) -> None:
         """设置副本：读盘 → 交给该日常写内存 → 有改动才落盘 → 顺带启用该日常。
 
-        启用经 ``set_daily_enabled``：无日常开关文件的脚本静默跳过，
-        分段脚本（``SegmentedDaily``）真实写自己那条 Routine Item。
+        启用经 ``set_daily_enabled``，无日常开关文件的脚本静默跳过。
 
         Args:
             daily_display_name: 副本所属日常展示名（界面逐行渲染时即该行行名）。
@@ -670,6 +673,7 @@ class EndfieldConfig(ScriptConfig):
 # ---- 绝区零 Zenless Zone Zero ----
 @register
 class ZenlessZoneZeroConfig(ScriptConfig):
+    _daily_flat_type = NoopDaily
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
     _daily_type = NoopDaily
@@ -710,6 +714,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 # ---- 崩铁 Honkai: Star Rail ----
 @register
 class StarRailConfig(ScriptConfig):
+    _daily_flat_type = NoopDaily
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
     _daily_type = NoopDaily
@@ -860,6 +865,8 @@ class StarRailConfig(ScriptConfig):
 # ---- 异环 Neverness to Everness (NTE) ----
 @register
 class NTEConfig(ScriptConfig):
+    _daily_type = SegmentedDaily
+    _daily_flat_type = AnomalyHunterDaily
     _script_name = "ok-nte"
     _backup_paths = ("data/apps/ok-nte/working/configs",)
     _config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
@@ -903,6 +910,7 @@ class NTEConfig(ScriptConfig):
 # ---- 明日方舟 Arknights（粥）----
 @register
 class ArknightsConfig(ScriptConfig):
+    _daily_flat_type = MaaDaily
     _script_name = "MAA"
     display_name = "粥"
     _daily_type = MaaDaily

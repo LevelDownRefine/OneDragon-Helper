@@ -98,10 +98,9 @@ def _materialize_daily(script_name: str, declaration: dict) -> dict:
 def get_daily_map() -> dict:
     """把日常声明物化成按日常分组的菜单（词汇与声明一致）。
 
-    {script: {"dailies": [日常声明节点, ...]}}，其中每个日常的 ``options.values``
-    已物化：``source`` 展开为具体副本、各选项带 ``physical_name``。菜单只需要声明，
-    **不经过 ``_daily_type``**：声明里新增一个日常时菜单照常显示，而落点（要按该
-    日常的读写机制来）由各脚本的机制类决定、不齐即报错。
+    {script: {"dailies": [日常声明节点, ...]}}，``options.values`` 已物化。菜单
+    只需要声明，不经过 ``_daily_type``：声明新增日常时菜单照常显示，落点由各脚本
+    的机制类决定、不齐即报错。
     """
     return {
         script_name: {
