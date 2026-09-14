@@ -416,7 +416,7 @@ class ScriptConfig:
         assert daily.section_exists(data), (
             f"[daily][{daily.name}] config 缺少 {daily.physical_name} 段"
         )
-        if daily.write(daily.section(data), task_name, sequence, self.display_name):
+        if daily.update(daily.section(data), task_name, sequence, self.display_name):
             logger.info(f"[daily][{daily.name}] config 已更新")
             self._save(data)
         else:

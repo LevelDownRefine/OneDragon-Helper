@@ -27,7 +27,7 @@ from src.utils.utils_yaml import dump_yaml_str
 def _update(cfg, config: dict, daily_name: str, task_name: str, sequence=None) -> bool:
     """按新架构写入：取该日常对象、定位它的数据段、交给它写内存（返回是否有修改）。"""
     daily = cfg._dispatch_daily(daily_name)
-    return daily.write(daily.section(config), task_name, sequence, cfg.display_name)
+    return daily.update(daily.section(config), task_name, sequence, cfg.display_name)
 
 
 def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:

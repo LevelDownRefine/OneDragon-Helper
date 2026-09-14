@@ -126,14 +126,14 @@ class TestLandingPoints(unittest.TestCase):
         daily = daily_of("ok-ww", "每日任务")
         self.assertEqual(daily.task_field, "Which to Farm")
         self.assertEqual(
-            daily.fields("凝素领域", 1),
+            daily._fields("凝素领域", 1),
             {
                 "Which to Farm": "Forgery Challenge",
                 "Which Forgery Challenge to Farm": 1,
             },
         )
         self.assertEqual(
-            daily.fields("无音区", 3),
+            daily._fields("无音区", 3),
             {
                 "Which to Farm": "Tacet Suppression",
                 "Which Tacet Suppression to Farm": 3,
@@ -144,8 +144,10 @@ class TestLandingPoints(unittest.TestCase):
         """原神两级写同一字段（DomainName）：二级覆盖一级，只留一个键。"""
         daily = daily_of("BetterGI", "每日任务")
         self.assertEqual(daily.task_field, "DomainName")
-        self.assertEqual(daily.fields("圣遗物", "铭记之谷"), {"DomainName": "铭记之谷"})
-        self.assertEqual(daily.fields("圣遗物"), {"DomainName": "圣遗物"})
+        self.assertEqual(
+            daily._fields("圣遗物", "铭记之谷"), {"DomainName": "铭记之谷"}
+        )
+        self.assertEqual(daily._fields("圣遗物"), {"DomainName": "圣遗物"})
 
     def test_single_level_uses_own_name(self):
         """单层日常（组内有 key）：整组自身即唯一一级项，展示名用日常名。"""
@@ -154,21 +156,23 @@ class TestLandingPoints(unittest.TestCase):
         self.assertEqual(
             [option["display_name"] for option in daily.options], ["追猎目标"]
         )
-        self.assertEqual(daily.fields("追猎目标", "音霸魔王"), {"追猎目标": "音霸魔王"})
+        self.assertEqual(
+            daily._fields("追猎目标", "音霸魔王"), {"追猎目标": "音霸魔王"}
+        )
 
     def test_secondary_display_name_is_accepted(self):
         """静态枚举的二级可直接传展示名（菜单给的是物理值）。"""
         daily = daily_of("ok-ww", "每日任务")
         self.assertEqual(
-            daily.fields("模拟领域", "共鸣者经验")["Material Selection"],
+            daily._fields("模拟领域", "共鸣者经验")["Material Selection"],
             "Resonator EXP",
         )
         with self.assertRaisesRegex(AssertionError, "未适配的二级值"):
-            daily.fields("模拟领域", "不存在的材料")
+            daily._fields("模拟领域", "不存在的材料")
 
     def test_secondary_required_but_missing_raises(self):
         with self.assertRaisesRegex(AssertionError, "缺少二级选项"):
-            daily_of("ok-ww", "每日任务").fields("模拟领域")
+            daily_of("ok-ww", "每日任务")._fields("模拟领域")
 
 
 class TestRead(unittest.TestCase):
@@ -199,7 +203,7 @@ class TestRead(unittest.TestCase):
                 daily = _CONFIGS[script_name]()._build_dailies()[0]
                 self.assertEqual(daily.read({}), (None, None))
                 with self.assertRaisesRegex(AssertionError, "无选项落点"):
-                    daily.write({}, "任何副本", None, "测试")
+                    daily.update({}, "任何副本", None, "测试")
 
 
 class TestEnabled(unittest.TestCase):

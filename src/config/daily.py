@@ -1,13 +1,13 @@
 """一个日常：由 daily_task_list.yml 声明解析出的选项落点，以及它那部分的读写规则。
 
 ``Daily`` 只出规则、不碰盘：声明怎么变成落点（一级字段、二级字段、静态二级枚举）、
-某次选择往某段写什么（``write``）、某段该怎么反读（``read``）、开关文件里哪一条是
+某次选择往某段写什么（``update``）、某段该怎么反读（``read``）、开关文件里哪一条是
 本日常的（``read_enabled`` / ``set_enabled``）。方法签名一律是「吃 dict 吐 dict/值」，
 不认识 ``ScriptConfig``——文件 I/O 归它（唯一碰盘的一层）：读盘后把数据段交给日常，
 再按返回值决定要不要落盘。
 
 声明表达不了的由子类覆写：日常数据在自己那段、开关在第二份文件里（``SegmentedDaily``
-提供共同实现）、粥的 TaskQueue（``write`` / ``read``）、绝区零/崩铁的不适配（``no_op``）。
+提供共同实现）、粥的 TaskQueue（``update`` / ``read``）、绝区零/崩铁的不适配（``no_op``）。
 每个日常的实现类都自带身份 ``daily_display_name``（与声明里的日常绑定的键），各脚本的
 实现类定义在 ``set_config.py`` 里自己 config 旁边。
 """
@@ -131,7 +131,7 @@ class Daily:
         )
         self._sequence_required = static
 
-    def fields(
+    def _fields(
         self, task_name: str, sequence: str | int | None = None
     ) -> dict[str, Any]:
         """该次选择要写入的 {字段: 值}。
@@ -174,7 +174,7 @@ class Daily:
             values[self.option_fields[task_name]] = sequence
         return values
 
-    def write(
+    def update(
         self,
         section: dict,
         task_name: str,
@@ -183,7 +183,7 @@ class Daily:
     ) -> bool:
         """把该次选择写进数据段（只改内存），返回是否有改动。
 
-        默认实现按 ``fields`` 写平面字段；结构化改写（粥的 TaskQueue）覆写本方法。
+        默认实现按 ``_fields`` 写平面字段；结构化改写（粥的 TaskQueue）覆写本方法。
 
         Args:
             section: 该日常的数据段（由 ``section`` 给出）。
@@ -199,7 +199,7 @@ class Daily:
                 或静态枚举的二级取值不在声明里。
         """
         changed = False
-        for key, value in self.fields(task_name, sequence).items():
+        for key, value in self._fields(task_name, sequence).items():
             changed |= safe_update(
                 section, key, value, display_name, assert_key_exists=False
             )
@@ -410,7 +410,7 @@ class MaaDaily(Daily):
             name: stage for stage, name in self._name_by_stage.items()
         }
 
-    def write(
+    def update(
         self,
         section: dict,
         task_name: str,

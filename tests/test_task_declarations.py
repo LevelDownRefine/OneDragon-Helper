@@ -211,7 +211,7 @@ class TestDeclarationBindings(unittest.TestCase):
         for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):
             self.assertTrue(callable(cls.set_daily_task))
             for daily_type in cls._daily_types:
-                self.assertTrue(callable(daily_type.write))
+                self.assertTrue(callable(daily_type.update))
 
 
 if __name__ == "__main__":
