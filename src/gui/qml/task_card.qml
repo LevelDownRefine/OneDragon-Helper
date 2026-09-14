@@ -540,7 +540,7 @@ Item {
             var opts = Bridge.weeklyOptions(weeklyPopup.weeklyName)
             var maxW = 60
             for (var i = 0; i < opts.length; i++) {
-                instTm.text = opts[i]
+                instTm.text = opts[i].display_name
                 if (instTm.width > maxW) maxW = instTm.width
             }
             instW = Math.min(maxW + 28, 240)
@@ -572,7 +572,7 @@ Item {
                         Text {
                             anchors.fill: parent; leftPadding: 10
                             verticalAlignment: Text.AlignVCenter
-                            text: modelData
+                            text: modelData.display_name
                             color: Theme.text; font.pixelSize: 13
                         }
                         MouseArea {
@@ -580,7 +580,7 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 Bridge.selectWeekly(
-                                    weeklyPopup.weeklyName, modelData)
+                                    weeklyPopup.weeklyName, modelData.display_name)
                                 weeklyPopup.visible = false
                             }
                         }

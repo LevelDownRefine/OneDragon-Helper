@@ -51,20 +51,23 @@ def _materialize_options(script_name: str, node: dict, depth: int = 0) -> dict:
 
 
 def get_weekly_map(script_name: str) -> list:
-    """把周常声明转换为原有菜单数据；本地资源缺失时没有可选副本。"""
+    """把周常声明物化成菜单（词汇与声明一致）；本地资源缺失时没有可选副本。
+
+    每项即周常声明节点（无选项的开关周常原样），有选项的 ``options.values`` 已物化。
+    当前周常菜单只支持一级选择：物化后仍断言各选项无子选项组。
+    """
     defs_map = load_weekly_map()
     if script_name not in defs_map:
         return []
     defs = []
     for task in defs_map[script_name]:
-        item = {"name": task["display_name"]}
         if "options" in task:
-            values = _materialize_options(script_name, task)["values"]
+            task = {**task, "options": _materialize_options(script_name, task)}
+            values = task["options"]["values"]
             assert all("options" not in option for option in values), (
                 "当前周常菜单只支持一级选择"
             )
-            item["tasks"] = [option["display_name"] for option in values]
-        defs.append(item)
+        defs.append(task)
     return defs
 
 
@@ -77,9 +80,9 @@ def _materialize_daily(script_name: str, declaration: dict) -> dict:
     - 单层无 ``key``（no-op）：values 即一级项。
     """
     options = _materialize_options(script_name, declaration)
-    group = declaration["options"]
-    layered = any("options" in option for option in group["values"])
-    if "key" in group and not layered:
+    # layered 判断走物化结果（values 恒存在），不读裸声明——日常级 source 组没有 values。
+    layered = any("options" in option for option in options["values"])
+    if "key" in declaration["options"] and not layered:
         options = {
             "values": [
                 {

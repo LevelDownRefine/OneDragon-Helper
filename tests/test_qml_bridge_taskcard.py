@@ -58,7 +58,7 @@ class TestTaskCard(unittest.TestCase):
             self.assertEqual(bridge.dailyItems[0]["task_label"], "副本B")
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch("src.service.app_service.get_weekly_map", return_value=[{"name": "周常"}])
+    @patch("src.service.app_service.get_weekly_map", return_value=[{"display_name": "周常"}])
     @patch.object(app_service, "get_weekly_start", return_value=None)
     @patch("src.service.app_service.get_daily_map", return_value={})
     @patch.object(task_card, "get_daily_readback", return_value=[])

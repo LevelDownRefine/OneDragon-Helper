@@ -135,9 +135,9 @@ class TaskCardController(QObject):
     def weekly_items(self) -> list[dict]:
         """当前脚本支持的周常列表（供 QML 多周常布局）。
 
-        每种周常：{name, has_task, task_label}。has_task 由声明是否含
-        tasks 字段（且有内容）推导，不再用 needs_instance 布尔字段；
-        task_label 为已选副本名，需选而未选时返回「选择副本」、无需选返回空。
+        每种周常：{name, has_task, task_label}。has_task 由物化声明是否含
+        options（且有内容）推导；task_label 为已选副本名，需选而未选时返回
+        「选择副本」、无需选返回空。
         声明（支持哪些周常/可选副本）来自 weekly_task_list.yml；已选副本反读子脚本
         config（如 M7A instance_names）——周常侧无 no-op 脚本，故不设回退。
         """
@@ -147,8 +147,8 @@ class TaskCardController(QObject):
             return []
         items = []
         for d in defs:
-            name = d["name"]
-            has_task = "tasks" in d and bool(d["tasks"])
+            name = d["display_name"]
+            has_task = "options" in d and bool(d["options"]["values"])
             label = ""
             if has_task:
                 # 反读子脚本 config（真相源，如 M7A instance_names）
@@ -159,23 +159,22 @@ class TaskCardController(QObject):
             items.append({"name": name, "has_task": has_task, "task_label": label})
         return items
 
-    def weekly_task_options(self, weekly_name: str) -> list[str]:
-        """某周常的可选副本名列表（如历战余响的全体副本）。
+    def weekly_task_options(self, weekly_name: str) -> list:
+        """某周常的可选副本清单（物化声明：display_name/physical_name）。
 
-        来自 weekly_task_list.yml 声明（该周常的 tasks 字段）；不再依赖游戏脚本
-        私有配置。未声明或无需副本返回空列表。
+        来自 weekly_task_list.yml 声明的物化结果；未声明或无需副本返回空列表。
 
         Args:
             weekly_name: 周常名（如「历战余响」）。
 
         Returns:
-            副本名列表（含「无」）；该周常未声明副本清单时返回空列表。
+            一级选项的物化声明列表（含「无」）；该周常未声明副本清单时返回空列表。
         """
         script_name = self._current["script_name"]
         for d in self._app_service.get_weekly_map(script_name):
-            if d["name"] != weekly_name:
+            if d["display_name"] != weekly_name:
                 continue
-            return list(d["tasks"]) if "tasks" in d else []
+            return d["options"]["values"] if "options" in d else []
         return []
 
     # ── 缓存构建（运行期不变）──────────────────────────────────────────

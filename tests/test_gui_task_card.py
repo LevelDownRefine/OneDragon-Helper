@@ -108,7 +108,13 @@ class TestWeeklyItems(unittest.TestCase):
             ctrl = _make_controller()
             options = ctrl.weekly_task_options("历战余响")
         tmp.cleanup()
-        self.assertEqual(options, ["无", "铁骸的锈冢", "晨昏的回眸"])
+        self.assertEqual(
+            [option["display_name"] for option in options],
+            ["无", "铁骸的锈冢", "晨昏的回眸"],
+        )
+        self.assertTrue(
+            all(option["physical_name"] == option["display_name"] for option in options)
+        )
 
     def test_weekly_task_options_unknown_weekly_returns_empty(self):
         """未声明的周常名 → 空列表。"""
