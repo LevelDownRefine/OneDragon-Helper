@@ -52,7 +52,7 @@ class TestDispatch(unittest.TestCase):
             with self.subTest(script=script_name):
                 daily = _CONFIGS[script_name]()._build_dailies()[0]
                 self.assertIsInstance(daily, NoopDaily)
-                self.assertTrue(daily.no_op)
+                self.assertFalse(daily.update({}, "任意", None, "测试"))
         # 一个日常一个类：共同实现留在 SegmentedDaily，身份写在各自的类上
         anomaly, hunter = _CONFIGS["ok-nte"]()._build_dailies()
         self.assertIs(type(anomaly), AnomalyDaily)
@@ -202,8 +202,8 @@ class TestRead(unittest.TestCase):
             with self.subTest(script=script_name):
                 daily = _CONFIGS[script_name]()._build_dailies()[0]
                 self.assertEqual(daily.read({}), (None, None))
-                with self.assertRaisesRegex(AssertionError, "无选项落点"):
-                    daily.update({}, "任何副本", None, "测试")
+                # 无落点日常（NoopDaily）覆写 update：恒无改动，不抛断言
+                self.assertFalse(daily.update({}, "任何副本", None, "测试"))
 
 
 class TestEnabled(unittest.TestCase):

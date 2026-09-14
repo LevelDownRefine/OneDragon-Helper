@@ -14,9 +14,7 @@ def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
     """按新架构反读：宿主读盘 → 取该日常的数据段 → 日常解析（未落盘返回 (None, None)）。"""
     daily = cfg._dispatch_daily(daily_name)
     data = cfg._load(allow_missing=True)
-    if data is None or not daily.section_exists(data):
-        return None, None
-    return daily.read(daily.section(data))
+    return daily.read(data)
 
 
 class TestDeclarationBindings(unittest.TestCase):

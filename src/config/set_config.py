@@ -313,9 +313,7 @@ class ScriptConfig:
             routine = self._load(self._routine_config_rel_path, allow_missing=True)
         records = []
         for daily in self._dailies:
-            task, sequence = None, None
-            if data is not None and daily.section_exists(data):
-                task, sequence = daily.read(daily.section(data))
+            task, sequence = daily.read(data)
             records.append(
                 {
                     "name": daily.name,
@@ -403,20 +401,13 @@ class ScriptConfig:
             sequence: 二级项值；不传则仅写入一级落点。
 
         Raises:
-            AssertionError: 未给出日常展示名，或该日常未知、该日常在 config 里
-                缺少段、无落点、一级项未声明、二级必填却缺失。
+            AssertionError: 未给出日常展示名，或该日常未知、config 未安装/未配置、
+                该日常在 config 里缺少段、无落点、一级项未声明、二级必填却缺失。
         """
         assert daily_display_name, f"[set_config][{self.display_name}] 必须指定日常"
         daily = self._dispatch_daily(daily_display_name)
-        if daily.no_op:
-            # 上游自身已支持副本选择（绝区零/崩铁）：不读不写。
-            logger.info(f"[daily][{daily.name}] 无需适配")
-            return
-        data = self._load()
-        assert daily.section_exists(data), (
-            f"[daily][{daily.name}] config 缺少 {daily.physical_name} 段"
-        )
-        if daily.update(daily.section(data), task_name, sequence, self.display_name):
+        data = self._load(allow_missing=True)
+        if daily.update(data, task_name, sequence, self.display_name):
             logger.info(f"[daily][{daily.name}] config 已更新")
             self._save(data)
         else:
