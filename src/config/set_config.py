@@ -676,7 +676,6 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _daily_flat_type = NoopDaily
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
-    _daily_type = NoopDaily
     _backup_paths = ("config",)
     _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
@@ -717,7 +716,6 @@ class StarRailConfig(ScriptConfig):
     _daily_flat_type = NoopDaily
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
-    _daily_type = NoopDaily
     _backup_paths = ("config.yaml",)
     _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
@@ -874,7 +872,6 @@ class NTEConfig(ScriptConfig):
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "异环"
-    _daily_type = SegmentedDaily
 
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
@@ -913,7 +910,6 @@ class ArknightsConfig(ScriptConfig):
     _daily_flat_type = MaaDaily
     _script_name = "MAA"
     display_name = "粥"
-    _daily_type = MaaDaily
     _backup_paths = ("config",)
     _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
