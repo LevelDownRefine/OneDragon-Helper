@@ -1,6 +1,6 @@
 """任务卡控制器：日常副本 / 周常周几（数据 + 选择持久化）。
 
-独立 QObject，自管状态（_daily_map_cache / _daily_options_cache）。当前游戏经构造注入的
+独立 QObject，自管状态（_daily_map_cache）。当前游戏经构造注入的
 game_list 引用读取。日常菜单的选项从缓存读取（build_daily_cache 时构建）；日常行的 chip 文案
 每次求值时经 get_daily_readback 反读一次（一次覆盖该脚本全部日常）。
 启用控制：脚本级启用靠控制模式、日常级开关靠 setDailyEnabled（仅声明了日常开关的脚本，如异环）、
@@ -9,7 +9,6 @@ game_list 引用读取。日常菜单的选项从缓存读取（build_daily_cach
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from src.config.daily_config import parse_daily_config
 from src.config.set_config import (
     get_daily_readback,
     get_weekly_task,
@@ -49,7 +48,6 @@ class TaskCardController(QObject):
         # 副本下拉数据缓存：daily_task_list.yml 解析较贵且运行期不变，
         # build_daily_cache 时一次性构建。
         self._daily_map_cache: dict = {}
-        self._daily_options_cache: dict[str, list] = {}
 
     # ── 读接口（供 QmlBridge 委托）────────────────────────────────────
     @property
@@ -82,7 +80,7 @@ class TaskCardController(QObject):
         script_name = self._current["script_name"]
         options_by_daily = {
             daily["name"]: daily["options"]
-            for daily in self._daily_options_cache.get(script_name, [])
+            for daily in self._dailies_of(script_name)
         }
         items = []
         for record in get_daily_readback(script_name):
@@ -98,6 +96,10 @@ class TaskCardController(QObject):
             )
         return items
 
+    def _dailies_of(self, script_name: str) -> list:
+        """某脚本各日常的菜单数据（GUI 最终形状）；无数据返回空列表。"""
+        return self._daily_map_cache.get(script_name, {}).get("dailies", [])
+
     def daily_options(self, daily_name: str) -> list:
         """某日常的副本下拉数据（QML 按行调用）。
 
@@ -108,7 +110,7 @@ class TaskCardController(QObject):
             该日常的 [{name, sequences:[{label,value}]}, ...]；未知日常返回空列表。
         """
         script_name = self._current["script_name"]
-        for daily in self._daily_options_cache.get(script_name, []):
+        for daily in self._dailies_of(script_name):
             if daily["name"] == daily_name:
                 return daily["options"]
         return []
@@ -179,9 +181,6 @@ class TaskCardController(QObject):
     def build_daily_cache(self, games: list):
         """一次性解析 daily_task_list.yml 并构建各脚本的日常菜单（运行期不变）。"""
         self._daily_map_cache = self._app_service.get_daily_map()
-        self._daily_options_cache = {
-            g["script_name"]: self._build_daily_options(g["script_name"]) for g in games
-        }
 
     def refresh(self):
         """切换游戏后发信号触发 QML 重读任务卡。"""
@@ -225,28 +224,6 @@ class TaskCardController(QObject):
                     if seq["value"] == sequence:
                         return f"{task_name} · {seq['label']}"
         return task_name
-
-    def _build_daily_options(self, script_name: str) -> list:
-        """构建某脚本各日常的下拉数据：[{name, options:[{name, sequences}]}, ...]。"""
-        if script_name not in self._daily_map_cache:
-            return []
-        return [
-            {"name": daily["name"], "options": self._build_daily_task_options(daily)}
-            for daily in self._daily_map_cache[script_name]["dailies"]
-        ]
-
-    def _build_daily_task_options(self, daily: dict) -> list:
-        """构建单个日常的副本下拉数据（一级副本 → 二级选项）。"""
-        options, seq_map, _ = parse_daily_config(daily)
-        return [
-            {
-                "name": name,
-                "sequences": [
-                    {"label": lbl, "value": val} for lbl, val in seq_map.get(name, [])
-                ],
-            }
-            for name in options
-        ]
 
     # ── 交互 ───────────────────────────────────────────────────────────
     @Slot(str, str, "QVariant")

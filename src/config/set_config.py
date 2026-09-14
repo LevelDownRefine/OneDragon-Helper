@@ -522,27 +522,6 @@ class ScriptConfig:
         return node
 
     @classmethod
-    def get_daily_options(cls) -> list[dict]:
-        """取得各日常的菜单选项；单日常脚本即一项。
-
-        每个日常的选项直接取它的声明解析结果（``Daily.options``）：各有分类层时每个
-        value 各成一个一级项；单层日常（值直接写自身字段、无一级字段）时整组即唯一的
-        一级项（展示名用日常名），其 values 作二级。判断依据与写入侧同源（同一份声明），
-        不按展示名硬编码。
-
-        菜单只需要声明，故用声明 + 基类 ``Daily`` 解析，**不经过 ``_daily_types``**：
-        声明里新增一个日常时菜单照常显示，而落点（要按该日常的读写机制来）仍由各脚本的
-        ``_daily_types`` 决定、不齐即报错。
-        """
-        return [
-            {
-                "daily_display_name": declaration["display_name"],
-                "options": Daily(cls._script_name, declaration).options,
-            }
-            for declaration in get_daily_configs(cls._script_name)
-        ]
-
-    @classmethod
     def get_task_lists(cls, task_name: str, source: str) -> list[str] | None:
         """读取某任务（周常/日常）的可选副本名清单（类方法，无需实例化）。
 
@@ -1224,12 +1203,6 @@ def set_config(
         cfg.set_daily_task(daily_display_name, task_name, sequence)
     if weekly_start is not None:
         cfg.prepare_weekly_start_day(weekly_start)
-
-
-def get_daily_options(script_name: str) -> list[dict]:
-    """取得脚本的日常副本选项声明。"""
-    assert script_name in _CONFIGS, f"未适配脚本: {script_name}"
-    return _CONFIGS[script_name].get_daily_options()
 
 
 def get_task_lists(script_name: str, task_name: str, source: str) -> list[str] | None:

@@ -1,75 +1,13 @@
-from typing import Any
+"""把日常、周常声明转换成 GUI 菜单数据；本地资源缺失时没有可选副本。"""
 
-from src.config.set_config import get_daily_options, get_task_lists
+from src.config.daily import Daily
+from src.config.set_config import get_task_lists
 from src.config.task_config import (
     get_options,
     get_physical_name,
     load_daily_map,
     load_weekly_map,
 )
-
-DailyOptions = list[str]
-SequenceOptionsMap = dict[str, list[tuple[str, Any]]]
-
-
-def parse_daily_config(
-    task_cfg: Any,
-) -> tuple[DailyOptions, SequenceOptionsMap, bool]:
-    """
-    解析单个日常的副本配置。
-
-    菜单数据格式（get_daily_map 的 `dailies[i]`）：
-    name: "日常展示名"
-    tasks:
-      - name: "副本名"
-      - name: "有二级选项的副本"
-        sequences:
-          - display: "显示名称"
-            value: 实际值
-
-    Args:
-        task_cfg: 某个日常的菜单数据（`{name, tasks}`）。
-
-    Returns:
-        (options, seq_map, show_seq)
-        - options: 一级副本名称列表
-        - seq_map: 副本名 → [(display_name, actual_value), ...]
-        - show_seq: 是否有二级选项
-    """
-    options: DailyOptions = []
-    seq_map: SequenceOptionsMap = {}
-    show_seq = False
-
-    if isinstance(task_cfg, dict) and "tasks" in task_cfg:
-        for i, task in enumerate(task_cfg["tasks"]):
-            assert isinstance(task, dict), (
-                f"第{i}个副本配置必须是字典，实际是 {type(task)}"
-            )
-            assert "name" in task, f"第{i}个副本配置缺少 'name' 字段"
-            assert isinstance(task["name"], str), f"第{i}个副本的 'name' 必须是字符串"
-
-            name = task["name"]
-            options.append(name)
-
-            sequences = task.get("sequences")  # optional: 副本可能没有二级选项
-            if sequences:
-                assert isinstance(sequences, list), (
-                    f"副本 '{name}' 的 sequences 必须是列表"
-                )
-                seq_map[name] = []
-                for j, seq in enumerate(sequences):
-                    assert isinstance(seq, dict), f"副本 '{name}' 第{j}个序列必须是字典"
-                    assert "display" in seq, (
-                        f"副本 '{name}' 第{j}个序列缺少 'display' 字段"
-                    )
-                    assert "value" in seq, f"副本 '{name}' 第{j}个序列缺少 'value' 字段"
-                    assert isinstance(seq["display"], str), (
-                        f"副本 '{name}' 第{j}个序列的 'display' 必须是字符串"
-                    )
-                    seq_map[name].append((seq["display"], seq["value"]))
-                show_seq = True
-
-    return options, seq_map, show_seq
 
 
 def _resolve_options(script_name: str, node: dict) -> list[dict]:
@@ -105,18 +43,27 @@ def get_weekly_map(script_name: str) -> list:
 
 
 def get_daily_map() -> dict:
-    """把日常声明转换为按日常分组的菜单，二级选择继续传物理值。
+    """把日常声明转换为按日常分组的菜单（GUI 最终形状）。
 
-    每个脚本一组日常，每个日常一份一级副本列表（含二级序列）：
-    {script: {"dailies": [{"name": 日常展示名, "tasks": [{name, sequences?}, ...]}, ...]}}。
+    每个脚本一组日常，每个日常一份一级副本列表（含二级序列，二级继续传物理值）：
+    {script: {"dailies": [{"name": 日常展示名,
+                            "options": [{"name": 副本名,
+                                         "sequences": [{"label": 展示名,
+                                                        "value": 物理值}]}]},
+                           ...]}}。
+
+    菜单只需要声明，故用声明 + 基类 ``Daily`` 解析，**不经过 ``_daily_types``**：
+    声明里新增一个日常时菜单照常显示，而落点（要按该日常的读写机制来）由各脚本的
+    ``_daily_types`` 决定、不齐即报错。
     """
     data = {}
-    for script_name in load_daily_map():
+    for script_name, declarations in load_daily_map().items():
         dailies = []
-        for daily in get_daily_options(script_name):
-            tasks = []
-            for option in daily["options"]:
-                item = {"name": option["display_name"]}
+        for declaration in declarations:
+            daily = Daily(script_name, declaration)
+            options = []
+            for option in daily.options:
+                item = {"name": option["display_name"], "sequences": []}
                 if "options" in option:
                     children = _resolve_options(script_name, option)
                     assert all("options" not in child for child in children), (
@@ -124,12 +71,12 @@ def get_daily_map() -> dict:
                     )
                     item["sequences"] = [
                         {
-                            "display": child["display_name"],
+                            "label": child["display_name"],
                             "value": get_physical_name(child),
                         }
                         for child in children
                     ]
-                tasks.append(item)
-            dailies.append({"name": daily["daily_display_name"], "tasks": tasks})
+                options.append(item)
+            dailies.append({"name": daily.name, "options": options})
         data[script_name] = {"dailies": dailies}
     return data

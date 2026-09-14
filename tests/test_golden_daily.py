@@ -63,9 +63,9 @@ def menu_of(script_name: str) -> dict[str, dict[str, list]]:
     return {
         daily["name"]: {
             task["name"]: [
-                [seq["display"], seq["value"]] for seq in task.get("sequences") or []
+                [seq["label"], seq["value"]] for seq in task["sequences"]
             ]
-            for task in daily["tasks"]
+            for task in daily["options"]
         }
         for daily in menu
     }

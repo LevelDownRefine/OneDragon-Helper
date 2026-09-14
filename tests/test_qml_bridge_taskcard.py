@@ -20,10 +20,12 @@ class TestTaskCard(unittest.TestCase):
     def test_restore_refreshes_task_properties(self, _map):
         bridge = _make_bridge()
         name = bridge.games[0]["script_name"]
-        bridge.task_card._daily_options_cache = {
-            name: [
-                {"name": "每日任务", "options": [{"name": "副本A", "sequences": []}]}
-            ]
+        bridge.task_card._daily_map_cache = {
+            name: {
+                "dailies": [
+                    {"name": "每日任务", "options": [{"name": "副本A", "sequences": []}]}
+                ]
+            }
         }
         changed = MagicMock()
         bridge.taskStateChanged.connect(changed)
@@ -81,10 +83,12 @@ class TestTaskCard(unittest.TestCase):
         b = _make_bridge()
         name = b.games[0]["script_name"]
         # 反读无真相 → chip 回退声明的首个选项
-        b.task_card._daily_options_cache = {
-            name: [
-                {"name": "每日任务", "options": [{"name": "副本A", "sequences": []}]}
-            ]
+        b.task_card._daily_map_cache = {
+            name: {
+                "dailies": [
+                    {"name": "每日任务", "options": [{"name": "副本A", "sequences": []}]}
+                ]
+            }
         }
         readback.return_value = [
             {"name": "每日任务", "task": None, "sequence": None, "enabled": None}
@@ -108,10 +112,10 @@ class TestTaskCard(unittest.TestCase):
         menu = {
             "ok-ww": {
                 "dailies": [
-                    {"name": "异象界域", "tasks": [{"name": "空幕", "sequences": []}]},
+                    {"name": "异象界域", "options": [{"name": "空幕", "sequences": []}]},
                     {
                         "name": "追猎目标",
-                        "tasks": [{"name": "追猎目标", "sequences": []}],
+                        "options": [{"name": "追猎目标", "sequences": []}],
                     },
                 ]
             }
@@ -141,10 +145,10 @@ class TestTaskCard(unittest.TestCase):
                 "dailies": [
                     {
                         "name": "每日任务",
-                        "tasks": [
+                        "options": [
                             {
                                 "name": "副本A",
-                                "sequences": [{"display": "难1", "value": "s1"}],
+                                "sequences": [{"label": "难1", "value": "s1"}],
                             }
                         ],
                     }

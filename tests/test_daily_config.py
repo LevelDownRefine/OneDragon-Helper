@@ -7,7 +7,6 @@ from unittest.mock import patch
 from src.config.daily_config import (
     get_daily_map,
     get_weekly_map,
-    parse_daily_config,
 )
 from src.config.task_config import load_daily_map
 
@@ -90,34 +89,49 @@ class TestGetDailyMap(unittest.TestCase):
         self.assertEqual(set(menus), set(load_daily_map()))
         maa = menus["MAA"]["dailies"][0]
         self.assertEqual(maa["name"], "每日任务")
-        options, sequences, show = parse_daily_config(maa)
-        self.assertEqual(options, ["红票", "经验", "龙门币", "土"])
-        self.assertEqual(sequences, {})
-        self.assertFalse(show)
+        self.assertEqual(
+            [option["name"] for option in maa["options"]],
+            ["红票", "经验", "龙门币", "土"],
+        )
+        self.assertTrue(all(option["sequences"] == [] for option in maa["options"]))
         # 异环两个日常各一份菜单（不再合并）
         nte = menus["ok-nte"]["dailies"]
         self.assertEqual([daily["name"] for daily in nte], ["异象界域", "追猎目标"])
         self.assertEqual(
-            [item["name"] for item in nte[0]["tasks"]],
+            [option["name"] for option in nte[0]["options"]],
             ["空幕", "异能升级材料", "弧盘突破材料", "经验与甲硬币"],
         )
-        self.assertEqual([item["name"] for item in nte[1]["tasks"]], ["追猎目标"])
+        self.assertEqual(
+            [option["name"] for option in nte[1]["options"]], ["追猎目标"]
+        )
         self.assertEqual(
             menus["OneDragon-Launcher"]["dailies"],
-            [{"name": "每日任务", "tasks": [{"name": "培养方案"}]}],
+            [
+                {
+                    "name": "每日任务",
+                    "options": [{"name": "培养方案", "sequences": []}],
+                }
+            ],
         )
         self.assertEqual(
             menus["March7th-Launcher"]["dailies"],
-            [{"name": "每日任务", "tasks": [{"name": "培养目标"}]}],
+            [
+                {
+                    "name": "每日任务",
+                    "options": [{"name": "培养目标", "sequences": []}],
+                }
+            ],
         )
 
     def test_secondary_menu_values_are_native(self):
         with patch("src.config.daily_config.get_task_lists", return_value=[]):
             menus = get_daily_map()
-        _, sequences, show = parse_daily_config(menus["ok-ww"]["dailies"][0])
-        self.assertTrue(show)
-        self.assertEqual(sequences["模拟领域"][0], ("共鸣者经验", "Resonator EXP"))
-        self.assertEqual(sequences["凝素领域"][0], ("梦州-迅刀", 1))
+        options = {
+            option["name"]: option["sequences"]
+            for option in menus["ok-ww"]["dailies"][0]["options"]
+        }
+        self.assertEqual(options["模拟领域"][0], {"label": "共鸣者经验", "value": "Resonator EXP"})
+        self.assertEqual(options["凝素领域"][0], {"label": "梦州-迅刀", "value": 1})
 
     def test_daily_source_categories_come_from_declaration(self):
         with patch(
@@ -130,9 +144,11 @@ class TestGetDailyMap(unittest.TestCase):
         source.assert_any_call(
             "ok-ef", "干员养成", "data/apps/ok-ef/working/assets/data/world_map.json"
         )
-        _, sequences, show = parse_daily_config(menus["BetterGI"]["dailies"][0])
-        self.assertTrue(show)
-        self.assertEqual(sequences["圣遗物"], [("原生副本", "原生副本")])
+        options = {
+            option["name"]: option["sequences"]
+            for option in menus["BetterGI"]["dailies"][0]["options"]
+        }
+        self.assertEqual(options["圣遗物"], [{"label": "原生副本", "value": "原生副本"}])
 
     def test_missing_resource_gives_empty_secondary_menu(self):
         for names in ([], None):
@@ -141,13 +157,15 @@ class TestGetDailyMap(unittest.TestCase):
                 patch("src.config.daily_config.get_task_lists", return_value=names),
             ):
                 result = get_daily_map()
-            self.assertEqual(result["ok-ef"]["dailies"][0]["tasks"][0]["sequences"], [])
+            self.assertEqual(
+                result["ok-ef"]["dailies"][0]["options"][0]["sequences"], []
+            )
 
     def test_menu_does_not_modify_declarations(self):
         declarations = load_daily_map()
         original = deepcopy(declarations)
         with (
-            patch("src.config.task_config.load_daily_map", return_value=declarations),
+            patch("src.config.daily_config.load_daily_map", return_value=declarations),
             patch("src.config.daily_config.get_task_lists", return_value=["测试资源"]),
         ):
             first = get_daily_map()
@@ -165,7 +183,7 @@ class TestGetDailyMap(unittest.TestCase):
             }
         )
         with (
-            patch("src.config.task_config.load_daily_map", return_value=declarations),
+            patch("src.config.daily_config.load_daily_map", return_value=declarations),
             patch("src.config.daily_config.get_task_lists", return_value=["测试资源"]),
         ):
             menus = get_daily_map()
@@ -174,29 +192,44 @@ class TestGetDailyMap(unittest.TestCase):
             ["每日任务", "另一个日常"],
         )
         self.assertEqual(
-            [item["name"] for item in menus["ok-ww"]["dailies"][1]["tasks"]],
+            [option["name"] for option in menus["ok-ww"]["dailies"][1]["options"]],
             ["别的副本"],
         )
 
     def test_third_level_is_not_silently_dropped(self):
-        options = [
-            {
-                "display_name": "一级",
-                "options": {
-                    "values": [
-                        {
-                            "display_name": "二级",
-                            "options": {"values": [{"display_name": "三级"}]},
-                        }
-                    ]
-                },
-            }
-        ]
+        declarations = {
+            "x": [
+                {
+                    "display_name": "日常",
+                    "options": {
+                        "key": "一级字段",
+                        "values": [
+                            {
+                                "display_name": "一级",
+                                "options": {
+                                    "key": "二级字段",
+                                    "values": [
+                                        {
+                                            "display_name": "二级",
+                                            "options": {
+                                                "key": "三级字段",
+                                                "values": [
+                                                    {"display_name": "三级"}
+                                                ],
+                                            },
+                                        }
+                                    ],
+                                },
+                            }
+                        ],
+                    },
+                }
+            ]
+        }
         with (
-            patch("src.config.daily_config.load_daily_map", return_value={"x": []}),
             patch(
-                "src.config.daily_config.get_daily_options",
-                return_value=[{"daily_display_name": "日常", "options": options}],
+                "src.config.daily_config.load_daily_map",
+                return_value=declarations,
             ),
             self.assertRaisesRegex(AssertionError, "最多支持两级"),
         ):
