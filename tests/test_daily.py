@@ -35,14 +35,14 @@ class TestDispatch(unittest.TestCase):
             dailies = cfg._dailies
             with self.subTest(script=script_name):
                 self.assertEqual(
-                    [daily.name for daily in dailies],
+                    [daily.display_name for daily in dailies],
                     [decl["display_name"] for decl in load_daily_map()[script_name]],
                 )
                 # 日常对象懒加载一次后复用（同一实例），且可按展示名定位
                 self.assertIs(cfg._dailies, dailies)
                 for daily in dailies:
                     self.assertTrue(daily.physical_name)
-                    self.assertIs(cfg._dispatch_daily(daily.name), daily)
+                    self.assertIs(cfg._dispatch_daily(daily.display_name), daily)
 
     def test_unknown_daily_raises(self):
         with self.assertRaisesRegex(AssertionError, "未知日常"):
@@ -58,8 +58,8 @@ class TestDispatch(unittest.TestCase):
         anomaly, hunter = _CONFIGS["ok-nte"]()._build_dailies()
         self.assertIsInstance(anomaly, SegmentedDaily)
         self.assertIsInstance(hunter, SegmentedDaily)
-        self.assertEqual(anomaly.name, "异象界域")
-        self.assertEqual(hunter.name, "追猎目标")
+        self.assertEqual(anomaly.display_name, "异象界域")
+        self.assertEqual(hunter.display_name, "追猎目标")
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
         self.assertIsInstance(_CONFIGS["MAA"]()._build_dailies()[0], MaaDaily)
         # 标准两层脚本用默认机制类

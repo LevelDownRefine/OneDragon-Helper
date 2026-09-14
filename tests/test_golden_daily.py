@@ -94,7 +94,7 @@ def seed_of(script_name: str, cfg) -> dict:
         if daily.task_field is not None:
             container[daily.task_field] = list(daily.task_map.values())[-1]
         for task_name, field in daily.option_fields.items():
-            sequences = menus[daily.name][task_name]
+            sequences = menus[daily.display_name][task_name]
             if sequences and field not in container:
                 container[field] = sequences[-1][1]
     return seed

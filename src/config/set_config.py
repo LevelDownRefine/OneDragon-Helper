@@ -264,7 +264,7 @@ class ScriptConfig:
         Raises:
             AssertionError: 声明里没有该展示名的日常。
         """
-        matches = [daily for daily in self._dailies if daily.name == daily_display_name]
+        matches = [daily for daily in self._dailies if daily.display_name == daily_display_name]
         assert len(matches) == 1, (
             f"[set_config][{self.display_name}] 未知日常: {daily_display_name}"
         )
@@ -288,7 +288,7 @@ class ScriptConfig:
             task, sequence = daily.read()
             records.append(
                 {
-                    "name": daily.name,
+                    "name": daily.display_name,
                     "task": task,
                     "sequence": sequence,
                     "enabled": daily.read_enabled(),

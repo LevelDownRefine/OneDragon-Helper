@@ -64,7 +64,7 @@ class Daily:
         """
         self._cfg = cfg
         self.script_name = script_name
-        self.name: str = declaration["display_name"]
+        self.display_name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
         options = get_options(declaration)
         assert options, f"{script_name}/{self.physical_name} 必须声明选项"
@@ -117,17 +117,17 @@ class Daily:
                 或二级取值不在声明里。
         """
         assert self.option_fields, (
-            f"[daily][{self.name}] 无选项落点，不能作为副本选择写入"
+            f"[daily][{self.display_name}] 无选项落点，不能作为副本选择写入"
         )
         assert task_name in self.option_fields, (
-            f"[daily][{self.name}] 未声明的一级项: {task_name}"
+            f"[daily][{self.display_name}] 未声明的一级项: {task_name}"
         )
         values: dict[str, Any] = {}
         if self.task_field is not None:
             values[self.task_field] = self.task_map[task_name]
         if sequence is None:
             assert not self._sequence_required, (
-                f"[daily][{self.name}] {task_name} 缺少二级选项"
+                f"[daily][{self.display_name}] {task_name} 缺少二级选项"
             )
         else:
             # 静态枚举的二级可传展示名；资源展开的二级不校验。
@@ -135,7 +135,7 @@ class Daily:
             if sequence_values:
                 sequence = sequence_values.get(sequence, sequence)
                 assert sequence in sequence_values.values(), (
-                    f"[daily][{self.name}] 未适配的二级值: {sequence!r}"
+                    f"[daily][{self.display_name}] 未适配的二级值: {sequence!r}"
                 )
             values[self.option_fields[task_name]] = sequence
         return values
@@ -156,10 +156,10 @@ class Daily:
         """
         data = self._cfg._load(allow_missing=True)
         assert data is not None, (
-            f"[daily][{self.name}] config 未安装/未配置，不能写入副本"
+            f"[daily][{self.display_name}] config 未安装/未配置，不能写入副本"
         )
         assert self.section_exists(data), (
-            f"[daily][{self.name}] config 缺少 {self.physical_name} 段"
+            f"[daily][{self.display_name}] config 缺少 {self.physical_name} 段"
         )
         changed = False
         for key, value in self._fields(task_name, sequence).items():
@@ -172,9 +172,9 @@ class Daily:
             )
         if changed:
             self._cfg._save(data)
-            logger.info(f"[daily][{self.name}] config 已更新")
+            logger.info(f"[daily][{self.display_name}] config 已更新")
         else:
-            logger.info(f"[daily][{self.name}] config 无需更新")
+            logger.info(f"[daily][{self.display_name}] config 无需更新")
         return changed
 
     def read(self) -> tuple[str | None, str | int | None]:
@@ -199,7 +199,7 @@ class Daily:
         if self._single_field:
             return raw, None  # 字段里存的就是最终副本名，不做一级映射
         names = {value: name for name, value in self.task_map.items()}
-        assert raw in names, f"[daily][{self.name}] 未知副本值: {raw!r}"
+        assert raw in names, f"[daily][{self.display_name}] 未知副本值: {raw!r}"
         task = names[raw]
         seq_field = self.option_fields[task]
         if seq_field not in section:
@@ -263,7 +263,7 @@ class NoopDaily(Daily):
         """
         self._cfg = cfg
         self.script_name = script_name
-        self.name = declaration["display_name"]
+        self.display_name = declaration["display_name"]
         self.physical_name = get_physical_name(declaration)
         self.task_field = None
         self.task_map: dict[str, Any] = {}
@@ -279,7 +279,7 @@ class NoopDaily(Daily):
         Returns:
             恒为 False。
         """
-        logger.info(f"[daily][{self.name}] 无需适配")
+        logger.info(f"[daily][{self.display_name}] 无需适配")
         return False
 
 
@@ -335,7 +335,7 @@ class SegmentedDaily(Daily):
         """
         path = self._cfg._routine_config_rel_path
         routine = self._cfg._load(path)
-        if safe_update(self._routine_item(routine), "enabled", enabled, self.name):
+        if safe_update(self._routine_item(routine), "enabled", enabled, self.display_name):
             self._cfg._save(routine, path)
             return True
         return False
@@ -352,10 +352,10 @@ class SegmentedDaily(Daily):
         Raises:
             AssertionError: Routine Items 缺少或重复本日常的物理名。
         """
-        items = get_field(routine, "Routine Items", self.name, list)
+        items = get_field(routine, "Routine Items", self.display_name, list)
         target = [item for item in items if item["id"] == self.physical_name]
         assert len(target) == 1, (
-            f"[daily][{self.name}] Routine Items 缺少或重复 {self.physical_name}"
+            f"[daily][{self.display_name}] Routine Items 缺少或重复 {self.physical_name}"
         )
         return target[0]
 
@@ -373,7 +373,7 @@ class SegmentedDaily(Daily):
         """
         section = config.get(self.physical_name)
         assert section is None or isinstance(section, dict), (
-            f"[daily][{self.name}] {self.physical_name} 段必须是 dict"
+            f"[daily][{self.display_name}] {self.physical_name} 段必须是 dict"
         )
         return section if section is not None else {}
 
@@ -407,7 +407,7 @@ class AnomalyHunterDaily(SegmentedDaily):
         """
         self._cfg = cfg
         self.script_name = script_name
-        self.name = declaration["display_name"]
+        self.display_name = declaration["display_name"]
         self.physical_name = get_physical_name(declaration)
         options = get_options(declaration)
         assert options, f"{script_name}/{self.physical_name} 必须声明选项"
@@ -417,10 +417,10 @@ class AnomalyHunterDaily(SegmentedDaily):
         )
         self.task_field = None
         self.task_map: dict[str, Any] = {}
-        self.option_fields: dict[str, str] = {self.name: group["key"]}
+        self.option_fields: dict[str, str] = {self.display_name: group["key"]}
         self.options: list[dict] = [declaration]
         self._sequence_values: dict[str, dict[str, Any]] = (
-            {self.name: get_value_map(declaration)} if "values" in group else {}
+            {self.display_name: get_value_map(declaration)} if "values" in group else {}
         )
         self._sequence_required = "values" in group
         self._single_field = False
@@ -437,10 +437,10 @@ class AnomalyHunterDaily(SegmentedDaily):
         data = self._cfg._load(allow_missing=True)
         if data is None or not self.section_exists(data):
             return None, None
-        key = self.option_fields[self.name]
+        key = self.option_fields[self.display_name]
         if key not in self.section(data):
-            return self.name, None
-        return self.name, self.section(data)[key] or None
+            return self.display_name, None
+        return self.display_name, self.section(data)[key] or None
 
 
 class MaaDaily(Daily):
@@ -468,7 +468,7 @@ class MaaDaily(Daily):
         """
         self._cfg = cfg
         self.script_name = script_name
-        self.name = declaration["display_name"]
+        self.display_name = declaration["display_name"]
         self.physical_name = get_physical_name(declaration)
         self._name_by_stage: dict[str, str] = {
             "Annihilation": "剿灭",
@@ -497,7 +497,7 @@ class MaaDaily(Daily):
             AssertionError: 未适配的副本（不在关卡映射里）。
         """
         assert task_name in self._stage_by_name, (
-            f"[daily][{self.name}] 未适配的副本: {task_name}"
+            f"[daily][{self.display_name}] 未适配的副本: {task_name}"
         )
         config = self._cfg._load()
         target_stage = self._stage_by_name[task_name]
@@ -529,9 +529,9 @@ class MaaDaily(Daily):
             changed |= self._borrow_slot(task_queue, target_stage)
         if changed:
             self._cfg._save(config)
-            logger.info(f"[daily][{self.name}] config 已更新")
+            logger.info(f"[daily][{self.display_name}] config 已更新")
         else:
-            logger.info(f"[daily][{self.name}] config 无需更新")
+            logger.info(f"[daily][{self.display_name}] config 无需更新")
         return changed
 
     def read(self) -> tuple[str | None, str | int | None]:
