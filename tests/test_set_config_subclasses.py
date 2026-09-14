@@ -25,9 +25,12 @@ from src.utils.utils_yaml import dump_yaml_str
 
 
 def _update(cfg, config: dict, daily_name: str, task_name: str, sequence=None) -> bool:
-    """写入：读盘打桩为 config，经 Daily.update 的 I/O 闭环（_save 由用例自行打桩）。"""
+    """写入：读盘打桩为 config、落盘吞掉——绝不写真实子脚本 config。"""
     daily = cfg._dispatch_daily(daily_name)
-    with patch.object(daily._cfg, "_load", return_value=config):
+    with (
+        patch.object(daily._cfg, "_load", return_value=config),
+        patch.object(daily._cfg, "_save"),
+    ):
         return daily.update(task_name, sequence)
 
 
