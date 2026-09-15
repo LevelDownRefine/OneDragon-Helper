@@ -292,8 +292,6 @@ class Daily:
         if data is None or not self.section_exists(data):
             return None, None  # 未安装或段未落盘：无真相
         section = self.section(data)
-        if not self.option_fields:
-            return None, None  # 无落点（NoopDaily）：无副本真相
         raw = section.get(self.task_field)
         if raw is None or raw == "":
             return None, None
@@ -357,6 +355,14 @@ class NoopDaily(Daily):
         self.task_field = None
         self.task_map: dict[str, Any] = {}
         self.option_fields: dict[str, str] = {}
+
+    def read(self) -> tuple[str | None, str | int | None]:
+        """无副本真相：不读不解析。
+
+        Returns:
+            恒为 (None, None)。
+        """
+        return None, None
 
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
         """无需适配副本选择：不读不写。
