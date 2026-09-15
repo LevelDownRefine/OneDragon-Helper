@@ -8,8 +8,11 @@
 import logging
 import os
 
-from PySide6.QtCore import QObject, Qt, QUrl, Signal, Slot
-from PySide6.QtGui import QImage, QImageReader
+from PySide6.QtCore import QBuffer, QIODevice, QObject, Qt, QUrl, Signal, Slot
+from PySide6.QtGui import QImage, QImageReader, QTransform
+
+# QML 首次传入对象前注册包装类型，否则 QVideoSink 会被包装成普通 QObject。
+from PySide6.QtMultimedia import QVideoSink
 
 from src.config.set_config import get_background_rel_path
 from src.utils.utils_sub_config import get_script_root_dir, resolve_script_path
@@ -21,7 +24,7 @@ DEFAULT_BG = "assets/ds.jpg"
 
 # 自定义壁纸缓存：用户选图时按最长边压到 WALLPAPER_MAX_SIDE 后存于
 # config/wallpaper_cache/<script_name>.jpg，resolve_bg 优先返回缓存，避免大图
-# 直接进 GPU 纹理（与 main.qml 的 sourceSize 互补）。视频壁纸不缓存。
+# 直接进 GPU 纹理（与 main.qml 的 sourceSize 互补）。视频首帧也复用此尺寸上限。
 WALLPAPER_CACHE_DIR = "config/wallpaper_cache"
 WALLPAPER_MAX_SIDE = 1920
 
@@ -43,6 +46,9 @@ class BackgroundController(QObject):
         # 默认（apply_current 会在构造末尾按选中脚本刷新，此处防首帧 undefined）
         self._bg_mode = "gradient"
         self._bg_url = ""
+        self._bg_preview_url = ""
+        self._video_cache_path = None
+        self._video_preview_attempted = False
         self._bg_version = 0  # 每次刷新背景自增，供 QML 强制重载图片（见 main.qml）
         self._grad_color = "#3a3f52"
         self._grad_char = ""
@@ -55,6 +61,10 @@ class BackgroundController(QObject):
     @property
     def background_url(self) -> str:
         return self._bg_url
+
+    @property
+    def background_preview_url(self) -> str:
+        return self._bg_preview_url
 
     @property
     def gradient_color(self) -> str:
@@ -115,7 +125,7 @@ class BackgroundController(QObject):
         if not os.path.isfile(src_path):
             return src_path  # 源图缺失：交回 resolve_bg 的 isfile 守卫，走渐变兜底
         if is_video(src_path):
-            return src_path  # 视频壁纸不缓存：直接用源路径，交 QML 播放
+            return src_path  # 视频源交 QML 播放，首帧预览另存
         return self._build_wallpaper_cache(src_path, script_name) or src_path
 
     def _build_wallpaper_cache(
@@ -191,9 +201,22 @@ class BackgroundController(QObject):
             1  # 即便 source 路径不变（换壁纸复用同缓存），也强制 QML 重载
         )
         bg_path = self.resolve_bg(game)
+        self._bg_preview_url = ""
+        self._video_cache_path = None
+        self._video_preview_attempted = False
         if bg_path and is_video(bg_path) and os.path.isfile(bg_path):
             self._bg_mode = "video"
             self._bg_url = QUrl.fromLocalFile(bg_path).toString()
+            self._video_cache_path = self._app_service.video_preview_path(bg_path)
+            if self._video_cache_path and os.path.isfile(self._video_cache_path):
+                if QImageReader(self._video_cache_path).canRead():
+                    self._bg_preview_url = QUrl.fromLocalFile(
+                        self._video_cache_path
+                    ).toString()
+                else:
+                    logger.warning(
+                        "[bg] 视频预览损坏，将重新生成：%s", self._video_cache_path
+                    )
         elif bg_path and os.path.isfile(bg_path):
             self._bg_mode = "image"
             self._bg_url = QUrl.fromLocalFile(bg_path).toString()
@@ -203,6 +226,53 @@ class BackgroundController(QObject):
         self._grad_color = game["color"]
         self._grad_char = game["char"]
         self.backgroundChanged.emit()
+
+    def video_frame_ready(self, sink: QVideoSink, version: int) -> bool:
+        """首个有效视频帧解除占位；图片编码留在 GUI，写盘交给 service。"""
+        if self._bg_mode != "video" or version != self._bg_version:
+            return False
+        assert isinstance(sink, QVideoSink)
+        frame = sink.videoFrame()
+        if not frame.isValid():
+            return False
+        if self._bg_preview_url or self._video_preview_attempted:
+            return True
+        self._video_preview_attempted = True
+        if self._video_cache_path is None:
+            return True
+        try:
+            img = frame.toImage()
+            if img.isNull():
+                logger.warning("[bg] 视频首帧转图片失败，跳过缓存")
+                return True
+            # toImage 已处理 surface format；帧本身的显示变换需另行应用。
+            img = img.transformed(QTransform().rotate(frame.rotation().value))
+            if frame.mirrored():
+                img = img.mirrored(True, False)
+            if max(img.width(), img.height()) > WALLPAPER_MAX_SIDE:
+                img = img.scaled(
+                    WALLPAPER_MAX_SIDE,
+                    WALLPAPER_MAX_SIDE,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation,
+                )
+            buffer = QBuffer()
+            buffer.open(QIODevice.WriteOnly)
+            if not img.save(buffer, "JPG", quality=90):
+                logger.warning("[bg] 视频首帧编码失败，跳过缓存")
+                return True
+            saved = self._app_service.save_video_preview(
+                QUrl(self._bg_url).toLocalFile(),
+                self._video_cache_path,
+                bytes(buffer.data()),
+            )
+        except MemoryError as e:
+            logger.warning("[bg] 视频首帧缓存失败(%s)，继续播放", type(e).__name__)
+            return True
+        if saved:
+            self._bg_preview_url = QUrl.fromLocalFile(self._video_cache_path).toString()
+            self.backgroundChanged.emit()
+        return True
 
     @Slot()
     def open_wallpaper(self):
@@ -240,12 +310,12 @@ class BackgroundController(QObject):
 
     @Slot(str)
     def videoError(self, reason: str):
-        """视频背景解码失败时回退渐变。
+        """视频背景解码失败时保留预览图，无缓存则回退渐变。
 
         Args:
             reason: QML MediaPlayer 上报的错误描述。
         """
         logger.warning("[qml] 视频背景不可用，回退：%s", reason or "媒体解码错误")
-        self._bg_mode = "gradient"
-        self._bg_url = ""
+        self._bg_mode = "image" if self._bg_preview_url else "gradient"
+        self._bg_url = self._bg_preview_url
         self.backgroundChanged.emit()

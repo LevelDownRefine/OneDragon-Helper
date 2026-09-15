@@ -8,35 +8,46 @@ import OneDragonHelper 1.0
 Item {
     id: videoBg
     anchors.fill: parent
+    property url backgroundUrl
+    property int backgroundVersion
+    property bool frameReady: false
 
     MediaPlayer {
         id: player
+        objectName: "wallpaperPlayer"
         videoOutput: output
-        source: Bridge.backgroundMode === "video" ? Bridge.backgroundUrl : ""
+        source: videoBg.backgroundUrl
         loops: MediaPlayer.Infinite
-        onErrorOccurred: (error, errorString) => Bridge.videoError(errorString)
-        onSourceChanged: {
-            if (source !== "") {
-                console.log("[bg] video source set:", source)
-                startTimer.restart()
-            }
+        onErrorOccurred: (error, errorString) => {
+            if (Bridge.backgroundMode === "video"
+                    && Bridge.backgroundVersion === videoBg.backgroundVersion)
+                Bridge.videoError(errorString)
         }
     }
 
     VideoOutput {
         id: output
+        objectName: "wallpaperVideoOutput"
         anchors.fill: parent
         fillMode: VideoOutput.PreserveAspectCrop
+    }
+
+    Connections {
+        target: output.videoSink
+        enabled: !videoBg.frameReady
+        function onVideoFrameChanged() {
+            videoBg.frameReady = Bridge.videoFrameReady(
+                output.videoSink, videoBg.backgroundVersion)
+        }
     }
 
     // 源就绪 500ms 后再 play，避开窗口显示阶段（避免启动即解码卡 UI）
     Timer {
         id: startTimer
+        objectName: "wallpaperStartTimer"
         interval: 500
         repeat: false
-        onTriggered: {
-            console.log("[bg] starting video playback")
-            player.play()
-        }
+        running: true
+        onTriggered: player.play()
     }
 }

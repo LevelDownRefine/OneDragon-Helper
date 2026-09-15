@@ -115,6 +115,11 @@ class QmlBridge(QObject):
     backgroundUrl = Property(
         str, lambda self: self.background.background_url, notify=backgroundChanged
     )
+    backgroundPreviewUrl = Property(
+        str,
+        lambda self: self.background.background_preview_url,
+        notify=backgroundChanged,
+    )
     backgroundVersion = Property(
         int, lambda self: self.background.background_version, notify=backgroundChanged
     )
@@ -299,6 +304,10 @@ class QmlBridge(QObject):
     @Slot(str)
     def videoError(self, reason):
         self.background.videoError(reason)
+
+    @Slot(QObject, int, result=bool)
+    def videoFrameReady(self, sink, version):
+        return self.background.video_frame_ready(sink, version)
 
     @Slot()
     def openWallpaper(self):

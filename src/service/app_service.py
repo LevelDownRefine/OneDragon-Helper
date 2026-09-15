@@ -49,7 +49,12 @@ from src.utils.utils_runner import (
     collect_invalid_script_messages,
     run_chain_command,
 )
-from src.utils.utils_wallpaper import load_wallpapers, save_wallpapers
+from src.utils.utils_wallpaper import (
+    load_wallpapers,
+    save_video_preview,
+    save_wallpapers,
+    video_preview_path,
+)
 from src.utils.utils_weekly import (
     check_weekly,
     get_weekly_start,
@@ -236,6 +241,16 @@ class AppService:
     def save_wallpapers(self, wallpapers: dict) -> None:
         """原子写回壁纸表。"""
         return save_wallpapers(wallpapers)
+
+    def video_preview_path(self, source_path: str) -> str | None:
+        """定位当前视频版本的首帧缓存。"""
+        return video_preview_path(source_path)
+
+    def save_video_preview(
+        self, source_path: str, cache_path: str, data: bytes
+    ) -> bool:
+        """保存 GUI 编码的首帧，失败不影响播放。"""
+        return save_video_preview(source_path, cache_path, data)
 
     def generate_chain(
         self,

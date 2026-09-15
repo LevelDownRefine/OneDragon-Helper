@@ -17,19 +17,11 @@ Window {
     visible: true
     title: "OneDragon-Helper · 游戏自动化调度器"
     readonly property int cornerRadius: Layout.windowCornerRadius
+    readonly property bool videoFrameReady: videoBgLoader.item !== null
+        && videoBgLoader.loadedVersion === Bridge.backgroundVersion
+        && videoBgLoader.item.frameReady
 
     // ═══════════════ 背景层（最底）═══════════════
-    // 视频背景：Loader 按文件路径懒加载 VideoBackground.qml。
-    // main.qml 本体不引用 QtMultimedia 类型——MediaPlayer 类型注册在部分
-    // 环境/进程下不稳定（Type unavailable），隔离到子组件后 main.qml 解析
-    // 完全稳定；视频层失败只影响背景视频，UI 不受影响。
-    Loader {
-        id: videoBgLoader
-        anchors.fill: parent
-        visible: status === Loader.Ready
-        source: Bridge.backgroundMode === "video" ? "background.qml" : ""
-    }
-
     // 图片背景（cover 裁剪）
     // sourceSize 约束解码尺寸：按显示区实际像素（含高分屏 DPR）解码，
     // 避免大图整体上传为 GPU 纹理触发 GL_MAX_TEXTURE_SIZE 降采样而发糊；
@@ -38,22 +30,26 @@ Window {
     // 强制 Image 重新读盘（QML 按 source 字符串缓存，否则不重载）。
     Image {
         id: bgImage
+        objectName: "wallpaperImage"
         anchors.fill: parent
         fillMode: Image.PreserveAspectCrop
         mipmap: true
         sourceSize.width: root.width * Screen.devicePixelRatio
         sourceSize.height: root.height * Screen.devicePixelRatio
-        visible: Bridge.backgroundMode === "image"
-        source: Bridge.backgroundMode === "image"
-               ? Bridge.backgroundUrl + "#v" + Bridge.backgroundVersion
-               : ""
+        // 预览始终垫在视频下方，收到帧与实际绘制之间也不会露出黑底。
+        visible: Bridge.backgroundMode === "image" || Bridge.backgroundMode === "video"
+        readonly property string imageUrl: Bridge.backgroundMode === "image"
+            ? Bridge.backgroundUrl : Bridge.backgroundPreviewUrl
+        source: imageUrl ? imageUrl + "#v" + Bridge.backgroundVersion : ""
     }
 
     // 渐变兜底（游戏主色 → 深色 + 中央水印字）
     Rectangle {
         id: bgGradient
+        objectName: "wallpaperGradient"
         anchors.fill: parent
         visible: Bridge.backgroundMode === "gradient"
+            || (Bridge.backgroundMode === "video" && bgImage.status !== Image.Ready)
         gradient: Gradient {
             GradientStop { position: 0.0; color: Bridge.gradientColor }
             GradientStop { position: 1.0; color: Theme.canvas }
@@ -64,6 +60,40 @@ Window {
             color: Qt.rgba(1, 1, 1, 0.06)
             font.pixelSize: 320
             font.weight: Font.Bold
+        }
+    }
+
+    // 视频背景：Loader 按文件路径懒加载 VideoBackground.qml。
+    // main.qml 本体不引用 QtMultimedia 类型——MediaPlayer 类型注册在部分
+    // 环境/进程下不稳定（Type unavailable），隔离到子组件后 main.qml 解析
+    // 完全稳定；视频层失败只影响背景视频，UI 不受影响。
+    Loader {
+        id: videoBgLoader
+        objectName: "videoBackgroundLoader"
+        anchors.fill: parent
+        visible: root.videoFrameReady
+        active: false
+        property int loadedVersion: -1
+
+        function refresh() {
+            const wantsVideo = Bridge.backgroundMode === "video"
+            if (loadedVersion === Bridge.backgroundVersion && active === wantsVideo)
+                return
+            // 每次换壁纸使用独立播放器，迟到的旧帧不能解除新视频的占位。
+            active = false
+            loadedVersion = Bridge.backgroundVersion
+            if (wantsVideo) {
+                setSource("background.qml", {
+                    backgroundUrl: Bridge.backgroundUrl,
+                    backgroundVersion: Bridge.backgroundVersion
+                })
+                active = true
+            }
+        }
+        Component.onCompleted: refresh()
+        Connections {
+            target: Bridge
+            function onBackgroundChanged() { videoBgLoader.refresh() }
         }
     }
 

@@ -1,10 +1,11 @@
 """自定义壁纸表（config/wallpaper.json）读写（无 Qt 依赖）。
 
 持久化「脚本唯一标识 → 自定义壁纸路径」映射。壁纸缓存图（wallpaper_cache/）
-的生成属 GUI 渲染关注点（Qt 依赖），由 src.gui.controllers.background 负责，
-不在本模块。
+的编码属 GUI 渲染关注点（Qt 依赖），由 src.gui.controllers.background 负责；
+本模块负责视频首帧缓存的定位与落盘。
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -56,3 +57,37 @@ def save_wallpapers(wallpapers: dict) -> None:
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(wallpapers, f, ensure_ascii=False, indent=2)
     os.replace(tmp_path, path)
+
+
+def video_preview_path(source_path: str) -> str | None:
+    """按视频路径、大小与修改时间定位首帧缓存；源文件不可读时跳过。"""
+    try:
+        stat = os.stat(source_path)
+    except OSError as e:
+        logger.warning("[wallpaper] 视频缓存源不可读(%s)：%s", type(e).__name__, e)
+        return None
+    identity = json.dumps(
+        [os.path.normcase(os.path.abspath(source_path)), stat.st_size, stat.st_mtime_ns]
+    )
+    key = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return os.path.join(
+        os.path.dirname(get_wallpaper_json_path_under_root()),
+        "wallpaper_cache",
+        f"video_{key}.jpg",
+    )
+
+
+def save_video_preview(source_path: str, cache_path: str, data: bytes) -> bool:
+    """原子保存 GUI 编码的首帧；视频在解码期间被替换则放弃缓存。"""
+    if video_preview_path(source_path) != cache_path:
+        logger.warning("[wallpaper] 视频源已变化，跳过首帧缓存：%s", source_path)
+        return False
+    try:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path + ".tmp", "wb") as f:
+            f.write(data)
+        os.replace(cache_path + ".tmp", cache_path)
+    except OSError as e:
+        logger.warning("[wallpaper] 视频缓存写入失败(%s)：%s", type(e).__name__, e)
+        return False
+    return True

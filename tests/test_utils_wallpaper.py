@@ -4,9 +4,15 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from src.utils.utils_wallpaper import load_wallpapers, save_wallpapers
+from src.utils.utils_wallpaper import (
+    load_wallpapers,
+    save_video_preview,
+    save_wallpapers,
+    video_preview_path,
+)
 
 
 class UtilsWallpaperTestBase(unittest.TestCase):
@@ -86,6 +92,52 @@ class TestModuleUsesRealPathConvention(unittest.TestCase):
             .replace("\\", "/")
             .endswith("config/wallpaper.json")
         )
+
+
+class TestVideoPreview(UtilsWallpaperTestBase):
+    def setUp(self):
+        super().setUp()
+        self.video = Path(self.tmp_dir.name) / "clip.mp4"
+        self.video.write_bytes(b"video")
+        self.cache = video_preview_path(str(self.video))
+
+    def test_same_video_reuses_atomic_cache(self):
+        self.assertTrue(save_video_preview(str(self.video), self.cache, b"jpeg"))
+        self.assertEqual(video_preview_path(str(self.video)), self.cache)
+        self.assertEqual(Path(self.cache).read_bytes(), b"jpeg")
+        self.assertFalse(Path(self.cache + ".tmp").exists())
+
+    def test_source_path_size_and_mtime_each_invalidate_cache(self):
+        other = self.video.with_name("other.mp4")
+        other.write_bytes(self.video.read_bytes())
+        stat = self.video.stat()
+        os.utime(other, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        self.assertNotEqual(video_preview_path(str(other)), self.cache)
+        os.utime(self.video, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10_000_000))
+        self.assertNotEqual(video_preview_path(str(self.video)), self.cache)
+        self.video.write_bytes(b"longer video")
+        os.utime(self.video, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        self.assertNotEqual(video_preview_path(str(self.video)), self.cache)
+
+    def test_replaced_source_rejects_pending_frame(self):
+        self.video.write_bytes(b"replacement")
+        with self.assertLogs("src.utils.utils_wallpaper", level="WARNING"):
+            self.assertFalse(save_video_preview(str(self.video), self.cache, b"old"))
+        self.assertFalse(Path(self.cache).exists())
+
+    def test_missing_source_skips_cache(self):
+        self.video.unlink()
+        with self.assertLogs("src.utils.utils_wallpaper", level="WARNING"):
+            self.assertIsNone(video_preview_path(str(self.video)))
+
+    def test_write_failure_preserves_previous_image(self):
+        save_video_preview(str(self.video), self.cache, b"previous")
+        with (
+            patch("src.utils.utils_wallpaper.os.replace", side_effect=PermissionError),
+            self.assertLogs("src.utils.utils_wallpaper", level="WARNING"),
+        ):
+            self.assertFalse(save_video_preview(str(self.video), self.cache, b"new"))
+        self.assertEqual(Path(self.cache).read_bytes(), b"previous")
 
 
 if __name__ == "__main__":
