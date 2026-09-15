@@ -1,7 +1,7 @@
 """一个日常：由 daily_task_list.yml 声明解析出的落点与读写规则。
 
 持有所属 ScriptConfig（``_cfg``）完成「读盘 → 改内存 → 有改动才落盘」。
-声明形态与读写机制由机制类负责：基类解析标准两层，``SegmentedDaily`` 单层带
+声明形态与读写机制由机制类负责：基类解析标准两层，``Anomaly`` 单层带
 ``key``，``MaaDaily`` TaskQueue，``NoopDaily`` 无需适配。
 """
 
@@ -54,11 +54,23 @@ class Daily:
         self.script_name = script_name
         self.display_name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
+        self._parse_landing(declaration)
+
+    def _parse_landing(self, declaration: dict) -> None:
+        """解析标准两层落点；其它形态的机制类覆写本方法。
+
+        Args:
+            declaration: ``daily_task_list.yml`` 里该日常的声明节点。
+
+        Raises:
+            AssertionError: 未声明选项，或顶层无 ``key`` 时各一级项的
+                二级 key 不唯一。
+        """
         options = get_options(declaration)
-        assert options, f"{script_name}/{self.physical_name} 必须声明选项"
+        assert options, f"{self.script_name}/{self.physical_name} 必须声明选项"
         layered = ["options" in option for option in options]
         assert all(layered), (
-            f"{script_name}/{self.physical_name} 的选项是单层形态，"
+            f"{self.script_name}/{self.physical_name} 的选项是单层形态，"
             "标准两层日常不适用（为该脚本选择匹配的机制类）"
         )
         keys = {option["options"]["key"] for option in options}
@@ -239,20 +251,8 @@ class Daily:
 class NoopDaily(Daily):
     """无需适配副本的日常（绝区零/崩铁）：声明无落点，跳过解析，不读不写。"""
 
-    def __init__(
-        self, script_name: str, declaration: dict, cfg: "ScriptConfig"
-    ) -> None:
-        """只取名字，不解析选项。
-
-        Args:
-            script_name: 所属脚本标识名。
-            declaration: 该日常的声明节点。
-            cfg: 所属 ScriptConfig（本实现不做 I/O）。
-        """
-        self._cfg = cfg
-        self.script_name = script_name
-        self.display_name = declaration["display_name"]
-        self.physical_name = get_physical_name(declaration)
+    def _parse_landing(self, declaration: dict) -> None:
+        """无落点：不解析选项，仅置空通用字段。"""
         self.task_field = None
         self.task_map: dict[str, Any] = {}
         self.option_fields: dict[str, str] = {}
@@ -271,11 +271,11 @@ class NoopDaily(Daily):
         return False
 
 
-class SegmentedDaily(Daily):
+class Anomaly(Daily):
     """数据在自己那段、开关在第二份文件里的日常（异环的两个日常）。
 
     段名与 Routine Items 的 id 都取本日常声明的物理名；选完副本顺带启用自己那条，
-    另一个日常的开关不动。单层带 ``key`` 的形态由 ``AnomalyHunterDaily`` 解析。
+    另一个日常的开关不动。单层带 ``key`` 的形态由 ``AnomalyHunter`` 解析。
     """
 
     def read_enabled(self) -> bool | None:
@@ -364,31 +364,20 @@ class SegmentedDaily(Daily):
         return self.physical_name in config
 
 
-class AnomalyHunterDaily(SegmentedDaily):
+class AnomalyHunter(Anomaly):
     """追猎目标：单层带 ``key`` 的分段日常，解析与反读覆写为单层形态。"""
 
-    def __init__(
-        self, script_name: str, declaration: dict, cfg: "ScriptConfig"
-    ) -> None:
+    def _parse_landing(self, declaration: dict) -> None:
         """解析单层带 ``key`` 的声明：整组自身即唯一一级项，展示名用日常名。
-
-        Args:
-            script_name: 所属脚本标识名。
-            declaration: 该日常的声明节点。
-            cfg: 所属 ScriptConfig。
 
         Raises:
             AssertionError: 未声明选项或未声明 ``key``。
         """
-        self._cfg = cfg
-        self.script_name = script_name
-        self.display_name = declaration["display_name"]
-        self.physical_name = get_physical_name(declaration)
         options = get_options(declaration)
-        assert options, f"{script_name}/{self.physical_name} 必须声明选项"
+        assert options, f"{self.script_name}/{self.physical_name} 必须声明选项"
         group = declaration["options"]
         assert "key" in group, (
-            f"{script_name}/{self.physical_name} 的单层日常必须声明 key 作为落点"
+            f"{self.script_name}/{self.physical_name} 的单层日常必须声明 key 作为落点"
         )
         self.task_field = None
         self.task_map: dict[str, Any] = {}
@@ -431,20 +420,8 @@ class MaaDaily(Daily):
     task_field: str | None = None
     """无通用落点：update / read 全部覆写，跳过通用解析。"""
 
-    def __init__(
-        self, script_name: str, declaration: dict, cfg: "ScriptConfig"
-    ) -> None:
-        """解析粥日常：只取名字并建「关卡代码 ↔ 中文名」映射。
-
-        Args:
-            script_name: 所属脚本标识名。
-            declaration: 该日常的声明节点。
-            cfg: 所属 ScriptConfig。
-        """
-        self._cfg = cfg
-        self.script_name = script_name
-        self.display_name = declaration["display_name"]
-        self.physical_name = get_physical_name(declaration)
+    def _parse_landing(self, declaration: dict) -> None:
+        """不走通用落点：只建「关卡代码 ↔ 中文名」映射。"""
         self._name_by_stage: dict[str, str] = {
             "Annihilation": "剿灭",
             **{

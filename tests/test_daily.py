@@ -9,10 +9,10 @@ import unittest
 from unittest.mock import patch
 
 from src.config.daily import (
+    Anomaly,
     Daily,
     MaaDaily,
     NoopDaily,
-    SegmentedDaily,
 )
 from src.config.set_config import _CONFIGS
 from src.config.task_config import load_daily_map
@@ -55,8 +55,8 @@ class TestDispatch(unittest.TestCase):
                 self.assertIsInstance(daily, NoopDaily)
                 self.assertFalse(daily.update("任意"))
         anomaly, hunter = _CONFIGS["ok-nte"]()._build_dailies()
-        self.assertIsInstance(anomaly, SegmentedDaily)
-        self.assertIsInstance(hunter, SegmentedDaily)
+        self.assertIsInstance(anomaly, Anomaly)
+        self.assertIsInstance(hunter, Anomaly)
         self.assertEqual(anomaly.display_name, "异象界域")
         self.assertEqual(hunter.display_name, "追猎目标")
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
@@ -247,7 +247,7 @@ class TestDeclarationErrors(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "单层形态"):
             Daily("脚本", declaration, None)
         with self.assertRaisesRegex(AssertionError, "单层形态"):
-            SegmentedDaily("脚本", declaration, None)
+            Anomaly("脚本", declaration, None)
 
 
 if __name__ == "__main__":
