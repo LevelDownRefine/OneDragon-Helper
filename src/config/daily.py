@@ -6,7 +6,7 @@
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from src.config.task_config import (
     get_options,
@@ -14,9 +14,6 @@ from src.config.task_config import (
     get_value_map,
 )
 from src.utils.utils_dict import get_field, safe_update
-
-if TYPE_CHECKING:
-    from src.config.set_config import ScriptConfig
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +33,7 @@ class Daily:
     I/O 原语（``_load`` / ``_save``，含保存后回读校验）由 ``_cfg`` 提供。
     """
 
-    def __init__(
-        self, script_name: str, declaration: dict, cfg: "ScriptConfig"
-    ) -> None:
+    def __init__(self, script_name: str, declaration: dict, cfg) -> None:
         """解析一条标准两层日常声明。
 
         Args:
