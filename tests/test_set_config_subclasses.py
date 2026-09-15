@@ -8,9 +8,11 @@
 import json
 import os
 import unittest
+from contextlib import ExitStack
 from unittest.mock import MagicMock, mock_open, patch
 
 from src.config import set_config
+from src.config.daily import Daily
 from src.config.set_config import (
     ArknightsConfig,
     EndfieldConfig,
@@ -21,8 +23,31 @@ from src.config.set_config import (
     WutheringWavesConfig,
     ZenlessZoneZeroConfig,
 )
-from src.config.task_config import get_daily_configs
 from src.utils.utils_yaml import dump_yaml_str
+
+
+def _update(cfg, config: dict, daily_name: str, task_name: str, sequence=None) -> bool:
+    """写入：读盘打桩为 config、落盘吞掉——绝不写真实子脚本 config。"""
+    daily = cfg._dispatch_daily(daily_name)
+    with (
+        patch.object(daily, "_load_daily_config", return_value=config),
+        patch.object(daily, "_save_daily_config"),
+    ):
+        return daily.update(task_name, sequence)
+
+
+def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
+    """反读：经 Daily.read 的 I/O 闭环（读盘打桩由用例负责）。"""
+    return cfg._dispatch_daily(daily_name).read()
+
+
+def _bind_maa_daily(cfg, mapping: dict):
+    """把粥日常的关卡映射换成测试用的小集合（真实声明里没有这些关卡）。"""
+    daily = cfg._dispatch_daily("每日任务")
+    daily._name_by_stage = dict(mapping)
+    daily._stage_by_name = {name: stage for stage, name in mapping.items()}
+    return daily
+
 
 # ============================================================
 # 基类 ScriptConfig
@@ -32,118 +57,63 @@ from src.utils.utils_yaml import dump_yaml_str
 class TestScriptConfigBase(unittest.TestCase):
     """测试基类 _update_task / set_daily_task 的默认行为"""
 
-    def test_update_task_without_map_assigns_task_name(self):
-        """_task_map 为空时直接用 task_name 赋值"""
-        cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        cfg._task_key = "task"
-        cfg._task_map = {}
-        config = {"task": "old"}
-        changed = cfg._update_task(config, "测试日常", "new")
-        self.assertTrue(changed)
-        self.assertEqual(config["task"], "new")
-
-    def test_update_task_no_change_returns_false(self):
-        """值未变化时返回 False"""
-        cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        cfg._task_key = "task"
-        cfg._task_map = {}
-        config = {"task": "same"}
-        changed = cfg._update_task(config, "测试日常", "same")
-        self.assertFalse(changed)
-
-    def test_update_task_with_map_translates(self):
-        """_task_map 非空时做映射"""
-        cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        cfg._task_key = "task"
-        cfg._task_map = {"副本A": "TaskA"}
-        config = {"task": "old"}
-        changed = cfg._update_task(config, "测试日常", "副本A")
-        self.assertTrue(changed)
-        self.assertEqual(config["task"], "TaskA")
-
-    def test_update_task_unmapped_daily_task_raises(self):
-        """副本不在 _task_map 中应 assert"""
-        cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        cfg._task_key = "task"
-        cfg._task_map = {"副本A": "TaskA"}
-        config = {"task": "old"}
-        with self.assertRaises(AssertionError):
-            cfg._update_task(config, "测试日常", "不存在")
-
-    def test_update_task_no_task_key_raises(self):
-        """未设 _task_key 应 assert"""
-        cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        cfg._task_key = ""
-        with self.assertRaises(AssertionError):
-            cfg._update_task({}, "测试日常", "副本")
-
-    def test_update_task_config_missing_key_raises(self):
-        """config 中缺少 _task_key 字段应 assert"""
-        cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        cfg._task_key = "task"
-        cfg._task_map = {}
-        with self.assertRaises(AssertionError):
-            cfg._update_task({}, "测试日常", "副本")
-
-    def test_update_task_rejects_sequence(self):
-        """基类默认 _update_task 不接受非 None 的 sequence"""
-        cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        with self.assertRaises(AssertionError):
-            cfg._update_task({}, "测试日常", "副本", "序列")
-
-    def test_daily_physical_name_on_base(self):
-        """日常展示名 → 物理名 的换算在基类上（非异环专属）：单日常脚本同样可用。"""
+    def test_set_daily_task_unknown_daily_raises(self):
+        """日常展示名不在声明里 → assert（落点全部由声明推导，认不出即报）。"""
         cfg = WutheringWavesConfig()
-        daily = next(iter(get_daily_configs(cfg._script_name).values()))
-        # 单日常脚本未声明 physical_name → 物理名回落展示名
-        self.assertEqual(cfg._daily_physical_name(daily["name"]), daily["name"])
-        with self.assertRaisesRegex(AssertionError, "缺少日常声明"):
-            cfg._daily_physical_name("不存在的日常")
+        with (
+            patch.object(Daily, "_load_daily_config", return_value={}),
+            self.assertRaisesRegex(AssertionError, "未知日常"),
+        ):
+            cfg.set_daily_task("不存在的日常", "凝素领域", 3)
+
+    def test_set_task_changed_saves(self):
+        """set_daily_task 有修改时应（按声明落点）落盘"""
+        cfg = WutheringWavesConfig()
+        with (
+            patch.object(
+                Daily, "_load_daily_config", return_value={"Which to Farm": "old"}
+            ),
+            patch.object(Daily, "_save_daily_config") as mock_save,
+        ):
+            cfg.set_daily_task("每日任务", "凝素领域", 3)
+        self.assertEqual(
+            mock_save.call_args[0][0],
+            {
+                "Which to Farm": "Forgery Challenge",
+                "Which Forgery Challenge to Farm": 3,
+            },
+        )
+
+    def test_set_daily_task_unchanged_no_save(self):
+        """set_daily_task 无修改时不调用 _save"""
+        cfg = WutheringWavesConfig()
+        current = {
+            "Which to Farm": "Forgery Challenge",
+            "Which Forgery Challenge to Farm": 3,
+        }
+        with (
+            patch.object(Daily, "_load_daily_config", return_value=current),
+            patch.object(Daily, "_save_daily_config") as mock_save,
+        ):
+            cfg.set_daily_task("每日任务", "凝素领域", 3)
+        mock_save.assert_not_called()
+
+    def test_daily_physical_name_available_on_base(self):
+        """日常对象在基类可取（非异环专属）：单日常脚本亦然，物理名回落展示名。"""
+        cfg = WutheringWavesConfig()
+        self.assertEqual(cfg._dispatch_daily("每日任务").physical_name, "每日任务")
+        with self.assertRaisesRegex(AssertionError, "未知日常"):
+            cfg._dispatch_daily("不存在的日常")
 
     def test_set_daily_task_without_daily_raises(self):
         """写路径必须给出日常展示名（单日常脚本也不例外）。"""
         cfg = ScriptConfig()
         cfg.display_name = "测试"
-        cfg._task_key = "task"
-        cfg._task_map = {}
         with (
-            patch.object(cfg, "_load", return_value={"task": "old"}),
+            patch.object(Daily, "_load_daily_config", return_value={"task": "old"}),
             self.assertRaisesRegex(AssertionError, "必须指定日常"),
         ):
             cfg.set_daily_task(None, "new")
-
-    def test_set_task_changed_saves(self):
-        """set_daily_task 有修改时应调用 _save"""
-        cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        cfg._task_key = "task"
-        cfg._task_map = {}
-        with (
-            patch.object(cfg, "_load", return_value={"task": "old"}),
-            patch.object(cfg, "_save") as mock_save,
-        ):
-            cfg.set_daily_task("测试日常", "new")
-        mock_save.assert_called_once_with({"task": "new"})
-
-    def test_set_daily_task_unchanged_no_save(self):
-        """set_daily_task 无修改时不调用 _save"""
-        cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        cfg._task_key = "task"
-        cfg._task_map = {}
-        with (
-            patch.object(cfg, "_load", return_value={"task": "same"}),
-            patch.object(cfg, "_save") as mock_save,
-        ):
-            cfg.set_daily_task("测试日常", "same")
-        mock_save.assert_not_called()
 
 
 # ============================================================
@@ -161,40 +131,25 @@ class TestVerifySaved(unittest.TestCase):
         return cfg
 
     def test_save_round_trip_verifies_ok(self):
-        """_save 写盘后重读一致，不抛异常且按预期调用 save_config"""
+        """_save_weekly_config 写盘后重读一致，不抛异常且按预期调用 save_config"""
         cfg = self._make_cfg()
         sample = {"k": "v", "n": 1}
         with (
-            patch.object(cfg, "_load", return_value=sample),
+            patch.object(cfg, "_load_weekly_config", return_value=sample),
             patch("src.config.set_config.save_config") as mock_save,
         ):
-            cfg._save(sample)  # 不应抛异常
+            cfg._save_weekly_config(sample)  # 不应抛异常
         mock_save.assert_called_once_with("测试", "", sample)
 
     def test_save_mismatch_raises(self):
-        """_save 后重读内容不一致应 assert"""
+        """保存后重读内容不一致应 assert"""
         cfg = self._make_cfg()
         with (
-            patch.object(cfg, "_load", return_value={"k": "different"}),
+            patch.object(cfg, "_load_weekly_config", return_value={"k": "different"}),
             patch("src.config.set_config.save_config"),
             self.assertRaises(AssertionError),
         ):
-            cfg._save({"k": "expected"})
-
-    def test_verify_saved_equal_ok(self):
-        """_verify_saved 重读等于预期时不抛异常"""
-        cfg = self._make_cfg()
-        with patch.object(cfg, "_load", return_value={"a": 1}):
-            cfg._verify_saved({"a": 1})
-
-    def test_verify_saved_not_equal_raises(self):
-        """_verify_saved 重读不等于预期时 assert"""
-        cfg = self._make_cfg()
-        with (
-            patch.object(cfg, "_load", return_value={"a": 2}),
-            self.assertRaises(AssertionError),
-        ):
-            cfg._verify_saved({"a": 1})
+            cfg._save_weekly_config({"k": "expected"})
 
 
 # ============================================================
@@ -209,14 +164,15 @@ class TestWutheringWavesConfig(unittest.TestCase):
     def test_init_attributes(self):
         self.assertEqual(self.cfg.display_name, "鸣潮")
         self.assertEqual(self.cfg._script_name, "ok-ww")
-        self.assertEqual(self.cfg._task_key, "Which to Farm")
-        self.assertIn("凝素领域", self.cfg._task_map)
-        self.assertIn("模拟领域", self.cfg._task_map)
-        self.assertIn("无音区", self.cfg._task_map)
+        daily = self.cfg._dispatch_daily("每日任务")
+        self.assertEqual(daily.task_field, "Which to Farm")
+        self.assertIn("凝素领域", daily.task_map)
+        self.assertIn("模拟领域", daily.task_map)
+        self.assertIn("无音区", daily.task_map)
 
     def test_update_task_maps_task(self):
         config = {"Which to Farm": "old", "Which Tacet Suppression to Farm": 1}
-        changed = self.cfg._update_task(config, "每日任务", "无音区", 3)
+        changed = _update(self.cfg, config, "每日任务", "无音区", 3)
         self.assertTrue(changed)
         self.assertEqual(config["Which to Farm"], "Tacet Suppression")
 
@@ -224,7 +180,7 @@ class TestWutheringWavesConfig(unittest.TestCase):
 
     def test_update_sequence_simulation(self):
         config = {"Which to Farm": "Simulation Challenge", "Material Selection": "old"}
-        changed = self.cfg._update_task(config, "每日任务", "模拟领域", "共鸣者经验")
+        changed = _update(self.cfg, config, "每日任务", "模拟领域", "共鸣者经验")
         self.assertTrue(changed)
         self.assertEqual(config["Material Selection"], "Resonator EXP")
 
@@ -233,13 +189,13 @@ class TestWutheringWavesConfig(unittest.TestCase):
             "Which to Farm": "Simulation Challenge",
             "Material Selection": "Weapon EXP",
         }
-        changed = self.cfg._update_task(config, "每日任务", "模拟领域", "武器经验")
+        changed = _update(self.cfg, config, "每日任务", "模拟领域", "武器经验")
         self.assertFalse(changed)
 
     def test_update_sequence_simulation_unknown_raises(self):
         config = {"Which to Farm": "Simulation Challenge", "Material Selection": "old"}
         with self.assertRaises(AssertionError):
-            self.cfg._update_task(config, "每日任务", "模拟领域", "不存在")
+            _update(self.cfg, config, "每日任务", "模拟领域", "不存在")
 
     # ---- _update_task: 无音区 ----
 
@@ -248,7 +204,7 @@ class TestWutheringWavesConfig(unittest.TestCase):
             "Which to Farm": "Tacet Suppression",
             "Which Tacet Suppression to Farm": 1,
         }
-        changed = self.cfg._update_task(config, "每日任务", "无音区", 3)
+        changed = _update(self.cfg, config, "每日任务", "无音区", 3)
         self.assertTrue(changed)
         self.assertEqual(config["Which Tacet Suppression to Farm"], 3)
 
@@ -257,7 +213,7 @@ class TestWutheringWavesConfig(unittest.TestCase):
             "Which to Farm": "Tacet Suppression",
             "Which Tacet Suppression to Farm": 2,
         }
-        changed = self.cfg._update_task(config, "每日任务", "无音区", 2)
+        changed = _update(self.cfg, config, "每日任务", "无音区", 2)
         self.assertFalse(changed)
 
     # ---- _update_task: 凝素领域 ----
@@ -267,7 +223,7 @@ class TestWutheringWavesConfig(unittest.TestCase):
             "Which to Farm": "Forgery Challenge",
             "Which Forgery Challenge to Farm": 1,
         }
-        changed = self.cfg._update_task(config, "每日任务", "凝素领域", 4)
+        changed = _update(self.cfg, config, "每日任务", "凝素领域", 4)
         self.assertTrue(changed)
         self.assertEqual(config["Which Forgery Challenge to Farm"], 4)
 
@@ -276,7 +232,7 @@ class TestWutheringWavesConfig(unittest.TestCase):
             "Which to Farm": "Forgery Challenge",
             "Which Forgery Challenge to Farm": 2,
         }
-        changed = self.cfg._update_task(config, "每日任务", "凝素领域", 2)
+        changed = _update(self.cfg, config, "每日任务", "凝素领域", 2)
         self.assertFalse(changed)
 
     # ---- _update_task: None ----
@@ -284,14 +240,14 @@ class TestWutheringWavesConfig(unittest.TestCase):
     def test_update_sequence_none_raises(self):
         config = {"Which to Farm": "Simulation Challenge"}
         with self.assertRaises(AssertionError):
-            self.cfg._update_task(config, "每日任务", "模拟领域", None)
+            _update(self.cfg, config, "每日任务", "模拟领域", None)
 
     # ---- _update_task: 未知副本类型 ----
 
     def test_update_sequence_unknown_daily_task_type_raises(self):
         config = {"Which to Farm": "Unknown Type"}
         with self.assertRaises(AssertionError):
-            self.cfg._update_task(config, "每日任务", "未知", "1")
+            _update(self.cfg, config, "每日任务", "未知", "1")
 
     # ---- set_daily_task 集成 ----
 
@@ -301,8 +257,8 @@ class TestWutheringWavesConfig(unittest.TestCase):
             "Which Forgery Challenge to Farm": 1,
         }
         with (
-            patch.object(self.cfg, "_load", return_value=config),
-            patch.object(self.cfg, "_save") as mock_save,
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             self.cfg.set_daily_task("每日任务", "凝素领域", 3)
         mock_save.assert_called_once()
@@ -326,7 +282,7 @@ class TestGenshinConfig(unittest.TestCase):
             cfg = GenshinConfig()
         self.assertEqual(cfg.display_name, "原神")
         self.assertEqual(cfg._script_name, "BetterGI")
-        self.assertEqual(cfg._task_key, "DomainName")
+        self.assertEqual(cfg._dispatch_daily("每日任务").task_field, "DomainName")
 
     def test_init_config_aligned_no_save(self):
         """config 与模板对齐（含模板外的自定义 key）时不保存"""
@@ -340,10 +296,10 @@ class TestGenshinConfig(unittest.TestCase):
             "PartyName": "队伍B",  # 模板外的用户自定义 key，不应被改动
         }
         with (
-            patch.object(GenshinConfig, "_load", return_value=config),
+            patch.object(set_config, "load_config", return_value=config),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch.object(GenshinConfig, "_save") as mock_save,
+            patch("src.config.set_config.save_config") as mock_save,
         ):
             cfg = GenshinConfig()
             cfg._init_config()
@@ -361,15 +317,15 @@ class TestGenshinConfig(unittest.TestCase):
             "ExtraKey": 1,  # 模板无 → 保留
         }
         with (
-            patch.object(GenshinConfig, "_load", return_value=config),
+            patch.object(set_config, "load_config", return_value=config),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch.object(GenshinConfig, "_save") as mock_save,
+            patch("src.config.set_config.save_config") as mock_save,
         ):
             cfg = GenshinConfig()
             cfg._init_config()
         mock_save.assert_called_once()
-        saved = mock_save.call_args[0][0]
+        saved = mock_save.call_args[0][2]
         # 不一致项被模板值覆盖
         self.assertEqual(saved["TaskEnabledList"], {"领取邮件": True})
         self.assertEqual(saved["CompletionAction"], "关闭游戏")
@@ -379,26 +335,26 @@ class TestGenshinConfig(unittest.TestCase):
     def test_init_config_missing_config_is_noop(self):
         """config 缺失（首次写入前）时 _init_config 不崩溃、不写盘。"""
         with (
-            patch.object(GenshinConfig, "_load", return_value=None),
+            patch.object(set_config, "load_config", return_value=None),
             patch.object(GenshinConfig, "_load_template") as mock_template,
-            patch.object(GenshinConfig, "_save") as mock_save,
+            patch("src.config.set_config.save_config") as mock_save,
         ):
             cfg = GenshinConfig()
             cfg._init_config()
         mock_template.assert_not_called()
         mock_save.assert_not_called()
 
-    def test_update_task_uses_task_name_directly(self):
-        """原神 _task_map 为空，直接用 task_name"""
+    def test_update_task_writes_shared_field(self):
+        """原神两级共用 DomainName：无二级时写入一级项名。"""
         with (
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data="{}")),
         ):
             cfg = GenshinConfig()
         config = {"DomainName": "旧本"}
-        changed = cfg._update_task(config, "每日任务", "新本")
+        changed = _update(cfg, config, "每日任务", "圣遗物")
         self.assertTrue(changed)
-        self.assertEqual(config["DomainName"], "新本")
+        self.assertEqual(config["DomainName"], "圣遗物")
 
 
 # ============================================================
@@ -412,29 +368,28 @@ class TestEndfieldConfig(unittest.TestCase):
             cfg = EndfieldConfig()
         self.assertEqual(cfg.display_name, "终末地")
         self.assertEqual(cfg._script_name, "ok-ef")
-        self.assertEqual(cfg._task_key, "体力本")
-        self.assertEqual(cfg._task_map, {})
+        self.assertEqual(cfg._dispatch_daily("每日任务").task_field, "体力本")
         self.assertEqual(cfg._template_rel_path, "okef一条龙.json")
 
-    def test_update_task_direct_assign(self):
-        """终末地 _task_map 为空，直接用 task_name"""
+    def test_update_task_writes_shared_field(self):
+        """终末地两级共用 体力本：无二级时写入一级项名。"""
         with patch.object(EndfieldConfig, "_init_config"):
             cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
-        changed = cfg._update_task(config, "每日任务", "新本")
+        changed = _update(cfg, config, "每日任务", "干员养成")
         self.assertTrue(changed)
-        self.assertEqual(config["体力本"], "新本")
+        self.assertEqual(config["体力本"], "干员养成")
 
     def test_set_daily_task_no_sequence(self):
         with patch.object(EndfieldConfig, "_init_config"):
             cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config") as mock_save,
         ):
-            cfg.set_daily_task("每日任务", "新本")
-        mock_save.assert_called_once_with({"体力本": "新本"})
+            cfg.set_daily_task("每日任务", "干员养成")
+        mock_save.assert_called_once_with({"体力本": "干员养成"})
 
     def test_set_daily_task_with_sequence_writes_second_level(self):
         """终末地副本按「类型 → 副本」两级组织（假一级目录）：写入的是二级副本名。"""
@@ -442,8 +397,8 @@ class TestEndfieldConfig(unittest.TestCase):
             cfg = EndfieldConfig()
         config = {"体力本": "旧本"}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "能量淤积点", sequence="枢纽区")
         mock_save.assert_called_once_with({"体力本": "枢纽区"})
@@ -455,8 +410,8 @@ class TestEndfieldConfig(unittest.TestCase):
         for enabled, expected in ((True, False), (False, True)):
             config = {"只买不卖": not expected}
             with (
-                patch.object(cfg, "_load", return_value=config),
-                patch.object(cfg, "_save") as mock_save,
+                patch.object(cfg, "_load_weekly_config", return_value=config),
+                patch.object(cfg, "_save_weekly_config") as mock_save,
                 patch(
                     "src.config.set_config.is_weekly_start_reached",
                     return_value=enabled,
@@ -475,10 +430,10 @@ class TestEndfieldConfig(unittest.TestCase):
             "体力本": "旧本",  # 模板外的用户自定义 key
         }
         with (
-            patch.object(EndfieldConfig, "_load", return_value=config),
+            patch.object(set_config, "load_config", return_value=config),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch.object(EndfieldConfig, "_save") as mock_save,
+            patch("src.config.set_config.save_config") as mock_save,
         ):
             cfg = EndfieldConfig()
             cfg._init_config()
@@ -493,15 +448,15 @@ class TestEndfieldConfig(unittest.TestCase):
             "ExtraKey": 1,  # 模板无 → 保留
         }
         with (
-            patch.object(EndfieldConfig, "_load", return_value=config),
+            patch.object(set_config, "load_config", return_value=config),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch.object(EndfieldConfig, "_save") as mock_save,
+            patch("src.config.set_config.save_config") as mock_save,
         ):
             cfg = EndfieldConfig()
             cfg._init_config()
         mock_save.assert_called_once()
-        saved = mock_save.call_args[0][0]
+        saved = mock_save.call_args[0][2]
         self.assertEqual(saved["购物白名单"], ["精锻"])
         self.assertEqual(saved["是否买礼物"], False)
         self.assertEqual(saved["ExtraKey"], 1)
@@ -516,15 +471,15 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
     def test_init_attributes(self):
         template = {"plan_list": [], "double_reward": False}
         with (
-            patch.object(ZenlessZoneZeroConfig, "_load", return_value=template),
+            patch.object(set_config, "load_config", return_value=template),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
-            patch.object(ZenlessZoneZeroConfig, "_save"),
+            patch("src.config.set_config.save_config"),
         ):
             cfg = ZenlessZoneZeroConfig()
         self.assertEqual(cfg.display_name, "绝区零")
         self.assertEqual(cfg._script_name, "OneDragon-Launcher")
-        self.assertEqual(cfg._task_key, "")
+        self.assertFalse(cfg._dispatch_daily("每日任务").option_fields, "日常无落点")
 
     def test_init_config_aligned_no_save(self):
         """config 与模板对齐时不 save"""
@@ -537,10 +492,10 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
             "double_reward": False,
         }
         with (
-            patch.object(ZenlessZoneZeroConfig, "_load", return_value=config),
+            patch.object(set_config, "load_config", return_value=config),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
-            patch.object(ZenlessZoneZeroConfig, "_save") as mock_save,
+            patch("src.config.set_config.save_config") as mock_save,
         ):
             cfg = ZenlessZoneZeroConfig()
             cfg._init_config()
@@ -558,29 +513,29 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
             "ExtraKey": 1,  # 模板无 → 保留
         }
         with (
-            patch.object(ZenlessZoneZeroConfig, "_load", return_value=config),
+            patch.object(set_config, "load_config", return_value=config),
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
-            patch.object(ZenlessZoneZeroConfig, "_save") as mock_save,
+            patch("src.config.set_config.save_config") as mock_save,
         ):
             cfg = ZenlessZoneZeroConfig()
             cfg._init_config()
         mock_save.assert_called_once()
-        saved = mock_save.call_args[0][0]
+        saved = mock_save.call_args[0][2]
         self.assertEqual(saved["plan_list"], [{"tab_name": "A", "category_name": "x"}])
         self.assertEqual(saved["double_reward"], True)
         self.assertEqual(saved["ExtraKey"], 1)
 
     def test_set_daily_task_only_prints(self):
-        """set_daily_task 应只 print 不做修改"""
+        """绝区零副本无需适配：NoopDaily.update 不读不写。"""
         with (
             patch("os.path.exists", return_value=True),
             patch("builtins.open", mock_open(read_data="{}")),
         ):
             cfg = ZenlessZoneZeroConfig()
         with (
-            patch.object(cfg, "_load") as mock_load,
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(Daily, "_load_daily_config") as mock_load,
+            patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "任何副本", "任何序列")
         mock_load.assert_not_called()
@@ -693,16 +648,17 @@ class TestStarRailConfig(unittest.TestCase):
             cfg = StarRailConfig()
             self.assertEqual(cfg.display_name, "崩铁")
             self.assertEqual(cfg._script_name, "March7th-Launcher")
-            self.assertEqual(cfg._task_key, "")
-            self.assertEqual(cfg._task_map, {})
+            self.assertFalse(
+                cfg._dispatch_daily("每日任务").option_fields, "日常无落点"
+            )
 
     def test_set_daily_task_noop_does_not_save(self):
-        """崩铁（M7A）副本无需适配：set_daily_task 是 no-op，不读不写。"""
+        """崩铁（M7A）副本无需适配：NoopDaily.update 不读不写。"""
         with patch.object(StarRailConfig, "_init_config"):
             cfg = StarRailConfig()
         with (
-            patch.object(cfg, "_load") as mock_load,
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(Daily, "_load_daily_config") as mock_load,
+            patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "培养目标")
         mock_load.assert_not_called()
@@ -714,8 +670,8 @@ class TestStarRailConfig(unittest.TestCase):
             cfg = StarRailConfig()
             config: dict = {}
             with (
-                patch.object(cfg, "_load", return_value=config),
-                patch.object(cfg, "_save") as mock_save,
+                patch.object(cfg, "_load_weekly_config", return_value=config),
+                patch.object(cfg, "_save_weekly_config") as mock_save,
             ):
                 cfg.set_weekly_task("历战余响", "铁骸的锈冢")
             mock_save.assert_called_once()
@@ -727,8 +683,8 @@ class TestStarRailConfig(unittest.TestCase):
             cfg = StarRailConfig()
             config = {"instance_names": "不是dict"}
             with (
-                patch.object(cfg, "_load", return_value=config),
-                patch.object(cfg, "_save") as mock_save,
+                patch.object(cfg, "_load_weekly_config", return_value=config),
+                patch.object(cfg, "_save_weekly_config") as mock_save,
                 self.assertRaises(AssertionError),
             ):
                 cfg.set_weekly_task("历战余响", "铁骸的锈冢")
@@ -744,8 +700,8 @@ class TestStarRailConfig(unittest.TestCase):
             cfg = StarRailConfig()
             config: dict = {"currencywars_enable": True}
             with (
-                patch.object(cfg, "_load", return_value=config),
-                patch.object(cfg, "_save") as mock_save,
+                patch.object(cfg, "_load_weekly_config", return_value=config),
+                patch.object(cfg, "_save_weekly_config") as mock_save,
             ):
                 cfg.set_weekly_start_day(4)
             mock_save.assert_called_once()
@@ -1022,61 +978,61 @@ class TestNTEConfig(unittest.TestCase):
         self.assertEqual(self.cfg.display_name, "异环")
         self.assertEqual(self.cfg._script_name, "ok-nte")
         self.assertEqual(
-            self.cfg._config_rel_path,
+            self.cfg._build_dailies()[0]._config_rel_path,
             "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json",
         )
         self.assertEqual(
-            self.cfg._routine_config_rel_path,
+            self.cfg._build_dailies()[0]._routine_rel_path,
             "data/apps/ok-nte/working/configs/DailyRoutineTask.json",
         )
-        # 日常 id 与声明顺序一致（未指定日常反读时按此顺序取靠后者）
+        # 日常对象按声明顺序给出（界面逐行呈现即按此顺序）
         self.assertEqual(
-            tuple(self.cfg._daily_tasks),
+            tuple(d.physical_name for d in self.cfg._dailies),
             ("daily_anomaly", "daily_anomaly_hunter"),
         )
 
     def test_update_sequence_changes_value(self):
         config = {"daily_anomaly": {"空幕序号": 1}}
-        changed = self.cfg._update_task(config, "异象界域", "空幕", 3)
+        changed = _update(self.cfg, config, "异象界域", "空幕", 3)
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly"]["空幕序号"], 3)
 
     def test_update_task_no_change(self):
         """任务类型与序号均已对齐时返回 False（双通道都无改动）"""
         config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 2}}
-        changed = self.cfg._update_task(config, "异象界域", "空幕", 2)
+        changed = _update(self.cfg, config, "异象界域", "空幕", 2)
         self.assertFalse(changed)
 
     def test_update_task_none_raises(self):
         """异环要求 sequence 不能为 None"""
         config = {"daily_anomaly": {"空幕序号": 1}}
         with self.assertRaises(AssertionError):
-            self.cfg._update_task(config, "异象界域", "空幕", None)
+            _update(self.cfg, config, "异象界域", "空幕", None)
 
     def test_update_task_unknown_daily_task_raises(self):
         config = {"daily_anomaly": {"未知序号": 1}}
-        with self.assertRaisesRegex(AssertionError, "无此副本"):
-            self.cfg._update_task(config, "异象界域", "不存在", "1")
+        with self.assertRaisesRegex(AssertionError, "未声明的一级项"):
+            _update(self.cfg, config, "异象界域", "不存在", "1")
 
     def test_update_task_all_mapped_tasks(self):
-        """测试 _daily_tasks[daily_anomaly].option_fields 中所有副本都能正确更新"""
-        for task_name, seq_key in self.cfg._daily_tasks["daily_anomaly"][
-            "option_fields"
-        ].items():
-            config = {"daily_anomaly": {seq_key: 0}}
-            changed = self.cfg._update_task(config, "异象界域", task_name, 5)
+        """该日常声明里的每个副本都能正确更新（二级值取该副本声明的合法值）"""
+        daily = self.cfg._dispatch_daily("异象界域")
+        for task_name, seq_key in daily.option_fields.items():
+            sequence = next(iter(daily._sequence_values[task_name].values()))
+            config = {"daily_anomaly": {}}
+            changed = _update(self.cfg, config, "异象界域", task_name, sequence)
             self.assertTrue(changed, f"{task_name} 未正确更新")
-            self.assertEqual(config["daily_anomaly"][seq_key], 5)
+            self.assertEqual(config["daily_anomaly"][seq_key], sequence)
 
     def test_update_task_without_daily_raises(self):
         """异环两个日常分段，写路径必须显式给日常（不按副本名猜）。"""
-        with self.assertRaisesRegex(AssertionError, "必须指定日常"):
-            self.cfg._update_task({"daily_anomaly": {}}, None, "空幕", 3)
+        with self.assertRaisesRegex(AssertionError, "未知日常"):
+            _update(self.cfg, {"daily_anomaly": {}}, None, "空幕", 3)
 
     def test_update_task_writes_own_daily_section(self):
         """写副本：落点由 daily_display_name 指定的日常决定。"""
         config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 1}}
-        changed = self.cfg._update_task(config, "异象界域", "空幕", 5)
+        changed = _update(self.cfg, config, "异象界域", "空幕", 5)
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly"]["空幕序号"], 5)
 
@@ -1090,23 +1046,26 @@ class TestNTEConfig(unittest.TestCase):
         }
 
     def _patch_load(self, main_config, routine):
-        """按路径区分：主配置返回 main_config，routine 配置返回 routine（模拟两份文件）。"""
-
-        def side_effect(rel_path=None, **_k):
-            if rel_path == self.cfg._routine_config_rel_path:
-                return routine
-            return main_config
-
-        return patch.object(self.cfg, "_load", side_effect=side_effect)
+        """主 config 返回 main_config，routine 开关文件返回 routine（模拟两份文件）。"""
+        stack = ExitStack()
+        stack.enter_context(
+            patch.object(Daily, "_load_daily_config", return_value=main_config)
+        )
+        stack.enter_context(
+            patch.object(Daily, "_load_routine_config", return_value=routine)
+        )
+        return stack
 
     def test_set_daily_task_with_sequence_saves(self):
         config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 1}}
         routine = (
             self._make_routine()
         )  # 已对齐（异象界域启用、追猎停用）→ 不触发 routine 写盘
+        mock_save = MagicMock()
         with (
             self._patch_load(config, routine),
-            patch.object(self.cfg, "_save") as mock_save,
+            patch.object(Daily, "_save_daily_config", mock_save),
+            patch.object(Daily, "_save_routine_config", mock_save),
         ):
             self.cfg.set_daily_task("异象界域", "空幕", 3)
         mock_save.assert_called_once()  # 仅主配置落盘，routine 已对齐无需更新
@@ -1117,9 +1076,11 @@ class TestNTEConfig(unittest.TestCase):
         """写副本：落到指定日常的段并启用它（无异动则不动第二份文件）。"""
         config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 1}}
         routine = self._make_routine()
+        mock_save = MagicMock()
         with (
             self._patch_load(config, routine),
-            patch.object(self.cfg, "_save") as mock_save,
+            patch.object(Daily, "_save_daily_config", mock_save),
+            patch.object(Daily, "_save_routine_config", mock_save),
         ):
             self.cfg.set_daily_task("异象界域", "空幕", 3)
         saved = mock_save.call_args[0][0]
@@ -1133,13 +1094,15 @@ class TestNTEConfig(unittest.TestCase):
         }
         routine = self._make_routine(anomaly_enabled=True, hunter_enabled=False)
         with self._patch_load(config, routine):
-            self.assertEqual(
-                self.cfg._read_daily_task("追猎目标"), ("追猎目标", "音霸魔王")
-            )
-            self.assertEqual(self.cfg._read_daily_task("异象界域"), ("空幕", 3))
-            # 是否启用不影响反读，另走 _read_daily_enabled
-            self.assertTrue(self.cfg._read_daily_enabled("异象界域"))
-            self.assertFalse(self.cfg._read_daily_enabled("追猎目标"))
+            self.assertEqual(_read(self.cfg, "追猎目标"), ("追猎目标", "音霸魔王"))
+            self.assertEqual(_read(self.cfg, "异象界域"), ("空幕", 3))
+            # 是否启用不影响反读，走 _read_daily_tasks 记录里的 enabled
+            enabled = {
+                record["name"]: record["enabled"]
+                for record in self.cfg._read_daily_tasks()
+            }
+            self.assertTrue(enabled["异象界域"])
+            self.assertFalse(enabled["追猎目标"])
 
     def test_read_daily_tasks_returns_every_daily(self):
         """一次反读覆盖全部日常（副本/序列 + 开关），顺序与声明一致。"""
@@ -1172,9 +1135,9 @@ class TestNTEConfig(unittest.TestCase):
         config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 3}}
         with (
             self._patch_load(config, self._make_routine()),
-            self.assertRaisesRegex(AssertionError, "缺少日常声明"),
+            self.assertRaisesRegex(AssertionError, "未知日常"),
         ):
-            self.cfg._read_daily_task("不存在")
+            _read(self.cfg, "不存在")
 
     def test_set_daily_task_hunt_writes_boss_and_enables_hunter(self):
         """选追猎目标（具体 boss）：在 daily_anomaly_hunter 写 追猎目标、启用 hunter，
@@ -1184,9 +1147,11 @@ class TestNTEConfig(unittest.TestCase):
             "daily_anomaly_hunter": {"追猎目标": "音霸魔王"},
         }
         routine = self._make_routine()  # 当前异象界域启用、追猎停用
+        mock_save = MagicMock()
         with (
             self._patch_load(config, routine),
-            patch.object(self.cfg, "_save") as mock_save,
+            patch.object(Daily, "_save_daily_config", mock_save),
+            patch.object(Daily, "_save_routine_config", mock_save),
         ):
             self.cfg.set_daily_task("追猎目标", "追猎目标", "无首铁驭")
         calls = mock_save.call_args_list
@@ -1208,7 +1173,8 @@ class TestNTEConfig(unittest.TestCase):
         routine = self._make_routine()
         with (
             self._patch_load(config, routine),
-            patch.object(self.cfg, "_save"),
+            patch.object(Daily, "_save_daily_config"),
+            patch.object(Daily, "_save_routine_config"),
         ):
             self.cfg.set_daily_task("追猎目标", "追猎目标", "音霸魔王")
         self.assertEqual(config["daily_anomaly"]["任务类型"], "空幕")
@@ -1217,9 +1183,11 @@ class TestNTEConfig(unittest.TestCase):
         """选异象界域副本：启用 daily_anomaly；daily_anomaly_hunter 保持原启用状态。"""
         config = {"daily_anomaly": {"任务类型": "异能升级材料", "异能材料序号": 1}}
         routine = self._make_routine(anomaly_enabled=False, hunter_enabled=True)
+        mock_save = MagicMock()
         with (
             self._patch_load(config, routine),
-            patch.object(self.cfg, "_save") as mock_save,
+            patch.object(Daily, "_save_daily_config", mock_save),
+            patch.object(Daily, "_save_routine_config", mock_save),
         ):
             self.cfg.set_daily_task("异象界域", "异能升级材料", 3)
         calls = mock_save.call_args_list
@@ -1245,9 +1213,11 @@ class TestNTEConfig(unittest.TestCase):
             }
         }
         routine = self._make_routine()  # 已对齐，不触发 routine 写盘
+        mock_save = MagicMock()
         with (
             self._patch_load(config, routine),
-            patch.object(self.cfg, "_save") as mock_save,
+            patch.object(Daily, "_save_daily_config", mock_save),
+            patch.object(Daily, "_save_routine_config", mock_save),
         ):
             self.cfg.set_daily_task("异象界域", "空幕", 3)
         mock_save.assert_called_once()  # 仅主配置落盘
@@ -1258,7 +1228,7 @@ class TestNTEConfig(unittest.TestCase):
     def test_update_task_writes_task_name(self):
         """任务类型写入 daily_anomaly 子对象（值即中文副本名）"""
         config = {"daily_anomaly": {"任务类型": "空幕"}}
-        changed = self.cfg._update_task(config, "异象界域", "异能升级材料", 1)
+        changed = _update(self.cfg, config, "异象界域", "异能升级材料", 1)
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly"]["任务类型"], "异能升级材料")
 
@@ -1266,7 +1236,7 @@ class TestNTEConfig(unittest.TestCase):
         """顶层缺 daily_anomaly（旧版 DailyTask.json 结构）→ assert"""
         config = {"任务类型": "空幕"}
         with self.assertRaises(AssertionError):
-            self.cfg._update_task(config, "异象界域", "空幕", None)
+            _update(self.cfg, config, "异象界域", "空幕", None)
 
     # ---- 日常开关（Routine Items）----
 
@@ -1274,9 +1244,11 @@ class TestNTEConfig(unittest.TestCase):
         """停用某日常：只改它的 Routine Item，另一个保持原值，且不动副本选择。"""
         config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 1}}
         routine = self._make_routine(anomaly_enabled=True, hunter_enabled=True)
+        mock_save = MagicMock()
         with (
             self._patch_load(config, routine),
-            patch.object(self.cfg, "_save") as mock_save,
+            patch.object(Daily, "_save_daily_config", mock_save),
+            patch.object(Daily, "_save_routine_config", mock_save),
         ):
             self.cfg.set_daily_enabled("异象界域", False)
         saved_routine = mock_save.call_args[0][0]
@@ -1288,9 +1260,11 @@ class TestNTEConfig(unittest.TestCase):
     def test_set_daily_enabled_turns_back_on(self):
         """重新启用某日常：置 True 并落盘。"""
         routine = self._make_routine(anomaly_enabled=False, hunter_enabled=True)
+        mock_save = MagicMock()
         with (
             self._patch_load({"daily_anomaly": {}}, routine),
-            patch.object(self.cfg, "_save") as mock_save,
+            patch.object(Daily, "_save_daily_config", mock_save),
+            patch.object(Daily, "_save_routine_config", mock_save),
         ):
             self.cfg.set_daily_enabled("异象界域", True)
         enabled = {
@@ -1301,9 +1275,11 @@ class TestNTEConfig(unittest.TestCase):
     def test_set_daily_enabled_no_change_does_not_save(self):
         """已是目标状态时不落盘。"""
         routine = self._make_routine(anomaly_enabled=True)
+        mock_save = MagicMock()
         with (
             self._patch_load({"daily_anomaly": {}}, routine),
-            patch.object(self.cfg, "_save") as mock_save,
+            patch.object(Daily, "_save_daily_config", mock_save),
+            patch.object(Daily, "_save_routine_config", mock_save),
         ):
             self.cfg.set_daily_enabled("异象界域", True)
         mock_save.assert_not_called()
@@ -1319,26 +1295,37 @@ class TestNTEConfig(unittest.TestCase):
         """未知日常展示名直接 assert，不静默回退。"""
         with (
             self._patch_load({"daily_anomaly": {}}, self._make_routine()),
-            self.assertRaisesRegex(AssertionError, "缺少日常声明"),
+            self.assertRaisesRegex(AssertionError, "未知日常"),
         ):
             self.cfg.set_daily_enabled("不存在", False)
 
-    def test_read_daily_enabled_reads_each_daily(self):
-        """逐日常反读启用状态（不看副本选择）。"""
+    def test_read_daily_tasks_reads_enabled_per_daily(self):
+        """一次反读覆盖全部日常的启用状态（不看副本选择）。"""
         routine = self._make_routine(anomaly_enabled=False, hunter_enabled=True)
-        with self._patch_load({"daily_anomaly": {}}, routine):
-            self.assertFalse(self.cfg._read_daily_enabled("异象界域"))
-            self.assertTrue(self.cfg._read_daily_enabled("追猎目标"))
+        with self._patch_load(
+            {"daily_anomaly": {}, "daily_anomaly_hunter": {}}, routine
+        ):
+            enabled = {
+                record["name"]: record["enabled"]
+                for record in self.cfg._read_daily_tasks()
+            }
+            self.assertFalse(enabled["异象界域"])
+            self.assertTrue(enabled["追猎目标"])
 
-    def test_read_daily_enabled_without_routine_returns_none(self):
-        """脚本未安装（routine 缺失）→ None：无真相，不谎报「已停用」。"""
-        with patch.object(self.cfg, "_load", return_value=None):
-            self.assertIsNone(self.cfg._read_daily_enabled("异象界域"))
+    def test_read_daily_tasks_without_routine_reports_none(self):
+        """脚本未安装（routine 缺失）→ enabled None：无真相，不谎报「已停用」。"""
+        with self._patch_load({"daily_anomaly": {}, "daily_anomaly_hunter": {}}, None):
+            enabled = {
+                record["name"]: record["enabled"]
+                for record in self.cfg._read_daily_tasks()
+            }
+            self.assertIsNone(enabled["异象界域"])
+            self.assertIsNone(enabled["追猎目标"])
 
     def test_update_sequence_hunt_writes_boss(self):
         """追猎目标经 _update_task 在 daily_anomaly_hunter 写 追猎目标（boss），不依赖 _bind_section。"""
         config = {"daily_anomaly_hunter": {"追猎目标": "音霸魔王"}}
-        changed = self.cfg._update_task(config, "追猎目标", "追猎目标", "海囚")
+        changed = _update(self.cfg, config, "追猎目标", "追猎目标", "海囚")
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly_hunter"]["追猎目标"], "海囚")
 
@@ -1348,14 +1335,14 @@ class TestNTEConfig(unittest.TestCase):
             "daily_anomaly": {"任务类型": "空幕"},
             "daily_anomaly_hunter": {"追猎目标": "音霸魔王"},
         }
-        changed = self.cfg._update_task(config, "追猎目标", "追猎目标", "海囚")
+        changed = _update(self.cfg, config, "追猎目标", "追猎目标", "海囚")
         self.assertTrue(changed)
         self.assertEqual(config["daily_anomaly"]["任务类型"], "空幕")
 
     def test_update_sequence_hunt_no_boss_raises(self):
         """未选具体 boss（sequence=None）→ assert。"""
         with self.assertRaises(AssertionError):
-            self.cfg._update_task({}, "追猎目标", "追猎目标", None)
+            _update(self.cfg, {}, "追猎目标", "追猎目标", None)
 
 
 # ============================================================
@@ -1370,29 +1357,33 @@ class TestArknightsConfig(unittest.TestCase):
         """创建一个跳过 _init_config 的 ArknightsConfig 实例"""
         with patch.object(ArknightsConfig, "_init_config"):
             cfg = ArknightsConfig()
-            cfg._task_map = {
-                "Annihilation": "剿灭",
-                "AP-5": "红票",
-                "LS-6": "经验",
-                "CE-6": "龙门币",
-                "1-7": "土",
-            }
+            _bind_maa_daily(
+                cfg,
+                {
+                    "Annihilation": "剿灭",
+                    "AP-5": "红票",
+                    "LS-6": "经验",
+                    "CE-6": "龙门币",
+                    "1-7": "土",
+                },
+            )
             return cfg
 
     def test_init_attributes(self):
         cfg = self._make_cfg()
         self.assertEqual(cfg.display_name, "粥")
         self.assertEqual(cfg._script_name, "MAA")
-        self.assertIn("Annihilation", cfg._task_map)
-        self.assertEqual(cfg._task_map["Annihilation"], "剿灭")
-        self.assertEqual(cfg._task_map["1-7"], "土")
+        name_by_stage = cfg._dispatch_daily("每日任务")._name_by_stage
+        self.assertIn("Annihilation", name_by_stage)
+        self.assertEqual(name_by_stage["Annihilation"], "剿灭")
+        self.assertEqual(name_by_stage["1-7"], "土")
 
     def test_init_config_no_template_is_noop(self):
         """粥无模板（_template_rel_path 为空）：_init_config 不应加载模板或写盘。"""
         cfg = ArknightsConfig()
         with (
             patch.object(ArknightsConfig, "_load_template") as mock_template,
-            patch.object(ArknightsConfig, "_save") as mock_save,
+            patch("src.config.set_config.save_config") as mock_save,
         ):
             cfg._init_config()
         mock_template.assert_not_called()
@@ -1584,8 +1575,8 @@ class TestArknightsConfig(unittest.TestCase):
 
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "红票")
 
@@ -1610,7 +1601,7 @@ class TestArknightsConfig(unittest.TestCase):
         cfg = self._make_cfg()
         config = {"Configurations": {"Default": {"TaskQueue": []}}}
         with (
-            patch.object(cfg, "_load", return_value=config),
+            patch.object(Daily, "_load_daily_config", return_value=config),
             self.assertRaises(AssertionError),
         ):
             cfg.set_daily_task("每日任务", "不存在")
@@ -1660,8 +1651,8 @@ class TestArknightsConfig(unittest.TestCase):
 
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "剿灭")
 
@@ -1701,8 +1692,8 @@ class TestArknightsConfig(unittest.TestCase):
         ]
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config"),
         ):
             cfg.set_daily_task("每日任务", "剿灭")
         unknown = [t for t in queue if t.get("StagePlan") == ["unknown"]][0]
@@ -1749,8 +1740,8 @@ class TestArknightsConfig(unittest.TestCase):
         ]
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "红票")
         mock_save.assert_called_once()
@@ -1807,8 +1798,8 @@ class TestArknightsConfig(unittest.TestCase):
         ]
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "红票")
         mock_save.assert_called_once()
@@ -1867,8 +1858,8 @@ class TestArknightsConfig(unittest.TestCase):
         ]
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "红票")
         mock_save.assert_called_once()
@@ -1927,13 +1918,13 @@ class TestArknightsConfig(unittest.TestCase):
             store["config/gui.new.json"] = cfg_arg
 
         with (
-            patch.object(cfg, "_load", side_effect=fake_load),
-            patch.object(cfg, "_save", side_effect=fake_save),
+            patch.object(Daily, "_load_daily_config", side_effect=fake_load),
+            patch.object(Daily, "_save_daily_config", side_effect=fake_save),
         ):
             cfg.set_daily_task("每日任务", "红票")
-            self.assertEqual(cfg._read_daily_task("每日任务"), ("红票", None))
+            self.assertEqual(_read(cfg, "每日任务"), ("红票", None))
             cfg.set_daily_task("每日任务", "土")
-            self.assertEqual(cfg._read_daily_task("每日任务"), ("土", None))
+            self.assertEqual(_read(cfg, "每日任务"), ("土", None))
 
     def test_set_daily_task_roundtrip_borrow_土_no_placeholder_lost(self):
         """已知限制（写→读回）：无占位槽位时 fallback 借走真实日常土，
@@ -1971,13 +1962,13 @@ class TestArknightsConfig(unittest.TestCase):
             store["config/gui.new.json"] = cfg_arg
 
         with (
-            patch.object(cfg, "_load", side_effect=fake_load),
-            patch.object(cfg, "_save", side_effect=fake_save),
+            patch.object(Daily, "_load_daily_config", side_effect=fake_load),
+            patch.object(Daily, "_save_daily_config", side_effect=fake_save),
         ):
             cfg.set_daily_task("每日任务", "红票")
-            self.assertEqual(cfg._read_daily_task("每日任务"), ("红票", None))
+            self.assertEqual(_read(cfg, "每日任务"), ("红票", None))
             cfg.set_daily_task("每日任务", "土")
-            self.assertEqual(cfg._read_daily_task("每日任务"), (None, None))
+            self.assertEqual(_read(cfg, "每日任务"), (None, None))
 
 
 # ============================================================
@@ -2225,8 +2216,8 @@ class TestSetWeekly(unittest.TestCase):
         config = {"currencywars_enable": False, "echo_of_war_start_day_of_week": 1}
         with (
             patch("src.utils.utils_weekly.get_week_num", return_value=3),
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(cfg, "_load_weekly_config", return_value=config),
+            patch.object(cfg, "_save_weekly_config") as mock_save,
         ):
             cfg.prepare_weekly_start_day(4)
         self.assertTrue(config["currencywars_enable"])
@@ -2240,8 +2231,8 @@ class TestSetWeekly(unittest.TestCase):
         config = {"currencywars_enable": True, "echo_of_war_start_day_of_week": 1}
         with (
             patch("src.utils.utils_weekly.get_week_num", return_value=1),
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(cfg, "_load_weekly_config", return_value=config),
+            patch.object(cfg, "_save_weekly_config") as mock_save,
         ):
             cfg.prepare_weekly_start_day(4)
         self.assertFalse(config["currencywars_enable"])
@@ -2260,8 +2251,8 @@ class TestSetWeekly(unittest.TestCase):
         }
         with (
             patch("src.utils.utils_weekly.get_week_num", return_value=3),
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(cfg, "_load_weekly_config", return_value=config),
+            patch.object(cfg, "_save_weekly_config") as mock_save,
         ):
             cfg.prepare_weekly_start_day(4)
         self.assertIn(
@@ -2281,8 +2272,8 @@ class TestSetWeekly(unittest.TestCase):
         }
         with (
             patch("src.utils.utils_weekly.get_week_num", return_value=1),
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(cfg, "_load_weekly_config", return_value=config),
+            patch.object(cfg, "_save_weekly_config") as mock_save,
         ):
             cfg.prepare_weekly_start_day(4)
         self.assertNotIn(
@@ -2299,8 +2290,8 @@ class TestSetWeekly(unittest.TestCase):
         }
         with (
             patch("src.utils.utils_weekly.get_week_num", return_value=3),
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as mock_save,
+            patch.object(cfg, "_load_weekly_config", return_value=config),
+            patch.object(cfg, "_save_weekly_config") as mock_save,
         ):
             cfg.prepare_weekly_start_day(4)
         mock_save.assert_not_called()
@@ -2310,7 +2301,7 @@ class TestSetWeekly(unittest.TestCase):
         cfg = WutheringWavesConfig()
         with (
             patch("src.utils.utils_weekly.get_week_num", return_value=3),
-            patch.object(cfg, "_load", return_value={}),
+            patch.object(cfg, "_load_weekly_config", return_value={}),
             self.assertRaises(AssertionError),
         ):
             cfg.prepare_weekly_start_day(4)

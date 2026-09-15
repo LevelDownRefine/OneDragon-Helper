@@ -8,7 +8,7 @@
 送礼、邮件、帝江号收菜等大量日常开关）误改，也不会波及无关的顶层设置。
 
 允许改动字段集合严格来自 EndfieldConfig 实现：
-- set_daily_task：仅写 _task_key="体力本"（顶层 str），无 sequence 通道；
+- set_daily_task：仅写声明落点「体力本」（顶层 str，二级覆盖一级）；
 - prepare_weekly_start_day：仅写 _weekly_task_name="只买不卖"（顶层 bool，反相写入）。
 """
 
@@ -18,6 +18,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+from src.config import daily as daily_mod
 from src.config import set_config as sc_mod
 from src.config.set_config import EndfieldConfig
 from tests.config_diff import diff_paths
@@ -26,7 +27,7 @@ FIXTURE = os.path.join(
     os.path.dirname(__file__), "fixtures", "ok_ef_DailyTask.scrubbed.json"
 )
 
-# set_daily_task 只允许改动的字段路径集合（严格按 EndfieldConfig._task_key）
+# set_daily_task 只允许改动的字段路径集合（= 声明落点的 task_field）
 ALLOWED_DUNGEON = {"体力本"}
 # prepare_weekly_start_day 只允许改动的字段路径集合（严格按 EndfieldConfig._weekly_task_name）
 ALLOWED_WEEKLY = {"只买不卖"}
@@ -68,13 +69,20 @@ class TestEndfieldConfigSafety(unittest.TestCase):
 
         self._lp = patch.object(sc_mod, "load_config", fake_load)
         self._sp = patch.object(sc_mod, "save_config", fake_save)
+        # Daily 自持 I/O 直调 daily 模块原语，同 fake 双注册
+        self._ldp = patch.object(daily_mod, "load_config", fake_load)
+        self._dsp = patch.object(daily_mod, "save_config", fake_save)
         self._lp.start()
         self._sp.start()
+        self._ldp.start()
+        self._dsp.start()
 
     def tearDown(self):
         # 只停 setUp 自身 start 的两个 patch，不用全局 stopall（避免误停他方活跃 patch）。
         self._lp.stop()
         self._sp.stop()
+        self._ldp.stop()
+        self._dsp.stop()
 
     # ---- _init_config：绝不该改任何东西（不再由 __init__ 自动触发）----
     def test_init_config_touches_nothing(self):
@@ -87,7 +95,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         self.assertEqual(diff, [], f"init_config 意外改动: {diff}")
 
     # ---- set_daily_task：只允许改 体力本 ----
-    def test_set_daily_task_only_touches_task_key(self):
+    def test_set_daily_task_only_touches_declared_field(self):
         cfg = EndfieldConfig()
         # 强制差异：先把 体力本 拨错，逼 set_daily_task 真正落盘
         forced = copy.deepcopy(
@@ -97,7 +105,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         self.store["data/apps/ok-ef/working/configs/DailyTask.json"] = forced
         pre = copy.deepcopy(forced)
 
-        cfg.set_daily_task("每日任务", "枢纽区")
+        cfg.set_daily_task("每日任务", "能量淤积点", "枢纽区")
 
         post = self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         diff = diff_paths(pre, post)
@@ -140,7 +148,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
     # ---- 金丝雀：无关字段全程不被触碰 ----
     def test_canaries_untouched_through_full_flow(self):
         cfg = EndfieldConfig()
-        cfg.set_daily_task("每日任务", "枢纽区")
+        cfg.set_daily_task("每日任务", "能量淤积点", "枢纽区")
         cfg.prepare_weekly_start_day(1)
 
         post = self.store["data/apps/ok-ef/working/configs/DailyTask.json"]

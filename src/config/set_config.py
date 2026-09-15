@@ -2,16 +2,15 @@
 
 import logging
 import os
-from typing import Any
 
+from src.config.daily import DAILY_CLASSES, Daily
 from src.config.task_config import (
-    get_daily_config,
     get_daily_configs,
-    get_options,
     get_physical_name,
     get_value_map,
     get_weekly_config,
 )
+from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import (
     get_sub_config_path as _get_config_path_impl,
 )
@@ -26,115 +25,6 @@ from src.utils.utils_weekly import is_weekly_start_reached
 logger = logging.getLogger(__name__)
 
 
-def _scalar_kind(value: Any) -> type:
-    """归一化标量类型，用于类型一致性比较。
-
-    ruamel.yaml 往返会把带引号字符串读成 ``str`` 的子类
-    （如 ``DoubleQuotedScalarString``）、保留字读成对应子类。直接 ``type()``
-    比较会误判为「类型不一致」。这里按真实语义归类，同时保留 ``bool`` 与
-    ``int`` 的区分（``bool`` 是 ``int`` 的子类，但语义不同，必须分别对待）。
-
-    Args:
-        value: 待归类的标量值。
-
-    Returns:
-        归一化后的类型（bool / int / float / str 或原 type）。
-    """
-    if isinstance(value, bool):
-        return bool
-    if isinstance(value, int):
-        return int
-    if isinstance(value, float):
-        return float
-    if isinstance(value, str):
-        return str
-    # ruamel 容器是原生 list/dict 的子类（CommentedSeq/CommentedMap），
-    # 归一为 list/dict，避免与下游传入的原生容器比较时被判「类型不一致」。
-    if isinstance(value, list):
-        return list
-    if isinstance(value, dict):
-        return dict
-    return type(value)
-
-
-def safe_update(
-    config: dict,
-    key: str,
-    value: Any,
-    display_name: str = "",
-    assert_key_exists: bool = True,
-) -> bool:
-    """安全更新单字段，返回是否发生实际修改。
-
-    Args:
-        config: 待修改的 config dict。
-        key: 目标字段名。
-        value: 目标值，类型须与现字段语义一致（按 _scalar_kind 归一化比较，
-            容忍 ruamel 的 str/bool 子类，同时避免 bool/int 混淆）。
-        display_name: 日志与报错用的脚本展示名。
-        assert_key_exists: True 时缺字段直接 assert；False 时缺字段则新增。
-
-    Returns:
-        字段值是否发生了改变。
-
-    Raises:
-        AssertionError: 缺字段（assert_key_exists=True）或新旧类型不一致。
-    """
-    if assert_key_exists:
-        assert key in config, f"[set_config][{display_name}] config 中缺少字段: {key}"
-    elif key not in config:
-        logger.warning(
-            f"[set_config][{display_name}] 添加新字段 config['{key}'] = {value}"
-        )
-        config[key] = value
-        return True
-
-    assert _scalar_kind(config[key]) is _scalar_kind(value), (
-        f"[set_config][{display_name}] 类型不一致: key={key}, "
-        f"config={_scalar_kind(config[key]).__name__}, "
-        f"value={_scalar_kind(value).__name__}"
-    )
-
-    if config[key] == value:
-        return False
-
-    config[key] = value
-    logger.info(f"[set_config][{display_name}] 更新 config['{key}'] 为 {value}")
-    return True
-
-
-def get_field(
-    config: dict,
-    key: str,
-    display_name: str,
-    type: type | None = None,
-    context: str = "",
-):
-    """取必填字段，缺字段或类型不符时 assert 暴露。
-
-    Args:
-        config: 待读取的 dict。
-        key: 字段名。
-        display_name: 日志与报错用的脚本展示名。
-        type: 期望类型；非 None 时做 isinstance 校验。
-        context: 报错上下文标签（如所属操作名），用于定位。
-
-    Returns:
-        config[key] 的值。
-
-    Raises:
-        AssertionError: 缺字段，或指定 type 后类型不符。
-    """
-    prefix = f"[set_config][{display_name}]"
-    if context:
-        prefix += f"[{context}]"
-    assert key in config, f"{prefix} 缺少 {key} 字段"
-    value = config[key]
-    if type is not None:
-        assert isinstance(value, type), f"{prefix} {key} 必须是 {type.__name__}"
-    return value
-
-
 # ============================================================
 # 基类
 # ============================================================
@@ -147,15 +37,10 @@ class ScriptConfig:
     """内部标识：script_path basename 去后缀，_CONFIGS 注册表索引。"""
     display_name: str = ""
     """GUI 展示名（如 鸣潮）。"""
-    _task_key: str = ""
-    """config 中副本类型字段名，设了即启用 _update_task。"""
-    _task_map: dict[str, Any] = {}
-    """副本中文名 → config 值；空 dict 表示直接用 task_name。"""
 
     _game_path_keys: tuple[str, ...] = ()
     """游戏 exe 路径在游戏配置中的嵌套键路径；空元组表示未适配「打开游戏」。"""
 
-    _config_rel_path: str = ""
     """config 文件相对脚本根目录路径。"""
 
     _backup_paths: tuple[str, ...] = ()
@@ -180,19 +65,25 @@ class ScriptConfig:
     _weekly_config_rel_path: str = ""
     """周常配置文件路径；空字符串复用主 config。"""
 
-    def _load(
-        self, rel_path: str | None = None, *, allow_missing: bool = False
-    ) -> dict | None:
-        """读取脚本 config 并校验为 dict。
+    """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
 
-        写路径（初始化/落盘校验）要求 config 必须存在且为 dict，任何读取失败都抛出；
-        读路径（反读日常/周本副本）容忍外部状态，一律返回 None，其中：
+    _dailies_data: list[Daily] | None = None
+    """该脚本的日常对象缓存（首次访问 ``_dailies`` 时由声明构造）。"""
 
-        - 脚本未安装（config.yml 中无此脚本）与 config 文件缺失属正常状态，静默跳过；
-        - 文件存在但解析器报错（JSON/YAML 语法错误）不当作「无内容」，留痕后仍返回 None。
+    def _daily_config_rel_path(self) -> str:
+        """脚本 config 文件路径（取首个日常声明的 ``config``）。
+
+        周常缺省落点与模板对齐共用该文件——脚本 config 与日常所在文件恰好同份。
+
+        Returns:
+            相对脚本根目录的路径。
+        """
+        return get_daily_configs(self._script_name)[0]["config"]
+
+    def _load_weekly_config(self, *, allow_missing: bool = False) -> dict | None:
+        """读周常所在的 config 文件（路径由脚本显式声明 ``_weekly_config_rel_path``）。
 
         Args:
-            rel_path: 相对脚本根目录的路径；缺省用 _config_rel_path。
             allow_missing: True 时读取失败返回 None（读路径）；
                 False 时失败即报错（写路径，默认）。
 
@@ -202,7 +93,7 @@ class ScriptConfig:
         Raises:
             AssertionError: allow_missing=False 且文件不存在、内容损坏或解析结果非 dict。
         """
-        rel_path = rel_path or self._config_rel_path
+        rel_path = self._weekly_config_rel_path
         try:
             config = load_config(self._script_name, rel_path)
         except AssertionError:
@@ -227,81 +118,24 @@ class ScriptConfig:
             )
         return config
 
-    def _save(self, config: dict, rel_path: str | None = None) -> None:
-        """保存 config 并回读校验落盘一致。
-
-        enabled=False 时跳过（用户拒绝更新）。
+    def _save_weekly_config(self, config: dict) -> None:
+        """保存周常所在的 config 文件并回读校验落盘一致。
 
         Args:
             config: 待保存的 dict。
-            rel_path: 相对脚本根目录的路径；缺省用 _config_rel_path。
 
         Raises:
             AssertionError: config 非 dict 或保存后回读不一致。
         """
-        rel_path = rel_path or self._config_rel_path
+        rel_path = self._weekly_config_rel_path
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
         save_config(self._script_name, rel_path, config)
-        self._verify_saved(config, rel_path)
-
-    def _verify_saved(self, expected: dict, rel_path: str | None = None) -> None:
-        """保存后回读校验落盘与预期一致。
-
-        Args:
-            expected: 期望落盘的 config dict。
-            rel_path: 相对脚本根目录的路径；缺省用 _config_rel_path。
-
-        Raises:
-            AssertionError: 重新读取的内容与预期不一致。
-        """
-        reloaded = self._load(rel_path)
-        assert reloaded == expected, (
-            f"[set_config][{self.display_name}] 配置保存后校验失败："
-            f"重新读取的内容与预期不一致"
-        )
-
-    def _load_weekly(self) -> dict:
-        """加载周常配置文件（缺省复用主 config）。
-
-        Returns:
-            解析后的 config dict。
-
-        Raises:
-            AssertionError: 解析结果非 dict。
-        """
-        config = load_config(
-            self._script_name, self._weekly_config_rel_path or self._config_rel_path
-        )
-        assert isinstance(config, dict), (
-            f"[set_config][{self.display_name}] 周常 config 必须是 dict"
-        )
-        return config
-
-    def _save_weekly(self, config: dict) -> None:
-        """保存周常配置并回读校验落盘一致。
-
-        enabled=False 时跳过（用户拒绝更新）。
-
-        Args:
-            config: 待保存的 dict。
-
-        Raises:
-            AssertionError: config 非 dict 或保存后回读不一致。
-        """
-        assert isinstance(config, dict), (
-            f"[set_config][{self.display_name}] 周常 config 必须是 dict"
-        )
-        save_config(
-            self._script_name,
-            self._weekly_config_rel_path or self._config_rel_path,
-            config,
-        )
-        reloaded = self._load_weekly()
+        reloaded = self._load_weekly_config()
         assert reloaded == config, (
-            f"[set_config][{self.display_name}] 周常配置保存后校验失败："
-            f"重新读取的内容与预期不一致"
+            f"[set_config][{self.display_name}] 配置保存后校验失败："
+            "重新读取的内容与预期不一致"
         )
 
     def _load_template(self) -> dict:
@@ -318,121 +152,87 @@ class ScriptConfig:
         )
         return load_template(self._script_name, self._template_rel_path)
 
-    @classmethod
-    def _daily_physical_name(cls, daily_display_name: str) -> str:
-        """日常展示名 → 日常物理名（段名 / routine item id）。
-
-        Args:
-            daily_display_name: 日常展示名。
+    def _build_dailies(self) -> list[Daily]:
+        """按声明实例化本脚本的日常（机制类由声明 ``class`` 标注）。
 
         Returns:
-            日常物理名。
+            日常列表，顺序与声明一致；单日常脚本长度为 1。
+
+        Raises:
+            AssertionError: 声明的 ``class`` 不在机制类注册表。
+        """
+        dailies = []
+        for declaration in get_daily_configs(self._script_name):
+            class_name = declaration["class"]
+            assert class_name in DAILY_CLASSES, (
+                f"[set_config][{self.display_name}] 未知的日常机制类: {class_name!r}"
+            )
+            dailies.append(
+                DAILY_CLASSES[class_name](
+                    self._script_name, declaration, self.display_name
+                )
+            )
+        return dailies
+
+    @property
+    def _dailies(self) -> list[Daily]:
+        """该脚本的全部日常（懒加载，见 ``_build_dailies``）。"""
+        if self._dailies_data is None:
+            dailies = self._build_dailies()
+            seen: set[str] = set()
+            for daily in dailies:
+                assert daily.physical_name not in seen, (
+                    f"{self._script_name} 的日常物理名重复: {daily.physical_name}"
+                )
+                seen.add(daily.physical_name)
+            self._dailies_data = dailies
+        return self._dailies_data
+
+    def _dispatch_daily(self, daily_display_name: str) -> Daily:
+        """按日常展示名取日常对象。
+
+        Args:
+            daily_display_name: 日常展示名（界面行名）。
+
+        Returns:
+            对应的日常对象。
 
         Raises:
             AssertionError: 声明里没有该展示名的日常。
         """
-        return get_physical_name(get_daily_config(cls._script_name, daily_display_name))
-
-    def _update_task(
-        self,
-        config: dict,
-        daily_display_name: str,
-        task_name: str,
-        sequence: str | int | None = None,
-    ) -> bool:
-        """写入副本类型字段（及二级序列），返回是否修改。
-
-        Args:
-            config: 目标 config dict。
-            daily_display_name: 副本所属日常展示名；基类（单日常）忽略其取值，
-                但调用方仍须给出；分段脚本（多日常）据此选段。
-            task_name: 副本中文名；_task_map 为空时直接作为字段值。
-            sequence: 二级序列值；基类默认必须为 None。
-
-        Returns:
-            字段是否发生实际修改。
-
-        Raises:
-            AssertionError: 子类未声明 _task_key，或 task_name 不在 _task_map，
-                或基类收到非 None 的 sequence。
-        """
-        assert sequence is None, (
-            f"[set_config][{self.display_name}] 不支持 sequence 参数"
+        matches = [
+            daily for daily in self._dailies if daily.display_name == daily_display_name
+        ]
+        assert len(matches) == 1, (
+            f"[set_config][{self.display_name}] 未知日常: {daily_display_name}"
         )
-        assert self._task_key, f"[set_config][{self.display_name}] 子类必须设 _task_key"
-        if self._task_map:
-            task = get_field(
-                self._task_map, task_name, self.display_name, context="update_task"
-            )
-        else:
-            task = task_name
-        return safe_update(config, self._task_key, task, self.display_name)
+        return matches[0]
 
     def _read_daily_tasks(self) -> list[dict]:
         """反读该脚本全部日常的已选项与开关（界面按日常逐行呈现）。
 
-        日常集合由声明推导，故调用方无需指定日常。每项一条记录：
+        日常集合由声明推导，调用方无需指定日常。每项一条记录：
 
         - ``name``：日常展示名；
         - ``task``：已选一级项展示名；未选择/无真相为 None；
         - ``sequence``：已选二级值；无二级或未选择为 None；
-        - ``enabled``：是否启用；该脚本无日常开关字段时为 None。
+        - ``enabled``：是否启用；该脚本无日常开关文件时为 None。
 
         Returns:
             [{name, task, sequence, enabled}, ...]，顺序与声明一致。
         """
         records = []
-        for daily in get_daily_configs(self._script_name).values():
-            task, sequence = self._read_daily_task(daily["name"])
+        for daily in self._dailies:
+            task, sequence = daily.read()
             records.append(
                 {
-                    "name": daily["name"],
+                    "name": daily.display_name,
                     "task": task,
                     "sequence": sequence,
-                    "enabled": self._read_daily_enabled(daily["name"]),
+                    "enabled": daily.read_enabled(),
                 }
             )
         return records
-
-    def _read_daily_task(
-        self, daily_display_name: str
-    ) -> tuple[str | None, str | int | None]:
-        """反读某日常的副本中文名与二级序列（经 _task_key + _task_map 反转）。
-
-        返回 ``(副本中文名, 序列值)`` 二元组：基类仅处理标准存储结构下的副本反转，
-        无二级序列通道时序列恒为 None。子类若有非标准存储结构（如 NTE 多 section）
-        或二级序列，应覆写本方法并在内部调用 ``super()._read_daily_task()`` 复用标准反转，
-        再补上自身逻辑后返回 ``(task, sequence)``；若子类无标准存储结构
-        （无 ``_task_key`` / 非 ``_task_key`` + ``_task_map``），可完全自行实现而不调 super。
-
-        仅「脚本未安装」与「用户未选择」的副本部分返回 None；config 损坏或字段值未知
-        属异常，直接 assert 暴露，不静默回退（否则会被日常副本的声明项回退掩盖）。
-
-        Args:
-            daily_display_name: 日常展示名；基类（单日常）忽略。
-
-        Returns:
-            ``(副本中文名, 序列值)``；无 _task_key（无适应）/ 脚本未安装 / 未选择时
-            副本部分为 None，序列部分恒为 None。
-        """
-        if not self._task_key:
-            return None, None  # 无副本真相（如 ZZZ/崩铁日常）
-        config = self._load(allow_missing=True)
-        if config is None:
-            return None, None  # 脚本未安装/未配置
-        assert isinstance(config, dict), (
-            f"[set_config][{self.display_name}] config 必须是 dict"
-        )
-        if self._task_key not in config:
-            return None, None  # 未选择副本（字段未落盘）
-        raw = config[self._task_key]
-        if raw is None:
-            return None, None  # 未选择副本（字段为空值）
-        if self._task_map:
-            inv = {v: k for k, v in self._task_map.items()}
-            assert raw in inv, f"[set_config][{self.display_name}] 未知副本值: {raw!r}"
-            return inv[raw], None
-        return raw, None
 
     def _read_weekly_task(self, weekly_name: str) -> str | None:
         """反读某周常当前选中的副本名（与 set_weekly_task 对称）。
@@ -455,9 +255,19 @@ class ScriptConfig:
         """
         if not self._template_rel_path:
             return
-        config = self._load(allow_missing=True)
-        if config is None:
+        rel_path = self._daily_config_rel_path()
+        try:
+            config = load_config(self._script_name, rel_path)
+        except AssertionError:
             return  # 脚本未安装/未配置，待首次写入时由 set_* 创建
+        except Exception:  # noqa: BLE001  # 文件存在但内容损坏
+            logger.warning(
+                f"[init_config][{self.display_name}] config 损坏，跳过对齐: {rel_path}",
+                exc_info=True,
+            )
+            return
+        if not isinstance(config, dict):
+            return
         template = self._load_template()
 
         if self._is_aligned(config, template):
@@ -466,7 +276,12 @@ class ScriptConfig:
 
         for key, val in template.items():
             safe_update(config, key, val, self.display_name, assert_key_exists=False)
-        self._save(config)
+        save_config(self._script_name, rel_path, config)
+        reloaded = load_config(self._script_name, rel_path)
+        assert reloaded == config, (
+            f"[init_config][{self.display_name}] 配置保存后校验失败："
+            "重新读取的内容与预期不一致"
+        )
         logger.info(f"[init_config][{self.display_name}] config 已更新")
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
@@ -501,51 +316,37 @@ class ScriptConfig:
         task_name: str,
         sequence: str | int | None = None,
     ) -> None:
-        """设置副本：更新任务类型与序列后落盘。
+        """设置副本：读盘 → 交给该日常写内存 → 有改动才落盘 → 顺带启用该日常。
+
+        启用经 ``set_daily_enabled``，无日常开关文件的脚本静默跳过。
 
         Args:
-            daily_display_name: 副本所属日常展示名（界面逐行渲染时即该行行名）；
-                基类（单日常）忽略其取值，但调用方仍须给出。
-            task_name: 副本中文名。
-            sequence: 序列值；不传则仅设置任务类型。
+            daily_display_name: 副本所属日常展示名（界面逐行渲染时即该行行名）。
+            task_name: 一级项展示名（副本名）。
+            sequence: 二级项值；不传则仅写入一级落点。
 
         Raises:
-            AssertionError: 未给出日常展示名。
+            AssertionError: 未给出日常展示名，或该日常未知、config 未安装/未配置、
+                该日常在 config 里缺少段、无落点、一级项未声明、二级必填却缺失。
         """
         assert daily_display_name, f"[set_config][{self.display_name}] 必须指定日常"
-        config = self._load()
-        changed = self._update_task(config, daily_display_name, task_name, sequence)
-        if changed:
-            logger.info(f"[set_daily_task][{self.display_name}] config 已更新")
-            self._save(config)
-        else:
-            logger.info(f"[set_daily_task][{self.display_name}] config 无需更新")
+        self._dispatch_daily(daily_display_name).update(task_name, sequence)
+        self.set_daily_enabled(daily_display_name, True)
 
     def set_daily_enabled(self, daily_display_name: str, enabled: bool) -> None:
-        """启用/停用某日常，由声明了日常开关字段的子类覆写。
+        """启用/停用某日常：读开关文件 → 交给该日常改内存 → 有改动才落盘。
 
-        日常开关的落点随脚本而异（目前只有异环的 Routine Items），基类无通用落点，
-        故只兜底 assert。
+        该脚本无日常开关文件时不做事（选择即启用，无开关可写）。
 
         Args:
             daily_display_name: 日常展示名。
             enabled: 目标启用状态。
 
         Raises:
-            AssertionError: 未适配日常开关。
+            AssertionError: 该日常未知，或 Routine Items 缺少或重复该日常的物理名。
         """
-        assert False, f"[set_config][{self.display_name}] 未支持停用日常"  # noqa: B011  # 故意：未适配脚本不应走到日常开关写入
-
-    def _read_daily_enabled(self, daily_display_name: str) -> bool | None:
-        """反读某日常是否启用；无日常开关字段的脚本返回 None（界面据此不提供「不启用」）。
-
-        Args:
-            daily_display_name: 日常展示名。
-
-        Returns:
-            是否启用；无开关字段返回 None。
-        """
-        return None
+        daily = self._dispatch_daily(daily_display_name)
+        daily.set_enabled(enabled)  # 无日常开关的机制类不做事（选择即启用）
 
     def _check_weekly_start(self, start_day: int) -> None:
         """校验周常起始日，供各子类的 prepare_weekly_start_day 首行调用。
@@ -610,26 +411,6 @@ class ScriptConfig:
         return node
 
     @classmethod
-    def get_daily_options(cls) -> list[dict]:
-        """取得各日常的菜单选项；单日常脚本即一项。
-
-        每个日常的选项取声明里的 values：各有分类层（各 value 自带 options）时每个
-        value 各成一个一级项；单层日常（值直接写自身字段、无一级字段）时整组即唯一的
-        一级项（展示名用日常名），其 values 作二级。判断依据与写入侧同源——各日常的
-        落点（``task_config.get_daily_configs`` 的 ``task_field`` / ``option_fields``），
-        不按展示名硬编码。
-        """
-        dailies = []
-        for daily in get_daily_configs(cls._script_name).values():
-            decl = get_daily_config(cls._script_name, daily["name"])
-            if daily["task_field"] is None and daily["option_fields"]:
-                options = [decl]  # 单层日常：一级项即日常本身，values 作二级
-            else:
-                options = get_options(decl)
-            dailies.append({"daily_display_name": daily["name"], "options": options})
-        return dailies
-
-    @classmethod
     def get_task_lists(cls, task_name: str, source: str) -> list[str] | None:
         """读取某任务（周常/日常）的可选副本名清单（类方法，无需实例化）。
 
@@ -668,10 +449,10 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
         原样返回 cls（便于装饰器使用）。
 
     Raises:
-        AssertionError: 缺少 _script_name/_config_rel_path/_backup_paths 显式声明，
+        AssertionError: 缺少 _script_name/_backup_paths 显式声明，
             或声明了 _game_path_keys/_weekly_task_name 但未补全对应声明/实现。
     """
-    for attr in ("_script_name", "_config_rel_path", "_backup_paths"):
+    for attr in ("_script_name", "_backup_paths"):
         assert attr in cls.__dict__, f"[set_config][{cls.__name__}] 必须声明 {attr}"
     if cls._game_path_keys:
         assert "_game_config_rel_path" in cls.__dict__, (
@@ -679,6 +460,10 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
             f"_game_config_rel_path"
         )
     if cls._weekly_task_name:
+        assert "_weekly_config_rel_path" in cls.__dict__, (
+            f"[set_config][{cls.__name__}] 声明了 _weekly_task_name 必须声明 "
+            f"_weekly_config_rel_path"
+        )
         assert (
             cls.prepare_weekly_start_day is not ScriptConfig.prepare_weekly_start_day
         ), (
@@ -699,18 +484,11 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
 class WutheringWavesConfig(ScriptConfig):
     _script_name = "ok-ww"
     _backup_paths = ("data/apps/ok-ww/working/configs",)
-    _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "鸣潮"
-    _daily_config = get_daily_config(_script_name)
-    _task_key = _daily_config["options"]["key"]
-    _task_map = get_value_map(_daily_config)
-    _sequence_map = {
-        option["display_name"]: option["options"]
-        for option in get_options(_daily_config)
-    }
     _weekly_config = get_weekly_config(_script_name, "幻梦游园")
+    _weekly_config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _weekly_task_name = get_physical_name(_weekly_config)
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
@@ -724,7 +502,7 @@ class WutheringWavesConfig(ScriptConfig):
         """
         self._check_weekly_start(start_day)
         enabled = is_weekly_start_reached(start_day)
-        config = self._load()
+        config = self._load_weekly_config()
         # 周常（乐园）在 Additional Tasks 列表中任务名 _weekly_task_name。
         tasks = get_field(config, self._weekly_config["key"], self.display_name, list)
         contains = self._weekly_task_name in tasks
@@ -740,83 +518,7 @@ class WutheringWavesConfig(ScriptConfig):
         logger.info(
             f"[prepare_weekly_start_day][{self.display_name}] {'启用' if enabled else '停用'}周常"
         )
-        self._save(config)
-
-    def _update_task(
-        self,
-        config: dict,
-        daily_display_name: str,
-        task_name: str,
-        sequence: str | int | None = None,
-    ) -> bool:
-        """写入副本类型字段与二级序列字段，返回是否修改（与 _read_daily_task 对称）。
-
-        先经基类标准副本写入（复用 ``_task_key`` + ``_task_map`` 反转），再按当前副本
-        从 ``_sequence_map`` 写入二级序列字段。
-
-        Args:
-            config: 目标 config dict。
-            daily_display_name: 副本所属日常展示名；单日常脚本忽略。
-            task_name: 副本中文名（决定映射键与取值方式）。
-            sequence: 序列值；无二级映射时直接作为字段值。
-
-        Returns:
-            字段是否发生实际修改。
-
-        Raises:
-            AssertionError: 未适配的副本或序列。
-        """
-        changed = super()._update_task(config, daily_display_name, task_name, None)
-        assert sequence is not None, (
-            f"[set_daily_task][{self.display_name}] sequence 不能为空"
-        )
-        assert task_name in self._sequence_map, (
-            f"[set_daily_task][{self.display_name}] 未适配的副本: {task_name}"
-        )
-        cfg = self._sequence_map[task_name]
-
-        values = get_value_map({"options": cfg})
-        # 直接调用仍可传展示名；菜单的二级选择已是物理值。
-        if sequence in values:
-            sequence = values[sequence]
-        assert sequence in values.values(), (
-            f"[set_daily_task][{self.display_name}] 未适配的序列: {sequence}"
-        )
-        changed |= safe_update(
-            config, cfg["key"], sequence, self.display_name, assert_key_exists=False
-        )
-        return changed
-
-    def _read_daily_task(
-        self, daily_display_name: str
-    ) -> tuple[str | None, str | int | None]:
-        """反读当前日常副本与二级序列值（与 set_daily_task / _update_task 对称）。
-
-        先经基类标准反转得到副本名，再按当前副本从 ``_sequence_map`` 读回原始序列值
-        （展示别名由界面根据声明转换）。
-
-        Args:
-            daily_display_name: 日常展示名；单日常脚本忽略。
-
-        Returns:
-            ``(副本中文名, 序列值)``；无序列通道/未设置时序列为 None。
-        """
-        task, _ = super()._read_daily_task(daily_display_name)
-        if task is None or task not in self._sequence_map:
-            return task, None
-        cfg = self._sequence_map[task]
-        config = self._load(allow_missing=True)
-        if config is None:
-            return task, None  # 脚本未安装/未配置
-        assert isinstance(config, dict), (
-            f"[set_config][{self.display_name}] config 必须是 dict"
-        )
-        if cfg["key"] not in config:
-            return task, None  # 未选择序号（字段未落盘）
-        raw = config[cfg["key"]]
-        if raw is None:
-            return task, None  # 未选择序号（字段为空值）
-        return task, raw
+        self._save_weekly_config(config)
 
 
 # ---- 原神 Genshin Impact ----
@@ -824,31 +526,11 @@ class WutheringWavesConfig(ScriptConfig):
 class GenshinConfig(ScriptConfig):
     _script_name = "BetterGI"
     display_name = "原神"
-    _daily_config = get_daily_config(_script_name)
-    _task_keys = {option["options"]["key"] for option in get_options(_daily_config)}
-    assert len(_task_keys) == 1, "展示分类必须共用一个原生字段"
-    _task_key = _task_keys.pop()
+
     _backup_paths = ("User",)
-    _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
     _game_path_keys = ("genshinStartConfig", "installPath")
-
-    def set_daily_task(
-        self,
-        daily_display_name: str,
-        task_name: str,
-        sequence: str | int | None = None,
-    ) -> None:
-        """原神副本两级组织：有二级时写入二级副本名，否则回退一级。
-
-        Args:
-            daily_display_name: 副本所属日常展示名；单日常脚本忽略。
-            task_name: 一级副本名。
-            sequence: 二级副本名；None 时回退一级。
-        """
-        target = sequence if sequence is not None else task_name
-        super().set_daily_task(daily_display_name, target)
 
     @classmethod
     def get_task_lists(cls, task_name: str, source: str) -> list[str]:
@@ -884,33 +566,14 @@ class GenshinConfig(ScriptConfig):
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
-    _daily_config = get_daily_config(_script_name)
-    _task_keys = {option["options"]["key"] for option in get_options(_daily_config)}
-    assert len(_task_keys) == 1, "展示分类必须共用一个原生字段"
-    _task_key = _task_keys.pop()
+
     _template_rel_path = "okef一条龙.json"
     _backup_paths = ("data/apps/ok-ef/working/configs",)
-    _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    _weekly_config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _weekly_task_name = get_weekly_config(_script_name, "卖出物资")["key"]
     """周常（卖出物资）在 DailyTask.json 中的开关键；true=只买不卖=不卖=周常关。"""
-
-    def set_daily_task(
-        self,
-        daily_display_name: str,
-        task_name: str,
-        sequence: str | int | None = None,
-    ) -> None:
-        """终末地副本两级组织：有二级时写入二级副本名，否则回退一级。
-
-        Args:
-            daily_display_name: 副本所属日常展示名；单日常脚本忽略。
-            task_name: 一级副本名。
-            sequence: 二级副本名；None 时回退一级。
-        """
-        target = sequence if sequence is not None else task_name
-        super().set_daily_task(daily_display_name, target)
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """控制 DailyTask.json 的「只买不卖」周常开关（语义反相）。
@@ -926,10 +589,10 @@ class EndfieldConfig(ScriptConfig):
         """
         self._check_weekly_start(start_day)
         enabled = is_weekly_start_reached(start_day)
-        config = self._load()
+        config = self._load_weekly_config()
         # 反相：enabled=True（卖出）→ 只买不卖=false
         safe_update(config, self._weekly_task_name, not enabled, self.display_name)
-        self._save(config)
+        self._save_weekly_config(config)
 
     @classmethod
     def get_task_lists(cls, task_name: str, source: str) -> list[str]:
@@ -965,21 +628,12 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
     _backup_paths = ("config",)
-    _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
     _template_rel_path = "ZZZ一条龙.yml"
     _weekly_config_rel_path = "config/01/one_dragon/_group.yml"
     _game_path_keys = ("game_path",)
     background = "assets/ui/static_background.webp"
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "迷失之地"))
-
-    def set_daily_task(
-        self,
-        daily_display_name: str,
-        task_name: str,
-        sequence: str | int | None = None,
-    ):
-        logger.info(f"[set_config][{self.display_name}] zzz无需适配")
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """控制 _group.yml 中 lost_void 的 enabled 开关。
@@ -992,7 +646,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
         """
         self._check_weekly_start(start_day)
         enabled = is_weekly_start_reached(start_day)
-        config = self._load_weekly()
+        config = self._load_weekly_config()
         # 周常（迷失之地）在 _group.yml app_list 中的 app_id。
         app_list = get_field(config, "app_list", self.display_name, list)
         target = next(
@@ -1003,7 +657,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
             f"[set_config][{self.display_name}] app_list 缺少 {self._weekly_task_name}"
         )
         safe_update(target, "enabled", enabled, self.display_name)
-        self._save_weekly(config)
+        self._save_weekly_config(config)
 
 
 # ---- 崩铁 Honkai: Star Rail ----
@@ -1012,11 +666,11 @@ class StarRailConfig(ScriptConfig):
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
     _backup_paths = ("config.yaml",)
-    _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
     _template_rel_path = "M7A一条龙.yml"
     _game_path_keys = ("game_path",)
     background = "assets/app/images/bg37.jpg"
+    _weekly_config_rel_path = "config.yaml"
     _weekly_task_name = get_weekly_config(_script_name, "货币战争")["key"]
     _echo_config = get_weekly_config(_script_name, "历战余响")
 
@@ -1046,14 +700,6 @@ class StarRailConfig(ScriptConfig):
         )
         return list(entry.keys())
 
-    def set_daily_task(
-        self,
-        daily_display_name: str,
-        task_name: str,
-        sequence: str | int | None = None,
-    ):
-        logger.info(f"[set_config][{self.display_name}] M7A无需适配")
-
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """崩铁周常：周几起对所有周本生效。
 
@@ -1066,7 +712,7 @@ class StarRailConfig(ScriptConfig):
             start_day: 周几以后启用（1~7，1=周一）。
         """
         self._check_weekly_start(start_day)
-        config = self._load()
+        config = self._load_weekly_config()
         # 货币战争：今天是否已到起始日
         safe_update(
             config,
@@ -1076,7 +722,7 @@ class StarRailConfig(ScriptConfig):
         )
         # 历战余响：周几起交给 M7A 自身门控，与副本选型 instance_names 正交
         safe_update(config, self._echo_config["key"], start_day, self.display_name)
-        self._save(config)
+        self._save_weekly_config(config)
 
     def set_weekly_start_day(self, start_day: int) -> None:
         """编辑期落盘周几起字面起始日到 echo_of_war_start_day_of_week。
@@ -1093,7 +739,7 @@ class StarRailConfig(ScriptConfig):
         )
         # 前置条件：游戏原生 config 路径有效（游戏已安装、script_path 正确），由 GUI 侧
         # 调用前保证；本方法假设该前置成立，不做存在性兜底盘。
-        config = self._load(allow_missing=True) or {}
+        config = self._load_weekly_config(allow_missing=True) or {}
         # 空 config 时字段可能尚不存在（本方法容忍 config 缺失），故允许新增。
         safe_update(
             config,
@@ -1102,7 +748,7 @@ class StarRailConfig(ScriptConfig):
             self.display_name,
             assert_key_exists=False,
         )
-        self._save(config)
+        self._save_weekly_config(config)
 
     def set_weekly_task(self, weekly_name: str, task_name: str) -> None:
         """写入某周常当前选中的副本名到 config.yaml 的 instance_names。
@@ -1114,7 +760,7 @@ class StarRailConfig(ScriptConfig):
             weekly_name: 周常名（如「历战余响」）；即 instance_names 的键。
             task_name: 选中的副本名（来自 weekly_task_list.yml 声明）。
         """
-        config = self._load()
+        config = self._load_weekly_config()
         # instance_names 是 M7A 约定键名（{周常名: 副本名} 的 dict）；仅首次使用时新建，
         # 已存在则由 get_field 校验类型——与 _read_weekly_task 对称，不静默抹掉损坏值。
         if "instance_names" not in config:
@@ -1132,7 +778,7 @@ class StarRailConfig(ScriptConfig):
             assert task_name in values, f"未知周常副本: {task_name!r}"
             task_name = values[task_name]
         instance_names[get_physical_name(task)] = task_name
-        self._save(config)
+        self._save_weekly_config(config)
 
     def _read_weekly_task(self, weekly_name: str) -> str | None:
         """反读某周常当前选中的副本名（与 set_weekly_task 对称）。
@@ -1143,7 +789,7 @@ class StarRailConfig(ScriptConfig):
         Returns:
             当前选中的副本名；未设置/无 instance_names 返回 None。
         """
-        config = self._load(allow_missing=True)
+        config = self._load_weekly_config(allow_missing=True)
         if config is None:
             return None  # 脚本未安装/未配置
         assert isinstance(config, dict), (
@@ -1168,13 +814,9 @@ class StarRailConfig(ScriptConfig):
 class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
     _backup_paths = ("data/apps/ok-nte/working/configs",)
-    _config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
-    _routine_config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTask.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "异环"
-    _daily_tasks = get_daily_configs(_script_name)
-    """各日常的选项落点，由声明推导（见 task_config.get_daily_configs）。"""
 
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
@@ -1206,208 +848,6 @@ class NTEConfig(ScriptConfig):
         )
         return None
 
-    def _daily_section_dict(self, config: dict, section: str) -> dict:
-        """取指定日常任务配置段子对象（config 文件）。
-
-        Args:
-            config: 顶层 config dict。
-            section: 段名（即模式 id，如 daily_anomaly / daily_anomaly_hunter）。
-
-        Returns:
-            日常任务配置子 dict。
-
-        Raises:
-            AssertionError: 缺段或类型非 dict。
-        """
-        return get_field(config, section, self.display_name, dict, "daily_section")
-
-    def _update_task(
-        self,
-        config: dict,
-        daily_display_name: str,
-        task_name: str,
-        sequence: str | int | None = None,
-    ) -> bool:
-        """写入副本类型字段与序号字段，返回是否修改（与 _read_daily_task 对称）。
-
-        按 ``daily_display_name`` 定位日常段（异象界域 / 追猎目标），
-        再按 ``_daily_tasks`` 的字段落点写入；不依赖可变实例状态。
-
-        Args:
-            config: 目标 config dict。
-            daily_display_name: 副本所属日常展示名；异环两个日常分段，必须指定。
-            task_name: 副本中文名。
-            sequence: 序号值。
-
-        Returns:
-            是否发生实际修改。
-
-        Raises:
-            AssertionError: 未指定日常，该日常无此副本，或序列为空。
-        """
-        assert daily_display_name is not None, (
-            f"[set_config][{self.display_name}] 必须指定日常"
-        )
-        mode_id = self._daily_physical_name(daily_display_name)
-        daily = self._daily_tasks[mode_id]
-        assert task_name in daily["option_fields"], (
-            f"[set_config][{self.display_name}] {daily_display_name} 无此副本: {task_name}"
-        )
-        section_dict = self._daily_section_dict(config, mode_id)
-        task_field = daily["task_field"]
-        if task_field is not None:
-            task_changed = safe_update(
-                section_dict,
-                task_field,
-                daily["task_map"][task_name],
-                self.display_name,
-                assert_key_exists=False,
-            )
-        else:
-            task_changed = False
-        assert sequence is not None, f"[set_config][{self.display_name}] 序列不能为空"
-        key = daily["option_fields"][task_name]
-        seq_changed = safe_update(
-            section_dict, key, sequence, self.display_name, assert_key_exists=False
-        )
-        return task_changed or seq_changed
-
-    def _routine_item(self, routine: dict, mode_id: str) -> dict:
-        """取 Routine Items 里该日常的 item。
-
-        Args:
-            routine: DailyRoutineTask.json 的 dict。
-            mode_id: 日常 id（_daily_tasks 的键）。
-
-        Returns:
-            该日常的 Routine Item dict。
-
-        Raises:
-            AssertionError: Routine Items 缺少或重复该日常段。
-        """
-        items = get_field(routine, "Routine Items", self.display_name, list)
-        target = [item for item in items if item["id"] == mode_id]
-        assert len(target) == 1, (
-            f"[set_config][{self.display_name}] Routine Items 缺少或重复 {mode_id}"
-        )
-        return target[0]
-
-    def _write_routine_enabled(self, mode_id: str, enabled: bool) -> None:
-        """写某日常的 Routine Item 启用状态，其它日常不动（无异动不落盘）。
-
-        Args:
-            mode_id: 日常 id（_daily_tasks 的键）。
-            enabled: 目标启用状态。
-        """
-        routine = self._load(self._routine_config_rel_path)
-        item = self._routine_item(routine, mode_id)
-        if safe_update(item, "enabled", enabled, self.display_name):
-            self._save(routine, self._routine_config_rel_path)
-
-    def set_daily_task(
-        self,
-        daily_display_name: str,
-        task_name: str,
-        sequence: str | int | None = None,
-    ) -> None:
-        """写副本与序号到指定日常的段，并启用该日常。
-
-        Args:
-            daily_display_name: 副本所属日常展示名；异环两个日常分段，必须指定。
-            task_name: 副本中文名。
-            sequence: 序列值。
-        """
-        assert daily_display_name is not None, (
-            f"[set_config][{self.display_name}] 必须指定日常"
-        )
-        super().set_daily_task(daily_display_name, task_name, sequence)
-        self._write_routine_enabled(self._daily_physical_name(daily_display_name), True)
-
-    def set_daily_enabled(self, daily_display_name: str, enabled: bool) -> None:
-        """置某日常的 Routine Item 启用状态（不动另一个日常，也不动副本选择）。
-
-        Args:
-            daily_display_name: 日常展示名。
-            enabled: 目标启用状态。
-        """
-        self._write_routine_enabled(
-            self._daily_physical_name(daily_display_name), enabled
-        )
-
-    def _read_daily_enabled(self, daily_display_name: str) -> bool | None:
-        """反读某日常是否启用。
-
-        Args:
-            daily_display_name: 日常展示名。
-
-        Returns:
-            是否启用；脚本未安装/未配置（无真相）返回 None。
-        """
-        routine = self._load(self._routine_config_rel_path, allow_missing=True)
-        if routine is None:
-            return None  # 脚本未安装/未配置：开关无真相，不谎报「已停用」
-        assert isinstance(routine, dict), (
-            f"[set_config][{self.display_name}] DailyRoutineTask.json 必须是 dict"
-        )
-        mode_id = self._daily_physical_name(daily_display_name)
-        return bool(self._routine_item(routine, mode_id)["enabled"])
-
-    def _read_daily_task(
-        self, daily_display_name: str
-    ) -> tuple[str | None, str | int | None]:
-        """反读某日常的副本与二级序号（与 set_daily_task / _update_task 对称）。
-
-        直接按日常读它自己的段，不看 Routine Items 的启用状态——未启用的日常也要能
-        呈现已选副本（是否启用另走 ``_read_daily_enabled``）。两种日常的副本/序列数据
-        均落 config 文件 DailyRoutineTaskConfigs.json。脚本未安装返回 (None, None)；
-        config 段未落盘按未选择处理，段损坏或字段值未知属异常、assert 暴露。
-
-        Args:
-            daily_display_name: 日常展示名。
-
-        Returns:
-            (副本中文名, 序号值)；未安装/未选择返回 (None, None)。
-        """
-        mode_id = self._daily_physical_name(daily_display_name)
-        config = self._load(allow_missing=True)
-        if config is None:
-            return None, None  # 脚本未安装/未配置
-        assert isinstance(config, dict), (
-            f"[set_config][{self.display_name}] DailyRoutineTaskConfigs.json 必须是 dict"
-        )
-        # 段名 = 日常 id；段未落盘按「未选择」处理，段类型非 dict 属损坏、assert。
-        if mode_id not in config:
-            return None, None
-        section = config[mode_id]
-        assert isinstance(section, dict), (
-            f"[set_config][{self.display_name}] {mode_id} 段必须是 dict"
-        )
-        daily = self._daily_tasks[mode_id]
-        task_field = daily["task_field"]
-        if task_field is None:
-            # 单层日常（追猎目标）：副本名即日常名，选择结果直接落 option_fields 指明的字段。
-            key = get_field(
-                daily["option_fields"], daily["name"], self.display_name, context="read"
-            )
-            if key not in section:
-                return daily["name"], None  # 未落盘
-            return daily["name"], section[key] or None
-        # 两层日常（异象界域）：副本名在一级字段，序号经 option_fields 反查。
-        if task_field not in section:
-            return None, None  # 段缺失（未落盘）
-        task = section[task_field]
-        if task in (None, ""):  # 字段为空串视为未选具体副本
-            return None, None
-        names = {value: name for name, value in daily["task_map"].items()}
-        assert task in names, f"未知异象类别: {task!r}"
-        task = names[task]
-        seq_key = get_field(
-            daily["option_fields"], task, self.display_name, context="read"
-        )
-        if seq_key not in section:
-            return task, None  # 序号未落盘
-        return task, section[seq_key]
-
 
 # ---- 明日方舟 Arknights（粥）----
 @register
@@ -1415,7 +855,6 @@ class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
     display_name = "粥"
     _backup_paths = ("config",)
-    _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
     _game_path_keys = (
         "Configurations",
@@ -1424,145 +863,8 @@ class ArknightsConfig(ScriptConfig):
         "StartUpSettings",
         "EmulatorPath",
     )
+    _weekly_config_rel_path = "config/gui.new.json"
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "理智药剂"))
-    # 关卡代码 → 中文名。基于 StagePlan[0] 识别任务，不再依赖 TaskQueue 顺序。
-    # 只维护这5个关卡，其余 FightTask 不动。
-    _task_map = {
-        "Annihilation": "剿灭",
-        **{
-            get_physical_name(option): option["display_name"]
-            for option in get_options(get_daily_config(_script_name))
-        },
-    }
-
-    def _update_task(
-        self,
-        config: dict,
-        daily_display_name: str,
-        task_name: str,
-        sequence: str | int | None = None,
-    ) -> bool:
-        """粥副本设置：基于 StagePlan[0] 识别任务，启用剿灭/土/选定副本。
-
-        主路径只处理 _task_map 中的5个关卡，其余 FightTask 不动。
-
-        若用户 MAA 配置队列中完全不存在 target_stage，
-        则借用一个槽位改写其 StagePlan。
-
-        Args:
-            config: 目标 config dict。
-            daily_display_name: 副本所属日常展示名；单日常脚本忽略。
-            task_name: 选定副本中文名。
-
-        Returns:
-            是否有任意任务项状态发生变化。
-
-        Raises:
-            AssertionError: 未适配的副本（task_name 不在 _task_map）。
-        """
-        task_config = config["Configurations"]["Default"]["TaskQueue"]
-        # 反查：中文名 → 关卡代码
-        stage_by_name = {name: stage for stage, name in self._task_map.items()}
-        assert task_name in stage_by_name, (
-            f"[set_config][{self.display_name}] 未适配的副本: {task_name}"
-        )
-        target_stage = stage_by_name[task_name]
-
-        fixed_stages = {"Annihilation", "1-7"}
-        changed = False
-        matched_target = False
-        for task in task_config:
-            if task["$type"] != "FightTask":
-                continue
-            stage_plan = task["StagePlan"]
-            if not isinstance(stage_plan, list) or len(stage_plan) != 1:
-                continue
-            stage = stage_plan[0]
-            if stage not in self._task_map:
-                continue  # 未维护的关卡，不动
-            if stage == target_stage:
-                matched_target = True
-            name = self._task_map[stage]
-
-            should_enable = stage in fixed_stages or name == task_name
-            changed |= safe_update(
-                task,
-                "IsEnable",
-                should_enable,
-                f"{self.display_name}[{name}]",
-            )
-
-        # fallback（issue #42）：目标关卡缺失时借槽改写 StagePlan，优先借用
-        # 副本列表内的启用槽（剿灭除外），其次才借未追踪占位槽。仅改 StagePlan。
-        if not matched_target:
-            candidates = [
-                t
-                for t in task_config
-                if t["$type"] == "FightTask"
-                and t["IsEnable"]
-                and isinstance(t["StagePlan"], list)
-                and len(t["StagePlan"]) == 1
-                and t["StagePlan"][0] != "Annihilation"
-            ]
-            borrow = next(
-                (t for t in candidates if t["StagePlan"][0] in self._task_map),
-                None,
-            ) or next(iter(candidates), None)
-            if borrow is not None:
-                borrowed = borrow.get("Name", self.display_name)
-                changed |= safe_update(
-                    borrow,
-                    "StagePlan",
-                    [target_stage],
-                    f"{self.display_name}[borrow:{borrowed}]",
-                )
-
-        return changed
-
-    def _read_daily_task(
-        self, daily_display_name: str
-    ) -> tuple[str | None, str | int | None]:
-        """反读当前日常副本（与 _update_task 对称）。
-
-        遍历 TaskQueue，除固定启用的剿灭/土外，
-        被勾选 IsEnable 的那一项即当前副本。
-        特殊：若所有维护关卡都未启用，但有 StagePlan=["1-7"] 的任务，则读为「土」。
-
-        Args:
-            daily_display_name: 日常展示名；单日常脚本忽略。
-
-        Returns:
-            (副本中文名, None)；未设置返回 (None, None)。
-        """
-        config = self._load(allow_missing=True)
-        if config is None:
-            return None, None  # 脚本未安装/未配置
-        assert isinstance(config, dict), (
-            f"[set_config][{self.display_name}] config 必须是 dict"
-        )
-        task_config = config["Configurations"]["Default"]["TaskQueue"]
-        fixed_stages = {"Annihilation", "1-7"}
-        has_1_7 = False
-        for task in task_config:
-            if task["$type"] != "FightTask":
-                continue
-            stage_plan = task["StagePlan"]
-            if not isinstance(stage_plan, list) or len(stage_plan) != 1:
-                continue
-            stage = stage_plan[0]
-            if stage == "1-7":
-                has_1_7 = True
-            if stage not in self._task_map:
-                continue
-            name = self._task_map[stage]
-            if stage in fixed_stages:
-                continue
-            if task["IsEnable"]:
-                return name, None
-        # 所有维护关卡都未启用，但有1-7 → 读为土
-        if has_1_7:
-            return self._task_map["1-7"], None
-        return None, None
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """周常「理智药剂」：按周几起写过期理智药使用窗口，并随副本启停同步开关。
@@ -1580,7 +882,7 @@ class ArknightsConfig(ScriptConfig):
             AssertionError: 未适配周常，或 start_day 不在 1~7。
         """
         self._check_weekly_start(start_day)
-        config = self._load()
+        config = self._load_weekly_config()
         task_queue = get_field(
             get_field(
                 get_field(config, "Configurations", self.display_name, dict, "weekly"),
@@ -1621,7 +923,7 @@ class ArknightsConfig(ScriptConfig):
             logger.info(
                 f"[prepare_weekly_start_day][{self.display_name}] 理智药剂配置已更新"
             )
-            self._save(config)
+            self._save_weekly_config(config)
         else:
             logger.info(
                 f"[prepare_weekly_start_day][{self.display_name}] 理智药剂配置无需更新"
@@ -1643,7 +945,7 @@ class ArknightsConfig(ScriptConfig):
         )
         # 前置条件：游戏原生 config 已存在（游戏已安装、script_path 正确），由 GUI 侧调用前
         # 保证；缺失即前置不成立，直接断言失败，不做存在性兜底盘。
-        config = self._load()
+        config = self._load_weekly_config()
         task_queue = get_field(
             get_field(
                 get_field(config, "Configurations", self.display_name, dict, "weekly"),
@@ -1673,7 +975,7 @@ class ArknightsConfig(ScriptConfig):
             logger.info(
                 f"[set_weekly_start_day][{self.display_name}] 理智药剂过期窗口已更新"
             )
-            self._save(config)
+            self._save_weekly_config(config)
         else:
             logger.info(
                 f"[set_weekly_start_day][{self.display_name}] 理智药剂过期窗口无需更新"
@@ -1717,10 +1019,10 @@ def set_config(
 
     Args:
         script_name: 脚本标识名。
-        daily_display_name: 副本所属日常展示名；单日常脚本忽略，
-            分段脚本（多日常）据此选段。
-        task_name: 副本中文名；None 或「未选择」表示不设置副本。
-        sequence: 序列值；仅部分脚本支持。
+        daily_display_name: 副本所属日常展示名（界面逐行渲染时即该行行名）；
+            单日常脚本也要给，分段脚本（多日常）据此选段。
+        task_name: 一级项展示名（副本站位）；None 或「未选择」表示不设置副本。
+        sequence: 二级项值；仅部分脚本支持。
         weekly_start: 周常起始日（1~7）；None 表示不设置周常。
     """
     if (not task_name or task_name == "未选择") and weekly_start is None:
@@ -1737,12 +1039,6 @@ def set_config(
         cfg.set_daily_task(daily_display_name, task_name, sequence)
     if weekly_start is not None:
         cfg.prepare_weekly_start_day(weekly_start)
-
-
-def get_daily_options(script_name: str) -> list[dict]:
-    """取得脚本的日常副本选项声明。"""
-    assert script_name in _CONFIGS, f"未适配脚本: {script_name}"
-    return _CONFIGS[script_name].get_daily_options()
 
 
 def get_task_lists(script_name: str, task_name: str, source: str) -> list[str] | None:
@@ -1776,7 +1072,9 @@ def get_config_path(script_name: str) -> str:
         AssertionError: 脚本未适配。
     """
     assert script_name in _CONFIGS, f"[set_config] 未适配脚本: {script_name}"
-    return _get_config_path_impl(script_name, _CONFIGS[script_name]._config_rel_path)
+    return _get_config_path_impl(
+        script_name, get_daily_configs(script_name)[0]["config"]
+    )
 
 
 def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...]:

@@ -12,7 +12,7 @@ import os
 import tempfile
 import unittest
 
-from src.config.set_config import safe_update
+from src.utils.utils_dict import safe_update
 from src.utils.utils_yaml import YAML_INSTANCE, dump_yaml, load_yaml
 
 

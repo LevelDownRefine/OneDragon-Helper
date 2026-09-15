@@ -20,10 +20,22 @@ class TestTaskCard(unittest.TestCase):
     def test_restore_refreshes_task_properties(self, _map):
         bridge = _make_bridge()
         name = bridge.games[0]["script_name"]
-        bridge.task_card._daily_options_cache = {
-            name: [
-                {"name": "每日任务", "options": [{"name": "副本A", "sequences": []}]}
-            ]
+        bridge.task_card._daily_map_cache = {
+            name: {
+                "dailies": [
+                    {
+                        "display_name": "每日任务",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "副本A",
+                                    "physical_name": "副本A",
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
         }
         changed = MagicMock()
         bridge.taskStateChanged.connect(changed)
@@ -46,7 +58,10 @@ class TestTaskCard(unittest.TestCase):
             self.assertEqual(bridge.dailyItems[0]["task_label"], "副本B")
 
     @patch.object(task_card, "is_adapted", return_value=True)
-    @patch("src.service.app_service.get_weekly_map", return_value=[{"name": "周常"}])
+    @patch(
+        "src.service.app_service.get_weekly_map",
+        return_value=[{"display_name": "周常"}],
+    )
     @patch.object(app_service, "get_weekly_start", return_value=None)
     @patch("src.service.app_service.get_daily_map", return_value={})
     @patch.object(task_card, "get_daily_readback", return_value=[])
@@ -81,10 +96,22 @@ class TestTaskCard(unittest.TestCase):
         b = _make_bridge()
         name = b.games[0]["script_name"]
         # 反读无真相 → chip 回退声明的首个选项
-        b.task_card._daily_options_cache = {
-            name: [
-                {"name": "每日任务", "options": [{"name": "副本A", "sequences": []}]}
-            ]
+        b.task_card._daily_map_cache = {
+            name: {
+                "dailies": [
+                    {
+                        "display_name": "每日任务",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "副本A",
+                                    "physical_name": "副本A",
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
         }
         readback.return_value = [
             {"name": "每日任务", "task": None, "sequence": None, "enabled": None}
@@ -108,10 +135,27 @@ class TestTaskCard(unittest.TestCase):
         menu = {
             "ok-ww": {
                 "dailies": [
-                    {"name": "异象界域", "tasks": [{"name": "空幕", "sequences": []}]},
                     {
-                        "name": "追猎目标",
-                        "tasks": [{"name": "追猎目标", "sequences": []}],
+                        "display_name": "异象界域",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "空幕",
+                                    "physical_name": "空幕",
+                                }
+                            ]
+                        },
+                    },
+                    {
+                        "display_name": "追猎目标",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "追猎目标",
+                                    "physical_name": "追猎目标",
+                                }
+                            ]
+                        },
                     },
                 ]
             }
@@ -131,7 +175,8 @@ class TestTaskCard(unittest.TestCase):
             [item["name"] for item in b.dailyItems], ["异象界域", "追猎目标"]
         )
         self.assertEqual(
-            b.dailyOptions("追猎目标"), [{"name": "追猎目标", "sequences": []}]
+            b.dailyOptions("追猎目标"),
+            [{"display_name": "追猎目标", "physical_name": "追猎目标"}],
         )
 
     @patch.object(task_card, "is_adapted", return_value=True)
@@ -140,13 +185,23 @@ class TestTaskCard(unittest.TestCase):
             "ok-ww": {
                 "dailies": [
                     {
-                        "name": "每日任务",
-                        "tasks": [
-                            {
-                                "name": "副本A",
-                                "sequences": [{"display": "难1", "value": "s1"}],
-                            }
-                        ],
+                        "display_name": "每日任务",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "副本A",
+                                    "physical_name": "副本A",
+                                    "options": {
+                                        "values": [
+                                            {
+                                                "display_name": "难1",
+                                                "physical_name": "s1",
+                                            }
+                                        ]
+                                    },
+                                }
+                            ]
+                        },
                     }
                 ]
             }
@@ -154,8 +209,11 @@ class TestTaskCard(unittest.TestCase):
         with patch("src.service.app_service.get_daily_map", return_value=menu):
             b = _make_bridge()
         opts = b.dailyOptions("每日任务")
-        self.assertEqual(opts[0]["name"], "副本A")
-        self.assertEqual(opts[0]["sequences"], [{"label": "难1", "value": "s1"}])
+        self.assertEqual(opts[0]["display_name"], "副本A")
+        self.assertEqual(
+            opts[0]["options"]["values"],
+            [{"display_name": "难1", "physical_name": "s1"}],
+        )
 
     @patch("src.service.app_service.get_daily_map", return_value={})
     def test_daily_options_empty_when_no_cfg(self, *_):

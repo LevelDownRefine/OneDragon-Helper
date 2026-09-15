@@ -108,7 +108,13 @@ class TestWeeklyItems(unittest.TestCase):
             ctrl = _make_controller()
             options = ctrl.weekly_task_options("历战余响")
         tmp.cleanup()
-        self.assertEqual(options, ["无", "铁骸的锈冢", "晨昏的回眸"])
+        self.assertEqual(
+            [option["display_name"] for option in options],
+            ["无", "铁骸的锈冢", "晨昏的回眸"],
+        )
+        self.assertTrue(
+            all(option["physical_name"] == option["display_name"] for option in options)
+        )
 
     def test_weekly_task_options_unknown_weekly_returns_empty(self):
         """未声明的周常名 → 空列表。"""
@@ -231,10 +237,19 @@ class TestDailyItems(unittest.TestCase):
     def test_prefers_readback_over_declared(self):
         """反读有真相时以反读为准，不走声明项回退。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        ctrl._daily_options_cache = {
-            "ok-ww": [
-                {"name": "每日任务", "options": [{"name": "声明项", "sequences": []}]}
-            ]
+        ctrl._daily_map_cache = {
+            "ok-ww": {
+                "dailies": [
+                    {
+                        "display_name": "每日任务",
+                        "options": {
+                            "values": [
+                                {"display_name": "声明项", "physical_name": "声明项"}
+                            ]
+                        },
+                    }
+                ]
+            }
         }
         items = self._items(
             ctrl,
@@ -252,21 +267,34 @@ class TestDailyItems(unittest.TestCase):
     def test_nte_daily_shows_daily_task_and_sequence(self):
         """异环：空幕 · 轨道之夜（选项不自包含副本名，必须两者同显）。"""
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._daily_options_cache = {
-            "ok-nte": [
-                {
-                    "name": "异象界域",
-                    "options": [
-                        {
-                            "name": "空幕",
-                            "sequences": [
-                                {"label": "光暗", "value": 1},
-                                {"label": "轨道之夜", "value": 6},
-                            ],
-                        }
-                    ],
-                }
-            ]
+        ctrl._daily_map_cache = {
+            "ok-nte": {
+                "dailies": [
+                    {
+                        "display_name": "异象界域",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "空幕",
+                                    "physical_name": "空幕",
+                                    "options": {
+                                        "values": [
+                                            {
+                                                "display_name": "光暗",
+                                                "physical_name": 1,
+                                            },
+                                            {
+                                                "display_name": "轨道之夜",
+                                                "physical_name": 6,
+                                            },
+                                        ]
+                                    },
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
         }
         items = self._items(
             ctrl,
@@ -277,11 +305,13 @@ class TestDailyItems(unittest.TestCase):
     def test_daily_name_is_exposed_for_multi_daily_row(self):
         """多日常：每行带自己的日常展示名（QML 据此区分下拉）。"""
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._daily_options_cache = {
-            "ok-nte": [
-                {"name": "异象界域", "options": []},
-                {"name": "追猎目标", "options": []},
-            ]
+        ctrl._daily_map_cache = {
+            "ok-nte": {
+                "dailies": [
+                    {"display_name": "异象界域", "options": {"values": []}},
+                    {"display_name": "追猎目标", "options": {"values": []}},
+                ]
+            }
         }
         items = self._items(
             ctrl,
@@ -295,13 +325,22 @@ class TestDailyItems(unittest.TestCase):
     def test_disabled_daily_shows_disabled_and_can_disable(self):
         """被停用的日常：chip 显示「不启用」，该行提供「不启用」入口。"""
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._daily_options_cache = {
-            "ok-nte": [
-                {
-                    "name": "追猎目标",
-                    "options": [{"name": "追猎目标", "sequences": []}],
-                }
-            ]
+        ctrl._daily_map_cache = {
+            "ok-nte": {
+                "dailies": [
+                    {
+                        "display_name": "追猎目标",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "追猎目标",
+                                    "physical_name": "追猎目标",
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
         }
         items = self._items(
             ctrl,
@@ -321,13 +360,22 @@ class TestDailyItems(unittest.TestCase):
     def test_uninstalled_daily_is_not_reported_as_disabled(self):
         """脚本未安装（整条记录无真相）→ 不谎报「不启用」，也不提供该入口。"""
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._daily_options_cache = {
-            "ok-nte": [
-                {
-                    "name": "追猎目标",
-                    "options": [{"name": "追猎目标", "sequences": []}],
-                }
-            ]
+        ctrl._daily_map_cache = {
+            "ok-nte": {
+                "dailies": [
+                    {
+                        "display_name": "追猎目标",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "追猎目标",
+                                    "physical_name": "追猎目标",
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
         }
         items = self._items(
             ctrl,
@@ -340,10 +388,22 @@ class TestDailyItems(unittest.TestCase):
     def test_falls_back_to_declared_option_when_no_truth(self):
         """no-op 脚本（绝区零）反读无真相 → 回退声明的首个选项，呈现为已选。"""
         ctrl = _make_controller("OneDragon-Launcher", "绝区零")
-        ctrl._daily_options_cache = {
-            "OneDragon-Launcher": [
-                {"name": "每日任务", "options": [{"name": "培养方案", "sequences": []}]}
-            ]
+        ctrl._daily_map_cache = {
+            "OneDragon-Launcher": {
+                "dailies": [
+                    {
+                        "display_name": "每日任务",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "培养方案",
+                                    "physical_name": "培养方案",
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
         }
         items = self._items(
             ctrl,
@@ -354,7 +414,11 @@ class TestDailyItems(unittest.TestCase):
     def test_placeholder_when_daily_has_no_options(self):
         """该日常声明里没有选项 → 占位「选择副本」。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        ctrl._daily_options_cache = {"ok-ww": [{"name": "每日任务", "options": []}]}
+        ctrl._daily_map_cache = {
+            "ok-ww": {
+                "dailies": [{"display_name": "每日任务", "options": {"values": []}}]
+            }
+        }
         items = self._items(
             ctrl,
             [{"name": "每日任务", "task": None, "sequence": None, "enabled": None}],
@@ -364,23 +428,40 @@ class TestDailyItems(unittest.TestCase):
     def test_no_items_without_dailies(self):
         """脚本无日常声明（反读为空）→ 无日常行。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
-        ctrl._daily_options_cache = {}
+        ctrl._daily_map_cache = {}
         self.assertEqual(self._items(ctrl, []), [])
 
     def test_daily_options_by_daily_name(self):
         """下拉数据按日常取；未知日常返回空列表。"""
         ctrl = _make_controller("ok-nte", "异环")
-        ctrl._daily_options_cache = {
-            "ok-nte": [
-                {"name": "异象界域", "options": [{"name": "空幕", "sequences": []}]},
-                {
-                    "name": "追猎目标",
-                    "options": [{"name": "追猎目标", "sequences": []}],
-                },
-            ]
+        ctrl._daily_map_cache = {
+            "ok-nte": {
+                "dailies": [
+                    {
+                        "display_name": "异象界域",
+                        "options": {
+                            "values": [
+                                {"display_name": "空幕", "physical_name": "空幕"}
+                            ]
+                        },
+                    },
+                    {
+                        "display_name": "追猎目标",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "追猎目标",
+                                    "physical_name": "追猎目标",
+                                }
+                            ]
+                        },
+                    },
+                ]
+            }
         }
         self.assertEqual(
-            ctrl.daily_options("追猎目标"), [{"name": "追猎目标", "sequences": []}]
+            ctrl.daily_options("追猎目标"),
+            [{"display_name": "追猎目标", "physical_name": "追猎目标"}],
         )
         self.assertEqual(ctrl.daily_options("不存在"), [])
 

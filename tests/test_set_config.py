@@ -15,7 +15,9 @@ import tempfile
 import unittest
 from unittest.mock import mock_open, patch
 
+from src.config import daily as daily_mod
 from src.config import set_config
+from src.config.task_config import get_daily_configs
 from src.utils import safe_path_join, utils_sub_config
 from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
 
@@ -38,15 +40,14 @@ class TestConfigRelPaths(unittest.TestCase):
             },
         )
 
-    def test_every_subclass_has_config_rel_path(self):
-        """每个注册子类都声明了非空 _config_rel_path"""
-        for name, cls in set_config._CONFIGS.items():
-            self.assertIsInstance(
-                cls._config_rel_path, str, f"{name} 的 _config_rel_path 不是字符串"
-            )
-            self.assertTrue(
-                len(cls._config_rel_path) > 0, f"{name} 的 _config_rel_path 为空"
-            )
+    def test_every_daily_declares_config(self):
+        """每个注册脚本的日常声明都带非空 config（load 层强制，此处防回归）"""
+        for name in set_config._CONFIGS:
+            for declaration in get_daily_configs(name):
+                self.assertTrue(
+                    declaration.get("config"),
+                    f"{name} 的 {declaration['display_name']} 未声明 config",
+                )
 
     def test_game_config_rel_path_covers_all(self):
         """全部 7 个脚本都声明了 _game_path_keys 与 _game_config_rel_path"""
@@ -93,11 +94,13 @@ class TestConfigRelPaths(unittest.TestCase):
     def test_rel_paths_contain_extension(self):
         """每个 config 相对路径应包含 .json 或 .yaml/.yml 扩展名"""
         valid_exts = (".json", ".yaml", ".yml")
-        for name, cls in set_config._CONFIGS.items():
-            ext = os.path.splitext(cls._config_rel_path)[1].lower()
-            self.assertIn(
-                ext, valid_exts, f"{name} 的 config 扩展名 {ext} 不在支持范围内"
-            )
+        for name in set_config._CONFIGS:
+            for declaration in get_daily_configs(name):
+                rel = declaration["config"]
+                ext = os.path.splitext(rel)[1].lower()
+                self.assertIn(
+                    ext, valid_exts, f"{name} 的 config 扩展名 {ext} 不在支持范围内"
+                )
 
 
 class TestGetConfigPath(unittest.TestCase):
@@ -156,7 +159,7 @@ class TestGetConfigPath(unittest.TestCase):
             patch("os.path.exists", return_value=True),
         ):
             for name in scripts:
-                rel = set_config._CONFIGS[name]._config_rel_path
+                rel = get_daily_configs(name)[0]["config"]
                 path = utils_sub_config.get_sub_config_path(name, rel)
                 self.assertIsNotNone(path, f"{name} 路径推导失败")
                 # 路径中应包含相对路径的各段（不依赖具体分隔符）
@@ -181,7 +184,7 @@ class TestGetConfigPath(unittest.TestCase):
                 },
             ]
         }
-        rel = set_config.StarRailConfig._config_rel_path
+        rel = get_daily_configs("March7th-Launcher")[0]["config"]
         with (
             patch.object(
                 utils_sub_config, "_load_config_yml", return_value=fake_config
@@ -277,7 +280,7 @@ class TestLoadConfig(unittest.TestCase):
         fake_config_yml = {"script_list": fake_script_list}
 
         for name in scripts:
-            rel = set_config._CONFIGS[name]._config_rel_path
+            rel = get_daily_configs(name)[0]["config"]
             ext = os.path.splitext(rel)[1].lower()
             fake_data = {"test_key": "test_value"}
             if ext == ".json":
@@ -299,46 +302,46 @@ class TestLoadConfig(unittest.TestCase):
 
 
 class TestLoadReadPathTolerance(unittest.TestCase):
-    """_load 读路径的失败处理：未安装/缺失静默按未设置，内容损坏留痕后仍按未设置。"""
+    """Daily 读路径的失败处理：未安装/缺失静默按未设置，内容损坏留痕后仍按未设置。"""
 
-    def _cfg(self):
-        return set_config.StarRailConfig()
+    def _daily(self):
+        return set_config._CONFIGS["ok-ww"]()._dispatch_daily("每日任务")
 
     def test_missing_config_returns_none_without_warning(self):
-        """脚本未安装 / config 缺失（以断言表达）属正常状态 → None 且不告警。"""
+        """config 缺失（以断言表达）属正常状态 → None 且不告警。"""
         with (
             patch.object(
-                set_config,
+                daily_mod,
                 "load_config",
                 side_effect=AssertionError("config 文件不存在"),
             ),
-            self.assertNoLogs("src.config.set_config", level="WARNING"),
+            self.assertNoLogs("src.config.daily", level="WARNING"),
         ):
-            self.assertIsNone(self._cfg()._load(allow_missing=True))
+            self.assertIsNone(self._daily()._load_daily_config(allow_missing=True))
 
     def test_corrupt_config_warns_and_returns_none(self):
         """文件存在但解析失败 → None 且留下 warning（不静默把损坏当未设置）。"""
         with (
             patch.object(
-                set_config,
+                daily_mod,
                 "load_config",
                 side_effect=json.JSONDecodeError("bad json", "{", 0),
             ),
-            self.assertLogs("src.config.set_config", level="WARNING"),
+            self.assertLogs("src.config.daily", level="WARNING"),
         ):
-            self.assertIsNone(self._cfg()._load(allow_missing=True))
+            self.assertIsNone(self._daily()._load_daily_config(allow_missing=True))
 
     def test_write_path_raises_on_corrupt_config(self):
         """写路径（allow_missing=False）读取失败一律抛出，不降级为 None。"""
         with (
             patch.object(
-                set_config,
+                daily_mod,
                 "load_config",
                 side_effect=json.JSONDecodeError("bad json", "{", 0),
             ),
             self.assertRaises(json.JSONDecodeError),
         ):
-            self._cfg()._load()
+            self._daily()._load_daily_config()
 
 
 class TestSaveConfig(unittest.TestCase):
@@ -439,52 +442,12 @@ class TestSaveConfig(unittest.TestCase):
                 self.assertEqual(loaded, data)
 
 
-class TestGenshinSetDailyTask(unittest.TestCase):
-    """测试 GenshinConfig.set_daily_task：目录→副本两级组织，DomainName 存副本名"""
-
-    def setUp(self):
-        from src.config.set_config import GenshinConfig
-
-        self.config = GenshinConfig.__new__(GenshinConfig)
-        self.config.display_name = "原神"
-        self.config._task_key = "DomainName"
-        self.config._enabled = True
-        self.config._config_data = {"DomainName": "旧副本", "TaskEnabledList": []}
-        self.config._verify_saved = lambda *a: None
-        # 统一注入 mock IO：load 返回内存态，save 不落盘
-        self.mock_save = self.enterContext(
-            patch("src.config.set_config.save_config", return_value=None)
-        )
-        self.enterContext(
-            patch(
-                "src.config.set_config.load_config",
-                side_effect=lambda *a: self.config._config_data,
-            )
-        )
-
-    def test_has_sequence_writes_secondary_name(self):
-        """有二级（目录 → 副本）时 DomainName 写入二级副本名"""
-        self.config.set_daily_task("每日任务", "1", "霜凝的机枢")
-        self.assertEqual(self.config._config_data["DomainName"], "霜凝的机枢")
-
-    def test_no_sequence_writes_task_name(self):
-        """无二级（兼容旧单层配置）时 DomainName 写入一级名"""
-        self.config.set_daily_task("每日任务", "山风的荆冕")
-        self.assertEqual(self.config._config_data["DomainName"], "山风的荆冕")
-
-    def test_same_value_no_save(self):
-        """DomainName 未变化时不落盘"""
-        self.config._config_data["DomainName"] = "霜凝的机枢"
-        self.config.set_daily_task("每日任务", "1", "霜凝的机枢")
-        self.mock_save.assert_not_called()
-
-
 class TestSafeUpdate(unittest.TestCase):
     """测试 safe_update"""
 
     def test_update_changes_value(self):
         """值不同时更新并返回 True"""
-        from src.config.set_config import safe_update
+        from src.utils.utils_dict import safe_update
 
         config = {"key": "old"}
         result = safe_update(config, "key", "new", "test")
@@ -493,7 +456,7 @@ class TestSafeUpdate(unittest.TestCase):
 
     def test_no_change_when_same_value(self):
         """值相同时不更新并返回 False"""
-        from src.config.set_config import safe_update
+        from src.utils.utils_dict import safe_update
 
         config = {"key": "same"}
         result = safe_update(config, "key", "same", "test")
@@ -502,7 +465,7 @@ class TestSafeUpdate(unittest.TestCase):
 
     def test_key_not_exists_raises(self):
         """key 不存在时 assert（默认）"""
-        from src.config.set_config import safe_update
+        from src.utils.utils_dict import safe_update
 
         config = {}
         with self.assertRaises(AssertionError):
@@ -510,7 +473,7 @@ class TestSafeUpdate(unittest.TestCase):
 
     def test_key_not_exists_adds_with_flag(self):
         """assert_key_exists=False 时允许添加新 key"""
-        from src.config.set_config import safe_update
+        from src.utils.utils_dict import safe_update
 
         config = {"a": 1}
         result = safe_update(config, "b", "new", "test", assert_key_exists=False)
@@ -519,7 +482,7 @@ class TestSafeUpdate(unittest.TestCase):
 
     def test_type_mismatch_raises(self):
         """类型不一致时 assert"""
-        from src.config.set_config import safe_update
+        from src.utils.utils_dict import safe_update
 
         config = {"a": 1}
         with self.assertRaises(AssertionError):

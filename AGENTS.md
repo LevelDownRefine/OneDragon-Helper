@@ -19,7 +19,7 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 3. **gui** — 只放纯图形界面，即 QML、控制器与弹窗；**不写盘、不承载业务逻辑**，写盘统一经 service。详见 `src/gui/README.md`。
 4. **service，外观/facade** — 整合 config 读写·UI 状态·链生成·校验·runner 命令，对 GUI/CLI 暴露统一薄接口，无 Qt 依赖，从 gui 分出。详见 `src/service/README.md`。
 
-> 日常和周常分别声明于 `config/daily_task_list.yml`、`config/weekly_task_list.yml`，统一使用 `display_name / physical_name` 和递归 `options`；原神/终末地反读脚本本地资源，鸣潮/异环通过 GitHub Action 同步选项。当前每脚本仍为一个日常入口，异环的互斥玩法由子类处理。日志解析/失败重跑/邮件汇总之运行后动作内联于 `src/log` 与 `service`（由 `schedule_run` 统一编排，详见 `src/service/README.md`）；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
+> 日常和周常分别声明于 `config/daily_task_list.yml`、`config/weekly_task_list.yml`，统一使用 `display_name / physical_name` 和递归 `options`；原神/终末地反读脚本本地资源，鸣潮/异环通过 GitHub Action 同步选项。日常落点与读写收敛在 `Daily` 机制类（`src/config/daily.py`，文件 I/O 由 Daily 自持、直调 utils_sub_config），日常在声明里用 `class` 标注机制类（`DAILY_CLASSES` 注册表查表）并用 `config`/`routine` 标注文件路径、名字只来自声明；ScriptConfig 只保留周常文件 I/O（`_load_weekly_config` / `_save_weekly_config`，路径由有周常的脚本显式声明 `_weekly_config_rel_path`）；GUI 菜单由声明物化（`daily_config.get_daily_map`），加日常只改 yml；异环两个日常各一段、开关独立。日志解析/失败重跑/邮件汇总之运行后动作内联于 `src/log` 与 `service`（由 `schedule_run` 统一编排，详见 `src/service/README.md`）；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
 
 ## 铁律：违反即打回
 

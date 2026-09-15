@@ -6,9 +6,12 @@
 """
 
 import unittest
+from contextlib import ExitStack
 from unittest.mock import patch
 
+from src.config import daily as daily_mod
 from src.config import set_config as set_config_mod
+from src.config.daily import Daily
 from src.config.set_config import (
     ArknightsConfig,
     EndfieldConfig,
@@ -16,11 +19,23 @@ from src.config.set_config import (
     NTEConfig,
     StarRailConfig,
     WutheringWavesConfig,
-    ZenlessZoneZeroConfig,
     get_daily_readback,
     get_weekly_task,
     set_daily_enabled,
 )
+
+
+def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
+    """反读：经 Daily.read 的 I/O 闭环（读盘打桩由用例负责）。"""
+    return cfg._dispatch_daily(daily_name).read()
+
+
+def _bind_maa_daily(cfg, mapping: dict):
+    """把粥日常的关卡映射换成测试用的小集合（真实声明里没有这些关卡）。"""
+    daily = cfg._dispatch_daily("每日任务")
+    daily._name_by_stage = dict(mapping)
+    daily._stage_by_name = {name: stage for stage, name in mapping.items()}
+    return daily
 
 
 def _setter(config, key, value, *args, **kwargs):
@@ -33,68 +48,75 @@ class TestReadbackWuWa(unittest.TestCase):
     def test_daily_task_and_sequence_roundtrip(self):
         config: dict = {}
         with (
-            patch.object(WutheringWavesConfig, "_load", return_value=config),
-            patch.object(WutheringWavesConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = WutheringWavesConfig()
             cfg.set_daily_task("每日任务", "凝素领域", 5)
-            self.assertEqual(cfg._read_daily_task("每日任务")[0], "凝素领域")
-            self.assertEqual(cfg._read_daily_task("每日任务")[1], 5)
+            self.assertEqual(_read(cfg, "每日任务")[0], "凝素领域")
+            self.assertEqual(_read(cfg, "每日任务")[1], 5)
 
     def test_mapped_sequence_roundtrip(self):
         config: dict = {}
         with (
-            patch.object(WutheringWavesConfig, "_load", return_value=config),
-            patch.object(WutheringWavesConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = WutheringWavesConfig()
             cfg.set_daily_task("每日任务", "模拟领域", "共鸣者经验")
-            self.assertEqual(cfg._read_daily_task("每日任务")[0], "模拟领域")
+            self.assertEqual(_read(cfg, "每日任务")[0], "模拟领域")
             # 二级选择反读原生值，菜单根据声明显示中文别名
-            self.assertEqual(cfg._read_daily_task("每日任务")[1], "Resonator EXP")
+            self.assertEqual(_read(cfg, "每日任务")[1], "Resonator EXP")
 
 
 class TestReadbackGenshin(unittest.TestCase):
     def test_domain_roundtrip(self):
         config: dict = {}
         with (
-            patch.object(GenshinConfig, "_load", return_value=config),
-            patch.object(GenshinConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = GenshinConfig()
             cfg.set_daily_task("每日任务", "圣遗物", "黄金屋")
-            self.assertEqual(cfg._read_daily_task("每日任务")[0], "黄金屋")
+            self.assertEqual(_read(cfg, "每日任务")[0], "黄金屋")
 
 
 class TestReadbackEndfield(unittest.TestCase):
     def test_stage_roundtrip(self):
         config: dict = {}
         with (
-            patch.object(EndfieldConfig, "_load", return_value=config),
-            patch.object(EndfieldConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = EndfieldConfig()
             cfg.set_daily_task("每日任务", "能量淤积点", "某副本")
-            self.assertEqual(cfg._read_daily_task("每日任务")[0], "某副本")
+            self.assertEqual(_read(cfg, "每日任务")[0], "某副本")
 
 
 class TestReadbackNTE(unittest.TestCase):
     """异环两个日常分段：写入与反读都按日常，段之间互不串味。"""
 
     def _patch(self, config, routine=None):
-        """按路径区分两份文件：主配置返回 config，routine 文件返回 routine。"""
-        return patch.object(
-            NTEConfig,
-            "_load",
-            side_effect=lambda p=None, **_k: config if p is None else routine,
+        """主 config 返回 config，routine 开关文件返回 routine（模拟两份文件）。"""
+        stack = ExitStack()
+        stack.enter_context(
+            patch.object(Daily, "_load_daily_config", return_value=config)
         )
+        stack.enter_context(
+            patch.object(Daily, "_load_routine_config", return_value=routine)
+        )
+        return stack
 
     def test_anomaly_roundtrip(self):
-        config = {"daily_anomaly": {"任务类型": "", "异能材料序号": ""}}
+        config = {"daily_anomaly": {"任务类型": "", "异能材料序号": 0}}
         routine = {
             "Routine Items": [
                 {"id": "daily_anomaly", "enabled": False},
@@ -103,23 +125,25 @@ class TestReadbackNTE(unittest.TestCase):
         }
         with (
             self._patch(config, routine),
-            patch.object(NTEConfig, "_save"),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = NTEConfig()
-            cfg.set_daily_task("异象界域", "异能升级材料", "3")
-            self.assertEqual(cfg._read_daily_task("异象界域"), ("异能升级材料", "3"))
+            cfg.set_daily_task("异象界域", "异能升级材料", 3)
+            self.assertEqual(_read(cfg, "异象界域"), ("异能升级材料", 3))
 
     def test_hunter_readback_without_section(self):
         """追猎目标段尚未落盘：按未选择返回 (None, None)（界面回退声明项）。"""
         config = {"daily_anomaly": {}}
         with (
             self._patch(config),
-            patch.object(NTEConfig, "_save"),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = NTEConfig()
-            self.assertEqual(cfg._read_daily_task("追猎目标"), (None, None))
+            self.assertEqual(_read(cfg, "追猎目标"), (None, None))
 
     def test_hunter_readback_ignores_stale_anomaly_task_type(self):
         """各日常只读自己的段：daily_anomaly 残留陈旧值时，追猎目标仍读自己段的目标名。"""
@@ -130,13 +154,14 @@ class TestReadbackNTE(unittest.TestCase):
         }
         with (
             self._patch(config),
-            patch.object(NTEConfig, "_save"),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = NTEConfig()
-            self.assertEqual(cfg._read_daily_task("追猎目标"), ("追猎目标", "黑之书"))
+            self.assertEqual(_read(cfg, "追猎目标"), ("追猎目标", "黑之书"))
             # 异象界域那段照旧读回自己的值
-            self.assertEqual(cfg._read_daily_task("异象界域"), ("空幕", 6))
+            self.assertEqual(_read(cfg, "异象界域"), ("空幕", 6))
 
     def test_hunter_boss_roundtrip_through_config(self):
         """回归：boss 名写入 config 文件的 daily_anomaly_hunter 段，读取须同文件取回。
@@ -156,12 +181,13 @@ class TestReadbackNTE(unittest.TestCase):
         }
         with (
             self._patch(config, routine),
-            patch.object(NTEConfig, "_save"),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = NTEConfig()
             cfg.set_daily_task("追猎目标", "追猎目标", "音霸魔王")
-            self.assertEqual(cfg._read_daily_task("追猎目标"), ("追猎目标", "音霸魔王"))
+            self.assertEqual(_read(cfg, "追猎目标"), ("追猎目标", "音霸魔王"))
 
 
 class TestReadbackMAA(unittest.TestCase):
@@ -199,18 +225,17 @@ class TestReadbackMAA(unittest.TestCase):
             }
         }
         with (
-            patch.object(ArknightsConfig, "_load", return_value=config),
-            patch.object(ArknightsConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = ArknightsConfig()
-            cfg._task_map = {
-                "Annihilation": "剿灭",
-                "1-7": "土",
-                "CE-6": "龙门币",
-            }
+            _bind_maa_daily(
+                cfg, {"Annihilation": "剿灭", "1-7": "土", "CE-6": "龙门币"}
+            )
             cfg.set_daily_task("每日任务", "龙门币")
-            self.assertEqual(cfg._read_daily_task("每日任务")[0], "龙门币")
+            self.assertEqual(_read(cfg, "每日任务")[0], "龙门币")
 
     def test_read_daily_task_all_disabled_but_has_1_7_returns_土(self):
         """所有维护关卡都未启用，但有1-7 → 读为土"""
@@ -247,25 +272,24 @@ class TestReadbackMAA(unittest.TestCase):
             }
         }
         with (
-            patch.object(ArknightsConfig, "_load", return_value=config),
-            patch.object(ArknightsConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
         ):
             cfg = ArknightsConfig()
-            cfg._task_map = {
-                "Annihilation": "剿灭",
-                "1-7": "土",
-                "CE-6": "龙门币",
-            }
-            self.assertEqual(cfg._read_daily_task("每日任务")[0], "土")
+            _bind_maa_daily(
+                cfg, {"Annihilation": "剿灭", "1-7": "土", "CE-6": "龙门币"}
+            )
+            self.assertEqual(_read(cfg, "每日任务")[0], "土")
 
 
 class TestReadbackStarRailWeekly(unittest.TestCase):
     def test_weekly_daily_task_roundtrip(self):
         config: dict = {}
         with (
-            patch.object(StarRailConfig, "_load", return_value=config),
-            patch.object(StarRailConfig, "_save"),
+            patch.object(StarRailConfig, "_load_weekly_config", return_value=config),
+            patch.object(StarRailConfig, "_save_weekly_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = StarRailConfig()
             cfg.set_weekly_task("历战余响", "铁骸的锈冢")
@@ -276,9 +300,10 @@ class TestReadbackFacade(unittest.TestCase):
     def test_facade_roundtrip_okww(self):
         config: dict = {}
         with (
-            patch.object(WutheringWavesConfig, "_load", return_value=config),
-            patch.object(WutheringWavesConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = WutheringWavesConfig()
             cfg.set_daily_task("每日任务", "凝素领域", 5)
@@ -298,16 +323,17 @@ class TestReadbackFacade(unittest.TestCase):
         self.assertEqual(get_daily_readback("不存在的脚本"), [])
 
     def test_facade_noop_scripts_have_no_truth(self):
-        # 绝区零/崩铁日常无副本适配（_task_key 空）→ 副本/序列无真相
+        # 绝区零/崩铁日常无落点 → 副本/序列无真相
         with (
-            patch.object(ZenlessZoneZeroConfig, "_load", return_value={}),
+            patch.object(Daily, "_load_daily_config", return_value={}),
         ):
             self.assertEqual(
                 get_daily_readback("OneDragon-Launcher"),
                 [{"name": "每日任务", "task": None, "sequence": None, "enabled": None}],
             )
         with (
-            patch.object(StarRailConfig, "_load", return_value={}),
+            patch.object(Daily, "_load_daily_config", return_value={}),
+            patch.object(StarRailConfig, "_load_weekly_config", return_value={}),
         ):
             self.assertEqual(
                 get_daily_readback("March7th-Launcher"),
@@ -322,45 +348,42 @@ class TestReadbackCorruption(unittest.TestCase):
     def test_unknown_task_value_raises(self):
         config = {"Which to Farm": "未知副本值"}
         with (
-            patch.object(WutheringWavesConfig, "_load", return_value=config),
+            patch.object(Daily, "_load_daily_config", return_value=config),
         ):
             cfg = WutheringWavesConfig()
             with self.assertRaises(AssertionError):
-                cfg._read_daily_task("每日任务")
+                _read(cfg, "每日任务")
 
     def test_nte_corrupt_routine_raises(self):
         routine = []  # 非 dict → 损坏，原实现会静默回退 任务类型
         config: dict = {}
         with (
-            patch.object(
-                NTEConfig,
-                "_load",
-                side_effect=lambda p=None, **_k: config if p is None else routine,
-            ),
-            patch.object(NTEConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_load_routine_config", return_value=routine),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
+            patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = NTEConfig()
             with self.assertRaises(AssertionError):
-                cfg._read_daily_task("每日任务")
+                _read(cfg, "每日任务")
 
     def test_nte_routine_missing_items_raises(self):
         """routine 缺 Routine Items（损坏）→ assert 暴露，不静默判为「无启用玩法」。"""
         routine = {"不是 Routine Items": []}
         config: dict = {}
-        with patch.object(
-            NTEConfig,
-            "_load",
-            side_effect=lambda p=None, **_k: config if p is None else routine,
+        with (
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_load_routine_config", return_value=routine),
         ):
             cfg = NTEConfig()
             with self.assertRaises(AssertionError):
-                cfg._read_daily_task("每日任务")
+                _read(cfg, "每日任务")
 
     def test_starrail_bad_instance_names_raises(self):
         config = {"instance_names": "不是dict"}
         with (
-            patch.object(StarRailConfig, "_load", return_value=config),
+            patch.object(StarRailConfig, "_load_weekly_config", return_value=config),
         ):
             cfg = StarRailConfig()
             with self.assertRaises(AssertionError):
@@ -383,7 +406,6 @@ class TestSetDailyEnabledFacade(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "未适配脚本"):
             set_daily_enabled("不存在的脚本", "每日任务", False)
 
-    def test_script_without_daily_switch_raises(self):
-        """未声明日常开关的脚本（ok-ww）→ 基类兜底 assert。"""
-        with self.assertRaisesRegex(AssertionError, "未支持停用日常"):
-            set_daily_enabled("ok-ww", "每日任务", False)
+    def test_script_without_daily_switch_is_noop(self):
+        """未声明日常开关的脚本（ok-ww）→ 静默不做事（选择即启用）。"""
+        set_daily_enabled("ok-ww", "每日任务", False)  # 不抛即通过
