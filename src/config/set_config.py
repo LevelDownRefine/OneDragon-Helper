@@ -4,6 +4,7 @@ import logging
 import os
 
 from src.config.daily import (
+    AnomalyHunterDaily,
     Daily,
     MaaDaily,
     NoopDaily,
@@ -70,10 +71,6 @@ class ScriptConfig:
 
     _weekly_config_rel_path: str = ""
     """周常配置文件路径；空字符串复用主 config。"""
-
-    _daily_type: type[Daily] = Daily
-    """该脚本的日常机制类；声明形态差异（两层/单层）由机制类的
-    ``for_declaration`` 多态分派（如 ``SegmentedDaily`` 把单层交给子类），不在此调度。"""
 
     _routine_config_rel_path: str = ""
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
@@ -220,36 +217,27 @@ class ScriptConfig:
         return load_template(self._script_name, self._template_rel_path)
 
     def _build_dailies(self) -> list[Daily]:
-        """由声明构造该脚本的全部日常（顺序与声明一致）。
-
-        机制类是脚本级的（``_daily_type``），实例按声明逐个构造并接管本适配器的
-        读写原语；分段日常的段名（物理名）必须互不相同。
+        """由各脚本子类手动实例化自己的日常（一个日常一个实例、类写在明处）。
 
         Returns:
             该脚本的日常列表；单日常脚本长度为 1。
-
-        Raises:
-            AssertionError: 缺少脚本声明，或日常物理名重复。
         """
-        dailies = [
-            self._daily_type.for_declaration(declaration)(
-                self._script_name, declaration, self
-            )
-            for declaration in get_daily_configs(self._script_name)
-        ]
-        seen: set[str] = set()
-        for daily in dailies:
-            assert daily.physical_name not in seen, (
-                f"{self._script_name} 的日常物理名重复: {daily.physical_name}"
-            )
-            seen.add(daily.physical_name)
-        return dailies
+        raise NotImplementedError(
+            f"[set_config][{self.display_name}] 未实现 _build_dailies"
+        )
 
     @property
     def _dailies(self) -> list[Daily]:
-        """该脚本的全部日常（顺序与声明一致；懒加载，见 ``_build_dailies``）。"""
+        """该脚本的全部日常（懒加载，见 ``_build_dailies``）。"""
         if self._dailies_data is None:
-            self._dailies_data = self._build_dailies()
+            dailies = self._build_dailies()
+            seen: set[str] = set()
+            for daily in dailies:
+                assert daily.physical_name not in seen, (
+                    f"{self._script_name} 的日常物理名重复: {daily.physical_name}"
+                )
+                seen.add(daily.physical_name)
+            self._dailies_data = dailies
         return self._dailies_data
 
     def _dispatch_daily(self, daily_display_name: str) -> Daily:
@@ -530,6 +518,12 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
 @register
 class WutheringWavesConfig(ScriptConfig):
     _script_name = "ok-ww"
+
+    def _build_dailies(self) -> list[Daily]:
+        """按声明实例化本脚本的日常（标准两层）。"""
+        (declaration,) = get_daily_configs(self._script_name)
+        return [Daily(self._script_name, declaration, self)]
+
     _backup_paths = ("data/apps/ok-ww/working/configs",)
     _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
@@ -573,6 +567,12 @@ class WutheringWavesConfig(ScriptConfig):
 class GenshinConfig(ScriptConfig):
     _script_name = "BetterGI"
     display_name = "原神"
+
+    def _build_dailies(self) -> list[Daily]:
+        """按声明实例化本脚本的日常（两层共用一级字段）。"""
+        (declaration,) = get_daily_configs(self._script_name)
+        return [Daily(self._script_name, declaration, self)]
+
     _backup_paths = ("User",)
     _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
@@ -613,6 +613,12 @@ class GenshinConfig(ScriptConfig):
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
+
+    def _build_dailies(self) -> list[Daily]:
+        """按声明实例化本脚本的日常（两层共用一级字段）。"""
+        (declaration,) = get_daily_configs(self._script_name)
+        return [Daily(self._script_name, declaration, self)]
+
     _template_rel_path = "okef一条龙.json"
     _backup_paths = ("data/apps/ok-ef/working/configs",)
     _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
@@ -671,7 +677,6 @@ class EndfieldConfig(ScriptConfig):
 # ---- 绝区零 Zenless Zone Zero ----
 @register
 class ZenlessZoneZeroConfig(ScriptConfig):
-    _daily_type = NoopDaily
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
     _backup_paths = ("config",)
@@ -682,6 +687,11 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _game_path_keys = ("game_path",)
     background = "assets/ui/static_background.webp"
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "迷失之地"))
+
+    def _build_dailies(self) -> list[Daily]:
+        """按声明实例化本脚本的日常（上游自适配，无需落盘）。"""
+        (declaration,) = get_daily_configs(self._script_name)
+        return [NoopDaily(self._script_name, declaration, self)]
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """控制 _group.yml 中 lost_void 的 enabled 开关。
@@ -711,7 +721,6 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 # ---- 崩铁 Honkai: Star Rail ----
 @register
 class StarRailConfig(ScriptConfig):
-    _daily_type = NoopDaily
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
     _backup_paths = ("config.yaml",)
@@ -722,6 +731,11 @@ class StarRailConfig(ScriptConfig):
     background = "assets/app/images/bg37.jpg"
     _weekly_task_name = get_weekly_config(_script_name, "货币战争")["key"]
     _echo_config = get_weekly_config(_script_name, "历战余响")
+
+    def _build_dailies(self) -> list[Daily]:
+        """按声明实例化本脚本的日常（上游自适配，无需落盘）。"""
+        (declaration,) = get_daily_configs(self._script_name)
+        return [NoopDaily(self._script_name, declaration, self)]
 
     @classmethod
     def get_task_lists(cls, task_name: str, source: str) -> list[str]:
@@ -861,7 +875,6 @@ class StarRailConfig(ScriptConfig):
 # ---- 异环 Neverness to Everness (NTE) ----
 @register
 class NTEConfig(ScriptConfig):
-    _daily_type = SegmentedDaily
     _script_name = "ok-nte"
     _backup_paths = ("data/apps/ok-nte/working/configs",)
     _config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
@@ -872,6 +885,14 @@ class NTEConfig(ScriptConfig):
 
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
+
+    def _build_dailies(self) -> list[Daily]:
+        """按声明实例化异环的两个日常（各一段、开关独立）。"""
+        by_name = {d["display_name"]: d for d in get_daily_configs(self._script_name)}
+        return [
+            SegmentedDaily(self._script_name, by_name["异象界域"], self),
+            AnomalyHunterDaily(self._script_name, by_name["追猎目标"], self),
+        ]
 
     @classmethod
     def get_game_exe_path(cls, script_name: str) -> str | None:
@@ -904,7 +925,6 @@ class NTEConfig(ScriptConfig):
 # ---- 明日方舟 Arknights（粥）----
 @register
 class ArknightsConfig(ScriptConfig):
-    _daily_type = MaaDaily
     _script_name = "MAA"
     display_name = "粥"
     _backup_paths = ("config",)
@@ -918,6 +938,11 @@ class ArknightsConfig(ScriptConfig):
         "EmulatorPath",
     )
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "理智药剂"))
+
+    def _build_dailies(self) -> list[Daily]:
+        """按声明实例化本脚本的日常（TaskQueue 机制）。"""
+        (declaration,) = get_daily_configs(self._script_name)
+        return [MaaDaily(self._script_name, declaration, self)]
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """周常「理智药剂」：按周几起写过期理智药使用窗口，并随副本启停同步开关。

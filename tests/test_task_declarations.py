@@ -206,7 +206,9 @@ class TestDeclarationBindings(unittest.TestCase):
         """单日常脚本的写/读入口仍在（都委托给该脚本解析出的日常实现类）。"""
         for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):
             self.assertTrue(callable(cls.set_daily_task))
-            self.assertTrue(callable(cls._daily_type.update))
+            self.assertTrue(callable(cls._build_dailies))
+            for daily in cls()._build_dailies():
+                self.assertTrue(callable(daily.update))
 
 
 if __name__ == "__main__":
