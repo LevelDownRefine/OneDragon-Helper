@@ -133,16 +133,20 @@ class TestBuildScriptEntry(unittest.TestCase):
             link, target = root / "daily.lnk", root / "run.exe"
             link.touch()
             target.touch()
-            with (
-                patch.dict(os.environ, {"SHORTCUT_TEST_ROOT": directory}),
-                patch(
+            # 只设单个变量并手动还原：patch.dict 退出时会重设全部环境变量，
+            # 本机存在超长变量（>32767）时 Windows 拒绝还原、测试即炸。
+            os.environ["SHORTCUT_TEST_ROOT"] = directory
+            try:
+                with patch(
                     "src.utils.utils_config.read_shortcut",
                     return_value=(str(target), "--daily", "${SHORTCUT_TEST_ROOT}/."),
-                ),
-            ):
-                self.assertEqual(
-                    build_script_entry(str(link), set())["script_arguments"], "--daily"
-                )
+                ):
+                    self.assertEqual(
+                        build_script_entry(str(link), set())["script_arguments"],
+                        "--daily",
+                    )
+            finally:
+                os.environ.pop("SHORTCUT_TEST_ROOT", None)
 
 
 class TestConfigFilePath(UtilsConfigTestBase):

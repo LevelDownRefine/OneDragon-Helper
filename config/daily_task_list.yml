@@ -1,9 +1,11 @@
 # display_name：展示名；physical_name：物理名，省略时使用展示名。
+# class：机制类（daily.py 的 DAILY_CLASSES 注册表），每个日常必填。
 # options：递归选项组；key 为原生字段，values / source 二选一。
 # source 用 path / category 定位脚本本地资源；顶层 key 供任务操作使用。
 
 ok-ww:
 - display_name: 每日任务
+  class: Daily
   options:
     key: Which to Farm
     values:
@@ -108,6 +110,7 @@ ok-ww:
           physical_name: 19
 BetterGI:
 - display_name: 每日任务
+  class: Daily
   options:
     values:
     - display_name: 圣遗物
@@ -130,6 +133,7 @@ BetterGI:
           category: MasteryDomain
 ok-ef:
 - display_name: 每日任务
+  class: Daily
   options:
     values:
     - display_name: 干员养成
@@ -164,16 +168,19 @@ ok-ef:
           category: 能量淤积点
 OneDragon-Launcher:
 - display_name: 每日任务
+  class: NoopDaily
   options:
     values:
     - display_name: 培养方案
 March7th-Launcher:
 - display_name: 每日任务
+  class: NoopDaily
   options:
     values:
     - display_name: 培养目标
 ok-nte:
 - display_name: 异象界域
+  class: Anomaly
   physical_name: daily_anomaly
   options:
     key: 任务类型
@@ -230,6 +237,7 @@ ok-nte:
         - display_name: 弧盘经验
         - display_name: 甲硬币
 - display_name: 追猎目标
+  class: AnomalyHunter
   physical_name: daily_anomaly_hunter
   options:
     key: 追猎目标
@@ -243,6 +251,7 @@ ok-nte:
     - display_name: 斑蝶
 MAA:
 - display_name: 每日任务
+  class: MaaDaily
   options:
     values:
     - display_name: 红票

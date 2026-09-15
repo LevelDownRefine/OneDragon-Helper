@@ -564,3 +564,9 @@ class MaaDaily(Daily):
             TaskQueue 列表。
         """
         return section["Configurations"]["Default"]["TaskQueue"]
+
+
+DAILY_CLASSES: dict[str, type[Daily]] = {
+    cls.__name__: cls for cls in (Daily, NoopDaily, Anomaly, AnomalyHunter, MaaDaily)
+}
+"""声明 ``class`` 字段可引用的机制类注册表（键 = 类名）。"""

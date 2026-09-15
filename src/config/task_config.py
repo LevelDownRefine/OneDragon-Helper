@@ -106,6 +106,7 @@ def _validate_definitions(script_name: str, definitions: list[dict]) -> None:
         assert definition.keys() <= {
             "display_name",
             "physical_name",
+            "class",
             "key",
             "options",
         }, f"{script_name} 含未知任务声明"
@@ -125,11 +126,29 @@ def _validate_definitions(script_name: str, definitions: list[dict]) -> None:
             _validate_group(definition["options"], f"{script_name}/{name}")
 
 
-def load_task_map(path: str) -> dict[str, list[dict]]:
-    """同一份内容只解析一次；调用方取得独立副本。"""
+def load_task_map(path: str, *, require_class: bool = False) -> dict[str, list[dict]]:
+    """同一份内容只解析一次；调用方取得独立副本。
+
+    Args:
+        path: 声明文件路径。
+        require_class: True 时每个任务必须声明 ``class``（日常声明标注机制类）。
+
+    Returns:
+        {脚本标识: 任务声明列表}。
+
+    Raises:
+        AssertionError: require_class 且某任务未声明 ``class``。
+    """
     file = Path(path)
     assert file.is_file(), f"任务声明缺失: {path}"
-    return deepcopy(_load_task_map(file.read_text(encoding="utf-8")))
+    data = deepcopy(_load_task_map(file.read_text(encoding="utf-8")))
+    if require_class:
+        for definitions in data.values():
+            for definition in definitions:
+                assert (
+                    isinstance(definition.get("class"), str) and definition["class"]
+                ), f"{definitions} 的任务 {definition.get('display_name')} 未声明 class"
+    return data
 
 
 @lru_cache(maxsize=2)
@@ -144,8 +163,8 @@ def _load_task_map(content: str) -> dict[str, list[dict]]:
 
 
 def load_daily_map() -> dict[str, list[dict]]:
-    """取得日常声明。"""
-    return load_task_map(get_daily_task_list_yml_path_under_root())
+    """取得日常声明（每个日常必须标注机制类 ``class``）。"""
+    return load_task_map(get_daily_task_list_yml_path_under_root(), require_class=True)
 
 
 def load_weekly_map() -> dict[str, list[dict]]:

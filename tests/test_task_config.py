@@ -197,3 +197,33 @@ class TestTaskDeclarations(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDailyClassField(unittest.TestCase):
+    """daily 声明的 class 字段（机制类标注）：daily 路径必填、weekly 不需要。"""
+
+    def test_daily_map_requires_class(self):
+        """load_daily_map：任务未声明 class → 报错。"""
+        from src.config.task_config import load_task_map
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "daily_task_list.yml")
+            dump_yaml_file(
+                path,
+                {"ok-ww": [{"display_name": "每日任务"}]},
+            )
+            with self.assertRaisesRegex(AssertionError, "未声明 class"):
+                load_task_map(path, require_class=True)
+
+    def test_weekly_map_ignores_class(self):
+        """weekly 声明无需 class，照常加载。"""
+        from src.config.task_config import load_task_map
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "weekly_task_list.yml")
+            dump_yaml_file(
+                path,
+                {"ok-ww": [{"display_name": "历战余响"}]},
+            )
+            data = load_task_map(path)
+        self.assertEqual(data["ok-ww"][0]["display_name"], "历战余响")
