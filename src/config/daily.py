@@ -1,6 +1,6 @@
 """一个日常：由 daily_task_list.yml 声明解析出的落点与读写规则。
 
-持有所属 ScriptConfig（``_cfg``）完成「读盘 → 改内存 → 有改动才落盘」。
+I/O 由 Daily 自持（``_load_daily_config`` 等，直调 ``utils_sub_config``），完成「读盘 → 改内存 → 有改动才落盘」。
 声明形态与读写机制由机制类负责：基类解析标准两层，``Anomaly`` 单层带
 ``key``，``MaaDaily`` TaskQueue，``NoopDaily`` 无需适配。
 """
@@ -14,6 +14,7 @@ from src.config.task_config import (
     get_value_map,
 )
 from src.utils.utils_dict import get_field, safe_update
+from src.utils.utils_sub_config import load_config, save_config
 
 logger = logging.getLogger(__name__)
 
@@ -30,26 +31,131 @@ class Daily:
         task_map: 一级项展示名 → 一级物理值。
         option_fields: 一级项展示名 → 二级项写入的原生字段。
 
-    I/O 原语（``_load`` / ``_save``，含保存后回读校验）由 ``_cfg`` 提供。
+    读写原语（``_load_daily_config`` / ``_save_daily_config`` / ``_load_routine_config`` /
+    ``_save_routine_config``，含保存后回读校验）由 Daily 自持，配置路径由构造注入。
     """
 
-    def __init__(self, script_name: str, declaration: dict, cfg) -> None:
+    def __init__(
+        self, script_name: str, declaration: dict, script_display_name: str
+    ) -> None:
         """解析一条标准两层日常声明。
 
         Args:
             script_name: 所属脚本标识名。
-            declaration: ``daily_task_list.yml`` 里该日常的声明节点。
-            cfg: 所属 ScriptConfig。
+            declaration: ``daily_task_list.yml`` 里该日常的声明节点；
+                ``config``（读写主文件）必填、``routine``（日常开关文件）可选，
+                路径相对脚本根目录。
+            script_display_name: 所属脚本的展示名（日志与报错用）。
 
         Raises:
             AssertionError: 未声明选项、选项是单层形态，或顶层无 ``key`` 时
                 各一级项的二级 key 不唯一。
         """
-        self._cfg = cfg
         self.script_name = script_name
+        self.script_display_name = script_display_name
+        self._config_rel_path: str = declaration["config"]
+        self._routine_rel_path: str = declaration.get("routine", "")
         self.display_name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
         self._parse_landing(declaration)
+
+    def _read_config(
+        self, rel_path: str, *, allow_missing: bool = False
+    ) -> dict | None:
+        """读脚本 config 文件。
+
+        Args:
+            rel_path: 相对脚本根目录的路径。
+            allow_missing: True 时读取失败返回 None（读路径）；
+                False 时失败即报错（写路径，默认）。
+
+        Returns:
+            解析后的 config dict；仅 allow_missing=True 且读取失败时为 None。
+
+        Raises:
+            AssertionError: allow_missing=False 且文件不存在、内容损坏或解析结果非 dict。
+        """
+        try:
+            config = load_config(self.script_name, rel_path)
+        except AssertionError:
+            # 未安装 / 文件缺失由 load_config 以断言表达，读路径按「未设置」处理。
+            if not allow_missing:
+                raise
+            return None
+        except Exception:  # noqa: BLE001  # 文件存在但内容损坏
+            if not allow_missing:
+                raise
+            logger.warning(
+                f"[daily][{self.script_display_name}] config 损坏，"
+                f"按未设置处理: {rel_path}",
+                exc_info=True,
+            )
+            return None
+        if not isinstance(config, dict):
+            if allow_missing:
+                return None
+            assert isinstance(config, dict), (
+                f"[daily][{self.script_display_name}] config 必须是 dict"
+            )
+        return config
+
+    def _load_daily_config(self, *, allow_missing: bool = False) -> dict | None:
+        """读主 config（副本落点所在文件）。
+
+        Args:
+            allow_missing: True 时读取失败返回 None（读路径）；
+                False 时失败即报错（写路径，默认）。
+
+        Returns:
+            解析后的 config dict；仅 allow_missing=True 且读取失败时为 None。
+        """
+        return self._read_config(self._config_rel_path, allow_missing=allow_missing)
+
+    def _save_daily_config(self, config: dict) -> None:
+        """保存主 config 并回读校验落盘一致。
+
+        Args:
+            config: 待保存的 dict。
+
+        Raises:
+            AssertionError: config 非 dict 或保存后回读不一致。
+        """
+        assert isinstance(config, dict), (
+            f"[daily][{self.script_display_name}] config 必须是 dict"
+        )
+        save_config(self.script_name, self._config_rel_path, config)
+        reloaded = self._load_daily_config()
+        assert reloaded == config, (
+            f"[daily][{self.script_display_name}] 配置保存后校验失败："
+            "重新读取的内容与预期不一致"
+        )
+
+    def _load_routine_config(self, *, allow_missing: bool = True) -> dict | None:
+        """读日常开关文件；无日常开关的机制类不使用。
+
+        Args:
+            allow_missing: True（默认）时文件缺失返回 None——开关文件的「无真相」。
+
+        Returns:
+            解析后的 config dict；allow_missing=True 且读取失败时为 None。
+        """
+        return self._read_config(self._routine_rel_path, allow_missing=allow_missing)
+
+    def _save_routine_config(self, routine: dict) -> None:
+        """保存日常开关文件并回读校验落盘一致。
+
+        Args:
+            routine: 待保存的 dict。
+
+        Raises:
+            AssertionError: 保存后回读不一致。
+        """
+        save_config(self.script_name, self._routine_rel_path, routine)
+        reloaded = self._load_routine_config(allow_missing=False)
+        assert reloaded == routine, (
+            f"[daily][{self.script_display_name}] 开关文件保存后校验失败："
+            "重新读取的内容与预期不一致"
+        )
 
     def _parse_landing(self, declaration: dict) -> None:
         """解析标准两层落点；其它形态的机制类覆写本方法。
@@ -149,7 +255,7 @@ class Daily:
             AssertionError: config 未安装、段未落盘、或落点校验失败
                 （``section`` 对缺失段返回游离 dict，直接写会静默丢失，故先断言）。
         """
-        data = self._cfg._load(allow_missing=True)
+        data = self._load_daily_config(allow_missing=True)
         assert data is not None, (
             f"[daily][{self.display_name}] config 未安装/未配置，不能写入副本"
         )
@@ -162,11 +268,11 @@ class Daily:
                 self.section(data),
                 key,
                 value,
-                self._cfg.display_name,
+                self.script_display_name,
                 assert_key_exists=False,
             )
         if changed:
-            self._cfg._save(data)
+            self._save_daily_config(data)
             logger.info(f"[daily][{self.display_name}] config 已更新")
         else:
             logger.info(f"[daily][{self.display_name}] config 无需更新")
@@ -182,7 +288,7 @@ class Daily:
         Raises:
             AssertionError: 字段里的副本值不在声明里。
         """
-        data = self._cfg._load(allow_missing=True)
+        data = self._load_daily_config(allow_missing=True)
         if data is None or not self.section_exists(data):
             return None, None  # 未安装或段未落盘：无真相
         section = self.section(data)
@@ -282,9 +388,7 @@ class Anomaly(Daily):
         Raises:
             AssertionError: Routine Items 缺少或重复本日常的物理名。
         """
-        routine = self._cfg._load(
-            self._cfg._routine_config_rel_path, allow_missing=True
-        )
+        routine = self._load_routine_config()
         if routine is None:
             return None  # 开关文件缺失：无真相
         return bool(self._routine_item(routine)["enabled"])
@@ -301,12 +405,11 @@ class Anomaly(Daily):
         Raises:
             AssertionError: Routine Items 缺少或重复本日常的物理名。
         """
-        path = self._cfg._routine_config_rel_path
-        routine = self._cfg._load(path)
+        routine = self._load_routine_config()
         if safe_update(
             self._routine_item(routine), "enabled", enabled, self.display_name
         ):
-            self._cfg._save(routine, path)
+            self._save_routine_config(routine)
             return True
         return False
 
@@ -393,7 +496,7 @@ class AnomalyHunter(Anomaly):
         Raises:
             AssertionError: 字段里的副本值不在声明里。
         """
-        data = self._cfg._load(allow_missing=True)
+        data = self._load_daily_config(allow_missing=True)
         if data is None or not self.section_exists(data):
             return None, None
         key = self.option_fields[self.display_name]
@@ -446,7 +549,7 @@ class MaaDaily(Daily):
         assert task_name in self._stage_by_name, (
             f"[daily][{self.display_name}] 未适配的副本: {task_name}"
         )
-        config = self._cfg._load()
+        config = self._load_daily_config()
         target_stage = self._stage_by_name[task_name]
         task_queue = self._task_queue(config)
 
@@ -469,13 +572,13 @@ class MaaDaily(Daily):
                 task,
                 "IsEnable",
                 should_enable,
-                f"{self._cfg.display_name}[{name}]",
+                f"{self.script_display_name}[{name}]",
             )
 
         if not matched_target:
             changed |= self._borrow_slot(task_queue, target_stage)
         if changed:
-            self._cfg._save(config)
+            self._save_daily_config(config)
             logger.info(f"[daily][{self.display_name}] config 已更新")
         else:
             logger.info(f"[daily][{self.display_name}] config 无需更新")
@@ -490,7 +593,7 @@ class MaaDaily(Daily):
         Returns:
             (副本中文名, 序列值)；未设置返回 (None, None)。
         """
-        config = self._cfg._load(allow_missing=True)
+        config = self._load_daily_config(allow_missing=True)
         if config is None:
             return None, None
         has_1_7 = False
@@ -540,12 +643,12 @@ class MaaDaily(Daily):
         ) or next(iter(candidates), None)
         if borrow is None:
             return False
-        borrowed = borrow.get("Name", self._cfg.display_name)
+        borrowed = borrow.get("Name", self.script_display_name)
         return safe_update(
             borrow,
             "StagePlan",
             [target_stage],
-            f"{self._cfg.display_name}[borrow:{borrowed}]",
+            f"{self.script_display_name}[borrow:{borrowed}]",
         )
 
     @staticmethod

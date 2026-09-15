@@ -1,7 +1,7 @@
 """Daily（声明规则层）：声明解析出的落点、读写规则、特殊日常的覆写点。
 
 端到端等价（写入落点、反读、菜单内容）由 ``tests/test_golden_daily.py`` 的基线守；本文件
-只测 ``Daily`` 自身的语义。读盘一律打桩 ``daily._cfg._load``，不触真实文件。
+只测 ``Daily`` 自身的语义。读盘一律打桩 ``daily._load``，不触真实文件。
 """
 
 import copy
@@ -130,11 +130,13 @@ class TestRead(unittest.TestCase):
             "Which to Farm": "Forgery Challenge",
             "Which Forgery Challenge to Farm": 3,
         }
-        with patch.object(daily._cfg, "_load", return_value=config):
+        with patch.object(daily, "_load_daily_config", return_value=config):
             self.assertEqual(daily.read(), ("凝素领域", 3))
         with (
             patch.object(
-                daily._cfg, "_load", return_value={"Which to Farm": "不存在的值"}
+                daily,
+                "_load_daily_config",
+                return_value={"Which to Farm": "不存在的值"},
             ),
             self.assertRaisesRegex(AssertionError, "未知副本值"),
         ):
@@ -142,7 +144,9 @@ class TestRead(unittest.TestCase):
 
     def test_shared_field_is_not_reversed(self):
         daily = daily_of("BetterGI", "每日任务")
-        with patch.object(daily._cfg, "_load", return_value={"DomainName": "铭记之谷"}):
+        with patch.object(
+            daily, "_load_daily_config", return_value={"DomainName": "铭记之谷"}
+        ):
             self.assertEqual(daily.read(), ("铭记之谷", None))
 
     def test_unset_returns_none(self):
@@ -150,7 +154,7 @@ class TestRead(unittest.TestCase):
         for config in ({}, {"Which to Farm": ""}):
             with (
                 self.subTest(config=config),
-                patch.object(daily._cfg, "_load", return_value=config),
+                patch.object(daily, "_load_daily_config", return_value=config),
             ):
                 self.assertEqual(daily.read(), (None, None))
 
@@ -158,7 +162,7 @@ class TestRead(unittest.TestCase):
         for script_name in NO_OP_SCRIPTS:
             with self.subTest(script=script_name):
                 daily = _CONFIGS[script_name]()._build_dailies()[0]
-                with patch.object(daily._cfg, "_load", return_value={}):
+                with patch.object(daily, "_load_daily_config", return_value={}):
                     self.assertEqual(daily.read(), (None, None))
                 # 无落点日常（NoopDaily）覆写 update：不读不写，恒无改动
                 self.assertFalse(daily.update("任何副本"))
@@ -190,8 +194,8 @@ class TestEnabled(unittest.TestCase):
                 own = next(i for i in target["Routine Items"] if i["id"] == item_id)
                 seed_enabled = own["enabled"]
                 with (
-                    patch.object(daily._cfg, "_load", return_value=target),
-                    patch.object(daily._cfg, "_save") as mock_save,
+                    patch.object(daily, "_load_routine_config", return_value=target),
+                    patch.object(daily, "_save_routine_config") as mock_save,
                 ):
                     self.assertEqual(daily.read_enabled(), seed_enabled)
                     # 置反必然有改变、且只动自己那条；对同值再置一次则无改变
@@ -212,7 +216,7 @@ class TestEnabled(unittest.TestCase):
         for daily_name in ("异象界域", "追猎目标"):
             with self.subTest(daily=daily_name):
                 daily = daily_of("ok-nte", daily_name)
-                with patch.object(daily._cfg, "_load", return_value=None):
+                with patch.object(daily, "_load_routine_config", return_value=None):
                     self.assertIsNone(daily.read_enabled())
 
     def test_section_is_the_daily_own_segment(self):
@@ -231,12 +235,21 @@ class TestDeclarationErrors(unittest.TestCase):
 
     def test_empty_options_rejected(self):
         with self.assertRaisesRegex(AssertionError, "必须声明选项"):
-            Daily("脚本", {"display_name": "日常", "options": {"values": []}}, None)
+            Daily(
+                "脚本",
+                {
+                    "display_name": "日常",
+                    "options": {"values": []},
+                    "config": "c.json",
+                },
+                "脚本",
+            )
 
     def test_mixed_layers_rejected(self):
         """单个日常内单层与两层混用：一律按单层形态拒绝（跨日常混用合法，如异环）。"""
         declaration = {
             "display_name": "日常",
+            "config": "c.json",
             "options": {
                 "values": [
                     {"display_name": "两层", "options": {"key": "k", "values": []}},
@@ -245,9 +258,9 @@ class TestDeclarationErrors(unittest.TestCase):
             },
         }
         with self.assertRaisesRegex(AssertionError, "单层形态"):
-            Daily("脚本", declaration, None)
+            Daily("脚本", declaration, "脚本")
         with self.assertRaisesRegex(AssertionError, "单层形态"):
-            Anomaly("脚本", declaration, None)
+            Anomaly("脚本", declaration, "脚本")
 
 
 if __name__ == "__main__":

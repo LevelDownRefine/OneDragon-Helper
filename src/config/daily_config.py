@@ -92,8 +92,10 @@ def _materialize_daily(script_name: str, declaration: dict) -> dict:
                 }
             ]
         }
-    # class 是代码耦合字段（机制类标注），不属于 UI 词汇，物化时剥掉。
-    declaration = {k: v for k, v in declaration.items() if k != "class"}
+    # class/config/routine 是代码耦合字段（机制类与文件路径），不属于 UI 词汇，物化时剥掉。
+    declaration = {
+        k: v for k, v in declaration.items() if k not in ("class", "config", "routine")
+    }
     return {**declaration, "options": options}
 
 

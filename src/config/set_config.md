@@ -14,7 +14,8 @@
 上层调用 ─▶ set_config(name, daily_display_name, task_name, sequence)  # 适配器接口
                 │ 判空跳过 → 查 _CONFIGS 注册表 → 构造子类 → set_daily_task()
                 ▼
-          ScriptConfig，基类（文件 I/O：_load / _save，唯一碰盘层）
+          ScriptConfig，基类（周常文件 I/O：_load_weekly_config / _save_weekly_config）；
+          日常文件 I/O 由 Daily 自持（_load_daily_config / _save_daily_config）
                 │ _build_dailies 按声明 class 查注册表
    ┌──────┬──────────┬──────────┬──────┬──────┐
    ▼      ▼          ▼          ▼      ▼      ▼
@@ -24,10 +25,10 @@
           src/config/daily.py：Daily / NoopDaily / Anomaly / MaaDaily
 ```
 
-- 基类 `ScriptConfig` 提供文件 I/O 与入口：`_load`（读路径容忍缺失返回 None）/ `_save` / `_verify_saved` / `_init_config` / `_is_aligned` / `set_daily_task` / `set_daily_enabled` / `_read_daily_tasks` / 周常三入口。
-- **日常机制类**：`src/config/daily.py::Daily`——`__init__` 只做身份（`_cfg` / `script_name` / `display_name` / `physical_name`，来自声明），落点解析下沉为可覆写的 `_parse_landing`（模板方法）；公开 `_fields(task, sequence)`（该次选择的落点 {字段: 值}）、`update(task, sequence)`（取自己的段写入、返回是否有改动；段未落盘/config 缺失即 assert）、`read()`（反读，config 缺失/段未落盘 = 无真相）、`section` / `section_exists`（分段取段）、`read_enabled` / `set_enabled`（开关对）。子配置文件的路径与读写原语（`_load` / `_save`，含保存后回读校验）由所属适配器提供：`update` / `read` / `set_enabled` 各自完成「读盘 → 改内存 → 有改动才落盘」的闭环，config dict 不在调用链上穿线。基类 `_parse_landing` 只解析**标准两层形态**；单层带 `key` 由 `AnomalyHunter`（`Anomaly` 子类）覆写，`NoopDaily` / `MaaDaily` 跳过通用解析——名字（`display_name`）只来自声明，全链路唯一来源。
+- 基类 `ScriptConfig` 只保留周常文件 I/O：`_load_weekly_config`（读路径容忍缺失返回 None；路径由各脚本显式声明 `_weekly_config_rel_path`，有 `_weekly_task_name` 即必须声明——注册期校验）/ `_save_weekly_config`（含保存后回读校验）/ `_init_config`（直调 utils_sub_config）/ `_is_aligned` / `set_daily_task` / `set_daily_enabled` / `_read_daily_tasks` / 周常三入口。
+- **日常机制类**：`src/config/daily.py::Daily`——`__init__` 只做身份（`script_name` / `script_display_name` / `display_name` / `physical_name`）与配置路径（`config_rel_path` / `routine_rel_path`，全部来自声明 `config` / `routine` 字段），落点解析下沉为可覆写的 `_parse_landing`（模板方法）；公开 `_fields(task, sequence)`（该次选择的落点 {字段: 值}）、`update(task, sequence)`（取自己的段写入、返回是否有改动；段未落盘/config 缺失即 assert）、`read()`（反读，config 缺失/段未落盘 = 无真相）、`section` / `section_exists`（分段取段）、`read_enabled` / `set_enabled`（开关对）。文件 I/O 由 Daily 自持（直调 `utils_sub_config`，含保存后回读校验）：`_load_daily_config` / `_save_daily_config` / `_load_routine_config` / `_save_routine_config`——`update` / `read` / `set_enabled` 各自完成「读盘 → 改内存 → 有改动才落盘」的闭环，config dict 不在调用链上穿线。基类 `_parse_landing` 只解析**标准两层形态**；单层带 `key` 由 `AnomalyHunter`（`Anomaly` 子类）覆写，`NoopDaily` / `MaaDaily` 跳过通用解析——名字（`display_name`）只来自声明，全链路唯一来源。
 - 机制类在 `daily.py`：`NoopDaily`（绝区零/崩铁，上游自身已支持）、`Anomaly`（数据在自己段、开关在第二份文件，异环两个日常的共同实现）、`MaaDaily`（粥的 TaskQueue/StagePlan）。各日常实例由各 config 子类在 `_build_dailies` 里手动构造（见「各脚本策略」）。
-- 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`；`_backup_paths`（备份范围，目录或文件）必填；**机制类由声明 `class` 字段标注**（`daily_task_list.yml` 每个日常必填，`daily.py::DAILY_CLASSES` 注册表查表）；`_build_dailies` 按声明逐个实例化——加日常只改 yml。
+- 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`；`_backup_paths`（备份范围，目录或文件）必填；**机制类与文件路径由声明标注**（`daily_task_list.yml` 每个日常必填 `class`（`daily.py::DAILY_CLASSES` 注册表查表）与 `config`（该日常读写的主文件路径；`routine` 可选，日常开关文件））；`_build_dailies` 按声明逐个实例化并注入路径——加日常只改 yml，「主 config」概念不复存在。
 - 注册表 `_CONFIGS: dict[str, type[ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`；路径声明不完整会在 import 时 assert 暴露。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `supports_weekly` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `iter_backup_paths` / `set_config` / `get_daily_readback` / `set_daily_enabled` / `set_weekly_task` / `get_weekly_task` / `set_weekly_start_day`）。
 
 ## 三个独立流程
@@ -56,9 +57,9 @@
 
 ## 初始化流程 init
 
-`ScriptConfig._init_config()`：仅对声明了 `_template_rel_path` 的脚本生效。先判模板是否存在（无模板直接返回），再 `self._load(allow_missing=True)` 读当前 config（脚本未安装/未配置返回 None 时直接返回，不触碰 config），然后 `_load_template()` 加载模板 → 若 `_is_aligned` 一致则跳过；否则遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。
+`ScriptConfig._init_config()`：仅对声明了 `_template_rel_path` 的脚本生效。先判模板是否存在（无模板直接返回），再直调 `load_config` 读当前 config（脚本未安装/未配置返回 None 时直接返回，不触碰 config），然后 `_load_template()` 加载模板 → 若 `_is_aligned` 一致则跳过；否则遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。
 
-落点（触发时机）：`config_workflow()` 在每次启动时调用 `init_config_all()`，遍历所有已注册脚本对齐 config 与模板。新增/修改脚本路径时（`add_script` / `update_script`）也调用 `init_config`。无 `_template_rel_path` 直接返回、`self._load(allow_missing=True)` 缺失返回——守卫确保无模板或脚本未安装时为空操作。反读适配器（`get_daily_readback` 等）一律不触发，保持纯只读。
+落点（触发时机）：`config_workflow()` 在每次启动时调用 `init_config_all()`，遍历所有已注册脚本对齐 config 与模板。新增/修改脚本路径时（`add_script` / `update_script`）也调用 `init_config`。无 `_template_rel_path` 直接返回、`load_config` 缺失即返回——守卫确保无模板或脚本未安装时为空操作。反读适配器（`get_daily_readback` 等）一律不触发，保持纯只读。
 
 | 脚本 | 当前调用 _init_config | 模板 | 说明 |
 |------|---------------------|------|------|
@@ -96,7 +97,7 @@
 
 > 两个「默认不做事」让类型检查消失：无需适配的日常（绝区零/崩铁）由 `NoopDaily` 覆写 `update` 恒返回 False（读盘一次但不落盘）；无开关机制的日常由基类 `set_enabled` 兜底——标志位（no_op / enable_on_select）都不存在。
 
-> 写盘校验：`_save()` 是唯一落盘点，写后 `_verify_saved()` 重读并与预期整段相等断言。save_config 为同步阻塞写，重读必为新内容，无需 sleep。校验失败属不该发生，用 assert。
+> 写盘校验：落盘点（Daily 的 `_save_daily_config` / `_save_routine_config`、ScriptConfig 的 `_save_weekly_config`、`_init_config`）写后都重读并与预期整段相等断言。save_config 为同步阻塞写，重读必为新内容，无需 sleep。校验失败属不该发生，用 assert。
 
 ### 菜单（GUI 直吃声明词汇）
 

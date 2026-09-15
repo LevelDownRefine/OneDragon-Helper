@@ -107,6 +107,8 @@ def _validate_definitions(script_name: str, definitions: list[dict]) -> None:
             "display_name",
             "physical_name",
             "class",
+            "config",
+            "routine",
             "key",
             "options",
         }, f"{script_name} 含未知任务声明"
@@ -131,7 +133,8 @@ def load_task_map(path: str, *, require_class: bool = False) -> dict[str, list[d
 
     Args:
         path: 声明文件路径。
-        require_class: True 时每个任务必须声明 ``class``（日常声明标注机制类）。
+        require_class: True 时每个任务必须声明 ``class``（机制类）与 ``config``
+            （读写的主文件路径）——仅日常声明路径使用。
 
     Returns:
         {脚本标识: 任务声明列表}。
@@ -148,6 +151,11 @@ def load_task_map(path: str, *, require_class: bool = False) -> dict[str, list[d
                 assert (
                     isinstance(definition.get("class"), str) and definition["class"]
                 ), f"{definitions} 的任务 {definition.get('display_name')} 未声明 class"
+                assert (
+                    isinstance(definition.get("config"), str) and definition["config"]
+                ), (
+                    f"{definitions} 的任务 {definition.get('display_name')} 未声明 config"
+                )
     return data
 
 

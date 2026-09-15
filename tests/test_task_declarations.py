@@ -6,7 +6,9 @@ from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
+from src.config import daily as daily_mod
 from src.config import task_config
+from src.config.daily import Daily
 from src.config.set_config import ArknightsConfig, NTEConfig, WutheringWavesConfig
 
 
@@ -57,8 +59,8 @@ class TestDeclarationBindings(unittest.TestCase):
         config = {"NativeCategory": "old", "NativeStage": 1, "unrelated": [1, 2]}
         original = deepcopy(config)
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save") as save,
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config") as save,
         ):
             cfg.set_daily_task("每日任务", "测试类别", 9)
             self.assertEqual(_read(cfg, "每日任务"), ("测试类别", 9))
@@ -81,8 +83,8 @@ class TestDeclarationBindings(unittest.TestCase):
                 cfg = cls()
                 config = {"NativeTarget": "old", "untouched": True}
                 with (
-                    patch.object(cfg, "_load", return_value=config),
-                    patch.object(cfg, "_save"),
+                    patch.object(Daily, "_load_daily_config", return_value=config),
+                    patch.object(daily_mod, "save_config"),
                 ):
                     cfg.set_daily_task("每日任务", task_name, "真实副本")
                     self.assertEqual(_read(cfg, "每日任务"), ("真实副本", None))
@@ -112,10 +114,11 @@ class TestDeclarationBindings(unittest.TestCase):
             ]
         }
 
-        def load(path=None, **kwargs):
-            return routine if path == cfg._routine_config_rel_path else config
-
-        with patch.object(cfg, "_load", side_effect=load), patch.object(cfg, "_save"):
+        with (
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_load_routine_config", return_value=routine),
+            patch.object(daily_mod, "save_config"),
+        ):
             cfg.set_daily_task("异象界域", "空幕", 2)
             self.assertEqual(_read(cfg, "异象界域"), ("空幕", 2))
             self.assertEqual(
@@ -145,8 +148,8 @@ class TestDeclarationBindings(unittest.TestCase):
         cfg = self.load_adapters().StarRailConfig()
         config = {"currencywars_enable": False, "instance_names": {"untouched": "keep"}}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save"),
+            patch.object(cfg, "_load_weekly_config", return_value=config),
+            patch.object(cfg, "_save_weekly_config"),
         ):
             cfg.set_weekly_task("历战余响", "副本别名")
             self.assertEqual(cfg._read_weekly_task("历战余响"), "副本别名")
@@ -164,8 +167,8 @@ class TestDeclarationBindings(unittest.TestCase):
         cfg = self.load_adapters().WutheringWavesConfig()
         config = {"NativeTasks": ["unrelated"]}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save"),
+            patch.object(cfg, "_load_weekly_config", return_value=config),
+            patch.object(cfg, "_save_weekly_config"),
             patch(
                 "src.utils.utils_weekly.get_week_num",
                 side_effect=[1, 0],
@@ -188,8 +191,8 @@ class TestDeclarationBindings(unittest.TestCase):
         ]
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
-            patch.object(cfg, "_load", return_value=config),
-            patch.object(cfg, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
         ):
             cfg.set_daily_task("每日任务", "新土别名")
             self.assertEqual(

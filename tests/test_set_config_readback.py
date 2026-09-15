@@ -6,10 +6,12 @@
 """
 
 import unittest
+from contextlib import ExitStack
 from unittest.mock import patch
 
 from src.config import daily as daily_mod
 from src.config import set_config as set_config_mod
+from src.config.daily import Daily
 from src.config.set_config import (
     ArknightsConfig,
     EndfieldConfig,
@@ -17,7 +19,6 @@ from src.config.set_config import (
     NTEConfig,
     StarRailConfig,
     WutheringWavesConfig,
-    ZenlessZoneZeroConfig,
     get_daily_readback,
     get_weekly_task,
     set_daily_enabled,
@@ -47,8 +48,8 @@ class TestReadbackWuWa(unittest.TestCase):
     def test_daily_task_and_sequence_roundtrip(self):
         config: dict = {}
         with (
-            patch.object(WutheringWavesConfig, "_load", return_value=config),
-            patch.object(WutheringWavesConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -60,8 +61,8 @@ class TestReadbackWuWa(unittest.TestCase):
     def test_mapped_sequence_roundtrip(self):
         config: dict = {}
         with (
-            patch.object(WutheringWavesConfig, "_load", return_value=config),
-            patch.object(WutheringWavesConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -76,8 +77,8 @@ class TestReadbackGenshin(unittest.TestCase):
     def test_domain_roundtrip(self):
         config: dict = {}
         with (
-            patch.object(GenshinConfig, "_load", return_value=config),
-            patch.object(GenshinConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -90,8 +91,8 @@ class TestReadbackEndfield(unittest.TestCase):
     def test_stage_roundtrip(self):
         config: dict = {}
         with (
-            patch.object(EndfieldConfig, "_load", return_value=config),
-            patch.object(EndfieldConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -104,12 +105,15 @@ class TestReadbackNTE(unittest.TestCase):
     """异环两个日常分段：写入与反读都按日常，段之间互不串味。"""
 
     def _patch(self, config, routine=None):
-        """按路径区分两份文件：主配置返回 config，routine 文件返回 routine。"""
-        return patch.object(
-            NTEConfig,
-            "_load",
-            side_effect=lambda p=None, **_k: config if p is None else routine,
+        """主 config 返回 config，routine 开关文件返回 routine（模拟两份文件）。"""
+        stack = ExitStack()
+        stack.enter_context(
+            patch.object(Daily, "_load_daily_config", return_value=config)
         )
+        stack.enter_context(
+            patch.object(Daily, "_load_routine_config", return_value=routine)
+        )
+        return stack
 
     def test_anomaly_roundtrip(self):
         config = {"daily_anomaly": {"任务类型": "", "异能材料序号": 0}}
@@ -121,7 +125,7 @@ class TestReadbackNTE(unittest.TestCase):
         }
         with (
             self._patch(config, routine),
-            patch.object(NTEConfig, "_save"),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -134,7 +138,7 @@ class TestReadbackNTE(unittest.TestCase):
         config = {"daily_anomaly": {}}
         with (
             self._patch(config),
-            patch.object(NTEConfig, "_save"),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -150,7 +154,7 @@ class TestReadbackNTE(unittest.TestCase):
         }
         with (
             self._patch(config),
-            patch.object(NTEConfig, "_save"),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -177,7 +181,7 @@ class TestReadbackNTE(unittest.TestCase):
         }
         with (
             self._patch(config, routine),
-            patch.object(NTEConfig, "_save"),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -221,8 +225,8 @@ class TestReadbackMAA(unittest.TestCase):
             }
         }
         with (
-            patch.object(ArknightsConfig, "_load", return_value=config),
-            patch.object(ArknightsConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -268,8 +272,8 @@ class TestReadbackMAA(unittest.TestCase):
             }
         }
         with (
-            patch.object(ArknightsConfig, "_load", return_value=config),
-            patch.object(ArknightsConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
         ):
             cfg = ArknightsConfig()
             _bind_maa_daily(
@@ -282,8 +286,8 @@ class TestReadbackStarRailWeekly(unittest.TestCase):
     def test_weekly_daily_task_roundtrip(self):
         config: dict = {}
         with (
-            patch.object(StarRailConfig, "_load", return_value=config),
-            patch.object(StarRailConfig, "_save"),
+            patch.object(StarRailConfig, "_load_weekly_config", return_value=config),
+            patch.object(StarRailConfig, "_save_weekly_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -296,8 +300,8 @@ class TestReadbackFacade(unittest.TestCase):
     def test_facade_roundtrip_okww(self):
         config: dict = {}
         with (
-            patch.object(WutheringWavesConfig, "_load", return_value=config),
-            patch.object(WutheringWavesConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -321,14 +325,15 @@ class TestReadbackFacade(unittest.TestCase):
     def test_facade_noop_scripts_have_no_truth(self):
         # 绝区零/崩铁日常无落点 → 副本/序列无真相
         with (
-            patch.object(ZenlessZoneZeroConfig, "_load", return_value={}),
+            patch.object(Daily, "_load_daily_config", return_value={}),
         ):
             self.assertEqual(
                 get_daily_readback("OneDragon-Launcher"),
                 [{"name": "每日任务", "task": None, "sequence": None, "enabled": None}],
             )
         with (
-            patch.object(StarRailConfig, "_load", return_value={}),
+            patch.object(Daily, "_load_daily_config", return_value={}),
+            patch.object(StarRailConfig, "_load_weekly_config", return_value={}),
         ):
             self.assertEqual(
                 get_daily_readback("March7th-Launcher"),
@@ -343,7 +348,7 @@ class TestReadbackCorruption(unittest.TestCase):
     def test_unknown_task_value_raises(self):
         config = {"Which to Farm": "未知副本值"}
         with (
-            patch.object(WutheringWavesConfig, "_load", return_value=config),
+            patch.object(Daily, "_load_daily_config", return_value=config),
         ):
             cfg = WutheringWavesConfig()
             with self.assertRaises(AssertionError):
@@ -353,12 +358,9 @@ class TestReadbackCorruption(unittest.TestCase):
         routine = []  # 非 dict → 损坏，原实现会静默回退 任务类型
         config: dict = {}
         with (
-            patch.object(
-                NTEConfig,
-                "_load",
-                side_effect=lambda p=None, **_k: config if p is None else routine,
-            ),
-            patch.object(NTEConfig, "_save"),
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_load_routine_config", return_value=routine),
+            patch.object(daily_mod, "save_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -370,10 +372,9 @@ class TestReadbackCorruption(unittest.TestCase):
         """routine 缺 Routine Items（损坏）→ assert 暴露，不静默判为「无启用玩法」。"""
         routine = {"不是 Routine Items": []}
         config: dict = {}
-        with patch.object(
-            NTEConfig,
-            "_load",
-            side_effect=lambda p=None, **_k: config if p is None else routine,
+        with (
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_load_routine_config", return_value=routine),
         ):
             cfg = NTEConfig()
             with self.assertRaises(AssertionError):
@@ -382,7 +383,7 @@ class TestReadbackCorruption(unittest.TestCase):
     def test_starrail_bad_instance_names_raises(self):
         config = {"instance_names": "不是dict"}
         with (
-            patch.object(StarRailConfig, "_load", return_value=config),
+            patch.object(StarRailConfig, "_load_weekly_config", return_value=config),
         ):
             cfg = StarRailConfig()
             with self.assertRaises(AssertionError):

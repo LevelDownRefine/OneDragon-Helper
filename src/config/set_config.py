@@ -41,7 +41,6 @@ class ScriptConfig:
     _game_path_keys: tuple[str, ...] = ()
     """游戏 exe 路径在游戏配置中的嵌套键路径；空元组表示未适配「打开游戏」。"""
 
-    _config_rel_path: str = ""
     """config 文件相对脚本根目录路径。"""
 
     _backup_paths: tuple[str, ...] = ()
@@ -66,25 +65,25 @@ class ScriptConfig:
     _weekly_config_rel_path: str = ""
     """周常配置文件路径；空字符串复用主 config。"""
 
-    _routine_config_rel_path: str = ""
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
 
     _dailies_data: list[Daily] | None = None
     """该脚本的日常对象缓存（首次访问 ``_dailies`` 时由声明构造）。"""
 
-    def _load(
-        self, rel_path: str | None = None, *, allow_missing: bool = False
-    ) -> dict | None:
-        """读取脚本 config 并校验为 dict。
+    def _daily_config_rel_path(self) -> str:
+        """脚本 config 文件路径（取首个日常声明的 ``config``）。
 
-        写路径（初始化/落盘校验）要求 config 必须存在且为 dict，任何读取失败都抛出；
-        读路径（反读日常/周本副本）容忍外部状态，一律返回 None，其中：
+        周常缺省落点与模板对齐共用该文件——脚本 config 与日常所在文件恰好同份。
 
-        - 脚本未安装（config.yml 中无此脚本）与 config 文件缺失属正常状态，静默跳过；
-        - 文件存在但解析器报错（JSON/YAML 语法错误）不当作「无内容」，留痕后仍返回 None。
+        Returns:
+            相对脚本根目录的路径。
+        """
+        return get_daily_configs(self._script_name)[0]["config"]
+
+    def _load_weekly_config(self, *, allow_missing: bool = False) -> dict | None:
+        """读周常所在的 config 文件（路径由脚本显式声明 ``_weekly_config_rel_path``）。
 
         Args:
-            rel_path: 相对脚本根目录的路径；缺省用 _config_rel_path。
             allow_missing: True 时读取失败返回 None（读路径）；
                 False 时失败即报错（写路径，默认）。
 
@@ -94,7 +93,7 @@ class ScriptConfig:
         Raises:
             AssertionError: allow_missing=False 且文件不存在、内容损坏或解析结果非 dict。
         """
-        rel_path = rel_path or self._config_rel_path
+        rel_path = self._weekly_config_rel_path
         try:
             config = load_config(self._script_name, rel_path)
         except AssertionError:
@@ -119,81 +118,24 @@ class ScriptConfig:
             )
         return config
 
-    def _save(self, config: dict, rel_path: str | None = None) -> None:
-        """保存 config 并回读校验落盘一致。
-
-        enabled=False 时跳过（用户拒绝更新）。
+    def _save_weekly_config(self, config: dict) -> None:
+        """保存周常所在的 config 文件并回读校验落盘一致。
 
         Args:
             config: 待保存的 dict。
-            rel_path: 相对脚本根目录的路径；缺省用 _config_rel_path。
 
         Raises:
             AssertionError: config 非 dict 或保存后回读不一致。
         """
-        rel_path = rel_path or self._config_rel_path
+        rel_path = self._weekly_config_rel_path
         assert isinstance(config, dict), (
             f"[set_config][{self.display_name}] config 必须是 dict"
         )
         save_config(self._script_name, rel_path, config)
-        self._verify_saved(config, rel_path)
-
-    def _verify_saved(self, expected: dict, rel_path: str | None = None) -> None:
-        """保存后回读校验落盘与预期一致。
-
-        Args:
-            expected: 期望落盘的 config dict。
-            rel_path: 相对脚本根目录的路径；缺省用 _config_rel_path。
-
-        Raises:
-            AssertionError: 重新读取的内容与预期不一致。
-        """
-        reloaded = self._load(rel_path)
-        assert reloaded == expected, (
-            f"[set_config][{self.display_name}] 配置保存后校验失败："
-            f"重新读取的内容与预期不一致"
-        )
-
-    def _load_weekly(self) -> dict:
-        """加载周常配置文件（缺省复用主 config）。
-
-        Returns:
-            解析后的 config dict。
-
-        Raises:
-            AssertionError: 解析结果非 dict。
-        """
-        config = load_config(
-            self._script_name, self._weekly_config_rel_path or self._config_rel_path
-        )
-        assert isinstance(config, dict), (
-            f"[set_config][{self.display_name}] 周常 config 必须是 dict"
-        )
-        return config
-
-    def _save_weekly(self, config: dict) -> None:
-        """保存周常配置并回读校验落盘一致。
-
-        enabled=False 时跳过（用户拒绝更新）。
-
-        Args:
-            config: 待保存的 dict。
-
-        Raises:
-            AssertionError: config 非 dict 或保存后回读不一致。
-        """
-        assert isinstance(config, dict), (
-            f"[set_config][{self.display_name}] 周常 config 必须是 dict"
-        )
-        save_config(
-            self._script_name,
-            self._weekly_config_rel_path or self._config_rel_path,
-            config,
-        )
-        reloaded = self._load_weekly()
+        reloaded = self._load_weekly_config()
         assert reloaded == config, (
-            f"[set_config][{self.display_name}] 周常配置保存后校验失败："
-            f"重新读取的内容与预期不一致"
+            f"[set_config][{self.display_name}] 配置保存后校验失败："
+            "重新读取的内容与预期不一致"
         )
 
     def _load_template(self) -> dict:
@@ -226,7 +168,9 @@ class ScriptConfig:
                 f"[set_config][{self.display_name}] 未知的日常机制类: {class_name!r}"
             )
             dailies.append(
-                DAILY_CLASSES[class_name](self._script_name, declaration, self)
+                DAILY_CLASSES[class_name](
+                    self._script_name, declaration, self.display_name
+                )
             )
         return dailies
 
@@ -311,9 +255,19 @@ class ScriptConfig:
         """
         if not self._template_rel_path:
             return
-        config = self._load(allow_missing=True)
-        if config is None:
+        rel_path = self._daily_config_rel_path()
+        try:
+            config = load_config(self._script_name, rel_path)
+        except AssertionError:
             return  # 脚本未安装/未配置，待首次写入时由 set_* 创建
+        except Exception:  # noqa: BLE001  # 文件存在但内容损坏
+            logger.warning(
+                f"[init_config][{self.display_name}] config 损坏，跳过对齐: {rel_path}",
+                exc_info=True,
+            )
+            return
+        if not isinstance(config, dict):
+            return
         template = self._load_template()
 
         if self._is_aligned(config, template):
@@ -322,7 +276,12 @@ class ScriptConfig:
 
         for key, val in template.items():
             safe_update(config, key, val, self.display_name, assert_key_exists=False)
-        self._save(config)
+        save_config(self._script_name, rel_path, config)
+        reloaded = load_config(self._script_name, rel_path)
+        assert reloaded == config, (
+            f"[init_config][{self.display_name}] 配置保存后校验失败："
+            "重新读取的内容与预期不一致"
+        )
         logger.info(f"[init_config][{self.display_name}] config 已更新")
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
@@ -387,9 +346,7 @@ class ScriptConfig:
             AssertionError: 该日常未知，或 Routine Items 缺少或重复该日常的物理名。
         """
         daily = self._dispatch_daily(daily_display_name)
-        if not self._routine_config_rel_path:
-            return  # 无日常开关文件：选择即启用
-        daily.set_enabled(enabled)
+        daily.set_enabled(enabled)  # 无日常开关的机制类不做事（选择即启用）
 
     def _check_weekly_start(self, start_day: int) -> None:
         """校验周常起始日，供各子类的 prepare_weekly_start_day 首行调用。
@@ -492,10 +449,10 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
         原样返回 cls（便于装饰器使用）。
 
     Raises:
-        AssertionError: 缺少 _script_name/_config_rel_path/_backup_paths 显式声明，
+        AssertionError: 缺少 _script_name/_backup_paths 显式声明，
             或声明了 _game_path_keys/_weekly_task_name 但未补全对应声明/实现。
     """
-    for attr in ("_script_name", "_config_rel_path", "_backup_paths"):
+    for attr in ("_script_name", "_backup_paths"):
         assert attr in cls.__dict__, f"[set_config][{cls.__name__}] 必须声明 {attr}"
     if cls._game_path_keys:
         assert "_game_config_rel_path" in cls.__dict__, (
@@ -503,6 +460,10 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
             f"_game_config_rel_path"
         )
     if cls._weekly_task_name:
+        assert "_weekly_config_rel_path" in cls.__dict__, (
+            f"[set_config][{cls.__name__}] 声明了 _weekly_task_name 必须声明 "
+            f"_weekly_config_rel_path"
+        )
         assert (
             cls.prepare_weekly_start_day is not ScriptConfig.prepare_weekly_start_day
         ), (
@@ -523,11 +484,11 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
 class WutheringWavesConfig(ScriptConfig):
     _script_name = "ok-ww"
     _backup_paths = ("data/apps/ok-ww/working/configs",)
-    _config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "鸣潮"
     _weekly_config = get_weekly_config(_script_name, "幻梦游园")
+    _weekly_config_rel_path = "data/apps/ok-ww/working/configs/DailyTask.json"
     _weekly_task_name = get_physical_name(_weekly_config)
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
@@ -541,7 +502,7 @@ class WutheringWavesConfig(ScriptConfig):
         """
         self._check_weekly_start(start_day)
         enabled = is_weekly_start_reached(start_day)
-        config = self._load()
+        config = self._load_weekly_config()
         # 周常（乐园）在 Additional Tasks 列表中任务名 _weekly_task_name。
         tasks = get_field(config, self._weekly_config["key"], self.display_name, list)
         contains = self._weekly_task_name in tasks
@@ -557,7 +518,7 @@ class WutheringWavesConfig(ScriptConfig):
         logger.info(
             f"[prepare_weekly_start_day][{self.display_name}] {'启用' if enabled else '停用'}周常"
         )
-        self._save(config)
+        self._save_weekly_config(config)
 
 
 # ---- 原神 Genshin Impact ----
@@ -567,7 +528,6 @@ class GenshinConfig(ScriptConfig):
     display_name = "原神"
 
     _backup_paths = ("User",)
-    _config_rel_path = "User/OneDragon/默认配置.json"
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
     _game_path_keys = ("genshinStartConfig", "installPath")
@@ -609,9 +569,9 @@ class EndfieldConfig(ScriptConfig):
 
     _template_rel_path = "okef一条龙.json"
     _backup_paths = ("data/apps/ok-ef/working/configs",)
-    _config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
+    _weekly_config_rel_path = "data/apps/ok-ef/working/configs/DailyTask.json"
     _weekly_task_name = get_weekly_config(_script_name, "卖出物资")["key"]
     """周常（卖出物资）在 DailyTask.json 中的开关键；true=只买不卖=不卖=周常关。"""
 
@@ -629,10 +589,10 @@ class EndfieldConfig(ScriptConfig):
         """
         self._check_weekly_start(start_day)
         enabled = is_weekly_start_reached(start_day)
-        config = self._load()
+        config = self._load_weekly_config()
         # 反相：enabled=True（卖出）→ 只买不卖=false
         safe_update(config, self._weekly_task_name, not enabled, self.display_name)
-        self._save(config)
+        self._save_weekly_config(config)
 
     @classmethod
     def get_task_lists(cls, task_name: str, source: str) -> list[str]:
@@ -668,7 +628,6 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
     _backup_paths = ("config",)
-    _config_rel_path = "config/01/one_dragon/charge_plan.yml"
     _game_config_rel_path = "config/01/game_account.yml"
     _template_rel_path = "ZZZ一条龙.yml"
     _weekly_config_rel_path = "config/01/one_dragon/_group.yml"
@@ -687,7 +646,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
         """
         self._check_weekly_start(start_day)
         enabled = is_weekly_start_reached(start_day)
-        config = self._load_weekly()
+        config = self._load_weekly_config()
         # 周常（迷失之地）在 _group.yml app_list 中的 app_id。
         app_list = get_field(config, "app_list", self.display_name, list)
         target = next(
@@ -698,7 +657,7 @@ class ZenlessZoneZeroConfig(ScriptConfig):
             f"[set_config][{self.display_name}] app_list 缺少 {self._weekly_task_name}"
         )
         safe_update(target, "enabled", enabled, self.display_name)
-        self._save_weekly(config)
+        self._save_weekly_config(config)
 
 
 # ---- 崩铁 Honkai: Star Rail ----
@@ -707,11 +666,11 @@ class StarRailConfig(ScriptConfig):
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
     _backup_paths = ("config.yaml",)
-    _config_rel_path = "config.yaml"
     _game_config_rel_path = "config.yaml"
     _template_rel_path = "M7A一条龙.yml"
     _game_path_keys = ("game_path",)
     background = "assets/app/images/bg37.jpg"
+    _weekly_config_rel_path = "config.yaml"
     _weekly_task_name = get_weekly_config(_script_name, "货币战争")["key"]
     _echo_config = get_weekly_config(_script_name, "历战余响")
 
@@ -753,7 +712,7 @@ class StarRailConfig(ScriptConfig):
             start_day: 周几以后启用（1~7，1=周一）。
         """
         self._check_weekly_start(start_day)
-        config = self._load()
+        config = self._load_weekly_config()
         # 货币战争：今天是否已到起始日
         safe_update(
             config,
@@ -763,7 +722,7 @@ class StarRailConfig(ScriptConfig):
         )
         # 历战余响：周几起交给 M7A 自身门控，与副本选型 instance_names 正交
         safe_update(config, self._echo_config["key"], start_day, self.display_name)
-        self._save(config)
+        self._save_weekly_config(config)
 
     def set_weekly_start_day(self, start_day: int) -> None:
         """编辑期落盘周几起字面起始日到 echo_of_war_start_day_of_week。
@@ -780,7 +739,7 @@ class StarRailConfig(ScriptConfig):
         )
         # 前置条件：游戏原生 config 路径有效（游戏已安装、script_path 正确），由 GUI 侧
         # 调用前保证；本方法假设该前置成立，不做存在性兜底盘。
-        config = self._load(allow_missing=True) or {}
+        config = self._load_weekly_config(allow_missing=True) or {}
         # 空 config 时字段可能尚不存在（本方法容忍 config 缺失），故允许新增。
         safe_update(
             config,
@@ -789,7 +748,7 @@ class StarRailConfig(ScriptConfig):
             self.display_name,
             assert_key_exists=False,
         )
-        self._save(config)
+        self._save_weekly_config(config)
 
     def set_weekly_task(self, weekly_name: str, task_name: str) -> None:
         """写入某周常当前选中的副本名到 config.yaml 的 instance_names。
@@ -801,7 +760,7 @@ class StarRailConfig(ScriptConfig):
             weekly_name: 周常名（如「历战余响」）；即 instance_names 的键。
             task_name: 选中的副本名（来自 weekly_task_list.yml 声明）。
         """
-        config = self._load()
+        config = self._load_weekly_config()
         # instance_names 是 M7A 约定键名（{周常名: 副本名} 的 dict）；仅首次使用时新建，
         # 已存在则由 get_field 校验类型——与 _read_weekly_task 对称，不静默抹掉损坏值。
         if "instance_names" not in config:
@@ -819,7 +778,7 @@ class StarRailConfig(ScriptConfig):
             assert task_name in values, f"未知周常副本: {task_name!r}"
             task_name = values[task_name]
         instance_names[get_physical_name(task)] = task_name
-        self._save(config)
+        self._save_weekly_config(config)
 
     def _read_weekly_task(self, weekly_name: str) -> str | None:
         """反读某周常当前选中的副本名（与 set_weekly_task 对称）。
@@ -830,7 +789,7 @@ class StarRailConfig(ScriptConfig):
         Returns:
             当前选中的副本名；未设置/无 instance_names 返回 None。
         """
-        config = self._load(allow_missing=True)
+        config = self._load_weekly_config(allow_missing=True)
         if config is None:
             return None  # 脚本未安装/未配置
         assert isinstance(config, dict), (
@@ -855,8 +814,6 @@ class StarRailConfig(ScriptConfig):
 class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
     _backup_paths = ("data/apps/ok-nte/working/configs",)
-    _config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
-    _routine_config_rel_path = "data/apps/ok-nte/working/configs/DailyRoutineTask.json"
     _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
     _game_path_keys = ("pc_full_path",)
     display_name = "异环"
@@ -898,7 +855,6 @@ class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
     display_name = "粥"
     _backup_paths = ("config",)
-    _config_rel_path = "config/gui.new.json"
     _game_config_rel_path = "config/gui.new.json"
     _game_path_keys = (
         "Configurations",
@@ -907,6 +863,7 @@ class ArknightsConfig(ScriptConfig):
         "StartUpSettings",
         "EmulatorPath",
     )
+    _weekly_config_rel_path = "config/gui.new.json"
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "理智药剂"))
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
@@ -925,7 +882,7 @@ class ArknightsConfig(ScriptConfig):
             AssertionError: 未适配周常，或 start_day 不在 1~7。
         """
         self._check_weekly_start(start_day)
-        config = self._load()
+        config = self._load_weekly_config()
         task_queue = get_field(
             get_field(
                 get_field(config, "Configurations", self.display_name, dict, "weekly"),
@@ -966,7 +923,7 @@ class ArknightsConfig(ScriptConfig):
             logger.info(
                 f"[prepare_weekly_start_day][{self.display_name}] 理智药剂配置已更新"
             )
-            self._save(config)
+            self._save_weekly_config(config)
         else:
             logger.info(
                 f"[prepare_weekly_start_day][{self.display_name}] 理智药剂配置无需更新"
@@ -988,7 +945,7 @@ class ArknightsConfig(ScriptConfig):
         )
         # 前置条件：游戏原生 config 已存在（游戏已安装、script_path 正确），由 GUI 侧调用前
         # 保证；缺失即前置不成立，直接断言失败，不做存在性兜底盘。
-        config = self._load()
+        config = self._load_weekly_config()
         task_queue = get_field(
             get_field(
                 get_field(config, "Configurations", self.display_name, dict, "weekly"),
@@ -1018,7 +975,7 @@ class ArknightsConfig(ScriptConfig):
             logger.info(
                 f"[set_weekly_start_day][{self.display_name}] 理智药剂过期窗口已更新"
             )
-            self._save(config)
+            self._save_weekly_config(config)
         else:
             logger.info(
                 f"[set_weekly_start_day][{self.display_name}] 理智药剂过期窗口无需更新"
@@ -1115,7 +1072,9 @@ def get_config_path(script_name: str) -> str:
         AssertionError: 脚本未适配。
     """
     assert script_name in _CONFIGS, f"[set_config] 未适配脚本: {script_name}"
-    return _get_config_path_impl(script_name, _CONFIGS[script_name]._config_rel_path)
+    return _get_config_path_impl(
+        script_name, get_daily_configs(script_name)[0]["config"]
+    )
 
 
 def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...]:

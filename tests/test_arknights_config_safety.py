@@ -14,6 +14,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+from src.config import daily as daily_mod
 from src.config import set_config as sc_mod
 from src.config.set_config import ArknightsConfig
 from tests.config_diff import diff_paths
@@ -70,13 +71,20 @@ class TestArknightsConfigSafety(unittest.TestCase):
 
         self._lp = patch.object(sc_mod, "load_config", fake_load)
         self._sp = patch.object(sc_mod, "save_config", fake_save)
+        # Daily 自持 I/O 直调 daily 模块原语，同 fake 双注册
+        self._ldp = patch.object(daily_mod, "load_config", fake_load)
+        self._dsp = patch.object(daily_mod, "save_config", fake_save)
         self._lp.start()
         self._sp.start()
+        self._ldp.start()
+        self._dsp.start()
 
     def tearDown(self):
         # 只停 setUp 自身 start 的两个 patch，不用全局 stopall（避免误停他方活跃 patch）。
         self._lp.stop()
         self._sp.stop()
+        self._ldp.stop()
+        self._dsp.stop()
 
     # ---- 实例化：绝不该改任何东西（反读/只读入口依赖此不变量）----
     def test_instantiation_touches_nothing(self):
