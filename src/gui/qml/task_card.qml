@@ -1,6 +1,7 @@
 import QtQuick
 import OneDragonHelper 1.0
 import "Theme.js" as Theme
+import "Layout.js" as Layout
 
 // 任务调度卡（日常副本 / 周常）：复刻旧 src/gui/task_card.py 的视觉与行为契约。
 // 数据经 Bridge 暴露：taskTitle / taskAdapted / weeklySupported / dailyItems / weeklyItems；
@@ -40,10 +41,9 @@ Item {
                                   : cardRoot.weeklyTop)
             : 84
 
-    // 窗口边界在卡片坐标系中的常量：卡片由 main.qml 的 Loader 固定在 (128, 392)，
-    // 窗口固定 1280x720（popupCatcher 用的是同一套常量）。下拉据此判断上下余量。
-    readonly property int winTopInCard: -392
-    readonly property int winBottomInCard: 328
+    // 下拉和点击遮罩共用窗口边界，由画布尺寸与卡片位置推导。
+    readonly property int winTopInCard: -Layout.taskCardY
+    readonly property int winBottomInCard: Layout.windowHeight - Layout.taskCardY
 
     // 下拉定位：优先在锚点下方展开；下方装不下且上方更宽裕时上翻（对齐系统菜单）。
     // 高度封顶到所选方向的实际余量，使 Flickable 视口 == 可见区域，内容超出即可滚动。
@@ -54,13 +54,16 @@ Item {
     // anchorTop / anchorBottom 为锚点行在卡片坐标系的上下边，desiredH 为内容理想高度。
     // 返回 {y, h}：弹窗应放置的 y 与最终高度。
     function placePopup(anchorTop, anchorBottom, desiredH) {
-        var below = cardRoot.winBottomInCard - anchorBottom - 4 - 8
-        var above = anchorTop - cardRoot.winTopInCard - 4 - 8
+        var below = cardRoot.winBottomInCard - anchorBottom
+                    - Layout.popupAnchorGap - Layout.popupEdgeMargin
+        var above = anchorTop - cardRoot.winTopInCard
+                    - Layout.popupAnchorGap - Layout.popupEdgeMargin
         if (desiredH <= below || below >= above) {
-            return { "y": anchorBottom + 4, "h": Math.min(desiredH, below) }
+            return { "y": anchorBottom + Layout.popupAnchorGap,
+                     "h": Math.min(desiredH, below) }
         }
         var h = Math.min(desiredH, above)
-        return { "y": anchorTop - 4 - h, "h": h }
+        return { "y": anchorTop - Layout.popupAnchorGap - h, "h": h }
     }
 
     // 卡片投影与背景分层，文字保持清晰。
@@ -329,7 +332,7 @@ Item {
         property int rightW: 0
         property int anchorTop: dailyArea.y
         property int anchorBottom: dailyArea.y + dailyArea.rowH
-        property int popupY: anchorBottom + 4
+        property int popupY: anchorBottom + Layout.popupAnchorGap
         property int popupHeight: 360
         property int viewportH: height - 8
         property string selName: ""
@@ -527,7 +530,7 @@ Item {
         property int instW: 200
         property int anchorTop: weeklyArea.y
         property int anchorBottom: weeklyArea.y + weeklyArea.height
-        property int popupY: anchorBottom + 4
+        property int popupY: anchorBottom + Layout.popupAnchorGap
         property int popupHeight: 360
         property int viewportH: height - 8
 
@@ -595,9 +598,10 @@ Item {
     // 故「弹窗内」点击由弹窗自身处理、「弹窗外」点击被本层拦截并关闭两个弹窗。
     MouseArea {
         id: popupCatcher
-        x: -128
+        objectName: "popupCatcher"
+        x: -Layout.taskCardX
         y: cardRoot.winTopInCard
-        width: 1280
+        width: Layout.windowWidth
         height: cardRoot.winBottomInCard - cardRoot.winTopInCard
         z: 99
         visible: dailyPopup.visible || weeklyPopup.visible

@@ -399,6 +399,14 @@ class TestQmlApp(unittest.TestCase):
             app.exec()
             print("ROOT_OBJECTS", len(engine.rootObjects()), flush=True)
             window = engine.rootObjects()[0]
+            # 裁切落在窗口本身，覆盖全部背景与侧栏，内部控件继续接收点击。
+            mask = window.mask()
+            w, h = window.width(), window.height()
+            assert not mask.isEmpty()
+            for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
+                assert not mask.contains(QPointF(x, y).toPoint())
+            for x, y in ((w // 2, 0), (0, h // 2), (w - 1, h // 2), (w // 2, h - 1), (w // 2, h // 2)):
+                assert mask.contains(QPointF(x, y).toPoint())
             # Repeater 委托的 QObject 所有权不等于视觉父子关系，按视觉树查找。
             def find_item(name):
                 pending = [window.contentItem()]

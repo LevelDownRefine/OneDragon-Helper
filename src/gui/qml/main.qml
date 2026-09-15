@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import OneDragonHelper 1.0
 import "Theme.js" as Theme
+import "Layout.js" as Layout
 
 // OneDragon-Helper 主场景：frameless 1280x720 启动器。
 // 背景三层（视频 / 图片 / 渐变）由 Bridge.backgroundMode 切换；
@@ -9,12 +10,13 @@ import "Theme.js" as Theme
 // 视频作为场景图节点不会像 QVideoWidget 那样盖住 UI。
 Window {
     id: root
-    width: 1280
-    height: 720
+    width: Layout.windowWidth
+    height: Layout.windowHeight
     flags: Qt.FramelessWindowHint | Qt.Window
     color: Theme.canvas
     visible: true
     title: "OneDragon-Helper · 游戏自动化调度器"
+    readonly property int cornerRadius: Layout.windowCornerRadius
 
     // ═══════════════ 背景层（最底）═══════════════
     // 视频背景：Loader 按文件路径懒加载 VideoBackground.qml。
@@ -650,14 +652,16 @@ Window {
     // "独立 .qml + Loader source" 稳定模式（不把类型 import 进 main.qml 本体）。
     Loader {
         id: taskCardLoader
-        x: 128
-        y: 392
+        x: Layout.taskCardX
+        y: Layout.taskCardY
         z: 20  // 高于拖拽层，避免开关/副本按钮首次点击被抢（双击感）
         source: "task_card.qml"
     }
 
     // toast / 添加脚本 / 重排信号连接（不用 Connections 组件，避免单例 target 解析的潜在问题）
     Component.onCompleted: {
+        // 整窗裁切包含视频、壁纸与侧栏，圆角外也不接收点击。
+        Bridge.roundWindow(root, root.cornerRadius)
         Bridge.toastRequested.connect(function(text) {
             toastText.text = text
             toast.visible = true
