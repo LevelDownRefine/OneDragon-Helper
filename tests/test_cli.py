@@ -95,6 +95,20 @@ def _known_script_names():
     return [get_script_name(s) for s in data.get("script_list", [])]
 
 
+def _chainable_script_names():
+    """能进链的脚本唯一标识：config.yml 里未被 GUI 关闭（enabled 缺省/True）的脚本。
+
+    链生成的启用判定 = 本次名单（--enable/--exclude）∩ GUI 总闸；总闸关闭的
+    脚本不进链，故期望集合须以总闸过滤后的集合为基线。
+    """
+    data = load_yaml(get_config_yml_path_under_root())
+    return [
+        get_script_name(s)
+        for s in data.get("script_list", [])
+        if s.get("enabled", True)
+    ]
+
+
 class TestCliHelpVersion(unittest.TestCase):
     """--help / --version 出口：退出 0 且结果写文件。"""
 
@@ -186,6 +200,8 @@ class TestCliGenerateChain(unittest.TestCase):
     def setUp(self):
         self._names = _known_script_names()
         self.assertTrue(self._names, "config.yml 不应为空脚本列表")
+        self._chainable = _chainable_script_names()
+        self.assertTrue(self._chainable, "config.yml 至少应有一个未关闭的脚本")
         # 固定「当天全部运行」，消除 weekly_timeouts 按星期剔除脚本带来的日期敏感
         # （如某脚本周三超时配 0 表示当天不运行，会让"应含全部脚本"的断言随机失败）。
         self._resolve_daily = patch.object(
@@ -204,7 +220,7 @@ class TestCliGenerateChain(unittest.TestCase):
             data = load_yaml(out)
             self.assertIn("script_list", data, msg=data)
             produced = [get_script_name(s) for s in data["script_list"]]
-            self.assertEqual(set(produced), set(self._names), msg=produced)
+            self.assertEqual(set(produced), set(self._chainable), msg=produced)
             # _emit_cli 也应写了结果文件
             self.assertIn("已生成脚本链配置", _read_cli_file("generate_chain"))
         finally:
@@ -222,7 +238,7 @@ class TestCliGenerateChain(unittest.TestCase):
             self.assertEqual(code, 0)
             data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
-            self.assertEqual(set(produced), set(self._names), msg=produced)
+            self.assertEqual(set(produced), set(self._chainable), msg=produced)
         finally:
             if os.path.exists(out):
                 os.remove(out)
@@ -238,13 +254,13 @@ class TestCliGenerateChain(unittest.TestCase):
             self.assertEqual(code, 0)
             data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
-            self.assertEqual(set(produced), set(self._names), msg=produced)
+            self.assertEqual(set(produced), set(self._chainable), msg=produced)
         finally:
             if os.path.exists(out):
                 os.remove(out)
 
     def test_generate_chain_enable_subset(self):
-        target = self._names[0]
+        target = self._chainable[0]
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
@@ -269,7 +285,7 @@ class TestCliGenerateChain(unittest.TestCase):
 
     def test_generate_chain_exclude_subset(self):
         """--exclude 从全部脚本中剔除指定标识"""
-        target = self._names[0]
+        target = self._chainable[0]
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
@@ -280,15 +296,25 @@ class TestCliGenerateChain(unittest.TestCase):
             self.assertEqual(code, 0)
             data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
-            self.assertEqual(set(produced), set(self._names) - {target}, msg=produced)
+            self.assertEqual(
+                set(produced), set(self._chainable) - {target}, msg=produced
+            )
         finally:
             if os.path.exists(out):
                 os.remove(out)
 
     def test_generate_chain_exclude_with_enable(self):
-        """--enable 白名单后再 --exclude，交集为最终集合"""
-        target = self._names[0]
-        other = self._names[1]
+        """--enable 白名单后再 --exclude，交集为最终集合。
+
+        other 优先取另一个总闸开启的脚本；总闸开启的不足两个时取一个被关闭的
+        脚本充当——它本就不进链，此时产物为空，顺带验证总闸语义。
+        """
+        target = self._chainable[0]
+        rest = [n for n in self._chainable if n != target]
+        if rest:
+            other = rest[0]
+        else:
+            other = next(n for n in self._names if n not in self._chainable)
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
             out = fh.name
         try:
@@ -307,7 +333,9 @@ class TestCliGenerateChain(unittest.TestCase):
             self.assertEqual(code, 0)
             data = load_yaml(out)
             produced = [get_script_name(s) for s in data["script_list"]]
-            self.assertEqual(produced, [other], msg=produced)
+            self.assertEqual(
+                produced, [other] if other in self._chainable else [], msg=produced
+            )
         finally:
             if os.path.exists(out):
                 os.remove(out)

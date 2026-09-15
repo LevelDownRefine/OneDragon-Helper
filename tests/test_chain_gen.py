@@ -100,3 +100,28 @@ class TestResolveWeeklyStart(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGenerateChainConfig(unittest.TestCase):
+    """generate_chain_config：GUI 关闭的脚本不进链，链条目不携带 enabled 字段。"""
+
+    def test_disabled_script_excluded_and_no_enabled_key(self):
+        import os
+        import tempfile
+
+        from src.service.chain_gen import generate_chain_config
+        from src.utils.utils_yaml import load_yaml
+
+        config = {
+            "script_list": [
+                {"script_path": "scripts/a.py", "display_name": "甲"},
+                {"script_path": "scripts/b.py", "display_name": "乙", "enabled": False},
+            ]
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            out = generate_chain_config(
+                config, {"甲", "乙"}, out_path=os.path.join(tmp, "today.yml")
+            )
+            data = load_yaml(out)
+        self.assertEqual([s["display_name"] for s in data["script_list"]], ["甲"])
+        self.assertNotIn("enabled", data["script_list"][0])

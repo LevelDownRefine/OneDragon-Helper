@@ -335,7 +335,9 @@ class SegmentedDaily(Daily):
         """
         path = self._cfg._routine_config_rel_path
         routine = self._cfg._load(path)
-        if safe_update(self._routine_item(routine), "enabled", enabled, self.display_name):
+        if safe_update(
+            self._routine_item(routine), "enabled", enabled, self.display_name
+        ):
             self._cfg._save(routine, path)
             return True
         return False
