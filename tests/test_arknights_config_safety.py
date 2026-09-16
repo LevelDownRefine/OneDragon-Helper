@@ -487,7 +487,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         )
         for task in (fights[0], fights[2]):
             self.assertEqual(task["Series"], 6)
-            self.assertEqual(task["HideUnavailableStage"], task["Name"] == "剩余理智")
+            self.assertFalse(task["HideUnavailableStage"])
             self.assertEqual(task["NativeOptions"], original["NativeOptions"])
             self.assertFalse(task["EnableTargetDrop"])
             self.assertFalse(task["EnableTimesLimit"])

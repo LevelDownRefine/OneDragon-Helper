@@ -137,7 +137,9 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 
 ### 粥：TaskQueue / StagePlan
 
-`MaaDaily` 覆写 `update` / `read`：关卡代码 ↔ 中文名由声明推导（另加固定的剿灭），基于 `StagePlan[0]` 识别任务，不依赖 TaskQueue 顺序；只维护映射内关卡，其余 FightTask 不动。启用剿灭/土/选定副本；目标关卡缺失时借一个已启用槽位改写其 StagePlan（只改 StagePlan，优先借副本列表内已启用槽，剿灭除外）。反读对称：被勾选 `IsEnable` 的那一项即当前副本；维护关卡都未启用但有 `StagePlan=["1-7"]` 的任务时读为「土」。
+`MaaDaily` 提供 TaskQueue / StagePlan 的通用读写，剩余理智直接使用；`MaaMainDaily` 处理理智作战，`MaaActivityDaily` 增加活动资源读取及过期检查。任务按声明的物理名和 `TaskType` 匹配，每个入口只选一个关卡。`ArknightsConfig._init_config` 补齐剿灭及三个入口、整理顺序并清理额外 Fight，非战斗项保留。
+
+剿灭和剩余理智的基础配置存于随项目发布的 `config/MAA战斗任务.json`，读取后缓存、生成任务时复制。该文件按 [MAA 7e5de9b3 的 FightTask 配置定义](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaWpfGui/Configuration/Single/MaaTask/FightTask.cs) 中的默认值维护，仅包含当前适配使用的基础字段；名字、选关和用药由适配器写入。它不从用户的 `gui.new.json` 生成，用户任务仍是角色选择和已有设置的存储位置。其余源自 MAS 的生成流程尚未替换。
 
 ## 设置周常流程 prepare_weekly_start_day
 

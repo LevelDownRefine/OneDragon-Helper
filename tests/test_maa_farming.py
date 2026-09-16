@@ -61,8 +61,13 @@ class TestMasReference(unittest.TestCase):
                 annihilation = build_annihilation_fight({}, "剿灭作战", "Annihilation")
                 queue = build_farming_queue(source + other, annihilation, *actual)
                 expected = expected[:1] + [annihilation] + expected[1:]
-                # 用药已归本项目统一管理，其余字段和任务顺序继续对照 MAS。
+                # 用药由本项目管理；剩余理智基础值改用 MAA，其余流程仍对照 MAS。
                 for task, reference in zip(queue, expected, strict=True):
+                    if reference["Name"] == "剩余理智":
+                        reference = reference | {
+                            "TimesLimit": 2147483647,
+                            "HideUnavailableStage": False,
+                        }
                     self.assertEqual(
                         {k: v for k, v in task.items() if k not in MEDICINE_FIELDS},
                         {
@@ -97,6 +102,39 @@ class TestMasReference(unittest.TestCase):
                         {k: v for k, v in task.items() if k in MEDICINE_FIELDS},
                         source,
                     )
+
+
+class TestMaaFightTemplate(unittest.TestCase):
+    def test_base_values_do_not_depend_on_user_config(self):
+        source = {
+            "TimesLimit": 12,
+            "HideUnavailableStage": True,
+            "UseWeeklySchedule": True,
+            "WeeklySchedule": {"Monday": False},
+            "NativeOptions": {"nested": [1]},
+        }
+        before = copy.deepcopy(source)
+        for task in (
+            build_remaining_fight(source, "剩余理智", "1-7", 0),
+            build_annihilation_fight(source, "剿灭", "Annihilation"),
+        ):
+            with self.subTest(role=task["Name"]):
+                self.assertEqual(task["TimesLimit"], 2147483647)
+                self.assertFalse(task["HideUnavailableStage"])
+                self.assertFalse(task["EnableTimesLimit"])
+                self.assertFalse(task["UseWeeklySchedule"])
+                self.assertEqual(task["NativeOptions"], before["NativeOptions"])
+                task["NativeOptions"]["nested"].append(2)
+        self.assertEqual(source, before)
+
+    def test_generated_tasks_do_not_modify_cached_template(self):
+        first = build_remaining_fight({}, "剩余理智", "1-7", 6)
+        first["WeeklySchedule"]["Monday"] = False
+        first["StagePlan"].append("AP-5")
+        second = build_annihilation_fight({}, "剿灭", "Annihilation")
+        self.assertTrue(second["WeeklySchedule"]["Monday"])
+        self.assertEqual(second["StagePlan"], ["Annihilation"])
+        self.assertEqual(second["Series"], 0)
 
 
 class TestMaaFarmingInit(unittest.TestCase):

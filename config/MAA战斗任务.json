@@ -1,0 +1,30 @@
+{
+    "$type": "FightTask",
+    "TaskType": "Fight",
+    "IsEnable": true,
+    "EnableTargetDrop": false,
+    "DropId": "",
+    "DropCount": 0,
+    "IsInventoryTarget": false,
+    "EnableTimesLimit": false,
+    "TimesLimit": 2147483647,
+    "Series": 0,
+    "StagePlan": [""],
+    "IsDrGrandet": false,
+    "UseCustomAnnihilation": false,
+    "AnnihilationStage": "Annihilation",
+    "HideUnavailableStage": false,
+    "IsStageManually": false,
+    "UseOptionalStage": false,
+    "HideSeries": false,
+    "UseWeeklySchedule": false,
+    "WeeklySchedule": {
+        "Sunday": true,
+        "Monday": true,
+        "Tuesday": true,
+        "Wednesday": true,
+        "Thursday": true,
+        "Friday": true,
+        "Saturday": true
+    }
+}
