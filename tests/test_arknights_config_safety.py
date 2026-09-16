@@ -310,6 +310,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
             self.assertFalse(task["UseMedicine"])
             self.assertFalse(task["UseStone"])
             self.assertTrue(task["UseExpiringMedicine"])
+            self.assertEqual(task["MedicineExpireDays"], 2)
 
     def test_remaining_does_not_adopt_main_task_when_both_farm_1_7(self):
         cfg = ArknightsConfig()

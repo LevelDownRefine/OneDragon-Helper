@@ -575,7 +575,30 @@ class MaaFightDaily(Daily):
     def _build_fight(self, source: dict, stage: str, series: int) -> dict:
         return build_remaining_fight(source, self.physical_name, stage, series)
 
-    def _build_task(self, queue: list[dict], stage: str, enabled: bool) -> dict:
+    @staticmethod
+    def _sync_medicine_expire_days(queue: list[dict]) -> tuple[int, bool]:
+        """沿用战斗任务共同的临期天数；不一致时统一为周六起（2 天）。"""
+        fights = [
+            task for task in queue if get_field(task, "TaskType", "MAA", str) == "Fight"
+        ]
+        windows = {
+            get_field(task, "MedicineExpireDays", "MAA", int)
+            if "MedicineExpireDays" in task
+            else 2  # MAA 未序列化该字段时使用默认 2 天。
+            for task in fights
+        }
+        expire_days = next(iter(windows)) if len(windows) == 1 else 2
+        if len(windows) > 1:
+            logger.warning("[MAA] 临期用药天数不一致，统一为周六起（2 天）")
+        changed = False
+        for task in fights:
+            if "MedicineExpireDays" in task:
+                changed |= safe_update(task, "MedicineExpireDays", expire_days, "MAA")
+        return expire_days, changed
+
+    def _build_task(
+        self, queue: list[dict], stage: str, enabled: bool, medicine_expire_days: int
+    ) -> dict:
         """复用 MAS 生成规则；用药由本项目统一配置。"""
         main = next(daily for daily in self._dailies() if type(daily) is MaaDaily)
         main_source = find_fight_source(queue, main.physical_name) or {}
@@ -588,12 +611,14 @@ class MaaFightDaily(Daily):
         source = own_source if own_source is not None else fallback
         task = self._build_fight(source, stage, series)
         task["IsEnable"] = enabled
-        self._apply_medicine(task, own_source)
+        self._apply_medicine(task, own_source, medicine_expire_days)
         return task
 
     @staticmethod
-    def _apply_medicine(task: dict, own_source: dict | None) -> None:
-        """临期用药常开，其余设置保留原生值或采用 MAA 默认值。"""
+    def _apply_medicine(
+        task: dict, own_source: dict | None, medicine_expire_days: int
+    ) -> None:
+        """临期用药常开并使用共用窗口，其余设置保留原生值或 MAA 默认值。"""
         defaults = {
             "UseMedicine": False,
             "MedicineCount": 0,
@@ -601,7 +626,6 @@ class MaaFightDaily(Daily):
             "StoneCount": 0,
             "UseExpireMedicineForActivity": False,
             "UseStoneAllowSave": False,
-            "MedicineExpireDays": 2,
         }
         for key, default in defaults.items():
             task[key] = (
@@ -610,6 +634,7 @@ class MaaFightDaily(Daily):
                 else default
             )
         task["UseExpiringMedicine"] = True
+        task["MedicineExpireDays"] = medicine_expire_days
 
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
         """编辑期保存角色选关；托管字段同运行期使用 MAS 生成规则。"""
@@ -625,10 +650,13 @@ class MaaFightDaily(Daily):
         assert task_name in self._stage_by_name, f"未声明的关卡: {task_name}"
         config = self._load_daily_config()
         queue = self._task_queue(config)
+        expire_days, medicine_changed = self._sync_medicine_expire_days(queue)
         candidates = self._tasks(queue)
-        task = self._build_task(queue, self._stage_by_name[task_name], True)
+        task = self._build_task(
+            queue, self._stage_by_name[task_name], True, expire_days
+        )
         if candidates:
-            if candidates[0] == task:
+            if candidates[0] == task and not medicine_changed:
                 return False
             candidates[0].clear()
             candidates[0].update(task)
@@ -637,7 +665,9 @@ class MaaFightDaily(Daily):
         self._save_daily_config(config)
         return True
 
-    def _runtime_task(self, queue: list[dict]) -> dict | None:
+    def _runtime_task(
+        self, queue: list[dict], medicine_expire_days: int
+    ) -> dict | None:
         source = find_fight_source(queue, self.physical_name)
         if source is None:
             return None
@@ -645,7 +675,7 @@ class MaaFightDaily(Daily):
         stage = plan[0] if len(plan) == 1 else ""
         assert isinstance(stage, str)
         enabled = get_field(source, "IsEnable", self.display_name, bool) and bool(stage)
-        return self._build_task(queue, stage, enabled)
+        return self._build_task(queue, stage, enabled, medicine_expire_days)
 
     def read(self) -> tuple[str | None, str | int | None]:
         """反读本角色关卡；缺任务或原生多关卡计划时显示未设置。"""
@@ -714,8 +744,10 @@ class MaaActivityDaily(MaaFightDaily):
     def _build_fight(self, source: dict, stage: str, series: int) -> dict:
         return build_activity_fight(source, self.physical_name, stage)
 
-    def _runtime_task(self, queue: list[dict]) -> dict | None:
-        task = super()._runtime_task(queue)
+    def _runtime_task(
+        self, queue: list[dict], medicine_expire_days: int
+    ) -> dict | None:
+        task = super()._runtime_task(queue, medicine_expire_days)
         if task is None or not task["IsEnable"]:
             return task
         stages = self.load_stages(
@@ -730,6 +762,7 @@ class MaaActivityDaily(MaaFightDaily):
         if config is None:
             return False
         queue = self._task_queue(config)
+        expire_days, medicine_changed = self._sync_medicine_expire_days(queue)
         # 剿灭必刷并先于日常；识别旧版以 StagePlan 维护的剿灭入口。
         annihilation_source = next(
             (
@@ -750,7 +783,7 @@ class MaaActivityDaily(MaaFightDaily):
         ):
             stage = annihilation_source["AnnihilationStage"]
         annihilation = build_annihilation_fight(annihilation_source, name, stage)
-        self._apply_medicine(annihilation, annihilation_source)
+        self._apply_medicine(annihilation, annihilation_source, expire_days)
         dailies = self._dailies()
         activity = next(d for d in dailies if type(d) is MaaActivityDaily)
         main = next(d for d in dailies if type(d) is MaaDaily)
@@ -758,11 +791,11 @@ class MaaActivityDaily(MaaFightDaily):
         rebuilt = build_runtime_queue(
             queue,
             annihilation,
-            activity._runtime_task(queue),
-            main._runtime_task(queue),
-            remaining._runtime_task(queue),
+            activity._runtime_task(queue, expire_days),
+            main._runtime_task(queue, expire_days),
+            remaining._runtime_task(queue, expire_days),
         )
-        if queue == rebuilt:
+        if queue == rebuilt and not medicine_changed:
             return False
         queue[:] = rebuilt
         self._save_daily_config(config)
