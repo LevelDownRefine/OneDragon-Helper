@@ -105,7 +105,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         self.store = {"config/gui.new.json": load_fixture()}
         self.saves = []
         self.stages = ["ACT-8", "ACT-7", "ACT-6"]
-        weekly = patch.object(daily_mod, "get_weekly_start", return_value=None)
+        weekly = patch.object(sc_mod, "get_weekly_start", return_value=None)
         self.weekly_start = weekly.start()
         self.addCleanup(weekly.stop)
 
@@ -258,6 +258,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         self.assertFalse(self.roles()["活动关优先"]["IsEnable"])
         for name, task in self.roles().items():
             self.assertTrue(task["UseExpiringMedicine"], name)
+        self.weekly_start.assert_not_called()
 
     def test_farming_roles_share_weekly_medicine_window(self):
         self.select_all()
@@ -270,28 +271,43 @@ class TestMaaFarmingRuntime(unittest.TestCase):
                     self.assertEqual(task["MedicineExpireDays"], expire_days)
 
     def test_new_tasks_take_current_weekly_window_on_creation(self):
+        from src.service.run_actions import apply_subscript_config
+
         for start_day, expire_days in ((1, 7), (6, 2), (7, 1), (None, 2)):
             with self.subTest(start_day=start_day):
                 self.weekly_start.return_value = start_day
                 self.queue()[:] = [
                     task for task in self.queue() if task["TaskType"] != "Fight"
                 ]
-                self.select_all()
+                for name, stage in (
+                    ("活动关卡", "ACT-7"),
+                    ("理智作战", "AP-5"),
+                    ("剩余理智", "1-7"),
+                ):
+                    sc_mod.set_config("MAA", name, stage)
                 for task in self.roles().values():
                     self.assertEqual(task["MedicineExpireDays"], expire_days)
-                prepare_daily_tasks("MAA")
+                start_map = {} if start_day is None else {"MAA": start_day}
+                apply_subscript_config({"MAA"}, start_map)
                 for task in self.roles().values():
                     self.assertEqual(task["MedicineExpireDays"], expire_days)
 
     def test_later_task_uses_updated_weekly_window(self):
         self.weekly_start.return_value = 5
-        self.cfg.set_daily_task("理智作战", "AP-5")
+        sc_mod.set_config("MAA", "理智作战", "AP-5")
         self.assertEqual(self.roles()["理智作战"]["MedicineExpireDays"], 3)
         self.weekly_start.return_value = 1
         self.cfg.set_weekly_start_day(1)
-        self.cfg.set_daily_task("活动关卡", "ACT-7")
+        sc_mod.set_config("MAA", "活动关卡", "ACT-7")
         self.assertEqual(self.roles()["理智作战"]["MedicineExpireDays"], 7)
         self.assertEqual(self.roles()["活动关优先"]["MedicineExpireDays"], 7)
+
+    def test_explicit_weekly_start_overrides_saved_setting(self):
+        self.weekly_start.return_value = 1
+        sc_mod.set_config("MAA", "理智作战", "AP-5", weekly_start=7)
+        self.weekly_start.assert_not_called()
+        for task in self.roles().values():
+            self.assertEqual(task["MedicineExpireDays"], 1)
 
     def test_duplicate_role_names_use_first_native_source_once(self):
         self.select_all()
@@ -325,7 +341,7 @@ class TestMaaNativePersistence(unittest.TestCase):
             native.parent.mkdir()
             native.write_text(json.dumps(load_fixture()), encoding="utf-8")
             with (
-                patch.object(daily_mod, "get_weekly_start", return_value=5),
+                patch.object(sc_mod, "get_weekly_start", return_value=5),
                 patch(
                     "src.utils.utils_sub_config.get_script_root_dir",
                     return_value=folder,
@@ -334,7 +350,7 @@ class TestMaaNativePersistence(unittest.TestCase):
                     daily_mod, "load_activity_stages", return_value=["ACT-8", "ACT-7"]
                 ) as stages,
             ):
-                ArknightsConfig().set_daily_task("活动关卡", "ACT-7")
+                sc_mod.set_config("MAA", "活动关卡", "ACT-7")
                 reloaded = ArknightsConfig()._dispatch_daily("活动关卡")
                 self.assertEqual(reloaded.read(), ("ACT-7", None))
                 self.assertTrue(reloaded.read_enabled())
@@ -367,7 +383,7 @@ class TestMaaNativePersistence(unittest.TestCase):
                 self.assertEqual(activity["StagePlan"], ["ACT-8"])
                 self.assertFalse(activity["IsEnable"])
                 self.assertNotIn("index", activity)
-                ArknightsConfig().set_daily_task("活动关卡", "NEW-7")
+                sc_mod.set_config("MAA", "活动关卡", "NEW-7")
                 reloaded = ArknightsConfig()._dispatch_daily("活动关卡")
                 self.assertEqual(reloaded.read(), ("NEW-7", None))
                 self.assertTrue(reloaded.read_enabled())

@@ -25,7 +25,6 @@ from src.config.task_config import (
 )
 from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import load_config, save_config
-from src.utils.utils_weekly import get_weekly_start
 
 logger = logging.getLogger(__name__)
 
@@ -592,8 +591,9 @@ class MaaFightDaily(Daily):
         self._apply_medicine(task, own_source)
         return task
 
-    def _apply_medicine(self, task: dict, own_source: dict | None) -> None:
-        """临期用药常开，窗口由周常设置；其余用药设置保留原生值。"""
+    @staticmethod
+    def _apply_medicine(task: dict, own_source: dict | None) -> None:
+        """临期用药常开，其余设置保留原生值或采用 MAA 默认值。"""
         defaults = {
             "UseMedicine": False,
             "MedicineCount": 0,
@@ -601,7 +601,7 @@ class MaaFightDaily(Daily):
             "StoneCount": 0,
             "UseExpireMedicineForActivity": False,
             "UseStoneAllowSave": False,
-            "MedicineExpireDays": 2,  # 未设置周几起时沿用 MAA 默认窗口。
+            "MedicineExpireDays": 2,
         }
         for key, default in defaults.items():
             task[key] = (
@@ -610,9 +610,6 @@ class MaaFightDaily(Daily):
                 else default
             )
         task["UseExpiringMedicine"] = True
-        start_day = get_weekly_start(self.script_name)
-        if start_day is not None:
-            task["MedicineExpireDays"] = 8 - start_day
 
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
         """编辑期保存角色选关；托管字段同运行期使用 MAS 生成规则。"""

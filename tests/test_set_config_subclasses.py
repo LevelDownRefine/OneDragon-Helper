@@ -2049,6 +2049,11 @@ class TestSetWeekly(unittest.TestCase):
 class TestSetConfigAdapter(unittest.TestCase):
     """测试适配器接口 set_config() 的分发逻辑"""
 
+    def setUp(self):
+        weekly = patch.object(set_config, "get_weekly_start", return_value=None)
+        self.weekly_start = weekly.start()
+        self.addCleanup(weekly.stop)
+
     def test_skip_when_task_name_none(self):
         """task_name 为 None 时直接返回，不创建实例"""
         mock_instance = MagicMock()
@@ -2057,6 +2062,7 @@ class TestSetConfigAdapter(unittest.TestCase):
             set_config.set_config("ok-ww", task_name=None)
         mock_cls.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
+        self.weekly_start.assert_not_called()
 
     def test_skip_when_task_name_empty(self):
         """task_name 为空串时直接返回，不创建实例（实例化即可能触发读盘/写盘）"""
@@ -2108,3 +2114,25 @@ class TestSetConfigAdapter(unittest.TestCase):
             )
         mock_cls.assert_called_once()
         mock_instance.set_daily_task.assert_called_once_with("每日任务", "无音区", "1")
+
+    def test_daily_selection_does_not_apply_runtime_weekly_switch(self):
+        self.weekly_start.return_value = 4
+        with (
+            patch.object(WutheringWavesConfig, "set_daily_task"),
+            patch.object(WutheringWavesConfig, "prepare_weekly_start_day") as prepare,
+        ):
+            set_config.set_config("ok-ww", "每日任务", "无音区", "1")
+        prepare.assert_not_called()
+        self.weekly_start.assert_not_called()
+
+    def test_daily_selection_reuses_edit_time_weekly_setter(self):
+        self.weekly_start.return_value = 4
+        with (
+            patch.object(StarRailConfig, "set_daily_task") as daily,
+            patch.object(StarRailConfig, "set_weekly_start_day") as save_weekly,
+            patch.object(StarRailConfig, "prepare_weekly_start_day") as prepare,
+        ):
+            set_config.set_config("March7th-Launcher", "每日任务", "开拓力")
+        daily.assert_called_once_with("每日任务", "开拓力", None)
+        save_weekly.assert_called_once_with(4)
+        prepare.assert_not_called()

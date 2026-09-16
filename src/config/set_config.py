@@ -20,7 +20,7 @@ from src.utils.utils_sub_config import (
     load_template,
     save_config,
 )
-from src.utils.utils_weekly import is_weekly_start_reached
+from src.utils.utils_weekly import get_weekly_start, is_weekly_start_reached
 
 logger = logging.getLogger(__name__)
 
@@ -1039,7 +1039,8 @@ def set_config(
             单日常脚本也要给，分段脚本（多日常）据此选段。
         task_name: 一级项展示名（副本站位）；None 或「未选择」表示不设置副本。
         sequence: 二级项值；仅部分脚本支持。
-        weekly_start: 周常起始日（1~7）；None 表示不设置周常。
+        weekly_start: 运行期周常起始日（1~7）；未传入时，选副本后仅同步
+            已保存的编辑期周常参数。
     """
     if (not task_name or task_name == "未选择") and weekly_start is None:
         return
@@ -1055,6 +1056,11 @@ def set_config(
         cfg.set_daily_task(daily_display_name, task_name, sequence)
     if weekly_start is not None:
         cfg.prepare_weekly_start_day(weekly_start)
+    elif hasattr(cfg_cls, "set_weekly_start_day"):
+        # 新任务补齐已保存的参数；运行期开关仍只由显式 weekly_start 驱动。
+        start_day = get_weekly_start(script_name)
+        if start_day is not None:
+            cfg.set_weekly_start_day(start_day)
 
 
 def get_task_lists(script_name: str, task_name: str, source: str) -> list[str] | None:

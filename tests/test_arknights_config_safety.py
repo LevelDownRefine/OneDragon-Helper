@@ -54,9 +54,6 @@ def inject_canaries(cfg: dict) -> None:
 
 class TestArknightsConfigSafety(unittest.TestCase):
     def setUp(self):
-        weekly = patch.object(daily_mod, "get_weekly_start", return_value=None)
-        weekly.start()
-        self.addCleanup(weekly.stop)
         self.seed = load_fixture()
         for task in self.seed["Configurations"]["Default"]["TaskQueue"]:
             if task["Name"] == "红票":
