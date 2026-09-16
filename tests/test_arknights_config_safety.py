@@ -440,7 +440,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.assertEqual(daily.read(), ("12-17", None))
         self.assertFalse(self.saves)
 
-    def test_single_native_fight_expands_to_three_independent_roles(self):
+    def test_new_roles_do_not_inherit_main_user_settings(self):
         queue = self.store["config/gui.new.json"]["Configurations"]["Default"][
             "TaskQueue"
         ]
@@ -459,6 +459,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
             DropCount=100,
             EnableTimesLimit=True,
             NativeOptions={"nested": [1, 2]},
+            IsDrGrandet=True,
             MedicineCount=3,
         )
         original = copy.deepcopy(main)
@@ -486,19 +487,17 @@ class TestArknightsConfigSafety(unittest.TestCase):
             [task["StagePlan"] for task in fights], [["SR-8"], [], ["1-7"]]
         )
         for task in (fights[0], fights[2]):
-            self.assertEqual(task["Series"], 6)
-            self.assertFalse(task["HideUnavailableStage"])
-            self.assertEqual(task["NativeOptions"], original["NativeOptions"])
+            for key in ("HideUnavailableStage", "NativeOptions", "IsDrGrandet"):
+                self.assertNotIn(key, task)
+            self.assertFalse(task["UseMedicine"])
+            self.assertEqual(task["MedicineCount"], 0)
             self.assertFalse(task["EnableTargetDrop"])
             self.assertFalse(task["EnableTimesLimit"])
-            self.assertEqual(
-                task["DropId"], "" if task["Name"] == "活动关优先" else "4001"
-            )
             self.assertTrue(task["IsStageManually"])
             self.assertFalse(task["UseWeeklySchedule"])
-        fights[0]["NativeOptions"]["nested"].append(3)
-        self.assertEqual(fights[1]["NativeOptions"], original["NativeOptions"])
-        self.assertEqual(fights[2]["NativeOptions"], original["NativeOptions"])
+        self.assertNotIn("Series", fights[0])
+        self.assertEqual(fights[2]["Series"], 0)
+        self.assertNotIn("DropId", fights[2])
 
         cfg.set_daily_task("理智作战", "AP-5")
         cfg.set_daily_task("活动关卡", "SR-7")
@@ -534,7 +533,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         ]
         for index, name in enumerate(roles):
             task = next(task for task in queue if task["Name"] == name)
-            self.assertEqual(task["Series"], (1, 2, 2)[index])
+            self.assertEqual(task["Series"], index + 1)
             self.assertEqual(task["MedicineCount"], index + 2)
             self.assertTrue(task["UseMedicine"])
             self.assertEqual(task["NativeOptions"], {"owner": name})

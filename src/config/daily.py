@@ -16,7 +16,6 @@ from src.config.maa_farming import (
 )
 from src.config.maa_stages import load_activity_stages
 from src.config.task_config import (
-    get_daily_configs,
     get_options,
     get_physical_name,
     get_value_map,
@@ -570,20 +569,10 @@ class MaaFightDaily(Daily):
     def _build_task(
         self, queue: list[dict], stage: str, enabled: bool, medicine_expire_days: int
     ) -> dict:
-        """复用 MAS 生成规则；用药由本项目统一配置。"""
-        main_name = next(
-            get_physical_name(declaration)
-            for declaration in get_daily_configs(self.script_name)
-            if declaration["class"] == MaaDaily.__name__
-        )
-        main_source = find_fight_source(queue, main_name) or {}
-        series = 0
-        if "Series" in main_source:
-            series = main_source["Series"]
+        """仅沿用本任务设置；缺失时从空配置创建，用药窗口单独传入。"""
         own_source = find_fight_source(queue, self.physical_name)
-        # MAS 脚本模式先规范理智作战，再将它作为缺失角色的来源。
-        fallback = build_main_fight(main_source, main_name, "", series)
-        source = own_source if own_source is not None else fallback
+        source = own_source if own_source is not None else {}
+        series = get_field(source, "Series", "MAA", int) if "Series" in source else 0
         task = self._build_fight(source, stage, series)
         task["IsEnable"] = enabled
         self._apply_medicine(task, own_source, medicine_expire_days)
