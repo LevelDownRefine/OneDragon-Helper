@@ -1,4 +1,4 @@
-"""与固定 MAS 版本直接生成的队列比较，并验证 Daily 的框架适配。"""
+"""验证原生设置保留、尚未替换的 MAS 规则和 Daily 的框架适配。"""
 
 import copy
 import json
@@ -12,7 +12,6 @@ from src.config import set_config as sc_mod
 from src.config.maa_farming import (
     build_activity_fight,
     build_annihilation_fight,
-    build_farming_queue,
     build_main_fight,
     build_remaining_fight,
     find_fight_source,
@@ -33,7 +32,7 @@ MEDICINE_FIELDS = {
 
 
 class TestMasReference(unittest.TestCase):
-    def test_generated_tasks_and_execution_order_match_mas(self):
+    def test_main_and_activity_still_match_mas(self):
         path = Path(__file__).parent / "fixtures/mas_farming_reference.json"
         data = json.loads(path.read_text(encoding="utf-8"))
         for case in data["cases"]:
@@ -49,20 +48,11 @@ class TestMasReference(unittest.TestCase):
                     "活动关优先",
                     "ACT-7",
                 )
-                remaining = build_remaining_fight(
-                    find_fight_source(source, "剩余理智") or main,
-                    "剩余理智",
-                    "1-7",
-                    series,
-                )
-                actual = [activity, main, remaining]
-                # 原生非战斗项保持原样；匿名、自定义和重复 Fight 不得额外进入执行。
-                other = [t for t in expected if t["TaskType"] != "Fight"]
-                annihilation = build_annihilation_fight({}, "剿灭作战", "Annihilation")
-                queue = build_farming_queue(source + other, annihilation, *actual)
-                expected = expected[:1] + [annihilation] + expected[1:]
-                # 用药已归本项目统一管理，其余字段和任务顺序继续对照 MAS。
-                for task, reference in zip(queue, expected, strict=True):
+                # 这两个生成规则尚未替换；其余角色独立验证原生配置保留。
+                for task in (activity, main):
+                    reference = next(
+                        item for item in expected if item["Name"] == task["Name"]
+                    )
                     self.assertEqual(
                         {k: v for k, v in task.items() if k not in MEDICINE_FIELDS},
                         {
@@ -97,6 +87,72 @@ class TestMasReference(unittest.TestCase):
                         {k: v for k, v in task.items() if k in MEDICINE_FIELDS},
                         source,
                     )
+
+
+class TestNativeFightSettings(unittest.TestCase):
+    def test_remaining_and_annihilation_preserve_native_settings(self):
+        source = {
+            "TimesLimit": 37,
+            "DropId": "4001",
+            "DropCount": 100,
+            "IsInventoryTarget": True,
+            "IsDrGrandet": True,
+            "HideUnavailableStage": False,
+            "HideSeries": True,
+            "WeeklySchedule": {"Monday": False},
+            "NativeOptions": {"nested": [1, 2]},
+            "EnableTimesLimit": True,
+            "EnableTargetDrop": True,
+            "UseWeeklySchedule": True,
+        }
+        before = copy.deepcopy(source)
+        tasks = (
+            build_remaining_fight(source, "剩余理智", "1-7", 6),
+            build_annihilation_fight(source, "剿灭", "LungmenOutskirts@Annihilation"),
+        )
+        for task in tasks:
+            with self.subTest(task=task["Name"]):
+                for key, value in before.items():
+                    if key in {
+                        "EnableTimesLimit",
+                        "EnableTargetDrop",
+                        "UseWeeklySchedule",
+                    }:
+                        self.assertFalse(task[key])
+                    else:
+                        self.assertEqual(task[key], value)
+        self.assertEqual(tasks[0]["StagePlan"], ["1-7"])
+        self.assertEqual(tasks[0]["Series"], 6)
+        self.assertEqual(tasks[1]["StagePlan"], ["Annihilation"])
+        self.assertEqual(tasks[1]["AnnihilationStage"], "LungmenOutskirts@Annihilation")
+        tasks[0]["NativeOptions"]["nested"].append(3)
+        self.assertEqual(source, before)
+        self.assertEqual(tasks[1]["NativeOptions"], before["NativeOptions"])
+
+    def test_missing_native_settings_are_left_to_maa_defaults(self):
+        tasks = (
+            build_remaining_fight({}, "剩余理智", "1-7", 0),
+            build_annihilation_fight({}, "剿灭", "Annihilation"),
+        )
+        for task in tasks:
+            with self.subTest(task=task["Name"]):
+                self.assertEqual(task["$type"], "FightTask")
+                self.assertEqual(task["TaskType"], "Fight")
+                self.assertTrue(task["IsEnable"])
+                self.assertFalse(task["UseWeeklySchedule"])
+                self.assertFalse(task["EnableTimesLimit"])
+                self.assertFalse(task["EnableTargetDrop"])
+                for key in (
+                    "TimesLimit",
+                    "DropId",
+                    "DropCount",
+                    "IsInventoryTarget",
+                    "IsDrGrandet",
+                    "HideUnavailableStage",
+                    "HideSeries",
+                    "WeeklySchedule",
+                ):
+                    self.assertNotIn(key, task)
 
 
 class TestMaaFarmingInit(unittest.TestCase):
@@ -202,7 +258,7 @@ class TestMaaFarmingInit(unittest.TestCase):
         self.assertTrue(self.activity.read_enabled())
         self.assertEqual(self.activity.read(), ("ACT-6", None))
 
-    def test_init_resets_limits_and_preserves_medicine(self):
+    def test_init_disables_limits_and_preserves_medicine(self):
         self.select_all()
         for task in self.roles().values():
             task.update(
@@ -223,9 +279,13 @@ class TestMaaFarmingInit(unittest.TestCase):
         for name, task in self.roles().items():
             self.assertFalse(task["EnableTimesLimit"], name)
             self.assertFalse(task["EnableTargetDrop"], name)
-            if name != "理智作战":
+            self.assertEqual(task["TimesLimit"], 1, name)
+            if name == "活动关优先":
                 self.assertFalse(task["IsInventoryTarget"], name)
                 self.assertEqual(task["DropId"], "", name)
+            else:
+                self.assertTrue(task["IsInventoryTarget"], name)
+                self.assertEqual(task["DropId"], "2004", name)
             self.assertTrue(task["UseMedicine"], name)
             self.assertEqual(task["MedicineCount"], 3, name)
             self.assertTrue(task["UseStone"], name)
