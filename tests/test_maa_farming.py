@@ -1,4 +1,4 @@
-"""与固定 MAS 版本直接生成的队列比较，并验证 Daily 的框架适配。"""
+"""验证 MAA 原生单关卡配置、队列顺序及 Daily 的框架适配。"""
 
 import copy
 import json
@@ -10,12 +10,10 @@ from unittest.mock import patch
 from src.config import daily as daily_mod
 from src.config import set_config as sc_mod
 from src.config.maa_farming import (
-    build_activity_fight,
     build_annihilation_fight,
     build_farming_queue,
-    build_main_fight,
-    build_remaining_fight,
-    find_fight_source,
+    build_fight_task,
+    find_fight_task,
 )
 from src.config.set_config import ArknightsConfig, init_config
 from tests.test_arknights_config_safety import load_fixture
@@ -32,52 +30,7 @@ MEDICINE_FIELDS = {
 }
 
 
-class TestMasReference(unittest.TestCase):
-    def test_generated_tasks_and_execution_order_match_mas(self):
-        path = Path(__file__).parent / "fixtures/mas_farming_reference.json"
-        data = json.loads(path.read_text(encoding="utf-8"))
-        for case in data["cases"]:
-            with self.subTest(case=case["name"]):
-                source = case["source"]
-                before = copy.deepcopy(source)
-                expected = case["expected"]
-                main_source = find_fight_source(source, "理智作战") or {}
-                series = main_source.get("Series", 0)
-                main = build_main_fight(main_source, "理智作战", "AP-5", series)
-                activity = build_activity_fight(
-                    find_fight_source(source, "活动关优先") or main,
-                    "活动关优先",
-                    "ACT-7",
-                )
-                remaining = build_remaining_fight(
-                    find_fight_source(source, "剩余理智") or main,
-                    "剩余理智",
-                    "1-7",
-                    series,
-                )
-                actual = [activity, main, remaining]
-                # 原生非战斗项保持原样；匿名、自定义和重复 Fight 不得额外进入执行。
-                other = [t for t in expected if t["TaskType"] != "Fight"]
-                annihilation = build_annihilation_fight({}, "剿灭作战", "Annihilation")
-                queue = build_farming_queue(source + other, annihilation, *actual)
-                expected = expected[:1] + [annihilation] + expected[1:]
-                # 用药由本项目管理；剩余理智基础值改用 MAA，其余流程仍对照 MAS。
-                for task, reference in zip(queue, expected, strict=True):
-                    if reference["Name"] == "剩余理智":
-                        reference = reference | {
-                            "TimesLimit": 2147483647,
-                            "HideUnavailableStage": False,
-                        }
-                    self.assertEqual(
-                        {k: v for k, v in task.items() if k not in MEDICINE_FIELDS},
-                        {
-                            k: v
-                            for k, v in reference.items()
-                            if k not in MEDICINE_FIELDS
-                        },
-                    )
-                self.assertEqual(source, before)
-
+class TestMaaFightTemplate(unittest.TestCase):
     def test_task_builders_leave_medicine_to_daily(self):
         settings = {
             "UseMedicine": True,
@@ -91,9 +44,9 @@ class TestMasReference(unittest.TestCase):
         }
         for source in ({}, settings):
             tasks = (
-                build_main_fight(source, "理智作战", "AP-5", 0),
-                build_activity_fight(source, "活动关优先", "ACT-7"),
-                build_remaining_fight(source, "剩余理智", "1-7", 0),
+                build_fight_task(source, "理智作战", "AP-5"),
+                build_fight_task(source, "活动关优先", "ACT-7"),
+                build_fight_task(source, "剩余理智", "1-7"),
                 build_annihilation_fight(source, "剿灭作战", "Annihilation"),
             )
             for task in tasks:
@@ -103,38 +56,131 @@ class TestMasReference(unittest.TestCase):
                         source,
                     )
 
+    def test_new_task_uses_native_defaults_and_one_stage(self):
+        task = build_fight_task({}, "剩余理智", "1-7")
+        self.assertEqual(task["$type"], "FightTask")
+        self.assertEqual(task["TaskType"], "Fight")
+        self.assertEqual(task["Name"], "剩余理智")
+        self.assertEqual(task["StagePlan"], ["1-7"])
+        self.assertEqual(task["Series"], 0)
+        self.assertEqual(task["TimesLimit"], 2147483647)
+        self.assertTrue(task["IsEnable"])
+        self.assertTrue(task["IsStageManually"])
+        self.assertFalse(task["UseOptionalStage"])
+        self.assertFalse(task["UseCustomAnnihilation"])
 
-class TestMaaFightTemplate(unittest.TestCase):
-    def test_base_values_do_not_depend_on_user_config(self):
+    def test_only_managed_fields_override_existing_native_config(self):
         source = {
             "TimesLimit": 12,
             "HideUnavailableStage": True,
+            "Series": 6,
+            "UseCustomAnnihilation": True,
+            "UseOptionalStage": True,
+            "EnableTimesLimit": True,
+            "EnableTargetDrop": True,
+            "DropId": "2004",
+            "DropCount": 10,
+            "IsInventoryTarget": True,
             "UseWeeklySchedule": True,
             "WeeklySchedule": {"Monday": False},
             "NativeOptions": {"nested": [1]},
         }
         before = copy.deepcopy(source)
         for task in (
-            build_remaining_fight(source, "剩余理智", "1-7", 0),
+            build_fight_task(source, "剩余理智", "1-7"),
             build_annihilation_fight(source, "剿灭", "Annihilation"),
         ):
             with self.subTest(role=task["Name"]):
-                self.assertEqual(task["TimesLimit"], 2147483647)
-                self.assertFalse(task["HideUnavailableStage"])
+                self.assertEqual(task["TimesLimit"], 12)
+                self.assertTrue(task["HideUnavailableStage"])
+                self.assertEqual(task["Series"], 6)
+                self.assertEqual(task["DropId"], "2004")
+                self.assertEqual(task["DropCount"], 10)
+                self.assertTrue(task["IsInventoryTarget"])
                 self.assertFalse(task["EnableTimesLimit"])
+                self.assertFalse(task["EnableTargetDrop"])
+                self.assertFalse(task["UseOptionalStage"])
                 self.assertFalse(task["UseWeeklySchedule"])
                 self.assertEqual(task["NativeOptions"], before["NativeOptions"])
                 task["NativeOptions"]["nested"].append(2)
         self.assertEqual(source, before)
 
     def test_generated_tasks_do_not_modify_cached_template(self):
-        first = build_remaining_fight({}, "剩余理智", "1-7", 6)
+        first = build_fight_task({}, "剩余理智", "1-7")
         first["WeeklySchedule"]["Monday"] = False
         first["StagePlan"].append("AP-5")
         second = build_annihilation_fight({}, "剿灭", "Annihilation")
         self.assertTrue(second["WeeklySchedule"]["Monday"])
         self.assertEqual(second["StagePlan"], ["Annihilation"])
         self.assertEqual(second["Series"], 0)
+
+    def test_custom_annihilation_uses_native_stage_selector(self):
+        task = build_annihilation_fight({}, "剿灭", "LungmenDowntown@Annihilation")
+        self.assertEqual(task["StagePlan"], ["Annihilation"])
+        self.assertTrue(task["UseCustomAnnihilation"])
+        self.assertEqual(task["AnnihilationStage"], "LungmenDowntown@Annihilation")
+        self.assertFalse(task["IsStageManually"])
+
+    def test_lookup_returns_first_matching_native_task(self):
+        queue = [
+            {"TaskType": "StartUp", "Name": "理智作战"},
+            {"TaskType": "Fight", "Name": "自建"},
+            {"TaskType": "Fight", "Name": "理智作战", "StagePlan": ["AP-5"]},
+            {"TaskType": "Fight", "Name": "理智作战", "StagePlan": ["1-7"]},
+        ]
+        self.assertIs(find_fight_task(queue, "理智作战"), queue[2])
+        self.assertIsNone(find_fight_task(queue, "剩余理智"))
+
+
+class TestMaaNativeQueue(unittest.TestCase):
+    def test_execution_order_with_optional_native_tasks(self):
+        cases = (
+            ([], ["剿灭", "活动", "主关卡", "剩余"]),
+            (
+                ["StartUp", "Mall"],
+                ["StartUp", "剿灭", "活动", "主关卡", "剩余", "Mall"],
+            ),
+            (
+                ["StartUp", "Infrast", "DepotMaintain", "Mall"],
+                [
+                    "StartUp",
+                    "剿灭",
+                    "活动",
+                    "Infrast",
+                    "DepotMaintain",
+                    "主关卡",
+                    "剩余",
+                    "Mall",
+                ],
+            ),
+            (
+                ["DepotMaintain", "StartUp", "Mall"],
+                ["DepotMaintain", "StartUp", "剿灭", "活动", "主关卡", "剩余", "Mall"],
+            ),
+        )
+        for types, names in cases:
+            with self.subTest(types=types):
+                source = [{"TaskType": t, "Name": t} for t in types]
+                source.append({"TaskType": "Fight", "Name": "旧任务"})
+                before = copy.deepcopy(source)
+                roles = [
+                    build_annihilation_fight({}, "剿灭", "Annihilation"),
+                    build_fight_task({}, "活动", "ACT-7"),
+                    build_fight_task({}, "主关卡", "AP-5"),
+                    build_fight_task({}, "剩余", "1-7"),
+                ]
+                roles[1]["IsEnable"] = False
+                queue = build_farming_queue(source, *roles)
+                self.assertEqual([task["Name"] for task in queue], names)
+                self.assertFalse(
+                    next(t for t in queue if t["Name"] == "活动")["IsEnable"]
+                )
+                self.assertEqual(
+                    [t for t in queue if t["TaskType"] != "Fight"], before[:-1]
+                )
+                queue[-1]["Name"] = "修改生成结果"
+                self.assertEqual(source, before)
+                self.assertEqual(roles[-1]["Name"], "剩余")
 
 
 class TestMaaFarmingInit(unittest.TestCase):
@@ -261,9 +307,9 @@ class TestMaaFarmingInit(unittest.TestCase):
         for name, task in self.roles().items():
             self.assertFalse(task["EnableTimesLimit"], name)
             self.assertFalse(task["EnableTargetDrop"], name)
-            if name != "理智作战":
-                self.assertFalse(task["IsInventoryTarget"], name)
-                self.assertEqual(task["DropId"], "", name)
+            self.assertTrue(task["IsInventoryTarget"], name)
+            self.assertEqual(task["DropId"], "2004", name)
+            self.assertEqual(task["TimesLimit"], 1, name)
             self.assertTrue(task["UseMedicine"], name)
             self.assertEqual(task["MedicineCount"], 3, name)
             self.assertTrue(task["UseStone"], name)

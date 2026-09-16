@@ -121,7 +121,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
             StagePlan=["1-7"],
             IsEnable=True,
             IsStageManually=True,
-            UseOptionalStage=True,
+            UseOptionalStage=False,
             UseCustomAnnihilation=False,
             UseExpiringMedicine=True,
         )
@@ -486,17 +486,14 @@ class TestArknightsConfigSafety(unittest.TestCase):
             [task["StagePlan"] for task in fights], [["SR-8"], [], ["1-7"]]
         )
         for task in (fights[0], fights[2]):
-            self.assertEqual(task["Series"], 6)
+            self.assertEqual(task["Series"], 0)
             self.assertFalse(task["HideUnavailableStage"])
-            self.assertEqual(task["NativeOptions"], original["NativeOptions"])
+            self.assertNotIn("NativeOptions", task)
             self.assertFalse(task["EnableTargetDrop"])
             self.assertFalse(task["EnableTimesLimit"])
             self.assertEqual(task["DropId"], "")
             self.assertTrue(task["IsStageManually"])
             self.assertFalse(task["UseWeeklySchedule"])
-        fights[0]["NativeOptions"]["nested"].append(3)
-        self.assertEqual(fights[1]["NativeOptions"], original["NativeOptions"])
-        self.assertEqual(fights[2]["NativeOptions"], original["NativeOptions"])
 
         cfg.set_daily_task("理智作战", "AP-5")
         cfg.set_daily_task("活动关卡", "SR-7")
@@ -506,7 +503,8 @@ class TestArknightsConfigSafety(unittest.TestCase):
         ]
         self.assertEqual(sum(task["TaskType"] == "Fight" for task in queue), 3)
         main = next(task for task in queue if task["Name"] == "理智作战")
-        self.assertTrue(main["UseOptionalStage"])
+        self.assertFalse(main["UseOptionalStage"])
+        self.assertEqual(main["Series"], 6)
         self.assertTrue(main["UseMedicine"])
         self.assertEqual(main["MedicineCount"], 3)
 
@@ -532,7 +530,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         ]
         for index, name in enumerate(roles):
             task = next(task for task in queue if task["Name"] == name)
-            self.assertEqual(task["Series"], (1, 2, 2)[index])
+            self.assertEqual(task["Series"], index + 1)
             self.assertEqual(task["MedicineCount"], index + 2)
             self.assertTrue(task["UseMedicine"])
             self.assertEqual(task["NativeOptions"], {"owner": name})

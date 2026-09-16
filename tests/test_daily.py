@@ -13,7 +13,6 @@ from src.config.daily import (
     Daily,
     MaaActivityDaily,
     MaaDaily,
-    MaaMainDaily,
     NoopDaily,
 )
 from src.config.set_config import _CONFIGS
@@ -64,7 +63,7 @@ class TestDispatch(unittest.TestCase):
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
         activity, main, remaining = _CONFIGS["MAA"]()._build_dailies()
         self.assertIs(type(activity), MaaActivityDaily)
-        self.assertIs(type(main), MaaMainDaily)
+        self.assertIs(type(main), MaaDaily)
         self.assertIs(type(remaining), MaaDaily)
         for daily in (activity, main, remaining):
             self.assertIsInstance(daily, MaaDaily)

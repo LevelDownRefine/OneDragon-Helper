@@ -69,7 +69,7 @@
 | 绝区零 | 是 | `ZZZ一条龙.yml` | 同上 |
 | 崩铁 | 是 | `M7A一条龙.yml` | 同上 |
 | 异环 | 是（no-op，无模板→直接返回） | — | 同鸣潮 |
-| 粥 | no-op（无模板） | — | 日常以 TaskQueue 表达（`MaaDaily`），无需模板 |
+| 粥 | 整理 Fight 队列及用药窗口，停用过期活动 | `gui.new.json` | 缺任务时复制 `MAA战斗任务.json`，已有任务保留各自设置 |
 
 ## 设置副本流程 set_daily_task
 
@@ -137,9 +137,11 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 
 ### 粥：TaskQueue / StagePlan
 
-`MaaDaily` 提供 TaskQueue / StagePlan 的通用读写，剩余理智直接使用；`MaaMainDaily` 处理理智作战，`MaaActivityDaily` 增加活动资源读取及过期检查。任务按声明的物理名和 `TaskType` 匹配，每个入口只选一个关卡。`ArknightsConfig._init_config` 补齐剿灭及三个入口、整理顺序并清理额外 Fight，非战斗项保留。
+`MaaDaily` 提供 TaskQueue / StagePlan 的通用读写，理智作战和剩余理智直接使用；`MaaActivityDaily` 只增加活动资源读取及过期检查。任务按声明的物理名和 `TaskType` 匹配，每个入口只选一个关卡。`ArknightsConfig._init_config` 补齐剿灭及三个入口、整理顺序并清理额外 Fight，非战斗项保留。
 
-剿灭和剩余理智的基础配置存于随项目发布的 `config/MAA战斗任务.json`，读取后缓存、生成任务时复制。该文件按 [MAA 7e5de9b3 的 FightTask 配置定义](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaWpfGui/Configuration/Single/MaaTask/FightTask.cs) 中的默认值维护，仅包含当前适配使用的基础字段；名字、选关和用药由适配器写入。它不从用户的 `gui.new.json` 生成，用户任务仍是角色选择和已有设置的存储位置。其余源自 MAS 的生成流程尚未替换。
+四个入口共用随项目发布的 `config/MAA战斗任务.json`，读取后缓存、生成任务时复制。该文件按 [MAA 7e5de9b3 的 FightTask 配置定义](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaWpfGui/Configuration/Single/MaaTask/FightTask.cs) 中的默认值维护，仅包含当前适配使用的基础字段，不从用户的 `gui.new.json` 生成。已有任务沿用自己的原生设置，缺失入口才使用固定模板，不复制其他任务；连战等高级设置分别保留。适配器只写名称、单关卡、启用状态、用药和限制开关，统一关闭备选关卡、周计划、次数及掉落限制；关闭后的限制参数无需清空。
+
+队列顺序是本项目的约定：唤醒后先剿灭和活动，库存保持后执行理智作战与剩余理智。MAA 的 [TaskQueueViewModel](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaWpfGui/ViewModels/UI/TaskQueueViewModel.cs) 按原生队列顺序处理启用项，[FightSettingsUserControlModel](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaWpfGui/ViewModels/UserControl/TaskQueue/FightSettingsUserControlModel.cs) 负责检查关卡开放时间并转交核心执行。测试直接验证原生字段和本项目行为，不再对照 MAS 生成结果。`maa_farming.py` 保留历史改编来源及版权声明，不以当前实现差异作为删除依据。
 
 ## 设置周常流程 prepare_weekly_start_day
 
@@ -153,7 +155,7 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 | 终末地 | `DailyTask.json` 的「只买不卖」布尔（语义反相） |
 | OneDragon-Launcher | `_group.yml` 的 `app_list` 中 `lost_void.enabled` |
 | 崩铁 | `config.yaml` 的 `currencywars_enable`（按周几起门控）+ `echo_of_war_start_day_of_week`（字面起始日，交 M7A 自行门控） |
-| 明日方舟（MAA） | 不做「今天是否到起始日」门控，每次调用直接写 `gui.new.json`——开启的 FightTask 设 `UseExpiringMedicine=true`（其余 false），`MedicineExpireDays` 由周几起推算（周几起 = 7 - MedicineExpireDays + 1） |
+| 明日方舟（MAA） | 不做「今天是否到起始日」门控，每次调用直接写 `gui.new.json`——所有 FightTask 设 `UseExpiringMedicine=true`，`MedicineExpireDays` 由周几起推算（周几起 = 7 - MedicineExpireDays + 1） |
 
 前四个用 `is_weekly_start_reached(start_day)` 得出「今天是否已到起始日」再写开关；MAA 不经过该门控。
 

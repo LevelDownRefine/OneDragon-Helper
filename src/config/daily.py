@@ -8,15 +8,9 @@ I/O 由 Daily 自持（``_load_daily_config`` 等，直调 ``utils_sub_config``�
 import logging
 from typing import Any
 
-from src.config.maa_farming import (
-    build_activity_fight,
-    build_main_fight,
-    build_remaining_fight,
-    find_fight_source,
-)
+from src.config.maa_farming import build_fight_task, find_fight_task
 from src.config.maa_stages import load_activity_stages
 from src.config.task_config import (
-    get_daily_configs,
     get_options,
     get_physical_name,
     get_value_map,
@@ -520,7 +514,7 @@ class AnomalyHunter(Anomaly):
 
 
 class MaaDaily(Daily):
-    """MAA 刷图角色，按 MAS 的任务名和类型绑定原生配置。"""
+    """MAA 单关卡日常，按声明的物理名绑定原生 FightTask。"""
 
     task_field: str | None = None
 
@@ -533,18 +527,9 @@ class MaaDaily(Daily):
         }
 
     def _tasks(self, queue: list[dict]) -> list[dict]:
-        """与 MAS 一致，取首个同名同类型任务；初始化时消除重复项。"""
-        for task in queue:
-            if (
-                get_field(task, "TaskType", self.display_name, str) == "Fight"
-                and get_field(task, "Name", self.display_name, str)
-                == self.physical_name
-            ):
-                return [task]
-        return []
-
-    def _build_fight(self, source: dict, stage: str, series: int) -> dict:
-        return build_remaining_fight(source, self.physical_name, stage, series)
+        """返回原生配置中的匹配项，初始化时清理重复项。"""
+        task = find_fight_task(queue, self.physical_name)
+        return [task] if task is not None else []
 
     @staticmethod
     def _sync_medicine_expire_days(queue: list[dict]) -> tuple[int, bool]:
@@ -570,21 +555,10 @@ class MaaDaily(Daily):
     def _build_task(
         self, queue: list[dict], stage: str, enabled: bool, medicine_expire_days: int
     ) -> dict:
-        """复用 MAS 生成规则；用药由本项目统一配置。"""
-        main_name = next(
-            get_physical_name(declaration)
-            for declaration in get_daily_configs(self.script_name)
-            if declaration["class"] == MaaMainDaily.__name__
-        )
-        main_source = find_fight_source(queue, main_name) or {}
-        series = 0
-        if "Series" in main_source:
-            series = main_source["Series"]
-        own_source = find_fight_source(queue, self.physical_name)
-        # MAS 脚本模式先规范理智作战，再将它作为缺失角色的来源。
-        fallback = build_main_fight(main_source, main_name, "", series)
-        source = own_source if own_source is not None else fallback
-        task = self._build_fight(source, stage, series)
+        """只继承本入口的原生配置，用药窗口由本项目统一配置。"""
+        own_source = find_fight_task(queue, self.physical_name)
+        source = own_source if own_source is not None else {}
+        task = build_fight_task(source, self.physical_name, stage)
         task["IsEnable"] = enabled
         self._apply_medicine(task, own_source, medicine_expire_days)
         return task
@@ -612,7 +586,7 @@ class MaaDaily(Daily):
         task["MedicineExpireDays"] = medicine_expire_days
 
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
-        """编辑期保存角色选关；托管字段同初始化使用 MAS 生成规则。"""
+        """编辑期保存原生选关，与初始化共用单关卡配置。"""
         assert sequence is None, f"{self.display_name} 没有二级选项"
         assert task_name in self._stage_by_name, f"未声明的关卡: {task_name}"
         config = self._load_daily_config()
@@ -634,7 +608,7 @@ class MaaDaily(Daily):
 
     def _init_task(self, queue: list[dict], medicine_expire_days: int) -> dict:
         """规范已有任务；缺失时建立尚未选关的禁用任务。"""
-        source = find_fight_source(queue, self.physical_name)
+        source = find_fight_task(queue, self.physical_name)
         if source is None:
             return self._build_task(queue, "", False, medicine_expire_days)
         plan = get_field(source, "StagePlan", self.display_name, list)
@@ -692,13 +666,6 @@ class MaaDaily(Daily):
         return get_field(default, "TaskQueue", "MAA", list)
 
 
-class MaaMainDaily(MaaDaily):
-    """理智作战，复用原生任务。"""
-
-    def _build_fight(self, source: dict, stage: str, series: int) -> dict:
-        return build_main_fight(source, self.physical_name, stage, series)
-
-
 class MaaActivityDaily(MaaDaily):
     """固定活动关卡，关卡与开关直接反读 MAA 原生任务。"""
 
@@ -726,9 +693,6 @@ class MaaActivityDaily(MaaDaily):
         self._name_by_stage = dict(self._stage_by_name)
         return super().update(task_name, sequence)
 
-    def _build_fight(self, source: dict, stage: str, series: int) -> dict:
-        return build_activity_fight(source, self.physical_name, stage)
-
     def _init_task(self, queue: list[dict], medicine_expire_days: int) -> dict:
         """初始化时停用已过期的活动，保留原关卡选择。"""
         task = super()._init_task(queue, medicine_expire_days)
@@ -750,7 +714,6 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
         Anomaly,
         AnomalyHunter,
         MaaDaily,
-        MaaMainDaily,
         MaaActivityDaily,
     )
 }
