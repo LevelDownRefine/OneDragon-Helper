@@ -163,10 +163,9 @@ _UNUSED_QT_KEYWORDS = (
     'Qt6Graphs', 'QtGraphs',     # 图表
     'Qt6Location', 'QtLocation', # 定位
     # --- 以下为瘦身项（分批实测，每批重打包后真实拉起 GUI 验主窗口）---
+    # Qt Quick 默认使用 D3D11，无 GPU 加速时由 Windows WARP 渲染；无需 Mesa 软件 OpenGL。
+    'opengl32sw.dll',
     # 有意保留、勿当未使用项剔除：
-    #   opengl32sw（19.7M）— Mesa llvmpipe 软件光栅化兜底，无 GPU / 虚拟机 / 远程桌面 /
-    #     驱动异常环境下 Qt Quick 靠它才能起来。删掉本机（有独显）实测正常，但发布给
-    #     他人有起不来的风险，故保留。
     #   FFmpeg 五个 dll（17.8M）— QtMultimedia 的 MediaPlayer 解码用，视频壁纸依赖它。
     # Qt 自带翻译（7.8M / 145 个 .qm）: 界面文案全写在 QML 里，不走 Qt 翻译。
     'translations',
@@ -201,7 +200,7 @@ for _attr in ('binaries', 'datas'):
 #   换 NRV(非lzma)  90M / 启动 1.8s（算法不是主因，只快 0.3s）
 #   只压用不到的   118M / 启动 1.6s（与完全不压缩同速，且比不压缩小 27M）
 # 瓶颈是「启动时解压的数据量」（9.8M）而非文件个数：单独排除 23 个小文件毫无改善。
-# 故策略为——启动就加载的一律不压，只压启动时根本不加载的（opengl32sw、FFmpeg 等），
+# 故策略为——启动就加载的一律不压，只压启动时根本不加载的（FFmpeg 等），
 # 那些属于白拿收益、零代价。清单采集方法：启动 GUI 后用
 # psutil.Process(pid).memory_maps() 与被压缩文件（PE section 名含 UPX）求交集。
 # 启动路径变动时需重新采集，否则漏网的压缩文件会拖慢启动。
