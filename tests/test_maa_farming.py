@@ -20,6 +20,17 @@ from src.config.maa_farming import (
 from src.config.set_config import ArknightsConfig, prepare_daily_tasks
 from tests.test_arknights_config_safety import load_fixture
 
+MEDICINE_FIELDS = {
+    "UseMedicine",
+    "MedicineCount",
+    "UseStone",
+    "StoneCount",
+    "UseExpiringMedicine",
+    "UseExpireMedicineForActivity",
+    "UseStoneAllowSave",
+    "MedicineExpireDays",
+}
+
 
 class TestMasReference(unittest.TestCase):
     def test_generated_tasks_and_execution_order_match_mas(self):
@@ -33,13 +44,10 @@ class TestMasReference(unittest.TestCase):
                 main_source = find_fight_source(source, "理智作战") or {}
                 series = main_source.get("Series", 0)
                 main = build_main_fight(main_source, "理智作战", "AP-5", series)
-                # 核心移植没有计划药量输入；此处补上上游输入以作完整字段比较。
-                main.update(UseMedicine=False, MedicineCount=0)
                 activity = build_activity_fight(
                     find_fight_source(source, "活动关优先") or main,
                     "活动关优先",
                     "ACT-7",
-                    0,
                 )
                 remaining = build_remaining_fight(
                     find_fight_source(source, "剩余理智") or main,
@@ -48,15 +56,47 @@ class TestMasReference(unittest.TestCase):
                     series,
                 )
                 actual = [activity, main, remaining]
-                self.assertEqual(
-                    actual, [t for t in expected if t["TaskType"] == "Fight"]
-                )
                 # 原生非战斗项保持原样；匿名、自定义和重复 Fight 不得额外进入执行。
                 other = [t for t in expected if t["TaskType"] != "Fight"]
                 annihilation = build_annihilation_fight({}, "剿灭作战", "Annihilation")
                 queue = build_runtime_queue(source + other, annihilation, *actual)
-                self.assertEqual(queue, expected[:1] + [annihilation] + expected[1:])
+                expected = expected[:1] + [annihilation] + expected[1:]
+                # 用药已归本项目统一管理，其余字段和任务顺序继续对照 MAS。
+                for task, reference in zip(queue, expected, strict=True):
+                    self.assertEqual(
+                        {k: v for k, v in task.items() if k not in MEDICINE_FIELDS},
+                        {
+                            k: v
+                            for k, v in reference.items()
+                            if k not in MEDICINE_FIELDS
+                        },
+                    )
                 self.assertEqual(source, before)
+
+    def test_task_builders_leave_medicine_to_daily(self):
+        settings = {
+            "UseMedicine": True,
+            "MedicineCount": 3,
+            "UseStone": True,
+            "StoneCount": 2,
+            "UseExpiringMedicine": True,
+            "UseExpireMedicineForActivity": True,
+            "UseStoneAllowSave": True,
+            "MedicineExpireDays": 4,
+        }
+        for source in ({}, settings):
+            tasks = (
+                build_main_fight(source, "理智作战", "AP-5", 0),
+                build_activity_fight(source, "活动关优先", "ACT-7"),
+                build_remaining_fight(source, "剩余理智", "1-7", 0),
+                build_annihilation_fight(source, "剿灭作战", "Annihilation"),
+            )
+            for task in tasks:
+                with self.subTest(role=task["Name"], existing=bool(source)):
+                    self.assertEqual(
+                        {k: v for k, v in task.items() if k in MEDICINE_FIELDS},
+                        source,
+                    )
 
 
 class TestMaaFarmingRuntime(unittest.TestCase):
@@ -200,6 +240,16 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         self.assertFalse(self.roles()["理智作战"]["IsEnable"])
         self.assertTrue(self.roles()["剩余理智"]["IsEnable"])
         self.assertTrue(self.roles()["活动关优先"]["IsEnable"])
+
+    def test_farming_roles_share_weekly_medicine_window(self):
+        self.select_all()
+        for start_day, expire_days in ((1, 7), (6, 2), (7, 1)):
+            with self.subTest(start_day=start_day):
+                prepare_daily_tasks("MAA")
+                self.cfg.prepare_weekly_start_day(start_day)
+                for name, task in self.roles().items():
+                    self.assertEqual(task["UseExpiringMedicine"], name != "剿灭")
+                    self.assertEqual(task["MedicineExpireDays"], expire_days)
 
     def test_duplicate_role_names_use_first_native_source_once(self):
         self.select_all()

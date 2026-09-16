@@ -14,13 +14,9 @@ from copy import deepcopy
 
 from src.utils.utils_dict import get_field
 
-# MAS 的 MAA_REMAIN_FIGHT_BASE；任务名字由本项目声明注入。
+# MAS 的 MAA_REMAIN_FIGHT_BASE；任务名字与用药字段由 Daily 管理。
 REMAIN_FIGHT_BASE = {
     "$type": "FightTask",
-    "UseMedicine": False,
-    "MedicineCount": 0,
-    "UseStone": False,
-    "StoneCount": 0,
     "EnableTargetDrop": False,
     "DropId": "",
     "DropCount": 0,
@@ -30,14 +26,11 @@ REMAIN_FIGHT_BASE = {
     "Series": 0,
     "StagePlan": [""],
     "IsDrGrandet": False,
-    "UseExpiringMedicine": False,
-    "UseExpireMedicineForActivity": False,
     "UseCustomAnnihilation": False,
     "AnnihilationStage": "Annihilation",
     "HideUnavailableStage": True,
     "IsStageManually": True,
     "UseOptionalStage": False,
-    "UseStoneAllowSave": False,
     "HideSeries": False,
     "UseWeeklySchedule": False,
     "WeeklySchedule": {
@@ -56,7 +49,6 @@ REMAIN_FIGHT_BASE = {
 # MAS 的剿灭基础配置；两者共有字段相同，下面列出其全部差异。
 ANNIHILATION_FIGHT_BASE = deepcopy(REMAIN_FIGHT_BASE) | {
     "StagePlan": ["Annihilation"],
-    "UseExpiringMedicine": True,
     "UseCustomAnnihilation": True,
     "IsStageManually": False,
 }
@@ -95,10 +87,8 @@ def build_main_fight(source: dict, name: str, stage: str, series: int) -> dict:
     return task
 
 
-def build_activity_fight(
-    source: dict, name: str, stage: str, medicine_count: int
-) -> dict:
-    """移植 MAS _build_activity_priority_fight，名字改由声明传入。"""
+def build_activity_fight(source: dict, name: str, stage: str) -> dict:
+    """适配 MAS 活动任务字段，名字与用药交由 Daily 管理。"""
     task = deepcopy(source)
     task.update(
         {
@@ -114,8 +104,6 @@ def build_activity_fight(
             "DropCount": 0,
             "IsInventoryTarget": False,
             "EnableTimesLimit": False,
-            "UseMedicine": medicine_count > 0,
-            "MedicineCount": medicine_count,
         }
     )
     if "$type" not in task:

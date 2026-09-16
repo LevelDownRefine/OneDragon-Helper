@@ -9,7 +9,6 @@ import logging
 from typing import Any
 
 from src.config.maa_farming import (
-    REMAIN_FIGHT_BASE,
     build_activity_fight,
     build_annihilation_fight,
     build_main_fight,
@@ -594,21 +593,21 @@ class MaaFightDaily(Daily):
 
     @staticmethod
     def _preserve_medicine(task: dict, own_source: dict | None) -> None:
-        """用户明确保留的本项目用药规则；与 MAS 生成规则分开适配。"""
-        medicine_fields = (
-            "UseMedicine",
-            "MedicineCount",
-            "UseStone",
-            "StoneCount",
-            "UseExpiringMedicine",
-            "UseExpireMedicineForActivity",
-            "UseStoneAllowSave",
-        )
-        for key in medicine_fields:
+        """保留原生用药设置；新任务默认关闭，临期用药由周常统一设置。"""
+        defaults = {
+            "UseMedicine": False,
+            "MedicineCount": 0,
+            "UseStone": False,
+            "StoneCount": 0,
+            "UseExpiringMedicine": False,
+            "UseExpireMedicineForActivity": False,
+            "UseStoneAllowSave": False,
+        }
+        for key, default in defaults.items():
             task[key] = (
                 own_source[key]
                 if own_source is not None and key in own_source
-                else REMAIN_FIGHT_BASE[key]
+                else default
             )
         # 临期天数仍由现有周常药剂机制写入，不从另一个角色继承。
         if own_source is not None and "MedicineExpireDays" in own_source:
@@ -717,7 +716,7 @@ class MaaActivityDaily(MaaFightDaily):
         return load_activity_stages(script_name, source, config_path)
 
     def _build_fight(self, source: dict, stage: str, series: int) -> dict:
-        return build_activity_fight(source, self.physical_name, stage, 0)
+        return build_activity_fight(source, self.physical_name, stage)
 
     def _runtime_task(self, queue: list[dict]) -> dict | None:
         task = super()._runtime_task(queue)
