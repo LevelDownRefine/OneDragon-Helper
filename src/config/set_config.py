@@ -8,7 +8,7 @@ from src.config.daily import (
     Daily,
     MaaActivityDaily,
     MaaDaily,
-    MaaFightDaily,
+    MaaMainDaily,
 )
 from src.config.maa_farming import build_annihilation_fight, build_farming_queue
 from src.config.task_config import (
@@ -845,8 +845,8 @@ class ArknightsConfig(ScriptConfig):
     def _init_config(self) -> None:
         """初始化刷图队列及用药窗口，并停用已过期的活动。"""
         activity = next(d for d in self._dailies if type(d) is MaaActivityDaily)
-        main = next(d for d in self._dailies if type(d) is MaaDaily)
-        remaining = next(d for d in self._dailies if type(d) is MaaFightDaily)
+        main = next(d for d in self._dailies if type(d) is MaaMainDaily)
+        remaining = next(d for d in self._dailies if type(d) is MaaDaily)
         config = main._load_daily_config(allow_missing=True)
         if config is None:
             return

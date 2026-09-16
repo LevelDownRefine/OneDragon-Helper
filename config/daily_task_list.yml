@@ -270,7 +270,7 @@ MAA:
       path: cache/gui/StageActivityV2.json
 - display_name: 理智作战
   physical_name: 理智作战
-  class: MaaDaily
+  class: MaaMainDaily
   config: config/gui.new.json
   options:
     values: &maa_normal_stages
@@ -292,7 +292,7 @@ MAA:
     - display_name: SK-5
 - display_name: 剩余理智
   physical_name: 剩余理智
-  class: MaaFightDaily
+  class: MaaDaily
   config: config/gui.new.json
   options:
     values: *maa_normal_stages

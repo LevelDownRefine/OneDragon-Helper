@@ -519,7 +519,7 @@ class AnomalyHunter(Anomaly):
         return self.display_name, self.section(data)[key] or None
 
 
-class MaaFightDaily(Daily):
+class MaaDaily(Daily):
     """MAA 刷图角色，按 MAS 的任务名和类型绑定原生配置。"""
 
     task_field: str | None = None
@@ -574,7 +574,7 @@ class MaaFightDaily(Daily):
         main_name = next(
             get_physical_name(declaration)
             for declaration in get_daily_configs(self.script_name)
-            if declaration["class"] == MaaDaily.__name__
+            if declaration["class"] == MaaMainDaily.__name__
         )
         main_source = find_fight_source(queue, main_name) or {}
         series = 0
@@ -692,14 +692,14 @@ class MaaFightDaily(Daily):
         return get_field(default, "TaskQueue", "MAA", list)
 
 
-class MaaDaily(MaaFightDaily):
+class MaaMainDaily(MaaDaily):
     """理智作战，复用原生任务。"""
 
     def _build_fight(self, source: dict, stage: str, series: int) -> dict:
         return build_main_fight(source, self.physical_name, stage, series)
 
 
-class MaaActivityDaily(MaaFightDaily):
+class MaaActivityDaily(MaaDaily):
     """固定活动关卡，关卡与开关直接反读 MAA 原生任务。"""
 
     def _parse_landing(self, declaration: dict) -> None:
@@ -750,7 +750,7 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
         Anomaly,
         AnomalyHunter,
         MaaDaily,
-        MaaFightDaily,
+        MaaMainDaily,
         MaaActivityDaily,
     )
 }
