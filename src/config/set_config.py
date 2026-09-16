@@ -411,21 +411,39 @@ class ScriptConfig:
         return node
 
     @classmethod
-    def get_task_lists(cls, task_name: str, source: str) -> list[str] | None:
-        """读取某任务（周常/日常）的可选副本名清单（类方法，无需实例化）。
+    def get_task_lists(cls, source: dict) -> list[str]:
+        """按声明中的多级键路径读取选项，无需实例化或初始化适配器。
 
         Args:
-            task_name: 任务名（周常/日常均可，如「历战余响」）。
-            source: options.source.path 声明的脚本内相对路径。
+            source: ``path`` 为资源文件；``key`` 为键路径列表，省略或空列表取根节点。
 
         Returns:
-            副本名列表（含「无」等占位）；未适配或源不可达时返回 None。
+            字符串列表，或末层字典的键列表；资源缺失或为空时返回空列表。
         """
-        logger.warning(
-            f"[set_config][{cls.display_name}] 未适配副本清单读取: source={source!r}"
+        assert source.keys() <= {"path", "key"}, (
+            f"[set_config][{cls.display_name}] 通用资源来源只支持 path / key"
         )
-        # 基类默认未适配副本清单读取，返回 None 由调用方降级为「该任务无可选副本」。
-        return None
+        path = get_field(source, "path", cls.display_name, str)
+        keys = source["key"] if "key" in source else ()  # noqa: SIM401  # 省略键路径时读取根节点
+        assert isinstance(keys, (list, tuple)), "source.key 必须为键路径列表"
+        keys = tuple(keys)
+        data = load_game_config(cls._script_name, path)
+        if data is None or data == {} or data == []:
+            return []
+        for key in keys:
+            assert isinstance(key, str) and key, "source.key 的每层键必须为非空字符串"
+            assert isinstance(data, dict), (
+                f"[set_config][{cls.display_name}] {path} 的 {key!r} 父节点必须为字典"
+            )
+            data = get_field(data, key, cls.display_name)
+        assert isinstance(data, (list, dict)), (
+            f"[set_config][{cls.display_name}] {path} 的选项必须为列表或字典"
+        )
+        names = list(data)
+        assert all(isinstance(name, str) and name for name in names), (
+            f"[set_config][{cls.display_name}] {path} 的选项名必须为非空字符串"
+        )
+        return names
 
 
 # ============================================================
@@ -533,17 +551,21 @@ class GenshinConfig(ScriptConfig):
     _game_path_keys = ("genshinStartConfig", "installPath")
 
     @classmethod
-    def get_task_lists(cls, task_name: str, source: str) -> list[str]:
+    def get_task_lists(cls, source: dict) -> list[str]:
         """读 BetterGI 的 tp.json，取某秘境分类（周常/日常）的副本名清单。
 
         Args:
-            task_name: source.category 中的原生秘境分类（如 BlessDomain）。
-            source: tp.json 相对脚本根目录的路径。
+            source: ``path`` 为 tp.json 路径，``category`` 为原生秘境分类。
 
         Returns:
             副本名列表（即 tp.json 的 ``name`` 字段）；文件缺失/空时返回 ``[]``。
         """
-        data = load_game_config(cls._script_name, source)
+        assert source.keys() <= {"path", "category"}, (
+            "原神资源来源只支持 path / category"
+        )
+        path = get_field(source, "path", cls.display_name, str)
+        category = get_field(source, "category", cls.display_name, str)
+        data = load_game_config(cls._script_name, path)
         if not data:
             return []
         assert isinstance(data, dict), (
@@ -554,7 +576,7 @@ class GenshinConfig(ScriptConfig):
             if not isinstance(scene, dict):
                 continue
             for pt in scene.get("points", []):
-                if isinstance(pt, dict) and pt.get("type", "") == task_name:
+                if isinstance(pt, dict) and pt.get("type", "") == category:
                     name = pt.get("name", "")
                     if name:
                         names.append(name)
@@ -593,33 +615,6 @@ class EndfieldConfig(ScriptConfig):
         # 反相：enabled=True（卖出）→ 只买不卖=false
         safe_update(config, self._weekly_task_name, not enabled, self.display_name)
         self._save_weekly_config(config)
-
-    @classmethod
-    def get_task_lists(cls, task_name: str, source: str) -> list[str]:
-        """读取体力本的可选副本名清单。
-
-        Args:
-            task_name: 日常类别名（即 stages_dict 的键，如「能量淤积点」）。
-            source: world_map.json 相对脚本根目录的路径。
-
-        Returns:
-            副本名列表；未安装/缺失/空文件时返回 []。
-        """
-        data = load_game_config(cls._script_name, source)
-        if not data:
-            return []
-        assert isinstance(data, dict), (
-            f"[set_config][{cls.display_name}] world_map.json 顶层应为 dict: {source}"
-        )
-        stages = get_field(data, "stages_dict", cls.display_name, dict, "world_map")
-        assert task_name in stages, (
-            f"[set_config][{cls.display_name}] 未知日常类别: {task_name!r} (source={source})"
-        )
-        entry = stages[task_name]
-        assert isinstance(entry, list), (
-            f"[set_config][{cls.display_name}] stages_dict[{task_name!r}] 应为 list: {source}"
-        )
-        return list(entry)
 
 
 # ---- 绝区零 Zenless Zone Zero ----
@@ -673,32 +668,6 @@ class StarRailConfig(ScriptConfig):
     _weekly_config_rel_path = "config.yaml"
     _weekly_task_name = get_weekly_config(_script_name, "货币战争")["key"]
     _echo_config = get_weekly_config(_script_name, "历战余响")
-
-    @classmethod
-    def get_task_lists(cls, task_name: str, source: str) -> list[str]:
-        """读取某任务（周常/日常）的可选副本名清单。
-
-        Args:
-            task_name: 任务名（即文件中的键，如「历战余响」）。
-            source: 副本清单文件相对脚本根目录的路径。
-
-        Returns:
-            副本名列表（含「无」等占位）；data 为空（未安装/缺失/空文件）时返回空列表。
-        """
-        data = load_game_config(cls._script_name, source)
-        if not data:
-            return []
-        assert isinstance(data, dict), (
-            f"[set_config][{cls.display_name}] 副本清单 {source} 非 dict: {type(data)}"
-        )
-        assert task_name in data, (
-            f"[set_config][{cls.display_name}] 副本清单 {source} 缺任务 {task_name!r}"
-        )
-        entry = data[task_name]
-        assert isinstance(entry, dict), (
-            f"[set_config][{cls.display_name}] 任务 {task_name!r} 条目非 dict: {type(entry)}"
-        )
-        return list(entry.keys())
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """崩铁周常：周几起对所有周本生效。
@@ -1041,22 +1010,21 @@ def set_config(
         cfg.prepare_weekly_start_day(weekly_start)
 
 
-def get_task_lists(script_name: str, task_name: str, source: str) -> list[str] | None:
+def get_task_lists(script_name: str, source: dict) -> list[str] | None:
     """适配器接口：副本清单源在游戏脚本自身配置里，从中读某任务的可选副本名清单，委托给对应脚本的 config 类。
 
     「从哪读、怎么解析」的知识归各 ``ScriptConfig`` 子类，本函数只做分发。
 
     Args:
         script_name: 脚本唯一标识（如 ``March7th-Launcher``）。
-        task_name: 任务名（周常/日常均可，如「历战余响」）。
-        source: options.source.path 声明的脚本内相对路径。
+        source: 完整的 options.source 声明，资源定位不依赖任务名称。
 
     Returns:
         副本名列表（含「无」等占位）；不可用时返回 None。
     """
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name].get_task_lists(task_name, source)
+    return _CONFIGS[script_name].get_task_lists(source)
 
 
 def get_config_path(script_name: str) -> str:

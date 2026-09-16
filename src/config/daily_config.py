@@ -32,9 +32,7 @@ def _materialize_options(script_name: str, node: dict, depth: int = 0) -> dict:
     assert "options" in node, f"{node['display_name']} 未声明选项"
     group = node["options"]
     if "source" in group:
-        # 资源没有另行指定分类时，以节点物理名定位。
-        category = group["source"].get("category", get_physical_name(node))
-        names = get_task_lists(script_name, category, group["source"]["path"])
+        names = get_task_lists(script_name, group["source"])
         values = [{"display_name": name} for name in names] if names else []
     else:
         values = group["values"]

@@ -1,6 +1,6 @@
 # display_name：展示名；physical_name：物理名，省略时使用展示名。
 # options：递归选项组；key 为原生字段，values / source 二选一。
-# source 用 path / category 定位脚本本地资源；顶层 key 供任务操作使用。
+# source.path 为资源文件，source.key 为多级键路径；顶层 key 供任务操作使用。
 
 ok-ww:
 - display_name: 幻梦游园
@@ -20,6 +20,6 @@ March7th-Launcher:
   options:
     source:
       path: assets/config/instance_names.json
-      category: 历战余响
+      key: [历战余响]
 MAA:
 - display_name: 理智药剂

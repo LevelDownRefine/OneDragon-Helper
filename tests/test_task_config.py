@@ -158,6 +158,32 @@ class TestTaskDeclarations(unittest.TestCase):
         }
         self.assertEqual(self.load({"s": [task]}), {"s": [task]})
 
+    def test_source_key_paths(self):
+        for key in ([], ["stages_dict", "干员养成"]):
+            task = {
+                "display_name": "任务",
+                "options": {"source": {"path": "resource/list.json", "key": key}},
+            }
+            with self.subTest(key=key):
+                self.assertEqual(self.load({"s": [task]}), {"s": [task]})
+
+    def test_invalid_source_keys_are_rejected(self):
+        for fields in (
+            {"key": "类别"},
+            {"key": [""]},
+            {"key": [" "]},
+            {"key": [1]},
+            {"key": [["类别"]]},
+            {"key": ["类别"], "category": "分类"},
+            {"keys": ["类别"]},
+        ):
+            task = {
+                "display_name": "任务",
+                "options": {"source": {"path": "resource/list.json", **fields}},
+            }
+            with self.subTest(fields=fields), self.assertRaises(AssertionError):
+                self.load({"s": [task]})
+
     def test_cache_returns_independent_copies_and_reloads_file_change(self):
         data = {
             "s": [

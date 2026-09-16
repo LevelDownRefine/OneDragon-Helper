@@ -61,7 +61,10 @@ def _validate_group(group: dict, context: str) -> None:
         assert isinstance(source, dict) and "path" in source, (
             f"{context} 的 source 必须声明 path"
         )
-        assert source.keys() <= {"path", "category"}, f"{context} 含未知来源字段"
+        assert source.keys() <= {"path", "key", "category"}, f"{context} 含未知来源字段"
+        assert not ("key" in source and "category" in source), (
+            f"{context} 的 source.key 与 category 不能同时声明"
+        )
         _validate_name(source["path"], f"{context}/source/path")
         path = PureWindowsPath(source["path"])
         assert not path.anchor and ".." not in path.parts, (
@@ -69,6 +72,12 @@ def _validate_group(group: dict, context: str) -> None:
         )
         if "category" in source:
             _validate_physical_name(source["category"], f"{context}/source/category")
+        if "key" in source:
+            assert isinstance(source["key"], (list, tuple)), (
+                f"{context} 的 source.key 必须为键路径列表"
+            )
+            for key in source["key"]:
+                _validate_name(key, f"{context}/source/key")
     else:
         validate_options(group["values"], context)
 
