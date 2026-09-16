@@ -183,13 +183,6 @@ class TestReadbackNTE(unittest.TestCase):
 
 
 class TestReadbackMAA(unittest.TestCase):
-    def setUp(self):
-        stages = patch.object(
-            daily_mod, "load_normal_stages", return_value=["1-7", "CE-6"]
-        )
-        stages.start()
-        self.addCleanup(stages.stop)
-
     def test_daily_task_roundtrip(self):
         config = {
             "Configurations": {

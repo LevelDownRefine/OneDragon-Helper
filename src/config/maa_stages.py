@@ -1,85 +1,13 @@
-"""读取 MAA 的本地关卡与导航资源，不另存关卡清单。"""
+"""读取 MAA 本地活动资源，按客户端和开放时间筛选关卡。"""
 
 import logging
-import re
 from datetime import UTC, datetime, timedelta, timezone
-from pathlib import PurePosixPath
 
 from src.utils.utils_dict import get_field
 from src.utils.utils_sub_config import load_game_config
 
 logger = logging.getLogger(__name__)
 _SERVERS = ("Official", "Official", "YoStarEN", "YoStarJP", "YoStarKR", "txwy")
-# 与 MAS 的常驻菜单对齐；主线只展示这三个常用关，资源本仍从 MAA 读取。
-_COMMON_MAIN_STAGES = ("1-7", "R8-11", "12-17-HARD")
-
-
-def load_normal_stages(script_name: str, source: str) -> list[str]:
-    """按 MAS 的范围展示常用主线、资源本和芯片本，核对原生导航入口。"""
-    resource = PurePosixPath(source).parent
-    try:
-        stages = load_game_config(script_name, source)
-        if stages is None:
-            return []
-        tasks = load_game_config(script_name, str(resource / "tasks/tasks.json"))
-        if tasks is None:
-            # 旧版 MAA 将主线和资源本导航集中在同一个文件。
-            tasks = load_game_config(script_name, str(resource / "tasks.json"))
-        else:
-            supplies = load_game_config(
-                script_name, str(resource / "tasks/Stages/Supplies.json")
-            )
-            if supplies is not None:
-                assert isinstance(supplies, dict), "MAA 资源本导航必须是字典"
-                tasks = tasks | supplies
-    except (OSError, ValueError):
-        logger.warning("[MAA] 普通关卡资源读取失败: %s", source, exc_info=True)
-        return []
-    if tasks is None:
-        return []
-    assert isinstance(stages, list), "MAA 关卡资源必须是列表"
-    assert isinstance(tasks, dict), "MAA 导航任务必须是字典"
-    main_stages, resource_stages = set(), set()
-    codes = {get_field(stage, "code", "MAA", str) for stage in stages}
-    for stage in stages:
-        stage_id = get_field(stage, "stageId", "MAA", str)
-        code = get_field(stage, "code", "MAA", str)
-        if stage_id.startswith(("main_", "sub_", "tough_")):
-            match = re.fullmatch(r"[A-Za-z]{0,3}(\d{1,2})-\d{1,2}", code)
-            if match is None or (
-                code not in tasks and f"Episode{match[1]}" not in tasks
-            ):
-                continue
-            if stage_id.startswith("tough_"):
-                # MAA 主线导航以 -HARD 选择磨难关；15 章起切换方式不同。
-                chapter = int(match[1])
-                switches = (
-                    {"ChangeToRaidDifficulty", "RaidConfirm"}
-                    if chapter >= 15
-                    else {"ChapterDifficultyHard"}
-                )
-                if chapter < 10 or not switches <= tasks.keys():
-                    continue
-                code += "-HARD"
-            if code in _COMMON_MAIN_STAGES:
-                main_stages.add(code)
-        elif stage_id.startswith(("wk_", "pro_")) and code in tasks:
-            # CE-5 / LS-5 等旧入口在 MAA 中重定向到新关卡，只展示实际目标。
-            task = tasks[code]
-            if "next" in task and len(task["next"]) == 1:
-                target = task["next"][0]
-                if target != code and target in codes:
-                    continue
-            resource_stages.add(code)
-
-    def stage_order(code: str) -> list:
-        return [
-            int(part) if part.isdigit() else part for part in re.split(r"(\d+)", code)
-        ]
-
-    return [code for code in _COMMON_MAIN_STAGES if code in main_stages] + sorted(
-        resource_stages, key=stage_order
-    )
 
 
 def load_activity_stages(

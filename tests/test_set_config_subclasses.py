@@ -1434,10 +1434,8 @@ class TestArknightsConfig(unittest.TestCase):
             ["活动关卡", "理智作战", "剩余理智"],
         )
         name_by_stage = cfg._dispatch_daily("理智作战")._name_by_stage
-        self.assertEqual(name_by_stage, {})
-        self.assertEqual(
-            cfg._dispatch_daily("理智作战")._source_rel_path, "resource/stages.json"
-        )
+        self.assertEqual(name_by_stage["1-7"], "1-7")
+        self.assertEqual(name_by_stage, cfg._dispatch_daily("剩余理智")._name_by_stage)
 
     def test_init_config_no_template_is_noop(self):
         """粥无模板（_template_rel_path 为空）：_init_config 不应加载模板或写盘。"""

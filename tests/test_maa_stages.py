@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from unittest.mock import patch
 
 from src.config.daily_config import get_daily_map
-from src.config.maa_stages import load_activity_stages, load_normal_stages
+from src.config.maa_stages import load_activity_stages
 from src.config.set_config import ArknightsConfig
 from src.config.task_config import get_daily_configs
 from tests.test_arknights_config_safety import load_fixture
@@ -110,126 +110,17 @@ class TestMaaLocalStages(unittest.TestCase):
             self.assertEqual(load_activity_stages("MAA", "bad.json"), [])
 
 
-class TestMaaNormalStages(unittest.TestCase):
-    def setUp(self):
-        self.stages = [
-            {"code": code, "stageId": stage_id}
-            for code, stage_id in (
-                ("1-10", "main_01-10"),
-                ("1-7", "main_01-07"),
-                ("R8-11", "main_08-13"),
-                ("S4-1", "sub_04-1"),
-                ("12-17", "main_12-15"),
-                ("12-17", "tough_12-15"),
-                ("12-17", "tough_12-15"),
-                ("19-1", "main_19-01"),
-                ("AP-5", "wk_toxic_5"),
-                ("AP-1", "wk_toxic_1"),
-                ("CE-5", "wk_melee_5"),
-                ("CE-6", "wk_melee_6"),
-                ("CA-5", "wk_fly_5"),
-                ("PR-B-2", "pro_b_2"),
-                ("ACT-8", "act99side_08"),
-                ("Annihilation", "camp_01"),
-            )
-        ]
-        self.tasks = dict.fromkeys(
-            ("Episode1", "Episode4", "Episode8", "Episode12", "ChapterDifficultyHard"),
-            {},
-        )
-        self.supplies = {
-            "AP-5": {},
-            "CE-5": {"next": ["CE-6"]},
-            "CE-6": {},
-            "CA-5": {},
-            "PR-B-2": {},
-        }
-        self.files = {
-            "resource/stages.json": self.stages,
-            "resource/tasks/tasks.json": self.tasks,
-            "resource/tasks/Stages/Supplies.json": self.supplies,
-        }
-
-    def load(self, source="resource/stages.json"):
-        def read(script, path):
-            self.assertEqual(script, "MAA")
-            if path not in self.files:
-                return None
-            return self.files[path]
-
-        with patch("src.config.maa_stages.load_game_config", side_effect=read):
-            return load_normal_stages("MAA", source)
-
-    def test_menu_keeps_mas_common_main_stages_supplies_and_chips(self):
-        before = copy.deepcopy(self.files)
-        self.assertEqual(
-            self.load(),
-            [
-                "1-7",
-                "R8-11",
-                "12-17-HARD",
-                "AP-5",
-                "CA-5",
-                "CE-6",
-                "PR-B-2",
-            ],
-        )
-        self.assertEqual(self.files, before)
-
-    def test_old_monolithic_tasks_and_declared_resource_directory(self):
-        self.files = {
-            "assets/stages.json": self.stages,
-            "assets/tasks.json": self.tasks | self.supplies,
-        }
-        stages = self.load("assets/stages.json")
-        self.assertIn("PR-B-2", stages)
-        self.assertIn("12-17-HARD", stages)
-
-    def test_new_main_stages_stay_hidden_but_resource_stages_update(self):
-        self.stages.append({"code": "19-2", "stageId": "main_19-02"})
-        self.assertNotIn("19-2", self.load())
-        self.tasks["Episode19"] = {}
-        self.assertNotIn("19-2", self.load())
-        self.stages.append({"code": "SK-5", "stageId": "wk_armor_5"})
-        self.supplies["SK-5"] = {}
-        self.assertIn("SK-5", self.load())
-        del self.supplies["CA-5"]
-        self.assertNotIn("CA-5", self.load())
-
-    def test_hard_stage_requires_native_difficulty_switch(self):
-        del self.tasks["ChapterDifficultyHard"]
-        self.assertNotIn("12-17-HARD", self.load())
-        self.assertIn("1-7", self.load())
-        self.assertIn("R8-11", self.load())
-
-    def test_common_main_stage_still_requires_native_navigation(self):
-        del self.tasks["Episode8"]
-        self.assertNotIn("R8-11", self.load())
-
-    def test_missing_or_invalid_resources_do_not_create_fallback_choices(self):
-        for path in ("resource/stages.json", "resource/tasks/tasks.json"):
-            files = self.files.copy()
-            del self.files[path]
-            self.assertEqual(self.load(), [])
-            self.files = files
-        with (
-            patch(
-                "src.config.maa_stages.load_game_config",
-                side_effect=ValueError("bad json"),
-            ),
-            self.assertLogs("src.config.maa_stages", level="WARNING"),
-        ):
-            self.assertEqual(load_normal_stages("MAA", "resource/stages.json"), [])
-
-    def test_menu_dispatch_uses_same_normal_list_for_both_roles(self):
+class TestMaaStageMenus(unittest.TestCase):
+    def test_only_activity_menu_reads_resource(self):
+        declarations = get_daily_configs("MAA")
+        normal = declarations[1]["options"]["values"]
+        self.assertEqual(normal, declarations[2]["options"]["values"])
         with (
             patch(
                 "src.config.daily_config.load_daily_map",
-                return_value={"MAA": get_daily_configs("MAA")},
+                return_value={"MAA": declarations},
             ),
-            patch(
-                "src.config.daily.load_normal_stages", return_value=["PR-B-2", "R8-11"]
-            ) as normal,
+            patch("src.config.set_config.load_game_config") as generic_resource,
             patch(
                 "src.config.daily.load_activity_stages", return_value=["ACT-8"]
             ) as activity,
@@ -244,12 +135,11 @@ class TestMaaNormalStages(unittest.TestCase):
             },
             {
                 "活动关卡": ["ACT-8"],
-                "理智作战": ["PR-B-2", "R8-11"],
-                "剩余理智": ["PR-B-2", "R8-11"],
+                "理智作战": [option["display_name"] for option in normal],
+                "剩余理智": [option["display_name"] for option in normal],
             },
         )
-        self.assertEqual(normal.call_count, 2)
-        normal.assert_called_with("MAA", "resource/stages.json")
+        generic_resource.assert_not_called()
         activity.assert_called_once_with(
             "MAA", "cache/gui/StageActivityV2.json", "config/gui.new.json"
         )
@@ -281,8 +171,10 @@ class TestMaaNormalStages(unittest.TestCase):
         with self.assertRaises(AssertionError):
             ArknightsConfig.get_task_lists({"path": "unknown.json"})
         declarations = get_daily_configs("MAA")
-        source = declarations[1]["options"]["source"]
-        declarations[0]["options"]["source"] = source
+        source = declarations[0]["options"]["source"]
+        duplicate = copy.deepcopy(declarations[0])
+        duplicate["config"] = "other/gui.json"
+        declarations.append(duplicate)
         with (
             patch("src.config.set_config.get_daily_configs", return_value=declarations),
             self.assertRaises(AssertionError),

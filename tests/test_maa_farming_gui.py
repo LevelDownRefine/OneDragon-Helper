@@ -41,7 +41,7 @@ class TestMaaTaskCard(unittest.TestCase):
                 patch("src.service.daily_plan.load_schedule", return_value={}),
                 patch("src.config.daily.load_config", side_effect=lambda *args: copy.deepcopy(data)),
                 patch("src.config.daily.save_config", side_effect=save),
-                patch("src.config.daily_config.get_task_lists", return_value=STAGE_CHOICES),
+                patch("src.config.daily_config.get_task_lists", return_value=["ACT-8"]),
                 patch("src.gui.controllers.background.BackgroundController.resolve_bg", return_value=None),
             ):
                 bridge = QmlBridge()
@@ -70,6 +70,8 @@ class TestMaaTaskCard(unittest.TestCase):
                 QTest.mouseClick(window, Qt.LeftButton, pos=center)
                 popup = card.findChild(QQuickItem, "dailyPopup")
                 assert popup.isVisible() and popup.property("dailyName") == "剩余理智"
+                # Column 布局完成后，才能按 contentHeight 滚动到底。
+                QTest.qWait(20)
                 top = popup.mapToScene(QPointF()).y()
                 assert top >= 8 and top + popup.height() <= window.height() - 8
                 pending, button = [popup], None
@@ -83,6 +85,7 @@ class TestMaaTaskCard(unittest.TestCase):
                 assert button is not None
                 QTest.qWait(20)
                 point = button.mapToScene(QPointF(button.width() / 2, button.height() / 2)).toPoint()
+                assert top <= point.y() < top + popup.height()
                 QTest.mouseClick(window, Qt.LeftButton, pos=point)
                 assert not popup.isVisible()
                 assert bridge.dailyItems[-1]["disabled"]
@@ -93,9 +96,6 @@ class TestMaaTaskCard(unittest.TestCase):
                 engine.deleteLater()
                 QTest.qWait(20)
             """
-        )
-        code = code.replace(
-            "STAGE_CHOICES", repr([f"1-{index}" for index in range(1, 403)])
         )
         result = subprocess.run(
             [sys.executable, "-c", code], capture_output=True, text=True, timeout=30

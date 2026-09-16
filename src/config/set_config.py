@@ -3,7 +3,7 @@
 import logging
 import os
 
-from src.config.daily import DAILY_CLASSES, Daily, MaaFightDaily
+from src.config.daily import DAILY_CLASSES, Daily, MaaActivityDaily
 from src.config.task_config import (
     get_daily_configs,
     get_physical_name,
@@ -846,9 +846,9 @@ class ArknightsConfig(ScriptConfig):
                 continue
             assert declaration["class"] in DAILY_CLASSES
             daily_class = DAILY_CLASSES[declaration["class"]]
-            assert issubclass(daily_class, MaaFightDaily)
+            assert issubclass(daily_class, MaaActivityDaily)
             readers.add((daily_class.load_stages, declaration["config"]))
-        # 理智作战与剩余理智共用来源，读取方式及其配置路径必须一致。
+        # 同一来源的读取方式及其配置路径必须一致。
         assert len(readers) == 1, f"MAA 关卡来源必须对应唯一读取方式: {source}"
         load_stages, config_path = readers.pop()
         return load_stages(cls._script_name, source["path"], config_path)

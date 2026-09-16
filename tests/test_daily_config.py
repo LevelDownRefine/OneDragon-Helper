@@ -166,10 +166,13 @@ class TestGetDailyMap(unittest.TestCase):
         values = maa["options"]["values"]
         self.assertEqual(
             [option["display_name"] for option in values],
-            ["CA-5", "PR-B-2", "R8-11"],
+            [
+                option["display_name"]
+                for option in load_daily_map()["MAA"][1]["options"]["values"]
+            ],
         )
         self.assertEqual(values, menus["MAA"]["dailies"][2]["options"]["values"])
-        # 资源展开的关卡代码直接作为展示名和物理名。
+        # 声明的关卡代码直接作为展示名和物理名。
         self.assertTrue(all("physical_name" in option for option in values))
         self.assertTrue(all("options" not in option for option in values))
         # 异环两个日常各一份菜单（不再合并）

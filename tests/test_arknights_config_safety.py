@@ -82,13 +82,6 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self._stages = patch.object(
             daily_mod, "load_activity_stages", return_value=["SR-8", "SR-7"]
         )
-        self._normal_stages = patch.object(
-            daily_mod,
-            "load_normal_stages",
-            return_value=["1-7", "AP-5", "LS-6", "CE-6", "PR-A-2", "R8-11"],
-        )
-        self._normal_stages.start()
-        self.addCleanup(self._normal_stages.stop)
         self._stages.start()
         self.addCleanup(self._stages.stop)
         self._lp.start()
@@ -404,16 +397,17 @@ class TestArknightsConfigSafety(unittest.TestCase):
             ArknightsConfig().set_daily_task("活动关卡", "EXPIRED-8")
         self.assertFalse(self.saves)
 
-    def test_normal_roles_accept_resource_stages_and_reject_removed_choices(self):
+    def test_normal_roles_use_declared_stages_without_reading_resources(self):
         cfg = ArknightsConfig()
-        for name in ("理智作战", "剩余理智"):
-            cfg.set_daily_task(name, "PR-A-2")
-            self.assertEqual(cfg._dispatch_daily(name).read(), ("PR-A-2", None))
-        before = copy.deepcopy(self.store)
-        with patch.object(daily_mod, "load_normal_stages", return_value=[]):
+        with patch("src.config.maa_stages.load_game_config") as resource:
             for name in ("理智作战", "剩余理智"):
-                with self.assertRaises(ValueError):
-                    cfg.set_daily_task(name, "PR-A-2")
+                cfg.set_daily_task(name, "PR-A-2")
+                self.assertEqual(cfg._dispatch_daily(name).read(), ("PR-A-2", None))
+        resource.assert_not_called()
+        before = copy.deepcopy(self.store)
+        for name in ("理智作战", "剩余理智"):
+            with self.assertRaises(AssertionError):
+                cfg.set_daily_task(name, "未声明的关卡")
         self.assertEqual(self.store, before)
         self.assertEqual(cfg._dispatch_daily("剩余理智").read(), ("PR-A-2", None))
 

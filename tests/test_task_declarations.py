@@ -180,10 +180,13 @@ class TestDeclarationBindings(unittest.TestCase):
             cfg.prepare_weekly_start_day(2)
             self.assertEqual(config, {"NativeTasks": ["unrelated"]})
 
-    def test_maa_roles_follow_declared_names_and_resource(self):
+    def test_maa_roles_follow_declared_names_and_options(self):
         self.daily["MAA"][1]["display_name"] = "主刷"
         self.daily["MAA"][1]["physical_name"] = "NativeFight"
-        self.daily["MAA"][1]["options"]["source"]["path"] = "assets/stages.json"
+        self.daily["MAA"][1]["options"]["values"] = [
+            {"display_name": "芯片", "physical_name": "PR-A-2"},
+            {"display_name": "红票", "physical_name": "AP-5"},
+        ]
         cfg = self.load_adapters().ArknightsConfig()
         queue = [
             {
@@ -204,21 +207,19 @@ class TestDeclarationBindings(unittest.TestCase):
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
             patch.object(daily_mod, "save_config"),
-            patch.object(
-                daily_mod, "load_normal_stages", return_value=["PR-A-2", "AP-5"]
-            ) as loader,
         ):
-            cfg.set_daily_task("主刷", "PR-A-2")
+            cfg.set_daily_task("主刷", "芯片")
             self.assertEqual(
                 [task["Name"] for task in queue if task["IsEnable"]], ["NativeFight"]
             )
-            self.assertEqual(_read(cfg, "主刷"), ("PR-A-2", None))
-            cfg.set_daily_task("主刷", "AP-5")
+            self.assertEqual(_read(cfg, "主刷"), ("芯片", None))
+            self.assertEqual(queue[2]["StagePlan"], ["PR-A-2"])
+            cfg.set_daily_task("主刷", "红票")
             self.assertEqual(
                 [task["Name"] for task in queue if task["IsEnable"]], ["NativeFight"]
             )
-            self.assertEqual(_read(cfg, "主刷"), ("AP-5", None))
-            loader.assert_called_with("MAA", "assets/stages.json")
+            self.assertEqual(_read(cfg, "主刷"), ("红票", None))
+            self.assertEqual(queue[2]["StagePlan"], ["AP-5"])
 
     def test_native_single_daily_entry_points_remain_available(self):
         """单日常脚本的写/读入口仍在（都委托给该脚本解析出的日常实现类）。"""

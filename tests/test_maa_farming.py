@@ -119,13 +119,11 @@ class TestMaaFarmingRuntime(unittest.TestCase):
                 patcher = patch.object(module, method, side_effect=callback)
                 patcher.start()
                 self.addCleanup(patcher.stop)
-        for method, callback in (
-            ("load_activity_stages", lambda *args: self.stages),
-            ("load_normal_stages", lambda *args: ["AP-5", "1-7", "CE-6"]),
-        ):
-            patcher = patch.object(daily_mod, method, side_effect=callback)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        patcher = patch.object(
+            daily_mod, "load_activity_stages", side_effect=lambda *args: self.stages
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.cfg = ArknightsConfig()
         self.activity = self.cfg._dispatch_daily("活动关卡")
 

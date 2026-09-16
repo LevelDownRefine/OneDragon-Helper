@@ -16,7 +16,7 @@ from src.config.maa_farming import (
     build_runtime_queue,
     find_fight_source,
 )
-from src.config.maa_stages import load_activity_stages, load_normal_stages
+from src.config.maa_stages import load_activity_stages
 from src.config.task_config import (
     get_daily_configs,
     get_options,
@@ -533,22 +533,10 @@ class MaaFightDaily(Daily):
     def _parse_landing(self, declaration: dict) -> None:
         """从声明建立关卡映射。"""
         self._stage_by_name = get_value_map(declaration)
-        assert self._stage_by_name or "source" in declaration["options"], (
-            f"{self.display_name} 必须声明关卡或来源"
-        )
+        assert self._stage_by_name, f"{self.display_name} 必须声明可选关卡"
         self._name_by_stage = {
             stage: name for name, stage in self._stage_by_name.items()
         }
-        group = declaration["options"]
-        self._source_rel_path = None
-        if "source" in group:
-            assert "path" in group["source"]
-            self._source_rel_path = group["source"]["path"]
-
-    @staticmethod
-    def load_stages(script_name: str, source: str, config_path: str) -> list[str]:
-        """普通刷图角色共用 MAA 的本地关卡资源。"""
-        return load_normal_stages(script_name, source)
 
     def _tasks(self, queue: list[dict]) -> list[dict]:
         """与 MAS 一致，取首个同名同类型任务；运行前消除重复项。"""
@@ -639,14 +627,6 @@ class MaaFightDaily(Daily):
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
         """编辑期保存角色选关；托管字段同运行期使用 MAS 生成规则。"""
         assert sequence is None, f"{self.display_name} 没有二级选项"
-        if self._source_rel_path is not None:
-            stages = self.load_stages(
-                self.script_name, self._source_rel_path, self._config_rel_path
-            )
-            if task_name not in stages:
-                raise ValueError("关卡不可用或资源已更新，请重新选择")
-            self._stage_by_name = {stage: stage for stage in stages}
-            self._name_by_stage = dict(self._stage_by_name)
         assert task_name in self._stage_by_name, f"未声明的关卡: {task_name}"
         config = self._load_daily_config()
         queue = self._task_queue(config)
@@ -736,10 +716,29 @@ class MaaDaily(MaaFightDaily):
 class MaaActivityDaily(MaaFightDaily):
     """固定活动关卡，关卡与开关直接反读 MAA 原生任务。"""
 
+    def _parse_landing(self, declaration: dict) -> None:
+        """活动关卡由本地资源提供，读取原生选择时不要求活动仍开放。"""
+        source = get_field(declaration["options"], "source", self.display_name, dict)
+        self._source_rel_path = get_field(source, "path", self.display_name, str)
+        self._stage_by_name = {}
+        self._name_by_stage = {}
+
     @staticmethod
     def load_stages(script_name: str, source: str, config_path: str) -> list[str]:
         """活动角色读取当前客户端尚未过期的活动关卡。"""
         return load_activity_stages(script_name, source, config_path)
+
+    def update(self, task_name: str, sequence: str | int | None = None) -> bool:
+        """保存前确认所选活动关卡仍然开放。"""
+        assert sequence is None, f"{self.display_name} 没有二级选项"
+        stages = self.load_stages(
+            self.script_name, self._source_rel_path, self._config_rel_path
+        )
+        if task_name not in stages:
+            raise ValueError("关卡不可用或资源已更新，请重新选择")
+        self._stage_by_name = {stage: stage for stage in stages}
+        self._name_by_stage = dict(self._stage_by_name)
+        return super().update(task_name, sequence)
 
     def _build_fight(self, source: dict, stage: str, series: int) -> dict:
         return build_activity_fight(source, self.physical_name, stage)
