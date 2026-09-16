@@ -45,6 +45,23 @@ if _local_appdata:
 # 全局 QApplication 实例（offscreen 平台，CI 无显示器）
 _app = QApplication.instance() or QApplication([])
 
+_NATIVE_CONFIG_STUB = (
+    "from unittest.mock import patch\n"
+    "patch('src.utils.utils_sub_config._load_config_yml', "
+    "return_value={'script_list': []}).start()\n"
+)
+
+
+def setUpModule():
+    """只模拟原生脚本未安装，应用脚本列表仍由各用例提供。"""
+    native_config = patch(
+        "src.utils.utils_sub_config._load_config_yml",
+        return_value={"script_list": []},
+    )
+    native_config.start()
+    unittest.addModuleCleanup(native_config.stop)
+
+
 _SCRIPTS = [
     {
         "display_name": "鸣潮",
@@ -464,7 +481,7 @@ class TestQmlApp(unittest.TestCase):
             """
         )
         proc = subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
             text=True,
             timeout=60,
@@ -559,7 +576,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             """
         )
         proc = subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
             text=True,
             timeout=60,
@@ -641,7 +658,7 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             """
         )
         proc = subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
             text=True,
             timeout=60,
@@ -734,7 +751,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             """
         )
         proc = subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
             text=True,
             timeout=60,
