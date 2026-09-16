@@ -607,8 +607,6 @@ class MaaDaily(Daily):
             UseExpiringMedicine=True,
             MedicineExpireDays=days,
         )
-        if stage != "Annihilation":
-            task["UseCustomAnnihilation"] = False
 
     def _init_task(self, queue: list[dict], days: int) -> dict:
         """补齐缺失入口；未选关和多关卡计划保持停用。"""
