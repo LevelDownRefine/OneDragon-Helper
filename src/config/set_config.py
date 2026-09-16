@@ -884,13 +884,9 @@ class ArknightsConfig(ScriptConfig):
         return daily_class.load_stages(cls._script_name, source, declaration["config"])
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
-        """周常「理智药剂」：按周几起写过期理智药使用窗口，并随副本启停同步开关。
+        """按周几起设置临期窗口，并兜底开启临期用药。
 
-        与基类二值开关不同，本方法每次调用都直接写入（不按「今天是否到起始日」门控）：
-        - 开启的 FightTask 设 UseExpiringMedicine=true，其余设 false；
-        - 剿灭不吃理智药：即便开启也强制 UseExpiringMedicine=false（照常运行，只是不吃药）；
-        - MedicineExpireDays 由周几起推算：周几起 = 7 - MedicineExpireDays + 1
-          ⇒ MedicineExpireDays = 8 - 周几起（周几起∈1~7，1=周一）。
+        所有 FightTask 共用 MedicineExpireDays = 8 - 周几起，不随副本启停切换用药。
 
         Args:
             start_day: 周几起（1~7，1=周一）。
@@ -919,13 +915,10 @@ class ArknightsConfig(ScriptConfig):
         for task in task_queue:
             if task["$type"] != "FightTask":
                 continue
-            enabled = bool(task["IsEnable"])
-            # 剿灭不吃理智药：开启但仍强制 false
-            use_medicine = enabled and task["StagePlan"] != ["Annihilation"]
             changed |= safe_update(
                 task,
                 "UseExpiringMedicine",
-                use_medicine,
+                True,
                 self.display_name,
                 assert_key_exists=False,
             )
@@ -949,10 +942,8 @@ class ArknightsConfig(ScriptConfig):
     def set_weekly_start_day(self, start_day: int) -> None:
         """编辑期落盘周几起字面起始日到 MedicineExpireDays。
 
-        与 prepare_weekly_start_day 不同：本方法只写 MedicineExpireDays（由周几起推算：
-        MedicineExpireDays = 8 - 周几起），不写 UseExpiringMedicine（是否吃药的
-        开关依赖各 FightTask 的启用状态，需运行期按当日副本选型经 prepare_weekly_start_day 计算）。
-        编辑期改周几起即应落盘此值，无需等待链运行。
+        MedicineExpireDays = 8 - 周几起，编辑后立即落盘。
+        临期用药在任务生成时常开，运行前由 prepare_weekly_start_day 兜底。
 
         Args:
             start_day: 周几以后启用（1~7，1=周一）。

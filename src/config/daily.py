@@ -25,6 +25,7 @@ from src.config.task_config import (
 )
 from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import load_config, save_config
+from src.utils.utils_weekly import get_weekly_start
 
 logger = logging.getLogger(__name__)
 
@@ -576,7 +577,7 @@ class MaaFightDaily(Daily):
         return build_remaining_fight(source, self.physical_name, stage, series)
 
     def _build_task(self, queue: list[dict], stage: str, enabled: bool) -> dict:
-        """复用 MAS 生成规则；仅用药按用户要求保留各角色原生配置。"""
+        """复用 MAS 生成规则；用药由本项目统一配置。"""
         main = next(daily for daily in self._dailies() if type(daily) is MaaDaily)
         main_source = find_fight_source(queue, main.physical_name) or {}
         series = 0
@@ -588,20 +589,19 @@ class MaaFightDaily(Daily):
         source = own_source if own_source is not None else fallback
         task = self._build_fight(source, stage, series)
         task["IsEnable"] = enabled
-        self._preserve_medicine(task, own_source)
+        self._apply_medicine(task, own_source)
         return task
 
-    @staticmethod
-    def _preserve_medicine(task: dict, own_source: dict | None) -> None:
-        """保留原生用药设置；新任务默认关闭，临期用药由周常统一设置。"""
+    def _apply_medicine(self, task: dict, own_source: dict | None) -> None:
+        """临期用药常开，窗口由周常设置；其余用药设置保留原生值。"""
         defaults = {
             "UseMedicine": False,
             "MedicineCount": 0,
             "UseStone": False,
             "StoneCount": 0,
-            "UseExpiringMedicine": False,
             "UseExpireMedicineForActivity": False,
             "UseStoneAllowSave": False,
+            "MedicineExpireDays": 2,  # 未设置周几起时沿用 MAA 默认窗口。
         }
         for key, default in defaults.items():
             task[key] = (
@@ -609,11 +609,10 @@ class MaaFightDaily(Daily):
                 if own_source is not None and key in own_source
                 else default
             )
-        # 临期天数仍由现有周常药剂机制写入，不从另一个角色继承。
-        if own_source is not None and "MedicineExpireDays" in own_source:
-            task["MedicineExpireDays"] = own_source["MedicineExpireDays"]
-        else:
-            task.pop("MedicineExpireDays", None)
+        task["UseExpiringMedicine"] = True
+        start_day = get_weekly_start(self.script_name)
+        if start_day is not None:
+            task["MedicineExpireDays"] = 8 - start_day
 
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
         """编辑期保存角色选关；托管字段同运行期使用 MAS 生成规则。"""
@@ -754,9 +753,7 @@ class MaaActivityDaily(MaaFightDaily):
         ):
             stage = annihilation_source["AnnihilationStage"]
         annihilation = build_annihilation_fight(annihilation_source, name, stage)
-        self._preserve_medicine(annihilation, annihilation_source)
-        # 原有药剂规则明确要求剿灭不吃药。
-        annihilation["UseExpiringMedicine"] = False
+        self._apply_medicine(annihilation, annihilation_source)
         dailies = self._dailies()
         activity = next(d for d in dailies if type(d) is MaaActivityDaily)
         main = next(d for d in dailies if type(d) is MaaDaily)

@@ -54,6 +54,9 @@ def inject_canaries(cfg: dict) -> None:
 
 class TestArknightsConfigSafety(unittest.TestCase):
     def setUp(self):
+        weekly = patch.object(daily_mod, "get_weekly_start", return_value=None)
+        weekly.start()
+        self.addCleanup(weekly.stop)
         self.seed = load_fixture()
         for task in self.seed["Configurations"]["Default"]["TaskQueue"]:
             if task["Name"] == "红票":
@@ -130,6 +133,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
             IsStageManually=True,
             UseOptionalStage=True,
             UseCustomAnnihilation=False,
+            UseExpiringMedicine=True,
         )
         self.assertEqual(after, expected)
 
@@ -157,10 +161,10 @@ class TestArknightsConfigSafety(unittest.TestCase):
             ALLOWED_WEEKLY,
             f"prepare_weekly_start_day 改到了不该改的字段: {paths - ALLOWED_WEEKLY}",
         )
-        # 正向校验：开启副本吃药、剿灭不吃、窗口=7
+        # 正向校验：所有战斗任务共用临期用药，窗口=7。
         tq = post["Configurations"]["Default"]["TaskQueue"]
         by_name = {t["Name"]: t for t in tq if t.get("$type") == "FightTask"}
-        self.assertFalse(by_name["剿灭"]["UseExpiringMedicine"], "剿灭不应吃药")
+        self.assertTrue(by_name["剿灭"]["UseExpiringMedicine"])
         self.assertTrue(by_name["剩余理智"]["UseExpiringMedicine"])
         self.assertTrue(by_name["活动关优先"]["UseExpiringMedicine"])
         self.assertTrue(by_name["理智作战"]["UseExpiringMedicine"])
@@ -267,6 +271,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
             "UseOptionalStage",
             "UseWeeklySchedule",
             "UseCustomAnnihilation",
+            "UseExpiringMedicine",
         }
         for key in old[2]:
             if key not in managed:
@@ -307,7 +312,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         for task in queue[1:5]:
             self.assertFalse(task["UseMedicine"])
             self.assertFalse(task["UseStone"])
-            self.assertFalse(task["UseExpiringMedicine"])
+            self.assertTrue(task["UseExpiringMedicine"])
 
     def test_remaining_does_not_adopt_main_task_when_both_farm_1_7(self):
         cfg = ArknightsConfig()
@@ -414,7 +419,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.assertEqual(self.store, before)
         self.assertEqual(cfg._dispatch_daily("剩余理智").read(), ("PR-A-2", None))
 
-    def test_pre_run_expires_activity_before_applying_medicine(self):
+    def test_expired_activity_keeps_medicine_enabled_without_running(self):
         from src.service.run_actions import apply_subscript_config
 
         cfg = ArknightsConfig()
@@ -428,7 +433,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         activity = next(task for task in queue if task["Name"] == "活动关优先")
         backup = next(task for task in queue if task["Name"] == "理智作战")
         self.assertFalse(activity["IsEnable"])
-        self.assertFalse(activity["UseExpiringMedicine"])
+        self.assertTrue(activity["UseExpiringMedicine"])
         self.assertTrue(backup["IsEnable"])
         self.assertTrue(backup["UseExpiringMedicine"])
 

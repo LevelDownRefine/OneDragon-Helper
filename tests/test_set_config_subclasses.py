@@ -1934,10 +1934,14 @@ class TestSetWeekly(unittest.TestCase):
             "Configurations": {"Default": {"TaskQueue": self._maa_queue(enabled_names)}}
         }
 
-    def test_arknights_weekly_syncs_use_expiring_medicine(self):
-        """开启的 FightTask → UseExpiringMedicine=true，其余 false（随 IsEnable 同步）；剿灭不吃药强制 false"""
+    def test_arknights_weekly_ensures_expiring_medicine_enabled(self):
+        """兜底恢复临期用药，不改变任务启停。"""
         cfg = self._make_maa_cfg()
         config = self._maa_config({"剿灭", "土", "活动土"})
+        tasks = config["Configurations"]["Default"]["TaskQueue"]
+        enabled = [task["IsEnable"] for task in tasks]
+        for task in tasks[1:]:
+            task["UseExpiringMedicine"] = False
         with (
             patch("src.config.set_config.load_config", return_value=config),
             patch("src.config.set_config.save_config") as mock_save,
@@ -1948,16 +1952,13 @@ class TestSetWeekly(unittest.TestCase):
             for t in config["Configurations"]["Default"]["TaskQueue"]
             if t.get("$type") == "FightTask"
         }
-        # 剿灭开启但强制不吃药
-        self.assertFalse(by_name["剿灭"]["UseExpiringMedicine"])
-        self.assertTrue(by_name["土"]["UseExpiringMedicine"])
-        self.assertTrue(by_name["活动土"]["UseExpiringMedicine"])
-        self.assertFalse(by_name["红票"]["UseExpiringMedicine"])
-        self.assertFalse(by_name["经验"]["UseExpiringMedicine"])
+        for task in by_name.values():
+            self.assertTrue(task["UseExpiringMedicine"])
+        self.assertEqual([task["IsEnable"] for task in tasks], enabled)
         mock_save.assert_called_once()
 
-    def test_arknights_weekly_annihilation_no_medicine(self):
-        """剿灭不吃理智药：即便 IsEnable=true，UseExpiringMedicine 强制 false，但照常运行"""
+    def test_arknights_weekly_annihilation_uses_same_medicine_window(self):
+        """剿灭共用临期用药策略。"""
         cfg = self._make_maa_cfg()
         # 仅开启剿灭
         config = self._maa_config({"剿灭"})
@@ -1972,7 +1973,7 @@ class TestSetWeekly(unittest.TestCase):
             if t["Name"] == "剿灭"
         )
         self.assertTrue(annih["IsEnable"], "剿灭应照常开启运行")
-        self.assertFalse(annih["UseExpiringMedicine"], "剿灭不吃理智药")
+        self.assertTrue(annih["UseExpiringMedicine"])
         self.assertEqual(annih["MedicineExpireDays"], 6)  # 周几起=2 ⇒ 8-2
 
     def test_arknights_weekly_expire_days_from_start_day(self):
@@ -2009,15 +2010,12 @@ class TestSetWeekly(unittest.TestCase):
         self.assertNotIn("MedicineExpireDays", startup)
 
     def test_arknights_weekly_no_change_skips_save(self):
-        """配置已符合预期（开启项 true、关闭项 false、剿灭强制 false、MedicineExpireDays 一致）→ 不落盘"""
+        """临期用药已开启、窗口一致时不重复落盘。"""
         cfg = self._make_maa_cfg()
         config = self._maa_config({"剿灭", "土", "活动土"})
         for t in config["Configurations"]["Default"]["TaskQueue"]:
             if t.get("$type") == "FightTask":
-                enabled = t["IsEnable"]
-                # 剿灭不吃药，即便开启也强制 false
-                use_medicine = enabled and t["Name"] != "剿灭"
-                t["UseExpiringMedicine"] = use_medicine
+                t["UseExpiringMedicine"] = True
                 t["MedicineExpireDays"] = 8 - 3  # 周几起=3
         with (
             patch("src.config.set_config.load_config", return_value=config),
@@ -2027,11 +2025,7 @@ class TestSetWeekly(unittest.TestCase):
         mock_save.assert_not_called()
 
     def test_arknights_weekly_start_day_writes_expire_days_only(self):
-        """set_weekly_start_day 只写 MedicineExpireDays（= 8 - 周几起），不动 UseExpiringMedicine。
-
-        编辑期改周几起即应落盘过期窗口，无需等链运行；是否吃药的开关依赖各任务的
-        启用状态，由运行期 prepare_weekly_start_day 另行计算，不在编辑期落盘。
-        """
+        """编辑周几起只更新临期窗口，用药开关在运行前兜底。"""
         cfg = self._make_maa_cfg()
         config = self._maa_config({"土"})
         # 给各 FightTask 预设假的 UseExpiringMedicine 与不同 MedicineExpireDays，验证前者不动、后者被改写

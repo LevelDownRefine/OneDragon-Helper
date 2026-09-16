@@ -105,6 +105,9 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         self.store = {"config/gui.new.json": load_fixture()}
         self.saves = []
         self.stages = ["ACT-8", "ACT-7", "ACT-6"]
+        weekly = patch.object(daily_mod, "get_weekly_start", return_value=None)
+        self.weekly_start = weekly.start()
+        self.addCleanup(weekly.stop)
 
         def load(script, path):
             assert path in self.store, f"missing: {path}"
@@ -218,6 +221,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
                 MedicineCount=3,
                 UseStone=True,
                 StoneCount=2,
+                UseExpiringMedicine=False,
                 MedicineExpireDays=4,
             )
         prepare_daily_tasks("MAA")
@@ -231,6 +235,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
             self.assertEqual(task["MedicineCount"], 3, name)
             self.assertTrue(task["UseStone"], name)
             self.assertEqual(task["StoneCount"], 2, name)
+            self.assertTrue(task["UseExpiringMedicine"], name)
             self.assertEqual(task["MedicineExpireDays"], 4, name)
 
     def test_main_and_remaining_can_be_disabled_independently(self):
@@ -241,15 +246,52 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         self.assertTrue(self.roles()["剩余理智"]["IsEnable"])
         self.assertTrue(self.roles()["活动关优先"]["IsEnable"])
 
+    def test_daily_medicine_is_enabled_without_weekly_hook(self):
+        self.select_all()
+        for name, task in self.roles().items():
+            if name in {"活动关优先", "理智作战", "剩余理智"}:
+                self.assertTrue(task["UseExpiringMedicine"], name)
+        self.cfg.set_daily_enabled("理智作战", False)
+        self.stages = []
+        prepare_daily_tasks("MAA")
+        self.assertFalse(self.roles()["理智作战"]["IsEnable"])
+        self.assertFalse(self.roles()["活动关优先"]["IsEnable"])
+        for name, task in self.roles().items():
+            self.assertTrue(task["UseExpiringMedicine"], name)
+
     def test_farming_roles_share_weekly_medicine_window(self):
         self.select_all()
         for start_day, expire_days in ((1, 7), (6, 2), (7, 1)):
             with self.subTest(start_day=start_day):
                 prepare_daily_tasks("MAA")
                 self.cfg.prepare_weekly_start_day(start_day)
-                for name, task in self.roles().items():
-                    self.assertEqual(task["UseExpiringMedicine"], name != "剿灭")
+                for task in self.roles().values():
+                    self.assertTrue(task["UseExpiringMedicine"])
                     self.assertEqual(task["MedicineExpireDays"], expire_days)
+
+    def test_new_tasks_take_current_weekly_window_on_creation(self):
+        for start_day, expire_days in ((1, 7), (6, 2), (7, 1), (None, 2)):
+            with self.subTest(start_day=start_day):
+                self.weekly_start.return_value = start_day
+                self.queue()[:] = [
+                    task for task in self.queue() if task["TaskType"] != "Fight"
+                ]
+                self.select_all()
+                for task in self.roles().values():
+                    self.assertEqual(task["MedicineExpireDays"], expire_days)
+                prepare_daily_tasks("MAA")
+                for task in self.roles().values():
+                    self.assertEqual(task["MedicineExpireDays"], expire_days)
+
+    def test_later_task_uses_updated_weekly_window(self):
+        self.weekly_start.return_value = 5
+        self.cfg.set_daily_task("理智作战", "AP-5")
+        self.assertEqual(self.roles()["理智作战"]["MedicineExpireDays"], 3)
+        self.weekly_start.return_value = 1
+        self.cfg.set_weekly_start_day(1)
+        self.cfg.set_daily_task("活动关卡", "ACT-7")
+        self.assertEqual(self.roles()["理智作战"]["MedicineExpireDays"], 7)
+        self.assertEqual(self.roles()["活动关优先"]["MedicineExpireDays"], 7)
 
     def test_duplicate_role_names_use_first_native_source_once(self):
         self.select_all()
@@ -266,7 +308,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         self.assertEqual(list(self.roles()), ["剿灭作战"])
         self.assertTrue(self.roles()["剿灭作战"]["IsEnable"])
         self.cfg.prepare_weekly_start_day(1)
-        self.assertFalse(self.roles()["剿灭作战"]["UseExpiringMedicine"])
+        self.assertTrue(self.roles()["剿灭作战"]["UseExpiringMedicine"])
         self.assertEqual(len(self.cfg._build_dailies()), 3)
 
     def test_stale_menu_choice_is_rejected_without_writing(self):
@@ -283,6 +325,7 @@ class TestMaaNativePersistence(unittest.TestCase):
             native.parent.mkdir()
             native.write_text(json.dumps(load_fixture()), encoding="utf-8")
             with (
+                patch.object(daily_mod, "get_weekly_start", return_value=5),
                 patch(
                     "src.utils.utils_sub_config.get_script_root_dir",
                     return_value=folder,
