@@ -1,7 +1,7 @@
-"""刷图任务生成；不读写配置，名字和用药由 Daily 适配。
+"""MAS 刷图任务生成规则；不读写配置，名字和用药由 Daily 适配。
 
-部分规则源自 AUTO-MAS c26f1095，app/task/MAA/AutoProxy.py。
-剿灭与剩余理智沿用原生设置，未提供的非托管字段由 MAA 补默认值。
+来源：AUTO-MAS c26f1095，app/task/MAA/AutoProxy.py 与 app/utils/constants.py。
+保留其「复制原生选项 → 覆盖托管字段」语义，初始化和编辑使用同一套规则。
 """
 
 # Copyright (C) 2024-2025 DLmaster361
@@ -13,6 +13,45 @@
 from copy import deepcopy
 
 from src.utils.utils_dict import get_field
+
+# MAS 的 MAA_REMAIN_FIGHT_BASE；任务名字与用药字段由 Daily 管理。
+REMAIN_FIGHT_BASE = {
+    "$type": "FightTask",
+    "EnableTargetDrop": False,
+    "DropId": "",
+    "DropCount": 0,
+    "IsInventoryTarget": False,
+    "EnableTimesLimit": False,
+    "TimesLimit": 999,
+    "Series": 0,
+    "StagePlan": [""],
+    "IsDrGrandet": False,
+    "UseCustomAnnihilation": False,
+    "AnnihilationStage": "Annihilation",
+    "HideUnavailableStage": True,
+    "IsStageManually": True,
+    "UseOptionalStage": False,
+    "HideSeries": False,
+    "UseWeeklySchedule": False,
+    "WeeklySchedule": {
+        "Sunday": True,
+        "Monday": True,
+        "Tuesday": True,
+        "Wednesday": True,
+        "Thursday": True,
+        "Friday": True,
+        "Saturday": True,
+    },
+    "IsEnable": True,
+    "TaskType": "Fight",
+}
+
+# MAS 的剿灭基础配置；两者共有字段相同，下面列出其全部差异。
+ANNIHILATION_FIGHT_BASE = deepcopy(REMAIN_FIGHT_BASE) | {
+    "StagePlan": ["Annihilation"],
+    "UseCustomAnnihilation": True,
+    "IsStageManually": False,
+}
 
 
 def find_fight_source(queue: list[dict], name: str) -> dict | None:
@@ -73,31 +112,16 @@ def build_activity_fight(source: dict, name: str, stage: str) -> dict:
 
 
 def build_remaining_fight(source: dict, name: str, stage: str, series: int) -> dict:
-    """沿用原生作战设置，剩余理智固定为单关任务。"""
-    task = build_main_fight(source, name, stage, series)
-    task["UseOptionalStage"] = False
+    """MAS 原生来源与 MAA_REMAIN_FIGHT_BASE 合并后应用计划关卡和连战。"""
+    task = deepcopy(source) | deepcopy(REMAIN_FIGHT_BASE)
+    task.update(Name=name, StagePlan=[stage], Series=series)
     return task
 
 
 def build_annihilation_fight(source: dict, name: str, stage: str) -> dict:
-    """沿用原生剿灭设置，仅覆盖必刷任务所需的字段。"""
-    task = deepcopy(source)
-    task.update(
-        {
-            "$type": "FightTask",
-            "Name": name,
-            "TaskType": "Fight",
-            "StagePlan": ["Annihilation"],
-            "UseCustomAnnihilation": True,
-            "AnnihilationStage": stage,
-            "IsStageManually": False,
-            "UseOptionalStage": False,
-            "UseWeeklySchedule": False,
-            "EnableTimesLimit": False,
-            "EnableTargetDrop": False,
-            "IsEnable": True,
-        }
-    )
+    """MAS 剿灭阶段的任务生成；本项目随后接到同一次 MAA 执行的最前面。"""
+    task = deepcopy(source) | deepcopy(ANNIHILATION_FIGHT_BASE)
+    task.update(Name=name, AnnihilationStage=stage)
     return task
 
 
