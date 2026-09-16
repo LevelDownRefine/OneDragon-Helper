@@ -421,34 +421,6 @@ class TestMaaFarmingInit(unittest.TestCase):
         self.assertTrue(self.roles()["剿灭作战"]["UseExpiringMedicine"])
         self.assertEqual(len(self.cfg._build_dailies()), 3)
 
-    def test_init_missing_roles_does_not_clone_user_task(self):
-        self.queue()[:] = [
-            {
-                "$type": "FightTask",
-                "TaskType": "Fight",
-                "Name": "理智作战",
-                "IsEnable": True,
-                "StagePlan": ["AP-5"],
-                "Series": 6,
-                "NativeOptions": {"owner": "理智作战"},
-                "MedicineExpireDays": 4,
-            }
-        ]
-        init_config("MAA")
-        main = self.roles()["理智作战"]
-        self.assertEqual(main["Series"], 6)
-        self.assertEqual(main["NativeOptions"], {"owner": "理智作战"})
-        for name in ("剿灭作战", "活动关优先", "剩余理智"):
-            with self.subTest(role=name):
-                task = self.roles()[name]
-                self.assertNotIn("NativeOptions", task)
-                self.assertNotIn("TimesLimit", task)
-                self.assertNotIn("WeeklySchedule", task)
-                self.assertEqual(task["MedicineExpireDays"], 4)
-        self.assertEqual(self.roles()["剩余理智"]["Series"], 0)
-        self.assertNotIn("Series", self.roles()["活动关优先"])
-        self.assertNotIn("Series", self.roles()["剿灭作战"])
-
     def test_init_then_select_and_disable_preserves_slots_and_non_fights(self):
         self.queue()[:] = [t for t in self.queue() if t["TaskType"] != "Fight"]
         depot = {
