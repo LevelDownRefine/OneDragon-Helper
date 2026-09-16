@@ -30,14 +30,6 @@ def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
     return cfg._dispatch_daily(daily_name).read()
 
 
-def _bind_maa_daily(cfg, mapping: dict):
-    """把粥日常的关卡映射换成测试用的小集合（真实声明里没有这些关卡）。"""
-    daily = cfg._dispatch_daily("每日任务")
-    daily._name_by_stage = dict(mapping)
-    daily._stage_by_name = {name: stage for stage, name in mapping.items()}
-    return daily
-
-
 def _setter(config, key, value, *args, **kwargs):
     """safe_update 替身：直接赋值，隔离字段存在性约束，专测反向映射。"""
     config[key] = value
@@ -191,6 +183,13 @@ class TestReadbackNTE(unittest.TestCase):
 
 
 class TestReadbackMAA(unittest.TestCase):
+    def setUp(self):
+        stages = patch.object(
+            daily_mod, "load_normal_stages", return_value=["1-7", "CE-6"]
+        )
+        stages.start()
+        self.addCleanup(stages.stop)
+
     def test_daily_task_roundtrip(self):
         config = {
             "Configurations": {
@@ -199,24 +198,28 @@ class TestReadbackMAA(unittest.TestCase):
                         {
                             "Name": "剿灭",
                             "$type": "FightTask",
+                            "TaskType": "Fight",
                             "IsEnable": False,
                             "StagePlan": ["Annihilation"],
                         },
                         {
-                            "Name": "土",
+                            "Name": "剩余理智",
                             "$type": "FightTask",
+                            "TaskType": "Fight",
                             "IsEnable": False,
                             "StagePlan": ["1-7"],
                         },
                         {
-                            "Name": "活动土",
+                            "Name": "活动关优先",
                             "$type": "FightTask",
+                            "TaskType": "Fight",
                             "IsEnable": False,
                             "StagePlan": [""],
                         },
                         {
-                            "Name": "龙门币",
+                            "Name": "理智作战",
                             "$type": "FightTask",
+                            "TaskType": "Fight",
                             "IsEnable": False,
                             "StagePlan": ["CE-6"],
                         },
@@ -231,14 +234,11 @@ class TestReadbackMAA(unittest.TestCase):
             patch.object(daily_mod, "safe_update", _setter),
         ):
             cfg = ArknightsConfig()
-            _bind_maa_daily(
-                cfg, {"Annihilation": "剿灭", "1-7": "土", "CE-6": "龙门币"}
-            )
-            cfg.set_daily_task("每日任务", "龙门币")
-            self.assertEqual(_read(cfg, "每日任务")[0], "龙门币")
+            cfg.set_daily_task("理智作战", "CE-6")
+            self.assertEqual(_read(cfg, "理智作战")[0], "CE-6")
 
-    def test_read_daily_task_all_disabled_but_has_1_7_returns_土(self):
-        """所有维护关卡都未启用，但有1-7 → 读为土"""
+    def test_read_daily_task_does_not_confuse_remaining_sanity(self):
+        """常规刷图关闭时仍回显自己的关卡，1-7 单独属于剩余理智。"""
         config = {
             "Configurations": {
                 "Default": {
@@ -246,24 +246,28 @@ class TestReadbackMAA(unittest.TestCase):
                         {
                             "Name": "剿灭",
                             "$type": "FightTask",
+                            "TaskType": "Fight",
                             "IsEnable": True,
                             "StagePlan": ["Annihilation"],
                         },
                         {
-                            "Name": "土",
+                            "Name": "剩余理智",
                             "$type": "FightTask",
+                            "TaskType": "Fight",
                             "IsEnable": False,
                             "StagePlan": ["1-7"],
                         },
                         {
-                            "Name": "活动土",
+                            "Name": "活动关优先",
                             "$type": "FightTask",
+                            "TaskType": "Fight",
                             "IsEnable": True,
                             "StagePlan": [""],
                         },
                         {
-                            "Name": "龙门币",
+                            "Name": "理智作战",
                             "$type": "FightTask",
+                            "TaskType": "Fight",
                             "IsEnable": False,
                             "StagePlan": ["CE-6"],
                         },
@@ -276,10 +280,10 @@ class TestReadbackMAA(unittest.TestCase):
             patch.object(daily_mod, "save_config"),
         ):
             cfg = ArknightsConfig()
-            _bind_maa_daily(
-                cfg, {"Annihilation": "剿灭", "1-7": "土", "CE-6": "龙门币"}
-            )
-            self.assertEqual(_read(cfg, "每日任务")[0], "土")
+            self.assertEqual(_read(cfg, "理智作战")[0], "CE-6")
+            self.assertFalse(cfg._dispatch_daily("理智作战").read_enabled())
+            self.assertEqual(_read(cfg, "剩余理智"), ("1-7", None))
+            self.assertFalse(cfg._dispatch_daily("剩余理智").read_enabled())
 
 
 class TestReadbackStarRailWeekly(unittest.TestCase):

@@ -3,7 +3,7 @@
 import logging
 import os
 
-from src.config.daily import DAILY_CLASSES, Daily
+from src.config.daily import DAILY_CLASSES, Daily, MaaFightDaily
 from src.config.task_config import (
     get_daily_configs,
     get_physical_name,
@@ -866,6 +866,23 @@ class ArknightsConfig(ScriptConfig):
     _weekly_config_rel_path = "config/gui.new.json"
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "理智药剂"))
 
+    @classmethod
+    def get_task_lists(cls, task_name: str, source: str) -> list[str]:
+        """按声明的刷图机制读取 MAA 本地资源，与选择关卡时共用解析。"""
+        declaration = next(
+            (
+                item
+                for item in get_daily_configs(cls._script_name)
+                if get_physical_name(item) == task_name
+            ),
+            None,
+        )
+        assert declaration is not None, f"未声明的 MAA 日常: {task_name}"
+        assert declaration["class"] in DAILY_CLASSES
+        daily_class = DAILY_CLASSES[declaration["class"]]
+        assert issubclass(daily_class, MaaFightDaily)
+        return daily_class.load_stages(cls._script_name, source, declaration["config"])
+
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """周常「理智药剂」：按周几起写过期理智药使用窗口，并随副本启停同步开关。
 
@@ -904,7 +921,7 @@ class ArknightsConfig(ScriptConfig):
                 continue
             enabled = bool(task["IsEnable"])
             # 剿灭不吃理智药：开启但仍强制 false
-            use_medicine = enabled and task["Name"] != "剿灭"
+            use_medicine = enabled and task["StagePlan"] != ["Annihilation"]
             changed |= safe_update(
                 task,
                 "UseExpiringMedicine",
@@ -1004,6 +1021,14 @@ def init_config_all() -> None:
     """对齐所有已注册脚本的 config 与模板（启动时调用）。"""
     for script_name in _CONFIGS:
         init_config(script_name)
+
+
+def prepare_daily_tasks(script_name: str) -> None:
+    """运行前让日常机制刷新时效状态；未适配脚本跳过。"""
+    if script_name not in _CONFIGS:
+        return
+    for daily in _CONFIGS[script_name]()._build_dailies():
+        daily.prepare_run()
 
 
 def set_config(

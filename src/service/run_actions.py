@@ -11,7 +11,7 @@ import logging
 import time
 from datetime import datetime
 
-from src.config.set_config import set_config
+from src.config.set_config import prepare_daily_tasks, set_config
 from src.log.monitor import parse_logs
 from src.log.notify_mail import send_mail
 from src.service.chain_gen import resolve_weekly_start
@@ -78,6 +78,7 @@ def apply_subscript_config(
         weekly_start_map: weekly.yml 的 weekly_start 段 全量映射（{脚本标识: 1~7}）；None 按空处理。
     """
     for name in enabled_keys:
+        prepare_daily_tasks(name)
         weekly_start = resolve_weekly_start(weekly_start_map or {}, name)
         set_config(name, weekly_start=weekly_start)
 

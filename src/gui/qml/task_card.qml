@@ -185,7 +185,7 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (Bridge.dailyOptions(modelData.name).length === 0) {
+                                if (Bridge.dailyOptions(modelData.name).length === 0 && !modelData.can_disable) {
                                     Bridge.toastRequested("暂无副本选项")
                                     return
                                 }

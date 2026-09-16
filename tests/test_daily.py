@@ -60,7 +60,7 @@ class TestDispatch(unittest.TestCase):
         self.assertEqual(anomaly.display_name, "异象界域")
         self.assertEqual(hunter.display_name, "追猎目标")
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
-        self.assertIsInstance(_CONFIGS["MAA"]()._build_dailies()[0], MaaDaily)
+        self.assertIsInstance(_CONFIGS["MAA"]()._build_dailies()[1], MaaDaily)
         # 标准两层脚本用默认机制类
         self.assertIs(type(_CONFIGS["ok-ww"]()._build_dailies()[0]), Daily)
 

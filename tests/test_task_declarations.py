@@ -180,30 +180,45 @@ class TestDeclarationBindings(unittest.TestCase):
             cfg.prepare_weekly_start_day(2)
             self.assertEqual(config, {"NativeTasks": ["unrelated"]})
 
-    def test_maa_fixed_stage_behavior_does_not_depend_on_display_alias(self):
-        for option in self.daily["MAA"][0]["options"]["values"]:
-            if option["physical_name"] == "1-7":
-                option["display_name"] = "新土别名"
+    def test_maa_roles_follow_declared_names_and_resource(self):
+        self.daily["MAA"][1]["display_name"] = "主刷"
+        self.daily["MAA"][1]["physical_name"] = "NativeFight"
+        self.daily["MAA"][1]["options"]["source"]["path"] = "assets/stages.json"
         cfg = self.load_adapters().ArknightsConfig()
         queue = [
-            {"$type": "FightTask", "StagePlan": [stage], "IsEnable": False}
-            for stage in ("Annihilation", "1-7", "AP-5", "CE-6")
+            {
+                "Name": name,
+                "$type": "FightTask",
+                "TaskType": "Fight",
+                "StagePlan": [stage],
+                "IsEnable": False,
+            }
+            for name, stage in (
+                ("剿灭", "Annihilation"),
+                ("剩余理智", "1-7"),
+                ("NativeFight", "AP-5"),
+                ("自建", "CE-6"),
+            )
         ]
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
             patch.object(daily_mod, "save_config"),
+            patch.object(
+                daily_mod, "load_normal_stages", return_value=["PR-A-2", "AP-5"]
+            ) as loader,
         ):
-            cfg.set_daily_task("每日任务", "新土别名")
+            cfg.set_daily_task("主刷", "PR-A-2")
             self.assertEqual(
-                [task["IsEnable"] for task in queue], [True, True, False, False]
+                [task["Name"] for task in queue if task["IsEnable"]], ["NativeFight"]
             )
-            self.assertEqual(_read(cfg, "每日任务"), ("新土别名", None))
-            cfg.set_daily_task("每日任务", "红票")
+            self.assertEqual(_read(cfg, "主刷"), ("PR-A-2", None))
+            cfg.set_daily_task("主刷", "AP-5")
             self.assertEqual(
-                [task["IsEnable"] for task in queue], [True, True, True, False]
+                [task["Name"] for task in queue if task["IsEnable"]], ["NativeFight"]
             )
-            self.assertEqual(_read(cfg, "每日任务"), ("红票", None))
+            self.assertEqual(_read(cfg, "主刷"), ("AP-5", None))
+            loader.assert_called_with("MAA", "assets/stages.json")
 
     def test_native_single_daily_entry_points_remain_available(self):
         """单日常脚本的写/读入口仍在（都委托给该脚本解析出的日常实现类）。"""

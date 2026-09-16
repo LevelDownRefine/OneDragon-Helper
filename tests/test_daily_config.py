@@ -104,17 +104,21 @@ class TestGetWeeklyDefs(unittest.TestCase):
 
 class TestGetDailyMap(unittest.TestCase):
     def test_real_declarations_keep_one_menu_per_daily(self):
-        with patch("src.config.daily_config.get_task_lists", return_value=[]):
+        with patch(
+            "src.config.daily_config.get_task_lists",
+            return_value=["CA-5", "PR-B-2", "R8-11"],
+        ):
             menus = get_daily_map()
         self.assertEqual(set(menus), set(load_daily_map()))
-        maa = menus["MAA"]["dailies"][0]
-        self.assertEqual(maa["display_name"], "每日任务")
+        maa = menus["MAA"]["dailies"][1]
+        self.assertEqual(maa["display_name"], "理智作战")
         values = maa["options"]["values"]
         self.assertEqual(
             [option["display_name"] for option in values],
-            ["红票", "经验", "龙门币", "土"],
+            ["CA-5", "PR-B-2", "R8-11"],
         )
-        # 物化补齐缺省物理名（MAA 声明自带关卡代码，原样保留）；叶子选项不带子选项组
+        self.assertEqual(values, menus["MAA"]["dailies"][2]["options"]["values"])
+        # 资源展开的关卡代码直接作为展示名和物理名。
         self.assertTrue(all("physical_name" in option for option in values))
         self.assertTrue(all("options" not in option for option in values))
         # 异环两个日常各一份菜单（不再合并）
