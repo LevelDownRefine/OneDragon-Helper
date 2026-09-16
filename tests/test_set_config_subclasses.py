@@ -1437,12 +1437,15 @@ class TestArknightsConfig(unittest.TestCase):
         self.assertEqual(name_by_stage["1-7"], "1-7")
         self.assertEqual(name_by_stage, cfg._dispatch_daily("剩余理智")._name_by_stage)
 
-    def test_init_config_no_template_is_noop(self):
-        """粥无模板（_template_rel_path 为空）：_init_config 不应加载模板或写盘。"""
+    def test_init_config_missing_native_config_is_noop(self):
+        """未安装 MAA 时跳过初始化，不加载模板或创建原生配置。"""
         cfg = ArknightsConfig()
         with (
             patch.object(ArknightsConfig, "_load_template") as mock_template,
-            patch("src.config.set_config.save_config") as mock_save,
+            patch(
+                "src.config.daily.load_config", side_effect=AssertionError("missing")
+            ),
+            patch("src.config.daily.save_config") as mock_save,
         ):
             cfg._init_config()
         mock_template.assert_not_called()

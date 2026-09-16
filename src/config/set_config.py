@@ -3,7 +3,14 @@
 import logging
 import os
 
-from src.config.daily import DAILY_CLASSES, Daily, MaaActivityDaily
+from src.config.daily import (
+    DAILY_CLASSES,
+    Daily,
+    MaaActivityDaily,
+    MaaDaily,
+    MaaFightDaily,
+)
+from src.config.maa_farming import build_annihilation_fight, build_farming_queue
 from src.config.task_config import (
     get_daily_configs,
     get_physical_name,
@@ -835,6 +842,49 @@ class ArknightsConfig(ScriptConfig):
     _weekly_config_rel_path = "config/gui.new.json"
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "理智药剂"))
 
+    def _init_config(self) -> None:
+        """初始化刷图队列及用药窗口，并停用已过期的活动。"""
+        activity = next(d for d in self._dailies if type(d) is MaaActivityDaily)
+        main = next(d for d in self._dailies if type(d) is MaaDaily)
+        remaining = next(d for d in self._dailies if type(d) is MaaFightDaily)
+        config = main._load_daily_config(allow_missing=True)
+        if config is None:
+            return
+        queue = main._task_queue(config)
+        expire_days, medicine_changed = main._sync_medicine_expire_days(queue)
+        # 剿灭必刷并先于日常；识别旧版以 StagePlan 维护的剿灭入口。
+        annihilation_source = next(
+            (
+                task
+                for task in queue
+                if task["TaskType"] == "Fight"
+                and (
+                    task["Name"] == "剿灭作战" or task["StagePlan"] == ["Annihilation"]
+                )
+            ),
+            {},
+        )
+        name = annihilation_source["Name"] if annihilation_source else "剿灭作战"
+        stage = "Annihilation"
+        if (
+            "AnnihilationStage" in annihilation_source
+            and annihilation_source["UseCustomAnnihilation"]
+        ):
+            stage = annihilation_source["AnnihilationStage"]
+        annihilation = build_annihilation_fight(annihilation_source, name, stage)
+        main._apply_medicine(annihilation, annihilation_source, expire_days)
+        rebuilt = build_farming_queue(
+            queue,
+            annihilation,
+            activity._init_task(queue, expire_days),
+            main._init_task(queue, expire_days),
+            remaining._init_task(queue, expire_days),
+        )
+        if queue == rebuilt and not medicine_changed:
+            return
+        queue[:] = rebuilt
+        main._save_daily_config(config)
+
     @classmethod
     def get_task_lists(cls, source: dict) -> list[str]:
         """按资源来源查找声明的读取方式，与选择关卡时共用解析。"""
@@ -966,9 +1016,9 @@ class ArknightsConfig(ScriptConfig):
 
 
 def init_config(script_name: str) -> None:
-    """对齐脚本 config 与模板，补全缺失字段。
+    """初始化脚本配置，按适配器规则对齐模板或任务结构。
 
-    仅对声明了 ``_template_rel_path`` 的脚本生效；无模板或脚本未安装/未配置时为空操作。
+    未适配初始化或脚本未安装/未配置时为空操作。
 
     Args:
         script_name: 脚本标识名。
@@ -979,17 +1029,9 @@ def init_config(script_name: str) -> None:
 
 
 def init_config_all() -> None:
-    """对齐所有已注册脚本的 config 与模板（启动时调用）。"""
+    """按各适配器规则初始化已注册脚本的配置（启动时调用）。"""
     for script_name in _CONFIGS:
         init_config(script_name)
-
-
-def prepare_daily_tasks(script_name: str) -> None:
-    """运行前让日常机制刷新时效状态；未适配脚本跳过。"""
-    if script_name not in _CONFIGS:
-        return
-    for daily in _CONFIGS[script_name]()._build_dailies():
-        daily.prepare_run()
 
 
 def set_config(

@@ -206,7 +206,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
             self.assertEqual(
                 next(task for task in queue if task["Name"] == old["Name"]), old
             )
-        ArknightsConfig()._dispatch_daily("活动关卡").prepare_run()
+        ArknightsConfig()._init_config()
         queue = self.store["config/gui.new.json"]["Configurations"]["Default"][
             "TaskQueue"
         ]
@@ -281,6 +281,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         queue[:] = [task for task in queue if task["$type"] != "FightTask"]
         other_tasks = copy.deepcopy(queue)
         cfg = ArknightsConfig()
+        cfg._init_config()
         for daily_name, stage in (
             ("剩余理智", "1-7"),
             ("理智作战", "AP-5"),
@@ -288,7 +289,6 @@ class TestArknightsConfigSafety(unittest.TestCase):
         ):
             cfg.set_daily_enabled(daily_name, False)
             cfg.set_daily_task(daily_name, stage)
-        cfg._dispatch_daily("活动关卡").prepare_run()
         queue = self.store["config/gui.new.json"]["Configurations"]["Default"][
             "TaskQueue"
         ]
@@ -366,12 +366,12 @@ class TestArknightsConfigSafety(unittest.TestCase):
             self.assertFalse(daily.read_enabled())
         self.assertEqual(self.saves, [])
 
-    def test_expired_activity_is_disabled_before_fallback_runs(self):
+    def test_init_disables_expired_activity_and_keeps_main_enabled(self):
         cfg = ArknightsConfig()
         cfg.set_daily_task("活动关卡", "SR-8")
         cfg.set_daily_task("理智作战", "AP-5")
         with patch.object(daily_mod, "load_activity_stages", return_value=[]):
-            self.assertTrue(cfg._dispatch_daily("活动关卡").prepare_run())
+            cfg._init_config()
         after = self.store["config/gui.new.json"]
         activity = next(
             task
@@ -383,13 +383,13 @@ class TestArknightsConfigSafety(unittest.TestCase):
         self.assertTrue(cfg._dispatch_daily("理智作战").read_enabled())
         self.assertEqual(cfg._dispatch_daily("活动关卡").read(), ("SR-8", None))
 
-    def test_disabled_activity_is_not_reenabled_by_prepare(self):
+    def test_init_does_not_reenable_disabled_activity(self):
         cfg = ArknightsConfig()
         cfg.set_daily_task("活动关卡", "SR-7")
         cfg.set_daily_enabled("活动关卡", False)
-        cfg._dispatch_daily("活动关卡").prepare_run()
+        cfg._init_config()
         before = copy.deepcopy(self.store["config/gui.new.json"])
-        self.assertFalse(cfg._dispatch_daily("活动关卡").prepare_run())
+        cfg._init_config()
         self.assertEqual(self.store["config/gui.new.json"], before)
 
     def test_activity_choice_must_still_be_available(self):
@@ -418,6 +418,7 @@ class TestArknightsConfigSafety(unittest.TestCase):
         cfg.set_daily_task("活动关卡", "SR-8")
         cfg.set_daily_task("理智作战", "AP-5")
         with patch.object(daily_mod, "load_activity_stages", return_value=[]):
+            cfg._init_config()
             apply_subscript_config({"MAA"}, {"MAA": 1})
         queue = self.store["config/gui.new.json"]["Configurations"]["Default"][
             "TaskQueue"

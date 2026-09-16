@@ -1,7 +1,7 @@
 """MAS 刷图任务生成规则；不读写配置，名字和用药由 Daily 适配。
 
 来源：AUTO-MAS c26f1095，app/task/MAA/AutoProxy.py 与 app/utils/constants.py。
-保留其「复制原生选项 → 覆盖托管字段」语义，创建和运行使用同一套规则。
+保留其「复制原生选项 → 覆盖托管字段」语义，初始化和编辑使用同一套规则。
 """
 
 # Copyright (C) 2024-2025 DLmaster361
@@ -125,12 +125,12 @@ def build_annihilation_fight(source: dict, name: str, stage: str) -> dict:
     return task
 
 
-def build_runtime_queue(
+def build_farming_queue(
     source_queue: list[dict],
     annihilation: dict,
-    activity: dict | None,
-    main: dict | None,
-    remaining: dict | None,
+    activity: dict,
+    main: dict,
+    remaining: dict,
 ) -> list[dict]:
     """移植 MAS 重新生成战斗队列的流程，只接管本项目范围内的 Fight。
 
@@ -146,9 +146,7 @@ def build_runtime_queue(
         (i + 1 for i, task in enumerate(queue) if task["TaskType"] == "StartUp"),
         0,
     )
-    priority = [deepcopy(annihilation)]
-    if activity is not None:
-        priority.append(deepcopy(activity))
+    priority = [deepcopy(annihilation), deepcopy(activity)]
     queue[start:start] = priority
     start += len(priority)
     depot = next(
@@ -156,7 +154,5 @@ def build_runtime_queue(
         start,
     )
     start = max(start, depot)
-    queue[start:start] = [
-        deepcopy(task) for task in (main, remaining) if task is not None
-    ]
+    queue[start:start] = [deepcopy(main), deepcopy(remaining)]
     return queue

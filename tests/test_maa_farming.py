@@ -12,12 +12,12 @@ from src.config import set_config as sc_mod
 from src.config.maa_farming import (
     build_activity_fight,
     build_annihilation_fight,
+    build_farming_queue,
     build_main_fight,
     build_remaining_fight,
-    build_runtime_queue,
     find_fight_source,
 )
-from src.config.set_config import ArknightsConfig, prepare_daily_tasks
+from src.config.set_config import ArknightsConfig, init_config
 from tests.test_arknights_config_safety import load_fixture
 
 MEDICINE_FIELDS = {
@@ -59,7 +59,7 @@ class TestMasReference(unittest.TestCase):
                 # 原生非战斗项保持原样；匿名、自定义和重复 Fight 不得额外进入执行。
                 other = [t for t in expected if t["TaskType"] != "Fight"]
                 annihilation = build_annihilation_fight({}, "剿灭作战", "Annihilation")
-                queue = build_runtime_queue(source + other, annihilation, *actual)
+                queue = build_farming_queue(source + other, annihilation, *actual)
                 expected = expected[:1] + [annihilation] + expected[1:]
                 # 用药已归本项目统一管理，其余字段和任务顺序继续对照 MAS。
                 for task, reference in zip(queue, expected, strict=True):
@@ -99,7 +99,7 @@ class TestMasReference(unittest.TestCase):
                     )
 
 
-class TestMaaFarmingRuntime(unittest.TestCase):
+class TestMaaFarmingInit(unittest.TestCase):
     def setUp(self):
         # 使用原始夹具，不预先将旧任务重命名成代码期待的名字。
         self.store = {"config/gui.new.json": load_fixture()}
@@ -155,7 +155,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         )
         before = [copy.deepcopy(t) for t in self.queue() if t["TaskType"] != "Fight"]
         self.select_all()
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         self.assertEqual(
             list(self.roles()), ["剿灭", "活动关优先", "理智作战", "剩余理智"]
         )
@@ -164,19 +164,19 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         self.assertTrue(self.roles()["剿灭"]["IsEnable"])
         saved = copy.deepcopy(self.store)
         count = len(self.saves)
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         self.assertEqual(self.store, saved)
         self.assertEqual(len(self.saves), count)
 
     def test_expired_activity_keeps_fixed_stage_until_user_selects_again(self):
         self.select_all()
         self.stages = []
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         self.assertFalse(self.roles()["活动关优先"]["IsEnable"])
         self.assertFalse(self.activity.read_enabled())
         self.assertEqual(self.activity.read(), ("ACT-7", None))
         self.stages = ["NEW-8", "NEW-7"]
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         self.assertEqual(self.roles()["活动关优先"]["StagePlan"], ["ACT-7"])
         self.assertFalse(self.roles()["活动关优先"]["IsEnable"])
         self.cfg.set_daily_task("活动关卡", "NEW-7")
@@ -189,7 +189,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         self.select_all()
         self.cfg.set_daily_enabled("活动关卡", False)
         self.stages = ["NEW-8", "NEW-7"]
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         self.assertFalse(self.roles()["活动关优先"]["IsEnable"])
         self.assertFalse(self.activity.read_enabled())
 
@@ -197,12 +197,12 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         self.stages = ["ACT-8", "ACT-7", "ACT-8", "ACT-6"]
         self.cfg.set_daily_task("活动关卡", "ACT-6")
         self.stages = ["ACT-6", "ACT-8", "ACT-7"]
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         self.assertEqual(self.roles()["活动关优先"]["StagePlan"], ["ACT-6"])
         self.assertTrue(self.activity.read_enabled())
         self.assertEqual(self.activity.read(), ("ACT-6", None))
 
-    def test_existing_limits_are_reset_each_run_and_medicine_is_preserved(self):
+    def test_init_resets_limits_and_preserves_medicine(self):
         self.select_all()
         for task in self.roles().values():
             task.update(
@@ -219,7 +219,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
                 UseExpiringMedicine=False,
                 MedicineExpireDays=4,
             )
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         for name, task in self.roles().items():
             self.assertFalse(task["EnableTimesLimit"], name)
             self.assertFalse(task["EnableTargetDrop"], name)
@@ -236,7 +236,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
     def test_main_and_remaining_can_be_disabled_independently(self):
         self.select_all()
         self.cfg.set_daily_enabled("理智作战", False)
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         self.assertFalse(self.roles()["理智作战"]["IsEnable"])
         self.assertTrue(self.roles()["剩余理智"]["IsEnable"])
         self.assertTrue(self.roles()["活动关优先"]["IsEnable"])
@@ -248,7 +248,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
                 self.assertTrue(task["UseExpiringMedicine"], name)
         self.cfg.set_daily_enabled("理智作战", False)
         self.stages = []
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         self.assertFalse(self.roles()["理智作战"]["IsEnable"])
         self.assertFalse(self.roles()["活动关优先"]["IsEnable"])
         for name, task in self.roles().items():
@@ -258,7 +258,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         self.select_all()
         for start_day, expire_days in ((1, 7), (6, 2), (7, 1)):
             with self.subTest(start_day=start_day):
-                prepare_daily_tasks("MAA")
+                init_config("MAA")
                 self.cfg.prepare_weekly_start_day(start_day)
                 for task in self.roles().values():
                     self.assertTrue(task["UseExpiringMedicine"])
@@ -278,7 +278,7 @@ class TestMaaFarmingRuntime(unittest.TestCase):
                 self.select_all()
                 for task in self.roles().values():
                     self.assertEqual(task["MedicineExpireDays"], expire_days)
-                prepare_daily_tasks("MAA")
+                init_config("MAA")
                 self.assertIn("剿灭作战", self.roles())
                 for task in self.roles().values():
                     self.assertEqual(task["MedicineExpireDays"], expire_days)
@@ -310,10 +310,10 @@ class TestMaaFarmingRuntime(unittest.TestCase):
 
     def test_window_correction_is_saved_without_other_task_changes(self):
         self.select_all()
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         for action in (
             lambda: self.cfg.set_daily_task("理智作战", "AP-5"),
-            self.activity.prepare_run,
+            self.cfg._init_config,
         ):
             self.roles()["理智作战"]["MedicineExpireDays"] = 2
             self.roles()["活动关优先"]["MedicineExpireDays"] = 7
@@ -343,18 +343,77 @@ class TestMaaFarmingRuntime(unittest.TestCase):
         duplicate = copy.deepcopy(self.roles()["理智作战"])
         duplicate["Series"] = 99
         self.queue().append(duplicate)
-        prepare_daily_tasks("MAA")
+        init_config("MAA")
         self.assertEqual(sum(t["Name"] == "理智作战" for t in self.queue()), 1)
         self.assertNotEqual(self.roles()["理智作战"]["Series"], 99)
 
     def test_missing_annihilation_is_created_without_a_new_gui_entry(self):
         self.queue()[:] = [t for t in self.queue() if t["TaskType"] != "Fight"]
-        prepare_daily_tasks("MAA")
-        self.assertEqual(list(self.roles()), ["剿灭作战"])
+        init_config("MAA")
+        self.assertEqual(
+            list(self.roles()), ["剿灭作战", "活动关优先", "理智作战", "剩余理智"]
+        )
         self.assertTrue(self.roles()["剿灭作战"]["IsEnable"])
+        for name in ("活动关优先", "理智作战", "剩余理智"):
+            self.assertFalse(self.roles()[name]["IsEnable"])
+            self.assertEqual(self.roles()[name]["StagePlan"], [""])
         self.cfg.prepare_weekly_start_day(1)
         self.assertTrue(self.roles()["剿灭作战"]["UseExpiringMedicine"])
         self.assertEqual(len(self.cfg._build_dailies()), 3)
+
+    def test_init_then_select_and_disable_preserves_slots_and_non_fights(self):
+        self.queue()[:] = [t for t in self.queue() if t["TaskType"] != "Fight"]
+        depot = {
+            "$type": "DepotMaintainTask",
+            "TaskType": "DepotMaintain",
+            "Name": "库存保持",
+            "IsEnable": True,
+        }
+        self.queue().insert(2, depot)
+        before = copy.deepcopy(self.queue())
+        init_config("MAA")
+        order = [task["Name"] for task in self.queue()]
+        self.assertEqual(order[1:3], ["剿灭作战", "活动关优先"])
+        depot_index = order.index("库存保持")
+        self.assertEqual(
+            order[depot_index + 1 : depot_index + 3], ["理智作战", "剩余理智"]
+        )
+        for name, stage in (
+            ("剩余理智", "1-7"),
+            ("活动关卡", "ACT-7"),
+            ("理智作战", "AP-5"),
+        ):
+            self.cfg.set_daily_task(name, stage)
+        self.cfg.set_daily_enabled("理智作战", False)
+        self.assertEqual([task["Name"] for task in self.queue()], order)
+        self.assertEqual([t for t in self.queue() if t["TaskType"] != "Fight"], before)
+        self.assertEqual(self.roles()["理智作战"]["StagePlan"], ["AP-5"])
+        self.assertFalse(self.roles()["理智作战"]["IsEnable"])
+        self.assertTrue(self.roles()["活动关优先"]["IsEnable"])
+        self.assertTrue(self.roles()["剩余理智"]["IsEnable"])
+        saved = copy.deepcopy(self.store)
+        count = len(self.saves)
+        init_config("MAA")
+        self.assertEqual(self.store, saved)
+        self.assertEqual(len(self.saves), count)
+
+    def test_run_does_not_rebuild_queue_or_recheck_expired_activity(self):
+        from src.service.run_actions import apply_subscript_config
+
+        self.select_all()
+        init_config("MAA")
+        self.stages = []
+        before = copy.deepcopy(self.queue())
+        for task in before:
+            if task["TaskType"] == "Fight":
+                task["MedicineExpireDays"] = 2
+        with patch.object(daily_mod, "load_activity_stages") as stages:
+            apply_subscript_config({"MAA"}, {"MAA": 6})
+        stages.assert_not_called()
+        self.assertEqual(self.queue(), before)
+        self.assertTrue(self.roles()["活动关优先"]["IsEnable"])
+        init_config("MAA")
+        self.assertFalse(self.roles()["活动关优先"]["IsEnable"])
 
     def test_stale_menu_choice_is_rejected_without_writing(self):
         with self.assertRaises(ValueError):
@@ -401,7 +460,7 @@ class TestMaaNativePersistence(unittest.TestCase):
                 )
 
                 stages.return_value = ["NEW-8", "NEW-7"]
-                prepare_daily_tasks("MAA")
+                init_config("MAA")
                 written = json.loads(native.read_text(encoding="utf-8"))
                 activity = next(
                     t

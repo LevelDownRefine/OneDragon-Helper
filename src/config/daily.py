@@ -10,10 +10,8 @@ from typing import Any
 
 from src.config.maa_farming import (
     build_activity_fight,
-    build_annihilation_fight,
     build_main_fight,
     build_remaining_fight,
-    build_runtime_queue,
     find_fight_source,
 )
 from src.config.maa_stages import load_activity_stages
@@ -315,10 +313,6 @@ class Daily:
             return task, None
         return task, section[seq_field]
 
-    def prepare_run(self) -> bool:
-        """运行前刷新日常；固定配置无需处理。"""
-        return False
-
     def read_enabled(self) -> bool | None:
         """反读该日常是否启用；无日常开关文件的脚本返回 None。
 
@@ -539,7 +533,7 @@ class MaaFightDaily(Daily):
         }
 
     def _tasks(self, queue: list[dict]) -> list[dict]:
-        """与 MAS 一致，取首个同名同类型任务；运行前消除重复项。"""
+        """与 MAS 一致，取首个同名同类型任务；初始化时消除重复项。"""
         for task in queue:
             if (
                 get_field(task, "TaskType", self.display_name, str) == "Fight"
@@ -548,17 +542,6 @@ class MaaFightDaily(Daily):
             ):
                 return [task]
         return []
-
-    def _dailies(self) -> list["MaaFightDaily"]:
-        dailies = []
-        for declaration in get_daily_configs(self.script_name):
-            assert declaration["class"] in DAILY_CLASSES
-            daily = DAILY_CLASSES[declaration["class"]](
-                self.script_name, declaration, self.script_display_name
-            )
-            assert isinstance(daily, MaaFightDaily)
-            dailies.append(daily)
-        return dailies
 
     def _build_fight(self, source: dict, stage: str, series: int) -> dict:
         return build_remaining_fight(source, self.physical_name, stage, series)
@@ -588,14 +571,18 @@ class MaaFightDaily(Daily):
         self, queue: list[dict], stage: str, enabled: bool, medicine_expire_days: int
     ) -> dict:
         """复用 MAS 生成规则；用药由本项目统一配置。"""
-        main = next(daily for daily in self._dailies() if type(daily) is MaaDaily)
-        main_source = find_fight_source(queue, main.physical_name) or {}
+        main_name = next(
+            get_physical_name(declaration)
+            for declaration in get_daily_configs(self.script_name)
+            if declaration["class"] == MaaDaily.__name__
+        )
+        main_source = find_fight_source(queue, main_name) or {}
         series = 0
         if "Series" in main_source:
             series = main_source["Series"]
         own_source = find_fight_source(queue, self.physical_name)
         # MAS 脚本模式先规范理智作战，再将它作为缺失角色的来源。
-        fallback = build_main_fight(main_source, main.physical_name, "", series)
+        fallback = build_main_fight(main_source, main_name, "", series)
         source = own_source if own_source is not None else fallback
         task = self._build_fight(source, stage, series)
         task["IsEnable"] = enabled
@@ -625,7 +612,7 @@ class MaaFightDaily(Daily):
         task["MedicineExpireDays"] = medicine_expire_days
 
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
-        """编辑期保存角色选关；托管字段同运行期使用 MAS 生成规则。"""
+        """编辑期保存角色选关；托管字段同初始化使用 MAS 生成规则。"""
         assert sequence is None, f"{self.display_name} 没有二级选项"
         assert task_name in self._stage_by_name, f"未声明的关卡: {task_name}"
         config = self._load_daily_config()
@@ -645,12 +632,11 @@ class MaaFightDaily(Daily):
         self._save_daily_config(config)
         return True
 
-    def _runtime_task(
-        self, queue: list[dict], medicine_expire_days: int
-    ) -> dict | None:
+    def _init_task(self, queue: list[dict], medicine_expire_days: int) -> dict:
+        """规范已有任务；缺失时建立尚未选关的禁用任务。"""
         source = find_fight_source(queue, self.physical_name)
         if source is None:
-            return None
+            return self._build_task(queue, "", False, medicine_expire_days)
         plan = get_field(source, "StagePlan", self.display_name, list)
         stage = plan[0] if len(plan) == 1 else ""
         assert isinstance(stage, str)
@@ -743,11 +729,10 @@ class MaaActivityDaily(MaaFightDaily):
     def _build_fight(self, source: dict, stage: str, series: int) -> dict:
         return build_activity_fight(source, self.physical_name, stage)
 
-    def _runtime_task(
-        self, queue: list[dict], medicine_expire_days: int
-    ) -> dict | None:
-        task = super()._runtime_task(queue, medicine_expire_days)
-        if task is None or not task["IsEnable"]:
+    def _init_task(self, queue: list[dict], medicine_expire_days: int) -> dict:
+        """初始化时停用已过期的活动，保留原关卡选择。"""
+        task = super()._init_task(queue, medicine_expire_days)
+        if not task["IsEnable"]:
             return task
         stages = self.load_stages(
             self.script_name, self._source_rel_path, self._config_rel_path
@@ -755,50 +740,6 @@ class MaaActivityDaily(MaaFightDaily):
         if task["StagePlan"][0] not in stages:
             task["IsEnable"] = False
         return task
-
-    def prepare_run(self) -> bool:
-        config = self._load_daily_config(allow_missing=True)
-        if config is None:
-            return False
-        queue = self._task_queue(config)
-        expire_days, medicine_changed = self._sync_medicine_expire_days(queue)
-        # 剿灭必刷并先于日常；识别旧版以 StagePlan 维护的剿灭入口。
-        annihilation_source = next(
-            (
-                task
-                for task in queue
-                if task["TaskType"] == "Fight"
-                and (
-                    task["Name"] == "剿灭作战" or task["StagePlan"] == ["Annihilation"]
-                )
-            ),
-            {},
-        )
-        name = annihilation_source["Name"] if annihilation_source else "剿灭作战"
-        stage = "Annihilation"
-        if (
-            "AnnihilationStage" in annihilation_source
-            and annihilation_source["UseCustomAnnihilation"]
-        ):
-            stage = annihilation_source["AnnihilationStage"]
-        annihilation = build_annihilation_fight(annihilation_source, name, stage)
-        self._apply_medicine(annihilation, annihilation_source, expire_days)
-        dailies = self._dailies()
-        activity = next(d for d in dailies if type(d) is MaaActivityDaily)
-        main = next(d for d in dailies if type(d) is MaaDaily)
-        remaining = next(d for d in dailies if type(d) is MaaFightDaily)
-        rebuilt = build_runtime_queue(
-            queue,
-            annihilation,
-            activity._runtime_task(queue, expire_days),
-            main._runtime_task(queue, expire_days),
-            remaining._runtime_task(queue, expire_days),
-        )
-        if queue == rebuilt and not medicine_changed:
-            return False
-        queue[:] = rebuilt
-        self._save_daily_config(config)
-        return True
 
 
 DAILY_CLASSES: dict[str, type[Daily]] = {
