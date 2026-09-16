@@ -2,8 +2,10 @@
 
 import logging
 import os
+from copy import deepcopy
 
-from src.config.daily import DAILY_CLASSES, Daily
+from src.config.daily import DAILY_CLASSES, Daily, MaaDaily
+from src.config.maa_activity import read_activity_stages
 from src.config.task_config import (
     get_daily_configs,
     get_physical_name,
@@ -835,12 +837,82 @@ class ArknightsConfig(ScriptConfig):
     _weekly_config_rel_path = "config/gui.new.json"
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "理智药剂"))
 
+    def _init_config(self) -> None:
+        """建立三个独立入口和必刷剿灭，交给 MAA 原生队列执行。"""
+        activity, main, remaining = self._dailies
+        assert all(isinstance(daily, MaaDaily) for daily in self._dailies)
+        config = main._load_daily_config(allow_missing=True)
+        if config is None:
+            return
+        queue = MaaDaily._task_queue(config)
+        before = deepcopy(queue)
+        days = MaaDaily._medicine_days(queue)
+        annihilation = None
+        others = []
+        daily_names = {daily.physical_name for daily in self._dailies}
+        for task in queue:
+            kind = get_field(task, "$type", "MAA", str)
+            if kind != "FightTask":
+                others.append(task)
+            elif (
+                annihilation is None
+                and not ("Name" in task and task["Name"] in daily_names)
+                and (
+                    MaaDaily._stage(task) == "Annihilation"
+                    or ("Name" in task and task["Name"] == "剿灭作战")
+                )
+            ):
+                annihilation = task
+        if annihilation is None:
+            annihilation = MaaDaily._new_task("剿灭作战")
+        MaaDaily._configure_task(annihilation, "Annihilation", True, days)
+        annihilation["IsStageManually"] = False
+        selected = [daily._init_task(queue, days) for daily in self._dailies]
+        # 插入点按非战斗队列计算，原生任务的相对顺序保持不变。
+        wake = next(
+            (i + 1 for i, task in enumerate(others) if task["$type"] == "StartUpTask"),
+            0,
+        )
+        depot = next(
+            (
+                i + 1
+                for i, task in enumerate(others)
+                if task["$type"] == "DepotMaintainTask"
+            ),
+            wake,
+        )
+        normal = max(wake, depot)
+        queue[:] = (
+            others[:wake]
+            + [annihilation, selected[0]]
+            + others[wake:normal]
+            + selected[1:]
+            + others[normal:]
+        )
+        MaaDaily._set_medicine(queue, days)
+        if queue != before:
+            main._save_daily_config(config)
+
+    @classmethod
+    def get_task_lists(cls, source: dict) -> list[str]:
+        """活动来源使用声明中的路径，普通关卡直接来自 YAML。"""
+        assert source.keys() == {"path"}
+        declarations = [
+            declaration
+            for declaration in get_daily_configs(cls._script_name)
+            if "source" in declaration["options"]
+            and declaration["options"]["source"] == source
+        ]
+        assert declarations, f"未声明的 MAA 资源：{source}"
+        paths = {declaration["config"] for declaration in declarations}
+        assert len(paths) == 1, "同一活动资源必须使用同一客户端配置"
+        return read_activity_stages(cls._script_name, source["path"], paths.pop())
+
     def prepare_weekly_start_day(self, start_day: int) -> None:
-        """周常「理智药剂」：按周几起写过期理智药使用窗口，并随副本启停同步开关。
+        """按周几起写临期窗口，并兜底开启所有战斗的临期药。
 
         与基类二值开关不同，本方法每次调用都直接写入（不按「今天是否到起始日」门控）：
-        - 开启的 FightTask 设 UseExpiringMedicine=true，其余设 false；
-        - 剿灭不吃理智药：即便开启也强制 UseExpiringMedicine=false（照常运行，只是不吃药）；
+        - 所有 FightTask 设 UseExpiringMedicine=true；
         - MedicineExpireDays 由周几起推算：周几起 = 7 - MedicineExpireDays + 1
           ⇒ MedicineExpireDays = 8 - 周几起（周几起∈1~7，1=周一）。
 
@@ -871,13 +943,10 @@ class ArknightsConfig(ScriptConfig):
         for task in task_queue:
             if task["$type"] != "FightTask":
                 continue
-            enabled = bool(task["IsEnable"])
-            # 剿灭不吃理智药：开启但仍强制 false
-            use_medicine = enabled and task["Name"] != "剿灭"
             changed |= safe_update(
                 task,
                 "UseExpiringMedicine",
-                use_medicine,
+                True,
                 self.display_name,
                 assert_key_exists=False,
             )
@@ -902,8 +971,7 @@ class ArknightsConfig(ScriptConfig):
         """编辑期落盘周几起字面起始日到 MedicineExpireDays。
 
         与 prepare_weekly_start_day 不同：本方法只写 MedicineExpireDays（由周几起推算：
-        MedicineExpireDays = 8 - 周几起），不写 UseExpiringMedicine（是否吃药的
-        开关依赖各 FightTask 的启用状态，需运行期按当日副本选型经 prepare_weekly_start_day 计算）。
+        MedicineExpireDays = 8 - 周几起），不改临期药开关。
         编辑期改周几起即应落盘此值，无需等待链运行。
 
         Args:

@@ -41,14 +41,6 @@ def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
     return cfg._dispatch_daily(daily_name).read()
 
 
-def _bind_maa_daily(cfg, mapping: dict):
-    """把粥日常的关卡映射换成测试用的小集合（真实声明里没有这些关卡）。"""
-    daily = cfg._dispatch_daily("每日任务")
-    daily._name_by_stage = dict(mapping)
-    daily._stage_by_name = {name: stage for stage, name in mapping.items()}
-    return daily
-
-
 # ============================================================
 # 基类 ScriptConfig
 # ============================================================
@@ -1429,40 +1421,22 @@ class TestArknightsConfig(unittest.TestCase):
     """测试粥的 _is_aligned / _init_config / set_daily_task"""
 
     def _make_cfg(self):
-        """创建一个跳过 _init_config 的 ArknightsConfig 实例"""
-        with patch.object(ArknightsConfig, "_init_config"):
-            cfg = ArknightsConfig()
-            _bind_maa_daily(
-                cfg,
-                {
-                    "Annihilation": "剿灭",
-                    "AP-5": "红票",
-                    "LS-6": "经验",
-                    "CE-6": "龙门币",
-                    "1-7": "土",
-                },
-            )
-            return cfg
+        return ArknightsConfig()
 
     def test_init_attributes(self):
         cfg = self._make_cfg()
         self.assertEqual(cfg.display_name, "粥")
-        self.assertEqual(cfg._script_name, "MAA")
-        name_by_stage = cfg._dispatch_daily("每日任务")._name_by_stage
-        self.assertIn("Annihilation", name_by_stage)
-        self.assertEqual(name_by_stage["Annihilation"], "剿灭")
-        self.assertEqual(name_by_stage["1-7"], "土")
+        self.assertEqual(
+            [d.display_name for d in cfg._dailies], ["活动关卡", "理智作战", "剩余理智"]
+        )
 
-    def test_init_config_no_template_is_noop(self):
-        """粥无模板（_template_rel_path 为空）：_init_config 不应加载模板或写盘。"""
-        cfg = ArknightsConfig()
+    def test_init_without_native_config_does_not_write(self):
         with (
-            patch.object(ArknightsConfig, "_load_template") as mock_template,
-            patch("src.config.set_config.save_config") as mock_save,
+            patch.object(Daily, "_load_daily_config", return_value=None),
+            patch.object(Daily, "_save_daily_config") as save,
         ):
-            cfg._init_config()
-        mock_template.assert_not_called()
-        mock_save.assert_not_called()
+            ArknightsConfig()._init_config()
+        save.assert_not_called()
 
     # ---- _is_aligned ----
 
@@ -1604,451 +1578,6 @@ class TestArknightsConfig(unittest.TestCase):
         self.assertTrue(cfg._is_aligned(config, template))
 
     # ---- set_daily_task ----
-
-    def test_set_daily_task_disables_all_enables_selected_and_土(self):
-        cfg = self._make_cfg()
-        # 构造合法的 TaskQueue（顺序任意，通过 StagePlan[0] 识别）
-        queue = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {
-                "Name": "剿灭",
-                "$type": "FightTask",
-                "StagePlan": ["Annihilation"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "红票",
-                "$type": "FightTask",
-                "StagePlan": ["AP-5"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "经验",
-                "$type": "FightTask",
-                "StagePlan": ["LS-6"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "龙门币",
-                "$type": "FightTask",
-                "StagePlan": ["CE-6"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "活动土",
-                "$type": "FightTask",
-                "StagePlan": [""],
-                "IsEnable": True,
-            },
-            {
-                "Name": "土",
-                "$type": "FightTask",
-                "StagePlan": ["1-7"],
-                "IsEnable": True,
-            },
-        ]
-
-        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "红票")
-
-        mock_save.assert_called_once()
-        saved_queue = mock_save.call_args[0][0]["Configurations"]["Default"][
-            "TaskQueue"
-        ]
-        by_name = {t["Name"]: t for t in saved_queue}
-        # 红票启用
-        self.assertTrue(by_name["红票"]["IsEnable"])
-        # 土启用（清理剩余体力）
-        self.assertTrue(by_name["土"]["IsEnable"])
-        # 剿灭始终启用（周常）
-        self.assertTrue(by_name["剿灭"]["IsEnable"])
-        # 活动土不动（未维护）
-        self.assertTrue(by_name["活动土"]["IsEnable"])
-        # 其他副本禁用
-        self.assertFalse(by_name["经验"]["IsEnable"])
-        self.assertFalse(by_name["龙门币"]["IsEnable"])
-
-    def test_set_daily_task_unknown_raises(self):
-        cfg = self._make_cfg()
-        config = {"Configurations": {"Default": {"TaskQueue": []}}}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            self.assertRaises(AssertionError),
-        ):
-            cfg.set_daily_task("每日任务", "不存在")
-
-    def test_set_daily_task_elimination_only_enables_elimination_and_土(self):
-        """选择剿灭时，只启用剿灭和土，其他副本禁用"""
-        cfg = self._make_cfg()
-        queue = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {
-                "Name": "剿灭",
-                "$type": "FightTask",
-                "StagePlan": ["Annihilation"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "红票",
-                "$type": "FightTask",
-                "StagePlan": ["AP-5"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "经验",
-                "$type": "FightTask",
-                "StagePlan": ["LS-6"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "龙门币",
-                "$type": "FightTask",
-                "StagePlan": ["CE-6"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "活动土",
-                "$type": "FightTask",
-                "StagePlan": [""],
-                "IsEnable": True,
-            },
-            {
-                "Name": "土",
-                "$type": "FightTask",
-                "StagePlan": ["1-7"],
-                "IsEnable": True,
-            },
-        ]
-
-        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "剿灭")
-
-        mock_save.assert_called_once()
-        saved_queue = mock_save.call_args[0][0]["Configurations"]["Default"][
-            "TaskQueue"
-        ]
-        by_name = {t["Name"]: t for t in saved_queue}
-        # 剿灭启用
-        self.assertTrue(by_name["剿灭"]["IsEnable"])
-        # 土启用（清理剩余体力）
-        self.assertTrue(by_name["土"]["IsEnable"])
-        # 活动土不动（未维护）
-        self.assertTrue(by_name["活动土"]["IsEnable"])
-        # 其他副本禁用
-        self.assertFalse(by_name["红票"]["IsEnable"])
-        self.assertFalse(by_name["经验"]["IsEnable"])
-        self.assertFalse(by_name["龙门币"]["IsEnable"])
-
-    def test_set_daily_task_unknown_stage_skipped(self):
-        """未维护的关卡（StagePlan[0] 不在 _task_map）应跳过，不改 IsEnable"""
-        cfg = self._make_cfg()
-        queue = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {
-                "Name": "未知关卡",
-                "$type": "FightTask",
-                "StagePlan": ["unknown"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "剿灭",
-                "$type": "FightTask",
-                "StagePlan": ["Annihilation"],
-                "IsEnable": True,
-            },
-        ]
-        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(Daily, "_save_daily_config"),
-        ):
-            cfg.set_daily_task("每日任务", "剿灭")
-        unknown = [t for t in queue if t.get("StagePlan") == ["unknown"]][0]
-        self.assertTrue(unknown["IsEnable"])
-
-    def test_set_daily_task_borrows_when_target_stage_absent(self):
-        """issue #42：红票(AP-5) 缺失时，优先借副本列表中的启用槽位（土），
-        改写其 StagePlan；未追踪占位(活动土)不被借用。"""
-        cfg = self._make_cfg()
-        queue = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {
-                "Name": "剿灭",
-                "$type": "FightTask",
-                "StagePlan": ["Annihilation"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "经验",
-                "$type": "FightTask",
-                "StagePlan": ["LS-6"],
-                "IsEnable": False,
-            },
-            {
-                "Name": "龙门币",
-                "$type": "FightTask",
-                "StagePlan": ["CE-6"],
-                "IsEnable": False,
-            },
-            {
-                "Name": "活动土",
-                "$type": "FightTask",
-                "StagePlan": [""],
-                "IsEnable": True,
-                "CANARY": 42,
-            },
-            {
-                "Name": "土",
-                "$type": "FightTask",
-                "StagePlan": ["1-7"],
-                "IsEnable": True,
-                "CANARY": 7,
-            },
-        ]
-        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "红票")
-        mock_save.assert_called_once()
-        saved = mock_save.call_args[0][0]["Configurations"]["Default"]["TaskQueue"]
-        by_name = {t["Name"]: t for t in saved}
-        # 优先借副本列表中的土：StagePlan 改写为目标关卡，仍启用，金丝雀保留
-        self.assertEqual(by_name["土"]["StagePlan"], ["AP-5"])
-        self.assertTrue(by_name["土"]["IsEnable"])
-        self.assertEqual(by_name["土"]["CANARY"], 7)
-        # 活动土未被借用（土在副本列表中优先命中），保持原样
-        self.assertEqual(by_name["活动土"]["StagePlan"], [""])
-        self.assertTrue(by_name["活动土"]["IsEnable"])
-        self.assertEqual(by_name["活动土"]["CANARY"], 42)
-        # 剿灭/经验/龙门币 状态正确
-        self.assertTrue(by_name["剿灭"]["IsEnable"])
-        self.assertFalse(by_name["经验"]["IsEnable"])
-        self.assertFalse(by_name["龙门币"]["IsEnable"])
-
-    def test_set_daily_task_borrows_土_when_only_土_enabled(self):
-        """用户确认土也在可借用范围：仅土启用时，fallback 借用土槽位改写 StagePlan。"""
-        cfg = self._make_cfg()
-        queue = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {
-                "Name": "剿灭",
-                "$type": "FightTask",
-                "StagePlan": ["Annihilation"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "经验",
-                "$type": "FightTask",
-                "StagePlan": ["LS-6"],
-                "IsEnable": False,
-            },
-            {
-                "Name": "龙门币",
-                "$type": "FightTask",
-                "StagePlan": ["CE-6"],
-                "IsEnable": False,
-            },
-            {
-                "Name": "活动土",
-                "$type": "FightTask",
-                "StagePlan": [""],
-                "IsEnable": False,
-            },
-            {
-                "Name": "土",
-                "$type": "FightTask",
-                "StagePlan": ["1-7"],
-                "IsEnable": True,
-            },
-        ]
-        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "红票")
-        mock_save.assert_called_once()
-        saved = mock_save.call_args[0][0]["Configurations"]["Default"]["TaskQueue"]
-        by_name = {t["Name"]: t for t in saved}
-        # 土可作借用槽位（非剿灭即可），改写 StagePlan 且保持启用
-        self.assertEqual(by_name["土"]["StagePlan"], ["AP-5"])
-        self.assertTrue(by_name["土"]["IsEnable"])
-        # 其余副本未被借用
-        self.assertEqual(by_name["活动土"]["StagePlan"], [""])
-        self.assertFalse(by_name["活动土"]["IsEnable"])
-        self.assertEqual(by_name["经验"]["StagePlan"], ["LS-6"])
-        self.assertEqual(by_name["龙门币"]["StagePlan"], ["CE-6"])
-
-    def test_set_daily_task_no_fallback_when_stage_present(self):
-        """目标关卡存在时走主路径，不触发 fallback（钉死回归：任何 StagePlan 不被改写）。"""
-        cfg = self._make_cfg()
-        queue = [
-            {"Name": "开始唤醒", "$type": "StartUpTask"},
-            {
-                "Name": "剿灭",
-                "$type": "FightTask",
-                "StagePlan": ["Annihilation"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "红票",
-                "$type": "FightTask",
-                "StagePlan": ["AP-5"],
-                "IsEnable": False,
-            },
-            {
-                "Name": "经验",
-                "$type": "FightTask",
-                "StagePlan": ["LS-6"],
-                "IsEnable": False,
-            },
-            {
-                "Name": "龙门币",
-                "$type": "FightTask",
-                "StagePlan": ["CE-6"],
-                "IsEnable": False,
-            },
-            {
-                "Name": "活动土",
-                "$type": "FightTask",
-                "StagePlan": [""],
-                "IsEnable": True,
-            },
-            {
-                "Name": "土",
-                "$type": "FightTask",
-                "StagePlan": ["1-7"],
-                "IsEnable": True,
-            },
-        ]
-        config = {"Configurations": {"Default": {"TaskQueue": queue}}}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "红票")
-        mock_save.assert_called_once()
-        saved = mock_save.call_args[0][0]["Configurations"]["Default"]["TaskQueue"]
-        by_name = {t["Name"]: t for t in saved}
-        # 主路径命中红票（IsEnable=True），所有 StagePlan 原封不动
-        self.assertTrue(by_name["红票"]["IsEnable"])
-        self.assertEqual(by_name["红票"]["StagePlan"], ["AP-5"])
-        self.assertEqual(by_name["土"]["StagePlan"], ["1-7"])
-        self.assertEqual(by_name["活动土"]["StagePlan"], [""])
-        self.assertEqual(by_name["经验"]["StagePlan"], ["LS-6"])
-        self.assertEqual(by_name["龙门币"]["StagePlan"], ["CE-6"])
-        self.assertTrue(by_name["剿灭"]["IsEnable"])
-        self.assertTrue(by_name["土"]["IsEnable"])
-        self.assertFalse(by_name["经验"]["IsEnable"])
-        self.assertFalse(by_name["龙门币"]["IsEnable"])
-
-    def test_set_daily_task_roundtrip_borrow_placeholder_then_back_to_土(self):
-        """写→读回往返：红票(AP-5) 缺失优先借副本列表中的土，读回应红票；
-        改回土时 fallback 借未追踪占位装 1-7 恢复，读回应土（has_1_7 恢复）。"""
-        cfg = self._make_cfg()
-        queue = [
-            {
-                "Name": "剿灭",
-                "$type": "FightTask",
-                "StagePlan": ["Annihilation"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "经验",
-                "$type": "FightTask",
-                "StagePlan": ["LS-6"],
-                "IsEnable": False,
-            },
-            {
-                "Name": "活动土",
-                "$type": "FightTask",
-                "StagePlan": [""],
-                "IsEnable": True,
-            },
-            {
-                "Name": "土",
-                "$type": "FightTask",
-                "StagePlan": ["1-7"],
-                "IsEnable": True,
-            },
-        ]
-        store = {
-            "config/gui.new.json": {"Configurations": {"Default": {"TaskQueue": queue}}}
-        }
-
-        def fake_load(rel=None, allow_missing=False):
-            return store["config/gui.new.json"]
-
-        def fake_save(cfg_arg, rel=None):
-            store["config/gui.new.json"] = cfg_arg
-
-        with (
-            patch.object(Daily, "_load_daily_config", side_effect=fake_load),
-            patch.object(Daily, "_save_daily_config", side_effect=fake_save),
-        ):
-            cfg.set_daily_task("每日任务", "红票")
-            self.assertEqual(_read(cfg, "每日任务"), ("红票", None))
-            cfg.set_daily_task("每日任务", "土")
-            self.assertEqual(_read(cfg, "每日任务"), ("土", None))
-
-    def test_set_daily_task_roundtrip_borrow_土_no_placeholder_lost(self):
-        """已知限制（写→读回）：无占位槽位时 fallback 借走真实日常土，
-        改回土时该槽被禁用且无替补可借，_read_daily_task 返回 (None, None)。
-        这是「土可被改」的固有代价，非 bug；仅文档化，不兜底。"""
-        cfg = self._make_cfg()
-        queue = [
-            {
-                "Name": "剿灭",
-                "$type": "FightTask",
-                "StagePlan": ["Annihilation"],
-                "IsEnable": True,
-            },
-            {
-                "Name": "经验",
-                "$type": "FightTask",
-                "StagePlan": ["LS-6"],
-                "IsEnable": False,
-            },
-            {
-                "Name": "土",
-                "$type": "FightTask",
-                "StagePlan": ["1-7"],
-                "IsEnable": True,
-            },
-        ]
-        store = {
-            "config/gui.new.json": {"Configurations": {"Default": {"TaskQueue": queue}}}
-        }
-
-        def fake_load(rel=None, allow_missing=False):
-            return store["config/gui.new.json"]
-
-        def fake_save(cfg_arg, rel=None):
-            store["config/gui.new.json"] = cfg_arg
-
-        with (
-            patch.object(Daily, "_load_daily_config", side_effect=fake_load),
-            patch.object(Daily, "_save_daily_config", side_effect=fake_save),
-        ):
-            cfg.set_daily_task("每日任务", "红票")
-            self.assertEqual(_read(cfg, "每日任务"), ("红票", None))
-            cfg.set_daily_task("每日任务", "土")
-            self.assertEqual(_read(cfg, "每日任务"), (None, None))
-
-
-# ============================================================
-# get_game_exe_path（打开游戏只读查询）
-# ============================================================
 
 
 class TestGetGameExePath(unittest.TestCase):
@@ -2460,7 +1989,7 @@ class TestSetWeekly(unittest.TestCase):
         }
 
     def test_arknights_weekly_syncs_use_expiring_medicine(self):
-        """开启的 FightTask → UseExpiringMedicine=true，其余 false（随 IsEnable 同步）；剿灭不吃药强制 false"""
+        """所有 FightTask 的临期药常开，不随任务启停变化。"""
         cfg = self._make_maa_cfg()
         config = self._maa_config({"剿灭", "土", "活动土"})
         with (
@@ -2473,16 +2002,15 @@ class TestSetWeekly(unittest.TestCase):
             for t in config["Configurations"]["Default"]["TaskQueue"]
             if t.get("$type") == "FightTask"
         }
-        # 剿灭开启但强制不吃药
-        self.assertFalse(by_name["剿灭"]["UseExpiringMedicine"])
+        self.assertTrue(by_name["剿灭"]["UseExpiringMedicine"])
         self.assertTrue(by_name["土"]["UseExpiringMedicine"])
         self.assertTrue(by_name["活动土"]["UseExpiringMedicine"])
-        self.assertFalse(by_name["红票"]["UseExpiringMedicine"])
-        self.assertFalse(by_name["经验"]["UseExpiringMedicine"])
+        self.assertTrue(by_name["红票"]["UseExpiringMedicine"])
+        self.assertTrue(by_name["经验"]["UseExpiringMedicine"])
         mock_save.assert_called_once()
 
-    def test_arknights_weekly_annihilation_no_medicine(self):
-        """剿灭不吃理智药：即便 IsEnable=true，UseExpiringMedicine 强制 false，但照常运行"""
+    def test_arknights_weekly_annihilation_uses_shared_medicine_window(self):
+        """剿灭与普通战斗使用同一个临期窗口。"""
         cfg = self._make_maa_cfg()
         # 仅开启剿灭
         config = self._maa_config({"剿灭"})
@@ -2497,7 +2025,7 @@ class TestSetWeekly(unittest.TestCase):
             if t["Name"] == "剿灭"
         )
         self.assertTrue(annih["IsEnable"], "剿灭应照常开启运行")
-        self.assertFalse(annih["UseExpiringMedicine"], "剿灭不吃理智药")
+        self.assertTrue(annih["UseExpiringMedicine"])
         self.assertEqual(annih["MedicineExpireDays"], 6)  # 周几起=2 ⇒ 8-2
 
     def test_arknights_weekly_expire_days_from_start_day(self):
@@ -2534,15 +2062,12 @@ class TestSetWeekly(unittest.TestCase):
         self.assertNotIn("MedicineExpireDays", startup)
 
     def test_arknights_weekly_no_change_skips_save(self):
-        """配置已符合预期（开启项 true、关闭项 false、剿灭强制 false、MedicineExpireDays 一致）→ 不落盘"""
+        """临期药已常开且窗口一致时不重复落盘。"""
         cfg = self._make_maa_cfg()
         config = self._maa_config({"剿灭", "土", "活动土"})
         for t in config["Configurations"]["Default"]["TaskQueue"]:
             if t.get("$type") == "FightTask":
-                enabled = t["IsEnable"]
-                # 剿灭不吃药，即便开启也强制 false
-                use_medicine = enabled and t["Name"] != "剿灭"
-                t["UseExpiringMedicine"] = use_medicine
+                t["UseExpiringMedicine"] = True
                 t["MedicineExpireDays"] = 8 - 3  # 周几起=3
         with (
             patch("src.config.set_config.load_config", return_value=config),
@@ -2554,8 +2079,7 @@ class TestSetWeekly(unittest.TestCase):
     def test_arknights_weekly_start_day_writes_expire_days_only(self):
         """set_weekly_start_day 只写 MedicineExpireDays（= 8 - 周几起），不动 UseExpiringMedicine。
 
-        编辑期改周几起即应落盘过期窗口，无需等链运行；是否吃药的开关依赖各任务的
-        启用状态，由运行期 prepare_weekly_start_day 另行计算，不在编辑期落盘。
+        编辑期改周几起即应落盘过期窗口，无需等链运行；临期药常开由初始化和运行前兜底。
         """
         cfg = self._make_maa_cfg()
         config = self._maa_config({"土"})

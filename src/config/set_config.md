@@ -69,7 +69,7 @@
 | 绝区零 | 是 | `ZZZ一条龙.yml` | 同上 |
 | 崩铁 | 是 | `M7A一条龙.yml` | 同上 |
 | 异环 | 是（no-op，无模板→直接返回） | — | 同鸣潮 |
-| 粥 | no-op（无模板） | — | 日常以 TaskQueue 表达（`MaaDaily`），无需模板 |
+| 粥 | 补齐剿灭和三个入口、整理顺序、校验活动过期 | `gui.new.json` | 缺失任务使用 `MAA任务.json`；已有任务保留自身设置 |
 
 ## 设置副本流程 set_daily_task
 
@@ -137,7 +137,7 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 
 ### 粥：TaskQueue / StagePlan
 
-`MaaDaily` 覆写 `update` / `read`：关卡代码 ↔ 中文名由声明推导（另加固定的剿灭），基于 `StagePlan[0]` 识别任务，不依赖 TaskQueue 顺序；只维护映射内关卡，其余 FightTask 不动。启用剿灭/土/选定副本；目标关卡缺失时借一个已启用槽位改写其 StagePlan（只改 StagePlan，优先借副本列表内已启用槽，剿灭除外）。反读对称：被勾选 `IsEnable` 的那一项即当前副本；维护关卡都未启用但有 `StagePlan=["1-7"]` 的任务时读为「土」。
+`MaaDaily` 按声明物理名绑定一个原生 `FightTask`，理智作战与剩余理智分别选择一个关卡、独立启停；`MaaActivityDaily` 增加本地活动资源读取与初始化过期检查。新任务从随项目发布的 `MAA任务.json` 创建，不借用其他任务。`ArknightsConfig._init_config` 安排必刷剿灭和三个入口、清理额外 Fight，保留非战斗项。实际执行及关卡开放判断由 MAA 负责，字段依据和完整行为见 [MAA 原生刷图适配](../../docs/maa-adapter.md)。
 
 ## 设置周常流程 prepare_weekly_start_day
 
@@ -151,7 +151,7 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 | 终末地 | `DailyTask.json` 的「只买不卖」布尔（语义反相） |
 | OneDragon-Launcher | `_group.yml` 的 `app_list` 中 `lost_void.enabled` |
 | 崩铁 | `config.yaml` 的 `currencywars_enable`（按周几起门控）+ `echo_of_war_start_day_of_week`（字面起始日，交 M7A 自行门控） |
-| 明日方舟（MAA） | 不做「今天是否到起始日」门控，每次调用直接写 `gui.new.json`——开启的 FightTask 设 `UseExpiringMedicine=true`（其余 false），`MedicineExpireDays` 由周几起推算（周几起 = 7 - MedicineExpireDays + 1） |
+| 明日方舟（MAA） | 所有 FightTask 临期药常开，`MedicineExpireDays = 8 - 周几起`；运行前只同步窗口及兜底开关 |
 
 前四个用 `is_weekly_start_reached(start_day)` 得出「今天是否已到起始日」再写开关；MAA 不经过该门控。
 

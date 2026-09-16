@@ -1,0 +1,14 @@
+{
+    "$type": "FightTask",
+    "TaskType": "Fight",
+    "Name": "",
+    "IsEnable": false,
+    "StagePlan": [""],
+    "Series": 0,
+    "UseMedicine": false,
+    "MedicineCount": 0,
+    "UseStone": false,
+    "StoneCount": 0,
+    "UseStoneAllowSave": false,
+    "UseExpireMedicineForActivity": false
+}

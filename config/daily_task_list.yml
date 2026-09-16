@@ -261,16 +261,36 @@ ok-nte:
     - display_name: 围巢鸟
     - display_name: 斑蝶
 MAA:
-- display_name: 每日任务
+- display_name: 活动关卡
+  physical_name: 活动关优先
+  class: MaaActivityDaily
+  config: config/gui.new.json
+  options:
+    source:
+      path: cache/gui/StageActivityV2.json
+- display_name: 理智作战
   class: MaaDaily
   config: config/gui.new.json
   options:
-    values:
-    - display_name: 红票
-      physical_name: AP-5
-    - display_name: 经验
-      physical_name: LS-6
-    - display_name: 龙门币
-      physical_name: CE-6
-    - display_name: 土
-      physical_name: 1-7
+    values: &maa_stages
+    - display_name: 1-7
+    - display_name: R8-11
+    - display_name: 12-17-HARD
+    - display_name: AP-5
+    - display_name: CA-5
+    - display_name: CE-6
+    - display_name: LS-6
+    - display_name: PR-A-1
+    - display_name: PR-A-2
+    - display_name: PR-B-1
+    - display_name: PR-B-2
+    - display_name: PR-C-1
+    - display_name: PR-C-2
+    - display_name: PR-D-1
+    - display_name: PR-D-2
+    - display_name: SK-5
+- display_name: 剩余理智
+  class: MaaDaily
+  config: config/gui.new.json
+  options:
+    values: *maa_stages
