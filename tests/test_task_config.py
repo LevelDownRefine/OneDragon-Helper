@@ -61,9 +61,15 @@ class TestTaskDeclarations(unittest.TestCase):
         daily = m.load_daily_map()
         weekly = m.load_weekly_map()
         self.assertEqual(len(daily["ok-nte"]), 2)
+        self.assertEqual(
+            [task["display_name"] for task in daily["MAA"]],
+            ["活动关卡", "理智作战", "剩余理智"],
+        )
         self.assertTrue(
             all(
-                len(tasks) == 1 for script, tasks in daily.items() if script != "ok-nte"
+                len(tasks) == 1
+                for script, tasks in daily.items()
+                if script not in {"ok-nte", "MAA"}
             )
         )
         self.assertEqual(
