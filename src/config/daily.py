@@ -16,8 +16,14 @@ from src.config.task_config import (
     get_physical_name,
     get_value_map,
 )
+from src.config.task_source import read_task_source
 from src.utils.utils_dict import get_field, safe_update
-from src.utils.utils_sub_config import load_config, load_template, save_config
+from src.utils.utils_sub_config import (
+    load_config,
+    load_game_config,
+    load_template,
+    save_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +67,10 @@ class Daily:
         self.display_name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
         self._parse_landing(declaration)
+
+    def get_task_lists(self, source: dict) -> list[str]:
+        """读取该日常某组选项的资源；特殊资源格式由机制类覆写。"""
+        return read_task_source(self.script_name, source)
 
     def _read_config(
         self, rel_path: str, *, allow_missing: bool = False
@@ -348,6 +358,38 @@ class Daily:
             是否已落盘；分段脚本覆写本方法判段是否存在。
         """
         return True
+
+
+class GenshinDaily(Daily):
+    """原神的配置读写沿用两层日常，选项按 tp.json 秘境分类读取。"""
+
+    def get_task_lists(self, source: dict) -> list[str]:
+        """遍历地图点位，返回指定 category 的秘境名称。"""
+        assert source.keys() <= {"path", "category"}, (
+            "原神资源来源只支持 path / category"
+        )
+        path = get_field(source, "path", self.display_name, str)
+        category = get_field(source, "category", self.display_name, str)
+        data = load_game_config(self.script_name, path)
+        if not data:
+            return []
+        assert isinstance(data, dict), "原神地图资源必须为 dict"
+        names = []
+        # 地图和点位可没有秘境分类或名称，此时不提供选项。
+        scenes = data["data"] if "data" in data else []  # noqa: SIM401
+        for scene in scenes:
+            if not isinstance(scene, dict) or "points" not in scene:
+                continue
+            for point in scene["points"]:
+                if (
+                    isinstance(point, dict)
+                    and "type" in point
+                    and point["type"] == category
+                    and "name" in point
+                    and point["name"]
+                ):
+                    names.append(point["name"])
+        return names
 
 
 class NoopDaily(Daily):
@@ -689,11 +731,15 @@ class MaaActivityDaily(MaaDaily):
     def _choices(self) -> dict[str, str]:
         """保存选择时重新校验活动是否仍然开放。"""
         return {
-            stage: stage
-            for stage in read_activity_stages(
-                self.script_name, self._activity_path, self._config_rel_path
-            )
+            stage: stage for stage in self.get_task_lists({"path": self._activity_path})
         }
+
+    def get_task_lists(self, source: dict) -> list[str]:
+        """使用该日常自己的客户端配置读取活动选项。"""
+        assert source.keys() == {"path"}
+        return read_activity_stages(
+            self.script_name, source["path"], self._config_rel_path
+        )
 
     def _init_task(self, queue: list[dict], days: int) -> dict:
         """初始化时停用过期关卡，保留其固定代码。"""
@@ -705,6 +751,14 @@ class MaaActivityDaily(MaaDaily):
 
 DAILY_CLASSES: dict[str, type[Daily]] = {
     cls.__name__: cls
-    for cls in (Daily, NoopDaily, Anomaly, AnomalyHunter, MaaDaily, MaaActivityDaily)
+    for cls in (
+        Daily,
+        GenshinDaily,
+        NoopDaily,
+        Anomaly,
+        AnomalyHunter,
+        MaaDaily,
+        MaaActivityDaily,
+    )
 }
 """声明 ``class`` 字段可引用的机制类注册表（键 = 类名）。"""

@@ -301,21 +301,26 @@ class TestMaaNativeConfig(unittest.TestCase):
                 return_value={"MAA": get_daily_configs("MAA")},
             ),
             patch.object(
-                sc_mod, "read_activity_stages", return_value=self.stages
+                daily_mod, "read_activity_stages", return_value=self.stages
             ) as reader,
         ):
             controller.build_daily_cache([])
+            reader.assert_called_once_with(
+                "MAA", "cache/gui/StageActivityV2.json", "config/gui.new.json"
+            )
             self.assertEqual(
                 [item["name"] for item in controller.daily_items],
                 ["活动关卡", "理智作战", "剩余理智"],
             )
             self.assertEqual(len(controller.daily_options("理智作战")), 16)
             controller.selectDaily("活动关卡", "AT-7", None)
+            self.assertEqual(reader.call_count, 2)  # 保存活动选择时再次校验。
+            reader.reset_mock()
             controller.selectDaily("理智作战", "AP-5", None)
             controller.selectDaily("剩余理智", "1-7", None)
             controller.setDailyEnabled("理智作战", False)
             controller.daily_options("活动关卡")
-            reader.assert_called_once()
+            reader.assert_not_called()  # 普通关卡和已缓存菜单不读活动资源。
         self.assertEqual(self.task("活动关优先")["StagePlan"], ["AT-7"])
         self.assertFalse(self.task("理智作战")["IsEnable"])
         self.assertTrue(self.task("剩余理智")["IsEnable"])

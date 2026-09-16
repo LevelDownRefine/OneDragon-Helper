@@ -20,7 +20,7 @@ class TestGetWeeklyDefs(unittest.TestCase):
         with (
             patch("src.config.daily_config.load_weekly_map", return_value=declarations),
             patch(
-                "src.config.set_config.load_game_config",
+                "src.config.task_source.load_game_config",
                 return_value={"历战余响": {"无": "跳过", "铁骸的锈冢": "描述"}},
             ) as load,
         ):
@@ -53,7 +53,7 @@ class TestGetWeeklyDefs(unittest.TestCase):
                 "src.config.daily_config.load_weekly_map",
                 return_value={"x": [task]},
             ),
-            patch("src.config.daily_config.get_task_lists") as source,
+            patch("src.config.daily_config.read_task_source") as source,
         ):
             self.assertEqual(
                 get_weekly_map("x"),
@@ -88,7 +88,7 @@ class TestGetWeeklyDefs(unittest.TestCase):
                     return_value={"x": [task]},
                 ),
                 patch(
-                    "src.config.daily_config.get_task_lists", return_value=names
+                    "src.config.daily_config.read_task_source", return_value=names
                 ) as source,
             ):
                 result = get_weekly_map("x")
@@ -113,7 +113,9 @@ class TestGetWeeklyDefs(unittest.TestCase):
                 "src.config.daily_config.load_weekly_map",
                 return_value={"x": [task]},
             ),
-            patch("src.config.daily_config.get_task_lists", return_value=[]) as source,
+            patch(
+                "src.config.daily_config.read_task_source", return_value=[]
+            ) as source,
         ):
             get_weekly_map("x")
         source.assert_called_once_with("x", {"path": "resource/list.json"})
@@ -140,7 +142,7 @@ class TestGetDailyMap(unittest.TestCase):
         with (
             patch("src.config.daily_config.load_daily_map", return_value=declarations),
             patch(
-                "src.config.set_config.load_game_config",
+                "src.config.task_source.load_game_config",
                 return_value={"stages_dict": stages},
             ),
         ):
@@ -242,6 +244,7 @@ class TestGetDailyMap(unittest.TestCase):
             menus = get_daily_map()
         source.assert_any_call(
             "BetterGI",
+            load_daily_map()["BetterGI"][0],
             {
                 "path": "GameTask/AutoTrackPath/Assets/tp.json",
                 "category": "BlessDomain",
@@ -249,6 +252,7 @@ class TestGetDailyMap(unittest.TestCase):
         )
         source.assert_any_call(
             "ok-ef",
+            load_daily_map()["ok-ef"][0],
             {
                 "path": "data/apps/ok-ef/working/assets/data/world_map.json",
                 "key": ["stages_dict", "干员养成"],

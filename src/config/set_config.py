@@ -5,7 +5,6 @@ import os
 from copy import deepcopy
 
 from src.config.daily import DAILY_CLASSES, Daily, MaaDaily
-from src.config.maa_activity import read_activity_stages
 from src.config.task_config import (
     get_daily_configs,
     get_physical_name,
@@ -154,6 +153,17 @@ class ScriptConfig:
         )
         return load_template(self._script_name, self._template_rel_path)
 
+    @classmethod
+    def _create_daily(cls, declaration: dict) -> Daily:
+        """按当前声明构造日常，只解析落点，不初始化或写入脚本配置。"""
+        class_name = declaration["class"]
+        assert class_name in DAILY_CLASSES, (
+            f"[set_config][{cls.display_name}] 未知的日常机制类: {class_name!r}"
+        )
+        return DAILY_CLASSES[class_name](
+            cls._script_name, declaration, cls.display_name
+        )
+
     def _build_dailies(self) -> list[Daily]:
         """按声明实例化本脚本的日常（机制类由声明 ``class`` 标注）。
 
@@ -163,18 +173,10 @@ class ScriptConfig:
         Raises:
             AssertionError: 声明的 ``class`` 不在机制类注册表。
         """
-        dailies = []
-        for declaration in get_daily_configs(self._script_name):
-            class_name = declaration["class"]
-            assert class_name in DAILY_CLASSES, (
-                f"[set_config][{self.display_name}] 未知的日常机制类: {class_name!r}"
-            )
-            dailies.append(
-                DAILY_CLASSES[class_name](
-                    self._script_name, declaration, self.display_name
-                )
-            )
-        return dailies
+        return [
+            self._create_daily(declaration)
+            for declaration in get_daily_configs(self._script_name)
+        ]
 
     @property
     def _dailies(self) -> list[Daily]:
@@ -413,39 +415,9 @@ class ScriptConfig:
         return node
 
     @classmethod
-    def get_task_lists(cls, source: dict) -> list[str]:
-        """按声明中的多级键路径读取选项，无需实例化或初始化适配器。
-
-        Args:
-            source: ``path`` 为资源文件；``key`` 为键路径列表，省略或空列表取根节点。
-
-        Returns:
-            字符串列表，或末层字典的键列表；资源缺失或为空时返回空列表。
-        """
-        assert source.keys() <= {"path", "key"}, (
-            f"[set_config][{cls.display_name}] 通用资源来源只支持 path / key"
-        )
-        path = get_field(source, "path", cls.display_name, str)
-        keys = source["key"] if "key" in source else ()  # noqa: SIM401  # 省略键路径时读取根节点
-        assert isinstance(keys, (list, tuple)), "source.key 必须为键路径列表"
-        keys = tuple(keys)
-        data = load_game_config(cls._script_name, path)
-        if data is None or data == {} or data == []:
-            return []
-        for key in keys:
-            assert isinstance(key, str) and key, "source.key 的每层键必须为非空字符串"
-            assert isinstance(data, dict), (
-                f"[set_config][{cls.display_name}] {path} 的 {key!r} 父节点必须为字典"
-            )
-            data = get_field(data, key, cls.display_name)
-        assert isinstance(data, (list, dict)), (
-            f"[set_config][{cls.display_name}] {path} 的选项必须为列表或字典"
-        )
-        names = list(data)
-        assert all(isinstance(name, str) and name for name in names), (
-            f"[set_config][{cls.display_name}] {path} 的选项名必须为非空字符串"
-        )
-        return names
+    def get_task_lists(cls, declaration: dict, source: dict) -> list[str]:
+        """将资源选项读取委托给当前日常，不反查声明或初始化配置。"""
+        return cls._create_daily(declaration).get_task_lists(source)
 
 
 # ============================================================
@@ -551,38 +523,6 @@ class GenshinConfig(ScriptConfig):
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
     _game_path_keys = ("genshinStartConfig", "installPath")
-
-    @classmethod
-    def get_task_lists(cls, source: dict) -> list[str]:
-        """读 BetterGI 的 tp.json，取某秘境分类（周常/日常）的副本名清单。
-
-        Args:
-            source: ``path`` 为 tp.json 路径，``category`` 为原生秘境分类。
-
-        Returns:
-            副本名列表（即 tp.json 的 ``name`` 字段）；文件缺失/空时返回 ``[]``。
-        """
-        assert source.keys() <= {"path", "category"}, (
-            "原神资源来源只支持 path / category"
-        )
-        path = get_field(source, "path", cls.display_name, str)
-        category = get_field(source, "category", cls.display_name, str)
-        data = load_game_config(cls._script_name, path)
-        if not data:
-            return []
-        assert isinstance(data, dict), (
-            f"[set_config][{cls.display_name}] 副本名应为 dict"
-        )
-        names: list[str] = []
-        for scene in data.get("data", []):
-            if not isinstance(scene, dict):
-                continue
-            for pt in scene.get("points", []):
-                if isinstance(pt, dict) and pt.get("type", "") == category:
-                    name = pt.get("name", "")
-                    if name:
-                        names.append(name)
-        return names
 
 
 # ---- 终末地 Arknights: Endfield ----
@@ -893,21 +833,6 @@ class ArknightsConfig(ScriptConfig):
         if queue != before:
             main._save_daily_config(config)
 
-    @classmethod
-    def get_task_lists(cls, source: dict) -> list[str]:
-        """活动来源使用声明中的路径，普通关卡直接来自 YAML。"""
-        assert source.keys() == {"path"}
-        declarations = [
-            declaration
-            for declaration in get_daily_configs(cls._script_name)
-            if "source" in declaration["options"]
-            and declaration["options"]["source"] == source
-        ]
-        assert declarations, f"未声明的 MAA 资源：{source}"
-        paths = {declaration["config"] for declaration in declarations}
-        assert len(paths) == 1, "同一活动资源必须使用同一客户端配置"
-        return read_activity_stages(cls._script_name, source["path"], paths.pop())
-
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """按周几起写临期窗口，并兜底开启所有战斗的临期药。
 
@@ -1078,13 +1003,14 @@ def set_config(
         cfg.prepare_weekly_start_day(weekly_start)
 
 
-def get_task_lists(script_name: str, source: dict) -> list[str] | None:
-    """适配器接口：副本清单源在游戏脚本自身配置里，从中读某任务的可选副本名清单，委托给对应脚本的 config 类。
-
-    「从哪读、怎么解析」的知识归各 ``ScriptConfig`` 子类，本函数只做分发。
+def get_task_lists(
+    script_name: str, declaration: dict, source: dict
+) -> list[str] | None:
+    """适配器接口：按当前日常声明统一委托给 Daily 读取可选副本。
 
     Args:
         script_name: 脚本唯一标识（如 ``March7th-Launcher``）。
+        declaration: 当前日常的完整声明，提供机制类和配置路径。
         source: 完整的 options.source 声明，资源定位不依赖任务名称。
 
     Returns:
@@ -1092,7 +1018,7 @@ def get_task_lists(script_name: str, source: dict) -> list[str] | None:
     """
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name].get_task_lists(source)
+    return _CONFIGS[script_name].get_task_lists(declaration, source)
 
 
 def get_config_path(script_name: str) -> str:

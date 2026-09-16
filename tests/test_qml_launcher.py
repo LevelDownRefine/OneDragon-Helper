@@ -539,7 +539,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch.object(daily_config, "get_task_lists",
+                patch.object(daily_config, "read_task_source",
                              return_value=fake_tasks),
             ):
                 with (
@@ -722,7 +722,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch("src.config.daily_config.get_task_lists",
+                patch("src.config.daily_config.read_task_source",
                              return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                            "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                            "不死的神实", "寒潮的落幕", "毁灭的开端"]),

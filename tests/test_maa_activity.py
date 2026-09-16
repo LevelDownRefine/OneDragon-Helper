@@ -94,7 +94,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
                 return_value={"MAA": declarations},
             ),
             patch(
-                "src.config.set_config.read_activity_stages",
+                "src.config.daily.read_activity_stages",
                 return_value=["AT-8", "AT-7"],
             ) as reader,
         ):
@@ -119,14 +119,48 @@ class TestMaaDeclaredMenus(unittest.TestCase):
         activity.update(display_name="别名", config="profiles/custom.json")
         activity["options"]["source"] = {"path": "resources/events.json"}
         with (
-            patch("src.config.set_config.get_daily_configs", return_value=declarations),
             patch(
-                "src.config.set_config.read_activity_stages", return_value=["AT-8"]
+                "src.config.set_config.get_daily_configs",
+                side_effect=AssertionError("不应反查声明"),
+            ),
+            patch(
+                "src.config.daily.read_activity_stages", return_value=["AT-8"]
             ) as reader,
         ):
             self.assertEqual(
-                ArknightsConfig.get_task_lists(activity["options"]["source"]), ["AT-8"]
+                ArknightsConfig.get_task_lists(activity, activity["options"]["source"]),
+                ["AT-8"],
             )
         reader.assert_called_once_with(
             "MAA", "resources/events.json", "profiles/custom.json"
         )
+
+    def test_menu_uses_current_daily_config_without_reverse_lookup(self):
+        declarations = get_daily_configs("MAA")
+        activity = declarations[0]
+        activity["config"] = "profiles/current.json"
+        with (
+            patch(
+                "src.config.daily_config.load_daily_map",
+                return_value={"MAA": declarations},
+            ),
+            patch(
+                "src.config.set_config.get_daily_configs",
+                side_effect=AssertionError("菜单已持有声明，不应重新读取"),
+            ),
+            patch.object(ArknightsConfig, "_init_config") as init,
+            patch("src.config.daily.save_config") as save,
+            patch(
+                "src.config.daily.read_activity_stages", return_value=["AT-8"]
+            ) as reader,
+        ):
+            menu = get_daily_map()["MAA"]["dailies"][0]
+        self.assertEqual(
+            menu["options"]["values"],
+            [{"display_name": "AT-8", "physical_name": "AT-8"}],
+        )
+        reader.assert_called_once_with(
+            "MAA", "cache/gui/StageActivityV2.json", "profiles/current.json"
+        )
+        init.assert_not_called()
+        save.assert_not_called()
