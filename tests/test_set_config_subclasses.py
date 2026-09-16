@@ -715,7 +715,7 @@ class TestStarRailGetTaskLists(unittest.TestCase):
             "src.config.set_config.load_game_config", return_value=self._DATA
         ) as mock_load:
             names = StarRailConfig.get_task_lists(
-                "历战余响", "assets/config/instance_names.json"
+                {"path": "assets/config/instance_names.json", "key": ["历战余响"]}
             )
         self.assertEqual(names, ["无", "铁骸的锈冢", "晨昏的回眸"])
         mock_load.assert_called_once_with(
@@ -729,7 +729,7 @@ class TestStarRailGetTaskLists(unittest.TestCase):
             patch("src.config.set_config.load_game_config", return_value=self._DATA),
         ):
             StarRailConfig.get_task_lists(
-                "历战余响", "assets/config/instance_names.json"
+                {"path": "assets/config/instance_names.json", "key": ["历战余响"]}
             )
         mock_init.assert_not_called()
 
@@ -739,7 +739,9 @@ class TestStarRailGetTaskLists(unittest.TestCase):
             "src.config.set_config.load_game_config", return_value=None
         ) as mock_load:
             self.assertEqual(
-                StarRailConfig.get_task_lists("历战余响", "some/other/path.json"),
+                StarRailConfig.get_task_lists(
+                    {"path": "some/other/path.json", "key": ["历战余响"]}
+                ),
                 [],
             )
         mock_load.assert_called_once_with("March7th-Launcher", "some/other/path.json")
@@ -749,7 +751,7 @@ class TestStarRailGetTaskLists(unittest.TestCase):
         with patch("src.config.set_config.load_game_config", return_value=None):
             self.assertEqual(
                 StarRailConfig.get_task_lists(
-                    "历战余响", "assets/config/instance_names.json"
+                    {"path": "assets/config/instance_names.json", "key": ["历战余响"]}
                 ),
                 [],
             )
@@ -761,34 +763,69 @@ class TestStarRailGetTaskLists(unittest.TestCase):
             self.assertRaises(AssertionError),
         ):
             StarRailConfig.get_task_lists(
-                "不存在的周常", "assets/config/instance_names.json"
+                {"path": "assets/config/instance_names.json", "key": ["不存在的周常"]}
             )
 
     def test_malformed_entry_asserts(self):
-        """该任务条目不是 dict（格式异常）→ assert 触发（不静默兜底）。"""
+        """该任务条目不是列表或字典（格式异常）→ assert 触发（不静默兜底）。"""
         with (
             patch(
                 "src.config.set_config.load_game_config",
-                return_value={"历战余响": ["铁骸的锈冢"]},
+                return_value={"历战余响": 42},
             ),
             self.assertRaises(AssertionError),
         ):
             StarRailConfig.get_task_lists(
-                "历战余响", "assets/config/instance_names.json"
+                {"path": "assets/config/instance_names.json", "key": ["历战余响"]}
             )
 
 
 class TestBaseGetTaskLists(unittest.TestCase):
-    """基类默认未适配副本清单读取 → None（调用方降级为无可选副本）。"""
+    """通用资源读取：键路径选择节点，叶子列表或字典提供选项名。"""
 
-    def test_base_default_returns_none(self):
-        self.assertIsNone(
-            ScriptConfig.get_task_lists("历战余响", "instance_names.json")
-        )
+    def test_root_options_preserve_order_and_return_a_copy(self):
+        for data in (["乙", "甲"], {"乙": "描述乙", "甲": "描述甲"}):
+            for source in (
+                {"path": "options.json"},
+                {"path": "options.json", "key": []},
+            ):
+                with (
+                    self.subTest(data=data, source=source),
+                    patch("src.config.set_config.load_game_config", return_value=data),
+                ):
+                    names = ScriptConfig.get_task_lists(source)
+                self.assertEqual(names, ["乙", "甲"])
+                self.assertIsNot(names, data)
 
-    def test_unadapted_subclass_returns_none(self):
-        """未覆写的子类（如异环）走基类默认实现。"""
-        self.assertIsNone(NTEConfig.get_task_lists("任意周常", "any.json"))
+    def test_subclass_inherits_nested_key_path_reader(self):
+        for key in (["资源", "类别"], ("资源", "类别")):
+            with (
+                self.subTest(key=key),
+                patch(
+                    "src.config.set_config.load_game_config",
+                    return_value={"资源": {"类别": {"乙": 2, "甲": 1}}},
+                ) as load,
+                patch.object(NTEConfig, "_init_config") as init,
+            ):
+                names = NTEConfig.get_task_lists({"path": "options.json", "key": key})
+            self.assertEqual(names, ["乙", "甲"])
+            load.assert_called_once_with("ok-nte", "options.json")
+            init.assert_not_called()
+
+    def test_invalid_source_or_resource_asserts(self):
+        for source, data in (
+            ({"path": "a.json", "category": "类别"}, {"类别": []}),
+            ({"path": "a.json", "key": "类别"}, {"类别": []}),
+            ({"path": "a.json", "key": ["类别", "叶子"]}, {"类别": ["甲"]}),
+            ({"path": "a.json"}, ["甲", 1]),
+            ({"path": "a.json"}, {1: "甲"}),
+        ):
+            with (
+                self.subTest(source=source, data=data),
+                patch("src.config.set_config.load_game_config", return_value=data),
+                self.assertRaises(AssertionError),
+            ):
+                ScriptConfig.get_task_lists(source)
 
 
 class TestEndfieldGetTaskLists(unittest.TestCase):
@@ -807,7 +844,9 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
         with patch(
             "src.config.set_config.load_game_config", return_value=self._DATA
         ) as mock_load:
-            names = EndfieldConfig.get_task_lists("能量淤积点", self._SRC)
+            names = EndfieldConfig.get_task_lists(
+                {"path": self._SRC, "key": ["stages_dict", "能量淤积点"]}
+            )
         self.assertEqual(names, ["枢纽区", "源石研究园", "武陵城"])
         mock_load.assert_called_once_with("ok-ef", self._SRC)
 
@@ -817,7 +856,9 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
             patch.object(EndfieldConfig, "_init_config") as mock_init,
             patch("src.config.set_config.load_game_config", return_value=self._DATA),
         ):
-            EndfieldConfig.get_task_lists("能量淤积点", self._SRC)
+            EndfieldConfig.get_task_lists(
+                {"path": self._SRC, "key": ["stages_dict", "能量淤积点"]}
+            )
         mock_init.assert_not_called()
 
     def test_source_is_used_as_rel_path(self):
@@ -826,7 +867,12 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
             "src.config.set_config.load_game_config", return_value=None
         ) as mock_load:
             self.assertEqual(
-                EndfieldConfig.get_task_lists("能量淤积点", "some/other/path.json"),
+                EndfieldConfig.get_task_lists(
+                    {
+                        "path": "some/other/path.json",
+                        "key": ["stages_dict", "能量淤积点"],
+                    }
+                ),
                 [],
             )
         mock_load.assert_called_once_with("ok-ef", "some/other/path.json")
@@ -834,7 +880,12 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
     def test_script_not_installed_returns_empty(self):
         """ok-ef 未安装（load_game_config 软降级为 None）→ data 为空 → 返回 []。"""
         with patch("src.config.set_config.load_game_config", return_value=None):
-            self.assertEqual(EndfieldConfig.get_task_lists("能量淤积点", self._SRC), [])
+            self.assertEqual(
+                EndfieldConfig.get_task_lists(
+                    {"path": self._SRC, "key": ["stages_dict", "能量淤积点"]}
+                ),
+                [],
+            )
 
     def test_missing_stages_dict_asserts(self):
         """顶层不含 stages_dict → assert 触发（不静默兜底）。"""
@@ -842,7 +893,9 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
             patch("src.config.set_config.load_game_config", return_value={"foo": 1}),
             self.assertRaises(AssertionError),
         ):
-            EndfieldConfig.get_task_lists("能量淤积点", self._SRC)
+            EndfieldConfig.get_task_lists(
+                {"path": self._SRC, "key": ["stages_dict", "能量淤积点"]}
+            )
 
     def test_missing_task_key_asserts(self):
         """stages_dict 不含该类别 → assert 触发（不静默兜底）。"""
@@ -850,18 +903,22 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
             patch("src.config.set_config.load_game_config", return_value=self._DATA),
             self.assertRaises(AssertionError),
         ):
-            EndfieldConfig.get_task_lists("不存在的类别", self._SRC)
+            EndfieldConfig.get_task_lists(
+                {"path": self._SRC, "key": ["stages_dict", "不存在的类别"]}
+            )
 
     def test_malformed_entry_asserts(self):
-        """stages_dict[task_name] 不是 list（格式异常）→ assert 触发（不静默兜底）。"""
+        """stages_dict 中的选项不是列表或字典（格式异常）→ assert 触发（不静默兜底）。"""
         with (
             patch(
                 "src.config.set_config.load_game_config",
-                return_value={"stages_dict": {"能量淤积点": {"枢纽区": "x"}}},
+                return_value={"stages_dict": {"能量淤积点": 42}},
             ),
             self.assertRaises(AssertionError),
         ):
-            EndfieldConfig.get_task_lists("能量淤积点", self._SRC)
+            EndfieldConfig.get_task_lists(
+                {"path": self._SRC, "key": ["stages_dict", "能量淤积点"]}
+            )
 
 
 class TestGenshinGetTaskLists(unittest.TestCase):
@@ -894,26 +951,34 @@ class TestGenshinGetTaskLists(unittest.TestCase):
         with patch(
             "src.config.set_config.load_game_config", return_value=self._DATA
         ) as mock_load:
-            names = GenshinConfig.get_task_lists("BlessDomain", self._SRC)
+            names = GenshinConfig.get_task_lists(
+                {"path": self._SRC, "category": "BlessDomain"}
+            )
         self.assertEqual(names, ["仲夏庭园", "铭记之谷", "芬德尼尔之顶"])
         mock_load.assert_called_once_with("BetterGI", self._SRC)
 
     def test_reads_forgery_domain(self):
         """武器 → ForgeryDomain：仅收集该 type 的副本名。"""
         with patch("src.config.set_config.load_game_config", return_value=self._DATA):
-            names = GenshinConfig.get_task_lists("ForgeryDomain", self._SRC)
+            names = GenshinConfig.get_task_lists(
+                {"path": self._SRC, "category": "ForgeryDomain"}
+            )
         self.assertEqual(names, ["塞西莉亚苗圃"])
 
     def test_reads_mastery_domain(self):
         """天赋 → MasteryDomain。"""
         with patch("src.config.set_config.load_game_config", return_value=self._DATA):
-            names = GenshinConfig.get_task_lists("MasteryDomain", self._SRC)
+            names = GenshinConfig.get_task_lists(
+                {"path": self._SRC, "category": "MasteryDomain"}
+            )
         self.assertEqual(names, ["太山府"])
 
     def test_ignores_other_types(self):
         """TeleportWaypoint / 未命中 type 的 point 不计入清单。"""
         with patch("src.config.set_config.load_game_config", return_value=self._DATA):
-            names = GenshinConfig.get_task_lists("BlessDomain", self._SRC)
+            names = GenshinConfig.get_task_lists(
+                {"path": self._SRC, "category": "BlessDomain"}
+            )
         self.assertNotIn("传送锚点", names)
 
     def test_does_not_instantiate_or_init_config(self):
@@ -922,7 +987,7 @@ class TestGenshinGetTaskLists(unittest.TestCase):
             patch.object(GenshinConfig, "_init_config") as mock_init,
             patch("src.config.set_config.load_game_config", return_value=self._DATA),
         ):
-            GenshinConfig.get_task_lists("BlessDomain", self._SRC)
+            GenshinConfig.get_task_lists({"path": self._SRC, "category": "BlessDomain"})
         mock_init.assert_not_called()
 
     def test_source_is_used_as_rel_path(self):
@@ -931,7 +996,9 @@ class TestGenshinGetTaskLists(unittest.TestCase):
             "src.config.set_config.load_game_config", return_value=None
         ) as mock_load:
             self.assertEqual(
-                GenshinConfig.get_task_lists("BlessDomain", "some/other/path.json"),
+                GenshinConfig.get_task_lists(
+                    {"path": "some/other/path.json", "category": "BlessDomain"}
+                ),
                 [],
             )
         mock_load.assert_called_once_with("BetterGI", "some/other/path.json")
@@ -939,13 +1006,21 @@ class TestGenshinGetTaskLists(unittest.TestCase):
     def test_script_not_installed_returns_empty(self):
         """BetterGI 未安装（load_game_config 软降级为 None）→ data 为空 → 返回 []。"""
         with patch("src.config.set_config.load_game_config", return_value=None):
-            self.assertEqual(GenshinConfig.get_task_lists("BlessDomain", self._SRC), [])
+            self.assertEqual(
+                GenshinConfig.get_task_lists(
+                    {"path": self._SRC, "category": "BlessDomain"}
+                ),
+                [],
+            )
 
     def test_category_without_native_entries_returns_empty(self):
         """不维护类别白名单；资源中没有匹配类别时返回空列表。"""
         with patch("src.config.set_config.load_game_config", return_value=self._DATA):
             self.assertEqual(
-                GenshinConfig.get_task_lists("WeeklyDomain", self._SRC), []
+                GenshinConfig.get_task_lists(
+                    {"path": self._SRC, "category": "WeeklyDomain"}
+                ),
+                [],
             )
 
     def test_top_level_not_dict_asserts(self):
@@ -954,7 +1029,7 @@ class TestGenshinGetTaskLists(unittest.TestCase):
             patch("src.config.set_config.load_game_config", return_value=[1, 2]),
             self.assertRaises(AssertionError),
         ):
-            GenshinConfig.get_task_lists("BlessDomain", self._SRC)
+            GenshinConfig.get_task_lists({"path": self._SRC, "category": "BlessDomain"})
 
 
 # ============================================================

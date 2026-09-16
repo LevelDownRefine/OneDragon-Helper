@@ -5,8 +5,10 @@ import unittest
 from datetime import UTC, datetime
 from unittest.mock import patch
 
+from src.config.daily_config import get_daily_map
 from src.config.maa_stages import load_activity_stages, load_normal_stages
 from src.config.set_config import ArknightsConfig
+from src.config.task_config import get_daily_configs
 from tests.test_arknights_config_safety import load_fixture
 
 
@@ -220,24 +222,69 @@ class TestMaaNormalStages(unittest.TestCase):
             self.assertEqual(load_normal_stages("MAA", "resource/stages.json"), [])
 
     def test_menu_dispatch_uses_same_normal_list_for_both_roles(self):
-        with patch(
-            "src.config.daily.load_normal_stages", return_value=["PR-B-2", "R8-11"]
-        ) as loader:
-            for name in ("理智作战", "剩余理智"):
-                self.assertEqual(
-                    ArknightsConfig.get_task_lists(name, "resource/stages.json"),
-                    ["PR-B-2", "R8-11"],
-                )
-            self.assertEqual(loader.call_count, 2)
-        with patch(
-            "src.config.daily.load_activity_stages", return_value=["ACT-8"]
-        ) as loader:
+        with (
+            patch(
+                "src.config.daily_config.load_daily_map",
+                return_value={"MAA": get_daily_configs("MAA")},
+            ),
+            patch(
+                "src.config.daily.load_normal_stages", return_value=["PR-B-2", "R8-11"]
+            ) as normal,
+            patch(
+                "src.config.daily.load_activity_stages", return_value=["ACT-8"]
+            ) as activity,
+        ):
+            menus = get_daily_map()["MAA"]["dailies"]
+        self.assertEqual(
+            {
+                menu["display_name"]: [
+                    option["physical_name"] for option in menu["options"]["values"]
+                ]
+                for menu in menus
+            },
+            {
+                "活动关卡": ["ACT-8"],
+                "理智作战": ["PR-B-2", "R8-11"],
+                "剩余理智": ["PR-B-2", "R8-11"],
+            },
+        )
+        self.assertEqual(normal.call_count, 2)
+        normal.assert_called_with("MAA", "resource/stages.json")
+        activity.assert_called_once_with(
+            "MAA", "cache/gui/StageActivityV2.json", "config/gui.new.json"
+        )
+
+    def test_source_dispatch_does_not_depend_on_task_names_or_fixed_paths(self):
+        declarations = get_daily_configs("MAA")
+        activity = declarations[0]
+        activity["display_name"] = "改名活动"
+        activity["physical_name"] = "NativeActivity"
+        activity["config"] = "profiles/gui.json"
+        activity["options"]["source"]["path"] = "assets/activity.json"
+        with (
+            patch(
+                "src.config.set_config.get_daily_configs",
+                return_value=list(reversed(declarations)),
+            ),
+            patch(
+                "src.config.daily.load_activity_stages", return_value=["ACT-8"]
+            ) as loader,
+        ):
             self.assertEqual(
-                ArknightsConfig.get_task_lists(
-                    "活动关优先", "cache/gui/StageActivityV2.json"
-                ),
-                ["ACT-8"],
+                ArknightsConfig.get_task_lists(activity["options"]["source"]), ["ACT-8"]
             )
-            loader.assert_called_once_with(
-                "MAA", "cache/gui/StageActivityV2.json", "config/gui.new.json"
-            )
+        loader.assert_called_once_with(
+            "MAA", "assets/activity.json", "profiles/gui.json"
+        )
+
+    def test_undeclared_or_conflicting_source_asserts(self):
+        with self.assertRaises(AssertionError):
+            ArknightsConfig.get_task_lists({"path": "unknown.json"})
+        declarations = get_daily_configs("MAA")
+        source = declarations[1]["options"]["source"]
+        declarations[0]["options"]["source"] = source
+        with (
+            patch("src.config.set_config.get_daily_configs", return_value=declarations),
+            self.assertRaises(AssertionError),
+        ):
+            ArknightsConfig.get_task_lists(source)
