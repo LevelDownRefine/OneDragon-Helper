@@ -85,6 +85,15 @@ class TestMaaLocalStages(unittest.TestCase):
         )
         self.assertEqual(self.read(datetime(2026, 9, 16, 20, tzinfo=UTC)), [])
 
+    def test_navigation_filter_uses_native_value_not_display_text(self):
+        self.data["Official"]["sideStoryStage"]["live"]["Stages"] = [
+            {"Value": "SSReopen-AT", "Display": "复刻活动导航"},
+            {"Value": "ACT-8", "Display": "SSReopen 活动材料关"},
+            {"Value": "ACT-7"},
+            {"Value": "", "Display": "当前关卡"},
+        ]
+        self.assertEqual(self.read(), ["ACT-8", "ACT-7"])
+
     def test_missing_files_do_not_need_network_or_create_options(self):
         for data, config in ((None, self.config), (self.data, None)):
             with patch(

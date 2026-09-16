@@ -62,8 +62,7 @@ def load_activity_stages(
             continue
         for stage in get_field(story, "Stages", "MAA", list):
             value = get_field(stage, "Value", "MAA", str)
-            # MAS getStage 的活动材料关列表按 Display 排除复刻导航入口，保留资源顺序。
-            display = get_field(stage, "Display", "MAA", str)
-            if value and "SSReopen" not in display:
+            # MAA 将 SSReopen- 识别为复刻导航任务，本入口只提供单个刷图关卡。
+            if value and not value.startswith("SSReopen-"):
                 stages.append(value)
     return stages

@@ -143,6 +143,8 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 
 队列顺序是本项目的约定：唤醒后先剿灭和活动，库存保持后执行理智作战与剩余理智。MAA 的 [TaskQueueViewModel](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaWpfGui/ViewModels/UI/TaskQueueViewModel.cs) 按原生队列顺序处理启用项，[FightSettingsUserControlModel](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaWpfGui/ViewModels/UserControl/TaskQueue/FightSettingsUserControlModel.cs) 负责检查关卡开放时间并转交核心执行。测试直接验证原生字段和本项目行为，不再对照 MAS 生成结果。`maa_farming.py` 保留历史改编来源及版权声明，不以当前实现差异作为删除依据。
 
+活动列表读取 MAA 本地 `StageActivityV2.json` 的 `Value`，按客户端及活动时间筛选。MAA 核心的 [FightTask](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaCore/Task/Interface/FightTask.cpp) 将 `SSReopen-` 前缀作为复刻导航指令，因此单关卡菜单按这个实际执行值排除导航入口，不依赖可能本地化的 `Display` 文本。
+
 ## 设置周常流程 prepare_weekly_start_day
 
 `prepare_weekly_start_day(start_day)` 是周常开关的唯一写入入口，无中间钩子：先 `_check_weekly_start(start_day)` 校验（未声明 `_weekly_task_name` 即 assert 未适配；`start_day` 必须在 1~7），再由各子类按自身 config 结构落盘。基类只兜底 assert——声明了 `_weekly_task_name` 的子类必须覆写，由 `register` 在 import 期校验。
