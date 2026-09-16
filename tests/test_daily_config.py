@@ -8,10 +8,35 @@ from src.config.daily_config import (
     get_daily_map,
     get_weekly_map,
 )
-from src.config.task_config import load_daily_map
+from src.config.task_config import load_daily_map, load_weekly_map
 
 
 class TestGetWeeklyDefs(unittest.TestCase):
+    def test_star_rail_source_survives_task_rename(self):
+        declarations = load_weekly_map()
+        task = declarations["March7th-Launcher"][1]
+        task["display_name"] = "改名后的周常"
+        task["physical_name"] = "另一物理名"
+        with (
+            patch("src.config.daily_config.load_weekly_map", return_value=declarations),
+            patch(
+                "src.config.set_config.load_game_config",
+                return_value={"历战余响": {"无": "跳过", "铁骸的锈冢": "描述"}},
+            ) as load,
+        ):
+            menu = get_weekly_map("March7th-Launcher")[1]
+        self.assertEqual(menu["display_name"], "改名后的周常")
+        self.assertEqual(
+            menu["options"]["values"],
+            [
+                {"display_name": "无", "physical_name": "无"},
+                {"display_name": "铁骸的锈冢", "physical_name": "铁骸的锈冢"},
+            ],
+        )
+        load.assert_called_once_with(
+            "March7th-Launcher", "assets/config/instance_names.json"
+        )
+
     def test_static_options_preserve_labels(self):
         task = {
             "display_name": "历战余响",
@@ -50,10 +75,10 @@ class TestGetWeeklyDefs(unittest.TestCase):
         self.assertEqual(task, original)
         source.assert_not_called()
 
-    def test_local_source_uses_native_category_and_path(self):
+    def test_local_source_uses_declared_key_path(self):
         task = {
             "display_name": "展示周常",
-            "options": {"source": {"path": "resource/list.json", "category": "native"}},
+            "options": {"source": {"path": "resource/list.json", "key": ["native"]}},
         }
         for names in (["甲", "乙"], [], None):
             with (
@@ -67,7 +92,7 @@ class TestGetWeeklyDefs(unittest.TestCase):
                 ) as source,
             ):
                 result = get_weekly_map("x")
-            source.assert_called_once_with("x", "native", "resource/list.json")
+            source.assert_called_once_with("x", task["options"]["source"])
             values = result[0]["options"]["values"]
             self.assertEqual([option["display_name"] for option in values], names or [])
             self.assertTrue(
@@ -77,7 +102,7 @@ class TestGetWeeklyDefs(unittest.TestCase):
                 )
             )
 
-    def test_source_category_defaults_to_physical_name(self):
+    def test_source_without_key_reads_root_independently_of_task_name(self):
         task = {
             "display_name": "展示周常",
             "physical_name": "native_weekly",
@@ -91,7 +116,7 @@ class TestGetWeeklyDefs(unittest.TestCase):
             patch("src.config.daily_config.get_task_lists", return_value=[]) as source,
         ):
             get_weekly_map("x")
-        source.assert_called_once_with("x", "native_weekly", "resource/list.json")
+        source.assert_called_once_with("x", {"path": "resource/list.json"})
 
     def test_no_options_and_unknown_script(self):
         with patch(
@@ -103,6 +128,32 @@ class TestGetWeeklyDefs(unittest.TestCase):
 
 
 class TestGetDailyMap(unittest.TestCase):
+    def test_endfield_declared_sources_materialize_native_options(self):
+        declarations = {"ok-ef": load_daily_map()["ok-ef"]}
+        stages = {
+            "干员养成": ["干员经验", "干员进阶"],
+            "武器养成": ["武器经验"],
+            "危境再现": ["再现一"],
+            "危境预演": ["预演一"],
+            "能量淤积点": ["枢纽区", "武陵城"],
+        }
+        with (
+            patch("src.config.daily_config.load_daily_map", return_value=declarations),
+            patch(
+                "src.config.set_config.load_game_config",
+                return_value={"stages_dict": stages},
+            ),
+        ):
+            menu = get_daily_map()["ok-ef"]["dailies"][0]
+        for group in menu["options"]["values"]:
+            self.assertEqual(
+                group["options"]["values"],
+                [
+                    {"display_name": name, "physical_name": name}
+                    for name in stages[group["display_name"]]
+                ],
+            )
+
     def test_real_declarations_keep_one_menu_per_daily(self):
         with patch("src.config.daily_config.get_task_lists", return_value=[]):
             menus = get_daily_map()
@@ -182,16 +233,24 @@ class TestGetDailyMap(unittest.TestCase):
             {"display_name": "梦州-迅刀", "physical_name": 1},
         )
 
-    def test_daily_source_categories_come_from_declaration(self):
+    def test_daily_sources_come_from_declaration(self):
         with patch(
             "src.config.daily_config.get_task_lists", return_value=["原生副本"]
         ) as source:
             menus = get_daily_map()
         source.assert_any_call(
-            "BetterGI", "BlessDomain", "GameTask/AutoTrackPath/Assets/tp.json"
+            "BetterGI",
+            {
+                "path": "GameTask/AutoTrackPath/Assets/tp.json",
+                "category": "BlessDomain",
+            },
         )
         source.assert_any_call(
-            "ok-ef", "干员养成", "data/apps/ok-ef/working/assets/data/world_map.json"
+            "ok-ef",
+            {
+                "path": "data/apps/ok-ef/working/assets/data/world_map.json",
+                "key": ["stages_dict", "干员养成"],
+            },
         )
         values = {
             option["display_name"]: option
