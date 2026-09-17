@@ -360,7 +360,7 @@ class Daily:
         return True
 
 
-class GenshinDaily(Daily):
+class BgiDaily(Daily):
     """原神的配置读写沿用两层日常，选项按 tp.json 秘境分类读取。"""
 
     def get_task_lists(self, source: dict) -> list[str]:
@@ -753,7 +753,7 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
     cls.__name__: cls
     for cls in (
         Daily,
-        GenshinDaily,
+        BgiDaily,
         NoopDaily,
         Anomaly,
         AnomalyHunter,

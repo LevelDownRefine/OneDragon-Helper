@@ -248,8 +248,8 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
             )
 
 
-class TestGenshinGetTaskLists(unittest.TestCase):
-    """GenshinDaily 遍历 tp.json 的 points 收集秘境分类副本名。"""
+class TestBgiGetTaskLists(unittest.TestCase):
+    """BgiDaily 遍历 tp.json 的 points 收集秘境分类副本名。"""
 
     _DATA = {
         "data": [
@@ -362,7 +362,7 @@ class TestGenshinGetTaskLists(unittest.TestCase):
         ):
             self.daily.get_task_lists({"path": self._SRC, "category": "BlessDomain"})
 
-    def test_nested_menu_uses_genshin_daily_for_each_category(self):
+    def test_nested_menu_uses_bgi_daily_for_each_category(self):
         with (
             patch(
                 "src.config.daily_config.load_daily_map",

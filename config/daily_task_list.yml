@@ -113,7 +113,7 @@ ok-ww:
           physical_name: 19
 BetterGI:
 - display_name: 每日任务
-  class: GenshinDaily
+  class: BgiDaily
   config: User/OneDragon/默认配置.json
   options:
     values:
