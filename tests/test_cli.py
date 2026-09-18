@@ -476,7 +476,7 @@ class TestCliGenerateChainOverrides(unittest.TestCase):
         # 找一个不支持周常的已注册脚本（如 ok-ef 终末地）
         from src.config.set_config import _CONFIGS
 
-        unsupported = next(n for n in _CONFIGS if not _CONFIGS[n]._weekly_task_name)
+        unsupported = next(n for n in _CONFIGS if not _CONFIGS[n]()._weekly_task_name)
         code = _run_main(
             [
                 "--generate-chain",

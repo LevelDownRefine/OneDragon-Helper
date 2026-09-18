@@ -6,15 +6,23 @@ I/O 由 Daily 自持（``_load_daily_config`` 等，直调 ``utils_sub_config``�
 """
 
 import logging
+from copy import deepcopy
 from typing import Any
 
+from src.config.maa_activity import read_activity_stages
 from src.config.task_config import (
     get_options,
     get_physical_name,
     get_value_map,
 )
+from src.config.task_source import read_task_source
 from src.utils.utils_dict import get_field, safe_update
-from src.utils.utils_sub_config import load_config, save_config
+from src.utils.utils_sub_config import (
+    load_config,
+    load_game_config,
+    load_template,
+    save_config,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +66,10 @@ class Daily:
         self.display_name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
         self._parse_landing(declaration)
+
+    def get_task_lists(self, source: dict) -> list[str]:
+        """读取该日常某组选项的资源；特殊资源格式由机制类覆写。"""
+        return read_task_source(self.script_name, source)
 
     def _read_config(
         self, rel_path: str, *, allow_missing: bool = False
@@ -347,6 +359,38 @@ class Daily:
         return True
 
 
+class BgiDaily(Daily):
+    """原神的配置读写沿用两层日常，选项按 tp.json 秘境分类读取。"""
+
+    def get_task_lists(self, source: dict) -> list[str]:
+        """遍历地图点位，返回指定 category 的秘境名称。"""
+        assert source.keys() <= {"path", "category"}, (
+            "原神资源来源只支持 path / category"
+        )
+        path = get_field(source, "path", self.display_name, str)
+        category = get_field(source, "category", self.display_name, str)
+        data = load_game_config(self.script_name, path)
+        if not data:
+            return []
+        assert isinstance(data, dict), "原神地图资源必须为 dict"
+        names = []
+        # 地图和点位可没有秘境分类或名称，此时不提供选项。
+        scenes = data["data"] if "data" in data else []  # noqa: SIM401
+        for scene in scenes:
+            if not isinstance(scene, dict) or "points" not in scene:
+                continue
+            for point in scene["points"]:
+                if (
+                    isinstance(point, dict)
+                    and "type" in point
+                    and point["type"] == category
+                    and "name" in point
+                    and point["name"]
+                ):
+                    names.append(point["name"])
+        return names
+
+
 class NoopDaily(Daily):
     """无需适配副本的日常（绝区零/崩铁）：声明无落点，跳过解析，不读不写。"""
 
@@ -512,165 +556,199 @@ class AnomalyHunter(Anomaly):
 
 
 class MaaDaily(Daily):
-    """粥的日常：副本以 MAA 的 TaskQueue / StagePlan 表达。
+    """一个原生 FightTask：名称来自声明，选择和开关保存在 MAA 中。"""
 
-    关卡代码 ↔ 中文名由声明推导（另加固定的剿灭），基于 ``StagePlan[0]`` 识别
-    任务；只维护映射内的关卡，其余 FightTask 不动。
-    """
-
-    _fixed_stages = ("Annihilation", "1-7")
-    """固定启用的关卡代码：剿灭恒启用；``1-7`` 是「土」的落点。"""
-
-    task_field: str | None = None
-    """无通用落点：update / read 全部覆写，跳过通用解析。"""
+    def __init__(
+        self, script_name: str, declaration: dict, script_display_name: str
+    ) -> None:
+        """解析日常声明并读取固定任务模板，原生配置仍在操作时读写。"""
+        super().__init__(script_name, declaration, script_display_name)
+        self._template = load_template(self.script_name, "MAA任务.json")
+        assert isinstance(self._template, dict)
+        assert get_field(self._template, "$type", self.display_name, str) == "FightTask"
 
     def _parse_landing(self, declaration: dict) -> None:
-        """不走通用落点：只建「关卡代码 ↔ 中文名」映射。"""
-        self._name_by_stage: dict[str, str] = {
-            "Annihilation": "剿灭",
-            **{
-                get_physical_name(option): option["display_name"]
-                for option in get_options(declaration)
-            },
-        }
-        self._stage_by_name: dict[str, str] = {
-            name: stage for stage, name in self._name_by_stage.items()
-        }
+        """建立声明名称到原生关卡值的双向映射。"""
+        self._stage_by_name = get_value_map(declaration)
+        assert self._stage_by_name, f"{self.display_name} 未声明关卡"
+        self._name_by_stage = {v: k for k, v in self._stage_by_name.items()}
+
+    @staticmethod
+    def _task_queue(config: dict) -> list[dict]:
+        """取得 MAA 默认配置中的原生任务队列。"""
+        configurations = get_field(config, "Configurations", "MAA", dict)
+        profile = get_field(configurations, "Default", "MAA", dict)
+        return get_field(profile, "TaskQueue", "MAA", list)
+
+    def _find_task(self, queue: list[dict]) -> dict | None:
+        """同名同类型取首项；重复项在初始化时清理。"""
+        for task in queue:
+            if get_field(task, "$type", "MAA", str) != "FightTask":
+                continue
+            # 原生任务可以没有自定义名称，只有声明所指的同名任务属于本入口。
+            if "Name" in task and task["Name"] == self.physical_name:
+                return task
+        return None
+
+    def _new_task(self, name: str) -> dict:
+        """从实例持有的模板创建尚未选关的独立任务。"""
+        task = deepcopy(self._template)
+        task["Name"] = name
+        return task
+
+    @staticmethod
+    def _medicine_days(queue: list[dict]) -> int:
+        """采用现有任务共同的临期窗口；缺字段按 MAA 默认两天。"""
+        days = set()
+        for task in queue:
+            if get_field(task, "$type", "MAA", str) == "FightTask":
+                days.add(
+                    get_field(task, "MedicineExpireDays", "MAA", int)
+                    if "MedicineExpireDays" in task
+                    else 2
+                )
+        if len(days) == 1:
+            return days.pop()
+        if len(days) > 1:
+            logger.warning("[MAA] 临期窗口不一致，统一为周六起（2 天）")
+        return 2
+
+    @staticmethod
+    def _set_medicine(queue: list[dict], days: int) -> None:
+        """临期药对所有战斗常开，普通药和源石仍由原生配置管理。"""
+        for task in queue:
+            if get_field(task, "$type", "MAA", str) == "FightTask":
+                task.update(UseExpiringMedicine=True, MedicineExpireDays=days)
+
+    @staticmethod
+    def _stage(task: dict | None) -> str:
+        """仅接受单关卡选择，多关卡计划按未设置显示。"""
+        if task is None or "StagePlan" not in task:
+            return ""
+        plan = get_field(task, "StagePlan", "MAA", list)
+        if len(plan) != 1:
+            return ""
+        assert isinstance(plan[0], str)
+        return plan[0]
+
+    @staticmethod
+    def _configure_task(task: dict, stage: str, enabled: bool, days: int) -> None:
+        """仅接管单关卡、限制开关和临期药，运行交给 MAA。"""
+        task.update(
+            StagePlan=[stage],
+            IsEnable=enabled and bool(stage),
+            IsStageManually=True,
+            UseOptionalStage=False,
+            UseWeeklySchedule=False,
+            EnableTimesLimit=False,
+            EnableTargetDrop=False,
+            UseExpiringMedicine=True,
+            MedicineExpireDays=days,
+        )
+
+    def _init_task(self, queue: list[dict], days: int) -> dict:
+        """补齐缺失入口；未选关和多关卡计划保持停用。"""
+        task = self._find_task(queue)
+        if task is None:
+            task = self._new_task(self.physical_name)
+            queue.append(task)
+        enabled = get_field(task, "IsEnable", self.display_name) is True
+        self._configure_task(task, self._stage(task), enabled, days)
+        return task
 
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
-        """启用剿灭/土/选定副本：改 TaskQueue 各项的 ``IsEnable``，有改动才落盘。
-
-        队列里完全没有目标关卡时借一个槽位改写其 StagePlan。
-
-        Args:
-            task_name: 选定副本中文名。
-            sequence: 粥无二级序列，恒为 None。
-
-        Returns:
-            是否有实际修改。
-
-        Raises:
-            AssertionError: 未适配的副本（不在关卡映射里）。
-        """
-        assert task_name in self._stage_by_name, (
-            f"[daily][{self.display_name}] 未适配的副本: {task_name}"
-        )
+        """写当前入口的单关卡，并沿用全部战斗共同的临期窗口。"""
+        assert sequence is None, f"{self.display_name} 只选择一个关卡"
+        stage = task_name
+        if self._stage_by_name:
+            assert task_name in self._stage_by_name, f"未声明关卡：{task_name}"
+            stage = self._stage_by_name[task_name]
         config = self._load_daily_config()
-        target_stage = self._stage_by_name[task_name]
-        task_queue = self._task_queue(config)
+        queue = self._task_queue(config)
+        before = deepcopy(queue)
+        days = self._medicine_days(queue)
+        task = self._find_task(queue)
+        if task is None:
+            task = self._new_task(self.physical_name)
+            queue.append(task)
+        self._configure_task(task, stage, True, days)
+        self._set_medicine(queue, days)
+        if queue == before:
+            return False
+        self._save_daily_config(config)
+        return True
 
-        changed = False
-        matched_target = False
-        for task in task_queue:
-            if task["$type"] != "FightTask":
-                continue
-            stage_plan = task["StagePlan"]
-            if not isinstance(stage_plan, list) or len(stage_plan) != 1:
-                continue
-            stage = stage_plan[0]
-            if stage not in self._name_by_stage:
-                continue  # 未维护的关卡，不动
-            if stage == target_stage:
-                matched_target = True
-            name = self._name_by_stage[stage]
-            should_enable = stage in self._fixed_stages or name == task_name
-            changed |= safe_update(
-                task,
-                "IsEnable",
-                should_enable,
-                f"{self.script_display_name}[{name}]",
-            )
-
-        if not matched_target:
-            changed |= self._borrow_slot(task_queue, target_stage)
-        if changed:
-            self._save_daily_config(config)
-            logger.info(f"[daily][{self.display_name}] config 已更新")
-        else:
-            logger.info(f"[daily][{self.display_name}] config 无需更新")
-        return changed
-
-    def read(self) -> tuple[str | None, str | int | None]:
-        """反读当前副本与二级序列。
-
-        除固定启用的剿灭/土外，被勾选 ``IsEnable`` 的那一项即当前副本；维护关卡
-        都未启用但有 ``StagePlan=["1-7"]`` 的任务时读为「土」。
-
-        Returns:
-            (副本中文名, 序列值)；未设置返回 (None, None)。
-        """
+    def read(self) -> tuple[str | None, None]:
+        """直接反读原生选择，停用时仍保留所选关卡。"""
         config = self._load_daily_config(allow_missing=True)
         if config is None:
             return None, None
-        has_1_7 = False
-        for task in self._task_queue(config):
-            if task["$type"] != "FightTask":
-                continue
-            stage_plan = task["StagePlan"]
-            if not isinstance(stage_plan, list) or len(stage_plan) != 1:
-                continue
-            stage = stage_plan[0]
-            if stage == "1-7":
-                has_1_7 = True
-            if stage not in self._name_by_stage or stage in self._fixed_stages:
-                continue
-            if task["IsEnable"]:
-                return self._name_by_stage[stage], None
-        if has_1_7:
-            return self._name_by_stage["1-7"], None
-        return None, None
+        stage = self._stage(self._find_task(self._task_queue(config)))
+        if not stage:
+            return None, None
+        if stage in self._name_by_stage:
+            stage = self._name_by_stage[stage]
+        return stage, None
 
-    def _borrow_slot(self, task_queue: list, target_stage: str) -> bool:
-        """借一个已启用槽位改写 StagePlan，只改 StagePlan、不动 IsEnable。
-
-        Args:
-            task_queue: MAA config 的 TaskQueue 列表。
-            target_stage: 目标关卡代码。
-
-        Returns:
-            是否发生实际修改。
-        """
-        candidates = [
-            task
-            for task in task_queue
-            if task["$type"] == "FightTask"
-            and task["IsEnable"]
-            and isinstance(task["StagePlan"], list)
-            and len(task["StagePlan"]) == 1
-            and task["StagePlan"][0] != "Annihilation"
-        ]
-        borrow = next(
-            (
-                task
-                for task in candidates
-                if task["StagePlan"][0] in self._name_by_stage
-            ),
-            None,
-        ) or next(iter(candidates), None)
-        if borrow is None:
+    def read_enabled(self) -> bool:
+        """未选关或没有对应任务时返回未启用。"""
+        config = self._load_daily_config(allow_missing=True)
+        if config is None:
             return False
-        borrowed = borrow.get("Name", self.script_display_name)
-        return safe_update(
-            borrow,
-            "StagePlan",
-            [target_stage],
-            f"{self.script_display_name}[borrow:{borrowed}]",
+        task = self._find_task(self._task_queue(config))
+        return bool(self._stage(task)) and get_field(task, "IsEnable", "MAA") is True
+
+    def set_enabled(self, enabled: bool) -> bool:
+        """只写开关，未选关的入口不能单独启用。"""
+        config = self._load_daily_config()
+        task = self._find_task(self._task_queue(config))
+        if task is None or (enabled and not self._stage(task)):
+            return False
+        if task["IsEnable"] is enabled:
+            return False
+        task["IsEnable"] = enabled
+        self._save_daily_config(config)
+        return True
+
+
+class MaaActivityDaily(MaaDaily):
+    """活动关卡来自 MAA 缓存，仍以固定关卡值保存。"""
+
+    def _parse_landing(self, declaration: dict) -> None:
+        """保存活动资源路径，构造对象时不读取原生文件。"""
+        options = get_field(declaration, "options", self.display_name, dict)
+        source = get_field(options, "source", self.display_name, dict)
+        self._activity_path = get_field(source, "path", self.display_name, str)
+        self._stage_by_name = {}
+        self._name_by_stage = {}
+
+    def get_task_lists(self, source: dict) -> list[str]:
+        """使用该日常自己的客户端配置读取活动选项。"""
+        assert source.keys() == {"path"}
+        return read_activity_stages(
+            self.script_name, source["path"], self._config_rel_path
         )
 
-    @staticmethod
-    def _task_queue(section: dict) -> list:
-        """取 MAA config 的 TaskQueue。
-
-        Args:
-            section: MAA config dict。
-
-        Returns:
-            TaskQueue 列表。
-        """
-        return section["Configurations"]["Default"]["TaskQueue"]
+    def _init_task(self, queue: list[dict], days: int) -> dict:
+        """初始化时停用过期关卡，保留其固定代码。"""
+        task = super()._init_task(queue, days)
+        if task["IsEnable"] and self._stage(task) not in self.get_task_lists(
+            {"path": self._activity_path}
+        ):
+            task["IsEnable"] = False
+        return task
 
 
 DAILY_CLASSES: dict[str, type[Daily]] = {
-    cls.__name__: cls for cls in (Daily, NoopDaily, Anomaly, AnomalyHunter, MaaDaily)
+    cls.__name__: cls
+    for cls in (
+        Daily,
+        BgiDaily,
+        NoopDaily,
+        Anomaly,
+        AnomalyHunter,
+        MaaDaily,
+        MaaActivityDaily,
+    )
 }
 """声明 ``class`` 字段可引用的机制类注册表（键 = 类名）。"""

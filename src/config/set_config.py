@@ -2,8 +2,11 @@
 
 import logging
 import os
+from collections.abc import Callable
+from copy import deepcopy
+from functools import cache
 
-from src.config.daily import DAILY_CLASSES, Daily
+from src.config.daily import DAILY_CLASSES, Daily, MaaDaily
 from src.config.task_config import (
     get_daily_configs,
     get_physical_name,
@@ -67,8 +70,23 @@ class ScriptConfig:
 
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
 
-    _dailies_data: list[Daily] | None = None
-    """该脚本的日常对象缓存（首次访问 ``_dailies`` 时由声明构造）。"""
+    def __init__(self) -> None:
+        """按声明创建日常对象，不读写子脚本配置。"""
+        self._dailies: list[Daily] = []
+        seen: set[str] = set()
+        for declaration in get_daily_configs(self._script_name):
+            class_name = declaration["class"]
+            assert class_name in DAILY_CLASSES, (
+                f"[set_config][{self.display_name}] 未知的日常机制类: {class_name!r}"
+            )
+            daily = DAILY_CLASSES[class_name](
+                self._script_name, declaration, self.display_name
+            )
+            assert daily.physical_name not in seen, (
+                f"{self._script_name} 的日常物理名重复: {daily.physical_name}"
+            )
+            seen.add(daily.physical_name)
+            self._dailies.append(daily)
 
     def _daily_config_rel_path(self) -> str:
         """脚本 config 文件路径（取首个日常声明的 ``config``）。
@@ -78,7 +96,7 @@ class ScriptConfig:
         Returns:
             相对脚本根目录的路径。
         """
-        return get_daily_configs(self._script_name)[0]["config"]
+        return self._dailies[0]._config_rel_path
 
     def _load_weekly_config(self, *, allow_missing: bool = False) -> dict | None:
         """读周常所在的 config 文件（路径由脚本显式声明 ``_weekly_config_rel_path``）。
@@ -151,42 +169,6 @@ class ScriptConfig:
             f"[set_config][{self.display_name}] 未声明 _template_rel_path"
         )
         return load_template(self._script_name, self._template_rel_path)
-
-    def _build_dailies(self) -> list[Daily]:
-        """按声明实例化本脚本的日常（机制类由声明 ``class`` 标注）。
-
-        Returns:
-            日常列表，顺序与声明一致；单日常脚本长度为 1。
-
-        Raises:
-            AssertionError: 声明的 ``class`` 不在机制类注册表。
-        """
-        dailies = []
-        for declaration in get_daily_configs(self._script_name):
-            class_name = declaration["class"]
-            assert class_name in DAILY_CLASSES, (
-                f"[set_config][{self.display_name}] 未知的日常机制类: {class_name!r}"
-            )
-            dailies.append(
-                DAILY_CLASSES[class_name](
-                    self._script_name, declaration, self.display_name
-                )
-            )
-        return dailies
-
-    @property
-    def _dailies(self) -> list[Daily]:
-        """该脚本的全部日常（懒加载，见 ``_build_dailies``）。"""
-        if self._dailies_data is None:
-            dailies = self._build_dailies()
-            seen: set[str] = set()
-            for daily in dailies:
-                assert daily.physical_name not in seen, (
-                    f"{self._script_name} 的日常物理名重复: {daily.physical_name}"
-                )
-                seen.add(daily.physical_name)
-            self._dailies_data = dailies
-        return self._dailies_data
 
     def _dispatch_daily(self, daily_display_name: str) -> Daily:
         """按日常展示名取日常对象。
@@ -379,71 +361,32 @@ class ScriptConfig:
         self._check_weekly_start(start_day)
         assert False, f"[set_config][{self.display_name}] 未支持周常配置"  # noqa: B011  # 故意：未适配脚本不应走到周常写入
 
-    @classmethod
-    def get_game_exe_path(cls, script_name: str) -> str | None:
-        """读取游戏 exe 路径（类方法，无需实例化）。
-
-        Args:
-            script_name: 脚本标识名。
+    def get_game_exe_path(self) -> str | None:
+        """读取本脚本配置中的游戏 exe 路径。
 
         Returns:
             exe 绝对路径；未适配、缺失或为空时返回 None。
         """
-        if not cls._game_path_keys:
+        if not self._game_path_keys:
             return None
-        game_config = load_game_config(script_name, cls._game_config_rel_path)
+        game_config = load_game_config(self._script_name, self._game_config_rel_path)
         if game_config is None:
             return None
         node = game_config
-        for key in cls._game_path_keys:
+        for key in self._game_path_keys:
             if not isinstance(node, dict) or key not in node:
                 logger.warning(
-                    f"[get_game_exe_path][{script_name}] 配置缺少字段: "
-                    f"{cls._game_path_keys}"
+                    f"[get_game_exe_path][{self._script_name}] 配置缺少字段: "
+                    f"{self._game_path_keys}"
                 )
                 return None
             node = node[key]
         if not isinstance(node, str) or not node:
             logger.warning(
-                f"[get_game_exe_path][{script_name}] 游戏路径字段非字符串或为空"
+                f"[get_game_exe_path][{self._script_name}] 游戏路径字段非字符串或为空"
             )
             return None
         return node
-
-    @classmethod
-    def get_task_lists(cls, source: dict) -> list[str]:
-        """按声明中的多级键路径读取选项，无需实例化或初始化适配器。
-
-        Args:
-            source: ``path`` 为资源文件；``key`` 为键路径列表，省略或空列表取根节点。
-
-        Returns:
-            字符串列表，或末层字典的键列表；资源缺失或为空时返回空列表。
-        """
-        assert source.keys() <= {"path", "key"}, (
-            f"[set_config][{cls.display_name}] 通用资源来源只支持 path / key"
-        )
-        path = get_field(source, "path", cls.display_name, str)
-        keys = source["key"] if "key" in source else ()  # noqa: SIM401  # 省略键路径时读取根节点
-        assert isinstance(keys, (list, tuple)), "source.key 必须为键路径列表"
-        keys = tuple(keys)
-        data = load_game_config(cls._script_name, path)
-        if data is None or data == {} or data == []:
-            return []
-        for key in keys:
-            assert isinstance(key, str) and key, "source.key 的每层键必须为非空字符串"
-            assert isinstance(data, dict), (
-                f"[set_config][{cls.display_name}] {path} 的 {key!r} 父节点必须为字典"
-            )
-            data = get_field(data, key, cls.display_name)
-        assert isinstance(data, (list, dict)), (
-            f"[set_config][{cls.display_name}] {path} 的选项必须为列表或字典"
-        )
-        names = list(data)
-        assert all(isinstance(name, str) and name for name in names), (
-            f"[set_config][{cls.display_name}] {path} 的选项名必须为非空字符串"
-        )
-        return names
 
 
 # ============================================================
@@ -451,11 +394,11 @@ class ScriptConfig:
 # ============================================================
 
 # 由 register() 装饰器显式填充（必须在子类定义前初始化）。
-_CONFIGS: dict[str, type[ScriptConfig]] = {}
+_CONFIGS: dict[str, Callable[[], ScriptConfig]] = {}
 
 
 def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
-    """注册子类到 _CONFIGS，并校验必要声明。
+    """校验必要声明，注册首次访问时构造、之后复用的适配器入口。
 
     必填属性须由子类在 ``cls.__dict__`` 中显式声明（而非继承基类默认值）；
     声明了条件属性（_game_path_keys / _weekly_task_name）必须补全对应依赖。
@@ -488,7 +431,7 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
             f"[set_config][{cls.__name__}] 声明了 _weekly_task_name 必须覆写 "
             f"prepare_weekly_start_day（周常开关的落点）"
         )
-    _CONFIGS[cls._script_name] = cls
+    _CONFIGS[cls._script_name] = cache(cls)
     return cls
 
 
@@ -549,38 +492,6 @@ class GenshinConfig(ScriptConfig):
     _game_config_rel_path = "User/config.json"
     _template_rel_path = "BGI一条龙.json"
     _game_path_keys = ("genshinStartConfig", "installPath")
-
-    @classmethod
-    def get_task_lists(cls, source: dict) -> list[str]:
-        """读 BetterGI 的 tp.json，取某秘境分类（周常/日常）的副本名清单。
-
-        Args:
-            source: ``path`` 为 tp.json 路径，``category`` 为原生秘境分类。
-
-        Returns:
-            副本名列表（即 tp.json 的 ``name`` 字段）；文件缺失/空时返回 ``[]``。
-        """
-        assert source.keys() <= {"path", "category"}, (
-            "原神资源来源只支持 path / category"
-        )
-        path = get_field(source, "path", cls.display_name, str)
-        category = get_field(source, "category", cls.display_name, str)
-        data = load_game_config(cls._script_name, path)
-        if not data:
-            return []
-        assert isinstance(data, dict), (
-            f"[set_config][{cls.display_name}] 副本名应为 dict"
-        )
-        names: list[str] = []
-        for scene in data.get("data", []):
-            if not isinstance(scene, dict):
-                continue
-            for pt in scene.get("points", []):
-                if isinstance(pt, dict) and pt.get("type", "") == category:
-                    name = pt.get("name", "")
-                    if name:
-                        names.append(name)
-        return names
 
 
 # ---- 终末地 Arknights: Endfield ----
@@ -790,22 +701,18 @@ class NTEConfig(ScriptConfig):
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
 
-    @classmethod
-    def get_game_exe_path(cls, script_name: str) -> str | None:
+    def get_game_exe_path(self) -> str | None:
         """重写：从游戏本体路径向上查找异环启动器。
-
-        Args:
-            script_name: 脚本标识名。
 
         Returns:
             启动器绝对路径；本体缺失或找不到启动器时返回 None。
         """
-        game_exe = super().get_game_exe_path(script_name)
+        game_exe = super().get_game_exe_path()
         if not game_exe:
             return None
         directory = os.path.dirname(game_exe)
         while True:
-            candidate = os.path.join(directory, cls._launcher_rel_path)
+            candidate = os.path.join(directory, self._launcher_rel_path)
             if os.path.isfile(candidate):
                 return candidate
             parent = os.path.dirname(directory)
@@ -813,7 +720,7 @@ class NTEConfig(ScriptConfig):
                 break
             directory = parent
         logger.warning(
-            f"[get_game_exe_path][{script_name}] 未找到启动器 {cls._launcher_rel_path}"
+            f"[get_game_exe_path][{self._script_name}] 未找到启动器 {self._launcher_rel_path}"
         )
         return None
 
@@ -835,12 +742,74 @@ class ArknightsConfig(ScriptConfig):
     _weekly_config_rel_path = "config/gui.new.json"
     _weekly_task_name = get_physical_name(get_weekly_config(_script_name, "理智药剂"))
 
+    def _init_config(self) -> None:
+        """建立三个独立入口和必刷剿灭，交给 MAA 原生队列执行。"""
+        activity, main, remaining = self._dailies
+        assert all(isinstance(daily, MaaDaily) for daily in self._dailies)
+        config = main._load_daily_config(allow_missing=True)
+        if config is None:
+            return
+        queue = main._task_queue(config)
+        before = deepcopy(queue)
+        days = main._medicine_days(queue)
+        fights = self._init_fight_tasks(queue, days)
+        self._order_tasks(queue, fights)
+        main._set_medicine(queue, days)
+        if queue != before:
+            main._save_daily_config(config)
+
+    def _init_fight_tasks(self, queue: list[dict], days: int) -> list[dict]:
+        """准备必刷剿灭和三个日常入口，保留各自已有设置。"""
+        main = self._dailies[1]
+        annihilation = None
+        daily_names = {daily.physical_name for daily in self._dailies}
+        for task in queue:
+            kind = get_field(task, "$type", "MAA", str)
+            if kind != "FightTask":
+                continue
+            if not ("Name" in task and task["Name"] in daily_names) and (
+                main._stage(task) == "Annihilation"
+                or ("Name" in task and task["Name"] == "剿灭作战")
+            ):
+                annihilation = task
+                break
+        if annihilation is None:
+            annihilation = main._new_task("剿灭作战")
+        main._configure_task(annihilation, "Annihilation", True, days)
+        annihilation["IsStageManually"] = False
+        selected = [daily._init_task(queue, days) for daily in self._dailies]
+        return [annihilation, *selected]
+
+    def _order_tasks(self, queue: list[dict], fights: list[dict]) -> None:
+        """唤醒后安排剿灭和活动，库存保持后安排其余日常；清理多余战斗。"""
+        others = [task for task in queue if task["$type"] != "FightTask"]
+        # 插入点按非战斗队列计算，原生任务的相对顺序保持不变。
+        wake = next(
+            (i + 1 for i, task in enumerate(others) if task["$type"] == "StartUpTask"),
+            0,
+        )
+        depot = next(
+            (
+                i + 1
+                for i, task in enumerate(others)
+                if task["$type"] == "DepotMaintainTask"
+            ),
+            wake,
+        )
+        normal = max(wake, depot)
+        queue[:] = (
+            others[:wake]
+            + fights[:2]
+            + others[wake:normal]
+            + fights[2:]
+            + others[normal:]
+        )
+
     def prepare_weekly_start_day(self, start_day: int) -> None:
-        """周常「理智药剂」：按周几起写过期理智药使用窗口，并随副本启停同步开关。
+        """按周几起写临期窗口，并兜底开启所有战斗的临期药。
 
         与基类二值开关不同，本方法每次调用都直接写入（不按「今天是否到起始日」门控）：
-        - 开启的 FightTask 设 UseExpiringMedicine=true，其余设 false；
-        - 剿灭不吃理智药：即便开启也强制 UseExpiringMedicine=false（照常运行，只是不吃药）；
+        - 所有 FightTask 设 UseExpiringMedicine=true；
         - MedicineExpireDays 由周几起推算：周几起 = 7 - MedicineExpireDays + 1
           ⇒ MedicineExpireDays = 8 - 周几起（周几起∈1~7，1=周一）。
 
@@ -871,13 +840,10 @@ class ArknightsConfig(ScriptConfig):
         for task in task_queue:
             if task["$type"] != "FightTask":
                 continue
-            enabled = bool(task["IsEnable"])
-            # 剿灭不吃理智药：开启但仍强制 false
-            use_medicine = enabled and task["Name"] != "剿灭"
             changed |= safe_update(
                 task,
                 "UseExpiringMedicine",
-                use_medicine,
+                True,
                 self.display_name,
                 assert_key_exists=False,
             )
@@ -902,8 +868,7 @@ class ArknightsConfig(ScriptConfig):
         """编辑期落盘周几起字面起始日到 MedicineExpireDays。
 
         与 prepare_weekly_start_day 不同：本方法只写 MedicineExpireDays（由周几起推算：
-        MedicineExpireDays = 8 - 周几起），不写 UseExpiringMedicine（是否吃药的
-        开关依赖各 FightTask 的启用状态，需运行期按当日副本选型经 prepare_weekly_start_day 计算）。
+        MedicineExpireDays = 8 - 周几起），不改临期药开关。
         编辑期改周几起即应落盘此值，无需等待链运行。
 
         Args:
@@ -1002,21 +967,21 @@ def set_config(
         logger.info(f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过")
         return
 
-    cfg_cls = _CONFIGS[script_name]
-    cfg = cfg_cls()
+    cfg = _CONFIGS[script_name]()
     if task_name and task_name != "未选择":
         cfg.set_daily_task(daily_display_name, task_name, sequence)
     if weekly_start is not None:
         cfg.prepare_weekly_start_day(weekly_start)
 
 
-def get_task_lists(script_name: str, source: dict) -> list[str] | None:
-    """适配器接口：副本清单源在游戏脚本自身配置里，从中读某任务的可选副本名清单，委托给对应脚本的 config 类。
-
-    「从哪读、怎么解析」的知识归各 ``ScriptConfig`` 子类，本函数只做分发。
+def get_task_lists(
+    script_name: str, daily_display_name: str, source: dict
+) -> list[str] | None:
+    """适配器接口：复用已注册的 Daily 读取可选副本。
 
     Args:
         script_name: 脚本唯一标识（如 ``March7th-Launcher``）。
+        daily_display_name: 所属日常展示名。
         source: 完整的 options.source 声明，资源定位不依赖任务名称。
 
     Returns:
@@ -1024,7 +989,11 @@ def get_task_lists(script_name: str, source: dict) -> list[str] | None:
     """
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name].get_task_lists(source)
+    return (
+        _CONFIGS[script_name]()
+        ._dispatch_daily(daily_display_name)
+        .get_task_lists(source)
+    )
 
 
 def get_config_path(script_name: str) -> str:
@@ -1041,7 +1010,7 @@ def get_config_path(script_name: str) -> str:
     """
     assert script_name in _CONFIGS, f"[set_config] 未适配脚本: {script_name}"
     return _get_config_path_impl(
-        script_name, get_daily_configs(script_name)[0]["config"]
+        script_name, _CONFIGS[script_name]()._daily_config_rel_path()
     )
 
 
@@ -1050,10 +1019,10 @@ def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...]:
     if script_name not in _CONFIGS:
         return ()
     assert script_name in _CONFIGS
-    cls = _CONFIGS[script_name]
-    if rel.casefold() != cls._game_config_rel_path.casefold():
+    cfg = _CONFIGS[script_name]()
+    if rel.casefold() != cfg._game_config_rel_path.casefold():
         return ()
-    return cls._game_path_keys
+    return cfg._game_path_keys
 
 
 def iter_backup_paths() -> dict[str, tuple[str, ...]]:
@@ -1066,7 +1035,8 @@ def iter_backup_paths() -> dict[str, tuple[str, ...]]:
         {脚本唯一标识: (备份路径, ...)}。
     """
     return {
-        script_name: cfg_cls._backup_paths for script_name, cfg_cls in _CONFIGS.items()
+        script_name: factory()._backup_paths
+        for script_name, factory in _CONFIGS.items()
     }
 
 
@@ -1074,7 +1044,7 @@ def get_game_exe_path(script_name: str) -> str | None:
     """读游戏 exe 路径（供 GUI 打开）；未适配/缺失 → None。"""
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name].get_game_exe_path(script_name)
+    return _CONFIGS[script_name]().get_game_exe_path()
 
 
 def is_adapted(script_name: str) -> bool:
@@ -1086,7 +1056,7 @@ def supports_weekly(script_name: str) -> bool:
     """查询脚本是否支持周常（供 GUI 控制周常行可选性）。"""
     if script_name not in _CONFIGS:
         return False
-    return bool(_CONFIGS[script_name]._weekly_task_name)
+    return bool(_CONFIGS[script_name]()._weekly_task_name)
 
 
 def get_background_rel_path(script_name: str) -> str:
@@ -1100,7 +1070,7 @@ def get_background_rel_path(script_name: str) -> str:
     """
     if script_name not in _CONFIGS:
         return ""
-    return _CONFIGS[script_name].background
+    return _CONFIGS[script_name]().background
 
 
 def set_weekly_task(script_name: str, weekly_name: str, task_name: str) -> None:
@@ -1115,10 +1085,9 @@ def set_weekly_task(script_name: str, weekly_name: str, task_name: str) -> None:
     """
     if script_name not in _CONFIGS:
         return
-    cfg_cls = _CONFIGS[script_name]
-    if not hasattr(cfg_cls, "set_weekly_task"):
+    cfg = _CONFIGS[script_name]()
+    if not hasattr(cfg, "set_weekly_task"):
         return
-    cfg = cfg_cls()
     cfg.set_weekly_task(weekly_name, task_name)
 
 
@@ -1133,10 +1102,9 @@ def set_weekly_start_day(script_name: str, start_day: int) -> None:
     """
     if script_name not in _CONFIGS:
         return
-    cfg_cls = _CONFIGS[script_name]
-    if not hasattr(cfg_cls, "set_weekly_start_day"):
+    cfg = _CONFIGS[script_name]()
+    if not hasattr(cfg, "set_weekly_start_day"):
         return
-    cfg = cfg_cls()
     cfg.set_weekly_start_day(start_day)
 
 

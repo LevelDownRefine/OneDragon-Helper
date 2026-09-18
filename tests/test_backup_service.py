@@ -16,10 +16,11 @@ from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
 class TestBackupService(unittest.TestCase):
     def test_preserves_paths_for_every_adapter(self):
         """真实适配器声明覆盖 JSON、YAML 和嵌套字段，其他字段来自备份。"""
-        for script_name, cls in set_config._CONFIGS.items():
+        for script_name, factory in set_config._CONFIGS.items():
+            cfg = factory()
             with self.subTest(script=script_name):
                 self.roots[script_name] = str(self.root / script_name)
-                rel, keys = cls._game_config_rel_path, cls._game_path_keys
+                rel, keys = cfg._game_config_rel_path, cfg._game_path_keys
                 old, current = {"task": 1}, {"task": 99}
                 for data, value in ((old, "old-machine"), (current, "this-machine")):
                     node = data

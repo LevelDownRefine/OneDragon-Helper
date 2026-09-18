@@ -30,14 +30,6 @@ def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
     return cfg._dispatch_daily(daily_name).read()
 
 
-def _bind_maa_daily(cfg, mapping: dict):
-    """把粥日常的关卡映射换成测试用的小集合（真实声明里没有这些关卡）。"""
-    daily = cfg._dispatch_daily("每日任务")
-    daily._name_by_stage = dict(mapping)
-    daily._stage_by_name = {name: stage for stage, name in mapping.items()}
-    return daily
-
-
 def _setter(config, key, value, *args, **kwargs):
     """safe_update 替身：直接赋值，隔离字段存在性约束，专测反向映射。"""
     config[key] = value
@@ -191,95 +183,37 @@ class TestReadbackNTE(unittest.TestCase):
 
 
 class TestReadbackMAA(unittest.TestCase):
-    def test_daily_task_roundtrip(self):
-        config = {
-            "Configurations": {
-                "Default": {
-                    "TaskQueue": [
-                        {
-                            "Name": "剿灭",
-                            "$type": "FightTask",
-                            "IsEnable": False,
-                            "StagePlan": ["Annihilation"],
-                        },
-                        {
-                            "Name": "土",
-                            "$type": "FightTask",
-                            "IsEnable": False,
-                            "StagePlan": ["1-7"],
-                        },
-                        {
-                            "Name": "活动土",
-                            "$type": "FightTask",
-                            "IsEnable": False,
-                            "StagePlan": [""],
-                        },
-                        {
-                            "Name": "龙门币",
-                            "$type": "FightTask",
-                            "IsEnable": False,
-                            "StagePlan": ["CE-6"],
-                        },
-                    ]
-                }
-            }
-        }
+    def test_selection_reads_back_even_when_disabled(self):
+        config = {"Configurations": {"Default": {"TaskQueue": []}}}
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(daily_mod, "save_config"),
-            patch.object(set_config_mod, "safe_update", _setter),
-            patch.object(daily_mod, "safe_update", _setter),
+            patch.object(Daily, "_save_daily_config"),
         ):
             cfg = ArknightsConfig()
-            _bind_maa_daily(
-                cfg, {"Annihilation": "剿灭", "1-7": "土", "CE-6": "龙门币"}
-            )
-            cfg.set_daily_task("每日任务", "龙门币")
-            self.assertEqual(_read(cfg, "每日任务")[0], "龙门币")
+            cfg.set_daily_task("理智作战", "CE-6")
+            cfg.set_daily_enabled("理智作战", False)
+            self.assertEqual(_read(cfg, "理智作战"), ("CE-6", None))
+            self.assertFalse(cfg._dispatch_daily("理智作战").read_enabled())
+            self.assertEqual(_read(cfg, "剩余理智"), (None, None))
 
-    def test_read_daily_task_all_disabled_but_has_1_7_returns_土(self):
-        """所有维护关卡都未启用，但有1-7 → 读为土"""
+    def test_custom_task_with_same_stage_is_not_a_named_entry(self):
         config = {
             "Configurations": {
                 "Default": {
                     "TaskQueue": [
                         {
-                            "Name": "剿灭",
                             "$type": "FightTask",
-                            "IsEnable": True,
-                            "StagePlan": ["Annihilation"],
-                        },
-                        {
-                            "Name": "土",
-                            "$type": "FightTask",
-                            "IsEnable": False,
+                            "Name": "自建",
                             "StagePlan": ["1-7"],
-                        },
-                        {
-                            "Name": "活动土",
-                            "$type": "FightTask",
                             "IsEnable": True,
-                            "StagePlan": [""],
-                        },
-                        {
-                            "Name": "龙门币",
-                            "$type": "FightTask",
-                            "IsEnable": False,
-                            "StagePlan": ["CE-6"],
-                        },
+                        }
                     ]
                 }
             }
         }
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(daily_mod, "save_config"),
-        ):
+        with patch.object(Daily, "_load_daily_config", return_value=config):
             cfg = ArknightsConfig()
-            _bind_maa_daily(
-                cfg, {"Annihilation": "剿灭", "1-7": "土", "CE-6": "龙门币"}
-            )
-            self.assertEqual(_read(cfg, "每日任务")[0], "土")
+            self.assertEqual(_read(cfg, "剩余理智"), (None, None))
 
 
 class TestReadbackStarRailWeekly(unittest.TestCase):

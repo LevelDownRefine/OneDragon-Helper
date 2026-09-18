@@ -45,6 +45,23 @@ if _local_appdata:
 # 全局 QApplication 实例（offscreen 平台，CI 无显示器）
 _app = QApplication.instance() or QApplication([])
 
+_NATIVE_CONFIG_STUB = (
+    "from unittest.mock import patch\n"
+    "patch('src.utils.utils_sub_config._load_config_yml', "
+    "return_value={'script_list': []}).start()\n"
+)
+
+
+def setUpModule():
+    """只模拟原生脚本未安装，应用脚本列表仍由各用例提供。"""
+    native_config = patch(
+        "src.utils.utils_sub_config._load_config_yml",
+        return_value={"script_list": []},
+    )
+    native_config.start()
+    unittest.addModuleCleanup(native_config.stop)
+
+
 _SCRIPTS = [
     {
         "display_name": "鸣潮",
@@ -464,7 +481,7 @@ class TestQmlApp(unittest.TestCase):
             """
         )
         proc = subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
             text=True,
             timeout=60,
@@ -522,7 +539,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch.object(daily_config, "get_task_lists",
+                patch.object(daily_config, "read_task_source",
                              return_value=fake_tasks),
             ):
                 with (
@@ -559,7 +576,7 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             """
         )
         proc = subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
             text=True,
             timeout=60,
@@ -641,7 +658,7 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             """
         )
         proc = subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
             text=True,
             timeout=60,
@@ -705,7 +722,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch("src.config.daily_config.get_task_lists",
+                patch("src.config.daily_config.read_task_source",
                              return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                            "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                            "不死的神实", "寒潮的落幕", "毁灭的开端"]),
@@ -734,7 +751,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             """
         )
         proc = subprocess.run(
-            [sys.executable, "-c", code],
+            [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
             capture_output=True,
             text=True,
             timeout=60,

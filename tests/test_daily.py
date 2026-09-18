@@ -37,7 +37,7 @@ class TestDispatch(unittest.TestCase):
                     [daily.display_name for daily in dailies],
                     [decl["display_name"] for decl in load_daily_map()[script_name]],
                 )
-                # 日常对象懒加载一次后复用（同一实例），且可按展示名定位
+                # 日常对象构造后复用（同一实例），且可按展示名定位
                 self.assertIs(cfg._dailies, dailies)
                 for daily in dailies:
                     self.assertTrue(daily.physical_name)
@@ -51,18 +51,18 @@ class TestDispatch(unittest.TestCase):
         """各 config 类手动实例化自己的日常：类与数量都写在子类里。"""
         for script_name in NO_OP_SCRIPTS:
             with self.subTest(script=script_name):
-                daily = _CONFIGS[script_name]()._build_dailies()[0]
+                daily = _CONFIGS[script_name]()._dailies[0]
                 self.assertIsInstance(daily, NoopDaily)
                 self.assertFalse(daily.update("任意"))
-        anomaly, hunter = _CONFIGS["ok-nte"]()._build_dailies()
+        anomaly, hunter = _CONFIGS["ok-nte"]()._dailies
         self.assertIsInstance(anomaly, Anomaly)
         self.assertIsInstance(hunter, Anomaly)
         self.assertEqual(anomaly.display_name, "异象界域")
         self.assertEqual(hunter.display_name, "追猎目标")
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
-        self.assertIsInstance(_CONFIGS["MAA"]()._build_dailies()[0], MaaDaily)
+        self.assertIsInstance(_CONFIGS["MAA"]()._dailies[0], MaaDaily)
         # 标准两层脚本用默认机制类
-        self.assertIs(type(_CONFIGS["ok-ww"]()._build_dailies()[0]), Daily)
+        self.assertIs(type(_CONFIGS["ok-ww"]()._dailies[0]), Daily)
 
 
 class TestLandingPoints(unittest.TestCase):
@@ -161,7 +161,7 @@ class TestRead(unittest.TestCase):
     def test_without_landing_point_has_no_truth(self):
         for script_name in NO_OP_SCRIPTS:
             with self.subTest(script=script_name):
-                daily = _CONFIGS[script_name]()._build_dailies()[0]
+                daily = _CONFIGS[script_name]()._dailies[0]
                 with patch.object(daily, "_load_daily_config", return_value={}):
                     self.assertEqual(daily.read(), (None, None))
                 # 无落点日常（NoopDaily）覆写 update：不读不写，恒无改动

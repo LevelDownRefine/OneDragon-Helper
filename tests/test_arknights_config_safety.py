@@ -1,243 +1,356 @@
-"""明日方舟（MAA / 粥）config 安全性测试。
-
-用一份「脱敏后的真实 gui.new.json」当夹具（tests/fixtures/maa_gui.new.scrubbed.json），
-跑 init_config / set_daily_task / prepare_weekly_start_day，对每次落盘做全量字段 diff，
-断言「只动了该动的字段，其余（含注入的金丝雀字段）原封不动」。
-
-设计目的：验证 index 定位（_task_map 来自模板）不会把 IsEnable / 药配置
-写到错误的 TaskQueue 项，也不会波及 Gui / Toolbox / 其它无关字段。
-"""
+"""MAA 原生配置的编辑、初始化和持久化边界。"""
 
 import copy
 import json
-import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from src.config import daily as daily_mod
 from src.config import set_config as sc_mod
 from src.config.set_config import ArknightsConfig
-from tests.config_diff import diff_paths
-
-FIXTURE = os.path.join(
-    os.path.dirname(__file__), "fixtures", "maa_gui.new.scrubbed.json"
-)
-
-# TaskQueue 中 6 个 FightTask 的索引
-FIGHT_IDX = (1, 2, 3, 4, 5, 6)  # 剿灭, 红票, 经验, 龙门币, 活动土, 土
-
-# set_daily_task 只允许改动的字段路径集合
-ALLOWED_DUNGEON = {f"Configurations.Default.TaskQueue[{i}].IsEnable" for i in FIGHT_IDX}
-# prepare_weekly_start_day 只允许改动的字段路径集合
-ALLOWED_WEEKLY = {
-    f"Configurations.Default.TaskQueue[{i}].UseExpiringMedicine" for i in FIGHT_IDX
-} | {f"Configurations.Default.TaskQueue[{i}].MedicineExpireDays" for i in FIGHT_IDX}
 
 
-def load_fixture() -> dict:
-    with open(FIXTURE, encoding="utf-8") as f:
-        return json.load(f)
+def load_fixture():
+    path = Path(__file__).parent / "fixtures/maa_gui.new.scrubbed.json"
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def inject_canaries(cfg: dict) -> None:
-    """注入金丝雀字段，用于证明无关字段不会被改到。"""
-    default = cfg["Configurations"]["Default"]
-    default["CANARY_EXTRA"] = "KEEP_ME"  # 顶层额外 key
-    gui = default["Gui"]
-    gui["StartUpSettings"]["EmulatorPath"] = "CANARY_EMULATOR"  # 覆盖已脱敏路径
-    gui["RuntimeSettings"]["PenguinId"] = "CANARY_PENGUIN"
-    default["Toolbox"]["PeepTargetFps"] = 999
-    for t in default["TaskQueue"]:
-        if t.get("$type") == "FightTask":
-            t["UseMedicine"] = (
-                True  # 药配置相关但绝不该被 set_daily_task/prepare_weekly_start_day 动
-            )
-            t["CANARY_TASK"] = "X"
-
-
-class TestArknightsConfigSafety(unittest.TestCase):
+class TestMaaNativeConfig(unittest.TestCase):
     def setUp(self):
-        self.seed = load_fixture()
-        inject_canaries(self.seed)
-        self.store = {"config/gui.new.json": copy.deepcopy(self.seed)}
-        self.saves: list[tuple[str, dict]] = []
+        self.data = load_fixture()
+        self.saved = []
+        self.stages = ["AT-8", "AT-7"]
 
-        def fake_load(script_name, rel_path=None):
-            return copy.deepcopy(self.store[rel_path])
+        def load(*args):
+            return copy.deepcopy(self.data)
 
-        def fake_save(script_name, rel_path, data):
-            self.store[rel_path] = copy.deepcopy(data)
-            self.saves.append((rel_path, copy.deepcopy(data)))
+        def save(script, path, config):
+            self.assertEqual(path, "config/gui.new.json")
+            self.data = copy.deepcopy(config)
+            self.saved.append(path)
 
-        self._lp = patch.object(sc_mod, "load_config", fake_load)
-        self._sp = patch.object(sc_mod, "save_config", fake_save)
-        # Daily 自持 I/O 直调 daily 模块原语，同 fake 双注册
-        self._ldp = patch.object(daily_mod, "load_config", fake_load)
-        self._dsp = patch.object(daily_mod, "save_config", fake_save)
-        self._lp.start()
-        self._sp.start()
-        self._ldp.start()
-        self._dsp.start()
+        for module in (daily_mod, sc_mod):
+            for name, function in (("load_config", load), ("save_config", save)):
+                mock = patch.object(module, name, side_effect=function)
+                mock.start()
+                self.addCleanup(mock.stop)
+        mock = patch.object(
+            daily_mod, "read_activity_stages", side_effect=lambda *args: self.stages
+        )
+        mock.start()
+        self.addCleanup(mock.stop)
+        self.cfg = ArknightsConfig()
 
-    def tearDown(self):
-        # 只停 setUp 自身 start 的两个 patch，不用全局 stopall（避免误停他方活跃 patch）。
-        self._lp.stop()
-        self._sp.stop()
-        self._ldp.stop()
-        self._dsp.stop()
+    def queue(self):
+        return self.data["Configurations"]["Default"]["TaskQueue"]
 
-    # ---- 实例化：绝不该改任何东西（反读/只读入口依赖此不变量）----
-    def test_instantiation_touches_nothing(self):
-        """ArknightsConfig() 实例化不得触碰 config（反读路径依赖此不变量）。"""
-        ArknightsConfig()
-        diff = diff_paths(self.seed, self.store["config/gui.new.json"])
-        self.assertEqual(diff, [], f"实例化意外改动: {diff}")
+    def task(self, name):
+        return next(task for task in self.queue() if task["Name"] == name)
 
-    # ---- set_daily_task：只允许改 FightTask 的 IsEnable ----
-    def test_set_daily_task_only_touches_is_enable(self):
-        cfg = ArknightsConfig()
-        # 强制差异：先把所有 FightTask IsEnable 拨错，逼 set_daily_task 真正落盘
-        forced = copy.deepcopy(self.store["config/gui.new.json"])
-        for t in forced["Configurations"]["Default"]["TaskQueue"]:
-            if t.get("$type") == "FightTask":
-                t["IsEnable"] = False
-        self.store["config/gui.new.json"] = forced
-        pre = copy.deepcopy(forced)
+    def select(self):
+        for name, stage in (
+            ("活动关卡", "AT-8"),
+            ("理智作战", "CE-6"),
+            ("剩余理智", "1-7"),
+        ):
+            self.cfg.set_daily_task(name, stage)
 
-        cfg.set_daily_task("每日任务", "土")
+    def test_reading_does_not_initialize_or_save(self):
+        before = copy.deepcopy(self.data)
+        self.assertEqual(len(self.cfg._read_daily_tasks()), 3)
+        self.assertEqual(self.data, before)
+        self.assertFalse(self.saved)
 
-        post = self.store["config/gui.new.json"]
-        diff = diff_paths(pre, post)
-        paths = {p for p, _, _ in diff}
-        # 期望恰好改 2 个：剿灭/土 → true（活动土未维护，不动）
-        expected = {
-            "Configurations.Default.TaskQueue[1].IsEnable",
-            "Configurations.Default.TaskQueue[6].IsEnable",
-        }
+    def test_init_creates_disabled_slots_and_always_enabled_annihilation(self):
+        self.cfg._init_config()
+        fights = [t for t in self.queue() if t["$type"] == "FightTask"]
         self.assertEqual(
-            paths,
-            expected,
-            f"set_daily_task 改动与预期不符: 多了{paths - expected} 少了{expected - paths}",
+            [t["Name"] for t in fights], ["剿灭", "活动关优先", "理智作战", "剩余理智"]
         )
-        # 正向校验：开启项符合预期（剿灭/土）
-        tq = post["Configurations"]["Default"]["TaskQueue"]
-        by_name = {t["Name"]: t for t in tq if t.get("$type") == "FightTask"}
-        self.assertTrue(by_name["剿灭"]["IsEnable"])
-        self.assertTrue(by_name["土"]["IsEnable"])
-        self.assertFalse(by_name["红票"]["IsEnable"])
-        self.assertFalse(by_name["经验"]["IsEnable"])
-        self.assertFalse(by_name["龙门币"]["IsEnable"])
+        self.assertTrue(fights[0]["IsEnable"])
+        self.assertEqual(fights[0]["StagePlan"], ["Annihilation"])
+        for task in fights[1:]:
+            self.assertFalse(task["IsEnable"])
+            self.assertEqual(task["StagePlan"], [""])
+        self.assertEqual(len(self.cfg._dailies), 3)
+        self.assertTrue(all(t["UseExpiringMedicine"] for t in fights))
 
-    # ---- prepare_weekly_start_day：只允许改 6 个 FightTask 的 UseExpiringMedicine / MedicineExpireDays ----
-    def test_set_weekly_only_touches_medicine_fields(self):
-        cfg = ArknightsConfig()
-        cfg.set_daily_task("每日任务", "土")  # 先把 IsEnable 设到日常态
+    def test_init_is_idempotent_and_keeps_nonfight_config(self):
+        before = copy.deepcopy(self.data)
+        self.cfg._init_config()
+        original = before["Configurations"]["Default"]["TaskQueue"]
+        original[:] = [t for t in original if t["$type"] != "FightTask"]
+        after = copy.deepcopy(self.data)
+        changed = after["Configurations"]["Default"]["TaskQueue"]
+        changed[:] = [t for t in changed if t["$type"] != "FightTask"]
+        self.assertEqual(after, before)
+        saves = len(self.saved)
+        self.cfg._init_config()
+        self.assertEqual(len(self.saved), saves)
 
-        # 制造差异：把药配置先拨到错误值，逼 prepare_weekly_start_day 真正落盘
-        pre = copy.deepcopy(self.store["config/gui.new.json"])
-        for t in pre["Configurations"]["Default"]["TaskQueue"]:
-            if t.get("$type") == "FightTask":
-                t["UseExpiringMedicine"] = False
-                t["MedicineExpireDays"] = 1
-        self.store["config/gui.new.json"] = pre
-        snapshot = copy.deepcopy(pre)
+    def test_selected_stage_and_switch_are_independent_per_entry(self):
+        self.cfg._init_config()
+        order = [t["Name"] for t in self.queue()]
+        self.select()
+        self.cfg.set_daily_enabled("理智作战", False)
+        self.assertEqual([t["Name"] for t in self.queue()], order)
+        self.assertEqual(self.task("理智作战")["StagePlan"], ["CE-6"])
+        self.assertFalse(self.task("理智作战")["IsEnable"])
+        self.assertTrue(self.task("活动关优先")["IsEnable"])
+        self.assertTrue(self.task("剩余理智")["IsEnable"])
+        self.assertEqual(self.cfg._dispatch_daily("理智作战").read(), ("CE-6", None))
 
-        cfg.prepare_weekly_start_day(1)  # 周几起=1 ⇒ MedicineExpireDays=7
-
-        post = self.store["config/gui.new.json"]
-        diff = diff_paths(snapshot, post)
-        paths = {p for p, _, _ in diff}
-        self.assertLessEqual(
-            paths,
-            ALLOWED_WEEKLY,
-            f"prepare_weekly_start_day 改到了不该改的字段: {paths - ALLOWED_WEEKLY}",
+    def test_new_entry_uses_template_instead_of_another_task(self):
+        self.cfg.set_daily_task("理智作战", "AP-5")
+        self.task("理智作战").update(
+            Series=6, UseMedicine=True, MedicineCount=9, NativeOnly={"nested": [1]}
         )
-        # 正向校验：开启副本吃药、剿灭不吃、窗口=7
-        tq = post["Configurations"]["Default"]["TaskQueue"]
-        by_name = {t["Name"]: t for t in tq if t.get("$type") == "FightTask"}
-        self.assertFalse(by_name["剿灭"]["UseExpiringMedicine"], "剿灭不应吃药")
-        self.assertTrue(by_name["土"]["UseExpiringMedicine"])
-        self.assertTrue(by_name["活动土"]["UseExpiringMedicine"])
-        self.assertFalse(by_name["红票"]["UseExpiringMedicine"])
-        self.assertEqual(by_name["土"]["MedicineExpireDays"], 7)
-        self.assertEqual(by_name["剿灭"]["MedicineExpireDays"], 7)
+        before = copy.deepcopy(self.task("理智作战"))
+        self.cfg.set_daily_task("剩余理智", "1-7")
+        created = self.task("剩余理智")
+        self.assertEqual(created["Series"], 0)
+        self.assertFalse(created["UseMedicine"])
+        self.assertNotIn("NativeOnly", created)
+        self.assertEqual(self.task("理智作战"), before)
 
-    # ---- 金丝雀：无关字段全程不被触碰 ----
-    def test_canaries_untouched_through_full_flow(self):
-        cfg = ArknightsConfig()
-        cfg.set_daily_task("每日任务", "土")
-        cfg.prepare_weekly_start_day(1)
+    def test_existing_entries_keep_their_native_settings(self):
+        self.select()
+        for index, name in enumerate(("活动关优先", "理智作战", "剩余理智")):
+            self.task(name).update(
+                Series=index + 1,
+                UseMedicine=True,
+                MedicineCount=3,
+                UseStone=True,
+                StoneCount=2,
+                UseStoneAllowSave=True,
+                NativeOnly={"owner": name},
+                EnableTimesLimit=True,
+                TimesLimit=7,
+                EnableTargetDrop=True,
+                DropId="3001",
+                UseWeeklySchedule=True,
+                WeeklySchedule={"Monday": False},
+            )
+        self.cfg._init_config()
+        for index, name in enumerate(("活动关优先", "理智作战", "剩余理智")):
+            task = self.task(name)
+            self.assertEqual(task["Series"], index + 1)
+            self.assertTrue(task["UseMedicine"])
+            self.assertEqual(task["MedicineCount"], 3)
+            self.assertTrue(task["UseStone"])
+            self.assertEqual(task["StoneCount"], 2)
+            self.assertEqual(task["NativeOnly"], {"owner": name})
+            self.assertFalse(task["EnableTimesLimit"])
+            self.assertEqual(task["TimesLimit"], 7)
+            self.assertFalse(task["EnableTargetDrop"])
+            self.assertEqual(task["DropId"], "3001")
+            self.assertFalse(task["UseWeeklySchedule"])
+            self.assertFalse(task["UseOptionalStage"])
 
-        post = self.store["config/gui.new.json"]
-        default = post["Configurations"]["Default"]
-        self.assertEqual(default.get("CANARY_EXTRA"), "KEEP_ME")
-        self.assertEqual(
-            default["Gui"]["StartUpSettings"]["EmulatorPath"], "CANARY_EMULATOR"
-        )
-        self.assertEqual(
-            default["Gui"]["RuntimeSettings"]["PenguinId"], "CANARY_PENGUIN"
-        )
-        self.assertEqual(default["Toolbox"]["PeepTargetFps"], 999)
-        for t in default["TaskQueue"]:
-            if t.get("$type") == "FightTask":
-                self.assertTrue(
-                    t.get("UseMedicine"), "FightTask.UseMedicine 被意外改动"
-                )
-                self.assertEqual(t.get("CANARY_TASK"), "X")
+    def test_common_medicine_window_is_inherited_and_conflicts_use_saturday(self):
+        for common, expected in ((7, 7), (1, 1), (None, 2)):
+            with self.subTest(common=common):
+                self.data = load_fixture()
+                fights = [t for t in self.queue() if t["$type"] == "FightTask"]
+                for index, task in enumerate(fights):
+                    task["MedicineExpireDays"] = (
+                        common if common is not None else index + 1
+                    )
+                self.cfg.set_daily_task("理智作战", "AP-5")
+                self.cfg._init_config()
+                for task in self.queue():
+                    if task["$type"] == "FightTask":
+                        self.assertEqual(task["MedicineExpireDays"], expected)
+                        self.assertTrue(task["UseExpiringMedicine"])
 
-    # ---- set_daily_task fallback：缺目标关卡时借用槽位改写 StagePlan ----
-    def test_set_daily_task_borrow_only_touches_stageplan(self):
-        """issue #42：红票(AP-5) 缺失时 fallback 借用第一个启用非剿灭槽位改写
-        StagePlan；set_daily_task 仍不得触碰 IsEnable/StagePlan 之外的任何字段。"""
-        cfg = ArknightsConfig()
-        # 构造缺 AP-5 的副本：删除红票 FightTask，使目标关卡在队列中不存在
-        seed = copy.deepcopy(self.seed)
-        tq = seed["Configurations"]["Default"]["TaskQueue"]
-        tq[:] = [
+    def test_weekly_hook_changes_only_medicine_even_for_disabled_tasks(self):
+        self.cfg._init_config()
+        before = copy.deepcopy(self.data)
+        self.cfg.prepare_weekly_start_day(1)
+        expected = before["Configurations"]["Default"]["TaskQueue"]
+        for task in expected:
+            if task["$type"] == "FightTask":
+                task.update(UseExpiringMedicine=True, MedicineExpireDays=7)
+        self.assertEqual(self.data, before)
+
+    def test_expired_activity_keeps_code_without_switching_to_new_event(self):
+        self.select()
+        self.stages = ["NEW-8"]
+        self.cfg._init_config()
+        task = self.task("活动关优先")
+        self.assertEqual(task["StagePlan"], ["AT-8"])
+        self.assertFalse(task["IsEnable"])
+        self.assertEqual(self.cfg._dispatch_daily("活动关卡").read(), ("AT-8", None))
+        self.cfg.set_daily_task("活动关卡", "NEW-8")
+        self.assertTrue(self.task("活动关优先")["IsEnable"])
+
+    def test_expired_menu_selection_is_written_without_resource_reload(self):
+        self.cfg._init_config()
+        self.stages = []
+        with patch.object(
+            daily_mod,
+            "read_activity_stages",
+            side_effect=AssertionError("选择时不应重新读取活动资源"),
+        ):
+            self.cfg.set_daily_task("活动关卡", "AT-7")
+        self.assertEqual(self.task("活动关优先")["StagePlan"], ["AT-7"])
+        self.assertTrue(self.task("活动关优先")["IsEnable"])
+
+    def test_multi_stage_plan_is_not_adopted_as_one_stage(self):
+        self.select()
+        self.task("理智作战")["StagePlan"] = ["AP-5", "CE-6"]
+        self.assertEqual(self.cfg._dispatch_daily("理智作战").read(), (None, None))
+        self.cfg._init_config()
+        self.assertFalse(self.task("理智作战")["IsEnable"])
+        self.assertEqual(self.task("理智作战")["StagePlan"], [""])
+
+    def test_init_removes_duplicate_fights_but_not_same_name_other_type(self):
+        self.select()
+        duplicate = copy.deepcopy(self.task("理智作战"))
+        duplicate["StagePlan"] = ["AP-5"]
+        other = {"$type": "CustomTask", "Name": "理智作战", "IsEnable": True}
+        self.queue().extend([duplicate, other])
+        self.cfg._init_config()
+        matching = [
             t
-            for t in tq
-            if not (t.get("$type") == "FightTask" and t.get("StagePlan") == ["AP-5"])
+            for t in self.queue()
+            if t["Name"] == "理智作战" and t["$type"] == "FightTask"
         ]
-        inject_canaries(seed)
-        self.store = {"config/gui.new.json": seed}
-        pre = copy.deepcopy(seed)
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0]["StagePlan"], ["CE-6"])
+        self.assertIn(other, self.queue())
 
-        cfg.set_daily_task("每日任务", "红票")
-
-        post = self.store["config/gui.new.json"]
-        diff = diff_paths(pre, post)
-        paths = {p for p, _, _ in diff}
-
-        # 只允许改动：任意 FightTask 的 IsEnable，或其 StagePlan（含列表内元素路径）
-        def _allowed(p: str) -> bool:
-            return p.endswith(".IsEnable") or ".StagePlan" in p
-
-        illegal = {p for p in paths if not _allowed(p)}
+    def test_native_order_places_inventory_before_normal_stages(self):
+        self.queue()[:] = [
+            {"$type": "StartUpTask", "Name": "唤醒"},
+            {"$type": "InfrastTask", "Name": "基建"},
+            {"$type": "DepotMaintainTask", "Name": "库存"},
+            {"$type": "MallTask", "Name": "信用"},
+        ]
+        self.cfg._init_config()
         self.assertEqual(
-            illegal, set(), f"set_daily_task 改到了不该改的字段: {illegal}"
+            [t["Name"] for t in self.queue()],
+            [
+                "唤醒",
+                "剿灭作战",
+                "活动关优先",
+                "基建",
+                "库存",
+                "理智作战",
+                "剩余理智",
+                "信用",
+            ],
         )
-        # 恰好一个 StagePlan 被借用改写
-        stageplan_paths = [p for p in paths if ".StagePlan" in p]
-        self.assertEqual(len(stageplan_paths), 1, f"应仅借用1个槽位: {stageplan_paths}")
-        idx = int(stageplan_paths[0].split("[")[1].split("]")[0])
-        borrowed = post["Configurations"]["Default"]["TaskQueue"][idx]
-        self.assertEqual(borrowed["StagePlan"], ["AP-5"], "借用槽位须指向目标关卡")
-        self.assertTrue(borrowed["IsEnable"], "借用对象须是启用态")
-        # 金丝雀全程不被触碰
-        default = post["Configurations"]["Default"]
-        self.assertEqual(default.get("CANARY_EXTRA"), "KEEP_ME")
+
+    def test_empty_native_queue_can_be_initialized(self):
+        self.queue().clear()
+        self.cfg._init_config()
         self.assertEqual(
-            default["Gui"]["StartUpSettings"]["EmulatorPath"], "CANARY_EMULATOR"
+            [t["Name"] for t in self.queue()],
+            ["剿灭作战", "活动关优先", "理智作战", "剩余理智"],
         )
+        self.assertEqual(self.task("剿灭作战")["MedicineExpireDays"], 2)
+
+    def test_custom_annihilation_selection_is_preserved(self):
+        self.task("剿灭").update(
+            UseCustomAnnihilation=True, AnnihilationStage="Chernobog@Annihilation"
+        )
+        self.cfg._init_config()
+        self.assertTrue(self.task("剿灭")["UseCustomAnnihilation"])
         self.assertEqual(
-            default["Gui"]["RuntimeSettings"]["PenguinId"], "CANARY_PENGUIN"
+            self.task("剿灭")["AnnihilationStage"], "Chernobog@Annihilation"
         )
-        self.assertEqual(default["Toolbox"]["PeepTargetFps"], 999)
-        for t in default["TaskQueue"]:
-            if t.get("$type") == "FightTask":
-                self.assertTrue(t.get("UseMedicine"))
-                self.assertEqual(t.get("CANARY_TASK"), "X")
+
+    def test_template_copies_do_not_share_state(self):
+        daily = self.cfg._dispatch_daily("理智作战")
+        with patch.object(
+            daily_mod,
+            "load_template",
+            side_effect=AssertionError("日常构造后不应重读固定模板"),
+        ):
+            first = daily._new_task("A")
+            second = daily._new_task("B")
+            first["StagePlan"].append("1-7")
+            self.assertEqual(second["StagePlan"], [""])
+            self.assertEqual(daily._new_task("C")["StagePlan"], [""])
+
+    def test_named_daily_is_not_reused_as_the_mandatory_annihilation_slot(self):
+        self.queue().clear()
+        self.cfg.set_daily_task("理智作战", "AP-5")
+        self.task("理智作战")["StagePlan"] = ["Annihilation"]
+        self.cfg._init_config()
+        self.assertEqual(sum(task["Name"] == "理智作战" for task in self.queue()), 1)
+        self.assertTrue(self.task("剿灭作战")["IsEnable"])
+
+    def test_gui_three_entries_select_and_disable_through_service(self):
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+
+        from src.config.daily_config import get_daily_map
+        from src.config.task_config import get_daily_configs
+        from src.gui.controllers.task_card import TaskCardController
+
+        self.cfg._init_config()
+        service = MagicMock()
+        service.get_daily_map.side_effect = get_daily_map
+        service.set_script_daily_task.side_effect = (
+            lambda script, task_name, sequence, daily_display_name: (
+                self.cfg.set_daily_task(daily_display_name, task_name, sequence)
+            )
+        )
+        service.set_script_daily_enabled.side_effect = lambda script, daily, enabled: (
+            self.cfg.set_daily_enabled(daily, enabled)
+        )
+        game_list = SimpleNamespace(
+            current_game={"script_name": "MAA", "display_name": "粥"}
+        )
+        controller = TaskCardController(game_list, service, MagicMock())
+        with (
+            patch(
+                "src.config.daily_config.load_daily_map",
+                return_value={"MAA": get_daily_configs("MAA")},
+            ),
+            patch.object(
+                daily_mod, "read_activity_stages", return_value=self.stages
+            ) as reader,
+        ):
+            controller.build_daily_cache([])
+            reader.assert_called_once_with(
+                "MAA", "cache/gui/StageActivityV2.json", "config/gui.new.json"
+            )
+            self.assertEqual(
+                [item["name"] for item in controller.daily_items],
+                ["活动关卡", "理智作战", "剩余理智"],
+            )
+            self.assertEqual(len(controller.daily_options("理智作战")), 16)
+            reader.reset_mock()
+            controller.selectDaily("活动关卡", "AT-7", None)
+            controller.selectDaily("理智作战", "AP-5", None)
+            controller.selectDaily("剩余理智", "1-7", None)
+            controller.setDailyEnabled("理智作战", False)
+            controller.daily_options("活动关卡")
+            reader.assert_not_called()  # 选择关卡和打开已缓存菜单都不重读资源。
+        self.assertEqual(self.task("活动关优先")["StagePlan"], ["AT-7"])
+        self.assertFalse(self.task("理智作战")["IsEnable"])
+        self.assertTrue(self.task("剩余理智")["IsEnable"])
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+class TestMaaNativeDisk(unittest.TestCase):
+    def test_selections_and_switches_survive_reload_without_sidecar(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "config/gui.new.json"
+            path.parent.mkdir()
+            path.write_text(json.dumps(load_fixture()), encoding="utf-8")
+            with patch(
+                "src.utils.utils_sub_config.get_script_root_dir", return_value=folder
+            ):
+                cfg = ArknightsConfig()
+                cfg._init_config()
+                cfg.set_daily_task("理智作战", "AP-5")
+                cfg.set_daily_enabled("理智作战", False)
+                daily = ArknightsConfig()._dispatch_daily("理智作战")
+                self.assertEqual(daily.read(), ("AP-5", None))
+                self.assertFalse(daily.read_enabled())
+                self.assertEqual(list(path.parent.iterdir()), [path])

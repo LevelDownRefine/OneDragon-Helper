@@ -180,37 +180,30 @@ class TestDeclarationBindings(unittest.TestCase):
             cfg.prepare_weekly_start_day(2)
             self.assertEqual(config, {"NativeTasks": ["unrelated"]})
 
-    def test_maa_fixed_stage_behavior_does_not_depend_on_display_alias(self):
-        for option in self.daily["MAA"][0]["options"]["values"]:
-            if option["physical_name"] == "1-7":
-                option["display_name"] = "新土别名"
-        cfg = self.load_adapters().ArknightsConfig()
-        queue = [
-            {"$type": "FightTask", "StagePlan": [stage], "IsEnable": False}
-            for stage in ("Annihilation", "1-7", "AP-5", "CE-6")
+    def test_maa_entry_and_stage_use_declared_physical_names(self):
+        declaration = self.daily["MAA"][1]
+        declaration["display_name"] = "新日常别名"
+        declaration["physical_name"] = "NativeFight"
+        declaration["options"]["values"] = [
+            {"display_name": "新土别名", "physical_name": "1-7"}
         ]
+        cfg = self.load_adapters().ArknightsConfig()
+        queue = []
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(daily_mod, "save_config"),
+            patch.object(Daily, "_save_daily_config"),
         ):
-            cfg.set_daily_task("每日任务", "新土别名")
-            self.assertEqual(
-                [task["IsEnable"] for task in queue], [True, True, False, False]
-            )
-            self.assertEqual(_read(cfg, "每日任务"), ("新土别名", None))
-            cfg.set_daily_task("每日任务", "红票")
-            self.assertEqual(
-                [task["IsEnable"] for task in queue], [True, True, True, False]
-            )
-            self.assertEqual(_read(cfg, "每日任务"), ("红票", None))
+            cfg.set_daily_task("新日常别名", "新土别名")
+            self.assertEqual(queue[0]["Name"], "NativeFight")
+            self.assertEqual(queue[0]["StagePlan"], ["1-7"])
+            self.assertEqual(_read(cfg, "新日常别名"), ("新土别名", None))
 
     def test_native_single_daily_entry_points_remain_available(self):
         """单日常脚本的写/读入口仍在（都委托给该脚本解析出的日常实现类）。"""
         for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):
             self.assertTrue(callable(cls.set_daily_task))
-            self.assertTrue(callable(cls._build_dailies))
-            for daily in cls()._build_dailies():
+            for daily in cls()._dailies:
                 self.assertTrue(callable(daily.update))
 
 
