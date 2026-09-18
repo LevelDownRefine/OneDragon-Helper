@@ -19,7 +19,7 @@ def _materialize_options(
     node: dict,
     depth: int = 0,
     *,
-    daily: dict | None = None,
+    daily: str | None = None,
 ) -> dict:
     """物化一个声明节点的选项组。
 
@@ -27,7 +27,7 @@ def _materialize_options(
         script_name: 脚本标识名（资源定位用）。
         node: 声明节点（日常或选项）。
         depth: 选项组嵌套深度（日常自身为 0，其子选项组为 1）。
-        daily: 所属日常的完整声明；周常省略并使用通用资源读取。
+        daily: 所属日常展示名；周常省略并使用通用资源读取。
 
     Returns:
         物化后的选项组（新 dict，不改动声明）：``key`` 等声明字段原样保留，
@@ -89,7 +89,9 @@ def _materialize_daily(script_name: str, declaration: dict) -> dict:
       其 values 作二级——与写路径一致（一级项名 = 日常名、值走二级）；
     - 单层无 ``key``（no-op）：values 即一级项。
     """
-    options = _materialize_options(script_name, declaration, daily=declaration)
+    options = _materialize_options(
+        script_name, declaration, daily=declaration["display_name"]
+    )
     # layered 判断走物化结果（values 恒存在），不读裸声明——日常级 source 组没有 values。
     layered = any("options" in option for option in options["values"])
     if "key" in declaration["options"] and not layered:

@@ -5,10 +5,12 @@ from unittest.mock import patch
 
 from src.config.daily_config import get_daily_map
 from src.config.set_config import (
+    _CONFIGS,
     EndfieldConfig,
     GenshinConfig,
     NTEConfig,
     StarRailConfig,
+    WutheringWavesConfig,
     get_task_lists,
 )
 from src.config.task_config import get_daily_configs
@@ -127,8 +129,8 @@ class TestTaskSource(unittest.TestCase):
                 ) as load,
                 patch.object(NTEConfig, "_init_config") as init,
             ):
-                names = NTEConfig.get_task_lists(
-                    get_daily_configs("ok-nte")[0], {"path": "options.json", "key": key}
+                names = get_task_lists(
+                    "ok-nte", "异象界域", {"path": "options.json", "key": key}
                 )
             self.assertEqual(names, ["乙", "甲"])
             load.assert_called_once_with("ok-nte", "options.json")
@@ -163,7 +165,7 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
 
     def setUp(self):
         self.declaration = get_daily_configs("ok-ef")[0]
-        self.daily = EndfieldConfig._create_daily(self.declaration)
+        self.daily = _CONFIGS["ok-ef"]._dispatch_daily(self.declaration["display_name"])
 
     def test_reads_stages_list(self):
         """正常读取：返回 stages_dict[task_name]（二级目录副本名列表）。"""
@@ -177,13 +179,14 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
         mock_load.assert_called_once_with("ok-ef", self._SRC)
 
     def test_does_not_instantiate_or_init_config(self):
-        """类方法调用不触发 _init_config（否则纯读会写盘/弹确认框）。"""
+        """读取选项复用已有日常，不触发配置初始化。"""
         with (
             patch.object(EndfieldConfig, "_init_config") as mock_init,
             patch("src.config.task_source.load_game_config", return_value=self._DATA),
         ):
-            EndfieldConfig.get_task_lists(
-                self.declaration,
+            get_task_lists(
+                "ok-ef",
+                self.declaration["display_name"],
                 {"path": self._SRC, "key": ["stages_dict", "能量淤积点"]},
             )
         mock_init.assert_not_called()
@@ -275,7 +278,9 @@ class TestBgiGetTaskLists(unittest.TestCase):
 
     def setUp(self):
         self.declaration = get_daily_configs("BetterGI")[0]
-        self.daily = GenshinConfig._create_daily(self.declaration)
+        self.daily = _CONFIGS["BetterGI"]._dispatch_daily(
+            self.declaration["display_name"]
+        )
 
     def test_reads_bless_domain_across_scenes(self):
         """圣遗物 → BlessDomain：跨多个地图场景收集副本名。"""
@@ -313,13 +318,15 @@ class TestBgiGetTaskLists(unittest.TestCase):
         self.assertNotIn("传送锚点", names)
 
     def test_does_not_instantiate_or_init_config(self):
-        """类方法调用不触发 _init_config（否则纯读会写盘/弹确认框）。"""
+        """读取选项复用已有日常，不触发配置初始化。"""
         with (
             patch.object(GenshinConfig, "_init_config") as mock_init,
             patch("src.config.daily.load_game_config", return_value=self._DATA),
         ):
-            GenshinConfig.get_task_lists(
-                self.declaration, {"path": self._SRC, "category": "BlessDomain"}
+            get_task_lists(
+                "BetterGI",
+                self.declaration["display_name"],
+                {"path": self._SRC, "category": "BlessDomain"},
             )
         mock_init.assert_not_called()
 
@@ -386,8 +393,13 @@ class TestBgiGetTaskLists(unittest.TestCase):
     def test_adapter_uses_declared_mechanism_instead_of_script_type(self):
         source = {"path": self._SRC, "category": "BlessDomain"}
         with patch(
-            "src.config.daily.load_game_config", return_value=self._DATA
-        ) as load:
-            names = get_task_lists("ok-ww", self.declaration, source)
+            "src.config.set_config.get_daily_configs", return_value=[self.declaration]
+        ):
+            cfg = WutheringWavesConfig()
+        with (
+            patch.dict(_CONFIGS, {"ok-ww": cfg}),
+            patch("src.config.daily.load_game_config", return_value=self._DATA) as load,
+        ):
+            names = get_task_lists("ok-ww", self.declaration["display_name"], source)
         self.assertEqual(names, ["仲夏庭园", "铭记之谷", "芬德尼尔之顶"])
         load.assert_called_once_with("ok-ww", self._SRC)

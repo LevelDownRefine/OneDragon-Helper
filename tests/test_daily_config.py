@@ -244,7 +244,7 @@ class TestGetDailyMap(unittest.TestCase):
             menus = get_daily_map()
         source.assert_any_call(
             "BetterGI",
-            load_daily_map()["BetterGI"][0],
+            "每日任务",
             {
                 "path": "GameTask/AutoTrackPath/Assets/tp.json",
                 "category": "BlessDomain",
@@ -252,7 +252,7 @@ class TestGetDailyMap(unittest.TestCase):
         )
         source.assert_any_call(
             "ok-ef",
-            load_daily_map()["ok-ef"][0],
+            "每日任务",
             {
                 "path": "data/apps/ok-ef/working/assets/data/world_map.json",
                 "key": ["stages_dict", "干员养成"],

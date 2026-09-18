@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from src.config.daily_config import get_daily_map
 from src.config.maa_activity import read_activity_stages
-from src.config.set_config import ArknightsConfig
+from src.config.set_config import _CONFIGS, ArknightsConfig, get_task_lists
 from src.config.task_config import get_daily_configs
 
 
@@ -118,7 +118,12 @@ class TestMaaDeclaredMenus(unittest.TestCase):
         activity = declarations[0]
         activity.update(display_name="别名", config="profiles/custom.json")
         activity["options"]["source"] = {"path": "resources/events.json"}
+        with patch(
+            "src.config.set_config.get_daily_configs", return_value=declarations
+        ):
+            cfg = ArknightsConfig()
         with (
+            patch.dict(_CONFIGS, {"MAA": cfg}),
             patch(
                 "src.config.set_config.get_daily_configs",
                 side_effect=AssertionError("不应反查声明"),
@@ -128,7 +133,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
             ) as reader,
         ):
             self.assertEqual(
-                ArknightsConfig.get_task_lists(activity, activity["options"]["source"]),
+                get_task_lists("MAA", "别名", activity["options"]["source"]),
                 ["AT-8"],
             )
         reader.assert_called_once_with(
@@ -139,14 +144,19 @@ class TestMaaDeclaredMenus(unittest.TestCase):
         declarations = get_daily_configs("MAA")
         activity = declarations[0]
         activity["config"] = "profiles/current.json"
+        with patch(
+            "src.config.set_config.get_daily_configs", return_value=declarations
+        ):
+            cfg = ArknightsConfig()
         with (
+            patch.dict(_CONFIGS, {"MAA": cfg}),
             patch(
                 "src.config.daily_config.load_daily_map",
                 return_value={"MAA": declarations},
             ),
             patch(
                 "src.config.set_config.get_daily_configs",
-                side_effect=AssertionError("菜单已持有声明，不应重新读取"),
+                side_effect=AssertionError("日常已实例化，不应重新读取声明"),
             ),
             patch.object(ArknightsConfig, "_init_config") as init,
             patch("src.config.daily.save_config") as save,

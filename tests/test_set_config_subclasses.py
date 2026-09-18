@@ -99,7 +99,8 @@ class TestScriptConfigBase(unittest.TestCase):
 
     def test_set_daily_task_without_daily_raises(self):
         """写路径必须给出日常展示名（单日常脚本也不例外）。"""
-        cfg = ScriptConfig()
+        with patch("src.config.set_config.get_daily_configs", return_value=[]):
+            cfg = ScriptConfig()
         cfg.display_name = "测试"
         with (
             patch.object(Daily, "_load_daily_config", return_value={"task": "old"}),
@@ -117,7 +118,8 @@ class TestVerifySaved(unittest.TestCase):
     """测试 _save 保存后重读校验（_verify_saved）"""
 
     def _make_cfg(self):
-        cfg = ScriptConfig()
+        with patch("src.config.set_config.get_daily_configs", return_value=[]):
+            cfg = ScriptConfig()
         cfg._script_name = "测试"
         cfg.display_name = "测试展示名"
         return cfg
@@ -714,11 +716,11 @@ class TestNTEConfig(unittest.TestCase):
         self.assertEqual(self.cfg.display_name, "异环")
         self.assertEqual(self.cfg._script_name, "ok-nte")
         self.assertEqual(
-            self.cfg._build_dailies()[0]._config_rel_path,
+            self.cfg._dailies[0]._config_rel_path,
             "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json",
         )
         self.assertEqual(
-            self.cfg._build_dailies()[0]._routine_rel_path,
+            self.cfg._dailies[0]._routine_rel_path,
             "data/apps/ok-nte/working/configs/DailyRoutineTask.json",
         )
         # 日常对象按声明顺序给出（界面逐行呈现即按此顺序）
@@ -1467,7 +1469,8 @@ class TestSetWeekly(unittest.TestCase):
 
     def test_base_weekly_unsupported_raises(self):
         """未适配子类调用 prepare_weekly_start_day → assert（未声明 _weekly_task_name）"""
-        cfg = ScriptConfig()
+        with patch("src.config.set_config.get_daily_configs", return_value=[]):
+            cfg = ScriptConfig()
         cfg.display_name = "测试"
         with self.assertRaises(AssertionError):
             cfg.prepare_weekly_start_day(4)
@@ -1774,61 +1777,55 @@ class TestSetConfigAdapter(unittest.TestCase):
     """测试适配器接口 set_config() 的分发逻辑"""
 
     def test_skip_when_task_name_none(self):
-        """task_name 为 None 时直接返回，不创建实例"""
+        """task_name 为 None 时直接返回，不调用适配器"""
         mock_instance = MagicMock()
-        mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
             set_config.set_config("ok-ww", task_name=None)
-        mock_cls.assert_not_called()
+        mock_instance.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
     def test_skip_when_task_name_empty(self):
-        """task_name 为空串时直接返回，不创建实例（实例化即可能触发读盘/写盘）"""
+        """task_name 为空串时直接返回，不调用适配器"""
         mock_instance = MagicMock()
-        mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
             set_config.set_config("ok-ww", task_name="")
-        mock_cls.assert_not_called()
+        mock_instance.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
     def test_skip_when_task_name_unselected(self):
-        """task_name 为「未选择」时直接返回，不创建实例"""
+        """task_name 为「未选择」时直接返回，不调用适配器"""
         mock_instance = MagicMock()
-        mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
             set_config.set_config("ok-ww", task_name="未选择")
-        mock_cls.assert_not_called()
+        mock_instance.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
     def test_unknown_process_skips_gracefully(self):
         """未注册（自定义）进程即使带副本也优雅跳过，不报错、不实例化任何子类"""
         mock_instance = MagicMock()
-        mock_cls = MagicMock(return_value=mock_instance)
         # 已注册脚本作为「无关脚本」在场：未知标识不得命中任何子类
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
             set_config.set_config("不存在", task_name="副本", sequence="序列")
-        mock_cls.assert_not_called()
+        mock_instance.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
     def test_unknown_process_does_not_touch_registry(self):
         """未注册进程不会命中注册表中的任何子类"""
         mock_instance = MagicMock()
-        mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
             set_config.set_config("自定义脚本", task_name="副本")
-        mock_cls.assert_not_called()
+        mock_instance.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
     def test_dispatches_to_correct_subclass(self):
         """验证 set_config 正确分发到对应子类（日常名一并透传，顺序为日常→副本→序列）"""
         mock_instance = MagicMock()
-        mock_cls = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
             set_config.set_config(
                 "ok-ww",
                 daily_display_name="每日任务",
                 task_name="无音区",
                 sequence="1",
             )
-        mock_cls.assert_called_once()
+        mock_instance.assert_not_called()
         mock_instance.set_daily_task.assert_called_once_with("每日任务", "无音区", "1")

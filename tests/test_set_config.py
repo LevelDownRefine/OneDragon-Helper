@@ -13,6 +13,7 @@ import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import mock_open, patch
 
 from src.config import daily as daily_mod
@@ -72,7 +73,7 @@ class TestConfigRelPaths(unittest.TestCase):
         for name, cls in set_config._CONFIGS.items():
             if cls._weekly_task_name:
                 self.assertTrue(
-                    cls.prepare_weekly_start_day
+                    type(cls).prepare_weekly_start_day
                     is not set_config.ScriptConfig.prepare_weekly_start_day,
                     f"{name} 声明了 _weekly_task_name 但未覆写 prepare_weekly_start_day",
                 )
@@ -101,6 +102,74 @@ class TestConfigRelPaths(unittest.TestCase):
                 self.assertIn(
                     ext, valid_exts, f"{name} 的 config 扩展名 {ext} 不在支持范围内"
                 )
+
+
+class TestSharedRegistry(unittest.TestCase):
+    def test_registration_builds_dailies_without_reading_native_config(self):
+        with (
+            patch.dict(set_config._CONFIGS),
+            patch.object(set_config, "load_config") as weekly_load,
+            patch.object(set_config, "save_config") as weekly_save,
+            patch.object(daily_mod, "load_config") as daily_load,
+            patch.object(daily_mod, "save_config") as daily_save,
+            patch.object(set_config.WutheringWavesConfig, "_init_config") as init,
+        ):
+            cls = set_config.register(set_config.WutheringWavesConfig)
+            cfg = set_config._CONFIGS["ok-ww"]
+            self.assertIs(cls, set_config.WutheringWavesConfig)
+            self.assertIsInstance(cfg, cls)
+            self.assertEqual(len(cfg._dailies), 1)
+            self.assertEqual(cfg._dailies[0].display_name, "每日任务")
+        for operation in (weekly_load, weekly_save, daily_load, daily_save, init):
+            operation.assert_not_called()
+
+    def test_menu_and_updates_use_the_same_daily(self):
+        cfg = set_config._CONFIGS["ok-ww"]
+        daily = cfg._dispatch_daily("每日任务")
+        source = {"path": "options.json"}
+        with (
+            patch.object(
+                set_config,
+                "get_daily_configs",
+                side_effect=AssertionError("共享实例不应重复解析声明"),
+            ),
+            patch.object(daily, "update") as update,
+            patch.object(daily, "get_task_lists", return_value=["甲"]) as reader,
+        ):
+            set_config.set_config("ok-ww", "每日任务", "凝素领域", 3)
+            self.assertEqual(
+                set_config.get_task_lists("ok-ww", "每日任务", source), ["甲"]
+            )
+        update.assert_called_once_with("凝素领域", 3)
+        reader.assert_called_once_with(source)
+
+    def test_shared_adapter_reads_current_script_path_and_contents(self):
+        cfg = set_config._CONFIGS["ok-ww"]
+        with tempfile.TemporaryDirectory() as folder:
+            roots = [Path(folder) / name for name in ("first", "second")]
+            for root, value in zip(roots, (3, 5), strict=True):
+                target = root / cfg._daily_config_rel_path()
+                target.parent.mkdir(parents=True)
+                target.write_text(
+                    json.dumps(
+                        {
+                            "Which to Farm": "Forgery Challenge",
+                            "Which Forgery Challenge to Farm": value,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            with patch.object(
+                utils_sub_config, "get_script_root_dir", return_value=str(roots[0])
+            ) as script_root:
+                self.assertEqual(
+                    set_config.get_daily_readback("ok-ww")[0]["sequence"], 3
+                )
+                script_root.return_value = str(roots[1])
+                self.assertEqual(
+                    set_config.get_daily_readback("ok-ww")[0]["sequence"], 5
+                )
+        self.assertIs(set_config._CONFIGS["ok-ww"], cfg)
 
 
 class TestGetConfigPath(unittest.TestCase):
@@ -305,7 +374,7 @@ class TestLoadReadPathTolerance(unittest.TestCase):
     """Daily 读路径的失败处理：未安装/缺失静默按未设置，内容损坏留痕后仍按未设置。"""
 
     def _daily(self):
-        return set_config._CONFIGS["ok-ww"]()._dispatch_daily("每日任务")
+        return set_config._CONFIGS["ok-ww"]._dispatch_daily("每日任务")
 
     def test_missing_config_returns_none_without_warning(self):
         """config 缺失（以断言表达）属正常状态 → None 且不告警。"""
