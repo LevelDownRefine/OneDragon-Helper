@@ -660,16 +660,13 @@ class MaaDaily(Daily):
         self._configure_task(task, self._stage(task), enabled, days)
         return task
 
-    def _choices(self) -> dict[str, str]:
-        """普通关卡选项直接取声明。"""
-        return self._stage_by_name
-
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
         """写当前入口的单关卡，并沿用全部战斗共同的临期窗口。"""
         assert sequence is None, f"{self.display_name} 只选择一个关卡"
-        choices = self._choices()
-        if task_name not in choices:
-            raise ValueError(f"关卡不可用，请重新选择：{task_name}")
+        stage = task_name
+        if self._stage_by_name:
+            assert task_name in self._stage_by_name, f"未声明关卡：{task_name}"
+            stage = self._stage_by_name[task_name]
         config = self._load_daily_config()
         queue = self._task_queue(config)
         before = deepcopy(queue)
@@ -678,7 +675,7 @@ class MaaDaily(Daily):
         if task is None:
             task = self._new_task(self.physical_name)
             queue.append(task)
-        self._configure_task(task, choices[task_name], True, days)
+        self._configure_task(task, stage, True, days)
         self._set_medicine(queue, days)
         if queue == before:
             return False
@@ -726,13 +723,8 @@ class MaaActivityDaily(MaaDaily):
         options = get_field(declaration, "options", self.display_name, dict)
         source = get_field(options, "source", self.display_name, dict)
         self._activity_path = get_field(source, "path", self.display_name, str)
+        self._stage_by_name = {}
         self._name_by_stage = {}
-
-    def _choices(self) -> dict[str, str]:
-        """保存选择时重新校验活动是否仍然开放。"""
-        return {
-            stage: stage for stage in self.get_task_lists({"path": self._activity_path})
-        }
 
     def get_task_lists(self, source: dict) -> list[str]:
         """使用该日常自己的客户端配置读取活动选项。"""
@@ -744,7 +736,9 @@ class MaaActivityDaily(MaaDaily):
     def _init_task(self, queue: list[dict], days: int) -> dict:
         """初始化时停用过期关卡，保留其固定代码。"""
         task = super()._init_task(queue, days)
-        if task["IsEnable"] and self._stage(task) not in self._choices():
+        if task["IsEnable"] and self._stage(task) not in self.get_task_lists(
+            {"path": self._activity_path}
+        ):
             task["IsEnable"] = False
         return task
 
