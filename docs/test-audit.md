@@ -15,6 +15,8 @@
 | 临时目录、YAML 文件、图标缓存、Qt 插件路径及日志状态未完整恢复 | 污染后续用例与本机环境 | 上下文管理器、addCleanup 和状态恢复 |
 | 主仓 discovery 不包含 runner/tests | 主仓升级子模块时其 45 条测试未被 CI 执行 | CI 增加独立 runner 测试步骤 |
 | 配置 diff 用 Python 宽松相等判断，缺失占位符与真实字符串混用 | True→1、1→1.0 和部分新增/删除字段可能被当成无变化 | 递归比较类型，区分缺失与真实值，补 4 条工具回归测试 |
+| runner 的临时目录、等待 mock 和 sys.argv 未完整恢复 | 用例结束后残留资源和全局状态 | 在 [runner PR #1](https://github.com/LevelDownRefine/OneDragonRunner/pull/1) 中独立修复，主仓仅更新指针 |
+| runner 禁用脚本测试使用非法配置且没有启动断言 | 跳过非法配置也会通过，无法证明禁用生效 | 使用合法解释器路径，校验配置有效且两个执行入口均未调用 |
 
 ## 验证
 
