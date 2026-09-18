@@ -749,9 +749,9 @@ class ArknightsConfig(ScriptConfig):
         config = main._load_daily_config(allow_missing=True)
         if config is None:
             return
-        queue = MaaDaily._task_queue(config)
+        queue = main._task_queue(config)
         before = deepcopy(queue)
-        days = MaaDaily._medicine_days(queue)
+        days = main._medicine_days(queue)
         annihilation = None
         others = []
         daily_names = {daily.physical_name for daily in self._dailies}
@@ -763,14 +763,14 @@ class ArknightsConfig(ScriptConfig):
                 annihilation is None
                 and not ("Name" in task and task["Name"] in daily_names)
                 and (
-                    MaaDaily._stage(task) == "Annihilation"
+                    main._stage(task) == "Annihilation"
                     or ("Name" in task and task["Name"] == "剿灭作战")
                 )
             ):
                 annihilation = task
         if annihilation is None:
             annihilation = main._new_task("剿灭作战")
-        MaaDaily._configure_task(annihilation, "Annihilation", True, days)
+        main._configure_task(annihilation, "Annihilation", True, days)
         annihilation["IsStageManually"] = False
         selected = [daily._init_task(queue, days) for daily in self._dailies]
         # 插入点按非战斗队列计算，原生任务的相对顺序保持不变。
@@ -794,7 +794,7 @@ class ArknightsConfig(ScriptConfig):
             + selected[1:]
             + others[normal:]
         )
-        MaaDaily._set_medicine(queue, days)
+        main._set_medicine(queue, days)
         if queue != before:
             main._save_daily_config(config)
 
