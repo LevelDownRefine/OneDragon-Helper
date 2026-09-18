@@ -467,7 +467,9 @@ class BgiDaily(Daily):
         return False
 
     def get_task_lists(self, source: dict) -> list[str]:
-        """遍历地图点位，返回指定 category 的秘境名称。"""
+        """原神资源：category 筛地图点位，无 category 时走通用键路径读取。"""
+        if "category" not in source:
+            return super().get_task_lists(source)
         assert source.keys() <= {"path", "category"}, (
             "原神资源来源只支持 path / category"
         )
@@ -493,6 +495,80 @@ class BgiDaily(Daily):
                 ):
                     names.append(point["name"])
         return names
+
+
+class BgiLeyLineDaily(BgiDaily):
+    """原神地脉花：一条龙按周几各持一组配置，本工具一次选择写满一周（7 天同值）。
+
+    声明里的字段名用 ``{Day}`` 占位（``LeyLine{Day}Type`` / ``LeyLine{Day}Country``），
+    展开为 Monday…Sunday 七个原生字段；反读时 7 天全同才认作已选。
+    """
+
+    _DAYS = (
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    )
+    """BetterGI 一条龙地脉花字段的按周几后缀。"""
+
+    def _fields(
+        self, task_name: str, sequence: str | int | None = None
+    ) -> dict[str, Any]:
+        """该次选择要写入的 {字段: 值}：把声明里的 ``{Day}`` 展开成一周 7 份。
+
+        Args:
+            task_name: 一级项展示名（花类型）。
+            sequence: 二级项值（地区）；不传则只写花类型。
+
+        Returns:
+            {字段: 值}；7 个花类型字段，选了地区再追加 7 个地区字段。
+
+        Raises:
+            AssertionError: 未声明的一级项、二级必填却缺失，或二级取值不在声明里。
+        """
+        return {
+            self._expand(key, day): value
+            for key, value in super()._fields(task_name, sequence).items()
+            for day in self._DAYS
+        }
+
+    def read(self) -> tuple[str | None, str | int | None]:
+        """反读一周统一的选择：7 天的花类型与地区都相同才算已选。
+
+        Returns:
+            (一级项展示名, 二级值)；config 缺失、字段缺失或按天各异时
+            (None, None)——按天各配的周计划不属于本工具的真相。
+
+        Raises:
+            AssertionError: 字段里的花类型不在声明里。
+        """
+        data = self._load_daily_config(allow_missing=True)
+        if data is None:
+            return None, None  # 未安装/未配置：无真相
+        types = [data.get(self._expand(self.task_field, day), "") for day in self._DAYS]
+        if not types[0] or any(value != types[0] for value in types):
+            return None, None
+        names = {value: name for name, value in self.task_map.items()}
+        assert types[0] in names, (
+            f"[daily][{self.display_name}] 未知副本值: {types[0]!r}"
+        )
+        task = names[types[0]]
+        countries = [
+            data.get(self._expand(self.option_fields[task], day), "")
+            for day in self._DAYS
+        ]
+        if not countries[0] or any(value != countries[0] for value in countries):
+            return task, None
+        return task, countries[0]
+
+    @staticmethod
+    def _expand(field: str, day: str) -> str:
+        """把声明里的 ``{Day}`` 占位换成某天。"""
+        return field.replace("{Day}", day)
 
 
 class NoopDaily(Daily):
@@ -848,6 +924,7 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
     for cls in (
         Daily,
         BgiDaily,
+        BgiLeyLineDaily,
         NoopDaily,
         Anomaly,
         AnomalyHunter,

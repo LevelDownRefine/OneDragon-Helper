@@ -263,18 +263,34 @@ class TestReadbackFacade(unittest.TestCase):
     def test_facade_reports_enabled_for_switch_scripts(self):
         """有开关落点的脚本：enabled 反读进记录（界面据此提供「不启用」）。"""
         cases = (
-            ("ok-ef", {"体力本": "清波寨", "⭐刷体力": False}, "清波寨"),
+            (
+                "ok-ef",
+                {"体力本": "清波寨", "⭐刷体力": False},
+                [("每日任务", "清波寨", None, False)],
+            ),
             (
                 "BetterGI",
                 {
                     "DomainName": "铭记之谷",
-                    "TaskDefinitions": {"uuid-1": "自动秘境"},
-                    "TaskEnabledList": {"uuid-1": False},
+                    "TaskDefinitions": {
+                        "uuid-1": "自动秘境",
+                        "uuid-2": "自动地脉花",
+                        "uuid-3": "自动首领讨伐",
+                    },
+                    "TaskEnabledList": {
+                        "uuid-1": False,
+                        "uuid-2": True,
+                        "uuid-3": False,
+                    },
                 },
-                "铭记之谷",
+                [
+                    ("每日任务", "铭记之谷", None, False),
+                    ("地脉花", None, None, True),
+                    ("首领讨伐", None, None, False),
+                ],
             ),
         )
-        for script_name, config, task in cases:
+        for script_name, config, records in cases:
             with (
                 self.subTest(script=script_name),
                 patch.object(Daily, "_load_daily_config", return_value=config),
@@ -283,11 +299,12 @@ class TestReadbackFacade(unittest.TestCase):
                     get_daily_readback(script_name),
                     [
                         {
-                            "name": "每日任务",
+                            "name": name,
                             "task": task,
-                            "sequence": None,
-                            "enabled": False,
+                            "sequence": sequence,
+                            "enabled": enabled,
                         }
+                        for name, task, sequence, enabled in records
                     ],
                 )
 

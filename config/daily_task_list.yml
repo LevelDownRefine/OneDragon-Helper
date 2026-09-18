@@ -5,6 +5,7 @@
 # enable_key：主文件里的开关字段名（可选，布尔），声明即提供「不启用」。
 # enable_task：开关在原生任务启用表里按该任务名定位（可选，原神一条龙）。
 # options：递归选项组；key 为原生字段，values / source 二选一。
+# key 含 {Day} 时展开成 Monday…Sunday 七个字段（原神地脉花，一次写满一周）。
 # source.path 为资源文件，source.key 为多级键路径；原神暂保留 category 分类筛选。
 
 ok-ww:
@@ -138,6 +139,102 @@ BetterGI:
         source:
           path: GameTask/AutoTrackPath/Assets/tp.json
           category: MasteryDomain
+- display_name: 地脉花
+  class: BgiLeyLineDaily
+  config: User/OneDragon/默认配置.json
+  enable_task: 自动地脉花
+  options:
+    key: "LeyLine{Day}Type"
+    values:
+    - display_name: 藏金之花
+      options: &bgi_ley_line_countries
+        key: "LeyLine{Day}Country"
+        source:
+          path: GameTask/AutoLeyLineOutcrop/Assets/config.json
+          key: [leyLinePositions]
+    - display_name: 启示之花
+      options: *bgi_ley_line_countries
+- display_name: 首领讨伐
+  class: BgiDaily
+  config: User/OneDragon/默认配置.json
+  enable_task: 自动首领讨伐
+  options:
+    values:
+    - display_name: 蒙德
+      options:
+        key: AutoBossName
+        values:
+        - display_name: 急冻树
+        - display_name: 无相之雷
+        - display_name: 守望者·堕天
+    - display_name: 璃月
+      options:
+        key: AutoBossName
+        values:
+        - display_name: 爆炎树
+        - display_name: 纯水精灵
+        - display_name: 古岩龙蜥
+        - display_name: 无相之岩
+        - display_name: 遗迹巨蛇
+        - display_name: 隐山猊兽
+    - display_name: 稻妻
+      options:
+        key: AutoBossName
+        values:
+        - display_name: 无相之火
+        - display_name: 恒常机关阵列
+        - display_name: 雷音权现
+        - display_name: 魔偶剑鬼
+        - display_name: 无相之水
+    - display_name: 须弥
+      options:
+        key: AutoBossName
+        values:
+        - display_name: 掣电树
+        - display_name: 半永恒统辖矩阵
+        - display_name: 翠翎恐蕈
+        - display_name: 风蚀沙虫
+        - display_name: 无相之草
+        - display_name: 深罪浸礼者
+        - display_name: 兆载永劫龙兽
+    - display_name: 枫丹
+      options:
+        key: AutoBossName
+        values:
+        - display_name: 歌裴莉娅的葬送
+        - display_name: 科培琉司的劫罚
+        - display_name: 实验性场力发生装置
+        - display_name: 魔像督军
+        - display_name: 千年珍珠骏麟
+        - display_name: 水形幻人
+        - display_name: 铁甲熔火帝皇
+    - display_name: 纳塔
+      options:
+        key: AutoBossName
+        values:
+        - display_name: 金焰绒翼龙暴君
+        - display_name: 灵觉隐修的迷者
+        - display_name: 秘源机兵·构型械
+        - display_name: 秘源机兵·统御械
+        - display_name: 熔岩辉龙像
+        - display_name: 深邃摹结株
+        - display_name: 贪食匿叶龙山王
+    - display_name: 挪德卡莱
+      options:
+        key: AutoBossName
+        values:
+        - display_name: 蕴光月守宫
+        - display_name: 深黯魇语之主
+        - display_name: 超重型陆巡舰·机动战垒
+        - display_name: 霜夜巡天灵主
+        - display_name: 蕴光月幻蝶
+        - display_name: 重拳出击鸭
+    - display_name: 至冬
+      options:
+        key: AutoBossName
+        values:
+        - display_name: 不灭衍生造物
+        - display_name: 嵌合翼骏狮
 ok-ef:
 - display_name: 每日任务
   class: Daily

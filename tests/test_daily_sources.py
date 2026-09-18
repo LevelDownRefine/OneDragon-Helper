@@ -392,6 +392,18 @@ class TestBgiGetTaskLists(unittest.TestCase):
             [["仲夏庭园", "铭记之谷", "芬德尼尔之顶"], ["塞西莉亚苗圃"], ["太山府"]],
         )
 
+    def test_ley_line_countries_use_generic_key_reader(self):
+        """地脉花地区：无 category 时走通用键路径，取 leyLinePositions 的键。"""
+        daily = _CONFIGS["BetterGI"]()._dispatch_daily("地脉花")
+        data = {"leyLinePositions": {"蒙德": [{"x": 1}], "璃月": [{"x": 2}]}}
+        path = "GameTask/AutoLeyLineOutcrop/Assets/config.json"
+        with patch(
+            "src.config.task_source.load_game_config", return_value=data
+        ) as load:
+            names = daily.get_task_lists({"path": path, "key": ["leyLinePositions"]})
+        self.assertEqual(names, ["蒙德", "璃月"])
+        load.assert_called_once_with("BetterGI", path)
+
     def test_adapter_uses_declared_mechanism_instead_of_script_type(self):
         source = {"path": self._SRC, "category": "BlessDomain"}
         with patch(

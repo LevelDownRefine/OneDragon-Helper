@@ -120,6 +120,14 @@ class TestLandingPoints(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "缺少二级选项"):
             daily_of("ok-ww", "每日任务")._fields("模拟领域")
 
+    def test_boss_country_and_name_share_one_field(self):
+        """原神首领讨伐：国家只是一级分组，落点是二级的首领名。"""
+        daily = daily_of("BetterGI", "首领讨伐")
+        self.assertEqual(daily.task_field, "AutoBossName")
+        self.assertEqual(daily._fields("蒙德", "急冻树"), {"AutoBossName": "急冻树"})
+        with self.assertRaisesRegex(AssertionError, "缺少二级选项"):
+            daily._fields("蒙德")
+
 
 class TestRead(unittest.TestCase):
     """反读：标准反转、同字段不反转、未落盘/无落点无真相。"""
@@ -275,6 +283,26 @@ class TestEnabled(unittest.TestCase):
         with patch.object(daily, "_load_daily_config", return_value=None):
             self.assertIsNone(daily.read_enabled())
 
+    def test_each_bgi_daily_reads_its_own_native_switch(self):
+        """原神三条日常各读自己那条原生任务开关。"""
+        config = {
+            "TaskDefinitions": {
+                "uuid-1": "自动秘境",
+                "uuid-2": "自动地脉花",
+                "uuid-3": "自动首领讨伐",
+            },
+            "TaskEnabledList": {"uuid-1": True, "uuid-2": False, "uuid-3": True},
+        }
+        for daily_name, enabled in (
+            ("每日任务", True),
+            ("地脉花", False),
+            ("首领讨伐", True),
+        ):
+            with self.subTest(daily=daily_name):
+                daily = daily_of("BetterGI", daily_name)
+                with patch.object(daily, "_load_daily_config", return_value=config):
+                    self.assertEqual(daily.read_enabled(), enabled)
+
     def test_section_is_the_daily_own_segment(self):
         config = {"daily_anomaly": {"a": 1}, "daily_anomaly_hunter": {"b": 2}}
         anomaly = daily_of("ok-nte", "异象界域")
@@ -284,6 +312,66 @@ class TestEnabled(unittest.TestCase):
         self.assertTrue(anomaly.section_exists(config))
         self.assertFalse(anomaly.section_exists({}))
         self.assertEqual(anomaly.section({}), {})
+
+
+class TestBgiLeyLine(unittest.TestCase):
+    """原神地脉花：一条龙按周几持 7 份字段，本工具一次写满一周（7 天同值）。"""
+
+    def _week(self, type_value: str | None, country: str | None) -> dict:
+        """按 daily._DAYS 拼一周字段；值为 None 时该组不写。"""
+        daily = daily_of("BetterGI", "地脉花")
+        config = {}
+        if type_value is not None:
+            config |= {f"LeyLine{day}Type": type_value for day in daily._DAYS}
+        if country is not None:
+            config |= {f"LeyLine{day}Country": country for day in daily._DAYS}
+        return config
+
+    def test_fields_expand_over_the_week(self):
+        daily = daily_of("BetterGI", "地脉花")
+        fields = daily._fields("藏金之花", "挪德卡莱")
+        self.assertEqual(len(fields), 14)
+        self.assertEqual(fields["LeyLineMondayType"], "藏金之花")
+        self.assertEqual(fields["LeyLineSundayCountry"], "挪德卡莱")
+
+    def test_update_writes_the_whole_week(self):
+        daily = daily_of("BetterGI", "地脉花")
+        config: dict = {}
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            patch.object(daily, "_save_daily_config") as mock_save,
+        ):
+            self.assertTrue(daily.update("启示之花", "蒙德"))
+            mock_save.assert_called_once()
+        self.assertEqual(config["LeyLineWednesdayType"], "启示之花")
+        self.assertEqual(config["LeyLineSaturdayCountry"], "蒙德")
+
+    def test_read_requires_one_value_for_the_whole_week(self):
+        daily = daily_of("BetterGI", "地脉花")
+        with patch.object(
+            daily, "_load_daily_config", return_value=self._week("藏金之花", "挪德卡莱")
+        ):
+            self.assertEqual(daily.read(), ("藏金之花", "挪德卡莱"))
+        # 按天各异（周日落单）不是本工具的真相
+        mixed = self._week("藏金之花", "挪德卡莱") | {"LeyLineSundayType": "启示之花"}
+        with patch.object(daily, "_load_daily_config", return_value=mixed):
+            self.assertEqual(daily.read(), (None, None))
+        # 只选花类型时读回类型，地区无真相
+        with patch.object(
+            daily, "_load_daily_config", return_value=self._week("启示之花", None)
+        ):
+            self.assertEqual(daily.read(), ("启示之花", None))
+        with patch.object(daily, "_load_daily_config", return_value=None):
+            self.assertEqual(daily.read(), (None, None))
+
+    def test_unknown_type_raises(self):
+        daily = daily_of("BetterGI", "地脉花")
+        config = self._week("不存在的花", "蒙德")
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            self.assertRaisesRegex(AssertionError, "未知副本值"),
+        ):
+            daily.read()
 
 
 class TestDeclarationErrors(unittest.TestCase):
