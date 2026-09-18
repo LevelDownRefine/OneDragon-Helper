@@ -752,27 +752,37 @@ class ArknightsConfig(ScriptConfig):
         queue = main._task_queue(config)
         before = deepcopy(queue)
         days = main._medicine_days(queue)
+        fights = self._init_fight_tasks(queue, days)
+        self._order_tasks(queue, fights)
+        main._set_medicine(queue, days)
+        if queue != before:
+            main._save_daily_config(config)
+
+    def _init_fight_tasks(self, queue: list[dict], days: int) -> list[dict]:
+        """准备必刷剿灭和三个日常入口，保留各自已有设置。"""
+        main = self._dailies[1]
         annihilation = None
-        others = []
         daily_names = {daily.physical_name for daily in self._dailies}
         for task in queue:
             kind = get_field(task, "$type", "MAA", str)
             if kind != "FightTask":
-                others.append(task)
-            elif (
-                annihilation is None
-                and not ("Name" in task and task["Name"] in daily_names)
-                and (
-                    main._stage(task) == "Annihilation"
-                    or ("Name" in task and task["Name"] == "剿灭作战")
-                )
+                continue
+            if not ("Name" in task and task["Name"] in daily_names) and (
+                main._stage(task) == "Annihilation"
+                or ("Name" in task and task["Name"] == "剿灭作战")
             ):
                 annihilation = task
+                break
         if annihilation is None:
             annihilation = main._new_task("剿灭作战")
         main._configure_task(annihilation, "Annihilation", True, days)
         annihilation["IsStageManually"] = False
         selected = [daily._init_task(queue, days) for daily in self._dailies]
+        return [annihilation, *selected]
+
+    def _order_tasks(self, queue: list[dict], fights: list[dict]) -> None:
+        """唤醒后安排剿灭和活动，库存保持后安排其余日常；清理多余战斗。"""
+        others = [task for task in queue if task["$type"] != "FightTask"]
         # 插入点按非战斗队列计算，原生任务的相对顺序保持不变。
         wake = next(
             (i + 1 for i, task in enumerate(others) if task["$type"] == "StartUpTask"),
@@ -789,14 +799,11 @@ class ArknightsConfig(ScriptConfig):
         normal = max(wake, depot)
         queue[:] = (
             others[:wake]
-            + [annihilation, selected[0]]
+            + fights[:2]
             + others[wake:normal]
-            + selected[1:]
+            + fights[2:]
             + others[normal:]
         )
-        main._set_medicine(queue, days)
-        if queue != before:
-            main._save_daily_config(config)
 
     def prepare_weekly_start_day(self, start_day: int) -> None:
         """按周几起写临期窗口，并兜底开启所有战斗的临期药。
