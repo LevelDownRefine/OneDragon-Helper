@@ -42,12 +42,14 @@ class TestInitConfig(unittest.TestCase):
             self.temp_dir.name, "schedule.yml"
         )
         mock_weekly_path.return_value = os.path.join(self.temp_dir.name, "weekly.yml")
-        launcher.config_workflow()
+        with patch("src.config.set_config.init_config_all") as init:
+            launcher.config_workflow()
 
         # 首次运行时，config.yml / schedule.yml / weekly.yml 均应从模板生成
         mock_generate_config.assert_called_once()
         mock_generate_schedule.assert_called_once()
         mock_generate_weekly.assert_called_once()
+        init.assert_called_once_with()
 
 
 class TestMainStartupOrder(unittest.TestCase):
@@ -89,8 +91,9 @@ class TestQtMessageLogger(unittest.TestCase):
     def test_qt_warning_routed_to_logger(self):
         from PySide6.QtCore import qInstallMessageHandler, qWarning
 
+        previous = qInstallMessageHandler(None)
+        self.addCleanup(qInstallMessageHandler, previous)
         launcher._install_qt_message_logger()
-        self.addCleanup(qInstallMessageHandler, None)
         with self.assertLogs("src.launcher", level="WARNING") as captured:
             qWarning("test-qml-warning")
         self.assertTrue(

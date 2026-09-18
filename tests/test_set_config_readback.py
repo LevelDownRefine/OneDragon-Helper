@@ -341,30 +341,30 @@ class TestReadbackCorruption(unittest.TestCase):
                 _read(cfg, "每日任务")
 
     def test_nte_corrupt_routine_raises(self):
-        routine = []  # 非 dict → 损坏，原实现会静默回退 任务类型
-        config: dict = {}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(Daily, "_load_routine_config", return_value=routine),
-            patch.object(daily_mod, "save_config"),
-            patch.object(set_config_mod, "safe_update", _setter),
-            patch.object(daily_mod, "safe_update", _setter),
-        ):
-            cfg = NTEConfig()
-            with self.assertRaises(AssertionError):
-                _read(cfg, "每日任务")
+        for name in ("异象界域", "追猎目标"):
+            with (
+                self.subTest(daily=name),
+                patch.object(Daily, "_load_routine_config", return_value=[]) as load,
+            ):
+                daily = NTEConfig()._dispatch_daily(name)
+                with self.assertRaisesRegex(AssertionError, "缺少 Routine Items 字段"):
+                    daily.read_enabled()
+                load.assert_called_once_with()
 
     def test_nte_routine_missing_items_raises(self):
         """routine 缺 Routine Items（损坏）→ assert 暴露，不静默判为「无启用玩法」。"""
         routine = {"不是 Routine Items": []}
-        config: dict = {}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(Daily, "_load_routine_config", return_value=routine),
-        ):
-            cfg = NTEConfig()
-            with self.assertRaises(AssertionError):
-                _read(cfg, "每日任务")
+        for name in ("异象界域", "追猎目标"):
+            with (
+                self.subTest(daily=name),
+                patch.object(
+                    Daily, "_load_routine_config", return_value=routine
+                ) as load,
+            ):
+                daily = NTEConfig()._dispatch_daily(name)
+                with self.assertRaisesRegex(AssertionError, "缺少 Routine Items 字段"):
+                    daily.read_enabled()
+                load.assert_called_once_with()
 
     def test_starrail_bad_instance_names_raises(self):
         config = {"instance_names": "不是dict"}
@@ -374,10 +374,6 @@ class TestReadbackCorruption(unittest.TestCase):
             cfg = StarRailConfig()
             with self.assertRaises(AssertionError):
                 cfg._read_weekly_task("历战余响")
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TestSetDailyEnabledFacade(unittest.TestCase):
@@ -394,4 +390,14 @@ class TestSetDailyEnabledFacade(unittest.TestCase):
 
     def test_script_without_daily_switch_is_noop(self):
         """未声明日常开关的脚本（ok-ww）→ 静默不做事（选择即启用）。"""
-        set_daily_enabled("ok-ww", "每日任务", False)  # 不抛即通过
+        with (
+            patch.object(daily_mod, "load_config") as load,
+            patch.object(daily_mod, "save_config") as save,
+        ):
+            set_daily_enabled("ok-ww", "每日任务", False)
+        load.assert_not_called()
+        save.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()

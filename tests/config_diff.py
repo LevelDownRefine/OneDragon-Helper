@@ -11,18 +11,25 @@ def diff_paths(before: dict, after: dict) -> list[tuple[str, object, object]]:
     diffs: list[tuple[str, object, object]] = []
 
     def walk(a, b, path):
-        if a == b:
-            return
         if isinstance(a, dict) and isinstance(b, dict):
-            for k in set(a) | set(b):
+            for k in sorted(set(a) | set(b)):
                 child = k if path == "" else f"{path}.{k}"
-                walk(a.get(k, "<MISSING>"), b.get(k, "<MISSING>"), child)
+                if k not in a:
+                    diffs.append((child, "<MISSING>", b[k]))
+                elif k not in b:
+                    diffs.append((child, a[k], "<MISSING>"))
+                else:
+                    walk(a[k], b[k], child)
         elif isinstance(a, list) and isinstance(b, list):
             for i in range(max(len(a), len(b))):
-                av = a[i] if i < len(a) else "<MISSING>"
-                bv = b[i] if i < len(b) else "<MISSING>"
-                walk(av, bv, f"{path}[{i}]")
-        else:
+                child = f"{path}[{i}]"
+                if i >= len(a):
+                    diffs.append((child, "<MISSING>", b[i]))
+                elif i >= len(b):
+                    diffs.append((child, a[i], "<MISSING>"))
+                else:
+                    walk(a[i], b[i], child)
+        elif type(a) is not type(b) or a != b:
             diffs.append((path, a, b))
 
     walk(before, after, "")

@@ -98,10 +98,6 @@ class TestResolveWeeklyStart(unittest.TestCase):
                 resolve_weekly_start({"ok-ww": bad}, "ok-ww")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestGenerateChainConfig(unittest.TestCase):
     """generate_chain_config：GUI 关闭的脚本不进链，链条目不携带 enabled 字段。"""
 
@@ -125,3 +121,7 @@ class TestGenerateChainConfig(unittest.TestCase):
             data = load_yaml(out)
         self.assertEqual([s["display_name"] for s in data["script_list"]], ["甲"])
         self.assertNotIn("enabled", data["script_list"][0])
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -525,10 +525,6 @@ class TestCollectProcessTargets(unittest.TestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestNextTargetDatetime(unittest.TestCase):
     """next_target_datetime：今天未到取今天，已过取明天（跨午夜）。"""
 
@@ -622,3 +618,7 @@ class TestSpawnScheduleRun(unittest.TestCase):
         """enabled_keys 必须显式传入具体集合；None 是契约错误（不再表示『全部』）。"""
         with self.assertRaises(AssertionError):
             self._capture_command(frozen=False, enabled_keys=None)
+
+
+if __name__ == "__main__":
+    unittest.main()

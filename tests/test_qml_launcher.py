@@ -12,7 +12,6 @@ AppService；build_script_command 在 launch，链接相关函数在 links，
 """
 
 import os
-import shutil
 import subprocess
 import sys
 import textwrap
@@ -33,14 +32,6 @@ from src.gui.controllers.game_list import ScriptIconProvider  # noqa: E402
 from src.gui.icons import UiIconProvider  # noqa: E402
 from src.gui.main_window import QmlBridge  # noqa: E402
 from src.service.app_service import AppService  # noqa: E402
-
-# 清理损坏的 QML 磁盘缓存（需在 QQmlApplicationEngine 创建前，保证干净编译）
-_local_appdata = os.environ.get("LOCALAPPDATA", "")
-if _local_appdata:
-    shutil.rmtree(
-        os.path.join(_local_appdata, "python", "cache", "qmlcache"),
-        ignore_errors=True,
-    )
 
 # 全局 QApplication 实例（offscreen 平台，CI 无显示器）
 _app = QApplication.instance() or QApplication([])
@@ -81,6 +72,10 @@ def _make_bridge():
     # with 退出后失效，故构造后再持久 mock load_config，覆盖 reorderGames/
     # addScript 等构造后真实读盘路径（CI 环境无 config.yml，必须持续屏蔽）。
     with (
+        patch(
+            "src.utils.utils_sub_config._load_config_yml",
+            return_value={"script_list": []},
+        ),
         patch.object(
             AppService, "load_config", return_value={"script_list": list(_SCRIPTS)}
         ),

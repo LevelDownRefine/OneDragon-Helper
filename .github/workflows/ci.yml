@@ -42,3 +42,6 @@ jobs:
         env:
           PYTHONPATH: src
         run: uv run python -m unittest discover -s tests -p 'test*.py'
+
+      - name: Run runner submodule tests
+        run: uv run python -m unittest discover -s src/runner/tests -p 'test*.py'
