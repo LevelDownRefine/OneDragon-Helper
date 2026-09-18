@@ -219,6 +219,62 @@ class TestEnabled(unittest.TestCase):
                 with patch.object(daily, "_load_routine_config", return_value=None):
                     self.assertIsNone(daily.read_enabled())
 
+    def test_declared_field_switch_toggles_in_place(self):
+        """声明 enable_key 的日常（终末地）：开关就是主文件里的布尔字段。"""
+        daily = daily_of("ok-ef", "每日任务")
+        config = {"⭐刷体力": True, "体力本": "清波寨"}
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            patch.object(daily, "_save_daily_config") as mock_save,
+        ):
+            self.assertTrue(daily.read_enabled())
+            # 置反必然有改变；对同值再置一次则无改变、不落盘
+            self.assertTrue(daily.set_enabled(False))
+            self.assertFalse(daily.set_enabled(False))
+            mock_save.assert_called_once()
+        self.assertFalse(config["⭐刷体力"])
+        self.assertEqual(config["体力本"], "清波寨", "开关不应动到副本选择")
+
+    def test_declared_field_switch_without_file_has_no_truth(self):
+        daily = daily_of("ok-ef", "每日任务")
+        with patch.object(daily, "_load_daily_config", return_value=None):
+            self.assertIsNone(daily.read_enabled())
+
+    def test_bgi_switch_looks_up_task_id_by_name(self):
+        """原神：开关是原生启用表里的一项，id 由任务名反查，不硬编码 uuid。"""
+        daily = daily_of("BetterGI", "每日任务")
+        config = {
+            "TaskDefinitions": {"uuid-1": "领取邮件", "uuid-2": "自动秘境"},
+            "TaskEnabledList": {"uuid-1": True, "uuid-2": True},
+        }
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            patch.object(daily, "_save_daily_config") as mock_save,
+        ):
+            self.assertTrue(daily.read_enabled())
+            self.assertTrue(daily.set_enabled(False))
+            self.assertFalse(daily.set_enabled(False))
+            mock_save.assert_called_once()
+        self.assertFalse(config["TaskEnabledList"]["uuid-2"])
+        self.assertTrue(config["TaskEnabledList"]["uuid-1"], "别的任务不应被动到")
+
+    def test_bgi_switch_requires_unique_task_name(self):
+        daily = daily_of("BetterGI", "每日任务")
+        config = {
+            "TaskDefinitions": {"uuid-1": "自动秘境", "uuid-2": "自动秘境"},
+            "TaskEnabledList": {"uuid-1": True, "uuid-2": True},
+        }
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            self.assertRaisesRegex(AssertionError, "任务定义缺少或重复"),
+        ):
+            daily.read_enabled()
+
+    def test_bgi_switch_without_file_has_no_truth(self):
+        daily = daily_of("BetterGI", "每日任务")
+        with patch.object(daily, "_load_daily_config", return_value=None):
+            self.assertIsNone(daily.read_enabled())
+
     def test_section_is_the_daily_own_segment(self):
         config = {"daily_anomaly": {"a": 1}, "daily_anomaly_hunter": {"b": 2}}
         anomaly = daily_of("ok-nte", "异象界域")

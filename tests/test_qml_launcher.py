@@ -684,9 +684,7 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             height, 196, f"无周常脚本卡片高度应为 196，stdout={proc.stdout}"
         )
         # 日常区是最后一个区块：卡片底部到它的距离 = 底部留白 16（与有周常时一致）
-        self.assertEqual(
-            bot_pad, 16, f"日常区下方背景应留 16，stdout={proc.stdout}"
-        )
+        self.assertEqual(bot_pad, 16, f"日常区下方背景应留 16，stdout={proc.stdout}")
 
 
 class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
@@ -788,9 +786,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             sec_gap, 0, f"日常区与周常区之间不应有额外间距，stdout={proc.stdout}"
         )
         # 周常区是最后一个区块：卡片底部到它的距离同样 = 16，与无周常时的日常区一致。
-        self.assertEqual(
-            bot_pad, 16, f"周常区下方背景应留 16，stdout={proc.stdout}"
-        )
+        self.assertEqual(bot_pad, 16, f"周常区下方背景应留 16，stdout={proc.stdout}")
 
 
 class TestScriptIconProvider(unittest.TestCase):

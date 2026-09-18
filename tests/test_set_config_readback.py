@@ -67,7 +67,11 @@ class TestReadbackWuWa(unittest.TestCase):
 
 class TestReadbackGenshin(unittest.TestCase):
     def test_domain_roundtrip(self):
-        config: dict = {}
+        # 日常开关按任务名反查 id（BgiDaily 自身逻辑，不经 safe_update 替身）
+        config: dict = {
+            "TaskDefinitions": {"uuid-1": "自动秘境"},
+            "TaskEnabledList": {"uuid-1": True},
+        }
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
             patch.object(daily_mod, "save_config"),
@@ -255,6 +259,37 @@ class TestReadbackFacade(unittest.TestCase):
 
     def test_facade_unknown_script_returns_empty(self):
         self.assertEqual(get_daily_readback("不存在的脚本"), [])
+
+    def test_facade_reports_enabled_for_switch_scripts(self):
+        """有开关落点的脚本：enabled 反读进记录（界面据此提供「不启用」）。"""
+        cases = (
+            ("ok-ef", {"体力本": "清波寨", "⭐刷体力": False}, "清波寨"),
+            (
+                "BetterGI",
+                {
+                    "DomainName": "铭记之谷",
+                    "TaskDefinitions": {"uuid-1": "自动秘境"},
+                    "TaskEnabledList": {"uuid-1": False},
+                },
+                "铭记之谷",
+            ),
+        )
+        for script_name, config, task in cases:
+            with (
+                self.subTest(script=script_name),
+                patch.object(Daily, "_load_daily_config", return_value=config),
+            ):
+                self.assertEqual(
+                    get_daily_readback(script_name),
+                    [
+                        {
+                            "name": "每日任务",
+                            "task": task,
+                            "sequence": None,
+                            "enabled": False,
+                        }
+                    ],
+                )
 
     def test_facade_noop_scripts_have_no_truth(self):
         # 绝区零/崩铁日常无落点 → 副本/序列无真相

@@ -118,6 +118,8 @@ def _validate_definitions(script_name: str, definitions: list[dict]) -> None:
             "class",
             "config",
             "routine",
+            "enable_key",
+            "enable_task",
             "key",
             "options",
         }, f"{script_name} 含未知任务声明"
@@ -133,6 +135,10 @@ def _validate_definitions(script_name: str, definitions: list[dict]) -> None:
         physical_names.add(physical_name)
         if "key" in definition:
             _validate_name(definition["key"], f"{name}/key")
+        if "enable_key" in definition:
+            _validate_name(definition["enable_key"], f"{name}/enable_key")
+        if "enable_task" in definition:
+            _validate_name(definition["enable_task"], f"{name}/enable_task")
         if "options" in definition:
             _validate_group(definition["options"], f"{script_name}/{name}")
 

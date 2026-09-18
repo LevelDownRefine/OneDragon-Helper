@@ -2,7 +2,9 @@
 
 I/O 由 Daily 自持（``_load_daily_config`` 等，直调 ``utils_sub_config``），完成「读盘 → 改内存 → 有改动才落盘」。
 声明形态与读写机制由机制类负责：基类解析标准两层，``Anomaly`` 单层带
-``key``，``MaaDaily`` TaskQueue，``NoopDaily`` 无需适配。
+``key``，``MaaDaily`` TaskQueue，``NoopDaily`` 无需适配。开关落点亦随声明而异：
+基类读主文件的 ``enable_key`` 字段，``Anomaly`` 读 ``routine`` 文件，``BgiDaily``
+按 ``enable_task`` 反查任务启用表。
 """
 
 import logging
@@ -51,8 +53,8 @@ class Daily:
         Args:
             script_name: 所属脚本标识名。
             declaration: ``daily_task_list.yml`` 里该日常的声明节点；
-                ``config``（读写主文件）必填、``routine``（日常开关文件）可选，
-                路径相对脚本根目录。
+                ``config``（读写主文件）必填，``routine``（日常开关文件）、
+                ``enable_key``（主文件里的开关字段）可选，路径相对脚本根目录。
             script_display_name: 所属脚本的展示名（日志与报错用）。
 
         Raises:
@@ -63,6 +65,7 @@ class Daily:
         self.script_display_name = script_display_name
         self._config_rel_path: str = declaration["config"]
         self._routine_rel_path: str = declaration.get("routine", "")
+        self._enable_key: str = declaration.get("enable_key", "")
         self.display_name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
         self._parse_landing(declaration)
@@ -318,22 +321,40 @@ class Daily:
         return task, section[seq_field]
 
     def read_enabled(self) -> bool | None:
-        """反读该日常是否启用；无日常开关文件的脚本返回 None。
+        """反读该日常是否启用；无开关落点的脚本返回 None。
 
         Returns:
-            是否启用；无开关文件返回 None，界面据此不提供「不启用」。
+            是否启用；未声明 ``enable_key``（无开关落点）时返回 None，
+            界面据此不提供「不启用」。
+
+        Raises:
+            AssertionError: config 缺少开关字段或该字段不是布尔。
         """
-        return None
+        if not self._enable_key:
+            return None
+        data = self._load_daily_config(allow_missing=True)
+        if data is None:
+            return None  # 未安装/未配置：无真相
+        return get_field(data, self._enable_key, self.display_name, bool)
 
     def set_enabled(self, enabled: bool) -> bool:
-        """置该日常的启用状态；无日常开关机制的日常不做事。
+        """置该日常的启用状态；无开关落点的日常不做事。
 
         Args:
-            enabled: 目标启用状态（本实现忽略）。
+            enabled: 目标启用状态。
 
         Returns:
-            恒为 False。
+            是否有实际修改；未声明 ``enable_key`` 时恒为 False。
+
+        Raises:
+            AssertionError: config 未安装/未配置，或缺少开关字段。
         """
+        if not self._enable_key:
+            return False
+        data = self._load_daily_config()
+        if safe_update(data, self._enable_key, enabled, self.display_name):
+            self._save_daily_config(data)
+            return True
         return False
 
     def section(self, config: dict) -> dict:
@@ -360,7 +381,90 @@ class Daily:
 
 
 class BgiDaily(Daily):
-    """原神的配置读写沿用两层日常，选项按 tp.json 秘境分类读取。"""
+    """原神的配置读写沿用两层日常，选项按 tp.json 秘境分类读取。
+
+    开关在一条龙配置的任务启用表里，由声明 ``enable_task`` 给的任务名定位：
+    id 由 BetterGI 生成，故按名反查而不硬编码。
+    """
+
+    _ENABLE_MAP = "TaskEnabledList"
+    """一条龙的任务启用表（{任务 id: 是否启用}）。"""
+
+    _TASK_DEFINITIONS = "TaskDefinitions"
+    """任务 id → 任务名。"""
+
+    def __init__(
+        self, script_name: str, declaration: dict, script_display_name: str
+    ) -> None:
+        """解析日常声明并记录开关对应的原生任务名。
+
+        Args:
+            script_name: 所属脚本标识名。
+            declaration: 该日常的声明节点，须声明 ``enable_task``。
+            script_display_name: 所属脚本的展示名（日志与报错用）。
+
+        Raises:
+            AssertionError: 未声明 ``enable_task``。
+        """
+        super().__init__(script_name, declaration, script_display_name)
+        self._enable_task: str = get_field(
+            declaration, "enable_task", self.display_name, str
+        )
+
+    def _enabled_id(self, config: dict) -> str:
+        """把声明里的任务名反查成任务 id。
+
+        Args:
+            config: 一条龙配置 dict。
+
+        Returns:
+            该任务在启用表里的 id。
+
+        Raises:
+            AssertionError: 缺少任务定义，或同名任务不是唯一一条。
+        """
+        definitions = get_field(config, self._TASK_DEFINITIONS, self.display_name, dict)
+        matches = [
+            key for key, name in definitions.items() if name == self._enable_task
+        ]
+        assert len(matches) == 1, (
+            f"[daily][{self.display_name}] 任务定义缺少或重复 {self._enable_task}"
+        )
+        return matches[0]
+
+    def read_enabled(self) -> bool | None:
+        """反读该日常对应的原生任务是否启用。
+
+        Returns:
+            是否启用；一条龙配置缺失时返回 None。
+
+        Raises:
+            AssertionError: 配置缺少启用表/任务定义，或该任务的值不是布尔。
+        """
+        config = self._load_daily_config(allow_missing=True)
+        if config is None:
+            return None  # 未安装/未配置：无真相
+        table = get_field(config, self._ENABLE_MAP, self.display_name, dict)
+        return get_field(table, self._enabled_id(config), self.display_name, bool)
+
+    def set_enabled(self, enabled: bool) -> bool:
+        """置该日常对应的原生任务启用状态。
+
+        Args:
+            enabled: 目标启用状态。
+
+        Returns:
+            是否有实际修改。
+
+        Raises:
+            AssertionError: config 未安装/未配置，或缺少启用表/该任务。
+        """
+        config = self._load_daily_config()
+        table = get_field(config, self._ENABLE_MAP, self.display_name, dict)
+        if safe_update(table, self._enabled_id(config), enabled, self.display_name):
+            self._save_daily_config(config)
+            return True
+        return False
 
     def get_task_lists(self, source: dict) -> list[str]:
         """遍历地图点位，返回指定 category 的秘境名称。"""

@@ -71,17 +71,32 @@ class TestDeclarationBindings(unittest.TestCase):
         save.assert_called_once_with(config)
 
     def test_display_only_categories_share_declared_field(self):
+        """两级写同一字段：落点写二级值，并顺带启用该日常的开关。"""
         for script in ("BetterGI", "ok-ef"):
             for option in self.daily[script][0]["options"]["values"]:
                 option["options"]["key"] = "NativeTarget"
         adapters = self.load_adapters()
-        for cls, task_name in (
-            (adapters.GenshinConfig, "圣遗物"),
-            (adapters.EndfieldConfig, "干员养成"),
-        ):
+        cases = (
+            (
+                adapters.GenshinConfig,
+                "圣遗物",
+                {
+                    "TaskDefinitions": {"daily-id": "自动秘境"},
+                    "TaskEnabledList": {"daily-id": False},
+                },
+                {"TaskEnabledList": {"daily-id": True}},
+            ),
+            (
+                adapters.EndfieldConfig,
+                "干员养成",
+                {"⭐刷体力": False},
+                {"⭐刷体力": True},
+            ),
+        )
+        for cls, task_name, switch_seed, switch_expected in cases:
             with self.subTest(cls=cls.__name__):
                 cfg = cls()
-                config = {"NativeTarget": "old", "untouched": True}
+                config = {**switch_seed, "NativeTarget": "old", "untouched": True}
                 with (
                     patch.object(Daily, "_load_daily_config", return_value=config),
                     patch.object(daily_mod, "save_config"),
@@ -89,7 +104,13 @@ class TestDeclarationBindings(unittest.TestCase):
                     cfg.set_daily_task("每日任务", task_name, "真实副本")
                     self.assertEqual(_read(cfg, "每日任务"), ("真实副本", None))
                 self.assertEqual(
-                    config, {"NativeTarget": "真实副本", "untouched": True}
+                    config,
+                    {
+                        **switch_seed,
+                        **switch_expected,
+                        "NativeTarget": "真实副本",
+                        "untouched": True,
+                    },
                 )
 
     def test_nte_daily_selection_follows_declared_native_names(self):

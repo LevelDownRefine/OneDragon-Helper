@@ -377,25 +377,25 @@ class TestEndfieldConfig(unittest.TestCase):
     def test_set_daily_task_no_sequence(self):
         with patch.object(EndfieldConfig, "_init_config"):
             cfg = EndfieldConfig()
-        config = {"体力本": "旧本"}
+        config = {"体力本": "旧本", "⭐刷体力": True}
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
             patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "干员养成")
-        mock_save.assert_called_once_with({"体力本": "干员养成"})
+        mock_save.assert_called_once_with({"体力本": "干员养成", "⭐刷体力": True})
 
     def test_set_daily_task_with_sequence_writes_second_level(self):
         """终末地副本按「类型 → 副本」两级组织（假一级目录）：写入的是二级副本名。"""
         with patch.object(EndfieldConfig, "_init_config"):
             cfg = EndfieldConfig()
-        config = {"体力本": "旧本"}
+        config = {"体力本": "旧本", "⭐刷体力": True}
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
             patch.object(Daily, "_save_daily_config") as mock_save,
         ):
             cfg.set_daily_task("每日任务", "能量淤积点", sequence="枢纽区")
-        mock_save.assert_called_once_with({"体力本": "枢纽区"})
+        mock_save.assert_called_once_with({"体力本": "枢纽区", "⭐刷体力": True})
 
     def test_set_weekly_start_inverts_buy_only_flag(self):
         """周常（卖出物资）enabled 与游戏「只买不卖」反相：开→false，关→true。"""

@@ -13,9 +13,7 @@ from src.config.set_config import _CONFIGS, ArknightsConfig, get_task_lists
 from src.config.task_config import get_daily_configs
 
 # 真实 MAA 配置（已脱敏），用于钉死 ClientType 的实际形态。
-NATIVE_CONFIG_FIXTURE = (
-    Path(__file__).parent / "fixtures/maa_gui.new.scrubbed.json"
-)
+NATIVE_CONFIG_FIXTURE = Path(__file__).parent / "fixtures/maa_gui.new.scrubbed.json"
 
 
 class TestMaaActivityResource(unittest.TestCase):
