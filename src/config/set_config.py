@@ -359,33 +359,29 @@ class ScriptConfig:
         self._check_weekly_start(start_day)
         assert False, f"[set_config][{self.display_name}] 未支持周常配置"  # noqa: B011  # 故意：未适配脚本不应走到周常写入
 
-    @classmethod
-    def get_game_exe_path(cls, script_name: str) -> str | None:
-        """读取游戏 exe 路径（类方法，无需实例化）。
-
-        Args:
-            script_name: 脚本标识名。
+    def get_game_exe_path(self) -> str | None:
+        """读取本脚本配置中的游戏 exe 路径。
 
         Returns:
             exe 绝对路径；未适配、缺失或为空时返回 None。
         """
-        if not cls._game_path_keys:
+        if not self._game_path_keys:
             return None
-        game_config = load_game_config(script_name, cls._game_config_rel_path)
+        game_config = load_game_config(self._script_name, self._game_config_rel_path)
         if game_config is None:
             return None
         node = game_config
-        for key in cls._game_path_keys:
+        for key in self._game_path_keys:
             if not isinstance(node, dict) or key not in node:
                 logger.warning(
-                    f"[get_game_exe_path][{script_name}] 配置缺少字段: "
-                    f"{cls._game_path_keys}"
+                    f"[get_game_exe_path][{self._script_name}] 配置缺少字段: "
+                    f"{self._game_path_keys}"
                 )
                 return None
             node = node[key]
         if not isinstance(node, str) or not node:
             logger.warning(
-                f"[get_game_exe_path][{script_name}] 游戏路径字段非字符串或为空"
+                f"[get_game_exe_path][{self._script_name}] 游戏路径字段非字符串或为空"
             )
             return None
         return node
@@ -703,22 +699,18 @@ class NTEConfig(ScriptConfig):
     _launcher_rel_path = "NTELauncher.exe"
     """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
 
-    @classmethod
-    def get_game_exe_path(cls, script_name: str) -> str | None:
+    def get_game_exe_path(self) -> str | None:
         """重写：从游戏本体路径向上查找异环启动器。
-
-        Args:
-            script_name: 脚本标识名。
 
         Returns:
             启动器绝对路径；本体缺失或找不到启动器时返回 None。
         """
-        game_exe = super().get_game_exe_path(script_name)
+        game_exe = super().get_game_exe_path()
         if not game_exe:
             return None
         directory = os.path.dirname(game_exe)
         while True:
-            candidate = os.path.join(directory, cls._launcher_rel_path)
+            candidate = os.path.join(directory, self._launcher_rel_path)
             if os.path.isfile(candidate):
                 return candidate
             parent = os.path.dirname(directory)
@@ -726,7 +718,7 @@ class NTEConfig(ScriptConfig):
                 break
             directory = parent
         logger.warning(
-            f"[get_game_exe_path][{script_name}] 未找到启动器 {cls._launcher_rel_path}"
+            f"[get_game_exe_path][{self._script_name}] 未找到启动器 {self._launcher_rel_path}"
         )
         return None
 
@@ -775,7 +767,7 @@ class ArknightsConfig(ScriptConfig):
             ):
                 annihilation = task
         if annihilation is None:
-            annihilation = MaaDaily._new_task("剿灭作战")
+            annihilation = main._new_task("剿灭作战")
         MaaDaily._configure_task(annihilation, "Annihilation", True, days)
         annihilation["IsStageManually"] = False
         selected = [daily._init_task(queue, days) for daily in self._dailies]
@@ -1038,7 +1030,7 @@ def get_game_exe_path(script_name: str) -> str | None:
     """读游戏 exe 路径（供 GUI 打开）；未适配/缺失 → None。"""
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name].get_game_exe_path(script_name)
+    return _CONFIGS[script_name].get_game_exe_path()
 
 
 def is_adapted(script_name: str) -> bool:

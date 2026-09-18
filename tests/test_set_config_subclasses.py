@@ -1256,8 +1256,10 @@ class TestGetGameExePath(unittest.TestCase):
 
     def test_unadapted_base_returns_none(self):
         """基类未适配（_game_path_keys 为空）→ None，不触发任何读取"""
+        with patch("src.config.set_config.get_daily_configs", return_value=[]):
+            cfg = ScriptConfig()
         with patch("src.config.set_config.load_game_config") as mock_load:
-            got = ScriptConfig.get_game_exe_path("任意")
+            got = cfg.get_game_exe_path()
         self.assertIsNone(got)
         mock_load.assert_not_called()
 
@@ -1266,11 +1268,7 @@ class TestGetGameExePath(unittest.TestCase):
 
         异环（ok-nte）已重写 get_game_exe_path 返回启动器路径，不在此列（见专项测试）。
         """
-        cases = (
-            (WutheringWavesConfig, "ok-ww"),
-            (EndfieldConfig, "ok-ef"),
-        )
-        for cls, script_name in cases:
+        for script_name in ("ok-ww", "ok-ef"):
             with patch(
                 "src.config.set_config.load_game_config",
                 return_value={
@@ -1278,7 +1276,7 @@ class TestGetGameExePath(unittest.TestCase):
                     "pc_full_path": "D:\\Game\\game.exe",
                 },
             ):
-                got = cls.get_game_exe_path(script_name)
+                got = set_config._CONFIGS[script_name].get_game_exe_path()
             self.assertEqual(got, "D:\\Game\\game.exe")
 
     def test_nte_launcher_found_upward(self):
@@ -1300,7 +1298,7 @@ class TestGetGameExePath(unittest.TestCase):
             ),
             patch("os.path.isfile", side_effect=lambda p: p == launcher),
         ):
-            got = NTEConfig.get_game_exe_path("ok-nte")
+            got = set_config.get_game_exe_path("ok-nte")
         self.assertEqual(got, launcher)
 
     def test_nte_launcher_missing_returns_none(self):
@@ -1321,13 +1319,13 @@ class TestGetGameExePath(unittest.TestCase):
             ),
             patch("os.path.isfile", return_value=False),
         ):
-            got = NTEConfig.get_game_exe_path("ok-nte")
+            got = set_config.get_game_exe_path("ok-nte")
         self.assertIsNone(got)
 
     def test_nte_game_exe_missing_returns_none(self):
         """异环游戏本体路径读不到（devices.json 缺失）→ None"""
         with patch("src.config.set_config.load_game_config", return_value=None):
-            got = NTEConfig.get_game_exe_path("ok-nte")
+            got = set_config.get_game_exe_path("ok-nte")
         self.assertIsNone(got)
 
     def test_genshin_nested_install_path(self):
@@ -1340,21 +1338,17 @@ class TestGetGameExePath(unittest.TestCase):
                 }
             },
         ):
-            got = GenshinConfig.get_game_exe_path("BetterGI")
+            got = set_config.get_game_exe_path("BetterGI")
         self.assertEqual(got, "D:\\Genshin\\YuanShen.exe")
 
     def test_game_path_top_level(self):
         """绝区零/崩铁读取顶层 game_path"""
-        cases = (
-            (ZenlessZoneZeroConfig, "OneDragon-Launcher"),
-            (StarRailConfig, "March7th-Launcher"),
-        )
-        for cls, script_name in cases:
+        for script_name in ("OneDragon-Launcher", "March7th-Launcher"):
             with patch(
                 "src.config.set_config.load_game_config",
                 return_value={"game_path": "D:\\Game\\game.exe"},
             ):
-                got = cls.get_game_exe_path(script_name)
+                got = set_config._CONFIGS[script_name].get_game_exe_path()
             self.assertEqual(got, "D:\\Game\\game.exe")
 
     def test_arknights_nested_emulator_path(self):
@@ -1373,13 +1367,13 @@ class TestGetGameExePath(unittest.TestCase):
                 }
             },
         ):
-            got = ArknightsConfig.get_game_exe_path("MAA")
+            got = set_config.get_game_exe_path("MAA")
         self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
 
     def test_missing_config_returns_none(self):
         """游戏配置文件缺失（load_game_config 返回 None）→ None"""
         with patch("src.config.set_config.load_game_config", return_value=None):
-            got = WutheringWavesConfig.get_game_exe_path("ok-ww")
+            got = set_config.get_game_exe_path("ok-ww")
         self.assertIsNone(got)
 
     def test_missing_field_returns_none(self):
@@ -1388,7 +1382,7 @@ class TestGetGameExePath(unittest.TestCase):
             "src.config.set_config.load_game_config",
             return_value={"other": "x"},
         ):
-            got = WutheringWavesConfig.get_game_exe_path("ok-ww")
+            got = set_config.get_game_exe_path("ok-ww")
         self.assertIsNone(got)
 
     def test_empty_value_returns_none(self):
@@ -1397,7 +1391,7 @@ class TestGetGameExePath(unittest.TestCase):
             "src.config.set_config.load_game_config",
             return_value={"pc_full_path": ""},
         ):
-            got = WutheringWavesConfig.get_game_exe_path("ok-ww")
+            got = set_config.get_game_exe_path("ok-ww")
         self.assertIsNone(got)
 
 

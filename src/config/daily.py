@@ -7,7 +7,6 @@ I/O 由 Daily 自持（``_load_daily_config`` 等，直调 ``utils_sub_config``�
 
 import logging
 from copy import deepcopy
-from functools import cache
 from typing import Any
 
 from src.config.maa_activity import read_activity_stages
@@ -559,7 +558,14 @@ class AnomalyHunter(Anomaly):
 class MaaDaily(Daily):
     """一个原生 FightTask：名称来自声明，选择和开关保存在 MAA 中。"""
 
-    task_field: str | None = None
+    def __init__(
+        self, script_name: str, declaration: dict, script_display_name: str
+    ) -> None:
+        """解析日常声明并读取固定任务模板，原生配置仍在操作时读写。"""
+        super().__init__(script_name, declaration, script_display_name)
+        self._template = load_template(self.script_name, "MAA任务.json")
+        assert isinstance(self._template, dict)
+        assert get_field(self._template, "$type", self.display_name, str) == "FightTask"
 
     def _parse_landing(self, declaration: dict) -> None:
         """建立声明名称到原生关卡值的双向映射。"""
@@ -584,19 +590,9 @@ class MaaDaily(Daily):
                 return task
         return None
 
-    @staticmethod
-    @cache
-    def _template() -> dict:
-        """固定模板只读一次，使用前复制。"""
-        template = load_template("MAA", "MAA任务.json")
-        assert isinstance(template, dict)
-        assert get_field(template, "$type", "MAA", str) == "FightTask"
-        return template
-
-    @classmethod
-    def _new_task(cls, name: str) -> dict:
-        """从仓库模板创建尚未选关的独立任务。"""
-        task = deepcopy(cls._template())
+    def _new_task(self, name: str) -> dict:
+        """从实例持有的模板创建尚未选关的独立任务。"""
+        task = deepcopy(self._template)
         task["Name"] = name
         return task
 

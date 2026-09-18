@@ -9,7 +9,6 @@ from unittest.mock import patch
 
 from src.config import daily as daily_mod
 from src.config import set_config as sc_mod
-from src.config.daily import MaaDaily
 from src.config.set_config import ArknightsConfig
 
 
@@ -265,11 +264,17 @@ class TestMaaNativeConfig(unittest.TestCase):
         )
 
     def test_template_copies_do_not_share_state(self):
-        first = MaaDaily._new_task("A")
-        second = MaaDaily._new_task("B")
-        first["StagePlan"].append("1-7")
-        self.assertEqual(second["StagePlan"], [""])
-        self.assertEqual(MaaDaily._new_task("C")["StagePlan"], [""])
+        daily = self.cfg._dispatch_daily("理智作战")
+        with patch.object(
+            daily_mod,
+            "load_template",
+            side_effect=AssertionError("日常构造后不应重读固定模板"),
+        ):
+            first = daily._new_task("A")
+            second = daily._new_task("B")
+            first["StagePlan"].append("1-7")
+            self.assertEqual(second["StagePlan"], [""])
+            self.assertEqual(daily._new_task("C")["StagePlan"], [""])
 
     def test_named_daily_is_not_reused_as_the_mandatory_annihilation_slot(self):
         self.queue().clear()
