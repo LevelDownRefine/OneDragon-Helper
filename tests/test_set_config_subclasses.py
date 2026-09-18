@@ -1276,7 +1276,7 @@ class TestGetGameExePath(unittest.TestCase):
                     "pc_full_path": "D:\\Game\\game.exe",
                 },
             ):
-                got = set_config._CONFIGS[script_name].get_game_exe_path()
+                got = set_config._CONFIGS[script_name]().get_game_exe_path()
             self.assertEqual(got, "D:\\Game\\game.exe")
 
     def test_nte_launcher_found_upward(self):
@@ -1348,7 +1348,7 @@ class TestGetGameExePath(unittest.TestCase):
                 "src.config.set_config.load_game_config",
                 return_value={"game_path": "D:\\Game\\game.exe"},
             ):
-                got = set_config._CONFIGS[script_name].get_game_exe_path()
+                got = set_config._CONFIGS[script_name]().get_game_exe_path()
             self.assertEqual(got, "D:\\Game\\game.exe")
 
     def test_arknights_nested_emulator_path(self):
@@ -1449,10 +1449,10 @@ class TestSupportsWeekly(unittest.TestCase):
         """已注册脚本按子类 _weekly_task_name 非空返回"""
         cls = MagicMock()
         cls._weekly_task_name = "task"
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": lambda: cls}):
             self.assertTrue(set_config.supports_weekly("ok-ww"))
         cls._weekly_task_name = ""
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": cls}):
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": lambda: cls}):
             self.assertFalse(set_config.supports_weekly("ok-ww"))
 
 
@@ -1773,53 +1773,59 @@ class TestSetConfigAdapter(unittest.TestCase):
     def test_skip_when_task_name_none(self):
         """task_name 为 None 时直接返回，不调用适配器"""
         mock_instance = MagicMock()
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
+        mock_factory = MagicMock(return_value=mock_instance)
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
             set_config.set_config("ok-ww", task_name=None)
-        mock_instance.assert_not_called()
+        mock_factory.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
     def test_skip_when_task_name_empty(self):
         """task_name 为空串时直接返回，不调用适配器"""
         mock_instance = MagicMock()
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
+        mock_factory = MagicMock(return_value=mock_instance)
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
             set_config.set_config("ok-ww", task_name="")
-        mock_instance.assert_not_called()
+        mock_factory.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
     def test_skip_when_task_name_unselected(self):
         """task_name 为「未选择」时直接返回，不调用适配器"""
         mock_instance = MagicMock()
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
+        mock_factory = MagicMock(return_value=mock_instance)
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
             set_config.set_config("ok-ww", task_name="未选择")
-        mock_instance.assert_not_called()
+        mock_factory.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
     def test_unknown_process_skips_gracefully(self):
         """未注册（自定义）进程即使带副本也优雅跳过，不报错、不实例化任何子类"""
         mock_instance = MagicMock()
+        mock_factory = MagicMock(return_value=mock_instance)
         # 已注册脚本作为「无关脚本」在场：未知标识不得命中任何子类
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
             set_config.set_config("不存在", task_name="副本", sequence="序列")
-        mock_instance.assert_not_called()
+        mock_factory.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
     def test_unknown_process_does_not_touch_registry(self):
         """未注册进程不会命中注册表中的任何子类"""
         mock_instance = MagicMock()
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
+        mock_factory = MagicMock(return_value=mock_instance)
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
             set_config.set_config("自定义脚本", task_name="副本")
-        mock_instance.assert_not_called()
+        mock_factory.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
     def test_dispatches_to_correct_subclass(self):
         """验证 set_config 正确分发到对应子类（日常名一并透传，顺序为日常→副本→序列）"""
         mock_instance = MagicMock()
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_instance}):
+        mock_factory = MagicMock(return_value=mock_instance)
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
             set_config.set_config(
                 "ok-ww",
                 daily_display_name="每日任务",
                 task_name="无音区",
                 sequence="1",
             )
-        mock_instance.assert_not_called()
+        mock_factory.assert_called_once()
         mock_instance.set_daily_task.assert_called_once_with("每日任务", "无音区", "1")

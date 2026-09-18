@@ -123,7 +123,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
         ):
             cfg = ArknightsConfig()
         with (
-            patch.dict(_CONFIGS, {"MAA": cfg}),
+            patch.dict(_CONFIGS, {"MAA": lambda: cfg}),
             patch(
                 "src.config.set_config.get_daily_configs",
                 side_effect=AssertionError("不应反查声明"),
@@ -149,7 +149,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
         ):
             cfg = ArknightsConfig()
         with (
-            patch.dict(_CONFIGS, {"MAA": cfg}),
+            patch.dict(_CONFIGS, {"MAA": lambda: cfg}),
             patch(
                 "src.config.daily_config.load_daily_map",
                 return_value={"MAA": declarations},

@@ -2,7 +2,9 @@
 
 import logging
 import os
+from collections.abc import Callable
 from copy import deepcopy
+from functools import cache
 
 from src.config.daily import DAILY_CLASSES, Daily, MaaDaily
 from src.config.task_config import (
@@ -392,11 +394,11 @@ class ScriptConfig:
 # ============================================================
 
 # 由 register() 装饰器显式填充（必须在子类定义前初始化）。
-_CONFIGS: dict[str, ScriptConfig] = {}
+_CONFIGS: dict[str, Callable[[], ScriptConfig]] = {}
 
 
 def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
-    """校验必要声明，并将子类的共享实例注册到 _CONFIGS。
+    """校验必要声明，注册首次访问时构造、之后复用的适配器入口。
 
     必填属性须由子类在 ``cls.__dict__`` 中显式声明（而非继承基类默认值）；
     声明了条件属性（_game_path_keys / _weekly_task_name）必须补全对应依赖。
@@ -429,7 +431,7 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
             f"[set_config][{cls.__name__}] 声明了 _weekly_task_name 必须覆写 "
             f"prepare_weekly_start_day（周常开关的落点）"
         )
-    _CONFIGS[cls._script_name] = cls()
+    _CONFIGS[cls._script_name] = cache(cls)
     return cls
 
 
@@ -922,7 +924,7 @@ def init_config(script_name: str) -> None:
     """
     if script_name not in _CONFIGS:
         return
-    _CONFIGS[script_name]._init_config()
+    _CONFIGS[script_name]()._init_config()
 
 
 def init_config_all() -> None:
@@ -958,7 +960,7 @@ def set_config(
         logger.info(f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过")
         return
 
-    cfg = _CONFIGS[script_name]
+    cfg = _CONFIGS[script_name]()
     if task_name and task_name != "未选择":
         cfg.set_daily_task(daily_display_name, task_name, sequence)
     if weekly_start is not None:
@@ -981,7 +983,9 @@ def get_task_lists(
     if script_name not in _CONFIGS:
         return None
     return (
-        _CONFIGS[script_name]._dispatch_daily(daily_display_name).get_task_lists(source)
+        _CONFIGS[script_name]()
+        ._dispatch_daily(daily_display_name)
+        .get_task_lists(source)
     )
 
 
@@ -999,7 +1003,7 @@ def get_config_path(script_name: str) -> str:
     """
     assert script_name in _CONFIGS, f"[set_config] 未适配脚本: {script_name}"
     return _get_config_path_impl(
-        script_name, _CONFIGS[script_name]._daily_config_rel_path()
+        script_name, _CONFIGS[script_name]()._daily_config_rel_path()
     )
 
 
@@ -1008,7 +1012,7 @@ def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...]:
     if script_name not in _CONFIGS:
         return ()
     assert script_name in _CONFIGS
-    cfg = _CONFIGS[script_name]
+    cfg = _CONFIGS[script_name]()
     if rel.casefold() != cfg._game_config_rel_path.casefold():
         return ()
     return cfg._game_path_keys
@@ -1023,14 +1027,17 @@ def iter_backup_paths() -> dict[str, tuple[str, ...]]:
     Returns:
         {脚本唯一标识: (备份路径, ...)}。
     """
-    return {script_name: cfg._backup_paths for script_name, cfg in _CONFIGS.items()}
+    return {
+        script_name: factory()._backup_paths
+        for script_name, factory in _CONFIGS.items()
+    }
 
 
 def get_game_exe_path(script_name: str) -> str | None:
     """读游戏 exe 路径（供 GUI 打开）；未适配/缺失 → None。"""
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name].get_game_exe_path()
+    return _CONFIGS[script_name]().get_game_exe_path()
 
 
 def is_adapted(script_name: str) -> bool:
@@ -1042,7 +1049,7 @@ def supports_weekly(script_name: str) -> bool:
     """查询脚本是否支持周常（供 GUI 控制周常行可选性）。"""
     if script_name not in _CONFIGS:
         return False
-    return bool(_CONFIGS[script_name]._weekly_task_name)
+    return bool(_CONFIGS[script_name]()._weekly_task_name)
 
 
 def get_background_rel_path(script_name: str) -> str:
@@ -1056,7 +1063,7 @@ def get_background_rel_path(script_name: str) -> str:
     """
     if script_name not in _CONFIGS:
         return ""
-    return _CONFIGS[script_name].background
+    return _CONFIGS[script_name]().background
 
 
 def set_weekly_task(script_name: str, weekly_name: str, task_name: str) -> None:
@@ -1071,7 +1078,7 @@ def set_weekly_task(script_name: str, weekly_name: str, task_name: str) -> None:
     """
     if script_name not in _CONFIGS:
         return
-    cfg = _CONFIGS[script_name]
+    cfg = _CONFIGS[script_name]()
     if not hasattr(cfg, "set_weekly_task"):
         return
     cfg.set_weekly_task(weekly_name, task_name)
@@ -1088,7 +1095,7 @@ def set_weekly_start_day(script_name: str, start_day: int) -> None:
     """
     if script_name not in _CONFIGS:
         return
-    cfg = _CONFIGS[script_name]
+    cfg = _CONFIGS[script_name]()
     if not hasattr(cfg, "set_weekly_start_day"):
         return
     cfg.set_weekly_start_day(start_day)
@@ -1108,7 +1115,7 @@ def get_daily_readback(script_name: str) -> list[dict]:
     """
     if script_name not in _CONFIGS:
         return []
-    return _CONFIGS[script_name]._read_daily_tasks()
+    return _CONFIGS[script_name]()._read_daily_tasks()
 
 
 def get_weekly_task(script_name: str, weekly_name: str) -> str | None:
@@ -1125,7 +1132,7 @@ def get_weekly_task(script_name: str, weekly_name: str) -> str | None:
     """
     if script_name not in _CONFIGS:
         return None
-    return _CONFIGS[script_name]._read_weekly_task(weekly_name)
+    return _CONFIGS[script_name]()._read_weekly_task(weekly_name)
 
 
 def set_daily_enabled(script_name: str, daily_display_name: str, enabled: bool) -> None:
@@ -1139,4 +1146,4 @@ def set_daily_enabled(script_name: str, daily_display_name: str, enabled: bool) 
         enabled: 目标启用状态。
     """
     assert script_name in _CONFIGS, f"未适配脚本: {script_name}"
-    _CONFIGS[script_name].set_daily_enabled(daily_display_name, enabled)
+    _CONFIGS[script_name]().set_daily_enabled(daily_display_name, enabled)

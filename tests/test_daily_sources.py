@@ -165,7 +165,9 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
 
     def setUp(self):
         self.declaration = get_daily_configs("ok-ef")[0]
-        self.daily = _CONFIGS["ok-ef"]._dispatch_daily(self.declaration["display_name"])
+        self.daily = _CONFIGS["ok-ef"]()._dispatch_daily(
+            self.declaration["display_name"]
+        )
 
     def test_reads_stages_list(self):
         """正常读取：返回 stages_dict[task_name]（二级目录副本名列表）。"""
@@ -278,7 +280,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
 
     def setUp(self):
         self.declaration = get_daily_configs("BetterGI")[0]
-        self.daily = _CONFIGS["BetterGI"]._dispatch_daily(
+        self.daily = _CONFIGS["BetterGI"]()._dispatch_daily(
             self.declaration["display_name"]
         )
 
@@ -397,7 +399,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
         ):
             cfg = WutheringWavesConfig()
         with (
-            patch.dict(_CONFIGS, {"ok-ww": cfg}),
+            patch.dict(_CONFIGS, {"ok-ww": lambda: cfg}),
             patch("src.config.daily.load_game_config", return_value=self._DATA) as load,
         ):
             names = get_task_lists("ok-ww", self.declaration["display_name"], source)

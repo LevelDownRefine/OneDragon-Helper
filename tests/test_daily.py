@@ -22,7 +22,7 @@ NO_OP_SCRIPTS = ("OneDragon-Launcher", "March7th-Launcher")
 
 def daily_of(script_name: str, daily_name: str) -> Daily:
     """取某脚本某日常的对象（经 ScriptConfig 的类型分发）。"""
-    return _CONFIGS[script_name]._dispatch_daily(daily_name)
+    return _CONFIGS[script_name]()._dispatch_daily(daily_name)
 
 
 class TestDispatch(unittest.TestCase):
@@ -30,7 +30,7 @@ class TestDispatch(unittest.TestCase):
 
     def test_every_script_follows_its_declaration(self):
         for script_name in sorted(_CONFIGS):
-            cfg = _CONFIGS[script_name]
+            cfg = _CONFIGS[script_name]()
             dailies = cfg._dailies
             with self.subTest(script=script_name):
                 self.assertEqual(
@@ -45,24 +45,24 @@ class TestDispatch(unittest.TestCase):
 
     def test_unknown_daily_raises(self):
         with self.assertRaisesRegex(AssertionError, "未知日常"):
-            _CONFIGS["ok-ww"]._dispatch_daily("不存在的日常")
+            _CONFIGS["ok-ww"]()._dispatch_daily("不存在的日常")
 
     def test_special_classes(self):
         """各 config 类手动实例化自己的日常：类与数量都写在子类里。"""
         for script_name in NO_OP_SCRIPTS:
             with self.subTest(script=script_name):
-                daily = _CONFIGS[script_name]._dailies[0]
+                daily = _CONFIGS[script_name]()._dailies[0]
                 self.assertIsInstance(daily, NoopDaily)
                 self.assertFalse(daily.update("任意"))
-        anomaly, hunter = _CONFIGS["ok-nte"]._dailies
+        anomaly, hunter = _CONFIGS["ok-nte"]()._dailies
         self.assertIsInstance(anomaly, Anomaly)
         self.assertIsInstance(hunter, Anomaly)
         self.assertEqual(anomaly.display_name, "异象界域")
         self.assertEqual(hunter.display_name, "追猎目标")
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
-        self.assertIsInstance(_CONFIGS["MAA"]._dailies[0], MaaDaily)
+        self.assertIsInstance(_CONFIGS["MAA"]()._dailies[0], MaaDaily)
         # 标准两层脚本用默认机制类
-        self.assertIs(type(_CONFIGS["ok-ww"]._dailies[0]), Daily)
+        self.assertIs(type(_CONFIGS["ok-ww"]()._dailies[0]), Daily)
 
 
 class TestLandingPoints(unittest.TestCase):
@@ -161,7 +161,7 @@ class TestRead(unittest.TestCase):
     def test_without_landing_point_has_no_truth(self):
         for script_name in NO_OP_SCRIPTS:
             with self.subTest(script=script_name):
-                daily = _CONFIGS[script_name]._dailies[0]
+                daily = _CONFIGS[script_name]()._dailies[0]
                 with patch.object(daily, "_load_daily_config", return_value={}):
                     self.assertEqual(daily.read(), (None, None))
                 # 无落点日常（NoopDaily）覆写 update：不读不写，恒无改动

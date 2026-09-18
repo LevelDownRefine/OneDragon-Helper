@@ -52,7 +52,8 @@ class TestConfigRelPaths(unittest.TestCase):
 
     def test_game_config_rel_path_covers_all(self):
         """全部 7 个脚本都声明了 _game_path_keys 与 _game_config_rel_path"""
-        for name, cls in set_config._CONFIGS.items():
+        for name, factory in set_config._CONFIGS.items():
+            cls = factory()
             self.assertTrue(cls._game_path_keys, f"{name} 缺少 _game_path_keys")
             self.assertTrue(
                 cls._game_config_rel_path, f"{name} 缺少 _game_config_rel_path"
@@ -61,7 +62,9 @@ class TestConfigRelPaths(unittest.TestCase):
     def test_template_rel_path_only_for_template_scripts(self):
         """模板路径只覆盖走模板初始化的脚本（粥已移除模板，仅 4 个）"""
         with_template = {
-            name for name, cls in set_config._CONFIGS.items() if cls._template_rel_path
+            name
+            for name, factory in set_config._CONFIGS.items()
+            if factory()._template_rel_path
         }
         self.assertEqual(
             with_template,
@@ -70,7 +73,8 @@ class TestConfigRelPaths(unittest.TestCase):
 
     def test_weekly_task_name_requires_prepare_weekly_start_day(self):
         """声明 _weekly_task_name 的子类必须覆写 prepare_weekly_start_day（register 完整性校验）"""
-        for name, cls in set_config._CONFIGS.items():
+        for name, factory in set_config._CONFIGS.items():
+            cls = factory()
             if cls._weekly_task_name:
                 self.assertTrue(
                     type(cls).prepare_weekly_start_day
@@ -105,26 +109,44 @@ class TestConfigRelPaths(unittest.TestCase):
 
 
 class TestSharedRegistry(unittest.TestCase):
-    def test_registration_builds_dailies_without_reading_native_config(self):
+    def test_first_access_builds_dailies_and_template_once(self):
         with (
             patch.dict(set_config._CONFIGS),
+            patch.object(
+                set_config, "get_daily_configs", wraps=set_config.get_daily_configs
+            ) as declarations,
+            patch.object(
+                daily_mod, "load_template", wraps=daily_mod.load_template
+            ) as template,
             patch.object(set_config, "load_config") as weekly_load,
             patch.object(set_config, "save_config") as weekly_save,
             patch.object(daily_mod, "load_config") as daily_load,
             patch.object(daily_mod, "save_config") as daily_save,
-            patch.object(set_config.WutheringWavesConfig, "_init_config") as init,
+            patch.object(set_config.ArknightsConfig, "_init_config") as init,
         ):
-            cls = set_config.register(set_config.WutheringWavesConfig)
-            cfg = set_config._CONFIGS["ok-ww"]
-            self.assertIs(cls, set_config.WutheringWavesConfig)
+            cls = set_config.register(set_config.ArknightsConfig)
+            self.assertIs(cls, set_config.ArknightsConfig)
+            self.assertTrue(set_config.is_adapted("MAA"))
+            declarations.assert_not_called()
+            template.assert_not_called()
+
+            cfg = set_config._CONFIGS["MAA"]()
             self.assertIsInstance(cfg, cls)
-            self.assertEqual(len(cfg._dailies), 1)
-            self.assertEqual(cfg._dailies[0].display_name, "每日任务")
+            self.assertEqual(len(cfg._dailies), 3)
+            declarations.assert_called_once_with("MAA")
+            self.assertEqual(template.call_count, 3)
+            dailies = cfg._dailies
+            template.reset_mock()
+
+            self.assertIs(set_config._CONFIGS["MAA"](), cfg)
+            self.assertIs(set_config._CONFIGS["MAA"]()._dailies, dailies)
+            declarations.assert_called_once_with("MAA")
+            template.assert_not_called()
         for operation in (weekly_load, weekly_save, daily_load, daily_save, init):
             operation.assert_not_called()
 
     def test_menu_and_updates_use_the_same_daily(self):
-        cfg = set_config._CONFIGS["ok-ww"]
+        cfg = set_config._CONFIGS["ok-ww"]()
         daily = cfg._dispatch_daily("每日任务")
         source = {"path": "options.json"}
         with (
@@ -144,7 +166,7 @@ class TestSharedRegistry(unittest.TestCase):
         reader.assert_called_once_with(source)
 
     def test_shared_adapter_reads_current_script_path_and_contents(self):
-        cfg = set_config._CONFIGS["ok-ww"]
+        cfg = set_config._CONFIGS["ok-ww"]()
         with tempfile.TemporaryDirectory() as folder:
             roots = [Path(folder) / name for name in ("first", "second")]
             for root, value in zip(roots, (3, 5), strict=True):
@@ -169,7 +191,7 @@ class TestSharedRegistry(unittest.TestCase):
                 self.assertEqual(
                     set_config.get_daily_readback("ok-ww")[0]["sequence"], 5
                 )
-        self.assertIs(set_config._CONFIGS["ok-ww"], cfg)
+        self.assertIs(set_config._CONFIGS["ok-ww"](), cfg)
 
 
 class TestGetConfigPath(unittest.TestCase):
@@ -374,7 +396,7 @@ class TestLoadReadPathTolerance(unittest.TestCase):
     """Daily 读路径的失败处理：未安装/缺失静默按未设置，内容损坏留痕后仍按未设置。"""
 
     def _daily(self):
-        return set_config._CONFIGS["ok-ww"]._dispatch_daily("每日任务")
+        return set_config._CONFIGS["ok-ww"]()._dispatch_daily("每日任务")
 
     def test_missing_config_returns_none_without_warning(self):
         """config 缺失（以断言表达）属正常状态 → None 且不告警。"""
