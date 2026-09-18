@@ -13,8 +13,8 @@ import "Layout.js" as Layout
 // 「周几起」选择已迁至单脚本配置弹窗（≡ 按钮打开），本卡只显示周常名占位。
 //
 // 布局从旧版固定坐标起步（标题 y=18 / 分隔线 y=56 / 日常 y=68），日常区与周常区都按
-// 「每行 56、行数由数据决定」顺次下推（周常区上沿 = 日常区底部 + 4），卡片高度随之增长；
-// 显隐仍只用 visible 切显隐，不逐个写死行 y。
+// 「每行 Layout.taskRowHeight、行数由数据决定」顺次下推（周常区上沿 = 日常区底部），
+// 卡片高度随之增长；显隐仍只用 visible 切显隐，不逐个写死行 y。
 //
 // 显隐规则（对齐旧 _set_task_rows_visible / _refresh_weekly_chip）：
 // - taskAdapted 为假 → 仅显示标题，隐藏分隔线/两区（卡片收缩）。
@@ -32,13 +32,14 @@ Item {
     // 副本/周常 chip 水平位置：在标签（58+64）右侧剩余空间内居中，
     // 使选项卡片在横向空白块内左右留白一致。
     readonly property int chipX: 181
-    // 周常区上沿 = 日常区底部 + 4（对齐其它段间距，纵向节奏统一）。
-    readonly property int weeklyTop: dailyArea.y + dailyArea.height + 4
-    // 高度随适配态：未适配 84（仅标题）；适配时为周常区底部 + 卡片底部留白(16)，
-    // 不支持周常时收到日常区底部 + 4。
+    // 周常区上沿 = 日常区底部：任务行自带上下留白，区块外沿直接相接即为统一的行间距。
+    readonly property int weeklyTop: dailyArea.y + dailyArea.height
+    // 高度随适配态：未适配 84（仅标题）；适配时为最后一个区块底部 + 卡片底部留白，
+    // 有无周常的底边距一致（区块高度不含底部留白，留白只在卡片层加一次）。
     height: Bridge.taskAdapted
-            ? (weeklyArea.visible ? (cardRoot.weeklyTop + weeklyArea.height + 16)
+            ? (weeklyArea.visible ? (cardRoot.weeklyTop + weeklyArea.height)
                                   : cardRoot.weeklyTop)
+              + Layout.cardBottomPad
             : 84
 
     // 下拉和点击遮罩共用窗口边界，由画布尺寸与卡片位置推导。
@@ -120,7 +121,7 @@ Item {
         objectName: "dailyArea"
         x: 20; y: 68; width: 440
         visible: Bridge.taskAdapted
-        property int rowH: 56
+        readonly property int rowH: Layout.taskRowHeight
         height: Bridge.dailyItems.length * rowH
 
         Column {
@@ -222,10 +223,11 @@ Item {
         x: 20; y: cardRoot.weeklyTop; width: 440
         visible: Bridge.taskAdapted && Bridge.weeklySupported
         property bool supported: Bridge.weeklySupported
-        property int rowH: 56
         // 高度由数据模型长度推导：Column 无 count 属性（那是 Repeater 的），
-        // 用 Bridge.weeklyItems.length 才可靠；每项固定 rowH。
-        height: Bridge.weeklyItems.length * rowH + 16
+        // 用 Bridge.weeklyItems.length 才可靠；每项固定 rowH（与日常行共用同一行高），
+        // 底部留白不在本区高度里，由卡片统一加。
+        readonly property int rowH: Layout.taskRowHeight
+        height: Bridge.weeklyItems.length * rowH
 
         // 周常列表：每种一行
         Column {

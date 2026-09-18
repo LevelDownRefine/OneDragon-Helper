@@ -1,8 +1,10 @@
 """MAA 活动缓存和声明菜单的契约测试，不访问真实安装目录。"""
 
+import json
 import unittest
 from copy import deepcopy
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import patch
 
 from src.config.daily_config import get_daily_map
@@ -10,12 +12,17 @@ from src.config.maa_activity import read_activity_stages
 from src.config.set_config import _CONFIGS, ArknightsConfig, get_task_lists
 from src.config.task_config import get_daily_configs
 
+# 真实 MAA 配置（已脱敏），用于钉死 ClientType 的实际形态。
+NATIVE_CONFIG_FIXTURE = (
+    Path(__file__).parent / "fixtures/maa_gui.new.scrubbed.json"
+)
+
 
 class TestMaaActivityResource(unittest.TestCase):
     def setUp(self):
         self.config = {
             "Configurations": {
-                "Default": {"Gui": {"RuntimeSettings": {"ClientType": 0}}}
+                "Default": {"Gui": {"RuntimeSettings": {"ClientType": "Official"}}}
             }
         }
         self.group = {
@@ -52,13 +59,18 @@ class TestMaaActivityResource(unittest.TestCase):
     def test_values_are_ordered_unique_single_stages(self):
         self.assertEqual(self.read(), ["AT-8", "AT-7"])
 
+    def test_client_type_is_read_from_scrubbed_native_config(self):
+        """ClientType 是客户端名；按序号解析会在真实配置上 AssertionError。"""
+        self.config = json.loads(NATIVE_CONFIG_FIXTURE.read_text(encoding="utf-8"))
+        self.assertEqual(self.read(), ["AT-8", "AT-7"])
+
     def test_bilibili_uses_official_and_japan_uses_its_resource(self):
         runtime = self.config["Configurations"]["Default"]["Gui"]["RuntimeSettings"]
-        runtime["ClientType"] = 1
+        runtime["ClientType"] = "Bilibili"
         self.assertEqual(self.read(), ["AT-8", "AT-7"])
         self.data["YoStarJP"] = {"sideStoryStage": {"event": deepcopy(self.group)}}
         self.data["YoStarJP"]["sideStoryStage"]["event"]["Stages"] = [{"Value": "JP-8"}]
-        runtime["ClientType"] = 3
+        runtime["ClientType"] = "YoStarJP"
         self.assertEqual(self.read(), ["JP-8"])
 
     def test_native_time_boundaries_and_resource_timezone(self):

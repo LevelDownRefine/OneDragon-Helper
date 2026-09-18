@@ -5,8 +5,15 @@ from datetime import UTC, datetime, timedelta, timezone
 from src.utils.utils_dict import get_field
 from src.utils.utils_sub_config import load_game_config
 
-# MAA ClientType 的序号；Bilibili 与 Official 共用关卡资源。
-CLIENT_RESOURCES = ("Official", "Official", "YoStarEN", "YoStarJP", "YoStarKR", "txwy")
+# MAA 的 ClientType 是客户端名而非序号：Bilibili 与 Official 共用关卡资源，其余同名。
+CLIENT_RESOURCES = {
+    "Official": "Official",
+    "Bilibili": "Official",
+    "YoStarEN": "YoStarEN",
+    "YoStarJP": "YoStarJP",
+    "YoStarKR": "YoStarKR",
+    "txwy": "txwy",
+}
 
 
 def read_activity_stages(
@@ -23,8 +30,8 @@ def read_activity_stages(
     runtime = get_field(
         get_field(profile, "Gui", "MAA", dict), "RuntimeSettings", "MAA", dict
     )
-    client = get_field(runtime, "ClientType", "MAA", int)
-    assert type(client) is int and 0 <= client < len(CLIENT_RESOURCES)
+    client = get_field(runtime, "ClientType", "MAA", str)
+    assert client in CLIENT_RESOURCES, f"[MAA] 未知客户端: {client}"
     server = get_field(data, CLIENT_RESOURCES[client], "MAA", dict)
     groups = get_field(server, "sideStoryStage", "MAA", dict)
     now = datetime.now(UTC)

@@ -648,8 +648,10 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
 
             def report():
                 wk_area = win.findChild(QQuickItem, "weeklyArea")
+                daily_area = win.findChild(QQuickItem, "dailyArea")
                 card = win.findChild(QQuickItem, "cardRoot")
-                print(f"WEEKLY_VISIBLE {wk_area.isVisible()} CARD_H {card.height():.0f}")
+                print(f"WEEKLY_VISIBLE {wk_area.isVisible()} CARD_H {card.height():.0f} "
+                      f"BOT_PAD {card.height() - (daily_area.y() + daily_area.height()):.0f}")
                 app.quit()
 
             # 等 Loader 自动加载第 0 个脚本的任务卡
@@ -665,20 +667,25 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             cwd=os.getcwd(),
         )
         self.assertNotIn("ReferenceError", proc.stderr)
-        # 输出样例：WEEKLY_VISIBLE false CARD_H 134
+        # 输出样例：WEEKLY_VISIBLE false CARD_H 196 BOT_PAD 16
         visible = None
-        height = None
+        height = bot_pad = None
         for line in proc.stdout.splitlines():
             if line.startswith("WEEKLY_VISIBLE"):
                 parts = line.split()
                 visible = parts[1]
                 height = int(parts[3])
+                bot_pad = int(parts[5])
         self.assertEqual(
             visible, "False", f"无周常脚本应隐藏周常区，stdout={proc.stdout}"
         )
-        # 68（分隔线后日常区上沿）+ 56*2（异环两个日常各一行）+ 4 = 184，不含周常区
+        # 68（分隔线后日常区上沿）+ 行高56*2（异环两个日常各一行）+ 底部留白16 = 196
         self.assertEqual(
-            height, 184, f"无周常脚本卡片高度应为 184，stdout={proc.stdout}"
+            height, 196, f"无周常脚本卡片高度应为 196，stdout={proc.stdout}"
+        )
+        # 日常区是最后一个区块：卡片底部到它的距离 = 底部留白 16（与有周常时一致）
+        self.assertEqual(
+            bot_pad, 16, f"日常区下方背景应留 16，stdout={proc.stdout}"
         )
 
 
@@ -741,9 +748,12 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
 
             def report():
                 wk_area = win.findChild(QQuickItem, "weeklyArea")
+                daily_area = win.findChild(QQuickItem, "dailyArea")
                 card = win.findChild(QQuickItem, "cardRoot")
                 print(f"WEEKLY_VISIBLE {wk_area.isVisible()} "
-                      f"WK_H {wk_area.height():.0f} CARD_H {card.height():.0f}")
+                      f"WK_H {wk_area.height():.0f} CARD_H {card.height():.0f} "
+                      f"SEC_GAP {wk_area.y() - (daily_area.y() + daily_area.height()):.0f} "
+                      f"BOT_PAD {card.height() - (wk_area.y() + wk_area.height()):.0f}")
                 app.quit()
 
             QTimer.singleShot(600, report)
@@ -758,18 +768,29 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             cwd=os.getcwd(),
         )
         self.assertNotIn("ReferenceError", proc.stderr)
-        visible = wk_h = card_h = None
+        visible = wk_h = card_h = sec_gap = bot_pad = None
         for line in proc.stdout.splitlines():
             if line.startswith("WEEKLY_VISIBLE"):
                 parts = line.split()
                 visible = parts[1]
                 wk_h = int(parts[3])
                 card_h = int(parts[5])
+                sec_gap = int(parts[7])
+                bot_pad = int(parts[9])
         self.assertEqual(visible, "True", f"崩铁应显示周常区，stdout={proc.stdout}")
-        # 周常区 = 项数(2) * 行高(56) + 底部留白(16) = 128
-        # 卡片 = 128 + 周常区 + 卡片底部留白(16) = 272
-        self.assertEqual(wk_h, 128, f"周常区高度应=128，stdout={proc.stdout}")
-        self.assertEqual(card_h, 272, f"卡片高度应=272，stdout={proc.stdout}")
+        # 周常区 = 项数(2) * 行高(56) = 112（底部留白不在区块高度里）
+        # 卡片 = 68（日常区上沿）+ 56*1（崩铁一个日常）+ 112 + 卡片底部留白(16) = 252
+        self.assertEqual(wk_h, 112, f"周常区高度应=112，stdout={proc.stdout}")
+        self.assertEqual(card_h, 252, f"卡片高度应=252，stdout={proc.stdout}")
+        # 区块间距为 0：任务行自带上下留白（各 10），区块外沿直接相接时
+        # 「日常→周常」的净距 = 20 = 「日常→日常」的行间净距，纵向节奏才一致。
+        self.assertEqual(
+            sec_gap, 0, f"日常区与周常区之间不应有额外间距，stdout={proc.stdout}"
+        )
+        # 周常区是最后一个区块：卡片底部到它的距离同样 = 16，与无周常时的日常区一致。
+        self.assertEqual(
+            bot_pad, 16, f"周常区下方背景应留 16，stdout={proc.stdout}"
+        )
 
 
 class TestScriptIconProvider(unittest.TestCase):
