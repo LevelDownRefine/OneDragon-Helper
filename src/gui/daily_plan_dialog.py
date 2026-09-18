@@ -20,14 +20,28 @@ from src.gui.dialogs import (
     make_font,
     spin_box_qss,
 )
-from src.service.daily_plan import DailyPlanOptions
+from src.service.daily_plan import DailyPlanOptions, DailyTaskState
+
+
+def _task_state_text(state: DailyTaskState) -> str:
+    """把回读到的系统任务状态写成一行描述（与表单里正在编辑的内容无关）。"""
+    if not state.exists:
+        return "系统任务：未注册"
+    status = "已启用" if state.enabled else "已禁用"
+    if not state.target_time:
+        return f"系统任务：{status}"
+    return f"系统任务：{status}，每天 {state.target_time}"
 
 
 class DailyPlanDialog(FormDialogBase):
     saveRequested = Signal()
 
     def __init__(
-        self, plan: DailyPlanOptions, scripts: list[tuple[str, str]], parent=None
+        self,
+        plan: DailyPlanOptions,
+        scripts: list[tuple[str, str]],
+        state: DailyTaskState,
+        parent=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("每日计划")
@@ -61,6 +75,11 @@ class DailyPlanDialog(FormDialogBase):
         self.time_edit.setStyleSheet(spin_box_qss())
         row.addWidget(self.time_edit)
         layout.addLayout(row)
+        self.state_label = QLabel(_task_state_text(state))
+        self.state_label.setWordWrap(True)
+        self.state_label.setFont(make_font(size=12))
+        self.state_label.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
+        layout.addWidget(self.state_label)
         label = self._make_label("参加计划的脚本")
         label.setFixedWidth(250)
         layout.addWidget(label)

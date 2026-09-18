@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QPushButton, QScrollArea  # noqa: E4
 
 from src.gui.controllers.daily_plan import DailyPlanController  # noqa: E402
 from src.gui.daily_plan_dialog import DailyPlanDialog  # noqa: E402
-from src.service.daily_plan import DailyPlanOptions  # noqa: E402
+from src.service.daily_plan import DailyPlanOptions, DailyTaskState  # noqa: E402
 
 _APP = QApplication.instance() or QApplication([])
 
@@ -26,11 +26,18 @@ class TestDailyPlanDialog(unittest.TestCase):
             ("A", "脚本 A"),
             ("B", "脚本 B"),
         ]
+        self.service.read_daily_task_state.return_value = DailyTaskState(
+            True, True, "08:30"
+        )
         self.toast = Mock()
         self.controller = DailyPlanController(self.service, self.toast)
 
     def _run(self, action):
-        dialog = DailyPlanDialog(self.plan, self.service.list_daily_plan_scripts())
+        dialog = DailyPlanDialog(
+            self.plan,
+            self.service.list_daily_plan_scripts(),
+            self.service.read_daily_task_state(),
+        )
         self.addCleanup(dialog.deleteLater)
         self.addCleanup(dialog.close)
         with (
@@ -41,6 +48,19 @@ class TestDailyPlanDialog(unittest.TestCase):
         ):
             self.controller.edit()
         return dialog
+
+    def test_system_task_state_is_read_back_into_the_form(self):
+        for state, expected in (
+            (DailyTaskState(), "系统任务：未注册"),
+            (DailyTaskState(True, False, "08:30"), "系统任务：已禁用，每天 08:30"),
+            (DailyTaskState(True, True, "08:30"), "系统任务：已启用，每天 08:30"),
+            (DailyTaskState(True, True, ""), "系统任务：已启用"),
+        ):
+            with self.subTest(state=state):
+                self.service.read_daily_task_state.return_value = state
+                dialog = self._run(lambda _dialog: None)
+                self.assertEqual(dialog.state_label.text(), expected)
+        self.service.read_daily_task_state.assert_called()
 
     def test_edit_and_save_independent_script_selection(self):
         updated = DailyPlanOptions(True, "09:45", ("B",))
@@ -131,6 +151,7 @@ class TestDailyPlanDialog(unittest.TestCase):
         dialog = DailyPlanDialog(
             DailyPlanOptions(True, script_names=("removed",)),
             [(str(i), f"脚本 {i}") for i in range(30)],
+            DailyTaskState(),
         )
         self.addCleanup(dialog.close)
         dialog.show()

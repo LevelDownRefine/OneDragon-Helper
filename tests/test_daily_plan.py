@@ -12,9 +12,11 @@ from src.cli import build_parser, run_cli
 from src.service.app_service import AppService
 from src.service.daily_plan import (
     DailyPlanOptions,
+    DailyTaskState,
     WindowsDailyTask,
     apply_daily_plan,
     load_daily_plan,
+    read_daily_task_state,
 )
 from src.service.schedule import RunOptions
 from src.utils.utils_yaml import dump_yaml, load_yaml
@@ -104,6 +106,8 @@ class TestDailyPlanConfig(unittest.TestCase):
 
     @patch("src.service.daily_plan.WindowsDailyTask")
     def test_changing_only_scripts_does_not_reregister_trigger(self, task):
+        # 系统任务已与设置一致：只改脚本名单不写系统任务。
+        task.return_value.read.return_value = DailyTaskState(True, True, "08:30")
         apply_daily_plan(DailyPlanOptions(True, "08:30", ("A",)))
         task.return_value.sync.reset_mock()
         apply_daily_plan(DailyPlanOptions(True, "08:30", ("B",)))
@@ -111,6 +115,27 @@ class TestDailyPlanConfig(unittest.TestCase):
         self.assertEqual(load_daily_plan(), DailyPlanOptions(True, "08:30", ("B",)))
         self.assertTrue(self.config["script_list"][0]["enabled"])
         self.assertFalse(self.config["script_list"][1]["enabled"])
+
+    @patch("src.service.daily_plan.WindowsDailyTask")
+    def test_stale_system_task_is_registered_again_on_save(self, task):
+        """系统任务被外部删除 / 禁用 / 改时间时，保存同样的设置也重新注册。"""
+        for state in (
+            DailyTaskState(),  # 被删除
+            DailyTaskState(True, False, "08:30"),  # 被禁用
+            DailyTaskState(True, True, "05:00"),  # 时间被改
+        ):
+            with self.subTest(state=state):
+                task.return_value.read.return_value = state
+                task.return_value.sync.reset_mock()
+                options = DailyPlanOptions(True, "08:30", ("A",))
+                apply_daily_plan(options)
+                task.return_value.sync.assert_called_once_with(options)
+
+    @patch("src.service.daily_plan.WindowsDailyTask")
+    def test_missing_system_task_is_not_deleted_again_when_disabling(self, task):
+        task.return_value.read.return_value = DailyTaskState()
+        apply_daily_plan(DailyPlanOptions(False, "08:30", ("A",)))
+        task.return_value.sync.assert_not_called()
 
     @patch("src.service.daily_plan.WindowsDailyTask")
     def test_empty_or_removed_script_cannot_enable_plan(self, task):
@@ -122,6 +147,7 @@ class TestDailyPlanConfig(unittest.TestCase):
 
     @patch("src.service.daily_plan.WindowsDailyTask")
     def test_script_only_save_failure_keeps_old_plan_without_task_changes(self, task):
+        task.return_value.read.return_value = DailyTaskState(True, True, "08:30")
         first = DailyPlanOptions(True, "08:30", ("A",))
         apply_daily_plan(first)
         task.return_value.sync.reset_mock()
@@ -137,6 +163,12 @@ class TestDailyPlanConfig(unittest.TestCase):
 
     @patch("src.service.daily_plan.WindowsDailyTask")
     def test_enable_update_disable_persist_and_preserve_other_options(self, task):
+        # 回读按「上一次 sync 写到系统里的状态」推进，与真实任务计划一致。
+        task.return_value.read.side_effect = [
+            DailyTaskState(),
+            DailyTaskState(True, True, "00:00"),
+            DailyTaskState(True, True, "23:59"),
+        ]
         for options in (
             DailyPlanOptions(True, "00:00", ("A",)),
             DailyPlanOptions(True, "23:59", ("B",)),
@@ -156,6 +188,7 @@ class TestDailyPlanConfig(unittest.TestCase):
 
     @patch("src.service.daily_plan.WindowsDailyTask")
     def test_registration_failure_leaves_config_unchanged(self, task):
+        task.return_value.read.return_value = DailyTaskState()
         task.return_value.sync.side_effect = OSError("denied")
         with self.assertRaisesRegex(OSError, "denied"):
             apply_daily_plan(DailyPlanOptions(True, script_names=("A",)))
@@ -163,6 +196,7 @@ class TestDailyPlanConfig(unittest.TestCase):
 
     @patch("src.service.daily_plan.WindowsDailyTask")
     def test_save_failure_restores_previous_task(self, task):
+        task.return_value.read.return_value = DailyTaskState()
         with (
             patch(
                 "src.service.daily_plan.save_schedule", side_effect=OSError("disk full")
@@ -272,6 +306,25 @@ class TestDailyRun(unittest.TestCase):
         service.return_value.run_daily_plan.assert_called_once_with()
 
 
+class TestDailyTaskState(unittest.TestCase):
+    def test_matches_only_when_registered_enabled_and_same_time(self):
+        enabled = DailyPlanOptions(True, "08:30", ("A",))
+        self.assertTrue(DailyTaskState(True, True, "08:30").matches(enabled))
+        self.assertFalse(DailyTaskState(True, True, "08:31").matches(enabled))
+        self.assertFalse(DailyTaskState(True, True, "").matches(enabled))
+        self.assertFalse(DailyTaskState(True, False, "08:30").matches(enabled))
+        self.assertFalse(DailyTaskState().matches(enabled))
+
+    def test_disabled_plan_matches_only_an_absent_task(self):
+        """关闭计划时，系统里残留的任务即视为不一致（保存要删掉它）。"""
+        self.assertTrue(DailyTaskState().matches(DailyPlanOptions(False, "08:30")))
+        self.assertFalse(
+            DailyTaskState(True, True, "08:30").matches(
+                DailyPlanOptions(False, "08:30")
+            )
+        )
+
+
 class TestWindowsDailyTask(unittest.TestCase):
     def setUp(self):
         self.service = Mock()
@@ -286,6 +339,51 @@ class TestWindowsDailyTask(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         self.task = WindowsDailyTask(os.path.abspath("中文 project"))
+
+    def _foreign_task(self) -> Mock:
+        foreign = Mock()
+        foreign.Name = "UserDailyTask"
+        return foreign
+
+    def _own_task(self, enabled=True, boundary="2030-05-01T08:30:00") -> Mock:
+        own = Mock()
+        own.Name = self.task.name
+        own.Enabled = enabled
+        own.Definition.Triggers.Count = 1
+        own.Definition.Triggers.Item.return_value.StartBoundary = boundary
+        return own
+
+    def test_read_reports_enabled_task_and_its_trigger_time(self):
+        self.folder.GetTasks.return_value = [self._foreign_task(), self._own_task()]
+        self.assertEqual(self.task.read(), DailyTaskState(True, True, "08:30"))
+
+    def test_read_unregistered_or_foreign_task_returns_empty_state(self):
+        for tasks in ([], [self._foreign_task()]):
+            with self.subTest(tasks=tasks):
+                self.folder.GetTasks.return_value = tasks
+                self.assertEqual(self.task.read(), DailyTaskState())
+
+    def test_read_disabled_task_is_reported_as_disabled(self):
+        self.folder.GetTasks.return_value = [self._own_task(enabled=False)]
+        self.assertEqual(self.task.read(), DailyTaskState(True, False, "08:30"))
+
+    def test_read_task_without_usable_trigger_has_no_time(self):
+        for boundary in ("", "not-a-time"):
+            with self.subTest(boundary=boundary):
+                self.folder.GetTasks.return_value = [self._own_task(boundary=boundary)]
+                self.assertEqual(self.task.read(), DailyTaskState(True, True, ""))
+        no_trigger = self._own_task()
+        no_trigger.Definition.Triggers.Count = 0
+        self.folder.GetTasks.return_value = [no_trigger]
+        self.assertEqual(self.task.read(), DailyTaskState(True, True, ""))
+
+    def test_state_reader_degrades_to_unregistered_when_read_fails(self):
+        with (
+            patch.object(WindowsDailyTask, "read", side_effect=OSError("denied")),
+            self.assertLogs("src.service.daily_plan", level="WARNING") as logs,
+        ):
+            self.assertEqual(read_daily_task_state(), DailyTaskState())
+        self.assertIn("denied", "\n".join(logs.output))
 
     def test_registers_daily_interactive_task_without_frozen_config_arguments(self):
         self.task.sync(DailyPlanOptions(True, "08:30"))

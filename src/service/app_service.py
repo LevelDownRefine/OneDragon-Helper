@@ -197,6 +197,9 @@ class AppService:
     def list_daily_plan_scripts(self) -> list[tuple[str, str]]:
         return daily_plan.list_daily_plan_scripts()
 
+    def read_daily_task_state(self) -> daily_plan.DailyTaskState:
+        return daily_plan.read_daily_task_state()
+
     def run_daily_plan(self) -> None:
         return daily_plan.run_daily_plan()
 

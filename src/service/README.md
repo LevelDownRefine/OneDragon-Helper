@@ -21,7 +21,7 @@
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
 | schedule.py | schedule.yml 读写（StartupOptions 自动启动开关/秒数、RunOptions 运行选项）+ ScheduledRun 调度运行编排 |
-| daily_plan.py | 每日计划读写与 Windows 原生任务注册；系统仅保存触发时间和 --run-daily 入口 |
+| daily_plan.py | 每日计划读写与 Windows 原生任务注册，并可回读任务实际状态；系统仅保存触发时间和 --run-daily 入口 |
 | backup_service.py | 配置备份与恢复：普通 ZIP 收集与恢复；按当前脚本目录覆盖，保留游戏路径，未配置脚本跳过 |
 | run_actions.py | pre_run / post_run 各 step 的具体动作 |
 

@@ -1,9 +1,16 @@
-"""每日计划：Windows 负责触发，运行入口每次读取最新配置。"""
+"""每日计划：Windows 负责触发，运行入口每次读取最新配置。
+
+系统任务里只有触发时间和 ``--run-daily`` 入口，脚本名单与运行选项留在 schedule.yml，
+故「每日计划是否生效」有两个来源：yml 是设置意图，系统任务是实际事实。两者会被用户
+手动改动而分叉，因此界面回显实际状态（:class:`DailyTaskState`），保存时按回读结果
+判断是否要重新注册。
+"""
 
 import getpass
 import hashlib
 import logging
 import os
+import re
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -38,6 +45,25 @@ class DailyPlanOptions:
         assert isinstance(self.script_names, tuple)
         assert all(isinstance(name, str) and name for name in self.script_names)
         assert len(set(self.script_names)) == len(self.script_names)
+
+
+@dataclass(frozen=True)
+class DailyTaskState:
+    """系统任务的实际状态，由 ``WindowsDailyTask.read()`` 回读。
+
+    未注册时三项均为缺省值。``target_time`` 为空串表示触发器时刻读不出来
+    （无触发器或格式异常），此时按与设置不一致处理，保存会重新注册。
+    """
+
+    exists: bool = False
+    enabled: bool = False
+    target_time: str = ""
+
+    def matches(self, options: DailyPlanOptions) -> bool:
+        """系统任务是否已与计划一致（脚本名单只存在于 schedule.yml，不参与比对）。"""
+        if not options.enabled:
+            return not self.exists
+        return self.exists and self.enabled and self.target_time == options.target_time
 
 
 def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
@@ -109,6 +135,15 @@ def _task_service():
             pythoncom.CoUninitialize()
 
 
+def _trigger_time(task) -> str:
+    """取任务首个触发器的 ``HH:MM``；无触发器或格式异常时返回空串。"""
+    triggers = task.Definition.Triggers
+    if triggers.Count == 0:
+        return ""
+    match = re.search(r"T(\d{2}:\d{2})", str(triggers.Item(1).StartBoundary))
+    return match.group(1) if match else ""
+
+
 class WindowsDailyTask:
     """按安装目录和用户区分任务；更新同一个任务，关闭时删除。"""
 
@@ -117,6 +152,23 @@ class WindowsDailyTask:
         identity = os.path.normcase(self.root_dir) + "\0" + getpass.getuser()
         digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
         self.name = f"OneDragon-Helper-Daily-{digest}"
+
+    def read(self) -> DailyTaskState:
+        """回读当前安装对应的系统任务；未注册返回缺省状态。"""
+        with _task_service() as service:
+            folder = None
+            try:
+                folder = service.GetFolder("\\")
+                # GetTasks(1) 与 sync 同源，含隐藏任务，口径一致。
+                for task in folder.GetTasks(1):
+                    if task.Name == self.name:
+                        return DailyTaskState(
+                            True, bool(task.Enabled), _trigger_time(task)
+                        )
+                return DailyTaskState()
+            finally:
+                # COM 包装对象须先释放，之后才能 CoUninitialize。
+                folder = service = None
 
     def sync(self, options: DailyPlanOptions) -> None:
         """注册每日交互任务，或删除当前安装对应的任务。"""
@@ -167,7 +219,11 @@ class WindowsDailyTask:
 
 
 def apply_daily_plan(options: DailyPlanOptions) -> None:
-    """先更新系统任务再保存配置；写盘失败时恢复原计划。"""
+    """先更新系统任务再保存配置；写盘失败时恢复原计划。
+
+    是否重新注册「回读系统任务后再判断」，而不是只比 yml 里的旧值：用户在任务计划
+    程序里删掉或禁用过任务时，再次保存同样的设置也能重新注册。
+    """
     assert isinstance(options, DailyPlanOptions)
     data = load_schedule()
     previous = load_daily_plan(data)
@@ -178,12 +234,9 @@ def apply_daily_plan(options: DailyPlanOptions) -> None:
         missing = set(options.script_names) - available
         if missing:
             raise ValueError(f"脚本已移除，请重新选择：{'、'.join(sorted(missing))}")
-    trigger_changed = (options.enabled, options.target_time) != (
-        previous.enabled,
-        previous.target_time,
-    )
     task = WindowsDailyTask()
-    if trigger_changed:
+    synced = not task.read().matches(options)
+    if synced:
         task.sync(options)
     data["daily_run"] = {
         "enabled": options.enabled,
@@ -194,11 +247,20 @@ def apply_daily_plan(options: DailyPlanOptions) -> None:
         save_schedule(data)
     except (OSError, YAMLError):
         try:
-            if trigger_changed:
+            if synced:
                 task.sync(previous)
         except OSError:
             logger.exception("[daily] 保存失败后恢复系统任务也失败，请重新设置每日计划")
         raise
+
+
+def read_daily_task_state() -> DailyTaskState:
+    """回读系统任务实际状态供界面回显；读不到时按未注册处理并记诊断。"""
+    try:
+        return WindowsDailyTask().read()
+    except OSError as exc:
+        logger.warning("[daily] 读取系统任务状态失败，按未注册处理：%s", exc)
+        return DailyTaskState()
 
 
 def list_daily_plan_scripts() -> list[tuple[str, str]]:
