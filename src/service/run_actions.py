@@ -28,7 +28,7 @@ def wait_until_target(target_time: str) -> None:
     """阻塞等待到目标时刻；等待前先打日志，避免等待期静默。
 
     Args:
-        target_time: 目标时刻 ``"HH:MM"``（调用方已确保非 ``"now"``）。
+        target_time: 目标时刻 ``"HH:MM"`` 或 ``"HH:MM:SS"``（调用方已确保非 ``"now"``）。
     """
     target_dt = next_target_datetime(target_time)
     wait_seconds = (target_dt - datetime.now()).total_seconds()

@@ -526,7 +526,7 @@ class TestCollectProcessTargets(unittest.TestCase):
 
 
 class TestNextTargetDatetime(unittest.TestCase):
-    """next_target_datetime：今天未到取今天，已过取明天（跨午夜）。"""
+    """next_target_datetime：今天未到取今天，已过取明天（跨午夜）；HH:MM 与 HH:MM:SS 等价。"""
 
     def test_later_today(self):
         now = datetime(2026, 8, 23, 7, 0)
@@ -548,6 +548,25 @@ class TestNextTargetDatetime(unittest.TestCase):
             next_target_datetime("08:00", now=now),
             datetime(2026, 8, 24, 8, 0),
         )
+
+    def test_seconds_make_same_minute_reachable(self):
+        """带秒：同一分钟内仍算「未到」，不必等到明天（集成测试据此精确指定 +3 秒）。"""
+        now = datetime(2026, 8, 23, 8, 0, 10)
+        self.assertEqual(
+            next_target_datetime("08:00:30", now=now),
+            datetime(2026, 8, 23, 8, 0, 30),
+        )
+
+    def test_seconds_passed_rolls_to_tomorrow(self):
+        now = datetime(2026, 8, 23, 8, 0, 40)
+        self.assertEqual(
+            next_target_datetime("08:00:30", now=now),
+            datetime(2026, 8, 24, 8, 0, 30),
+        )
+
+    def test_invalid_segment_count(self):
+        with self.assertRaises(AssertionError):
+            next_target_datetime("08:00:30:00")
 
 
 class TestSpawnScheduleRun(unittest.TestCase):

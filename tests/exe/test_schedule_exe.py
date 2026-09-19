@@ -69,8 +69,11 @@ _CHAIN_DIR = _CONFIG_DIR / "script_chain" if _CONFIG_DIR else None
 _CHAIN_FILES = ("cut.yml", "tail.yml", "rerun.yml")
 _LOG_DIRS = ("logs", ".log")
 
+_TARGET_LEAD_SECONDS = (
+    8  # 掐断轮目标时刻 = 当前 + 该秒数（覆盖 exe 冷启到 pre_run 的耗时）
+)
 _LAUNCH_DEADLINE = (
-    180  # 掐断轮：等新假游戏出现（含定时等待≤60s、清场、生成链、Runner 冷启）
+    120  # 掐断轮：等新假游戏出现（目标等待 + 清场 + 生成链 + Runner 冷启）
 )
 _GAME_OBSERVE_SECONDS = 3  # 出现后再观察其存活的秒数（仍存活即认为启动成功，随即掐断）
 _TAIL_TIMEOUT = 180  # 整链轮：两条链 + 日志解析 + post_run（无 60s 就绪等待）
@@ -175,11 +178,14 @@ class TestScheduleExeE2E(unittest.TestCase):
         # 日志偏移：只取后续增量（午夜轮转时文件变小，整份即增量）
         cls._offsets = cls._log_offsets()
 
+        # 掐断轮的目标时刻：用带秒的「当前 + _TARGET_LEAD_SECONDS」，等固定几秒即可，
+        # 不必像 HH:MM 那样只能等下一个整分钟（后者在 1~60s 间浮动，是 CI 时长抖动的主源）。
+        # 跨午夜时同名时刻要等到明天，宁可即时运行（此时不再断言定时等待，见 test_timed_wait_real）。
         now = datetime.now()
-        if now.minute <= 57:
-            target_dt = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
-            target = target_dt.strftime("%H:%M")
-            cls.expected_wait = (target_dt - now).total_seconds()
+        target_dt = now + timedelta(seconds=_TARGET_LEAD_SECONDS)
+        if target_dt.date() == now.date():
+            target = target_dt.strftime("%H:%M:%S")
+            cls.expected_wait = _TARGET_LEAD_SECONDS
         else:
             target = "now"
             cls.expected_wait = 0.0

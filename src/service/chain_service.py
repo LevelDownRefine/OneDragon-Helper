@@ -171,7 +171,7 @@ def schedule_run(
     Args:
         enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
             （跳过运行）。调用方想全量时显式传入 config 全部脚本集合。
-        target_time: 目标时刻 ``"HH:MM"``；``"now"`` 表示即时运行（跳过等待）。
+        target_time: 目标时刻 ``"HH:MM"`` 或带秒的 ``"HH:MM:SS"``；``"now"`` 表示即时运行（跳过等待）。
         chain_name: 链配置文件名（不含扩展名，默认 today）。
         mute: 是否运行前静音（由 ScheduledRun 的 pre_run 执行）。
         unmute: 是否运行后开启声音（由 ScheduledRun 的 post_run 执行，与静音独立）。
