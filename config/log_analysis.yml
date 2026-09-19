@@ -97,14 +97,11 @@ parsers:
       - '未领取'
 
   MaaEnd:
-    # MXU 前端日志按「<日期>-<序号>.log」命名于 debug/；框架日志 maafw.log 只记录
-    # 截图/识别细节、体量大且不反映任务成败，故不选它。
-    # 暂不配 daily_success_marker：判据未定论，而配错的代价是每天误判重跑
-    # （daily_done 不为 True 即进重跑名单）；先只提供日志目录与日志尾部。
-    log_pattern: '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.log'
+    # 只提供日志目录（GUI「打开日志」→ 安装根 debug/），不参与日志分析。
+    # 判据未定论，而重跑判据是「daily_done 不为 True 即重跑」，配错等于每天多跑一遍；
+    # parser 的 analyzes=False 已保证不读内容，故此处无 log_pattern。
+    log_pattern: ''
 
   MAA:
-    # MaaCore 日志 debug/asst.log（滚动备份 asst.bak.log 不选）。
-    # 同 MaaEnd：暂不判当日是否做完（AllTasksCompleted 只表示任务链跑完，
-    # 不等于奖励领到），避免误判进重跑。
-    log_pattern: 'asst.log'
+    # 同 MaaEnd：只给目录（MaaCore 的 asst.log 在其中），不参与分析。
+    log_pattern: ''
