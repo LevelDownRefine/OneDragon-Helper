@@ -118,6 +118,14 @@ class MAALink(GameLink):
     _homepage = "https://ak.hypergryph.com/"
 
 
+@register
+class MaaEndLink(GameLink):
+    _script_name = "MaaEnd"
+    _bilibili = "1265652806"
+    _github = "MaaEnd/MaaEnd"
+    _homepage = "https://endfield.hypergryph.com/"
+
+
 # 链接种类 → (GameLink 方法名, 是否需传 script_name)
 _METHODS: dict[str, tuple[str, bool]] = {
     "bilibili": ("get_bilibili", False),

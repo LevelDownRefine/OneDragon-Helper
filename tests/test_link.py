@@ -29,6 +29,21 @@ class TestLinkDispatch(unittest.TestCase):
             "https://github.com/ok-oldking/ok-wuthering-waves",
         )
 
+    def test_maaend_links(self):
+        """MaaEnd：B 站用游戏官方号（与 ok-ef 同一账号）、GitHub 仓库与终末地官网。"""
+        self.assertEqual(
+            link.get_game_link("MaaEnd", "bilibili"),
+            "https://space.bilibili.com/1265652806",
+        )
+        self.assertEqual(
+            link.get_game_link("MaaEnd", "github"),
+            "https://github.com/MaaEnd/MaaEnd",
+        )
+        self.assertEqual(
+            link.get_game_link("MaaEnd", "homepage"),
+            "https://endfield.hypergryph.com/",
+        )
+
     def test_unknown_script_returns_empty(self):
         self.assertEqual(link.get_game_link("不存在", "homepage"), "")
         self.assertEqual(link.get_game_link("不存在", "bilibili"), "")
