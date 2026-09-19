@@ -169,10 +169,13 @@ _UNUSED_QT_KEYWORDS = (
     #   FFmpeg 五个 dll（17.8M）— QtMultimedia 的 MediaPlayer 解码用，视频壁纸依赖它。
     # Qt 自带翻译（7.8M / 145 个 .qm）: 界面文案全写在 QML 里，不走 Qt 翻译。
     'translations',
-    # QML 只 import QtQuick / QtQuick.Window / QtMultimedia，下列 QML 模块与其 DLL 从未加载。
+    # QML 只 import QtQuick / QtQuick.Window / QtQuick.Effects / QtMultimedia，下列 QML
+    # 模块与其 DLL 从未加载。'Effects' 切勿加入本清单：main.qml 用 QtQuick.Effects 的
+    # MultiEffect 做整窗圆角遮罩（Qt6QuickEffects.dll + qml/QtQuick/Effects/*），被过滤
+    # 后 QML import 失败，主窗口直接加载不出来。
     'Controls', 'NativeStyle', 'Dialogs', 'Templates', 'VirtualKeyboard',
     'Pdf', 'Scene2D', 'Scene3D', 'Particles', 'Timeline', 'VectorImage',
-    'Shapes', 'Layouts', 'Effects', 'LocalStorage', 'Labs',
+    'Shapes', 'Layouts', 'LocalStorage', 'Labs',
     # 未使用的 Qt 模块与插件。注意 QtOpenGL / QtNetwork 不在此列——它们是 PySide6 的
     # 内部依赖（src 无显式 import），删掉启动即崩（实测弹 Unhandled exception）。
     'RemoteObjects', 'Scxml', 'Positioning', 'Qt6Test', 'QuickTest',

@@ -66,8 +66,12 @@ class TestSharedLayout(unittest.TestCase):
                     window = engine.rootObjects()[0]
                     QTest.qWait(600)
                     assert (window.width(), window.height()) == (1120, 640)
-                    assert not window.mask().contains(QPoint(16, 1))
-                    assert window.mask().contains(QPoint(28, 1))
+                    # 整窗圆角已改由 QML 遮罩承担（QRegion 遮罩是二值区域、必现锯齿），
+                    # Layout 里的 windowCornerRadius 须作用到遮罩半径与尺寸上。
+                    corner = window.findChild(QQuickItem, "cornerMask")
+                    assert window.mask().isEmpty()
+                    assert float(corner.property("radius")) == 28
+                    assert (corner.width(), corner.height()) == (1120, 640)
                     card = window.findChild(QQuickItem, "cardRoot")
                     assert card.mapToScene(QPointF()) == QPointF(176, 304)
                     catcher = window.findChild(QQuickItem, "popupCatcher")

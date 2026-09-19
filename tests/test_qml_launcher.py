@@ -411,14 +411,30 @@ class TestQmlApp(unittest.TestCase):
             app.exec()
             print("ROOT_OBJECTS", len(engine.rootObjects()), flush=True)
             window = engine.rootObjects()[0]
-            # 裁切落在窗口本身，覆盖全部背景与侧栏，内部控件继续接收点击。
-            mask = window.mask()
-            w, h = window.width(), window.height()
-            assert not mask.isEmpty()
-            for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
-                assert not mask.contains(QPointF(x, y).toPoint())
-            for x, y in ((w // 2, 0), (0, h // 2), (w - 1, h // 2), (w // 2, h - 1), (w // 2, h // 2)):
-                assert mask.contains(QPointF(x, y).toPoint())
+            # 圆角改由 shell 的 MultiEffect 遮罩提供：窗口本体透明、整窗内容进底图
+            # 后按 mask 的 alpha 合成。不再用 QWindow.setMask —— QRegion 是二值区域
+            # （无 alpha），圆边只能落在整像素网格上，必现阶梯状锯齿（回归守卫）。
+            assert window.mask().isEmpty(), "整窗不应再有 QRegion 遮罩"
+            assert window.color().alpha() == 0, "窗口本体应为透明，圆角靠 alpha 提供"
+            shell = window.findChild(QQuickItem, "windowShell")
+            assert shell is not None, "缺少承载整窗内容的 shell"
+            # 整窗内容必须都装在 shell 里，否则圆角遮罩裁不到（背景与侧栏仍是方角）
+            assert any(c.objectName() == "gameList" for c in shell.childItems())
+            mask_item = window.findChild(QQuickItem, "cornerMask")
+            assert mask_item is not None, "缺少圆角遮罩源"
+            assert float(mask_item.property("radius")) == 16.0
+            # layer.effect 的 item 在视觉树上挂在 contentItem（QObject 无父），只能按
+            # 视觉子项查找。
+            effect = next(
+                (
+                    c
+                    for c in window.contentItem().childItems()
+                    if c.objectName() == "cornerMaskEffect"
+                ),
+                None,
+            )
+            assert effect is not None, "shell 缺圆角遮罩"
+            assert effect.property("maskEnabled") is True
             # Repeater 委托的 QObject 所有权不等于视觉父子关系，按视觉树查找。
             def find_item(name):
                 pending = [window.contentItem()]
