@@ -1,5 +1,6 @@
 """读取日常、周常声明并校验递归选项；不负责调度或写入子脚本。"""
 
+import logging
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
@@ -9,6 +10,8 @@ from src.utils import (
     get_weekly_task_list_yml_path_under_root,
 )
 from src.utils.utils_yaml import load_yaml_str
+
+logger = logging.getLogger(__name__)
 
 
 def get_physical_name(node: dict) -> str | int:
@@ -207,7 +210,8 @@ def get_daily_configs(script_name: str) -> list[dict]:
     """
     data = load_daily_map()
     if script_name not in data:
-        return []  # 无日常的脚本
+        logger.info(f"[get_daily_configs] {script_name} 无日常声明，按无日常处理")
+        return []
     return data[script_name]
 
 

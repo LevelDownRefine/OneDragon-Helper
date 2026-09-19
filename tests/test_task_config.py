@@ -255,5 +255,17 @@ class TestDailyClassField(unittest.TestCase):
         self.assertEqual(data["ok-ww"][0]["display_name"], "历战余响")
 
 
+class TestMissingScriptDeclaration(unittest.TestCase):
+    """声明文件里没有该脚本：返回空列表，但须留一条日志（不静默当无事）。"""
+
+    def test_returns_empty_with_info_log(self):
+        with (
+            patch.object(m, "load_daily_map", return_value={"ok-ww": []}),
+            self.assertLogs("src.config.task_config", level="INFO") as captured,
+        ):
+            self.assertEqual(m.get_daily_configs("MaaEnd"), [])
+        self.assertIn("无日常声明", captured.output[0])
+
+
 if __name__ == "__main__":
     unittest.main()
