@@ -13,8 +13,6 @@ import src.utils.utils_logger
 from src.log import (
     BGILogParser,
     M7ALogParser,
-    MaaEndLogParser,
-    MAALogParser,
     OkEfLogParser,
     OkNteLogParser,
     OkWwLogParser,
@@ -108,12 +106,9 @@ class TestLogParser(unittest.TestCase):
         self.assertFalse(result["daily_done"])
 
     def test_parse_log_rejects_unsupported(self):
-        """不支持的脚本在 parse_logs 入口已过滤，进入 parse_log 即不可能 → 断言失败。
-
-        反例用不存在的标识：拿真实脚本名当反例会随「该脚本接入解析」而过期。
-        """
+        """不支持的脚本在 parse_logs 入口已过滤，进入 parse_log 即不可能 → 断言失败。"""
         with self.assertRaises(AssertionError):
-            parse_log("不存在的脚本")
+            parse_log("MAA")
 
     def test_ok_nte_daily_done_is_success(self):
         """异环：命中每日完成标记（info_set failed []）→ SUCCESS。"""
@@ -163,42 +158,6 @@ class TestLogParser(unittest.TestCase):
         )
         self.assertEqual(result["status"], ScriptLogStatus.FAILED)
         self.assertFalse(result["daily_done"])
-
-    def test_maa_and_maaend_are_dir_only(self):
-        """MAA/MaaEnd 只提供日志目录，不参与日志分析（analyzes=False）。
-
-        判据未定论，而重跑判据是「daily_done 不为 True 即重跑」；不看内容就
-        不会误判把它们塞进重跑名单，故两者都没有 log_pattern 与完成标记。
-        """
-        for parser_cls in (MAALogParser, MaaEndLogParser):
-            with self.subTest(parser=parser_cls.__name__):
-                parser = parser_cls()
-                self.assertFalse(parser.analyzes)
-                self.assertEqual(parser.log_pattern, "")
-                self.assertEqual(parser.daily_success_marker, ())
-        # 不参与分析 ⇒ 与「不支持的脚本」同样被 parse_log 拒绝
-        for script_name in ("MAA", "MaaEnd"):
-            with self.subTest(script=script_name), self.assertRaises(AssertionError):
-                parse_log(script_name)
-
-    def test_maaend_log_dir_is_debug_folder(self):
-        """MaaEnd：日志目录 = 安装根目录下的 debug/（MXU 写 <日期>-<序号>.log）。
-
-        用平台无关路径构造（Windows 反斜杠在 POSIX 的 Path 里不是分隔符）。
-        """
-        root = Path(tempfile.gettempdir()) / "MaaEnd"
-        self.assertEqual(
-            MaaEndLogParser()._get_log_dir(str(root / "MaaEnd.exe")),
-            root / "debug",
-        )
-
-    def test_maa_log_dir_is_debug_folder(self):
-        """MAA：日志目录 = 安装根目录下的 debug/（MaaCore 写 asst.log）。"""
-        root = Path(tempfile.gettempdir()) / "MAA"
-        self.assertEqual(
-            MAALogParser()._get_log_dir(str(root / "MAA.exe")),
-            root / "debug",
-        )
 
     def test_result_has_no_extra_key(self):
         """extra 已全链路移除：解析结果不再含该键。"""
@@ -490,8 +449,6 @@ class TestParseLogsRerunList(unittest.TestCase):
         """parse_daily 仅由 daily_success_marker 决定：命中标记=True，否则=False，绝不返回 None。"""
         for parser_cls in collect_log._PARSERS:
             p = parser_cls()
-            if not p.daily_success_marker:
-                continue  # 未配标记的脚本（MAA/MaaEnd）无法判定，恒 True
             # 中性内容（无任一成功标记）→ 一律 False（无标记即失败）。
             self.assertFalse(p.parse_daily("启动但啥也没发生，没有任何每日标记"))
             # 返回类型恒为 bool，绝不 None。

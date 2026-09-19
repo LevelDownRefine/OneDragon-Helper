@@ -124,10 +124,6 @@ class BaseLogParser:
     daily_success_marker: tuple[str, ...] = ()
     # 终止横幅标记（崩铁用于截断「游戏终止」之后的良性报错），命中任一取其最后位置。
     exit_markers: tuple[str, ...] = ()
-    # 是否参与日志分析（parse_logs 的解析、重跑与邮件判定）。
-    # False = 只提供日志目录（供 GUI「打开日志」），不读日志内容：
-    # 判据未定论的脚本（MAA / MaaEnd）走这条，避免误判把它塞进重跑名单。
-    analyzes: bool = True
 
     def __init__(self) -> None:
         self._apply_keywords()
@@ -354,37 +350,6 @@ class BGILogParser(BaseLogParser):
         return bgi_dir / "log"
 
 
-class MaaEndLogParser(BaseLogParser):
-    """MaaEnd（MXU 前端）：只提供日志目录，不参与日志分析。
-
-    运行日志按 ``<日期>-<序号>.log`` 命名于安装根目录 debug/ 下（``maafw.log`` 是
-    框架日志，体量大且不反映任务成败）。日志判据未定论，故 ``analyzes = False``：
-    不看内容，就不会因误判被塞进重跑名单。
-    """
-
-    script_name = "MaaEnd"
-    analyzes = False
-
-    def _get_log_dir(self, script_path: str) -> Path:
-        maaend_dir = Path(script_path).parent
-        return maaend_dir / "debug"
-
-
-class MAALogParser(BaseLogParser):
-    """MAA（MaaCore）：只提供日志目录，不参与日志分析。
-
-    同 MaaEnd：日志判据（``AllTasksCompleted`` 只表示任务链跑完，不等于奖励领到）
-    未定论，故只给目录（``asst.log`` 所在的 debug/），不做解析。
-    """
-
-    script_name = "MAA"
-    analyzes = False
-
-    def _get_log_dir(self, script_path: str) -> Path:
-        maa_dir = Path(script_path).parent
-        return maa_dir / "debug"
-
-
 _PARSERS = [
     OkWwLogParser,
     OkNteLogParser,
@@ -392,8 +357,6 @@ _PARSERS = [
     M7ALogParser,
     BGILogParser,
     ZZZLogParser,
-    MaaEndLogParser,
-    MAALogParser,
 ]
 
 
@@ -405,9 +368,7 @@ def parse_log(script_name: str, script_path: str = "") -> dict:
     script_name 必为受支持脚本（parse_logs 入口已过滤），不支持即不可能。
     """
     # 不支持的脚本在 parse_logs 入口已过滤，到此处即不可能。
-    supported_names = {
-        cls.script_name for cls in _PARSERS if cls.script_name and cls.analyzes
-    }
+    supported_names = {cls.script_name for cls in _PARSERS if cls.script_name}
     assert script_name in supported_names, (
         f"不支持的脚本不应进入 parse_log: {script_name}"
     )
@@ -638,10 +599,8 @@ def parse_logs(
     config_data = load_yaml(str(config_path))
 
     script_list = config_data.get("script_list", [])
-    # 受支持脚本由各 parser 的 script_name 推导（analyzes 为假的只供目录，不参与解析）。
-    supported = {
-        cls.script_name for cls in _PARSERS if cls.script_name and cls.analyzes
-    }
+    # 受支持脚本由各 parser 的 script_name 推导，与全链路标识一致。
+    supported = {cls.script_name for cls in _PARSERS if cls.script_name}
 
     # 收集各脚本解析结果（parse_log 已按 script_name 找到对应 Parser 并解析）。
     entries = []

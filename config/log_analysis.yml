@@ -95,13 +95,3 @@ parsers:
       - '一条龙和配置组任务结束'
     fail_markers:
       - '未领取'
-
-  MaaEnd:
-    # 只提供日志目录（GUI「打开日志」→ 安装根 debug/），不参与日志分析。
-    # 判据未定论，而重跑判据是「daily_done 不为 True 即重跑」，配错等于每天多跑一遍；
-    # parser 的 analyzes=False 已保证不读内容，故此处无 log_pattern。
-    log_pattern: ''
-
-  MAA:
-    # 同 MaaEnd：只给目录（MaaCore 的 asst.log 在其中），不参与分析。
-    log_pattern: ''
