@@ -11,16 +11,6 @@ from src.config import set_config
 from src.config.set_config import get_background_rel_path
 from tests.exe import project_root
 
-
-def setUpModule():
-    # 本用例经 get_script_root_dir 读真实 config/config.yml（脚本根目录解析）。
-    # 打包 CI 的 runner 上无生成物（config.yml 不进 git），按首启语义在此补齐
-    # （幂等：已存在则不动）。
-    from src.config.generate_config import config_workflow
-
-    config_workflow()
-
-
 PROJECT_ROOT = str(project_root())
 IMAGEFORMATS = os.path.join(
     PROJECT_ROOT,
@@ -110,29 +100,28 @@ class TestPackagedImageFormats(unittest.TestCase):
         assert app is not None
         # 必须强制只搜打包产物这一处：QT_PLUGIN_PATH 是追加而非替换，
         # 混进开发环境的插件会让已删除的格式仍显示在 supportedImageFormats() 里。
+        previous_paths = QCoreApplication.libraryPaths()
+        self.addCleanup(QCoreApplication.setLibraryPaths, previous_paths)
         QCoreApplication.setLibraryPaths([os.path.dirname(IMAGEFORMATS)])
 
-        from src.utils.utils_sub_config import get_script_root_dir
-
-        checked = 0
-        for name, rel in _declared_backgrounds().items():
-            if name == "__default__":
-                path = os.path.join(PROJECT_ROOT, rel)
-            else:
-                root = get_script_root_dir(name)
-                if not root:
-                    continue
-                path = os.path.join(root, rel)
-            if not os.path.isfile(path):
-                continue  # 本机没装该脚本，跳过（插件存在性由上一个用例兜底）
+        samples = {
+            "qjpeg.dll": os.path.join(
+                PROJECT_ROOT, "deploy", "dist", "OneDragon-Helper", DEFAULT_BG
+            ),
+            "qwebp.dll": os.path.join(
+                PROJECT_ROOT, "tests", "fixtures", "background.webp"
+            ),
+        }
+        for plugin, source in _required_plugins().items():
+            self.assertIn(plugin, samples, f"{source} 缺少独立解码夹具")
+            path = samples[plugin]
+            self.assertTrue(os.path.isfile(path), f"解码夹具缺失: {path}")
             image = QImage(path)
             self.assertFalse(
                 image.isNull(),
-                f"打包插件集无法解码 {name} 的背景图: {path}（格式 "
-                f"{os.path.splitext(rel)[1]}），检查对应插件是否被误删。",
+                f"打包插件集无法解码 {source} 的背景图: {path}（格式 "
+                f"{os.path.splitext(path)[1]}），检查对应插件是否被误删。",
             )
-            checked += 1
-        self.assertGreaterEqual(checked, 1, "没有任何背景图可供解码验证")
 
 
 if __name__ == "__main__":

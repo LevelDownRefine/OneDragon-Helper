@@ -33,6 +33,7 @@ class TestGameConfigRoundTrip(unittest.TestCase):
             "w", suffix=".yaml", encoding="utf-8", delete=False
         ) as tmp:
             tmp_path = tmp.name
+        self.addCleanup(os.unlink, tmp_path)
         with patch.object(
             utils_sub_config, "get_sub_config_path", return_value=tmp_path
         ):

@@ -21,11 +21,13 @@ class TestExeIconCache(unittest.TestCase):
     """
 
     def setUp(self):
-        _EXE_ICON_CACHE.clear()
+        self.enterContext(patch.dict(_EXE_ICON_CACHE, clear=True))
 
     def test_missing_returns_none_and_not_cached(self):
         """文件缺失时返回 None，且不写入缓存（否则会永久记住失败态）。"""
-        missing = os.path.join(tempfile.mkdtemp(), "nope.exe")
+        missing = os.path.join(
+            self.enterContext(tempfile.TemporaryDirectory()), "nope.exe"
+        )
         self.assertIsNone(_exe_icon(missing))
         self.assertNotIn(missing, _EXE_ICON_CACHE)
 
@@ -44,7 +46,9 @@ class TestExeIconCache(unittest.TestCase):
 
     def test_missing_then_file_appears_is_refetched(self):
         """缺失后 exe 才就位：再次请求应能取到（不因首次缺失而缓存失败）。"""
-        path = os.path.join(tempfile.mkdtemp(), "later.exe")
+        path = os.path.join(
+            self.enterContext(tempfile.TemporaryDirectory()), "later.exe"
+        )
         self.assertIsNone(_exe_icon(path))
         self.assertNotIn(path, _EXE_ICON_CACHE)
         with open(path, "w") as f:

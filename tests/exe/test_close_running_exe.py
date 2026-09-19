@@ -158,16 +158,18 @@ class TestExeCloseRunning(unittest.TestCase):
             with_body=False 时 body_killed 恒为 False。
         finally 会杀掉仍在运行的 exe 与残留 stub，并恢复原始 config。
         """
-        workdir = tempfile.mkdtemp(prefix="odh_close_")
+        workdir = self.enterContext(tempfile.TemporaryDirectory(prefix="odh_close_"))
         with open(
             os.path.join(workdir, "odh_stub_script.cmd"), "w", encoding="utf-8"
         ) as f:
             f.write(_CMD_STUB)
-        game = self._spawn_stub(workdir, _GAME_NAME)
-        body = self._spawn_stub(workdir, _BODY_NAME) if with_body else None
+        game = None
+        body = None
         exe = None
         original = None
         try:
+            game = self._spawn_stub(workdir, _GAME_NAME)
+            body = self._spawn_stub(workdir, _BODY_NAME) if with_body else None
             original = self._write_stub_config(
                 workdir, body_name=_BODY_NAME if with_body else None
             )
@@ -201,14 +203,18 @@ class TestExeCloseRunning(unittest.TestCase):
             # 跑 --schedule-run now 不一定退出，仅 kill 父 exe 会留下孤儿 Runner；
             # 用 /T 结束整棵树避免进程泄漏污染后续用例。stub 已关 kill_game_after_done，
             # 链运行本身不再杀游戏，本步仅做清理。
-            if exe is not None and exe.poll() is None:
-                _kill_process_tree(exe.pid)
+            if exe is not None:
+                if exe.poll() is None:
+                    _kill_process_tree(exe.pid)
+                exe.wait(timeout=10)
             if original is not None:
                 with open(EXE_CONFIG, "w", encoding="utf-8") as f:
                     f.write(original)
             for proc in (game, body):
-                if proc is not None and proc.poll() is None:
-                    proc.kill()
+                if proc is not None:
+                    if proc.poll() is None:
+                        _kill_process_tree(proc.pid)
+                    proc.wait(timeout=10)
 
     def test_exe_close_running_kills_real_process(self):
         """--close-running 应让真实 exe 按 game_process_name 杀掉真实残留进程。"""

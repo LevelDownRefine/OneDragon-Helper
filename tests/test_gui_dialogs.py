@@ -87,14 +87,14 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
     """测试 SingleScriptConfigDialog.load_data 默认值行为。"""
 
     def _make_weekly_file(self, weekly_map):
-        d = tempfile.mkdtemp()
+        d = self.enterContext(tempfile.TemporaryDirectory())
         wt = os.path.join(d, "weekly.yml")
         dump_yaml_file(wt, {"weekly_start": {}, "weekly_timeouts": weekly_map})
         return wt
 
     def _make_config_file(self):
         """构造一个最小、存在的 config.yml 供对话框读取（对话框依赖 config.yml 已存在）。"""
-        d = tempfile.mkdtemp()
+        d = self.enterContext(tempfile.TemporaryDirectory())
         cfg = os.path.join(d, "config.yml")
         dump_yaml_file(cfg, {"script_list": []})
         return cfg
@@ -151,7 +151,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
     """测试 block 字段在配置弹窗的加载与保存。"""
 
     def _make_config_file(self, script_list):
-        d = tempfile.mkdtemp()
+        d = self.enterContext(tempfile.TemporaryDirectory())
         cfg = os.path.join(d, "config.yml")
         dump_yaml_file(cfg, {"script_list": script_list})
         return cfg

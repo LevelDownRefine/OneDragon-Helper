@@ -225,10 +225,6 @@ class TestTaskDeclarations(unittest.TestCase):
                 m.get_weekly_config("s", "不存在")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestDailyClassField(unittest.TestCase):
     """daily 声明的 class 字段（机制类标注）：daily 路径必填、weekly 不需要。"""
 
@@ -257,3 +253,7 @@ class TestDailyClassField(unittest.TestCase):
             )
             data = load_task_map(path)
         self.assertEqual(data["ok-ww"][0]["display_name"], "历战余响")
+
+
+if __name__ == "__main__":
+    unittest.main()

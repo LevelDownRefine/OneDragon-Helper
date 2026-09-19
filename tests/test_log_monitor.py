@@ -34,14 +34,14 @@ def _parse_content(parser, content: str) -> dict:
     Returns:
         parse() 的解析结果 dict。
     """
-    tmp = tempfile.mkdtemp()
-    log_file = Path(tmp) / "test.log"
-    log_file.write_text("", encoding="utf-8")
-    with (
-        mock.patch.object(type(parser), "get_log_path", return_value=log_file),
-        mock.patch.object(type(parser), "_read_file", return_value=content),
-    ):
-        return parser.parse()
+    with tempfile.TemporaryDirectory() as tmp:
+        log_file = Path(tmp) / "test.log"
+        log_file.write_text("", encoding="utf-8")
+        with (
+            mock.patch.object(type(parser), "get_log_path", return_value=log_file),
+            mock.patch.object(type(parser), "_read_file", return_value=content),
+        ):
+            return parser.parse()
 
 
 class TestLogParser(unittest.TestCase):
@@ -180,7 +180,8 @@ class TestCollectLogSetup(unittest.TestCase):
     def test_setup_logging_writes_to_framework_log(self):
         """monitor 复用框架 setup_logging，日志写入 <root>/logs/onedragon_helper.log
         （用临时根避免污染真实 logs），且不写 collect_log.log。"""
-        tmp = tempfile.mkdtemp()
+        tmp = self.enterContext(tempfile.TemporaryDirectory())
+        self.addCleanup(_logging.getLogger().setLevel, _logging.getLogger().level)
         orig = src.utils.utils_logger.get_root_dir
         configured_saved = src.utils.utils_logger._configured
         src.utils.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
@@ -213,7 +214,8 @@ class TestCollectLogSetup(unittest.TestCase):
 
     def test_setup_logging_is_idempotent(self):
         """重复调用复用框架 setup_logging 不会重复添加 onedragon_helper.log handler。"""
-        tmp = tempfile.mkdtemp()
+        tmp = self.enterContext(tempfile.TemporaryDirectory())
+        self.addCleanup(_logging.getLogger().setLevel, _logging.getLogger().level)
         orig = src.utils.utils_logger.get_root_dir
         configured_saved = src.utils.utils_logger._configured
         src.utils.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
@@ -284,7 +286,7 @@ class TestParseLogsRerunList(unittest.TestCase):
 
     def test_parse_logs_includes_no_log_in_rerun_list(self):
         """无日志（NO_LOG）的游戏应被纳入重跑列表（可能未正常启动）。"""
-        tmp = tempfile.mkdtemp()
+        tmp = self.enterContext(tempfile.TemporaryDirectory())
         script_path = self._fake_exe(tmp, "March7th Launcher.exe")
         self._make_config(
             tmp, [{"display_name": "崩坏：星穹铁道", "script_path": script_path}]
@@ -297,7 +299,7 @@ class TestParseLogsRerunList(unittest.TestCase):
 
     def test_parse_logs_do_log_false_suppresses_print(self):
         """do_log=False 时不应调用 logger.info，但仍返回重跑列表。"""
-        tmp = tempfile.mkdtemp()
+        tmp = self.enterContext(tempfile.TemporaryDirectory())
         script_path = self._fake_exe(tmp, "March7th Launcher.exe")
         self._make_config(
             tmp, [{"display_name": "崩坏：星穹铁道", "script_path": script_path}]
@@ -313,7 +315,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         - ok-ww：日常做完、但有报错 → 仅 notify（不 rerun）。
         - BetterGI：日常没做完、无报错 → 仅 rerun（不 notify）。
         """
-        tmp = tempfile.mkdtemp()
+        tmp = self.enterContext(tempfile.TemporaryDirectory())
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
         dump_yaml_file(
@@ -392,7 +394,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         """正常完成（SUCCESS）但含报错 → 表格显示「警告」WARN，
         仅通知不重跑（rerun 看 daily_done，notify 看 errors，均不受 WARN 影响）。
         """
-        tmp = tempfile.mkdtemp()
+        tmp = self.enterContext(tempfile.TemporaryDirectory())
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
         dump_yaml_file(
@@ -513,7 +515,7 @@ class TestParseLogsRerunList(unittest.TestCase):
 
     def test_parse_logs_report_never_shows_unknown_daily(self):
         """聚合方仅消费定稿后的 daily_done，不得自行产出「未知」。"""
-        tmp = tempfile.mkdtemp()
+        tmp = self.enterContext(tempfile.TemporaryDirectory())
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
         dump_yaml_file(
@@ -990,7 +992,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         """无日志路径在 parse_log 层定稿 daily_done 为确定 bool（False），不向显示层漏 None。"""
         # ok-ww 指向不存在的日志 → NO_LOG，聚合方应拿到 daily_done=False 而非 None，
         # 否则「日常没做完即重跑」的判据会把 None 当成待重跑而误判。
-        tmp = tempfile.mkdtemp()
+        tmp = self.enterContext(tempfile.TemporaryDirectory())
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
         dump_yaml_file(
@@ -1078,7 +1080,7 @@ class TestIsValidLog(unittest.TestCase):
     避免把更早的日志误判成当前运行日。"""
 
     def _make_log(self, mtime: float) -> Path:
-        d = Path(tempfile.mkdtemp())
+        d = Path(self.enterContext(tempfile.TemporaryDirectory()))
         log = d / "log.txt"
         log.write_text("x", encoding="utf-8")
         os.utime(log, (mtime, mtime))

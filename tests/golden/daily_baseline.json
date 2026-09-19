@@ -1,6 +1,28 @@
 {
   "menus": {
     "BetterGI": {
+      "地脉花": {
+        "启示之花": [
+          [
+            "leyLinePositions-甲",
+            "leyLinePositions-甲"
+          ],
+          [
+            "leyLinePositions-乙",
+            "leyLinePositions-乙"
+          ]
+        ],
+        "藏金之花": [
+          [
+            "leyLinePositions-甲",
+            "leyLinePositions-甲"
+          ],
+          [
+            "leyLinePositions-乙",
+            "leyLinePositions-乙"
+          ]
+        ]
+      },
       "每日任务": {
         "圣遗物": [
           [
@@ -32,14 +54,238 @@
             "ForgeryDomain-乙"
           ]
         ]
+      },
+      "首领讨伐": {
+        "挪德卡莱": [
+          [
+            "蕴光月守宫",
+            "蕴光月守宫"
+          ],
+          [
+            "深黯魇语之主",
+            "深黯魇语之主"
+          ],
+          [
+            "超重型陆巡舰·机动战垒",
+            "超重型陆巡舰·机动战垒"
+          ],
+          [
+            "霜夜巡天灵主",
+            "霜夜巡天灵主"
+          ],
+          [
+            "蕴光月幻蝶",
+            "蕴光月幻蝶"
+          ],
+          [
+            "重拳出击鸭",
+            "重拳出击鸭"
+          ]
+        ],
+        "枫丹": [
+          [
+            "歌裴莉娅的葬送",
+            "歌裴莉娅的葬送"
+          ],
+          [
+            "科培琉司的劫罚",
+            "科培琉司的劫罚"
+          ],
+          [
+            "实验性场力发生装置",
+            "实验性场力发生装置"
+          ],
+          [
+            "魔像督军",
+            "魔像督军"
+          ],
+          [
+            "千年珍珠骏麟",
+            "千年珍珠骏麟"
+          ],
+          [
+            "水形幻人",
+            "水形幻人"
+          ],
+          [
+            "铁甲熔火帝皇",
+            "铁甲熔火帝皇"
+          ]
+        ],
+        "璃月": [
+          [
+            "爆炎树",
+            "爆炎树"
+          ],
+          [
+            "纯水精灵",
+            "纯水精灵"
+          ],
+          [
+            "古岩龙蜥",
+            "古岩龙蜥"
+          ],
+          [
+            "无相之岩",
+            "无相之岩"
+          ],
+          [
+            "遗迹巨蛇",
+            "遗迹巨蛇"
+          ],
+          [
+            "隐山猊兽",
+            "隐山猊兽"
+          ]
+        ],
+        "稻妻": [
+          [
+            "无相之火",
+            "无相之火"
+          ],
+          [
+            "恒常机关阵列",
+            "恒常机关阵列"
+          ],
+          [
+            "雷音权现",
+            "雷音权现"
+          ],
+          [
+            "魔偶剑鬼",
+            "魔偶剑鬼"
+          ],
+          [
+            "无相之水",
+            "无相之水"
+          ]
+        ],
+        "纳塔": [
+          [
+            "金焰绒翼龙暴君",
+            "金焰绒翼龙暴君"
+          ],
+          [
+            "灵觉隐修的迷者",
+            "灵觉隐修的迷者"
+          ],
+          [
+            "秘源机兵·构型械",
+            "秘源机兵·构型械"
+          ],
+          [
+            "秘源机兵·统御械",
+            "秘源机兵·统御械"
+          ],
+          [
+            "熔岩辉龙像",
+            "熔岩辉龙像"
+          ],
+          [
+            "深邃摹结株",
+            "深邃摹结株"
+          ],
+          [
+            "贪食匿叶龙山王",
+            "贪食匿叶龙山王"
+          ]
+        ],
+        "至冬": [
+          [
+            "不灭衍生造物",
+            "不灭衍生造物"
+          ],
+          [
+            "嵌合翼骏狮",
+            "嵌合翼骏狮"
+          ]
+        ],
+        "蒙德": [
+          [
+            "急冻树",
+            "急冻树"
+          ],
+          [
+            "无相之雷",
+            "无相之雷"
+          ],
+          [
+            "守望者·堕天",
+            "守望者·堕天"
+          ]
+        ],
+        "须弥": [
+          [
+            "掣电树",
+            "掣电树"
+          ],
+          [
+            "半永恒统辖矩阵",
+            "半永恒统辖矩阵"
+          ],
+          [
+            "翠翎恐蕈",
+            "翠翎恐蕈"
+          ],
+          [
+            "风蚀沙虫",
+            "风蚀沙虫"
+          ],
+          [
+            "无相之草",
+            "无相之草"
+          ],
+          [
+            "深罪浸礼者",
+            "深罪浸礼者"
+          ],
+          [
+            "兆载永劫龙兽",
+            "兆载永劫龙兽"
+          ]
+        ]
       }
     },
     "MAA": {
-      "每日任务": {
-        "土": [],
-        "红票": [],
-        "经验": [],
-        "龙门币": []
+      "剩余理智": {
+        "1-7": [],
+        "12-17-HARD": [],
+        "AP-5": [],
+        "CA-5": [],
+        "CE-6": [],
+        "LS-6": [],
+        "PR-A-1": [],
+        "PR-A-2": [],
+        "PR-B-1": [],
+        "PR-B-2": [],
+        "PR-C-1": [],
+        "PR-C-2": [],
+        "PR-D-1": [],
+        "PR-D-2": [],
+        "R8-11": [],
+        "SK-5": []
+      },
+      "活动关卡": {
+        "AT-7": [],
+        "AT-8": []
+      },
+      "理智作战": {
+        "1-7": [],
+        "12-17-HARD": [],
+        "AP-5": [],
+        "CA-5": [],
+        "CE-6": [],
+        "LS-6": [],
+        "PR-A-1": [],
+        "PR-A-2": [],
+        "PR-B-1": [],
+        "PR-B-2": [],
+        "PR-C-1": [],
+        "PR-C-2": [],
+        "PR-D-1": [],
+        "PR-D-2": [],
+        "R8-11": [],
+        "SK-5": []
       }
     },
     "March7th-Launcher": {
@@ -406,144 +652,92 @@
     }
   },
   "reads": {
-    "BetterGI": {
-      "after": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": null,
-          "task": "MasteryDomain-乙"
-        }
-      ],
-      "before": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": null,
-          "task": "天赋"
-        }
-      ]
-    },
-    "MAA": {
-      "after": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": null,
-          "task": "土"
-        }
-      ],
-      "before": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": null,
-          "task": "土"
-        }
-      ]
-    },
-    "March7th-Launcher": {
-      "after": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": null,
-          "task": null
-        }
-      ],
-      "before": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": null,
-          "task": null
-        }
-      ]
-    },
-    "OneDragon-Launcher": {
-      "after": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": null,
-          "task": null
-        }
-      ],
-      "before": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": null,
-          "task": null
-        }
-      ]
-    },
-    "ok-ef": {
-      "after": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": null,
-          "task": "能量淤积点-乙"
-        }
-      ],
-      "before": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": null,
-          "task": "能量淤积点"
-        }
-      ]
-    },
-    "ok-nte": {
-      "after": [
-        {
-          "enabled": true,
-          "name": "异象界域",
-          "sequence": "甲硬币",
-          "task": "经验与甲硬币"
-        },
-        {
-          "enabled": true,
-          "name": "追猎目标",
-          "sequence": "斑蝶",
-          "task": "追猎目标"
-        }
-      ],
-      "before": [
-        {
-          "enabled": false,
-          "name": "异象界域",
-          "sequence": "甲硬币",
-          "task": "经验与甲硬币"
-        },
-        {
-          "enabled": true,
-          "name": "追猎目标",
-          "sequence": "斑蝶",
-          "task": "追猎目标"
-        }
-      ]
-    },
-    "ok-ww": {
-      "after": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": 19,
-          "task": "无音区"
-        }
-      ],
-      "before": [
-        {
-          "enabled": null,
-          "name": "每日任务",
-          "sequence": 19,
-          "task": "无音区"
-        }
-      ]
-    }
+    "BetterGI": [
+      {
+        "enabled": false,
+        "name": "每日任务",
+        "sequence": null,
+        "task": "BlessDomain-乙"
+      },
+      {
+        "enabled": false,
+        "name": "地脉花",
+        "sequence": "leyLinePositions-乙",
+        "task": "启示之花"
+      },
+      {
+        "enabled": false,
+        "name": "首领讨伐",
+        "sequence": null,
+        "task": "急冻树"
+      }
+    ],
+    "MAA": [
+      {
+        "enabled": false,
+        "name": "活动关卡",
+        "sequence": null,
+        "task": null
+      },
+      {
+        "enabled": false,
+        "name": "理智作战",
+        "sequence": null,
+        "task": null
+      },
+      {
+        "enabled": false,
+        "name": "剩余理智",
+        "sequence": null,
+        "task": null
+      }
+    ],
+    "March7th-Launcher": [
+      {
+        "enabled": null,
+        "name": "每日任务",
+        "sequence": null,
+        "task": null
+      }
+    ],
+    "OneDragon-Launcher": [
+      {
+        "enabled": null,
+        "name": "每日任务",
+        "sequence": null,
+        "task": null
+      }
+    ],
+    "ok-ef": [
+      {
+        "enabled": false,
+        "name": "每日任务",
+        "sequence": null,
+        "task": "能量淤积点-乙"
+      }
+    ],
+    "ok-nte": [
+      {
+        "enabled": false,
+        "name": "异象界域",
+        "sequence": "甲硬币",
+        "task": "经验与甲硬币"
+      },
+      {
+        "enabled": false,
+        "name": "追猎目标",
+        "sequence": "斑蝶",
+        "task": "追猎目标"
+      }
+    ],
+    "ok-ww": [
+      {
+        "enabled": null,
+        "name": "每日任务",
+        "sequence": "Shell Credit",
+        "task": "模拟领域"
+      }
+    ]
   },
   "writes": {
     "BetterGI": [
@@ -551,10 +745,38 @@
         "daily": "每日任务",
         "diff": {
           "User/OneDragon/默认配置.json.DomainName": [
-            "天赋",
+            "BlessDomain-乙",
             "BlessDomain-甲"
+          ],
+          "User/OneDragon/默认配置.json.TaskEnabledList.domain": [
+            false,
+            true
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "BlessDomain-甲"
+          },
+          {
+            "enabled": false,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json",
+          "User/OneDragon/默认配置.json"
+        ],
         "sequence": "BlessDomain-甲",
         "task": "圣遗物"
       },
@@ -566,6 +788,29 @@
             "BlessDomain-乙"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "BlessDomain-乙"
+          },
+          {
+            "enabled": false,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
         "sequence": "BlessDomain-乙",
         "task": "圣遗物"
       },
@@ -577,6 +822,29 @@
             "ForgeryDomain-甲"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "ForgeryDomain-甲"
+          },
+          {
+            "enabled": false,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
         "sequence": "ForgeryDomain-甲",
         "task": "武器"
       },
@@ -588,6 +856,29 @@
             "ForgeryDomain-乙"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "ForgeryDomain-乙"
+          },
+          {
+            "enabled": false,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
         "sequence": "ForgeryDomain-乙",
         "task": "武器"
       },
@@ -599,6 +890,29 @@
             "MasteryDomain-甲"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-甲"
+          },
+          {
+            "enabled": false,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
         "sequence": "MasteryDomain-甲",
         "task": "天赋"
       },
@@ -610,68 +924,3041 @@
             "MasteryDomain-乙"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": false,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
         "sequence": "MasteryDomain-乙",
         "task": "天赋"
+      },
+      {
+        "daily": "地脉花",
+        "diff": {
+          "User/OneDragon/默认配置.json.LeyLineFridayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineFridayType": [
+            "启示之花",
+            "藏金之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineMondayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineMondayType": [
+            "启示之花",
+            "藏金之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSaturdayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSaturdayType": [
+            "启示之花",
+            "藏金之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSundayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSundayType": [
+            "启示之花",
+            "藏金之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineThursdayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineThursdayType": [
+            "启示之花",
+            "藏金之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineTuesdayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineTuesdayType": [
+            "启示之花",
+            "藏金之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineWednesdayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineWednesdayType": [
+            "启示之花",
+            "藏金之花"
+          ],
+          "User/OneDragon/默认配置.json.TaskEnabledList.leyline": [
+            false,
+            true
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-甲",
+            "task": "藏金之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json",
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "leyLinePositions-甲",
+        "task": "藏金之花"
+      },
+      {
+        "daily": "地脉花",
+        "diff": {
+          "User/OneDragon/默认配置.json.LeyLineFridayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineMondayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSaturdayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSundayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineThursdayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineTuesdayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineWednesdayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "藏金之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "leyLinePositions-乙",
+        "task": "藏金之花"
+      },
+      {
+        "daily": "地脉花",
+        "diff": {
+          "User/OneDragon/默认配置.json.LeyLineFridayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineFridayType": [
+            "藏金之花",
+            "启示之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineMondayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineMondayType": [
+            "藏金之花",
+            "启示之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSaturdayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSaturdayType": [
+            "藏金之花",
+            "启示之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSundayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSundayType": [
+            "藏金之花",
+            "启示之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineThursdayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineThursdayType": [
+            "藏金之花",
+            "启示之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineTuesdayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineTuesdayType": [
+            "藏金之花",
+            "启示之花"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineWednesdayCountry": [
+            "leyLinePositions-乙",
+            "leyLinePositions-甲"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineWednesdayType": [
+            "藏金之花",
+            "启示之花"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-甲",
+            "task": "启示之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "leyLinePositions-甲",
+        "task": "启示之花"
+      },
+      {
+        "daily": "地脉花",
+        "diff": {
+          "User/OneDragon/默认配置.json.LeyLineFridayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineMondayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSaturdayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineSundayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineThursdayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineTuesdayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ],
+          "User/OneDragon/默认配置.json.LeyLineWednesdayCountry": [
+            "leyLinePositions-甲",
+            "leyLinePositions-乙"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "leyLinePositions-乙",
+        "task": "启示之花"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.TaskEnabledList.boss": [
+            false,
+            true
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "急冻树",
+        "task": "蒙德"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "急冻树",
+            "无相之雷"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "无相之雷"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "无相之雷",
+        "task": "蒙德"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "无相之雷",
+            "守望者·堕天"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "守望者·堕天"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "守望者·堕天",
+        "task": "蒙德"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "守望者·堕天",
+            "爆炎树"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "爆炎树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "爆炎树",
+        "task": "璃月"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "爆炎树",
+            "纯水精灵"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "纯水精灵"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "纯水精灵",
+        "task": "璃月"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "纯水精灵",
+            "古岩龙蜥"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "古岩龙蜥"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "古岩龙蜥",
+        "task": "璃月"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "古岩龙蜥",
+            "无相之岩"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "无相之岩"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "无相之岩",
+        "task": "璃月"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "无相之岩",
+            "遗迹巨蛇"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "遗迹巨蛇"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "遗迹巨蛇",
+        "task": "璃月"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "遗迹巨蛇",
+            "隐山猊兽"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "隐山猊兽"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "隐山猊兽",
+        "task": "璃月"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "隐山猊兽",
+            "无相之火"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "无相之火"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "无相之火",
+        "task": "稻妻"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "无相之火",
+            "恒常机关阵列"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "恒常机关阵列"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "恒常机关阵列",
+        "task": "稻妻"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "恒常机关阵列",
+            "雷音权现"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "雷音权现"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "雷音权现",
+        "task": "稻妻"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "雷音权现",
+            "魔偶剑鬼"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "魔偶剑鬼"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "魔偶剑鬼",
+        "task": "稻妻"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "魔偶剑鬼",
+            "无相之水"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "无相之水"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "无相之水",
+        "task": "稻妻"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "无相之水",
+            "掣电树"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "掣电树"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "掣电树",
+        "task": "须弥"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "掣电树",
+            "半永恒统辖矩阵"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "半永恒统辖矩阵"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "半永恒统辖矩阵",
+        "task": "须弥"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "半永恒统辖矩阵",
+            "翠翎恐蕈"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "翠翎恐蕈"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "翠翎恐蕈",
+        "task": "须弥"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "翠翎恐蕈",
+            "风蚀沙虫"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "风蚀沙虫"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "风蚀沙虫",
+        "task": "须弥"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "风蚀沙虫",
+            "无相之草"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "无相之草"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "无相之草",
+        "task": "须弥"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "无相之草",
+            "深罪浸礼者"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "深罪浸礼者"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "深罪浸礼者",
+        "task": "须弥"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "深罪浸礼者",
+            "兆载永劫龙兽"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "兆载永劫龙兽"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "兆载永劫龙兽",
+        "task": "须弥"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "兆载永劫龙兽",
+            "歌裴莉娅的葬送"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "歌裴莉娅的葬送"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "歌裴莉娅的葬送",
+        "task": "枫丹"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "歌裴莉娅的葬送",
+            "科培琉司的劫罚"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "科培琉司的劫罚"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "科培琉司的劫罚",
+        "task": "枫丹"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "科培琉司的劫罚",
+            "实验性场力发生装置"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "实验性场力发生装置"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "实验性场力发生装置",
+        "task": "枫丹"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "实验性场力发生装置",
+            "魔像督军"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "魔像督军"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "魔像督军",
+        "task": "枫丹"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "魔像督军",
+            "千年珍珠骏麟"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "千年珍珠骏麟"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "千年珍珠骏麟",
+        "task": "枫丹"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "千年珍珠骏麟",
+            "水形幻人"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "水形幻人"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "水形幻人",
+        "task": "枫丹"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "水形幻人",
+            "铁甲熔火帝皇"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "铁甲熔火帝皇"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "铁甲熔火帝皇",
+        "task": "枫丹"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "铁甲熔火帝皇",
+            "金焰绒翼龙暴君"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "金焰绒翼龙暴君"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "金焰绒翼龙暴君",
+        "task": "纳塔"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "金焰绒翼龙暴君",
+            "灵觉隐修的迷者"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "灵觉隐修的迷者"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "灵觉隐修的迷者",
+        "task": "纳塔"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "灵觉隐修的迷者",
+            "秘源机兵·构型械"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "秘源机兵·构型械"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "秘源机兵·构型械",
+        "task": "纳塔"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "秘源机兵·构型械",
+            "秘源机兵·统御械"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "秘源机兵·统御械"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "秘源机兵·统御械",
+        "task": "纳塔"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "秘源机兵·统御械",
+            "熔岩辉龙像"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "熔岩辉龙像"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "熔岩辉龙像",
+        "task": "纳塔"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "熔岩辉龙像",
+            "深邃摹结株"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "深邃摹结株"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "深邃摹结株",
+        "task": "纳塔"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "深邃摹结株",
+            "贪食匿叶龙山王"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "贪食匿叶龙山王"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "贪食匿叶龙山王",
+        "task": "纳塔"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "贪食匿叶龙山王",
+            "蕴光月守宫"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "蕴光月守宫"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "蕴光月守宫",
+        "task": "挪德卡莱"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "蕴光月守宫",
+            "深黯魇语之主"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "深黯魇语之主"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "深黯魇语之主",
+        "task": "挪德卡莱"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "深黯魇语之主",
+            "超重型陆巡舰·机动战垒"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "超重型陆巡舰·机动战垒"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "超重型陆巡舰·机动战垒",
+        "task": "挪德卡莱"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "超重型陆巡舰·机动战垒",
+            "霜夜巡天灵主"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "霜夜巡天灵主"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "霜夜巡天灵主",
+        "task": "挪德卡莱"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "霜夜巡天灵主",
+            "蕴光月幻蝶"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "蕴光月幻蝶"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "蕴光月幻蝶",
+        "task": "挪德卡莱"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "蕴光月幻蝶",
+            "重拳出击鸭"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "重拳出击鸭"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "重拳出击鸭",
+        "task": "挪德卡莱"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "重拳出击鸭",
+            "不灭衍生造物"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "不灭衍生造物"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "不灭衍生造物",
+        "task": "至冬"
+      },
+      {
+        "daily": "首领讨伐",
+        "diff": {
+          "User/OneDragon/默认配置.json.AutoBossName": [
+            "不灭衍生造物",
+            "嵌合翼骏狮"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "嵌合翼骏狮"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "嵌合翼骏狮",
+        "task": "至冬"
       }
     ],
     "MAA": [
       {
-        "daily": "每日任务",
+        "daily": "活动关卡",
         "diff": {
-          "config/gui.new.json.Configurations.Default.TaskQueue[2].IsEnable": [
-            false,
-            true
-          ]
-        },
-        "sequence": null,
-        "task": "红票"
-      },
-      {
-        "daily": "每日任务",
-        "diff": {
-          "config/gui.new.json.Configurations.Default.TaskQueue[2].IsEnable": [
-            true,
-            false
+          "config/gui.new.json.Configurations.Default.TaskQueue[11]": [
+            "<MISSING>",
+            {
+              "$type": "FightTask",
+              "EnableTargetDrop": false,
+              "EnableTimesLimit": false,
+              "IsEnable": true,
+              "IsStageManually": true,
+              "MedicineCount": 0,
+              "MedicineExpireDays": 3,
+              "Name": "活动关优先",
+              "Series": 0,
+              "StagePlan": [
+                "AT-8"
+              ],
+              "StoneCount": 0,
+              "TaskType": "Fight",
+              "UseExpireMedicineForActivity": false,
+              "UseExpiringMedicine": true,
+              "UseMedicine": false,
+              "UseOptionalStage": false,
+              "UseStone": false,
+              "UseStoneAllowSave": false,
+              "UseWeeklySchedule": false
+            }
           ],
-          "config/gui.new.json.Configurations.Default.TaskQueue[3].IsEnable": [
+          "config/gui.new.json.Configurations.Default.TaskQueue[1].UseExpiringMedicine": [
             false,
             true
-          ]
-        },
-        "sequence": null,
-        "task": "经验"
-      },
-      {
-        "daily": "每日任务",
-        "diff": {
-          "config/gui.new.json.Configurations.Default.TaskQueue[3].IsEnable": [
-            true,
-            false
           ],
-          "config/gui.new.json.Configurations.Default.TaskQueue[4].IsEnable": [
+          "config/gui.new.json.Configurations.Default.TaskQueue[2].UseExpiringMedicine": [
+            false,
+            true
+          ],
+          "config/gui.new.json.Configurations.Default.TaskQueue[3].UseExpiringMedicine": [
+            false,
+            true
+          ],
+          "config/gui.new.json.Configurations.Default.TaskQueue[4].UseExpiringMedicine": [
             false,
             true
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-8"
+          },
+          {
+            "enabled": false,
+            "name": "理智作战",
+            "sequence": null,
+            "task": null
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
         "sequence": null,
-        "task": "龙门币"
+        "task": "AT-8"
       },
       {
-        "daily": "每日任务",
+        "daily": "活动关卡",
         "diff": {
-          "config/gui.new.json.Configurations.Default.TaskQueue[4].IsEnable": [
-            true,
-            false
+          "config/gui.new.json.Configurations.Default.TaskQueue[11].StagePlan[0]": [
+            "AT-8",
+            "AT-7"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": false,
+            "name": "理智作战",
+            "sequence": null,
+            "task": null
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
         "sequence": null,
-        "task": "土"
+        "task": "AT-7"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12]": [
+            "<MISSING>",
+            {
+              "$type": "FightTask",
+              "EnableTargetDrop": false,
+              "EnableTimesLimit": false,
+              "IsEnable": true,
+              "IsStageManually": true,
+              "MedicineCount": 0,
+              "MedicineExpireDays": 3,
+              "Name": "理智作战",
+              "Series": 0,
+              "StagePlan": [
+                "1-7"
+              ],
+              "StoneCount": 0,
+              "TaskType": "Fight",
+              "UseExpireMedicineForActivity": false,
+              "UseExpiringMedicine": true,
+              "UseMedicine": false,
+              "UseOptionalStage": false,
+              "UseStone": false,
+              "UseStoneAllowSave": false,
+              "UseWeeklySchedule": false
+            }
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "1-7"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "1-7"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "1-7",
+            "R8-11"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "R8-11"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "R8-11"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "R8-11",
+            "12-17-HARD"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "12-17-HARD"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "12-17-HARD"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "12-17-HARD",
+            "AP-5"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "AP-5"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "AP-5"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "AP-5",
+            "CA-5"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "CA-5"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "CA-5"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "CA-5",
+            "CE-6"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "CE-6"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "CE-6"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "CE-6",
+            "LS-6"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "LS-6"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "LS-6"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "LS-6",
+            "PR-A-1"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "PR-A-1"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-A-1"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "PR-A-1",
+            "PR-A-2"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "PR-A-2"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-A-2"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "PR-A-2",
+            "PR-B-1"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "PR-B-1"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-B-1"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "PR-B-1",
+            "PR-B-2"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "PR-B-2"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-B-2"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "PR-B-2",
+            "PR-C-1"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "PR-C-1"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-C-1"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "PR-C-1",
+            "PR-C-2"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "PR-C-2"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-C-2"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "PR-C-2",
+            "PR-D-1"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "PR-D-1"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-D-1"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "PR-D-1",
+            "PR-D-2"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "PR-D-2"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-D-2"
+      },
+      {
+        "daily": "理智作战",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[12].StagePlan[0]": [
+            "PR-D-2",
+            "SK-5"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": false,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "SK-5"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13]": [
+            "<MISSING>",
+            {
+              "$type": "FightTask",
+              "EnableTargetDrop": false,
+              "EnableTimesLimit": false,
+              "IsEnable": true,
+              "IsStageManually": true,
+              "MedicineCount": 0,
+              "MedicineExpireDays": 3,
+              "Name": "剩余理智",
+              "Series": 0,
+              "StagePlan": [
+                "1-7"
+              ],
+              "StoneCount": 0,
+              "TaskType": "Fight",
+              "UseExpireMedicineForActivity": false,
+              "UseExpiringMedicine": true,
+              "UseMedicine": false,
+              "UseOptionalStage": false,
+              "UseStone": false,
+              "UseStoneAllowSave": false,
+              "UseWeeklySchedule": false
+            }
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "1-7"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "1-7"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "1-7",
+            "R8-11"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "R8-11"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "R8-11"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "R8-11",
+            "12-17-HARD"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "12-17-HARD"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "12-17-HARD"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "12-17-HARD",
+            "AP-5"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "AP-5"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "AP-5"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "AP-5",
+            "CA-5"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "CA-5"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "CA-5"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "CA-5",
+            "CE-6"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "CE-6"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "CE-6"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "CE-6",
+            "LS-6"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "LS-6"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "LS-6"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "LS-6",
+            "PR-A-1"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "PR-A-1"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-A-1"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "PR-A-1",
+            "PR-A-2"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "PR-A-2"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-A-2"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "PR-A-2",
+            "PR-B-1"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "PR-B-1"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-B-1"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "PR-B-1",
+            "PR-B-2"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "PR-B-2"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-B-2"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "PR-B-2",
+            "PR-C-1"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "PR-C-1"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-C-1"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "PR-C-1",
+            "PR-C-2"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "PR-C-2"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-C-2"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "PR-C-2",
+            "PR-D-1"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "PR-D-1"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-D-1"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "PR-D-1",
+            "PR-D-2"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "PR-D-2"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "PR-D-2"
+      },
+      {
+        "daily": "剩余理智",
+        "diff": {
+          "config/gui.new.json.Configurations.Default.TaskQueue[13].StagePlan[0]": [
+            "PR-D-2",
+            "SK-5"
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "活动关卡",
+            "sequence": null,
+            "task": "AT-7"
+          },
+          {
+            "enabled": true,
+            "name": "理智作战",
+            "sequence": null,
+            "task": "SK-5"
+          },
+          {
+            "enabled": true,
+            "name": "剩余理智",
+            "sequence": null,
+            "task": "SK-5"
+          }
+        ],
+        "saved_files": [
+          "config/gui.new.json"
+        ],
+        "sequence": null,
+        "task": "SK-5"
       }
     ],
     "March7th-Launcher": [
       {
         "daily": "每日任务",
         "diff": {},
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [],
         "sequence": null,
         "task": "培养目标"
       }
@@ -680,6 +3967,15 @@
       {
         "daily": "每日任务",
         "diff": {},
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": null,
+            "task": null
+          }
+        ],
+        "saved_files": [],
         "sequence": null,
         "task": "培养方案"
       }
@@ -688,11 +3984,27 @@
       {
         "daily": "每日任务",
         "diff": {
+          "data/apps/ok-ef/working/configs/DailyTask.json.⭐刷体力": [
+            false,
+            true
+          ],
           "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
-            "能量淤积点",
+            "能量淤积点-乙",
             "干员养成-甲"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "干员养成-甲"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ef/working/configs/DailyTask.json",
+          "data/apps/ok-ef/working/configs/DailyTask.json"
+        ],
         "sequence": "干员养成-甲",
         "task": "干员养成"
       },
@@ -704,6 +4016,17 @@
             "干员养成-乙"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "干员养成-乙"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ef/working/configs/DailyTask.json"
+        ],
         "sequence": "干员养成-乙",
         "task": "干员养成"
       },
@@ -715,6 +4038,17 @@
             "武器养成-甲"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "武器养成-甲"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ef/working/configs/DailyTask.json"
+        ],
         "sequence": "武器养成-甲",
         "task": "武器养成"
       },
@@ -726,6 +4060,17 @@
             "武器养成-乙"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "武器养成-乙"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ef/working/configs/DailyTask.json"
+        ],
         "sequence": "武器养成-乙",
         "task": "武器养成"
       },
@@ -737,6 +4082,17 @@
             "危境再现-甲"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "危境再现-甲"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ef/working/configs/DailyTask.json"
+        ],
         "sequence": "危境再现-甲",
         "task": "危境再现"
       },
@@ -748,6 +4104,17 @@
             "危境再现-乙"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "危境再现-乙"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ef/working/configs/DailyTask.json"
+        ],
         "sequence": "危境再现-乙",
         "task": "危境再现"
       },
@@ -759,6 +4126,17 @@
             "危境预演-甲"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "危境预演-甲"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ef/working/configs/DailyTask.json"
+        ],
         "sequence": "危境预演-甲",
         "task": "危境预演"
       },
@@ -770,6 +4148,17 @@
             "危境预演-乙"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "危境预演-乙"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ef/working/configs/DailyTask.json"
+        ],
         "sequence": "危境预演-乙",
         "task": "危境预演"
       },
@@ -781,6 +4170,17 @@
             "能量淤积点-甲"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "能量淤积点-甲"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ef/working/configs/DailyTask.json"
+        ],
         "sequence": "能量淤积点-甲",
         "task": "能量淤积点"
       },
@@ -792,6 +4192,17 @@
             "能量淤积点-乙"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "能量淤积点-乙"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ef/working/configs/DailyTask.json"
+        ],
         "sequence": "能量淤积点-乙",
         "task": "能量淤积点"
       }
@@ -813,6 +4224,24 @@
             1
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 1,
+            "task": "空幕"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json",
+          "data/apps/ok-nte/working/configs/DailyRoutineTask.json"
+        ],
         "sequence": 1,
         "task": "空幕"
       },
@@ -824,6 +4253,23 @@
             2
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 2,
+            "task": "空幕"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 2,
         "task": "空幕"
       },
@@ -835,6 +4281,23 @@
             3
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 3,
+            "task": "空幕"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 3,
         "task": "空幕"
       },
@@ -846,6 +4309,23 @@
             4
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 4,
+            "task": "空幕"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 4,
         "task": "空幕"
       },
@@ -857,6 +4337,23 @@
             5
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 5,
+            "task": "空幕"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 5,
         "task": "空幕"
       },
@@ -868,6 +4365,23 @@
             6
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 6,
+            "task": "空幕"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 6,
         "task": "空幕"
       },
@@ -883,6 +4397,23 @@
             1
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 1,
+            "task": "异能升级材料"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 1,
         "task": "异能升级材料"
       },
@@ -894,6 +4425,23 @@
             2
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 2,
+            "task": "异能升级材料"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 2,
         "task": "异能升级材料"
       },
@@ -905,6 +4453,23 @@
             3
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 3,
+            "task": "异能升级材料"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 3,
         "task": "异能升级材料"
       },
@@ -916,6 +4481,23 @@
             4
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 4,
+            "task": "异能升级材料"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 4,
         "task": "异能升级材料"
       },
@@ -927,6 +4509,23 @@
             5
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 5,
+            "task": "异能升级材料"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 5,
         "task": "异能升级材料"
       },
@@ -942,6 +4541,23 @@
             1
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 1,
+            "task": "弧盘突破材料"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 1,
         "task": "弧盘突破材料"
       },
@@ -953,6 +4569,23 @@
             2
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 2,
+            "task": "弧盘突破材料"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 2,
         "task": "弧盘突破材料"
       },
@@ -964,6 +4597,23 @@
             3
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 3,
+            "task": "弧盘突破材料"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 3,
         "task": "弧盘突破材料"
       },
@@ -975,6 +4625,23 @@
             4
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 4,
+            "task": "弧盘突破材料"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 4,
         "task": "弧盘突破材料"
       },
@@ -986,6 +4653,23 @@
             5
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": 5,
+            "task": "弧盘突破材料"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": 5,
         "task": "弧盘突破材料"
       },
@@ -1001,6 +4685,23 @@
             "角色经验"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": "角色经验",
+            "task": "经验与甲硬币"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": "角色经验",
         "task": "经验与甲硬币"
       },
@@ -1012,6 +4713,23 @@
             "弧盘经验"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": "弧盘经验",
+            "task": "经验与甲硬币"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": "弧盘经验",
         "task": "经验与甲硬币"
       },
@@ -1023,17 +4741,56 @@
             "甲硬币"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": "甲硬币",
+            "task": "经验与甲硬币"
+          },
+          {
+            "enabled": false,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": "甲硬币",
         "task": "经验与甲硬币"
       },
       {
         "daily": "追猎目标",
         "diff": {
+          "data/apps/ok-nte/working/configs/DailyRoutineTask.json.Routine Items[1].enabled": [
+            false,
+            true
+          ],
           "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json.daily_anomaly_hunter.追猎目标": [
             "斑蝶",
             "音霸魔王"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": "甲硬币",
+            "task": "经验与甲硬币"
+          },
+          {
+            "enabled": true,
+            "name": "追猎目标",
+            "sequence": "音霸魔王",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json",
+          "data/apps/ok-nte/working/configs/DailyRoutineTask.json"
+        ],
         "sequence": "音霸魔王",
         "task": "追猎目标"
       },
@@ -1045,6 +4802,23 @@
             "无首铁驭"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": "甲硬币",
+            "task": "经验与甲硬币"
+          },
+          {
+            "enabled": true,
+            "name": "追猎目标",
+            "sequence": "无首铁驭",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": "无首铁驭",
         "task": "追猎目标"
       },
@@ -1056,6 +4830,23 @@
             "塞润尼缇"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": "甲硬币",
+            "task": "经验与甲硬币"
+          },
+          {
+            "enabled": true,
+            "name": "追猎目标",
+            "sequence": "塞润尼缇",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": "塞润尼缇",
         "task": "追猎目标"
       },
@@ -1067,6 +4858,23 @@
             "黑之书"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": "甲硬币",
+            "task": "经验与甲硬币"
+          },
+          {
+            "enabled": true,
+            "name": "追猎目标",
+            "sequence": "黑之书",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": "黑之书",
         "task": "追猎目标"
       },
@@ -1078,6 +4886,23 @@
             "海囚"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": "甲硬币",
+            "task": "经验与甲硬币"
+          },
+          {
+            "enabled": true,
+            "name": "追猎目标",
+            "sequence": "海囚",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": "海囚",
         "task": "追猎目标"
       },
@@ -1089,6 +4914,23 @@
             "围巢鸟"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": "甲硬币",
+            "task": "经验与甲硬币"
+          },
+          {
+            "enabled": true,
+            "name": "追猎目标",
+            "sequence": "围巢鸟",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": "围巢鸟",
         "task": "追猎目标"
       },
@@ -1100,6 +4942,23 @@
             "斑蝶"
           ]
         },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "异象界域",
+            "sequence": "甲硬币",
+            "task": "经验与甲硬币"
+          },
+          {
+            "enabled": true,
+            "name": "追猎目标",
+            "sequence": "斑蝶",
+            "task": "追猎目标"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json"
+        ],
         "sequence": "斑蝶",
         "task": "追猎目标"
       }
@@ -1113,10 +4972,21 @@
             1
           ],
           "data/apps/ok-ww/working/configs/DailyTask.json.Which to Farm": [
-            "Tacet Suppression",
+            "Simulation Challenge",
             "Forgery Challenge"
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 1,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 1,
         "task": "凝素领域"
       },
@@ -1128,6 +4998,17 @@
             2
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 2,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 2,
         "task": "凝素领域"
       },
@@ -1139,6 +5020,17 @@
             3
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 3,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 3,
         "task": "凝素领域"
       },
@@ -1150,6 +5042,17 @@
             4
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 4,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 4,
         "task": "凝素领域"
       },
@@ -1161,6 +5064,17 @@
             5
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 5,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 5,
         "task": "凝素领域"
       },
@@ -1172,6 +5086,17 @@
             6
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 6,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 6,
         "task": "凝素领域"
       },
@@ -1183,6 +5108,17 @@
             7
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 7,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 7,
         "task": "凝素领域"
       },
@@ -1194,6 +5130,17 @@
             8
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 8,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 8,
         "task": "凝素领域"
       },
@@ -1205,6 +5152,17 @@
             9
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 9,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 9,
         "task": "凝素领域"
       },
@@ -1216,6 +5174,17 @@
             10
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 10,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 10,
         "task": "凝素领域"
       },
@@ -1227,6 +5196,17 @@
             11
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 11,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 11,
         "task": "凝素领域"
       },
@@ -1238,6 +5218,17 @@
             12
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 12,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 12,
         "task": "凝素领域"
       },
@@ -1249,6 +5240,17 @@
             13
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 13,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 13,
         "task": "凝素领域"
       },
@@ -1260,6 +5262,17 @@
             14
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 14,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 14,
         "task": "凝素领域"
       },
@@ -1271,6 +5284,17 @@
             15
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 15,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 15,
         "task": "凝素领域"
       },
@@ -1282,6 +5306,17 @@
             16
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 16,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 16,
         "task": "凝素领域"
       },
@@ -1293,6 +5328,17 @@
             17
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 17,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 17,
         "task": "凝素领域"
       },
@@ -1304,6 +5350,17 @@
             18
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 18,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 18,
         "task": "凝素领域"
       },
@@ -1315,6 +5372,17 @@
             19
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 19,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 19,
         "task": "凝素领域"
       },
@@ -1326,6 +5394,17 @@
             20
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 20,
+            "task": "凝素领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 20,
         "task": "凝素领域"
       },
@@ -1341,6 +5420,17 @@
             "Simulation Challenge"
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": "Resonator EXP",
+            "task": "模拟领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": "Resonator EXP",
         "task": "模拟领域"
       },
@@ -1352,6 +5442,17 @@
             "Weapon EXP"
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": "Weapon EXP",
+            "task": "模拟领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": "Weapon EXP",
         "task": "模拟领域"
       },
@@ -1363,6 +5464,17 @@
             "Shell Credit"
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": "Shell Credit",
+            "task": "模拟领域"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": "Shell Credit",
         "task": "模拟领域"
       },
@@ -1378,6 +5490,17 @@
             "Tacet Suppression"
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 1,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 1,
         "task": "无音区"
       },
@@ -1389,6 +5512,17 @@
             2
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 2,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 2,
         "task": "无音区"
       },
@@ -1400,6 +5534,17 @@
             3
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 3,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 3,
         "task": "无音区"
       },
@@ -1411,6 +5556,17 @@
             4
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 4,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 4,
         "task": "无音区"
       },
@@ -1422,6 +5578,17 @@
             5
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 5,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 5,
         "task": "无音区"
       },
@@ -1433,6 +5600,17 @@
             6
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 6,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 6,
         "task": "无音区"
       },
@@ -1444,6 +5622,17 @@
             7
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 7,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 7,
         "task": "无音区"
       },
@@ -1455,6 +5644,17 @@
             8
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 8,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 8,
         "task": "无音区"
       },
@@ -1466,6 +5666,17 @@
             9
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 9,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 9,
         "task": "无音区"
       },
@@ -1477,6 +5688,17 @@
             10
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 10,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 10,
         "task": "无音区"
       },
@@ -1488,6 +5710,17 @@
             11
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 11,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 11,
         "task": "无音区"
       },
@@ -1499,6 +5732,17 @@
             12
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 12,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 12,
         "task": "无音区"
       },
@@ -1510,6 +5754,17 @@
             13
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 13,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 13,
         "task": "无音区"
       },
@@ -1521,6 +5776,17 @@
             14
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 14,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 14,
         "task": "无音区"
       },
@@ -1532,6 +5798,17 @@
             15
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 15,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 15,
         "task": "无音区"
       },
@@ -1543,6 +5820,17 @@
             16
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 16,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 16,
         "task": "无音区"
       },
@@ -1554,6 +5842,17 @@
             17
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 17,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 17,
         "task": "无音区"
       },
@@ -1565,6 +5864,17 @@
             18
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 18,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 18,
         "task": "无音区"
       },
@@ -1576,6 +5886,17 @@
             19
           ]
         },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": 19,
+            "task": "无音区"
+          }
+        ],
+        "saved_files": [
+          "data/apps/ok-ww/working/configs/DailyTask.json"
+        ],
         "sequence": 19,
         "task": "无音区"
       }

@@ -17,7 +17,17 @@ call env.bat                     # cmd，同时设置代理 127.0.0.1:7890
 cd <root> && export PYTHONPATH=src && python -m unittest discover -s tests -p "test*.py"
 ```
 
-python -m 把根目录加入 sys.path，PYTHONPATH=src 让 import launcher 可用；两种 import 风格并存，必须在根目录且带 PYTHONPATH=src 跑。测试文件与源码一一对应；GUI 测试开头设 QT_QPA_PLATFORM=offscreen 无头跑 PySide6。文件 I/O 一律 mock，不依赖真实 config 或游戏脚本路径。新增/修改功能后必须补测试并跑全套再交付。
+python -m 把根目录加入 sys.path，PYTHONPATH=src 让 import launcher 可用；两种 import 风格并存，必须在根目录且带 PYTHONPATH=src 跑。测试文件与源码一一对应；GUI 测试开头设 QT_QPA_PLATFORM=offscreen 无头跑 PySide6。文件 I/O 使用 mock 或独立临时目录，不读写真实 config 或游戏脚本路径；临时资源用上下文管理器或 addCleanup 回收。新增/修改功能后必须补测试并跑全套再交付。
+
+runner 子模块测试由 OneDragonRunner 仓库自己的 CI 执行，主仓 CI 只运行主仓测试。
+
+日常 golden 覆盖全部声明菜单选择的保存路径、字段差异及反读，正常测试只读基线。确认行为变更后显式更新，并审查 `tests/golden/daily_baseline.json` 的差异：
+
+```bash
+PYTHONPATH=src python -m tests.test_golden_daily --update
+```
+
+完整测试清单及本轮发现见 [测试审查记录](docs/test-audit.md)。
 
 平台分工：源码全量测试只在本地/CI ubuntu 跑；Windows 下**只跑打包产物集成测试**（tests/exe/test_*_exe.py，由 .github/workflows/build-exe.yml 打包后覆盖），非打包测试不在 Windows 重复跑。
 

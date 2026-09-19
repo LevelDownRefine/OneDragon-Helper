@@ -36,7 +36,7 @@ class TestWallpaperCache(unittest.TestCase):
     """_build_wallpaper_cache：压缩 / 跳过 / 回退。"""
 
     def setUp(self):
-        self._tmp = tempfile.mkdtemp()
+        self._tmp = self.enterContext(tempfile.TemporaryDirectory())
         self._cache_dir = os.path.join(self._tmp, "wallpaper_cache")
         self._img_dir = os.path.join(self._tmp, "imgs")
         os.makedirs(self._img_dir)
@@ -121,7 +121,7 @@ class TestWallpaperFor(unittest.TestCase):
     """_wallpaper_for：优先缓存 / 过期重建 / 源图缺失回退。"""
 
     def setUp(self):
-        self._tmp = tempfile.mkdtemp()
+        self._tmp = self.enterContext(tempfile.TemporaryDirectory())
         self._cache_dir = os.path.join(self._tmp, "wallpaper_cache")
         self._img_dir = os.path.join(self._tmp, "imgs")
         os.makedirs(self._img_dir)
@@ -188,7 +188,7 @@ class TestOpenWallpaper(unittest.TestCase):
     """open_wallpaper：选图/视频的入口分类（视频不预压缓存）。"""
 
     def setUp(self):
-        self._tmp = tempfile.mkdtemp()
+        self._tmp = self.enterContext(tempfile.TemporaryDirectory())
         self._img_dir = os.path.join(self._tmp, "imgs")
         os.makedirs(self._img_dir)
         self._app = QApplication.instance() or QApplication([])
@@ -296,7 +296,7 @@ class TestResolveBg(unittest.TestCase):
     """resolve_bg：自定义壁纸缓存优先于原图，缺失文件安全回退。"""
 
     def setUp(self):
-        self._tmp = tempfile.mkdtemp()
+        self._tmp = self.enterContext(tempfile.TemporaryDirectory())
         self._cache_dir = os.path.join(self._tmp, "wallpaper_cache")
         self._img_dir = os.path.join(self._tmp, "imgs")
         os.makedirs(self._img_dir)
