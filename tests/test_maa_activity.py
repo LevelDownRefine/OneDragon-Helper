@@ -94,6 +94,13 @@ class TestMaaActivityResource(unittest.TestCase):
                 [],
             )
 
+    def test_incomplete_config_missing_gui_returns_empty(self):
+        """MAA 配置存在但缺 Gui 段（未初始化/版本错位）时优雅降级并记日志，不崩。"""
+        self.config = {"Configurations": {"Default": {}}}
+        with self.assertLogs("src.config.maa_activity", level="WARNING") as logs:
+            self.assertEqual(self.read(), [])
+        self.assertTrue(any("缺 Gui 段" in r.getMessage() for r in logs.records))
+
 
 class TestMaaDeclaredMenus(unittest.TestCase):
     def test_activity_source_and_static_stage_lists_materialize_independently(self):

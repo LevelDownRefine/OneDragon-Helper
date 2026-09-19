@@ -22,7 +22,13 @@ import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 from src.config.daily_config import get_daily_map, get_weekly_map
-from src.config.set_config import set_config, set_daily_enabled, set_weekly_task
+from src.config.set_config import (
+    get_registered_script_names,
+    init_config,
+    set_config,
+    set_daily_enabled,
+    set_weekly_task,
+)
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -89,6 +95,19 @@ class AppService:
     def get_daily_map(self) -> dict:
         """读取 daily_task_list.yml 的副本/序列配置。"""
         return get_daily_map()
+
+    # ── 游戏侧 config 适配器（src.config.set_config 模块函数）────────────
+    def get_registered_script_names(self) -> list[str]:
+        """已注册（已适配）脚本标识名，供启动后预热遍历。"""
+        return get_registered_script_names()
+
+    def warm_config(self, script_name: str) -> None:
+        """预热单个脚本 config：构造单例并触发模板对齐（幂等）。
+
+        启动后空闲时逐脚本调用，使点选时已在缓存、零等待；
+        与懒加载共用同一工厂出口，无额外加载逻辑。
+        """
+        init_config(script_name)
 
     # ── 单脚本配置（src.utils.utils_config 模块函数）─────────────────────────
     def get_script(self, script_name: str):

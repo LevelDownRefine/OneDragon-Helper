@@ -71,7 +71,11 @@ class ScriptConfig:
     """日常开关所在文件（如异环的 DailyRoutineTask.json）；空字符串表示该脚本无日常开关。"""
 
     def __init__(self) -> None:
-        """按声明创建日常对象，不读写子脚本配置。"""
+        """按声明创建日常对象，并在构造时对齐子脚本 config。
+
+        对齐经 ``_init_config`` 收口到构造期；``functools.cache`` 单例保证每进程每
+        脚本仅构造一次，故对齐也仅触发一次。CLI/GUI 均经工厂构造，无需分散守卫。
+        """
         self._dailies: list[Daily] = []
         seen: set[str] = set()
         for declaration in get_daily_configs(self._script_name):
@@ -87,6 +91,8 @@ class ScriptConfig:
             )
             seen.add(daily.physical_name)
             self._dailies.append(daily)
+        # 构造期对齐子脚本 config（懒加载收口点；无模板/未安装脚本为空操作）
+        self._init_config()
 
     def _daily_config_rel_path(self) -> str:
         """脚本 config 文件路径（取首个日常声明的 ``config``）。
@@ -935,9 +941,14 @@ def init_config(script_name: str) -> None:
 
 
 def init_config_all() -> None:
-    """对齐所有已注册脚本的 config 与模板（启动时调用）。"""
+    """对齐所有已注册脚本的 config 与模板（手动全量入口，如备份恢复后）。"""
     for script_name in _CONFIGS:
         init_config(script_name)
+
+
+def get_registered_script_names() -> list[str]:
+    """返回所有已注册（已适配）脚本的标识名，供预热遍历。"""
+    return list(_CONFIGS.keys())
 
 
 def set_config(

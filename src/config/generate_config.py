@@ -101,17 +101,14 @@ def _ensure_generated(path: str, generate) -> None:
 
 
 def config_workflow() -> None:
-    """每次启动配置生成：缺失或损坏才从模板生成 config/schedule/weekly，并对齐各脚本 config。
+    """每次启动配置生成：缺失或损坏才从模板生成 config/schedule/weekly。
 
     三者缺哪个补哪个、坏哪个换哪个，与 generate_*_from_example 语义一致；
-    随后 init_config_all() 对齐所有已注册脚本的 config 与模板（未安装脚本为空操作）。
+    各脚本 config 的对齐已收口到 ScriptConfig 构造时（懒加载，首次使用时触发），
+    无需在此启动期全量对齐。
     """
     _ensure_generated(get_config_yml_path_under_root(), generate_config_from_example)
     _ensure_generated(
         get_schedule_yml_path_under_root(), generate_schedule_from_example
     )
     _ensure_generated(get_weekly_yml_path_under_root(), generate_weekly_from_example)
-    # 每次启动对齐所有已注册脚本的 config 与模板
-    from src.config.set_config import init_config_all
-
-    init_config_all()
