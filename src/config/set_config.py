@@ -925,11 +925,7 @@ class ArknightsConfig(ScriptConfig):
 # ---- 终末地 MaaEnd（MXU 前端）----
 @register
 class MaaEndConfig(ScriptConfig):
-    """MaaEnd 底座适配。
-
-    任务编排（哪个实例、哪些任务启用、各自选项）由 MaaEnd 自身的 MXU 界面维护，
-    本工具只认它、备份它，不写它的 config，也不提供配置入口（无日常声明即无落点）。
-    """
+    """MaaEnd 底座适配：无日常声明（任务编排在其自身 MXU 界面），只备份 config/。"""
 
     _script_name = "MaaEnd"
     display_name = "MaaEnd"

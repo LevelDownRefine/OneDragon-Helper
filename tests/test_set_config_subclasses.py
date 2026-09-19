@@ -1272,11 +1272,7 @@ class TestMaaEndConfig(unittest.TestCase):
         self.assertEqual(self.cfg._backup_paths, ("config",))
 
     def test_no_dailies_and_no_config_entry(self):
-        """无日常声明即无落点：反读为空，取配置路径报 AssertionError。
-
-        该异常类型正是 GUI「打开脚本配置」能接住的那类（提示见
-        ``tests/test_utils_config.py`` 的 config_file_path 用例）。
-        """
+        """无日常声明即无落点：反读为空，取配置路径报 AssertionError（GUI 靠它给提示）。"""
         self.assertEqual(self.cfg._dailies, [])
         self.assertEqual(set_config.get_daily_readback("MaaEnd"), [])
         with self.assertRaisesRegex(AssertionError, "无日常声明，没有配置入口"):

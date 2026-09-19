@@ -52,11 +52,7 @@ class TestConfigRelPaths(unittest.TestCase):
                 )
 
     def test_game_config_rel_path_covers_all(self):
-        """声明了 _game_path_keys 的脚本都补全了 _game_config_rel_path
-
-        MaaEnd 不自启游戏（游戏路径由 config.yml 的 game_path 交给 runner），
-        无游戏路径声明，故两面都为空。
-        """
+        """声明了 _game_path_keys 的脚本都补全 _game_config_rel_path（MaaEnd 两者皆空）。"""
         for name, factory in set_config._CONFIGS.items():
             cls = factory()
             if not cls._game_path_keys:
