@@ -363,6 +363,19 @@ class MaaEndLogParser(BaseLogParser):
         return maaend_dir / "debug"
 
 
+class MAALogParser(BaseLogParser):
+    """MAA（MaaCore）：日志在安装根目录的 debug/ 下。
+
+    取 MaaCore 的 ``asst.log``（``asst.bak.log`` 是滚动备份，不选）。
+    """
+
+    script_name = "MAA"
+
+    def _get_log_dir(self, script_path: str) -> Path:
+        maa_dir = Path(script_path).parent
+        return maa_dir / "debug"
+
+
 _PARSERS = [
     OkWwLogParser,
     OkNteLogParser,
@@ -371,6 +384,7 @@ _PARSERS = [
     BGILogParser,
     ZZZLogParser,
     MaaEndLogParser,
+    MAALogParser,
 ]
 
 

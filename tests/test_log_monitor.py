@@ -14,6 +14,7 @@ from src.log import (
     BGILogParser,
     M7ALogParser,
     MaaEndLogParser,
+    MAALogParser,
     OkEfLogParser,
     OkNteLogParser,
     OkWwLogParser,
@@ -107,9 +108,12 @@ class TestLogParser(unittest.TestCase):
         self.assertFalse(result["daily_done"])
 
     def test_parse_log_rejects_unsupported(self):
-        """不支持的脚本在 parse_logs 入口已过滤，进入 parse_log 即不可能 → 断言失败。"""
+        """不支持的脚本在 parse_logs 入口已过滤，进入 parse_log 即不可能 → 断言失败。
+
+        反例用不存在的标识：拿真实脚本名当反例会随「该脚本接入解析」而过期。
+        """
         with self.assertRaises(AssertionError):
-            parse_log("MAA")
+            parse_log("不存在的脚本")
 
     def test_ok_nte_daily_done_is_success(self):
         """异环：命中每日完成标记（info_set failed []）→ SUCCESS。"""
@@ -160,23 +164,14 @@ class TestLogParser(unittest.TestCase):
         self.assertEqual(result["status"], ScriptLogStatus.FAILED)
         self.assertFalse(result["daily_done"])
 
-    def test_maaend_daily_done_is_success(self):
-        """MaaEnd：MXU 跑完自退时写「自动执行任务完成，关闭自身」→ 每日做完 → SUCCESS。"""
-        parser = MaaEndLogParser()
-        result = _parse_content(
-            parser, "2026-09-19 02:06:00 INFO  [App] 自动执行任务完成，关闭自身"
-        )
-        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
-        self.assertTrue(result["daily_done"])
-
-    def test_maaend_without_done_marker_is_failed(self):
-        """MaaEnd：只有调度噪声、没有完成标记 → 每日没做完 → FAILED。"""
+    def test_maaend_daily_not_judged(self):
+        """MaaEnd：日志复杂，暂不判当日做完 → 有日志即恒为做完，不进重跑名单。"""
         parser = MaaEndLogParser()
         result = _parse_content(
             parser, "2026-09-19 02:00:21 INFO  [Task] [调度器] 扫描 2 个时间槽"
         )
-        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
-        self.assertFalse(result["daily_done"])
+        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
+        self.assertTrue(result["daily_done"])
 
     def test_maaend_log_dir_is_debug_folder(self):
         """MaaEnd：日志目录 = 安装根目录下的 debug/（MXU 写 <日期>-<序号>.log）。
@@ -186,6 +181,31 @@ class TestLogParser(unittest.TestCase):
         root = Path(tempfile.gettempdir()) / "MaaEnd"
         self.assertEqual(
             MaaEndLogParser()._get_log_dir(str(root / "MaaEnd.exe")),
+            root / "debug",
+        )
+
+    def test_maa_daily_not_judged(self):
+        """MAA：暂不判当日做完（AllTasksCompleted 只表示任务链跑完）→ 不进重跑名单。"""
+        parser = MAALogParser()
+        result = _parse_content(
+            parser,
+            "[2026-09-19 00:54:05.359][INF][Px54960][Tx53879] "
+            'Assistant::append_callback | TaskChainCompleted {"taskchain":"Award"}',
+        )
+        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
+        self.assertTrue(result["daily_done"])
+
+    def test_maa_and_maaend_have_no_daily_marker(self):
+        """MAA/MaaEnd 的完成判据未定论，故不配标记：parse_daily 恒 True，绝不误判重跑。"""
+        for parser_cls in (MAALogParser, MaaEndLogParser):
+            with self.subTest(parser=parser_cls.__name__):
+                self.assertEqual(parser_cls().daily_success_marker, ())
+
+    def test_maa_log_dir_is_debug_folder(self):
+        """MAA：日志目录 = 安装根目录下的 debug/（MaaCore 写 asst.log）。"""
+        root = Path(tempfile.gettempdir()) / "MAA"
+        self.assertEqual(
+            MAALogParser()._get_log_dir(str(root / "MAA.exe")),
             root / "debug",
         )
 
@@ -479,6 +499,8 @@ class TestParseLogsRerunList(unittest.TestCase):
         """parse_daily 仅由 daily_success_marker 决定：命中标记=True，否则=False，绝不返回 None。"""
         for parser_cls in collect_log._PARSERS:
             p = parser_cls()
+            if not p.daily_success_marker:
+                continue  # 未配标记的脚本（MAA/MaaEnd）无法判定，恒 True
             # 中性内容（无任一成功标记）→ 一律 False（无标记即失败）。
             self.assertFalse(p.parse_daily("启动但啥也没发生，没有任何每日标记"))
             # 返回类型恒为 bool，绝不 None。

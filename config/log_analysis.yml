@@ -99,7 +99,12 @@ parsers:
   MaaEnd:
     # MXU 前端日志按「<日期>-<序号>.log」命名于 debug/；框架日志 maafw.log 只记录
     # 截图/识别细节、体量大且不反映任务成败，故不选它。
+    # 暂不配 daily_success_marker：判据未定论，而配错的代价是每天误判重跑
+    # （daily_done 不为 True 即进重跑名单）；先只提供日志目录与日志尾部。
     log_pattern: '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.log'
-    # --autostart -q（跑完自退）跑完全套时会写「自动执行任务完成，关闭自身」。
-    daily_success_marker:
-      - '自动执行任务完成'
+
+  MAA:
+    # MaaCore 日志 debug/asst.log（滚动备份 asst.bak.log 不选）。
+    # 同 MaaEnd：暂不判当日是否做完（AllTasksCompleted 只表示任务链跑完，
+    # 不等于奖励领到），避免误判进重跑。
+    log_pattern: 'asst.log'
