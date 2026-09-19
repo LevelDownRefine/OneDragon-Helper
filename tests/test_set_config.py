@@ -142,8 +142,10 @@ class TestSharedRegistry(unittest.TestCase):
             self.assertIs(set_config._CONFIGS["MAA"]()._dailies, dailies)
             declarations.assert_called_once_with("MAA")
             template.assert_not_called()
-        for operation in (weekly_load, weekly_save, daily_load, daily_save, init):
+        for operation in (weekly_load, weekly_save, daily_load, daily_save):
             operation.assert_not_called()
+        # 构造期对齐已收口到 __init__：首次构造调用一次，缓存命中不再调用
+        init.assert_called_once()
 
     def test_menu_and_updates_use_the_same_daily(self):
         cfg = set_config._CONFIGS["ok-ww"]()

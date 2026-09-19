@@ -58,10 +58,13 @@ class TestMaaNativeConfig(unittest.TestCase):
             self.cfg.set_daily_task(name, stage)
 
     def test_reading_does_not_initialize_or_save(self):
+        # 构造期已完成对齐（懒加载收口点，可能写盘一次）；本测试只验证「读取」
+        # 本身不修改内存、不触发额外写盘。
+        saved_before_read = list(self.saved)
         before = copy.deepcopy(self.data)
         self.assertEqual(len(self.cfg._read_daily_tasks()), 3)
         self.assertEqual(self.data, before)
-        self.assertFalse(self.saved)
+        self.assertEqual(self.saved, saved_before_read)
 
     def test_init_creates_disabled_slots_and_always_enabled_annihilation(self):
         self.cfg._init_config()

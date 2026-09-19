@@ -50,7 +50,8 @@ class TestInitConfig(unittest.TestCase):
         mock_generate_config.assert_called_once()
         mock_generate_schedule.assert_called_once()
         mock_generate_weekly.assert_called_once()
-        init.assert_called_once_with()
+        # 启动不再急切对齐各脚本 config；对齐收口到 ScriptConfig 构造时（懒加载）
+        init.assert_not_called()
 
 
 class TestMainStartupOrder(unittest.TestCase):
