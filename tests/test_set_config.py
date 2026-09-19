@@ -59,6 +59,29 @@ class TestConfigRelPaths(unittest.TestCase):
                 cls._game_config_rel_path, f"{name} 缺少 _game_config_rel_path"
             )
 
+    def test_get_registered_script_names_returns_all(self):
+        """get_registered_script_names 返回全部已适配脚本"""
+        self.assertEqual(
+            set(set_config.get_registered_script_names()),
+            {
+                "ok-ww",
+                "BetterGI",
+                "ok-ef",
+                "OneDragon-Launcher",
+                "March7th-Launcher",
+                "ok-nte",
+                "MAA",
+            },
+        )
+
+    def test_init_config_warms_singleton_idempotently(self):
+        """init_config 构造单例并触发对齐；重复调用返回同一实例（幂等）。"""
+        name = "ok-ww"
+        first = set_config._CONFIGS[name]()
+        set_config.init_config(name)
+        second = set_config._CONFIGS[name]()
+        self.assertIs(first, second)
+
     def test_template_rel_path_only_for_template_scripts(self):
         """模板路径只覆盖走模板初始化的脚本（粥已移除模板，仅 4 个）"""
         with_template = {

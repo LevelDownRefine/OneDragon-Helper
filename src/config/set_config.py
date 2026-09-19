@@ -941,9 +941,14 @@ def init_config(script_name: str) -> None:
 
 
 def init_config_all() -> None:
-    """对齐所有已注册脚本的 config 与模板（启动时调用）。"""
+    """对齐所有已注册脚本的 config 与模板（手动全量入口，如备份恢复后）。"""
     for script_name in _CONFIGS:
         init_config(script_name)
+
+
+def get_registered_script_names() -> list[str]:
+    """返回所有已注册（已适配）脚本的标识名，供预热遍历。"""
+    return list(_CONFIGS.keys())
 
 
 def set_config(
