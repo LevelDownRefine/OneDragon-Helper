@@ -11,9 +11,19 @@ import io
 import os
 import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
+from ruamel.yaml.error import YAMLError
+
+from src.utils import utils_yaml
 from src.utils.utils_dict import safe_update
-from src.utils.utils_yaml import YAML_INSTANCE, dump_yaml, load_yaml
+from src.utils.utils_yaml import (
+    YAML_INSTANCE,
+    dump_yaml,
+    load_yaml,
+    load_yaml_optional,
+)
 
 
 class TestYamlRoundTrip(unittest.TestCase):
@@ -59,6 +69,77 @@ class TestYamlRoundTrip(unittest.TestCase):
         loaded, _, _ = self._round_trip(self.SAMPLE)
         with self.assertRaises(AssertionError):
             safe_update(loaded, "enabled", 1, "test")  # bool 不能当 int 写
+
+
+class TestYamlReadCache(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.path = Path(tmp.name) / "config.yml"
+        utils_yaml._parse_yaml.cache_clear()
+        self.addCleanup(utils_yaml._parse_yaml.cache_clear)
+
+    def test_unchanged_content_parsed_once_with_independent_nested_values(self):
+        self.path.write_text("tasks:\n  - name: original\n", encoding="utf-8")
+        with patch.object(YAML_INSTANCE, "load", wraps=YAML_INSTANCE.load) as parse:
+            first = load_yaml(self.path)
+            first["tasks"][0]["name"] = "edited"
+            second = load_yaml(self.path)
+            optional = load_yaml_optional(self.path)
+        self.assertEqual(parse.call_count, 1)
+        self.assertEqual(second, {"tasks": [{"name": "original"}]})
+        self.assertEqual(optional, second)
+        self.assertIsNot(optional["tasks"], second["tasks"])
+
+    def test_same_size_and_timestamp_replacement_reads_new_content(self):
+        self.path.write_text("value: before\n", encoding="utf-8")
+        self.assertEqual(load_yaml(self.path)["value"], "before")
+        stat = self.path.stat()
+        replacement = self.path.with_suffix(".tmp")
+        replacement.write_text("value: after!\n", encoding="utf-8")
+        os.utime(replacement, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        replacement.replace(self.path)
+        self.assertEqual(self.path.stat().st_size, stat.st_size)
+        self.assertEqual(self.path.stat().st_mtime_ns, stat.st_mtime_ns)
+        self.assertEqual(load_yaml(self.path)["value"], "after!")
+        self.assertEqual(load_yaml_optional(self.path)["value"], "after!")
+
+    def test_deleted_cached_file_keeps_required_and_optional_contracts(self):
+        self.path.write_text("value: present\n", encoding="utf-8")
+        load_yaml(self.path)
+        self.path.unlink()
+        with self.assertRaisesRegex(AssertionError, "配置文件缺失"):
+            load_yaml(self.path)
+        self.assertEqual(load_yaml_optional(self.path), {})
+
+    def test_invalid_external_edits_do_not_return_previous_content(self):
+        self.path.write_text("value: valid\n", encoding="utf-8")
+        load_yaml(self.path)
+        for text, error in (
+            ("", AssertionError),
+            ("[]", AssertionError),
+            ("a: [", YAMLError),
+        ):
+            self.path.write_text(text, encoding="utf-8")
+            for read in (load_yaml, load_yaml_optional):
+                with (
+                    self.subTest(text=text, read=read.__name__),
+                    self.assertRaises(error),
+                ):
+                    read(self.path)
+
+    def test_cached_round_trip_preserves_comments_quotes_and_time(self):
+        self.path.write_text(TestYamlRoundTrip.SAMPLE, encoding="utf-8")
+        load_yaml(self.path)
+        data = load_yaml(self.path)
+        data["name"] = "updated"
+        dump_yaml(self.path, data)
+        saved = self.path.read_text(encoding="utf-8")
+        self.assertIn("# 顶部注释", saved)
+        self.assertIn("# 行内注释", saved)
+        self.assertIn("empty: ''", saved)
+        self.assertEqual(load_yaml(self.path)["name"], "updated")
+        self.assertEqual(load_yaml(self.path)["scheduled_time"], "04:00")
 
 
 class TestAtomicDump(unittest.TestCase):

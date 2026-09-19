@@ -26,7 +26,6 @@ from dataclasses import dataclass
 
 import src.utils.utils_config as utils_config
 import src.utils.utils_weekly as utils_weekly
-from src.log.notify_mail import register_credentials
 from src.service.run_actions import (
     analyze_logs,
     apply_subscript_config,
@@ -218,6 +217,9 @@ def apply_run_options(options: RunOptions) -> None:
     # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
     if options.auth_code:
         try:
+            # 延迟导入：notify_mail 会拖入 keyring（~90ms）与 smtplib，启动路径用不到。
+            from src.log.notify_mail import register_credentials
+
             register_credentials(options.email, options.auth_code)
         except Exception as exc:  # noqa: BLE001  # 凭据为最佳努力：失败记日志，不阻塞调度参数落盘
             logger.error(

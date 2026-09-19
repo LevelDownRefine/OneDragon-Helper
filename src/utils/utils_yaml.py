@@ -13,6 +13,8 @@ PyYAML 1.1 把 ``04:10`` 这类时间字面量误当六十进制数解析成 ``2
 """
 
 import os
+from copy import deepcopy
+from functools import lru_cache
 
 from ruamel.yaml import YAML
 
@@ -22,6 +24,12 @@ YAML_INSTANCE.preserve_quotes = True
 YAML_INSTANCE.width = 4096  # 防止长行（长注释 / 列表）被折行破坏原排版
 
 _yaml = YAML_INSTANCE  # 内部简写
+
+
+@lru_cache(maxsize=16)
+def _parse_yaml(content: str):
+    """按文件内容复用解析结果；``load_yaml*`` 取用时再深拷贝，编辑不会污染缓存。"""
+    return _yaml.load(content)
 
 
 def load_yaml(path: str) -> dict:
@@ -38,7 +46,7 @@ def load_yaml(path: str) -> dict:
     """
     assert os.path.exists(path), f"[yaml] 配置文件缺失: {path}"
     with open(path, encoding="utf-8") as f:
-        data = _yaml.load(f)
+        data = deepcopy(_parse_yaml(f.read()))
     assert data is not None, f"[yaml] 配置文件为空: {path}"
     assert isinstance(data, dict), f"[yaml] 文件内容应为 dict: {path}"
     return data
@@ -59,7 +67,7 @@ def load_yaml_optional(path: str) -> dict:
     if not os.path.exists(path):
         return {}
     with open(path, encoding="utf-8") as f:
-        data = _yaml.load(f)
+        data = deepcopy(_parse_yaml(f.read()))
     assert data is not None, f"[yaml] 可选配置文件为空: {path}"
     assert isinstance(data, dict), f"[yaml] 文件内容应为 dict: {path}"
     return data

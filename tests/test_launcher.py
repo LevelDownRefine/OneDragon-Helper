@@ -3,6 +3,7 @@
 import os
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -83,6 +84,27 @@ class TestMainStartupOrder(unittest.TestCase):
         self.assertEqual(
             order, ["setup_logging", "install_crash_hooks", "config_workflow"]
         )
+
+
+class TestStartupTimer(unittest.TestCase):
+    """启动打点基准按调用复位。
+
+    基准若停在模块导入时刻，同一进程内多次调用 main()（如 tests/test_cli.py 逐个 CLI
+    出口）会把上一次的耗时累加进来，日志里打出十几万毫秒的假数字。
+    """
+
+    def test_main_resets_baseline(self):
+        launcher._STARTUP_T0 -= 3600.0  # 模拟上一次调用已过去一小时
+        with (
+            patch.object(launcher, "setup_logging"),
+            patch.object(launcher, "install_crash_hooks"),
+            patch.object(launcher, "config_workflow"),
+            patch.object(launcher, "run_cli", return_value=0),
+            patch.object(sys, "argv", ["OneDragon-Helper"]),
+            self.assertRaises(SystemExit),
+        ):
+            launcher.main()
+        self.assertLess(time.perf_counter() - launcher._STARTUP_T0, 1.0)
 
 
 class TestQtMessageLogger(unittest.TestCase):

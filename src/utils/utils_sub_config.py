@@ -28,11 +28,13 @@ DEFAULT_RUN_TIMEOUT = 3600
 
 
 def _load_config_yml() -> dict:
-    """读取主配置 config.yml（ruamel，按 YAML 1.2 解析）。
+    """读取主配置 config.yml。
 
-    用 ruamel 而非 PyYAML：PyYAML 1.1 把 ``04:10`` 这类时间字面量误当六十进制数
-    解析成 ``250.0``，污染后续读取；ruamel 按 YAML 1.2 解析并保持 ``"04:10"`` 为字符串。
-    config.yml 为必需文件，缺失 / 空 / 非 dict 由 ``load_yaml`` 直接 assert 暴露。
+    路径解析（``get_script_path`` / ``get_script_root_dir``）被每个子配置读写调用，
+    一次启动会读同一份文件十几次；解析结果由 ``utils_yaml.load_yaml`` 按文件内容复用。
+
+    Returns:
+        解析后的 dict（每次调用独立副本，调用方可自由修改）。
     """
     return load_yaml(require_config_yml_path())
 
