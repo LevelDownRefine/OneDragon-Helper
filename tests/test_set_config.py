@@ -27,7 +27,7 @@ class TestConfigRelPaths(unittest.TestCase):
     """测试 ScriptConfig 子类路径声明完整性（_CONFIGS 注册表自动收集）"""
 
     def test_configs_registry_covers_all_scripts(self):
-        """_CONFIGS 覆盖全部 7 个已适配脚本（进程名）"""
+        """_CONFIGS 覆盖全部 8 个已适配脚本（进程名）"""
         self.assertEqual(
             set(set_config._CONFIGS.keys()),
             {
@@ -38,6 +38,7 @@ class TestConfigRelPaths(unittest.TestCase):
                 "March7th-Launcher",
                 "ok-nte",
                 "MAA",
+                "MaaEnd",
             },
         )
 
@@ -51,10 +52,18 @@ class TestConfigRelPaths(unittest.TestCase):
                 )
 
     def test_game_config_rel_path_covers_all(self):
-        """全部 7 个脚本都声明了 _game_path_keys 与 _game_config_rel_path"""
+        """声明了 _game_path_keys 的脚本都补全了 _game_config_rel_path
+
+        MaaEnd 不自启游戏（游戏路径由 config.yml 的 game_path 交给 runner），
+        无游戏路径声明，故两面都为空。
+        """
         for name, factory in set_config._CONFIGS.items():
             cls = factory()
-            self.assertTrue(cls._game_path_keys, f"{name} 缺少 _game_path_keys")
+            if not cls._game_path_keys:
+                self.assertFalse(
+                    cls._game_config_rel_path, f"{name} 无游戏路径却声明了配置文件"
+                )
+                continue
             self.assertTrue(
                 cls._game_config_rel_path, f"{name} 缺少 _game_config_rel_path"
             )
@@ -250,7 +259,10 @@ class TestGetConfigPath(unittest.TestCase):
             patch("os.path.exists", return_value=True),
         ):
             for name in scripts:
-                rel = get_daily_configs(name)[0]["config"]
+                declarations = get_daily_configs(name)
+                if not declarations:
+                    continue  # 无日常声明的脚本（MaaEnd）：没有 config 落点
+                rel = declarations[0]["config"]
                 path = utils_sub_config.get_sub_config_path(name, rel)
                 self.assertIsNotNone(path, f"{name} 路径推导失败")
                 # 路径中应包含相对路径的各段（不依赖具体分隔符）
@@ -371,7 +383,10 @@ class TestLoadConfig(unittest.TestCase):
         fake_config_yml = {"script_list": fake_script_list}
 
         for name in scripts:
-            rel = get_daily_configs(name)[0]["config"]
+            declarations = get_daily_configs(name)
+            if not declarations:
+                continue  # 无日常声明的脚本（MaaEnd）：没有 config 落点
+            rel = declarations[0]["config"]
             ext = os.path.splitext(rel)[1].lower()
             fake_data = {"test_key": "test_value"}
             if ext == ".json":

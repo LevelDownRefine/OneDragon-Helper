@@ -121,7 +121,9 @@ def build_baseline():
             patch("src.config.daily_config.get_task_lists", side_effect=_resource_names)
         )
         menus = get_daily_map()
-        assert set(menus) == set(stores) == set(config_mod._CONFIGS)
+        # 声明与夹具一一对应；_CONFIGS 另可含无日常的脚本（MaaEnd）。
+        assert set(menus) == set(stores)
+        assert set(menus) <= set(config_mod._CONFIGS)
         for script in sorted(menus):
             cfg = config_mod._CONFIGS[script]()
             normalized = {}

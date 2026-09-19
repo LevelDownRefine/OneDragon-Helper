@@ -17,12 +17,14 @@ from src.config.set_config import (
     ArknightsConfig,
     EndfieldConfig,
     GenshinConfig,
+    MaaEndConfig,
     NTEConfig,
     ScriptConfig,
     StarRailConfig,
     WutheringWavesConfig,
     ZenlessZoneZeroConfig,
 )
+from src.utils.utils_config import config_file_path
 from src.utils.utils_yaml import dump_yaml_str
 
 
@@ -1249,6 +1251,51 @@ class TestArknightsConfig(unittest.TestCase):
         self.assertTrue(cfg._is_aligned(config, template))
 
     # ---- set_daily_task ----
+
+
+# ============================================================
+# 终末地 MaaEnd（MXU 前端）
+# ============================================================
+
+
+class TestMaaEndConfig(unittest.TestCase):
+    """测试 MaaEnd 底座适配：任务编排在自身 MXU 界面，本工具只认它、备份它。"""
+
+    def setUp(self):
+        self.cfg = MaaEndConfig()
+
+    def test_init_attributes(self):
+        self.assertEqual(self.cfg.display_name, "MaaEnd")
+        self.assertEqual(self.cfg._script_name, "MaaEnd")
+
+    def test_backup_covers_config_dir(self):
+        """配置面为 config/ 目录（maa_option.json 与 mxu-MaaEnd.json 都在里面）。"""
+        self.assertEqual(self.cfg._backup_paths, ("config",))
+
+    def test_no_dailies_and_no_config_entry(self):
+        """无日常声明即无落点，也就没有配置入口。
+
+        GUI「打开脚本配置」经 config_file_path 拿不到路径时给提示，不崩溃。
+        """
+        self.assertEqual(self.cfg._dailies, [])
+        self.assertEqual(set_config.get_daily_readback("MaaEnd"), [])
+        with self.assertRaisesRegex(AssertionError, "无日常声明，没有配置入口"):
+            self.cfg._daily_config_rel_path()
+        path, error = config_file_path("MaaEnd")
+        self.assertIsNone(path)
+        self.assertIn("暂未适配配置文件", error)
+
+    def test_no_weekly_support(self):
+        self.assertFalse(set_config.supports_weekly("MaaEnd"))
+
+    def test_no_game_path_declaration(self):
+        """MaaEnd 不自启游戏，游戏路径由 config.yml 的 game_path 交给 runner 处理。"""
+        with patch("src.config.set_config.load_game_config") as mock_load:
+            self.assertIsNone(self.cfg.get_game_exe_path())
+        mock_load.assert_not_called()
+
+    def test_adapted_for_gui_card(self):
+        self.assertTrue(set_config.is_adapted("MaaEnd"))
 
 
 class TestGetGameExePath(unittest.TestCase):

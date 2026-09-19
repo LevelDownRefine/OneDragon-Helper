@@ -29,13 +29,16 @@ class TestDispatch(unittest.TestCase):
     """日常集合由声明推导，机制类按脚本分发。"""
 
     def test_every_script_follows_its_declaration(self):
+        declarations = load_daily_map()
         for script_name in sorted(_CONFIGS):
             cfg = _CONFIGS[script_name]()
             dailies = cfg._dailies
+            # 无日常声明的脚本（MaaEnd）无日常对象
+            expected = declarations.get(script_name, [])
             with self.subTest(script=script_name):
                 self.assertEqual(
                     [daily.display_name for daily in dailies],
-                    [decl["display_name"] for decl in load_daily_map()[script_name]],
+                    [decl["display_name"] for decl in expected],
                 )
                 # 日常对象构造后复用（同一实例），且可按展示名定位
                 self.assertIs(cfg._dailies, dailies)

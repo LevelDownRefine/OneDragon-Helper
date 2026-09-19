@@ -95,7 +95,13 @@ class ScriptConfig:
 
         Returns:
             相对脚本根目录的路径。
+
+        Raises:
+            AssertionError: 该脚本没有日常声明（无落点，也就没有配置入口）。
         """
+        assert self._dailies, (
+            f"[set_config][{self.display_name}] 无日常声明，没有配置入口"
+        )
         return self._dailies[0]._config_rel_path
 
     def _load_weekly_config(self, *, allow_missing: bool = False) -> dict | None:
@@ -914,6 +920,20 @@ class ArknightsConfig(ScriptConfig):
             logger.info(
                 f"[set_weekly_start_day][{self.display_name}] 理智药剂过期窗口无需更新"
             )
+
+
+# ---- 终末地 MaaEnd（MXU 前端）----
+@register
+class MaaEndConfig(ScriptConfig):
+    """MaaEnd 底座适配。
+
+    任务编排（哪个实例、哪些任务启用、各自选项）由 MaaEnd 自身的 MXU 界面维护，
+    本工具只认它、备份它，不写它的 config，也不提供配置入口（无日常声明即无落点）。
+    """
+
+    _script_name = "MaaEnd"
+    display_name = "MaaEnd"
+    _backup_paths = ("config",)
 
 
 # ============================================================

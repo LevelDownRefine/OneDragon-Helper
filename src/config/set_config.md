@@ -132,6 +132,7 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 | 绝区零 / 崩铁 | `NoopDaily` | 无需适配副本选择（跳过通用解析），亦无开关落点 |
 | 异环 | `Anomaly` + `AnomalyHunter` | 两个日常各一段、各一个类，见下节 |
 | 粥 | `MaaDaily` | TaskQueue / StagePlan（跳过通用解析），见下节 |
+| MaaEnd | — | 无日常声明：任务编排在其自身 MXU 界面，本工具只认它、备份 `config/`，不提供配置入口 |
 
 > 原神三条日常共用同一份配置（`User/OneDragon/默认配置.json`），各自对应一条原生任务（自动秘境 / 自动地脉花 / 自动首领讨伐）的开关——`TaskDefinitions` 里按名反查 id，不硬编码 uuid。
 
@@ -214,6 +215,8 @@ set_config("ok-ww", task_name="未选择")  # 跳过
 3. `config/daily_task_list.yml` 加该脚本的日常声明（key 用 script_name）；菜单自动出现，无需改 GUI。
 4. `_init_config` 已在启动时自动触发；无 `_template_rel_path` 时为空操作。
 5. 补测试 `tests/test_set_config_subclasses.py`（可参照 golden：`PYTHONPATH=src python -m tests.test_golden_daily --update` 重新生成基线，审查差异后提交）。
+
+> 无需本工具配置任务的脚本（如 MaaEnd：任务编排在其自身界面）跳过第 2、3 步：`get_daily_configs` 对未声明的脚本返回空列表，`_dailies` 为空——脚本仍参与备份，但不提供配置入口（`_daily_config_rel_path()` 以 assert 表达「无落点」，GUI 打开配置文件时提示「暂未适配配置文件」而非崩溃）。
 
 ## 设计原则
 

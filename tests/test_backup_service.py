@@ -18,6 +18,8 @@ class TestBackupService(unittest.TestCase):
         """真实适配器声明覆盖 JSON、YAML 和嵌套字段，其他字段来自备份。"""
         for script_name, factory in set_config._CONFIGS.items():
             cfg = factory()
+            if not cfg._game_path_keys:
+                continue  # 无游戏路径声明的脚本（MaaEnd）不适用保留流程
             with self.subTest(script=script_name):
                 self.roots[script_name] = str(self.root / script_name)
                 rel, keys = cfg._game_config_rel_path, cfg._game_path_keys

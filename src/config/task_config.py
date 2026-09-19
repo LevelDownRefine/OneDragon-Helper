@@ -202,13 +202,12 @@ def get_daily_configs(script_name: str) -> list[dict]:
         script_name: 脚本标识名。
 
     Returns:
-        该脚本的日常声明列表；单日常脚本长度为 1。
-
-    Raises:
-        AssertionError: 缺少脚本声明。
+        该脚本的日常声明列表；单日常脚本长度为 1。声明文件里未出现的脚本
+        （如 MaaEnd：任务编排在其自身界面、本工具不给落点）为空列表。
     """
     data = load_daily_map()
-    assert script_name in data, f"缺少日常声明: {script_name}"
+    if script_name not in data:
+        return []  # 无日常的脚本
     return data[script_name]
 
 
