@@ -350,6 +350,19 @@ class BGILogParser(BaseLogParser):
         return bgi_dir / "log"
 
 
+class MaaEndLogParser(BaseLogParser):
+    """MaaEnd（MXU 前端）：日志在安装根目录的 debug/ 下。
+
+    MXU 的运行日志按 ``<日期>-<序号>.log`` 命名（框架日志 maafw.log 不判成败）。
+    """
+
+    script_name = "MaaEnd"
+
+    def _get_log_dir(self, script_path: str) -> Path:
+        maaend_dir = Path(script_path).parent
+        return maaend_dir / "debug"
+
+
 _PARSERS = [
     OkWwLogParser,
     OkNteLogParser,
@@ -357,6 +370,7 @@ _PARSERS = [
     M7ALogParser,
     BGILogParser,
     ZZZLogParser,
+    MaaEndLogParser,
 ]
 
 

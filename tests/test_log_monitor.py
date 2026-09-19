@@ -13,6 +13,7 @@ import src.utils.utils_logger
 from src.log import (
     BGILogParser,
     M7ALogParser,
+    MaaEndLogParser,
     OkEfLogParser,
     OkNteLogParser,
     OkWwLogParser,
@@ -158,6 +159,31 @@ class TestLogParser(unittest.TestCase):
         )
         self.assertEqual(result["status"], ScriptLogStatus.FAILED)
         self.assertFalse(result["daily_done"])
+
+    def test_maaend_daily_done_is_success(self):
+        """MaaEnd：MXU 跑完自退时写「自动执行任务完成，关闭自身」→ 每日做完 → SUCCESS。"""
+        parser = MaaEndLogParser()
+        result = _parse_content(
+            parser, "2026-09-19 02:06:00 INFO  [App] 自动执行任务完成，关闭自身"
+        )
+        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
+        self.assertTrue(result["daily_done"])
+
+    def test_maaend_without_done_marker_is_failed(self):
+        """MaaEnd：只有调度噪声、没有完成标记 → 每日没做完 → FAILED。"""
+        parser = MaaEndLogParser()
+        result = _parse_content(
+            parser, "2026-09-19 02:00:21 INFO  [Task] [调度器] 扫描 2 个时间槽"
+        )
+        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
+        self.assertFalse(result["daily_done"])
+
+    def test_maaend_log_dir_is_debug_folder(self):
+        """MaaEnd：日志目录 = 安装根目录下的 debug/（MXU 写 <日期>-<序号>.log）。"""
+        self.assertEqual(
+            MaaEndLogParser()._get_log_dir(r"D:\game\MaaEnd.exe"),
+            Path(r"D:\game") / "debug",
+        )
 
     def test_result_has_no_extra_key(self):
         """extra 已全链路移除：解析结果不再含该键。"""
