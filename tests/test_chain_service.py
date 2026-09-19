@@ -384,7 +384,7 @@ class TestBuildPostRunPipeline(unittest.TestCase):
                 "src.service.run_actions.parse_logs",
                 return_value=self._result(rerun=rerun, notify=notify),
             ) as parse,
-            patch("src.service.run_actions.send_mail") as mail,
+            patch("src.log.notify_mail.send_mail") as mail,
             patch("src.service.schedule.shutdown_sys") as shutdown,
         ):
             steps = build_post_run_pipeline(**kwargs)

@@ -594,7 +594,7 @@ class TestApplyRunOptions(unittest.TestCase):
         self.assertEqual(self._read()["notify"]["smtp_port"], 465)
 
     def test_registers_auth_code(self):
-        with mock.patch("src.service.schedule.register_credentials") as reg:
+        with mock.patch("src.log.notify_mail.register_credentials") as reg:
             apply_run_options(self._options(auth_code="authcode16"))
         reg.assert_called_once_with("123456@qq.com", "authcode16")
         # 授权码只进凭据管理器，不落 schedule.yml
@@ -602,14 +602,15 @@ class TestApplyRunOptions(unittest.TestCase):
 
     def test_empty_auth_code_skips_keyring(self):
         """授权码留空：不调凭据管理器（保留既有凭据）。"""
-        with mock.patch("src.service.schedule.register_credentials") as reg:
+        with mock.patch("src.log.notify_mail.register_credentials") as reg:
             apply_run_options(self._options(auth_code=""))
         reg.assert_not_called()
 
     def test_register_failure_still_saves_schedule(self):
         """凭据写入失败为最佳努力：记日志，调度参数照常落盘。"""
         with mock.patch(
-            "src.service.schedule.register_credentials",
+            # register_credentials 在 apply_run_options 内延迟导入，故打在定义处。
+            "src.log.notify_mail.register_credentials",
             side_effect=RuntimeError("no keyring"),
         ):
             apply_run_options(self._options(auth_code="authcode16"))

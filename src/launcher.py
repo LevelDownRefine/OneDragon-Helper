@@ -28,8 +28,18 @@ FONT_FAMILY = "Microsoft YaHei"
 
 logger = logging.getLogger(__name__)
 
-# 启动耗时打点基准（模块导入完成后、main() 入口处归零）
+# 启动耗时打点基准（模块导入完成后的初值；main() 入口处归零）
 _STARTUP_T0 = time.perf_counter()
+
+
+def _start_startup_timer() -> None:
+    """把启动打点基准归零（main() 入口调用）。
+
+    基准若停留在模块导入时刻，同一进程内多次调用 main()（如 tests/test_cli.py 逐个
+    CLI 出口）会把上一次的耗时累加进来，日志里打出十几万毫秒的假数字。
+    """
+    global _STARTUP_T0
+    _STARTUP_T0 = time.perf_counter()
 
 
 def _log_startup(stage: str) -> None:
@@ -52,6 +62,7 @@ def _clear_qml_cache():
 
 
 def main():
+    _start_startup_timer()
     args = build_parser().parse_args()
     # 日志先于 config_workflow：init 对齐产生的 WARNING（如补缺失字段）必须进
     # 日志文件可追溯；否则走 logging 兜底裸印 stderr，无时间戳且 windowed exe
@@ -121,6 +132,8 @@ def _launch_qml():
     logger.info("[qml] engine loading: %s", qml_path)
     engine.load(QUrl.fromLocalFile(qml_path))
     logger.info("[qml] engine loaded, rootObjects = %d", len(engine.rootObjects()))
+    # load 返回时窗口已显示并 expose（首帧也在其内），无需另挂 frameSwapped。
+    _log_startup("QML 装载完成（窗口已显示）")
     if not engine.rootObjects():
         sys.exit(1)
     # Windows 整窗使用原生文件拖放，兼容普通资源管理器 → 管理员窗口。
@@ -128,6 +141,7 @@ def _launch_qml():
     # 按启动设置决定是否倒计时；每日计划启用时只打开 GUI。
     # 须在进入事件循环前同步弹模态窗（QDialog.exec 自带局部事件循环）。
     bridge.maybe_auto_launch()
+    _log_startup("进入事件循环")
     logger.info("[qml] entering event loop")
     exit_code = app.exec()
     if file_drop is not None:

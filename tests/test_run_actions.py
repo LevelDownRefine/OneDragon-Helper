@@ -19,7 +19,8 @@ class TestSendSummaryMail(unittest.TestCase):
         smtp_config = {"enabled": True, "email": "a@qq.com", "password": "pw"}
         with (
             mock.patch(
-                "src.service.run_actions.send_mail",
+                # send_mail 在 send_summary_mail 内延迟导入，故打在定义处。
+                "src.log.notify_mail.send_mail",
                 side_effect=RuntimeError("smtp down"),
             ),
             self.assertLogs(logger=run_actions.logger, level="ERROR") as cm,

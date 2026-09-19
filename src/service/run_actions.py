@@ -13,7 +13,6 @@ from datetime import datetime
 
 from src.config.set_config import set_config
 from src.log.monitor import parse_logs
-from src.log.notify_mail import send_mail
 from src.service.chain_gen import resolve_weekly_start
 from src.utils.utils_runner import (
     ProcessTarget,
@@ -109,6 +108,9 @@ def send_summary_mail(
     if not result or smtp_config is None:
         return
     try:
+        # 延迟导入：notify_mail 会拖入 keyring（~90ms）与 smtplib，启动路径用不到。
+        from src.log.notify_mail import send_mail
+
         send_mail(result, smtp_config=smtp_config)
     except Exception as exc:  # noqa: BLE001  # 邮件为最佳努力通知，失败须记日志而非中断后续步骤（如关机）
         logger.error("[mail] 运行汇总邮件发送失败：%s", exc, exc_info=True)
