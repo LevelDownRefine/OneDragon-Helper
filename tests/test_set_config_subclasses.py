@@ -24,7 +24,6 @@ from src.config.set_config import (
     WutheringWavesConfig,
     ZenlessZoneZeroConfig,
 )
-from src.utils.utils_config import config_file_path
 from src.utils.utils_yaml import dump_yaml_str
 
 
@@ -1273,17 +1272,15 @@ class TestMaaEndConfig(unittest.TestCase):
         self.assertEqual(self.cfg._backup_paths, ("config",))
 
     def test_no_dailies_and_no_config_entry(self):
-        """无日常声明即无落点，也就没有配置入口。
+        """无日常声明即无落点：反读为空，取配置路径报 AssertionError。
 
-        GUI「打开脚本配置」经 config_file_path 拿不到路径时给提示，不崩溃。
+        该异常类型正是 GUI「打开脚本配置」能接住的那类（提示见
+        ``tests/test_utils_config.py`` 的 config_file_path 用例）。
         """
         self.assertEqual(self.cfg._dailies, [])
         self.assertEqual(set_config.get_daily_readback("MaaEnd"), [])
         with self.assertRaisesRegex(AssertionError, "无日常声明，没有配置入口"):
             self.cfg._daily_config_rel_path()
-        path, error = config_file_path("MaaEnd")
-        self.assertIsNone(path)
-        self.assertIn("暂未适配配置文件", error)
 
     def test_no_weekly_support(self):
         self.assertFalse(set_config.supports_weekly("MaaEnd"))

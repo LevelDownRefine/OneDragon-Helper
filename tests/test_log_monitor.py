@@ -179,10 +179,14 @@ class TestLogParser(unittest.TestCase):
         self.assertFalse(result["daily_done"])
 
     def test_maaend_log_dir_is_debug_folder(self):
-        """MaaEnd：日志目录 = 安装根目录下的 debug/（MXU 写 <日期>-<序号>.log）。"""
+        """MaaEnd：日志目录 = 安装根目录下的 debug/（MXU 写 <日期>-<序号>.log）。
+
+        用平台无关路径构造（Windows 反斜杠在 POSIX 的 Path 里不是分隔符）。
+        """
+        root = Path(tempfile.gettempdir()) / "MaaEnd"
         self.assertEqual(
-            MaaEndLogParser()._get_log_dir(r"D:\game\MaaEnd.exe"),
-            Path(r"D:\game") / "debug",
+            MaaEndLogParser()._get_log_dir(str(root / "MaaEnd.exe")),
+            root / "debug",
         )
 
     def test_result_has_no_extra_key(self):
