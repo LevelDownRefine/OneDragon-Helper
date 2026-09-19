@@ -19,13 +19,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
           fetch-depth: 0
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       # 复用 build-exe.yml 的构建链路：打包 GUI(onedir)+Runner(onefile) 并跑 exe 集成测试。
       # exe 测试失败则 build.bat 非 0 退出，本步骤失败 ⇒ 不发布。
