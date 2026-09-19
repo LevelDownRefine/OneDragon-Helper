@@ -29,15 +29,19 @@ def next_target_datetime(target_time: str, now: datetime | None = None) -> datet
     """返回下一个等于 target_time 的时刻：今天未到取今天，已过取明天（跨午夜）。
 
     Args:
-        target_time: ``"HH:MM"`` 形式的目标时刻。
+        target_time: ``"HH:MM"`` 或 ``"HH:MM:SS"`` 形式的目标时刻（带秒便于精确指定，
+            如集成测试用「当前时刻 + 几秒」而不用等下一个整分钟）。
         now: 基准时间，默认当前时间（可注入以便测试）。
 
     Returns:
         下一个 ``target_time`` 对应的 ``datetime``。
     """
-    hours, minutes = (int(x) for x in target_time.split(":"))
+    parts = [int(x) for x in target_time.split(":")]
+    assert len(parts) in (2, 3), f"目标时刻须为 HH:MM 或 HH:MM:SS: {target_time}"
+    hours, minutes = parts[:2]
+    seconds = parts[2] if len(parts) == 3 else 0
     now = now or datetime.now()
-    candidate = now.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+    candidate = now.replace(hour=hours, minute=minutes, second=seconds, microsecond=0)
     if now < candidate:
         return candidate
     return candidate + timedelta(days=1)
