@@ -32,6 +32,9 @@ class TestPackagedRendering(unittest.TestCase):
             qml = root / "src/gui/qml/main.qml"
             scene = qml.read_text(encoding="utf-8")
             self.assertIn("Window {", scene)
+            # 整窗圆角靠 shell 的 MultiEffect 遮罩（依赖 QtQuick.Effects 与
+            # Qt6QuickEffects.dll）：打包产物里这两者被裁掉时，圆角会静默失效。
+            self.assertIn("maskSource: cornerMask", scene)
             # 只给测试副本加首帧退出钩子，仍由打包的主程序加载完整主场景。
             scene = scene.replace(
                 "Window {",

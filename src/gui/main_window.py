@@ -269,10 +269,6 @@ class QmlBridge(QObject):
     def startWindowMove(self):
         self.window.startWindowMove()
 
-    @Slot(QObject, int)
-    def roundWindow(self, window, radius):
-        self.window.roundWindow(window, radius)
-
     @Slot()
     def minimize(self):
         self.window.minimize()
