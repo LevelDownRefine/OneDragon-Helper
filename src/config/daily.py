@@ -385,41 +385,69 @@ class BgiDaily(Daily):
             declaration, "enable_task", self.display_name, str
         )
 
-    def _enabled_id(self, config: dict) -> str:
-        """把声明里的任务名反查成任务 id。
+    def _enabled_id(self, config: dict) -> str | None:
+        """定位可用的开关；兼容旧格式，缺项或重复任务不猜测目标。
 
         Args:
             config: 一条龙配置 dict。
 
         Returns:
-            该任务在启用表里的 id。
-
-        Raises:
-            AssertionError: 缺少任务定义，或同名任务不是唯一一条。
+            该任务在启用表里的键；任务未配置或格式异常时记日志并返回 None。
         """
-        definitions = get_field(config, self._TASK_DEFINITIONS, self.display_name, dict)
-        matches = [
-            key for key, name in definitions.items() if name == self._enable_task
-        ]
-        assert len(matches) == 1, (
-            f"[daily][{self.display_name}] 任务定义缺少或重复 {self._enable_task}"
-        )
-        return matches[0]
+        # BGI 旧配置允许缺少/清空 TaskDefinitions，此时启用表直接以任务名为键。
+        definitions = config.get(self._TASK_DEFINITIONS, {})
+        if definitions is None or definitions == {}:
+            task_id = self._enable_task
+        elif isinstance(definitions, dict):
+            matches = [
+                key for key, name in definitions.items() if name == self._enable_task
+            ]
+            if len(matches) != 1:
+                logger.warning(
+                    "[daily][%s] BGI 任务 %s 匹配到 %d 项，开关按未配置处理",
+                    self.display_name,
+                    self._enable_task,
+                    len(matches),
+                )
+                return None
+            task_id = matches[0]
+        else:
+            logger.warning(
+                "[daily][%s] BGI TaskDefinitions 不是对象，开关按未配置处理",
+                self.display_name,
+            )
+            return None
+        # 用户可以删除任务，旧配置也可能尚未生成开关表。
+        table = config.get(self._ENABLE_MAP, {})
+        if (
+            not isinstance(table, dict)
+            or task_id not in table
+            or type(table[task_id]) is not bool
+        ):
+            logger.warning(
+                "[daily][%s] BGI 任务 %s 的启用项缺失或不是布尔值，按未配置处理",
+                self.display_name,
+                self._enable_task,
+            )
+            return None
+        return task_id
 
     def read_enabled(self) -> bool | None:
         """反读该日常对应的原生任务是否启用。
 
         Returns:
-            是否启用；一条龙配置缺失时返回 None。
-
-        Raises:
-            AssertionError: 配置缺少启用表/任务定义，或该任务的值不是布尔。
+            是否启用；配置缺失、任务缺少/重复或开关格式异常时返回 None。
         """
         config = self._load_daily_config(allow_missing=True)
         if config is None:
             return None  # 未安装/未配置：无真相
-        table = get_field(config, self._ENABLE_MAP, self.display_name, dict)
-        return get_field(table, self._enabled_id(config), self.display_name, bool)
+        task_id = self._enabled_id(config)
+        if task_id is None:
+            return None
+        assert self._ENABLE_MAP in config
+        table = config[self._ENABLE_MAP]
+        assert task_id in table
+        return table[task_id]
 
     def set_enabled(self, enabled: bool) -> bool:
         """置该日常对应的原生任务启用状态。
@@ -428,14 +456,18 @@ class BgiDaily(Daily):
             enabled: 目标启用状态。
 
         Returns:
-            是否有实际修改。
+            是否有实际修改；无法唯一定位有效开关时记日志并返回 False。
 
         Raises:
-            AssertionError: config 未安装/未配置，或缺少启用表/该任务。
+            AssertionError: config 未安装/未配置。
         """
         config = self._load_daily_config()
-        table = get_field(config, self._ENABLE_MAP, self.display_name, dict)
-        if safe_update(table, self._enabled_id(config), enabled, self.display_name):
+        task_id = self._enabled_id(config)
+        if task_id is None:
+            return False
+        assert self._ENABLE_MAP in config
+        table = config[self._ENABLE_MAP]
+        if safe_update(table, task_id, enabled, self.display_name):
             self._save_daily_config(config)
             return True
         return False

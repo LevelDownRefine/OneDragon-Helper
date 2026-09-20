@@ -266,7 +266,7 @@ class TestEnabled(unittest.TestCase):
         self.assertFalse(config["TaskEnabledList"]["uuid-2"])
         self.assertTrue(config["TaskEnabledList"]["uuid-1"], "别的任务不应被动到")
 
-    def test_bgi_switch_requires_unique_task_name(self):
+    def test_bgi_duplicate_task_has_no_unambiguous_switch(self):
         daily = daily_of("BetterGI", "每日任务")
         config = {
             "TaskDefinitions": {"uuid-1": "自动秘境", "uuid-2": "自动秘境"},
@@ -274,9 +274,9 @@ class TestEnabled(unittest.TestCase):
         }
         with (
             patch.object(daily, "_load_daily_config", return_value=config),
-            self.assertRaisesRegex(AssertionError, "任务定义缺少或重复"),
+            self.assertLogs("src.config.daily", level="WARNING"),
         ):
-            daily.read_enabled()
+            self.assertIsNone(daily.read_enabled())
 
     def test_bgi_switch_without_file_has_no_truth(self):
         daily = daily_of("BetterGI", "每日任务")

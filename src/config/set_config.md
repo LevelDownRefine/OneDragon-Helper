@@ -134,6 +134,8 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 
 > 原神三条日常共用同一份配置（`User/OneDragon/默认配置.json`），各自对应一条原生任务（自动秘境 / 自动地脉花 / 自动首领讨伐）的开关——`TaskDefinitions` 里按名反查 id，不硬编码 uuid。
 
+BGI 旧配置未声明或清空 `TaskDefinitions` 时，按 `TaskEnabledList` 的任务名键读写。用户删除/复制任务导致无法唯一定位开关，或启用项缺失/格式异常时，记明原因并按未配置回显；切换任务卡仍可显示其他日常，写开关返回 False。
+
 ### 异环：两个日常各自独立启用
 
 异环日常玩法两类：异象界域在 `DailyRoutineTaskConfigs.json` 的 `daily_anomaly` 段，追猎目标在 `daily_anomaly_hunter` 段（段名 = 日常物理名，`Anomaly.section` 取段）。开关写在 `DailyRoutineTask.json` 的 `Routine Items`，`id` 为 `daily_anomaly`/`daily_anomaly_hunter` 的 `enabled`。
