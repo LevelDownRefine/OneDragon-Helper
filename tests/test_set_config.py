@@ -59,6 +59,51 @@ class TestConfigRelPaths(unittest.TestCase):
                 cls._game_config_rel_path, f"{name} 缺少 _game_config_rel_path"
             )
 
+    def test_get_registered_script_names_returns_all(self):
+        """get_registered_script_names 返回全部已适配脚本"""
+        self.assertEqual(
+            set(set_config.get_registered_script_names()),
+            {
+                "ok-ww",
+                "BetterGI",
+                "ok-ef",
+                "OneDragon-Launcher",
+                "March7th-Launcher",
+                "ok-nte",
+                "MAA",
+            },
+        )
+
+    def test_init_config_warms_singleton_idempotently(self):
+        """init_config 构造单例并触发对齐；重复调用返回同一实例（幂等）。"""
+        name = "ok-ww"
+        first = set_config._CONFIGS[name]()
+        set_config.init_config(name)
+        second = set_config._CONFIGS[name]()
+        self.assertIs(first, second)
+
+    def test_ensure_config_aligns_once_vs_init_config_twice(self):
+        """预热用 ensure_config 仅构造触发一次 _init_config（无重复日志）；
+
+        init_config 对缓存实例额外显式再调一次（强制重对齐，供新增/修改脚本、
+        备份恢复）。这是 #64 warmup 重复日志的根因回归点。
+        """
+        name = "BetterGI"
+        set_config._CONFIGS[name].cache_clear()
+        with (
+            patch.object(set_config.ScriptConfig, "_init_config") as init,
+            patch.object(set_config, "load_config", return_value=None),
+        ):
+            set_config.ensure_config(name)
+            self.assertEqual(init.call_count, 1)
+        set_config._CONFIGS[name].cache_clear()
+        with (
+            patch.object(set_config.ScriptConfig, "_init_config") as init2,
+            patch.object(set_config, "load_config", return_value=None),
+        ):
+            set_config.init_config(name)
+            self.assertEqual(init2.call_count, 2)
+
     def test_template_rel_path_only_for_template_scripts(self):
         """模板路径只覆盖走模板初始化的脚本（粥已移除模板，仅 4 个）"""
         with_template = {
@@ -142,8 +187,10 @@ class TestSharedRegistry(unittest.TestCase):
             self.assertIs(set_config._CONFIGS["MAA"]()._dailies, dailies)
             declarations.assert_called_once_with("MAA")
             template.assert_not_called()
-        for operation in (weekly_load, weekly_save, daily_load, daily_save, init):
+        for operation in (weekly_load, weekly_save, daily_load, daily_save):
             operation.assert_not_called()
+        # 构造期对齐已收口到 __init__：首次构造调用一次，缓存命中不再调用
+        init.assert_called_once()
 
     def test_menu_and_updates_use_the_same_daily(self):
         cfg = set_config._CONFIGS["ok-ww"]()

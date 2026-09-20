@@ -215,7 +215,10 @@ class TestReadbackMAA(unittest.TestCase):
                 }
             }
         }
-        with patch.object(Daily, "_load_daily_config", return_value=config):
+        with (
+            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_save_daily_config"),
+        ):
             cfg = ArknightsConfig()
             self.assertEqual(_read(cfg, "剩余理智"), (None, None))
 
