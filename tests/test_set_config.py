@@ -82,6 +82,28 @@ class TestConfigRelPaths(unittest.TestCase):
         second = set_config._CONFIGS[name]()
         self.assertIs(first, second)
 
+    def test_ensure_config_aligns_once_vs_init_config_twice(self):
+        """预热用 ensure_config 仅构造触发一次 _init_config（无重复日志）；
+
+        init_config 对缓存实例额外显式再调一次（强制重对齐，供新增/修改脚本、
+        备份恢复）。这是 #64 warmup 重复日志的根因回归点。
+        """
+        name = "BetterGI"
+        set_config._CONFIGS[name].cache_clear()
+        with (
+            patch.object(set_config.ScriptConfig, "_init_config") as init,
+            patch.object(set_config, "load_config", return_value=None),
+        ):
+            set_config.ensure_config(name)
+            self.assertEqual(init.call_count, 1)
+        set_config._CONFIGS[name].cache_clear()
+        with (
+            patch.object(set_config.ScriptConfig, "_init_config") as init2,
+            patch.object(set_config, "load_config", return_value=None),
+        ):
+            set_config.init_config(name)
+            self.assertEqual(init2.call_count, 2)
+
     def test_template_rel_path_only_for_template_scripts(self):
         """模板路径只覆盖走模板初始化的脚本（粥已移除模板，仅 4 个）"""
         with_template = {

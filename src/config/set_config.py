@@ -928,9 +928,11 @@ class ArknightsConfig(ScriptConfig):
 
 
 def init_config(script_name: str) -> None:
-    """对齐脚本 config 与模板，补全缺失字段。
+    """对齐脚本 config 与模板，补全缺失字段（强制重对齐）。
 
     仅对声明了 ``_template_rel_path`` 的脚本生效；无模板或脚本未安装/未配置时为空操作。
+    实例已缓存时不重新构造，但显式再跑一次 ``_init_config``，故用于需强制重对齐的场景
+    （新增/修改脚本、备份恢复）。启动预热等幂等场景请用 :func:`ensure_config` 避免重复对齐与日志。
 
     Args:
         script_name: 脚本标识名。
@@ -938,6 +940,21 @@ def init_config(script_name: str) -> None:
     if script_name not in _CONFIGS:
         return
     _CONFIGS[script_name]()._init_config()
+
+
+def ensure_config(script_name: str) -> None:
+    """确保脚本 config 已构造并模板对齐（幂等，不强制重对齐）。
+
+    仅经工厂构造单例；``__init__`` 内已收口 ``_init_config``，故每个进程每脚本仅对齐
+    一次，无重复日志/重复工作。供启动后预热遍历，与懒加载共用同一工厂出口。
+    需强制重对齐（新增/修改脚本、备份恢复）请用 :func:`init_config`。
+
+    Args:
+        script_name: 脚本标识名。
+    """
+    if script_name not in _CONFIGS:
+        return
+    _CONFIGS[script_name]()
 
 
 def init_config_all() -> None:
