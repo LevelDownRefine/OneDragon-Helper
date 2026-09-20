@@ -506,8 +506,16 @@ class TestWeeklyItemsReadback(unittest.TestCase):
 class TestWeeklyStartChip(unittest.TestCase):
     """周常行的「周几起」chip：条目级反读 weekly.yml 与写穿透。"""
 
-    def test_start_label_reflects_weekly_start_map(self):
-        """已设起始日的周常显示「周X起」，未设的显示占位（逐条独立）。"""
+    @patch(
+        "src.config.daily_config.read_task_source",
+        return_value=["无", "坏灭的喜剧"],
+    )
+    def test_start_label_reflects_weekly_start_map(self, _source):
+        """已设起始日的周常显示「周X起」，未设的显示占位（逐条独立）。
+
+        用真实 weekly_task_list.yml 取两条崩铁周常，故要 patch 副本来源读取——历战余响的
+        options 走 source（读游戏侧资源），CI 无 config.yml 会断言失败。
+        """
         ctrl = _make_controller()
         ctrl._app_service.get_weekly_start_for.side_effect = lambda script, name: (
             3 if name == "历战余响" else None
