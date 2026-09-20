@@ -101,6 +101,13 @@ class QmlBridge(QObject):
             self.app_service.warm_config,
             self,
         )
+
+    def start_config_warmup(self) -> None:
+        """窗口可见后启动空闲预热（由 launcher 在首帧渲染后调用）。
+
+        warmup 经 QTimer 在事件循环中逐脚本跑，错开关键路径；此处仅在
+        窗口已显示后才挂起定时器，避免装载/模态期间提前占用主线程。
+        """
         self._config_warmer.start()
 
     # ── QML 属性（委托到子控制器）────────────────────────────────────

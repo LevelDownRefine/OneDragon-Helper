@@ -11,7 +11,7 @@ import shutil
 import sys
 import time
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QFont
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 from PySide6.QtWidgets import QApplication
@@ -134,6 +134,12 @@ def _launch_qml():
     logger.info("[qml] engine loaded, rootObjects = %d", len(engine.rootObjects()))
     # load 返回时窗口已显示并 expose（首帧也在其内），无需另挂 frameSwapped。
     _log_startup("QML 装载完成（窗口已显示）")
+    # 窗口首帧渲染（已可见）后才启动空闲预热，避免装载/模态期间提前占用主线程。
+    if engine.rootObjects():
+        win = engine.rootObjects()[0]
+        win.afterSynchronizing.connect(
+            bridge.start_config_warmup, Qt.ConnectionType.SingleShotConnection
+        )
     if not engine.rootObjects():
         sys.exit(1)
     # Windows 整窗使用原生文件拖放，兼容普通资源管理器 → 管理员窗口。
