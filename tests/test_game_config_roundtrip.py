@@ -77,7 +77,7 @@ class TestGameConfigRoundTrip(unittest.TestCase):
     def test_starrail_weekly_write_round_trip(self):
         """模拟周常运行期写入（崩铁货币战争 / 历战余响）后，仍保真且注释不丢。"""
         cfg = self._load_fixture()
-        # 与 CurrencyWarsWeekly / EchoOfWarWeekly.prepare_start_day 的落盘一致
+        # 与 SwitchWeekly / EchoOfWarWeekly.prepare_start_day 的落盘一致
         cfg["currencywars_enable"] = True
         cfg["echo_of_war_start_day_of_week"] = 3
 

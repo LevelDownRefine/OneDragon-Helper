@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 from src.config import daily as daily_mod
 from src.config import set_config as set_config_mod
-from src.config import weekly as weekly_mod
 from src.config.daily import Daily
 from src.config.set_config import (
     ArknightsConfig,
@@ -228,19 +227,6 @@ class TestReadbackMAA(unittest.TestCase):
             self.assertEqual(_read(cfg, "剩余理智"), (None, None))
 
 
-class TestReadbackEchoOfWarTasks(unittest.TestCase):
-    def test_weekly_daily_task_roundtrip(self):
-        config: dict = {}
-        echo = _weekly("March7th-Launcher", "历战余响")
-        with (
-            patch.object(echo, "_load_config", return_value=config),
-            patch.object(echo, "_save_config"),
-            patch.object(weekly_mod, "safe_update", _setter),
-        ):
-            echo.set_task("铁骸的锈冢")
-            self.assertEqual(echo.read_task(), "铁骸的锈冢")
-
-
 class TestReadbackFacade(unittest.TestCase):
     def test_facade_roundtrip_okww(self):
         config: dict = {}
@@ -376,15 +362,6 @@ class TestReadbackCorruption(unittest.TestCase):
                 with self.assertRaisesRegex(AssertionError, "缺少 Routine Items 字段"):
                     daily.read_enabled()
                 load.assert_called_once_with()
-
-    def test_starrail_bad_instance_names_raises(self):
-        config = {"instance_names": "不是dict"}
-        echo = _weekly("March7th-Launcher", "历战余响")
-        with (
-            patch.object(echo, "_load_config", return_value=config),
-            self.assertRaises(AssertionError),
-        ):
-            echo.read_task()
 
 
 class TestSetDailyEnabledFacade(unittest.TestCase):

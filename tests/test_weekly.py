@@ -1,6 +1,6 @@
 """周常落点（``src.config.weekly``）：声明校验、装配、支持查询与各周常的落点读写。
 
-一条周常一个对象（崩铁两条各一个），故测试按「脚本 + 周常展示名」取对象。
+一条周常一个对象（崩铁三条各一个），故测试按「脚本 + 周常展示名」取对象。
 """
 
 import os
@@ -11,6 +11,7 @@ from src.config import weekly as weekly_mod
 from src.config.daily_config import get_weekly_map
 from src.config.set_config import _CONFIGS, ScriptConfig
 from src.config.weekly import Weekly, weeklies_of, weekly_names
+from src.utils.utils_weekly import DISABLED_START_DAY
 
 
 def _weekly(script_name: str, weekly_name: str) -> Weekly:
@@ -158,9 +159,9 @@ class TestWeeklyStartDay(unittest.TestCase):
             base.prepare_start_day(4)
 
     def test_invalid_start_day_raises(self):
-        """start_day 越界（0 / 8）→ assert"""
+        """start_day 越界（8 / -1）→ assert；0（不启用）合法。"""
         weekly = _weekly("March7th-Launcher", "货币战争")
-        for bad in (0, 8):
+        for bad in (8, -1):
             with self.subTest(bad=bad), self.assertRaises(AssertionError):
                 weekly.prepare_start_day(bad)
 
@@ -194,6 +195,48 @@ class TestWeeklyStartDay(unittest.TestCase):
         self.assertEqual(config["echo_of_war_start_day_of_week"], 1)
         mock_save.assert_called_once()
 
+    def test_currency_wars_disabled_writes_false(self):
+        """不启用（0）→ currencywars_enable=False（与「今天未到起始日」同形，但不随日期变）"""
+        weekly = _weekly("March7th-Launcher", "货币战争")
+        config = {"currencywars_enable": True}
+        with (
+            # 固定到「已到起始日」的星期，证明 False 来自「不启用」而非日期折算
+            patch("src.utils.utils_weekly.get_week_num", return_value=6),
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config") as mock_save,
+        ):
+            weekly.prepare_start_day(DISABLED_START_DAY)
+        self.assertFalse(config["currencywars_enable"])
+        mock_save.assert_called_once()
+
+    # ---- 崩铁·模拟宇宙：布尔开关（与货币战争同一机制类）----
+
+    def test_simulated_universe_enable_writes_true(self):
+        """今天已到起始日 → universe_enable=True，且不碰同文件其它字段"""
+        weekly = _weekly("March7th-Launcher", "模拟宇宙")
+        config = {"universe_enable": False, "currencywars_enable": True}
+        with (
+            patch("src.utils.utils_weekly.get_week_num", return_value=3),
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config") as mock_save,
+        ):
+            weekly.prepare_start_day(4)
+        self.assertTrue(config["universe_enable"])
+        self.assertTrue(config["currencywars_enable"])
+        mock_save.assert_called_once()
+
+    def test_simulated_universe_disabled_writes_false(self):
+        """不启用（0）→ universe_enable=False"""
+        weekly = _weekly("March7th-Launcher", "模拟宇宙")
+        config = {"universe_enable": True}
+        with (
+            patch("src.utils.utils_weekly.get_week_num", return_value=6),
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config"),
+        ):
+            weekly.prepare_start_day(DISABLED_START_DAY)
+        self.assertFalse(config["universe_enable"])
+
     # ---- 崩铁·历战余响：字面起始日（不按日期折算）----
 
     def test_echo_of_war_writes_literal_day(self):
@@ -206,7 +249,25 @@ class TestWeeklyStartDay(unittest.TestCase):
         ):
             weekly.prepare_start_day(5)
         self.assertEqual(config["echo_of_war_start_day_of_week"], 5)
+        self.assertTrue(config["echo_of_war_enable"])  # 选周几即开总开关
         self.assertTrue(config["currencywars_enable"])
+        mock_save.assert_called_once()
+
+    def test_echo_of_war_disabled_keeps_literal_day(self):
+        """不启用（0）→ 只关总开关，字面起始日保留（便于再启用）"""
+        weekly = _weekly("March7th-Launcher", "历战余响")
+        config = {
+            "currencywars_enable": True,
+            "echo_of_war_enable": True,
+            "echo_of_war_start_day_of_week": 5,
+        }
+        with (
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config") as mock_save,
+        ):
+            weekly.prepare_start_day(DISABLED_START_DAY)
+        self.assertFalse(config["echo_of_war_enable"])
+        self.assertEqual(config["echo_of_war_start_day_of_week"], 5)
         mock_save.assert_called_once()
 
     # ---- 鸣潮：Additional Tasks 列表增删 ----
@@ -468,41 +529,8 @@ class TestEndfieldWeekly(unittest.TestCase):
             mock_save.assert_called_once_with(config)
 
 
-class TestEchoOfWarTasks(unittest.TestCase):
-    """崩铁·历战余响：周常副本选型（instance_names）与编辑期字面起始日。"""
-
-    def test_set_task_writes_instance_names(self):
-        """set_task 写 config.yaml 的 instance_names[周常名]，容错建 dict。"""
-        weekly = _weekly("March7th-Launcher", "历战余响")
-        config: dict = {}
-        with (
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
-        ):
-            weekly.set_task("铁骸的锈冢")
-        mock_save.assert_called_once()
-        self.assertEqual(config["instance_names"]["历战余响"], "铁骸的锈冢")
-
-    def test_set_task_corrupt_instance_names_raises(self):
-        """instance_names 已存在但非 dict → assert（与 read_task 对称，不静默重建）。"""
-        weekly = _weekly("March7th-Launcher", "历战余响")
-        config = {"instance_names": "不是dict"}
-        with (
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
-            self.assertRaises(AssertionError),
-        ):
-            weekly.set_task("铁骸的锈冢")
-        mock_save.assert_not_called()
-
-    def test_read_task_returns_stored_value(self):
-        """read_task 读回已存副本值；未设置/无此段返回 None。"""
-        weekly = _weekly("March7th-Launcher", "历战余响")
-        config = {"instance_names": {"历战余响": "铁骸的锈冢"}}
-        with patch.object(weekly, "_load_config", return_value=config):
-            self.assertEqual(weekly.read_task(), "铁骸的锈冢")
-        with patch.object(weekly, "_load_config", return_value={}):
-            self.assertIsNone(weekly.read_task())
+class TestEchoOfWarEditTime(unittest.TestCase):
+    """崩铁·历战余响的编辑期落盘（总开关 + 字面起始日）。"""
 
     def test_set_start_day_writes_echo_field_only(self):
         """set_start_day 只写 echo 起始日字段，不动货币战争的开关字段。"""
@@ -598,11 +626,3 @@ class TestWeeklyAdapter(unittest.TestCase):
             weekly_mod.set_weekly_start_day("March7th-Launcher", "历战余响", 4)
         mock_currency.assert_not_called()  # 货币战争未覆写 set_start_day
         mock_echo.assert_called_once_with(4)
-
-    def test_task_entry_dispatches_by_name(self):
-        """副本入口按周常展示名分发；无此周常时跳过。"""
-        echo = _weekly("March7th-Launcher", "历战余响")
-        with patch.object(echo, "set_task") as mock_set:
-            weekly_mod.set_weekly_task("March7th-Launcher", "历战余响", "铁骸的锈冢")
-            weekly_mod.set_weekly_task("March7th-Launcher", "没有的周常", "铁骸的锈冢")
-        mock_set.assert_called_once_with("铁骸的锈冢")

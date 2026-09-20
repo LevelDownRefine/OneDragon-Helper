@@ -263,11 +263,11 @@ class TestWeeklyStartBridge(unittest.TestCase):
     """「周几起」经 Bridge 暴露：候选列表与按条写回（weekly.yml 的 weekly_start 段）。"""
 
     def test_weekly_start_options_forwarded(self):
-        """候选为周一~周日七项，value 即写回用的起始日。"""
+        """候选为「不启用 + 周一~周日」八项，value 即写回用的起始日。"""
         b = _make_bridge()
         self.assertEqual(
             [option["value"] for option in b.weeklyStartOptions()],
-            [1, 2, 3, 4, 5, 6, 7],
+            [0, 1, 2, 3, 4, 5, 6, 7],
         )
 
     def test_select_weekly_start_writes_intent_and_game_side(self):

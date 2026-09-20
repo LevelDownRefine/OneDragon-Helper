@@ -340,8 +340,10 @@ class TestArknightsWeeklyStartDayRobustness(unittest.TestCase):
     """
 
     def test_invalid_day_still_asserted(self):
-        with self.assertRaises(AssertionError):
-            _weekly("MAA", "理智药剂").set_start_day(0)
+        # 0（不启用）合法，越界值仍须拦截
+        for bad in (8, -1):
+            with self.subTest(bad=bad), self.assertRaises(AssertionError):
+                _weekly("MAA", "理智药剂").set_start_day(bad)
 
 
 class TestLoadConfig(unittest.TestCase):

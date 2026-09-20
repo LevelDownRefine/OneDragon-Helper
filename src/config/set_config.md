@@ -146,18 +146,18 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 
 `MaaDaily` 按声明物理名绑定一个原生 `FightTask`，理智作战与剩余理智分别选择一个关卡、独立启停；`MaaActivityDaily` 增加本地活动资源读取与初始化过期检查。新任务从随项目发布的 `MAA任务.json` 创建，不借用其他任务。`ArknightsConfig._init_config` 安排必刷剿灭和三个入口、清理额外 Fight，保留非战斗项。实际执行及关卡开放判断由 MAA 负责，字段依据和完整行为见 [MAA 原生刷图适配](../../docs/maa-adapter.md)。
 
-## 周常（周几起 / 周常副本）
+## 周常（周几起 / 副本选型）
 
 整体归 **`src/config/weekly.py`**，本适配器只负责在构造期装配周常对象（`self._weeklies`）：
 
-- **一条周常一个对象**（一个脚本可有多条：崩铁的货币战争与历战余响各一个）；声明（`weekly_task_list.yml`）每条必填 `class`（机制类，`WEEKLY_CLASSES` 查表）与 `config`（读写主文件）——与日常同构，只是粒度落在「每一条周常」。
+- **一条周常一个对象**（一个脚本可有多条：崩铁的货币战争 / 历战余响 / 模拟宇宙各一个）；声明（`weekly_task_list.yml`）每条必填 `class`（机制类，`WEEKLY_CLASSES` 查表）与 `config`（读写主文件），可选 `key`（原生字段名）与 `enable_key`（启用开关字段，落点本身不是布尔开关时才需要）——与日常同构，只是粒度落在「每一条周常」。
 - **装配时机与日常一致**：`ScriptConfig.__init__` 内 `build_weeklies(script_name, display_name)` 按声明逐条建对象，与 `_dailies` 同点；无周常声明的脚本得到空列表。对象由 weekly 模块缓存（`_BUILT`），模块级入口取同一批。
-- `Weekly` 基类自持 config 读/写（`_load_config` / `_save_config`，共用 `utils_sub_config` 的 `load_script_config` / `save_script_config`）与起始日校验；六条周常各自覆写运行期落点 `prepare_start_day`。
-- 三类入口按真相归属分开：`prepare_start_day`（运行期唯一写入口，按「今天是否到起始日」折算）、`set_start_day` / `set_task`（编辑期字面落盘，仅崩铁历战余响与粥覆写）、`read_task`（反读已选副本，仅崩铁历战余响覆写）。未覆写即该条周常无此能力，模块入口按「是否覆写」优雅跳过。
-- **周几起是条目级**：`weekly.yml` 的 `weekly_start` 段为 `{脚本: {周常展示名: 1~7}}`，每条周常各一个起始日。任务卡按行渲染：每条周常一个「周几起」chip，紧邻该条的「副本」chip（需选副本时）——两块合计宽等于日常行单个 chip 宽，右边界对齐；**无需选副本的周常只有「周几起」一块，独占整宽**（`Layout.js` 的 `chipWidth` / `chipGap` / `weeklyStartChipWidth`）。
-- **任务卡是周几起的唯一界面入口**（单脚本配置弹窗里的那一行已移除）。写回按条（`AppService.set_weekly_start_for`，不触碰同脚本其它周常）：weekly.yml 的 `weekly_start` 段（意图）+ 该条的**游戏侧字面起始日字段**（仅覆写 `set_start_day` 的周常有，见下方分层）。CLI 的 `--weekly-start` 仍是脚本级单值（`AppService.set_weekly_start` 展开写给该脚本全部周常）。
+- `Weekly` 基类自持 config 读/写（`_load_config` / `_save_config`，共用 `utils_sub_config` 的 `load_script_config` / `save_script_config`）与起始日校验；各周常按自身形态覆写运行期落点 `prepare_start_day`。
+- 三类入口按真相归属分开：`prepare_start_day`（运行期唯一写入口，按「今天是否到起始日」折算）、`set_start_day`（编辑期落盘，仅需要字面字段 / 额外开关的周常覆写）、`set_task` / `read_task`（副本选型，当前无周常声明 `options`，机制保留待用）。未覆写即该条周常无此能力，模块入口按「是否覆写」优雅跳过。
+- **周几起是条目级**：`weekly.yml` 的 `weekly_start` 段为 `{脚本: {周常展示名: 0 | 1~7}}`，`0`（`DISABLED_START_DAY`）表示**不启用**——每次运行都把开关写成关闭，与「未设置」（条目缺席、不动开关）不同。任务卡按行渲染：每条周常一个「周几起」chip，紧邻该条的「副本」chip（需选副本时）——两块合计宽等于日常行单个 chip 宽，右边界对齐；**无需选副本的周常只有「周几起」一块，独占整宽**（`Layout.js` 的 `chipWidth` / `chipGap` / `weeklyStartChipWidth`）。下拉候选 = 不启用 + 周一~周日。
+- **任务卡是周几起的唯一界面入口**（单脚本配置弹窗里的那一行已移除）。写回按条（`AppService.set_weekly_start_for`，不触碰同脚本其它周常）：weekly.yml 的 `weekly_start` 段（意图）+ 该条的**游戏侧字段**（字面起始日 / 总开关，仅覆写 `set_start_day` 的周常有，见下方分层）。CLI 的 `--weekly-start` 仍是脚本级单值（`AppService.set_weekly_start` 展开写给该脚本全部周常）。
 - **旧版单值自动迁移**：读到 `{脚本: 1~7}` 时按该脚本声明的周常展开成条目级并写回（一次性，`utils_weekly._load_weekly_start`），语义等价（旧单值 = 该脚本全部周常同一天）；不可展开的条目告警后丢弃。
-- 模块级入口：`supports_weekly`（看声明）/ `prepare_weekly_start_days`（运行期，按条目分发）/ `set_weekly_start_day`（编辑期，按条写游戏侧字面字段）/ `set_weekly_task` / `get_weekly_task` / `weekly_names`；调用方（`cli` / `service.app_service` / `gui.controllers.task_card` / `service.run_actions`）直接 import 本模块。
+- 模块级入口：`supports_weekly`（看声明）/ `prepare_weekly_start_days`（运行期，按条目分发）/ `set_weekly_start_day`（编辑期，按条写游戏侧字段）/ `set_weekly_task` / `get_weekly_task` / `weekly_names`；调用方（`cli` / `service.app_service` / `gui.controllers.task_card` / `service.run_actions`）直接 import 本模块。
 
 各周常落点：
 
@@ -166,15 +166,24 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 | 鸣潮 / 幻梦游园 | `WutheringWavesWeekly` | `Additional Tasks to Run After Daily Task` 列表增删 `Check Weekly Garden` |
 | 终末地 / 卖出物资 | `EndfieldWeekly` | `DailyTask.json` 的「只买不卖」布尔（语义反相） |
 | 绝区零 / 迷失之地 | `ZenlessZoneZeroWeekly` | `_group.yml` 的 `app_list` 中 `lost_void.enabled` |
-| 崩铁 / 货币战争 | `CurrencyWarsWeekly` | `config.yaml` 的 `currencywars_enable`（按周几起门控） |
-| 崩铁 / 历战余响 | `EchoOfWarWeekly` | `config.yaml` 的 `echo_of_war_start_day_of_week`（字面起始日，交 M7A 自行门控）+ 副本选型 `instance_names` |
-| 粥 / 理智药剂 | `ArknightsWeekly` | 所有 FightTask 临期药常开，`MedicineExpireDays = 8 - 周几起`；运行前只同步窗口及兜底开关 |
+| 崩铁 / 货币战争 | `SwitchWeekly` | `config.yaml` 的 `currencywars_enable`（按周几起门控） |
+| 崩铁 / 模拟宇宙 | `SwitchWeekly` | `config.yaml` 的 `universe_enable`（同上；M7A 无周几起字段） |
+| 崩铁 / 历战余响 | `EchoOfWarWeekly` | `config.yaml` 的 `echo_of_war_enable`（总开关）+ `echo_of_war_start_day_of_week`（字面起始日，交 M7A 自行门控） |
+| 粥 / 理智药剂 | `ArknightsWeekly` | 所有 FightTask 的 `UseExpiringMedicine` + `MedicineExpireDays = 8 - 周几起`；运行前只同步窗口及兜底开关 |
 
-前五条用 `is_weekly_start_reached(start_day)` 得出「今天是否已到起始日」再写开关（历战余响写字面日、不经该门控）；粥不经过该门控。
+前四条（含 `SwitchWeekly` 两条）用 `is_weekly_start_reached(start_day)` 得出「今天是否已到起始日」再写开关；历战余响写字面日、不经该门控；粥按公式直接写窗口、也不经门控。
 
-> 与编辑期的 `set_start_day`（历战余响 / 粥覆写，只落盘字面起始日、不动开关）分层：`prepare_start_day` 是运行期入口，`set_start_day` 是编辑期入口。
+> 与编辑期的 `set_start_day`（历战余响 / 粥覆写，落盘游戏侧字段、不动运行期开关）分层：`prepare_start_day` 是运行期入口，`set_start_day` 是编辑期入口。
 
-适配周常的脚本：ok-ww、ok-ef、OneDragon-Launcher、March7th-Launcher、MAA（共 6 条周常）；其余脚本的模块级入口优雅跳过。
+**「不启用」的支持程度**（`is_weekly_start_reached(DISABLED_START_DAY)` 恒为 False，故折算型开关全部免改即成）：
+
+| 周常 | 不启用怎么写 |
+|------|------|
+| 鸣潮 / 终末地 / 绝区零 / 货币战争 / 模拟宇宙 | 折算结果即 False → 移除列表项 / 写反向布尔 / 写 `enabled=false` / 写开关 false |
+| 崩铁 / 历战余响 | 写 `echo_of_war_enable=false`；字面起始日保留，便于再启用 |
+| 粥 / 理智药剂 | 关闭所有战斗任务的 `UseExpiringMedicine`；窗口值保留 |
+
+适配周常的脚本：ok-ww、ok-ef、OneDragon-Launcher、March7th-Launcher、MAA（共 7 条周常）；其余脚本的模块级入口优雅跳过。
 
 ## 安全字段更新 safe_update
 

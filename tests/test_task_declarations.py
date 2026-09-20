@@ -11,6 +11,7 @@ from src.config import task_config
 from src.config import weekly as weekly_mod
 from src.config.daily import Daily
 from src.config.set_config import ArknightsConfig, NTEConfig, WutheringWavesConfig
+from src.utils.utils_weekly import DISABLED_START_DAY
 
 
 def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
@@ -167,26 +168,24 @@ class TestDeclarationBindings(unittest.TestCase):
             )
 
     def test_weekly_aliases_and_literal_start_day_roundtrip(self):
+        """周常声明里的 key / enable_key 生效：改声明即改落点字段（含不启用分支）。"""
         declaration = self.weekly["March7th-Launcher"][1]
-        declaration["physical_name"] = "NativeWeekly"
         declaration["key"] = "NativeStartDay"
-        declaration["options"] = {
-            "values": [{"display_name": "副本别名", "physical_name": "NativeStage"}]
-        }
+        declaration["enable_key"] = "NativeEnable"
         weekly = self.make_weekly("EchoOfWarWeekly", "March7th-Launcher", declaration)
-        config = {"currencywars_enable": False, "instance_names": {"untouched": "keep"}}
+        config = {"currencywars_enable": False}
         with (
             patch.object(weekly, "_load_config", return_value=config),
             patch.object(weekly, "_save_config"),
         ):
-            weekly.set_task("副本别名")
-            self.assertEqual(weekly.read_task(), "副本别名")
             weekly.set_start_day(4)
+            self.assertEqual(config["NativeStartDay"], 4)
+            self.assertTrue(config["NativeEnable"])
+            weekly.set_start_day(DISABLED_START_DAY)
+        # 不启用只关总开关，字面起始日保留；同文件其它周常不受影响
         self.assertEqual(config["NativeStartDay"], 4)
-        self.assertEqual(
-            config["instance_names"],
-            {"untouched": "keep", "NativeWeekly": "NativeStage"},
-        )
+        self.assertFalse(config["NativeEnable"])
+        self.assertFalse(config["currencywars_enable"])
 
     def test_weekly_list_membership_uses_declared_field_and_value(self):
         declaration = self.weekly["ok-ww"][0]

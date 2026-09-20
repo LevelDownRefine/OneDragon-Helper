@@ -510,13 +510,15 @@ class TestQmlApp(unittest.TestCase):
 class TestTaskCardPopupGeometry(unittest.TestCase):
     """下拉必须完整落在窗口内：超出窗口的部分不可见且滚不到（副本显示不全）。
 
-    崩铁历战余响 9 个副本原先锚在周常区下方（卡片 y≈242 → 窗口 y≈634），
-    弹窗高 296 越过 720 底边；又因内容(286) < 视口(288) 而无法滚动，
-    实际只看得到 3 个。placePopup 在下方装不下时上翻并按余量封顶高度。
+    弹窗原先锚在周常区下方（卡片 y≈242 → 窗口 y≈634），长清单高度越过 720 底边；
+    又因内容 < 视口而无法滚动，实际只看得到 3 项。placePopup 在下方装不下时上翻并按余量封顶。
+
+    真实声明当前无周常带副本选型，故这里桩掉周常菜单，给一条带 9 个副本的假声明——
+    本用例只验证弹窗几何，与真实清单内容无关。
     """
 
     def test_popups_fit_inside_window(self):
-        """离屏加载 main.qml，打开两个下拉，断言几何完整落在窗口内。"""
+        """离屏加载 main.qml，打开周常 / 日常两个下拉，断言几何完整落在窗口内。"""
         code = textwrap.dedent(
             """
             import os
@@ -532,26 +534,29 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             from src.service.app_service import AppService
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
-            import src.config.daily_config as daily_config
 
             app = QApplication([])
-            # 崩铁：真实 config/weekly_list.yml 里历战余响声明了 9 个副本。
-            # 但副本清单现由游戏脚本外部文件（instance_names.json）运行期读取，
-            # CI 未安装游戏故读不到；此处直接桩掉派发器，提供确定性的 9 个副本，
-            # 仅用于验证弹窗几何（与真实清单内容无关）。
             scripts = [{
                 "display_name": "崩坏：星穹铁道",
                 "script_path": "scripts/March7th-Launcher/March7th-Launcher.exe",
                 "script_type": "external",
             }]
             fake_tasks = [f"副本{i}" for i in range(1, 10)]
+            fake_weekly = [{
+                "display_name": "历战余响",
+                "options": {
+                    "values": [
+                        {"display_name": t, "physical_name": t} for t in fake_tasks
+                    ]
+                },
+            }]
             with (
                 patch.object(AppService, "load_config",
                              return_value={"script_list": scripts}),
                 patch.object(main_window.BackgroundController, "resolve_bg",
                              return_value=None),
-                patch.object(daily_config, "read_task_source",
-                             return_value=fake_tasks),
+                patch("src.service.app_service.get_weekly_map",
+                      return_value=fake_weekly),
             ):
                 with (
                     patch("src.service.daily_plan.load_schedule", return_value={}),
@@ -723,11 +728,8 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             from src.gui.main_window import QmlBridge
 
             app = QApplication([])
-            # 崩铁 March7th-Launcher：weekly_list.yml 声明 2 种周常
-            # （货币战争 / 历战余响），历战余响 tasks_source=assets/config/instance_names.json
-            # 运行期从 M7A 的 instance_names.json 读取。CI 无 M7A，此处 patch 模拟已装，
-            # 返回历战余响的 9 个副本键（与真实 instance_names.json 一致），验证副本下拉
-            # 几何（>3 个需 placePopup 上翻封顶）。
+            # 崩铁 March7th-Launcher：weekly_task_list.yml 声明 3 种周常
+            # （货币战争 / 历战余响 / 模拟宇宙），均无副本选型，故不读游戏侧资源。
             scripts = [{
                 "display_name": "崩坏：星穹铁道",
                 "script_path": "scripts/March7th-Launcher/March7th-Launcher.exe",
@@ -788,10 +790,10 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 sec_gap = int(parts[7])
                 bot_pad = int(parts[9])
         self.assertEqual(visible, "True", f"崩铁应显示周常区，stdout={proc.stdout}")
-        # 周常区 = 项数(2) * 行高(56) = 112（底部留白不在区块高度里）
-        # 卡片 = 68（日常区上沿）+ 56*1（崩铁一个日常）+ 112 + 卡片底部留白(16) = 252
-        self.assertEqual(wk_h, 112, f"周常区高度应=112，stdout={proc.stdout}")
-        self.assertEqual(card_h, 252, f"卡片高度应=252，stdout={proc.stdout}")
+        # 周常区 = 项数(3) * 行高(56) = 168（底部留白不在区块高度里）
+        # 卡片 = 68（日常区上沿）+ 56*1（崩铁一个日常）+ 168 + 卡片底部留白(16) = 308
+        self.assertEqual(wk_h, 168, f"周常区高度应=168，stdout={proc.stdout}")
+        self.assertEqual(card_h, 308, f"卡片高度应=308，stdout={proc.stdout}")
         # 区块间距为 0：任务行自带上下留白（各 10），区块外沿直接相接时
         # 「日常→周常」的净距 = 20 = 「日常→日常」的行间净距，纵向节奏才一致。
         self.assertEqual(
@@ -804,8 +806,8 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
 class TestWeeklyRowChipGeometry(unittest.TestCase):
     """周常行拆成「周几起 + 副本」两块 chip：合计宽 = 日常单个 chip 宽，右边界对齐。
 
-    崩铁两条周常恰好覆盖两种形态：货币战争无副本选型（只有周几起）、历战余响需选副本
-    （周几起 + 副本并存），故用同一张卡同时验证两条路径。
+    真实声明当前无周常带副本选型，故桩掉周常菜单，用两条假周常同时覆盖两种形态：
+    无副本（只有周几起，独占整宽）与有副本（周几起 + 副本各占半宽）。
     """
 
     def test_weekly_chips_split_daily_chip_width(self):
@@ -830,13 +832,27 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
                 "script_path": "scripts/March7th-Launcher/March7th-Launcher.exe",
                 "script_type": "external",
             }]
+            # 真实声明当前无周常带副本选型，故桩掉周常菜单，给两条假周常覆盖两种形态：
+            # 无副本（周几起独占整宽）与有副本（周几起 + 副本各占半宽）。
+            fake_weekly = [
+                {"display_name": "无副本周常"},
+                {
+                    "display_name": "有副本周常",
+                    "options": {
+                        "values": [
+                            {"display_name": f"副本{i}", "physical_name": f"副本{i}"}
+                            for i in range(1, 4)
+                        ]
+                    },
+                },
+            ]
             patch.object(AppService, "load_config",
                          return_value={"script_list": scripts}).start()
             patch.object(main_window.BackgroundController, "resolve_bg",
                          return_value=None).start()
-            patch("src.config.daily_config.read_task_source",
-                  return_value=["无", "坏灭的喜剧", "铁骸的锈冢"]).start()
-            # 周几起与副本选型均落用户文件：指向不存在的路径，按「未设置」回退。
+            patch("src.service.app_service.get_weekly_map",
+                  return_value=fake_weekly).start()
+            # 周几起落用户文件：指向不存在的路径，按「未设置」回退。
             patch("src.utils.utils_weekly.get_weekly_yml_path_under_root",
                   return_value="__no_weekly_yml__").start()
             patch("src.service.daily_plan.load_schedule", return_value={}).start()
@@ -871,12 +887,12 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
                 print("TASK0", chip("weeklyTaskButton0"))
                 print("START1", chip("weeklyStartButton1"))
                 print("TASK1", chip("weeklyTaskButton1"))
-                # 副本下拉：打开「历战余响」那行的下拉，检查它挂在副本 chip 下面
+                # 副本下拉：打开「有副本周常」那行的下拉，检查它挂在副本 chip 下面
                 area = found["weeklyArea"]
                 row_h = int(area.property("rowH"))
                 top = area.y() + row_h
                 popup = found["weeklyPopup"]
-                popup.setProperty("weeklyName", "历战余响")
+                popup.setProperty("weeklyName", "有副本周常")
                 popup.setProperty("anchorTop", top)
                 popup.setProperty("anchorBottom", top + row_h)
                 popup.setProperty("visible", True)
@@ -933,8 +949,8 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
         gap = task1[0] - (start1[0] + start1[1])
         self.assertEqual(start1[1] + gap + task1[1], daily_w)
         self.assertEqual(task1[0] + task1[1], daily[0] + daily_w)
-        # 货币战争无副本选型：只有周几起，且它独占整宽、与日常 chip 等宽（完全对齐）；
-        # 历战余响：周几起 + 副本并存
+        # 无副本选型：只有周几起，且它独占整宽、与日常 chip 等宽（完全对齐）；
+        # 有副本选型：周几起 + 副本并存
         self.assertEqual(task0[2], 0, "无需选副本的周常不应显示副本 chip")
         self.assertEqual(
             start0[1], daily_w, "无副本选型时「周几起」应独占整宽，与日常 chip 对齐"

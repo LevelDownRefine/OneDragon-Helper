@@ -1,19 +1,22 @@
 """一条周常的落点：由 ``weekly_task_list.yml`` 一条声明解析出的读写规则。
 
-与日常同构——**一条周常一个对象**（一个脚本可有多条，如崩铁的货币战争与历战余响），
-声明里用 ``class`` 标机制类（``WEEKLY_CLASSES`` 查表）、``config`` 标读写的主文件；
-对象由 ``ScriptConfig`` 在构造期经 :func:`build_weeklies` 装配并持有，故初始化时机与日常一致。
+与日常同构——**一条周常一个对象**（一个脚本可有多条，如崩铁的货币战争 / 历战余响 /
+模拟宇宙），声明里用 ``class`` 标机制类（``WEEKLY_CLASSES`` 查表）、``config`` 标读写的
+主文件；对象由 ``ScriptConfig`` 在构造期经 :func:`build_weeklies` 装配并持有，故初始化
+时机与日常一致。
 
-周几起（``weekly.yml`` 的 ``weekly_start`` 段）是**条目级**的：每条周常各有一个起始日。
+周几起（``weekly.yml`` 的 ``weekly_start`` 段）是**条目级**的：每条周常各有一个起始日；
+取值 ``DISABLED_START_DAY``（= 0）表示**不启用**——每次运行都把开关写成关闭，与「未设置」
+（条目缺席、不动开关）不同。
 
 三类入口按真相归属分开：
 
 - ``prepare_start_day``：运行期唯一写入口，按「今天是否到起始日」折算后写开关；
-- ``set_start_day`` / ``set_task``：编辑期字面落盘，仅需要字面字段 / 副本选型的周常覆写；
-- ``read_task``：反读已选副本，仅崩铁的历战余响覆写。
+- ``set_start_day``：编辑期字面落盘，仅需要字面字段 / 额外开关的周常覆写；
+- ``set_task`` / ``read_task``：副本选型（当前无周常声明 ``options``，机制保留待用）。
 
 落点形态随周常而异（Additional Tasks 列表增删、布尔字段、``_group.yml`` 的 app 条目、
-TaskQueue 公式、instance_names），各由子类覆写；基类只兜底 assert。
+TaskQueue 公式），各由子类覆写；基类只兜底 assert。
 """
 
 import logging
@@ -21,7 +24,7 @@ import logging
 from src.config.task_config import get_physical_name, get_value_map, load_weekly_map
 from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import load_script_config, save_script_config
-from src.utils.utils_weekly import is_weekly_start_reached
+from src.utils.utils_weekly import DISABLED_START_DAY, is_weekly_start_reached
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,8 @@ class Weekly:
         self.physical_name: str | int = get_physical_name(declaration)
         self._config_rel_path: str = declaration["config"]
         self._key: str = declaration.get("key", "")
+        self._enable_key: str = declaration.get("enable_key", "")
+        """启用开关的原生字段名；落点本身不是布尔开关时才需要声明（如历战余响）。"""
         self._task_values: dict[str, str | int] = get_value_map(declaration)
         """该周常的「展示名 → 物理值」映射（副本选型用）；声明走资源来源时为空。"""
 
@@ -97,13 +102,14 @@ class Weekly:
         """校验周常起始日，供各子类写入口首行调用。
 
         Args:
-            start_day: 周几以后启用（1~7，1=周一）。
+            start_day: 周几以后启用（1~7，1=周一）；``DISABLED_START_DAY`` 表示不启用。
 
         Raises:
-            AssertionError: start_day 不在 1~7。
+            AssertionError: start_day 既不是 DISABLED_START_DAY 也不在 1~7。
         """
-        assert 1 <= start_day <= 7, (
-            f"[weekly][{self.display_name}] 非法周常起始日: {start_day}（应为 1~7）"
+        assert start_day == DISABLED_START_DAY or 1 <= start_day <= 7, (
+            f"[weekly][{self.display_name}] 非法周常起始日: {start_day}"
+            "（应为 0（不启用）或 1~7）"
         )
 
     def prepare_start_day(self, start_day: int) -> None:
@@ -244,15 +250,19 @@ class ZenlessZoneZeroWeekly(Weekly):
         self._save_config(config)
 
 
-# ---- 崩铁 Honkai: Star Rail：货币战争 ----
-class CurrencyWarsWeekly(Weekly):
-    """崩铁·货币战争：开关型周本，M7A 无自身周几起门控，由本工具落盘布尔开关。"""
+# ---- 通用：按周几起折算写布尔开关（崩铁的货币战争 / 模拟宇宙）----
+class SwitchWeekly(Weekly):
+    """开关型周常：游戏侧只有一个布尔开关，按周几起折算后写 ``key``。
+
+    适用于 M7A 里没有自身「周几起」门控、只给一个开关的功能（货币战争 / 模拟宇宙）——
+    由本工具在运行期按「今天是否已到起始日」决定该开关的取值。
+    """
 
     def prepare_start_day(self, start_day: int) -> None:
-        """按周几起写布尔开关（今天已到起始日才为 True）。
+        """按周几起写布尔开关（今天已到起始日、且非「不启用」才为 True）。
 
         Args:
-            start_day: 周几以后启用（1~7，1=周一）。
+            start_day: 周几以后启用（1~7，1=周一）；``DISABLED_START_DAY`` 表示不启用。
 
         Raises:
             AssertionError: 起始日越界。
@@ -270,27 +280,31 @@ class CurrencyWarsWeekly(Weekly):
 
 # ---- 崩铁 Honkai: Star Rail：历战余响 ----
 class EchoOfWarWeekly(Weekly):
-    """崩铁·历战余响：任务型周本，周几起写字面字段交 M7A 自身门控，另带副本选型。"""
+    """崩铁·历战余响：任务型周本，周几起写字面字段交 M7A 自身门控。
+
+    M7A 另有一个总开关（声明 ``enable_key``），故「不启用」写它、不动字面起始日——
+    保留用户原选择，便于再启用。
+    """
 
     def prepare_start_day(self, start_day: int) -> None:
-        """按周几起写字面起始日，由 M7A 自身按该日门控。
+        """按周几起写总开关与字面起始日，由 M7A 自身按该日门控。
 
         Args:
-            start_day: 周几以后启用（1~7，1=周一）。
+            start_day: 周几以后启用（1~7，1=周一）；``DISABLED_START_DAY`` 表示不启用。
 
         Raises:
-            AssertionError: 起始日越界。
+            AssertionError: 起始日越界，或未声明 enable_key。
         """
         self._check_start_day(start_day)
         config = self._load_config()
-        safe_update(config, self._key, start_day, self.display_name)
+        self._apply_start_day(config, start_day)
         self._save_config(config)
 
     def set_start_day(self, start_day: int) -> None:
-        """编辑期只落盘字面起始日，无需等链运行。
+        """编辑期落盘总开关与字面起始日，无需等链运行。
 
         Args:
-            start_day: 周几以后启用（1~7，1=周一）。
+            start_day: 周几以后启用（1~7，1=周一）；``DISABLED_START_DAY`` 表示不启用。
 
         Raises:
             AssertionError: 起始日越界，或游戏原生 config 读不出来（文件缺失/损坏）。
@@ -300,60 +314,40 @@ class EchoOfWarWeekly(Weekly):
         # 调用前保证；本方法假设该前置成立，不做存在性兜底盘——写路径必须按 load_script_config
         # 的契约报错，否则会把读不出来的 config 当成空 dict 整份覆盖成单字段存根。
         config = self._load_config()
-        # 字段本身可能尚不存在（首次设置）故允许新增。
+        self._apply_start_day(config, start_day)
+        self._save_config(config)
+
+    def _apply_start_day(self, config: dict, start_day: int) -> None:
+        """把「周几起 / 不启用」写进 config（两个入口共用）。
+
+        字段本身在真实 M7A 配置里都存在；首次使用（或配置被清）时允许新增。
+
+        Args:
+            config: 待修改的 config dict（就地改）。
+            start_day: 周几起；``DISABLED_START_DAY`` 表示不启用。
+
+        Raises:
+            AssertionError: 未声明 enable_key（声明错误）。
+        """
+        assert self._enable_key, (
+            f"[weekly][{self.display_name}] 未声明 enable_key，无法表达启用/不启用"
+        )
+        enabled = start_day != DISABLED_START_DAY
         safe_update(
             config,
-            self._key,
-            start_day,
+            self._enable_key,
+            enabled,
             self.display_name,
             assert_key_exists=False,
         )
-        self._save_config(config)
-
-    def set_task(self, task_name: str) -> None:
-        """写入当前选中的副本名到 config.yaml 的 instance_names。
-
-        副本名清单的展示与下拉选项由 ``weekly_task_list.yml`` 声明负责，本方法只承担
-        把用户所选写回 M7A 游戏配置的本分。
-
-        Args:
-            task_name: 选中的副本名（来自声明）。
-        """
-        config = self._load_config()
-        # instance_names 是 M7A 约定键名（{周常名: 副本名} 的 dict）；仅首次使用时新建，
-        # 已存在则由 get_field 校验类型——与 read_task 对称，不静默抹掉损坏值。
-        if "instance_names" not in config:
+        if enabled:
             safe_update(
                 config,
-                "instance_names",
-                {},
+                self._key,
+                start_day,
                 self.display_name,
                 assert_key_exists=False,
             )
-        instance_names = get_field(config, "instance_names", self.display_name, dict)
-        if self._task_values:
-            assert task_name in self._task_values, f"未知周常副本: {task_name!r}"
-            task_name = self._task_values[task_name]
-        instance_names[self.physical_name] = task_name
-        self._save_config(config)
-
-    def read_task(self) -> str | None:
-        """反读当前选中的副本名（与 set_task 对称）。
-
-        Returns:
-            当前选中的副本名；脚本未安装或未配置周常副本时返回 None。
-        """
-        config = self._load_config(allow_missing=True)
-        if config is None:
-            return None  # 脚本未安装/未配置
-        if "instance_names" not in config:
-            return None  # 未配置周常副本
-        instance_names = get_field(config, "instance_names", self.display_name, dict)
-        # 未选周常副本时返回 None。
-        value = instance_names.get(self.physical_name, None)
-        names = {value: name for name, value in self._task_values.items()}
-        # 未维护别名的上游副本直接显示原生值。
-        return names.get(value, value)
 
 
 # ---- 明日方舟 Arknights（粥）：理智药剂 ----
@@ -381,51 +375,90 @@ class ArknightsWeekly(Weekly):
         return get_field(profile, "TaskQueue", self.display_name, list, "weekly")
 
     def prepare_start_day(self, start_day: int) -> None:
-        """按周几起写临期窗口，并兜底开启所有战斗的临期药。
+        """按周几起写临期窗口并开启临期药；不启用则只关临期药。
 
-        与其它周常的二值开关不同，本方法每次调用都按公式直接写入（不按「今天是否到
-        起始日」门控）：周几起 = 7 - MedicineExpireDays + 1 ⇒ 窗口 = 8 - 周几起。
+        与其它周常的二值开关不同，本方法按公式直接写入窗口（不按「今天是否到起始日」
+        门控）：周几起 = 7 - MedicineExpireDays + 1 ⇒ 窗口 = 8 - 周几起。
+        ``DISABLED_START_DAY`` 时只关临期药开关，窗口值保留（便于再启用）。
 
         Args:
-            start_day: 周几起（1~7，1=周一）。
+            start_day: 周几起（1~7，1=周一）；``DISABLED_START_DAY`` 表示不启用。
         """
         self._check_start_day(start_day)
         config = self._load_config()
         task_queue = self._task_queue(config)
-        expire_days = 8 - start_day
-        if self._write_expire_window(task_queue, expire_days, enable_medicine=True):
-            logger.info(f"[weekly][{self.display_name}] 理智药剂配置已更新")
-            self._save_config(config)
+        if start_day == DISABLED_START_DAY:
+            changed = self._write_medicine_switch(task_queue, False)
         else:
-            logger.info(f"[weekly][{self.display_name}] 理智药剂配置无需更新")
+            changed = self._write_expire_window(task_queue, 8 - start_day)
+            changed |= self._write_medicine_switch(task_queue, True)
+        self._log_and_save(config, changed, "理智药剂配置")
 
     def set_start_day(self, start_day: int) -> None:
-        """编辑期只落盘临期窗口（= 8 - 周几起），不改临期药开关。
+        """编辑期只落盘临期窗口（= 8 - 周几起）；不启用时只关临期药开关。
 
         Args:
-            start_day: 周几以后启用（1~7，1=周一）。
+            start_day: 周几起（1~7，1=周一）；``DISABLED_START_DAY`` 表示不启用。
+
+        Raises:
+            AssertionError: 起始日越界，或游戏原生 config 读不出来（文件缺失/损坏）。
         """
         self._check_start_day(start_day)
         # 前置条件：游戏原生 config 已存在（游戏已安装、script_path 正确），由 GUI 侧
         # 调用前保证；缺失即前置不成立，直接断言失败，不做存在性兜底盘。
         config = self._load_config()
         task_queue = self._task_queue(config)
-        expire_days = 8 - start_day
-        if self._write_expire_window(task_queue, expire_days, enable_medicine=False):
-            logger.info(f"[weekly][{self.display_name}] 理智药剂过期窗口已更新")
-            self._save_config(config)
+        if start_day == DISABLED_START_DAY:
+            changed = self._write_medicine_switch(task_queue, False)
         else:
-            logger.info(f"[weekly][{self.display_name}] 理智药剂过期窗口无需更新")
+            changed = self._write_expire_window(task_queue, 8 - start_day)
+        self._log_and_save(config, changed, "理智药剂过期窗口")
 
-    def _write_expire_window(
-        self, task_queue: list[dict], expire_days: int, *, enable_medicine: bool
-    ) -> bool:
-        """把临期窗口写进所有战斗任务，返回是否有实际修改。
+    def _log_and_save(self, config: dict, changed: bool, what: str) -> None:
+        """按本次是否有实际修改记日志，有改动才落盘。
+
+        Args:
+            config: 已就地修改的 config dict。
+            changed: 本次是否有字段被修改。
+            what: 日志里的改动对象名。
+        """
+        if not changed:
+            logger.info(f"[weekly][{self.display_name}] {what}无需更新")
+            return
+        logger.info(f"[weekly][{self.display_name}] {what}已更新")
+        self._save_config(config)
+
+    def _write_expire_window(self, task_queue: list[dict], expire_days: int) -> bool:
+        """把临期窗口天数写进所有战斗任务，返回是否有实际修改。
 
         Args:
             task_queue: 原生任务队列。
             expire_days: 临期窗口天数（= 8 - 周几起）。
-            enable_medicine: 是否同时开启临期药开关（编辑期只写窗口）。
+
+        Returns:
+            是否真的有字段被修改。
+        """
+        return self._write_fight_tasks(task_queue, "MedicineExpireDays", expire_days)
+
+    def _write_medicine_switch(self, task_queue: list[dict], enabled: bool) -> bool:
+        """开关所有战斗任务的临期药，返回是否有实际修改。
+
+        Args:
+            task_queue: 原生任务队列。
+            enabled: 临期药开关取值。
+
+        Returns:
+            是否真的有字段被修改。
+        """
+        return self._write_fight_tasks(task_queue, "UseExpiringMedicine", enabled)
+
+    def _write_fight_tasks(self, task_queue: list[dict], field: str, value) -> bool:
+        """把某字段写进队列里所有战斗任务，返回是否有实际修改。
+
+        Args:
+            task_queue: 原生任务队列。
+            field: 原生字段名。
+            value: 待写入的值。
 
         Returns:
             是否真的有字段被修改。
@@ -434,20 +467,8 @@ class ArknightsWeekly(Weekly):
         for task in task_queue:
             if task["$type"] != "FightTask":
                 continue
-            if enable_medicine:
-                changed |= safe_update(
-                    task,
-                    "UseExpiringMedicine",
-                    True,
-                    self.display_name,
-                    assert_key_exists=False,
-                )
             changed |= safe_update(
-                task,
-                "MedicineExpireDays",
-                expire_days,
-                self.display_name,
-                assert_key_exists=False,
+                task, field, value, self.display_name, assert_key_exists=False
             )
         return changed
 
@@ -458,7 +479,7 @@ WEEKLY_CLASSES: dict[str, type[Weekly]] = {
         WutheringWavesWeekly,
         EndfieldWeekly,
         ZenlessZoneZeroWeekly,
-        CurrencyWarsWeekly,
+        SwitchWeekly,
         EchoOfWarWeekly,
         ArknightsWeekly,
     )

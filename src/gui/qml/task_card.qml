@@ -666,7 +666,8 @@ Item {
         property int anchorTop: weeklyArea.y
         property int anchorBottom: weeklyArea.y + weeklyArea.rowH
         property int popupY: anchorBottom + Layout.popupAnchorGap
-        property int popupHeight: 240
+        // 上限按候选数给足（不启用 + 周一~周日共 8 项 = 264），窗口放不下时由 placePopup 收窄
+        property int popupHeight: 272
         property int viewportH: height - 8
 
         Rectangle {
@@ -676,7 +677,7 @@ Item {
         function openMenu() {
             var opts = Bridge.weeklyStartOptions()
             var geom = cardRoot.placePopup(anchorTop, anchorBottom,
-                Math.min(opts.length * 32 + 8, 240))
+                Math.min(opts.length * 32 + 8, 272))
             popupY = geom.y
             popupHeight = geom.h
         }

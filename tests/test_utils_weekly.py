@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from src.utils.utils_weekly import (
+    DISABLED_START_DAY,
     check_weekly,
     delete_weekly,
     ensure_weekly_entry,
@@ -246,8 +247,13 @@ class TestSetWeeklyStart(UtilsWeeklyTestBase):
         set_weekly_start("a", {})
         self.assertEqual(get_weekly_start_map(), {})
 
+    def test_disabled_sentinel_is_accepted(self):
+        """0 = 不启用，是合法取值（区别于「未设置」）。"""
+        set_weekly_start("a", {"周常甲": DISABLED_START_DAY})
+        self.assertEqual(get_weekly_start_map(), {"a": {"周常甲": DISABLED_START_DAY}})
+
     def test_invalid_day_raises(self):
-        for bad in (0, 8):
+        for bad in (8, -1):
             with self.subTest(bad=bad), self.assertRaises(AssertionError):
                 set_weekly_start("a", {"周常甲": bad})
 
@@ -277,7 +283,7 @@ class TestLegacyWeeklyStartMigration(UtilsWeeklyTestBase):
             start_map,
             {
                 "ok-ww": {"幻梦游园": 2},
-                "March7th-Launcher": {"货币战争": 3, "历战余响": 3},
+                "March7th-Launcher": {"货币战争": 3, "历战余响": 3, "模拟宇宙": 3},
             },
         )
         # 已落盘为条目级；另一段不受影响

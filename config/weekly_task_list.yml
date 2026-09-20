@@ -2,9 +2,10 @@
 # class：机制类（weekly.py 的 WEEKLY_CLASSES 注册表），每条周常必填。
 # config：该周常读写的主文件路径（相对脚本根目录，必填）。
 # key：周常落点用到的原生字段名（列表字段 / 开关字段 / 起始日字段），无字段的周常可省略。
+# enable_key：启用开关的原生字段名（落点本身不是布尔开关时才需要，如历战余响）。
 # options：递归选项组；key 为原生字段，values / source 二选一。
 # source.path 为资源文件，source.key 为多级键路径。
-# 一条周常一个机制类对象：一个脚本可有多条（如崩铁的货币战争与历战余响），各自独立。
+# 一条周常一个机制类对象：一个脚本可有多条（如崩铁的货币战争 / 历战余响 / 模拟宇宙），各自独立。
 
 ok-ww:
 - display_name: 幻梦游园
@@ -24,17 +25,18 @@ OneDragon-Launcher:
   config: config/01/one_dragon/_group.yml
 March7th-Launcher:
 - display_name: 货币战争
-  class: CurrencyWarsWeekly
+  class: SwitchWeekly
   config: config.yaml
   key: currencywars_enable
 - display_name: 历战余响
   class: EchoOfWarWeekly
   config: config.yaml
   key: echo_of_war_start_day_of_week
-  options:
-    source:
-      path: assets/config/instance_names.json
-      key: [历战余响]
+  enable_key: echo_of_war_enable
+- display_name: 模拟宇宙
+  class: SwitchWeekly
+  config: config.yaml
+  key: universe_enable
 MAA:
 - display_name: 理智药剂
   class: ArknightsWeekly

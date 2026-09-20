@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.gui.controllers import task_card as task_card_mod
 from src.gui.controllers.task_card import TaskCardController
+from src.utils.utils_weekly import DISABLED_START_DAY
 from src.utils.utils_yaml import dump_yaml_file
 
 
@@ -506,39 +507,42 @@ class TestWeeklyItemsReadback(unittest.TestCase):
 class TestWeeklyStartChip(unittest.TestCase):
     """周常行的「周几起」chip：条目级反读 weekly.yml 与写穿透。"""
 
-    @patch(
-        "src.config.daily_config.read_task_source",
-        return_value=["无", "坏灭的喜剧"],
-    )
-    def test_start_label_reflects_weekly_start_map(self, _source):
-        """已设起始日的周常显示「周X起」，未设的显示占位（逐条独立）。
+    def test_start_label_reflects_weekly_start_map(self):
+        """已设起始日的周常显示「周X起」、不启用显示「不启用」，未设显示占位（逐条独立）。
 
-        用真实 weekly_task_list.yml 取两条崩铁周常，故要 patch 副本来源读取——历战余响的
-        options 走 source（读游戏侧资源），CI 无 config.yml 会断言失败。
+        用真实 weekly_task_list.yml 取崩铁三条周常（当前均无副本选型，故不依赖游戏侧资源）。
         """
         ctrl = _make_controller()
-        ctrl._app_service.get_weekly_start_for.side_effect = lambda script, name: (
-            3 if name == "历战余响" else None
+        starts = {"历战余响": 3, "模拟宇宙": DISABLED_START_DAY}
+        ctrl._app_service.get_weekly_start_for.side_effect = lambda _script, name: (
+            starts.get(name)
         )
         items = ctrl.weekly_items
-        self.assertEqual(items[0]["name"], "货币战争")
+        self.assertEqual(
+            [item["name"] for item in items],
+            ["货币战争", "历战余响", "模拟宇宙"],
+        )
         self.assertFalse(items[0]["start_set"])
         self.assertEqual(items[0]["start_label"], "选择周几")
         self.assertTrue(items[1]["start_set"])
         self.assertEqual(items[1]["start_label"], "周三起")
+        # 不启用也是「已设置」（写进了 weekly.yml），只是文案不同
+        self.assertTrue(items[2]["start_set"])
+        self.assertEqual(items[2]["start_label"], "不启用")
 
-    def test_start_options_are_the_seven_weekdays(self):
-        """下拉候选 = 周一~周日七项（label 供渲染、value 供写回）。"""
+    def test_start_options_are_disabled_plus_weekdays(self):
+        """下拉候选 = 不启用 + 周一~周日（label 供渲染、value 供写回）。"""
         self.assertEqual(
             _make_controller().weekly_start_options,
             [
-                {"label": "周一", "value": 1},
-                {"label": "周二", "value": 2},
-                {"label": "周三", "value": 3},
-                {"label": "周四", "value": 4},
-                {"label": "周五", "value": 5},
-                {"label": "周六", "value": 6},
-                {"label": "周日", "value": 7},
+                {"label": "不启用", "value": DISABLED_START_DAY},
+                {"label": "周一起", "value": 1},
+                {"label": "周二起", "value": 2},
+                {"label": "周三起", "value": 3},
+                {"label": "周四起", "value": 4},
+                {"label": "周五起", "value": 5},
+                {"label": "周六起", "value": 6},
+                {"label": "周日起", "value": 7},
             ],
         )
 
@@ -549,6 +553,22 @@ class TestWeeklyStartChip(unittest.TestCase):
         ctrl._app_service.set_weekly_start_for.assert_called_once_with(
             "March7th-Launcher", "历战余响", 5
         )
+
+    def test_select_weekly_start_survives_game_side_failure(self):
+        """游戏侧写不进去（原生 config 缺失/损坏/只读）→ 提示 + 仍刷新，不抛给 QML。
+
+        不抛是关键：抛回 QML 会跳过 onClicked 里后续的关下拉，且界面静默
+        （意图已落 weekly.yml，下次任何刷新即按新值显示）。
+        """
+        for exc in (AssertionError("config 文件不存在"), OSError("拒绝访问")):
+            with self.subTest(exc=type(exc).__name__):
+                ctrl = _make_controller()
+                ctrl._app_service.set_weekly_start_for.side_effect = exc
+                with patch.object(ctrl, "refresh") as mock_refresh:
+                    ctrl.selectWeeklyStart("历战余响", 3)  # 不应抛出
+                mock_refresh.assert_called_once()
+                ctrl._toast.assert_called_once()
+                self.assertIn("历战余响", ctrl._toast.call_args[0][0])
 
     def test_invalid_start_day_raises(self):
         """weekly.yml 被手工改坏（越界值）→ assert 暴露，不静默当未设置。"""
