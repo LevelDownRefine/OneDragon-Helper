@@ -189,7 +189,9 @@ class WutheringWavesWeekly(Weekly):
             tasks.append(self.physical_name)
         else:
             tasks.remove(self.physical_name)
-        logger.info(f"[weekly][{self.display_name}] {'启用' if enabled else '停用'}周常")
+        logger.info(
+            f"[weekly][{self.display_name}] {'启用' if enabled else '停用'}周常"
+        )
         self._save_config(config)
 
 
@@ -369,7 +371,9 @@ class ArknightsWeekly(Weekly):
         configurations = get_field(
             config, "Configurations", self.display_name, dict, "weekly"
         )
-        profile = get_field(configurations, "Default", self.display_name, dict, "weekly")
+        profile = get_field(
+            configurations, "Default", self.display_name, dict, "weekly"
+        )
         return get_field(profile, "TaskQueue", self.display_name, list, "weekly")
 
     def prepare_start_day(self, start_day: int) -> None:

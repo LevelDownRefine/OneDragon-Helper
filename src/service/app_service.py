@@ -149,7 +149,9 @@ class AppService:
         if start_day is None:
             set_weekly_start(script_name, {})
             return
-        set_weekly_start(script_name, dict.fromkeys(weekly_names(script_name), start_day))
+        set_weekly_start(
+            script_name, dict.fromkeys(weekly_names(script_name), start_day)
+        )
 
     def get_weekly_start_map(self) -> dict:
         """读取 weekly.yml 的 weekly_start 段全量映射（{脚本标识: {周常展示名: 1~7}}）。"""

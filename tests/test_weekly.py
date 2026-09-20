@@ -28,7 +28,9 @@ class TestWeeklyDeclaration(unittest.TestCase):
         """每条周常都必须声明已注册的 class 与带扩展名的 config。"""
         for script_name, declarations in weekly_mod.load_weekly_map().items():
             for declaration in declarations:
-                with self.subTest(script=script_name, weekly=declaration["display_name"]):
+                with self.subTest(
+                    script=script_name, weekly=declaration["display_name"]
+                ):
                     self.assertIn(declaration["class"], weekly_mod.WEEKLY_CLASSES)
                     rel = declaration["config"]
                     self.assertIn(

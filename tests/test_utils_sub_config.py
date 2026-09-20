@@ -321,7 +321,9 @@ class TestScriptConfigIO(unittest.TestCase):
                 utils_sub_config, "load_script_config", return_value=sample
             ),
         ):
-            utils_sub_config.save_script_config("ok-ww", "鸣潮", "DailyTask.json", sample)
+            utils_sub_config.save_script_config(
+                "ok-ww", "鸣潮", "DailyTask.json", sample
+            )
         save.assert_called_once_with("ok-ww", "DailyTask.json", sample)
 
     def test_save_mismatch_raises(self):

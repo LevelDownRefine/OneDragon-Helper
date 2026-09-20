@@ -29,6 +29,7 @@ def _ef_weekly():
     """终末地的周常对象（卖出物资）。"""
     return weeklies_of("ok-ef")[0]
 
+
 FIXTURE = os.path.join(
     os.path.dirname(__file__), "fixtures", "ok_ef_DailyTask.scrubbed.json"
 )
