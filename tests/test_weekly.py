@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from src.config import weekly as weekly_mod
 from src.config.daily_config import get_weekly_map
-from src.config.set_config import _CONFIGS
+from src.config.set_config import _CONFIGS, ScriptConfig
 from src.config.weekly import Weekly, weeklies_of, weekly_names
 
 
@@ -44,11 +44,13 @@ class TestWeeklyDeclaration(unittest.TestCase):
 
     def test_menu_strips_code_fields(self):
         """物化后的周常菜单不含 class / config（代码耦合字段不入 UI 词汇）。"""
-        for script_name in weekly_mod.load_weekly_map():
-            for menu in get_weekly_map(script_name):
-                with self.subTest(script=script_name):
-                    self.assertNotIn("class", menu)
-                    self.assertNotIn("config", menu)
+        # 隔离本地资源读取：CI 无 config.yml，不能走到真实脚本根目录解析。
+        with patch("src.config.daily_config.read_task_source", return_value=[]):
+            for script_name in weekly_mod.load_weekly_map():
+                for menu in get_weekly_map(script_name):
+                    with self.subTest(script=script_name):
+                        self.assertNotIn("class", menu)
+                        self.assertNotIn("config", menu)
 
 
 class TestWeeklyAssembly(unittest.TestCase):
@@ -75,12 +77,14 @@ class TestWeeklyAssembly(unittest.TestCase):
 
     def test_config_holds_weeklies(self):
         """ScriptConfig 构造期装配并持有周常对象（与日常同一时机）。"""
-        for script_name, factory in _CONFIGS.items():
-            with self.subTest(script=script_name):
-                self.assertEqual(
-                    [w.display_name for w in factory()._weeklies],
-                    weekly_names(script_name),
-                )
+        # 屏蔽模板对齐：CI 无 config.yml，未命中缓存的脚本不能走到真实读盘。
+        with patch.object(ScriptConfig, "_init_config"):
+            for script_name, factory in _CONFIGS.items():
+                with self.subTest(script=script_name):
+                    self.assertEqual(
+                        [w.display_name for w in factory()._weeklies],
+                        weekly_names(script_name),
+                    )
 
     def test_unknown_class_raises(self):
         declarations = {
