@@ -191,8 +191,8 @@ def load_daily_map() -> dict[str, list[dict]]:
 
 
 def load_weekly_map() -> dict[str, list[dict]]:
-    """取得周常声明，周几起仍由 weekly.yml 维护。"""
-    return load_task_map(get_weekly_task_list_yml_path_under_root())
+    """取得周常声明（每条周常必须标注机制类 ``class``；周几起由 weekly.yml 维护）。"""
+    return load_task_map(get_weekly_task_list_yml_path_under_root(), require_class=True)
 
 
 def get_daily_configs(script_name: str) -> list[dict]:

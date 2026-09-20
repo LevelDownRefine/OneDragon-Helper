@@ -1,9 +1,18 @@
+# 周几起：每条周常各一个（条目级），1=周一 ~ 7=周日，0 表示「不启用」（每次运行写关闭）。
+# 未列出的周常按「未设置」处理——不触碰游戏侧开关，由该游戏自己的配置决定。
+# 崩铁的「模拟宇宙」故不在此列：M7A 默认关闭，需要时在任务卡上选周几起 / 不启用。
 weekly_start:
-  ok-ww: 1
-  OneDragon-Launcher: 1
-  March7th-Launcher: 1
-  ok-ef: 1
-  MAA: 1
+  ok-ww:
+    幻梦游园: 1
+  OneDragon-Launcher:
+    迷失之地: 1
+  March7th-Launcher:
+    货币战争: 1
+    历战余响: 1
+  ok-ef:
+    卖出物资: 1
+  MAA:
+    理智药剂: 1
 weekly_timeouts:
   ok-ww:
   - 3600

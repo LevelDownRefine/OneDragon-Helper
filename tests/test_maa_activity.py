@@ -176,7 +176,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
                 side_effect=AssertionError("日常已实例化，不应重新读取声明"),
             ),
             patch.object(ArknightsConfig, "_init_config") as init,
-            patch("src.config.daily.save_config") as save,
+            patch("src.config.daily.save_script_config") as save,
             patch(
                 "src.config.daily.read_activity_stages", return_value=["AT-8"]
             ) as reader,

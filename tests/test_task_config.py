@@ -72,7 +72,7 @@ class TestTaskDeclarations(unittest.TestCase):
         )
         self.assertEqual(
             [t["display_name"] for t in weekly["March7th-Launcher"]],
-            ["货币战争", "历战余响"],
+            ["货币战争", "历战余响", "模拟宇宙"],
         )
         for definitions in (*daily.values(), *weekly.values()):
             for task in definitions:

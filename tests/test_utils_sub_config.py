@@ -3,7 +3,7 @@
 import unittest
 from unittest import mock
 
-from src.utils import get_root_dir, safe_path_join
+from src.utils import get_root_dir, safe_path_join, utils_sub_config
 from src.utils.utils_sub_config import (
     check_script_name_uniqueness,
     default_script_entry,
@@ -265,6 +265,79 @@ class TestLoadGameConfig(unittest.TestCase):
         ):
             got = load_game_config("OneDragon-Launcher", "config/01/game_account.yml")
         self.assertEqual(got, {"game_path": "D:/Game/game.exe"})
+
+
+class TestScriptConfigIO(unittest.TestCase):
+    """load_script_config / save_script_config：落点读写共用的缺失语义与回读校验。"""
+
+    def test_load_allow_missing_returns_none_on_missing(self):
+        """文件缺失（load_config 以断言表达）→ 读路径返回 None 且不告警"""
+        with (
+            mock.patch.object(
+                utils_sub_config,
+                "load_config",
+                side_effect=AssertionError("config 文件不存在"),
+            ),
+            self.assertNoLogs("src.utils.utils_sub_config", level="WARNING"),
+        ):
+            got = utils_sub_config.load_script_config(
+                "ok-ww", "鸣潮", "DailyTask.json", allow_missing=True
+            )
+        self.assertIsNone(got)
+
+    def test_load_corrupt_warns_and_returns_none(self):
+        """内容损坏 → 读路径留痕后仍按未设置"""
+        with (
+            mock.patch.object(
+                utils_sub_config,
+                "load_config",
+                side_effect=ValueError("bad"),
+            ),
+            self.assertLogs("src.utils.utils_sub_config", level="WARNING"),
+        ):
+            got = utils_sub_config.load_script_config(
+                "ok-ww", "鸣潮", "DailyTask.json", allow_missing=True
+            )
+        self.assertIsNone(got)
+
+    def test_write_path_raises_without_allow_missing(self):
+        """写路径（allow_missing=False）读取失败一律抛出，不降级为 None"""
+        with (
+            mock.patch.object(
+                utils_sub_config,
+                "load_config",
+                side_effect=AssertionError("config 文件不存在"),
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            utils_sub_config.load_script_config("ok-ww", "鸣潮", "DailyTask.json")
+
+    def test_save_round_trip_verifies_ok(self):
+        """save 写盘后重读一致 → 不抛异常且按预期调用 save_config"""
+        sample = {"k": "v", "n": 1}
+        with (
+            mock.patch.object(utils_sub_config, "save_config") as save,
+            mock.patch.object(
+                utils_sub_config, "load_script_config", return_value=sample
+            ),
+        ):
+            utils_sub_config.save_script_config(
+                "ok-ww", "鸣潮", "DailyTask.json", sample
+            )
+        save.assert_called_once_with("ok-ww", "DailyTask.json", sample)
+
+    def test_save_mismatch_raises(self):
+        """保存后重读内容不一致 → assert"""
+        with (
+            mock.patch.object(utils_sub_config, "save_config"),
+            mock.patch.object(
+                utils_sub_config, "load_script_config", return_value={"k": "different"}
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            utils_sub_config.save_script_config(
+                "ok-ww", "鸣潮", "DailyTask.json", {"k": "expected"}
+            )
 
 
 if __name__ == "__main__":

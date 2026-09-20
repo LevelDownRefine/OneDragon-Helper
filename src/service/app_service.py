@@ -27,8 +27,8 @@ from src.config.set_config import (
     get_registered_script_names,
     set_config,
     set_daily_enabled,
-    set_weekly_task,
 )
+from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -63,13 +63,26 @@ from src.utils.utils_wallpaper import (
 )
 from src.utils.utils_weekly import (
     check_weekly,
-    get_weekly_start,
     get_weekly_start_map,
     set_weekly_start,
     weekly_inputs,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _weekly_start_entries(script_name: str) -> dict[str, int]:
+    """取该脚本的「周常展示名 → 起始日」映射（{周常: 1~7}）。
+
+    值域已由 ``utils_weekly`` 保证：读时迁移并丢弃旧版单值/越界项，写时断言 1~7。
+
+    Args:
+        script_name: 脚本标识名。
+
+    Returns:
+        该脚本的映射；无条目时为空 dict。
+    """
+    return get_weekly_start_map().get(script_name) or {}
 
 
 class AppService:
@@ -125,20 +138,48 @@ class AppService:
     # ── 周常运行期参数（src.utils.utils_weekly 模块函数）──
     # weekly.yml 的 weekly_start 段（周几起）与 weekly.yml 的 weekly_timeouts 段（每周超时）由 src.utils.utils_weekly
     # 拥有；读写直接调模块函数，不经 chain_service 转发。
-    def get_weekly_start(self, script_name: str):
-        """返回某脚本的周常起始日（1~7），未设置返回 None。"""
-        return get_weekly_start(script_name)
+    def get_weekly_start_for(self, script_name: str, weekly_name: str) -> int | None:
+        """读某条周常的起始日（1~7），未设置返回 None。"""
+        return _weekly_start_entries(script_name).get(weekly_name)
+
+    def set_weekly_start_for(
+        self, script_name: str, weekly_name: str, start_day: int
+    ) -> None:
+        """写某条周常的起始日（周几起）。
+
+        两处落盘收拢在此：weekly.yml 的 weekly_start 段（意图，同脚本其它周常的取值
+        不动）；以及该条周常的游戏侧字面起始日字段（仅覆写 ``set_start_day`` 的周常有，
+        如崩铁历战余响 / 粥——这类值无法由当天星期折算，需编辑期即时落盘）。
+
+        Args:
+            script_name: 脚本标识名。
+            weekly_name: 周常展示名。
+            start_day: 周几起（1~7，1=周一）。
+        """
+        start_days = dict(_weekly_start_entries(script_name))
+        start_days[weekly_name] = start_day
+        set_weekly_start(script_name, start_days)
+        set_weekly_start_day(script_name, weekly_name, start_day)
 
     def weekly_inputs(self, script_name: str) -> list:
         """返回配置弹窗 7 个超时输入框的初始值。"""
         return weekly_inputs(script_name)
 
     def set_weekly_start(self, script_name: str, start_day) -> None:
-        """持久化某脚本的周常起始日（周几起）到 weekly.yml 的 weekly_start 段。"""
-        return set_weekly_start(script_name, start_day)
+        """持久化某脚本的周常起始日（周几起）到 weekly.yml 的 weekly_start 段。
+
+        start_day 为 None 时清除该脚本条目（对应 CLI ``--weekly-start`` 的「不设置」）；
+        否则写给该脚本全部周常（CLI 只给得出脚本级单值，落到每条周常）。
+        """
+        if start_day is None:
+            set_weekly_start(script_name, {})
+            return
+        set_weekly_start(
+            script_name, dict.fromkeys(weekly_names(script_name), start_day)
+        )
 
     def get_weekly_start_map(self) -> dict:
-        """读取 weekly.yml 的 weekly_start 段 全量映射（{脚本标识: 1~7}）。"""
+        """读取 weekly.yml 的 weekly_start 段全量映射（{脚本标识: {周常展示名: 1~7}}）。"""
         return get_weekly_start_map()
 
     def check_weekly(self) -> dict:
@@ -172,14 +213,12 @@ class AppService:
         new_display_name: str,
         config_patch: dict,
         weekly_timeouts: list,
-        weekly_start_day: int | None = None,
     ):
         new_script_name = update_script(
             old_script_name,
             new_display_name,
             config_patch,
             weekly_timeouts,
-            weekly_start_day,
         )
         daily_plan.rename_script(old_script_name, new_script_name)
         return new_script_name

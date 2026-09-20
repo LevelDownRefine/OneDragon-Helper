@@ -8,9 +8,11 @@ import "Layout.js" as Layout
 // 下拉数据经 dailyOptions(dailyName) / weeklyOptions(weeklyName)；
 // 副本写回经 selectDaily(dailyName, taskName, sequence) / selectWeekly；
 // 日常开关（仅声明了开关的脚本，如异环）经 setDailyEnabled(dailyName, enabled)。
-// task/sequence 持久化到子脚本 config；周几起（weekly_start）持久化到 weekly_start.yml。
+// task/sequence 持久化到子脚本 config；周几起（weekly_start）持久化到 weekly.yml。
 //
-// 「周几起」选择已迁至单脚本配置弹窗（≡ 按钮打开），本卡只显示周常名占位。
+// 周常行有两块 chip：左侧「周几起」（条目级，每条周常各一个，见 weeklyStartButton）、
+// 右侧副本（仅需选副本的周常有）；两块合计宽 = 日常行单个 chip 宽，使两行控件区右边界
+// 对齐。无副本选型的周常只有「周几起」一块，此时它独占整宽（与日常 chip 等宽对齐）。
 //
 // 布局从旧版固定坐标起步（标题 y=18 / 分隔线 y=56 / 日常 y=68），日常区与周常区都按
 // 「每行 Layout.taskRowHeight、行数由数据决定」顺次下推（周常区上沿 = 日常区底部），
@@ -32,6 +34,11 @@ Item {
     // 副本/周常 chip 水平位置：在标签（58+64）右侧剩余空间内居中，
     // 使选项卡片在横向空白块内左右留白一致。
     readonly property int chipX: 181
+    // 周常行把 chip 区对半分给「周几起 + 副本」，两块合计宽 = 日常单个 chip 宽（右边界对齐）；
+    // 无需选副本的周常没有右块，「周几起」独占整宽，故这两个位置只用于有副本的行。
+    readonly property int weeklyCopyX: chipX + Layout.weeklyStartChipWidth + Layout.chipGap
+    readonly property int weeklyCopyW: Layout.chipWidth
+                                        - Layout.weeklyStartChipWidth - Layout.chipGap
     // 周常区上沿 = 日常区底部：任务行自带上下留白，区块外沿直接相接即为统一的行间距。
     readonly property int weeklyTop: dailyArea.y + dailyArea.height
     // 高度随适配态：未适配 84（仅标题）；适配时为最后一个区块底部 + 卡片底部留白，
@@ -156,7 +163,7 @@ Item {
                         objectName: index === 0 ? "dailyButton"
                                                 : "dailyButton" + index
                         x: cardRoot.chipX; y: 10
-                        width: 220
+                        width: Layout.chipWidth
                         height: 36; radius: 10
                         color: dailyMouse.containsMouse ? Theme.hover : Theme.control
                         border.width: 1
@@ -197,6 +204,7 @@ Item {
                                 dailyPopup.anchorTop = dailyArea.y + index * dailyArea.rowH
                                 dailyPopup.anchorBottom = dailyPopup.anchorTop + dailyArea.rowH
                                 weeklyPopup.visible = false
+                                weeklyStartPopup.visible = false
                                 // 同一行再点=收起；换一行=就地换菜单（visible 不变，须手动重取）
                                 if (sameRow) {
                                     dailyPopup.visible = false
@@ -257,10 +265,57 @@ Item {
                         font.pixelSize: 14; font.weight: Font.DemiBold
                         verticalAlignment: Text.AlignVCenter
                     }
+                    // 「周几起」chip：每条周常各一个（条目级起始日）。右侧有副本 chip 时
+                    // 让出半个 chip 宽；无副本选型时独占整宽，与日常行的 chip 完全对齐。
+                    Rectangle {
+                        id: wkStartChip
+                        objectName: "weeklyStartButton" + index
+                        x: cardRoot.chipX; y: 10
+                        width: hasTask ? Layout.weeklyStartChipWidth : Layout.chipWidth
+                        height: 36; radius: 10
+                        color: weeklyStartMouse.containsMouse ? Theme.hover : Theme.control
+                        border.width: 1
+                        border.color: weeklyStartPopup.visible && weeklyStartPopup.weeklyName === modelData.name
+                                      ? Theme.accent : Theme.border
+                        Behavior on color { ColorAnimation { duration: 140 } }
+                        Text {
+                            anchors.fill: parent
+                            leftPadding: 12; rightPadding: 32
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                            text: modelData.start_label
+                            color: modelData.start_set ? Theme.accent : Theme.muted
+                            font.pixelSize: 12
+                        }
+                        Image {
+                            anchors.right: parent.right; anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 20; height: 20
+                            source: "image://uiicon/chevron_down"
+                            rotation: weeklyStartPopup.visible && weeklyStartPopup.weeklyName === modelData.name ? 180 : 0
+                            opacity: 0.7
+                        }
+                        MouseArea {
+                            id: weeklyStartMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                var rowTop = weeklyArea.y + index * weeklyArea.rowH
+                                weeklyStartPopup.weeklyName = modelData.name
+                                weeklyStartPopup.anchorTop = rowTop
+                                weeklyStartPopup.anchorBottom = rowTop + weeklyArea.rowH
+                                weeklyStartPopup.visible = !weeklyStartPopup.visible
+                                dailyPopup.visible = false
+                                weeklyPopup.visible = false
+                            }
+                        }
+                    }
                     Rectangle {
                         id: wkChip
-                        x: cardRoot.chipX; y: 10
-                        width: 220
+                        objectName: "weeklyTaskButton" + index
+                        x: cardRoot.weeklyCopyX; y: 10
+                        width: cardRoot.weeklyCopyW
                         height: 36; radius: 10
                         visible: hasTask
                         color: weeklyMouse.containsMouse ? Theme.hover : Theme.control
@@ -298,6 +353,7 @@ Item {
                                 weeklyPopup.anchorBottom = rowTop + weeklyArea.rowH
                                 weeklyPopup.visible = !weeklyPopup.visible
                                 dailyPopup.visible = false
+                                weeklyStartPopup.visible = false
                             }
                         }
                     }
@@ -305,8 +361,6 @@ Item {
             }
         }
     }
-
-    // 「周几起」选择已迁至单脚本配置弹窗（≡ 按钮触发），本卡不再内嵌周几下拉。
 
     // ── 日常副本下拉（多级级联：一级副本 → 二级选项，对齐旧 QMenu 子菜单）──
     // 左列一级副本、右列二级选项，两列各自独立 Flickable 滚动（互不挤压、
@@ -524,7 +578,9 @@ Item {
         objectName: "weeklyPopup"
         z: 100
         visible: false
-        x: weeklyArea.x + cardRoot.chipX
+        // 挂在副本 chip 下方：副本 chip 是行内最右控件，故下拉右对齐到它（= 日常 chip 的
+        // 右边界），宽度随内容伸缩时也始终留在卡片内。chipX 是区内容坐标，须补 weeklyArea.x。
+        x: weeklyArea.x + cardRoot.weeklyCopyX + cardRoot.weeklyCopyW - width
         y: weeklyPopup.popupY
         width: instW + 8
         height: popupHeight
@@ -595,9 +651,80 @@ Item {
         }
     }
 
+    // ── 「周几起」下拉（单级：周一~周日；选中写 weekly.yml 的 weekly_start 段）──
+    // 每条周常各一份起始日（条目级），锚点取被点击的具体行。
+    Item {
+        id: weeklyStartPopup
+        objectName: "weeklyStartPopup"
+        z: 100
+        visible: false
+        x: weeklyArea.x + cardRoot.chipX
+        y: weeklyStartPopup.popupY
+        width: Layout.weeklyStartChipWidth + 8
+        height: popupHeight
+        property string weeklyName: ""
+        property int anchorTop: weeklyArea.y
+        property int anchorBottom: weeklyArea.y + weeklyArea.rowH
+        property int popupY: anchorBottom + Layout.popupAnchorGap
+        // 上限按候选数给足（不启用 + 周一~周日共 8 项 = 264），窗口放不下时由 placePopup 收窄
+        property int popupHeight: 272
+        property int viewportH: height - 8
+
+        Rectangle {
+            anchors.fill: parent; radius: 10
+            color: Theme.control; border.width: 1; border.color: Theme.border
+        }
+        function openMenu() {
+            var opts = Bridge.weeklyStartOptions()
+            var geom = cardRoot.placePopup(anchorTop, anchorBottom,
+                Math.min(opts.length * 32 + 8, 272))
+            popupY = geom.y
+            popupHeight = geom.h
+        }
+        onVisibleChanged: { if (visible) openMenu() }
+        Flickable {
+            width: weeklyStartPopup.width
+            height: weeklyStartPopup.viewportH
+            contentWidth: dayCol.width
+            contentHeight: dayCol.height
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            Column {
+                id: dayCol
+                width: weeklyStartPopup.width
+                spacing: 2
+                Repeater {
+                    model: weeklyStartPopup.visible ? Bridge.weeklyStartOptions() : []
+                    Rectangle {
+                        width: weeklyStartPopup.width
+                        height: 30; radius: 6
+                        color: dayMouse.containsMouse ? Theme.accentSoft : "transparent"
+                        Text {
+                            anchors.fill: parent; leftPadding: 10
+                            verticalAlignment: Text.AlignVCenter
+                            text: modelData.label
+                            color: Theme.text; font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: dayMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                Bridge.selectWeeklyStart(
+                                    weeklyStartPopup.weeklyName, modelData.value)
+                                weeklyStartPopup.visible = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // ── 点击空白处关闭下拉（对齐旧 QMenu：弹窗外任意点击即关闭）──
     // 全窗透明捕获层，仅当任一弹窗打开时激活；位于弹窗(z:100)之下、卡片内容(z:0)之上，
-    // 故「弹窗内」点击由弹窗自身处理、「弹窗外」点击被本层拦截并关闭两个弹窗。
+    // 故「弹窗内」点击由弹窗自身处理、「弹窗外」点击被本层拦截并关闭全部弹窗。
     MouseArea {
         id: popupCatcher
         objectName: "popupCatcher"
@@ -606,11 +733,12 @@ Item {
         width: Layout.windowWidth
         height: cardRoot.winBottomInCard - cardRoot.winTopInCard
         z: 99
-        visible: dailyPopup.visible || weeklyPopup.visible
-        enabled: dailyPopup.visible || weeklyPopup.visible
+        visible: dailyPopup.visible || weeklyPopup.visible || weeklyStartPopup.visible
+        enabled: dailyPopup.visible || weeklyPopup.visible || weeklyStartPopup.visible
         onClicked: {
             dailyPopup.visible = false
             weeklyPopup.visible = false
+            weeklyStartPopup.visible = false
         }
     }
 }

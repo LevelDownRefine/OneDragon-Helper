@@ -19,3 +19,10 @@ var taskRowHeight = 56
 // 卡片底部留白：最后一个区块（有周常则是周常区，否则是日常区）到卡片的距离，
 // 两种形态下一致；行自带的下留白不再重复计入。
 var cardBottomPad = 16
+
+// chip（副本 / 周几起）横向尺寸：日常行是单个 chip；周常行把同一宽度切成「周几起 +
+// 副本」两块（中间留 chipGap），故两行的控件区总宽一致、右边界对齐。
+// 无需选副本的周常只有「周几起」一块，此时它独占整宽，与日常行的 chip 完全对齐。
+var chipWidth = 220
+var chipGap = 8
+var weeklyStartChipWidth = (chipWidth - chipGap) / 2

@@ -11,9 +11,9 @@ import logging
 import time
 from datetime import datetime
 
-from src.config.set_config import set_config
+from src.config.weekly import prepare_weekly_start_days
 from src.log.monitor import parse_logs
-from src.service.chain_gen import resolve_weekly_start
+from src.service.chain_gen import resolve_weekly_starts
 from src.utils.utils_runner import (
     ProcessTarget,
     collect_process_targets,
@@ -74,11 +74,14 @@ def apply_subscript_config(
 
     Args:
         enabled_keys: 纳入链的脚本唯一标识集合。
-        weekly_start_map: weekly.yml 的 weekly_start 段 全量映射（{脚本标识: 1~7}）；None 按空处理。
+        weekly_start_map: weekly.yml 的 weekly_start 段全量映射
+            （{脚本标识: {周常展示名: 1~7}}）；None 按空处理。
     """
     for name in enabled_keys:
-        weekly_start = resolve_weekly_start(weekly_start_map or {}, name)
-        set_config(name, weekly_start=weekly_start)
+        start_days = resolve_weekly_starts(weekly_start_map or {}, name)
+        # 该脚本未设任何周几起即不动其周本开关。
+        if start_days:
+            prepare_weekly_start_days(name, start_days)
 
 
 def analyze_logs(

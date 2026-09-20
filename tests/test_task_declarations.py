@@ -8,8 +8,10 @@ from unittest.mock import patch
 
 from src.config import daily as daily_mod
 from src.config import task_config
+from src.config import weekly as weekly_mod
 from src.config.daily import Daily
 from src.config.set_config import ArknightsConfig, NTEConfig, WutheringWavesConfig
+from src.utils.utils_weekly import DISABLED_START_DAY
 
 
 def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
@@ -41,6 +43,12 @@ class TestDeclarationBindings(unittest.TestCase):
         self.addCleanup(weekly_patch.stop)
         spec.loader.exec_module(module)
         return module
+
+    def make_weekly(self, class_name: str, script_name: str, declaration: dict):
+        """按给定声明直接构造一条周常（声明即落点，改声明即改绑定）。"""
+        return weekly_mod.WEEKLY_CLASSES[class_name](
+            script_name, declaration, "测试脚本"
+        )
 
     def test_wuwa_fields_and_values_come_from_declarations(self):
         task = self.daily["ok-ww"][0]
@@ -99,7 +107,7 @@ class TestDeclarationBindings(unittest.TestCase):
                 config = {**switch_seed, "NativeTarget": "old", "untouched": True}
                 with (
                     patch.object(Daily, "_load_daily_config", return_value=config),
-                    patch.object(daily_mod, "save_config"),
+                    patch.object(daily_mod, "save_script_config"),
                 ):
                     cfg.set_daily_task("每日任务", task_name, "真实副本")
                     self.assertEqual(_read(cfg, "每日任务"), ("真实副本", None))
@@ -138,7 +146,7 @@ class TestDeclarationBindings(unittest.TestCase):
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
             patch.object(Daily, "_load_routine_config", return_value=routine),
-            patch.object(daily_mod, "save_config"),
+            patch.object(daily_mod, "save_script_config"),
         ):
             cfg.set_daily_task("异象界域", "空幕", 2)
             self.assertEqual(_read(cfg, "异象界域"), ("空幕", 2))
@@ -159,46 +167,44 @@ class TestDeclarationBindings(unittest.TestCase):
                 [False, True, True],  # 停用的异象界域保持停用（工具层不再互斥）
             )
 
-    def test_weekly_task_name_and_selection_aliases_roundtrip(self):
-        task = self.weekly["March7th-Launcher"][1]
-        task["physical_name"] = "NativeWeekly"
-        task["key"] = "NativeStartDay"
-        task["options"] = {
-            "values": [{"display_name": "副本别名", "physical_name": "NativeStage"}]
-        }
-        cfg = self.load_adapters().StarRailConfig()
-        config = {"currencywars_enable": False, "instance_names": {"untouched": "keep"}}
+    def test_weekly_aliases_and_literal_start_day_roundtrip(self):
+        """周常声明里的 key / enable_key 生效：改声明即改落点字段（含不启用分支）。"""
+        declaration = self.weekly["March7th-Launcher"][1]
+        declaration["key"] = "NativeStartDay"
+        declaration["enable_key"] = "NativeEnable"
+        weekly = self.make_weekly("EchoOfWarWeekly", "March7th-Launcher", declaration)
+        config = {"currencywars_enable": False}
         with (
-            patch.object(cfg, "_load_weekly_config", return_value=config),
-            patch.object(cfg, "_save_weekly_config"),
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config"),
         ):
-            cfg.set_weekly_task("历战余响", "副本别名")
-            self.assertEqual(cfg._read_weekly_task("历战余响"), "副本别名")
-            cfg.set_weekly_start_day(4)
+            weekly.set_start_day(4)
+            self.assertEqual(config["NativeStartDay"], 4)
+            self.assertTrue(config["NativeEnable"])
+            weekly.set_start_day(DISABLED_START_DAY)
+        # 不启用只关总开关，字面起始日保留；同文件其它周常不受影响
         self.assertEqual(config["NativeStartDay"], 4)
-        self.assertEqual(
-            config["instance_names"],
-            {"untouched": "keep", "NativeWeekly": "NativeStage"},
-        )
+        self.assertFalse(config["NativeEnable"])
+        self.assertFalse(config["currencywars_enable"])
 
     def test_weekly_list_membership_uses_declared_field_and_value(self):
-        task = self.weekly["ok-ww"][0]
-        task["physical_name"] = "NativeWeekly"
-        task["key"] = "NativeTasks"
-        cfg = self.load_adapters().WutheringWavesConfig()
+        declaration = self.weekly["ok-ww"][0]
+        declaration["physical_name"] = "NativeWeekly"
+        declaration["key"] = "NativeTasks"
+        weekly = self.make_weekly("WutheringWavesWeekly", "ok-ww", declaration)
         config = {"NativeTasks": ["unrelated"]}
         with (
-            patch.object(cfg, "_load_weekly_config", return_value=config),
-            patch.object(cfg, "_save_weekly_config"),
+            patch.object(weekly, "_load_config", return_value=config),
+            patch.object(weekly, "_save_config"),
             patch(
                 "src.utils.utils_weekly.get_week_num",
                 side_effect=[1, 0],
             ),
         ):
             # 周二(1)+1 >= 2 → 启用；周一(0)+1 < 2 → 停用
-            cfg.prepare_weekly_start_day(2)
+            weekly.prepare_start_day(2)
             self.assertEqual(config, {"NativeTasks": ["unrelated", "NativeWeekly"]})
-            cfg.prepare_weekly_start_day(2)
+            weekly.prepare_start_day(2)
             self.assertEqual(config, {"NativeTasks": ["unrelated"]})
 
     def test_maa_entry_and_stage_use_declared_physical_names(self):

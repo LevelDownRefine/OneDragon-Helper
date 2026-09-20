@@ -8,15 +8,32 @@ from src.config.daily_config import (
     get_daily_map,
     get_weekly_map,
 )
-from src.config.task_config import load_daily_map, load_weekly_map
+from src.config.task_config import load_daily_map
 
 
 class TestGetWeeklyDefs(unittest.TestCase):
-    def test_star_rail_source_survives_task_rename(self):
-        declarations = load_weekly_map()
-        task = declarations["March7th-Launcher"][1]
-        task["display_name"] = "改名后的周常"
-        task["physical_name"] = "另一物理名"
+    def test_weekly_source_options_are_materialized(self):
+        """周常声明的 options.source 由菜单物化读取（自造声明，不依赖真实 yml）。
+
+        真实声明当前无周常带副本选型，故注入一份带 source 的假声明，锁住「source 按声明里的
+        key/path 读取、与展示名无关」这一行为（改展示名不破 source）。
+        """
+        declarations = {
+            "March7th-Launcher": [
+                {
+                    "display_name": "改名后的周常",
+                    "physical_name": "另一物理名",
+                    "class": "SwitchWeekly",
+                    "config": "config.yaml",
+                    "options": {
+                        "source": {
+                            "path": "assets/config/instance_names.json",
+                            "key": ["历战余响"],
+                        }
+                    },
+                }
+            ]
+        }
         with (
             patch("src.config.daily_config.load_weekly_map", return_value=declarations),
             patch(
@@ -24,7 +41,7 @@ class TestGetWeeklyDefs(unittest.TestCase):
                 return_value={"历战余响": {"无": "跳过", "铁骸的锈冢": "描述"}},
             ) as load,
         ):
-            menu = get_weekly_map("March7th-Launcher")[1]
+            menu = get_weekly_map("March7th-Launcher")[0]
         self.assertEqual(menu["display_name"], "改名后的周常")
         self.assertEqual(
             menu["options"]["values"],

@@ -219,90 +219,6 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
         self.assertEqual(dlg.pending_changes["new_display_name"], "日志分析")
 
 
-class _FakeService:
-    """极简 AppService 替身：供弹窗构造时读取脚本数据，避免依赖真实 config。"""
-
-    def __init__(
-        self, script_type, script_path, display_name="日志分析", weekly_start=None
-    ):
-        self._data = {
-            "script_type": script_type,
-            "script_path": script_path,
-            "display_name": display_name,
-        }
-        self._weekly_start = weekly_start
-
-    def get_script(self, name):
-        return self._data
-
-    def weekly_inputs(self, name):
-        return [3600] * 7
-
-    def get_weekly_start(self, script_name):
-        return self._weekly_start
-
-
-class TestSingleScriptConfigDialogWeeklyStart(unittest.TestCase):
-    """测试配置弹窗的「周几起」行：仅支持周常脚本显示，读写 weekly.yml 的 weekly_start 段。"""
-
-    def _make_dialog(self, script_name, display_name, weekly_start, supported):
-        with patch("src.gui.dialogs.supports_weekly", return_value=supported):
-            return SingleScriptConfigDialog(
-                script_name,
-                display_name,
-                "C:/games/run.exe",
-                app_service=_FakeService(
-                    "external", "C:/games/run.exe", display_name, weekly_start
-                ),
-            )
-
-    def test_hidden_when_weekly_unsupported(self):
-        """不支持周常的脚本周几起行应隐藏。
-
-        combo 以 dialog 为父控件，仅「不进布局」不够——未布局的子控件会按默认
-        位置 (0,0) 绘制并盖住左上角字段。必须 isHidden() 为真（未 show 的 dialog
-        上 isVisible() 恒为 False，断不出这个 bug）。
-        """
-        dlg = self._make_dialog("collect_log", "日志分析", None, supported=False)
-        self.assertFalse(dlg._weekly_start_supported)
-        self.assertTrue(dlg.weekly_start_combo.isHidden())
-
-    def test_visible_and_loaded_when_weekly_supported(self):
-        """支持周常的脚本周几起行可见，且加载 weekly_start.yml 的 weekly_start"""
-        dlg = self._make_dialog("run", "鸣潮", 3, supported=True)
-        self.assertTrue(dlg._weekly_start_supported)
-        # 未 show 时 isVisible 受父链影响为 False，用 isHidden 反映自身 visible 属性
-        self.assertFalse(dlg.weekly_start_combo.isHidden())
-        # combo index 3 → 周三起
-        self.assertEqual(dlg.weekly_start_combo.currentIndex(), 3)
-
-    def test_save_defers_weekly_start_to_pending_changes(self):
-        """保存时周几起只暂存到 pending_changes，不在弹窗内写盘
-
-        weekly.yml weekly_start 段与游戏侧原生 config 的落盘统一归
-        AppService.update_script（游戏侧须在 config.yml 落盘新路径后）。
-        """
-        dlg = self._make_dialog("run", "鸣潮", None, supported=True)
-        dlg.weekly_start_combo.setCurrentIndex(3)
-        with (
-            patch("src.gui.dialogs.styled_msg_box"),
-            patch.object(SingleScriptConfigDialog, "accept"),
-        ):
-            dlg.save_data()
-        self.assertEqual(dlg.pending_changes["weekly_start_day"], 3)
-
-    def test_save_clears_weekly_start_when_unset(self):
-        """选择「不设置」时 pending_changes 记为 None（update_script 据此清 weekly.yml 条目）"""
-        dlg = self._make_dialog("run", "鸣潮", 5, supported=True)
-        dlg.weekly_start_combo.setCurrentIndex(0)
-        with (
-            patch("src.gui.dialogs.styled_msg_box"),
-            patch.object(SingleScriptConfigDialog, "accept"),
-        ):
-            dlg.save_data()
-        self.assertIsNone(dlg.pending_changes["weekly_start_day"])
-
-
 class TestGameProcessInputAlwaysEnabled(unittest.TestCase):
     """游戏进程输入框应始终可编辑，不受「结束后关闭游戏」复选框门控。
 
@@ -314,7 +230,6 @@ class TestGameProcessInputAlwaysEnabled(unittest.TestCase):
         app = MagicMock()
         app.get_script.return_value = script_data
         app.weekly_inputs.return_value = [3600] * 7
-        app.get_weekly_start.return_value = None
         return SingleScriptConfigDialog(
             "collect_log", "日志分析", "C:/x.py", app_service=app
         )
@@ -352,7 +267,6 @@ class TestGamePathInput(unittest.TestCase):
             script_data if name == "collect_log" else None
         )
         app.weekly_inputs.return_value = [3600] * 7
-        app.get_weekly_start.return_value = None
         return SingleScriptConfigDialog(
             "collect_log", "日志分析", "C:/x.py", app_service=app
         )
@@ -430,7 +344,6 @@ class TestFramelessDialogs(unittest.TestCase):
         app = MagicMock()
         app.get_script.return_value = {}
         app.weekly_inputs.return_value = [3600] * 7
-        app.get_weekly_start.return_value = None
         dlg = SingleScriptConfigDialog(
             "collect_log", "日志分析", "C:/x.py", app_service=app
         )

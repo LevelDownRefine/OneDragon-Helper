@@ -17,7 +17,7 @@ import tempfile
 import tomllib
 import warnings
 
-from src.config.set_config import supports_weekly
+from src.config.weekly import supports_weekly
 from src.service.app_service import AppService
 from src.utils import get_root_dir
 from src.utils.utils_config import get_script

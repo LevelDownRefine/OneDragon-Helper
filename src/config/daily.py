@@ -20,10 +20,10 @@ from src.config.task_config import (
 from src.config.task_source import read_task_source
 from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import (
-    load_config,
     load_game_config,
+    load_script_config,
     load_template,
-    save_config,
+    save_script_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class Daily:
     def _read_config(
         self, rel_path: str, *, allow_missing: bool = False
     ) -> dict | None:
-        """读脚本 config 文件。
+        """读脚本 config 文件（缺失与损坏语义见 ``load_script_config``）。
 
         Args:
             rel_path: 相对脚本根目录的路径。
@@ -90,29 +90,12 @@ class Daily:
         Raises:
             AssertionError: allow_missing=False 且文件不存在、内容损坏或解析结果非 dict。
         """
-        try:
-            config = load_config(self.script_name, rel_path)
-        except AssertionError:
-            # 未安装 / 文件缺失由 load_config 以断言表达，读路径按「未设置」处理。
-            if not allow_missing:
-                raise
-            return None
-        except Exception:  # noqa: BLE001  # 文件存在但内容损坏
-            if not allow_missing:
-                raise
-            logger.warning(
-                f"[daily][{self.script_display_name}] config 损坏，"
-                f"按未设置处理: {rel_path}",
-                exc_info=True,
-            )
-            return None
-        if not isinstance(config, dict):
-            if allow_missing:
-                return None
-            assert isinstance(config, dict), (
-                f"[daily][{self.script_display_name}] config 必须是 dict"
-            )
-        return config
+        return load_script_config(
+            self.script_name,
+            self.script_display_name,
+            rel_path,
+            allow_missing=allow_missing,
+        )
 
     def _load_daily_config(self, *, allow_missing: bool = False) -> dict | None:
         """读主 config（副本落点所在文件）。
@@ -135,14 +118,8 @@ class Daily:
         Raises:
             AssertionError: config 非 dict 或保存后回读不一致。
         """
-        assert isinstance(config, dict), (
-            f"[daily][{self.script_display_name}] config 必须是 dict"
-        )
-        save_config(self.script_name, self._config_rel_path, config)
-        reloaded = self._load_daily_config()
-        assert reloaded == config, (
-            f"[daily][{self.script_display_name}] 配置保存后校验失败："
-            "重新读取的内容与预期不一致"
+        save_script_config(
+            self.script_name, self.script_display_name, self._config_rel_path, config
         )
 
     def _load_routine_config(self, *, allow_missing: bool = True) -> dict | None:
@@ -165,11 +142,8 @@ class Daily:
         Raises:
             AssertionError: 保存后回读不一致。
         """
-        save_config(self.script_name, self._routine_rel_path, routine)
-        reloaded = self._load_routine_config(allow_missing=False)
-        assert reloaded == routine, (
-            f"[daily][{self.script_display_name}] 开关文件保存后校验失败："
-            "重新读取的内容与预期不一致"
+        save_script_config(
+            self.script_name, self.script_display_name, self._routine_rel_path, routine
         )
 
     def _parse_landing(self, declaration: dict) -> None:

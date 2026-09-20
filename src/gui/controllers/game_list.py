@@ -472,18 +472,12 @@ class GameListController(QObject):
                 "[bridge] 配置弹窗 accept 但 pending_changes 为空"
             )
             changes = dialog.pending_changes
-            # 周几起（weekly.yml 段 + 游戏侧同步）由 update_script 统一落盘；
-            # 游戏侧 OSError 属部分失败（config.yml 已落盘），提示不回滚。
-            try:
-                self._app_service.update_script(
-                    changes["old_script_name"],
-                    changes["new_display_name"],
-                    changes["config_patch"],
-                    changes["weekly_timeouts"],
-                    changes["weekly_start_day"],
-                )
-            except OSError as e:
-                self._toast(f"配置已保存，但周几起未能同步到游戏配置：{e}")
+            self._app_service.update_script(
+                changes["old_script_name"],
+                changes["new_display_name"],
+                changes["config_patch"],
+                changes["weekly_timeouts"],
+            )
             self._on_reload()
             self._toast(f"已保存 {changes['new_display_name']} 配置")
 

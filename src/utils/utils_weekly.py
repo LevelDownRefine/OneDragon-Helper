@@ -2,7 +2,10 @@
 
 两类职责：
 - 日期数学：``next_target_datetime`` / ``get_week_num`` / ``is_weekly_start_reached``（周几判定）；
-- 运行期参数读写：``weekly.yml`` 内的 ``weekly_start``（周几起）+ ``weekly_timeouts``（每周超时）两段。
+- 运行期参数读写：``weekly.yml`` 内的 ``weekly_start``（周几起，条目级：
+  ``{脚本标识: {周常展示名: 0 | 1~7}}``，0 为「不启用」）+ ``weekly_timeouts``
+  （每周超时）两段。
+  读到旧版脚本级单值（``{脚本: 1~7}``）时就地迁移为条目级并写回（一次性）。
 
 不含周本声明——各游戏「有哪些周常、可选哪些副本」由 src.config.daily_config 模块函数读
 weekly_task_list.yml 提供；本模块只管「周几起 / 每天超时多久」这类运行期参数。
@@ -20,6 +23,13 @@ from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
 from src.utils.utils_yaml import dump_yaml, load_yaml_optional
 
 logger = logging.getLogger(__name__)
+
+DISABLED_START_DAY = 0
+"""「不启用」哨兵：显式关闭该周常。
+
+与「未设置」（weekly.yml 里没有该条目）不同——未设置是「不动游戏侧开关」，不启用是
+每次运行都把开关写成关闭。
+"""
 
 
 # ---- 日期数学 ----
@@ -59,12 +69,16 @@ def get_week_num() -> int:
 def is_weekly_start_reached(start_day: int) -> bool:
     """判断今天是否已到周常起始日（今天周几 >= 起始日）。
 
+    ``DISABLED_START_DAY`` 是「不启用」哨兵而非某一天，恒返回 False（任何一天都不启用）。
+
     Args:
-        start_day: 周常起始日（1=周一 ~ 7=周日）。
+        start_day: 周常起始日（1=周一 ~ 7=周日）；``DISABLED_START_DAY`` 表示不启用。
 
     Returns:
         True 表示今天起可以执行周常。
     """
+    if start_day == DISABLED_START_DAY:
+        return False
     assert 1 <= start_day <= 7, f"[utils_weekly] 非法周常起始日: {start_day}"
     return get_week_num() + 1 >= start_day
 
@@ -110,11 +124,44 @@ def _dump_weekly(timeouts_map: dict) -> None:
 
 
 def _load_weekly_start() -> dict:
-    """读取 weekly.yml 的 weekly_start 段（各脚本周常起始日，{script_name: 1~7}）。
+    """读取 weekly.yml 的 weekly_start 段（{脚本标识: {周常展示名: 0 | 1~7}}）。
 
-    文件缺失段时回退空 dict。
+    段缺失时回退空 dict。读到**旧版脚本级单值**（``{脚本: 1~7}``）时就地迁移：旧单值等价于
+    「该脚本名下每条周常都用同一天」，按当前周常声明展开成条目级并写回（一次性；迁移后
+    再读已是条目级）。起始日越界、或该脚本已无周常声明的条目无法展开，告警后丢弃——
+    读路径不因历史数据崩溃。
+
+    Returns:
+        {脚本标识: {周常展示名: 0 | 1~7}}；已完成迁移。
     """
-    return _load_weekly_file().get("weekly_start", {}) or {}
+    start_map = _load_weekly_file().get("weekly_start", {}) or {}
+    legacy = {k: v for k, v in start_map.items() if not isinstance(v, dict)}
+    if not legacy:
+        return start_map
+    # 延迟导入：config.weekly 反向依赖本模块（is_weekly_start_reached），模块级导入成环。
+    from src.config.weekly import weekly_names
+
+    for script_name, start_day in legacy.items():
+        names = weekly_names(script_name)
+        valid_day = (
+            isinstance(start_day, int)
+            and not isinstance(start_day, bool)
+            and (start_day == DISABLED_START_DAY or 1 <= start_day <= 7)
+        )
+        if not valid_day or not names:
+            logger.warning(
+                f"[utils_weekly] 旧版 weekly_start[{script_name}]={start_day!r} 无法迁移"
+                "（起始日须为 0（不启用）或 1~7 且该脚本需有周常声明），已丢弃"
+            )
+            start_map.pop(script_name, None)
+            continue
+        start_map[script_name] = dict.fromkeys(names, start_day)
+        logger.warning(
+            f"[utils_weekly] 旧版 weekly_start[{script_name}]={start_day} 已迁移为条目级："
+            f"{start_map[script_name]}"
+        )
+    _dump_weekly_start(start_map)
+    return start_map
 
 
 def _dump_weekly_start(start_map: dict) -> None:
@@ -146,55 +193,42 @@ def load_all_weekly() -> dict:
     return _load_weekly()
 
 
-def get_weekly_start(script_name: str) -> int | None:
-    """返回某脚本的周常起始日（1~7），未设置返回 None。
-
-    Args:
-        script_name: 脚本唯一标识。
-
-    Returns:
-        周常起始日（1~7），未设置返回 None。
-    """
-    start_map = _load_weekly_start()
-    if script_name not in start_map:
-        return None
-    start_day = start_map[script_name]
-    if start_day is None:
-        return None
-    assert isinstance(start_day, int), (
-        f"[utils_weekly] {script_name} 非法 weekly_start: {start_day!r}（应为整数 1~7）"
-    )
-    assert 1 <= start_day <= 7, (
-        f"[utils_weekly] {script_name} 非法 weekly_start: {start_day}（应为 1~7）"
-    )
-    return start_day
-
-
 def get_weekly_start_map() -> dict:
-    """返回 weekly.yml 的 weekly_start 段全量（{脚本标识: 1~7}）。"""
+    """返回 weekly.yml 的 weekly_start 段全量（{脚本标识: {周常展示名: 0 | 1~7}}）。
+
+    周几起是**条目级**的：一个脚本名下每条周常各有一个起始日。
+    """
     return _load_weekly_start()
 
 
-def set_weekly_start(script_name: str, start_day: int | None) -> None:
-    """持久化某脚本的周常起始日（周几起）到 weekly.yml 的 weekly_start 段。
+def set_weekly_start(script_name: str, start_days: dict[str, int]) -> None:
+    """整脚本覆盖该脚本各周常的起始日（周几起）到 weekly.yml 的 weekly_start 段。
 
-    start_day 为 1~7 时写入；为 None 时移除该脚本条目（对应弹窗「不设置」）。
+    ``start_days`` 为空 dict 时移除该脚本条目（对应界面「不设置」）。
 
     Args:
         script_name: 脚本唯一标识。
-        start_day: 周常起始日（1~7）；None 表示清除。
+        start_days: {周常展示名: 起始日（0 = 不启用，1~7 = 周一~周日）}。
+
+    Raises:
+        AssertionError: 起始日不是 0（不启用）或 1~7 的整数。
     """
-    if start_day is not None:
-        assert 1 <= start_day <= 7, (
-            f"[utils_weekly] 非法 weekly_start: {start_day}（应为 1~7）"
+    for weekly_name, start_day in start_days.items():
+        assert isinstance(start_day, int) and not isinstance(start_day, bool), (
+            f"[utils_weekly] {script_name}/{weekly_name} 非法 weekly_start: "
+            f"{start_day!r}（应为 0（不启用）或整数 1~7）"
+        )
+        assert start_day == DISABLED_START_DAY or 1 <= start_day <= 7, (
+            f"[utils_weekly] {script_name}/{weekly_name} 非法 weekly_start: "
+            f"{start_day}（应为 0（不启用）或 1~7）"
         )
     data = _load_weekly_start()
-    if start_day is None:
+    if not start_days:
         if script_name not in data:
             return
         data.pop(script_name, None)
     else:
-        data[script_name] = start_day
+        data[script_name] = dict(start_days)
     _dump_weekly_start(data)
 
 

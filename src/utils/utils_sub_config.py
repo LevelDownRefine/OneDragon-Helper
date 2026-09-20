@@ -197,6 +197,49 @@ def load_config(script_name: str, rel_path: str) -> dict | list:
         raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
 
 
+def load_script_config(
+    script_name: str, display_name: str, rel_path: str, *, allow_missing: bool = False
+) -> dict | None:
+    """读取脚本 config 文件，调用方可选「未设置」语义。
+
+    与 load_config 的区别：本函数承担落点读写统一的缺失语义——文件不存在或内容
+    损坏时，读路径（allow_missing=True）按「未设置」返回 None，写路径则报错。
+
+    Args:
+        script_name: 脚本唯一标识。
+        display_name: 脚本展示名（日志与报错用）。
+        rel_path: 相对脚本根目录的路径。
+        allow_missing: True 时读取失败返回 None（读路径）；
+            False 时失败即报错（写路径，默认）。
+
+    Returns:
+        解析后的 config dict；仅 allow_missing=True 且读取失败时为 None。
+
+    Raises:
+        AssertionError: allow_missing=False 且文件不存在、内容损坏或解析结果非 dict。
+    """
+    try:
+        config = load_config(script_name, rel_path)
+    except AssertionError:
+        # 未安装 / 文件缺失由 load_config 以断言表达，读路径按「未设置」处理。
+        if not allow_missing:
+            raise
+        return None
+    except Exception:  # noqa: BLE001  # 文件存在但内容损坏
+        if not allow_missing:
+            raise
+        logger.warning(
+            f"[config][{display_name}] config 损坏，按未设置处理: {rel_path}",
+            exc_info=True,
+        )
+        return None
+    if not isinstance(config, dict):
+        if allow_missing:
+            return None
+        assert isinstance(config, dict), f"[config][{display_name}] config 必须是 dict"
+    return config
+
+
 def load_game_config(script_name: str, rel_path: str) -> dict | None:
     """
     读取指定脚本的游戏路径配置文件，返回解析后的 dict。
@@ -237,6 +280,28 @@ def save_config(script_name: str, rel_path: str, data: dict | list) -> None:
         dump_yaml(path, data)
     else:
         raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
+
+
+def save_script_config(
+    script_name: str, display_name: str, rel_path: str, config: dict
+) -> None:
+    """保存脚本 config 文件，并回读校验落盘一致。
+
+    Args:
+        script_name: 脚本唯一标识。
+        display_name: 脚本展示名（日志与报错用）。
+        rel_path: 相对脚本根目录的路径。
+        config: 待保存的 dict。
+
+    Raises:
+        AssertionError: config 非 dict，或保存后回读不一致。
+    """
+    assert isinstance(config, dict), f"[config][{display_name}] config 必须是 dict"
+    save_config(script_name, rel_path, config)
+    reloaded = load_script_config(script_name, display_name, rel_path)
+    assert reloaded == config, (
+        f"[config][{display_name}] 配置保存后校验失败：重新读取的内容与预期不一致"
+    )
 
 
 def _is_absolute_path(p: str) -> bool:

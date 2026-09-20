@@ -12,10 +12,10 @@ import unittest
 from unittest.mock import patch
 
 from src.utils.utils_weekly import (
+    DISABLED_START_DAY,
     check_weekly,
     delete_weekly,
     ensure_weekly_entry,
-    get_weekly_start,
     get_weekly_start_map,
     rename_weekly,
     save_weekly,
@@ -94,21 +94,26 @@ class TestRenameWeekly(UtilsWeeklyTestBase):
     def test_rename_migrates_weekly_start_too(self):
         """weekly_start 段条目一并迁移，避免改名后周几起成孤儿。"""
         self._write_weekly(
-            {"weekly_start": {"a": 3}, "weekly_timeouts": {"a": [1] * 7}}
+            {
+                "weekly_start": {"a": {"周常甲": 3}},
+                "weekly_timeouts": {"a": [1] * 7},
+            }
         )
         rename_weekly("a", "b")
         weekly = self._read_weekly()
         self.assertNotIn("a", weekly["weekly_start"])
-        self.assertEqual(weekly["weekly_start"]["b"], 3)
+        self.assertEqual(weekly["weekly_start"]["b"], {"周常甲": 3})
         self.assertNotIn("a", weekly["weekly_timeouts"])
         self.assertEqual(weekly["weekly_timeouts"]["b"], [1] * 7)
 
     def test_rename_start_only_entry(self):
         """只迁 weekly_start 段条目（weekly_timeouts 无旧条目）也能落盘。"""
-        self._write_weekly({"weekly_start": {"a": 5}, "weekly_timeouts": {}})
+        self._write_weekly(
+            {"weekly_start": {"a": {"周常甲": 5}}, "weekly_timeouts": {}}
+        )
         rename_weekly("a", "b")
         weekly = self._read_weekly()
-        self.assertEqual(weekly["weekly_start"], {"b": 5})
+        self.assertEqual(weekly["weekly_start"], {"b": {"周常甲": 5}})
         self.assertEqual(weekly["weekly_timeouts"], {})
 
     def test_same_name_noop(self):
@@ -224,30 +229,98 @@ class TestDeleteWeekly(UtilsWeeklyTestBase):
 
 
 class TestSetWeeklyStart(UtilsWeeklyTestBase):
-    """set_weekly_start / get_weekly_start：读写 weekly.yml 的 weekly_start 段。"""
+    """set_weekly_start / get_weekly_start_map：读写 weekly.yml 的 weekly_start 段（条目级）。"""
 
     def test_set_writes_to_weekly_start_file_only(self):
-        set_weekly_start("a", 4)
-        self.assertEqual(self._read_weekly()["weekly_start"], {"a": 4})
+        set_weekly_start("a", {"周常甲": 4})
+        self.assertEqual(self._read_weekly()["weekly_start"], {"a": {"周常甲": 4}})
         # 不污染 weekly_timeouts 段
         self.assertEqual(self._read_weekly()["weekly_timeouts"], {})
 
-    def test_get_returns_set_value(self):
-        set_weekly_start("a", 3)
-        self.assertEqual(get_weekly_start("a"), 3)
-        self.assertIsNone(get_weekly_start("缺失"))
+    def test_get_map_returns_entries(self):
+        set_weekly_start("a", {"周常甲": 3, "周常乙": 5})
+        self.assertEqual(get_weekly_start_map(), {"a": {"周常甲": 3, "周常乙": 5}})
 
-    def test_set_none_clears_entry(self):
-        """start_day=None → 移除该脚本条目。"""
-        set_weekly_start("a", 2)
-        set_weekly_start("a", None)
-        self.assertIsNone(get_weekly_start("a"))
-        self.assertEqual(self._read_weekly()["weekly_start"], {})
+    def test_set_empty_clears_entry(self):
+        """空 dict → 移除该脚本条目（对应界面「不设置」）。"""
+        set_weekly_start("a", {"周常甲": 2})
+        set_weekly_start("a", {})
+        self.assertEqual(get_weekly_start_map(), {})
+
+    def test_disabled_sentinel_is_accepted(self):
+        """0 = 不启用，是合法取值（区别于「未设置」）。"""
+        set_weekly_start("a", {"周常甲": DISABLED_START_DAY})
+        self.assertEqual(get_weekly_start_map(), {"a": {"周常甲": DISABLED_START_DAY}})
 
     def test_invalid_day_raises(self):
-        for bad in (0, 8):
+        for bad in (8, -1):
             with self.subTest(bad=bad), self.assertRaises(AssertionError):
-                set_weekly_start("a", bad)
+                set_weekly_start("a", {"周常甲": bad})
+
+    def test_non_int_day_raises(self):
+        with self.assertRaises(AssertionError):
+            set_weekly_start("a", {"周常甲": "3"})
+
+
+class TestLegacyWeeklyStartMigration(UtilsWeeklyTestBase):
+    """旧版脚本级单值（{脚本: 1~7}）读到时就地迁移为条目级，并按当前周常声明展开。
+
+    周几起改为条目级后，历史 weekly.yml 的脚本级单值语义等价于「该脚本全部周常同一天」，
+    故读路径直接展开并写回（一次性）；不可展开的条目告警后丢弃，不卡住读路径。
+    """
+
+    def test_legacy_scalar_expanded_per_declared_weeklies(self):
+        """单值按该脚本声明的周常逐条展开；weekly_timeouts 段原样保留。"""
+        self._write_weekly(
+            {
+                "weekly_start": {"ok-ww": 2, "March7th-Launcher": 3},
+                "weekly_timeouts": {"ok-ww": [60] * 7},
+            }
+        )
+        with self.assertLogs("src.utils.utils_weekly", level="WARNING"):
+            start_map = get_weekly_start_map()
+        self.assertEqual(
+            start_map,
+            {
+                "ok-ww": {"幻梦游园": 2},
+                "March7th-Launcher": {"货币战争": 3, "历战余响": 3, "模拟宇宙": 3},
+            },
+        )
+        # 已落盘为条目级；另一段不受影响
+        weekly = self._read_weekly()
+        self.assertEqual(weekly["weekly_start"], start_map)
+        self.assertEqual(weekly["weekly_timeouts"], {"ok-ww": [60] * 7})
+
+    def test_migration_is_idempotent(self):
+        """迁移后已是条目级 → 再读不写盘（不产生重复写入）。"""
+        self._write_weekly({"weekly_start": {"ok-ww": 2}, "weekly_timeouts": {}})
+        with self.assertLogs("src.utils.utils_weekly", level="WARNING"):
+            get_weekly_start_map()
+        with patch("src.utils.utils_weekly._dump_weekly_start") as dump:
+            self.assertEqual(get_weekly_start_map(), {"ok-ww": {"幻梦游园": 2}})
+        dump.assert_not_called()
+
+    def test_unmigratable_entries_dropped_with_warning(self):
+        """起始日越界 / 脚本已无周常声明的条目丢弃，其余照常迁移。"""
+        self._write_weekly(
+            {
+                "weekly_start": {"ok-ww": 9, "不存在的脚本": 3, "ok-ef": 6},
+                "weekly_timeouts": {},
+            }
+        )
+        with self.assertLogs("src.utils.utils_weekly", level="WARNING") as logs:
+            start_map = get_weekly_start_map()
+        self.assertEqual(start_map, {"ok-ef": {"卖出物资": 6}})
+        self.assertEqual(len(logs.records), 3)  # 两条丢弃告警 + 一条迁移告警
+        for script_name in ("ok-ww", "不存在的脚本"):
+            self.assertNotIn(script_name, self._read_weekly()["weekly_start"])
+
+    def test_entry_level_data_untouched(self):
+        """已是条目级（含空 dict）→ 原样返回、不写盘、不告警。"""
+        set_weekly_start("ok-ww", {"幻梦游园": 4})
+        with patch("src.utils.utils_weekly._dump_weekly_start") as dump:
+            self.assertEqual(get_weekly_start_map(), {"ok-ww": {"幻梦游园": 4}})
+        dump.assert_not_called()
 
 
 class TestMissingWeeklyFile(unittest.TestCase):
@@ -271,7 +344,6 @@ class TestMissingWeeklyFile(unittest.TestCase):
     def test_reads_return_empty_without_file(self):
         self.assertEqual(get_weekly_start_map(), {})
         self.assertEqual(weekly_inputs("a"), [3600] * 7)
-        self.assertIsNone(get_weekly_start("a"))
 
     def test_save_creates_file_with_both_sections(self):
         """缺失时首次写回会创建文件，且 weekly_start / weekly_timeouts 两段都在。"""
