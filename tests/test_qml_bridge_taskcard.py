@@ -62,7 +62,7 @@ class TestTaskCard(unittest.TestCase):
         "src.service.app_service.get_weekly_map",
         return_value=[{"display_name": "周常"}],
     )
-    @patch.object(app_service, "get_weekly_start", return_value=None)
+    @patch("src.service.app_service.get_weekly_start_map", return_value={})
     @patch("src.service.app_service.get_daily_map", return_value={})
     @patch.object(task_card, "get_daily_readback", return_value=[])
     def test_daily_items_default_is_empty(self, *_):

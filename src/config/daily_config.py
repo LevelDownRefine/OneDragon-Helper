@@ -64,7 +64,8 @@ def get_weekly_map(script_name: str) -> list:
     """把周常声明物化成菜单（词汇与声明一致）；本地资源缺失时没有可选副本。
 
     每项即周常声明节点（无选项的开关周常原样），有选项的 ``options.values`` 已物化。
-    当前周常菜单只支持一级选择：物化后仍断言各选项无子选项组。
+    当前周常菜单只支持一级选择：物化后仍断言各选项无子选项组；``class`` / ``config``
+    是代码耦合字段，不属于 UI 词汇，物化时剥掉。
     """
     defs_map = load_weekly_map()
     if script_name not in defs_map:
@@ -77,7 +78,7 @@ def get_weekly_map(script_name: str) -> list:
             assert all("options" not in option for option in values), (
                 "当前周常菜单只支持一级选择"
             )
-        defs.append(task)
+        defs.append({k: v for k, v in task.items() if k not in ("class", "config")})
     return defs
 
 

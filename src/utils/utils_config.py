@@ -18,8 +18,8 @@ import os
 from src.config.set_config import (
     get_config_path,
     init_config,
-    set_weekly_start_day,
 )
+from src.config.weekly import set_weekly_start_day, weekly_names
 from src.utils import (
     get_config_yml_path_under_root,
     require_config_yml_path,
@@ -206,7 +206,13 @@ def update_script(
     if new_script_name != old_script_name:
         rename_weekly(old_script_name, new_script_name)
     save_weekly(new_script_name, weekly_timeouts)
-    set_weekly_start(new_script_name, weekly_start_day)
+    # 周几起是条目级数据，弹窗只给得出脚本级单值：写给该脚本全部周常。
+    set_weekly_start(
+        new_script_name,
+        {}
+        if weekly_start_day is None
+        else dict.fromkeys(weekly_names(new_script_name), weekly_start_day),
+    )
     init_config(new_script_name)
     if weekly_start_day is not None:
         # 游戏侧同步必须在 config.yml 落盘新路径之后；失败传播给调用方提示。

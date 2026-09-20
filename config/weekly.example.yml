@@ -1,9 +1,15 @@
 weekly_start:
-  ok-ww: 1
-  OneDragon-Launcher: 1
-  March7th-Launcher: 1
-  ok-ef: 1
-  MAA: 1
+  ok-ww:
+    幻梦游园: 1
+  OneDragon-Launcher:
+    迷失之地: 1
+  March7th-Launcher:
+    货币战争: 1
+    历战余响: 1
+  ok-ef:
+    卖出物资: 1
+  MAA:
+    理智药剂: 1
 weekly_timeouts:
   ok-ww:
   - 3600

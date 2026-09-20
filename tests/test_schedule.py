@@ -91,13 +91,15 @@ class TestPreRunWaitLogs(unittest.TestCase):
 class TestBuildPreRunWriteConfig(unittest.TestCase):
     """build_pre_run_pipeline 的写子脚本 config step：把 weekly_start 写回各子脚本 config。
 
-    原内联于 generate_chain_config 的 set_config(weekly_start=...) 已并入单一工厂；
-    即时/定时两条路径统一经 ScheduledRun，故一次应用即覆盖。
+    原内联于 generate_chain_config 的周常写入已并入单一工厂，且落点归
+    ``src.config.weekly``；即时/定时两条路径统一经 ScheduledRun，故一次应用即覆盖。
     """
 
     def test_applies_weekly_start_per_enabled_script(self):
-        weekly_start_map = {"A": 3, "B": 4}
-        with mock.patch("src.service.run_actions.set_config") as mock_set:
+        weekly_start_map = {"A": {"周常甲": 3}, "B": {"周常乙": 4}}
+        with mock.patch(
+            "src.service.run_actions.prepare_weekly_start_days"
+        ) as mock_weekly:
             # target=now、未传 scripts → 仅产生写 config step（关闭残留需 scripts 非空）
             steps = build_pre_run_pipeline(
                 target_time="now",
@@ -106,25 +108,30 @@ class TestBuildPreRunWriteConfig(unittest.TestCase):
             )
             self.assertEqual(len(steps), 1)
             steps[0]()  # 执行 step
-        mock_set.assert_any_call("A", weekly_start=3)
-        mock_set.assert_any_call("B", weekly_start=4)
+        mock_weekly.assert_any_call("A", {"周常甲": 3})
+        mock_weekly.assert_any_call("B", {"周常乙": 4})
 
-    def test_missing_from_map_passes_none(self):
-        # 未设周常起始日的脚本：weekly_start=None 透传（由 set_config 内部跳过）。
-        with mock.patch("src.service.run_actions.set_config") as mock_set:
+    def test_missing_from_map_is_skipped(self):
+        # 未设周常起始日的脚本：不写周本开关（空 dict 不入写入口）。
+        with mock.patch(
+            "src.service.run_actions.prepare_weekly_start_days"
+        ) as mock_weekly:
             steps = build_pre_run_pipeline(
-                target_time="now", enabled_keys={"A", "C"}, weekly_start_map={"A": 2}
+                target_time="now",
+                enabled_keys={"A", "C"},
+                weekly_start_map={"A": {"周常甲": 2}},
             )
             steps[0]()
-        mock_set.assert_any_call("A", weekly_start=2)
-        mock_set.assert_any_call("C", weekly_start=None)
+        mock_weekly.assert_called_once_with("A", {"周常甲": 2})
 
     def test_empty_keys_returns_no_steps(self):
         # 无启用脚本：不写盘、不产生 step。
-        with mock.patch("src.service.run_actions.set_config") as mock_set:
+        with mock.patch(
+            "src.service.run_actions.prepare_weekly_start_days"
+        ) as mock_weekly:
             steps = build_pre_run_pipeline(target_time="now", enabled_keys=set())
         self.assertEqual(steps, [])
-        mock_set.assert_not_called()
+        mock_weekly.assert_not_called()
 
 
 class TestBuildPreRunClose(unittest.TestCase):
@@ -335,6 +342,11 @@ class TestScheduledRunOrder(unittest.TestCase):
                 "src.service.schedule.load_schedule",
                 return_value=svc.schedule_data,
             ),
+            # 周几起有值才会有写 config step（空 dict 即无周本可写，step 不动作）。
+            mock.patch(
+                "src.utils.utils_weekly.get_weekly_start_map",
+                return_value={"A": {"周常甲": 3}},
+            ),
             mock.patch("src.service.schedule.mute_on", lambda: calls.append("mute_on")),
             mock.patch(
                 "src.service.schedule.mute_off", lambda: calls.append("mute_off")
@@ -344,8 +356,8 @@ class TestScheduledRunOrder(unittest.TestCase):
                 lambda targets: calls.append("kill") or ["ABot.exe(1)"],
             ),
             mock.patch(
-                "src.service.run_actions.set_config",
-                lambda name, weekly_start=None: calls.append("config"),
+                "src.service.run_actions.prepare_weekly_start_days",
+                lambda name, start_days: calls.append("config"),
             ),
             mock.patch(
                 "src.service.run_actions.next_target_datetime",

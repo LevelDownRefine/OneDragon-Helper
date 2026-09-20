@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch
 
-from src.service.chain_gen import _resolve_daily_run, resolve_weekly_start
+from src.service.chain_gen import _resolve_daily_run, resolve_weekly_starts
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT
 
 
@@ -78,24 +78,31 @@ class TestApplyWeeklyTimeout(unittest.TestCase):
         self.assertEqual(script["run_timeout_seconds"], 10)
 
 
-class TestResolveWeeklyStart(unittest.TestCase):
-    """resolve_weekly_start：从 weekly_start_map（weekly_start.yml 全量映射）取周常起始日（1=周一~7=周日），不判断今天。"""
+class TestResolveWeeklyStarts(unittest.TestCase):
+    """resolve_weekly_starts：从 weekly_start_map 取该脚本各周常的起始日（条目级），不判断今天。"""
 
-    def test_missing_weekly_start_returns_none(self):
-        """未设置 weekly_start → None（不处理周常，保持脚本配置原样）"""
-        self.assertIsNone(resolve_weekly_start({}, "ok-ww"))
-        self.assertIsNone(resolve_weekly_start({"other": 4}, "ok-ww"))
+    def test_missing_weekly_start_returns_empty(self):
+        """未设置 weekly_start → 空 dict（不处理周常，保持脚本配置原样）"""
+        self.assertEqual(resolve_weekly_starts({}, "ok-ww"), {})
+        self.assertEqual(resolve_weekly_starts({"other": {"周常": 4}}, "ok-ww"), {})
 
-    def test_returns_weekly_start_value(self):
-        """已设置 weekly_start → 返回原值（启用/停用由 set_config 自行判断）"""
-        result = resolve_weekly_start({"ok-ww": 4}, "ok-ww")
-        self.assertEqual(result, 4)
+    def test_returns_weekly_start_values(self):
+        """已设置 → 返回该脚本各周常的起始日（启用/停用由 weekly 模块自行判断）"""
+        result = resolve_weekly_starts(
+            {"March7th-Launcher": {"货币战争": 4, "历战余响": 5}}, "March7th-Launcher"
+        )
+        self.assertEqual(result, {"货币战争": 4, "历战余响": 5})
 
     def test_invalid_weekly_start_raises(self):
         """weekly_start 越界（0 / 8）→ assert"""
         for bad in (0, 8):
             with self.subTest(bad=bad), self.assertRaises(AssertionError):
-                resolve_weekly_start({"ok-ww": bad}, "ok-ww")
+                resolve_weekly_starts({"ok-ww": {"幻梦游园": bad}}, "ok-ww")
+
+    def test_non_dict_entry_raises(self):
+        """条目不是 {周常: 起始日} 结构 → assert（旧格式不留兼容）"""
+        with self.assertRaises(AssertionError):
+            resolve_weekly_starts({"ok-ww": 4}, "ok-ww")
 
 
 class TestGenerateChainConfig(unittest.TestCase):

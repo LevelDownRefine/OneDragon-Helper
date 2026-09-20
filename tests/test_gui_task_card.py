@@ -30,7 +30,12 @@ def _write_defs(tmp, data):
     for script_name, tasks in data.items():
         declarations[script_name] = []
         for task in tasks:
-            definition = {"display_name": task["name"]}
+            # class/config 是声明必填（机制类与文件路径）；菜单物化只取词汇。
+            definition = {
+                "display_name": task["name"],
+                "class": "WutheringWavesWeekly",
+                "config": "config.json",
+            }
             if "tasks" in task:
                 definition["options"] = {
                     "values": [{"display_name": name} for name in task["tasks"]]

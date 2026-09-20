@@ -56,33 +56,44 @@ def _resolve_daily_run(script: dict, weekly_timeouts: dict) -> bool:
     return True
 
 
-def resolve_weekly_start(weekly_start_map: dict, script_name: str) -> int | None:
-    """取脚本的周常起始日（1=周一 ~ 7=周日），未设置返回 None。
+def resolve_weekly_starts(weekly_start_map: dict, script_name: str) -> dict[str, int]:
+    """取脚本各周常的起始日（{周常展示名: 1~7}），未设置返回空 dict。
 
     周常开关（enabled）是 GUI 内存态，不参与链生成；GUI 与 CLI 统一按
-    「今天周几 >= 起始日」由 set_config 判断启用/停用写入脚本配置
+    「今天周几 >= 起始日」由 ``weekly.prepare_weekly_start_days`` 判断启用/停用写入脚本配置
     （与日常副本选择落盘不受日常开关影响的模型一致）。
 
-    起始日来源为 weekly.yml 的 weekly_start 段（运行时由 src.utils.utils_weekly 持久化），经
-    weekly_start_map 传入。
+    起始日来源为 weekly.yml 的 weekly_start 段（运行时由 src.utils.utils_weekly 持久化），
+    **条目级**：一个脚本名下每条周常各有一个起始日。
 
     Args:
-        weekly_start_map: weekly.yml 的 weekly_start 段 的全量映射（{脚本标识: 1~7}）。
+        weekly_start_map: weekly.yml 的 weekly_start 段全量映射
+            （{脚本标识: {周常展示名: 1~7}}）。
         script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
 
     Returns:
-        周常起始日（1~7），未设置返回 None。
+        {周常展示名: 起始日（1~7）}；该脚本未设置返回空 dict。
+
+    Raises:
+        AssertionError: 条目不是 dict，或起始日不是 1~7 的整数。
     """
     if script_name not in weekly_start_map:
-        return None
-    weekly_start = weekly_start_map[script_name]
-    assert isinstance(weekly_start, int), (
-        f"[chain_gen] {script_name} 非法 weekly_start: {weekly_start!r}（应为整数 1~7）"
+        return {}
+    start_days = weekly_start_map[script_name]
+    assert isinstance(start_days, dict), (
+        f"[chain_gen] {script_name} 的 weekly_start 应为 {{周常: 起始日}}，"
+        f"实际 {start_days!r}"
     )
-    assert 1 <= weekly_start <= 7, (
-        f"[chain_gen] {script_name} 非法 weekly_start: {weekly_start}（应为 1~7）"
-    )
-    return weekly_start
+    for weekly_name, start_day in start_days.items():
+        assert isinstance(start_day, int) and not isinstance(start_day, bool), (
+            f"[chain_gen] {script_name}/{weekly_name} 非法 weekly_start: "
+            f"{start_day!r}（应为整数 1~7）"
+        )
+        assert 1 <= start_day <= 7, (
+            f"[chain_gen] {script_name}/{weekly_name} 非法 weekly_start: "
+            f"{start_day}（应为 1~7）"
+        )
+    return dict(start_days)
 
 
 def generate_chain_config(
@@ -98,7 +109,7 @@ def generate_chain_config(
     的脚本不进链，纳入的条目剥掉 ``enabled`` 字段——链配置不留第二开关。
 
     脚本自身的副本/序列、周常起始日对应的周本开关，均由 GUI / CLI 在编辑期实时落盘
-    （见 ``set_config``）；其中「按周几起决定开启/关闭」这类必须在运行期按当天星期
+    （见 ``src.config.set_config`` / ``src.config.weekly``）；其中「按周几起决定开启/关闭」这类必须在运行期按当天星期
     计算的周本开关写盘，已抽出为 ``ScheduledRun`` 的 pre_run 步骤（由 ``build_pre_run_pipeline`` 在运行前统一写回），
     故本函数只负责按星期过滤脚本并生成链 yml，不再写任何子脚本 config。
 

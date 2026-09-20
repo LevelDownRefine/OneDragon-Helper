@@ -101,12 +101,14 @@ def build_baseline():
     stores = _seed_files()
     saves = []
 
-    def load(script, path):
+    def load(*args, **kwargs):
+        script, path = args[0], args[-1]
         assert script in stores
         assert path in stores[script], (script, path)
         return deepcopy(stores[script][path])
 
-    def save(script, path, data):
+    def save(*args):
+        script, path, data = args[0], args[-2], args[-1]
         assert script in stores
         assert path in stores[script], (script, path)
         stores[script][path] = deepcopy(data)
@@ -114,9 +116,13 @@ def build_baseline():
 
     baseline = {"menus": {}, "writes": {}, "reads": {}}
     with ExitStack() as stack:
-        for module in (daily_mod, config_mod):
-            stack.enter_context(patch.object(module, "load_config", side_effect=load))
-            stack.enter_context(patch.object(module, "save_config", side_effect=save))
+        # Daily 自持 I/O 走 load_script_config / save_script_config（带展示名的 3/4 参签名）。
+        for module, load_name, save_name in (
+            (daily_mod, "load_script_config", "save_script_config"),
+            (config_mod, "load_config", "save_config"),
+        ):
+            stack.enter_context(patch.object(module, load_name, side_effect=load))
+            stack.enter_context(patch.object(module, save_name, side_effect=save))
         stack.enter_context(
             patch("src.config.daily_config.get_task_lists", side_effect=_resource_names)
         )

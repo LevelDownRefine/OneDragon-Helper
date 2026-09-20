@@ -2,7 +2,8 @@
 
 两类职责：
 - 日期数学：``next_target_datetime`` / ``get_week_num`` / ``is_weekly_start_reached``（周几判定）；
-- 运行期参数读写：``weekly.yml`` 内的 ``weekly_start``（周几起）+ ``weekly_timeouts``（每周超时）两段。
+- 运行期参数读写：``weekly.yml`` 内的 ``weekly_start``（周几起，条目级：
+  ``{脚本标识: {周常展示名: 1~7}}``）+ ``weekly_timeouts``（每周超时）两段。
 
 不含周本声明——各游戏「有哪些周常、可选哪些副本」由 src.config.daily_config 模块函数读
 weekly_task_list.yml 提供；本模块只管「周几起 / 每天超时多久」这类运行期参数。
@@ -110,7 +111,7 @@ def _dump_weekly(timeouts_map: dict) -> None:
 
 
 def _load_weekly_start() -> dict:
-    """读取 weekly.yml 的 weekly_start 段（各脚本周常起始日，{script_name: 1~7}）。
+    """读取 weekly.yml 的 weekly_start 段（{脚本标识: {周常展示名: 1~7}}）。
 
     文件缺失段时回退空 dict。
     """
@@ -146,55 +147,42 @@ def load_all_weekly() -> dict:
     return _load_weekly()
 
 
-def get_weekly_start(script_name: str) -> int | None:
-    """返回某脚本的周常起始日（1~7），未设置返回 None。
-
-    Args:
-        script_name: 脚本唯一标识。
-
-    Returns:
-        周常起始日（1~7），未设置返回 None。
-    """
-    start_map = _load_weekly_start()
-    if script_name not in start_map:
-        return None
-    start_day = start_map[script_name]
-    if start_day is None:
-        return None
-    assert isinstance(start_day, int), (
-        f"[utils_weekly] {script_name} 非法 weekly_start: {start_day!r}（应为整数 1~7）"
-    )
-    assert 1 <= start_day <= 7, (
-        f"[utils_weekly] {script_name} 非法 weekly_start: {start_day}（应为 1~7）"
-    )
-    return start_day
-
-
 def get_weekly_start_map() -> dict:
-    """返回 weekly.yml 的 weekly_start 段全量（{脚本标识: 1~7}）。"""
+    """返回 weekly.yml 的 weekly_start 段全量（{脚本标识: {周常展示名: 1~7}}）。
+
+    周几起是**条目级**的：一个脚本名下每条周常各有一个起始日。
+    """
     return _load_weekly_start()
 
 
-def set_weekly_start(script_name: str, start_day: int | None) -> None:
-    """持久化某脚本的周常起始日（周几起）到 weekly.yml 的 weekly_start 段。
+def set_weekly_start(script_name: str, start_days: dict[str, int]) -> None:
+    """整脚本覆盖该脚本各周常的起始日（周几起）到 weekly.yml 的 weekly_start 段。
 
-    start_day 为 1~7 时写入；为 None 时移除该脚本条目（对应弹窗「不设置」）。
+    ``start_days`` 为空 dict 时移除该脚本条目（对应界面「不设置」）。
 
     Args:
         script_name: 脚本唯一标识。
-        start_day: 周常起始日（1~7）；None 表示清除。
+        start_days: {周常展示名: 起始日（1~7）}。
+
+    Raises:
+        AssertionError: 起始日不是 1~7 的整数。
     """
-    if start_day is not None:
+    for weekly_name, start_day in start_days.items():
+        assert isinstance(start_day, int) and not isinstance(start_day, bool), (
+            f"[utils_weekly] {script_name}/{weekly_name} 非法 weekly_start: "
+            f"{start_day!r}（应为整数 1~7）"
+        )
         assert 1 <= start_day <= 7, (
-            f"[utils_weekly] 非法 weekly_start: {start_day}（应为 1~7）"
+            f"[utils_weekly] {script_name}/{weekly_name} 非法 weekly_start: "
+            f"{start_day}（应为 1~7）"
         )
     data = _load_weekly_start()
-    if start_day is None:
+    if not start_days:
         if script_name not in data:
             return
         data.pop(script_name, None)
     else:
-        data[script_name] = start_day
+        data[script_name] = dict(start_days)
     _dump_weekly_start(data)
 
 

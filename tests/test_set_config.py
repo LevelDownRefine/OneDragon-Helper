@@ -19,8 +19,14 @@ from unittest.mock import mock_open, patch
 from src.config import daily as daily_mod
 from src.config import set_config
 from src.config.task_config import get_daily_configs
+from src.config.weekly import weeklies_of
 from src.utils import safe_path_join, utils_sub_config
 from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
+
+
+def _weekly(script_name: str, weekly_name: str):
+    """按脚本 + 周常展示名取已装配的周常对象。"""
+    return next(w for w in weeklies_of(script_name) if w.display_name == weekly_name)
 
 
 class TestConfigRelPaths(unittest.TestCase):
@@ -116,31 +122,6 @@ class TestConfigRelPaths(unittest.TestCase):
             {"BetterGI", "OneDragon-Launcher", "March7th-Launcher", "ok-ef"},
         )
 
-    def test_weekly_task_name_requires_prepare_weekly_start_day(self):
-        """声明 _weekly_task_name 的子类必须覆写 prepare_weekly_start_day（register 完整性校验）"""
-        for name, factory in set_config._CONFIGS.items():
-            cls = factory()
-            if cls._weekly_task_name:
-                self.assertTrue(
-                    type(cls).prepare_weekly_start_day
-                    is not set_config.ScriptConfig.prepare_weekly_start_day,
-                    f"{name} 声明了 _weekly_task_name 但未覆写 prepare_weekly_start_day",
-                )
-
-    def test_register_rejects_weekly_without_write(self):
-        """register 拒绝：声明 _weekly_task_name 但沿用基类 prepare_weekly_start_day 的子类"""
-        bogus = type(
-            "BogusWeekly",
-            (set_config.ScriptConfig,),
-            {
-                "_script_name": "bogus-weekly",
-                "_config_rel_path": "config.json",
-                "_weekly_task_name": "weekly",
-            },
-        )
-        with self.assertRaises(AssertionError):
-            set_config.register(bogus)
-
     def test_rel_paths_contain_extension(self):
         """每个 config 相对路径应包含 .json 或 .yaml/.yml 扩展名"""
         valid_exts = (".json", ".yaml", ".yml")
@@ -165,8 +146,8 @@ class TestSharedRegistry(unittest.TestCase):
             ) as template,
             patch.object(set_config, "load_config") as weekly_load,
             patch.object(set_config, "save_config") as weekly_save,
-            patch.object(daily_mod, "load_config") as daily_load,
-            patch.object(daily_mod, "save_config") as daily_save,
+            patch.object(daily_mod, "load_script_config") as daily_load,
+            patch.object(daily_mod, "save_script_config") as daily_save,
             patch.object(set_config.ArknightsConfig, "_init_config") as init,
         ):
             cls = set_config.register(set_config.ArknightsConfig)
@@ -336,7 +317,7 @@ class TestGetConfigPath(unittest.TestCase):
 
 
 class TestStarRailWeeklyStartDayRobustness(unittest.TestCase):
-    """回归：崩铁 set_weekly_start_day 的读路径不应因 exe 路径失效而崩溃（soft 解析）。
+    """回归：崩铁 set_start_day 的读路径不应因 exe 路径失效而崩溃（soft 解析）。
 
     旧实现 get_sub_config_path → get_script_path 断言 exe 存在；用户正要修正失效的旧路径时
     保存即崩。修复后 get_sub_config_path 用 soft 解析（不校验 exe），读路径不再因路径失效
@@ -346,13 +327,12 @@ class TestStarRailWeeklyStartDayRobustness(unittest.TestCase):
 
     def test_invalid_day_still_asserted(self):
         """非法周起始日（非 1~7）仍应被系统拦截。"""
-        cfg = set_config.StarRailConfig()
         with self.assertRaises(AssertionError):
-            cfg.set_weekly_start_day(99)
+            _weekly("March7th-Launcher", "历战余响").set_start_day(99)
 
 
 class TestArknightsWeeklyStartDayRobustness(unittest.TestCase):
-    """回归：MAA(明日方舟) set_weekly_start_day 的读路径不再因 exe 路径失效而崩溃。
+    """回归：MAA(明日方舟) set_start_day 的读路径不再因 exe 路径失效而崩溃。
 
     与 TestStarRailWeeklyStartDayRobustness 同源修复（get_sub_config_path soft 解析）。
     写游戏侧 config 视为前置条件（游戏已安装、路径有效，由 GUI 保证），原生 config
@@ -360,9 +340,8 @@ class TestArknightsWeeklyStartDayRobustness(unittest.TestCase):
     """
 
     def test_invalid_day_still_asserted(self):
-        cfg = set_config.ArknightsConfig()
         with self.assertRaises(AssertionError):
-            cfg.set_weekly_start_day(0)
+            _weekly("MAA", "理智药剂").set_start_day(0)
 
 
 class TestLoadConfig(unittest.TestCase):
@@ -449,11 +428,11 @@ class TestLoadReadPathTolerance(unittest.TestCase):
         """config 缺失（以断言表达）属正常状态 → None 且不告警。"""
         with (
             patch.object(
-                daily_mod,
+                utils_sub_config,
                 "load_config",
                 side_effect=AssertionError("config 文件不存在"),
             ),
-            self.assertNoLogs("src.config.daily", level="WARNING"),
+            self.assertNoLogs("src.utils.utils_sub_config", level="WARNING"),
         ):
             self.assertIsNone(self._daily()._load_daily_config(allow_missing=True))
 
@@ -461,11 +440,11 @@ class TestLoadReadPathTolerance(unittest.TestCase):
         """文件存在但解析失败 → None 且留下 warning（不静默把损坏当未设置）。"""
         with (
             patch.object(
-                daily_mod,
+                utils_sub_config,
                 "load_config",
                 side_effect=json.JSONDecodeError("bad json", "{", 0),
             ),
-            self.assertLogs("src.config.daily", level="WARNING"),
+            self.assertLogs("src.utils.utils_sub_config", level="WARNING"),
         ):
             self.assertIsNone(self._daily()._load_daily_config(allow_missing=True))
 
@@ -473,7 +452,7 @@ class TestLoadReadPathTolerance(unittest.TestCase):
         """写路径（allow_missing=False）读取失败一律抛出，不降级为 None。"""
         with (
             patch.object(
-                daily_mod,
+                utils_sub_config,
                 "load_config",
                 side_effect=json.JSONDecodeError("bad json", "{", 0),
             ),

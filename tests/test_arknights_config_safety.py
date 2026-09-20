@@ -9,7 +9,9 @@ from unittest.mock import patch
 
 from src.config import daily as daily_mod
 from src.config import set_config as sc_mod
+from src.config import weekly as weekly_mod
 from src.config.set_config import ArknightsConfig
+from src.config.weekly import weeklies_of
 
 
 def load_fixture():
@@ -23,16 +25,21 @@ class TestMaaNativeConfig(unittest.TestCase):
         self.saved = []
         self.stages = ["AT-8", "AT-7"]
 
-        def load(*args):
+        def load(*args, **kwargs):
             return copy.deepcopy(self.data)
 
-        def save(script, path, config):
+        def save(*args):
+            path, config = args[-2], args[-1]
             self.assertEqual(path, "config/gui.new.json")
             self.data = copy.deepcopy(config)
             self.saved.append(path)
 
-        for module in (daily_mod, sc_mod):
-            for name, function in (("load_config", load), ("save_config", save)):
+        for module, load_name, save_name in (
+            (daily_mod, "load_script_config", "save_script_config"),
+            (weekly_mod, "load_script_config", "save_script_config"),
+            (sc_mod, "load_config", "save_config"),
+        ):
+            for name, function in ((load_name, load), (save_name, save)):
                 mock = patch.object(module, name, side_effect=function)
                 mock.start()
                 self.addCleanup(mock.stop)
@@ -171,7 +178,7 @@ class TestMaaNativeConfig(unittest.TestCase):
     def test_weekly_hook_changes_only_medicine_even_for_disabled_tasks(self):
         self.cfg._init_config()
         before = copy.deepcopy(self.data)
-        self.cfg.prepare_weekly_start_day(1)
+        weeklies_of("MAA")[0].prepare_start_day(1)
         expected = before["Configurations"]["Default"]["TaskQueue"]
         for task in expected:
             if task["$type"] == "FightTask":

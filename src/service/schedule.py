@@ -272,7 +272,8 @@ def build_pre_run_pipeline(
         scripts: config 的脚本配置 dict 列表（全量，不按启用集合过滤），close 步骤用；
             None/空表示不关闭。
         enabled_keys: 纳入链的脚本唯一标识集合，写 config 步骤用；None/空表示不写。
-        weekly_start_map: weekly.yml 的 weekly_start 段 全量映射（{脚本标识: 1~7}），写 config 步骤用。
+        weekly_start_map: weekly.yml 的 weekly_start 段全量映射
+            （{脚本标识: {周常展示名: 1~7}}），写 config 步骤用。
         close_running: 是否运行前关闭残留进程。
         mute: 是否运行前静音（pre_run 静音 step）。
 

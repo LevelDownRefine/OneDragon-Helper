@@ -37,9 +37,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from src.config.set_config import (
-    supports_weekly,
-)
+from src.config.weekly import supports_weekly
 from src.service.app_service import AppService
 from src.utils.utils_sub_config import get_script_name
 

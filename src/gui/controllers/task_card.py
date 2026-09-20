@@ -11,9 +11,9 @@ from PySide6.QtCore import QObject, Signal, Slot
 
 from src.config.set_config import (
     get_daily_readback,
-    get_weekly_task,
     is_adapted,
 )
+from src.config.weekly import get_weekly_task
 
 # 周常「周几以后开始执行」：值 1=周一 ~ 7=周日（对齐 get_week_num 的 0=周一 偏移 +1）
 WEEKDAY_NAMES = {

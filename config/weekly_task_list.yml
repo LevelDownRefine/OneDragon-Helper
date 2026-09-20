@@ -1,21 +1,35 @@
 # display_name：展示名；physical_name：物理名，省略时使用展示名。
+# class：机制类（weekly.py 的 WEEKLY_CLASSES 注册表），每条周常必填。
+# config：该周常读写的主文件路径（相对脚本根目录，必填）。
+# key：周常落点用到的原生字段名（列表字段 / 开关字段 / 起始日字段），无字段的周常可省略。
 # options：递归选项组；key 为原生字段，values / source 二选一。
-# source.path 为资源文件，source.key 为多级键路径；顶层 key 供任务操作使用。
+# source.path 为资源文件，source.key 为多级键路径。
+# 一条周常一个机制类对象：一个脚本可有多条（如崩铁的货币战争与历战余响），各自独立。
 
 ok-ww:
 - display_name: 幻梦游园
   physical_name: Check Weekly Garden
+  class: WutheringWavesWeekly
+  config: data/apps/ok-ww/working/configs/DailyTask.json
   key: Additional Tasks to Run After Daily Task
 ok-ef:
 - display_name: 卖出物资
+  class: EndfieldWeekly
+  config: data/apps/ok-ef/working/configs/DailyTask.json
   key: 只买不卖
 OneDragon-Launcher:
 - display_name: 迷失之地
   physical_name: lost_void
+  class: ZenlessZoneZeroWeekly
+  config: config/01/one_dragon/_group.yml
 March7th-Launcher:
 - display_name: 货币战争
+  class: CurrencyWarsWeekly
+  config: config.yaml
   key: currencywars_enable
 - display_name: 历战余响
+  class: EchoOfWarWeekly
+  config: config.yaml
   key: echo_of_war_start_day_of_week
   options:
     source:
@@ -23,3 +37,5 @@ March7th-Launcher:
       key: [历战余响]
 MAA:
 - display_name: 理智药剂
+  class: ArknightsWeekly
+  config: config/gui.new.json

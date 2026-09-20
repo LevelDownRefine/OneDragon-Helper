@@ -11,18 +11,23 @@ from unittest.mock import patch
 
 from src.config import daily as daily_mod
 from src.config import set_config as set_config_mod
+from src.config import weekly as weekly_mod
 from src.config.daily import Daily
 from src.config.set_config import (
     ArknightsConfig,
     EndfieldConfig,
     GenshinConfig,
     NTEConfig,
-    StarRailConfig,
     WutheringWavesConfig,
     get_daily_readback,
-    get_weekly_task,
     set_daily_enabled,
 )
+from src.config.weekly import get_weekly_task, weeklies_of
+
+
+def _weekly(script_name: str, weekly_name: str):
+    """按脚本 + 周常展示名取已装配的周常对象。"""
+    return next(w for w in weeklies_of(script_name) if w.display_name == weekly_name)
 
 
 def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
@@ -41,7 +46,7 @@ class TestReadbackWuWa(unittest.TestCase):
         config: dict = {}
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(daily_mod, "save_config"),
+            patch.object(daily_mod, "save_script_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -54,7 +59,7 @@ class TestReadbackWuWa(unittest.TestCase):
         config: dict = {}
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(daily_mod, "save_config"),
+            patch.object(daily_mod, "save_script_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -74,7 +79,7 @@ class TestReadbackGenshin(unittest.TestCase):
         }
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(daily_mod, "save_config"),
+            patch.object(daily_mod, "save_script_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -88,7 +93,7 @@ class TestReadbackEndfield(unittest.TestCase):
         config: dict = {}
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(daily_mod, "save_config"),
+            patch.object(daily_mod, "save_script_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -121,7 +126,7 @@ class TestReadbackNTE(unittest.TestCase):
         }
         with (
             self._patch(config, routine),
-            patch.object(daily_mod, "save_config"),
+            patch.object(daily_mod, "save_script_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -134,7 +139,7 @@ class TestReadbackNTE(unittest.TestCase):
         config = {"daily_anomaly": {}}
         with (
             self._patch(config),
-            patch.object(daily_mod, "save_config"),
+            patch.object(daily_mod, "save_script_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -150,7 +155,7 @@ class TestReadbackNTE(unittest.TestCase):
         }
         with (
             self._patch(config),
-            patch.object(daily_mod, "save_config"),
+            patch.object(daily_mod, "save_script_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -177,7 +182,7 @@ class TestReadbackNTE(unittest.TestCase):
         }
         with (
             self._patch(config, routine),
-            patch.object(daily_mod, "save_config"),
+            patch.object(daily_mod, "save_script_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -223,18 +228,17 @@ class TestReadbackMAA(unittest.TestCase):
             self.assertEqual(_read(cfg, "剩余理智"), (None, None))
 
 
-class TestReadbackStarRailWeekly(unittest.TestCase):
+class TestReadbackEchoOfWarTasks(unittest.TestCase):
     def test_weekly_daily_task_roundtrip(self):
         config: dict = {}
+        echo = _weekly("March7th-Launcher", "历战余响")
         with (
-            patch.object(StarRailConfig, "_load_weekly_config", return_value=config),
-            patch.object(StarRailConfig, "_save_weekly_config"),
-            patch.object(set_config_mod, "safe_update", _setter),
-            patch.object(daily_mod, "safe_update", _setter),
+            patch.object(echo, "_load_config", return_value=config),
+            patch.object(echo, "_save_config"),
+            patch.object(weekly_mod, "safe_update", _setter),
         ):
-            cfg = StarRailConfig()
-            cfg.set_weekly_task("历战余响", "铁骸的锈冢")
-            self.assertEqual(cfg._read_weekly_task("历战余响"), "铁骸的锈冢")
+            echo.set_task("铁骸的锈冢")
+            self.assertEqual(echo.read_task(), "铁骸的锈冢")
 
 
 class TestReadbackFacade(unittest.TestCase):
@@ -242,7 +246,7 @@ class TestReadbackFacade(unittest.TestCase):
         config: dict = {}
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(daily_mod, "save_config"),
+            patch.object(daily_mod, "save_script_config"),
             patch.object(set_config_mod, "safe_update", _setter),
             patch.object(daily_mod, "safe_update", _setter),
         ):
@@ -322,7 +326,11 @@ class TestReadbackFacade(unittest.TestCase):
             )
         with (
             patch.object(Daily, "_load_daily_config", return_value={}),
-            patch.object(StarRailConfig, "_load_weekly_config", return_value={}),
+            patch.object(
+                _weekly("March7th-Launcher", "历战余响"),
+                "_load_config",
+                return_value={},
+            ),
         ):
             self.assertEqual(
                 get_daily_readback("March7th-Launcher"),
@@ -371,12 +379,12 @@ class TestReadbackCorruption(unittest.TestCase):
 
     def test_starrail_bad_instance_names_raises(self):
         config = {"instance_names": "不是dict"}
+        echo = _weekly("March7th-Launcher", "历战余响")
         with (
-            patch.object(StarRailConfig, "_load_weekly_config", return_value=config),
+            patch.object(echo, "_load_config", return_value=config),
+            self.assertRaises(AssertionError),
         ):
-            cfg = StarRailConfig()
-            with self.assertRaises(AssertionError):
-                cfg._read_weekly_task("历战余响")
+            echo.read_task()
 
 
 class TestSetDailyEnabledFacade(unittest.TestCase):
@@ -394,8 +402,8 @@ class TestSetDailyEnabledFacade(unittest.TestCase):
     def test_script_without_daily_switch_is_noop(self):
         """未声明日常开关的脚本（ok-ww）→ 静默不做事（选择即启用）。"""
         with (
-            patch.object(daily_mod, "load_config") as load,
-            patch.object(daily_mod, "save_config") as save,
+            patch.object(daily_mod, "load_script_config") as load,
+            patch.object(daily_mod, "save_script_config") as save,
         ):
             set_daily_enabled("ok-ww", "每日任务", False)
         load.assert_not_called()
