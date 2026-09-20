@@ -103,6 +103,30 @@ def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
     return DailyPlanOptions()
 
 
+def rename_script(old_script_name: str, new_script_name: str) -> None:
+    """迁移每日计划中的脚本标识，保留其他设置，不更新系统任务。
+
+    Args:
+        old_script_name: 原脚本唯一标识。
+        new_script_name: 保存后的脚本唯一标识。
+    """
+    if old_script_name == new_script_name:
+        return
+    data = load_schedule()
+    plan = load_daily_plan(data)
+    if old_script_name not in plan.script_names:
+        return
+    assert "daily_run" in data
+    # 新标识可能是名单里尚未清理的旧条目，替换后保序去重。
+    data["daily_run"]["script_names"] = list(
+        dict.fromkeys(
+            new_script_name if name == old_script_name else name
+            for name in plan.script_names
+        )
+    )
+    save_schedule(data)
+
+
 @contextmanager
 def _task_service():
     """使用 Windows 自带 COM 接口，不依赖 PowerShell 文本或命令转义。"""

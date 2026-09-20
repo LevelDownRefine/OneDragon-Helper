@@ -211,6 +211,94 @@ class TestDailyPlanConfig(unittest.TestCase):
         self.assertEqual(load_yaml(self.path), self.original)
 
 
+class TestDailyPlanScriptRename(unittest.TestCase):
+    def setUp(self):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        self.config_path = str(Path(directory, "config.yml"))
+        self.schedule_path = str(Path(directory, "schedule.yml"))
+        self.weekly_path = str(Path(directory, "weekly.yml"))
+        self.config = {
+            "script_list": [
+                {"display_name": "A", "script_path": "a.py"},
+                {"display_name": "B", "script_path": "b.py"},
+            ]
+        }
+        self.schedule = {
+            "daily_run": {
+                "enabled": True,
+                "target_time": "08:30",
+                "script_names": ["B", "A"],
+            },
+            "notify": {"enabled": False, "email": "a@example.com"},
+        }
+        dump_yaml(self.config_path, self.config)
+        dump_yaml(self.schedule_path, self.schedule)
+        dump_yaml(self.weekly_path, {})
+        for target, path in (
+            ("utils.utils_config.require_config_yml_path", self.config_path),
+            ("utils.utils_config.get_config_yml_path_under_root", self.config_path),
+            ("service.schedule.get_schedule_yml_path_under_root", self.schedule_path),
+            ("utils.utils_weekly.get_weekly_yml_path_under_root", self.weekly_path),
+        ):
+            self.enterContext(patch(f"src.{target}", return_value=path))
+        self.task = self.enterContext(patch("src.service.daily_plan.WindowsDailyTask"))
+
+    def test_renamed_script_remains_in_plan_and_runs_under_new_identity(self):
+        service = AppService()
+        self.assertEqual(service.update_script("A", "renamed", {}, [60] * 7), "renamed")
+        self.schedule["daily_run"]["script_names"] = ["B", "renamed"]
+        self.assertEqual(load_yaml(self.schedule_path), self.schedule)
+        with patch("src.service.daily_plan.chain_service.schedule_run") as run:
+            service.run_daily_plan()
+        self.assertEqual(run.call_args.args, ({"B", "renamed"}, "now"))
+        self.task.assert_not_called()
+
+    def test_paused_plan_keeps_selection_and_stays_paused(self):
+        self.schedule["daily_run"]["enabled"] = False
+        dump_yaml(self.schedule_path, self.schedule)
+        AppService().update_script("A", "renamed", {}, [60] * 7)
+        self.assertEqual(
+            load_daily_plan(), DailyPlanOptions(False, "08:30", ("B", "renamed"))
+        )
+        self.task.assert_not_called()
+
+    def test_stale_new_identity_is_not_duplicated(self):
+        self.schedule["daily_run"]["script_names"] = ["A", "B", "renamed"]
+        dump_yaml(self.schedule_path, self.schedule)
+        AppService().update_script("A", "renamed", {}, [60] * 7)
+        self.assertEqual(load_daily_plan().script_names, ("renamed", "B"))
+
+    def test_script_outside_plan_does_not_change_schedule(self):
+        self.schedule["daily_run"]["script_names"] = ["B"]
+        dump_yaml(self.schedule_path, self.schedule)
+        before = Path(self.schedule_path).read_bytes()
+        AppService().update_script("A", "renamed", {}, [60] * 7)
+        self.assertEqual(Path(self.schedule_path).read_bytes(), before)
+
+    def test_missing_plan_is_not_created_by_rename(self):
+        del self.schedule["daily_run"]
+        dump_yaml(self.schedule_path, self.schedule)
+        before = Path(self.schedule_path).read_bytes()
+        AppService().update_script("A", "renamed", {}, [60] * 7)
+        self.assertEqual(Path(self.schedule_path).read_bytes(), before)
+
+    def test_exe_display_name_change_does_not_change_identity(self):
+        self.config["script_list"][0]["script_path"] = "A.exe"
+        dump_yaml(self.config_path, self.config)
+        with patch("src.service.daily_plan.load_schedule") as read_schedule:
+            self.assertEqual(
+                AppService().update_script("A", "renamed", {}, [60] * 7), "A"
+            )
+        read_schedule.assert_not_called()
+        self.assertEqual(load_yaml(self.schedule_path), self.schedule)
+
+    def test_failed_rename_does_not_change_plan(self):
+        with self.assertRaises(AssertionError):
+            AppService().update_script("A", "B", {}, [60] * 7)
+        self.assertEqual(load_yaml(self.schedule_path), self.schedule)
+        self.assertEqual(load_yaml(self.config_path), self.config)
+
+
 class TestDailyRun(unittest.TestCase):
     def test_removed_script_is_reported_without_running_unrelated_scripts(self):
         with (

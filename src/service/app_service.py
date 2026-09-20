@@ -174,13 +174,15 @@ class AppService:
         weekly_timeouts: list,
         weekly_start_day: int | None = None,
     ):
-        return update_script(
+        new_script_name = update_script(
             old_script_name,
             new_display_name,
             config_patch,
             weekly_timeouts,
             weekly_start_day,
         )
+        daily_plan.rename_script(old_script_name, new_script_name)
+        return new_script_name
 
     # ── schedule.yml（src.service.schedule 模块函数）──
     # schedule.yml 的读写与调度编排同处 src.service.schedule，不挂在任何 peer 实例上；
