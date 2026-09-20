@@ -85,7 +85,7 @@ except subprocess.TimeoutExpired as e:
 PYTHONPATH=src python -m unittest discover -s tests -p "test*.py"
 ```
 
-- `PYTHONPATH=src` 不可省：否则 `test_bgi` / `test_utils` 顶层 `import` 会误报 import 错。
+- `PYTHONPATH=src` 不可省：否则 `test_utils` 顶层 `import` 会误报 import 错。
 - `ruff check src tests` 一并跑，含 `src/runner/`。
 
 ## 12. 克制使用 try-except

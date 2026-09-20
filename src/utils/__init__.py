@@ -4,14 +4,6 @@ import sys
 from functools import lru_cache
 
 
-def get_our_bgi_user_dir() -> str:
-    """
-    获取当前工作目录下的config/BGI_User目录
-    :return: 当前工作目录下的config/BGI_User目录
-    """
-    return safe_path_join(get_root_dir(), "config", "BGI_User")
-
-
 def get_config_yml_path_under_root() -> str:
     """
     获取根目录下的config/config.yml文件路径（运行时生成，含个人信息，不追溯git）

@@ -3,7 +3,7 @@
 # 这些参数同时被 GUI（运行确认弹窗回显/写回）与子进程 schedule_run 读取。
 # 打开 GUI 后按上次配置启动全部脚本；可在右上角配置弹窗修改。
 startup:
-  enabled: true
+  enabled: false
   delay_seconds: 60
 shutdown:
   after_run: true

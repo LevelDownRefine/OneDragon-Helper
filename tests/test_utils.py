@@ -16,11 +16,6 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(os.path.isabs(root_dir))
         self.assertTrue(os.path.isdir(root_dir))
 
-    def test_get_our_bgi_user_dir(self):
-        bgi_user_dir = utils.get_our_bgi_user_dir()
-        root_dir = utils.get_root_dir()
-        self.assertEqual(bgi_user_dir, os.path.join(root_dir, "config", "BGI_User"))
-
     def test_get_config_yml_path_under_root(self):
         yml_path = utils.get_config_yml_path_under_root()
         root_dir = utils.get_root_dir()
