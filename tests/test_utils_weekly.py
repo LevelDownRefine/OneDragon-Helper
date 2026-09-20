@@ -256,6 +256,67 @@ class TestSetWeeklyStart(UtilsWeeklyTestBase):
             set_weekly_start("a", {"周常甲": "3"})
 
 
+class TestLegacyWeeklyStartMigration(UtilsWeeklyTestBase):
+    """旧版脚本级单值（{脚本: 1~7}）读到时就地迁移为条目级，并按当前周常声明展开。
+
+    周几起改为条目级后，历史 weekly.yml 的脚本级单值语义等价于「该脚本全部周常同一天」，
+    故读路径直接展开并写回（一次性）；不可展开的条目告警后丢弃，不卡住读路径。
+    """
+
+    def test_legacy_scalar_expanded_per_declared_weeklies(self):
+        """单值按该脚本声明的周常逐条展开；weekly_timeouts 段原样保留。"""
+        self._write_weekly(
+            {
+                "weekly_start": {"ok-ww": 2, "March7th-Launcher": 3},
+                "weekly_timeouts": {"ok-ww": [60] * 7},
+            }
+        )
+        with self.assertLogs("src.utils.utils_weekly", level="WARNING"):
+            start_map = get_weekly_start_map()
+        self.assertEqual(
+            start_map,
+            {
+                "ok-ww": {"幻梦游园": 2},
+                "March7th-Launcher": {"货币战争": 3, "历战余响": 3},
+            },
+        )
+        # 已落盘为条目级；另一段不受影响
+        weekly = self._read_weekly()
+        self.assertEqual(weekly["weekly_start"], start_map)
+        self.assertEqual(weekly["weekly_timeouts"], {"ok-ww": [60] * 7})
+
+    def test_migration_is_idempotent(self):
+        """迁移后已是条目级 → 再读不写盘（不产生重复写入）。"""
+        self._write_weekly({"weekly_start": {"ok-ww": 2}, "weekly_timeouts": {}})
+        with self.assertLogs("src.utils.utils_weekly", level="WARNING"):
+            get_weekly_start_map()
+        with patch("src.utils.utils_weekly._dump_weekly_start") as dump:
+            self.assertEqual(get_weekly_start_map(), {"ok-ww": {"幻梦游园": 2}})
+        dump.assert_not_called()
+
+    def test_unmigratable_entries_dropped_with_warning(self):
+        """起始日越界 / 脚本已无周常声明的条目丢弃，其余照常迁移。"""
+        self._write_weekly(
+            {
+                "weekly_start": {"ok-ww": 9, "不存在的脚本": 3, "ok-ef": 6},
+                "weekly_timeouts": {},
+            }
+        )
+        with self.assertLogs("src.utils.utils_weekly", level="WARNING") as logs:
+            start_map = get_weekly_start_map()
+        self.assertEqual(start_map, {"ok-ef": {"卖出物资": 6}})
+        self.assertEqual(len(logs.records), 3)  # 两条丢弃告警 + 一条迁移告警
+        for script_name in ("ok-ww", "不存在的脚本"):
+            self.assertNotIn(script_name, self._read_weekly()["weekly_start"])
+
+    def test_entry_level_data_untouched(self):
+        """已是条目级（含空 dict）→ 原样返回、不写盘、不告警。"""
+        set_weekly_start("ok-ww", {"幻梦游园": 4})
+        with patch("src.utils.utils_weekly._dump_weekly_start") as dump:
+            self.assertEqual(get_weekly_start_map(), {"ok-ww": {"幻梦游园": 4}})
+        dump.assert_not_called()
+
+
 class TestMissingWeeklyFile(unittest.TestCase):
     """weekly.yml 缺失（用户文件、CI 干净 checkout 尚未生成）时读取不崩，回退空结构。
 

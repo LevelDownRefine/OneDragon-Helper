@@ -37,7 +37,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from src.config.weekly import supports_weekly
 from src.service.app_service import AppService
 from src.utils.utils_sub_config import get_script_name
 
@@ -632,25 +631,8 @@ class SingleScriptConfigDialog(FormDialogBase):
         grid.addWidget(self._make_label("游戏路径:"), 7, 0)
         grid.addWidget(self.game_path_input, 7, 1, 1, 2)
 
-        # 周几起：仅支持周常的脚本显示（选择落到 weekly.yml 的 weekly_start 段）。
-        # 不支持时整行不进布局，超时行上移，避免空行留白。
-        self._weekly_start_supported = supports_weekly(self.script_name)
-        timeout_row = 9 if self._weekly_start_supported else 8
-
-        # 周几起（行 8）
-        self.weekly_start_combo = self._make_combo(
-            ["不设置"] + [f"周{WEEKDAY_SHORT_NAMES[i]}起" for i in range(7)]
-        )
-        self.weekly_start_combo.setStyleSheet(combo_box_qss())
-        if self._weekly_start_supported:
-            grid.addWidget(self._make_label("周常周几起:"), 8, 0)
-            grid.addWidget(self.weekly_start_combo, 8, 1, 1, 2)
-        else:
-            # _make_combo 以 self 为父：控件已是 dialog 子控件，不进布局也会按默认
-            # 位置 (0,0) 绘制并盖住左上角字段，必须显式 hide()。
-            self.weekly_start_combo.hide()
-
-        # 每周超时（4×2 Grid 让同列等宽，数字右对齐）
+        # 每周超时（行 8；4×2 Grid 让同列等宽，数字右对齐）
+        timeout_row = 8
         timeout_grid = QGridLayout()
         timeout_grid.setHorizontalSpacing(4)
         timeout_grid.setVerticalSpacing(2)
@@ -707,13 +689,6 @@ class SingleScriptConfigDialog(FormDialogBase):
         # 阻塞运行：缺字段视为 True（默认阻塞）
         self.block_cb.setChecked(script_data.get("block", True))
 
-        # 周几起（从 weekly.yml 的 weekly_start 段 读；不支持周常时跳过）
-        if self._weekly_start_supported:
-            start_day = self._app_service.get_weekly_start(self.script_name)
-            self.weekly_start_combo.setCurrentIndex(
-                0 if start_day is None else int(start_day)
-            )
-
         # 每周超时
         timeouts = self._app_service.weekly_inputs(self.script_name)
         for idx, timeout_edit in enumerate(self.timeout_inputs):
@@ -765,14 +740,6 @@ class SingleScriptConfigDialog(FormDialogBase):
             text = timeout_edit.text().strip()
             timeouts.append(int(text) if text else None)
 
-        # 周几起：权威值随 pending_changes 返回，由 AppService.update_script 统一落盘
-        # （weekly.yml weekly_start 段 + 游戏侧原生 config；后者须在 config.yml
-        # 落盘新 script_path 后才解析得到正确目录，故弹窗内不写盘）。
-        start_day = None
-        if self._weekly_start_supported:
-            idx = self.weekly_start_combo.currentIndex()
-            start_day = None if idx <= 0 else idx
-
         self.pending_changes = {
             "old_script_name": self.script_name,
             "new_display_name": new_display_name,
@@ -788,6 +755,5 @@ class SingleScriptConfigDialog(FormDialogBase):
                 "block": self.block_cb.isChecked(),
             },
             "weekly_timeouts": timeouts,
-            "weekly_start_day": start_day,
         }
         self.accept()

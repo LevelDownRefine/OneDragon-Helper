@@ -52,7 +52,8 @@ def _make_controller(script_name="March7th-Launcher", display_name="崩铁"):
     # 副本/周常声明经真实 task_config 模块函数读取（weekly_task_list.yml 路径已由用例 patch）。
     service.get_weekly_map.side_effect = get_weekly_map
     service.get_daily_map.side_effect = get_daily_map
-    service.get_weekly_start.return_value = None
+    # 周几起默认未设置（脚本级与条目级都要给值，否则 MagicMock 会被当起始日）
+    service.get_weekly_start_for.return_value = None
     toast = MagicMock()
     return TaskCardController(game_list, service, toast)
 
@@ -91,6 +92,11 @@ class TestWeeklyItems(unittest.TestCase):
         self.assertTrue(items[1]["has_task"])
         # 无配置/未选：反读 None → 占位提示（周常侧不设回退）
         self.assertEqual(items[1]["task_label"], "选择副本")
+        # 周几起未设置 → 占位文案且 start_set=False（每条周常各一份）
+        self.assertEqual(items[0]["start_label"], "选择周几")
+        self.assertFalse(items[0]["start_set"])
+        self.assertEqual(items[1]["start_label"], "选择周几")
+        self.assertFalse(items[1]["start_set"])
 
     def test_weekly_task_options_reads_from_config(self):
         """副本清单来自 weekly_task_list.yml 的 tasks 字段，不再依赖游戏脚本配置。"""
@@ -497,13 +503,58 @@ class TestWeeklyItemsReadback(unittest.TestCase):
         self.assertEqual(items[0]["task_label"], "铁骸的锈冢")
 
 
+class TestWeeklyStartChip(unittest.TestCase):
+    """周常行的「周几起」chip：条目级反读 weekly.yml 与写穿透。"""
+
+    def test_start_label_reflects_weekly_start_map(self):
+        """已设起始日的周常显示「周X起」，未设的显示占位（逐条独立）。"""
+        ctrl = _make_controller()
+        ctrl._app_service.get_weekly_start_for.side_effect = lambda script, name: (
+            3 if name == "历战余响" else None
+        )
+        items = ctrl.weekly_items
+        self.assertEqual(items[0]["name"], "货币战争")
+        self.assertFalse(items[0]["start_set"])
+        self.assertEqual(items[0]["start_label"], "选择周几")
+        self.assertTrue(items[1]["start_set"])
+        self.assertEqual(items[1]["start_label"], "周三起")
+
+    def test_start_options_are_the_seven_weekdays(self):
+        """下拉候选 = 周一~周日七项（label 供渲染、value 供写回）。"""
+        self.assertEqual(
+            _make_controller().weekly_start_options,
+            [
+                {"label": "周一", "value": 1},
+                {"label": "周二", "value": 2},
+                {"label": "周三", "value": 3},
+                {"label": "周四", "value": 4},
+                {"label": "周五", "value": 5},
+                {"label": "周六", "value": 6},
+                {"label": "周日", "value": 7},
+            ],
+        )
+
+    def test_select_weekly_start_writes_through_service(self):
+        """选择周几起经 service 写 weekly.yml（只动该条周常）。"""
+        ctrl = _make_controller()
+        ctrl.selectWeeklyStart("历战余响", 5)
+        ctrl._app_service.set_weekly_start_for.assert_called_once_with(
+            "March7th-Launcher", "历战余响", 5
+        )
+
+    def test_invalid_start_day_raises(self):
+        """weekly.yml 被手工改坏（越界值）→ assert 暴露，不静默当未设置。"""
+        with self.assertRaises(AssertionError):
+            task_card_mod.TaskCardController._start_day_label(9)
+
+
 class TestEmptyCurrentSentinel(unittest.TestCase):
     """config 删空（current_game None）时回退哨兵空项：各 QML 属性安全求值。"""
 
     def test_properties_degrade_without_raising(self):
         service = MagicMock()
         service.get_weekly_map.return_value = {}
-        service.get_weekly_start.return_value = None
+        service.get_weekly_start_for.return_value = None
         ctrl = TaskCardController(_EmptyGameList(), service, MagicMock())
         self.assertIs(ctrl._current, task_card_mod._EMPTY_GAME)
         self.assertEqual(ctrl.task_title, "")

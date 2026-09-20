@@ -355,7 +355,7 @@ class TestUpdateScript(unittest.TestCase):
     def _read(self):
         return load_yaml(self.config_path)
 
-    def _run(self, set_start_day_side_effect=None, **kwargs):
+    def _run(self, **kwargs):
         """在隔离环境下跑 update_script，返回各协作函数的 mock 字典。"""
         params = {
             "old_script_name": "ww",
@@ -376,25 +376,10 @@ class TestUpdateScript(unittest.TestCase):
             "init": patch("src.utils.utils_config.init_config"),
             "rename": patch("src.utils.utils_config.rename_weekly"),
             "save_weekly": patch("src.utils.utils_config.save_weekly"),
-            "set_start": patch("src.utils.utils_config.set_weekly_start"),
-            "weekly_names": patch(
-                "src.utils.utils_config.weekly_names", return_value=["周常甲"]
-            ),
-            "set_start_day": patch(
-                "src.utils.utils_config.set_weekly_start_day",
-                side_effect=set_start_day_side_effect,
-            ),
         }
         mocks = {}
         with patches["require"], patches["save_path"]:
-            for name in (
-                "init",
-                "rename",
-                "save_weekly",
-                "set_start",
-                "weekly_names",
-                "set_start_day",
-            ):
+            for name in ("init", "rename", "save_weekly"):
                 mocks[name] = patches[name].start()
                 self.addCleanup(patches[name].stop)
             mocks["result"] = update_script(**params)
@@ -408,42 +393,20 @@ class TestUpdateScript(unittest.TestCase):
         mocks["init"].assert_called_once_with("ww")
         mocks["save_weekly"].assert_called_once_with("ww", [60] * 7)
 
-    def test_weekly_start_day_syncs_game_side_with_new_name(self):
-        mocks = self._run(weekly_start_day=3)
-        # 周几起是条目级数据，弹窗给脚本级单值 → 写给该脚本全部周常
-        mocks["set_start"].assert_called_once_with("ww", {"周常甲": 3})
-        mocks["set_start_day"].assert_called_once_with("ww", 3)
-
-    def test_weekly_start_none_clears_weekly_only(self):
-        """「不设置」只清 weekly.yml 条目，不回写游戏侧（无「未设置」语义）。"""
-        mocks = self._run(weekly_start_day=None)
-        mocks["set_start"].assert_called_once_with("ww", {})
-        mocks["set_start_day"].assert_not_called()
-
-    def test_rename_migrates_weekly_and_syncs_new_identity(self):
+    def test_rename_migrates_weekly_entries(self):
         entry = {"display_name": "新名", "script_path": "C:/new.exe"}
         mocks = self._run(
             old_script_name="ww",
             new_display_name="新名",
             config_patch={"script_path": "C:/new.exe"},
-            weekly_start_day=5,
         )
         mocks["rename"].assert_called_once_with("ww", "new")
-        mocks["set_start"].assert_called_once_with("new", {"周常甲": 5})
-        mocks["set_start_day"].assert_called_once_with("new", 5)
         # kill_game_after_done 自洽：未设置 game_process_name 时强制 False
         self.assertEqual(
             self._read()["script_list"][0],
             {**entry, "kill_game_after_done": False},
         )
         self.assertEqual(mocks["result"], "new")
-
-    def test_game_side_oserror_propagates_after_config_saved(self):
-        """游戏侧同步失败：OSError 传播，但 config.yml 已落盘（部分失败不回滚）。"""
-        with self.assertRaises(OSError):
-            self._run(weekly_start_day=3, set_start_day_side_effect=OSError("no dir"))
-        entry = self._read()["script_list"][0]
-        self.assertEqual(entry["check_done"], "script_closed")
 
 
 if __name__ == "__main__":

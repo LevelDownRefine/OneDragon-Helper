@@ -517,6 +517,41 @@ class TestEchoOfWarTasks(unittest.TestCase):
         self.assertEqual(config["echo_of_war_start_day_of_week"], 4)
         self.assertTrue(config["currencywars_enable"])
 
+    def test_set_start_day_reads_strictly(self):
+        """写路径须按 load_script_config 的写路径契约读取（allow_missing=False）。"""
+        weekly = _weekly("March7th-Launcher", "历战余响")
+        seen = {}
+
+        def fake_load(script_name, display_name, rel_path, *, allow_missing=False):
+            seen["allow_missing"] = allow_missing
+            return {"currencywars_enable": True}
+
+        with (
+            patch.object(weekly_mod, "load_script_config", fake_load),
+            patch.object(weekly, "_save_config"),
+        ):
+            weekly.set_start_day(4)
+        self.assertFalse(seen["allow_missing"], "写路径不得按「未设置」语义读 config")
+
+    def test_set_start_day_refuses_unreadable_config(self):
+        """config 读不出来（缺失/损坏）→ 直接报错且不写盘。
+
+        回归：曾用 allow_missing 读，读不出来时会把整份 config 覆盖成只剩起始日字段的
+        存根，静默毁掉游戏侧配置。
+        """
+        weekly = _weekly("March7th-Launcher", "历战余响")
+        with (
+            patch.object(
+                weekly_mod,
+                "load_script_config",
+                side_effect=AssertionError("config 文件不存在"),
+            ),
+            patch.object(weekly, "_save_config") as mock_save,
+            self.assertRaises(AssertionError),
+        ):
+            weekly.set_start_day(4)
+        mock_save.assert_not_called()
+
 
 class TestWeeklyAdapter(unittest.TestCase):
     """模块级入口：按名分发、未适配 / 无此能力时优雅跳过。"""
@@ -525,14 +560,19 @@ class TestWeeklyAdapter(unittest.TestCase):
         """未适配周常的脚本：写入口不做事，读入口返回 None。"""
         self.assertIsNone(weekly_mod.get_weekly_task("没有的脚本", "历战余响"))
         weekly_mod.prepare_weekly_start_days("没有的脚本", {"历战余响": 3})
-        weekly_mod.set_weekly_start_day("没有的脚本", 3)
+        weekly_mod.set_weekly_start_day("没有的脚本", "历战余响", 3)
         weekly_mod.set_weekly_task("没有的脚本", "历战余响", "副本")
 
     def test_scripts_without_capability_are_skipped(self):
         """有周常但无该能力的脚本：无字面起始日/无副本选型时不做事。"""
-        weekly_mod.set_weekly_start_day("ok-ww", 3)
+        weekly_mod.set_weekly_start_day("ok-ww", "幻梦游园", 3)
         weekly_mod.set_weekly_task("ok-ww", "幻梦游园", "副本")
         self.assertIsNone(weekly_mod.get_weekly_task("ok-ww", "幻梦游园"))
+
+    def test_unknown_weekly_name_is_skipped(self):
+        """周常名不存在时编辑期入口不做事（不误落到同脚本其它周常）。"""
+        self.assertIsNone(weekly_mod.get_weekly_task("March7th-Launcher", "没有的周常"))
+        weekly_mod.set_weekly_start_day("March7th-Launcher", "没有的周常", 3)
 
     def test_prepare_dispatches_only_listed_weeklies(self):
         """运行期入口只写 start_days 里列出的周常。"""
@@ -546,15 +586,16 @@ class TestWeeklyAdapter(unittest.TestCase):
         mock_currency.assert_not_called()
         mock_echo.assert_called_once_with(5)
 
-    def test_set_start_day_is_script_wide(self):
-        """编辑期入口是脚本级：写给该脚本所有覆写了该方法的周常。"""
+    def test_set_start_day_dispatches_by_name(self):
+        """编辑期入口按周常展示名分发：只有覆写了该方法的周常动作。"""
         currency = _weekly("March7th-Launcher", "货币战争")
         echo = _weekly("March7th-Launcher", "历战余响")
         with (
             patch.object(currency, "set_start_day") as mock_currency,
             patch.object(echo, "set_start_day") as mock_echo,
         ):
-            weekly_mod.set_weekly_start_day("March7th-Launcher", 4)
+            weekly_mod.set_weekly_start_day("March7th-Launcher", "货币战争", 4)
+            weekly_mod.set_weekly_start_day("March7th-Launcher", "历战余响", 4)
         mock_currency.assert_not_called()  # 货币战争未覆写 set_start_day
         mock_echo.assert_called_once_with(4)
 

@@ -158,9 +158,6 @@ class QmlBridge(QObject):
     weeklySupported = Property(
         bool, lambda self: self.task_card.weekly_supported, notify=taskStateChanged
     )
-    weeklyStartLabel = Property(
-        str, lambda self: self.task_card.weekly_start_label, notify=taskStateChanged
-    )
     weeklyItems = Property(
         "QVariantList",
         lambda self: self.task_card.weekly_items,
@@ -313,6 +310,14 @@ class QmlBridge(QObject):
     @Slot(str, result="QVariantList")
     def weeklyOptions(self, weekly_name):
         return self.task_card.weekly_task_options(weekly_name)
+
+    @Slot(result="QVariantList")
+    def weeklyStartOptions(self):
+        return self.task_card.weekly_start_options
+
+    @Slot(str, int)
+    def selectWeeklyStart(self, weekly_name, start_day):
+        self.task_card.selectWeeklyStart(weekly_name, start_day)
 
     @Slot(str)
     def videoError(self, reason):

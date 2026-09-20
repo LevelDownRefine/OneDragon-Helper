@@ -68,7 +68,6 @@ class TestTaskCard(unittest.TestCase):
     def test_daily_items_default_is_empty(self, *_):
         b = _make_bridge()
         self.assertEqual(b.dailyItems, [])
-        self.assertEqual(b.weeklyStartLabel, "选择周几")
 
     @patch("src.service.app_service.get_daily_map", return_value={})
     def test_set_daily_enabled_writes_through_service(self, *_):
@@ -235,16 +234,13 @@ class TestTaskCard(unittest.TestCase):
             "new_display_name": "鸣潮",
             "config_patch": {"k": "v"},
             "weekly_timeouts": {"1": [1]},
-            "weekly_start_day": None,
         }
         with (
             patch.object(b.app_service, "update_script") as mock_update,
             patch.object(b, "_reload_games") as mock_reload,
         ):
             b.configCurrent()
-        mock_update.assert_called_once_with(
-            "ok-ww", "鸣潮", {"k": "v"}, {"1": [1]}, None
-        )
+        mock_update.assert_called_once_with("ok-ww", "鸣潮", {"k": "v"}, {"1": [1]})
         mock_reload.assert_called_once()
         self.assertTrue(any("已保存" in s for s in toasts))
 
@@ -261,6 +257,59 @@ class TestTaskCard(unittest.TestCase):
             b.configCurrent()
         mock_update.assert_not_called()
         mock_reload.assert_not_called()
+
+
+class TestWeeklyStartBridge(unittest.TestCase):
+    """「周几起」经 Bridge 暴露：候选列表与按条写回（weekly.yml 的 weekly_start 段）。"""
+
+    def test_weekly_start_options_forwarded(self):
+        """候选为周一~周日七项，value 即写回用的起始日。"""
+        b = _make_bridge()
+        self.assertEqual(
+            [option["value"] for option in b.weeklyStartOptions()],
+            [1, 2, 3, 4, 5, 6, 7],
+        )
+
+    def test_select_weekly_start_writes_intent_and_game_side(self):
+        """写某条周常的起始日：weekly.yml 按条覆盖（其它条目不动）+ 该条游戏侧字面字段。"""
+        b = _make_bridge()
+        script_name = b.games[0]["script_name"]
+        written = {}
+        with (
+            patch(
+                "src.service.app_service.get_weekly_start_map",
+                return_value={script_name: {"货币战争": 2, "历战余响": 2}},
+            ),
+            patch(
+                "src.service.app_service.set_weekly_start",
+                side_effect=lambda script, start_days: written.update(
+                    {script: start_days}
+                ),
+            ),
+            patch("src.service.app_service.set_weekly_start_day") as game_side,
+        ):
+            b.selectWeeklyStart("历战余响", 5)
+        self.assertEqual(written, {script_name: {"货币战争": 2, "历战余响": 5}})
+        # 游戏侧字面起始日只在编辑期落盘该条（是否真有字面字段由 weekly 模块判定）
+        game_side.assert_called_once_with(script_name, "历战余响", 5)
+
+    def test_select_weekly_start_creates_entry_for_first_time(self):
+        """该脚本尚无 weekly_start 条目时，只写被选中的那一条。"""
+        b = _make_bridge()
+        script_name = b.games[0]["script_name"]
+        written = {}
+        with (
+            patch("src.service.app_service.get_weekly_start_map", return_value={}),
+            patch(
+                "src.service.app_service.set_weekly_start",
+                side_effect=lambda script, start_days: written.update(
+                    {script: start_days}
+                ),
+            ),
+            patch("src.service.app_service.set_weekly_start_day"),
+        ):
+            b.selectWeeklyStart("货币战争", 4)
+        self.assertEqual(written, {script_name: {"货币战争": 4}})
 
 
 if __name__ == "__main__":

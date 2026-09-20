@@ -4,6 +4,7 @@
 - 日期数学：``next_target_datetime`` / ``get_week_num`` / ``is_weekly_start_reached``（周几判定）；
 - 运行期参数读写：``weekly.yml`` 内的 ``weekly_start``（周几起，条目级：
   ``{脚本标识: {周常展示名: 1~7}}``）+ ``weekly_timeouts``（每周超时）两段。
+  读到旧版脚本级单值（``{脚本: 1~7}``）时就地迁移为条目级并写回（一次性）。
 
 不含周本声明——各游戏「有哪些周常、可选哪些副本」由 src.config.daily_config 模块函数读
 weekly_task_list.yml 提供；本模块只管「周几起 / 每天超时多久」这类运行期参数。
@@ -113,9 +114,42 @@ def _dump_weekly(timeouts_map: dict) -> None:
 def _load_weekly_start() -> dict:
     """读取 weekly.yml 的 weekly_start 段（{脚本标识: {周常展示名: 1~7}}）。
 
-    文件缺失段时回退空 dict。
+    段缺失时回退空 dict。读到**旧版脚本级单值**（``{脚本: 1~7}``）时就地迁移：旧单值等价于
+    「该脚本名下每条周常都用同一天」，按当前周常声明展开成条目级并写回（一次性；迁移后
+    再读已是条目级）。起始日越界、或该脚本已无周常声明的条目无法展开，告警后丢弃——
+    读路径不因历史数据崩溃。
+
+    Returns:
+        {脚本标识: {周常展示名: 1~7}}；已完成迁移。
     """
-    return _load_weekly_file().get("weekly_start", {}) or {}
+    start_map = _load_weekly_file().get("weekly_start", {}) or {}
+    legacy = {k: v for k, v in start_map.items() if not isinstance(v, dict)}
+    if not legacy:
+        return start_map
+    # 延迟导入：config.weekly 反向依赖本模块（is_weekly_start_reached），模块级导入成环。
+    from src.config.weekly import weekly_names
+
+    for script_name, start_day in legacy.items():
+        names = weekly_names(script_name)
+        valid_day = (
+            isinstance(start_day, int)
+            and not isinstance(start_day, bool)
+            and 1 <= start_day <= 7
+        )
+        if not valid_day or not names:
+            logger.warning(
+                f"[utils_weekly] 旧版 weekly_start[{script_name}]={start_day!r} 无法迁移"
+                "（起始日须为 1~7 且该脚本需有周常声明），已丢弃"
+            )
+            start_map.pop(script_name, None)
+            continue
+        start_map[script_name] = dict.fromkeys(names, start_day)
+        logger.warning(
+            f"[utils_weekly] 旧版 weekly_start[{script_name}]={start_day} 已迁移为条目级："
+            f"{start_map[script_name]}"
+        )
+    _dump_weekly_start(start_map)
+    return start_map
 
 
 def _dump_weekly_start(start_map: dict) -> None:

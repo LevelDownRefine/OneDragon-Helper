@@ -48,7 +48,7 @@
 |----------|----------|------|
 | 日常副本 / 序列（`task_name` / `sequence`） | **编辑期实时** | GUI 选副本（`TaskCardController.selectDaily`）、CLI `--task`/`--sequence` 覆盖，均直接调 `set_config` 实时写子脚本 config。无需等到运行全体。 |
 | 周常副本（`weekly.set_weekly_task`） | **编辑期实时** | GUI 选周常副本（`selectWeekly`）直接写子脚本 config。 |
-| 周常起始日（`weekly_start` → 周本开关） | **运行期** | 启用与否 = `today_weekday >= start_day`，只能在运行期按当天星期计算。故由 `run_actions.apply_subscript_config` 经 `weekly.prepare_weekly_start_day` 写开关。 |
+| 周常起始日（`weekly_start`） | **编辑期实时 + 运行期** | 编辑期两处落盘：weekly.yml 的 `weekly_start` 段（意图）与该条的游戏侧**字面**起始日字段（仅历战余响 / 粥有，值由起始日直接算出、与当天星期无关）。按「今天是否已到起始日」折算的二值开关只能在运行期算，故由 `run_actions.apply_subscript_config` 经 `weekly.prepare_weekly_start_days` 写。 |
 
 **关键结论**：除「按周几起决定开启/关闭」的周本开关必须在运行期落盘外，其余日常副本/序列、周常副本均在编辑期实时落盘子脚本 config。`generate_chain_config` 因此**不写任何**子脚本 config——它只按星期过滤脚本并生成链 yml。
 
@@ -154,8 +154,10 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 - **装配时机与日常一致**：`ScriptConfig.__init__` 内 `build_weeklies(script_name, display_name)` 按声明逐条建对象，与 `_dailies` 同点；无周常声明的脚本得到空列表。对象由 weekly 模块缓存（`_BUILT`），模块级入口取同一批。
 - `Weekly` 基类自持 config 读/写（`_load_config` / `_save_config`，共用 `utils_sub_config` 的 `load_script_config` / `save_script_config`）与起始日校验；六条周常各自覆写运行期落点 `prepare_start_day`。
 - 三类入口按真相归属分开：`prepare_start_day`（运行期唯一写入口，按「今天是否到起始日」折算）、`set_start_day` / `set_task`（编辑期字面落盘，仅崩铁历战余响与粥覆写）、`read_task`（反读已选副本，仅崩铁历战余响覆写）。未覆写即该条周常无此能力，模块入口按「是否覆写」优雅跳过。
-- **周几起是条目级**：`weekly.yml` 的 `weekly_start` 段为 `{脚本: {周常展示名: 1~7}}`。界面上「周几起」仍是脚本级单值：`AppService.get_weekly_start` 聚合读取（各条目一致才返回值），设置时写给该脚本全部周常。
-- 模块级入口：`supports_weekly`（看声明）/ `prepare_weekly_start_days`（运行期，按条目分发）/ `set_weekly_start_day`（编辑期，脚本级批量）/ `set_weekly_task` / `get_weekly_task` / `weekly_names`；调用方（`cli` / `gui.dialogs` / `service.app_service` / `utils.utils_config` / `gui.controllers.task_card` / `service.run_actions`）直接 import 本模块。
+- **周几起是条目级**：`weekly.yml` 的 `weekly_start` 段为 `{脚本: {周常展示名: 1~7}}`，每条周常各一个起始日。任务卡按行渲染：每条周常一个「周几起」chip，紧邻该条的「副本」chip（需选副本时）——两块合计宽等于日常行单个 chip 宽，右边界对齐；**无需选副本的周常只有「周几起」一块，独占整宽**（`Layout.js` 的 `chipWidth` / `chipGap` / `weeklyStartChipWidth`）。
+- **任务卡是周几起的唯一界面入口**（单脚本配置弹窗里的那一行已移除）。写回按条（`AppService.set_weekly_start_for`，不触碰同脚本其它周常）：weekly.yml 的 `weekly_start` 段（意图）+ 该条的**游戏侧字面起始日字段**（仅覆写 `set_start_day` 的周常有，见下方分层）。CLI 的 `--weekly-start` 仍是脚本级单值（`AppService.set_weekly_start` 展开写给该脚本全部周常）。
+- **旧版单值自动迁移**：读到 `{脚本: 1~7}` 时按该脚本声明的周常展开成条目级并写回（一次性，`utils_weekly._load_weekly_start`），语义等价（旧单值 = 该脚本全部周常同一天）；不可展开的条目告警后丢弃。
+- 模块级入口：`supports_weekly`（看声明）/ `prepare_weekly_start_days`（运行期，按条目分发）/ `set_weekly_start_day`（编辑期，按条写游戏侧字面字段）/ `set_weekly_task` / `get_weekly_task` / `weekly_names`；调用方（`cli` / `service.app_service` / `gui.controllers.task_card` / `service.run_actions`）直接 import 本模块。
 
 各周常落点：
 
@@ -202,7 +204,7 @@ set_config("ok-ww", task_name="未选择")  # 跳过
 
 weekly_names("March7th-Launcher")  # ["货币战争", "历战余响"]
 prepare_weekly_start_days("March7th-Launcher", {"货币战争": 4, "历战余响": 5})  # 运行期：按条目写开关
-set_weekly_start_day("March7th-Launcher", 4)  # 编辑期：脚本级批量落盘字面起始日（仅历战余响 / 粥动作）
+set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按条落盘游戏侧字面起始日（仅历战余响 / 粥动作）
 ```
 
 `iter_backup_paths()` 返回 {script_name: 备份路径元组}——「该脚本的配置面在哪」的唯一声明处，供配置备份与恢复遍历。元素是**目录**（整目录递归打包）或**文件**（单文件收录），相对脚本根目录。仅用于收集文件，不解析或校验配置内容。

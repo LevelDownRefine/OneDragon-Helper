@@ -291,12 +291,16 @@ class EchoOfWarWeekly(Weekly):
 
         Args:
             start_day: 周几以后启用（1~7，1=周一）。
+
+        Raises:
+            AssertionError: 起始日越界，或游戏原生 config 读不出来（文件缺失/损坏）。
         """
         self._check_start_day(start_day)
         # 前置条件：游戏原生 config 路径有效（游戏已安装、script_path 正确），由 GUI 侧
-        # 调用前保证；本方法假设该前置成立，不做存在性兜底盘。
-        config = self._load_config(allow_missing=True) or {}
-        # 空 config 时字段可能尚不存在（本方法容忍 config 缺失），故允许新增。
+        # 调用前保证；本方法假设该前置成立，不做存在性兜底盘——写路径必须按 load_script_config
+        # 的契约报错，否则会把读不出来的 config 当成空 dict 整份覆盖成单字段存根。
+        config = self._load_config()
+        # 字段本身可能尚不存在（首次设置）故允许新增。
         safe_update(
             config,
             self._key,
@@ -577,19 +581,26 @@ def prepare_weekly_start_days(script_name: str, start_days: dict[str, int]) -> N
             weekly.prepare_start_day(start_days[weekly.display_name])
 
 
-def set_weekly_start_day(script_name: str, start_day: int) -> None:
-    """编辑期入口：把一个脚本级起始日写进该脚本所有周常的字面起始日字段。
+def set_weekly_start_day(script_name: str, weekly_name: str, start_day: int) -> None:
+    """编辑期入口：把某条周常的起始日写进它的游戏侧字面起始日字段。
 
-    编辑期 GUI 只拿得到一个脚本级值，故按脚本批量落盘；只有覆写 ``set_start_day``
-    的周常（崩铁历战余响 / 粥）会动作。
+    与 ``prepare_start_day`` 的分工：本方法只在编辑期落盘「字面起始日」（崩铁历战余响的
+    ``echo_of_war_start_day_of_week`` / 粥的 MedicineExpireDays），值由该日直接算出、
+    不依赖当天星期；按「今天是否已到起始日」折算的二值开关仍只在运行期由
+    ``prepare_start_day`` 写。
+
+    未适配周常、无此周常、或该周常没有字面起始日字段（未覆写 ``set_start_day``）时
+    优雅跳过。
 
     Args:
         script_name: 脚本标识名。
+        weekly_name: 周常展示名（如「历战余响」）。
         start_day: 周几以后启用（1~7，1=周一）。
     """
-    for weekly in weeklies_of(script_name):
-        if type(weekly).set_start_day is not Weekly.set_start_day:
-            weekly.set_start_day(start_day)
+    weekly = _weekly_named(script_name, weekly_name)
+    if weekly is None or type(weekly).set_start_day is Weekly.set_start_day:
+        return
+    weekly.set_start_day(start_day)
 
 
 def set_weekly_task(script_name: str, weekly_name: str, task_name: str) -> None:

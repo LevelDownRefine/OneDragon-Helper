@@ -733,21 +733,22 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                 "script_path": "scripts/March7th-Launcher/March7th-Launcher.exe",
                 "script_type": "external",
             }]
-            with (
-                patch.object(AppService, "load_config",
-                             return_value={"script_list": scripts}),
-                patch.object(main_window.BackgroundController, "resolve_bg",
-                             return_value=None),
-                patch("src.config.daily_config.read_task_source",
-                             return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
-                                           "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
-                                           "不死的神实", "寒潮的落幕", "毁灭的开端"]),
-            ):
-                with (
-                    patch("src.service.daily_plan.load_schedule", return_value={}),
-                    patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
-                ):
-                    bridge = QmlBridge()
+            # patch 必须常驻到子进程结束：QML 属性在 600ms 后求值，届时 with 块早已退出。
+            patch.object(AppService, "load_config",
+                         return_value={"script_list": scripts}).start()
+            patch.object(main_window.BackgroundController, "resolve_bg",
+                         return_value=None).start()
+            patch("src.config.daily_config.read_task_source",
+                  return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
+                                "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
+                                "不死的神实", "寒潮的落幕", "毁灭的开端"]).start()
+            # 周几起落在 weekly.yml（用户文件，CI 无、本地格式随版本而变）：指向不存在的
+            # 路径，读取器按「未设置」回退空结构，测试不依赖运行时数据。
+            patch("src.utils.utils_weekly.get_weekly_yml_path_under_root",
+                  return_value="__no_weekly_yml__").start()
+            patch("src.service.daily_plan.load_schedule", return_value={}).start()
+            patch.object(AppService, "list_daily_plan_scripts", return_value=[]).start()
+            bridge = QmlBridge()
             qmlRegisterSingletonInstance(
                 QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
             engine = QQmlApplicationEngine()
@@ -798,6 +799,150 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
         )
         # 周常区是最后一个区块：卡片底部到它的距离同样 = 16，与无周常时的日常区一致。
         self.assertEqual(bot_pad, 16, f"周常区下方背景应留 16，stdout={proc.stdout}")
+
+
+class TestWeeklyRowChipGeometry(unittest.TestCase):
+    """周常行拆成「周几起 + 副本」两块 chip：合计宽 = 日常单个 chip 宽，右边界对齐。
+
+    崩铁两条周常恰好覆盖两种形态：货币战争无副本选型（只有周几起）、历战余响需选副本
+    （周几起 + 副本并存），故用同一张卡同时验证两条路径。
+    """
+
+    def test_weekly_chips_split_daily_chip_width(self):
+        code = textwrap.dedent(
+            """
+            import os
+            os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+            from PySide6.QtCore import QTimer, QUrl
+            from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+            from PySide6.QtQuick import QQuickItem
+            from PySide6.QtWidgets import QApplication
+            from unittest.mock import patch
+            from src.utils.utils_sub_config import resolve_script_path
+            from src.gui import main_window
+            from src.service.app_service import AppService
+            from src.gui.icons import UiIconProvider
+            from src.gui.main_window import QmlBridge
+
+            app = QApplication([])
+            scripts = [{
+                "display_name": "崩坏：星穹铁道",
+                "script_path": "scripts/March7th-Launcher/March7th-Launcher.exe",
+                "script_type": "external",
+            }]
+            patch.object(AppService, "load_config",
+                         return_value={"script_list": scripts}).start()
+            patch.object(main_window.BackgroundController, "resolve_bg",
+                         return_value=None).start()
+            patch("src.config.daily_config.read_task_source",
+                  return_value=["无", "坏灭的喜剧", "铁骸的锈冢"]).start()
+            # 周几起与副本选型均落用户文件：指向不存在的路径，按「未设置」回退。
+            patch("src.utils.utils_weekly.get_weekly_yml_path_under_root",
+                  return_value="__no_weekly_yml__").start()
+            patch("src.service.daily_plan.load_schedule", return_value={}).start()
+            patch.object(AppService, "list_daily_plan_scripts", return_value=[]).start()
+            bridge = QmlBridge()
+            qmlRegisterSingletonInstance(
+                QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+            engine = QQmlApplicationEngine()
+            engine.addImageProvider("uiicon", UiIconProvider())
+            engine.load(QUrl.fromLocalFile(resolve_script_path("src/gui/qml/main.qml")))
+            win = engine.rootObjects()[0]
+
+            found = {}
+
+            # Repeater 的 delegate 不在 QObject 子树里（findChild 找不到），
+            # 只能沿可视子树 childItems() 递归收集 objectName。
+            def walk(item):
+                for child in item.childItems():
+                    name = child.objectName()
+                    if name and name not in found:
+                        found[name] = child
+                    walk(child)
+
+            def chip(key):
+                item = found[key]
+                return f"{item.x():.0f},{item.width():.0f},{int(item.isVisible())}"
+
+            def report():
+                walk(win.contentItem())
+                print("DAILY", chip("dailyButton"))
+                print("START0", chip("weeklyStartButton0"))
+                print("TASK0", chip("weeklyTaskButton0"))
+                print("START1", chip("weeklyStartButton1"))
+                print("TASK1", chip("weeklyTaskButton1"))
+                # 副本下拉：打开「历战余响」那行的下拉，检查它挂在副本 chip 下面
+                area = found["weeklyArea"]
+                row_h = int(area.property("rowH"))
+                top = area.y() + row_h
+                popup = found["weeklyPopup"]
+                popup.setProperty("weeklyName", "历战余响")
+                popup.setProperty("anchorTop", top)
+                popup.setProperty("anchorBottom", top + row_h)
+                popup.setProperty("visible", True)
+                QTimer.singleShot(150, report_popup)
+
+            def report_popup():
+                from PySide6.QtCore import QPointF
+                chip_item = found["weeklyTaskButton1"]
+                popup = found["weeklyPopup"]
+                card = found["cardRoot"]
+                chip_right = chip_item.mapToScene(QPointF()).x() + chip_item.width()
+                popup_left = popup.mapToScene(QPointF()).x()
+                popup_right = popup_left + popup.width()
+                card_left = card.mapToScene(QPointF()).x()
+                card_right = card_left + card.width()
+                inside = int(card_left <= popup_left and popup_right <= card_right)
+                print("POPUP", f"{chip_right:.0f},{popup_left:.0f},{popup_right:.0f},{inside}")
+                app.quit()
+
+            QTimer.singleShot(600, report)
+            app.exec()
+            """
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=os.getcwd(),
+        )
+        for error in ("ReferenceError", "TypeError", "Binding loop"):
+            self.assertNotIn(error, proc.stderr)
+
+        def rect(key):
+            line = next(
+                (ln for ln in proc.stdout.splitlines() if ln.startswith(key + " ")),
+                None,
+            )
+            self.assertIsNotNone(line, f"未见 {key}，stdout={proc.stdout}")
+            return [float(v) for v in line.split()[1].split(",")]
+
+        daily = rect("DAILY")
+        start0 = rect("START0")
+        task0 = rect("TASK0")
+        start1 = rect("START1")
+        task1 = rect("TASK1")
+        popup = rect("POPUP")
+
+        daily_w = daily[1]
+        # 两块 chip 起点同为 chipX，与日常 chip 左对齐
+        self.assertEqual(start0[0], daily[0])
+        self.assertEqual(start1[0], daily[0])
+        # 周几起 + 副本（含中间 gap）合计宽 = 日常单个 chip 宽 → 右边界对齐
+        gap = task1[0] - (start1[0] + start1[1])
+        self.assertEqual(start1[1] + gap + task1[1], daily_w)
+        self.assertEqual(task1[0] + task1[1], daily[0] + daily_w)
+        # 货币战争无副本选型：只有周几起，且它独占整宽、与日常 chip 等宽（完全对齐）；
+        # 历战余响：周几起 + 副本并存
+        self.assertEqual(task0[2], 0, "无需选副本的周常不应显示副本 chip")
+        self.assertEqual(
+            start0[1], daily_w, "无副本选型时「周几起」应独占整宽，与日常 chip 对齐"
+        )
+        self.assertEqual(task1[2], 1, "需选副本的周常应显示副本 chip")
+        # 副本下拉挂在副本 chip 下方：右边界与副本 chip 齐平，且整块留在卡片内
+        self.assertEqual(popup[2], popup[0], "下拉右边界应与副本 chip 右边界对齐")
+        self.assertEqual(popup[3], 1, "下拉应完整落在卡片内")
 
 
 class TestScriptIconProvider(unittest.TestCase):
