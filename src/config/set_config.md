@@ -31,7 +31,7 @@ GUI / CLI ─▶ AppService ─▶ ScriptConfigFacade
 - **日常机制类**：`src/config/daily.py::Daily`——`__init__` 只做身份（`script_name` / `script_display_name` / `display_name` / `physical_name`）与配置路径（`config_rel_path` / `routine_rel_path`，全部来自声明 `config` / `routine` 字段），落点解析下沉为可覆写的 `_parse_landing`（模板方法）；公开 `_fields(task, sequence)`（该次选择的落点 {字段: 值}）、`update(task, sequence)`（取自己的段写入、返回是否有改动；段未落盘/config 缺失即 assert）、`read()`（反读，config 缺失/段未落盘 = 无真相）、`section` / `section_exists`（分段取段）、`read_enabled` / `set_enabled`（开关对：落点随声明与机制类而异——基类读主文件的 `enable_key` 布尔字段、`Anomaly` 读 `routine` 文件里自己那条、`BgiDaily` 按 `enable_task` 反查 BetterGI 任务启用表；无开关落点的日常恒返回 None/False）。文件 I/O 由 Daily 自持（直调 `utils_sub_config`，含保存后回读校验）：`_load_daily_config` / `_save_daily_config` / `_load_routine_config` / `_save_routine_config`——`update` / `read` / `set_enabled` 各自完成「读盘 → 改内存 → 有改动才落盘」的闭环，config dict 不在调用链上穿线。基类 `_parse_landing` 只解析**标准两层形态**；单层带 `key` 由 `AnomalyHunter`（`Anomaly` 子类）覆写，`NoopDaily` / `MaaDaily` 跳过通用解析——名字（`display_name`）只来自声明，全链路唯一来源。
 - 机制类在 `daily.py`：`BgiDaily`（原神秘境资源筛选、开关按任务名反查任务启用表，副本读写沿用基类）、`BgiLeyLineDaily`（原地脉花：声明字段名含 `{Day}`，`_fields` 展开成一周 7 份、`read` 要求 7 天同值）、`NoopDaily`（绝区零/崩铁，上游自身已支持）、`Anomaly`（数据在自己段、开关在第二份文件）、`MaaDaily`（粥的 TaskQueue/StagePlan）、`MaaActivityDaily`（活动选项及过期检查）。适配器构造时按声明创建全部日常，之后持续复用。
 - 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`；`_backup_paths`（备份范围，目录或文件）必填；**机制类与文件路径由声明标注**（`daily_task_list.yml` 每个日常必填 `class`（`daily.py::DAILY_CLASSES` 注册表查表）与 `config`（该日常读写的主文件路径；`routine` 可选，日常开关文件；`enable_key` / `enable_task` 可选，开关落点））；`ScriptConfig.__init__` 按声明逐个实例化并注入路径——加日常只改 yml，「主 config」概念不复存在。
-- 注册表 `_CONFIGS: dict[str, Callable[[], ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`，值为带缓存的构造入口：首次访问时创建适配器及其全部日常，之后复用同一个实例；构造只读取项目声明和固定模板，原生配置仍逐次读盘，`_init_config` 由启动流程显式调用；路径声明不完整会在 import 时 assert 暴露。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `iter_backup_paths` / `set_config` / `get_daily_readback` / `set_daily_enabled`）。
+- 注册表 `_CONFIGS: dict[str, Callable[[], ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`，值为带缓存的构造入口：首次访问时创建适配器及其全部日常、周常并触发 `_init_config`，之后复用同一个实例；原生配置仍逐次读盘；路径声明不完整会在 import 时 assert 暴露。**注册表为模块私有**：业务调用经 `ScriptConfigFacade`，测试可用 `patch.dict` 临时替换注册内容。
 
 ## 初始化与设置副本
 
@@ -60,9 +60,9 @@ GUI / CLI ─▶ AppService ─▶ ScriptConfigFacade
 
 `ScriptConfig._init_config()`：仅对声明了 `_template_rel_path` 的脚本生效。先判模板是否存在（无模板直接返回），再直调 `load_config` 读当前 config（脚本未安装/未配置返回 None 时直接返回，不触碰 config），然后 `_load_template()` 加载模板 → 若 `_is_aligned` 一致则跳过；否则遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。
 
-外观构造只保存工厂表，不构造适配器、不访问配置文件。`get_registered_script_names()` / `is_adapted()` 同样不触发初始化。首次查询配置会经工厂构造适配器，由 `ScriptConfig.__init__` 对齐一次；启动后的空闲预热经 `AppService.warm_config` 调 `ensure_config()`，复用同一缓存实例。新增/修改脚本路径时（`add_script` / `update_script`）调 `init_config()` 强制重对齐；`init_config_all()` 保留为显式全量入口，`config_workflow()` 不调用它。未声明模板或脚本未安装时为空操作（MAA 使用自身初始化规则）。
+外观构造不接收参数、不构造适配器、不访问配置文件。`get_registered_script_names()` / `is_adapted()` 同样不触发初始化。首次查询配置会经工厂构造适配器，由 `ScriptConfig.__init__` 对齐一次；启动后的空闲预热经 `AppService.warm_config` 调 `ensure_config()`，复用同一缓存实例。新增/修改脚本路径时（`add_script` / `update_script`）调 `init_config()` 强制重对齐；`init_config_all()` 保留为显式全量入口，`config_workflow()` 不调用它。未声明模板或脚本未安装时为空操作（MAA 使用自身初始化规则）。
 
-各默认外观实例共享 `_CONFIGS` 中经 `cache` 包装的工厂，不另建适配器缓存；也可注入独立工厂表。日常反读每次读取当前配置；首次反读仍可能触发上述模板对齐，外观不改变这项既有行为。
+各外观实例统一访问 `_CONFIGS` 中经 `cache` 包装的工厂，不另建适配器缓存或保存注册表副本。日常反读每次读取当前配置；首次反读仍可能触发上述模板对齐，外观不改变这项既有行为。
 
 | 脚本 | 当前调用 _init_config | 模板 | 说明 |
 |------|---------------------|------|------|
@@ -108,7 +108,7 @@ GUI / CLI ─▶ AppService ─▶ ScriptConfigFacade
 
 `daily_config.get_daily_map()` 把声明**物化**成菜单：词汇与声明一致（`display_name` / `physical_name` / 递归 `options.values`），只做两件事——`source` 引用替换为本机资源展开的具体副本；补齐省略的 `physical_name`（回落展示名）。不做改名与拍平。
 
-日常资源选项由 `Daily.get_task_lists(source)` 持有。菜单把所属日常展示名与当前选项的 `source` 交给模块接口 `get_task_lists`，由注册表中的共享适配器找到已有日常并读取资源，不重新构造日常、不初始化或写入子脚本配置。原神的类别筛选由 `BgiDaily` 处理，MAA 的客户端与活动时间筛选由 `MaaActivityDaily` 处理，其余资源复用键路径读取。
+日常资源选项由 `Daily.get_task_lists(source)` 持有。菜单把所属日常展示名与当前选项的 `source` 交给 `ScriptConfigFacade.get_task_lists`，由共享适配器找到已有日常并读取资源；适配器已构造时不重复初始化，首次构造仍走上述对齐流程。原神的类别筛选由 `BgiDaily` 处理，MAA 的客户端与活动时间筛选由 `MaaActivityDaily` 处理，其余资源复用键路径读取。
 
 - **单层带 `key` 的日常**（追猎目标）物化时**整组即唯一一级项**（展示名用日常名）、values 作二级——这是写路径语义（`_fields` 要求一级项名=日常名、值走二级），不能拆散。
 - 单层无 `key` 的日常（no-op）values 即一级项；两层日常各 value 作一级项。

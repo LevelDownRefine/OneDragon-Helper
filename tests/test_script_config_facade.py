@@ -37,8 +37,9 @@ class TestScriptConfigFacade(unittest.TestCase):
         # 预热只调用工厂；显式 init_config 才额外触发强制对齐。
         adapter._init_config.assert_called_once_with()
 
-    def test_empty_injected_registry_does_not_fall_back_to_builtins(self):
-        facade = ScriptConfigFacade({})
+    def test_empty_registry_has_no_adapted_scripts(self):
+        self.enterContext(patch.dict(_CONFIGS, {}, clear=True))
+        facade = ScriptConfigFacade()
         self.assertEqual(facade.get_registered_script_names(), [])
         self.assertEqual(facade.iter_backup_paths(), {})
         self.assertFalse(facade.is_adapted("BetterGI"))
@@ -46,7 +47,8 @@ class TestScriptConfigFacade(unittest.TestCase):
 
     def test_custom_script_queries_remain_optional(self):
         factory = Mock()
-        facade = ScriptConfigFacade({"sample": factory})
+        self.enterContext(patch.dict(_CONFIGS, {"sample": factory}, clear=True))
+        facade = ScriptConfigFacade()
         self.assertEqual(facade.get_daily_readback("custom"), [])
         self.assertIsNone(facade.get_task_lists("custom", "daily", {}))
         self.assertIsNone(facade.get_game_exe_path("custom"))
@@ -58,7 +60,8 @@ class TestScriptConfigFacade(unittest.TestCase):
         factory.assert_not_called()
 
     def test_operations_requiring_an_adapter_reject_custom_scripts(self):
-        facade = ScriptConfigFacade({})
+        self.enterContext(patch.dict(_CONFIGS, {}, clear=True))
+        facade = ScriptConfigFacade()
         with self.assertRaisesRegex(AssertionError, "未适配脚本: custom"):
             facade.get_config_path("custom")
         with self.assertRaisesRegex(AssertionError, "未适配脚本: custom"):
@@ -66,7 +69,8 @@ class TestScriptConfigFacade(unittest.TestCase):
 
     def test_unselected_task_does_not_initialize_adapter(self):
         factory = Mock()
-        facade = ScriptConfigFacade({"sample": factory})
+        self.enterContext(patch.dict(_CONFIGS, {"sample": factory}, clear=True))
+        facade = ScriptConfigFacade()
         for task in (None, "", "未选择"):
             with self.subTest(task=task):
                 facade.set_daily_task("sample", "daily", task)

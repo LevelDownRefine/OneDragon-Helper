@@ -2,7 +2,7 @@
 
 import logging
 import os
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from copy import deepcopy
 from functools import cache
 
@@ -504,23 +504,15 @@ class ArknightsConfig(ScriptConfig):
 class ScriptConfigFacade:
     """脚本配置统一入口：查找适配器并委托，文件格式与读写仍由适配器负责。
 
-    构造只保存工厂注册表；各外观实例共享注册表中已有的懒加载单例。
-
-    Args:
-        factories: 可注入独立的适配器工厂表，默认使用内置注册表。
+    统一使用内置注册表，各外观实例共享其中已有的懒加载单例。
     """
-
-    def __init__(
-        self, factories: Mapping[str, Callable[[], ScriptConfig]] | None = None
-    ) -> None:
-        self._factories = _CONFIGS if factories is None else factories
 
     def _find_config(self, script_name: str) -> ScriptConfig | None:
         """按需取得适配器；自定义脚本没有适配器。"""
-        if script_name not in self._factories:
+        if script_name not in _CONFIGS:
             return None
-        assert script_name in self._factories
-        return self._factories[script_name]()
+        assert script_name in _CONFIGS
+        return _CONFIGS[script_name]()
 
     def _require_config(self, script_name: str) -> ScriptConfig:
         """要求已适配的操作共用此断言入口。"""
@@ -540,16 +532,16 @@ class ScriptConfigFacade:
 
     def init_config_all(self) -> None:
         """强制对齐全部已注册脚本的配置。"""
-        for script_name in self._factories:
+        for script_name in _CONFIGS:
             self.init_config(script_name)
 
     def get_registered_script_names(self) -> list[str]:
         """取已注册脚本标识，供预热遍历；不构造适配器。"""
-        return list(self._factories)
+        return list(_CONFIGS)
 
     def is_adapted(self, script_name: str) -> bool:
         """判断是否已适配，不构造适配器。"""
-        return script_name in self._factories
+        return script_name in _CONFIGS
 
     def set_daily_task(
         self,
@@ -626,5 +618,5 @@ class ScriptConfigFacade:
         """汇总已适配脚本的备份范围；相对目录/文件的展开由备份层负责。"""
         return {
             script_name: self._require_config(script_name)._backup_paths
-            for script_name in self._factories
+            for script_name in _CONFIGS
         }
