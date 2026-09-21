@@ -134,8 +134,7 @@ def generate_chain_config(
         script_name = get_script_name(script)
         if script_name not in enabled_keys:
             continue
-        # 名单是唯一判据；config 侧残留的 enabled 丢弃，链内条目显式写 True。
-        script.pop("enabled", None)
+        # 名单是唯一判据；enabled 由链内统一写 True（config 侧残留会被覆盖）。
         if not _resolve_daily_run(script, weekly_timeouts):
             continue
         script.setdefault("block", True)
