@@ -60,8 +60,7 @@ def load_config() -> dict:
         assert "script_path" in s, (
             f"[utils_config] script_list 条目缺少 script_path: {s}"
         )
-        # 脚本勾选自 2026-09-21 起为 GUI 内存态，config.yml 不再承载 enabled；
-        # 旧文件里的残留字段在此忽略（不落盘、不影响运行），下次保存即消失。
+        # 勾选是 GUI 内存态，不落盘；旧文件残留的 enabled 在此丢弃。
         if s.pop("enabled", None) is not None:
             logger.warning(
                 "[config] %s 的 enabled 字段已废弃（勾选改为内存态），已忽略",

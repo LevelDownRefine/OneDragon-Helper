@@ -78,9 +78,7 @@ def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
         target = block.get("target_time", "04:10")
         if type(enabled) is bool and is_valid_target_time(target):
             if "script_names" not in block:
-                # 旧计划一次性物化：取 config.yml 全部脚本——勾选自 2026-09-21 起为
-                # GUI 内存态，不再参与名单推导（此前按 enabled 过滤，全 false 时会
-                # 得到空名单，计划静默不跑）。
+                # 旧计划一次性物化：取全部脚本（勾选不落盘，无从继承）。
                 names = []
                 if enabled:
                     config = load_config()
@@ -317,8 +315,7 @@ def run_daily_plan() -> None:
         logger.info("[daily] 计划没有可运行的脚本，跳过此次触发")
         return
     options = load_run_options()
-    # 计划任务的链文件独立命名（plan.yml）：与手动运行的 today.yml 分开，
-    # 避免两条路径互相覆盖同一份链 yml，也让 plan.yml 的 mtime 成为计划专属运行判据。
+    # 计划任务用独立链文件，避免与手动运行的 today.yml 互相覆盖。
     chain_service.schedule_run(
         enabled,
         "now",

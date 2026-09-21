@@ -39,8 +39,7 @@ class UtilsConfigTestBase(unittest.TestCase):
                 "src.utils.utils_config.require_config_yml_path",
                 return_value=self.config_path,
             ),
-            # 读写两侧都要隔离：save_config 走的是 get_config_yml_path_under_root，
-            # 只 patch require_* 会让用例写到真实 config.yml（曾据此误伤用户配置）。
+            # 读写两侧都要隔离：save_config 走 get_config_yml_path_under_root。
             patch(
                 "src.utils.utils_config.get_config_yml_path_under_root",
                 return_value=self.config_path,
@@ -62,7 +61,7 @@ class UtilsConfigTestBase(unittest.TestCase):
 
 
 class TestDeprecatedEnabledField(UtilsConfigTestBase):
-    """config.yml 的历史 enabled 字段被忽略（勾选自 2026-09-21 起为 GUI 内存态）。"""
+    """config.yml 里已废弃的 enabled 字段被忽略。"""
 
     def test_load_config_drops_enabled_with_warning(self):
         self._write_config(

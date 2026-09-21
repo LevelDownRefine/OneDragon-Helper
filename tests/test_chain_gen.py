@@ -135,7 +135,7 @@ class TestGenerateChainConfig(unittest.TestCase):
         self.assertIs(data["script_list"][0]["enabled"], True)
 
     def test_residual_enabled_field_does_not_exclude_script(self):
-        """config.yml 的历史残留 enabled=False 不再参与判定（勾选已改内存态）。"""
+        """config.yml 残留的 enabled=False 不影响入链。"""
         config = {
             "script_list": [
                 {"script_path": "scripts/b.py", "display_name": "乙", "enabled": False},
