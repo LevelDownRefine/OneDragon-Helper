@@ -39,6 +39,12 @@ class UtilsConfigTestBase(unittest.TestCase):
                 "src.utils.utils_config.require_config_yml_path",
                 return_value=self.config_path,
             ),
+            # 读写两侧都要隔离：save_config 走的是 get_config_yml_path_under_root，
+            # 只 patch require_* 会让用例写到真实 config.yml（曾据此误伤用户配置）。
+            patch(
+                "src.utils.utils_config.get_config_yml_path_under_root",
+                return_value=self.config_path,
+            ),
             patch(
                 "src.config.task_config.get_weekly_task_list_yml_path_under_root",
                 return_value=self.weekly_list_path,
@@ -53,6 +59,38 @@ class UtilsConfigTestBase(unittest.TestCase):
 
     def _read_config(self):
         return load_yaml(self.config_path)
+
+
+class TestDeprecatedEnabledField(UtilsConfigTestBase):
+    """config.yml 的历史 enabled 字段被忽略（勾选自 2026-09-21 起为 GUI 内存态）。"""
+
+    def test_load_config_drops_enabled_with_warning(self):
+        self._write_config(
+            {
+                "script_list": [
+                    {
+                        "display_name": "原神",
+                        "script_path": "C:/a.exe",
+                        "enabled": False,
+                    }
+                ]
+            }
+        )
+        with self.assertLogs("src.utils.utils_config", level="WARNING"):
+            data = load_config()
+        self.assertNotIn("enabled", data["script_list"][0])
+
+    def test_saved_config_no_longer_carries_enabled(self):
+        """读入 → 写回后文件里不再有 enabled（残留字段被自然清除）。"""
+        self._write_config(
+            {
+                "script_list": [
+                    {"display_name": "原神", "script_path": "C:/a.exe", "enabled": True}
+                ]
+            }
+        )
+        save_config(load_config())
+        self.assertNotIn("enabled", self._read_config()["script_list"][0])
 
 
 class TestGetScript(UtilsConfigTestBase):

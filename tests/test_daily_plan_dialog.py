@@ -79,7 +79,6 @@ class TestDailyPlanDialog(unittest.TestCase):
 
         self._run(save)
         self.service.apply_daily_plan.assert_called_once_with(updated)
-        self.service.set_script_enabled.assert_not_called()
         self.assertEqual(self.controller.plan, updated)
 
     def test_cancel_escape_and_close_do_not_save(self):
@@ -145,7 +144,6 @@ class TestDailyPlanDialog(unittest.TestCase):
                 self.plan = DailyPlanOptions(enabled, "08:30", ("A",))
                 self.assertEqual(self.service.load_daily_plan(), self.plan)
                 self.assertEqual(self.controller.plan, self.plan)
-        self.service.set_script_enabled.assert_not_called()
 
     def test_many_scripts_scroll_and_removed_choice_can_be_deselected(self):
         dialog = DailyPlanDialog(

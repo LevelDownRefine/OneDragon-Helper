@@ -47,7 +47,6 @@ from src.utils.utils_config import (
     load_config,
     remove_script,
     save_config,
-    set_script_enabled,
     update_script,
 )
 from src.utils.utils_runner import (
@@ -197,9 +196,6 @@ class AppService:
 
     def save_config(self, data: dict) -> None:
         return save_config(data)
-
-    def set_script_enabled(self, changes: dict[str, bool]) -> None:
-        return set_script_enabled(changes)
 
     def add_script(self, script_data: dict) -> None:
         return add_script(script_data)

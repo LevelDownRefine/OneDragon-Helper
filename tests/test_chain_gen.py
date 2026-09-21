@@ -1,10 +1,17 @@
 """测试 src/service/chain_gen.py：_resolve_daily_run 的覆盖规则（自 weekly_timeouts.py 迁入）。"""
 
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.service.chain_gen import _resolve_daily_run, resolve_weekly_starts
+from src.service.chain_gen import (
+    _resolve_daily_run,
+    generate_chain_config,
+    resolve_weekly_starts,
+)
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT
+from src.utils.utils_yaml import load_yaml
 
 
 def _script(display_name="测试"):
@@ -106,28 +113,37 @@ class TestResolveWeeklyStarts(unittest.TestCase):
 
 
 class TestGenerateChainConfig(unittest.TestCase):
-    """generate_chain_config：GUI 关闭的脚本不进链，链条目不携带 enabled 字段。"""
+    """generate_chain_config：名单是唯一判据，链内条目统一显式写 enabled=True。"""
 
-    def test_disabled_script_excluded_and_no_enabled_key(self):
-        import os
-        import tempfile
+    @staticmethod
+    def _write(config: dict, names: set[str]) -> dict:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = generate_chain_config(
+                config, names, out_path=os.path.join(tmp, "today.yml")
+            )
+            return load_yaml(out)
 
-        from src.service.chain_gen import generate_chain_config
-        from src.utils.utils_yaml import load_yaml
-
+    def test_only_named_scripts_included_with_enabled_true(self):
         config = {
             "script_list": [
                 {"script_path": "scripts/a.py", "display_name": "甲"},
+                {"script_path": "scripts/b.py", "display_name": "乙"},
+            ]
+        }
+        data = self._write(config, {"甲"})
+        self.assertEqual([s["display_name"] for s in data["script_list"]], ["甲"])
+        self.assertIs(data["script_list"][0]["enabled"], True)
+
+    def test_residual_enabled_field_does_not_exclude_script(self):
+        """config.yml 的历史残留 enabled=False 不再参与判定（勾选已改内存态）。"""
+        config = {
+            "script_list": [
                 {"script_path": "scripts/b.py", "display_name": "乙", "enabled": False},
             ]
         }
-        with tempfile.TemporaryDirectory() as tmp:
-            out = generate_chain_config(
-                config, {"甲", "乙"}, out_path=os.path.join(tmp, "today.yml")
-            )
-            data = load_yaml(out)
-        self.assertEqual([s["display_name"] for s in data["script_list"]], ["甲"])
-        self.assertNotIn("enabled", data["script_list"][0])
+        data = self._write(config, {"乙"})
+        self.assertEqual([s["display_name"] for s in data["script_list"]], ["乙"])
+        self.assertIs(data["script_list"][0]["enabled"], True)
 
 
 if __name__ == "__main__":

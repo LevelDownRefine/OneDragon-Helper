@@ -27,7 +27,7 @@ from src.service.schedule import (
     save_schedule,
 )
 from src.utils import get_root_dir
-from src.utils.utils_config import load_config, script_enabled
+from src.utils.utils_config import load_config
 from src.utils.utils_sub_config import get_script_name
 
 logger = logging.getLogger(__name__)
@@ -78,15 +78,15 @@ def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
         target = block.get("target_time", "04:10")
         if type(enabled) is bool and is_valid_target_time(target):
             if "script_names" not in block:
-                # 旧计划只继承一次当前勾选，之后与手动选择独立。
+                # 旧计划一次性物化：取 config.yml 全部脚本——勾选自 2026-09-21 起为
+                # GUI 内存态，不再参与名单推导（此前按 enabled 过滤，全 false 时会
+                # 得到空名单，计划静默不跑）。
                 names = []
                 if enabled:
                     config = load_config()
                     assert "script_list" in config
                     names = [
-                        get_script_name(script)
-                        for script in config["script_list"]
-                        if script_enabled(script)
+                        get_script_name(script) for script in config["script_list"]
                     ]
                 if schedule is None:
                     block["script_names"] = names
@@ -317,9 +317,12 @@ def run_daily_plan() -> None:
         logger.info("[daily] 计划没有可运行的脚本，跳过此次触发")
         return
     options = load_run_options()
+    # 计划任务的链文件独立命名（plan.yml）：与手动运行的 today.yml 分开，
+    # 避免两条路径互相覆盖同一份链 yml，也让 plan.yml 的 mtime 成为计划专属运行判据。
     chain_service.schedule_run(
         enabled,
         "now",
+        chain_name="plan",
         mute=options.mute_enabled,
         unmute=options.unmute_enabled,
         shutdown_delay=(
