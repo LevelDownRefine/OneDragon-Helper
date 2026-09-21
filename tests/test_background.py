@@ -22,6 +22,7 @@ from src.gui.controllers.background import (
     WALLPAPER_MAX_SIDE,
     BackgroundController,
 )
+from src.service.app_service import AppService
 
 
 def _make_image(path: str, w: int, h: int, color: str = "red") -> str:
@@ -261,11 +262,14 @@ class TestScriptBackground(unittest.TestCase):
         self._app = QApplication.instance() or QApplication([])
         self.ctrl = BackgroundController(
             game_list=MagicMock(),
-            app_service=MagicMock(),
+            app_service=AppService(),
             toast=MagicMock(),
         )
 
-    @patch.object(bgmod, "get_background_rel_path", return_value="assets/x.webp")
+    @patch(
+        "src.service.app_service.AppService.get_background_rel_path",
+        return_value="assets/x.webp",
+    )
     @patch.object(bgmod, "get_script_root_dir", return_value="/script/root")
     def test_declared_and_present(self, _mock_root, _mock_rel):
         # 声明且文件存在：返回脚本根拼接的绝对路径
@@ -275,14 +279,19 @@ class TestScriptBackground(unittest.TestCase):
                 os.path.join("/script/root", "assets/x.webp"),
             )
 
-    @patch.object(bgmod, "get_background_rel_path", return_value="assets/x.webp")
+    @patch(
+        "src.service.app_service.AppService.get_background_rel_path",
+        return_value="assets/x.webp",
+    )
     @patch.object(bgmod, "get_script_root_dir", return_value="/script/root")
     def test_declared_but_missing(self, _mock_root, _mock_rel):
         # 声明但文件缺失：返回空字符串（交 DEFAULT_BG 兜底）
         with patch.object(bgmod.os.path, "isfile", return_value=False):
             self.assertEqual(self.ctrl._script_background("ok-ww"), "")
 
-    @patch.object(bgmod, "get_background_rel_path", return_value="")
+    @patch(
+        "src.service.app_service.AppService.get_background_rel_path", return_value=""
+    )
     def test_not_declared(self, _mock_rel):
         # 子类未声明 background（如原神）：返回空字符串
         self.assertEqual(self.ctrl._script_background("BetterGI"), "")
@@ -343,6 +352,8 @@ class TestApplyCurrent(unittest.TestCase):
             app_service=MagicMock(),
             toast=MagicMock(),
         )
+        self.ctrl._app_service.get_background_rel_path.return_value = ""
+        self.ctrl._app_service.load_wallpapers.return_value = {}
 
     def test_version_increments_on_apply(self):
         """换壁纸 / 切脚本都走 apply_current：版本号自增，使 QML source 身份变化触发重载。"""

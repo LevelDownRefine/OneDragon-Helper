@@ -1,8 +1,8 @@
-# set_config — 副本配置适配器
+# set_config — 脚本配置外观与适配器
 
-统一 `set_config()` 适配器接口，内部封装各游戏脚本异构的 config 读写。各脚本的 config 格式、路径、字段名不同，由各 `ScriptConfig` 子类适配，上层 service 不感知差异。
+统一入口为 `ScriptConfigFacade`，内部封装各游戏脚本异构的 config 读写。各脚本的 config 格式、路径、字段名不同，由各 `ScriptConfig` 子类适配，上层 service 不感知差异。
 
-> 设计定位：`set_config` 是适配器，把异构 config 适配成统一调用；不是外观模式，外观整合职责归组合根 `AppService`（编排 `src.service.chain_service` 与 `src.utils.utils_config` 等模块）。
+> 设计定位：`ScriptConfigFacade` 是配置子系统外观，集中适配器查找、可选/必需适配的边界与统一调用；`ScriptConfig` 子类负责适配，`Daily` / `Weekly` 负责各条任务的读写。应用级外观仍为 `AppService`，负责组合配置、调度、链生成与运行。
 
 > script_name 为全链路内部唯一标识，由 `get_script_name(script)` 获取，与进程名 `get_process_name` 区分。exe 脚本的 script_name 即进程名 basename 去后缀，如 `ok-ww`；python/bat 脚本文件的 script_name 即 display_name。注册表、`daily_task_list.yml`、`weekly_timeouts.yml` 的 key 全用 script_name，display_name 仅用于展示。config.yml 加载经 `check_script_name_uniqueness` 断言唯一。
 
@@ -11,8 +11,10 @@
 适配器 + 类层级，日常规则收敛在 `Daily` 对象上：
 
 ```
-上层调用 ─▶ set_config(name, daily_display_name, task_name, sequence)  # 适配器接口
-                │ 判空跳过 → 查 _CONFIGS 注册表 → 复用实例 → set_daily_task()
+GUI / CLI ─▶ AppService ─▶ ScriptConfigFacade
+                                ▲
+配置工具 / 菜单物化 / 备份 ────────┘
+                │ 判空跳过 → 查 _CONFIGS 工厂注册表 → 复用实例
                 ▼
           ScriptConfig，基类（不持落点 I/O；周常归 src/config/weekly.py）；
           日常落点 I/O 由 Daily 自持（_load_daily_config / _save_daily_config）
@@ -31,22 +33,22 @@
 - 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`；`_backup_paths`（备份范围，目录或文件）必填；**机制类与文件路径由声明标注**（`daily_task_list.yml` 每个日常必填 `class`（`daily.py::DAILY_CLASSES` 注册表查表）与 `config`（该日常读写的主文件路径；`routine` 可选，日常开关文件；`enable_key` / `enable_task` 可选，开关落点））；`ScriptConfig.__init__` 按声明逐个实例化并注入路径——加日常只改 yml，「主 config」概念不复存在。
 - 注册表 `_CONFIGS: dict[str, Callable[[], ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`，值为带缓存的构造入口：首次访问时创建适配器及其全部日常，之后复用同一个实例；构造只读取项目声明和固定模板，原生配置仍逐次读盘，`_init_config` 由启动流程显式调用；路径声明不完整会在 import 时 assert 暴露。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `iter_backup_paths` / `set_config` / `get_daily_readback` / `set_daily_enabled`）。
 
-## 三个独立流程
+## 初始化与设置副本
 
 | 流程 | 触发时机 | 作用 |
 |------|----------|------|
-| 初始化 init | 启动时 `config_workflow()` 调 `init_config_all()` | 确保脚本 config 与模板对齐，补全缺失结构 |
-| 设置副本 set_daily_task | 外部调用 `set_config()` 时 | 按用户选择的副本/序列修改 config |
+| 初始化 init | 首次取得适配器或启动后 `ensure_config()` 预热；显式 `init_config()` 强制重对齐 | 确保脚本 config 与模板对齐，补全缺失结构 |
+| 设置副本 set_daily_task | 外部调用 `ScriptConfigFacade.set_daily_task()` 时 | 按用户选择的副本/序列修改 config |
 
 两者独立：初始化是防御性对齐，设置副本是功能性响应。周常（周几起 / 周常副本）走 `src/config/weekly.py`，见该模块说明。
 
-## 落盘时机（何时调用 set_config）
+## 落盘时机
 
 子脚本 config 的落盘点按「能否在编辑期确定」分两类：
 
 | 配置类型 | 落盘时机 | 说明 |
 |----------|----------|------|
-| 日常副本 / 序列（`task_name` / `sequence`） | **编辑期实时** | GUI 选副本（`TaskCardController.selectDaily`）、CLI `--task`/`--sequence` 覆盖，均直接调 `set_config` 实时写子脚本 config。无需等到运行全体。 |
+| 日常副本 / 序列（`task_name` / `sequence`） | **编辑期实时** | GUI 选副本（`TaskCardController.selectDaily`）、CLI `--task`/`--sequence` 覆盖，均经 `AppService` 委托 `ScriptConfigFacade.set_daily_task` 实时写子脚本 config。无需等到运行全体。 |
 | 周常副本（`weekly.set_weekly_task`） | **编辑期实时** | GUI 选周常副本（`selectWeekly`）直接写子脚本 config。 |
 | 周常起始日（`weekly_start`） | **编辑期实时 + 运行期** | 编辑期两处落盘：weekly.yml 的 `weekly_start` 段（意图）与该条的游戏侧**字面**起始日字段（仅历战余响 / 粥有，值由起始日直接算出、与当天星期无关）。按「今天是否已到起始日」折算的二值开关只能在运行期算，故由 `run_actions.apply_subscript_config` 经 `weekly.prepare_weekly_start_days` 写。 |
 
@@ -58,7 +60,9 @@
 
 `ScriptConfig._init_config()`：仅对声明了 `_template_rel_path` 的脚本生效。先判模板是否存在（无模板直接返回），再直调 `load_config` 读当前 config（脚本未安装/未配置返回 None 时直接返回，不触碰 config），然后 `_load_template()` 加载模板 → 若 `_is_aligned` 一致则跳过；否则遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。`_is_aligned` 递归比较，dict 递归、list 按索引、其余直接比。
 
-落点（触发时机）：`config_workflow()` 在每次启动时调用 `init_config_all()`，遍历所有已注册脚本对齐 config 与模板。新增/修改脚本路径时（`add_script` / `update_script`）也调用 `init_config`。无 `_template_rel_path` 直接返回、`load_config` 缺失即返回——守卫确保无模板或脚本未安装时为空操作。反读适配器（`get_daily_readback` 等）一律不触发，保持纯只读。
+外观构造只保存工厂表，不构造适配器、不访问配置文件。`get_registered_script_names()` / `is_adapted()` 同样不触发初始化。首次查询配置会经工厂构造适配器，由 `ScriptConfig.__init__` 对齐一次；启动后的空闲预热经 `AppService.warm_config` 调 `ensure_config()`，复用同一缓存实例。新增/修改脚本路径时（`add_script` / `update_script`）调 `init_config()` 强制重对齐；`init_config_all()` 保留为显式全量入口，`config_workflow()` 不调用它。未声明模板或脚本未安装时为空操作（MAA 使用自身初始化规则）。
+
+各默认外观实例共享 `_CONFIGS` 中经 `cache` 包装的工厂，不另建适配器缓存；也可注入独立工厂表。日常反读每次读取当前配置；首次反读仍可能触发上述模板对齐，外观不改变这项既有行为。
 
 | 脚本 | 当前调用 _init_config | 模板 | 说明 |
 |------|---------------------|------|------|
@@ -198,7 +202,7 @@ BGI 旧配置未声明或清空 `TaskDefinitions` 时，按 `TaskEnabledList` �
 ## 外部接口
 
 ```python
-from src.config.set_config import set_config
+from src.config.set_config import ScriptConfigFacade
 from src.config.weekly import (
     get_weekly_task,
     prepare_weekly_start_days,
@@ -207,28 +211,41 @@ from src.config.weekly import (
     weekly_names,
 )
 
-set_config("ok-ww", daily_display_name="每日任务", task_name="无音区")  # 无二级
-set_config("ok-ww", daily_display_name="每日任务", task_name="模拟领域", sequence="贝币")  # 二级传物理值
-set_config("ok-nte", daily_display_name="异象界域", task_name="空幕", sequence=6)
-set_config("ok-ww", task_name=None)  # 跳过
-set_config("ok-ww", task_name="未选择")  # 跳过
+config = ScriptConfigFacade()
+config.ensure_config("ok-ww")  # 按需预热
+config.set_daily_task("ok-ww", daily_display_name="每日任务", task_name="无音区")  # 无二级
+config.set_daily_task("ok-ww", daily_display_name="每日任务", task_name="模拟领域", sequence="贝币")
+config.set_daily_task("ok-nte", daily_display_name="异象界域", task_name="空幕", sequence=6)
+config.set_daily_task("ok-ww", task_name=None)  # 跳过
+config.set_daily_task("ok-ww", task_name="未选择")  # 跳过
+config.get_daily_readback("ok-ww")
 
 weekly_names("March7th-Launcher")  # ["货币战争", "历战余响"]
 prepare_weekly_start_days("March7th-Launcher", {"货币战争": 4, "历战余响": 5})  # 运行期：按条目写开关
 set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按条落盘游戏侧字面起始日（仅历战余响 / 粥动作）
 ```
 
-`iter_backup_paths()` 返回 {script_name: 备份路径元组}——「该脚本的配置面在哪」的唯一声明处，供配置备份与恢复遍历。元素是**目录**（整目录递归打包）或**文件**（单文件收录），相对脚本根目录。仅用于收集文件，不解析或校验配置内容。
+原模块级业务接口均收进 `ScriptConfigFacade`，不保留函数别名：
+
+| 职责 | 方法 |
+|------|------|
+| 初始化 / 适配查询 | `ensure_config`、`init_config`、`init_config_all`、`get_registered_script_names`、`is_adapted` |
+| 日常读写 / 资源 | `set_daily_task`（原 `set_config`）、`set_daily_enabled`、`get_daily_readback`、`get_task_lists` |
+| 路径 / 备份声明 | `get_config_path`、`get_game_exe_path`、`get_background_rel_path`、`get_game_path_keys`、`iter_backup_paths` |
+
+GUI 经 `AppService` 使用该外观；下层配置工具、菜单和备份模块各持有轻量外观实例。周常接口仍归 `weekly.py`。
+
+`config.iter_backup_paths()` 返回 {script_name: 备份路径元组}——「该脚本的配置面在哪」的唯一声明处，供配置备份与恢复遍历。元素是**目录**（整目录递归打包）或**文件**（单文件收录），相对脚本根目录。查询仍经适配器工厂，首次构造可能触发初始化。
 
 > 与读写路径（``_config_rel_path`` 等）刻意解耦：读写关心「哪个文件的哪个字段」，备份关心「配置面在哪」。声明了 ``_backup_paths`` 即表示该脚本要备份的配置全在这些路径里，备份层按条展开，不再回头拼读写路径。整目录形态用目录（ok-ww/ok-ef/ok-nte 的 ``working/configs``、BetterGI 的 ``User``、绝区零与粥的 ``config``），散装形态用文件（崩铁只要根目录 ``config.yaml``，其 ``config/`` 仅剩 workflows 故不声明）。
 
-`set_config()` 接收 script_name；python/bat 脚本文件不在注册表内时优雅跳过。每次调用实例化对应子类并触发初始化（幂等）；未选副本即 no-op。
+`set_daily_task()` 接收 script_name；python/bat 脚本文件不在注册表内时跳过并记录日志。未选副本即 no-op，且不构造适配器。未知脚本的可选查询返回空值；`get_config_path` / `set_daily_enabled` 要求脚本已适配，否则断言失败。
 
 ## 相关文件
 
 | 文件 | 作用 |
 |------|------|
-| `set_config.py` | 本适配器，适配器接口 + 类层级；各脚本路径由子类声明，`@register` 显式注册；各日常脚本子类定义在各自 config 旁 |
+| `set_config.py` | `ScriptConfigFacade` 统一入口 + 适配器类层级；各脚本路径由子类声明，`@register` 显式注册 |
 | `daily.py` | 日常规则对象：`Daily` 基类（声明 → 落点 + 读写规则）与机制类 `NoopDaily` / `Anomaly` / `MaaDaily`；纯规则不碰盘 |
 | `weekly.py` | 周常落点：`Weekly` 基类（config 读/写 + 起始日校验）与六条周常子类（列表增删 / 反相布尔 / app 条目 / 布尔开关 / 字面起始日 + 副本 / 队列公式）；机制类注册表 `WEEKLY_CLASSES`、装配入口 `build_weeklies`；模块级入口 `supports_weekly` / `prepare_weekly_start_days` 等 |
 | `task_config.py` | 两份任务声明的读取、校验、物理名/取值映射 |

@@ -18,6 +18,8 @@ from src.config import set_config as config_mod
 from src.config.daily_config import get_daily_map
 from tests.config_diff import diff_paths
 
+_script_config = config_mod.ScriptConfigFacade()
+
 logger = logging.getLogger(__name__)
 GOLDEN_PATH = Path(__file__).parent / "golden/daily_baseline.json"
 DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
@@ -124,15 +126,17 @@ def build_baseline():
             stack.enter_context(patch.object(module, load_name, side_effect=load))
             stack.enter_context(patch.object(module, save_name, side_effect=save))
         stack.enter_context(
-            patch("src.config.daily_config.get_task_lists", side_effect=_resource_names)
+            patch(
+                "src.config.daily_config._script_config.get_task_lists",
+                side_effect=_resource_names,
+            )
         )
         menus = get_daily_map()
         assert set(menus) == set(stores) == set(config_mod._CONFIGS)
         for script in sorted(menus):
-            cfg = config_mod._CONFIGS[script]()
             normalized = {}
             steps = []
-            before_read = config_mod.get_daily_readback(script)
+            before_read = _script_config.get_daily_readback(script)
             for daily in menus[script]["dailies"]:
                 name = daily["display_name"]
                 choices = {}
@@ -145,7 +149,7 @@ def build_baseline():
                     for sequence in [s["physical_name"] for s in sequences] or [None]:
                         before = deepcopy(stores[script])
                         saves.clear()
-                        cfg.set_daily_task(name, task_name, sequence)
+                        _script_config.set_daily_task(script, name, task_name, sequence)
                         steps.append(
                             {
                                 "daily": name,
@@ -158,7 +162,7 @@ def build_baseline():
                                         before, stores[script]
                                     )
                                 },
-                                "readback": config_mod.get_daily_readback(script),
+                                "readback": _script_config.get_daily_readback(script),
                             }
                         )
                 normalized[name] = choices

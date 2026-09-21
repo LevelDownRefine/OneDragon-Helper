@@ -243,7 +243,9 @@ class TestDailyItems(unittest.TestCase):
     """daily_items：一次反读记录 + 声明菜单 → 每行 chip 文案与「不启用」入口。"""
 
     def _items(self, ctrl, records):
-        with patch.object(task_card_mod, "get_daily_readback", return_value=records):
+        with patch.object(
+            ctrl._app_service, "get_daily_readback", return_value=records
+        ):
             return ctrl.daily_items
 
     def test_prefers_readback_over_declared(self):
@@ -583,12 +585,16 @@ class TestEmptyCurrentSentinel(unittest.TestCase):
         service = MagicMock()
         service.get_weekly_map.return_value = {}
         service.get_weekly_start_for.return_value = None
+        service.is_adapted.return_value = False
+        service.get_daily_readback.return_value = []
         ctrl = TaskCardController(_EmptyGameList(), service, MagicMock())
         self.assertIs(ctrl._current, task_card_mod._EMPTY_GAME)
         self.assertEqual(ctrl.task_title, "")
         self.assertFalse(ctrl.task_adapted)
         self.assertFalse(ctrl.weekly_supported)
         self.assertEqual(ctrl.daily_items, [])
+        service.is_adapted.assert_called_once_with("")
+        service.get_daily_readback.assert_called_once_with("")
         self.assertEqual(ctrl.daily_options("每日任务"), [])
         self.assertEqual(ctrl.weekly_items, [])
 

@@ -15,10 +15,7 @@ chain_service 模块仅作运行时委托（其内部 ScheduledRun 经 ``load_co
 import logging
 import os
 
-from src.config.set_config import (
-    get_config_path,
-    init_config,
-)
+from src.config.set_config import ScriptConfigFacade
 from src.utils import (
     get_config_yml_path_under_root,
     require_config_yml_path,
@@ -38,6 +35,8 @@ from src.utils.utils_weekly import (
     save_weekly,
 )
 from src.utils.utils_yaml import dump_yaml, load_yaml
+
+_script_config = ScriptConfigFacade()
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +122,7 @@ def add_script(script_data: dict) -> None:
     scripts.append(script_data)
     save_config(config)
     ensure_weekly_entry(new_script_name)
-    init_config(new_script_name)
+    _script_config.init_config(new_script_name)
 
 
 def remove_script(script_name: str) -> None:
@@ -196,7 +195,7 @@ def update_script(
     if new_script_name != old_script_name:
         rename_weekly(old_script_name, new_script_name)
     save_weekly(new_script_name, weekly_timeouts)
-    init_config(new_script_name)
+    _script_config.init_config(new_script_name)
     return new_script_name
 
 
@@ -293,7 +292,7 @@ def config_file_path(script_name: str) -> tuple[str | None, str | None]:
         return resolved, None
     if is_exe_script(script_path):
         try:
-            config_path = get_config_path(get_script_name(script))
+            config_path = _script_config.get_config_path(get_script_name(script))
         except AssertionError as e:
             return None, f"该脚本暂未适配配置文件，无法打开：{e}"
         if not os.path.isfile(config_path):

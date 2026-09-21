@@ -174,7 +174,9 @@ class TestGetDailyMap(unittest.TestCase):
             )
 
     def test_real_declarations_keep_one_menu_per_daily(self):
-        with patch("src.config.daily_config.get_task_lists", return_value=[]):
+        with patch(
+            "src.config.daily_config._script_config.get_task_lists", return_value=[]
+        ):
             menus = get_daily_map()
         self.assertEqual(set(menus), set(load_daily_map()))
         maa = menus["MAA"]["dailies"]
@@ -239,7 +241,9 @@ class TestGetDailyMap(unittest.TestCase):
         )
 
     def test_secondary_menu_values_are_native(self):
-        with patch("src.config.daily_config.get_task_lists", return_value=[]):
+        with patch(
+            "src.config.daily_config._script_config.get_task_lists", return_value=[]
+        ):
             menus = get_daily_map()
         values = {
             option["display_name"]: option
@@ -256,7 +260,8 @@ class TestGetDailyMap(unittest.TestCase):
 
     def test_daily_sources_come_from_declaration(self):
         with patch(
-            "src.config.daily_config.get_task_lists", return_value=["原生副本"]
+            "src.config.daily_config._script_config.get_task_lists",
+            return_value=["原生副本"],
         ) as source:
             menus = get_daily_map()
         source.assert_any_call(
@@ -288,7 +293,10 @@ class TestGetDailyMap(unittest.TestCase):
         for names in ([], None):
             with (
                 self.subTest(names=names),
-                patch("src.config.daily_config.get_task_lists", return_value=names),
+                patch(
+                    "src.config.daily_config._script_config.get_task_lists",
+                    return_value=names,
+                ),
             ):
                 result = get_daily_map()
             self.assertEqual(
@@ -303,7 +311,10 @@ class TestGetDailyMap(unittest.TestCase):
         original = deepcopy(declarations)
         with (
             patch("src.config.daily_config.load_daily_map", return_value=declarations),
-            patch("src.config.daily_config.get_task_lists", return_value=["测试资源"]),
+            patch(
+                "src.config.daily_config._script_config.get_task_lists",
+                return_value=["测试资源"],
+            ),
         ):
             first = get_daily_map()
             second = get_daily_map()
@@ -321,7 +332,10 @@ class TestGetDailyMap(unittest.TestCase):
         )
         with (
             patch("src.config.daily_config.load_daily_map", return_value=declarations),
-            patch("src.config.daily_config.get_task_lists", return_value=["测试资源"]),
+            patch(
+                "src.config.daily_config._script_config.get_task_lists",
+                return_value=["测试资源"],
+            ),
         ):
             menus = get_daily_map()
         self.assertEqual(
@@ -351,7 +365,10 @@ class TestGetDailyMap(unittest.TestCase):
                 "src.config.daily_config.load_daily_map",
                 return_value=declarations,
             ),
-            patch("src.config.daily_config.get_task_lists", return_value=["甲", "乙"]),
+            patch(
+                "src.config.daily_config._script_config.get_task_lists",
+                return_value=["甲", "乙"],
+            ),
         ):
             menus = get_daily_map()
         values = menus["x"]["dailies"][0]["options"]["values"]

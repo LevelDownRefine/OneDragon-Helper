@@ -128,7 +128,8 @@ class TestBackupService(unittest.TestCase):
             ("get_script_root_dir", {"side_effect": self.roots.get}),
             ("get_path_under_root", {"side_effect": self._backup_directory}),
         ):
-            patcher = patch.object(backup, name, **kwargs)
+            target = backup._script_config if name == "iter_backup_paths" else backup
+            patcher = patch.object(target, name, **kwargs)
             patcher.start()
             self.addCleanup(patcher.stop)
 

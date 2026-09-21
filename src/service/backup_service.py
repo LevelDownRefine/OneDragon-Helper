@@ -16,10 +16,12 @@ from pathlib import Path, PureWindowsPath
 
 from ruamel.yaml.error import YAMLError
 
-from src.config.set_config import get_game_path_keys, iter_backup_paths
+from src.config.set_config import ScriptConfigFacade
 from src.utils import get_path_under_root
 from src.utils.utils_sub_config import get_script_root_dir
 from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
+
+_script_config = ScriptConfigFacade()
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +49,7 @@ def _write_zip(files: dict[str, Path]) -> str:
 def create_backup() -> dict:
     """收集声明目录内的全部文件与散装配置，返回 ZIP 路径和文件数。"""
     files: dict[str, Path] = {}
-    for script_name, paths in iter_backup_paths().items():
+    for script_name, paths in _script_config.iter_backup_paths().items():
         root = get_script_root_dir(script_name)
         if root is None:
             continue
@@ -193,7 +195,7 @@ def _copy_member(archive: zipfile.ZipFile, name: str, target: Path) -> None:
         with archive.open(name) as source, temporary.open("wb") as output:
             shutil.copyfileobj(source, output)
         _, script_name, rel = name.split("/", 2)
-        keys = get_game_path_keys(script_name, rel)
+        keys = _script_config.get_game_path_keys(script_name, rel)
         if keys:
             _preserve_game_path(target, temporary, keys)
         os.replace(temporary, target)

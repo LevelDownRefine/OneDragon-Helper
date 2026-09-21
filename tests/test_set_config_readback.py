@@ -17,11 +17,12 @@ from src.config.set_config import (
     EndfieldConfig,
     GenshinConfig,
     NTEConfig,
+    ScriptConfigFacade,
     WutheringWavesConfig,
-    get_daily_readback,
-    set_daily_enabled,
 )
 from src.config.weekly import get_weekly_task, weeklies_of
+
+_script_config = ScriptConfigFacade()
 
 
 def _weekly(script_name: str, weekly_name: str):
@@ -239,7 +240,7 @@ class TestReadbackFacade(unittest.TestCase):
             cfg = WutheringWavesConfig()
             cfg.set_daily_task("每日任务", "凝素领域", 5)
             self.assertEqual(
-                get_daily_readback("ok-ww"),
+                _script_config.get_daily_readback("ok-ww"),
                 [
                     {
                         "name": "每日任务",
@@ -251,7 +252,7 @@ class TestReadbackFacade(unittest.TestCase):
             )
 
     def test_facade_unknown_script_returns_empty(self):
-        self.assertEqual(get_daily_readback("不存在的脚本"), [])
+        self.assertEqual(_script_config.get_daily_readback("不存在的脚本"), [])
 
     def test_facade_reports_enabled_for_switch_scripts(self):
         """有开关落点的脚本：enabled 反读进记录（界面据此提供「不启用」）。"""
@@ -289,7 +290,7 @@ class TestReadbackFacade(unittest.TestCase):
                 patch.object(Daily, "_load_daily_config", return_value=config),
             ):
                 self.assertEqual(
-                    get_daily_readback(script_name),
+                    _script_config.get_daily_readback(script_name),
                     [
                         {
                             "name": name,
@@ -307,7 +308,7 @@ class TestReadbackFacade(unittest.TestCase):
             patch.object(Daily, "_load_daily_config", return_value={}),
         ):
             self.assertEqual(
-                get_daily_readback("OneDragon-Launcher"),
+                _script_config.get_daily_readback("OneDragon-Launcher"),
                 [{"name": "每日任务", "task": None, "sequence": None, "enabled": None}],
             )
         with (
@@ -319,7 +320,7 @@ class TestReadbackFacade(unittest.TestCase):
             ),
         ):
             self.assertEqual(
-                get_daily_readback("March7th-Launcher"),
+                _script_config.get_daily_readback("March7th-Launcher"),
                 [{"name": "每日任务", "task": None, "sequence": None, "enabled": None}],
             )
             self.assertIsNone(get_weekly_task("March7th-Launcher", "历战余响"))
@@ -369,12 +370,12 @@ class TestSetDailyEnabledFacade(unittest.TestCase):
 
     def test_forwards_to_config(self):
         with patch.object(NTEConfig, "set_daily_enabled") as mock_set:
-            set_daily_enabled("ok-nte", "追猎目标", False)
+            _script_config.set_daily_enabled("ok-nte", "追猎目标", False)
         mock_set.assert_called_once_with("追猎目标", False)
 
     def test_unadapted_script_raises(self):
         with self.assertRaisesRegex(AssertionError, "未适配脚本"):
-            set_daily_enabled("不存在的脚本", "每日任务", False)
+            _script_config.set_daily_enabled("不存在的脚本", "每日任务", False)
 
     def test_script_without_daily_switch_is_noop(self):
         """未声明日常开关的脚本（ok-ww）→ 静默不做事（选择即启用）。"""
@@ -382,7 +383,7 @@ class TestSetDailyEnabledFacade(unittest.TestCase):
             patch.object(daily_mod, "load_script_config") as load,
             patch.object(daily_mod, "save_script_config") as save,
         ):
-            set_daily_enabled("ok-ww", "每日任务", False)
+            _script_config.set_daily_enabled("ok-ww", "每日任务", False)
         load.assert_not_called()
         save.assert_not_called()
 

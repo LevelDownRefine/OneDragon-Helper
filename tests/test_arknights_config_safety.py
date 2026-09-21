@@ -305,6 +305,9 @@ class TestMaaNativeConfig(unittest.TestCase):
         self.cfg._init_config()
         service = MagicMock()
         service.get_daily_map.side_effect = get_daily_map
+        service.get_daily_readback.side_effect = (
+            sc_mod.ScriptConfigFacade().get_daily_readback
+        )
         service.set_script_daily_task.side_effect = (
             lambda script, task_name, sequence, daily_display_name: (
                 self.cfg.set_daily_task(daily_display_name, task_name, sequence)

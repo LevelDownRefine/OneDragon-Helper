@@ -17,12 +17,12 @@ class TestLinksGameIcon(unittest.TestCase):
     def setUp(self):
         self.games = _FakeGameList({"script_name": "ok-ww"})
         self.toast = MagicMock()
-        self.ctrl = LinksController(self.games, self.toast, MagicMock())
+        self.ctrl = LinksController(self.games, self.toast)
 
     def test_reads_current_game_exe_each_time(self):
         with (
             patch(
-                "src.gui.controllers.links._get_game_exe_path",
+                "src.service.app_service.AppService.get_game_exe_path",
                 side_effect=["C:/鸣潮/Game.exe", "D:/Game2.exe"],
             ) as read_path,
             patch(
@@ -51,7 +51,8 @@ class TestLinksGameIcon(unittest.TestCase):
             with (
                 self.subTest(path=path),
                 patch(
-                    "src.gui.controllers.links._get_game_exe_path", return_value=path
+                    "src.service.app_service.AppService.get_game_exe_path",
+                    return_value=path,
                 ),
                 patch("src.gui.controllers.links.get_exe_icon_url", return_value=""),
             ):
@@ -60,7 +61,7 @@ class TestLinksGameIcon(unittest.TestCase):
 
     def test_no_current_game_does_not_read_or_toast(self):
         self.games.current_game = None
-        with patch("src.gui.controllers.links._get_game_exe_path") as read_path:
+        with patch("src.service.app_service.AppService.get_game_exe_path") as read_path:
             self.assertEqual(self.ctrl.gameIconSource(), "")
         read_path.assert_not_called()
         self.toast.assert_not_called()

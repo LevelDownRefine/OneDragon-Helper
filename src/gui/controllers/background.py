@@ -14,7 +14,6 @@ from PySide6.QtGui import QImage, QImageReader, QTransform
 # QML 首次传入对象前注册包装类型，否则 QVideoSink 会被包装成普通 QObject。
 from PySide6.QtMultimedia import QVideoSink
 
-from src.config.set_config import get_background_rel_path
 from src.utils.utils_sub_config import get_script_root_dir, resolve_script_path
 
 logger = logging.getLogger(__name__)
@@ -100,7 +99,7 @@ class BackgroundController(QObject):
         Returns:
             背景图绝对路径；未适配/未声明/文件缺失 → 空字符串（交 DEFAULT_BG 兜底）。
         """
-        rel = get_background_rel_path(script_name)
+        rel = self._app_service.get_background_rel_path(script_name)
         if not rel:
             return ""
         root = get_script_root_dir(script_name)

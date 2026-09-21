@@ -252,7 +252,10 @@ class TestFloatBar(unittest.TestCase):
     def test_launch_game_starts_exe(self):
         b = _make_bridge()
         with (
-            patch.object(links, "_get_game_exe_path", return_value="D:/Game/game.exe"),
+            patch(
+                "src.service.app_service.AppService.get_game_exe_path",
+                return_value="D:/Game/game.exe",
+            ),
             patch.object(links, "open_in_explorer") as start,
         ):
             b.launchGame()
@@ -262,7 +265,9 @@ class TestFloatBar(unittest.TestCase):
         b = _make_bridge()
         spy = MagicMock()
         b.toastRequested.connect(spy)
-        with patch.object(links, "_get_game_exe_path", return_value=None):
+        with patch(
+            "src.service.app_service.AppService.get_game_exe_path", return_value=None
+        ):
             b.launchGame()
         spy.assert_called_once()
 

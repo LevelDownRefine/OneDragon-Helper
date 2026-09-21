@@ -8,7 +8,7 @@ peer：
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
 - 周常运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段）：归 :mod:`src.utils.utils_weekly` 模块函数
-- 游戏侧 config 适配器（副本/周几起写脚本自身 config）：归 :mod:`src.config.set_config` 模块函数
+- 游戏侧 config 适配器（副本/周几起写脚本自身 config）：归 :class:`src.config.set_config.ScriptConfigFacade`
 - 自定义壁纸表（config/wallpaper.json）：归 :mod:`src.utils.utils_wallpaper` 模块函数
 - 配置备份与恢复（各子脚本 config 打包为 ZIP / 按目录原样回写）：归 :mod:`src.service.backup_service` 模块函数
 
@@ -22,12 +22,7 @@ import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 from src.config.daily_config import get_daily_map, get_weekly_map
-from src.config.set_config import (
-    ensure_config,
-    get_registered_script_names,
-    set_config,
-    set_daily_enabled,
-)
+from src.config.set_config import ScriptConfigFacade
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
 from src.service.schedule import (
     RunOptions,
@@ -88,8 +83,11 @@ def _weekly_start_entries(script_name: str) -> dict[str, int]:
 class AppService:
     """组合根：装配平级 service peer 并向外暴露统一接口（GUI/CLI 唯一门面）。"""
 
-    def __init__(self):
-        """装配各 peer。"""
+    def __init__(self, script_config: ScriptConfigFacade | None = None):
+        """装配各 peer，允许注入脚本配置外观。"""
+        self._script_config = (
+            ScriptConfigFacade() if script_config is None else script_config
+        )
 
     # ── 配置备份 / 恢复（src.service.backup_service 模块函数）──
     def create_backup(self) -> dict:
@@ -109,10 +107,10 @@ class AppService:
         """读取 daily_task_list.yml 的副本/序列配置。"""
         return get_daily_map()
 
-    # ── 游戏侧 config 适配器（src.config.set_config 模块函数）────────────
+    # ── 游戏侧 config 外观（ScriptConfigFacade）────────────
     def get_registered_script_names(self) -> list[str]:
         """已注册（已适配）脚本标识名，供启动后预热遍历。"""
-        return get_registered_script_names()
+        return self._script_config.get_registered_script_names()
 
     def warm_config(self, script_name: str) -> None:
         """预热单个脚本 config：构造单例并触发模板对齐（幂等、不强制重对齐）。
@@ -120,7 +118,23 @@ class AppService:
         启动后空闲时逐脚本调用，使点选时已在缓存、零等待；对齐在 ``__init__`` 内
         收口，每个进程每脚本仅一次，无重复日志。需强制重对齐请用 ``init_config``。
         """
-        ensure_config(script_name)
+        self._script_config.ensure_config(script_name)
+
+    def get_daily_readback(self, script_name: str) -> list[dict]:
+        """读取全部日常的选择与开关，供任务卡回显。"""
+        return self._script_config.get_daily_readback(script_name)
+
+    def is_adapted(self, script_name: str) -> bool:
+        """判断脚本是否有配置适配器。"""
+        return self._script_config.is_adapted(script_name)
+
+    def get_game_exe_path(self, script_name: str) -> str | None:
+        """读取游戏 exe 路径，供启动游戏与图标提示。"""
+        return self._script_config.get_game_exe_path(script_name)
+
+    def get_background_rel_path(self, script_name: str) -> str:
+        """读取脚本背景图相对路径。"""
+        return self._script_config.get_background_rel_path(script_name)
 
     # ── 单脚本配置（src.utils.utils_config 模块函数）─────────────────────────
     def get_script(self, script_name: str):
@@ -266,7 +280,7 @@ class AppService:
     def collect_invalid_scripts(self, script_list: list) -> list:
         return collect_invalid_script_messages(script_list)
 
-    # ── 游戏侧 config 适配器（src.config.set_config 模块函数）─────────────
+    # ── 游戏侧 config 外观（ScriptConfigFacade）─────────────
     # 副本写入各脚本**自身**的 config（适配器层）；周几起由 update_script
     # 统一落盘（含游戏侧同步），不经此节入口。
     def set_script_daily_task(
@@ -277,7 +291,7 @@ class AppService:
         sequence: str | int | None = None,
     ) -> None:
         """写日常副本/二级序列到脚本自身 config（编辑期实时落盘）。"""
-        return set_config(
+        return self._script_config.set_daily_task(
             script_name,
             daily_display_name=daily_display_name,
             task_name=task_name,
@@ -288,7 +302,9 @@ class AppService:
         self, script_name: str, daily_display_name: str, enabled: bool
     ) -> None:
         """启用/停用某日常（写子脚本 config 的日常开关，编辑期实时落盘）。"""
-        return set_daily_enabled(script_name, daily_display_name, enabled)
+        return self._script_config.set_daily_enabled(
+            script_name, daily_display_name, enabled
+        )
 
     def set_script_weekly_task(
         self, script_name: str, weekly_name: str, task_name: str

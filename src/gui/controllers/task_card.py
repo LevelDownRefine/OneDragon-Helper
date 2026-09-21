@@ -12,10 +12,6 @@ import logging
 from PySide6.QtCore import QObject, Signal, Slot
 from ruamel.yaml.error import YAMLError
 
-from src.config.set_config import (
-    get_daily_readback,
-    is_adapted,
-)
 from src.config.weekly import get_weekly_task
 from src.utils.utils_weekly import DISABLED_START_DAY
 
@@ -71,7 +67,7 @@ class TaskCardController(QObject):
     @property
     def task_adapted(self) -> bool:
         """当前游戏是否已注册副本适配（决定日常/周常行显隐）。"""
-        return is_adapted(self._current["script_name"])
+        return self._app_service.is_adapted(self._current["script_name"])
 
     @property
     def daily_items(self) -> list[dict]:
@@ -90,7 +86,7 @@ class TaskCardController(QObject):
             for daily in self._dailies_of(script_name)
         }
         items = []
-        for record in get_daily_readback(script_name):
+        for record in self._app_service.get_daily_readback(script_name):
             name = record["name"]
             options = options_by_daily.get(name, [])
             items.append(

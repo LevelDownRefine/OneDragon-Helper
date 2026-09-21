@@ -52,7 +52,7 @@ class TestSharedLayout(unittest.TestCase):
                 with (
                     patch("src.service.app_service.get_daily_map", return_value={}),
                     patch("src.service.app_service.get_weekly_map", return_value=weekly),
-                    patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),
+                    patch("src.service.app_service.AppService.get_daily_readback", return_value=[]),
                     patch("src.gui.controllers.task_card.get_weekly_task", return_value=None),
                 ):
                     bridge = _make_bridge()

@@ -14,7 +14,7 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 
 ## 架构：四部分，职责单向、互不越界
 
-1. **set_config：副本配置适配器** — 把各游戏脚本异构的 config 格式/路径/字段名适配成统一接口 `set_config()`。它是 adapter 而非 facade，facade 职责归 service。详见 `src/config/set_config.md`。
+1. **set_config：脚本配置外观与适配器** — `ScriptConfigFacade` 统一配置查询、初始化、日常选择与开关接口，集中查找懒加载适配器；各 `ScriptConfig` 子类适配游戏脚本的 config 格式/路径/字段名。应用级编排仍归 service。详见 `src/config/set_config.md`。
 2. **runner：脚本链运行器，submodule** — 逐条执行脚本链，`block` 字段控制阻塞/非阻塞。详见 `src/runner/README.md`。
 3. **gui** — 只放纯图形界面，即 QML、控制器与弹窗；**不写盘、不承载业务逻辑**，写盘统一经 service。详见 `src/gui/README.md`。
 4. **service，外观/facade** — 整合 config 读写·UI 状态·链生成·校验·runner 命令，对 GUI/CLI 暴露统一薄接口，无 Qt 依赖，从 gui 分出。详见 `src/service/README.md`。

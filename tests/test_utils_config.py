@@ -175,7 +175,7 @@ class TestConfigFilePath(UtilsConfigTestBase):
         self._setup_script("原神", "external", "C:/a.exe")
         with (
             patch(
-                "src.utils.utils_config.get_config_path",
+                "src.utils.utils_config._script_config.get_config_path",
                 return_value="C:/config/DailyTask.json",
             ),
             patch("src.utils.utils_config.os.path.isfile", return_value=True),
@@ -187,7 +187,7 @@ class TestConfigFilePath(UtilsConfigTestBase):
     def test_external_unadapted_returns_error(self):
         self._setup_script("原神", "external", "C:/a.exe")
         with patch(
-            "src.utils.utils_config.get_config_path",
+            "src.utils.utils_config._script_config.get_config_path",
             side_effect=AssertionError("未适配脚本: 原神"),
         ):
             path, error = config_file_path("a")
@@ -295,7 +295,7 @@ class TestAddRemoveScript(unittest.TestCase):
                 return_value=self.config_path,
             ),
             patch("src.utils.utils_config.ensure_weekly_entry") as mock_ensure,
-            patch("src.utils.utils_config.init_config") as mock_init,
+            patch("src.utils.utils_config._script_config.init_config") as mock_init,
         ):
             add_script({"display_name": "鸣潮", "script_path": "C:/b.exe"})
         names = [s["display_name"] for s in self._read()["script_list"]]
@@ -373,7 +373,7 @@ class TestUpdateScript(unittest.TestCase):
                 "src.utils.utils_config.get_config_yml_path_under_root",
                 return_value=self.config_path,
             ),
-            "init": patch("src.utils.utils_config.init_config"),
+            "init": patch("src.utils.utils_config._script_config.init_config"),
             "rename": patch("src.utils.utils_config.rename_weekly"),
             "save_weekly": patch("src.utils.utils_config.save_weekly"),
         }

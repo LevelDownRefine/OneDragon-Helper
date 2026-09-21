@@ -1,8 +1,8 @@
-"""副本配置适配器：统一 set_config 适配接口，按各脚本格式封装 config 读写。"""
+"""脚本配置适配器与 ScriptConfigFacade 统一入口。"""
 
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from functools import cache
 
@@ -497,198 +497,134 @@ class ArknightsConfig(ScriptConfig):
 
 
 # ============================================================
-# 适配器接口
+# 配置外观
 # ============================================================
 
 
-def init_config(script_name: str) -> None:
-    """对齐脚本 config 与模板，补全缺失字段（强制重对齐）。
+class ScriptConfigFacade:
+    """脚本配置统一入口：查找适配器并委托，文件格式与读写仍由适配器负责。
 
-    仅对声明了 ``_template_rel_path`` 的脚本生效；无模板或脚本未安装/未配置时为空操作。
-    实例已缓存时不重新构造，但显式再跑一次 ``_init_config``，故用于需强制重对齐的场景
-    （新增/修改脚本、备份恢复）。启动预热等幂等场景请用 :func:`ensure_config` 避免重复对齐与日志。
+    构造只保存工厂注册表；各外观实例共享注册表中已有的懒加载单例。
 
     Args:
-        script_name: 脚本标识名。
+        factories: 可注入独立的适配器工厂表，默认使用内置注册表。
     """
-    if script_name not in _CONFIGS:
-        return
-    _CONFIGS[script_name]()._init_config()
 
+    def __init__(
+        self, factories: Mapping[str, Callable[[], ScriptConfig]] | None = None
+    ) -> None:
+        self._factories = _CONFIGS if factories is None else factories
 
-def ensure_config(script_name: str) -> None:
-    """确保脚本 config 已构造并模板对齐（幂等，不强制重对齐）。
+    def _find_config(self, script_name: str) -> ScriptConfig | None:
+        """按需取得适配器；自定义脚本没有适配器。"""
+        if script_name not in self._factories:
+            return None
+        assert script_name in self._factories
+        return self._factories[script_name]()
 
-    仅经工厂构造单例；``__init__`` 内已收口 ``_init_config``，故每个进程每脚本仅对齐
-    一次，无重复日志/重复工作。供启动后预热遍历，与懒加载共用同一工厂出口。
-    需强制重对齐（新增/修改脚本、备份恢复）请用 :func:`init_config`。
+    def _require_config(self, script_name: str) -> ScriptConfig:
+        """要求已适配的操作共用此断言入口。"""
+        config = self._find_config(script_name)
+        assert config is not None, f"[set_config] 未适配脚本: {script_name}"
+        return config
 
-    Args:
-        script_name: 脚本标识名。
-    """
-    if script_name not in _CONFIGS:
-        return
-    _CONFIGS[script_name]()
+    def init_config(self, script_name: str) -> None:
+        """强制重新对齐模板，供新增/修改脚本或恢复配置后调用。"""
+        config = self._find_config(script_name)
+        if config is not None:
+            config._init_config()
 
+    def ensure_config(self, script_name: str) -> None:
+        """按需构造并对齐一次，与日常读取共用单例；未知脚本跳过。"""
+        self._find_config(script_name)
 
-def init_config_all() -> None:
-    """对齐所有已注册脚本的 config 与模板（手动全量入口，如备份恢复后）。"""
-    for script_name in _CONFIGS:
-        init_config(script_name)
+    def init_config_all(self) -> None:
+        """强制对齐全部已注册脚本的配置。"""
+        for script_name in self._factories:
+            self.init_config(script_name)
 
+    def get_registered_script_names(self) -> list[str]:
+        """取已注册脚本标识，供预热遍历；不构造适配器。"""
+        return list(self._factories)
 
-def get_registered_script_names() -> list[str]:
-    """返回所有已注册（已适配）脚本的标识名，供预热遍历。"""
-    return list(_CONFIGS.keys())
+    def is_adapted(self, script_name: str) -> bool:
+        """判断是否已适配，不构造适配器。"""
+        return script_name in self._factories
 
+    def set_daily_task(
+        self,
+        script_name: str,
+        daily_display_name: str | None = None,
+        task_name: str | None = None,
+        sequence: str | int | None = None,
+    ) -> None:
+        """设置日常副本/序列；未选择或自定义脚本跳过。
 
-def set_config(
-    script_name: str,
-    daily_display_name: str | None = None,
-    task_name: str | None = None,
-    sequence: str | int | None = None,
-) -> None:
-    """适配器接口：设置副本 / 序列。
+        Args:
+            script_name: 脚本标识名。
+            daily_display_name: 所属日常展示名，多日常脚本据此选段。
+            task_name: 一级选项展示名；None、空串或「未选择」表示不设置。
+            sequence: 二级选项值，仅部分脚本支持。
+        """
+        if not task_name or task_name == "未选择":
+            return
+        config = self._find_config(script_name)
+        if config is None:
+            logger.info(
+                "[set_config] 进程 %s 无副本适配（自定义脚本），跳过", script_name
+            )
+            return
+        config.set_daily_task(daily_display_name, task_name, sequence)
 
-    未选副本或脚本未适配（自定义脚本）时优雅跳过。周常（周几起 / 周常副本）归
-    ``src.config.weekly``，不经本入口。
+    def set_daily_enabled(
+        self, script_name: str, daily_display_name: str, enabled: bool
+    ) -> None:
+        """启用/停用指定日常，不改变副本选择；要求脚本已适配。"""
+        self._require_config(script_name).set_daily_enabled(daily_display_name, enabled)
 
-    Args:
-        script_name: 脚本标识名。
-        daily_display_name: 副本所属日常展示名（界面逐行渲染时即该行行名）；
-            单日常脚本也要给，分段脚本（多日常）据此选段。
-        task_name: 一级项展示名（副本站位）；None 或「未选择」表示不设置副本。
-        sequence: 二级项值；仅部分脚本支持。
-    """
-    if not task_name or task_name == "未选择":
-        return
+    def get_daily_readback(self, script_name: str) -> list[dict]:
+        """读取全部日常的已选项与开关，顺序同声明；未知脚本返回空列表。
 
-    # 自定义脚本（不在注册表）跳过
-    if script_name not in _CONFIGS:
-        logger.info(f"[set_config] 进程 {script_name} 无副本适配（自定义脚本），跳过")
-        return
+        Returns:
+            [{name, task, sequence, enabled}, ...]，字段见 ScriptConfig._read_daily_tasks。
+        """
+        config = self._find_config(script_name)
+        return config._read_daily_tasks() if config is not None else []
 
-    _CONFIGS[script_name]().set_daily_task(daily_display_name, task_name, sequence)
+    def get_task_lists(
+        self, script_name: str, daily_display_name: str, source: dict
+    ) -> list[str] | None:
+        """复用 Daily 读取 options.source 声明中的副本资源；不可用时返回 None。"""
+        config = self._find_config(script_name)
+        if config is None:
+            return None
+        return config._dispatch_daily(daily_display_name).get_task_lists(source)
 
+    def get_config_path(self, script_name: str) -> str:
+        """取配置绝对路径供界面打开；要求脚本已适配。"""
+        config = self._require_config(script_name)
+        return _get_config_path_impl(script_name, config._daily_config_rel_path())
 
-def get_task_lists(
-    script_name: str, daily_display_name: str, source: dict
-) -> list[str] | None:
-    """适配器接口：复用已注册的 Daily 读取可选副本。
+    def get_game_exe_path(self, script_name: str) -> str | None:
+        """读游戏 exe 路径；未适配或缺失时返回 None。"""
+        config = self._find_config(script_name)
+        return config.get_game_exe_path() if config is not None else None
 
-    Args:
-        script_name: 脚本唯一标识（如 ``March7th-Launcher``）。
-        daily_display_name: 所属日常展示名。
-        source: 完整的 options.source 声明，资源定位不依赖任务名称。
+    def get_background_rel_path(self, script_name: str) -> str:
+        """读脚本背景图相对路径；未适配或未声明时返回空字符串。"""
+        config = self._find_config(script_name)
+        return config.background if config is not None else ""
 
-    Returns:
-        副本名列表（含「无」等占位）；不可用时返回 None。
-    """
-    if script_name not in _CONFIGS:
-        return None
-    return (
-        _CONFIGS[script_name]()
-        ._dispatch_daily(daily_display_name)
-        .get_task_lists(source)
-    )
+    def get_game_path_keys(self, script_name: str, rel: str) -> tuple[str, ...]:
+        """查询配置文件的游戏路径字段，供恢复备份时保留；其他文件返回空元组。"""
+        config = self._find_config(script_name)
+        if config is None or rel.casefold() != config._game_config_rel_path.casefold():
+            return ()
+        return config._game_path_keys
 
-
-def get_config_path(script_name: str) -> str:
-    """取 config 绝对路径（供 GUI 打开）。
-
-    Args:
-        script_name: 脚本标识名。
-
-    Returns:
-        config 绝对路径。
-
-    Raises:
-        AssertionError: 脚本未适配。
-    """
-    assert script_name in _CONFIGS, f"[set_config] 未适配脚本: {script_name}"
-    return _get_config_path_impl(
-        script_name, _CONFIGS[script_name]()._daily_config_rel_path()
-    )
-
-
-def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...]:
-    """查询该文件的游戏路径字段；复用打开游戏的声明，其他文件返回空元组。"""
-    if script_name not in _CONFIGS:
-        return ()
-    assert script_name in _CONFIGS
-    cfg = _CONFIGS[script_name]()
-    if rel.casefold() != cfg._game_config_rel_path.casefold():
-        return ()
-    return cfg._game_path_keys
-
-
-def iter_backup_paths() -> dict[str, tuple[str, ...]]:
-    """遍历各已适配脚本的备份范围（相对脚本根目录，元素可为目录或文件）。
-
-    「该脚本的配置面在哪」的知识归适配层，本函数只做汇总；展开（目录递归 /
-    单文件收录）由备份层处理。
-
-    Returns:
-        {脚本唯一标识: (备份路径, ...)}。
-    """
-    return {
-        script_name: factory()._backup_paths
-        for script_name, factory in _CONFIGS.items()
-    }
-
-
-def get_game_exe_path(script_name: str) -> str | None:
-    """读游戏 exe 路径（供 GUI 打开）；未适配/缺失 → None。"""
-    if script_name not in _CONFIGS:
-        return None
-    return _CONFIGS[script_name]().get_game_exe_path()
-
-
-def is_adapted(script_name: str) -> bool:
-    """查询脚本是否已注册副本适配（供 GUI 决定是否显示任务卡）。"""
-    return script_name in _CONFIGS
-
-
-def get_background_rel_path(script_name: str) -> str:
-    """读脚本默认背景图相对路径（相对脚本根目录，供 GUI 背景控制器）。
-
-    Args:
-        script_name: 脚本标识名。
-
-    Returns:
-        背景图相对路径；未适配或未声明背景图时返回空字符串。
-    """
-    if script_name not in _CONFIGS:
-        return ""
-    return _CONFIGS[script_name]().background
-
-
-def get_daily_readback(script_name: str) -> list[dict]:
-    """读该脚本全部日常的已选项与开关（反读子脚本 config，界面按日常逐行呈现）。
-
-    日常集合由声明推导，故无需调用方指定日常。未适配脚本返回空列表。
-
-    Args:
-        script_name: 脚本标识名。
-
-    Returns:
-        [{name, task, sequence, enabled}, ...]；顺序与声明一致。各字段含义见
-        ``ScriptConfig._read_daily_tasks``。
-    """
-    if script_name not in _CONFIGS:
-        return []
-    return _CONFIGS[script_name]()._read_daily_tasks()
-
-
-def set_daily_enabled(script_name: str, daily_display_name: str, enabled: bool) -> None:
-    """适配器接口：启用/停用某日常（仅声明了日常开关的子类支持）。
-
-    开关只动启用状态、不动副本选择，故日常仍由调用方显式给出。
-
-    Args:
-        script_name: 脚本标识名。
-        daily_display_name: 日常展示名。
-        enabled: 目标启用状态。
-    """
-    assert script_name in _CONFIGS, f"未适配脚本: {script_name}"
-    _CONFIGS[script_name]().set_daily_enabled(daily_display_name, enabled)
+    def iter_backup_paths(self) -> dict[str, tuple[str, ...]]:
+        """汇总已适配脚本的备份范围；相对目录/文件的展开由备份层负责。"""
+        return {
+            script_name: self._require_config(script_name)._backup_paths
+            for script_name in self._factories
+        }

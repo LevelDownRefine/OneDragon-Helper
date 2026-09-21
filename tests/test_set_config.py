@@ -23,6 +23,8 @@ from src.config.weekly import weeklies_of
 from src.utils import safe_path_join, utils_sub_config
 from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
 
+_script_config = set_config.ScriptConfigFacade()
+
 
 def _weekly(script_name: str, weekly_name: str):
     """按脚本 + 周常展示名取已装配的周常对象。"""
@@ -68,7 +70,7 @@ class TestConfigRelPaths(unittest.TestCase):
     def test_get_registered_script_names_returns_all(self):
         """get_registered_script_names 返回全部已适配脚本"""
         self.assertEqual(
-            set(set_config.get_registered_script_names()),
+            set(_script_config.get_registered_script_names()),
             {
                 "ok-ww",
                 "BetterGI",
@@ -84,7 +86,7 @@ class TestConfigRelPaths(unittest.TestCase):
         """init_config 构造单例并触发对齐；重复调用返回同一实例（幂等）。"""
         name = "ok-ww"
         first = set_config._CONFIGS[name]()
-        set_config.init_config(name)
+        _script_config.init_config(name)
         second = set_config._CONFIGS[name]()
         self.assertIs(first, second)
 
@@ -100,14 +102,14 @@ class TestConfigRelPaths(unittest.TestCase):
             patch.object(set_config.ScriptConfig, "_init_config") as init,
             patch.object(set_config, "load_config", return_value=None),
         ):
-            set_config.ensure_config(name)
+            _script_config.ensure_config(name)
             self.assertEqual(init.call_count, 1)
         set_config._CONFIGS[name].cache_clear()
         with (
             patch.object(set_config.ScriptConfig, "_init_config") as init2,
             patch.object(set_config, "load_config", return_value=None),
         ):
-            set_config.init_config(name)
+            _script_config.init_config(name)
             self.assertEqual(init2.call_count, 2)
 
     def test_template_rel_path_only_for_template_scripts(self):
@@ -152,7 +154,7 @@ class TestSharedRegistry(unittest.TestCase):
         ):
             cls = set_config.register(set_config.ArknightsConfig)
             self.assertIs(cls, set_config.ArknightsConfig)
-            self.assertTrue(set_config.is_adapted("MAA"))
+            self.assertTrue(_script_config.is_adapted("MAA"))
             declarations.assert_not_called()
             template.assert_not_called()
 
@@ -186,9 +188,9 @@ class TestSharedRegistry(unittest.TestCase):
             patch.object(daily, "update") as update,
             patch.object(daily, "get_task_lists", return_value=["甲"]) as reader,
         ):
-            set_config.set_config("ok-ww", "每日任务", "凝素领域", 3)
+            _script_config.set_daily_task("ok-ww", "每日任务", "凝素领域", 3)
             self.assertEqual(
-                set_config.get_task_lists("ok-ww", "每日任务", source), ["甲"]
+                _script_config.get_task_lists("ok-ww", "每日任务", source), ["甲"]
             )
         update.assert_called_once_with("凝素领域", 3)
         reader.assert_called_once_with(source)
@@ -213,11 +215,11 @@ class TestSharedRegistry(unittest.TestCase):
                 utils_sub_config, "get_script_root_dir", return_value=str(roots[0])
             ) as script_root:
                 self.assertEqual(
-                    set_config.get_daily_readback("ok-ww")[0]["sequence"], 3
+                    _script_config.get_daily_readback("ok-ww")[0]["sequence"], 3
                 )
                 script_root.return_value = str(roots[1])
                 self.assertEqual(
-                    set_config.get_daily_readback("ok-ww")[0]["sequence"], 5
+                    _script_config.get_daily_readback("ok-ww")[0]["sequence"], 5
                 )
         self.assertIs(set_config._CONFIGS["ok-ww"](), cfg)
 
@@ -613,11 +615,11 @@ class TestIsAdapted(unittest.TestCase):
 
     def test_registered_script_true(self):
         """已注册适配的脚本（如 ok-ww 鸣潮）→ True"""
-        self.assertTrue(set_config.is_adapted("ok-ww"))
+        self.assertTrue(_script_config.is_adapted("ok-ww"))
 
     def test_unregistered_script_false(self):
         """未注册适配的脚本（任意未知标识）→ False，不抛异常"""
-        self.assertFalse(set_config.is_adapted("不存在的脚本"))
+        self.assertFalse(_script_config.is_adapted("不存在的脚本"))
 
 
 class TestIterBackupPaths(unittest.TestCase):
@@ -625,30 +627,30 @@ class TestIterBackupPaths(unittest.TestCase):
 
     def test_game_path_declaration_only_matches_its_config(self):
         self.assertEqual(
-            set_config.get_game_path_keys("BetterGI", "User/config.json"),
+            _script_config.get_game_path_keys("BetterGI", "User/config.json"),
             ("genshinStartConfig", "installPath"),
         )
         self.assertEqual(
-            set_config.get_game_path_keys("BetterGI", "User/other.json"), ()
+            _script_config.get_game_path_keys("BetterGI", "User/other.json"), ()
         )
         self.assertEqual(
-            set_config.get_game_path_keys("unknown", "User/config.json"), ()
+            _script_config.get_game_path_keys("unknown", "User/config.json"), ()
         )
 
     def test_dir_style_script_declares_whole_dir(self):
         """整目录都是 config 的脚本（鸣潮 working/configs、原神 User）声明目录。"""
-        paths = set_config.iter_backup_paths()
+        paths = _script_config.iter_backup_paths()
         self.assertEqual(paths["ok-ww"], ("data/apps/ok-ww/working/configs",))
         self.assertEqual(paths["BetterGI"], ("User",))
 
     def test_loose_file_script_declares_single_file(self):
         """散装单文件脚本（崩铁 config.yaml）声明文件，不声明目录。"""
-        paths = set_config.iter_backup_paths()
+        paths = _script_config.iter_backup_paths()
         self.assertEqual(paths["March7th-Launcher"], ("config.yaml",))
 
     def test_every_registered_script_declares_backup_paths(self):
         """每个已适配脚本都必须声明非空备份范围（register 断言的对外保证）。"""
-        paths = set_config.iter_backup_paths()
+        paths = _script_config.iter_backup_paths()
         self.assertEqual(set(paths), set(set_config._CONFIGS))
         for script_name, rel_paths in paths.items():
             self.assertTrue(rel_paths, f"{script_name} 未声明 _backup_paths")

@@ -8,7 +8,6 @@ import webbrowser
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from src.config.set_config import get_game_exe_path as _get_game_exe_path
 from src.gui.icons import get_exe_icon_url
 from src.link import get_game_link as _get_game_link
 from src.log import get_log_dir
@@ -60,7 +59,7 @@ class LinksController(QObject):
         game = self._current_or_toast()
         if game is None:
             return
-        exe_path = _get_game_exe_path(game["script_name"])
+        exe_path = self._app_service.get_game_exe_path(game["script_name"])
         if not exe_path:
             self._toast(f"{game['display_name']}：未找到游戏路径")
             return
@@ -74,7 +73,7 @@ class LinksController(QObject):
         if game is None:
             return ""
         assert "script_name" in game
-        exe_path = _get_game_exe_path(game["script_name"])
+        exe_path = self._app_service.get_game_exe_path(game["script_name"])
         return get_exe_icon_url(exe_path) if exe_path else ""
 
     def _open_url(self, url: str, fallback: str, label: str):

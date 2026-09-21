@@ -9,8 +9,10 @@ from unittest.mock import patch
 
 from src.config.daily_config import get_daily_map
 from src.config.maa_activity import read_activity_stages
-from src.config.set_config import _CONFIGS, ArknightsConfig, get_task_lists
+from src.config.set_config import _CONFIGS, ArknightsConfig, ScriptConfigFacade
 from src.config.task_config import get_daily_configs
+
+_script_config = ScriptConfigFacade()
 
 # 真实 MAA 配置（已脱敏），用于钉死 ClientType 的实际形态。
 NATIVE_CONFIG_FIXTURE = Path(__file__).parent / "fixtures/maa_gui.new.scrubbed.json"
@@ -150,7 +152,9 @@ class TestMaaDeclaredMenus(unittest.TestCase):
             ) as reader,
         ):
             self.assertEqual(
-                get_task_lists("MAA", "别名", activity["options"]["source"]),
+                _script_config.get_task_lists(
+                    "MAA", "别名", activity["options"]["source"]
+                ),
                 ["AT-8"],
             )
         reader.assert_called_once_with(

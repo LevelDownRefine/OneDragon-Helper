@@ -25,6 +25,8 @@ from src.config.set_config import (
 )
 from src.utils.utils_yaml import dump_yaml_str
 
+_script_config = set_config.ScriptConfigFacade()
+
 
 def _update(cfg, config: dict, daily_name: str, task_name: str, sequence=None) -> bool:
     """写入：读盘打桩为 config、落盘吞掉——绝不写真实子脚本 config。"""
@@ -1204,7 +1206,7 @@ class TestGetGameExePath(unittest.TestCase):
             ),
             patch("os.path.isfile", side_effect=lambda p: p == launcher),
         ):
-            got = set_config.get_game_exe_path("ok-nte")
+            got = _script_config.get_game_exe_path("ok-nte")
         self.assertEqual(got, launcher)
 
     def test_nte_launcher_missing_returns_none(self):
@@ -1225,13 +1227,13 @@ class TestGetGameExePath(unittest.TestCase):
             ),
             patch("os.path.isfile", return_value=False),
         ):
-            got = set_config.get_game_exe_path("ok-nte")
+            got = _script_config.get_game_exe_path("ok-nte")
         self.assertIsNone(got)
 
     def test_nte_game_exe_missing_returns_none(self):
         """异环游戏本体路径读不到（devices.json 缺失）→ None"""
         with patch("src.config.set_config.load_game_config", return_value=None):
-            got = set_config.get_game_exe_path("ok-nte")
+            got = _script_config.get_game_exe_path("ok-nte")
         self.assertIsNone(got)
 
     def test_genshin_nested_install_path(self):
@@ -1244,7 +1246,7 @@ class TestGetGameExePath(unittest.TestCase):
                 }
             },
         ):
-            got = set_config.get_game_exe_path("BetterGI")
+            got = _script_config.get_game_exe_path("BetterGI")
         self.assertEqual(got, "D:\\Genshin\\YuanShen.exe")
 
     def test_game_path_top_level(self):
@@ -1273,13 +1275,13 @@ class TestGetGameExePath(unittest.TestCase):
                 }
             },
         ):
-            got = set_config.get_game_exe_path("MAA")
+            got = _script_config.get_game_exe_path("MAA")
         self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
 
     def test_missing_config_returns_none(self):
         """游戏配置文件缺失（load_game_config 返回 None）→ None"""
         with patch("src.config.set_config.load_game_config", return_value=None):
-            got = set_config.get_game_exe_path("ok-ww")
+            got = _script_config.get_game_exe_path("ok-ww")
         self.assertIsNone(got)
 
     def test_missing_field_returns_none(self):
@@ -1288,7 +1290,7 @@ class TestGetGameExePath(unittest.TestCase):
             "src.config.set_config.load_game_config",
             return_value={"other": "x"},
         ):
-            got = set_config.get_game_exe_path("ok-ww")
+            got = _script_config.get_game_exe_path("ok-ww")
         self.assertIsNone(got)
 
     def test_empty_value_returns_none(self):
@@ -1297,7 +1299,7 @@ class TestGetGameExePath(unittest.TestCase):
             "src.config.set_config.load_game_config",
             return_value={"pc_full_path": ""},
         ):
-            got = set_config.get_game_exe_path("ok-ww")
+            got = _script_config.get_game_exe_path("ok-ww")
         self.assertIsNone(got)
 
 
@@ -1306,7 +1308,7 @@ class TestGetGameExePathAdapter(unittest.TestCase):
 
     def test_unknown_process_returns_none(self):
         """未注册（自定义）进程 → None"""
-        got = set_config.get_game_exe_path("不存在")
+        got = _script_config.get_game_exe_path("不存在")
         self.assertIsNone(got)
 
     def test_known_process_dispatches(self):
@@ -1315,7 +1317,7 @@ class TestGetGameExePathAdapter(unittest.TestCase):
             "src.config.set_config.load_game_config",
             return_value={"pc_full_path": "D:\\Game\\game.exe"},
         ):
-            got = set_config.get_game_exe_path("ok-ww")
+            got = _script_config.get_game_exe_path("ok-ww")
         self.assertEqual(got, "D:\\Game\\game.exe")
 
 
@@ -1327,7 +1329,7 @@ class TestSetConfigAdapter(unittest.TestCase):
         mock_instance = MagicMock()
         mock_factory = MagicMock(return_value=mock_instance)
         with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config("ok-ww", task_name=None)
+            _script_config.set_daily_task("ok-ww", task_name=None)
         mock_factory.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
@@ -1336,7 +1338,7 @@ class TestSetConfigAdapter(unittest.TestCase):
         mock_instance = MagicMock()
         mock_factory = MagicMock(return_value=mock_instance)
         with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config("ok-ww", task_name="")
+            _script_config.set_daily_task("ok-ww", task_name="")
         mock_factory.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
@@ -1345,7 +1347,7 @@ class TestSetConfigAdapter(unittest.TestCase):
         mock_instance = MagicMock()
         mock_factory = MagicMock(return_value=mock_instance)
         with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config("ok-ww", task_name="未选择")
+            _script_config.set_daily_task("ok-ww", task_name="未选择")
         mock_factory.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
@@ -1355,7 +1357,7 @@ class TestSetConfigAdapter(unittest.TestCase):
         mock_factory = MagicMock(return_value=mock_instance)
         # 已注册脚本作为「无关脚本」在场：未知标识不得命中任何子类
         with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config("不存在", task_name="副本", sequence="序列")
+            _script_config.set_daily_task("不存在", task_name="副本", sequence="序列")
         mock_factory.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
@@ -1364,7 +1366,7 @@ class TestSetConfigAdapter(unittest.TestCase):
         mock_instance = MagicMock()
         mock_factory = MagicMock(return_value=mock_instance)
         with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config("自定义脚本", task_name="副本")
+            _script_config.set_daily_task("自定义脚本", task_name="副本")
         mock_factory.assert_not_called()
         mock_instance.set_daily_task.assert_not_called()
 
@@ -1373,7 +1375,7 @@ class TestSetConfigAdapter(unittest.TestCase):
         mock_instance = MagicMock()
         mock_factory = MagicMock(return_value=mock_instance)
         with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config(
+            _script_config.set_daily_task(
                 "ok-ww",
                 daily_display_name="每日任务",
                 task_name="无音区",

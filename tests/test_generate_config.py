@@ -52,7 +52,7 @@ class ConfigWorkflowTestBase(unittest.TestCase):
                 "get_weekly_yml_path_under_root",
                 return_value=os.path.join(self.config_dir, "weekly.yml"),
             ),
-            patch("src.config.set_config.init_config_all"),
+            patch("src.config.set_config.ScriptConfigFacade.init_config_all"),
         ]
         for p in patchers:
             p.start()

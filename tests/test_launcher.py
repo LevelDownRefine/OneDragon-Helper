@@ -43,7 +43,7 @@ class TestInitConfig(unittest.TestCase):
             self.temp_dir.name, "schedule.yml"
         )
         mock_weekly_path.return_value = os.path.join(self.temp_dir.name, "weekly.yml")
-        with patch("src.config.set_config.init_config_all") as init:
+        with patch("src.config.set_config.ScriptConfigFacade.init_config_all") as init:
             launcher.config_workflow()
 
         # 首次运行时，config.yml / schedule.yml / weekly.yml 均应从模板生成

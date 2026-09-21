@@ -8,8 +8,10 @@ import os
 import unittest
 
 from src.config import set_config
-from src.config.set_config import get_background_rel_path
+from src.config.set_config import ScriptConfigFacade
 from tests.exe import project_root
+
+_script_config = ScriptConfigFacade()
 
 PROJECT_ROOT = str(project_root())
 IMAGEFORMATS = os.path.join(
@@ -49,7 +51,7 @@ def _declared_backgrounds() -> dict[str, str]:
     """
     backgrounds = {"__default__": DEFAULT_BG}
     for name in set_config._CONFIGS:
-        rel = get_background_rel_path(name)
+        rel = _script_config.get_background_rel_path(name)
         if rel:
             backgrounds[name] = rel
     return backgrounds

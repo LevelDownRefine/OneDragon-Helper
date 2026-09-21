@@ -5,13 +5,15 @@
 的选项补齐缺省值（回落展示名）。不做任何改名与拍平。
 """
 
-from src.config.set_config import get_task_lists
+from src.config.set_config import ScriptConfigFacade
 from src.config.task_config import (
     get_physical_name,
     load_daily_map,
     load_weekly_map,
 )
 from src.config.task_source import read_task_source
+
+_script_config = ScriptConfigFacade()
 
 
 def _materialize_options(
@@ -41,7 +43,7 @@ def _materialize_options(
     group = node["options"]
     if "source" in group:
         names = (
-            get_task_lists(script_name, daily, group["source"])
+            _script_config.get_task_lists(script_name, daily, group["source"])
             if daily is not None
             else read_task_source(script_name, group["source"])
         )

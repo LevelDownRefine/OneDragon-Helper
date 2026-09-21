@@ -147,7 +147,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
                 with (
                     patch("src.service.app_service.get_daily_map", return_value={}),
                     patch("src.service.app_service.get_weekly_map", return_value=[]),
-                    patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),
+                    patch("src.service.app_service.AppService.get_daily_readback", return_value=[]),
                     patch("src.gui.controllers.background.BackgroundController.resolve_bg", return_value=None),
                 ):
                     bridge = _make_bridge()
@@ -211,7 +211,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
                 with (
                     patch("src.service.app_service.get_daily_map", return_value={}),
                     patch("src.service.app_service.get_weekly_map", return_value=[]),
-                    patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),
+                    patch("src.service.app_service.AppService.get_daily_readback", return_value=[]),
                     patch("src.gui.controllers.background.BackgroundController.resolve_bg", return_value=None),
                 ):
                     bridge = _make_bridge()

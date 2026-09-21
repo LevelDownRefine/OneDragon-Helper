@@ -9,12 +9,14 @@ from src.config.set_config import (
     EndfieldConfig,
     GenshinConfig,
     NTEConfig,
+    ScriptConfigFacade,
     StarRailConfig,
     WutheringWavesConfig,
-    get_task_lists,
 )
 from src.config.task_config import get_daily_configs
 from src.config.task_source import read_task_source
+
+_script_config = ScriptConfigFacade()
 
 
 class TestWeeklySource(unittest.TestCase):
@@ -129,7 +131,7 @@ class TestTaskSource(unittest.TestCase):
                 ) as load,
                 patch.object(NTEConfig, "_init_config") as init,
             ):
-                names = get_task_lists(
+                names = _script_config.get_task_lists(
                     "ok-nte", "异象界域", {"path": "options.json", "key": key}
                 )
             self.assertEqual(names, ["乙", "甲"])
@@ -186,7 +188,7 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
             patch.object(EndfieldConfig, "_init_config") as mock_init,
             patch("src.config.task_source.load_game_config", return_value=self._DATA),
         ):
-            get_task_lists(
+            _script_config.get_task_lists(
                 "ok-ef",
                 self.declaration["display_name"],
                 {"path": self._SRC, "key": ["stages_dict", "能量淤积点"]},
@@ -325,7 +327,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
             patch.object(GenshinConfig, "_init_config") as mock_init,
             patch("src.config.daily.load_game_config", return_value=self._DATA),
         ):
-            get_task_lists(
+            _script_config.get_task_lists(
                 "BetterGI",
                 self.declaration["display_name"],
                 {"path": self._SRC, "category": "BlessDomain"},
@@ -414,6 +416,8 @@ class TestBgiGetTaskLists(unittest.TestCase):
             patch.dict(_CONFIGS, {"ok-ww": lambda: cfg}),
             patch("src.config.daily.load_game_config", return_value=self._DATA) as load,
         ):
-            names = get_task_lists("ok-ww", self.declaration["display_name"], source)
+            names = _script_config.get_task_lists(
+                "ok-ww", self.declaration["display_name"], source
+            )
         self.assertEqual(names, ["仲夏庭园", "铭记之谷", "芬德尼尔之顶"])
         load.assert_called_once_with("ok-ww", self._SRC)

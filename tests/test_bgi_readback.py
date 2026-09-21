@@ -9,8 +9,10 @@ import unittest
 from unittest.mock import patch
 
 from src.config.daily import BgiDaily, Daily
-from src.config.set_config import get_daily_readback
+from src.config.set_config import ScriptConfigFacade
 from src.config.task_config import get_daily_configs
+
+_script_config = ScriptConfigFacade()
 
 
 class TestBgiReadback(unittest.TestCase):
@@ -97,7 +99,7 @@ class TestBgiReadback(unittest.TestCase):
             patch.object(Daily, "_load_daily_config", return_value=config),
             self.assertLogs("src.config.daily", level="WARNING"),
         ):
-            records = get_daily_readback("BetterGI")
+            records = _script_config.get_daily_readback("BetterGI")
         self.assertEqual([r["enabled"] for r in records], [True, None, None])
         self.assertEqual(records[0]["task"], "铭记之谷")
         self.assertEqual(records[2]["name"], "首领讨伐")
