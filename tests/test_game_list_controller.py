@@ -80,6 +80,47 @@ class TestDeleteScriptConfirmCancel(unittest.TestCase):
         ctrl._on_reload.assert_called_once()
 
 
+class TestScriptSelectionIsMemoryOnly(unittest.TestCase):
+    """勾选为纯内存态：不写 config.yml、重开回到全选、重排按身份跟随。"""
+
+    def _ctrl(self, names):
+        service = MagicMock()
+        service.load_config.return_value = {
+            "script_list": [
+                {"display_name": name, "script_path": f"{name}.py"} for name in names
+            ]
+        }
+        ctrl = GameListController(service, MagicMock(), MagicMock())
+        with patch.object(ctrl.icon_provider, "refresh"):
+            ctrl.reload_games()
+        return ctrl, service
+
+    def test_toggle_only_touches_memory(self):
+        """控制模式点图标只改内存勾选，不保存 config.yml。"""
+        ctrl, service = self._ctrl(["A", "B"])
+        ctrl.toggleMode()
+        ctrl.selectGame(0)
+        self.assertEqual(ctrl.enabled, [False, True])
+        service.save_config.assert_not_called()
+
+    def test_reopen_starts_with_all_selected(self):
+        """重开（重建控制器）不再回显上次勾选，一律全选。"""
+        ctrl, _service = self._ctrl(["A", "B"])
+        ctrl.deselectAll()
+        reopened, _service = self._ctrl(["A", "B"])
+        self.assertEqual(reopened.enabled, [True, True])
+
+    def test_reorder_keeps_selection_by_identity(self):
+        """拖拽重排后勾选跟随脚本身份移动，不会错位到位置上。"""
+        ctrl, _service = self._ctrl(["A", "B"])
+        ctrl.toggleMode()
+        ctrl.selectGame(1)
+        self.assertEqual(ctrl.enabled, [True, False])
+        ctrl.reorderGames(1, 0)
+        self.assertEqual([g["script_name"] for g in ctrl.games], ["B", "A"])
+        self.assertEqual(ctrl.enabled, [False, True])
+
+
 class TestDeleteScriptLastGuard(unittest.TestCase):
     """最后一个脚本不可删：删光会让列表/任务卡失去当前项，拦截并提示。"""
 

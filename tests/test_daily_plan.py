@@ -83,15 +83,15 @@ class TestDailyPlanConfig(unittest.TestCase):
             ):
                 self.assertFalse(load_daily_plan({"daily_run": block}).enabled)
 
-    def test_legacy_plan_freezes_selection_once_and_preserves_time(self):
+    def test_legacy_plan_materializes_all_scripts_once_and_preserves_time(self):
         self.original["daily_run"] = {"enabled": True, "target_time": "08:30"}
         dump_yaml(self.path, self.original)
         first = load_daily_plan()
-        self.assertEqual(first, DailyPlanOptions(True, "08:30", ("A",)))
-        self.config["script_list"][0]["enabled"] = False
-        self.config["script_list"][1]["enabled"] = True
+        self.assertEqual(first, DailyPlanOptions(True, "08:30", ("A", "B")))
+        # 名单一次性物化：此后脚本增删都不再回写，与（内存态）手动勾选完全独立。
+        self.config["script_list"].append({"display_name": "C", "script_path": "c.py"})
         self.assertEqual(load_daily_plan(), first)
-        self.assertEqual(load_yaml(self.path)["daily_run"]["script_names"], ["A"])
+        self.assertEqual(load_yaml(self.path)["daily_run"]["script_names"], ["A", "B"])
         self.assertEqual(load_yaml(self.path)["notify"], self.original["notify"])
 
     def test_legacy_migration_failure_is_not_silently_used(self):
@@ -251,6 +251,8 @@ class TestDailyPlanScriptRename(unittest.TestCase):
         with patch("src.service.daily_plan.chain_service.schedule_run") as run:
             service.run_daily_plan()
         self.assertEqual(run.call_args.args, ({"B", "renamed"}, "now"))
+        # 计划任务写独立链文件，不与手动运行的 today.yml 共用
+        self.assertEqual(run.call_args.kwargs["chain_name"], "plan")
         self.task.assert_not_called()
 
     def test_paused_plan_keeps_selection_and_stays_paused(self):

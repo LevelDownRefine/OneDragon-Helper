@@ -60,6 +60,12 @@ def load_config() -> dict:
         assert "script_path" in s, (
             f"[utils_config] script_list 条目缺少 script_path: {s}"
         )
+        # 勾选是 GUI 内存态，不落盘；旧文件残留的 enabled 在此丢弃。
+        if s.pop("enabled", None) is not None:
+            logger.warning(
+                "[config] %s 的 enabled 字段已废弃（勾选改为内存态），已忽略",
+                get_script_name(s),
+            )
     check_script_name_uniqueness(data)
     return data
 
@@ -75,33 +81,6 @@ def save_config(data: dict) -> None:
     )
     config_path = get_config_yml_path_under_root()
     dump_yaml(config_path, data)
-
-
-def script_enabled(script: dict) -> bool:
-    """旧脚本缺省启用；非法外部开关按停用处理。"""
-    # enabled 对旧配置可选，缺失沿用全开的历史默认。
-    enabled = script.get("enabled", True)
-    if type(enabled) is not bool:
-        logger.warning(
-            "[config] %s 的 enabled 非 bool，按停用处理", get_script_name(script)
-        )
-        return False
-    return enabled
-
-
-def set_script_enabled(changes: dict[str, bool]) -> None:
-    """按脚本标识批量保存勾选，仅修改 enabled，保留路径及其他配置。"""
-    data = load_config()
-    assert "script_list" in data
-    known = {get_script_name(s) for s in data["script_list"]}
-    if not changes.keys() <= known:
-        raise ValueError("脚本列表已变更，请刷新后重试")
-    for script in data["script_list"]:
-        name = get_script_name(script)
-        if name in changes:
-            assert type(changes[name]) is bool
-            script["enabled"] = changes[name]
-    save_config(data)
 
 
 def add_script(script_data: dict) -> None:

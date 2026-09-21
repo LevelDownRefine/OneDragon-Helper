@@ -27,7 +27,7 @@ from src.service.schedule import (
     save_schedule,
 )
 from src.utils import get_root_dir
-from src.utils.utils_config import load_config, script_enabled
+from src.utils.utils_config import load_config
 from src.utils.utils_sub_config import get_script_name
 
 logger = logging.getLogger(__name__)
@@ -78,15 +78,13 @@ def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
         target = block.get("target_time", "04:10")
         if type(enabled) is bool and is_valid_target_time(target):
             if "script_names" not in block:
-                # 旧计划只继承一次当前勾选，之后与手动选择独立。
+                # 旧计划一次性物化：取全部脚本（勾选不落盘，无从继承）。
                 names = []
                 if enabled:
                     config = load_config()
                     assert "script_list" in config
                     names = [
-                        get_script_name(script)
-                        for script in config["script_list"]
-                        if script_enabled(script)
+                        get_script_name(script) for script in config["script_list"]
                     ]
                 if schedule is None:
                     block["script_names"] = names
@@ -317,9 +315,11 @@ def run_daily_plan() -> None:
         logger.info("[daily] 计划没有可运行的脚本，跳过此次触发")
         return
     options = load_run_options()
+    # 计划任务用独立链文件，避免与手动运行的 today.yml 互相覆盖。
     chain_service.schedule_run(
         enabled,
         "now",
+        chain_name="plan",
         mute=options.mute_enabled,
         unmute=options.unmute_enabled,
         shutdown_delay=(

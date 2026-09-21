@@ -55,7 +55,7 @@ config.yml 写入权统一归 src.utils.utils_config（经 AppService 委托）�
 | 重排 | 拖拽 | AppService.save_config（src.utils.utils_config） |
 | 自动启动 | 配置弹窗保存 | AppService.apply_startup_options → schedule.yml 的 startup 块 |
 | 每日计划 | 计划弹窗保存 / 暂停 / 恢复 | AppService.apply_daily_plan → 先回读系统任务，与设置不一致才重新注册（Windows 任务计划）；再写 schedule.yml 的 daily_run 块 |
-| 脚本勾选 | 控制模式 / 全选 / 清空 | AppService.set_script_enabled → config.yml 脚本条目的 enabled |
+| 脚本勾选 | 控制模式 / 全选 / 清空 | 纯内存态（`GameListController._enabled`），不落盘；重启回到全选 |
 | 运行 | 启动全部 | AppService 链生成 → chain_gen（src.service.chain_service.generate_chain） |
 
 ## UI 状态持久化

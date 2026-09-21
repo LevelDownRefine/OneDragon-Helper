@@ -105,8 +105,7 @@ def generate_chain_config(
 ) -> str:
     """生成 ScriptChainer 配置文件（仅含启用的脚本）。
 
-    启用判定只看 ``enabled_keys`` 名单；config.yml 里 GUI 关闭（``enabled=False``）
-    的脚本不进链，纳入的条目剥掉 ``enabled`` 字段——链配置不留第二开关。
+    启用判定只看 ``enabled_keys`` 名单；链内条目统一显式写 ``enabled=True``。
 
     脚本自身的副本/序列、周常起始日对应的周本开关，均由 GUI / CLI 在编辑期实时落盘
     （见 ``src.config.set_config`` / ``src.config.weekly``）；其中「按周几起决定开启/关闭」这类必须在运行期按当天星期
@@ -135,14 +134,11 @@ def generate_chain_config(
         script_name = get_script_name(script)
         if script_name not in enabled_keys:
             continue
-        # GUI 脚本页的启用开关是总闸：关闭的直接不进链（此前条目把 enabled
-        # 原样带进链 yml，被 ScriptChainer 二次判定，出现「名单里有却跳过」）。
-        # 纳入链的条目剥掉 enabled——链配置不留第二开关，是否运行只看名单。
-        if not script.pop("enabled", True):
-            continue
+        # 名单是唯一判据；enabled 由链内统一写 True（config 侧残留会被覆盖）。
         if not _resolve_daily_run(script, weekly_timeouts):
             continue
         script.setdefault("block", True)
+        script["enabled"] = True
         filtered.append(script)
 
     data["script_list"] = filtered

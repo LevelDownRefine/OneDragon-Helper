@@ -19,10 +19,8 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QPixmap
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWidgets import QMessageBox
-from ruamel.yaml.error import YAMLError
 
 from src.gui.icons import get_script_icon
-from src.utils.utils_config import script_enabled
 from src.utils.utils_sub_config import get_script_name
 
 # 游戏图标停用底色（渐变兜底水印等场景复用）
@@ -231,25 +229,18 @@ class GameListController(QObject):
         if new_index != self.current_index:
             self.current_index = new_index
             self.currentIndexChanged.emit()
-        self._enabled = [script_enabled(game["script_data"]) for game in games]
+        # 勾选为纯内存态（不落盘）：已存在脚本保留原勾选，新增脚本默认启用。
+        self._enabled = [
+            self._enabled[i] if i < len(self._enabled) else True
+            for i in range(len(games))
+        ]
         self.gamesChanged.emit()
         self.enabledChanged.emit()
 
-    def _save_enabled(self, states: list[bool]) -> bool:
-        """先经 service 保存，再更新界面；写入失败保留原勾选。"""
-        changes = {
-            game["script_name"]: enabled
-            for game, enabled in zip(self._games, states, strict=True)
-        }
-        try:
-            self._app_service.set_script_enabled(changes)
-        except (OSError, ValueError, YAMLError) as exc:
-            logger.error("保存脚本勾选失败：%s: %s", type(exc).__name__, exc)
-            self._toast(f"保存脚本勾选失败：{exc}")
-            return False
+    def _set_enabled(self, states: list[bool]) -> None:
+        """更新内存勾选并通知界面；勾选不落盘，重启后回到全选。"""
         self._enabled = states
         self.enabledChanged.emit()
-        return True
 
     # ── 交互 ───────────────────────────────────────────────────────────
     @Slot(int)
@@ -259,8 +250,7 @@ class GameListController(QObject):
         if self._control_mode:
             states = self._enabled.copy()
             states[index] = not states[index]
-            if not self._save_enabled(states):
-                return
+            self._set_enabled(states)
             self._toast(
                 f"{self._games[index]['display_name']}："
                 f"{'已加入手动运行' if self._enabled[index] else '已移出手动运行'}"
@@ -284,15 +274,15 @@ class GameListController(QObject):
 
     @Slot()
     def selectAll(self):
-        """全选并保存手动运行选择。"""
-        if self._save_enabled([True] * len(self._games)):
-            self._toast("手动运行已全选")
+        """全选手动运行脚本（内存态，不落盘）。"""
+        self._set_enabled([True] * len(self._games))
+        self._toast("手动运行已全选")
 
     @Slot()
     def deselectAll(self):
-        """清空并保存手动运行选择，不改变每日计划。"""
-        if self._save_enabled([False] * len(self._games)):
-            self._toast("手动运行已清空")
+        """清空手动运行勾选（内存态，不落盘，不改变每日计划）。"""
+        self._set_enabled([False] * len(self._games))
+        self._toast("手动运行已清空")
 
     @Slot(int, int)
     def reorderGames(self, src_index: int, dst_index: int):

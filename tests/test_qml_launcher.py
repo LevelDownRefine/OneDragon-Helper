@@ -90,7 +90,6 @@ def _make_bridge():
     b.app_service.load_daily_plan = MagicMock(return_value=DailyPlanOptions())
     b.app_service.list_daily_plan_scripts = MagicMock(return_value=[])
     b.app_service.save_config = MagicMock()
-    b.app_service.set_script_enabled = MagicMock()
     return b
 
 
