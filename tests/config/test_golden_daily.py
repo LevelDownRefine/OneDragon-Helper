@@ -44,8 +44,18 @@ def _seed_files():
             "domain": "自动秘境",
             "leyline": "自动地脉花",
             "boss": "自动首领讨伐",
+            "stygian": "自动幽境危战",
         },
-        "TaskEnabledList": {"domain": False, "leyline": False, "boss": False},
+        "TaskEnabledList": {
+            "domain": False,
+            "leyline": False,
+            "boss": False,
+            "stygian": False,
+        },
+    }
+    # 幽境危战的数据段在主配置（User/config.json），开关仍在一条龙配置。
+    bgi_main = {
+        "autoStygianOnslaughtConfig": {"strategyName": "根据队伍自动选择", "bossNum": 1}
     }
     for day in DAYS:
         bgi[f"LeyLine{day}Type"] = "启示之花"
@@ -60,7 +70,10 @@ def _seed_files():
                 "Material Selection": "Shell Credit",
             }
         },
-        "BetterGI": {"User/OneDragon/默认配置.json": bgi},
+        "BetterGI": {
+            "User/OneDragon/默认配置.json": bgi,
+            "User/config.json": bgi_main,
+        },
         "ok-ef": {
             "data/apps/ok-ef/working/configs/DailyTask.json": {
                 "体力本": "能量淤积点-乙",

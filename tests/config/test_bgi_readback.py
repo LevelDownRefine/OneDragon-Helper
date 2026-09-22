@@ -95,12 +95,16 @@ class TestBgiReadback(unittest.TestCase):
         }
         with (
             patch.object(Daily, "_load_daily_config", return_value=config),
+            # 幽境危战的开关在另一份文件（一条龙配置即本用例的 config 之外的 routine），
+            # 此处显式判为无真相，避免读进真实安装目录。
+            patch.object(Daily, "_load_routine_config", return_value=None),
             self.assertLogs("src.config.daily", level="WARNING"),
         ):
             records = get_daily_readback("BetterGI")
-        self.assertEqual([r["enabled"] for r in records], [True, None, None])
+        self.assertEqual([r["enabled"] for r in records], [True, None, None, None])
         self.assertEqual(records[0]["task"], "铭记之谷")
         self.assertEqual(records[2]["name"], "首领讨伐")
+        self.assertEqual(records[3]["name"], "幽境危战")
 
     def test_switch_to_bgi_updates_qml_daily_items_without_metacall_error(self):
         code = textwrap.dedent(
@@ -134,6 +138,8 @@ class TestBgiReadback(unittest.TestCase):
                 patch("src.service.daily_plan.load_schedule", return_value={}),
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
                 patch.object(Daily, "_load_daily_config", return_value=native),
+                # 幽境危战的开关在另一份文件：判为无真相，避免读进真实安装目录。
+                patch.object(Daily, "_load_routine_config", return_value=None),
             ):
                 bridge = QmlBridge()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
@@ -149,9 +155,10 @@ class TestBgiReadback(unittest.TestCase):
                 bridge.selectGame(1)
                 app.processEvents()
                 rows = root.property("rows")
-                assert len(rows) == 3, rows
+                assert len(rows) == 4, rows
                 assert rows[0]["task_label"] == "铭记之谷", rows
-                assert [row["can_disable"] for row in rows] == [True, False, False], rows
+                assert rows[3]["name"] == "幽境危战", rows
+                assert [row["can_disable"] for row in rows] == [True, False, False, False], rows
                 assert not any("metacall" in m or "<NULL>" in m for m in messages), messages
             """
         )

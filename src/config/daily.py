@@ -354,6 +354,50 @@ class Daily:
         return True
 
 
+class _SingleLayerDaily(Daily):
+    """单层带 ``key`` 的日常：整组自身即唯一一级项，展示名用日常名。
+
+    仅作混入用（不注册进 DAILY_CLASSES，声明里不可引用）：数据段与开关落点由继承它的
+    机制类决定，本类只负责单层形态的落点解析与反读。
+    """
+
+    def _parse_landing(self, declaration: dict) -> None:
+        """解析单层带 ``key`` 的声明：整组自身即唯一一级项，展示名用日常名。
+
+        Raises:
+            AssertionError: 未声明选项或未声明 ``key``。
+        """
+        options = get_options(declaration)
+        assert options, f"{self.script_name}/{self.physical_name} 必须声明选项"
+        group = declaration["options"]
+        assert "key" in group, (
+            f"{self.script_name}/{self.physical_name} 的单层日常必须声明 key 作为落点"
+        )
+        self.task_field = None
+        self.task_map: dict[str, Any] = {}
+        self.option_fields: dict[str, str] = {self.display_name: group["key"]}
+        self.options: list[dict] = [declaration]
+        self._sequence_values: dict[str, dict[str, Any]] = (
+            {self.display_name: get_value_map(declaration)} if "values" in group else {}
+        )
+        self._sequence_required = "values" in group
+        self._single_field = False
+
+    def read(self) -> tuple[str | None, str | int | None]:
+        """反读该日常已选的 (日常名, 二级值)。
+
+        Returns:
+            (日常名, 二级值)；config 缺失 / 段未落盘 / 未选择时 (None, None)。
+        """
+        data = self._load_daily_config(allow_missing=True)
+        if data is None or not self.section_exists(data):
+            return None, None
+        key = self.option_fields[self.display_name]
+        if key not in self.section(data):
+            return self.display_name, None
+        return self.display_name, self.section(data)[key] or None
+
+
 class BgiDaily(Daily):
     """原神的配置读写沿用两层日常，选项按 tp.json 秘境分类读取。
 
@@ -432,13 +476,34 @@ class BgiDaily(Daily):
             return None
         return task_id
 
+    def _load_enable_config(self, *, allow_missing: bool = False) -> dict | None:
+        """读开关所在文件；默认与数据同文件（一条龙配置）。
+
+        开关与数据分处两份文件的机制类覆写本方法（如幽境危战：开关在一条龙配置、数据在主配置）。
+
+        Args:
+            allow_missing: True 时读取失败返回 None（读路径）。
+
+        Returns:
+            解析后的 config dict；allow_missing=True 且读取失败时为 None。
+        """
+        return self._load_daily_config(allow_missing=allow_missing)
+
+    def _save_enable_config(self, config: dict) -> None:
+        """保存开关所在文件；默认与数据同文件。
+
+        Args:
+            config: 待保存的 dict。
+        """
+        self._save_daily_config(config)
+
     def read_enabled(self) -> bool | None:
         """反读该日常对应的原生任务是否启用。
 
         Returns:
             是否启用；配置缺失、任务缺少/重复或开关格式异常时返回 None。
         """
-        config = self._load_daily_config(allow_missing=True)
+        config = self._load_enable_config(allow_missing=True)
         if config is None:
             return None  # 未安装/未配置：无真相
         task_id = self._enabled_id(config)
@@ -461,14 +526,14 @@ class BgiDaily(Daily):
         Raises:
             AssertionError: config 未安装/未配置。
         """
-        config = self._load_daily_config()
+        config = self._load_enable_config()
         task_id = self._enabled_id(config)
         if task_id is None:
             return False
         assert self._ENABLE_MAP in config
         table = config[self._ENABLE_MAP]
         if safe_update(table, task_id, enabled, self.display_name):
-            self._save_daily_config(config)
+            self._save_enable_config(config)
             return True
         return False
 
@@ -575,6 +640,77 @@ class BgiLeyLineDaily(BgiDaily):
     def _expand(field: str, day: str) -> str:
         """把声明里的 ``{Day}`` 占位换成某天。"""
         return field.replace("{Day}", day)
+
+
+class BgiStygianDaily(_SingleLayerDaily, BgiDaily):
+    """原神幽境危战：数据段在 BetterGI 主配置，开关在一条龙的任务启用表。
+
+    两者不是同一份文件——数据落在主配置（``User/config.json``）的
+    ``autoStygianOnslaughtConfig`` 段，故 ``config`` 与 ``routine`` 分别声明；
+    该段字段名为 camelCase，与一条龙配置的 PascalCase 不同源。
+    """
+
+    _SECTION = "autoStygianOnslaughtConfig"
+    """主配置里的数据段名。"""
+
+    def _parse_landing(self, declaration: dict) -> None:
+        """解析单层带 ``key`` 的声明（战场选择），并确认开关文件已声明。
+
+        Raises:
+            AssertionError: 未声明 ``routine``（开关所在的一条龙配置）。
+        """
+        assert self._routine_rel_path, (
+            f"[daily][{self.display_name}] 未声明 routine（开关所在的一条龙配置）"
+        )
+        super()._parse_landing(declaration)
+
+    def section(self, config: dict) -> dict:
+        """本日常在主配置里的数据段。
+
+        Args:
+            config: 主配置 dict。
+
+        Returns:
+            该段 dict；段缺失返回空 dict（按未落盘处理）。
+
+        Raises:
+            AssertionError: 段存在但类型非 dict。
+        """
+        section = config.get(self._SECTION)
+        assert section is None or isinstance(section, dict), (
+            f"[daily][{self.display_name}] {self._SECTION} 段必须是 dict"
+        )
+        return section if section is not None else {}
+
+    def section_exists(self, config: dict) -> bool:
+        """本日常的数据段是否已落盘。
+
+        Args:
+            config: 主配置 dict。
+
+        Returns:
+            段是否存在。
+        """
+        return self._SECTION in config
+
+    def _load_enable_config(self, *, allow_missing: bool = False) -> dict | None:
+        """读开关所在的一条龙配置。
+
+        Args:
+            allow_missing: True 时读取失败返回 None（读路径）。
+
+        Returns:
+            一条龙配置 dict；allow_missing=True 且读取失败时为 None。
+        """
+        return self._load_routine_config(allow_missing=allow_missing)
+
+    def _save_enable_config(self, config: dict) -> None:
+        """保存开关所在的一条龙配置。
+
+        Args:
+            config: 待保存的 dict。
+        """
+        self._save_routine_config(config)
 
 
 class NoopDaily(Daily):
@@ -698,47 +834,8 @@ class Anomaly(Daily):
         return self.physical_name in config
 
 
-class AnomalyHunter(Anomaly):
-    """追猎目标：单层带 ``key`` 的分段日常，解析与反读覆写为单层形态。"""
-
-    def _parse_landing(self, declaration: dict) -> None:
-        """解析单层带 ``key`` 的声明：整组自身即唯一一级项，展示名用日常名。
-
-        Raises:
-            AssertionError: 未声明选项或未声明 ``key``。
-        """
-        options = get_options(declaration)
-        assert options, f"{self.script_name}/{self.physical_name} 必须声明选项"
-        group = declaration["options"]
-        assert "key" in group, (
-            f"{self.script_name}/{self.physical_name} 的单层日常必须声明 key 作为落点"
-        )
-        self.task_field = None
-        self.task_map: dict[str, Any] = {}
-        self.option_fields: dict[str, str] = {self.display_name: group["key"]}
-        self.options: list[dict] = [declaration]
-        self._sequence_values: dict[str, dict[str, Any]] = (
-            {self.display_name: get_value_map(declaration)} if "values" in group else {}
-        )
-        self._sequence_required = "values" in group
-        self._single_field = False
-
-    def read(self) -> tuple[str | None, str | int | None]:
-        """反读该日常已选的 (日常名, 二级值)。
-
-        Returns:
-            (日常名, 二级值)；config 缺失 / 段未落盘 / 未选择时 (None, None)。
-
-        Raises:
-            AssertionError: 字段里的副本值不在声明里。
-        """
-        data = self._load_daily_config(allow_missing=True)
-        if data is None or not self.section_exists(data):
-            return None, None
-        key = self.option_fields[self.display_name]
-        if key not in self.section(data):
-            return self.display_name, None
-        return self.display_name, self.section(data)[key] or None
+class AnomalyHunter(_SingleLayerDaily, Anomaly):
+    """追猎目标：单层带 ``key`` 的分段日常（数据在自己那段，开关在 Routine Items）。"""
 
 
 class MaaDaily(Daily):
@@ -931,6 +1028,7 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
         Daily,
         BgiDaily,
         BgiLeyLineDaily,
+        BgiStygianDaily,
         NoopDaily,
         Anomaly,
         AnomalyHunter,

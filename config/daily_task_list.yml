@@ -235,6 +235,20 @@ BetterGI:
         values:
         - display_name: 不灭衍生造物
         - display_name: 嵌合翼骏狮
+- display_name: 幽境危战
+  class: BgiStygianDaily
+  config: User/config.json
+  routine: User/OneDragon/默认配置.json
+  enable_task: 自动幽境危战
+  options:
+    key: bossNum
+    values:
+    - display_name: 战场一
+      physical_name: 1
+    - display_name: 战场二
+      physical_name: 2
+    - display_name: 战场三
+      physical_name: 3
 ok-ef:
 - display_name: 每日任务
   class: Daily

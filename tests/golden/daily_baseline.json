@@ -23,6 +23,22 @@
           ]
         ]
       },
+      "幽境危战": {
+        "幽境危战": [
+          [
+            "战场一",
+            1
+          ],
+          [
+            "战场二",
+            2
+          ],
+          [
+            "战场三",
+            3
+          ]
+        ]
+      },
       "每日任务": {
         "圣遗物": [
           [
@@ -670,6 +686,12 @@
         "name": "首领讨伐",
         "sequence": null,
         "task": "急冻树"
+      },
+      {
+        "enabled": false,
+        "name": "幽境危战",
+        "sequence": 1,
+        "task": "幽境危战"
       }
     ],
     "MAA": [
@@ -771,6 +793,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -806,6 +834,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -840,6 +874,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -874,6 +914,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -908,6 +954,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -942,6 +994,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1032,6 +1090,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1091,6 +1155,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1177,6 +1247,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1235,6 +1311,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1269,6 +1351,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1303,6 +1391,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "无相之雷"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1337,6 +1431,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "守望者·堕天"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1371,6 +1471,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "爆炎树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1405,6 +1511,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "纯水精灵"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1439,6 +1551,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "古岩龙蜥"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1473,6 +1591,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "无相之岩"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1507,6 +1631,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "遗迹巨蛇"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1541,6 +1671,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "隐山猊兽"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1575,6 +1711,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "无相之火"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1609,6 +1751,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "恒常机关阵列"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1643,6 +1791,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "雷音权现"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1677,6 +1831,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "魔偶剑鬼"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1711,6 +1871,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "无相之水"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1745,6 +1911,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "掣电树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1779,6 +1951,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "半永恒统辖矩阵"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1813,6 +1991,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "翠翎恐蕈"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1847,6 +2031,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "风蚀沙虫"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1881,6 +2071,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "无相之草"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1915,6 +2111,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "深罪浸礼者"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1949,6 +2151,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "兆载永劫龙兽"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -1983,6 +2191,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "歌裴莉娅的葬送"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2017,6 +2231,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "科培琉司的劫罚"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2051,6 +2271,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "实验性场力发生装置"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2085,6 +2311,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "魔像督军"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2119,6 +2351,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "千年珍珠骏麟"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2153,6 +2391,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "水形幻人"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2187,6 +2431,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "铁甲熔火帝皇"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2221,6 +2471,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "金焰绒翼龙暴君"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2255,6 +2511,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "灵觉隐修的迷者"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2289,6 +2551,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "秘源机兵·构型械"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2323,6 +2591,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "秘源机兵·统御械"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2357,6 +2631,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "熔岩辉龙像"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2391,6 +2671,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "深邃摹结株"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2425,6 +2711,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "贪食匿叶龙山王"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2459,6 +2751,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "蕴光月守宫"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2493,6 +2791,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "深黯魇语之主"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2527,6 +2831,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "超重型陆巡舰·机动战垒"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2561,6 +2871,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "霜夜巡天灵主"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2595,6 +2911,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "蕴光月幻蝶"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2629,6 +2951,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "重拳出击鸭"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2663,6 +2991,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "不灭衍生造物"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2697,6 +3031,12 @@
             "name": "首领讨伐",
             "sequence": null,
             "task": "嵌合翼骏狮"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
           }
         ],
         "saved_files": [
@@ -2704,6 +3044,126 @@
         ],
         "sequence": "嵌合翼骏狮",
         "task": "至冬"
+      },
+      {
+        "daily": "幽境危战",
+        "diff": {
+          "User/OneDragon/默认配置.json.TaskEnabledList.stygian": [
+            false,
+            true
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "嵌合翼骏狮"
+          },
+          {
+            "enabled": true,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": 1,
+        "task": "幽境危战"
+      },
+      {
+        "daily": "幽境危战",
+        "diff": {
+          "User/config.json.autoStygianOnslaughtConfig.bossNum": [
+            1,
+            2
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "嵌合翼骏狮"
+          },
+          {
+            "enabled": true,
+            "name": "幽境危战",
+            "sequence": 2,
+            "task": "幽境危战"
+          }
+        ],
+        "saved_files": [
+          "User/config.json"
+        ],
+        "sequence": 2,
+        "task": "幽境危战"
+      },
+      {
+        "daily": "幽境危战",
+        "diff": {
+          "User/config.json.autoStygianOnslaughtConfig.bossNum": [
+            2,
+            3
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "MasteryDomain-乙"
+          },
+          {
+            "enabled": true,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": true,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "嵌合翼骏狮"
+          },
+          {
+            "enabled": true,
+            "name": "幽境危战",
+            "sequence": 3,
+            "task": "幽境危战"
+          }
+        ],
+        "saved_files": [
+          "User/config.json"
+        ],
+        "sequence": 3,
+        "task": "幽境危战"
       }
     ],
     "MAA": [
