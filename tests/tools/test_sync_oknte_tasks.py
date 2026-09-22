@@ -7,11 +7,10 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from src.utils.utils_yaml import load_yaml
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
-import sync_oknte_tasks as m
+from tools import sync_oknte_tasks as m
 
 _ANOMALY = """
 EXP_COIN_ID_RANGE = (1, 3)
@@ -91,6 +90,7 @@ _YML = """ok-nte:
 
 class SyncOknteTest(unittest.TestCase):
     def setUp(self) -> None:
+        self.enterContext(patch.object(sys, "argv", ["sync_oknte_tasks"]))
         self._orig_fetch = m._fetch_url
         self._orig_path = m._DUNGEON_PATH
         m._fetch_url = _fake_fetch

@@ -15,7 +15,7 @@ from src.config.weekly import weeklies_of
 
 
 def load_fixture():
-    path = Path(__file__).parent / "fixtures/maa_gui.new.scrubbed.json"
+    path = Path(__file__).parents[1] / "fixtures/maa_gui.new.scrubbed.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 

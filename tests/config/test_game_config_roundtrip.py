@@ -18,7 +18,9 @@ from unittest.mock import patch
 
 from src.utils import utils_sub_config
 
-FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "starrail_config.yaml")
+FIXTURE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "fixtures", "starrail_config.yaml"
+)
 
 
 class TestGameConfigRoundTrip(unittest.TestCase):

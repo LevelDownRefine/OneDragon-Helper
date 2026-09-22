@@ -30,7 +30,7 @@ from src.gui import main_window  # noqa: E402
 from src.gui.controllers import launch, links  # noqa: E402
 from src.gui.controllers.game_list import ScriptIconProvider  # noqa: E402
 from src.gui.icons import UiIconProvider  # noqa: E402
-from tests.gui_helpers import make_bridge  # noqa: E402
+from tests.gui.helpers import make_bridge  # noqa: E402
 
 # 全局 QApplication 实例（offscreen 平台，CI 无显示器）
 _app = QApplication.instance() or QApplication([])

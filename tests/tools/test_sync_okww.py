@@ -1,20 +1,13 @@
-"""sync_okww_tasks 的单测：聚焦最前插入模型的重排逻辑（不触网）。
-
-模块位于 tools/ 下、非 src 包，故手动将项目根加入 sys.path 后按命名空间包导入。
-"""
+"""sync_okww_tasks 的单测：聚焦最前插入模型的重排逻辑（不触网）。"""
 
 import os
-import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
+from ruamel.yaml import YAML
 
-from ruamel.yaml import YAML  # noqa: E402
-
-import tools.sync_okww_tasks as m  # noqa: E402
+import tools.sync_okww_tasks as m
 
 _YAML = YAML()
 
@@ -139,8 +132,8 @@ class TestApplyNewFrontInsert(unittest.TestCase):
             ]
         }
         path = self._write_tmp(data)
-        try:
-            m._DUNGEON_PATH = path
+        self.addCleanup(os.unlink, path)
+        with patch.object(m, "_DUNGEON_PATH", path):
             # 生产里 upstream 只含数字分类（凝素领域/无音区），不含模拟领域
             upstream = {"凝素领域": 3}
             current = m._load_okww()
@@ -178,8 +171,6 @@ class TestApplyNewFrontInsert(unittest.TestCase):
                 options["模拟领域"]["options"]["values"],
                 [{"display_name": "共鸣者经验", "physical_name": "Resonator EXP"}],
             )
-        finally:
-            os.unlink(path)
 
     def test_apply_skips_when_no_growth(self):
         data = {
@@ -202,8 +193,8 @@ class TestApplyNewFrontInsert(unittest.TestCase):
             ]
         }
         path = self._write_tmp(data)
-        try:
-            m._DUNGEON_PATH = path
+        self.addCleanup(os.unlink, path)
+        with patch.object(m, "_DUNGEON_PATH", path):
             upstream = {"凝素领域": 1}  # 无增长
             current = m._load_okww()
             with open(path, encoding="utf-8") as f:
@@ -212,8 +203,6 @@ class TestApplyNewFrontInsert(unittest.TestCase):
             with open(path, encoding="utf-8") as f:
                 after = f.read()
             self.assertEqual(before, after)  # 不变
-        finally:
-            os.unlink(path)
 
 
 if __name__ == "__main__":

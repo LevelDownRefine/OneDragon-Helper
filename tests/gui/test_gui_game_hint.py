@@ -21,7 +21,7 @@ class TestGameIconHint(unittest.TestCase):
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
             from src.service.app_service import AppService
-            from tests.gui_helpers import get_app, make_bridge
+            from tests.gui.helpers import get_app, make_bridge
 
             get_app()
             icon_path = str(Path("assets/ds.ico").resolve())

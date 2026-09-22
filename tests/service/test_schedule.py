@@ -27,7 +27,7 @@ from src.service.schedule import (
 )
 from src.utils.utils_runner import ProcessTarget
 from src.utils.utils_yaml import dump_yaml, load_yaml
-from tests.process_sim import ProcessSim
+from tests.support.process_sim import ProcessSim
 
 
 def _make_service(testcase, script_list=None, *, schedule=None):

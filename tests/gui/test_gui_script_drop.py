@@ -316,7 +316,7 @@ class TestQmlScriptDrop(unittest.TestCase):
             from src.gui.controllers.background import BackgroundController
             from src.gui.main_window import QmlBridge
             from src.service.app_service import AppService
-            from tests.gui_helpers import get_app, make_bridge
+            from tests.gui.helpers import get_app, make_bridge
 
             app = get_app()
             with (

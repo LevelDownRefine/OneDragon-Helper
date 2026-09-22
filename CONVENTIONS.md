@@ -82,7 +82,7 @@ except subprocess.TimeoutExpired as e:
 新增/修改功能后必须补测试。动了共享接口 / 多模块 / 做了重构的**大改动**，必须用与 CI 一致的命令跑**全量**，不能只跑改动相关文件：
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -p "test*.py"
+PYTHONPATH=src python -m unittest discover -s tests -t . -p "test*.py"
 ```
 
 - `PYTHONPATH=src` 不可省：否则 `test_utils` 顶层 `import` 会误报 import 错。

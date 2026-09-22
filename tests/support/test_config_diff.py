@@ -3,7 +3,7 @@
 import unittest
 from copy import deepcopy
 
-from tests.config_diff import diff_paths
+from tests.support.config_diff import diff_paths
 
 
 class TestConfigDiff(unittest.TestCase):

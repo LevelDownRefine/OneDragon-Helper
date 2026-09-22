@@ -22,7 +22,7 @@ from src.config import set_config as sc_mod
 from src.config.set_config import EndfieldConfig
 from src.config.weekly import weeklies_of
 from src.utils import utils_sub_config
-from tests.config_diff import diff_paths
+from tests.support.config_diff import diff_paths
 
 
 def _ef_weekly():
@@ -31,7 +31,9 @@ def _ef_weekly():
 
 
 FIXTURE = os.path.join(
-    os.path.dirname(__file__), "fixtures", "ok_ef_DailyTask.scrubbed.json"
+    os.path.dirname(os.path.dirname(__file__)),
+    "fixtures",
+    "ok_ef_DailyTask.scrubbed.json",
 )
 
 # set_daily_task 只允许改动的字段路径集合（= 声明落点的 task_field）

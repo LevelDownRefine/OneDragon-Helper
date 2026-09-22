@@ -23,7 +23,7 @@ from src.utils.utils_runner import (
     spawn_schedule_run,
 )
 from src.utils.utils_weekly import next_target_datetime
-from tests.process_sim import SimProcess
+from tests.support.process_sim import SimProcess
 
 CHAIN_PATH = "config/script_chain/01.yml"
 

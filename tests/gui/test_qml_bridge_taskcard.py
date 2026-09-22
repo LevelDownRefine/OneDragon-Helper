@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QDialog
 
 from src.gui.controllers import task_card
 from src.service import app_service
-from tests.gui_helpers import make_bridge
+from tests.gui.helpers import make_bridge
 
 
 class TestTaskCard(unittest.TestCase):

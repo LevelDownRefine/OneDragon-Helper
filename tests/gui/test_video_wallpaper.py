@@ -138,7 +138,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
             from src.gui.main_window import QmlBridge
             from src.gui.icons import UiIconProvider
             from src.utils.utils_sub_config import resolve_script_path
-            from tests.gui_helpers import make_bridge
+            from tests.gui.helpers import make_bridge
 
             with tempfile.TemporaryDirectory() as directory, patch(
                 "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
@@ -202,7 +202,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
             # 该平台报的值不可信，所以本用例只验证视频层的帧/可见性/缓存逻辑，不做
             # grabWindow 像素断言；真实后端下的整窗圆角由
             # tests/exe/test_gui_rendering_exe.py 覆盖。
-            from tests.gui_helpers import make_bridge
+            from tests.gui.helpers import make_bridge
 
             with tempfile.TemporaryDirectory() as directory, patch(
                 "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",

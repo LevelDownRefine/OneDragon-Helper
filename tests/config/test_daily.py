@@ -1,6 +1,6 @@
 """Daily（声明规则层）：声明解析出的落点、读写规则、特殊日常的覆写点。
 
-端到端等价（写入落点、反读、菜单内容）由 ``tests/test_golden_daily.py`` 的基线守；本文件
+端到端等价（写入落点、反读、菜单内容）由 ``tests/config/test_golden_daily.py`` 的基线守；本文件
 只测 ``Daily`` 自身的语义。读盘一律打桩 ``daily._load``，不触真实文件。
 """
 

@@ -41,4 +41,4 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: src
-        run: uv run python -m unittest discover -s tests -p 'test*.py'
+        run: uv run python -m unittest discover -s tests -t . -p 'test*.py'

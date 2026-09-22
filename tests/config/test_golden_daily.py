@@ -1,6 +1,6 @@
 """固定种子 → 全菜单选择 → 落盘差异和反读；只替换文件 I/O 与外部资源。
 
-显式更新基线：PYTHONPATH=src python -m tests.test_golden_daily --update
+显式更新基线：PYTHONPATH=src python -m tests.config.test_golden_daily --update
 正常测试只读基线，新增选项或修改行为后须审查 JSON 差异。
 """
 
@@ -17,10 +17,10 @@ from src.config import daily as daily_mod
 from src.config import set_config as config_mod
 from src.config import weekly as weekly_mod
 from src.config.daily_config import get_daily_map
-from tests.config_diff import diff_paths
+from tests.support.config_diff import diff_paths
 
 logger = logging.getLogger(__name__)
-GOLDEN_PATH = Path(__file__).parent / "golden/daily_baseline.json"
+GOLDEN_PATH = Path(__file__).parents[1] / "golden/daily_baseline.json"
 DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
@@ -50,7 +50,7 @@ def _seed_files():
     for day in DAYS:
         bgi[f"LeyLine{day}Type"] = "启示之花"
         bgi[f"LeyLine{day}Country"] = "leyLinePositions-乙"
-    maa_path = Path(__file__).parent / "fixtures/maa_gui.new.scrubbed.json"
+    maa_path = Path(__file__).parents[1] / "fixtures/maa_gui.new.scrubbed.json"
     stores = {
         "ok-ww": {
             "data/apps/ok-ww/working/configs/DailyTask.json": {

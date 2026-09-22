@@ -20,7 +20,7 @@ class TestControlBubble(unittest.TestCase):
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
             from src.service.app_service import AppService
-            from tests.gui_helpers import make_bridge
+            from tests.gui.helpers import make_bridge
 
             with (
                 patch.object(AppService, "get_daily_map", return_value={}),

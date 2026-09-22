@@ -1,6 +1,6 @@
 """针对打包产物 OneDragon-Helper.exe 的「运行前关闭残留进程」集成测试（模拟真实情景）。
 
-与 tests/test_schedule.py（ProcessSim 用 mock psutil 测 close_running_scripts）互补：
+与 tests/service/test_schedule.py（ProcessSim 用 mock psutil 测 close_running_scripts）互补：
 本文件**真实启动打包 exe**，用唯一命名的真实 OS 进程（odh_stub_game.exe / odh_stub_body.exe）
 模拟残留游戏与脚本真身，验证冻结后的 exe 真的能按 game_process_name / script_process_name
 杀掉真实进程——这是 mock 永远证明不了的。
