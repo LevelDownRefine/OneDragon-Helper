@@ -14,17 +14,42 @@ call env.bat                     # cmd，同时设置代理 127.0.0.1:7890
 ## 1. 跑测试
 
 ```bash
-cd <root> && export PYTHONPATH=src && python -m unittest discover -s tests -p "test*.py"
+cd <root> && export PYTHONPATH=src && python -m unittest discover -s tests -t . -p "test*.py"
 ```
 
-python -m 把根目录加入 sys.path，PYTHONPATH=src 让 import launcher 可用；两种 import 风格并存，必须在根目录且带 PYTHONPATH=src 跑。测试文件与源码一一对应；GUI 测试开头设 QT_QPA_PLATFORM=offscreen 无头跑 PySide6。文件 I/O 使用 mock 或独立临时目录，不读写真实 config 或游戏脚本路径；临时资源用上下文管理器或 addCleanup 回收。新增/修改功能后必须补测试并跑全套再交付。
+python -m 把根目录加入 sys.path，PYTHONPATH=src 让 import launcher 可用；两种 import 风格并存，必须在根目录且带 PYTHONPATH=src 跑。测试按被测模块和职责归档；GUI 测试开头设 QT_QPA_PLATFORM=offscreen 无头跑 PySide6。文件 I/O 使用 mock 或独立临时目录，不读写真实 config 或游戏脚本路径；临时资源用上下文管理器或 addCleanup 回收。新增/修改功能后必须补测试并跑全套再交付。
+
+`-t .` 将项目根作为测试包的顶层，确保按 `tests.gui`、`tests.config` 等完整包名加载，避免 `tests/tools` 遮蔽项目的 `tools`。子目录须保留 `__init__.py`，否则 unittest 不会递归发现其中的用例。
+
+| 目录 | 归属 |
+|---|---|
+| `tests/gui/` | 控件、控制器、QML、窗口及 GUI 共享夹具 |
+| `tests/config/` | 配置适配器、声明、日常、周常及 golden 验证 |
+| `tests/service/` | 配置服务、链生成、调度和运行编排 |
+| `tests/utils/` | 通用工具、文件读写、路径与系统操作 |
+| `tests/log/` | 日志解析与邮件通知 |
+| `tests/tools/` | 选项同步脚本的离线测试 |
+| `tests/support/` | 跨模块测试辅助代码及其自身测试 |
+| `tests/exe/` | Windows 打包产物集成测试 |
+| `tests/fixtures/`、`tests/golden/` | 静态夹具与 golden 基线 |
+
+根目录仅保留与 `src` 顶层对应的 CLI、launcher、link 测试及手动模拟入口。只跑某一模块时也指定项目根，例如：
+
+```bash
+PYTHONPATH=src python -m unittest discover -s tests/gui -t . -p "test*.py"
+```
+
+- 参数不同但契约相同的场景用具名 `subTest` 合并，每个场景保留独立输入和完整断言；不同失败原因或不同层次的集成测试单独保留。
+- 共享夹具放非 `test_*.py` 模块，不从另一个测试文件导入。`tests/gui/helpers.py` 提供 `get_app()` 和 `make_bridge()`；使用 Qt 图像或窗口前显式创建应用，不依赖导入副作用。
+- 缓存测试使用隔离的注册表并恢复原状态；需要已初始化对象时，在用例中明确构造。golden 使用独立适配器和固定种子，不受其它测试是否预热缓存影响。
+- 合并或迁移测试后，除全量检查外，受影响文件须能独立运行，例如 `PYTHONPATH=src python -m unittest tests.config.test_golden_daily`。只检查“未抛异常”或“结果非空”不足以验证具体行为，应断言结果、调用对象或持久化内容。
 
 runner 子模块测试由 OneDragonRunner 仓库自己的 CI 执行，主仓 CI 只运行主仓测试。
 
 日常 golden 覆盖全部声明菜单选择的保存路径、字段差异及反读，正常测试只读基线。确认行为变更后显式更新，并审查 `tests/golden/daily_baseline.json` 的差异：
 
 ```bash
-PYTHONPATH=src python -m tests.test_golden_daily --update
+PYTHONPATH=src python -m tests.config.test_golden_daily --update
 ```
 
 完整测试清单及本轮发现见 [测试审查记录](docs/test-audit.md)。

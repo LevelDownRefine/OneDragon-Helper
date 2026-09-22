@@ -1,6 +1,6 @@
 """针对打包产物 OneDragon-Helper.exe 的集成测试（专门测 GUI exe）。
 
-与 tests/test_gui_*.py（PySide6 控件 mock 的源码层测试）互补：
+与 tests/gui/（PySide6 控件与 QML 的源码层测试）互补：
 本文件**真正启动打包出来的 GUI exe**，验证它的 CLI 出口能被正确路由并产生可观测结果。
 
 关键约束（决定测试怎么写）：

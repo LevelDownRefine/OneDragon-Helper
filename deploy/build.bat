@@ -155,9 +155,9 @@ REM 只测与打包产物相关的 exe 集成测试（tests/exe/test_*_exe.py：
 REM 经 python -m 从仓库根运行（上方 pushd 使 cwd=仓库根，已在 sys.path，可 import src.*）；
 REM 自动在 deploy/dist 找到刚打好的 exe。需以管理员运行，否则因 uac_admin manifest 整文件 skip。
 if exist "%VENV_PY%" (
-    "%VENV_PY%" -m unittest discover -s tests -p "test_*_exe.py"
+    "%VENV_PY%" -m unittest discover -s tests -t . -p "test_*_exe.py"
 ) else (
-    uv run python -m unittest discover -s tests -p "test_*_exe.py"
+    uv run python -m unittest discover -s tests -t . -p "test_*_exe.py"
 )
 REM exe 测试失败需在 CI 阻断构建（errorlevel 1 → exit /b 1）；本地手动运行仍保持非阻断（仅提示）。
 if errorlevel 1 (
