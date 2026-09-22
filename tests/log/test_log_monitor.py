@@ -652,6 +652,26 @@ class TestActionListsAndReport(unittest.TestCase):
         self.assertIn("脚本运行状况汇总报告", report)
         self.assertNotIn("未知", report)
 
+    def test_summary_counts_splits_by_status(self):
+        """统计数字按状态归类：NO_LOG 归入无日志，与文本统计行同源。"""
+        entries = [
+            self._entry("ok-ww", "A", {"status": "Success"}),
+            self._entry("ok-ef", "B", {"status": "Failed"}),
+            self._entry("BetterGI", "C", {"status": "NoLog"}),
+        ]
+        self.assertEqual(
+            collect_log.summary_counts(entries),
+            {"total": 3, "success": 1, "failed": 1, "no_log": 1},
+        )
+
+    def test_summary_counts_line_uses_counts(self):
+        """文本统计行由 summary_counts 拼出（数字与邮件徽章同一数据源）。"""
+        entries = [self._entry("ok-ww", "A", {"status": "Success"})]
+        self.assertEqual(
+            collect_log.summary_counts_line(entries),
+            "总计: 1 个脚本 | 成功: 1 | 失败: 0 | 无日志: 0",
+        )
+
     def test_build_summary_report_counts_without_stale_action_lines(self):
         """统计行按状态计数；不再列「将重跑 / 将通知」（邮件在重跑之后发，且与表格冗余）。"""
         entries = [
