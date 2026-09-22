@@ -1,12 +1,11 @@
 """
 测试 set_config.py 中各 ScriptConfig 子类的行为。
 
-覆盖每个子类的 _update_task（含二级序列）/ set_daily_task / _init_config / _is_aligned 等方法。
+覆盖各脚本的日常更新、开关互不干扰、模板对齐和初始化。
 所有文件 I/O 均通过 mock 隔离，不依赖真实 config 文件。
 """
 
 import json
-import os
 import unittest
 from contextlib import ExitStack
 from unittest.mock import MagicMock, mock_open, patch
@@ -18,7 +17,6 @@ from src.config.set_config import (
     EndfieldConfig,
     GenshinConfig,
     NTEConfig,
-    ScriptConfig,
     StarRailConfig,
     WutheringWavesConfig,
     ZenlessZoneZeroConfig,
@@ -41,84 +39,6 @@ def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
     return cfg._dispatch_daily(daily_name).read()
 
 
-# ============================================================
-# 基类 ScriptConfig
-# ============================================================
-
-
-class TestScriptConfigBase(unittest.TestCase):
-    """测试基类 _update_task / set_daily_task 的默认行为"""
-
-    def test_set_daily_task_unknown_daily_raises(self):
-        """日常展示名不在声明里 → assert（落点全部由声明推导，认不出即报）。"""
-        cfg = WutheringWavesConfig()
-        with (
-            patch.object(Daily, "_load_daily_config", return_value={}),
-            self.assertRaisesRegex(AssertionError, "未知日常"),
-        ):
-            cfg.set_daily_task("不存在的日常", "凝素领域", 3)
-
-    def test_set_task_changed_saves(self):
-        """set_daily_task 有修改时应（按声明落点）落盘"""
-        cfg = WutheringWavesConfig()
-        with (
-            patch.object(
-                Daily, "_load_daily_config", return_value={"Which to Farm": "old"}
-            ),
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "凝素领域", 3)
-        self.assertEqual(
-            mock_save.call_args[0][0],
-            {
-                "Which to Farm": "Forgery Challenge",
-                "Which Forgery Challenge to Farm": 3,
-            },
-        )
-
-    def test_set_daily_task_unchanged_no_save(self):
-        """set_daily_task 无修改时不调用 _save"""
-        cfg = WutheringWavesConfig()
-        current = {
-            "Which to Farm": "Forgery Challenge",
-            "Which Forgery Challenge to Farm": 3,
-        }
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=current),
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "凝素领域", 3)
-        mock_save.assert_not_called()
-
-    def test_daily_physical_name_available_on_base(self):
-        """日常对象在基类可取（非异环专属）：单日常脚本亦然，物理名回落展示名。"""
-        cfg = WutheringWavesConfig()
-        self.assertEqual(cfg._dispatch_daily("每日任务").physical_name, "每日任务")
-        with self.assertRaisesRegex(AssertionError, "未知日常"):
-            cfg._dispatch_daily("不存在的日常")
-
-    def test_set_daily_task_without_daily_raises(self):
-        """写路径必须给出日常展示名（单日常脚本也不例外）。"""
-        with patch("src.config.set_config.get_daily_configs", return_value=[]):
-            cfg = ScriptConfig()
-        cfg.display_name = "测试"
-        with (
-            patch.object(Daily, "_load_daily_config", return_value={"task": "old"}),
-            self.assertRaisesRegex(AssertionError, "必须指定日常"),
-        ):
-            cfg.set_daily_task(None, "new")
-
-
-# ============================================================
-# _save / _verify_saved（保存后重读校验）
-# ============================================================
-
-
-# ============================================================
-# 鸣潮 WutheringWavesConfig
-# ============================================================
-
-
 class TestWutheringWavesConfig(unittest.TestCase):
     def setUp(self):
         self.cfg = WutheringWavesConfig()
@@ -132,86 +52,62 @@ class TestWutheringWavesConfig(unittest.TestCase):
         self.assertIn("模拟领域", daily.task_map)
         self.assertIn("无音区", daily.task_map)
 
-    def test_update_task_maps_task(self):
-        config = {"Which to Farm": "old", "Which Tacet Suppression to Farm": 1}
-        changed = _update(self.cfg, config, "每日任务", "无音区", 3)
-        self.assertTrue(changed)
-        self.assertEqual(config["Which to Farm"], "Tacet Suppression")
-
-    # ---- _update_task: 模拟领域 ----
-
-    def test_update_sequence_simulation(self):
-        config = {"Which to Farm": "Simulation Challenge", "Material Selection": "old"}
-        changed = _update(self.cfg, config, "每日任务", "模拟领域", "共鸣者经验")
-        self.assertTrue(changed)
-        self.assertEqual(config["Material Selection"], "Resonator EXP")
-
-    def test_update_sequence_simulation_no_change(self):
-        config = {
-            "Which to Farm": "Simulation Challenge",
-            "Material Selection": "Weapon EXP",
-        }
-        changed = _update(self.cfg, config, "每日任务", "模拟领域", "武器经验")
-        self.assertFalse(changed)
+    def test_daily_update_and_repeat_are_idempotent(self):
+        cases = (
+            (
+                "模拟领域",
+                "共鸣者经验",
+                "Simulation Challenge",
+                "Material Selection",
+                "Resonator EXP",
+            ),
+            (
+                "模拟领域",
+                "武器经验",
+                "Simulation Challenge",
+                "Material Selection",
+                "Weapon EXP",
+            ),
+            ("无音区", 3, "Tacet Suppression", "Which Tacet Suppression to Farm", 3),
+            ("无音区", 2, "Tacet Suppression", "Which Tacet Suppression to Farm", 2),
+            ("凝素领域", 4, "Forgery Challenge", "Which Forgery Challenge to Farm", 4),
+            ("凝素领域", 2, "Forgery Challenge", "Which Forgery Challenge to Farm", 2),
+        )
+        for task, sequence, physical_task, field, physical_sequence in cases:
+            with self.subTest(task=task, sequence=sequence):
+                config = {"Which to Farm": "old", "unrelated": {"keep": True}}
+                expected = {
+                    "Which to Farm": physical_task,
+                    field: physical_sequence,
+                    "unrelated": {"keep": True},
+                }
+                daily = self.cfg._dispatch_daily("每日任务")
+                with (
+                    patch.object(daily, "_load_daily_config", return_value=config),
+                    patch.object(daily, "_save_daily_config") as save,
+                ):
+                    self.assertTrue(daily.update(task, sequence))
+                    self.assertEqual(config, expected)
+                    save.assert_called_once_with(expected)
+                    save.reset_mock()
+                    self.assertFalse(daily.update(task, sequence))
+                    self.assertEqual(config, expected)
+                    save.assert_not_called()
 
     def test_update_sequence_simulation_unknown_raises(self):
         config = {"Which to Farm": "Simulation Challenge", "Material Selection": "old"}
         with self.assertRaises(AssertionError):
             _update(self.cfg, config, "每日任务", "模拟领域", "不存在")
 
-    # ---- _update_task: 无音区 ----
-
-    def test_update_sequence_tacet(self):
-        config = {
-            "Which to Farm": "Tacet Suppression",
-            "Which Tacet Suppression to Farm": 1,
-        }
-        changed = _update(self.cfg, config, "每日任务", "无音区", 3)
-        self.assertTrue(changed)
-        self.assertEqual(config["Which Tacet Suppression to Farm"], 3)
-
-    def test_update_sequence_tacet_no_change(self):
-        config = {
-            "Which to Farm": "Tacet Suppression",
-            "Which Tacet Suppression to Farm": 2,
-        }
-        changed = _update(self.cfg, config, "每日任务", "无音区", 2)
-        self.assertFalse(changed)
-
-    # ---- _update_task: 凝素领域 ----
-
-    def test_update_sequence_forgery(self):
-        config = {
-            "Which to Farm": "Forgery Challenge",
-            "Which Forgery Challenge to Farm": 1,
-        }
-        changed = _update(self.cfg, config, "每日任务", "凝素领域", 4)
-        self.assertTrue(changed)
-        self.assertEqual(config["Which Forgery Challenge to Farm"], 4)
-
-    def test_update_sequence_forgery_no_change(self):
-        config = {
-            "Which to Farm": "Forgery Challenge",
-            "Which Forgery Challenge to Farm": 2,
-        }
-        changed = _update(self.cfg, config, "每日任务", "凝素领域", 2)
-        self.assertFalse(changed)
-
-    # ---- _update_task: None ----
-
     def test_update_sequence_none_raises(self):
         config = {"Which to Farm": "Simulation Challenge"}
         with self.assertRaises(AssertionError):
             _update(self.cfg, config, "每日任务", "模拟领域", None)
 
-    # ---- _update_task: 未知副本类型 ----
-
     def test_update_sequence_unknown_daily_task_type_raises(self):
         config = {"Which to Farm": "Unknown Type"}
         with self.assertRaises(AssertionError):
             _update(self.cfg, config, "每日任务", "未知", "1")
-
-    # ---- set_daily_task 集成 ----
 
     def test_set_daily_task_with_sequence_saves(self):
         config = {
@@ -227,11 +123,6 @@ class TestWutheringWavesConfig(unittest.TestCase):
         saved = mock_save.call_args[0][0]
         self.assertEqual(saved["Which to Farm"], "Forgery Challenge")
         self.assertEqual(saved["Which Forgery Challenge to Farm"], 3)
-
-
-# ============================================================
-# 原神 GenshinConfig
-# ============================================================
 
 
 class TestGenshinConfig(unittest.TestCase):
@@ -319,11 +210,6 @@ class TestGenshinConfig(unittest.TestCase):
         self.assertEqual(config["DomainName"], "圣遗物")
 
 
-# ============================================================
-# 终末地 EndfieldConfig
-# ============================================================
-
-
 class TestEndfieldConfig(unittest.TestCase):
     def test_init_attributes(self):
         with patch.object(EndfieldConfig, "_init_config"):
@@ -406,11 +292,6 @@ class TestEndfieldConfig(unittest.TestCase):
         self.assertEqual(saved["ExtraKey"], 1)
 
 
-# ============================================================
-# 绝区零 ZenlessZoneZeroConfig
-# ============================================================
-
-
 class TestZenlessZoneZeroConfig(unittest.TestCase):
     def test_init_attributes(self):
         template = {"plan_list": [], "double_reward": False}
@@ -470,7 +351,7 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         self.assertEqual(saved["double_reward"], True)
         self.assertEqual(saved["ExtraKey"], 1)
 
-    def test_set_daily_task_only_prints(self):
+    def test_set_daily_task_does_not_read_or_write(self):
         """绝区零副本无需适配：NoopDaily.update 不读不写。"""
         with (
             patch("os.path.exists", return_value=True),
@@ -485,105 +366,93 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         mock_load.assert_not_called()
         mock_save.assert_not_called()
 
-    # ---- _is_aligned 单元测试 ----
-
     def _make_cfg(self):
         """创建一个跳过 _init_config 的 ZenlessZoneZeroConfig 实例"""
         with patch.object(ZenlessZoneZeroConfig, "_init_config"):
             return ZenlessZoneZeroConfig()
 
-    def test_is_aligned_identical(self):
-        template = {
-            "plan_list": [{"tab_name": "A", "category_name": "x"}],
-            "double_reward": False,
-        }
-        config = {
-            "plan_list": [{"tab_name": "A", "category_name": "x"}],
-            "double_reward": False,
-        }
+    def test_template_alignment_cases(self):
+        cases = (
+            (
+                "identical",
+                {
+                    "plan_list": [{"tab_name": "A", "category_name": "x"}],
+                    "double_reward": False,
+                },
+                {
+                    "plan_list": [{"tab_name": "A", "category_name": "x"}],
+                    "double_reward": False,
+                },
+                True,
+            ),
+            (
+                "extra_fields_in_config_ok",
+                {"plan_list": [{"tab_name": "A", "category_name": "x", "extra": 1}]},
+                {"plan_list": [{"tab_name": "A", "category_name": "x"}]},
+                True,
+            ),
+            (
+                "more_items_in_config_ok",
+                {
+                    "plan_list": [
+                        {"tab_name": "A", "category_name": "x"},
+                        {"tab_name": "B", "category_name": "y"},
+                    ]
+                },
+                {"plan_list": [{"tab_name": "A", "category_name": "x"}]},
+                True,
+            ),
+            (
+                "order_mismatch_returns_false",
+                {
+                    "plan_list": [
+                        {"tab_name": "B", "category_name": "y"},
+                        {"tab_name": "A", "category_name": "x"},
+                    ]
+                },
+                {
+                    "plan_list": [
+                        {"tab_name": "A", "category_name": "x"},
+                        {"tab_name": "B", "category_name": "y"},
+                    ]
+                },
+                False,
+            ),
+            (
+                "field_value_mismatch_returns_false",
+                {"plan_list": [{"tab_name": "A", "category_name": "z"}]},
+                {"plan_list": [{"tab_name": "A", "category_name": "x"}]},
+                False,
+            ),
+            (
+                "missing_field_returns_false",
+                {"plan_list": [{"tab_name": "A"}]},
+                {"plan_list": [{"tab_name": "A", "category_name": "x"}]},
+                False,
+            ),
+            (
+                "config_shorter_list_returns_false",
+                {"plan_list": [{"tab_name": "A", "category_name": "x"}]},
+                {
+                    "plan_list": [
+                        {"tab_name": "A", "category_name": "x"},
+                        {"tab_name": "B", "category_name": "y"},
+                    ]
+                },
+                False,
+            ),
+            ("missing_top_key_returns_false", {}, {"double_reward": False}, False),
+            (
+                "top_key_value_mismatch_returns_false",
+                {"double_reward": True},
+                {"double_reward": False},
+                False,
+            ),
+        )
         cfg = self._make_cfg()
-        self.assertTrue(cfg._is_aligned(config, template))
-
-    def test_is_aligned_extra_fields_in_config_ok(self):
-        """config 中 plan_list 项有额外字段，模板中出现的字段一致即可"""
-        template = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
-        config = {"plan_list": [{"tab_name": "A", "category_name": "x", "extra": 1}]}
-        cfg = self._make_cfg()
-        self.assertTrue(cfg._is_aligned(config, template))
-
-    def test_is_aligned_more_items_in_config_ok(self):
-        """config plan_list 比模板长是可以的"""
-        template = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
-        config = {
-            "plan_list": [
-                {"tab_name": "A", "category_name": "x"},
-                {"tab_name": "B", "category_name": "y"},
-            ]
-        }
-        cfg = self._make_cfg()
-        self.assertTrue(cfg._is_aligned(config, template))
-
-    def test_is_aligned_order_mismatch_returns_false(self):
-        """plan_list 顺序不一致应返回 False"""
-        template = {
-            "plan_list": [
-                {"tab_name": "A", "category_name": "x"},
-                {"tab_name": "B", "category_name": "y"},
-            ]
-        }
-        config = {
-            "plan_list": [
-                {"tab_name": "B", "category_name": "y"},
-                {"tab_name": "A", "category_name": "x"},
-            ]
-        }
-        cfg = self._make_cfg()
-        self.assertFalse(cfg._is_aligned(config, template))
-
-    def test_is_aligned_field_value_mismatch_returns_false(self):
-        """plan_list 项字段值不一致应返回 False"""
-        template = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
-        config = {"plan_list": [{"tab_name": "A", "category_name": "z"}]}
-        cfg = self._make_cfg()
-        self.assertFalse(cfg._is_aligned(config, template))
-
-    def test_is_aligned_missing_field_returns_false(self):
-        """plan_list 项缺少模板中出现的字段应返回 False"""
-        template = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
-        config = {"plan_list": [{"tab_name": "A"}]}
-        cfg = self._make_cfg()
-        self.assertFalse(cfg._is_aligned(config, template))
-
-    def test_is_aligned_config_shorter_list_returns_false(self):
-        """config plan_list 比模板短应返回 False"""
-        template = {
-            "plan_list": [
-                {"tab_name": "A", "category_name": "x"},
-                {"tab_name": "B", "category_name": "y"},
-            ]
-        }
-        config = {"plan_list": [{"tab_name": "A", "category_name": "x"}]}
-        cfg = self._make_cfg()
-        self.assertFalse(cfg._is_aligned(config, template))
-
-    def test_is_aligned_missing_top_key_returns_false(self):
-        """config 缺少模板中的顶层 key 应返回 False"""
-        template = {"double_reward": False}
-        config = {}
-        cfg = self._make_cfg()
-        self.assertFalse(cfg._is_aligned(config, template))
-
-    def test_is_aligned_top_key_value_mismatch_returns_false(self):
-        """顶层 key 值不一致应返回 False"""
-        template = {"double_reward": False}
-        config = {"double_reward": True}
-        cfg = self._make_cfg()
-        self.assertFalse(cfg._is_aligned(config, template))
-
-
-# ============================================================
-# 崩铁 StarRailConfig
-# ============================================================
+        for case, config, template, expected in cases:
+            with self.subTest(case=case):
+                self.assertIs(cfg._is_aligned(config, template), expected)
 
 
 class TestStarRailConfig(unittest.TestCase):
@@ -607,11 +476,6 @@ class TestStarRailConfig(unittest.TestCase):
             cfg.set_daily_task("每日任务", "培养目标")
         mock_load.assert_not_called()
         mock_save.assert_not_called()
-
-
-# ============================================================
-# 异环 NTEConfig
-# ============================================================
 
 
 class TestNTEConfig(unittest.TestCase):
@@ -700,35 +564,28 @@ class TestNTEConfig(unittest.TestCase):
         )
         return stack
 
-    def test_set_daily_task_with_sequence_saves(self):
-        config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 1}}
-        routine = (
-            self._make_routine()
-        )  # 已对齐（异象界域启用、追猎停用）→ 不触发 routine 写盘
-        mock_save = MagicMock()
-        with (
-            self._patch_load(config, routine),
-            patch.object(Daily, "_save_daily_config", mock_save),
-            patch.object(Daily, "_save_routine_config", mock_save),
-        ):
-            self.cfg.set_daily_task("异象界域", "空幕", 3)
-        mock_save.assert_called_once()  # 仅主配置落盘，routine 已对齐无需更新
-        saved = mock_save.call_args[0][0]
-        self.assertEqual(saved["daily_anomaly"]["空幕序号"], 3)
-
-    def test_set_daily_task_saves_and_enables_own_daily(self):
-        """写副本：落到指定日常的段并启用它（无异动则不动第二份文件）。"""
-        config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 1}}
-        routine = self._make_routine()
-        mock_save = MagicMock()
-        with (
-            self._patch_load(config, routine),
-            patch.object(Daily, "_save_daily_config", mock_save),
-            patch.object(Daily, "_save_routine_config", mock_save),
-        ):
-            self.cfg.set_daily_task("异象界域", "空幕", 3)
-        saved = mock_save.call_args[0][0]
-        self.assertEqual(saved["daily_anomaly"]["空幕序号"], 3)
+    def test_selection_saves_config_and_enables_only_its_own_routine_item(self):
+        for already_enabled in (False, True):
+            with self.subTest(already_enabled=already_enabled):
+                config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 1}}
+                routine = self._make_routine(anomaly_enabled=already_enabled)
+                with (
+                    self._patch_load(config, routine),
+                    patch.object(Daily, "_save_daily_config") as save_config,
+                    patch.object(Daily, "_save_routine_config") as save_routine,
+                ):
+                    self.cfg.set_daily_task("异象界域", "空幕", 3)
+                save_config.assert_called_once_with(
+                    {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 3}}
+                )
+                expected = self._make_routine(
+                    anomaly_enabled=True, hunter_enabled=False
+                )
+                self.assertEqual(routine, expected)
+                if already_enabled:
+                    save_routine.assert_not_called()
+                else:
+                    save_routine.assert_called_once_with(expected)
 
     def test_read_daily_task_explicit_daily_ignores_enabled_state(self):
         """指定日常时按该日常反读，不受 Routine Items 启用状态影响。"""
@@ -882,8 +739,6 @@ class TestNTEConfig(unittest.TestCase):
         with self.assertRaises(AssertionError):
             _update(self.cfg, config, "异象界域", "空幕", None)
 
-    # ---- 日常开关（Routine Items）----
-
     def test_set_daily_enabled_turns_off_target_only(self):
         """停用某日常：只改它的 Routine Item，另一个保持原值，且不动副本选择。"""
         config = {"daily_anomaly": {"任务类型": "空幕", "空幕序号": 1}}
@@ -966,32 +821,24 @@ class TestNTEConfig(unittest.TestCase):
             self.assertIsNone(enabled["异象界域"])
             self.assertIsNone(enabled["追猎目标"])
 
-    def test_update_sequence_hunt_writes_boss(self):
-        """追猎目标经 _update_task 在 daily_anomaly_hunter 写 追猎目标（boss），不依赖 _bind_section。"""
-        config = {"daily_anomaly_hunter": {"追猎目标": "音霸魔王"}}
-        changed = _update(self.cfg, config, "追猎目标", "追猎目标", "海囚")
-        self.assertTrue(changed)
-        self.assertEqual(config["daily_anomaly_hunter"]["追猎目标"], "海囚")
-
-    def test_update_task_skips_hunt(self):
-        """追猎目标不写任务类型字段（仅写 boss 序号、不写 任务类型），不依赖 _bind_section。"""
-        config = {
-            "daily_anomaly": {"任务类型": "空幕"},
-            "daily_anomaly_hunter": {"追猎目标": "音霸魔王"},
-        }
-        changed = _update(self.cfg, config, "追猎目标", "追猎目标", "海囚")
-        self.assertTrue(changed)
-        self.assertEqual(config["daily_anomaly"]["任务类型"], "空幕")
+    def test_hunter_update_preserves_the_other_daily_section(self):
+        for anomaly in (None, {"任务类型": "空幕"}):
+            with self.subTest(anomaly=anomaly):
+                config = {"daily_anomaly_hunter": {"追猎目标": "音霸魔王"}}
+                if anomaly is not None:
+                    config["daily_anomaly"] = anomaly.copy()
+                expected = {"daily_anomaly_hunter": {"追猎目标": "海囚"}}
+                if anomaly is not None:
+                    expected["daily_anomaly"] = anomaly.copy()
+                self.assertTrue(
+                    _update(self.cfg, config, "追猎目标", "追猎目标", "海囚")
+                )
+                self.assertEqual(config, expected)
 
     def test_update_sequence_hunt_no_boss_raises(self):
         """未选具体 boss（sequence=None）→ assert。"""
         with self.assertRaises(AssertionError):
             _update(self.cfg, {}, "追猎目标", "追猎目标", None)
-
-
-# ============================================================
-# 明日方舟 ArknightsConfig（粥）
-# ============================================================
 
 
 class TestArknightsConfig(unittest.TestCase):
@@ -1015,369 +862,169 @@ class TestArknightsConfig(unittest.TestCase):
             ArknightsConfig()._init_config()
         save.assert_not_called()
 
-    # ---- _is_aligned ----
-
-    def test_is_aligned_identical(self):
-        cfg = self._make_cfg()
-        template = {
-            "Configurations": {
-                "Default": {
-                    "TaskQueue": [
-                        {"Name": "开始唤醒", "$type": "StartUpTask"},
-                        {
-                            "Name": "剿灭",
-                            "$type": "FightTask",
-                            "StagePlan": ["Annihilation"],
-                        },
-                    ]
-                }
-            }
-        }
-        config = {
-            "Configurations": {
-                "Default": {
-                    "TaskQueue": [
-                        {"Name": "开始唤醒", "$type": "StartUpTask", "ExtraKey": 1},
-                        {
-                            "Name": "剿灭",
-                            "$type": "FightTask",
-                            "StagePlan": ["Annihilation"],
-                            "IsEnable": True,
-                        },
-                    ]
-                }
-            }
-        }
-        self.assertTrue(cfg._is_aligned(config, template))
-
-    def test_is_aligned_name_mismatch(self):
-        cfg = self._make_cfg()
-        template = {
-            "Configurations": {
-                "Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]}
-            }
-        }
-        config = {
-            "Configurations": {
-                "Default": {"TaskQueue": [{"Name": "红票", "$type": "FightTask"}]}
-            }
-        }
-        self.assertFalse(cfg._is_aligned(config, template))
-
-    def test_is_aligned_type_mismatch(self):
-        cfg = self._make_cfg()
-        template = {
-            "Configurations": {
-                "Default": {"TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]}
-            }
-        }
-        config = {
-            "Configurations": {
-                "Default": {"TaskQueue": [{"Name": "剿灭", "$type": "StartUpTask"}]}
-            }
-        }
-        self.assertFalse(cfg._is_aligned(config, template))
-
-    def test_is_aligned_stageplan_mismatch(self):
-        cfg = self._make_cfg()
-        template = {
-            "Configurations": {
-                "Default": {
-                    "TaskQueue": [
-                        {
-                            "Name": "剿灭",
-                            "$type": "FightTask",
-                            "StagePlan": ["Annihilation"],
-                        }
-                    ]
-                }
-            }
-        }
-        config = {
-            "Configurations": {
-                "Default": {
-                    "TaskQueue": [
-                        {"Name": "剿灭", "$type": "FightTask", "StagePlan": ["AP-5"]}
-                    ]
-                }
-            }
-        }
-        self.assertFalse(cfg._is_aligned(config, template))
-
-    def test_is_aligned_cur_shorter_returns_false(self):
-        cfg = self._make_cfg()
-        template = {
-            "Configurations": {
-                "Default": {
-                    "TaskQueue": [
-                        {"Name": "A", "$type": "X"},
-                        {"Name": "B", "$type": "Y"},
-                    ]
-                }
-            }
-        }
-        config = {
-            "Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}}
-        }
-        self.assertFalse(cfg._is_aligned(config, template))
-
-    def test_is_aligned_cur_longer_ok(self):
-        """cur 比 template 长是可以的"""
-        cfg = self._make_cfg()
-        template = {
-            "Configurations": {"Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}}
-        }
-        config = {
-            "Configurations": {
-                "Default": {
-                    "TaskQueue": [
-                        {"Name": "A", "$type": "X"},
-                        {"Name": "B", "$type": "Y"},
-                    ]
-                }
-            }
-        }
-        self.assertTrue(cfg._is_aligned(config, template))
-
-    def test_is_aligned_non_fight_task_skips_stageplan(self):
-        """非 FightTask 不检查 StagePlan（因为模板中没写 StagePlan）"""
-        cfg = self._make_cfg()
-        template = {
-            "Configurations": {
-                "Default": {"TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]}
-            }
-        }
-        config = {
-            "Configurations": {
-                "Default": {"TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]}
-            }
-        }
-        self.assertTrue(cfg._is_aligned(config, template))
-
-    # ---- set_daily_task ----
-
-
-class TestGetGameExePath(unittest.TestCase):
-    """测试 ScriptConfig.get_game_exe_path：从各脚本游戏配置中提取游戏路径。"""
-
-    def test_unadapted_base_returns_none(self):
-        """基类未适配（_game_path_keys 为空）→ None，不触发任何读取"""
-        with patch("src.config.set_config.get_daily_configs", return_value=[]):
-            cfg = ScriptConfig()
-        with patch("src.config.set_config.load_game_config") as mock_load:
-            got = cfg.get_game_exe_path()
-        self.assertIsNone(got)
-        mock_load.assert_not_called()
-
-    def test_ok_series_pc_full_path(self):
-        """OK 系（ok-ww/ok-ef）读取 devices.json 的 pc_full_path。
-
-        异环（ok-nte）已重写 get_game_exe_path 返回启动器路径，不在此列（见专项测试）。
-        """
-        for script_name in ("ok-ww", "ok-ef"):
-            with patch(
-                "src.config.set_config.load_game_config",
-                return_value={
-                    "preferred": "pc_1",
-                    "pc_full_path": "D:\\Game\\game.exe",
-                },
-            ):
-                got = set_config._CONFIGS[script_name]().get_game_exe_path()
-            self.assertEqual(got, "D:\\Game\\game.exe")
-
-    def test_nte_launcher_found_upward(self):
-        """异环启动器在游戏安装根目录（从游戏本体逐级上溯）→ 返回 NTELauncher.exe 路径"""
-        game_exe = os.path.join(
-            "D:/Neverness To Everness",
-            "Client",
-            "WindowsNoEditor",
-            "HT",
-            "Binaries",
-            "Win64",
-            "HTGame.exe",
-        )
-        launcher = os.path.join("D:/Neverness To Everness", "NTELauncher.exe")
-        with (
-            patch(
-                "src.config.set_config.load_game_config",
-                return_value={"pc_full_path": game_exe},
-            ),
-            patch("os.path.isfile", side_effect=lambda p: p == launcher),
-        ):
-            got = set_config.get_game_exe_path("ok-nte")
-        self.assertEqual(got, launcher)
-
-    def test_nte_launcher_missing_returns_none(self):
-        """异环启动器不存在（上溯到盘符根也找不到）→ None，GUI 提示「未找到游戏路径」"""
-        game_exe = os.path.join(
-            "D:/Neverness To Everness",
-            "Client",
-            "WindowsNoEditor",
-            "HT",
-            "Binaries",
-            "Win64",
-            "HTGame.exe",
-        )
-        with (
-            patch(
-                "src.config.set_config.load_game_config",
-                return_value={"pc_full_path": game_exe},
-            ),
-            patch("os.path.isfile", return_value=False),
-        ):
-            got = set_config.get_game_exe_path("ok-nte")
-        self.assertIsNone(got)
-
-    def test_nte_game_exe_missing_returns_none(self):
-        """异环游戏本体路径读不到（devices.json 缺失）→ None"""
-        with patch("src.config.set_config.load_game_config", return_value=None):
-            got = set_config.get_game_exe_path("ok-nte")
-        self.assertIsNone(got)
-
-    def test_genshin_nested_install_path(self):
-        """原神（BetterGI）读取 config.json 的 genshinStartConfig.installPath（嵌套）"""
-        with patch(
-            "src.config.set_config.load_game_config",
-            return_value={
-                "genshinStartConfig": {
-                    "installPath": "D:\\Genshin\\YuanShen.exe",
-                }
-            },
-        ):
-            got = set_config.get_game_exe_path("BetterGI")
-        self.assertEqual(got, "D:\\Genshin\\YuanShen.exe")
-
-    def test_game_path_top_level(self):
-        """绝区零/崩铁读取顶层 game_path"""
-        for script_name in ("OneDragon-Launcher", "March7th-Launcher"):
-            with patch(
-                "src.config.set_config.load_game_config",
-                return_value={"game_path": "D:\\Game\\game.exe"},
-            ):
-                got = set_config._CONFIGS[script_name]().get_game_exe_path()
-            self.assertEqual(got, "D:\\Game\\game.exe")
-
-    def test_arknights_nested_emulator_path(self):
-        """粥（MAA）读取 gui.new.json 的 Configurations.Default.Gui.StartUpSettings.EmulatorPath（多级嵌套）"""
-        with patch(
-            "src.config.set_config.load_game_config",
-            return_value={
-                "Configurations": {
-                    "Default": {
-                        "Gui": {
-                            "StartUpSettings": {
-                                "EmulatorPath": "C:\\MuMu\\#0 MuMu安卓设备.lnk",
-                            }
+    def test_template_alignment_cases(self):
+        cases = (
+            (
+                "identical",
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [
+                                {
+                                    "Name": "开始唤醒",
+                                    "$type": "StartUpTask",
+                                    "ExtraKey": 1,
+                                },
+                                {
+                                    "Name": "剿灭",
+                                    "$type": "FightTask",
+                                    "StagePlan": ["Annihilation"],
+                                    "IsEnable": True,
+                                },
+                            ]
                         }
                     }
-                }
-            },
-        ):
-            got = set_config.get_game_exe_path("MAA")
-        self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
-
-    def test_missing_config_returns_none(self):
-        """游戏配置文件缺失（load_game_config 返回 None）→ None"""
-        with patch("src.config.set_config.load_game_config", return_value=None):
-            got = set_config.get_game_exe_path("ok-ww")
-        self.assertIsNone(got)
-
-    def test_missing_field_returns_none(self):
-        """配置中缺字段 → None"""
-        with patch(
-            "src.config.set_config.load_game_config",
-            return_value={"other": "x"},
-        ):
-            got = set_config.get_game_exe_path("ok-ww")
-        self.assertIsNone(got)
-
-    def test_empty_value_returns_none(self):
-        """字段值为空字符串 → None"""
-        with patch(
-            "src.config.set_config.load_game_config",
-            return_value={"pc_full_path": ""},
-        ):
-            got = set_config.get_game_exe_path("ok-ww")
-        self.assertIsNone(got)
-
-
-class TestGetGameExePathAdapter(unittest.TestCase):
-    """测试适配器接口 get_game_exe_path 的分发逻辑"""
-
-    def test_unknown_process_returns_none(self):
-        """未注册（自定义）进程 → None"""
-        got = set_config.get_game_exe_path("不存在")
-        self.assertIsNone(got)
-
-    def test_known_process_dispatches(self):
-        """已注册进程 → 走对应子类"""
-        with patch(
-            "src.config.set_config.load_game_config",
-            return_value={"pc_full_path": "D:\\Game\\game.exe"},
-        ):
-            got = set_config.get_game_exe_path("ok-ww")
-        self.assertEqual(got, "D:\\Game\\game.exe")
-
-
-class TestSetConfigAdapter(unittest.TestCase):
-    """测试适配器接口 set_config() 的分发逻辑"""
-
-    def test_skip_when_task_name_none(self):
-        """task_name 为 None 时直接返回，不调用适配器"""
-        mock_instance = MagicMock()
-        mock_factory = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config("ok-ww", task_name=None)
-        mock_factory.assert_not_called()
-        mock_instance.set_daily_task.assert_not_called()
-
-    def test_skip_when_task_name_empty(self):
-        """task_name 为空串时直接返回，不调用适配器"""
-        mock_instance = MagicMock()
-        mock_factory = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config("ok-ww", task_name="")
-        mock_factory.assert_not_called()
-        mock_instance.set_daily_task.assert_not_called()
-
-    def test_skip_when_task_name_unselected(self):
-        """task_name 为「未选择」时直接返回，不调用适配器"""
-        mock_instance = MagicMock()
-        mock_factory = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config("ok-ww", task_name="未选择")
-        mock_factory.assert_not_called()
-        mock_instance.set_daily_task.assert_not_called()
-
-    def test_unknown_process_skips_gracefully(self):
-        """未注册（自定义）进程即使带副本也优雅跳过，不报错、不实例化任何子类"""
-        mock_instance = MagicMock()
-        mock_factory = MagicMock(return_value=mock_instance)
-        # 已注册脚本作为「无关脚本」在场：未知标识不得命中任何子类
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config("不存在", task_name="副本", sequence="序列")
-        mock_factory.assert_not_called()
-        mock_instance.set_daily_task.assert_not_called()
-
-    def test_unknown_process_does_not_touch_registry(self):
-        """未注册进程不会命中注册表中的任何子类"""
-        mock_instance = MagicMock()
-        mock_factory = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config("自定义脚本", task_name="副本")
-        mock_factory.assert_not_called()
-        mock_instance.set_daily_task.assert_not_called()
-
-    def test_dispatches_to_correct_subclass(self):
-        """验证 set_config 正确分发到对应子类（日常名一并透传，顺序为日常→副本→序列）"""
-        mock_instance = MagicMock()
-        mock_factory = MagicMock(return_value=mock_instance)
-        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
-            set_config.set_config(
-                "ok-ww",
-                daily_display_name="每日任务",
-                task_name="无音区",
-                sequence="1",
-            )
-        mock_factory.assert_called_once()
-        mock_instance.set_daily_task.assert_called_once_with("每日任务", "无音区", "1")
+                },
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [
+                                {"Name": "开始唤醒", "$type": "StartUpTask"},
+                                {
+                                    "Name": "剿灭",
+                                    "$type": "FightTask",
+                                    "StagePlan": ["Annihilation"],
+                                },
+                            ]
+                        }
+                    }
+                },
+                True,
+            ),
+            (
+                "name_mismatch",
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [{"Name": "红票", "$type": "FightTask"}]
+                        }
+                    }
+                },
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]
+                        }
+                    }
+                },
+                False,
+            ),
+            (
+                "type_mismatch",
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [{"Name": "剿灭", "$type": "StartUpTask"}]
+                        }
+                    }
+                },
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]
+                        }
+                    }
+                },
+                False,
+            ),
+            (
+                "stageplan_mismatch",
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [
+                                {
+                                    "Name": "剿灭",
+                                    "$type": "FightTask",
+                                    "StagePlan": ["AP-5"],
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [
+                                {
+                                    "Name": "剿灭",
+                                    "$type": "FightTask",
+                                    "StagePlan": ["Annihilation"],
+                                }
+                            ]
+                        }
+                    }
+                },
+                False,
+            ),
+            (
+                "cur_shorter_returns_false",
+                {
+                    "Configurations": {
+                        "Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}
+                    }
+                },
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [
+                                {"Name": "A", "$type": "X"},
+                                {"Name": "B", "$type": "Y"},
+                            ]
+                        }
+                    }
+                },
+                False,
+            ),
+            (
+                "cur_longer_ok",
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [
+                                {"Name": "A", "$type": "X"},
+                                {"Name": "B", "$type": "Y"},
+                            ]
+                        }
+                    }
+                },
+                {
+                    "Configurations": {
+                        "Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}
+                    }
+                },
+                True,
+            ),
+            (
+                "non_fight_task_skips_stageplan",
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]
+                        }
+                    }
+                },
+                {
+                    "Configurations": {
+                        "Default": {
+                            "TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]
+                        }
+                    }
+                },
+                True,
+            ),
+        )
+        cfg = self._make_cfg()
+        for case, config, template, expected in cases:
+            with self.subTest(case=case):
+                self.assertIs(cfg._is_aligned(config, template), expected)

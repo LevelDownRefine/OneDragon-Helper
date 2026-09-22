@@ -21,8 +21,9 @@ class TestGameIconHint(unittest.TestCase):
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
             from src.service.app_service import AppService
-            from tests.test_qml_launcher import _make_bridge
+            from tests.gui_helpers import get_app, make_bridge
 
+            get_app()
             icon_path = str(Path("assets/ds.ico").resolve())
             with (
                 patch.object(AppService, "get_daily_map", return_value={}),
@@ -32,7 +33,7 @@ class TestGameIconHint(unittest.TestCase):
                 patch("src.gui.controllers.links._get_game_exe_path", return_value=icon_path) as read_path,
                 patch("src.gui.icons._exe_icon", return_value=QIcon(icon_path)),
             ):
-                bridge = _make_bridge()
+                bridge = make_bridge()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlApplicationEngine()
                 engine.addImageProvider("scripticon", bridge.game_list.icon_provider)

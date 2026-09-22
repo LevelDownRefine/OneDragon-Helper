@@ -158,84 +158,63 @@ class TestWeeklyStartDay(unittest.TestCase):
         with self.assertRaises(AssertionError):
             base.prepare_start_day(4)
 
-    def test_invalid_start_day_raises(self):
-        """start_day 越界（8 / -1）→ assert；0（不启用）合法。"""
-        weekly = _weekly("March7th-Launcher", "货币战争")
-        for bad in (8, -1):
-            with self.subTest(bad=bad), self.assertRaises(AssertionError):
-                weekly.prepare_start_day(bad)
+    def test_invalid_start_day_is_rejected_before_io(self):
+        cases = (
+            ("March7th-Launcher", "货币战争", "prepare_start_day"),
+            ("March7th-Launcher", "历战余响", "set_start_day"),
+            ("MAA", "理智药剂", "set_start_day"),
+        )
+        for script, name, method in cases:
+            weekly = _weekly(script, name)
+            for bad in (-1, 8, 99):
+                with (
+                    self.subTest(weekly=name, method=method, day=bad),
+                    patch.object(weekly, "_load_config") as load,
+                    patch.object(weekly, "_save_config") as save,
+                ):
+                    with self.assertRaisesRegex(AssertionError, "非法周常起始日"):
+                        getattr(weekly, method)(bad)
+                    load.assert_not_called()
+                    save.assert_not_called()
 
-    # ---- 崩铁·货币战争：布尔开关（按日期折算）----
+    # ---- 崩铁布尔开关（按日期折算）----
 
-    def test_currency_wars_enable_writes_true(self):
-        """今天已到起始日 → currencywars_enable=True，且不碰历战余响的字面字段"""
-        weekly = _weekly("March7th-Launcher", "货币战争")
-        config = {"currencywars_enable": False, "echo_of_war_start_day_of_week": 1}
-        with (
-            patch("src.utils.utils_weekly.get_week_num", return_value=3),
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
+    def test_star_rail_boolean_weeklies_follow_start_day(self):
+        for name, key in (
+            ("货币战争", "currencywars_enable"),
+            ("模拟宇宙", "universe_enable"),
         ):
-            weekly.prepare_start_day(4)
-        self.assertTrue(config["currencywars_enable"])
-        self.assertEqual(config["echo_of_war_start_day_of_week"], 1)
-        mock_save.assert_called_once()
-
-    def test_currency_wars_disable_writes_false(self):
-        """今天未到起始日 → currencywars_enable=False"""
-        weekly = _weekly("March7th-Launcher", "货币战争")
-        config = {"currencywars_enable": True, "echo_of_war_start_day_of_week": 1}
-        with (
-            patch("src.utils.utils_weekly.get_week_num", return_value=1),
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
-        ):
-            weekly.prepare_start_day(4)
-        self.assertFalse(config["currencywars_enable"])
-        self.assertEqual(config["echo_of_war_start_day_of_week"], 1)
-        mock_save.assert_called_once()
-
-    def test_currency_wars_disabled_writes_false(self):
-        """不启用（0）→ currencywars_enable=False（与「今天未到起始日」同形，但不随日期变）"""
-        weekly = _weekly("March7th-Launcher", "货币战争")
-        config = {"currencywars_enable": True}
-        with (
-            # 固定到「已到起始日」的星期，证明 False 来自「不启用」而非日期折算
-            patch("src.utils.utils_weekly.get_week_num", return_value=6),
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
-        ):
-            weekly.prepare_start_day(DISABLED_START_DAY)
-        self.assertFalse(config["currencywars_enable"])
-        mock_save.assert_called_once()
-
-    # ---- 崩铁·模拟宇宙：布尔开关（与货币战争同一机制类）----
-
-    def test_simulated_universe_enable_writes_true(self):
-        """今天已到起始日 → universe_enable=True，且不碰同文件其它字段"""
-        weekly = _weekly("March7th-Launcher", "模拟宇宙")
-        config = {"universe_enable": False, "currencywars_enable": True}
-        with (
-            patch("src.utils.utils_weekly.get_week_num", return_value=3),
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
-        ):
-            weekly.prepare_start_day(4)
-        self.assertTrue(config["universe_enable"])
-        self.assertTrue(config["currencywars_enable"])
-        mock_save.assert_called_once()
-
-    def test_simulated_universe_disabled_writes_false(self):
-        """不启用（0）→ universe_enable=False"""
-        weekly = _weekly("March7th-Launcher", "模拟宇宙")
-        config = {"universe_enable": True}
-        with (
-            patch("src.utils.utils_weekly.get_week_num", return_value=6),
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config"),
-        ):
-            weekly.prepare_start_day(DISABLED_START_DAY)
-        self.assertFalse(config["universe_enable"])
+            weekly = _weekly("March7th-Launcher", name)
+            for today, start_day, enabled in (
+                (3, 4, True),
+                (1, 4, False),
+                (6, 0, False),
+            ):
+                for unchanged in (False, True):
+                    with self.subTest(
+                        weekly=name,
+                        today=today,
+                        start_day=start_day,
+                        unchanged=unchanged,
+                    ):
+                        config = {
+                            "currencywars_enable": True,
+                            "universe_enable": True,
+                            "echo_of_war_start_day_of_week": 1,
+                        }
+                        config[key] = enabled if unchanged else not enabled
+                        expected = {**config, key: enabled}
+                        with (
+                            patch(
+                                "src.utils.utils_weekly.get_week_num",
+                                return_value=today,
+                            ),
+                            patch.object(weekly, "_load_config", return_value=config),
+                            patch.object(weekly, "_save_config") as save,
+                        ):
+                            weekly.prepare_start_day(start_day)
+                        self.assertEqual(config, expected)
+                        save.assert_called_once_with(expected)
 
     # ---- 崩铁·历战余响：字面起始日（不按日期折算）----
 

@@ -1,6 +1,6 @@
 """测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。
 
-复用 test_qml_launcher 的 _make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / daily_config.get_weekly_map / get_daily_map /
+复用 gui_helpers.make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / daily_config.get_weekly_map / get_daily_map /
 parse_daily_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
 真实模块函数），验证 QML 任务卡所需的数据与写回行为。
 """
@@ -8,9 +8,11 @@ parse_daily_config 按用例 patch（task_card 经 AppService 取数，patch 目
 import unittest
 from unittest.mock import MagicMock, patch
 
+from PySide6.QtWidgets import QDialog
+
 from src.gui.controllers import task_card
 from src.service import app_service
-from tests.test_qml_launcher import _make_bridge
+from tests.gui_helpers import make_bridge
 
 
 class TestTaskCard(unittest.TestCase):
@@ -18,7 +20,7 @@ class TestTaskCard(unittest.TestCase):
 
     @patch("src.service.app_service.get_daily_map", return_value={})
     def test_restore_refreshes_task_properties(self, _map):
-        bridge = _make_bridge()
+        bridge = make_bridge()
         name = bridge.games[0]["script_name"]
         bridge.task_card._daily_map_cache = {
             name: {
@@ -66,13 +68,13 @@ class TestTaskCard(unittest.TestCase):
     @patch("src.service.app_service.get_daily_map", return_value={})
     @patch.object(task_card, "get_daily_readback", return_value=[])
     def test_daily_items_default_is_empty(self, *_):
-        b = _make_bridge()
+        b = make_bridge()
         self.assertEqual(b.dailyItems, [])
 
     @patch("src.service.app_service.get_daily_map", return_value={})
     def test_set_daily_enabled_writes_through_service(self, *_):
         """日常开关经 Bridge → service 落盘（开关无副本名可反查，显式带日常）。"""
-        b = _make_bridge()
+        b = make_bridge()
         name = b.games[0]["script_name"]
         b.app_service.set_script_daily_enabled = MagicMock()
         b.setDailyEnabled("追猎目标", False)
@@ -83,7 +85,7 @@ class TestTaskCard(unittest.TestCase):
     @patch.object(task_card, "is_adapted", return_value=False)
     @patch("src.service.app_service.get_daily_map", return_value={})
     def test_task_adapted_reflects_is_adapted(self, *_):
-        b = _make_bridge()
+        b = make_bridge()
         self.assertFalse(b.taskAdapted)
 
     @patch("src.service.app_service.set_config")  # 实时落盘子脚本 config（经 service）
@@ -92,7 +94,7 @@ class TestTaskCard(unittest.TestCase):
     @patch("src.service.app_service.get_daily_map", return_value={})
     @patch.object(task_card, "get_daily_readback")
     def test_select_daily_task_writes_config(self, readback, *_):
-        b = _make_bridge()
+        b = make_bridge()
         name = b.games[0]["script_name"]
         # 反读无真相 → chip 回退声明的首个选项
         b.task_card._daily_map_cache = {
@@ -169,7 +171,7 @@ class TestTaskCard(unittest.TestCase):
             },
         ]
         with patch("src.service.app_service.get_daily_map", return_value=menu):
-            b = _make_bridge()
+            b = make_bridge()
         self.assertEqual(
             [item["name"] for item in b.dailyItems], ["异象界域", "追猎目标"]
         )
@@ -206,7 +208,7 @@ class TestTaskCard(unittest.TestCase):
             }
         }
         with patch("src.service.app_service.get_daily_map", return_value=menu):
-            b = _make_bridge()
+            b = make_bridge()
         opts = b.dailyOptions("每日任务")
         self.assertEqual(opts[0]["display_name"], "副本A")
         self.assertEqual(
@@ -216,19 +218,16 @@ class TestTaskCard(unittest.TestCase):
 
     @patch("src.service.app_service.get_daily_map", return_value={})
     def test_daily_options_empty_when_no_cfg(self, *_):
-        b = _make_bridge()
+        b = make_bridge()
         self.assertEqual(b.dailyOptions("每日任务"), [])
 
     @patch("src.gui.dialogs.SingleScriptConfigDialog")
-    @patch("PySide6.QtWidgets.QDialog")
-    def test_config_current_accept_saves_and_reloads(
-        self, mock_qdialog, mock_dialog_cls
-    ):
-        b = _make_bridge()
+    def test_config_current_accept_saves_and_reloads(self, mock_dialog_cls):
+        b = make_bridge()
         toasts = []
         b.toastRequested.connect(lambda t: toasts.append(t))
         dlg = mock_dialog_cls.return_value
-        dlg.exec.return_value = mock_qdialog.Accepted
+        dlg.exec.return_value = QDialog.Accepted
         dlg.pending_changes = {
             "old_script_name": "ok-ww",
             "new_display_name": "鸣潮",
@@ -245,11 +244,10 @@ class TestTaskCard(unittest.TestCase):
         self.assertTrue(any("已保存" in s for s in toasts))
 
     @patch("src.gui.dialogs.SingleScriptConfigDialog")
-    @patch("PySide6.QtWidgets.QDialog")
-    def test_config_current_cancel_does_not_save(self, mock_qdialog, mock_dialog_cls):
-        b = _make_bridge()
+    def test_config_current_cancel_does_not_save(self, mock_dialog_cls):
+        b = make_bridge()
         dlg = mock_dialog_cls.return_value
-        dlg.exec.return_value = mock_qdialog.Rejected  # 取消/关闭
+        dlg.exec.return_value = QDialog.Rejected
         with (
             patch.object(b.app_service, "update_script") as mock_update,
             patch.object(b, "_reload_games") as mock_reload,
@@ -264,7 +262,7 @@ class TestWeeklyStartBridge(unittest.TestCase):
 
     def test_weekly_start_options_forwarded(self):
         """候选为「不启用 + 周一~周日」八项，value 即写回用的起始日。"""
-        b = _make_bridge()
+        b = make_bridge()
         self.assertEqual(
             [option["value"] for option in b.weeklyStartOptions()],
             [0, 1, 2, 3, 4, 5, 6, 7],
@@ -272,7 +270,7 @@ class TestWeeklyStartBridge(unittest.TestCase):
 
     def test_select_weekly_start_writes_intent_and_game_side(self):
         """写某条周常的起始日：weekly.yml 按条覆盖（其它条目不动）+ 该条游戏侧字面字段。"""
-        b = _make_bridge()
+        b = make_bridge()
         script_name = b.games[0]["script_name"]
         written = {}
         with (
@@ -295,7 +293,7 @@ class TestWeeklyStartBridge(unittest.TestCase):
 
     def test_select_weekly_start_creates_entry_for_first_time(self):
         """该脚本尚无 weekly_start 条目时，只写被选中的那一条。"""
-        b = _make_bridge()
+        b = make_bridge()
         script_name = b.games[0]["script_name"]
         written = {}
         with (

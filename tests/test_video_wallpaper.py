@@ -138,7 +138,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
             from src.gui.main_window import QmlBridge
             from src.gui.icons import UiIconProvider
             from src.utils.utils_sub_config import resolve_script_path
-            from tests.test_qml_launcher import _make_bridge
+            from tests.gui_helpers import make_bridge
 
             with tempfile.TemporaryDirectory() as directory, patch(
                 "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
@@ -150,7 +150,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
                     patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),
                     patch("src.gui.controllers.background.BackgroundController.resolve_bg", return_value=None),
                 ):
-                    bridge = _make_bridge()
+                    bridge = make_bridge()
                 video = resolve_script_path("tests/fixtures/wallpaper.mp4")
                 with patch.object(bridge.background, "resolve_bg", return_value=video):
                     bridge.background.apply_current(bridge.game_list.current_game)
@@ -202,7 +202,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
             # 该平台报的值不可信，所以本用例只验证视频层的帧/可见性/缓存逻辑，不做
             # grabWindow 像素断言；真实后端下的整窗圆角由
             # tests/exe/test_gui_rendering_exe.py 覆盖。
-            from tests.test_qml_launcher import _make_bridge
+            from tests.gui_helpers import make_bridge
 
             with tempfile.TemporaryDirectory() as directory, patch(
                 "src.utils.utils_wallpaper.get_wallpaper_json_path_under_root",
@@ -214,7 +214,7 @@ class TestVideoWallpaperQml(unittest.TestCase):
                     patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),
                     patch("src.gui.controllers.background.BackgroundController.resolve_bg", return_value=None),
                 ):
-                    bridge = _make_bridge()
+                    bridge = make_bridge()
                 video = Path(resolve_script_path("tests/fixtures/wallpaper.mp4"))
                 preview = Path(bridge.app_service.video_preview_path(str(video)))
                 preview.parent.mkdir()

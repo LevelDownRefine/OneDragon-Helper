@@ -26,7 +26,7 @@ class TestSharedLayout(unittest.TestCase):
             from src.gui.icons import UiIconProvider
             from src.gui.main_window import QmlBridge
             from src.utils.utils_sub_config import resolve_script_path
-            from tests.test_qml_launcher import _make_bridge
+            from tests.gui_helpers import make_bridge
 
             with tempfile.TemporaryDirectory() as directory:
                 qml_dir = Path(directory) / "qml"
@@ -55,7 +55,7 @@ class TestSharedLayout(unittest.TestCase):
                     patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),
                     patch("src.gui.controllers.task_card.get_weekly_task", return_value=None),
                 ):
-                    bridge = _make_bridge()
+                    bridge = make_bridge()
                     qmlRegisterSingletonInstance(
                         QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                     engine = QQmlApplicationEngine()

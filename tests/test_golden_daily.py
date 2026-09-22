@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 from src.config import daily as daily_mod
 from src.config import set_config as config_mod
+from src.config import weekly as weekly_mod
 from src.config.daily_config import get_daily_map
 from tests.config_diff import diff_paths
 
@@ -116,6 +117,17 @@ def build_baseline():
 
     baseline = {"menus": {}, "writes": {}, "reads": {}}
     with ExitStack() as stack:
+        # 菜单基线从固定种子开始；构造期对齐不能依赖别的测试是否预热过单例。
+        stack.enter_context(patch.dict(config_mod._CONFIGS))
+        stack.enter_context(patch.dict(weekly_mod._BUILT, clear=True))
+        for factory in tuple(config_mod._CONFIGS.values()):
+            config_mod.register(factory.__wrapped__)
+        with (
+            patch.object(config_mod, "load_config", return_value=None),
+            patch.object(daily_mod, "load_script_config", return_value=None),
+        ):
+            for factory in config_mod._CONFIGS.values():
+                factory()
         # Daily 自持 I/O 走 load_script_config / save_script_config（带展示名的 3/4 参签名）。
         for module, load_name, save_name in (
             (daily_mod, "load_script_config", "save_script_config"),
@@ -179,6 +191,13 @@ class TestDailyGolden(unittest.TestCase):
         actual = build_baseline()
         self.maxDiff = 6000
         self.assertEqual(_dump(actual), _dump(expected))
+
+    def test_repeated_builds_preserve_the_baseline_and_registry(self):
+        factories = dict(config_mod._CONFIGS)
+        first = build_baseline()
+        second = build_baseline()
+        self.assertEqual(_dump(first), _dump(second))
+        self.assertEqual(config_mod._CONFIGS, factories)
 
 
 if __name__ == "__main__":

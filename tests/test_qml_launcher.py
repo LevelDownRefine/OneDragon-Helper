@@ -30,8 +30,7 @@ from src.gui import main_window  # noqa: E402
 from src.gui.controllers import launch, links  # noqa: E402
 from src.gui.controllers.game_list import ScriptIconProvider  # noqa: E402
 from src.gui.icons import UiIconProvider  # noqa: E402
-from src.gui.main_window import QmlBridge  # noqa: E402
-from src.service.app_service import AppService  # noqa: E402
+from tests.gui_helpers import make_bridge  # noqa: E402
 
 # 全局 QApplication 实例（offscreen 平台，CI 无显示器）
 _app = QApplication.instance() or QApplication([])
@@ -53,59 +52,29 @@ def setUpModule():
     unittest.addModuleCleanup(native_config.stop)
 
 
-_SCRIPTS = [
-    {
-        "display_name": "鸣潮",
-        "script_path": "scripts/ok-ww/ok-ww.exe",
-        "script_type": "external",
-    },
-    {
-        "display_name": "测试脚本",
-        "script_path": "scripts/t.py",
-        "script_type": "python",
-    },
-]
-
-
-def _make_bridge():
-    # 构造期用 with 屏蔽读盘（QmlBridge 初始化即读 config.yml）；
-    # with 退出后失效，故构造后再持久 mock load_config，覆盖 reorderGames/
-    # addScript 等构造后真实读盘路径（CI 环境无 config.yml，必须持续屏蔽）。
-    with (
-        patch(
-            "src.utils.utils_sub_config._load_config_yml",
-            return_value={"script_list": []},
-        ),
-        patch.object(
-            AppService, "load_config", return_value={"script_list": list(_SCRIPTS)}
-        ),
-        patch("src.service.daily_plan.load_schedule", return_value={}),
-        patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
-    ):
-        b = QmlBridge()
-    b.app_service.load_config = MagicMock(return_value={"script_list": list(_SCRIPTS)})
-    # 隔离写盘：避免测试污染真实 config.yml
-    from src.service.daily_plan import DailyPlanOptions
-
-    b.app_service.load_daily_plan = MagicMock(return_value=DailyPlanOptions())
-    b.app_service.list_daily_plan_scripts = MagicMock(return_value=[])
-    b.app_service.save_config = MagicMock()
-    return b
-
-
 class TestBridge(unittest.TestCase):
     """QmlBridge：脚本列表 / 背景切换 / 视频回退。"""
 
     def test_games_loaded_from_config(self):
-        b = _make_bridge()
+        b = make_bridge()
         self.assertEqual([g["display_name"] for g in b.games], ["鸣潮", "测试脚本"])
+
+    def test_bridges_have_independent_script_config(self):
+        first = make_bridge()
+        first.games[0]["display_name"] = "已修改"
+        first.app_service.load_config()["script_list"][0]["display_name"] = "已保存"
+        second = make_bridge()
+        self.assertEqual(second.games[0]["display_name"], "鸣潮")
+        self.assertEqual(
+            second.app_service.load_config()["script_list"][0]["display_name"], "鸣潮"
+        )
 
     def test_background_mode_default_gradient(self):
         # 脚本无 bg 配置且 DEFAULT_BG 不存在时走渐变兜底
         with patch.object(
             main_window.BackgroundController, "resolve_bg", return_value=None
         ):
-            b = _make_bridge()
+            b = make_bridge()
         self.assertEqual(b.backgroundMode, "gradient")
         self.assertEqual(b.gradientChar, "鸣")
 
@@ -118,7 +87,7 @@ class TestBridge(unittest.TestCase):
             ),
             patch.object(os.path, "isfile", return_value=True),
         ):
-            b = _make_bridge()
+            b = make_bridge()
         self.assertEqual(b.backgroundMode, "video")
         self.assertTrue(b.backgroundUrl.endswith("clip.mp4"))
 
@@ -131,23 +100,23 @@ class TestBridge(unittest.TestCase):
             ),
             patch.object(os.path, "isfile", return_value=True),
         ):
-            b = _make_bridge()
+            b = make_bridge()
         self.assertEqual(b.backgroundMode, "image")
 
     def test_select_game_switches_background(self):
-        b = _make_bridge()
+        b = make_bridge()
         with patch.object(b.background, "resolve_bg", return_value=None):
             b.selectGame(1)
         self.assertEqual(b.currentIndex, 1)
         self.assertEqual(b.gradientChar, "测")
 
     def test_select_game_invalid_raises(self):
-        b = _make_bridge()
+        b = make_bridge()
         with self.assertRaises(AssertionError):
             b.selectGame(99)
 
     def test_video_error_falls_back_gradient(self):
-        b = _make_bridge()
+        b = make_bridge()
         with self.assertLogs(b.background.__class__.__module__, level="WARNING"):
             b.videoError("boom")
         self.assertEqual(b.backgroundMode, "gradient")
@@ -157,11 +126,11 @@ class TestLeftRail(unittest.TestCase):
     """QmlBridge 左侧栏交互：enabled 内存态 / 控制模式 / 重排 / 启动。"""
 
     def test_enabled_defaults_all_true(self):
-        b = _make_bridge()
+        b = make_bridge()
         self.assertEqual(b.enabledStates, [True, True])
 
     def test_control_mode_select_toggles_enabled(self):
-        b = _make_bridge()
+        b = make_bridge()
         b.toggleMode()
         self.assertTrue(b.controlMode)
         b.selectGame(0)
@@ -170,7 +139,7 @@ class TestLeftRail(unittest.TestCase):
         self.assertEqual(b.enabledStates, [True, True])
 
     def test_browse_mode_select_switches_index(self):
-        b = _make_bridge()
+        b = make_bridge()
         b.selectGame(1)
         self.assertEqual(b.currentIndex, 1)
         self.assertEqual(b.enabledStates, [True, True])  # 浏览模式不改 enabled
@@ -179,7 +148,7 @@ class TestLeftRail(unittest.TestCase):
         # 白圈（index === Bridge.currentIndex）靠 currentIndexChanged 通知 QML 重算；
         # currentIndex 现已用独立 notify 信号（不再复用 gamesChanged）。若 selectGame
         # 漏 emit，QML 端选中位永远不跟随（Python 层 property 读取测不出）。
-        b = _make_bridge()
+        b = make_bridge()
         emissions = []
         b.currentIndexChanged.connect(lambda: emissions.append(1))
         b.selectGame(1)  # 0 → 1，切换选中
@@ -189,14 +158,14 @@ class TestLeftRail(unittest.TestCase):
         self.assertEqual(emissions, [])
 
     def test_select_all_and_deselect_all(self):
-        b = _make_bridge()
+        b = make_bridge()
         b.deselectAll()
         self.assertEqual(b.enabledStates, [False, False])
         b.selectAll()
         self.assertEqual(b.enabledStates, [True, True])
 
     def test_reorder_games_syncs_config_and_enabled(self):
-        b = _make_bridge()
+        b = make_bridge()
         b.app_service.save_config = MagicMock()
         b.deselectAll()
         b.selectAll()
@@ -205,14 +174,14 @@ class TestLeftRail(unittest.TestCase):
         b.app_service.save_config.assert_called_once()
 
     def test_launch_all_no_enabled_toasts(self):
-        b = _make_bridge()
+        b = make_bridge()
         b.deselectAll()
         with patch.object(b.launch, "_confirm_run") as confirm:
             b.launchAll()
         confirm.assert_not_called()
 
     def test_launch_script_python(self):
-        b = _make_bridge()
+        b = make_bridge()
         b.selectGame(1)  # 测试脚本（python）
         with (
             patch.object(os.path, "isfile", return_value=True),
@@ -231,7 +200,7 @@ class TestFloatBar(unittest.TestCase):
     """QmlBridge 悬浮条：打开链接 / 启动游戏 / 脚本目录 / 换壁纸。"""
 
     def test_open_home_uses_bridge(self):
-        b = _make_bridge()
+        b = make_bridge()
         with (
             patch.object(links, "_get_game_link", return_value=""),
             patch.object(webbrowser, "open") as wb,
@@ -240,7 +209,7 @@ class TestFloatBar(unittest.TestCase):
         wb.assert_called_once()
 
     def test_open_bilibili_uses_bridge(self):
-        b = _make_bridge()
+        b = make_bridge()
         with (
             patch.object(links, "_get_game_link", return_value=""),
             patch.object(webbrowser, "open") as wb,
@@ -249,7 +218,7 @@ class TestFloatBar(unittest.TestCase):
         wb.assert_called_once()
 
     def test_launch_game_starts_exe(self):
-        b = _make_bridge()
+        b = make_bridge()
         with (
             patch.object(links, "_get_game_exe_path", return_value="D:/Game/game.exe"),
             patch.object(links, "open_in_explorer") as start,
@@ -258,7 +227,7 @@ class TestFloatBar(unittest.TestCase):
         start.assert_called_once_with("D:/Game/game.exe")
 
     def test_launch_game_missing_toasts(self):
-        b = _make_bridge()
+        b = make_bridge()
         spy = MagicMock()
         b.toastRequested.connect(spy)
         with patch.object(links, "_get_game_exe_path", return_value=None):
@@ -266,7 +235,7 @@ class TestFloatBar(unittest.TestCase):
         spy.assert_called_once()
 
     def test_open_settings_starts_config(self):
-        b = _make_bridge()
+        b = make_bridge()
         with (
             patch.object(
                 links,
@@ -280,7 +249,7 @@ class TestFloatBar(unittest.TestCase):
         start.assert_called_once_with("C:/cfg/config.yml")
 
     def test_open_settings_missing_toasts(self):
-        b = _make_bridge()
+        b = make_bridge()
         spy = MagicMock()
         b.toastRequested.connect(spy)
         with (
@@ -295,7 +264,7 @@ class TestFloatBar(unittest.TestCase):
         spy.assert_called_once()
 
     def test_open_log_folder_starts_dir(self):
-        b = _make_bridge()
+        b = make_bridge()
         with (
             patch.object(
                 links, "resolve_script_path", return_value="D:/Game/ok-ww.exe"
@@ -308,7 +277,7 @@ class TestFloatBar(unittest.TestCase):
         start.assert_called_once_with("D:/Game/logs")
 
     def test_open_log_folder_no_parser_toasts(self):
-        b = _make_bridge()
+        b = make_bridge()
         spy = MagicMock()
         b.toastRequested.connect(spy)
         with (
@@ -321,7 +290,7 @@ class TestFloatBar(unittest.TestCase):
         spy.assert_called_once()
 
     def test_open_wallpaper_persists_and_switches(self):
-        b = _make_bridge()
+        b = make_bridge()
         b.background.write_wallpapers = MagicMock()
         b.background.apply_current = MagicMock()
         with patch(
@@ -333,7 +302,7 @@ class TestFloatBar(unittest.TestCase):
         b.background.apply_current.assert_called_once()
 
     def test_add_script_emits_game_added(self):
-        b = _make_bridge()
+        b = make_bridge()
         spy = MagicMock()
         b.gameAdded.connect(spy)
         entry = {

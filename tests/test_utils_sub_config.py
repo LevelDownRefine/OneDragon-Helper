@@ -1,8 +1,14 @@
-"""测试 src/utils_sub_config.py：脚本唯一标识、路径解析、脚本路径读取、默认条目构造"""
+"""脚本标识、路径解析、默认条目和原生配置 I/O。"""
 
+import json
+import os
+import tempfile
 import unittest
 from unittest import mock
+from unittest.mock import mock_open, patch
 
+from src.config import set_config
+from src.config.task_config import get_daily_configs
 from src.utils import get_root_dir, safe_path_join, utils_sub_config
 from src.utils.utils_sub_config import (
     check_script_name_uniqueness,
@@ -13,6 +19,7 @@ from src.utils.utils_sub_config import (
     load_game_config,
     resolve_script_path,
 )
+from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
 
 
 class TestGetProcessName(unittest.TestCase):
@@ -338,6 +345,275 @@ class TestScriptConfigIO(unittest.TestCase):
             utils_sub_config.save_script_config(
                 "ok-ww", "鸣潮", "DailyTask.json", {"k": "expected"}
             )
+
+
+class TestGetConfigPath(unittest.TestCase):
+    """测试 get_sub_config_path"""
+
+    def test_joins_root_and_rel(self):
+        """应正确拼接脚本根目录和 config 相对路径"""
+        # mock Windows 风格的 script_path，验证在任意平台上都能推导
+        fake_config = {
+            "script_list": [
+                {"display_name": "鸣潮", "script_path": r"C:\fake\ok-ww\ok-ww.exe"},
+            ]
+        }
+        rel = "data/apps/ok-ww/working/configs/DailyTask.json"
+        with (
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value=fake_config
+            ),
+            patch("os.path.exists", return_value=True),
+        ):
+            path = utils_sub_config.get_sub_config_path("ok-ww", rel)
+
+        # get_sub_config_path 内部用 safe_path_join，会归一化为绝对路径（Windows 为反斜杠），
+        # 故 expected 需用同一归一化方式，避免分隔符不一致导致断言失败。
+        expected = safe_path_join("C:/fake/ok-ww", rel)
+        self.assertEqual(path, expected)
+
+    def test_raises_for_unknown_script(self):
+        """config.yml 中无此脚本应触发 AssertionError"""
+        with (
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value={"script_list": []}
+            ),
+            self.assertRaises(AssertionError),
+        ):
+            utils_sub_config.get_sub_config_path("none", "whatever.json")
+
+    def test_all_registered_scripts_resolve_with_mock_config(self):
+        """对所有已注册脚本，用 mock 的 config.yml 验证路径推导成功
+        （不依赖真实 config.yml，CI 也能跑）"""
+        scripts = list(set_config._CONFIGS.keys())
+        # 构造 mock config：每个脚本一个唯一的 script_path（key 即进程名）
+        fake_script_list = [
+            {
+                "display_name": name,
+                "script_path": rf"C:\fake\root\{name}.exe",
+            }
+            for name in scripts
+        ]
+        with (
+            patch.object(
+                utils_sub_config,
+                "_load_config_yml",
+                return_value={"script_list": fake_script_list},
+            ),
+            patch("os.path.exists", return_value=True),
+        ):
+            for name in scripts:
+                rel = get_daily_configs(name)[0]["config"]
+                path = utils_sub_config.get_sub_config_path(name, rel)
+                self.assertIsNotNone(path, f"{name} 路径推导失败")
+                # 路径中应包含相对路径的各段（不依赖具体分隔符）
+                rel_parts = rel.split("/")
+                for part in rel_parts:
+                    self.assertIn(
+                        part, path, f"{name} 路径缺少相对路径段 '{part}': {path}"
+                    )
+
+    def test_does_not_require_exe_to_exist(self):
+        """回归：get_sub_config_path 不应校验游戏 exe 是否存在。
+
+        旧实现经 _get_script_root_dir → get_script_path 断言 exe 存在，
+        当用户正要修正失效的旧路径时，任何保存（含周起始日同步）都会崩溃。
+        新实现用 soft 解析，exe 是否存在与 config 文件位置无关。
+        """
+        fake_config = {
+            "script_list": [
+                {
+                    "display_name": "崩铁",
+                    "script_path": r"D:\game_helper\March7thAssistant\March7th Launcher.exe",
+                },
+            ]
+        }
+        rel = get_daily_configs("March7th-Launcher")[0]["config"]
+        with (
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value=fake_config
+            ),
+            patch("os.path.exists", return_value=False),  # 模拟 exe 不存在
+        ):
+            # 旧实现此处会因 get_script_path 的 assert os.path.exists(exe) 崩溃；
+            # 新实现应正常返回路径（不依赖 exe 是否存在）。
+            path = utils_sub_config.get_sub_config_path("March7th-Launcher", rel)
+        self.assertIn("config.yaml", path)
+
+
+class TestLoadConfig(unittest.TestCase):
+    """测试 load_config"""
+
+    def test_load_json_config(self):
+        """应正确解析 JSON 格式的 config"""
+        fake_data = {"key": "value", "nested": {"a": 1}}
+        fake_path = r"C:\fake\script\config.json"
+
+        with (
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=json.dumps(fake_data))),
+        ):
+            result = utils_sub_config.load_config("ok-ww", "DailyTask.json")
+
+        self.assertEqual(result, fake_data)
+
+    def test_load_yaml_config(self):
+        """应正确解析 YAML 格式的 config"""
+        fake_data = {"key": "value", "list": [1, 2, 3]}
+        fake_path = r"C:\fake\script\config.yaml"
+        yaml_str = dump_yaml_str(fake_data)
+
+        with (
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
+            patch("os.path.exists", return_value=True),
+            patch("builtins.open", mock_open(read_data=yaml_str)),
+        ):
+            result = utils_sub_config.load_config(
+                "OneDragon-Launcher", "charge_plan.yml"
+            )
+
+        self.assertEqual(result, fake_data)
+
+    def test_load_all_registered_configs_with_mock(self):
+        """对所有已注册脚本，用 mock config 文件验证读取逻辑
+        （不依赖真实 config 文件，CI 也能跑）"""
+        scripts = list(set_config._CONFIGS.keys())
+        # 构造 mock config.yml + mock 文件内容
+        fake_script_list = [
+            {
+                "display_name": name,
+                "script_path": rf"C:\fake\root\{name}.exe",
+            }
+            for name in scripts
+        ]
+        fake_config_yml = {"script_list": fake_script_list}
+
+        for name in scripts:
+            rel = get_daily_configs(name)[0]["config"]
+            ext = os.path.splitext(rel)[1].lower()
+            fake_data = {"test_key": "test_value"}
+            if ext == ".json":
+                file_content = json.dumps(fake_data, ensure_ascii=False)
+            else:
+                file_content = dump_yaml_str(fake_data)
+
+            with (
+                patch.object(
+                    utils_sub_config, "_load_config_yml", return_value=fake_config_yml
+                ),
+                patch("os.path.exists", return_value=True),
+                patch("builtins.open", mock_open(read_data=file_content)),
+            ):
+                result = utils_sub_config.load_config(name, rel)
+
+            self.assertIsNotNone(result, f"{name} config 读取失败")
+            self.assertEqual(result, fake_data, f"{name} config 读取内容不匹配")
+
+
+class TestSaveConfig(unittest.TestCase):
+    """测试 save_config —— 全部 mock，不真正写回脚本 config"""
+
+    def test_save_json_config_does_not_write_real_file(self):
+        """save JSON 时不应写入真实 config 文件"""
+        fake_path = r"C:\fake\script\config.json"
+        data = {"Which to Farm": "Tacet"}
+
+        m = mock_open()
+        with (
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
+            patch("builtins.open", m),
+        ):
+            result = utils_sub_config.save_config("ok-ww", "DailyTask.json", data)
+
+        self.assertIsNone(result)
+        m.assert_called_once_with(fake_path, "w", encoding="utf-8")
+        # 验证写入的内容是正确的 JSON
+        handle = m()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertEqual(json.loads(written), data)
+
+    def test_save_yaml_config_does_not_write_real_file(self):
+        """save YAML 时不应写入真实 config 文件
+
+        dump_yaml 为原子写：先写同目录 .tmp，再 os.replace 到目标路径。
+        """
+        fake_path = r"C:\fake\script\charge_plan.yml"
+        data = {"plan_list": [{"category_name": "test"}]}
+
+        m = mock_open()
+        with (
+            patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ),
+            patch("builtins.open", m),
+            patch("src.utils.utils_yaml.os.replace") as mock_replace,
+        ):
+            result = utils_sub_config.save_config(
+                "OneDragon-Launcher", "charge_plan.yml", data
+            )
+
+        self.assertIsNone(result)
+        # 原子写：写入目标是 .tmp，随后原子替换到目标路径
+        m.assert_called_once_with(fake_path + ".tmp", "w", encoding="utf-8")
+        mock_replace.assert_called_once_with(fake_path + ".tmp", fake_path)
+        # 验证写入的内容是有效的 YAML
+        handle = m()
+        written = "".join(call.args[0] for call in handle.write.call_args_list)
+        self.assertEqual(load_yaml_str(written), data)
+
+    def test_save_unknown_script_is_rejected_before_opening_a_file(self):
+        with (
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value={"script_list": []}
+            ),
+            patch("builtins.open") as open_file,
+            self.assertRaisesRegex(AssertionError, "无法解析脚本根目录"),
+        ):
+            utils_sub_config.save_config("none", "whatever.json", {"key": "val"})
+        open_file.assert_not_called()
+
+    def test_save_and_reload_roundtrip_json(self):
+        """JSON 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
+        data = {"test_key": "test_value", "num": 42}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_path = os.path.join(tmp, "config.json")
+            with patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ):
+                # save
+                ok = utils_sub_config.save_config("ok-ww", "DailyTask.json", data)
+                self.assertIsNone(ok)
+                # load
+                loaded = utils_sub_config.load_config("ok-ww", "DailyTask.json")
+                self.assertEqual(loaded, data)
+
+    def test_save_and_reload_roundtrip_yaml(self):
+        """YAML 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
+        data = {"plan_list": [{"category_name": "模拟"}], "enabled": True}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_path = os.path.join(tmp, "config.yaml")
+            with patch.object(
+                utils_sub_config, "get_sub_config_path", return_value=fake_path
+            ):
+                # save
+                ok = utils_sub_config.save_config(
+                    "OneDragon-Launcher", "charge_plan.yml", data
+                )
+                self.assertIsNone(ok)
+                # load
+                loaded = utils_sub_config.load_config(
+                    "OneDragon-Launcher", "charge_plan.yml"
+                )
+                self.assertEqual(loaded, data)
 
 
 if __name__ == "__main__":

@@ -313,13 +313,12 @@ class TestQmlScriptDrop(unittest.TestCase):
             from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
             from PySide6.QtQuick import QQuickItem
             from PySide6.QtTest import QTest
-            from PySide6.QtWidgets import QApplication
             from src.gui.controllers.background import BackgroundController
             from src.gui.main_window import QmlBridge
             from src.service.app_service import AppService
-            from tests.test_qml_launcher import _make_bridge
+            from tests.gui_helpers import get_app, make_bridge
 
-            app = QApplication.instance()
+            app = get_app()
             with (
                 tempfile.TemporaryDirectory() as directory,
                 patch.object(AppService, "get_daily_map", return_value={}),
@@ -327,7 +326,7 @@ class TestQmlScriptDrop(unittest.TestCase):
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
                 patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),
             ):
-                bridge = _make_bridge()
+                bridge = make_bridge()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlApplicationEngine()
                 engine.addImageProvider("scripticon", bridge.game_list.icon_provider)

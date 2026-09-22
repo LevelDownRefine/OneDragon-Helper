@@ -120,9 +120,11 @@ class TestTaskSource(unittest.TestCase):
                 self.assertIsNot(names, data)
 
     def test_subclass_inherits_nested_key_path_reader(self):
+        cfg = NTEConfig()
         for key in (["资源", "类别"], ("资源", "类别")):
             with (
                 self.subTest(key=key),
+                patch.dict(_CONFIGS, {"ok-nte": lambda: cfg}),
                 patch(
                     "src.config.task_source.load_game_config",
                     return_value={"资源": {"类别": {"乙": 2, "甲": 1}}},

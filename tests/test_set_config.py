@@ -1,60 +1,54 @@
-"""
-测试 set_config.py 中的子脚本 config 读写基础设施。
-
-覆盖函数：
-  - _CONFIGS（子类路径声明完整性）
-  - iter_backup_paths（备份范围声明）
-  - get_sub_config_path
-  - load_config
-  - save_config（mock 文件写入，不真正写回脚本 config）
-"""
+"""ScriptConfig 注册表、共享实例、公开分发接口和游戏路径适配。"""
 
 import json
 import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import mock_open, patch
+from unittest.mock import MagicMock, patch
 
 from src.config import daily as daily_mod
 from src.config import set_config
+from src.config.daily import Daily
+from src.config.set_config import ScriptConfig, WutheringWavesConfig
 from src.config.task_config import get_daily_configs
-from src.config.weekly import weeklies_of
-from src.utils import safe_path_join, utils_sub_config
-from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
-
-
-def _weekly(script_name: str, weekly_name: str):
-    """按脚本 + 周常展示名取已装配的周常对象。"""
-    return next(w for w in weeklies_of(script_name) if w.display_name == weekly_name)
+from src.utils import utils_sub_config
 
 
 class TestConfigRelPaths(unittest.TestCase):
     """测试 ScriptConfig 子类路径声明完整性（_CONFIGS 注册表自动收集）"""
 
-    def test_configs_registry_covers_all_scripts(self):
-        """_CONFIGS 覆盖全部 7 个已适配脚本（进程名）"""
-        self.assertEqual(
-            set(set_config._CONFIGS.keys()),
-            {
-                "ok-ww",
-                "BetterGI",
-                "ok-ef",
-                "OneDragon-Launcher",
-                "March7th-Launcher",
-                "ok-nte",
-                "MAA",
-            },
+    def setUp(self):
+        self.enterContext(patch.dict(set_config._CONFIGS))
+        for factory in tuple(set_config._CONFIGS.values()):
+            set_config.register(factory.__wrapped__)
+        self.enterContext(
+            patch.object(
+                utils_sub_config, "_load_config_yml", return_value={"script_list": []}
+            )
         )
+
+    def test_registry_and_public_names_cover_all_scripts(self):
+        expected = {
+            "ok-ww",
+            "BetterGI",
+            "ok-ef",
+            "OneDragon-Launcher",
+            "March7th-Launcher",
+            "ok-nte",
+            "MAA",
+        }
+        self.assertEqual(set(set_config._CONFIGS), expected)
+        names = set_config.get_registered_script_names()
+        self.assertCountEqual(names, expected)
 
     def test_every_daily_declares_config(self):
         """每个注册脚本的日常声明都带非空 config（load 层强制，此处防回归）"""
         for name in set_config._CONFIGS:
             for declaration in get_daily_configs(name):
-                self.assertTrue(
-                    declaration.get("config"),
-                    f"{name} 的 {declaration['display_name']} 未声明 config",
-                )
+                with self.subTest(script=name, daily=declaration["display_name"]):
+                    self.assertIn("config", declaration)
+                    self.assertTrue(declaration["config"])
 
     def test_game_config_rel_path_covers_all(self):
         """全部 7 个脚本都声明了 _game_path_keys 与 _game_config_rel_path"""
@@ -64,21 +58,6 @@ class TestConfigRelPaths(unittest.TestCase):
             self.assertTrue(
                 cls._game_config_rel_path, f"{name} 缺少 _game_config_rel_path"
             )
-
-    def test_get_registered_script_names_returns_all(self):
-        """get_registered_script_names 返回全部已适配脚本"""
-        self.assertEqual(
-            set(set_config.get_registered_script_names()),
-            {
-                "ok-ww",
-                "BetterGI",
-                "ok-ef",
-                "OneDragon-Launcher",
-                "March7th-Launcher",
-                "ok-nte",
-                "MAA",
-            },
-        )
 
     def test_init_config_warms_singleton_idempotently(self):
         """init_config 构造单例并触发对齐；重复调用返回同一实例（幂等）。"""
@@ -222,392 +201,6 @@ class TestSharedRegistry(unittest.TestCase):
         self.assertIs(set_config._CONFIGS["ok-ww"](), cfg)
 
 
-class TestGetConfigPath(unittest.TestCase):
-    """测试 get_sub_config_path"""
-
-    def test_joins_root_and_rel(self):
-        """应正确拼接脚本根目录和 config 相对路径"""
-        # mock Windows 风格的 script_path，验证在任意平台上都能推导
-        fake_config = {
-            "script_list": [
-                {"display_name": "鸣潮", "script_path": r"C:\fake\ok-ww\ok-ww.exe"},
-            ]
-        }
-        rel = "data/apps/ok-ww/working/configs/DailyTask.json"
-        with (
-            patch.object(
-                utils_sub_config, "_load_config_yml", return_value=fake_config
-            ),
-            patch("os.path.exists", return_value=True),
-        ):
-            path = utils_sub_config.get_sub_config_path("ok-ww", rel)
-
-        # get_sub_config_path 内部用 safe_path_join，会归一化为绝对路径（Windows 为反斜杠），
-        # 故 expected 需用同一归一化方式，避免分隔符不一致导致断言失败。
-        expected = safe_path_join("C:/fake/ok-ww", rel)
-        self.assertEqual(path, expected)
-
-    def test_raises_for_unknown_script(self):
-        """config.yml 中无此脚本应触发 AssertionError"""
-        with (
-            patch.object(
-                utils_sub_config, "_load_config_yml", return_value={"script_list": []}
-            ),
-            self.assertRaises(AssertionError),
-        ):
-            utils_sub_config.get_sub_config_path("none", "whatever.json")
-
-    def test_all_registered_scripts_resolve_with_mock_config(self):
-        """对所有已注册脚本，用 mock 的 config.yml 验证路径推导成功
-        （不依赖真实 config.yml，CI 也能跑）"""
-        scripts = list(set_config._CONFIGS.keys())
-        # 构造 mock config：每个脚本一个唯一的 script_path（key 即进程名）
-        fake_script_list = [
-            {
-                "display_name": name,
-                "script_path": rf"C:\fake\root\{name}.exe",
-            }
-            for name in scripts
-        ]
-        with (
-            patch.object(
-                utils_sub_config,
-                "_load_config_yml",
-                return_value={"script_list": fake_script_list},
-            ),
-            patch("os.path.exists", return_value=True),
-        ):
-            for name in scripts:
-                rel = get_daily_configs(name)[0]["config"]
-                path = utils_sub_config.get_sub_config_path(name, rel)
-                self.assertIsNotNone(path, f"{name} 路径推导失败")
-                # 路径中应包含相对路径的各段（不依赖具体分隔符）
-                rel_parts = rel.split("/")
-                for part in rel_parts:
-                    self.assertIn(
-                        part, path, f"{name} 路径缺少相对路径段 '{part}': {path}"
-                    )
-
-    def test_does_not_require_exe_to_exist(self):
-        """回归：get_sub_config_path 不应校验游戏 exe 是否存在。
-
-        旧实现经 _get_script_root_dir → get_script_path 断言 exe 存在，
-        当用户正要修正失效的旧路径时，任何保存（含周起始日同步）都会崩溃。
-        新实现用 soft 解析，exe 是否存在与 config 文件位置无关。
-        """
-        fake_config = {
-            "script_list": [
-                {
-                    "display_name": "崩铁",
-                    "script_path": r"D:\game_helper\March7thAssistant\March7th Launcher.exe",
-                },
-            ]
-        }
-        rel = get_daily_configs("March7th-Launcher")[0]["config"]
-        with (
-            patch.object(
-                utils_sub_config, "_load_config_yml", return_value=fake_config
-            ),
-            patch("os.path.exists", return_value=False),  # 模拟 exe 不存在
-        ):
-            # 旧实现此处会因 get_script_path 的 assert os.path.exists(exe) 崩溃；
-            # 新实现应正常返回路径（不依赖 exe 是否存在）。
-            path = utils_sub_config.get_sub_config_path("March7th-Launcher", rel)
-        self.assertIn("config.yaml", path)
-
-
-class TestStarRailWeeklyStartDayRobustness(unittest.TestCase):
-    """回归：崩铁 set_start_day 的读路径不应因 exe 路径失效而崩溃（soft 解析）。
-
-    旧实现 get_sub_config_path → get_script_path 断言 exe 存在；用户正要修正失效的旧路径时
-    保存即崩。修复后 get_sub_config_path 用 soft 解析（不校验 exe），读路径不再因路径失效
-    而断言。写游戏侧 config 视为前置条件（游戏已安装、路径有效，由 GUI 保证），不再做
-    存在性兜底盘；非法周起始日仍由 assert 拦截。
-    """
-
-    def test_invalid_day_still_asserted(self):
-        """非法周起始日（非 1~7）仍应被系统拦截。"""
-        with self.assertRaises(AssertionError):
-            _weekly("March7th-Launcher", "历战余响").set_start_day(99)
-
-
-class TestArknightsWeeklyStartDayRobustness(unittest.TestCase):
-    """回归：MAA(明日方舟) set_start_day 的读路径不再因 exe 路径失效而崩溃。
-
-    与 TestStarRailWeeklyStartDayRobustness 同源修复（get_sub_config_path soft 解析）。
-    写游戏侧 config 视为前置条件（游戏已安装、路径有效，由 GUI 保证），原生 config
-    缺失即断言失败，不再 best-effort 跳过；非法周起始日仍由 assert 拦截。
-    """
-
-    def test_invalid_day_still_asserted(self):
-        # 0（不启用）合法，越界值仍须拦截
-        for bad in (8, -1):
-            with self.subTest(bad=bad), self.assertRaises(AssertionError):
-                _weekly("MAA", "理智药剂").set_start_day(bad)
-
-
-class TestLoadConfig(unittest.TestCase):
-    """测试 load_config"""
-
-    def test_load_json_config(self):
-        """应正确解析 JSON 格式的 config"""
-        fake_data = {"key": "value", "nested": {"a": 1}}
-        fake_path = r"C:\fake\script\config.json"
-
-        with (
-            patch.object(
-                utils_sub_config, "get_sub_config_path", return_value=fake_path
-            ),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(fake_data))),
-        ):
-            result = utils_sub_config.load_config("ok-ww", "DailyTask.json")
-
-        self.assertEqual(result, fake_data)
-
-    def test_load_yaml_config(self):
-        """应正确解析 YAML 格式的 config"""
-        fake_data = {"key": "value", "list": [1, 2, 3]}
-        fake_path = r"C:\fake\script\config.yaml"
-        yaml_str = dump_yaml_str(fake_data)
-
-        with (
-            patch.object(
-                utils_sub_config, "get_sub_config_path", return_value=fake_path
-            ),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=yaml_str)),
-        ):
-            result = utils_sub_config.load_config(
-                "OneDragon-Launcher", "charge_plan.yml"
-            )
-
-        self.assertEqual(result, fake_data)
-
-    def test_load_all_registered_configs_with_mock(self):
-        """对所有已注册脚本，用 mock config 文件验证读取逻辑
-        （不依赖真实 config 文件，CI 也能跑）"""
-        scripts = list(set_config._CONFIGS.keys())
-        # 构造 mock config.yml + mock 文件内容
-        fake_script_list = [
-            {
-                "display_name": name,
-                "script_path": rf"C:\fake\root\{name}.exe",
-            }
-            for name in scripts
-        ]
-        fake_config_yml = {"script_list": fake_script_list}
-
-        for name in scripts:
-            rel = get_daily_configs(name)[0]["config"]
-            ext = os.path.splitext(rel)[1].lower()
-            fake_data = {"test_key": "test_value"}
-            if ext == ".json":
-                file_content = json.dumps(fake_data, ensure_ascii=False)
-            else:
-                file_content = dump_yaml_str(fake_data)
-
-            with (
-                patch.object(
-                    utils_sub_config, "_load_config_yml", return_value=fake_config_yml
-                ),
-                patch("os.path.exists", return_value=True),
-                patch("builtins.open", mock_open(read_data=file_content)),
-            ):
-                result = utils_sub_config.load_config(name, rel)
-
-            self.assertIsNotNone(result, f"{name} config 读取失败")
-            self.assertEqual(result, fake_data, f"{name} config 读取内容不匹配")
-
-
-class TestLoadReadPathTolerance(unittest.TestCase):
-    """Daily 读路径的失败处理：未安装/缺失静默按未设置，内容损坏留痕后仍按未设置。"""
-
-    def _daily(self):
-        return set_config._CONFIGS["ok-ww"]()._dispatch_daily("每日任务")
-
-    def test_missing_config_returns_none_without_warning(self):
-        """config 缺失（以断言表达）属正常状态 → None 且不告警。"""
-        with (
-            patch.object(
-                utils_sub_config,
-                "load_config",
-                side_effect=AssertionError("config 文件不存在"),
-            ),
-            self.assertNoLogs("src.utils.utils_sub_config", level="WARNING"),
-        ):
-            self.assertIsNone(self._daily()._load_daily_config(allow_missing=True))
-
-    def test_corrupt_config_warns_and_returns_none(self):
-        """文件存在但解析失败 → None 且留下 warning（不静默把损坏当未设置）。"""
-        with (
-            patch.object(
-                utils_sub_config,
-                "load_config",
-                side_effect=json.JSONDecodeError("bad json", "{", 0),
-            ),
-            self.assertLogs("src.utils.utils_sub_config", level="WARNING"),
-        ):
-            self.assertIsNone(self._daily()._load_daily_config(allow_missing=True))
-
-    def test_write_path_raises_on_corrupt_config(self):
-        """写路径（allow_missing=False）读取失败一律抛出，不降级为 None。"""
-        with (
-            patch.object(
-                utils_sub_config,
-                "load_config",
-                side_effect=json.JSONDecodeError("bad json", "{", 0),
-            ),
-            self.assertRaises(json.JSONDecodeError),
-        ):
-            self._daily()._load_daily_config()
-
-
-class TestSaveConfig(unittest.TestCase):
-    """测试 save_config —— 全部 mock，不真正写回脚本 config"""
-
-    def test_save_json_config_does_not_write_real_file(self):
-        """save JSON 时不应写入真实 config 文件"""
-        fake_path = r"C:\fake\script\config.json"
-        data = {"Which to Farm": "Tacet"}
-
-        m = mock_open()
-        with (
-            patch.object(
-                utils_sub_config, "get_sub_config_path", return_value=fake_path
-            ),
-            patch("builtins.open", m),
-        ):
-            result = utils_sub_config.save_config("ok-ww", "DailyTask.json", data)
-
-        self.assertIsNone(result)
-        m.assert_called_once_with(fake_path, "w", encoding="utf-8")
-        # 验证写入的内容是正确的 JSON
-        handle = m()
-        written = "".join(call.args[0] for call in handle.write.call_args_list)
-        self.assertEqual(json.loads(written), data)
-
-    def test_save_yaml_config_does_not_write_real_file(self):
-        """save YAML 时不应写入真实 config 文件
-
-        dump_yaml 为原子写：先写同目录 .tmp，再 os.replace 到目标路径。
-        """
-        fake_path = r"C:\fake\script\charge_plan.yml"
-        data = {"plan_list": [{"category_name": "test"}]}
-
-        m = mock_open()
-        with (
-            patch.object(
-                utils_sub_config, "get_sub_config_path", return_value=fake_path
-            ),
-            patch("builtins.open", m),
-            patch("src.utils.utils_yaml.os.replace") as mock_replace,
-        ):
-            result = utils_sub_config.save_config(
-                "OneDragon-Launcher", "charge_plan.yml", data
-            )
-
-        self.assertIsNone(result)
-        # 原子写：写入目标是 .tmp，随后原子替换到目标路径
-        m.assert_called_once_with(fake_path + ".tmp", "w", encoding="utf-8")
-        mock_replace.assert_called_once_with(fake_path + ".tmp", fake_path)
-        # 验证写入的内容是有效的 YAML
-        handle = m()
-        written = "".join(call.args[0] for call in handle.write.call_args_list)
-        self.assertEqual(load_yaml_str(written), data)
-
-    def test_save_raises_when_path_is_none(self):
-        """get_sub_config_path 返回 None 时应抛出异常"""
-        with (
-            patch.object(utils_sub_config, "get_sub_config_path", return_value=None),
-            self.assertRaises((TypeError, AssertionError)),
-        ):
-            utils_sub_config.save_config("none", "whatever.json", {"key": "val"})
-
-    def test_save_and_reload_roundtrip_json(self):
-        """JSON 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
-        data = {"test_key": "test_value", "num": 42}
-
-        with tempfile.TemporaryDirectory() as tmp:
-            fake_path = os.path.join(tmp, "config.json")
-            with patch.object(
-                utils_sub_config, "get_sub_config_path", return_value=fake_path
-            ):
-                # save
-                ok = utils_sub_config.save_config("ok-ww", "DailyTask.json", data)
-                self.assertIsNone(ok)
-                # load
-                loaded = utils_sub_config.load_config("ok-ww", "DailyTask.json")
-                self.assertEqual(loaded, data)
-
-    def test_save_and_reload_roundtrip_yaml(self):
-        """YAML 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
-        data = {"plan_list": [{"category_name": "模拟"}], "enabled": True}
-
-        with tempfile.TemporaryDirectory() as tmp:
-            fake_path = os.path.join(tmp, "config.yaml")
-            with patch.object(
-                utils_sub_config, "get_sub_config_path", return_value=fake_path
-            ):
-                # save
-                ok = utils_sub_config.save_config(
-                    "OneDragon-Launcher", "charge_plan.yml", data
-                )
-                self.assertIsNone(ok)
-                # load
-                loaded = utils_sub_config.load_config(
-                    "OneDragon-Launcher", "charge_plan.yml"
-                )
-                self.assertEqual(loaded, data)
-
-
-class TestSafeUpdate(unittest.TestCase):
-    """测试 safe_update"""
-
-    def test_update_changes_value(self):
-        """值不同时更新并返回 True"""
-        from src.utils.utils_dict import safe_update
-
-        config = {"key": "old"}
-        result = safe_update(config, "key", "new", "test")
-        self.assertTrue(result)
-        self.assertEqual(config["key"], "new")
-
-    def test_no_change_when_same_value(self):
-        """值相同时不更新并返回 False"""
-        from src.utils.utils_dict import safe_update
-
-        config = {"key": "same"}
-        result = safe_update(config, "key", "same", "test")
-        self.assertFalse(result)
-        self.assertEqual(config["key"], "same")
-
-    def test_key_not_exists_raises(self):
-        """key 不存在时 assert（默认）"""
-        from src.utils.utils_dict import safe_update
-
-        config = {}
-        with self.assertRaises(AssertionError):
-            safe_update(config, "missing", "value", "test")
-
-    def test_key_not_exists_adds_with_flag(self):
-        """assert_key_exists=False 时允许添加新 key"""
-        from src.utils.utils_dict import safe_update
-
-        config = {"a": 1}
-        result = safe_update(config, "b", "new", "test", assert_key_exists=False)
-        self.assertTrue(result)
-        self.assertEqual(config, {"a": 1, "b": "new"})
-
-    def test_type_mismatch_raises(self):
-        """类型不一致时 assert"""
-        from src.utils.utils_dict import safe_update
-
-        config = {"a": 1}
-        with self.assertRaises(AssertionError):
-            safe_update(config, "a", "string", "test")
-
-
 class TestIsAdapted(unittest.TestCase):
     """is_adapted：脚本是否已注册副本配置适配（GUI 任务卡显隐依据）。"""
 
@@ -652,6 +245,268 @@ class TestIterBackupPaths(unittest.TestCase):
         self.assertEqual(set(paths), set(set_config._CONFIGS))
         for script_name, rel_paths in paths.items():
             self.assertTrue(rel_paths, f"{script_name} 未声明 _backup_paths")
+
+
+class TestScriptConfigBase(unittest.TestCase):
+    """测试基类 set_daily_task 的分发和保存行为。"""
+
+    def test_set_daily_task_unknown_daily_raises(self):
+        """日常展示名不在声明里 → assert（落点全部由声明推导，认不出即报）。"""
+        cfg = WutheringWavesConfig()
+        with (
+            patch.object(Daily, "_load_daily_config", return_value={}),
+            self.assertRaisesRegex(AssertionError, "未知日常"),
+        ):
+            cfg.set_daily_task("不存在的日常", "凝素领域", 3)
+
+    def test_set_task_changed_saves(self):
+        """set_daily_task 有修改时应（按声明落点）落盘"""
+        cfg = WutheringWavesConfig()
+        with (
+            patch.object(
+                Daily, "_load_daily_config", return_value={"Which to Farm": "old"}
+            ),
+            patch.object(Daily, "_save_daily_config") as mock_save,
+        ):
+            cfg.set_daily_task("每日任务", "凝素领域", 3)
+        self.assertEqual(
+            mock_save.call_args[0][0],
+            {
+                "Which to Farm": "Forgery Challenge",
+                "Which Forgery Challenge to Farm": 3,
+            },
+        )
+
+    def test_set_daily_task_unchanged_no_save(self):
+        """set_daily_task 无修改时不调用 _save"""
+        cfg = WutheringWavesConfig()
+        current = {
+            "Which to Farm": "Forgery Challenge",
+            "Which Forgery Challenge to Farm": 3,
+        }
+        with (
+            patch.object(Daily, "_load_daily_config", return_value=current),
+            patch.object(Daily, "_save_daily_config") as mock_save,
+        ):
+            cfg.set_daily_task("每日任务", "凝素领域", 3)
+        mock_save.assert_not_called()
+
+    def test_daily_physical_name_available_on_base(self):
+        """日常对象在基类可取（非异环专属）：单日常脚本亦然，物理名回落展示名。"""
+        cfg = WutheringWavesConfig()
+        self.assertEqual(cfg._dispatch_daily("每日任务").physical_name, "每日任务")
+        with self.assertRaisesRegex(AssertionError, "未知日常"):
+            cfg._dispatch_daily("不存在的日常")
+
+    def test_set_daily_task_without_daily_raises(self):
+        """写路径必须给出日常展示名（单日常脚本也不例外）。"""
+        with patch("src.config.set_config.get_daily_configs", return_value=[]):
+            cfg = ScriptConfig()
+        cfg.display_name = "测试"
+        with (
+            patch.object(Daily, "_load_daily_config", return_value={"task": "old"}),
+            self.assertRaisesRegex(AssertionError, "必须指定日常"),
+        ):
+            cfg.set_daily_task(None, "new")
+
+
+class TestGetGameExePath(unittest.TestCase):
+    """测试 ScriptConfig.get_game_exe_path：从各脚本游戏配置中提取游戏路径。"""
+
+    def test_unadapted_base_returns_none(self):
+        """基类未适配（_game_path_keys 为空）→ None，不触发任何读取"""
+        with patch("src.config.set_config.get_daily_configs", return_value=[]):
+            cfg = ScriptConfig()
+        with patch("src.config.set_config.load_game_config") as mock_load:
+            got = cfg.get_game_exe_path()
+        self.assertIsNone(got)
+        mock_load.assert_not_called()
+
+    def test_ok_series_pc_full_path(self):
+        """OK 系（ok-ww/ok-ef）读取 devices.json 的 pc_full_path。
+
+        异环（ok-nte）已重写 get_game_exe_path 返回启动器路径，不在此列（见专项测试）。
+        """
+        for script_name in ("ok-ww", "ok-ef"):
+            with patch(
+                "src.config.set_config.load_game_config",
+                return_value={
+                    "preferred": "pc_1",
+                    "pc_full_path": "D:\\Game\\game.exe",
+                },
+            ):
+                got = set_config._CONFIGS[script_name]().get_game_exe_path()
+            self.assertEqual(got, "D:\\Game\\game.exe")
+
+    def test_nte_launcher_found_upward(self):
+        """异环启动器在游戏安装根目录（从游戏本体逐级上溯）→ 返回 NTELauncher.exe 路径"""
+        game_exe = os.path.join(
+            "D:/Neverness To Everness",
+            "Client",
+            "WindowsNoEditor",
+            "HT",
+            "Binaries",
+            "Win64",
+            "HTGame.exe",
+        )
+        launcher = os.path.join("D:/Neverness To Everness", "NTELauncher.exe")
+        with (
+            patch(
+                "src.config.set_config.load_game_config",
+                return_value={"pc_full_path": game_exe},
+            ),
+            patch("os.path.isfile", side_effect=lambda p: p == launcher),
+        ):
+            got = set_config.get_game_exe_path("ok-nte")
+        self.assertEqual(got, launcher)
+
+    def test_nte_launcher_missing_returns_none(self):
+        """异环启动器不存在（上溯到盘符根也找不到）→ None，GUI 提示「未找到游戏路径」"""
+        game_exe = os.path.join(
+            "D:/Neverness To Everness",
+            "Client",
+            "WindowsNoEditor",
+            "HT",
+            "Binaries",
+            "Win64",
+            "HTGame.exe",
+        )
+        with (
+            patch(
+                "src.config.set_config.load_game_config",
+                return_value={"pc_full_path": game_exe},
+            ),
+            patch("os.path.isfile", return_value=False),
+        ):
+            got = set_config.get_game_exe_path("ok-nte")
+        self.assertIsNone(got)
+
+    def test_nte_game_exe_missing_returns_none(self):
+        """异环游戏本体路径读不到（devices.json 缺失）→ None"""
+        with patch("src.config.set_config.load_game_config", return_value=None):
+            got = set_config.get_game_exe_path("ok-nte")
+        self.assertIsNone(got)
+
+    def test_genshin_nested_install_path(self):
+        """原神（BetterGI）读取 config.json 的 genshinStartConfig.installPath（嵌套）"""
+        with patch(
+            "src.config.set_config.load_game_config",
+            return_value={
+                "genshinStartConfig": {
+                    "installPath": "D:\\Genshin\\YuanShen.exe",
+                }
+            },
+        ):
+            got = set_config.get_game_exe_path("BetterGI")
+        self.assertEqual(got, "D:\\Genshin\\YuanShen.exe")
+
+    def test_game_path_top_level(self):
+        """绝区零/崩铁读取顶层 game_path"""
+        for script_name in ("OneDragon-Launcher", "March7th-Launcher"):
+            with patch(
+                "src.config.set_config.load_game_config",
+                return_value={"game_path": "D:\\Game\\game.exe"},
+            ):
+                got = set_config._CONFIGS[script_name]().get_game_exe_path()
+            self.assertEqual(got, "D:\\Game\\game.exe")
+
+    def test_arknights_nested_emulator_path(self):
+        """粥（MAA）读取 gui.new.json 的 Configurations.Default.Gui.StartUpSettings.EmulatorPath（多级嵌套）"""
+        with patch(
+            "src.config.set_config.load_game_config",
+            return_value={
+                "Configurations": {
+                    "Default": {
+                        "Gui": {
+                            "StartUpSettings": {
+                                "EmulatorPath": "C:\\MuMu\\#0 MuMu安卓设备.lnk",
+                            }
+                        }
+                    }
+                }
+            },
+        ):
+            got = set_config.get_game_exe_path("MAA")
+        self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
+
+    def test_missing_config_returns_none(self):
+        """游戏配置文件缺失（load_game_config 返回 None）→ None"""
+        with patch("src.config.set_config.load_game_config", return_value=None):
+            got = set_config.get_game_exe_path("ok-ww")
+        self.assertIsNone(got)
+
+    def test_missing_field_returns_none(self):
+        """配置中缺字段 → None"""
+        with patch(
+            "src.config.set_config.load_game_config",
+            return_value={"other": "x"},
+        ):
+            got = set_config.get_game_exe_path("ok-ww")
+        self.assertIsNone(got)
+
+    def test_empty_value_returns_none(self):
+        """字段值为空字符串 → None"""
+        with patch(
+            "src.config.set_config.load_game_config",
+            return_value={"pc_full_path": ""},
+        ):
+            got = set_config.get_game_exe_path("ok-ww")
+        self.assertIsNone(got)
+
+
+class TestGetGameExePathAdapter(unittest.TestCase):
+    """测试适配器接口 get_game_exe_path 的分发逻辑"""
+
+    def test_unknown_process_returns_none(self):
+        """未注册（自定义）进程 → None"""
+        got = set_config.get_game_exe_path("不存在")
+        self.assertIsNone(got)
+
+    def test_known_process_dispatches(self):
+        factory = MagicMock()
+        factory.return_value.get_game_exe_path.return_value = "D:/Game/game.exe"
+        with patch.dict(set_config._CONFIGS, {"ok-ww": factory}, clear=True):
+            self.assertEqual(set_config.get_game_exe_path("ok-ww"), "D:/Game/game.exe")
+        factory.assert_called_once_with()
+        factory.return_value.get_game_exe_path.assert_called_once_with()
+
+
+class TestSetConfigAdapter(unittest.TestCase):
+    """测试适配器接口 set_config() 的分发逻辑"""
+
+    def test_unselected_tasks_do_not_construct_or_call_an_adapter(self):
+        for task in (None, "", "未选择"):
+            with self.subTest(task=task):
+                factory = MagicMock()
+                with patch.dict(set_config._CONFIGS, {"ok-ww": factory}, clear=True):
+                    set_config.set_config("ok-ww", task_name=task)
+                factory.assert_not_called()
+                factory.return_value.set_daily_task.assert_not_called()
+
+    def test_unknown_process_does_not_touch_registry(self):
+        for sequence in (None, "序列"):
+            with self.subTest(sequence=sequence):
+                factory = MagicMock()
+                with patch.dict(set_config._CONFIGS, {"ok-ww": factory}, clear=True):
+                    set_config.set_config(
+                        "自定义脚本", task_name="副本", sequence=sequence
+                    )
+                factory.assert_not_called()
+                factory.return_value.set_daily_task.assert_not_called()
+
+    def test_dispatches_to_correct_subclass(self):
+        """验证 set_config 正确分发到对应子类（日常名一并透传，顺序为日常→副本→序列）"""
+        mock_instance = MagicMock()
+        mock_factory = MagicMock(return_value=mock_instance)
+        with patch.dict("src.config.set_config._CONFIGS", {"ok-ww": mock_factory}):
+            set_config.set_config(
+                "ok-ww",
+                daily_display_name="每日任务",
+                task_name="无音区",
+                sequence="1",
+            )
+        mock_factory.assert_called_once()
+        mock_instance.set_daily_task.assert_called_once_with("每日任务", "无音区", "1")
 
 
 if __name__ == "__main__":

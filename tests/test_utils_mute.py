@@ -45,59 +45,45 @@ class TestSetSystemMute(unittest.TestCase):
 class TestMuteOnOff(unittest.TestCase):
     """mute_on / mute_off：pre_run/post_run step 封装，异常不向上抛。"""
 
-    def test_mute_on_calls_set_true(self):
-        with mock.patch("src.utils.utils_mute.set_system_mute") as sm:
-            mute_on()
-            sm.assert_called_once_with(True)
+    def test_result_is_logged_for_both_actions(self):
+        actions = (
+            (mute_on, True, "[mute] 已静音", "[mute] 运行前静音未生效"),
+            (mute_off, False, "[mute] 已恢复声音", "[mute] 运行后恢复未生效"),
+        )
+        for action, muted, success_message, failure_message in actions:
+            for success, level, message in (
+                (True, "INFO", success_message),
+                (False, "WARNING", failure_message),
+            ):
+                with self.subTest(action=action.__name__, success=success):
+                    with (
+                        mock.patch(
+                            "src.utils.utils_mute.set_system_mute", return_value=success
+                        ) as set_mute,
+                        self.assertLogs("src.utils.utils_mute", level=level) as logs,
+                    ):
+                        action()
+                    set_mute.assert_called_once_with(muted)
+                    self.assertEqual(len(logs.records), 1)
+                    self.assertEqual(logs.records[0].levelname, level)
+                    self.assertIn(message, logs.records[0].getMessage())
 
-    def test_mute_off_calls_set_false(self):
-        with mock.patch("src.utils.utils_mute.set_system_mute") as sm:
-            mute_off()
-            sm.assert_called_once_with(False)
-
-    def test_mute_on_swallows_exception(self):
-        with mock.patch(
-            "src.utils.utils_mute.set_system_mute", side_effect=RuntimeError("boom")
+    def test_errors_are_logged_without_interrupting_the_chain(self):
+        for action, muted, message in (
+            (mute_on, True, "[mute] 运行前静音失败"),
+            (mute_off, False, "[mute] 运行后恢复声音失败"),
         ):
-            # 不应抛出；_run_steps 也会兜底，但 step 内部已自包容。
-            mute_on()
-
-    def test_mute_off_swallows_exception(self):
-        with mock.patch(
-            "src.utils.utils_mute.set_system_mute", side_effect=RuntimeError("boom")
-        ):
-            mute_off()
-
-    def test_mute_on_logs_success(self):
-        """静音成功打 info 日志（exe e2e 靠它断言 mute 真实生效）。"""
-        with (
-            mock.patch("src.utils.utils_mute.set_system_mute", return_value=True),
-            self.assertLogs("src.utils.utils_mute", level="INFO") as logs,
-        ):
-            mute_on()
-        self.assertIn("[mute] 已静音", logs.output[0])
-
-    def test_mute_on_warns_unavailable(self):
-        """pycaw 缺失/非 Windows 的静默降级改为 warning 留痕。"""
-        with (
-            mock.patch("src.utils.utils_mute.set_system_mute", return_value=False),
-            self.assertLogs("src.utils.utils_mute", level="WARNING") as logs,
-        ):
-            mute_on()
-        self.assertIn("[mute] 运行前静音未生效", logs.output[0])
-
-    def test_mute_off_logs_success(self):
-        with (
-            mock.patch("src.utils.utils_mute.set_system_mute", return_value=True),
-            self.assertLogs("src.utils.utils_mute", level="INFO") as logs,
-        ):
-            mute_off()
-        self.assertIn("[mute] 已恢复声音", logs.output[0])
-
-    def test_mute_off_warns_unavailable(self):
-        with (
-            mock.patch("src.utils.utils_mute.set_system_mute", return_value=False),
-            self.assertLogs("src.utils.utils_mute", level="WARNING") as logs,
-        ):
-            mute_off()
-        self.assertIn("[mute] 运行后恢复未生效", logs.output[0])
+            with self.subTest(action=action.__name__):
+                with (
+                    mock.patch(
+                        "src.utils.utils_mute.set_system_mute",
+                        side_effect=RuntimeError("boom"),
+                    ) as set_mute,
+                    self.assertLogs("src.utils.utils_mute", level="ERROR") as logs,
+                ):
+                    action()
+                set_mute.assert_called_once_with(muted)
+                self.assertEqual(len(logs.records), 1)
+                self.assertEqual(logs.records[0].getMessage(), message)
+                self.assertIs(logs.records[0].exc_info[0], RuntimeError)
+                self.assertIn("RuntimeError: boom", logs.output[0])
