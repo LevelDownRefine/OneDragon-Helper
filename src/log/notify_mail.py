@@ -11,11 +11,11 @@ QQ 为默认服务商（收发同号），``smtp_host``/``smtp_port`` 可在 sch
 - 不读 ``schedule.yml`` 明文，故 notify 段不存放、也不该存放授权码；
 - 注册入口：``python -m src.log.notify_mail register <email> <授权码>``，
   或供 GUI 调用 :func:`register_credentials`。
-正文为 ``multipart/alternative``：HTML 部分用真 ``<table>``（不依赖等宽字体，比例字体
-下仍对齐），纯文本部分沿用等宽空格填充的汇总表，供纯文本客户端与控制台复用。
+正文为 ``multipart/alternative``：纯文本部分沿用等宽空格填充的汇总表（供纯文本客户端与
+控制台复用），HTML 部分由同目录 ``build_html.py`` 渲染（真 ``<table>``、配色照抄 GUI 主题）。
+本模块只管发送——凭据、SMTP 连接与正文装配；渲染归 ``build_html``。
 """
 
-import html
 import logging
 import smtplib
 import ssl
@@ -28,11 +28,8 @@ try:
 except ImportError:  # keyring 缺失时无法取授权码（无明文兜底），send_mail 直接跳过
     _keyring = None
 
-from src.log.monitor import (
-    format_diagnostic_sections,
-    summary_counts_line,
-    summary_table_rows,
-)
+from src.log.build_html import build_html
+from src.log.monitor import format_diagnostic_sections
 
 logger = logging.getLogger(__name__)
 
@@ -124,10 +121,10 @@ def send_mail(result: dict, *, smtp_config: dict | None = None) -> None:
         subject = f"{_SUBJECT_PREFIX}脚本运行报错: {'、'.join(notify_list)}"
     else:
         subject = f"{_SUBJECT_PREFIX}脚本运行汇总"
-    # 诊断段两版正文共用，只算一次（日志尾部可能很长）。
+    # 诊断段两版正文共用一份筛选口径：纯文本版拼文本，HTML 版按 entries 结构化渲染。
     diagnostic = format_diagnostic_sections(result.get("entries", []))
     body = _build_body(result, diagnostic)
-    html_body = _build_html(result, diagnostic)
+    html_body = build_html(result)
     _send(email, password, email, subject, body, html_body, host=host, port=port)
 
 
@@ -143,40 +140,6 @@ def _build_body(result: dict, diagnostic: str) -> str:
     """
     report = result.get("report", "")
     return report + ("\n\n" + diagnostic if diagnostic else "")
-
-
-def _build_html(result: dict, diagnostic: str) -> str:
-    """拼接邮件正文（HTML）：真 <table> 汇总表 + 统计行 + 诊断明细 <pre>。
-
-    表格由渲染器排版，故不依赖等宽字体、不受 CJK 双宽与 tabstop 影响。
-
-    Args:
-        result: ``monitor.parse_logs`` 的返回值（用其 ``entries`` 构造表格）。
-        diagnostic: 已算好的诊断文本；空串表示不附加该段。
-
-    Returns:
-        HTML 正文。
-    """
-    entries = result.get("entries", [])
-    headers, rows = summary_table_rows(entries)
-    head_cells = "".join(f"<th>{html.escape(h)}</th>" for h in headers)
-    body_rows = "".join(
-        "<tr>" + "".join(f"<td>{html.escape(c)}</td>" for c in row) + "</tr>"
-        for row in rows
-    )
-    parts = [
-        '<html><head><meta charset="utf-8"></head><body>',
-        "<h3>脚本运行状况汇总报告</h3>",
-        '<table border="1" cellspacing="0" cellpadding="4"'
-        ' style="border-collapse:collapse">',
-        f"<tr>{head_cells}</tr>{body_rows}",
-        "</table>",
-        f"<p>{html.escape(summary_counts_line(entries))}</p>",
-    ]
-    if diagnostic:
-        parts.append(f"<pre>{html.escape(diagnostic)}</pre>")
-    parts.append("</body></html>")
-    return "\n".join(parts)
 
 
 def _send(

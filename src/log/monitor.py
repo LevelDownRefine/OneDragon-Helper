@@ -507,14 +507,14 @@ def summary_table_rows(entries: list[dict]) -> tuple[list[str], list[list[str]]]
     return headers, rows
 
 
-def summary_counts_line(entries: list[dict]) -> str:
-    """汇总统计行：总计 / 成功 / 失败 / 无日志（控制台与邮件 HTML 共用）。
+def summary_counts(entries: list[dict]) -> dict:
+    """汇总统计数字：总计 / 成功 / 失败 / 无日志（文本统计行与邮件徽章的唯一数据源）。
 
     Args:
         entries: 各脚本解析结果（含 result / status）。
 
     Returns:
-        形如「总计: N 个脚本 | 成功: X | 失败: Y | 无日志: Z」的文本。
+        含 ``total`` / ``success`` / ``failed`` / ``no_log`` 四键的 dict。
     """
     success = failed = 0
     for entry in entries:
@@ -524,10 +524,28 @@ def summary_counts_line(entries: list[dict]) -> str:
         elif status == ScriptLogStatus.FAILED:
             failed += 1
     # 非 SUCCESS/FAILED 的状态（目前仅 NO_LOG）归入无日志，与 status_cn 覆盖一致。
+    return {
+        "total": len(entries),
+        "success": success,
+        "failed": failed,
+        "no_log": len(entries) - success - failed,
+    }
+
+
+def summary_counts_line(entries: list[dict]) -> str:
+    """汇总统计行：总计 / 成功 / 失败 / 无日志（控制台与纯文本邮件共用）。
+
+    Args:
+        entries: 各脚本解析结果（含 result / status）。
+
+    Returns:
+        形如「总计: N 个脚本 | 成功: X | 失败: Y | 无日志: Z」的文本。
+    """
+    counts = summary_counts(entries)
     return (
-        f"总计: {len(entries)} 个脚本"
-        f" | 成功: {success} | 失败: {failed}"
-        f" | 无日志: {len(entries) - success - failed}"
+        f"总计: {counts['total']} 个脚本"
+        f" | 成功: {counts['success']} | 失败: {counts['failed']}"
+        f" | 无日志: {counts['no_log']}"
     )
 
 
