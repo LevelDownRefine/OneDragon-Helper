@@ -588,6 +588,92 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
         self.assertEqual(measured["weeklyPopup"][1], n_opts * 32 + 8)
 
 
+class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
+    """点日常 chip 必须弹出菜单（回归：QML 给弹窗赋了控制器不提供的字段）。
+
+    桩下 QML 曾把 `modelData.switch_only` 赋给 bool 属性，而控制器从不返回该字段 →
+    「Cannot assign [undefined] to bool」使 onClicked 从该行中断，其后的 anchorTop /
+    visible 等语句全部不执行，于是所有日常 chip 都点不动。
+    """
+
+    def test_click_daily_chip_opens_menu(self):
+        code = textwrap.dedent(
+            """
+            import os
+            os.environ["QT_QPA_PLATFORM"] = "offscreen"
+            os.environ["QML_DISABLE_DISK_CACHE"] = "1"
+            from unittest.mock import patch
+            from PySide6.QtCore import QPointF, Qt, QUrl
+            from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+            from PySide6.QtQuick import QQuickItem
+            from PySide6.QtTest import QTest
+            from src.gui.icons import UiIconProvider
+            from src.gui.main_window import QmlBridge
+            from src.utils.utils_sub_config import resolve_script_path
+            from tests.gui.helpers import make_bridge
+
+            dailies = [{
+                "display_name": "每日任务",
+                "options": {"values": [{"display_name": "副本A", "physical_name": "a"}]},
+            }]
+            records = [
+                {"name": "每日任务", "task": "副本A", "sequence": None, "enabled": True}
+            ]
+            with (
+                patch("src.service.app_service.get_weekly_map", return_value=[]),
+                patch("src.gui.controllers.task_card.get_daily_readback",
+                      return_value=records),
+            ):
+                bridge = make_bridge()
+                qmlRegisterSingletonInstance(
+                    QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+                engine = QQmlApplicationEngine()
+                engine.addImageProvider("uiicon", UiIconProvider())
+                engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
+                engine.load(QUrl.fromLocalFile(
+                    resolve_script_path("src/gui/qml/main.qml")))
+                assert len(engine.rootObjects()) == 1
+                window = engine.rootObjects()[0]
+                QTest.qWait(400)
+                bridge.task_card._daily_map_cache = {"ok-ww": {"dailies": dailies}}
+                bridge.taskStateChanged.emit()
+                QTest.qWait(300)
+
+                # Repeater 委托的 QObject 所有权不等于视觉父子关系，按视觉树查找。
+                def find_item(name):
+                    pending = [window.contentItem()]
+                    while pending:
+                        item = pending.pop()
+                        if item.objectName() == name:
+                            return item
+                        pending.extend(item.childItems())
+                    raise AssertionError(name)
+
+                popup = window.findChild(QQuickItem, "dailyPopup")
+                assert not popup.isVisible()
+                chip = find_item("dailyButton")
+                point = chip.mapToScene(QPointF(chip.width() / 2, chip.height() / 2))
+                QTest.mouseClick(window, Qt.LeftButton, pos=point.toPoint())
+                QTest.qWait(200)
+                print("POPUP", popup.isVisible(), popup.property("dailyName"),
+                      flush=True)
+                assert popup.isVisible(), "点日常 chip 未弹出菜单"
+                assert popup.property("dailyName") == "每日任务", popup.property("dailyName")
+            """
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", _NATIVE_CONFIG_STUB + code],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=os.getcwd(),
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        # 点不动是行为级症状（QML 的类型报错未必落在 stderr），故断言落在「菜单是否打开」上。
+        for error in ("ReferenceError", "TypeError"):
+            self.assertNotIn(error, proc.stderr)
+
+
 class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
     """无周常的已适配脚本不应显示周常区及总开关（回归 issue）。"""
 

@@ -224,10 +224,7 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                // 纯开关日常（switch_only）没有副本可选项，chip 仍要弹窗
-                                // —— 菜单只列「启用 / 不启用」两项。
-                                if (Bridge.dailyOptions(modelData.name).length === 0
-                                        && !modelData.switch_only) {
+                                if (Bridge.dailyOptions(modelData.name).length === 0) {
                                     Bridge.toastRequested("暂无副本选项")
                                     return
                                 }
@@ -235,7 +232,6 @@ Item {
                                               && dailyPopup.dailyName === modelData.name
                                 dailyPopup.dailyName = modelData.name
                                 dailyPopup.canDisable = modelData.can_disable
-                                dailyPopup.switchOnly = modelData.switch_only
                                 dailyPopup.anchorTop = dailyArea.y + index * dailyArea.rowH
                                 dailyPopup.anchorBottom = dailyPopup.anchorTop + dailyArea.rowH
                                 weeklyPopup.visible = false
@@ -419,8 +415,6 @@ Item {
 
         property string dailyName: ""
         property bool canDisable: false
-        // 纯开关日常：菜单只列「启用 / 不启用」，不列副本
-        property bool switchOnly: false
         property var options: []
         property int leftW: 200
         property int rightW: 0
@@ -452,7 +446,7 @@ Item {
                 if (measTm.width > maxW) maxW = measTm.width
             }
             leftW = Math.min(maxW + 28, 240)
-            var rows = options.length + (canDisable ? 1 : 0) + (switchOnly ? 1 : 0)
+            var rows = options.length + (canDisable ? 1 : 0)
             var geom = cardRoot.placePopup(
                 anchorTop, anchorBottom, Math.min(rows * 32 + 8, 360))
             popupY = geom.y
@@ -539,27 +533,6 @@ Item {
                                         dailyPopup.visible = false
                                     }
                                 }
-                            }
-                        }
-                    }
-                    // 纯开关日常：给出「启用」，与下面的「不启用」构成开关两态
-                    Rectangle {
-                        width: dailyPopup.leftW
-                        height: 30; radius: 6
-                        visible: dailyPopup.switchOnly && dailyPopup.canDisable
-                        color: enableMouse.containsMouse ? Theme.accentSoft : "transparent"
-                        Text {
-                            anchors.fill: parent; leftPadding: 10
-                            verticalAlignment: Text.AlignVCenter
-                            text: "启用"
-                            color: Theme.text; font.pixelSize: 13
-                        }
-                        MouseArea {
-                            id: enableMouse; anchors.fill: parent; hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                Bridge.setDailyEnabled(dailyPopup.dailyName, true)
-                                dailyPopup.visible = false
                             }
                         }
                     }
