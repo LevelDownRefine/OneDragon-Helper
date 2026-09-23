@@ -36,10 +36,14 @@ jobs:
         shell: cmd
         run: call deploy\build.bat
 
-      # if: always() 使「打包成功但 exe 测试失败」时也能下载产物排查；
-      # 打包本身失败则目录不存在，用 warn 而非让步骤报错。
+      # 测试失败时仍可上传干净的程序包排查；未通过文件清单检查的目录不上传。
+      - name: Check package before upload
+        id: package-check
+        if: always() && hashFiles('deploy/dist/OneDragon-Helper/version.json') != ''
+        run: uv run python tools/release_package.py check --package deploy/dist/OneDragon-Helper
+
       - name: Upload packaged EXE
-        if: always()
+        if: always() && steps.package-check.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
           name: OneDragon-Helper-windows
