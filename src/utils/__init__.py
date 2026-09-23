@@ -75,6 +75,11 @@ def get_weekly_task_list_yml_path_under_root() -> str:
     return safe_path_join(get_root_dir(), "config", "weekly_task_list.yml")
 
 
+def get_task_switch_list_yml_path_under_root() -> str:
+    """取得任务开关声明文件路径（静态，进 git）。"""
+    return safe_path_join(get_root_dir(), "config", "task_switch_list.yml")
+
+
 def get_wallpaper_json_path_under_root() -> str:
     """
     获取根目录下的config/wallpaper.json文件路径（自定义壁纸表，用户文件，不进 git）。

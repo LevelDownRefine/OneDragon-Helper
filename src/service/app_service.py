@@ -28,6 +28,7 @@ from src.config.set_config import (
     set_config,
     set_daily_enabled,
 )
+from src.config.task_switch import task_switch_of
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
 from src.service.schedule import (
     RunOptions,
@@ -291,6 +292,20 @@ class AppService:
     ) -> None:
         """写某周常当前选中的副本名到脚本自身 config。"""
         return set_weekly_task(script_name, weekly_name, task_name)
+
+    # ── 脚本原生任务开关（src.config.task_switch 模块函数）─────────────
+    def get_script_switches(self, script_name: str) -> list:
+        """读该脚本原生任务的开关清单（供配置弹窗的「任务开关」区）。
+
+        未声明（该脚本无此特性）或脚本未安装时返回空列表。
+        """
+        switch = task_switch_of(script_name)
+        return [] if switch is None else switch.read()
+
+    def set_script_switches(self, script_name: str, states: dict) -> int:
+        """按任务名写该脚本原生任务的开关，返回实际变更项数。"""
+        switch = task_switch_of(script_name)
+        return 0 if switch is None else switch.write(states)
 
     # ── 自定义壁纸表（config/wallpaper.json，src.utils.utils_wallpaper）──
     def load_wallpapers(self) -> dict:

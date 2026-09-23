@@ -322,6 +322,75 @@ class TestGamePathInput(unittest.TestCase):
         warn.assert_not_called()
 
 
+class TestSingleScriptConfigDialogSwitches(unittest.TestCase):
+    """任务开关区：按服务给出的清单建行、回显勾选态、随保存回传。"""
+
+    @staticmethod
+    def _service(switches):
+        """桩服务：开关清单由用例给定，其余表单数据取默认值。"""
+        service = MagicMock()
+        service.get_script.return_value = None
+        service.weekly_inputs.return_value = [60] * 7
+        service.get_script_switches.return_value = switches
+        return service
+
+    def _make_dialog(self, switches):
+        return SingleScriptConfigDialog(
+            "BetterGI",
+            "原神",
+            "C:/BetterGI.exe",
+            None,
+            app_service=self._service(switches),
+        )
+
+    def test_rows_render_with_checked_state(self):
+        """逐行一个复选框，行名取任务名、勾选态取当前开关。"""
+        dlg = self._make_dialog(
+            [
+                {"name": "领取邮件", "enabled": True},
+                {"name": "周常", "enabled": False},
+            ]
+        )
+        self.assertEqual(list(dlg.switch_checks), ["领取邮件", "周常"])
+        self.assertEqual(
+            [cb.isChecked() for cb in dlg.switch_checks.values()], [True, False]
+        )
+
+    def test_save_returns_target_states(self):
+        dlg = self._make_dialog(
+            [
+                {"name": "领取邮件", "enabled": True},
+                {"name": "周常", "enabled": False},
+            ]
+        )
+        dlg.switch_checks["周常"].setChecked(True)
+        dlg.save_data()
+        assert dlg.pending_changes is not None
+        self.assertEqual(
+            dlg.pending_changes["switches"], {"领取邮件": True, "周常": True}
+        )
+
+    def test_no_section_when_script_undeclared(self):
+        """真实 AppService：未声明该特性的脚本不建区，保存回传空状态。"""
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        cfg = os.path.join(directory, "config.yml")
+        dump_yaml_file(cfg, {"script_list": []})
+        weekly = os.path.join(directory, "weekly.yml")
+        dump_yaml_file(weekly, {"weekly_start": {}, "weekly_timeouts": {}})
+        with (
+            patch("src.utils.utils_config.require_config_yml_path", return_value=cfg),
+            patch(
+                "src.utils.utils_weekly.get_weekly_yml_path_under_root",
+                return_value=weekly,
+            ),
+        ):
+            dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
+            dlg.save_data()
+        self.assertEqual(dlg.switch_checks, {})
+        assert dlg.pending_changes is not None
+        self.assertEqual(dlg.pending_changes["switches"], {})
+
+
 class TestFramelessDialogs(unittest.TestCase):
     """弹窗去系统标题栏、透明圆角（无边框深色，四角透出桌面）；空白处可拖动。"""
 
