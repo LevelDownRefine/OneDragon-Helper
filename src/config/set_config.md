@@ -77,6 +77,7 @@
 日常声明在 `config/daily_task_list.yml`，周常声明在 `config/weekly_task_list.yml`。
 两份文件按脚本分组，组内使用相同的任务列表结构；文件区分日常、周常，不再声明 `type`。
 用户的周几起、超时仍保存在 `weekly.yml`。
+脚本原生任务的开关另立 `config/task_switch_list.yml`（不属任务列表，一行一任务、只有开/关）。
 
 - `display_name` 是展示名，也是**声明层主键**（日常/选项的匹配、映射全按展示名）；`physical_name` 是写入原生配置的值，省略时使用展示名。
 - `options` 是选项组；`key` 指定写入的原生字段，`values` 列举选项，或以 `source` 从本机脚本资源读取选项。
@@ -232,6 +233,7 @@ set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按�
 | `daily.py` | 日常规则对象：`Daily` 基类（声明 → 落点 + 读写规则）与机制类 `NoopDaily` / `Anomaly` / `MaaDaily`；纯规则不碰盘 |
 | `weekly.py` | 周常落点：`Weekly` 基类（config 读/写 + 起始日校验）与六条周常子类（列表增删 / 反相布尔 / app 条目 / 布尔开关 / 字面起始日 + 副本 / 队列公式）；机制类注册表 `WEEKLY_CLASSES`、装配入口 `build_weeklies`；模块级入口 `supports_weekly` / `prepare_weekly_start_days` 等 |
 | `task_config.py` | 两份任务声明的读取、校验、物理名/取值映射 |
+| `task_switch.py` | 脚本原生任务的开关：`task_switch_list.yml` 声明（配置文件 + 任务定义/启用两个键）→ 枚举行 + 按任务名反查 id 写回；与日常/周常无关，界面入口在单脚本配置弹窗底部 |
 | `daily_config.py` | 把声明**物化**成 GUI 菜单（source 展开 + 补缺省物理名），词汇与声明一致 |
 | `src/utils/utils_dict.py` | `safe_update` / `get_field` 字段工具（`Daily` 与 `ScriptConfig` 共用） |
 | `src/link.py` | 游戏/脚本链接集中管理（官网、B 站、GitHub、banner 下载）；与 config 适配解耦。沿用基类 `GameLink` + 各脚本子类继承结构，`@register` 注册到 `_LINKS`，key 为 `_script_name`；本地背景图路径（`background`）仍声明在 set_config 子类，经 `_CONFIGS` 读取 |

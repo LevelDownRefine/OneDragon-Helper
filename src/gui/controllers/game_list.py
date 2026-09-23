@@ -441,7 +441,7 @@ class GameListController(QObject):
     def configCurrent(self):
         """打开当前脚本配置弹窗（SingleScriptConfigDialog）。
 
-        Accepted → AppService.update_script 落盘并重载；否则不落盘。
+        Accepted → AppService.update_script 与该脚本的任务开关落盘并重载；否则不落盘。
         """
         if not self._games:
             return
@@ -462,12 +462,14 @@ class GameListController(QObject):
                 "[bridge] 配置弹窗 accept 但 pending_changes 为空"
             )
             changes = dialog.pending_changes
-            self._app_service.update_script(
+            # 任务开关写在该脚本自身的原生配置文件里，随保存提交；改名后按新标识定位。
+            new_script_name = self._app_service.update_script(
                 changes["old_script_name"],
                 changes["new_display_name"],
                 changes["config_patch"],
                 changes["weekly_timeouts"],
             )
+            self._app_service.set_script_switches(new_script_name, changes["switches"])
             self._on_reload()
             self._toast(f"已保存 {changes['new_display_name']} 配置")
 

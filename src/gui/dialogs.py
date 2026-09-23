@@ -6,7 +6,7 @@
 
 对外接口：
 - ``SingleScriptConfigDialog``：单脚本配置弹窗（名称/路径/类型/参数/完成检测/
-  关闭脚本/关闭游戏/阻塞/游戏进程/每周超时），保存后经 ``pending_changes`` 返回，
+  关闭脚本/关闭游戏/阻塞/游戏进程/每周超时/任务开关），保存后经 ``pending_changes`` 返回，
   写盘由调用方经 ``AppService.update_script`` 委托 ``src.utils.utils_config.update_script``。脚本删除改由左侧列表交互完成。
 - 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
   （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
@@ -554,6 +554,8 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.script_path = script_path
         self._app_service = app_service or AppService()
         self.pending_changes = None  # accept() 后供调用方取表单字段与 weekly
+        # 原生任务开关：构造期读一次，init_ui 按它建行、load_data 按它回显
+        self._switches = self._app_service.get_script_switches(self.script_name)
 
         self.init_ui()
         self.load_data()
@@ -657,6 +659,21 @@ class SingleScriptConfigDialog(FormDialogBase):
         grid.addWidget(self._make_label("每周超时:"), timeout_row, 0)
         grid.addLayout(timeout_grid, timeout_row, 1, 1, 2)
 
+        # 任务开关（行 9；仅声明该特性的脚本有此区）：纯开关，逐行一个复选框
+        self.switch_checks: dict[str, QCheckBox] = {}
+        if self._switches:
+            switch_grid = QGridLayout()
+            switch_grid.setHorizontalSpacing(8)
+            switch_grid.setVerticalSpacing(4)
+            for index, switch in enumerate(self._switches):
+                checkbox = self._make_checkbox(switch["name"])
+                switch_grid.addWidget(checkbox, index // 2, index % 2)
+                self.switch_checks[switch["name"]] = checkbox
+            grid.addWidget(
+                self._make_label("任务开关:"), timeout_row + 1, 0, Qt.AlignTop
+            )
+            grid.addLayout(switch_grid, timeout_row + 1, 1, 1, 2)
+
         # 底部按钮行：右主操作（取消 / 保存）
         footer = self._make_footer("保存", self.save_data)
 
@@ -693,6 +710,10 @@ class SingleScriptConfigDialog(FormDialogBase):
         timeouts = self._app_service.weekly_inputs(self.script_name)
         for idx, timeout_edit in enumerate(self.timeout_inputs):
             timeout_edit.setText(str(timeouts[idx]))
+
+        # 任务开关
+        for switch in self._switches:
+            self.switch_checks[switch["name"]].setChecked(switch["enabled"])
 
     def save_data(self):
         """收集表单数据存入 self.pending_changes 后 accept()；写盘由调用方完成。
@@ -755,5 +776,9 @@ class SingleScriptConfigDialog(FormDialogBase):
                 "block": self.block_cb.isChecked(),
             },
             "weekly_timeouts": timeouts,
+            "switches": {
+                name: checkbox.isChecked()
+                for name, checkbox in self.switch_checks.items()
+            },
         }
         self.accept()
