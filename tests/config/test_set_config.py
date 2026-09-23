@@ -381,11 +381,18 @@ class TestGetGameExePath(unittest.TestCase):
             got = set_config.get_game_exe_path("ok-nte")
         self.assertIsNone(got)
 
-    def test_nte_game_exe_missing_returns_none(self):
-        """异环游戏本体路径读不到（devices.json 缺失）→ None"""
-        with patch("src.config.set_config.load_game_config", return_value=None):
-            got = set_config.get_game_exe_path("ok-nte")
-        self.assertIsNone(got)
+    def test_unconfigured_game_path_returns_none(self):
+        for script, config in (
+            ("ok-nte", None),
+            ("ok-ww", None),
+            ("ok-ww", {"other": "x"}),
+            ("ok-ww", {"pc_full_path": ""}),
+        ):
+            with (
+                self.subTest(script=script, config=config),
+                patch("src.config.set_config.load_game_config", return_value=config),
+            ):
+                self.assertIsNone(set_config.get_game_exe_path(script))
 
     def test_genshin_nested_install_path(self):
         """原神（BetterGI）读取 config.json 的 genshinStartConfig.installPath（嵌套）"""
@@ -428,30 +435,6 @@ class TestGetGameExePath(unittest.TestCase):
         ):
             got = set_config.get_game_exe_path("MAA")
         self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
-
-    def test_missing_config_returns_none(self):
-        """游戏配置文件缺失（load_game_config 返回 None）→ None"""
-        with patch("src.config.set_config.load_game_config", return_value=None):
-            got = set_config.get_game_exe_path("ok-ww")
-        self.assertIsNone(got)
-
-    def test_missing_field_returns_none(self):
-        """配置中缺字段 → None"""
-        with patch(
-            "src.config.set_config.load_game_config",
-            return_value={"other": "x"},
-        ):
-            got = set_config.get_game_exe_path("ok-ww")
-        self.assertIsNone(got)
-
-    def test_empty_value_returns_none(self):
-        """字段值为空字符串 → None"""
-        with patch(
-            "src.config.set_config.load_game_config",
-            return_value={"pc_full_path": ""},
-        ):
-            got = set_config.get_game_exe_path("ok-ww")
-        self.assertIsNone(got)
 
 
 class TestGetGameExePathAdapter(unittest.TestCase):

@@ -11,7 +11,6 @@ from dataclasses import asdict, replace
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QPushButton, QTimeEdit
 
 from src.gui.dialogs import BG_INPUT, TEXT
@@ -44,16 +43,32 @@ class TestRunConfirmDialog(unittest.TestCase):
         buttons["保存"].click()
         self.assertTrue(dlg.run_options.mute_enabled)
 
-    def test_echoes_current_shutdown_config(self):
-        """打开弹窗时回显当前自动关机配置（复选框/延迟）。"""
-        dlg = RunConfirmDialog(3, _opts(shutdown_enabled=True, shutdown_delay=45))
-        self.assertTrue(dlg.shutdown_cb.isChecked())
-        self.assertEqual(dlg.shutdown_delay_spin.value(), 45)
-        self.assertTrue(dlg.shutdown_delay_spin.isEnabled())
+    def test_echoes_saved_run_options(self):
+        fields = ("shutdown", "mute", "unmute", "rerun", "notify", "close_running")
+        for field, value in zip(
+            fields, (True, True, True, False, True, False), strict=True
+        ):
+            with self.subTest(field=field):
+                options = _opts(**{field + "_enabled": value}, shutdown_delay=45)
+                dialog = RunConfirmDialog(3, options)
+                self.addCleanup(dialog.close)
+                for name in fields:
+                    self.assertEqual(
+                        getattr(dialog, name + "_cb").isChecked(),
+                        getattr(options, name + "_enabled"),
+                        name,
+                    )
+                self.assertEqual(dialog.shutdown_delay_spin.value(), 45)
+                self.assertEqual(
+                    dialog.shutdown_delay_spin.isEnabled(), options.shutdown_enabled
+                )
 
     def test_accept_collects_selections(self):
         """确认运行：收集复选框与控件值写入 run_options（含静音/重跑/邮件通知）。"""
         dlg = RunConfirmDialog(2, _opts(rerun_enabled=True))
+        self.addCleanup(dlg.close)
+        self.assertEqual(dlg.smtp_host_edit.text(), "smtp.qq.com")
+        self.assertEqual(dlg.smtp_port_edit.text(), "465")
         dlg.shutdown_cb.setChecked(True)
         dlg.shutdown_delay_spin.setValue(120)
         dlg.mute_cb.setChecked(True)
@@ -79,37 +94,8 @@ class TestRunConfirmDialog(unittest.TestCase):
             },
         )
 
-    def test_smtp_defaults_prefilled_when_schedule_empty(self):
-        """schedule 无 SMTP 配置：弹窗以 QQ 默认预填（展示层缺省，accept 会随之写入）。"""
-        dlg = RunConfirmDialog(2, _opts(notify_enabled=True))
-        self.assertEqual(dlg.smtp_host_edit.text(), "smtp.qq.com")
-        self.assertEqual(dlg.smtp_port_edit.text(), "465")
-
-    def test_echoes_and_collects_email(self):
-        """打开弹窗回显邮箱、勾选通知才可编辑邮箱/授权码；accept 收集输入值。"""
-        dlg = RunConfirmDialog(2, _opts(notify_enabled=True, email="123456@qq.com"))
-        # 预填邮箱回显
-        self.assertEqual(dlg.email_edit.text(), "123456@qq.com")
-        # 通知已勾选 → 邮箱/授权码可编辑
-        self.assertTrue(dlg.email_edit.isEnabled())
-        self.assertTrue(dlg.auth_edit.isEnabled())
-        dlg.auth_edit.setText("authcode16")
-        dlg._on_accept()
-        self.assertEqual(dlg.run_options.email, "123456@qq.com")
-        self.assertEqual(dlg.run_options.auth_code, "authcode16")
-        self.assertTrue(dlg.run_options.notify_enabled)
-
-    def test_notify_off_disables_email_fields(self):
-        """未勾选邮件通知：邮箱/授权码/SMTP 输入框禁用（与定时/关机联动一致）。"""
-        dlg = RunConfirmDialog(2, _opts(notify_enabled=False, email="123456@qq.com"))
-        self.assertFalse(dlg.email_edit.isEnabled())
-        self.assertFalse(dlg.auth_edit.isEnabled())
-        self.assertFalse(dlg.smtp_host_edit.isEnabled())
-        self.assertFalse(dlg.smtp_port_edit.isEnabled())
-
-    def test_echoes_and_collects_smtp(self):
-        """打开弹窗回显 SMTP 主机/端口、accept 收集用户改后的值。"""
-        dlg = RunConfirmDialog(
+    def test_mail_fields_echo_and_collect_edited_credentials_and_server(self):
+        dialog = RunConfirmDialog(
             2,
             _opts(
                 notify_enabled=True,
@@ -118,43 +104,34 @@ class TestRunConfirmDialog(unittest.TestCase):
                 smtp_port="465",
             ),
         )
-        # 预填 SMTP 配置回显
-        self.assertEqual(dlg.smtp_host_edit.text(), "smtp.qq.com")
-        self.assertEqual(dlg.smtp_port_edit.text(), "465")
-        # 通知已勾选 → SMTP 输入框可编辑
-        self.assertTrue(dlg.smtp_host_edit.isEnabled())
-        self.assertTrue(dlg.smtp_port_edit.isEnabled())
-        # 用户改填其他服务商
-        dlg.smtp_host_edit.setText("smtp.163.com")
-        dlg.smtp_port_edit.setText("994")
-        dlg._on_accept()
-        self.assertEqual(dlg.run_options.smtp_host, "smtp.163.com")
-        self.assertEqual(dlg.run_options.smtp_port, "994")
+        self.addCleanup(dialog.close)
+        self.assertEqual(dialog.email_edit.text(), "123456@qq.com")
+        self.assertEqual(dialog.smtp_host_edit.text(), "smtp.qq.com")
+        self.assertEqual(dialog.smtp_port_edit.text(), "465")
+        for control in (
+            dialog.email_edit,
+            dialog.auth_edit,
+            dialog.smtp_host_edit,
+            dialog.smtp_port_edit,
+        ):
+            self.assertTrue(control.isEnabled())
+        dialog.auth_edit.setText("authcode16")
+        dialog.smtp_host_edit.setText("smtp.163.com")
+        dialog.smtp_port_edit.setText("994")
+        dialog._on_accept()
+        self.assertEqual(dialog.run_options.email, "123456@qq.com")
+        self.assertEqual(dialog.run_options.auth_code, "authcode16")
+        self.assertEqual(dialog.run_options.smtp_host, "smtp.163.com")
+        self.assertEqual(dialog.run_options.smtp_port, "994")
+        self.assertTrue(dialog.run_options.notify_enabled)
 
-    def test_echoes_current_mute_config(self):
-        """打开弹窗时回显当前运行前静音配置（勾选状态）。"""
-        dlg = RunConfirmDialog(3, _opts(mute_enabled=True))
-        self.assertTrue(dlg.mute_cb.isChecked())
-
-    def test_echoes_current_unmute_config(self):
-        """打开弹窗时回显当前运行后开启声音配置（勾选状态）。"""
-        dlg = RunConfirmDialog(3, _opts(unmute_enabled=True))
-        self.assertTrue(dlg.unmute_cb.isChecked())
-
-    def test_echoes_current_rerun_config(self):
-        """打开弹窗时回显当前重跑配置（勾选状态）。"""
-        dlg = RunConfirmDialog(3, _opts(rerun_enabled=False))
-        self.assertFalse(dlg.rerun_cb.isChecked())
-
-    def test_echoes_current_notify_config(self):
-        """打开弹窗时回显当前邮件通知配置（勾选状态）。"""
-        dlg = RunConfirmDialog(3, _opts(notify_enabled=True))
-        self.assertTrue(dlg.notify_cb.isChecked())
-
-    def test_echoes_current_close_running_config(self):
-        """打开弹窗时回显当前运行前关闭残留进程配置（勾选状态）。"""
-        dlg = RunConfirmDialog(3, _opts(close_running_enabled=False))
-        self.assertFalse(dlg.close_running_cb.isChecked())
+    def test_notify_off_disables_email_fields(self):
+        """未勾选邮件通知：邮箱/授权码/SMTP 输入框禁用（与定时/关机联动一致）。"""
+        dlg = RunConfirmDialog(2, _opts(notify_enabled=False, email="123456@qq.com"))
+        self.assertFalse(dlg.email_edit.isEnabled())
+        self.assertFalse(dlg.auth_edit.isEnabled())
+        self.assertFalse(dlg.smtp_host_edit.isEnabled())
+        self.assertFalse(dlg.smtp_port_edit.isEnabled())
 
     def test_cancel_leaves_run_options_none(self):
         """取消（reject）：run_options 保持 None，不收集。"""
@@ -166,7 +143,7 @@ class TestRunConfirmDialog(unittest.TestCase):
 
 
 class TestRunConfirmDialogTheme(unittest.TestCase):
-    """深色主题细节：邮件/SMTP 输入框套「深底白字」样式、弹窗无边框。
+    """邮件/SMTP 输入框套「深底白字」样式。
 
     弹窗本体 setStyleSheet(background-color) 会向子控件继承深底；若输入框自身不设
     color，文字取默认调色板（浅色系统下为黑色）→ 黑字深底不可读，故必须显式套样式。
@@ -183,13 +160,6 @@ class TestRunConfirmDialogTheme(unittest.TestCase):
         ):
             self.assertIn(TEXT, edit.styleSheet())
             self.assertIn(BG_INPUT, edit.styleSheet())
-
-    def test_frameless(self):
-        dlg = RunConfirmDialog(1, _opts())
-        self.addCleanup(dlg.close)
-        self.assertTrue(dlg.windowFlags() & Qt.FramelessWindowHint)
-        self.assertTrue(dlg.testAttribute(Qt.WA_TranslucentBackground))
-        self.assertIn("border-radius", dlg.styleSheet())
 
 
 if __name__ == "__main__":

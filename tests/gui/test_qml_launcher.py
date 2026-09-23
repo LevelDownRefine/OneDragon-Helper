@@ -87,30 +87,18 @@ class TestBridge(unittest.TestCase):
         self.assertEqual(b.backgroundMode, "gradient")
         self.assertEqual(b.gradientChar, "鸣")
 
-    def test_video_mode_when_bg_is_mp4(self):
-        with (
-            patch.object(
-                main_window.BackgroundController,
-                "resolve_bg",
-                return_value="C:/fake/clip.mp4",
-            ),
-            patch.object(os.path, "isfile", return_value=True),
-        ):
-            b = make_bridge()
-        self.assertEqual(b.backgroundMode, "video")
-        self.assertTrue(b.backgroundUrl.endswith("clip.mp4"))
-
-    def test_image_mode_when_bg_is_jpg(self):
-        with (
-            patch.object(
-                main_window.BackgroundController,
-                "resolve_bg",
-                return_value="C:/fake/img.jpg",
-            ),
-            patch.object(os.path, "isfile", return_value=True),
-        ):
-            b = make_bridge()
-        self.assertEqual(b.backgroundMode, "image")
+    def test_background_mode_matches_resolved_media(self):
+        for path, mode in (("C:/fake/clip.mp4", "video"), ("C:/fake/img.jpg", "image")):
+            with (
+                self.subTest(path=path),
+                patch.object(
+                    main_window.BackgroundController, "resolve_bg", return_value=path
+                ),
+                patch.object(os.path, "isfile", return_value=True),
+            ):
+                bridge = make_bridge()
+                self.assertEqual(bridge.backgroundMode, mode)
+                self.assertTrue(bridge.backgroundUrl.endswith(path.rsplit("/", 1)[1]))
 
     def test_select_game_switches_background(self):
         b = make_bridge()
@@ -208,23 +196,23 @@ class TestLeftRail(unittest.TestCase):
 class TestFloatBar(unittest.TestCase):
     """QmlBridge 悬浮条：打开链接 / 启动游戏 / 脚本目录 / 换壁纸。"""
 
-    def test_open_home_uses_bridge(self):
-        b = make_bridge()
-        with (
-            patch.object(links, "_get_game_link", return_value=""),
-            patch.object(webbrowser, "open") as wb,
+    def test_link_actions_reach_browser(self):
+        for action, key, url in (
+            (
+                "openHome",
+                "homepage",
+                "https://github.com/LevelDownRefine/OneDragon-Helper",
+            ),
+            ("openBilibili", "bilibili", "https://www.bilibili.com/"),
         ):
-            b.openHome()
-        wb.assert_called_once()
-
-    def test_open_bilibili_uses_bridge(self):
-        b = make_bridge()
-        with (
-            patch.object(links, "_get_game_link", return_value=""),
-            patch.object(webbrowser, "open") as wb,
-        ):
-            b.openBilibili()
-        wb.assert_called_once()
+            with (
+                self.subTest(action=action),
+                patch.object(links, "_get_game_link", return_value="") as link,
+                patch.object(webbrowser, "open") as browser,
+            ):
+                getattr(make_bridge(), action)()
+                link.assert_called_once_with("ok-ww", key)
+                browser.assert_called_once_with(url)
 
     def test_launch_game_starts_exe(self):
         b = make_bridge()

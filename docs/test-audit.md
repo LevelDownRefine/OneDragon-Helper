@@ -1,5 +1,21 @@
 # 测试审查记录
 
+## 2026-09-24：按行为精简其余测试
+
+基线：`1767da4`。扫描主仓 81 个测试模块，筛选其中 75 个非更新模块的同形用例、重复入口和弱断言；更新模块沿用上一轮整理结果。生产代码、runner 指针及 golden 基线未修改。
+
+| 范围 | 整理结果 |
+|---|---|
+| 命令与 CLI | 通过实际命令、环境、退出码与 YAML 产物验证行为；移除重复的私有整数转换和纯转发断言，选择规则按输入参数化。 |
+| 调度与日志 | 时间边界、不同脚本的日常完成判据、SMTP 输入与通知结果合并；开关组合核对完整执行顺序，失败隔离仍独立验证。 |
+| GUI | 启动/关机共用一组倒计时生命周期测试；运行选项按完整表单验证。修正阻塞选项夹具的脚本标识，避免读到默认值仍通过；显式 False 也必须正确回显。 |
+| 配置与同步 | 合并周常开关、资源分类、路径缺省、序号前插与 JSON/YAML 往返场景；保存次数、其它字段与输入不可变性保留断言。 |
+| 保留的独立验证 | golden、游戏配置安全、备份恢复、Windows EXE、真实 Qt/QML 交互、缓存失效和不同故障边界继续各自验证。 |
+
+测试文件 81 → 80；测试方法 1182 → 1053，源码方法 1149 → 1020，Windows 打包方法仍为 33。方法数不展开具名子用例，下降不等于删除对应输入场景。合并后重新构造配置与窗口，隔离 mock 调用记录；去掉非阻塞命令单测中真实等待的 10 秒。
+
+验证：20 个受影响模块分别在独立 Python 进程中通过；Ubuntu 全量 1053 项通过（33 项 Windows 专用测试按平台跳过）；Ruff check、format 和差异检查通过。Windows 打包测试由 PR 的 CI 验证。
+
 ## 2026-09-21：合并与整理
 
 基线：`5531ebb`。本轮检查主仓 66 个源码测试文件及发现入口；调整测试与文档，生产代码、runner 指针及 golden JSON 基线未改动。
@@ -39,30 +55,31 @@
 
 ## 当前文件清单
 
-方法数不展开 `subTest`；用例合并后的数量下降不代表删除对应场景。`tests/gui/helpers.py`、`tests/support/` 和 fixtures 为辅助资源；`sim_schedule_win.py` 是人工全链路模拟入口。runner 仅列清单，本轮未改动，测试由其独立 CI 执行。
+方法数不展开 `subTest`。共享夹具和人工模拟入口不计入；runner 属于独立仓库，其测试由独立 CI 执行。
 
 ### 源码
 
-66 个文件，1063 个测试方法。
+73 个文件，1020 个测试方法。
 
 | 文件 | 方法数 | 主要范围 |
 |---|---:|---|
 | [config/test_arknights_config_safety.py](../tests/config/test_arknights_config_safety.py) | 19 | MAA 原生配置的编辑、初始化和持久化边界。 |
 | [config/test_bgi_readback.py](../tests/config/test_bgi_readback.py) | 4 | BGI 一条龙旧格式与用户编辑后的任务表兼容性。 |
-| [config/test_daily.py](../tests/config/test_daily.py) | 32 | Daily（声明规则层）：声明解析出的落点、读写规则、特殊日常的覆写点。 |
+| [config/test_daily.py](../tests/config/test_daily.py) | 41 | Daily（声明规则层）：声明解析出的落点、读写规则、特殊日常的覆写点。 |
 | [config/test_daily_config.py](../tests/config/test_daily_config.py) | 14 | 新声明接入原有单副本菜单；资源 I/O 用 mock 隔离。 |
-| [config/test_daily_sources.py](../tests/config/test_daily_sources.py) | 28 | 日常持有资源读取规则；周常复用通用键路径读取。 |
+| [config/test_daily_sources.py](../tests/config/test_daily_sources.py) | 25 | 日常持有资源读取规则；周常复用通用键路径读取。 |
 | [config/test_endfield_config_safety.py](../tests/config/test_endfield_config_safety.py) | 4 | 终末地（ok-ef / 粥）config 安全性测试。 |
 | [config/test_game_config_roundtrip.py](../tests/config/test_game_config_roundtrip.py) | 3 | 游戏 config 往返保真测试（以「类似崩铁 M7A」的夹具驱动真实读写路径）。 |
 | [config/test_generate_config.py](../tests/config/test_generate_config.py) | 6 | 测试 src/config/generate_config.py：首启生成与损坏兜底。 |
 | [config/test_golden_daily.py](../tests/config/test_golden_daily.py) | 2 | 固定种子 → 全菜单选择 → 落盘差异和反读；只替换文件 I/O 与外部资源。 |
 | [config/test_maa_activity.py](../tests/config/test_maa_activity.py) | 10 | MAA 活动缓存和声明菜单的契约测试，不访问真实安装目录。 |
-| [config/test_set_config.py](../tests/config/test_set_config.py) | 37 | ScriptConfig 注册表、共享实例、公开分发接口和游戏路径适配。 |
+| [config/test_set_config.py](../tests/config/test_set_config.py) | 34 | ScriptConfig 注册表、共享实例、公开分发接口和游戏路径适配。 |
 | [config/test_set_config_readback.py](../tests/config/test_set_config_readback.py) | 19 | 反读测试：get_daily_readback / get_weekly_task 读回 set_* 写入的值。 |
-| [config/test_set_config_subclasses.py](../tests/config/test_set_config_subclasses.py) | 54 | 测试 set_config.py 中各 ScriptConfig 子类的行为。 |
+| [config/test_set_config_subclasses.py](../tests/config/test_set_config_subclasses.py) | 52 | 测试 set_config.py 中各 ScriptConfig 子类的行为。 |
 | [config/test_task_config.py](../tests/config/test_task_config.py) | 12 | 日常和周常共用声明规则，不引入运行期多日常接口。 |
 | [config/test_task_declarations.py](../tests/config/test_task_declarations.py) | 7 | 声明中的字段、物理名、别名接入原有子类读写流程。 |
-| [config/test_weekly.py](../tests/config/test_weekly.py) | 38 | 周常落点（``src.config.weekly``）：声明校验、装配、支持查询与各周常的落点读写。 |
+| [config/test_task_switch.py](../tests/config/test_task_switch.py) | 15 | 测试 src/config/task_switch.py：声明校验、开关枚举与写入。 |
+| [config/test_weekly.py](../tests/config/test_weekly.py) | 35 | 周常落点（``src.config.weekly``）：声明校验、装配、支持查询与各周常的落点读写。 |
 | [gui/test_background.py](../tests/gui/test_background.py) | 19 | 测试 src/gui/controllers/background.py：自定义壁纸缓存与背景解析。 |
 | [gui/test_config_dialog.py](../tests/gui/test_config_dialog.py) | 6 | 配置弹窗：点选操作后关闭，取消不选择操作。 |
 | [gui/test_config_warmer.py](../tests/gui/test_config_warmer.py) | 3 | 测试 ConfigWarmer：启动后空闲逐脚本预热，失败不中断、全部完成发 finished。 |
@@ -71,61 +88,68 @@
 | [gui/test_game_list_model.py](../tests/gui/test_game_list_model.py) | 7 | 测试 GameListModel（QML ListView 的 QAbstractListModel）。 |
 | [gui/test_gui_backup.py](../tests/gui/test_gui_backup.py) | 15 | 测试 src/gui/controllers/backup.py：一键备份 / 恢复的 GUI 动作。 |
 | [gui/test_gui_control_bubble.py](../tests/gui/test_gui_control_bubble.py) | 1 | 控制模式气泡：真实 QML 点击、批量启停与退出操作。 |
-| [gui/test_gui_dialogs.py](../tests/gui/test_gui_dialogs.py) | 23 | 测试 src/gui/dialogs.py：SingleScriptConfigDialog。 |
+| [gui/test_gui_countdown_dialog.py](../tests/gui/test_gui_countdown_dialog.py) | 7 | 启动/关机确认共用倒计时契约；自动启动仍受用户设置约束。 |
+| [gui/test_gui_dialogs.py](../tests/gui/test_gui_dialogs.py) | 22 | 测试 src/gui/dialogs.py：SingleScriptConfigDialog。 |
 | [gui/test_gui_file_drop.py](../tests/gui/test_gui_file_drop.py) | 11 | Windows 拖放桥：撤销 OLE、整窗接收与句柄释放，无桌面依赖。 |
 | [gui/test_gui_game_hint.py](../tests/gui/test_gui_game_hint.py) | 1 | 启动游戏悬停提示：显示图标、缺失回退与切换刷新。 |
-| [gui/test_gui_layout.py](../tests/gui/test_gui_layout.py) | 1 | 布局参数改动须同时作用于窗口裁切、菜单边界和点击区域。 |
+| [gui/test_gui_layout.py](../tests/gui/test_gui_layout.py) | 2 | 布局参数改动须同时作用于窗口裁切、菜单边界和点击区域。 |
 | [gui/test_gui_links.py](../tests/gui/test_gui_links.py) | 8 | 测试 src/gui/controllers/links.py：LinksController 各跳转动作。 |
 | [gui/test_gui_script_drop.py](../tests/gui/test_gui_script_drop.py) | 14 | 外部脚本拖入窗口：URL / 快捷方式解析、添加与拖放动作。 |
-| [gui/test_gui_shutdown_dialog.py](../tests/gui/test_gui_shutdown_dialog.py) | 9 | 测试 src/gui/shutdown_dialog.py：关机确认窗与 Qt 失败降级。 |
-| [gui/test_gui_startup_dialog.py](../tests/gui/test_gui_startup_dialog.py) | 14 | 测试 src/gui/startup_dialog.py：启动确认窗与 Qt 失败降级。 |
 | [gui/test_gui_task_card.py](../tests/gui/test_gui_task_card.py) | 25 | 测试 src/gui/controllers/task_card.py：多周常 items 与选副本持久化。 |
 | [gui/test_gui_window.py](../tests/gui/test_gui_window.py) | 1 | 测试 src/gui/controllers/window.py：悬浮条窗口控制的判空守卫。 |
 | [gui/test_icons.py](../tests/gui/test_icons.py) | 15 | 脚本图标：来源选择、默认回退、提取缓存和 PNG 编码。 |
 | [gui/test_launch_controller.py](../tests/gui/test_launch_controller.py) | 9 | 测试 src/gui/controllers/launch.py：LaunchController 手动运行流程。 |
 | [gui/test_qml_bridge_taskcard.py](../tests/gui/test_qml_bridge_taskcard.py) | 13 | 测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。 |
 | [gui/test_qml_launcher.py](../tests/gui/test_qml_launcher.py) | 36 | 测试 src.gui.main_window 与 QML 应用骨架：脚本列表、背景切换、视频回退。 |
-| [gui/test_run_confirm_dialog.py](../tests/gui/test_run_confirm_dialog.py) | 15 | 测试 src/gui/run_confirm_dialog.RunConfirmDialog：「启动全部」确认弹窗。 |
+| [gui/test_run_confirm_dialog.py](../tests/gui/test_run_confirm_dialog.py) | 7 | 测试 src/gui/run_confirm_dialog.RunConfirmDialog：「启动全部」确认弹窗。 |
+| [gui/test_update_dialog.py](../tests/gui/test_update_dialog.py) | 8 | 真实 Qt 事件循环验证手动更新的线程与交互边界。 |
 | [gui/test_video_wallpaper.py](../tests/gui/test_video_wallpaper.py) | 7 | 视频首帧缓存与实际 QML 占位切换。 |
-| [log/test_log_monitor.py](../tests/log/test_log_monitor.py) | 65 | 测试日志解析器 |
-| [log/test_notify_mail.py](../tests/log/test_notify_mail.py) | 16 | 测试 src/log/notify_mail.py：send_mail 默认关闭、smtplib 发送与 keyring 取密。 |
+| [log/test_build_html.py](../tests/log/test_build_html.py) | 7 | 测试 src/log/build_html.py：邮件 HTML 正文的结构、配色与转义。 |
+| [log/test_log_monitor.py](../tests/log/test_log_monitor.py) | 48 | 测试日志解析器 |
+| [log/test_notify_mail.py](../tests/log/test_notify_mail.py) | 2 | 测试 src/log/notify_mail.py：send_mail 的开关闸门、smtplib 发送与 keyring 取密。 |
 | [service/test_backup_service.py](../tests/service/test_backup_service.py) | 24 | 普通 ZIP 配置迁移：真实临时文件覆盖字节往返、换机定位与失败边界。 |
-| [service/test_chain_gen.py](../tests/service/test_chain_gen.py) | 13 | 测试 src/service/chain_gen.py：_resolve_daily_run 的覆盖规则（自 weekly_timeouts.py 迁入）。 |
-| [service/test_chain_service.py](../tests/service/test_chain_service.py) | 24 | 测试 src/service/chain_service.py：无头测试，全部 mock 被包装函数。 |
+| [service/test_chain_gen.py](../tests/service/test_chain_gen.py) | 7 | 测试 src/service/chain_gen.py：_resolve_daily_run 的覆盖规则（自 weekly_timeouts.py 迁入）。 |
+| [service/test_chain_service.py](../tests/service/test_chain_service.py) | 16 | 链生成、运行与调度编排；外部进程和通知使用替身。 |
 | [service/test_daily_plan.py](../tests/service/test_daily_plan.py) | 36 | 每日计划：配置往返、系统任务注册与每次触发时读取最新配置。 |
 | [service/test_run_actions.py](../tests/service/test_run_actions.py) | 1 | 测试 src/service/run_actions.py：各 post_run/pre_run step 动作。 |
-| [service/test_schedule.py](../tests/service/test_schedule.py) | 38 | 测试 src/service/schedule.py：定时运行的 pre_run / core / post_run 流水线。 |
+| [service/test_schedule.py](../tests/service/test_schedule.py) | 35 | 测试 src/service/schedule.py：定时运行的 pre_run / core / post_run 流水线。 |
 | [service/test_startup_options.py](../tests/service/test_startup_options.py) | 4 | 自动启动设置：旧配置兼容、非法输入与实际 YAML 往返。 |
 | [support/test_config_diff.py](../tests/support/test_config_diff.py) | 4 | 配置差异断言必须区分类型变化、缺键与真实的占位字符串。 |
-| [test_cli.py](../tests/test_cli.py) | 41 | 源码级 CLI 单测（offscreen，CI / 普通终端均可真跑）。 |
-| [test_launcher.py](../tests/test_launcher.py) | 4 | 测试 src/launcher.py：首次初始化流程 |
+| [test_cli.py](../tests/test_cli.py) | 38 | 源码级 CLI 单测（offscreen，CI / 普通终端均可真跑）。 |
+| [test_launcher.py](../tests/test_launcher.py) | 5 | 测试 src/launcher.py：首次初始化流程 |
 | [test_link.py](../tests/test_link.py) | 6 | 测试 src.link 的链接分发与降级逻辑。 |
+| [tools/test_release_package.py](../tests/tools/test_release_package.py) | 10 | 发布资源边界、版本信息与归档校验。 |
 | [tools/test_sync_oknte_tasks.py](../tests/tools/test_sync_oknte_tasks.py) | 6 | tools/sync_oknte_tasks.py 离线回归测试（不联网，monkeypatch 抓取）。 |
-| [tools/test_sync_okww.py](../tests/tools/test_sync_okww.py) | 7 | sync_okww_tasks 的单测：聚焦最前插入模型的重排逻辑（不触网）。 |
+| [tools/test_sync_okww.py](../tests/tools/test_sync_okww.py) | 4 | sync_okww_tasks 的单测：聚焦最前插入模型的重排逻辑（不触网）。 |
+| [update/test_installer.py](../tests/update/test_installer.py) | 6 | 升级与恢复只影响程序清单中的文件。 |
+| [update/test_package.py](../tests/update/test_package.py) | 7 | 下载包的路径、内容与版本边界。 |
+| [update/test_runtime.py](../tests/update/test_runtime.py) | 8 | 更新锁和运行锁的跨进程语义。 |
+| [update/test_service.py](../tests/update/test_service.py) | 8 | 手动更新的网络输入、下载校验与取消路径。 |
 | [utils/test_utils.py](../tests/utils/test_utils.py) | 15 | 模块行为回归 |
 | [utils/test_utils_config.py](../tests/utils/test_utils_config.py) | 25 | 测试 src/utils_config.py：config.yml 读写与单脚本条目查询（模块函数）。 |
 | [utils/test_utils_dict.py](../tests/utils/test_utils_dict.py) | 5 | 字典字段更新：变更、幂等、缺键与类型约束。 |
 | [utils/test_utils_mute.py](../tests/utils/test_utils_mute.py) | 5 | 测试 src/utils_mute.py：运行中系统静音执行（config 读写见 test_utils_runner）。 |
-| [utils/test_utils_runner.py](../tests/utils/test_utils_runner.py) | 59 | 测试 src/utils_runner.py：脚本配置合法性校验与命令构造/运行。 |
+| [utils/test_utils_runner.py](../tests/utils/test_utils_runner.py) | 34 | 测试 src/utils_runner.py：脚本配置合法性校验与命令构造/运行。 |
 | [utils/test_utils_shortcut.py](../tests/utils/test_utils_shortcut.py) | 6 | 快捷方式读取：保留完整启动信息，COM 错误可恢复且不写回。 |
 | [utils/test_utils_shutdown.py](../tests/utils/test_utils_shutdown.py) | 5 | 测试 src/utils_shutdown.py：关机命令编排与确认分支（纯逻辑，不加载 Qt）。 |
-| [utils/test_utils_sub_config.py](../tests/utils/test_utils_sub_config.py) | 39 | 脚本标识、路径解析、默认条目和原生配置 I/O。 |
-| [utils/test_utils_wallpaper.py](../tests/utils/test_utils_wallpaper.py) | 15 | 测试 src/utils/utils_wallpaper.py：壁纸表读写的损坏兜底与原子写。 |
-| [utils/test_utils_weekly.py](../tests/utils/test_utils_weekly.py) | 32 | 测试 src/utils_weekly.py：周常起始日与每周超时的读写与迁移。 |
+| [utils/test_utils_sub_config.py](../tests/utils/test_utils_sub_config.py) | 36 | 脚本标识、路径解析、默认条目和原生配置 I/O。 |
+| [utils/test_utils_wallpaper.py](../tests/utils/test_utils_wallpaper.py) | 13 | 测试 src/utils/utils_wallpaper.py：壁纸表读写的损坏兜底与原子写。 |
+| [utils/test_utils_weekly.py](../tests/utils/test_utils_weekly.py) | 29 | 测试 src/utils_weekly.py：周常起始日与每周超时的读写与迁移。 |
 | [utils/test_yaml_roundtrip.py](../tests/utils/test_yaml_roundtrip.py) | 11 | YAML 往返读写回归测试。 |
 
 ### Windows 打包
 
-6 个文件，27 个测试方法。
+7 个文件，33 个测试方法。
 
 | 文件 | 方法数 | 主要范围 |
 |---|---:|---|
-| [test_close_running_exe.py](../tests/exe/test_close_running_exe.py) | 3 | 针对打包产物 OneDragon-Helper.exe 的「运行前关闭残留进程」集成测试（模拟真实情景）。 |
-| [test_gui_exe.py](../tests/exe/test_gui_exe.py) | 8 | 针对打包产物 OneDragon-Helper.exe 的集成测试（专门测 GUI exe）。 |
-| [test_gui_rendering_exe.py](../tests/exe/test_gui_rendering_exe.py) | 1 | 真实打包界面在默认 D3D11 与 WARP 下的绘制验证。 |
-| [test_image_formats_exe.py](../tests/exe/test_image_formats_exe.py) | 2 | 打包产物的 Qt 图片插件防回归测试。 |
-| [test_runner_exe.py](../tests/exe/test_runner_exe.py) | 2 | 针对打包产物 OneDragon-Helper-Runner.exe 的集成测试（专门测 exe）。 |
-| [test_schedule_exe.py](../tests/exe/test_schedule_exe.py) | 11 | 针对打包产物的 schedule 集成测试（真实 exe + 真实子进程 + 假脚本/假游戏）。 |
+| [exe/test_close_running_exe.py](../tests/exe/test_close_running_exe.py) | 3 | 针对打包产物 OneDragon-Helper.exe 的「运行前关闭残留进程」集成测试（模拟真实情景）。 |
+| [exe/test_gui_exe.py](../tests/exe/test_gui_exe.py) | 9 | 针对打包产物 OneDragon-Helper.exe 的集成测试（专门测 GUI exe）。 |
+| [exe/test_gui_rendering_exe.py](../tests/exe/test_gui_rendering_exe.py) | 1 | 真实打包界面在默认 D3D11 与 WARP 下的绘制验证。 |
+| [exe/test_image_formats_exe.py](../tests/exe/test_image_formats_exe.py) | 2 | 打包产物的 Qt 图片插件防回归测试。 |
+| [exe/test_runner_exe.py](../tests/exe/test_runner_exe.py) | 2 | 针对打包产物 OneDragon-Helper-Runner.exe 的集成测试（专门测 exe）。 |
+| [exe/test_schedule_exe.py](../tests/exe/test_schedule_exe.py) | 11 | 针对打包产物的 schedule 集成测试（真实 exe + 真实子进程 + 假脚本/假游戏）。 |
+| [exe/test_update_exe.py](../tests/exe/test_update_exe.py) | 5 | 真实 Windows 更新器：安装、占用、回滚及启动闸门。 |
 
 ### runner 子模块
 

@@ -11,7 +11,6 @@ from unittest import mock
 from src.utils import get_root_dir
 from src.utils.utils_runner import (
     ProcessTarget,
-    _to_signed_32,
     build_chain_command,
     build_run_chain_command,
     build_script_command,
@@ -60,50 +59,30 @@ class TestScriptInvalidMessage(unittest.TestCase):
         entry = _external_entry(script_path=self.existing)
         self.assertIsNone(script_invalid_message(entry))
 
-    def test_external_path_empty(self):
-        self.assertEqual(
-            script_invalid_message(_external_entry(script_path="")), "脚本路径为空"
-        )
-
-    def test_external_path_missing(self):
-        entry = _external_entry(script_path=self.missing)
-        self.assertEqual(
-            script_invalid_message(entry), f"脚本路径不存在 {self.missing}"
-        )
-
-    def test_python_path_empty(self):
-        entry = _external_entry(script_type="python", script_path="")
-        self.assertEqual(script_invalid_message(entry), "Python 脚本路径为空")
-
-    def test_python_path_missing(self):
-        entry = _external_entry(script_type="python", script_path=self.missing)
-        self.assertEqual(
-            script_invalid_message(entry), f"Python 脚本不存在 {self.missing}"
-        )
+    def test_required_script_path_by_type(self):
+        for kind, empty, missing in (
+            ("external", "脚本路径为空", f"脚本路径不存在 {self.missing}"),
+            ("python", "Python 脚本路径为空", f"Python 脚本不存在 {self.missing}"),
+        ):
+            for path, expected in (("", empty), (self.missing, missing)):
+                with self.subTest(kind=kind, path=path):
+                    entry = _external_entry(script_type=kind, script_path=path)
+                    self.assertEqual(script_invalid_message(entry), expected)
 
     def test_check_done_invalid(self):
         entry = _external_entry(script_path=self.existing, check_done="bogus")
         self.assertEqual(script_invalid_message(entry), "检查完成方式非法 bogus")
 
-    def test_game_process_name_empty_when_kill_game(self):
-        """kill_game_after_done=True 但 game_process_name 为空 → 游戏进程名称为空"""
-        entry = _external_entry(
-            script_path=self.existing,
-            check_done="script_closed",
-            kill_game_after_done=True,
-            game_process_name="",
-        )
-        self.assertEqual(script_invalid_message(entry), "游戏进程名称为空")
-
-    def test_game_process_name_required_by_check_done(self):
-        """check_done=game_closed 但 game_process_name 为空 → 游戏进程名称为空"""
-        entry = _external_entry(
-            script_path=self.existing,
-            check_done="game_closed",
-            kill_game_after_done=False,
-            game_process_name="",
-        )
-        self.assertEqual(script_invalid_message(entry), "游戏进程名称为空")
+    def test_game_process_required_for_kill_or_completion_check(self):
+        for kill, check in ((True, "script_closed"), (False, "game_closed")):
+            with self.subTest(kill=kill, check=check):
+                entry = _external_entry(
+                    script_path=self.existing,
+                    check_done=check,
+                    kill_game_after_done=kill,
+                    game_process_name="",
+                )
+                self.assertEqual(script_invalid_message(entry), "游戏进程名称为空")
 
     def test_game_process_name_filled_ok(self):
         entry = _external_entry(
@@ -175,61 +154,42 @@ class TestCollectInvalidScriptMessages(unittest.TestCase):
         self.assertEqual(collect_invalid_script_messages([good]), [])
 
 
-class TestBuildChainCommand(unittest.TestCase):
-    """验证整链命令构造：用 sys.executable -m src.runner.launcher --chain <路径>。"""
-
-    def test_whole_chain_command_shape(self):
-        command, cwd, env = build_chain_command(CHAIN_PATH)
-        self.assertEqual(command[0], sys.executable)
-        self.assertIn("-m", command)
-        self.assertIn("src.runner.launcher", command)
-        self.assertIn("--chain", command)
-        self.assertIn(CHAIN_PATH, command)
-        self.assertNotIn("--debug-index", command)
-        self.assertEqual(cwd, get_root_dir())
-        self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
-
-
 class TestRunChainCommandInvocation(unittest.TestCase):
     """验证 run_chain_command 整链用法正确透传到 subprocess。"""
 
-    def test_whole_chain_passed_to_subprocess(self):
-        with mock.patch("src.utils.utils_runner.subprocess.run") as run:
-            run.return_value.returncode = 0
-            rc = run_chain_command(CHAIN_PATH)
-        self.assertEqual(rc, 0)
-        command = run.call_args.args[0]
-        self.assertIn("--chain", command)
-        self.assertIn(CHAIN_PATH, command)
-        self.assertNotIn("--debug-index", command)
-        self.assertEqual(run.call_args.kwargs["cwd"], get_root_dir())
-        self.assertIn(
-            os.path.join("src", "runner"), run.call_args.kwargs["env"]["PYTHONPATH"]
-        )
-
-    def test_large_returncode_clamped_to_signed(self):
-        """大无符号退出码（>=2^31）在出口被 clamp，供 Qt Signal(int) 直接 emit。"""
-        with mock.patch("src.utils.utils_runner.subprocess.run") as run:
-            run.return_value.returncode = 0xC0000005
-            rc = run_chain_command(CHAIN_PATH)
-        self.assertEqual(rc, -1073741819)
-
-
-class TestToSigned32(unittest.TestCase):
-    """验证 Windows 无符号 DWORD 退出码可安全转为 Qt qint32 信号值，不触发 OverflowError。"""
-
-    def test_zero_and_negative_passthrough(self):
-        self.assertEqual(_to_signed_32(0), 0)
-        self.assertEqual(_to_signed_32(-1), -1)
-        self.assertEqual(_to_signed_32(-9), -9)
-
-    def test_windows_crash_code_wraps_to_negative(self):
-        # 0xC0000005 = 3221225477 超过有符号 32 位上限，应回绕为 -1073741819
-        self.assertEqual(_to_signed_32(0xC0000005), -1073741819)
-
-    def test_full_dword_range(self):
-        self.assertEqual(_to_signed_32(0xFFFFFFFF), -1)
-        self.assertEqual(_to_signed_32(0x80000000), -2147483648)
+    def test_blocking_command_preserves_environment_and_returns_signed_exit_code(self):
+        for raw, expected in (
+            (0, 0),
+            (-1, -1),
+            (-9, -9),
+            (0xC0000005, -1073741819),
+            (0xFFFFFFFF, -1),
+            (0x80000000, -2147483648),
+        ):
+            with (
+                self.subTest(returncode=raw),
+                mock.patch("src.utils.utils_runner.subprocess.run") as run,
+                mock.patch("src.utils.utils_runner.subprocess.Popen") as popen,
+            ):
+                run.return_value.returncode = raw
+                self.assertEqual(run_chain_command(CHAIN_PATH), expected)
+                run.assert_called_once()
+                popen.assert_not_called()
+                self.assertEqual(
+                    run.call_args.args[0],
+                    [
+                        sys.executable,
+                        "-m",
+                        "src.runner.launcher",
+                        "--chain",
+                        CHAIN_PATH,
+                    ],
+                )
+                self.assertEqual(run.call_args.kwargs["cwd"], get_root_dir())
+                self.assertIn(
+                    os.path.join("src", "runner"),
+                    run.call_args.kwargs["env"]["PYTHONPATH"],
+                )
 
 
 class TestNonBlocking(unittest.TestCase):
@@ -239,6 +199,7 @@ class TestNonBlocking(unittest.TestCase):
         with (
             mock.patch("src.utils.utils_runner.subprocess.run") as run,
             mock.patch("src.utils.utils_runner.subprocess.Popen") as popen,
+            mock.patch("src.utils.utils_runner.time.sleep"),
         ):
             rc = run_chain_command(CHAIN_PATH, block=False)
         self.assertEqual(rc, 0)
@@ -247,16 +208,6 @@ class TestNonBlocking(unittest.TestCase):
         _, kwargs = popen.call_args
         self.assertEqual(kwargs["stdout"], subprocess.DEVNULL)
         self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
-
-    def test_block_true_uses_subprocess_run(self):
-        with (
-            mock.patch("src.utils.utils_runner.subprocess.run") as run,
-            mock.patch("src.utils.utils_runner.subprocess.Popen") as popen,
-        ):
-            run.return_value.returncode = 0
-            run_chain_command(CHAIN_PATH, block=True)
-        run.assert_called_once()
-        popen.assert_not_called()
 
 
 class TestBuildChainCommandFrozen(unittest.TestCase):
@@ -268,51 +219,15 @@ class TestBuildChainCommandFrozen(unittest.TestCase):
     FAKE_EXE = os.path.join(os.sep, "app", "OneDragon-Helper.exe")
     EXPECTED_RUNNER = os.path.join(os.sep, "app", "OneDragon-Helper-Runner.exe")
 
-    def test_frozen_calls_runner_exe_not_python(self):
+    def test_frozen_command_uses_sibling_runner_and_inherits_environment(self):
         with (
             mock.patch("sys.frozen", True, create=True),
             mock.patch("sys.executable", self.FAKE_EXE),
         ):
             command, cwd, env = build_chain_command(CHAIN_PATH)
-        # 命令首元素应是 Runner exe，而非 sys.executable（Python 解释器）
-        self.assertEqual(command[0], self.EXPECTED_RUNNER)
-        self.assertNotIn("-m", command)
-        self.assertNotIn("src.runner.launcher", command)
-
-    def test_frozen_passes_chain_arg(self):
-        with (
-            mock.patch("sys.frozen", True, create=True),
-            mock.patch("sys.executable", self.FAKE_EXE),
-        ):
-            command, cwd, env = build_chain_command(CHAIN_PATH)
-        self.assertIn("--chain", command)
-        self.assertIn(CHAIN_PATH, command)
-        self.assertNotIn("--debug-index", command)
-
-    def test_frozen_cwd_is_exe_dir(self):
-        with (
-            mock.patch("sys.frozen", True, create=True),
-            mock.patch("sys.executable", self.FAKE_EXE),
-        ):
-            command, cwd, env = build_chain_command(CHAIN_PATH)
+        self.assertEqual(command, [self.EXPECTED_RUNNER, "--chain", CHAIN_PATH])
         self.assertEqual(cwd, os.path.dirname(self.FAKE_EXE))
-
-    def test_frozen_env_is_none(self):
-        """冻结模式下 env=None，让 subprocess 继承父进程环境（不丢 PATH 等）。"""
-        with (
-            mock.patch("sys.frozen", True, create=True),
-            mock.patch("sys.executable", self.FAKE_EXE),
-        ):
-            command, cwd, env = build_chain_command(CHAIN_PATH)
         self.assertIsNone(env)
-
-    def test_non_frozen_unchanged(self):
-        """非冻结模式行为不变：用 sys.executable -m src.runner.launcher。"""
-        command, cwd, env = build_chain_command(CHAIN_PATH)
-        self.assertEqual(command[0], sys.executable)
-        self.assertIn("-m", command)
-        self.assertIn("src.runner.launcher", command)
-        self.assertIn(os.path.join("src", "runner"), env["PYTHONPATH"])
 
 
 class TestBuildScriptInvocationFrozen(unittest.TestCase):
@@ -325,24 +240,13 @@ class TestBuildScriptInvocationFrozen(unittest.TestCase):
     EXPECTED_RUNNER = os.path.join(os.sep, "app", "OneDragon-Helper-Runner.exe")
     SCRIPT = "D:/scripts/foo.py"
 
-    def test_frozen_calls_runner_exe_with_script_flag(self):
+    def test_frozen_script_command_and_environment(self):
         with (
             mock.patch("sys.frozen", True, create=True),
             mock.patch("sys.executable", self.FAKE_EXE),
         ):
             command, cwd, env = build_script_command(["--script", self.SCRIPT])
-        self.assertEqual(command[0], self.EXPECTED_RUNNER)
-        self.assertEqual(command[1], "--script")
-        self.assertEqual(command[2], self.SCRIPT)
-        self.assertNotIn("-m", command)
-        self.assertNotIn("src.runner.launcher", command)
-
-    def test_frozen_cwd_is_exe_dir_and_env_none(self):
-        with (
-            mock.patch("sys.frozen", True, create=True),
-            mock.patch("sys.executable", self.FAKE_EXE),
-        ):
-            command, cwd, env = build_script_command(["--script", self.SCRIPT])
+        self.assertEqual(command, [self.EXPECTED_RUNNER, "--script", self.SCRIPT])
         self.assertEqual(cwd, os.path.dirname(self.FAKE_EXE))
         self.assertIsNone(env)
 
@@ -528,41 +432,21 @@ class TestCollectProcessTargets(unittest.TestCase):
 class TestNextTargetDatetime(unittest.TestCase):
     """next_target_datetime：今天未到取今天，已过取明天（跨午夜）；HH:MM 与 HH:MM:SS 等价。"""
 
-    def test_later_today(self):
-        now = datetime(2026, 8, 23, 7, 0)
-        self.assertEqual(
-            next_target_datetime("08:00", now=now),
-            datetime(2026, 8, 23, 8, 0),
-        )
-
-    def test_already_passed_rolls_to_tomorrow(self):
-        now = datetime(2026, 8, 23, 9, 0)
-        self.assertEqual(
-            next_target_datetime("08:00", now=now),
-            datetime(2026, 8, 24, 8, 0),
-        )
-
-    def test_exactly_now_runs_tomorrow(self):
-        now = datetime(2026, 8, 23, 8, 0)
-        self.assertEqual(
-            next_target_datetime("08:00", now=now),
-            datetime(2026, 8, 24, 8, 0),
-        )
-
-    def test_seconds_make_same_minute_reachable(self):
-        """带秒：同一分钟内仍算「未到」，不必等到明天（集成测试据此精确指定 +3 秒）。"""
-        now = datetime(2026, 8, 23, 8, 0, 10)
-        self.assertEqual(
-            next_target_datetime("08:00:30", now=now),
-            datetime(2026, 8, 23, 8, 0, 30),
-        )
-
-    def test_seconds_passed_rolls_to_tomorrow(self):
-        now = datetime(2026, 8, 23, 8, 0, 40)
-        self.assertEqual(
-            next_target_datetime("08:00:30", now=now),
-            datetime(2026, 8, 24, 8, 0, 30),
-        )
+    def test_next_occurrence_is_strictly_after_now(self):
+        for now, target, expected in (
+            ("07:00", "08:00", "2026-08-23 08:00"),
+            ("09:00", "08:00", "2026-08-24 08:00"),
+            ("08:00", "08:00", "2026-08-24 08:00"),
+            ("08:00:10", "08:00:30", "2026-08-23 08:00:30"),
+            ("08:00:40", "08:00:30", "2026-08-24 08:00:30"),
+        ):
+            with self.subTest(now=now, target=target):
+                self.assertEqual(
+                    next_target_datetime(
+                        target, now=datetime.fromisoformat(f"2026-08-23 {now}")
+                    ),
+                    datetime.fromisoformat(expected),
+                )
 
     def test_invalid_segment_count(self):
         with self.assertRaises(AssertionError):
@@ -570,15 +454,9 @@ class TestNextTargetDatetime(unittest.TestCase):
 
 
 class TestSpawnScheduleRun(unittest.TestCase):
-    """spawn_schedule_run：子进程命令拼装（dev / frozen 两种入口，参数透传）。
+    """开发与冻结入口均使用 launcher；时刻经 --schedule-run 传入。"""
 
-    本类是对「定时计划闪退」回归的护栏：命令必须走与 GUI 相同的入口
-    （开发态 ``python -m src.launcher`` / 冻结态 ``sys.executable``），且目标时刻
-    须作为 ``--schedule-run`` 的参数（**不是** ``--at``），否则子进程会被 argparse
-    拒掉而一启动就退出。此前缺失该测试，导致命令拼写错误未被任何用例捕获。
-    """
-
-    def _capture_command(self, *, frozen=False, enabled_keys="today", **kwargs):
+    def _capture_command(self, *, enabled_keys, frozen=False, **kwargs):
         """调用 spawn_schedule_run 并返回实际拼出的命令列表。"""
         with (
             mock.patch("subprocess.Popen", return_value=mock.MagicMock()) as popen_mock,
@@ -587,51 +465,35 @@ class TestSpawnScheduleRun(unittest.TestCase):
             spawn_schedule_run(enabled_keys, "08:00", **kwargs)
         return popen_mock.call_args.args[0]
 
-    def test_dev_entry_uses_src_launcher(self):
-        cmd = self._capture_command(frozen=False)
-        self.assertEqual(cmd[0], sys.executable)
-        self.assertEqual(cmd[1:3], ["-m", "src.launcher"])
-        self.assertIn("--schedule-run", cmd)
-        self.assertNotIn("src.cli", cmd)  # 入口必须是 launcher，不是 cli 模块
-
-    def test_frozen_entry_uses_exe_directly(self):
-        cmd = self._capture_command(frozen=True)
-        self.assertEqual(cmd[0], sys.executable)
-        # 冻结态无 ``-m src.launcher``，直接复用 exe（其入口即 launcher.main）。
-        self.assertNotIn("-m", cmd)
-        self.assertNotIn("src.launcher", cmd)
-
-    def test_target_time_is_schedule_run_value(self):
-        cmd = self._capture_command(frozen=False)
-        idx = cmd.index("--schedule-run")
-        self.assertEqual(cmd[idx + 1], "08:00")  # 目标时刻是 --schedule-run 的值
-        self.assertNotIn("--at", cmd)  # ← 曾用 --at 导致 argparse 拒掉而闪退
-
-    def test_name_flag(self):
-        cmd = self._capture_command(frozen=False, chain_name="weekend")
-        idx = cmd.index("--name")
-        self.assertEqual(cmd[idx + 1], "weekend")
-
-    def test_mute_unmute_and_shutdown_passthrough(self):
-        cmd = self._capture_command(
-            frozen=False, mute=True, unmute=True, shutdown_delay=60
+    def test_schedule_command_preserves_entrypoint_and_options(self):
+        cases = (
+            ("named", {"chain_name": "weekend"}, "weekend", ["--close-running"]),
+            (
+                "actions",
+                {"mute": True, "unmute": True, "shutdown_delay": 60},
+                "today",
+                ["--mute", "--unmute", "--close-running", "--shutdown", "60"],
+            ),
+            ("keep_running", {"close_running": False}, "today", []),
         )
-        self.assertIn("--mute", cmd)
-        self.assertIn("--unmute", cmd)
-        idx = cmd.index("--shutdown")
-        self.assertEqual(cmd[idx + 1], "60")
-
-    def test_close_running_passthrough(self):
-        # 默认启用 → 透传 --close-running；显式关闭 → 不传。
-        cmd_on = self._capture_command(frozen=False, close_running=True)
-        self.assertIn("--close-running", cmd_on)
-        cmd_off = self._capture_command(frozen=False, close_running=False)
-        self.assertNotIn("--close-running", cmd_off)
-
-    def test_enable_sorted_comma_joined(self):
-        cmd = self._capture_command(frozen=False, enabled_keys={"b", "a", "c"})
-        idx = cmd.index("--enable")
-        self.assertEqual(cmd[idx + 1], "a,b,c")  # 排序后逗号连接
+        for frozen in (False, True):
+            for name, options, chain_name, flags in cases:
+                with self.subTest(frozen=frozen, name=name):
+                    cmd = self._capture_command(
+                        frozen=frozen, enabled_keys={"b", "a", "c"}, **options
+                    )
+                    entry = (
+                        [sys.executable]
+                        if frozen
+                        else [sys.executable, "-m", "src.launcher"]
+                    )
+                    self.assertEqual(
+                        cmd,
+                        entry
+                        + ["--schedule-run", "08:00", "--name", chain_name]
+                        + flags
+                        + ["--enable", "a,b,c"],
+                    )
 
     def test_enable_none_raises(self):
         """enabled_keys 必须显式传入具体集合；None 是契约错误（不再表示『全部』）。"""

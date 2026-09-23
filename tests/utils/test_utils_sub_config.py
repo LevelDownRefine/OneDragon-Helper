@@ -444,41 +444,6 @@ class TestGetConfigPath(unittest.TestCase):
 class TestLoadConfig(unittest.TestCase):
     """测试 load_config"""
 
-    def test_load_json_config(self):
-        """应正确解析 JSON 格式的 config"""
-        fake_data = {"key": "value", "nested": {"a": 1}}
-        fake_path = r"C:\fake\script\config.json"
-
-        with (
-            patch.object(
-                utils_sub_config, "get_sub_config_path", return_value=fake_path
-            ),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(fake_data))),
-        ):
-            result = utils_sub_config.load_config("ok-ww", "DailyTask.json")
-
-        self.assertEqual(result, fake_data)
-
-    def test_load_yaml_config(self):
-        """应正确解析 YAML 格式的 config"""
-        fake_data = {"key": "value", "list": [1, 2, 3]}
-        fake_path = r"C:\fake\script\config.yaml"
-        yaml_str = dump_yaml_str(fake_data)
-
-        with (
-            patch.object(
-                utils_sub_config, "get_sub_config_path", return_value=fake_path
-            ),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=yaml_str)),
-        ):
-            result = utils_sub_config.load_config(
-                "OneDragon-Launcher", "charge_plan.yml"
-            )
-
-        self.assertEqual(result, fake_data)
-
     def test_load_all_registered_configs_with_mock(self):
         """对所有已注册脚本，用 mock config 文件验证读取逻辑
         （不依赖真实 config 文件，CI 也能跑）"""
@@ -579,41 +544,28 @@ class TestSaveConfig(unittest.TestCase):
             utils_sub_config.save_config("none", "whatever.json", {"key": "val"})
         open_file.assert_not_called()
 
-    def test_save_and_reload_roundtrip_json(self):
-        """JSON 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
-        data = {"test_key": "test_value", "num": 42}
-
-        with tempfile.TemporaryDirectory() as tmp:
-            fake_path = os.path.join(tmp, "config.json")
-            with patch.object(
-                utils_sub_config, "get_sub_config_path", return_value=fake_path
-            ):
-                # save
-                ok = utils_sub_config.save_config("ok-ww", "DailyTask.json", data)
-                self.assertIsNone(ok)
-                # load
-                loaded = utils_sub_config.load_config("ok-ww", "DailyTask.json")
-                self.assertEqual(loaded, data)
-
-    def test_save_and_reload_roundtrip_yaml(self):
-        """YAML 数据 save 后 load 回来应一致（用 tempdir 替代真实路径）"""
-        data = {"plan_list": [{"category_name": "模拟"}], "enabled": True}
-
-        with tempfile.TemporaryDirectory() as tmp:
-            fake_path = os.path.join(tmp, "config.yaml")
-            with patch.object(
-                utils_sub_config, "get_sub_config_path", return_value=fake_path
-            ):
-                # save
-                ok = utils_sub_config.save_config(
-                    "OneDragon-Launcher", "charge_plan.yml", data
-                )
-                self.assertIsNone(ok)
-                # load
-                loaded = utils_sub_config.load_config(
-                    "OneDragon-Launcher", "charge_plan.yml"
-                )
-                self.assertEqual(loaded, data)
+    def test_json_and_yaml_roundtrip_preserves_structure_and_types(self):
+        data = {
+            "key": "value",
+            "nested": {"a": 1},
+            "list": [1, 2, 3],
+            "plan_list": [{"category_name": "模拟"}],
+            "enabled": True,
+            "num": 42,
+        }
+        for name, relative in (
+            ("ok-ww", "DailyTask.json"),
+            ("OneDragon-Launcher", "charge_plan.yml"),
+        ):
+            with self.subTest(script=name), tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, relative)
+                with patch.object(
+                    utils_sub_config, "get_sub_config_path", return_value=path
+                ):
+                    self.assertIsNone(
+                        utils_sub_config.save_config(name, relative, data)
+                    )
+                    self.assertEqual(utils_sub_config.load_config(name, relative), data)
 
 
 if __name__ == "__main__":

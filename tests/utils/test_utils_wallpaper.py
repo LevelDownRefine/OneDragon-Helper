@@ -54,19 +54,14 @@ class TestLoadWallpapers(UtilsWallpaperTestBase):
 
 
 class TestSaveWallpapers(UtilsWallpaperTestBase):
-    def test_saves_mapping(self):
-        save_wallpapers({"wu": "C:/w.png"})
-        with open(self.json_path, encoding="utf-8") as f:
-            self.assertEqual(json.load(f), {"wu": "C:/w.png"})
-
-    def test_overwrite_replaces_content(self):
-        save_wallpapers({"wu": "C:/a.png"})
-        save_wallpapers({"wu": "C:/b.png", "ef": "C:/c.mp4"})
-        self.assertEqual(load_wallpapers(), {"wu": "C:/b.png", "ef": "C:/c.mp4"})
-
-    def test_atomic_write_leaves_no_tmp(self):
-        save_wallpapers({"wu": "C:/w.png"})
-        self.assertFalse(os.path.exists(self.json_path + ".tmp"))
+    def test_save_roundtrip_replaces_content_without_leaving_temporary_file(self):
+        for mapping in ({"wu": "C:/a.png"}, {"wu": "C:/b.png", "ef": "C:/c.mp4"}):
+            with self.subTest(mapping=mapping):
+                save_wallpapers(mapping)
+                with open(self.json_path, encoding="utf-8") as stream:
+                    self.assertEqual(json.load(stream), mapping)
+                self.assertEqual(load_wallpapers(), mapping)
+                self.assertFalse(os.path.exists(self.json_path + ".tmp"))
 
     def test_non_dict_asserts(self):
         with self.assertRaises(AssertionError):
