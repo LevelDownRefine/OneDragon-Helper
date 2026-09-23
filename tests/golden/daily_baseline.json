@@ -69,6 +69,12 @@
             "ForgeryDomain-乙",
             "ForgeryDomain-乙"
           ]
+        ],
+        "自动选择": [
+          [
+            "根据提升指南选择秘境",
+            "根据提升指南选择秘境"
+          ]
         ]
       },
       "首领讨伐": {
@@ -768,11 +774,52 @@
         "diff": {
           "User/OneDragon/默认配置.json.DomainName": [
             "BlessDomain-乙",
-            "BlessDomain-甲"
+            "根据提升指南选择秘境"
           ],
           "User/OneDragon/默认配置.json.TaskEnabledList.domain": [
             false,
             true
+          ]
+        },
+        "readback": [
+          {
+            "enabled": true,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "根据提升指南选择秘境"
+          },
+          {
+            "enabled": false,
+            "name": "地脉花",
+            "sequence": "leyLinePositions-乙",
+            "task": "启示之花"
+          },
+          {
+            "enabled": false,
+            "name": "首领讨伐",
+            "sequence": null,
+            "task": "急冻树"
+          },
+          {
+            "enabled": false,
+            "name": "幽境危战",
+            "sequence": 1,
+            "task": "幽境危战"
+          }
+        ],
+        "saved_files": [
+          "User/OneDragon/默认配置.json",
+          "User/OneDragon/默认配置.json"
+        ],
+        "sequence": "根据提升指南选择秘境",
+        "task": "自动选择"
+      },
+      {
+        "daily": "每日任务",
+        "diff": {
+          "User/OneDragon/默认配置.json.DomainName": [
+            "根据提升指南选择秘境",
+            "BlessDomain-甲"
           ]
         },
         "readback": [
@@ -802,7 +849,6 @@
           }
         ],
         "saved_files": [
-          "User/OneDragon/默认配置.json",
           "User/OneDragon/默认配置.json"
         ],
         "sequence": "BlessDomain-甲",

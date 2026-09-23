@@ -121,6 +121,12 @@ BetterGI:
   enable_task: 自动秘境
   options:
     values:
+    # BGI 内置项（不在 tp.json 里）：值是那句文案本身，由 BGI 读游戏内提升指南选秘境。
+    - display_name: 自动选择
+      options:
+        key: DomainName
+        values:
+        - display_name: 根据提升指南选择秘境
     - display_name: 圣遗物
       options:
         key: DomainName
