@@ -14,12 +14,14 @@
 | controllers/links | 悬浮条：主页/B站/GitHub/目录/设置/启动游戏 | config / utils_sub_config / utils |
 | controllers/backup | 配置操作分发、备份 / 恢复与结果提示 | config_dialog / service |
 | controllers/daily_plan | 配置界面的每日计划编辑 | daily_plan_dialog / service |
+| controllers/update | 手动更新的状态、工作线程、取消与安装退出 | update_dialog / service |
 | controllers/window | 窗口控制：最小化/关闭/拖动 | 无 |
 | icons | 脚本 exe 图标 + QML 矢量图标提供器 | utils_sub_config |
 | dialogs | 单脚本配置弹窗 + 确认回调 | config / service |
 | file_drop | Windows 整窗文件拖入，兼容管理员窗口 | 无 |
 | config_dialog | 右上角配置入口与自动启动设置 | dialogs / icons |
 | daily_plan_dialog | 每日计划的时间、脚本名单与启用开关 | dialogs / service |
+| update_dialog | 当前版本、更新说明、下载进度与安装重启按钮 | dialogs |
 | qml/Theme.js | 主窗口、按钮、任务卡与下拉菜单的共享配色 | 无 |
 
 依赖单向：main_window 组合各控制器，控制器间构造注入；QmlBridge 是 QML 唯一门面。qml/ 组件经 Loader 相对路径加载，文件名与 controllers/ 同名。
@@ -42,6 +44,7 @@
 - ConfigDialog：右上角图标入口，自动启动设置点击「保存」才写入；取消、关闭和 Esc 不写入。每日计划、运行选项和备份/恢复独立打开，保留当前表单。每日计划启用时不再触发打开窗口的自动启动。
 - DailyPlanDialog：时间、参加的脚本、启用开关放在同一表单，保存后经 DailyPlanController 调 AppService；失败保留输入，取消不写入。仅从「配置 → 每日计划」进入，主界面不显示计划卡片或快捷按钮。在表单中取消勾选启用开关并保存即可暂停，时间与脚本继续保留；手动勾选不修改计划。开关下方回读并显示系统任务实际状态（未注册 / 已禁用 / 每天 HH:MM）：设置与系统任务不一致时保存会重新注册。
 - RunConfirmDialog：手动启动前确认，或在「运行选项」中仅保存配置。每日时间独立管理，手动「启动全部」始终立即运行。
+- UpdateDialog：从右上角「配置 → 更新」进入后才检查新版本，展示版本与更新说明；点击「下载更新」下载校验，完成后点击「安装并重启」。检查、下载、安装准备由工作线程调用 AppService，GUI 不写盘。关闭或 Esc 取消检查/下载并等待线程结束；安装准备阶段禁止重复点击与关闭，更新器就绪后才退出应用。失败保留窗口并支持重试，源码/开发版和不支持原位更新的旧包提供发布页面入口。安装结果下次打开弹窗时可读，成功重启显示完成提示并跳过本次任务倒计时。
 - 表单、启动/关机倒计时及消息框共用半透明背景（与 QML Theme.panel 一致），文字和控件保持清晰；系统文件选择框沿用系统外观。
 
 ## 写盘路径

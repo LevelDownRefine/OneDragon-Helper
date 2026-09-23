@@ -47,7 +47,12 @@ class TestReleasePackage(unittest.TestCase):
             "-m",
             "test: resources",
         )
-        for name in (release.EXE_NAME, release.RUNNER_NAME, "_internal/python.dll"):
+        for name in (
+            release.EXE_NAME,
+            release.RUNNER_NAME,
+            release.UPDATER_EXE,
+            "_internal/python.dll",
+        ):
             self.write(self.package, name, "binary")
 
     def git(self, *args):
@@ -89,6 +94,8 @@ class TestReleasePackage(unittest.TestCase):
             | {
                 release.EXE_NAME,
                 release.RUNNER_NAME,
+                release.UPDATER_EXE,
+                release.MANIFEST,
                 release.VERSION_FILE,
                 "_internal/python.dll",
             },
@@ -177,6 +184,12 @@ class TestReleasePackage(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "config/config.example.yml"):
             release.validate_package(self.root, self.package)
 
+    def test_runtime_file_added_after_manifest_blocks_publication(self):
+        release.prepare_package(self.root, self.package)
+        self.write(self.package, "_internal/unlisted.dll", "unknown")
+        with self.assertRaisesRegex(ValueError, "更新清单不一致"):
+            release.validate_package(self.root, self.package)
+
     def test_archive_contains_checked_files_and_matching_checksum(self):
         release.prepare_package(self.root, self.package, "v1.2.3")
         output = self.package.parent / "OneDragon-Helper.zip"
@@ -205,7 +218,7 @@ class TestReleasePackage(unittest.TestCase):
             release.archive_package(self.root, self.package, output)
         self.assertFalse(output.exists())
 
-    def test_exe_tests_run_in_copy_and_propagate_failure(self):
+    def test_exe_tests_run_in_copy_and_preserve_exit_code(self):
         release.prepare_package(self.root, self.package)
         real_run = subprocess.run
         copies = []
@@ -221,12 +234,26 @@ class TestReleasePackage(unittest.TestCase):
             self.assertEqual(Path(env["ODH_RUNNER_EXE"]), sandbox / release.RUNNER_NAME)
             self.write(sandbox, "config/config.yml", "test config")
             self.write(sandbox, "logs/test.log", "test log")
-            return subprocess.CompletedProcess(command, 1)
+            return subprocess.CompletedProcess(command, exit_code)
 
-        with patch.object(release.subprocess, "run", side_effect=run):
-            self.assertEqual(release.test_package(self.root, self.package), 1)
-        self.assertEqual(len(copies), 1)
-        self.assertFalse(copies[0].exists())
+        for exit_code in (0, 1):
+            directory = tempfile.TemporaryDirectory(prefix="odh_package_tests_")
+            self.enterContext(directory)
+            with (
+                self.subTest(exit_code=exit_code),
+                patch.object(release.subprocess, "run", side_effect=run),
+                patch.object(
+                    release.tempfile, "TemporaryDirectory", return_value=directory
+                ),
+                patch.object(
+                    directory, "cleanup", side_effect=PermissionError("in use")
+                ),
+                self.assertLogs(release.__name__, level="WARNING"),
+            ):
+                self.assertEqual(
+                    release.test_package(self.root, self.package), exit_code
+                )
+        self.assertEqual(len(copies), 2)
         self.assertFalse((self.package / "config/config.yml").exists())
         self.assertFalse((self.package / "logs").exists())
         release.validate_package(self.root, self.package)

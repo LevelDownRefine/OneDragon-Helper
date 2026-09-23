@@ -12,6 +12,12 @@
 `ODH_RELEASE_TAG` 读取 `v主版本.次版本.修订版本`，本地及分支构建标记为
 `pyproject版本+dev.提交号`。`--version` 优先读取这份构建信息。
 
+包内还包含独立的 `OneDragon-Helper-Updater.exe` 和 `update-manifest.json`。
+清单版本为 schema 1，记录程序版本与每个程序文件的 SHA-256（不含清单自身）；
+构建校验及更新器共用 `src/update/package.py` 的路径规则。独立更新器从
+`src/update/__main__.py` 打包。ZIP 的 SHA-256 覆盖清单，逐文件校验确保解包和替换完整。
+用户配置、日志、壁纸和备份既不进入清单，也不能被更新清单声明为可替换内容。
+
 exe 集成测试只在临时副本运行，发布目录在测试前后均校验。
 `archive` 再次校验文件清单并生成 ZIP 和同名 `.sha256` 校验文件：
 
@@ -20,7 +26,7 @@ python tools/release_package.py check --package deploy/dist/OneDragon-Helper
 python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
 ```
 
-这些是手动更新的发布侧基础。后续更新入口位于右上角设置内，由用户点击
+这些是手动更新的发布侧基础。更新入口位于右上角设置内，由用户点击
 「更新」触发；不在启动或后台自动检查、下载或安装。
 
 ## 副本同步

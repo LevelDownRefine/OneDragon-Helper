@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -13,18 +14,22 @@ import tomllib
 import zipfile
 from pathlib import Path
 
+# 作为独立脚本从 deploy/ 调用时，定位共享的纯 Python 更新包协议。
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.update.package import (  # noqa: E402
+    MANIFEST,
+    UPDATER_EXE,
+    load_manifest,
+    managed_path,
+    write_manifest,
+)
+
 EXE_NAME = "OneDragon-Helper.exe"
 RUNNER_NAME = "OneDragon-Helper-Runner.exe"
 VERSION_FILE = "version.json"
-USER_CONFIG = {
-    "config.yml",
-    "schedule.yml",
-    "weekly.yml",
-    "notify_mail.yml",
-    "wallpaper.json",
-    "gui_state.json",
-}
-USER_DIRECTORIES = {"script_chain", "wallpaper_cache", "backups"}
+logger = logging.getLogger(__name__)
 
 
 def resource_files(root: Path) -> list[str]:
@@ -37,12 +42,7 @@ def resource_files(root: Path) -> list[str]:
     )
     names = sorted(result.stdout.decode("utf-8").split("\0")[:-1])
     for name in names:
-        parts = Path(name).parts
-        if (
-            (parts[0] == "config" and parts[1] in USER_CONFIG | USER_DIRECTORIES)
-            or name == "assets/banner.jpg"
-            or any(re.search(r"\.bak\d*$", part, re.IGNORECASE) for part in parts)
-        ):
+        if not managed_path(name):
             raise ValueError(f"用户文件不能作为发布资源: {name}")
         if (root / name).is_symlink():
             raise ValueError(f"发布资源不能是符号链接: {name}")
@@ -76,12 +76,25 @@ def prepare_package(root: Path, package: Path, tag: str = "") -> None:
         json.dumps({"version": version, "tag": tag, "commit": commit}, indent=2) + "\n",
         encoding="utf-8",
     )
+    files = names + [EXE_NAME, RUNNER_NAME, UPDATER_EXE, VERSION_FILE]
+    files += [
+        path.relative_to(package).as_posix()
+        for path in (package / "_internal").rglob("*")
+        if path.is_file()
+    ]
+    write_manifest(package, files, version)
     validate_package(root, package)
 
 
 def validate_package(root: Path, package: Path) -> list[Path]:
     """检查完整发布目录；清单外文件直接报错，避免发布个人数据或测试残留。"""
-    expected = set(resource_files(root)) | {EXE_NAME, RUNNER_NAME, VERSION_FILE}
+    expected = set(resource_files(root)) | {
+        EXE_NAME,
+        RUNNER_NAME,
+        UPDATER_EXE,
+        VERSION_FILE,
+        MANIFEST,
+    }
     allowed_dirs = {"_internal"}
     for name in expected:
         allowed_dirs.update(
@@ -109,6 +122,9 @@ def validate_package(root: Path, package: Path) -> list[Path]:
         raise ValueError(f"发布包缺少文件: {', '.join(sorted(missing))}")
     if not any(name.startswith("_internal/") for name in found):
         raise ValueError("发布包缺少 _internal 运行库")
+    manifest = load_manifest(package, verify=True)
+    if found != set(manifest["files"]) | {MANIFEST}:
+        raise ValueError("发布包文件与更新清单不一致")
     return files
 
 
@@ -130,8 +146,9 @@ def archive_package(root: Path, package: Path, output: Path) -> None:
 def test_package(root: Path, package: Path) -> int:
     """只在临时副本运行 exe 集成测试，原发布目录始终保持干净。"""
     validate_package(root, package)
-    with tempfile.TemporaryDirectory(prefix="odh_package_tests_") as directory:
-        sandbox = Path(directory) / package.name
+    directory = tempfile.TemporaryDirectory(prefix="odh_package_tests_")
+    try:
+        sandbox = Path(directory.name) / package.name
         shutil.copytree(package, sandbox)
         env = dict(os.environ)
         env.update(
@@ -156,6 +173,16 @@ def test_package(root: Path, package: Path) -> int:
             env=env,
             check=False,
         )
+    finally:
+        try:
+            directory.cleanup()
+        except OSError as exc:
+            logger.warning(
+                "测试副本清理失败（%s）：%s；残留目录：%s。不影响测试结果。",
+                type(exc).__name__,
+                exc,
+                directory.name,
+            )
     validate_package(root, package)
     return result.returncode
 

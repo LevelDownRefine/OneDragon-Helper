@@ -38,6 +38,7 @@ class ConfigDialog(FormDialogBase):
         ("settings", "运行选项", "设置静音、重跑、通知与关机"),
         ("backup", "备份配置", "保存为 ZIP，便于换机迁移"),
         ("restore", "恢复配置", "从备份恢复，保留本机游戏路径"),
+        ("update", "更新", "检查 OneDragon-Helper 新版本"),
     )
 
     def __init__(
@@ -63,7 +64,7 @@ class ConfigDialog(FormDialogBase):
         title.setFont(make_font(size=20, bold=True))
         title.setStyleSheet(f"color: {TEXT}; background: transparent; border: none;")
         layout.addWidget(title)
-        subtitle = QLabel("每日计划、运行选项与配置迁移")
+        subtitle = QLabel("运行设置、配置迁移与程序更新")
         subtitle.setFont(make_font(size=12))
         subtitle.setStyleSheet(
             f"color: {TEXT_MUTED}; background: transparent; border: none;"

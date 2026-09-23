@@ -5,7 +5,8 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from contextlib import ExitStack
+from unittest.mock import Mock, patch
 
 # 在导入 PySide6 相关模块之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -106,6 +107,52 @@ class TestStartupTimer(unittest.TestCase):
         ):
             launcher.main()
         self.assertLess(time.perf_counter() - launcher._STARTUP_T0, 1.0)
+
+
+class TestUpdateRestart(unittest.TestCase):
+    def test_update_restart_skips_task_countdown_only_for_this_launch(self):
+        for skip in (False, True):
+            with self.subTest(skip=skip), ExitStack() as stack:
+                for name in (
+                    "setup_logging",
+                    "install_crash_hooks",
+                    "config_workflow",
+                    "_clear_qml_cache",
+                    "_install_qt_message_logger",
+                    "QApplication",
+                    "qmlRegisterSingletonInstance",
+                    "install_file_drop",
+                ):
+                    stack.enter_context(patch.object(launcher, name))
+                stack.enter_context(
+                    patch.object(launcher, "run_cli", return_value=None)
+                )
+                stack.enter_context(
+                    patch.object(
+                        sys,
+                        "argv",
+                        ["OneDragon-Helper", *(["--after-update"] if skip else [])],
+                    )
+                )
+                engine = stack.enter_context(
+                    patch.object(launcher, "QQmlApplicationEngine")
+                )
+                engine.return_value.rootObjects.return_value = [Mock()]
+                bridge = stack.enter_context(patch.object(launcher, "QmlBridge"))
+                timer = stack.enter_context(patch.object(launcher, "QTimer"))
+                with self.assertRaises(SystemExit):
+                    launcher.main()
+                self.assertEqual(
+                    bridge.return_value.maybe_auto_launch.call_count, int(not skip)
+                )
+                if skip:
+                    timer.singleShot.assert_called_once()
+                    timer.singleShot.call_args.args[1]()
+                    bridge.return_value.toastRequested.emit.assert_called_once_with(
+                        "更新完成，欢迎回来"
+                    )
+                else:
+                    timer.singleShot.assert_not_called()
 
 
 class TestQtMessageLogger(unittest.TestCase):

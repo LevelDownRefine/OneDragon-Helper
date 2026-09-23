@@ -188,6 +188,7 @@ class UiIconProvider(QQuickImageProvider):
             "configfile": self._draw_configfile,
             "backup": self._draw_backup,
             "restore": self._draw_restore,
+            "update": self._draw_update,
             "trash": self._draw_trash,
             "play": self._draw_play,
             "play_all": self._draw_play_all,
@@ -222,6 +223,16 @@ class UiIconProvider(QQuickImageProvider):
         path.lineTo(-10, 14)
         path.closeSubpath()
         p.drawPath(path)
+
+    def _draw_update(self, p: QPainter):
+        p.setPen(QPen(_WHITE, 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        p.setBrush(Qt.NoBrush)
+        p.drawArc(QRectF(-12, -12, 24, 24), 35 * 16, 285 * 16)
+        arrow = QPainterPath()
+        arrow.moveTo(3, -10)
+        arrow.lineTo(11, -7)
+        arrow.lineTo(12, -15)
+        p.drawPath(arrow)
 
     def _draw_chevron_down(self, p: QPainter):
         p.setPen(QPen(_WHITE, 3, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))

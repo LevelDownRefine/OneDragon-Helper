@@ -11,6 +11,7 @@ peer：
 - 游戏侧 config 适配器（副本/周几起写脚本自身 config）：归 :mod:`src.config.set_config` 模块函数
 - 自定义壁纸表（config/wallpaper.json）：归 :mod:`src.utils.utils_wallpaper` 模块函数
 - 配置备份与恢复（各子脚本 config 打包为 ZIP / 按目录原样回写）：归 :mod:`src.service.backup_service` 模块函数
+- 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.service.UpdateService`
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
 未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
@@ -40,6 +41,7 @@ from src.service.schedule import (
     load_startup_options,
     save_schedule,
 )
+from src.update.service import UpdateService
 from src.utils.utils_config import (
     add_script,
     build_script_entry,
@@ -90,6 +92,25 @@ class AppService:
 
     def __init__(self):
         """装配各 peer。"""
+        self._updates = UpdateService()
+
+    def check_update(self):
+        """用户手动检查新版。"""
+        return self._updates.check_update()
+
+    def get_update_info(self):
+        """读取本地版本与上次安装结果，不联网。"""
+        return self._updates.get_update_info()
+
+    def prepare_update(self, release, *, progress=None, cancelled=None):
+        """下载、校验并准备更新包。"""
+        return self._updates.prepare_update(
+            release, progress=progress, cancelled=cancelled
+        )
+
+    def start_update(self, prepared):
+        """等待独立更新器就绪；成功返回后 GUI 应立即退出。"""
+        return self._updates.start_update(prepared)
 
     # ── 配置备份 / 恢复（src.service.backup_service 模块函数）──
     def create_backup(self) -> dict:

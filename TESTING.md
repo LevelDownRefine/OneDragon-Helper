@@ -26,6 +26,7 @@ python -m 把根目录加入 sys.path，PYTHONPATH=src 让 import launcher 可�
 | `tests/gui/` | 控件、控制器、QML、窗口及 GUI 共享夹具 |
 | `tests/config/` | 配置适配器、声明、日常、周常及 golden 验证 |
 | `tests/service/` | 配置服务、链生成、调度和运行编排 |
+| `tests/update/` | 更新包协议、下载服务、运行锁、安装回滚 |
 | `tests/utils/` | 通用工具、文件读写、路径与系统操作 |
 | `tests/log/` | 日志解析与邮件通知 |
 | `tests/tools/` | 选项同步脚本的离线测试 |
@@ -60,6 +61,15 @@ PYTHONPATH=src python -m tests.config.test_golden_daily --update
 exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定测试副本。
 发布目录不生成用户配置、日志或缓存。打包测试覆盖缺少用户 YAML 时的首启生成、
 再次启动保留修改，以及 `--version` 与构建元数据一致；测试前后和 ZIP 归档前均检查发布文件清单。
+测试后尝试清理临时副本，清理失败仅警告并给出残留路径；构建结果取决于 EXE 测试结果与发布包校验。
+
+`tests/update/` 覆盖更新包边界、下载校验与取消、程序文件替换、故障回滚和中断恢复；
+`tests/exe/test_update_exe.py` 使用临时安装副本真正启动更新器，
+验证升级后的 EXE 可启动、运行中的 Runner 阻止更新、Windows 文件占用时回滚、
+启动闸门先于用户配置初始化，以及独立恢复入口。所有用户文件断言均使用临时夹具。
+
+`tests/gui/test_update_dialog.py` 用真实 Qt 事件循环和替代服务验证显式检查、
+工作线程、下载进度、取消/关闭、错误重试及安装就绪后退出；网络和安装操作均隔离。
 
 ## 2. 风格检查 ruff
 

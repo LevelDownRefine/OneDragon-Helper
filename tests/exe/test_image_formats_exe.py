@@ -5,6 +5,7 @@
 """
 
 import os
+import sys
 import unittest
 
 from src.config import set_config
@@ -34,8 +35,8 @@ _EXT_PLUGIN = {
     ".webp": "qwebp.dll",
 }
 
-HAS_DIST = os.path.isdir(IMAGEFORMATS)
-_SKIP_REASON = f"需要打包产物中的图片插件目录: {IMAGEFORMATS}"
+HAS_DIST = sys.platform == "win32" and os.path.isdir(IMAGEFORMATS)
+_SKIP_REASON = f"需要 Windows 和打包产物中的图片插件目录: {IMAGEFORMATS}"
 
 
 def _declared_backgrounds() -> dict[str, str]:

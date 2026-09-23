@@ -31,7 +31,7 @@ class TestConfigDialog(unittest.TestCase):
         saves = []
         self.dialog.actionRequested.connect(actions.append)
         self.dialog.saveRequested.connect(lambda: saves.append(True))
-        for action in ("daily", "settings", "backup", "restore"):
+        for action in ("daily", "settings", "backup", "restore", "update"):
             with self.subTest(action=action):
                 self.dialog.show()
                 button = self.dialog.findChild(QPushButton, f"{action}Action")

@@ -25,6 +25,14 @@
 | backup_service.py | 配置备份与恢复：普通 ZIP 收集与恢复；按当前脚本目录覆盖，保留游戏路径，未配置脚本跳过 |
 | run_actions.py | pre_run / post_run 各 step 的具体动作 |
 
+## 手动更新
+
+`AppService` 装配 `src.update.service.UpdateService`，薄委托本地状态读取、检查、下载和安装交接。
+更新协议、运行锁、安装事务和独立更新器集中在 [src/update](../update/README.md)，无 Qt 依赖。
+GUI 的弹窗和工作线程保留在 `src/gui`，经 AppService 调用更新服务。
+
+## 配置迁移
+
 配置迁移只负责文件搬运，目录正确性及上游版本兼容性由用户保证。
 ZIP 结构固定为 `scripts/<脚本名>/<相对路径>`，无清单或版本协议；
 旧 ZIP 中的清单和自身配置目录直接忽略。备份目录中新增加的文件自动收录。
