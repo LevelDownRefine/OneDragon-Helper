@@ -69,6 +69,15 @@ class TestBridge(unittest.TestCase):
             second.app_service.load_config()["script_list"][0]["display_name"], "鸣潮"
         )
 
+    @patch("PySide6.QtWidgets.QLineEdit")
+    def test_warmup_finished_prewarms_line_edit(self, mock_line_edit):
+        """config 预热收尾建一次 QLineEdit 并丢弃（首次实例化约 0.3s，提前付掉）。"""
+        b = make_bridge()
+        b.start_config_warmup()
+        b._config_warmer.finished.emit()
+        mock_line_edit.assert_called_once_with()
+        mock_line_edit.return_value.deleteLater.assert_called_once_with()
+
     def test_background_mode_default_gradient(self):
         # 脚本无 bg 配置且 DEFAULT_BG 不存在时走渐变兜底
         with patch.object(
