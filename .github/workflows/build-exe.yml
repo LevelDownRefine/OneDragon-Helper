@@ -28,7 +28,7 @@ jobs:
         run: uv sync
 
       # build.bat 会：① PyInstaller 打包 GUI(onedir) + Runner(onefile)
-      # ② 把 Runner 拷入 GUI 目录、拷贝 config/assets/QML ③ 跑 tests/exe/test_*_exe.py
+      # ② 拷贝受控资源和版本信息 ③ 在临时副本跑 tests/exe/test_*_exe.py
       # （真实启动打包产物做集成测试，需 Windows 管理员态，GitHub Windows runner 默认满足）。
       # CI 环境变量使 build.bat 跳过交互式 pause；exe 测试失败则 build.bat 以非 0 退出，
       # call 把退出码透传给本步骤，使构建失败。
@@ -36,10 +36,14 @@ jobs:
         shell: cmd
         run: call deploy\build.bat
 
-      # if: always() 使「打包成功但 exe 测试失败」时也能下载产物排查；
-      # 打包本身失败则目录不存在，用 warn 而非让步骤报错。
+      # 测试失败时仍可上传干净的程序包排查；未通过文件清单检查的目录不上传。
+      - name: Check package before upload
+        id: package-check
+        if: always() && hashFiles('deploy/dist/OneDragon-Helper/version.json') != ''
+        run: uv run python tools/release_package.py check --package deploy/dist/OneDragon-Helper
+
       - name: Upload packaged EXE
-        if: always()
+        if: always() && steps.package-check.outcome == 'success'
         uses: actions/upload-artifact@v6
         with:
           name: OneDragon-Helper-windows

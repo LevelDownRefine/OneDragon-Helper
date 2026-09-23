@@ -209,13 +209,18 @@ def _emit_json(kind: str, data: dict, out_path: str | None = None) -> None:
 
 
 def get_version() -> str:
-    """读取 pyproject.toml 的 [project] version。
-
-    Returns:
-        版本字符串；pyproject.toml 缺失时返回 "unknown" 并告警
-        （打包产物不含源码树属正常场景）。
-    """
+    """优先读取发布包 version.json；源码运行回退到 pyproject.toml。"""
     root = get_root_dir()
+    version_path = os.path.join(root, "version.json")
+    if os.path.isfile(version_path):
+        with open(version_path, encoding="utf-8") as source:
+            info = json.load(source)
+        if not isinstance(info, dict) or "version" not in info:
+            raise ValueError("version.json 缺少 version")
+        version = info["version"]
+        if not isinstance(version, str) or not version.strip():
+            raise ValueError("version.json 的 version 必须是非空字符串")
+        return version
     pyproject_path = os.path.join(root, "pyproject.toml")
     if not os.path.exists(pyproject_path):
         warnings.warn(

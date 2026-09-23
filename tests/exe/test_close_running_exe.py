@@ -108,7 +108,9 @@ class TestExeCloseRunning(unittest.TestCase):
             creationflags=flags,
         )
 
-    def _write_stub_config(self, workdir: str, *, body_name: str | None = None) -> str:
+    def _write_stub_config(
+        self, workdir: str, *, body_name: str | None = None
+    ) -> str | None:
         """把 exe 捆绑的 config.yml 仅替换为一条 stub 脚本条目，返回原内容以便恢复。
 
         body_name 非 None 时写入 script_process_name（指向真实存在的脚本真身进程），
@@ -118,8 +120,10 @@ class TestExeCloseRunning(unittest.TestCase):
         load_yaml（ruamel）格式一致。
         """
         assert EXE_CONFIG is not None
-        with open(EXE_CONFIG, encoding="utf-8") as f:
-            original = f.read()
+        original = None
+        if os.path.isfile(EXE_CONFIG):
+            with open(EXE_CONFIG, encoding="utf-8") as f:
+                original = f.read()
         # 只留一条 stub：close_running_scripts 扫全量 script_list 会命中其 game_process_name；
         # 链运行（--enable 缺省=all）只跑这条，拉起退出 0 的 .cmd，不碰任何真实程序。
         data = {
@@ -167,12 +171,14 @@ class TestExeCloseRunning(unittest.TestCase):
         body = None
         exe = None
         original = None
+        config_written = False
         try:
             game = self._spawn_stub(workdir, _GAME_NAME)
             body = self._spawn_stub(workdir, _BODY_NAME) if with_body else None
             original = self._write_stub_config(
                 workdir, body_name=_BODY_NAME if with_body else None
             )
+            config_written = True
             cmd = [GUI_EXE, "--schedule-run", "now"]
             if close_running:
                 cmd.append("--close-running")
@@ -207,9 +213,12 @@ class TestExeCloseRunning(unittest.TestCase):
                 if exe.poll() is None:
                     _kill_process_tree(exe.pid)
                 exe.wait(timeout=10)
-            if original is not None:
-                with open(EXE_CONFIG, "w", encoding="utf-8") as f:
-                    f.write(original)
+            if config_written:
+                if original is None:
+                    os.unlink(EXE_CONFIG)
+                else:
+                    with open(EXE_CONFIG, "w", encoding="utf-8") as f:
+                        f.write(original)
             for proc in (game, body):
                 if proc is not None:
                     if proc.poll() is None:

@@ -8,9 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.exe import project_root
+from tests.exe import package_dir
 
-PACKAGE = Path(project_root()) / "deploy/dist/OneDragon-Helper"
+PACKAGE = package_dir()
 EXE_NAME = "OneDragon-Helper.exe"
 
 

@@ -56,6 +56,11 @@ PYTHONPATH=src python -m tests.config.test_golden_daily --update
 
 平台分工：源码全量测试只在本地/CI ubuntu 跑；Windows 下**只跑打包产物集成测试**（tests/exe/test_*_exe.py，由 .github/workflows/build-exe.yml 打包后覆盖），非打包测试不在 Windows 重复跑。
 
+`deploy/build.bat` 经 `tools/release_package.py test` 复制发布目录到临时目录再运行
+exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定测试副本。
+发布目录不生成用户配置、日志或缓存。打包测试覆盖缺少用户 YAML 时的首启生成、
+再次启动保留修改，以及 `--version` 与构建元数据一致；测试前后和 ZIP 归档前均检查发布文件清单。
+
 ## 2. 风格检查 ruff
 
 ```bash

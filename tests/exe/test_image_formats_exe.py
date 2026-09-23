@@ -9,14 +9,11 @@ import unittest
 
 from src.config import set_config
 from src.config.set_config import get_background_rel_path
-from tests.exe import project_root
+from tests.exe import package_dir, project_root
 
 PROJECT_ROOT = str(project_root())
 IMAGEFORMATS = os.path.join(
-    PROJECT_ROOT,
-    "deploy",
-    "dist",
-    "OneDragon-Helper",
+    package_dir(),
     "_internal",
     "PySide6",
     "plugins",
@@ -105,9 +102,7 @@ class TestPackagedImageFormats(unittest.TestCase):
         QCoreApplication.setLibraryPaths([os.path.dirname(IMAGEFORMATS)])
 
         samples = {
-            "qjpeg.dll": os.path.join(
-                PROJECT_ROOT, "deploy", "dist", "OneDragon-Helper", DEFAULT_BG
-            ),
+            "qjpeg.dll": os.path.join(package_dir(), DEFAULT_BG),
             "qwebp.dll": os.path.join(
                 PROJECT_ROOT, "tests", "fixtures", "background.webp"
             ),
