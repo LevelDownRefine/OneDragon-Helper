@@ -1,5 +1,6 @@
 """exe 集成测试包：真正启动打包产物验证实质行为（需 Windows 管理员态）。"""
 
+import os
 import pathlib
 
 
@@ -12,3 +13,11 @@ def project_root() -> str:
     )
     assert root is not None, "未找到仓库根 pyproject.toml"
     return root
+
+
+def package_dir() -> pathlib.Path:
+    """构建流程指定临时测试副本；手动测试默认使用 dist。"""
+    configured = os.environ.get("ODH_PACKAGE_DIR", "")
+    if configured:
+        return pathlib.Path(configured)
+    return pathlib.Path(project_root()) / "deploy/dist/OneDragon-Helper"

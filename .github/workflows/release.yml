@@ -15,6 +15,7 @@ jobs:
   release:
     runs-on: windows-latest
     env:
+      ODH_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
       PYTHONUTF8: 1   # 与 build-exe.yml 同源：冻结 exe 在英文 locale 下经 colorama 输出中文不崩
 
     steps:
@@ -27,6 +28,9 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
 
+      - name: Install dependencies
+        run: uv sync
+
       # 复用 build-exe.yml 的构建链路：打包 GUI(onedir)+Runner(onefile) 并跑 exe 集成测试。
       # exe 测试失败则 build.bat 非 0 退出，本步骤失败 ⇒ 不发布。
       - name: Build EXE and run exe integration tests
@@ -35,7 +39,7 @@ jobs:
 
       - name: Package dist into zip
         shell: pwsh
-        run: Compress-Archive -Path deploy/dist/OneDragon-Helper -DestinationPath OneDragon-Helper.zip
+        run: uv run python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
 
       # 仅 tag 触发时发布正式 release（手动 dispatch 跳过，避免用分支名造出错误 release）。
       - name: Create release
@@ -50,4 +54,4 @@ jobs:
             --target "$GITHUB_SHA" \
             --title "$version" \
             --notes "$notes" \
-            OneDragon-Helper.zip
+            OneDragon-Helper.zip OneDragon-Helper.zip.sha256

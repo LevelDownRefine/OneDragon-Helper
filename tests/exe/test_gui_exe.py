@@ -16,10 +16,12 @@
 import ctypes
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_yaml import load_yaml
@@ -65,25 +67,6 @@ _SKIP_REASON = "需要 Windows + 管理员权限 + 存在的 GUI exe 才能真�
 )
 
 
-def _game_exes_present() -> bool:
-    """generate-chain 仅要求 config.yml 存在且每个 script_list 条目都带 script_path 键。
-
-    它只按配置生成脚本链 yml，并不校验游戏 exe 文件存在（也不逐个调 set_config），
-    故无需真实游戏安装即可验证。CI / 开发机只要有 config.yml（build.bat 从
-    config.example.yml 生成，占位路径即满足「键存在」）就能真跑，不应 skip。
-    """
-    if not CAN_RUN_EXE:
-        return False
-    cfg = os.path.join(os.path.dirname(GUI_EXE), "config", "config.yml")
-    if not os.path.isfile(cfg):
-        return False
-    try:
-        data = load_yaml(cfg)
-    except Exception:
-        return False
-    return all(s.get("script_path") for s in data.get("script_list", []))
-
-
 @unittest.skipUnless(CAN_RUN_EXE, _SKIP_REASON)
 class TestGuiExe(unittest.TestCase):
     """真实启动 OneDragon-Helper.exe 的集成测试。"""
@@ -117,7 +100,45 @@ class TestGuiExe(unittest.TestCase):
         path = _cli_file("version")
         self.assertTrue(os.path.isfile(path), f"--version 未生成文件: {path}")
         with open(path, encoding="utf-8") as f:
-            self.assertTrue(f.read().strip(), "--version 文件为空")
+            version = f.read().strip()
+        metadata = json.loads(
+            Path(GUI_EXE).with_name("version.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(version, metadata["version"])
+        self.assertNotEqual(version, "unknown")
+
+    def test_first_start_generates_user_config_and_preserves_edits(self):
+        """不带用户文件的发布包能首启，后续启动保留用户修改。"""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "首次启动"
+            shutil.copytree(
+                Path(GUI_EXE).parent,
+                root,
+                ignore=shutil.ignore_patterns(
+                    "config.yml", "schedule.yml", "weekly.yml", "logs", ".log"
+                ),
+            )
+            names = ("config.yml", "schedule.yml", "weekly.yml")
+            for name in names:
+                self.assertFalse((root / "config" / name).exists())
+            for first_start in (True, False):
+                result = subprocess.run(
+                    [str(root / "OneDragon-Helper.exe"), "--version"],
+                    cwd=root,
+                    capture_output=True,
+                    timeout=120,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for name in names:
+                    path = root / "config" / name
+                    template = root / "config" / name.replace(".yml", ".example.yml")
+                    if first_start:
+                        self.assertEqual(load_yaml(path), load_yaml(template))
+                        path.write_text("user_marker: keep-me\n", encoding="utf-8")
+                    else:
+                        self.assertEqual(
+                            path.read_text(encoding="utf-8"), "user_marker: keep-me\n"
+                        )
 
     def test_exe_selftest(self):
         """--selftest 应无头校验 AppService 并写 JSON 结果（status=ok、关键检查通过）。"""
@@ -134,10 +155,6 @@ class TestGuiExe(unittest.TestCase):
         self.assertIn("script_count", checks, msg=checks)
         self.assertTrue(checks.get("config_loaded"), msg=checks)
 
-    @unittest.skipUnless(
-        _game_exes_present(),
-        "generate-chain 需要已安装的游戏 exe（config.yml 的 script_path 存在）才能跑通",
-    )
     def test_exe_generate_chain(self):
         """--generate-chain 应退出 0，并把脚本链配置写到 --out 指定的路径。"""
         with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:

@@ -1,4 +1,29 @@
-# tools/ 副本同步脚本
+# tools/ 开发与发布工具
+
+## 发布包
+
+`release_package.py` 由 `deploy/build.bat` 调用：仅拷贝 Git 跟踪的
+`config/` 模板与声明、`assets/` 内置资源、`src/gui/qml/` 和 README。
+`config.yml`、`schedule.yml`、`weekly.yml`、壁纸设置与缓存、脚本链、
+日志、备份不属于发布内容；即使误跟踪了用户配置，也会阻止打包。
+三个用户 YAML 由程序首次启动时从模板生成，已有配置保持不变。
+
+构建写入 `version.json`（version、tag、commit）。正式发布从
+`ODH_RELEASE_TAG` 读取 `v主版本.次版本.修订版本`，本地及分支构建标记为
+`pyproject版本+dev.提交号`。`--version` 优先读取这份构建信息。
+
+exe 集成测试只在临时副本运行，发布目录在测试前后均校验。
+`archive` 再次校验文件清单并生成 ZIP 和同名 `.sha256` 校验文件：
+
+```bash
+python tools/release_package.py check --package deploy/dist/OneDragon-Helper
+python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
+```
+
+这些是手动更新的发布侧基础。后续更新入口位于右上角设置内，由用户点击
+「更新」触发；不在启动或后台自动检查、下载或安装。
+
+## 副本同步
 
 config/daily_task_list.yml 各游戏副本列表维护总览。鸣潮/异环经 GitHub Actions 每周六检测并开 PR；原神、终末地经 options.source 运行期读取脚本自身资源。本目录是开发/CI 工具，区别于 scripts/ 的实际运行脚本。
 

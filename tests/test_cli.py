@@ -184,17 +184,39 @@ class TestCliHelpVersion(CliTestCase):
         self.assertEqual(text, cli.get_version())
 
     def test_get_version_reads_from_root_dir(self):
-        """get_version 的根目录必须走 src.utils.get_root_dir，而非按 __file__ 上溯。
-
-        回归：曾按 __file__ 上溯两层求根，冻结后 __file__ 位于 _internal/src/cli.py，
-        会去 _internal 找 pyproject.toml。改为复用 get_root_dir 后，冻结时落到
-        exe 同级（与 config/assets 一致），未来随包带上 pyproject.toml 即可生效。
-        """
+        """源码版本从项目根读取，不按冻结后的 __file__ 上溯。"""
         with tempfile.TemporaryDirectory() as tmp:
             with open(os.path.join(tmp, "pyproject.toml"), "w", encoding="utf-8") as fh:
                 fh.write('[project]\nversion = "9.9.9"\n')
             with patch.object(cli, "get_root_dir", return_value=tmp):
                 self.assertEqual(cli.get_version(), "9.9.9")
+
+    def test_release_version_takes_precedence_over_project_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, content in (
+                ("pyproject.toml", '[project]\nversion = "0.0.1"\n'),
+                ("version.json", '{"version": "1.2.3", "tag": "v1.2.3"}'),
+            ):
+                with open(os.path.join(tmp, name), "w", encoding="utf-8") as output:
+                    output.write(content)
+            with patch.object(cli, "get_root_dir", return_value=tmp):
+                self.assertEqual(cli.get_version(), "1.2.3")
+                os.unlink(os.path.join(tmp, "pyproject.toml"))
+                self.assertEqual(cli.get_version(), "1.2.3")
+
+    def test_invalid_release_metadata_reports_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for data in ({}, [], {"version": ""}, {"version": None}):
+                with self.subTest(metadata=data):
+                    with open(
+                        os.path.join(tmp, "version.json"), "w", encoding="utf-8"
+                    ) as output:
+                        json.dump(data, output)
+                    with (
+                        patch.object(cli, "get_root_dir", return_value=tmp),
+                        self.assertRaisesRegex(ValueError, "version.json"),
+                    ):
+                        cli.get_version()
 
 
 class TestCliSelftest(CliTestCase):
