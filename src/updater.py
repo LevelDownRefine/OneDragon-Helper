@@ -92,6 +92,12 @@ def main() -> int:
         encoding="utf-8",
     )
     result = args.result or directory / "result.json"
+
+    def record_result(data):
+        write_json(directory / "result.json", data)
+        if result != directory / "result.json":
+            write_json(result, data)
+
     try:
         run_update(
             root,
@@ -104,11 +110,9 @@ def main() -> int:
         )
     except (OSError, ValueError, psutil.Error) as exc:
         logger.exception("更新失败")
-        write_json(
-            result, {"status": "failed", "error": f"{type(exc).__name__}: {exc}"}
-        )
+        record_result({"status": "failed", "error": f"{type(exc).__name__}: {exc}"})
         return 1
-    write_json(result, {"status": "recovered" if args.recover else "installed"})
+    record_result({"status": "recovered" if args.recover else "installed"})
     if args.restart:
         try:
             subprocess.Popen(
@@ -118,8 +122,7 @@ def main() -> int:
             )
         except OSError as exc:
             logger.exception("更新完成但重启失败")
-            write_json(
-                result,
+            record_result(
                 {"status": "restart_failed", "error": f"{type(exc).__name__}: {exc}"},
             )
             return 1

@@ -66,6 +66,9 @@ exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定�
 验证升级后的 EXE 可启动、运行中的 Runner 阻止更新、Windows 文件占用时回滚、
 启动闸门先于用户配置初始化，以及独立恢复入口。所有用户文件断言均使用临时夹具。
 
+`tests/gui/test_update_dialog.py` 用真实 Qt 事件循环和替代服务验证显式检查、
+工作线程、下载进度、取消/关闭、错误重试及安装就绪后退出；网络和安装操作均隔离。
+
 ## 2. 风格检查 ruff
 
 ```bash

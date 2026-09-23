@@ -138,11 +138,20 @@ class TestUpdateRestart(unittest.TestCase):
                 )
                 engine.return_value.rootObjects.return_value = [Mock()]
                 bridge = stack.enter_context(patch.object(launcher, "QmlBridge"))
+                timer = stack.enter_context(patch.object(launcher, "QTimer"))
                 with self.assertRaises(SystemExit):
                     launcher._launch_qml(skip_auto_launch=skip)
                 self.assertEqual(
                     bridge.return_value.maybe_auto_launch.call_count, int(not skip)
                 )
+                if skip:
+                    timer.singleShot.assert_called_once()
+                    timer.singleShot.call_args.args[1]()
+                    bridge.return_value.toastRequested.emit.assert_called_once_with(
+                        "更新完成，欢迎回来"
+                    )
+                else:
+                    timer.singleShot.assert_not_called()
 
 
 class TestQtMessageLogger(unittest.TestCase):

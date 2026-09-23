@@ -89,7 +89,12 @@ class TestUpdateExe(unittest.TestCase):
             capture_output=True,
         )
         self.assertTrue(self.result.is_file(), process.stderr)
-        return process.returncode, json.loads(self.result.read_text(encoding="utf-8"))
+        result = json.loads(self.result.read_text(encoding="utf-8"))
+        self.assertEqual(
+            json.loads((self.root / ".update/result.json").read_text(encoding="utf-8")),
+            result,
+        )
+        return process.returncode, result
 
     def assert_users_unchanged(self):
         self.assertEqual(

@@ -49,9 +49,13 @@
 工作包、日志和程序快照保留在 `.update/`，不触碰用户备份目录，不进入下一次发布包。
 
 安装成功重启时带 `--after-update`，只跳过本次启动倒计时，不修改用户的启动设置。
-结果写入 `start_update()` 返回的 JSON 路径（installed / failed / restart_failed）；
+结果写入 `start_update()` 返回的 JSON 路径，同时保存在 `.update/result.json`
+（installed / failed / restart_failed / recovered）；`get_update_info()` 只读取本地版本、
+支持状态和上次结果，不创建工作目录、不联网。
 安装失败会恢复文件，但不会自动重启应用。更新器负责安装故障回滚，不判断新版业务功能是否正常。
-设置面板的更新按钮、工作线程及进度/结果展示由后续 GUI PR 接入。
+GUI 经配置面板中的更新按钮显式调用这些接口，工作线程就绪后退出窗口。
+
+## 配置迁移
 
 配置迁移只负责文件搬运，目录正确性及上游版本兼容性由用户保证。
 ZIP 结构固定为 `scripts/<脚本名>/<相对路径>`，无清单或版本协议；

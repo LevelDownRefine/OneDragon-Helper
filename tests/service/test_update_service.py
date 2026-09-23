@@ -81,6 +81,36 @@ class TestUpdateService(unittest.TestCase):
             AppService()
         request.assert_not_called()
 
+    def test_local_info_reads_version_without_network_or_work_directory(self):
+        with patch.object(service.requests, "get") as request:
+            info = self.client.get_update_info()
+        self.assertEqual(info.version, "1.0.0")
+        self.assertEqual(info.unavailable_reason, "")
+        self.assertIsNone(info.previous_result)
+        self.assertFalse((self.root / ".update").exists())
+        request.assert_not_called()
+
+    def test_local_info_explains_source_development_and_legacy_packages(self):
+        with patch.object(sys, "frozen", False):
+            self.assertIn("源码", self.client.get_update_info().unavailable_reason)
+        make_package(self.root, "1.0.0+dev.1234567")
+        self.assertIn("开发", self.client.get_update_info().unavailable_reason)
+        (self.root / "update-manifest.json").unlink()
+        self.assertIn("手动安装", self.client.get_update_info().unavailable_reason)
+
+    def test_local_info_reads_previous_result_and_rejects_invalid_data(self):
+        directory = self.root / ".update"
+        directory.mkdir()
+        path = directory / "result.json"
+        result = {"status": "failed", "error": "file locked"}
+        path.write_text(json.dumps(result), encoding="utf-8")
+        self.assertEqual(self.client.get_update_info().previous_result, result)
+        for invalid in ({"status": []}, {"status": "failed", "error": []}, {}):
+            with self.subTest(invalid=invalid):
+                path.write_text(json.dumps(invalid), encoding="utf-8")
+                with self.assertRaises(UpdateError):
+                    self.client.get_update_info()
+
     def test_explicit_check_returns_newer_stable_release(self):
         with patch.object(
             service.requests, "get", return_value=Response(self.data)
@@ -219,10 +249,12 @@ class TestUpdateService(unittest.TestCase):
         app._updates = Mock()
         progress, cancelled = Mock(), Event()
         app.check_update()
+        app.get_update_info()
         app.prepare_update(self.release, progress=progress, cancelled=cancelled)
         prepared = service.PreparedUpdate(self.directory, "1.10.0")
         app.start_update(prepared)
         app._updates.check_update.assert_called_once_with()
+        app._updates.get_update_info.assert_called_once_with()
         app._updates.prepare_update.assert_called_once_with(
             self.release, progress=progress, cancelled=cancelled
         )

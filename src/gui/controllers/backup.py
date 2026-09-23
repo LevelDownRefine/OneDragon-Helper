@@ -13,6 +13,7 @@ from ruamel.yaml.error import YAMLError
 
 from src.gui.config_dialog import ConfigDialog
 from src.gui.controllers.daily_plan import DailyPlanController
+from src.gui.controllers.update import UpdateController
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.service.app_service import AppService
 from src.utils import get_root_dir
@@ -30,6 +31,7 @@ class BackupController(QObject):
         self._app_service = app_service or AppService()
         self._toast = toast or (lambda _msg: None)
         self.daily_plan = DailyPlanController(self._app_service, self._toast, self)
+        self.update = UpdateController(self._app_service, self)
 
     @Slot()
     def openConfig(self):
@@ -47,6 +49,7 @@ class BackupController(QObject):
             "backup": self.backupConfig,
             "restore": self.restoreConfig,
             "settings": self.configureRunOptions,
+            "update": lambda: self.update.open(dialog),
         }
 
         def dispatch(action):

@@ -25,7 +25,7 @@ python tools/release_package.py check --package deploy/dist/OneDragon-Helper
 python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
 ```
 
-这些是手动更新的发布侧基础。后续更新入口位于右上角设置内，由用户点击
+这些是手动更新的发布侧基础。更新入口位于右上角设置内，由用户点击
 「更新」触发；不在启动或后台自动检查、下载或安装。
 
 ## 副本同步

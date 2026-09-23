@@ -83,6 +83,17 @@ class TestOpenConfig(unittest.TestCase):
         self.toast.assert_not_called()
 
     @patch("src.gui.controllers.backup.ConfigDialog")
+    def test_update_opens_from_settings_without_saving_preferences(self, dialog_class):
+        dialog = dialog_class.return_value
+        dialog.exec.side_effect = lambda: dialog.actionRequested.connect.call_args.args[
+            0
+        ]("update")
+        with patch.object(self.ctrl.update, "open") as update:
+            self.ctrl.openConfig()
+        update.assert_called_once_with(dialog)
+        self.service.apply_startup_options.assert_not_called()
+
+    @patch("src.gui.controllers.backup.ConfigDialog")
     def test_read_failure_is_reported(self, dialog_class):
         self.service.load_startup_options.side_effect = OSError("locked")
         with self.assertLogs("src.gui.controllers.backup", level="ERROR"):

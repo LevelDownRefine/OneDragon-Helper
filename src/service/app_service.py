@@ -97,6 +97,10 @@ class AppService:
         """用户手动检查新版。"""
         return self._updates.check_update()
 
+    def get_update_info(self):
+        """读取本地版本与上次安装结果，不联网。"""
+        return self._updates.get_update_info()
+
     def prepare_update(self, release, *, progress=None, cancelled=None):
         """下载、校验并准备更新包。"""
         return self._updates.prepare_update(

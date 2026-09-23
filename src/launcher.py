@@ -11,7 +11,7 @@ import shutil
 import sys
 import time
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QFont
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 from PySide6.QtWidgets import QApplication
@@ -148,6 +148,8 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     # 须在进入事件循环前同步弹模态窗（QDialog.exec 自带局部事件循环）。
     if not skip_auto_launch:
         bridge.maybe_auto_launch()
+    else:
+        QTimer.singleShot(0, lambda: bridge.toastRequested.emit("更新完成，欢迎回来"))
     _log_startup("进入事件循环")
     logger.info("[qml] entering event loop")
     exit_code = app.exec()

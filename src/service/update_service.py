@@ -1,5 +1,6 @@
 """手动更新服务；构造和读取本地状态不发起网络请求。"""
 
+import json
 import logging
 import os
 import re
@@ -20,6 +21,7 @@ import requests
 from src.service.update_package import (
     MAX_PACKAGE_BYTES,
     UPDATER_EXE,
+    VERSION_FILE,
     UpdateError,
     file_digest,
     load_manifest,
@@ -58,9 +60,54 @@ class PreparedUpdate:
     version: str
 
 
+@dataclass(frozen=True)
+class UpdateInfo:
+    version: str
+    unavailable_reason: str = ""
+    previous_result: dict | None = None
+
+
 class UpdateService:
     def __init__(self, root: Path | None = None):
         self.root = (root or Path(get_root_dir())).resolve()
+
+    def get_update_info(self) -> UpdateInfo:
+        """读取当前版本、可用性与上次安装结果，不创建目录或请求网络。"""
+        previous = None
+        result = self.root / ".update/result.json"
+        if result.is_file():
+            previous = json.loads(result.read_text(encoding="utf-8"))
+            if (
+                not isinstance(previous, dict)
+                or "status" not in previous
+                or not isinstance(previous["status"], str)
+                or previous["status"]
+                not in {"installed", "failed", "restart_failed", "recovered"}
+                or ("error" in previous and not isinstance(previous["error"], str))
+            ):
+                raise UpdateError("无法读取上次更新结果")
+        if not getattr(sys, "frozen", False):
+            return UpdateInfo(
+                "源码运行", "当前从源码运行，请前往发布页面下载正式版。", previous
+            )
+        version = "未知版本"
+        path = self.root / VERSION_FILE
+        if path.is_file():
+            info = json.loads(path.read_text(encoding="utf-8"))
+            if (
+                not isinstance(info, dict)
+                or "version" not in info
+                or not isinstance(info["version"], str)
+            ):
+                raise UpdateError("本地版本信息无效")
+            version = info["version"]
+        try:
+            self._installed()
+        except UpdateError as exc:
+            return UpdateInfo(
+                version, str(exc).replace(f": {RELEASES_URL}", ""), previous
+            )
+        return UpdateInfo(version, previous_result=previous)
 
     def _installed(self) -> dict:
         if not getattr(sys, "frozen", False):
