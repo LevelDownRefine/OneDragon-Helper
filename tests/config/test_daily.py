@@ -395,17 +395,17 @@ class TestBgiStygian(unittest.TestCase):
             "TaskEnabledList": {"uuid-stygian": enabled},
         }
 
-    def test_landing_is_single_layer_battle_field(self):
-        """单层形态：整组即唯一一级项（日常名），二级为战场一/二/三（原生 int）。"""
+    def test_landing_is_single_layer_stage(self):
+        """单层形态：整组即唯一一级项（日常名），二级为关卡一/二/三（原生 int）。"""
         daily = daily_of("BetterGI", "幽境危战")
         self.assertIsNone(daily.task_field)
         self.assertEqual(daily.option_fields, {"幽境危战": "bossNum"})
         self.assertEqual(
             daily._sequence_values,
-            {"幽境危战": {"战场一": 1, "战场二": 2, "战场三": 3}},
+            {"幽境危战": {"关卡一": 1, "关卡二": 2, "关卡三": 3}},
         )
 
-    def test_read_takes_battle_field_from_own_segment(self):
+    def test_read_takes_stage_from_own_segment(self):
         daily = daily_of("BetterGI", "幽境危战")
         with patch.object(
             daily, "_load_daily_config", return_value=self._main_config(2)
@@ -413,7 +413,7 @@ class TestBgiStygian(unittest.TestCase):
             self.assertEqual(daily.read(), ("幽境危战", 2))
 
     def test_read_without_segment_has_no_truth(self):
-        """主配置没有该段（BGI 未生成）或段里没选战场：无真相。"""
+        """主配置没有该段（BGI 未生成）或段里没选关卡：无真相。"""
         daily = daily_of("BetterGI", "幽境危战")
         for config in ({"other": 1}, {}):
             with (
@@ -426,16 +426,16 @@ class TestBgiStygian(unittest.TestCase):
         ):
             self.assertEqual(daily.read(), ("幽境危战", None))
 
-    def test_update_writes_int_battle_field(self):
-        """选战场写 bossNum（int），只动该字段。"""
+    def test_update_writes_int_stage(self):
+        """选关卡写 bossNum（int），只动该字段。"""
         daily = daily_of("BetterGI", "幽境危战")
         config = self._main_config(1)
         with (
             patch.object(daily, "_load_daily_config", return_value=config),
             patch.object(daily, "_save_daily_config") as mock_save,
         ):
-            self.assertTrue(daily.update("幽境危战", "战场三"))
-            self.assertFalse(daily.update("幽境危战", "战场三"))
+            self.assertTrue(daily.update("幽境危战", "关卡三"))
+            self.assertFalse(daily.update("幽境危战", "关卡三"))
             mock_save.assert_called_once()
         self.assertEqual(config["autoStygianOnslaughtConfig"]["bossNum"], 3)
         self.assertEqual(

@@ -243,11 +243,11 @@ BetterGI:
   options:
     key: bossNum
     values:
-    - display_name: 战场一
+    - display_name: 关卡一
       physical_name: 1
-    - display_name: 战场二
+    - display_name: 关卡二
       physical_name: 2
-    - display_name: 战场三
+    - display_name: 关卡三
       physical_name: 3
 ok-ef:
 - display_name: 每日任务

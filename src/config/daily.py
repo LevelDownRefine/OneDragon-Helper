@@ -654,7 +654,7 @@ class BgiStygianDaily(_SingleLayerDaily, BgiDaily):
     """主配置里的数据段名。"""
 
     def _parse_landing(self, declaration: dict) -> None:
-        """解析单层带 ``key`` 的声明（战场选择），并确认开关文件已声明。
+        """解析单层带 ``key`` 的声明（关卡选择），并确认开关文件已声明。
 
         Raises:
             AssertionError: 未声明 ``routine``（开关所在的一条龙配置）。
