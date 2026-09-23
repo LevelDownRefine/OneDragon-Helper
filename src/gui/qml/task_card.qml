@@ -41,13 +41,18 @@ Item {
                                         - Layout.weeklyStartChipWidth - Layout.chipGap
     // 周常区上沿 = 日常区底部：任务行自带上下留白，区块外沿直接相接即为统一的行间距。
     readonly property int weeklyTop: dailyArea.y + dailyArea.height
-    // 高度随适配态：未适配 84（仅标题）；适配时为最后一个区块底部 + 卡片底部留白，
-    // 有无周常的底边距一致（区块高度不含底部留白，留白只在卡片层加一次）。
-    height: Bridge.taskAdapted
-            ? (weeklyArea.visible ? (cardRoot.weeklyTop + weeklyArea.height)
-                                  : cardRoot.weeklyTop)
-              + Layout.cardBottomPad
-            : 84
+    // 行区自标题行下方开始（rowsTop）；内容高度与视口高度：行数少时视口 = 内容高度
+    // （卡片自适应，与旧版观感一致）；行数多时（如原神 9 个日常）视口封顶到窗口底并滚动。
+    readonly property int rowsTop: 68
+    readonly property int rowsContentH: (weeklyArea.visible
+                                         ? weeklyArea.y + weeklyArea.height
+                                         : dailyArea.y + dailyArea.height)
+                                         + Layout.cardBottomPad
+    readonly property int rowsViewportH: Layout.windowHeight - Layout.taskCardY
+                                         - Layout.cardBottomPad
+    readonly property int rowsHeight: Math.min(rowsContentH, rowsViewportH)
+    // 高度随适配态：未适配 84（仅标题）；适配时为行区视口高度（已含卡片底部留白）。
+    height: Bridge.taskAdapted ? rowsHeight : 84
 
     // 下拉和点击遮罩共用窗口边界，由画布尺寸与卡片位置推导。
     readonly property int winTopInCard: -Layout.taskCardY
@@ -59,19 +64,22 @@ Item {
     // 而无法滚动到 —— 周常 9 个副本只显示 3 个就是这么来的（日常因内容恰好溢出
     // 视口能滚动，才掩盖了同一个问题）。
     //
-    // anchorTop / anchorBottom 为锚点行在卡片坐标系的上下边，desiredH 为内容理想高度。
+    // anchorTop / anchorBottom 为锚点行在滚动内容坐标系里的上下边，desiredH 为内容理想高度。
+    // 行区在 rowsFlick 里：先把锚点折成卡片坐标，再按窗口余量决定向下还是向上展开。
     // 返回 {y, h}：弹窗应放置的 y 与最终高度。
     function placePopup(anchorTop, anchorBottom, desiredH) {
-        var below = cardRoot.winBottomInCard - anchorBottom
+        var top = anchorTop - rowsFlick.contentY
+        var bottom = anchorBottom - rowsFlick.contentY
+        var below = cardRoot.winBottomInCard - bottom
                     - Layout.popupAnchorGap - Layout.popupEdgeMargin
-        var above = anchorTop - cardRoot.winTopInCard
+        var above = top - cardRoot.winTopInCard
                     - Layout.popupAnchorGap - Layout.popupEdgeMargin
         if (desiredH <= below || below >= above) {
-            return { "y": anchorBottom + Layout.popupAnchorGap,
+            return { "y": bottom + Layout.popupAnchorGap,
                      "h": Math.min(desiredH, below) }
         }
         var h = Math.min(desiredH, above)
-        return { "y": anchorTop - Layout.popupAnchorGap - h, "h": h }
+        return { "y": top - Layout.popupAnchorGap - h, "h": h }
     }
 
     // 卡片投影与背景分层，文字保持清晰。
@@ -121,11 +129,34 @@ Item {
         visible: Bridge.taskAdapted
     }
 
+    // ── 行区滚动视口：只覆盖标题行下方，故滚动内容不会滑进标题行 ──
+    // 子项挂在 rowsContent 里（内容坐标 = 卡片坐标 - rowsTop），因此行区各区块仍按
+    // 卡片坐标声明、弹窗锚点也只需减 contentY（rowsTop 在两端抵消）。
+    Flickable {
+        id: rowsFlick
+        objectName: "rowsFlick"
+        x: 0; y: cardRoot.rowsTop
+        width: cardRoot.width
+        height: cardRoot.rowsHeight - cardRoot.rowsTop
+        contentWidth: width
+        contentHeight: Math.max(0, cardRoot.rowsContentH - cardRoot.rowsTop)
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+
+        Item {
+            id: rowsContent
+            y: -cardRoot.rowsTop
+            width: cardRoot.width
+        }
+    }
+
     // ── 日常区（y=68 起，每个日常一行：标签为日常展示名，chip 为该日常已选副本）──
     // 行内尺寸、图标、文字、chip 的 x/y 与周常行严格对齐，保证两区视觉统一。
     Item {
         id: dailyArea
         objectName: "dailyArea"
+        parent: rowsContent
         x: 20; y: 68; width: 440
         visible: Bridge.taskAdapted
         readonly property int rowH: Layout.taskRowHeight
@@ -193,7 +224,10 @@ Item {
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                if (Bridge.dailyOptions(modelData.name).length === 0) {
+                                // 纯开关日常（switch_only）没有副本可选项，chip 仍要弹窗
+                                // —— 菜单只列「启用 / 不启用」两项。
+                                if (Bridge.dailyOptions(modelData.name).length === 0
+                                        && !modelData.switch_only) {
                                     Bridge.toastRequested("暂无副本选项")
                                     return
                                 }
@@ -201,6 +235,7 @@ Item {
                                               && dailyPopup.dailyName === modelData.name
                                 dailyPopup.dailyName = modelData.name
                                 dailyPopup.canDisable = modelData.can_disable
+                                dailyPopup.switchOnly = modelData.switch_only
                                 dailyPopup.anchorTop = dailyArea.y + index * dailyArea.rowH
                                 dailyPopup.anchorBottom = dailyPopup.anchorTop + dailyArea.rowH
                                 weeklyPopup.visible = false
@@ -228,6 +263,7 @@ Item {
     Item {
         id: weeklyArea
         objectName: "weeklyArea"
+        parent: rowsContent
         x: 20; y: cardRoot.weeklyTop; width: 440
         visible: Bridge.taskAdapted && Bridge.weeklySupported
         property bool supported: Bridge.weeklySupported
@@ -383,6 +419,8 @@ Item {
 
         property string dailyName: ""
         property bool canDisable: false
+        // 纯开关日常：菜单只列「启用 / 不启用」，不列副本
+        property bool switchOnly: false
         property var options: []
         property int leftW: 200
         property int rightW: 0
@@ -414,7 +452,7 @@ Item {
                 if (measTm.width > maxW) maxW = measTm.width
             }
             leftW = Math.min(maxW + 28, 240)
-            var rows = options.length + (canDisable ? 1 : 0)
+            var rows = options.length + (canDisable ? 1 : 0) + (switchOnly ? 1 : 0)
             var geom = cardRoot.placePopup(
                 anchorTop, anchorBottom, Math.min(rows * 32 + 8, 360))
             popupY = geom.y
@@ -501,6 +539,27 @@ Item {
                                         dailyPopup.visible = false
                                     }
                                 }
+                            }
+                        }
+                    }
+                    // 纯开关日常：给出「启用」，与下面的「不启用」构成开关两态
+                    Rectangle {
+                        width: dailyPopup.leftW
+                        height: 30; radius: 6
+                        visible: dailyPopup.switchOnly && dailyPopup.canDisable
+                        color: enableMouse.containsMouse ? Theme.accentSoft : "transparent"
+                        Text {
+                            anchors.fill: parent; leftPadding: 10
+                            verticalAlignment: Text.AlignVCenter
+                            text: "启用"
+                            color: Theme.text; font.pixelSize: 13
+                        }
+                        MouseArea {
+                            id: enableMouse; anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                Bridge.setDailyEnabled(dailyPopup.dailyName, true)
+                                dailyPopup.visible = false
                             }
                         }
                     }
