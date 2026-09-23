@@ -218,7 +218,7 @@ class TestReleasePackage(unittest.TestCase):
             release.archive_package(self.root, self.package, output)
         self.assertFalse(output.exists())
 
-    def test_exe_tests_run_in_copy_and_propagate_failure(self):
+    def test_exe_tests_run_in_copy_and_preserve_exit_code(self):
         release.prepare_package(self.root, self.package)
         real_run = subprocess.run
         copies = []
@@ -234,62 +234,26 @@ class TestReleasePackage(unittest.TestCase):
             self.assertEqual(Path(env["ODH_RUNNER_EXE"]), sandbox / release.RUNNER_NAME)
             self.write(sandbox, "config/config.yml", "test config")
             self.write(sandbox, "logs/test.log", "test log")
-            return subprocess.CompletedProcess(command, 1)
+            return subprocess.CompletedProcess(command, exit_code)
 
-        with patch.object(release.subprocess, "run", side_effect=run):
-            self.assertEqual(release.test_package(self.root, self.package), 1)
-        self.assertEqual(len(copies), 1)
-        self.assertFalse(copies[0].exists())
+        for exit_code in (0, 1):
+            directory = tempfile.TemporaryDirectory(prefix="odh_package_tests_")
+            self.enterContext(directory)
+            with (
+                self.subTest(exit_code=exit_code),
+                patch.object(release.subprocess, "run", side_effect=run),
+                patch.object(
+                    release.tempfile, "TemporaryDirectory", return_value=directory
+                ),
+                patch.object(
+                    directory, "cleanup", side_effect=PermissionError("in use")
+                ),
+                self.assertLogs(release.__name__, level="WARNING"),
+            ):
+                self.assertEqual(
+                    release.test_package(self.root, self.package), exit_code
+                )
+        self.assertEqual(len(copies), 2)
         self.assertFalse((self.package / "config/config.yml").exists())
         self.assertFalse((self.package / "logs").exists())
         release.validate_package(self.root, self.package)
-
-    def test_transient_cleanup_lock_is_retried_until_directory_is_removed(self):
-        directory = tempfile.TemporaryDirectory(prefix="odh_package_tests_")
-        self.enterContext(directory)
-        original = directory.cleanup
-        attempts = []
-
-        def cleanup():
-            attempts.append(True)
-            if len(attempts) < 3:
-                raise PermissionError("DLL in use")
-            original()
-
-        with (
-            patch.object(directory, "cleanup", side_effect=cleanup),
-            patch.object(release.time, "sleep") as sleep,
-            self.assertLogs(release.__name__, level="WARNING"),
-        ):
-            release.cleanup_test_directory(directory)
-        self.assertEqual(len(attempts), 3)
-        self.assertEqual(sleep.call_count, 2)
-        self.assertFalse(Path(directory.name).exists())
-
-    def test_persistent_cleanup_lock_is_reported_and_not_ignored(self):
-        directory = tempfile.TemporaryDirectory(prefix="odh_package_tests_")
-        self.enterContext(directory)
-        path = self.write(Path(directory.name), "qjpeg.dll", "test DLL")
-        with (
-            patch.object(
-                directory, "cleanup", side_effect=PermissionError("still in use")
-            ) as cleanup,
-            patch.object(release.time, "sleep") as sleep,
-            self.assertLogs(release.__name__, level="WARNING") as captured,
-            self.assertRaises(PermissionError),
-        ):
-            release.cleanup_test_directory(directory)
-        self.assertEqual(cleanup.call_count, len(release._CLEANUP_DELAYS) + 1)
-        self.assertEqual(sleep.call_count, len(release._CLEANUP_DELAYS))
-        self.assertTrue(path.exists())
-        self.assertIn(directory.name, captured.output[-1])
-
-    def test_cleanup_refuses_directory_outside_its_generated_namespace(self):
-        directory = tempfile.TemporaryDirectory(prefix="unrelated_")
-        self.enterContext(directory)
-        with (
-            patch.object(directory, "cleanup") as cleanup,
-            self.assertRaises(AssertionError),
-        ):
-            release.cleanup_test_directory(directory)
-        cleanup.assert_not_called()

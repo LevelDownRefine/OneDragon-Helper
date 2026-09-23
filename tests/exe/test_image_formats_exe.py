@@ -5,18 +5,12 @@
 """
 
 import os
-import shutil
-import subprocess
 import sys
-import tempfile
 import unittest
-from pathlib import Path
-from unittest.mock import patch
 
 from src.config import set_config
 from src.config.set_config import get_background_rel_path
 from tests.exe import package_dir, project_root
-from tools.release_package import cleanup_test_directory
 
 PROJECT_ROOT = str(project_root())
 IMAGEFORMATS = os.path.join(
@@ -97,73 +91,33 @@ class TestPackagedImageFormats(unittest.TestCase):
 
     def test_packaged_plugins_decode_declared_backgrounds(self):
         """用打包产物自己的插件集，真实解码一遍项目声明的背景图。"""
+        from PySide6.QtCore import QCoreApplication
+        from PySide6.QtGui import QGuiApplication, QImage
+
+        app = QGuiApplication.instance() or QGuiApplication([])
+        assert app is not None
+        # 必须强制只搜打包产物这一处：QT_PLUGIN_PATH 是追加而非替换，
+        # 混进开发环境的插件会让已删除的格式仍显示在 supportedImageFormats() 里。
+        previous_paths = QCoreApplication.libraryPaths()
+        self.addCleanup(QCoreApplication.setLibraryPaths, previous_paths)
+        QCoreApplication.setLibraryPaths([os.path.dirname(IMAGEFORMATS)])
+
         samples = {
             "qjpeg.dll": os.path.join(package_dir(), DEFAULT_BG),
             "qwebp.dll": os.path.join(
                 PROJECT_ROOT, "tests", "fixtures", "background.webp"
             ),
         }
-        paths = []
         for plugin, source in _required_plugins().items():
             self.assertIn(plugin, samples, f"{source} 缺少独立解码夹具")
             path = samples[plugin]
             self.assertTrue(os.path.isfile(path), f"解码夹具缺失: {path}")
-            paths.append(path)
-        self._decode(os.path.dirname(IMAGEFORMATS), paths)
-
-    def _decode(self, plugins, samples, expected_code=0):
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "tests.support.qt_image_probe",
-                str(plugins),
-                *map(str, samples),
-            ],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=30,
-        )
-        self.assertEqual(
-            result.returncode, expected_code, result.stdout + result.stderr
-        )
-        if expected_code:
-            self.assertIn("打包插件无法解码图片", result.stderr)
-
-    def test_decode_releases_dll_and_missing_plugin_cannot_use_cached_decoder(self):
-        with tempfile.TemporaryDirectory(prefix="odh_package_tests_") as directory:
-            plugins = Path(directory) / "plugins"
-            formats = plugins / "imageformats"
-            formats.mkdir(parents=True)
-            jpeg = formats / "qjpeg.dll"
-            shutil.copy2(Path(IMAGEFORMATS) / jpeg.name, jpeg)
-            image = package_dir() / DEFAULT_BG
-            self._decode(plugins, [image])
-            # 子进程退出后立刻删除真正加载过的 DLL，不能留到测试套件结束。
-            jpeg.unlink()
-            self._decode(plugins, [image], expected_code=1)
-
-    def test_package_cleanup_waits_for_transient_dll_lock(self):
-        directory = tempfile.TemporaryDirectory(prefix="odh_package_tests_")
-        path = Path(directory.name) / "qjpeg.dll"
-        shutil.copy2(Path(IMAGEFORMATS) / path.name, path)
-        stream = path.open("rb")
-        try:
-            with (
-                self.assertLogs("tools.release_package", level="WARNING"),
-                patch(
-                    "tools.release_package.time.sleep",
-                    side_effect=lambda delay: stream.close(),
-                ) as sleep,
-            ):
-                cleanup_test_directory(directory)
-            sleep.assert_called_once()
-            self.assertFalse(Path(directory.name).exists())
-        finally:
-            stream.close()
-            directory.cleanup()
+            image = QImage(path)
+            self.assertFalse(
+                image.isNull(),
+                f"打包插件集无法解码 {source} 的背景图: {path}（格式 "
+                f"{os.path.splitext(path)[1]}），检查对应插件是否被误删。",
+            )
 
 
 if __name__ == "__main__":

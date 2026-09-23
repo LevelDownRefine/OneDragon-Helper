@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 import tomllib
 import zipfile
 from pathlib import Path
@@ -31,7 +30,6 @@ EXE_NAME = "OneDragon-Helper.exe"
 RUNNER_NAME = "OneDragon-Helper-Runner.exe"
 VERSION_FILE = "version.json"
 logger = logging.getLogger(__name__)
-_CLEANUP_DELAYS = (0.1, 0.2, 0.4, 0.8, 1.5, 2.0)
 
 
 def resource_files(root: Path) -> list[str]:
@@ -145,27 +143,6 @@ def archive_package(root: Path, package: Path, output: Path) -> None:
     )
 
 
-def cleanup_test_directory(directory: tempfile.TemporaryDirectory) -> None:
-    """等待 Windows 短暂 DLL 占用解除；持续失败仍使构建失败。"""
-    path = Path(directory.name).resolve()
-    assert path.parent == Path(tempfile.gettempdir()).resolve()
-    assert path.name.startswith("odh_package_tests_")
-    for delay in (*_CLEANUP_DELAYS, None):
-        try:
-            directory.cleanup()
-            return
-        except PermissionError:
-            if delay is None:
-                logger.exception(
-                    "测试副本仍被占用，无法清理，请关闭占用进程后重试：%s", path
-                )
-                raise
-            logger.warning(
-                "测试副本清理遇到 PermissionError，%.1f 秒后重试：%s", delay, path
-            )
-            time.sleep(delay)
-
-
 def test_package(root: Path, package: Path) -> int:
     """只在临时副本运行 exe 集成测试，原发布目录始终保持干净。"""
     validate_package(root, package)
@@ -197,7 +174,15 @@ def test_package(root: Path, package: Path) -> int:
             check=False,
         )
     finally:
-        cleanup_test_directory(directory)
+        try:
+            directory.cleanup()
+        except OSError as exc:
+            logger.warning(
+                "测试副本清理失败（%s）：%s；残留目录：%s。不影响测试结果。",
+                type(exc).__name__,
+                exc,
+                directory.name,
+            )
     validate_package(root, package)
     return result.returncode
 

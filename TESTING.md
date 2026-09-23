@@ -61,8 +61,7 @@ PYTHONPATH=src python -m tests.config.test_golden_daily --update
 exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定测试副本。
 发布目录不生成用户配置、日志或缓存。打包测试覆盖缺少用户 YAML 时的首启生成、
 再次启动保留修改，以及 `--version` 与构建元数据一致；测试前后和 ZIP 归档前均检查发布文件清单。
-图片插件解码在独立进程中执行，退出后验证 DLL 可立即删除且缺失插件确实无法解码。
-测试副本清理遇到 `PermissionError` 时累计等待最多 5 秒重试，持续占用仍报错并保留失败路径。
+测试后尝试清理临时副本，清理失败仅警告并给出残留路径；构建结果取决于 EXE 测试结果与发布包校验。
 
 `tests/update/` 覆盖更新包边界、下载校验与取消、程序文件替换、故障回滚和中断恢复，
 并以 `python -m src.update` 验证独立入口的安装和失败结果；
