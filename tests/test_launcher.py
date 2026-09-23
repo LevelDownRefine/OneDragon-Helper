@@ -110,22 +110,13 @@ class TestStartupTimer(unittest.TestCase):
 
 
 class TestUpdateRestart(unittest.TestCase):
-    def test_after_update_flag_reaches_gui(self):
-        with (
-            patch.object(launcher, "setup_logging"),
-            patch.object(launcher, "install_crash_hooks"),
-            patch.object(launcher, "config_workflow"),
-            patch.object(launcher, "run_cli", return_value=None),
-            patch.object(launcher, "_launch_qml") as launch,
-            patch.object(sys, "argv", ["OneDragon-Helper", "--after-update"]),
-        ):
-            launcher.main()
-        launch.assert_called_once_with(skip_auto_launch=True)
-
     def test_update_restart_skips_task_countdown_only_for_this_launch(self):
         for skip in (False, True):
             with self.subTest(skip=skip), ExitStack() as stack:
                 for name in (
+                    "setup_logging",
+                    "install_crash_hooks",
+                    "config_workflow",
                     "_clear_qml_cache",
                     "_install_qt_message_logger",
                     "QApplication",
@@ -133,6 +124,16 @@ class TestUpdateRestart(unittest.TestCase):
                     "install_file_drop",
                 ):
                     stack.enter_context(patch.object(launcher, name))
+                stack.enter_context(
+                    patch.object(launcher, "run_cli", return_value=None)
+                )
+                stack.enter_context(
+                    patch.object(
+                        sys,
+                        "argv",
+                        ["OneDragon-Helper", *(["--after-update"] if skip else [])],
+                    )
+                )
                 engine = stack.enter_context(
                     patch.object(launcher, "QQmlApplicationEngine")
                 )
@@ -140,7 +141,7 @@ class TestUpdateRestart(unittest.TestCase):
                 bridge = stack.enter_context(patch.object(launcher, "QmlBridge"))
                 timer = stack.enter_context(patch.object(launcher, "QTimer"))
                 with self.assertRaises(SystemExit):
-                    launcher._launch_qml(skip_auto_launch=skip)
+                    launcher.main()
                 self.assertEqual(
                     bridge.return_value.maybe_auto_launch.call_count, int(not skip)
                 )

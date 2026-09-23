@@ -1,20 +1,16 @@
 """下载包的路径、内容与版本边界。"""
 
-import json
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
 from src.update.package import (
-    MANIFEST,
     UpdateError,
     load_manifest,
-    managed_path,
     parse_manifest,
     safe_target,
     unpack_package,
-    version_number,
 )
 from tests.support.update_package import archive_package, make_package
 
@@ -24,17 +20,13 @@ class TestUpdatePackage(unittest.TestCase):
         self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.package = make_package(self.directory / "source", "1.2.0")
 
-    def test_semantic_version_order(self):
-        self.assertGreater(version_number("1.10.0"), version_number("1.9.0"))
-        self.assertGreater(version_number("1.0.0"), version_number("1.0.0-rc.1"))
-
     def test_zip_round_trip_verifies_program_bytes(self):
         archive = archive_package(self.package, self.directory / "package.zip")
         target = self.directory / "unpacked"
         self.assertEqual(unpack_package(archive, target, "1.2.0")["version"], "1.2.0")
         self.assertEqual((target / "_internal/python.dll").read_bytes(), b"runtime")
 
-    def test_invalid_paths_are_rejected(self):
+    def test_manifest_rejects_unsafe_and_user_file_paths(self):
         for name in (
             "../app.exe",
             "/app.exe",
@@ -55,7 +47,10 @@ class TestUpdatePackage(unittest.TestCase):
             ".update/intent.lock",
         ):
             with self.subTest(name=name):
-                self.assertFalse(managed_path(name))
+                data = load_manifest(self.package)
+                data["files"][name] = "0" * 64
+                with self.assertRaises(UpdateError):
+                    parse_manifest(data)
 
     def test_existing_symlink_cannot_redirect_program_writes(self):
         outside = self.directory / "personal"
@@ -107,11 +102,3 @@ class TestUpdatePackage(unittest.TestCase):
                     output.writestr(info, "bad")
                 with self.assertRaises(UpdateError):
                     unpack_package(archive, self.directory / "unpacked", "1.2.0")
-
-    def test_manifest_cannot_own_user_files(self):
-        path = self.package / MANIFEST
-        data = json.loads(path.read_text())
-        data["files"]["config/config.yml"] = "0" * 64
-        path.write_text(json.dumps(data))
-        with self.assertRaises(UpdateError):
-            load_manifest(self.package)

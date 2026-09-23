@@ -59,11 +59,13 @@ class TestUpdateDialog(unittest.TestCase):
         QTest.mouseClick(dialog.action_button, Qt.LeftButton)
         self.wait_for(lambda: self.ctrl._worker is None)
 
-    def test_constructing_controller_does_not_read_or_check_updates(self):
+    def test_explicit_check_shows_release_and_previous_result(self):
         self.service.get_update_info.assert_not_called()
         self.service.check_update.assert_not_called()
-
-    def test_check_runs_off_gui_thread_and_does_not_download(self):
+        self.service.get_update_info.return_value = UpdateInfo(
+            "1.0.0",
+            previous_result={"status": "failed", "error": "文件被占用，已恢复旧版"},
+        )
         main_thread = threading.get_ident()
         threads = []
 
@@ -79,6 +81,8 @@ class TestUpdateDialog(unittest.TestCase):
         self.assertIn("1.1.0", dialog.status_label.text())
         self.assertEqual(dialog.notes.toPlainText(), self.release.notes)
         self.assertEqual(dialog.action_button.text(), "下载更新")
+        self.assertIn("文件被占用", dialog.previous_label.text())
+        self.assertTrue(dialog.previous_label.isVisible())
         self.service.prepare_update.assert_not_called()
         self.service.start_update.assert_not_called()
 
@@ -113,28 +117,41 @@ class TestUpdateDialog(unittest.TestCase):
         self.click_and_wait(dialog)
         self.assertEqual(dialog.action_button.text(), "下载更新")
 
-    def test_download_progress_cancel_and_no_duplicate_requests(self):
+    def test_download_stays_responsive_and_cancels_on_close_or_shutdown(self):
         entered = threading.Event()
+        cancelled_seen = threading.Event()
 
         def download(_release, *, progress, cancelled):
             progress(1024, 2048)
             entered.set()
-            self.assertTrue(cancelled.wait(3), "取消没有到达工作线程")
+            if cancelled.wait(3):
+                cancelled_seen.set()
             raise UpdateCancelled("cancelled")
 
-        self.service.prepare_update.side_effect = download
-        dialog = self.open_available()
-        QTest.mouseClick(dialog.action_button, Qt.LeftButton)
-        self.wait_for(entered.is_set)
-        self.wait_for(lambda: dialog.progress.value() == 50)
-        QTest.mouseClick(dialog.action_button, Qt.LeftButton)
-        responsive = []
-        QTimer.singleShot(0, lambda: responsive.append(True))
-        self.wait_for(lambda: bool(responsive))
-        QTest.mouseClick(dialog.close_button, Qt.LeftButton)
-        self.wait_for(lambda: self.ctrl._dialog is None)
-        self.service.prepare_update.assert_called_once()
-        self.service.start_update.assert_not_called()
+        for action in ("close", "shutdown"):
+            with self.subTest(action=action):
+                entered.clear()
+                cancelled_seen.clear()
+                with patch.object(
+                    self.service, "prepare_update", side_effect=download
+                ) as prepare:
+                    dialog = self.open_available()
+                    QTest.mouseClick(dialog.action_button, Qt.LeftButton)
+                    self.wait_for(entered.is_set)
+                    self.wait_for(lambda current=dialog: current.progress.value() == 50)
+                    QTest.mouseClick(dialog.action_button, Qt.LeftButton)
+                    responsive = threading.Event()
+                    QTimer.singleShot(0, responsive.set)
+                    self.wait_for(responsive.is_set)
+                    if action == "close":
+                        QTest.mouseClick(dialog.close_button, Qt.LeftButton)
+                    else:
+                        self.ctrl.shutdown()
+                        self.assertFalse(self.ctrl._worker.isRunning())
+                    self.wait_for(lambda: self.ctrl._dialog is None)
+                    self.assertTrue(cancelled_seen.is_set(), "取消没有到达工作线程")
+                    prepare.assert_called_once()
+                    self.service.start_update.assert_not_called()
 
     def test_escape_during_check_waits_for_worker_before_closing(self):
         release = threading.Event()
@@ -153,28 +170,29 @@ class TestUpdateDialog(unittest.TestCase):
         self.wait_for(lambda: self.ctrl._dialog is None)
         self.service.prepare_update.assert_not_called()
 
-    def test_close_after_download_never_installs(self):
-        dialog = self.open_available()
-        self.click_and_wait(dialog)
-        self.assertEqual(dialog.action_button.text(), "安装并重启")
-        self.assertIn("校验完成", dialog.status_label.text())
-        QTest.keyClick(dialog, Qt.Key_Escape)
-        self.assertIsNone(self.ctrl._dialog)
-        self.service.start_update.assert_not_called()
-
-    def test_window_close_before_download_keeps_application_running(self):
-        dialog = self.open_available()
-        with patch.object(QApplication, "quit") as quit_app:
-            dialog.close()
-        self.assertIsNone(self.ctrl._dialog)
-        quit_app.assert_not_called()
-        self.service.prepare_update.assert_not_called()
+    def test_close_before_or_after_download_neither_installs_nor_quits(self):
+        for phase in ("available", "downloaded"):
+            with (
+                self.subTest(phase=phase),
+                patch.object(QApplication, "quit") as quit_app,
+            ):
+                self.service.prepare_update.reset_mock()
+                dialog = self.open_available()
+                if phase == "downloaded":
+                    self.click_and_wait(dialog)
+                    self.assertEqual(dialog.action_button.text(), "安装并重启")
+                    self.assertIn("校验完成", dialog.status_label.text())
+                    QTest.keyClick(dialog, Qt.Key_Escape)
+                else:
+                    self.service.prepare_update.assert_not_called()
+                    dialog.close()
+                self.assertIsNone(self.ctrl._dialog)
+                self.service.start_update.assert_not_called()
+                quit_app.assert_not_called()
 
     def test_install_error_keeps_window_and_retry_exits_only_after_ready(self):
-        self.service.start_update.side_effect = [
-            UpdateError("仍有任务运行"),
-            Path("result.json"),
-        ]
+        ready = threading.Event()
+        self.service.start_update.side_effect = UpdateError("仍有任务运行")
         dialog = self.open_available()
         self.click_and_wait(dialog)
         with patch.object(QApplication, "quit") as quit_app:
@@ -183,17 +201,7 @@ class TestUpdateDialog(unittest.TestCase):
             quit_app.assert_not_called()
             self.assertTrue(dialog.isVisible())
             self.assertIn("任务运行", dialog.status_label.text())
-            self.click_and_wait(dialog)
-            quit_app.assert_called_once_with()
-        self.assertIsNone(self.ctrl._dialog)
-        self.assertEqual(self.service.start_update.call_count, 2)
-
-    def test_window_cannot_be_closed_during_installer_handoff(self):
-        ready = threading.Event()
-        self.service.start_update.side_effect = lambda _prepared: ready.wait(3)
-        dialog = self.open_available()
-        self.click_and_wait(dialog)
-        with patch.object(QApplication, "quit") as quit_app:
+            self.service.start_update.side_effect = lambda _prepared: ready.wait(3)
             QTest.mouseClick(dialog.action_button, Qt.LeftButton)
             QTest.keyClick(dialog, Qt.Key_Escape)
             self.assertIs(self.ctrl._dialog, dialog)
@@ -202,31 +210,5 @@ class TestUpdateDialog(unittest.TestCase):
             ready.set()
             self.wait_for(lambda: self.ctrl._worker is None)
             quit_app.assert_called_once_with()
-
-    def test_previous_install_failure_is_visible(self):
-        self.service.get_update_info.return_value = UpdateInfo(
-            "1.0.0",
-            previous_result={"status": "failed", "error": "文件被占用，已恢复旧版"},
-        )
-        dialog = self.open_available()
-        self.assertIn("文件被占用", dialog.previous_label.text())
-        self.assertTrue(dialog.previous_label.isVisible())
-
-    def test_shutdown_waits_for_download_worker(self):
-        entered = threading.Event()
-        stopped = threading.Event()
-
-        def download(_release, *, progress, cancelled):
-            entered.set()
-            cancelled.wait(3)
-            stopped.set()
-            raise UpdateCancelled("quit")
-
-        self.service.prepare_update.side_effect = download
-        dialog = self.open_available()
-        QTest.mouseClick(dialog.action_button, Qt.LeftButton)
-        self.wait_for(entered.is_set)
-        self.ctrl.shutdown()
-        self.assertTrue(stopped.is_set())
-        self.assertFalse(self.ctrl._worker.isRunning())
-        self.wait_for(lambda: self.ctrl._dialog is None)
+        self.assertIsNone(self.ctrl._dialog)
+        self.assertEqual(self.service.start_update.call_count, 2)

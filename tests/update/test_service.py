@@ -75,28 +75,37 @@ class TestUpdateService(unittest.TestCase):
             ],
         }
 
-    def test_construction_and_facade_do_not_query_network(self):
-        with patch.object(service.requests, "get") as request:
-            service.UpdateService(self.root)
-            AppService()
-        request.assert_not_called()
-
-    def test_local_info_reads_version_without_network_or_work_directory(self):
-        with patch.object(service.requests, "get") as request:
-            info = self.client.get_update_info()
+    def test_local_info_has_no_network_or_disk_side_effects(self):
+        with (
+            patch.object(service, "get_root_dir", return_value=str(self.root)),
+            patch.object(service.requests, "get") as request,
+        ):
+            info = AppService().get_update_info()
         self.assertEqual(info.version, "1.0.0")
         self.assertEqual(info.unavailable_reason, "")
         self.assertIsNone(info.previous_result)
         self.assertFalse((self.root / ".update").exists())
         request.assert_not_called()
 
-    def test_local_info_explains_source_development_and_legacy_packages(self):
-        with patch.object(sys, "frozen", False):
-            self.assertIn("源码", self.client.get_update_info().unavailable_reason)
-        make_package(self.root, "1.0.0+dev.1234567")
-        self.assertIn("开发", self.client.get_update_info().unavailable_reason)
-        (self.root / "update-manifest.json").unlink()
-        self.assertIn("手动安装", self.client.get_update_info().unavailable_reason)
+    def test_unsupported_build_explains_reason_without_querying_releases(self):
+        for kind, version, reason in (
+            ("source", "1.0.0", "源码"),
+            ("development", "1.0.0+dev.1234567", "开发"),
+            ("legacy", "1.0.0", "手动安装"),
+        ):
+            with self.subTest(kind=kind):
+                root = make_package(self.directory / kind, version)
+                if kind == "legacy":
+                    (root / "update-manifest.json").unlink()
+                client = service.UpdateService(root)
+                with (
+                    patch.object(sys, "frozen", kind != "source"),
+                    patch.object(service.requests, "get") as request,
+                ):
+                    self.assertIn(reason, client.get_update_info().unavailable_reason)
+                    with self.assertRaisesRegex(UpdateError, reason):
+                        client.check_update()
+                request.assert_not_called()
 
     def test_local_info_reads_previous_result_and_rejects_invalid_data(self):
         directory = self.root / ".update"
@@ -111,18 +120,23 @@ class TestUpdateService(unittest.TestCase):
                 with self.assertRaises(UpdateError):
                     self.client.get_update_info()
 
-    def test_explicit_check_returns_newer_stable_release(self):
-        with patch.object(
-            service.requests, "get", return_value=Response(self.data)
-        ) as request:
-            self.assertEqual(self.client.check_update(), self.release)
-        request.assert_called_once()
-        self.assertIn("timeout", request.call_args.kwargs)
-
-    def test_no_new_version_returns_none(self):
-        self.data["tag_name"] = "v1.0.0"
-        with patch.object(service.requests, "get", return_value=Response(self.data)):
-            self.assertIsNone(self.client.check_update())
+    def test_check_offers_only_semantically_newer_versions(self):
+        for installed, expected in (
+            ("1.9.0", self.release),
+            ("1.10.0-rc.1", self.release),
+            ("1.10.0", None),
+            ("1.11.0", None),
+        ):
+            with self.subTest(installed=installed):
+                root = make_package(self.directory / installed, installed)
+                with patch.object(
+                    service.requests, "get", return_value=Response(self.data)
+                ) as request:
+                    self.assertEqual(
+                        service.UpdateService(root).check_update(), expected
+                    )
+                request.assert_called_once()
+                self.assertIn("timeout", request.call_args.kwargs)
 
     def test_incomplete_or_untrusted_release_is_rejected(self):
         for change in ("missing_checksum", "external_url", "draft", "prerelease"):
@@ -142,22 +156,6 @@ class TestUpdateService(unittest.TestCase):
                 ):
                     self.client.check_update()
 
-    def test_source_and_development_builds_do_not_query_releases(self):
-        with (
-            patch.object(sys, "frozen", False),
-            patch.object(service.requests, "get") as request,
-            self.assertRaisesRegex(UpdateError, "源码"),
-        ):
-            self.client.check_update()
-        request.assert_not_called()
-        make_package(self.root, "1.0.0+dev.1234567")
-        with (
-            patch.object(service.requests, "get") as request,
-            self.assertRaisesRegex(UpdateError, "开发"),
-        ):
-            self.client.check_update()
-        request.assert_not_called()
-
     def responses(self, archive=None, checksum=None):
         content = self.archive if archive is None else archive
         digest = (
@@ -167,18 +165,6 @@ class TestUpdateService(unittest.TestCase):
             Response(content=f"{digest}  {service.ZIP_NAME}\n".encode()),
             Response(content=content),
         ]
-
-    def test_download_stages_verified_package_without_changing_installation(self):
-        before = program_snapshot(self.root)
-        progress = Mock()
-        with patch.object(service.requests, "get", side_effect=self.responses()):
-            prepared = self.client.prepare_update(self.release, progress=progress)
-        self.assertEqual(
-            load_manifest(prepared.directory / "package", verify=True)["version"],
-            self.release.version,
-        )
-        self.assertEqual(program_snapshot(self.root), before)
-        progress.assert_called_once_with(len(self.archive), len(self.archive))
 
     def test_bad_checksum_or_interrupted_download_preserves_installation(self):
         for kind in ("checksum", "truncated", "network"):
@@ -211,20 +197,32 @@ class TestUpdateService(unittest.TestCase):
             self.client.prepare_update(self.release, cancelled=cancelled)
         self.assertFalse(list((self.root / ".update").glob("download-*")))
 
-    def test_busy_installation_does_not_spawn_updater(self):
-        with patch.object(service.requests, "get", side_effect=self.responses()):
-            prepared = self.client.prepare_update(self.release)
+    def test_facade_prepares_verified_update_and_hands_off_when_idle(self):
+        with patch.object(service, "get_root_dir", return_value=str(self.root)):
+            app = AppService()
+        before = program_snapshot(self.root)
+        progress = Mock()
+        with patch.object(
+            service.requests,
+            "get",
+            side_effect=[Response(self.data), *self.responses()],
+        ):
+            release = app.check_update()
+            self.assertEqual(release, self.release)
+            prepared = app.prepare_update(release, progress=progress)
+        self.assertEqual(
+            load_manifest(prepared.directory / "package", verify=True)["version"],
+            release.version,
+        )
+        self.assertEqual(program_snapshot(self.root), before)
+        progress.assert_called_once_with(len(self.archive), len(self.archive))
         with (
             patch.object(service, "helper_processes", return_value=[12345]),
             patch.object(service.subprocess, "Popen") as spawn,
             self.assertRaises(UpdateError),
         ):
-            self.client.start_update(prepared)
+            app.start_update(prepared)
         spawn.assert_not_called()
-
-    def test_installer_handoff_uses_copied_worker_and_parent_identity(self):
-        with patch.object(service.requests, "get", side_effect=self.responses()):
-            prepared = self.client.prepare_update(self.release)
 
         def start(command, **kwargs):
             self.assertNotEqual(Path(command[0]), self.root / UPDATER_EXE)
@@ -241,21 +239,6 @@ class TestUpdateService(unittest.TestCase):
             patch.object(service, "helper_processes", return_value=[]),
             patch.object(service.subprocess, "Popen", side_effect=start),
         ):
-            result = self.client.start_update(prepared)
+            result = app.start_update(prepared)
         self.assertEqual(result.name, "result.json")
-
-    def test_facade_delegates_update_operations(self):
-        app = AppService()
-        app._updates = Mock()
-        progress, cancelled = Mock(), Event()
-        app.check_update()
-        app.get_update_info()
-        app.prepare_update(self.release, progress=progress, cancelled=cancelled)
-        prepared = service.PreparedUpdate(self.directory, "1.10.0")
-        app.start_update(prepared)
-        app._updates.check_update.assert_called_once_with()
-        app._updates.get_update_info.assert_called_once_with()
-        app._updates.prepare_update.assert_called_once_with(
-            self.release, progress=progress, cancelled=cancelled
-        )
-        app._updates.start_update.assert_called_once_with(prepared)
+        self.assertEqual(program_snapshot(self.root), before)

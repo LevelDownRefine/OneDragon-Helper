@@ -28,6 +28,7 @@ class TestOpenConfig(unittest.TestCase):
         self.ctrl.openConfig()
         self.service.apply_startup_options.assert_not_called()
         self.service.apply_daily_plan.assert_not_called()
+        self.service.check_update.assert_not_called()
 
     @patch("src.gui.controllers.backup.ConfigDialog")
     def test_save_preferences_through_service(self, dialog_class):
@@ -47,13 +48,14 @@ class TestOpenConfig(unittest.TestCase):
     def test_menu_dispatch_does_not_save_pending_preferences(self, dialog_class):
         dialog = dialog_class.return_value
         dialog.startup_options = StartupOptions(False, 125)
-        for action in ("backup", "restore", "settings", "daily"):
+        for action in ("backup", "restore", "settings", "daily", "update"):
             with (
                 self.subTest(action=action),
                 patch.object(self.ctrl, "backupConfig") as backup,
                 patch.object(self.ctrl, "restoreConfig") as restore,
                 patch.object(self.ctrl, "configureRunOptions") as settings,
                 patch.object(self.ctrl.daily_plan, "edit") as daily,
+                patch.object(self.ctrl.update, "open") as update,
             ):
                 dialog.exec.side_effect = lambda chosen=action: (
                     dialog.actionRequested.connect.call_args.args[0](chosen)
@@ -64,8 +66,11 @@ class TestOpenConfig(unittest.TestCase):
                     "restore": restore,
                     "settings": settings,
                     "daily": daily,
+                    "update": update,
                 }
-                calls[action].assert_called_once_with()
+                calls[action].assert_called_once_with(
+                    *([dialog] if action == "update" else [])
+                )
                 self.service.apply_startup_options.assert_not_called()
 
     @patch("src.gui.controllers.backup.ConfigDialog")
@@ -81,17 +86,6 @@ class TestOpenConfig(unittest.TestCase):
         dialog.show_error.assert_called_once_with("保存失败：locked")
         dialog.accept.assert_not_called()
         self.toast.assert_not_called()
-
-    @patch("src.gui.controllers.backup.ConfigDialog")
-    def test_update_opens_from_settings_without_saving_preferences(self, dialog_class):
-        dialog = dialog_class.return_value
-        dialog.exec.side_effect = lambda: dialog.actionRequested.connect.call_args.args[
-            0
-        ]("update")
-        with patch.object(self.ctrl.update, "open") as update:
-            self.ctrl.openConfig()
-        update.assert_called_once_with(dialog)
-        self.service.apply_startup_options.assert_not_called()
 
     @patch("src.gui.controllers.backup.ConfigDialog")
     def test_read_failure_is_reported(self, dialog_class):
