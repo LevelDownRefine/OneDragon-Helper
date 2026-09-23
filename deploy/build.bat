@@ -104,7 +104,7 @@ echo [6/6] 在临时副本验证打包产物...
 REM 测试产生的配置、日志与缓存都留在临时副本，发布目录不执行程序。
 "%CFG_PY%" "%~dp0..\tools\release_package.py" test --package "%GUI_DIR%"
 if errorlevel 1 (
-    echo [ERROR] exe 集成测试失败
+    echo [ERROR] exe 测试或测试副本清理失败，请查看上方输出
     if not defined CI pause
     exit /b 1
 )
