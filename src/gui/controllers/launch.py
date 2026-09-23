@@ -9,8 +9,6 @@ import subprocess
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QDialog, QMessageBox
 
-from src.gui.dialogs import styled_msg_box
-from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
 from src.utils.utils_runner import build_script_command, spawn_schedule_run
 from src.utils.utils_sub_config import get_script_name, resolve_script_path
@@ -97,6 +95,9 @@ class LaunchController(QObject):
 
     def _confirm_run(self, enabled_keys: set) -> bool:
         """运行前校验并确认。Returns: True 继续，False 取消。"""
+        from src.gui.dialogs import styled_msg_box
+        from src.gui.run_confirm_dialog import RunConfirmDialog
+
         config_data = self._app_service.load_config()
         enabled_scripts = [
             s for s in config_data["script_list"] if get_script_name(s) in enabled_keys

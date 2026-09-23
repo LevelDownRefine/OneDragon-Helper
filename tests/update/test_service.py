@@ -78,7 +78,7 @@ class TestUpdateService(unittest.TestCase):
     def test_local_info_has_no_network_or_disk_side_effects(self):
         with (
             patch.object(service, "get_root_dir", return_value=str(self.root)),
-            patch.object(service.requests, "get") as request,
+            patch.object(requests, "get") as request,
         ):
             info = AppService().get_update_info()
         self.assertEqual(info.version, "1.0.0")
@@ -100,7 +100,7 @@ class TestUpdateService(unittest.TestCase):
                 client = service.UpdateService(root)
                 with (
                     patch.object(sys, "frozen", kind != "source"),
-                    patch.object(service.requests, "get") as request,
+                    patch.object(requests, "get") as request,
                 ):
                     self.assertIn(reason, client.get_update_info().unavailable_reason)
                     with self.assertRaisesRegex(UpdateError, reason):
@@ -130,7 +130,7 @@ class TestUpdateService(unittest.TestCase):
             with self.subTest(installed=installed):
                 root = make_package(self.directory / installed, installed)
                 with patch.object(
-                    service.requests, "get", return_value=Response(self.data)
+                    requests, "get", return_value=Response(self.data)
                 ) as request:
                     self.assertEqual(
                         service.UpdateService(root).check_update(), expected
@@ -151,7 +151,7 @@ class TestUpdateService(unittest.TestCase):
                 else:
                     data[change] = True
                 with (
-                    patch.object(service.requests, "get", return_value=Response(data)),
+                    patch.object(requests, "get", return_value=Response(data)),
                     self.assertRaises(UpdateError),
                 ):
                     self.client.check_update()
@@ -178,7 +178,7 @@ class TestUpdateService(unittest.TestCase):
                     responses[1] = Response(error=requests.ConnectionError("offline"))
                 before = program_snapshot(self.root)
                 with (
-                    patch.object(service.requests, "get", side_effect=responses),
+                    patch.object(requests, "get", side_effect=responses),
                     self.assertLogs(service.__name__, level="ERROR"),
                     self.assertRaises((UpdateError, requests.ConnectionError)),
                 ):
@@ -190,7 +190,7 @@ class TestUpdateService(unittest.TestCase):
         cancelled = Event()
         cancelled.set()
         with (
-            patch.object(service.requests, "get", side_effect=self.responses()),
+            patch.object(requests, "get", side_effect=self.responses()),
             self.assertLogs(service.__name__, level="ERROR"),
             self.assertRaises(service.UpdateCancelled),
         ):
@@ -203,7 +203,7 @@ class TestUpdateService(unittest.TestCase):
         before = program_snapshot(self.root)
         progress = Mock()
         with patch.object(
-            service.requests,
+            requests,
             "get",
             side_effect=[Response(self.data), *self.responses()],
         ):

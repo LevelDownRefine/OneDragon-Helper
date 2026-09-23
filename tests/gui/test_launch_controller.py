@@ -98,7 +98,7 @@ class TestConfirmRunDialog(unittest.TestCase):
 
     def _patch_run_confirm(self):
         """patch RunConfirmDialog，返回可控的 dialog mock（exec/run_options）。"""
-        return mock.patch("src.gui.controllers.launch.RunConfirmDialog")
+        return mock.patch("src.gui.run_confirm_dialog.RunConfirmDialog")
 
     def test_cancel_returns_false(self):
         ctrl, service = self._make_ctrl()
@@ -159,8 +159,8 @@ class TestConfirmRunInvalidScripts(unittest.TestCase):
         """用户点 Yes：仍照常弹确认窗并落盘选项（运行时跳过不合法脚本）。"""
         ctrl, service = self._make_ctrl([("demo", "exe 不存在")])
         with (
-            mock.patch("src.gui.controllers.launch.styled_msg_box") as msg_cls,
-            mock.patch("src.gui.controllers.launch.RunConfirmDialog") as dlg_cls,
+            mock.patch("src.gui.dialogs.styled_msg_box") as msg_cls,
+            mock.patch("src.gui.run_confirm_dialog.RunConfirmDialog") as dlg_cls,
         ):
             box = msg_cls.return_value
             box.exec.return_value = QMessageBox.Yes
@@ -174,8 +174,8 @@ class TestConfirmRunInvalidScripts(unittest.TestCase):
         """用户点 No：取消整个运行，不弹确认窗、不落盘。"""
         ctrl, service = self._make_ctrl([("demo", "exe 不存在")])
         with (
-            mock.patch("src.gui.controllers.launch.styled_msg_box") as msg_cls,
-            mock.patch("src.gui.controllers.launch.RunConfirmDialog") as dlg_cls,
+            mock.patch("src.gui.dialogs.styled_msg_box") as msg_cls,
+            mock.patch("src.gui.run_confirm_dialog.RunConfirmDialog") as dlg_cls,
         ):
             box = msg_cls.return_value
             box.exec.return_value = QMessageBox.No
@@ -188,8 +188,8 @@ class TestConfirmRunInvalidScripts(unittest.TestCase):
         """无不合法脚本：不弹告警，直接进确认窗。"""
         ctrl, service = self._make_ctrl([])
         with (
-            mock.patch("src.gui.controllers.launch.styled_msg_box") as msg_cls,
-            mock.patch("src.gui.controllers.launch.RunConfirmDialog") as dlg_cls,
+            mock.patch("src.gui.dialogs.styled_msg_box") as msg_cls,
+            mock.patch("src.gui.run_confirm_dialog.RunConfirmDialog") as dlg_cls,
         ):
             dlg = dlg_cls.return_value
             dlg.exec.return_value = QDialog.Accepted

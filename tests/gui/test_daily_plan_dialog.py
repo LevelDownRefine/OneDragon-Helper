@@ -41,9 +41,7 @@ class TestDailyPlanDialog(unittest.TestCase):
         self.addCleanup(dialog.deleteLater)
         self.addCleanup(dialog.close)
         with (
-            patch(
-                "src.gui.controllers.daily_plan.DailyPlanDialog", return_value=dialog
-            ),
+            patch("src.gui.daily_plan_dialog.DailyPlanDialog", return_value=dialog),
             patch.object(dialog, "exec", side_effect=lambda: action(dialog)),
         ):
             self.controller.edit()

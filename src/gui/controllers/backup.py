@@ -11,10 +11,8 @@ from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QDialog, QFileDialog
 from ruamel.yaml.error import YAMLError
 
-from src.gui.config_dialog import ConfigDialog
 from src.gui.controllers.daily_plan import DailyPlanController
 from src.gui.controllers.update import UpdateController
-from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.service.app_service import AppService
 from src.utils import get_root_dir
 
@@ -36,6 +34,8 @@ class BackupController(QObject):
     @Slot()
     def openConfig(self):
         """菜单操作独立打开，启动设置仅点击保存后落盘。"""
+        from src.gui.config_dialog import ConfigDialog
+
         try:
             options = self._app_service.load_startup_options()
             daily_plan = self._app_service.load_daily_plan()
@@ -77,6 +77,8 @@ class BackupController(QObject):
 
     def configureRunOptions(self):
         """保存共用运行选项，不启动脚本。"""
+        from src.gui.run_confirm_dialog import RunConfirmDialog
+
         try:
             dialog = RunConfirmDialog(
                 0, self._app_service.load_run_options(), settings_only=True

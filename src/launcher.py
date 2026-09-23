@@ -11,15 +11,8 @@ import shutil
 import sys
 import time
 
-from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtGui import QFont
-from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
-from PySide6.QtWidgets import QApplication
-
 from src.cli import build_parser, run_cli
 from src.config.generate_config import config_workflow
-from src.gui.file_drop import install_file_drop
-from src.gui.main_window import QmlBridge
 from src.utils.utils_logger import install_crash_hooks, setup_logging
 from src.utils.utils_sub_config import resolve_script_path
 
@@ -105,6 +98,15 @@ def _install_qt_message_logger():
 
 
 def _launch_qml(*, skip_auto_launch: bool = False):
+    from PySide6.QtCore import Qt, QTimer, QUrl
+    from PySide6.QtGui import QFont
+    from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+    from PySide6.QtWidgets import QApplication
+
+    from src.gui.file_drop import install_file_drop
+    from src.gui.main_window import QmlBridge
+
+    _log_startup("GUI 模块导入完成")
     # 禁用 QML 磁盘缓存 + 清理已有缓存：旧版编译缓存会导致类型解析错乱
     # （"Type IconButton unavailable" / "Cannot assign object to list property data"
     # 等误报），且删除前不重新生成——保证每次启动都是干净编译。
@@ -115,10 +117,12 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     app = QApplication(sys.argv)
     # 全局默认字体：QML Text 默认字体中文字符 fallback；与旧 GUI 一致
     app.setFont(QFont(FONT_FAMILY))
+    _log_startup("QApplication 初始化完成")
 
     # bridge 注册为 QML 单例（不是 setContextProperty）：单例由 QML 引擎强持有，
     # 事件循环中不会被 GC——context property 传 Python 对象时，QML 侧会读到 null。
     bridge = QmlBridge()
+    _log_startup("QmlBridge 初始化完成")
     qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
 
     engine = QQmlApplicationEngine()
@@ -132,11 +136,14 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     logger.info("[qml] engine loading: %s", qml_path)
     engine.load(QUrl.fromLocalFile(qml_path))
     logger.info("[qml] engine loaded, rootObjects = %d", len(engine.rootObjects()))
-    # load 返回时窗口已显示并 expose（首帧也在其内），无需另挂 frameSwapped。
-    _log_startup("QML 装载完成（窗口已显示）")
+    _log_startup("QML 装载完成")
     # 窗口首帧渲染（已可见）后才启动空闲预热，避免装载/模态期间提前占用主线程。
     if engine.rootObjects():
         win = engine.rootObjects()[0]
+        win.frameSwapped.connect(
+            lambda: _log_startup("首帧已提交"),
+            Qt.ConnectionType.SingleShotConnection,
+        )
         win.afterSynchronizing.connect(
             bridge.start_config_warmup, Qt.ConnectionType.SingleShotConnection
         )

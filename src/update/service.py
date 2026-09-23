@@ -16,7 +16,6 @@ from pathlib import Path
 from threading import Event
 
 import psutil
-import requests
 
 from src.update.package import (
     MAX_PACKAGE_BYTES,
@@ -123,6 +122,9 @@ class UpdateService:
     def check_update(self) -> ReleaseUpdate | None:
         """仅显式调用时查询稳定 Release；没有更高版本时返回 None。"""
         installed = self._installed()
+        # 网络库仅在更新操作中加载，避免占用 GUI 启动路径。
+        import requests
+
         with requests.get(
             f"https://api.github.com/repos/{REPOSITORY}/releases/latest",
             headers={"Accept": "application/vnd.github+json"},
@@ -197,6 +199,8 @@ class UpdateService:
             raise UpdateError("更新附件地址不属于当前发布")
         if type(release.size) is not int or not 0 < release.size <= MAX_PACKAGE_BYTES:
             raise UpdateError("更新包大小无效")
+        import requests
+
         work = update_directory(self.root) / ("download-" + uuid.uuid4().hex)
         work.mkdir()
         try:
@@ -234,6 +238,8 @@ class UpdateService:
         progress: Callable | None,
         cancelled: Event | None,
     ) -> None:
+        import requests
+
         with requests.get(url, stream=True, timeout=(10, 30)) as response:
             response.raise_for_status()
             received = 0
