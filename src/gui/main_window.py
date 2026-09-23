@@ -107,8 +107,23 @@ class QmlBridge(QObject):
 
         warmup 经 QTimer 在事件循环中逐脚本跑，错开关键路径；此处仅在
         窗口已显示后才挂起定时器，避免装载/模态期间提前占用主线程。
+        收尾再接一次输入框预热（见 _prewarm_line_edit），不与 config 预热争首帧后的时间。
         """
+        self._config_warmer.finished.connect(self._prewarm_line_edit)
         self._config_warmer.start()
+
+    @Slot()
+    def _prewarm_line_edit(self) -> None:
+        """建一次 QLineEdit 后立即丢弃。
+
+        QLineEdit 在进程内首次实例化要花约 0.3 秒（Qt 侧一次性初始化），配置弹窗含多个
+        输入框；提前在启动后空闲付掉，点右下齿轮打开弹窗时不必再等这笔开销。此处不读配置、
+        不构造窗口，预热的对象就是这一次性初始化本身。
+        """
+        from PySide6.QtWidgets import QLineEdit
+
+        edit = QLineEdit()
+        edit.deleteLater()
 
     # ── QML 属性（委托到子控制器）────────────────────────────────────
     games = Property(
