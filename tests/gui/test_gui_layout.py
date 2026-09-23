@@ -101,3 +101,101 @@ class TestSharedLayout(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         for error in ("ReferenceError", "TypeError", "Binding loop"):
             self.assertNotIn(error, result.stderr)
+
+    def test_daily_rows_scroll_when_exceeding_window(self):
+        """日常行数少时卡片自适应（与旧版一致），超出窗口余量时封顶并滚动。"""
+        code = textwrap.dedent(
+            """
+            import os
+            from unittest.mock import patch
+
+            os.environ["QT_QPA_PLATFORM"] = "offscreen"
+            os.environ["QML_DISABLE_DISK_CACHE"] = "1"
+            from PySide6.QtCore import QPointF, QUrl
+            from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+            from PySide6.QtQuick import QQuickItem
+            from PySide6.QtTest import QTest
+            from src.gui.icons import UiIconProvider
+            from src.gui.main_window import QmlBridge
+            from src.utils.utils_sub_config import resolve_script_path
+            from tests.gui.helpers import make_bridge
+
+            ROW_H = 56
+            TOP = 68           # 首行 y（标题行 + 分隔线之下）
+            PAD = 16           # 卡片底部留白
+            VIEWPORT_MAX = 720 - 392 - PAD
+
+            state = {"count": 4}
+
+            def fake_readback(*_args, **_kwargs):
+                return [
+                    {"name": f"日常{i}", "task": None, "sequence": None, "enabled": True}
+                    for i in range(state["count"])
+                ]
+
+            with (
+                patch("src.service.app_service.get_weekly_map", return_value=[]),
+                patch("src.gui.controllers.task_card.get_daily_readback",
+                      side_effect=fake_readback),
+            ):
+                bridge = make_bridge()
+                qmlRegisterSingletonInstance(
+                    QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
+                engine = QQmlApplicationEngine()
+                engine.addImageProvider("uiicon", UiIconProvider())
+                engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
+                engine.load(QUrl.fromLocalFile(
+                    resolve_script_path("src/gui/qml/main.qml")))
+                assert len(engine.rootObjects()) == 1
+                window = engine.rootObjects()[0]
+                QTest.qWait(500)
+                card = window.findChild(QQuickItem, "cardRoot")
+                flick = window.findChild(QQuickItem, "rowsFlick")
+
+                def measure(count):
+                    dailies = [
+                        {"display_name": f"日常{i}", "options": {"values": []}}
+                        for i in range(count)
+                    ]
+                    bridge.task_card._daily_map_cache = {"ok-ww": {"dailies": dailies}}
+                    state["count"] = count
+                    bridge.taskStateChanged.emit()
+                    QTest.qWait(300)
+                    return (round(card.height()), round(flick.height()),
+                            round(flick.property("contentHeight")),
+                            bool(flick.property("interactive")))
+
+                # 视口只覆盖标题行下方：滚动内容不会滑进标题行
+                assert round(flick.y()) == TOP, flick.y()
+
+                # 4 行：视口 = 内容高度，卡片自适应，无滚动
+                card_h, flick_h, content_h, interactive = measure(4)
+                assert card_h == TOP + 4 * ROW_H + PAD, (card_h,)
+                assert (flick_h, content_h) == (4 * ROW_H + PAD,) * 2, (flick_h, content_h)
+                assert interactive is False, "行数未超窗口余量时不应滚动"
+
+                # 9 行（原神）：视口封顶到窗口余量，内容溢出 → 可滚动
+                card_h, flick_h, content_h, interactive = measure(9)
+                assert card_h == VIEWPORT_MAX, (card_h,)
+                assert flick_h == VIEWPORT_MAX - TOP, (flick_h,)
+                assert content_h == 9 * ROW_H + PAD, (content_h,)
+                assert interactive is True, "行数超出窗口余量时必须能滚动"
+
+                # 滚动后行区随之上移，且裁在视口内（不会滑进标题行）
+                daily = window.findChild(QQuickItem, "dailyArea")
+                flick.setProperty("contentY", 100)
+                QTest.qWait(100)
+                assert round(daily.mapToItem(card, QPointF()).y()) == TOP - 100, (
+                    daily.mapToItem(card, QPointF()).y())
+            """
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            cwd=os.getcwd(),
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for error in ("ReferenceError", "TypeError", "Binding loop"):
+            self.assertNotIn(error, result.stderr)
