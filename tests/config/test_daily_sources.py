@@ -391,7 +391,13 @@ class TestBgiGetTaskLists(unittest.TestCase):
                 [v["physical_name"] for v in option["options"]["values"]]
                 for option in menu["options"]["values"]
             ],
-            [["仲夏庭园", "铭记之谷", "芬德尼尔之顶"], ["塞西莉亚苗圃"], ["太山府"]],
+            [
+                # 「自动选择」是 BGI 内置的静态项（值即文案本身），不从 tp.json 取
+                ["根据提升指南选择秘境"],
+                ["仲夏庭园", "铭记之谷", "芬德尼尔之顶"],
+                ["塞西莉亚苗圃"],
+                ["太山府"],
+            ],
         )
 
     def test_ley_line_countries_use_generic_key_reader(self):

@@ -316,6 +316,37 @@ class TestEnabled(unittest.TestCase):
         self.assertEqual(anomaly.section({}), {})
 
 
+class TestBgiDomainAutoSelect(unittest.TestCase):
+    """原神每日任务的「自动选择 → 根据提升指南选择秘境」。
+
+    这是 BGI 内置项（不在 tp.json 的秘境清单里），落点与其它秘境相同（顶层 DomainName），
+    值就是那句文案本身——BGI 据此改读游戏内的提升指南，不由本工具解释。
+    """
+
+    @staticmethod
+    def _daily():
+        return daily_of("BetterGI", "每日任务")
+
+    def test_update_writes_the_option_text(self):
+        daily = self._daily()
+        config = {"DomainName": "铭记之谷", "untouched": {"value": 42}}
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            patch.object(daily, "_save_daily_config") as mock_save,
+        ):
+            self.assertTrue(daily.update("自动选择", "根据提升指南选择秘境"))
+            mock_save.assert_called_once()
+        self.assertEqual(config["DomainName"], "根据提升指南选择秘境")
+        self.assertEqual(config["untouched"], {"value": 42})
+
+    def test_read_returns_the_option_text(self):
+        """反读原样返回该值（两级写同一字段，故不拆一级/二级）。"""
+        daily = self._daily()
+        config = {"DomainName": "根据提升指南选择秘境"}
+        with patch.object(daily, "_load_daily_config", return_value=config):
+            self.assertEqual(daily.read(), ("根据提升指南选择秘境", None))
+
+
 class TestBgiLeyLine(unittest.TestCase):
     """原神地脉花：一条龙按周几持 7 份字段，本工具一次写满一周（7 天同值）。"""
 
