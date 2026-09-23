@@ -81,6 +81,12 @@ class ScriptConfig:
             self._dailies.append(daily)
         # 构造期装配周常对象（与日常同一时机；无周常声明的脚本得到空列表）
         self._weeklies = build_weeklies(self._script_name, self.display_name)
+        # 动态日常（BetterGI 纯开关任务）按「未被认领的任务」枚举行：装配后注入认领名。
+        claimed = {
+            name for daily in self._dailies if (name := daily.claimed_task_name())
+        }
+        for daily in self._dailies:
+            daily.set_peer_claims(claimed)
         # 构造期对齐子脚本 config（懒加载收口点；无模板/未安装脚本为空操作）
         self._init_config()
 
@@ -129,29 +135,22 @@ class ScriptConfig:
         return matches[0]
 
     def _read_daily_tasks(self) -> list[dict]:
-        """反读该脚本全部日常的已选项与开关（界面按日常逐行呈现）。
+        """反读该脚本全部日常行（界面逐行呈现）。
 
-        日常集合由声明推导，调用方无需指定日常。每项一条记录：
+        行集合由各日常自己给出（``read_rows``）：普通日常一行，动态日常
+        （如 BetterGI 的纯开关任务）按子脚本配置枚举多行。每项一条记录：
 
-        - ``name``：日常展示名；
+        - ``name``：界面行名（普通日常即展示名，动态日常取配置里的名字）；
         - ``task``：已选一级项展示名；未选择/无真相为 None；
         - ``sequence``：已选二级值；无二级或未选择为 None；
-        - ``enabled``：是否启用；该脚本无日常开关文件时为 None。
+        - ``enabled``：是否启用；无开关落点时为 None。
 
         Returns:
             [{name, task, sequence, enabled}, ...]，顺序与声明一致。
         """
-        records = []
+        records: list[dict] = []
         for daily in self._dailies:
-            task, sequence = daily.read()
-            records.append(
-                {
-                    "name": daily.display_name,
-                    "task": task,
-                    "sequence": sequence,
-                    "enabled": daily.read_enabled(),
-                }
-            )
+            records.extend(daily.read_rows())
         return records
 
     def _init_config(self) -> None:
@@ -241,19 +240,25 @@ class ScriptConfig:
         self.set_daily_enabled(daily_display_name, True)
 
     def set_daily_enabled(self, daily_display_name: str, enabled: bool) -> None:
-        """启用/停用某日常：读开关文件 → 交给该日常改内存 → 有改动才落盘。
+        """启用/停用某日常行：读开关文件 → 交给认领该行的日常改内存 → 有改动才落盘。
 
         该脚本无日常开关文件时不做事（选择即启用，无开关可写）。
 
         Args:
-            daily_display_name: 日常展示名。
+            daily_display_name: 日常行名（普通日常即展示名；动态日常为配置里的行名）。
             enabled: 目标启用状态。
 
         Raises:
-            AssertionError: 该日常未知，或 Routine Items 缺少或重复该日常的物理名。
+            AssertionError: 没有任何日常认领该行，或 Routine Items 缺少或重复该行的物理名。
         """
-        daily = self._dispatch_daily(daily_display_name)
-        daily.set_enabled(enabled)  # 无日常开关的机制类不做事（选择即启用）
+        candidates = [
+            daily for daily in self._dailies if daily.claims(daily_display_name)
+        ]
+        assert len(candidates) == 1, (
+            f"[set_config][{self.display_name}] 未知日常行: {daily_display_name}"
+        )
+        # 无日常开关的机制类不做事（选择即启用）
+        candidates[0].set_enabled_for(daily_display_name, enabled)
 
     def get_game_exe_path(self) -> str | None:
         """读取本脚本配置中的游戏 exe 路径。

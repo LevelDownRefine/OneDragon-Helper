@@ -294,6 +294,64 @@ class Daily:
             return task, None
         return task, section[seq_field]
 
+    def read_rows(self) -> list[dict]:
+        """该日常当前在界面上占的行（默认单行）。
+
+        动态日常（如 BetterGI 的纯开关任务）覆写本方法：行集合取自子脚本配置，
+        数量与名字都由配置决定。
+
+        Returns:
+            [{name, task, sequence, enabled}]，``name`` 为界面行名。
+        """
+        task, sequence = self.read()
+        return [
+            {
+                "name": self.display_name,
+                "task": task,
+                "sequence": sequence,
+                "enabled": self.read_enabled(),
+            }
+        ]
+
+    def claims(self, row_name: str) -> bool:
+        """该日常是否认领某个界面行（默认：行名即本日常展示名）。
+
+        Args:
+            row_name: 界面行名。
+
+        Returns:
+            是否由本日常负责该行。
+        """
+        return row_name == self.display_name
+
+    def set_enabled_for(self, row_name: str, enabled: bool) -> bool:
+        """按行名置开关（默认忽略行名，等同 :meth:`set_enabled`）。
+
+        Args:
+            row_name: 界面行名。
+            enabled: 目标启用状态。
+
+        Returns:
+            是否有实际修改。
+        """
+        return self.set_enabled(enabled)
+
+    def claimed_task_name(self) -> str | None:
+        """本日常认领的任务名（默认无；BetterGI 日常返回其 ``enable_task``）。
+
+        Returns:
+            认领的任务名；不认领任何任务时为 None。
+        """
+        return None
+
+    def set_peer_claims(self, names: set[str]) -> None:
+        """装配期注入同脚本其它日常认领的任务名（默认忽略）。
+
+        Args:
+            names: 同脚本其它日常认领的任务名集合。
+        """
+        return
+
     def read_enabled(self) -> bool | None:
         """反读该日常是否启用；无开关落点的脚本返回 None。
 
@@ -428,6 +486,14 @@ class BgiDaily(Daily):
         self._enable_task: str = get_field(
             declaration, "enable_task", self.display_name, str
         )
+
+    def claimed_task_name(self) -> str | None:
+        """本日常认领的任务名（即声明里的 ``enable_task``）。
+
+        Returns:
+            该 BetterGI 任务名；纯开关任务（``BgiSwitchDaily``）不认领，另行覆写。
+        """
+        return self._enable_task
 
     def _enabled_id(self, config: dict) -> str | None:
         """定位可用的开关；兼容旧格式，缺项或重复任务不猜测目标。
@@ -714,14 +780,29 @@ class BgiStygianDaily(_SingleLayerDaily, BgiDaily):
 
 
 class BgiSwitchDaily(BgiDaily):
-    """只有开关的 BetterGI 任务（领取邮件 / 尘歌壶奖励 / 每日奖励 / 千星 / 周常）。
+    """BetterGI 的纯开关任务：界面行由一条龙配置里的任务动态枚举。
 
-    这类任务在一条龙里没有副本可选，唯一落点是任务启用表；界面只呈现开关，
-    声明里的 ``options`` 留空（物化层要求该键存在）。
+    这类任务没有副本可选，唯一落点是任务启用表。行集合取自 ``TaskDefinitions``——
+    名字即配置里的任务名，故 BGI 改名、增删任务都能自动跟上；枚举时排除已被其它
+    日常认领的任务（那些日常自带副本选型）。声明里的 ``options`` 留空
+    （物化层要求该键存在）。
     """
 
+    def __init__(
+        self, script_name: str, declaration: dict, script_display_name: str
+    ) -> None:
+        """解析声明：本类不认领固定任务名，故不要求 ``enable_task``。
+
+        Args:
+            script_name: 所属脚本标识名。
+            declaration: 该日常的声明节点，不得带副本选项。
+            script_display_name: 所属脚本的展示名。
+        """
+        # 直接走 Daily：BgiDaily 要求 enable_task，而本类的任务来自配置枚举。
+        Daily.__init__(self, script_name, declaration, script_display_name)
+
     def _parse_landing(self, declaration: dict) -> None:
-        """无副本落点：只保留开关（由 ``enable_task`` 反查任务启用表）。
+        """无副本落点：只保留开关，且声明里不得带副本选项。
 
         Raises:
             AssertionError: 声明里带了副本选项。
@@ -737,17 +818,120 @@ class BgiSwitchDaily(BgiDaily):
         self._sequence_values: dict[str, dict[str, Any]] = {}
         self._sequence_required = False
         self._single_field = False
+        self._peer_claims: set[str] = set()
+
+    def claimed_task_name(self) -> str | None:
+        """不认领任何任务名——本类要枚举的正是「没人认领的那些」。
+
+        Returns:
+            恒为 None。
+        """
+        return None
+
+    def set_peer_claims(self, names: set[str]) -> None:
+        """装配期注入同脚本其它日常认领的任务名（枚举时排除）。
+
+        Args:
+            names: 其它日常认领的任务名集合。
+        """
+        self._peer_claims = set(names)
+
+    def _task_rows(self) -> list[tuple[str, str, bool | None]]:
+        """枚举待呈现的任务行：一条龙配置里的任务，去掉已被其它日常认领的。
+
+        Returns:
+            [(任务 id, 任务名, 是否启用)]；启用项非布尔时按无真相（None）处理。
+        """
+        config = self._load_enable_config(allow_missing=True)
+        if config is None:
+            return []
+        definitions = config.get(self._TASK_DEFINITIONS) or {}
+        if not isinstance(definitions, dict):
+            logger.warning(
+                "[daily][%s] BGI TaskDefinitions 不是对象，任务开关按无配置处理",
+                self.display_name,
+            )
+            return []
+        table = config.get(self._ENABLE_MAP) or {}
+        rows = []
+        for task_id, name in definitions.items():
+            if name in self._peer_claims:
+                continue
+            raw = table.get(task_id) if isinstance(table, dict) else None
+            rows.append((task_id, name, raw if isinstance(raw, bool) else None))
+        return rows
+
+    def read_rows(self) -> list[dict]:
+        """行集合 = 配置里的任务（名字取自配置），每行只有开关、无副本。
+
+        Returns:
+            [{name, task, sequence, enabled}]，每项一个任务。
+        """
+        return [
+            {"name": name, "task": None, "sequence": None, "enabled": enabled}
+            for _, name, enabled in self._task_rows()
+        ]
+
+    def claims(self, row_name: str) -> bool:
+        """认领「配置里存在、且未被其它日常认领」的任务行。
+
+        Args:
+            row_name: 界面行名（即配置里的任务名）。
+
+        Returns:
+            是否由本日常负责该行。
+        """
+        return any(name == row_name for _, name, _ in self._task_rows())
+
+    def set_enabled_for(self, row_name: str, enabled: bool) -> bool:
+        """按任务名置开关（任务 id 由配置里的任务名反查）。
+
+        Args:
+            row_name: 界面行名（即配置里的任务名）。
+            enabled: 目标启用状态。
+
+        Returns:
+            是否有实际修改；任务缺失或重名时记日志并返回 False。
+        """
+        matches = [
+            task_id for task_id, name, _ in self._task_rows() if name == row_name
+        ]
+        if len(matches) != 1:
+            logger.warning(
+                "[daily][%s] BGI 任务 %s 匹配到 %d 项，开关按未配置处理",
+                self.display_name,
+                row_name,
+                len(matches),
+            )
+            return False
+        config = self._load_enable_config()
+        table = config.get(self._ENABLE_MAP)
+        assert isinstance(table, dict), (
+            f"[daily][{self.display_name}] {self._ENABLE_MAP} 不是对象"
+        )
+        if safe_update(table, matches[0], enabled, self.display_name):
+            self._save_enable_config(config)
+            return True
+        return False
 
     def read(self) -> tuple[str | None, str | int | None]:
-        """无副本真相：不读不解析。
+        """无副本真相：副本选择由 ``read_rows`` 逐行给出（本类恒无副本）。
 
         Returns:
             恒为 (None, None)。
         """
         return None, None
 
+    def read_enabled(self) -> bool | None:
+        """无单一开关：本类的开关逐行反读（见 :meth:`read_rows`）。
+
+        Returns:
+            恒为 None。
+        """
+        return None
+
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
-        """无副本可写：不读不写（开关走 :meth:`set_enabled`）。
+        """无副本可写：不读不写（开关走 :meth:`set_enabled_for`）。
 
         Args:
             task_name: 一级项展示名（本实现忽略）。

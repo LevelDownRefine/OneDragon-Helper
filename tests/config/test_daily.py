@@ -474,45 +474,117 @@ class TestBgiStygian(unittest.TestCase):
 
 
 class TestBgiSwitch(unittest.TestCase):
-    """原神纯开关任务（领取邮件 / 尘歌壶 / 每日奖励 / 千星 / 周常）：无副本落点，只读写启用表。"""
+    """原神纯开关任务（「任务开关」日常）：行由一条龙配置里的任务动态枚举。"""
+
+    @staticmethod
+    def _daily(*, claims: set[str] | None = None) -> BgiSwitchDaily:
+        """独立实例：不动 ScriptConfig 单例，避免 peer claims 跨用例污染。"""
+        declaration = {
+            "display_name": "任务开关",
+            "class": "BgiSwitchDaily",
+            "config": "User/OneDragon/默认配置.json",
+            "options": {"values": []},
+        }
+        daily = BgiSwitchDaily("BetterGI", declaration, "原神")
+        daily.set_peer_claims(claims or set())
+        return daily
+
+    @staticmethod
+    def _flow(tasks: dict[str, str], enabled: dict[str, bool]) -> dict:
+        """一条龙配置：任务定义（{id: 名}）与启用表。"""
+        return {"TaskDefinitions": tasks, "TaskEnabledList": enabled}
 
     def test_landing_has_no_options(self):
         """无副本落点：选项字段全空，写副本无从下手。"""
-        daily = daily_of("BetterGI", "领取邮件")
+        daily = self._daily()
         self.assertIsNone(daily.task_field)
         self.assertEqual(daily.option_fields, {})
         self.assertEqual(daily.options, [])
         self.assertEqual(daily.task_map, {})
-
-    def test_read_and_update_are_noop(self):
-        daily = daily_of("BetterGI", "领取邮件")
         self.assertEqual(daily.read(), (None, None))
-        self.assertFalse(daily.update("领取邮件"))
+        self.assertFalse(daily.update("任意"))
+        self.assertIsNone(daily.read_enabled())
 
-    def test_switch_reads_task_enabled_list(self):
-        """开关仍是任务启用表里的一项（id 由任务名反查）。"""
-        daily = daily_of("BetterGI", "周常")
-        config = {
-            "TaskDefinitions": {"uuid-w": "周常", "uuid-other": "千星"},
-            "TaskEnabledList": {"uuid-w": False, "uuid-other": True},
-        }
-        with (
-            patch.object(daily, "_load_daily_config", return_value=config),
-            patch.object(daily, "_save_daily_config") as mock_save,
+    def test_rows_come_from_task_definitions(self):
+        """行 = 配置里的任务（名字取自配置），排除已被其它日常认领的任务。"""
+        daily = self._daily()
+        daily.set_peer_claims({"自动秘境"})
+        flow = self._flow(
+            {"a": "领取邮件", "b": "自动秘境", "c": "周常"},
+            {"a": True, "b": True, "c": False},
+        )
+        with patch.object(daily, "_load_enable_config", return_value=flow):
+            self.assertEqual(
+                daily.read_rows(),
+                [
+                    {
+                        "name": "领取邮件",
+                        "task": None,
+                        "sequence": None,
+                        "enabled": True,
+                    },
+                    {"name": "周常", "task": None, "sequence": None, "enabled": False},
+                ],
+            )
+
+    def test_rows_follow_config_rename(self):
+        """任务在配置里改名后行名随之变化——不依赖写死的任务名。"""
+        daily = self._daily()
+        with patch.object(
+            daily,
+            "_load_enable_config",
+            return_value=self._flow({"a": "收邮件"}, {"a": True}),
         ):
-            self.assertFalse(daily.read_enabled())
-            self.assertTrue(daily.set_enabled(True))
+            self.assertEqual([row["name"] for row in daily.read_rows()], ["收邮件"])
+
+    def test_rows_without_config_is_empty(self):
+        """配置缺失（脚本未安装/未配置）→ 无行，而非报错。"""
+        daily = self._daily()
+        with patch.object(daily, "_load_enable_config", return_value=None):
+            self.assertEqual(daily.read_rows(), [])
+            self.assertFalse(daily.claims("领取邮件"))
+
+    def test_switch_writes_by_task_name(self):
+        """按行名（任务名）反查 id 写开关，别的任务不动。"""
+        daily = self._daily()
+        flow = self._flow({"a": "领取邮件", "b": "周常"}, {"a": True, "b": False})
+        with (
+            patch.object(daily, "_load_enable_config", return_value=flow),
+            patch.object(daily, "_save_enable_config") as mock_save,
+        ):
+            self.assertTrue(daily.set_enabled_for("周常", True))
+            self.assertFalse(daily.set_enabled_for("周常", True))
             mock_save.assert_called_once()
-        self.assertTrue(config["TaskEnabledList"]["uuid-w"])
-        self.assertTrue(config["TaskEnabledList"]["uuid-other"], "别的任务不应被动到")
+        self.assertTrue(flow["TaskEnabledList"]["b"])
+        self.assertTrue(flow["TaskEnabledList"]["a"], "别的任务不应被动到")
+
+    def test_unknown_row_is_logged_and_not_written(self):
+        """行名在配置里找不到 → 不写、记日志（不猜目标）。"""
+        daily = self._daily()
+        flow = self._flow({"a": "领取邮件"}, {"a": True})
+        with (
+            patch.object(daily, "_load_enable_config", return_value=flow),
+            patch.object(daily, "_save_enable_config") as mock_save,
+            self.assertLogs("src.config.daily", level="WARNING"),
+        ):
+            self.assertFalse(daily.set_enabled_for("不存在的任务", False))
+            mock_save.assert_not_called()
+
+    def test_claims_only_unclaimed_rows(self):
+        """已被其它日常认领的任务不由本日常认领（避免重复行）。"""
+        daily = self._daily()
+        daily.set_peer_claims({"自动秘境"})
+        flow = self._flow({"a": "自动秘境", "b": "领取邮件"}, {"a": True, "b": True})
+        with patch.object(daily, "_load_enable_config", return_value=flow):
+            self.assertFalse(daily.claims("自动秘境"))
+            self.assertTrue(daily.claims("领取邮件"))
 
     def test_declaring_options_is_rejected(self):
         """声明里带了副本选项 → 构造即报错（声明写错当场暴露）。"""
         declaration = {
-            "display_name": "领取邮件",
+            "display_name": "任务开关",
             "class": "BgiSwitchDaily",
             "config": "User/OneDragon/默认配置.json",
-            "enable_task": "领取邮件",
             "options": {"values": [{"display_name": "不该有"}]},
         }
         with self.assertRaisesRegex(AssertionError, "纯开关日常"):

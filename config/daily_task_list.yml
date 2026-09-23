@@ -249,34 +249,9 @@ BetterGI:
       physical_name: 2
     - display_name: 关卡三
       physical_name: 3
-- display_name: 领取邮件
+- display_name: 任务开关
   class: BgiSwitchDaily
   config: User/OneDragon/默认配置.json
-  enable_task: 领取邮件
-  options:
-    values: []
-- display_name: 领取尘歌壶奖励
-  class: BgiSwitchDaily
-  config: User/OneDragon/默认配置.json
-  enable_task: 领取尘歌壶奖励
-  options:
-    values: []
-- display_name: 领取每日奖励
-  class: BgiSwitchDaily
-  config: User/OneDragon/默认配置.json
-  enable_task: 领取每日奖励
-  options:
-    values: []
-- display_name: 千星
-  class: BgiSwitchDaily
-  config: User/OneDragon/默认配置.json
-  enable_task: 千星
-  options:
-    values: []
-- display_name: 周常
-  class: BgiSwitchDaily
-  config: User/OneDragon/默认配置.json
-  enable_task: 周常
   options:
     values: []
 ok-ef:

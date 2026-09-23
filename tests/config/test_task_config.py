@@ -61,7 +61,7 @@ class TestTaskDeclarations(unittest.TestCase):
         daily = m.load_daily_map()
         weekly = m.load_weekly_map()
         self.assertEqual(len(daily["ok-nte"]), 2)
-        self.assertEqual(len(daily["BetterGI"]), 9)
+        self.assertEqual(len(daily["BetterGI"]), 5)
         self.assertEqual(len(daily["MAA"]), 3)
         self.assertTrue(
             all(
