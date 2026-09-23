@@ -47,7 +47,12 @@ class TestReleasePackage(unittest.TestCase):
             "-m",
             "test: resources",
         )
-        for name in (release.EXE_NAME, release.RUNNER_NAME, "_internal/python.dll"):
+        for name in (
+            release.EXE_NAME,
+            release.RUNNER_NAME,
+            release.UPDATER_EXE,
+            "_internal/python.dll",
+        ):
             self.write(self.package, name, "binary")
 
     def git(self, *args):
@@ -89,6 +94,8 @@ class TestReleasePackage(unittest.TestCase):
             | {
                 release.EXE_NAME,
                 release.RUNNER_NAME,
+                release.UPDATER_EXE,
+                release.MANIFEST,
                 release.VERSION_FILE,
                 "_internal/python.dll",
             },
@@ -175,6 +182,12 @@ class TestReleasePackage(unittest.TestCase):
         release.prepare_package(self.root, self.package)
         (self.package / "config/config.example.yml").unlink()
         with self.assertRaisesRegex(ValueError, "config/config.example.yml"):
+            release.validate_package(self.root, self.package)
+
+    def test_runtime_file_added_after_manifest_blocks_publication(self):
+        release.prepare_package(self.root, self.package)
+        self.write(self.package, "_internal/unlisted.dll", "unknown")
+        with self.assertRaisesRegex(ValueError, "更新清单不一致"):
             release.validate_package(self.root, self.package)
 
     def test_archive_contains_checked_files_and_matching_checksum(self):

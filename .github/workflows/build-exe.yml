@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      # build.bat 会：① PyInstaller 打包 GUI(onedir) + Runner(onefile)
+      # build.bat 会：① PyInstaller 打包 GUI(onedir) + Runner/Updater(onefile)
       # ② 拷贝受控资源和版本信息 ③ 在临时副本跑 tests/exe/test_*_exe.py
       # （真实启动打包产物做集成测试，需 Windows 管理员态，GitHub Windows runner 默认满足）。
       # CI 环境变量使 build.bat 跳过交互式 pause；exe 测试失败则 build.bat 以非 0 退出，

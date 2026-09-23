@@ -40,6 +40,7 @@ from src.service.schedule import (
     load_startup_options,
     save_schedule,
 )
+from src.service.update_service import UpdateService
 from src.utils.utils_config import (
     add_script,
     build_script_entry,
@@ -90,6 +91,21 @@ class AppService:
 
     def __init__(self):
         """装配各 peer。"""
+        self._updates = UpdateService()
+
+    def check_update(self):
+        """用户手动检查新版。"""
+        return self._updates.check_update()
+
+    def prepare_update(self, release, *, progress=None, cancelled=None):
+        """下载、校验并准备更新包。"""
+        return self._updates.prepare_update(
+            release, progress=progress, cancelled=cancelled
+        )
+
+    def start_update(self, prepared):
+        """等待独立更新器就绪；成功返回后 GUI 应立即退出。"""
+        return self._updates.start_update(prepared)
 
     # ── 配置备份 / 恢复（src.service.backup_service 模块函数）──
     def create_backup(self) -> dict:

@@ -80,7 +80,7 @@ def main():
         sys.exit(exit_code)
     _log_startup("run_cli")
 
-    _launch_qml()
+    _launch_qml(skip_auto_launch=args.after_update)
 
 
 def _install_qt_message_logger():
@@ -104,7 +104,7 @@ def _install_qt_message_logger():
     qInstallMessageHandler(_handler)
 
 
-def _launch_qml():
+def _launch_qml(*, skip_auto_launch: bool = False):
     # 禁用 QML 磁盘缓存 + 清理已有缓存：旧版编译缓存会导致类型解析错乱
     # （"Type IconButton unavailable" / "Cannot assign object to list property data"
     # 等误报），且删除前不重新生成——保证每次启动都是干净编译。
@@ -146,7 +146,8 @@ def _launch_qml():
     file_drop = install_file_drop(app, engine.rootObjects()[0], bridge.dropScripts)
     # 按启动设置决定是否倒计时；每日计划启用时只打开 GUI。
     # 须在进入事件循环前同步弹模态窗（QDialog.exec 自带局部事件循环）。
-    bridge.maybe_auto_launch()
+    if not skip_auto_launch:
+        bridge.maybe_auto_launch()
     _log_startup("进入事件循环")
     logger.info("[qml] entering event loop")
     exit_code = app.exec()

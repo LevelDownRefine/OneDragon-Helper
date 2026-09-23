@@ -24,6 +24,34 @@
 | daily_plan.py | 每日计划读写与 Windows 原生任务注册，并可回读任务实际状态；系统仅保存触发时间和 --run-daily 入口 |
 | backup_service.py | 配置备份与恢复：普通 ZIP 收集与恢复；按当前脚本目录覆盖，保留游戏路径，未配置脚本跳过 |
 | run_actions.py | pre_run / post_run 各 step 的具体动作 |
+| update_service.py | 用户显式检查稳定 Release、下载校验、启动独立更新器 |
+| update_package.py | 构建和安装共用的程序清单、哈希与路径校验 |
+| update_runtime.py | 安装目录运行锁、更新闸门、同目录进程识别 |
+| update_installer.py | 程序文件替换、持久化恢复记录及失败回滚 |
+
+## 手动更新内核
+
+`AppService.check_update()` 只在显式调用时请求当前仓库的最新稳定 Release；
+`prepare_update()` 下载 ZIP 与 SHA-256，校验清单及每个文件后返回 `PreparedUpdate`。
+构造服务和正常启动不联网。源码运行、开发构建、缺少清单的旧发布版不支持原位更新，
+须先手动安装带清单和更新器的正式版本。
+
+`start_update()` 从当前安装复制独立 onefile 更新器，等待它取得启动闸门后才返回。
+调用方收到返回值应立即退出窗口；更新器等待父进程退出并取得独占运行锁，
+再检查同目录 GUI / CLI / Runner 进程，不终止既有任务。冻结入口 `bootstrap.py`
+在导入 Qt 和初始化配置前持有共享运行锁，覆盖 GUI、每日计划和其他 CLI 出口。
+
+安装只替换新旧程序清单拥有的文件，删除退役程序文件，保留清单外文件。
+新程序路径与未知已有文件冲突时拒绝更新。替换前将旧程序快照和事务记录写入
+`.update/`；失败恢复旧版。异常退出留下的 `installing` 记录会阻止启动混合版本，
+可用 `.update/download-*/worker-*/OneDragon-Helper-Updater.exe --root "安装目录" --recover`
+恢复后重新启动。该路径须选取实际存在的工作进程副本；快照损坏会明确报错并保留现场。
+工作包、日志和程序快照保留在 `.update/`，不触碰用户备份目录，不进入下一次发布包。
+
+安装成功重启时带 `--after-update`，只跳过本次启动倒计时，不修改用户的启动设置。
+结果写入 `start_update()` 返回的 JSON 路径（installed / failed / restart_failed）；
+安装失败会恢复文件，但不会自动重启应用。更新器负责安装故障回滚，不判断新版业务功能是否正常。
+设置面板的更新按钮、工作线程及进度/结果展示由后续 GUI PR 接入。
 
 配置迁移只负责文件搬运，目录正确性及上游版本兼容性由用户保证。
 ZIP 结构固定为 `scripts/<脚本名>/<相对路径>`，无清单或版本协议；

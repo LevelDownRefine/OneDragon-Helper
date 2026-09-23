@@ -42,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--help", action="store_true", help="显示用法并退出（结果同时写文件）"
     )
+    parser.add_argument("--after-update", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--version", action="store_true", help="显示版本并退出（结果同时写文件）"
     )

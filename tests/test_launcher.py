@@ -5,7 +5,8 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from contextlib import ExitStack
+from unittest.mock import Mock, patch
 
 # 在导入 PySide6 相关模块之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -106,6 +107,42 @@ class TestStartupTimer(unittest.TestCase):
         ):
             launcher.main()
         self.assertLess(time.perf_counter() - launcher._STARTUP_T0, 1.0)
+
+
+class TestUpdateRestart(unittest.TestCase):
+    def test_after_update_flag_reaches_gui(self):
+        with (
+            patch.object(launcher, "setup_logging"),
+            patch.object(launcher, "install_crash_hooks"),
+            patch.object(launcher, "config_workflow"),
+            patch.object(launcher, "run_cli", return_value=None),
+            patch.object(launcher, "_launch_qml") as launch,
+            patch.object(sys, "argv", ["OneDragon-Helper", "--after-update"]),
+        ):
+            launcher.main()
+        launch.assert_called_once_with(skip_auto_launch=True)
+
+    def test_update_restart_skips_task_countdown_only_for_this_launch(self):
+        for skip in (False, True):
+            with self.subTest(skip=skip), ExitStack() as stack:
+                for name in (
+                    "_clear_qml_cache",
+                    "_install_qt_message_logger",
+                    "QApplication",
+                    "qmlRegisterSingletonInstance",
+                    "install_file_drop",
+                ):
+                    stack.enter_context(patch.object(launcher, name))
+                engine = stack.enter_context(
+                    patch.object(launcher, "QQmlApplicationEngine")
+                )
+                engine.return_value.rootObjects.return_value = [Mock()]
+                bridge = stack.enter_context(patch.object(launcher, "QmlBridge"))
+                with self.assertRaises(SystemExit):
+                    launcher._launch_qml(skip_auto_launch=skip)
+                self.assertEqual(
+                    bridge.return_value.maybe_auto_launch.call_count, int(not skip)
+                )
 
 
 class TestQtMessageLogger(unittest.TestCase):

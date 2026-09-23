@@ -61,6 +61,11 @@ exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定�
 发布目录不生成用户配置、日志或缓存。打包测试覆盖缺少用户 YAML 时的首启生成、
 再次启动保留修改，以及 `--version` 与构建元数据一致；测试前后和 ZIP 归档前均检查发布文件清单。
 
+`tests/service/test_update_*.py` 覆盖更新包边界、下载校验与取消、程序文件替换、
+故障回滚和中断恢复；`tests/exe/test_update_exe.py` 使用临时安装副本真正启动更新器，
+验证升级后的 EXE 可启动、运行中的 Runner 阻止更新、Windows 文件占用时回滚、
+启动闸门先于用户配置初始化，以及独立恢复入口。所有用户文件断言均使用临时夹具。
+
 ## 2. 风格检查 ruff
 
 ```bash
