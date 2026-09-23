@@ -424,7 +424,7 @@ class TestDailyItems(unittest.TestCase):
         self.assertEqual(items[0]["task_label"], "培养方案")
 
     def test_placeholder_when_daily_has_no_options(self):
-        """该日常声明里没有选项 → 占位「选择副本」。"""
+        """该日常声明里没有选项、也没有开关落点 → 占位「选择副本」。"""
         ctrl = _make_controller("ok-ww", "鸣潮")
         ctrl._daily_map_cache = {
             "ok-ww": {
@@ -436,6 +436,66 @@ class TestDailyItems(unittest.TestCase):
             [{"name": "每日任务", "task": None, "sequence": None, "enabled": None}],
         )
         self.assertEqual(items[0]["task_label"], "选择副本")
+        self.assertTrue(items[0]["switch_only"])
+
+    def test_switch_only_daily_states_enabled_state(self):
+        """无副本选项但有开关落点（原神的领取邮件/千星等）：chip 只表达开关态。"""
+        ctrl = _make_controller("BetterGI", "原神")
+        ctrl._daily_map_cache = {
+            "BetterGI": {
+                "dailies": [{"display_name": "领取邮件", "options": {"values": []}}]
+            }
+        }
+        for enabled, label in ((True, "启用"), (False, "不启用")):
+            with self.subTest(enabled=enabled):
+                items = self._items(
+                    ctrl,
+                    [
+                        {
+                            "name": "领取邮件",
+                            "task": None,
+                            "sequence": None,
+                            "enabled": enabled,
+                        }
+                    ],
+                )
+                self.assertTrue(items[0]["switch_only"])
+                self.assertTrue(items[0]["can_disable"])
+                self.assertEqual(items[0]["task_label"], label)
+
+    def test_switch_only_is_false_when_options_declared(self):
+        """有副本选项的日常：switch_only 为假（chip 仍弹副本菜单）。"""
+        ctrl = _make_controller("ok-ww", "鸣潮")
+        ctrl._daily_map_cache = {
+            "ok-ww": {
+                "dailies": [
+                    {
+                        "display_name": "每日任务",
+                        "options": {
+                            "values": [
+                                {
+                                    "display_name": "凝素领域",
+                                    "physical_name": "凝素领域",
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+        }
+        items = self._items(
+            ctrl,
+            [
+                {
+                    "name": "每日任务",
+                    "task": "凝素领域",
+                    "sequence": None,
+                    "enabled": True,
+                }
+            ],
+        )
+        self.assertFalse(items[0]["switch_only"])
+        self.assertEqual(items[0]["task_label"], "凝素领域")
 
     def test_no_items_without_dailies(self):
         """脚本无日常声明（反读为空）→ 无日常行。"""

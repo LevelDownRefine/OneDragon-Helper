@@ -101,10 +101,15 @@ class TestBgiReadback(unittest.TestCase):
             self.assertLogs("src.config.daily", level="WARNING"),
         ):
             records = get_daily_readback("BetterGI")
-        self.assertEqual([r["enabled"] for r in records], [True, None, None, None])
+        # 缺原生任务的行原地留空（None），不隐藏其它行。
+        self.assertEqual(
+            [r["enabled"] for r in records],
+            [True, None, None, None, True, True, True, True, False],
+        )
         self.assertEqual(records[0]["task"], "铭记之谷")
         self.assertEqual(records[2]["name"], "首领讨伐")
         self.assertEqual(records[3]["name"], "幽境危战")
+        self.assertEqual(records[8]["name"], "周常")
 
     def test_switch_to_bgi_updates_qml_daily_items_without_metacall_error(self):
         code = textwrap.dedent(
@@ -127,8 +132,8 @@ class TestBgiReadback(unittest.TestCase):
             ]
             native = {
                 "DomainName": "铭记之谷",
-                "TaskDefinitions": {"domain": "自动秘境"},
-                "TaskEnabledList": {"domain": True},
+                "TaskDefinitions": {"domain": "自动秘境", "mail": "领取邮件"},
+                "TaskEnabledList": {"domain": True, "mail": True},
             }
             with (
                 patch("src.utils.utils_sub_config._load_config_yml",
@@ -155,10 +160,14 @@ class TestBgiReadback(unittest.TestCase):
                 bridge.selectGame(1)
                 app.processEvents()
                 rows = root.property("rows")
-                assert len(rows) == 4, rows
+                assert len(rows) == 9, rows
                 assert rows[0]["task_label"] == "铭记之谷", rows
                 assert rows[3]["name"] == "幽境危战", rows
-                assert [row["can_disable"] for row in rows] == [True, False, False, False], rows
+                assert rows[8]["name"] == "周常", rows
+                assert [row["can_disable"] for row in rows] == (
+                    [True, False, False, False, True] + [False] * 4), rows
+                # 纯开关日常（无副本选项、有开关落点）chip 只表达开关态
+                assert rows[4]["switch_only"] and rows[4]["task_label"] == "启用", rows
                 assert not any("metacall" in m or "<NULL>" in m for m in messages), messages
             """
         )

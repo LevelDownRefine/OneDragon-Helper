@@ -78,15 +78,16 @@ class TaskCardController(QObject):
         """当前脚本的日常列表（供 QML 多日常布局）。
 
         一次反读拿到该脚本全部日常的已选项与开关（get_daily_readback），逐行生成
-        {name, task_label, can_disable, disabled}：task_label 为 chip 文字，优先用反读到的
-        副本（+二级选项），无真相回退该日常声明的首个选项（绝区零/崩铁的 set_daily_task
+        {name, task_label, can_disable, disabled, switch_only}：task_label 为 chip 文字，优先用
+        反读到的副本（+二级选项），无真相回退该日常声明的首个选项（绝区零/崩铁的 set_daily_task
         为 no-op，反读恒无真相，故回退声明项——即 UI 上直接呈现为已选状态）；该日常被停用时
         显示「不启用」。can_disable 由脚本是否声明日常开关（enabled 非 None）推导，
-        disabled 为当前是否已停用。
+        disabled 为当前是否已停用；switch_only 为该日常没有副本选项（如原神的纯开关任务），
+        此时 chip 只切开关、不弹副本菜单。
         """
         script_name = self._current["script_name"]
         options_by_daily = {
-            daily["display_name"]: daily["options"]["values"]
+            daily["display_name"]: daily.get("options", {}).get("values", [])
             for daily in self._dailies_of(script_name)
         }
         items = []
@@ -99,6 +100,7 @@ class TaskCardController(QObject):
                     "task_label": self._daily_label(record, options),
                     "can_disable": record["enabled"] is not None,
                     "disabled": record["enabled"] is False,
+                    "switch_only": not options,
                 }
             )
         return items
@@ -120,7 +122,7 @@ class TaskCardController(QObject):
         script_name = self._current["script_name"]
         for daily in self._dailies_of(script_name):
             if daily["display_name"] == daily_name:
-                return daily["options"]["values"]
+                return daily.get("options", {}).get("values", [])
         return []
 
     @property
@@ -231,10 +233,10 @@ class TaskCardController(QObject):
         self.taskStateChanged.emit()
 
     def _daily_label(self, record: dict, values: list) -> str:
-        """某日常的 chip 文字：停用 →「不启用」，否则反读副本（+二级选项）。
+        """某日常的 chip 文字：停用 →「不启用」，无副本但有开关 →「启用」。
 
-        反读无真相（如绝区零/崩铁的 no-op 日常）时回退声明的首个选项，
-        即 UI 上呈现为已选状态（不再持久化）。
+        其余取反读副本（+二级选项）；反读无真相（如绝区零/崩铁的 no-op 日常）时回退声明的
+        首个选项，即 UI 上呈现为已选状态（不再持久化）。
 
         Args:
             record: 该日常的反读记录（{name, task, sequence, enabled}）。
@@ -246,7 +248,11 @@ class TaskCardController(QObject):
         if record["enabled"] is False:
             return "不启用"
         task = record["task"]
-        if task is None and values:
+        if task is None and not values:
+            # 反读不到副本又无副本选项的日常：有开关落点则 chip 只表达开关态
+            # （原神的领取邮件/千星等），没有开关落点时无从表达，保留占位。
+            return "启用" if record["enabled"] is not None else "选择副本"
+        if task is None:
             task = values[0]["display_name"]
         if not task:
             return "选择副本"

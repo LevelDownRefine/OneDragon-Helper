@@ -713,6 +713,53 @@ class BgiStygianDaily(_SingleLayerDaily, BgiDaily):
         self._save_routine_config(config)
 
 
+class BgiSwitchDaily(BgiDaily):
+    """只有开关的 BetterGI 任务（领取邮件 / 尘歌壶奖励 / 每日奖励 / 千星 / 周常）。
+
+    这类任务在一条龙里没有副本可选，唯一落点是任务启用表；界面只呈现开关，
+    声明里的 ``options`` 留空（物化层要求该键存在）。
+    """
+
+    def _parse_landing(self, declaration: dict) -> None:
+        """无副本落点：只保留开关（由 ``enable_task`` 反查任务启用表）。
+
+        Raises:
+            AssertionError: 声明里带了副本选项。
+        """
+        options = get_options(declaration)
+        assert not options, (
+            f"{self.script_name}/{self.physical_name} 是纯开关日常，不应声明副本选项"
+        )
+        self.task_field = None
+        self.task_map: dict[str, Any] = {}
+        self.option_fields: dict[str, str] = {}
+        self.options: list[dict] = []
+        self._sequence_values: dict[str, dict[str, Any]] = {}
+        self._sequence_required = False
+        self._single_field = False
+
+    def read(self) -> tuple[str | None, str | int | None]:
+        """无副本真相：不读不解析。
+
+        Returns:
+            恒为 (None, None)。
+        """
+        return None, None
+
+    def update(self, task_name: str, sequence: str | int | None = None) -> bool:
+        """无副本可写：不读不写（开关走 :meth:`set_enabled`）。
+
+        Args:
+            task_name: 一级项展示名（本实现忽略）。
+            sequence: 二级项值（本实现忽略）。
+
+        Returns:
+            恒为 False。
+        """
+        logger.info(f"[daily][{self.display_name}] 只控制开关，无需适配副本")
+        return False
+
+
 class NoopDaily(Daily):
     """无需适配副本的日常（绝区零/崩铁）：声明无落点，跳过解析，不读不写。"""
 
@@ -1029,6 +1076,7 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
         BgiDaily,
         BgiLeyLineDaily,
         BgiStygianDaily,
+        BgiSwitchDaily,
         NoopDaily,
         Anomaly,
         AnomalyHunter,

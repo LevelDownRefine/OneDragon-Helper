@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from src.config.daily import (
     Anomaly,
+    BgiSwitchDaily,
     Daily,
     MaaDaily,
     NoopDaily,
@@ -470,6 +471,52 @@ class TestBgiStygian(unittest.TestCase):
         daily = daily_of("BetterGI", "幽境危战")
         with patch.object(daily, "_load_routine_config", return_value=None):
             self.assertIsNone(daily.read_enabled())
+
+
+class TestBgiSwitch(unittest.TestCase):
+    """原神纯开关任务（领取邮件 / 尘歌壶 / 每日奖励 / 千星 / 周常）：无副本落点，只读写启用表。"""
+
+    def test_landing_has_no_options(self):
+        """无副本落点：选项字段全空，写副本无从下手。"""
+        daily = daily_of("BetterGI", "领取邮件")
+        self.assertIsNone(daily.task_field)
+        self.assertEqual(daily.option_fields, {})
+        self.assertEqual(daily.options, [])
+        self.assertEqual(daily.task_map, {})
+
+    def test_read_and_update_are_noop(self):
+        daily = daily_of("BetterGI", "领取邮件")
+        self.assertEqual(daily.read(), (None, None))
+        self.assertFalse(daily.update("领取邮件"))
+
+    def test_switch_reads_task_enabled_list(self):
+        """开关仍是任务启用表里的一项（id 由任务名反查）。"""
+        daily = daily_of("BetterGI", "周常")
+        config = {
+            "TaskDefinitions": {"uuid-w": "周常", "uuid-other": "千星"},
+            "TaskEnabledList": {"uuid-w": False, "uuid-other": True},
+        }
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            patch.object(daily, "_save_daily_config") as mock_save,
+        ):
+            self.assertFalse(daily.read_enabled())
+            self.assertTrue(daily.set_enabled(True))
+            mock_save.assert_called_once()
+        self.assertTrue(config["TaskEnabledList"]["uuid-w"])
+        self.assertTrue(config["TaskEnabledList"]["uuid-other"], "别的任务不应被动到")
+
+    def test_declaring_options_is_rejected(self):
+        """声明里带了副本选项 → 构造即报错（声明写错当场暴露）。"""
+        declaration = {
+            "display_name": "领取邮件",
+            "class": "BgiSwitchDaily",
+            "config": "User/OneDragon/默认配置.json",
+            "enable_task": "领取邮件",
+            "options": {"values": [{"display_name": "不该有"}]},
+        }
+        with self.assertRaisesRegex(AssertionError, "纯开关日常"):
+            BgiSwitchDaily("BetterGI", declaration, "原神")
 
 
 class TestDeclarationErrors(unittest.TestCase):

@@ -45,12 +45,22 @@ def _seed_files():
             "leyline": "自动地脉花",
             "boss": "自动首领讨伐",
             "stygian": "自动幽境危战",
+            "mail": "领取邮件",
+            "pot": "领取尘歌壶奖励",
+            "reward": "领取每日奖励",
+            "miliastra": "千星",
+            "weekly": "周常",
         },
         "TaskEnabledList": {
             "domain": False,
             "leyline": False,
             "boss": False,
             "stygian": False,
+            "mail": False,
+            "pot": False,
+            "reward": False,
+            "miliastra": False,
+            "weekly": False,
         },
     }
     # 幽境危战的数据段在主配置（User/config.json），开关仍在一条龙配置。
