@@ -243,17 +243,20 @@ class TestReadbackFacade(unittest.TestCase):
                         "uuid-1": "自动秘境",
                         "uuid-2": "自动地脉花",
                         "uuid-3": "自动首领讨伐",
+                        "uuid-4": "自动幽境危战",
                     },
                     "TaskEnabledList": {
                         "uuid-1": False,
                         "uuid-2": True,
                         "uuid-3": False,
+                        "uuid-4": False,
                     },
                 },
                 [
                     ("每日任务", "铭记之谷", None, False),
                     ("地脉花", None, None, True),
                     ("首领讨伐", None, None, False),
+                    ("幽境危战", None, None, False),
                 ],
             ),
         )
@@ -261,6 +264,9 @@ class TestReadbackFacade(unittest.TestCase):
             with (
                 self.subTest(script=script_name),
                 patch.object(Daily, "_load_daily_config", return_value=config),
+                # 幽境危战的数据与开关分处两份文件：此处同一份种子兼作 routine，
+                # 避免读进真实安装目录。
+                patch.object(Daily, "_load_routine_config", return_value=config),
             ):
                 self.assertEqual(
                     get_daily_readback(script_name),

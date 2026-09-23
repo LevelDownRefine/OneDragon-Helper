@@ -376,6 +376,102 @@ class TestBgiLeyLine(unittest.TestCase):
             daily.read()
 
 
+class TestBgiStygian(unittest.TestCase):
+    """原神幽境危战：数据段在 BetterGI 主配置，开关在一条龙的任务启用表。"""
+
+    @staticmethod
+    def _main_config(boss_num: int | None = 1) -> dict:
+        """主配置：只有 autoStygianOnslaughtConfig 段。"""
+        section: dict = {"strategyName": "根据队伍自动选择"}
+        if boss_num is not None:
+            section["bossNum"] = boss_num
+        return {"autoStygianOnslaughtConfig": section}
+
+    @staticmethod
+    def _flow_config(enabled: bool) -> dict:
+        """一条龙配置：幽境危战那条任务的启用表。"""
+        return {
+            "TaskDefinitions": {"uuid-stygian": "自动幽境危战"},
+            "TaskEnabledList": {"uuid-stygian": enabled},
+        }
+
+    def test_landing_is_single_layer_stage(self):
+        """单层形态：整组即唯一一级项（日常名），二级为关卡一/二/三（原生 int）。"""
+        daily = daily_of("BetterGI", "幽境危战")
+        self.assertIsNone(daily.task_field)
+        self.assertEqual(daily.option_fields, {"幽境危战": "bossNum"})
+        self.assertEqual(
+            daily._sequence_values,
+            {"幽境危战": {"关卡一": 1, "关卡二": 2, "关卡三": 3}},
+        )
+
+    def test_read_takes_stage_from_own_segment(self):
+        daily = daily_of("BetterGI", "幽境危战")
+        with patch.object(
+            daily, "_load_daily_config", return_value=self._main_config(2)
+        ):
+            self.assertEqual(daily.read(), ("幽境危战", 2))
+
+    def test_read_without_segment_has_no_truth(self):
+        """主配置没有该段（BGI 未生成）或段里没选关卡：无真相。"""
+        daily = daily_of("BetterGI", "幽境危战")
+        for config in ({"other": 1}, {}):
+            with (
+                self.subTest(config=config),
+                patch.object(daily, "_load_daily_config", return_value=config),
+            ):
+                self.assertEqual(daily.read(), (None, None))
+        with patch.object(
+            daily, "_load_daily_config", return_value=self._main_config(None)
+        ):
+            self.assertEqual(daily.read(), ("幽境危战", None))
+
+    def test_update_writes_int_stage(self):
+        """选关卡写 bossNum（int），只动该字段。"""
+        daily = daily_of("BetterGI", "幽境危战")
+        config = self._main_config(1)
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            patch.object(daily, "_save_daily_config") as mock_save,
+        ):
+            self.assertTrue(daily.update("幽境危战", "关卡三"))
+            self.assertFalse(daily.update("幽境危战", "关卡三"))
+            mock_save.assert_called_once()
+        self.assertEqual(config["autoStygianOnslaughtConfig"]["bossNum"], 3)
+        self.assertEqual(
+            config["autoStygianOnslaughtConfig"]["strategyName"], "根据队伍自动选择"
+        )
+
+    def test_switch_lives_in_flow_config(self):
+        """开关读写走一条龙配置（routine），数据段文件不参与。"""
+        daily = daily_of("BetterGI", "幽境危战")
+        flow = self._flow_config(False)
+        with (
+            patch.object(daily, "_load_routine_config", return_value=flow),
+            patch.object(daily, "_save_routine_config") as mock_save,
+        ):
+            self.assertFalse(daily.read_enabled())
+            self.assertTrue(daily.set_enabled(True))
+            self.assertFalse(daily.set_enabled(True))
+            mock_save.assert_called_once()
+        self.assertTrue(flow["TaskEnabledList"]["uuid-stygian"])
+
+    def test_switch_looks_up_task_id_by_name(self):
+        """任务 id 由任务名反查，不硬编码 uuid。"""
+        daily = daily_of("BetterGI", "幽境危战")
+        flow = {
+            "TaskDefinitions": {"uuid-x": "自动秘境", "uuid-y": "自动幽境危战"},
+            "TaskEnabledList": {"uuid-x": True, "uuid-y": True},
+        }
+        with patch.object(daily, "_load_routine_config", return_value=flow):
+            self.assertTrue(daily.read_enabled())
+
+    def test_switch_without_flow_file_has_no_truth(self):
+        daily = daily_of("BetterGI", "幽境危战")
+        with patch.object(daily, "_load_routine_config", return_value=None):
+            self.assertIsNone(daily.read_enabled())
+
+
 class TestDeclarationErrors(unittest.TestCase):
     """声明本身的约束：必须有选项，且不能混用单层与两层。"""
 
