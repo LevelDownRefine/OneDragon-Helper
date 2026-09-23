@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.service import update_installer as installer
-from src.service.update_package import UpdateError, load_manifest
+from src.update import installer
+from src.update.package import UpdateError, load_manifest
 from tests.support.update_package import make_package, program_snapshot
 
 

@@ -19,7 +19,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.service.update_package import (  # noqa: E402
+from src.update.package import (  # noqa: E402
     MANIFEST,
     UPDATER_EXE,
     load_manifest,

@@ -6,7 +6,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from src.service.update_package import (
+from src.update.package import (
     MANIFEST,
     UpdateError,
     load_manifest,

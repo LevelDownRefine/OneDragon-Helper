@@ -9,9 +9,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from src import updater
-from src.service.update_package import APP_EXE, UpdateError
-from src.service.update_runtime import (
+from src.update import __main__ as updater
+from src.update.package import APP_EXE, UpdateError
+from src.update.runtime import (
     FileLease,
     UpdateBusyError,
     application_lease,
@@ -45,7 +45,7 @@ class TestUpdateRuntime(unittest.TestCase):
 
     def test_process_exit_releases_update_intent(self):
         code = (
-            "from pathlib import Path; from src.service.update_runtime import FileLease; "
+            "from pathlib import Path; from src.update.runtime import FileLease; "
             "import os,sys; lock=FileLease(Path(sys.argv[1])); lock.__enter__(); os._exit(0)"
         )
         path = self.root / ".update/intent.lock"
@@ -69,7 +69,7 @@ class TestUpdateRuntime(unittest.TestCase):
         another = Mock(pid=12346)
         another.exe.return_value = str(self.root / "other" / APP_EXE)
         with patch(
-            "src.service.update_runtime.psutil.process_iter",
+            "src.update.runtime.psutil.process_iter",
             return_value=[own, running, another],
         ):
             self.assertEqual(helper_processes(self.root, {os.getpid()}), [12345])

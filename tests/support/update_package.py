@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from src.service.update_package import MANIFEST, REQUIRED_FILES, write_manifest
+from src.update.package import MANIFEST, REQUIRED_FILES, write_manifest
 
 
 def make_package(root: Path, version="1.0.0", extra=None):

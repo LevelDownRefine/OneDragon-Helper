@@ -18,7 +18,7 @@ from threading import Event
 import psutil
 import requests
 
-from src.service.update_package import (
+from src.update.package import (
     MAX_PACKAGE_BYTES,
     UPDATER_EXE,
     VERSION_FILE,
@@ -28,7 +28,7 @@ from src.service.update_package import (
     unpack_package,
     version_number,
 )
-from src.service.update_runtime import (
+from src.update.runtime import (
     child_environment,
     helper_processes,
     update_directory,

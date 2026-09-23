@@ -11,9 +11,9 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from src.service import update_service as service
 from src.service.app_service import AppService
-from src.service.update_package import UPDATER_EXE, UpdateError, load_manifest
+from src.update import service
+from src.update.package import UPDATER_EXE, UpdateError, load_manifest
 from tests.support.update_package import archive_package, make_package, program_snapshot
 
 

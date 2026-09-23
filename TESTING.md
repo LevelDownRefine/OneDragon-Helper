@@ -26,6 +26,7 @@ python -m 把根目录加入 sys.path，PYTHONPATH=src 让 import launcher 可�
 | `tests/gui/` | 控件、控制器、QML、窗口及 GUI 共享夹具 |
 | `tests/config/` | 配置适配器、声明、日常、周常及 golden 验证 |
 | `tests/service/` | 配置服务、链生成、调度和运行编排 |
+| `tests/update/` | 更新包协议、下载服务、运行锁、安装回滚与独立入口 |
 | `tests/utils/` | 通用工具、文件读写、路径与系统操作 |
 | `tests/log/` | 日志解析与邮件通知 |
 | `tests/tools/` | 选项同步脚本的离线测试 |
@@ -63,8 +64,9 @@ exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定�
 图片插件解码在独立进程中执行，退出后验证 DLL 可立即删除且缺失插件确实无法解码。
 测试副本清理遇到 `PermissionError` 时累计等待最多 5 秒重试，持续占用仍报错并保留失败路径。
 
-`tests/service/test_update_*.py` 覆盖更新包边界、下载校验与取消、程序文件替换、
-故障回滚和中断恢复；`tests/exe/test_update_exe.py` 使用临时安装副本真正启动更新器，
+`tests/update/` 覆盖更新包边界、下载校验与取消、程序文件替换、故障回滚和中断恢复，
+并以 `python -m src.update` 验证独立入口的安装和失败结果；
+`tests/exe/test_update_exe.py` 使用临时安装副本真正启动更新器，
 验证升级后的 EXE 可启动、运行中的 Runner 阻止更新、Windows 文件占用时回滚、
 启动闸门先于用户配置初始化，以及独立恢复入口。所有用户文件断言均使用临时夹具。
 

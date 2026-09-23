@@ -11,8 +11,8 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from src.gui.controllers.update import UpdateController
-from src.service.update_package import UpdateError
-from src.service.update_service import (
+from src.update.package import UpdateError
+from src.update.service import (
     PreparedUpdate,
     ReleaseUpdate,
     UpdateCancelled,

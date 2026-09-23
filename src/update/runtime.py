@@ -9,7 +9,7 @@ from pathlib import Path
 
 import psutil
 
-from src.service.update_package import APP_EXE, RUNNER_EXE, UpdateError
+from src.update.package import APP_EXE, RUNNER_EXE, UpdateError
 
 logger = logging.getLogger(__name__)
 

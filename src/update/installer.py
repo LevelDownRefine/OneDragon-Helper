@@ -7,7 +7,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from src.service.update_package import (
+from src.update.package import (
     MANIFEST,
     UpdateError,
     file_digest,
@@ -15,7 +15,7 @@ from src.service.update_package import (
     safe_target,
     version_number,
 )
-from src.service.update_runtime import update_directory
+from src.update.runtime import update_directory
 
 logger = logging.getLogger(__name__)
 

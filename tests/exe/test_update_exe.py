@@ -12,8 +12,8 @@ from pathlib import Path
 
 import psutil
 
-from src.service.update_installer import write_json
-from src.service.update_package import (
+from src.update.installer import write_json
+from src.update.package import (
     APP_EXE,
     RUNNER_EXE,
     UPDATER_EXE,
@@ -21,7 +21,7 @@ from src.service.update_package import (
     load_manifest,
     write_manifest,
 )
-from src.service.update_runtime import FileLease, child_environment
+from src.update.runtime import FileLease, child_environment
 from tests.exe import package_dir
 
 CAN_RUN = (

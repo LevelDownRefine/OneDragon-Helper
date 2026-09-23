@@ -8,13 +8,13 @@ from pathlib import Path
 
 import psutil
 
-from src.service.update_installer import (
+from src.update.installer import (
     install_package,
     recover_installation,
     write_json,
 )
-from src.service.update_package import APP_EXE
-from src.service.update_runtime import (
+from src.update.package import APP_EXE
+from src.update.runtime import (
     FileLease,
     UpdateBusyError,
     child_environment,
