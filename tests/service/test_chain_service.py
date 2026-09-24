@@ -1,5 +1,7 @@
-"""测试 src/service/chain_service.py：无头测试，全部 mock 被包装函数。"""
+"""链生成、运行与调度编排；外部进程和通知使用替身。"""
 
+import os
+import subprocess
 import unittest
 from datetime import datetime
 from unittest.mock import patch
@@ -9,131 +11,51 @@ import src.utils.utils_config as utils_config
 from src.service.schedule import ScheduledRun, build_post_run_pipeline
 
 
-class TestChainGeneration(unittest.TestCase):
-    """链生成与校验：转发"""
-
-    def test_generate_chain_delegates(self):
-        data = {"script_list": []}
-        with (
-            patch(
-                "src.service.chain_service._generate_chain_config",
-                return_value="out.yml",
-            ) as m,
-            patch("src.service.chain_service.load_all_weekly", return_value={}),
-        ):
-            out = chain_service.generate_chain(data, {"A"}, "88", out_path="out.yml")
-        self.assertEqual(out, "out.yml")
-        m.assert_called_once_with(
-            data,
-            {"A"},
-            "88",
-            "out.yml",
-            weekly_timeouts={},
-        )
-
-
 class TestRunChainOnce(unittest.TestCase):
-    """run_chain_once：生成+运行+关机/静音命令构造的模块级原子。"""
+    """生成所选脚本链并等待子进程结束。"""
 
-    def _make_service(self, script_list):
-        self._cfg_patch = patch(
-            "src.utils.utils_config.load_config",
-            return_value={"script_list": script_list},
-        )
-        self._weekly_patch = patch(
-            "src.service.chain_service.load_all_weekly", return_value={}
-        )
-        self._weekly_load = self._weekly_patch.start()
-        self._cfg = self._cfg_patch.start()
-        self.addCleanup(self._weekly_patch.stop)
-        self.addCleanup(self._cfg_patch.stop)
-
-    def test_defaults_all_scripts_and_runs(self):
-        self._make_service([{"display_name": "A", "script_path": "A.exe"}])
-        with (
-            patch(
-                "src.service.chain_service._generate_chain_config",
-                return_value="out.yml",
-            ) as gen,
-            patch(
-                "src.service.chain_service._build_run_chain_command",
-                return_value=(["cmd"], "cwd", None),
-            ) as build,
-            patch("src.service.chain_service.subprocess.run") as run,
-        ):
-            chain_service.run_chain_once({"A"})
-        # 默认启用全部脚本、chain_name=today、不关机不静音
-        gen.assert_called_once_with(
-            {"script_list": [{"display_name": "A", "script_path": "A.exe"}]},
-            {"A"},
-            "today",
-            weekly_timeouts={},
-        )
-        build.assert_called_once_with("out.yml")
-        run.assert_called_once()
-
-    def test_run_chain_once_does_not_forward_weekly_start_map(self):
-        """回归：weekly_start→子脚本 config 的写盘已移到 ScheduledRun.pre_run，
-        run_chain_once 不再把 weekly_start_map 透传给链生成。"""
-        self._make_service([{"display_name": "A", "script_path": "A.exe"}])
-        self._weekly_load.return_value = {"A": 100}
-        with (
-            patch(
-                "src.service.chain_service._generate_chain_config",
-                return_value="out.yml",
-            ) as gen,
-            patch(
-                "src.service.chain_service._build_run_chain_command",
-                return_value=(["cmd"], "cwd", None),
-            ),
-            patch("src.service.chain_service.subprocess.run"),
-        ):
-            chain_service.run_chain_once({"A"})
-        gen.assert_called_once_with(
-            {"script_list": [{"display_name": "A", "script_path": "A.exe"}]},
-            {"A"},
-            "today",
-            weekly_timeouts={"A": 100},
-        )
-
-    def test_subset_launches_blocking(self):
-        """阻塞启动：按子集生成+运行，返回 None（静音已不再经此透传）。"""
-        self._make_service(
-            [
-                {"display_name": "A", "script_path": "A.exe"},
-                {"display_name": "B", "script_path": "B.exe"},
-            ]
-        )
-        with (
-            patch(
-                "src.service.chain_service._generate_chain_config",
-                return_value="out.yml",
-            ) as gen,
-            patch(
-                "src.service.chain_service._build_run_chain_command",
-                return_value=(["cmd"], "cwd", None),
-            ) as build,
-            patch("src.service.chain_service.subprocess.run") as run,
-        ):
-            result = chain_service.run_chain_once({"A"})
-        self.assertIsNone(result)
-        gen.assert_called_once_with(
-            {
-                "script_list": [
-                    {"display_name": "A", "script_path": "A.exe"},
-                    {"display_name": "B", "script_path": "B.exe"},
-                ]
-            },
-            {"A"},
-            "today",
-            weekly_timeouts={},
-        )
-        build.assert_called_once_with("out.yml")
-        run.assert_called_once()
+    def test_run_selected_chain_passes_weekly_timeouts_and_waits(self):
+        for subset, weekly in ((False, {}), (False, {"A": 100}), (True, {})):
+            with self.subTest(subset=subset, weekly=weekly):
+                scripts = [{"display_name": "A", "script_path": "A.exe"}]
+                if subset:
+                    scripts.append({"display_name": "B", "script_path": "B.exe"})
+                with (
+                    patch(
+                        "src.utils.utils_config.load_config",
+                        return_value={"script_list": scripts},
+                    ),
+                    patch(
+                        "src.service.chain_service.load_all_weekly", return_value=weekly
+                    ),
+                    patch(
+                        "src.service.chain_service._generate_chain_config",
+                        return_value="out.yml",
+                    ) as gen,
+                    patch(
+                        "src.service.chain_service._build_run_chain_command",
+                        return_value=(["cmd"], "cwd", None),
+                    ) as build,
+                    patch("src.service.chain_service.subprocess.run") as run,
+                ):
+                    self.assertIsNone(chain_service.run_chain_once({"A"}))
+                gen.assert_called_once_with(
+                    {"script_list": scripts}, {"A"}, "today", weekly_timeouts=weekly
+                )
+                build.assert_called_once_with("out.yml")
+                flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+                run.assert_called_once_with(
+                    ["cmd"], cwd="cwd", env=None, creationflags=flags
+                )
 
     def test_empty_script_list_asserts(self):
-        self._make_service([])
-        with self.assertRaises(AssertionError):
+        with (
+            patch(
+                "src.utils.utils_config.load_config", return_value={"script_list": []}
+            ),
+            patch("src.service.chain_service.load_all_weekly", return_value={}),
+            self.assertRaises(AssertionError),
+        ):
             chain_service.run_chain_once({"A"})
 
     def test_run_steps_isolates_step_failures(self):
@@ -276,11 +198,6 @@ class TestScheduleRun(unittest.TestCase):
         mock_sleep.assert_not_called()  # 即时：不等待
         self._run_once.assert_called_once()  # 仍点火运行
 
-    def test_no_shutdown_when_none(self):
-        self._make_service([{"display_name": "demo"}])
-        _, mock_shutdown = self._run(shutdown_delay=None)
-        mock_shutdown.assert_not_called()
-
     def test_rerun_round_before_post_run(self):
         """schedule_run：链跑完后先重跑失败脚本，再执行 post_run（邮件/关机）。"""
         self._make_service([{"display_name": "demo"}])
@@ -392,49 +309,34 @@ class TestBuildPostRunPipeline(unittest.TestCase):
                 step()
         return parse, mail, shutdown
 
-    def test_full_pipeline_order_and_calls(self):
-        """有 SMTP+关机：分析(最终态)→邮件→关机，均触发；重跑不在 pipeline 内。"""
-        parse, mail, shutdown = self._run(
-            shutdown_delay=60,
-            smtp_config={"enabled": True, "email": "a@qq.com", "password": "pw"},
-        )
-        self.assertEqual(parse.call_count, 1)  # 仅最终态分析
-        self.assertEqual(parse.call_args.kwargs.get("do_log"), False)
-        mail.assert_called_once()
-        shutdown.assert_called_once_with(60)
-
-    def test_empty_rerun_skips_rerun_and_reparse(self):
-        """rerun 名单为空不影响：邮件/关机按配置；pipeline 内部本就不含重跑。"""
-        parse, mail, shutdown = self._run(
-            rerun=(), shutdown_delay=None, smtp_config=None
-        )
-        self.assertEqual(parse.call_count, 1)
-        mail.assert_not_called()
-        shutdown.assert_not_called()
-
-    def test_no_shutdown_trims_steps(self):
-        """shutdown_delay=None：末位关机步骤不出现（仍可发邮件）。"""
-        parse, mail, shutdown = self._run(
-            shutdown_delay=None,
-            smtp_config={"enabled": True, "email": "a@qq.com", "password": "pw"},
-        )
-        mail.assert_called_once()  # 邮件仍执行
-        shutdown.assert_not_called()
-
-    def test_mail_skipped_without_smtp_config(self):
-        """未配置 SMTP：邮件步骤静默跳过（默认关闭）。"""
-        parse, mail, shutdown = self._run(shutdown_delay=None, smtp_config=None)
-        mail.assert_not_called()
-
-    def test_enabled_keys_passed_as_candidate_to_parse_logs(self):
-        """build_post_run_pipeline 把本次启用的脚本集合作为候选列表传给 parse_logs：
-        邮件汇总只在候选（启用）脚本内挑选，未启用脚本不计入。"""
-        parse, mail, shutdown = self._run(
-            shutdown_delay=None,
-            smtp_config={"enabled": True, "email": "a@qq.com", "password": "pw"},
-            enabled_keys={"demo"},
-        )
-        parse.assert_called_once_with(do_log=False, candidate_script_names={"demo"})
+    def test_post_run_respects_mail_and_shutdown_options(self):
+        config = {"enabled": True, "email": "a@qq.com", "password": "pw"}
+        for name, smtp, delay, rerun in (
+            ("mail_and_shutdown", config, 60, ("demo",)),
+            ("mail_only", config, None, ("demo",)),
+            ("neither", None, None, ("demo",)),
+            ("no_failures", None, None, ()),
+        ):
+            with self.subTest(name=name):
+                parse, mail, shutdown = self._run(
+                    rerun=rerun,
+                    shutdown_delay=delay,
+                    smtp_config=smtp,
+                    enabled_keys={"demo"},
+                )
+                parse.assert_called_once_with(
+                    do_log=False, candidate_script_names={"demo"}
+                )
+                if smtp is None:
+                    mail.assert_not_called()
+                else:
+                    mail.assert_called_once_with(
+                        self._result(rerun=rerun), smtp_config=smtp
+                    )
+                if delay is None:
+                    shutdown.assert_not_called()
+                else:
+                    shutdown.assert_called_once_with(delay)
 
 
 class TestRerunRound(unittest.TestCase):

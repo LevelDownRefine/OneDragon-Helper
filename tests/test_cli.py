@@ -83,6 +83,8 @@ def _run_main(argv, expect_exit=None):
     main() 的 CLI 出口都用 sys.exit 退出，故捕获 SystemExit 取退出码。
     CLI 必须经 sys.exit 退出；意外返回不能算成功。
     """
+    if "--generate-chain" in argv:
+        Path(_cli_file("generate_chain")).unlink(missing_ok=True)
     with patch.object(sys, "argv", ["launcher.py", *argv]):
         try:
             launcher.main()
@@ -258,98 +260,41 @@ class TestCliGenerateChain(CliTestCase):
         self._resolve_daily.start()
         self.addCleanup(self._resolve_daily.stop)
 
-    def test_generate_chain_default_all_enabled(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
-            out = fh.name
-        try:
-            code = _run_main(["--generate-chain", "--out", out], expect_exit=0)
-            self.assertEqual(code, 0)
-            self.assertTrue(os.path.isfile(out), f"--generate-chain 未产出 yml: {out}")
-            data = load_yaml(out)
-            self.assertIn("script_list", data, msg=data)
-            produced = [get_script_name(s) for s in data["script_list"]]
-            self.assertEqual(set(produced), set(self._chainable), msg=produced)
-            # _emit_cli 也应写了结果文件
-            self.assertIn("已生成脚本链配置", _read_cli_file("generate_chain"))
-        finally:
-            if os.path.exists(out):
-                os.remove(out)
-
-    def test_generate_chain_enable_all_is_explicit_all(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
-            out = fh.name
-        try:
-            code = _run_main(
-                ["--generate-chain", "--enable", "all", "--out", out],
-                expect_exit=0,
-            )
-            self.assertEqual(code, 0)
-            data = load_yaml(out)
-            produced = [get_script_name(s) for s in data["script_list"]]
-            self.assertEqual(set(produced), set(self._chainable), msg=produced)
-        finally:
-            if os.path.exists(out):
-                os.remove(out)
-
-    def test_generate_chain_enable_all_is_case_insensitive(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
-            out = fh.name
-        try:
-            code = _run_main(
-                ["--generate-chain", "--enable", "ALL", "--out", out],
-                expect_exit=0,
-            )
-            self.assertEqual(code, 0)
-            data = load_yaml(out)
-            produced = [get_script_name(s) for s in data["script_list"]]
-            self.assertEqual(set(produced), set(self._chainable), msg=produced)
-        finally:
-            if os.path.exists(out):
-                os.remove(out)
-
-    def test_generate_chain_enable_subset(self):
+    def test_generate_chain_selection(self):
         target = self._chainable[0]
-        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
-            out = fh.name
-        try:
-            code = _run_main(
-                ["--generate-chain", "--enable", target, "--out", out],
-                expect_exit=0,
-            )
-            self.assertEqual(code, 0)
-            data = load_yaml(out)
-            produced = [get_script_name(s) for s in data["script_list"]]
-            self.assertEqual(produced, [target], msg=produced)
-        finally:
-            if os.path.exists(out):
-                os.remove(out)
+        all_names = set(self._chainable)
+        for name, flags, expected in (
+            ("default", [], all_names),
+            ("all", ["--enable", "all"], all_names),
+            ("uppercase_all", ["--enable", "ALL"], all_names),
+            ("subset", ["--enable", target], {target}),
+            ("exclude", ["--exclude", target], all_names - {target}),
+        ):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                out = os.path.join(tmp, "chain.yml")
+                self.assertEqual(
+                    _run_main(
+                        ["--generate-chain", *flags, "--out", out], expect_exit=0
+                    ),
+                    0,
+                )
+                self.assertTrue(os.path.isfile(out), "--generate-chain 未产出 yml")
+                data = load_yaml(out)
+                self.assertIn("script_list", data)
+                produced = [get_script_name(s) for s in data["script_list"]]
+                self.assertEqual(set(produced), expected)
+                self.assertEqual(len(produced), len(expected))
+                self.assertIn("已生成脚本链配置", _read_cli_file("generate_chain"))
 
-    def test_generate_chain_unknown_name_exits_one(self):
+    def test_unknown_selection_exits_one(self):
         bogus = "此脚本一定不存在_XYZ"
         assert bogus not in self._names
-        code = _run_main(["--generate-chain", "--enable", bogus], expect_exit=1)
-        self.assertEqual(code, 1)
-        self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
-
-    def test_generate_chain_exclude_subset(self):
-        """--exclude 从全部脚本中剔除指定标识"""
-        target = self._chainable[0]
-        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
-            out = fh.name
-        try:
-            code = _run_main(
-                ["--generate-chain", "--exclude", target, "--out", out],
-                expect_exit=0,
-            )
-            self.assertEqual(code, 0)
-            data = load_yaml(out)
-            produced = [get_script_name(s) for s in data["script_list"]]
-            self.assertEqual(
-                set(produced), set(self._chainable) - {target}, msg=produced
-            )
-        finally:
-            if os.path.exists(out):
-                os.remove(out)
+        for flag in ("--enable", "--exclude"):
+            with self.subTest(flag=flag):
+                self.assertEqual(
+                    _run_main(["--generate-chain", flag, bogus], expect_exit=1), 1
+                )
+                self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
 
     def test_generate_chain_exclude_with_enable(self):
         """--enable 白名单后再 --exclude，交集为最终集合。
@@ -387,14 +332,6 @@ class TestCliGenerateChain(CliTestCase):
         finally:
             if os.path.exists(out):
                 os.remove(out)
-
-    def test_generate_chain_exclude_unknown_name_exits_one(self):
-        """--exclude 含未知标识时报错退出 1"""
-        bogus = "此脚本一定不存在_XYZ"
-        assert bogus not in self._names
-        code = _run_main(["--generate-chain", "--exclude", bogus], expect_exit=1)
-        self.assertEqual(code, 1)
-        self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
 
 
 class TestParseOverrides(unittest.TestCase):

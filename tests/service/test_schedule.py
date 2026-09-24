@@ -388,44 +388,30 @@ class TestScheduledRunOrder(unittest.TestCase):
             ).run()
         return calls
 
-    def test_full_pipeline_order(self):
-        # 定时+静音+关闭+启用+重跑+通知+关机 全开：全局顺序。
-        # _wait 只打日志不进 calls，故序列从 mute_on 起。
-        self.assertEqual(
-            self._run_and_record(),
-            [
-                "mute_on",
-                "kill",
-                "config",
-                "core",
-                "rerun",
-                "analyze",
-                "mail",
-                "mute_off",
-                "shutdown",
-            ],
-        )
-
-    def test_close_running_false_drops_close(self):
-        # close_running=False：关闭 step 被排除，其余顺序不变。
-        calls = self._run_and_record(close_running=False)
-        self.assertNotIn("kill", calls)
-        self.assertIn("config", calls)
-        self.assertIn("shutdown", calls)
-
-    def test_unmute_false_keeps_mute_without_restore(self):
-        # unmute=False：仅运行前静音，post_run 不恢复声音（开关拆分后独立）。
-        calls = self._run_and_record(unmute=False)
-        self.assertIn("mute_on", calls)
-        self.assertNotIn("mute_off", calls)
-        self.assertIn("shutdown", calls)
-
-    def test_not_muted_skips_mute_on(self):
-        # mute=False（unmute 默认 True）：pre_run 不静音，post_run 仍挂恢复 step（幂等无害）。
-        calls = self._run_and_record(mute=False)
-        self.assertNotIn("mute_on", calls)
-        self.assertIn("mute_off", calls)
-        self.assertIn("shutdown", calls)
+    def test_pipeline_order_respects_independent_switches(self):
+        full = [
+            "mute_on",
+            "kill",
+            "config",
+            "core",
+            "rerun",
+            "analyze",
+            "mail",
+            "mute_off",
+            "shutdown",
+        ]
+        for option, omitted in (
+            (None, None),
+            ("close_running", "kill"),
+            ("unmute", "mute_off"),
+            ("mute", "mute_on"),
+        ):
+            with self.subTest(disabled=option):
+                options = {} if option is None else {option: False}
+                self.assertEqual(
+                    self._run_and_record(**options),
+                    [step for step in full if step != omitted],
+                )
 
 
 class TestScheduledRunCore(unittest.TestCase):

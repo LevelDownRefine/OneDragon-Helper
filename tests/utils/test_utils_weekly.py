@@ -204,23 +204,17 @@ class TestCheckWeekly(UtilsWeeklyTestBase):
 class TestDeleteWeekly(UtilsWeeklyTestBase):
     """delete_weekly：仅清理 weekly.yml 的 weekly_timeouts 段孤儿（总 config 移除归 AppService / utils_config）。"""
 
-    def test_delete_weekly_cleans_orphan(self):
-        """删除后 weekly_timeouts 段中该脚本的孤儿条目被移除。"""
-        self._write_weekly({"weekly_start": {}, "weekly_timeouts": {"a": [100] * 7}})
-        delete_weekly("a")
-        weekly = self._read_weekly()["weekly_timeouts"]
-        self.assertNotIn("a", weekly)
-        self.assertEqual(weekly, {})
-
-    def test_delete_weekly_keeps_others(self):
-        """删除单个脚本不影响 weekly_timeouts 段中其它条目。"""
-        self._write_weekly(
-            {"weekly_start": {}, "weekly_timeouts": {"a": [100] * 7, "mute": [120] * 7}}
-        )
-        delete_weekly("a")
-        weekly = self._read_weekly()["weekly_timeouts"]
-        self.assertNotIn("a", weekly)
-        self.assertEqual(weekly, {"mute": [120] * 7})
+    def test_delete_removes_only_named_timeout(self):
+        for remaining in ({}, {"mute": [120] * 7}):
+            with self.subTest(remaining=remaining):
+                self._write_weekly(
+                    {
+                        "weekly_start": {},
+                        "weekly_timeouts": {"a": [100] * 7, **remaining},
+                    }
+                )
+                delete_weekly("a")
+                self.assertEqual(self._read_weekly()["weekly_timeouts"], remaining)
 
     def test_delete_weekly_noop_when_absent(self):
         """脚本无 weekly 条目时清理为 no-op（不报错，文件保持空 {}）。"""
@@ -231,26 +225,28 @@ class TestDeleteWeekly(UtilsWeeklyTestBase):
 class TestSetWeeklyStart(UtilsWeeklyTestBase):
     """set_weekly_start / get_weekly_start_map：读写 weekly.yml 的 weekly_start 段（条目级）。"""
 
-    def test_set_writes_to_weekly_start_file_only(self):
-        set_weekly_start("a", {"周常甲": 4})
-        self.assertEqual(self._read_weekly()["weekly_start"], {"a": {"周常甲": 4}})
-        # 不污染 weekly_timeouts 段
-        self.assertEqual(self._read_weekly()["weekly_timeouts"], {})
-
-    def test_get_map_returns_entries(self):
-        set_weekly_start("a", {"周常甲": 3, "周常乙": 5})
-        self.assertEqual(get_weekly_start_map(), {"a": {"周常甲": 3, "周常乙": 5}})
+    def test_weekly_start_roundtrip_preserves_timeout_section(self):
+        for days in (
+            {"周常甲": 4},
+            {"周常甲": 3, "周常乙": 5},
+            {"周常甲": DISABLED_START_DAY},
+        ):
+            with self.subTest(days=days):
+                self._write_weekly(
+                    {"weekly_start": {}, "weekly_timeouts": {"a": [60] * 7}}
+                )
+                set_weekly_start("a", days)
+                self.assertEqual(get_weekly_start_map(), {"a": days})
+                self.assertEqual(
+                    self._read_weekly(),
+                    {"weekly_start": {"a": days}, "weekly_timeouts": {"a": [60] * 7}},
+                )
 
     def test_set_empty_clears_entry(self):
         """空 dict → 移除该脚本条目（对应界面「不设置」）。"""
         set_weekly_start("a", {"周常甲": 2})
         set_weekly_start("a", {})
         self.assertEqual(get_weekly_start_map(), {})
-
-    def test_disabled_sentinel_is_accepted(self):
-        """0 = 不启用，是合法取值（区别于「未设置」）。"""
-        set_weekly_start("a", {"周常甲": DISABLED_START_DAY})
-        self.assertEqual(get_weekly_start_map(), {"a": {"周常甲": DISABLED_START_DAY}})
 
     def test_invalid_day_raises(self):
         for bad in (8, -1):

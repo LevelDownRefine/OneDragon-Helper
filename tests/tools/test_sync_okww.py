@@ -28,52 +28,37 @@ class TestRebaseSequences(unittest.TestCase):
             ],
         )
 
-    def test_rebase_preserves_display_alias(self):
-        option = {"display_name": "A", "physical_name": 1}
-        self.assertEqual(
-            m._rebase_sequences([option], 1)[1], {**option, "physical_name": 2}
-        )
-        self.assertEqual(option["physical_name"], 1)
-
-    def test_delta_1_shifts_existing_and_prepends_placeholder(self):
-        seqs = [
-            {"display_name": "梦州-迅刀", "physical_name": 1},
-            {"display_name": "梦州-音感仪", "physical_name": 2},
-        ]
-        out = m._rebase_sequences(seqs, 1)
-        self.assertEqual(
-            out,
-            [
-                {"display_name": "1", "physical_name": 1},
-                {"display_name": "梦州-迅刀", "physical_name": 2},
-                {"display_name": "梦州-音感仪", "physical_name": 3},
-            ],
-        )
-
-    def test_delta_2_shifts_all_and_prepends_two(self):
-        seqs = [
-            {"display_name": "A", "physical_name": 1},
-            {"display_name": "B", "physical_name": 2},
-        ]
-        out = m._rebase_sequences(seqs, 2)
-        self.assertEqual(
-            out,
-            [
-                {"display_name": "1", "physical_name": 1},
-                {"display_name": "2", "physical_name": 2},
-                {"display_name": "A", "physical_name": 3},
-                {"display_name": "B", "physical_name": 4},
-            ],
-        )
-
-    def test_result_sorted_ascending(self):
-        seqs = [
-            {"display_name": "X", "physical_name": 5},
-            {"display_name": "Y", "physical_name": 3},
-        ]
-        out = m._rebase_sequences(seqs, 2)
-        vals = [s["physical_name"] for s in out]
-        self.assertEqual(vals, sorted(vals))
+    def test_rebase_preserves_input_and_names_with_sorted_new_placeholders(self):
+        for name, delta, before, after in (
+            (
+                "one",
+                1,
+                [("梦州-迅刀", 1), ("梦州-音感仪", 2)],
+                [("1", 1), ("梦州-迅刀", 2), ("梦州-音感仪", 3)],
+            ),
+            ("two", 2, [("A", 1), ("B", 2)], [("1", 1), ("2", 2), ("A", 3), ("B", 4)]),
+            (
+                "unordered",
+                2,
+                [("X", 5), ("Y", 3)],
+                [("1", 1), ("2", 2), ("Y", 5), ("X", 7)],
+            ),
+        ):
+            with self.subTest(name=name):
+                original = [
+                    {"display_name": label, "physical_name": value}
+                    for label, value in before
+                ]
+                options = [dict(item) for item in original]
+                result = m._rebase_sequences(options, delta)
+                self.assertEqual(
+                    result,
+                    [
+                        {"display_name": label, "physical_name": value}
+                        for label, value in after
+                    ],
+                )
+                self.assertEqual(options, original)
 
 
 class TestApplyNewFrontInsert(unittest.TestCase):

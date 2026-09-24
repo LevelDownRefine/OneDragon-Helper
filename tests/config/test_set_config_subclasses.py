@@ -219,37 +219,21 @@ class TestEndfieldConfig(unittest.TestCase):
         self.assertEqual(cfg._dispatch_daily("每日任务").task_field, "体力本")
         self.assertEqual(cfg._template_rel_path, "okef一条龙.json")
 
-    def test_update_task_writes_shared_field(self):
-        """终末地两级共用 体力本：无二级时写入一级项名。"""
-        with patch.object(EndfieldConfig, "_init_config"):
-            cfg = EndfieldConfig()
-        config = {"体力本": "旧本"}
-        changed = _update(cfg, config, "每日任务", "干员养成")
-        self.assertTrue(changed)
-        self.assertEqual(config["体力本"], "干员养成")
-
-    def test_set_daily_task_no_sequence(self):
-        with patch.object(EndfieldConfig, "_init_config"):
-            cfg = EndfieldConfig()
-        config = {"体力本": "旧本", "⭐刷体力": True}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(Daily, "_save_daily_config") as mock_save,
+    def test_daily_selection_saves_leaf_and_preserves_enable_switch(self):
+        for task, sequence, expected in (
+            ("干员养成", None, "干员养成"),
+            ("能量淤积点", "枢纽区", "枢纽区"),
         ):
-            cfg.set_daily_task("每日任务", "干员养成")
-        mock_save.assert_called_once_with({"体力本": "干员养成", "⭐刷体力": True})
-
-    def test_set_daily_task_with_sequence_writes_second_level(self):
-        """终末地副本按「类型 → 副本」两级组织（假一级目录）：写入的是二级副本名。"""
-        with patch.object(EndfieldConfig, "_init_config"):
-            cfg = EndfieldConfig()
-        config = {"体力本": "旧本", "⭐刷体力": True}
-        with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "能量淤积点", sequence="枢纽区")
-        mock_save.assert_called_once_with({"体力本": "枢纽区", "⭐刷体力": True})
+            with self.subTest(task=task, sequence=sequence):
+                with patch.object(EndfieldConfig, "_init_config"):
+                    config = EndfieldConfig()
+                current = {"体力本": "旧本", "⭐刷体力": True}
+                with (
+                    patch.object(Daily, "_load_daily_config", return_value=current),
+                    patch.object(Daily, "_save_daily_config") as save,
+                ):
+                    config.set_daily_task("每日任务", task, sequence=sequence)
+                save.assert_called_once_with({"体力本": expected, "⭐刷体力": True})
 
     def test_init_config_aligned_no_save(self):
         """config 与模板对齐（含模板外的自定义 key）时不保存"""

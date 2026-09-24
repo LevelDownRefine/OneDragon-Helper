@@ -39,48 +39,23 @@ class TestPickFile(unittest.TestCase):
     def tearDown(self):
         self._mod._last_dir = self._saved
 
-    def test_remembers_directory_on_success(self):
-        first = [("C:/games/run.exe", "")]
-        second = [("D:/apps/tool.py", "")]
-
-        def success(*a, **k):
-            return first.pop(0)
-
-        def cancel(*a, **k):
-            return second.pop(0)
-
-        with (
-            patch("src.gui.dialogs.QFileDialog.getOpenFileName", side_effect=success),
+    def test_selection_remembers_directory_and_cancel_preserves_it(self):
+        for selected, initial, retained in (
+            ("", "", ""),
+            ("C:/games/run.exe", "", "C:/games"),
+            ("", "C:/games", "C:/games"),
+            ("D:/apps/tool.py", "C:/games", "D:/apps"),
         ):
-            self.assertEqual(pick_file(None, "t", "*.exe"), "C:/games/run.exe")
-        self.assertEqual(self._mod._last_dir, "C:/games")
-        with (
-            patch(
-                "src.gui.dialogs.QFileDialog.getOpenFileName",
-                side_effect=cancel,
-            ),
-        ):
-            self.assertEqual(pick_file(None, "t", "*.exe"), "D:/apps/tool.py")
-        self.assertEqual(self._mod._last_dir, "D:/apps")
-
-    def test_cancel_keeps_last_dir(self):
-        with patch(
-            "src.gui.dialogs.QFileDialog.getOpenFileName", return_value=("", "")
-        ):
-            self.assertEqual(pick_file(None, "t", "*.exe"), "")
-        self.assertEqual(self._mod._last_dir, "")
-
-    def test_next_dialog_starts_from_last_dir(self):
-        with patch(
-            "src.gui.dialogs.QFileDialog.getOpenFileName",
-            return_value=("C:/a/b.exe", ""),
-        ):
-            pick_file(None, "t", "*.exe")
-        with patch(
-            "src.gui.dialogs.QFileDialog.getOpenFileName", return_value=("", "")
-        ) as mock_dialog:
-            pick_file(None, "t", "*.exe")
-        self.assertEqual(mock_dialog.call_args[0][2], "C:/a")
+            with (
+                self.subTest(selected=selected, initial=initial),
+                patch(
+                    "src.gui.dialogs.QFileDialog.getOpenFileName",
+                    return_value=(selected, ""),
+                ) as picker,
+            ):
+                self.assertEqual(pick_file(None, "t", "*.exe"), selected)
+                self.assertEqual(picker.call_args.args[2], initial)
+                self.assertEqual(self._mod._last_dir, retained)
 
 
 class TestSingleScriptConfigDialogLoad(unittest.TestCase):
@@ -99,41 +74,31 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
         dump_yaml_file(cfg, {"script_list": []})
         return cfg
 
-    def test_load_seeds_from_default_when_no_weekly_entry(self):
-        """weekly.yml 的 weekly_timeouts 无该脚本条目时，7 格应显示 DEFAULT_RUN_TIMEOUT（3600）"""
-        wt = self._make_weekly_file({})
-        cfg = self._make_config_file()
-        with (
-            patch(
-                "src.utils.utils_config.require_config_yml_path",
-                return_value=cfg,
-            ),
-            patch(
-                "src.utils.utils_weekly.get_weekly_yml_path_under_root",
-                return_value=wt,
-            ),
+    def test_weekly_timeout_loads_saved_values_or_defaults(self):
+        for saved, expected in (
+            ({}, ["3600"] * 7),
+            ({"collect_log": [60] * 7}, ["60"] * 7),
         ):
-            dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
-            values = [le.text() for le in dlg.timeout_inputs]
-        self.assertEqual(values, ["3600"] * 7)
-
-    def test_load_uses_existing_weekly_entry(self):
-        """weekly.yml 的 weekly_timeouts 已有条目时使用已有值"""
-        wt = self._make_weekly_file({"collect_log": [60, 60, 60, 60, 60, 60, 60]})
-        cfg = self._make_config_file()
-        with (
-            patch(
-                "src.utils.utils_config.require_config_yml_path",
-                return_value=cfg,
-            ),
-            patch(
-                "src.utils.utils_weekly.get_weekly_yml_path_under_root",
-                return_value=wt,
-            ),
-        ):
-            dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
-            values = [le.text() for le in dlg.timeout_inputs]
-        self.assertEqual(values, ["60"] * 7)
+            with self.subTest(saved=saved):
+                weekly = self._make_weekly_file(saved)
+                config = self._make_config_file()
+                with (
+                    patch(
+                        "src.utils.utils_config.require_config_yml_path",
+                        return_value=config,
+                    ),
+                    patch(
+                        "src.utils.utils_weekly.get_weekly_yml_path_under_root",
+                        return_value=weekly,
+                    ),
+                ):
+                    dialog = SingleScriptConfigDialog(
+                        "collect_log", "日志分析", "C:/x.py"
+                    )
+                    self.addCleanup(dialog.close)
+                    self.assertEqual(
+                        [edit.text() for edit in dialog.timeout_inputs], expected
+                    )
 
     def test_init_asserts_when_config_yml_missing(self):
         """config.yml 缺失属内部错误：构造对话框必须 assert，而非静默返回空数据"""
@@ -156,42 +121,30 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
         dump_yaml_file(cfg, {"script_list": script_list})
         return cfg
 
-    def test_load_sets_block_from_config(self):
-        """config 中 block=True 时复选框应被勾选（阻塞）"""
-        cfg = self._make_config_file(
-            [
-                {
-                    "display_name": "日志分析",
-                    "script_type": "python",
-                    "script_path": "C:/x.py",
-                    "block": True,
-                },
-            ]
-        )
-        with patch(
-            "src.utils.utils_config.require_config_yml_path",
-            return_value=cfg,
+    def test_block_loads_explicit_value_or_defaults_to_true(self):
+        for saved, expected in (
+            ({}, True),
+            ({"block": True}, True),
+            ({"block": False}, False),
         ):
-            dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
-        self.assertTrue(dlg.block_cb.isChecked())
-
-    def test_load_defaults_block_true_when_missing(self):
-        """缺 block 字段时默认勾选（阻塞）"""
-        cfg = self._make_config_file(
-            [
-                {
-                    "display_name": "日志分析",
-                    "script_type": "python",
-                    "script_path": "C:/x.py",
-                },
-            ]
-        )
-        with patch(
-            "src.utils.utils_config.require_config_yml_path",
-            return_value=cfg,
-        ):
-            dlg = SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
-        self.assertTrue(dlg.block_cb.isChecked())
+            with self.subTest(saved=saved):
+                config = self._make_config_file(
+                    [
+                        {
+                            "display_name": "日志分析",
+                            "script_type": "python",
+                            "script_path": "C:/x.py",
+                            **saved,
+                        }
+                    ]
+                )
+                with patch(
+                    "src.utils.utils_config.require_config_yml_path",
+                    return_value=config,
+                ):
+                    dialog = SingleScriptConfigDialog("日志分析", "日志分析", "C:/x.py")
+                    self.addCleanup(dialog.close)
+                    self.assertEqual(dialog.block_cb.isChecked(), expected)
 
     def test_save_stores_block_in_pending_changes(self):
         """保存时把复选框状态存到 pending_changes['config_patch']['block']（不再直接写盘）。"""

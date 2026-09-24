@@ -251,60 +251,26 @@ class TestWeeklyStartDay(unittest.TestCase):
 
     # ---- 鸣潮：Additional Tasks 列表增删 ----
 
-    def test_ww_enable_appends_weekly_task(self):
-        """鸣潮启用周常（今天已到起始日）→ Additional Tasks 列表追加 Check Weekly Garden"""
-        weekly = _weekly("ok-ww", "幻梦游园")
-        config = {
-            "Additional Tasks to Run After Daily Task": [
-                "Merge Echo If discarded > 1000",
-            ]
-        }
-        with (
-            patch("src.utils.utils_weekly.get_week_num", return_value=3),
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
+    def test_ww_weekly_membership_changes_only_when_needed(self):
+        task = "Check Weekly Garden"
+        other = "Merge Echo If discarded > 1000"
+        key = "Additional Tasks to Run After Daily Task"
+        for name, day, before, after, changed in (
+            ("enable", 3, [other], [other, task], True),
+            ("disable", 1, [task, other], [other], True),
+            ("unchanged", 3, [task], [task], False),
         ):
-            weekly.prepare_start_day(4)
-        self.assertIn(
-            "Check Weekly Garden",
-            config["Additional Tasks to Run After Daily Task"],
-        )
-        mock_save.assert_called_once()
-
-    def test_ww_disable_removes_weekly_task(self):
-        """鸣潮停用周常（今天未到起始日）→ Additional Tasks 列表移除 Check Weekly Garden"""
-        weekly = _weekly("ok-ww", "幻梦游园")
-        config = {
-            "Additional Tasks to Run After Daily Task": [
-                "Check Weekly Garden",
-                "Merge Echo If discarded > 1000",
-            ]
-        }
-        with (
-            patch("src.utils.utils_weekly.get_week_num", return_value=1),
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
-        ):
-            weekly.prepare_start_day(4)
-        self.assertNotIn(
-            "Check Weekly Garden",
-            config["Additional Tasks to Run After Daily Task"],
-        )
-        mock_save.assert_called_once()
-
-    def test_ww_no_change_skips_save(self):
-        """鸣潮状态无变化（已启用再启用）→ 不落盘"""
-        weekly = _weekly("ok-ww", "幻梦游园")
-        config = {
-            "Additional Tasks to Run After Daily Task": ["Check Weekly Garden"],
-        }
-        with (
-            patch("src.utils.utils_weekly.get_week_num", return_value=3),
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
-        ):
-            weekly.prepare_start_day(4)
-        mock_save.assert_not_called()
+            with self.subTest(name=name):
+                weekly = _weekly("ok-ww", "幻梦游园")
+                config = {key: list(before)}
+                with (
+                    patch("src.utils.utils_weekly.get_week_num", return_value=day),
+                    patch.object(weekly, "_load_config", return_value=config),
+                    patch.object(weekly, "_save_config") as save,
+                ):
+                    weekly.prepare_start_day(4)
+                self.assertEqual(config, {key: after})
+                self.assertEqual(save.call_count, int(changed))
 
     def test_ww_missing_tasks_key_raises(self):
         """鸣潮 config 缺 Additional Tasks 字段 → assert"""
@@ -318,38 +284,28 @@ class TestWeeklyStartDay(unittest.TestCase):
 
     # ---- 绝区零：_group.yml 的 lost_void.enabled ----
 
-    def test_zzz_enable_writes_lost_void_true(self):
-        """绝区零启用周常（今天已到起始日）→ _group.yml 的 lost_void.enabled=True"""
-        weekly = _weekly("OneDragon-Launcher", "迷失之地")
-        config = {
-            "app_list": [
-                {"app_id": "notorious_hunt", "enabled": True},
-                {"app_id": "lost_void", "enabled": False},
-            ]
-        }
-        with (
-            patch("src.utils.utils_weekly.get_week_num", return_value=3),
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
-        ):
-            weekly.prepare_start_day(4)
-        lost = next(a for a in config["app_list"] if a["app_id"] == "lost_void")
-        self.assertTrue(lost["enabled"])
-        mock_save.assert_called_once()
-
-    def test_zzz_disable_writes_lost_void_false(self):
-        """绝区零停用周常（今天未到起始日）→ lost_void.enabled=False"""
-        weekly = _weekly("OneDragon-Launcher", "迷失之地")
-        config = {"app_list": [{"app_id": "lost_void", "enabled": True}]}
-        with (
-            patch("src.utils.utils_weekly.get_week_num", return_value=1),
-            patch.object(weekly, "_load_config", return_value=config),
-            patch.object(weekly, "_save_config") as mock_save,
-        ):
-            weekly.prepare_start_day(4)
-        lost = next(a for a in config["app_list"] if a["app_id"] == "lost_void")
-        self.assertFalse(lost["enabled"])
-        mock_save.assert_called_once()
+    def test_zzz_weekly_switch_preserves_other_apps(self):
+        for day, enabled in ((3, True), (1, False)):
+            with self.subTest(day=day):
+                weekly = _weekly("OneDragon-Launcher", "迷失之地")
+                other = {"app_id": "notorious_hunt", "enabled": True}
+                config = {
+                    "app_list": [
+                        dict(other),
+                        {"app_id": "lost_void", "enabled": not enabled},
+                    ]
+                }
+                with (
+                    patch("src.utils.utils_weekly.get_week_num", return_value=day),
+                    patch.object(weekly, "_load_config", return_value=config),
+                    patch.object(weekly, "_save_config") as save,
+                ):
+                    weekly.prepare_start_day(4)
+                self.assertEqual(
+                    config,
+                    {"app_list": [other, {"app_id": "lost_void", "enabled": enabled}]},
+                )
+                save.assert_called_once()
 
     def test_zzz_missing_app_id_raises(self):
         """app_list 缺 lost_void → assert"""

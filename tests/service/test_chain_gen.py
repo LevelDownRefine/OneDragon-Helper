@@ -20,69 +20,31 @@ def _script(display_name="测试"):
 
 
 class TestApplyWeeklyTimeout(unittest.TestCase):
-    """_resolve_daily_run：统一从 weekly_timeouts 取当天值，<10 秒视为当天不运行。"""
+    """周超时按当天取值；不足 10 秒不运行，缺省使用默认超时。"""
 
-    @patch("src.service.chain_gen.get_week_num", return_value=0)
-    def test_positive_overrides(self, _mock):
-        """有完整 7 格且当天 >= 10 → 取当天值并返回 True（应运行）。"""
-        script = _script()
-        result = _resolve_daily_run(
-            script, {"测试": [1800, 600, 600, 600, 600, 600, 600]}
-        )
-        self.assertTrue(result)
-        self.assertEqual(script["run_timeout_seconds"], 1800)
-
-    @patch("src.service.chain_gen.get_week_num", return_value=2)
-    def test_zero_skips_script(self, _mock):
-        """当天值为 0 → 返回 False（不运行），且不设置超时字段。"""
-        script = _script()
-        result = _resolve_daily_run(
-            script, {"测试": [1800, 600, 0, 600, 600, 600, 600]}
-        )
-        self.assertFalse(result)
-        self.assertNotIn("run_timeout_seconds", script)
-
-    @patch("src.service.chain_gen.get_week_num", return_value=0)
-    def test_all_zero_skips_script(self, _mock):
-        """整周全 0 → 每天都不运行。"""
-        script = _script()
-        result = _resolve_daily_run(script, {"测试": [0, 0, 0, 0, 0, 0, 0]})
-        self.assertFalse(result)
-
-    @patch("src.service.chain_gen.get_week_num", return_value=0)
-    def test_missing_entry_uses_default(self, _mock):
-        """weekly_timeouts 中无该脚本 → fallback 到 DEFAULT_RUN_TIMEOUT。"""
-        script = _script()
-        result = _resolve_daily_run(script, {})
-        self.assertTrue(result)
-        self.assertEqual(script["run_timeout_seconds"], DEFAULT_RUN_TIMEOUT)
-
-    @patch("src.service.chain_gen.get_week_num", return_value=0)
-    def test_incomplete_list_uses_default(self, _mock):
-        """周超时不足 7 个值 → fallback 到 DEFAULT_RUN_TIMEOUT。"""
-        script = _script()
-        result = _resolve_daily_run(script, {"测试": [1800, 600]})
-        self.assertTrue(result)
-        self.assertEqual(script["run_timeout_seconds"], DEFAULT_RUN_TIMEOUT)
-
-    @patch("src.service.chain_gen.get_week_num", return_value=1)
-    def test_low_value_skips_script(self, _mock):
-        """当天值低于 10（如 5）→ 返回 False（不运行）。"""
-        script = _script()
-        result = _resolve_daily_run(
-            script, {"测试": [1800, 5, 600, 600, 600, 600, 600]}
-        )
-        self.assertFalse(result)
-
-    @patch("src.service.chain_gen.get_week_num", return_value=0)
-    def test_ten_seconds_still_runs(self, _mock):
-        """边界：当天正好 10 秒 → 正常运行。"""
-        script = _script()
-        result = _resolve_daily_run(
-            script, {"测试": [10, 600, 600, 600, 600, 600, 600]}
-        )
-        self.assertTrue(result)
-        self.assertEqual(script["run_timeout_seconds"], 10)
+    def test_daily_timeout_or_default(self):
+        for name, day, values, expected in (
+            ("positive", 0, [1800, 600, 600, 600, 600, 600, 600], 1800),
+            ("boundary", 0, [10, 600, 600, 600, 600, 600, 600], 10),
+            ("zero_today", 2, [1800, 600, 0, 600, 600, 600, 600], None),
+            ("all_zero", 0, [0] * 7, None),
+            ("below_boundary", 1, [1800, 5, 600, 600, 600, 600, 600], None),
+            ("missing", 0, None, DEFAULT_RUN_TIMEOUT),
+            ("incomplete", 0, [1800, 600], DEFAULT_RUN_TIMEOUT),
+        ):
+            with (
+                self.subTest(name=name),
+                patch("src.service.chain_gen.get_week_num", return_value=day),
+            ):
+                script = _script()
+                weekly = {} if values is None else {"测试": values}
+                self.assertEqual(
+                    _resolve_daily_run(script, weekly), expected is not None
+                )
+                if expected is None:
+                    self.assertNotIn("run_timeout_seconds", script)
+                else:
+                    self.assertEqual(script["run_timeout_seconds"], expected)
 
 
 class TestResolveWeeklyStarts(unittest.TestCase):

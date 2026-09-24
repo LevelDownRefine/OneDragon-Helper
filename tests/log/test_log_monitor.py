@@ -60,110 +60,49 @@ class TestLogParser(unittest.TestCase):
                 with mock.patch.object(parser, "_get_log_dir", return_value=folder):
                     self.assertEqual(parser.get_log_path("unused.exe"), expected)
 
-    def test_ok_ef_daily_done_is_success(self):
-        """终末地：成功任务栏含 ⭐日常奖励 → 每日做完 → SUCCESS。"""
-        parser = OkEfLogParser()
-        result = _parse_content(parser, "成功任务:\n  ⭐日常奖励")
-        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
-        self.assertTrue(result["daily_done"])
-
-    def test_ok_ef_daily_missing_is_failed(self):
-        """终末地：整体『执行状态: 完成』但日常奖励落在失败任务栏 → 仍判 FAILED。"""
-        parser = OkEfLogParser()
-        result = _parse_content(parser, "执行状态: 完成\n失败任务:\n  ⭐日常奖励")
-        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
-        self.assertFalse(result["daily_done"])
-
-    def test_ok_ww_daily_done_is_success(self):
-        """鸣潮：命中每日完成标记 → SUCCESS。"""
-        parser = OkWwLogParser()
-        result = _parse_content(parser, "INFO claim daily reward via  coordinate")
-        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
-        self.assertTrue(result["daily_done"])
-
-    def test_ok_ww_completed_but_daily_missing_is_failed(self):
-        """鸣潮：脚本自身报『Successfully Executed Task』但每日没做完 → FAILED。
-
-        本次判据变更的核心：成败只看每日是否做完，不再看脚本自身执行状态。
-        """
-        parser = OkWwLogParser()
-        result = _parse_content(parser, "INFO TaskExecutor:Successfully Executed Task")
-        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
-        self.assertFalse(result["daily_done"])
-
-    def test_m7a_daily_done_is_success(self):
-        """崩铁：每日实训已完成 → SUCCESS（不再按终止前报错条数阈值判定）。"""
-        parser = M7ALogParser()
-        result = _parse_content(parser, "游戏终止：StarRail\n每日实训已完成")
-        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
-        self.assertTrue(result["daily_done"])
-
-    def test_m7a_clean_but_daily_missing_is_failed(self):
-        """崩铁：游戏正常终止、全程无报错，但每日实训没做完 → FAILED。"""
-        parser = M7ALogParser()
-        result = _parse_content(parser, "游戏终止：StarRail")
-        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
-        self.assertFalse(result["daily_done"])
+    def test_daily_completion_determines_status_for_each_parser(self):
+        for parser_type, completed, incomplete in (
+            (
+                OkEfLogParser,
+                "成功任务:\n  ⭐日常奖励",
+                "执行状态: 完成\n失败任务:\n  ⭐日常奖励",
+            ),
+            (
+                OkWwLogParser,
+                "INFO claim daily reward via  coordinate",
+                "INFO TaskExecutor:Successfully Executed Task",
+            ),
+            (M7ALogParser, "游戏终止：StarRail\n每日实训已完成", "游戏终止：StarRail"),
+            (
+                OkNteLogParser,
+                "INFO info_set failed []",
+                "INFO TaskExecutor DailyTask:Task completed",
+            ),
+            (
+                BGILogParser,
+                "今日奖励已领取\n一条龙和配置组任务结束",
+                '检查每日奖励结果："未领取"，请手动检查！\n一条龙和配置组任务结束',
+            ),
+            (
+                ZZZLogParser,
+                "[INFO]: 指令[ 一条龙 ] 执行成功 返回状态 全部结束\n日常奖励领取成功",
+                "[INFO]: 指令[ 一条龙 ] 执行成功 返回状态 全部结束",
+            ),
+        ):
+            for done, content in ((True, completed), (False, incomplete)):
+                with self.subTest(parser=parser_type.__name__, done=done):
+                    result = _parse_content(parser_type(), content)
+                    self.assertEqual(
+                        result["status"],
+                        ScriptLogStatus.SUCCESS if done else ScriptLogStatus.FAILED,
+                    )
+                    self.assertIs(result["daily_done"], done)
+                    self.assertNotIn("extra", result)
 
     def test_parse_log_rejects_unsupported(self):
         """不支持的脚本在 parse_logs 入口已过滤，进入 parse_log 即不可能 → 断言失败。"""
         with self.assertRaises(AssertionError):
             parse_log("MAA")
-
-    def test_ok_nte_daily_done_is_success(self):
-        """异环：命中每日完成标记（info_set failed []）→ SUCCESS。"""
-        parser = OkNteLogParser()
-        result = _parse_content(parser, "INFO info_set failed []")
-        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
-        self.assertTrue(result["daily_done"])
-
-    def test_ok_nte_completed_but_daily_missing_is_failed(self):
-        """异环：『Task completed』但每日没做完 → FAILED。"""
-        parser = OkNteLogParser()
-        result = _parse_content(parser, "INFO TaskExecutor DailyTask:Task completed")
-        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
-        self.assertFalse(result["daily_done"])
-
-    def test_bgi_daily_claimed_is_success(self):
-        """原神（BGI）：今日奖励已领取 → SUCCESS。"""
-        parser = BGILogParser()
-        result = _parse_content(parser, "今日奖励已领取\n一条龙和配置组任务结束")
-        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
-        self.assertTrue(result["daily_done"])
-
-    def test_bgi_unclaimed_is_failed(self):
-        """原神：每日奖励未领取 → 每日没做完 → FAILED。"""
-        parser = BGILogParser()
-        result = _parse_content(
-            parser, '检查每日奖励结果："未领取"，请手动检查！\n一条龙和配置组任务结束'
-        )
-        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
-        self.assertFalse(result["daily_done"])
-
-    def test_zzz_daily_claimed_is_success(self):
-        """绝区零：日常奖励领取成功 → SUCCESS。"""
-        parser = ZZZLogParser()
-        result = _parse_content(
-            parser,
-            "[INFO]: 指令[ 一条龙 ] 执行成功 返回状态 全部结束\n日常奖励领取成功",
-        )
-        self.assertEqual(result["status"], ScriptLogStatus.SUCCESS)
-        self.assertTrue(result["daily_done"])
-
-    def test_zzz_completed_but_daily_missing_is_failed(self):
-        """绝区零：一条龙执行成功但日常奖励没领到 → FAILED。"""
-        parser = ZZZLogParser()
-        result = _parse_content(
-            parser, "[INFO]: 指令[ 一条龙 ] 执行成功 返回状态 全部结束"
-        )
-        self.assertEqual(result["status"], ScriptLogStatus.FAILED)
-        self.assertFalse(result["daily_done"])
-
-    def test_result_has_no_extra_key(self):
-        """extra 已全链路移除：解析结果不再含该键。"""
-        parser = OkWwLogParser()
-        result = _parse_content(parser, "INFO claim daily reward via  coordinate")
-        self.assertNotIn("extra", result)
 
 
 class TestCollectLogSetup(unittest.TestCase):
@@ -1116,50 +1055,25 @@ class TestIsValidLog(unittest.TestCase):
         return mock.patch.object(collect_log, "datetime", fake)
 
     # ---- 现在 >= 4 点：只认「今天 04:00 之后」----
-    def test_hour_ge_4_today_after_4am_valid(self):
-        with self._patch_now(self._dt(2026, 8, 24, 9)):
-            log = self._make_log(self._dt(2026, 8, 24, 4, 10).timestamp())
-            self.assertTrue(ZZZLogParser()._is_valid_log(log))
-
-    def test_hour_ge_4_today_before_4am_invalid(self):
-        # 今天 03:00 产生的日志：4 点前属昨天运行日，>=4 点时不应认
-        with self._patch_now(self._dt(2026, 8, 24, 9)):
-            log = self._make_log(self._dt(2026, 8, 24, 3, 0).timestamp())
-            self.assertFalse(ZZZLogParser()._is_valid_log(log))
-
-    def test_hour_ge_4_yesterday_invalid(self):
-        with self._patch_now(self._dt(2026, 8, 24, 9)):
-            log = self._make_log(self._dt(2026, 8, 23, 13, 12).timestamp())
-            self.assertFalse(ZZZLogParser()._is_valid_log(log))
-
-    def test_hour_ge_4_day_before_yesterday_invalid(self):
-        with self._patch_now(self._dt(2026, 8, 24, 9)):
-            log = self._make_log(self._dt(2026, 8, 22, 13, 12).timestamp())
-            self.assertFalse(ZZZLogParser()._is_valid_log(log))
+    def test_log_mtime_uses_four_am_day_boundary(self):
+        for hour, modified, valid in (
+            (9, "2026-08-24 04:10", True),
+            (9, "2026-08-24 03:00", False),
+            (9, "2026-08-23 13:12", False),
+            (9, "2026-08-22 13:12", False),
+            (2, "2026-08-23 13:12", True),
+            (2, "2026-08-23 03:00", False),
+            (2, "2026-08-24 00:05", True),
+            (2, "2026-08-22 13:12", False),
+        ):
+            with (
+                self.subTest(hour=hour, modified=modified),
+                self._patch_now(self._dt(2026, 8, 24, hour)),
+            ):
+                log = self._make_log(_dt_real.fromisoformat(modified).timestamp())
+                self.assertEqual(ZZZLogParser()._is_valid_log(log), valid)
 
     # ---- 现在 < 4 点（凌晨）：只认「昨天运行日」即昨天 04:00 之后 ----
-    def test_hour_lt_4_yesterday_after_4am_valid(self):
-        # 昨天 13:12 属昨天运行日，凌晨 parse 应认（这是预期的昨天那一轮）
-        with self._patch_now(self._dt(2026, 8, 24, 2)):
-            log = self._make_log(self._dt(2026, 8, 23, 13, 12).timestamp())
-            self.assertTrue(ZZZLogParser()._is_valid_log(log))
-
-    def test_hour_lt_4_yesterday_before_4am_invalid(self):
-        # 昨天 03:00 早于昨天运行日起点，不应认
-        with self._patch_now(self._dt(2026, 8, 24, 2)):
-            log = self._make_log(self._dt(2026, 8, 23, 3, 0).timestamp())
-            self.assertFalse(ZZZLogParser()._is_valid_log(log))
-
-    def test_hour_lt_4_today_after_midnight_valid(self):
-        # 今天 00:05 属今天 0-4 点，按运行日边界归入「昨天运行日」，凌晨 parse 应认
-        with self._patch_now(self._dt(2026, 8, 24, 2)):
-            log = self._make_log(self._dt(2026, 8, 24, 0, 5).timestamp())
-            self.assertTrue(ZZZLogParser()._is_valid_log(log))
-
-    def test_hour_lt_4_day_before_yesterday_invalid(self):
-        with self._patch_now(self._dt(2026, 8, 24, 2)):
-            log = self._make_log(self._dt(2026, 8, 22, 13, 12).timestamp())
-            self.assertFalse(ZZZLogParser()._is_valid_log(log))
 
     def test_applies_to_all_parsers(self):
         # 同一个日期闸门对所有脚本类型一致生效

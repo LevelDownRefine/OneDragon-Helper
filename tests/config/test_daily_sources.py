@@ -286,40 +286,25 @@ class TestBgiGetTaskLists(unittest.TestCase):
             self.declaration["display_name"]
         )
 
-    def test_reads_bless_domain_across_scenes(self):
-        """圣遗物 → BlessDomain：跨多个地图场景收集副本名。"""
-        with patch(
-            "src.config.daily.load_game_config", return_value=self._DATA
-        ) as mock_load:
-            names = self.daily.get_task_lists(
-                {"path": self._SRC, "category": "BlessDomain"}
-            )
-        self.assertEqual(names, ["仲夏庭园", "铭记之谷", "芬德尼尔之顶"])
-        mock_load.assert_called_once_with("BetterGI", self._SRC)
-
-    def test_reads_forgery_domain(self):
-        """武器 → ForgeryDomain：仅收集该 type 的副本名。"""
-        with patch("src.config.daily.load_game_config", return_value=self._DATA):
-            names = self.daily.get_task_lists(
-                {"path": self._SRC, "category": "ForgeryDomain"}
-            )
-        self.assertEqual(names, ["塞西莉亚苗圃"])
-
-    def test_reads_mastery_domain(self):
-        """天赋 → MasteryDomain。"""
-        with patch("src.config.daily.load_game_config", return_value=self._DATA):
-            names = self.daily.get_task_lists(
-                {"path": self._SRC, "category": "MasteryDomain"}
-            )
-        self.assertEqual(names, ["太山府"])
-
-    def test_ignores_other_types(self):
-        """TeleportWaypoint / 未命中 type 的 point 不计入清单。"""
-        with patch("src.config.daily.load_game_config", return_value=self._DATA):
-            names = self.daily.get_task_lists(
-                {"path": self._SRC, "category": "BlessDomain"}
-            )
-        self.assertNotIn("传送锚点", names)
+    def test_domain_categories_filter_points_across_scenes(self):
+        for category, expected in (
+            ("BlessDomain", ["仲夏庭园", "铭记之谷", "芬德尼尔之顶"]),
+            ("ForgeryDomain", ["塞西莉亚苗圃"]),
+            ("MasteryDomain", ["太山府"]),
+        ):
+            with (
+                self.subTest(category=category),
+                patch(
+                    "src.config.daily.load_game_config", return_value=self._DATA
+                ) as load,
+            ):
+                self.assertEqual(
+                    self.daily.get_task_lists(
+                        {"path": self._SRC, "category": category}
+                    ),
+                    expected,
+                )
+            load.assert_called_once_with("BetterGI", self._SRC)
 
     def test_does_not_instantiate_or_init_config(self):
         """读取选项复用已有日常，不触发配置初始化。"""
