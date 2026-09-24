@@ -1,5 +1,7 @@
 """链生成、运行与调度编排；外部进程和通知使用替身。"""
 
+import os
+import subprocess
 import unittest
 from datetime import datetime
 from unittest.mock import patch
@@ -41,8 +43,9 @@ class TestRunChainOnce(unittest.TestCase):
                     {"script_list": scripts}, {"A"}, "today", weekly_timeouts=weekly
                 )
                 build.assert_called_once_with("out.yml")
+                flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
                 run.assert_called_once_with(
-                    ["cmd"], cwd="cwd", env=None, creationflags=0
+                    ["cmd"], cwd="cwd", env=None, creationflags=flags
                 )
 
     def test_empty_script_list_asserts(self):

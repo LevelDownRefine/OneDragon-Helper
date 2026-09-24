@@ -54,8 +54,8 @@ class TestSendMail(unittest.TestCase):
         }
         for name, cfg, password in (
             ("no_config", None, None),
-            ("disabled", {"enabled": False, "email": "a@qq.com"}, None),
-            ("missing_email", {"enabled": True, "email": ""}, None),
+            ("disabled", {**complete, "enabled": False}, "pw"),
+            ("missing_email", {**complete, "email": ""}, "pw"),
             ("missing_password", complete, None),
             ("missing_server", {"enabled": True, "email": "123456@qq.com"}, "pw"),
             ("invalid_port", {**complete, "smtp_port": "not-a-number"}, "pw"),

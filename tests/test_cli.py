@@ -83,6 +83,8 @@ def _run_main(argv, expect_exit=None):
     main() 的 CLI 出口都用 sys.exit 退出，故捕获 SystemExit 取退出码。
     CLI 必须经 sys.exit 退出；意外返回不能算成功。
     """
+    if "--generate-chain" in argv:
+        Path(_cli_file("generate_chain")).unlink(missing_ok=True)
     with patch.object(sys, "argv", ["launcher.py", *argv]):
         try:
             launcher.main()
