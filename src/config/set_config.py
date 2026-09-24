@@ -11,13 +11,14 @@ from src.config.task_config import get_daily_configs
 from src.config.weekly import build_weeklies
 from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import (
-    get_sub_config_path as _get_config_path_impl,
-)
-from src.utils.utils_sub_config import (
+    get_script_game_path,
     load_config,
     load_game_config,
     load_template,
     save_config,
+)
+from src.utils.utils_sub_config import (
+    get_sub_config_path as _get_config_path_impl,
 )
 
 logger = logging.getLogger(__name__)
@@ -638,10 +639,20 @@ def iter_backup_paths() -> dict[str, tuple[str, ...]]:
 
 
 def get_game_exe_path(script_name: str) -> str | None:
-    """读游戏 exe 路径（供 GUI 打开）；未适配/缺失 → None。"""
-    if script_name not in _CONFIGS:
-        return None
-    return _CONFIGS[script_name]().get_game_exe_path()
+    """读游戏 exe 路径（供 GUI 打开游戏、取游戏图标）。
+
+    config.yml 条目里手填的 ``game_path`` 优先 —— 它是用户显式指定的；未填时才回退到脚本
+    原生配置里的路径（脚本自管，异环那类可能指向启动器，不自启游戏的 MaaEnd 则没有）。
+
+    Returns:
+        exe 绝对路径；两处都没有时返回 None。
+    """
+    path = get_script_game_path(script_name)
+    if path:
+        return path
+    if script_name in _CONFIGS:
+        return _CONFIGS[script_name]().get_game_exe_path()
+    return None
 
 
 def is_adapted(script_name: str) -> bool:

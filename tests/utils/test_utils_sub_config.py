@@ -14,6 +14,7 @@ from src.utils.utils_sub_config import (
     check_script_name_uniqueness,
     default_script_entry,
     get_process_name,
+    get_script_game_path,
     get_script_name,
     get_script_path,
     load_game_config,
@@ -162,6 +163,41 @@ class TestGetScriptPath(unittest.TestCase):
             self.assertRaises(AssertionError),
         ):
             get_script_path("不存在")
+
+
+class TestGetScriptGamePath(unittest.TestCase):
+    """测试 get_script_game_path：读 config.yml 条目里手填的游戏路径（game_path）。"""
+
+    def test_reads_configured_path(self):
+        """取到该脚本的 game_path；未填与无此脚本都按未配置处理。"""
+        fake = {
+            "script_list": [
+                {
+                    "display_name": "MaaEnd",
+                    "script_path": "D:\\x\\MaaEnd.exe",
+                    "game_path": "C:\\Endfield\\Endfield.exe",
+                },
+                {"display_name": "原神", "script_path": "D:\\BetterGI.exe"},
+            ]
+        }
+        with (
+            mock.patch(
+                "src.utils.utils_sub_config._load_config_yml", return_value=fake
+            ),
+            mock.patch("src.utils.utils_sub_config.os.path.isfile", return_value=True),
+        ):
+            self.assertEqual(
+                get_script_game_path("MaaEnd"), "C:\\Endfield\\Endfield.exe"
+            )
+            self.assertEqual(get_script_game_path("BetterGI"), "")
+            self.assertEqual(get_script_game_path("不存在"), "")
+
+    def test_missing_config_yml_returns_empty(self):
+        """首启未生成 config.yml 时也不断言失败，按未配置处理。"""
+        with mock.patch(
+            "src.utils.utils_sub_config.os.path.isfile", return_value=False
+        ):
+            self.assertEqual(get_script_game_path("MaaEnd"), "")
 
 
 class TestDefaultScriptEntry(unittest.TestCase):
