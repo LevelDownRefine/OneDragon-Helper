@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 class TestStartupImports(unittest.TestCase):
-    def test_cli_and_gui_defer_optional_dependencies(self):
+    def test_cli_defers_qt_and_gui_defers_network(self):
         code = textwrap.dedent(
             """
             import sys
@@ -23,15 +23,7 @@ class TestStartupImports(unittest.TestCase):
             from src.service.app_service import AppService
 
             AppService()
-            for module in (
-                "requests",
-                "src.gui.dialogs",
-                "src.gui.config_dialog",
-                "src.gui.daily_plan_dialog",
-                "src.gui.run_confirm_dialog",
-                "src.gui.update_dialog",
-            ):
-                assert module not in sys.modules, module
+            assert "requests" not in sys.modules, "GUI imported HTTP client"
             """
         )
         result = subprocess.run(

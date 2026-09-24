@@ -7,6 +7,7 @@ from PySide6.QtCore import QObject, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QDialog
 
+from src.gui.update_dialog import UpdateDialog
 from src.update.service import RELEASES_URL, UpdateCancelled
 
 logger = logging.getLogger(__name__)
@@ -57,8 +58,6 @@ class UpdateController(QObject):
         self._close_pending = False
 
     def open(self, parent=None):
-        from src.gui.update_dialog import UpdateDialog
-
         if self._dialog is not None:
             self._dialog.raise_()
             self._dialog.activateWindow()

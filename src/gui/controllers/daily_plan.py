@@ -5,6 +5,7 @@ import logging
 from PySide6.QtCore import QObject, Slot
 from ruamel.yaml.error import YAMLError
 
+from src.gui.daily_plan_dialog import DailyPlanDialog
 from src.service.daily_plan import DailyPlanOptions
 
 logger = logging.getLogger(__name__)
@@ -28,8 +29,6 @@ class DailyPlanController(QObject):
 
     @Slot()
     def edit(self):
-        from src.gui.daily_plan_dialog import DailyPlanDialog
-
         try:
             plan = self._app_service.load_daily_plan()
             scripts = self._app_service.list_daily_plan_scripts()

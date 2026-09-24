@@ -20,7 +20,7 @@ class TestOpenConfig(unittest.TestCase):
         self.toast = MagicMock()
         self.ctrl = BackupController(app_service=self.service, toast=self.toast)
 
-    @patch("src.gui.config_dialog.ConfigDialog")
+    @patch("src.gui.controllers.backup.ConfigDialog")
     def test_cancel_does_not_save_any_settings(self, dialog_class):
         dialog = dialog_class.return_value
         dialog.exec.return_value = QDialog.Rejected
@@ -30,7 +30,7 @@ class TestOpenConfig(unittest.TestCase):
         self.service.apply_daily_plan.assert_not_called()
         self.service.check_update.assert_not_called()
 
-    @patch("src.gui.config_dialog.ConfigDialog")
+    @patch("src.gui.controllers.backup.ConfigDialog")
     def test_save_preferences_through_service(self, dialog_class):
         dialog = dialog_class.return_value
         dialog.startup_options = StartupOptions(False, 125)
@@ -44,7 +44,7 @@ class TestOpenConfig(unittest.TestCase):
         dialog.accept.assert_called_once_with()
         self.service.apply_daily_plan.assert_not_called()
 
-    @patch("src.gui.config_dialog.ConfigDialog")
+    @patch("src.gui.controllers.backup.ConfigDialog")
     def test_menu_dispatch_does_not_save_pending_preferences(self, dialog_class):
         dialog = dialog_class.return_value
         dialog.startup_options = StartupOptions(False, 125)
@@ -73,7 +73,7 @@ class TestOpenConfig(unittest.TestCase):
                 )
                 self.service.apply_startup_options.assert_not_called()
 
-    @patch("src.gui.config_dialog.ConfigDialog")
+    @patch("src.gui.controllers.backup.ConfigDialog")
     def test_save_failure_keeps_dialog_and_input(self, dialog_class):
         dialog = dialog_class.return_value
         dialog.startup_options = StartupOptions(False, 30)
@@ -87,7 +87,7 @@ class TestOpenConfig(unittest.TestCase):
         dialog.accept.assert_not_called()
         self.toast.assert_not_called()
 
-    @patch("src.gui.config_dialog.ConfigDialog")
+    @patch("src.gui.controllers.backup.ConfigDialog")
     def test_read_failure_is_reported(self, dialog_class):
         self.service.load_startup_options.side_effect = OSError("locked")
         with self.assertLogs("src.gui.controllers.backup", level="ERROR"):
@@ -95,7 +95,7 @@ class TestOpenConfig(unittest.TestCase):
         dialog_class.assert_not_called()
         self.toast.assert_called_once_with("读取启动设置失败：locked")
 
-    @patch("src.gui.run_confirm_dialog.RunConfirmDialog")
+    @patch("src.gui.controllers.backup.RunConfirmDialog")
     def test_run_settings_can_be_saved_without_launch(self, dialog_class):
         dialog = dialog_class.return_value
         dialog.exec.return_value = QDialog.Accepted
