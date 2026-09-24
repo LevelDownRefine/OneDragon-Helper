@@ -1,12 +1,108 @@
 # 脚本原生任务的开关声明：把该脚本自带的任务列表接到配置弹窗的「任务开关」区。
 # 声明本文件的脚本才显示该区，未声明（或该脚本未安装、缺表）即整区不出现。
 #
-# 每个脚本一段（脚本标识与 config.yml 的 script_name 一致）：
-#   config      该脚本的原生配置文件（相对脚本安装目录）
-#   tasks_key   任务定义所在键：{任务 id: 任务名}
-#   enabled_key 任务启用表所在键：{任务 id: 开关}，键与定义表一致
-# 行名取任务名本身，故脚本侧改名、增删任务都会自动跟上。
+# 每个脚本一段（脚本标识与 config.yml 的 script_name 一致），声明形式三选一：
+#   ① config + tasks_key + enabled_key
+#        tasks_key   任务定义所在键：{任务 id: 任务名}
+#        enabled_key 任务启用表所在键：{任务 id: 开关}，键与定义表一致
+#   ② config + task_pattern
+#        白名单正则（须恰好一个捕获组）：同一张表里键名匹配它的顶层项即任务项，捕获组
+#        即行名、值本身即开关；值不是 bool 的项（带子选项的）不作开关
+#   ③ config + list_key + id_key + enabled_key
+#        应用列表形态：{list_key: [{id_key: 标识, enabled_key: 开关}]}
+#
+# 三种形态都可选 names：{行标识: 展示名} —— 给了它就是白名单（只列出的行才出现，行名取
+# 映射值；脚本新增任务要补一行才显示），不给则全部照原样。行标识即各形态给出的原始行名
+# （应用标识 / 配置键名 / 捕获组）。
+#
+# config 为该脚本的原生配置文件（相对脚本安装目录）。
 BetterGI:
   config: User/OneDragon/默认配置.json
   tasks_key: TaskDefinitions
   enabled_key: TaskEnabledList
+
+ok-ef:
+  config: data/apps/ok-ef/working/configs/DailyTask.json
+  task_pattern: "⭐(.+)"
+
+# 绝区零：一条龙的应用组配置（ApplicationGroupConfig 读它），展示名取自源码 APP_NAME；
+# names 即白名单 —— 源码里已无定义的残留项（lost_void / withered_domain）不列入。
+OneDragon-Launcher:
+  config: config/01/one_dragon/_group.yml
+  list_key: app_list
+  id_key: app_id
+  enabled_key: enabled
+  names:
+    redemption_code: 兑换码
+    daily_signin: 每日签到
+    coffee: 咖啡店
+    random_play: 录像店营业
+    charge_plan: 体力刷本
+    drive_disc_dismantle: 驱动盘拆解
+    email: 邮件
+    engagement_reward: 活跃度奖励
+    city_fund: 丽都城募
+    suibian_temple: 随便观
+    ridu_weekly: 丽都周纪（领奖励）
+    intel_board: 情报板
+    notorious_hunt: 恶名狩猎
+    life_on_line: 真·拿命验收
+    notify: 通知
+    shiyu_defense: 式舆防卫战
+    world_patrol: 锄大地
+
+# 异环：一条龙的计划任务（DailyRoutineTask 写运行计划，展示名在源码任务类的 self.name）。
+ok-nte:
+  config: data/apps/ok-nte/working/configs/DailyPlanTask.json
+  list_key: 计划任务
+  id_key: id
+  enabled_key: enabled
+  names:
+    coffee: 一咖舍
+    daily_claim: 日常领取
+    cinema_date: 影院约会
+    fountain: 喷泉签到
+    furniture: 异象家具
+    gift: 羁遇赠礼
+
+# 星铁：config.yaml 是扁平键 + 行尾注释，任务开关就是各 *_enable 项；程序设置、自动对话、
+# 云游戏、通知渠道等非任务项靠 names 白名单滤掉（子参数与"领奖后追加动作"也不列入）。
+March7th-Launcher:
+  config: config.yaml
+  task_pattern: "(.+_enable)"
+  names:
+    power_enable: 清体力
+    daily_enable: 每日实训
+    reward_enable: 领取奖励
+    echo_of_war_enable: 历战余响
+    weekly_divergent_enable: 差分宇宙
+    universe_enable: 模拟宇宙
+    forgottenhall_enable: 混沌回忆
+    purefiction_enable: 虚构叙事
+    apocalyptic_enable: 末日幻影
+    fight_enable: 锄大地
+    activity_enable: 活动
+    activity_dailycheckin_enable: 每日签到
+    reward_dispatch_enable: 委托奖励
+    reward_mail_enable: 邮件奖励
+    reward_assist_enable: 支援奖励
+    reward_quest_enable: 每日实训奖励
+    reward_srpass_enable: 无名勋礼奖励
+    reward_redemption_code_enable: 兑换码奖励
+    reward_achievement_enable: 成就奖励
+    reward_message_enable: 短信奖励
+    asset_manager_enable: 资产管理
+    asset_self_molding_resin_enable: 自塑尘脂
+    asset_ember_special_pass_enable: 余烬·星轨专票
+    asset_ember_regular_pass_enable: 余烬·星轨通票
+    asset_ember_tracks_of_destiny_enable: 余烬·命运的足迹
+    asset_lc3_star_superimpose_enable: 三星光锥叠加
+
+# 鸣潮：一条龙（DailyTask）里的布尔开关。该文件没有统一前缀，且"每日任务后运行的附加
+# 任务"是列表、其余项是取值（刷什么 / 刷第几个），故靠 names 白名单挑出任务开关。
+ok-ww:
+  config: data/apps/ok-ww/working/configs/DailyTask.json
+  task_pattern: "(.+)"
+  names:
+    Farm Nightmare Nest for Daily Echo: 使用梦魇巢穴获取日常声骸
+
