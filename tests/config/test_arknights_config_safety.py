@@ -326,7 +326,7 @@ class TestMaaNativeConfig(unittest.TestCase):
                 daily_mod, "read_activity_stages", return_value=self.stages
             ) as reader,
         ):
-            controller.build_daily_cache([])
+            controller.build_daily_cache()
             reader.assert_called_once_with(
                 "MAA", "cache/gui/StageActivityV2.json", "config/gui.new.json"
             )

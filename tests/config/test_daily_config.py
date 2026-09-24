@@ -147,6 +147,41 @@ class TestGetWeeklyDefs(unittest.TestCase):
 
 
 class TestGetDailyMap(unittest.TestCase):
+    def test_filter_reads_only_selected_script_resources(self):
+        declarations = {
+            name: [
+                {
+                    "display_name": "日常",
+                    "options": {"source": {"path": f"{name}.json"}},
+                }
+            ]
+            for name in ("current", "other")
+        }
+        for selected in ("current", "custom"):
+            with (
+                self.subTest(selected=selected),
+                patch(
+                    "src.config.daily_config.load_daily_map",
+                    return_value=declarations,
+                ),
+                patch(
+                    "src.config.daily_config.get_task_lists", return_value=["副本"]
+                ) as source,
+            ):
+                menus = get_daily_map(selected)
+            if selected == "custom":
+                self.assertEqual(menus, {})
+                source.assert_not_called()
+            else:
+                self.assertEqual(list(menus), ["current"])
+                self.assertEqual(
+                    menus["current"]["dailies"][0]["options"]["values"],
+                    [{"display_name": "副本", "physical_name": "副本"}],
+                )
+                source.assert_called_once_with(
+                    "current", "日常", {"path": "current.json"}
+                )
+
     def test_endfield_declared_sources_materialize_native_options(self):
         declarations = {"ok-ef": load_daily_map()["ok-ef"]}
         stages = {

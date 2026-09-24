@@ -126,9 +126,9 @@ class AppService:
         """读取 weekly_task_list.yml 的周常声明清单。"""
         return get_weekly_map(script_name)
 
-    def get_daily_map(self) -> dict:
-        """读取 daily_task_list.yml 的副本/序列配置。"""
-        return get_daily_map()
+    def get_daily_map(self, script_name: str) -> dict:
+        """物化指定脚本的日常菜单。"""
+        return get_daily_map(script_name)
 
     # ── 游戏侧 config 适配器（src.config.set_config 模块函数）────────────
     def get_registered_script_names(self) -> list[str]:
