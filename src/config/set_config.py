@@ -9,7 +9,7 @@ from functools import cache
 from src.config.daily import DAILY_CLASSES, Daily, MaaDaily
 from src.config.task_config import get_daily_configs
 from src.config.weekly import build_weeklies
-from src.utils.utils_dict import get_field, safe_update
+from src.utils.utils_dict import covers, get_field, safe_update
 from src.utils.utils_sub_config import (
     get_script_game_path,
     load_config,
@@ -193,9 +193,7 @@ class ScriptConfig:
         logger.info(f"[init_config][{self.display_name}] config 已更新")
 
     def _is_aligned(self, config: dict, template: dict) -> bool:
-        """递归比较 config 是否涵盖模板全部结构。
-
-        dict 递归、list 按索引、其余直接比值。
+        """config 是否已涵盖模板全部结构（多出的字段不算差异）。
 
         Args:
             config: 当前 config dict。
@@ -204,19 +202,7 @@ class ScriptConfig:
         Returns:
             config 是否已与模板对齐。
         """
-
-        def _aligned(a, b):
-            if isinstance(a, dict) and isinstance(b, dict):
-                return all(k in a and _aligned(a[k], b[k]) for k in b)
-            if isinstance(a, list) and isinstance(b, list):
-                if len(a) < len(b):
-                    return False
-                return all(_aligned(a[i], b[i]) for i in range(len(b)))
-            return a == b
-
-        return all(
-            key in config and _aligned(config[key], template[key]) for key in template
-        )
+        return covers(config, template)
 
     def set_daily_task(
         self,
@@ -365,7 +351,6 @@ class ZenlessZoneZeroConfig(ScriptConfig):
     display_name = "绝区零"
     _backup_paths = ("config",)
     _game_config_rel_path = "config/01/game_account.yml"
-    _template_rel_path = "ZZZ一条龙.yml"
     _game_path_keys = ("game_path",)
     background = "assets/ui/static_background.webp"
 

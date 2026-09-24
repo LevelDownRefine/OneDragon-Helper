@@ -90,7 +90,7 @@ class TestConfigRelPaths(unittest.TestCase):
             self.assertEqual(init2.call_count, 2)
 
     def test_template_rel_path_only_for_template_scripts(self):
-        """模板路径只覆盖走模板初始化的脚本（粥已移除模板，仅 4 个）"""
+        """模板路径只覆盖走模板初始化的脚本（粥与绝区零已移除模板，仅 3 个）"""
         with_template = {
             name
             for name, factory in set_config._CONFIGS.items()
@@ -98,7 +98,7 @@ class TestConfigRelPaths(unittest.TestCase):
         }
         self.assertEqual(
             with_template,
-            {"BetterGI", "OneDragon-Launcher", "March7th-Launcher", "ok-ef"},
+            {"BetterGI", "March7th-Launcher", "ok-ef"},
         )
 
     def test_rel_paths_contain_extension(self):

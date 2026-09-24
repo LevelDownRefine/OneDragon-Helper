@@ -18,7 +18,7 @@ from src.config.task_config import (
     get_value_map,
 )
 from src.config.task_source import read_task_source
-from src.utils.utils_dict import get_field, safe_update
+from src.utils.utils_dict import covers, get_field, safe_update
 from src.utils.utils_sub_config import (
     load_game_config,
     load_script_config,
@@ -744,6 +744,97 @@ class NoopDaily(Daily):
         return False
 
 
+class TemplateDaily(Daily):
+    """按模板写入的日常（绝区零「培养方案」）：选中即按模板对齐 config，其余选项不碰配置。
+
+    选项是「做 / 不做」两态、落点是整份模板而非标量字段，故不走 ``_fields``。反读按「配置
+    是否涵盖模板」判定，与 ``set_config`` 的模板对齐同一判据。
+
+    Attributes:
+        _template_rel_path: 模板文件名（相对项目 ``config/`` 目录）。
+        _enable_value: 选中即写模板的那一项展示名。
+    """
+
+    def _parse_landing(self, declaration: dict) -> None:
+        """无字段落点：只记模板与「选中即写」的那一项。
+
+        Raises:
+            AssertionError: 未声明选项，或 ``enable_value`` 不在选项里。
+        """
+        self.task_field = None
+        self.task_map: dict[str, Any] = {}
+        self.option_fields: dict[str, str] = {}
+        options = get_options(declaration)
+        assert options, f"{self.script_name}/{self.physical_name} 必须声明选项"
+        self._template_rel_path: str = declaration["template"]
+        self._enable_value: str = declaration["enable_value"]
+        names = [option["display_name"] for option in options]
+        assert self._enable_value in names, (
+            f"{self.script_name}/{self.physical_name} 的 enable_value 必须是声明里的选项: "
+            f"{self._enable_value!r}"
+        )
+
+    def read(self) -> tuple[str | None, str | int | None]:
+        """反读：配置涵盖模板即视为已选「培养方案」，否则无真相（未安装、用户自配过）。
+
+        Returns:
+            (``enable_value``, None) 或 (None, None)。
+        """
+        config = self._load_daily_config(allow_missing=True)
+        if config is None or not covers(config, self._load_template()):
+            return None, None
+        return self._enable_value, None
+
+    def update(self, task_name: str, sequence: str | int | None = None) -> bool:
+        """选中「培养方案」时按模板对齐 config；其余选项不碰配置（保留现状）。
+
+        Args:
+            task_name: 一级项展示名。
+            sequence: 二级项值（本机制类无二级，忽略）。
+
+        Returns:
+            是否有实际修改；未选「培养方案」或配置已对齐时为 False。
+
+        Raises:
+            AssertionError: config 未安装/未配置。
+        """
+        if task_name != self._enable_value:
+            logger.info(
+                f"[daily][{self.display_name}] 未选「{self._enable_value}」，不改配置"
+            )
+            return False
+        config = self._load_daily_config(allow_missing=True)
+        assert config is not None, (
+            f"[daily][{self.display_name}] config 未安装/未配置，不能写入"
+        )
+        template = self._load_template()
+        if covers(config, template):
+            logger.info(f"[daily][{self.display_name}] config 已对齐，无需更新")
+            return False
+        for key, value in template.items():
+            safe_update(
+                config, key, value, self.script_display_name, assert_key_exists=False
+            )
+        self._save_daily_config(config)
+        logger.info(f"[daily][{self.display_name}] config 已更新")
+        return True
+
+    def _load_template(self) -> dict:
+        """加载模板（相对项目 ``config/`` 目录）。
+
+        Returns:
+            模板 dict。
+
+        Raises:
+            AssertionError: 模板缺失或解析结果非字典。
+        """
+        template = load_template(self.script_name, self._template_rel_path)
+        assert isinstance(template, dict), (
+            f"[daily][{self.display_name}] 模板必须是字典: {self._template_rel_path}"
+        )
+        return template
+
+
 class Anomaly(Daily):
     """数据在自己那段、开关在第二份文件里的日常（异环的两个日常）。
 
@@ -1030,6 +1121,7 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
         BgiLeyLineDaily,
         BgiStygianDaily,
         NoopDaily,
+        TemplateDaily,
         Anomaly,
         AnomalyHunter,
         MaaDaily,

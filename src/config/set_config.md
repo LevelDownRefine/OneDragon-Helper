@@ -27,8 +27,8 @@
 
 - 基类 `ScriptConfig` 不持落点 I/O：只保留 `_init_config`（直调 utils_sub_config）/ `_is_aligned` / `set_daily_task` / `set_daily_enabled` / `_read_daily_tasks`；**周常（周几起、周常副本、各条落点）整体归 `src/config/weekly.py`**，本适配器只在构造期装配 `_weeklies`。
 - **日常机制类**：`src/config/daily.py::Daily`——`__init__` 只做身份（`script_name` / `script_display_name` / `display_name` / `physical_name`）与配置路径（`config_rel_path` / `routine_rel_path`，全部来自声明 `config` / `routine` 字段），落点解析下沉为可覆写的 `_parse_landing`（模板方法）；公开 `_fields(task, sequence)`（该次选择的落点 {字段: 值}）、`update(task, sequence)`（取自己的段写入、返回是否有改动；段未落盘/config 缺失即 assert）、`read()`（反读，config 缺失/段未落盘 = 无真相）、`section` / `section_exists`（分段取段）、`read_enabled` / `set_enabled`（开关对：落点随声明与机制类而异——基类读主文件的 `enable_key` 布尔字段、`Anomaly` 读 `routine` 文件里自己那条、`BgiDaily` 按 `enable_task` 反查 BetterGI 任务启用表；无开关落点的日常恒返回 None/False）。文件 I/O 由 Daily 自持（直调 `utils_sub_config`，含保存后回读校验）：`_load_daily_config` / `_save_daily_config` / `_load_routine_config` / `_save_routine_config`——`update` / `read` / `set_enabled` 各自完成「读盘 → 改内存 → 有改动才落盘」的闭环，config dict 不在调用链上穿线。基类 `_parse_landing` 只解析**标准两层形态**；单层带 `key` 由 `AnomalyHunter`（`Anomaly` 子类）覆写，`NoopDaily` / `MaaDaily` 跳过通用解析——名字（`display_name`）只来自声明，全链路唯一来源。
-- 机制类在 `daily.py`：`BgiDaily`（原神秘境资源筛选、开关按任务名反查任务启用表，副本读写沿用基类）、`BgiLeyLineDaily`（原地脉花：声明字段名含 `{Day}`，`_fields` 展开成一周 7 份、`read` 要求 7 天同值）、`NoopDaily`（绝区零/崩铁，上游自身已支持）、`Anomaly`（数据在自己段、开关在第二份文件）、`MaaDaily`（粥的 TaskQueue/StagePlan）、`MaaActivityDaily`（活动选项及过期检查）。适配器构造时按声明创建全部日常，之后持续复用。
-- 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`；`_backup_paths`（备份范围，目录或文件）必填；**机制类与文件路径由声明标注**（`daily_task_list.yml` 每个日常必填 `class`（`daily.py::DAILY_CLASSES` 注册表查表）与 `config`（该日常读写的主文件路径；`routine` 可选，日常开关文件；`enable_key` / `enable_task` 可选，开关落点））；`ScriptConfig.__init__` 按声明逐个实例化并注入路径——加日常只改 yml，「主 config」概念不复存在。
+- 机制类在 `daily.py`：`BgiDaily`（原神秘境资源筛选、开关按任务名反查任务启用表，副本读写沿用基类）、`BgiLeyLineDaily`（原地脉花：声明字段名含 `{Day}`，`_fields` 展开成一周 7 份、`read` 要求 7 天同值）、`NoopDaily`（崩铁，上游自身已支持）、`TemplateDaily`（绝区零「培养方案」：选中即按 `template` 声明的模板对齐 config，其余选项不碰配置；反读按「配置涵盖模板」判定）、`Anomaly`（数据在自己段、开关在第二份文件）、`MaaDaily`（粥的 TaskQueue/StagePlan）、`MaaActivityDaily`（活动选项及过期检查）。适配器构造时按声明创建全部日常，之后持续复用。
+- 子类声明 `_script_name`、`display_name` 与路径类属性：`_config_rel_path` 必填；声明了 `_game_path_keys` 则 `_game_config_rel_path` 必填；需模板初始化才设 `_template_rel_path`；`_backup_paths`（备份范围，目录或文件）必填；**机制类与文件路径由声明标注**（`daily_task_list.yml` 每个日常必填 `class`（`daily.py::DAILY_CLASSES` 注册表查表）与 `config`（该日常读写的主文件路径；`routine` 可选，日常开关文件；`enable_key` / `enable_task` 可选，开关落点；`template` / `enable_value` 为模板驱动型日常（`TemplateDaily`）的落点）；`ScriptConfig.__init__` 按声明逐个实例化并注入路径——加日常只改 yml，「主 config」概念不复存在。
 - 注册表 `_CONFIGS: dict[str, Callable[[], ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`，值为带缓存的构造入口：首次访问时创建适配器及其全部日常，之后复用同一个实例；构造只读取项目声明和固定模板，原生配置仍逐次读盘，`_init_config` 由启动流程显式调用；路径声明不完整会在 import 时 assert 暴露。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `iter_backup_paths` / `set_config` / `get_daily_readback` / `set_daily_enabled`）。
 
 ## 三个独立流程
@@ -65,7 +65,7 @@
 | 鸣潮 | 是（no-op，无模板→直接返回） | — | 启动时自动触发，无模板时为空操作 |
 | 原神 | 是 | `BGI一条龙.json` | 启动时自动触发，模板对齐补全缺失字段 |
 | 终末地 | 是 | `okef一条龙.json` | 同上 |
-| 绝区零 | 是 | `ZZZ一条龙.yml` | 同上 |
+| 绝区零 | 否 | — | 模板写入改由「每日任务」（`TemplateDaily`）在保存配置时驱动 |
 | 崩铁 | 是 | `M7A一条龙.yml` | 同上 |
 | 异环 | 是（no-op，无模板→直接返回） | — | 同鸣潮 |
 | 粥 | 补齐剿灭和三个入口、整理顺序、校验活动过期 | `gui.new.json` | 缺失任务使用 `MAA任务.json`；已有任务保留自身设置 |
@@ -97,7 +97,7 @@
 3. `daily.update(task_name, sequence)`——自身完成「读 config → 写数据段 → 有改动才落盘」：段存在性/config 在场由 `update` 内部断言（段缺失时 `section` 返回游离 dict，直接写会静默丢失）。
 4. 顺带 `set_daily_enabled(daily, True)`——`Daily.set_enabled` 默认不做事，只有 `Anomaly` 真实写自己那条 Routine Item；该脚本无日常开关文件时 `set_daily_enabled` 直接跳过（选择即启用）。
 
-> 两个「默认不做事」让类型检查消失：无需适配的日常（绝区零/崩铁）由 `NoopDaily` 覆写 `update` 恒返回 False（读盘一次但不落盘）；无开关机制的日常由基类 `set_enabled` 兜底——标志位（no_op / enable_on_select）都不存在。
+> 两个「默认不做事」让类型检查消失：无需适配的日常（崩铁）由 `NoopDaily` 覆写 `update` 恒返回 False（读盘一次但不落盘）；无开关机制的日常由基类 `set_enabled` 兜底——标志位（no_op / enable_on_select）都不存在。
 
 > 写盘校验：落盘点（Daily 的 `_save_daily_config` / `_save_routine_config`、Weekly 的 `_save_config`、`_init_config`）写后都重读并与预期整段相等断言（`utils_sub_config.save_script_config` 承担通用实现）。save_config 为同步阻塞写，重读必为新内容，无需 sleep。校验失败属不该发生，用 assert。
 
@@ -129,7 +129,8 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 | 原神 · 地脉花 | `BgiLeyLineDaily` | 声明字段名含 `{Day}`，一次写满一周 7 份（`LeyLine{Day}Type` / `LeyLine{Day}Country`）；反读要求 7 天同值，否则无真相 |
 | 原神 · 首领讨伐 | `BgiDaily` | 一级是国家（仅分组），落点取二级的 `AutoBossName` |
 | 终末地 | `Daily` | 两级共用 `体力本`（`_single_field`）；开关取主文件的 `enable_key` 字段 |
-| 绝区零 / 崩铁 | `NoopDaily` | 无需适配副本选择（跳过通用解析），亦无开关落点 |
+| 崩铁 | `NoopDaily` | 无需适配副本选择（跳过通用解析），亦无开关落点 |
+| 绝区零 · 每日任务 | `TemplateDaily` | 选中「培养方案」即按 `ZZZ一条龙.yml` 对齐 `charge_plan.yml`，选「不启用培养方案」不碰配置；反读按「配置涵盖模板」判定（`utils_dict.covers`） |
 | 异环 | `Anomaly` + `AnomalyHunter` | 两个日常各一段、各一个类，见下节 |
 | 粥 | `MaaDaily` | TaskQueue / StagePlan（跳过通用解析），见下节 |
 

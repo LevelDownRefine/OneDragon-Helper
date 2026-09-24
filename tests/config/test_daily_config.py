@@ -250,7 +250,11 @@ class TestGetDailyMap(unittest.TestCase):
                             {
                                 "display_name": "培养方案",
                                 "physical_name": "培养方案",
-                            }
+                            },
+                            {
+                                "display_name": "不启用培养方案",
+                                "physical_name": "不启用培养方案",
+                            },
                         ]
                     },
                 }

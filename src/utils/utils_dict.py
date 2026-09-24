@@ -10,6 +10,31 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def covers(container, template) -> bool:
+    """container 是否涵盖 template 的全部结构与取值。
+
+    dict 递归、list 按索引（container 可更长）、其余直接比值 —— 判断配置是否已与模板对齐
+    时，多出来的字段（脚本运行时自己写的）不算差异。
+
+    Args:
+        container: 待检查的值（通常是一份 config）。
+        template: 模板值。
+
+    Returns:
+        container 是否涵盖 template。
+    """
+    if isinstance(container, dict) and isinstance(template, dict):
+        return all(
+            key in container and covers(container[key], template[key])
+            for key in template
+        )
+    if isinstance(container, list) and isinstance(template, list):
+        return len(container) >= len(template) and all(
+            covers(container[index], template[index]) for index in range(len(template))
+        )
+    return container == template
+
+
 def _scalar_kind(value: Any) -> type:
     """归一化标量类型，用于类型一致性比较。
 
