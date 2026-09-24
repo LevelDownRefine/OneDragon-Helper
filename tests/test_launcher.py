@@ -119,14 +119,11 @@ class TestUpdateRestart(unittest.TestCase):
                     "config_workflow",
                     "_clear_qml_cache",
                     "_install_qt_message_logger",
+                    "QApplication",
+                    "qmlRegisterSingletonInstance",
+                    "install_file_drop",
                 ):
                     stack.enter_context(patch.object(launcher, name))
-                for target in (
-                    "PySide6.QtWidgets.QApplication",
-                    "PySide6.QtQml.qmlRegisterSingletonInstance",
-                    "src.gui.file_drop.install_file_drop",
-                ):
-                    stack.enter_context(patch(target))
                 stack.enter_context(
                     patch.object(launcher, "run_cli", return_value=None)
                 )
@@ -138,11 +135,11 @@ class TestUpdateRestart(unittest.TestCase):
                     )
                 )
                 engine = stack.enter_context(
-                    patch("PySide6.QtQml.QQmlApplicationEngine")
+                    patch.object(launcher, "QQmlApplicationEngine")
                 )
                 engine.return_value.rootObjects.return_value = [Mock()]
-                bridge = stack.enter_context(patch("src.gui.main_window.QmlBridge"))
-                timer = stack.enter_context(patch("PySide6.QtCore.QTimer"))
+                bridge = stack.enter_context(patch.object(launcher, "QmlBridge"))
+                timer = stack.enter_context(patch.object(launcher, "QTimer"))
                 with self.assertRaises(SystemExit):
                     launcher.main()
                 self.assertEqual(

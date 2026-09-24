@@ -11,8 +11,15 @@ import shutil
 import sys
 import time
 
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QFont
+from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
+from PySide6.QtWidgets import QApplication
+
 from src.cli import build_parser, run_cli
 from src.config.generate_config import config_workflow
+from src.gui.file_drop import install_file_drop
+from src.gui.main_window import QmlBridge
 from src.utils.utils_logger import install_crash_hooks, setup_logging
 from src.utils.utils_sub_config import resolve_script_path
 
@@ -98,14 +105,6 @@ def _install_qt_message_logger():
 
 
 def _launch_qml(*, skip_auto_launch: bool = False):
-    from PySide6.QtCore import Qt, QTimer, QUrl
-    from PySide6.QtGui import QFont
-    from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
-    from PySide6.QtWidgets import QApplication
-
-    from src.gui.file_drop import install_file_drop
-    from src.gui.main_window import QmlBridge
-
     # 禁用 QML 磁盘缓存 + 清理已有缓存：旧版编译缓存会导致类型解析错乱
     # （"Type IconButton unavailable" / "Cannot assign object to list property data"
     # 等误报），且删除前不重新生成——保证每次启动都是干净编译。
@@ -133,7 +132,8 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     logger.info("[qml] engine loading: %s", qml_path)
     engine.load(QUrl.fromLocalFile(qml_path))
     logger.info("[qml] engine loaded, rootObjects = %d", len(engine.rootObjects()))
-    _log_startup("QML 装载完成")
+    # load 返回时窗口已显示并 expose（首帧也在其内），无需另挂 frameSwapped。
+    _log_startup("QML 装载完成（窗口已显示）")
     # 窗口首帧渲染（已可见）后才启动空闲预热，避免装载/模态期间提前占用主线程。
     if engine.rootObjects():
         win = engine.rootObjects()[0]

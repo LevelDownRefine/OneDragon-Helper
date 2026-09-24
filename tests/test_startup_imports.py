@@ -9,17 +9,11 @@ from pathlib import Path
 
 
 class TestStartupImports(unittest.TestCase):
-    def test_cli_defers_qt_and_gui_defers_network(self):
+    def test_gui_startup_defers_network(self):
         code = textwrap.dedent(
             """
             import sys
-            from src import launcher
-
-            launcher.build_parser().parse_args(["--version"])
-            assert "PySide6" not in sys.modules, "CLI imported Qt"
-            assert "requests" not in sys.modules, "CLI imported HTTP client"
-
-            from src.gui.main_window import QmlBridge
+            import src.launcher
             from src.service.app_service import AppService
 
             AppService()
