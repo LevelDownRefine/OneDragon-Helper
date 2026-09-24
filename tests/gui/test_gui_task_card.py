@@ -3,7 +3,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.gui.controllers import task_card as task_card_mod
@@ -57,6 +57,60 @@ def _make_controller(script_name="March7th-Launcher", display_name="崩铁"):
     service.get_weekly_start_for.return_value = None
     toast = MagicMock()
     return TaskCardController(game_list, service, toast)
+
+
+class TestDailyMenuCache(unittest.TestCase):
+    def test_switch_loads_only_requested_menu_and_reuses_it(self):
+        games = [
+            {"script_name": name, "display_name": name} for name in ("first", "second")
+        ]
+        game_list = _FakeGameList(games)
+        service = MagicMock()
+        menus = {
+            name: {"dailies": [{"display_name": "日常", "options": {"values": [name]}}]}
+            for name in ("first", "second")
+        }
+        service.get_daily_map.side_effect = lambda name: {name: menus[name]}
+        ctrl = TaskCardController(game_list, service, MagicMock())
+        ctrl.build_daily_cache()
+        service.get_daily_map.assert_called_once_with("first")
+        self.assertEqual(ctrl.daily_options("日常"), ["first"])
+        game_list.current_game = games[1]
+        self.assertEqual(ctrl.daily_options("日常"), ["second"])
+        game_list.current_game = games[0]
+        self.assertEqual(ctrl.daily_options("日常"), ["first"])
+        self.assertEqual(
+            service.get_daily_map.call_args_list, [call("first"), call("second")]
+        )
+
+        # 重载后两个脚本都须重新取菜单，不能沿用旧路径的资源。
+        for name in menus:
+            menus[name] = {
+                "dailies": [
+                    {"display_name": "日常", "options": {"values": [f"new-{name}"]}}
+                ]
+            }
+        ctrl.build_daily_cache()
+        self.assertEqual(ctrl.daily_options("日常"), ["new-first"])
+        game_list.current_game = games[1]
+        self.assertEqual(ctrl.daily_options("日常"), ["new-second"])
+        self.assertEqual(
+            service.get_daily_map.call_args_list,
+            [call("first"), call("second"), call("first"), call("second")],
+        )
+
+    def test_custom_and_empty_lists_do_not_repeat_menu_reads(self):
+        ctrl = _make_controller("custom")
+        ctrl._app_service.get_daily_map.side_effect = None
+        ctrl._app_service.get_daily_map.return_value = {}
+        ctrl.build_daily_cache()
+        self.assertEqual(ctrl.daily_options("日常"), [])
+        self.assertEqual(ctrl.daily_options("日常"), [])
+        ctrl._app_service.get_daily_map.assert_called_once_with("custom")
+        ctrl._game_list.current_game = None
+        ctrl.build_daily_cache()
+        self.assertEqual(ctrl.daily_options("日常"), [])
+        ctrl._app_service.get_daily_map.assert_called_once_with("custom")
 
 
 class TestWeeklyItems(unittest.TestCase):

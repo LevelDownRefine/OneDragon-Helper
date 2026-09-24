@@ -1,7 +1,7 @@
 """任务卡控制器：日常副本 / 周常周几（数据 + 选择持久化）。
 
 独立 QObject，自管状态（_daily_map_cache）。当前游戏经构造注入的
-game_list 引用读取。日常菜单的选项从缓存读取（build_daily_cache 时构建）；日常行的 chip 文案
+game_list 引用读取。日常菜单按脚本首次访问时缓存；日常行的 chip 文案
 每次求值时经 get_daily_readback 反读一次（一次覆盖该脚本全部日常）。
 启用控制：脚本级启用靠控制模式、日常级开关靠 setDailyEnabled（仅声明了日常开关的脚本，如异环）、
 周常靠周几起（均在别处实现）。
@@ -52,8 +52,7 @@ class TaskCardController(QObject):
         self._game_list = game_list
         self._app_service = app_service
         self._toast = toast
-        # 副本下拉数据缓存：daily_task_list.yml 解析较贵且运行期不变，
-        # build_daily_cache 时一次性构建。
+        # 菜单按需缓存；重载脚本列表时失效，以重新读取路径及本地资源。
         self._daily_map_cache: dict = {}
 
     # ── 读接口（供 QmlBridge 委托）────────────────────────────────────
@@ -105,7 +104,19 @@ class TaskCardController(QObject):
 
     def _dailies_of(self, script_name: str) -> list:
         """某脚本各日常的物化声明（词汇与声明一致）；无数据返回空列表。"""
-        return self._daily_map_cache.get(script_name, {}).get("dailies", [])
+        if not script_name:
+            return []
+        if script_name not in self._daily_map_cache:
+            menus = self._app_service.get_daily_map(script_name)
+            # 自定义脚本没有日常声明，也缓存空结果。
+            if script_name not in menus:
+                menus[script_name] = {"dailies": []}
+            assert script_name in menus
+            self._daily_map_cache[script_name] = menus[script_name]
+        assert script_name in self._daily_map_cache
+        menu = self._daily_map_cache[script_name]
+        assert "dailies" in menu
+        return menu["dailies"]
 
     def daily_options(self, daily_name: str) -> list:
         """某日常的副本下拉数据（QML 按行调用）。
@@ -221,10 +232,11 @@ class TaskCardController(QObject):
             return d["options"]["values"] if "options" in d else []
         return []
 
-    # ── 缓存构建（运行期不变）──────────────────────────────────────────
-    def build_daily_cache(self, games: list):
-        """一次性解析 daily_task_list.yml 并构建各脚本的日常菜单（运行期不变）。"""
-        self._daily_map_cache = self._app_service.get_daily_map()
+    # ── 菜单缓存──────────────────────────────────────────────────────
+    def build_daily_cache(self):
+        """清空旧菜单并构建当前脚本菜单，其余脚本首次访问时再构建。"""
+        self._daily_map_cache.clear()
+        self._dailies_of(self._current["script_name"])
 
     def refresh(self):
         """切换游戏后发信号触发 QML 重读任务卡。"""

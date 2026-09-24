@@ -115,18 +115,21 @@ def _materialize_daily(script_name: str, declaration: dict) -> dict:
     return {**declaration, "options": options}
 
 
-def get_daily_map() -> dict:
+def get_daily_map(script_name: str | None = None) -> dict:
     """把日常声明物化成按日常分组的菜单（词汇与声明一致）。
 
     {script: {"dailies": [日常声明节点, ...]}}，``options.values`` 已物化。菜单
     静态选项直接来自声明，资源选项由适配器统一委托给该日常机制类读取。
+
+    Args:
+        script_name: 仅物化指定脚本；省略时返回全部菜单。
     """
     return {
-        script_name: {
+        name: {
             "dailies": [
-                _materialize_daily(script_name, declaration)
-                for declaration in declarations
+                _materialize_daily(name, declaration) for declaration in declarations
             ]
         }
-        for script_name, declarations in load_daily_map().items()
+        for name, declarations in load_daily_map().items()
+        if script_name is None or name == script_name
     }

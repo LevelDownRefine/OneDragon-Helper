@@ -366,7 +366,7 @@ class QmlBridge(QObject):
         必须强制刷新背景与任务卡，否则 UI 停在旧数据直到重新点选。
         """
         self.game_list.reload_games()
-        self.task_card.build_daily_cache(self.game_list.games)
+        self.task_card.build_daily_cache()
         self._on_current_changed()
 
     def _on_current_changed(self):
