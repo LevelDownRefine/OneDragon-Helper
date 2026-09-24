@@ -137,7 +137,8 @@ script_list:
   script_path: D:\game_helper\MaaEnd\MaaEnd.exe
   script_process_name: []
   game_process_name: Endfield.exe
-  # 非空时 runner 会在启动本脚本前先打开该游戏；MaaEnd 不自启游戏，故必须填
+  # 非空时 runner 会在启动本脚本前先打开该游戏；MaaEnd 不自启游戏，故必须填。
+  # GUI 的「启动游戏」与悬停图标优先用它（留空才回落到脚本自身配置里的路径）。
   game_path: C:\Program Files\Hypergryph Launcher\games\Endfield Game\Endfield.exe
   launcher_mode: false
   check_done: game_closed

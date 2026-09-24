@@ -357,7 +357,7 @@ class TestGetGameExePath(unittest.TestCase):
             ),
             patch("os.path.isfile", side_effect=lambda p: p == launcher),
         ):
-            got = set_config.get_game_exe_path("ok-nte")
+            got = set_config._CONFIGS["ok-nte"]().get_game_exe_path()
         self.assertEqual(got, launcher)
 
     def test_nte_launcher_missing_returns_none(self):
@@ -378,7 +378,7 @@ class TestGetGameExePath(unittest.TestCase):
             ),
             patch("os.path.isfile", return_value=False),
         ):
-            got = set_config.get_game_exe_path("ok-nte")
+            got = set_config._CONFIGS["ok-nte"]().get_game_exe_path()
         self.assertIsNone(got)
 
     def test_unconfigured_game_path_returns_none(self):
@@ -392,7 +392,7 @@ class TestGetGameExePath(unittest.TestCase):
                 self.subTest(script=script, config=config),
                 patch("src.config.set_config.load_game_config", return_value=config),
             ):
-                self.assertIsNone(set_config.get_game_exe_path(script))
+                self.assertIsNone(set_config._CONFIGS[script]().get_game_exe_path())
 
     def test_genshin_nested_install_path(self):
         """原神（BetterGI）读取 config.json 的 genshinStartConfig.installPath（嵌套）"""
@@ -404,7 +404,7 @@ class TestGetGameExePath(unittest.TestCase):
                 }
             },
         ):
-            got = set_config.get_game_exe_path("BetterGI")
+            got = set_config._CONFIGS["BetterGI"]().get_game_exe_path()
         self.assertEqual(got, "D:\\Genshin\\YuanShen.exe")
 
     def test_game_path_top_level(self):
@@ -433,7 +433,7 @@ class TestGetGameExePath(unittest.TestCase):
                 }
             },
         ):
-            got = set_config.get_game_exe_path("MAA")
+            got = set_config._CONFIGS["MAA"]().get_game_exe_path()
         self.assertEqual(got, "C:\\MuMu\\#0 MuMu安卓设备.lnk")
 
 
@@ -452,6 +452,23 @@ class TestGetGameExePathAdapter(unittest.TestCase):
             self.assertEqual(set_config.get_game_exe_path("ok-ww"), "D:/Game/game.exe")
         factory.assert_called_once_with()
         factory.return_value.get_game_exe_path.assert_called_once_with()
+
+    def test_entry_game_path_then_native(self):
+        """config.yml 手填的 game_path 优先（用户显式指定），未填才用脚本原生配置。"""
+        native = MagicMock()
+        native.return_value.get_game_exe_path.return_value = "D:/native.exe"
+        cases = (
+            ("手填优先", {"ok-ww": native}, "D:/entry.exe", "D:/entry.exe"),
+            ("回退原生", {"ok-ww": native}, "", "D:/native.exe"),
+            ("两处皆无", {}, "", None),
+        )
+        for label, configs, entry, expected in cases:
+            with (
+                self.subTest(case=label),
+                patch.dict(set_config._CONFIGS, configs, clear=True),
+                patch.object(set_config, "get_script_game_path", return_value=entry),
+            ):
+                self.assertEqual(set_config.get_game_exe_path("ok-ww"), expected)
 
 
 class TestSetConfigAdapter(unittest.TestCase):
