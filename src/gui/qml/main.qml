@@ -630,12 +630,16 @@ Window {
                     Rectangle {
                         objectName: "linkHint_" + modelData.icon
                         property bool hasGameIcon: gameHintIcon.status === Image.Ready
+                        // 图标尺寸与四周留白：留白露出 Theme.control 底板，图标不贴边。
+                        property int iconSize: 128
+                        property int iconPad: 8
+                        property int iconRadius: 24
                         anchors.right: parent.left
                         anchors.rightMargin: 18
                         anchors.verticalCenter: parent.verticalCenter
-                        width: hasGameIcon ? 72 : hintText.implicitWidth + 24
-                        height: hasGameIcon ? 72 : 32
-                        radius: hasGameIcon ? 14 : 8
+                        width: hasGameIcon ? iconSize + iconPad * 2 : hintText.implicitWidth + 24
+                        height: hasGameIcon ? iconSize + iconPad * 2 : 32
+                        radius: hasGameIcon ? iconRadius : 8
                         color: Theme.control
                         border.width: 1
                         border.color: Theme.border
@@ -646,10 +650,14 @@ Window {
                             id: gameHintIcon
                             objectName: "linkHintIcon_" + modelData.icon
                             anchors.centerIn: parent
-                            width: 56
-                            height: 56
+                            width: parent.iconSize
+                            height: parent.iconSize
                             source: linkButton.gameIconSource
                             fillMode: Image.PreserveAspectFit
+                            // GameIconProvider 直给 256 原生档并按 script_name 路由；显示 128 时由 mipmap 抗混叠下采样；
+                            // cache:false 让脚本切换（script_name 即 URL）即时重读，旧图不滞留。
+                            mipmap: true
+                            cache: false
                             visible: parent.hasGameIcon
                         }
                         Text {

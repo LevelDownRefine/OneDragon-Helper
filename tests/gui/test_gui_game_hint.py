@@ -31,12 +31,14 @@ class TestGameIconHint(unittest.TestCase):
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
                 patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),
                 patch("src.gui.controllers.links._get_game_exe_path", return_value=icon_path) as read_path,
+                patch("src.config.set_config.get_game_exe_path", return_value=icon_path),
                 patch("src.gui.icons._exe_icon", return_value=QIcon(icon_path)),
             ):
                 bridge = make_bridge()
                 qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
                 engine = QQmlApplicationEngine()
                 engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
+                engine.addImageProvider("gameicon", bridge.game_list.game_icon_provider)
                 engine.addImageProvider("uiicon", UiIconProvider())
                 engine.load(QUrl.fromLocalFile(str(Path("src/gui/qml/main.qml").resolve())))
                 assert len(engine.rootObjects()) == 1
@@ -68,8 +70,9 @@ class TestGameIconHint(unittest.TestCase):
                 with patch.object(bridge.links, "launchGame") as launch:
                     point = hover("linkButton_game")
                     assert hint.isVisible() and icon.isVisible() and not label.isVisible()
-                    assert hint.width() == 72 and hint.height() == 72
-                    assert icon.property("source").toString().startswith("data:image/png;base64,")
+                    assert hint.width() == 144 and hint.height() == 144
+                    assert icon.width() == 128 and icon.height() == 128
+                    assert icon.property("source").toString().startswith("image://gameicon/")
                     read_path.assert_called_with("ok-ww")
                     launch.assert_not_called()
                     QTest.mouseClick(window, Qt.LeftButton, pos=point)
