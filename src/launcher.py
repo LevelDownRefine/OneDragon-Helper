@@ -125,6 +125,7 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     # 脚本图标源：数据归属 game_list，直接取其实例持有的 provider；
     # 通用 UI 矢量图标源由组合根 QmlBridge 暴露。
     engine.addImageProvider("scripticon", bridge.game_list.icon_provider)
+    engine.addImageProvider("gameicon", bridge.game_list.game_icon_provider)
     engine.addImageProvider("uiicon", bridge.ui_icon_provider)
     qml_path = resolve_script_path("src/gui/qml/main.qml")
     assert qml_path and os.path.isfile(qml_path), f"[launcher] QML 缺失: {qml_path}"

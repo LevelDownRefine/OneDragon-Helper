@@ -20,40 +20,26 @@ class TestLinksGameIcon(unittest.TestCase):
         self.ctrl = LinksController(self.games, self.toast, MagicMock())
 
     def test_reads_current_game_exe_each_time(self):
-        with (
-            patch(
-                "src.gui.controllers.links._get_game_exe_path",
-                side_effect=["C:/鸣潮/Game.exe", "D:/Game2.exe"],
-            ) as read_path,
-            patch(
-                "src.gui.controllers.links.get_exe_icon_url",
-                side_effect=["icon1", "icon2"],
-            ) as read_icon,
-        ):
-            self.assertEqual(self.ctrl.gameIconSource(), "icon1")
+        with patch(
+            "src.gui.controllers.links._get_game_exe_path",
+            side_effect=["C:/鸣潮/Game.exe", "D:/Game2.exe"],
+        ) as read_path:
+            self.assertEqual(self.ctrl.gameIconSource(), "image://gameicon/ok-ww")
             self.games.current_game = {"script_name": "second"}
-            self.assertEqual(self.ctrl.gameIconSource(), "icon2")
+            self.assertEqual(self.ctrl.gameIconSource(), "image://gameicon/second")
         self.assertEqual(
             read_path.call_args_list,
             [unittest.mock.call("ok-ww"), unittest.mock.call("second")],
         )
-        self.assertEqual(
-            read_icon.call_args_list,
-            [
-                unittest.mock.call("C:/鸣潮/Game.exe"),
-                unittest.mock.call("D:/Game2.exe"),
-            ],
-        )
         self.toast.assert_not_called()
 
-    def test_missing_path_or_icon_returns_empty_without_toast(self):
-        for path in (None, "", "C:/missing.exe"):
+    def test_falsy_path_returns_empty_without_toast(self):
+        for path in (None, ""):
             with (
                 self.subTest(path=path),
                 patch(
                     "src.gui.controllers.links._get_game_exe_path", return_value=path
                 ),
-                patch("src.gui.controllers.links.get_exe_icon_url", return_value=""),
             ):
                 self.assertEqual(self.ctrl.gameIconSource(), "")
         self.toast.assert_not_called()

@@ -1,6 +1,5 @@
-"""脚本图标：来源选择、默认回退、提取缓存和 PNG 编码。"""
+"""脚本图标：来源选择、默认回退、提取缓存与游戏图标提供器。"""
 
-import base64
 import os
 import tempfile
 import unittest
@@ -10,14 +9,17 @@ from unittest.mock import MagicMock, patch
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtGui import QColor, QIcon, QImage, QPixmap
+from PySide6.QtCore import QSize
+from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from src.gui import icons
 from src.gui.icons import (
     _EXE_ICON_CACHE,
+    GameIconProvider,
     _exe_icon,
-    get_exe_icon_url,
+    _render_icon,
+    get_exe_icon,
     get_icon_source,
     get_script_icon,
 )
@@ -26,7 +28,49 @@ from src.gui.icons import (
 _app = QApplication.instance() or QApplication([])
 
 
-class TestExeIconUrl(unittest.TestCase):
+class TestGameIconProvider(unittest.TestCase):
+    """GameIconProvider：按 script_name 解析游戏 exe 图标，近显示分辨率预渲染。"""
+
+    def test_missing_path_or_icon_returns_null_pixmap(self):
+        provider = GameIconProvider()
+        with patch("src.config.set_config.get_game_exe_path", return_value=""):
+            self.assertTrue(provider.requestPixmap("ok-ww", None, QSize()).isNull())
+        with (
+            patch("src.config.set_config.get_game_exe_path", return_value="C:/g.exe"),
+            patch("src.gui.icons.get_exe_icon", return_value=None),
+        ):
+            self.assertTrue(provider.requestPixmap("ok-ww", None, QSize()).isNull())
+
+    def test_resolves_game_exe_and_requests_256px_pixmap(self):
+        provider = GameIconProvider()
+        source = QPixmap(256, 256)
+        source.fill(QColor("#348FCA"))
+        icon = MagicMock()
+        icon.pixmap.return_value = source
+        with (
+            patch("src.config.set_config.get_game_exe_path", return_value="C:/g.exe"),
+            patch("src.gui.icons.get_exe_icon", return_value=icon),
+        ):
+            out = provider.requestPixmap("ok-ww", None, QSize())
+        self.assertFalse(out.isNull())
+        # 提供器统一请求 256 逻辑像素（命中 exe 原生最高档），交由 QML mipmap 下采样到 128 显示。
+        icon.pixmap.assert_called_once_with(256, 256)
+        self.assertEqual(out.width(), 256)
+
+    def test_render_icon_rounds_corners_only_when_radius_given(self):
+        source = QPixmap(64, 64)
+        source.fill(QColor("#348FCA"))
+        for radius, corner_alpha in ((0, 255), (8, 0)):
+            with self.subTest(radius=radius):
+                out = _render_icon(QIcon(source), 64, radius).toImage()
+                self.assertEqual(out.width(), 64)
+                self.assertEqual(out.pixelColor(1, 1).alpha(), corner_alpha)
+                self.assertEqual(out.pixelColor(32, 32).alpha(), 255)
+
+
+class TestGetExeIcon(unittest.TestCase):
+    """get_exe_icon：内嵌图标检查 + 缓存（原 get_exe_icon_url 的提取逻辑迁移）。"""
+
     def setUp(self):
         self.native = MagicMock()
         self.native.ExtractIconExW.return_value = 1
@@ -38,48 +82,30 @@ class TestExeIconUrl(unittest.TestCase):
             mock.start()
             self.addCleanup(mock.stop)
 
-    def test_png_url_contains_extracted_icon(self):
-        pixmap = QPixmap(64, 64)
-        pixmap.fill(QColor("#348FCA"))
-        with patch("src.gui.icons._exe_icon", return_value=QIcon(pixmap)) as extract:
-            url = get_exe_icon_url("C:/游戏/Game.exe")
+    def test_extracts_embedded_icon(self):
+        px = QPixmap(16, 16)
+        with patch.object(icons, "_exe_icon", return_value=QIcon(px)) as extract:
+            icon = get_exe_icon("C:/游戏/Game.exe")
+        self.assertIsNotNone(icon)
         extract.assert_called_once_with("C:/游戏/Game.exe")
         self.native.ExtractIconExW.assert_called_once_with(
             "C:/游戏/Game.exe", -1, None, None, 0
         )
-        self.assertTrue(url.startswith("data:image/png;base64,"))
-        image = QImage.fromData(base64.b64decode(url.split(",", 1)[1]), "PNG")
-        self.assertEqual(image.pixelColor(32, 32), QColor("#348FCA"))
 
-    def test_missing_file_does_not_extract_icon(self):
-        with patch("src.gui.icons.os.path.isfile", return_value=False):
-            self.assertEqual(get_exe_icon_url("C:/missing.exe"), "")
-        self.native.ExtractIconExW.assert_not_called()
-
-    def test_no_embedded_icon_or_native_failure_returns_empty(self):
+    def test_no_embedded_icon_returns_none(self):
         for count in (0, 0xFFFFFFFF):
-            with self.subTest(count=count), patch("src.gui.icons._exe_icon") as extract:
+            with (
+                self.subTest(count=count),
+                patch.object(icons, "_exe_icon") as extract,
+            ):
                 self.native.ExtractIconExW.return_value = count
-                self.assertEqual(get_exe_icon_url("C:/game.exe"), "")
+                self.assertIsNone(get_exe_icon("C:/game.exe"))
                 extract.assert_not_called()
 
-    def test_missing_or_null_qt_icon_returns_empty(self):
-        for icon in (None, QIcon()):
-            with (
-                self.subTest(icon=icon),
-                patch("src.gui.icons._exe_icon", return_value=icon),
-            ):
-                self.assertEqual(get_exe_icon_url("C:/game.exe"), "")
-
-    def test_encoding_failure_returns_empty_and_logs(self):
-        icon = MagicMock()
-        icon.pixmap.return_value.isNull.return_value = False
-        icon.pixmap.return_value.save.return_value = False
-        with (
-            patch("src.gui.icons._exe_icon", return_value=icon),
-            self.assertLogs("src.gui.icons", level="WARNING"),
-        ):
-            self.assertEqual(get_exe_icon_url("C:/game.exe"), "")
+    def test_missing_file_returns_none_without_query(self):
+        with patch("src.gui.icons.os.path.isfile", return_value=False):
+            self.assertIsNone(get_exe_icon("C:/missing.exe"))
+        self.native.ExtractIconExW.assert_not_called()
 
 
 class TestGetScriptIcon(unittest.TestCase):

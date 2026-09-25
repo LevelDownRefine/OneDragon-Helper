@@ -20,7 +20,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWidgets import QMessageBox
 
-from src.gui.icons import get_script_icon
+from src.gui.icons import GameIconProvider, _render_icon, get_script_icon
 from src.utils.utils_sub_config import get_script_name
 
 # 游戏图标停用底色（渐变兜底水印等场景复用）
@@ -42,9 +42,8 @@ class ScriptIconProvider(QQuickImageProvider):
         self.refresh(games)
 
     def _load_icon(self, script_data: dict) -> QPixmap:
-        # 复用 icons.get_script_icon（exe 内嵌图标 / python 默认图标）
-        icon = get_script_icon(script_data)
-        return icon.pixmap(48, 48)
+        # 复用 icons.get_script_icon（exe 内嵌图标 / python 默认图标），渲染与 GameIconProvider 共用
+        return _render_icon(get_script_icon(script_data))
 
     def refresh(self, games: list):
         """全量重算脚本图标到缓存。
@@ -172,6 +171,8 @@ class GameListController(QObject):
         self._game_model = GameListModel()
         # 图标缓存提供器：数据来源本控制器 games，reload_games 时刷新
         self.icon_provider = ScriptIconProvider([])
+        # 游戏 exe 图标提供器（悬停提示）：按 script_name 解析游戏 exe 图标
+        self.game_icon_provider = GameIconProvider()
         self._enabled: list = [True]
         self._control_mode = False
         self.current_index = 0

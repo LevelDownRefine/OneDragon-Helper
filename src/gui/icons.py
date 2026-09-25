@@ -10,10 +10,8 @@ import os
 import sys
 
 from PySide6.QtCore import (
-    QBuffer,
     QByteArray,
     QFileInfo,
-    QIODevice,
     QPointF,
     QRect,
     QRectF,
@@ -125,10 +123,15 @@ def get_script_icon(script_data: dict) -> QIcon:
     return _default_icon()
 
 
-def get_exe_icon_url(path: str) -> str:
-    """返回 exe 图标的内存 PNG URL；取不到时返回空串，不使用默认图标。"""
+def get_exe_icon(path: str) -> QIcon | None:
+    """返回 exe 内嵌图标；无内嵌图标（win32 下 ExtractIconExW 计数为 0）或缺失时返回 None。
+
+    悬停提示需在无图标时回退文字，故显式过滤无内嵌图标的 exe；列表图标
+    （``get_script_icon`` / ``_exe_icon``）保留系统通用文件图标兜底。成功结果由
+    ``_exe_icon`` 缓存，缺失/失败不缓存，以容忍 exe 路径后续变更。
+    """
     if not path or not os.path.isfile(path):
-        return ""
+        return None
     if sys.platform == "win32":
         # 只查询内嵌图标数量，避免 QFileIconProvider 返回通用文件图标。
         count_icons = ctypes.WinDLL("shell32").ExtractIconExW
@@ -141,19 +144,63 @@ def get_exe_icon_url(path: str) -> str:
         ]
         count_icons.restype = ctypes.c_uint
         if count_icons(path, -1, None, None, 0) in (0, 0xFFFFFFFF):
-            return ""
-    icon = _exe_icon(path)
+            return None
+    return _exe_icon(path)
+
+
+# 默认渲染尺寸：脚本图标（显示 40 逻辑 = 50 物理）与 UI 图标共用，48 档近 1:1。
+_ICON_SIZE = 48
+
+
+def _render_icon(
+    icon: QIcon | None, size: int = _ICON_SIZE, radius: int = 0
+) -> QPixmap:
+    """把图标渲染成指定像素 pixmap；radius > 0 时裁成圆角；缺失时返回空 pixmap 供 QML 回退。"""
     if icon is None:
-        return ""
-    pixmap = icon.pixmap(64, 64)
-    if pixmap.isNull():
-        return ""
-    buffer = QBuffer()
-    buffer.open(QIODevice.WriteOnly)
-    if not pixmap.save(buffer, "PNG"):
-        logger.warning("编码 %s 的图标失败", path)
-        return ""
-    return "data:image/png;base64," + bytes(buffer.data().toBase64()).decode("ascii")
+        return QPixmap()
+    pm = icon.pixmap(size, size)
+    if radius <= 0:
+        return pm
+    out = QPixmap(pm.size())
+    out.fill(Qt.transparent)
+    painter = QPainter(out)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    path = QPainterPath()
+    path.addRoundedRect(0, 0, pm.width(), pm.height(), radius, radius)
+    painter.fillPath(path, Qt.white)
+    # SourceIn：按底板 alpha 裁剪源图，圆角边缘带抗锯齿。
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.drawPixmap(0, 0, pm)
+    painter.end()
+    return out
+
+
+class GameIconProvider(QQuickImageProvider):
+    """QML 游戏图标源：`image://gameicon/<script_name>`。
+
+    按 script_name 经 set_config.get_game_exe_path 解析游戏 exe 路径并取内嵌图标，
+    预渲染 256 档（命中 exe 原生最高档）并裁成圆角，交由 QML 在 `mipmap` 下抗混叠
+    下采样到显示尺寸；渲染与 ScriptIconProvider 共用 `_render_icon`，按 script_name
+    路由随当前游戏切换即时刷新；图标缺失时返回空 pixmap 由 QML 回退文字。
+    """
+
+    # 提供 256 档源，显示端（当前 128）经 mipmap 下采样，2x 近乎无损。
+    _SOURCE_SIZE = 256
+    # 显示端圆角 = 128 / 8 = 16，与底板 24 = 16 + 留白 8 同心；源端同比例取 256 / 8。
+    _CORNER_RADIUS = _SOURCE_SIZE // 8
+
+    def __init__(self):
+        super().__init__(QQuickImageProvider.Pixmap)
+
+    def requestPixmap(self, id: str, size, requestedSize):
+        from src.config.set_config import get_game_exe_path
+
+        exe_path = get_game_exe_path(id)
+        return _render_icon(
+            get_exe_icon(exe_path) if exe_path else None,
+            self._SOURCE_SIZE,
+            self._CORNER_RADIUS,
+        )
 
 
 # UI 通用矢量图标：各 draw 方法把 painter translate 到画布中心，在 48x48 内绘制白图形。
@@ -168,7 +215,7 @@ class UiIconProvider(QQuickImageProvider):
     图标名称与绘制函数统一在 _drawers 中注册。
     """
 
-    _SIZE = 48
+    _SIZE = _ICON_SIZE
 
     def __init__(self):
         super().__init__(QQuickImageProvider.Pixmap)
