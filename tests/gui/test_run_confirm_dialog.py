@@ -39,7 +39,7 @@ class TestRunConfirmDialog(unittest.TestCase):
         buttons = {button.text(): button for button in dlg.findChildren(QPushButton)}
         self.assertIn("保存", buttons)
         self.assertNotIn("确认运行", buttons)
-        dlg.mute_cb.setChecked(True)
+        dlg.editor.mute_cb.setChecked(True)
         buttons["保存"].click()
         self.assertTrue(dlg.run_options.mute_enabled)
 
@@ -54,27 +54,28 @@ class TestRunConfirmDialog(unittest.TestCase):
                 self.addCleanup(dialog.close)
                 for name in fields:
                     self.assertEqual(
-                        getattr(dialog, name + "_cb").isChecked(),
+                        getattr(dialog.editor, name + "_cb").isChecked(),
                         getattr(options, name + "_enabled"),
                         name,
                     )
-                self.assertEqual(dialog.shutdown_delay_spin.value(), 45)
+                self.assertEqual(dialog.editor.shutdown_delay_spin.value(), 45)
                 self.assertEqual(
-                    dialog.shutdown_delay_spin.isEnabled(), options.shutdown_enabled
+                    dialog.editor.shutdown_delay_spin.isEnabled(),
+                    options.shutdown_enabled,
                 )
 
     def test_accept_collects_selections(self):
         """确认运行：收集复选框与控件值写入 run_options（含静音/重跑/邮件通知）。"""
         dlg = RunConfirmDialog(2, _opts(rerun_enabled=True))
         self.addCleanup(dlg.close)
-        self.assertEqual(dlg.smtp_host_edit.text(), "smtp.qq.com")
-        self.assertEqual(dlg.smtp_port_edit.text(), "465")
-        dlg.shutdown_cb.setChecked(True)
-        dlg.shutdown_delay_spin.setValue(120)
-        dlg.mute_cb.setChecked(True)
-        dlg.unmute_cb.setChecked(True)
-        dlg.rerun_cb.setChecked(False)
-        dlg.notify_cb.setChecked(True)
+        self.assertEqual(dlg.editor.smtp_host_edit.text(), "smtp.qq.com")
+        self.assertEqual(dlg.editor.smtp_port_edit.text(), "465")
+        dlg.editor.shutdown_cb.setChecked(True)
+        dlg.editor.shutdown_delay_spin.setValue(120)
+        dlg.editor.mute_cb.setChecked(True)
+        dlg.editor.unmute_cb.setChecked(True)
+        dlg.editor.rerun_cb.setChecked(False)
+        dlg.editor.notify_cb.setChecked(True)
         dlg._on_accept()
         self.assertEqual(
             asdict(dlg.run_options),
@@ -105,19 +106,19 @@ class TestRunConfirmDialog(unittest.TestCase):
             ),
         )
         self.addCleanup(dialog.close)
-        self.assertEqual(dialog.email_edit.text(), "123456@qq.com")
-        self.assertEqual(dialog.smtp_host_edit.text(), "smtp.qq.com")
-        self.assertEqual(dialog.smtp_port_edit.text(), "465")
+        self.assertEqual(dialog.editor.email_edit.text(), "123456@qq.com")
+        self.assertEqual(dialog.editor.smtp_host_edit.text(), "smtp.qq.com")
+        self.assertEqual(dialog.editor.smtp_port_edit.text(), "465")
         for control in (
-            dialog.email_edit,
-            dialog.auth_edit,
-            dialog.smtp_host_edit,
-            dialog.smtp_port_edit,
+            dialog.editor.email_edit,
+            dialog.editor.auth_edit,
+            dialog.editor.smtp_host_edit,
+            dialog.editor.smtp_port_edit,
         ):
             self.assertTrue(control.isEnabled())
-        dialog.auth_edit.setText("authcode16")
-        dialog.smtp_host_edit.setText("smtp.163.com")
-        dialog.smtp_port_edit.setText("994")
+        dialog.editor.auth_edit.setText("authcode16")
+        dialog.editor.smtp_host_edit.setText("smtp.163.com")
+        dialog.editor.smtp_port_edit.setText("994")
         dialog._on_accept()
         self.assertEqual(dialog.run_options.email, "123456@qq.com")
         self.assertEqual(dialog.run_options.auth_code, "authcode16")
@@ -128,10 +129,10 @@ class TestRunConfirmDialog(unittest.TestCase):
     def test_notify_off_disables_email_fields(self):
         """未勾选邮件通知：邮箱/授权码/SMTP 输入框禁用（与定时/关机联动一致）。"""
         dlg = RunConfirmDialog(2, _opts(notify_enabled=False, email="123456@qq.com"))
-        self.assertFalse(dlg.email_edit.isEnabled())
-        self.assertFalse(dlg.auth_edit.isEnabled())
-        self.assertFalse(dlg.smtp_host_edit.isEnabled())
-        self.assertFalse(dlg.smtp_port_edit.isEnabled())
+        self.assertFalse(dlg.editor.email_edit.isEnabled())
+        self.assertFalse(dlg.editor.auth_edit.isEnabled())
+        self.assertFalse(dlg.editor.smtp_host_edit.isEnabled())
+        self.assertFalse(dlg.editor.smtp_port_edit.isEnabled())
 
     def test_cancel_leaves_run_options_none(self):
         """取消（reject）：run_options 保持 None，不收集。"""
@@ -153,10 +154,10 @@ class TestRunConfirmDialogTheme(unittest.TestCase):
         dlg = RunConfirmDialog(1, _opts(notify_enabled=True))
         self.addCleanup(dlg.close)
         for edit in (
-            dlg.email_edit,
-            dlg.auth_edit,
-            dlg.smtp_host_edit,
-            dlg.smtp_port_edit,
+            dlg.editor.email_edit,
+            dlg.editor.auth_edit,
+            dlg.editor.smtp_host_edit,
+            dlg.editor.smtp_port_edit,
         ):
             self.assertIn(TEXT, edit.styleSheet())
             self.assertIn(BG_INPUT, edit.styleSheet())
