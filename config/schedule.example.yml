@@ -8,12 +8,10 @@ startup:
 shutdown:
   after_run: true
   delay_seconds: 45
-# 每日计划在配置弹窗启用时注册到 Windows 任务计划程序。
+# 每日计划在配置弹窗启用时注册到 Windows 任务计划程序；对所有脚本生效。
 daily_run:
   enabled: false
   target_time: "04:10"
-  # 独立于手动勾选；通过每日计划弹窗选择脚本。
-  script_names: []
 mute:
   enabled: true
 # 运行后开启声音：与 mute（运行前静音）相互独立，可单独勾选。
