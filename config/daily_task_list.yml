@@ -293,19 +293,30 @@ ok-ef:
           path: data/apps/ok-ef/working/assets/data/world_map.json
           key: [stages_dict, 能量淤积点]
 OneDragon-Launcher:
+# 「培养方案」= charge_plan.yml 的 plan_list（代理人方案培养计划）；选中时按模板写入，
+# 选「不启用培养方案」不碰配置（保留 zzz 自己写的现状）。
 - display_name: 每日任务
-  class: NoopDaily
+  class: TemplateDaily
   config: config/01/one_dragon/charge_plan.yml
+  template: ZZZ一条龙.yml
+  enable_value: 培养方案
   options:
     values:
     - display_name: 培养方案
+    - display_name: 不启用培养方案
 March7th-Launcher:
+# 「每日任务」= config.yaml 的 build_target_enable：单层选项直接把该字段写成对应布尔
+# （整组自身即唯一一级项）。清体力（power_enable）是独立开关、归「任务开关」区，这里不写。
 - display_name: 每日任务
-  class: NoopDaily
+  class: SingleLayerDaily
   config: config.yaml
   options:
+    key: build_target_enable
     values:
     - display_name: 培养目标
+      physical_name: true
+    - display_name: 不启用培养目标
+      physical_name: false
 ok-nte:
 - display_name: 异象界域
   class: Anomaly

@@ -281,11 +281,9 @@ class TestReadbackFacade(unittest.TestCase):
                     ],
                 )
 
-    def test_facade_noop_scripts_have_no_truth(self):
-        # 绝区零/崩铁日常无落点 → 副本/序列无真相
-        with (
-            patch.object(Daily, "_load_daily_config", return_value={}),
-        ):
+    def test_facade_without_landing_point_has_no_truth(self):
+        # 绝区零：模板未涵盖 → 副本/序列无真相；崩铁：单层字段缺失 → 日常名 + 无序列
+        with patch.object(Daily, "_load_daily_config", return_value={}):
             self.assertEqual(
                 get_daily_readback("OneDragon-Launcher"),
                 [{"name": "每日任务", "task": None, "sequence": None, "enabled": None}],
@@ -300,7 +298,14 @@ class TestReadbackFacade(unittest.TestCase):
         ):
             self.assertEqual(
                 get_daily_readback("March7th-Launcher"),
-                [{"name": "每日任务", "task": None, "sequence": None, "enabled": None}],
+                [
+                    {
+                        "name": "每日任务",
+                        "task": "每日任务",
+                        "sequence": None,
+                        "enabled": None,
+                    }
+                ],
             )
             self.assertIsNone(get_weekly_task("March7th-Launcher", "历战余响"))
 

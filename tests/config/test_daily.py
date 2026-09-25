@@ -13,13 +13,12 @@ from src.config.daily import (
     Anomaly,
     Daily,
     MaaDaily,
-    NoopDaily,
+    SingleLayerDaily,
+    TemplateDaily,
 )
 from src.config.set_config import _CONFIGS
 from src.config.task_config import load_daily_map
 from src.utils import utils_sub_config
-
-NO_OP_SCRIPTS = ("OneDragon-Launcher", "March7th-Launcher")
 
 
 def daily_of(script_name: str, daily_name: str) -> Daily:
@@ -51,11 +50,9 @@ class TestDispatch(unittest.TestCase):
 
     def test_special_classes(self):
         """各 config 类手动实例化自己的日常：类与数量都写在子类里。"""
-        for script_name in NO_OP_SCRIPTS:
-            with self.subTest(script=script_name):
-                daily = _CONFIGS[script_name]()._dailies[0]
-                self.assertIsInstance(daily, NoopDaily)
-                self.assertFalse(daily.update("任意"))
+        self.assertIsInstance(
+            _CONFIGS["OneDragon-Launcher"]()._dailies[0], TemplateDaily
+        )
         anomaly, hunter = _CONFIGS["ok-nte"]()._dailies
         self.assertIsInstance(anomaly, Anomaly)
         self.assertIsInstance(hunter, Anomaly)
@@ -63,8 +60,95 @@ class TestDispatch(unittest.TestCase):
         self.assertEqual(hunter.display_name, "追猎目标")
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
         self.assertIsInstance(_CONFIGS["MAA"]()._dailies[0], MaaDaily)
-        # 标准两层脚本用默认机制类
+        # 标准两层用默认机制类；单层（崩铁）用单层混入
         self.assertIs(type(_CONFIGS["ok-ww"]()._dailies[0]), Daily)
+        self.assertIsInstance(
+            _CONFIGS["March7th-Launcher"]()._dailies[0], SingleLayerDaily
+        )
+
+
+class TestTemplateDaily(unittest.TestCase):
+    """模板驱动型日常（绝区零「培养方案」）：选中才按模板写，反读按涵盖判定。"""
+
+    TEMPLATE = {
+        "plan_list": [{"tab_name": "训练", "level": "默认等级"}],
+        "double_reward": True,
+    }
+
+    def _daily(self) -> TemplateDaily:
+        return daily_of("OneDragon-Launcher", "每日任务")
+
+    def test_update_writes_template_when_selected(self):
+        daily = self._daily()
+        config = {"plan_list": []}
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            patch.object(daily, "_load_template", return_value=self.TEMPLATE),
+            patch.object(daily, "_save_daily_config") as mock_save,
+        ):
+            self.assertTrue(daily.update("培养方案"))
+        mock_save.assert_called_once()
+        self.assertEqual(config, self.TEMPLATE)
+
+    def test_update_skips_when_not_selected_or_aligned(self):
+        """选「不启用培养方案」不碰配置；配置已涵盖模板时也不重复写。"""
+        daily = self._daily()
+        cases = (
+            ("未选启用项", "不启用培养方案", {"plan_list": []}),
+            (
+                "已涵盖模板",
+                "培养方案",
+                {
+                    "plan_list": [{"tab_name": "训练", "level": "默认等级"}],
+                    "double_reward": True,
+                },
+            ),
+        )
+        for label, task_name, config in cases:
+            with (
+                self.subTest(case=label),
+                patch.object(daily, "_load_daily_config", return_value=config),
+                patch.object(daily, "_load_template", return_value=self.TEMPLATE),
+                patch.object(daily, "_save_daily_config") as mock_save,
+            ):
+                self.assertFalse(daily.update(task_name))
+                mock_save.assert_not_called()
+
+    def test_read_reports_alignment(self):
+        """反读：涵盖模板即「培养方案」（多出的字段不算差异），否则无真相。"""
+        daily = self._daily()
+        cases = (
+            (
+                "涵盖",
+                {
+                    "plan_list": [
+                        {"tab_name": "训练", "level": "默认等级", "plan_id": "x"}
+                    ],
+                    "double_reward": True,
+                },
+                ("培养方案", None),
+            ),
+            ("不涵盖", {"plan_list": []}, (None, None)),
+            ("未安装", None, (None, None)),
+        )
+        for label, config, expected in cases:
+            with (
+                self.subTest(case=label),
+                patch.object(daily, "_load_daily_config", return_value=config),
+                patch.object(daily, "_load_template", return_value=self.TEMPLATE),
+            ):
+                self.assertEqual(daily.read(), expected)
+
+    def test_enable_value_must_be_declared(self):
+        declaration = {
+            "display_name": "每日任务",
+            "config": "a.yml",
+            "template": "t.yml",
+            "enable_value": "不存在的项",
+            "options": {"values": [{"display_name": "培养方案"}]},
+        }
+        with self.assertRaisesRegex(AssertionError, "enable_value"):
+            TemplateDaily("OneDragon-Launcher", declaration, "绝区零")
 
 
 class TestLandingPoints(unittest.TestCase):
@@ -168,14 +252,32 @@ class TestRead(unittest.TestCase):
             ):
                 self.assertEqual(daily.read(), (None, None))
 
-    def test_without_landing_point_has_no_truth(self):
-        for script_name in NO_OP_SCRIPTS:
-            with self.subTest(script=script_name):
-                daily = _CONFIGS[script_name]()._dailies[0]
-                with patch.object(daily, "_load_daily_config", return_value={}):
-                    self.assertEqual(daily.read(), (None, None))
-                # 无落点日常（NoopDaily）覆写 update：不读不写，恒无改动
-                self.assertFalse(daily.update("任何副本"))
+    def test_single_layer_reverses_field_value(self):
+        """单层日常：反读回来的是日常名 + 字段里的二级值（崩铁的两态布尔）。"""
+        daily = daily_of("March7th-Launcher", "每日任务")
+        cases = (
+            ({"build_target_enable": True}, ("每日任务", True)),
+            ({"build_target_enable": False}, ("每日任务", False)),
+            ({}, ("每日任务", None)),
+        )
+        for config, expected in cases:
+            with (
+                self.subTest(config=config),
+                patch.object(daily, "_load_daily_config", return_value=config),
+            ):
+                self.assertEqual(daily.read(), expected)
+
+    def test_single_layer_writes_field_value(self):
+        """单层日常写入：一级项是日常名，二级值直接写成顶层字段的值。"""
+        daily = daily_of("March7th-Launcher", "每日任务")
+        config = {"build_target_enable": False}
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            patch.object(daily, "_save_daily_config") as mock_save,
+        ):
+            self.assertTrue(daily.update("每日任务", "培养目标"))
+        mock_save.assert_called_once()
+        self.assertIs(config["build_target_enable"], True)
 
 
 class TestEnabled(unittest.TestCase):

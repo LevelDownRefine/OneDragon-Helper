@@ -41,9 +41,7 @@ def _validate_name(value, context: str) -> None:
 
 
 def _validate_physical_name(value, context: str) -> None:
-    assert isinstance(value, (str, int)) and not isinstance(value, bool), (
-        f"{context} 必须为字符串或整数"
-    )
+    assert isinstance(value, (str, int, bool)), f"{context} 必须为字符串、整数或布尔"
     if isinstance(value, str):
         _validate_name(value, context)
 
@@ -120,6 +118,8 @@ def _validate_definitions(script_name: str, definitions: list[dict]) -> None:
             "routine",
             "enable_key",
             "enable_task",
+            "template",
+            "enable_value",
             "key",
             "options",
         }, f"{script_name} 含未知任务声明"
@@ -139,6 +139,13 @@ def _validate_definitions(script_name: str, definitions: list[dict]) -> None:
             _validate_name(definition["enable_key"], f"{name}/enable_key")
         if "enable_task" in definition:
             _validate_name(definition["enable_task"], f"{name}/enable_task")
+        # 模板驱动型的落点：模板文件名与「选中即写」的那一项
+        for field in ("template", "enable_value"):
+            if field in definition:
+                value = definition[field]
+                assert isinstance(value, str) and value.strip(), (
+                    f"{script_name}/{name}/{field} 必须为非空字符串"
+                )
         if "options" in definition:
             _validate_group(definition["options"], f"{script_name}/{name}")
 

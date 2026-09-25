@@ -250,7 +250,11 @@ class TestGetDailyMap(unittest.TestCase):
                             {
                                 "display_name": "培养方案",
                                 "physical_name": "培养方案",
-                            }
+                            },
+                            {
+                                "display_name": "不启用培养方案",
+                                "physical_name": "不启用培养方案",
+                            },
                         ]
                     },
                 }
@@ -264,8 +268,21 @@ class TestGetDailyMap(unittest.TestCase):
                     "options": {
                         "values": [
                             {
-                                "display_name": "培养目标",
-                                "physical_name": "培养目标",
+                                "display_name": "每日任务",
+                                "physical_name": "每日任务",
+                                "options": {
+                                    "key": "build_target_enable",
+                                    "values": [
+                                        {
+                                            "display_name": "培养目标",
+                                            "physical_name": True,
+                                        },
+                                        {
+                                            "display_name": "不启用培养目标",
+                                            "physical_name": False,
+                                        },
+                                    ],
+                                },
                             }
                         ]
                     },

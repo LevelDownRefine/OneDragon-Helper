@@ -18,7 +18,7 @@ from src.config.task_config import (
     get_value_map,
 )
 from src.config.task_source import read_task_source
-from src.utils.utils_dict import get_field, safe_update
+from src.utils.utils_dict import covers, get_field, safe_update
 from src.utils.utils_sub_config import (
     load_game_config,
     load_script_config,
@@ -354,11 +354,11 @@ class Daily:
         return True
 
 
-class _SingleLayerDaily(Daily):
-    """单层带 ``key`` 的日常：整组自身即唯一一级项，展示名用日常名。
+class SingleLayerDaily(Daily):
+    """单层带 ``key`` 的日常：整组自身即唯一一级项，展示名用日常名，选中结果走二级。
 
-    仅作混入用（不注册进 DAILY_CLASSES，声明里不可引用）：数据段与开关落点由继承它的
-    机制类决定，本类只负责单层形态的落点解析与反读。
+    数据段与开关落点由机制类决定（崩铁直接用主文件顶层字段；异环的 ``AnomalyHunter``
+    另看 Routine Items），本类只负责单层形态的落点解析与反读。
     """
 
     def _parse_landing(self, declaration: dict) -> None:
@@ -395,7 +395,10 @@ class _SingleLayerDaily(Daily):
         key = self.option_fields[self.display_name]
         if key not in self.section(data):
             return self.display_name, None
-        return self.display_name, self.section(data)[key] or None
+        value = self.section(data)[key]
+        if value is None or value == "":
+            return self.display_name, None
+        return self.display_name, value
 
 
 class BgiDaily(Daily):
@@ -642,7 +645,7 @@ class BgiLeyLineDaily(BgiDaily):
         return field.replace("{Day}", day)
 
 
-class BgiStygianDaily(_SingleLayerDaily, BgiDaily):
+class BgiStygianDaily(SingleLayerDaily, BgiDaily):
     """原神幽境危战：数据段在 BetterGI 主配置，开关在一条龙的任务启用表。
 
     两者不是同一份文件——数据落在主配置（``User/config.json``）的
@@ -713,35 +716,95 @@ class BgiStygianDaily(_SingleLayerDaily, BgiDaily):
         self._save_routine_config(config)
 
 
-class NoopDaily(Daily):
-    """无需适配副本的日常（绝区零/崩铁）：声明无落点，跳过解析，不读不写。"""
+class TemplateDaily(Daily):
+    """按模板写入的日常（绝区零「培养方案」）：选中即按模板对齐 config，其余选项不碰配置。
+
+    选项是「做 / 不做」两态、落点是整份模板而非标量字段，故不走 ``_fields``。反读按「配置
+    是否涵盖模板」判定，与 ``set_config`` 的模板对齐同一判据。
+
+    Attributes:
+        _template_rel_path: 模板文件名（相对项目 ``config/`` 目录）。
+        _enable_value: 选中即写模板的那一项展示名。
+    """
 
     def _parse_landing(self, declaration: dict) -> None:
-        """无落点：不解析选项，仅置空通用字段。"""
+        """无字段落点：只记模板与「选中即写」的那一项。
+
+        Raises:
+            AssertionError: 未声明选项，或 ``enable_value`` 不在选项里。
+        """
         self.task_field = None
         self.task_map: dict[str, Any] = {}
         self.option_fields: dict[str, str] = {}
+        options = get_options(declaration)
+        assert options, f"{self.script_name}/{self.physical_name} 必须声明选项"
+        self._template_rel_path: str = declaration["template"]
+        self._enable_value: str = declaration["enable_value"]
+        names = [option["display_name"] for option in options]
+        assert self._enable_value in names, (
+            f"{self.script_name}/{self.physical_name} 的 enable_value 必须是声明里的选项: "
+            f"{self._enable_value!r}"
+        )
 
     def read(self) -> tuple[str | None, str | int | None]:
-        """无副本真相：不读不解析。
+        """反读：配置涵盖模板即视为已选「培养方案」，否则无真相（未安装、用户自配过）。
 
         Returns:
-            恒为 (None, None)。
+            (``enable_value``, None) 或 (None, None)。
         """
-        return None, None
+        config = self._load_daily_config(allow_missing=True)
+        if config is None or not covers(config, self._load_template()):
+            return None, None
+        return self._enable_value, None
 
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
-        """无需适配副本选择：不读不写。
+        """选中「培养方案」时按模板对齐 config；其余选项不碰配置（保留现状）。
 
         Args:
-            task_name: 一级项展示名（本实现忽略）。
-            sequence: 二级项值（本实现忽略）。
+            task_name: 一级项展示名。
+            sequence: 二级项值（本机制类无二级，忽略）。
 
         Returns:
-            恒为 False。
+            是否有实际修改；未选「培养方案」或配置已对齐时为 False。
+
+        Raises:
+            AssertionError: config 未安装/未配置。
         """
-        logger.info(f"[daily][{self.display_name}] 无需适配")
-        return False
+        if task_name != self._enable_value:
+            logger.info(
+                f"[daily][{self.display_name}] 未选「{self._enable_value}」，不改配置"
+            )
+            return False
+        config = self._load_daily_config(allow_missing=True)
+        assert config is not None, (
+            f"[daily][{self.display_name}] config 未安装/未配置，不能写入"
+        )
+        template = self._load_template()
+        if covers(config, template):
+            logger.info(f"[daily][{self.display_name}] config 已对齐，无需更新")
+            return False
+        for key, value in template.items():
+            safe_update(
+                config, key, value, self.script_display_name, assert_key_exists=False
+            )
+        self._save_daily_config(config)
+        logger.info(f"[daily][{self.display_name}] config 已更新")
+        return True
+
+    def _load_template(self) -> dict:
+        """加载模板（相对项目 ``config/`` 目录）。
+
+        Returns:
+            模板 dict。
+
+        Raises:
+            AssertionError: 模板缺失或解析结果非字典。
+        """
+        template = load_template(self.script_name, self._template_rel_path)
+        assert isinstance(template, dict), (
+            f"[daily][{self.display_name}] 模板必须是字典: {self._template_rel_path}"
+        )
+        return template
 
 
 class Anomaly(Daily):
@@ -834,7 +897,7 @@ class Anomaly(Daily):
         return self.physical_name in config
 
 
-class AnomalyHunter(_SingleLayerDaily, Anomaly):
+class AnomalyHunter(SingleLayerDaily, Anomaly):
     """追猎目标：单层带 ``key`` 的分段日常（数据在自己那段，开关在 Routine Items）。"""
 
 
@@ -1029,7 +1092,8 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
         BgiDaily,
         BgiLeyLineDaily,
         BgiStygianDaily,
-        NoopDaily,
+        TemplateDaily,
+        SingleLayerDaily,
         Anomaly,
         AnomalyHunter,
         MaaDaily,

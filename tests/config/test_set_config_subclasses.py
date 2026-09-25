@@ -11,7 +11,7 @@ from contextlib import ExitStack
 from unittest.mock import MagicMock, mock_open, patch
 
 from src.config import set_config
-from src.config.daily import Daily
+from src.config.daily import Daily, SingleLayerDaily, TemplateDaily
 from src.config.set_config import (
     ArknightsConfig,
     EndfieldConfig,
@@ -21,7 +21,6 @@ from src.config.set_config import (
     WutheringWavesConfig,
     ZenlessZoneZeroConfig,
 )
-from src.utils.utils_yaml import dump_yaml_str
 
 
 def _update(cfg, config: dict, daily_name: str, task_name: str, sequence=None) -> bool:
@@ -217,7 +216,7 @@ class TestEndfieldConfig(unittest.TestCase):
         self.assertEqual(cfg.display_name, "终末地")
         self.assertEqual(cfg._script_name, "ok-ef")
         self.assertEqual(cfg._dispatch_daily("每日任务").task_field, "体力本")
-        self.assertEqual(cfg._template_rel_path, "okef一条龙.json")
+        self.assertFalse(cfg._template_rel_path, "模板已删，_init_config 对其为空操作")
 
     def test_daily_selection_saves_leaf_and_preserves_enable_switch(self):
         for task, sequence, expected in (
@@ -235,231 +234,39 @@ class TestEndfieldConfig(unittest.TestCase):
                     config.set_daily_task("每日任务", task, sequence=sequence)
                 save.assert_called_once_with({"体力本": expected, "⭐刷体力": True})
 
-    def test_init_config_aligned_no_save(self):
-        """config 与模板对齐（含模板外的自定义 key）时不保存"""
-        template = {"购物白名单": ["精锻"], "是否买礼物": False}
-        config = {
-            "购物白名单": ["精锻"],
-            "是否买礼物": False,
-            "体力本": "旧本",  # 模板外的用户自定义 key
-        }
-        with (
-            patch.object(set_config, "load_config", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch("src.config.set_config.save_config") as mock_save,
-        ):
-            cfg = EndfieldConfig()
-            cfg._init_config()
-        mock_save.assert_not_called()
-
-    def test_init_config_misaligned_saves(self):
-        """config 与模板不对齐时，用模板值 reconcile（覆盖不一致、补缺失、保留多余）并保存"""
-        template = {"购物白名单": ["精锻"], "是否买礼物": False}
-        config = {
-            "购物白名单": ["碎矿"],  # 不一致 → 覆盖为模板值
-            "是否买礼物": True,  # 不一致 → 覆盖为模板值
-            "ExtraKey": 1,  # 模板无 → 保留
-        }
-        with (
-            patch.object(set_config, "load_config", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch("src.config.set_config.save_config") as mock_save,
-        ):
-            cfg = EndfieldConfig()
-            cfg._init_config()
-        mock_save.assert_called_once()
-        saved = mock_save.call_args[0][2]
-        self.assertEqual(saved["购物白名单"], ["精锻"])
-        self.assertEqual(saved["是否买礼物"], False)
-        self.assertEqual(saved["ExtraKey"], 1)
-
 
 class TestZenlessZoneZeroConfig(unittest.TestCase):
+    """绝区零不再走模板初始化：模板写入改由「每日任务」在保存配置时驱动。"""
+
     def test_init_attributes(self):
-        template = {"plan_list": [], "double_reward": False}
-        with (
-            patch.object(set_config, "load_config", return_value=template),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
-            patch("src.config.set_config.save_config"),
-        ):
-            cfg = ZenlessZoneZeroConfig()
+        cfg = ZenlessZoneZeroConfig()
         self.assertEqual(cfg.display_name, "绝区零")
         self.assertEqual(cfg._script_name, "OneDragon-Launcher")
-        self.assertFalse(cfg._dispatch_daily("每日任务").option_fields, "日常无落点")
-
-    def test_init_config_aligned_no_save(self):
-        """config 与模板对齐时不 save"""
-        template = {
-            "plan_list": [{"tab_name": "A", "category_name": "x"}],
-            "double_reward": False,
-        }
-        config = {
-            "plan_list": [{"tab_name": "A", "category_name": "x", "extra": 1}],
-            "double_reward": False,
-        }
-        with (
-            patch.object(set_config, "load_config", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
-            patch("src.config.set_config.save_config") as mock_save,
-        ):
-            cfg = ZenlessZoneZeroConfig()
-            cfg._init_config()
-        mock_save.assert_not_called()
-
-    def test_init_config_misaligned_saves(self):
-        """config 与模板不对齐时，用模板值 reconcile（覆盖不一致、补缺失、保留多余）并保存"""
-        template = {
-            "plan_list": [{"tab_name": "A", "category_name": "x"}],
-            "double_reward": True,
-        }
-        config = {
-            "plan_list": [{"tab_name": "B", "category_name": "y"}],  # 不一致 → 覆盖
-            "double_reward": False,  # 不一致 → 覆盖
-            "ExtraKey": 1,  # 模板无 → 保留
-        }
-        with (
-            patch.object(set_config, "load_config", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=dump_yaml_str(template))),
-            patch("src.config.set_config.save_config") as mock_save,
-        ):
-            cfg = ZenlessZoneZeroConfig()
-            cfg._init_config()
-        mock_save.assert_called_once()
-        saved = mock_save.call_args[0][2]
-        self.assertEqual(saved["plan_list"], [{"tab_name": "A", "category_name": "x"}])
-        self.assertEqual(saved["double_reward"], True)
-        self.assertEqual(saved["ExtraKey"], 1)
-
-    def test_set_daily_task_does_not_read_or_write(self):
-        """绝区零副本无需适配：NoopDaily.update 不读不写。"""
-        with (
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data="{}")),
-        ):
-            cfg = ZenlessZoneZeroConfig()
-        with (
-            patch.object(Daily, "_load_daily_config") as mock_load,
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "任何副本", "任何序列")
-        mock_load.assert_not_called()
-        mock_save.assert_not_called()
-
-    def _make_cfg(self):
-        """创建一个跳过 _init_config 的 ZenlessZoneZeroConfig 实例"""
-        with patch.object(ZenlessZoneZeroConfig, "_init_config"):
-            return ZenlessZoneZeroConfig()
-
-    def test_template_alignment_cases(self):
-        cases = (
-            (
-                "identical",
-                {
-                    "plan_list": [{"tab_name": "A", "category_name": "x"}],
-                    "double_reward": False,
-                },
-                {
-                    "plan_list": [{"tab_name": "A", "category_name": "x"}],
-                    "double_reward": False,
-                },
-                True,
-            ),
-            (
-                "extra_fields_in_config_ok",
-                {"plan_list": [{"tab_name": "A", "category_name": "x", "extra": 1}]},
-                {"plan_list": [{"tab_name": "A", "category_name": "x"}]},
-                True,
-            ),
-            (
-                "more_items_in_config_ok",
-                {
-                    "plan_list": [
-                        {"tab_name": "A", "category_name": "x"},
-                        {"tab_name": "B", "category_name": "y"},
-                    ]
-                },
-                {"plan_list": [{"tab_name": "A", "category_name": "x"}]},
-                True,
-            ),
-            (
-                "order_mismatch_returns_false",
-                {
-                    "plan_list": [
-                        {"tab_name": "B", "category_name": "y"},
-                        {"tab_name": "A", "category_name": "x"},
-                    ]
-                },
-                {
-                    "plan_list": [
-                        {"tab_name": "A", "category_name": "x"},
-                        {"tab_name": "B", "category_name": "y"},
-                    ]
-                },
-                False,
-            ),
-            (
-                "field_value_mismatch_returns_false",
-                {"plan_list": [{"tab_name": "A", "category_name": "z"}]},
-                {"plan_list": [{"tab_name": "A", "category_name": "x"}]},
-                False,
-            ),
-            (
-                "missing_field_returns_false",
-                {"plan_list": [{"tab_name": "A"}]},
-                {"plan_list": [{"tab_name": "A", "category_name": "x"}]},
-                False,
-            ),
-            (
-                "config_shorter_list_returns_false",
-                {"plan_list": [{"tab_name": "A", "category_name": "x"}]},
-                {
-                    "plan_list": [
-                        {"tab_name": "A", "category_name": "x"},
-                        {"tab_name": "B", "category_name": "y"},
-                    ]
-                },
-                False,
-            ),
-            ("missing_top_key_returns_false", {}, {"double_reward": False}, False),
-            (
-                "top_key_value_mismatch_returns_false",
-                {"double_reward": True},
-                {"double_reward": False},
-                False,
-            ),
-        )
-        cfg = self._make_cfg()
-        for case, config, template, expected in cases:
-            with self.subTest(case=case):
-                self.assertIs(cfg._is_aligned(config, template), expected)
+        self.assertFalse(cfg._template_rel_path)
+        daily = cfg._dispatch_daily("每日任务")
+        self.assertIsInstance(daily, TemplateDaily)
+        self.assertEqual(daily._template_rel_path, "ZZZ一条龙.yml")
+        self.assertFalse(daily.option_fields, "日常无字段落点")
 
 
 class TestStarRailConfig(unittest.TestCase):
-    def test_init_attributes(self):
-        with patch.object(StarRailConfig, "_init_config"):
-            cfg = StarRailConfig()
-            self.assertEqual(cfg.display_name, "崩铁")
-            self.assertEqual(cfg._script_name, "March7th-Launcher")
-            self.assertFalse(
-                cfg._dispatch_daily("每日任务").option_fields, "日常无落点"
-            )
+    """崩铁：单层日常把 build_target_enable 写成对应布尔，不再走模板。"""
 
-    def test_set_daily_task_noop_does_not_save(self):
-        """崩铁（M7A）副本无需适配：NoopDaily.update 不读不写。"""
-        with patch.object(StarRailConfig, "_init_config"):
-            cfg = StarRailConfig()
-        with (
-            patch.object(Daily, "_load_daily_config") as mock_load,
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "培养目标")
-        mock_load.assert_not_called()
-        mock_save.assert_not_called()
+    def test_init_attributes(self):
+        cfg = StarRailConfig()
+        self.assertEqual(cfg.display_name, "崩铁")
+        self.assertEqual(cfg._script_name, "March7th-Launcher")
+        self.assertFalse(cfg._template_rel_path)
+        daily = cfg._dispatch_daily("每日任务")
+        self.assertIsInstance(daily, SingleLayerDaily)
+        self.assertEqual(daily.option_fields, {"每日任务": "build_target_enable"})
+        self.assertEqual(
+            daily._fields("每日任务", "培养目标"), {"build_target_enable": True}
+        )
+        self.assertEqual(
+            daily._fields("每日任务", "不启用培养目标"),
+            {"build_target_enable": False},
+        )
 
 
 class TestNTEConfig(unittest.TestCase):
@@ -826,7 +633,7 @@ class TestNTEConfig(unittest.TestCase):
 
 
 class TestArknightsConfig(unittest.TestCase):
-    """测试粥的 _is_aligned / _init_config / set_daily_task"""
+    """测试粥的 _init_config 与身份属性。"""
 
     def _make_cfg(self):
         return ArknightsConfig()
@@ -845,170 +652,3 @@ class TestArknightsConfig(unittest.TestCase):
         ):
             ArknightsConfig()._init_config()
         save.assert_not_called()
-
-    def test_template_alignment_cases(self):
-        cases = (
-            (
-                "identical",
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [
-                                {
-                                    "Name": "开始唤醒",
-                                    "$type": "StartUpTask",
-                                    "ExtraKey": 1,
-                                },
-                                {
-                                    "Name": "剿灭",
-                                    "$type": "FightTask",
-                                    "StagePlan": ["Annihilation"],
-                                    "IsEnable": True,
-                                },
-                            ]
-                        }
-                    }
-                },
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [
-                                {"Name": "开始唤醒", "$type": "StartUpTask"},
-                                {
-                                    "Name": "剿灭",
-                                    "$type": "FightTask",
-                                    "StagePlan": ["Annihilation"],
-                                },
-                            ]
-                        }
-                    }
-                },
-                True,
-            ),
-            (
-                "name_mismatch",
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [{"Name": "红票", "$type": "FightTask"}]
-                        }
-                    }
-                },
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]
-                        }
-                    }
-                },
-                False,
-            ),
-            (
-                "type_mismatch",
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [{"Name": "剿灭", "$type": "StartUpTask"}]
-                        }
-                    }
-                },
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [{"Name": "剿灭", "$type": "FightTask"}]
-                        }
-                    }
-                },
-                False,
-            ),
-            (
-                "stageplan_mismatch",
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [
-                                {
-                                    "Name": "剿灭",
-                                    "$type": "FightTask",
-                                    "StagePlan": ["AP-5"],
-                                }
-                            ]
-                        }
-                    }
-                },
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [
-                                {
-                                    "Name": "剿灭",
-                                    "$type": "FightTask",
-                                    "StagePlan": ["Annihilation"],
-                                }
-                            ]
-                        }
-                    }
-                },
-                False,
-            ),
-            (
-                "cur_shorter_returns_false",
-                {
-                    "Configurations": {
-                        "Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}
-                    }
-                },
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [
-                                {"Name": "A", "$type": "X"},
-                                {"Name": "B", "$type": "Y"},
-                            ]
-                        }
-                    }
-                },
-                False,
-            ),
-            (
-                "cur_longer_ok",
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [
-                                {"Name": "A", "$type": "X"},
-                                {"Name": "B", "$type": "Y"},
-                            ]
-                        }
-                    }
-                },
-                {
-                    "Configurations": {
-                        "Default": {"TaskQueue": [{"Name": "A", "$type": "X"}]}
-                    }
-                },
-                True,
-            ),
-            (
-                "non_fight_task_skips_stageplan",
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]
-                        }
-                    }
-                },
-                {
-                    "Configurations": {
-                        "Default": {
-                            "TaskQueue": [{"Name": "自动公招", "$type": "RecruitTask"}]
-                        }
-                    }
-                },
-                True,
-            ),
-        )
-        cfg = self._make_cfg()
-        for case, config, template, expected in cases:
-            with self.subTest(case=case):
-                self.assertIs(cfg._is_aligned(config, template), expected)

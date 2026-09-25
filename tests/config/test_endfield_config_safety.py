@@ -1,7 +1,7 @@
 """终末地（ok-ef / 粥）config 安全性测试。
 
 用一份「脱敏后的真实 DailyTask.json」当夹具（tests/fixtures/ok_ef_DailyTask.scrubbed.json），
-跑 init_config / set_daily_task / prepare_start_day，对每次落盘做全量字段 diff，
+跑 set_daily_task / prepare_start_day，对每次落盘做全量字段 diff，
 断言「只动了该动的字段，其余（含注入的金丝雀字段）原封不动」。
 
 设计目的：验证 set_daily_task / prepare_start_day 不会把副本/周常以外的字段（刷体力、购物、
@@ -18,7 +18,6 @@ import os
 import unittest
 from unittest.mock import patch
 
-from src.config import set_config as sc_mod
 from src.config.set_config import EndfieldConfig
 from src.config.weekly import weeklies_of
 from src.utils import utils_sub_config
@@ -50,9 +49,7 @@ def load_fixture() -> dict:
 def inject_canaries(cfg: dict) -> None:
     """注入金丝雀字段，用于证明无关字段不会被改到。
 
-    金丝雀只放在「模板之外的字段」上——reconcile 只遍历模板 key，绝不碰这些
-    字段；若放在模板字段（如 ⭐收邮件）上，会改变其类型并触发 reconcile 的类型
-    守卫，不再是合法金丝雀。
+    金丝雀只放在「落点之外的字段」上——写入只碰声明的那个字段，不会遍历到它们。
     """
     cfg["CANARY_EXTRA"] = "KEEP_ME"  # 顶层额外 key（模板无）
     cfg["账号列表"] = "CANARY_ACCOUNTS"  # 模板无的顶层字段
@@ -76,13 +73,10 @@ class TestEndfieldConfigSafety(unittest.TestCase):
             self.store[rel_path] = copy.deepcopy(data)
             self.saves.append((rel_path, copy.deepcopy(data)))
 
-        # 落点读写最终都经 utils_sub_config 的两个原语；set_config 的 _init_config
-        # 另持模块内绑定，故一并注册。
+        # 落点读写都经 utils_sub_config 的两个原语。
         self._patches = [
             patch.object(utils_sub_config, "load_config", fake_load),
             patch.object(utils_sub_config, "save_config", fake_save),
-            patch.object(sc_mod, "load_config", fake_load),
-            patch.object(sc_mod, "save_config", fake_save),
         ]
         for p in self._patches:
             p.start()
@@ -91,16 +85,6 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         # 只停 setUp 自身 start 的 patch，不用全局 stopall（避免误停他方活跃 patch）。
         for p in self._patches:
             p.stop()
-
-    # ---- _init_config：绝不该改任何东西（不再由 __init__ 自动触发）----
-    def test_init_config_touches_nothing(self):
-        """_init_config 对一份已与模板对齐的真实 config 应零改动（需显式调用）。"""
-        cfg = EndfieldConfig()
-        cfg._init_config()
-        diff = diff_paths(
-            self.seed, self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
-        )
-        self.assertEqual(diff, [], f"init_config 意外改动: {diff}")
 
     # ---- set_daily_task：只允许改 体力本 ----
     def test_set_daily_task_only_touches_declared_field(self):
