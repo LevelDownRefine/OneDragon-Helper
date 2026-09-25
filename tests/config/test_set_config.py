@@ -90,16 +90,13 @@ class TestConfigRelPaths(unittest.TestCase):
             self.assertEqual(init2.call_count, 2)
 
     def test_template_rel_path_only_for_template_scripts(self):
-        """模板路径只覆盖走模板初始化的脚本（粥与绝区零已移除模板，仅 3 个）"""
+        """模板路径只覆盖走模板初始化的脚本（粥、绝区零与崩铁已改由日常驱动，仅 2 个）"""
         with_template = {
             name
             for name, factory in set_config._CONFIGS.items()
             if factory()._template_rel_path
         }
-        self.assertEqual(
-            with_template,
-            {"BetterGI", "March7th-Launcher", "ok-ef"},
-        )
+        self.assertEqual(with_template, {"BetterGI", "ok-ef"})
 
     def test_rel_paths_contain_extension(self):
         """每个 config 相对路径应包含 .json 或 .yaml/.yml 扩展名"""

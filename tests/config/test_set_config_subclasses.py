@@ -289,26 +289,17 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
 
 
 class TestStarRailConfig(unittest.TestCase):
-    def test_init_attributes(self):
-        with patch.object(StarRailConfig, "_init_config"):
-            cfg = StarRailConfig()
-            self.assertEqual(cfg.display_name, "崩铁")
-            self.assertEqual(cfg._script_name, "March7th-Launcher")
-            self.assertFalse(
-                cfg._dispatch_daily("每日任务").option_fields, "日常无落点"
-            )
+    """崩铁不再走模板初始化：模板写入改由「每日任务」（内联模板）在保存配置时驱动。"""
 
-    def test_set_daily_task_noop_does_not_save(self):
-        """崩铁（M7A）副本无需适配：NoopDaily.update 不读不写。"""
-        with patch.object(StarRailConfig, "_init_config"):
-            cfg = StarRailConfig()
-        with (
-            patch.object(Daily, "_load_daily_config") as mock_load,
-            patch.object(Daily, "_save_daily_config") as mock_save,
-        ):
-            cfg.set_daily_task("每日任务", "培养目标")
-        mock_load.assert_not_called()
-        mock_save.assert_not_called()
+    def test_init_attributes(self):
+        cfg = StarRailConfig()
+        self.assertEqual(cfg.display_name, "崩铁")
+        self.assertEqual(cfg._script_name, "March7th-Launcher")
+        self.assertFalse(cfg._template_rel_path)
+        daily = cfg._dispatch_daily("每日任务")
+        self.assertIsInstance(daily, TemplateDaily)
+        self.assertFalse(daily.option_fields, "日常无落点")
+        self.assertEqual(daily._load_template(), {"build_target_enable": True})
 
 
 class TestNTEConfig(unittest.TestCase):

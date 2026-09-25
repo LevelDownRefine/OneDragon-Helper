@@ -714,7 +714,7 @@ class BgiStygianDaily(_SingleLayerDaily, BgiDaily):
 
 
 class NoopDaily(Daily):
-    """无需适配副本的日常（绝区零/崩铁）：声明无落点，跳过解析，不读不写。"""
+    """无需适配副本的日常：声明无落点，跳过解析，不读不写。"""
 
     def _parse_landing(self, declaration: dict) -> None:
         """无落点：不解析选项，仅置空通用字段。"""
@@ -751,7 +751,7 @@ class TemplateDaily(Daily):
     是否涵盖模板」判定，与 ``set_config`` 的模板对齐同一判据。
 
     Attributes:
-        _template_rel_path: 模板文件名（相对项目 ``config/`` 目录）。
+        _template: 模板来源——项目 ``config/`` 下的模板文件名，或声明里内联的字典。
         _enable_value: 选中即写模板的那一项展示名。
     """
 
@@ -766,7 +766,7 @@ class TemplateDaily(Daily):
         self.option_fields: dict[str, str] = {}
         options = get_options(declaration)
         assert options, f"{self.script_name}/{self.physical_name} 必须声明选项"
-        self._template_rel_path: str = declaration["template"]
+        self._template: str | dict = declaration["template"]
         self._enable_value: str = declaration["enable_value"]
         names = [option["display_name"] for option in options]
         assert self._enable_value in names, (
@@ -820,17 +820,19 @@ class TemplateDaily(Daily):
         return True
 
     def _load_template(self) -> dict:
-        """加载模板（相对项目 ``config/`` 目录）。
+        """加载模板：声明里内联的字典直接用，否则读 ``config/`` 下的模板文件。
 
         Returns:
             模板 dict。
 
         Raises:
-            AssertionError: 模板缺失或解析结果非字典。
+            AssertionError: 模板文件缺失或解析结果非字典。
         """
-        template = load_template(self.script_name, self._template_rel_path)
+        if isinstance(self._template, dict):
+            return deepcopy(self._template)
+        template = load_template(self.script_name, self._template)
         assert isinstance(template, dict), (
-            f"[daily][{self.display_name}] 模板必须是字典: {self._template_rel_path}"
+            f"[daily][{self.display_name}] 模板必须是字典: {self._template}"
         )
         return template
 

@@ -20,8 +20,6 @@ from src.config.set_config import _CONFIGS
 from src.config.task_config import load_daily_map
 from src.utils import utils_sub_config
 
-NO_OP_SCRIPTS = ("March7th-Launcher",)
-
 
 def daily_of(script_name: str, daily_name: str) -> Daily:
     """取某脚本某日常的对象（经 ScriptConfig 的类型分发）。"""
@@ -52,11 +50,11 @@ class TestDispatch(unittest.TestCase):
 
     def test_special_classes(self):
         """各 config 类手动实例化自己的日常：类与数量都写在子类里。"""
-        for script_name in NO_OP_SCRIPTS:
+        for script_name in ("OneDragon-Launcher", "March7th-Launcher"):
             with self.subTest(script=script_name):
-                daily = _CONFIGS[script_name]()._dailies[0]
-                self.assertIsInstance(daily, NoopDaily)
-                self.assertFalse(daily.update("任意"))
+                self.assertIsInstance(
+                    _CONFIGS[script_name]()._dailies[0], TemplateDaily
+                )
         anomaly, hunter = _CONFIGS["ok-nte"]()._dailies
         self.assertIsInstance(anomaly, Anomaly)
         self.assertIsInstance(hunter, Anomaly)
@@ -64,9 +62,6 @@ class TestDispatch(unittest.TestCase):
         self.assertEqual(hunter.display_name, "追猎目标")
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
         self.assertIsInstance(_CONFIGS["MAA"]()._dailies[0], MaaDaily)
-        self.assertIsInstance(
-            _CONFIGS["OneDragon-Launcher"]()._dailies[0], TemplateDaily
-        )
         # 标准两层脚本用默认机制类
         self.assertIs(type(_CONFIGS["ok-ww"]()._dailies[0]), Daily)
 
@@ -81,6 +76,16 @@ class TestTemplateDaily(unittest.TestCase):
 
     def _daily(self) -> TemplateDaily:
         return daily_of("OneDragon-Launcher", "每日任务")
+
+    def test_template_from_declaration_or_file(self):
+        """模板两种来源：声明里内联的字典直接用（崩铁），文件名则读 ``config/`` 下的文件。"""
+        inlined = daily_of("March7th-Launcher", "每日任务")
+        self.assertEqual(inlined._load_template(), {"build_target_enable": True})
+        with patch(
+            "src.config.daily.load_template", return_value=self.TEMPLATE
+        ) as mock_load:
+            self.assertEqual(self._daily()._load_template(), self.TEMPLATE)
+        mock_load.assert_called_once_with("OneDragon-Launcher", "ZZZ一条龙.yml")
 
     def test_update_writes_template_when_selected(self):
         daily = self._daily()
@@ -256,14 +261,14 @@ class TestRead(unittest.TestCase):
             ):
                 self.assertEqual(daily.read(), (None, None))
 
-    def test_without_landing_point_has_no_truth(self):
-        for script_name in NO_OP_SCRIPTS:
-            with self.subTest(script=script_name):
-                daily = _CONFIGS[script_name]()._dailies[0]
-                with patch.object(daily, "_load_daily_config", return_value={}):
-                    self.assertEqual(daily.read(), (None, None))
-                # 无落点日常（NoopDaily）覆写 update：不读不写，恒无改动
-                self.assertFalse(daily.update("任何副本"))
+    def test_noop_daily_reads_and_writes_nothing(self):
+        """NoopDaily：无落点，不读不写、恒无真相。"""
+        daily = NoopDaily(
+            "ok-ww", {"display_name": "每日任务", "config": "a.json"}, "鸣潮"
+        )
+        with patch.object(daily, "_load_daily_config", return_value={}):
+            self.assertEqual(daily.read(), (None, None))
+        self.assertFalse(daily.update("任何副本"))
 
 
 class TestEnabled(unittest.TestCase):

@@ -312,6 +312,7 @@
     },
     "March7th-Launcher": {
       "每日任务": {
+        "不启用培养目标": [],
         "培养目标": []
       }
     },
@@ -4456,18 +4457,40 @@
     "March7th-Launcher": [
       {
         "daily": "每日任务",
+        "diff": {
+          "config.yaml.build_target_enable": [
+            "<MISSING>",
+            true
+          ]
+        },
+        "readback": [
+          {
+            "enabled": null,
+            "name": "每日任务",
+            "sequence": null,
+            "task": "培养目标"
+          }
+        ],
+        "saved_files": [
+          "config.yaml"
+        ],
+        "sequence": null,
+        "task": "培养目标"
+      },
+      {
+        "daily": "每日任务",
         "diff": {},
         "readback": [
           {
             "enabled": null,
             "name": "每日任务",
             "sequence": null,
-            "task": null
+            "task": "培养目标"
           }
         ],
         "saved_files": [],
         "sequence": null,
-        "task": "培养目标"
+        "task": "不启用培养目标"
       }
     ],
     "OneDragon-Launcher": [

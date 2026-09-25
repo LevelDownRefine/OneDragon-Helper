@@ -305,12 +305,18 @@ OneDragon-Launcher:
     - display_name: 培养方案
     - display_name: 不启用培养方案
 March7th-Launcher:
+# 「培养目标」= config.yaml 的 build_target_enable；选中时按内联模板写入，选「不启用培养目标」
+# 不碰配置。清体力（power_enable）是独立开关，归「任务开关」区，这里不写。
 - display_name: 每日任务
-  class: NoopDaily
+  class: TemplateDaily
   config: config.yaml
+  template:
+    build_target_enable: true
+  enable_value: 培养目标
   options:
     values:
     - display_name: 培养目标
+    - display_name: 不启用培养目标
 ok-nte:
 - display_name: 异象界域
   class: Anomaly

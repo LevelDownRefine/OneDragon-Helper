@@ -362,7 +362,6 @@ class StarRailConfig(ScriptConfig):
     display_name = "崩铁"
     _backup_paths = ("config.yaml",)
     _game_config_rel_path = "config.yaml"
-    _template_rel_path = "M7A一条龙.yml"
     _game_path_keys = ("game_path",)
     background = "assets/app/images/bg37.jpg"
 

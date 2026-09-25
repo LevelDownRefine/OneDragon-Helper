@@ -270,7 +270,11 @@ class TestGetDailyMap(unittest.TestCase):
                             {
                                 "display_name": "培养目标",
                                 "physical_name": "培养目标",
-                            }
+                            },
+                            {
+                                "display_name": "不启用培养目标",
+                                "physical_name": "不启用培养目标",
+                            },
                         ]
                     },
                 }
