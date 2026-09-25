@@ -72,7 +72,7 @@ set_daily_task 为 no-op 的脚本（绝区零/崩铁，上游自身已支持）
 声明的首个选项。声明了日常开关的脚本（异环，反读记录里 `enabled` 非 None）在下拉末尾多一项
 「不启用」，选中即经 `AppService.set_script_daily_enabled` 落 `enabled=false`，chip 显示「不启用」；
 脚本未安装（整条记录无真相）时既不算「不启用」、也不提供该入口。
-手动脚本 enabled 保存到 config.yml，重启按脚本身份回显；缺省启用。每日计划的脚本名单独立保存到 schedule.yml 的 daily_run.script_names，触发时使用最新副本和运行选项。
+手动脚本 enabled 保存到 config.yml，重启按脚本身份回显；缺省启用。每日计划对所有脚本生效，配置记录启用状态与触发时间，触发时使用最新副本和运行选项。
 
 ## 添加功能配方
 
