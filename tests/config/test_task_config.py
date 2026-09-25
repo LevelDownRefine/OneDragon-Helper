@@ -104,7 +104,7 @@ class TestTaskDeclarations(unittest.TestCase):
         for option in (
             {"name": "旧格式"},
             {"display_name": ""},
-            {"display_name": "x", "physical_name": True},
+            {"display_name": "x", "physical_name": None},
         ):
             task = deepcopy(valid)
             task["options"]["values"] = [option]

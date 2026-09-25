@@ -13,7 +13,7 @@ from src.config.daily import (
     Anomaly,
     Daily,
     MaaDaily,
-    NoopDaily,
+    SingleLayerDaily,
     TemplateDaily,
 )
 from src.config.set_config import _CONFIGS
@@ -50,11 +50,9 @@ class TestDispatch(unittest.TestCase):
 
     def test_special_classes(self):
         """各 config 类手动实例化自己的日常：类与数量都写在子类里。"""
-        for script_name in ("OneDragon-Launcher", "March7th-Launcher"):
-            with self.subTest(script=script_name):
-                self.assertIsInstance(
-                    _CONFIGS[script_name]()._dailies[0], TemplateDaily
-                )
+        self.assertIsInstance(
+            _CONFIGS["OneDragon-Launcher"]()._dailies[0], TemplateDaily
+        )
         anomaly, hunter = _CONFIGS["ok-nte"]()._dailies
         self.assertIsInstance(anomaly, Anomaly)
         self.assertIsInstance(hunter, Anomaly)
@@ -62,8 +60,11 @@ class TestDispatch(unittest.TestCase):
         self.assertEqual(hunter.display_name, "追猎目标")
         self.assertNotEqual(anomaly.physical_name, hunter.physical_name)
         self.assertIsInstance(_CONFIGS["MAA"]()._dailies[0], MaaDaily)
-        # 标准两层脚本用默认机制类
+        # 标准两层用默认机制类；单层（崩铁）用单层混入
         self.assertIs(type(_CONFIGS["ok-ww"]()._dailies[0]), Daily)
+        self.assertIsInstance(
+            _CONFIGS["March7th-Launcher"]()._dailies[0], SingleLayerDaily
+        )
 
 
 class TestTemplateDaily(unittest.TestCase):
@@ -76,16 +77,6 @@ class TestTemplateDaily(unittest.TestCase):
 
     def _daily(self) -> TemplateDaily:
         return daily_of("OneDragon-Launcher", "每日任务")
-
-    def test_template_from_declaration_or_file(self):
-        """模板两种来源：声明里内联的字典直接用（崩铁），文件名则读 ``config/`` 下的文件。"""
-        inlined = daily_of("March7th-Launcher", "每日任务")
-        self.assertEqual(inlined._load_template(), {"build_target_enable": True})
-        with patch(
-            "src.config.daily.load_template", return_value=self.TEMPLATE
-        ) as mock_load:
-            self.assertEqual(self._daily()._load_template(), self.TEMPLATE)
-        mock_load.assert_called_once_with("OneDragon-Launcher", "ZZZ一条龙.yml")
 
     def test_update_writes_template_when_selected(self):
         daily = self._daily()
@@ -261,14 +252,32 @@ class TestRead(unittest.TestCase):
             ):
                 self.assertEqual(daily.read(), (None, None))
 
-    def test_noop_daily_reads_and_writes_nothing(self):
-        """NoopDaily：无落点，不读不写、恒无真相。"""
-        daily = NoopDaily(
-            "ok-ww", {"display_name": "每日任务", "config": "a.json"}, "鸣潮"
+    def test_single_layer_reverses_field_value(self):
+        """单层日常：反读回来的是日常名 + 字段里的二级值（崩铁的两态布尔）。"""
+        daily = daily_of("March7th-Launcher", "每日任务")
+        cases = (
+            ({"build_target_enable": True}, ("每日任务", True)),
+            ({"build_target_enable": False}, ("每日任务", False)),
+            ({}, ("每日任务", None)),
         )
-        with patch.object(daily, "_load_daily_config", return_value={}):
-            self.assertEqual(daily.read(), (None, None))
-        self.assertFalse(daily.update("任何副本"))
+        for config, expected in cases:
+            with (
+                self.subTest(config=config),
+                patch.object(daily, "_load_daily_config", return_value=config),
+            ):
+                self.assertEqual(daily.read(), expected)
+
+    def test_single_layer_writes_field_value(self):
+        """单层日常写入：一级项是日常名，二级值直接写成顶层字段的值。"""
+        daily = daily_of("March7th-Launcher", "每日任务")
+        config = {"build_target_enable": False}
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            patch.object(daily, "_save_daily_config") as mock_save,
+        ):
+            self.assertTrue(daily.update("每日任务", "培养目标"))
+        mock_save.assert_called_once()
+        self.assertIs(config["build_target_enable"], True)
 
 
 class TestEnabled(unittest.TestCase):

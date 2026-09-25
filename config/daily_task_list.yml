@@ -305,18 +305,18 @@ OneDragon-Launcher:
     - display_name: 培养方案
     - display_name: 不启用培养方案
 March7th-Launcher:
-# 「培养目标」= config.yaml 的 build_target_enable；选中时按内联模板写入，选「不启用培养目标」
-# 不碰配置。清体力（power_enable）是独立开关，归「任务开关」区，这里不写。
+# 「每日任务」= config.yaml 的 build_target_enable：单层选项直接把该字段写成对应布尔
+# （整组自身即唯一一级项）。清体力（power_enable）是独立开关、归「任务开关」区，这里不写。
 - display_name: 每日任务
-  class: TemplateDaily
+  class: SingleLayerDaily
   config: config.yaml
-  template:
-    build_target_enable: true
-  enable_value: 培养目标
   options:
+    key: build_target_enable
     values:
     - display_name: 培养目标
+      physical_name: true
     - display_name: 不启用培养目标
+      physical_name: false
 ok-nte:
 - display_name: 异象界域
   class: Anomaly

@@ -11,7 +11,7 @@ from contextlib import ExitStack
 from unittest.mock import MagicMock, mock_open, patch
 
 from src.config import set_config
-from src.config.daily import Daily, TemplateDaily
+from src.config.daily import Daily, SingleLayerDaily, TemplateDaily
 from src.config.set_config import (
     ArknightsConfig,
     EndfieldConfig,
@@ -245,11 +245,12 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         self.assertFalse(cfg._template_rel_path)
         daily = cfg._dispatch_daily("每日任务")
         self.assertIsInstance(daily, TemplateDaily)
+        self.assertEqual(daily._template_rel_path, "ZZZ一条龙.yml")
         self.assertFalse(daily.option_fields, "日常无字段落点")
 
 
 class TestStarRailConfig(unittest.TestCase):
-    """崩铁不再走模板初始化：模板写入改由「每日任务」（内联模板）在保存配置时驱动。"""
+    """崩铁：单层日常把 build_target_enable 写成对应布尔，不再走模板。"""
 
     def test_init_attributes(self):
         cfg = StarRailConfig()
@@ -257,9 +258,15 @@ class TestStarRailConfig(unittest.TestCase):
         self.assertEqual(cfg._script_name, "March7th-Launcher")
         self.assertFalse(cfg._template_rel_path)
         daily = cfg._dispatch_daily("每日任务")
-        self.assertIsInstance(daily, TemplateDaily)
-        self.assertFalse(daily.option_fields, "日常无落点")
-        self.assertEqual(daily._load_template(), {"build_target_enable": True})
+        self.assertIsInstance(daily, SingleLayerDaily)
+        self.assertEqual(daily.option_fields, {"每日任务": "build_target_enable"})
+        self.assertEqual(
+            daily._fields("每日任务", "培养目标"), {"build_target_enable": True}
+        )
+        self.assertEqual(
+            daily._fields("每日任务", "不启用培养目标"),
+            {"build_target_enable": False},
+        )
 
 
 class TestNTEConfig(unittest.TestCase):
