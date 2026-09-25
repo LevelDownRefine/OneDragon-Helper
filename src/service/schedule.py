@@ -148,14 +148,13 @@ def _block_enabled(data: dict, key: str, default_enabled: bool) -> bool:
     return isinstance(enabled, bool) and enabled
 
 
-def load_run_options(schedule: dict | None = None) -> RunOptions:
-    """从 schedule.yml 数据解析运行选项（确认窗回显与 launchAll 直启共用）。
+def _parse_run_options(block: dict) -> RunOptions:
+    """从含 shutdown/mute/unmute/close_running/rerun/notify 子块的字典解析 RunOptions。
 
-    Args:
-        schedule: schedule.yml 全量数据；None 时自行读取。
+    block 为 schedule.yml 顶层或其 daily_run.run_options 嵌套块，键结构一致；
+    缺项按 RunOptions 默认值（close_running 默认启用）。
     """
-    data = load_schedule() if schedule is None else schedule
-    shutdown = data.get("shutdown")
+    shutdown = block.get("shutdown")
     shutdown_delay = 0
     if (
         isinstance(shutdown, dict)
@@ -163,7 +162,7 @@ def load_run_options(schedule: dict | None = None) -> RunOptions:
         and shutdown["delay_seconds"] > 0
     ):
         shutdown_delay = shutdown["delay_seconds"]
-    notify = data.get("notify")
+    notify = block.get("notify")
     email = smtp_host = smtp_port = ""
     if isinstance(notify, dict):
         email = str(notify.get("email") or "")
@@ -174,36 +173,35 @@ def load_run_options(schedule: dict | None = None) -> RunOptions:
         shutdown_enabled=isinstance(shutdown, dict)
         and shutdown.get("after_run", False) is True,
         shutdown_delay=shutdown_delay,
-        mute_enabled=_block_enabled(data, "mute", False),
-        unmute_enabled=_block_enabled(data, "unmute", False),
-        close_running_enabled=_block_enabled(data, "close_running", True),
-        rerun_enabled=_block_enabled(data, "rerun", False),
-        notify_enabled=_block_enabled(data, "notify", False),
+        mute_enabled=_block_enabled(block, "mute", False),
+        unmute_enabled=_block_enabled(block, "unmute", False),
+        close_running_enabled=_block_enabled(block, "close_running", True),
+        rerun_enabled=_block_enabled(block, "rerun", False),
+        notify_enabled=_block_enabled(block, "notify", False),
         email=email,
         smtp_host=smtp_host,
         smtp_port=smtp_port,
     )
 
 
-def apply_run_options(options: RunOptions) -> None:
-    """把运行选项写回 schedule.yml，并注册本次填写的授权码（如有）。
+def load_run_options(schedule: dict | None = None) -> RunOptions:
+    """从 schedule.yml 数据解析运行选项（确认窗回显与 launchAll 直启共用）。
+
+    Args:
+        schedule: schedule.yml 全量数据；None 时自行读取。
+    """
+    data = load_schedule() if schedule is None else schedule
+    return _parse_run_options(data)
+
+
+def _dump_run_options(options: RunOptions, base_notify: dict | None = None) -> dict:
+    """把 RunOptions 序列化为 schedule.yml 的子块字典（不含授权码注册）。
 
     Args:
         options: 运行选项（确认窗 accept 的结果或调用方构造）。
+        base_notify: 既有 notify 块；提供时合并（保留未覆盖字段，如手动清空邮箱不丢旧值）。
     """
-    schedule_data = load_schedule()
-    schedule_data["shutdown"] = {
-        "after_run": bool(options.shutdown_enabled),
-        "delay_seconds": int(options.shutdown_delay),
-    }
-    schedule_data["mute"] = {"enabled": bool(options.mute_enabled)}
-    schedule_data["unmute"] = {"enabled": bool(options.unmute_enabled)}
-    schedule_data["close_running"] = {"enabled": bool(options.close_running_enabled)}
-    schedule_data["rerun"] = {"enabled": bool(options.rerun_enabled)}
-    notify = schedule_data.get("notify")
-    if not isinstance(notify, dict):
-        notify = {}
-        schedule_data["notify"] = notify
+    notify: dict = dict(base_notify) if isinstance(base_notify, dict) else {}
     notify["enabled"] = bool(options.notify_enabled)
     if options.email:
         notify["email"] = options.email
@@ -214,6 +212,28 @@ def apply_run_options(options: RunOptions) -> None:
             notify["smtp_port"] = int(options.smtp_port)
         except ValueError:
             logger.warning("[schedule] smtp_port 非法(%r)，保留原值", options.smtp_port)
+    return {
+        "shutdown": {
+            "after_run": bool(options.shutdown_enabled),
+            "delay_seconds": int(options.shutdown_delay),
+        },
+        "mute": {"enabled": bool(options.mute_enabled)},
+        "unmute": {"enabled": bool(options.unmute_enabled)},
+        "close_running": {"enabled": bool(options.close_running_enabled)},
+        "rerun": {"enabled": bool(options.rerun_enabled)},
+        "notify": notify,
+    }
+
+
+def apply_run_options(options: RunOptions) -> None:
+    """把运行选项写回 schedule.yml，并注册本次填写的授权码（如有）。
+
+    Args:
+        options: 运行选项（确认窗 accept 的结果或调用方构造）。
+    """
+    schedule_data = load_schedule()
+    # 合并既有 notify（base）以保留未覆盖字段；其余六块整体覆盖。
+    schedule_data.update(_dump_run_options(options, schedule_data.get("notify")))
     # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
     if options.auth_code:
         try:
@@ -374,12 +394,16 @@ class ScheduledRun:
         unmute: bool = False,
         shutdown_delay: int | None = None,
         close_running: bool = True,
+        rerun_enabled: bool | None = None,
+        smtp_config: dict | None = None,
     ) -> None:
         self.service = service
         self.enabled_keys = enabled_keys
         self.target_time = target_time
         self.chain_name = chain_name
         self.shutdown_delay = shutdown_delay
+        self.rerun_enabled = rerun_enabled
+        self.smtp_config = smtp_config
 
         # 候选集合 = 启用脚本集合（同一概念）。直接透传，不做 None→集合 的隐式归一化；
         # None/空集合 在下游各函数（run_chain_once / rerun_round / parse_logs）按「跳过」
@@ -400,8 +424,12 @@ class ScheduledRun:
         )
 
         # post_run：日志分析最终态 → 邮件 → 开启声音 → 关机（末位），由 build_post_run_pipeline 产出。
-        schedule = load_schedule()
-        mail_config = resolve_mail_config(schedule)
+        # smtp_config 为 None 时回落 schedule.yml 顶层 notify（手动运行默认）；每日计划显式传独立配置。
+        mail_config = (
+            smtp_config
+            if smtp_config is not None
+            else resolve_mail_config(load_schedule())
+        )
         self.post_run: list[Callable[[], None]] = build_post_run_pipeline(
             shutdown_delay=shutdown_delay,
             smtp_config=mail_config,
@@ -421,13 +449,18 @@ class ScheduledRun:
         # 首次运行复用 run_chain_once（生成+运行原子）；candidate_keys 为 None/空集合时按「跳过」语义不运行任何脚本。
         self.service.run_chain_once(self.candidate_keys, chain_name=self.chain_name)
         # 重跑轮：链跑完后解析日志、对失败脚本二次运行（先于 post_run）。
-        # 受 schedule.yml 的 rerun.enabled 控制（契约键，缺失即 assert 崩，不降级）。
-        schedule = load_schedule()
-        rerun_cfg = schedule.get("rerun")
-        assert isinstance(rerun_cfg, dict) and "enabled" in rerun_cfg, (
-            "[chain] schedule 缺 rerun.enabled"
-        )
-        if rerun_cfg["enabled"]:
+        # rerun_enabled 为 None 时回落 schedule.yml 顶层 rerun 块（手动运行默认），
+        # 非 None 用于每日计划独立运行选项；契约键，缺失即 assert 崩，不降级。
+        if self.rerun_enabled is None:
+            schedule = load_schedule()
+            rerun_cfg = schedule.get("rerun")
+            assert isinstance(rerun_cfg, dict) and "enabled" in rerun_cfg, (
+                "[chain] schedule 缺 rerun.enabled"
+            )
+            rerun_on = rerun_cfg["enabled"]
+        else:
+            rerun_on = self.rerun_enabled
+        if rerun_on:
             self.service.rerun_round(
                 all_config=all_config, enabled_keys=self.candidate_keys
             )

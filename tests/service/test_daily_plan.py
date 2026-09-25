@@ -179,12 +179,22 @@ class TestDailyRun(unittest.TestCase):
                 service.run_daily_plan()
                 run.assert_not_called()
 
-    def test_runs_all_scripts_with_current_run_options(self):
+    def test_runs_all_scripts_with_daily_plan_run_options(self):
         service = AppService()
         with (
             patch(
                 "src.service.daily_plan.load_daily_plan",
-                return_value=DailyPlanOptions(True),
+                return_value=DailyPlanOptions(
+                    True,
+                    run_options=RunOptions(
+                        mute_enabled=True,
+                        shutdown_enabled=True,
+                        shutdown_delay=90,
+                        rerun_enabled=True,
+                        notify_enabled=True,
+                        email="a@example.com",
+                    ),
+                ),
             ),
             patch(
                 "src.service.daily_plan.load_config",
@@ -195,12 +205,6 @@ class TestDailyRun(unittest.TestCase):
                     ]
                 },
             ),
-            patch(
-                "src.service.daily_plan.load_run_options",
-                return_value=RunOptions(
-                    mute_enabled=True, shutdown_enabled=True, shutdown_delay=90
-                ),
-            ),
             patch("src.service.daily_plan.chain_service.schedule_run") as run,
         ):
             service.run_daily_plan()
@@ -208,8 +212,17 @@ class TestDailyRun(unittest.TestCase):
         self.assertEqual(args, ({"A", "B"}, "now"))
         self.assertTrue(kwargs["mute"])
         self.assertEqual(kwargs["shutdown_delay"], 90)
+        self.assertTrue(kwargs["rerun_enabled"])
+        self.assertEqual(
+            kwargs["smtp_config"],
+            {
+                "enabled": True,
+                "email": "a@example.com",
+                "smtp_host": "",
+                "smtp_port": None,
+            },
+        )
         self.assertTrue(kwargs["close_running"])
-        self.assertFalse(kwargs.keys() & {"rerun_enabled", "smtp_config"})
 
     @patch("src.cli.AppService")
     def test_cli_runs_daily_without_entering_gui(self, service):
