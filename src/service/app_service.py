@@ -238,7 +238,6 @@ class AppService:
             config_patch,
             weekly_timeouts,
         )
-        daily_plan.rename_script(old_script_name, new_script_name)
         return new_script_name
 
     # ── schedule.yml（src.service.schedule 模块函数）──
@@ -271,9 +270,6 @@ class AppService:
 
     def apply_daily_plan(self, options: daily_plan.DailyPlanOptions) -> None:
         return daily_plan.apply_daily_plan(options)
-
-    def list_daily_plan_scripts(self) -> list[tuple[str, str]]:
-        return daily_plan.list_daily_plan_scripts()
 
     def read_daily_task_state(self) -> daily_plan.DailyTaskState:
         return daily_plan.read_daily_task_state()

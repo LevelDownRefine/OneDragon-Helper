@@ -21,8 +21,10 @@ from ruamel.yaml.error import YAMLError
 
 import src.service.chain_service as chain_service
 from src.service.schedule import (
+    RunOptions,
+    _dump_run_options,
+    _parse_run_options,
     is_valid_target_time,
-    load_run_options,
     load_schedule,
     save_schedule,
 )
@@ -37,14 +39,12 @@ logger = logging.getLogger(__name__)
 class DailyPlanOptions:
     enabled: bool = False
     target_time: str = "04:10"
-    script_names: tuple[str, ...] = ()
+    run_options: RunOptions = RunOptions()
 
     def __post_init__(self):
         assert type(self.enabled) is bool
         assert is_valid_target_time(self.target_time)
-        assert isinstance(self.script_names, tuple)
-        assert all(isinstance(name, str) and name for name in self.script_names)
-        assert len(set(self.script_names)) == len(self.script_names)
+        assert isinstance(self.run_options, RunOptions)
 
 
 @dataclass(frozen=True)
@@ -60,16 +60,19 @@ class DailyTaskState:
     target_time: str = ""
 
     def matches(self, options: DailyPlanOptions) -> bool:
-        """系统任务是否已与计划一致（脚本名单只存在于 schedule.yml，不参与比对）。"""
+        """系统任务是否已与计划一致。"""
         if not options.enabled:
             return not self.exists
         return self.exists and self.enabled and self.target_time == options.target_time
 
 
 def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
-    """读取每日计划；未设置时默认关闭，非法值关闭并记诊断。"""
+    """读取每日计划；未设置时默认关闭，非法值关闭并记诊断。
+
+    每日计划对所有脚本生效，配置只记录启用状态、触发时间与独立运行选项，无脚本名单。
+    旧 ``daily_run.script_names`` 残留忽略不读；``run_options`` 缺省为空白 RunOptions。
+    """
     data = load_schedule() if schedule is None else schedule
-    # daily_run 可缺省，缺失时使用默认值。
     block = data.get("daily_run", None)
     if block is None:
         return DailyPlanOptions()
@@ -77,52 +80,14 @@ def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
         enabled = block.get("enabled", False)
         target = block.get("target_time", "04:10")
         if type(enabled) is bool and is_valid_target_time(target):
-            if "script_names" not in block:
-                # 旧计划一次性物化：取全部脚本（勾选不落盘，无从继承）。
-                names = []
-                if enabled:
-                    config = load_config()
-                    assert "script_list" in config
-                    names = [
-                        get_script_name(script) for script in config["script_list"]
-                    ]
-                if schedule is None:
-                    block["script_names"] = names
-                    save_schedule(data)
-            else:
-                names = block["script_names"]
-            if (
-                isinstance(names, list)
-                and all(isinstance(name, str) and name for name in names)
-                and len(set(names)) == len(names)
-            ):
-                return DailyPlanOptions(enabled, target, tuple(names))
+            run_options = (
+                _parse_run_options(block["run_options"])
+                if isinstance(block.get("run_options"), dict)
+                else RunOptions()
+            )
+            return DailyPlanOptions(enabled, target, run_options)
     logger.warning("[daily] 每日计划配置无效，按关闭处理")
     return DailyPlanOptions()
-
-
-def rename_script(old_script_name: str, new_script_name: str) -> None:
-    """迁移每日计划中的脚本标识，保留其他设置，不更新系统任务。
-
-    Args:
-        old_script_name: 原脚本唯一标识。
-        new_script_name: 保存后的脚本唯一标识。
-    """
-    if old_script_name == new_script_name:
-        return
-    data = load_schedule()
-    plan = load_daily_plan(data)
-    if old_script_name not in plan.script_names:
-        return
-    assert "daily_run" in data
-    # 新标识可能是名单里尚未清理的旧条目，替换后保序去重。
-    data["daily_run"]["script_names"] = list(
-        dict.fromkeys(
-            new_script_name if name == old_script_name else name
-            for name in plan.script_names
-        )
-    )
-    save_schedule(data)
 
 
 @contextmanager
@@ -249,13 +214,6 @@ def apply_daily_plan(options: DailyPlanOptions) -> None:
     assert isinstance(options, DailyPlanOptions)
     data = load_schedule()
     previous = load_daily_plan(data)
-    if options.enabled:
-        available = {name for name, _label in list_daily_plan_scripts()}
-        if not options.script_names:
-            raise ValueError("请至少选择一个参加每日计划的脚本")
-        missing = set(options.script_names) - available
-        if missing:
-            raise ValueError(f"脚本已移除，请重新选择：{'、'.join(sorted(missing))}")
     task = WindowsDailyTask()
     synced = not task.read().matches(options)
     if synced:
@@ -263,8 +221,21 @@ def apply_daily_plan(options: DailyPlanOptions) -> None:
     data["daily_run"] = {
         "enabled": options.enabled,
         "target_time": options.target_time,
-        "script_names": list(options.script_names),
+        "run_options": _dump_run_options(options.run_options),
     }
+    # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
+    auth = options.run_options.auth_code
+    if auth:
+        try:
+            from src.log.notify_mail import register_credentials
+
+            register_credentials(options.run_options.email, auth)
+        except Exception as exc:  # noqa: BLE001  # 凭据为最佳努力：失败记日志，不阻塞落盘
+            logger.error(
+                "[daily] 授权码写入系统凭据管理器失败(%s)：%s",
+                type(exc).__name__,
+                exc,
+            )
     try:
         save_schedule(data)
     except (OSError, YAMLError):
@@ -285,47 +256,46 @@ def read_daily_task_state() -> DailyTaskState:
         return DailyTaskState()
 
 
-def list_daily_plan_scripts() -> list[tuple[str, str]]:
-    """返回可选脚本的标识与展示名，不受手动勾选限制。"""
-    config = load_config()
-    assert "script_list" in config
-    choices = []
-    for script in config["script_list"]:
-        assert "display_name" in script
-        choices.append((get_script_name(script), script["display_name"]))
-    return choices
-
-
 def run_daily_plan() -> None:
-    """按计划独立保存的脚本名单运行，副本与运行选项读取最新配置。"""
+    """按计划运行全部脚本，运行选项使用每日计划独立的 RunOptions。"""
     plan = load_daily_plan()
     if not plan.enabled:
         logger.info("[daily] 每日计划已关闭，跳过此次触发")
         return
     config = load_config()
     assert "script_list" in config
-    available = {get_script_name(s) for s in config["script_list"]}
-    enabled = set(plan.script_names) & available
-    missing = set(plan.script_names) - available
-    if missing:
-        logger.warning(
-            "[daily] 计划中的脚本已移除，跳过：%s", "、".join(sorted(missing))
-        )
-    if not enabled:
-        logger.info("[daily] 计划没有可运行的脚本，跳过此次触发")
+    scripts = {get_script_name(s) for s in config["script_list"]}
+    if not scripts:
+        logger.info("[daily] 没有可运行的脚本，跳过此次触发")
         return
-    options = load_run_options()
+    opts = plan.run_options
+    # 邮件通知配置独立构造；notify 未启用或邮箱缺失则不发。
+    smtp_config = None
+    if opts.notify_enabled and opts.email:
+        try:
+            smtp_port = int(opts.smtp_port) if opts.smtp_port else None
+        except ValueError:
+            logger.warning("[daily] smtp_port 非法(%r)，邮件配置跳过", opts.smtp_port)
+            smtp_port = None
+        smtp_config = {
+            "enabled": True,
+            "email": opts.email,
+            "smtp_host": opts.smtp_host,
+            "smtp_port": smtp_port,
+        }
     # 计划任务用独立链文件，避免与手动运行的 today.yml 互相覆盖。
     chain_service.schedule_run(
-        enabled,
+        scripts,
         "now",
         chain_name="plan",
-        mute=options.mute_enabled,
-        unmute=options.unmute_enabled,
+        mute=opts.mute_enabled,
+        unmute=opts.unmute_enabled,
         shutdown_delay=(
-            options.shutdown_delay
-            if options.shutdown_enabled and options.shutdown_delay > 0
+            opts.shutdown_delay
+            if opts.shutdown_enabled and opts.shutdown_delay > 0
             else None
         ),
-        close_running=options.close_running_enabled,
+        close_running=opts.close_running_enabled,
+        rerun_enabled=opts.rerun_enabled,
+        smtp_config=smtp_config,
     )

@@ -1,25 +1,22 @@
 """每日计划表单：时间、脚本与开关统一编辑，保存由控制器处理。"""
 
-from PySide6.QtCore import Qt, QTime, Signal
+from PySide6.QtCore import QTime, Signal
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
-    QFrame,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
     QTimeEdit,
     QVBoxLayout,
-    QWidget,
 )
 
 from src.gui.dialogs import (
-    BORDER,
     TEXT,
     TEXT_MUTED,
     FormDialogBase,
     make_font,
     spin_box_qss,
 )
+from src.gui.run_options_editor import RunOptionsEditor
 from src.service.daily_plan import DailyPlanOptions, DailyTaskState
 
 
@@ -39,7 +36,6 @@ class DailyPlanDialog(FormDialogBase):
     def __init__(
         self,
         plan: DailyPlanOptions,
-        scripts: list[tuple[str, str]],
         state: DailyTaskState,
         parent=None,
     ):
@@ -53,7 +49,7 @@ class DailyPlanDialog(FormDialogBase):
         title.setFont(make_font(size=20, bold=True))
         title.setStyleSheet(f"color: {TEXT}; background: transparent;")
         layout.addWidget(title)
-        hint = QLabel("选择每天运行的脚本。手动运行时的勾选不会改变此计划。")
+        hint = QLabel("每日计划对所有脚本生效，运行选项单独设置。")
         hint.setWordWrap(True)
         hint.setFont(make_font(size=12))
         hint.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
@@ -80,52 +76,16 @@ class DailyPlanDialog(FormDialogBase):
         self.state_label.setFont(make_font(size=12))
         self.state_label.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
         layout.addWidget(self.state_label)
-        label = self._make_label("参加计划的脚本")
-        label.setFixedWidth(250)
-        layout.addWidget(label)
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(
-            f"QScrollArea {{ background: transparent; border: 1px solid {BORDER}; "
-            "border-radius: 8px; }"
-        )
-        content = QWidget()
-        content.setStyleSheet("background: transparent;")
-        checks_layout = QVBoxLayout(content)
-        checks_layout.setContentsMargins(12, 10, 12, 10)
-        checks_layout.setSpacing(10)
-        choices = list(scripts)
-        available = {name for name, _label in scripts}
-        choices.extend(
-            (name, f"{name}（已移除，请取消勾选）")
-            for name in plan.script_names
-            if name not in available
-        )
-        self.script_checks = {}
-        for name, display_name in choices:
-            check = self._make_checkbox(display_name)
-            check.setToolTip(display_name)
-            check.setChecked(name in plan.script_names)
-            self.script_checks[name] = check
-            checks_layout.addWidget(check)
-        if not choices:
-            empty = QLabel("还没有脚本，请先在主界面添加。")
-            empty.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
-            checks_layout.addWidget(empty)
-        checks_layout.addStretch()
-        scroll.setWidget(content)
-        scroll.setFixedHeight(min(220, max(76, len(choices) * 34 + 20)))
-        layout.addWidget(scroll)
         note = QLabel(
-            "副本和运行选项使用最新配置。暂停会保留时间与脚本。\n"
+            "运行选项仅对每日计划生效。暂停后保留设置。\n"
             "关闭助手后仍有效；需电脑开机并登录，错过时间不补跑。"
         )
         note.setWordWrap(True)
         note.setFont(make_font(size=11))
         note.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
         layout.addWidget(note)
+        self.editor = RunOptionsEditor(plan.run_options)
+        layout.addWidget(self.editor)
         self.error_label = QLabel()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet("color: #F5A7A7; background: transparent;")
@@ -139,9 +99,7 @@ class DailyPlanDialog(FormDialogBase):
         return DailyPlanOptions(
             self.enabled_cb.isChecked(),
             self.time_edit.time().toString("HH:mm"),
-            tuple(
-                name for name, check in self.script_checks.items() if check.isChecked()
-            ),
+            self.editor.run_options,
         )
 
     def show_error(self, message: str) -> None:

@@ -362,7 +362,6 @@ class TestQmlApp(unittest.TestCase):
             ):
                 with (
                     patch("src.service.daily_plan.load_schedule", return_value={}),
-                    patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
                 ):
                     bridge = QmlBridge()
             qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
@@ -525,7 +524,6 @@ class TestTaskCardPopupGeometry(unittest.TestCase):
             ):
                 with (
                     patch("src.service.daily_plan.load_schedule", return_value={}),
-                    patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
                 ):
                     bridge = QmlBridge()
                 qmlRegisterSingletonInstance(
@@ -703,7 +701,6 @@ class TestTaskCardWeeklyHiddenForUnsupportedScript(unittest.TestCase):
             ):
                 with (
                     patch("src.service.daily_plan.load_schedule", return_value={}),
-                    patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
                 ):
                     bridge = QmlBridge()
             qmlRegisterSingletonInstance(
@@ -800,7 +797,6 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
             patch("src.utils.utils_weekly.get_weekly_yml_path_under_root",
                   return_value="__no_weekly_yml__").start()
             patch("src.service.daily_plan.load_schedule", return_value={}).start()
-            patch.object(AppService, "list_daily_plan_scripts", return_value=[]).start()
             bridge = QmlBridge()
             qmlRegisterSingletonInstance(
                 QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
@@ -907,7 +903,6 @@ class TestWeeklyRowChipGeometry(unittest.TestCase):
             patch("src.utils.utils_weekly.get_weekly_yml_path_under_root",
                   return_value="__no_weekly_yml__").start()
             patch("src.service.daily_plan.load_schedule", return_value={}).start()
-            patch.object(AppService, "list_daily_plan_scripts", return_value=[]).start()
             bridge = QmlBridge()
             qmlRegisterSingletonInstance(
                 QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)

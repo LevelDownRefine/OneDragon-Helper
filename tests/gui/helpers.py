@@ -47,7 +47,6 @@ def make_bridge():
             AppService, "load_config", return_value={"script_list": deepcopy(_SCRIPTS)}
         ),
         patch("src.service.daily_plan.load_schedule", return_value={}),
-        patch.object(AppService, "list_daily_plan_scripts", return_value=[]),
     ):
         b = QmlBridge()
     b.app_service.load_config = MagicMock(
@@ -55,6 +54,5 @@ def make_bridge():
     )
     # 构造后的重排、添加和计划操作同样隔离 I/O。
     b.app_service.load_daily_plan = MagicMock(return_value=DailyPlanOptions())
-    b.app_service.list_daily_plan_scripts = MagicMock(return_value=[])
     b.app_service.save_config = MagicMock()
     return b

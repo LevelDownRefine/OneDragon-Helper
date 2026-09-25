@@ -89,7 +89,7 @@ class TestConfigDialog(unittest.TestCase):
         self.assertEqual(self.dialog.startup_options, StartupOptions(True, 125))
 
     def test_daily_plan_suppresses_startup_controls(self):
-        dialog = ConfigDialog(daily_plan=DailyPlanOptions(True, "08:30", ("A",)))
+        dialog = ConfigDialog(daily_plan=DailyPlanOptions(True, "08:30"))
         self.addCleanup(dialog.close)
         self.assertFalse(dialog.startup_cb.isEnabled())
         self.assertFalse(dialog.startup_delay.isEnabled())

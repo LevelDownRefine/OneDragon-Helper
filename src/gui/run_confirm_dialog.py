@@ -1,9 +1,10 @@
 """「启动全部」前的运行确认弹窗（RunConfirmDialog）。
 
 按生命周期三段组织（单列纵向，与原「运行前动作」一张 group 含多个 checkbox 行的
-风格一致）：运行前配置（关闭残留进程 / 静音）·运行中配置（重跑）·
-运行后配置（邮件通知 / 开启声音 / 自动关机）。样式与控件构造复用 ``src.gui.dialogs`` 的
-基类与主题常量（单一来源，不在本文件重复定义）。
+风格一致）：运行前配置（关闭残留进程 / 静音）· 运行中配置（重跑）·
+运行后配置（邮件通知 / 开启声音 / 自动关机）。运行选项的勾选控件统一由
+:class:`src.gui.run_options_editor.RunOptionsEditor` 提供，本弹窗只负责标题、
+底部按钮与确认收集，避免与每日计划弹窗重复实现。
 
 对外接口：
 - ``RunConfirmDialog``：运行确认弹窗，构造签名含 enabled_count 与
@@ -11,33 +12,11 @@
   ``run_options`` 返回用户改后的 ``RunOptions``；取消（reject）不返回、不落盘。
 """
 
-from PySide6.QtWidgets import (
-    QAbstractSpinBox,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QSpinBox,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtWidgets import QLabel, QVBoxLayout
 
-from src.gui.dialogs import (
-    BORDER,
-    BORDER_WIDTH,
-    INPUT_FIXED_H,
-    TEXT,
-    FormDialogBase,
-    line_edit_qss,
-    make_font,
-    spin_box_qss,
-)
+from src.gui.dialogs import TEXT, FormDialogBase, make_font
+from src.gui.run_options_editor import RunOptionsEditor
 from src.service.schedule import RunOptions
-
-# SMTP 回显默认（schedule 缺省时的预填值；与 schedule.example.yml 默认一致）。
-# 发送时的缺省主机/端口由 send_mail 自身兜底，此处仅影响弹窗展示。
-SMTP_HOST_DEFAULT = "smtp.qq.com"
-SMTP_PORT_DEFAULT = "465"
 
 
 class RunConfirmDialog(FormDialogBase):
@@ -60,50 +39,28 @@ class RunConfirmDialog(FormDialogBase):
         self.settings_only = settings_only
         self.setWindowTitle("运行选项" if settings_only else "确认运行")
 
-        self.enabled_count = enabled_count
         self._run_options = None  # accept 后供调用方读取勾选项
 
         self.setMinimumWidth(400)
-        self.init_ui(options)
+        self.init_ui(options, enabled_count)
 
-    def init_ui(self, options: RunOptions) -> None:
-        """构造布局：确认文案 + 三段生命周期配置（运行前/中/后）+ 底部按钮行。
-
-        单列纵向：每段一张 QGroupBox，框内多行 checkbox（与原「运行前动作」单
-        checkbox 行的视觉一致）；带额外控件的行（关机）作为 row widget 嵌入。
-        """
+    def init_ui(self, options: RunOptions, enabled_count: int) -> None:
+        """构造布局：确认文案 + 运行选项编辑器（三段生命周期配置）+ 底部按钮行。"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(14)
 
-        # 顶部确认文案
         hint = QLabel(
-            "保存后用于每日计划、自动启动和手动运行"
+            "保存后用于手动运行"
             if self.settings_only
-            else f"即将运行 {self.enabled_count} 个脚本，是否继续？"
+            else f"即将运行 {enabled_count} 个脚本，是否继续？"
         )
         hint.setFont(make_font(size=11, bold=True))
         hint.setStyleSheet(f"color: {TEXT}; background: transparent;")
         layout.addWidget(hint)
 
-        layout.addWidget(
-            self._make_running_pre_group(
-                options.close_running_enabled,
-                options.mute_enabled,
-            )
-        )
-        layout.addWidget(self._make_running_group(options.rerun_enabled))
-        layout.addWidget(
-            self._make_post_run_group(
-                options.unmute_enabled,
-                options.notify_enabled,
-                options.shutdown_enabled,
-                options.shutdown_delay,
-                options.email,
-                options.smtp_host or SMTP_HOST_DEFAULT,
-                options.smtp_port or SMTP_PORT_DEFAULT,
-            )
-        )
+        self.editor = RunOptionsEditor(options)
+        layout.addWidget(self.editor)
 
         layout.addStretch()
         layout.addLayout(
@@ -114,166 +71,6 @@ class RunConfirmDialog(FormDialogBase):
             )
         )
 
-    def _make_group(self, title: str) -> QGroupBox:
-        """统一样式的分组框：钢蓝边框 + 圆角 + 偏左上方的标题。"""
-        box = QGroupBox(title)
-        box.setFont(make_font(size=11, bold=True))
-        box.setStyleSheet(
-            f"QGroupBox {{ color: {TEXT}; border: {BORDER_WIDTH} solid {BORDER}; "
-            f"border-radius: 8px; margin-top: 12px; }} "
-            f"QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 6px; }}"
-        )
-        return box
-
-    def _make_running_pre_group(
-        self,
-        close_running_enabled: bool,
-        mute_enabled: bool,
-    ) -> QGroupBox:
-        """运行前配置：关闭残留进程 · 静音。"""
-        box = self._make_group("运行前配置")
-        col = QVBoxLayout(box)
-        col.setContentsMargins(14, 20, 14, 14)
-        col.setSpacing(10)
-
-        self.close_running_cb = self._make_checkbox("运行前关闭残留进程")
-        self.close_running_cb.setChecked(close_running_enabled)
-        col.addWidget(self.close_running_cb)
-
-        self.mute_cb = self._make_checkbox("运行前静音")
-        self.mute_cb.setChecked(mute_enabled)
-        col.addWidget(self.mute_cb)
-        return box
-
-    def _make_running_group(self, rerun_enabled: bool) -> QGroupBox:
-        """运行中配置：重跑失败脚本。"""
-        box = self._make_group("运行中配置")
-        col = QVBoxLayout(box)
-        col.setContentsMargins(14, 20, 14, 14)
-        col.setSpacing(10)
-
-        self.rerun_cb = self._make_checkbox("运行后重跑失败脚本")
-        self.rerun_cb.setChecked(rerun_enabled)
-        col.addWidget(self.rerun_cb)
-        return box
-
-    def _make_post_run_group(
-        self,
-        unmute_enabled: bool,
-        notify_enabled: bool,
-        shutdown_enabled: bool,
-        shutdown_delay: int,
-        email: str,
-        smtp_host: str,
-        smtp_port: str,
-    ) -> QGroupBox:
-        """运行后配置：邮件通知（含邮箱/授权码/SMTP 配置）· 开启声音 · 自动关机（运行后关机 + 延迟秒数）。"""
-        box = self._make_group("运行后配置")
-        col = QVBoxLayout(box)
-        col.setContentsMargins(14, 20, 14, 14)
-        col.setSpacing(10)
-
-        self.notify_cb = self._make_checkbox("运行后发送邮件通知")
-        self.notify_cb.setChecked(notify_enabled)
-        col.addWidget(self.notify_cb)
-        # 邮件配置：发件人邮箱（落 schedule.yml）+ 授权码（落系统凭据管理器，不落盘明文）
-        # + SMTP 主机/端口（落 schedule.yml，默认 QQ）。仅在勾选通知时可用（与关机联动一致）。
-        self.email_edit = self._make_line_edit(
-            email, placeholder="发件人邮箱（如 123456@qq.com）"
-        )
-        self.auth_edit = self._make_line_edit(
-            "", placeholder="QQ 授权码（16 位，仅首次需填）"
-        )
-        self.auth_edit.setEchoMode(QLineEdit.Password)
-        col.addWidget(self._make_labeled_row("邮箱", self.email_edit))
-        col.addWidget(self._make_labeled_row("授权码", self.auth_edit))
-
-        self.smtp_host_edit = self._make_line_edit(
-            smtp_host, placeholder="SMTP 主机（如 smtp.qq.com）"
-        )
-        self.smtp_port_edit = self._make_line_edit(
-            smtp_port, placeholder="SMTP 端口（默认 465）"
-        )
-        col.addWidget(self._make_labeled_row("SMTP主机", self.smtp_host_edit))
-        col.addWidget(self._make_labeled_row("SMTP端口", self.smtp_port_edit))
-
-        for w in (
-            self.email_edit,
-            self.auth_edit,
-            self.smtp_host_edit,
-            self.smtp_port_edit,
-        ):
-            w.setEnabled(notify_enabled)
-        self.notify_cb.toggled.connect(self._on_notify_toggled)
-
-        self.unmute_cb = self._make_checkbox("运行后开启声音")
-        self.unmute_cb.setChecked(unmute_enabled)
-        col.addWidget(self.unmute_cb)
-
-        col.addWidget(self._make_shutdown_row(shutdown_enabled, shutdown_delay))
-        return box
-
-    def _on_notify_toggled(self, on: bool) -> None:
-        """邮件通知开关联动邮箱/授权码/SMTP 输入的可编辑状态。"""
-        self.email_edit.setEnabled(on)
-        self.auth_edit.setEnabled(on)
-        self.smtp_host_edit.setEnabled(on)
-        self.smtp_port_edit.setEnabled(on)
-
-    def _make_line_edit(self, text: str, *, placeholder: str = "") -> QLineEdit:
-        """统一样式的单行输入框：深底白字 + 占位文案，随标签行拉伸（邮件/授权码/SMTP 输入）。"""
-        edit = QLineEdit(text)
-        edit.setFont(make_font(size=11))
-        edit.setFixedHeight(INPUT_FIXED_H)
-        edit.setPlaceholderText(placeholder)
-        edit.setStyleSheet(line_edit_qss())
-        return edit
-
-    def _make_labeled_row(self, label_text: str, widget: QWidget) -> QWidget:
-        """带标签的输入行（标签固定宽 + 输入框拉伸），与关机行视觉一致。"""
-        row = QWidget()
-        h = QHBoxLayout(row)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(8)
-        label = QLabel(label_text)
-        label.setFont(make_font(size=11))
-        label.setFixedWidth(56)
-        label.setStyleSheet(f"color: {TEXT}; background: transparent;")
-        h.addWidget(label)
-        h.addWidget(widget)
-        return row
-
-    def _make_shutdown_row(self, enabled: bool, delay: int) -> QWidget:
-        """运行后配置末行：运行后关机复选框 + 延迟秒数数字框（启用联动数字框禁用）。"""
-        row = QWidget()
-        h = QHBoxLayout(row)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(8)
-
-        self.shutdown_cb = self._make_checkbox("运行后关机")
-        self.shutdown_cb.setChecked(enabled)
-        h.addWidget(self.shutdown_cb)
-
-        delay_label = QLabel("延迟秒数")
-        delay_label.setFont(make_font(size=11))
-        delay_label.setFixedWidth(56)
-        delay_label.setStyleSheet(f"color: {TEXT}; background: transparent;")
-        h.addWidget(delay_label)
-
-        self.shutdown_delay_spin = QSpinBox(row)
-        self.shutdown_delay_spin.setFont(make_font(size=11))
-        self.shutdown_delay_spin.setRange(0, 86400)
-        self.shutdown_delay_spin.setValue(delay if delay and delay > 0 else 0)
-        self.shutdown_delay_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
-        self.shutdown_delay_spin.setFixedWidth(90)
-        self.shutdown_delay_spin.setFixedHeight(INPUT_FIXED_H)
-        self.shutdown_delay_spin.setStyleSheet(spin_box_qss())
-        self.shutdown_delay_spin.setEnabled(enabled)
-        self.shutdown_cb.toggled.connect(self.shutdown_delay_spin.setEnabled)
-        h.addWidget(self.shutdown_delay_spin)
-        h.addStretch()
-        return row
-
     @property
     def run_options(self) -> RunOptions | None:
         """accept 后的勾选项（RunOptions）；取消时返回 None。
@@ -283,17 +80,5 @@ class RunConfirmDialog(FormDialogBase):
 
     def _on_accept(self) -> None:
         """确认运行：收集勾选项并 accept。"""
-        self._run_options = RunOptions(
-            shutdown_enabled=self.shutdown_cb.isChecked(),
-            shutdown_delay=self.shutdown_delay_spin.value(),
-            mute_enabled=self.mute_cb.isChecked(),
-            unmute_enabled=self.unmute_cb.isChecked(),
-            close_running_enabled=self.close_running_cb.isChecked(),
-            rerun_enabled=self.rerun_cb.isChecked(),
-            notify_enabled=self.notify_cb.isChecked(),
-            email=self.email_edit.text().strip(),
-            auth_code=self.auth_edit.text().strip(),
-            smtp_host=self.smtp_host_edit.text().strip(),
-            smtp_port=self.smtp_port_edit.text().strip(),
-        )
+        self._run_options = self.editor.run_options
         self.accept()
