@@ -178,7 +178,7 @@ class ScriptConfig:
             return
         template = self._load_template()
 
-        if self._is_aligned(config, template):
+        if covers(config, template):
             logger.info(f"[init_config][{self.display_name}] config 已对齐，无需更新")
             return
 
@@ -191,18 +191,6 @@ class ScriptConfig:
             "重新读取的内容与预期不一致"
         )
         logger.info(f"[init_config][{self.display_name}] config 已更新")
-
-    def _is_aligned(self, config: dict, template: dict) -> bool:
-        """config 是否已涵盖模板全部结构（多出的字段不算差异）。
-
-        Args:
-            config: 当前 config dict。
-            template: 模板 dict。
-
-        Returns:
-            config 是否已与模板对齐。
-        """
-        return covers(config, template)
 
     def set_daily_task(
         self,
