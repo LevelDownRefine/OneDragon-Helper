@@ -160,6 +160,8 @@ def schedule_run(
     unmute: bool = False,
     shutdown_delay: int | None = None,
     close_running: bool = True,
+    rerun_enabled: bool | None = None,
+    smtp_config: dict | None = None,
 ) -> None:
     """调度运行：组装 ``ScheduledRun`` 并执行的薄工厂。
 
@@ -177,6 +179,11 @@ def schedule_run(
         unmute: 是否运行后开启声音（由 ScheduledRun 的 post_run 执行，与静音独立）。
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
         close_running: 是否运行前关闭残留进程（由 ScheduledRun 的 pre_run 执行）。
+        rerun_enabled: 是否运行后重跑失败脚本；None 表示从 schedule.yml 顶层
+            ``rerun`` 块读取（手动运行默认），非 None 用于每日计划独立运行选项。
+        smtp_config: 邮件通知配置（notify 段字典）；None 表示从 schedule.yml 顶层
+            ``notify`` 块经 ``resolve_mail_config`` 解析（手动运行默认），非 None
+            用于每日计划独立运行选项。
     """
     if not enabled_keys:
         logger.info("[chain] 没有启用脚本，跳过本次运行")
@@ -190,6 +197,8 @@ def schedule_run(
         unmute=unmute,
         shutdown_delay=shutdown_delay,
         close_running=close_running,
+        rerun_enabled=rerun_enabled,
+        smtp_config=smtp_config,
     ).run()
 
 

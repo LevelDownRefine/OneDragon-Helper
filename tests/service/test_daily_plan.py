@@ -158,6 +158,32 @@ class TestDailyPlanConfig(unittest.TestCase):
         )
         self.assertEqual(load_yaml(self.path), self.original)
 
+    @patch("src.service.daily_plan.WindowsDailyTask")
+    def test_save_with_notify_off_preserves_saved_mail_settings(self, task):
+        """通知关闭时保存不抹掉已存的邮箱/SMTP 设置（与手动路径 base_notify 同语义）。"""
+        task.return_value.read.return_value = DailyTaskState()
+        saved = dict(self.original)
+        saved["daily_run"]["run_options"] = {
+            "notify": {
+                "enabled": True,
+                "email": "daily@example.com",
+                "smtp_host": "smtp.example.com",
+                "smtp_port": 465,
+            }
+        }
+        dump_yaml(self.path, saved)
+        apply_daily_plan(DailyPlanOptions(True, "04:10"))
+        notify = load_yaml(self.path)["daily_run"]["run_options"]["notify"]
+        self.assertEqual(
+            notify,
+            {
+                "enabled": False,
+                "email": "daily@example.com",
+                "smtp_host": "smtp.example.com",
+                "smtp_port": 465,
+            },
+        )
+
 
 class TestDailyRun(unittest.TestCase):
     def test_disabled_or_no_scripts_never_runs(self):
@@ -179,12 +205,22 @@ class TestDailyRun(unittest.TestCase):
                 service.run_daily_plan()
                 run.assert_not_called()
 
-    def test_runs_all_scripts_with_current_run_options(self):
+    def test_runs_all_scripts_with_daily_plan_run_options(self):
         service = AppService()
         with (
             patch(
                 "src.service.daily_plan.load_daily_plan",
-                return_value=DailyPlanOptions(True),
+                return_value=DailyPlanOptions(
+                    True,
+                    run_options=RunOptions(
+                        mute_enabled=True,
+                        shutdown_enabled=True,
+                        shutdown_delay=90,
+                        rerun_enabled=True,
+                        notify_enabled=True,
+                        email="a@example.com",
+                    ),
+                ),
             ),
             patch(
                 "src.service.daily_plan.load_config",
@@ -195,12 +231,6 @@ class TestDailyRun(unittest.TestCase):
                     ]
                 },
             ),
-            patch(
-                "src.service.daily_plan.load_run_options",
-                return_value=RunOptions(
-                    mute_enabled=True, shutdown_enabled=True, shutdown_delay=90
-                ),
-            ),
             patch("src.service.daily_plan.chain_service.schedule_run") as run,
         ):
             service.run_daily_plan()
@@ -208,8 +238,38 @@ class TestDailyRun(unittest.TestCase):
         self.assertEqual(args, ({"A", "B"}, "now"))
         self.assertTrue(kwargs["mute"])
         self.assertEqual(kwargs["shutdown_delay"], 90)
+        self.assertTrue(kwargs["rerun_enabled"])
+        self.assertEqual(
+            kwargs["smtp_config"],
+            {
+                "enabled": True,
+                "email": "a@example.com",
+                "smtp_host": "",
+                "smtp_port": None,
+            },
+        )
         self.assertTrue(kwargs["close_running"])
-        self.assertFalse(kwargs.keys() & {"rerun_enabled", "smtp_config"})
+
+    def test_daily_run_without_notify_disables_mail_explicitly(self):
+        """每日计划通知关闭时显式传禁用邮件配置（None 会让 ScheduledRun 回落顶层 notify）。"""
+        service = AppService()
+        with (
+            patch(
+                "src.service.daily_plan.load_daily_plan",
+                return_value=DailyPlanOptions(True),
+            ),
+            patch(
+                "src.service.daily_plan.load_config",
+                return_value={
+                    "script_list": [{"display_name": "A", "script_path": "a.py"}]
+                },
+            ),
+            patch("src.service.daily_plan.chain_service.schedule_run") as run,
+        ):
+            service.run_daily_plan()
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["smtp_config"], {"enabled": False})
+        self.assertFalse(kwargs["rerun_enabled"])
 
     @patch("src.cli.AppService")
     def test_cli_runs_daily_without_entering_gui(self, service):
