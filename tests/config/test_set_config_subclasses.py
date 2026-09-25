@@ -216,7 +216,7 @@ class TestEndfieldConfig(unittest.TestCase):
         self.assertEqual(cfg.display_name, "终末地")
         self.assertEqual(cfg._script_name, "ok-ef")
         self.assertEqual(cfg._dispatch_daily("每日任务").task_field, "体力本")
-        self.assertEqual(cfg._template_rel_path, "okef一条龙.json")
+        self.assertFalse(cfg._template_rel_path, "模板已删，_init_config 对其为空操作")
 
     def test_daily_selection_saves_leaf_and_preserves_enable_switch(self):
         for task, sequence, expected in (
@@ -233,46 +233,6 @@ class TestEndfieldConfig(unittest.TestCase):
                 ):
                     config.set_daily_task("每日任务", task, sequence=sequence)
                 save.assert_called_once_with({"体力本": expected, "⭐刷体力": True})
-
-    def test_init_config_aligned_no_save(self):
-        """config 与模板对齐（含模板外的自定义 key）时不保存"""
-        template = {"购物白名单": ["精锻"], "是否买礼物": False}
-        config = {
-            "购物白名单": ["精锻"],
-            "是否买礼物": False,
-            "体力本": "旧本",  # 模板外的用户自定义 key
-        }
-        with (
-            patch.object(set_config, "load_config", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch("src.config.set_config.save_config") as mock_save,
-        ):
-            cfg = EndfieldConfig()
-            cfg._init_config()
-        mock_save.assert_not_called()
-
-    def test_init_config_misaligned_saves(self):
-        """config 与模板不对齐时，用模板值 reconcile（覆盖不一致、补缺失、保留多余）并保存"""
-        template = {"购物白名单": ["精锻"], "是否买礼物": False}
-        config = {
-            "购物白名单": ["碎矿"],  # 不一致 → 覆盖为模板值
-            "是否买礼物": True,  # 不一致 → 覆盖为模板值
-            "ExtraKey": 1,  # 模板无 → 保留
-        }
-        with (
-            patch.object(set_config, "load_config", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch("src.config.set_config.save_config") as mock_save,
-        ):
-            cfg = EndfieldConfig()
-            cfg._init_config()
-        mock_save.assert_called_once()
-        saved = mock_save.call_args[0][2]
-        self.assertEqual(saved["购物白名单"], ["精锻"])
-        self.assertEqual(saved["是否买礼物"], False)
-        self.assertEqual(saved["ExtraKey"], 1)
 
 
 class TestZenlessZoneZeroConfig(unittest.TestCase):
