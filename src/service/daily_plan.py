@@ -218,10 +218,19 @@ def apply_daily_plan(options: DailyPlanOptions) -> None:
     synced = not task.read().matches(options)
     if synced:
         task.sync(options)
+    # 合并既有 notify 块（与手动路径 apply_run_options 同语义）：通知关闭时保存，
+    # 已存的邮箱/SMTP 设置不丢，重新开启无需重填。
+    daily_run = data.get("daily_run")
+    saved_options = (
+        daily_run.get("run_options") if isinstance(daily_run, dict) else None
+    )
     data["daily_run"] = {
         "enabled": options.enabled,
         "target_time": options.target_time,
-        "run_options": _dump_run_options(options.run_options),
+        "run_options": _dump_run_options(
+            options.run_options,
+            saved_options.get("notify") if isinstance(saved_options, dict) else None,
+        ),
     }
     # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
     auth = options.run_options.auth_code
@@ -269,8 +278,9 @@ def run_daily_plan() -> None:
         logger.info("[daily] 没有可运行的脚本，跳过此次触发")
         return
     opts = plan.run_options
-    # 邮件通知配置独立构造；notify 未启用或邮箱缺失则不发。
-    smtp_config = None
+    # 邮件通知配置独立构造；关闭时显式传禁用配置——None 会让 ScheduledRun 回落
+    # schedule.yml 顶层 notify（手动运行默认），违反「运行选项仅对每日计划生效」。
+    smtp_config = {"enabled": False}
     if opts.notify_enabled and opts.email:
         try:
             smtp_port = int(opts.smtp_port) if opts.smtp_port else None
