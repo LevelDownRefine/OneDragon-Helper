@@ -4,7 +4,7 @@
 风格一致）：运行前配置（关闭残留进程 / 静音）· 运行中配置（重跑）·
 运行后配置（邮件通知 / 开启声音 / 自动关机）。运行选项的勾选控件统一由
 :class:`src.gui.run_options_editor.RunOptionsEditor` 提供，本弹窗只负责标题、
-底部按钮与确认收集。
+底部按钮与确认收集，避免与每日计划弹窗重复实现。
 
 对外接口：
 - ``RunConfirmDialog``：运行确认弹窗，构造签名含 enabled_count 与
@@ -51,7 +51,7 @@ class RunConfirmDialog(FormDialogBase):
         layout.setSpacing(14)
 
         hint = QLabel(
-            "保存后用于每日计划、自动启动和手动运行"
+            "保存后用于手动运行"
             if self.settings_only
             else f"即将运行 {enabled_count} 个脚本，是否继续？"
         )

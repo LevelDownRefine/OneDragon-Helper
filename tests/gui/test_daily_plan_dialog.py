@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QPushButton  # noqa: E402
 from src.gui.controllers.daily_plan import DailyPlanController  # noqa: E402
 from src.gui.daily_plan_dialog import DailyPlanDialog  # noqa: E402
 from src.service.daily_plan import DailyPlanOptions, DailyTaskState  # noqa: E402
+from src.service.schedule import RunOptions  # noqa: E402
 
 _APP = QApplication.instance() or QApplication([])
 
@@ -117,6 +118,37 @@ class TestDailyPlanDialog(unittest.TestCase):
 
         self._run(save)
         self.assertEqual(self.service.apply_daily_plan.call_count, 2)
+
+    def test_run_options_are_edited_and_saved(self):
+        self.service.apply_daily_plan.side_effect = lambda value: setattr(
+            self.service.load_daily_plan, "return_value", value
+        )
+
+        def save(dialog):
+            self.assertEqual(dialog.daily_plan.run_options, RunOptions())
+            dialog.editor.mute_cb.setChecked(True)
+            dialog.editor.shutdown_cb.setChecked(True)
+            dialog.editor.shutdown_delay_spin.setValue(60)
+            dialog.editor.notify_cb.setChecked(True)
+            dialog.editor.email_edit.setText("a@example.com")
+            next(
+                b for b in dialog.findChildren(QPushButton) if b.text() == "保存"
+            ).click()
+
+        self._run(save)
+        saved = self.service.apply_daily_plan.call_args.args[0]
+        self.assertEqual(
+            saved.run_options,
+            RunOptions(
+                mute_enabled=True,
+                shutdown_enabled=True,
+                shutdown_delay=60,
+                notify_enabled=True,
+                email="a@example.com",
+                smtp_host="smtp.qq.com",
+                smtp_port="465",
+            ),
+        )
 
     def test_pause_and_resume_preserve_time(self):
         self.service.apply_daily_plan.side_effect = lambda value: setattr(

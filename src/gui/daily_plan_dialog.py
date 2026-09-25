@@ -1,4 +1,4 @@
-"""每日计划表单：时间与开关统一编辑，保存由控制器处理。"""
+"""每日计划表单：时间、脚本与开关统一编辑，保存由控制器处理。"""
 
 from PySide6.QtCore import QTime, Signal
 from PySide6.QtWidgets import (
@@ -16,6 +16,7 @@ from src.gui.dialogs import (
     make_font,
     spin_box_qss,
 )
+from src.gui.run_options_editor import RunOptionsEditor
 from src.service.daily_plan import DailyPlanOptions, DailyTaskState
 
 
@@ -48,7 +49,7 @@ class DailyPlanDialog(FormDialogBase):
         title.setFont(make_font(size=20, bold=True))
         title.setStyleSheet(f"color: {TEXT}; background: transparent;")
         layout.addWidget(title)
-        hint = QLabel("每日计划对所有脚本生效。")
+        hint = QLabel("每日计划对所有脚本生效，运行选项单独设置。")
         hint.setWordWrap(True)
         hint.setFont(make_font(size=12))
         hint.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
@@ -76,12 +77,15 @@ class DailyPlanDialog(FormDialogBase):
         self.state_label.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
         layout.addWidget(self.state_label)
         note = QLabel(
-            "暂停后保留设置。\n关闭助手后仍有效；需电脑开机并登录，错过时间不补跑。"
+            "运行选项仅对每日计划生效。暂停后保留设置。\n"
+            "关闭助手后仍有效；需电脑开机并登录，错过时间不补跑。"
         )
         note.setWordWrap(True)
         note.setFont(make_font(size=11))
         note.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
         layout.addWidget(note)
+        self.editor = RunOptionsEditor(plan.run_options)
+        layout.addWidget(self.editor)
         self.error_label = QLabel()
         self.error_label.setWordWrap(True)
         self.error_label.setStyleSheet("color: #F5A7A7; background: transparent;")
@@ -95,6 +99,7 @@ class DailyPlanDialog(FormDialogBase):
         return DailyPlanOptions(
             self.enabled_cb.isChecked(),
             self.time_edit.time().toString("HH:mm"),
+            self.editor.run_options,
         )
 
     def show_error(self, message: str) -> None:

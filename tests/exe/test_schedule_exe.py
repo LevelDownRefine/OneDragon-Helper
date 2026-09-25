@@ -12,6 +12,9 @@
 - 第二轮「整链」（``--name tail``，ok-ww 的 game_path 留空）：假游戏**由测试自己挂着**
   （不被清场），Runner 不介入启动，故无 60s 等待，可以完整跑到底——脚本真跑（写 ok-script.log
   → 日志解析）、重跑轮、``kill_game_after_done`` 按名关真实进程、post_run 的 unmute 都在这一轮。
+- 第三轮「daily」（``--run-daily``，schedule.yml 的 daily_run.enabled=true）：每日计划独立
+  run_options 的 rerun=false 生效——顶层 rerun 块恒为 true 作对照，ok-nte 走到第 3 次尝试
+  仍失败且框架日志无重跑，即证明重跑决策读的是 daily_run.run_options 而非顶层块。
 
 模拟对象（进程名唯一，绝不误杀真实进程）：
 - ok-ww.cmd：external 脚本（.cmd 由 Runner 经 CreateProcess 直接拉起，实测可跑），
@@ -66,7 +69,7 @@ _GENERATED = ("config.yml", "schedule.yml", "weekly.yml")
 # 精确回滚（旧文件截回原大小、新文件删除、新建目录清空后移除），保证
 # build-exe 上传的 dist 产物不含测试痕迹。
 _CHAIN_DIR = _CONFIG_DIR / "script_chain" if _CONFIG_DIR else None
-_CHAIN_FILES = ("cut.yml", "tail.yml", "rerun.yml")
+_CHAIN_FILES = ("cut.yml", "tail.yml", "rerun.yml", "plan.yml")
 _LOG_DIRS = ("logs", ".log")
 
 _TARGET_LEAD_SECONDS = (
@@ -76,7 +79,9 @@ _LAUNCH_DEADLINE = (
     120  # 掐断轮：等新假游戏出现（目标等待 + 清场 + 生成链 + Runner 冷启）
 )
 _GAME_OBSERVE_SECONDS = 3  # 出现后再观察其存活的秒数（仍存活即认为启动成功，随即掐断）
-_TAIL_TIMEOUT = 180  # 整链轮：两条链 + 日志解析 + post_run（无 60s 就绪等待）
+_TAIL_TIMEOUT = (
+    180  # 整链轮 / daily 轮：两条链 + 日志解析 + post_run（无 60s 就绪等待）
+)
 
 
 def _fake_game_pids() -> set[int]:
@@ -133,7 +138,7 @@ class TestScheduleExeE2E(unittest.TestCase):
         import faulthandler
 
         faulthandler.dump_traceback_later(
-            _LAUNCH_DEADLINE + _TAIL_TIMEOUT + 60, exit=True
+            _LAUNCH_DEADLINE + 2 * _TAIL_TIMEOUT + 60, exit=True
         )
 
         cls.work = WORK_DIR
@@ -148,23 +153,28 @@ class TestScheduleExeE2E(unittest.TestCase):
         shutil.copy(r"C:\Windows\System32\cmd.exe", GAME_EXE)
 
         # 假日常脚本：ok-ww.cmd（external，写含成功标记的日志）+ ok-nte.py
-        # （python，首跑 exit(1) 不写成功标记、重跑才写，验证重跑轮）
+        # （python，按 .attempt 计数奇跑失败/偶跑成功；ok-script.log 只留最新一轮状态，
+        # 跨轮证据走追加式 history.txt，供重跑轮与 daily 轮的断言互不覆盖）
         _write_okww_cmd()
         cls.nte_script = NTE_DIR / "ok-nte.py"
         cls.nte_script.write_text(
             "import pathlib, sys\n"
             f"root = pathlib.Path(r'{NTE_DIR}')\n"
             "attempt = root / '.attempt'\n"
-            "first = not attempt.exists()\n"
-            "attempt.write_text('x')\n"
+            "n = int(attempt.read_text() or '0') + 1 if attempt.exists() else 1\n"
+            "attempt.write_text(str(n))\n"
             f"log = pathlib.Path(r'{NTE_LOG_DIR}')\n"
             "log.mkdir(parents=True, exist_ok=True)\n"
-            "if first:\n"
+            "with (root / 'history.txt').open('a', encoding='utf-8') as hist:\n"
+            "    if n % 2:\n"
+            "        (log / 'ok-script.log').write_text(\n"
+            "            'info_set 当前体力 132\\nERROR connect timed out\\n',\n"
+            "            encoding='utf-8')\n"
+            "        hist.write(f'{n}:fail\\n')\n"
+            "        sys.exit(1)\n"
             "    (log / 'ok-script.log').write_text(\n"
-            "        'info_set 当前体力 132\\nERROR connect timed out\\n', encoding='utf-8')\n"
-            "    sys.exit(1)\n"
-            "(log / 'ok-script.log').write_text(\n"
-            "    'info_set 当前体力 132\\ninfo_set failed []\\n', encoding='utf-8')\n",
+            "        'info_set 当前体力 132\\ninfo_set failed []\\n', encoding='utf-8')\n"
+            "    hist.write(f'{n}:ok\\n')\n",
             encoding="utf-8",
         )
 
@@ -209,6 +219,12 @@ class TestScheduleExeE2E(unittest.TestCase):
         time.sleep(1)
         cls.tail_fw, cls.tail_runner = cls._run_tail()
 
+        # 第三轮「daily」：--run-daily 走 daily_run.run_options（rerun=false），
+        # 与顶层 rerun=true 形成对照；此时无残留假游戏（整链轮已按名关掉）。
+        cls._offsets3 = cls._log_offsets()
+        cls._write_schedule_yml(daily_enabled=True)
+        cls.daily_fw = cls._run_daily()
+
     @classmethod
     def tearDownClass(cls):
         # 兜底：无论断言成败都还原测试前的静音状态（掐断轮静音后由整链轮的 post_run
@@ -245,13 +261,27 @@ class TestScheduleExeE2E(unittest.TestCase):
 
     # ── 工具 ─────────────────────────────────────────────────────────
     @classmethod
-    def _write_schedule_yml(cls) -> None:
-        """写两轮共用的 schedule.yml / weekly.yml（关机与邮件全程关闭）。"""
+    def _write_schedule_yml(cls, *, daily_enabled: bool = False) -> None:
+        """写 schedule.yml / weekly.yml（关机与邮件全程关闭）。
+
+        顶层 rerun 恒为 true 作对照：``--run-daily`` 若误读顶层而非
+        daily_run.run_options，daily 轮首跑失败的 ok-nte 会触发重跑（断言据此区分）。
+        """
+        daily_run: dict = {"enabled": daily_enabled, "target_time": "04:10"}
+        if daily_enabled:
+            daily_run["run_options"] = {
+                "shutdown": {"after_run": False, "delay_seconds": 0},
+                "mute": {"enabled": False},
+                "unmute": {"enabled": False},
+                "close_running": {"enabled": True},
+                "rerun": {"enabled": False},
+                "notify": {"enabled": False, "email": ""},
+            }
         dump_yaml(
             _CONFIG_DIR / "schedule.yml",
             {
                 "shutdown": {"after_run": False, "delay_seconds": 0},
-                "daily_run": {"enabled": False, "target_time": "04:10"},
+                "daily_run": daily_run,
                 "mute": {"enabled": False},
                 "unmute": {"enabled": False},
                 "rerun": {"enabled": True},
@@ -369,6 +399,19 @@ class TestScheduleExeE2E(unittest.TestCase):
             timeout=_TAIL_TIMEOUT,
         )
         return cls._read_tails(cls._offsets2)
+
+    @classmethod
+    def _run_daily(cls) -> str:
+        """跑 daily 轮（``--run-daily``，运行选项取 daily_run.run_options），返回框架日志增量。"""
+        subprocess.run(
+            [GUI_EXE, "--run-daily"],
+            cwd=PACKAGE_DIR,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_TAIL_TIMEOUT,
+        )
+        return cls._read_tails(cls._offsets3)[0]
 
     @classmethod
     def _await_game_launch(cls, exe: subprocess.Popen) -> tuple[int | None, bool]:
@@ -539,18 +582,31 @@ class TestScheduleExeE2E(unittest.TestCase):
         self.assertIn("'ok-nte'", self.tail_fw)
 
     def test_oknte_failed_then_rerun_success(self):
-        """ok-nte 首跑失败进重跑，重跑后日志含成功标记。"""
-        content = (NTE_LOG_DIR / "ok-script.log").read_text(encoding="utf-8")
-        self.assertIn("info_set failed []", content)
-        self.assertTrue((NTE_DIR / ".attempt").exists())
+        """ok-nte 首跑失败进重跑，重跑后成功（tail 轮 history：1 失败 → 2 成功）。"""
+        history = (NTE_DIR / "history.txt").read_text(encoding="utf-8")
+        self.assertIn("1:fail", history)
+        self.assertIn("2:ok", history)
+
+    def test_daily_run_uses_plan_run_options(self):
+        """daily 轮重跑决策读 daily_run.run_options（rerun=false），顶层 rerun=true 不参与。
+
+        history 恰为三轮：tail 轮 1 失败 + 重跑 2 成功、daily 轮 3 失败且无第 4 次——
+        若误读顶层 rerun 块，daily 轮会多跑一轮（出现 4:ok）。用文件证据而非框架日志
+        增量：同一产物日志被多轮运行共享，偏移对账不可靠。
+        """
+        self.assertEqual((NTE_DIR / ".attempt").read_text(), "3")
+        self.assertEqual(
+            (NTE_DIR / "history.txt").read_text(encoding="utf-8"),
+            "1:fail\n2:ok\n3:fail\n",
+        )
 
     def test_no_game_leftover(self):
         """收尾干净：无 FakeGame 进程存活。"""
         self.assertEqual(_fake_game_pids(), set())
 
     def test_safety_boundaries(self):
-        """安全边界：两轮全程无关机、无邮件（静音/恢复刻意开启，见 mute 两条）。"""
-        for tail in (self.cut_fw, self.tail_fw):
+        """安全边界：三轮全程无关机、无邮件（静音/恢复刻意开启，见 mute 两条）。"""
+        for tail in (self.cut_fw, self.tail_fw, self.daily_fw):
             self.assertNotIn("关机", tail)
             self.assertNotIn("发送", tail)
 

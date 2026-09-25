@@ -1,8 +1,9 @@
 """运行选项编辑器：静音/关机/重跑/邮件通知/关闭残留/开声音的统一控件。
 
-RunConfirmDialog（手动运行确认）的组合控件。本控件只负责「展示 RunOptions +
-收集 RunOptions」，不含标题/底部按钮（由宿主弹窗提供）。控件构造与样式复用
-``src.gui.dialogs`` 的基类与主题常量（单一来源，不在本文件重复定义）。
+RunConfirmDialog（手动运行确认）与 DailyPlanDialog（每日计划）共用，避免两套
+divergent 的复选框实现。本控件只负责「展示 RunOptions + 收集 RunOptions」，
+不含标题/底部按钮（由宿主弹窗提供）。控件构造与样式复用 ``src.gui.dialogs`` 的
+基类与主题常量（单一来源，不在本文件重复定义）。
 """
 
 from PySide6.QtWidgets import (

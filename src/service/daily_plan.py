@@ -1,6 +1,6 @@
 """每日计划：Windows 负责触发，运行入口每次读取最新配置。
 
-系统任务里只有触发时间和 ``--run-daily`` 入口，运行选项留在 schedule.yml，
+系统任务里只有触发时间和 ``--run-daily`` 入口，脚本名单与运行选项留在 schedule.yml，
 故「每日计划是否生效」有两个来源：yml 是设置意图，系统任务是实际事实。两者会被用户
 手动改动而分叉，因此界面回显实际状态（:class:`DailyTaskState`），保存时按回读结果
 判断是否要重新注册。
@@ -21,8 +21,10 @@ from ruamel.yaml.error import YAMLError
 
 import src.service.chain_service as chain_service
 from src.service.schedule import (
+    RunOptions,
+    _dump_run_options,
+    _parse_run_options,
     is_valid_target_time,
-    load_run_options,
     load_schedule,
     save_schedule,
 )
@@ -37,10 +39,12 @@ logger = logging.getLogger(__name__)
 class DailyPlanOptions:
     enabled: bool = False
     target_time: str = "04:10"
+    run_options: RunOptions = RunOptions()
 
     def __post_init__(self):
         assert type(self.enabled) is bool
         assert is_valid_target_time(self.target_time)
+        assert isinstance(self.run_options, RunOptions)
 
 
 @dataclass(frozen=True)
@@ -65,8 +69,8 @@ class DailyTaskState:
 def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
     """读取每日计划；未设置时默认关闭，非法值关闭并记诊断。
 
-    每日计划对所有脚本生效，配置只记录启用状态与触发时间，无脚本名单；
-    旧 ``daily_run.script_names`` 残留忽略不读。
+    每日计划对所有脚本生效，配置只记录启用状态、触发时间与独立运行选项，无脚本名单。
+    旧 ``daily_run.script_names`` 残留忽略不读；``run_options`` 缺省为空白 RunOptions。
     """
     data = load_schedule() if schedule is None else schedule
     block = data.get("daily_run", None)
@@ -76,7 +80,12 @@ def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
         enabled = block.get("enabled", False)
         target = block.get("target_time", "04:10")
         if type(enabled) is bool and is_valid_target_time(target):
-            return DailyPlanOptions(enabled, target)
+            run_options = (
+                _parse_run_options(block["run_options"])
+                if isinstance(block.get("run_options"), dict)
+                else RunOptions()
+            )
+            return DailyPlanOptions(enabled, target, run_options)
     logger.warning("[daily] 每日计划配置无效，按关闭处理")
     return DailyPlanOptions()
 
@@ -209,10 +218,33 @@ def apply_daily_plan(options: DailyPlanOptions) -> None:
     synced = not task.read().matches(options)
     if synced:
         task.sync(options)
+    # 合并既有 notify 块（与手动路径 apply_run_options 同语义）：通知关闭时保存，
+    # 已存的邮箱/SMTP 设置不丢，重新开启无需重填。
+    daily_run = data.get("daily_run")
+    saved_options = (
+        daily_run.get("run_options") if isinstance(daily_run, dict) else None
+    )
     data["daily_run"] = {
         "enabled": options.enabled,
         "target_time": options.target_time,
+        "run_options": _dump_run_options(
+            options.run_options,
+            saved_options.get("notify") if isinstance(saved_options, dict) else None,
+        ),
     }
+    # 授权码（仅本次填写时）：注册进系统凭据管理器，避免明文落盘 schedule.yml。
+    auth = options.run_options.auth_code
+    if auth:
+        try:
+            from src.log.notify_mail import register_credentials
+
+            register_credentials(options.run_options.email, auth)
+        except Exception as exc:  # noqa: BLE001  # 凭据为最佳努力：失败记日志，不阻塞落盘
+            logger.error(
+                "[daily] 授权码写入系统凭据管理器失败(%s)：%s",
+                type(exc).__name__,
+                exc,
+            )
     try:
         save_schedule(data)
     except (OSError, YAMLError):
@@ -234,7 +266,7 @@ def read_daily_task_state() -> DailyTaskState:
 
 
 def run_daily_plan() -> None:
-    """按计划运行全部脚本，副本与运行选项读取最新配置。"""
+    """按计划运行全部脚本，运行选项使用每日计划独立的 RunOptions。"""
     plan = load_daily_plan()
     if not plan.enabled:
         logger.info("[daily] 每日计划已关闭，跳过此次触发")
@@ -245,18 +277,35 @@ def run_daily_plan() -> None:
     if not scripts:
         logger.info("[daily] 没有可运行的脚本，跳过此次触发")
         return
-    options = load_run_options()
+    opts = plan.run_options
+    # 邮件通知配置独立构造；关闭时显式传禁用配置——None 会让 ScheduledRun 回落
+    # schedule.yml 顶层 notify（手动运行默认），违反「运行选项仅对每日计划生效」。
+    smtp_config = {"enabled": False}
+    if opts.notify_enabled and opts.email:
+        try:
+            smtp_port = int(opts.smtp_port) if opts.smtp_port else None
+        except ValueError:
+            logger.warning("[daily] smtp_port 非法(%r)，邮件配置跳过", opts.smtp_port)
+            smtp_port = None
+        smtp_config = {
+            "enabled": True,
+            "email": opts.email,
+            "smtp_host": opts.smtp_host,
+            "smtp_port": smtp_port,
+        }
     # 计划任务用独立链文件，避免与手动运行的 today.yml 互相覆盖。
     chain_service.schedule_run(
         scripts,
         "now",
         chain_name="plan",
-        mute=options.mute_enabled,
-        unmute=options.unmute_enabled,
+        mute=opts.mute_enabled,
+        unmute=opts.unmute_enabled,
         shutdown_delay=(
-            options.shutdown_delay
-            if options.shutdown_enabled and options.shutdown_delay > 0
+            opts.shutdown_delay
+            if opts.shutdown_enabled and opts.shutdown_delay > 0
             else None
         ),
-        close_running=options.close_running_enabled,
+        close_running=opts.close_running_enabled,
+        rerun_enabled=opts.rerun_enabled,
+        smtp_config=smtp_config,
     )
