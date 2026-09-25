@@ -31,13 +31,12 @@ class DailyPlanController(QObject):
     def edit(self):
         try:
             plan = self._app_service.load_daily_plan()
-            scripts = self._app_service.list_daily_plan_scripts()
             task_state = self._app_service.read_daily_task_state()
         except (OSError, YAMLError) as exc:
             logger.error("读取每日计划失败：%s: %s", type(exc).__name__, exc)
             self._toast(f"读取每日计划失败：{exc}")
             return
-        dialog = DailyPlanDialog(plan, scripts, task_state)
+        dialog = DailyPlanDialog(plan, task_state)
 
         def save():
             try:
