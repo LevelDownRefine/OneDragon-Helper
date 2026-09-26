@@ -17,6 +17,7 @@
 | 模块 | 职责 |
 |------|------|
 | app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
+| task_service.py | 无 Qt CLI 的脚本列表/任务卡聚合查询、日常选择校验与写后反读 |
 | utils_config.py | 单脚本配置（原 script_service.py 已退化为模块函数）：config.yml 完整读写（含条目增删改）+ get_script / build_script_entry / config_file_path |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
@@ -57,6 +58,11 @@ MainWindow  GUI  ┘                        ├─▶ daily_config 模块函数�
 ```
 
 调用方不感知 weekly 同步、链合法性校验、runner 命令构造等细节，全部内聚在 service/。
+
+无 Qt 入口 `python -m src.headless` 经 AppService 访问 task_service，提供一次性 `call`
+与持久 `serve --stdio`；开放 `app.snapshot/script.view`、`daily.select/enable`、
+`weekly.select/start`，供现有 GUI 的 `--cli-backend` 测试模式使用。
+请求、返回结构与生命周期见 [CLI 协议](../../docs/rust-feasibility/headless-cli.md)。
 
 `utils_shutdown.py` 不得模块级依赖 GUI 层：否则 `schedule → utils_shutdown →
 gui.dialogs → app_service → chain_service → schedule` 成环，确认窗实现于 `src/gui/shutdown_dialog.py`，`utils_shutdown` 仅延迟 import 它。

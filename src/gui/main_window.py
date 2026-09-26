@@ -7,7 +7,7 @@
 
 import logging
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QCoreApplication, QObject, Signal, Slot
 from ruamel.yaml.error import YAMLError
 
 from src.gui.config_warmer import ConfigWarmer
@@ -35,20 +35,39 @@ class QmlBridge(QObject):
     taskStateChanged = Signal()
     gameAdded = Signal()
 
-    def __init__(self):
+    def __init__(self, *, cli_backend=False, cli_client=None):
         super().__init__()
         self.app_service = AppService()
+        self._cli_client = None
+        self._snapshot_generation = 0
+        if cli_backend:
+            from src.gui.cli_client import CliClient
+
+            self._cli_client = cli_client or CliClient(self)
+            app = QCoreApplication.instance()
+            assert app is not None
+            app.aboutToQuit.connect(self.close_cli)
         # 组合各职责控制器：每个自管状态 + 信号；经构造注入显式依赖
         self.game_list = GameListController(
             app_service=self.app_service,
             toast=self.toastRequested.emit,
             on_reload=lambda: self._reload_games(),
         )
-        self.task_card = TaskCardController(
-            game_list=self.game_list,
-            app_service=self.app_service,
-            toast=self.toastRequested.emit,
-        )
+        if self._cli_client is None:
+            self.task_card = TaskCardController(
+                game_list=self.game_list,
+                app_service=self.app_service,
+                toast=self.toastRequested.emit,
+            )
+        else:
+            from src.gui.controllers.cli_task_card import CliTaskCardController
+
+            self.task_card = CliTaskCardController(
+                self.game_list,
+                self.app_service,
+                self.toastRequested.emit,
+                self._cli_client,
+            )
         self.background = BackgroundController(
             game_list=self.game_list,
             app_service=self.app_service,
@@ -89,7 +108,8 @@ class QmlBridge(QObject):
         self.backup.toastRequested.connect(self.toastRequested.emit)
         self.backup.restoreCompleted.connect(self.task_card.refresh)
         # 首次加载固化旧计划名单，之后的手动勾选不影响每日计划。
-        self.game_list.gamesChanged.connect(self.backup.daily_plan.refresh)
+        if self._cli_client is None:
+            self.game_list.gamesChanged.connect(self.backup.daily_plan.refresh)
 
         # 编排启动：重建列表 → 构建副本缓存 → 刷新当前（_reload_games 收尾即刷）
         self._reload_games()
@@ -97,7 +117,9 @@ class QmlBridge(QObject):
         # 启动后空闲预热各脚本 config：事件循环驱动、逐脚本、错开关键路径，
         # 用户点选时已在缓存（functools.cache 单例复用）。失败不拖垮启动。
         self._config_warmer = ConfigWarmer(
-            self.app_service.get_registered_script_names(),
+            self.app_service.get_registered_script_names()
+            if self._cli_client is None
+            else [],
             self.app_service.warm_config,
             self,
         )
@@ -126,6 +148,36 @@ class QmlBridge(QObject):
         edit.deleteLater()
 
     # ── QML 属性（委托到子控制器）────────────────────────────────────
+    cliBackend = Property(
+        bool, lambda self: self._cli_client is not None, constant=True
+    )
+    taskBusy = Property(
+        bool,
+        lambda self: self._cli_client is not None and self.task_card.busy,
+        notify=taskStateChanged,
+    )
+    taskStatus = Property(
+        str,
+        lambda self: self.task_card.status if self._cli_client is not None else "",
+        notify=taskStateChanged,
+    )
+
+    @Slot()
+    def close_cli(self):
+        if self._cli_client is not None:
+            self._cli_client.close()
+
+    @Slot()
+    def refreshTasks(self):
+        if not self.taskBusy:
+            self._reload_games()
+
+    def _allow_local_action(self) -> bool:
+        if self._cli_client is None:
+            return True
+        self.toastRequested.emit("CLI 测试模式仅开放脚本浏览与任务卡编辑")
+        return False
+
     games = Property(
         "QVariantList", lambda self: self.game_list.games, notify=gamesChanged
     )
@@ -204,31 +256,36 @@ class QmlBridge(QObject):
 
     @Slot(int, int)
     def reorderGames(self, src, dst):
-        self.game_list.reorderGames(src, dst)
+        if self._allow_local_action():
+            self.game_list.reorderGames(src, dst)
 
     @Slot()
     def addScript(self):
-        self.game_list.addScript()
+        if self._allow_local_action():
+            self.game_list.addScript()
 
     @Slot("QVariantList", result=bool)
     def canDropScripts(self, urls):
-        return self.game_list.canDropScripts(urls)
+        return self._cli_client is None and self.game_list.canDropScripts(urls)
 
     @Slot("QVariantList", result=bool)
     def dropScripts(self, urls):
-        return self.game_list.dropScripts(urls)
+        return self._allow_local_action() and self.game_list.dropScripts(urls)
 
     @Slot(int)
     def deleteScript(self, index):
-        self.game_list.deleteScript(index)
+        if self._allow_local_action():
+            self.game_list.deleteScript(index)
 
     @Slot()
     def configCurrent(self):
-        self.game_list.configCurrent()
+        if self._allow_local_action():
+            self.game_list.configCurrent()
 
     @Slot()
     def launchAll(self):
-        self.launch.launchAll()
+        if self._allow_local_action():
+            self.launch.launchAll()
 
     def maybe_auto_launch(self) -> None:
         """按启动设置弹倒计时确认；关闭自动启动或未启用脚本时不弹窗。
@@ -237,7 +294,7 @@ class QmlBridge(QObject):
         取消/关窗 → 不启动。无人值守启动跳过运行前确认窗（``confirm=False``），直接按
         已落盘的 config/schedule 启动当前启用的脚本。无启用脚本时无需弹窗。
         """
-        if not any(self.game_list.enabled):
+        if self._cli_client is not None or not any(self.game_list.enabled):
             return
         try:
             if self.app_service.load_daily_plan().enabled:
@@ -256,11 +313,13 @@ class QmlBridge(QObject):
 
     @Slot()
     def launchScript(self):
-        self.launch.launchScript()
+        if self._allow_local_action():
+            self.launch.launchScript()
 
     @Slot()
     def launchGame(self):
-        self.links.launchGame()
+        if self._allow_local_action():
+            self.links.launchGame()
 
     @Slot(result=str)
     def gameIconSource(self):
@@ -288,7 +347,8 @@ class QmlBridge(QObject):
 
     @Slot()
     def openSettings(self):
-        self.links.openSettings()
+        if self._allow_local_action():
+            self.links.openSettings()
 
     @Slot()
     def openScriptConfig(self):
@@ -344,19 +404,23 @@ class QmlBridge(QObject):
 
     @Slot()
     def openWallpaper(self):
-        self.background.open_wallpaper()
+        if self._allow_local_action():
+            self.background.open_wallpaper()
 
     @Slot()
     def openConfig(self):
-        self.backup.openConfig()
+        if self._allow_local_action():
+            self.backup.openConfig()
 
     @Slot()
     def backupConfig(self):
-        self.backup.backupConfig()
+        if self._allow_local_action():
+            self.backup.backupConfig()
 
     @Slot()
     def restoreConfig(self):
-        self.backup.restoreConfig()
+        if self._allow_local_action():
+            self.backup.restoreConfig()
 
     # ── 编排 / 门面协调方法（保持既有测试可直接调用）─────────────────
     def _reload_games(self):
@@ -365,6 +429,29 @@ class QmlBridge(QObject):
         编辑当前脚本（configCurrent/addScript/deleteScript）后数据已变，
         必须强制刷新背景与任务卡，否则 UI 停在旧数据直到重新点选。
         """
+        if self._cli_client is not None:
+            self._snapshot_generation += 1
+            generation = self._snapshot_generation
+            self.task_card.build_daily_cache()
+            self.task_card.busy = True
+            self.task_card.status = "加载列表"
+            self.taskStateChanged.emit()
+
+            def loaded(result, error):
+                if generation != self._snapshot_generation:
+                    return
+                if error is not None:
+                    assert "message" in error
+                    self.task_card.busy = False
+                    self.task_card.status = "连接失败 · 请刷新"
+                    self.taskStateChanged.emit()
+                    self.toastRequested.emit(error["message"])
+                    return
+                self.game_list.reload_games(result)
+                self._on_current_changed()
+
+            self._cli_client.request("app.snapshot", {}, loaded)
+            return
         self.game_list.reload_games()
         self.task_card.build_daily_cache()
         self._on_current_changed()
