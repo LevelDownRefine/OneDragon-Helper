@@ -61,9 +61,9 @@ jobs:
                 fi
               done) || true
           if [ -n "$prev" ]; then
-            commits=$(git log "${prev}..${version}" --oneline --no-decorate)
+            commits=$(git log "${prev}..${version}" --format='* %h %s')
             count=$(printf '%s\n' "$commits" | grep -c .) || true
-            changelog=$(printf '\n\n## 更新内容（%s → %s，共 %s 个提交）\n%s' "$prev" "$version" "$count" "$commits")
+            changelog=$(printf '\n\n## 更新内容（%s → %s，共 %s 个提交）\n\n%s' "$prev" "$version" "$count" "$commits")
           else
             changelog=$'\n\n## 首次发布'
           fi
