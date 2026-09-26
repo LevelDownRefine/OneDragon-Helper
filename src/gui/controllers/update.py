@@ -8,7 +8,8 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QDialog
 
 from src.gui.update_dialog import UpdateDialog
-from src.update.service import RELEASES_URL, UpdateCancelled
+from src.update.package import UpdateCancelled
+from src.update.service import RELEASES_URL
 
 logger = logging.getLogger(__name__)
 

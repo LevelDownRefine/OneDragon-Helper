@@ -4,7 +4,9 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
+from src.update import package
 from src.update.package import (
     UpdateError,
     load_manifest,
@@ -22,9 +24,37 @@ class TestUpdatePackage(unittest.TestCase):
 
     def test_zip_round_trip_verifies_program_bytes(self):
         archive = archive_package(self.package, self.directory / "package.zip")
-        target = self.directory / "unpacked"
-        self.assertEqual(unpack_package(archive, target, "1.2.0")["version"], "1.2.0")
-        self.assertEqual((target / "_internal/python.dll").read_bytes(), b"runtime")
+        for borrowed in (False, True):
+            with self.subTest(borrowed=borrowed):
+                source = (
+                    self.enterContext(zipfile.ZipFile(archive)) if borrowed else archive
+                )
+                target = self.directory / f"unpacked-{borrowed}"
+                self.assertEqual(
+                    unpack_package(source, target, "1.2.0")["version"], "1.2.0"
+                )
+                self.assertEqual(
+                    (target / "_internal/python.dll").read_bytes(), b"runtime"
+                )
+                if borrowed:
+                    self.assertIsNotNone(source.fp)
+
+    def test_reused_file_corrupted_during_copy_is_rejected(self):
+        archive = archive_package(self.package, self.directory / "package.zip")
+        copy = package.shutil.copy2
+
+        def corrupt_copy(source, destination):
+            copy(source, destination)
+            destination.write_bytes(b"corrupted during copy")
+
+        with (
+            patch.object(package.shutil, "copy2", side_effect=corrupt_copy),
+            self.assertRaisesRegex(UpdateError, "程序文件校验失败"),
+        ):
+            unpack_package(
+                archive, self.directory / "unpacked", "1.2.0", reuse_root=self.package
+            )
+        load_manifest(self.package, verify=True)
 
     def test_manifest_rejects_unsafe_and_user_file_paths(self):
         for name in (

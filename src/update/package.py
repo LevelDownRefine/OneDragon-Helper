@@ -3,9 +3,13 @@
 import hashlib
 import json
 import re
+import shutil
 import stat
 import zipfile
+from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path, PureWindowsPath
+from threading import Event
 
 from packaging.version import InvalidVersion, Version
 
@@ -37,6 +41,15 @@ MAX_PACKAGE_BYTES = 4 * 1024**3
 
 class UpdateError(ValueError):
     """可恢复的更新输入或状态错误。"""
+
+
+class UpdateCancelled(UpdateError):
+    """用户取消下载；下载服务与远端读取器共用。"""
+
+
+def check_cancelled(cancelled: Event | None) -> None:
+    if cancelled is not None and cancelled.is_set():
+        raise UpdateCancelled("下载已取消")
 
 
 def version_number(value: str) -> Version:
@@ -158,12 +171,26 @@ def write_manifest(root: Path, names: list[str], version: str) -> None:
     )
 
 
-def unpack_package(archive: Path, destination: Path, expected_version: str) -> dict:
-    """逐项解包，不允许包外文件、链接、路径穿越或额外用户数据。"""
+def unpack_package(
+    archive: Path | zipfile.ZipFile,
+    destination: Path,
+    expected_version: str,
+    *,
+    reuse_root: Path | None = None,
+    progress: Callable[[int, int], None] | None = None,
+    cancelled: Event | None = None,
+) -> dict:
+    """本地与远端 ZIP 共用校验和流式解包，允许复用哈希一致的已安装文件。"""
     if destination.exists():
         raise UpdateError("解包目录必须是新的空目录")
     prefix = "OneDragon-Helper/"
-    with zipfile.ZipFile(archive) as source:
+    check_cancelled(cancelled)
+    context = (
+        nullcontext(archive)
+        if isinstance(archive, zipfile.ZipFile)
+        else zipfile.ZipFile(archive)
+    )
+    with context as source:
         members = source.infolist()
         if (
             len(members) > 20000
@@ -176,7 +203,11 @@ def unpack_package(archive: Path, destination: Path, expected_version: str) -> d
             if item.is_dir():
                 # 发布工具只写文件；拒绝其他形态，避免两套路径验证规则。
                 raise UpdateError(f"更新包包含非文件条目: {name}")
-            if not name.startswith(prefix) or stat.S_ISLNK(item.external_attr >> 16):
+            if (
+                not name.startswith(prefix)
+                or stat.S_ISLNK(item.external_attr >> 16)
+                or item.flag_bits & 1
+            ):
                 raise UpdateError(f"更新包路径或文件类型无效: {name}")
             relative = name[len(prefix) :]
             if not managed_path(relative) or relative.casefold() in entries:
@@ -188,17 +219,43 @@ def unpack_package(archive: Path, destination: Path, expected_version: str) -> d
         manifest_info = entries[manifest_key][1]
         if manifest_info.file_size > 4 * 1024**2:
             raise UpdateError("更新清单过大")
-        data = parse_manifest(json.loads(source.read(manifest_info)))
+        manifest_bytes = source.read(manifest_info)
+        data = parse_manifest(json.loads(manifest_bytes))
         if data["version"] != expected_version:
             raise UpdateError("下载包版本与所选 Release 不一致")
         expected = set(data["files"]) | {MANIFEST}
         if {name for name, _item in entries.values()} != expected:
             raise UpdateError("更新包文件与清单不一致")
+        reused = {}
+        if reuse_root is not None:
+            for name, digest in data["files"].items():
+                check_cancelled(cancelled)
+                candidate = safe_target(reuse_root, name)
+                if candidate.is_file() and file_digest(candidate) == digest:
+                    reused[name] = candidate
+        total = sum(
+            item.file_size
+            for name, item in entries.values()
+            if name != MANIFEST and name not in reused
+        )
+        completed = 0
         destination.mkdir(parents=True)
+        (destination / MANIFEST).write_bytes(manifest_bytes)
         for name, item in entries.values():
+            check_cancelled(cancelled)
+            if name == MANIFEST:
+                continue
             target = safe_target(destination, name)
             target.parent.mkdir(parents=True, exist_ok=True)
+            if name in reused:
+                shutil.copy2(reused[name], target)
+                continue
             with source.open(item) as reader, target.open("xb") as writer:
-                while chunk := reader.read(1024**2):
+                while chunk := reader.read(65536):
+                    check_cancelled(cancelled)
                     writer.write(chunk)
+                    completed += len(chunk)
+                    if progress is not None:
+                        progress(completed, total)
+        check_cancelled(cancelled)
     return load_manifest(destination, verify=True)

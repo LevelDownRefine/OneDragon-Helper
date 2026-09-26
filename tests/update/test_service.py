@@ -48,6 +48,12 @@ class TestUpdateService(unittest.TestCase):
         ).read_bytes()
         self.client = service.UpdateService(self.root)
         self.enterContext(patch.object(sys, "frozen", True, create=True))
+        # 本文件覆盖整包下载路径；增量路径见 tests/update/test_remote.py。
+        self.enterContext(
+            patch.object(
+                service, "open_archive", side_effect=service.RemoteUnavailable("禁用")
+            )
+        )
         prefix = f"https://github.com/{service.REPOSITORY}/releases/download/v1.10.0/"
         self.release = service.ReleaseUpdate(
             "1.10.0",

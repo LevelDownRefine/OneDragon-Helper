@@ -21,12 +21,14 @@ from src.update.package import (
     MAX_PACKAGE_BYTES,
     UPDATER_EXE,
     VERSION_FILE,
+    UpdateCancelled,
     UpdateError,
     file_digest,
     load_manifest,
     unpack_package,
     version_number,
 )
+from src.update.remote import RemoteUnavailable, open_archive
 from src.update.runtime import (
     child_environment,
     helper_processes,
@@ -38,10 +40,6 @@ logger = logging.getLogger(__name__)
 REPOSITORY = "LevelDownRefine/OneDragon-Helper"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
 ZIP_NAME = "OneDragon-Helper.zip"
-
-
-class UpdateCancelled(UpdateError):
-    """用户取消下载。"""
 
 
 @dataclass(frozen=True)
@@ -204,24 +202,27 @@ class UpdateService:
         work = update_directory(self.root) / ("download-" + uuid.uuid4().hex)
         work.mkdir()
         try:
-            checksum = work / (ZIP_NAME + ".sha256")
-            self._download(release.checksum_url, checksum, 512, None, cancelled)
-            match = re.fullmatch(
-                r"([0-9a-fA-F]{64})  OneDragon-Helper\.zip\s*",
-                checksum.read_text(encoding="ascii"),
-            )
-            if match is None:
-                raise UpdateError("SHA-256 文件格式无效")
-            archive = work / ZIP_NAME
-            self._download(
-                release.archive_url, archive, release.size, progress, cancelled
-            )
-            if (
-                archive.stat().st_size != release.size
-                or file_digest(archive) != match[1].lower()
-            ):
-                raise UpdateError("下载包大小或 SHA-256 校验失败")
-            unpack_package(archive, work / "package", release.version)
+            if not self._prepare_incremental(release, work, progress, cancelled):
+                checksum = work / (ZIP_NAME + ".sha256")
+                self._download(release.checksum_url, checksum, 512, None, cancelled)
+                match = re.fullmatch(
+                    r"([0-9a-fA-F]{64})  OneDragon-Helper\.zip\s*",
+                    checksum.read_text(encoding="ascii"),
+                )
+                if match is None:
+                    raise UpdateError("SHA-256 文件格式无效")
+                archive = work / ZIP_NAME
+                self._download(
+                    release.archive_url, archive, release.size, progress, cancelled
+                )
+                if (
+                    archive.stat().st_size != release.size
+                    or file_digest(archive) != match[1].lower()
+                ):
+                    raise UpdateError("下载包大小或 SHA-256 校验失败")
+                unpack_package(
+                    archive, work / "package", release.version, cancelled=cancelled
+                )
             if cancelled is not None and cancelled.is_set():
                 raise UpdateCancelled("下载已取消")
         except (OSError, ValueError, requests.RequestException, zipfile.BadZipFile):
@@ -229,6 +230,38 @@ class UpdateService:
             shutil.rmtree(work)
             raise
         return PreparedUpdate(work, release.version)
+
+    def _prepare_incremental(
+        self,
+        release: ReleaseUpdate,
+        work: Path,
+        progress: Callable[[int, int], None] | None,
+        cancelled: Event | None,
+    ) -> bool:
+        """复用统一解包流程，哈希一致的文件从当前安装补齐。
+
+        远端不支持范围读取或目录损坏时返回 False，由调用方走全量下载；此时
+        工作目录已恢复为刚创建的状态。清单校验失败不回退，避免重复下载。
+        """
+        package = work / "package"
+        try:
+            with open_archive(release.archive_url, cancelled=cancelled) as archive:
+                if archive.size() != release.size:
+                    raise UpdateError("远端归档大小与 Release 记录不符")
+                unpack_package(
+                    archive,
+                    package,
+                    release.version,
+                    reuse_root=self.root,
+                    progress=progress,
+                    cancelled=cancelled,
+                )
+        except RemoteUnavailable as exc:
+            logger.info("增量更新不可用，改用全量下载：%s", exc)
+            if package.exists():
+                shutil.rmtree(package)
+            return False
+        return True
 
     @staticmethod
     def _download(
