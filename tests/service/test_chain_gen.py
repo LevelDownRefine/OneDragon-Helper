@@ -62,9 +62,14 @@ class TestResolveWeeklyStarts(unittest.TestCase):
         )
         self.assertEqual(result, {"货币战争": 4, "历战余响": 5})
 
-    def test_invalid_weekly_start_raises(self):
-        """weekly_start 越界（0 / 8）→ assert"""
-        for bad in (0, 8):
+    def test_disabled_start_day_is_valid(self):
+        """0（不启用，DISABLED_START_DAY）合法通过，下游经 is_weekly_start_reached 折算为停用"""
+        result = resolve_weekly_starts({"ok-ww": {"幻梦游园": 0}}, "ok-ww")
+        self.assertEqual(result, {"幻梦游园": 0})
+
+    def test_out_of_range_weekly_start_raises(self):
+        """weekly_start 越界（8）→ assert；0 与不启用语义由上面用例覆盖"""
+        for bad in (8, -1):
             with self.subTest(bad=bad), self.assertRaises(AssertionError):
                 resolve_weekly_starts({"ok-ww": {"幻梦游园": bad}}, "ok-ww")
 
