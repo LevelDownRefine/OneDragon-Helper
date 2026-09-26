@@ -847,6 +847,21 @@ class TestFourFieldExtraction(unittest.TestCase):
             ["2026-08-02 05:24:00,000 | ERROR | 当前界面：未知"],
         )
 
+    def test_m7a_stamina_prefers_explicit_remaining_in_summary(self):
+        # 运行结束「停止运行」统一总结块：开局开拓力 + 结尾开拓力: X/300 + 显式开拓力剩余X/300。
+        # 正则 (?:剩余|[：:\s]+)? 同时匹配两类，findall 末次命中显式剩余行，取值即真实剩余。
+        p = M7ALogParser()
+        summary = (
+            "开拓力: 233/300\n"  # 开局
+            "开拓力: 34/300\n"  # 结尾同格式
+            "开拓力剩余34/300\n"  # 显式剩余标记（仅结尾出现，无分隔符）
+        )
+        self.assertEqual(p.parse_stamina(summary), "34")
+        # 防御：若未来版本去掉结尾「开拓力: X/300」、仅留「开拓力剩余X/300」，仍应取到剩余。
+        self.assertEqual(M7ALogParser().parse_stamina("开拓力剩余34/300"), "34")
+        # 全角冒号分隔同样兼容。
+        self.assertEqual(M7ALogParser().parse_stamina("开拓力：249/300"), "249")
+
     def test_m7a_no_game_terminate_yields_all_errors(self):
         p = M7ALogParser()
         content = "ERROR 当前界面：未知\nERROR 获取当前界面超时\n"

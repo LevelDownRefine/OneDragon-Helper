@@ -62,9 +62,10 @@ parsers:
 
   March7th-Launcher:
     log_pattern: '*.log'
-    # March7th 真实日志为「开拓力 + 空格 + 数值/上限」（见 collect_log.log.2026-08-21：
-    # 开拓力 5/300），正则须兼容空格与冒号两种分隔，否则整列落空为「—」。
-    stamina_pattern: '开拓力[：:\s]+(\d+)/(\d+)'
+    # March7th 在「停止运行」统一总结块里同时打「开拓力: X/300」（与开局同格式）和显式
+    # 「开拓力剩余X/300」（无分隔符、仅结尾出现一次）。`(?:剩余|[：:\s]+)?` 兼容带/不带
+    # 「剩余」标记，使末次匹配优先命中显式剩余行；空格/全角冒号/半角冒号分隔均兼容。
+    stamina_pattern: '开拓力(?:剩余|[：:\s]+)?(\d+)/(\d+)'
     error_markers:
       - 'ERROR'
     daily_success_marker:
