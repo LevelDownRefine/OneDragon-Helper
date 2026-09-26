@@ -37,9 +37,12 @@ jobs:
       - name: Decide whether to release
         id: decide
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          main_commit="${{ github.sha }}"
-          latest=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)
+          git fetch origin main --quiet || true
+          main_commit=$(git rev-parse origin/main)
+          latest=$(git tag --list 'v[0-9]*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1) || true
           if [ -z "$latest" ]; then
             echo "无历史 v* release，将发布首个正式版 v0.1.0"
             echo "has_update=true" >> "$GITHUB_OUTPUT"
@@ -49,7 +52,21 @@ jobs:
           fi
           rel_commit=$(git rev-list -n1 "$latest")
           if [ "$main_commit" = "$rel_commit" ]; then
-            echo "main 已是最新正式 release（$latest），跳过"
+            # main 与最新 tag 同 commit：release 已存在则跳过，缺失则视为上次中断重试
+            if gh release view "$latest" >/dev/null 2>&1; then
+              echo "main 已是最新正式 release（$latest），跳过"
+              echo "has_update=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "tag $latest 已存在但 release 未发布（上次中断），重试发布"
+              echo "has_update=true" >> "$GITHUB_OUTPUT"
+              echo "next_version=$latest" >> "$GITHUB_OUTPUT"
+              echo "main_commit=$main_commit" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+          # 最新 tag 不是 main 的祖先（历史分叉）→ 拒绝，避免在主线上造更高版本 tag
+          if ! git merge-base --is-ancestor "$rel_commit" "$main_commit" 2>/dev/null; then
+            echo "最新 tag $latest 不是 main 的祖先（历史分叉），拒绝自动发布"
             echo "has_update=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -76,7 +93,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$NEXT" "$MAIN_COMMIT"
+          git tag -f "$NEXT" "$MAIN_COMMIT"
           git push origin "$NEXT"
 
       - name: Trigger release.yml for this tag

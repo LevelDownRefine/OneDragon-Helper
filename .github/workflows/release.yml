@@ -50,8 +50,15 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME}"   # 形如 v0.1.7
           git fetch --tags --quiet || true   # 确保本地 tag 列表完整
-          # 上一正式 tag（按版本排序取次新），用于生成本次更新 commit 列表
-          prev=$(git tag --list 'v[0-9]*' --sort=-version:refname | grep -v "^${version}$" | head -1)
+          # 上一正式 tag：按版本排序取低于当前版本的最高者，用于生成本次更新 commit 列表
+          prev=$(git tag --list 'v[0-9]*' --sort=-version:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | grep -v "^${version}$" | head -1) || true
+          # 仅保留严格低于当前版本的 tag（排除更高/重发旧版本时选错祖先）
+          if [ -n "$prev" ]; then
+            lowest=$(printf '%s\n' "$prev" "$version" | sort -V | head -1)
+            [ "$lowest" = "$prev" ] || prev=""
+          fi
           if [ -n "$prev" ]; then
             commits=$(git log "${prev}..${version}" --oneline --no-decorate)
             count=$(printf '%s\n' "$commits" | grep -c .)
