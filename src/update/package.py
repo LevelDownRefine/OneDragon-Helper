@@ -39,6 +39,10 @@ class UpdateError(ValueError):
     """可恢复的更新输入或状态错误。"""
 
 
+class UpdateCancelled(UpdateError):
+    """用户取消下载；下载服务与远端读取器共用。"""
+
+
 def version_number(value: str) -> Version:
     """按版本语义比较，不按字符串比较。"""
     try:

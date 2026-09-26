@@ -1,5 +1,6 @@
 """手动更新服务；构造和读取本地状态不发起网络请求。"""
 
+import hashlib
 import json
 import logging
 import os
@@ -18,15 +19,20 @@ from threading import Event
 import psutil
 
 from src.update.package import (
+    MANIFEST,
     MAX_PACKAGE_BYTES,
     UPDATER_EXE,
     VERSION_FILE,
+    UpdateCancelled,
     UpdateError,
     file_digest,
     load_manifest,
+    parse_manifest,
+    safe_target,
     unpack_package,
     version_number,
 )
+from src.update.remote import RemoteUnavailable, open_archive
 from src.update.runtime import (
     child_environment,
     helper_processes,
@@ -38,10 +44,6 @@ logger = logging.getLogger(__name__)
 REPOSITORY = "LevelDownRefine/OneDragon-Helper"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
 ZIP_NAME = "OneDragon-Helper.zip"
-
-
-class UpdateCancelled(UpdateError):
-    """用户取消下载。"""
 
 
 @dataclass(frozen=True)
@@ -204,31 +206,101 @@ class UpdateService:
         work = update_directory(self.root) / ("download-" + uuid.uuid4().hex)
         work.mkdir()
         try:
-            checksum = work / (ZIP_NAME + ".sha256")
-            self._download(release.checksum_url, checksum, 512, None, cancelled)
-            match = re.fullmatch(
-                r"([0-9a-fA-F]{64})  OneDragon-Helper\.zip\s*",
-                checksum.read_text(encoding="ascii"),
-            )
-            if match is None:
-                raise UpdateError("SHA-256 文件格式无效")
-            archive = work / ZIP_NAME
-            self._download(
-                release.archive_url, archive, release.size, progress, cancelled
-            )
-            if (
-                archive.stat().st_size != release.size
-                or file_digest(archive) != match[1].lower()
+            if not self._prepare_incremental(
+                release, installed, work, progress, cancelled
             ):
-                raise UpdateError("下载包大小或 SHA-256 校验失败")
-            unpack_package(archive, work / "package", release.version)
-            if cancelled is not None and cancelled.is_set():
-                raise UpdateCancelled("下载已取消")
+                checksum = work / (ZIP_NAME + ".sha256")
+                self._download(release.checksum_url, checksum, 512, None, cancelled)
+                match = re.fullmatch(
+                    r"([0-9a-fA-F]{64})  OneDragon-Helper\.zip\s*",
+                    checksum.read_text(encoding="ascii"),
+                )
+                if match is None:
+                    raise UpdateError("SHA-256 文件格式无效")
+                archive = work / ZIP_NAME
+                self._download(
+                    release.archive_url, archive, release.size, progress, cancelled
+                )
+                if (
+                    archive.stat().st_size != release.size
+                    or file_digest(archive) != match[1].lower()
+                ):
+                    raise UpdateError("下载包大小或 SHA-256 校验失败")
+                unpack_package(archive, work / "package", release.version)
+                if cancelled is not None and cancelled.is_set():
+                    raise UpdateCancelled("下载已取消")
         except (OSError, ValueError, requests.RequestException, zipfile.BadZipFile):
             logger.exception("准备更新失败")
             shutil.rmtree(work)
             raise
         return PreparedUpdate(work, release.version)
+
+    def _prepare_incremental(
+        self,
+        release: ReleaseUpdate,
+        installed: dict,
+        work: Path,
+        progress: Callable[[int, int], None] | None,
+        cancelled: Event | None,
+    ) -> bool:
+        """按本地清单只取变化条目，未变文件从当前安装补齐。
+
+        远端不支持范围读取或结构异常时返回 False，由调用方走全量下载；此时
+        工作目录已恢复为刚创建的状态。清单校验失败不回退，避免重复下载。
+        """
+        package = work / "package"
+        try:
+            with open_archive(release.archive_url) as archive:
+                if archive.size != release.size:
+                    raise UpdateError("远端归档大小与 Release 记录不符")
+                entries = archive.entries()
+                if MANIFEST not in entries:
+                    raise RemoteUnavailable("远端 ZIP 缺少更新清单")
+                head = archive.fetch(entries, [MANIFEST], cancelled=cancelled)
+                assert MANIFEST in head
+                remote = parse_manifest(json.loads(head[MANIFEST]))
+                if remote["version"] != release.version:
+                    raise UpdateError("下载包版本与所选 Release 不一致")
+                remote_files = remote["files"]
+                local_files = installed["files"]
+                changed = sorted(
+                    name
+                    for name, digest in remote_files.items()
+                    if name not in local_files or local_files[name] != digest
+                )
+                blobs = archive.fetch(
+                    entries, changed, progress=progress, cancelled=cancelled
+                )
+                logger.info(
+                    "增量更新：%d 个文件变化，共 %d 个",
+                    len(changed),
+                    len(remote_files),
+                )
+                for name in changed:
+                    if hashlib.sha256(blobs[name]).hexdigest() != remote_files[name]:
+                        raise UpdateError(f"下载文件校验失败: {name}")
+                package.mkdir()
+                for name in changed:
+                    target = safe_target(package, name)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(blobs[name])
+                (package / MANIFEST).write_bytes(head[MANIFEST])
+                for name in remote_files:
+                    if name in changed:
+                        continue
+                    source = safe_target(self.root, name)
+                    if not source.is_file():
+                        raise UpdateError(f"本地程序文件缺失: {name}")
+                    target = safe_target(package, name)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, target)
+                load_manifest(package, verify=True)
+        except RemoteUnavailable as exc:
+            logger.info("增量更新不可用，改用全量下载：%s", exc)
+            if package.exists():
+                shutil.rmtree(package)
+            return False
+        return True
 
     @staticmethod
     def _download(

@@ -11,11 +11,10 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from src.gui.controllers.update import UpdateController
-from src.update.package import UpdateError
+from src.update.package import UpdateCancelled, UpdateError
 from src.update.service import (
     PreparedUpdate,
     ReleaseUpdate,
-    UpdateCancelled,
     UpdateInfo,
 )
 from tests.gui.helpers import get_app
