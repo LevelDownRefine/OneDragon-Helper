@@ -1,0 +1,88 @@
+name: Auto Release
+
+# 每日北京时间 09:30 检查 main 是否领先最新正式 release tag（v*）；
+# 有改动则 patch 递增打 vX.Y.Z tag，并显式触发 release.yml 构建发布正式 release。
+#
+# 为何显式 `gh workflow run` 而非「只打 tag 等 release.yml 自动跑」：
+#   GitHub 会抑制由 GITHUB_TOKEN 在 workflow 内产生的 push/tag 事件再次触发工作流，
+#   所以 token 打 tag 不会递归触发 release.yml 的 `on: push: tags`。
+#   改为显式 workflow_dispatch 触发 release.yml，复用其构建+发布链路（单一真相，不重复代码）。
+#
+# 门控：release.yml 内部 build.bat 失败即不发布，天然挡住坏构建；本工作流不另判 CI。
+# 仅 main 分支上的此文件会按 cron 触发；PR 阶段不触发真实发布。
+on:
+  schedule:
+    - cron: "30 1 * * *"   # UTC 01:30 = 北京 09:30
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 打 tag 需要写权限
+  actions: write    # 触发 release.yml（workflow_dispatch）需要写权限
+
+jobs:
+  auto-release:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: 1   # 与 release.yml / build-exe.yml 同源：冻结 exe 在英文 locale 下经 colorama 输出中文不崩
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      # 判断 main 是否领先最新正式 release tag；领先则算下一 patch 版本。
+      # 首次（无 v* tag）走 v0.1.0。非 v 数字 tag（如历史 nightly）不参与比较。
+      - name: Decide whether to release
+        id: decide
+        shell: bash
+        run: |
+          main_commit="${{ github.sha }}"
+          latest=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -1)
+          if [ -z "$latest" ]; then
+            echo "无历史 v* release，将发布首个正式版 v0.1.0"
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+            echo "next_version=v0.1.0" >> "$GITHUB_OUTPUT"
+            echo "main_commit=$main_commit" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rel_commit=$(git rev-list -n1 "$latest")
+          if [ "$main_commit" = "$rel_commit" ]; then
+            echo "main 已是最新正式 release（$latest），跳过"
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          version="${latest#v}"
+          IFS='.' read -r maj min pat <<< "$version"
+          pat=$((pat + 1))
+          next="v$maj.$min.$pat"
+          echo "has_update=true" >> "$GITHUB_OUTPUT"
+          echo "next_version=$next" >> "$GITHUB_OUTPUT"
+          echo "main_commit=$main_commit" >> "$GITHUB_OUTPUT"
+          echo "main=$main_commit 领先 $latest -> $next"
+
+      - name: Stop if no update
+        if: steps.decide.outputs.has_update != 'true'
+        run: echo "今日无新提交，跳过自动发布" && exit 0
+
+      - name: Tag and push
+        if: steps.decide.outputs.has_update == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT: ${{ steps.decide.outputs.next_version }}
+          MAIN_COMMIT: ${{ steps.decide.outputs.main_commit }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$NEXT" "$MAIN_COMMIT"
+          git push origin "$NEXT"
+
+      - name: Trigger release.yml for this tag
+        if: steps.decide.outputs.has_update == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT: ${{ steps.decide.outputs.next_version }}
+        run: gh workflow run release.yml --ref "$NEXT"
