@@ -52,6 +52,12 @@ class RangeHandler(http.server.BaseHTTPRequestHandler):
         data = self.server.payload
         start, end = 0, len(data) - 1
         header = self.headers.get("Range")
+        self.server.requests.append((self.path, header))
+        if self.path == "/redirect":
+            self.send_response(302)
+            self.send_header("Location", "/archive.zip")
+            self.end_headers()
+            return
         if header != "bytes=0-0" and self.server.fail_ranges:
             self.send_error(503)
             return
@@ -62,7 +68,10 @@ class RangeHandler(http.server.BaseHTTPRequestHandler):
                 self.send_error(400)
                 return
             start, end = int(match[1]), min(int(match[2]), len(data) - 1)
-        length = end - start + 1
+        body = data[start : end + 1]
+        if header != "bytes=0-0" and self.server.invalid_length:
+            body = body[:-1] if self.server.invalid_length == "short" else body + b"x"
+        length = len(body)
         self.send_response(206 if partial else 200)
         self.send_header("Content-Length", str(length))
         if partial:
@@ -73,7 +82,7 @@ class RangeHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.server.served += length
         try:
-            self.wfile.write(data[start : end + 1])
+            self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError) as exc:
             logger.debug("测试客户端结束范围请求: %s", type(exc).__name__)
 
@@ -102,6 +111,12 @@ class FullResponse:
 
 class TestRemoteArchive(unittest.TestCase):
     def setUp(self):
+        self.enterContext(
+            patch.dict(
+                os.environ,
+                {"NO_PROXY": "127.0.0.1,localhost", "no_proxy": "127.0.0.1,localhost"},
+            )
+        )
         self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.root, target = build_pair(self.directory)
         self.target = target
@@ -112,7 +127,9 @@ class TestRemoteArchive(unittest.TestCase):
         self.server.supports_range = True
         self.server.fail_ranges = False
         self.server.wrong_range = False
+        self.server.invalid_length = ""
         self.server.served = 0
+        self.server.requests = []
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
         self.addCleanup(self.server.server_close)
@@ -163,6 +180,65 @@ class TestRemoteArchive(unittest.TestCase):
             self.assertIn("_internal/small.bin", entries)
             blobs = archive.fetch(entries, ["_internal/small.bin"])
         self.assertEqual(blobs["_internal/small.bin"], b"new")
+
+    def test_remotezip_uses_positive_ranges_and_reuses_redirected_url(self):
+        url = f"http://127.0.0.1:{self.server.server_address[1]}/redirect"
+        with remote.open_archive(url) as archive:
+            entries = archive.entries()
+            blobs = archive.fetch(entries, ["_internal/small.bin"])
+        self.assertEqual(blobs["_internal/small.bin"], b"new")
+        self.assertEqual(self.server.requests[0], ("/redirect", "bytes=0-0"))
+        self.assertGreater(len(self.server.requests), 2)
+        for path, header in self.server.requests[1:]:
+            self.assertEqual(path, "/archive.zip")
+            self.assertRegex(header, r"^bytes=\d+-\d+$")
+
+    def test_cached_members_finish_progress_without_more_requests(self):
+        name = "_internal/small.bin"
+        with remote.open_archive(self.url) as archive:
+            entries = archive.entries()
+            expected = archive.fetch(entries, [name])
+            requests_before = len(self.server.requests)
+            progress = Mock()
+            self.assertEqual(
+                archive.fetch(entries, [name], progress=progress), expected
+            )
+        self.assertEqual(len(self.server.requests), requests_before)
+        received, total = progress.call_args.args
+        self.assertGreater(total, 0)
+        self.assertEqual(received, total)
+
+    def test_cancellation_during_directory_download_removes_workspace(self):
+        cancelled = Event()
+        iter_content = requests.Response.iter_content
+
+        def cancel_on_chunk(response, *args, **kwargs):
+            for chunk in iter_content(response, *args, **kwargs):
+                cancelled.set()
+                yield chunk
+
+        with (
+            patch.object(requests.Response, "iter_content", cancel_on_chunk),
+            patch.object(requests, "get") as full_download,
+            self.assertLogs(service.__name__, level="ERROR"),
+            self.assertRaises(service.UpdateCancelled),
+        ):
+            self.client.prepare_update(self.release, cancelled=cancelled)
+        full_download.assert_not_called()
+        self.assertFalse(list((self.root / ".update").glob("download-*")))
+
+    def test_invalid_range_length_does_not_trigger_full_download(self):
+        for kind in ("short", "long"):
+            with self.subTest(kind=kind):
+                self.server.invalid_length = kind
+                with (
+                    patch.object(requests, "get") as full_download,
+                    self.assertLogs(service.__name__, level="ERROR"),
+                    self.assertRaisesRegex(service.UpdateError, "范围响应"),
+                ):
+                    self.client.prepare_update(self.release)
+                full_download.assert_not_called()
+                self.assertFalse(list((self.root / ".update").glob("download-*")))
 
     def test_long_names_and_extra_fields_remain_incremental(self):
         for name, extra, zip64 in (
