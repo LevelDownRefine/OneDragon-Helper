@@ -48,8 +48,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="${GITHUB_REF_NAME}"   # 形如 v0.0.1
-          notes=$(printf '%s\n\n%s' "自动构建发布 $version（对应 commit: $GITHUB_SHA）" "下载 OneDragon-Helper.zip 解压后即可使用。")
+          version="${GITHUB_REF_NAME}"   # 形如 v0.1.7
+          git fetch --tags --quiet || true   # 确保本地 tag 列表完整
+          # 上一正式 tag（按版本排序取次新），用于生成本次更新 commit 列表
+          prev=$(git tag --list 'v[0-9]*' --sort=-version:refname | grep -v "^${version}$" | head -1)
+          if [ -n "$prev" ]; then
+            commits=$(git log "${prev}..${version}" --oneline --no-decorate)
+            count=$(printf '%s\n' "$commits" | grep -c .)
+            changelog=$(printf '\n\n## 更新内容（%s → %s，共 %s 个提交）\n%s' "$prev" "$version" "$count" "$commits")
+          else
+            changelog=$'\n\n## 首次发布'
+          fi
+          notes=$(printf '%s\n\n下载 OneDragon-Helper.zip 解压后即可使用。%s' "自动构建发布 $version（对应 commit: $GITHUB_SHA）" "$changelog")
           gh release create "$version" \
             --target "$GITHUB_SHA" \
             --title "$version" \
