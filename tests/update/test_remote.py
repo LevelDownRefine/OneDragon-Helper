@@ -195,13 +195,17 @@ class TestRemoteArchive(unittest.TestCase):
 
     def test_cached_members_finish_progress_without_more_requests(self):
         name = "_internal/small.bin"
+        path = self.directory / "cached.zip"
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(remote.ARCHIVE_PREFIX + name, b"cached member")
+        self.server.payload = path.read_bytes()
         with remote.open_archive(self.url) as archive:
             entries = archive.entries()
-            expected = archive.fetch(entries, [name])
             requests_before = len(self.server.requests)
             progress = Mock()
             self.assertEqual(
-                archive.fetch(entries, [name], progress=progress), expected
+                archive.fetch(entries, [name], progress=progress),
+                {name: b"cached member"},
             )
         self.assertEqual(len(self.server.requests), requests_before)
         received, total = progress.call_args.args
