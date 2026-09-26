@@ -9,7 +9,6 @@
       需通过 pathex 将 src/runner/ 加入模块搜索路径。
 """
 
-from PyInstaller.utils.hooks import collect_submodules
 import os
 import sys
 
@@ -23,27 +22,9 @@ for _dll in ('ffi-8.dll', 'liblzma.dll', 'libbz2.dll', 'libexpat.dll'):
     if os.path.isfile(_p):
         _extra_dlls.append((_p, '.'))
 
-# --- 隐式导入 ---
-hiddenimports = []
-hiddenimports += collect_submodules('pynput')
-# run_chain(mute=...) 在运行时才 import pycaw，静态分析抓不到。
-# pycaw 仅依赖 comtypes 核心与 comtypes.automation（其源码里为静态 import），
-# 由 collect_submodules('pycaw') 顺带收集，无需把 comtypes.test 等一并打包。
-hiddenimports += collect_submodules('pycaw')
-
 # --- 可安全排除的模块 ---
-# pynput 跨平台后端: Windows 仅用 win32，其余后端永不加载。
-# 其余为标准库未使用模块。
-# numpy(含 OpenBLAS，解压后 41.4M / 压缩后约 15M) 曾因「用户脚本可能 import」而保留。
-# 现已排除：全项目 src/ 与 scripts/ 均无 numpy 引用，为它多付 15M 不划算。
-# 代价: _exec_python_file 在进程内 exec 的用户 .py 若 import numpy 将 ImportError。
-#       将来真需要时，从本 excludes 中移除 'numpy' 即可恢复。
+# Runner 只收集自身依赖；用户 .py 的额外依赖由外部 Python 环境提供。
 excludes = [
-    'numpy',
-    'pynput.keyboard._darwin', 'pynput.keyboard._xorg',
-    'pynput.mouse._darwin', 'pynput.mouse._xorg',
-    'pynput._util.darwin', 'pynput._util.xorg', 'pynput._util.xorg_keys',
-    'pynput.keyboard._uinput', 'pynput.mouse._uinput',
     'tkinter', 'unittest', 'doctest', 'pydoc', 'lib2to3',
     'curses', 'ensurepip', 'distutils', 'venv', 'idlelib',
     'turtledemo', 'test', 'pty', 'tty', 'wsgiref',
@@ -55,7 +36,7 @@ a = Analysis(
     pathex=['../src/runner'],
     binaries=_extra_dlls,
     datas=[],
-    hiddenimports=hiddenimports,
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     # 冻结后运行在英文 locale(cp1252) 的 Windows 上，Runner 经 colorama 往 stdout 打印中文会

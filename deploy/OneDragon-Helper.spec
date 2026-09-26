@@ -6,7 +6,7 @@
 构建: uv run pyinstaller --noconfirm --clean deploy/OneDragon-Helper.spec
 """
 
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+from PyInstaller.utils.hooks import collect_submodules
 import os
 import sys
 import warnings
@@ -58,21 +58,13 @@ for _ssl_name in ("libssl-3-x64.dll", "libcrypto-3-x64.dll"):
         continue
     _extra_dlls.append((_found, "."))
 
-# --- 隐式导入：PySide6 + Fluent Widgets + 其他动态加载的包 ---
+# --- 隐式导入：动态加载的凭据后端 ---
 hiddenimports = []
-hiddenimports += collect_submodules('qfluentwidgets')
-hiddenimports += collect_submodules('pynput')
 # keyring 的凭据后端（Windows/macOS/Linux）经 importlib 动态加载，PyInstaller 不会
 # 自动跟随；显式收集全部子模块，避免冻结后运行时找不到 Windows 凭据管理器后端。
 hiddenimports += collect_submodules('keyring')
 
-# --- 数据文件 ---
-# qfluentwidgets 的 QSS、图片等资源（由 PyInstaller 放入 _internal/）
-datas = collect_data_files('qfluentwidgets')
-
 # --- 可安全排除的模块（实测 GUI 运行时走不到）---
-# numpy: 仅 qfluentwidgets.acrylic_label 以 try/except ImportError 懒加载，
-#        本 GUI 不使用 AcrylicLabel，缺失时回退 QPixmap，安全排除（省 ~42M）。
 # QtQml/QtQuick: GUI 已迁移到 QML（launcher.py 用 QQmlApplicationEngine 加载
 #        src/gui/qml/main.qml，game_list.py / icons.py 用 QQuickImageProvider），
 #        必须保留，不可排除，否则冻结后启动即 ModuleNotFoundError。
@@ -81,15 +73,9 @@ datas = collect_data_files('qfluentwidgets')
 #        代价是打入 FFmpeg 的 av*.dll（约 +30M）。
 #        PySide6.QtMultimediaWidgets 未被使用（QML 视频用 QtMultimedia QML 类型而非
 #        QVideoWidget），可安全排除。
-# pynput 跨平台后端: Windows 仅用 win32，其余后端永不加载。
 # 其余为标准库未使用模块。
 excludes = [
-    'numpy',
     'PySide6.QtMultimediaWidgets',
-    'pynput.keyboard._darwin', 'pynput.keyboard._xorg',
-    'pynput.mouse._darwin', 'pynput.mouse._xorg',
-    'pynput._util.darwin', 'pynput._util.xorg', 'pynput._util.xorg_keys',
-    'pynput.keyboard._uinput', 'pynput.mouse._uinput',
     'tkinter', 'unittest', 'doctest', 'pydoc', 'lib2to3',
     'curses', 'ensurepip', 'venv', 'idlelib',
     # 注意：'distutils' 不能放 excludes —— PyInstaller 6.x 内置 hook-distutils.py 会
@@ -104,7 +90,7 @@ excludes = [
     'PySide6.QtWebEngineQuick',
     'PySide6.QtWebEngineQuickDelegatesQml',
     # 以下为本项目从未使用的 Qt 模块（PyInstaller 默认 collect_submodules 全量收集，
-    # 代码不 import，QFluentWidgets 也不依赖）。分批排除，每批需重打包并跑 test_gui_exe 验证。
+    # 代码不 import）。分批排除，每批需重打包并跑 test_gui_exe 验证。
     # 若未来引入对应功能需移除此处并同步清除下方 a.binaries/a.datas 过滤关键词。
     'PySide6.QtPdf', 'PySide6.QtPdfQuick',
     'PySide6.Qt3DCore', 'PySide6.Qt3DExtras', 'PySide6.Qt3DRender',
@@ -132,7 +118,7 @@ a = Analysis(
     ['../src/bootstrap.py'],
     pathex=['..'],
     binaries=_extra_dlls,
-    datas=datas,
+    datas=[],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
@@ -149,8 +135,8 @@ a = Analysis(
 
 # --- 排除未使用的 Qt 二进制（双保险）---
 # PyInstaller 会扫描整个 Qt 安装目录并收集所有 Qt DLL（不依赖 Python import），
-# 仅靠上方 excludes 模块名不足以剔除这些从未使用的模块。本项目 GUI（QFluentWidgets +
-# QML）用不到以下模块，在此手动过滤 a.binaries / a.datas 中路径含这些关键词的条目。
+# 仅靠上方 excludes 模块名不足以剔除这些从未使用的模块。本项目 GUI 用不到以下模块，
+# 在此手动过滤 a.binaries / a.datas 中路径含这些关键词的条目。
 # 若未来引入对应功能需移除此处并同步清除上方 excludes 模块名。分批排除，每批需重打包
 # 并跑 test_gui_exe 验证 GUI 仍可启动。
 _UNUSED_QT_KEYWORDS = (
@@ -185,7 +171,7 @@ _UNUSED_QT_KEYWORDS = (
     'qdirect2d', 'qminimal', 'qoffscreen',
     'virtualkeyboardplugin', 'uiotouch', 'qopensslbackend',
     # 图片格式插件：qicns / qtga / qtiff / qwbmp 本项目用不到。
-    # 留下的四个：jpeg（默认壁纸 ds.jpg）、svg（QFluentWidgets 图标）、ico、gif。
+    # 保留 jpeg（默认壁纸 ds.jpg）、svg（界面矢量图标）、ico、gif 和 webp。
     # qwebp 绝不能删 —— ZenlessZoneZeroConfig.background 指向脚本根目录下的
     # assets/ui/static_background.webp，绝区零背景图就是 WebP；删掉后文件存在但
     # Qt 解不了码，表现为「壁纸加载不出来」（曾在此翻车一次）。
