@@ -175,6 +175,8 @@ def update_script(
     if new_script_name != old_script_name:
         rename_weekly(old_script_name, new_script_name)
     save_weekly(new_script_name, weekly_timeouts)
+    # TODO: 后续调整 ScriptConfig 初始化职责，仅在新增/路径变化时强制对齐。
+    # 暂保留每次保存时的检查；“已对齐，无需更新”表示此次对齐未写盘。
     init_config(new_script_name)
     return new_script_name
 
