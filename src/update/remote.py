@@ -101,7 +101,7 @@ def open_archive(url: str, *, cancelled: Event | None = None):
 
     with requests.Session() as session:
         session.headers["Accept-Encoding"] = "identity"
-        session.hooks["response"].append(validate)
+        session.hooks["response"] = [validate]
         try:
             try:
                 archive = RemoteZip(
