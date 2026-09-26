@@ -1,0 +1,1697 @@
+{
+  "version": {
+    "version": "0.0.1+dev.71bc7c5",
+    "tag": "",
+    "commit": "71bc7c5495de94261f48be8005ac022511c7d50a"
+  },
+  "compression": "No UPX executable on PATH; ZIP produced by release_package.py archive",
+  "total_bytes": 159561672,
+  "file_count": 298,
+  "zip_bytes": 80894292,
+  "zip_sha256": "dcfcf9d0adc3fcf6325ed2bb810cdaec95abbfe328833f946578012dd03a9b3a",
+  "categories_bytes": {
+    "other_native_extensions_libraries_and_data": 25494000,
+    "python_core_and_stdlib_zip": 8803285,
+    "ffmpeg": 18093304,
+    "qt_native_qml_plugins": 47856551,
+    "pyside_shiboken_bindings": 28148912,
+    "application_resources_and_manifest": 1408901,
+    "runner_onefile": 10808560,
+    "updater_onefile": 9157404,
+    "gui_exe_with_python_archive": 9790755
+  },
+  "files": [
+    {
+      "path": "_internal/81d243bd2c585b0f4821__mypyc.cp312-win_amd64.pyd",
+      "bytes": 198656,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_bz2.pyd",
+      "bytes": 24064,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_ctypes.pyd",
+      "bytes": 122368,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_decimal.pyd",
+      "bytes": 298496,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_elementtree.pyd",
+      "bytes": 66048,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_hashlib.pyd",
+      "bytes": 49664,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_lzma.pyd",
+      "bytes": 37376,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_multiprocessing.pyd",
+      "bytes": 23552,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_queue.pyd",
+      "bytes": 19968,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_socket.pyd",
+      "bytes": 73216,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_ssl.pyd",
+      "bytes": 169984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_uuid.pyd",
+      "bytes": 13824,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/_wmi.pyd",
+      "bytes": 26112,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-console-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-datetime-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-debug-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-errorhandling-l1-1-0.dll",
+      "bytes": 21976,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-fibers-l1-1-0.dll",
+      "bytes": 21992,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-fibers-l1-1-1.dll",
+      "bytes": 22872,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-file-l1-1-0.dll",
+      "bytes": 26088,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-file-l1-2-0.dll",
+      "bytes": 21976,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-file-l2-1-0.dll",
+      "bytes": 21976,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-handle-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-heap-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-interlocked-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-kernel32-legacy-l1-1-1.dll",
+      "bytes": 22888,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-libraryloader-l1-1-0.dll",
+      "bytes": 22008,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-localization-l1-2-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-memory-l1-1-0.dll",
+      "bytes": 21976,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-namedpipe-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-processenvironment-l1-1-0.dll",
+      "bytes": 22008,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-processthreads-l1-1-0.dll",
+      "bytes": 21976,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-processthreads-l1-1-1.dll",
+      "bytes": 21976,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-profile-l1-1-0.dll",
+      "bytes": 21992,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-rtlsupport-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-string-l1-1-0.dll",
+      "bytes": 21976,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-synch-l1-1-0.dll",
+      "bytes": 21976,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-synch-l1-2-0.dll",
+      "bytes": 21976,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-sysinfo-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-sysinfo-l1-2-0.dll",
+      "bytes": 22912,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-timezone-l1-1-0.dll",
+      "bytes": 21976,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-core-util-l1-1-0.dll",
+      "bytes": 21992,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-conio-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-convert-l1-1-0.dll",
+      "bytes": 26080,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-environment-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-filesystem-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-heap-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-locale-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-math-l1-1-0.dll",
+      "bytes": 30184,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-multibyte-l1-1-0.dll",
+      "bytes": 30176,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-process-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-runtime-l1-1-0.dll",
+      "bytes": 26104,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-stdio-l1-1-0.dll",
+      "bytes": 26080,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-string-l1-1-0.dll",
+      "bytes": 26072,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-time-l1-1-0.dll",
+      "bytes": 21984,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/api-ms-win-crt-utility-l1-1-0.dll",
+      "bytes": 22000,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/base_library.zip",
+      "bytes": 1333717,
+      "category": "python_core_and_stdlib_zip"
+    },
+    {
+      "path": "_internal/certifi/cacert.pem",
+      "bytes": 272441,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/certifi/py.typed",
+      "bytes": 0,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/_kernel.cp312-win_amd64.pyd",
+      "bytes": 136192,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/models/confusion.bin",
+      "bytes": 8214,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/models/idf.bin",
+      "bytes": 65536,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/models/models.bin",
+      "bytes": 588650,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/models/rowmax.bin",
+      "bytes": 90404,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/models/training_metadata.yaml",
+      "bytes": 82619,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/ascii.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/ascii__mypyc.cp312-win_amd64.pyd",
+      "bytes": 34816,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/confusion.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/confusion__mypyc.cp312-win_amd64.pyd",
+      "bytes": 115200,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/escape.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/escape__mypyc.cp312-win_amd64.pyd",
+      "bytes": 64000,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/language.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/language__mypyc.cp312-win_amd64.pyd",
+      "bytes": 46080,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/magic.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/magic__mypyc.cp312-win_amd64.pyd",
+      "bytes": 63488,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/orchestrator.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/orchestrator__mypyc.cp312-win_amd64.pyd",
+      "bytes": 93184,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/postprocess.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/postprocess__mypyc.cp312-win_amd64.pyd",
+      "bytes": 88576,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/statistical.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/statistical__mypyc.cp312-win_amd64.pyd",
+      "bytes": 89088,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/structural.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/structural__mypyc.cp312-win_amd64.pyd",
+      "bytes": 83968,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/utf1632.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/utf1632__mypyc.cp312-win_amd64.pyd",
+      "bytes": 59904,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/utf8.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/utf8__mypyc.cp312-win_amd64.pyd",
+      "bytes": 40448,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/validity.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/pipeline/validity__mypyc.cp312-win_amd64.pyd",
+      "bytes": 34304,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/chardet/py.typed",
+      "bytes": 0,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/charset_normalizer/cd.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/charset_normalizer/md.cp312-win_amd64.pyd",
+      "bytes": 10752,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/ffi-8.dll",
+      "bytes": 27136,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/keyring-25.7.0.dist-info/entry_points.txt",
+      "bytes": 334,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/keyring-25.7.0.dist-info/INSTALLER",
+      "bytes": 2,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/keyring-25.7.0.dist-info/licenses/LICENSE",
+      "bytes": 1076,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/keyring-25.7.0.dist-info/METADATA",
+      "bytes": 21447,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/keyring-25.7.0.dist-info/RECORD",
+      "bytes": 3243,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/keyring-25.7.0.dist-info/REQUESTED",
+      "bytes": 0,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/keyring-25.7.0.dist-info/top_level.txt",
+      "bytes": 8,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/keyring-25.7.0.dist-info/WHEEL",
+      "bytes": 91,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/libbz2.dll",
+      "bytes": 76288,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/libcrypto-3-x64.dll",
+      "bytes": 7207424,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/libexpat.dll",
+      "bytes": 408064,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/liblzma.dll",
+      "bytes": 186880,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/libssl-3-x64.dll",
+      "bytes": 1299968,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/MSVCP140.dll",
+      "bytes": 575568,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/psutil/_psutil_windows.pyd",
+      "bytes": 67072,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/pyexpat.pyd",
+      "bytes": 55296,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/PySide6/avcodec-61.dll",
+      "bytes": 13418648,
+      "category": "ffmpeg"
+    },
+    {
+      "path": "_internal/PySide6/avformat-61.dll",
+      "bytes": 2564760,
+      "category": "ffmpeg"
+    },
+    {
+      "path": "_internal/PySide6/avutil-59.dll",
+      "bytes": 1154200,
+      "category": "ffmpeg"
+    },
+    {
+      "path": "_internal/PySide6/MSVCP140.dll",
+      "bytes": 565400,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/MSVCP140_1.dll",
+      "bytes": 27800,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/MSVCP140_2.dll",
+      "bytes": 260248,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/iconengines/qsvgicon.dll",
+      "bytes": 77976,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/imageformats/qgif.dll",
+      "bytes": 47768,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/imageformats/qico.dll",
+      "bytes": 46232,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/imageformats/qjpeg.dll",
+      "bytes": 574104,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/imageformats/qpdf.dll",
+      "bytes": 41624,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/imageformats/qsvg.dll",
+      "bytes": 39064,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/imageformats/qwebp.dll",
+      "bytes": 551064,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/multimedia/ffmpegmediaplugin.dll",
+      "bytes": 512664,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/multimedia/windowsmediaplugin.dll",
+      "bytes": 297112,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/networkinformation/qnetworklistmanager.dll",
+      "bytes": 71320,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/platforms/qwindows.dll",
+      "bytes": 911000,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/styles/qmodernwindowsstyle.dll",
+      "bytes": 212120,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/tls/qcertonlybackend.dll",
+      "bytes": 102040,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/plugins/tls/qschannelbackend.dll",
+      "bytes": 254616,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/pyside6.abi3.dll",
+      "bytes": 235672,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/pyside6qml.abi3.dll",
+      "bytes": 80536,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/animation/labsanimationplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/animation/plugins.qmltypes",
+      "bytes": 4062,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/animation/qmldir",
+      "bytes": 229,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/folderlistmodel/plugins.qmltypes",
+      "bytes": 6215,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/folderlistmodel/qmldir",
+      "bytes": 266,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/folderlistmodel/qmlfolderlistmodelplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/platform/labsplatformplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/platform/plugins.qmltypes",
+      "bytes": 41298,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/platform/qmldir",
+      "bytes": 253,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/qmlmodels/labsmodelsplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/qmlmodels/plugins.qmltypes",
+      "bytes": 15147,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/qmlmodels/qmldir",
+      "bytes": 235,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/settings/plugins.qmltypes",
+      "bytes": 1583,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/settings/qmldir",
+      "bytes": 204,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/settings/qmlsettingsplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/sharedimage/plugins.qmltypes",
+      "bytes": 386,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/sharedimage/qmldir",
+      "bytes": 216,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/sharedimage/sharedimageplugin.dll",
+      "bytes": 33944,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/wavefrontmesh/plugins.qmltypes",
+      "bytes": 2428,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/wavefrontmesh/qmldir",
+      "bytes": 251,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/Qt/labs/wavefrontmesh/qmlwavefrontmeshplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtCore/plugins.qmltypes",
+      "bytes": 15215,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtCore/qmldir",
+      "bytes": 217,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtCore/qtqmlcoreplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtMultimedia/plugins.qmltypes",
+      "bytes": 71472,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtMultimedia/qmldir",
+      "bytes": 253,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtMultimedia/quickmultimediaplugin.dll",
+      "bytes": 32920,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtMultimedia/Video.qml",
+      "bytes": 11082,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtNetwork/plugins.qmltypes",
+      "bytes": 16869,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtNetwork/qmldir",
+      "bytes": 225,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtNetwork/qmlnetworkplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/Models/modelsplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/Models/plugins.qmltypes",
+      "bytes": 51112,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/Models/qmldir",
+      "bytes": 222,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/plugins.qmltypes",
+      "bytes": 6197,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/qmldir",
+      "bytes": 261,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/qmlplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/WorkerScript/plugins.qmltypes",
+      "bytes": 1358,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/WorkerScript/qmldir",
+      "bytes": 252,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/WorkerScript/workerscriptplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/XmlListModel/plugins.qmltypes",
+      "bytes": 4121,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/XmlListModel/qmldir",
+      "bytes": 242,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQml/XmlListModel/qmlxmllistmodelplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/Effects/effectsplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/Effects/plugins.qmltypes",
+      "bytes": 8870,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/Effects/qmldir",
+      "bytes": 219,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/plugins.qmltypes",
+      "bytes": 539839,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/qmldir",
+      "bytes": 215,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/qtquick2plugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/Component.qml",
+      "bytes": 1117,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/Enum.qml",
+      "bytes": 325,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/Member.qml",
+      "bytes": 212,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/Method.qml",
+      "bytes": 508,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/Module.qml",
+      "bytes": 270,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/Parameter.qml",
+      "bytes": 335,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/Property.qml",
+      "bytes": 645,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/qmldir",
+      "bytes": 590,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/quicktooling.qmltypes",
+      "bytes": 215,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/quicktoolingplugin.dll",
+      "bytes": 68760,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/tooling/Signal.qml",
+      "bytes": 315,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/Window/qmldir",
+      "bytes": 213,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/Window/quickwindow.qmltypes",
+      "bytes": 215,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtQuick/Window/quickwindowplugin.dll",
+      "bytes": 31896,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtTest/plugins.qmltypes",
+      "bytes": 17707,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtTest/qmldir",
+      "bytes": 406,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtTest/quicktestplugin.dll",
+      "bytes": 30872,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtTest/SignalSpy.qml",
+      "bytes": 8079,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtTest/TestCase.qml",
+      "bytes": 82626,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtTest/testlogger.js",
+      "bytes": 1502,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/qml/QtTest/TestSchedule.qml",
+      "bytes": 705,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6Concurrent.dll",
+      "bytes": 35480,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6Core.dll",
+      "bytes": 6087832,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6Gui.dll",
+      "bytes": 9233048,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6Multimedia.dll",
+      "bytes": 899736,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6MultimediaQuick.dll",
+      "bytes": 261272,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6Network.dll",
+      "bytes": 1772184,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6OpenGL.dll",
+      "bytes": 1971352,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6OpenGLWidgets.dll",
+      "bytes": 64152,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6Qml.dll",
+      "bytes": 5236888,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6QmlCore.dll",
+      "bytes": 134808,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6QmlMeta.dll",
+      "bytes": 150168,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6QmlModels.dll",
+      "bytes": 741528,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6QmlNetwork.dll",
+      "bytes": 126104,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6QmlWorkerScript.dll",
+      "bytes": 75416,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6QmlXmlListModel.dll",
+      "bytes": 134296,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6Quick.dll",
+      "bytes": 6282392,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6QuickEffects.dll",
+      "bytes": 389784,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6SpatialAudio.dll",
+      "bytes": 737432,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6Svg.dll",
+      "bytes": 515224,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6SvgWidgets.dll",
+      "bytes": 59032,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6Widgets.dll",
+      "bytes": 6502040,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/Qt6Xml.dll",
+      "bytes": 153752,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/QtCore.pyd",
+      "bytes": 3596952,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/QtGui.pyd",
+      "bytes": 4169880,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/QtMultimedia.pyd",
+      "bytes": 614040,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/QtNetwork.pyd",
+      "bytes": 1124504,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/QtOpenGL.pyd",
+      "bytes": 9146008,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/QtQml.pyd",
+      "bytes": 514200,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/QtQuick.pyd",
+      "bytes": 869016,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/QtSvg.pyd",
+      "bytes": 122008,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/QtSvgWidgets.pyd",
+      "bytes": 146584,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/QtWidgets.pyd",
+      "bytes": 6191768,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/QtXml.pyd",
+      "bytes": 220312,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/PySide6/swresample-5.dll",
+      "bytes": 243864,
+      "category": "ffmpeg"
+    },
+    {
+      "path": "_internal/PySide6/swscale-8.dll",
+      "bytes": 711832,
+      "category": "ffmpeg"
+    },
+    {
+      "path": "_internal/PySide6/VCRUNTIME140.dll",
+      "bytes": 111256,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/PySide6/VCRUNTIME140_1.dll",
+      "bytes": 41624,
+      "category": "qt_native_qml_plugins"
+    },
+    {
+      "path": "_internal/python3.dll",
+      "bytes": 56320,
+      "category": "python_core_and_stdlib_zip"
+    },
+    {
+      "path": "_internal/python312.dll",
+      "bytes": 7413248,
+      "category": "python_core_and_stdlib_zip"
+    },
+    {
+      "path": "_internal/Pythonwin/mfc140u.dll",
+      "bytes": 5664848,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/Pythonwin/win32ui.pyd",
+      "bytes": 1051648,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/pywin32_system32/pythoncom312.dll",
+      "bytes": 690176,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/pywin32_system32/pywintypes312.dll",
+      "bytes": 136192,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/select.pyd",
+      "bytes": 19456,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/INSTALLER",
+      "bytes": 2,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/licenses/LICENSE",
+      "bytes": 10278,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/METADATA",
+      "bytes": 4670,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/RECORD",
+      "bytes": 1868,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/REQUESTED",
+      "bytes": 0,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/top_level.txt",
+      "bytes": 19,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/setuptools/_vendor/importlib_metadata-8.7.1.dist-info/WHEEL",
+      "bytes": 91,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/setuptools/_vendor/jaraco/text/Lorem ipsum.txt",
+      "bytes": 1335,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/shiboken6/MSVCP140.dll",
+      "bytes": 565400,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/shiboken6/Shiboken.pyd",
+      "bytes": 32408,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/shiboken6/shiboken6.abi3.dll",
+      "bytes": 366744,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/shiboken6/VCRUNTIME140.dll",
+      "bytes": 111256,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/shiboken6/VCRUNTIME140_1.dll",
+      "bytes": 41624,
+      "category": "pyside_shiboken_bindings"
+    },
+    {
+      "path": "_internal/ucrtbase.dll",
+      "bytes": 1123808,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/unicodedata.pyd",
+      "bytes": 1124864,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/VCRUNTIME140.dll",
+      "bytes": 120400,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/VCRUNTIME140_1.dll",
+      "bytes": 49776,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/win32/_win32sysloader.pyd",
+      "bytes": 14848,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/win32/win32api.pyd",
+      "bytes": 135168,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/win32/win32cred.pyd",
+      "bytes": 38912,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/win32/win32event.pyd",
+      "bytes": 29184,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/win32/win32evtlog.pyd",
+      "bytes": 75776,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/win32/win32gui.pyd",
+      "bytes": 223232,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/win32/win32print.pyd",
+      "bytes": 75264,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/win32/win32trace.pyd",
+      "bytes": 24064,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/win32com/shell/shell.pyd",
+      "bytes": 543232,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "_internal/zlib.dll",
+      "bytes": 89088,
+      "category": "other_native_extensions_libraries_and_data"
+    },
+    {
+      "path": "assets/demo.png",
+      "bytes": 911908,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "assets/ds.ico",
+      "bytes": 169861,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "assets/ds.jpg",
+      "bytes": 174278,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "config/BGI\u4e00\u6761\u9f99.json",
+      "bytes": 53,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "config/config.example.yml",
+      "bytes": 4541,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "config/daily_task_list.yml",
+      "bytes": 14269,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "config/log_analysis.yml",
+      "bytes": 4592,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "config/MAA\u4efb\u52a1.json",
+      "bytes": 316,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "config/schedule.example.yml",
+      "bytes": 1453,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "config/task_switch_list.yml",
+      "bytes": 6088,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "config/weekly.example.yml",
+      "bytes": 1264,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "config/weekly_task_list.yml",
+      "bytes": 1776,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "config/ZZZ\u4e00\u6761\u9f99.yml",
+      "bytes": 717,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "OneDragon-Helper-Runner.exe",
+      "bytes": 10808560,
+      "category": "runner_onefile"
+    },
+    {
+      "path": "OneDragon-Helper-Updater.exe",
+      "bytes": 9157404,
+      "category": "updater_onefile"
+    },
+    {
+      "path": "OneDragon-Helper.exe",
+      "bytes": 9790755,
+      "category": "gui_exe_with_python_archive"
+    },
+    {
+      "path": "README.md",
+      "bytes": 783,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "src/gui/qml/background.qml",
+      "bytes": 1670,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "src/gui/qml/launch.qml",
+      "bytes": 2111,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "src/gui/qml/Layout.js",
+      "bytes": 1257,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "src/gui/qml/main.qml",
+      "bytes": 36460,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "src/gui/qml/task_card.qml",
+      "bytes": 38388,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "src/gui/qml/Theme.js",
+      "bytes": 475,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "src/gui/qml/window.qml",
+      "bytes": 1334,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "update-manifest.json",
+      "bytes": 35196,
+      "category": "application_resources_and_manifest"
+    },
+    {
+      "path": "version.json",
+      "bytes": 111,
+      "category": "application_resources_and_manifest"
+    }
+  ],
+  "source_startup": {
+    "python": "3.12.10 | packaged by conda-forge | (main, Apr 10 2025, 22:08:16) [MSC v.1943 64 bit (AMD64)]",
+    "pyside6": "6.8.0.2",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "runs": 15,
+    "warmup_runs_excluded": 1,
+    "scenario": "source, empty script list, offscreen, --after-update, warm OS cache",
+    "samples": [
+      {
+        "process_to_probe_ms": 86.23699995223433,
+        "qt_import_ms": 66.29000004613772,
+        "launcher_extra_import_ms": 163.62629999639466,
+        "root_created_ms": 359.0808000299148,
+        "source_first_frame_ms": 362.24650003714487,
+        "process_first_frame_ms": 448.4834999893792,
+        "main_to_frame_ms": 132.33019999461249
+      },
+      {
+        "process_to_probe_ms": 79.01779998792335,
+        "qt_import_ms": 64.2564000445418,
+        "launcher_extra_import_ms": 159.27619999274611,
+        "root_created_ms": 351.2559999944642,
+        "source_first_frame_ms": 354.18960003880784,
+        "process_first_frame_ms": 433.2074000267312,
+        "main_to_frame_ms": 130.65700000151992
+      },
+      {
+        "process_to_probe_ms": 79.53129999805242,
+        "qt_import_ms": 68.31970001803711,
+        "launcher_extra_import_ms": 152.73060003528371,
+        "root_created_ms": 343.8921000342816,
+        "source_first_frame_ms": 346.74760000780225,
+        "process_first_frame_ms": 426.27890000585467,
+        "main_to_frame_ms": 125.69729995448142
+      },
+      {
+        "process_to_probe_ms": 79.77759995264933,
+        "qt_import_ms": 69.48730000294745,
+        "launcher_extra_import_ms": 155.24250001180917,
+        "root_created_ms": 355.27370002819225,
+        "source_first_frame_ms": 358.10490004951134,
+        "process_first_frame_ms": 437.88250000216067,
+        "main_to_frame_ms": 133.37510003475472
+      },
+      {
+        "process_to_probe_ms": 79.3050000211224,
+        "qt_import_ms": 69.03489999240264,
+        "launcher_extra_import_ms": 149.70680000260472,
+        "root_created_ms": 347.22559998044744,
+        "source_first_frame_ms": 349.8554999823682,
+        "process_first_frame_ms": 429.1605000034906,
+        "main_to_frame_ms": 131.11379998736084
+      },
+      {
+        "process_to_probe_ms": 79.41220002248883,
+        "qt_import_ms": 67.02129996847361,
+        "launcher_extra_import_ms": 151.21979999821633,
+        "root_created_ms": 344.26599997095764,
+        "source_first_frame_ms": 346.98689996730536,
+        "process_first_frame_ms": 426.3990999897942,
+        "main_to_frame_ms": 128.74580000061542
+      },
+      {
+        "process_to_probe_ms": 82.44440000271425,
+        "qt_import_ms": 63.567800039891154,
+        "launcher_extra_import_ms": 153.92839995911345,
+        "root_created_ms": 341.21520002372563,
+        "source_first_frame_ms": 343.99870003107935,
+        "process_first_frame_ms": 426.4431000337936,
+        "main_to_frame_ms": 126.50250003207475
+      },
+      {
+        "process_to_probe_ms": 82.20890001393855,
+        "qt_import_ms": 70.32050000270829,
+        "launcher_extra_import_ms": 153.14710000529885,
+        "root_created_ms": 355.40970001602545,
+        "source_first_frame_ms": 358.16140001406893,
+        "process_first_frame_ms": 440.3703000280075,
+        "main_to_frame_ms": 134.6938000060618
+      },
+      {
+        "process_to_probe_ms": 84.03620001627132,
+        "qt_import_ms": 68.90409998595715,
+        "launcher_extra_import_ms": 160.12070002034307,
+        "root_created_ms": 358.8739999686368,
+        "source_first_frame_ms": 362.40089999046177,
+        "process_first_frame_ms": 446.4371000067331,
+        "main_to_frame_ms": 133.37609998416156
+      },
+      {
+        "process_to_probe_ms": 81.84020000044256,
+        "qt_import_ms": 66.07190001523122,
+        "launcher_extra_import_ms": 155.9716999763623,
+        "root_created_ms": 349.3402000167407,
+        "source_first_frame_ms": 352.06050000851974,
+        "process_first_frame_ms": 433.9007000089623,
+        "main_to_frame_ms": 130.01690001692623
+      },
+      {
+        "process_to_probe_ms": 74.90330003201962,
+        "qt_import_ms": 68.87429999187589,
+        "launcher_extra_import_ms": 160.9391999663785,
+        "root_created_ms": 359.52429997269064,
+        "source_first_frame_ms": 362.2899999609217,
+        "process_first_frame_ms": 437.1932999929413,
+        "main_to_frame_ms": 132.4765000026673
+      },
+      {
+        "process_to_probe_ms": 83.02899997215718,
+        "qt_import_ms": 67.81279999995604,
+        "launcher_extra_import_ms": 154.17580003850162,
+        "root_created_ms": 351.8498000339605,
+        "source_first_frame_ms": 354.6805999940261,
+        "process_first_frame_ms": 437.7095999661833,
+        "main_to_frame_ms": 132.69199995556846
+      },
+      {
+        "process_to_probe_ms": 78.95160000771284,
+        "qt_import_ms": 65.26229996234179,
+        "launcher_extra_import_ms": 154.9663000041619,
+        "root_created_ms": 346.8264999683015,
+        "source_first_frame_ms": 349.5286999968812,
+        "process_first_frame_ms": 428.480300004594,
+        "main_to_frame_ms": 129.3001000303775
+      },
+      {
+        "process_to_probe_ms": 78.37290002498776,
+        "qt_import_ms": 69.01889998698607,
+        "launcher_extra_import_ms": 155.02740000374615,
+        "root_created_ms": 355.12819996802136,
+        "source_first_frame_ms": 358.1752000027336,
+        "process_first_frame_ms": 436.5481000277214,
+        "main_to_frame_ms": 134.1289000120014
+      },
+      {
+        "process_to_probe_ms": 86.64619998307899,
+        "qt_import_ms": 73.88650003122166,
+        "launcher_extra_import_ms": 162.76819998165593,
+        "root_created_ms": 364.496499998495,
+        "source_first_frame_ms": 367.24240001058206,
+        "process_first_frame_ms": 453.88859999366105,
+        "main_to_frame_ms": 130.58769999770448
+      }
+    ],
+    "summary": {
+      "process_to_probe_ms": {
+        "median_ms": 79.77759995264933,
+        "min_ms": 74.90330003201962,
+        "max_ms": 86.64619998307899
+      },
+      "qt_import_ms": {
+        "median_ms": 68.31970001803711,
+        "min_ms": 63.567800039891154,
+        "max_ms": 73.88650003122166
+      },
+      "launcher_extra_import_ms": {
+        "median_ms": 155.02740000374615,
+        "min_ms": 149.70680000260472,
+        "max_ms": 163.62629999639466
+      },
+      "root_created_ms": {
+        "median_ms": 351.8498000339605,
+        "min_ms": 341.21520002372563,
+        "max_ms": 364.496499998495
+      },
+      "source_first_frame_ms": {
+        "median_ms": 354.6805999940261,
+        "min_ms": 343.99870003107935,
+        "max_ms": 367.24240001058206
+      },
+      "process_first_frame_ms": {
+        "median_ms": 436.5481000277214,
+        "min_ms": 426.27890000585467,
+        "max_ms": 453.88859999366105
+      },
+      "main_to_frame_ms": {
+        "median_ms": 131.11379998736084,
+        "min_ms": 125.69729995448142,
+        "max_ms": 134.6938000060618
+      }
+    }
+  }
+}
