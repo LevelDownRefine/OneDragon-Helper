@@ -17,7 +17,7 @@ from src.utils import (
     safe_path_join,
 )
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
-from src.utils.utils_weekly import get_week_num
+from src.utils.utils_weekly import DISABLED_START_DAY, get_week_num
 from src.utils.utils_yaml import dump_yaml
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ def _resolve_daily_run(script: dict, weekly_timeouts: dict) -> bool:
 
 
 def resolve_weekly_starts(weekly_start_map: dict, script_name: str) -> dict[str, int]:
-    """取脚本各周常的起始日（{周常展示名: 1~7}），未设置返回空 dict。
+    """取脚本各周常的起始日（{周常展示名: 0 | 1~7}），未设置返回空 dict。
 
     周常开关（enabled）是 GUI 内存态，不参与链生成；GUI 与 CLI 统一按
     「今天周几 >= 起始日」由 ``weekly.prepare_weekly_start_days`` 判断启用/停用写入脚本配置
@@ -72,10 +72,10 @@ def resolve_weekly_starts(weekly_start_map: dict, script_name: str) -> dict[str,
         script_name: 脚本唯一标识（exe 为进程名、python/bat 为 display_name）。
 
     Returns:
-        {周常展示名: 起始日（1~7）}；该脚本未设置返回空 dict。
+        {周常展示名: 起始日（0 = 不启用，1~7 = 周一~周日）}；该脚本未设置返回空 dict。
 
     Raises:
-        AssertionError: 条目不是 dict，或起始日不是 1~7 的整数。
+        AssertionError: 条目不是 dict，或起始日不是 0（不启用）或 1~7 的整数。
     """
     if script_name not in weekly_start_map:
         return {}
@@ -87,11 +87,11 @@ def resolve_weekly_starts(weekly_start_map: dict, script_name: str) -> dict[str,
     for weekly_name, start_day in start_days.items():
         assert isinstance(start_day, int) and not isinstance(start_day, bool), (
             f"[chain_gen] {script_name}/{weekly_name} 非法 weekly_start: "
-            f"{start_day!r}（应为整数 1~7）"
+            f"{start_day!r}（应为 0（不启用）或整数 1~7）"
         )
-        assert 1 <= start_day <= 7, (
+        assert start_day == DISABLED_START_DAY or 1 <= start_day <= 7, (
             f"[chain_gen] {script_name}/{weekly_name} 非法 weekly_start: "
-            f"{start_day}（应为 1~7）"
+            f"{start_day}（应为 0（不启用）或 1~7）"
         )
     return dict(start_days)
 
