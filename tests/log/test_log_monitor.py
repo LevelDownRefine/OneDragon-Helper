@@ -729,7 +729,9 @@ class TestFourFieldExtraction(unittest.TestCase):
         )
         self.assertEqual(p.parse_stamina(content), "240")
         # 兼容 current_stamina 后跟冒号写法（部分 ok-ww 版本输出）。
-        self.assertEqual(OkWwLogParser().parse_stamina("info_set current_stamina: 240"), "240")
+        self.assertEqual(
+            OkWwLogParser().parse_stamina("info_set current_stamina: 240"), "240"
+        )
         self.assertTrue(p.parse_daily(content))
         # 战斗复检噪声应被过滤，仅保留真实报错。
         self.assertEqual(
