@@ -16,7 +16,10 @@
 parsers:
   ok-ww:
     log_pattern: 'ok-script.log'
-    stamina_pattern: 'info_set current_stamina (\d+)'
+    # 鸣潮体力：TacetTask 反复记「info_set current_stamina <N>」（分隔符空格/冒号均可），
+    # 运行结束前以「current stamina: <N> not enough to continue」记真实剩余（无 info_set 前缀、
+    # 用空格而非下划线）。`(?:info_set )?current[_ ]stamina` 同捕获两种格式，使末次匹配=结束剩余。
+    stamina_pattern: '(?:info_set )?current[_ ]stamina[:\s]+(\d+)'
     error_markers:
       - 'ERROR'
     error_noise:
@@ -59,7 +62,9 @@ parsers:
 
   March7th-Launcher:
     log_pattern: '*.log'
-    stamina_pattern: '开拓力[：:]\s*(\d+)/(\d+)'
+    # March7th 真实日志为「开拓力 + 空格 + 数值/上限」（见 collect_log.log.2026-08-21：
+    # 开拓力 5/300），正则须兼容空格与冒号两种分隔，否则整列落空为「—」。
+    stamina_pattern: '开拓力[：:\s]+(\d+)/(\d+)'
     error_markers:
       - 'ERROR'
     daily_success_marker:
