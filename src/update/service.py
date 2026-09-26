@@ -227,8 +227,8 @@ class UpdateService:
                 ):
                     raise UpdateError("下载包大小或 SHA-256 校验失败")
                 unpack_package(archive, work / "package", release.version)
-                if cancelled is not None and cancelled.is_set():
-                    raise UpdateCancelled("下载已取消")
+            if cancelled is not None and cancelled.is_set():
+                raise UpdateCancelled("下载已取消")
         except (OSError, ValueError, requests.RequestException, zipfile.BadZipFile):
             logger.exception("准备更新失败")
             shutil.rmtree(work)
@@ -250,7 +250,7 @@ class UpdateService:
         """
         package = work / "package"
         try:
-            with open_archive(release.archive_url) as archive:
+            with open_archive(release.archive_url, cancelled=cancelled) as archive:
                 if archive.size != release.size:
                     raise UpdateError("远端归档大小与 Release 记录不符")
                 entries = archive.entries()
@@ -263,13 +263,22 @@ class UpdateService:
                     raise UpdateError("下载包版本与所选 Release 不一致")
                 remote_files = remote["files"]
                 local_files = installed["files"]
-                changed = sorted(
-                    name
-                    for name, digest in remote_files.items()
-                    if name not in local_files or local_files[name] != digest
-                )
+                if set(entries) != set(remote_files) | {MANIFEST}:
+                    raise UpdateError("更新包文件与清单不一致")
+                changed = set()
+                for name, digest in remote_files.items():
+                    if cancelled is not None and cancelled.is_set():
+                        raise UpdateCancelled("下载已取消")
+                    source = safe_target(self.root, name)
+                    if (
+                        name not in local_files
+                        or local_files[name] != digest
+                        or not source.is_file()
+                        or file_digest(source) != digest
+                    ):
+                        changed.add(name)
                 blobs = archive.fetch(
-                    entries, changed, progress=progress, cancelled=cancelled
+                    entries, sorted(changed), progress=progress, cancelled=cancelled
                 )
                 logger.info(
                     "增量更新：%d 个文件变化，共 %d 个",
@@ -277,15 +286,21 @@ class UpdateService:
                     len(remote_files),
                 )
                 for name in changed:
+                    assert name in blobs and name in remote_files
                     if hashlib.sha256(blobs[name]).hexdigest() != remote_files[name]:
                         raise UpdateError(f"下载文件校验失败: {name}")
                 package.mkdir()
                 for name in changed:
+                    if cancelled is not None and cancelled.is_set():
+                        raise UpdateCancelled("下载已取消")
+                    assert name in blobs
                     target = safe_target(package, name)
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_bytes(blobs[name])
                 (package / MANIFEST).write_bytes(head[MANIFEST])
                 for name in remote_files:
+                    if cancelled is not None and cancelled.is_set():
+                        raise UpdateCancelled("下载已取消")
                     if name in changed:
                         continue
                     source = safe_target(self.root, name)
