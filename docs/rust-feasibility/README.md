@@ -6,6 +6,7 @@
 
 后续已选定近期路线：**Rust GUI + 保留助手业务为 Python CLI，逐步迁移**。
 调用审计、缺失接口和实施顺序见 [GUI / CLI 边界设计](gui-cli-boundary.md)。
+基于 CLI 分支的第一版可运行界面见 [Rust GUI 原型](../../rust-gui/README.md)。
 本报告下文的完整 Rust 迁移公式是远期方案，不能直接当作近期阶段的体积预测。
 
 外部 Python 脚本支持已确定走 CLI；下文全 Rust 方案按“脚本侧提供所需 Python 环境”

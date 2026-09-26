@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, codex/rust-feasibility ]
 
 jobs:
   test:
@@ -21,7 +21,7 @@ jobs:
       - name: Install system dependencies (OpenGL/EGL/PulseAudio)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libpulse0
+          sudo apt-get install -y libegl1 libgl1 libpulse0 libxkbcommon-dev
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
@@ -42,3 +42,16 @@ jobs:
         env:
           PYTHONPATH: src
         run: uv run python -m unittest discover -s tests -t . -p 'test*.py'
+
+      - name: Set up Rust prototype toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+
+      - name: Check Rust prototype
+        run: |
+          cargo +1.97.1 fmt --manifest-path rust-gui/Cargo.toml --check
+          cargo +1.97.1 clippy --manifest-path rust-gui/Cargo.toml --locked --all-features --all-targets -- -D warnings
+
+      - name: Test Rust against Python CLI
+        env:
+          ODH_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: cargo +1.97.1 test --manifest-path rust-gui/Cargo.toml --locked --all-features

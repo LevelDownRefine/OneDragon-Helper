@@ -3,7 +3,7 @@
 入口是 `python -m src.headless`，从项目根运行。它经 AppService 复用现有配置适配器，
 支持脚本列表 → 查询任务卡 → 修改一个日常 → 返回真实反读状态。
 默认 GUI、旧 CLI、每日计划和 Runner 入口保持原行为；现有 GUI 已提供 CLI 测试模式，
-Rust 界面尚未接入。
+Rust 界面原型位于 `rust-gui/`，启动和验证见 [Rust 原型说明](../../rust-gui/README.md)。
 
 ## 在现有 GUI 中测试
 
