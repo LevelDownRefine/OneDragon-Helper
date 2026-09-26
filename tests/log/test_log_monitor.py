@@ -728,6 +728,10 @@ class TestFourFieldExtraction(unittest.TestCase):
             "ERROR TaskExecutor:Daily Task exception stopped Traceback\n"  # 真实报错
         )
         self.assertEqual(p.parse_stamina(content), "240")
+        # 兼容 current_stamina 后跟冒号写法（部分 ok-ww 版本输出）。
+        self.assertEqual(
+            OkWwLogParser().parse_stamina("info_set current_stamina: 240"), "240"
+        )
         self.assertTrue(p.parse_daily(content))
         # 战斗复检噪声应被过滤，仅保留真实报错。
         self.assertEqual(
@@ -742,8 +746,15 @@ class TestFourFieldExtraction(unittest.TestCase):
 
     def test_oww_stamina_takes_last_occurrence(self):
         p = OkWwLogParser()
-        content = "info_set current_stamina 240\ninfo_set current_stamina 102\ninfo_set back_up_stamina 118\n"
-        self.assertEqual(p.parse_stamina(content), "102")
+        # TacetTask 反复记 info_set current_stamina，运行结束前以「current stamina: N」
+        # 记真实剩余（格式不同：无 info_set 前缀、空格而非下划线）。末次匹配应为结束剩余 0，
+        # 而非中途的 120/240。
+        content = (
+            "info_set current_stamina 240\n"
+            "info_set current_stamina 120\n"
+            "current stamina: 0 not enough to continue\n"
+        )
+        self.assertEqual(p.parse_stamina(content), "0")
 
     def test_onte_stamina_daily_errors(self):
         p = OkNteLogParser()
@@ -819,19 +830,37 @@ class TestFourFieldExtraction(unittest.TestCase):
     def test_m7a_stamina_daily_and_error_truncation(self):
         p = M7ALogParser()
         content = (
-            "开拓力: 249/300\n"
+            "开拓力 249/300\n"  # March7th 真实日志的空格分隔写法
             "每日实训已完成\n"
             "2026-08-02 05:24:00,000 | ERROR | 当前界面：未知\n"
             "游戏终止：StarRail\n"
             "2026-08-02 05:31:23,466 | ERROR | 发生错误 [WinError 233]\n"  # 终止后良性
         )
         self.assertEqual(p.parse_stamina(content), "249")
+        # 兼容冒号分隔写法（全角/半角）；主用例已用真实空格格式。
+        self.assertEqual(M7ALogParser().parse_stamina("开拓力：249/300"), "249")
+        self.assertEqual(M7ALogParser().parse_stamina("开拓力: 249/300"), "249")
         self.assertTrue(p.parse_daily(content))
         # 「游戏终止」之后的收尾报错（WinError 233）属良性，应被截断过滤。
         self.assertEqual(
             p.collect_error_lines(content),
             ["2026-08-02 05:24:00,000 | ERROR | 当前界面：未知"],
         )
+
+    def test_m7a_stamina_prefers_explicit_remaining_in_summary(self):
+        # 运行结束「停止运行」统一总结块：开局开拓力 + 结尾开拓力: X/300 + 显式开拓力剩余X/300。
+        # 正则 (?:剩余|[：:\s]+)? 同时匹配两类，findall 末次命中显式剩余行，取值即真实剩余。
+        p = M7ALogParser()
+        summary = (
+            "开拓力: 233/300\n"  # 开局
+            "开拓力: 34/300\n"  # 结尾同格式
+            "开拓力剩余34/300\n"  # 显式剩余标记（仅结尾出现，无分隔符）
+        )
+        self.assertEqual(p.parse_stamina(summary), "34")
+        # 防御：若未来版本去掉结尾「开拓力: X/300」、仅留「开拓力剩余X/300」，仍应取到剩余。
+        self.assertEqual(M7ALogParser().parse_stamina("开拓力剩余34/300"), "34")
+        # 全角冒号分隔同样兼容。
+        self.assertEqual(M7ALogParser().parse_stamina("开拓力：249/300"), "249")
 
     def test_m7a_no_game_terminate_yields_all_errors(self):
         p = M7ALogParser()
