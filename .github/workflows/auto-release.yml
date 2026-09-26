@@ -40,12 +40,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git fetch origin main --quiet || true
+          git fetch origin main --quiet   # fetch 失败则中止（fail-closed：宁可不发，不用陈旧 main）
           main_commit=$(git rev-parse origin/main)
           latest=$(git tag --list 'v[0-9]*' --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1) || true
           if [ -z "$latest" ]; then
             echo "无历史 v* release，将发布首个正式版 v0.1.0"
             echo "has_update=true" >> "$GITHUB_OUTPUT"
+            echo "need_tag=true" >> "$GITHUB_OUTPUT"
             echo "next_version=v0.1.0" >> "$GITHUB_OUTPUT"
             echo "main_commit=$main_commit" >> "$GITHUB_OUTPUT"
             exit 0
@@ -56,9 +57,11 @@ jobs:
             if gh release view "$latest" >/dev/null 2>&1; then
               echo "main 已是最新正式 release（$latest），跳过"
               echo "has_update=false" >> "$GITHUB_OUTPUT"
+              echo "need_tag=false" >> "$GITHUB_OUTPUT"
             else
               echo "tag $latest 已存在但 release 未发布（上次中断），重试发布"
               echo "has_update=true" >> "$GITHUB_OUTPUT"
+              echo "need_tag=false" >> "$GITHUB_OUTPUT"
               echo "next_version=$latest" >> "$GITHUB_OUTPUT"
               echo "main_commit=$main_commit" >> "$GITHUB_OUTPUT"
             fi
@@ -68,6 +71,7 @@ jobs:
           if ! git merge-base --is-ancestor "$rel_commit" "$main_commit" 2>/dev/null; then
             echo "最新 tag $latest 不是 main 的祖先（历史分叉），拒绝自动发布"
             echo "has_update=false" >> "$GITHUB_OUTPUT"
+            echo "need_tag=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           version="${latest#v}"
@@ -75,16 +79,16 @@ jobs:
           pat=$((pat + 1))
           next="v$maj.$min.$pat"
           echo "has_update=true" >> "$GITHUB_OUTPUT"
+          echo "need_tag=true" >> "$GITHUB_OUTPUT"
           echo "next_version=$next" >> "$GITHUB_OUTPUT"
           echo "main_commit=$main_commit" >> "$GITHUB_OUTPUT"
           echo "main=$main_commit 领先 $latest -> $next"
 
-      - name: Stop if no update
-        if: steps.decide.outputs.has_update != 'true'
-        run: echo "今日无新提交，跳过自动发布" && exit 0
+      # 无需独立「Stop」step：Tag/Trigger 已由 has_update=='true' 门控；
+      # 此处若放 exit 0 会静默吞掉 decide 步骤的报错，导致自动发布坏了也无告警。
 
       - name: Tag and push
-        if: steps.decide.outputs.has_update == 'true'
+        if: steps.decide.outputs.has_update == 'true' && steps.decide.outputs.need_tag == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -93,7 +97,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f "$NEXT" "$MAIN_COMMIT"
+          git tag "$NEXT" "$MAIN_COMMIT"
           git push origin "$NEXT"
 
       - name: Trigger release.yml for this tag
