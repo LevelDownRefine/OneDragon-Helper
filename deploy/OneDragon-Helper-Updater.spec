@@ -13,7 +13,7 @@ a = Analysis(
     ['../src/update/__main__.py'],
     pathex=['..'], binaries=extra_dlls, datas=[], hiddenimports=[],
     runtime_hooks=[os.path.join(SPECPATH, 'runtime_hook_utf8.py')],
-    excludes=['PySide6', 'numpy', 'cv2', 'tkinter'],
+    excludes=['PySide6', 'tkinter'],
 )
 pyz = PYZ(a.pure)
 exe = EXE(

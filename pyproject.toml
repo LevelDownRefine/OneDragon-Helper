@@ -6,15 +6,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "colorama==0.4.6",
-    "opencv-python==4.10.0.84",
-    "numpy==1.26.4",
     "psutil==6.1.1",
     "packaging==26.0",
     "pycaw==20220416",
     "pyinstaller==6.19.0",
-    "pynput==1.8.1",
     "pyside6==6.8.0.2",
-    "pyside6-fluent-widgets==1.11.1",
+    "pywin32==311; sys_platform == 'win32'",
     "requests==2.33.0",
     "remotezip==0.12.6",
     "pyuac==0.0.3",

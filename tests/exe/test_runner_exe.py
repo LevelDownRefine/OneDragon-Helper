@@ -85,12 +85,19 @@ class TestRunnerExe(unittest.TestCase):
         self.assertIn("chain", result.stdout.lower())
 
     def test_exe_runs_single_script(self):
-        """--script 单文件模式：exe 应成功 exec 一个无害 .py 并以退出码 0 结束。"""
+        """--script 能执行使用 Runner 自身依赖的脚本。"""
         marker = "ODH_RUNNER_EXE_SELFTEST_OK"
         with tempfile.NamedTemporaryFile(
             "w", suffix=".py", delete=False, encoding="utf-8"
         ) as fh:
-            fh.write(f'print("{marker}")\n')
+            fh.write(
+                "import os\n"
+                "import psutil\n"
+                "from ruamel.yaml import YAML\n"
+                "assert psutil.Process().pid == os.getpid()\n"
+                "assert YAML(typ='safe').load('enabled: true')['enabled'] is True\n"
+                f'print("{marker}")\n'
+            )
             stub = fh.name
         try:
             result = self._run_exe("--script", stub)
