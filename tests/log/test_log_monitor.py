@@ -830,7 +830,7 @@ class TestFourFieldExtraction(unittest.TestCase):
     def test_m7a_stamina_daily_and_error_truncation(self):
         p = M7ALogParser()
         content = (
-            "开拓力 249/300\n"  # 真实 March7th 日志空格分隔（collect_log.log.2026-08-21）
+            "开拓力 249/300\n"  # March7th 真实日志的空格分隔写法
             "每日实训已完成\n"
             "2026-08-02 05:24:00,000 | ERROR | 当前界面：未知\n"
             "游戏终止：StarRail\n"
