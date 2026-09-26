@@ -1,6 +1,5 @@
 """手动更新服务；构造和读取本地状态不发起网络请求。"""
 
-import hashlib
 import json
 import logging
 import os
@@ -19,7 +18,6 @@ from threading import Event
 import psutil
 
 from src.update.package import (
-    MANIFEST,
     MAX_PACKAGE_BYTES,
     UPDATER_EXE,
     VERSION_FILE,
@@ -27,8 +25,6 @@ from src.update.package import (
     UpdateError,
     file_digest,
     load_manifest,
-    parse_manifest,
-    safe_target,
     unpack_package,
     version_number,
 )
@@ -206,9 +202,7 @@ class UpdateService:
         work = update_directory(self.root) / ("download-" + uuid.uuid4().hex)
         work.mkdir()
         try:
-            if not self._prepare_incremental(
-                release, installed, work, progress, cancelled
-            ):
+            if not self._prepare_incremental(release, work, progress, cancelled):
                 checksum = work / (ZIP_NAME + ".sha256")
                 self._download(release.checksum_url, checksum, 512, None, cancelled)
                 match = re.fullmatch(
@@ -226,7 +220,9 @@ class UpdateService:
                     or file_digest(archive) != match[1].lower()
                 ):
                     raise UpdateError("下载包大小或 SHA-256 校验失败")
-                unpack_package(archive, work / "package", release.version)
+                unpack_package(
+                    archive, work / "package", release.version, cancelled=cancelled
+                )
             if cancelled is not None and cancelled.is_set():
                 raise UpdateCancelled("下载已取消")
         except (OSError, ValueError, requests.RequestException, zipfile.BadZipFile):
@@ -238,78 +234,28 @@ class UpdateService:
     def _prepare_incremental(
         self,
         release: ReleaseUpdate,
-        installed: dict,
         work: Path,
         progress: Callable[[int, int], None] | None,
         cancelled: Event | None,
     ) -> bool:
-        """按本地清单只取变化条目，未变文件从当前安装补齐。
+        """复用统一解包流程，哈希一致的文件从当前安装补齐。
 
-        远端不支持范围读取或结构异常时返回 False，由调用方走全量下载；此时
+        远端不支持范围读取或目录损坏时返回 False，由调用方走全量下载；此时
         工作目录已恢复为刚创建的状态。清单校验失败不回退，避免重复下载。
         """
         package = work / "package"
         try:
             with open_archive(release.archive_url, cancelled=cancelled) as archive:
-                if archive.size != release.size:
+                if archive.size() != release.size:
                     raise UpdateError("远端归档大小与 Release 记录不符")
-                entries = archive.entries()
-                if MANIFEST not in entries:
-                    raise RemoteUnavailable("远端 ZIP 缺少更新清单")
-                head = archive.fetch(entries, [MANIFEST], cancelled=cancelled)
-                assert MANIFEST in head
-                remote = parse_manifest(json.loads(head[MANIFEST]))
-                if remote["version"] != release.version:
-                    raise UpdateError("下载包版本与所选 Release 不一致")
-                remote_files = remote["files"]
-                local_files = installed["files"]
-                if set(entries) != set(remote_files) | {MANIFEST}:
-                    raise UpdateError("更新包文件与清单不一致")
-                changed = set()
-                for name, digest in remote_files.items():
-                    if cancelled is not None and cancelled.is_set():
-                        raise UpdateCancelled("下载已取消")
-                    source = safe_target(self.root, name)
-                    if (
-                        name not in local_files
-                        or local_files[name] != digest
-                        or not source.is_file()
-                        or file_digest(source) != digest
-                    ):
-                        changed.add(name)
-                blobs = archive.fetch(
-                    entries, sorted(changed), progress=progress, cancelled=cancelled
+                unpack_package(
+                    archive,
+                    package,
+                    release.version,
+                    reuse_root=self.root,
+                    progress=progress,
+                    cancelled=cancelled,
                 )
-                logger.info(
-                    "增量更新：%d 个文件变化，共 %d 个",
-                    len(changed),
-                    len(remote_files),
-                )
-                for name in changed:
-                    assert name in blobs and name in remote_files
-                    if hashlib.sha256(blobs[name]).hexdigest() != remote_files[name]:
-                        raise UpdateError(f"下载文件校验失败: {name}")
-                package.mkdir()
-                for name in changed:
-                    if cancelled is not None and cancelled.is_set():
-                        raise UpdateCancelled("下载已取消")
-                    assert name in blobs
-                    target = safe_target(package, name)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(blobs[name])
-                (package / MANIFEST).write_bytes(head[MANIFEST])
-                for name in remote_files:
-                    if cancelled is not None and cancelled.is_set():
-                        raise UpdateCancelled("下载已取消")
-                    if name in changed:
-                        continue
-                    source = safe_target(self.root, name)
-                    if not source.is_file():
-                        raise UpdateError(f"本地程序文件缺失: {name}")
-                    target = safe_target(package, name)
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(source, target)
-                load_manifest(package, verify=True)
         except RemoteUnavailable as exc:
             logger.info("增量更新不可用，改用全量下载：%s", exc)
             if package.exists():

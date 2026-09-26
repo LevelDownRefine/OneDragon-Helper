@@ -11,14 +11,16 @@ import tempfile
 import threading
 import unittest
 import zipfile
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 from unittest.mock import Mock, patch
 
 import requests
+from urllib3.response import HTTPResponse
 
 from src.update import remote, service
-from src.update.package import MANIFEST, load_manifest, write_manifest
+from src.update.package import MANIFEST, load_manifest, unpack_package, write_manifest
 from tests.support.update_package import archive_package, make_package
 
 SHARED_BYTES = 500_000
@@ -48,6 +50,18 @@ def build_pair(directory: Path):
 class RangeHandler(http.server.BaseHTTPRequestHandler):
     """按单区间返回归档内容；关闭 supports_range 时退化为整包响应。"""
 
+    def do_HEAD(self):
+        self.server.requests.append((self.path, None))
+        if not self.server.supports_head:
+            self.send_response(405)
+        elif self.path == "/redirect":
+            self.send_response(302)
+            self.send_header("Location", "/archive.zip")
+        else:
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(self.server.payload)))
+        self.end_headers()
+
     def do_GET(self):
         data = self.server.payload
         start, end = 0, len(data) - 1
@@ -70,10 +84,14 @@ class RangeHandler(http.server.BaseHTTPRequestHandler):
             start, end = int(match[1]), min(int(match[2]), len(data) - 1)
         body = data[start : end + 1]
         if header != "bytes=0-0" and self.server.invalid_length:
-            body = body[:-1] if self.server.invalid_length == "short" else body + b"x"
+            body = body + b"x" if self.server.invalid_length == "long" else body[:-1]
         length = len(body)
         self.send_response(206 if partial else 200)
-        self.send_header("Content-Length", str(length))
+        if self.server.invalid_length != "unframed-short":
+            declared = (
+                end - start + 1 if self.server.invalid_length == "truncated" else length
+            )
+            self.send_header("Content-Length", str(declared))
         if partial:
             shift = int(self.server.wrong_range and header != "bytes=0-0")
             self.send_header(
@@ -124,6 +142,7 @@ class TestRemoteArchive(unittest.TestCase):
         self.payload = archive.read_bytes()
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), RangeHandler)
         self.server.payload = self.payload
+        self.server.supports_head = True
         self.server.supports_range = True
         self.server.fail_ranges = False
         self.server.wrong_range = False
@@ -174,39 +193,45 @@ class TestRemoteArchive(unittest.TestCase):
         self.assertLess(self.server.served, len(self.payload))
         self.assertLess(progress.call_args.args[1], len(self.payload))
 
-    def test_entries_and_fetch_read_the_requested_member(self):
+    def test_remotezip_reads_the_requested_member(self):
         with remote.open_archive(self.url) as archive:
-            entries = archive.entries()
-            self.assertIn("_internal/small.bin", entries)
-            blobs = archive.fetch(entries, ["_internal/small.bin"])
-        self.assertEqual(blobs["_internal/small.bin"], b"new")
+            self.assertIsInstance(archive, zipfile.ZipFile)
+            self.assertEqual(
+                archive.read("OneDragon-Helper/_internal/small.bin"), b"new"
+            )
 
-    def test_remotezip_uses_positive_ranges_and_reuses_redirected_url(self):
+    def test_remotezip_follows_redirects_with_positive_ranges(self):
         url = f"http://127.0.0.1:{self.server.server_address[1]}/redirect"
         with remote.open_archive(url) as archive:
-            entries = archive.entries()
-            blobs = archive.fetch(entries, ["_internal/small.bin"])
-        self.assertEqual(blobs["_internal/small.bin"], b"new")
-        self.assertEqual(self.server.requests[0], ("/redirect", "bytes=0-0"))
-        self.assertGreater(len(self.server.requests), 2)
-        for path, header in self.server.requests[1:]:
-            self.assertEqual(path, "/archive.zip")
+            self.assertEqual(
+                archive.read("OneDragon-Helper/_internal/small.bin"), b"new"
+            )
+        self.assertEqual(self.server.requests[0], ("/redirect", None))
+        self.assertIn(("/archive.zip", None), self.server.requests)
+        ranges = [
+            header for _path, header in self.server.requests if header is not None
+        ]
+        self.assertTrue(ranges)
+        for header in ranges:
             self.assertRegex(header, r"^bytes=\d+-\d+$")
 
     def test_cached_members_finish_progress_without_more_requests(self):
-        name = "_internal/small.bin"
-        path = self.directory / "cached.zip"
-        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr(remote.ARCHIVE_PREFIX + name, b"cached member")
-        self.server.payload = path.read_bytes()
+        (self.target / "_internal/shared.bin").write_bytes(b"cached member")
+        write_manifest(self.target, list(load_manifest(self.target)["files"]), "1.10.0")
+        self.server.payload = archive_package(
+            self.target, self.directory / "cached.zip"
+        ).read_bytes()
+        self.assertLess(len(self.server.payload), 65536)
         with remote.open_archive(self.url) as archive:
-            entries = archive.entries()
             requests_before = len(self.server.requests)
             progress = Mock()
-            self.assertEqual(
-                archive.fetch(entries, [name], progress=progress),
-                {name: b"cached member"},
+            destination = self.directory / "cached"
+            unpack_package(
+                archive, destination, "1.10.0", reuse_root=self.root, progress=progress
             )
+        self.assertEqual(
+            (destination / "_internal/shared.bin").read_bytes(), b"cached member"
+        )
         self.assertEqual(len(self.server.requests), requests_before)
         received, total = progress.call_args.args
         self.assertGreater(total, 0)
@@ -214,15 +239,15 @@ class TestRemoteArchive(unittest.TestCase):
 
     def test_cancellation_during_directory_download_removes_workspace(self):
         cancelled = Event()
-        iter_content = requests.Response.iter_content
+        readinto = HTTPResponse.readinto
 
-        def cancel_on_chunk(response, *args, **kwargs):
-            for chunk in iter_content(response, *args, **kwargs):
-                cancelled.set()
-                yield chunk
+        def cancel_on_chunk(response, buffer):
+            count = readinto(response, buffer)
+            cancelled.set()
+            return count
 
         with (
-            patch.object(requests.Response, "iter_content", cancel_on_chunk),
+            patch.object(HTTPResponse, "readinto", cancel_on_chunk),
             patch.object(requests, "get") as full_download,
             self.assertLogs(service.__name__, level="ERROR"),
             self.assertRaises(service.UpdateCancelled),
@@ -232,13 +257,15 @@ class TestRemoteArchive(unittest.TestCase):
         self.assertFalse(list((self.root / ".update").glob("download-*")))
 
     def test_invalid_range_length_does_not_trigger_full_download(self):
-        for kind in ("short", "long"):
+        for kind in ("short", "long", "truncated", "unframed-short"):
             with self.subTest(kind=kind):
                 self.server.invalid_length = kind
                 with (
                     patch.object(requests, "get") as full_download,
                     self.assertLogs(service.__name__, level="ERROR"),
-                    self.assertRaisesRegex(service.UpdateError, "范围响应"),
+                    self.assertRaisesRegex(
+                        service.UpdateError, "范围响应|范围读取失败"
+                    ),
                 ):
                     self.client.prepare_update(self.release)
                 full_download.assert_not_called()
@@ -262,21 +289,20 @@ class TestRemoteArchive(unittest.TestCase):
             with self.subTest(name=name):
                 path = self.directory / "long-path.zip"
                 with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
-                    info = zipfile.ZipInfo(remote.ARCHIVE_PREFIX + name)
+                    info = zipfile.ZipInfo("OneDragon-Helper/" + name)
                     info.compress_type = zipfile.ZIP_DEFLATED
                     info.extra = extra
                     with archive.open(info, "w", force_zip64=zip64) as output:
                         output.write(b"changed member")
                     archive.writestr(
-                        remote.ARCHIVE_PREFIX + "_internal/padding.bin",
+                        "OneDragon-Helper/" + "_internal/padding.bin",
                         os.urandom(SHARED_BYTES),
                     )
                 self.server.payload = path.read_bytes()
                 self.server.served = 0
                 with remote.open_archive(self.url) as archive:
-                    entries = archive.entries()
                     self.assertEqual(
-                        archive.fetch(entries, [name]), {name: b"changed member"}
+                        archive.read("OneDragon-Helper/" + name), b"changed member"
                     )
                 self.assertLess(self.server.served, len(self.server.payload))
 
@@ -330,19 +356,19 @@ class TestRemoteArchive(unittest.TestCase):
         self.server.payload = archive_package(
             self.target, self.directory / "large.zip"
         ).read_bytes()
-        release = service.ReleaseUpdate(
-            self.release.version,
-            self.release.notes,
-            self.release.archive_url,
-            self.release.checksum_url,
-            len(self.server.payload),
-        )
+        release = replace(self.release, size=len(self.server.payload))
         cancelled = Event()
         progress = []
 
         def cancel(received, total):
             progress.append((received, total))
-            if received < total:
+            if 65536 <= received < total:
+                staging = list((self.root / ".update").glob("download-*/package"))
+                self.assertEqual(len(staging), 1)
+                partial = staging[0] / "_internal/shared.bin"
+                self.assertTrue(partial.is_file())
+                self.assertGreater(partial.stat().st_size, 0)
+                self.assertLess(partial.stat().st_size, SHARED_BYTES)
                 cancelled.set()
 
         with (
@@ -372,14 +398,19 @@ class TestRemoteArchive(unittest.TestCase):
         self.assertFalse(list((self.root / ".update").glob("download-*")))
 
     def test_broken_archive_is_unavailable(self):
-        for payload in (b"not a zip archive", b"PK\x05\x06" + b"\0" * 3):
+        for payload in (
+            b"not a zip archive",
+            b"PK\x05\x06" + b"\0" * 3,
+            b"not a zip archive" * 10,
+            b"x" * 100 + b"PK\x05\x06" + b"\0" * 3,
+        ):
             with self.subTest(payload=payload):
                 self.server.payload = payload
                 with (
-                    remote.open_archive(self.url) as broken,
                     self.assertRaises(remote.RemoteUnavailable),
+                    remote.open_archive(self.url) as broken,
                 ):
-                    broken.entries()
+                    broken.namelist()
 
     def test_http_error_and_wrong_range_do_not_trigger_full_download(self):
         for kind, message in (("http", "范围读取失败"), ("range", "范围响应位置")):
@@ -405,7 +436,7 @@ class TestRemoteArchive(unittest.TestCase):
         with (
             patch.object(requests, "get") as full_download,
             self.assertLogs(service.__name__, level="ERROR"),
-            self.assertRaisesRegex(service.UpdateError, "下载文件校验失败"),
+            self.assertRaisesRegex(service.UpdateError, "程序文件校验失败"),
         ):
             self.client.prepare_update(self.release)
         full_download.assert_not_called()
@@ -413,20 +444,25 @@ class TestRemoteArchive(unittest.TestCase):
         self.assertFalse(list((self.root / ".update").glob("download-*")))
 
     def test_missing_range_support_falls_back_to_full_download(self):
-        self.server.supports_range = False
         digest = hashlib.sha256(self.payload).hexdigest()
-        responses = [
-            FullResponse(f"{digest}  {service.ZIP_NAME}\n".encode()),
-            FullResponse(self.payload),
-        ]
-        with patch.object(requests, "get", side_effect=responses) as request:
-            prepared = self.client.prepare_update(self.release)
-        self.assertTrue(request.called)
-        self.assertEqual(prepared.version, "1.10.0")
-        self.assertEqual(
-            load_manifest(prepared.directory / "package", verify=True)["version"],
-            "1.10.0",
-        )
+        for missing in ("head", "range"):
+            with self.subTest(missing=missing):
+                self.server.supports_head = missing != "head"
+                self.server.supports_range = missing != "range"
+                responses = [
+                    FullResponse(f"{digest}  {service.ZIP_NAME}\n".encode()),
+                    FullResponse(self.payload),
+                ]
+                with patch.object(requests, "get", side_effect=responses) as request:
+                    prepared = self.client.prepare_update(self.release)
+                self.assertEqual(request.call_count, 2)
+                self.assertEqual(prepared.version, "1.10.0")
+                self.assertEqual(
+                    load_manifest(prepared.directory / "package", verify=True)[
+                        "version"
+                    ],
+                    "1.10.0",
+                )
 
     def test_cancellation_removes_incremental_workspace(self):
         cancelled = Event()
