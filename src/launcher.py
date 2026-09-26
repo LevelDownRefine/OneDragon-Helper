@@ -63,7 +63,12 @@ def _clear_qml_cache():
 
 def main():
     _start_startup_timer()
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.cli_backend and getattr(sys, "frozen", False):
+        parser.error(
+            "--cli-backend 当前用于源码 GUI；请用 python -m src.launcher --cli-backend"
+        )
     # 日志先于 config_workflow：init 对齐产生的 WARNING（如补缺失字段）必须进
     # 日志文件可追溯；否则走 logging 兜底裸印 stderr，无时间戳且 windowed exe
     # 下彻底丢失。幂等，GUI 路径复用。
@@ -80,7 +85,10 @@ def main():
         sys.exit(exit_code)
     _log_startup("run_cli")
 
-    _launch_qml(skip_auto_launch=args.after_update)
+    if args.cli_backend:
+        _launch_qml(cli_backend=True, skip_auto_launch=True)
+    else:
+        _launch_qml(skip_auto_launch=args.after_update)
 
 
 def _install_qt_message_logger():
@@ -104,7 +112,7 @@ def _install_qt_message_logger():
     qInstallMessageHandler(_handler)
 
 
-def _launch_qml(*, skip_auto_launch: bool = False):
+def _launch_qml(*, skip_auto_launch: bool = False, cli_backend: bool = False):
     # 禁用 QML 磁盘缓存 + 清理已有缓存：旧版编译缓存会导致类型解析错乱
     # （"Type IconButton unavailable" / "Cannot assign object to list property data"
     # 等误报），且删除前不重新生成——保证每次启动都是干净编译。
@@ -118,7 +126,7 @@ def _launch_qml(*, skip_auto_launch: bool = False):
 
     # bridge 注册为 QML 单例（不是 setContextProperty）：单例由 QML 引擎强持有，
     # 事件循环中不会被 GC——context property 传 Python 对象时，QML 侧会读到 null。
-    bridge = QmlBridge()
+    bridge = QmlBridge(cli_backend=True) if cli_backend else QmlBridge()
     qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
 
     engine = QQmlApplicationEngine()
@@ -149,11 +157,12 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     # 须在进入事件循环前同步弹模态窗（QDialog.exec 自带局部事件循环）。
     if not skip_auto_launch:
         bridge.maybe_auto_launch()
-    else:
+    elif not cli_backend:
         QTimer.singleShot(0, lambda: bridge.toastRequested.emit("更新完成，欢迎回来"))
     _log_startup("进入事件循环")
     logger.info("[qml] entering event loop")
     exit_code = app.exec()
+    bridge.close_cli()
     if file_drop is not None:
         app.removeNativeEventFilter(file_drop)
     sys.exit(exit_code)

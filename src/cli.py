@@ -44,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--after-update", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
+        "--cli-backend",
+        action="store_true",
+        help="源码 GUI 任务卡测试模式：经独立无 Qt CLI 读写日常/周常",
+    )
+    parser.add_argument(
         "--version", action="store_true", help="显示版本并退出（结果同时写文件）"
     )
     action = parser.add_mutually_exclusive_group()

@@ -2,7 +2,34 @@
 
 入口是 `python -m src.headless`，从项目根运行。它经 AppService 复用现有配置适配器，
 支持脚本列表 → 查询任务卡 → 修改一个日常 → 返回真实反读状态。
-现有 GUI、旧 CLI、每日计划和 Runner 入口保持原行为；Rust 界面尚未接入。
+默认 GUI、旧 CLI、每日计划和 Runner 入口保持原行为；现有 GUI 已提供 CLI 测试模式，
+Rust 界面尚未接入。
+
+## 在现有 GUI 中测试
+
+激活项目 Python 环境后，从项目根运行：
+
+```text
+python -m src.launcher --cli-backend
+```
+
+保留现有窗口、脚本列表、任务卡和菜单；列表来自 `app.snapshot`，任务卡的读取、日常选择、
+启用开关、周常选择和周几起全部经一个独立的 `serve --stdio` 子进程完成。
+右上角显示 `CLI · 已同步 · 刷新`；加载/保存有状态提示，等待期间不能重复提交任务卡。
+窗口关闭后结束该后端进程并释放租约。请求异步处理，属性 getter 仅读界面内存。
+
+测试步骤：选择脚本 → 改一个日常 → 检查 chip 的反读结果 → 切到其他脚本再切回 →
+检查选择仍保留；有启用开关时测试“不启用”，周常测试“周几起”和 `0=不启用`。
+菜单较长时需在对应列滚动到目标选项。手动更改外部配置后点击“刷新”重新读取。
+这些操作实际修改各脚本自己的配置，测试模式不使用另一份业务实现。
+
+后端崩溃、超时或协议错误时，界面显示失败并清空旧任务卡；点击刷新重新连接。
+不自动重放写操作；业务写入报错后先反读可能已经保存的状态，并保留错误提示。
+快速切换脚本时，旧脚本的迟到响应不会覆盖当前卡片。
+
+此模式用于验证任务卡边界，脚本增删/重排/配置、启动、设置/更新和备份等入口暂不开放，
+也不自动启动脚本；退出后不带 `--cli-backend` 即恢复完整原 GUI。
+当前仅支持源码启动，冻结 EXE 会明确拒绝该参数；尚未打包独立 CLI EXE。
 
 ## 两种调用方式
 
@@ -50,9 +77,12 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 
 | 方法 | 参数 | 返回 |
 | --- | --- | --- |
-| `app.snapshot` | `{}` | `scripts`：按配置顺序给出 `script_name/display_name/script_path/adapted`；不扫描所有外部脚本 |
+| `app.snapshot` | `{}` | `scripts`：按配置顺序给出 `script_name/display_name/script_path/adapted/script_data`；script_data 为原脚本条目，供现有 GUI 展示；不扫描所有外部脚本 |
 | `script.view` | `script_name` | `script` 摘要、`dailies` 和 `weeklies` |
 | `daily.select` | `script_name/daily_name/task_name`，可选 `sequence` | 写入后重新查询得到的完整 `script.view` |
+| `daily.enable` | `script_name/daily_name/enabled`（布尔） | 修改开关后的完整 `script.view`，不改变已选副本 |
+| `weekly.select` | `script_name/weekly_name/task_name` | 校验当前物化菜单并写入，返回 `script.view` |
+| `weekly.start` | `script_name/weekly_name/start_day`（整数 0…7） | 先保存周常意图，再同步游戏侧配置，返回 `script.view` |
 
 日常条目：`daily_name`、`options`、`selected: {task_name, sequence}`、`enabled`。
 物化选项仍使用 `display_name/physical_name/options.values`，最多两级。
@@ -67,7 +97,7 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 
 周常条目：`weekly_name/options/selected/start_day`；无选项组时 options 为 null。
 start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不同。
-此阶段周常仅查询，尚未开放日常开关、周常写入、设置、运行或更新动作。
+尚未开放设置、运行或更新动作。
 自定义脚本返回 `adapted=false` 与空日常列表；未知脚本名返回错误。
 
 | 错误码 | 含义 |
@@ -93,8 +123,9 @@ start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不
 - AppService 只薄委托新增的 `task_service`，查询与修改复用同一套 Python 适配器。
   `script.view` 每次重读外部配置；适配器构造仍可能执行现有的模板对齐，周常读取仍可能迁移旧格式。
   因此查询并不承诺整个应用层绝无写盘副作用。
-- 仅承诺这三个新增方法不加载 Qt。旧 launcher、关机确认、更新器进程交接、
-  CLI 打包与 GUI 接入仍是后续工作；没有据此宣称整个发布包可以移除 Python 或 Qt。
+- 仅承诺这些新增后端方法不加载 Qt；现有 GUI 客户端使用 Qt 的 QProcess。
+  旧 launcher、关机确认、更新器进程交接、
+  CLI 打包仍是后续工作；没有据此宣称整个发布包可以移除 Python 或 Qt。
 
 ## 验证
 
@@ -107,6 +138,13 @@ src.gui；覆盖实际 JSON/YAML 落盘与反读、未修改字段保留、整�
 PYTHONPATH=src python -m unittest tests.test_headless -v
 ```
 
-2026-09-26 验证：按项目约定在 Ubuntu 跑全套 1088 项，1054 项通过、34 项跳过，
+CLI 首期的 2026-09-26 验证：按项目约定在 Ubuntu 跑全套 1088 项，1054 项通过、34 项跳过，
 耗时 53.810 秒（包含新增 12 项 CLI 测试）。`ruff check src tests tools`、
 `ruff format --check src tests tools` 均通过。尚未构建新 headless EXE，也未进行 Rust 性能对照。
+
+GUI 接入新增 `tests/gui/test_cli_backend.py`，使用 Qt 事件循环和真实 CLI 进程，覆盖
+界面读写闭环、复用进程、旧响应隔离、超时/崩溃/坏数据、中文分片及 stderr 管道排空、
+手动重连和关闭释放租约；独立 QML 场景真正点击整数及布尔菜单并核对落盘内容。
+
+GUI 接入后的全量回归：1097 项，1063 项通过、34 项跳过，58.662 秒；
+ruff 检查与格式检查通过。此结果为 Ubuntu 源码验证，尚未验证独立 headless EXE。

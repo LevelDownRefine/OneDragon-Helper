@@ -60,7 +60,8 @@ MainWindow  GUI  ┘                        ├─▶ daily_config 模块函数�
 调用方不感知 weekly 同步、链合法性校验、runner 命令构造等细节，全部内聚在 service/。
 
 无 Qt 入口 `python -m src.headless` 经 AppService 访问 task_service，提供一次性 `call`
-与持久 `serve --stdio`；首期仅开放 `app.snapshot/script.view/daily.select`。
+与持久 `serve --stdio`；开放 `app.snapshot/script.view`、`daily.select/enable`、
+`weekly.select/start`，供现有 GUI 的 `--cli-backend` 测试模式使用。
 请求、返回结构与生命周期见 [CLI 协议](../../docs/rust-feasibility/headless-cli.md)。
 
 `utils_shutdown.py` 不得模块级依赖 GUI 层：否则 `schedule → utils_shutdown →

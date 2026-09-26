@@ -18,6 +18,9 @@ METHODS = {
         ("script_name", "daily_name", "task_name"),
         ("sequence",),
     ),
+    "daily.enable": ("enable_daily", ("script_name", "daily_name", "enabled"), ()),
+    "weekly.select": ("select_weekly", ("script_name", "weekly_name", "task_name"), ()),
+    "weekly.start": ("start_weekly", ("script_name", "weekly_name", "start_day"), ()),
 }
 
 
@@ -96,7 +99,13 @@ def handle_request(service, request) -> dict:
             raise ProtocolError("invalid_params", "参数字段缺失或包含不支持的字段")
         for key in required:
             assert key in params
-            if not isinstance(params[key], str) or not params[key].strip():
+            if key == "enabled":
+                if type(params[key]) is not bool:
+                    raise ProtocolError("invalid_params", "enabled 必须是布尔值")
+            elif key == "start_day":
+                if type(params[key]) is not int:
+                    raise ProtocolError("invalid_params", "start_day 必须是整数")
+            elif not isinstance(params[key], str) or not params[key].strip():
                 raise ProtocolError("invalid_params", f"{key} 必须是非空字符串")
         if "sequence" in params and type(params["sequence"]) not in (
             str,
@@ -107,7 +116,7 @@ def handle_request(service, request) -> dict:
             raise ProtocolError(
                 "invalid_params", "sequence 必须是字符串、整数、布尔或 null"
             )
-        mutating = method == "daily.select"
+        mutating = method not in ("app.snapshot", "script.view")
         # 保护协议 stdout，包括适配器或第三方库的意外输出。
         with redirect_stdout(sys.stderr):
             result = getattr(service, attribute)(**params)

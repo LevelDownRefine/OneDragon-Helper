@@ -171,5 +171,6 @@ Python CLI 同时支持两种用法：
 Runner/Updater 原有打包和兼容性另行验证。
 
 实现进度：已新增 `src.headless` 与 `task_service`，完成 `app.snapshot/script.view/daily.select`
-和持久 stdio 的首条任务卡闭环；周常状态可查，写接口尚未开放。
-当前契约、用法及验证范围见 [无 Qt CLI](headless-cli.md)。本页其余接口和 Rust GUI 仍是后续设计。
+和持久 stdio 的首条任务卡闭环；后续已补 `daily.enable/weekly.select/weekly.start`，
+并通过 `python -m src.launcher --cli-backend` 将现有 GUI 的脚本列表与任务卡接入。
+当前契约、源码测试模式的用法及限制见 [无 Qt CLI](headless-cli.md)。其余接口和 Rust GUI 仍是后续设计。

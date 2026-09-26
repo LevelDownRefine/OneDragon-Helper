@@ -3,9 +3,7 @@
 import json
 import os
 import queue
-import shutil
 import subprocess
-import sys
 import tempfile
 import threading
 import unittest
@@ -15,25 +13,7 @@ from unittest.mock import Mock
 from src.headless import handle_request
 from src.update.runtime import FileLease, UpdateBusyError
 from src.utils.utils_yaml import load_yaml
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-# 只在测试进程替换根目录；在任何业务模块导入前生效，不改产品路径规则。
-CHILD = """
-import importlib.abc
-import runpy
-import sys
-from unittest.mock import patch
-
-class NoGui(importlib.abc.MetaPathFinder):
-    def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in ('PySide6', 'shiboken6') or fullname.startswith('src.gui'):
-            raise AssertionError('CLI 加载了 GUI: ' + fullname)
-
-sys.meta_path.insert(0, NoGui())
-root = sys.argv.pop(1)
-with patch('src.utils.get_root_dir', return_value=root):
-    runpy.run_module('src.headless', run_name='__main__')
-"""
+from tests.support.headless import PROJECT_ROOT, HeadlessFixture
 
 
 def request(method, params=None, request_id=1):
@@ -58,37 +38,9 @@ def selection(**changes):
 class HeadlessProcessTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        config_dir = self.root / "config"
-        config_dir.mkdir()
-        for name in (
-            "schedule.example.yml",
-            "weekly.example.yml",
-            "daily_task_list.yml",
-            "weekly_task_list.yml",
-        ):
-            shutil.copyfile(PROJECT_ROOT / "config" / name, config_dir / name)
-        config_dir.joinpath("config.example.yml").write_text(
-            "script_list:\n"
-            "- display_name: 鸣潮\n  script_path: scripts/ok-ww.exe\n"
-            "- display_name: 自定义脚本\n  script_path: scripts/custom.py\n",
-            encoding="utf-8",
-        )
-        scripts = self.root / "scripts"
-        scripts.mkdir()
-        scripts.joinpath("ok-ww.exe").touch()
-        scripts.joinpath("custom.py").touch()
-        self.native = scripts / "data/apps/ok-ww/working/configs/DailyTask.json"
-        self.native.parent.mkdir(parents=True)
-        self.initial = {
-            "Which to Farm": "Simulation Challenge",
-            "Which Forgery Challenge to Farm": 20,
-            "Which Tacet Suppression to Farm": 19,
-            "Material Selection": "Shell Credit",
-            "untouched": {"中文": [1, 2, 3]},
-        }
-        self.native.write_text(
-            json.dumps(self.initial, ensure_ascii=False), encoding="utf-8"
-        )
+        self.fixture = HeadlessFixture(self.root)
+        self.native = self.fixture.native
+        self.initial = self.fixture.initial
         self.env = {
             **os.environ,
             "PYTHONIOENCODING": "ascii",
@@ -96,7 +48,7 @@ class HeadlessProcessTests(unittest.TestCase):
         }
 
     def command(self, *args):
-        return [sys.executable, "-c", CHILD, str(self.root), *args]
+        return self.fixture.command(*args)
 
     def run_cli(self, args, payload):
         result = subprocess.run(
@@ -275,6 +227,70 @@ class HeadlessProcessTests(unittest.TestCase):
         self.assertEqual(
             json.loads(native.read_text(encoding="utf-8")),
             {"体力本": "副本乙", "⭐刷体力": True, "untouched": 42},
+        )
+        result, responses = self.serve(
+            [
+                request(
+                    "daily.enable",
+                    {
+                        "script_name": "ok-ef",
+                        "daily_name": "每日任务",
+                        "enabled": False,
+                    },
+                ),
+                request(
+                    "daily.enable",
+                    {"script_name": "ok-ef", "daily_name": "每日任务", "enabled": 1},
+                ),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIs(responses[0]["result"]["dailies"][0]["enabled"], False)
+        self.assertEqual(responses[1]["error"]["code"], "invalid_params")
+        self.assertEqual(
+            json.loads(native.read_text(encoding="utf-8")),
+            {"体力本": "副本乙", "⭐刷体力": False, "untouched": 42},
+        )
+
+    def test_task_mutations_validate_identity_and_day_before_writing(self):
+        before = self.native.read_bytes()
+        payloads = [
+            request(
+                "daily.enable",
+                {"script_name": "ok-ww", "daily_name": "每日任务", "enabled": False},
+            ),
+            request(
+                "weekly.select",
+                {
+                    "script_name": "ok-ww",
+                    "weekly_name": "不存在",
+                    "task_name": "不存在",
+                },
+            ),
+            request(
+                "weekly.select",
+                {
+                    "script_name": "ok-ww",
+                    "weekly_name": "幻梦游园",
+                    "task_name": "不存在",
+                },
+            ),
+        ] + [
+            request(
+                "weekly.start",
+                {"script_name": "ok-ww", "weekly_name": "幻梦游园", "start_day": value},
+            )
+            for value in (-1, 8, True)
+        ]
+        result, responses = self.serve(payloads)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(all(r["error"]["code"] == "invalid_params" for r in responses))
+        self.assertEqual(self.native.read_bytes(), before)
+        self.assertEqual(
+            load_yaml(str(self.root / "config/weekly.yml"))["weekly_start"]["ok-ww"][
+                "幻梦游园"
+            ],
+            1,
         )
 
     def test_weekly_disabled_and_unset_are_distinct(self):

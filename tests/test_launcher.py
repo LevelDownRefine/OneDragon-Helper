@@ -155,6 +155,31 @@ class TestUpdateRestart(unittest.TestCase):
                     timer.singleShot.assert_not_called()
 
 
+class TestCliGuiMode(unittest.TestCase):
+    def test_source_mode_selects_cli_and_skips_auto_launch(self):
+        with (
+            patch.object(sys, "argv", ["helper", "--cli-backend"]),
+            patch.object(launcher, "setup_logging"),
+            patch.object(launcher, "install_crash_hooks"),
+            patch.object(launcher, "config_workflow"),
+            patch.object(launcher, "run_cli", return_value=None),
+            patch.object(launcher, "_launch_qml") as launch,
+        ):
+            launcher.main()
+        launch.assert_called_once_with(cli_backend=True, skip_auto_launch=True)
+
+    def test_frozen_mode_rejected_before_initialization(self):
+        with (
+            patch.object(sys, "argv", ["helper", "--cli-backend"]),
+            patch.object(sys, "frozen", True, create=True),
+            patch.object(launcher, "config_workflow") as initialize,
+            self.assertRaises(SystemExit) as result,
+        ):
+            launcher.main()
+        self.assertEqual(result.exception.code, 2)
+        initialize.assert_not_called()
+
+
 class TestQtMessageLogger(unittest.TestCase):
     """_install_qt_message_logger：Qt/QML 告警路由到 logging（windowed exe 无 stderr）。"""
 

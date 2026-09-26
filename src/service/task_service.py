@@ -1,8 +1,13 @@
 """任务卡查询与编辑：聚合适配器数据，校验来自 CLI 的选择。"""
 
 from src.config.daily_config import get_daily_map, get_weekly_map
-from src.config.set_config import get_daily_readback, is_adapted, set_config
-from src.config.weekly import get_weekly_task
+from src.config.set_config import (
+    get_daily_readback,
+    is_adapted,
+    set_config,
+    set_daily_enabled,
+)
+from src.config.weekly import get_weekly_task, set_weekly_task
 from src.utils.utils_config import get_script, load_config
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_weekly import get_weekly_start_map
@@ -27,7 +32,12 @@ def app_snapshot() -> dict:
     """只读脚本列表，不预热所有脚本的适配器。"""
     config = load_config()
     assert "script_list" in config
-    return {"scripts": [_script_summary(script) for script in config["script_list"]]}
+    return {
+        "scripts": [
+            {**_script_summary(script), "script_data": dict(script)}
+            for script in config["script_list"]
+        ]
+    }
 
 
 def _require_script(script_name: str) -> dict:
@@ -128,4 +138,46 @@ def select_daily(
     elif sequence is not None:
         raise InvalidTaskSelection("该选项没有二级选择，sequence 必须为 null")
     set_config(script_name, daily_name, task_name, sequence)
+    return script_view(script_name)
+
+
+def enable_daily(script_name: str, daily_name: str, enabled: bool) -> dict:
+    """只改日常开关，副本选择保持原值。"""
+    view = script_view(script_name)
+    assert "dailies" in view
+    for daily in view["dailies"]:
+        assert "daily_name" in daily and "enabled" in daily
+        if daily["daily_name"] == daily_name and daily["enabled"] is not None:
+            break
+    else:
+        raise InvalidTaskSelection("该日常没有可用的启用开关")
+    if type(enabled) is not bool:
+        raise InvalidTaskSelection("enabled 必须为布尔值")
+    set_daily_enabled(script_name, daily_name, enabled)
+    return script_view(script_name)
+
+
+def require_weekly(script_name: str, weekly_name: str) -> dict:
+    """校验条目身份后返回物化周常声明。"""
+    _require_script(script_name)
+    for weekly in get_weekly_map(script_name):
+        assert "display_name" in weekly
+        if weekly["display_name"] == weekly_name:
+            return weekly
+    raise InvalidTaskSelection(f"周常不存在: {weekly_name}")
+
+
+def select_weekly(script_name: str, weekly_name: str, task_name: str) -> dict:
+    """按现有周常接口的展示名语义校验并写入。"""
+    weekly = require_weekly(script_name, weekly_name)
+    if "options" not in weekly:
+        raise InvalidTaskSelection("该周常没有副本选项")
+    assert "values" in weekly["options"]
+    names = []
+    for option in weekly["options"]["values"]:
+        assert "display_name" in option
+        names.append(option["display_name"])
+    if task_name not in names:
+        raise InvalidTaskSelection(f"周常副本不存在: {task_name}")
+    set_weekly_task(script_name, weekly_name, task_name)
     return script_view(script_name)

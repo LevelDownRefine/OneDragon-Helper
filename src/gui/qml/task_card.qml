@@ -109,16 +109,27 @@ Item {
             }
         }
         Text {
-            x: 58; y: 5; width: 286; height: 26
+            x: 58; y: 5
+            width: Bridge.cliBackend ? Math.max(60, taskStatusLabel.x - 70) : 286
+            height: 26
             text: Bridge.taskTitle
             elide: Text.ElideRight
             color: Theme.text; font.pixelSize: 18; font.weight: Font.DemiBold
         }
         Text {
+            id: taskStatusLabel
             anchors.right: parent.right; anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            text: "任务配置"
+            text: Bridge.cliBackend ? "CLI · " + Bridge.taskStatus + " · 刷新" : "任务配置"
             color: Theme.muted; font.pixelSize: 11
+            MouseArea {
+                objectName: "taskRefreshButton"
+                anchors.fill: parent
+                anchors.margins: -6
+                enabled: Bridge.cliBackend && !Bridge.taskBusy
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Bridge.refreshTasks()
+            }
         }
     }
 
@@ -134,6 +145,7 @@ Item {
     // 卡片坐标声明、弹窗锚点也只需减 contentY（rowsTop 在两端抵消）。
     Flickable {
         id: rowsFlick
+        enabled: !Bridge.taskBusy
         objectName: "rowsFlick"
         x: 0; y: cardRoot.rowsTop
         width: cardRoot.width

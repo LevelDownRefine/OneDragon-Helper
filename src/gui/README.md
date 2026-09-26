@@ -4,6 +4,11 @@
 
 ## 文件与依赖
 
+源码可用 `python -m src.launcher --cli-backend` 启动 CLI 任务卡测试模式：
+`cli_client.py` 通过 QProcess 异步管理无 Qt 后端，`controllers/cli_task_card.py` 只保存响应快照
+并展示状态。列表、日常和周常读写走 CLI；其余写入和启动入口在此模式暂不开放，默认 GUI 不变。
+完整用法与限制见 [GUI / CLI 测试说明](../../docs/rust-feasibility/headless-cli.md)。
+
 | 模块 | 职责 | 项目内依赖 |
 |------|------|-----------|
 | main_window，QmlBridge | QML 门面单例：组合各控制器 + 委托 property/slot | controllers/* / icons / service |
