@@ -207,6 +207,54 @@ class HeadlessProcessTests(unittest.TestCase):
             self.assertTrue(response["error"]["refresh_required"])
         self.assertEqual(before, self.native.read_bytes())
 
+    def test_list_add_reorder_remove_without_running_script_or_qt(self):
+        added = self.root / "scripts/new.py"
+        added.write_text(
+            "from pathlib import Path\nPath(__file__).with_suffix('.started').touch()\n",
+            encoding="utf-8",
+        )
+        result, responses = self.serve(
+            [
+                request("script.add", {"file_path": str(added)}, 1),
+                request(
+                    "script.reorder",
+                    {"script_names": ["new", "ok-ww", "自定义脚本"]},
+                    2,
+                ),
+                request("app.snapshot", request_id=3),
+                request("script.reorder", {"script_names": ["ok-ww", "自定义脚本"]}, 4),
+                request(
+                    "script.add", {"file_path": str(self.root / "scripts/ok-ww.exe")}, 5
+                ),
+                request("script.remove", {"script_name": "ok-ww"}, 6),
+                request("script.remove", {"script_name": "自定义脚本"}, 7),
+                request("script.remove", {"script_name": "new"}, 8),
+                request("app.snapshot", request_id=9),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(responses[0]["result"], {"script_name": "new"})
+        self.assertIsNone(responses[1]["result"])
+        self.assertEqual(
+            [script["script_name"] for script in responses[2]["result"]["scripts"]],
+            ["new", "ok-ww", "自定义脚本"],
+        )
+        for index in (3, 4, 7):
+            self.assertEqual(responses[index]["error"]["code"], "invalid_params")
+            self.assertFalse(responses[index]["error"]["refresh_required"])
+        self.assertIsNone(responses[5]["result"])
+        self.assertIsNone(responses[6]["result"])
+        self.assertEqual(
+            [script["script_name"] for script in responses[8]["result"]["scripts"]],
+            ["new"],
+        )
+        self.assertFalse(added.with_suffix(".started").exists())
+        self.assertTrue((self.root / "scripts/custom.py").exists())
+        weekly = load_yaml(str(self.root / "config/weekly.yml"))
+        self.assertNotIn("ok-ww", weekly["weekly_timeouts"])
+        self.assertNotIn("自定义脚本", weekly["weekly_timeouts"])
+        self.assertIn("new", weekly["weekly_timeouts"])
+
     def test_daily_defaults_and_noops_return_null(self):
         before = self.native.read_bytes()
         cases = [

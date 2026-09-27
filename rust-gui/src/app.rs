@@ -1,3 +1,4 @@
+use crate::list_dialog::{ListAction, ListDialog};
 use crate::opener::{OpenJob, Target};
 use crate::script_editor::{EditAction, EditView, ScriptEditor};
 use crate::view::{Action, Presentation, View};
@@ -18,6 +19,8 @@ pub struct Settings {
     pub capture: Option<PathBuf>,
     #[cfg(feature = "capture")]
     pub capture_editor: bool,
+    #[cfg(feature = "capture")]
+    pub capture_list: bool,
 }
 
 impl Settings {
@@ -50,6 +53,7 @@ pub struct App {
     ui: View,
     open_job: Option<OpenJob>,
     editor: Option<ScriptEditor>,
+    list_dialog: Option<ListDialog>,
     open_editor_after_snapshot: bool,
     #[cfg(feature = "capture")]
     capture_requested: bool,
@@ -80,6 +84,7 @@ impl App {
             ui: View::new(&cc.egui_ctx),
             open_job: None,
             editor: None,
+            list_dialog: None,
             open_editor_after_snapshot: false,
             #[cfg(feature = "capture")]
             capture_requested: false,
@@ -129,6 +134,8 @@ impl App {
         self.view = None;
         if let Some(name) = self.selected.clone() {
             self.request("script.view", json!({"script_name": name}));
+        } else {
+            self.write_confirmed = false;
         }
     }
 
@@ -145,6 +152,9 @@ impl App {
         if let Some(editor) = &mut self.editor {
             editor.failure(failure.message.clone(), true);
         }
+        if let Some(dialog) = &mut self.list_dialog {
+            dialog.failure(failure.message.clone(), true);
+        }
         self.error = Some(failure.message);
         if failure.code == "transport_failed" {
             self.backend = None;
@@ -158,6 +168,22 @@ impl App {
         let result = match reply.result {
             Ok(value) => value,
             Err(failure) => {
+                if matches!(
+                    reply.method.as_str(),
+                    "script.add" | "script.remove" | "script.reorder"
+                ) {
+                    let needs_reload =
+                        failure.refresh_required || failure.code == "transport_failed";
+                    let message = failure.message.clone();
+                    self.fail(failure);
+                    if let Some(dialog) = &mut self.list_dialog {
+                        dialog.failure(message, needs_reload);
+                    }
+                    if self.backend.is_some() {
+                        self.request("app.snapshot", json!({}));
+                    }
+                    return;
+                }
                 if matches!(
                     reply.method.as_str(),
                     "script.edit_view" | "script.edit_save"
@@ -190,6 +216,7 @@ impl App {
             match serde_json::from_value::<Snapshot>(result) {
                 Ok(snapshot) => {
                     self.scripts = snapshot.scripts;
+                    self.ui.reconcile_scripts(&self.scripts);
                     if let Some(editor) = &self.editor
                         && editor.needs_reload
                         && let Some(script) = self
@@ -231,15 +258,21 @@ impl App {
                 }
                 _ => self.fail(Failure::transport("脚本配置数据无效")),
             }
-        } else if reply.method == "script.edit_save" {
+        } else if matches!(reply.method.as_str(), "script.edit_save" | "script.add") {
             #[derive(serde::Deserialize)]
             struct Saved {
                 script_name: String,
             }
             match serde_json::from_value::<Saved>(result) {
                 Ok(saved) if !saved.script_name.is_empty() => {
+                    if reply.method == "script.edit_save"
+                        && let Some(old) = &self.selected
+                    {
+                        self.ui.rename_script(old, &saved.script_name);
+                    }
                     self.selected = Some(saved.script_name);
                     self.editor = None;
+                    self.list_dialog = None;
                     self.view = None;
                     self.write_confirmed = true;
                     self.ui.toast("配置已保存");
@@ -247,6 +280,13 @@ impl App {
                 }
                 _ => self.fail(Failure::transport("脚本保存响应无效，请刷新核对")),
             }
+        } else if matches!(reply.method.as_str(), "script.remove" | "script.reorder")
+            && result.is_null()
+        {
+            self.list_dialog = None;
+            self.write_confirmed = true;
+            self.ui.toast("列表已保存");
+            self.request("app.snapshot", json!({}));
         } else if reply.method == "script.target" {
             match serde_json::from_value::<Target>(result) {
                 Ok(Target::Unavailable { reason }) => {
@@ -282,6 +322,10 @@ impl App {
                         #[cfg(feature = "capture")]
                         if self.settings.capture.is_some() && self.settings.capture_editor {
                             self.request("script.edit_view", json!({"script_name": self.selected}));
+                        }
+                        #[cfg(feature = "capture")]
+                        if self.settings.capture.is_some() && self.settings.capture_list {
+                            self.ui.open_manual_menu();
                         }
                     }
                 }
@@ -398,6 +442,23 @@ impl eframe::App for App {
                     }
                 }
                 Action::Diagnostics => self.ui.diagnostics_open = !self.ui.diagnostics_open,
+                Action::AddScript => {
+                    self.ui.close_menu();
+                    self.list_dialog = Some(ListDialog::add());
+                }
+                Action::RemoveScript(name) => {
+                    self.ui.close_menu();
+                    if self.scripts.len() <= 1 {
+                        self.ui.toast("至少保留一个脚本，无法删除");
+                    } else if let Some(script) = self
+                        .scripts
+                        .iter()
+                        .find(|script| script.script_name == name)
+                    {
+                        self.list_dialog =
+                            Some(ListDialog::remove(name, script.display_name.clone()));
+                    }
+                }
             }
         }
         if let Some(action) = self
@@ -424,6 +485,32 @@ impl eframe::App for App {
                 EditAction::Save(request) => {
                     self.error = None;
                     self.request(&request.method, request.params);
+                }
+            }
+        }
+        if let Some(action) = self
+            .list_dialog
+            .as_mut()
+            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+        {
+            match action {
+                ListAction::Request(request) => {
+                    self.error = None;
+                    self.request(&request.method, request.params);
+                }
+                ListAction::Cancel => {
+                    self.list_dialog = None;
+                    if self.view.is_none() && self.backend.is_some() {
+                        self.request("app.snapshot", json!({}));
+                    }
+                }
+                ListAction::Refresh => {
+                    self.list_dialog = None;
+                    if self.backend.is_some() {
+                        self.request("app.snapshot", json!({}));
+                    } else {
+                        self.connect();
+                    }
                 }
             }
         }
@@ -509,6 +596,8 @@ mod tests {
                 capture: None,
                 #[cfg(feature = "capture")]
                 capture_editor: false,
+                #[cfg(feature = "capture")]
+                capture_list: false,
             },
             backend: Some(Backend::start(command, || {})),
             scripts: Vec::new(),
@@ -526,6 +615,7 @@ mod tests {
             ui: View::new(&ctx),
             open_job: None,
             editor: None,
+            list_dialog: None,
             open_editor_after_snapshot: false,
             ctx,
             #[cfg(feature = "capture")]

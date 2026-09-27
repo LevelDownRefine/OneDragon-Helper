@@ -17,9 +17,12 @@
   连接诊断、窗口拖动/最小化/关闭。其余入口保持“暂不可用”直到对应 PR 接通。
 - E [#106](https://github.com/LevelDownRefine/OneDragon-Helper/pull/106) 已接通官网、B 站、GitHub、
   脚本目录、日志及配置文件入口；`codex/rust-gui-navigation` 基于 #103，使用 `script.target`。
-- F `codex/rust-gui-script-config` 基于 #106，接通单脚本配置表单与 Windows 文件选择；
+- F [#107](https://github.com/LevelDownRefine/OneDragon-Helper/pull/107) `codex/rust-gui-script-config`
+  基于 #106，接通单脚本配置表单与 Windows 文件选择；
   `script.edit_view/edit_save` 沿用显式初始化边界，部分失败保留草稿、重新读取后方可再次保存。
   新增 `launcher-rust.bat` 便于从仓库或 worktree 双击测试。
+- G `codex/rust-gui-script-list` 基于 #107，接通脚本/快捷方式添加、删除确认、拖动排序，
+  以及手动勾选、全选/清空。手动状态按脚本身份保留在内存，后台拒绝过期排序。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

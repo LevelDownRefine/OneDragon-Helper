@@ -34,6 +34,7 @@ from src.config.set_config import (
 )
 from src.config.task_switch import task_switch_of
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
+from src.service import script_list
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -102,6 +103,15 @@ class AppService:
     def app_snapshot(self) -> dict:
         """CLI 首屏脚本列表。"""
         return task_service.app_snapshot()
+
+    def add_script_path(self, file_path: str) -> dict:
+        return script_list.add_path(file_path)
+
+    def remove_script_entry(self, script_name: str) -> None:
+        return script_list.remove(script_name)
+
+    def reorder_scripts(self, script_names: list[str]) -> None:
+        return script_list.reorder(script_names)
 
     def script_view(self, script_name: str) -> dict:
         """CLI 任务卡及物化选项。"""

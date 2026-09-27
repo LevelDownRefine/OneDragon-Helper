@@ -59,6 +59,9 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `script.target` | `script_name/target` | 只解析工具栏的 URL、路径或不可用原因，不执行打开动作 |
 | `script.edit_view` | `script_name` | 原脚本条目 `script`、标识 `script_name`、七日 `weekly_timeouts` 和 `switches`（name/enabled） |
 | `script.edit_save` | `script_name/display_name/config_patch/weekly_timeouts/switches` | 保存完整脚本表单，返回 `{"script_name":"保存后的标识"}` |
+| `script.add` | `file_path` | 解析脚本/快捷方式并添加，返回 `{"script_name":"新标识"}`；不运行文件 |
+| `script.remove` | `script_name` | 删除助手条目及每周设置，保留源文件，返回 null；至少保留一个条目 |
+| `script.reorder` | `script_names` | 按完整唯一标识列表重排，返回 null；拒绝重复或过期快照 |
 | `daily.select` | 必填 `script_name`；可选 `daily_name/task_name/sequence`，默认均为 null | 沿用原日常选择接口，返回 null |
 | `daily.enable` | `script_name/daily_name/enabled` | 修改目标开关，不改变已选副本，返回 null |
 | `weekly.select` | `script_name/weekly_name/task_name` | 沿用原周常选择接口，返回 null |
@@ -101,6 +104,10 @@ null 沿用默认超时，低于 10 秒的值保留原运行语义。switches �
 保存顺序复用 update_script → init_script_after_edit → set_script_switches，后续失败可能已部分写入；
 客户端保留草稿、刷新 app.snapshot（改名可能改变身份），要求重新读取表单后再由用户保存。
 正常保存后也须重新查询，不把旧身份继续用于任务卡请求；取消表单无需请求。
+
+列表操作同样区分预校验失败和部分保存失败，客户端均通过 app.snapshot 重读；
+不会因为刷新失败重复添加/删除。手动勾选与控制模式只在 GUI 内存中，不提供写配置接口；
+脚本重排按身份保留勾选，新条目默认启用，重启回到全选。每日计划不读取此状态。
 
 | 错误码 | 含义 |
 | --- | --- |

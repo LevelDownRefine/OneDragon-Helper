@@ -5,6 +5,7 @@ use onedragon_rust_gui::{
     model::{Daily, Script, ScriptView, Weekly, start_label},
 };
 use serde_json::json;
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 pub enum Action {
@@ -12,6 +13,8 @@ pub enum Action {
     Request(Request),
     Refresh,
     Diagnostics,
+    AddScript,
+    RemoveScript(String),
 }
 
 pub struct Presentation<'a> {
@@ -42,6 +45,9 @@ pub struct View {
     menu: Option<Menu>,
     toast: Option<(String, Instant)>,
     pub diagnostics_open: bool,
+    control_mode: bool,
+    disabled: HashSet<String>,
+    dragging: Option<String>,
 }
 
 impl View {
@@ -51,11 +57,32 @@ impl View {
             menu: None,
             toast: None,
             diagnostics_open: false,
+            control_mode: false,
+            disabled: HashSet::new(),
+            dragging: None,
         }
     }
 
     pub fn close_menu(&mut self) {
         self.menu = None;
+        self.control_mode = false;
+        self.dragging = None;
+    }
+
+    pub fn reconcile_scripts(&mut self, scripts: &[Script]) {
+        self.disabled
+            .retain(|name| scripts.iter().any(|script| &script.script_name == name));
+    }
+
+    #[cfg(feature = "capture")]
+    pub fn open_manual_menu(&mut self) {
+        self.control_mode = true;
+    }
+
+    pub fn rename_script(&mut self, old: &str, new: &str) {
+        if self.disabled.remove(old) {
+            self.disabled.insert(new.into());
+        }
     }
 
     pub fn toast(&mut self, message: impl Into<String>) {
@@ -75,9 +102,9 @@ impl View {
         if drag.drag_started() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
-        self.sidebar(ui, &data, &mut actions);
         self.controls(ui, screen, &data, &mut actions);
         self.card(ui, &data, &mut actions);
+        self.sidebar(ui, &data, &mut actions);
         if data.busy {
             self.menu = None;
         }
@@ -138,6 +165,10 @@ impl View {
 
     fn sidebar(&mut self, ui: &mut Ui, data: &Presentation<'_>, actions: &mut Vec<Action>) {
         let height = ui.max_rect().height();
+        let mut drop_index = None;
+        if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
+            self.dragging = None;
+        }
         ui.painter().rect_filled(
             rect(0.0, 0.0, 80.0, height),
             egui::CornerRadius {
@@ -160,7 +191,7 @@ impl View {
                     .id_salt("script-list")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        for script in data.scripts {
+                        for (index, script) in data.scripts.iter().enumerate() {
                             let (row, _) = ui.allocate_exact_size(vec2(80.0, 64.0), Sense::hover());
                             let button =
                                 Rect::from_min_size(row.min + vec2(12.0, 0.0), vec2(56.0, 56.0));
@@ -168,7 +199,7 @@ impl View {
                             let response = ui.interact(
                                 button,
                                 Id::new(("script", &script.script_name)),
-                                Sense::click(),
+                                Sense::click_and_drag(),
                             );
                             if active {
                                 ui.painter().rect_filled(
@@ -191,9 +222,41 @@ impl View {
                                 "script",
                                 Rect::from_center_size(button.center(), vec2(40.0, 40.0)),
                             );
+                            if self.disabled.contains(&script.script_name) {
+                                ui.painter().rect_filled(
+                                    button.shrink(4.0),
+                                    10,
+                                    egui::Color32::from_black_alpha(150),
+                                );
+                            }
+                            if response.drag_started() && !data.busy {
+                                self.dragging = Some(script.script_name.clone());
+                                self.menu = None;
+                            }
+                            if self.dragging.is_some()
+                                && ui.input(|input| {
+                                    input.pointer.interact_pos().is_some_and(|pos| {
+                                        button.contains(pos) && ui.clip_rect().contains(pos)
+                                    })
+                                })
+                            {
+                                drop_index = Some(index);
+                                ui.painter().rect_stroke(
+                                    button,
+                                    16,
+                                    egui::Stroke::new(2.0, ACCENT),
+                                    egui::StrokeKind::Inside,
+                                );
+                            }
                             if response.clicked() && !data.busy {
                                 self.menu = None;
-                                actions.push(Action::Select(script.script_name.clone()));
+                                if self.control_mode {
+                                    if !self.disabled.remove(&script.script_name) {
+                                        self.disabled.insert(script.script_name.clone());
+                                    }
+                                } else {
+                                    actions.push(Action::Select(script.script_name.clone()));
+                                }
                             }
                             response.on_hover_text(&script.display_name);
                         }
@@ -206,9 +269,99 @@ impl View {
             egui::Stroke::new(1.0, DIVIDER),
         );
         let grid = rect(16.0, base + 8.0, 48.0, 48.0);
-        panel(ui, grid, 14, CONTROL);
-        if self.icon_button(ui, "grid", grid, "选择手动运行的脚本 · 暂不可用", true) {
-            self.unavailable("手动选择");
+        panel(
+            ui,
+            grid,
+            14,
+            if self.control_mode {
+                ACCENT_SOFT
+            } else {
+                CONTROL
+            },
+        );
+        if self.dragging.is_some() {
+            centered(ui, grid, "删除", 14.0, egui::Color32::LIGHT_RED);
+            if ui.input(|input| input.pointer.any_released()) {
+                let name = self.dragging.take().expect("active drag");
+                if !data.busy {
+                    if ui.input(|input| {
+                        input
+                            .pointer
+                            .interact_pos()
+                            .is_some_and(|pos| grid.contains(pos))
+                    }) {
+                        actions.push(Action::RemoveScript(name));
+                    } else if let Some(index) = drop_index {
+                        let mut names: Vec<String> = data
+                            .scripts
+                            .iter()
+                            .map(|script| script.script_name.clone())
+                            .collect();
+                        if let Some(source) = names.iter().position(|candidate| candidate == &name)
+                            && source != index
+                        {
+                            names.remove(source);
+                            names.insert(index, name);
+                            actions.push(Action::Request(Request {
+                                method: "script.reorder".into(),
+                                params: json!({"script_names":names}),
+                            }));
+                        }
+                    }
+                }
+            }
+        } else if self.icon_button(ui, "grid", grid, "选择手动运行的脚本", true) && !data.busy
+        {
+            self.control_mode = !self.control_mode;
+            self.menu = None;
+            if self.control_mode {
+                self.toast("手动选择：点击图标勾选，不影响每日计划");
+            }
+        }
+        let bubble = rect(92.0, base + 2.0, 156.0, 60.0);
+        if self.control_mode && self.dragging.is_none() {
+            panel(ui, bubble, 16, PANEL);
+            for (index, text) in ["全", "清", "＋"].iter().enumerate() {
+                let bounds = rect(
+                    bubble.left() + 16.0 + 44.0 * index as f32,
+                    bubble.top() + 12.0,
+                    36.0,
+                    36.0,
+                );
+                panel(ui, bounds, 10, CONTROL);
+                centered(ui, bounds, text, 16.0, TEXT);
+                if ui
+                    .interact(bounds, Id::new(("manual-action", index)), Sense::click())
+                    .clicked()
+                    && !data.busy
+                {
+                    match index {
+                        0 => self.disabled.clear(),
+                        1 => {
+                            self.disabled = data
+                                .scripts
+                                .iter()
+                                .map(|script| script.script_name.clone())
+                                .collect()
+                        }
+                        2 => {
+                            self.control_mode = false;
+                            actions.push(Action::AddScript);
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            if ui.input(|input| {
+                input.key_pressed(egui::Key::Escape)
+                    || (input.pointer.any_click()
+                        && input
+                            .pointer
+                            .interact_pos()
+                            .is_some_and(|pos| pos.x > 80.0 && !bubble.contains(pos)))
+            }) {
+                self.control_mode = false;
+            }
         }
         let batch = rect(16.0, base + 64.0, 48.0, 48.0);
         ui.painter().circle_filled(batch.center(), 24.0, BATCH);
@@ -1066,5 +1219,82 @@ mod tests {
         let request = only_request(scene.click(Id::new(("icon", "脚本配置"))));
         assert_eq!(request.method, "script.edit_view");
         assert_eq!(request.params, json!({"script_name": "test"}));
+    }
+
+    #[test]
+    fn manual_selection_is_local_and_follows_identity() {
+        let mut scene = Scene::new();
+        assert!(
+            scene
+                .click(Id::new(("icon", "选择手动运行的脚本")))
+                .is_empty()
+        );
+        scene.frame(vec![]);
+        assert!(scene.click(Id::new(("script", "test"))).is_empty());
+        assert!(scene.ui.disabled.contains("test"));
+        assert!(scene.click(Id::new(("manual-action", 0_usize))).is_empty());
+        assert!(scene.ui.disabled.is_empty());
+        assert!(scene.click(Id::new(("manual-action", 1_usize))).is_empty());
+        scene.ui.rename_script("test", "new");
+        assert_eq!(scene.ui.disabled, HashSet::from(["new".into()]));
+        scene.ui.reconcile_scripts(&scene.scripts);
+        assert!(scene.ui.disabled.is_empty());
+        let actions = scene.click(Id::new(("manual-action", 2_usize)));
+        assert!(matches!(actions.as_slice(), [Action::AddScript]));
+        assert!(!scene.ui.control_mode);
+        assert!(Scene::new().ui.disabled.is_empty());
+    }
+
+    #[test]
+    fn drag_reorders_or_requests_delete_confirmation() {
+        for delete in [false, true] {
+            let mut scene = Scene::new();
+            let mut second = scene.scripts[0].clone();
+            second.script_name = "second".into();
+            scene.scripts.push(second);
+            scene.frame(vec![]);
+            let start = scene
+                .ctx
+                .read_response(Id::new(("script", "test")))
+                .unwrap()
+                .rect
+                .center();
+            let end = if delete {
+                pos2(40.0, 632.0)
+            } else {
+                scene
+                    .ctx
+                    .read_response(Id::new(("script", "second")))
+                    .unwrap()
+                    .rect
+                    .center()
+            };
+            scene.frame(vec![
+                egui::Event::PointerMoved(start),
+                egui::Event::PointerButton {
+                    pos: start,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+            ]);
+            scene.frame(vec![egui::Event::PointerMoved(end)]);
+            let actions = scene.frame(vec![egui::Event::PointerButton {
+                pos: end,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            }]);
+            if delete {
+                assert!(
+                    matches!(actions.as_slice(),[Action::RemoveScript(name)] if name == "test")
+                );
+            } else {
+                let request = only_request(actions);
+                assert_eq!(request.method, "script.reorder");
+                assert_eq!(request.params, json!({"script_names":["second","test"]}));
+            }
+            assert!(scene.ui.dragging.is_none());
+        }
     }
 }

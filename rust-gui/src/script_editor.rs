@@ -171,7 +171,8 @@ impl ScriptEditor {
                                                 .desired_width(325.0),
                                         );
                                         if ui.button("浏览…").clicked() {
-                                            self.picker = Some(FilePicker::start(ctx.clone()));
+                                            self.picker =
+                                                Some(FilePicker::start(ctx.clone(), false));
                                         }
                                     });
                                     ui.end_row();

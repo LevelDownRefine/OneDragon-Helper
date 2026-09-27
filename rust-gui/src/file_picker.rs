@@ -4,10 +4,10 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 pub struct FilePicker(Receiver<Result<Option<String>, String>>);
 
 impl FilePicker {
-    pub fn start(ctx: eframe::egui::Context) -> Self {
+    pub fn start(ctx: eframe::egui::Context, include_shortcuts: bool) -> Self {
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {
-            let _ = sender.send(pick());
+            let _ = sender.send(pick(include_shortcuts));
             ctx.request_repaint();
         });
         Self(receiver)
@@ -23,14 +23,18 @@ impl FilePicker {
 }
 
 #[cfg(windows)]
-fn pick() -> Result<Option<String>, String> {
+fn pick(include_shortcuts: bool) -> Result<Option<String>, String> {
     use windows_sys::Win32::UI::Controls::Dialogs::{
         CommDlgExtendedError, GetOpenFileNameW, OFN_DONTADDTORECENT, OFN_FILEMUSTEXIST,
         OFN_NOCHANGEDIR, OFN_PATHMUSTEXIST, OPENFILENAMEW,
     };
-    let filter: Vec<u16> = "脚本文件\0*.exe;*.bat;*.py\0所有文件\0*.*\0\0"
-        .encode_utf16()
-        .collect();
+    let filter: Vec<u16> = if include_shortcuts {
+        "脚本和快捷方式\0*.exe;*.bat;*.py;*.lnk\0所有文件\0*.*\0\0"
+    } else {
+        "脚本文件\0*.exe;*.bat;*.py\0所有文件\0*.*\0\0"
+    }
+    .encode_utf16()
+    .collect();
     let title: Vec<u16> = "选择脚本".encode_utf16().chain(Some(0)).collect();
     let mut buffer = vec![0_u16; 32768];
     let mut dialog = OPENFILENAMEW {
@@ -62,6 +66,6 @@ fn pick() -> Result<Option<String>, String> {
 }
 
 #[cfg(not(windows))]
-fn pick() -> Result<Option<String>, String> {
+fn pick(_include_shortcuts: bool) -> Result<Option<String>, String> {
     Err("当前系统请直接粘贴脚本路径".into())
 }

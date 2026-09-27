@@ -15,6 +15,9 @@ METHODS = {
     "script.view": ("script_view", ("script_name",), ()),
     "script.target": ("resolve_script_target", ("script_name", "target"), ()),
     "script.edit_view": ("script_edit_view", ("script_name",), ()),
+    "script.add": ("add_script_path", ("file_path",), ()),
+    "script.remove": ("remove_script_entry", ("script_name",), ()),
+    "script.reorder": ("reorder_scripts", ("script_names",), ()),
     "script.edit_save": (
         "save_script_edit",
         ("script_name", "display_name", "config_patch", "weekly_timeouts", "switches"),
@@ -73,6 +76,7 @@ def _parse_json(payload: str):
 def handle_request(service, request) -> dict:
     """串行分发，协议输入先校验；业务异常保留诊断并返回明确失败。"""
     from src.service.script_edit import InvalidScriptEdit
+    from src.service.script_list import InvalidScriptList
     from src.service.task_service import InvalidTaskSelection
 
     request_id = None
@@ -122,7 +126,7 @@ def handle_request(service, request) -> dict:
         }
     except ProtocolError as exc:
         return _error(request_id, exc.code, str(exc))
-    except (InvalidTaskSelection, InvalidScriptEdit) as exc:
+    except (InvalidTaskSelection, InvalidScriptEdit, InvalidScriptList) as exc:
         return _error(request_id, "invalid_params", str(exc))
     except Exception:  # noqa: BLE001 -- IPC 边界必须回复；写入可能已部分完成。
         logger.exception("任务卡请求失败，id=%r", request_id)
