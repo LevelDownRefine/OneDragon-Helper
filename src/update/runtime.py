@@ -1,12 +1,11 @@
 """同一安装目录的运行共享锁和更新独占锁。"""
 
 import contextlib
-import ctypes
 import logging
 import os
-import time
 from pathlib import Path
 
+import portalocker
 import psutil
 
 from src.update.package import APP_EXE, RUNNER_EXE, UpdateError
@@ -19,81 +18,31 @@ class UpdateBusyError(UpdateError):
 
 
 class FileLease:
-    """进程退出后由系统释放；Windows 使用 LockFileEx，Linux 用 flock。"""
+    """共享运行锁和独占更新锁，由 portalocker 管理跨平台加锁与释放。"""
 
     def __init__(self, path: Path, *, shared: bool = False, timeout: float = 0):
         self.path = path
-        self.shared = shared
-        self.timeout = timeout
-        self.stream = None
+        self.lock = portalocker.Lock(
+            path,
+            mode="a+b",
+            timeout=timeout,
+            check_interval=0.1,
+            flags=(portalocker.LOCK_SH if shared else portalocker.LOCK_EX)
+            | portalocker.LOCK_NB,
+        )
 
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.stream = self.path.open("a+b")
-        deadline = time.monotonic() + self.timeout
-        while True:
-            try:
-                self._lock()
-                return self
-            except BlockingIOError as exc:
-                if time.monotonic() >= deadline:
-                    self.stream.close()
-                    raise UpdateBusyError("助手正在运行任务或更新，请稍后重试") from exc
-                time.sleep(0.1)
-            except OSError:
-                self.stream.close()
-                raise
+        try:
+            self.lock.acquire()
+        except portalocker.AlreadyLocked as exc:
+            raise UpdateBusyError("助手正在运行任务或更新，请稍后重试") from exc
+        except portalocker.LockException as exc:
+            raise UpdateError(f"无法锁定安装目录: {exc}") from exc
+        return self
 
-    def _lock(self):
-        assert self.stream is not None
-        if os.name == "nt":
-            import msvcrt
-            from ctypes import wintypes
-
-            class Overlapped(ctypes.Structure):
-                _fields_ = [
-                    ("Internal", ctypes.c_size_t),
-                    ("InternalHigh", ctypes.c_size_t),
-                    ("Offset", wintypes.DWORD),
-                    ("OffsetHigh", wintypes.DWORD),
-                    ("hEvent", wintypes.HANDLE),
-                ]
-
-            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-            kernel.LockFileEx.argtypes = [
-                wintypes.HANDLE,
-                wintypes.DWORD,
-                wintypes.DWORD,
-                wintypes.DWORD,
-                wintypes.DWORD,
-                ctypes.POINTER(Overlapped),
-            ]
-            kernel.LockFileEx.restype = wintypes.BOOL
-            flags = 1 | (0 if self.shared else 2)
-            overlap = Overlapped()
-            if not kernel.LockFileEx(
-                msvcrt.get_osfhandle(self.stream.fileno()),
-                flags,
-                0,
-                1,
-                0,
-                ctypes.byref(overlap),
-            ):
-                error = ctypes.get_last_error()
-                if error in (33, 32):
-                    raise BlockingIOError(error, "安装目录被占用")
-                raise ctypes.WinError(error)
-        else:
-            import fcntl
-
-            fcntl.flock(
-                self.stream,
-                (fcntl.LOCK_SH if self.shared else fcntl.LOCK_EX) | fcntl.LOCK_NB,
-            )
-
-    def __exit__(self, *_args):
-        assert self.stream is not None
-        self.stream.close()
+    def __exit__(self, *args):
+        self.lock.__exit__(*args)
 
 
 def update_directory(root: Path) -> Path:
