@@ -1,4 +1,4 @@
-"""真实打包界面在默认 D3D11 与 WARP 下的绘制验证。"""
+"""真实发布界面：Qt 验证 D3D11/WARP，Rust 验证应用自身截图。"""
 
 import os
 import shutil
@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from src.update.package import load_manifest, manifest_frontend
 from tests.exe import package_dir
 
 PACKAGE = package_dir()
@@ -20,11 +21,14 @@ EXE_NAME = "OneDragon-Helper.exe"
 )
 class TestPackagedRendering(unittest.TestCase):
     def test_native_window_renders_without_software_opengl(self):
-        """实际绘制首帧，覆盖删除 DLL 后默认和无 GPU 加速的启动路径。"""
+        """各前端实际绘制窗口，不依赖 Qt software OpenGL DLL。"""
         self.assertFalse(list(PACKAGE.rglob("opengl32sw.dll")))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "app"
             shutil.copytree(PACKAGE, root)
+            if manifest_frontend(load_manifest(root)) == "rust":
+                self._check_rust_frame(root, Path(directory))
+                return
             # 测试副本不配置任何脚本，避免倒计时启动游戏。
             (root / "config/config.yml").write_text(
                 "script_list: []\n", encoding="utf-8"
@@ -86,3 +90,31 @@ class TestPackagedRendering(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, detail)
                     self.assertIn("ODH_D3D11_FRAME_READY", output, detail)
                     self.assertNotIn("[CRITICAL]", output, detail)
+
+    def _check_rust_frame(self, root: Path, directory: Path):
+        from PySide6.QtGui import QImage
+
+        (root / "config/config.yml").write_text(
+            "script_list:\n- display_name: 绘制测试\n  script_path: render.py\n",
+            encoding="utf-8",
+        )
+        (root / "render.py").write_text("# Fixture only; never executed.\n")
+        screenshot = directory / "rust-frame.png"
+        result = subprocess.run(
+            [str(root / EXE_NAME), "--after-update", "--capture", str(screenshot)],
+            cwd=root,
+            env={**os.environ, "__COMPAT_LAYER": "RunAsInvoker"},
+            capture_output=True,
+            timeout=45,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        image = QImage(str(screenshot))
+        self.assertFalse(image.isNull(), "Rust 未产生真实绘制截图")
+        self.assertGreaterEqual(image.width(), 640)
+        self.assertGreaterEqual(image.height(), 360)
+        colors = {
+            image.pixel(x, y)
+            for x in range(0, image.width(), 40)
+            for y in range(0, image.height(), 40)
+        }
+        self.assertGreater(len(colors), 8, "Rust 截图只有空白或单色")

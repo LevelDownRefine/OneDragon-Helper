@@ -76,6 +76,8 @@ def build(root: Path, destination: Path, *, tag: str = "", test: bool = False) -
                 "build",
                 "--release",
                 "--locked",
+                "--features",
+                "capture",
                 "--manifest-path",
                 str(root / "rust-gui/Cargo.toml"),
                 "--target-dir",
