@@ -113,9 +113,10 @@ cargo build --release --locked --manifest-path rust-gui/Cargo.toml
 - 壁纸按钮可选择 PNG、JPEG、WebP、BMP 或恢复默认；按脚本切换背景，保持比例填满窗口。
   Rust 后台解码并限制内存/尺寸，处理 EXIF 方向，长边超过 1920 的图片生成缩图；
   映射与缓存由 Python service 写盘。旧结果丢弃，损坏缓存回退原图，缺失/损坏原图显示渐变。
-  视频当前只显示已有首帧缓存或渐变占位，播放入口在弹窗中说明暂不可用。
+  视频可选择 MP4、WebM、MKV、MOV；Windows 系统解码，静音循环，500ms 后开始播放。
+  首帧由 CLI 保存为与原版兼容的预览缓存；切换脚本丢弃旧帧，播放失败保留预览/已显示画面并提示。
 
-更新与视频播放还未迁移。此原型仍需源码和 Python 环境，不是发布包替代品。
+手动更新还未迁移。此原型仍需源码和 Python 环境，不是发布包替代品。
 
 尺寸与颜色对应 `src/gui/qml/Layout.js`、`Theme.js`；嵌入 `assets/ds.jpg` 用于初始背景，
 加载后使用 CLI 解析的脚本默认/自定义壁纸。
@@ -236,3 +237,20 @@ Ubuntu Python 1202 项（1168 通过、34 项原有跳过，115.858 秒）；Ruf
 缓存通过最大 8 MiB 的请求传输，独立有界写线程保证后端停止读取时仍可超时/关闭；
 真实 CLI 测试验证大缓存往返及过期 token 拒绝。capture 构建可加 `--capture-wallpaper`，
 等待图片就绪后截取壁纸编辑窗。
+
+视频壁纸批次验证：Rust 64 项通过，包含真实 H.264/AAC 解码、禁用音轨、时间戳、循环、
+2400 像素宽视频缩放、方向元数据与颜色、正负行距、坏视频保留预览、退出和切换释放媒体。
+Ubuntu Python 1207 项（1173 通过、34 项原有跳过），Ruff、rustfmt、严格 Clippy 通过。
+Windows 实窗视频及编辑窗截图已检查，首帧缓存写入且源文件不变；测试媒体均为生成夹具。
+
+平台实现使用 `windows 0.62.2` 的 Media Foundation 绑定，单个解码线程只保留最新待显示帧，
+输出最长边 1920，按媒体时间戳播放；没有音频输出设备。正常停止后释放 COM 对象与文件，
+若系统解码调用迟迟未返回，界面不等待它，线程返回或进程退出时释放资源。
+实际解码能力取决于系统媒体组件与编解码器，Windows N 等缺少媒体组件的系统需安装相应组件；
+非 Windows 显示预览与明确不可播放原因。没有附带 FFmpeg/Qt 播放库，也不承诺任意编码均可播放。
+原理参考微软 [Source Reader](https://learn.microsoft.com/en-us/windows/win32/medfound/processing-media-data-with-the-source-reader)
+与 [高级视频处理](https://learn.microsoft.com/en-us/windows/win32/medfound/mf-source-reader-enable-advanced-video-processing)。
+
+同机、同一 release + capture 配置，本批 EXE 为 8,664,064 字节，图片壁纸基线为
+8,614,912 字节，增加 49,152 字节（48 KiB）。这是视频批次对开发截图构建的增量，
+不包括 Python 后端和系统媒体组件，也不是完整发布包或与 Qt 的同功能体积比较。

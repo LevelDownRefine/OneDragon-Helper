@@ -14,6 +14,7 @@ mod script_editor;
 mod settings_dialog;
 mod shutdown;
 mod skin;
+mod video;
 mod view;
 mod wallpaper;
 

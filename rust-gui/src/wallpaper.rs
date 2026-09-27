@@ -35,6 +35,8 @@ struct Loaded {
 type Reply = (u64, Result<Loaded, String>);
 
 pub struct Backdrop {
+    video: crate::video::Player,
+    video_ready: bool,
     sender: mpsc::SyncSender<(u64, Wallpaper)>,
     receiver: mpsc::Receiver<Reply>,
     pending: Option<(u64, Wallpaper)>,
@@ -50,6 +52,7 @@ impl Backdrop {
     pub fn new(ctx: egui::Context) -> Self {
         let (sender, requests) = mpsc::sync_channel::<(u64, Wallpaper)>(1);
         let (replies, receiver) = mpsc::sync_channel(1);
+        let video = crate::video::Player::new(ctx.clone());
         std::thread::spawn(move || {
             for (generation, state) in requests {
                 let result = load(&state);
@@ -60,6 +63,8 @@ impl Backdrop {
             }
         });
         Self {
+            video,
+            video_ready: false,
             sender,
             receiver,
             pending: None,
@@ -74,6 +79,8 @@ impl Backdrop {
 
     pub fn select(&mut self, display_name: &str) {
         self.generation += 1;
+        self.video.set(self.generation, None);
+        self.video_ready = false;
         self.state = None;
         self.pending = None;
         self.cache = None;
@@ -87,10 +94,13 @@ impl Backdrop {
             return;
         }
         self.select(&state.display_name);
-        if state.mode == Mode::Gradient || (state.mode == Mode::Video && state.cache.is_none()) {
+        if state.mode == Mode::Gradient {
             self.ready = true;
-        } else {
+        } else if state.mode != Mode::Video || state.cache.is_some() {
             self.pending = Some((self.generation, state.clone()));
+        }
+        if state.mode == Mode::Video {
+            self.video.set(self.generation, Some(state.source.clone()));
         }
         self.state = Some(state);
     }
@@ -102,10 +112,16 @@ impl Backdrop {
     pub fn poll(&mut self, ctx: &egui::Context) -> Option<String> {
         let mut error = None;
         while let Ok((generation, result)) = self.receiver.try_recv() {
-            if generation != self.generation {
+            if generation != self.generation || self.video_ready {
                 continue;
             }
-            self.ready = true;
+            let video = self
+                .state
+                .as_ref()
+                .is_some_and(|state| state.mode == Mode::Video);
+            if !video {
+                self.ready = true;
+            }
             match result {
                 Ok(loaded) => {
                     self.texture = Some(ctx.load_texture(
@@ -123,7 +139,37 @@ impl Backdrop {
                         });
                     }
                 }
+                Err(message) if video => log::warn!("视频首帧缓存不可读，等待解码：{message}"),
                 Err(message) => error = Some(format!("壁纸无法显示，已使用渐变背景：{message}")),
+            }
+        }
+        if let Some(output) = self.video.poll()
+            && output.generation == self.generation
+        {
+            self.ready = true;
+            match output.result {
+                Ok(frame) => {
+                    self.video_ready = true;
+                    if let Some(texture) = &mut self.texture {
+                        texture.set(frame.image, egui::TextureOptions::LINEAR);
+                    } else {
+                        self.texture = Some(ctx.load_texture(
+                            "video-wallpaper",
+                            frame.image,
+                            egui::TextureOptions::LINEAR,
+                        ));
+                    }
+                    let state = self.state.as_ref().expect("active video");
+                    if let (Some(jpeg), Some(token)) = (frame.jpeg, &state.token) {
+                        self.cache = Some(Request {
+                            method: "wallpaper.cache".into(),
+                            params: json!({"script_name":state.script_name,"token":token,"jpeg_base64":base64::engine::general_purpose::STANDARD.encode(jpeg)}),
+                        });
+                    }
+                }
+                Err(message) => {
+                    error = Some(format!("视频无法播放，保留已有画面或渐变背景：{message}"))
+                }
             }
         }
         if let Some(request) = self.pending.take() {
@@ -175,7 +221,7 @@ fn load(state: &Wallpaper) -> Result<Loaded, String> {
     let image = match decoded {
         Some(image) => image,
         None if state.mode == Mode::Video => {
-            return Err("视频播放暂不可用，且首帧缓存不可读".into());
+            return Err("视频首帧缓存不可读".into());
         }
         None => decode(&state.source)?,
     };
@@ -264,17 +310,15 @@ impl WallpaperDialog {
                 ui.set_width(520.0);
                 ui.heading(format!("{} · 壁纸", self.state.display_name));
                 ui.label(format!("当前来源：{}", self.state.source.display()));
-                if self.state.mode == Mode::Video {
-                    ui.label("视频播放暂不可用，当前显示首帧缓存或渐变背景。");
-                }
-                ui.label("支持 PNG、JPEG、WebP、BMP。图片保持比例填满窗口。");
+                ui.label("图片：PNG、JPEG、WebP、BMP；视频：MP4、WebM、MKV、MOV。");
+                ui.label("视频静音循环播放；能否解码取决于 Windows 已安装的编解码器。");
                 ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
                     ui.horizontal(|ui| {
                         ui.add(egui::TextEdit::singleline(&mut self.path).desired_width(410.0));
                         if ui.button("浏览…").clicked() {
                             self.picker = Some(crate::file_picker::FilePicker::start(
                                 ctx.clone(),
-                                crate::file_picker::FileKind::Image,
+                                crate::file_picker::FileKind::Wallpaper,
                             ));
                         }
                     });
@@ -307,7 +351,7 @@ impl WallpaperDialog {
                             action = Some(self.save(None));
                         }
                         if ui
-                            .add_enabled(!blocked, egui::Button::new("应用图片"))
+                            .add_enabled(!blocked, egui::Button::new("应用壁纸"))
                             .clicked()
                         {
                             let extension = Path::new(self.path.trim())
@@ -315,9 +359,12 @@ impl WallpaperDialog {
                                 .and_then(|value| value.to_str())
                                 .unwrap_or_default()
                                 .to_ascii_lowercase();
-                            if !["png", "jpg", "jpeg", "webp", "bmp"].contains(&extension.as_str())
+                            if ![
+                                "png", "jpg", "jpeg", "webp", "bmp", "mp4", "webm", "mkv", "mov",
+                            ]
+                            .contains(&extension.as_str())
                             {
-                                self.error = Some("请选择支持的图片；视频将在后续接入".into());
+                                self.error = Some("请选择支持的图片或视频文件".into());
                             } else {
                                 action = Some(self.save(Some(self.path.trim())));
                             }
@@ -344,6 +391,39 @@ impl WallpaperDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn video_decode_failure_preserves_existing_preview_or_gradient() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("broken.mp4");
+        std::fs::write(&source, "not a video").unwrap();
+        let preview = root.path().join("preview.jpg");
+        image::RgbImage::from_pixel(4, 4, image::Rgb([255, 0, 0]))
+            .save(&preview)
+            .unwrap();
+        for cache in [None, Some(preview.clone())] {
+            let ctx = egui::Context::default();
+            let mut backdrop = Backdrop::new(ctx.clone());
+            let mut state = state(source.clone());
+            state.mode = Mode::Video;
+            state.cache = cache.clone();
+            backdrop.set(state);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                if let Some(error) = backdrop.poll(&ctx) {
+                    assert!(error.contains("视频无法播放"));
+                    break;
+                }
+                assert!(std::time::Instant::now() < deadline);
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            assert!(backdrop.ready);
+            assert_eq!(backdrop.texture.is_some(), cache.is_some());
+            assert!(backdrop.take_cache().is_none());
+            backdrop.select("另一脚本");
+            assert!(backdrop.texture.is_none());
+            assert!(backdrop.poll(&ctx).is_none());
+        }
+    }
 
     fn state(path: PathBuf) -> Wallpaper {
         Wallpaper {
