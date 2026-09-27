@@ -216,7 +216,9 @@ class TestEndfieldConfig(unittest.TestCase):
         self.assertEqual(cfg.display_name, "终末地")
         self.assertEqual(cfg._script_name, "ok-ef")
         self.assertEqual(cfg._dispatch_daily("每日任务").task_field, "体力本")
-        self.assertFalse(cfg._template_rel_path, "模板已删，_init_config 对其为空操作")
+        self.assertNotIn(
+            "template", cfg.resources, "模板已删，_init_config 对其为空操作"
+        )
 
     def test_daily_selection_saves_leaf_and_preserves_enable_switch(self):
         for task, sequence, expected in (
@@ -242,7 +244,7 @@ class TestZenlessZoneZeroConfig(unittest.TestCase):
         cfg = ZenlessZoneZeroConfig()
         self.assertEqual(cfg.display_name, "绝区零")
         self.assertEqual(cfg._script_name, "OneDragon-Launcher")
-        self.assertFalse(cfg._template_rel_path)
+        self.assertNotIn("template", cfg.resources)
         daily = cfg._dispatch_daily("每日任务")
         self.assertIsInstance(daily, TemplateDaily)
         self.assertEqual(daily._template_rel_path, "ZZZ一条龙.yml")
@@ -256,7 +258,7 @@ class TestStarRailConfig(unittest.TestCase):
         cfg = StarRailConfig()
         self.assertEqual(cfg.display_name, "崩铁")
         self.assertEqual(cfg._script_name, "March7th-Launcher")
-        self.assertFalse(cfg._template_rel_path)
+        self.assertNotIn("template", cfg.resources)
         daily = cfg._dispatch_daily("每日任务")
         self.assertIsInstance(daily, SingleLayerDaily)
         self.assertEqual(daily.option_fields, {"每日任务": "build_target_enable"})

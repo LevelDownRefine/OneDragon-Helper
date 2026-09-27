@@ -1,0 +1,109 @@
+# 内置脚本资源声明，随程序发布；不保存用户机器上的安装路径。
+# 相对路径用 /；game、background、backup_paths 相对脚本目录，template 相对助手 config/。
+# logs.root 只支持 script / temp；异环 launcher 的向上查找机制仍由适配器实现。
+version: 1
+scripts:
+  ok-ww:
+    backup_paths:
+    - data/apps/ok-ww/working/configs
+    game:
+      config: data/apps/ok-ww/working/configs/devices.json
+      keys:
+      - pc_full_path
+    logs:
+      root: script
+      path: data/apps/ok-ww/working/logs
+    links:
+      homepage: https://mc.kurogames.com/
+      bilibili: https://space.bilibili.com/1955897084
+      github: https://github.com/ok-oldking/ok-wuthering-waves
+  BetterGI:
+    backup_paths:
+    - User
+    game:
+      config: User/config.json
+      keys:
+      - genshinStartConfig
+      - installPath
+    template: BGI一条龙.json
+    logs:
+      root: script
+      path: log
+    links:
+      homepage: https://ys.mihoyo.com/
+      bilibili: https://space.bilibili.com/401742377
+      github: https://github.com/babalae/better-genshin-impact
+  ok-ef:
+    backup_paths:
+    - data/apps/ok-ef/working/configs
+    game:
+      config: data/apps/ok-ef/working/configs/devices.json
+      keys:
+      - pc_full_path
+    logs:
+      root: temp
+      path: ok-ef/日常任务
+    links:
+      homepage: https://endfield.hypergryph.com/
+      bilibili: https://space.bilibili.com/1265652806
+      github: https://github.com/AliceJump/ok-end-field
+  OneDragon-Launcher:
+    backup_paths:
+    - config
+    game:
+      config: config/01/game_account.yml
+      keys:
+      - game_path
+    background: assets/ui/static_background.webp
+    logs:
+      root: script
+      path: .log
+    links:
+      homepage: https://zzz.mihoyo.com/
+      bilibili: https://space.bilibili.com/1636034895
+      github: https://github.com/DoctorReid/ZenlessZoneZero-OneDragon
+  March7th-Launcher:
+    backup_paths:
+    - config.yaml
+    game:
+      config: config.yaml
+      keys:
+      - game_path
+    background: assets/app/images/bg37.jpg
+    logs:
+      root: script
+      path: logs
+    links:
+      homepage: https://sr.mihoyo.com/
+      bilibili: https://space.bilibili.com/1340190821
+      github: https://github.com/moesnow/March7thAssistant
+  ok-nte:
+    backup_paths:
+    - data/apps/ok-nte/working/configs
+    game:
+      config: data/apps/ok-nte/working/configs/devices.json
+      keys:
+      - pc_full_path
+      launcher: NTELauncher.exe
+    logs:
+      root: script
+      path: data/apps/ok-nte/working/logs
+    links:
+      homepage: https://yh.wanmei.com/
+      bilibili: https://space.bilibili.com/3546636978489848
+      github: https://github.com/BnanZ0/ok-nte
+  MAA:
+    backup_paths:
+    - config
+    game:
+      config: config/gui.new.json
+      keys:
+      - Configurations
+      - Default
+      - Gui
+      - StartUpSettings
+      - EmulatorPath
+    links:
+      homepage: https://ak.hypergryph.com/
+      bilibili: https://space.bilibili.com/161775300
+      github: https://github.com/MaaAssistantArknights/MaaAssistantArknights

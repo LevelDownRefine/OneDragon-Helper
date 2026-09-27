@@ -92,7 +92,7 @@ class BackgroundController(QObject):
         return resolved
 
     def _script_background(self, script_name: str) -> str:
-        """读取脚本默认背景图绝对路径（声明在 ScriptConfig.background，相对脚本根目录）。
+        """读取脚本默认背景图绝对路径（来自资源声明，相对脚本根目录）。
 
         Args:
             script_name: 脚本标识名。

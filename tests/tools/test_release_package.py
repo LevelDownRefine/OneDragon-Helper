@@ -25,6 +25,7 @@ class TestReleasePackage(unittest.TestCase):
             "config/schedule.example.yml": "daily_run: {}\n",
             "config/weekly.example.yml": "weekly_start: {}\n",
             "config/daily_task_list.yml": "日常: []\n",
+            "config/script_resources.yml": "version: 1\nscripts: {}\n",
             "assets/ds.jpg": "image",
             "src/gui/qml/main.qml": "Window {}",
         }

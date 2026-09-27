@@ -8,8 +8,9 @@
 本文件 `parse_logs`（后者复用其返回的汇总表格做整表通知）。
 
 本模块为 `src.log` 包的子模块，由 `python -m src.log`（__main__ 入口）或 GUI/service 以 `import
-src.log.monitor` 方式调用，不单独运行。除复用脚本唯一标识 `get_script_name`（见
-`src.utils.utils_sub_config`）外，不依赖项目内其余模块；根目录复用 `src.utils.get_root_dir`
+src.log.monitor` 方式调用，不单独运行。脚本唯一标识复用 `get_script_name`（见
+`src.utils.utils_sub_config`），日志位置读取 `src.config.script_resources` 的内置声明；
+根目录复用 `src.utils.get_root_dir`
 （冻结时为 exe 所在目录，勿按 `__file__` 自算），并直接读取 `config.yml`（经
 `src.utils.utils_yaml.load_yaml`，ruamel YAML 1.2 解析）。
 """
@@ -23,6 +24,7 @@ import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from src.config.script_resources import get_script_resources
 from src.utils import get_root_dir
 from src.utils.utils_logger import setup_logging
 from src.utils.utils_sub_config import get_script_name
@@ -151,7 +153,18 @@ class BaseLogParser:
         return None
 
     def _get_log_dir(self, script_path: str) -> Path:
-        raise NotImplementedError
+        resources = get_script_resources(self.script_name)
+        assert resources is not None and "logs" in resources, (
+            f"[log] 缺少日志目录声明: {self.script_name}"
+        )
+        logs = resources["logs"]
+        assert "root" in logs and "path" in logs
+        if logs["root"] == "temp":
+            base = Path(tempfile.gettempdir())
+        else:
+            assert logs["root"] == "script"
+            base = Path(script_path.replace("\\", "/")).parent
+        return base / logs["path"]
 
     def _read_file(self, path: Path) -> str:
         """读取日志文本：utf-8 失败回退 gbk；读取/解码失败记日志返回空串。"""
@@ -255,24 +268,13 @@ class BaseLogParser:
 class OkWwLogParser(BaseLogParser):
     script_name = "ok-ww"
 
-    def _get_log_dir(self, script_path: str) -> Path:
-        ok_ww_dir = Path(script_path).parent
-        return ok_ww_dir / "data" / "apps" / "ok-ww" / "working" / "logs"
-
 
 class OkNteLogParser(BaseLogParser):
     script_name = "ok-nte"
 
-    def _get_log_dir(self, script_path: str) -> Path:
-        ok_nte_dir = Path(script_path).parent
-        return ok_nte_dir / "data" / "apps" / "ok-nte" / "working" / "logs"
-
 
 class OkEfLogParser(BaseLogParser):
     script_name = "ok-ef"
-
-    def _get_log_dir(self, script_path: str) -> Path:
-        return Path(tempfile.gettempdir()) / "ok-ef" / "日常任务"
 
     def collect_error_lines(self, content: str, limit: int = 10) -> list[str]:
         # 报告中的失败明细以缩进的「- 」列表项给出，直接收集这些行。
@@ -322,10 +324,6 @@ class M7ALogParser(BaseLogParser):
                 idx = pos
         return idx
 
-    def _get_log_dir(self, script_path: str) -> Path:
-        m7a_dir = Path(script_path).parent
-        return m7a_dir / "logs"
-
     def _error_body(self, content: str) -> str:
         # 游戏正常终止后的收尾报错属良性，报错收集同样截断到终止横幅之前。
         term_idx = self._term_index(content)
@@ -337,17 +335,9 @@ class M7ALogParser(BaseLogParser):
 class ZZZLogParser(BaseLogParser):
     script_name = "OneDragon-Launcher"
 
-    def _get_log_dir(self, script_path: str) -> Path:
-        zzz_dir = Path(script_path).parent
-        return zzz_dir / ".log"
-
 
 class BGILogParser(BaseLogParser):
     script_name = "BetterGI"
-
-    def _get_log_dir(self, script_path: str) -> Path:
-        bgi_dir = Path(script_path).parent
-        return bgi_dir / "log"
 
 
 _PARSERS = [

@@ -7,6 +7,8 @@
 `config.yml`、`schedule.yml`、`weekly.yml`、壁纸设置与缓存、脚本链、
 日志、备份不属于发布内容；即使误跟踪了用户配置，也会阻止打包。
 三个用户 YAML 由程序首次启动时从模板生成，已有配置保持不变。
+`config/script_resources.yml` 是内置资源声明，随上述 Git 资源一起发布及更新；
+修改脚本资源位置不需要另改打包文件列表，详见 [声明格式](../src/config/script_resources.md)。
 
 打包只收集助手及 Runner 自身依赖。Runner 的 `.py` 模式在冻结进程内执行，
 需要额外第三方库的脚本应通过 `.bat` 调用自己的 Python 环境，不依赖助手附带库。
