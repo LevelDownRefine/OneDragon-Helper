@@ -82,6 +82,31 @@ class HeadlessExeTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)["error"]["code"], "session_failed")
         self.assertFalse((self.root / "config/config.yml").exists())
 
+    def test_legacy_flags_preserve_output_files_and_exit_status(self):
+        output = self.directory / "中文 自检.json"
+        for arguments, code in (
+            (["--selftest", "--out", str(output)], 0),
+            (["--get-script", "不存在", "--out", str(output)], 1),
+            (["--invalid-option"], 2),
+        ):
+            with self.subTest(arguments=arguments):
+                result = subprocess.run(
+                    [str(self.root / CLI_EXE), *arguments],
+                    cwd=self.directory,
+                    env=child_environment(),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=60,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+                self.assertEqual(result.returncode, code, result.stderr)
+                if code in (0, 1):
+                    self.assertEqual(
+                        json.loads(output.read_text(encoding="utf-8"))["status"],
+                        "ok" if code == 0 else "not_found",
+                    )
+
     def test_persistent_cli_is_one_process_and_eof_releases_runtime_lease(self):
         with tempfile.TemporaryFile() as errors:
             process = subprocess.Popen(

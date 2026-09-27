@@ -20,15 +20,16 @@ mod video;
 mod view;
 mod wallpaper;
 
-use std::{env, path::PathBuf, time::Instant};
+use std::{env, ffi::OsString, path::PathBuf, time::Instant};
 
-fn settings() -> Result<Option<app::Settings>, String> {
+fn settings() -> Result<(app::Settings, Vec<OsString>), String> {
     let mut args = env::args_os().skip(1);
     let mut project = None;
     let mut python = None;
     let mut font = None;
     let mut demo = false;
     let mut skip_startup = false;
+    let mut cli_arguments = Vec::new();
     #[cfg(feature = "capture")]
     let mut capture = None;
     #[cfg(feature = "capture")]
@@ -94,13 +95,16 @@ fn settings() -> Result<Option<app::Settings>, String> {
                 capture_settings = true;
                 capture_plan = true;
             }
-            Some("--help" | "-h") => {
-                log::info!(
-                    "onedragon-rust-gui [--project-root 项目根目录] [--python Python路径] [--font 字体路径]"
-                );
-                return Ok(None);
+            Some("-h") => {
+                cli_arguments.push("--help".into());
+                cli_arguments.extend(args);
+                break;
             }
-            _ => return Err(format!("未知参数：{}", argument.to_string_lossy())),
+            _ => {
+                cli_arguments.push(argument);
+                cli_arguments.extend(args);
+                break;
+            }
         }
     }
     let (root, backend) = runtime::resolve(
@@ -115,35 +119,38 @@ fn settings() -> Result<Option<app::Settings>, String> {
         skip_startup |= capture.is_some();
     }
     skip_startup |= demo;
-    Ok(Some(app::Settings {
-        project_root: root,
-        backend,
-        font,
-        demo,
-        skip_startup,
-        #[cfg(feature = "capture")]
-        capture,
-        #[cfg(feature = "capture")]
-        capture_editor,
-        #[cfg(feature = "capture")]
-        capture_list,
-        #[cfg(feature = "capture")]
-        capture_run,
-        #[cfg(feature = "capture")]
-        capture_settings,
-        #[cfg(feature = "capture")]
-        capture_plan,
-        #[cfg(feature = "capture")]
-        capture_restore,
-        #[cfg(feature = "capture")]
-        capture_drop,
-        #[cfg(feature = "capture")]
-        capture_game_icon,
-        #[cfg(feature = "capture")]
-        capture_wallpaper,
-        #[cfg(feature = "capture")]
-        capture_update,
-    }))
+    Ok((
+        app::Settings {
+            project_root: root,
+            backend,
+            font,
+            demo,
+            skip_startup,
+            #[cfg(feature = "capture")]
+            capture,
+            #[cfg(feature = "capture")]
+            capture_editor,
+            #[cfg(feature = "capture")]
+            capture_list,
+            #[cfg(feature = "capture")]
+            capture_run,
+            #[cfg(feature = "capture")]
+            capture_settings,
+            #[cfg(feature = "capture")]
+            capture_plan,
+            #[cfg(feature = "capture")]
+            capture_restore,
+            #[cfg(feature = "capture")]
+            capture_drop,
+            #[cfg(feature = "capture")]
+            capture_game_icon,
+            #[cfg(feature = "capture")]
+            capture_wallpaper,
+            #[cfg(feature = "capture")]
+            capture_update,
+        },
+        cli_arguments,
+    ))
 }
 
 fn main() -> eframe::Result {
@@ -156,14 +163,23 @@ fn main() -> eframe::Result {
         });
         std::process::exit(code);
     }
-    let settings = match settings() {
-        Ok(Some(settings)) => settings,
-        Ok(None) => return Ok(()),
+    let (settings, cli_arguments) = match settings() {
+        Ok(settings) => settings,
         Err(error) => {
             runtime::startup_error(&error);
             std::process::exit(2);
         }
     };
+    if !cli_arguments.is_empty() {
+        let code = settings
+            .backend
+            .run_cli(&settings.project_root, &cli_arguments)
+            .unwrap_or_else(|error| {
+                runtime::startup_error(&error);
+                2
+            });
+        std::process::exit(code);
+    }
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size(skin::SIZE)

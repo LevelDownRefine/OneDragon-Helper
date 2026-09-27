@@ -287,3 +287,10 @@ Windows 实窗源码运行提示已截图检查；`--capture-update` 只打开�
 Ruff、rustfmt、严格 Clippy 通过。Windows 在临时目录组合真实 Rust EXE/CLI/运行库及生成
 配置，从另一个工作目录启动，移除虚拟环境变量并把 PATH 限于 System32，实际窗口与任务卡
 已截图验证；程序目录没有 src 源码。未运行外部脚本。UAC、完整发布清单和真实更新安装留给下一批。
+
+原 CLI 参数兼容批次：Rust 主程序在创建窗口前将 `--help/--version/--selftest`、
+`--schedule-run` 等交给无 Qt 后端，等待并返回其退出码。结果沿用原 `--out` 或临时目录
+文件，直接调用 CLI EXE 也支持这些参数。开发用 `--project-root/--python` 放在业务参数前。
+Rust 73 项通过；Ubuntu Python 1235 项（1196 通过、39 项跳过，124.738 秒）；
+Windows CLI EXE 五项通过，Ruff、rustfmt、严格 Clippy 通过。临时独立包在无源码和无 Python
+PATH 下验证主 EXE 自检、版本、中文输出路径、退出码 1/2，并再次截图检查任务卡。

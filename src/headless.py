@@ -276,6 +276,9 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser(
         "daily", help="系统每日计划入口，读取独立计划配置"
     ).add_argument("--shutdown-ui", required=True)
+    commands.add_parser("legacy", help="原助手 CLI 参数透传").add_argument(
+        "arguments", nargs=argparse.REMAINDER
+    )
     args = parser.parse_args(argv)
     output = (
         _console_output()
@@ -313,6 +316,16 @@ def _run_command(args: argparse.Namespace) -> int:
                 install_crash_hooks()
                 config_workflow()
                 service = AppService()
+            if args.command == "legacy":
+                from src.cli import build_parser, run_cli
+
+                arguments = args.arguments
+                if arguments and arguments[0] == "--":
+                    arguments = arguments[1:]
+                result = run_cli(build_parser().parse_args(arguments))
+                if result is None:
+                    raise ValueError("请指定 CLI 操作；图形界面由 Rust 前端启动")
+                return result
             if args.command == "daily":
                 from src.utils.utils_shutdown import RUST_CONFIRM_ENV
 
@@ -339,7 +352,7 @@ def _run_command(args: argparse.Namespace) -> int:
         os._exit(0)
     except Exception:  # noqa: BLE001 -- 入口失败须输出启动错误并释放租约。
         logger.exception("无 GUI CLI 启动或传输失败")
-        if args.command in ("run", "daily"):
+        if args.command in ("run", "daily", "legacy"):
             return 2
         _emit(
             _error(

@@ -241,8 +241,13 @@ Windows Rust 前端将自身绝对路径传入 `ODH_SHUTDOWN_UI`，prepare 将�
   `script.view` 每次重读外部配置；适配器构造仍可能执行现有的模板对齐，周常读取仍可能迁移旧格式。
   因此查询并不承诺整个应用层绝无写盘副作用。
 - 仅承诺这些新增后端方法不加载 Qt。
-  旧 launcher、
-  CLI 打包仍是后续工作；没有据此宣称整个发布包可以移除 Python 或 Qt。
+  原 Qt launcher 继续保留；独立 CLI EXE 已排除 Qt，完整 Rust 发布包仍在构建中。
+
+冻结入口 `src.headless_entry` 保留 `call/serve/run/daily` 子命令，并将原助手参数交给
+`legacy -- 参数`。Rust 主程序在创建窗口前转发 `--version/--selftest/--schedule-run`
+等参数，等待 CLI 并保留退出码；输出沿用 `--out` 或临时目录的 `odh_gui_*` 文件。
+源码调试的 `--project-root/--python` 必须放在业务参数前。无动作的独立 CLI 返回 2，
+不会创建 Qt 窗口；直接调用冻结 CLI 时，关机确认默认指向同目录 Rust 主程序。
 
 ## 验证
 
@@ -258,4 +263,6 @@ PYTHONPATH=src python -m unittest tests.test_headless -v
 
 `tests/service/test_task_service.py` 覆盖聚合查询；`tests/service/test_task_editing.py`
 覆盖 CLI 入口直接转发原方法及既有写入行为。
-源码全量回归与格式检查按 [TESTING.md](../../TESTING.md) 执行；尚未验证独立 headless EXE。
+`tests/test_headless_entry.py` 覆盖原参数、中文输出路径、非零返回码、冻结入口和更新闸门。
+Windows 真正打包验证见 `tests/exe/test_headless_exe.py`；源码全量回归与格式检查按
+[TESTING.md](../../TESTING.md) 执行。

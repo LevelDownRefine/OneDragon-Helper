@@ -1,8 +1,9 @@
 //! Resolve the development interpreter or the backend shipped beside the GUI.
 use serde::Deserialize;
 use std::{
+    ffi::OsString,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
 };
 
 const GUI_EXE: &str = "OneDragon-Helper.exe";
@@ -14,20 +15,49 @@ pub enum BackendProgram {
 }
 
 impl BackendProgram {
-    pub fn command(&self, root: &Path) -> Command {
-        let mut command = match self {
+    fn base_command(&self) -> Command {
+        match self {
             Self::Source(python) => {
                 let mut command = Command::new(python);
                 command.args(["-m", "src.headless"]);
                 command
             }
             Self::Bundled(executable) => Command::new(executable),
-        };
+        }
+    }
+
+    pub fn command(&self, root: &Path) -> Command {
+        let mut command = self.base_command();
         command
             .args(["serve", "--stdio"])
             .current_dir(root)
             .env("PYTHONUTF8", "1");
         command
+    }
+
+    pub fn run_cli(&self, root: &Path, arguments: &[OsString]) -> Result<i32, String> {
+        let mut command = self.base_command();
+        command
+            .args(["legacy", "--"])
+            .args(arguments)
+            .current_dir(root)
+            .env("PYTHONUTF8", "1")
+            .env(
+                "ODH_SHUTDOWN_UI",
+                std::env::current_exe().map_err(|error| error.to_string())?,
+            )
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+        command
+            .status()
+            .map(|status| status.code().unwrap_or(1))
+            .map_err(|error| format!("CLI 启动失败：{error}"))
     }
 }
 
@@ -235,6 +265,42 @@ mod tests {
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
             ["-m", "src.headless", "serve", "--stdio"].map(OsStr::new)
+        );
+    }
+
+    #[test]
+    fn cli_preserves_arguments_working_directory_and_exit_code() {
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(temp.path().join("src")).unwrap();
+        std::fs::write(temp.path().join("src/__init__.py"), []).unwrap();
+        std::fs::write(
+            temp.path().join("src/headless.py"),
+            "import json, os, sys\nfrom pathlib import Path\nPath('result.json').write_text(json.dumps({'args':sys.argv[1:], 'ui':os.environ['ODH_SHUTDOWN_UI']}), encoding='utf-8')\nsys.exit(7)\n",
+        ).unwrap();
+        let python = std::env::var_os("ODH_TEST_PYTHON").unwrap_or_else(|| "python".into());
+        let arguments = ["--get-script", "中文 空格", r#"C:\quoted "name"\"#].map(OsString::from);
+        assert_eq!(
+            BackendProgram::Source(python.into())
+                .run_cli(temp.path(), &arguments)
+                .unwrap(),
+            7
+        );
+        let result: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(temp.path().join("result.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            result["args"],
+            serde_json::json!([
+                "legacy",
+                "--",
+                "--get-script",
+                "中文 空格",
+                r#"C:\quoted "name"\"#
+            ])
+        );
+        assert_eq!(
+            PathBuf::from(result["ui"].as_str().unwrap()),
+            std::env::current_exe().unwrap()
         );
     }
 }
