@@ -53,9 +53,11 @@
 - M2 [#120](https://github.com/LevelDownRefine/OneDragon-Helper/pull/120) `codex/rust-gui-update-package` 基于 #119，区分 Qt/Rust 发布附件、清单与版本元数据；
   Rust 包要求独立 CLI、不要求 QML，缺少类型的历史包仍按 Qt 处理。
   下载、安装交接与事务均拒绝跨类型替换；正式 Rust 包构建留给 N。
-- M3 `codex/rust-gui-update-install` 基于 #120，开放显式安装与就绪后退出；
+- M3 [#121](https://github.com/LevelDownRefine/OneDragon-Helper/pull/121) `codex/rust-gui-update-install` 基于 #120，开放显式安装与就绪后退出；
   双进程身份与父子关系核验、统一退出期限、同目录 CLI 任务识别，失败保留窗口供重试。
   源码模式仍不支持原位更新；正式 Rust 包及双进程真实 EXE 交接留给 N 验证。
+- N1 `codex/rust-gui-package-cli` 基于 #121，构建独立无 Qt CLI，并加入真实 Windows EXE 测试；
+  仅后端组件，完整 GUI 入口、UAC、发布布局和双进程升级在后续 N 批次接入。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

@@ -71,6 +71,19 @@ exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定�
 `tests/gui/test_update_dialog.py` 用真实 Qt 事件循环和替代服务验证显式检查、
 工作线程、下载进度、取消/关闭、错误重试及安装就绪后退出；网络和安装操作均隔离。
 
+独立无 Qt 后端由 `deploy/OneDragon-Helper-CLI.spec` 构建：
+
+```text
+python -m PyInstaller --noconfirm --workpath deploy/build/rust-cli --distpath deploy/dist/rust-cli deploy/OneDragon-Helper-CLI.spec
+python -m unittest tests.exe.test_headless_exe -v
+```
+
+`ODH_CLI_EXE` 可指定已有 CLI 构建。测试在临时目录复制 EXE/运行库，使用空白配置模板，
+覆盖异目录启动、首启生成/再次保留、更新闸门、单进程 stdio 与 EOF 释放运行锁，
+并直接检查冻结模块不包含 Qt/GUI。后端继承父进程权限，无自身 UAC 提示；这些只读/临时
+配置测试不需要管理员。CI 的独立 Windows job 实际执行，Ubuntu 源码全量跳过这四项。
+这一构建是 Rust 发布包的后端组件，尚未包括完整 GUI/Runner/Updater 和发布资源。
+
 ## 2. 风格检查 ruff
 
 ```bash

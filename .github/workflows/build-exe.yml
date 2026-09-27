@@ -4,10 +4,31 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, 'codex/rust-gui-*' ]
   workflow_dispatch:
 
 jobs:
+  build-headless:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: 1
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v7
+      - name: Install locked dependencies
+        run: uv sync --frozen
+      - name: Build CLI without Qt
+        run: uv run python -m PyInstaller --noconfirm --workpath deploy/build/rust-cli --distpath deploy/dist/rust-cli deploy/OneDragon-Helper-CLI.spec
+      - name: Test real CLI executable in temporary copies
+        shell: pwsh
+        run: |
+          $binary = 'deploy/dist/rust-cli/OneDragon-Helper/OneDragon-Helper-CLI.exe'
+          if (!(Test-Path -LiteralPath $binary)) { throw 'CLI executable missing' }
+          $env:ODH_CLI_EXE = (Resolve-Path -LiteralPath $binary).Path
+          uv run python -m unittest tests.exe.test_headless_exe -v
+
   build-exe:
     runs-on: windows-latest
     env:
