@@ -20,7 +20,7 @@ class TestBackupService(unittest.TestCase):
             cfg = factory()
             with self.subTest(script=script_name):
                 self.roots[script_name] = str(self.root / script_name)
-                rel, keys = cfg._game_config_rel_path, cfg._game_path_keys
+                rel, keys = cfg.resources.game.config, cfg.resources.game.keys
                 old, current = {"task": 1}, {"task": 99}
                 for data, value in ((old, "old-machine"), (current, "this-machine")):
                     node = data

@@ -86,7 +86,7 @@ ruff format .
 
 ## 4. 调试
 
-先看日志再下结论：主程序日志在 logs/onedragon_helper.log，每日 00:00 轮转，保留 14 天。运行器子进程有独立日志系统 .log/。子脚本日志目录见 src/log/monitor 各 Parser 的 _get_log_dir。日志汇总：python -m src.log。
+先看日志再下结论：主程序日志在 logs/onedragon_helper.log，每日 00:00 轮转，保留 14 天。运行器子进程有独立日志系统 .log/。子脚本日志目录见 config/script_resources.yml 的 logs 声明。日志汇总：python -m src.log。
 
 ## 5. Windows 全链路真实模拟（手动）
 

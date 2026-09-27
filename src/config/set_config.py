@@ -7,6 +7,7 @@ from copy import deepcopy
 from functools import cache
 
 from src.config.daily import DAILY_CLASSES, Daily, MaaDaily
+from src.config.script_resources import ScriptResources, get_script_resources
 from src.config.task_config import get_daily_configs
 from src.config.weekly import build_weeklies
 from src.utils.utils_dict import covers, get_field, safe_update
@@ -37,26 +38,8 @@ class ScriptConfig:
     display_name: str = ""
     """GUI 展示名（如 鸣潮）。"""
 
-    _game_path_keys: tuple[str, ...] = ()
-    """游戏 exe 路径在游戏配置中的嵌套键路径；空元组表示未适配「打开游戏」。"""
-
-    """config 文件相对脚本根目录路径。"""
-
-    _backup_paths: tuple[str, ...] = ()
-    """备份范围：相对脚本根目录的路径，元素可为目录（整目录打包）或文件。
-
-    与读写路径解耦：读写关心「哪个文件的哪个字段」，备份关心「该脚本的配置面在哪」；
-    声明了本属性即表示要备份的配置全在这些路径里。
-    """
-
-    _game_config_rel_path: str = ""
-    """游戏路径配置文件路径（声明 _game_path_keys 时必填）。"""
-
-    _template_rel_path: str = ""
-    """模板文件路径（走模板初始化的子类必填）。"""
-
-    background: str = ""
-    """启动器背景图相对脚本根目录路径；空字符串走渐变占位。"""
+    resources: ScriptResources = ScriptResources()
+    """静态资源来自 script_resources.yml；基类空声明表示未适配。"""
 
     def __init__(self) -> None:
         """按声明创建日常与周常对象，并在构造时对齐子脚本 config。
@@ -102,12 +85,12 @@ class ScriptConfig:
             模板 dict。
 
         Raises:
-            AssertionError: 未声明 _template_rel_path 或解析结果非 dict。
+            AssertionError: 未声明 template 或解析结果非 dict。
         """
-        assert self._template_rel_path, (
-            f"[set_config][{self.display_name}] 未声明 _template_rel_path"
+        assert self.resources.template, (
+            f"[set_config][{self.display_name}] 未声明 template"
         )
-        return load_template(self._script_name, self._template_rel_path)
+        return load_template(self._script_name, self.resources.template)
 
     def _dispatch_daily(self, daily_display_name: str) -> Daily:
         """按日常展示名取日常对象。
@@ -158,10 +141,10 @@ class ScriptConfig:
     def _init_config(self) -> None:
         """对齐检查并把模板 config 同步到用户 config。
 
-        仅对有模板（声明 ``_template_rel_path``）的脚本生效；无模板脚本或脚本尚未
+        仅对有模板（声明 ``resources.template``）的脚本生效；无模板脚本或脚本尚未
         安装/未配置（config 缺失）时直接返回，不触碰 config。已对齐时不动 config。
         """
-        if not self._template_rel_path:
+        if not self.resources.template:
             return
         rel_path = self._daily_config_rel_path()
         try:
@@ -236,17 +219,17 @@ class ScriptConfig:
         Returns:
             exe 绝对路径；未适配、缺失或为空时返回 None。
         """
-        if not self._game_path_keys:
+        if not self.resources.game.keys:
             return None
-        game_config = load_game_config(self._script_name, self._game_config_rel_path)
+        game_config = load_game_config(self._script_name, self.resources.game.config)
         if game_config is None:
             return None
         node = game_config
-        for key in self._game_path_keys:
+        for key in self.resources.game.keys:
             if not isinstance(node, dict) or key not in node:
                 logger.warning(
                     f"[get_game_exe_path][{self._script_name}] 配置缺少字段: "
-                    f"{self._game_path_keys}"
+                    f"{self.resources.game.keys}"
                 )
                 return None
             node = node[key]
@@ -267,28 +250,13 @@ _CONFIGS: dict[str, Callable[[], ScriptConfig]] = {}
 
 
 def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
-    """校验必要声明，注册首次访问时构造、之后复用的适配器入口。
-
-    必填属性须由子类在 ``cls.__dict__`` 中显式声明（而非继承基类默认值）；
-    声明了条件属性（_game_path_keys）必须补全对应依赖。
-
-    Args:
-        cls: 待注册的 ScriptConfig 子类。
-
-    Returns:
-        原样返回 cls（便于装饰器使用）。
-
-    Raises:
-        AssertionError: 缺少 _script_name/_backup_paths 显式声明，
-            或声明了 _game_path_keys 但未补全对应声明/实现。
-    """
-    for attr in ("_script_name", "_backup_paths"):
-        assert attr in cls.__dict__, f"[set_config][{cls.__name__}] 必须声明 {attr}"
-    if cls._game_path_keys:
-        assert "_game_config_rel_path" in cls.__dict__, (
-            f"[set_config][{cls.__name__}] 声明了 _game_path_keys 必须声明 "
-            f"_game_config_rel_path"
-        )
+    """绑定 YAML 资源声明，注册首次访问时构造、之后复用的机制类。"""
+    assert "_script_name" in cls.__dict__ and cls._script_name, (
+        f"[set_config][{cls.__name__}] 必须声明 _script_name"
+    )
+    resources = get_script_resources(cls._script_name)
+    assert resources is not None, f"[set_config] 缺少资源声明: {cls._script_name}"
+    cls.resources = resources
     _CONFIGS[cls._script_name] = cache(cls)
     return cls
 
@@ -302,9 +270,6 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
 @register
 class WutheringWavesConfig(ScriptConfig):
     _script_name = "ok-ww"
-    _backup_paths = ("data/apps/ok-ww/working/configs",)
-    _game_config_rel_path = "data/apps/ok-ww/working/configs/devices.json"
-    _game_path_keys = ("pc_full_path",)
     display_name = "鸣潮"
 
 
@@ -314,20 +279,12 @@ class GenshinConfig(ScriptConfig):
     _script_name = "BetterGI"
     display_name = "原神"
 
-    _backup_paths = ("User",)
-    _game_config_rel_path = "User/config.json"
-    _template_rel_path = "BGI一条龙.json"
-    _game_path_keys = ("genshinStartConfig", "installPath")
-
 
 # ---- 终末地 Arknights: Endfield ----
 @register
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
-    _backup_paths = ("data/apps/ok-ef/working/configs",)
-    _game_config_rel_path = "data/apps/ok-ef/working/configs/devices.json"
-    _game_path_keys = ("pc_full_path",)
 
 
 # ---- 绝区零 Zenless Zone Zero ----
@@ -335,10 +292,6 @@ class EndfieldConfig(ScriptConfig):
 class ZenlessZoneZeroConfig(ScriptConfig):
     _script_name = "OneDragon-Launcher"
     display_name = "绝区零"
-    _backup_paths = ("config",)
-    _game_config_rel_path = "config/01/game_account.yml"
-    _game_path_keys = ("game_path",)
-    background = "assets/ui/static_background.webp"
 
 
 # ---- 崩铁 Honkai: Star Rail ----
@@ -346,23 +299,13 @@ class ZenlessZoneZeroConfig(ScriptConfig):
 class StarRailConfig(ScriptConfig):
     _script_name = "March7th-Launcher"
     display_name = "崩铁"
-    _backup_paths = ("config.yaml",)
-    _game_config_rel_path = "config.yaml"
-    _game_path_keys = ("game_path",)
-    background = "assets/app/images/bg37.jpg"
 
 
 # ---- 异环 Neverness to Everness (NTE) ----
 @register
 class NTEConfig(ScriptConfig):
     _script_name = "ok-nte"
-    _backup_paths = ("data/apps/ok-nte/working/configs",)
-    _game_config_rel_path = "data/apps/ok-nte/working/configs/devices.json"
-    _game_path_keys = ("pc_full_path",)
     display_name = "异环"
-
-    _launcher_rel_path = "NTELauncher.exe"
-    """异环启动器文件名（相对游戏安装根目录，非游戏本体）。"""
 
     def get_game_exe_path(self) -> str | None:
         """重写：从游戏本体路径向上查找异环启动器。
@@ -370,12 +313,13 @@ class NTEConfig(ScriptConfig):
         Returns:
             启动器绝对路径；本体缺失或找不到启动器时返回 None。
         """
+        assert self.resources.game.launcher, "异环必须声明 game.launcher"
         game_exe = super().get_game_exe_path()
         if not game_exe:
             return None
         directory = os.path.dirname(game_exe)
         while True:
-            candidate = os.path.join(directory, self._launcher_rel_path)
+            candidate = os.path.join(directory, self.resources.game.launcher)
             if os.path.isfile(candidate):
                 return candidate
             parent = os.path.dirname(directory)
@@ -383,7 +327,7 @@ class NTEConfig(ScriptConfig):
                 break
             directory = parent
         logger.warning(
-            f"[get_game_exe_path][{self._script_name}] 未找到启动器 {self._launcher_rel_path}"
+            f"[get_game_exe_path][{self._script_name}] 未找到启动器 {self.resources.game.launcher}"
         )
         return None
 
@@ -393,15 +337,6 @@ class NTEConfig(ScriptConfig):
 class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
     display_name = "粥"
-    _backup_paths = ("config",)
-    _game_config_rel_path = "config/gui.new.json"
-    _game_path_keys = (
-        "Configurations",
-        "Default",
-        "Gui",
-        "StartUpSettings",
-        "EmulatorPath",
-    )
 
     def _init_config(self) -> None:
         """建立三个独立入口和必刷剿灭，交给 MAA 原生队列执行。"""
@@ -475,7 +410,7 @@ class ArknightsConfig(ScriptConfig):
 def init_config(script_name: str) -> None:
     """对齐脚本 config 与模板，补全缺失字段（强制重对齐）。
 
-    仅对声明了 ``_template_rel_path`` 的脚本生效；无模板或脚本未安装/未配置时为空操作。
+    仅对声明了 ``resources.template`` 的脚本生效；无模板或脚本未安装/未配置时为空操作。
     实例已缓存时不重新构造，但显式再跑一次 ``_init_config``，故用于需强制重对齐的场景
     （新增/修改脚本、备份恢复）。启动预热等幂等场景请用 :func:`ensure_config` 避免重复对齐与日志。
 
@@ -588,9 +523,9 @@ def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...]:
         return ()
     assert script_name in _CONFIGS
     cfg = _CONFIGS[script_name]()
-    if rel.casefold() != cfg._game_config_rel_path.casefold():
+    if rel.casefold() != cfg.resources.game.config.casefold():
         return ()
-    return cfg._game_path_keys
+    return cfg.resources.game.keys
 
 
 def iter_backup_paths() -> dict[str, tuple[str, ...]]:
@@ -603,7 +538,7 @@ def iter_backup_paths() -> dict[str, tuple[str, ...]]:
         {脚本唯一标识: (备份路径, ...)}。
     """
     return {
-        script_name: factory()._backup_paths
+        script_name: factory().resources.backup_paths
         for script_name, factory in _CONFIGS.items()
     }
 
@@ -641,7 +576,7 @@ def get_background_rel_path(script_name: str) -> str:
     """
     if script_name not in _CONFIGS:
         return ""
-    return _CONFIGS[script_name]().background
+    return _CONFIGS[script_name]().resources.background
 
 
 def get_daily_readback(script_name: str) -> list[dict]:
