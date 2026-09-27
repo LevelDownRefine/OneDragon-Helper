@@ -47,9 +47,12 @@
 - L2 [#118](https://github.com/LevelDownRefine/OneDragon-Helper/pull/118) `codex/rust-gui-video-wallpaper` 基于 #117，接 Windows 系统解码、静音循环、500ms 延迟播放；
   首帧仍经 CLI 写缓存，切换/退出释放后台资源，失败保留已有画面或渐变并提示。
   使用系统 Media Foundation，格式支持取决于已安装的编解码器；不附带 Qt/FFmpeg 播放库。
-- M1 `codex/rust-gui-update` 基于 #118，接版本/上次结果、显式检查、说明、下载进度和取消；
+- M1 [#119](https://github.com/LevelDownRefine/OneDragon-Helper/pull/119) `codex/rust-gui-update` 基于 #118，接版本/上次结果、显式检查、说明、下载进度和取消；
   发布对象与准备好的目录留在 Python 会话，RPC 不接受任意下载 URL 或包路径。
-  安装与重启暂不可用，留给 M2 验证 GUI/CLI 双进程交接及 Rust 发布包身份。
+  安装与重启暂不可用，留给 M3 验证 GUI/CLI 双进程交接。
+- M2 `codex/rust-gui-update-package` 基于 #119，区分 Qt/Rust 发布附件、清单与版本元数据；
+  Rust 包要求独立 CLI、不要求 QML，缺少类型的历史包仍按 Qt 处理。
+  下载、安装交接与事务均拒绝跨类型替换；正式 Rust 包构建留给 N。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

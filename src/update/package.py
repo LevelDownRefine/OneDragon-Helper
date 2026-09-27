@@ -14,6 +14,7 @@ from threading import Event
 from packaging.version import InvalidVersion, Version
 
 APP_EXE = "OneDragon-Helper.exe"
+CLI_EXE = "OneDragon-Helper-CLI.exe"
 RUNNER_EXE = "OneDragon-Helper-Runner.exe"
 UPDATER_EXE = "OneDragon-Helper-Updater.exe"
 MANIFEST = "update-manifest.json"
@@ -28,6 +29,7 @@ REQUIRED_FILES = {
     "config/weekly.example.yml",
     "src/gui/qml/main.qml",
 }
+RUST_REQUIRED_FILES = (REQUIRED_FILES - {"src/gui/qml/main.qml"}) | {CLI_EXE}
 USER_CONFIG = {
     "config.yml",
     "schedule.yml",
@@ -78,7 +80,15 @@ def managed_path(name: str) -> bool:
         for part in parts
     ):
         return False
-    if name in {APP_EXE, RUNNER_EXE, UPDATER_EXE, VERSION_FILE, MANIFEST, "README.md"}:
+    if name in {
+        APP_EXE,
+        CLI_EXE,
+        RUNNER_EXE,
+        UPDATER_EXE,
+        VERSION_FILE,
+        MANIFEST,
+        "README.md",
+    }:
         return True
     if parts[0] == "config":
         return len(parts) >= 2 and parts[1].casefold() not in USER_CONFIG
@@ -109,6 +119,16 @@ def file_digest(path: Path) -> str:
         return hashlib.file_digest(source, "sha256").hexdigest()
 
 
+def manifest_frontend(data: dict) -> str:
+    """旧清单缺省 Qt；未知外部包类型明确拒绝。"""
+    frontend = "qt"
+    if "frontend" in data:
+        frontend = data["frontend"]
+    if not isinstance(frontend, str) or frontend not in {"qt", "rust"}:
+        raise UpdateError("不支持的前端类型")
+    return frontend
+
+
 def parse_manifest(data: object) -> dict:
     """校验文件清单，包含大小写重名及文件/目录冲突。"""
     if not isinstance(data, dict) or not {"schema", "version", "files"} <= data.keys():
@@ -116,10 +136,13 @@ def parse_manifest(data: object) -> dict:
     if data["schema"] != 1 or not isinstance(data["version"], str):
         raise UpdateError("不支持的更新清单版本")
     version_number(data["version"])
+    required = (
+        RUST_REQUIRED_FILES if manifest_frontend(data) == "rust" else REQUIRED_FILES
+    )
     files = data["files"]
     if (
         not isinstance(files, dict)
-        or not files.keys() >= REQUIRED_FILES
+        or not files.keys() >= required
         or not any(name.startswith("_internal/") for name in files)
     ):
         raise UpdateError("更新清单缺少必要程序文件")
@@ -156,15 +179,22 @@ def load_manifest(root: Path, *, verify: bool = False) -> dict:
             or info["version"] != data["version"]
         ):
             raise UpdateError("版本信息与更新清单不一致")
+        if manifest_frontend(info) != manifest_frontend(data):
+            raise UpdateError("版本信息与更新清单的前端类型不一致")
     return data
 
 
-def write_manifest(root: Path, names: list[str], version: str) -> None:
+def write_manifest(
+    root: Path, names: list[str], version: str, *, frontend: str = "qt"
+) -> None:
+    assert frontend in {"qt", "rust"}
     data = {
         "schema": 1,
         "version": version,
         "files": {name: file_digest(safe_target(root, name)) for name in sorted(names)},
     }
+    if frontend == "rust":
+        data["frontend"] = frontend
     parse_manifest(data)
     (root / MANIFEST).write_text(
         json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

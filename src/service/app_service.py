@@ -104,7 +104,9 @@ class AppService:
         """装配各 peer。"""
         self._updates = UpdateService()
         self.background = BackgroundJob()
-        self._update_session = UpdateSession(self._updates, self.background)
+        self._update_session = UpdateSession(
+            UpdateService(frontend="rust"), self.background
+        )
 
     def close(self) -> None:
         self.background.close()

@@ -4,20 +4,29 @@ import json
 import zipfile
 from pathlib import Path
 
-from src.update.package import MANIFEST, REQUIRED_FILES, write_manifest
+from src.update.package import (
+    MANIFEST,
+    REQUIRED_FILES,
+    RUST_REQUIRED_FILES,
+    write_manifest,
+)
 
 
-def make_package(root: Path, version="1.0.0", extra=None):
+def make_package(root: Path, version="1.0.0", extra=None, *, frontend="qt"):
     root.mkdir(parents=True, exist_ok=True)
-    content = {name: f"program {version}".encode() for name in REQUIRED_FILES}
+    required = RUST_REQUIRED_FILES if frontend == "rust" else REQUIRED_FILES
+    content = {name: f"program {version}".encode() for name in required}
     content["_internal/python.dll"] = b"runtime"
-    content["version.json"] = json.dumps({"version": version}).encode()
+    info = {"version": version}
+    if frontend == "rust":
+        info["frontend"] = frontend
+    content["version.json"] = json.dumps(info).encode()
     content.update(extra or {})
     for name, body in content.items():
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(body)
-    write_manifest(root, list(content), version)
+    write_manifest(root, list(content), version, frontend=frontend)
     return root
 
 

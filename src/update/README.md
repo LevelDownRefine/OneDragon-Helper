@@ -28,6 +28,14 @@ GUI 弹窗和控制器留在 `src/gui`，通过 `AppService` 薄委托调用 `Up
 下载优先走增量（见下），只在远端不支持 HEAD/范围读取或 ZIP 目录损坏时回退整包下载。
 两条路径产出的都是同一份完整程序目录。
 
+Qt 与 Rust 使用不同发布附件：`OneDragon-Helper.zip` 与
+`OneDragon-Helper-Rust.zip`，分别附带同名 `.sha256`。Rust 的清单和 `version.json`
+须声明 `frontend: "rust"`；未声明的旧包按 Qt 处理。Rust 包要求独立的
+`OneDragon-Helper-CLI.exe`，不要求 QML；两类包都沿用同一安装事务与更新器。
+检查、下载、安装交接和事务入口均校验包类型，禁止在线跨类型替换。
+原 Qt `AppService` 接口保持 Qt 类型，无 Qt 更新会话固定选择 Rust 类型。
+发布附件名和清单校验先于 Rust 打包接入；缺少 Rust 附件时明确报错，不回退下载 Qt 包。
+
 ### 增量下载
 
 发布侧无需额外产物：用 HTTP 范围请求读同一个发布 ZIP 的中央目录，取出其中的新版
