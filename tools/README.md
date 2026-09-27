@@ -62,3 +62,12 @@ python tools/sync_oknte_tasks.py
 ```
 
 周常声明单独在 config/weekly_task_list.yml，不由上述两个同步脚本更新。
+
+## Rust 界面原型
+
+`python tools/run_rust_gui.py --demo` 构建并启动独立演示配置，操作说明见
+[Rust GUI 原型](../rust-gui/README.md)。`--no-build` 复用已有构建。
+
+`python -m tools.export_rust_icons` 从原 GUI 的 `UiIconProvider` 导出工具栏图标到
+`rust-gui/assets/icons/`，同步原有静态默认脚本图标。仅这个开发步骤需要 Qt；
+Rust 构建嵌入 PNG 和默认壁纸，运行时不依赖图标导出工具。

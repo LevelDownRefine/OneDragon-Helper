@@ -1,5 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 mod app;
+mod skin;
+mod view;
 
 use std::{env, path::PathBuf, time::Instant};
 
@@ -85,8 +87,10 @@ fn main() -> eframe::Result {
     };
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([1020.0, 740.0])
-            .with_min_inner_size([800.0, 560.0]),
+            .with_inner_size(skin::SIZE)
+            .with_resizable(false)
+            .with_decorations(false)
+            .with_transparent(true),
         renderer: eframe::Renderer::Glow,
         persist_window: false,
         ..Default::default()
