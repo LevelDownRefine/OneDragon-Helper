@@ -58,3 +58,26 @@ class RustPackageExeTests(unittest.TestCase):
                 for path in (PACKAGE / "_internal").rglob("*")
             )
         )
+
+    def test_native_crt_imports_resolve_to_shipped_runtime_exports(self):
+        import pefile
+
+        with pefile.PE(str(PACKAGE / APP_EXE)) as executable:
+            imports = [
+                entry
+                for entry in executable.DIRECTORY_ENTRY_IMPORT
+                if entry.dll.lower().startswith((b"vcruntime", b"msvcp"))
+            ]
+            self.assertTrue(imports)
+            for entry in imports:
+                runtime = PACKAGE / entry.dll.decode("ascii").lower()
+                self.assertTrue(runtime.is_file(), f"缺少原生运行库：{runtime.name}")
+                self.assertEqual(
+                    runtime.read_bytes(),
+                    (PACKAGE / "_internal" / runtime.name).read_bytes(),
+                )
+                with pefile.PE(str(runtime)) as library:
+                    symbols = {
+                        symbol.name for symbol in library.DIRECTORY_ENTRY_EXPORT.symbols
+                    }
+                    self.assertTrue({item.name for item in entry.imports} <= symbols)

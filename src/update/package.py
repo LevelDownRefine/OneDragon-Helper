@@ -15,6 +15,7 @@ from packaging.version import InvalidVersion, Version
 
 APP_EXE = "OneDragon-Helper.exe"
 CLI_EXE = "OneDragon-Helper-CLI.exe"
+RUST_RUNTIME = "vcruntime140.dll"
 RUNNER_EXE = "OneDragon-Helper-Runner.exe"
 UPDATER_EXE = "OneDragon-Helper-Updater.exe"
 MANIFEST = "update-manifest.json"
@@ -29,7 +30,10 @@ REQUIRED_FILES = {
     "config/weekly.example.yml",
     "src/gui/qml/main.qml",
 }
-RUST_REQUIRED_FILES = (REQUIRED_FILES - {"src/gui/qml/main.qml"}) | {CLI_EXE}
+RUST_REQUIRED_FILES = (REQUIRED_FILES - {"src/gui/qml/main.qml"}) | {
+    CLI_EXE,
+    RUST_RUNTIME,
+}
 USER_CONFIG = {
     "config.yml",
     "schedule.yml",
@@ -83,6 +87,7 @@ def managed_path(name: str) -> bool:
     if name in {
         APP_EXE,
         CLI_EXE,
+        RUST_RUNTIME,
         RUNNER_EXE,
         UPDATER_EXE,
         VERSION_FILE,

@@ -14,6 +14,7 @@ from src.update.installer import install_package
 from src.update.package import (
     CLI_EXE,
     MANIFEST,
+    RUST_RUNTIME,
     VERSION_FILE,
     UpdateError,
     load_manifest,
@@ -63,6 +64,17 @@ class FrontendPackageTests(unittest.TestCase):
                 self.assertRaisesRegex(UpdateError, "前端类型"),
             ):
                 parse_manifest({**data, "frontend": value})
+
+    def test_rust_native_runtime_is_required_and_hash_verified(self):
+        root = make_package(self.directory / "runtime", frontend="rust")
+        manifest = load_manifest(root, verify=True)
+        self.assertTrue((root / RUST_RUNTIME).is_file())
+        del manifest["files"][RUST_RUNTIME]
+        with self.assertRaisesRegex(UpdateError, "必要程序"):
+            parse_manifest(manifest)
+        (root / RUST_RUNTIME).write_bytes(b"changed")
+        with self.assertRaises(UpdateError):
+            load_manifest(root, verify=True)
 
     def test_installer_rejects_cross_frontend_without_changing_program_or_user_files(
         self,

@@ -16,6 +16,7 @@ if __package__ in (None, ""):
 from src.update.package import (  # noqa: E402
     APP_EXE,
     RUNNER_EXE,
+    RUST_RUNTIME,
     UPDATER_EXE,
     load_manifest,
     manifest_frontend,
@@ -108,6 +109,8 @@ def build(root: Path, destination: Path, *, tag: str = "", test: bool = False) -
         )
         for name in (RUNNER_EXE, UPDATER_EXE):
             shutil.copy2(staging / name, package / name)
+        # Rust 启动时 Windows loader 尚不知道 Python 的 _internal 目录。
+        shutil.copy2(package / "_internal" / RUST_RUNTIME, package / RUST_RUNTIME)
         embed_resources(package / APP_EXE, root / "assets/ds.ico")
         prepare_package(root, package, tag, frontend="rust")
         if test:

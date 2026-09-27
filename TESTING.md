@@ -90,6 +90,7 @@ python -m unittest tests.exe.test_headless_exe -v
 `build-exe.yml` 的独立 job 同时执行 Windows Rust 测试、CLI/GUI/Runner/Updater 的
 真实 EXE 测试。`test_rust_package_exe.py` 直接读取最终 PE 验证 GUI 图标/UAC、CLI
 继承权限、PE 校验和，以及全部 Python EXE 无 Qt/QML；这些只读检查不要求管理员。
+另检查 Rust 主程序的 CRT 导入符号均由同目录运行库提供，避免依赖开发机预装的 VC 运行库。
 包内 GUI 权限与原版一致，普通终端不要直接跑需要启动 GUI/Runner/Updater 的集成测试。
 绘制专项区分前端：Qt 仍验证完整 QML 的 D3D11/WARP 首帧；Rust 在临时空脚本夹具中
 调用随包的 `--capture` 诊断，检查主窗口及关机确认窗的实际截图尺寸和颜色，

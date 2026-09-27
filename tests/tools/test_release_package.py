@@ -126,6 +126,7 @@ class TestReleasePackage(unittest.TestCase):
 
     def test_rust_package_requires_cli_and_excludes_qml_from_archive(self):
         self.write(self.package, release.CLI_EXE, "backend")
+        self.write(self.package, release.RUST_RUNTIME, "runtime")
         release.prepare_package(self.root, self.package, "v1.2.3", frontend="rust")
         manifest = release.load_manifest(self.package, verify=True)
         self.assertEqual(manifest["frontend"], "rust")
@@ -138,6 +139,9 @@ class TestReleasePackage(unittest.TestCase):
         release.archive_package(self.root, self.package, output)
         with zipfile.ZipFile(output) as archive:
             self.assertIn(f"OneDragon-Helper/{release.CLI_EXE}", archive.namelist())
+            self.assertIn(
+                f"OneDragon-Helper/{release.RUST_RUNTIME}", archive.namelist()
+            )
             self.assertFalse(any("/qml/" in name for name in archive.namelist()))
         self.assertTrue(output.with_suffix(".zip.sha256").is_file())
         (self.package / release.CLI_EXE).unlink()
@@ -149,6 +153,7 @@ class TestReleasePackage(unittest.TestCase):
             release.prepare_package(self.root, self.package, frontend="invalid")
         self.assertFalse((self.package / "version.json").exists())
         self.write(self.package, release.CLI_EXE, "backend")
+        self.write(self.package, release.RUST_RUNTIME, "runtime")
         release.prepare_package(self.root, self.package, frontend="rust")
         self.write(self.package, "src/gui/qml/main.qml", "unused")
         with self.assertRaisesRegex(ValueError, "非程序目录"):

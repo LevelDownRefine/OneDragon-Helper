@@ -71,9 +71,11 @@
   给发布 GUI 写图标与管理员 manifest、归档并接入 Windows 完整 EXE CI 与 tag 发布。
   输出仅限仓库 dist，拒绝覆盖运行过的安装；构建临时目录独立，保留 Qt 构建。
   双进程真实更新交接与完整包对比继续单列验收。
-- N6 `codex/rust-gui-update-exe` 基于 #126，用真实主 EXE/CLI/更新器验证双进程等待、
+- N6 [#127](https://github.com/LevelDownRefine/OneDragon-Helper/pull/127) `codex/rust-gui-update-exe` 基于 #126，用真实主 EXE/CLI/更新器验证双进程等待、
   自然退出后安装与用户文件保留；只借原 CLI 的输出参数做同步，不加产品测试入口。
   Windows CI 管理员执行，测试不操作真实安装或启动外部脚本。
+- N7 `codex/rust-gui-native-runtime` 基于 #127，将 `vcruntime140.dll` 放到 Rust EXE 同目录，
+  纳入必需发布文件、更新哈希和归档校验；真实 PE 测试核对导入符号与随包 DLL 导出。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

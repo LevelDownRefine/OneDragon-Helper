@@ -21,6 +21,7 @@ if __package__ in (None, ""):
 from src.update.package import (  # noqa: E402
     CLI_EXE,
     MANIFEST,
+    RUST_RUNTIME,
     UPDATER_EXE,
     load_manifest,
     managed_path,
@@ -89,7 +90,7 @@ def prepare_package(
     )
     files = names + [EXE_NAME, RUNNER_NAME, UPDATER_EXE, VERSION_FILE]
     if frontend == "rust":
-        files.append(CLI_EXE)
+        files.extend((CLI_EXE, RUST_RUNTIME))
     files += [
         path.relative_to(package).as_posix()
         for path in (package / "_internal").rglob("*")
@@ -110,7 +111,7 @@ def validate_package(root: Path, package: Path) -> list[Path]:
         MANIFEST,
     }
     if frontend == "rust":
-        expected.add(CLI_EXE)
+        expected.update((CLI_EXE, RUST_RUNTIME))
     allowed_dirs = {"_internal"}
     for name in expected:
         allowed_dirs.update(
