@@ -136,6 +136,57 @@ class HeadlessProcessTests(unittest.TestCase):
         self.assertFalse(responses[3]["error"]["refresh_required"])
         self.assertEqual(self.native.read_bytes(), before)
 
+    def test_script_edit_round_trip_rename_and_validation_without_qt(self):
+        result, responses = self.serve(
+            [request("script.edit_view", {"script_name": "自定义脚本"})]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        view = responses[0]["result"]
+        self.assertEqual(view["switches"], [])
+        self.assertEqual(len(view["weekly_timeouts"]), 7)
+        before = self.native.read_bytes()
+        patch = {
+            "script_path": "scripts/custom.py",
+            "script_type": "python",
+            "script_arguments": "--中文",
+            "check_done": "script_closed",
+            "game_process_name": "",
+            "game_path": "",
+            "kill_script_after_done": True,
+            "kill_game_after_done": True,
+            "block": False,
+        }
+        params = {
+            "script_name": "自定义脚本",
+            "display_name": "新的名字",
+            "config_patch": patch,
+            "weekly_timeouts": [None, 0, 60, 60, 60, 60, 86400],
+            "switches": {},
+        }
+        result, responses = self.serve(
+            [
+                request(
+                    "script.edit_save", {**params, "weekly_timeouts": [True] * 7}, 1
+                ),
+                request("script.edit_save", params, 2),
+                request("script.edit_view", {"script_name": "新的名字"}, 3),
+                request("script.edit_view", {"script_name": "自定义脚本"}, 4),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(responses[0]["error"]["code"], "invalid_params")
+        self.assertFalse(responses[0]["error"]["refresh_required"])
+        self.assertEqual(responses[1]["result"], {"script_name": "新的名字"})
+        saved = responses[2]["result"]
+        self.assertEqual(saved["script"]["script_arguments"], "--中文")
+        self.assertFalse(saved["script"]["kill_game_after_done"])
+        self.assertFalse(saved["script"]["block"])
+        self.assertEqual(saved["weekly_timeouts"][1:], [0, 60, 60, 60, 60, 86400])
+        self.assertEqual(responses[3]["error"]["code"], "invalid_params")
+        self.assertEqual(self.native.read_bytes(), before)
+        config = load_yaml(str(self.root / "config/config.yml"))
+        self.assertEqual(config["script_list"][1]["display_name"], "新的名字")
+
     def test_adapter_rejections_leave_native_file_unchanged(self):
         before = self.native.read_bytes()
         cases = [

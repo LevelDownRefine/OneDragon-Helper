@@ -44,6 +44,7 @@ from src.service.schedule import (
     load_startup_options,
     save_schedule,
 )
+from src.service.script_edit import InvalidScriptEdit, validate_edit
 from src.update.service import UpdateService
 from src.utils.utils_config import (
     add_script,
@@ -109,6 +110,36 @@ class AppService:
     def resolve_script_target(self, script_name: str, target: str) -> dict:
         """取得脚本工具栏的外部打开目标。"""
         return resource_service.resolve_script_target(script_name, target)
+
+    def script_edit_view(self, script_name: str) -> dict:
+        """读取脚本配置表单；不提交编辑或强制初始化。"""
+        script = self.get_script(script_name)
+        if script is None:
+            raise InvalidScriptEdit("脚本已不存在，请刷新列表")
+        return {
+            "script_name": script_name,
+            "script": script,
+            "weekly_timeouts": self.weekly_inputs(script_name),
+            "switches": self.get_script_switches(script_name),
+        }
+
+    def save_script_edit(
+        self, script_name, display_name, config_patch, weekly_timeouts, switches
+    ):
+        """按原 GUI 顺序保存、按需初始化，再写原生任务开关。"""
+        previous = self.get_script(script_name)
+        if previous is None:
+            raise InvalidScriptEdit("脚本已不存在，请刷新列表")
+        previous = dict(previous)
+        display_name, config_patch = validate_edit(
+            script_name, display_name, config_patch, weekly_timeouts, switches
+        )
+        current = self.update_script(
+            script_name, display_name, config_patch, weekly_timeouts
+        )
+        self.init_script_after_edit(previous, current)
+        self.set_script_switches(current, switches)
+        return {"script_name": current}
 
     def select_daily(
         self,

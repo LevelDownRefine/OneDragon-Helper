@@ -48,7 +48,7 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 
 客户端自行使用唯一 id，并关联当前脚本选择；切换到 B 后，A 的迟到响应不得刷新 B。
 首期无推送事件、后台 job、自动重试或跨进程写入事务。
-写操作成功（包括原接口的空操作）返回 `result:null`；字段存在即表示成功，不能按结果的真假判断。
+四个任务卡写操作成功（包括原接口的空操作）返回 `result:null`；字段存在即表示成功，不能按结果的真假判断。
 需要回显时，客户端在收到成功响应后再请求 `script.view`。刷新失败与写入失败分别处理，
 不因刷新失败重放已确认的写请求。
 
@@ -57,6 +57,8 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `app.snapshot` | `{}` | `scripts`：按配置顺序给出 `script_name/display_name/script_path/adapted/script_data`；script_data 为原脚本条目，供现有 GUI 展示；不扫描所有外部脚本 |
 | `script.view` | `script_name` | `script` 摘要、`dailies` 和 `weeklies` |
 | `script.target` | `script_name/target` | 只解析工具栏的 URL、路径或不可用原因，不执行打开动作 |
+| `script.edit_view` | `script_name` | 原脚本条目 `script`、标识 `script_name`、七日 `weekly_timeouts` 和 `switches`（name/enabled） |
+| `script.edit_save` | `script_name/display_name/config_patch/weekly_timeouts/switches` | 保存完整脚本表单，返回 `{"script_name":"保存后的标识"}` |
 | `daily.select` | 必填 `script_name`；可选 `daily_name/task_name/sequence`，默认均为 null | 沿用原日常选择接口，返回 null |
 | `daily.enable` | `script_name/daily_name/enabled` | 修改目标开关，不改变已选副本，返回 null |
 | `weekly.select` | `script_name/weekly_name/task_name` | 沿用原周常选择接口，返回 null |
@@ -81,7 +83,7 @@ CLI 不转换字符串、整数或布尔值，字段类型及取值校验仍由�
 
 周常条目：`name/options/task/start_day`；无选项组时 options 为 null。
 start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不同。
-尚未开放设置、运行或更新动作。
+尚未开放全局设置、运行或更新动作。
 工具栏 `script.target` 的 target 为 `home/bili/github/folder/log/configfile`。
 成功目标为 `{"kind":"url"或"path","value":"..."}`，本机缺失资源为
 `{"kind":"unavailable","reason":"..."}`；路径为绝对路径。链接沿用资源声明及原 GUI
@@ -90,6 +92,15 @@ start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不
 查询自定义脚本返回 `adapted=false` 与空日常列表；查询未知脚本名返回错误。
 写入的未知脚本、未知周常等情况按原接口处理，不统一改为查询错误。
 例如无副本选择的周常选择为空操作；设置未知周常起始日仍保存助手侧意图，跳过游戏侧同步。
+
+`script.edit_save` 的 config_patch 必须包含 script_path、script_type、script_arguments、
+check_done、game_process_name、game_path 六个文本字段，以及 kill_script_after_done、
+kill_game_after_done、block 三个布尔字段。weekly_timeouts 恰为七项 0～86400 整数或 null；
+null 沿用默认超时，低于 10 秒的值保留原运行语义。switches 为任务名到布尔的映射。
+表单预校验失败返回 invalid_params、refresh_required=false，不写盘。
+保存顺序复用 update_script → init_script_after_edit → set_script_switches，后续失败可能已部分写入；
+客户端保留草稿、刷新 app.snapshot（改名可能改变身份），要求重新读取表单后再由用户保存。
+正常保存后也须重新查询，不把旧身份继续用于任务卡请求；取消表单无需请求。
 
 | 错误码 | 含义 |
 | --- | --- |

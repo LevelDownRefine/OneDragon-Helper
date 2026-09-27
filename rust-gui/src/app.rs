@@ -1,4 +1,5 @@
 use crate::opener::{OpenJob, Target};
+use crate::script_editor::{EditAction, EditView, ScriptEditor};
 use crate::view::{Action, Presentation, View};
 use eframe::egui;
 use onedragon_rust_gui::{
@@ -15,6 +16,8 @@ pub struct Settings {
     pub demo: bool,
     #[cfg(feature = "capture")]
     pub capture: Option<PathBuf>,
+    #[cfg(feature = "capture")]
+    pub capture_editor: bool,
 }
 
 impl Settings {
@@ -46,8 +49,12 @@ pub struct App {
     ctx: egui::Context,
     ui: View,
     open_job: Option<OpenJob>,
+    editor: Option<ScriptEditor>,
+    open_editor_after_snapshot: bool,
     #[cfg(feature = "capture")]
     capture_requested: bool,
+    #[cfg(feature = "capture")]
+    capture_ready_at: Option<Instant>,
 }
 
 impl App {
@@ -72,8 +79,12 @@ impl App {
             ctx: cc.egui_ctx.clone(),
             ui: View::new(&cc.egui_ctx),
             open_job: None,
+            editor: None,
+            open_editor_after_snapshot: false,
             #[cfg(feature = "capture")]
             capture_requested: false,
+            #[cfg(feature = "capture")]
+            capture_ready_at: None,
         };
         app.connect();
         app
@@ -100,7 +111,10 @@ impl App {
             .is_some_and(|backend| backend.requests.send(request).is_ok());
         if sent {
             self.busy = true;
-            self.status = if matches!(method, "app.snapshot" | "script.view" | "script.target") {
+            self.status = if matches!(
+                method,
+                "app.snapshot" | "script.view" | "script.target" | "script.edit_view"
+            ) {
                 "读取中"
             } else {
                 "保存中"
@@ -128,6 +142,9 @@ impl App {
         self.view = None;
         self.status = "操作失败 · 请刷新".into();
         self.ui.toast(&failure.message);
+        if let Some(editor) = &mut self.editor {
+            editor.failure(failure.message.clone(), true);
+        }
         self.error = Some(failure.message);
         if failure.code == "transport_failed" {
             self.backend = None;
@@ -141,6 +158,23 @@ impl App {
         let result = match reply.result {
             Ok(value) => value,
             Err(failure) => {
+                if matches!(
+                    reply.method.as_str(),
+                    "script.edit_view" | "script.edit_save"
+                ) {
+                    let needs_reload =
+                        failure.refresh_required || failure.code == "transport_failed";
+                    let message = failure.message.clone();
+                    self.fail(failure);
+                    if let Some(editor) = &mut self.editor {
+                        editor.failure(message, needs_reload);
+                    }
+                    if reply.method == "script.edit_save" && needs_reload && self.backend.is_some()
+                    {
+                        self.request("app.snapshot", json!({}));
+                    }
+                    return;
+                }
                 let reread = failure.refresh_required
                     && failure.code != "transport_failed"
                     && reply.method != "script.view"
@@ -156,6 +190,15 @@ impl App {
             match serde_json::from_value::<Snapshot>(result) {
                 Ok(snapshot) => {
                     self.scripts = snapshot.scripts;
+                    if let Some(editor) = &self.editor
+                        && editor.needs_reload
+                        && let Some(script) = self
+                            .scripts
+                            .iter()
+                            .find(|script| editor.matches_saved(script))
+                    {
+                        self.selected = Some(script.script_name.clone());
+                    }
                     if !self
                         .scripts
                         .iter()
@@ -167,9 +210,42 @@ impl App {
                             .map(|script| script.script_name.clone());
                     }
                     self.status = "已同步".into();
-                    self.refresh_view();
+                    if std::mem::take(&mut self.open_editor_after_snapshot) {
+                        if let Some(name) = self.selected.clone() {
+                            self.request("script.edit_view", json!({"script_name": name}));
+                        } else {
+                            self.editor = None;
+                            self.ui.toast("脚本已不存在");
+                        }
+                    } else {
+                        self.refresh_view();
+                    }
                 }
                 Err(err) => self.fail(Failure::transport(format!("脚本列表数据无效：{err}"))),
+            }
+        } else if reply.method == "script.edit_view" {
+            match serde_json::from_value::<EditView>(result) {
+                Ok(data) if Some(&data.script_name) == self.selected.as_ref() => {
+                    self.editor = Some(ScriptEditor::new(data));
+                    self.status = "已同步".into();
+                }
+                _ => self.fail(Failure::transport("脚本配置数据无效")),
+            }
+        } else if reply.method == "script.edit_save" {
+            #[derive(serde::Deserialize)]
+            struct Saved {
+                script_name: String,
+            }
+            match serde_json::from_value::<Saved>(result) {
+                Ok(saved) if !saved.script_name.is_empty() => {
+                    self.selected = Some(saved.script_name);
+                    self.editor = None;
+                    self.view = None;
+                    self.write_confirmed = true;
+                    self.ui.toast("配置已保存");
+                    self.request("app.snapshot", json!({}));
+                }
+                _ => self.fail(Failure::transport("脚本保存响应无效，请刷新核对")),
             }
         } else if reply.method == "script.target" {
             match serde_json::from_value::<Target>(result) {
@@ -203,6 +279,10 @@ impl App {
                             "[startup] first task ready {:.2} ms",
                             self.started.elapsed().as_secs_f64() * 1000.0
                         );
+                        #[cfg(feature = "capture")]
+                        if self.settings.capture.is_some() && self.settings.capture_editor {
+                            self.request("script.edit_view", json!({"script_name": self.selected}));
+                        }
                     }
                 }
                 Ok(_) => self.fail(Failure::transport("任务卡身份或起始日无效")),
@@ -320,6 +400,33 @@ impl eframe::App for App {
                 Action::Diagnostics => self.ui.diagnostics_open = !self.ui.diagnostics_open,
             }
         }
+        if let Some(action) = self
+            .editor
+            .as_mut()
+            .and_then(|editor| editor.show(ui.ctx(), self.busy))
+        {
+            match action {
+                EditAction::Cancel => {
+                    self.editor = None;
+                    self.open_editor_after_snapshot = false;
+                    if self.view.is_none() && self.backend.is_some() {
+                        self.request("app.snapshot", json!({}));
+                    }
+                }
+                EditAction::Reload => {
+                    self.open_editor_after_snapshot = true;
+                    if self.backend.is_some() {
+                        self.request("app.snapshot", json!({}));
+                    } else {
+                        self.connect();
+                    }
+                }
+                EditAction::Save(request) => {
+                    self.error = None;
+                    self.request(&request.method, request.params);
+                }
+            }
+        }
         egui::Window::new("连接诊断")
             .open(&mut self.ui.diagnostics_open)
             .default_width(520.0)
@@ -336,10 +443,20 @@ impl eframe::App for App {
                     });
             });
         #[cfg(feature = "capture")]
-        if self.settings.capture.is_some() && self.ready_logged && !self.capture_requested {
-            self.capture_requested = true;
-            ui.ctx()
-                .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+        if self.settings.capture.is_some()
+            && self.ready_logged
+            && !self.capture_requested
+            && (!self.settings.capture_editor || self.editor.is_some())
+        {
+            let ready = self.capture_ready_at.get_or_insert_with(Instant::now);
+            if ready.elapsed() >= std::time::Duration::from_millis(250) {
+                self.capture_requested = true;
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
+            } else {
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(50));
+            }
         }
     }
 }
@@ -380,6 +497,111 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    fn test_app(command: Command, root: &std::path::Path, python: PathBuf) -> App {
+        let ctx = egui::Context::default();
+        App {
+            settings: Settings {
+                project_root: root.into(),
+                python,
+                font: None,
+                demo: true,
+                #[cfg(feature = "capture")]
+                capture: None,
+                #[cfg(feature = "capture")]
+                capture_editor: false,
+            },
+            backend: Some(Backend::start(command, || {})),
+            scripts: Vec::new(),
+            selected: Some("test".into()),
+            view: None,
+            busy: false,
+            status: String::new(),
+            error: None,
+            diagnostics: String::new(),
+            pid: 0,
+            started: Instant::now(),
+            first_ui: true,
+            ready_logged: false,
+            write_confirmed: false,
+            ui: View::new(&ctx),
+            open_job: None,
+            editor: None,
+            open_editor_after_snapshot: false,
+            ctx,
+            #[cfg(feature = "capture")]
+            capture_requested: false,
+            #[cfg(feature = "capture")]
+            capture_ready_at: None,
+        }
+    }
+
+    #[test]
+    fn editor_failures_keep_draft_and_never_repeat_save() {
+        for code in ["invalid_params", "operation_failed", "transport_failed"] {
+            let root = tempfile::tempdir().unwrap();
+            let history = root.path().join("requests.jsonl");
+            let python =
+                PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+            let mut command = Command::new(&python);
+            command.args(["-u", "-c", r#"
+import json,sys
+for line in sys.stdin:
+    request = json.loads(line)
+    with open(sys.argv[1], 'a', encoding='utf-8') as history:
+        history.write(json.dumps(request) + '\n')
+    result = {'scripts': [{'script_name':'renamed', 'display_name':'renamed', 'script_path':'new.py', 'adapted':False}]} if request['method'] == 'app.snapshot' else {'script': {'script_name':'renamed','display_name':'renamed','script_path':'new.py','adapted':False}, 'dailies':[], 'weeklies':[]}
+    print(json.dumps({'protocol_version':1,'id':request['id'],'result':result}), flush=True)
+"#]).arg(&history);
+            let mut app = test_app(command, root.path(), python);
+            app.editor = Some(ScriptEditor::new(serde_json::from_value(json!({
+                "script_name":"test", "script":{"display_name":"renamed", "script_path":"new.py"},
+                "weekly_timeouts":[60,60,60,60,60,60,60], "switches":[]
+            })).unwrap()));
+            app.receive(Reply {
+                method: "script.edit_save".into(),
+                pid: 0,
+                diagnostics: String::new(),
+                result: Err(Failure {
+                    code: code.into(),
+                    message: "save failed".into(),
+                    refresh_required: code == "operation_failed",
+                }),
+            });
+            assert_eq!(
+                app.editor.as_ref().unwrap().needs_reload,
+                code != "invalid_params"
+            );
+            if code == "operation_failed" {
+                for _ in 0..2 {
+                    let reply = app
+                        .backend
+                        .as_ref()
+                        .unwrap()
+                        .replies
+                        .recv_timeout(Duration::from_secs(10))
+                        .unwrap();
+                    app.receive(reply);
+                }
+                assert_eq!(app.selected.as_deref(), Some("renamed"));
+                assert!(app.editor.as_ref().unwrap().needs_reload);
+                assert!(app.error.as_ref().unwrap().contains("save failed"));
+            }
+            drop(app);
+            if code == "operation_failed" {
+                let requests: Vec<Value> = std::fs::read_to_string(history)
+                    .unwrap()
+                    .lines()
+                    .map(|line| serde_json::from_str(line).unwrap())
+                    .collect();
+                assert_eq!(requests.len(), 2);
+                assert_eq!(requests[0]["method"], "app.snapshot");
+                assert_eq!(requests[1]["method"], "script.view");
+            } else {
+                assert!(!history.exists());
+            }
+        }
+    }
+
     #[test]
     fn acknowledged_write_refreshes_once_without_replay_on_read_failure() {
         for scenario in ["ok", "error", "malformed"] {
@@ -406,35 +628,7 @@ for line in sys.stdin:
     print(json.dumps(response), flush=True)
 "#]);
             command.arg(&history).arg(scenario);
-            let ctx = egui::Context::default();
-            let mut app = App {
-                settings: Settings {
-                    project_root: root.path().into(),
-                    python,
-                    font: None,
-                    demo: true,
-                    #[cfg(feature = "capture")]
-                    capture: None,
-                },
-                backend: Some(Backend::start(command, || {})),
-                scripts: Vec::new(),
-                selected: Some("test".into()),
-                view: None,
-                busy: false,
-                status: String::new(),
-                error: None,
-                diagnostics: String::new(),
-                pid: 0,
-                started: Instant::now(),
-                first_ui: true,
-                ready_logged: false,
-                write_confirmed: false,
-                ui: View::new(&ctx),
-                open_job: None,
-                ctx,
-                #[cfg(feature = "capture")]
-                capture_requested: false,
-            };
+            let mut app = test_app(command, root.path(), python);
             app.request("daily.select", json!({"script_name": "test"}));
             for _ in 0..2 {
                 let reply = app

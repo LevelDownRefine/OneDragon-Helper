@@ -343,10 +343,18 @@ impl View {
             ui,
             "settings",
             rect(launch.left() + 186.0, launch.top() + 6.0, 44.0, 48.0),
-            "脚本配置 · 暂不可用",
+            "脚本配置",
             true,
-        ) {
-            self.unavailable("脚本配置");
+        ) && !data.busy
+        {
+            if let Some(script) = data.selected {
+                actions.push(Action::Request(Request {
+                    method: "script.edit_view".into(),
+                    params: json!({"script_name": script}),
+                }));
+            } else {
+                self.toast("尚无脚本");
+            }
         }
         let badge = rect(128.0, 24.0, if data.demo { 186.0 } else { 154.0 }, 28.0);
         panel(ui, badge, 9, PANEL);
@@ -1050,5 +1058,13 @@ mod tests {
                 .is_empty()
         );
         assert!(scene.ui.toast.as_ref().unwrap().0.contains("暂不可用"));
+    }
+
+    #[test]
+    fn script_settings_opens_edit_form_for_current_script() {
+        let mut scene = Scene::new();
+        let request = only_request(scene.click(Id::new(("icon", "脚本配置"))));
+        assert_eq!(request.method, "script.edit_view");
+        assert_eq!(request.params, json!({"script_name": "test"}));
     }
 }

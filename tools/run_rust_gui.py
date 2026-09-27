@@ -28,6 +28,7 @@ def prepare_demo(root: Path) -> None:
         "daily_task_list.yml",
         "weekly_task_list.yml",
         "script_resources.yml",
+        "task_switch_list.yml",
     ):
         shutil.copyfile(PROJECT_ROOT / "config" / name, config / name)
     (config / "config.example.yml").write_text(

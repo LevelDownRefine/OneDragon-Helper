@@ -14,6 +14,12 @@ METHODS = {
     "app.snapshot": ("app_snapshot", (), ()),
     "script.view": ("script_view", ("script_name",), ()),
     "script.target": ("resolve_script_target", ("script_name", "target"), ()),
+    "script.edit_view": ("script_edit_view", ("script_name",), ()),
+    "script.edit_save": (
+        "save_script_edit",
+        ("script_name", "display_name", "config_patch", "weekly_timeouts", "switches"),
+        (),
+    ),
     "daily.select": (
         "select_daily",
         ("script_name",),
@@ -66,6 +72,7 @@ def _parse_json(payload: str):
 
 def handle_request(service, request) -> dict:
     """串行分发，协议输入先校验；业务异常保留诊断并返回明确失败。"""
+    from src.service.script_edit import InvalidScriptEdit
     from src.service.task_service import InvalidTaskSelection
 
     request_id = None
@@ -99,7 +106,12 @@ def handle_request(service, request) -> dict:
         if not set(required) <= set(params) or set(params) - set(required + optional):
             raise ProtocolError("invalid_params", "参数字段缺失或包含不支持的字段")
         # 参数值原样转发；取值校验和空操作语义由原 service 接口负责。
-        mutating = method not in ("app.snapshot", "script.view", "script.target")
+        mutating = method not in (
+            "app.snapshot",
+            "script.view",
+            "script.target",
+            "script.edit_view",
+        )
         # 保护协议 stdout，包括适配器或第三方库的意外输出。
         with redirect_stdout(sys.stderr):
             result = getattr(service, attribute)(**params)
@@ -110,7 +122,7 @@ def handle_request(service, request) -> dict:
         }
     except ProtocolError as exc:
         return _error(request_id, exc.code, str(exc))
-    except InvalidTaskSelection as exc:
+    except (InvalidTaskSelection, InvalidScriptEdit) as exc:
         return _error(request_id, "invalid_params", str(exc))
     except Exception:  # noqa: BLE001 -- IPC 边界必须回复；写入可能已部分完成。
         logger.exception("任务卡请求失败，id=%r", request_id)

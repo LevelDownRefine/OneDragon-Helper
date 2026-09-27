@@ -15,8 +15,11 @@
   分开处理写入失败与刷新失败，不因反读失败重放写入。
 - 当前 Rust 可用：原版布局、任务卡分级菜单、日常/周常保存反读、脚本切换、
   连接诊断、窗口拖动/最小化/关闭。其余入口保持“暂不可用”直到对应 PR 接通。
-- E 已接通官网、B 站、GitHub、脚本目录、日志及配置文件入口；分支
-  `codex/rust-gui-navigation`，基于 #103，使用只查询的 `script.target` 接口。
+- E [#106](https://github.com/LevelDownRefine/OneDragon-Helper/pull/106) 已接通官网、B 站、GitHub、
+  脚本目录、日志及配置文件入口；`codex/rust-gui-navigation` 基于 #103，使用 `script.target`。
+- F `codex/rust-gui-script-config` 基于 #106，接通单脚本配置表单与 Windows 文件选择；
+  `script.edit_view/edit_save` 沿用显式初始化边界，部分失败保留草稿、重新读取后方可再次保存。
+  新增 `launcher-rust.bat` 便于从仓库或 worktree 双击测试。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 
