@@ -22,6 +22,7 @@ pub struct Presentation<'a> {
     pub selected: Option<&'a str>,
     pub view: Option<&'a ScriptView>,
     pub busy: bool,
+    pub block_close: bool,
     pub status: &'a str,
     pub demo: bool,
 }
@@ -426,6 +427,7 @@ impl View {
                     1 => ui
                         .ctx()
                         .send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
+                    _ if data.block_close => self.toast("备份/恢复进行中，请等待完成后关闭"),
                     _ => ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close),
                 }
             }
@@ -1090,6 +1092,7 @@ mod tests {
                         selected: Some("test"),
                         view: Some(&self.view),
                         busy: self.busy,
+                        block_close: false,
                         status: "已同步",
                         demo: true,
                     },

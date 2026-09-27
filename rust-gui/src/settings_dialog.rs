@@ -20,6 +20,7 @@ pub struct SettingsView {
 }
 
 pub enum SettingsAction {
+    Backup(bool),
     Request(Request),
     Close,
 }
@@ -140,13 +141,18 @@ impl SettingsDialog {
                                 params: json!({}),
                             }));
                         }
-                        for label in ["备份配置", "恢复配置", "更新"] {
-                            ui.add_enabled(
-                                false,
-                                egui::Button::new(format!("{label} · 暂不可用"))
-                                    .min_size(egui::vec2(500.0, 40.0)),
-                            );
+                        for (label, restore) in [("备份配置", false), ("恢复配置", true)] {
+                            if ui
+                                .add_sized([500.0, 40.0], egui::Button::new(label))
+                                .clicked()
+                            {
+                                action = Some(SettingsAction::Backup(restore));
+                            }
                         }
+                        ui.add_enabled(
+                            false,
+                            egui::Button::new("更新 · 暂不可用").min_size(egui::vec2(500.0, 40.0)),
+                        );
                     }
                 });
                 if let Some(error) = &self.error {

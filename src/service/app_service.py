@@ -37,6 +37,7 @@ from src.config.set_config import (
 from src.config.task_switch import task_switch_of
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
 from src.service import launch_service, run_service, script_list
+from src.service.background_job import BackgroundJob, InvalidBackgroundJob
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -101,6 +102,25 @@ class AppService:
     def __init__(self):
         """装配各 peer。"""
         self._updates = UpdateService()
+        self.background = BackgroundJob()
+
+    def close(self) -> None:
+        self.background.close()
+
+    def start_backup(self) -> dict:
+        return self.background.start("backup", self.create_backup)
+
+    def start_restore(self, zip_path: str, confirmed: bool) -> dict:
+        if (
+            confirmed is not True
+            or not isinstance(zip_path, str)
+            or not zip_path.strip()
+        ):
+            raise InvalidBackgroundJob("请选择 ZIP 并确认覆盖当前脚本配置")
+        return self.background.start("restore", lambda: self.restore_backup(zip_path))
+
+    def poll_job(self, job_id: str) -> dict:
+        return self.background.poll(job_id)
 
     def app_snapshot(self) -> dict:
         """CLI 首屏脚本列表。"""

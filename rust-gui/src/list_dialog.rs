@@ -76,7 +76,10 @@ impl ListDialog {
                         ui.horizontal(|ui| {
                             ui.add(egui::TextEdit::singleline(&mut self.path).desired_width(360.0));
                             if ui.button("浏览…").clicked() {
-                                self.picker = Some(FilePicker::start(ctx.clone(), true));
+                                self.picker = Some(FilePicker::start(
+                                    ctx.clone(),
+                                    crate::file_picker::FileKind::ScriptOrShortcut,
+                                ));
                             }
                         });
                     }

@@ -1,3 +1,4 @@
+use crate::backup_dialog::{BackupAction, BackupDialog};
 use crate::daily_plan::DailyView;
 use crate::launch::{LaunchJob, LaunchTarget};
 use crate::list_dialog::{ListAction, ListDialog};
@@ -32,6 +33,8 @@ pub struct Settings {
     pub capture_settings: bool,
     #[cfg(feature = "capture")]
     pub capture_plan: bool,
+    #[cfg(feature = "capture")]
+    pub capture_restore: bool,
 }
 
 impl Settings {
@@ -73,6 +76,7 @@ pub struct App {
     list_dialog: Option<ListDialog>,
     run_dialog: Option<RunDialog>,
     settings_dialog: Option<SettingsDialog>,
+    backup_dialog: Option<BackupDialog>,
     startup_dialog: Option<StartupDialog>,
     refresh_settings_run: bool,
     open_settings_after_snapshot: bool,
@@ -111,6 +115,7 @@ impl App {
             list_dialog: None,
             run_dialog: None,
             settings_dialog: None,
+            backup_dialog: None,
             startup_dialog: None,
             refresh_settings_run: false,
             open_settings_after_snapshot: false,
@@ -155,6 +160,7 @@ impl App {
                     | "run.view"
                     | "settings.view"
                     | "plan.view"
+                    | "job.poll"
                     | "startup.view"
                     | "run.saved"
             ) {
@@ -199,6 +205,9 @@ impl App {
         }
         if let Some(dialog) = &mut self.settings_dialog {
             dialog.failure(failure.message.clone(), true);
+        }
+        if let Some(dialog) = &mut self.backup_dialog {
+            dialog.failure(failure.message.clone());
         }
         self.error = Some(failure.message);
         if failure.code == "transport_failed" {
@@ -354,6 +363,34 @@ impl App {
             self.write_confirmed = true;
             self.ui.toast("列表已保存");
             self.request("app.snapshot", json!({}));
+        } else if matches!(
+            reply.method.as_str(),
+            "backup.start" | "restore.start" | "job.poll"
+        ) {
+            let handled = if let Some(dialog) = &mut self.backup_dialog {
+                if reply.method == "job.poll" {
+                    dialog.receive(result)
+                } else {
+                    dialog.started(result)
+                }
+            } else {
+                Err("后台操作窗口已关闭".into())
+            };
+            match handled {
+                Ok(()) => {
+                    self.status = if self
+                        .backup_dialog
+                        .as_ref()
+                        .is_some_and(BackupDialog::active)
+                    {
+                        "处理中"
+                    } else {
+                        "操作结束"
+                    }
+                    .into()
+                }
+                Err(error) => self.fail(Failure::transport(error)),
+            }
         } else if reply.method == "plan.view" {
             match serde_json::from_value::<DailyView>(result) {
                 Ok(data) if self.settings_dialog.is_some() => {
@@ -378,6 +415,10 @@ impl App {
                         self.settings_dialog.as_mut().unwrap().refresh_run(data);
                     } else {
                         self.settings_dialog = Some(SettingsDialog::new(data));
+                        #[cfg(feature = "capture")]
+                        if self.settings.capture.is_some() && self.settings.capture_restore {
+                            self.backup_dialog = Some(BackupDialog::new(true));
+                        }
                         #[cfg(feature = "capture")]
                         if self.settings.capture.is_some() && self.settings.capture_plan {
                             self.request("plan.view", json!({}));
@@ -510,6 +551,22 @@ impl Drop for App {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if self
+            .backup_dialog
+            .as_ref()
+            .is_some_and(BackupDialog::active)
+        {
+            ctx.request_repaint_after(std::time::Duration::from_millis(200));
+        }
+        if self
+            .backup_dialog
+            .as_ref()
+            .is_some_and(BackupDialog::active)
+            && ctx.input(|input| input.viewport().close_requested())
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.ui.toast("备份/恢复进行中，请等待完成后关闭");
+        }
         if let Some(result) = self.launch_job.as_ref().and_then(LaunchJob::poll) {
             self.launch_job = None;
             self.busy = false;
@@ -567,6 +624,11 @@ impl eframe::App for App {
         if let Some(reply) = reply {
             self.receive(reply);
         }
+        if !self.busy
+            && let Some(request) = self.backup_dialog.as_mut().and_then(BackupDialog::poll)
+        {
+            self.request(&request.method, request.params);
+        }
         #[cfg(feature = "capture")]
         if let Some(path) = &self.settings.capture {
             for event in ctx.input(|input| input.events.clone()) {
@@ -611,7 +673,15 @@ impl eframe::App for App {
                 scripts: &self.scripts,
                 selected: self.selected.as_deref(),
                 view: self.view.as_ref(),
-                busy: self.busy,
+                busy: self.busy
+                    || self
+                        .backup_dialog
+                        .as_ref()
+                        .is_some_and(BackupDialog::active),
+                block_close: self
+                    .backup_dialog
+                    .as_ref()
+                    .is_some_and(BackupDialog::active),
                 status: &self.status,
                 demo: self.settings.demo,
             },
@@ -663,9 +733,13 @@ impl eframe::App for App {
         if let Some(action) = self
             .settings_dialog
             .as_mut()
+            .filter(|_| self.backup_dialog.is_none())
             .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
         {
             match action {
+                SettingsAction::Backup(restore) => {
+                    self.backup_dialog = Some(BackupDialog::new(restore))
+                }
                 SettingsAction::Close => {
                     self.settings_dialog = None;
                     self.refresh_settings_run = false;
@@ -683,6 +757,26 @@ impl eframe::App for App {
                         self.connect();
                     } else {
                         self.request(&request.method, request.params);
+                    }
+                }
+            }
+        }
+        if let Some(action) = self
+            .backup_dialog
+            .as_mut()
+            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+        {
+            match action {
+                BackupAction::Request(request) => {
+                    self.request(&request.method, request.params);
+                }
+                BackupAction::Close => {
+                    self.backup_dialog = None;
+                    self.error = None;
+                    if self.backend.is_some() {
+                        self.request("app.snapshot", json!({}));
+                    } else {
+                        self.connect();
                     }
                 }
             }
@@ -793,6 +887,7 @@ impl eframe::App for App {
             && (!self.settings.capture_editor || self.editor.is_some())
             && (!self.settings.capture_run || self.run_dialog.is_some())
             && (!self.settings.capture_settings || self.settings_dialog.is_some())
+            && (!self.settings.capture_restore || self.backup_dialog.is_some())
             && (!self.settings.capture_plan
                 || self
                     .settings_dialog
@@ -869,6 +964,8 @@ mod tests {
                 capture_settings: false,
                 #[cfg(feature = "capture")]
                 capture_plan: false,
+                #[cfg(feature = "capture")]
+                capture_restore: false,
             },
             backend: Some(Backend::start(command, || {})),
             scripts: Vec::new(),
@@ -892,6 +989,7 @@ mod tests {
             open_editor_after_snapshot: false,
             run_dialog: None,
             settings_dialog: None,
+            backup_dialog: None,
             startup_dialog: None,
             refresh_settings_run: false,
             open_settings_after_snapshot: false,

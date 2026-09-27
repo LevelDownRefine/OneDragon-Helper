@@ -13,6 +13,9 @@ PROTOCOL_VERSION = 1
 # 首期只开放短配置操作；长任务必须另行设计进度与取消协议。
 METHODS = {
     "app.snapshot": ("app_snapshot", (), ()),
+    "backup.start": ("start_backup", (), ()),
+    "restore.start": ("start_restore", ("zip_path", "confirmed"), ()),
+    "job.poll": ("poll_job", ("job_id",), ()),
     "settings.view": ("settings_view", (), ()),
     "startup.view": ("settings_view", (), ()),
     "plan.view": ("daily_plan_view", (), ()),
@@ -86,6 +89,7 @@ def _parse_json(payload: str):
 
 def handle_request(service, request) -> dict:
     """串行分发，协议输入先校验；业务异常保留诊断并返回明确失败。"""
+    from src.service.background_job import InvalidBackgroundJob
     from src.service.run_service import InvalidRunRequest
     from src.service.script_edit import InvalidScriptEdit
     from src.service.script_list import InvalidScriptList
@@ -124,6 +128,7 @@ def handle_request(service, request) -> dict:
         # 参数值原样转发；取值校验和空操作语义由原 service 接口负责。
         mutating = method not in (
             "app.snapshot",
+            "job.poll",
             "settings.view",
             "startup.view",
             "plan.view",
@@ -149,6 +154,7 @@ def handle_request(service, request) -> dict:
         InvalidScriptEdit,
         InvalidScriptList,
         InvalidRunRequest,
+        InvalidBackgroundJob,
     ) as exc:
         return _error(request_id, "invalid_params", str(exc))
     except Exception:  # noqa: BLE001 -- IPC 边界必须回复；写入可能已部分完成。
@@ -161,23 +167,49 @@ def handle_request(service, request) -> dict:
         )
 
 
-def _emit(response: dict) -> None:
-    sys.stdout.write(json.dumps(response, ensure_ascii=False, allow_nan=False) + "\n")
-    sys.stdout.flush()
+def _emit(response: dict, output=None) -> None:
+    output = sys.stdout if output is None else output
+    output.write(json.dumps(response, ensure_ascii=False, allow_nan=False) + "\n")
+    output.flush()
 
 
 def _serve(service) -> int:
-    for line in sys.stdin:
+    output = sys.stdout
+    # 后台线程也可能输出诊断；整个会话的业务 stdout 指向 stderr。
+    with redirect_stdout(sys.stderr):
         try:
-            request = _parse_json(line)
-        except ValueError as exc:
-            _emit(_error(None, "parse_error", str(exc)))
-            continue
-        _emit(handle_request(service, request))
+            for line in sys.stdin:
+                try:
+                    request = _parse_json(line)
+                except ValueError as exc:
+                    _emit(_error(None, "parse_error", str(exc)), output)
+                    continue
+                if (
+                    service.background.running
+                    and isinstance(request, dict)
+                    and "method" in request
+                    and request["method"] != "job.poll"
+                ):
+                    request_id = None
+                    if "id" in request and type(request["id"]) in (str, int):
+                        request_id = request["id"]
+                    _emit(
+                        _error(
+                            request_id, "operation_busy", "后台操作进行中，请等待完成"
+                        ),
+                        output,
+                    )
+                    continue
+                _emit(handle_request(service, request), output)
+        finally:
+            service.close()
     return 0
 
 
 def _call(service, method: str) -> int:
+    if method in {"backup.start", "restore.start", "job.poll"}:
+        _emit(_error(1, "invalid_request", "后台任务仅支持 serve --stdio 会话"))
+        return 1
     try:
         params = _parse_json(sys.stdin.read())
     except ValueError as exc:

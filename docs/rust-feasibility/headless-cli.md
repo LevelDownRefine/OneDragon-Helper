@@ -47,7 +47,7 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 ```
 
 客户端自行使用唯一 id，并关联当前脚本选择；切换到 B 后，A 的迟到响应不得刷新 B。
-首期无推送事件、后台 job、自动重试或跨进程写入事务。
+协议无推送事件、自动重试或跨进程写入事务；后台操作使用下述显式任务轮询。
 四个任务卡写操作成功（包括原接口的空操作）返回 `result:null`；字段存在即表示成功，不能按结果的真假判断。
 需要回显时，客户端在收到成功响应后再请求 `script.view`。刷新失败与写入失败分别处理，
 不因刷新失败重放已确认的写请求。
@@ -61,6 +61,9 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `run.saved` | `script_names` | 只读已存运行选项，返回独立运行命令；不保存、不启动 |
 | `plan.view` | `{}` | 独立计划、实际任务状态/读取错误、平台及关机能力 |
 | `plan.save` | `plan`（enabled/target_time/run_options） | 保存计划及系统任务，返回 null；不立即运行 |
+| `backup.start` | `{}` | 异步开始配置备份，返回 id |
+| `restore.start` | `zip_path/confirmed`（必须 true） | 异步恢复 ZIP，返回 id |
+| `job.poll` | `job_id` | 当前任务 id/kind/state；完成时附 result，失败时附 error |
 | `run.view` | `script_names` | 当前选择、无效脚本原因、运行选项（授权码始终为空）、关机支持状态 |
 | `run.prepare` | `script_names/options/confirm_invalid` | 保存已确认选项，返回独立运行命令及 stdin JSON；不会在服务进程启动调度 |
 | `script.view` | `script_name` | `script` 摘要、`dailies` 和 `weeklies` |
@@ -131,6 +134,7 @@ null 沿用默认超时，低于 10 秒的值保留原运行语义。switches �
 | `unsupported_version` | 不支持的协议版本 |
 | `method_not_found` | 未开放的方法 |
 | `invalid_params` | params 不是对象、参数字段缺失/多余，或显式查询引用了未知脚本 |
+| `operation_busy` | 后台写入进行中，此时只接受 job.poll |
 | `operation_failed` | 配置/适配器操作失败；诊断在 stderr 与日志，写请求返回 refresh_required=true |
 | `session_failed` | 启动或传输失败；id 为 null，退出码为 2 |
 
@@ -148,6 +152,18 @@ null 沿用默认超时，低于 10 秒的值保留原运行语义。switches �
 Rust 首次任务卡就绪后请求 startup.view；每日计划启用时跳过启动倒计时。
 倒计时确认后调用 run.saved，以最新配置构造命令，保持原无人值守启动跳过无效脚本告警的语义。
 查询失败或重连不再次自动启动，更新后的 `--after-update`、演示/截图模式也跳过。
+
+## 备份/恢复后台任务
+
+上述三个后台方法只支持 serve 会话，call 会拒绝它们。每个会话最多一个进行中任务，
+仅保存最近一次结果；job.poll 是短查询，state 为 running/succeeded/failed。
+start 成功返回 id 不代表备份完成；失败详情保留原 service 的部分文件数量与恢复前 ZIP。
+不提供中途取消恢复，不自动重放开始请求，旧任务编号会被拒绝。
+
+任务执行期间除 job.poll 外的会话请求返回 operation_busy，避免配置编辑与复制并发。
+业务 stdout 在整个 serve 生命周期重定向 stderr（包含后台线程），协议使用独立保留的输出句柄。
+EOF 等待后台线程完成后才释放 application_lease；Rust 阻止运行中普通关窗，最小化仍轮询。
+强杀/断连不能保证整批回滚，客户端显示失败并要求核对备份与日志后再操作。
 
 ## 每日计划
 

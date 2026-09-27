@@ -125,3 +125,7 @@ gui.dialogs → app_service → chain_service → schedule` 成环，确认窗�
 Rust 每日计划由 daily_cli 提供严格表单边界，将显式命令交给 WindowsDailyTask。
 同一个任务可迁移到无 Qt headless daily；entry_matches 参与同步判断，避免旧入口沿用。
 迁移写盘失败恢复 read 阶段保存的原 XML；原 Qt 调用不传 entry，保留原入口与恢复语义。
+
+CLI 备份/恢复通过 AppService.background 的单任务执行器调用原服务；只做调度与结果保留，
+不重写 ZIP 搬运逻辑。stdio 会话串行轮询，EOF 等任务结束再释放运行租约；GUI 禁止普通关窗
+打断恢复，后台异常记录日志并保留可展示的部分完成详情。

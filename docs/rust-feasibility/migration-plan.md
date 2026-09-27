@@ -32,8 +32,10 @@
   只有显式确认码才执行关机；取消/异常/缺入口均不关机，Rust 路径不回退 Qt。
 - I1 [#112](https://github.com/LevelDownRefine/OneDragon-Helper/pull/112) `codex/rust-gui-settings` 基于 #111，接全局设置、独立保存运行选项与启动倒计时；
   嵌套保存保留父表单草稿，取消不写盘，每日计划开启/更新后重启/演示模式跳过自动启动。
-- I2 `codex/rust-gui-daily-plan` 基于 #112，接每日计划表单、独立选项与系统任务回读。
+- I2 [#113](https://github.com/LevelDownRefine/OneDragon-Helper/pull/113) `codex/rust-gui-daily-plan` 基于 #112，接每日计划表单、独立选项与系统任务回读。
   计划入口改为无 Qt CLI daily，保存会修复旧入口；写盘失败恢复原任务 XML，取消保留父草稿。
+- J `codex/rust-gui-backup` 基于 #113，接 ZIP 备份/恢复确认和后台任务轮询；
+  保留本机游戏路径、恢复前备份、部分失败详情，处理中不允许普通关窗打断写入。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

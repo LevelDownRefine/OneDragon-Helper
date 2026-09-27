@@ -1,13 +1,20 @@
 //! Native script picker. Cancellation does not change the form.
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
+#[derive(Clone, Copy)]
+pub enum FileKind {
+    Script,
+    ScriptOrShortcut,
+    Zip,
+}
+
 pub struct FilePicker(Receiver<Result<Option<String>, String>>);
 
 impl FilePicker {
-    pub fn start(ctx: eframe::egui::Context, include_shortcuts: bool) -> Self {
+    pub fn start(ctx: eframe::egui::Context, kind: FileKind) -> Self {
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {
-            let _ = sender.send(pick(include_shortcuts));
+            let _ = sender.send(pick(kind));
             ctx.request_repaint();
         });
         Self(receiver)
@@ -23,19 +30,25 @@ impl FilePicker {
 }
 
 #[cfg(windows)]
-fn pick(include_shortcuts: bool) -> Result<Option<String>, String> {
+fn pick(kind: FileKind) -> Result<Option<String>, String> {
     use windows_sys::Win32::UI::Controls::Dialogs::{
         CommDlgExtendedError, GetOpenFileNameW, OFN_DONTADDTORECENT, OFN_FILEMUSTEXIST,
         OFN_NOCHANGEDIR, OFN_PATHMUSTEXIST, OPENFILENAMEW,
     };
-    let filter: Vec<u16> = if include_shortcuts {
-        "脚本和快捷方式\0*.exe;*.bat;*.py;*.lnk\0所有文件\0*.*\0\0"
-    } else {
-        "脚本文件\0*.exe;*.bat;*.py\0所有文件\0*.*\0\0"
+    let filter: Vec<u16> = match kind {
+        FileKind::ScriptOrShortcut => "脚本和快捷方式\0*.exe;*.bat;*.py;*.lnk\0所有文件\0*.*\0\0",
+        FileKind::Script => "脚本文件\0*.exe;*.bat;*.py\0所有文件\0*.*\0\0",
+        FileKind::Zip => "配置备份\0*.zip\0\0",
     }
     .encode_utf16()
     .collect();
-    let title: Vec<u16> = "选择脚本".encode_utf16().chain(Some(0)).collect();
+    let title: Vec<u16> = (match kind {
+        FileKind::Zip => "选择配置备份",
+        _ => "选择脚本",
+    })
+    .encode_utf16()
+    .chain(Some(0))
+    .collect();
     let mut buffer = vec![0_u16; 32768];
     let mut dialog = OPENFILENAMEW {
         lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
@@ -66,6 +79,6 @@ fn pick(include_shortcuts: bool) -> Result<Option<String>, String> {
 }
 
 #[cfg(not(windows))]
-fn pick(_include_shortcuts: bool) -> Result<Option<String>, String> {
-    Err("当前系统请直接粘贴脚本路径".into())
+fn pick(_kind: FileKind) -> Result<Option<String>, String> {
+    Err("当前系统请直接粘贴文件路径".into())
 }
