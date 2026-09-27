@@ -390,8 +390,13 @@ class HeadlessProcessTests(unittest.TestCase):
                     self.fail("会话未持有运行租约")
                 process.stdin.close()
                 self.assertEqual(process.wait(timeout=10), 0)
-                with FileLease(self.root / ".update/runtime.lock") as lease:
-                    self.assertIsNotNone(lease.stream)
+                lock_path = self.root / ".update/runtime.lock"
+                with (
+                    FileLease(lock_path),
+                    self.assertRaises(UpdateBusyError),
+                    FileLease(lock_path, shared=True),
+                ):
+                    self.fail("会话退出后取得的独占锁未阻止共享锁")
             finally:
                 if process.poll() is None:
                     process.kill()

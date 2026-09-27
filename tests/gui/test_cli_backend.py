@@ -19,7 +19,7 @@ from src.gui.cli_client import CliClient
 from src.gui.controllers.cli_task_card import CliTaskCardController
 from src.gui.controllers.task_card import TaskCardController
 from src.gui.main_window import QmlBridge
-from src.update.runtime import FileLease
+from src.update.runtime import FileLease, UpdateBusyError
 from tests.gui.helpers import get_app
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture
 
@@ -118,8 +118,13 @@ class CliGuiTests(unittest.TestCase):
             self.assertIn("凝素领域", bridge.task_card.daily_items[0]["task_label"])
             bridge.close_cli()
             self.assertEqual(client._process.state(), QProcess.NotRunning)
-            with FileLease(self.root / ".update/runtime.lock") as lease:
-                self.assertIsNotNone(lease.stream)
+            lock_path = self.root / ".update/runtime.lock"
+            with (
+                FileLease(lock_path),
+                self.assertRaises(UpdateBusyError),
+                FileLease(lock_path, shared=True),
+            ):
+                self.fail("CLI 退出后取得的独占锁未阻止共享锁")
 
     def test_stale_responses_do_not_replace_current_card(self):
         client = DeferredClient()
