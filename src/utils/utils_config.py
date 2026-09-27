@@ -129,7 +129,7 @@ def update_script(
     config_patch: dict,
     weekly_timeouts: list[int | None],
 ) -> str:
-    """更新单个脚本条目字段，并统一落盘每周超时。
+    """更新单个脚本条目字段，并统一落盘每周超时；不初始化子脚本配置。
 
     以脚本唯一标识定位条目；自动处理标识变更（含 weekly 两段迁移）与
     kill_game_after_done 自洽（未设置 game_process_name 时强制 False）。
@@ -175,7 +175,6 @@ def update_script(
     if new_script_name != old_script_name:
         rename_weekly(old_script_name, new_script_name)
     save_weekly(new_script_name, weekly_timeouts)
-    init_config(new_script_name)
     return new_script_name
 
 

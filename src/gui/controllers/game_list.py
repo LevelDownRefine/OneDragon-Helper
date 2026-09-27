@@ -442,11 +442,13 @@ class GameListController(QObject):
     def configCurrent(self):
         """打开当前脚本配置弹窗（SingleScriptConfigDialog）。
 
-        Accepted → AppService.update_script 与该脚本的任务开关落盘并重载；否则不落盘。
+        Accepted → 保存条目、按需初始化、保存任务开关并重载；否则不落盘。
         """
         if not self._games:
             return
         game = self.current_game
+        assert "script_data" in game
+        previous = dict(game["script_data"])
         from PySide6.QtWidgets import QDialog
 
         from src.gui.dialogs import SingleScriptConfigDialog
@@ -470,6 +472,7 @@ class GameListController(QObject):
                 changes["config_patch"],
                 changes["weekly_timeouts"],
             )
+            self._app_service.init_script_after_edit(previous, new_script_name)
             self._app_service.set_script_switches(new_script_name, changes["switches"])
             self._on_reload()
             self._toast(f"已保存 {changes['new_display_name']} 配置")
