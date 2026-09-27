@@ -70,6 +70,19 @@ class HeadlessProcessTests(unittest.TestCase):
             "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in requests),
         )
 
+    def test_local_update_info_without_qt_or_network(self):
+        result, responses = self.serve([request("update.view")])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state = responses[0]["result"]
+        self.assertEqual(state["version"], "源码运行")
+        self.assertTrue(state["unavailable_reason"])
+        self.assertIsNone(state["release"])
+        self.assertIsNone(state["prepared_version"])
+        for method in ("update.check", "update.download", "job.cancel"):
+            result, responses = self.run_cli(["call", method], "{}")
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(responses[0]["error"]["code"], "invalid_request")
+
     def test_daily_plan_cli_and_independent_entry_without_qt(self):
         from dataclasses import asdict
 

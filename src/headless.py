@@ -16,6 +16,10 @@ METHODS = {
     "backup.start": ("start_backup", (), ()),
     "restore.start": ("start_restore", ("zip_path", "confirmed"), ()),
     "job.poll": ("poll_job", ("job_id",), ()),
+    "job.cancel": ("cancel_job", ("job_id",), ()),
+    "update.view": ("update_view", (), ()),
+    "update.check": ("start_update_check", (), ()),
+    "update.download": ("start_update_download", (), ()),
     "settings.view": ("settings_view", (), ()),
     "startup.view": ("settings_view", (), ()),
     "plan.view": ("daily_plan_view", (), ()),
@@ -139,6 +143,7 @@ def handle_request(service, request) -> dict:
         mutating = method not in (
             "app.snapshot",
             "job.poll",
+            "update.view",
             "settings.view",
             "startup.view",
             "plan.view",
@@ -204,7 +209,7 @@ def _serve(service) -> int:
                     service.background.running
                     and isinstance(request, dict)
                     and "method" in request
-                    and request["method"] != "job.poll"
+                    and request["method"] not in {"job.poll", "job.cancel"}
                 ):
                     request_id = None
                     if "id" in request and type(request["id"]) in (str, int):
@@ -223,7 +228,14 @@ def _serve(service) -> int:
 
 
 def _call(service, method: str) -> int:
-    if method in {"backup.start", "restore.start", "job.poll"}:
+    if method in {
+        "backup.start",
+        "restore.start",
+        "job.poll",
+        "job.cancel",
+        "update.check",
+        "update.download",
+    }:
         _emit(_error(1, "invalid_request", "后台任务仅支持 serve --stdio 会话"))
         return 1
     try:

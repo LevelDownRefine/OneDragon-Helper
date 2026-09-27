@@ -149,10 +149,15 @@ impl SettingsDialog {
                                 action = Some(SettingsAction::Backup(restore));
                             }
                         }
-                        ui.add_enabled(
-                            false,
-                            egui::Button::new("更新 · 暂不可用").min_size(egui::vec2(500.0, 40.0)),
-                        );
+                        if ui
+                            .add_sized([500.0, 40.0], egui::Button::new("助手更新"))
+                            .clicked()
+                        {
+                            action = Some(SettingsAction::Request(Request {
+                                method: "update.view".into(),
+                                params: json!({}),
+                            }));
+                        }
                     }
                 });
                 if let Some(error) = &self.error {

@@ -64,6 +64,10 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `backup.start` | `{}` | 异步开始配置备份，返回 id |
 | `restore.start` | `zip_path/confirmed`（必须 true） | 异步恢复 ZIP，返回 id |
 | `job.poll` | `job_id` | 当前任务 id/kind/state；完成时附 result，失败时附 error |
+| `job.cancel` | `job_id` | 请求取消可取消的更新任务，返回 bool；备份/恢复拒绝取消 |
+| `update.view` | `{}` | 本地版本/支持状态/上次结果、发布页面、会话内的新版本与准备状态；不联网 |
+| `update.check` | `{}` | 后台检查稳定版本，返回 id；完成后返回 release（version/notes/size）或 null |
+| `update.download` | `{}` | 后台下载当前会话检查到的版本，返回 id；完成后仅返回 version |
 | `run.view` | `script_names` | 当前选择、无效脚本原因、运行选项（授权码始终为空）、关机支持状态 |
 | `run.prepare` | `script_names/options/confirm_invalid` | 保存已确认选项，返回独立运行命令及 stdin JSON；不会在服务进程启动调度 |
 | `script.view` | `script_name` | `script` 摘要、`dailies` 和 `weeklies` |
@@ -170,15 +174,27 @@ Rust 首次任务卡就绪后请求 startup.view；每日计划启用时跳过�
 
 ## 备份/恢复后台任务
 
-上述三个后台方法只支持 serve 会话，call 会拒绝它们。每个会话最多一个进行中任务，
+后台启动、轮询和取消方法只支持 serve 会话，call 会拒绝它们。每个会话最多一个进行中任务，
 仅保存最近一次结果；job.poll 是短查询，state 为 running/succeeded/failed。
 start 成功返回 id 不代表备份完成；失败详情保留原 service 的部分文件数量与恢复前 ZIP。
 不提供中途取消恢复，不自动重放开始请求，旧任务编号会被拒绝。
 
-任务执行期间除 job.poll 外的会话请求返回 operation_busy，避免配置编辑与复制并发。
+任务执行期间除 job.poll/job.cancel 外的会话请求返回 operation_busy，避免配置编辑与复制并发。
 业务 stdout 在整个 serve 生命周期重定向 stderr（包含后台线程），协议使用独立保留的输出句柄。
 EOF 等待后台线程完成后才释放 application_lease；Rust 阻止运行中普通关窗，最小化仍轮询。
 强杀/断连不能保证整批回滚，客户端显示失败并要求核对备份与日志后再操作。
+
+## 更新后台任务
+
+`update.view` 只读本地版本和上次更新结果，不发起网络。显式 `update.check` 得到的新版本
+只存于当前会话；`update.download` 不接受 URL/版本/目录参数，复用原 UpdateService 的
+下载与校验。发布 URL 和待安装目录不由前端回传。源码运行保留原服务的不支持说明。
+
+检查/下载复用单个 BackgroundJob，kind 为 update.check/update.download；轮询可带
+progress（received/total），取消完成时 state=cancelled。job.cancel 返回 true 只表示已发送
+取消意图；窗口继续轮询至终态才关闭。检查需等 HTTP 调用返回，下载按现有分块边界检查取消。
+EOF 发送取消并等待线程结束后释放运行租约；恢复任务依旧不可取消。
+本批未开放安装 RPC，准备完成后显示安装暂不可用，双进程交接另行验证。
 
 ## 每日计划
 

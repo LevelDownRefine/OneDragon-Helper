@@ -8,6 +8,7 @@ use crate::opener::{OpenJob, Target};
 use crate::run_dialog::{RunAction, RunDialog, RunView};
 use crate::script_editor::{EditAction, EditView, ScriptEditor};
 use crate::settings_dialog::{SettingsAction, SettingsDialog, SettingsView, StartupDialog};
+use crate::update_dialog::{UpdateAction, UpdateDialog, UpdateView};
 use crate::view::{Action, Presentation, View};
 use crate::wallpaper::{Wallpaper, WallpaperAction, WallpaperDialog};
 use eframe::egui;
@@ -44,6 +45,8 @@ pub struct Settings {
     pub capture_game_icon: bool,
     #[cfg(feature = "capture")]
     pub capture_wallpaper: bool,
+    #[cfg(feature = "capture")]
+    pub capture_update: bool,
 }
 
 impl Settings {
@@ -86,6 +89,8 @@ pub struct App {
     run_dialog: Option<RunDialog>,
     settings_dialog: Option<SettingsDialog>,
     backup_dialog: Option<BackupDialog>,
+    update_dialog: Option<UpdateDialog>,
+    open_update_after_snapshot: bool,
     startup_dialog: Option<StartupDialog>,
     file_drop: Option<FileDrop>,
     drop_dialog: Option<DropDialog>,
@@ -134,6 +139,8 @@ impl App {
             run_dialog: None,
             settings_dialog: None,
             backup_dialog: None,
+            update_dialog: None,
+            open_update_after_snapshot: false,
             startup_dialog: None,
             file_drop: file_drop.ok(),
             drop_dialog: None,
@@ -187,6 +194,7 @@ impl App {
                     | "settings.view"
                     | "plan.view"
                     | "job.poll"
+                    | "update.view"
                     | "startup.view"
                     | "run.saved"
             ) {
@@ -240,6 +248,9 @@ impl App {
         if let Some(dialog) = &mut self.backup_dialog {
             dialog.failure(failure.message.clone());
         }
+        if let Some(dialog) = &mut self.update_dialog {
+            dialog.failure(failure.message.clone(), true);
+        }
         if let Some(dialog) = &mut self.wallpaper_dialog {
             dialog.failure(failure.message.clone(), true);
         }
@@ -255,6 +266,13 @@ impl App {
         self.diagnostics = reply.diagnostics;
         if reply.method.starts_with("wallpaper.") {
             self.receive_wallpaper(&reply.method, reply.result);
+            return;
+        }
+        if reply.method.starts_with("update.")
+            || (self.update_dialog.is_some()
+                && matches!(reply.method.as_str(), "job.poll" | "job.cancel"))
+        {
+            self.receive_update(&reply.method, reply.result);
             return;
         }
         if reply.method == "script.icon_path" {
@@ -397,6 +415,8 @@ impl App {
                             self.editor = None;
                             self.ui.toast("脚本已不存在");
                         }
+                    } else if std::mem::take(&mut self.open_update_after_snapshot) {
+                        self.request("update.view", json!({}));
                     } else if std::mem::take(&mut self.open_wallpaper_after_snapshot) {
                         if let Some(name) = self.selected.clone() {
                             self.request("wallpaper.view", json!({"script_name":name}));
@@ -610,6 +630,13 @@ impl App {
                             self.request("wallpaper.view", json!({"script_name":self.selected}));
                         }
                         #[cfg(feature = "capture")]
+                        if self.settings.capture.is_some()
+                            && self.settings.capture_update
+                            && !self.busy
+                        {
+                            self.request("update.view", json!({}));
+                        }
+                        #[cfg(feature = "capture")]
                         if self.settings.capture.is_some() && !self.settings.capture_drop.is_empty()
                         {
                             self.start_drop(Ok(self.settings.capture_drop.clone()));
@@ -646,6 +673,7 @@ impl App {
             && self.run_dialog.is_none()
             && self.settings_dialog.is_none()
             && self.backup_dialog.is_none()
+            && self.update_dialog.is_none()
             && self.startup_dialog.is_none()
             && self.drop_dialog.is_none()
             && self.wallpaper_dialog.is_none()
@@ -658,6 +686,49 @@ impl App {
             .find(|script| Some(&script.script_name) == self.selected.as_ref())
         {
             self.ui.wallpaper.select(&script.display_name);
+        }
+    }
+
+    fn receive_update(&mut self, method: &str, result: Result<Value, Failure>) {
+        let handled = result.and_then(|value| {
+            if method == "update.view" {
+                let view: UpdateView =
+                    serde_json::from_value(value).map_err(|e| Failure::transport(e.to_string()))?;
+                self.update_dialog = Some(UpdateDialog::new(view));
+                return Ok(false);
+            }
+            let dialog = self
+                .update_dialog
+                .as_mut()
+                .ok_or_else(|| Failure::transport("更新窗口已不存在"))?;
+            match method {
+                "update.check" | "update.download" => dialog.started(method, value).map(|()| false),
+                "job.poll" => dialog.receive(value),
+                "job.cancel" if value.is_boolean() => Ok(false),
+                _ => Err("更新响应无效".into()),
+            }
+            .map_err(Failure::transport)
+        });
+        match handled {
+            Ok(close) => {
+                if close {
+                    self.update_dialog = None;
+                }
+                self.status = "已同步".into();
+            }
+            Err(failure) => {
+                self.ui.toast(&failure.message);
+                if let Some(dialog) = &mut self.update_dialog {
+                    dialog.failure(
+                        failure.message,
+                        failure.refresh_required || failure.code == "transport_failed",
+                    );
+                }
+                if failure.code == "transport_failed" {
+                    self.backend = None;
+                }
+                self.status = "更新操作失败".into();
+            }
         }
     }
 
@@ -753,6 +824,10 @@ impl App {
             .as_ref()
             .is_some_and(BackupDialog::active)
             || self.drop_dialog.as_ref().is_some_and(DropDialog::active)
+            || self
+                .update_dialog
+                .as_ref()
+                .is_some_and(UpdateDialog::active)
     }
 }
 
@@ -861,6 +936,11 @@ impl eframe::App for App {
         {
             self.request(&request.method, request.params);
         }
+        if !self.busy
+            && let Some(request) = self.update_dialog.as_mut().and_then(UpdateDialog::poll)
+        {
+            self.request(&request.method, request.params);
+        }
         #[cfg(feature = "capture")]
         if let Some(path) = &self.settings.capture {
             for event in ctx.input(|input| input.events.clone()) {
@@ -963,7 +1043,7 @@ impl eframe::App for App {
         if let Some(action) = self
             .settings_dialog
             .as_mut()
-            .filter(|_| self.backup_dialog.is_none())
+            .filter(|_| self.backup_dialog.is_none() && self.update_dialog.is_none())
             .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
         {
             match action {
@@ -980,7 +1060,10 @@ impl eframe::App for App {
                 SettingsAction::Request(request) => {
                     self.error = None;
                     self.refresh_settings_run = false;
-                    if self.backend.is_none()
+                    if self.backend.is_none() && request.method == "update.view" {
+                        self.open_update_after_snapshot = true;
+                        self.connect();
+                    } else if self.backend.is_none()
                         && matches!(request.method.as_str(), "settings.view" | "plan.view")
                     {
                         self.open_settings_after_snapshot = true;
@@ -1007,6 +1090,33 @@ impl eframe::App for App {
                         self.request("app.snapshot", json!({}));
                     } else {
                         self.connect();
+                    }
+                }
+            }
+        }
+        if let Some(action) = self
+            .update_dialog
+            .as_mut()
+            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+        {
+            match action {
+                UpdateAction::Close => {
+                    self.update_dialog = None;
+                }
+                UpdateAction::OpenReleases(value) => {
+                    let ctx = self.ctx.clone();
+                    self.busy = true;
+                    self.open_job = Some(OpenJob::start(Target::Url { value }, move || {
+                        ctx.request_repaint()
+                    }));
+                }
+                UpdateAction::Request(request) => {
+                    if self.backend.is_none() {
+                        self.update_dialog = None;
+                        self.open_update_after_snapshot = true;
+                        self.connect();
+                    } else {
+                        self.request(&request.method, request.params);
                     }
                 }
             }
@@ -1154,6 +1264,7 @@ impl eframe::App for App {
             && (!self.settings.capture_run || self.run_dialog.is_some())
             && (!self.settings.capture_settings || self.settings_dialog.is_some())
             && (!self.settings.capture_restore || self.backup_dialog.is_some())
+            && (!self.settings.capture_update || self.update_dialog.is_some())
             && (self.settings.capture_drop.is_empty()
                 || (self
                     .drop_dialog
@@ -1244,6 +1355,8 @@ mod tests {
                 capture_game_icon: false,
                 #[cfg(feature = "capture")]
                 capture_wallpaper: false,
+                #[cfg(feature = "capture")]
+                capture_update: false,
             },
             backend: Some(Backend::start(command, || {})),
             scripts: Vec::new(),
@@ -1268,6 +1381,8 @@ mod tests {
             run_dialog: None,
             settings_dialog: None,
             backup_dialog: None,
+            update_dialog: None,
+            open_update_after_snapshot: false,
             startup_dialog: None,
             file_drop: None,
             drop_dialog: None,

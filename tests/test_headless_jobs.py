@@ -119,6 +119,44 @@ class HeadlessJobTests(unittest.TestCase):
         self.assertTrue(Path(restored["result"]["pre_backup"]).is_file())
         self.assertIn("result", self.exchange("app.snapshot", {}))
 
+    def test_update_progress_and_cancel_without_qt(self):
+        command = self.fixture.command("serve", "--stdio")
+        command[2] = command[2].replace(
+            "with patch('src.utils.get_root_dir', return_value=root):",
+            """
+def download(release, *, progress, cancelled):
+    from src.update.package import UpdateCancelled
+    progress(7, 10)
+    if not cancelled.wait(10):
+        raise TimeoutError('cancel did not arrive')
+    raise UpdateCancelled('cancelled')
+with patch('src.utils.get_root_dir', return_value=root):
+    from src.update.service import UpdateInfo, ReleaseUpdate, UpdateService
+    patch.object(UpdateService,'get_update_info',return_value=UpdateInfo('1.0.0')).start()
+    patch.object(UpdateService,'check_update',return_value=ReleaseUpdate('2.0.0','notes','url','checksum',100)).start()
+    patch.object(UpdateService,'prepare_update',side_effect=download).start()
+""",
+        )
+        self.start(command)
+        self.assertEqual(self.exchange("update.view", {})["result"]["version"], "1.0.0")
+        self.finished(self.exchange("update.check", {})["result"])
+        task = self.exchange("update.download", {})["result"]
+        deadline = time.monotonic() + 5
+        while True:
+            state = self.exchange("job.poll", {"job_id": task["id"]})["result"]
+            if "progress" in state:
+                self.assertEqual(state["progress"], {"received": 7, "total": 10})
+                break
+            self.assertLess(time.monotonic(), deadline)
+        self.assertEqual(
+            self.exchange("update.view", {})["error"]["code"], "operation_busy"
+        )
+        self.assertTrue(self.exchange("job.cancel", {"job_id": task["id"]})["result"])
+        self.assertEqual(self.finished(task)["state"], "cancelled")
+        self.assertIsNone(
+            self.exchange("update.view", {})["result"]["prepared_version"]
+        )
+
     def test_background_stdout_busy_state_and_eof_hold_runtime_lease(self):
         command = self.fixture.command("serve", "--stdio")
         command[2] = command[2].replace(

@@ -49,6 +49,7 @@ from src.service.schedule import (
     save_schedule,
 )
 from src.service.script_edit import InvalidScriptEdit, validate_edit
+from src.service.update_session import UpdateSession
 from src.update.service import UpdateService
 from src.utils.utils_config import (
     add_script,
@@ -103,6 +104,7 @@ class AppService:
         """装配各 peer。"""
         self._updates = UpdateService()
         self.background = BackgroundJob()
+        self._update_session = UpdateSession(self._updates, self.background)
 
     def close(self) -> None:
         self.background.close()
@@ -121,6 +123,18 @@ class AppService:
 
     def poll_job(self, job_id: str) -> dict:
         return self.background.poll(job_id)
+
+    def cancel_job(self, job_id: str) -> bool:
+        return self.background.cancel(job_id)
+
+    def update_view(self) -> dict:
+        return self._update_session.view()
+
+    def start_update_check(self) -> dict:
+        return self._update_session.check()
+
+    def start_update_download(self) -> dict:
+        return self._update_session.download()
 
     def app_snapshot(self) -> dict:
         """CLI 首屏脚本列表。"""
