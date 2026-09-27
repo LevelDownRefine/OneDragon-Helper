@@ -5,9 +5,12 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+import portalocker
 
 from src.update import __main__ as updater
 from src.update.package import APP_EXE, UpdateError
@@ -42,6 +45,30 @@ class TestUpdateRuntime(unittest.TestCase):
         ):
             self.fail("application started")
         self.assertFalse((self.root / "config").exists())
+
+    def test_timeout_reports_busy_and_preserves_holder(self):
+        path = self.root / "runtime.lock"
+        with FileLease(path):
+            started = time.monotonic()
+            with self.assertRaises(UpdateBusyError), FileLease(path, timeout=0.02):
+                self.fail("exclusive lock acquired")
+            self.assertGreaterEqual(time.monotonic() - started, 0.02)
+            with self.assertRaises(UpdateBusyError), FileLease(path, shared=True):
+                self.fail("failed acquisition released the holder")
+        with FileLease(path):
+            self.assertTrue(path.exists())
+
+    def test_backend_failure_is_reported_as_update_error(self):
+        with (
+            patch(
+                "src.update.runtime.portalocker.Lock.acquire",
+                side_effect=portalocker.LockException("unsupported filesystem"),
+            ),
+            self.assertRaisesRegex(UpdateError, "unsupported filesystem") as raised,
+            FileLease(self.root / "runtime.lock"),
+        ):
+            self.fail("failed backend acquired the lock")
+        self.assertNotIsInstance(raised.exception, UpdateBusyError)
 
     def test_process_exit_releases_update_intent(self):
         code = (
