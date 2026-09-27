@@ -16,6 +16,10 @@ class InvalidScriptList(ValueError):
     """写入前发现的无效路径、重复脚本或过期列表。"""
 
 
+class DuplicateScript(InvalidScriptList):
+    """同进程名 EXE 已在列表，批量导入可继续处理其他文件。"""
+
+
 def add_path(file_path: str) -> dict:
     """解析文件/快捷方式后复用添加流程，返回新标识。"""
     if not isinstance(file_path, str) or not file_path.strip():
@@ -34,7 +38,7 @@ def add_path(file_path: str) -> dict:
         raise InvalidScriptList(f"无法读取脚本：{exc}") from exc
     name = get_script_name(entry)
     if name in existing:
-        raise InvalidScriptList(f"脚本已存在：{name}")
+        raise DuplicateScript(f"脚本已存在：{name}")
     add_script(entry)
     return {"script_name": name}
 

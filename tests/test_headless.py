@@ -483,9 +483,11 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.run_
             [script["script_name"] for script in responses[2]["result"]["scripts"]],
             ["new", "ok-ww", "自定义脚本"],
         )
-        for index in (3, 4, 7):
+        for index in (3, 7):
             self.assertEqual(responses[index]["error"]["code"], "invalid_params")
             self.assertFalse(responses[index]["error"]["refresh_required"])
+        self.assertEqual(responses[4]["error"]["code"], "duplicate_script")
+        self.assertFalse(responses[4]["error"]["refresh_required"])
         self.assertIsNone(responses[5]["result"])
         self.assertIsNone(responses[6]["result"])
         self.assertEqual(

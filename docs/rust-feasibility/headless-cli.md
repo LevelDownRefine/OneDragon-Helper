@@ -134,6 +134,7 @@ null 沿用默认超时，低于 10 秒的值保留原运行语义。switches �
 | `unsupported_version` | 不支持的协议版本 |
 | `method_not_found` | 未开放的方法 |
 | `invalid_params` | params 不是对象、参数字段缺失/多余，或显式查询引用了未知脚本 |
+| `duplicate_script` | 添加的 EXE 进程名已存在；未写入，可继续处理下一文件 |
 | `operation_busy` | 后台写入进行中，此时只接受 job.poll |
 | `operation_failed` | 配置/适配器操作失败；诊断在 stderr 与日志，写请求返回 refresh_required=true |
 | `session_failed` | 启动或传输失败；id 为 null，退出码为 2 |

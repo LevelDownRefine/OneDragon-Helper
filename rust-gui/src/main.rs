@@ -2,6 +2,8 @@
 mod app;
 mod backup_dialog;
 mod daily_plan;
+mod drop_dialog;
+mod file_drop;
 mod file_picker;
 mod launch;
 mod list_dialog;
@@ -36,6 +38,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
     let mut capture_plan = false;
     #[cfg(feature = "capture")]
     let mut capture_restore = false;
+    #[cfg(feature = "capture")]
+    let mut capture_drop = Vec::new();
     while let Some(argument) = args.next() {
         match argument.to_str() {
             Some("--project-root") => root = args.next().ok_or("--project-root 缺少路径")?.into(),
@@ -53,6 +57,10 @@ fn settings() -> Result<Option<app::Settings>, String> {
             Some("--capture-editor") => capture_editor = true,
             #[cfg(feature = "capture")]
             Some("--capture-list") => capture_list = true,
+            #[cfg(feature = "capture")]
+            Some("--capture-drop") => {
+                capture_drop.push(PathBuf::from(args.next().ok_or("--capture-drop 缺少路径")?))
+            }
             #[cfg(feature = "capture")]
             Some("--capture-run") => capture_run = true,
             #[cfg(feature = "capture")]
@@ -131,6 +139,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
         capture_plan,
         #[cfg(feature = "capture")]
         capture_restore,
+        #[cfg(feature = "capture")]
+        capture_drop,
     }))
 }
 

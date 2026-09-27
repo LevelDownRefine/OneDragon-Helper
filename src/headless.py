@@ -92,7 +92,7 @@ def handle_request(service, request) -> dict:
     from src.service.background_job import InvalidBackgroundJob
     from src.service.run_service import InvalidRunRequest
     from src.service.script_edit import InvalidScriptEdit
-    from src.service.script_list import InvalidScriptList
+    from src.service.script_list import DuplicateScript, InvalidScriptList
     from src.service.task_service import InvalidTaskSelection
 
     request_id = None
@@ -149,6 +149,8 @@ def handle_request(service, request) -> dict:
         }
     except ProtocolError as exc:
         return _error(request_id, exc.code, str(exc))
+    except DuplicateScript as exc:
+        return _error(request_id, "duplicate_script", str(exc))
     except (
         InvalidTaskSelection,
         InvalidScriptEdit,

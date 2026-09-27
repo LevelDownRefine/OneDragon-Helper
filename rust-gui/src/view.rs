@@ -427,7 +427,7 @@ impl View {
                     1 => ui
                         .ctx()
                         .send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
-                    _ if data.block_close => self.toast("备份/恢复进行中，请等待完成后关闭"),
+                    _ if data.block_close => self.toast("操作进行中，请等待完成后关闭"),
                     _ => ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close),
                 }
             }

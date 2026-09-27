@@ -1717,6 +1717,7 @@ dependencies = [
  "env_logger",
  "image",
  "log",
+ "raw-window-handle",
  "serde",
  "serde_json",
  "tempfile",

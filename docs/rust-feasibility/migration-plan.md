@@ -34,8 +34,11 @@
   嵌套保存保留父表单草稿，取消不写盘，每日计划开启/更新后重启/演示模式跳过自动启动。
 - I2 [#113](https://github.com/LevelDownRefine/OneDragon-Helper/pull/113) `codex/rust-gui-daily-plan` 基于 #112，接每日计划表单、独立选项与系统任务回读。
   计划入口改为无 Qt CLI daily，保存会修复旧入口；写盘失败恢复原任务 XML，取消保留父草稿。
-- J `codex/rust-gui-backup` 基于 #113，接 ZIP 备份/恢复确认和后台任务轮询；
+- J [#114](https://github.com/LevelDownRefine/OneDragon-Helper/pull/114) `codex/rust-gui-backup` 基于 #113，接 ZIP 备份/恢复确认和后台任务轮询；
   保留本机游戏路径、恢复前备份、部分失败详情，处理中不允许普通关窗打断写入。
+- K1 `codex/rust-gui-file-drop` 基于 #114，接整窗脚本/快捷方式拖入、串行添加和结果汇总；
+  Windows 使用 WM_DROPFILES 并按窗口放行跨权限消息，部分写入失败停止后续导入、刷新核对。
+  原生图标和悬停预览留给 K2。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

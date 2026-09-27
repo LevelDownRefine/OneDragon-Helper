@@ -7,6 +7,21 @@ from src.service import script_list
 
 
 class ScriptListTests(unittest.TestCase):
+    def test_duplicate_exe_has_distinct_error_without_writing(self):
+        entry = {"script_path": "a.exe", "display_name": "一"}
+        with (
+            patch.object(script_list, "resolve_script_path", return_value="a.exe"),
+            patch.object(script_list.os.path, "isfile", return_value=True),
+            patch.object(
+                script_list, "load_config", return_value={"script_list": [entry]}
+            ),
+            patch.object(script_list, "build_script_entry", return_value=entry),
+            patch.object(script_list, "add_script") as add,
+            self.assertRaises(script_list.DuplicateScript),
+        ):
+            script_list.add_path("a.exe")
+        add.assert_not_called()
+
     def test_reorder_preserves_entries_and_unknown_fields(self):
         first = {"script_path": "a.py", "display_name": "一", "custom": [1, 2]}
         second = {"script_path": "b.exe", "display_name": "二"}

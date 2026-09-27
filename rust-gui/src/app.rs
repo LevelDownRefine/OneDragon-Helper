@@ -1,5 +1,7 @@
 use crate::backup_dialog::{BackupAction, BackupDialog};
 use crate::daily_plan::DailyView;
+use crate::drop_dialog::DropDialog;
+use crate::file_drop::FileDrop;
 use crate::launch::{LaunchJob, LaunchTarget};
 use crate::list_dialog::{ListAction, ListDialog};
 use crate::opener::{OpenJob, Target};
@@ -35,6 +37,8 @@ pub struct Settings {
     pub capture_plan: bool,
     #[cfg(feature = "capture")]
     pub capture_restore: bool,
+    #[cfg(feature = "capture")]
+    pub capture_drop: Vec<PathBuf>,
 }
 
 impl Settings {
@@ -78,6 +82,8 @@ pub struct App {
     settings_dialog: Option<SettingsDialog>,
     backup_dialog: Option<BackupDialog>,
     startup_dialog: Option<StartupDialog>,
+    file_drop: Option<FileDrop>,
+    drop_dialog: Option<DropDialog>,
     refresh_settings_run: bool,
     open_settings_after_snapshot: bool,
     open_editor_after_snapshot: bool,
@@ -91,6 +97,10 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, settings: Settings, started: Instant) -> Self {
         crate::skin::configure(&cc.egui_ctx);
         let font_error = install_font(&cc.egui_ctx, settings.font.as_ref()).err();
+        let file_drop = FileDrop::new(cc).map_err(|error| {
+            log::warn!("原生拖放不可用，将使用框架拖放：{error}");
+            error
+        });
         let mut app = Self {
             settings,
             backend: None,
@@ -117,6 +127,8 @@ impl App {
             settings_dialog: None,
             backup_dialog: None,
             startup_dialog: None,
+            file_drop: file_drop.ok(),
+            drop_dialog: None,
             refresh_settings_run: false,
             open_settings_after_snapshot: false,
             open_editor_after_snapshot: false,
@@ -184,6 +196,11 @@ impl App {
     }
 
     fn fail(&mut self, mut failure: Failure) {
+        if self.drop_dialog.as_ref().is_some_and(DropDialog::awaiting) {
+            self.busy = false;
+            self.receive_drop(Err(failure));
+            return;
+        }
         if self.write_confirmed {
             failure.message = format!("已保存，但刷新失败：{}", failure.message);
         }
@@ -219,6 +236,10 @@ impl App {
         self.busy = false;
         self.pid = reply.pid;
         self.diagnostics = reply.diagnostics;
+        if reply.method == "script.add" && self.drop_dialog.is_some() {
+            self.receive_drop(reply.result);
+            return;
+        }
         let result = match reply.result {
             Ok(value) => value,
             Err(failure) => {
@@ -517,6 +538,11 @@ impl App {
                             self.ui.open_manual_menu();
                         }
                         #[cfg(feature = "capture")]
+                        if self.settings.capture.is_some() && !self.settings.capture_drop.is_empty()
+                        {
+                            self.start_drop(Ok(self.settings.capture_drop.clone()));
+                        }
+                        #[cfg(feature = "capture")]
                         if self.settings.capture.is_some()
                             && self.settings.capture_run
                             && !self.busy
@@ -539,6 +565,51 @@ impl App {
             self.fail(Failure::transport("写操作响应无效"));
         }
     }
+    fn can_drop(&self) -> bool {
+        !self.busy
+            && self.backend.is_some()
+            && self.view.is_some()
+            && self.editor.is_none()
+            && self.list_dialog.is_none()
+            && self.run_dialog.is_none()
+            && self.settings_dialog.is_none()
+            && self.backup_dialog.is_none()
+            && self.startup_dialog.is_none()
+            && self.drop_dialog.is_none()
+    }
+
+    fn start_drop(&mut self, paths: Result<Vec<PathBuf>, String>) {
+        if !self.can_drop() {
+            self.ui.toast("对话框打开或操作进行中，本次拖入已忽略");
+            return;
+        }
+        match paths.and_then(DropDialog::new) {
+            Ok(dialog) => {
+                self.ui.close_menu();
+                self.drop_dialog = Some(dialog);
+            }
+            Err(error) => self.ui.toast(error),
+        }
+    }
+
+    fn receive_drop(&mut self, result: Result<Value, Failure>) {
+        let dialog = self.drop_dialog.as_mut().expect("drop in progress");
+        if dialog.receive(result) {
+            self.backend = None;
+            self.view = None;
+            self.status = "导入连接中断 · 请刷新核对".into();
+        }
+        if !dialog.active() && self.backend.is_some() {
+            self.request("app.snapshot", json!({}));
+        }
+    }
+
+    fn operation_active(&self) -> bool {
+        self.backup_dialog
+            .as_ref()
+            .is_some_and(BackupDialog::active)
+            || self.drop_dialog.as_ref().is_some_and(DropDialog::active)
+    }
 }
 
 impl Drop for App {
@@ -551,21 +622,20 @@ impl Drop for App {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self
-            .backup_dialog
-            .as_ref()
-            .is_some_and(BackupDialog::active)
-        {
+        let dropped = if let Some(handler) = &self.file_drop {
+            handler.poll(ctx)
+        } else {
+            crate::file_drop::fallback(ctx)
+        };
+        if let Some(paths) = dropped {
+            self.start_drop(paths);
+        }
+        if self.operation_active() {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
-        if self
-            .backup_dialog
-            .as_ref()
-            .is_some_and(BackupDialog::active)
-            && ctx.input(|input| input.viewport().close_requested())
-        {
+        if self.operation_active() && ctx.input(|input| input.viewport().close_requested()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.ui.toast("备份/恢复进行中，请等待完成后关闭");
+            self.ui.toast("操作进行中，请等待完成后关闭");
         }
         if let Some(result) = self.launch_job.as_ref().and_then(LaunchJob::poll) {
             self.launch_job = None;
@@ -625,6 +695,11 @@ impl eframe::App for App {
             self.receive(reply);
         }
         if !self.busy
+            && let Some(request) = self.drop_dialog.as_mut().and_then(DropDialog::next)
+        {
+            self.request(&request.method, request.params);
+        }
+        if !self.busy
             && let Some(request) = self.backup_dialog.as_mut().and_then(BackupDialog::poll)
         {
             self.request(&request.method, request.params);
@@ -653,6 +728,9 @@ impl eframe::App for App {
         }
         #[cfg(not(feature = "capture"))]
         let _ = ctx;
+        if let Some(handler) = &self.file_drop {
+            handler.set_enabled(self.can_drop());
+        }
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -673,15 +751,8 @@ impl eframe::App for App {
                 scripts: &self.scripts,
                 selected: self.selected.as_deref(),
                 view: self.view.as_ref(),
-                busy: self.busy
-                    || self
-                        .backup_dialog
-                        .as_ref()
-                        .is_some_and(BackupDialog::active),
-                block_close: self
-                    .backup_dialog
-                    .as_ref()
-                    .is_some_and(BackupDialog::active),
+                busy: self.busy || self.operation_active(),
+                block_close: self.operation_active(),
                 status: &self.status,
                 demo: self.settings.demo,
             },
@@ -865,6 +936,16 @@ impl eframe::App for App {
                 }
             }
         }
+        if self
+            .drop_dialog
+            .as_mut()
+            .is_some_and(|dialog| dialog.show(ui.ctx(), self.busy))
+        {
+            self.drop_dialog = None;
+        }
+        if let Some(handler) = &self.file_drop {
+            handler.set_enabled(self.can_drop());
+        }
         egui::Window::new("连接诊断")
             .open(&mut self.ui.diagnostics_open)
             .default_width(520.0)
@@ -888,6 +969,12 @@ impl eframe::App for App {
             && (!self.settings.capture_run || self.run_dialog.is_some())
             && (!self.settings.capture_settings || self.settings_dialog.is_some())
             && (!self.settings.capture_restore || self.backup_dialog.is_some())
+            && (self.settings.capture_drop.is_empty()
+                || (self
+                    .drop_dialog
+                    .as_ref()
+                    .is_some_and(|dialog| !dialog.active())
+                    && !self.busy))
             && (!self.settings.capture_plan
                 || self
                     .settings_dialog
@@ -966,6 +1053,8 @@ mod tests {
                 capture_plan: false,
                 #[cfg(feature = "capture")]
                 capture_restore: false,
+                #[cfg(feature = "capture")]
+                capture_drop: Vec::new(),
             },
             backend: Some(Backend::start(command, || {})),
             scripts: Vec::new(),
@@ -991,6 +1080,8 @@ mod tests {
             settings_dialog: None,
             backup_dialog: None,
             startup_dialog: None,
+            file_drop: None,
+            drop_dialog: None,
             refresh_settings_run: false,
             open_settings_after_snapshot: false,
             ctx,
@@ -999,6 +1090,68 @@ mod tests {
             #[cfg(feature = "capture")]
             capture_ready_at: None,
         }
+    }
+
+    #[test]
+    fn drop_ignores_busy_input_and_refreshes_partial_write_without_replay() {
+        let root = tempfile::tempdir().unwrap();
+        let history = root.path().join("requests.txt");
+        let python = PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+        let mut command = Command::new(&python);
+        command.args(["-u", "-c", r#"
+import json,sys
+for line in sys.stdin:
+    request=json.loads(line)
+    with open(sys.argv[1], 'a') as f: f.write(request['method']+'\n')
+    print(json.dumps({'protocol_version':1,'id':request['id'],'error':{'code':'operation_failed','message':'init failed','refresh_required':True}}),flush=True)
+"#]).arg(&history);
+        let mut app = test_app(command, root.path(), python);
+        app.view = Some(serde_json::from_value(json!({"script":{"script_name":"test","display_name":"Test","script_path":"test.exe","adapted":false},"dailies":[],"weeklies":[]})).unwrap());
+        let paths: Vec<_> = ["a.exe", "b.py"]
+            .map(|name| {
+                let path = root.path().join(name);
+                std::fs::write(&path, "never execute").unwrap();
+                path
+            })
+            .into();
+        app.busy = true;
+        app.start_drop(Ok(paths.clone()));
+        assert!(app.drop_dialog.is_none());
+        app.busy = false;
+        app.list_dialog = Some(ListDialog::add());
+        app.start_drop(Ok(paths.clone()));
+        assert!(app.drop_dialog.is_none());
+        app.list_dialog = None;
+        app.start_drop(Ok(paths));
+        assert!(app.operation_active());
+        let request = app.drop_dialog.as_mut().unwrap().next().unwrap();
+        app.request(&request.method, request.params);
+        let reply = app
+            .backend
+            .as_ref()
+            .unwrap()
+            .replies
+            .recv_timeout(Duration::from_secs(10))
+            .unwrap();
+        app.receive(reply);
+        assert!(!app.operation_active());
+        assert!(app.launch_job.is_none());
+        let reply = app
+            .backend
+            .as_ref()
+            .unwrap()
+            .replies
+            .recv_timeout(Duration::from_secs(10))
+            .unwrap();
+        assert_eq!(reply.method, "app.snapshot");
+        assert_eq!(
+            std::fs::read_to_string(history)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            ["script.add", "app.snapshot"]
+        );
+        assert!(app.drop_dialog.as_mut().unwrap().next().is_none());
     }
 
     #[test]
