@@ -5,6 +5,7 @@
 没有把当前增量更新分支的变更带入评估，也没有用 `origin/main` 替换本地 `main`。
 
 后续已选定近期路线：**Rust GUI + 保留助手业务为 Python CLI，逐步迁移**。
+当前推进安排见 [迁移计划：先拆 #97，再接 Rust](migration-plan.md)。
 调用审计、缺失接口和实施顺序见 [GUI / CLI 边界设计](gui-cli-boundary.md)。
 基于 CLI 分支的可运行界面见 [Rust GUI 原型](../../rust-gui/README.md)：主窗口布局和
 任务卡已按原 GUI 对齐，尚未迁移的入口保留并提示“暂不可用”。

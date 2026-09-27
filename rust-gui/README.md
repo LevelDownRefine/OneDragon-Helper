@@ -1,6 +1,7 @@
 # Rust 任务卡原型
 
 分支 `codex/rust-gui-prototype`，基于 `codex/rust-feasibility` 的 `1e039b7`。
+下一步的分支整理、协议对齐与功能顺序见 [渐进迁移计划](../docs/rust-feasibility/migration-plan.md)。
 Rust 负责窗口、列表、任务卡和进程通信；现有 Python `src.headless` 负责全部配置业务。
 当前已按原 GUI 对齐主窗口布局与任务卡交互，未迁移入口保留并标注“暂不可用”。
 首版选用 [egui / eframe 0.36.2](https://docs.rs/eframe/0.36.2/eframe/)，使用 Glow 渲染器，
