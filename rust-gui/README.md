@@ -110,12 +110,15 @@ cargo build --release --locked --manifest-path rust-gui/Cargo.toml
   长操作在 Python 后台执行，界面轮询短请求，最小化后仍推进；处理中阻止普通关窗和取消。
   失败保留原服务的部分完成与恢复前备份详情，不自动重试；关闭结果窗后刷新任务卡。
 
-更新、
-壁纸切换与视频还未迁移。占位入口在悬停时提示，
-点击后显示说明；这些操作继续通过原版助手使用。脚本图标目前统一使用静态默认图标，
-尚未提取各 EXE 的图标。此原型仍需源码和 Python 环境，不是发布包替代品。
+- 壁纸按钮可选择 PNG、JPEG、WebP、BMP 或恢复默认；按脚本切换背景，保持比例填满窗口。
+  Rust 后台解码并限制内存/尺寸，处理 EXIF 方向，长边超过 1920 的图片生成缩图；
+  映射与缓存由 Python service 写盘。旧结果丢弃，损坏缓存回退原图，缺失/损坏原图显示渐变。
+  视频当前只显示已有首帧缓存或渐变占位，播放入口在弹窗中说明暂不可用。
 
-尺寸与颜色对应 `src/gui/qml/Layout.js`、`Theme.js`，壁纸直接嵌入 `assets/ds.jpg`。
+更新与视频播放还未迁移。此原型仍需源码和 Python 环境，不是发布包替代品。
+
+尺寸与颜色对应 `src/gui/qml/Layout.js`、`Theme.js`；嵌入 `assets/ds.jpg` 用于初始背景，
+加载后使用 CLI 解析的脚本默认/自定义壁纸。
 工具栏 PNG 由原 GUI 的 `UiIconProvider` 导出并提交，修改图标源后运行
 `python -m tools.export_rust_icons` 更新；这一步需要 Qt，Rust 界面运行时不需要。
 `src/view.rs` 负责布局和输入，`src/skin.rs` 负责样式/资源，`src/app.rs` 负责 CLI 状态。
@@ -226,3 +229,10 @@ capture 构建可重复传入 `--capture-drop 路径`，会实际添加文件，
 Windows 实际窗口的脚本图标与游戏悬停大图已截图检查。capture 构建可加
 `--capture-game-icon` 等待预览图就绪后截图（需隔离配置中有可用游戏图标路径）。
 Ubuntu Python 1202 项（1168 通过、34 项原有跳过，115.858 秒）；Ruff、rustfmt、严格 Clippy 通过。
+
+图片壁纸批次验证：Rust 57 项；Ubuntu Python 1207 项（1173 通过、34 项原有跳过，119.317 秒）。
+覆盖四种图片格式、缩图/缓存回退、源文件不变、缺失/过大图片、旧结果丢弃、Esc 取消，
+以及无 Qt 保存/重置、缓存 token 过期和已保存后反读失败不重放。Ruff、rustfmt、严格 Clippy 通过。
+缓存通过最大 8 MiB 的请求传输，独立有界写线程保证后端停止读取时仍可超时/关闭；
+真实 CLI 测试验证大缓存往返及过期 token 拒绝。capture 构建可加 `--capture-wallpaper`，
+等待图片就绪后截取壁纸编辑窗。

@@ -19,6 +19,7 @@
 | app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
 | task_service.py | 脚本列表与任务卡聚合查询；无 GUI 或进程依赖 |
 | resource_service.py | 按现有声明/解析器查询脚本工具栏目标，不启动系统程序 |
+| wallpaper_service.py | 壁纸来源解析、映射与有界缓存写入；解码和渲染归前端 |
 | utils_config.py | 单脚本配置（原 script_service.py 已退化为模块函数）：config.yml 完整读写（含条目增删改）+ get_script / build_script_entry / config_file_path |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |

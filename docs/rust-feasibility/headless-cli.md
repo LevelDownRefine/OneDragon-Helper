@@ -73,6 +73,9 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `script.edit_save` | `script_name/display_name/config_patch/weekly_timeouts/switches` | 保存完整脚本表单，返回 `{"script_name":"保存后的标识"}` |
 | `script.add` | `file_path` | 解析脚本/快捷方式并添加，返回 `{"script_name":"新标识"}`；不运行文件 |
 | `script.icon_path` | `script_name` | 只读当前游戏图标源，返回 `script_name/path`；缺失路径为 null，不启动程序 |
+| `wallpaper.current` / `wallpaper.view` | `script_name` | 自动背景/编辑窗读取同一状态：脚本名、显示名、模式、源路径、自定义路径、token、现有缓存路径 |
+| `wallpaper.set` | `script_name/file_path` | 保存壁纸映射，null 恢复默认，返回 null；不复制或删除源文件 |
+| `wallpaper.cache` | `script_name/token/jpeg_base64` | 保存当前来源的 JPEG 缓存，返回 bool；旧 token 返回 false、不写入 |
 | `script.remove` | `script_name` | 删除助手条目及每周设置，保留源文件，返回 null；至少保留一个条目 |
 | `script.reorder` | `script_names` | 按完整唯一标识列表重排，返回 null；拒绝重复或过期快照 |
 | `daily.select` | 必填 `script_name`；可选 `daily_name/task_name/sequence`，默认均为 null | 沿用原日常选择接口，返回 null |
@@ -81,6 +84,12 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `weekly.start` | `script_name/weekly_name/start_day` | 先保存周常意图，再同步游戏侧配置，返回 null |
 
 协议层校验信封、方法白名单、参数对象及必填/允许的字段，不复制业务取值校验。
+
+壁纸来源优先级为自定义、脚本声明、助手默认；缺失自定义文件返回 gradient，不覆盖用户选择。
+图片解码/EXIF 方向/缩放由前端完成，缓存写盘仍经 service。缓存最多 4 MiB，路径由服务生成；
+token 包含规范化源路径、大小及修改时间。视频首帧缓存沿用原 Qt 的哈希与命名。
+保存与反读独立，前端保留失败草稿，不因刷新失败再次保存。自动背景和显式编辑分别命名，
+便于客户端区分响应意图，服务端不承载弹窗状态。
 参数值原样传给 AppService，四个写入口再直接转发原 GUI 接口；返回值不转换，也不附带查询。
 
 日常条目沿用适配器反读字段：`name/task/sequence/enabled`，另附 `options`。

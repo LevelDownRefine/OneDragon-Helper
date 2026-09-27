@@ -22,6 +22,8 @@ def prepare_demo(root: Path) -> None:
     )
     config = root / "config"
     config.mkdir()
+    (root / "assets").mkdir()
+    shutil.copyfile(PROJECT_ROOT / "assets/ds.jpg", root / "assets/ds.jpg")
     for name in (
         "schedule.example.yml",
         "weekly.example.yml",

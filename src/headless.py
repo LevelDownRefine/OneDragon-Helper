@@ -28,6 +28,14 @@ METHODS = {
     "script.view": ("script_view", ("script_name",), ()),
     "script.target": ("resolve_script_target", ("script_name", "target"), ()),
     "script.icon_path": ("game_icon_path", ("script_name",), ()),
+    "wallpaper.current": ("wallpaper_view", ("script_name",), ()),
+    "wallpaper.view": ("wallpaper_view", ("script_name",), ()),
+    "wallpaper.set": ("set_wallpaper", ("script_name", "file_path"), ()),
+    "wallpaper.cache": (
+        "save_wallpaper_cache",
+        ("script_name", "token", "jpeg_base64"),
+        (),
+    ),
     "script.launch_target": ("resolve_launch_target", ("script_name", "target"), ()),
     "script.edit_view": ("script_edit_view", ("script_name",), ()),
     "script.add": ("add_script_path", ("file_path",), ()),
@@ -95,6 +103,7 @@ def handle_request(service, request) -> dict:
     from src.service.script_edit import InvalidScriptEdit
     from src.service.script_list import DuplicateScript, InvalidScriptList
     from src.service.task_service import InvalidTaskSelection
+    from src.service.wallpaper_service import InvalidWallpaper
 
     request_id = None
     mutating = False
@@ -138,6 +147,8 @@ def handle_request(service, request) -> dict:
             "script.view",
             "script.target",
             "script.icon_path",
+            "wallpaper.current",
+            "wallpaper.view",
             "script.launch_target",
             "script.edit_view",
         )
@@ -159,6 +170,7 @@ def handle_request(service, request) -> dict:
         InvalidScriptList,
         InvalidRunRequest,
         InvalidBackgroundJob,
+        InvalidWallpaper,
     ) as exc:
         return _error(request_id, "invalid_params", str(exc))
     except Exception:  # noqa: BLE001 -- IPC 边界必须回复；写入可能已部分完成。

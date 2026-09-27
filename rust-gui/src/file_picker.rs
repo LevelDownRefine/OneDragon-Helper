@@ -6,6 +6,7 @@ pub enum FileKind {
     Script,
     ScriptOrShortcut,
     Zip,
+    Image,
 }
 
 pub struct FilePicker(Receiver<Result<Option<String>, String>>);
@@ -39,11 +40,13 @@ fn pick(kind: FileKind) -> Result<Option<String>, String> {
         FileKind::ScriptOrShortcut => "脚本和快捷方式\0*.exe;*.bat;*.py;*.lnk\0所有文件\0*.*\0\0",
         FileKind::Script => "脚本文件\0*.exe;*.bat;*.py\0所有文件\0*.*\0\0",
         FileKind::Zip => "配置备份\0*.zip\0\0",
+        FileKind::Image => "图片壁纸\0*.png;*.jpg;*.jpeg;*.webp;*.bmp\0\0",
     }
     .encode_utf16()
     .collect();
     let title: Vec<u16> = (match kind {
         FileKind::Zip => "选择配置备份",
+        FileKind::Image => "选择图片壁纸",
         _ => "选择脚本",
     })
     .encode_utf16()

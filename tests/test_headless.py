@@ -532,6 +532,31 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.run_
         self.assertIsNone(responses[2]["result"]["path"])
         self.assertEqual(config_path.read_bytes(), before)
 
+    def test_wallpaper_set_read_reset_without_qt(self):
+        picture = self.root / "中文壁纸.png"
+        picture.write_bytes(b"source fixture")
+        result, responses = self.serve(
+            [
+                request(
+                    "wallpaper.set",
+                    {"script_name": "自定义脚本", "file_path": str(picture)},
+                    1,
+                ),
+                request("wallpaper.view", {"script_name": "自定义脚本"}, 2),
+                request(
+                    "wallpaper.set", {"script_name": "自定义脚本", "file_path": None}, 3
+                ),
+                request("wallpaper.current", {"script_name": "自定义脚本"}, 4),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(responses[0]["result"])
+        self.assertEqual(responses[1]["result"]["source"], str(picture))
+        self.assertEqual(responses[1]["result"]["mode"], "image")
+        self.assertIsNone(responses[2]["result"])
+        self.assertIsNone(responses[3]["result"]["custom_path"])
+        self.assertEqual(picture.read_bytes(), b"source fixture")
+
     def test_daily_defaults_and_noops_return_null(self):
         before = self.native.read_bytes()
         cases = [

@@ -21,6 +21,7 @@ pub const BATCH: Color32 = Color32::from_rgb(255, 222, 33);
 
 pub struct Assets {
     pub background: egui::TextureHandle,
+    pub gradient: egui::TextureHandle,
     pub icons: HashMap<&'static str, egui::TextureHandle>,
 }
 
@@ -77,7 +78,16 @@ impl Assets {
         icon!("chevron_down");
         icon!("grid");
         icon!("script");
-        Self { background, icons }
+        let gradient = ctx.load_texture(
+            "wallpaper-gradient",
+            egui::ColorImage::new([1, 2], vec![Color32::from_rgb(58, 63, 82), CANVAS]),
+            egui::TextureOptions::LINEAR,
+        );
+        Self {
+            background,
+            gradient,
+            icons,
+        }
     }
 
     pub fn icon(&self, ui: &egui::Ui, name: &str, rect: Rect) {

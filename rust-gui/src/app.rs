@@ -9,6 +9,7 @@ use crate::run_dialog::{RunAction, RunDialog, RunView};
 use crate::script_editor::{EditAction, EditView, ScriptEditor};
 use crate::settings_dialog::{SettingsAction, SettingsDialog, SettingsView, StartupDialog};
 use crate::view::{Action, Presentation, View};
+use crate::wallpaper::{Wallpaper, WallpaperAction, WallpaperDialog};
 use eframe::egui;
 use onedragon_rust_gui::{
     backend::{Backend, Failure, Reply, Request},
@@ -41,6 +42,8 @@ pub struct Settings {
     pub capture_drop: Vec<PathBuf>,
     #[cfg(feature = "capture")]
     pub capture_game_icon: bool,
+    #[cfg(feature = "capture")]
+    pub capture_wallpaper: bool,
 }
 
 impl Settings {
@@ -86,6 +89,9 @@ pub struct App {
     startup_dialog: Option<StartupDialog>,
     file_drop: Option<FileDrop>,
     drop_dialog: Option<DropDialog>,
+    wallpaper_dialog: Option<WallpaperDialog>,
+    wallpaper_pending: Option<String>,
+    open_wallpaper_after_snapshot: bool,
     refresh_settings_run: bool,
     open_settings_after_snapshot: bool,
     open_editor_after_snapshot: bool,
@@ -131,6 +137,9 @@ impl App {
             startup_dialog: None,
             file_drop: file_drop.ok(),
             drop_dialog: None,
+            wallpaper_dialog: None,
+            wallpaper_pending: None,
+            open_wallpaper_after_snapshot: false,
             refresh_settings_run: false,
             open_settings_after_snapshot: false,
             open_editor_after_snapshot: false,
@@ -170,6 +179,8 @@ impl App {
                     | "script.view"
                     | "script.target"
                     | "script.icon_path"
+                    | "wallpaper.current"
+                    | "wallpaper.view"
                     | "script.edit_view"
                     | "script.launch_target"
                     | "run.view"
@@ -229,6 +240,9 @@ impl App {
         if let Some(dialog) = &mut self.backup_dialog {
             dialog.failure(failure.message.clone());
         }
+        if let Some(dialog) = &mut self.wallpaper_dialog {
+            dialog.failure(failure.message.clone(), true);
+        }
         self.error = Some(failure.message);
         if failure.code == "transport_failed" {
             self.backend = None;
@@ -239,6 +253,10 @@ impl App {
         self.busy = false;
         self.pid = reply.pid;
         self.diagnostics = reply.diagnostics;
+        if reply.method.starts_with("wallpaper.") {
+            self.receive_wallpaper(&reply.method, reply.result);
+            return;
+        }
         if reply.method == "script.icon_path" {
             #[derive(serde::Deserialize)]
             struct IconPath {
@@ -342,6 +360,7 @@ impl App {
         if reply.method == "app.snapshot" {
             match serde_json::from_value::<Snapshot>(result) {
                 Ok(snapshot) => {
+                    let previous = self.selected.clone();
                     self.ui.refresh_icons(snapshot.default_icon_path);
                     self.scripts = snapshot.scripts;
                     self.ui.reconcile_scripts(&self.scripts);
@@ -365,6 +384,10 @@ impl App {
                             .map(|script| script.script_name.clone());
                     }
                     self.status = "已同步".into();
+                    self.wallpaper_pending = self.selected.clone();
+                    if previous != self.selected {
+                        self.select_wallpaper();
+                    }
                     if std::mem::take(&mut self.open_settings_after_snapshot) {
                         self.request("settings.view", json!({}));
                     } else if std::mem::take(&mut self.open_editor_after_snapshot) {
@@ -373,6 +396,10 @@ impl App {
                         } else {
                             self.editor = None;
                             self.ui.toast("脚本已不存在");
+                        }
+                    } else if std::mem::take(&mut self.open_wallpaper_after_snapshot) {
+                        if let Some(name) = self.selected.clone() {
+                            self.request("wallpaper.view", json!({"script_name":name}));
                         }
                     } else {
                         self.refresh_view();
@@ -576,6 +603,13 @@ impl App {
                             self.ui.open_manual_menu();
                         }
                         #[cfg(feature = "capture")]
+                        if self.settings.capture.is_some()
+                            && self.settings.capture_wallpaper
+                            && !self.busy
+                        {
+                            self.request("wallpaper.view", json!({"script_name":self.selected}));
+                        }
+                        #[cfg(feature = "capture")]
                         if self.settings.capture.is_some() && !self.settings.capture_drop.is_empty()
                         {
                             self.start_drop(Ok(self.settings.capture_drop.clone()));
@@ -614,6 +648,78 @@ impl App {
             && self.backup_dialog.is_none()
             && self.startup_dialog.is_none()
             && self.drop_dialog.is_none()
+            && self.wallpaper_dialog.is_none()
+    }
+
+    fn select_wallpaper(&mut self) {
+        if let Some(script) = self
+            .scripts
+            .iter()
+            .find(|script| Some(&script.script_name) == self.selected.as_ref())
+        {
+            self.ui.wallpaper.select(&script.display_name);
+        }
+    }
+
+    fn receive_wallpaper(&mut self, method: &str, result: Result<Value, Failure>) {
+        let value = match result {
+            Ok(value) => value,
+            Err(failure) => {
+                let message = if self.write_confirmed {
+                    format!("已保存，刷新失败：{}", failure.message)
+                } else {
+                    failure.message
+                };
+                log::warn!("壁纸操作失败：{message}");
+                if failure.code == "transport_failed" {
+                    self.backend = None;
+                }
+                if method != "wallpaper.cache" {
+                    self.ui.toast(&message);
+                    if let Some(dialog) = &mut self.wallpaper_dialog {
+                        dialog.failure(
+                            message,
+                            self.write_confirmed
+                                || failure.refresh_required
+                                || failure.code == "transport_failed",
+                        );
+                    }
+                }
+                self.write_confirmed = false;
+                self.status = "壁纸操作失败".into();
+                return;
+            }
+        };
+        match method {
+            "wallpaper.cache" if value.is_boolean() => {
+                self.status = "已同步".into();
+            }
+            "wallpaper.set" if value.is_null() => {
+                let name = self
+                    .wallpaper_dialog
+                    .as_ref()
+                    .expect("wallpaper editor open")
+                    .script_name()
+                    .to_owned();
+                self.write_confirmed = true;
+                self.request("wallpaper.view", json!({"script_name":name}));
+            }
+            "wallpaper.current" | "wallpaper.view" => {
+                match serde_json::from_value::<Wallpaper>(value) {
+                    Ok(state) if Some(&state.script_name) == self.selected.as_ref() => {
+                        self.ui.wallpaper.set(state.clone());
+                        self.wallpaper_pending = None;
+                        if method == "wallpaper.view" {
+                            self.wallpaper_dialog = Some(WallpaperDialog::new(state));
+                        }
+                        self.write_confirmed = false;
+                        self.status = "已同步".into();
+                    }
+                    _ => self.fail(Failure::transport("壁纸响应无效")),
+                }
+            }
+            _ => self.fail(Failure::transport("壁纸响应无效")),
+        }
     }
 
     fn start_drop(&mut self, paths: Result<Vec<PathBuf>, String>) {
@@ -742,6 +848,19 @@ impl eframe::App for App {
         {
             self.request(&request.method, request.params);
         }
+        if self.can_drop() {
+            if let Some(name) = self.wallpaper_pending.take() {
+                self.request("wallpaper.current", json!({"script_name":name}));
+            } else if let Some(request) = self.ui.wallpaper.take_cache() {
+                self.request(&request.method, request.params);
+            }
+        } else if !self.busy
+            && self.backend.is_some()
+            && self.wallpaper_dialog.is_some()
+            && let Some(request) = self.ui.wallpaper.take_cache()
+        {
+            self.request(&request.method, request.params);
+        }
         #[cfg(feature = "capture")]
         if let Some(path) = &self.settings.capture {
             for event in ctx.input(|input| input.events.clone()) {
@@ -799,6 +918,8 @@ impl eframe::App for App {
             match action {
                 Action::Select(name) => {
                     self.selected = Some(name);
+                    self.wallpaper_pending = self.selected.clone();
+                    self.select_wallpaper();
                     self.error = None;
                     if self.backend.is_some() {
                         self.refresh_view();
@@ -974,6 +1095,29 @@ impl eframe::App for App {
                 }
             }
         }
+        if let Some(action) = self
+            .wallpaper_dialog
+            .as_mut()
+            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+        {
+            match action {
+                WallpaperAction::Close => {
+                    self.wallpaper_dialog = None;
+                    if self.view.is_none() && self.backend.is_some() {
+                        self.refresh_view();
+                    }
+                }
+                WallpaperAction::Request(request) => {
+                    if self.backend.is_none() {
+                        self.wallpaper_dialog = None;
+                        self.open_wallpaper_after_snapshot = true;
+                        self.connect();
+                    } else {
+                        self.request(&request.method, request.params);
+                    }
+                }
+            }
+        }
         if self
             .drop_dialog
             .as_mut()
@@ -1004,6 +1148,8 @@ impl eframe::App for App {
             && self.ready_logged
             && !self.capture_requested
             && (!self.settings.capture_game_icon || self.ui.capture_icon_ready)
+            && (!self.settings.capture_wallpaper
+                || (self.wallpaper_dialog.is_some() && self.ui.wallpaper.ready && !self.busy))
             && (!self.settings.capture_editor || self.editor.is_some())
             && (!self.settings.capture_run || self.run_dialog.is_some())
             && (!self.settings.capture_settings || self.settings_dialog.is_some())
@@ -1096,6 +1242,8 @@ mod tests {
                 capture_drop: Vec::new(),
                 #[cfg(feature = "capture")]
                 capture_game_icon: false,
+                #[cfg(feature = "capture")]
+                capture_wallpaper: false,
             },
             backend: Some(Backend::start(command, || {})),
             scripts: Vec::new(),
@@ -1123,6 +1271,9 @@ mod tests {
             startup_dialog: None,
             file_drop: None,
             drop_dialog: None,
+            wallpaper_dialog: None,
+            wallpaper_pending: None,
+            open_wallpaper_after_snapshot: false,
             refresh_settings_run: false,
             open_settings_after_snapshot: false,
             ctx,
@@ -1131,6 +1282,49 @@ mod tests {
             #[cfg(feature = "capture")]
             capture_ready_at: None,
         }
+    }
+
+    #[test]
+    fn saved_wallpaper_read_failure_keeps_dialog_without_repeating_save() {
+        let root = tempfile::tempdir().unwrap();
+        let history = root.path().join("requests.txt");
+        let python = PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+        let mut command = Command::new(&python);
+        command.args(["-u", "-c", r#"
+import json,sys
+for line in sys.stdin:
+    request=json.loads(line)
+    with open(sys.argv[1], 'a') as f: f.write(request['method']+'\n')
+    print(json.dumps({'protocol_version':1,'id':request['id'],'error':{'code':'operation_failed','message':'read failed','refresh_required':False}}),flush=True)
+"#]).arg(&history);
+        let mut app = test_app(command, root.path(), python);
+        app.wallpaper_dialog = Some(WallpaperDialog::new(serde_json::from_value(json!({"script_name":"test","display_name":"Test","mode":"image","source":"image.png","custom_path":"image.png","token":"old","cache":null})).unwrap()));
+        app.receive(Reply {
+            method: "wallpaper.set".into(),
+            pid: 0,
+            diagnostics: String::new(),
+            result: Ok(Value::Null),
+        });
+        assert!(app.write_confirmed);
+        let reply = app
+            .backend
+            .as_ref()
+            .unwrap()
+            .replies
+            .recv_timeout(Duration::from_secs(10))
+            .unwrap();
+        assert_eq!(reply.method, "wallpaper.view");
+        app.receive(reply);
+        assert!(!app.busy);
+        assert!(!app.write_confirmed);
+        assert!(app.wallpaper_dialog.is_some());
+        assert_eq!(
+            std::fs::read_to_string(history)
+                .unwrap()
+                .lines()
+                .collect::<Vec<_>>(),
+            ["wallpaper.view"]
+        );
     }
 
     #[test]

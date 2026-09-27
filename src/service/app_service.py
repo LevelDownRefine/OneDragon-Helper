@@ -36,7 +36,7 @@ from src.config.set_config import (
 )
 from src.config.task_switch import task_switch_of
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
-from src.service import launch_service, run_service, script_list
+from src.service import launch_service, run_service, script_list, wallpaper_service
 from src.service.background_job import BackgroundJob, InvalidBackgroundJob
 from src.service.schedule import (
     RunOptions,
@@ -145,6 +145,17 @@ class AppService:
 
     def game_icon_path(self, script_name: str) -> dict:
         return resource_service.game_icon_path(script_name)
+
+    def wallpaper_view(self, script_name: str) -> dict:
+        return wallpaper_service.wallpaper_view(script_name)
+
+    def set_wallpaper(self, script_name: str, file_path: str | None) -> None:
+        return wallpaper_service.set_wallpaper(script_name, file_path)
+
+    def save_wallpaper_cache(
+        self, script_name: str, token: str, jpeg_base64: str
+    ) -> bool:
+        return wallpaper_service.save_wallpaper_cache(script_name, token, jpeg_base64)
 
     def resolve_launch_target(self, script_name: str, target: str) -> dict:
         return launch_service.resolve_launch_target(script_name, target)

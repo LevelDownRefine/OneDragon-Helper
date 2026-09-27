@@ -43,6 +43,7 @@ struct Menu {
 
 pub struct View {
     assets: Assets,
+    pub wallpaper: crate::wallpaper::Backdrop,
     icons: crate::native_icons::Icons,
     default_icon_path: Option<std::path::PathBuf>,
     game_icon: Option<(String, Option<std::path::PathBuf>)>,
@@ -71,6 +72,7 @@ impl View {
     pub fn new(ctx: &egui::Context) -> Self {
         Self {
             assets: Assets::new(ctx),
+            wallpaper: crate::wallpaper::Backdrop::new(ctx.clone()),
             icons: crate::native_icons::Icons::new(ctx.clone()),
             default_icon_path: None,
             game_icon: None,
@@ -125,11 +127,11 @@ impl View {
         self.toast = Some((message.into(), Instant::now()));
     }
 
-    fn unavailable(&mut self, name: &str) {
-        self.toast(format!("{name}暂不可用，请在原版助手中操作"));
-    }
-
     pub fn show(&mut self, ui: &mut Ui, data: Presentation<'_>) -> Vec<Action> {
+        if let Some(error) = self.wallpaper.poll(ui.ctx()) {
+            log::warn!("{error}");
+            self.toast(error);
+        }
         self.icons.poll(ui.ctx());
         let mut actions = Vec::new();
         let screen = ui.max_rect();
@@ -176,19 +178,39 @@ impl View {
     }
 
     fn background(&self, ui: &mut Ui, screen: Rect) {
-        let image = &self.assets.background;
-        let aspect = image.size_vec2().x / image.size_vec2().y;
-        let target = screen.aspect_ratio();
-        let uv_size = if aspect > target {
-            vec2(target / aspect, 1.0)
+        let image = self.wallpaper.texture.as_ref().or_else(|| {
+            self.wallpaper
+                .placeholder
+                .is_none()
+                .then_some(&self.assets.background)
+        });
+        if let Some(image) = image {
+            let aspect = image.size_vec2().x / image.size_vec2().y;
+            let target = screen.aspect_ratio();
+            let uv_size = if aspect > target {
+                vec2(target / aspect, 1.0)
+            } else {
+                vec2(1.0, aspect / target)
+            };
+            let uv = Rect::from_center_size(pos2(0.5, 0.5), uv_size);
+            egui::Image::new((image.id(), screen.size()))
+                .uv(uv)
+                .corner_radius(16)
+                .paint_at(ui, screen);
         } else {
-            vec2(1.0, aspect / target)
-        };
-        let uv = Rect::from_center_size(pos2(0.5, 0.5), uv_size);
-        egui::Image::new((image.id(), screen.size()))
-            .uv(uv)
-            .corner_radius(16)
-            .paint_at(ui, screen);
+            egui::Image::new((self.assets.gradient.id(), screen.size()))
+                .corner_radius(16)
+                .paint_at(ui, screen);
+            if let Some(character) = &self.wallpaper.placeholder {
+                ui.painter().text(
+                    screen.center(),
+                    egui::Align2::CENTER_CENTER,
+                    character,
+                    egui::FontId::proportional(320.0),
+                    egui::Color32::from_white_alpha(15),
+                );
+            }
+        }
         let mut mesh = egui::Mesh::default();
         for (fraction, alpha) in [(0.0, 31), (0.48, 0), (1.0, 77)] {
             let y = screen.top() + screen.height() * fraction;
@@ -565,12 +587,7 @@ impl View {
                 36.0,
                 36.0,
             );
-            let available = *icon != "wallpaper";
-            let hint = if available {
-                (*name).to_owned()
-            } else {
-                format!("{name} · 暂不可用")
-            };
+            let hint = (*name).to_owned();
             let clicked = if *icon == "game" {
                 self.game_button(ui, bounds, data, actions)
             } else {
@@ -579,18 +596,20 @@ impl View {
             if clicked {
                 // A click wins over the optional hover read; only one CLI request per frame.
                 actions.retain(|action| !matches!(action, Action::Request(request) if request.method == "script.icon_path"));
-                if !available {
-                    self.unavailable(name);
-                } else if !data.busy {
+                if !data.busy {
                     if let Some(script) = data.selected {
                         actions.push(Action::Request(Request {
-                            method: if *icon == "game" {
-                                "script.launch_target"
-                            } else {
-                                "script.target"
+                            method: match *icon {
+                                "game" => "script.launch_target",
+                                "wallpaper" => "wallpaper.view",
+                                _ => "script.target",
                             }
                             .into(),
-                            params: json!({"script_name": script, "target": icon}),
+                            params: if *icon == "wallpaper" {
+                                json!({"script_name":script})
+                            } else {
+                                json!({"script_name": script, "target": icon})
+                            },
                         }));
                     } else {
                         self.toast("尚无脚本");
@@ -1388,12 +1407,9 @@ mod tests {
             request.params,
             json!({"script_name":"test","target":"game"})
         );
-        assert!(
-            scene
-                .click(Id::new(("icon", "更换壁纸 · 暂不可用")))
-                .is_empty()
-        );
-        assert!(scene.ui.toast.as_ref().unwrap().0.contains("暂不可用"));
+        let request = only_request(scene.click(Id::new(("icon", "更换壁纸"))));
+        assert_eq!(request.method, "wallpaper.view");
+        assert_eq!(request.params, json!({"script_name":"test"}));
     }
 
     #[test]

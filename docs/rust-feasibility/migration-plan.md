@@ -39,8 +39,11 @@
 - K1 [#115](https://github.com/LevelDownRefine/OneDragon-Helper/pull/115) `codex/rust-gui-file-drop` 基于 #114，接整窗脚本/快捷方式拖入、串行添加和结果汇总；
   Windows 使用 WM_DROPFILES 并按窗口放行跨权限消息，部分写入失败停止后续导入、刷新核对。
   原生图标和悬停预览留给 K2。
-- K2 `codex/rust-gui-native-icons` 基于 #115，接 Windows 脚本图标与游戏悬停预览；
+- K2 [#116](https://github.com/LevelDownRefine/OneDragon-Helper/pull/116) `codex/rust-gui-native-icons` 基于 #115，接 Windows 脚本图标与游戏悬停预览；
   Python 仅解析路径，Rust 异步提取内嵌图标、恢复透明度、缓存并显示；刷新失效缓存，失败回退图标/文字。
+- L1 `codex/rust-gui-image-wallpaper` 基于 #116，接默认/自定义图片壁纸与恢复默认；
+  Rust 有界异步解码 PNG/JPEG/WebP/BMP，Python 保存映射和缩图缓存，切换丢弃旧结果。
+  视频暂显示原版首帧缓存或渐变占位，播放留给 L2。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

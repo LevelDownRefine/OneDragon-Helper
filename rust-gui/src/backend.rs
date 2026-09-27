@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use std::{
     collections::VecDeque,
     io::{BufRead, BufReader, Read, Write},
-    process::{Child, ChildStdin, Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -55,7 +55,7 @@ fn decode_response(line: &str, id: u64) -> Result<Value, Failure> {
 
 pub struct Session {
     child: Child,
-    stdin: Option<ChildStdin>,
+    stdin: Option<mpsc::SyncSender<Vec<u8>>>,
     lines: mpsc::Receiver<Result<String, String>>,
     readers: Vec<JoinHandle<()>>,
     diagnostics: Arc<Mutex<VecDeque<String>>>,
@@ -77,10 +77,20 @@ impl Session {
         let mut child = command
             .spawn()
             .map_err(|err| Failure::transport(format!("无法启动 Python CLI：{err}")))?;
-        let stdin = child.stdin.take().expect("piped stdin");
+        let mut stdin = child.stdin.take().expect("piped stdin");
         let stdout = child.stdout.take().expect("piped stdout");
         let stderr = child.stderr.take().expect("piped stderr");
         let (tx, lines) = mpsc::sync_channel(8);
+        let (writes, pending) = mpsc::sync_channel::<Vec<u8>>(1);
+        let errors = tx.clone();
+        let writer = thread::spawn(move || {
+            for payload in pending {
+                if let Err(error) = stdin.write_all(&payload) {
+                    let _ = errors.send(Err(format!("发送 CLI 请求失败：{error}")));
+                    break;
+                }
+            }
+        });
         let reader = thread::spawn(move || {
             let mut reader = BufReader::new(stdout);
             loop {
@@ -124,9 +134,9 @@ impl Session {
         });
         Ok(Self {
             child,
-            stdin: Some(stdin),
+            stdin: Some(writes),
             lines,
-            readers: vec![reader, stderr_reader],
+            readers: vec![reader, stderr_reader, writer],
             diagnostics,
             next_id: 1,
             usable: true,
@@ -154,7 +164,7 @@ impl Session {
         }))
         .expect("serializable JSON request");
         payload.push(b'\n');
-        let result = self.exchange(&payload, id, timeout, stop);
+        let result = self.exchange(payload, id, timeout, stop);
         if matches!(&result, Err(failure) if failure.code == "transport_failed") {
             self.usable = false;
         }
@@ -163,19 +173,19 @@ impl Session {
 
     fn exchange(
         &mut self,
-        payload: &[u8],
+        payload: Vec<u8>,
         id: u64,
         timeout: Duration,
         stop: &AtomicBool,
     ) -> Result<Value, Failure> {
-        // One outstanding, small request prevents a full stdin pipe from blocking shutdown.
-        if payload.len() > 4096 {
-            return Err(Failure::transport("请求超过 4 KiB"));
+        // A dedicated writer keeps timeout/close responsive even when the child stops reading.
+        if payload.len() as u64 > MAX_LINE {
+            return Err(Failure::transport("请求超过 8 MiB"));
         }
         self.stdin
             .as_mut()
             .expect("open session stdin")
-            .write_all(payload)
+            .try_send(payload)
             .map_err(|err| Failure::transport(format!("发送 CLI 请求失败：{err}")))?;
         let deadline = Instant::now() + timeout;
         loop {
@@ -237,7 +247,7 @@ impl Drop for Session {
         drop(std::mem::replace(&mut self.lines, empty));
         for reader in self.readers.drain(..) {
             if reader.join().is_err() {
-                log::error!("CLI 管道读取线程异常退出");
+                log::error!("CLI 管道线程异常退出");
             }
         }
     }

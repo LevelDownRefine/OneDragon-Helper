@@ -200,6 +200,96 @@ fn closing_backend_cancels_pending_request() {
 }
 
 #[test]
+fn blocked_large_write_times_out_and_close_stays_responsive() {
+    for cancel in [false, true] {
+        let command = python("import time\ntime.sleep(30)");
+        let params = json!({"data":"x".repeat(1024 * 1024)});
+        let started = Instant::now();
+        if cancel {
+            let backend = Backend::start(command, || {});
+            backend
+                .requests
+                .send(onedragon_rust_gui::backend::Request {
+                    method: "blocked".into(),
+                    params,
+                })
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(150));
+            drop(backend);
+        } else {
+            let mut session = Session::spawn(command).unwrap();
+            let error = session
+                .request(
+                    "blocked",
+                    params,
+                    Duration::from_millis(150),
+                    &AtomicBool::new(false),
+                )
+                .unwrap_err();
+            assert!(error.message.contains("超时"));
+            drop(session);
+        }
+        assert!(started.elapsed() < Duration::from_secs(3));
+    }
+}
+
+#[test]
+fn real_cli_stores_large_wallpaper_cache_and_rejects_stale_token() {
+    use base64::Engine;
+    let root = tempfile::tempdir().unwrap();
+    let mut command = python(include_str!("fixtures/real_backend.py"));
+    command.arg(root.path());
+    let mut session = Session::spawn(command).unwrap();
+    call(&mut session, "app.snapshot", json!({}));
+    let source = root.path().join("壁纸.jpg");
+    let image = image::RgbImage::from_fn(256, 256, |x, y| {
+        image::Rgb([(x * y) as u8, x as u8, y as u8])
+    });
+    let mut jpeg = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, 90)
+        .encode_image(&image)
+        .unwrap();
+    assert!(jpeg.len() > 4096);
+    std::fs::write(&source, &jpeg).unwrap();
+    call(
+        &mut session,
+        "wallpaper.set",
+        json!({"script_name":"ok-ww","file_path":source}),
+    );
+    let state = call(
+        &mut session,
+        "wallpaper.view",
+        json!({"script_name":"ok-ww"}),
+    );
+    assert_eq!(
+        call(
+            &mut session,
+            "wallpaper.cache",
+            json!({"script_name":"ok-ww","token":state["token"],"jpeg_base64":base64::engine::general_purpose::STANDARD.encode(&jpeg)})
+        ),
+        true
+    );
+    let state = call(
+        &mut session,
+        "wallpaper.current",
+        json!({"script_name":"ok-ww"}),
+    );
+    assert_eq!(
+        std::fs::read(state["cache"].as_str().unwrap()).unwrap(),
+        jpeg
+    );
+    assert_eq!(
+        call(
+            &mut session,
+            "wallpaper.cache",
+            json!({"script_name":"ok-ww","token":"stale","jpeg_base64":base64::engine::general_purpose::STANDARD.encode(&jpeg)})
+        ),
+        false
+    );
+    assert_eq!(std::fs::read(source).unwrap(), jpeg);
+}
+
+#[test]
 fn idle_exit_is_reported_without_another_request() {
     let backend = Backend::start(
         python(

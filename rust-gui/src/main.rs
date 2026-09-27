@@ -15,6 +15,7 @@ mod settings_dialog;
 mod shutdown;
 mod skin;
 mod view;
+mod wallpaper;
 
 use std::{env, path::PathBuf, time::Instant};
 
@@ -43,6 +44,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
     let mut capture_drop = Vec::new();
     #[cfg(feature = "capture")]
     let mut capture_game_icon = false;
+    #[cfg(feature = "capture")]
+    let mut capture_wallpaper = false;
     while let Some(argument) = args.next() {
         match argument.to_str() {
             Some("--project-root") => root = args.next().ok_or("--project-root 缺少路径")?.into(),
@@ -62,6 +65,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
             Some("--capture-list") => capture_list = true,
             #[cfg(feature = "capture")]
             Some("--capture-game-icon") => capture_game_icon = true,
+            #[cfg(feature = "capture")]
+            Some("--capture-wallpaper") => capture_wallpaper = true,
             #[cfg(feature = "capture")]
             Some("--capture-drop") => {
                 capture_drop.push(PathBuf::from(args.next().ok_or("--capture-drop 缺少路径")?))
@@ -148,6 +153,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
         capture_drop,
         #[cfg(feature = "capture")]
         capture_game_icon,
+        #[cfg(feature = "capture")]
+        capture_wallpaper,
     }))
 }
 
