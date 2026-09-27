@@ -27,6 +27,7 @@ from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
     ensure_config,
     get_registered_script_names,
+    init_config,
     set_config,
     set_daily_enabled,
 )
@@ -58,6 +59,7 @@ from src.utils.utils_runner import (
     collect_invalid_script_messages,
     run_chain_command,
 )
+from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_wallpaper import (
     load_wallpapers,
     save_video_preview,
@@ -275,6 +277,22 @@ class AppService:
             weekly_timeouts,
         )
         return new_script_name
+
+    def init_script_after_edit(self, previous: dict, script_name: str) -> None:
+        """保存后单独调用：仅脚本路径或标识变化时重新对齐子脚本配置。
+
+        Args:
+            previous: 编辑前的脚本条目快照。
+            script_name: 保存后的脚本标识。
+        """
+        current = get_script(script_name)
+        assert current is not None, f"[service] 找不到已保存脚本: {script_name}"
+        assert "script_path" in previous and "script_path" in current
+        if (
+            previous["script_path"] != current["script_path"]
+            or get_script_name(previous) != script_name
+        ):
+            init_config(script_name)
 
     # ── schedule.yml（src.service.schedule 模块函数）──
     # schedule.yml 的读写与调度编排同处 src.service.schedule，不挂在任何 peer 实例上；
