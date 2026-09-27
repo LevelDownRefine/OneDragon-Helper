@@ -78,7 +78,12 @@ class HeadlessProcessTests(unittest.TestCase):
         self.assertTrue(state["unavailable_reason"])
         self.assertIsNone(state["release"])
         self.assertIsNone(state["prepared_version"])
-        for method in ("update.check", "update.download", "job.cancel"):
+        for method in (
+            "update.check",
+            "update.download",
+            "update.install",
+            "job.cancel",
+        ):
             result, responses = self.run_cli(["call", method], "{}")
             self.assertEqual(result.returncode, 1)
             self.assertEqual(responses[0]["error"]["code"], "invalid_request")

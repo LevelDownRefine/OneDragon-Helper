@@ -196,3 +196,63 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.back
         with FileLease(self.root / ".update/runtime.lock"):
             self.errors.seek(0)
             self.assertIn("background-noise", self.errors.read())
+
+    def test_install_is_session_bound_and_eof_waits_for_handoff_without_qt(self):
+        command = self.fixture.command("serve", "--stdio")
+        command[2] = command[2].replace(
+            "with patch('src.utils.get_root_dir', return_value=root):",
+            """
+def handoff(prepared):
+    import time
+    from pathlib import Path
+    assert prepared.version == '2.0.0'
+    Path(root,'entered').touch()
+    deadline=time.monotonic()+10
+    while not Path(root,'release').exists():
+        if time.monotonic()>deadline:
+            raise TimeoutError('test release missing')
+        time.sleep(.01)
+    Path(root,'handoff').touch()
+    return Path(root,'private-result.json')
+with patch('src.utils.get_root_dir', return_value=root):
+    from pathlib import Path
+    from src.update.service import UpdateInfo, ReleaseUpdate, PreparedUpdate, UpdateService
+    patch.object(UpdateService,'get_update_info',return_value=UpdateInfo('1.0.0')).start()
+    patch.object(UpdateService,'check_update',return_value=ReleaseUpdate('2.0.0','notes','url','checksum',100)).start()
+    patch.object(UpdateService,'prepare_update',return_value=PreparedUpdate(Path(root,'private-package'),'2.0.0')).start()
+    patch.object(UpdateService,'start_update',side_effect=handoff).start()
+""",
+        )
+        self.start(command)
+        self.assertIn("error", self.exchange("update.install", {}))
+        self.finished(self.exchange("update.check", {})["result"])
+        self.finished(self.exchange("update.download", {})["result"])
+        self.assertEqual(
+            self.exchange("update.install", {"directory": "untrusted"})["error"][
+                "code"
+            ],
+            "invalid_params",
+        )
+        task = self.exchange("update.install", {})["result"]
+        deadline = time.monotonic() + 5
+        while not (self.root / "entered").exists():
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.01)
+        self.assertEqual(
+            self.exchange("job.cancel", {"job_id": task["id"]})["error"]["code"],
+            "invalid_params",
+        )
+        self.assertEqual(
+            self.exchange("update.install", {})["error"]["code"], "operation_busy"
+        )
+        self.process.stdin.close()
+        with (
+            self.assertRaises(UpdateBusyError),
+            FileLease(self.root / ".update/runtime.lock"),
+        ):
+            self.fail("handoff prematurely released runtime lease")
+        (self.root / "release").touch()
+        self.assertEqual(self.process.wait(timeout=10), 0)
+        self.assertTrue((self.root / "handoff").is_file())
+        with FileLease(self.root / ".update/runtime.lock"):
+            self.assertTrue((self.root / "entered").exists())

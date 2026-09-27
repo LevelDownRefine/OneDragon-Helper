@@ -19,6 +19,7 @@ class UpdateSession:
         self._background = background
         self._release: ReleaseUpdate | None = None
         self._prepared: PreparedUpdate | None = None
+        self._handed_off = False
 
     def view(self) -> dict:
         """只读本地状态；进入弹窗不触发网络。"""
@@ -27,7 +28,7 @@ class UpdateSession:
             "releases_url": RELEASES_URL,
             "release": self._release_view(),
             "prepared_version": self._prepared.version if self._prepared else None,
-            "install_unavailable": "安装与重启暂不可用。",
+            "handoff_ready": self._handed_off,
         }
 
     def _release_view(self) -> dict | None:
@@ -43,6 +44,8 @@ class UpdateSession:
         """显式检查，结果保留在当前会话，不接受客户端指定下载地址。"""
         if self._background.running:
             raise InvalidBackgroundJob("已有操作进行中，请等待完成")
+        if self._handed_off:
+            raise UpdateError("安装交接已就绪，请退出窗口")
         info = self._service.get_update_info()
         if info.unavailable_reason:
             raise UpdateError(info.unavailable_reason)
@@ -61,6 +64,8 @@ class UpdateSession:
 
     def download(self) -> dict:
         """下载当前会话检查到的版本，进度与取消复用更新服务。"""
+        if self._handed_off:
+            raise UpdateError("安装交接已就绪，请退出窗口")
         if self._release is None:
             raise UpdateError("请先检查更新")
         release = self._release
@@ -76,3 +81,18 @@ class UpdateSession:
             return {"version": prepared.version}
 
         return self._background.start("update.download", operation, cancelled=cancelled)
+
+    def install(self) -> dict:
+        """只安装本会话校验过的包；就绪后客户端关闭，安装器独立执行。"""
+        if self._handed_off:
+            raise UpdateError("安装交接已就绪，请退出窗口")
+        if self._prepared is None:
+            raise UpdateError("请先下载并校验更新")
+        prepared = self._prepared
+
+        def operation():
+            self._service.start_update(prepared)
+            self._handed_off = True
+            return {"version": prepared.version, "ready": True}
+
+        return self._background.start("update.install", operation)

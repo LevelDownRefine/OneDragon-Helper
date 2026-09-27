@@ -113,3 +113,46 @@ class UpdateSessionTests(unittest.TestCase):
         task = self.jobs.start("restore", lambda: {})
         with self.assertRaisesRegex(InvalidBackgroundJob, "不支持"):
             self.jobs.cancel(task["id"])
+
+    def test_install_requires_download_and_failed_handoff_needs_explicit_retry(self):
+        with self.assertRaisesRegex(UpdateError, "先下载"):
+            self.session.install()
+        self.finished(self.session.check())
+        prepared = PreparedUpdate(self.root / "private-package", "2.0.0")
+        self.service.prepare_update.return_value = prepared
+        self.finished(self.session.download())
+        self.service.start_update.side_effect = UpdateError("仍有任务运行")
+        with self.assertLogs("src.service.background_job", level="ERROR"):
+            failed = self.finished(self.session.install())
+        self.assertIn("仍有任务运行", failed["error"])
+        self.assertFalse(self.session.view()["handoff_ready"])
+        self.assertEqual(self.session.view()["prepared_version"], "2.0.0")
+        self.service.start_update.assert_called_once_with(prepared)
+        self.service.start_update.reset_mock()
+        entered, release = Event(), Event()
+        self.addCleanup(release.set)
+
+        def handoff(package):
+            self.assertIs(package, prepared)
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError("test did not release handoff")
+            return self.root / "private-result.json"
+
+        self.service.start_update.side_effect = handoff
+        task = self.session.install()
+        self.assertTrue(entered.wait(3))
+        with self.assertRaisesRegex(InvalidBackgroundJob, "不支持"):
+            self.jobs.cancel(task["id"])
+        with self.assertRaises(InvalidBackgroundJob):
+            self.session.install()
+        release.set()
+        self.assertEqual(
+            self.finished(task)["result"], {"version": "2.0.0", "ready": True}
+        )
+        self.assertTrue(self.session.view()["handoff_ready"])
+        self.assertNotIn("private-result", str(self.session.view()))
+        for method in (self.session.check, self.session.download, self.session.install):
+            with self.assertRaisesRegex(UpdateError, "就绪"):
+                method()
+        self.service.start_update.assert_called_once_with(prepared)

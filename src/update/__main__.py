@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import psutil
@@ -13,7 +14,7 @@ from src.update.installer import (
     recover_installation,
     write_json,
 )
-from src.update.package import APP_EXE
+from src.update.package import APP_EXE, CLI_EXE
 from src.update.runtime import (
     FileLease,
     UpdateBusyError,
@@ -31,6 +32,8 @@ def run_update(
     *,
     parent_pid: int = 0,
     parent_created: float = 0,
+    frontend_pid: int = 0,
+    frontend_created: float = 0,
     ready: Path | None = None,
     cancel: Path | None = None,
     recover: bool = False,
@@ -38,23 +41,40 @@ def run_update(
     """先关闭启动闸门，再等待调用窗口释放运行锁；不终止任何已有任务。"""
     directory = update_directory(root)
     with FileLease(directory / "intent.lock"):
-        parent = None
-        if parent_pid:
+        waiting = []
+        for pid, created, executable in (
+            (parent_pid, parent_created, CLI_EXE if frontend_pid else None),
+            (frontend_pid, frontend_created, APP_EXE),
+        ):
+            if not pid:
+                continue
             try:
-                parent = psutil.Process(parent_pid)
-                if parent.create_time() != parent_created:
+                process = psutil.Process(pid)
+                if process.create_time() != created:
                     raise UpdateBusyError("调用进程已变化，取消更新")
+                if (
+                    executable is not None
+                    and Path(process.exe()).resolve() != root / executable
+                ):
+                    raise UpdateBusyError("调用进程不属于当前安装")
+                if (
+                    pid == parent_pid
+                    and frontend_pid
+                    and process.ppid() != frontend_pid
+                ):
+                    raise UpdateBusyError("CLI 与 Rust 窗口的父子关系已变化")
+                waiting.append(process)
             except psutil.NoSuchProcess:
-                parent = None
-                logger.info("调用进程已经退出")
-        occupied = helper_processes(root, {os.getpid(), parent_pid})
+                logger.info("调用进程已经退出: pid=%s", pid)
+        occupied = helper_processes(root, {os.getpid(), parent_pid, frontend_pid})
         if occupied:
             raise UpdateBusyError(f"当前安装仍有运行中的进程: {occupied}")
         if ready is not None:
             write_json(ready, {"status": "ready"})
-        if parent is not None:
+        deadline = time.monotonic() + 30
+        for process in waiting:
             try:
-                parent.wait(timeout=30)
+                process.wait(timeout=max(0, deadline - time.monotonic()))
             except psutil.TimeoutExpired as exc:
                 raise UpdateBusyError("窗口未退出，已取消安装") from exc
         with FileLease(directory / "runtime.lock", timeout=10):
@@ -78,6 +98,8 @@ def main() -> int:
     action.add_argument("--recover", action="store_true")
     parser.add_argument("--parent-pid", type=int, default=0)
     parser.add_argument("--parent-created", type=float, default=0)
+    parser.add_argument("--frontend-pid", type=int, default=0)
+    parser.add_argument("--frontend-created", type=float, default=0)
     parser.add_argument("--ready", type=Path)
     parser.add_argument("--result", type=Path)
     parser.add_argument("--cancel", type=Path)
@@ -104,6 +126,8 @@ def main() -> int:
             args.package,
             parent_pid=args.parent_pid,
             parent_created=args.parent_created,
+            frontend_pid=args.frontend_pid,
+            frontend_created=args.frontend_created,
             ready=args.ready,
             cancel=args.cancel,
             recover=args.recover,

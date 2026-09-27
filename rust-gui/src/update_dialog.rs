@@ -26,7 +26,7 @@ pub struct UpdateView {
     releases_url: String,
     release: Option<Release>,
     prepared_version: Option<String>,
-    install_unavailable: String,
+    handoff_ready: bool,
 }
 
 pub enum UpdateAction {
@@ -66,6 +66,18 @@ impl UpdateDialog {
         self.awaiting.is_some() || self.job.is_some()
     }
 
+    pub fn ready(&self) -> bool {
+        self.data.handoff_ready
+    }
+
+    fn installing(&self) -> bool {
+        self.awaiting.as_deref() == Some("update.install")
+            || self
+                .job
+                .as_ref()
+                .is_some_and(|(_, kind)| kind == "update.install")
+    }
+
     pub fn failure(&mut self, message: String, reload: bool) {
         self.awaiting = None;
         self.job = None;
@@ -75,7 +87,7 @@ impl UpdateDialog {
     }
 
     fn start(&mut self, method: &str) -> Request {
-        assert!(!self.active());
+        assert!(!self.active() && !self.ready());
         self.awaiting = Some(method.into());
         self.progress = None;
         self.error = None;
@@ -83,10 +95,11 @@ impl UpdateDialog {
             self.data.release = None;
             self.data.prepared_version = None;
         }
-        self.message = if method == "update.check" {
-            "正在检查新版本…"
-        } else {
-            "正在下载与校验…"
+        self.message = match method {
+            "update.check" => "正在检查新版本…",
+            "update.download" => "正在下载与校验…",
+            "update.install" => "正在准备安装；就绪后将关闭窗口…",
+            _ => unreachable!("unknown update operation"),
         }
         .into();
         Request {
@@ -146,6 +159,9 @@ impl UpdateDialog {
         }
         match response.state.as_str() {
             "running" => return Ok(false),
+            "cancelled" if response.kind == "update.install" => {
+                return Err("安装交接不能取消".into());
+            }
             "cancelled" => {
                 self.message = "已取消".into();
             }
@@ -185,6 +201,21 @@ impl UpdateDialog {
                     }
                     self.data.prepared_version = Some(prepared.version);
                     self.message = "下载与校验完成".into();
+                } else if response.kind == "update.install" {
+                    #[derive(Deserialize)]
+                    struct Handoff {
+                        version: String,
+                        ready: bool,
+                    }
+                    let handoff: Handoff =
+                        serde_json::from_value(result).map_err(|e| e.to_string())?;
+                    if !handoff.ready
+                        || self.data.prepared_version.as_deref() != Some(&handoff.version)
+                    {
+                        return Err("安装交接尚未确认".into());
+                    }
+                    self.data.handoff_ready = true;
+                    self.message = "安装器已就绪，正在关闭助手…".into();
                 } else {
                     return Err("更新操作无效".into());
                 }
@@ -196,6 +227,9 @@ impl UpdateDialog {
     }
 
     fn close(&mut self) -> Option<UpdateAction> {
+        if self.installing() || self.ready() {
+            return None;
+        }
         if let Some((id, _)) = &self.job {
             if self.close_pending {
                 return None;
@@ -283,14 +317,14 @@ impl UpdateDialog {
                 if self.needs_reload {
                     ui.label("状态未确认，请重新读取；不会自动重试操作。");
                 }
-                if self.data.prepared_version.is_some() {
-                    ui.label(&self.data.install_unavailable);
+                if self.data.prepared_version.is_some() && !self.active() && !self.ready() {
+                    ui.label("安装将关闭助手并重启。请先结束正在运行的任务和其他助手窗口。");
                 }
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     if ui
                         .add_enabled(
-                            !busy && !self.close_pending,
+                            !busy && !self.close_pending && !self.installing() && !self.ready(),
                             egui::Button::new(if self.active() {
                                 "取消更新"
                             } else {
@@ -319,7 +353,7 @@ impl UpdateDialog {
                         }
                     } else if !self.active() && !self.data.unavailable_reason.is_empty() {
                         ui.add_enabled(false, egui::Button::new("检查更新"));
-                    } else if !self.active() {
+                    } else if !self.active() && !self.ready() {
                         if ui
                             .add_enabled(!busy, egui::Button::new("检查更新"))
                             .clicked()
@@ -334,8 +368,12 @@ impl UpdateDialog {
                         {
                             action = Some(UpdateAction::Request(self.start("update.download")));
                         }
-                        if self.data.prepared_version.is_some() {
-                            ui.add_enabled(false, egui::Button::new("安装并重启 · 暂不可用"));
+                        if self.data.prepared_version.is_some()
+                            && ui
+                                .add_enabled(!busy, egui::Button::new("安装并重启"))
+                                .clicked()
+                        {
+                            action = Some(UpdateAction::Request(self.start("update.install")));
                         }
                     }
                 });
@@ -357,7 +395,7 @@ mod tests {
                 "version":"1.0.0","unavailable_reason":"","previous_result":null,
                 "releases_url":"https://github.com/LevelDownRefine/OneDragon-Helper/releases",
                 "release":{"version":"2.0.0","notes":"notes","size":100},
-                "prepared_version":null,"install_unavailable":"安装暂不可用"
+                "prepared_version":null,"handoff_ready":false
             }))
             .unwrap(),
         )
@@ -416,6 +454,51 @@ mod tests {
         dialog.failure("连接中断".into(), true);
         assert!(dialog.needs_reload);
         assert!(matches!(dialog.close(), Some(UpdateAction::Close)));
+    }
+
+    #[test]
+    fn install_waits_for_matching_ready_and_cannot_be_cancelled() {
+        let mut dialog = dialog();
+        dialog.data.prepared_version = Some("2.0.0".into());
+        let request = dialog.start("update.install");
+        assert_eq!(request.params, json!({}));
+        assert!(dialog.close().is_none());
+        dialog
+            .started("update.install", json!({"id":"install"}))
+            .unwrap();
+        assert!(dialog.close().is_none());
+        assert!(!dialog.ready());
+        for result in [
+            json!({"ready":false,"version":"2.0.0"}),
+            json!({"ready":true,"version":"other"}),
+        ] {
+            assert!(dialog.receive(json!({"id":"install","kind":"update.install","state":"succeeded","result":result})).is_err());
+            assert!(!dialog.ready());
+        }
+        assert!(!dialog.receive(json!({"id":"install","kind":"update.install","state":"succeeded","result":{"ready":true,"version":"2.0.0"}})).unwrap());
+        assert!(dialog.ready());
+        assert!(!dialog.active());
+        assert!(dialog.poll().is_none());
+        assert!(dialog.close().is_none());
+    }
+
+    #[test]
+    fn failed_install_keeps_prepared_version_and_does_not_exit_or_retry() {
+        let mut dialog = dialog();
+        dialog.data.prepared_version = Some("2.0.0".into());
+        dialog.start("update.install");
+        dialog
+            .started("update.install", json!({"id":"install"}))
+            .unwrap();
+        assert!(!dialog.receive(json!({"id":"install","kind":"update.install","state":"failed","error":"仍有任务"})).unwrap());
+        assert!(!dialog.ready());
+        assert!(!dialog.active());
+        assert_eq!(dialog.data.prepared_version.as_deref(), Some("2.0.0"));
+        assert!(dialog.poll().is_none());
+        assert_eq!(dialog.start("update.install").method, "update.install");
+        dialog.failure("连接中断".into(), true);
+        assert!(!dialog.ready());
+        assert!(dialog.needs_reload);
     }
 
     #[test]

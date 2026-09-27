@@ -20,6 +20,7 @@ METHODS = {
     "update.view": ("update_view", (), ()),
     "update.check": ("start_update_check", (), ()),
     "update.download": ("start_update_download", (), ()),
+    "update.install": ("start_update_install", (), ()),
     "settings.view": ("settings_view", (), ()),
     "startup.view": ("settings_view", (), ()),
     "plan.view": ("daily_plan_view", (), ()),
@@ -235,6 +236,7 @@ def _call(service, method: str) -> int:
         "job.cancel",
         "update.check",
         "update.download",
+        "update.install",
     }:
         _emit(_error(1, "invalid_request", "后台任务仅支持 serve --stdio 会话"))
         return 1

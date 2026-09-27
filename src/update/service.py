@@ -18,6 +18,8 @@ from threading import Event
 import psutil
 
 from src.update.package import (
+    APP_EXE,
+    CLI_EXE,
     MAX_PACKAGE_BYTES,
     UPDATER_EXE,
     VERSION_FILE,
@@ -311,7 +313,20 @@ class UpdateService:
             raise UpdateError("待安装版本不一致")
         if manifest_frontend(data) != self.frontend:
             raise UpdateError("待安装包与当前安装的前端类型不一致")
-        if helper_processes(self.root, {os.getpid()}):
+        caller = psutil.Process()
+        frontend = None
+        if self.frontend == "rust":
+            frontend = caller.parent()
+            if (
+                Path(caller.exe()).resolve() != self.root / CLI_EXE
+                or frontend is None
+                or Path(frontend.exe()).resolve() != self.root / APP_EXE
+            ):
+                raise UpdateError("安装更新须从当前 Rust 窗口发起")
+        excluded = {os.getpid()}
+        if frontend is not None:
+            excluded.add(frontend.pid)
+        if helper_processes(self.root, excluded):
             raise UpdateError("当前仍有任务或其他窗口运行，请结束后重试")
         installed = load_manifest(self.root)
         worker_dir = work / ("worker-" + uuid.uuid4().hex)
@@ -332,7 +347,7 @@ class UpdateService:
             "--parent-pid",
             str(os.getpid()),
             "--parent-created",
-            str(psutil.Process().create_time()),
+            str(caller.create_time()),
             "--ready",
             str(ready),
             "--result",
@@ -341,6 +356,13 @@ class UpdateService:
             str(cancel),
             "--restart",
         ]
+        if frontend is not None:
+            command += [
+                "--frontend-pid",
+                str(frontend.pid),
+                "--frontend-created",
+                str(frontend.create_time()),
+            ]
         process = subprocess.Popen(command, cwd=work, env=child_environment())
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:

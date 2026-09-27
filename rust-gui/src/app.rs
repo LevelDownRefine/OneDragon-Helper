@@ -702,7 +702,9 @@ impl App {
                 .as_mut()
                 .ok_or_else(|| Failure::transport("更新窗口已不存在"))?;
             match method {
-                "update.check" | "update.download" => dialog.started(method, value).map(|()| false),
+                "update.check" | "update.download" | "update.install" => {
+                    dialog.started(method, value).map(|()| false)
+                }
                 "job.poll" => dialog.receive(value),
                 "job.cancel" if value.is_boolean() => Ok(false),
                 _ => Err("更新响应无效".into()),
@@ -912,6 +914,12 @@ impl eframe::App for App {
             .and_then(|backend| backend.replies.try_recv().ok());
         if let Some(reply) = reply {
             self.receive(reply);
+        }
+        if self.update_dialog.as_ref().is_some_and(UpdateDialog::ready) {
+            // Ready is acknowledged before releasing the CLI runtime lease and closing the GUI.
+            self.backend = None;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
         }
         if !self.busy
             && let Some(request) = self.drop_dialog.as_mut().and_then(DropDialog::next)

@@ -138,6 +138,9 @@ class AppService:
     def start_update_download(self) -> dict:
         return self._update_session.download()
 
+    def start_update_install(self) -> dict:
+        return self._update_session.install()
+
     def app_snapshot(self) -> dict:
         """CLI 首屏脚本列表。"""
         return task_service.app_snapshot()

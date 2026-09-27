@@ -68,6 +68,7 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `update.view` | `{}` | 本地版本/支持状态/上次结果、发布页面、会话内的新版本与准备状态；不联网 |
 | `update.check` | `{}` | 后台检查稳定版本，返回 id；完成后返回 release（version/notes/size）或 null |
 | `update.download` | `{}` | 后台下载当前会话检查到的版本，返回 id；完成后仅返回 version |
+| `update.install` | `{}` | 交接本会话已校验的包，返回 id；成功结果为 version/ready，客户端随后退出 |
 | `run.view` | `script_names` | 当前选择、无效脚本原因、运行选项（授权码始终为空）、关机支持状态 |
 | `run.prepare` | `script_names/options/confirm_invalid` | 保存已确认选项，返回独立运行命令及 stdin JSON；不会在服务进程启动调度 |
 | `script.view` | `script_name` | `script` 摘要、`dailies` 和 `weeklies` |
@@ -194,7 +195,10 @@ EOF 等待后台线程完成后才释放 application_lease；Rust 阻止运行�
 progress（received/total），取消完成时 state=cancelled。job.cancel 返回 true 只表示已发送
 取消意图；窗口继续轮询至终态才关闭。检查需等 HTTP 调用返回，下载按现有分块边界检查取消。
 EOF 发送取消并等待线程结束后释放运行租约；恢复任务依旧不可取消。
-本批未开放安装 RPC，准备完成后显示安装暂不可用，双进程交接另行验证。
+`update.install` 不可取消，EOF 等待交接结束后释放租约。就绪后禁止再次检查、下载或安装；
+`update.view.handoff_ready` 可回读就绪状态。失败保留已校验包供显式重试，断连不得重放。
+更新服务与独立更新器校验 CLI/GUI 双进程身份、等待双方退出，安装后带 `--after-update`
+重启 Rust EXE。源码运行仍不支持原位安装；独立 Rust 分发包和真实 EXE 交接验收属于发布批次。
 
 ## 每日计划
 
@@ -237,7 +241,7 @@ Windows Rust 前端将自身绝对路径传入 `ODH_SHUTDOWN_UI`，prepare 将�
   `script.view` 每次重读外部配置；适配器构造仍可能执行现有的模板对齐，周常读取仍可能迁移旧格式。
   因此查询并不承诺整个应用层绝无写盘副作用。
 - 仅承诺这些新增后端方法不加载 Qt。
-  旧 launcher、更新器进程交接、
+  旧 launcher、
   CLI 打包仍是后续工作；没有据此宣称整个发布包可以移除 Python 或 Qt。
 
 ## 验证

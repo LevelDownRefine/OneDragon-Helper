@@ -8,7 +8,7 @@ from pathlib import Path
 import portalocker
 import psutil
 
-from src.update.package import APP_EXE, RUNNER_EXE, UpdateError
+from src.update.package import APP_EXE, CLI_EXE, RUNNER_EXE, UpdateError
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,8 @@ def helper_processes(root: Path, excluded: set[int] | None = None) -> list[int]:
     """按 EXE 完整路径识别当前安装的 GUI、调度和 Runner，不按名称误杀其他安装。"""
     excluded = excluded or set()
     targets = {
-        os.path.normcase(str((root / name).resolve())) for name in (APP_EXE, RUNNER_EXE)
+        os.path.normcase(str((root / name).resolve()))
+        for name in (APP_EXE, CLI_EXE, RUNNER_EXE)
     }
     found = []
     for process in psutil.process_iter():
