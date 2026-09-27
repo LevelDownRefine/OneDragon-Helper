@@ -103,32 +103,9 @@ class AppService:
         """CLI 任务卡及物化选项。"""
         return task_service.script_view(script_name)
 
-    def select_daily(
-        self,
-        script_name: str,
-        daily_name: str,
-        task_name: str,
-        sequence: str | int | bool | None = None,
-    ) -> dict:
-        """校验日常选择，写入并返回反读状态。"""
-        return task_service.select_daily(script_name, daily_name, task_name, sequence)
-
     def check_update(self):
         """用户手动检查新版。"""
         return self._updates.check_update()
-
-    def enable_daily(self, script_name: str, daily_name: str, enabled: bool) -> dict:
-        return task_service.enable_daily(script_name, daily_name, enabled)
-
-    def select_weekly(self, script_name: str, weekly_name: str, task_name: str) -> dict:
-        return task_service.select_weekly(script_name, weekly_name, task_name)
-
-    def start_weekly(self, script_name: str, weekly_name: str, start_day: int) -> dict:
-        task_service.require_weekly(script_name, weekly_name)
-        if type(start_day) is not int or not 0 <= start_day <= 7:
-            raise task_service.InvalidTaskSelection("start_day 必须是 0…7 的整数")
-        self.set_weekly_start_for(script_name, weekly_name, start_day)
-        return task_service.script_view(script_name)
 
     def get_update_info(self):
         """读取本地版本与上次安装结果，不联网。"""
