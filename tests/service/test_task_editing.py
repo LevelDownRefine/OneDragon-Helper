@@ -2,7 +2,7 @@
 
 import unittest
 from copy import deepcopy
-from unittest.mock import patch
+from unittest.mock import patch, sentinel
 
 from src.config import daily as daily_mod
 from src.config import set_config as config_mod
@@ -10,6 +10,68 @@ from src.config import weekly as weekly_mod
 from src.service import app_service, task_service
 from src.service.app_service import AppService
 from src.utils import utils_weekly
+
+
+class CliForwardingTests(unittest.TestCase):
+    def test_cli_uses_original_method_result_and_error(self):
+        service = AppService()
+        routes = (
+            (
+                "select_daily",
+                ("脚本", "日常", "材料", True),
+                "set_script_daily_task",
+                ("脚本",),
+                {"daily_display_name": "日常", "task_name": "材料", "sequence": True},
+            ),
+            (
+                "select_daily",
+                ("脚本",),
+                "set_script_daily_task",
+                ("脚本",),
+                {"daily_display_name": None, "task_name": None, "sequence": None},
+            ),
+            (
+                "enable_daily",
+                ("脚本", "日常", False),
+                "set_script_daily_enabled",
+                ("脚本", "日常", False),
+                {},
+            ),
+            (
+                "select_weekly",
+                ("脚本", "周常", "副本"),
+                "set_script_weekly_task",
+                ("脚本", "周常", "副本"),
+                {},
+            ),
+            (
+                "start_weekly",
+                ("脚本", "周常", 0),
+                "set_weekly_start_for",
+                ("脚本", "周常", 0),
+                {},
+            ),
+        )
+        for cli_name, args, original_name, forwarded_args, forwarded_kwargs in routes:
+            with self.subTest(cli=cli_name, args=args):
+                cli = getattr(service, cli_name)
+                with patch.object(
+                    service, original_name, return_value=sentinel.result
+                ) as original:
+                    self.assertIs(cli(*args), sentinel.result)
+                    original.assert_called_once_with(
+                        *forwarded_args, **forwarded_kwargs
+                    )
+                error = OSError("原接口失败")
+                with patch.object(
+                    service, original_name, side_effect=error
+                ) as original:
+                    with self.assertRaises(OSError) as caught:
+                        cli(*args)
+                    self.assertIs(caught.exception, error)
+                    original.assert_called_once_with(
+                        *forwarded_args, **forwarded_kwargs
+                    )
 
 
 class TaskEditingTests(unittest.TestCase):
@@ -274,16 +336,6 @@ class CliTaskEditingTests(TaskEditingTests):
         self.select_daily = self.service.select_daily
         self.enable_daily = self.service.enable_daily
         self.select_weekly = self.service.select_weekly
-
-
-class TaskServiceEditingTests(TaskEditingTests):
-    """task_service 模块入口与 AppService 委托保持同一份契约。"""
-
-    def setUp(self):
-        super().setUp()
-        self.select_daily = task_service.select_daily
-        self.enable_daily = task_service.enable_daily
-        self.select_weekly = task_service.select_weekly
 
 
 class CliWeeklyStartEditingTests(WeeklyStartEditingTests):

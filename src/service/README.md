@@ -17,7 +17,7 @@
 | 模块 | 职责 |
 |------|------|
 | app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
-| task_service.py | 脚本列表与任务卡聚合查询、CLI 任务编辑入口；写入复用既有适配器，无 GUI 或进程依赖 |
+| task_service.py | 脚本列表与任务卡聚合查询；无 GUI 或进程依赖 |
 | utils_config.py | 单脚本配置（原 script_service.py 已退化为模块函数）：config.yml 完整读写（含条目增删改）+ get_script / build_script_entry / config_file_path |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
@@ -32,7 +32,7 @@
 `name/task/options/start_day`。保留 JSON 整数与布尔的区别、`0=不启用` 与 `None=未设置`；
 读取仍可能触发既有模板对齐，不承诺完全没有写盘副作用。
 
-CLI 编辑入口保留在 `AppService`，与 GUI 原入口共用适配器及其参数值、跳过条件和异常语义：
+CLI 编辑入口保留在 `AppService`，直接调用对应的 GUI 原接口：
 
 | 操作 | CLI 入口 | GUI 原入口 |
 |------|------|------|
@@ -42,8 +42,8 @@ CLI 编辑入口保留在 `AppService`，与 GUI 原入口共用适配器及其�
 | 周常起始日 | `start_weekly(script_name, weekly_name, start_day)` | `set_weekly_start_for` |
 
 `daily_name` 对应原接口的 `daily_display_name`，参数值原样传入。
-前三个 CLI 入口经 `task_service` 调用原适配器，`start_weekly` 直接委托 `set_weekly_start_for`。
-这些写接口与原接口一样返回 `None`，校验归原适配器；不增加菜单预读或写后整卡查询。
+四个 CLI 写入口只做 `return self.<原接口>(...)`，返回值及异常原样传递。
+原写接口当前返回 `None`，校验与写入由原调用链负责；不增加菜单预读或写后整卡查询。
 调用方需要刷新时再调用 `script_view`，并分别处理写入和查询的错误。
 周常起始日仍先保存助手侧意图，再同步游戏侧字段；后一步失败不撤销已保存的意图。
 逐项差异与保留理由见 [接口兼容性核对](../../docs/task-api-compatibility.md)。

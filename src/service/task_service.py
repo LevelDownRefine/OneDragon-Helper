@@ -1,13 +1,11 @@
-"""任务卡查询与 CLI 编辑入口；写入沿用既有适配器契约。"""
+"""任务卡聚合查询；CLI 编辑由 AppService 直接转发原接口。"""
 
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
     get_daily_readback,
     is_adapted,
-    set_config,
-    set_daily_enabled,
 )
-from src.config.weekly import get_weekly_task, set_weekly_task
+from src.config.weekly import get_weekly_task
 from src.utils.utils_config import get_script, load_config
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_weekly import get_weekly_start_map
@@ -40,24 +38,11 @@ def app_snapshot() -> dict:
     }
 
 
-def _require_script(script_name: str) -> dict:
+def script_view(script_name: str) -> dict:
+    """返回脚本身份、日常/周常选项及反读状态；不缓存外部配置快照。"""
     script = get_script(script_name)
     if script is None:
         raise InvalidTaskSelection(f"脚本不存在: {script_name}")
-    return script
-
-
-def _daily_definitions(script_name: str) -> list[dict]:
-    menus = get_daily_map(script_name)
-    if script_name not in menus:
-        return []
-    assert "dailies" in menus[script_name]
-    return menus[script_name]["dailies"]
-
-
-def script_view(script_name: str) -> dict:
-    """返回脚本身份、日常/周常选项及反读状态；不缓存外部配置快照。"""
-    script = _require_script(script_name)
     dailies = []
     records = {}
     for record in get_daily_readback(script_name):
@@ -65,7 +50,12 @@ def script_view(script_name: str) -> dict:
         name = record["name"]
         assert name not in records, "日常反读记录重复"
         records[name] = record
-    for daily in _daily_definitions(script_name):
+    menus = get_daily_map(script_name)
+    daily_definitions = []
+    if script_name in menus:
+        assert "dailies" in menus[script_name]
+        daily_definitions = menus[script_name]["dailies"]
+    for daily in daily_definitions:
         assert "display_name" in daily and "options" in daily
         name = daily["display_name"]
         assert name in records, "日常声明与适配器反读记录不一致"
@@ -89,28 +79,3 @@ def script_view(script_name: str) -> dict:
             }
         )
     return {"script": _script_summary(script), "dailies": dailies, "weeklies": weeklies}
-
-
-def select_daily(
-    script_name: str,
-    daily_name: str | None = None,
-    task_name: str | None = None,
-    sequence: str | int | None = None,
-) -> None:
-    """沿用 set_config 的选择、跳过和启用语义，不额外校验或查询。"""
-    return set_config(
-        script_name,
-        daily_display_name=daily_name,
-        task_name=task_name,
-        sequence=sequence,
-    )
-
-
-def enable_daily(script_name: str, daily_name: str, enabled: bool) -> None:
-    """只改目标日常开关，无开关时沿用适配器的空操作。"""
-    return set_daily_enabled(script_name, daily_name, enabled)
-
-
-def select_weekly(script_name: str, weekly_name: str, task_name: str) -> None:
-    """沿用周常适配器的选择与跳过语义。"""
-    return set_weekly_task(script_name, weekly_name, task_name)

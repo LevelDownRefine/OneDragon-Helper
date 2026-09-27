@@ -1,16 +1,19 @@
 # 任务卡接口兼容性核对
 
 基线为 #97 合并前的 AppService 与 GUI 调用。#97 增加的查询和编辑接口用于 CLI 接入，
-六个入口全部保留。CLI 编辑入口复用 GUI 原接口的适配器与写入规则，
-移除新增的前置校验和写后整卡查询，使两种入口的业务行为一致。
+六个入口全部保留。四个 CLI 编辑入口直接调用对应的原 AppService 方法，
+参数、返回值及异常原样传递；业务实现只保留在原调用链中。
+移除新增的前置校验和写后整卡查询，task_service 只负责查询聚合。
+查询中仅使用一次的脚本查找、日常声明提取直接写在 `script_view` 内；
+`_script_summary` 由两个查询共用，保留这一处复用。
 
 | #97 接口 | 原入口 / 数据来源 | 新增差异及原意 | 处理 |
 |---|---|---|---|
 | `app_snapshot` | `load_config`、`get_script_name`、`is_adapted` | 为 CLI 汇总脚本身份和原始配置；保留配置顺序与自定义脚本，不预热适配器 | 保留，属于新增查询能力 |
 | `script_view` | `get_daily_map/readback`、`get_weekly_map/task/start_map` | 将菜单与原生状态合成普通字典；显式指定脚本，每次重新读取，不包含 GUI 的 chip 文案、默认显示值或菜单缓存 | 保留；这是原始数据查询，界面呈现仍由 GUI 负责 |
-| `select_daily` | `set_script_daily_task` → `set_config` | 为 CLI 提前校验脚本及当前菜单，并写后返回整卡；额外拒绝空选择、静态二级展示名及未列入当前资源菜单的值 | 保留 CLI 入口，直接委托 `set_config`，可选参数默认值对齐原接口 |
-| `enable_daily` | `set_script_daily_enabled` → `set_daily_enabled` | 为 CLI 检查布尔类型及开关可用性；预读全部日常，无开关或无法反读时直接拒绝，写后再读整卡 | 保留 CLI 入口，直接委托 `set_daily_enabled` |
-| `select_weekly` | `set_script_weekly_task` → `set_weekly_task` | 为 CLI 校验周常和菜单；把不存在或不支持副本选择时的跳过改为异常，写后再读整卡 | 保留 CLI 入口，直接委托 `set_weekly_task` |
+| `select_daily` | `set_script_daily_task` → `set_config` | 为 CLI 提前校验脚本及当前菜单，并写后返回整卡；额外拒绝空选择、静态二级展示名及未列入当前资源菜单的值 | 保留 CLI 入口，直接调用 `self.set_script_daily_task`，可选参数默认值对齐原接口 |
+| `enable_daily` | `set_script_daily_enabled` → `set_daily_enabled` | 为 CLI 检查布尔类型及开关可用性；预读全部日常，无开关或无法反读时直接拒绝，写后再读整卡 | 保留 CLI 入口，直接调用 `self.set_script_daily_enabled` |
+| `select_weekly` | `set_script_weekly_task` → `set_weekly_task` | 为 CLI 校验周常和菜单；把不存在或不支持副本选择时的跳过改为异常，写后再读整卡 | 保留 CLI 入口，直接调用 `self.set_script_weekly_task` |
 | `start_weekly` | `set_weekly_start_for` | 为 CLI 预检条目和日期；额外要求条目存在，日期失败由原 `AssertionError` 变为 `InvalidTaskSelection`，写后再读整卡 | 保留 CLI 入口，直接委托 `set_weekly_start_for` |
 
 四个写接口的共同问题：写入已经完成后，整卡查询可能因另一条日常、周常或资源文件损坏而失败，
@@ -43,5 +46,5 @@ CLI 日常参数 `daily_name` 对应原接口的 `daily_display_name`，值与�
 后续 CLI 命令继续使用 `select_daily/enable_daily/select_weekly/start_weekly`。
 需要回显时单独查询，分别报告写入结果与刷新失败。
 
-回归测试对 GUI 原入口、AppService CLI 入口及 task_service 模块入口执行同一组输入和原生配置，
-共同验证写入内容与顺序、返回值、空操作及异常语义。
+一致性由直接转发保证：原接口后续变更会自然作用于 CLI，无需同步维护另一条写入调用链。
+回归测试检查转发结果、异常与既有写入场景。
