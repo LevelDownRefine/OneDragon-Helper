@@ -67,6 +67,7 @@ exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定�
 `tests/exe/test_update_exe.py` 使用临时安装副本真正启动更新器，
 验证升级后的 EXE 可启动、运行中的 Runner 阻止更新、Windows 文件占用时回滚、
 启动闸门先于用户配置初始化，以及独立恢复入口。所有用户文件断言均使用临时夹具。
+升级夹具从被测包继承 Qt/Rust 类型，因此同一组真实 EXE 测试可验证两种发布布局。
 
 `tests/gui/test_update_dialog.py` 用真实 Qt 事件循环和替代服务验证显式检查、
 工作线程、下载进度、取消/关闭、错误重试及安装就绪后退出；网络和安装操作均隔离。

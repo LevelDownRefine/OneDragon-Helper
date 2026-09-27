@@ -61,9 +61,12 @@
 - N2 [#123](https://github.com/LevelDownRefine/OneDragon-Helper/pull/123) `codex/rust-gui-packaged-entry` 基于 #122，Rust 从 EXE 所在目录读取包身份并直接运行随附 CLI；
   开发路径显式保留，损坏/缺失后端不回退 Python。真实临时组装目录在无源码、无 Python PATH、
   外部工作目录条件下显示任务卡；UAC、完整发布资源和双进程升级继续由后续 N 批次完成。
-- N3 `codex/rust-gui-cli-entry` 基于 #123，原 `--version/--selftest/--schedule-run` 等 CLI 参数
+- N3 [#124](https://github.com/LevelDownRefine/OneDragon-Helper/pull/124) `codex/rust-gui-cli-entry` 基于 #123，原 `--version/--selftest/--schedule-run` 等 CLI 参数
   经 Rust 转交无 Qt 后端，保留输出文件和退出码；独立 CLI EXE 同样支持原参数。
   未指定动作或非法参数直接失败，不回退 Qt；冻结入口默认使用同目录 Rust 关机确认窗。
+- N4 `codex/rust-gui-release-resources` 基于 #124，让发布资源工具生成和校验 Rust 清单；
+  必须包含独立 CLI、排除 QML，用户配置边界不变；共用的 EXE 升级夹具保留实际包类型。
+  完整构建、UAC 和 Windows CI 产物接入下一批。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

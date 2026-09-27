@@ -124,6 +124,36 @@ class TestReleasePackage(unittest.TestCase):
         )
         self.assertEqual(info["tag"], "")
 
+    def test_rust_package_requires_cli_and_excludes_qml_from_archive(self):
+        self.write(self.package, release.CLI_EXE, "backend")
+        release.prepare_package(self.root, self.package, "v1.2.3", frontend="rust")
+        manifest = release.load_manifest(self.package, verify=True)
+        self.assertEqual(manifest["frontend"], "rust")
+        self.assertIn(release.CLI_EXE, manifest["files"])
+        self.assertFalse((self.package / "src").exists())
+        self.assertEqual(
+            json.loads((self.package / "version.json").read_text())["frontend"], "rust"
+        )
+        output = self.package.parent / "OneDragon-Helper-Rust.zip"
+        release.archive_package(self.root, self.package, output)
+        with zipfile.ZipFile(output) as archive:
+            self.assertIn(f"OneDragon-Helper/{release.CLI_EXE}", archive.namelist())
+            self.assertFalse(any("/qml/" in name for name in archive.namelist()))
+        self.assertTrue(output.with_suffix(".zip.sha256").is_file())
+        (self.package / release.CLI_EXE).unlink()
+        with self.assertRaisesRegex(ValueError, release.CLI_EXE):
+            release.validate_package(self.root, self.package)
+
+    def test_rust_package_rejects_qml_and_unknown_frontend(self):
+        with self.assertRaisesRegex(ValueError, "前端类型"):
+            release.prepare_package(self.root, self.package, frontend="invalid")
+        self.assertFalse((self.package / "version.json").exists())
+        self.write(self.package, release.CLI_EXE, "backend")
+        release.prepare_package(self.root, self.package, frontend="rust")
+        self.write(self.package, "src/gui/qml/main.qml", "unused")
+        with self.assertRaisesRegex(ValueError, "非程序目录"):
+            release.validate_package(self.root, self.package)
+
     def test_invalid_release_tag_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "发布 tag"):
             release.prepare_package(self.root, self.package, "main")
@@ -233,6 +263,7 @@ class TestReleasePackage(unittest.TestCase):
             self.assertNotEqual(sandbox, self.package)
             self.assertEqual(Path(env["ODH_GUI_EXE"]), sandbox / release.EXE_NAME)
             self.assertEqual(Path(env["ODH_RUNNER_EXE"]), sandbox / release.RUNNER_NAME)
+            self.assertEqual(Path(env["ODH_CLI_EXE"]), sandbox / release.CLI_EXE)
             self.write(sandbox, "config/config.yml", "test config")
             self.write(sandbox, "logs/test.log", "test log")
             return subprocess.CompletedProcess(command, exit_code)

@@ -19,6 +19,7 @@ from src.update.package import (
     UPDATER_EXE,
     file_digest,
     load_manifest,
+    manifest_frontend,
     write_manifest,
 )
 from src.update.runtime import FileLease, child_environment
@@ -38,7 +39,9 @@ class TestUpdateExe(unittest.TestCase):
         self.root = self.directory / "旧版 安装目录"
         self.new = self.directory / "新版 程序包"
         source = package_dir()
-        names = list(load_manifest(source)["files"])
+        manifest = load_manifest(source)
+        names = list(manifest["files"])
+        frontend = manifest_frontend(manifest)
         for root, version, extra in (
             (self.root, "1.0.0", "assets/obsolete.txt"),
             (self.new, "2.0.0", "assets/new.txt"),
@@ -47,9 +50,12 @@ class TestUpdateExe(unittest.TestCase):
                 destination = root / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source / name, destination)
-            write_json(root / "version.json", {"version": version})
+            metadata = {"version": version}
+            if frontend == "rust":
+                metadata["frontend"] = frontend
+            write_json(root / "version.json", metadata)
             (root / extra).write_text(version, encoding="utf-8")
-            write_manifest(root, names + [extra], version)
+            write_manifest(root, names + [extra], version, frontend=frontend)
         self.worker = self.directory / UPDATER_EXE
         shutil.copy2(source / UPDATER_EXE, self.worker)
         self.result = self.directory / "result.json"

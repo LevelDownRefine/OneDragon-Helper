@@ -294,3 +294,9 @@ Ruff、rustfmt、严格 Clippy 通过。Windows 在临时目录组合真实 Rust
 Rust 73 项通过；Ubuntu Python 1235 项（1196 通过、39 项跳过，124.738 秒）；
 Windows CLI EXE 五项通过，Ruff、rustfmt、严格 Clippy 通过。临时独立包在无源码和无 Python
 PATH 下验证主 EXE 自检、版本、中文输出路径、退出码 1/2，并再次截图检查任务卡。
+
+发布资源批次：`release_package.py prepare --frontend rust` 生成 Rust 类型版本/更新清单，
+加入独立 CLI、排除 QML；检查和归档自动识别类型，共用升级夹具保留该类型。
+Ubuntu Python 1237 项（1198 通过、39 项跳过，123.989 秒），Ruff 通过；Rust 代码未变。
+Windows 临时组装真实四个 EXE 和运行库，127 个发布文件及 ZIP 清单/哈希校验通过。
+此步骤未运行带 UAC 的 Runner/Updater，完整构建与管理员 CI 验证继续接入。

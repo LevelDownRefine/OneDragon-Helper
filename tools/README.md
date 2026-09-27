@@ -32,6 +32,12 @@ python tools/release_package.py check --package deploy/dist/OneDragon-Helper
 python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
 ```
 
+Rust 目录准备时加 `prepare --frontend rust`：版本与清单写入包类型、必须含独立
+`OneDragon-Helper-CLI.exe`，不复制 QML。后续 `check/archive/test` 从清单读取类型，
+拒绝混入 QML 或缺失 CLI；Qt 默认行为不变。两类 ZIP 内的顶层目录均为 `OneDragon-Helper`，
+Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时副本路径，
+不会意外测试另一个构建目录的 CLI。该资源工具不负责构建二进制或设置 UAC。
+
 这些是手动更新的发布侧基础。更新入口位于右上角设置内，由用户点击
 「更新」触发；不在启动或后台自动检查、下载或安装。
 
