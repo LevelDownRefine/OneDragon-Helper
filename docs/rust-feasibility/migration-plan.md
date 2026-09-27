@@ -1,6 +1,6 @@
 # Rust GUI 渐进迁移计划
 
-2026-09-27；A/B/C 已拆分并逐支验证，Rust 已接入 B 的协议。后续功能仍按下表推进。
+2026-09-27；A/B/C/D 已分别提交 PR 并逐支验证，Rust 已接入 B 的协议。后续功能仍按下表推进。
 
 近期目标：Rust 接管界面，助手业务保留 Python CLI。每一步都能独立验收，
 原 GUI 在替代能力完整前继续可用。配置类初始化重构不纳入本轮，保留已有 TODO。
@@ -12,7 +12,7 @@
 | A | [#97](https://github.com/LevelDownRefine/OneDragon-Helper/pull/97)，`codex/rust-feasibility@87e4dda` | `main@eaeceb2` | 任务卡 service，4 个文件 |
 | B | [#101](https://github.com/LevelDownRefine/OneDragon-Helper/pull/101)，`codex/headless-cli@9937dd1` | A | 无 Qt CLI，6 个文件 |
 | C | [#102](https://github.com/LevelDownRefine/OneDragon-Helper/pull/102)，`codex/qt-cli-task-card@04bd819` | B | 原 GUI 测试模式，16 个文件 |
-| D | `codex/rust-gui-prototype` | B | Rust 窗口与任务卡；不包含 C 的 Qt 接入 |
+| D | [#103](https://github.com/LevelDownRefine/OneDragon-Helper/pull/103)，`codex/rust-gui-prototype` | B | Rust 窗口与任务卡；不包含 C 的 Qt 接入 |
 
 拆分保留 #97 后续清理后的实现：日常响应为 `name/task/sequence/enabled/options`，
 周常为 `name/task/options/start_day`；Rust 已适配，请求参数 `daily_name/weekly_name` 不变。
