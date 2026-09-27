@@ -14,6 +14,7 @@ import psutil
 from src.update.package import CLI_EXE
 from src.update.runtime import FileLease, UpdateBusyError, child_environment
 from tests.exe import project_root
+from tests.exe.pipe_output import PipeOutput
 from tools.release_package import resource_files
 
 ROOT = Path(project_root())
@@ -106,6 +107,35 @@ class HeadlessExeTests(unittest.TestCase):
                         json.loads(output.read_text(encoding="utf-8"))["status"],
                         "ok" if code == 0 else "not_found",
                     )
+
+    def test_cli_keeps_runtime_lease_until_output_is_consumed(self):
+        content = {"script_list": [], "handoff_probe": "x" * 1024**2}
+        (self.root / "config/config.yml").write_text(
+            json.dumps(content), encoding="utf-8"
+        )
+        with PipeOutput() as pipe:
+            process = subprocess.Popen(
+                [str(self.root / CLI_EXE), "--dump-config", "--out", pipe.name],
+                cwd=self.directory,
+                env=child_environment(),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            try:
+                pipe.connect()
+                self.assertIsNone(process.poll())
+                with (
+                    self.assertRaises(UpdateBusyError),
+                    FileLease(self.root / ".update/runtime.lock"),
+                ):
+                    self.fail("CLI released runtime lease before output completed")
+                self.assertEqual(json.loads(pipe.read()), content)
+                self.assertEqual(process.wait(timeout=30), 0)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=10)
 
     def test_persistent_cli_is_one_process_and_eof_releases_runtime_lease(self):
         with tempfile.TemporaryFile() as errors:

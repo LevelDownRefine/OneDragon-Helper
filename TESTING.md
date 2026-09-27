@@ -82,7 +82,7 @@ python -m unittest tests.exe.test_headless_exe -v
 `ODH_CLI_EXE` 可指定已有 CLI 构建。测试在临时目录复制 EXE/运行库，使用空白配置模板，
 覆盖异目录启动、首启生成/再次保留、更新闸门、单进程 stdio 与 EOF 释放运行锁，
 并直接检查冻结模块不包含 Qt/GUI。后端继承父进程权限，无自身 UAC 提示；这些只读/临时
-配置测试不需要管理员。CI 的独立 Windows job 实际执行，Ubuntu 源码全量跳过这五项。
+配置测试不需要管理员。CI 的独立 Windows job 实际执行，Ubuntu 源码全量跳过这六项。
 另覆盖原 `--selftest/--get-script` 输出文件和退出码；Rust 主程序的同类参数转交此后端。
 这一构建是 Rust 发布包的后端组件，尚未包括完整 GUI/Runner/Updater 和发布资源。
 
@@ -96,6 +96,12 @@ python -m unittest tests.exe.test_headless_exe -v
 分别使用自动选卡和强制 WARP；截图后取消关机，仅运行独立窗口，不调用系统关机。
 两种渲染测试都以当前权限运行，
 不启动脚本，也不把 Qt 的 QML 文件要求施加到 Rust 包。
+
+Rust 双进程升级用真实主 EXE 的原 CLI `--dump-config --out` 写命名管道，暂缓读取以
+保持主程序与 CLI 存活。独立更新器收到双方 PID/创建时间，写 ready 后必须保持旧文件；
+读取输出让两者自然退出，才完成替换，且保留临时用户文件。这里覆盖进程交接与安装，
+不声称点击了更新窗；窗口状态和 ready 回执由 Rust/无 Qt 会话测试验证。管道夹具的
+锁保持与 EOF 已由独立 CLI EXE 在非管理员环境实际验证，不给产品增加测试命令。
 
 ## 2. 风格检查 ruff
 

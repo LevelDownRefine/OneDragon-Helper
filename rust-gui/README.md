@@ -314,3 +314,9 @@ Updater、内置资源、ZIP 与校验文件。Windows 七项真实产物检查�
 1242 项（1201 通过、41 项跳过，120.241 秒），Ruff 与 workflow YAML 解析通过。
 构建目录保护测试覆盖越界/链接、保留既有用户安装、编译失败不污染其他输出。
 本机非管理员，GUI/Runner/Updater 的执行由新增 Windows CI 管理员 job 验证。
+
+双进程 EXE 更新专项使用真实主程序的 `--dump-config --out` 与有界命名管道保持
+CLI/主程序存活，验证更新器 ready 后未改旧包、双方自然退出后升级成功且用户文件不变。
+窗口点击和 RPC ready 状态仍由既有状态机/无 Qt 会话测试负责。Ubuntu Python 1244 项
+（1201 通过、43 项 Windows 专项跳过，138.164 秒），Ruff 通过；本地六项 CLI EXE 测试
+通过，包括管道等待期间持有运行锁。管理员双进程测试随本批 Windows CI 执行。

@@ -15,6 +15,7 @@ import psutil
 from src.update.installer import write_json
 from src.update.package import (
     APP_EXE,
+    CLI_EXE,
     RUNNER_EXE,
     UPDATER_EXE,
     file_digest,
@@ -24,6 +25,7 @@ from src.update.package import (
 )
 from src.update.runtime import FileLease, child_environment
 from tests.exe import package_dir
+from tests.exe.pipe_output import PipeOutput
 
 CAN_RUN = (
     sys.platform == "win32"
@@ -138,6 +140,95 @@ class TestUpdateExe(unittest.TestCase):
         self.assert_old_restored()
         journal = json.loads((self.root / ".update/transaction.json").read_text())
         self.assertEqual(journal["phase"], "rolled_back")
+
+    def test_rust_update_waits_for_real_frontend_and_cli_to_exit(self):
+        if manifest_frontend(self.before) != "rust":
+            self.skipTest("双进程交接只适用于 Rust 发布包，由 build-rust job 真跑")
+        content = {"script_list": [], "handoff_probe": "x" * 1024**2}
+        config = self.root / "config/config.yml"
+        config.write_text(json.dumps(content), encoding="utf-8")
+        self.users["config/config.yml"] = config.read_bytes()
+        ready = self.directory / "ready.json"
+        # 原 CLI 的 --out 可写命名管道；暂不读取让双方自然存活，不加产品测试入口。
+        with PipeOutput() as pipe:
+            frontend = subprocess.Popen(
+                [str(self.root / APP_EXE), "--dump-config", "--out", pipe.name],
+                cwd=self.directory,
+                env=child_environment(),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            updater = None
+            children = []
+            try:
+                pipe.connect()
+                gui = psutil.Process(frontend.pid)
+                children = gui.children()
+                cli = next(
+                    child
+                    for child in children
+                    if Path(child.exe()).resolve() == (self.root / CLI_EXE).resolve()
+                )
+                self.assertEqual(cli.ppid(), frontend.pid)
+                updater = subprocess.Popen(
+                    [
+                        str(self.worker),
+                        "--root",
+                        str(self.root),
+                        "--package",
+                        str(self.new),
+                        "--parent-pid",
+                        str(cli.pid),
+                        "--parent-created",
+                        str(cli.create_time()),
+                        "--frontend-pid",
+                        str(gui.pid),
+                        "--frontend-created",
+                        str(gui.create_time()),
+                        "--ready",
+                        str(ready),
+                        "--result",
+                        str(self.result),
+                    ],
+                    cwd=self.directory,
+                    env=child_environment(),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                deadline = time.monotonic() + 60
+                while (
+                    not ready.exists()
+                    and updater.poll() is None
+                    and time.monotonic() < deadline
+                ):
+                    time.sleep(0.05)
+                self.assertTrue(ready.exists(), "更新器未就绪")
+                self.assertEqual(json.loads(ready.read_text())["status"], "ready")
+                self.assertIsNone(updater.poll())
+                self.assertIsNone(frontend.poll())
+                self.assertEqual(load_manifest(self.root, verify=True), self.before)
+                self.assertEqual(json.loads(pipe.read()), content)
+                self.assertEqual(frontend.wait(timeout=30), 0)
+                self.assertEqual(updater.wait(timeout=180), 0)
+                self.assertEqual(
+                    json.loads(self.result.read_text())["status"], "installed"
+                )
+                self.assertEqual(
+                    load_manifest(self.root, verify=True)["version"], "2.0.0"
+                )
+                self.assert_users_unchanged()
+            finally:
+                # 仅清理本测试持有的进程，正常成功路径双方自行退出。
+                if frontend.poll() is None:
+                    children = psutil.Process(frontend.pid).children(recursive=True)
+                    for child in children:
+                        child.kill()
+                    frontend.kill()
+                    frontend.wait(timeout=15)
+                    psutil.wait_procs(children, timeout=15)
+                if updater is not None and updater.poll() is None:
+                    updater.kill()
+                    updater.wait(timeout=15)
 
     def test_running_runner_refuses_update_without_killing_task(self):
         marker = self.directory / "runner-ready"
