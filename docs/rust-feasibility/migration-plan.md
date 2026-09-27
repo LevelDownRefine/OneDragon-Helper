@@ -64,9 +64,13 @@
 - N3 [#124](https://github.com/LevelDownRefine/OneDragon-Helper/pull/124) `codex/rust-gui-cli-entry` 基于 #123，原 `--version/--selftest/--schedule-run` 等 CLI 参数
   经 Rust 转交无 Qt 后端，保留输出文件和退出码；独立 CLI EXE 同样支持原参数。
   未指定动作或非法参数直接失败，不回退 Qt；冻结入口默认使用同目录 Rust 关机确认窗。
-- N4 `codex/rust-gui-release-resources` 基于 #124，让发布资源工具生成和校验 Rust 清单；
+- N4 [#125](https://github.com/LevelDownRefine/OneDragon-Helper/pull/125) `codex/rust-gui-release-resources` 基于 #124，让发布资源工具生成和校验 Rust 清单；
   必须包含独立 CLI、排除 QML，用户配置边界不变；共用的 EXE 升级夹具保留实际包类型。
   完整构建、UAC 和 Windows CI 产物接入下一批。
+- N5 `codex/rust-gui-release-build` 基于 #125，独立构建 Rust GUI/CLI/Runner/Updater、
+  给发布 GUI 写图标与管理员 manifest、归档并接入 Windows 完整 EXE CI 与 tag 发布。
+  输出仅限仓库 dist，拒绝覆盖运行过的安装；构建临时目录独立，保留 Qt 构建。
+  双进程真实更新交接与完整包对比继续单列验收。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

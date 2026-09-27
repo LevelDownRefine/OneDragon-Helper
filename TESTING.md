@@ -86,6 +86,12 @@ python -m unittest tests.exe.test_headless_exe -v
 另覆盖原 `--selftest/--get-script` 输出文件和退出码；Rust 主程序的同类参数转交此后端。
 这一构建是 Rust 发布包的后端组件，尚未包括完整 GUI/Runner/Updater 和发布资源。
 
+完整 Rust 包通过 `python tools/build_rust.py --test` 在 Windows 管理员环境验证；
+`build-exe.yml` 的独立 job 同时执行 Windows Rust 测试、CLI/GUI/Runner/Updater 的
+真实 EXE 测试。`test_rust_package_exe.py` 直接读取最终 PE 验证 GUI 图标/UAC、CLI
+继承权限、PE 校验和，以及全部 Python EXE 无 Qt/QML；这些只读检查不要求管理员。
+包内 GUI 权限与原版一致，普通终端不要直接跑需要启动 GUI/Runner/Updater 的集成测试。
+
 ## 2. 风格检查 ruff
 
 ```bash

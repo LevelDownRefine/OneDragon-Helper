@@ -38,6 +38,15 @@ Rust 目录准备时加 `prepare --frontend rust`：版本与清单写入包类�
 Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时副本路径，
 不会意外测试另一个构建目录的 CLI。该资源工具不负责构建二进制或设置 UAC。
 
+完整 Rust 构建：`deploy\build-rust.bat` 或已激活环境下
+`python tools/build_rust.py`；需要 Windows、Rust 1.95+ 与 MSVC。构建 release GUI、
+无 Qt CLI、原 Runner/Updater，在发布 GUI 副本嵌入原图标和管理员 manifest。
+输出 `deploy/dist/rust/OneDragon-Helper`、同目录 ZIP 和校验文件。默认只构建/校验，
+管理员终端加 `--test` 真跑全部 EXE 集成测试；CI 与 tag 发布均加该参数，失败不发布。
+构建不清空整个 dist：仅能替换清单/哈希仍完整的 Rust 输出，存在配置/日志等用户数据或
+文件被修改时拒绝。可用 `--output deploy/dist/另一目录/OneDragon-Helper` 另选输出。
+不要将该构建目录直接作为日常安装使用；解压 ZIP 到独立目录后双击主程序。
+
 这些是手动更新的发布侧基础。更新入口位于右上角设置内，由用户点击
 「更新」触发；不在启动或后台自动检查、下载或安装。
 

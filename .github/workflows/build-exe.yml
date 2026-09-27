@@ -8,6 +8,45 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-rust:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: 1
+      RUSTUP_TOOLCHAIN: 1.97.1
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: astral-sh/setup-uv@v7
+      - name: Install locked dependencies and Rust
+        run: |
+          uv sync --frozen
+          rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
+      - name: Check and test Windows Rust implementation
+        shell: pwsh
+        run: |
+          cargo fmt --manifest-path rust-gui/Cargo.toml --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo clippy --manifest-path rust-gui/Cargo.toml --locked --all-features --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:ODH_TEST_PYTHON = (Resolve-Path .venv/Scripts/python.exe).Path
+          cargo test --manifest-path rust-gui/Cargo.toml --locked --all-features
+      - name: Build complete Rust package and test EXEs
+        run: uv run --frozen python tools/build_rust.py --test
+      - name: Check clean release directory
+        id: rust-package-check
+        if: always() && hashFiles('deploy/dist/rust/OneDragon-Helper/version.json') != ''
+        run: uv run python tools/release_package.py check --package deploy/dist/rust/OneDragon-Helper
+      - uses: actions/upload-artifact@v6
+        if: success() && steps.rust-package-check.outcome == 'success'
+        with:
+          name: OneDragon-Helper-Rust-windows
+          path: |
+            deploy/dist/rust/OneDragon-Helper-Rust.zip
+            deploy/dist/rust/OneDragon-Helper-Rust.zip.sha256
+          if-no-files-found: error
+          retention-days: 7
+
   build-headless:
     runs-on: windows-latest
     env:

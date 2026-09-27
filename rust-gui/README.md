@@ -19,6 +19,12 @@ Windows 左侧提取脚本内嵌图标，失败依次回退 Python 入口图标�
 
 ## 直接体验
 
+完整 Windows 包可用 `deploy\build-rust.bat` 构建，输出
+`deploy/dist/rust/OneDragon-Helper-Rust.zip`。解压到独立目录后双击
+`OneDragon-Helper.exe`，无需安装 Python 或 Rust；业务由随附的 CLI 执行。
+主程序与原版一样请求管理员权限。构建测试参数和目录保护规则见
+[发布工具](../tools/README.md)。PR 的 Windows 构建任务通过后提供同名 Rust ZIP artifact。
+
 需要 Rust 1.95+、Windows MSVC 构建工具、项目 Python 环境。先激活项目虚拟环境。
 从仓库根目录运行：
 
@@ -300,3 +306,9 @@ PATH 下验证主 EXE 自检、版本、中文输出路径、退出码 1/2，并
 Ubuntu Python 1237 项（1198 通过、39 项跳过，123.989 秒），Ruff 通过；Rust 代码未变。
 Windows 临时组装真实四个 EXE 和运行库，127 个发布文件及 ZIP 清单/哈希校验通过。
 此步骤未运行带 UAC 的 Runner/Updater，完整构建与管理员 CI 验证继续接入。
+
+完整构建批次：本地生成带管理员 manifest/原图标的 Rust 主程序及独立 CLI、Runner、
+Updater、内置资源、ZIP 与校验文件。Windows 七项真实产物检查通过；Ubuntu Python
+1242 项（1201 通过、41 项跳过，120.241 秒），Ruff 与 workflow YAML 解析通过。
+构建目录保护测试覆盖越界/链接、保留既有用户安装、编译失败不污染其他输出。
+本机非管理员，GUI/Runner/Updater 的执行由新增 Windows CI 管理员 job 验证。
