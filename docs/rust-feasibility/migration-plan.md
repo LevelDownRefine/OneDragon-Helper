@@ -1,6 +1,6 @@
 # Rust GUI 渐进迁移计划
 
-2026-09-27；A/B/C/D 已分别提交 PR 并逐支验证，Rust 已接入 B 的协议。后续功能仍按下表推进。
+2026-09-27；A 已合入 main，B 已 rebase 到 main，C/D 已重接 B。Rust 已接入 B 的协议。
 
 近期目标：Rust 接管界面，助手业务保留 Python CLI。每一步都能独立验收，
 原 GUI 在替代能力完整前继续可用。配置类初始化重构不纳入本轮，保留已有 TODO。
@@ -9,9 +9,9 @@
 
 | 代号 | PR / 分支 | 基线 | 范围 |
 | --- | --- | --- | --- |
-| A | [#97](https://github.com/LevelDownRefine/OneDragon-Helper/pull/97)，`codex/rust-feasibility@87e4dda` | `main@eaeceb2` | 任务卡 service，4 个文件 |
-| B | [#101](https://github.com/LevelDownRefine/OneDragon-Helper/pull/101)，`codex/headless-cli@9937dd1` | A | 无 Qt CLI，6 个文件 |
-| C | [#102](https://github.com/LevelDownRefine/OneDragon-Helper/pull/102)，`codex/qt-cli-task-card@04bd819` | B | 原 GUI 测试模式，16 个文件 |
+| A | [#97](https://github.com/LevelDownRefine/OneDragon-Helper/pull/97)，`codex/rust-feasibility@87e4dda` | 已合入 `main@f19b891` | 任务卡 service，4 个文件 |
+| B | [#101](https://github.com/LevelDownRefine/OneDragon-Helper/pull/101)，`codex/headless-cli@581bb6c` | `main@f19b891` | 无 Qt CLI，6 个文件 |
+| C | [#102](https://github.com/LevelDownRefine/OneDragon-Helper/pull/102)，`codex/qt-cli-task-card@c6639a1` | B | 原 GUI 测试模式，16 个文件 |
 | D | [#103](https://github.com/LevelDownRefine/OneDragon-Helper/pull/103)，`codex/rust-gui-prototype` | B | Rust 窗口与任务卡；不包含 C 的 Qt 接入 |
 
 拆分保留 #97 后续清理后的实现：日常响应为 `name/task/sequence/enabled/options`，
@@ -52,8 +52,7 @@ A/B/C 按最终代码拆分，未按原提交直接分组；保留了 `f6a78fd`�
 
 ```mermaid
 flowchart LR
-    M[main] --> A["A · 任务卡 service"]
-    A --> B["B · 无 Qt CLI"]
+    M["main · 已含 A / #97"] --> B["B · 无 Qt CLI"]
     B --> C["C · 原 GUI 测试模式"]
     B --> D["D · Rust 任务卡"]
 ```
@@ -61,7 +60,7 @@ flowchart LR
 C 是验证前端，不是 Rust 的运行依赖。D 可以在 B 稳定后接入，不能继续从包含全部
 Qt GUI 接入改动的旧分支堆叠，也不需要复制一套 Python 后端。
 
-合并顺序：A 合入后把 B 转到 main；B 合入后 C、D 分别转到 main。此时重新核对
+A 已合入 main，B 已转到 main。B 合入后 C、D 分别转到 main，并重新核对
 差异与 CI，避免父 PR 被 squash 后重复带入旧提交。各 PR 保留完整测试覆盖。
 
 ## Rust 原型 D 的范围
@@ -119,4 +118,4 @@ Runner 是独立 submodule；确需修改时到其仓库单独提交，主仓只
 rustfmt、严格 Clippy 和实际 Python CLI 集成测试。Windows 验证按现有平台分工执行，
 窗口截图用于布局检查，不替代交互测试；发布产物另跑 Windows EXE 集成测试。
 
-下一步按 A → B 审查与合并，再分别评审 C / D；新增功能从 E 开始另开 PR。
+下一步审查与合并 B，再分别评审 C / D；新增功能从 E 开始另开 PR。
