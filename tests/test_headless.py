@@ -207,6 +207,90 @@ class HeadlessProcessTests(unittest.TestCase):
             self.assertTrue(response["error"]["refresh_required"])
         self.assertEqual(before, self.native.read_bytes())
 
+    def test_prepare_batch_saves_options_without_starting_a_run(self):
+        result, responses = self.serve(
+            [request("run.view", {"script_names": ["ok-ww"]})]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        options = responses[0]["result"]["options"]
+        options.update(
+            mute_enabled=True,
+            close_running_enabled=False,
+            rerun_enabled=True,
+            shutdown_enabled=False,
+        )
+        result, responses = self.serve(
+            [
+                request(
+                    "run.prepare",
+                    {
+                        "script_names": ["ok-ww"],
+                        "options": options,
+                        "confirm_invalid": True,
+                    },
+                    1,
+                ),
+                request("run.view", {"script_names": ["ok-ww"]}, 2),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("result", responses[0], responses[0])
+        target = responses[0]["result"]
+        self.assertEqual(target["args"], ["-m", "src.headless", "run"])
+        self.assertEqual(json.loads(target["input"])["script_names"], ["ok-ww"])
+        saved = responses[1]["result"]["options"]
+        self.assertTrue(saved["mute_enabled"])
+        self.assertFalse(saved["close_running_enabled"])
+        self.assertTrue(saved["rerun_enabled"])
+        self.assertEqual(saved["auth_code"], "")
+        self.assertFalse((self.root / "config/script_chain").exists())
+
+    def test_independent_worker_keeps_lease_without_importing_qt(self):
+        result, responses = self.serve(
+            [request("run.view", {"script_names": ["ok-ww"]})]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        command = self.command("run")
+        command[2] = command[2].replace(
+            "with patch('src.utils.get_root_dir', return_value=root):",
+            """
+def record(keys, target, **kwargs):
+    import json
+    from pathlib import Path
+    from src.update.runtime import FileLease, UpdateBusyError
+    try:
+        with FileLease(Path(root)/'.update/runtime.lock'):
+            locked=False
+    except UpdateBusyError:
+        locked=True
+    Path(root,'worker.json').write_text(json.dumps({'keys':sorted(keys),'target':target,'locked':locked,'options':kwargs}),encoding='utf-8')
+
+with patch('src.utils.get_root_dir', return_value=root), patch('src.service.run_service.chain_service.schedule_run', side_effect=record):
+""",
+        )
+        options = responses[0]["result"]["options"]
+        options.update(
+            close_running_enabled=False, shutdown_enabled=False, notify_enabled=False
+        )
+        child = subprocess.run(
+            command,
+            input=json.dumps({"script_names": ["ok-ww"], "options": options}),
+            text=True,
+            encoding="utf-8",
+            capture_output=True,
+            cwd=PROJECT_ROOT,
+            env=self.env,
+            timeout=30,
+        )
+        self.assertEqual(child.returncode, 0, child.stderr)
+        recorded = json.loads((self.root / "worker.json").read_text(encoding="utf-8"))
+        self.assertEqual(recorded["keys"], ["ok-ww"])
+        self.assertEqual(recorded["target"], "now")
+        self.assertTrue(recorded["locked"])
+        self.assertFalse(recorded["options"]["close_running"])
+        with FileLease(self.root / ".update/runtime.lock"):
+            self.assertTrue((self.root / "worker.json").is_file())
+
     def test_launch_queries_return_distinct_targets_without_qt_or_execution(self):
         example = self.root / "config/config.example.yml"
         example.write_text(

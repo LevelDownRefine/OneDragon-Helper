@@ -34,7 +34,7 @@ from src.config.set_config import (
 )
 from src.config.task_switch import task_switch_of
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
-from src.service import launch_service, script_list
+from src.service import launch_service, run_service, script_list
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -123,6 +123,17 @@ class AppService:
 
     def resolve_launch_target(self, script_name: str, target: str) -> dict:
         return launch_service.resolve_launch_target(script_name, target)
+
+    def run_view(self, script_names: list[str]) -> dict:
+        return run_service.run_view(script_names)
+
+    def prepare_run(
+        self, script_names: list[str], options: dict, confirm_invalid: bool
+    ) -> dict:
+        return run_service.prepare_run(script_names, options, confirm_invalid)
+
+    def run_batch(self, script_names: list[str], options: dict) -> None:
+        return run_service.run_batch(script_names, options)
 
     def script_edit_view(self, script_name: str) -> dict:
         """读取脚本配置表单；不提交编辑或强制初始化。"""

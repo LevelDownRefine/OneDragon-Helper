@@ -3,8 +3,9 @@
 import argparse
 import json
 import logging
+import os
 import sys
-from contextlib import redirect_stdout
+from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -12,6 +13,8 @@ PROTOCOL_VERSION = 1
 # 首期只开放短配置操作；长任务必须另行设计进度与取消协议。
 METHODS = {
     "app.snapshot": ("app_snapshot", (), ()),
+    "run.view": ("run_view", ("script_names",), ()),
+    "run.prepare": ("prepare_run", ("script_names", "options", "confirm_invalid"), ()),
     "script.view": ("script_view", ("script_name",), ()),
     "script.target": ("resolve_script_target", ("script_name", "target"), ()),
     "script.launch_target": ("resolve_launch_target", ("script_name", "target"), ()),
@@ -76,6 +79,7 @@ def _parse_json(payload: str):
 
 def handle_request(service, request) -> dict:
     """串行分发，协议输入先校验；业务异常保留诊断并返回明确失败。"""
+    from src.service.run_service import InvalidRunRequest
     from src.service.script_edit import InvalidScriptEdit
     from src.service.script_list import InvalidScriptList
     from src.service.task_service import InvalidTaskSelection
@@ -113,6 +117,7 @@ def handle_request(service, request) -> dict:
         # 参数值原样转发；取值校验和空操作语义由原 service 接口负责。
         mutating = method not in (
             "app.snapshot",
+            "run.view",
             "script.view",
             "script.target",
             "script.launch_target",
@@ -128,7 +133,12 @@ def handle_request(service, request) -> dict:
         }
     except ProtocolError as exc:
         return _error(request_id, exc.code, str(exc))
-    except (InvalidTaskSelection, InvalidScriptEdit, InvalidScriptList) as exc:
+    except (
+        InvalidTaskSelection,
+        InvalidScriptEdit,
+        InvalidScriptList,
+        InvalidRunRequest,
+    ) as exc:
         return _error(request_id, "invalid_params", str(exc))
     except Exception:  # noqa: BLE001 -- IPC 边界必须回复；写入可能已部分完成。
         logger.exception("任务卡请求失败，id=%r", request_id)
@@ -187,7 +197,32 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("serve", help="逐行处理 JSON 请求，EOF 退出").add_argument(
         "--stdio", action="store_true", required=True
     )
+    commands.add_parser(
+        "run", help="从 stdin 读取一次运行配置，在独立进程中执行批量任务"
+    )
     args = parser.parse_args(argv)
+    output = (
+        _console_output()
+        if args.command == "run" and os.name == "nt"
+        else nullcontext()
+    )
+    with output:
+        return _run_command(args)
+
+
+@contextmanager
+def _console_output():
+    """将独立运行进程的输出绑定到新控制台，stdin 留给 JSON 载荷。"""
+    with (
+        open("CONOUT$", "w", encoding="utf-8", buffering=1) as console,
+        redirect_stdout(console),
+        redirect_stderr(console),
+    ):
+        yield
+
+
+def _run_command(args: argparse.Namespace) -> int:
+    """在同一租约边界内初始化并执行一次入口。"""
     from src.update.runtime import application_lease
     from src.utils import get_root_dir
 
@@ -202,6 +237,16 @@ def main(argv: list[str] | None = None) -> int:
                 install_crash_hooks()
                 config_workflow()
                 service = AppService()
+            if args.command == "run":
+                payload = _parse_json(sys.stdin.read())
+                if not isinstance(payload, dict) or set(payload) != {
+                    "script_names",
+                    "options",
+                }:
+                    raise ValueError("运行载荷字段无效")
+                assert "script_names" in payload and "options" in payload
+                service.run_batch(payload["script_names"], payload["options"])
+                return 0
             return (
                 _serve(service)
                 if args.command == "serve"
@@ -209,11 +254,11 @@ def main(argv: list[str] | None = None) -> int:
             )
     except BrokenPipeError:
         # 父进程已关闭管道；用 _exit 避免解释器再次 flush 同一断开的 stdout。
-        import os
-
         os._exit(0)
     except Exception:  # noqa: BLE001 -- 入口失败须输出启动错误并释放租约。
         logger.exception("无 GUI CLI 启动或传输失败")
+        if args.command == "run":
+            return 2
         _emit(
             _error(
                 None,

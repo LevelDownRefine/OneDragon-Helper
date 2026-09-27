@@ -2,6 +2,7 @@
 use serde::Deserialize;
 use std::{
     collections::HashMap,
+    io::Write,
     path::Path,
     process::{Child, Command, Stdio},
     sync::mpsc::{self, Receiver, TryRecvError},
@@ -18,6 +19,10 @@ pub enum LaunchTarget {
         args: Vec<String>,
         cwd: String,
         env: HashMap<String, String>,
+        #[serde(default)]
+        input: Option<String>,
+        #[serde(default)]
+        console: bool,
     },
     Unavailable {
         reason: String,
@@ -46,6 +51,8 @@ impl LaunchTarget {
                 args,
                 cwd,
                 env,
+                input,
+                console,
             } => {
                 absolute_path(&program)?;
                 absolute_path(&cwd)?;
@@ -61,18 +68,35 @@ impl LaunchTarget {
                     .args(args)
                     .current_dir(cwd)
                     .envs(env)
-                    .stdin(Stdio::null())
+                    .stdin(if input.is_some() {
+                        Stdio::piped()
+                    } else {
+                        Stdio::null()
+                    })
                     .stdout(Stdio::null())
                     .stderr(Stdio::null());
                 #[cfg(windows)]
                 {
                     use std::os::windows::process::CommandExt;
-                    command.creation_flags(0x0800_0000); // Runner writes its existing log files.
+                    command.creation_flags(if console { 0x0000_0010 } else { 0x0800_0000 });
                 }
-                command
+                #[cfg(not(windows))]
+                let _ = console;
+                let mut child = command
                     .spawn()
-                    .map(Some)
-                    .map_err(|error| format!("启动失败：{error}"))
+                    .map_err(|error| format!("启动失败：{error}"))?;
+                if let Some(input) = input {
+                    let result = child
+                        .stdin
+                        .take()
+                        .expect("piped bootstrap")
+                        .write_all(input.as_bytes());
+                    if let Err(error) = result {
+                        reap_in_background(child);
+                        return Err(format!("传递运行配置失败：{error}"));
+                    }
+                }
+                Ok(Some(child))
             }
         }
     }
@@ -123,7 +147,7 @@ mod tests {
             .expect("absolute test Python");
         let target=LaunchTarget::Command {program:python.to_string_lossy().into(),
             args:vec!["-c".into(),"import sys,time,os;from pathlib import Path;time.sleep(.3);Path(sys.argv[1]).write_text(sys.argv[2]+os.environ['ODH_LAUNCH_TEST'],encoding='utf-8')".into(),marker.to_string_lossy().into(),"原样 & 空格".into()],
-            cwd:root.path().to_string_lossy().into(),env:HashMap::from([("ODH_LAUNCH_TEST".into(),"环境".into())])};
+            cwd:root.path().to_string_lossy().into(),env:HashMap::from([("ODH_LAUNCH_TEST".into(),"环境".into())]),input:None,console:false};
         let job = LaunchJob::start(target, eframe::egui::Context::default());
         let child = job
             .0
@@ -138,6 +162,26 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         assert_eq!(std::fs::read_to_string(marker).unwrap(), "原样 & 空格环境");
+    }
+
+    #[test]
+    fn bootstrap_stdin_reaches_child_and_closes_at_eof() {
+        let root = tempfile::tempdir().unwrap();
+        let marker = root.path().join("payload.json");
+        let python = Path::new(&std::env::var_os("ODH_TEST_PYTHON").expect("test Python"))
+            .canonicalize()
+            .unwrap();
+        let target=LaunchTarget::Command {
+            program:python.to_string_lossy().into(),
+            args:vec!["-c".into(),"import sys;from pathlib import Path;sys.stdin.reconfigure(encoding='utf-8');Path(sys.argv[1]).write_text(sys.stdin.read(),encoding='utf-8')".into(),marker.to_string_lossy().into()],
+            cwd:root.path().to_string_lossy().into(),env:HashMap::new(),input:Some("{\"script_names\":[\"中文, & 脚本\"]}".into()),console:false,
+        };
+        let mut child = target.start().unwrap().unwrap();
+        assert!(child.wait().unwrap().success());
+        assert_eq!(
+            std::fs::read_to_string(marker).unwrap(),
+            "{\"script_names\":[\"中文, & 脚本\"]}"
+        );
     }
 
     #[test]

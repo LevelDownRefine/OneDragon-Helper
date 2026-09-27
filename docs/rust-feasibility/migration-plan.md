@@ -24,9 +24,11 @@
 - G [#108](https://github.com/LevelDownRefine/OneDragon-Helper/pull/108) `codex/rust-gui-script-list`
   基于 #107，接通脚本/快捷方式添加、删除确认、拖动排序，
   以及手动勾选、全选/清空。手动状态按脚本身份保留在内存，后台拒绝过期排序。
-- H1 `codex/rust-gui-launch-current` 基于 #108，接通当前脚本/游戏启动；Python 解析目标，
+- H1 [#109](https://github.com/LevelDownRefine/OneDragon-Helper/pull/109) `codex/rust-gui-launch-current` 基于 #108，接通当前脚本/游戏启动；Python 解析目标，
   Rust 通过系统关联或现有 Runner CLI 发起，关闭 GUI 不终止外部进程。
-  H 后续拆为批量确认/选项与无 Qt 调度入口、独立 Rust 关机确认两块。
+- H2 `codex/rust-gui-run-batch` 基于 #109，接通批量确认/选项与独立无 Qt 调度入口；
+  stdin 传运行载荷，取消不保存、部分失败不启动，GUI 关闭保留运行进程。
+  H3 接独立 Rust 关机倒计时确认后再开放关机选项。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

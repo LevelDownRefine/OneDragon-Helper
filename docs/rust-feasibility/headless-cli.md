@@ -55,6 +55,8 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | 方法 | 参数 | 返回 |
 | --- | --- | --- |
 | `app.snapshot` | `{}` | `scripts`：按配置顺序给出 `script_name/display_name/script_path/adapted/script_data`；script_data 为原脚本条目，供现有 GUI 展示；不扫描所有外部脚本 |
+| `run.view` | `script_names` | 当前选择、无效脚本原因、运行选项（授权码始终为空）、关机支持状态 |
+| `run.prepare` | `script_names/options/confirm_invalid` | 保存已确认选项，返回独立运行命令及 stdin JSON；不会在服务进程启动调度 |
 | `script.view` | `script_name` | `script` 摘要、`dailies` 和 `weeklies` |
 | `script.target` | `script_name/target` | 只解析工具栏的 URL、路径或不可用原因，不执行打开动作 |
 | `script.launch_target` | `script_name/target`（script 或 game） | 解析单独启动目标；与工具栏普通资源查询分开，本接口不执行启动 |
@@ -87,7 +89,7 @@ CLI 不转换字符串、整数或布尔值，字段类型及取值校验仍由�
 
 周常条目：`name/options/task/start_day`；无选项组时 options 为 null。
 start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不同。
-尚未开放全局设置、运行或更新动作。
+尚未开放全局设置或更新动作。
 工具栏 `script.target` 的 target 为 `home/bili/github/folder/log/configfile`。
 成功目标为 `{"kind":"url"或"path","value":"..."}`，本机缺失资源为
 `{"kind":"unavailable","reason":"..."}`；路径为绝对路径。链接沿用资源声明及原 GUI
@@ -130,6 +132,21 @@ null 沿用默认超时，低于 10 秒的值保留原运行语义。switches �
 例如副本写入成功但启用失败，或周常意图已保存但游戏侧同步失败。
 适配器抛出的取值/类型错误同样属于 `operation_failed`；协议层不重建业务异常分类。
 收到错误或进程意外退出后，先用 script.view 重读，再让用户决定是否重试；不得自动重放写请求。
+
+## 批量运行
+
+`run.view` 接受当前列表内非空、无重复的脚本标识；手动勾选仅由前端传入。
+`run.prepare` 严格验证 RunOptions 完整字段、类型和范围；无效脚本须显式确认跳过，
+保存选项后返回 command 目标，增加 `console:true` 和 `input` 字段。
+input 是 `{"script_names":[...],"options":{...}}` 的 JSON 文本；选项重新读取、授权码不回传，
+凭据沿用现有安全存储。取消无需调用 prepare；写入失败可能部分完成，不能自动重试或启动。
+
+独立入口 `python -m src.headless run` 从 UTF-8 stdin 读一个 JSON 对象直到 EOF，
+在独立进程内复用 schedule_run，运行锁覆盖初始化与完整调度。它不是 stdio RPC 方法，
+不会阻塞持久服务；GUI 退出不终止该进程。Windows 前端以 CREATE_NEW_CONSOLE 启动，
+worker 将 stdout/stderr 绑定 CONOUT$，stdin 保留给参数；无 Qt 导入。
+任务名、邮箱和凭据均不进入命令行。失败返回非零退出码，详细诊断在控制台和原日志。
+本批关闭自动关机支持；开启时拒绝运行，待独立 Rust 关机确认接入后启用。
 
 ## 生命周期与现有边界
 

@@ -1,6 +1,7 @@
 use crate::launch::{LaunchJob, LaunchTarget};
 use crate::list_dialog::{ListAction, ListDialog};
 use crate::opener::{OpenJob, Target};
+use crate::run_dialog::{RunAction, RunDialog, RunView};
 use crate::script_editor::{EditAction, EditView, ScriptEditor};
 use crate::view::{Action, Presentation, View};
 use eframe::egui;
@@ -22,6 +23,8 @@ pub struct Settings {
     pub capture_editor: bool,
     #[cfg(feature = "capture")]
     pub capture_list: bool,
+    #[cfg(feature = "capture")]
+    pub capture_run: bool,
 }
 
 impl Settings {
@@ -57,6 +60,7 @@ pub struct App {
     launched: Vec<std::process::Child>,
     editor: Option<ScriptEditor>,
     list_dialog: Option<ListDialog>,
+    run_dialog: Option<RunDialog>,
     open_editor_after_snapshot: bool,
     #[cfg(feature = "capture")]
     capture_requested: bool,
@@ -90,6 +94,7 @@ impl App {
             launched: Vec::new(),
             editor: None,
             list_dialog: None,
+            run_dialog: None,
             open_editor_after_snapshot: false,
             #[cfg(feature = "capture")]
             capture_requested: false,
@@ -128,6 +133,7 @@ impl App {
                     | "script.target"
                     | "script.edit_view"
                     | "script.launch_target"
+                    | "run.view"
             ) {
                 "读取中"
             } else {
@@ -165,6 +171,9 @@ impl App {
         if let Some(dialog) = &mut self.list_dialog {
             dialog.failure(failure.message.clone(), true);
         }
+        if let Some(dialog) = &mut self.run_dialog {
+            dialog.failure(failure.message.clone(), true);
+        }
         self.error = Some(failure.message);
         if failure.code == "transport_failed" {
             self.backend = None;
@@ -178,6 +187,15 @@ impl App {
         let result = match reply.result {
             Ok(value) => value,
             Err(failure) => {
+                if matches!(reply.method.as_str(), "run.view" | "run.prepare") {
+                    let reload = failure.refresh_required || failure.code == "transport_failed";
+                    let message = failure.message.clone();
+                    self.fail(failure);
+                    if let Some(dialog) = &mut self.run_dialog {
+                        dialog.failure(message, reload);
+                    }
+                    return;
+                }
                 if matches!(
                     reply.method.as_str(),
                     "script.add" | "script.remove" | "script.reorder"
@@ -297,13 +315,27 @@ impl App {
             self.write_confirmed = true;
             self.ui.toast("列表已保存");
             self.request("app.snapshot", json!({}));
-        } else if reply.method == "script.launch_target" {
+        } else if reply.method == "run.view" {
+            match serde_json::from_value::<RunView>(result) {
+                Ok(data) => {
+                    self.run_dialog = Some(RunDialog::new(data));
+                    self.status = "已同步".into();
+                }
+                Err(error) => self.fail(Failure::transport(format!("运行选项无效：{error}"))),
+            }
+        } else if matches!(
+            reply.method.as_str(),
+            "script.launch_target" | "run.prepare"
+        ) {
             match serde_json::from_value::<LaunchTarget>(result) {
                 Ok(LaunchTarget::Unavailable { reason }) => {
                     self.ui.toast(reason);
                     self.status = "无法启动".into();
                 }
                 Ok(target) => {
+                    if reply.method == "run.prepare" {
+                        self.run_dialog = None;
+                    }
                     self.launch_job = Some(LaunchJob::start(target, self.ctx.clone()));
                     self.busy = true;
                     self.status = "启动中".into();
@@ -349,6 +381,13 @@ impl App {
                         #[cfg(feature = "capture")]
                         if self.settings.capture.is_some() && self.settings.capture_list {
                             self.ui.open_manual_menu();
+                        }
+                        #[cfg(feature = "capture")]
+                        if self.settings.capture.is_some()
+                            && self.settings.capture_run
+                            && !self.busy
+                        {
+                            self.request("run.view",json!({"script_names":self.scripts.iter().map(|script|script.script_name.clone()).collect::<Vec<_>>()}));
                         }
                     }
                 }
@@ -581,6 +620,24 @@ impl eframe::App for App {
                 }
             }
         }
+        if let Some(action) = self
+            .run_dialog
+            .as_mut()
+            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+        {
+            match action {
+                RunAction::Request(request) => {
+                    self.error = None;
+                    self.request(&request.method, request.params);
+                }
+                RunAction::Cancel => {
+                    self.run_dialog = None;
+                    if self.view.is_none() && self.backend.is_some() {
+                        self.request("app.snapshot", json!({}));
+                    }
+                }
+            }
+        }
         egui::Window::new("连接诊断")
             .open(&mut self.ui.diagnostics_open)
             .default_width(520.0)
@@ -601,6 +658,7 @@ impl eframe::App for App {
             && self.ready_logged
             && !self.capture_requested
             && (!self.settings.capture_editor || self.editor.is_some())
+            && (!self.settings.capture_run || self.run_dialog.is_some())
         {
             let ready = self.capture_ready_at.get_or_insert_with(Instant::now);
             if ready.elapsed() >= std::time::Duration::from_millis(250) {
@@ -665,6 +723,8 @@ mod tests {
                 capture_editor: false,
                 #[cfg(feature = "capture")]
                 capture_list: false,
+                #[cfg(feature = "capture")]
+                capture_run: false,
             },
             backend: Some(Backend::start(command, || {})),
             scripts: Vec::new(),
@@ -686,6 +746,7 @@ mod tests {
             editor: None,
             list_dialog: None,
             open_editor_after_snapshot: false,
+            run_dialog: None,
             ctx,
             #[cfg(feature = "capture")]
             capture_requested: false,

@@ -365,8 +365,22 @@ impl View {
         }
         let batch = rect(16.0, base + 64.0, 48.0, 48.0);
         ui.painter().circle_filled(batch.center(), 24.0, BATCH);
-        if self.icon_button(ui, "play_all", batch, "启动全部 · 暂不可用", false) {
-            self.unavailable("启动全部");
+        if self.icon_button(ui, "play_all", batch, "启动手动勾选的脚本", false) && !data.busy
+        {
+            let names: Vec<_> = data
+                .scripts
+                .iter()
+                .filter(|script| !self.disabled.contains(&script.script_name))
+                .map(|script| script.script_name.clone())
+                .collect();
+            if names.is_empty() {
+                self.toast("没有勾选手动运行的脚本");
+            } else {
+                actions.push(Action::Request(Request {
+                    method: "run.view".into(),
+                    params: json!({"script_names":names}),
+                }));
+            }
         }
     }
 
@@ -1241,6 +1255,21 @@ mod tests {
         let request = only_request(scene.click(Id::new(("icon", "脚本配置"))));
         assert_eq!(request.method, "script.edit_view");
         assert_eq!(request.params, json!({"script_name": "test"}));
+    }
+
+    #[test]
+    fn batch_button_uses_only_manual_selection_and_empty_is_local() {
+        let mut scene = Scene::new();
+        let request = only_request(scene.click(Id::new(("icon", "启动手动勾选的脚本"))));
+        assert_eq!(request.method, "run.view");
+        assert_eq!(request.params, json!({"script_names":["test"]}));
+        scene.ui.disabled.insert("test".into());
+        assert!(
+            scene
+                .click(Id::new(("icon", "启动手动勾选的脚本")))
+                .is_empty()
+        );
+        assert!(scene.ui.toast.as_ref().unwrap().0.contains("没有勾选"));
     }
 
     #[test]
