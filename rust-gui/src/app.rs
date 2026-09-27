@@ -6,6 +6,7 @@ use crate::launch::{LaunchJob, LaunchTarget};
 use crate::list_dialog::{ListAction, ListDialog};
 use crate::opener::{OpenJob, Target};
 use crate::run_dialog::{RunAction, RunDialog, RunView};
+use crate::runtime::BackendProgram;
 use crate::script_editor::{EditAction, EditView, ScriptEditor};
 use crate::settings_dialog::{SettingsAction, SettingsDialog, SettingsView, StartupDialog};
 use crate::update_dialog::{UpdateAction, UpdateDialog, UpdateView};
@@ -21,7 +22,7 @@ use std::{path::PathBuf, process::Command, time::Instant};
 
 pub struct Settings {
     pub project_root: PathBuf,
-    pub python: PathBuf,
+    pub backend: BackendProgram,
     pub font: Option<PathBuf>,
     pub demo: bool,
     pub skip_startup: bool,
@@ -51,15 +52,11 @@ pub struct Settings {
 
 impl Settings {
     fn command(&self) -> Command {
-        let mut command = Command::new(&self.python);
-        command
-            .args(["-m", "src.headless", "serve", "--stdio"])
-            .current_dir(&self.project_root)
-            .env("PYTHONUTF8", "1")
-            .env(
-                "ODH_SHUTDOWN_UI",
-                std::env::current_exe().expect("current executable path"),
-            );
+        let mut command = self.backend.command(&self.project_root);
+        command.env(
+            "ODH_SHUTDOWN_UI",
+            std::env::current_exe().expect("current executable path"),
+        );
         command
     }
 }
@@ -1339,7 +1336,7 @@ mod tests {
         App {
             settings: Settings {
                 project_root: root.into(),
-                python,
+                backend: BackendProgram::Source(python),
                 font: None,
                 demo: true,
                 skip_startup: true,

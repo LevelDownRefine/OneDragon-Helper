@@ -56,8 +56,11 @@
 - M3 [#121](https://github.com/LevelDownRefine/OneDragon-Helper/pull/121) `codex/rust-gui-update-install` 基于 #120，开放显式安装与就绪后退出；
   双进程身份与父子关系核验、统一退出期限、同目录 CLI 任务识别，失败保留窗口供重试。
   源码模式仍不支持原位更新；正式 Rust 包及双进程真实 EXE 交接留给 N 验证。
-- N1 `codex/rust-gui-package-cli` 基于 #121，构建独立无 Qt CLI，并加入真实 Windows EXE 测试；
+- N1 [#122](https://github.com/LevelDownRefine/OneDragon-Helper/pull/122) `codex/rust-gui-package-cli` 基于 #121，构建独立无 Qt CLI，并加入真实 Windows EXE 测试；
   仅后端组件，完整 GUI 入口、UAC、发布布局和双进程升级在后续 N 批次接入。
+- N2 `codex/rust-gui-packaged-entry` 基于 #122，Rust 从 EXE 所在目录读取包身份并直接运行随附 CLI；
+  开发路径显式保留，损坏/缺失后端不回退 Python。真实临时组装目录在无源码、无 Python PATH、
+  外部工作目录条件下显示任务卡；UAC、完整发布资源和双进程升级继续由后续 N 批次完成。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

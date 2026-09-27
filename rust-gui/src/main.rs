@@ -10,6 +10,7 @@ mod list_dialog;
 mod native_icons;
 mod opener;
 mod run_dialog;
+mod runtime;
 mod script_editor;
 mod settings_dialog;
 mod shutdown;
@@ -23,7 +24,7 @@ use std::{env, path::PathBuf, time::Instant};
 
 fn settings() -> Result<Option<app::Settings>, String> {
     let mut args = env::args_os().skip(1);
-    let mut root = env::current_dir().map_err(|err| err.to_string())?;
+    let mut project = None;
     let mut python = None;
     let mut font = None;
     let mut demo = false;
@@ -52,7 +53,9 @@ fn settings() -> Result<Option<app::Settings>, String> {
     let mut capture_update = false;
     while let Some(argument) = args.next() {
         match argument.to_str() {
-            Some("--project-root") => root = args.next().ok_or("--project-root 缺少路径")?.into(),
+            Some("--project-root") => {
+                project = Some(PathBuf::from(args.next().ok_or("--project-root 缺少路径")?))
+            }
             Some("--python") => {
                 python = Some(PathBuf::from(args.next().ok_or("--python 缺少路径")?))
             }
@@ -100,36 +103,13 @@ fn settings() -> Result<Option<app::Settings>, String> {
             _ => return Err(format!("未知参数：{}", argument.to_string_lossy())),
         }
     }
-    if !root.join("src/headless.py").is_file() {
-        return Err("请从项目根运行，或用 --project-root 指定含 src/headless.py 的目录".into());
-    }
-    let root = root.canonicalize().map_err(|err| err.to_string())?;
-    let python = python.unwrap_or_else(|| {
-        let suffix = if cfg!(windows) {
-            "Scripts/python.exe"
-        } else {
-            "bin/python"
-        };
-        env::var_os("VIRTUAL_ENV")
-            .map(PathBuf::from)
-            .map(|directory| directory.join(suffix))
-            .unwrap_or_else(|| {
-                let local = root.join(".venv").join(suffix);
-                if local.is_file() {
-                    local
-                } else {
-                    PathBuf::from("python")
-                }
-            })
-    });
-    // An explicit relative executable is resolved before changing the child's cwd.
-    let python = if python.components().count() > 1 {
-        python
-            .canonicalize()
-            .map_err(|err| format!("Python 路径无效：{err}"))?
-    } else {
-        python
-    };
+    let (root, backend) = runtime::resolve(
+        project,
+        python,
+        &env::current_exe().map_err(|error| error.to_string())?,
+        &env::current_dir().map_err(|error| error.to_string())?,
+        env::var_os("VIRTUAL_ENV").map(PathBuf::from),
+    )?;
     #[cfg(feature = "capture")]
     {
         skip_startup |= capture.is_some();
@@ -137,7 +117,7 @@ fn settings() -> Result<Option<app::Settings>, String> {
     skip_startup |= demo;
     Ok(Some(app::Settings {
         project_root: root,
-        python,
+        backend,
         font,
         demo,
         skip_startup,
@@ -180,7 +160,7 @@ fn main() -> eframe::Result {
         Ok(Some(settings)) => settings,
         Ok(None) => return Ok(()),
         Err(error) => {
-            log::error!("{error}");
+            runtime::startup_error(&error);
             std::process::exit(2);
         }
     };

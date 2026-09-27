@@ -123,7 +123,11 @@ cargo build --release --locked --manifest-path rust-gui/Cargo.toml
   其他任务/窗口、身份不符或超时都会保留当前版本。Rust 使用独立发布包，禁止替换成 Qt 包。
   目前源码模式仍不可原位安装，完整 Rust 打包与真实 EXE 交接验证留给发布批次。
 
-此原型仍需源码和 Python 环境，不是发布包替代品。
+开发启动器仍使用源码和 Python 环境；完整 Rust 发布包的组装与验收尚未完成。
+原生 EXE 已支持从自身目录识别 Rust `version.json`、`OneDragon-Helper-CLI.exe` 和
+`_internal`，直接启动随附后端；不受启动工作目录或已激活 Python 环境影响。
+包不完整、类型不符会明确报错，不回退 PATH 中的 Python。Windows 首窗创建前的错误以
+原生错误框显示。显式 `--project-root` 保留源码开发模式，`--python` 仅用于源码模式。
 
 尺寸与颜色对应 `src/gui/qml/Layout.js`、`Theme.js`；嵌入 `assets/ds.jpg` 用于初始背景，
 加载后使用 CLI 解析的脚本默认/自定义壁纸。
@@ -278,3 +282,8 @@ Windows 实窗源码运行提示已截图检查；`--capture-update` 只打开�
 验证直接父子进程关系、异目录启动和运行锁。Ubuntu 全量 1230 项（1192 通过、38 项跳过，
 其中新增四项在 Windows 实跑），Ruff 通过。此阶段产物仅含 CLI 与 _internal，
 不作为完整 Rust 发布包交付，也不据此推算整体体积或启动加速。
+
+独立前端入口验证：Rust 72 项通过；Ubuntu Python 全量 1230 项（1192 通过、38 项跳过），
+Ruff、rustfmt、严格 Clippy 通过。Windows 在临时目录组合真实 Rust EXE/CLI/运行库及生成
+配置，从另一个工作目录启动，移除虚拟环境变量并把 PATH 限于 System32，实际窗口与任务卡
+已截图验证；程序目录没有 src 源码。未运行外部脚本。UAC、完整发布清单和真实更新安装留给下一批。
