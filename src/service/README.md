@@ -17,7 +17,7 @@
 | 模块 | 职责 |
 |------|------|
 | app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
-| task_service.py | 任务卡聚合查询、日常/周常选择校验与写后反读；无 GUI 或进程依赖 |
+| task_service.py | 脚本列表与任务卡聚合查询；无 GUI 或进程依赖 |
 | utils_config.py | 单脚本配置（原 script_service.py 已退化为模块函数）：config.yml 完整读写（含条目增删改）+ get_script / build_script_entry / config_file_path |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
@@ -28,10 +28,24 @@
 
 ## 任务卡查询与编辑
 
-任务卡通过 `AppService.app_snapshot/script_view/select_daily/enable_daily/select_weekly/start_weekly`
-调用。查询返回普通字典：日常为 `name/task/sequence/enabled/options`，周常为
+任务卡通过 `AppService.app_snapshot/script_view` 查询。查询返回普通字典：日常为 `name/task/sequence/enabled/options`，周常为
 `name/task/options/start_day`。保留 JSON 整数与布尔的区别、`0=不启用` 与 `None=未设置`；
-写入复用现有适配器并重新反读。读取仍可能触发既有模板对齐，不承诺完全没有写盘副作用。
+读取仍可能触发既有模板对齐，不承诺完全没有写盘副作用。
+
+CLI 编辑入口保留在 `AppService`，直接调用对应的 GUI 原接口：
+
+| 操作 | CLI 入口 | GUI 原入口 |
+|------|------|------|
+| 选择日常（同时启用） | `select_daily(script_name, daily_name=None, task_name=None, sequence=None)` | `set_script_daily_task` |
+| 日常开关 | `enable_daily(script_name, daily_name, enabled)` | `set_script_daily_enabled` |
+| 选择周常 | `select_weekly(script_name, weekly_name, task_name)` | `set_script_weekly_task` |
+| 周常起始日 | `start_weekly(script_name, weekly_name, start_day)` | `set_weekly_start_for` |
+
+`daily_name` 对应原接口的 `daily_display_name`，参数值原样传入。
+四个 CLI 写入口只做 `return self.<原接口>(...)`，返回值及异常原样传递。
+原写接口当前返回 `None`，校验与写入由原调用链负责；不增加菜单预读或写后整卡查询。
+调用方需要刷新时再调用 `script_view`，并分别处理写入和查询的错误。
+周常起始日仍先保存助手侧意图，再同步游戏侧字段；后一步失败不撤销已保存的意图。
 进程协议与 GUI 接入在后续 PR 中提供，本层不负责传输、界面状态或格式化文案。
 
 ## 手动更新
