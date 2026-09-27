@@ -1,11 +1,13 @@
-"""任务卡聚合查询；编辑复用 AppService 既有写接口。"""
+"""任务卡查询与 CLI 编辑入口；写入沿用既有适配器契约。"""
 
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
     get_daily_readback,
     is_adapted,
+    set_config,
+    set_daily_enabled,
 )
-from src.config.weekly import get_weekly_task
+from src.config.weekly import get_weekly_task, set_weekly_task
 from src.utils.utils_config import get_script, load_config
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_weekly import get_weekly_start_map
@@ -87,3 +89,28 @@ def script_view(script_name: str) -> dict:
             }
         )
     return {"script": _script_summary(script), "dailies": dailies, "weeklies": weeklies}
+
+
+def select_daily(
+    script_name: str,
+    daily_name: str | None = None,
+    task_name: str | None = None,
+    sequence: str | int | None = None,
+) -> None:
+    """沿用 set_config 的选择、跳过和启用语义，不额外校验或查询。"""
+    return set_config(
+        script_name,
+        daily_display_name=daily_name,
+        task_name=task_name,
+        sequence=sequence,
+    )
+
+
+def enable_daily(script_name: str, daily_name: str, enabled: bool) -> None:
+    """只改目标日常开关，无开关时沿用适配器的空操作。"""
+    return set_daily_enabled(script_name, daily_name, enabled)
+
+
+def select_weekly(script_name: str, weekly_name: str, task_name: str) -> None:
+    """沿用周常适配器的选择与跳过语义。"""
+    return set_weekly_task(script_name, weekly_name, task_name)

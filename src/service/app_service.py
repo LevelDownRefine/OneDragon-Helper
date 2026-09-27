@@ -103,9 +103,31 @@ class AppService:
         """CLI 任务卡及物化选项。"""
         return task_service.script_view(script_name)
 
+    def select_daily(
+        self,
+        script_name: str,
+        daily_name: str | None = None,
+        task_name: str | None = None,
+        sequence: str | int | None = None,
+    ) -> None:
+        """CLI 日常选择，与 set_script_daily_task 共用适配器契约。"""
+        return task_service.select_daily(script_name, daily_name, task_name, sequence)
+
     def check_update(self):
         """用户手动检查新版。"""
         return self._updates.check_update()
+
+    def enable_daily(self, script_name: str, daily_name: str, enabled: bool) -> None:
+        """CLI 日常开关，与 set_script_daily_enabled 共用适配器契约。"""
+        return task_service.enable_daily(script_name, daily_name, enabled)
+
+    def select_weekly(self, script_name: str, weekly_name: str, task_name: str) -> None:
+        """CLI 周常选择，与 set_script_weekly_task 共用适配器契约。"""
+        return task_service.select_weekly(script_name, weekly_name, task_name)
+
+    def start_weekly(self, script_name: str, weekly_name: str, start_day: int) -> None:
+        """CLI 周常起始日，保留先写助手意图、再同步游戏侧的顺序。"""
+        return self.set_weekly_start_for(script_name, weekly_name, start_day)
 
     def get_update_info(self):
         """读取本地版本与上次安装结果，不联网。"""

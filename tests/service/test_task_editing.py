@@ -15,6 +15,9 @@ from src.utils import utils_weekly
 class TaskEditingTests(unittest.TestCase):
     def setUp(self):
         self.service = AppService()
+        self.select_daily = self.service.set_script_daily_task
+        self.enable_daily = self.service.set_script_daily_enabled
+        self.select_weekly = self.service.set_script_weekly_task
         # 查询坏了也不能影响独立写入；菜单物化同样不应是写操作的前置条件。
         for name in (
             "script_view",
@@ -95,21 +98,16 @@ class TaskEditingTests(unittest.TestCase):
         )
 
     def test_unselected_or_unadapted_daily_is_noop(self):
+        self.assertIsNone(self.select_daily("脚本"))
         for task in (None, "", "未选择"):
             with self.subTest(task=task):
-                self.assertIsNone(
-                    self.service.set_script_daily_task("脚本", task_name=task)
-                )
-        self.assertIsNone(
-            self.service.set_script_daily_task("自定义", "日常", "材料", 1)
-        )
+                self.assertIsNone(self.select_daily("脚本", task_name=task))
+        self.assertIsNone(self.select_daily("自定义", "日常", "材料", 1))
         self.assertEqual(self.reads, [])
         self.assertEqual(self.saves, [])
 
     def test_static_display_name_is_mapped_and_selection_enables_daily(self):
-        self.assertIsNone(
-            self.service.set_script_daily_task("脚本", "日常", "材料", "第一项")
-        )
+        self.assertIsNone(self.select_daily("脚本", "日常", "材料", "第一项"))
         self.assertEqual(
             self.saves,
             [
@@ -125,9 +123,7 @@ class TaskEditingTests(unittest.TestCase):
         ):
             with self.subTest(sequence=sequence):
                 self.assertIsNone(
-                    self.service.set_script_daily_task(
-                        "脚本", "动态日常", "材料", sequence
-                    )
+                    self.select_daily("脚本", "动态日常", "材料", sequence)
                 )
                 self.assertEqual(
                     self.files["dynamic.json"],
@@ -143,13 +139,13 @@ class TaskEditingTests(unittest.TestCase):
         ):
             with self.subTest(daily=daily, task=task, sequence=sequence):
                 with self.assertRaises(AssertionError):
-                    self.service.set_script_daily_task("脚本", daily, task, sequence)
+                    self.select_daily("脚本", daily, task, sequence)
                 self.assertEqual(self.saves, [])
 
     def test_enable_only_changes_target_switch_without_reading_selections(self):
         self.files["daily.json"]["enabled"] = True
         before = deepcopy(self.files["dynamic.json"])
-        self.assertIsNone(self.service.set_script_daily_enabled("脚本", "日常", False))
+        self.assertIsNone(self.enable_daily("脚本", "日常", False))
         self.assertEqual(
             self.files["daily.json"],
             {"task": "material", "sequence": 2, "enabled": False},
@@ -159,9 +155,7 @@ class TaskEditingTests(unittest.TestCase):
         self.assertEqual(len(self.saves), 1)
 
     def test_daily_without_switch_is_noop_even_without_config(self):
-        self.assertIsNone(
-            self.service.set_script_daily_enabled("脚本", "无开关日常", False)
-        )
+        self.assertIsNone(self.enable_daily("脚本", "无开关日常", False))
         self.assertEqual(self.reads, [])
         self.assertEqual(self.saves, [])
 
@@ -171,7 +165,7 @@ class TaskEditingTests(unittest.TestCase):
                 self.subTest(script=script, daily=daily),
                 self.assertRaises(AssertionError),
             ):
-                self.service.set_script_daily_enabled(script, daily, False)
+                self.enable_daily(script, daily, False)
         self.assertEqual(self.reads, [])
         self.assertEqual(self.saves, [])
 
@@ -190,9 +184,7 @@ class TaskEditingTests(unittest.TestCase):
                 ("自定义", "周常"),
             ):
                 with self.subTest(script=script, name=name):
-                    self.assertIsNone(
-                        self.service.set_script_weekly_task(script, name, "副本")
-                    )
+                    self.assertIsNone(self.select_weekly(script, name, "副本"))
         read.assert_not_called()
         write.assert_not_called()
 
@@ -200,6 +192,7 @@ class TaskEditingTests(unittest.TestCase):
 class WeeklyStartEditingTests(unittest.TestCase):
     def setUp(self):
         self.service = AppService()
+        self.start_weekly = self.service.set_weekly_start_for
         self.data = {
             "weekly_start": {"脚本": {"周常": 2, "另一周常": 3}},
             "weekly_timeouts": {"脚本": [60] * 7},
@@ -235,9 +228,7 @@ class WeeklyStartEditingTests(unittest.TestCase):
         ) as game:
             for day in (0, 1, 7):
                 with self.subTest(day=day):
-                    self.assertIsNone(
-                        self.service.set_weekly_start_for("脚本", "周常", day)
-                    )
+                    self.assertIsNone(self.start_weekly("脚本", "周常", day))
             self.assertEqual(game.call_count, 3)
         self.assertEqual(len(self.saves), 3)
 
@@ -245,7 +236,7 @@ class WeeklyStartEditingTests(unittest.TestCase):
         with patch.object(app_service, "set_weekly_start_day") as game:
             for day in (-1, 8, True, "1", 1.0):
                 with self.subTest(day=day), self.assertRaises(AssertionError):
-                    self.service.set_weekly_start_for("脚本", "周常", day)
+                    self.start_weekly("脚本", "周常", day)
         self.assertEqual(self.saves, [])
         game.assert_not_called()
 
@@ -255,7 +246,7 @@ class WeeklyStartEditingTests(unittest.TestCase):
             patch.object(app_service, "set_weekly_start_day", side_effect=error),
             self.assertRaises(OSError) as caught,
         ):
-            self.service.set_weekly_start_for("脚本", "周常", 0)
+            self.start_weekly("脚本", "周常", 0)
         self.assertIs(caught.exception, error)
         self.assertEqual(
             self.data["weekly_start"], {"脚本": {"周常": 0, "另一周常": 3}}
@@ -267,9 +258,37 @@ class WeeklyStartEditingTests(unittest.TestCase):
             patch.dict(weekly_mod._BUILT, {"脚本": []}, clear=True),
             patch.object(weekly_mod, "save_script_config") as game,
         ):
-            self.assertIsNone(self.service.set_weekly_start_for("脚本", "未知周常", 4))
+            self.assertIsNone(self.start_weekly("脚本", "未知周常", 4))
         self.assertEqual(
             self.data["weekly_start"],
             {"脚本": {"周常": 2, "另一周常": 3, "未知周常": 4}},
         )
         game.assert_not_called()
+
+
+class CliTaskEditingTests(TaskEditingTests):
+    """对同样的输入与原生配置执行 CLI 入口，断言同一份行为契约。"""
+
+    def setUp(self):
+        super().setUp()
+        self.select_daily = self.service.select_daily
+        self.enable_daily = self.service.enable_daily
+        self.select_weekly = self.service.select_weekly
+
+
+class TaskServiceEditingTests(TaskEditingTests):
+    """task_service 模块入口与 AppService 委托保持同一份契约。"""
+
+    def setUp(self):
+        super().setUp()
+        self.select_daily = task_service.select_daily
+        self.enable_daily = task_service.enable_daily
+        self.select_weekly = task_service.select_weekly
+
+
+class CliWeeklyStartEditingTests(WeeklyStartEditingTests):
+    """CLI 周常起始日与 GUI 入口使用同一组持久化及失败场景。"""
+
+    def setUp(self):
+        super().setUp()
+        self.start_weekly = self.service.start_weekly
