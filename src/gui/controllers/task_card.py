@@ -83,15 +83,11 @@ class TaskCardController(QObject):
         显示「不启用」。can_disable 由脚本是否声明日常开关（enabled 非 None）推导，
         disabled 为当前是否已停用。
         """
-        script_name = self._current["script_name"]
-        options_by_daily = {
-            daily["display_name"]: daily["options"]["values"]
-            for daily in self._dailies_of(script_name)
-        }
         items = []
-        for record in get_daily_readback(script_name):
+        for record in self._daily_records():
+            assert all(key in record for key in ("name", "task", "sequence", "enabled"))
             name = record["name"]
-            options = options_by_daily.get(name, [])
+            options = self.daily_options(name)
             items.append(
                 {
                     "name": name,
@@ -101,6 +97,10 @@ class TaskCardController(QObject):
                 }
             )
         return items
+
+    def _daily_records(self) -> list[dict]:
+        """本地模式反读日常；CLI 模式使用已收到的快照。"""
+        return get_daily_readback(self._current["script_name"])
 
     def _dailies_of(self, script_name: str) -> list:
         """某脚本各日常的物化声明（词汇与声明一致）；无数据返回空列表。"""
@@ -187,32 +187,49 @@ class TaskCardController(QObject):
         config（如 M7A instance_names）、周几起反读 ``weekly.yml``——周常侧无 no-op
         脚本，故不设回退。
         """
-        script_name = self._current["script_name"]
-        defs = self._app_service.get_weekly_map(script_name)
-        if not defs:
-            return []
         items = []
-        for d in defs:
-            name = d["display_name"]
-            has_task = "options" in d and bool(d["options"]["values"])
-            label = ""
-            if has_task:
-                # 反读子脚本 config（真相源，如 M7A instance_names）
-                label = "选择副本"
-                cfg_task = get_weekly_task(script_name, name)
-                if cfg_task:
-                    label = cfg_task
-            start_day = self._app_service.get_weekly_start_for(script_name, name)
+        for record in self._weekly_records():
+            assert all(
+                key in record for key in ("name", "options", "task", "start_day")
+            )
+            options = record["options"]
+            assert options is None or "values" in options
+            has_task = bool(options and options["values"])
+            start_day = record["start_day"]
             items.append(
                 {
-                    "name": name,
+                    "name": record["name"],
                     "has_task": has_task,
-                    "task_label": label,
+                    "task_label": (record["task"] or "选择副本") if has_task else "",
                     "start_set": start_day is not None,
                     "start_label": self._start_day_label(start_day),
                 }
             )
         return items
+
+    def _weekly_records(self) -> list[dict]:
+        """本地模式聚合周常状态；展示规则与 CLI 快照共用。"""
+        script_name = self._current["script_name"]
+        records = []
+        for weekly in self._app_service.get_weekly_map(script_name):
+            assert "display_name" in weekly
+            name = weekly["display_name"]
+            # 无副本选项的周常只读周几起。
+            options = weekly["options"] if "options" in weekly else None  # noqa: SIM401
+            assert options is None or "values" in options
+            records.append(
+                {
+                    "name": name,
+                    "options": options,
+                    "task": get_weekly_task(script_name, name)
+                    if options and options["values"]
+                    else None,
+                    "start_day": self._app_service.get_weekly_start_for(
+                        script_name, name
+                    ),
+                }
+            )
+        return records
 
     def weekly_task_options(self, weekly_name: str) -> list:
         """某周常的可选副本清单（物化声明：display_name/physical_name）。

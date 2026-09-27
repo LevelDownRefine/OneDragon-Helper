@@ -202,15 +202,26 @@ class GameListController(QObject):
         return self._game_model
 
     # ── 加载 / 增删改 ───────────────────────────────────────────────────
-    def reload_games(self):
+    def reload_games(self, snapshot: dict | None = None):
         """从 config.yml 重建脚本列表。"""
         games = []
-        for script in self._app_service.load_config()["script_list"]:
+        if snapshot is None:
+            entries = [
+                {"script_name": get_script_name(script), "script_data": script}
+                for script in self._app_service.load_config()["script_list"]
+            ]
+        else:
+            assert "scripts" in snapshot
+            entries = snapshot["scripts"]
+        for entry in entries:
+            assert "script_data" in entry and "script_name" in entry
+            script = entry["script_data"]
+            assert "display_name" in script
             display_name = script["display_name"]
             games.append(
                 {
                     "display_name": display_name,
-                    "script_name": get_script_name(script),
+                    "script_name": entry["script_name"],
                     "script_data": script,
                     "char": display_name[0],
                     "color": C_GAME_DIM,

@@ -122,6 +122,7 @@ class TestAutoLaunchPreference(unittest.TestCase):
 
     def _bridge(self, options):
         bridge = SimpleNamespace(
+            _cli_client=None,
             game_list=SimpleNamespace(enabled=[True]),
             app_service=mock.Mock(),
             launch=mock.Mock(),
