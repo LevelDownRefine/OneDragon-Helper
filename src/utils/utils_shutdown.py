@@ -12,14 +12,27 @@ schedule`` 成环）。
 """
 
 import logging
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 # CREATE_NO_WINDOW 仅在 Windows 平台存在；非 Windows 用 0 表示无特殊创建标志，
 # 保证同一份代码在 Linux/macOS CI 上也能正常执行（不创建隐藏窗口）。
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+RUST_CONFIRM_ENV = "ODH_SHUTDOWN_UI"
+RUST_CONFIRM_EXIT = 42
+
+
+def rust_shutdown_supported() -> bool:
+    """只有显式指定的 Windows Rust 前端可承接无 Qt 确认。"""
+    if sys.platform != "win32" or RUST_CONFIRM_ENV not in os.environ:
+        return False
+    path = Path(os.environ[RUST_CONFIRM_ENV])
+    return path.is_absolute() and path.is_file()
 
 
 def shutdown_sys(seconds: int) -> None:
@@ -50,6 +63,27 @@ def _confirm_shutdown(countdown: int) -> bool:
     Returns:
         确认返回 True；取消/关窗/弹窗失败返回 False。
     """
+    if RUST_CONFIRM_ENV in os.environ:
+        if not rust_shutdown_supported():
+            logger.error("Rust 关机确认入口不可用，按取消处理")
+            return False
+        try:
+            result = subprocess.run(
+                [os.environ[RUST_CONFIRM_ENV], "--shutdown-confirm", str(countdown)],
+                creationflags=_CREATE_NO_WINDOW,
+                capture_output=True,
+                timeout=max(0, countdown) + 120,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.error(
+                "Rust 关机确认失败 %s(%s)，按取消处理", type(exc).__name__, exc
+            )
+            return False
+        if result.returncode not in (0, RUST_CONFIRM_EXIT):
+            logger.error("Rust 关机确认异常退出（%d），按取消处理", result.returncode)
+        return result.returncode == RUST_CONFIRM_EXIT
+
     from src.gui.shutdown_dialog import confirm_shutdown
 
     return confirm_shutdown(countdown)

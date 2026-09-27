@@ -256,8 +256,14 @@ class HeadlessProcessTests(unittest.TestCase):
             """
 def record(keys, target, **kwargs):
     import json
+    import os
     from pathlib import Path
     from src.update.runtime import FileLease, UpdateBusyError
+    from src.utils.utils_shutdown import _confirm_shutdown, RUST_CONFIRM_ENV
+    from unittest.mock import Mock
+    with patch.dict(os.environ, {RUST_CONFIRM_ENV: 'fake-rust.exe'}), patch('src.utils.utils_shutdown.rust_shutdown_supported', return_value=True), patch('src.utils.utils_shutdown.subprocess.run', return_value=Mock(returncode=42)) as confirm:
+        assert _confirm_shutdown(45)
+        assert confirm.call_args.args[0] == ['fake-rust.exe', '--shutdown-confirm', '45']
     try:
         with FileLease(Path(root)/'.update/runtime.lock'):
             locked=False

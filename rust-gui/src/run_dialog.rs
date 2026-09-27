@@ -63,7 +63,7 @@ impl RunOptions {
             );
         });
         if !shutdown_supported {
-            ui.colored_label(skin::MUTED, "关机确认暂不可用，请关闭此项后运行。");
+            ui.colored_label(skin::MUTED, "关机确认入口不可用，请关闭此项后运行。");
         }
     }
 }

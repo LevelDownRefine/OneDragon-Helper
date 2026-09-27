@@ -1,6 +1,7 @@
 """无 Qt 的手动批量确认与独立调度入口。"""
 
 import json
+import os
 import sys
 from dataclasses import asdict, fields
 
@@ -14,6 +15,7 @@ from src.service.schedule import (
 from src.utils import get_root_dir
 from src.utils.utils_config import load_config
 from src.utils.utils_runner import collect_invalid_script_messages
+from src.utils.utils_shutdown import RUST_CONFIRM_ENV, rust_shutdown_supported
 from src.utils.utils_sub_config import get_script_name
 
 
@@ -61,8 +63,8 @@ def parse_options(values: dict) -> RunOptions:
     )
     if not 0 <= options.shutdown_delay <= 86400:
         raise InvalidRunRequest("关机延迟须为 0～86400 秒")
-    if options.shutdown_enabled:
-        raise InvalidRunRequest("关机确认尚未迁移，请先关闭自动关机选项")
+    if options.shutdown_enabled and not rust_shutdown_supported():
+        raise InvalidRunRequest("Rust 关机确认入口不可用，请关闭自动关机或重新启动前端")
     if options.smtp_port and (
         not options.smtp_port.isdecimal() or not 1 <= int(options.smtp_port) <= 65535
     ):
@@ -82,7 +84,7 @@ def run_view(script_names: list[str]) -> dict:
             for name, reason in collect_invalid_script_messages(scripts)
         ],
         "options": asdict(load_run_options()),
-        "shutdown_supported": False,
+        "shutdown_supported": rust_shutdown_supported(),
     }
 
 
@@ -106,7 +108,11 @@ def prepare_run(script_names: list[str], options: dict, confirm_invalid: bool) -
         "program": command[0],
         "args": [*command[1:], "run"],
         "cwd": get_root_dir(),
-        "env": {},
+        "env": (
+            {RUST_CONFIRM_ENV: os.environ[RUST_CONFIRM_ENV]}
+            if RUST_CONFIRM_ENV in os.environ
+            else {}
+        ),
         "console": True,
         "input": json.dumps(payload, ensure_ascii=False),
     }
@@ -123,6 +129,7 @@ def run_batch(script_names: list[str], options: dict) -> None:
         "now",
         mute=parsed.mute_enabled,
         unmute=parsed.unmute_enabled,
+        shutdown_delay=(parsed.shutdown_delay if parsed.shutdown_enabled else None),
         close_running=parsed.close_running_enabled,
         rerun_enabled=parsed.rerun_enabled,
         smtp_config=blocks["notify"],

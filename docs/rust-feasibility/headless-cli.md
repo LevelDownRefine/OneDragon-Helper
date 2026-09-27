@@ -146,7 +146,11 @@ input 是 `{"script_names":[...],"options":{...}}` 的 JSON 文本；选项重�
 不会阻塞持久服务；GUI 退出不终止该进程。Windows 前端以 CREATE_NEW_CONSOLE 启动，
 worker 将 stdout/stderr 绑定 CONOUT$，stdin 保留给参数；无 Qt 导入。
 任务名、邮箱和凭据均不进入命令行。失败返回非零退出码，详细诊断在控制台和原日志。
-本批关闭自动关机支持；开启时拒绝运行，待独立 Rust 关机确认接入后启用。
+Windows Rust 前端将自身绝对路径传入 `ODH_SHUTDOWN_UI`，prepare 将该变量显式转交运行进程。
+运行后仍由原 post_run 最后一步触发确认，独立 Rust 进程 `--shutdown-confirm 秒数` 只显示
+倒计时，不执行系统命令；只有退出码 42 表示确认，0 为取消，其他退出码/启动失败/超时也取消。
+指定入口失效时不回退 Qt。未指定变量的原 Python GUI 保持原确认窗；无 Qt run 的启用校验
+要求有效 Rust 入口。延迟 0 仍沿用原语义：不触发关机。
 
 ## 生命周期与现有边界
 
@@ -158,7 +162,7 @@ worker 将 stdout/stderr 绑定 CONOUT$，stdin 保留给参数；无 Qt 导入�
   `script.view` 每次重读外部配置；适配器构造仍可能执行现有的模板对齐，周常读取仍可能迁移旧格式。
   因此查询并不承诺整个应用层绝无写盘副作用。
 - 仅承诺这些新增后端方法不加载 Qt。
-  旧 launcher、关机确认、更新器进程交接、
+  旧 launcher、更新器进程交接、
   CLI 打包仍是后续工作；没有据此宣称整个发布包可以移除 Python 或 Qt。
 
 ## 验证

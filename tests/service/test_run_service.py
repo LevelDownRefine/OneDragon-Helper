@@ -1,6 +1,7 @@
 """手动运行配置、载荷与调度委托；不运行真实脚本或系统动作。"""
 
 import json
+import os
 import unittest
 from dataclasses import asdict
 from unittest.mock import patch
@@ -19,7 +20,6 @@ class RunServiceTests(unittest.TestCase):
             {"smtp_port": "bad"},
             {"smtp_port": "65536"},
             {"auth_code": "test-secret"},
-            {"shutdown_enabled": True},
             {"unknown": 1},
         ):
             with (
@@ -108,6 +108,7 @@ class RunServiceTests(unittest.TestCase):
             "now",
             mute=True,
             unmute=True,
+            shutdown_delay=None,
             close_running=False,
             rerun_enabled=True,
             smtp_config={
@@ -116,6 +117,34 @@ class RunServiceTests(unittest.TestCase):
                 "smtp_port": 465,
             },
         )
+
+    def test_shutdown_capability_and_worker_environment(self):
+        options = RunOptions(shutdown_enabled=True, shutdown_delay=45)
+        with (
+            patch.object(run_service, "rust_shutdown_supported", return_value=False),
+            self.assertRaisesRegex(run_service.InvalidRunRequest, "关机确认入口"),
+        ):
+            run_service.parse_options(asdict(options))
+        with (
+            patch.object(run_service, "rust_shutdown_supported", return_value=True),
+            patch.dict(os.environ, {run_service.RUST_CONFIRM_ENV: "/fake/gui"}),
+            patch.object(
+                run_service,
+                "selected_scripts",
+                return_value=[{"display_name": "demo", "script_path": "demo.py"}],
+            ),
+            patch.object(
+                run_service, "collect_invalid_script_messages", return_value=[]
+            ),
+            patch.object(run_service, "load_run_options", return_value=options),
+            patch.object(run_service, "apply_run_options"),
+            patch.object(run_service.chain_service, "schedule_run") as run,
+        ):
+            target = run_service.prepare_run(["demo"], asdict(options), False)
+            self.assertEqual(target["env"], {run_service.RUST_CONFIRM_ENV: "/fake/gui"})
+            self.assertTrue(run_service.run_view(["demo"])["shutdown_supported"])
+            run_service.run_batch(["demo"], asdict(options))
+        self.assertEqual(run.call_args.kwargs["shutdown_delay"], 45)
 
     def test_empty_unknown_duplicate_selection_rejected(self):
         with patch.object(

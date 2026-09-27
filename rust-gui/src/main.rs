@@ -6,6 +6,7 @@ mod list_dialog;
 mod opener;
 mod run_dialog;
 mod script_editor;
+mod shutdown;
 mod skin;
 mod view;
 
@@ -101,6 +102,13 @@ fn settings() -> Result<Option<app::Settings>, String> {
 fn main() -> eframe::Result {
     let started = Instant::now();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    if env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--shutdown-confirm")) {
+        let code = shutdown::run(env::args_os().skip(2).collect()).unwrap_or_else(|error| {
+            log::error!("关机确认失败：{error}");
+            2
+        });
+        std::process::exit(code);
+    }
     let settings = match settings() {
         Ok(Some(settings)) => settings,
         Ok(None) => return Ok(()),

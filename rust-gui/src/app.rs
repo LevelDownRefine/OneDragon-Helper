@@ -33,7 +33,11 @@ impl Settings {
         command
             .args(["-m", "src.headless", "serve", "--stdio"])
             .current_dir(&self.project_root)
-            .env("PYTHONUTF8", "1");
+            .env("PYTHONUTF8", "1")
+            .env(
+                "ODH_SHUTDOWN_UI",
+                std::env::current_exe().expect("current executable path"),
+            );
         command
     }
 }
@@ -673,7 +677,7 @@ impl eframe::App for App {
     }
 }
 
-fn install_font(ctx: &egui::Context, explicit: Option<&PathBuf>) -> Result<(), String> {
+pub(crate) fn install_font(ctx: &egui::Context, explicit: Option<&PathBuf>) -> Result<(), String> {
     let candidates = if let Some(path) = explicit {
         vec![path.clone()]
     } else {
