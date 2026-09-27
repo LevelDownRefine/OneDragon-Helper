@@ -32,7 +32,8 @@
 调用。查询返回普通字典：日常为 `name/task/sequence/enabled/options`，周常为
 `name/task/options/start_day`。保留 JSON 整数与布尔的区别、`0=不启用` 与 `None=未设置`；
 写入复用现有适配器并重新反读。读取仍可能触发既有模板对齐，不承诺完全没有写盘副作用。
-进程协议与 GUI 接入在后续 PR 中提供，本层不负责传输、界面状态或格式化文案。
+进程入口 `python -m src.headless` 提供 `call` 与 `serve --stdio`，见
+[CLI 协议](../../docs/rust-feasibility/headless-cli.md)。本层不负责传输、界面状态或格式化文案。
 
 ## 手动更新
 
