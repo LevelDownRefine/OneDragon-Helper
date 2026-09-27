@@ -59,6 +59,8 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `settings.startup_save` | `options`（enabled/delay_seconds） | 保存启动选项，返回 null；预校验 1～3600 秒 |
 | `settings.run_save` | `options`（完整 RunOptions） | 独立保存运行选项，返回 null；不启动 |
 | `run.saved` | `script_names` | 只读已存运行选项，返回独立运行命令；不保存、不启动 |
+| `plan.view` | `{}` | 独立计划、实际任务状态/读取错误、平台及关机能力 |
+| `plan.save` | `plan`（enabled/target_time/run_options） | 保存计划及系统任务，返回 null；不立即运行 |
 | `run.view` | `script_names` | 当前选择、无效脚本原因、运行选项（授权码始终为空）、关机支持状态 |
 | `run.prepare` | `script_names/options/confirm_invalid` | 保存已确认选项，返回独立运行命令及 stdin JSON；不会在服务进程启动调度 |
 | `script.view` | `script_name` | `script` 摘要、`dailies` 和 `weeklies` |
@@ -93,7 +95,7 @@ CLI 不转换字符串、整数或布尔值，字段类型及取值校验仍由�
 
 周常条目：`name/options/task/start_day`；无选项组时 options 为 null。
 start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不同。
-尚未开放每日计划编辑或更新动作。
+尚未开放更新动作。
 工具栏 `script.target` 的 target 为 `home/bili/github/folder/log/configfile`。
 成功目标为 `{"kind":"url"或"path","value":"..."}`，本机缺失资源为
 `{"kind":"unavailable","reason":"..."}`；路径为绝对路径。链接沿用资源声明及原 GUI
@@ -146,6 +148,18 @@ null 沿用默认超时，低于 10 秒的值保留原运行语义。switches �
 Rust 首次任务卡就绪后请求 startup.view；每日计划启用时跳过启动倒计时。
 倒计时确认后调用 run.saved，以最新配置构造命令，保持原无人值守启动跳过无效脚本告警的语义。
 查询失败或重连不再次自动启动，更新后的 `--after-update`、演示/截图模式也跳过。
+
+## 每日计划
+
+plan.save 校验完整表单，复用 apply_daily_plan 注册当前用户、安装目录对应的同一个任务。
+回读除开关/时间外还检查命令、参数、工作目录；旧 Qt 入口即使时间未变也会修复。
+系统任务成功后才写计划，写盘失败以原 XML 恢复真实任务，不凭配置猜测旧入口；
+原先未注册则删除新任务。取消不请求保存，状态读取失败返回 state:null 与 state_error。
+
+任务命令为 `python -m src.headless daily --shutdown-ui Rust前端绝对路径`，冻结后省去 -m。
+此入口持有运行锁，读取当时 daily_run 的全部脚本与独立选项，不接收手动勾选；
+已暂停则无动作。关机确认环境显式从参数恢复，其他任务语义沿用原服务。
+Rust UI 保存后回读实际状态，更新父窗每日计划开关并保留未提交的启动草稿。
 
 ## 批量运行
 

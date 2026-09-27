@@ -70,6 +70,71 @@ class HeadlessProcessTests(unittest.TestCase):
             "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in requests),
         )
 
+    def test_daily_plan_cli_and_independent_entry_without_qt(self):
+        from dataclasses import asdict
+
+        from src.service.daily_plan import DailyPlanOptions
+        from src.service.schedule import RunOptions
+
+        plan = DailyPlanOptions(
+            True, "09:20", RunOptions(mute_enabled=True, close_running_enabled=False)
+        )
+        command = self.command("serve", "--stdio")
+        command[2] = command[2].replace(
+            "with patch('src.utils.get_root_dir', return_value=root):",
+            """
+with patch('src.utils.get_root_dir', return_value=root), patch('src.service.daily_cli.rust_shutdown_supported', return_value=True), patch('src.service.daily_cli._task') as task:
+    from src.service.daily_plan import DailyTaskState
+    task.return_value.read.return_value = DailyTaskState()
+""",
+        )
+        result = subprocess.run(
+            command,
+            input=json.dumps(request("plan.save", {"plan": asdict(plan)}))
+            + "\n"
+            + json.dumps(request("plan.view", request_id=2))
+            + "\n",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=PROJECT_ROOT,
+            env=self.env,
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        responses = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(responses[0]["result"], None)
+        self.assertEqual(responses[1]["result"]["plan"], asdict(plan))
+        command = self.command("daily", "--shutdown-ui", "fake-rust.exe")
+        command[2] = command[2].replace(
+            "with patch('src.utils.get_root_dir', return_value=root):",
+            """
+def record(keys, target, **kwargs):
+    import json,os
+    from pathlib import Path
+    from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+    Path(root, 'daily-worker.json').write_text(json.dumps({'keys':sorted(keys),'options':kwargs,'frontend':os.environ[RUST_CONFIRM_ENV]}),encoding='utf-8')
+with patch('src.utils.get_root_dir', return_value=root), patch('src.service.daily_plan.chain_service.schedule_run', side_effect=record):
+""",
+        )
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=PROJECT_ROOT,
+            env=self.env,
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        recorded = json.loads(
+            (self.root / "daily-worker.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(recorded["keys"], ["ok-ww", "自定义脚本"])
+        self.assertEqual(recorded["options"]["chain_name"], "plan")
+        self.assertTrue(recorded["options"]["mute"])
+        self.assertEqual(recorded["frontend"], "fake-rust.exe")
+
     def test_global_settings_round_trip_and_saved_run_without_qt(self):
         from dataclasses import asdict
 

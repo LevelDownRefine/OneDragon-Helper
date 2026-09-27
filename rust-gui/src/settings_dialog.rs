@@ -1,4 +1,4 @@
-use crate::{run_dialog::RunOptions, skin};
+use crate::{daily_plan::DailyView, run_dialog::RunOptions, skin};
 use eframe::egui;
 use onedragon_rust_gui::backend::Request;
 use serde::{Deserialize, Serialize};
@@ -27,18 +27,34 @@ pub enum SettingsAction {
 pub struct SettingsDialog {
     data: SettingsView,
     run_draft: Option<RunOptions>,
+    daily_draft: Option<DailyView>,
     error: Option<String>,
     needs_reload: bool,
 }
 
 impl SettingsDialog {
-    pub fn new(data: SettingsView) -> Self {
+    pub fn new(mut data: SettingsView) -> Self {
+        data.run_options.form_defaults();
         Self {
             data,
             run_draft: None,
+            daily_draft: None,
             error: None,
             needs_reload: false,
         }
+    }
+
+    pub fn set_daily(&mut self, mut data: DailyView) {
+        data.plan.run_options.form_defaults();
+        self.data.daily_enabled = data.plan.enabled;
+        self.daily_draft = Some(data);
+        self.error = None;
+        self.needs_reload = false;
+    }
+
+    #[cfg(feature = "capture")]
+    pub fn is_daily(&self) -> bool {
+        self.daily_draft.is_some()
     }
 
     pub fn failure(&mut self, message: String, reload: bool) {
@@ -69,14 +85,20 @@ impl SettingsDialog {
             )
             .show(ctx, |ui| {
                 ui.set_width(500.0);
-                ui.heading(if self.run_draft.is_some() {
+                ui.heading(if self.daily_draft.is_some() {
+                    "每日计划"
+                } else if self.run_draft.is_some() {
                     "运行选项"
                 } else {
                     "配置"
                 });
                 ui.add_space(12.0);
                 ui.add_enabled_ui(!busy && !self.needs_reload, |ui| {
-                    if let Some(draft) = &mut self.run_draft {
+                    if let Some(draft) = &mut self.daily_draft {
+                        egui::ScrollArea::vertical()
+                            .max_height(480.0)
+                            .show(ui, |ui| draft.show(ui));
+                    } else if let Some(draft) = &mut self.run_draft {
                         egui::ScrollArea::vertical()
                             .max_height(480.0)
                             .show(ui, |ui| draft.show(ui, self.data.shutdown_supported));
@@ -106,7 +128,19 @@ impl SettingsDialog {
                         {
                             self.run_draft = Some(self.data.run_options.clone());
                         }
-                        for label in ["每日计划", "备份配置", "恢复配置", "更新"] {
+                        if ui
+                            .add_sized(
+                                [500.0, 42.0],
+                                egui::Button::new("每日计划 · 每日时间与独立运行选项"),
+                            )
+                            .clicked()
+                        {
+                            action = Some(SettingsAction::Request(Request {
+                                method: "plan.view".into(),
+                                params: json!({}),
+                            }));
+                        }
+                        for label in ["备份配置", "恢复配置", "更新"] {
                             ui.add_enabled(
                                 false,
                                 egui::Button::new(format!("{label} · 暂不可用"))
@@ -131,14 +165,34 @@ impl SettingsDialog {
                         .clicked()
                     {
                         action = Some(SettingsAction::Request(Request {
-                            method: "settings.view".into(),
+                            method: if self.daily_draft.is_some() {
+                                "plan.view"
+                            } else {
+                                "settings.view"
+                            }
+                            .into(),
                             params: json!({}),
                         }));
                     }
                     if ui
-                        .add_enabled(!busy && !self.needs_reload, egui::Button::new("保存"))
+                        .add_enabled(
+                            !busy
+                                && !self.needs_reload
+                                && self
+                                    .daily_draft
+                                    .as_ref()
+                                    .is_none_or(|draft| draft.supported),
+                            egui::Button::new("保存"),
+                        )
                         .clicked()
                     {
+                        if let Some(draft) = &self.daily_draft {
+                            action = Some(SettingsAction::Request(Request {
+                                method: "plan.save".into(),
+                                params: json!({"plan":draft.plan}),
+                            }));
+                            return;
+                        }
                         let (method, options) = if let Some(draft) = &self.run_draft {
                             ("settings.run_save", json!(draft))
                         } else {
@@ -155,7 +209,10 @@ impl SettingsDialog {
                 });
             });
         if !busy && (back || modal.should_close()) {
-            if self.run_draft.is_some() && !self.needs_reload {
+            if self.daily_draft.is_some() && !self.needs_reload {
+                self.daily_draft = None;
+                self.error = None;
+            } else if self.run_draft.is_some() && !self.needs_reload {
                 self.run_draft = None;
                 self.error = None;
             } else {
@@ -218,6 +275,51 @@ mod tests {
     use super::*;
     fn data() -> SettingsView {
         serde_json::from_value(json!({"startup":{"enabled":true,"delay_seconds":60},"daily_enabled":false,"shutdown_supported":false,"run_options":{"shutdown_enabled":false,"shutdown_delay":0,"mute_enabled":false,"unmute_enabled":false,"close_running_enabled":false,"rerun_enabled":false,"notify_enabled":false,"email":"","smtp_host":"","smtp_port":"","auth_code":""}})).unwrap()
+    }
+
+    #[test]
+    fn daily_refresh_preserves_startup_and_cancel_keeps_saved_plan_state() {
+        let mut dialog = SettingsDialog::new(data());
+        dialog.data.startup.delay_seconds = 99;
+        let plan = json!({"plan":{"enabled":true,"target_time":"04:10","run_options":dialog.data.run_options},"state":null,"state_error":"denied","supported":true,"shutdown_supported":false});
+        dialog.set_daily(serde_json::from_value(plan).unwrap());
+        assert!(dialog.data.daily_enabled);
+        assert_eq!(
+            dialog
+                .daily_draft
+                .as_ref()
+                .unwrap()
+                .plan
+                .run_options
+                .smtp_host,
+            "smtp.qq.com"
+        );
+        assert_eq!(dialog.data.startup.delay_seconds, 99);
+        dialog.daily_draft.as_mut().unwrap().plan.enabled = false;
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(Default::default(), |ui| {
+                dialog.show(ui.ctx(), false);
+            });
+            output.textures_delta.clear();
+        }
+        let mut input = egui::RawInput::default();
+        input.events.push(egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        });
+        let mut output = ctx.run_ui(input, |ui| {
+            assert!(dialog.show(ui.ctx(), false).is_none());
+        });
+        output.textures_delta.clear();
+        assert!(dialog.daily_draft.is_none());
+        assert!(
+            dialog.data.daily_enabled,
+            "cancel must retain saved daily state"
+        );
     }
 
     #[test]

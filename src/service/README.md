@@ -121,3 +121,7 @@ gui.dialogs → app_service → chain_service → schedule` 成环，确认窗�
 `--run-daily` 每次读取 daily_run（含独立 run_options 块），以 now 运行当天全部脚本的链；手动脚本 enabled 不参与筛选，运行选项也取每日计划独立配置（不再回落手动 RunOptions）。计划已关闭或没有可运行的脚本则无动作。只改副本、超时或运行选项无需更新系统任务，修改时间或开关才更新任务；暂停保留时间。旧 CLI `--schedule-run HH:MM[:SS]` 保留一次性等待用途（可带秒，便于精确等待或集成测试用「当前 + 几秒」）。
 
 系统任务按安装目录和用户命名。请保持安装目录和可执行文件路径稳定；移动安装前先关闭旧计划，再在新位置启用。任务更新成功才写配置，写入失败时恢复原任务。
+
+Rust 每日计划由 daily_cli 提供严格表单边界，将显式命令交给 WindowsDailyTask。
+同一个任务可迁移到无 Qt headless daily；entry_matches 参与同步判断，避免旧入口沿用。
+迁移写盘失败恢复 read 阶段保存的原 XML；原 Qt 调用不传 entry，保留原入口与恢复语义。

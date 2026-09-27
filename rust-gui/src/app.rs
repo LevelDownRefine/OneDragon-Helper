@@ -1,3 +1,4 @@
+use crate::daily_plan::DailyView;
 use crate::launch::{LaunchJob, LaunchTarget};
 use crate::list_dialog::{ListAction, ListDialog};
 use crate::opener::{OpenJob, Target};
@@ -29,6 +30,8 @@ pub struct Settings {
     pub capture_run: bool,
     #[cfg(feature = "capture")]
     pub capture_settings: bool,
+    #[cfg(feature = "capture")]
+    pub capture_plan: bool,
 }
 
 impl Settings {
@@ -151,6 +154,7 @@ impl App {
                     | "script.launch_target"
                     | "run.view"
                     | "settings.view"
+                    | "plan.view"
                     | "startup.view"
                     | "run.saved"
             ) {
@@ -209,7 +213,7 @@ impl App {
         let result = match reply.result {
             Ok(value) => value,
             Err(failure) => {
-                if reply.method.starts_with("settings.") {
+                if reply.method.starts_with("settings.") || reply.method.starts_with("plan.") {
                     let reload = failure.refresh_required
                         || failure.code == "transport_failed"
                         || self.write_confirmed;
@@ -350,6 +354,19 @@ impl App {
             self.write_confirmed = true;
             self.ui.toast("列表已保存");
             self.request("app.snapshot", json!({}));
+        } else if reply.method == "plan.view" {
+            match serde_json::from_value::<DailyView>(result) {
+                Ok(data) if self.settings_dialog.is_some() => {
+                    self.settings_dialog.as_mut().unwrap().set_daily(data);
+                    self.write_confirmed = false;
+                    self.status = "已同步".into();
+                }
+                _ => self.fail(Failure::transport("每日计划数据无效")),
+            }
+        } else if reply.method == "plan.save" && result.is_null() {
+            self.write_confirmed = true;
+            self.ui.toast("每日计划已保存");
+            self.request("plan.view", json!({}));
         } else if matches!(reply.method.as_str(), "settings.view" | "startup.view") {
             match serde_json::from_value::<SettingsView>(result) {
                 Ok(data) => {
@@ -361,6 +378,10 @@ impl App {
                         self.settings_dialog.as_mut().unwrap().refresh_run(data);
                     } else {
                         self.settings_dialog = Some(SettingsDialog::new(data));
+                        #[cfg(feature = "capture")]
+                        if self.settings.capture.is_some() && self.settings.capture_plan {
+                            self.request("plan.view", json!({}));
+                        }
                     }
                     self.write_confirmed = false;
                     self.status = "已同步".into();
@@ -655,7 +676,9 @@ impl eframe::App for App {
                 SettingsAction::Request(request) => {
                     self.error = None;
                     self.refresh_settings_run = false;
-                    if self.backend.is_none() && request.method == "settings.view" {
+                    if self.backend.is_none()
+                        && matches!(request.method.as_str(), "settings.view" | "plan.view")
+                    {
                         self.open_settings_after_snapshot = true;
                         self.connect();
                     } else {
@@ -770,6 +793,11 @@ impl eframe::App for App {
             && (!self.settings.capture_editor || self.editor.is_some())
             && (!self.settings.capture_run || self.run_dialog.is_some())
             && (!self.settings.capture_settings || self.settings_dialog.is_some())
+            && (!self.settings.capture_plan
+                || self
+                    .settings_dialog
+                    .as_ref()
+                    .is_some_and(SettingsDialog::is_daily))
         {
             let ready = self.capture_ready_at.get_or_insert_with(Instant::now);
             if ready.elapsed() >= std::time::Duration::from_millis(250) {
@@ -839,6 +867,8 @@ mod tests {
                 capture_run: false,
                 #[cfg(feature = "capture")]
                 capture_settings: false,
+                #[cfg(feature = "capture")]
+                capture_plan: false,
             },
             backend: Some(Backend::start(command, || {})),
             scripts: Vec::new(),

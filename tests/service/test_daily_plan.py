@@ -154,8 +154,9 @@ class TestDailyPlanConfig(unittest.TestCase):
             apply_daily_plan(DailyPlanOptions(True, "08:00"))
         self.assertEqual(
             [c.args[0] for c in task.return_value.sync.call_args_list],
-            [DailyPlanOptions(True, "08:00"), DailyPlanOptions()],
+            [DailyPlanOptions(True, "08:00")],
         )
+        task.return_value.restore.assert_called_once_with(DailyPlanOptions())
         self.assertEqual(load_yaml(self.path), self.original)
 
     @patch("src.service.daily_plan.WindowsDailyTask")
@@ -421,6 +422,51 @@ class TestWindowsDailyTask(unittest.TestCase):
         self.folder.GetTasks.return_value = [other]
         self.task.sync(DailyPlanOptions(False))
         self.folder.DeleteTask.assert_not_called()
+
+    def test_headless_entry_migration_and_xml_rollback(self):
+        self.task.entry = (
+            "/python.exe",
+            ["-m", "src.headless", "daily", "--shutdown-ui", "/中文 gui.exe"],
+        )
+        own = self._own_task()
+        own.Xml = "<Task>original entry and settings</Task>"
+        own.Definition.Actions.Count = 1
+        action = own.Definition.Actions.Item.return_value
+        action.Path = "/python.exe"
+        action.Arguments = "-m src.launcher --run-daily"
+        action.WorkingDirectory = self.task.root_dir
+        self.folder.GetTasks.return_value = [own]
+        self.assertFalse(self.task.read().matches(DailyPlanOptions(True, "08:30")))
+        with (
+            patch(
+                "src.service.daily_plan.load_schedule",
+                return_value={"daily_run": {"enabled": True, "target_time": "08:30"}},
+            ),
+            patch(
+                "src.service.daily_plan.save_schedule", side_effect=OSError("disk full")
+            ),
+            self.assertRaisesRegex(OSError, "disk full"),
+        ):
+            apply_daily_plan(DailyPlanOptions(True, "08:30"), task=self.task)
+        saved = self.definition.Actions.Create.return_value
+        self.assertEqual(saved.Path, "/python.exe")
+        self.assertIn('"/中文 gui.exe"', saved.Arguments)
+        self.assertIn("src.headless daily", saved.Arguments)
+        self.folder.RegisterTask.assert_called_once_with(
+            self.task.name, own.Xml, 6, "", "", 3
+        )
+        action.Arguments = saved.Arguments
+        self.assertTrue(self.task.read().matches(DailyPlanOptions(True, "08:30")))
+
+    def test_headless_rollback_removes_new_task_when_original_was_absent(self):
+        self.task.entry = ("/python.exe", ["-m", "src.headless", "daily"])
+        self.folder.GetTasks.return_value = []
+        self.task.read()
+        own = self._own_task()
+        self.folder.GetTasks.return_value = [own]
+        self.task.restore(DailyPlanOptions())
+        self.folder.DeleteTask.assert_called_once_with(self.task.name, 0)
+        self.folder.RegisterTask.assert_not_called()
 
     def test_installation_names_are_stable_and_distinct(self):
         self.assertEqual(self.task.name, WindowsDailyTask(self.task.root_dir).name)

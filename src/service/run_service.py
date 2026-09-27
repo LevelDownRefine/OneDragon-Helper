@@ -44,7 +44,7 @@ def selected_scripts(script_names: list[str]) -> list[dict]:
     return selected
 
 
-def parse_options(values: dict) -> RunOptions:
+def parse_options(values: dict, *, require_shutdown_ui: bool = True) -> RunOptions:
     """按现有 RunOptions schema 验证 JSON 表单，不回显授权码。"""
     if not isinstance(values, dict) or set(values) != {
         field.name for field in fields(RunOptions)
@@ -63,7 +63,11 @@ def parse_options(values: dict) -> RunOptions:
     )
     if not 0 <= options.shutdown_delay <= 86400:
         raise InvalidRunRequest("关机延迟须为 0～86400 秒")
-    if options.shutdown_enabled and not rust_shutdown_supported():
+    if (
+        require_shutdown_ui
+        and options.shutdown_enabled
+        and not rust_shutdown_supported()
+    ):
         raise InvalidRunRequest("Rust 关机确认入口不可用，请关闭自动关机或重新启动前端")
     if options.smtp_port and (
         not options.smtp_port.isdecimal() or not 1 <= int(options.smtp_port) <= 65535

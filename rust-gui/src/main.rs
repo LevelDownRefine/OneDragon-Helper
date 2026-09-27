@@ -1,5 +1,6 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 mod app;
+mod daily_plan;
 mod file_picker;
 mod launch;
 mod list_dialog;
@@ -30,6 +31,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
     let mut capture_run = false;
     #[cfg(feature = "capture")]
     let mut capture_settings = false;
+    #[cfg(feature = "capture")]
+    let mut capture_plan = false;
     while let Some(argument) = args.next() {
         match argument.to_str() {
             Some("--project-root") => root = args.next().ok_or("--project-root 缺少路径")?.into(),
@@ -51,6 +54,11 @@ fn settings() -> Result<Option<app::Settings>, String> {
             Some("--capture-run") => capture_run = true,
             #[cfg(feature = "capture")]
             Some("--capture-settings") => capture_settings = true,
+            #[cfg(feature = "capture")]
+            Some("--capture-plan") => {
+                capture_settings = true;
+                capture_plan = true;
+            }
             Some("--help" | "-h") => {
                 log::info!(
                     "onedragon-rust-gui [--project-root 项目根目录] [--python Python路径] [--font 字体路径]"
@@ -111,6 +119,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
         capture_run,
         #[cfg(feature = "capture")]
         capture_settings,
+        #[cfg(feature = "capture")]
+        capture_plan,
     }))
 }
 

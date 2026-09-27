@@ -15,6 +15,8 @@ METHODS = {
     "app.snapshot": ("app_snapshot", (), ()),
     "settings.view": ("settings_view", (), ()),
     "startup.view": ("settings_view", (), ()),
+    "plan.view": ("daily_plan_view", (), ()),
+    "plan.save": ("save_daily_plan", ("plan",), ()),
     "settings.startup_save": ("save_startup_settings", ("options",), ()),
     "settings.run_save": ("save_run_settings", ("options",), ()),
     "run.saved": ("saved_run", ("script_names",), ()),
@@ -124,6 +126,7 @@ def handle_request(service, request) -> dict:
             "app.snapshot",
             "settings.view",
             "startup.view",
+            "plan.view",
             "run.saved",
             "run.view",
             "script.view",
@@ -208,10 +211,13 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser(
         "run", help="从 stdin 读取一次运行配置，在独立进程中执行批量任务"
     )
+    commands.add_parser(
+        "daily", help="系统每日计划入口，读取独立计划配置"
+    ).add_argument("--shutdown-ui", required=True)
     args = parser.parse_args(argv)
     output = (
         _console_output()
-        if args.command == "run" and os.name == "nt"
+        if args.command in ("run", "daily") and os.name == "nt"
         else nullcontext()
     )
     with output:
@@ -245,6 +251,12 @@ def _run_command(args: argparse.Namespace) -> int:
                 install_crash_hooks()
                 config_workflow()
                 service = AppService()
+            if args.command == "daily":
+                from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+
+                os.environ[RUST_CONFIRM_ENV] = args.shutdown_ui
+                service.run_daily_plan()
+                return 0
             if args.command == "run":
                 payload = _parse_json(sys.stdin.read())
                 if not isinstance(payload, dict) or set(payload) != {
@@ -265,7 +277,7 @@ def _run_command(args: argparse.Namespace) -> int:
         os._exit(0)
     except Exception:  # noqa: BLE001 -- 入口失败须输出启动错误并释放租约。
         logger.exception("无 GUI CLI 启动或传输失败")
-        if args.command == "run":
+        if args.command in ("run", "daily"):
             return 2
         _emit(
             _error(

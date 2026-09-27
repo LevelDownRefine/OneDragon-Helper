@@ -21,6 +21,7 @@ import logging
 
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
+import src.service.daily_cli as daily_cli
 import src.service.daily_plan as daily_plan
 import src.service.resource_service as resource_service
 import src.service.settings_service as settings_service
@@ -130,6 +131,12 @@ class AppService:
 
     def settings_view(self) -> dict:
         return settings_service.settings_view()
+
+    def daily_plan_view(self) -> dict:
+        return daily_cli.daily_view()
+
+    def save_daily_plan(self, plan: dict) -> None:
+        return daily_cli.save_daily(plan)
 
     def save_startup_settings(self, options: dict) -> None:
         return settings_service.save_startup(options)

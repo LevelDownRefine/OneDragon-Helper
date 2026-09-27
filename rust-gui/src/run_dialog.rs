@@ -20,6 +20,15 @@ pub struct RunOptions {
 }
 
 impl RunOptions {
+    pub fn form_defaults(&mut self) {
+        if self.smtp_host.is_empty() {
+            self.smtp_host = "smtp.qq.com".into();
+        }
+        if self.smtp_port.is_empty() {
+            self.smtp_port = "465".into();
+        }
+    }
+
     pub fn show(&mut self, ui: &mut egui::Ui, shutdown_supported: bool) {
         ui.label("运行前");
         ui.checkbox(&mut self.close_running_enabled, "关闭残留脚本和游戏进程");
@@ -96,12 +105,7 @@ pub struct RunDialog {
 
 impl RunDialog {
     pub fn new(mut data: RunView) -> Self {
-        if data.options.smtp_host.is_empty() {
-            data.options.smtp_host = "smtp.qq.com".into();
-        }
-        if data.options.smtp_port.is_empty() {
-            data.options.smtp_port = "465".into();
-        }
+        data.options.form_defaults();
         Self {
             data,
             confirm_invalid: false,
