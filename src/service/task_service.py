@@ -59,28 +59,19 @@ def script_view(script_name: str) -> dict:
     """返回脚本身份、日常/周常选项及反读状态；不缓存外部配置快照。"""
     script = _require_script(script_name)
     dailies = []
-    records = get_daily_readback(script_name)
+    records = {}
+    for record in get_daily_readback(script_name):
+        assert "name" in record
+        name = record["name"]
+        assert name not in records, "日常反读记录重复"
+        records[name] = record
     for daily in _daily_definitions(script_name):
         assert "display_name" in daily and "options" in daily
-        matches = []
-        for record in records:
-            assert "name" in record
-            if record["name"] == daily["display_name"]:
-                matches.append(record)
-        assert len(matches) == 1, "日常声明与适配器反读记录不一致"
-        record = matches[0]
+        name = daily["display_name"]
+        assert name in records, "日常声明与适配器反读记录不一致"
+        record = records[name]
         assert all(key in record for key in ("task", "sequence", "enabled"))
-        dailies.append(
-            {
-                "daily_name": daily["display_name"],
-                "options": daily["options"],
-                "selected": {
-                    "task_name": record["task"],
-                    "sequence": record["sequence"],
-                },
-                "enabled": record["enabled"],
-            }
-        )
+        dailies.append({**record, "options": daily["options"]})
     weeklies = []
     definitions = get_weekly_map(script_name)
     starts = get_weekly_start_map() if definitions else {}
@@ -91,9 +82,9 @@ def script_view(script_name: str) -> dict:
         name = weekly["display_name"]
         weeklies.append(
             {
-                "weekly_name": name,
+                "name": name,
                 "options": weekly["options"] if "options" in weekly else None,  # noqa: SIM401
-                "selected": get_weekly_task(script_name, name),
+                "task": get_weekly_task(script_name, name),
                 "start_day": script_starts[name] if name in script_starts else None,  # noqa: SIM401
             }
         )
@@ -143,16 +134,15 @@ def select_daily(
 
 def enable_daily(script_name: str, daily_name: str, enabled: bool) -> dict:
     """只改日常开关，副本选择保持原值。"""
-    view = script_view(script_name)
-    assert "dailies" in view
-    for daily in view["dailies"]:
-        assert "daily_name" in daily and "enabled" in daily
-        if daily["daily_name"] == daily_name and daily["enabled"] is not None:
+    if type(enabled) is not bool:
+        raise InvalidTaskSelection("enabled 必须为布尔值")
+    _require_script(script_name)
+    for daily in get_daily_readback(script_name):
+        assert "name" in daily and "enabled" in daily
+        if daily["name"] == daily_name and daily["enabled"] is not None:
             break
     else:
         raise InvalidTaskSelection("该日常没有可用的启用开关")
-    if type(enabled) is not bool:
-        raise InvalidTaskSelection("enabled 必须为布尔值")
     set_daily_enabled(script_name, daily_name, enabled)
     return script_view(script_name)
 

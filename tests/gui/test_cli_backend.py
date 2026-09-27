@@ -17,6 +17,7 @@ from PySide6.QtTest import QTest
 
 from src.gui.cli_client import CliClient
 from src.gui.controllers.cli_task_card import CliTaskCardController
+from src.gui.controllers.task_card import TaskCardController
 from src.gui.main_window import QmlBridge
 from src.update.runtime import FileLease
 from tests.gui.helpers import get_app
@@ -135,12 +136,133 @@ class CliGuiTests(unittest.TestCase):
         self.assertEqual(controller._view["script"]["script_name"], "B")
         self.assertFalse(controller.busy)
 
+    def test_local_and_cli_cards_use_the_same_display_rules(self):
+        dailies = [
+            {
+                "name": "未配置",
+                "task": None,
+                "sequence": None,
+                "enabled": None,
+                "options": {"values": [{"display_name": "默认副本"}]},
+            },
+            {
+                "name": "二级",
+                "task": "资源",
+                "sequence": True,
+                "enabled": True,
+                "options": {
+                    "values": [
+                        {
+                            "display_name": "资源",
+                            "options": {
+                                "values": [
+                                    {"display_name": "开启", "physical_name": True}
+                                ]
+                            },
+                        }
+                    ]
+                },
+            },
+            {
+                "name": "停用",
+                "task": "资源",
+                "sequence": None,
+                "enabled": False,
+                "options": {"values": []},
+            },
+        ]
+        weeklies = [
+            {"name": "无副本", "options": None, "task": None, "start_day": None},
+            {"name": "空菜单", "options": {"values": []}, "task": None, "start_day": 0},
+            {
+                "name": "选副本",
+                "options": {"values": [{"display_name": "首领"}]},
+                "task": None,
+                "start_day": 3,
+            },
+        ]
+        games = SimpleNamespace(current_game={"script_name": "A", "display_name": "甲"})
+        service = Mock()
+        service.get_daily_map.return_value = {
+            "A": {
+                "dailies": [
+                    {"display_name": row["name"], "options": row["options"]}
+                    for row in dailies
+                ]
+            }
+        }
+        service.get_weekly_map.return_value = [
+            {
+                "display_name": row["name"],
+                **({"options": row["options"]} if row["options"] is not None else {}),
+            }
+            for row in weeklies
+        ]
+        starts = {row["name"]: row["start_day"] for row in weeklies}
+        service.get_weekly_start_for.side_effect = lambda _script, name: starts[name]
+        local = TaskCardController(games, service, Mock())
+        with (
+            patch(
+                "src.gui.controllers.task_card.get_daily_readback", return_value=dailies
+            ),
+            patch("src.gui.controllers.task_card.get_weekly_task", return_value=None),
+        ):
+            daily_items, weekly_items = local.daily_items, local.weekly_items
+        self.assertEqual(
+            [row["task_label"] for row in daily_items],
+            ["默认副本", "资源 · 开启", "不启用"],
+        )
+        self.assertEqual(
+            [row["can_disable"] for row in daily_items], [False, True, True]
+        )
+        self.assertEqual([row["disabled"] for row in daily_items], [False, False, True])
+        self.assertEqual(
+            [row["task_label"] for row in weekly_items], ["", "", "选择副本"]
+        )
+        self.assertEqual(
+            [row["start_label"] for row in weekly_items],
+            ["选择周几", "不启用", "周三起"],
+        )
+        self.assertEqual(
+            [row["start_set"] for row in weekly_items], [False, True, True]
+        )
+        self.assertEqual(
+            [row["has_task"] for row in weekly_items], [False, False, True]
+        )
+
+        client = DeferredClient()
+        remote = CliTaskCardController(games, service, Mock(), client)
+        remote.refresh()
+        client.requests[0][2](
+            {"script": {"script_name": "A"}, "dailies": dailies, "weeklies": weeklies},
+            None,
+        )
+        with (
+            patch(
+                "src.gui.controllers.task_card.get_daily_readback",
+                side_effect=AssertionError("CLI 属性不得读盘"),
+            ),
+            patch(
+                "src.gui.controllers.task_card.get_weekly_task",
+                side_effect=AssertionError("CLI 属性不得读盘"),
+            ),
+        ):
+            self.assertEqual(remote.daily_items, daily_items)
+            self.assertEqual(remote.weekly_items, weekly_items)
+            for name in ("未配置", "二级", "停用", "不存在"):
+                self.assertEqual(remote.daily_options(name), local.daily_options(name))
+            for name in ("无副本", "空菜单", "选副本", "不存在"):
+                self.assertEqual(
+                    remote.weekly_task_options(name), local.weekly_task_options(name)
+                )
+        self.assertEqual(len(client.requests), 1)
+
     def test_write_failure_refreshes_without_replaying(self):
         client = DeferredClient()
         games = SimpleNamespace(current_game={"script_name": "A", "display_name": "甲"})
         toast = Mock()
         controller = CliTaskCardController(games, Mock(), toast, client)
-        controller._view = {"dailies": [], "weeklies": [{"weekly_name": "周常"}]}
+        controller._view = {"dailies": [], "weeklies": [{"name": "周常"}]}
         controller.selectWeeklyStart("周常", 0)
         self.assertTrue(controller.busy)
         client.requests[0][2](

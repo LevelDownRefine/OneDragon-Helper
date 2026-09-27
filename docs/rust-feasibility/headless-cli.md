@@ -84,18 +84,19 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `weekly.select` | `script_name/weekly_name/task_name` | 校验当前物化菜单并写入，返回 `script.view` |
 | `weekly.start` | `script_name/weekly_name/start_day`（整数 0…7） | 先保存周常意图，再同步游戏侧配置，返回 `script.view` |
 
-日常条目：`daily_name`、`options`、`selected: {task_name, sequence}`、`enabled`。
+日常条目沿用适配器反读字段：`name/task/sequence/enabled`，另附 `options`。
+本地与 CLI 任务卡共用展示规则，响应不再对反读字段改名或嵌套。
 物化选项仍使用 `display_name/physical_name/options.values`，最多两级。
 提交 `task_name` 为一级展示名，`sequence` 为二级 `physical_name`，必须原样保留 JSON 类型。
 例如鸣潮的整数 `1` 不接受 `true` 或字符串 `"1"`；崩铁的培养目标接受布尔 `true/false`，
 不接受整数 `1/0`。无二级选项时省略 sequence 或传 null。
 
-`selected` 保留现有适配器反读语义：未选择或无数据为 null；
-单字段资源选择（如终末地）可能直接将最终副本名放在 task_name，sequence 为 null。
+`task/sequence` 保留现有适配器反读语义：未选择或无数据为 null；
+单字段资源选择（如终末地）可能直接将最终副本名放在 task，sequence 为 null。
 `enabled=null` 表示没有可反读的开关状态（无开关或配置尚不存在），不应强行显示为禁用。
 `daily.select` 沿用“选择后启用该日常”的原行为。动态资源不存在或选项已消失时拒绝写入。
 
-周常条目：`weekly_name/options/selected/start_day`；无选项组时 options 为 null。
+周常条目：`name/options/task/start_day`；无选项组时 options 为 null。
 start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不同。
 尚未开放设置、运行或更新动作。
 自定义脚本返回 `adapted=false` 与空日常列表；未知脚本名返回错误。
@@ -138,13 +139,9 @@ src.gui；覆盖实际 JSON/YAML 落盘与反读、未修改字段保留、整�
 PYTHONPATH=src python -m unittest tests.test_headless -v
 ```
 
-CLI 首期的 2026-09-26 验证：按项目约定在 Ubuntu 跑全套 1088 项，1054 项通过、34 项跳过，
-耗时 53.810 秒（包含新增 12 项 CLI 测试）。`ruff check src tests tools`、
-`ruff format --check src tests tools` 均通过。尚未构建新 headless EXE，也未进行 Rust 性能对照。
-
 GUI 接入新增 `tests/gui/test_cli_backend.py`，使用 Qt 事件循环和真实 CLI 进程，覆盖
 界面读写闭环、复用进程、旧响应隔离、超时/崩溃/坏数据、中文分片及 stderr 管道排空、
-手动重连和关闭释放租约；独立 QML 场景真正点击整数及布尔菜单并核对落盘内容。
+手动重连和关闭释放租约，以及本地/CLI 任务卡展示一致性；独立 QML 场景真正点击整数及布尔菜单并核对落盘内容。
 
-GUI 接入后的全量回归：1097 项，1063 项通过、34 项跳过，58.662 秒；
-ruff 检查与格式检查通过。此结果为 Ubuntu 源码验证，尚未验证独立 headless EXE。
+`tests/service/test_task_service.py` 验证开关校验不加载菜单或周常、写入后只聚合一次完整任务卡。
+源码全量回归与格式检查按 [TESTING.md](../../TESTING.md) 执行；尚未验证独立 headless EXE。

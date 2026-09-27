@@ -19,28 +19,12 @@ class CliTaskCardController(TaskCardController):
     def task_adapted(self):
         return bool(self._view["dailies"] or self._view["weeklies"])
 
-    @property
-    def daily_items(self):
-        return [
-            {
-                "name": daily["daily_name"],
-                "task_label": self._daily_label(
-                    {
-                        "enabled": daily["enabled"],
-                        "task": daily["selected"]["task_name"],
-                        "sequence": daily["selected"]["sequence"],
-                    },
-                    daily["options"]["values"],
-                ),
-                "can_disable": daily["enabled"] is not None,
-                "disabled": daily["enabled"] is False,
-            }
-            for daily in self._view["dailies"]
-        ]
+    def _daily_records(self):
+        return self._view["dailies"]
 
     def daily_options(self, daily_name):
         for daily in self._view["dailies"]:
-            if daily["daily_name"] == daily_name:
+            if daily["name"] == daily_name:
                 return daily["options"]["values"]
         return []
 
@@ -48,23 +32,12 @@ class CliTaskCardController(TaskCardController):
     def weekly_supported(self):
         return bool(self._view["weeklies"])
 
-    @property
-    def weekly_items(self):
-        return [
-            {
-                "name": weekly["weekly_name"],
-                "has_task": bool(weekly["options"] and weekly["options"]["values"]),
-                "task_label": weekly["selected"]
-                or ("选择副本" if weekly["options"] else ""),
-                "start_set": weekly["start_day"] is not None,
-                "start_label": self._start_day_label(weekly["start_day"]),
-            }
-            for weekly in self._view["weeklies"]
-        ]
+    def _weekly_records(self):
+        return self._view["weeklies"]
 
     def weekly_task_options(self, weekly_name):
         for weekly in self._view["weeklies"]:
-            if weekly["weekly_name"] == weekly_name:
+            if weekly["name"] == weekly_name:
                 return weekly["options"]["values"] if weekly["options"] else []
         return []
 
@@ -109,16 +82,16 @@ class CliTaskCardController(TaskCardController):
             assert result["script"]["script_name"] == params["script_name"]
             assert "dailies" in result and "weeklies" in result
             for daily in result["dailies"]:
-                assert {"daily_name", "options", "selected", "enabled"} <= daily.keys()
-                assert "values" in daily["options"]
-                assert {"task_name", "sequence"} <= daily["selected"].keys()
-            for weekly in result["weeklies"]:
                 assert {
-                    "weekly_name",
+                    "name",
                     "options",
-                    "selected",
-                    "start_day",
-                } <= weekly.keys()
+                    "task",
+                    "sequence",
+                    "enabled",
+                } <= daily.keys()
+                assert "values" in daily["options"]
+            for weekly in result["weeklies"]:
+                assert {"name", "options", "task", "start_day"} <= weekly.keys()
             self._view = result
             self.status = "已同步"
             self.taskStateChanged.emit()

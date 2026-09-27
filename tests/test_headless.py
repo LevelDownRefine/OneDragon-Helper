@@ -86,15 +86,15 @@ class HeadlessProcessTests(unittest.TestCase):
             [item["script_name"] for item in responses[0]["result"]["scripts"]],
             ["ok-ww", "自定义脚本"],
         )
-        self.assertEqual(
-            responses[1]["result"]["dailies"][0]["selected"]["task_name"], "模拟领域"
-        )
+        self.assertEqual(responses[1]["result"]["dailies"][0]["task"], "模拟领域")
         written = responses[2]["result"]
         self.assertEqual(written, responses[3]["result"])
-        self.assertEqual(
-            written["dailies"][0]["selected"], {"task_name": "凝素领域", "sequence": 1}
-        )
-        self.assertEqual(written["weeklies"][0]["weekly_name"], "幻梦游园")
+        daily = written["dailies"][0]
+        self.assertEqual(set(daily), {"name", "task", "sequence", "enabled", "options"})
+        self.assertEqual(daily["name"], "每日任务")
+        self.assertEqual(daily["task"], "凝素领域")
+        self.assertEqual(daily["sequence"], 1)
+        self.assertEqual(written["weeklies"][0]["name"], "幻梦游园")
         self.assertEqual(written["weeklies"][0]["start_day"], 1)
         self.assertEqual(responses[4]["result"]["dailies"], [])
         self.assertFalse(responses[4]["result"]["script"]["adapted"])
@@ -164,12 +164,8 @@ class HeadlessProcessTests(unittest.TestCase):
             ]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIs(
-            responses[0]["result"]["dailies"][0]["selected"]["sequence"], True
-        )
-        self.assertIs(
-            responses[2]["result"]["dailies"][0]["selected"]["sequence"], False
-        )
+        self.assertIs(responses[0]["result"]["dailies"][0]["sequence"], True)
+        self.assertIs(responses[2]["result"]["dailies"][0]["sequence"], False)
         for i in (1, 3):
             self.assertEqual(responses[i]["error"]["code"], "invalid_params")
         self.assertEqual(
@@ -222,7 +218,7 @@ class HeadlessProcessTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(responses[0]["error"]["code"], "invalid_params")
         daily = responses[1]["result"]["dailies"][0]
-        self.assertEqual(daily["selected"]["task_name"], "副本乙")
+        self.assertEqual(daily["task"], "副本乙")
         self.assertIs(daily["enabled"], True)
         self.assertEqual(
             json.loads(native.read_text(encoding="utf-8")),
@@ -384,7 +380,7 @@ class HeadlessProcessTests(unittest.TestCase):
                     process.stdin.flush()
                     response = json.loads(responses.get(timeout=15))
                     self.assertEqual(
-                        response["result"]["dailies"][0]["selected"]["sequence"],
+                        response["result"]["dailies"][0]["sequence"],
                         sequence,
                     )
                 with (
