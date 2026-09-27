@@ -7,7 +7,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from dataclasses import FrozenInstanceError
 from pathlib import Path
 from unittest.mock import patch
 
@@ -95,11 +94,28 @@ class TestScriptResources(unittest.TestCase):
         for name in ("game", "template", "background", "logs"):
             del node[name]
         declaration = self.load()["demo"]
-        self.assertEqual(declaration.game, resources.GamePath())
-        self.assertEqual(declaration.template, "")
-        self.assertEqual(declaration.background, "")
-        self.assertIsNone(declaration.logs)
-        with patch.object(resources, "get_root_dir", return_value=str(self.root)):
+        self.assertEqual(declaration, node)
+        with (
+            patch.object(resources, "get_root_dir", return_value=str(self.root)),
+            patch.dict(set_config._CONFIGS, clear=True),
+            patch.object(set_config, "get_daily_configs", return_value=[]),
+            patch.object(set_config, "load_game_config") as load_game,
+            patch.object(set_config, "load_config") as load_config,
+            patch.object(set_config, "load_template") as load_template,
+        ):
+
+            @set_config.register
+            class DemoConfig(set_config.ScriptConfig):
+                _script_name = "demo"
+                display_name = "演示"
+
+            self.assertIsNone(DemoConfig().get_game_exe_path())
+            self.assertEqual(set_config.get_background_rel_path("demo"), "")
+            self.assertEqual(set_config.get_game_path_keys("demo", "config.json"), ())
+            self.assertEqual(set_config.iter_backup_paths()["demo"], ("配置",))
+            load_game.assert_not_called()
+            load_config.assert_not_called()
+            load_template.assert_not_called()
             self.assertIsNone(resources.get_script_resources("unknown"))
             self.assertEqual(link.get_game_link("unknown", "github"), "")
 
@@ -153,17 +169,28 @@ class TestScriptResources(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     self.load(data)
 
-    def test_missing_duplicate_and_immutable_declarations(self):
+    def test_missing_and_duplicate_declarations(self):
         with self.assertRaises(AssertionError):
             resources.load_resource_manifest(str(self.path))
         self.path.write_text("version: 1\nversion: 1\nscripts: {}\n", encoding="utf-8")
         with self.assertRaises(DuplicateKeyError):
             resources.load_resource_manifest(str(self.path))
-        loaded = self.load()
-        with self.assertRaises(TypeError):
-            loaded["other"] = loaded["demo"]
-        with self.assertRaises(FrozenInstanceError):
-            loaded["demo"].background = "changed.jpg"
+
+    def test_yaml_shape_and_cache_until_reload(self):
+        with patch.object(resources, "load_yaml", wraps=resources.load_yaml) as read:
+            loaded = self.load()
+            self.assertIsInstance(loaded["demo"], dict)
+            self.assertIsInstance(loaded["demo"]["game"]["keys"], list)
+            self.assertEqual(loaded, self.data["scripts"])
+            self.data["scripts"]["demo"]["background"] = "changed.jpg"
+            self.path.write_text(dump_yaml_str(self.data), encoding="utf-8")
+            self.assertIs(resources.load_resource_manifest(str(self.path)), loaded)
+            self.assertEqual(loaded["demo"]["background"], "图片/背景.jpg")
+            read.assert_called_once_with(str(self.path))
+            resources.load_resource_manifest.cache_clear()
+            reloaded = resources.load_resource_manifest(str(self.path))
+            self.assertEqual(reloaded["demo"]["background"], "changed.jpg")
+            self.assertEqual(read.call_count, 2)
 
     def test_log_paths_preserve_script_and_temp_roots(self):
         expected = {
@@ -186,8 +213,8 @@ class TestScriptResources(unittest.TestCase):
         self.assertIsNone(monitor.get_log_dir("MAA", "MAA.exe"))
         # 声明解析不用当前工作目录，也能处理 Windows 分隔符。
         self.assertEqual(
-            resources.LogPath("script", "日志").resolve(r"D:\工具\程序.exe"),
-            Path("D:/工具/日志"),
+            monitor.get_log_dir("BetterGI", r"D:\工具\程序.exe"),
+            Path("D:/工具/log"),
         )
 
     def test_repository_manifest_covers_registered_adapters(self):
@@ -195,14 +222,14 @@ class TestScriptResources(unittest.TestCase):
             str(ROOT / "config/script_resources.yml")
         )
         self.assertEqual(set(manifest), set(set_config.get_registered_script_names()))
-        self.assertEqual(manifest["BetterGI"].template, "BGI一条龙.json")
-        self.assertEqual(manifest["ok-nte"].game.launcher, "NTELauncher.exe")
+        self.assertEqual(manifest["BetterGI"]["template"], "BGI一条龙.json")
+        self.assertEqual(manifest["ok-nte"]["game"]["launcher"], "NTELauncher.exe")
         self.assertEqual(
-            manifest["OneDragon-Launcher"].background,
+            manifest["OneDragon-Launcher"]["background"],
             "assets/ui/static_background.webp",
         )
         self.assertEqual(
-            manifest["March7th-Launcher"].background, "assets/app/images/bg37.jpg"
+            manifest["March7th-Launcher"]["background"], "assets/app/images/bg37.jpg"
         )
 
     def test_frozen_resource_location_without_gui(self):
@@ -219,7 +246,7 @@ sys.frozen = True
 sys.executable = {str(self.root / "OneDragon-Helper.exe")!r}
 from src.config.script_resources import get_script_resources
 from src.link import get_game_link
-assert get_script_resources("ok-ww").game.keys == ("pc_full_path",)
+assert get_script_resources("ok-ww")["game"]["keys"] == ["pc_full_path"]
 assert get_game_link("MAA", "homepage") == "https://ak.hypergryph.com/"
 """
         env = {**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"}

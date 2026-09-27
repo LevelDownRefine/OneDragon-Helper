@@ -38,8 +38,8 @@ class ScriptConfig:
     display_name: str = ""
     """GUI 展示名（如 鸣潮）。"""
 
-    resources: ScriptResources = ScriptResources()
-    """静态资源来自 script_resources.yml；基类空声明表示未适配。"""
+    resources: ScriptResources | None = None
+    """静态资源来自 script_resources.yml；基类 None 表示未适配。"""
 
     def __init__(self) -> None:
         """按声明创建日常与周常对象，并在构造时对齐子脚本 config。
@@ -87,10 +87,10 @@ class ScriptConfig:
         Raises:
             AssertionError: 未声明 template 或解析结果非 dict。
         """
-        assert self.resources.template, (
+        assert self.resources is not None and "template" in self.resources, (
             f"[set_config][{self.display_name}] 未声明 template"
         )
-        return load_template(self._script_name, self.resources.template)
+        return load_template(self._script_name, self.resources["template"])
 
     def _dispatch_daily(self, daily_display_name: str) -> Daily:
         """按日常展示名取日常对象。
@@ -141,10 +141,10 @@ class ScriptConfig:
     def _init_config(self) -> None:
         """对齐检查并把模板 config 同步到用户 config。
 
-        仅对有模板（声明 ``resources.template``）的脚本生效；无模板脚本或脚本尚未
+        仅对有模板（声明 ``template``）的脚本生效；无模板脚本或脚本尚未
         安装/未配置（config 缺失）时直接返回，不触碰 config。已对齐时不动 config。
         """
-        if not self.resources.template:
+        if self.resources is None or "template" not in self.resources:
             return
         rel_path = self._daily_config_rel_path()
         try:
@@ -219,17 +219,19 @@ class ScriptConfig:
         Returns:
             exe 绝对路径；未适配、缺失或为空时返回 None。
         """
-        if not self.resources.game.keys:
+        if self.resources is None or "game" not in self.resources:
             return None
-        game_config = load_game_config(self._script_name, self.resources.game.config)
+        game = self.resources["game"]
+        assert "config" in game and "keys" in game
+        game_config = load_game_config(self._script_name, game["config"])
         if game_config is None:
             return None
         node = game_config
-        for key in self.resources.game.keys:
+        for key in game["keys"]:
             if not isinstance(node, dict) or key not in node:
                 logger.warning(
                     f"[get_game_exe_path][{self._script_name}] 配置缺少字段: "
-                    f"{self.resources.game.keys}"
+                    f"{game['keys']}"
                 )
                 return None
             node = node[key]
@@ -313,13 +315,16 @@ class NTEConfig(ScriptConfig):
         Returns:
             启动器绝对路径；本体缺失或找不到启动器时返回 None。
         """
-        assert self.resources.game.launcher, "异环必须声明 game.launcher"
+        assert self.resources is not None and "game" in self.resources
+        game = self.resources["game"]
+        assert "launcher" in game, "异环必须声明 game.launcher"
+        launcher = game["launcher"]
         game_exe = super().get_game_exe_path()
         if not game_exe:
             return None
         directory = os.path.dirname(game_exe)
         while True:
-            candidate = os.path.join(directory, self.resources.game.launcher)
+            candidate = os.path.join(directory, launcher)
             if os.path.isfile(candidate):
                 return candidate
             parent = os.path.dirname(directory)
@@ -327,7 +332,7 @@ class NTEConfig(ScriptConfig):
                 break
             directory = parent
         logger.warning(
-            f"[get_game_exe_path][{self._script_name}] 未找到启动器 {self.resources.game.launcher}"
+            f"[get_game_exe_path][{self._script_name}] 未找到启动器 {launcher}"
         )
         return None
 
@@ -410,7 +415,7 @@ class ArknightsConfig(ScriptConfig):
 def init_config(script_name: str) -> None:
     """对齐脚本 config 与模板，补全缺失字段（强制重对齐）。
 
-    仅对声明了 ``resources.template`` 的脚本生效；无模板或脚本未安装/未配置时为空操作。
+    仅对声明了 ``template`` 的脚本生效；无模板或脚本未安装/未配置时为空操作。
     实例已缓存时不重新构造，但显式再跑一次 ``_init_config``，故用于需强制重对齐的场景
     （新增/修改脚本、备份恢复）。启动预热等幂等场景请用 :func:`ensure_config` 避免重复对齐与日志。
 
@@ -523,9 +528,14 @@ def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...]:
         return ()
     assert script_name in _CONFIGS
     cfg = _CONFIGS[script_name]()
-    if rel.casefold() != cfg.resources.game.config.casefold():
+    assert cfg.resources is not None
+    if "game" not in cfg.resources:
         return ()
-    return cfg.resources.game.keys
+    game = cfg.resources["game"]
+    assert "config" in game and "keys" in game
+    if rel.casefold() != game["config"].casefold():
+        return ()
+    return tuple(game["keys"])
 
 
 def iter_backup_paths() -> dict[str, tuple[str, ...]]:
@@ -537,10 +547,12 @@ def iter_backup_paths() -> dict[str, tuple[str, ...]]:
     Returns:
         {脚本唯一标识: (备份路径, ...)}。
     """
-    return {
-        script_name: factory().resources.backup_paths
-        for script_name, factory in _CONFIGS.items()
-    }
+    paths = {}
+    for script_name, factory in _CONFIGS.items():
+        resources = factory().resources
+        assert resources is not None and "backup_paths" in resources
+        paths[script_name] = tuple(resources["backup_paths"])
+    return paths
 
 
 def get_game_exe_path(script_name: str) -> str | None:
@@ -576,7 +588,13 @@ def get_background_rel_path(script_name: str) -> str:
     """
     if script_name not in _CONFIGS:
         return ""
-    return _CONFIGS[script_name]().resources.background
+    assert script_name in _CONFIGS
+    resources = _CONFIGS[script_name]().resources
+    assert resources is not None
+    if "background" not in resources:
+        return ""
+    assert "background" in resources
+    return resources["background"]
 
 
 def get_daily_readback(script_name: str) -> list[dict]:

@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -153,10 +154,17 @@ class BaseLogParser:
 
     def _get_log_dir(self, script_path: str) -> Path:
         resources = get_script_resources(self.script_name)
-        assert resources is not None and resources.logs is not None, (
+        assert resources is not None and "logs" in resources, (
             f"[log] 缺少日志目录声明: {self.script_name}"
         )
-        return resources.logs.resolve(script_path)
+        logs = resources["logs"]
+        assert "root" in logs and "path" in logs
+        if logs["root"] == "temp":
+            base = Path(tempfile.gettempdir())
+        else:
+            assert logs["root"] == "script"
+            base = Path(script_path.replace("\\", "/")).parent
+        return base / logs["path"]
 
     def _read_file(self, path: Path) -> str:
         """读取日志文本：utf-8 失败回退 gbk；读取/解码失败记日志返回空串。"""

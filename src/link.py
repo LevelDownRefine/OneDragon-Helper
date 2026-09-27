@@ -8,4 +8,7 @@ def get_game_link(script_name: str, kind: str) -> str:
     resources = get_script_resources(script_name)
     if resources is None:
         return ""
-    return resources.links.select(kind)
+    assert "links" in resources
+    links = resources["links"]
+    assert kind in links, f"未知链接种类: {kind}"
+    return links[kind]

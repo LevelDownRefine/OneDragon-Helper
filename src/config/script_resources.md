@@ -1,7 +1,7 @@
 # 脚本资源声明
 
 `config/script_resources.yml` 保存随助手发布的脚本资源位置。`script_resources.py`
-只负责读取、校验和提供不可变数据；配置适配器、日志解析器与链接查询共用这份声明。
+只负责读取、校验和缓存 YAML 字典；配置适配器、日志解析器与链接查询共用这份声明。
 它不导入 GUI，也不实例化 `ScriptConfig`，可供 Python CLI 和后续 Rust 实现使用。
 
 ## 声明边界
@@ -49,7 +49,9 @@ scripts:
 
 ## 消费与扩展
 
-`get_script_resources(script_name)` 返回不可变 `ScriptResources`；未声明脚本返回 `None`。
+`get_script_resources(script_name)` 返回 YAML 中的脚本字典；未声明脚本返回 `None`。
+`ScriptResources` 等 `TypedDict` 只提供类型提示，不构造额外数据对象。
+字典保留 YAML 的列表和可选字段形状，不注入缺省字段；消费端处理未声明项。
 已注册的 `ScriptConfig` 必须有声明，注册时即校验并绑定 `resources`。
 `get_game_exe_path`、`iter_backup_paths`、`get_background_rel_path`、`get_game_link`
 和日志模块的公开接口保持不变；`ScriptConfig` 的构造与初始化时机也保持不变。
@@ -57,7 +59,8 @@ scripts:
 修改已支持脚本的目录布局或链接，只改声明并验证对应行为；新增脚本仍需注册适配器，
 有特殊机制或日志格式时再添加对应 Python 实现。声明不能凭空提供新机制。
 
-加载器按声明文件位置缓存，只读一次，修改后重启生效。它是版本管理的内置资源，
+加载器按声明文件位置缓存，只读一次，修改后重启生效。返回的是共享字典，调用方按只读使用。
+它是版本管理的内置资源，
 不提供用户覆盖文件或热加载；用户安装目录不写入此文件。
 路径通过 `get_root_dir()` 定位，打包后从 EXE 同级的 `config/` 读取。
 发布工具自动收集 Git 跟踪的 `config/` 文件，更新器按程序资源替换此文件；

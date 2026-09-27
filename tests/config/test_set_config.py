@@ -54,8 +54,8 @@ class TestConfigRelPaths(unittest.TestCase):
         """全部 7 个脚本都声明了 game.keys 与 game.config"""
         for name, factory in set_config._CONFIGS.items():
             cls = factory()
-            self.assertTrue(cls.resources.game.keys, f"{name} 缺少 game.keys")
-            self.assertTrue(cls.resources.game.config, f"{name} 缺少 game.config")
+            self.assertTrue(cls.resources["game"]["keys"], f"{name} 缺少 game.keys")
+            self.assertTrue(cls.resources["game"]["config"], f"{name} 缺少 game.config")
 
     def test_init_config_warms_singleton_idempotently(self):
         """init_config 构造单例并触发对齐；重复调用返回同一实例（幂等）。"""
@@ -92,7 +92,7 @@ class TestConfigRelPaths(unittest.TestCase):
         with_template = {
             name
             for name, factory in set_config._CONFIGS.items()
-            if factory().resources.template
+            if "template" in factory().resources
         }
         self.assertEqual(with_template, {"BetterGI"})
 
@@ -309,7 +309,7 @@ class TestGetGameExePath(unittest.TestCase):
     """测试 ScriptConfig.get_game_exe_path：从各脚本游戏配置中提取游戏路径。"""
 
     def test_unadapted_base_returns_none(self):
-        """基类未适配（game.keys 为空）→ None，不触发任何读取"""
+        """基类未适配（无资源声明）→ None，不触发任何读取"""
         with patch("src.config.set_config.get_daily_configs", return_value=[]):
             cfg = ScriptConfig()
         with patch("src.config.set_config.load_game_config") as mock_load:

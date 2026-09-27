@@ -56,9 +56,9 @@
 
 ## 初始化流程 init
 
-`ScriptConfig._init_config()`：仅对声明了 `resources.template` 的脚本生效。先判模板是否存在（无模板直接返回），再直调 `load_config` 读当前 config（脚本未安装/未配置返回 None 时直接返回，不触碰 config），然后 `_load_template()` 加载模板 → 若配置已涵盖模板（`utils_dict.covers`：dict 递归、list 按索引、多出的字段不算差异）则跳过；否则遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。
+`ScriptConfig._init_config()`：仅对声明了 `template` 的脚本生效。先判模板是否存在（无模板直接返回），再直调 `load_config` 读当前 config（脚本未安装/未配置返回 None 时直接返回，不触碰 config），然后 `_load_template()` 加载模板 → 若配置已涵盖模板（`utils_dict.covers`：dict 递归、list 按索引、多出的字段不算差异）则跳过；否则遍历模板字段 `safe_update(..., assert_key_exists=False)` 合并补全并保存。
 
-落点（触发时机）：`ScriptConfig.__init__` 构造时调用 `_init_config`，缓存工厂随后复用实例；显式 `init_config` 仍强制再对齐，`ensure_config` 只确保实例存在。无 `resources.template` 直接返回、`load_config` 缺失即返回——守卫确保无模板或脚本未安装时为空操作。资源声明读取本身不构造适配器；经适配器访问的既有接口仍保留首次构造时的初始化行为。
+落点（触发时机）：`ScriptConfig.__init__` 构造时调用 `_init_config`，缓存工厂随后复用实例；显式 `init_config` 仍强制再对齐，`ensure_config` 只确保实例存在。无 `template` 直接返回、`load_config` 缺失即返回——守卫确保无模板或脚本未安装时为空操作。资源声明读取本身不构造适配器；经适配器访问的既有接口仍保留首次构造时的初始化行为。
 
 | 脚本 | 当前调用 _init_config | 模板 | 说明 |
 |------|---------------------|------|------|
@@ -247,7 +247,7 @@ set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按�
 1. `set_config.py` 新建子类继承 `ScriptConfig` 并加 `@register`：设 `_script_name`、`display_name`；在 `config/script_resources.yml` 添加同名资源声明（必填 `backup_paths`、`links`，其余按需）。
 2. 在 `daily_task_list.yml` 给日常标注 `class`（机制类名，注册表见 `daily.py::DAILY_CLASSES`）：标准两层 `Daily`；分段 `Anomaly`（追猎目标 `AnomalyHunter`）/TaskQueue `MaaDaily`/无需适配 `NoopDaily`；config 子类零改动；声明表达不了的特殊读写才覆写 `update` / `read`。
 3. `config/daily_task_list.yml` 加该脚本的日常声明（key 用 script_name）；菜单自动出现，无需改 GUI。
-4. `_init_config` 已在启动时自动触发；无 `resources.template` 时为空操作。
+4. `_init_config` 已在启动时自动触发；无 `template` 时为空操作。
 5. 补测试 `tests/config/test_set_config_subclasses.py`（可参照 golden：`PYTHONPATH=src python -m tests.config.test_golden_daily --update` 重新生成基线，审查差异后提交）。
 
 ## 设计原则
