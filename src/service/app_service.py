@@ -27,6 +27,7 @@ from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
     ensure_config,
     get_registered_script_names,
+    init_config,
     set_config,
     set_daily_enabled,
 )
@@ -58,6 +59,7 @@ from src.utils.utils_runner import (
     collect_invalid_script_messages,
     run_chain_command,
 )
+from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_wallpaper import (
     load_wallpapers,
     save_video_preview,
@@ -106,29 +108,33 @@ class AppService:
     def select_daily(
         self,
         script_name: str,
-        daily_name: str,
-        task_name: str,
-        sequence: str | int | bool | None = None,
-    ) -> dict:
-        """校验日常选择，写入并返回反读状态。"""
-        return task_service.select_daily(script_name, daily_name, task_name, sequence)
+        daily_name: str | None = None,
+        task_name: str | None = None,
+        sequence: str | int | None = None,
+    ) -> None:
+        """CLI 日常选择，直接转发原 GUI 接口。"""
+        return self.set_script_daily_task(
+            script_name,
+            daily_display_name=daily_name,
+            task_name=task_name,
+            sequence=sequence,
+        )
 
     def check_update(self):
         """用户手动检查新版。"""
         return self._updates.check_update()
 
-    def enable_daily(self, script_name: str, daily_name: str, enabled: bool) -> dict:
-        return task_service.enable_daily(script_name, daily_name, enabled)
+    def enable_daily(self, script_name: str, daily_name: str, enabled: bool) -> None:
+        """CLI 日常开关，直接转发原 GUI 接口。"""
+        return self.set_script_daily_enabled(script_name, daily_name, enabled)
 
-    def select_weekly(self, script_name: str, weekly_name: str, task_name: str) -> dict:
-        return task_service.select_weekly(script_name, weekly_name, task_name)
+    def select_weekly(self, script_name: str, weekly_name: str, task_name: str) -> None:
+        """CLI 周常选择，直接转发原 GUI 接口。"""
+        return self.set_script_weekly_task(script_name, weekly_name, task_name)
 
-    def start_weekly(self, script_name: str, weekly_name: str, start_day: int) -> dict:
-        task_service.require_weekly(script_name, weekly_name)
-        if type(start_day) is not int or not 0 <= start_day <= 7:
-            raise task_service.InvalidTaskSelection("start_day 必须是 0…7 的整数")
-        self.set_weekly_start_for(script_name, weekly_name, start_day)
-        return task_service.script_view(script_name)
+    def start_weekly(self, script_name: str, weekly_name: str, start_day: int) -> None:
+        """CLI 周常起始日，直接转发原 GUI 接口。"""
+        return self.set_weekly_start_for(script_name, weekly_name, start_day)
 
     def get_update_info(self):
         """读取本地版本与上次安装结果，不联网。"""
@@ -271,6 +277,22 @@ class AppService:
             weekly_timeouts,
         )
         return new_script_name
+
+    def init_script_after_edit(self, previous: dict, script_name: str) -> None:
+        """保存后单独调用：仅脚本路径或标识变化时重新对齐子脚本配置。
+
+        Args:
+            previous: 编辑前的脚本条目快照。
+            script_name: 保存后的脚本标识。
+        """
+        current = get_script(script_name)
+        assert current is not None, f"[service] 找不到已保存脚本: {script_name}"
+        assert "script_path" in previous and "script_path" in current
+        if (
+            previous["script_path"] != current["script_path"]
+            or get_script_name(previous) != script_name
+        ):
+            init_config(script_name)
 
     # ── schedule.yml（src.service.schedule 模块函数）──
     # schedule.yml 的读写与调度编排同处 src.service.schedule，不挂在任何 peer 实例上；

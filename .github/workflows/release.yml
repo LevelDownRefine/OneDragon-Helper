@@ -17,6 +17,11 @@ jobs:
     env:
       ODH_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
       PYTHONUTF8: 1   # 与 build-exe.yml 同源：冻结 exe 在英文 locale 下经 colorama 输出中文不崩
+      # 可复现构建：PyInstaller 默认把构建时刻与哈希随机序写进产物，导致源码未变的
+      # exe（Runner/Updater）每次发布字节都不同，客户端只能整包重下。固定这两项后，
+      # 同一份源码的产物字节一致，增量更新才能跳过未变的 exe。取值只需恒定。
+      SOURCE_DATE_EPOCH: "1700000000"
+      PYTHONHASHSEED: "0"
 
     steps:
       - name: Checkout repository

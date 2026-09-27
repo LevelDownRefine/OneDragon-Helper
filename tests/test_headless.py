@@ -8,7 +8,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 from src.headless import handle_request
 from src.update.runtime import FileLease, UpdateBusyError
@@ -87,8 +87,8 @@ class HeadlessProcessTests(unittest.TestCase):
             ["ok-ww", "自定义脚本"],
         )
         self.assertEqual(responses[1]["result"]["dailies"][0]["task"], "模拟领域")
-        written = responses[2]["result"]
-        self.assertEqual(written, responses[3]["result"])
+        self.assertIsNone(responses[2]["result"])
+        written = responses[3]["result"]
         daily = written["dailies"][0]
         self.assertEqual(set(daily), {"name", "task", "sequence", "enabled", "options"})
         self.assertEqual(daily["name"], "每日任务")
@@ -106,11 +106,9 @@ class HeadlessProcessTests(unittest.TestCase):
         self.assertEqual(json.loads(self.native.read_text(encoding="utf-8")), expected)
         self.assertIn("config 已更新", result.stderr)
 
-    def test_invalid_selections_leave_native_file_unchanged(self):
+    def test_adapter_rejections_leave_native_file_unchanged(self):
         before = self.native.read_bytes()
         cases = [
-            selection(script_name="missing"),
-            selection(script_name="自定义脚本"),
             selection(daily_name="missing"),
             selection(task_name="missing"),
             selection(sequence=None),
@@ -124,8 +122,49 @@ class HeadlessProcessTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(responses), len(cases))
         for response in responses:
-            self.assertEqual(response["error"]["code"], "invalid_params", response)
+            self.assertEqual(response["error"]["code"], "operation_failed", response)
+            self.assertTrue(response["error"]["refresh_required"])
         self.assertEqual(before, self.native.read_bytes())
+
+    def test_daily_defaults_and_noops_return_null(self):
+        before = self.native.read_bytes()
+        cases = [
+            {"script_name": "ok-ww"},
+            {"script_name": "ok-ww", "daily_name": None, "task_name": None},
+            selection(task_name=None),
+            selection(task_name=""),
+            selection(task_name="未选择"),
+            selection(script_name="missing"),
+            selection(script_name="自定义脚本"),
+        ]
+        result, responses = self.serve(
+            [request("daily.select", params, i) for i, params in enumerate(cases)]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            responses,
+            [
+                {"protocol_version": 1, "id": i, "result": None}
+                for i in range(len(cases))
+            ],
+        )
+        self.assertEqual(before, self.native.read_bytes())
+
+    def test_call_accepts_static_sequence_display_name(self):
+        result, responses = self.run_cli(
+            ["call", "daily.select"],
+            json.dumps(selection(sequence="梦州-迅刀"), ensure_ascii=False),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(responses, [{"protocol_version": 1, "id": 1, "result": None}])
+        self.assertEqual(
+            json.loads(self.native.read_text(encoding="utf-8")),
+            {
+                **self.initial,
+                "Which to Farm": "Forgery Challenge",
+                "Which Forgery Challenge to Farm": 1,
+            },
+        )
 
     def test_call_exit_status_and_utf8(self):
         result, responses = self.run_cli(["call", "app.snapshot"], "{}")
@@ -149,25 +188,32 @@ class HeadlessProcessTests(unittest.TestCase):
         native.write_text(
             "build_target_enable: false\npower_enable: true\n", encoding="utf-8"
         )
-        result, responses = self.serve(
-            [
-                request(
-                    "daily.select",
-                    selection(
-                        script_name="March7th-Launcher",
-                        task_name="每日任务",
-                        sequence=value,
+        requests = []
+        for i, value in enumerate((True, 1, False, 0)):
+            requests.extend(
+                [
+                    request(
+                        "daily.select",
+                        selection(
+                            script_name="March7th-Launcher",
+                            task_name="每日任务",
+                            sequence=value,
+                        ),
+                        i * 2,
                     ),
-                    i,
-                )
-                for i, value in enumerate((True, 1, False, 0))
-            ]
-        )
+                    request(
+                        "script.view", {"script_name": "March7th-Launcher"}, i * 2 + 1
+                    ),
+                ]
+            )
+        result, responses = self.serve(requests)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIs(responses[0]["result"]["dailies"][0]["sequence"], True)
-        self.assertIs(responses[2]["result"]["dailies"][0]["sequence"], False)
-        for i in (1, 3):
-            self.assertEqual(responses[i]["error"]["code"], "invalid_params")
+        for i in (0, 4):
+            self.assertIsNone(responses[i]["result"])
+        for i in (2, 6):
+            self.assertEqual(responses[i]["error"]["code"], "operation_failed")
+        for i, expected in ((1, True), (3, True), (5, False), (7, False)):
+            self.assertIs(responses[i]["result"]["dailies"][0]["sequence"], expected)
         self.assertEqual(
             load_yaml(str(native)), {"build_target_enable": False, "power_enable": True}
         )
@@ -203,23 +249,27 @@ class HeadlessProcessTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        result, responses = self.serve(
-            [
-                request(
-                    "daily.select",
-                    selection(
-                        script_name="ok-ef", task_name="干员养成", sequence=value
+        requests = []
+        for i, value in enumerate(("已删除的副本", "副本乙")):
+            requests.extend(
+                [
+                    request(
+                        "daily.select",
+                        selection(
+                            script_name="ok-ef", task_name="干员养成", sequence=value
+                        ),
+                        i * 2,
                     ),
-                    i,
-                )
-                for i, value in enumerate(("已删除的副本", "副本乙"))
-            ]
-        )
+                    request("script.view", {"script_name": "ok-ef"}, i * 2 + 1),
+                ]
+            )
+        result, responses = self.serve(requests)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(responses[0]["error"]["code"], "invalid_params")
-        daily = responses[1]["result"]["dailies"][0]
-        self.assertEqual(daily["task"], "副本乙")
-        self.assertIs(daily["enabled"], True)
+        for i, expected in ((0, "已删除的副本"), (2, "副本乙")):
+            self.assertIsNone(responses[i]["result"])
+            daily = responses[i + 1]["result"]["dailies"][0]
+            self.assertEqual(daily["task"], expected)
+            self.assertIs(daily["enabled"], True)
         self.assertEqual(
             json.loads(native.read_text(encoding="utf-8")),
             {"体力本": "副本乙", "⭐刷体力": True, "untouched": 42},
@@ -237,18 +287,21 @@ class HeadlessProcessTests(unittest.TestCase):
                 request(
                     "daily.enable",
                     {"script_name": "ok-ef", "daily_name": "每日任务", "enabled": 1},
+                    2,
                 ),
+                request("script.view", {"script_name": "ok-ef"}, 3),
             ]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIs(responses[0]["result"]["dailies"][0]["enabled"], False)
-        self.assertEqual(responses[1]["error"]["code"], "invalid_params")
+        self.assertIsNone(responses[0]["result"])
+        self.assertEqual(responses[1]["error"]["code"], "operation_failed")
+        self.assertIs(responses[2]["result"]["dailies"][0]["enabled"], False)
         self.assertEqual(
             json.loads(native.read_text(encoding="utf-8")),
             {"体力本": "副本乙", "⭐刷体力": False, "untouched": 42},
         )
 
-    def test_task_mutations_validate_identity_and_day_before_writing(self):
+    def test_task_mutations_keep_adapter_noops_and_day_validation(self):
         before = self.native.read_bytes()
         payloads = [
             request(
@@ -280,13 +333,40 @@ class HeadlessProcessTests(unittest.TestCase):
         ]
         result, responses = self.serve(payloads)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(all(r["error"]["code"] == "invalid_params" for r in responses))
+        for response in responses[:3]:
+            self.assertIsNone(response["result"])
+        for response in responses[3:]:
+            self.assertEqual(response["error"]["code"], "operation_failed")
         self.assertEqual(self.native.read_bytes(), before)
         self.assertEqual(
             load_yaml(str(self.root / "config/weekly.yml"))["weekly_start"]["ok-ww"][
                 "幻梦游园"
             ],
             1,
+        )
+
+    def test_weekly_start_returns_null_and_preserves_unknown_entry(self):
+        result, responses = self.serve(
+            [
+                request(
+                    "weekly.start",
+                    {"script_name": "ok-ww", "weekly_name": "幻梦游园", "start_day": 0},
+                ),
+                request("script.view", {"script_name": "ok-ww"}, 2),
+                request(
+                    "weekly.start",
+                    {"script_name": "ok-ww", "weekly_name": "未知周常", "start_day": 4},
+                    3,
+                ),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIsNone(responses[0]["result"])
+        self.assertEqual(responses[1]["result"]["weeklies"][0]["start_day"], 0)
+        self.assertIsNone(responses[2]["result"])
+        self.assertEqual(
+            load_yaml(str(self.root / "config/weekly.yml"))["weekly_start"]["ok-ww"],
+            {"幻梦游园": 0, "未知周常": 4},
         )
 
     def test_weekly_disabled_and_unset_are_distinct(self):
@@ -423,9 +503,9 @@ class ProtocolValidationTests(unittest.TestCase):
             (request("run.start"), "method_not_found"),
             (request("app.snapshot", []), "invalid_params"),
             (request("app.snapshot", {"extra": 0}), "invalid_params"),
-            (request("script.view", {"script_name": 3}), "invalid_params"),
-            (request("script.view", {"script_name": " "}), "invalid_params"),
-            (request("daily.select", selection(sequence=1.0)), "invalid_params"),
+            (request("script.view"), "invalid_params"),
+            (request("daily.select", {"task_name": "材料"}), "invalid_params"),
+            (request("daily.select", selection(extra=True)), "invalid_params"),
         ]
         service = Mock()
         for payload, code in cases:
@@ -433,6 +513,52 @@ class ProtocolValidationTests(unittest.TestCase):
                 response = handle_request(service, payload)
                 self.assertEqual(response["error"]["code"], code)
         self.assertEqual(service.mock_calls, [])
+
+    def test_write_requests_forward_values_and_never_query(self):
+        cases = [
+            ("daily.select", "select_daily", {"script_name": "脚本"}),
+            (
+                "daily.select",
+                "select_daily",
+                selection(daily_name=None, task_name=None),
+            ),
+            ("daily.select", "select_daily", selection(task_name="")),
+            ("daily.select", "select_daily", selection(sequence="梦州-迅刀")),
+            ("daily.select", "select_daily", selection(sequence=True)),
+            ("daily.select", "select_daily", selection(sequence=1)),
+            ("daily.select", "select_daily", selection(sequence=None)),
+            (
+                "daily.enable",
+                "enable_daily",
+                {"script_name": "脚本", "daily_name": "日常", "enabled": False},
+            ),
+            (
+                "weekly.select",
+                "select_weekly",
+                {"script_name": "脚本", "weekly_name": "周常", "task_name": "副本"},
+            ),
+            (
+                "weekly.start",
+                "start_weekly",
+                {"script_name": "脚本", "weekly_name": "周常", "start_day": 0},
+            ),
+        ]
+        for method, attribute, params in cases:
+            with self.subTest(method=method, params=params):
+                service = Mock()
+                getattr(service, attribute).return_value = None
+                service.script_view.side_effect = OSError("查询失败")
+                response = handle_request(service, request(method, params))
+                self.assertEqual(
+                    response, {"protocol_version": 1, "id": 1, "result": None}
+                )
+                self.assertEqual(
+                    service.mock_calls, [getattr(call, attribute)(**params)]
+                )
+                self.assertEqual(
+                    json.dumps(getattr(service, attribute).call_args.kwargs),
+                    json.dumps(params),
+                )
 
     def test_failure_after_write_does_not_claim_rollback(self):
         service = Mock()

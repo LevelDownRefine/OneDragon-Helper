@@ -427,7 +427,7 @@ class TestUpdateScript(unittest.TestCase):
         self.assertEqual(mocks["result"], "ww")
         entry = self._read()["script_list"][0]
         self.assertEqual(entry["check_done"], "script_closed")
-        mocks["init"].assert_called_once_with("ww")
+        mocks["init"].assert_not_called()
         mocks["save_weekly"].assert_called_once_with("ww", [60] * 7)
 
     def test_rename_migrates_weekly_entries(self):
@@ -444,6 +444,7 @@ class TestUpdateScript(unittest.TestCase):
             {**entry, "kill_game_after_done": False},
         )
         self.assertEqual(mocks["result"], "new")
+        mocks["init"].assert_not_called()
 
 
 if __name__ == "__main__":
