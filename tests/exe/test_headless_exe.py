@@ -32,6 +32,7 @@ class HeadlessExeTests(unittest.TestCase):
         self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.root = self.directory / "独立 CLI 安装"
         self.root.mkdir()
+        self.root = self.root.resolve()
         shutil.copy2(EXECUTABLE, self.root / CLI_EXE)
         shutil.copytree(EXECUTABLE.parent / "_internal", self.root / "_internal")
         for name in resource_files(ROOT):
