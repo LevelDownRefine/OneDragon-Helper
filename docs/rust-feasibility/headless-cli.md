@@ -55,6 +55,10 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | 方法 | 参数 | 返回 |
 | --- | --- | --- |
 | `app.snapshot` | `{}` | `scripts`：按配置顺序给出 `script_name/display_name/script_path/adapted/script_data`；script_data 为原脚本条目，供现有 GUI 展示；不扫描所有外部脚本 |
+| `settings.view` / `startup.view` | `{}` | 启动选项、每日计划是否启用、手动运行选项与关机能力；不查询系统任务 |
+| `settings.startup_save` | `options`（enabled/delay_seconds） | 保存启动选项，返回 null；预校验 1～3600 秒 |
+| `settings.run_save` | `options`（完整 RunOptions） | 独立保存运行选项，返回 null；不启动 |
+| `run.saved` | `script_names` | 只读已存运行选项，返回独立运行命令；不保存、不启动 |
 | `run.view` | `script_names` | 当前选择、无效脚本原因、运行选项（授权码始终为空）、关机支持状态 |
 | `run.prepare` | `script_names/options/confirm_invalid` | 保存已确认选项，返回独立运行命令及 stdin JSON；不会在服务进程启动调度 |
 | `script.view` | `script_name` | `script` 摘要、`dailies` 和 `weeklies` |
@@ -89,7 +93,7 @@ CLI 不转换字符串、整数或布尔值，字段类型及取值校验仍由�
 
 周常条目：`name/options/task/start_day`；无选项组时 options 为 null。
 start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不同。
-尚未开放全局设置或更新动作。
+尚未开放每日计划编辑或更新动作。
 工具栏 `script.target` 的 target 为 `home/bili/github/folder/log/configfile`。
 成功目标为 `{"kind":"url"或"path","value":"..."}`，本机缺失资源为
 `{"kind":"unavailable","reason":"..."}`；路径为绝对路径。链接沿用资源声明及原 GUI
@@ -132,6 +136,16 @@ null 沿用默认超时，低于 10 秒的值保留原运行语义。switches �
 例如副本写入成功但启用失败，或周常意图已保存但游戏侧同步失败。
 适配器抛出的取值/类型错误同样属于 `operation_failed`；协议层不重建业务异常分类。
 收到错误或进程意外退出后，先用 script.view 重读，再让用户决定是否重试；不得自动重放写请求。
+
+## 全局设置与自动启动
+
+父配置窗与运行选项分别保存。嵌套 `settings.run_save` 成功后反读 settings.view，
+仅更新运行选项，保留父表单启动草稿；失败不重放，刷新失败须提示可能已保存。
+取消不发写请求。手动保存设置不产生启动命令。
+
+Rust 首次任务卡就绪后请求 startup.view；每日计划启用时跳过启动倒计时。
+倒计时确认后调用 run.saved，以最新配置构造命令，保持原无人值守启动跳过无效脚本告警的语义。
+查询失败或重连不再次自动启动，更新后的 `--after-update`、演示/截图模式也跳过。
 
 ## 批量运行
 

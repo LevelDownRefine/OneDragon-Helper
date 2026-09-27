@@ -3,6 +3,7 @@ use crate::list_dialog::{ListAction, ListDialog};
 use crate::opener::{OpenJob, Target};
 use crate::run_dialog::{RunAction, RunDialog, RunView};
 use crate::script_editor::{EditAction, EditView, ScriptEditor};
+use crate::settings_dialog::{SettingsAction, SettingsDialog, SettingsView, StartupDialog};
 use crate::view::{Action, Presentation, View};
 use eframe::egui;
 use onedragon_rust_gui::{
@@ -17,6 +18,7 @@ pub struct Settings {
     pub python: PathBuf,
     pub font: Option<PathBuf>,
     pub demo: bool,
+    pub skip_startup: bool,
     #[cfg(feature = "capture")]
     pub capture: Option<PathBuf>,
     #[cfg(feature = "capture")]
@@ -25,6 +27,8 @@ pub struct Settings {
     pub capture_list: bool,
     #[cfg(feature = "capture")]
     pub capture_run: bool,
+    #[cfg(feature = "capture")]
+    pub capture_settings: bool,
 }
 
 impl Settings {
@@ -65,6 +69,10 @@ pub struct App {
     editor: Option<ScriptEditor>,
     list_dialog: Option<ListDialog>,
     run_dialog: Option<RunDialog>,
+    settings_dialog: Option<SettingsDialog>,
+    startup_dialog: Option<StartupDialog>,
+    refresh_settings_run: bool,
+    open_settings_after_snapshot: bool,
     open_editor_after_snapshot: bool,
     #[cfg(feature = "capture")]
     capture_requested: bool,
@@ -99,6 +107,10 @@ impl App {
             editor: None,
             list_dialog: None,
             run_dialog: None,
+            settings_dialog: None,
+            startup_dialog: None,
+            refresh_settings_run: false,
+            open_settings_after_snapshot: false,
             open_editor_after_snapshot: false,
             #[cfg(feature = "capture")]
             capture_requested: false,
@@ -138,6 +150,9 @@ impl App {
                     | "script.edit_view"
                     | "script.launch_target"
                     | "run.view"
+                    | "settings.view"
+                    | "startup.view"
+                    | "run.saved"
             ) {
                 "读取中"
             } else {
@@ -178,6 +193,9 @@ impl App {
         if let Some(dialog) = &mut self.run_dialog {
             dialog.failure(failure.message.clone(), true);
         }
+        if let Some(dialog) = &mut self.settings_dialog {
+            dialog.failure(failure.message.clone(), true);
+        }
         self.error = Some(failure.message);
         if failure.code == "transport_failed" {
             self.backend = None;
@@ -191,6 +209,17 @@ impl App {
         let result = match reply.result {
             Ok(value) => value,
             Err(failure) => {
+                if reply.method.starts_with("settings.") {
+                    let reload = failure.refresh_required
+                        || failure.code == "transport_failed"
+                        || self.write_confirmed;
+                    self.fail(failure);
+                    if let Some(dialog) = &mut self.settings_dialog {
+                        dialog.failure(self.error.clone().unwrap(), reload);
+                    }
+                    self.refresh_settings_run = false;
+                    return;
+                }
                 if matches!(reply.method.as_str(), "run.view" | "run.prepare") {
                     let reload = failure.refresh_required || failure.code == "transport_failed";
                     let message = failure.message.clone();
@@ -269,7 +298,9 @@ impl App {
                             .map(|script| script.script_name.clone());
                     }
                     self.status = "已同步".into();
-                    if std::mem::take(&mut self.open_editor_after_snapshot) {
+                    if std::mem::take(&mut self.open_settings_after_snapshot) {
+                        self.request("settings.view", json!({}));
+                    } else if std::mem::take(&mut self.open_editor_after_snapshot) {
                         if let Some(name) = self.selected.clone() {
                             self.request("script.edit_view", json!({"script_name": name}));
                         } else {
@@ -319,6 +350,31 @@ impl App {
             self.write_confirmed = true;
             self.ui.toast("列表已保存");
             self.request("app.snapshot", json!({}));
+        } else if matches!(reply.method.as_str(), "settings.view" | "startup.view") {
+            match serde_json::from_value::<SettingsView>(result) {
+                Ok(data) => {
+                    if reply.method == "startup.view" {
+                        self.startup_dialog = StartupDialog::from_settings(&data);
+                    } else if std::mem::take(&mut self.refresh_settings_run)
+                        && self.settings_dialog.is_some()
+                    {
+                        self.settings_dialog.as_mut().unwrap().refresh_run(data);
+                    } else {
+                        self.settings_dialog = Some(SettingsDialog::new(data));
+                    }
+                    self.write_confirmed = false;
+                    self.status = "已同步".into();
+                }
+                Err(error) => self.fail(Failure::transport(format!("全局设置数据无效：{error}"))),
+            }
+        } else if reply.method == "settings.run_save" && result.is_null() {
+            self.write_confirmed = true;
+            self.refresh_settings_run = true;
+            self.request("settings.view", json!({}));
+        } else if reply.method == "settings.startup_save" && result.is_null() {
+            self.settings_dialog = None;
+            self.ui.toast("启动设置已保存，下次打开生效");
+            self.status = "已同步".into();
         } else if reply.method == "run.view" {
             match serde_json::from_value::<RunView>(result) {
                 Ok(data) => {
@@ -329,7 +385,7 @@ impl App {
             }
         } else if matches!(
             reply.method.as_str(),
-            "script.launch_target" | "run.prepare"
+            "script.launch_target" | "run.prepare" | "run.saved"
         ) {
             match serde_json::from_value::<LaunchTarget>(result) {
                 Ok(LaunchTarget::Unavailable { reason }) => {
@@ -378,6 +434,18 @@ impl App {
                             "[startup] first task ready {:.2} ms",
                             self.started.elapsed().as_secs_f64() * 1000.0
                         );
+                        if !self.settings.skip_startup
+                            && !self.ui.enabled_names(&self.scripts).is_empty()
+                        {
+                            self.request("startup.view", json!({}));
+                        }
+                        #[cfg(feature = "capture")]
+                        if self.settings.capture.is_some()
+                            && self.settings.capture_settings
+                            && !self.busy
+                        {
+                            self.request("settings.view", json!({}));
+                        }
                         #[cfg(feature = "capture")]
                         if self.settings.capture.is_some() && self.settings.capture_editor {
                             self.request("script.edit_view", json!({"script_name": self.selected}));
@@ -572,6 +640,44 @@ impl eframe::App for App {
             }
         }
         if let Some(action) = self
+            .settings_dialog
+            .as_mut()
+            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+        {
+            match action {
+                SettingsAction::Close => {
+                    self.settings_dialog = None;
+                    self.refresh_settings_run = false;
+                    if self.view.is_none() && self.backend.is_some() {
+                        self.request("app.snapshot", json!({}));
+                    }
+                }
+                SettingsAction::Request(request) => {
+                    self.error = None;
+                    self.refresh_settings_run = false;
+                    if self.backend.is_none() && request.method == "settings.view" {
+                        self.open_settings_after_snapshot = true;
+                        self.connect();
+                    } else {
+                        self.request(&request.method, request.params);
+                    }
+                }
+            }
+        }
+        if let Some(confirmed) = self
+            .startup_dialog
+            .as_mut()
+            .and_then(|dialog| dialog.show(ui.ctx()))
+        {
+            self.startup_dialog = None;
+            if confirmed && !self.busy {
+                self.request(
+                    "run.saved",
+                    json!({"script_names":self.ui.enabled_names(&self.scripts)}),
+                );
+            }
+        }
+        if let Some(action) = self
             .editor
             .as_mut()
             .and_then(|editor| editor.show(ui.ctx(), self.busy))
@@ -663,6 +769,7 @@ impl eframe::App for App {
             && !self.capture_requested
             && (!self.settings.capture_editor || self.editor.is_some())
             && (!self.settings.capture_run || self.run_dialog.is_some())
+            && (!self.settings.capture_settings || self.settings_dialog.is_some())
         {
             let ready = self.capture_ready_at.get_or_insert_with(Instant::now);
             if ready.elapsed() >= std::time::Duration::from_millis(250) {
@@ -721,6 +828,7 @@ mod tests {
                 python,
                 font: None,
                 demo: true,
+                skip_startup: true,
                 #[cfg(feature = "capture")]
                 capture: None,
                 #[cfg(feature = "capture")]
@@ -729,6 +837,8 @@ mod tests {
                 capture_list: false,
                 #[cfg(feature = "capture")]
                 capture_run: false,
+                #[cfg(feature = "capture")]
+                capture_settings: false,
             },
             backend: Some(Backend::start(command, || {})),
             scripts: Vec::new(),
@@ -751,11 +861,71 @@ mod tests {
             list_dialog: None,
             open_editor_after_snapshot: false,
             run_dialog: None,
+            settings_dialog: None,
+            startup_dialog: None,
+            refresh_settings_run: false,
+            open_settings_after_snapshot: false,
             ctx,
             #[cfg(feature = "capture")]
             capture_requested: false,
             #[cfg(feature = "capture")]
             capture_ready_at: None,
+        }
+    }
+
+    #[test]
+    fn startup_is_requested_once_and_update_restart_skips_it() {
+        for skip in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let history = root.path().join("requests.jsonl");
+            let python =
+                PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+            let mut command = Command::new(&python);
+            command.args(["-u", "-c", r#"
+import json,sys
+for line in sys.stdin:
+    request=json.loads(line)
+    with open(sys.argv[1], 'a') as f: f.write(request['method']+'\n')
+    print(json.dumps({'protocol_version':1,'id':request['id'],'error':{'code':'operation_failed','message':'read failed','refresh_required':False}}),flush=True)
+"#]).arg(&history);
+            let mut app = test_app(command, root.path(), python);
+            app.settings.skip_startup = skip;
+            app.scripts = vec![serde_json::from_value(json!({"script_name":"test","display_name":"Test","script_path":"test.exe","adapted":false})).unwrap()];
+            let view = json!({"script":{"script_name":"test","display_name":"Test","script_path":"test.exe","adapted":false},"dailies":[],"weeklies":[]});
+            app.receive(Reply {
+                method: "script.view".into(),
+                pid: 0,
+                diagnostics: String::new(),
+                result: Ok(view.clone()),
+            });
+            assert_eq!(app.busy, !skip);
+            if !skip {
+                let reply = app
+                    .backend
+                    .as_ref()
+                    .unwrap()
+                    .replies
+                    .recv_timeout(Duration::from_secs(10))
+                    .unwrap();
+                app.receive(reply);
+            }
+            app.receive(Reply {
+                method: "script.view".into(),
+                pid: 0,
+                diagnostics: String::new(),
+                result: Ok(view),
+            });
+            assert!(!app.busy, "refresh must not repeat startup after a failure");
+            assert!(app.launch_job.is_none());
+            drop(app);
+            if skip {
+                assert!(!history.exists());
+            } else {
+                assert_eq!(
+                    std::fs::read_to_string(history).unwrap().trim(),
+                    "startup.view"
+                );
+            }
         }
     }
 

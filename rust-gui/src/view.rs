@@ -51,6 +51,14 @@ pub struct View {
 }
 
 impl View {
+    pub fn enabled_names(&self, scripts: &[Script]) -> Vec<String> {
+        scripts
+            .iter()
+            .filter(|script| !self.disabled.contains(&script.script_name))
+            .map(|script| script.script_name.clone())
+            .collect()
+    }
+
     pub fn new(ctx: &egui::Context) -> Self {
         Self {
             assets: Assets::new(ctx),
@@ -367,12 +375,7 @@ impl View {
         ui.painter().circle_filled(batch.center(), 24.0, BATCH);
         if self.icon_button(ui, "play_all", batch, "启动手动勾选的脚本", false) && !data.busy
         {
-            let names: Vec<_> = data
-                .scripts
-                .iter()
-                .filter(|script| !self.disabled.contains(&script.script_name))
-                .map(|script| script.script_name.clone())
-                .collect();
+            let names = self.enabled_names(data.scripts);
             if names.is_empty() {
                 self.toast("没有勾选手动运行的脚本");
             } else {
@@ -409,18 +412,17 @@ impl View {
         let dy = screen.height() - SIZE.y;
         let window = rect(1136.0 + dx, 16.0, 128.0, 44.0);
         panel(ui, window, 14, PANEL);
-        for (index, (icon, hint)) in [
-            ("settings", "配置 · 暂不可用"),
-            ("min", "最小化"),
-            ("close", "关闭"),
-        ]
-        .iter()
-        .enumerate()
+        for (index, (icon, hint)) in [("settings", "配置"), ("min", "最小化"), ("close", "关闭")]
+            .iter()
+            .enumerate()
         {
             let bounds = rect(window.left() + 6.0 + index as f32 * 40.0, 22.0, 36.0, 32.0);
-            if self.icon_button(ui, icon, bounds, hint, true) {
+            if self.icon_button(ui, icon, bounds, hint, true) && (index != 0 || !data.busy) {
                 match index {
-                    0 => self.unavailable("配置"),
+                    0 => actions.push(Action::Request(Request {
+                        method: "settings.view".into(),
+                        params: json!({}),
+                    })),
                     1 => ui
                         .ctx()
                         .send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
@@ -1035,6 +1037,7 @@ mod tests {
         view: ScriptView,
         scripts: Vec<Script>,
         time: f64,
+        busy: bool,
     }
 
     impl Scene {
@@ -1063,6 +1066,7 @@ mod tests {
                 view,
                 scripts,
                 time: 0.0,
+                busy: false,
             };
             scene.frame(vec![]);
             scene.frame(vec![]);
@@ -1085,7 +1089,7 @@ mod tests {
                         scripts: &self.scripts,
                         selected: Some("test"),
                         view: Some(&self.view),
-                        busy: false,
+                        busy: self.busy,
                         status: "已同步",
                         demo: true,
                     },
@@ -1255,6 +1259,11 @@ mod tests {
         let request = only_request(scene.click(Id::new(("icon", "脚本配置"))));
         assert_eq!(request.method, "script.edit_view");
         assert_eq!(request.params, json!({"script_name": "test"}));
+        let request = only_request(scene.click(Id::new(("icon", "配置"))));
+        assert_eq!(request.method, "settings.view");
+        assert_eq!(request.params, json!({}));
+        scene.busy = true;
+        assert!(scene.click(Id::new(("icon", "配置"))).is_empty());
     }
 
     #[test]

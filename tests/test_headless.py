@@ -70,6 +70,37 @@ class HeadlessProcessTests(unittest.TestCase):
             "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in requests),
         )
 
+    def test_global_settings_round_trip_and_saved_run_without_qt(self):
+        from dataclasses import asdict
+
+        from src.service.schedule import RunOptions
+
+        options = asdict(RunOptions(mute_enabled=True, close_running_enabled=False))
+        result, responses = self.serve(
+            [
+                request("settings.view"),
+                request(
+                    "settings.startup_save",
+                    {"options": {"enabled": False, "delay_seconds": 90}},
+                    2,
+                ),
+                request("settings.run_save", {"options": options}, 3),
+                request("startup.view", request_id=4),
+                request("run.saved", {"script_names": ["ok-ww"]}, 5),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(all("result" in response for response in responses), responses)
+        self.assertEqual(
+            responses[3]["result"]["startup"], {"enabled": False, "delay_seconds": 90}
+        )
+        self.assertTrue(responses[3]["result"]["run_options"]["mute_enabled"])
+        self.assertEqual(
+            json.loads(responses[4]["result"]["input"])["script_names"], ["ok-ww"]
+        )
+        self.assertFalse(self.root.joinpath("config/today.yml").exists())
+        self.assertEqual(responses[3]["result"]["run_options"]["auth_code"], "")
+
     def test_task_card_round_trip_without_gui(self):
         result, responses = self.serve(
             [

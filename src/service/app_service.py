@@ -23,6 +23,7 @@ import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 import src.service.resource_service as resource_service
+import src.service.settings_service as settings_service
 import src.service.task_service as task_service
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
@@ -126,6 +127,18 @@ class AppService:
 
     def run_view(self, script_names: list[str]) -> dict:
         return run_service.run_view(script_names)
+
+    def settings_view(self) -> dict:
+        return settings_service.settings_view()
+
+    def save_startup_settings(self, options: dict) -> None:
+        return settings_service.save_startup(options)
+
+    def save_run_settings(self, options: dict) -> None:
+        return settings_service.save_run_options(options)
+
+    def saved_run(self, script_names: list[str]) -> dict:
+        return run_service.saved_run(script_names)
 
     def prepare_run(
         self, script_names: list[str], options: dict, confirm_invalid: bool

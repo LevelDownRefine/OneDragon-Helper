@@ -4,7 +4,7 @@ use onedragon_rust_gui::backend::Request;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct RunOptions {
     pub shutdown_enabled: bool,
     pub shutdown_delay: u32,

@@ -13,6 +13,11 @@ PROTOCOL_VERSION = 1
 # 首期只开放短配置操作；长任务必须另行设计进度与取消协议。
 METHODS = {
     "app.snapshot": ("app_snapshot", (), ()),
+    "settings.view": ("settings_view", (), ()),
+    "startup.view": ("settings_view", (), ()),
+    "settings.startup_save": ("save_startup_settings", ("options",), ()),
+    "settings.run_save": ("save_run_settings", ("options",), ()),
+    "run.saved": ("saved_run", ("script_names",), ()),
     "run.view": ("run_view", ("script_names",), ()),
     "run.prepare": ("prepare_run", ("script_names", "options", "confirm_invalid"), ()),
     "script.view": ("script_view", ("script_name",), ()),
@@ -117,6 +122,9 @@ def handle_request(service, request) -> dict:
         # 参数值原样转发；取值校验和空操作语义由原 service 接口负责。
         mutating = method not in (
             "app.snapshot",
+            "settings.view",
+            "startup.view",
+            "run.saved",
             "run.view",
             "script.view",
             "script.target",

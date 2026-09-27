@@ -97,12 +97,23 @@ def prepare_run(script_names: list[str], options: dict, confirm_invalid: bool) -
     if collect_invalid_script_messages(scripts) and not confirm_invalid:
         raise InvalidRunRequest("请先确认配置不合法的脚本将在运行时跳过")
     apply_run_options(parsed)
+    return _run_target(script_names, load_run_options())
+
+
+def saved_run(script_names: list[str]) -> dict:
+    """自动启动只读取上次选项，不再次保存；无效脚本沿用调度器跳过语义。"""
+    selected_scripts(script_names)
+    options = parse_options(asdict(load_run_options()))
+    return _run_target(script_names, options)
+
+
+def _run_target(script_names: list[str], options: RunOptions) -> dict:
     command = (
         [sys.executable]
         if getattr(sys, "frozen", False)
         else [sys.executable, "-m", "src.headless"]
     )
-    payload = {"script_names": script_names, "options": asdict(load_run_options())}
+    payload = {"script_names": script_names, "options": asdict(options)}
     return {
         "kind": "command",
         "program": command[0],

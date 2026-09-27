@@ -6,6 +6,7 @@ mod list_dialog;
 mod opener;
 mod run_dialog;
 mod script_editor;
+mod settings_dialog;
 mod shutdown;
 mod skin;
 mod view;
@@ -18,6 +19,7 @@ fn settings() -> Result<Option<app::Settings>, String> {
     let mut python = None;
     let mut font = None;
     let mut demo = false;
+    let mut skip_startup = false;
     #[cfg(feature = "capture")]
     let mut capture = None;
     #[cfg(feature = "capture")]
@@ -26,6 +28,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
     let mut capture_list = false;
     #[cfg(feature = "capture")]
     let mut capture_run = false;
+    #[cfg(feature = "capture")]
+    let mut capture_settings = false;
     while let Some(argument) = args.next() {
         match argument.to_str() {
             Some("--project-root") => root = args.next().ok_or("--project-root 缺少路径")?.into(),
@@ -34,6 +38,7 @@ fn settings() -> Result<Option<app::Settings>, String> {
             }
             Some("--font") => font = Some(PathBuf::from(args.next().ok_or("--font 缺少路径")?)),
             Some("--demo-label") => demo = true,
+            Some("--after-update") => skip_startup = true,
             #[cfg(feature = "capture")]
             Some("--capture") => {
                 capture = Some(PathBuf::from(args.next().ok_or("--capture 缺少路径")?))
@@ -44,6 +49,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
             Some("--capture-list") => capture_list = true,
             #[cfg(feature = "capture")]
             Some("--capture-run") => capture_run = true,
+            #[cfg(feature = "capture")]
+            Some("--capture-settings") => capture_settings = true,
             Some("--help" | "-h") => {
                 log::info!(
                     "onedragon-rust-gui [--project-root 项目根目录] [--python Python路径] [--font 字体路径]"
@@ -83,11 +90,17 @@ fn settings() -> Result<Option<app::Settings>, String> {
     } else {
         python
     };
+    #[cfg(feature = "capture")]
+    {
+        skip_startup |= capture.is_some();
+    }
+    skip_startup |= demo;
     Ok(Some(app::Settings {
         project_root: root,
         python,
         font,
         demo,
+        skip_startup,
         #[cfg(feature = "capture")]
         capture,
         #[cfg(feature = "capture")]
@@ -96,6 +109,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
         capture_list,
         #[cfg(feature = "capture")]
         capture_run,
+        #[cfg(feature = "capture")]
+        capture_settings,
     }))
 }
 

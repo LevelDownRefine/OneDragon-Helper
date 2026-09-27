@@ -28,8 +28,11 @@
   Rust 通过系统关联或现有 Runner CLI 发起，关闭 GUI 不终止外部进程。
 - H2 [#110](https://github.com/LevelDownRefine/OneDragon-Helper/pull/110) `codex/rust-gui-run-batch` 基于 #109，接通批量确认/选项与独立无 Qt 调度入口；
   stdin 传运行载荷，取消不保存、部分失败不启动，GUI 关闭保留运行进程。
-- H3 `codex/rust-gui-shutdown` 基于 #110，接独立 Rust 关机倒计时并开放运行选项。
+- H3 [#111](https://github.com/LevelDownRefine/OneDragon-Helper/pull/111) `codex/rust-gui-shutdown` 基于 #110，接独立 Rust 关机倒计时并开放运行选项。
   只有显式确认码才执行关机；取消/异常/缺入口均不关机，Rust 路径不回退 Qt。
+- I1 `codex/rust-gui-settings` 基于 #111，接全局设置、独立保存运行选项与启动倒计时；
+  嵌套保存保留父表单草稿，取消不写盘，每日计划开启/更新后重启/演示模式跳过自动启动。
+  I2 继续每日计划表单及无 Qt 系统任务入口。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 
