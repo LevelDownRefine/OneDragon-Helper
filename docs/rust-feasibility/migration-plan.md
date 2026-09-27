@@ -10,8 +10,8 @@
 | 代号 | PR / 分支 | 基线 | 范围 |
 | --- | --- | --- | --- |
 | A | [#97](https://github.com/LevelDownRefine/OneDragon-Helper/pull/97)，`codex/rust-feasibility@87e4dda` | 已合入 `main@f19b891` | 任务卡 service，4 个文件 |
-| B | [#101](https://github.com/LevelDownRefine/OneDragon-Helper/pull/101)，`codex/headless-cli@581bb6c` | `main@f19b891` | 无 Qt CLI，6 个文件 |
-| C | [#102](https://github.com/LevelDownRefine/OneDragon-Helper/pull/102)，`codex/qt-cli-task-card@c6639a1` | B | 原 GUI 测试模式，16 个文件 |
+| B | [#101](https://github.com/LevelDownRefine/OneDragon-Helper/pull/101)，`codex/headless-cli` | `main@f19b891` | 无 Qt CLI，5 个文件 |
+| C | [#102](https://github.com/LevelDownRefine/OneDragon-Helper/pull/102)，`codex/qt-cli-task-card` | B | 原 GUI 测试模式，17 个文件 |
 | D | [#103](https://github.com/LevelDownRefine/OneDragon-Helper/pull/103)，`codex/rust-gui-prototype` | B | Rust 窗口与任务卡；不包含 C 的 Qt 接入 |
 
 拆分保留 #97 后续清理后的实现：日常响应为 `name/task/sequence/enabled/options`，
@@ -59,6 +59,9 @@ flowchart LR
 
 C 是验证前端，不是 Rust 的运行依赖。D 可以在 B 稳定后接入，不能继续从包含全部
 Qt GUI 接入改动的旧分支堆叠，也不需要复制一套 Python 后端。
+
+B 的 CI 配置与 main 一致；C/D 各自添加面向 `codex/headless-cli` 的临时触发条件，
+转到 main 时移除。Rust 检查只在 D 引入。
 
 A 已合入 main，B 已转到 main。B 合入后 C、D 分别转到 main，并重新核对
 差异与 CI，避免父 PR 被 squash 后重复带入旧提交。各 PR 保留完整测试覆盖。
