@@ -1,3 +1,4 @@
+use crate::opener::{OpenJob, Target};
 use crate::view::{Action, Presentation, View};
 use eframe::egui;
 use onedragon_rust_gui::{
@@ -44,6 +45,7 @@ pub struct App {
     write_confirmed: bool,
     ctx: egui::Context,
     ui: View,
+    open_job: Option<OpenJob>,
     #[cfg(feature = "capture")]
     capture_requested: bool,
 }
@@ -69,6 +71,7 @@ impl App {
             write_confirmed: false,
             ctx: cc.egui_ctx.clone(),
             ui: View::new(&cc.egui_ctx),
+            open_job: None,
             #[cfg(feature = "capture")]
             capture_requested: false,
         };
@@ -97,7 +100,7 @@ impl App {
             .is_some_and(|backend| backend.requests.send(request).is_ok());
         if sent {
             self.busy = true;
-            self.status = if method == "app.snapshot" || method == "script.view" {
+            self.status = if matches!(method, "app.snapshot" | "script.view" | "script.target") {
                 "读取中"
             } else {
                 "保存中"
@@ -120,6 +123,7 @@ impl App {
             failure.message = format!("已保存，但刷新失败：{}", failure.message);
         }
         self.write_confirmed = false;
+        self.open_job = None;
         self.busy = false;
         self.view = None;
         self.status = "操作失败 · 请刷新".into();
@@ -167,6 +171,20 @@ impl App {
                 }
                 Err(err) => self.fail(Failure::transport(format!("脚本列表数据无效：{err}"))),
             }
+        } else if reply.method == "script.target" {
+            match serde_json::from_value::<Target>(result) {
+                Ok(Target::Unavailable { reason }) => {
+                    self.ui.toast(reason);
+                    self.status = "资源不可用".into();
+                }
+                Ok(target) => {
+                    let ctx = self.ctx.clone();
+                    self.open_job = Some(OpenJob::start(target, move || ctx.request_repaint()));
+                    self.busy = true;
+                    self.status = "打开中".into();
+                }
+                Err(error) => self.fail(Failure::transport(format!("资源响应无效：{error}"))),
+            }
         } else if reply.method == "script.view" {
             match serde_json::from_value::<ScriptView>(result) {
                 Ok(view)
@@ -205,6 +223,20 @@ impl App {
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(result) = self.open_job.as_ref().and_then(OpenJob::poll) {
+            self.open_job = None;
+            self.busy = false;
+            match result {
+                Ok(()) => {
+                    self.status = "已同步".into();
+                    self.ui.toast("已打开");
+                }
+                Err(error) => {
+                    self.status = "打开失败".into();
+                    self.ui.toast(error);
+                }
+            }
+        }
         let reply = self
             .backend
             .as_ref()
@@ -398,6 +430,7 @@ for line in sys.stdin:
                 ready_logged: false,
                 write_confirmed: false,
                 ui: View::new(&ctx),
+                open_job: None,
                 ctx,
                 #[cfg(feature = "capture")]
                 capture_requested: false,

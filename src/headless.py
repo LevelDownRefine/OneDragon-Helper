@@ -13,6 +13,7 @@ PROTOCOL_VERSION = 1
 METHODS = {
     "app.snapshot": ("app_snapshot", (), ()),
     "script.view": ("script_view", ("script_name",), ()),
+    "script.target": ("resolve_script_target", ("script_name", "target"), ()),
     "daily.select": (
         "select_daily",
         ("script_name",),
@@ -98,7 +99,7 @@ def handle_request(service, request) -> dict:
         if not set(required) <= set(params) or set(params) - set(required + optional):
             raise ProtocolError("invalid_params", "参数字段缺失或包含不支持的字段")
         # 参数值原样转发；取值校验和空操作语义由原 service 接口负责。
-        mutating = method not in ("app.snapshot", "script.view")
+        mutating = method not in ("app.snapshot", "script.view", "script.target")
         # 保护协议 stdout，包括适配器或第三方库的意外输出。
         with redirect_stdout(sys.stderr):
             result = getattr(service, attribute)(**params)

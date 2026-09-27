@@ -106,6 +106,36 @@ class HeadlessProcessTests(unittest.TestCase):
         self.assertEqual(json.loads(self.native.read_text(encoding="utf-8")), expected)
         self.assertIn("config 已更新", result.stderr)
 
+    def test_resource_targets_resolve_without_gui_or_native_writes(self):
+        before = self.native.read_bytes()
+        result, responses = self.serve(
+            [
+                request(
+                    "script.target", {"script_name": "ok-ww", "target": "folder"}, 1
+                ),
+                request(
+                    "script.target", {"script_name": "ok-ww", "target": "github"}, 2
+                ),
+                request(
+                    "script.target", {"script_name": "missing", "target": "log"}, 3
+                ),
+                request("script.target", {"script_name": "ok-ww", "target": "game"}, 4),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            responses[0]["result"],
+            {"kind": "path", "value": str(self.root / "scripts")},
+        )
+        self.assertEqual(responses[1]["result"]["kind"], "url")
+        self.assertTrue(
+            responses[1]["result"]["value"].startswith("https://github.com/")
+        )
+        self.assertEqual(responses[2]["result"]["kind"], "unavailable")
+        self.assertEqual(responses[3]["error"]["code"], "operation_failed")
+        self.assertFalse(responses[3]["error"]["refresh_required"])
+        self.assertEqual(self.native.read_bytes(), before)
+
     def test_adapter_rejections_leave_native_file_unchanged(self):
         before = self.native.read_bytes()
         cases = [

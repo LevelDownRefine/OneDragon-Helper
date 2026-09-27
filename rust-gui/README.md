@@ -3,7 +3,8 @@
 分支 `codex/rust-gui-prototype`，已 rebase 到 `main@1573bfc`；main 已包含无 Qt CLI（[#101](https://github.com/LevelDownRefine/OneDragon-Helper/pull/101)）。
 分支依赖与后续功能顺序见 [渐进迁移计划](../docs/rust-feasibility/migration-plan.md)。
 Rust 负责窗口、列表、任务卡和进程通信；现有 Python `src.headless` 负责全部配置业务。
-当前已按原 GUI 对齐主窗口布局与任务卡交互，未迁移入口保留并标注“暂不可用”。
+当前已按原 GUI 对齐主窗口布局与任务卡交互，并接通工具栏资源跳转。
+未迁移入口保留并标注“暂不可用”。
 首版选用 [egui / eframe 0.36.2](https://docs.rs/eframe/0.36.2/eframe/)，使用 Glow 渲染器，
 用于验证 Rust GUI + Python CLI 的边界和操作体验，尚未决定最终界面框架。
 
@@ -56,8 +57,11 @@ cargo build --release --locked --manifest-path rust-gui/Cargo.toml
 - 正常退出关闭 stdin，等待 300 ms，必要时终止并回收自己启动的 CLI。强制杀死 GUI
   的进程树托管尚未实现。Python 会话仍持有现有更新租约。
 - 界面不直接读写游戏配置；初始化沿用 main 的实现（#104），不在 Rust 重做。
+- 工具栏可打开游戏官网、B 站、GitHub、脚本目录、运行日志目录和脚本配置文件。
+  Python 解析声明与路径，Rust 在工作线程调用系统关联程序；缺资源和打开失败会提示。
+  Windows 使用 `ShellExecuteW`，不经过命令 shell；配置文件打开沿用原版的系统关联行为。
 
-启动脚本/游戏、计划、脚本增删/路径配置、设置弹窗、备份、更新、链接/目录打开、
+启动脚本/游戏、计划、脚本增删/路径配置、设置弹窗、备份、更新、
 壁纸切换与视频还未迁移。启动按钮直接显示“暂不可用”，其余占位入口在悬停时提示，
 点击后显示说明；这些操作继续通过原版助手使用。脚本图标目前统一使用静态默认图标，
 尚未提取各 EXE 的图标。此原型不启动外部脚本，不是发布包替代品。
@@ -111,3 +115,6 @@ Python 全套测试仍按 `TESTING.md` 在 Ubuntu 运行。
 当前使用 #101 的扁平任务卡响应：日常 `name/task/sequence/enabled/options`、
 周常 `name/task/options/start_day`；请求参数仍为 `daily_name`、`weekly_name`。
 不依赖 #102 的 Qt CLI 测试模式，也不包含该模式的 Python 客户端和控制器改动。
+
+导航批次验证：Rust 16 项通过；Ubuntu Python 1161 项（1127 通过、34 项原有跳过，83.196 秒）；
+Ruff、rustfmt、Clippy 通过。覆盖六个导航按钮的请求、声明/回退、缺失资源、路径字符和无 Qt CLI 查询。

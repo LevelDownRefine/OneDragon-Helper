@@ -56,6 +56,7 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | --- | --- | --- |
 | `app.snapshot` | `{}` | `scripts`：按配置顺序给出 `script_name/display_name/script_path/adapted/script_data`；script_data 为原脚本条目，供现有 GUI 展示；不扫描所有外部脚本 |
 | `script.view` | `script_name` | `script` 摘要、`dailies` 和 `weeklies` |
+| `script.target` | `script_name/target` | 只解析工具栏的 URL、路径或不可用原因，不执行打开动作 |
 | `daily.select` | 必填 `script_name`；可选 `daily_name/task_name/sequence`，默认均为 null | 沿用原日常选择接口，返回 null |
 | `daily.enable` | `script_name/daily_name/enabled` | 修改目标开关，不改变已选副本，返回 null |
 | `weekly.select` | `script_name/weekly_name/task_name` | 沿用原周常选择接口，返回 null |
@@ -81,6 +82,11 @@ CLI 不转换字符串、整数或布尔值，字段类型及取值校验仍由�
 周常条目：`name/options/task/start_day`；无选项组时 options 为 null。
 start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不同。
 尚未开放设置、运行或更新动作。
+工具栏 `script.target` 的 target 为 `home/bili/github/folder/log/configfile`。
+成功目标为 `{"kind":"url"或"path","value":"..."}`，本机缺失资源为
+`{"kind":"unavailable","reason":"..."}`；路径为绝对路径。链接沿用资源声明及原 GUI
+通用回退，日志与配置文件沿用现有解析器。调用方用系统关联打开；此查询不会启动游戏，
+也不把路径或配置内容拼入 shell 命令。查询异常的 `refresh_required` 为 false。
 查询自定义脚本返回 `adapted=false` 与空日常列表；查询未知脚本名返回错误。
 写入的未知脚本、未知周常等情况按原接口处理，不统一改为查询错误。
 例如无副本选择的周常选择为空操作；设置未知周常起始日仍保存助手侧意图，跳过游戏侧同步。

@@ -15,6 +15,8 @@
   分开处理写入失败与刷新失败，不因反读失败重放写入。
 - 当前 Rust 可用：原版布局、任务卡分级菜单、日常/周常保存反读、脚本切换、
   连接诊断、窗口拖动/最小化/关闭。其余入口保持“暂不可用”直到对应 PR 接通。
+- E 已接通官网、B 站、GitHub、脚本目录、日志及配置文件入口；分支
+  `codex/rust-gui-navigation`，基于 #103，使用只查询的 `script.target` 接口。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 
@@ -28,7 +30,7 @@
 | --- | --- | --- |
 | E：工具栏导航 | `controllers/links.py` 的官网、B 站、GitHub、脚本目录、日志、配置文件 | Python 经资源声明和现有解析器返回明确的 URL/路径/不可用原因；Rust 用系统关联打开，错误可见。无脚本、未适配、文件缺失和带空格/中文路径有测试；不把打开文件用作启动游戏接口 |
 | F：脚本配置 | `dialogs.py` 的路径、参数、超时、完成条件、游戏路径、七日周常超时、原生任务开关 | 读取/保存经 CLI；Rust 保留表单草稿和错误。保存按 `update_script → init_script_after_edit → set_script_switches`，保留 #104 的初始化边界；取消不写盘，路径/身份变化和部分失败可解释 |
-| G：脚本列表 | `controllers/game_list.py` 的添加、删除、重排、手动勾选、全选/清空、控制模式 | CLI 复用 `build_script_entry/add_script/remove_script/save_config`；保留脚本身份、顺序和既有 enabled 持久化规则。添加与快捷方式解析只记录信息，不运行脚本；重复/失效路径明确提示 |
+| G：脚本列表 | `controllers/game_list.py` 的添加、删除、重排、手动勾选、全选/清空、控制模式 | CLI 复用 `build_script_entry/add_script/remove_script/save_config`；保留脚本身份与顺序；手动勾选只存内存、重启全选，每日计划独立。添加与快捷方式解析只记录信息，不运行脚本；重复/失效路径明确提示 |
 | H：运行与运行选项 | `controllers/launch.py`、`run_confirm_dialog.py`、`run_options_editor.py` 的当前/全部运行、确认、静音/恢复、失败重跑、通知、关机选项；工具栏启动游戏 | 长链以独立调度/Runner 进程运行，不阻塞 stdio；GUI 退出不终止正在运行的链。Python 负责校验、命令和业务；Rust 管确认与显示。凭据不写日志/命令行，游戏启动独立验证；关机确认以独立 Rust 入口替换隐式 Qt 弹窗后才启用 |
 | I：启动与每日计划 | `config_dialog.py`、`startup_dialog.py`、`daily_plan_dialog.py` 的自动启动倒计时、保存/取消、每日时间与独立运行选项、系统任务状态 | 计划继续由 Python 注册与回读，指向可无 GUI 运行的入口；手动勾选不影响每日计划，暂停保留设置，任务注册失败不留下不一致配置。自动启动、每日计划与更新后跳过倒计时保持原行为 |
 | J：备份恢复 | `controllers/backup.py` 的备份 ZIP、恢复选择、覆盖确认、结果提示 | 复用 `create_backup/restore_backup`，保留本机游戏路径、恢复前 ZIP、部分成功和跳过原因；取消不改配置，用临时目录测试，不操作真实备份 |

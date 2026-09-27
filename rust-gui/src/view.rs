@@ -264,7 +264,7 @@ impl View {
         let toolbar = rect(1212.0 + dx, 88.0, 52.0, 396.0);
         panel(ui, toolbar, 18, PANEL);
         for (index, (icon, name)) in [
-            ("home", "项目主页"),
+            ("home", "游戏官网"),
             ("game", "启动游戏"),
             ("folder", "脚本目录"),
             ("log", "运行日志"),
@@ -282,8 +282,25 @@ impl View {
                 36.0,
                 36.0,
             );
-            if self.icon_button(ui, icon, bounds, &format!("{name} · 暂不可用"), true) {
-                self.unavailable(name);
+            let available = !matches!(*icon, "game" | "wallpaper");
+            let hint = if available {
+                (*name).to_owned()
+            } else {
+                format!("{name} · 暂不可用")
+            };
+            if self.icon_button(ui, icon, bounds, &hint, true) {
+                if !available {
+                    self.unavailable(name);
+                } else if !data.busy {
+                    if let Some(script) = data.selected {
+                        actions.push(Action::Request(Request {
+                            method: "script.target".into(),
+                            params: json!({"script_name": script, "target": icon}),
+                        }));
+                    } else {
+                        self.toast("尚无脚本");
+                    }
+                }
             }
         }
         let launch = rect(960.0 + dx, 636.0 + dy, 236.0, 60.0);
@@ -1007,5 +1024,31 @@ mod tests {
             assert!(screen.contains_rect(popup));
             assert!(popup.bottom() <= anchor.top() || popup.top() >= anchor.bottom());
         }
+    }
+
+    #[test]
+    fn navigation_buttons_request_current_script_targets() {
+        let mut scene = Scene::new();
+        for (label, target) in [
+            ("游戏官网", "home"),
+            ("脚本目录", "folder"),
+            ("运行日志", "log"),
+            ("脚本配置文件", "configfile"),
+            ("哔哩哔哩", "bili"),
+            ("GitHub", "github"),
+        ] {
+            let request = only_request(scene.click(Id::new(("icon", label))));
+            assert_eq!(request.method, "script.target");
+            assert_eq!(
+                request.params,
+                json!({"script_name": "test", "target": target})
+            );
+        }
+        assert!(
+            scene
+                .click(Id::new(("icon", "启动游戏 · 暂不可用")))
+                .is_empty()
+        );
+        assert!(scene.ui.toast.as_ref().unwrap().0.contains("暂不可用"));
     }
 }

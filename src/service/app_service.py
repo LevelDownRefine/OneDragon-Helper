@@ -22,6 +22,7 @@ import logging
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
+import src.service.resource_service as resource_service
 import src.service.task_service as task_service
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
@@ -104,6 +105,10 @@ class AppService:
     def script_view(self, script_name: str) -> dict:
         """CLI 任务卡及物化选项。"""
         return task_service.script_view(script_name)
+
+    def resolve_script_target(self, script_name: str, target: str) -> dict:
+        """取得脚本工具栏的外部打开目标。"""
+        return resource_service.resolve_script_target(script_name, target)
 
     def select_daily(
         self,

@@ -18,6 +18,7 @@
 |------|------|
 | app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
 | task_service.py | 脚本列表与任务卡聚合查询；无 GUI 或进程依赖 |
+| resource_service.py | 按现有声明/解析器查询脚本工具栏目标，不启动系统程序 |
 | utils_config.py | 单脚本配置（原 script_service.py 已退化为模块函数）：config.yml 完整读写（含条目增删改）+ get_script / build_script_entry / config_file_path |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
@@ -50,6 +51,10 @@ CLI 编辑入口保留在 `AppService`，直接调用对应的 GUI 原接口：
 [CLI 协议](../../docs/rust-feasibility/headless-cli.md)。本层不负责传输、界面状态或格式化文案。
 
 ## 脚本配置编辑
+
+工具栏通过 `AppService.resolve_script_target(script_name, target)` 查询 URL、绝对路径
+或不可用原因；只接受官网/B 站/GitHub、脚本目录、日志目录和配置文件六类目标。
+业务路径规则复用原接口，操作系统关联打开由前端负责，不含游戏启动操作。
 
 `AppService.update_script` 只保存脚本条目与每周超时，不初始化子脚本配置。
 编辑流程保留旧条目快照，保存成功后单独调用 `init_script_after_edit(previous, script_name)`：
