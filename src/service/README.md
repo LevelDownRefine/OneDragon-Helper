@@ -17,6 +17,7 @@
 | 模块 | 职责 |
 |------|------|
 | app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
+| task_service.py | 任务卡聚合查询、日常/周常选择校验与写后反读；无 GUI 或进程依赖 |
 | utils_config.py | 单脚本配置（原 script_service.py 已退化为模块函数）：config.yml 完整读写（含条目增删改）+ get_script / build_script_entry / config_file_path |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
@@ -24,6 +25,14 @@
 | daily_plan.py | 每日计划读写与 Windows 原生任务注册，并可回读任务实际状态；系统仅保存触发时间和 --run-daily 入口 |
 | backup_service.py | 配置备份与恢复：普通 ZIP 收集与恢复；按当前脚本目录覆盖，保留游戏路径，未配置脚本跳过 |
 | run_actions.py | pre_run / post_run 各 step 的具体动作 |
+
+## 任务卡查询与编辑
+
+任务卡通过 `AppService.app_snapshot/script_view/select_daily/enable_daily/select_weekly/start_weekly`
+调用。查询返回普通字典：日常为 `name/task/sequence/enabled/options`，周常为
+`name/task/options/start_day`。保留 JSON 整数与布尔的区别、`0=不启用` 与 `None=未设置`；
+写入复用现有适配器并重新反读。读取仍可能触发既有模板对齐，不承诺完全没有写盘副作用。
+进程协议与 GUI 接入在后续 PR 中提供，本层不负责传输、界面状态或格式化文案。
 
 ## 手动更新
 
