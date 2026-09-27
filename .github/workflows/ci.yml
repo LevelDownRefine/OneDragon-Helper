@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
-    branches: [ main, master, codex/headless-cli ]
+    branches: [ main, master, 'codex/rust-gui-*' ]
 
 jobs:
   test:

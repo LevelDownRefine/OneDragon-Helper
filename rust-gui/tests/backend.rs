@@ -41,13 +41,15 @@ fn real_cli_round_trip_types_external_changes_and_shutdown() {
     let pid = session.pid();
     let snapshot = call(&mut session, "app.snapshot", json!({}));
     assert_eq!(snapshot["scripts"][0]["display_name"], "鸣潮");
-    let view = call(
+    let saved = call(
         &mut session,
         "daily.select",
         json!({
             "script_name": "ok-ww", "daily_name": "每日任务", "task_name": "凝素领域", "sequence": 1
         }),
     );
+    assert!(saved.is_null());
+    let view = call(&mut session, "script.view", json!({"script_name": "ok-ww"}));
     let view: ScriptView = serde_json::from_value(view).unwrap();
     assert_eq!(view.dailies[0].sequence, json!(1));
     assert_eq!(view.dailies[0].label(), "凝素领域 · 梦州-迅刀");
@@ -61,21 +63,29 @@ fn real_cli_round_trip_types_external_changes_and_shutdown() {
     std::fs::write(&native, serde_json::to_vec(&data).unwrap()).unwrap();
     let view = call(&mut session, "script.view", json!({"script_name": "ok-ww"}));
     assert_eq!(view["dailies"][0]["sequence"], 2);
-    let view = call(
+    let saved = call(
         &mut session,
         "weekly.start",
         json!({
             "script_name": "ok-ww", "weekly_name": "幻梦游园", "start_day": 0
         }),
     );
+    assert!(saved.is_null());
+    let view = call(&mut session, "script.view", json!({"script_name": "ok-ww"}));
     assert_eq!(view["weeklies"][0]["start_day"], 0);
-    let view = call(
+    let saved = call(
         &mut session,
         "daily.select",
         json!({
             "script_name": "March7th-Launcher", "daily_name": "每日任务",
             "task_name": "每日任务", "sequence": true
         }),
+    );
+    assert!(saved.is_null());
+    let view = call(
+        &mut session,
+        "script.view",
+        json!({"script_name": "March7th-Launcher"}),
     );
     assert!(
         view["dailies"]
@@ -90,7 +100,8 @@ fn real_cli_round_trip_types_external_changes_and_shutdown() {
     let rejected = session.request("daily.select", json!({
         "script_name": "March7th-Launcher", "daily_name": "每日任务", "task_name": "每日任务", "sequence": 1
     }), Duration::from_secs(10), &AtomicBool::new(false)).unwrap_err();
-    assert_eq!(rejected.code, "invalid_params");
+    assert_eq!(rejected.code, "operation_failed");
+    assert!(rejected.refresh_required);
     call(&mut session, "script.view", json!({"script_name": "ok-ww"}));
     let mut command = python(
         "import sys\nfrom pathlib import Path\nfrom src.update.runtime import FileLease\nwith FileLease(Path(sys.argv[1])): pass",

@@ -1,124 +1,72 @@
 # Rust GUI 渐进迁移计划
 
-2026-09-27；A 已合入 main，B 已 rebase 到 main，C/D 已重接 B。Rust 已接入 B 的协议。
+2026-09-28。近期路线：Rust 接管全部现有 GUI，助手业务保留 Python CLI。
+每块以可独立验收的 PR 交付，完成一块即测试、提 PR、继续下一块。
 
-近期目标：Rust 接管界面，助手业务保留 Python CLI。每一步都能独立验收，
-原 GUI 在替代能力完整前继续可用。配置类初始化重构不纳入本轮，保留已有 TODO。
+## 当前基线
 
-## 当前状态
+- #97 的任务卡 service、#100 的资源声明、#101 的无 Qt CLI、#104 的显式配置初始化、
+  #105 的 CLI 原接口转发均已合入 main。
+- [#103](https://github.com/LevelDownRefine/OneDragon-Helper/pull/103)（`codex/rust-gui-prototype`）
+  已重接 `main@1573bfc`；只保留 Rust 前端、资源、开发工具、测试与 CI。
+- #102 的 Qt CLI 测试模式独立保留，不是 Rust 的运行或合并依赖，本轮不修改该分支。
+- CLI 日常响应为 `name/task/sequence/enabled/options`，周常为
+  `name/task/options/start_day`。四个写操作返回 `null`；客户端随后查询 `script.view`，
+  分开处理写入失败与刷新失败，不因反读失败重放写入。
+- 当前 Rust 可用：原版布局、任务卡分级菜单、日常/周常保存反读、脚本切换、
+  连接诊断、窗口拖动/最小化/关闭。其余入口保持“暂不可用”直到对应 PR 接通。
+- 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
+  含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 
-| 代号 | PR / 分支 | 基线 | 范围 |
-| --- | --- | --- | --- |
-| A | [#97](https://github.com/LevelDownRefine/OneDragon-Helper/pull/97)，`codex/rust-feasibility@87e4dda` | 已合入 `main@f19b891` | 任务卡 service，4 个文件 |
-| B | [#101](https://github.com/LevelDownRefine/OneDragon-Helper/pull/101)，`codex/headless-cli` | `main@f19b891` | 无 Qt CLI，5 个文件 |
-| C | [#102](https://github.com/LevelDownRefine/OneDragon-Helper/pull/102)，`codex/qt-cli-task-card` | B | 原 GUI 测试模式，17 个文件 |
-| D | [#103](https://github.com/LevelDownRefine/OneDragon-Helper/pull/103)，`codex/rust-gui-prototype` | B | Rust 窗口与任务卡；不包含 C 的 Qt 接入 |
+## 连续 PR 顺序与验收
 
-拆分保留 #97 后续清理后的实现：日常响应为 `name/task/sequence/enabled/options`，
-周常为 `name/task/options/start_day`；Rust 已适配，请求参数 `daily_name/weekly_name` 不变。
-临时配置同步复制 main 的 `script_resources.yml`，不复制真实用户配置。
+以下是 #103 之后的功能批次，每批同时带必要的 CLI 薄接口、Rust 界面和测试。
+接口名是候选设计，以各 PR 的最终实现为准；不单独堆一个“所有后端接口”大 PR。
+原版 GUI 继续可用，Python 配置/路径/任务语义沿用现有 service 和机制类。
 
-原始引用保留在远端 `codex/pr97-before-split-20260927@a79c4b2` 和
-`codex/rust-gui-before-split-20260927@f1c0572`。旧 #97 评审留在原 PR：service 讨论仍归
-#97，CLI 及进程契约转 #101，Qt 控制器/菜单/测试转 #102；测量材料已在拆分前移除。
+| 批次 | 用户功能 / 对照源码 | 边界与关键验收 |
+| --- | --- | --- |
+| E：工具栏导航 | `controllers/links.py` 的官网、B 站、GitHub、脚本目录、日志、配置文件 | Python 经资源声明和现有解析器返回明确的 URL/路径/不可用原因；Rust 用系统关联打开，错误可见。无脚本、未适配、文件缺失和带空格/中文路径有测试；不把打开文件用作启动游戏接口 |
+| F：脚本配置 | `dialogs.py` 的路径、参数、超时、完成条件、游戏路径、七日周常超时、原生任务开关 | 读取/保存经 CLI；Rust 保留表单草稿和错误。保存按 `update_script → init_script_after_edit → set_script_switches`，保留 #104 的初始化边界；取消不写盘，路径/身份变化和部分失败可解释 |
+| G：脚本列表 | `controllers/game_list.py` 的添加、删除、重排、手动勾选、全选/清空、控制模式 | CLI 复用 `build_script_entry/add_script/remove_script/save_config`；保留脚本身份、顺序和既有 enabled 持久化规则。添加与快捷方式解析只记录信息，不运行脚本；重复/失效路径明确提示 |
+| H：运行与运行选项 | `controllers/launch.py`、`run_confirm_dialog.py`、`run_options_editor.py` 的当前/全部运行、确认、静音/恢复、失败重跑、通知、关机选项；工具栏启动游戏 | 长链以独立调度/Runner 进程运行，不阻塞 stdio；GUI 退出不终止正在运行的链。Python 负责校验、命令和业务；Rust 管确认与显示。凭据不写日志/命令行，游戏启动独立验证；关机确认以独立 Rust 入口替换隐式 Qt 弹窗后才启用 |
+| I：启动与每日计划 | `config_dialog.py`、`startup_dialog.py`、`daily_plan_dialog.py` 的自动启动倒计时、保存/取消、每日时间与独立运行选项、系统任务状态 | 计划继续由 Python 注册与回读，指向可无 GUI 运行的入口；手动勾选不影响每日计划，暂停保留设置，任务注册失败不留下不一致配置。自动启动、每日计划与更新后跳过倒计时保持原行为 |
+| J：备份恢复 | `controllers/backup.py` 的备份 ZIP、恢复选择、覆盖确认、结果提示 | 复用 `create_backup/restore_backup`，保留本机游戏路径、恢复前 ZIP、部分成功和跳过原因；取消不改配置，用临时目录测试，不操作真实备份 |
+| K：原生图标和拖放 | `icons.py`、`file_drop.py` 的脚本/游戏 EXE 图标、悬停预览、文件和快捷方式拖入 | Rust 提取/缓存图标、处理文件拖入；Python 解析目标和参数。兼容管理员窗口，多文件统一汇报，不误启动文件；缩放和图标缺失有回退 |
+| L：壁纸 | `controllers/background.py`、`qml/background.qml` 的脚本默认背景、图片/视频、自定义选择/重置、首帧缓存 | Python 解析资源与保存映射/缓存；Rust 解码播放与呈现。覆盖切换脚本、静音/循环、首帧未就绪、缺失媒体、退出释放文件；不借用 Python Qt 播放器冒充迁移完成。视频依赖及体积在该 PR 明示 |
+| M：手动更新 | `controllers/update.py`、`update_dialog.py` 的版本/说明、检查、下载进度、取消、安装重启、上次结果 | 复用现有 Python 更新事务；先定义有界后台任务、轮询/进度与取消协议。确认 Rust GUI、CLI 和更新器的身份/运行锁、就绪后退出、失败重试与安装后重启；不修改 runner 子模块 |
+| N：完整入口与发布验证 | `launcher.py` 与打包/EXE 测试的入口、UAC、运行锁、重启参数 | Rust GUI + 无 Qt Python 后端能独立分发；关机/每日计划/更新不回退 Qt。验证安装布局、源代码/冻结根路径、后端缺失提示、资源清单、升级和退出；再测同条件体积与启动时间 |
 
-验证：A/B/C/D 分别通过 Ubuntu 全量 1111/1124/1133/1125 项，均有原有的 34 项跳过。
-A 的 9 项 service、B 的 13 项 CLI、C 的 14 项 GUI/launcher 测试另行独立通过；
-D 的 12 项 Rust 测试、真实 CLI 与 Windows 窗口截图验证通过。Ruff、rustfmt、严格 Clippy 通过。
+F/G、H/I、K/L 分开，使配置保存、运行调度和媒体平台代码能单独审查。
+若某一块超出单次可审查范围，按已可用的用户操作继续拆小，不以隐藏入口或模拟响应代替完成。
+每个 PR 描述写清已实现与剩余功能，并更新本表中的实际 PR 链接。
 
-## #97 的拆分边界
-
-A/B/C 按最终代码拆分，未按原提交直接分组；保留了 `f6a78fd`、`a79c4b2` 的去重、校验顺序和锁测试修正。
-
-| PR | 独立目的 | 主要文件 | 完成标准 |
-| --- | --- | --- | --- |
-| A：任务卡 service | 给调用方提供统一查询与编辑，不涉及进程或 GUI | `src/service/task_service.py`、`app_service.py` 的六个薄接口、`tests/service/test_task_service.py` | 直接调用 service 可读写日常/周常；拒绝非法选择并保留原选择；整数/布尔、周常 0、写后反读语义正确；不导入 Qt |
-| B：无 Qt CLI | 将 A 暴露为可供任何前端调用的进程接口 | `src/headless.py`、`tests/test_headless.py`、`tests/support/headless.py` | `call` 和 `serve --stdio` 可独立运行；真实临时配置往返；UTF-8、错误响应、部分写入、EOF 释放运行锁；不依赖 GUI |
-| C：原 GUI 接入 | 用原窗口验证同一套 CLI，作为可选测试模式 | `src/gui/cli_client.py`、`controllers/cli_task_card.py`、`task_card.py`、`game_list.py`、`main_window.py`、QML，以及 `src/cli.py`、`launcher.py` 的 `--cli-backend` 路由 | 默认 GUI 行为不变；CLI 模式异步读写任务卡；不绕过 CLI 读写；断线可刷新、不重放写入；本地与 CLI 展示一致；未接入入口禁用 |
-
-测试随所属行为拆分：
-
-- A 将现有协议测试中关于选择合法性、类型和写入结果的核心断言补到 service 层，
-  不能只带当前两个 service 测试就称为完整验收。
-- B 保留真实子进程与适配器集成测试；这些测试保证 A 经协议暴露后仍有同样行为。
-- C 带 `tests/gui/test_cli_backend.py`、`tests/support/cli_gui_scene.py`、
-  `tests/test_launcher.py` 和倒计时测试中的相应调整；QProcess 生命周期与界面接线一并审查。
-- `src/utils/utils_config.py` 的两行 TODO 可随 C 保留，只有注释，不修改 `ScriptConfig`。
-  现有读取可能触发模板对齐，不把此次拆分描述为消除了查询的全部写盘副作用。
-- service 文档随 A；协议说明随 B；现有 GUI 测试模式说明随 C。历史测量材料已从最新
-  #97 清理，拆分不得重新引入；总体路线仅保留一个文档入口。
-
-依赖与合并关系：
+## 分支与合并
 
 ```mermaid
 flowchart LR
-    M["main · 已含 A / #97"] --> B["B · 无 Qt CLI"]
-    B --> C["C · 原 GUI 测试模式"]
-    B --> D["D · Rust 任务卡"]
+    M["main · Python service + CLI"] --> D["#103 · Rust 任务卡"]
+    D --> E["E · 导航"] --> F["F · 配置"] --> G["G · 列表"]
+    G --> H["H · 运行"] --> I["I · 启动/计划"] --> J["J · 备份"]
+    J --> K["K · 图标/拖放"] --> L["L · 壁纸"] --> U["M · 更新"] --> N["N · 发布"]
 ```
 
-C 是验证前端，不是 Rust 的运行依赖。D 可以在 B 稳定后接入，不能继续从包含全部
-Qt GUI 接入改动的旧分支堆叠，也不需要复制一套 Python 后端。
+先以相邻前置分支作为 PR base，让每个差异只包含本批改动；不用等待人工逐项确认才继续。
+前置 PR squash 合并后，子分支用 `rebase --onto` 跳过旧前置提交并转到 main，
+保留测试与实际功能差异。CI 对 main/master 和 `codex/rust-gui-*` 目标分支运行。
+不替用户自动合并 PR，也不同时改动已有的 Qt 分支。
 
-B 的 CI 配置与 main 一致；C/D 各自添加面向 `codex/headless-cli` 的临时触发条件，
-转到 main 时移除。Rust 检查只在 D 引入。
+## 统一完成条件
 
-A 已合入 main，B 已转到 main。B 合入后 C、D 分别转到 main，并重新核对
-差异与 CI，避免父 PR 被 squash 后重复带入旧提交。各 PR 保留完整测试覆盖。
+- 声明来自 `script_resources.yml`、日常/周常/任务开关声明及用户配置；Rust 不复制业务表。
+- 所有配置写入经 service/CLI，Rust 保留交互状态与草稿。界面关闭、Esc、取消不触发保存。
+- 快请求沿用串行 JSONL；运行、下载、取消另有明确生命周期，不能用增加超时掩盖阻塞。
+- 保留整数/布尔/字符串、未设置/不启用等现有语义；失败不静默，不自动重复写操作。
+- 每批跑 Ubuntu Python 全量与 Ruff、Rust fmt/Clippy/测试；用真实临时配置和无 Qt 导入守卫
+  验证 CLI。界面截图检查布局，输入测试检查交互；源码测试与 Windows 打包验证遵循 TESTING.md。
+- N 之后才比较完整安装目录、压缩包和外部依赖；同机同配置测首帧/可操作时间，区分冷/热启动。
+  单独的 Rust EXE 大小不是完整助手体积，未验证前不报告加速百分比。
 
-## Rust 原型 D 的范围
-
-1. 基于 B 的最终版本，仅迁入现有两个 Rust 实现提交中的前端、资源和开发工具改动。
-   当前提交也改过评估文档和 CI，需按内容选择，不能直接整段复制旧文档。
-2. 修改 `rust-gui/src/model.rs`、展示层及测试，消费最新任务卡响应；不加双结构兼容层。
-3. 范围固定为现有窗口布局、脚本切换、日常/周常读写、连接状态与错误处理。
-   启动、设置、壁纸切换等保持“暂不可用”。
-4. 保留真实 CLI 集成测试、菜单交互测试与窗口截图验证；D 的 CI 只增加 Rust 所需检查。
-
-D 的验收是独立 Rust 程序完成“切换脚本 → 改任务 → 反读 → 切回确认”，
-并验证崩溃/超时不重放写操作、退出回收所属 CLI；Python 子进程不能导入 Qt/GUI。
-原 Qt GUI 文件继续服务原版，不因 Rust 已有对应界面就立即从仓库删除。
-
-`run_rust_gui.py`、`export_rust_icons.py` 及两份测试文件留在 D，属于开发辅助。
-正常 Rust 前端调用已配置的 Python CLI，不需要经 Python 启动器或 Qt 图标导出器运行。
-把开发工具改成 Rust 不作为此阶段目标，也不计入移除业务 Python 的进展。
-
-## 后续按用户操作逐项推进
-
-每行都是后续的独立增量，不合成一个“补齐所有功能”的 PR。需要新 CLI 接口时，
-先交付后端接口与测试，再由 Rust 接入；已有接口够用时只修改前端。
-下面的接口名称是候选设计，当前尚未实现。
-
-| 顺序 | 增量 | Python / Rust 边界 | 验收重点 |
-| --- | --- | --- | --- |
-| E | 打开主页、目录、日志、配置文件 | Python 返回已解析目标与不可用原因；Rust 调系统浏览器/文件管理器 | 目标正确，缺失路径可解释；不在 Rust 重写脚本路径规则 |
-| F | 单脚本配置弹窗 | `script.edit_data/update` 复用现有 service；Rust 负责表单草稿与错误展示 | 保存反读、取消不写、原生任务开关和超时保真；不改配置类初始化 |
-| G | 脚本增删、排序、勾选 | `script.add/remove/reorder` 负责校验与保存；Rust 管交互状态 | 重复/失效路径处理、顺序和既有勾选语义一致；外部拖入可另做后续 PR |
-| H | 手动运行当前/全部 | Python 校验并启动既有独立调度/Runner；Rust 确认与显示结果 | 不在串行 stdio 会话内等待整条脚本链；GUI 退出不结束已启动的运行；取消保留既有语义 |
-| I | 启动与运行设置 | Python 读写设置和凭据；Rust 展示表单 | 取消不写、授权码不回显/不进入参数或日志；启动倒计时与手动运行分别验证 |
-| J | 每日计划 | Python 保留 Windows 任务注册与状态反读；Rust 提供编辑界面 | 注册/暂停/回读一致；系统任务指向无 GUI 入口，关闭窗口后仍可触发 |
-| K | 备份与恢复 | 复用 Python 备份业务；Rust 选文件并显示结果 | 保留本机游戏路径、部分成功反馈；使用临时配置回归 |
-| L | 图标、拖放、壁纸 | Rust 提取图标、收集拖入路径、渲染图片/视频；Python 解析业务路径与保存映射 | 先静态资源，再原生拖放，最后视频，各自提交；缩放、管理员拖入、缺失资源降级 |
-| M | 更新界面与退出交接 | Python 保留检查/下载/校验/安装事务；Rust 管进度与确认 | 先定义后台任务和取消协议；再接 UI；GUI/Backend 会话身份、运行锁、全部退出后替换及重启单独验证 |
-
-H 的启动游戏动作单独验证路径与启动策略，不用“打开目录”的接口隐式执行程序。
-运行后的关机确认仍有 Qt 耦合：启用 Rust 侧的关机选项前，需要单独交付 Rust 确认窗
-及 Python 调用契约；未完成时明确禁用该选项。不能悄悄拉起 PySide6 弹窗。
-Runner 是独立 submodule；确需修改时到其仓库单独提交，主仓只更新指针。
-
-## 发布与评估的关口
-
-- D 完成后先做受限功能的打包试验：Rust EXE + 无 Qt Python CLI 目录式后端，
-  明确支持的任务卡功能。分别记录前端、后端和所需其他组件的大小，不当作完整替代包。
-- 在同一机器、配置和功能范围下测进程创建到首帧、任务卡可操作的时间与多次分布；
-  冷启动和预热启动分开，不能只拿空窗口或单个 EXE 宣称整包收益。
-- 完整替代发布前，验收上述用户操作、关机确认、计划和更新；再从新发行包中移除
-  Python GUI / Qt 依赖。源码删除与旧入口下线另开 PR，不和首次替代发布捆绑。
-- 是否继续迁移 service/config/log/update 到 Rust，等完整包体积和启动瓶颈确定后再决定。
-  近期不更换配置格式、不重复实现同一份业务，也不迁移外部脚本内部算法。
-
-每个代码 PR 按 `TESTING.md` 跑 Ubuntu 全量测试和 Ruff；涉及 Rust 时增加
-rustfmt、严格 Clippy 和实际 Python CLI 集成测试。Windows 验证按现有平台分工执行，
-窗口截图用于布局检查，不替代交互测试；发布产物另跑 Windows EXE 集成测试。
-
-下一步审查与合并 B，再分别评审 C / D；新增功能从 E 开始另开 PR。
+旧拆分参考：#97 → #101 → #102/#103。原始引用保存在
+`codex/pr97-before-split-20260927@a79c4b2` 和 `codex/rust-gui-before-split-20260927@f1c0572`；
+此次 rebase 前本地引用为 `codex/rust-gui-before-rebase-20260928@67ca010`。

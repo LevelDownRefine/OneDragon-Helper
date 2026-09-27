@@ -41,6 +41,7 @@ pub struct App {
     started: Instant,
     first_ui: bool,
     ready_logged: bool,
+    write_confirmed: bool,
     ctx: egui::Context,
     ui: View,
     #[cfg(feature = "capture")]
@@ -65,6 +66,7 @@ impl App {
             started,
             first_ui: true,
             ready_logged: false,
+            write_confirmed: false,
             ctx: cc.egui_ctx.clone(),
             ui: View::new(&cc.egui_ctx),
             #[cfg(feature = "capture")]
@@ -113,7 +115,11 @@ impl App {
         }
     }
 
-    fn fail(&mut self, failure: Failure) {
+    fn fail(&mut self, mut failure: Failure) {
+        if self.write_confirmed {
+            failure.message = format!("已保存，但刷新失败：{}", failure.message);
+        }
+        self.write_confirmed = false;
         self.busy = false;
         self.view = None;
         self.status = "操作失败 · 请刷新".into();
@@ -161,7 +167,7 @@ impl App {
                 }
                 Err(err) => self.fail(Failure::transport(format!("脚本列表数据无效：{err}"))),
             }
-        } else {
+        } else if reply.method == "script.view" {
             match serde_json::from_value::<ScriptView>(result) {
                 Ok(view)
                     if Some(&view.script.script_name) == self.selected.as_ref()
@@ -171,6 +177,7 @@ impl App {
                             .all(|weekly| weekly.start_day.is_none_or(|day| day <= 7)) =>
                 {
                     self.view = Some(view);
+                    self.write_confirmed = false;
                     self.status = "已同步".into();
                     if !self.ready_logged {
                         self.ready_logged = true;
@@ -183,6 +190,15 @@ impl App {
                 Ok(_) => self.fail(Failure::transport("任务卡身份或起始日无效")),
                 Err(err) => self.fail(Failure::transport(format!("任务卡数据无效：{err}"))),
             }
+        } else if matches!(
+            reply.method.as_str(),
+            "daily.select" | "daily.enable" | "weekly.select" | "weekly.start"
+        ) && result.is_null()
+        {
+            self.write_confirmed = true;
+            self.refresh_view();
+        } else {
+            self.fail(Failure::transport("写操作响应无效"));
         }
     }
 }
@@ -325,4 +341,102 @@ fn install_font(ctx: &egui::Context, explicit: Option<&PathBuf>) -> Result<(), S
         }
     }
     Err("Chinese font missing. Start with --font <path-to-font>.".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn acknowledged_write_refreshes_once_without_replay_on_read_failure() {
+        for scenario in ["ok", "error", "malformed"] {
+            let root = tempfile::tempdir().unwrap();
+            let history = root.path().join("requests.jsonl");
+            let python =
+                PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+            let mut command = Command::new(&python);
+            command.args(["-u", "-c", r#"
+import json,sys
+for line in sys.stdin:
+    request = json.loads(line)
+    with open(sys.argv[1], 'a', encoding='utf-8') as history:
+        history.write(json.dumps(request) + '\n')
+    response = {'protocol_version': 1, 'id': request['id']}
+    if request['method'] == 'daily.select':
+        response['result'] = None
+    elif sys.argv[2] == 'error':
+        response['error'] = {'code': 'operation_failed', 'message': 'read failed', 'refresh_required': False}
+    elif sys.argv[2] == 'malformed':
+        response['result'] = None
+    else:
+        response['result'] = {'script': {'script_name': 'test', 'display_name': 'Test', 'script_path': 'test.exe', 'adapted': True}, 'dailies': [], 'weeklies': []}
+    print(json.dumps(response), flush=True)
+"#]);
+            command.arg(&history).arg(scenario);
+            let ctx = egui::Context::default();
+            let mut app = App {
+                settings: Settings {
+                    project_root: root.path().into(),
+                    python,
+                    font: None,
+                    demo: true,
+                    #[cfg(feature = "capture")]
+                    capture: None,
+                },
+                backend: Some(Backend::start(command, || {})),
+                scripts: Vec::new(),
+                selected: Some("test".into()),
+                view: None,
+                busy: false,
+                status: String::new(),
+                error: None,
+                diagnostics: String::new(),
+                pid: 0,
+                started: Instant::now(),
+                first_ui: true,
+                ready_logged: false,
+                write_confirmed: false,
+                ui: View::new(&ctx),
+                ctx,
+                #[cfg(feature = "capture")]
+                capture_requested: false,
+            };
+            app.request("daily.select", json!({"script_name": "test"}));
+            for _ in 0..2 {
+                let reply = app
+                    .backend
+                    .as_ref()
+                    .unwrap()
+                    .replies
+                    .recv_timeout(Duration::from_secs(10))
+                    .unwrap();
+                app.receive(reply);
+            }
+            assert!(!app.busy);
+            assert!(!app.write_confirmed);
+            if scenario == "ok" {
+                assert!(app.view.is_some());
+                assert!(app.error.is_none());
+            } else {
+                assert!(app.view.is_none());
+                assert!(
+                    app.error
+                        .as_ref()
+                        .unwrap()
+                        .starts_with("已保存，但刷新失败")
+                );
+            }
+            drop(app);
+            let requests: Vec<Value> = std::fs::read_to_string(history)
+                .unwrap()
+                .lines()
+                .map(|line| serde_json::from_str(line).unwrap())
+                .collect();
+            assert_eq!(requests.len(), 2, "{scenario}: do not replay or retry");
+            assert_eq!(requests[0]["method"], "daily.select");
+            assert_eq!(requests[1]["method"], "script.view");
+            assert_eq!(requests[1]["params"]["script_name"], "test");
+        }
+    }
 }

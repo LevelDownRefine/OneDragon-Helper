@@ -1,6 +1,6 @@
 # Rust 任务卡原型
 
-分支 `codex/rust-gui-prototype`，基于无 Qt CLI 分支 `codex/headless-cli`（[#101](https://github.com/LevelDownRefine/OneDragon-Helper/pull/101)）。
+分支 `codex/rust-gui-prototype`，已 rebase 到 `main@1573bfc`；main 已包含无 Qt CLI（[#101](https://github.com/LevelDownRefine/OneDragon-Helper/pull/101)）。
 分支依赖与后续功能顺序见 [渐进迁移计划](../docs/rust-feasibility/migration-plan.md)。
 Rust 负责窗口、列表、任务卡和进程通信；现有 Python `src.headless` 负责全部配置业务。
 当前已按原 GUI 对齐主窗口布局与任务卡交互，未迁移入口保留并标注“暂不可用”。
@@ -47,14 +47,15 @@ cargo build --release --locked --manifest-path rust-gui/Cargo.toml
   鼠标悬停展开子选项，两列可独立滚动，菜单在空间不足时向上展开；日常“不启用”
   恢复到菜单末项，周常“周几起”保留在任务卡内。
 - 一个常驻 `serve --stdio` 子进程；UTF-8 JSONL，不开端口，不拼接 shell 命令。
-- 请求在工作线程处理，等待时显示状态并禁用编辑/切换；返回后以真实反读状态更新。
+- 请求在工作线程处理，等待时显示状态并禁用编辑/切换；写操作收到 `result:null` 后
+  单独请求 `script.view` 回显。刷新失败提示“已保存，但刷新失败”，不会重放写操作。
   子选项保留 JSON 的整数、布尔、字符串类型；未设置与不启用分别呈现。
 - 超时、坏响应或子进程退出会清空任务卡；手动刷新重连，不自动重放写操作。
   部分写入失败时自动反读，保留失败提示；点击左上预览标记打开诊断窗口，
   显示 PID 和有界 stderr 尾部。
 - 正常退出关闭 stdin，等待 300 ms，必要时终止并回收自己启动的 CLI。强制杀死 GUI
   的进程树托管尚未实现。Python 会话仍持有现有更新租约。
-- 界面不直接读写游戏配置，也没有修改 `ScriptConfig` 初始化实现；已有 TODO 保留。
+- 界面不直接读写游戏配置；初始化沿用 main 的实现（#104），不在 Rust 重做。
 
 启动脚本/游戏、计划、脚本增删/路径配置、设置弹窗、备份、更新、链接/目录打开、
 壁纸切换与视频还未迁移。启动按钮直接显示“暂不可用”，其余占位入口在悬停时提示，
@@ -103,8 +104,8 @@ Rust 交互测试以真实 egui 指针/滚轮事件验证分级菜单的布尔�
 超时、坏响应和退出释放更新租约。演示目录生成另有 Python 单元测试。
 Python 全套测试仍按 `TESTING.md` 在 Ubuntu 运行。
 
-本次本地验证：Rust 12 项通过；Ubuntu Python 1125 项中 1091 项通过、34 项按原有规则
-跳过（63.244 秒）；Ruff、rustfmt 和严格 Clippy 通过。已运行 Windows 实际窗口并检查
+2026-09-28 rebase 验证：Rust 13 项通过；Ubuntu Python 1155 项中 1121 项通过、34 项按原有规则
+跳过（77.846 秒）；Ruff、rustfmt 和严格 Clippy 通过。已运行 Windows 实际窗口并检查
 中文显示与任务卡截图。CI 增加 Rust 检查和真实 Python CLI 集成测试。
 
 当前使用 #101 的扁平任务卡响应：日常 `name/task/sequence/enabled/options`、
