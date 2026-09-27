@@ -21,8 +21,12 @@
   基于 #106，接通单脚本配置表单与 Windows 文件选择；
   `script.edit_view/edit_save` 沿用显式初始化边界，部分失败保留草稿、重新读取后方可再次保存。
   新增 `launcher-rust.bat` 便于从仓库或 worktree 双击测试。
-- G `codex/rust-gui-script-list` 基于 #107，接通脚本/快捷方式添加、删除确认、拖动排序，
+- G [#108](https://github.com/LevelDownRefine/OneDragon-Helper/pull/108) `codex/rust-gui-script-list`
+  基于 #107，接通脚本/快捷方式添加、删除确认、拖动排序，
   以及手动勾选、全选/清空。手动状态按脚本身份保留在内存，后台拒绝过期排序。
+- H1 `codex/rust-gui-launch-current` 基于 #108，接通当前脚本/游戏启动；Python 解析目标，
+  Rust 通过系统关联或现有 Runner CLI 发起，关闭 GUI 不终止外部进程。
+  H 后续拆为批量确认/选项与无 Qt 调度入口、独立 Rust 关机确认两块。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

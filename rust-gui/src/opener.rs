@@ -52,7 +52,7 @@ impl OpenJob {
 }
 
 #[cfg(windows)]
-fn open(value: &str) -> Result<(), String> {
+pub(crate) fn open(value: &str) -> Result<(), String> {
     use windows_sys::Win32::{
         System::Com::{
             COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize,
@@ -89,7 +89,7 @@ fn open(value: &str) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-fn open(value: &str) -> Result<(), String> {
+pub(crate) fn open(value: &str) -> Result<(), String> {
     let executable = if cfg!(target_os = "macos") {
         "open"
     } else {

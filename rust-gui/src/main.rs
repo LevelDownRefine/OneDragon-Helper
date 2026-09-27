@@ -1,6 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 mod app;
 mod file_picker;
+mod launch;
 mod list_dialog;
 mod opener;
 mod script_editor;

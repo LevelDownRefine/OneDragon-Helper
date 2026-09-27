@@ -57,6 +57,7 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `app.snapshot` | `{}` | `scripts`：按配置顺序给出 `script_name/display_name/script_path/adapted/script_data`；script_data 为原脚本条目，供现有 GUI 展示；不扫描所有外部脚本 |
 | `script.view` | `script_name` | `script` 摘要、`dailies` 和 `weeklies` |
 | `script.target` | `script_name/target` | 只解析工具栏的 URL、路径或不可用原因，不执行打开动作 |
+| `script.launch_target` | `script_name/target`（script 或 game） | 解析单独启动目标；与工具栏普通资源查询分开，本接口不执行启动 |
 | `script.edit_view` | `script_name` | 原脚本条目 `script`、标识 `script_name`、七日 `weekly_timeouts` 和 `switches`（name/enabled） |
 | `script.edit_save` | `script_name/display_name/config_patch/weekly_timeouts/switches` | 保存完整脚本表单，返回 `{"script_name":"保存后的标识"}` |
 | `script.add` | `file_path` | 解析脚本/快捷方式并添加，返回 `{"script_name":"新标识"}`；不运行文件 |
@@ -108,6 +109,12 @@ null 沿用默认超时，低于 10 秒的值保留原运行语义。switches �
 列表操作同样区分预校验失败和部分保存失败，客户端均通过 app.snapshot 重读；
 不会因为刷新失败重复添加/删除。手动勾选与控制模式只在 GUI 内存中，不提供写配置接口；
 脚本重排按身份保留勾选，新条目默认启用，重启回到全选。每日计划不读取此状态。
+
+`script.launch_target` 返回 `association/path`、`command/program/args/cwd/env` 或
+`unavailable/reason`。Python 脚本命令由原 build_script_command 生成，env 只返回相对
+父进程的修改项，不传整个环境；external 脚本和游戏沿用系统关联打开。
+游戏路径沿用手填优先、原生配置兜底规则。前端显式点击后才启动，不自动重试；
+单独启动保持原版语义，不应用批量链运行参数、完成检测、超时或前后动作。
 
 | 错误码 | 含义 |
 | --- | --- |

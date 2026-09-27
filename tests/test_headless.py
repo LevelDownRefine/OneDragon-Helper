@@ -207,6 +207,64 @@ class HeadlessProcessTests(unittest.TestCase):
             self.assertTrue(response["error"]["refresh_required"])
         self.assertEqual(before, self.native.read_bytes())
 
+    def test_launch_queries_return_distinct_targets_without_qt_or_execution(self):
+        example = self.root / "config/config.example.yml"
+        example.write_text(
+            example.read_text(encoding="utf-8")
+            + "  script_type: python\n  game_path: scripts/ok-ww.exe\n",
+            encoding="utf-8",
+        )
+        result, responses = self.serve(
+            [
+                request(
+                    "script.launch_target",
+                    {"script_name": "ok-ww", "target": "script"},
+                    1,
+                ),
+                request(
+                    "script.launch_target",
+                    {"script_name": "自定义脚本", "target": "script"},
+                    2,
+                ),
+                request(
+                    "script.launch_target",
+                    {"script_name": "自定义脚本", "target": "game"},
+                    3,
+                ),
+                request(
+                    "script.launch_target",
+                    {"script_name": "missing", "target": "script"},
+                    4,
+                ),
+                request(
+                    "script.launch_target",
+                    {"script_name": "ok-ww", "target": "invalid"},
+                    5,
+                ),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            responses[0]["result"],
+            {"kind": "association", "path": str(self.root / "scripts/ok-ww.exe")},
+        )
+        command = responses[1]["result"]
+        self.assertEqual(command["kind"], "command")
+        self.assertTrue(Path(command["program"]).is_absolute())
+        self.assertEqual(
+            command["args"],
+            [
+                "-m",
+                "src.runner.launcher",
+                "--script",
+                str(self.root / "scripts/custom.py"),
+            ],
+        )
+        self.assertEqual(set(command["env"]), {"PYTHONPATH"})
+        self.assertEqual(responses[2]["result"], responses[0]["result"])
+        self.assertEqual(responses[3]["result"]["kind"], "unavailable")
+        self.assertFalse(responses[4]["error"]["refresh_required"])
+
     def test_list_add_reorder_remove_without_running_script_or_qt(self):
         added = self.root / "scripts/new.py"
         added.write_text(

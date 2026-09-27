@@ -14,6 +14,7 @@ METHODS = {
     "app.snapshot": ("app_snapshot", (), ()),
     "script.view": ("script_view", ("script_name",), ()),
     "script.target": ("resolve_script_target", ("script_name", "target"), ()),
+    "script.launch_target": ("resolve_launch_target", ("script_name", "target"), ()),
     "script.edit_view": ("script_edit_view", ("script_name",), ()),
     "script.add": ("add_script_path", ("file_path",), ()),
     "script.remove": ("remove_script_entry", ("script_name",), ()),
@@ -114,6 +115,7 @@ def handle_request(service, request) -> dict:
             "app.snapshot",
             "script.view",
             "script.target",
+            "script.launch_target",
             "script.edit_view",
         )
         # 保护协议 stdout，包括适配器或第三方库的意外输出。

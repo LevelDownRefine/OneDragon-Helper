@@ -1,3 +1,4 @@
+use crate::launch::{LaunchJob, LaunchTarget};
 use crate::list_dialog::{ListAction, ListDialog};
 use crate::opener::{OpenJob, Target};
 use crate::script_editor::{EditAction, EditView, ScriptEditor};
@@ -52,6 +53,8 @@ pub struct App {
     ctx: egui::Context,
     ui: View,
     open_job: Option<OpenJob>,
+    launch_job: Option<LaunchJob>,
+    launched: Vec<std::process::Child>,
     editor: Option<ScriptEditor>,
     list_dialog: Option<ListDialog>,
     open_editor_after_snapshot: bool,
@@ -83,6 +86,8 @@ impl App {
             ctx: cc.egui_ctx.clone(),
             ui: View::new(&cc.egui_ctx),
             open_job: None,
+            launch_job: None,
+            launched: Vec::new(),
             editor: None,
             list_dialog: None,
             open_editor_after_snapshot: false,
@@ -118,7 +123,11 @@ impl App {
             self.busy = true;
             self.status = if matches!(
                 method,
-                "app.snapshot" | "script.view" | "script.target" | "script.edit_view"
+                "app.snapshot"
+                    | "script.view"
+                    | "script.target"
+                    | "script.edit_view"
+                    | "script.launch_target"
             ) {
                 "读取中"
             } else {
@@ -145,6 +154,7 @@ impl App {
         }
         self.write_confirmed = false;
         self.open_job = None;
+        self.launch_job = None;
         self.busy = false;
         self.view = None;
         self.status = "操作失败 · 请刷新".into();
@@ -287,6 +297,19 @@ impl App {
             self.write_confirmed = true;
             self.ui.toast("列表已保存");
             self.request("app.snapshot", json!({}));
+        } else if reply.method == "script.launch_target" {
+            match serde_json::from_value::<LaunchTarget>(result) {
+                Ok(LaunchTarget::Unavailable { reason }) => {
+                    self.ui.toast(reason);
+                    self.status = "无法启动".into();
+                }
+                Ok(target) => {
+                    self.launch_job = Some(LaunchJob::start(target, self.ctx.clone()));
+                    self.busy = true;
+                    self.status = "启动中".into();
+                }
+                Err(error) => self.fail(Failure::transport(format!("启动信息无效：{error}"))),
+            }
         } else if reply.method == "script.target" {
             match serde_json::from_value::<Target>(result) {
                 Ok(Target::Unavailable { reason }) => {
@@ -345,8 +368,52 @@ impl App {
     }
 }
 
+impl Drop for App {
+    fn drop(&mut self) {
+        for child in self.launched.drain(..) {
+            crate::launch::reap_in_background(child);
+        }
+    }
+}
+
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if let Some(result) = self.launch_job.as_ref().and_then(LaunchJob::poll) {
+            self.launch_job = None;
+            self.busy = false;
+            match result {
+                Ok(child) => {
+                    if let Some(child) = child {
+                        self.launched.push(child);
+                    }
+                    self.status = "已同步".into();
+                    self.ui.toast("已发起启动");
+                }
+                Err(error) => {
+                    self.status = "启动失败".into();
+                    self.ui.toast(error);
+                }
+            }
+        }
+        for index in (0..self.launched.len()).rev() {
+            match self.launched[index].try_wait() {
+                Ok(Some(status)) => {
+                    drop(self.launched.swap_remove(index)); // try_wait already reaped it.
+                    if !status.success() {
+                        self.ui
+                            .toast(format!("脚本退出异常（{status}），请查看运行日志"));
+                    }
+                }
+                Err(error) => {
+                    crate::launch::reap_in_background(self.launched.swap_remove(index));
+                    self.ui.toast(format!("无法读取脚本状态：{error}"));
+                }
+                Ok(None) => {}
+            }
+        }
+        if !self.launched.is_empty() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        }
         if let Some(result) = self.open_job.as_ref().and_then(OpenJob::poll) {
             self.open_job = None;
             self.busy = false;
@@ -614,6 +681,8 @@ mod tests {
             write_confirmed: false,
             ui: View::new(&ctx),
             open_job: None,
+            launch_job: None,
+            launched: Vec::new(),
             editor: None,
             list_dialog: None,
             open_editor_after_snapshot: false,
@@ -623,6 +692,34 @@ mod tests {
             #[cfg(feature = "capture")]
             capture_ready_at: None,
         }
+    }
+
+    #[test]
+    fn dropping_gui_keeps_external_script_running() {
+        let root = tempfile::tempdir().unwrap();
+        let marker = root.path().join("finished");
+        let python = PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+        let mut backend = Command::new(&python);
+        backend.args(["-c", "import time;time.sleep(10)"]);
+        let mut app = test_app(backend, root.path(), python.clone());
+        let child = Command::new(python)
+            .args([
+                "-c",
+                "import sys,time;from pathlib import Path;time.sleep(.5);Path(sys.argv[1]).touch()",
+            ])
+            .arg(&marker)
+            .spawn()
+            .unwrap();
+        app.launched.push(child);
+        drop(app);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !marker.exists() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            marker.exists(),
+            "closing the GUI must not kill launched scripts"
+        );
     }
 
     #[test]

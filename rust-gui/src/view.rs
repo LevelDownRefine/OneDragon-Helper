@@ -435,7 +435,7 @@ impl View {
                 36.0,
                 36.0,
             );
-            let available = !matches!(*icon, "game" | "wallpaper");
+            let available = *icon != "wallpaper";
             let hint = if available {
                 (*name).to_owned()
             } else {
@@ -447,7 +447,12 @@ impl View {
                 } else if !data.busy {
                     if let Some(script) = data.selected {
                         actions.push(Action::Request(Request {
-                            method: "script.target".into(),
+                            method: if *icon == "game" {
+                                "script.launch_target"
+                            } else {
+                                "script.target"
+                            }
+                            .into(),
                             params: json!({"script_name": script, "target": icon}),
                         }));
                     } else {
@@ -473,7 +478,7 @@ impl View {
         label(
             ui,
             rect(launch.left() + 54.0, launch.top() + 35.0, 117.0, 18.0),
-            "暂不可用",
+            "启动当前脚本",
             10.0,
             MUTED,
         );
@@ -482,8 +487,15 @@ impl View {
             Id::new("launch"),
             Sense::click(),
         );
-        if response.on_hover_text("启动脚本 · 暂不可用").clicked() {
-            self.unavailable("启动脚本");
+        if response.on_hover_text("启动当前脚本").clicked() && !data.busy {
+            if let Some(name) = data.selected {
+                actions.push(Action::Request(Request {
+                    method: "script.launch_target".into(),
+                    params: json!({"script_name":name,"target":"script"}),
+                }));
+            } else {
+                self.toast("尚无脚本");
+            }
         }
         ui.painter().line_segment(
             [
@@ -1165,15 +1177,19 @@ mod tests {
     }
 
     #[test]
-    fn weekly_zero_and_unavailable_launch_are_distinct_actions() {
+    fn weekly_zero_and_current_launch_are_distinct_actions() {
         let mut scene = Scene::new();
         scene.click(Id::new(("start", "周常")));
         scene.frame(vec![]);
         let request = only_request(scene.click(Id::new(("primary", 0_usize))));
         assert_eq!(request.method, "weekly.start");
         assert_eq!(request.params["start_day"], json!(0));
-        assert!(scene.click(Id::new("launch")).is_empty());
-        assert!(scene.ui.toast.as_ref().unwrap().0.contains("暂不可用"));
+        let request = only_request(scene.click(Id::new("launch")));
+        assert_eq!(request.method, "script.launch_target");
+        assert_eq!(
+            request.params,
+            json!({"script_name":"test","target":"script"})
+        );
     }
 
     #[test]
@@ -1205,9 +1221,15 @@ mod tests {
                 json!({"script_name": "test", "target": target})
             );
         }
+        let request = only_request(scene.click(Id::new(("icon", "启动游戏"))));
+        assert_eq!(request.method, "script.launch_target");
+        assert_eq!(
+            request.params,
+            json!({"script_name":"test","target":"game"})
+        );
         assert!(
             scene
-                .click(Id::new(("icon", "启动游戏 · 暂不可用")))
+                .click(Id::new(("icon", "更换壁纸 · 暂不可用")))
                 .is_empty()
         );
         assert!(scene.ui.toast.as_ref().unwrap().0.contains("暂不可用"));

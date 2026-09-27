@@ -34,7 +34,7 @@ from src.config.set_config import (
 )
 from src.config.task_switch import task_switch_of
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
-from src.service import script_list
+from src.service import launch_service, script_list
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -120,6 +120,9 @@ class AppService:
     def resolve_script_target(self, script_name: str, target: str) -> dict:
         """取得脚本工具栏的外部打开目标。"""
         return resource_service.resolve_script_target(script_name, target)
+
+    def resolve_launch_target(self, script_name: str, target: str) -> dict:
+        return launch_service.resolve_launch_target(script_name, target)
 
     def script_edit_view(self, script_name: str) -> dict:
         """读取脚本配置表单；不提交编辑或强制初始化。"""
