@@ -7,6 +7,7 @@ mod file_drop;
 mod file_picker;
 mod launch;
 mod list_dialog;
+mod native_icons;
 mod opener;
 mod run_dialog;
 mod script_editor;
@@ -40,6 +41,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
     let mut capture_restore = false;
     #[cfg(feature = "capture")]
     let mut capture_drop = Vec::new();
+    #[cfg(feature = "capture")]
+    let mut capture_game_icon = false;
     while let Some(argument) = args.next() {
         match argument.to_str() {
             Some("--project-root") => root = args.next().ok_or("--project-root 缺少路径")?.into(),
@@ -57,6 +60,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
             Some("--capture-editor") => capture_editor = true,
             #[cfg(feature = "capture")]
             Some("--capture-list") => capture_list = true,
+            #[cfg(feature = "capture")]
+            Some("--capture-game-icon") => capture_game_icon = true,
             #[cfg(feature = "capture")]
             Some("--capture-drop") => {
                 capture_drop.push(PathBuf::from(args.next().ok_or("--capture-drop 缺少路径")?))
@@ -141,6 +146,8 @@ fn settings() -> Result<Option<app::Settings>, String> {
         capture_restore,
         #[cfg(feature = "capture")]
         capture_drop,
+        #[cfg(feature = "capture")]
+        capture_game_icon,
     }))
 }
 

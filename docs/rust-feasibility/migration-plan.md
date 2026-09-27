@@ -36,9 +36,11 @@
   计划入口改为无 Qt CLI daily，保存会修复旧入口；写盘失败恢复原任务 XML，取消保留父草稿。
 - J [#114](https://github.com/LevelDownRefine/OneDragon-Helper/pull/114) `codex/rust-gui-backup` 基于 #113，接 ZIP 备份/恢复确认和后台任务轮询；
   保留本机游戏路径、恢复前备份、部分失败详情，处理中不允许普通关窗打断写入。
-- K1 `codex/rust-gui-file-drop` 基于 #114，接整窗脚本/快捷方式拖入、串行添加和结果汇总；
+- K1 [#115](https://github.com/LevelDownRefine/OneDragon-Helper/pull/115) `codex/rust-gui-file-drop` 基于 #114，接整窗脚本/快捷方式拖入、串行添加和结果汇总；
   Windows 使用 WM_DROPFILES 并按窗口放行跨权限消息，部分写入失败停止后续导入、刷新核对。
   原生图标和悬停预览留给 K2。
+- K2 `codex/rust-gui-native-icons` 基于 #115，接 Windows 脚本图标与游戏悬停预览；
+  Python 仅解析路径，Rust 异步提取内嵌图标、恢复透明度、缓存并显示；刷新失效缓存，失败回退图标/文字。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

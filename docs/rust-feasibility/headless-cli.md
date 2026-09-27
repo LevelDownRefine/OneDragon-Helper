@@ -72,6 +72,7 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `script.edit_view` | `script_name` | 原脚本条目 `script`、标识 `script_name`、七日 `weekly_timeouts` 和 `switches`（name/enabled） |
 | `script.edit_save` | `script_name/display_name/config_patch/weekly_timeouts/switches` | 保存完整脚本表单，返回 `{"script_name":"保存后的标识"}` |
 | `script.add` | `file_path` | 解析脚本/快捷方式并添加，返回 `{"script_name":"新标识"}`；不运行文件 |
+| `script.icon_path` | `script_name` | 只读当前游戏图标源，返回 `script_name/path`；缺失路径为 null，不启动程序 |
 | `script.remove` | `script_name` | 删除助手条目及每周设置，保留源文件，返回 null；至少保留一个条目 |
 | `script.reorder` | `script_names` | 按完整唯一标识列表重排，返回 null；拒绝重复或过期快照 |
 | `daily.select` | 必填 `script_name`；可选 `daily_name/task_name/sequence`，默认均为 null | 沿用原日常选择接口，返回 null |
@@ -145,6 +146,10 @@ null 沿用默认超时，低于 10 秒的值保留原运行语义。switches �
 收到错误或进程意外退出后，先用 script.view 重读，再让用户决定是否重试；不得自动重放写请求。
 
 ## 全局设置与自动启动
+
+脚本摘要增加 `icon_path`：external 脚本返回解析后的文件路径，其余返回当前 Python 入口。
+`app.snapshot` 增加 `default_icon_path` 供前端回退。二者不提取图标，也不预热游戏适配器。
+游戏图标路径只在悬停时查询；提取、尺寸、透明度和显示缓存由 Rust 管理，失败不影响任务卡。
 
 父配置窗与运行选项分别保存。嵌套 `settings.run_save` 成功后反读 settings.view，
 仅更新运行选项，保留父表单启动草稿；失败不重放，刷新失败须提示可能已保存。

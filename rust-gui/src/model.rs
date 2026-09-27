@@ -7,11 +7,13 @@ pub struct Script {
     pub display_name: String,
     pub script_path: String,
     pub adapted: bool,
+    pub icon_path: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Snapshot {
     pub scripts: Vec<Script>,
+    pub default_icon_path: Option<std::path::PathBuf>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

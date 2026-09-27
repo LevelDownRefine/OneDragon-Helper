@@ -19,6 +19,28 @@ class ScriptTargetTests(unittest.TestCase):
             )
         )
 
+    def test_game_icon_is_lazy_read_only_and_rereads_changed_paths(self):
+        with (
+            patch.object(
+                resources, "get_game_exe_path", side_effect=[None, "game.exe"]
+            ),
+            patch.object(
+                resources, "resolve_script_path", return_value=str(self.script)
+            ),
+        ):
+            self.assertEqual(
+                resources.game_icon_path("example"),
+                {"script_name": "example", "path": None},
+            )
+            self.assertEqual(
+                resources.game_icon_path("example"),
+                {"script_name": "example", "path": str(self.script)},
+            )
+        self.lookup.return_value = None
+        with patch.object(resources, "get_game_exe_path") as resolve:
+            self.assertIsNone(resources.game_icon_path("removed")["path"])
+        resolve.assert_not_called()
+
     def test_links_use_declaration_and_fallback_without_resolving_paths(self):
         for target, kind, fallback in (
             ("home", "homepage", "https://github.com/LevelDownRefine/OneDragon-Helper"),

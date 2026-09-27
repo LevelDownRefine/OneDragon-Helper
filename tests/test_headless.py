@@ -501,6 +501,37 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.run_
         self.assertNotIn("自定义脚本", weekly["weekly_timeouts"])
         self.assertIn("new", weekly["weekly_timeouts"])
 
+    def test_icon_paths_are_read_only_without_gui_imports(self):
+        from src.utils.utils_yaml import dump_yaml
+
+        result, _ = self.serve([request("app.snapshot")])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        config_path = self.root / "config/config.yml"
+        config = load_yaml(str(config_path))
+        config["script_list"][0]["game_path"] = str(self.root / "游戏.exe")
+        config["script_list"][0]["script_type"] = "external"
+        dump_yaml(str(config_path), config)
+        before = config_path.read_bytes()
+        result, responses = self.serve(
+            [
+                request("app.snapshot"),
+                request("script.icon_path", {"script_name": "ok-ww"}, 2),
+                request("script.icon_path", {"script_name": "removed"}, 3),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        snapshot = responses[0]["result"]
+        self.assertEqual(
+            Path(snapshot["scripts"][0]["icon_path"]),
+            self.root / "scripts/ok-ww.exe",
+        )
+        self.assertEqual(
+            snapshot["scripts"][1]["icon_path"], snapshot["default_icon_path"]
+        )
+        self.assertEqual(responses[1]["result"]["path"], str(self.root / "游戏.exe"))
+        self.assertIsNone(responses[2]["result"]["path"])
+        self.assertEqual(config_path.read_bytes(), before)
+
     def test_daily_defaults_and_noops_return_null(self):
         before = self.native.read_bytes()
         cases = [

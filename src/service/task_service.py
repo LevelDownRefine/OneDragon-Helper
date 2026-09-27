@@ -1,5 +1,7 @@
 """任务卡聚合查询；CLI 编辑由 AppService 直接转发原接口。"""
 
+import sys
+
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
     get_daily_readback,
@@ -7,7 +9,7 @@ from src.config.set_config import (
 )
 from src.config.weekly import get_weekly_task
 from src.utils.utils_config import get_script, load_config
-from src.utils.utils_sub_config import get_script_name
+from src.utils.utils_sub_config import get_script_name, resolve_script_path
 from src.utils.utils_weekly import get_weekly_start_map
 
 
@@ -18,11 +20,15 @@ class InvalidTaskSelection(ValueError):
 def _script_summary(script: dict) -> dict:
     assert "display_name" in script and "script_path" in script
     script_name = get_script_name(script)
+    icon_path = sys.executable
+    if "script_type" in script and script["script_type"] == "external":
+        icon_path = resolve_script_path(script["script_path"])
     return {
         "script_name": script_name,
         "display_name": script["display_name"],
         "script_path": script["script_path"],
         "adapted": is_adapted(script_name),
+        "icon_path": icon_path,
     }
 
 
@@ -31,10 +37,11 @@ def app_snapshot() -> dict:
     config = load_config()
     assert "script_list" in config
     return {
+        "default_icon_path": sys.executable,
         "scripts": [
             {**_script_summary(script), "script_data": dict(script)}
             for script in config["script_list"]
-        ]
+        ],
     }
 
 

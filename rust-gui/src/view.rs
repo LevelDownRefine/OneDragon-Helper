@@ -43,6 +43,14 @@ struct Menu {
 
 pub struct View {
     assets: Assets,
+    icons: crate::native_icons::Icons,
+    default_icon_path: Option<std::path::PathBuf>,
+    game_icon: Option<(String, Option<std::path::PathBuf>)>,
+    game_hover: Option<String>,
+    #[cfg(feature = "capture")]
+    pub capture_game_icon: bool,
+    #[cfg(feature = "capture")]
+    pub capture_icon_ready: bool,
     menu: Option<Menu>,
     toast: Option<(String, Instant)>,
     pub diagnostics_open: bool,
@@ -63,6 +71,14 @@ impl View {
     pub fn new(ctx: &egui::Context) -> Self {
         Self {
             assets: Assets::new(ctx),
+            icons: crate::native_icons::Icons::new(ctx.clone()),
+            default_icon_path: None,
+            game_icon: None,
+            game_hover: None,
+            #[cfg(feature = "capture")]
+            capture_game_icon: false,
+            #[cfg(feature = "capture")]
+            capture_icon_ready: false,
             menu: None,
             toast: None,
             diagnostics_open: false,
@@ -76,6 +92,17 @@ impl View {
         self.menu = None;
         self.control_mode = false;
         self.dragging = None;
+    }
+
+    pub fn refresh_icons(&mut self, default_path: Option<std::path::PathBuf>) {
+        self.default_icon_path = default_path;
+        self.icons.invalidate();
+        self.game_icon = None;
+        self.game_hover = None;
+    }
+
+    pub fn set_game_icon(&mut self, name: String, path: Option<std::path::PathBuf>) {
+        self.game_icon = Some((name, path));
     }
 
     pub fn reconcile_scripts(&mut self, scripts: &[Script]) {
@@ -103,6 +130,7 @@ impl View {
     }
 
     pub fn show(&mut self, ui: &mut Ui, data: Presentation<'_>) -> Vec<Action> {
+        self.icons.poll(ui.ctx());
         let mut actions = Vec::new();
         let screen = ui.max_rect();
         self.background(ui, screen);
@@ -226,11 +254,23 @@ impl View {
                             } else if response.hovered() {
                                 ui.painter().rect_filled(button, 16, CONTROL);
                             }
-                            self.assets.icon(
-                                ui,
-                                "script",
-                                Rect::from_center_size(button.center(), vec2(40.0, 40.0)),
-                            );
+                            let bounds = Rect::from_center_size(button.center(), vec2(40.0, 40.0));
+                            if ui.is_rect_visible(button) {
+                                let size = if ui.ctx().pixels_per_point() > 1.6 {
+                                    256
+                                } else {
+                                    64
+                                };
+                                let texture =
+                                    self.icons.get(script.icon_path.as_deref(), size).or_else(
+                                        || self.icons.get(self.default_icon_path.as_deref(), size),
+                                    );
+                                if let Some(texture) = texture {
+                                    egui::Image::new(&texture).paint_at(ui, bounds);
+                                } else {
+                                    self.assets.icon(ui, "script", bounds);
+                                }
+                            }
                             if self.disabled.contains(&script.script_name) {
                                 ui.painter().rect_filled(
                                     button.shrink(4.0),
@@ -402,6 +442,78 @@ impl View {
         response.on_hover_text(hint).clicked()
     }
 
+    fn game_button(
+        &mut self,
+        ui: &mut Ui,
+        bounds: Rect,
+        data: &Presentation<'_>,
+        actions: &mut Vec<Action>,
+    ) -> bool {
+        let response = ui.interact(bounds, Id::new(("icon", "启动游戏")), Sense::click());
+        self.assets.icon(
+            ui,
+            "game",
+            Rect::from_center_size(bounds.center(), vec2(26.0, 26.0)),
+        );
+        let hovered = response.hovered();
+        #[cfg(feature = "capture")]
+        let hovered = hovered || self.capture_game_icon;
+        if hovered {
+            ui.painter().rect_filled(bounds, 9, HOVER);
+            self.assets.icon(
+                ui,
+                "game",
+                Rect::from_center_size(bounds.center(), vec2(26.0, 26.0)),
+            );
+            if !data.busy
+                && let Some(name) = data.selected
+                && self.game_hover.as_deref() != Some(name)
+            {
+                self.game_hover = Some(name.into());
+                actions.push(Action::Request(Request {
+                    method: "script.icon_path".into(),
+                    params: json!({"script_name":name}),
+                }));
+            }
+            let path = self
+                .game_icon
+                .as_ref()
+                .filter(|(name, _)| Some(name.as_str()) == data.selected)
+                .and_then(|(_, path)| path.as_deref());
+            if let Some(texture) = self.icons.get(path, 256) {
+                #[cfg(feature = "capture")]
+                {
+                    self.capture_icon_ready = true;
+                }
+                egui::Area::new(Id::new("game-icon-preview"))
+                    .order(egui::Order::Tooltip)
+                    .fixed_pos(pos2(
+                        bounds.left() - 18.0 - 144.0,
+                        (bounds.center().y - 72.0).max(4.0),
+                    ))
+                    .interactable(false)
+                    .show(ui.ctx(), |ui| {
+                        egui::Frame::new()
+                            .fill(CONTROL)
+                            .stroke(egui::Stroke::new(1.0, BORDER))
+                            .corner_radius(24)
+                            .inner_margin(8)
+                            .show(ui, |ui| {
+                                ui.add(
+                                    egui::Image::new(&texture)
+                                        .fit_to_exact_size(vec2(128.0, 128.0))
+                                        .corner_radius(16),
+                                );
+                            });
+                    });
+                return response.clicked();
+            }
+        } else {
+            self.game_hover = None;
+        }
+        response.on_hover_text("启动游戏").clicked()
+    }
+
     fn controls(
         &mut self,
         ui: &mut Ui,
@@ -459,7 +571,14 @@ impl View {
             } else {
                 format!("{name} · 暂不可用")
             };
-            if self.icon_button(ui, icon, bounds, &hint, true) {
+            let clicked = if *icon == "game" {
+                self.game_button(ui, bounds, data, actions)
+            } else {
+                self.icon_button(ui, icon, bounds, &hint, true)
+            };
+            if clicked {
+                // A click wins over the optional hover read; only one CLI request per frame.
+                actions.retain(|action| !matches!(action, Action::Request(request) if request.method == "script.icon_path"));
                 if !available {
                     self.unavailable(name);
                 } else if !data.busy {
@@ -1222,6 +1341,27 @@ mod tests {
             assert!(screen.contains_rect(popup));
             assert!(popup.bottom() <= anchor.top() || popup.top() >= anchor.bottom());
         }
+    }
+
+    #[test]
+    fn hovering_game_only_queries_icon_once_per_entry() {
+        let mut scene = Scene::new();
+        let pos = scene
+            .ctx
+            .read_response(Id::new(("icon", "启动游戏")))
+            .unwrap()
+            .rect
+            .center();
+        let actions = scene.frame(vec![egui::Event::PointerMoved(pos)]);
+        assert_eq!(only_request(actions).method, "script.icon_path");
+        assert!(scene.frame(vec![]).is_empty());
+        scene.ui.set_game_icon("test".into(), None);
+        assert!(scene.frame(vec![]).is_empty());
+        scene.frame(vec![egui::Event::PointerMoved(pos2(500.0, 100.0))]);
+        scene.busy = true;
+        assert!(scene.frame(vec![egui::Event::PointerMoved(pos)]).is_empty());
+        scene.busy = false;
+        assert_eq!(only_request(scene.frame(vec![])).method, "script.icon_path");
     }
 
     #[test]

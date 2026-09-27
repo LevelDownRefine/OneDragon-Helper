@@ -39,6 +39,8 @@ pub struct Settings {
     pub capture_restore: bool,
     #[cfg(feature = "capture")]
     pub capture_drop: Vec<PathBuf>,
+    #[cfg(feature = "capture")]
+    pub capture_game_icon: bool,
 }
 
 impl Settings {
@@ -167,6 +169,7 @@ impl App {
                 "app.snapshot"
                     | "script.view"
                     | "script.target"
+                    | "script.icon_path"
                     | "script.edit_view"
                     | "script.launch_target"
                     | "run.view"
@@ -236,6 +239,35 @@ impl App {
         self.busy = false;
         self.pid = reply.pid;
         self.diagnostics = reply.diagnostics;
+        if reply.method == "script.icon_path" {
+            #[derive(serde::Deserialize)]
+            struct IconPath {
+                script_name: String,
+                path: Option<PathBuf>,
+            }
+            match reply.result.and_then(|value| {
+                serde_json::from_value::<IconPath>(value)
+                    .map_err(|error| Failure::transport(error.to_string()))
+            }) {
+                Ok(icon) => self.ui.set_game_icon(icon.script_name, icon.path),
+                Err(failure) => {
+                    log::warn!("游戏图标路径不可用：{}", failure.message);
+                    if failure.code == "transport_failed" {
+                        self.backend = None;
+                    }
+                    if let Some(name) = &self.selected {
+                        self.ui.set_game_icon(name.clone(), None);
+                    }
+                }
+            }
+            self.status = if self.backend.is_some() {
+                "已同步"
+            } else {
+                "连接中断 · 请刷新"
+            }
+            .into();
+            return;
+        }
         if reply.method == "script.add" && self.drop_dialog.is_some() {
             self.receive_drop(reply.result);
             return;
@@ -310,6 +342,7 @@ impl App {
         if reply.method == "app.snapshot" {
             match serde_json::from_value::<Snapshot>(result) {
                 Ok(snapshot) => {
+                    self.ui.refresh_icons(snapshot.default_icon_path);
                     self.scripts = snapshot.scripts;
                     self.ui.reconcile_scripts(&self.scripts);
                     if let Some(editor) = &self.editor
@@ -512,6 +545,11 @@ impl App {
                     self.write_confirmed = false;
                     self.status = "已同步".into();
                     if !self.ready_logged {
+                        #[cfg(feature = "capture")]
+                        {
+                            self.ui.capture_game_icon =
+                                self.settings.capture.is_some() && self.settings.capture_game_icon;
+                        }
                         self.ready_logged = true;
                         log::info!(
                             "[startup] first task ready {:.2} ms",
@@ -965,6 +1003,7 @@ impl eframe::App for App {
         if self.settings.capture.is_some()
             && self.ready_logged
             && !self.capture_requested
+            && (!self.settings.capture_game_icon || self.ui.capture_icon_ready)
             && (!self.settings.capture_editor || self.editor.is_some())
             && (!self.settings.capture_run || self.run_dialog.is_some())
             && (!self.settings.capture_settings || self.settings_dialog.is_some())
@@ -1055,6 +1094,8 @@ mod tests {
                 capture_restore: false,
                 #[cfg(feature = "capture")]
                 capture_drop: Vec::new(),
+                #[cfg(feature = "capture")]
+                capture_game_icon: false,
             },
             backend: Some(Backend::start(command, || {})),
             scripts: Vec::new(),
@@ -1090,6 +1131,30 @@ mod tests {
             #[cfg(feature = "capture")]
             capture_ready_at: None,
         }
+    }
+
+    #[test]
+    fn optional_icon_failure_preserves_task_card() {
+        let root = tempfile::tempdir().unwrap();
+        let python = PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+        let mut command = Command::new(&python);
+        command.args(["-c", "import sys; sys.stdin.read()"]);
+        let mut app = test_app(command, root.path(), python);
+        app.view = Some(serde_json::from_value(json!({"script":{"script_name":"test","display_name":"Test","script_path":"test.exe","adapted":false},"dailies":[],"weeklies":[]})).unwrap());
+        app.receive(Reply {
+            method: "script.icon_path".into(),
+            pid: 0,
+            diagnostics: String::new(),
+            result: Err(Failure {
+                code: "operation_failed".into(),
+                message: "game path unavailable".into(),
+                refresh_required: false,
+            }),
+        });
+        assert!(app.view.is_some());
+        assert!(app.backend.is_some());
+        assert!(!app.busy);
+        assert!(app.error.is_none());
     }
 
     #[test]

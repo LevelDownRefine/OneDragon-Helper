@@ -2,6 +2,7 @@
 
 import os
 
+from src.config.set_config import get_game_exe_path
 from src.link import get_game_link
 from src.log import get_log_dir
 from src.utils.utils_config import config_file_path, get_script
@@ -16,6 +17,16 @@ _LINKS = {
 
 def _unavailable(reason: str) -> dict:
     return {"kind": "unavailable", "reason": reason}
+
+
+def game_icon_path(script_name: str) -> dict:
+    """悬停时解析游戏路径，缺失返回空；不读图标、不启动程序。"""
+    path = None
+    if get_script(script_name) is not None:
+        raw = get_game_exe_path(script_name)
+        if raw:
+            path = os.path.abspath(resolve_script_path(raw))
+    return {"script_name": script_name, "path": path}
 
 
 def resolve_script_target(script_name: str, target: str) -> dict:

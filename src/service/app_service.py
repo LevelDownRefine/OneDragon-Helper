@@ -143,6 +143,9 @@ class AppService:
         """取得脚本工具栏的外部打开目标。"""
         return resource_service.resolve_script_target(script_name, target)
 
+    def game_icon_path(self, script_name: str) -> dict:
+        return resource_service.game_icon_path(script_name)
+
     def resolve_launch_target(self, script_name: str, target: str) -> dict:
         return launch_service.resolve_launch_target(script_name, target)
 

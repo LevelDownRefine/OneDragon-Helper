@@ -30,6 +30,7 @@ class TaskServiceTests(unittest.TestCase):
         self.assertEqual(
             snapshot,
             {
+                "default_icon_path": sys.executable,
                 "scripts": [
                     {
                         "script_name": name,
@@ -37,11 +38,12 @@ class TaskServiceTests(unittest.TestCase):
                         "script_path": script["script_path"],
                         "adapted": adapted,
                         "script_data": script,
+                        "icon_path": sys.executable,
                     }
                     for script, name, adapted in zip(
                         scripts, ("自定义", "BetterGI"), (False, True), strict=True
                     )
-                ]
+                ],
             },
         )
         self.assertIsNot(snapshot["scripts"][0]["script_data"], scripts[0])
@@ -63,6 +65,7 @@ class TaskServiceTests(unittest.TestCase):
                         "display_name": "自定义",
                         "script_path": "task.py",
                         "adapted": False,
+                        "icon_path": sys.executable,
                     },
                     "dailies": [],
                     "weeklies": [],

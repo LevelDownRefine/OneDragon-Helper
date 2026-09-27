@@ -27,6 +27,7 @@ METHODS = {
     "run.prepare": ("prepare_run", ("script_names", "options", "confirm_invalid"), ()),
     "script.view": ("script_view", ("script_name",), ()),
     "script.target": ("resolve_script_target", ("script_name", "target"), ()),
+    "script.icon_path": ("game_icon_path", ("script_name",), ()),
     "script.launch_target": ("resolve_launch_target", ("script_name", "target"), ()),
     "script.edit_view": ("script_edit_view", ("script_name",), ()),
     "script.add": ("add_script_path", ("file_path",), ()),
@@ -136,6 +137,7 @@ def handle_request(service, request) -> dict:
             "run.view",
             "script.view",
             "script.target",
+            "script.icon_path",
             "script.launch_target",
             "script.edit_view",
         )
