@@ -20,8 +20,9 @@ from PySide6.QtWidgets import QApplication
 from src.gui.controllers.game_list import GameListController
 from src.gui.file_drop import WindowsFileDrop
 from src.gui.main_window import QmlBridge
+from src.service import script_service
 from src.service.app_service import AppService
-from src.utils.utils_config import build_script_entry
+from src.utils import utils_config, utils_weekly
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_yaml import load_yaml
 
@@ -33,14 +34,34 @@ class TestDroppedScripts(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.service = MagicMock()
-        self.service.build_script_entry.side_effect = build_script_entry
+        self.service.add_script.side_effect = script_service.add
         self.reload = MagicMock()
         self.toast = MagicMock()
         self.ctrl = GameListController(self.service, self.toast, self.reload)
         self.added = MagicMock()
         self.ctrl.gameAdded.connect(self.added)
-        self.service.add_script.side_effect = lambda entry: self.ctrl._games.append(
-            {"script_name": get_script_name(entry), "script_data": entry}
+        self.persist_script = self.enterContext(
+            patch.object(utils_config, "save_config")
+        )
+        self.enterContext(patch.object(utils_weekly, "ensure_weekly_entry"))
+        self.enterContext(patch.object(script_service, "init_config"))
+
+        def save(config):
+            entry = config["script_list"][-1]
+            self.ctrl._games.append(
+                {"script_name": get_script_name(entry), "script_data": entry}
+            )
+
+        self.persist_script.side_effect = save
+
+        self.enterContext(
+            patch.object(
+                utils_config,
+                "load_config",
+                side_effect=lambda: {
+                    "script_list": [game["script_data"] for game in self.ctrl.games]
+                },
+            )
         )
 
     def file_url(self, name):
@@ -53,11 +74,14 @@ class TestDroppedScripts(unittest.TestCase):
             self.file_url(name) for name in ("鸣潮 100% #1.EXE", "task.py", "run.bat")
         ]
         self.assertTrue(self.ctrl.canDropScripts(urls))
-        self.service.add_script.assert_not_called()
+        self.persist_script.assert_not_called()
         with patch("src.gui.dialogs.pick_file") as picker:
             self.assertTrue(self.ctrl.dropScripts(urls))
         picker.assert_not_called()
-        entries = [call.args[0] for call in self.service.add_script.call_args_list]
+        entries = [
+            call.args[0]["script_list"][-1]
+            for call in self.persist_script.call_args_list
+        ]
         self.assertEqual(
             [entry["script_path"] for entry in entries],
             [os.path.normpath(url.toLocalFile()) for url in urls],
@@ -84,7 +108,7 @@ class TestDroppedScripts(unittest.TestCase):
             with self.subTest(urls=urls):
                 self.assertFalse(self.ctrl.canDropScripts(urls))
                 self.assertFalse(self.ctrl.dropScripts(urls))
-        self.service.add_script.assert_not_called()
+        self.persist_script.assert_not_called()
         self.reload.assert_not_called()
 
     def test_rechecks_file_after_drag_enter(self):
@@ -92,13 +116,13 @@ class TestDroppedScripts(unittest.TestCase):
         self.assertTrue(self.ctrl.canDropScripts([url]))
         Path(url.toLocalFile()).unlink()
         self.assertFalse(self.ctrl.dropScripts([url]))
-        self.service.add_script.assert_not_called()
+        self.persist_script.assert_not_called()
 
     def test_duplicate_exe_is_not_added_or_renamed(self):
         url = self.file_url("same.exe")
         self.assertTrue(self.ctrl.dropScripts([url]))
         self.assertFalse(self.ctrl.dropScripts([url]))
-        self.service.add_script.assert_called_once()
+        self.persist_script.assert_called_once()
         self.toast.assert_called_with("脚本已存在：same")
 
     def test_same_named_python_scripts_keep_existing_suffix_behavior(self):
@@ -109,7 +133,7 @@ class TestDroppedScripts(unittest.TestCase):
         )
 
     def test_save_failure_refreshes_and_reports_without_success(self):
-        self.service.add_script.side_effect = OSError("disk unavailable")
+        self.persist_script.side_effect = OSError("disk unavailable")
         with self.assertLogs("src.gui.controllers.game_list", level="WARNING"):
             self.assertFalse(self.ctrl.dropScripts([self.file_url("task.py")]))
         self.reload.assert_called_once()
@@ -123,12 +147,12 @@ class TestDroppedScripts(unittest.TestCase):
                 shortcut = self.file_url(f"桌面快捷方式-{suffix}.LNK")
                 arguments = '--profile "中文 100% #1" --daily'
                 with patch(
-                    "src.utils.utils_config.read_shortcut",
+                    "src.service.script_service.read_shortcut",
                     return_value=(target, arguments, str(Path(target).parent)),
                 ):
                     self.assertTrue(self.ctrl.canDropScripts([shortcut]))
                     self.assertTrue(self.ctrl.dropScripts([shortcut]))
-                entry = self.service.add_script.call_args.args[0]
+                entry = self.persist_script.call_args.args[0]["script_list"][-1]
                 self.assertEqual(entry["script_path"], os.path.normpath(target))
                 self.assertEqual(
                     entry["script_type"], "python" if suffix == "py" else "external"
@@ -146,14 +170,14 @@ class TestDroppedScripts(unittest.TestCase):
             with (
                 self.subTest(target=target),
                 patch(
-                    "src.utils.utils_config.read_shortcut",
+                    "src.service.script_service.read_shortcut",
                     return_value=(target, "", ""),
                 ),
                 self.assertLogs("src.gui.controllers.game_list", level="WARNING"),
             ):
                 self.assertFalse(self.ctrl.dropScripts([shortcut]))
                 self.assertIn("bad.lnk", self.toast.call_args.args[0])
-        self.service.add_script.assert_not_called()
+        self.persist_script.assert_not_called()
 
     def test_batch_failure_is_reported_once_regardless_of_order(self):
         urls = [
@@ -164,7 +188,7 @@ class TestDroppedScripts(unittest.TestCase):
                 self.ctrl._games.clear()
                 self.toast.reset_mock()
                 self.added.reset_mock()
-                self.service.add_script.side_effect = [
+                self.persist_script.side_effect = [
                     PermissionError("disk unavailable") if i == failed_index else None
                     for i in range(3)
                 ]
@@ -190,7 +214,8 @@ class TestDroppedScripts(unittest.TestCase):
     def test_unreadable_shortcut_does_not_hide_another_success(self):
         with (
             patch(
-                "src.utils.utils_config.read_shortcut", side_effect=OSError("bad link")
+                "src.service.script_service.read_shortcut",
+                side_effect=OSError("bad link"),
             ),
             self.assertLogs("src.gui.controllers.game_list", level="WARNING"),
         ):
@@ -199,14 +224,14 @@ class TestDroppedScripts(unittest.TestCase):
                     [self.file_url("bad.lnk"), self.file_url("ok.exe")]
                 )
             )
-        self.service.add_script.assert_called_once()
+        self.persist_script.assert_called_once()
         self.toast.assert_called_once()
         self.assertIn("已添加 1 个脚本，失败 1 个", self.toast.call_args.args[0])
         self.assertIn("bad.lnk", self.toast.call_args.args[0])
         self.assertIn("bad link", self.toast.call_args.args[0])
 
     def test_batch_all_failures_keep_each_filename_and_reason(self):
-        self.service.add_script.side_effect = OSError("disk unavailable")
+        self.persist_script.side_effect = OSError("disk unavailable")
         with self.assertLogs("src.gui.controllers.game_list", level="WARNING"):
             self.assertFalse(
                 self.ctrl.dropScripts(
@@ -257,6 +282,7 @@ class TestNativeDropPersistence(unittest.TestCase):
                     "src.utils.utils_weekly.get_weekly_yml_path_under_root",
                     return_value=str(weekly),
                 ),
+                patch("src.service.daily_plan.load_schedule", return_value={}),
                 patch.object(AppService, "get_daily_map", return_value={}),
                 patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch(
@@ -275,8 +301,7 @@ class TestNativeDropPersistence(unittest.TestCase):
                     "src.gui.file_drop.QGuiApplication.modalWindow", return_value=None
                 ),
             ):
-                with patch("src.service.daily_plan.load_schedule", return_value={}):
-                    bridge = QmlBridge()
+                bridge = QmlBridge()
                 toasts = []
                 bridge.toastRequested.connect(toasts.append)
                 handler = WindowsFileDrop(window, bridge.dropScripts)
