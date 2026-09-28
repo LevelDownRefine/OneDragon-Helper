@@ -1,13 +1,13 @@
 # Rust GUI 渐进迁移计划
 
-2026-09-28。近期路线：Rust 支持现有 GUI 功能，同时保留 Python/Qt GUI。助手业务仍在 Python service；Rust 经常驻 CLI 调用，Qt 直接调用 service。
+2026-09-29。近期路线：Rust 支持现有 GUI 功能，同时保留 Python/Qt GUI。助手业务仍在 Python service；Rust 经常驻 CLI 调用，Qt 直接调用 service。
 
 ## 当前审阅入口
 
 - 总 PR [#130](https://github.com/LevelDownRefine/OneDragon-Helper/pull/130) 汇总 Rust 功能；旧 #103、#106–#129 已关闭，以下批次记录作为实现历史保留。
-- 独立主分支 PR [#131](https://github.com/LevelDownRefine/OneDragon-Helper/pull/131)：共享脚本编辑和列表操作，Qt 直接调用；包含校验、保存顺序、过期重排检查和失败反馈。
-- 独立主分支 PR [#132](https://github.com/LevelDownRefine/OneDragon-Helper/pull/132)：共享资源与启动目标解析，Qt 直接调用；包含路径、链接回退、环境继承和打开失败反馈。
-- 两个公共业务 PR 均不依赖 Rust，可分别合入 main；总分支已同步相同实现。合入 main 后再 rebase 总分支，缩小 #130 的最终差异。
+- [#131](https://github.com/LevelDownRefine/OneDragon-Helper/pull/131) 的脚本管理整理随 [#133](https://github.com/LevelDownRefine/OneDragon-Helper/pull/133) 合入 main；脚本条目构造、增删改和排序归 `script_service`，`utils_config` 负责文件读写与查询。
+- [#132](https://github.com/LevelDownRefine/OneDragon-Helper/pull/132) 已合入 main；资源与图标路径查询归 `src/link.py`，启动目标归 `launch_service`，不保留额外的 `resource_service`。
+- 总分支已同步 `main@8724cd8`，公共前置不再计入 #130 相对 main 的差异。Rust 源码与测试分别位于 `src/rust-gui`、`tests/rust-gui`，文件与职责对应关系见 [GUI 说明](../../src/rust-gui/README.md#目录与职责)。
 - Qt 保留原 launcher、发布包及直接 service 调用；Rust 的 stdio 协议、后台会话和分发适配仍在总 PR，不要求 Qt 全面接入 CLI。
 
 ## 当前基线
@@ -98,7 +98,7 @@
 | --- | --- | --- |
 | E：工具栏导航 | `controllers/links.py` 的官网、B 站、GitHub、脚本目录、日志、配置文件 | Python 经资源声明和现有解析器返回明确的 URL/路径/不可用原因；Rust 用系统关联打开，错误可见。无脚本、未适配、文件缺失和带空格/中文路径有测试；不把打开文件用作启动游戏接口 |
 | F：脚本配置 | `dialogs.py` 的路径、参数、超时、完成条件、游戏路径、七日周常超时、原生任务开关 | 读取/保存经 CLI；Rust 保留表单草稿和错误。CLI 构造 `ScriptEdit`，经 `AppService.update_script` 委托统一编辑流程，保留 #104 的初始化边界；取消不写盘，路径/身份变化和部分失败可解释 |
-| G：脚本列表 | `controllers/game_list.py` 的添加、删除、重排、手动勾选、全选/清空、控制模式 | CLI 复用 `build_script_entry/add_script/remove_script/save_config`；保留脚本身份与顺序；手动勾选只存内存、重启全选，每日计划独立。添加与快捷方式解析只记录信息，不运行脚本；重复/失效路径明确提示 |
+| G：脚本列表 | `controllers/game_list.py` 的添加、删除、重排、手动勾选、全选/清空、控制模式 | CLI 复用 `script_service.add/remove/update/reorder`；保留脚本身份与顺序；手动勾选只存内存、重启全选，每日计划独立。添加与快捷方式解析只记录信息，不运行脚本；重复/失效路径明确提示 |
 | H：运行与运行选项 | `controllers/launch.py`、`run_confirm_dialog.py`、`run_options_editor.py` 的当前/全部运行、确认、静音/恢复、失败重跑、通知、关机选项；工具栏启动游戏 | 长链以独立调度/Runner 进程运行，不阻塞 stdio；GUI 退出不终止正在运行的链。Python 负责校验、命令和业务；Rust 管确认与显示。凭据不写日志/命令行，游戏启动独立验证；关机确认以独立 Rust 入口替换隐式 Qt 弹窗后才启用 |
 | I：启动与每日计划 | `config_dialog.py`、`startup_dialog.py`、`daily_plan_dialog.py` 的自动启动倒计时、保存/取消、每日时间与独立运行选项、系统任务状态 | 计划继续由 Python 注册与回读，指向可无 GUI 运行的入口；手动勾选不影响每日计划，暂停保留设置，任务注册失败不留下不一致配置。自动启动、每日计划与更新后跳过倒计时保持原行为 |
 | J：备份恢复 | `controllers/backup.py` 的备份 ZIP、恢复选择、覆盖确认、结果提示 | 复用 `create_backup/restore_backup`，保留本机游戏路径、恢复前 ZIP、部分成功和跳过原因；取消不改配置，用临时目录测试，不操作真实备份 |
@@ -123,7 +123,7 @@ flowchart LR
 
 先以相邻前置分支作为 PR base，让每个差异只包含本批改动；不用等待人工逐项确认才继续。
 前置 PR squash 合并后，子分支用 `rebase --onto` 跳过旧前置提交并转到 main，
-保留测试与实际功能差异。CI 对 main/master 和 `codex/rust-gui-*` 目标分支运行。
+保留测试与实际功能差异。CI 对 main/master 目标分支运行。
 不替用户自动合并 PR，也不同时改动已有的 Qt 分支。
 
 ## 统一完成条件

@@ -197,6 +197,7 @@ def main() -> int:
             for family, values in samples.items()
         },
     }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
     )

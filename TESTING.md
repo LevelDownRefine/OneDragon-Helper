@@ -24,6 +24,7 @@ python -m 把根目录加入 sys.path，PYTHONPATH=src 让 import launcher 可�
 | 目录 | 归属 |
 |---|---|
 | `tests/gui/` | 控件、控制器、QML、窗口及 GUI 共享夹具 |
+| `tests/rust-gui/` | Rust 窗口、同名控制器/弹窗、原生能力与 CLI 通信；由 Cargo 运行 |
 | `tests/config/` | 配置适配器、声明、日常、周常及 golden 验证 |
 | `tests/service/` | 配置服务、链生成、调度和运行编排 |
 | `tests/update/` | 更新包协议、下载服务、运行锁、安装回滚 |
@@ -107,6 +108,15 @@ Rust 双进程升级用真实主 EXE 的原 CLI `--dump-config --out` 写命名�
 `tools/measure_gui_startup.py` 对 Qt/Rust 的干净完整包做暖启动对比，首个可回读任务画面
 才计时成功。测量工具测试覆盖标记前退出、缺少任务数据和非零退出，实际 15 轮交替测量
 见 `docs/rust-feasibility/assessment.md`；它不是常规 CI 的性能阈值测试。
+计时原始样本写到忽略目录 `.cache/gui-startup.json`，不提交本机报告。
+
+Rust 源码位于 `src/rust-gui`，单元与集成测试都已映射到 `tests/rust-gui`：
+
+```bash
+cargo fmt --manifest-path src/rust-gui/Cargo.toml --check
+cargo clippy --manifest-path src/rust-gui/Cargo.toml --locked --all-features --all-targets -- -D warnings
+cargo test --manifest-path src/rust-gui/Cargo.toml --locked --all-features
+```
 
 ## 2. 风格检查 ruff
 

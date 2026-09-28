@@ -80,9 +80,9 @@ def build(root: Path, destination: Path, *, tag: str = "", test: bool = False) -
                 "--features",
                 "capture",
                 "--manifest-path",
-                str(root / "rust-gui/Cargo.toml"),
+                str(root / "src/rust-gui/Cargo.toml"),
                 "--target-dir",
-                str(root / "rust-gui/target"),
+                str(root / "src/rust-gui/target"),
             ],
             cwd=root,
             check=True,
@@ -105,7 +105,8 @@ def build(root: Path, destination: Path, *, tag: str = "", test: bool = False) -
             )
         package = staging / "OneDragon-Helper"
         shutil.copy2(
-            root / "rust-gui/target/release/onedragon-rust-gui.exe", package / APP_EXE
+            root / "src/rust-gui/target/release/onedragon-rust-gui.exe",
+            package / APP_EXE,
         )
         for name in (RUNNER_EXE, UPDATER_EXE):
             shutil.copy2(staging / name, package / name)

@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main, master ]
   pull_request:
-    branches: [ main, master, 'codex/rust-gui-*' ]
+    branches: [ main, master ]
 
 jobs:
   test:
@@ -48,10 +48,10 @@ jobs:
 
       - name: Check Rust prototype
         run: |
-          cargo +1.97.1 fmt --manifest-path rust-gui/Cargo.toml --check
-          cargo +1.97.1 clippy --manifest-path rust-gui/Cargo.toml --locked --all-features --all-targets -- -D warnings
+          cargo +1.97.1 fmt --manifest-path src/rust-gui/Cargo.toml --check
+          cargo +1.97.1 clippy --manifest-path src/rust-gui/Cargo.toml --locked --all-features --all-targets -- -D warnings
 
       - name: Test Rust against Python CLI
         env:
           ODH_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: cargo +1.97.1 test --manifest-path rust-gui/Cargo.toml --locked --all-features
+        run: cargo +1.97.1 test --manifest-path src/rust-gui/Cargo.toml --locked --all-features

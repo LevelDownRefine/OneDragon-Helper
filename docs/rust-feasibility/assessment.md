@@ -22,7 +22,7 @@ Python 运行时、发布资源和原生 CRT；没有把单个 Rust EXE 当成�
 1 MiB = 1,048,576 字节。目录总量是文件字节数之和，不是磁盘分配空间；不含用户配置、
 缓存、外部游戏脚本、系统字体和系统图形/媒体组件。原始字节数、分组与 SHA-256 见
 [`assessment-size.json`](assessment-size.json)，逐次时间见
-[`assessment-startup.json`](assessment-startup.json)。ZIP 哈希仅用于识别本次本机构建，
+`tools/measure_gui_startup.py` 生成的本地计时报告（`.cache/gui-startup.json`，不纳入版本控制）。ZIP 哈希仅用于识别本次本机构建，
 CI 使用另一 Python 分发与构建时间，其体积和哈希可能不同。
 
 主要体积收益来自去掉 Qt/PySide6/Shiboken（本机原包约 89.19 MiB），同时新增 Rust
@@ -96,7 +96,7 @@ Media Foundation 与编解码器来自系统，Windows N 等缺少媒体组件�
 按[发布工具说明](../../tools/README.md)构建两份干净完整包，激活项目 Python 环境后运行：
 
 ```powershell
-python tools/measure_gui_startup.py --qt-package deploy/dist/OneDragon-Helper --rust-package deploy/dist/rust/OneDragon-Helper --output startup.json --runs 15
+python tools/measure_gui_startup.py --qt-package deploy/dist/OneDragon-Helper --rust-package deploy/dist/rust/OneDragon-Helper --output .cache/gui-startup.json --runs 15
 ```
 
 工具先验证清单/哈希，只修改临时副本；Rust 直接使用随包的截图诊断，Qt 只在临时 QML

@@ -49,10 +49,21 @@ class RustBuildOutputTests(unittest.TestCase):
         other.write_text("preserved")
         target = self.dist / "rust/OneDragon-Helper"
         with (
-            patch("tools.build_rust.subprocess.run", side_effect=OSError("compiler")),
+            patch(
+                "tools.build_rust.subprocess.run", side_effect=OSError("compiler")
+            ) as run,
             self.assertRaisesRegex(OSError, "compiler"),
         ):
             build(self.root, target)
+        command = run.call_args.args[0]
+        self.assertEqual(
+            command[command.index("--manifest-path") + 1],
+            str(self.root / "src/rust-gui/Cargo.toml"),
+        )
+        self.assertEqual(
+            command[command.index("--target-dir") + 1],
+            str(self.root / "src/rust-gui/target"),
+        )
         self.assertFalse(target.exists())
         self.assertEqual(other.read_text(), "preserved")
         self.assertEqual(list(self.dist.iterdir()), [other])

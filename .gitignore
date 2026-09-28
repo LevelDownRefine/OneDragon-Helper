@@ -270,3 +270,7 @@ config/wallpaper_cache/
 config/backups/
 
 闭关降级/
+
+# 本地启动测量原始样本不入库；新报告写入 .cache/
+/docs/rust-feasibility/assessment-startup.json
+/startup.json

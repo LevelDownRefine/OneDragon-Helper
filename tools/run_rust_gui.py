@@ -18,7 +18,9 @@ def prepare_demo(root: Path) -> None:
     shutil.copytree(
         PROJECT_ROOT / "src",
         root / "src",
-        ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", ".log", "tests"),
+        ignore=shutil.ignore_patterns(
+            ".git", "__pycache__", "*.pyc", ".log", "tests", "rust-gui"
+        ),
     )
     config = root / "config"
     config.mkdir()
@@ -78,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    crate = PROJECT_ROOT / "rust-gui"
+    crate = PROJECT_ROOT / "src/rust-gui"
     if not args.no_build:
         command = [
             "cargo",

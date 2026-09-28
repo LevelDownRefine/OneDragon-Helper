@@ -53,9 +53,9 @@ Windows Rust 窗口使用 Direct3D 12，自动选择硬件或系统 WARP 软件�
 使用系统 FXC 编译器，不附带 OpenGL 软件库或额外的 DXC DLL。
 
 完整包启动对比使用 `measure_gui_startup.py`：传入 `--qt-package`、`--rust-package`、
-`--output startup.json`，默认各 15 次、交替运行，另有一次不计入结果的预热。
+`--output .cache/gui-startup.json`，默认各 15 次、交替运行，另有一次不计入结果的预热。
 工具先校验发布包，在临时副本中使用生成配置测量首张任务画面回读；会打开测试窗口，
-不启动外部脚本，不包含 UAC 等待。测量条件、原始样本和结果见
+不启动外部脚本，不包含 UAC 等待。输出目录自动创建，原始样本留在本地；测量条件和结果见
 [完整包评估](../docs/rust-feasibility/assessment.md)。
 
 这些是手动更新的发布侧基础。更新入口位于右上角设置内，由用户点击
@@ -98,7 +98,7 @@ python tools/sync_oknte_tasks.py
 ## Rust 界面原型
 
 `python tools/run_rust_gui.py --demo` 构建并启动独立演示配置，操作说明见
-[Rust GUI 原型](../rust-gui/README.md)。`--no-build` 复用已有构建。
+[Rust GUI 原型](../src/rust-gui/README.md)。`--no-build` 复用已有构建。
 
-`python -m tools.export_rust_icons` 从原 GUI 图标源导出 `rust-gui/assets/icons/`。
+`python -m tools.export_rust_icons` 从原 GUI 图标源导出 `src/rust-gui/assets/icons/`。
 仅此开发步骤需要 Qt；Rust 界面运行时使用已嵌入的图标与默认壁纸。
