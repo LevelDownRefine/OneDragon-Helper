@@ -305,71 +305,40 @@ class TestLoadSaveConfig(unittest.TestCase):
             save_config({"a": 1})
 
 
-class TestAddRemoveScript(unittest.TestCase):
-    """add_script / remove_script：操作 config.yml 并协作 utils_weekly 同步 weekly。"""
+class TestAddRemoveScript(UtilsConfigTestBase):
+    """底层增删仅写 config.yml；weekly 和初始化由服务编排。"""
 
     def setUp(self):
-        self.tmp_dir = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp_dir.cleanup)
-        self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
+        super().setUp()
+        self.weekly_path = os.path.join(self.tmp_dir.name, "weekly.yml")
         dump_yaml_file(
-            self.config_path,
-            {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]},
+            self.weekly_path,
+            {
+                "weekly_timeouts": {"a": [60] * 7},
+                "weekly_start": {"a": {"周常": 3}},
+            },
         )
-
-    def _read(self):
-        return load_yaml(self.config_path)
-
-    def test_add_script_appends(self):
-        """add_script 在 script_list 末尾追加条目、落盘，并协作 utils_weekly 建默认条目。"""
-        with (
+        self.enterContext(
             patch(
-                "src.utils.utils_config.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            patch(
-                "src.utils.utils_config.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-            patch("src.utils.utils_config.ensure_weekly_entry") as mock_ensure,
-            patch("src.utils.utils_config.init_config") as mock_init,
-        ):
-            add_script({"display_name": "鸣潮", "script_path": "C:/b.exe"})
-        names = [s["display_name"] for s in self._read()["script_list"]]
+                "src.utils.utils_weekly.get_weekly_yml_path_under_root",
+                return_value=self.weekly_path,
+            )
+        )
+        self.weekly_before = Path(self.weekly_path).read_bytes()
+
+    def test_add_script_appends_only_config(self):
+        add_script({"display_name": "鸣潮", "script_path": "C:/b.exe"})
+        names = [s["display_name"] for s in self._read_config()["script_list"]]
         self.assertEqual(names, ["原神", "鸣潮"])
-        mock_ensure.assert_called_once_with("b")
-        mock_init.assert_called_once_with("b")
+        self.assertEqual(Path(self.weekly_path).read_bytes(), self.weekly_before)
 
-    def test_remove_script_removes(self):
-        """remove_script 从 script_list 移除指定进程条目、落盘，并协作清理 weekly 孤儿。"""
-        with (
-            patch(
-                "src.utils.utils_config.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            patch(
-                "src.utils.utils_config.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-            patch("src.utils.utils_config.delete_weekly") as mock_del,
-        ):
-            remove_script("a")
-        self.assertEqual(self._read()["script_list"], [])
-        mock_del.assert_called_once_with("a")
+    def test_remove_script_removes_only_config(self):
+        remove_script("a")
+        self.assertEqual(self._read_config()["script_list"], [])
+        self.assertEqual(Path(self.weekly_path).read_bytes(), self.weekly_before)
 
     def test_remove_script_missing_raises(self):
-        """remove_script 移除不存在的脚本属非法调用：assert 表达不该发生"""
-        with (
-            patch(
-                "src.utils.utils_config.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            patch(
-                "src.utils.utils_config.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-            self.assertRaises(AssertionError),
-        ):
+        with self.assertRaises(AssertionError):
             remove_script("不存在")
 
 
@@ -384,8 +353,7 @@ class TestUpdateScript(UtilsConfigTestBase):
                 ]
             }
         )
-        with patch("src.utils.utils_config.init_config") as init:
-            result = update_script("ww", "鸣潮", {"check_done": "script_closed"})
+        result = update_script("ww", "鸣潮", {"check_done": "script_closed"})
         self.assertEqual(result, "ww")
         self.assertEqual(
             self._read_config()["script_list"][0],
@@ -396,7 +364,6 @@ class TestUpdateScript(UtilsConfigTestBase):
                 "check_done": "script_closed",
             },
         )
-        init.assert_not_called()
 
     def test_rename_returns_new_identity(self):
         self._write_config(

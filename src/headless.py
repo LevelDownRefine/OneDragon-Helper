@@ -105,8 +105,7 @@ def handle_request(service, request) -> dict:
     """串行分发，协议输入先校验；业务异常保留诊断并返回明确失败。"""
     from src.service.background_job import InvalidBackgroundJob
     from src.service.run_service import InvalidRunRequest
-    from src.service.script_edit import InvalidScriptEdit, ScriptEdit
-    from src.service.script_list import DuplicateScript, InvalidScriptList
+    from src.service.script_service import DuplicateScript, InvalidScript, ScriptEdit
     from src.service.task_service import InvalidTaskSelection
     from src.service.wallpaper_service import InvalidWallpaper
 
@@ -175,8 +174,7 @@ def handle_request(service, request) -> dict:
         return _error(request_id, "duplicate_script", str(exc))
     except (
         InvalidTaskSelection,
-        InvalidScriptEdit,
-        InvalidScriptList,
+        InvalidScript,
         InvalidRunRequest,
         InvalidBackgroundJob,
         InvalidWallpaper,

@@ -1,8 +1,8 @@
-"""单脚本配置读写（原 src/service/script_service.py，已退化为模块函数）。
+"""config.yml 的脚本条目读写与路径解析。
 
 承载「单脚本」视角的实现：config.yml 的读写（含脚本条目增删改）、单脚本条目查询
-与路径解析。周常运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段）的读写由
-:mod:`src.utils.utils_weekly` 负责，本模块协作调用（如新增脚本时建默认 weekly 条目）。
+与路径解析。增删改的跨配置流程归 :mod:`src.service.script_service`；
+本模块不写 weekly.yml，也不初始化子脚本配置。
 
 内部标识统一用**脚本唯一标识 script_name**（exe 脚本为进程名、脚本文件为
 display_name），display_name 仅用于展示。config.yml 的读写权统一归本模块；
@@ -15,10 +15,7 @@ chain_service 模块仅作运行时委托（其内部 ScheduledRun 经 ``load_co
 import logging
 import os
 
-from src.config.set_config import (
-    get_config_path,
-    init_config,
-)
+from src.config.set_config import get_config_path
 from src.utils import (
     get_config_yml_path_under_root,
     require_config_yml_path,
@@ -30,10 +27,6 @@ from src.utils.utils_sub_config import (
     get_script_name,
     is_exe_script,
     resolve_script_path,
-)
-from src.utils.utils_weekly import (
-    delete_weekly,
-    ensure_weekly_entry,
 )
 from src.utils.utils_yaml import dump_yaml, load_yaml
 
@@ -82,7 +75,7 @@ def save_config(data: dict) -> None:
 
 
 def add_script(script_data: dict) -> None:
-    """向 config.yml 的 script_list 追加一个脚本条目，并自动创建 weekly 默认条目。
+    """仅向 config.yml 的 script_list 追加一个脚本条目。
 
     脚本唯一标识（get_script_name）不得与已有条目重复（数据完整性约束）。
 
@@ -99,12 +92,10 @@ def add_script(script_data: dict) -> None:
     )
     scripts.append(script_data)
     save_config(config)
-    ensure_weekly_entry(new_script_name)
-    init_config(new_script_name)
 
 
 def remove_script(script_name: str) -> None:
-    """从 config.yml 的 script_list 移除指定脚本条目，并自动清理 weekly 孤儿。
+    """仅从 config.yml 的 script_list 移除指定脚本条目。
 
     Args:
         script_name: 要移除的脚本唯一标识。
@@ -118,7 +109,6 @@ def remove_script(script_name: str) -> None:
     assert target is not None, f"[utils_config] 找不到脚本: {script_name}"
     scripts.remove(target)
     save_config(config)
-    delete_weekly(script_name)
 
 
 def update_script(
@@ -128,7 +118,7 @@ def update_script(
 ) -> str:
     """仅更新 config.yml 的脚本条目，返回保存后的标识。
 
-    完整编辑的校验、weekly 迁移和子脚本配置写入归 service.script_edit。
+    完整编辑的校验、weekly 迁移和子脚本配置写入归 service.script_service。
 
     Args:
         old_script_name: 原脚本唯一标识（用于定位条目）。

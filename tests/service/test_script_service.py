@@ -1,4 +1,4 @@
-"""完整脚本编辑的校验、跨文件保存与初始化边界。"""
+"""脚本管理的输入校验、跨配置保存与失败边界。"""
 
 import tempfile
 import unittest
@@ -8,15 +8,15 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from src.config import set_config
-from src.service import script_edit
+from src.service import script_service
 from src.service.app_service import AppService
-from src.service.script_edit import InvalidScriptEdit, ScriptEdit, validate_edit
+from src.service.script_service import InvalidScript, ScriptEdit, validate_edit
 from src.utils import utils_config, utils_weekly
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
 from src.utils.utils_yaml import dump_yaml_file, load_yaml
 
 
-class TestScriptEdit(unittest.TestCase):
+class ScriptServiceTestBase(unittest.TestCase):
     def setUp(self):
         directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.config = directory / "config.yml"
@@ -27,10 +27,10 @@ class TestScriptEdit(unittest.TestCase):
             (utils_weekly, "get_weekly_yml_path_under_root", self.weekly),
         ):
             self.enterContext(patch.object(module, name, return_value=str(path)))
-        self.init = self.enterContext(patch.object(script_edit, "init_config"))
+        self.init = self.enterContext(patch.object(script_service, "init_config"))
         self.switch = Mock()
         self.switch_factory = self.enterContext(
-            patch.object(script_edit, "task_switch_of", return_value=self.switch)
+            patch.object(script_service, "task_switch_of", return_value=self.switch)
         )
         self.service = AppService()
         self._seed(self.edit())
@@ -77,6 +77,8 @@ class TestScriptEdit(unittest.TestCase):
             },
         )
 
+
+class TestScriptEdit(ScriptServiceTestBase):
     def test_invalid_edit_never_writes(self):
         edit = self.edit()
         original = (self.config.read_bytes(), self.weekly.read_bytes())
@@ -98,7 +100,7 @@ class TestScriptEdit(unittest.TestCase):
             {"weekly_timeouts": [86401] * 7},
             {"switches": {"任务": 1}},
         ):
-            with self.subTest(changes=changes), self.assertRaises(InvalidScriptEdit):
+            with self.subTest(changes=changes), self.assertRaises(InvalidScript):
                 self.service.update_script(replace(edit, **changes))
             self.assertEqual(
                 (self.config.read_bytes(), self.weekly.read_bytes()), original
@@ -136,7 +138,7 @@ class TestScriptEdit(unittest.TestCase):
                 edit = validate_edit(self.edit(script_path="C:/new.exe"))
                 dump_yaml_file(str(self.config), {"script_list": entries})
                 original = (self.config.read_bytes(), self.weekly.read_bytes())
-                with self.assertRaises(InvalidScriptEdit):
+                with self.assertRaises(InvalidScript):
                     self.service.update_script(edit)
                 self.assertEqual(
                     (self.config.read_bytes(), self.weekly.read_bytes()), original
@@ -217,9 +219,9 @@ class TestScriptEdit(unittest.TestCase):
                     patch.object(utils_config, "update_script", events.config),
                     patch.object(utils_weekly, "rename_weekly", events.rename),
                     patch.object(utils_weekly, "save_weekly", events.weekly),
-                    patch.object(script_edit, "init_config", events.init),
+                    patch.object(script_service, "init_config", events.init),
                     patch.object(
-                        script_edit,
+                        script_service,
                         "task_switch_of",
                         return_value=Mock(write=events.switches),
                     ),
@@ -240,8 +242,8 @@ class TestScriptEdit(unittest.TestCase):
         factory = cache(set_config.GenshinConfig)
         with (
             patch.dict(set_config._CONFIGS, {"BetterGI": factory}, clear=True),
-            patch.object(script_edit, "init_config", wraps=set_config.init_config),
-            patch.object(script_edit, "task_switch_of", return_value=None),
+            patch.object(script_service, "init_config", wraps=set_config.init_config),
+            patch.object(script_service, "task_switch_of", return_value=None),
             patch.object(
                 set_config, "load_config", return_value=template
             ) as native_read,
@@ -268,3 +270,156 @@ class TestScriptEdit(unittest.TestCase):
                 "BetterGI", "User/OneDragon/默认配置.json"
             )
             native_write.assert_not_called()
+
+
+class TestScriptList(ScriptServiceTestBase):
+    def _file(self, name):
+        path = self.config.parent / name
+        path.touch()
+        return str(path)
+
+    def test_duplicate_exe_has_distinct_error_without_writing(self):
+        path = self._file("BetterGI.exe")
+        before = (self.config.read_bytes(), self.weekly.read_bytes())
+        with self.assertRaises(script_service.DuplicateScript):
+            self.service.add_script(path)
+        self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), before)
+        self.init.assert_not_called()
+
+    def test_invalid_file_and_shortcut_do_not_write(self):
+        before = (self.config.read_bytes(), self.weekly.read_bytes())
+        for path in (
+            "",
+            str(self.config.parent / "missing.py"),
+            self._file("notes.txt"),
+        ):
+            with self.subTest(path=path), self.assertRaises(InvalidScript):
+                self.service.add_script(path)
+        with (
+            patch.object(
+                utils_config, "read_shortcut", side_effect=OSError("broken link")
+            ),
+            self.assertRaisesRegex(InvalidScript, "broken link"),
+        ):
+            self.service.add_script(self._file("broken.lnk"))
+        self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), before)
+        self.init.assert_not_called()
+
+    def test_add_and_remove_coordinate_config_and_weekly(self):
+        path = self._file("新增.py")
+        self.assertEqual(
+            self.service.add_script(path),
+            {"script_name": "新增", "display_name": "新增"},
+        )
+        self.assertEqual(utils_config.get_script("新增")["script_path"], path)
+        weekly = load_yaml(str(self.weekly))
+        self.assertEqual(weekly["weekly_timeouts"]["新增"], [DEFAULT_RUN_TIMEOUT] * 7)
+        self.assertEqual(weekly["weekly_start"], {"BetterGI": {"周常": 3}})
+        self.init.assert_called_once_with("新增")
+        self.init.reset_mock()
+
+        self.service.remove_script("新增")
+        self.assertIsNone(utils_config.get_script("新增"))
+        self.assertEqual(
+            load_yaml(str(self.weekly)),
+            {
+                "weekly_timeouts": {"BetterGI": [60] * 7},
+                "weekly_start": {"BetterGI": {"周常": 3}},
+            },
+        )
+        self.assertTrue(Path(path).is_file())
+        self.init.assert_not_called()
+
+    def test_add_shortcut_preserves_target_and_arguments(self):
+        target = self._file("new.exe")
+        shortcut = self._file("shortcut.lnk")
+        with patch.object(
+            utils_config, "read_shortcut", return_value=(target, "--中文", "")
+        ) as read:
+            result = self.service.add_script(shortcut)
+        read.assert_called_once_with(shortcut)
+        self.assertEqual(result, {"script_name": "new", "display_name": "new"})
+        entry = utils_config.get_script("new")
+        self.assertEqual(entry["script_path"], target)
+        self.assertEqual(entry["script_arguments"], "--中文")
+        self.init.assert_called_once_with("new")
+
+    def test_reorder_preserves_entries_and_unknown_fields(self):
+        first = {"script_path": "a.py", "display_name": "一", "custom": [1, 2]}
+        second = {"script_path": "b.exe", "display_name": "二"}
+        dump_yaml_file(
+            str(self.config), {"script_list": [first, second], "other": True}
+        )
+        weekly_before = self.weekly.read_bytes()
+        self.service.reorder_scripts(["b", "一"])
+        self.assertEqual(
+            load_yaml(str(self.config)), {"script_list": [second, first], "other": True}
+        )
+        self.assertEqual(self.weekly.read_bytes(), weekly_before)
+        self.init.assert_not_called()
+
+    def test_stale_duplicate_and_invalid_orders_do_not_write(self):
+        before = self.config.read_bytes()
+        for order in ([], ["BetterGI", "BetterGI"], ["unknown"], "BetterGI", [False]):
+            with self.subTest(order=order), self.assertRaises(InvalidScript):
+                self.service.reorder_scripts(order)
+        self.assertEqual(self.config.read_bytes(), before)
+
+    def test_unknown_or_last_script_cannot_be_removed(self):
+        before = (self.config.read_bytes(), self.weekly.read_bytes())
+        for name in ("unknown", "BetterGI"):
+            with self.subTest(name=name), self.assertRaises(InvalidScript):
+                self.service.remove_script(name)
+        self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), before)
+
+    def test_add_failure_stops_remaining_steps_without_retry(self):
+        path = self._file("新增.py")
+        steps = ["config", "weekly", "init"]
+        for index, failed_step in enumerate(steps):
+            with self.subTest(step=failed_step):
+                self._seed(self.edit())
+                events = Mock()
+                events.config.side_effect = utils_config.add_script
+                events.weekly.side_effect = utils_weekly.ensure_weekly_entry
+                getattr(events, failed_step).side_effect = OSError(failed_step)
+                with (
+                    patch.object(utils_config, "add_script", events.config),
+                    patch.object(utils_weekly, "ensure_weekly_entry", events.weekly),
+                    patch.object(script_service, "init_config", events.init),
+                    self.assertRaisesRegex(OSError, failed_step),
+                ):
+                    self.service.add_script(path)
+                self.assertEqual(
+                    [call[0] for call in events.mock_calls], steps[: index + 1]
+                )
+                self.assertEqual(utils_config.get_script("新增") is not None, index > 0)
+                self.assertEqual(
+                    "新增" in load_yaml(str(self.weekly))["weekly_timeouts"], index > 1
+                )
+
+    def test_remove_failure_stops_remaining_steps_without_retry(self):
+        path = self._file("新增.py")
+        steps = ["config", "weekly"]
+        for index, failed_step in enumerate(steps):
+            with self.subTest(step=failed_step):
+                self._seed(self.edit())
+                self.service.add_script(path)
+                self.init.reset_mock()
+                events = Mock()
+                events.config.side_effect = utils_config.remove_script
+                events.weekly.side_effect = utils_weekly.delete_weekly
+                getattr(events, failed_step).side_effect = OSError(failed_step)
+                with (
+                    patch.object(utils_config, "remove_script", events.config),
+                    patch.object(utils_weekly, "delete_weekly", events.weekly),
+                    self.assertRaisesRegex(OSError, failed_step),
+                ):
+                    self.service.remove_script("新增")
+                self.assertEqual(
+                    [call[0] for call in events.mock_calls], steps[: index + 1]
+                )
+                self.assertEqual(
+                    utils_config.get_script("新增") is not None, index == 0
+                )
+                self.assertIn("新增", load_yaml(str(self.weekly))["weekly_timeouts"])
+                self.init.assert_not_called()

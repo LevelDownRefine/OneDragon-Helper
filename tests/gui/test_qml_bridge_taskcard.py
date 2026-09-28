@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QDialog
 
 from src.gui.controllers import task_card
 from src.service import app_service
-from src.service.script_edit import ScriptEdit
+from src.service.script_service import ScriptEdit
 from tests.gui.helpers import make_bridge
 
 

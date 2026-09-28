@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import Mock, call
 
 from src.headless import handle_request
-from src.service.script_edit import ScriptEdit
+from src.service.script_service import ScriptEdit
 from src.update.runtime import FileLease, UpdateBusyError
 from src.utils.utils_yaml import load_yaml
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture

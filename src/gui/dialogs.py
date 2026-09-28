@@ -7,7 +7,7 @@
 对外接口：
 - ``SingleScriptConfigDialog``：单脚本配置弹窗（名称/路径/类型/参数/完成检测/
   关闭脚本/关闭游戏/阻塞/游戏进程/每周超时/任务开关），保存后经 ``pending_changes`` 返回，
-  写盘由调用方经 ``AppService.update_script`` 委托 ``src.service.script_edit.save``。脚本删除改由左侧列表交互完成。
+  写盘由调用方经 ``AppService.update_script`` 委托 ``src.service.script_service.update``。脚本删除改由左侧列表交互完成。
 - 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
   （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
 """
@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.service.app_service import AppService
-from src.service.script_edit import InvalidScriptEdit, ScriptEdit
+from src.service.script_service import InvalidScript, ScriptEdit
 
 # ═══════════════════════ 弹窗样式（原 src/gui/theme.py 子集，2026-08-16 并入）═══════
 # 与 QML Theme.js 保持同一套蓝灰配色。
@@ -718,7 +718,7 @@ class SingleScriptConfigDialog(FormDialogBase):
     def save_data(self):
         """收集表单数据存入 self.pending_changes 后 accept()；写盘由调用方完成。
 
-        返回完整 ScriptEdit；校验与保存流程归 service.script_edit。
+        返回完整 ScriptEdit；校验与保存流程归 service.script_service。
         """
         if self.kill_game_cb.isChecked() and not self.game_process_input.text().strip():
             show_warning(
@@ -756,7 +756,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         )
         try:
             self.pending_changes = self._app_service.validate_script_edit(edit)
-        except InvalidScriptEdit as exc:
+        except InvalidScript as exc:
             show_warning(self, str(exc))
             return
         self.accept()

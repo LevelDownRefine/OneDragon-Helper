@@ -3,7 +3,7 @@
 持有平级 peer 并薄委托，使各 peer 互不越界——链编排归 :mod:`src.service.chain_service` 模块函数（生成/运行/调度/校验），本类只组合它。
 
 peer：
-- 完整脚本编辑（校验、跨配置保存与初始化）：归 :mod:`src.service.script_edit` 模块函数
+- 脚本管理（增删改、排序与跨配置编排）：归 :mod:`src.service.script_service` 模块函数
 - 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils.utils_config` 模块函数
 - 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.daily_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
@@ -25,7 +25,7 @@ import src.service.chain_service as chain_service
 import src.service.daily_cli as daily_cli
 import src.service.daily_plan as daily_plan
 import src.service.resource_service as resource_service
-import src.service.script_edit as script_edit
+import src.service.script_service as script_service
 import src.service.settings_service as settings_service
 import src.service.task_service as task_service
 from src.config.daily_config import get_daily_map, get_weekly_map
@@ -37,7 +37,7 @@ from src.config.set_config import (
 )
 from src.config.task_switch import task_switch_of
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
-from src.service import launch_service, run_service, script_list, wallpaper_service
+from src.service import launch_service, run_service, wallpaper_service
 from src.service.background_job import BackgroundJob, InvalidBackgroundJob
 from src.service.schedule import (
     RunOptions,
@@ -49,7 +49,7 @@ from src.service.schedule import (
     load_startup_options,
     save_schedule,
 )
-from src.service.script_edit import InvalidScriptEdit, ScriptEdit
+from src.service.script_service import InvalidScript, ScriptEdit
 from src.service.update_session import UpdateSession
 from src.update.service import UpdateService
 from src.utils.utils_config import (
@@ -141,14 +141,14 @@ class AppService:
 
     def add_script(self, file_path: str) -> dict:
         """将脚本文件加入助手列表，不运行或复制文件。"""
-        return script_list.add(file_path)
+        return script_service.add(file_path)
 
     def remove_script(self, script_name: str) -> None:
         """从助手列表移除脚本，不删除脚本文件。"""
-        return script_list.remove(script_name)
+        return script_service.remove(script_name)
 
     def reorder_scripts(self, script_names: list[str]) -> None:
-        return script_list.reorder(script_names)
+        return script_service.reorder(script_names)
 
     def script_view(self, script_name: str) -> dict:
         """CLI 任务卡及物化选项。"""
@@ -208,7 +208,7 @@ class AppService:
         """读取脚本配置表单；不提交编辑或强制初始化。"""
         script = self.get_script(script_name)
         if script is None:
-            raise InvalidScriptEdit("脚本已不存在，请刷新列表")
+            raise InvalidScript("脚本已不存在，请刷新列表")
         return {
             "script_name": script_name,
             "script": script,
@@ -366,11 +366,11 @@ class AppService:
 
     def validate_script_edit(self, edit: ScriptEdit) -> ScriptEdit:
         """表单提交前校验；不写盘，允许 GUI 保留输入继续编辑。"""
-        return script_edit.validate_edit(edit)
+        return script_service.validate_edit(edit)
 
     def update_script(self, edit: ScriptEdit) -> str:
         """应用一次完整脚本编辑，返回保存后的标识。"""
-        return script_edit.save(edit)
+        return script_service.update(edit)
 
     # ── schedule.yml（src.service.schedule 模块函数）──
     # schedule.yml 的读写与调度编排同处 src.service.schedule，不挂在任何 peer 实例上；
