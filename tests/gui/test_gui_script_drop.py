@@ -20,8 +20,9 @@ from PySide6.QtWidgets import QApplication
 from src.gui.controllers.game_list import GameListController
 from src.gui.file_drop import WindowsFileDrop
 from src.gui.main_window import QmlBridge
-from src.service import script_list
+from src.service import script_service
 from src.service.app_service import AppService
+from src.utils import utils_config, utils_weekly
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_yaml import load_yaml
 
@@ -33,20 +34,24 @@ class TestDroppedScripts(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.service = MagicMock()
-        self.service.add_script.side_effect = script_list.add
+        self.service.add_script.side_effect = script_service.add
         self.reload = MagicMock()
         self.toast = MagicMock()
         self.ctrl = GameListController(self.service, self.toast, self.reload)
         self.added = MagicMock()
         self.ctrl.gameAdded.connect(self.added)
-        self.persist_script = self.enterContext(patch.object(script_list, "add_script"))
+        self.persist_script = self.enterContext(
+            patch.object(utils_config, "add_script")
+        )
+        self.enterContext(patch.object(utils_weekly, "ensure_weekly_entry"))
+        self.enterContext(patch.object(script_service, "init_config"))
         self.persist_script.side_effect = lambda entry: self.ctrl._games.append(
             {"script_name": get_script_name(entry), "script_data": entry}
         )
 
         self.enterContext(
             patch.object(
-                script_list,
+                utils_config,
                 "load_config",
                 side_effect=lambda: {
                     "script_list": [game["script_data"] for game in self.ctrl.games]

@@ -21,8 +21,7 @@ from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWidgets import QMessageBox
 
 from src.gui.icons import GameIconProvider, _render_icon, get_script_icon
-from src.service.script_edit import InvalidScriptEdit
-from src.service.script_list import DuplicateScript, InvalidScriptList
+from src.service.script_service import DuplicateScript, InvalidScript
 from src.utils.utils_sub_config import get_script_name
 
 # 游戏图标停用底色（渐变兜底水印等场景复用）
@@ -303,7 +302,7 @@ class GameListController(QObject):
         names.insert(dst_index, names.pop(src_index))
         try:
             self._app_service.reorder_scripts(names)
-        except InvalidScriptList as exc:
+        except InvalidScript as exc:
             logger.warning("调整脚本顺序未完成", exc_info=True)
             self._on_reload()
             self._toast(f"调整脚本顺序未完成：{exc}")
@@ -394,7 +393,7 @@ class GameListController(QObject):
             result = self._app_service.add_script(file_path)
         except DuplicateScript as exc:
             return "duplicate", str(exc)
-        except InvalidScriptList as exc:
+        except InvalidScript as exc:
             logger.warning("读取脚本未完成：%s", file_path, exc_info=True)
             return "failed", f"无法添加 {os.path.basename(file_path)}：{exc}"
         except OSError as exc:
@@ -459,7 +458,7 @@ class GameListController(QObject):
             changes = dialog.pending_changes
             try:
                 self._app_service.update_script(changes)
-            except InvalidScriptEdit as exc:
+            except InvalidScript as exc:
                 logger.warning("保存脚本配置未完成", exc_info=True)
                 self._on_reload()
                 self._toast(f"保存脚本配置未完成：{exc}")
@@ -471,7 +470,7 @@ class GameListController(QObject):
         """配置弹窗确认删除：落盘后重载脚本列表。"""
         try:
             self._app_service.remove_script(script_name)
-        except InvalidScriptList as exc:
+        except InvalidScript as exc:
             logger.warning("删除脚本未完成", exc_info=True)
             self._on_reload()
             self._toast(f"删除脚本未完成：{exc}")

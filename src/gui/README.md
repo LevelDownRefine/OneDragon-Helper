@@ -40,7 +40,7 @@
 
 ## 弹窗 dialogs.py
 
-- SingleScriptConfigDialog：单脚本配置弹窗，收集 ScriptEdit，经 AppService.validate_script_edit 校验后用 pending_changes 返回；调用方只需 AppService.update_script，完整保存顺序归 script_edit.save。校验失败保留弹窗输入。
+- SingleScriptConfigDialog：单脚本配置弹窗，收集 ScriptEdit，经 AppService.validate_script_edit 校验后用 pending_changes 返回；调用方只需 AppService.update_script，完整保存顺序归 script_service.update。校验失败保留弹窗输入。
 - ConfigDialog：右上角图标入口，自动启动设置点击「保存」才写入；取消、关闭和 Esc 不写入。每日计划、运行选项和备份/恢复独立打开，保留当前表单。每日计划启用时不再触发打开窗口的自动启动。
 - DailyPlanDialog：时间、参加的脚本、启用开关放在同一表单，保存后经 DailyPlanController 调 AppService；失败保留输入，取消不写入。仅从「配置 → 每日计划」进入，主界面不显示计划卡片或快捷按钮。在表单中取消勾选启用开关并保存即可暂停，时间与脚本继续保留；手动勾选不修改计划。开关下方回读并显示系统任务实际状态（未注册 / 已禁用 / 每天 HH:MM）：设置与系统任务不一致时保存会重新注册。
 - RunConfirmDialog：手动启动前确认，或在「运行选项」中仅保存配置。每日时间独立管理，手动「启动全部」始终立即运行。
@@ -53,7 +53,7 @@ config.yml 写入权统一归 src.utils.utils_config（经 AppService 委托）�
 
 | 操作 | GUI 触发 | 写盘路径 |
 |------|----------|---------|
-| 编辑脚本字段 | 弹窗 save_data → pending_changes | AppService.update_script（src.service.script_edit） |
+| 编辑脚本字段 | 弹窗 save_data → pending_changes | AppService.update_script（src.service.script_service） |
 | 增删脚本 | _add_script / _on_delete_script | AppService.add_script / remove_script（src.utils.utils_config） |
 | 重排 | 拖拽 | AppService.save_config（src.utils.utils_config） |
 | 自动启动 | 配置弹窗保存 | AppService.apply_startup_options → schedule.yml 的 startup 块 |
