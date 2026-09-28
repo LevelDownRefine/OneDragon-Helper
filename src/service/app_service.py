@@ -4,7 +4,7 @@
 
 peer：
 - 脚本管理（增删改、排序与跨配置编排）：归 :mod:`src.service.script_service` 模块函数
-- 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils.utils_config` 模块函数
+- 助手配置读写、条目查询与路径解析：归 :mod:`src.utils.utils_config` 模块函数
 - 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.daily_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
@@ -266,7 +266,7 @@ class AppService:
         return check_weekly(load_config())
 
     # ── 配置读写（src.utils.utils_config 模块函数）──
-    # config.yml 读写（含脚本条目增删改）归 :mod:`src.utils.utils_config`；此处仅作薄委托。
+    # 文件读写归 utils_config；脚本条目修改归 script_service。
     def load_config(self) -> dict:
         return load_config()
 

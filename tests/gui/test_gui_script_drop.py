@@ -41,13 +41,18 @@ class TestDroppedScripts(unittest.TestCase):
         self.added = MagicMock()
         self.ctrl.gameAdded.connect(self.added)
         self.persist_script = self.enterContext(
-            patch.object(utils_config, "add_script")
+            patch.object(utils_config, "save_config")
         )
         self.enterContext(patch.object(utils_weekly, "ensure_weekly_entry"))
         self.enterContext(patch.object(script_service, "init_config"))
-        self.persist_script.side_effect = lambda entry: self.ctrl._games.append(
-            {"script_name": get_script_name(entry), "script_data": entry}
-        )
+
+        def save(config):
+            entry = config["script_list"][-1]
+            self.ctrl._games.append(
+                {"script_name": get_script_name(entry), "script_data": entry}
+            )
+
+        self.persist_script.side_effect = save
 
         self.enterContext(
             patch.object(
@@ -73,7 +78,10 @@ class TestDroppedScripts(unittest.TestCase):
         with patch("src.gui.dialogs.pick_file") as picker:
             self.assertTrue(self.ctrl.dropScripts(urls))
         picker.assert_not_called()
-        entries = [call.args[0] for call in self.persist_script.call_args_list]
+        entries = [
+            call.args[0]["script_list"][-1]
+            for call in self.persist_script.call_args_list
+        ]
         self.assertEqual(
             [entry["script_path"] for entry in entries],
             [os.path.normpath(url.toLocalFile()) for url in urls],
@@ -139,12 +147,12 @@ class TestDroppedScripts(unittest.TestCase):
                 shortcut = self.file_url(f"桌面快捷方式-{suffix}.LNK")
                 arguments = '--profile "中文 100% #1" --daily'
                 with patch(
-                    "src.utils.utils_config.read_shortcut",
+                    "src.service.script_service.read_shortcut",
                     return_value=(target, arguments, str(Path(target).parent)),
                 ):
                     self.assertTrue(self.ctrl.canDropScripts([shortcut]))
                     self.assertTrue(self.ctrl.dropScripts([shortcut]))
-                entry = self.persist_script.call_args.args[0]
+                entry = self.persist_script.call_args.args[0]["script_list"][-1]
                 self.assertEqual(entry["script_path"], os.path.normpath(target))
                 self.assertEqual(
                     entry["script_type"], "python" if suffix == "py" else "external"
@@ -162,7 +170,7 @@ class TestDroppedScripts(unittest.TestCase):
             with (
                 self.subTest(target=target),
                 patch(
-                    "src.utils.utils_config.read_shortcut",
+                    "src.service.script_service.read_shortcut",
                     return_value=(target, "", ""),
                 ),
                 self.assertLogs("src.gui.controllers.game_list", level="WARNING"),
@@ -206,7 +214,8 @@ class TestDroppedScripts(unittest.TestCase):
     def test_unreadable_shortcut_does_not_hide_another_success(self):
         with (
             patch(
-                "src.utils.utils_config.read_shortcut", side_effect=OSError("bad link")
+                "src.service.script_service.read_shortcut",
+                side_effect=OSError("bad link"),
             ),
             self.assertLogs("src.gui.controllers.game_list", level="WARNING"),
         ):
