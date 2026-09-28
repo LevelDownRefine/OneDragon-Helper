@@ -30,7 +30,7 @@ class TestGameIconHint(unittest.TestCase):
                 patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch.object(BackgroundController, "resolve_bg", return_value=None),
                 patch("src.gui.controllers.task_card.get_daily_readback", return_value=[]),
-                patch("src.gui.controllers.links._get_game_exe_path", return_value=icon_path) as read_path,
+                patch.object(AppService, "game_icon_path", return_value={"path": icon_path}) as read_path,
                 patch("src.config.set_config.get_game_exe_path", return_value=icon_path),
                 patch("src.gui.icons._exe_icon", return_value=QIcon(icon_path)),
             ):
@@ -79,7 +79,7 @@ class TestGameIconHint(unittest.TestCase):
                     launch.assert_called_once_with()
 
                 # 鼠标仍停在按钮上时切换脚本，旧图必须立即变为文字。
-                read_path.return_value = None
+                read_path.return_value = {"path": None}
                 bridge.selectGame(1)
                 QTest.qWait(200)
                 assert hint.isVisible() and label.isVisible() and not icon.isVisible()
@@ -90,10 +90,10 @@ class TestGameIconHint(unittest.TestCase):
                 hover("linkButton_home")
                 assert not hint.isVisible()
                 assert find_item("linkHintText_home").property("text") == "项目主页"
-                read_path.return_value = icon_path
+                read_path.return_value = {"path": icon_path}
                 hover("linkButton_game")
                 assert icon.isVisible() and not label.isVisible()
-                read_path.return_value = None
+                read_path.return_value = {"path": None}
                 bridge.gamesChanged.emit()
                 QTest.qWait(200)
                 assert label.isVisible() and not icon.isVisible()

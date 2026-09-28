@@ -125,3 +125,14 @@ class ScriptTargetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             resources.resolve_script_target("example", "game")
         self.lookup.assert_not_called()
+
+    def test_empty_script_path_does_not_open_project_parent(self):
+        self.lookup.return_value = {"script_path": ""}
+        with patch.object(resources, "resolve_script_path") as resolve:
+            for target in ("folder", "log"):
+                with self.subTest(target=target):
+                    self.assertEqual(
+                        resources.resolve_script_target("example", target),
+                        {"kind": "unavailable", "reason": "未找到脚本路径"},
+                    )
+        resolve.assert_not_called()

@@ -47,9 +47,9 @@ def resolve_script_target(script_name: str, target: str) -> dict:
         assert path is not None
     else:
         assert "script_path" in script
-        resolved = resolve_script_path(script["script_path"])
-        if not resolved:
+        if not script["script_path"]:
             return _unavailable("未找到脚本路径")
+        resolved = resolve_script_path(script["script_path"])
         if target == "folder":
             path = os.path.dirname(resolved)
         else:

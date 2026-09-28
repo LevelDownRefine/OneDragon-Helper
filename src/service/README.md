@@ -134,3 +134,11 @@ Rust 每日计划由 daily_cli 提供严格表单边界，将显式命令交给 
 CLI 备份/恢复通过 AppService.background 的单任务执行器调用原服务；只做调度与结果保留，
 不重写 ZIP 搬运逻辑。stdio 会话串行轮询，EOF 等任务结束再释放运行租约；GUI 禁止普通关窗
 打断恢复，后台异常记录日志并保留可展示的部分完成详情。
+
+## 资源与启动目标
+
+`resolve_script_target` 统一解析主页、B 站、GitHub、脚本目录、日志目录和配置文件，返回 URL、绝对路径或不可用原因。`game_icon_path` 按需读取游戏路径，图标提取仍由前端负责。
+
+`resolve_launch_target` 统一解析当前脚本或游戏的启动方式。外部程序使用系统关联打开；Python 脚本复用 Runner 命令，保留参数、工作目录和环境覆盖项。调用方继承自身环境并应用覆盖项，不经接口传递整个进程环境。
+
+这些查询不打开文件、不启动进程。Python GUI 直接调用 AppService 并处理打开失败，无须经过 CLI；其它前端可通过同一 service 获取目标。

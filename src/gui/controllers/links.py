@@ -1,6 +1,6 @@
 """悬浮条控制器：主页 / B站 / GitHub / 脚本目录 / 设置 / 启动游戏。
 
-独立 QObject，依赖 game_list（读当前游戏）。脚本路径解析由 subscript 提供。
+独立 QObject，依赖 game_list（读当前游戏）。资源与启动目标解析统一委托 AppService。
 """
 
 import os
@@ -8,16 +8,8 @@ import webbrowser
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from src.config.set_config import get_game_exe_path as _get_game_exe_path
-from src.link import get_game_link as _get_game_link
-from src.log import get_log_dir
 from src.service.app_service import AppService
 from src.utils import get_config_yml_path_under_root, open_in_explorer
-from src.utils.utils_sub_config import resolve_script_path
-
-# 通用占位链接（对应内容未配置时使用）
-_URL_HOME = "https://github.com/LevelDownRefine/OneDragon-Helper"
-_URL_BILIBILI = "https://www.bilibili.com/"
 
 
 class LinksController(QObject):
@@ -59,11 +51,14 @@ class LinksController(QObject):
         game = self._current_or_toast()
         if game is None:
             return
-        exe_path = _get_game_exe_path(game["script_name"])
-        if not exe_path:
-            self._toast(f"{game['display_name']}：未找到游戏路径")
+        target = self._app_service.resolve_launch_target(game["script_name"], "game")
+        assert "kind" in target
+        if target["kind"] == "unavailable":
+            assert "reason" in target
+            self._toast(f"{game['display_name']}：{target['reason']}")
             return
-        if self._open_path(exe_path):
+        assert target["kind"] == "association" and "path" in target
+        if self._open_path(target["path"]):
             self._toast(f"正在启动 {game['display_name']}…")
 
     @Slot(result=str)
@@ -78,88 +73,57 @@ class LinksController(QObject):
         if game is None:
             return ""
         assert "script_name" in game
-        exe_path = _get_game_exe_path(game["script_name"])
-        return f"image://gameicon/{game['script_name']}" if exe_path else ""
+        icon = self._app_service.game_icon_path(game["script_name"])
+        assert "path" in icon
+        return f"image://gameicon/{game['script_name']}" if icon["path"] else ""
 
-    def _open_url(self, url: str, fallback: str, label: str):
-        target = url or fallback
-        webbrowser.open(target)
-        self._toast(f"打开{label}：{target}")
+    def _open_resource(self, target_name: str, label: str):
+        game = self._current_or_toast()
+        if game is None:
+            return
+        target = self._app_service.resolve_script_target(
+            game["script_name"], target_name
+        )
+        assert "kind" in target
+        if target["kind"] == "unavailable":
+            assert "reason" in target
+            self._toast(f"{game['display_name']}：{target['reason']}")
+            return
+        assert "value" in target
+        value = target["value"]
+        if target["kind"] == "url":
+            try:
+                opened = webbrowser.open(value)
+            except (OSError, webbrowser.Error) as exc:
+                self._toast(f"无法打开{label}：{exc}")
+                return
+            self._toast(
+                f"打开{label}：{value}" if opened else f"无法打开{label}：{value}"
+            )
+        else:
+            assert target["kind"] == "path"
+            if self._open_path(value):
+                self._toast(f"已打开 {game['display_name']} {label}")
 
     @Slot()
     def openHome(self):
-        """打开当前游戏官方主页（link 声明，空则通用占位）。"""
-        game = self._current_or_toast()
-        if game is None:
-            return
-        self._open_url(
-            _get_game_link(game["script_name"], "homepage"),
-            _URL_HOME,
-            "主页",
-        )
+        self._open_resource("home", "主页")
 
     @Slot()
     def openBilibili(self):
-        """打开当前游戏官方 B 站（link 声明，空则通用占位）。"""
-        game = self._current_or_toast()
-        if game is None:
-            return
-        self._open_url(
-            _get_game_link(game["script_name"], "bilibili"),
-            _URL_BILIBILI,
-            "B站",
-        )
+        self._open_resource("bili", "B站")
 
     @Slot()
     def openGithub(self):
-        """打开当前脚本项目 GitHub 主页（link 声明，空则通用占位）。"""
-        game = self._current_or_toast()
-        if game is None:
-            return
-        self._open_url(
-            _get_game_link(game["script_name"], "github"),
-            _URL_HOME,
-            "GitHub",
-        )
+        self._open_resource("github", "GitHub")
 
     @Slot()
     def openScriptFolder(self):
-        """打开当前脚本所在目录（script_path 父目录，资源管理器）。"""
-        game = self._current_or_toast()
-        if game is None:
-            return
-        script_path = game["script_data"].get("script_path", "")
-        resolved = resolve_script_path(script_path) if script_path else None
-        if not resolved:
-            self._toast(f"{game['display_name']}：未找到脚本路径")
-            return
-        folder = os.path.dirname(resolved)
-        if not os.path.isdir(folder):
-            self._toast(f"{game['display_name']}：脚本目录不存在")
-            return
-        if self._open_path(folder):
-            self._toast(f"已打开 {game['display_name']} 脚本目录")
+        self._open_resource("folder", "脚本目录")
 
     @Slot()
     def openLogFolder(self):
-        """打开当前脚本运行日志目录（资源管理器）；无匹配解析器或目录缺失时提示。"""
-        game = self._current_or_toast()
-        if game is None:
-            return
-        script_path = game["script_data"].get("script_path", "")
-        resolved = resolve_script_path(script_path) if script_path else None
-        if not resolved:
-            self._toast(f"{game['display_name']}：未找到脚本路径")
-            return
-        log_dir = get_log_dir(game["script_name"], resolved)
-        if log_dir is None:
-            self._toast(f"{game['display_name']}：暂不支持日志跳转")
-            return
-        if not os.path.isdir(log_dir):
-            self._toast(f"{game['display_name']}：日志目录不存在")
-            return
-        if self._open_path(log_dir):
-            self._toast(f"已打开 {game['display_name']} 日志目录")
+        self._open_resource("log", "日志目录")
 
     @Slot()
     def openSettings(self):
@@ -174,12 +138,4 @@ class LinksController(QObject):
     @Slot()
     def openScriptConfig(self):
         """打开当前脚本专属配置文件（python→源码；exe→内部 config），未适配或缺失时提示。"""
-        game = self._current_or_toast()
-        if game is None:
-            return
-        path, error = self._app_service.config_file_path(game["script_name"])
-        if error is not None:
-            self._toast(f"{game['display_name']}：{error}")
-            return
-        if self._open_path(path):
-            self._toast(f"已打开 {game['display_name']} 配置文件")
+        self._open_resource("configfile", "配置文件")
