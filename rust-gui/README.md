@@ -14,8 +14,10 @@ Windows 左侧提取脚本内嵌图标，失败依次回退 Python 入口图标�
 提取使用 Windows 资源 API，单后台线程、8 项队列、96 项缓存；不调用 Shell 扩展，不执行文件。
 刷新列表重新读取缓存；移除/重排以路径识别图标，异步旧结果不会覆盖刷新后的图标。
 非 Windows 使用内置图标与文字提示。
-首版选用 [egui / eframe 0.36.2](https://docs.rs/eframe/0.36.2/eframe/)，使用 Glow 渲染器，
-用于验证 Rust GUI + Python CLI 的边界和操作体验，尚未决定最终界面框架。
+首版选用 [egui / eframe 0.36.2](https://docs.rs/eframe/0.36.2/eframe/)。Windows 使用
+wgpu Direct3D 12，支持系统 WARP 软件渲染；非 Windows 保留 Glow。
+主窗口和关机确认窗共用渲染配置，DirectComposition 保留透明圆角；FXC 使用系统组件。
+可设 `ODH_FORCE_SOFTWARE_RENDERING=1` 强制 WARP 诊断，不需要额外 DXC/OpenGL 软件 DLL。
 
 ## 直接体验
 

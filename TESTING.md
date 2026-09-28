@@ -92,7 +92,9 @@ python -m unittest tests.exe.test_headless_exe -v
 继承权限、PE 校验和，以及全部 Python EXE 无 Qt/QML；这些只读检查不要求管理员。
 包内 GUI 权限与原版一致，普通终端不要直接跑需要启动 GUI/Runner/Updater 的集成测试。
 绘制专项区分前端：Qt 仍验证完整 QML 的 D3D11/WARP 首帧；Rust 在临时空脚本夹具中
-调用随包的 `--capture` 诊断，检查实际截图尺寸和颜色。两种渲染测试都以当前权限运行，
+调用随包的 `--capture` 诊断，检查主窗口及关机确认窗的实际截图尺寸和颜色，
+分别使用自动选卡和强制 WARP；截图后取消关机，仅运行独立窗口，不调用系统关机。
+两种渲染测试都以当前权限运行，
 不启动脚本，也不把 Qt 的 QML 文件要求施加到 Rust 包。
 
 ## 2. 风格检查 ruff

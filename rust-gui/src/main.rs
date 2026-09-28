@@ -9,6 +9,7 @@ mod launch;
 mod list_dialog;
 mod native_icons;
 mod opener;
+mod rendering;
 mod run_dialog;
 mod runtime;
 mod script_editor;
@@ -180,16 +181,13 @@ fn main() -> eframe::Result {
             });
         std::process::exit(code);
     }
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
+    let options = rendering::options(
+        eframe::egui::ViewportBuilder::default()
             .with_inner_size(skin::SIZE)
             .with_resizable(false)
             .with_decorations(false)
             .with_transparent(true),
-        renderer: eframe::Renderer::Glow,
-        persist_window: false,
-        ..Default::default()
-    };
+    );
     eframe::run_native(
         "OneDragon · Rust Preview",
         options,

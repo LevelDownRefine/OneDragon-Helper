@@ -48,6 +48,9 @@ Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时
 不要将该构建目录直接作为日常安装使用；解压 ZIP 到独立目录后双击主程序。
 发布构建启用截图诊断参数 `--capture 输出.png`：任务卡就绪后由应用截取实际画面并退出，
 该模式跳过自动启动。完整包 CI 使用它验证 Rust 绘制；Qt 包继续验证原 D3D11/WARP 场景。
+Windows Rust 窗口使用 Direct3D 12，自动选择硬件或系统 WARP 软件设备；
+`ODH_FORCE_SOFTWARE_RENDERING=1` 可强制 WARP 诊断。主窗口和关机确认窗共用该后端，
+使用系统 FXC 编译器，不附带 OpenGL 软件库或额外的 DXC DLL。
 
 这些是手动更新的发布侧基础。更新入口位于右上角设置内，由用户点击
 「更新」触发；不在启动或后台自动检查、下载或安装。

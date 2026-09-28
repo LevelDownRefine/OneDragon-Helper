@@ -1,4 +1,4 @@
-"""真实发布界面：Qt 验证 D3D11/WARP，Rust 验证应用自身截图。"""
+"""真实发布界面：验证自动选卡和 Windows WARP 软件渲染。"""
 
 import os
 import shutil
@@ -99,22 +99,47 @@ class TestPackagedRendering(unittest.TestCase):
             encoding="utf-8",
         )
         (root / "render.py").write_text("# Fixture only; never executed.\n")
-        screenshot = directory / "rust-frame.png"
-        result = subprocess.run(
-            [str(root / EXE_NAME), "--after-update", "--capture", str(screenshot)],
-            cwd=root,
-            env={**os.environ, "__COMPAT_LAYER": "RunAsInvoker"},
-            capture_output=True,
-            timeout=45,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        image = QImage(str(screenshot))
-        self.assertFalse(image.isNull(), "Rust 未产生真实绘制截图")
-        self.assertGreaterEqual(image.width(), 640)
-        self.assertGreaterEqual(image.height(), 360)
-        colors = {
-            image.pixel(x, y)
-            for x in range(0, image.width(), 40)
-            for y in range(0, image.height(), 40)
-        }
-        self.assertGreater(len(colors), 8, "Rust 截图只有空白或单色")
+        for software in ("0", "1"):
+            for window, arguments, minimum in (
+                ("main", ["--after-update"], (640, 360)),
+                # 仅运行独立确认窗；截图后取消，不调用 Python 关机动作。
+                ("shutdown", ["--shutdown-confirm", "86400"], (400, 220)),
+            ):
+                with self.subTest(software=software, window=window):
+                    screenshot = directory / f"rust-{window}-{software}.png"
+                    result = subprocess.run(
+                        [
+                            str(root / EXE_NAME),
+                            *arguments,
+                            "--capture",
+                            str(screenshot),
+                        ],
+                        cwd=root,
+                        env={
+                            **os.environ,
+                            "__COMPAT_LAYER": "RunAsInvoker",
+                            "ODH_FORCE_SOFTWARE_RENDERING": software,
+                        },
+                        capture_output=True,
+                        timeout=45,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    image = QImage(str(screenshot))
+                    self.assertFalse(image.isNull(), "Rust 未产生真实绘制截图")
+                    self.assertGreaterEqual(image.width(), minimum[0])
+                    self.assertGreaterEqual(image.height(), minimum[1])
+                    if window == "main":
+                        # 原界面抗锯齿边缘也有少量 alpha，不能退化为不透明矩形。
+                        self.assertLess(image.pixelColor(0, 0).alpha(), 64)
+                        self.assertEqual(
+                            image.pixelColor(
+                                image.width() // 2, image.height() // 2
+                            ).alpha(),
+                            255,
+                        )
+                    colors = {
+                        image.pixel(x, y)
+                        for x in range(0, image.width(), 10)
+                        for y in range(0, image.height(), 10)
+                    }
+                    self.assertGreater(len(colors), 8, "Rust 截图只有空白或单色")

@@ -135,15 +135,12 @@ pub fn run(args: Vec<OsString>) -> Result<i32, String> {
     let outcome = Arc::clone(&confirmed);
     eframe::run_native(
         "OneDragon · 即将关机",
-        eframe::NativeOptions {
-            viewport: egui::ViewportBuilder::default()
+        crate::rendering::options(
+            egui::ViewportBuilder::default()
                 .with_inner_size([420.0, 240.0])
                 .with_resizable(false)
                 .with_always_on_top(),
-            renderer: eframe::Renderer::Glow,
-            persist_window: false,
-            ..Default::default()
-        },
+        ),
         Box::new(move |cc| {
             skin::configure(&cc.egui_ctx);
             install_font(&cc.egui_ctx, None).map_err(std::io::Error::other)?;
