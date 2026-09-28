@@ -7,18 +7,13 @@
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from src.utils.utils_config import (
-    add_script,
-    build_script_entry,
     config_file_path,
     get_script,
     load_config,
-    remove_script,
     save_config,
-    update_script,
 )
 from src.utils.utils_yaml import dump_yaml_file, load_yaml
 
@@ -99,91 +94,6 @@ class TestGetScript(UtilsConfigTestBase):
 
     def test_get_missing_script_returns_none(self):
         self.assertIsNone(get_script("none"))
-
-
-class TestBuildScriptEntry(unittest.TestCase):
-    """build_script_entry：文件名去重命名 + 类型推断 + 默认字段。"""
-
-    def test_python_type_inferred(self):
-        entry = build_script_entry("C:/foo/bar.py", set())
-        self.assertEqual(entry["script_type"], "python")
-        self.assertEqual(entry["display_name"], "bar")
-
-    def test_external_type_inferred(self):
-        entry = build_script_entry("C:/foo/bar.exe", set())
-        self.assertEqual(entry["script_type"], "external")
-        self.assertEqual(entry["display_name"], "bar")
-
-    def test_name_deduplicated_with_suffix(self):
-        entry = build_script_entry("C:/foo/bar.exe", {"bar"})
-        self.assertEqual(entry["display_name"], "bar_1")
-
-    def test_name_dedup_keeps_incrementing(self):
-        entry = build_script_entry("C:/foo/bar.exe", {"bar", "bar_1"})
-        self.assertEqual(entry["display_name"], "bar_2")
-
-    def test_shortcut_arguments_survive_config_save(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            link, target, config = (
-                root / "daily.lnk",
-                root / "run.exe",
-                root / "config.yml",
-            )
-            link.touch()
-            target.touch()
-            arguments = '--profile "中文 100% #1" --daily'
-            with (
-                patch(
-                    "src.utils.utils_config.read_shortcut",
-                    return_value=(str(target), arguments, directory),
-                ),
-                patch(
-                    "src.utils.utils_config.get_config_yml_path_under_root",
-                    return_value=str(config),
-                ),
-            ):
-                entry = build_script_entry(str(link), set())
-                save_config({"script_list": [entry]})
-            saved = load_yaml(str(config))["script_list"][0]
-            self.assertEqual(saved["script_path"], str(target))
-            self.assertEqual(saved["script_arguments"], arguments)
-
-    def test_shortcut_with_different_working_directory_is_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            link, target = root / "daily.lnk", root / "run.exe"
-            link.touch()
-            target.touch()
-            with (
-                patch(
-                    "src.utils.utils_config.read_shortcut",
-                    return_value=(str(target), "--daily", str(root / "other")),
-                ),
-                self.assertRaisesRegex(ValueError, "不同的工作目录"),
-            ):
-                build_script_entry(str(link), set())
-
-    def test_equivalent_working_directory_and_environment_are_supported(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            link, target = root / "daily.lnk", root / "run.exe"
-            link.touch()
-            target.touch()
-            # 只设单个变量并手动还原：patch.dict 退出时会重设全部环境变量，
-            # 本机存在超长变量（>32767）时 Windows 拒绝还原、测试即炸。
-            os.environ["SHORTCUT_TEST_ROOT"] = directory
-            try:
-                with patch(
-                    "src.utils.utils_config.read_shortcut",
-                    return_value=(str(target), "--daily", "${SHORTCUT_TEST_ROOT}/."),
-                ):
-                    self.assertEqual(
-                        build_script_entry(str(link), set())["script_arguments"],
-                        "--daily",
-                    )
-            finally:
-                os.environ.pop("SHORTCUT_TEST_ROOT", None)
 
 
 class TestConfigFilePath(UtilsConfigTestBase):
@@ -303,114 +213,6 @@ class TestLoadSaveConfig(unittest.TestCase):
     def test_save_config_asserts_script_list(self):
         with self.assertRaises(AssertionError):
             save_config({"a": 1})
-
-
-class TestAddRemoveScript(unittest.TestCase):
-    """add_script / remove_script：操作 config.yml 并协作 utils_weekly 同步 weekly。"""
-
-    def setUp(self):
-        self.tmp_dir = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp_dir.cleanup)
-        self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
-        dump_yaml_file(
-            self.config_path,
-            {"script_list": [{"display_name": "原神", "script_path": "C:/a.exe"}]},
-        )
-
-    def _read(self):
-        return load_yaml(self.config_path)
-
-    def test_add_script_appends(self):
-        """add_script 在 script_list 末尾追加条目、落盘，并协作 utils_weekly 建默认条目。"""
-        with (
-            patch(
-                "src.utils.utils_config.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            patch(
-                "src.utils.utils_config.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-            patch("src.utils.utils_config.ensure_weekly_entry") as mock_ensure,
-            patch("src.utils.utils_config.init_config") as mock_init,
-        ):
-            add_script({"display_name": "鸣潮", "script_path": "C:/b.exe"})
-        names = [s["display_name"] for s in self._read()["script_list"]]
-        self.assertEqual(names, ["原神", "鸣潮"])
-        mock_ensure.assert_called_once_with("b")
-        mock_init.assert_called_once_with("b")
-
-    def test_remove_script_removes(self):
-        """remove_script 从 script_list 移除指定进程条目、落盘，并协作清理 weekly 孤儿。"""
-        with (
-            patch(
-                "src.utils.utils_config.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            patch(
-                "src.utils.utils_config.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-            patch("src.utils.utils_config.delete_weekly") as mock_del,
-        ):
-            remove_script("a")
-        self.assertEqual(self._read()["script_list"], [])
-        mock_del.assert_called_once_with("a")
-
-    def test_remove_script_missing_raises(self):
-        """remove_script 移除不存在的脚本属非法调用：assert 表达不该发生"""
-        with (
-            patch(
-                "src.utils.utils_config.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            patch(
-                "src.utils.utils_config.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-            self.assertRaises(AssertionError),
-        ):
-            remove_script("不存在")
-
-
-class TestUpdateScript(UtilsConfigTestBase):
-    """底层更新只负责 config.yml 条目，返回更新后的标识。"""
-
-    def test_applies_patch_and_preserves_other_fields(self):
-        self._write_config(
-            {
-                "script_list": [
-                    {"display_name": "鸣潮", "script_path": "C:/ww.exe", "block": True}
-                ]
-            }
-        )
-        with patch("src.utils.utils_config.init_config") as init:
-            result = update_script("ww", "鸣潮", {"check_done": "script_closed"})
-        self.assertEqual(result, "ww")
-        self.assertEqual(
-            self._read_config()["script_list"][0],
-            {
-                "display_name": "鸣潮",
-                "script_path": "C:/ww.exe",
-                "block": True,
-                "check_done": "script_closed",
-            },
-        )
-        init.assert_not_called()
-
-    def test_rename_returns_new_identity(self):
-        self._write_config(
-            {"script_list": [{"display_name": "鸣潮", "script_path": "C:/ww.exe"}]}
-        )
-        result = update_script("ww", "新名", {"script_path": "C:/new.exe"})
-        self.assertEqual(result, "new")
-        self.assertEqual(
-            self._read_config()["script_list"][0],
-            {
-                "display_name": "新名",
-                "script_path": "C:/new.exe",
-            },
-        )
 
 
 if __name__ == "__main__":

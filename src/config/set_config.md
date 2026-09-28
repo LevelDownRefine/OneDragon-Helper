@@ -60,7 +60,7 @@
 
 落点（触发时机）：`ScriptConfig.__init__` 构造时调用 `_init_config`，缓存工厂随后复用实例；显式 `init_config` 仍强制再对齐，`ensure_config` 只确保实例存在。无 `template` 直接返回、`load_config` 缺失即返回——守卫确保无模板或脚本未安装时为空操作。资源声明读取本身不构造适配器；经适配器访问的既有接口仍保留首次构造时的初始化行为。
 
-脚本编辑由 `AppService.update_script(ScriptEdit)` 委托 `script_edit.save` 统一编排；
+脚本编辑由 `AppService.update_script(ScriptEdit)` 委托 `script_service.update` 统一编排；
 保存助手配置与每周参数后，流程判断脚本路径或标识是否变化，再按需调用 `init_config`。
 普通字段编辑与无改动保存不强制对齐。配置类构造和显式 `init_config` 的既有语义保持不变。
 

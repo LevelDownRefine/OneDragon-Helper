@@ -3,8 +3,8 @@
 持有平级 peer 并薄委托，使各 peer 互不越界——链编排归 :mod:`src.service.chain_service` 模块函数（生成/运行/调度/校验），本类只组合它。
 
 peer：
-- 完整脚本编辑（校验、跨配置保存与初始化）：归 :mod:`src.service.script_edit` 模块函数
-- 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils.utils_config` 模块函数
+- 脚本管理（增删改、排序与跨配置编排）：归 :mod:`src.service.script_service` 模块函数
+- 助手配置读写、条目查询与路径解析：归 :mod:`src.utils.utils_config` 模块函数
 - 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.daily_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
@@ -23,7 +23,7 @@ import logging
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
-import src.service.script_edit as script_edit
+import src.service.script_service as script_service
 import src.service.task_service as task_service
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
@@ -44,15 +44,12 @@ from src.service.schedule import (
     load_startup_options,
     save_schedule,
 )
-from src.service.script_edit import ScriptEdit
+from src.service.script_service import InvalidScript, ScriptEdit
 from src.update.service import UpdateService
 from src.utils.utils_config import (
-    add_script,
-    build_script_entry,
     config_file_path,
     get_script,
     load_config,
-    remove_script,
     save_config,
 )
 from src.utils.utils_runner import (
@@ -100,6 +97,29 @@ class AppService:
     def app_snapshot(self) -> dict:
         """CLI 首屏脚本列表。"""
         return task_service.app_snapshot()
+
+    def add_script(self, file_path: str) -> dict:
+        """将脚本文件加入助手列表，不运行或复制文件。"""
+        return script_service.add(file_path)
+
+    def remove_script(self, script_name: str) -> None:
+        """从助手列表移除脚本，不删除脚本文件。"""
+        return script_service.remove(script_name)
+
+    def reorder_scripts(self, script_names: list[str]) -> None:
+        return script_service.reorder(script_names)
+
+    def script_edit_view(self, script_name: str) -> dict:
+        """读取脚本配置表单；不提交编辑或强制初始化。"""
+        script = self.get_script(script_name)
+        if script is None:
+            raise InvalidScript("脚本已不存在，请刷新列表")
+        return {
+            "script_name": script_name,
+            "script": script,
+            "weekly_timeouts": self.weekly_inputs(script_name),
+            "switches": self.get_script_switches(script_name),
+        }
 
     def script_view(self, script_name: str) -> dict:
         """CLI 任务卡及物化选项。"""
@@ -186,10 +206,6 @@ class AppService:
         """按脚本唯一标识读取单个脚本条目。"""
         return get_script(script_name)
 
-    def build_script_entry(self, file_path: str, existing_script_names: set) -> dict:
-        """按文件路径构造脚本条目（去重命名 + 类型推断 + 默认字段补全）。"""
-        return build_script_entry(file_path, existing_script_names)
-
     def config_file_path(self, script_name: str):
         """返回该脚本「配置文件」的本地路径（用于外部打开）与失败原因。"""
         return config_file_path(script_name)
@@ -250,26 +266,20 @@ class AppService:
         return check_weekly(load_config())
 
     # ── 配置读写（src.utils.utils_config 模块函数）──
-    # config.yml 读写（含脚本条目增删改）归 :mod:`src.utils.utils_config`；此处仅作薄委托。
+    # 文件读写归 utils_config；脚本条目修改归 script_service。
     def load_config(self) -> dict:
         return load_config()
 
     def save_config(self, data: dict) -> None:
         return save_config(data)
 
-    def add_script(self, script_data: dict) -> None:
-        return add_script(script_data)
-
-    def remove_script(self, script_name: str) -> None:
-        return remove_script(script_name)
-
     def validate_script_edit(self, edit: ScriptEdit) -> ScriptEdit:
         """表单提交前校验；不写盘，允许 GUI 保留输入继续编辑。"""
-        return script_edit.validate_edit(edit)
+        return script_service.validate_edit(edit)
 
     def update_script(self, edit: ScriptEdit) -> str:
         """应用一次完整脚本编辑，返回保存后的标识。"""
-        return script_edit.save(edit)
+        return script_service.update(edit)
 
     # ── schedule.yml（src.service.schedule 模块函数）──
     # schedule.yml 的读写与调度编排同处 src.service.schedule，不挂在任何 peer 实例上；

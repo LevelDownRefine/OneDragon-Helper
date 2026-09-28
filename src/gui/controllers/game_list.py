@@ -21,7 +21,7 @@ from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWidgets import QMessageBox
 
 from src.gui.icons import GameIconProvider, _render_icon, get_script_icon
-from src.service.script_edit import InvalidScriptEdit
+from src.service.script_service import DuplicateScript, InvalidScript
 from src.utils.utils_sub_config import get_script_name
 
 # 游戏图标停用底色（渐变兜底水印等场景复用）
@@ -205,6 +205,10 @@ class GameListController(QObject):
     # ── 加载 / 增删改 ───────────────────────────────────────────────────
     def reload_games(self):
         """从 config.yml 重建脚本列表。"""
+        enabled = {
+            game["script_name"]: state
+            for game, state in zip(self._games, self._enabled, strict=False)
+        }
         games = []
         for script in self._app_service.load_config()["script_list"]:
             display_name = script["display_name"]
@@ -232,10 +236,7 @@ class GameListController(QObject):
             self.current_index = new_index
             self.currentIndexChanged.emit()
         # 勾选为纯内存态（不落盘）：已存在脚本保留原勾选，新增脚本默认启用。
-        self._enabled = [
-            self._enabled[i] if i < len(self._enabled) else True
-            for i in range(len(games))
-        ]
+        self._enabled = [enabled.get(game["script_name"], True) for game in games]
         self.gamesChanged.emit()
         self.enabledChanged.emit()
 
@@ -295,6 +296,17 @@ class GameListController(QObject):
         assert 0 <= dst_index < len(self._games), (
             f"[bridge] dst out of range: {dst_index}"
         )
+        if src_index == dst_index:
+            return
+        names = [game["script_name"] for game in self._games]
+        names.insert(dst_index, names.pop(src_index))
+        try:
+            self._app_service.reorder_scripts(names)
+        except InvalidScript as exc:
+            logger.warning("调整脚本顺序未完成", exc_info=True)
+            self._on_reload()
+            self._toast(f"调整脚本顺序未完成：{exc}")
+            return
         cur_name = self._games[self.current_index][
             "script_name"
         ]  # 重排后按名字恢复选中
@@ -304,22 +316,6 @@ class GameListController(QObject):
         self._game_model.move(src_index, dst_index)
         enabled = self._enabled.pop(src_index)
         self._enabled.insert(dst_index, enabled)
-
-        # 同步 config.yml 顺序（以 UI 顺序为准），持久化
-        config_data = self._app_service.load_config()
-        scripts = config_data["script_list"]
-        s_idx = next(
-            (
-                i
-                for i, s in enumerate(scripts)
-                if get_script_name(s) == game["script_name"]
-            ),
-            None,
-        )
-        assert s_idx is not None, "[bridge] config 中找不到源脚本"
-        script = scripts.pop(s_idx)
-        scripts.insert(dst_index, script)
-        self._app_service.save_config(config_data)
 
         # 恢复选中（新 index 可能已变）
         new_index = next(
@@ -341,7 +337,7 @@ class GameListController(QObject):
         file_path = pick_file(None, "选择脚本文件", SCRIPT_FILE_FILTER)
         if not file_path:
             return
-        _, message = self._add_script_path(file_path)
+        _, message = self._add_script(file_path)
         self._toast(message)
 
     def _script_drop_paths(self, urls: list) -> list[str]:
@@ -370,7 +366,7 @@ class GameListController(QObject):
             self._toast("请拖入 .exe、.bat、.py 文件或指向这些文件的有效快捷方式")
             return False
         logger.info("[file_drop] 添加脚本：%s", paths)
-        results = [self._add_script_path(path) for path in paths]
+        results = [self._add_script(path) for path in paths]
         added = sum(status == "added" for status, _ in results)
         logger.info("[file_drop] 已添加 %d / %d 个脚本", added, len(paths))
         if len(results) == 1:
@@ -391,29 +387,24 @@ class GameListController(QObject):
             self._toast("\n".join([summary, *details]))
         return added > 0
 
-    def _add_script_path(self, file_path: str) -> tuple[str, str]:
+    def _add_script(self, file_path: str) -> tuple[str, str]:
         """添加单个脚本并返回状态与提示，调用方统一展示结果。"""
-        file_path = os.path.normpath(file_path)
-        existing = {g["script_name"] for g in self._games}
         try:
-            script_data = self._app_service.build_script_entry(file_path, existing)
-        except (OSError, ValueError) as exc:
+            result = self._app_service.add_script(file_path)
+        except DuplicateScript as exc:
+            return "duplicate", str(exc)
+        except InvalidScript as exc:
             logger.warning("读取脚本未完成：%s", file_path, exc_info=True)
             return "failed", f"无法添加 {os.path.basename(file_path)}：{exc}"
-        # exe 的内部标识固定为进程名，改展示名无法消除重复。
-        if get_script_name(script_data) in existing:
-            return "duplicate", f"脚本已存在：{get_script_name(script_data)}"
-        try:
-            self._app_service.add_script(script_data)
         except OSError as exc:
             logger.warning("添加脚本未完成：%s", file_path, exc_info=True)
             # config.yml 可能已保存，后续子配置初始化才失败，须重读实际状态。
             self._on_reload()
             return "failed", f"添加脚本未完成：{exc}"
         self._on_reload()
-        assert "display_name" in script_data
+        assert "display_name" in result
         self.gameAdded.emit()
-        return "added", f"已添加 {script_data['display_name']}"
+        return "added", f"已添加 {result['display_name']}"
 
     @Slot(int)
     def deleteScript(self, index: int):
@@ -467,7 +458,7 @@ class GameListController(QObject):
             changes = dialog.pending_changes
             try:
                 self._app_service.update_script(changes)
-            except InvalidScriptEdit as exc:
+            except InvalidScript as exc:
                 logger.warning("保存脚本配置未完成", exc_info=True)
                 self._on_reload()
                 self._toast(f"保存脚本配置未完成：{exc}")
@@ -477,5 +468,11 @@ class GameListController(QObject):
 
     def _on_delete_script(self, script_name: str):
         """配置弹窗确认删除：落盘后重载脚本列表。"""
-        self._app_service.remove_script(script_name)
+        try:
+            self._app_service.remove_script(script_name)
+        except InvalidScript as exc:
+            logger.warning("删除脚本未完成", exc_info=True)
+            self._on_reload()
+            self._toast(f"删除脚本未完成：{exc}")
+            return
         self._on_reload()

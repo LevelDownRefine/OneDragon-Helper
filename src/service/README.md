@@ -8,7 +8,7 @@
 | 角色 | 说明 |
 |------|------|
 | 组合根，非协调器 peer | `AppService` 装配各 peer 并薄委托，是 GUI/CLI 唯一入口；各 peer 互不越界 |
-| 平级 peer | 单脚本配置（src.utils.utils_config）/ chain_service（链编排）互不拥有，由组合根装配 |
+| 平级 peer | script_service（脚本管理）/ chain_service（链编排）互不拥有，由组合根装配 |
 | 周常运行期参数 | `weekly.yml` 的 `weekly_start` 段（周几起，条目级 `{脚本: {周常: 0 | 1~7}}`，0 = 不启用）与 `weekly_timeouts` 段的读写归 `src.utils.utils_weekly` 模块函数（无状态、无 peer 实例）；周常落点归 `src.config.weekly`；schedule.yml 归 schedule 模块函数 |
 | 无 Qt 依赖 | 纯业务逻辑，不承载 UI 渲染（关机确认窗归 `src/gui/shutdown_dialog.py`） |
 
@@ -17,9 +17,9 @@
 | 模块 | 职责 |
 |------|------|
 | app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
-| script_edit.py | ScriptEdit 编辑输入、校验与完整保存流程；协调助手配置、每周参数及原生任务开关 |
+| script_service.py | 脚本条目构造、增删改与排序；统一校验并协调助手配置、每周参数及原生任务开关 |
 | task_service.py | 脚本列表与任务卡聚合查询；无 GUI 或进程依赖 |
-| utils_config.py | 单脚本配置（原 script_service.py 已退化为模块函数）：config.yml 完整读写（含条目增删改）+ get_script / build_script_entry / config_file_path |
+| utils_config.py | config.yml 读写、结构校验、条目查询与配置文件路径解析 |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
 | schedule.py | schedule.yml 读写（StartupOptions 自动启动开关/秒数、RunOptions 运行选项）+ ScheduledRun 调度运行编排 |
@@ -50,13 +50,17 @@ CLI 编辑入口保留在 `AppService`，直接调用对应的 GUI 原接口：
 进程入口 `python -m src.headless` 提供 `call` 与 `serve --stdio`，见
 [CLI 协议](../../docs/rust-feasibility/headless-cli.md)。本层不负责传输、界面状态或格式化文案。
 
-## 脚本配置编辑
+## 脚本管理
+
+`script_service` 统一提供 `add / remove / update / reorder`；`AppService` 仅作薄委托。
+各操作使用 `InvalidScript` 表示写入前的输入或状态错误；重复导入 EXE 使用其子类
+`DuplicateScript`，便于批量导入单独计数。底层模块统一通过 `utils_config` / `utils_weekly` 调用。
 
 `ScriptEdit` 表达一次完整编辑：编辑前标识、展示名、助手配置字段、每周超时、原生任务开关。
 它只承载输入；`frozen=True` 禁止字段重新绑定，不提供深层不可变或事务保证。
 
 Python GUI 收集 `ScriptEdit`，先经 `AppService.validate_script_edit` 校验；无效时保留弹窗和输入。
-确认后调用唯一保存入口 `AppService.update_script(edit)`，由其薄委托 `script_edit.save`。
+确认后调用唯一保存入口 `AppService.update_script(edit)`，由其薄委托 `script_service.update`。
 该流程重新校验最新配置，并统一执行：
 
 1. 更新 `config.yml` 的脚本条目，取得保存后的标识。
@@ -64,11 +68,17 @@ Python GUI 收集 `ScriptEdit`，先经 `AppService.validate_script_edit` 校验
 3. 路径或标识变化时初始化子脚本配置。
 4. 按保存后的标识写原生任务开关。
 
-`utils_config.update_script` 只写脚本条目；`utils_weekly` 负责每周参数的具体读写，配置适配器负责原生配置。
+条目构造、增删改和排序都由 `script_service` 在本次读取的配置上完成，再交给 `utils_config.save_config` 写盘。
+`utils_config` 保留文件读写和通用查询；`utils_weekly` 负责每周参数的具体读写，配置适配器负责原生配置。
 GUI 不编排这些步骤；CLI 如需调用，在传输边界构造 `ScriptEdit`，服务层不接收 JSON 协议对象。
 写入失败立即传播异常，后续步骤不执行，已完成的写入不回滚，也不自动重试。
 只改参数、超时、游戏路径或 exe 的展示名，以及无改动保存，都不强制对齐模板。
 适配器首次构造时的初始化、启动预热和新增脚本的既有行为保持不变。
+
+添加按「助手条目 → 每周默认参数 → 初始化」执行；删除按「助手条目 → 每周清理」执行，源文件保留。
+排序只更新助手列表顺序。各操作按最新配置检查重复、最后一个脚本和完整顺序；过期排序拒绝写入。
+快捷方式解析、类型推断和新增名称去重均归添加流程。编辑预校验和保存各自检查当时的配置，
+保存内部的重名检查与条目修改共用一次读取；这不提供跨进程文件锁或事务保证。
 
 ## 手动更新
 
@@ -95,7 +105,9 @@ ZIP 结构固定为 `scripts/<脚本名>/<相对路径>`，无清单或版本协
 
 ```
 launcher.py CLI  ┐
-                 ├─▶ AppService（组合根）─┬─▶ src.utils.utils_config（单脚本配置）─▶ src.utils.utils_weekly（协作同步 weekly）
+                 ├─▶ AppService（组合根）─┬─▶ script_service（脚本管理）─┬─▶ utils_config（助手配置）
+                                          │                          ├─▶ utils_weekly（每周参数）
+                                          │                          └─▶ config 适配器（初始化/任务开关）
 MainWindow  GUI  ┘                        ├─▶ daily_config 模块函数（副本 / 周本声明，src.config）
                                           └─▶ chain_service ─▶ chain_gen / schedule / utils_runner
                                                   └─▶ src.utils.utils_weekly（周常参数读写）
