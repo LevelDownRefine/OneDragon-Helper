@@ -14,7 +14,7 @@ peer：
 - 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.service.UpdateService`
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
-未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
+Python GUI 直接调用本类；CLI 也委托本类，共用业务而不要求共用传输。
 """
 
 import logging
@@ -33,6 +33,7 @@ from src.config.set_config import (
 )
 from src.config.task_switch import task_switch_of
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
+from src.service import launch_service, resource_service
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -104,6 +105,16 @@ class AppService:
     def script_view(self, script_name: str) -> dict:
         """CLI 任务卡及物化选项。"""
         return task_service.script_view(script_name)
+
+    def resolve_script_target(self, script_name: str, target: str) -> dict:
+        """取得脚本工具栏的外部打开目标。"""
+        return resource_service.resolve_script_target(script_name, target)
+
+    def game_icon_path(self, script_name: str) -> dict:
+        return resource_service.game_icon_path(script_name)
+
+    def resolve_launch_target(self, script_name: str, target: str) -> dict:
+        return launch_service.resolve_launch_target(script_name, target)
 
     def select_daily(
         self,
