@@ -54,9 +54,9 @@ CLI 编辑入口保留在 `AppService`，直接调用对应的 GUI 原接口：
 `AppService.update_script` 只保存脚本条目与每周超时，不初始化子脚本配置。
 `AppService.save_script_edit` 统一校验完整表单、保留旧条目快照、保存配置，再调用 `init_script_after_edit(previous, script_name)` 和保存任务开关。
 service 对比已保存条目的脚本路径与标识，仅目标变化时调用 `init_config`。Python GUI 直接调用 service；CLI 可复用相同业务接口，无须让 Qt 经过 CLI。
-弹窗先用 `validate_script_edit` 校验，失败保留输入；真正保存时再次校验，防止弹窗打开期间产生标识冲突。多步写入失败保留已完成的步骤，由界面重载实际状态并提示，不自动重试。
+弹窗先用 `validate_script_edit` 校验，失败保留输入；真正保存时再次校验，防止弹窗打开期间产生标识冲突。多步写入失败保留已完成的步骤，I/O 异常沿用原调用链向上传递，不自动重试。
 
-脚本添加、删除和重排分别经 `add_script_path`、`remove_script_entry`、`reorder_scripts`。`script_list.py` 按最新配置检查重复、最后一个脚本和完整顺序；过期顺序拒绝写入，以免遗漏外部新增条目。
+脚本添加、删除和重排分别经 `add_script`、`remove_script`、`reorder_scripts`。`script_list.py` 按最新配置检查重复、最后一个脚本和完整顺序；过期顺序拒绝写入，以免遗漏外部新增条目。
 只改参数、超时、游戏路径或 exe 的展示名，以及无改动保存，都不强制对齐模板。
 适配器首次构造时的初始化、启动预热和新增脚本的既有行为保持不变。
 

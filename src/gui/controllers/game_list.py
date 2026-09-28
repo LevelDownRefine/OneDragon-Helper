@@ -206,7 +206,6 @@ class GameListController(QObject):
     # ── 加载 / 增删改 ───────────────────────────────────────────────────
     def reload_games(self):
         """从 config.yml 重建脚本列表。"""
-        selected = self.current_game["script_name"] if self.current_game else None
         enabled = {
             game["script_name"]: state
             for game, state in zip(self._games, self._enabled, strict=False)
@@ -233,10 +232,7 @@ class GameListController(QObject):
         # 首次即空白），刷新后不会自动重取，须重启进程才修正。
         self.icon_provider.refresh(self._games)
         self._game_model.set_games(games)
-        new_index = next(
-            (i for i, game in enumerate(games) if game["script_name"] == selected),
-            min(self.current_index, max(len(games) - 1, 0)),
-        )
+        new_index = min(self.current_index, max(len(games) - 1, 0))
         if new_index != self.current_index:
             self.current_index = new_index
             self.currentIndexChanged.emit()
@@ -307,7 +303,7 @@ class GameListController(QObject):
         names.insert(dst_index, names.pop(src_index))
         try:
             self._app_service.reorder_scripts(names)
-        except (InvalidScriptList, OSError) as exc:
+        except InvalidScriptList as exc:
             logger.warning("调整脚本顺序未完成", exc_info=True)
             self._on_reload()
             self._toast(f"调整脚本顺序未完成：{exc}")
@@ -342,7 +338,7 @@ class GameListController(QObject):
         file_path = pick_file(None, "选择脚本文件", SCRIPT_FILE_FILTER)
         if not file_path:
             return
-        _, message = self._add_script_path(file_path)
+        _, message = self._add_script(file_path)
         self._toast(message)
 
     def _script_drop_paths(self, urls: list) -> list[str]:
@@ -371,7 +367,7 @@ class GameListController(QObject):
             self._toast("请拖入 .exe、.bat、.py 文件或指向这些文件的有效快捷方式")
             return False
         logger.info("[file_drop] 添加脚本：%s", paths)
-        results = [self._add_script_path(path) for path in paths]
+        results = [self._add_script(path) for path in paths]
         added = sum(status == "added" for status, _ in results)
         logger.info("[file_drop] 已添加 %d / %d 个脚本", added, len(paths))
         if len(results) == 1:
@@ -392,10 +388,10 @@ class GameListController(QObject):
             self._toast("\n".join([summary, *details]))
         return added > 0
 
-    def _add_script_path(self, file_path: str) -> tuple[str, str]:
+    def _add_script(self, file_path: str) -> tuple[str, str]:
         """添加单个脚本并返回状态与提示，调用方统一展示结果。"""
         try:
-            result = self._app_service.add_script_path(file_path)
+            result = self._app_service.add_script(file_path)
         except DuplicateScript as exc:
             return "duplicate", str(exc)
         except InvalidScriptList as exc:
@@ -469,9 +465,8 @@ class GameListController(QObject):
                     changes["weekly_timeouts"],
                     changes["switches"],
                 )
-            except (InvalidScriptEdit, OSError) as exc:
+            except InvalidScriptEdit as exc:
                 logger.warning("保存脚本配置未完成", exc_info=True)
-                # 保存分多步完成；失败后重读实际状态，不自动重试或宣称成功。
                 self._on_reload()
                 self._toast(f"保存脚本配置未完成：{exc}")
                 return
@@ -481,8 +476,8 @@ class GameListController(QObject):
     def _on_delete_script(self, script_name: str):
         """配置弹窗确认删除：落盘后重载脚本列表。"""
         try:
-            self._app_service.remove_script_entry(script_name)
-        except (InvalidScriptList, OSError) as exc:
+            self._app_service.remove_script(script_name)
+        except InvalidScriptList as exc:
             logger.warning("删除脚本未完成", exc_info=True)
             self._on_reload()
             self._toast(f"删除脚本未完成：{exc}")

@@ -309,12 +309,12 @@ class TestFloatBar(unittest.TestCase):
             ),
             patch.object(
                 b.app_service,
-                "add_script_path",
+                "add_script",
                 return_value={"script_name": "新脚本", "display_name": "新脚本"},
             ),
         ):
             b.addScript()
-            b.app_service.add_script_path.assert_called_once_with("C:/scripts/new.py")
+            b.app_service.add_script.assert_called_once_with("C:/scripts/new.py")
         spy.assert_called_once()
 
 

@@ -730,11 +730,10 @@ class SingleScriptConfigDialog(FormDialogBase):
         timeouts = []
         for timeout_edit in self.timeout_inputs:
             text = timeout_edit.text().strip()
-            try:
-                timeouts.append(int(text) if text else None)
-            except ValueError:
-                show_warning(self, "每周超时须为整数秒或留空")
+            if text and not timeout_edit.hasAcceptableInput():
+                show_warning(self, "每周超时须为 0～86400 秒或留空")
                 return
+            timeouts.append(int(text) if text else None)
 
         changes = {
             "old_script_name": self.script_name,

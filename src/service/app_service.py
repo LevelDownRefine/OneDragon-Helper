@@ -47,12 +47,9 @@ from src.service.schedule import (
 from src.service.script_edit import InvalidScriptEdit, validate_edit
 from src.update.service import UpdateService
 from src.utils.utils_config import (
-    add_script,
-    build_script_entry,
     config_file_path,
     get_script,
     load_config,
-    remove_script,
     save_config,
     update_script,
 )
@@ -103,10 +100,12 @@ class AppService:
         """CLI 首屏脚本列表。"""
         return task_service.app_snapshot()
 
-    def add_script_path(self, file_path: str) -> dict:
-        return script_list.add_path(file_path)
+    def add_script(self, file_path: str) -> dict:
+        """将脚本文件加入助手列表，不运行或复制文件。"""
+        return script_list.add(file_path)
 
-    def remove_script_entry(self, script_name: str) -> None:
+    def remove_script(self, script_name: str) -> None:
+        """从助手列表移除脚本，不删除脚本文件。"""
         return script_list.remove(script_name)
 
     def reorder_scripts(self, script_names: list[str]) -> None:
@@ -235,10 +234,6 @@ class AppService:
         """按脚本唯一标识读取单个脚本条目。"""
         return get_script(script_name)
 
-    def build_script_entry(self, file_path: str, existing_script_names: set) -> dict:
-        """按文件路径构造脚本条目（去重命名 + 类型推断 + 默认字段补全）。"""
-        return build_script_entry(file_path, existing_script_names)
-
     def config_file_path(self, script_name: str):
         """返回该脚本「配置文件」的本地路径（用于外部打开）与失败原因。"""
         return config_file_path(script_name)
@@ -305,12 +300,6 @@ class AppService:
 
     def save_config(self, data: dict) -> None:
         return save_config(data)
-
-    def add_script(self, script_data: dict) -> None:
-        return add_script(script_data)
-
-    def remove_script(self, script_name: str) -> None:
-        return remove_script(script_name)
 
     def update_script(
         self,

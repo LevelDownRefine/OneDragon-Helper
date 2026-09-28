@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from src.service import script_list
+from src.service.app_service import AppService
 
 
 class ScriptListTests(unittest.TestCase):
@@ -19,7 +20,7 @@ class ScriptListTests(unittest.TestCase):
             patch.object(script_list, "add_script") as add,
             self.assertRaises(script_list.DuplicateScript),
         ):
-            script_list.add_path("a.exe")
+            script_list.add("a.exe")
         add.assert_not_called()
 
     def test_reorder_preserves_entries_and_unknown_fields(self):
@@ -59,7 +60,7 @@ class ScriptListTests(unittest.TestCase):
                     self.subTest(name=name),
                     self.assertRaises(script_list.InvalidScriptList),
                 ):
-                    script_list.remove(name)
+                    AppService().remove_script(name)
         remove.assert_not_called()
 
     def test_add_uses_shortcut_resolver_and_preserves_arguments(self):
@@ -80,7 +81,7 @@ class ScriptListTests(unittest.TestCase):
             patch.object(script_list, "add_script") as add,
         ):
             self.assertEqual(
-                script_list.add_path("shortcut.lnk"),
+                AppService().add_script("shortcut.lnk"),
                 {"script_name": "a", "display_name": "一"},
             )
         build.assert_called_once_with("shortcut.lnk", set())
@@ -96,4 +97,4 @@ class ScriptListTests(unittest.TestCase):
             patch.object(script_list, "add_script", side_effect=OSError("init failed")),
             self.assertRaisesRegex(OSError, "init failed"),
         ):
-            script_list.add_path("a.py")
+            script_list.add("a.py")
