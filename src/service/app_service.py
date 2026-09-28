@@ -3,6 +3,7 @@
 持有平级 peer 并薄委托，使各 peer 互不越界——链编排归 :mod:`src.service.chain_service` 模块函数（生成/运行/调度/校验），本类只组合它。
 
 peer：
+- 完整脚本编辑（校验、跨配置保存与初始化）：归 :mod:`src.service.script_edit` 模块函数
 - 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils.utils_config` 模块函数
 - 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.daily_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
@@ -14,7 +15,7 @@ peer：
 - 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.service.UpdateService`
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
-未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
+Python GUI 直接调用本类；CLI 在传输边界转换数据，两者共用业务实现。
 """
 
 import logging
@@ -22,12 +23,12 @@ import logging
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
+import src.service.script_edit as script_edit
 import src.service.task_service as task_service
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
     ensure_config,
     get_registered_script_names,
-    init_config,
     set_config,
     set_daily_enabled,
 )
@@ -43,6 +44,7 @@ from src.service.schedule import (
     load_startup_options,
     save_schedule,
 )
+from src.service.script_edit import ScriptEdit
 from src.update.service import UpdateService
 from src.utils.utils_config import (
     add_script,
@@ -52,14 +54,12 @@ from src.utils.utils_config import (
     load_config,
     remove_script,
     save_config,
-    update_script,
 )
 from src.utils.utils_runner import (
     build_chain_command,
     collect_invalid_script_messages,
     run_chain_command,
 )
-from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_wallpaper import (
     load_wallpapers,
     save_video_preview,
@@ -263,36 +263,13 @@ class AppService:
     def remove_script(self, script_name: str) -> None:
         return remove_script(script_name)
 
-    def update_script(
-        self,
-        old_script_name: str,
-        new_display_name: str,
-        config_patch: dict,
-        weekly_timeouts: list,
-    ):
-        new_script_name = update_script(
-            old_script_name,
-            new_display_name,
-            config_patch,
-            weekly_timeouts,
-        )
-        return new_script_name
+    def validate_script_edit(self, edit: ScriptEdit) -> ScriptEdit:
+        """表单提交前校验；不写盘，允许 GUI 保留输入继续编辑。"""
+        return script_edit.validate_edit(edit)
 
-    def init_script_after_edit(self, previous: dict, script_name: str) -> None:
-        """保存后单独调用：仅脚本路径或标识变化时重新对齐子脚本配置。
-
-        Args:
-            previous: 编辑前的脚本条目快照。
-            script_name: 保存后的脚本标识。
-        """
-        current = get_script(script_name)
-        assert current is not None, f"[service] 找不到已保存脚本: {script_name}"
-        assert "script_path" in previous and "script_path" in current
-        if (
-            previous["script_path"] != current["script_path"]
-            or get_script_name(previous) != script_name
-        ):
-            init_config(script_name)
+    def update_script(self, edit: ScriptEdit) -> str:
+        """应用一次完整脚本编辑，返回保存后的标识。"""
+        return script_edit.save(edit)
 
     # ── schedule.yml（src.service.schedule 模块函数）──
     # schedule.yml 的读写与调度编排同处 src.service.schedule，不挂在任何 peer 实例上；
@@ -335,8 +312,7 @@ class AppService:
         return collect_invalid_script_messages(script_list)
 
     # ── 游戏侧 config 适配器（src.config.set_config 模块函数）─────────────
-    # 副本写入各脚本**自身**的 config（适配器层）；周几起由 update_script
-    # 统一落盘（含游戏侧同步），不经此节入口。
+    # 副本写入各脚本自身 config；周几起由任务卡按条实时保存。
     def set_script_daily_task(
         self,
         script_name: str,

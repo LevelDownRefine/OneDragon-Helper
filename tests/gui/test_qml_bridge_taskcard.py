@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QDialog
 
 from src.gui.controllers import task_card
 from src.service import app_service
+from src.service.script_edit import ScriptEdit
 from tests.gui.helpers import make_bridge
 
 
@@ -224,43 +225,31 @@ class TestTaskCard(unittest.TestCase):
     @patch("src.gui.dialogs.SingleScriptConfigDialog")
     def test_config_current_accept_saves_and_reloads(self, mock_dialog_cls):
         b = make_bridge()
-        previous = dict(b.games[0]["script_data"])
         calls = MagicMock()
         toasts = []
         b.toastRequested.connect(lambda t: toasts.append(t))
         dlg = mock_dialog_cls.return_value
         dlg.exec.return_value = QDialog.Accepted
-        dlg.pending_changes = {
-            "old_script_name": "ok-ww",
-            "new_display_name": "鸣潮",
-            "config_patch": {"k": "v"},
-            "weekly_timeouts": {"1": [1]},
-            "switches": {"领取邮件": True},
-        }
+        dlg.pending_changes = ScriptEdit(
+            "ok-ww", "鸣潮", {"block": True}, [60] * 7, {"领取邮件": True}
+        )
         with (
             patch.object(
                 b.app_service, "update_script", return_value="hhw"
             ) as mock_update,
-            patch.object(b.app_service, "init_script_after_edit") as mock_init,
-            patch.object(b.app_service, "set_script_switches") as mock_switches,
             patch.object(b, "_reload_games") as mock_reload,
         ):
             for name, mocked in (
                 ("save", mock_update),
-                ("init", mock_init),
-                ("switches", mock_switches),
                 ("reload", mock_reload),
             ):
                 calls.attach_mock(mocked, name)
             b.configCurrent()
-        mock_update.assert_called_once_with("ok-ww", "鸣潮", {"k": "v"}, {"1": [1]})
-        mock_init.assert_called_once_with(previous, "hhw")
+        mock_update.assert_called_once_with(dlg.pending_changes)
         self.assertEqual(
             [call[0] for call in calls.mock_calls],
-            ["save", "init", "switches", "reload"],
+            ["save", "reload"],
         )
-        # 任务开关按改名后的标识定位（脚本标识可能随名称/路径变化）
-        mock_switches.assert_called_once_with("hhw", {"领取邮件": True})
         mock_reload.assert_called_once()
         self.assertTrue(any("已保存" in s for s in toasts))
 
@@ -271,12 +260,10 @@ class TestTaskCard(unittest.TestCase):
         dlg.exec.return_value = QDialog.Rejected
         with (
             patch.object(b.app_service, "update_script") as mock_update,
-            patch.object(b.app_service, "init_script_after_edit") as mock_init,
             patch.object(b, "_reload_games") as mock_reload,
         ):
             b.configCurrent()
         mock_update.assert_not_called()
-        mock_init.assert_not_called()
         mock_reload.assert_not_called()
 
     @patch("src.gui.dialogs.SingleScriptConfigDialog")
@@ -286,25 +273,15 @@ class TestTaskCard(unittest.TestCase):
         b.toastRequested.connect(toasts.append)
         dlg = mock_dialog_cls.return_value
         dlg.exec.return_value = QDialog.Accepted
-        dlg.pending_changes = {
-            "old_script_name": "ok-ww",
-            "new_display_name": "鸣潮",
-            "config_patch": {},
-            "weekly_timeouts": [60] * 7,
-            "switches": {},
-        }
+        dlg.pending_changes = ScriptEdit("ok-ww", "鸣潮", {}, [60] * 7, {})
         with (
             patch.object(
                 b.app_service, "update_script", side_effect=OSError("拒绝写入")
             ),
-            patch.object(b.app_service, "init_script_after_edit") as init,
-            patch.object(b.app_service, "set_script_switches") as switches,
             patch.object(b, "_reload_games") as reload,
             self.assertRaisesRegex(OSError, "拒绝写入"),
         ):
             b.configCurrent()
-        init.assert_not_called()
-        switches.assert_not_called()
         reload.assert_not_called()
         self.assertEqual(toasts, [])
 

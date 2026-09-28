@@ -21,6 +21,7 @@ from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWidgets import QMessageBox
 
 from src.gui.icons import GameIconProvider, _render_icon, get_script_icon
+from src.service.script_edit import InvalidScriptEdit
 from src.utils.utils_sub_config import get_script_name
 
 # 游戏图标停用底色（渐变兜底水印等场景复用）
@@ -448,7 +449,6 @@ class GameListController(QObject):
             return
         game = self.current_game
         assert "script_data" in game
-        previous = dict(game["script_data"])
         from PySide6.QtWidgets import QDialog
 
         from src.gui.dialogs import SingleScriptConfigDialog
@@ -465,17 +465,15 @@ class GameListController(QObject):
                 "[bridge] 配置弹窗 accept 但 pending_changes 为空"
             )
             changes = dialog.pending_changes
-            # 任务开关写在该脚本自身的原生配置文件里，随保存提交；改名后按新标识定位。
-            new_script_name = self._app_service.update_script(
-                changes["old_script_name"],
-                changes["new_display_name"],
-                changes["config_patch"],
-                changes["weekly_timeouts"],
-            )
-            self._app_service.init_script_after_edit(previous, new_script_name)
-            self._app_service.set_script_switches(new_script_name, changes["switches"])
+            try:
+                self._app_service.update_script(changes)
+            except InvalidScriptEdit as exc:
+                logger.warning("保存脚本配置未完成", exc_info=True)
+                self._on_reload()
+                self._toast(f"保存脚本配置未完成：{exc}")
+                return
             self._on_reload()
-            self._toast(f"已保存 {changes['new_display_name']} 配置")
+            self._toast(f"已保存 {changes.display_name} 配置")
 
     def _on_delete_script(self, script_name: str):
         """配置弹窗确认删除：落盘后重载脚本列表。"""
