@@ -163,12 +163,12 @@ class TestLeftRail(unittest.TestCase):
 
     def test_reorder_games_syncs_config_and_enabled(self):
         b = make_bridge()
-        b.app_service.save_config = MagicMock()
+        b.app_service.reorder_scripts = MagicMock()
         b.deselectAll()
         b.selectAll()
         b.reorderGames(0, 1)  # 鸣潮 → 测试脚本之后
         self.assertEqual([g["display_name"] for g in b.games], ["测试脚本", "鸣潮"])
-        b.app_service.save_config.assert_called_once()
+        b.app_service.reorder_scripts.assert_called_once_with(["测试脚本", "ok-ww"])
 
     def test_launch_all_no_enabled_toasts(self):
         b = make_bridge()
@@ -385,11 +385,6 @@ class TestFloatBar(unittest.TestCase):
         b = make_bridge()
         spy = MagicMock()
         b.gameAdded.connect(spy)
-        entry = {
-            "display_name": "新脚本",
-            "script_path": "scripts/new.py",
-            "script_type": "python",
-        }
         with (
             patch(
                 "PySide6.QtWidgets.QFileDialog.getOpenFileName",
@@ -397,13 +392,12 @@ class TestFloatBar(unittest.TestCase):
             ),
             patch.object(
                 b.app_service,
-                "build_script_entry",
-                return_value=entry,
+                "add_script",
+                return_value={"script_name": "新脚本", "display_name": "新脚本"},
             ),
-            patch.object(b.app_service, "add_script"),
         ):
             b.addScript()
-            b.app_service.add_script.assert_called_once_with(entry)
+            b.app_service.add_script.assert_called_once_with("C:/scripts/new.py")
         spy.assert_called_once()
 
 
