@@ -140,7 +140,11 @@ class FrontendPackageTests(unittest.TestCase):
             app = AppService()
             self.addCleanup(app.close)
             self.assertFalse(app.get_update_info().unavailable_reason)
-            self.assertIn("rust", app.update_view()["unavailable_reason"])
+            self.assertFalse(app.update_view()["unavailable_reason"])
+            rust_app = AppService(frontend="rust")
+            self.addCleanup(rust_app.close)
+            self.assertIn("rust", rust_app.get_update_info().unavailable_reason)
+            self.assertIn("rust", rust_app.update_view()["unavailable_reason"])
             network.assert_not_called()
 
     def test_mislabelled_download_is_cleaned_and_never_handed_to_installer(self):

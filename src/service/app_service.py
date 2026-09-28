@@ -100,13 +100,11 @@ def _weekly_start_entries(script_name: str) -> dict[str, int]:
 class AppService:
     """组合根：装配平级 service peer 并向外暴露统一接口（GUI/CLI 唯一门面）。"""
 
-    def __init__(self):
-        """装配各 peer。"""
-        self._updates = UpdateService()
+    def __init__(self, *, frontend: str = "qt"):
+        """装配各 peer；GUI/CLI 入口选择对应发行版的更新服务。"""
+        self._updates = UpdateService(frontend=frontend)
         self.background = BackgroundJob()
-        self._update_session = UpdateSession(
-            UpdateService(frontend="rust"), self.background
-        )
+        self._update_session = UpdateSession(self._updates, self.background)
 
     def close(self) -> None:
         self.background.close()

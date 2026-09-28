@@ -76,7 +76,7 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 | `script.launch_target` | `script_name/target`（script 或 game） | 解析单独启动目标；与工具栏普通资源查询分开，本接口不执行启动 |
 | `script.edit_view` | `script_name` | 原脚本条目 `script`、标识 `script_name`、七日 `weekly_timeouts` 和 `switches`（name/enabled） |
 | `script.edit_save` | `script_name/display_name/config_patch/weekly_timeouts/switches` | 保存完整脚本表单，返回 `{"script_name":"保存后的标识"}` |
-| `script.add` | `file_path` | 解析脚本/快捷方式并添加，返回 `{"script_name":"新标识"}`；不运行文件 |
+| `script.add` | `file_path` | 解析脚本/快捷方式并添加，返回 `{"script_name":"新标识","display_name":"展示名"}`；不运行文件 |
 | `script.icon_path` | `script_name` | 只读当前游戏图标源，返回 `script_name/path`；缺失路径为 null，不启动程序 |
 | `wallpaper.current` / `wallpaper.view` | `script_name` | 自动背景/编辑窗读取同一状态：脚本名、显示名、模式、源路径、自定义路径、token、现有缓存路径 |
 | `wallpaper.set` | `script_name/file_path` | 保存壁纸映射，null 恢复默认，返回 null；不复制或删除源文件 |

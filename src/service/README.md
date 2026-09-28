@@ -142,3 +142,5 @@ CLI 备份/恢复通过 AppService.background 的单任务执行器调用原服�
 `resolve_launch_target` 统一解析当前脚本或游戏的启动方式。外部程序使用系统关联打开；Python 脚本复用 Runner 命令，保留参数、工作目录和环境覆盖项。调用方继承自身环境并应用覆盖项，不经接口传递整个进程环境。
 
 这些查询不打开文件、不启动进程。Python GUI 直接调用 AppService 并处理打开失败，无须经过 CLI；其它前端可通过同一 service 获取目标。
+
+`AppService` 默认装配 Qt 发行版的更新服务，Rust headless 入口显式传入 `frontend="rust"`。直接更新调用与后台更新会话共用同一个 `UpdateService`，不为 Python GUI 额外装配 Rust 更新实例。

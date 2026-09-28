@@ -315,7 +315,7 @@ def _run_command(args: argparse.Namespace) -> int:
                 setup_logging()
                 install_crash_hooks()
                 config_workflow()
-                service = AppService()
+                service = AppService(frontend="rust")
             if args.command == "legacy":
                 from src.cli import build_parser, run_cli
 

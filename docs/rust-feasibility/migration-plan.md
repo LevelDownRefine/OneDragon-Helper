@@ -1,7 +1,14 @@
 # Rust GUI 渐进迁移计划
 
-2026-09-28。近期路线：Rust 接管全部现有 GUI，助手业务保留 Python CLI。
-每块以可独立验收的 PR 交付，完成一块即测试、提 PR、继续下一块。
+2026-09-28。近期路线：Rust 支持现有 GUI 功能，同时保留 Python/Qt GUI。助手业务仍在 Python service；Rust 经常驻 CLI 调用，Qt 直接调用 service。
+
+## 当前审阅入口
+
+- 总 PR [#130](https://github.com/LevelDownRefine/OneDragon-Helper/pull/130) 汇总 Rust 功能；旧 #103、#106–#129 已关闭，以下批次记录作为实现历史保留。
+- 独立主分支 PR [#131](https://github.com/LevelDownRefine/OneDragon-Helper/pull/131)：共享脚本编辑和列表操作，Qt 直接调用；包含校验、保存顺序、过期重排检查和失败反馈。
+- 独立主分支 PR [#132](https://github.com/LevelDownRefine/OneDragon-Helper/pull/132)：共享资源与启动目标解析，Qt 直接调用；包含路径、链接回退、环境继承和打开失败反馈。
+- 两个公共业务 PR 均不依赖 Rust，可分别合入 main；总分支已同步相同实现。合入 main 后再 rebase 总分支，缩小 #130 的最终差异。
+- Qt 保留原 launcher、发布包及直接 service 调用；Rust 的 stdio 协议、后台会话和分发适配仍在总 PR，不要求 Qt 全面接入 CLI。
 
 ## 当前基线
 

@@ -85,3 +85,23 @@ class HeadlessEntryTests(unittest.TestCase):
             self.assertEqual(main(["--selftest"]), 7)
             entry.assert_called_with(["legacy", "--", "--selftest"])
             self.assertEqual(os.environ[RUST_CONFIRM_ENV], "explicit-parent.exe")
+
+    def test_headless_entry_selects_rust_update_service(self):
+        from argparse import Namespace
+        from contextlib import nullcontext
+
+        from src.headless import _run_command
+
+        with (
+            patch("src.update.runtime.application_lease", return_value=nullcontext()),
+            patch("src.config.generate_config.config_workflow"),
+            patch("src.utils.utils_logger.setup_logging"),
+            patch("src.utils.utils_logger.install_crash_hooks"),
+            patch("src.service.app_service.AppService") as factory,
+            patch("src.headless._call", return_value=0) as dispatch,
+        ):
+            self.assertEqual(
+                _run_command(Namespace(command="call", method="update.view")), 0
+            )
+        factory.assert_called_once_with(frontend="rust")
+        dispatch.assert_called_once_with(factory.return_value, "update.view")

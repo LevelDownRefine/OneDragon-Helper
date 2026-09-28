@@ -495,7 +495,9 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.run_
             ]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(responses[0]["result"], {"script_name": "new"})
+        self.assertEqual(
+            responses[0]["result"], {"script_name": "new", "display_name": "new"}
+        )
         self.assertIsNone(responses[1]["result"])
         self.assertEqual(
             [script["script_name"] for script in responses[2]["result"]["scripts"]],
