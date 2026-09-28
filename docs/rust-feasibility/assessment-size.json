@@ -4,16 +4,16 @@
   "packages": {
     "qt": {
       "files": 262,
-      "directory_bytes": 152615097,
-      "zip_bytes": 75274435,
+      "directory_bytes": 152614976,
+      "zip_bytes": 75274007,
       "groups": {
         "_internal/other": 32164454,
         "_internal/PySide6": 92401655,
         "_internal/shiboken6": 1117432,
         "assets": 1256047,
         "config": 38266,
-        "OneDragon-Helper-Runner.exe": 10425649,
-        "OneDragon-Helper-Updater.exe": 9601393,
+        "OneDragon-Helper-Runner.exe": 10425616,
+        "OneDragon-Helper-Updater.exe": 9601305,
         "OneDragon-Helper.exe": 5497002,
         "README.md": 783,
         "src": 81695,
@@ -21,27 +21,27 @@
         "version.json": 111
       },
       "executable_sha256": "377bb19cdb3cc96795c62482a2bcdc230b334644dbeb6567912387e926e26430",
-      "zip_sha256": "6c93388116f35aa18111680e16405a669e1a250632eb568d659a8910825a569f"
+      "zip_sha256": "f38cf82ad895b253cc2d27b98eebce395539ee870ef213b40bf380d54723c91a"
     },
     "rust": {
       "files": 128,
-      "directory_bytes": 71334297,
-      "zip_bytes": 43960297,
+      "directory_bytes": 71334176,
+      "zip_bytes": 43958066,
       "groups": {
         "_internal/other": 31694358,
         "assets": 1256047,
         "config": 38266,
         "OneDragon-Helper-CLI.exe": 6045853,
-        "OneDragon-Helper-Runner.exe": 10425649,
-        "OneDragon-Helper-Updater.exe": 9601393,
+        "OneDragon-Helper-Runner.exe": 10425616,
+        "OneDragon-Helper-Updater.exe": 9601305,
         "OneDragon-Helper.exe": 12136960,
         "README.md": 783,
         "update-manifest.json": 14454,
         "vcruntime140.dll": 120400,
         "version.json": 134
       },
-      "executable_sha256": "1f454d8ac73a10d195c808f281648ac1167ec5d8d2e4ef92bfd0120cc5d03b04",
-      "zip_sha256": "801ae57cfcea4853f7e222e838e87f7f0d9bf8130b281fbb04c45b7bece293d0"
+      "executable_sha256": "462469b8b298cc63c03f0683b07c62501db7ba50ba622e8d06d0cefa95db823f",
+      "zip_sha256": "4ed4d784f9ba12867e81c0ea3771f31fafdfdd1caabdd297d05e69d68cc2c832"
     }
   },
   "lock_sha256": {

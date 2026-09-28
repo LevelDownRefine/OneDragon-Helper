@@ -76,7 +76,7 @@
   Windows CI 管理员执行，测试不操作真实安装或启动外部脚本。
 - N7 [#128](https://github.com/LevelDownRefine/OneDragon-Helper/pull/128) `codex/rust-gui-native-runtime` 基于 #127，将 `vcruntime140.dll` 放到 Rust EXE 同目录，
   纳入必需发布文件、更新哈希和归档校验；真实 PE 测试核对导入符号与随包 DLL 导出。
-- N8 `codex/rust-gui-assessment` 基于 #128，提供完整 Qt/Rust 包的启动测量工具与原始样本，
+- N8 [#129](https://github.com/LevelDownRefine/OneDragon-Helper/pull/129) `codex/rust-gui-assessment` 基于 #128，提供完整 Qt/Rust 包的启动测量工具与原始样本，
   以相同生成配置、交替运行和真实画面回读比较体积及启动耗时，列出系统依赖与验收边界。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
