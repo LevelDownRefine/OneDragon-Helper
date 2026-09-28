@@ -83,3 +83,5 @@ QML 仅经 Bridge.<slot>() 与 Python 交互，QmlBridge 是唯一桥。新增�
 3. 界面：在对应 qml/<name>.qml 加 Rectangle/MouseArea，调用 Bridge.xxx()。
 
 示例：右上角加截图按钮 → window.py 加 @Slot def screenshot → QmlBridge.screenshot 一行委托 → qml/window.qml 加按钮。
+
+资源跳转与当前脚本/游戏启动：控制器直接调用 `AppService.resolve_script_target` / `resolve_launch_target`，只负责系统打开或启动进程及反馈；AppService 委托 `src/link.py` 查询链接、路径和图标来源，委托 `launch_service` 解析启动目标及 Runner 命令。Python 启动环境继承父进程，再应用 service 给出的覆盖项。

@@ -7,7 +7,7 @@ QML 引擎在 offscreen 下可加载场景（无视频渲染，但场景对象�
 各职责已拆到 src/gui/controllers/ 下 mixin；monkeypatch 目标需指向实际引用
 该名字的子模块（os/subprocess/webbrowser 指向标准库模块；config 读取走 AppService——
 其 load_config 已委托 src.utils.utils_config，故 load_config 类方法 patch 指向
-AppService；build_script_command 在 launch，链接相关函数在 links，
+AppService；资源/启动目标由 service 解析，外部打开动作在控制器，
 周常/适配相关函数在 task_card）。
 """
 
@@ -181,16 +181,85 @@ class TestLeftRail(unittest.TestCase):
         b = make_bridge()
         b.selectGame(1)  # 测试脚本（python）
         with (
-            patch.object(os.path, "isfile", return_value=True),
             patch.object(
-                launch,
-                "build_script_command",
-                return_value=(["python", "--script", "x"], ".", {}),
+                b.app_service,
+                "resolve_launch_target",
+                return_value={
+                    "kind": "command",
+                    "program": "python",
+                    "args": ["--script", "中文 x.py"],
+                    "cwd": ".",
+                    "env": {"PYTHONPATH": "runner"},
+                },
+            ) as resolve,
+            patch.dict(os.environ, {"ODH_TEST_PARENT": "keep"}),
+            patch.object(subprocess, "Popen") as popen,
+        ):
+            b.launchScript()
+        resolve.assert_called_once_with("测试脚本", "script")
+        popen.assert_called_once()
+        self.assertEqual(popen.call_args.args[0], ["python", "--script", "中文 x.py"])
+        self.assertEqual(popen.call_args.kwargs["cwd"], ".")
+        self.assertEqual(popen.call_args.kwargs["env"]["PYTHONPATH"], "runner")
+        self.assertEqual(popen.call_args.kwargs["env"]["ODH_TEST_PARENT"], "keep")
+
+    def test_launch_script_failure_does_not_report_success(self):
+        for kind in ("association", "command", "unavailable"):
+            with self.subTest(kind=kind):
+                b = make_bridge()
+                toasts = []
+                b.toastRequested.connect(toasts.append)
+                target = {
+                    "kind": kind,
+                    "path": "demo.exe",
+                    "program": "python",
+                    "args": [],
+                    "cwd": ".",
+                    "env": {},
+                    "reason": "文件不存在",
+                }
+                with (
+                    patch.object(
+                        b.app_service, "resolve_launch_target", return_value=target
+                    ),
+                    patch.object(
+                        subprocess, "Popen", side_effect=OSError("拒绝启动")
+                    ) as spawn,
+                    patch.object(
+                        launch, "open_in_explorer", side_effect=OSError("拒绝启动")
+                    ) as open_path,
+                ):
+                    if kind == "unavailable":
+                        b.launchScript()
+                    else:
+                        with self.assertRaisesRegex(OSError, "拒绝启动"):
+                            b.launchScript()
+                if kind == "unavailable":
+                    spawn.assert_not_called()
+                    open_path.assert_not_called()
+                    self.assertEqual(len(toasts), 1)
+                    self.assertIn("文件不存在", toasts[0])
+                else:
+                    self.assertEqual(toasts, [])
+
+    def test_empty_environment_overrides_inherit_parent(self):
+        b = make_bridge()
+        with (
+            patch.object(
+                b.app_service,
+                "resolve_launch_target",
+                return_value={
+                    "kind": "command",
+                    "program": "Runner.exe",
+                    "args": ["--script", "x.py"],
+                    "cwd": ".",
+                    "env": {},
+                },
             ),
             patch.object(subprocess, "Popen") as popen,
         ):
             b.launchScript()
-        popen.assert_called_once()
+        self.assertIsNone(popen.call_args.kwargs["env"])
 
 
 class TestFloatBar(unittest.TestCase):
@@ -200,24 +269,33 @@ class TestFloatBar(unittest.TestCase):
         for action, key, url in (
             (
                 "openHome",
-                "homepage",
+                "home",
                 "https://github.com/LevelDownRefine/OneDragon-Helper",
             ),
-            ("openBilibili", "bilibili", "https://www.bilibili.com/"),
+            ("openBilibili", "bili", "https://www.bilibili.com/"),
         ):
+            b = make_bridge()
             with (
                 self.subTest(action=action),
-                patch.object(links, "_get_game_link", return_value="") as link,
+                patch.object(
+                    b.app_service,
+                    "resolve_script_target",
+                    return_value={"kind": "url", "value": url},
+                ) as link,
                 patch.object(webbrowser, "open") as browser,
             ):
-                getattr(make_bridge(), action)()
+                getattr(b, action)()
                 link.assert_called_once_with("ok-ww", key)
                 browser.assert_called_once_with(url)
 
     def test_launch_game_starts_exe(self):
         b = make_bridge()
         with (
-            patch.object(links, "_get_game_exe_path", return_value="D:/Game/game.exe"),
+            patch.object(
+                b.app_service,
+                "resolve_launch_target",
+                return_value={"kind": "association", "path": "D:/Game/game.exe"},
+            ),
             patch.object(links, "open_in_explorer") as start,
         ):
             b.launchGame()
@@ -227,7 +305,11 @@ class TestFloatBar(unittest.TestCase):
         b = make_bridge()
         spy = MagicMock()
         b.toastRequested.connect(spy)
-        with patch.object(links, "_get_game_exe_path", return_value=None):
+        with patch.object(
+            b.app_service,
+            "resolve_launch_target",
+            return_value={"kind": "unavailable", "reason": "未找到游戏路径"},
+        ):
             b.launchGame()
         spy.assert_called_once()
 
@@ -264,10 +346,10 @@ class TestFloatBar(unittest.TestCase):
         b = make_bridge()
         with (
             patch.object(
-                links, "resolve_script_path", return_value="D:/Game/ok-ww.exe"
+                b.app_service,
+                "resolve_script_target",
+                return_value={"kind": "path", "value": "D:/Game/logs"},
             ),
-            patch.object(links, "get_log_dir", return_value="D:/Game/logs"),
-            patch.object(os.path, "isdir", return_value=True),
             patch.object(links, "open_in_explorer") as start,
         ):
             b.openLogFolder()
@@ -279,9 +361,10 @@ class TestFloatBar(unittest.TestCase):
         b.toastRequested.connect(spy)
         with (
             patch.object(
-                links, "resolve_script_path", return_value="D:/Game/ok-ww.exe"
+                b.app_service,
+                "resolve_script_target",
+                return_value={"kind": "unavailable", "reason": "暂不支持日志跳转"},
             ),
-            patch.object(links, "get_log_dir", return_value=None),
         ):
             b.openLogFolder()
         spy.assert_called_once()

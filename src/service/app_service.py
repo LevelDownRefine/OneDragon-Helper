@@ -20,6 +20,7 @@ Python GUI 直接调用本类；CLI 在传输边界转换数据，两者共用�
 
 import logging
 
+import src.link as link
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
@@ -34,6 +35,7 @@ from src.config.set_config import (
 )
 from src.config.task_switch import task_switch_of
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
+from src.service import launch_service
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -124,6 +126,16 @@ class AppService:
     def script_view(self, script_name: str) -> dict:
         """CLI 任务卡及物化选项。"""
         return task_service.script_view(script_name)
+
+    def resolve_script_target(self, script_name: str, target: str) -> dict:
+        """取得脚本工具栏的外部打开目标。"""
+        return link.resolve_script_target(script_name, target)
+
+    def game_icon_path(self, script_name: str) -> dict:
+        return link.game_icon_path(script_name)
+
+    def resolve_launch_target(self, script_name: str, target: str) -> dict:
+        return launch_service.resolve_launch_target(script_name, target)
 
     def select_daily(
         self,

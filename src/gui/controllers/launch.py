@@ -12,8 +12,8 @@ from PySide6.QtWidgets import QDialog, QMessageBox
 from src.gui.dialogs import styled_msg_box
 from src.gui.run_confirm_dialog import RunConfirmDialog
 from src.utils import open_in_explorer
-from src.utils.utils_runner import build_script_command, spawn_schedule_run
-from src.utils.utils_sub_config import get_script_name, resolve_script_path
+from src.utils.utils_runner import spawn_schedule_run
+from src.utils.utils_sub_config import get_script_name
 
 
 class LaunchController(QObject):
@@ -77,22 +77,24 @@ class LaunchController(QObject):
         if game is None:
             self._toast("尚无脚本")
             return
-        script = game["script_data"]
-        # script_type 可缺省（load_config 仅断言 display_name/script_path），缺省按 external
-        if script.get("script_type", "external") == "python":
-            resolved = resolve_script_path(script["script_path"])
-            if not resolved or not os.path.isfile(resolved):
-                self._toast(f"找不到脚本文件：{script['script_path']}")
-                return
-            command, cwd, env = build_script_command(["--script", resolved])
-            subprocess.Popen(command, cwd=cwd, env=env)
+        target = self._app_service.resolve_launch_target(game["script_name"], "script")
+        assert "kind" in target
+        if target["kind"] == "unavailable":
+            assert "reason" in target
+            self._toast(f"{game['display_name']}：{target['reason']}")
+            return
+        if target["kind"] == "command":
+            assert all(key in target for key in ("program", "args", "cwd", "env"))
+            # service 只返回覆盖项；继承当前环境，保留 PATH 等运行依赖。
+            environment = {**os.environ, **target["env"]} if target["env"] else None
+            subprocess.Popen(
+                [target["program"], *target["args"]],
+                cwd=target["cwd"],
+                env=environment,
+            )
         else:
-            exe_path = script["script_path"]
-            resolved = resolve_script_path(exe_path) if exe_path else None
-            if not resolved or not os.path.isfile(resolved):
-                self._toast(f"找不到脚本：{exe_path}")
-                return
-            open_in_explorer(resolved)  # noqa: S606 启动脚本本体
+            assert target["kind"] == "association" and "path" in target
+            open_in_explorer(target["path"])  # noqa: S606 启动脚本本体
         self._toast(f"已启动 {game['display_name']}")
 
     def _confirm_run(self, enabled_keys: set) -> bool:

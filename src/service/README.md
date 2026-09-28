@@ -125,3 +125,11 @@ gui.dialogs → app_service → chain_service → schedule` 成环，确认窗�
 `--run-daily` 每次读取 daily_run（含独立 run_options 块），以 now 运行当天全部脚本的链；手动脚本 enabled 不参与筛选，运行选项也取每日计划独立配置（不再回落手动 RunOptions）。计划已关闭或没有可运行的脚本则无动作。只改副本、超时或运行选项无需更新系统任务，修改时间或开关才更新任务；暂停保留时间。旧 CLI `--schedule-run HH:MM[:SS]` 保留一次性等待用途（可带秒，便于精确等待或集成测试用「当前 + 几秒」）。
 
 系统任务按安装目录和用户命名。请保持安装目录和可执行文件路径稳定；移动安装前先关闭旧计划，再在新位置启用。任务更新成功才写配置，写入失败时恢复原任务。
+
+## 资源与启动目标
+
+`AppService` 将资源查询委托给 `src/link.py`：`resolve_script_target` 统一解析主页、B 站、GitHub、脚本目录、日志目录和配置文件，返回 URL、绝对路径或不可用原因；`game_icon_path` 按需读取游戏路径，图标提取仍由前端负责。
+
+`launch_service.resolve_launch_target` 统一解析当前脚本或游戏的启动方式。外部程序使用系统关联打开；Python 脚本复用 Runner 命令，保留参数、工作目录和环境覆盖项。调用方继承自身环境并应用覆盖项，不经接口传递整个进程环境。
+
+这些查询不打开文件、不启动进程。Python GUI 直接调用 AppService，无须经过 CLI；其它前端可通过同一 service 获取目标。
