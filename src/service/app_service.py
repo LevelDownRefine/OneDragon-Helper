@@ -14,7 +14,7 @@ peer：
 - 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.service.UpdateService`
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
-未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
+Python GUI 直接调用本类；CLI 也委托本类，共用业务而不要求共用传输。
 """
 
 import logging
@@ -33,6 +33,7 @@ from src.config.set_config import (
 )
 from src.config.task_switch import task_switch_of
 from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
+from src.service import script_list
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -43,6 +44,7 @@ from src.service.schedule import (
     load_startup_options,
     save_schedule,
 )
+from src.service.script_edit import InvalidScriptEdit, validate_edit
 from src.update.service import UpdateService
 from src.utils.utils_config import (
     add_script,
@@ -100,6 +102,53 @@ class AppService:
     def app_snapshot(self) -> dict:
         """CLI 首屏脚本列表。"""
         return task_service.app_snapshot()
+
+    def add_script_path(self, file_path: str) -> dict:
+        return script_list.add_path(file_path)
+
+    def remove_script_entry(self, script_name: str) -> None:
+        return script_list.remove(script_name)
+
+    def reorder_scripts(self, script_names: list[str]) -> None:
+        return script_list.reorder(script_names)
+
+    def validate_script_edit(
+        self, script_name, display_name, config_patch, weekly_timeouts, switches
+    ):
+        """表单提交前校验；不写盘，便于 GUI 保留无效输入继续编辑。"""
+        return validate_edit(
+            script_name, display_name, config_patch, weekly_timeouts, switches
+        )
+
+    def script_edit_view(self, script_name: str) -> dict:
+        """读取脚本配置表单；不提交编辑或强制初始化。"""
+        script = self.get_script(script_name)
+        if script is None:
+            raise InvalidScriptEdit("脚本已不存在，请刷新列表")
+        return {
+            "script_name": script_name,
+            "script": script,
+            "weekly_timeouts": self.weekly_inputs(script_name),
+            "switches": self.get_script_switches(script_name),
+        }
+
+    def save_script_edit(
+        self, script_name, display_name, config_patch, weekly_timeouts, switches
+    ):
+        """按原 GUI 顺序保存、按需初始化，再写原生任务开关。"""
+        previous = self.get_script(script_name)
+        if previous is None:
+            raise InvalidScriptEdit("脚本已不存在，请刷新列表")
+        previous = dict(previous)
+        display_name, config_patch = self.validate_script_edit(
+            script_name, display_name, config_patch, weekly_timeouts, switches
+        )
+        current = self.update_script(
+            script_name, display_name, config_patch, weekly_timeouts
+        )
+        self.init_script_after_edit(previous, current)
+        self.set_script_switches(current, switches)
+        return {"script_name": current}
 
     def script_view(self, script_name: str) -> dict:
         """CLI 任务卡及物化选项。"""

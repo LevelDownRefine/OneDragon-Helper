@@ -7,7 +7,7 @@
 对外接口：
 - ``SingleScriptConfigDialog``：单脚本配置弹窗（名称/路径/类型/参数/完成检测/
   关闭脚本/关闭游戏/阻塞/游戏进程/每周超时/任务开关），保存后经 ``pending_changes`` 返回，
-  写盘由调用方经 ``AppService.update_script`` 委托 ``src.utils.utils_config.update_script``。脚本删除改由左侧列表交互完成。
+  写盘由调用方经 ``AppService.save_script_edit`` 委托 ``src.utils.utils_config.update_script``。脚本删除改由左侧列表交互完成。
 - 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
   （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
 """
@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.service.app_service import AppService
-from src.utils.utils_sub_config import get_script_name
+from src.service.script_edit import InvalidScriptEdit
 
 # ═══════════════════════ 弹窗样式（原 src/gui/theme.py 子集，2026-08-16 并入）═══════
 # 与 QML Theme.js 保持同一套蓝灰配色。
@@ -719,60 +719,35 @@ class SingleScriptConfigDialog(FormDialogBase):
         """收集表单数据存入 self.pending_changes 后 accept()；写盘由调用方完成。
 
         不直接在此弹窗写 config.yml——config.yml 的写入权归 ``src.utils.utils_config``（经调用方
-        ``AppService.update_script`` 委托）。weekly_timeouts 也由调用方决定是否持久化。
+        ``AppService.save_script_edit`` 委托）。weekly_timeouts 也由调用方决定是否持久化。
         """
-        path_val = self.path_input.text().strip()
-        if not path_val:
-            show_warning(self, "脚本路径为空，可能会导致运行问题！")
-            return
-
-        new_display_name = self.name_input.text().strip()
-        if not new_display_name:
-            show_warning(self, "脚本名称不能为空！")
-            return
-        new_script_name = get_script_name(
-            {"display_name": new_display_name, "script_path": path_val}
-        )
-        existing = self._app_service.get_script(new_script_name)
-        if existing is not None and new_script_name != self.script_name:
-            assert "display_name" in existing, (
-                "[dialogs] config 脚本数据缺少 display_name"
-            )
-            show_warning(
-                self,
-                f"已存在同标识脚本「{existing['display_name']}」，请换一个脚本路径或名称。",
-            )
-            return
-
         if self.kill_game_cb.isChecked() and not self.game_process_input.text().strip():
             show_warning(
                 self,
                 "已勾选「结束后关闭游戏」但未填写游戏进程名，保存后该选项将自动取消。",
             )
 
-        # 游戏路径：填了就必须存在（留空表示不由本工具启动游戏）
-        game_path_val = self.game_path_input.text().strip()
-        if game_path_val and not os.path.isfile(game_path_val):
-            show_warning(self, f"游戏路径不存在:\n{game_path_val}")
-            return
-
         timeouts = []
         for timeout_edit in self.timeout_inputs:
             text = timeout_edit.text().strip()
-            timeouts.append(int(text) if text else None)
+            try:
+                timeouts.append(int(text) if text else None)
+            except ValueError:
+                show_warning(self, "每周超时须为整数秒或留空")
+                return
 
-        self.pending_changes = {
+        changes = {
             "old_script_name": self.script_name,
-            "new_display_name": new_display_name,
+            "new_display_name": self.name_input.text().strip(),
             "config_patch": {
-                "script_path": path_val,
+                "script_path": self.path_input.text().strip(),
                 "script_type": self.type_combo.currentText(),
                 "script_arguments": self.args_input.text().strip(),
                 "check_done": self.check_done_combo.currentText(),
                 "kill_script_after_done": self.kill_script_cb.isChecked(),
                 "kill_game_after_done": self.kill_game_cb.isChecked(),
                 "game_process_name": self.game_process_input.text().strip(),
-                "game_path": game_path_val,
+                "game_path": self.game_path_input.text().strip(),
                 "block": self.block_cb.isChecked(),
             },
             "weekly_timeouts": timeouts,
@@ -781,4 +756,16 @@ class SingleScriptConfigDialog(FormDialogBase):
                 for name, checkbox in self.switch_checks.items()
             },
         }
+        try:
+            self._app_service.validate_script_edit(
+                changes["old_script_name"],
+                changes["new_display_name"],
+                changes["config_patch"],
+                changes["weekly_timeouts"],
+                changes["switches"],
+            )
+        except InvalidScriptEdit as exc:
+            show_warning(self, str(exc))
+            return
+        self.pending_changes = changes
         self.accept()

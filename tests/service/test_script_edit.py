@@ -3,14 +3,107 @@
 import unittest
 from copy import deepcopy
 from functools import cache
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 from src.config import set_config
 from src.service import app_service
+from src.service.script_edit import InvalidScriptEdit, validate_edit
 from src.utils import utils_config
 
 
 class TestScriptEdit(unittest.TestCase):
+    @staticmethod
+    def form(**changes):
+        return {
+            "script_path": "scripts/custom.py",
+            "script_type": "python",
+            "script_arguments": " --中文 ",
+            "check_done": "script_closed",
+            "game_process_name": "",
+            "game_path": "",
+            "kill_script_after_done": True,
+            "kill_game_after_done": False,
+            "block": True,
+            **changes,
+        }
+
+    def test_form_validation_rejects_inputs_before_any_write(self):
+        form = self.form()
+        base = {
+            "script_name": "旧脚本",
+            "display_name": "旧脚本",
+            "config_patch": form,
+            "weekly_timeouts": [None] * 7,
+            "switches": {"任务": True},
+        }
+        for changes in (
+            {"display_name": " "},
+            {"config_patch": {**form, "unknown": True}},
+            {"config_patch": self.form(script_path=" ")},
+            {"config_patch": self.form(block=1)},
+            {"config_patch": self.form(script_type="shell")},
+            {"config_patch": self.form(check_done="unknown")},
+            {"weekly_timeouts": [None] * 6},
+            {"weekly_timeouts": [True] * 7},
+            {"weekly_timeouts": [86401] * 7},
+            {"switches": {"任务": 1}},
+        ):
+            with self.subTest(changes=changes), self.assertRaises(InvalidScriptEdit):
+                validate_edit(**{**base, **changes})
+        name, cleaned = validate_edit(**base)
+        self.assertEqual(name, "旧脚本")
+        self.assertEqual(cleaned["script_arguments"], "--中文")
+
+    def test_combined_save_preserves_old_snapshot_and_order(self):
+        service = app_service.AppService()
+        previous = {"display_name": "旧脚本", "script_path": "scripts/custom.py"}
+        saved = dict(previous)
+        events = Mock()
+
+        def update(*args):
+            previous["script_path"] = "new.py"
+            return "新脚本"
+
+        events.update.side_effect = update
+        with (
+            patch.object(service, "get_script", return_value=previous),
+            patch("src.service.script_edit.get_script", return_value=None),
+            patch.object(service, "update_script", events.update),
+            patch.object(service, "init_script_after_edit", events.init),
+            patch.object(service, "set_script_switches", events.switches),
+        ):
+            result = service.save_script_edit(
+                "旧脚本", " 新脚本 ", self.form(), [None] * 7, {"任务": False}
+            )
+        self.assertEqual(result, {"script_name": "新脚本"})
+        self.assertEqual(
+            events.mock_calls,
+            [
+                call.update(
+                    "旧脚本", "新脚本", self.form(script_arguments="--中文"), [None] * 7
+                ),
+                call.init(saved, "新脚本"),
+                call.switches("新脚本", {"任务": False}),
+            ],
+        )
+
+    def test_initialization_failure_stops_remaining_writes(self):
+        service = app_service.AppService()
+        with (
+            patch.object(
+                service, "get_script", return_value={"display_name": "旧脚本"}
+            ),
+            patch.object(service, "update_script", return_value="旧脚本") as update,
+            patch.object(
+                service, "init_script_after_edit", side_effect=OSError("disk full")
+            ),
+            patch.object(service, "set_script_switches") as switches,
+            self.assertRaisesRegex(OSError, "disk full"),
+        ):
+            service.save_script_edit("旧脚本", "旧脚本", self.form(), [None] * 7, {})
+        update.assert_called_once()
+        switches.assert_not_called()
+
     def test_init_only_when_script_target_changes(self):
         previous = {
             "script_path": "C:/old/BetterGI.exe",
