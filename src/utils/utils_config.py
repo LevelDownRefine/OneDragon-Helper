@@ -34,8 +34,6 @@ from src.utils.utils_sub_config import (
 from src.utils.utils_weekly import (
     delete_weekly,
     ensure_weekly_entry,
-    rename_weekly,
-    save_weekly,
 )
 from src.utils.utils_yaml import dump_yaml, load_yaml
 
@@ -127,20 +125,15 @@ def update_script(
     old_script_name: str,
     new_display_name: str,
     config_patch: dict,
-    weekly_timeouts: list[int | None],
 ) -> str:
-    """更新单个脚本条目字段，并统一落盘每周超时；不初始化子脚本配置。
+    """仅更新 config.yml 的脚本条目，返回保存后的标识。
 
-    以脚本唯一标识定位条目；自动处理标识变更（含 weekly 两段迁移）与
-    kill_game_after_done 自洽（未设置 game_process_name 时强制 False）。
-    周几起（weekly.yml 的 weekly_start 段 + 游戏侧字面字段）不在此处落盘——它由
-    任务卡按条选择后经 ``AppService.set_weekly_start_for`` 实时写入。
+    完整编辑的校验、weekly 迁移和子脚本配置写入归 service.script_edit。
 
     Args:
         old_script_name: 原脚本唯一标识（用于定位条目）。
         new_display_name: 新 display_name（展示名，可保留原名）。
         config_patch: 要写入条目顶层字段的映射（如 script_path/check_done）。
-        weekly_timeouts: 7 格超时输入值，空输入为 None（落盘前转默认超时）。
 
     Returns:
         落盘后的脚本唯一标识（标识可能因 script_path/display_name 变更而改变）。
@@ -166,15 +159,7 @@ def update_script(
             if s is not target
         ), f"[utils_config] 脚本标识已存在: {new_script_name}"
 
-    # 配置自洽：未设置游戏进程名时「运行后关闭游戏」强制 False
-    if not target.get("game_process_name", ""):
-        target["kill_game_after_done"] = False
-
     save_config(config)
-
-    if new_script_name != old_script_name:
-        rename_weekly(old_script_name, new_script_name)
-    save_weekly(new_script_name, weekly_timeouts)
     return new_script_name
 
 

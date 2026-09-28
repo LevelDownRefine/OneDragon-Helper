@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
+from src.service.script_edit import validate_edit
 from src.utils.utils_yaml import dump_yaml_file
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
@@ -147,7 +148,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
                     self.assertEqual(dialog.block_cb.isChecked(), expected)
 
     def test_save_stores_block_in_pending_changes(self):
-        """保存时把复选框状态存到 pending_changes['config_patch']['block']（不再直接写盘）。"""
+        """保存时把复选框状态存到 pending_changes.config_patch['block']（不再直接写盘）。"""
         cfg = self._make_config_file(
             [
                 {
@@ -168,8 +169,8 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
             dlg = SingleScriptConfigDialog("日志分析", "日志分析", "C:/y.py")
             dlg.block_cb.setChecked(False)
             dlg.save_data()
-        self.assertFalse(dlg.pending_changes["config_patch"]["block"])
-        self.assertEqual(dlg.pending_changes["new_display_name"], "日志分析")
+        self.assertFalse(dlg.pending_changes.config_patch["block"])
+        self.assertEqual(dlg.pending_changes.display_name, "日志分析")
 
 
 class TestGameProcessInputAlwaysEnabled(unittest.TestCase):
@@ -215,12 +216,8 @@ class TestGamePathInput(unittest.TestCase):
 
     def _make_dialog(self, script_data):
         app = MagicMock()
-        from src.service.script_edit import validate_edit
-
         app.validate_script_edit.side_effect = validate_edit
-        self.enterContext(
-            patch("src.service.script_edit.get_script", return_value=None)
-        )
+        self.enterContext(patch("src.utils.utils_config.get_script", return_value=None))
         # 仅本脚本标识命中：新标识（改名后）返回 None，避免走进「已存在同标识」分支。
         app.get_script.side_effect = lambda name: (
             script_data if name == "collect_log" else None
@@ -255,7 +252,7 @@ class TestGamePathInput(unittest.TestCase):
         finally:
             os.unlink(path)
         warn.assert_not_called()
-        self.assertEqual(dlg.pending_changes["config_patch"]["game_path"], path)
+        self.assertEqual(dlg.pending_changes.config_patch["game_path"], path)
 
     def test_save_blocks_when_path_not_exists(self):
         """填了但文件不存在 → 弹警告并中止保存（不进 accept）。"""
@@ -277,7 +274,7 @@ class TestGamePathInput(unittest.TestCase):
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
-        self.assertEqual(dlg.pending_changes["config_patch"]["game_path"], "")
+        self.assertEqual(dlg.pending_changes.config_patch["game_path"], "")
         warn.assert_not_called()
 
     def test_invalid_form_stays_open_without_pending_write(self):
@@ -312,6 +309,7 @@ class TestSingleScriptConfigDialogSwitches(unittest.TestCase):
         """桩服务：开关清单由用例给定，其余表单数据取默认值。"""
         service = MagicMock()
         service.get_script.return_value = None
+        service.validate_script_edit.side_effect = validate_edit
         service.weekly_inputs.return_value = [60] * 7
         service.get_script_switches.return_value = switches
         return service
@@ -348,9 +346,7 @@ class TestSingleScriptConfigDialogSwitches(unittest.TestCase):
         dlg.switch_checks["周常"].setChecked(True)
         dlg.save_data()
         assert dlg.pending_changes is not None
-        self.assertEqual(
-            dlg.pending_changes["switches"], {"领取邮件": True, "周常": True}
-        )
+        self.assertEqual(dlg.pending_changes.switches, {"领取邮件": True, "周常": True})
 
     def test_no_section_when_script_undeclared(self):
         """真实 AppService：未声明该特性的脚本不建区，保存回传空状态。"""
@@ -370,7 +366,7 @@ class TestSingleScriptConfigDialogSwitches(unittest.TestCase):
             dlg.save_data()
         self.assertEqual(dlg.switch_checks, {})
         assert dlg.pending_changes is not None
-        self.assertEqual(dlg.pending_changes["switches"], {})
+        self.assertEqual(dlg.pending_changes.switches, {})
 
 
 class TestFramelessDialogs(unittest.TestCase):
