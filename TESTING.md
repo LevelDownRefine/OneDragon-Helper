@@ -104,6 +104,10 @@ Rust 双进程升级用真实主 EXE 的原 CLI `--dump-config --out` 写命名�
 不声称点击了更新窗；窗口状态和 ready 回执由 Rust/无 Qt 会话测试验证。管道夹具的
 锁保持与 EOF 已由独立 CLI EXE 在非管理员环境实际验证，不给产品增加测试命令。
 
+`tools/measure_gui_startup.py` 对 Qt/Rust 的干净完整包做暖启动对比，首个可回读任务画面
+才计时成功。测量工具测试覆盖标记前退出、缺少任务数据和非零退出，实际 15 轮交替测量
+见 `docs/rust-feasibility/assessment.md`；它不是常规 CI 的性能阈值测试。
+
 ## 2. 风格检查 ruff
 
 ```bash

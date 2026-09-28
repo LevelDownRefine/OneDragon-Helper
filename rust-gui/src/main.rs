@@ -156,7 +156,21 @@ fn settings() -> Result<(app::Settings, Vec<OsString>), String> {
 
 fn main() -> eframe::Result {
     let started = Instant::now();
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let mut logger =
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    #[cfg(feature = "capture")]
+    if let Some(path) = env::var_os("ODH_GUI_STARTUP_LOG") {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .unwrap_or_else(|error| {
+                runtime::startup_error(&format!("启动测量日志无法创建：{error}"));
+                std::process::exit(2);
+            });
+        logger.target(env_logger::Target::Pipe(Box::new(file)));
+    }
+    logger.init();
     if env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--shutdown-confirm")) {
         let code = shutdown::run(env::args_os().skip(2).collect()).unwrap_or_else(|error| {
             log::error!("关机确认失败：{error}");

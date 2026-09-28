@@ -1,0 +1,169 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.10 | packaged by conda-forge | (main, Apr 10 2025, 22:08:16) [MSC v.1943 64 bit (AMD64)]",
+  "processor": "AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD",
+  "executables_sha256": {
+    "qt": "377bb19cdb3cc96795c62482a2bcdc230b334644dbeb6567912387e926e26430",
+    "rust": "1f454d8ac73a10d195c808f281648ac1167ec5d8d2e4ef92bfd0120cc5d03b04"
+  },
+  "runs": 15,
+  "excluded_warmup_runs_per_frontend": 1,
+  "scenario": "Windows visible GUI, generated two-script fixture, after-update, warm OS cache; temporary RunAsInvoker copies; packaged Rust release+capture with log sink; default adapter selection",
+  "markers": {
+    "task_data_ms": "Qt entering event loop / Rust first task view received (different stage definitions)",
+    "task_frame_ms": "first task frame available in GPU readback callback, before image encoding; Qt grabToImage / egui Screenshot"
+  },
+  "poll_interval_ms": 5,
+  "samples_ms": {
+    "qt": [
+      {
+        "task_data_ms": 1243.529799998214,
+        "task_frame_ms": 1517.048599998816
+      },
+      {
+        "task_data_ms": 1216.8804000029922,
+        "task_frame_ms": 1476.3617999997223
+      },
+      {
+        "task_data_ms": 1242.941599994083,
+        "task_frame_ms": 1522.535699994478
+      },
+      {
+        "task_data_ms": 1251.5784999995958,
+        "task_frame_ms": 1536.1334000044735
+      },
+      {
+        "task_data_ms": 1292.9847999985213,
+        "task_frame_ms": 1586.311699997168
+      },
+      {
+        "task_data_ms": 1260.1892999955453,
+        "task_frame_ms": 1532.7116999978898
+      },
+      {
+        "task_data_ms": 1268.2211999999708,
+        "task_frame_ms": 1554.8420999984955
+      },
+      {
+        "task_data_ms": 1293.1712000063271,
+        "task_frame_ms": 1553.318100006436
+      },
+      {
+        "task_data_ms": 1318.0446999976994,
+        "task_frame_ms": 1609.6029000036651
+      },
+      {
+        "task_data_ms": 1224.4092999972054,
+        "task_frame_ms": 1506.483199998911
+      },
+      {
+        "task_data_ms": 1238.29349999869,
+        "task_frame_ms": 1503.3718000049703
+      },
+      {
+        "task_data_ms": 1255.891699998756,
+        "task_frame_ms": 1557.2192999970866
+      },
+      {
+        "task_data_ms": 1228.1767000022228,
+        "task_frame_ms": 1498.9343999986886
+      },
+      {
+        "task_data_ms": 1224.2175999999745,
+        "task_frame_ms": 1531.9811000008485
+      },
+      {
+        "task_data_ms": 1227.952599998389,
+        "task_frame_ms": 1514.6097000033478
+      }
+    ],
+    "rust": [
+      {
+        "task_data_ms": 1203.2773999962956,
+        "task_frame_ms": 1234.2405000017607
+      },
+      {
+        "task_data_ms": 1224.511500004155,
+        "task_frame_ms": 1249.2295999982161
+      },
+      {
+        "task_data_ms": 1248.3176000023377,
+        "task_frame_ms": 1281.0539999991306
+      },
+      {
+        "task_data_ms": 1238.419300003443,
+        "task_frame_ms": 1268.168800001149
+      },
+      {
+        "task_data_ms": 1305.5105000021285,
+        "task_frame_ms": 1334.9416999990353
+      },
+      {
+        "task_data_ms": 1197.4285999967833,
+        "task_frame_ms": 1230.6570000000647
+      },
+      {
+        "task_data_ms": 1210.6774000058067,
+        "task_frame_ms": 1244.9436000024434
+      },
+      {
+        "task_data_ms": 1191.306300002907,
+        "task_frame_ms": 1222.3343000005116
+      },
+      {
+        "task_data_ms": 1195.8449000012479,
+        "task_frame_ms": 1229.023199994117
+      },
+      {
+        "task_data_ms": 1204.244499997003,
+        "task_frame_ms": 1235.6446999983746
+      },
+      {
+        "task_data_ms": 1206.9244000012986,
+        "task_frame_ms": 1236.738100000366
+      },
+      {
+        "task_data_ms": 1252.9314000057639,
+        "task_frame_ms": 1278.0004000014742
+      },
+      {
+        "task_data_ms": 1205.4694999969797,
+        "task_frame_ms": 1234.805399995821
+      },
+      {
+        "task_data_ms": 1217.2890000001644,
+        "task_frame_ms": 1246.9685999967624
+      },
+      {
+        "task_data_ms": 1217.705000002752,
+        "task_frame_ms": 1246.8067000008887
+      }
+    ]
+  },
+  "summary_ms": {
+    "qt": {
+      "task_data_ms": {
+        "median": 1243.529799998214,
+        "min": 1216.8804000029922,
+        "max": 1318.0446999976994
+      },
+      "task_frame_ms": {
+        "median": 1531.9811000008485,
+        "min": 1476.3617999997223,
+        "max": 1609.6029000036651
+      }
+    },
+    "rust": {
+      "task_data_ms": {
+        "median": 1210.6774000058067,
+        "min": 1191.306300002907,
+        "max": 1305.5105000021285
+      },
+      "task_frame_ms": {
+        "median": 1244.9436000024434,
+        "min": 1222.3343000005116,
+        "max": 1334.9416999990353
+      }
+    }
+  }
+}

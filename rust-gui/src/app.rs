@@ -950,6 +950,10 @@ impl eframe::App for App {
         if let Some(path) = &self.settings.capture {
             for event in ctx.input(|input| input.events.clone()) {
                 if let egui::Event::Screenshot { image, .. } = event {
+                    log::info!(
+                        "[startup] task frame captured {:.2} ms",
+                        self.started.elapsed().as_secs_f64() * 1000.0
+                    );
                     let bytes: Vec<u8> = image
                         .pixels
                         .iter()
@@ -1283,7 +1287,14 @@ impl eframe::App for App {
                     .is_some_and(SettingsDialog::is_daily))
         {
             let ready = self.capture_ready_at.get_or_insert_with(Instant::now);
-            if ready.elapsed() >= std::time::Duration::from_millis(250) {
+            let settling = if std::env::var_os("ODH_GUI_MEASURE_STARTUP").as_deref()
+                == Some(std::ffi::OsStr::new("1"))
+            {
+                std::time::Duration::ZERO
+            } else {
+                std::time::Duration::from_millis(250)
+            };
+            if ready.elapsed() >= settling {
                 self.capture_requested = true;
                 ui.ctx()
                     .send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));

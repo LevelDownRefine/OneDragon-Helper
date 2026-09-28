@@ -198,7 +198,7 @@ EOF 发送取消并等待线程结束后释放运行租约；恢复任务依旧�
 `update.install` 不可取消，EOF 等待交接结束后释放租约。就绪后禁止再次检查、下载或安装；
 `update.view.handoff_ready` 可回读就绪状态。失败保留已校验包供显式重试，断连不得重放。
 更新服务与独立更新器校验 CLI/GUI 双进程身份、等待双方退出，安装后带 `--after-update`
-重启 Rust EXE。源码运行仍不支持原位安装；独立 Rust 分发包和真实 EXE 交接验收属于发布批次。
+重启 Rust EXE。源码运行仍不支持原位安装；独立包构建与真实 EXE 交接测试见 `TESTING.md`。
 
 ## 每日计划
 
@@ -241,7 +241,7 @@ Windows Rust 前端将自身绝对路径传入 `ODH_SHUTDOWN_UI`，prepare 将�
   `script.view` 每次重读外部配置；适配器构造仍可能执行现有的模板对齐，周常读取仍可能迁移旧格式。
   因此查询并不承诺整个应用层绝无写盘副作用。
 - 仅承诺这些新增后端方法不加载 Qt。
-  原 Qt launcher 继续保留；独立 CLI EXE 已排除 Qt，完整 Rust 发布包仍在构建中。
+  原 Qt launcher 继续保留；完整 Rust 包的 CLI、Runner 和 Updater 均不包含 Qt。
 
 冻结入口 `src.headless_entry` 保留 `call/serve/run/daily` 子命令，并将原助手参数交给
 `legacy -- 参数`。Rust 主程序在创建窗口前转发 `--version/--selftest/--schedule-run`

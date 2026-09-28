@@ -13,8 +13,8 @@
 - CLI 日常响应为 `name/task/sequence/enabled/options`，周常为
   `name/task/options/start_day`。四个写操作返回 `null`；客户端随后查询 `script.view`，
   分开处理写入失败与刷新失败，不因反读失败重放写入。
-- 当前 Rust 可用：原版布局、任务卡分级菜单、日常/周常保存反读、脚本切换、
-  连接诊断、窗口拖动/最小化/关闭。其余入口保持“暂不可用”直到对应 PR 接通。
+- 当前 Windows Rust 已接通下列全部功能批次；主窗口及关机确认窗共用 Direct3D 12/WARP，
+  业务仍经无 Qt Python CLI。完整包与启动对比见[评估报告](assessment.md)。
 - E [#106](https://github.com/LevelDownRefine/OneDragon-Helper/pull/106) 已接通官网、B 站、GitHub、
   脚本目录、日志及配置文件入口；`codex/rust-gui-navigation` 基于 #103，使用 `script.target`。
 - F [#107](https://github.com/LevelDownRefine/OneDragon-Helper/pull/107) `codex/rust-gui-script-config`
@@ -74,8 +74,10 @@
 - N6 [#127](https://github.com/LevelDownRefine/OneDragon-Helper/pull/127) `codex/rust-gui-update-exe` 基于 #126，用真实主 EXE/CLI/更新器验证双进程等待、
   自然退出后安装与用户文件保留；只借原 CLI 的输出参数做同步，不加产品测试入口。
   Windows CI 管理员执行，测试不操作真实安装或启动外部脚本。
-- N7 `codex/rust-gui-native-runtime` 基于 #127，将 `vcruntime140.dll` 放到 Rust EXE 同目录，
+- N7 [#128](https://github.com/LevelDownRefine/OneDragon-Helper/pull/128) `codex/rust-gui-native-runtime` 基于 #127，将 `vcruntime140.dll` 放到 Rust EXE 同目录，
   纳入必需发布文件、更新哈希和归档校验；真实 PE 测试核对导入符号与随包 DLL 导出。
+- N8 `codex/rust-gui-assessment` 基于 #128，提供完整 Qt/Rust 包的启动测量工具与原始样本，
+  以相同生成配置、交替运行和真实画面回读比较体积及启动耗时，列出系统依赖与验收边界。
 - 本轮基线验证：Ubuntu 1155 项（1121 通过、34 项原有跳过）；Rust 13 项，
   含真实 CLI 与写确认后刷新失败不重放；Ruff、rustfmt、严格 Clippy。
 

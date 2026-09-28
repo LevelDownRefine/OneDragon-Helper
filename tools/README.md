@@ -33,7 +33,7 @@ python tools/release_package.py archive --package deploy/dist/OneDragon-Helper -
 ```
 
 Rust 目录准备时加 `prepare --frontend rust`：版本与清单写入包类型、必须含独立
-`OneDragon-Helper-CLI.exe`，不复制 QML。后续 `check/archive/test` 从清单读取类型，
+`OneDragon-Helper-CLI.exe` 和主程序同目录的 `vcruntime140.dll`，不复制 QML。后续 `check/archive/test` 从清单读取类型，
 拒绝混入 QML 或缺失 CLI；Qt 默认行为不变。两类 ZIP 内的顶层目录均为 `OneDragon-Helper`，
 Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时副本路径，
 不会意外测试另一个构建目录的 CLI。该资源工具不负责构建二进制或设置 UAC。
@@ -51,6 +51,12 @@ Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时
 Windows Rust 窗口使用 Direct3D 12，自动选择硬件或系统 WARP 软件设备；
 `ODH_FORCE_SOFTWARE_RENDERING=1` 可强制 WARP 诊断。主窗口和关机确认窗共用该后端，
 使用系统 FXC 编译器，不附带 OpenGL 软件库或额外的 DXC DLL。
+
+完整包启动对比使用 `measure_gui_startup.py`：传入 `--qt-package`、`--rust-package`、
+`--output startup.json`，默认各 15 次、交替运行，另有一次不计入结果的预热。
+工具先校验发布包，在临时副本中使用生成配置测量首张任务画面回读；会打开测试窗口，
+不启动外部脚本，不包含 UAC 等待。测量条件、原始样本和结果见
+[完整包评估](../docs/rust-feasibility/assessment.md)。
 
 这些是手动更新的发布侧基础。更新入口位于右上角设置内，由用户点击
 「更新」触发；不在启动或后台自动检查、下载或安装。

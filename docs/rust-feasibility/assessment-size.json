@@ -1,0 +1,51 @@
+{
+  "python": "3.12.10 | packaged by conda-forge | (main, Apr 10 2025, 22:08:16) [MSC v.1943 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "packages": {
+    "qt": {
+      "files": 262,
+      "directory_bytes": 152615097,
+      "zip_bytes": 75274435,
+      "groups": {
+        "_internal/other": 32164454,
+        "_internal/PySide6": 92401655,
+        "_internal/shiboken6": 1117432,
+        "assets": 1256047,
+        "config": 38266,
+        "OneDragon-Helper-Runner.exe": 10425649,
+        "OneDragon-Helper-Updater.exe": 9601393,
+        "OneDragon-Helper.exe": 5497002,
+        "README.md": 783,
+        "src": 81695,
+        "update-manifest.json": 30610,
+        "version.json": 111
+      },
+      "executable_sha256": "377bb19cdb3cc96795c62482a2bcdc230b334644dbeb6567912387e926e26430",
+      "zip_sha256": "6c93388116f35aa18111680e16405a669e1a250632eb568d659a8910825a569f"
+    },
+    "rust": {
+      "files": 128,
+      "directory_bytes": 71334297,
+      "zip_bytes": 43960297,
+      "groups": {
+        "_internal/other": 31694358,
+        "assets": 1256047,
+        "config": 38266,
+        "OneDragon-Helper-CLI.exe": 6045853,
+        "OneDragon-Helper-Runner.exe": 10425649,
+        "OneDragon-Helper-Updater.exe": 9601393,
+        "OneDragon-Helper.exe": 12136960,
+        "README.md": 783,
+        "update-manifest.json": 14454,
+        "vcruntime140.dll": 120400,
+        "version.json": 134
+      },
+      "executable_sha256": "1f454d8ac73a10d195c808f281648ac1167ec5d8d2e4ef92bfd0120cc5d03b04",
+      "zip_sha256": "801ae57cfcea4853f7e222e838e87f7f0d9bf8130b281fbb04c45b7bece293d0"
+    }
+  },
+  "lock_sha256": {
+    "uv.lock": "759f48cfac6ca026253fb2711e2b1cc4ff93375698ff5e52072d060b38c86119",
+    "rust-gui/Cargo.lock": "a4261ff0976b383a9a9afaed906c103e4703bf5ea3857309ea5158cf111d712c"
+  }
+}

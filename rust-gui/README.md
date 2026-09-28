@@ -1,10 +1,10 @@
-# Rust 任务卡原型
+# Rust GUI 预览
 
 分支 `codex/rust-gui-prototype`，已 rebase 到 `main@1573bfc`；main 已包含无 Qt CLI（[#101](https://github.com/LevelDownRefine/OneDragon-Helper/pull/101)）。
 分支依赖与后续功能顺序见 [渐进迁移计划](../docs/rust-feasibility/migration-plan.md)。
 Rust 负责窗口、列表、任务卡和进程通信；现有 Python `src.headless` 负责全部配置业务。
-当前已按原 GUI 对齐主窗口布局与任务卡交互，并接通工具栏资源跳转。
-未迁移入口保留并标注“暂不可用”。
+已接通 Windows 原 GUI 的任务卡、脚本管理、启动、设置、每日计划、备份、壁纸和更新入口。
+完整功能边界见下方“当前范围”，同条件发布包对比见[评估报告](../docs/rust-feasibility/assessment.md)。
 支持整窗拖入 `.exe/.bat/.py/.lnk`（每次最多 128 项），逐项调用现有添加接口，
 汇总成功、重复、失败与未尝试项；不移动或执行拖入文件。混入不支持的文件时整批拒绝。
 弹窗/操作期间忽略新拖入；写入状态不确定时停止余项并刷新，不自动重试。
@@ -129,9 +129,9 @@ cargo build --release --locked --manifest-path rust-gui/Cargo.toml
   检查与下载只使用 Python 会话保存的对象，取消等待当前网络读取结束，断连不自动重试。
   校验完成后可显式安装并重启；交接中不可取消，收到匹配版本的就绪回执才关闭 GUI/CLI。
   其他任务/窗口、身份不符或超时都会保留当前版本。Rust 使用独立发布包，禁止替换成 Qt 包。
-  目前源码模式仍不可原位安装，完整 Rust 打包与真实 EXE 交接验证留给发布批次。
+  源码模式仍不可原位安装；完整包的真实双进程更新交接见 `tests/exe/test_update_exe.py`。
 
-开发启动器仍使用源码和 Python 环境；完整 Rust 发布包的组装与验收尚未完成。
+开发启动器使用源码和 Python 环境；独立发布包由 `deploy/build-rust.bat` 组装。
 原生 EXE 已支持从自身目录识别 Rust `version.json`、`OneDragon-Helper-CLI.exe` 和
 `_internal`，直接启动随附后端；不受启动工作目录或已激活 Python 环境影响。
 包不完整、类型不符会明确报错，不回退 PATH 中的 Python。Windows 首窗创建前的错误以
@@ -146,8 +146,9 @@ cargo build --release --locked --manifest-path rust-gui/Cargo.toml
 ## 体积和启动指标
 
 release 使用 `opt-level=s`、thin LTO、单 codegen unit、strip；依赖锁定在 `Cargo.lock`。
-前端不链接 Qt/PySide，不启动 WebView。实际运行仍需要 Python CLI 的解释器、依赖、
-源代码和模板；Windows 系统字体与图形驱动也属于外部运行条件。
+前端不链接 Qt/PySide，不启动 WebView。完整包内含 Python CLI 的解释器、冻结业务模块、
+依赖和模板；Windows 系统字体、Direct3D/WARP 与 Media Foundation 属于系统运行条件。
+最新完整包与原版的对比见[评估报告](../docs/rust-feasibility/assessment.md)。以下数字是原型阶段记录。
 
 2026-09-27 本机 Rust 1.97.1 / Windows x64 MSVC 的普通 release EXE 为
 **7,384,064 字节（约 7.042 MiB）**，包含默认壁纸、工具栏图标和图片解码支持，
@@ -155,7 +156,7 @@ release 使用 `opt-level=s`、thin LTO、单 codegen unit、strip；依赖锁�
 6,979,584 字节增加 395 KiB。
 
 不能把这个仅支持任务卡的 EXE 与完整原版包直接做同功能比较，也不能把
-前端大小称为整个助手的安装大小。当前未构建独立 Python CLI 分发包。
+前端大小称为整个助手的安装大小；该阶段尚无独立 Python CLI 分发包。
 
 调试日志提供 `first UI callback` 和 `first task ready` 两个进程内耗时；前者是首次
 UI 回调，不能冒充显示器首帧或包括进程创建的冷启动时间。原报告的源码 offscreen
