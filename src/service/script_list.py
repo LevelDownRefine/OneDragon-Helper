@@ -21,7 +21,7 @@ class DuplicateScript(InvalidScriptList):
 
 
 def add_path(file_path: str) -> dict:
-    """解析文件/快捷方式后复用添加流程，返回新标识。"""
+    """解析文件/快捷方式后复用添加流程，返回新标识与展示名。"""
     if not isinstance(file_path, str) or not file_path.strip():
         raise InvalidScriptList("请选择脚本文件")
     file_path = os.path.normpath(resolve_script_path(file_path.strip()))
@@ -40,7 +40,8 @@ def add_path(file_path: str) -> dict:
     if name in existing:
         raise DuplicateScript(f"脚本已存在：{name}")
     add_script(entry)
-    return {"script_name": name}
+    assert "display_name" in entry
+    return {"script_name": name, "display_name": entry["display_name"]}
 
 
 def remove(script_name: str) -> None:

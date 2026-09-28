@@ -79,7 +79,10 @@ class ScriptListTests(unittest.TestCase):
             ) as build,
             patch.object(script_list, "add_script") as add,
         ):
-            self.assertEqual(script_list.add_path("shortcut.lnk"), {"script_name": "a"})
+            self.assertEqual(
+                script_list.add_path("shortcut.lnk"),
+                {"script_name": "a", "display_name": "一"},
+            )
         build.assert_called_once_with("shortcut.lnk", set())
         add.assert_called_once_with(entry)
 

@@ -224,7 +224,6 @@ class TestTaskCard(unittest.TestCase):
     @patch("src.gui.dialogs.SingleScriptConfigDialog")
     def test_config_current_accept_saves_and_reloads(self, mock_dialog_cls):
         b = make_bridge()
-        previous = dict(b.games[0]["script_data"])
         calls = MagicMock()
         toasts = []
         b.toastRequested.connect(lambda t: toasts.append(t))
@@ -239,28 +238,23 @@ class TestTaskCard(unittest.TestCase):
         }
         with (
             patch.object(
-                b.app_service, "update_script", return_value="hhw"
+                b.app_service, "save_script_edit", return_value={"script_name": "hhw"}
             ) as mock_update,
-            patch.object(b.app_service, "init_script_after_edit") as mock_init,
-            patch.object(b.app_service, "set_script_switches") as mock_switches,
             patch.object(b, "_reload_games") as mock_reload,
         ):
             for name, mocked in (
                 ("save", mock_update),
-                ("init", mock_init),
-                ("switches", mock_switches),
                 ("reload", mock_reload),
             ):
                 calls.attach_mock(mocked, name)
             b.configCurrent()
-        mock_update.assert_called_once_with("ok-ww", "鸣潮", {"k": "v"}, {"1": [1]})
-        mock_init.assert_called_once_with(previous, "hhw")
+        mock_update.assert_called_once_with(
+            "ok-ww", "鸣潮", {"k": "v"}, {"1": [1]}, {"领取邮件": True}
+        )
         self.assertEqual(
             [call[0] for call in calls.mock_calls],
-            ["save", "init", "switches", "reload"],
+            ["save", "reload"],
         )
-        # 任务开关按改名后的标识定位（脚本标识可能随名称/路径变化）
-        mock_switches.assert_called_once_with("hhw", {"领取邮件": True})
         mock_reload.assert_called_once()
         self.assertTrue(any("已保存" in s for s in toasts))
 
@@ -270,13 +264,11 @@ class TestTaskCard(unittest.TestCase):
         dlg = mock_dialog_cls.return_value
         dlg.exec.return_value = QDialog.Rejected
         with (
-            patch.object(b.app_service, "update_script") as mock_update,
-            patch.object(b.app_service, "init_script_after_edit") as mock_init,
+            patch.object(b.app_service, "save_script_edit") as mock_update,
             patch.object(b, "_reload_games") as mock_reload,
         ):
             b.configCurrent()
         mock_update.assert_not_called()
-        mock_init.assert_not_called()
         mock_reload.assert_not_called()
 
     @patch("src.gui.dialogs.SingleScriptConfigDialog")
@@ -295,18 +287,18 @@ class TestTaskCard(unittest.TestCase):
         }
         with (
             patch.object(
-                b.app_service, "update_script", side_effect=OSError("拒绝写入")
+                b.app_service, "save_script_edit", side_effect=OSError("拒绝写入")
             ),
             patch.object(b.app_service, "init_script_after_edit") as init,
             patch.object(b.app_service, "set_script_switches") as switches,
             patch.object(b, "_reload_games") as reload,
-            self.assertRaisesRegex(OSError, "拒绝写入"),
+            self.assertLogs("src.gui.controllers.game_list", level="WARNING"),
         ):
             b.configCurrent()
         init.assert_not_called()
         switches.assert_not_called()
-        reload.assert_not_called()
-        self.assertEqual(toasts, [])
+        reload.assert_called_once()
+        self.assertEqual(toasts, ["保存脚本配置未完成：拒绝写入"])
 
 
 class TestWeeklyStartBridge(unittest.TestCase):

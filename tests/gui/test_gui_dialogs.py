@@ -215,6 +215,12 @@ class TestGamePathInput(unittest.TestCase):
 
     def _make_dialog(self, script_data):
         app = MagicMock()
+        from src.service.script_edit import validate_edit
+
+        app.validate_script_edit.side_effect = validate_edit
+        self.enterContext(
+            patch("src.service.script_edit.get_script", return_value=None)
+        )
         # 仅本脚本标识命中：新标识（改名后）返回 None，避免走进「已存在同标识」分支。
         app.get_script.side_effect = lambda name: (
             script_data if name == "collect_log" else None
@@ -273,6 +279,29 @@ class TestGamePathInput(unittest.TestCase):
             dlg.save_data()
         self.assertEqual(dlg.pending_changes["config_patch"]["game_path"], "")
         warn.assert_not_called()
+
+    def test_invalid_form_stays_open_without_pending_write(self):
+        for field, value in (
+            ("name_input", " "),
+            ("path_input", " "),
+            ("timeout", "86401"),
+            ("timeout", "1.5"),
+        ):
+            with self.subTest(field=field, value=value):
+                dlg = self._make_dialog({})
+                self.addCleanup(dlg.close)
+                edit = (
+                    dlg.timeout_inputs[0] if field == "timeout" else getattr(dlg, field)
+                )
+                edit.setText(value)
+                with (
+                    patch("src.gui.dialogs.show_warning") as warn,
+                    patch.object(dlg, "accept") as accept,
+                ):
+                    dlg.save_data()
+                warn.assert_called_once()
+                accept.assert_not_called()
+                self.assertIsNone(dlg.pending_changes)
 
 
 class TestSingleScriptConfigDialogSwitches(unittest.TestCase):

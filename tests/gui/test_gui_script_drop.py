@@ -20,8 +20,8 @@ from PySide6.QtWidgets import QApplication
 from src.gui.controllers.game_list import GameListController
 from src.gui.file_drop import WindowsFileDrop
 from src.gui.main_window import QmlBridge
+from src.service import script_list
 from src.service.app_service import AppService
-from src.utils.utils_config import build_script_entry
 from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_yaml import load_yaml
 
@@ -33,7 +33,7 @@ class TestDroppedScripts(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.service = MagicMock()
-        self.service.build_script_entry.side_effect = build_script_entry
+        self.service.add_script_path.side_effect = script_list.add_path
         self.reload = MagicMock()
         self.toast = MagicMock()
         self.ctrl = GameListController(self.service, self.toast, self.reload)
@@ -41,6 +41,19 @@ class TestDroppedScripts(unittest.TestCase):
         self.ctrl.gameAdded.connect(self.added)
         self.service.add_script.side_effect = lambda entry: self.ctrl._games.append(
             {"script_name": get_script_name(entry), "script_data": entry}
+        )
+
+        self.enterContext(
+            patch.object(script_list, "add_script", self.service.add_script)
+        )
+        self.enterContext(
+            patch.object(
+                script_list,
+                "load_config",
+                side_effect=lambda: {
+                    "script_list": [game["script_data"] for game in self.ctrl.games]
+                },
+            )
         )
 
     def file_url(self, name):
@@ -257,6 +270,7 @@ class TestNativeDropPersistence(unittest.TestCase):
                     "src.utils.utils_weekly.get_weekly_yml_path_under_root",
                     return_value=str(weekly),
                 ),
+                patch("src.service.daily_plan.load_schedule", return_value={}),
                 patch.object(AppService, "get_daily_map", return_value={}),
                 patch.object(AppService, "get_weekly_map", return_value=[]),
                 patch(
@@ -275,8 +289,7 @@ class TestNativeDropPersistence(unittest.TestCase):
                     "src.gui.file_drop.QGuiApplication.modalWindow", return_value=None
                 ),
             ):
-                with patch("src.service.daily_plan.load_schedule", return_value={}):
-                    bridge = QmlBridge()
+                bridge = QmlBridge()
                 toasts = []
                 bridge.toastRequested.connect(toasts.append)
                 handler = WindowsFileDrop(window, bridge.dropScripts)

@@ -14,7 +14,7 @@ peer：
 - 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.service.UpdateService`
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
-未来 GUI 同类操作优先经 CLI 完成，本类即两者的共同装配点。
+Python GUI 直接调用本类；CLI 也委托本类，共用业务而不要求共用传输。
 """
 
 import logging
@@ -208,6 +208,14 @@ class AppService:
     def run_batch(self, script_names: list[str], options: dict) -> None:
         return run_service.run_batch(script_names, options)
 
+    def validate_script_edit(
+        self, script_name, display_name, config_patch, weekly_timeouts, switches
+    ):
+        """表单提交前校验；不写盘，便于 GUI 保留无效输入继续编辑。"""
+        return validate_edit(
+            script_name, display_name, config_patch, weekly_timeouts, switches
+        )
+
     def script_edit_view(self, script_name: str) -> dict:
         """读取脚本配置表单；不提交编辑或强制初始化。"""
         script = self.get_script(script_name)
@@ -228,7 +236,7 @@ class AppService:
         if previous is None:
             raise InvalidScriptEdit("脚本已不存在，请刷新列表")
         previous = dict(previous)
-        display_name, config_patch = validate_edit(
+        display_name, config_patch = self.validate_script_edit(
             script_name, display_name, config_patch, weekly_timeouts, switches
         )
         current = self.update_script(
