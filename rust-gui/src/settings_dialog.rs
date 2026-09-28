@@ -77,87 +77,146 @@ impl SettingsDialog {
         let mut action = None;
         let mut back = false;
         let modal = egui::Modal::new("global-settings".into())
-            .frame(
-                egui::Frame::new()
-                    .fill(skin::PANEL)
-                    .stroke(egui::Stroke::new(1.0, skin::BORDER))
-                    .corner_radius(16)
-                    .inner_margin(20),
-            )
+            .frame(skin::dialog_frame())
             .show(ctx, |ui| {
-                ui.set_width(500.0);
-                ui.heading(if self.daily_draft.is_some() {
-                    "每日计划"
+                ui.set_width(520.0_f32.min((ctx.content_rect().width() - 80.0).max(300.0)));
+                skin::dialog_style(ui);
+                let (title, description) = if self.daily_draft.is_some() {
+                    ("每日计划", "设置每天的运行时间与独立运行选项")
                 } else if self.run_draft.is_some() {
-                    "运行选项"
+                    ("运行选项", "管理脚本运行前后的动作")
                 } else {
-                    "配置"
+                    ("配置", "运行设置、配置备份与程序更新")
+                };
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(title).size(22.0).strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add_enabled(!busy, egui::Button::new("×").frame(false))
+                            .on_hover_text("关闭")
+                            .clicked()
+                        {
+                            back = true;
+                        }
+                    });
                 });
-                ui.add_space(12.0);
+                ui.label(
+                    egui::RichText::new(description)
+                        .size(12.0)
+                        .color(skin::MUTED),
+                );
+                ui.add_space(6.0);
                 ui.add_enabled_ui(!busy && !self.needs_reload, |ui| {
                     if let Some(draft) = &mut self.daily_draft {
                         egui::ScrollArea::vertical()
-                            .max_height(480.0)
+                            .max_height((ctx.content_rect().height() - 230.0).max(180.0))
                             .show(ui, |ui| draft.show(ui));
                     } else if let Some(draft) = &mut self.run_draft {
                         egui::ScrollArea::vertical()
-                            .max_height(480.0)
+                            .max_height((ctx.content_rect().height() - 230.0).max(180.0))
                             .show(ui, |ui| draft.show(ui, self.data.shutdown_supported));
                     } else {
-                        ui.add_enabled_ui(!self.data.daily_enabled, |ui| {
-                            ui.checkbox(&mut self.data.startup.enabled, "打开后自动运行勾选脚本");
-                            ui.horizontal(|ui| {
-                                ui.label("倒计时");
-                                ui.add_enabled(
-                                    self.data.startup.enabled,
-                                    egui::DragValue::new(&mut self.data.startup.delay_seconds)
-                                        .range(1..=3600)
-                                        .suffix(" 秒"),
+                        egui::ScrollArea::vertical()
+                            .id_salt("settings-home")
+                            .max_height((ctx.content_rect().height() - 230.0).max(180.0))
+                            .show(ui, |ui| {
+                                skin::form_section(ui, "启动行为", |ui| {
+                                    ui.add_enabled_ui(!self.data.daily_enabled, |ui| {
+                                        ui.checkbox(
+                                            &mut self.data.startup.enabled,
+                                            "打开助手后自动运行勾选脚本",
+                                        );
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                egui::RichText::new("启动前等待")
+                                                    .color(skin::MUTED),
+                                            );
+                                            ui.add_enabled(
+                                                self.data.startup.enabled,
+                                                egui::DragValue::new(
+                                                    &mut self.data.startup.delay_seconds,
+                                                )
+                                                .range(1..=3600)
+                                                .suffix(" 秒"),
+                                            );
+                                        });
+                                    });
+                                    if self.data.daily_enabled {
+                                        ui.label(
+                                            egui::RichText::new(
+                                                "每日计划已开启，打开窗口不会额外运行。",
+                                            )
+                                            .size(12.0)
+                                            .color(skin::MUTED),
+                                        );
+                                    }
+                                });
+                                ui.add_space(2.0);
+                                ui.label(
+                                    egui::RichText::new("运行与计划")
+                                        .size(12.0)
+                                        .color(skin::MUTED),
                                 );
-                            });
-                        });
-                        if self.data.daily_enabled {
-                            ui.small("每日计划已开启，打开窗口不会自动运行。");
-                        }
-                        ui.separator();
-                        if ui
-                            .add_sized(
-                                [500.0, 42.0],
-                                egui::Button::new("运行选项 · 静音、重跑、通知与关机"),
-                            )
-                            .clicked()
-                        {
-                            self.run_draft = Some(self.data.run_options.clone());
-                        }
-                        if ui
-                            .add_sized(
-                                [500.0, 42.0],
-                                egui::Button::new("每日计划 · 每日时间与独立运行选项"),
-                            )
-                            .clicked()
-                        {
-                            action = Some(SettingsAction::Request(Request {
-                                method: "plan.view".into(),
-                                params: json!({}),
-                            }));
-                        }
-                        for (label, restore) in [("备份配置", false), ("恢复配置", true)] {
-                            if ui
-                                .add_sized([500.0, 40.0], egui::Button::new(label))
+                                if action_row(
+                                    ui,
+                                    "run-options",
+                                    "运行选项",
+                                    "静音、失败重跑、邮件通知与自动关机",
+                                )
                                 .clicked()
-                            {
-                                action = Some(SettingsAction::Backup(restore));
-                            }
-                        }
-                        if ui
-                            .add_sized([500.0, 40.0], egui::Button::new("助手更新"))
-                            .clicked()
-                        {
-                            action = Some(SettingsAction::Request(Request {
-                                method: "update.view".into(),
-                                params: json!({}),
-                            }));
-                        }
+                                {
+                                    self.run_draft = Some(self.data.run_options.clone());
+                                }
+                                if action_row(
+                                    ui,
+                                    "daily-plan",
+                                    "每日计划",
+                                    "每天定时运行，使用独立的运行选项",
+                                )
+                                .clicked()
+                                {
+                                    action = Some(SettingsAction::Request(Request {
+                                        method: "plan.view".into(),
+                                        params: json!({}),
+                                    }));
+                                }
+                                ui.add_space(2.0);
+                                ui.label(
+                                    egui::RichText::new("备份与维护")
+                                        .size(12.0)
+                                        .color(skin::MUTED),
+                                );
+                                ui.columns(2, |columns| {
+                                    for (index, title, description, restore) in [
+                                        (0, "备份配置", "保存配置到 ZIP 文件", false),
+                                        (1, "恢复配置", "从 ZIP 恢复，保留本机路径", true),
+                                    ] {
+                                        if action_row(
+                                            &mut columns[index],
+                                            title,
+                                            title,
+                                            description,
+                                        )
+                                        .clicked()
+                                        {
+                                            action = Some(SettingsAction::Backup(restore));
+                                        }
+                                    }
+                                });
+                                if action_row(
+                                    ui,
+                                    "app-update",
+                                    "助手更新",
+                                    "检查新版本，查看下载与安装进度",
+                                )
+                                .clicked()
+                                {
+                                    action = Some(SettingsAction::Request(Request {
+                                        method: "update.view".into(),
+                                        params: json!({}),
+                                    }));
+                                }
+                            });
                     }
                 });
                 if let Some(error) = &self.error {
@@ -166,11 +225,9 @@ impl SettingsDialog {
                 if self.needs_reload {
                     ui.label("配置可能已保存，请重新读取核对。");
                 }
-                ui.add_space(12.0);
+                ui.add_space(4.0);
+                ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.add_enabled(!busy, egui::Button::new("取消")).clicked() {
-                        back = true;
-                    }
                     if ui
                         .add_enabled(!busy, egui::Button::new("重新读取"))
                         .clicked()
@@ -185,38 +242,49 @@ impl SettingsDialog {
                             params: json!({}),
                         }));
                     }
-                    if ui
-                        .add_enabled(
-                            !busy
-                                && !self.needs_reload
-                                && self
-                                    .daily_draft
-                                    .as_ref()
-                                    .is_none_or(|draft| draft.supported),
-                            egui::Button::new("保存"),
-                        )
-                        .clicked()
-                    {
-                        if let Some(draft) = &self.daily_draft {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add_enabled(
+                                !busy
+                                    && !self.needs_reload
+                                    && self
+                                        .daily_draft
+                                        .as_ref()
+                                        .is_none_or(|draft| draft.supported),
+                                skin::primary_button("保存"),
+                            )
+                            .clicked()
+                        {
+                            if let Some(draft) = &self.daily_draft {
+                                action = Some(SettingsAction::Request(Request {
+                                    method: "plan.save".into(),
+                                    params: json!({"plan":draft.plan}),
+                                }));
+                                return;
+                            }
+                            let (method, options) = if let Some(draft) = &self.run_draft {
+                                ("settings.run_save", json!(draft))
+                            } else {
+                                ("settings.startup_save", json!(self.data.startup))
+                            };
                             action = Some(SettingsAction::Request(Request {
-                                method: "plan.save".into(),
-                                params: json!({"plan":draft.plan}),
+                                method: method.into(),
+                                params: json!({"options":options}),
                             }));
-                            return;
                         }
-                        let (method, options) = if let Some(draft) = &self.run_draft {
-                            ("settings.run_save", json!(draft))
-                        } else {
-                            ("settings.startup_save", json!(self.data.startup))
-                        };
-                        action = Some(SettingsAction::Request(Request {
-                            method: method.into(),
-                            params: json!({"options":options}),
-                        }));
-                    }
-                    if busy {
-                        ui.spinner();
-                    }
+                        if ui
+                            .add_enabled(
+                                !busy,
+                                egui::Button::new("取消").min_size(egui::vec2(78.0, 34.0)),
+                            )
+                            .clicked()
+                        {
+                            back = true;
+                        }
+                        if busy {
+                            ui.spinner();
+                        }
+                    });
                 });
             });
         if !busy && (back || modal.should_close()) {
@@ -232,6 +300,58 @@ impl SettingsDialog {
         }
         action
     }
+}
+
+/// Whole-row hit target with a title and quieter description.
+fn action_row(ui: &mut egui::Ui, id: &str, title: &str, description: &str) -> egui::Response {
+    let (_, rect) = ui.allocate_space(egui::vec2(ui.available_width(), 54.0));
+    let response = ui.interact(
+        rect,
+        egui::Id::new(("settings-action", id)),
+        egui::Sense::click(),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), title)
+    });
+    let active = response.hovered() || response.has_focus();
+    ui.painter().rect(
+        rect,
+        10,
+        if active { skin::HOVER } else { skin::CONTROL },
+        egui::Stroke::new(1.0, if active { skin::ACCENT } else { skin::DIVIDER }),
+        egui::StrokeKind::Inside,
+    );
+    let text_rect = egui::Rect::from_min_max(
+        rect.min + egui::vec2(16.0, 6.0),
+        rect.max - egui::vec2(32.0, 6.0),
+    );
+    skin::label(
+        ui,
+        egui::Rect::from_min_size(text_rect.min, egui::vec2(text_rect.width(), 23.0)),
+        title,
+        15.0,
+        skin::TEXT,
+    );
+    skin::label(
+        ui,
+        egui::Rect::from_min_size(
+            text_rect.min + egui::vec2(0.0, 23.0),
+            egui::vec2(text_rect.width(), 19.0),
+        ),
+        description,
+        12.0,
+        skin::MUTED,
+    );
+    let center = egui::pos2(rect.right() - 18.0, rect.center().y);
+    ui.painter().add(egui::Shape::line(
+        vec![
+            center + egui::vec2(-3.0, -5.0),
+            center + egui::vec2(2.0, 0.0),
+            center + egui::vec2(-3.0, 5.0),
+        ],
+        egui::Stroke::new(1.5, skin::MUTED),
+    ));
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 pub struct StartupDialog {
@@ -286,6 +406,159 @@ mod tests {
     use super::*;
     fn data() -> SettingsView {
         serde_json::from_value(json!({"startup":{"enabled":true,"delay_seconds":60},"daily_enabled":false,"shutdown_supported":false,"run_options":{"shutdown_enabled":false,"shutdown_delay":0,"mute_enabled":false,"unmute_enabled":false,"close_running_enabled":false,"rerun_enabled":false,"notify_enabled":false,"email":"","smtp_host":"","smtp_port":"","auth_code":""}})).unwrap()
+    }
+
+    fn frame(
+        ctx: &egui::Context,
+        dialog: &mut SettingsDialog,
+        events: Vec<egui::Event>,
+        busy: bool,
+    ) -> Option<SettingsAction> {
+        let mut action = None;
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, skin::SIZE)),
+                events,
+                ..Default::default()
+            },
+            |ui| action = dialog.show(ui.ctx(), busy),
+        );
+        output.textures_delta.clear();
+        action
+    }
+
+    fn click(
+        ctx: &egui::Context,
+        dialog: &mut SettingsDialog,
+        id: &str,
+        busy: bool,
+    ) -> Option<SettingsAction> {
+        let pos = ctx
+            .read_response(egui::Id::new(("settings-action", id)))
+            .expect("visible settings action")
+            .rect
+            .center();
+        frame(ctx, dialog, vec![egui::Event::PointerMoved(pos)], busy);
+        assert_eq!(
+            ctx.read_response(egui::Id::new(("settings-action", id)))
+                .unwrap()
+                .rect
+                .center(),
+            pos,
+            "moved after hover"
+        );
+        frame(
+            ctx,
+            dialog,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                },
+            ],
+            busy,
+        );
+        frame(
+            ctx,
+            dialog,
+            vec![egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            }],
+            busy,
+        )
+    }
+
+    #[test]
+    fn settings_cards_route_to_existing_actions_and_busy_blocks_them() {
+        for busy in [false, true] {
+            for id in [
+                "run-options",
+                "daily-plan",
+                "备份配置",
+                "恢复配置",
+                "app-update",
+            ] {
+                let ctx = egui::Context::default();
+                skin::configure(&ctx);
+                let mut dialog = SettingsDialog::new(data());
+                for _ in 0..12 {
+                    frame(&ctx, &mut dialog, vec![], busy);
+                }
+                let action = click(&ctx, &mut dialog, id, busy);
+                if busy {
+                    assert!(action.is_none());
+                    assert!(dialog.run_draft.is_none());
+                    continue;
+                }
+                match id {
+                    "run-options" => {
+                        assert!(action.is_none());
+                        assert!(
+                            dialog.run_draft.is_some(),
+                            "response: {:?}",
+                            ctx.read_response(egui::Id::new(("settings-action", id)))
+                        );
+                    }
+                    "备份配置" => {
+                        assert!(matches!(action, Some(SettingsAction::Backup(false))))
+                    }
+                    "恢复配置" => assert!(matches!(action, Some(SettingsAction::Backup(true)))),
+                    _ => {
+                        let Some(SettingsAction::Request(request)) = action else {
+                            panic!("missing request: {id}");
+                        };
+                        assert_eq!(
+                            request.method,
+                            if id == "daily-plan" {
+                                "plan.view"
+                            } else {
+                                "update.view"
+                            }
+                        );
+                        assert_eq!(request.params, json!({}));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn settings_card_supports_keyboard_and_failed_save_keeps_actions_disabled() {
+        let ctx = egui::Context::default();
+        let mut dialog = SettingsDialog::new(data());
+        for _ in 0..12 {
+            frame(&ctx, &mut dialog, vec![], false);
+        }
+        ctx.memory_mut(|memory| {
+            memory.request_focus(egui::Id::new(("settings-action", "run-options")))
+        });
+        let action = frame(
+            &ctx,
+            &mut dialog,
+            vec![egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+            false,
+        );
+        assert!(action.is_none());
+        assert!(dialog.run_draft.is_some());
+        dialog.run_draft = None;
+        dialog.failure("partial save".into(), true);
+        for _ in 0..12 {
+            frame(&ctx, &mut dialog, vec![], false);
+        }
+        assert!(click(&ctx, &mut dialog, "run-options", false).is_none());
+        assert!(dialog.run_draft.is_none());
     }
 
     #[test]

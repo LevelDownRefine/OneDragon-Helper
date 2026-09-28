@@ -158,3 +158,57 @@ pub fn configure(ctx: &egui::Context) {
             .insert(egui::TextStyle::Button, FontId::proportional(13.0));
     });
 }
+
+/// Scoped form styling; the wallpaper and main window keep their own layout.
+pub fn dialog_style(ui: &mut egui::Ui) {
+    let style = ui.style_mut();
+    style.spacing.item_spacing = vec2(10.0, 8.0);
+    style.spacing.button_padding = vec2(14.0, 7.0);
+    style.spacing.interact_size.y = 30.0;
+    style.visuals.text_edit_bg_color = Some(Color32::from_rgb(13, 23, 38));
+    style.visuals.widgets.inactive.bg_fill = CONTROL;
+    style.visuals.widgets.inactive.weak_bg_fill = CONTROL;
+    style.visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, BORDER);
+    style.visuals.widgets.inactive.corner_radius = 7.into();
+    style.visuals.widgets.hovered.bg_fill = HOVER;
+    style.visuals.widgets.hovered.weak_bg_fill = HOVER;
+    style.visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, ACCENT);
+    style.visuals.widgets.hovered.corner_radius = 7.into();
+    style.visuals.widgets.active.bg_fill = ACCENT_SOFT;
+    style.visuals.widgets.active.weak_bg_fill = ACCENT_SOFT;
+    style.visuals.widgets.active.corner_radius = 7.into();
+    style
+        .text_styles
+        .insert(egui::TextStyle::Body, FontId::proportional(14.0));
+    style
+        .text_styles
+        .insert(egui::TextStyle::Button, FontId::proportional(14.0));
+}
+
+pub fn dialog_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(Color32::from_rgb(17, 27, 42))
+        .stroke(egui::Stroke::new(1.0, BORDER))
+        .corner_radius(18)
+        .inner_margin(22)
+}
+
+pub fn form_section(ui: &mut egui::Ui, title: &str, content: impl FnOnce(&mut egui::Ui)) {
+    egui::Frame::new()
+        .fill(Color32::from_rgb(22, 34, 51))
+        .stroke(egui::Stroke::new(1.0, DIVIDER))
+        .corner_radius(10)
+        .inner_margin(14)
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(egui::RichText::new(title).size(14.0).strong().color(ACCENT));
+            content(ui);
+        });
+}
+
+pub fn primary_button(text: &str) -> egui::Button<'_> {
+    egui::Button::new(egui::RichText::new(text).color(TEXT).strong())
+        .fill(PRIMARY)
+        .stroke(egui::Stroke::new(1.0, Color32::from_rgb(80, 122, 174)))
+        .min_size(vec2(92.0, 34.0))
+}
