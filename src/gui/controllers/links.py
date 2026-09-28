@@ -92,11 +92,7 @@ class LinksController(QObject):
         assert "value" in target
         value = target["value"]
         if target["kind"] == "url":
-            try:
-                opened = webbrowser.open(value)
-            except (OSError, webbrowser.Error) as exc:
-                self._toast(f"无法打开{label}：{exc}")
-                return
+            opened = webbrowser.open(value)
             self._toast(
                 f"打开{label}：{value}" if opened else f"无法打开{label}：{value}"
             )

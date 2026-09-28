@@ -229,15 +229,18 @@ class TestLeftRail(unittest.TestCase):
                         launch, "open_in_explorer", side_effect=OSError("拒绝启动")
                     ) as open_path,
                 ):
-                    b.launchScript()
-                self.assertEqual(len(toasts), 1)
-                self.assertNotIn("已启动", toasts[0])
+                    if kind == "unavailable":
+                        b.launchScript()
+                    else:
+                        with self.assertRaisesRegex(OSError, "拒绝启动"):
+                            b.launchScript()
                 if kind == "unavailable":
                     spawn.assert_not_called()
                     open_path.assert_not_called()
+                    self.assertEqual(len(toasts), 1)
                     self.assertIn("文件不存在", toasts[0])
                 else:
-                    self.assertIn("拒绝启动", toasts[0])
+                    self.assertEqual(toasts, [])
 
     def test_empty_environment_overrides_inherit_parent(self):
         b = make_bridge()

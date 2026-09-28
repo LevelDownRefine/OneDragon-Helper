@@ -43,8 +43,8 @@ METHODS = {
     ),
     "script.launch_target": ("resolve_launch_target", ("script_name", "target"), ()),
     "script.edit_view": ("script_edit_view", ("script_name",), ()),
-    "script.add": ("add_script_path", ("file_path",), ()),
-    "script.remove": ("remove_script_entry", ("script_name",), ()),
+    "script.add": ("add_script", ("file_path",), ()),
+    "script.remove": ("remove_script", ("script_name",), ()),
     "script.reorder": ("reorder_scripts", ("script_names",), ()),
     "script.edit_save": (
         "save_script_edit",

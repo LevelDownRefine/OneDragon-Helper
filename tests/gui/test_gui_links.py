@@ -109,21 +109,14 @@ class TestLinksOpenScriptConfig(unittest.TestCase):
                 open_path.assert_called_once_with("C:/中文 100%/data")
                 toast.assert_called_once()
 
-    def test_browser_refusal_and_exception_are_reported(self):
-        for error in (None, OSError("browser unavailable")):
-            with self.subTest(error=error):
-                ctrl, service, toast = self._make_controller(
-                    {"kind": "url", "value": "https://example.org"}
-                )
-                with patch(
-                    "src.gui.controllers.links.webbrowser.open",
-                    return_value=False,
-                    side_effect=error,
-                ):
-                    ctrl.openGithub()
-                service.resolve_script_target.assert_called_once_with("ok-ww", "github")
-                toast.assert_called_once()
-                self.assertIn("无法打开GitHub", toast.call_args.args[0])
+    def test_browser_refusal_is_reported(self):
+        ctrl, service, toast = self._make_controller(
+            {"kind": "url", "value": "https://example.org"}
+        )
+        with patch("src.gui.controllers.links.webbrowser.open", return_value=False):
+            ctrl.openGithub()
+        service.resolve_script_target.assert_called_once_with("ok-ww", "github")
+        toast.assert_called_once_with("无法打开GitHub：https://example.org")
 
 
 class TestOpenPathOSError(unittest.TestCase):
