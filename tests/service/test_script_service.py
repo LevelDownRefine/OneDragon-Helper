@@ -1,5 +1,6 @@
 """脚本管理的输入校验、跨配置保存与失败边界。"""
 
+import os
 import tempfile
 import unittest
 from dataclasses import replace
@@ -211,12 +212,12 @@ class TestScriptEdit(ScriptServiceTestBase):
             with self.subTest(step=failed_step):
                 self._seed(self.edit())
                 events = Mock()
-                events.config.side_effect = utils_config.update_script
+                events.config.side_effect = utils_config.save_config
                 events.rename.side_effect = utils_weekly.rename_weekly
                 events.weekly.side_effect = utils_weekly.save_weekly
                 getattr(events, failed_step).side_effect = OSError(failed_step)
                 with (
-                    patch.object(utils_config, "update_script", events.config),
+                    patch.object(utils_config, "save_config", events.config),
                     patch.object(utils_weekly, "rename_weekly", events.rename),
                     patch.object(utils_weekly, "save_weekly", events.weekly),
                     patch.object(script_service, "init_config", events.init),
@@ -278,6 +279,80 @@ class TestScriptList(ScriptServiceTestBase):
         path.touch()
         return str(path)
 
+    def test_add_infers_type_and_keeps_default_fields(self):
+        for filename, script_type in (
+            ("new.py", "python"),
+            ("new.EXE", "external"),
+            ("new.bat", "external"),
+        ):
+            with self.subTest(filename=filename):
+                self._seed(self.edit())
+                path = self._file(filename)
+                result = self.service.add_script(path)
+                self.assertEqual(result, {"script_name": "new", "display_name": "new"})
+                entry = utils_config.get_script("new")
+                self.assertEqual(entry["script_path"], path)
+                self.assertEqual(entry["script_type"], script_type)
+                self.assertEqual(entry["script_arguments"], "")
+                self.assertEqual(entry["check_done"], "script_closed")
+                self.assertTrue(entry["block"])
+
+    def test_repeated_script_files_get_distinct_names(self):
+        for filename in ("重复.py", "重复.bat"):
+            with self.subTest(filename=filename):
+                self._seed(self.edit())
+                path = self._file(filename)
+                results = [self.service.add_script(path) for _ in range(3)]
+                self.assertEqual(
+                    [result["script_name"] for result in results],
+                    ["重复", "重复_1", "重复_2"],
+                )
+                self.assertEqual(
+                    [
+                        entry["display_name"]
+                        for entry in load_yaml(str(self.config))["script_list"][1:]
+                    ],
+                    ["重复", "重复_1", "重复_2"],
+                )
+
+    def test_mutations_preserve_other_config_with_one_read(self):
+        path = self._file("新增.py")
+        for operation in ("add", "remove", "update", "reorder"):
+            with self.subTest(operation=operation):
+                self._seed(self.edit())
+                config = load_yaml(str(self.config))
+                original = config["script_list"][0]
+                extra = {
+                    "display_name": "其他",
+                    "script_path": "other.py",
+                    "custom": [1],
+                }
+                config["script_list"].append(extra)
+                config["other_config"] = {"preserved": True}
+                dump_yaml_file(str(self.config), config)
+                with patch.object(
+                    utils_config, "load_config", wraps=utils_config.load_config
+                ) as read:
+                    if operation == "add":
+                        self.service.add_script(path)
+                    elif operation == "remove":
+                        self.service.remove_script("BetterGI")
+                    elif operation == "update":
+                        self.service.update_script(self.edit(script_path="C:/new.exe"))
+                    else:
+                        self.service.reorder_scripts(["其他", "BetterGI"])
+                    read.assert_called_once_with()
+                saved = load_yaml(str(self.config))
+                self.assertEqual(saved["other_config"], {"preserved": True})
+                self.assertIn(extra, saved["script_list"])
+                if operation == "update":
+                    self.assertEqual(
+                        saved["script_list"][0],
+                        {**original, "script_path": "C:/new.exe"},
+                    )
+                elif operation != "remove":
+                    self.assertIn(original, saved["script_list"])
+
     def test_duplicate_exe_has_distinct_error_without_writing(self):
         path = self._file("BetterGI.exe")
         before = (self.config.read_bytes(), self.weekly.read_bytes())
@@ -297,7 +372,7 @@ class TestScriptList(ScriptServiceTestBase):
                 self.service.add_script(path)
         with (
             patch.object(
-                utils_config, "read_shortcut", side_effect=OSError("broken link")
+                script_service, "read_shortcut", side_effect=OSError("broken link")
             ),
             self.assertRaisesRegex(InvalidScript, "broken link"),
         ):
@@ -333,16 +408,53 @@ class TestScriptList(ScriptServiceTestBase):
     def test_add_shortcut_preserves_target_and_arguments(self):
         target = self._file("new.exe")
         shortcut = self._file("shortcut.lnk")
+        arguments = '--profile "中文 100% #1" --daily'
         with patch.object(
-            utils_config, "read_shortcut", return_value=(target, "--中文", "")
+            script_service, "read_shortcut", return_value=(target, arguments, "")
         ) as read:
             result = self.service.add_script(shortcut)
         read.assert_called_once_with(shortcut)
         self.assertEqual(result, {"script_name": "new", "display_name": "new"})
         entry = utils_config.get_script("new")
         self.assertEqual(entry["script_path"], target)
-        self.assertEqual(entry["script_arguments"], "--中文")
+        self.assertEqual(entry["script_arguments"], arguments)
         self.init.assert_called_once_with("new")
+
+    def test_shortcut_with_different_working_directory_does_not_write(self):
+        before = (self.config.read_bytes(), self.weekly.read_bytes())
+        target = self._file("new.exe")
+        with (
+            patch.object(
+                script_service,
+                "read_shortcut",
+                return_value=(target, "--daily", str(self.config.parent / "other")),
+            ),
+            self.assertRaisesRegex(InvalidScript, "不同的工作目录"),
+        ):
+            self.service.add_script(self._file("shortcut.lnk"))
+        self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), before)
+        self.init.assert_not_called()
+
+    def test_shortcut_accepts_equivalent_working_directory_and_environment(self):
+        target = self._file("new.exe")
+        # 仅设置单个测试变量，避免重建整份进程环境。
+        os.environ["SHORTCUT_TEST_ROOT"] = str(self.config.parent)
+        try:
+            with patch.object(
+                script_service,
+                "read_shortcut",
+                return_value=(
+                    "${SHORTCUT_TEST_ROOT}/new.exe",
+                    "--daily",
+                    "${SHORTCUT_TEST_ROOT}/.",
+                ),
+            ):
+                self.service.add_script(self._file("shortcut.lnk"))
+        finally:
+            os.environ.pop("SHORTCUT_TEST_ROOT", None)
+        entry = utils_config.get_script("new")
+        self.assertEqual(entry["script_path"], target)
+        self.assertEqual(entry["script_arguments"], "--daily")
 
     def test_reorder_preserves_entries_and_unknown_fields(self):
         first = {"script_path": "a.py", "display_name": "一", "custom": [1, 2]}
@@ -379,11 +491,11 @@ class TestScriptList(ScriptServiceTestBase):
             with self.subTest(step=failed_step):
                 self._seed(self.edit())
                 events = Mock()
-                events.config.side_effect = utils_config.add_script
+                events.config.side_effect = utils_config.save_config
                 events.weekly.side_effect = utils_weekly.ensure_weekly_entry
                 getattr(events, failed_step).side_effect = OSError(failed_step)
                 with (
-                    patch.object(utils_config, "add_script", events.config),
+                    patch.object(utils_config, "save_config", events.config),
                     patch.object(utils_weekly, "ensure_weekly_entry", events.weekly),
                     patch.object(script_service, "init_config", events.init),
                     self.assertRaisesRegex(OSError, failed_step),
@@ -406,11 +518,11 @@ class TestScriptList(ScriptServiceTestBase):
                 self.service.add_script(path)
                 self.init.reset_mock()
                 events = Mock()
-                events.config.side_effect = utils_config.remove_script
+                events.config.side_effect = utils_config.save_config
                 events.weekly.side_effect = utils_weekly.delete_weekly
                 getattr(events, failed_step).side_effect = OSError(failed_step)
                 with (
-                    patch.object(utils_config, "remove_script", events.config),
+                    patch.object(utils_config, "save_config", events.config),
                     patch.object(utils_weekly, "delete_weekly", events.weekly),
                     self.assertRaisesRegex(OSError, failed_step),
                 ):

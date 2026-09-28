@@ -17,12 +17,11 @@
 | 模块 | 职责 |
 |------|------|
 | app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
-| script_service.py | 脚本增删改与排序；统一校验并协调助手配置、每周参数及原生任务开关 |
+| script_service.py | 脚本条目构造、增删改与排序；统一校验并协调助手配置、每周参数及原生任务开关 |
 | task_service.py | 脚本列表与任务卡聚合查询；无 GUI 或进程依赖 |
-| resource_service.py | 按现有声明/解析器查询脚本工具栏目标，不启动系统程序 |
 | wallpaper_service.py | 壁纸来源解析、映射与有界缓存写入；解码和渲染归前端 |
 | update_session.py | 无 Qt 更新会话与短请求编排；复用 UpdateService，保留发布对象/待安装目录 |
-| utils_config.py | config.yml 完整读写（含条目增删改）+ get_script / build_script_entry / config_file_path |
+| utils_config.py | config.yml 读写、结构校验、条目查询与配置文件路径解析 |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
 | schedule.py | schedule.yml 读写（StartupOptions 自动启动开关/秒数、RunOptions 运行选项）+ ScheduledRun 调度运行编排 |
@@ -75,7 +74,7 @@ Python GUI 收集 `ScriptEdit`，先经 `AppService.validate_script_edit` 校验
 3. 路径或标识变化时初始化子脚本配置。
 4. 按保存后的标识写原生任务开关。
 
-`utils_config` 的增删改只写脚本条目；`utils_weekly` 负责每周参数的具体读写，配置适配器负责原生配置。
+`script_service` 在本次读取的配置上完成条目修改，交给 `utils_config.save_config` 写盘；`utils_weekly` 负责每周参数的具体读写，配置适配器负责原生配置。
 GUI 不编排这些步骤；CLI 如需调用，在传输边界构造 `ScriptEdit`，服务层不接收 JSON 协议对象。
 写入失败立即传播异常，后续步骤不执行，已完成的写入不回滚，也不自动重试。
 只改参数、超时、游戏路径或 exe 的展示名，以及无改动保存，都不强制对齐模板。
@@ -83,6 +82,8 @@ GUI 不编排这些步骤；CLI 如需调用，在传输边界构造 `ScriptEdit
 
 添加按「助手条目 → 每周默认参数 → 初始化」执行；删除按「助手条目 → 每周清理」执行，源文件保留。
 排序只更新助手列表顺序。各操作按最新配置检查重复、最后一个脚本和完整顺序；过期排序拒绝写入。
+快捷方式解析、类型推断和新增名称去重均归添加流程。编辑预校验和保存各自检查当时的配置，
+保存内部的重名检查与条目修改共用一次读取；这不提供跨进程文件锁或事务保证。
 
 CLI 表单通过 `script_edit_view` 读取；`script.edit_save` 在传输边界构造 `ScriptEdit`，
 调用统一保存入口后将新标识包装为协议结果。`InvalidScript` 返回写入前的输入错误；
@@ -152,7 +153,7 @@ CLI 备份/恢复通过 AppService.background 的单任务执行器调用原服�
 
 ## 资源与启动目标
 
-`resolve_script_target` 统一解析主页、B 站、GitHub、脚本目录、日志目录和配置文件，返回 URL、绝对路径或不可用原因。`game_icon_path` 按需读取游戏路径，图标提取仍由前端负责。
+`src.link.resolve_script_target` 统一解析主页、B 站、GitHub、脚本目录、日志目录和配置文件，返回 URL、绝对路径或不可用原因。`src.link.game_icon_path` 按需读取游戏路径，图标提取仍由前端负责。
 
 `resolve_launch_target` 统一解析当前脚本或游戏的启动方式。外部程序使用系统关联打开；Python 脚本复用 Runner 命令，保留参数、工作目录和环境覆盖项。调用方继承自身环境并应用覆盖项，不经接口传递整个进程环境。
 

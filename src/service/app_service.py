@@ -4,7 +4,7 @@
 
 peer：
 - 脚本管理（增删改、排序与跨配置编排）：归 :mod:`src.service.script_service` 模块函数
-- 单脚本配置（config.yml 读写含脚本条目增删改）：归 :mod:`src.utils.utils_config` 模块函数
+- 助手配置读写、条目查询与路径解析：归 :mod:`src.utils.utils_config` 模块函数
 - 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.daily_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
@@ -20,11 +20,11 @@ Python GUI 直接调用本类；CLI 在传输边界转换数据，两者共用�
 
 import logging
 
+import src.link as link
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_cli as daily_cli
 import src.service.daily_plan as daily_plan
-import src.service.resource_service as resource_service
 import src.service.script_service as script_service
 import src.service.settings_service as settings_service
 import src.service.task_service as task_service
@@ -156,10 +156,10 @@ class AppService:
 
     def resolve_script_target(self, script_name: str, target: str) -> dict:
         """取得脚本工具栏的外部打开目标。"""
-        return resource_service.resolve_script_target(script_name, target)
+        return link.resolve_script_target(script_name, target)
 
     def game_icon_path(self, script_name: str) -> dict:
-        return resource_service.game_icon_path(script_name)
+        return link.game_icon_path(script_name)
 
     def wallpaper_view(self, script_name: str) -> dict:
         return wallpaper_service.wallpaper_view(script_name)
@@ -357,7 +357,7 @@ class AppService:
         return check_weekly(load_config())
 
     # ── 配置读写（src.utils.utils_config 模块函数）──
-    # config.yml 读写（含脚本条目增删改）归 :mod:`src.utils.utils_config`；此处仅作薄委托。
+    # 文件读写归 utils_config；脚本条目修改归 script_service。
     def load_config(self) -> dict:
         return load_config()
 

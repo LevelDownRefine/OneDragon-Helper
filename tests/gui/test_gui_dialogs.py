@@ -217,7 +217,11 @@ class TestGamePathInput(unittest.TestCase):
     def _make_dialog(self, script_data):
         app = MagicMock()
         app.validate_script_edit.side_effect = validate_edit
-        self.enterContext(patch("src.utils.utils_config.get_script", return_value=None))
+        self.enterContext(
+            patch(
+                "src.utils.utils_config.load_config", return_value={"script_list": []}
+            )
+        )
         # 仅本脚本标识命中：新标识（改名后）返回 None，避免走进「已存在同标识」分支。
         app.get_script.side_effect = lambda name: (
             script_data if name == "collect_log" else None
