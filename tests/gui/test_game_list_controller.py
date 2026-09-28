@@ -34,7 +34,7 @@ class TestDeleteScriptConfirmCancel(unittest.TestCase):
     """拖拽删除二次确认：取消必须保留数据，确认才落盘重载。
 
     数据层正确性（对应 QML 取消后图标视觉复位 bug 的底层保障）：
-    cancel → 不调用 remove_script_entry / on_reload；ok → 二者都被调用。
+    cancel → 不调用 remove_script / on_reload；ok → 二者都被调用。
     """
 
     def _make_ctrl(self) -> GameListController:
@@ -66,7 +66,7 @@ class TestDeleteScriptConfirmCancel(unittest.TestCase):
         mock_styled.return_value = box
         ctrl = self._make_ctrl()
         ctrl.deleteScript(0)
-        ctrl._app_service.remove_script_entry.assert_not_called()
+        ctrl._app_service.remove_script.assert_not_called()
         ctrl._on_reload.assert_not_called()
 
     @patch("src.gui.dialogs.styled_msg_box")
@@ -77,7 +77,7 @@ class TestDeleteScriptConfirmCancel(unittest.TestCase):
         mock_styled.return_value = box
         ctrl = self._make_ctrl()
         ctrl.deleteScript(0)
-        ctrl._app_service.remove_script_entry.assert_called_once_with("wu")
+        ctrl._app_service.remove_script.assert_called_once_with("wu")
         ctrl._on_reload.assert_called_once()
 
 
@@ -121,40 +121,54 @@ class TestScriptSelectionIsMemoryOnly(unittest.TestCase):
         self.assertEqual([g["script_name"] for g in ctrl.games], ["B", "A"])
         self.assertEqual(ctrl.enabled, [False, True])
 
-    def test_reorder_failure_keeps_model_until_reload(self):
-        for error in (InvalidScriptList("列表已变化"), OSError("拒绝写入")):
-            with self.subTest(error=error):
-                ctrl, service = self._ctrl(["A", "B"])
-                ctrl.selectGame(1)
-                ctrl._enabled = [False, True]
-                service.reorder_scripts.side_effect = error
-                with self.assertLogs("src.gui.controllers.game_list", level="WARNING"):
-                    ctrl.reorderGames(0, 1)
-                self.assertEqual([g["script_name"] for g in ctrl.games], ["A", "B"])
-                self.assertEqual(ctrl.game_model.games, ctrl.games)
-                self.assertEqual(ctrl.enabled, [False, True])
-                self.assertEqual(ctrl.current_index, 1)
-                ctrl._on_reload.assert_called_once()
-                self.assertIn(str(error), ctrl._toast.call_args.args[0])
-
-    def test_reload_after_external_reorder_preserves_identity(self):
+    def test_stale_reorder_keeps_model_until_reload(self):
         ctrl, service = self._ctrl(["A", "B"])
         ctrl.selectGame(1)
         ctrl._enabled = [False, True]
-        service.load_config.return_value = {
-            "script_list": [
-                {"display_name": name, "script_path": f"{name}.py"}
-                for name in ("C", "B", "A")
-            ]
-        }
-        with patch.object(ctrl.icon_provider, "refresh"):
-            ctrl.reload_games()
-        self.assertEqual(ctrl.enabled, [True, True, False])
-        self.assertEqual(ctrl.current_game["script_name"], "B")
+        service.reorder_scripts.side_effect = InvalidScriptList("列表已变化")
+        with self.assertLogs("src.gui.controllers.game_list", level="WARNING"):
+            ctrl.reorderGames(0, 1)
+        self.assertEqual([g["script_name"] for g in ctrl.games], ["A", "B"])
+        self.assertEqual(ctrl.game_model.games, ctrl.games)
+        self.assertEqual(ctrl.enabled, [False, True])
+        self.assertEqual(ctrl.current_index, 1)
+        ctrl._on_reload.assert_called_once()
+        self.assertIn("列表已变化", ctrl._toast.call_args.args[0])
+
+    def test_reorder_write_error_propagates_before_ui_changes(self):
+        ctrl, service = self._ctrl(["A", "B"])
+        service.reorder_scripts.side_effect = OSError("拒绝写入")
+        with self.assertRaisesRegex(OSError, "拒绝写入"):
+            ctrl.reorderGames(0, 1)
+        self.assertEqual([g["script_name"] for g in ctrl.games], ["A", "B"])
+        self.assertEqual(ctrl.game_model.games, ctrl.games)
+        ctrl._on_reload.assert_not_called()
+        ctrl._toast.assert_not_called()
+
+    def test_reload_keeps_index_in_bounds_and_checked_states_by_identity(self):
+        for names, index, enabled in (
+            (["C", "A", "B"], 1, [True, False, True]),
+            (["A"], 0, [False]),
+            ([], 0, []),
+        ):
+            with self.subTest(names=names):
+                ctrl, service = self._ctrl(["A", "B"])
+                ctrl.selectGame(1)
+                ctrl._enabled = [False, True]
+                service.load_config.return_value = {
+                    "script_list": [
+                        {"display_name": name, "script_path": f"{name}.py"}
+                        for name in names
+                    ]
+                }
+                with patch.object(ctrl.icon_provider, "refresh"):
+                    ctrl.reload_games()
+                self.assertEqual(ctrl.enabled, enabled)
+                self.assertEqual(ctrl.current_index, index)
 
     def test_delete_rechecks_last_script_and_reports_failure(self):
         ctrl, service = self._ctrl(["A", "B"])
-        service.remove_script_entry.side_effect = InvalidScriptList("至少保留一个脚本")
+        service.remove_script.side_effect = InvalidScriptList("至少保留一个脚本")
         with self.assertLogs("src.gui.controllers.game_list", level="WARNING"):
             ctrl._on_delete_script("A")
         ctrl._on_reload.assert_called_once()
@@ -179,7 +193,7 @@ class TestDeleteScriptLastGuard(unittest.TestCase):
         ctrl.deleteScript(0)
         # 不弹确认框、不落盘、不重载，仅 toast 提示
         mock_styled.assert_not_called()
-        ctrl._app_service.remove_script_entry.assert_not_called()
+        ctrl._app_service.remove_script.assert_not_called()
         ctrl._on_reload.assert_not_called()
         ctrl._toast.assert_called_once()
 

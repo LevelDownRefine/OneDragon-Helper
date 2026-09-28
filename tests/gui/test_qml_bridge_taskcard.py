@@ -292,13 +292,13 @@ class TestTaskCard(unittest.TestCase):
             patch.object(b.app_service, "init_script_after_edit") as init,
             patch.object(b.app_service, "set_script_switches") as switches,
             patch.object(b, "_reload_games") as reload,
-            self.assertLogs("src.gui.controllers.game_list", level="WARNING"),
+            self.assertRaisesRegex(OSError, "拒绝写入"),
         ):
             b.configCurrent()
         init.assert_not_called()
         switches.assert_not_called()
-        reload.assert_called_once()
-        self.assertEqual(toasts, ["保存脚本配置未完成：拒绝写入"])
+        reload.assert_not_called()
+        self.assertEqual(toasts, [])
 
 
 class TestWeeklyStartBridge(unittest.TestCase):

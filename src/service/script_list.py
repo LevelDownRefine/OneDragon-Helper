@@ -20,7 +20,7 @@ class DuplicateScript(InvalidScriptList):
     """同进程名 EXE 已在列表，批量导入可继续处理其他文件。"""
 
 
-def add_path(file_path: str) -> dict:
+def add(file_path: str) -> dict:
     """解析文件/快捷方式后复用添加流程，返回新标识与展示名。"""
     if not isinstance(file_path, str) or not file_path.strip():
         raise InvalidScriptList("请选择脚本文件")

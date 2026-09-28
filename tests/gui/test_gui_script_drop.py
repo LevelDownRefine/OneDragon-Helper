@@ -33,19 +33,17 @@ class TestDroppedScripts(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.service = MagicMock()
-        self.service.add_script_path.side_effect = script_list.add_path
+        self.service.add_script.side_effect = script_list.add
         self.reload = MagicMock()
         self.toast = MagicMock()
         self.ctrl = GameListController(self.service, self.toast, self.reload)
         self.added = MagicMock()
         self.ctrl.gameAdded.connect(self.added)
-        self.service.add_script.side_effect = lambda entry: self.ctrl._games.append(
+        self.persist_script = self.enterContext(patch.object(script_list, "add_script"))
+        self.persist_script.side_effect = lambda entry: self.ctrl._games.append(
             {"script_name": get_script_name(entry), "script_data": entry}
         )
 
-        self.enterContext(
-            patch.object(script_list, "add_script", self.service.add_script)
-        )
         self.enterContext(
             patch.object(
                 script_list,
@@ -66,11 +64,11 @@ class TestDroppedScripts(unittest.TestCase):
             self.file_url(name) for name in ("鸣潮 100% #1.EXE", "task.py", "run.bat")
         ]
         self.assertTrue(self.ctrl.canDropScripts(urls))
-        self.service.add_script.assert_not_called()
+        self.persist_script.assert_not_called()
         with patch("src.gui.dialogs.pick_file") as picker:
             self.assertTrue(self.ctrl.dropScripts(urls))
         picker.assert_not_called()
-        entries = [call.args[0] for call in self.service.add_script.call_args_list]
+        entries = [call.args[0] for call in self.persist_script.call_args_list]
         self.assertEqual(
             [entry["script_path"] for entry in entries],
             [os.path.normpath(url.toLocalFile()) for url in urls],
@@ -97,7 +95,7 @@ class TestDroppedScripts(unittest.TestCase):
             with self.subTest(urls=urls):
                 self.assertFalse(self.ctrl.canDropScripts(urls))
                 self.assertFalse(self.ctrl.dropScripts(urls))
-        self.service.add_script.assert_not_called()
+        self.persist_script.assert_not_called()
         self.reload.assert_not_called()
 
     def test_rechecks_file_after_drag_enter(self):
@@ -105,13 +103,13 @@ class TestDroppedScripts(unittest.TestCase):
         self.assertTrue(self.ctrl.canDropScripts([url]))
         Path(url.toLocalFile()).unlink()
         self.assertFalse(self.ctrl.dropScripts([url]))
-        self.service.add_script.assert_not_called()
+        self.persist_script.assert_not_called()
 
     def test_duplicate_exe_is_not_added_or_renamed(self):
         url = self.file_url("same.exe")
         self.assertTrue(self.ctrl.dropScripts([url]))
         self.assertFalse(self.ctrl.dropScripts([url]))
-        self.service.add_script.assert_called_once()
+        self.persist_script.assert_called_once()
         self.toast.assert_called_with("脚本已存在：same")
 
     def test_same_named_python_scripts_keep_existing_suffix_behavior(self):
@@ -122,7 +120,7 @@ class TestDroppedScripts(unittest.TestCase):
         )
 
     def test_save_failure_refreshes_and_reports_without_success(self):
-        self.service.add_script.side_effect = OSError("disk unavailable")
+        self.persist_script.side_effect = OSError("disk unavailable")
         with self.assertLogs("src.gui.controllers.game_list", level="WARNING"):
             self.assertFalse(self.ctrl.dropScripts([self.file_url("task.py")]))
         self.reload.assert_called_once()
@@ -141,7 +139,7 @@ class TestDroppedScripts(unittest.TestCase):
                 ):
                     self.assertTrue(self.ctrl.canDropScripts([shortcut]))
                     self.assertTrue(self.ctrl.dropScripts([shortcut]))
-                entry = self.service.add_script.call_args.args[0]
+                entry = self.persist_script.call_args.args[0]
                 self.assertEqual(entry["script_path"], os.path.normpath(target))
                 self.assertEqual(
                     entry["script_type"], "python" if suffix == "py" else "external"
@@ -166,7 +164,7 @@ class TestDroppedScripts(unittest.TestCase):
             ):
                 self.assertFalse(self.ctrl.dropScripts([shortcut]))
                 self.assertIn("bad.lnk", self.toast.call_args.args[0])
-        self.service.add_script.assert_not_called()
+        self.persist_script.assert_not_called()
 
     def test_batch_failure_is_reported_once_regardless_of_order(self):
         urls = [
@@ -177,7 +175,7 @@ class TestDroppedScripts(unittest.TestCase):
                 self.ctrl._games.clear()
                 self.toast.reset_mock()
                 self.added.reset_mock()
-                self.service.add_script.side_effect = [
+                self.persist_script.side_effect = [
                     PermissionError("disk unavailable") if i == failed_index else None
                     for i in range(3)
                 ]
@@ -212,14 +210,14 @@ class TestDroppedScripts(unittest.TestCase):
                     [self.file_url("bad.lnk"), self.file_url("ok.exe")]
                 )
             )
-        self.service.add_script.assert_called_once()
+        self.persist_script.assert_called_once()
         self.toast.assert_called_once()
         self.assertIn("已添加 1 个脚本，失败 1 个", self.toast.call_args.args[0])
         self.assertIn("bad.lnk", self.toast.call_args.args[0])
         self.assertIn("bad link", self.toast.call_args.args[0])
 
     def test_batch_all_failures_keep_each_filename_and_reason(self):
-        self.service.add_script.side_effect = OSError("disk unavailable")
+        self.persist_script.side_effect = OSError("disk unavailable")
         with self.assertLogs("src.gui.controllers.game_list", level="WARNING"):
             self.assertFalse(
                 self.ctrl.dropScripts(
