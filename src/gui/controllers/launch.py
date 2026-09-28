@@ -83,22 +83,18 @@ class LaunchController(QObject):
             assert "reason" in target
             self._toast(f"{game['display_name']}：{target['reason']}")
             return
-        try:
-            if target["kind"] == "command":
-                assert all(key in target for key in ("program", "args", "cwd", "env"))
-                # service 只返回覆盖项；继承当前环境，保留 PATH 等运行依赖。
-                environment = {**os.environ, **target["env"]} if target["env"] else None
-                subprocess.Popen(
-                    [target["program"], *target["args"]],
-                    cwd=target["cwd"],
-                    env=environment,
-                )
-            else:
-                assert target["kind"] == "association" and "path" in target
-                open_in_explorer(target["path"])  # noqa: S606 启动脚本本体
-        except OSError as exc:
-            self._toast(f"启动失败：{exc}")
-            return
+        if target["kind"] == "command":
+            assert all(key in target for key in ("program", "args", "cwd", "env"))
+            # service 只返回覆盖项；继承当前环境，保留 PATH 等运行依赖。
+            environment = {**os.environ, **target["env"]} if target["env"] else None
+            subprocess.Popen(
+                [target["program"], *target["args"]],
+                cwd=target["cwd"],
+                env=environment,
+            )
+        else:
+            assert target["kind"] == "association" and "path" in target
+            open_in_explorer(target["path"])  # noqa: S606 启动脚本本体
         self._toast(f"已启动 {game['display_name']}")
 
     def _confirm_run(self, enabled_keys: set) -> bool:
