@@ -47,7 +47,7 @@ METHODS = {
     "script.remove": ("remove_script", ("script_name",), ()),
     "script.reorder": ("reorder_scripts", ("script_names",), ()),
     "script.edit_save": (
-        "save_script_edit",
+        "update_script",
         ("script_name", "display_name", "config_patch", "weekly_timeouts", "switches"),
         (),
     ),
@@ -105,7 +105,7 @@ def handle_request(service, request) -> dict:
     """串行分发，协议输入先校验；业务异常保留诊断并返回明确失败。"""
     from src.service.background_job import InvalidBackgroundJob
     from src.service.run_service import InvalidRunRequest
-    from src.service.script_edit import InvalidScriptEdit
+    from src.service.script_edit import InvalidScriptEdit, ScriptEdit
     from src.service.script_list import DuplicateScript, InvalidScriptList
     from src.service.task_service import InvalidTaskSelection
     from src.service.wallpaper_service import InvalidWallpaper
@@ -140,7 +140,7 @@ def handle_request(service, request) -> dict:
             raise ProtocolError("invalid_params", "params 必须是 JSON 对象")
         if not set(required) <= set(params) or set(params) - set(required + optional):
             raise ProtocolError("invalid_params", "参数字段缺失或包含不支持的字段")
-        # 参数值原样转发；取值校验和空操作语义由原 service 接口负责。
+        # 传输层只转换数据形状；取值校验和空操作语义归 service。
         mutating = method not in (
             "app.snapshot",
             "job.poll",
@@ -160,7 +160,10 @@ def handle_request(service, request) -> dict:
         )
         # 保护协议 stdout，包括适配器或第三方库的意外输出。
         with redirect_stdout(sys.stderr):
-            result = getattr(service, attribute)(**params)
+            if method == "script.edit_save":
+                result = {"script_name": service.update_script(ScriptEdit(**params))}
+            else:
+                result = getattr(service, attribute)(**params)
         return {
             "protocol_version": PROTOCOL_VERSION,
             "id": request_id,

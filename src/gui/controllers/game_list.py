@@ -458,20 +458,14 @@ class GameListController(QObject):
             )
             changes = dialog.pending_changes
             try:
-                self._app_service.save_script_edit(
-                    changes["old_script_name"],
-                    changes["new_display_name"],
-                    changes["config_patch"],
-                    changes["weekly_timeouts"],
-                    changes["switches"],
-                )
+                self._app_service.update_script(changes)
             except InvalidScriptEdit as exc:
                 logger.warning("保存脚本配置未完成", exc_info=True)
                 self._on_reload()
                 self._toast(f"保存脚本配置未完成：{exc}")
                 return
             self._on_reload()
-            self._toast(f"已保存 {changes['new_display_name']} 配置")
+            self._toast(f"已保存 {changes.display_name} 配置")
 
     def _on_delete_script(self, script_name: str):
         """配置弹窗确认删除：落盘后重载脚本列表。"""

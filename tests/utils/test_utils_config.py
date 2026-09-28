@@ -373,78 +373,44 @@ class TestAddRemoveScript(unittest.TestCase):
             remove_script("不存在")
 
 
-class TestUpdateScript(unittest.TestCase):
-    """update_script：条目更新 + weekly 两段迁移 + 周几起统一落盘的编排顺序。
+class TestUpdateScript(UtilsConfigTestBase):
+    """底层更新只负责 config.yml 条目，返回更新后的标识。"""
 
-    weekly.yml 文件行为见 test_utils_weekly；游戏侧适配行为见 test_set_config*。
-    此处钉编排契约：以新标识落盘、None 只清 weekly、OSError 在主保存后传播。
-    """
-
-    def setUp(self):
-        self.tmp_dir = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp_dir.cleanup)
-        self.config_path = os.path.join(self.tmp_dir.name, "config.yml")
-        dump_yaml_file(
-            self.config_path,
-            {"script_list": [{"display_name": "鸣潮", "script_path": "C:/ww.exe"}]},
+    def test_applies_patch_and_preserves_other_fields(self):
+        self._write_config(
+            {
+                "script_list": [
+                    {"display_name": "鸣潮", "script_path": "C:/ww.exe", "block": True}
+                ]
+            }
         )
-
-    def _read(self):
-        return load_yaml(self.config_path)
-
-    def _run(self, **kwargs):
-        """在隔离环境下跑 update_script，返回各协作函数的 mock 字典。"""
-        params = {
-            "old_script_name": "ww",
-            "new_display_name": "鸣潮",
-            "config_patch": {"check_done": "script_closed"},
-            "weekly_timeouts": [60] * 7,
-        }
-        params.update(kwargs)
-        patches = {
-            "require": patch(
-                "src.utils.utils_config.require_config_yml_path",
-                return_value=self.config_path,
-            ),
-            "save_path": patch(
-                "src.utils.utils_config.get_config_yml_path_under_root",
-                return_value=self.config_path,
-            ),
-            "init": patch("src.utils.utils_config.init_config"),
-            "rename": patch("src.utils.utils_config.rename_weekly"),
-            "save_weekly": patch("src.utils.utils_config.save_weekly"),
-        }
-        mocks = {}
-        with patches["require"], patches["save_path"]:
-            for name in ("init", "rename", "save_weekly"):
-                mocks[name] = patches[name].start()
-                self.addCleanup(patches[name].stop)
-            mocks["result"] = update_script(**params)
-        return mocks
-
-    def test_applies_patch_and_returns_identity(self):
-        mocks = self._run()
-        self.assertEqual(mocks["result"], "ww")
-        entry = self._read()["script_list"][0]
-        self.assertEqual(entry["check_done"], "script_closed")
-        mocks["init"].assert_not_called()
-        mocks["save_weekly"].assert_called_once_with("ww", [60] * 7)
-
-    def test_rename_migrates_weekly_entries(self):
-        entry = {"display_name": "新名", "script_path": "C:/new.exe"}
-        mocks = self._run(
-            old_script_name="ww",
-            new_display_name="新名",
-            config_patch={"script_path": "C:/new.exe"},
-        )
-        mocks["rename"].assert_called_once_with("ww", "new")
-        # kill_game_after_done 自洽：未设置 game_process_name 时强制 False
+        with patch("src.utils.utils_config.init_config") as init:
+            result = update_script("ww", "鸣潮", {"check_done": "script_closed"})
+        self.assertEqual(result, "ww")
         self.assertEqual(
-            self._read()["script_list"][0],
-            {**entry, "kill_game_after_done": False},
+            self._read_config()["script_list"][0],
+            {
+                "display_name": "鸣潮",
+                "script_path": "C:/ww.exe",
+                "block": True,
+                "check_done": "script_closed",
+            },
         )
-        self.assertEqual(mocks["result"], "new")
-        mocks["init"].assert_not_called()
+        init.assert_not_called()
+
+    def test_rename_returns_new_identity(self):
+        self._write_config(
+            {"script_list": [{"display_name": "鸣潮", "script_path": "C:/ww.exe"}]}
+        )
+        result = update_script("ww", "新名", {"script_path": "C:/new.exe"})
+        self.assertEqual(result, "new")
+        self.assertEqual(
+            self._read_config()["script_list"][0],
+            {
+                "display_name": "新名",
+                "script_path": "C:/new.exe",
+            },
+        )
 
 
 if __name__ == "__main__":

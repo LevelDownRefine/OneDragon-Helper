@@ -17,6 +17,7 @@
 | 模块 | 职责 |
 |------|------|
 | app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
+| script_edit.py | ScriptEdit 编辑输入、校验与完整保存流程；协调助手配置、每周参数及原生任务开关 |
 | task_service.py | 脚本列表与任务卡聚合查询；无 GUI 或进程依赖 |
 | resource_service.py | 按现有声明/解析器查询脚本工具栏目标，不启动系统程序 |
 | wallpaper_service.py | 壁纸来源解析、映射与有界缓存写入；解码和渲染归前端 |
@@ -58,22 +59,29 @@ CLI 编辑入口保留在 `AppService`，直接调用对应的 GUI 原接口：
 或不可用原因；只接受官网/B 站/GitHub、脚本目录、日志目录和配置文件六类目标。
 业务路径规则复用原接口，操作系统关联打开由前端负责，不含游戏启动操作。
 
-`AppService.update_script` 只保存脚本条目与每周超时，不初始化子脚本配置。
-`AppService.save_script_edit` 统一校验完整表单、保留旧条目快照、保存配置，再调用 `init_script_after_edit(previous, script_name)` 和保存任务开关。
-service 对比已保存条目的脚本路径与标识，仅目标变化时调用 `init_config`。Python GUI 直接调用 service；CLI 可复用相同业务接口，无须让 Qt 经过 CLI。
-弹窗先用 `validate_script_edit` 校验，失败保留输入；真正保存时再次校验，防止弹窗打开期间产生标识冲突。多步写入失败保留已完成的步骤，I/O 异常沿用原调用链向上传递，不自动重试。
+`ScriptEdit` 表达一次完整编辑：编辑前标识、展示名、助手配置字段、每周超时、原生任务开关。
+它只承载输入；`frozen=True` 禁止字段重新绑定，不提供深层不可变或事务保证。
 
-脚本添加、删除和重排分别经 `add_script`、`remove_script`、`reorder_scripts`。`script_list.py` 按最新配置检查重复、最后一个脚本和完整顺序；过期顺序拒绝写入，以免遗漏外部新增条目。
+Python GUI 收集 `ScriptEdit`，先经 `AppService.validate_script_edit` 校验；无效时保留弹窗和输入。
+确认后调用唯一保存入口 `AppService.update_script(edit)`，由其薄委托 `script_edit.save`。
+该流程重新校验最新配置，并统一执行：
+
+1. 更新 `config.yml` 的脚本条目，取得保存后的标识。
+2. 标识变化时迁移 `weekly.yml` 两段，再保存每周超时。
+3. 路径或标识变化时初始化子脚本配置。
+4. 按保存后的标识写原生任务开关。
+
+`utils_config.update_script` 只写脚本条目；`utils_weekly` 负责每周参数的具体读写，配置适配器负责原生配置。
+GUI 不编排这些步骤；CLI 如需调用，在传输边界构造 `ScriptEdit`，服务层不接收 JSON 协议对象。
+写入失败立即传播异常，后续步骤不执行，已完成的写入不回滚，也不自动重试。
 只改参数、超时、游戏路径或 exe 的展示名，以及无改动保存，都不强制对齐模板。
 适配器首次构造时的初始化、启动预热和新增脚本的既有行为保持不变。
 
-无 Qt 表单通过 `script_edit_view` 读取条目、七日超时和任务开关；`save_script_edit`
-先验证完整表单，再按上述顺序保存，返回新脚本标识。`InvalidScriptEdit` 表示写入前的
-可恢复输入错误；保存阶段的异常原样交给 CLI，提示可能已部分保存，不自动重试。
+脚本添加、删除和重排分别经 `add_script`、`remove_script`、`reorder_scripts`。`script_list.py` 按最新配置检查重复、最后一个脚本和完整顺序；过期顺序拒绝写入，以免遗漏外部新增条目。
 
-`script_list` 提供无 Qt 的文件/快捷方式导入、删除与完整列表重排，复用原配置机制。
-外部列表变化导致旧排序被拒绝；删除至少保留一个条目，源脚本文件不删除。
-手动勾选由 GUI 持有，不加入本层持久化配置。
+CLI 表单通过 `script_edit_view` 读取；`script.edit_save` 在传输边界构造 `ScriptEdit`，
+调用统一保存入口后将新标识包装为协议结果。`InvalidScriptEdit` 返回写入前的输入错误；
+保存阶段异常提示可能已部分写入。手动勾选由 GUI 持有，不加入本层持久化配置。
 
 `resolve_launch_target` 与普通资源导航独立，仅解析当前脚本/游戏启动目标；Python 脚本
 复用 `build_script_command`，游戏复用手填路径优先的 `get_game_exe_path`，实际启动由

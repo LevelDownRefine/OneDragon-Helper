@@ -7,7 +7,7 @@
 对外接口：
 - ``SingleScriptConfigDialog``：单脚本配置弹窗（名称/路径/类型/参数/完成检测/
   关闭脚本/关闭游戏/阻塞/游戏进程/每周超时/任务开关），保存后经 ``pending_changes`` 返回，
-  写盘由调用方经 ``AppService.save_script_edit`` 委托 ``src.utils.utils_config.update_script``。脚本删除改由左侧列表交互完成。
+  写盘由调用方经 ``AppService.update_script`` 委托 ``src.service.script_edit.save``。脚本删除改由左侧列表交互完成。
 - 「启动全部」前的运行确认弹窗已独立为 ``src/gui/run_confirm_dialog.py``
   （单一职责：仅承载运行前确认交互，复用本模块的基类与主题常量）。
 """
@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.service.app_service import AppService
-from src.service.script_edit import InvalidScriptEdit
+from src.service.script_edit import InvalidScriptEdit, ScriptEdit
 
 # ═══════════════════════ 弹窗样式（原 src/gui/theme.py 子集，2026-08-16 并入）═══════
 # 与 QML Theme.js 保持同一套蓝灰配色。
@@ -553,7 +553,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.display_name = display_name  # 展示名
         self.script_path = script_path
         self._app_service = app_service or AppService()
-        self.pending_changes = None  # accept() 后供调用方取表单字段与 weekly
+        self.pending_changes: ScriptEdit | None = None
         # 原生任务开关：构造期读一次，init_ui 按它建行、load_data 按它回显
         self._switches = self._app_service.get_script_switches(self.script_name)
 
@@ -718,8 +718,7 @@ class SingleScriptConfigDialog(FormDialogBase):
     def save_data(self):
         """收集表单数据存入 self.pending_changes 后 accept()；写盘由调用方完成。
 
-        不直接在此弹窗写 config.yml——config.yml 的写入权归 ``src.utils.utils_config``（经调用方
-        ``AppService.save_script_edit`` 委托）。weekly_timeouts 也由调用方决定是否持久化。
+        返回完整 ScriptEdit；校验与保存流程归 service.script_edit。
         """
         if self.kill_game_cb.isChecked() and not self.game_process_input.text().strip():
             show_warning(
@@ -735,10 +734,10 @@ class SingleScriptConfigDialog(FormDialogBase):
                 return
             timeouts.append(int(text) if text else None)
 
-        changes = {
-            "old_script_name": self.script_name,
-            "new_display_name": self.name_input.text().strip(),
-            "config_patch": {
+        edit = ScriptEdit(
+            script_name=self.script_name,
+            display_name=self.name_input.text().strip(),
+            config_patch={
                 "script_path": self.path_input.text().strip(),
                 "script_type": self.type_combo.currentText(),
                 "script_arguments": self.args_input.text().strip(),
@@ -749,22 +748,15 @@ class SingleScriptConfigDialog(FormDialogBase):
                 "game_path": self.game_path_input.text().strip(),
                 "block": self.block_cb.isChecked(),
             },
-            "weekly_timeouts": timeouts,
-            "switches": {
+            weekly_timeouts=timeouts,
+            switches={
                 name: checkbox.isChecked()
                 for name, checkbox in self.switch_checks.items()
             },
-        }
+        )
         try:
-            self._app_service.validate_script_edit(
-                changes["old_script_name"],
-                changes["new_display_name"],
-                changes["config_patch"],
-                changes["weekly_timeouts"],
-                changes["switches"],
-            )
+            self.pending_changes = self._app_service.validate_script_edit(edit)
         except InvalidScriptEdit as exc:
             show_warning(self, str(exc))
             return
-        self.pending_changes = changes
         self.accept()

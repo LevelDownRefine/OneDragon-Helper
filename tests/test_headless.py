@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import Mock, call
 
 from src.headless import handle_request
+from src.service.script_edit import ScriptEdit
 from src.update.runtime import FileLease, UpdateBusyError
 from src.utils.utils_yaml import load_yaml
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture
@@ -940,6 +941,27 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.run_
 
 
 class ProtocolValidationTests(unittest.TestCase):
+    def test_script_edit_converts_at_boundary_and_preserves_response(self):
+        params = {
+            "script_name": "旧名",
+            "display_name": "新名",
+            "config_patch": {"script_path": "scripts/custom.py"},
+            "weekly_timeouts": [None] * 7,
+            "switches": {"任务": False},
+        }
+        service = Mock(spec=["update_script"])
+        service.update_script.return_value = "新名"
+        response = handle_request(service, request("script.edit_save", params))
+        service.update_script.assert_called_once_with(ScriptEdit(**params))
+        self.assertEqual(
+            response,
+            {
+                "protocol_version": 1,
+                "id": 1,
+                "result": {"script_name": "新名"},
+            },
+        )
+
     def test_invalid_envelopes_and_params_never_dispatch(self):
         cases = [
             ([], "invalid_request"),

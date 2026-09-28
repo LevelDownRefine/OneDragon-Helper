@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QDialog
 
 from src.gui.controllers import task_card
 from src.service import app_service
+from src.service.script_edit import ScriptEdit
 from tests.gui.helpers import make_bridge
 
 
@@ -229,16 +230,12 @@ class TestTaskCard(unittest.TestCase):
         b.toastRequested.connect(lambda t: toasts.append(t))
         dlg = mock_dialog_cls.return_value
         dlg.exec.return_value = QDialog.Accepted
-        dlg.pending_changes = {
-            "old_script_name": "ok-ww",
-            "new_display_name": "鸣潮",
-            "config_patch": {"k": "v"},
-            "weekly_timeouts": {"1": [1]},
-            "switches": {"领取邮件": True},
-        }
+        dlg.pending_changes = ScriptEdit(
+            "ok-ww", "鸣潮", {"block": True}, [60] * 7, {"领取邮件": True}
+        )
         with (
             patch.object(
-                b.app_service, "save_script_edit", return_value={"script_name": "hhw"}
+                b.app_service, "update_script", return_value="hhw"
             ) as mock_update,
             patch.object(b, "_reload_games") as mock_reload,
         ):
@@ -248,9 +245,7 @@ class TestTaskCard(unittest.TestCase):
             ):
                 calls.attach_mock(mocked, name)
             b.configCurrent()
-        mock_update.assert_called_once_with(
-            "ok-ww", "鸣潮", {"k": "v"}, {"1": [1]}, {"领取邮件": True}
-        )
+        mock_update.assert_called_once_with(dlg.pending_changes)
         self.assertEqual(
             [call[0] for call in calls.mock_calls],
             ["save", "reload"],
@@ -264,7 +259,7 @@ class TestTaskCard(unittest.TestCase):
         dlg = mock_dialog_cls.return_value
         dlg.exec.return_value = QDialog.Rejected
         with (
-            patch.object(b.app_service, "save_script_edit") as mock_update,
+            patch.object(b.app_service, "update_script") as mock_update,
             patch.object(b, "_reload_games") as mock_reload,
         ):
             b.configCurrent()
@@ -278,25 +273,15 @@ class TestTaskCard(unittest.TestCase):
         b.toastRequested.connect(toasts.append)
         dlg = mock_dialog_cls.return_value
         dlg.exec.return_value = QDialog.Accepted
-        dlg.pending_changes = {
-            "old_script_name": "ok-ww",
-            "new_display_name": "鸣潮",
-            "config_patch": {},
-            "weekly_timeouts": [60] * 7,
-            "switches": {},
-        }
+        dlg.pending_changes = ScriptEdit("ok-ww", "鸣潮", {}, [60] * 7, {})
         with (
             patch.object(
-                b.app_service, "save_script_edit", side_effect=OSError("拒绝写入")
+                b.app_service, "update_script", side_effect=OSError("拒绝写入")
             ),
-            patch.object(b.app_service, "init_script_after_edit") as init,
-            patch.object(b.app_service, "set_script_switches") as switches,
             patch.object(b, "_reload_games") as reload,
             self.assertRaisesRegex(OSError, "拒绝写入"),
         ):
             b.configCurrent()
-        init.assert_not_called()
-        switches.assert_not_called()
         reload.assert_not_called()
         self.assertEqual(toasts, [])
 

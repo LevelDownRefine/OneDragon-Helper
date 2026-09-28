@@ -128,7 +128,8 @@ check_done、game_process_name、game_path 六个文本字段，以及 kill_scri
 kill_game_after_done、block 三个布尔字段。weekly_timeouts 恰为七项 0～86400 整数或 null；
 null 沿用默认超时，低于 10 秒的值保留原运行语义。switches 为任务名到布尔的映射。
 表单预校验失败返回 invalid_params、refresh_required=false，不写盘。
-保存顺序复用 update_script → init_script_after_edit → set_script_switches，后续失败可能已部分写入；
+CLI 将参数构造成 `ScriptEdit` 后调用 `AppService.update_script`，再将返回标识包装为 `{"script_name": "..."}`。
+完整保存顺序归 `script_edit.save`：助手条目 → 每周标识迁移/超时 → 按需初始化 → 原生任务开关。后续失败可能已部分写入；
 客户端保留草稿、刷新 app.snapshot（改名可能改变身份），要求重新读取表单后再由用户保存。
 正常保存后也须重新查询，不把旧身份继续用于任务卡请求；取消表单无需请求。
 
