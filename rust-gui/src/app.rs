@@ -1292,6 +1292,12 @@ impl eframe::App for App {
                     .request_repaint_after(std::time::Duration::from_millis(50));
             }
         }
+        #[cfg(feature = "capture")]
+        if self.settings.capture.is_some() && self.capture_requested {
+            // wgpu map callbacks need further queue submissions while the UI is idle.
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(16));
+        }
     }
 }
 
@@ -1401,6 +1407,41 @@ mod tests {
             capture_requested: false,
             #[cfg(feature = "capture")]
             capture_ready_at: None,
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "capture")]
+    fn pending_capture_keeps_an_idle_window_advancing() {
+        let root = tempfile::tempdir().unwrap();
+        let python = PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+        let mut command = Command::new(&python);
+        command.args(["-c", "import sys; sys.stdin.read()"]);
+        let mut app = test_app(command, root.path(), python);
+        app.backend = None;
+        app.selected = None;
+        let ctx = app.ctx.clone();
+        let mut frame = eframe::Frame::_new_kittest();
+        for capture in [false, true] {
+            app.settings.capture = capture.then(|| root.path().join("frame.png"));
+            app.capture_requested = capture;
+            let mut delay = Duration::ZERO;
+            for index in 0..5 {
+                let mut output = ctx.run_ui(
+                    egui::RawInput {
+                        time: Some(index as f64 + if capture { 10.0 } else { 0.0 }),
+                        ..Default::default()
+                    },
+                    |ui| eframe::App::ui(&mut app, ui, &mut frame),
+                );
+                delay = output.viewport_output[&egui::ViewportId::ROOT].repaint_delay;
+                output.textures_delta.clear();
+            }
+            if capture {
+                assert!(delay <= Duration::from_millis(16));
+            } else {
+                assert!(delay > Duration::from_millis(16));
+            }
         }
     }
 

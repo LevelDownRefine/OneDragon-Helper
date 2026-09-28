@@ -107,22 +107,31 @@ class TestPackagedRendering(unittest.TestCase):
             ):
                 with self.subTest(software=software, window=window):
                     screenshot = directory / f"rust-{window}-{software}.png"
-                    result = subprocess.run(
-                        [
-                            str(root / EXE_NAME),
-                            *arguments,
-                            "--capture",
-                            str(screenshot),
-                        ],
-                        cwd=root,
-                        env={
-                            **os.environ,
-                            "__COMPAT_LAYER": "RunAsInvoker",
-                            "ODH_FORCE_SOFTWARE_RENDERING": software,
-                        },
-                        capture_output=True,
-                        timeout=45,
-                    )
+                    try:
+                        result = subprocess.run(
+                            [
+                                str(root / EXE_NAME),
+                                *arguments,
+                                "--capture",
+                                str(screenshot),
+                            ],
+                            cwd=root,
+                            env={
+                                **os.environ,
+                                "__COMPAT_LAYER": "RunAsInvoker",
+                                "ODH_FORCE_SOFTWARE_RENDERING": software,
+                            },
+                            capture_output=True,
+                            timeout=45,
+                        )
+                    except subprocess.TimeoutExpired as error:
+                        backend_log = root / "logs/onedragon_helper.log"
+                        detail = (
+                            backend_log.read_text(encoding="utf-8", errors="replace")
+                            if backend_log.exists()
+                            else "未产生后端日志"
+                        )
+                        self.fail(f"{error}\n{error.stderr!r}\n{detail[-12000:]}")
                     self.assertEqual(result.returncode, 0, result.stderr)
                     image = QImage(str(screenshot))
                     self.assertFalse(image.isNull(), "Rust 未产生真实绘制截图")
