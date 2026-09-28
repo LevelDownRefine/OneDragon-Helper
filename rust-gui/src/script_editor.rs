@@ -1,5 +1,5 @@
 use crate::{file_picker::FilePicker, skin};
-use eframe::egui::{self, Id};
+use eframe::egui;
 use onedragon_rust_gui::{backend::Request, model::Script};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -140,178 +140,160 @@ impl ScriptEditor {
         }
         let blocked = busy || self.picker.is_some();
         let mut action = None;
-        let modal = egui::Modal::new(Id::new("script-editor"))
-            .frame(
-                egui::Frame::new()
-                    .fill(skin::PANEL)
-                    .stroke(egui::Stroke::new(1.0, skin::BORDER))
-                    .corner_radius(16)
-                    .inner_margin(20),
-            )
-            .show(ctx, |ui| {
-                ui.set_width(590.0);
-                ui.heading(format!("配置 {}", self.data.script.display_name));
-                ui.add_space(12.0);
-                ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
-                    egui::ScrollArea::vertical()
-                        .max_height(440.0)
-                        .show(ui, |ui| {
-                            egui::Grid::new("script-fields")
-                                .num_columns(2)
-                                .spacing([12.0, 10.0])
-                                .show(ui, |ui| {
-                                    let fields = &mut self.data.script;
-                                    ui.label("脚本名称");
-                                    ui.text_edit_singleline(&mut fields.display_name);
-                                    ui.end_row();
-                                    ui.label("脚本路径");
-                                    ui.horizontal(|ui| {
-                                        ui.add(
-                                            egui::TextEdit::singleline(&mut fields.script_path)
-                                                .desired_width(325.0),
-                                        );
-                                        if ui.button("浏览…").clicked() {
-                                            self.picker = Some(FilePicker::start(
-                                                ctx.clone(),
-                                                crate::file_picker::FileKind::Script,
-                                            ));
-                                        }
-                                    });
-                                    ui.end_row();
-                                    ui.label("脚本类型");
-                                    egui::ComboBox::from_id_salt("script-type")
-                                        .selected_text(&fields.script_type)
-                                        .show_ui(ui, |ui| {
-                                            for choice in ["external", "python"] {
-                                                ui.selectable_value(
-                                                    &mut fields.script_type,
-                                                    choice.into(),
-                                                    choice,
-                                                );
-                                            }
-                                        });
-                                    ui.end_row();
-                                    ui.label("启动参数");
-                                    ui.text_edit_singleline(&mut fields.script_arguments);
-                                    ui.end_row();
-                                    ui.label("完成检测");
-                                    egui::ComboBox::from_id_salt("check-done")
-                                        .selected_text(&fields.check_done)
-                                        .show_ui(ui, |ui| {
-                                            for choice in [
-                                                "game_or_script_closed",
-                                                "script_closed",
-                                                "game_closed",
-                                            ] {
-                                                ui.selectable_value(
-                                                    &mut fields.check_done,
-                                                    choice.into(),
-                                                    choice,
-                                                );
-                                            }
-                                        });
-                                    ui.end_row();
-                                    ui.label("运行行为");
-                                    ui.horizontal(|ui| {
-                                        ui.checkbox(
-                                            &mut fields.kill_script_after_done,
-                                            "结束后关闭脚本",
-                                        );
-                                        ui.checkbox(
-                                            &mut fields.kill_game_after_done,
-                                            "结束后关闭游戏",
-                                        );
-                                        ui.checkbox(&mut fields.block, "阻塞运行");
-                                    });
-                                    ui.end_row();
-                                    ui.label("游戏进程");
-                                    ui.text_edit_singleline(&mut fields.game_process_name);
-                                    ui.end_row();
-                                    ui.label("游戏路径");
-                                    ui.text_edit_singleline(&mut fields.game_path);
-                                    ui.end_row();
-                                    ui.label("每周超时（秒）");
-                                    egui::Grid::new("weekly-timeouts").num_columns(8).show(
-                                        ui,
-                                        |ui| {
-                                            for (index, name) in
-                                                ["一", "二", "三", "四", "五", "六", "日"]
-                                                    .iter()
-                                                    .enumerate()
-                                            {
-                                                ui.label(format!("周{name}"));
-                                                ui.add(
-                                                    egui::TextEdit::singleline(
-                                                        &mut self.timeouts[index],
-                                                    )
-                                                    .desired_width(48.0),
-                                                );
-                                                if index == 3 {
-                                                    ui.end_row();
-                                                }
-                                            }
-                                        },
-                                    );
-                                    ui.end_row();
-                                });
-                            if self.data.script.kill_game_after_done
-                                && self.data.script.game_process_name.trim().is_empty()
-                            {
-                                ui.colored_label(
-                                    skin::MUTED,
-                                    "未填写游戏进程名，保存时将取消“结束后关闭游戏”",
-                                );
-                            }
-                            if !self.data.switches.is_empty() {
-                                ui.separator();
-                                ui.label("任务开关");
-                                for row in &mut self.data.switches {
-                                    ui.checkbox(&mut row.enabled, &row.name);
-                                }
-                            }
-                        });
-                });
-                if let Some(error) = &self.error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                }
-                if self.needs_reload {
-                    ui.label("配置可能已部分保存，请重新读取后核对；不会自动重试保存。");
-                }
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(!blocked, egui::Button::new("取消"))
-                        .clicked()
-                    {
-                        action = Some(EditAction::Cancel);
+        let close = skin::Dialog::new(
+            "script-editor",
+            &format!("配置 {}", self.data.script.display_name),
+        )
+        .width(590.0)
+        .description("设置脚本入口、运行行为与任务开关")
+        .show(ctx, !blocked, |ui| {
+            skin::dialog_body(ui, |ui| {
+                ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| self.fields_ui(ui));
+            });
+            skin::dialog_status(
+                ui,
+                self.error.as_deref(),
+                self.needs_reload
+                    .then_some("配置可能已部分保存，请重新读取后核对；不会自动重试保存。"),
+            );
+            skin::dialog_footer(ui, |ui| {
+                if ui
+                    .add_enabled(!blocked && !self.needs_reload, skin::primary_button("保存"))
+                    .clicked()
+                {
+                    match self.request() {
+                        Ok(request) => {
+                            self.error = None;
+                            action = Some(EditAction::Save(request));
+                        }
+                        Err(error) => self.error = Some(error),
                     }
+                }
+                if ui
+                    .add_enabled(!blocked, skin::secondary_button("取消"))
+                    .clicked()
+                {
+                    action = Some(EditAction::Cancel);
+                }
+                if blocked {
+                    ui.spinner();
+                }
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     if ui
-                        .add_enabled(!blocked, egui::Button::new("重新读取"))
+                        .add_enabled(!blocked, skin::secondary_button("重新读取"))
                         .clicked()
                     {
                         action = Some(EditAction::Reload);
                     }
-                    if ui
-                        .add_enabled(!blocked && !self.needs_reload, egui::Button::new("保存"))
-                        .clicked()
-                    {
-                        match self.request() {
-                            Ok(request) => {
-                                self.error = None;
-                                action = Some(EditAction::Save(request));
-                            }
-                            Err(error) => self.error = Some(error),
-                        }
-                    }
-                    if blocked {
-                        ui.spinner();
-                    }
                 });
             });
-        if !blocked && modal.should_close() {
+        });
+        if close {
             action = Some(EditAction::Cancel);
         }
         action
+    }
+
+    fn fields_ui(&mut self, ui: &mut egui::Ui) {
+        let fields = &mut self.data.script;
+        skin::form_section(ui, "基本信息", |ui| {
+            skin::form_grid(ui, "script-fields", |ui| {
+                ui.label("脚本名称");
+                ui.add(skin::text_input(&mut fields.display_name));
+                ui.end_row();
+                ui.label("脚本路径");
+                if skin::path_input(ui, &mut fields.script_path).1 {
+                    self.picker = Some(FilePicker::start(
+                        ui.ctx().clone(),
+                        crate::file_picker::FileKind::Script,
+                    ));
+                }
+                ui.end_row();
+                ui.label("脚本类型");
+                let label = match fields.script_type.as_str() {
+                    "external" => "外部程序",
+                    "python" => "Python 脚本",
+                    value => value,
+                };
+                egui::ComboBox::from_id_salt("script-type")
+                    .selected_text(label)
+                    .show_ui(ui, |ui| {
+                        for (value, label) in [("external", "外部程序"), ("python", "Python 脚本")]
+                        {
+                            ui.selectable_value(&mut fields.script_type, value.into(), label);
+                        }
+                    });
+                ui.end_row();
+                ui.label("启动参数");
+                ui.add(skin::text_input(&mut fields.script_arguments).hint_text("可选"));
+                ui.end_row();
+            });
+        });
+        skin::form_section(ui, "运行行为", |ui| {
+            skin::form_grid(ui, "script-behavior", |ui| {
+                ui.label("完成检测");
+                let label = match fields.check_done.as_str() {
+                    "game_or_script_closed" => "游戏或脚本退出",
+                    "script_closed" => "脚本退出",
+                    "game_closed" => "游戏退出",
+                    value => value,
+                };
+                egui::ComboBox::from_id_salt("check-done")
+                    .selected_text(label)
+                    .show_ui(ui, |ui| {
+                        for (value, label) in [
+                            ("game_or_script_closed", "游戏或脚本退出"),
+                            ("script_closed", "脚本退出"),
+                            ("game_closed", "游戏退出"),
+                        ] {
+                            ui.selectable_value(&mut fields.check_done, value.into(), label);
+                        }
+                    });
+                ui.end_row();
+                ui.label("游戏进程");
+                ui.add(skin::text_input(&mut fields.game_process_name).hint_text("例如 Game.exe"));
+                ui.end_row();
+                ui.label("游戏路径");
+                ui.add(skin::text_input(&mut fields.game_path));
+                ui.end_row();
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.checkbox(&mut fields.kill_script_after_done, "结束后关闭脚本");
+                ui.checkbox(&mut fields.kill_game_after_done, "结束后关闭游戏");
+            });
+            ui.checkbox(&mut fields.block, "等待此脚本完成后再运行下一个");
+            if fields.kill_game_after_done && fields.game_process_name.trim().is_empty() {
+                ui.colored_label(
+                    skin::MUTED,
+                    "未填写游戏进程名，保存时将取消“结束后关闭游戏”",
+                );
+            }
+        });
+        skin::form_section(ui, "每周超时", |ui| {
+            ui.label(
+                egui::RichText::new("单位为秒，留空使用默认值")
+                    .size(12.0)
+                    .color(skin::MUTED),
+            );
+            ui.columns(7, |columns| {
+                for (index, day) in ["一", "二", "三", "四", "五", "六", "日"]
+                    .iter()
+                    .enumerate()
+                {
+                    columns[index].label(format!("周{day}"));
+                    columns[index].add(
+                        skin::text_input(&mut self.timeouts[index]).desired_width(f32::INFINITY),
+                    );
+                }
+            });
+        });
+        if !self.data.switches.is_empty() {
+            skin::form_section(ui, "任务开关", |ui| {
+                for row in &mut self.data.switches {
+                    ui.checkbox(&mut row.enabled, &row.name);
+                }
+            });
+        }
     }
 }
 

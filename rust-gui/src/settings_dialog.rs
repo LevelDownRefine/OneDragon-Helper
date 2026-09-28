@@ -76,218 +76,180 @@ impl SettingsDialog {
     pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<SettingsAction> {
         let mut action = None;
         let mut back = false;
-        let modal = egui::Modal::new("global-settings".into())
-            .frame(skin::dialog_frame())
-            .show(ctx, |ui| {
-                ui.set_width(520.0_f32.min((ctx.content_rect().width() - 80.0).max(300.0)));
-                skin::dialog_style(ui);
-                let (title, description) = if self.daily_draft.is_some() {
-                    ("每日计划", "设置每天的运行时间与独立运行选项")
-                } else if self.run_draft.is_some() {
-                    ("运行选项", "管理脚本运行前后的动作")
-                } else {
-                    ("配置", "运行设置、配置备份与程序更新")
-                };
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(title).size(22.0).strong());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .add_enabled(!busy, egui::Button::new("×").frame(false))
-                            .on_hover_text("关闭")
+        let (title, description) = if self.daily_draft.is_some() {
+            ("每日计划", "设置每天的运行时间与独立运行选项")
+        } else if self.run_draft.is_some() {
+            ("运行选项", "管理脚本运行前后的动作")
+        } else {
+            ("配置", "运行设置、配置备份与程序更新")
+        };
+        let close = skin::Dialog::new("global-settings", title)
+            .description(description)
+            .show(ctx, !busy, |ui| {
+                skin::dialog_body(ui, |ui| {
+                    ui.add_enabled_ui(!busy && !self.needs_reload, |ui| {
+                        if let Some(draft) = &mut self.daily_draft {
+                            draft.show(ui);
+                        } else if let Some(draft) = &mut self.run_draft {
+                            draft.show(ui, self.data.shutdown_supported);
+                        } else {
+                            skin::form_section(ui, "启动行为", |ui| {
+                                ui.add_enabled_ui(!self.data.daily_enabled, |ui| {
+                                    ui.checkbox(
+                                        &mut self.data.startup.enabled,
+                                        "打开助手后自动运行勾选脚本",
+                                    );
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("启动前等待").color(skin::MUTED),
+                                        );
+                                        ui.add_enabled(
+                                            self.data.startup.enabled,
+                                            egui::DragValue::new(
+                                                &mut self.data.startup.delay_seconds,
+                                            )
+                                            .range(1..=3600)
+                                            .suffix(" 秒"),
+                                        );
+                                    });
+                                });
+                                if self.data.daily_enabled {
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "每日计划已开启，打开窗口不会额外运行。",
+                                        )
+                                        .size(12.0)
+                                        .color(skin::MUTED),
+                                    );
+                                }
+                            });
+                            ui.add_space(2.0);
+                            ui.label(
+                                egui::RichText::new("运行与计划")
+                                    .size(12.0)
+                                    .color(skin::MUTED),
+                            );
+                            if action_row(
+                                ui,
+                                "run-options",
+                                "运行选项",
+                                "静音、失败重跑、邮件通知与自动关机",
+                            )
                             .clicked()
-                        {
-                            back = true;
+                            {
+                                self.run_draft = Some(self.data.run_options.clone());
+                            }
+                            if action_row(
+                                ui,
+                                "daily-plan",
+                                "每日计划",
+                                "每天定时运行，使用独立的运行选项",
+                            )
+                            .clicked()
+                            {
+                                action = Some(SettingsAction::Request(Request {
+                                    method: "plan.view".into(),
+                                    params: json!({}),
+                                }));
+                            }
+                            ui.add_space(2.0);
+                            ui.label(
+                                egui::RichText::new("备份与维护")
+                                    .size(12.0)
+                                    .color(skin::MUTED),
+                            );
+                            ui.columns(2, |columns| {
+                                for (index, title, description, restore) in [
+                                    (0, "备份配置", "保存配置到 ZIP 文件", false),
+                                    (1, "恢复配置", "从 ZIP 恢复，保留本机路径", true),
+                                ] {
+                                    if action_row(&mut columns[index], title, title, description)
+                                        .clicked()
+                                    {
+                                        action = Some(SettingsAction::Backup(restore));
+                                    }
+                                }
+                            });
+                            if action_row(
+                                ui,
+                                "app-update",
+                                "助手更新",
+                                "检查新版本，查看下载与安装进度",
+                            )
+                            .clicked()
+                            {
+                                action = Some(SettingsAction::Request(Request {
+                                    method: "update.view".into(),
+                                    params: json!({}),
+                                }));
+                            }
                         }
                     });
                 });
-                ui.label(
-                    egui::RichText::new(description)
-                        .size(12.0)
-                        .color(skin::MUTED),
+                skin::dialog_status(
+                    ui,
+                    self.error.as_deref(),
+                    self.needs_reload
+                        .then_some("配置可能已保存，请重新读取核对。"),
                 );
-                ui.add_space(6.0);
-                ui.add_enabled_ui(!busy && !self.needs_reload, |ui| {
-                    if let Some(draft) = &mut self.daily_draft {
-                        egui::ScrollArea::vertical()
-                            .max_height((ctx.content_rect().height() - 230.0).max(180.0))
-                            .show(ui, |ui| draft.show(ui));
-                    } else if let Some(draft) = &mut self.run_draft {
-                        egui::ScrollArea::vertical()
-                            .max_height((ctx.content_rect().height() - 230.0).max(180.0))
-                            .show(ui, |ui| draft.show(ui, self.data.shutdown_supported));
-                    } else {
-                        egui::ScrollArea::vertical()
-                            .id_salt("settings-home")
-                            .max_height((ctx.content_rect().height() - 230.0).max(180.0))
-                            .show(ui, |ui| {
-                                skin::form_section(ui, "启动行为", |ui| {
-                                    ui.add_enabled_ui(!self.data.daily_enabled, |ui| {
-                                        ui.checkbox(
-                                            &mut self.data.startup.enabled,
-                                            "打开助手后自动运行勾选脚本",
-                                        );
-                                        ui.horizontal(|ui| {
-                                            ui.label(
-                                                egui::RichText::new("启动前等待")
-                                                    .color(skin::MUTED),
-                                            );
-                                            ui.add_enabled(
-                                                self.data.startup.enabled,
-                                                egui::DragValue::new(
-                                                    &mut self.data.startup.delay_seconds,
-                                                )
-                                                .range(1..=3600)
-                                                .suffix(" 秒"),
-                                            );
-                                        });
-                                    });
-                                    if self.data.daily_enabled {
-                                        ui.label(
-                                            egui::RichText::new(
-                                                "每日计划已开启，打开窗口不会额外运行。",
-                                            )
-                                            .size(12.0)
-                                            .color(skin::MUTED),
-                                        );
-                                    }
-                                });
-                                ui.add_space(2.0);
-                                ui.label(
-                                    egui::RichText::new("运行与计划")
-                                        .size(12.0)
-                                        .color(skin::MUTED),
-                                );
-                                if action_row(
-                                    ui,
-                                    "run-options",
-                                    "运行选项",
-                                    "静音、失败重跑、邮件通知与自动关机",
-                                )
-                                .clicked()
-                                {
-                                    self.run_draft = Some(self.data.run_options.clone());
-                                }
-                                if action_row(
-                                    ui,
-                                    "daily-plan",
-                                    "每日计划",
-                                    "每天定时运行，使用独立的运行选项",
-                                )
-                                .clicked()
-                                {
-                                    action = Some(SettingsAction::Request(Request {
-                                        method: "plan.view".into(),
-                                        params: json!({}),
-                                    }));
-                                }
-                                ui.add_space(2.0);
-                                ui.label(
-                                    egui::RichText::new("备份与维护")
-                                        .size(12.0)
-                                        .color(skin::MUTED),
-                                );
-                                ui.columns(2, |columns| {
-                                    for (index, title, description, restore) in [
-                                        (0, "备份配置", "保存配置到 ZIP 文件", false),
-                                        (1, "恢复配置", "从 ZIP 恢复，保留本机路径", true),
-                                    ] {
-                                        if action_row(
-                                            &mut columns[index],
-                                            title,
-                                            title,
-                                            description,
-                                        )
-                                        .clicked()
-                                        {
-                                            action = Some(SettingsAction::Backup(restore));
-                                        }
-                                    }
-                                });
-                                if action_row(
-                                    ui,
-                                    "app-update",
-                                    "助手更新",
-                                    "检查新版本，查看下载与安装进度",
-                                )
-                                .clicked()
-                                {
-                                    action = Some(SettingsAction::Request(Request {
-                                        method: "update.view".into(),
-                                        params: json!({}),
-                                    }));
-                                }
-                            });
-                    }
-                });
-                if let Some(error) = &self.error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                }
-                if self.needs_reload {
-                    ui.label("配置可能已保存，请重新读取核对。");
-                }
-                ui.add_space(4.0);
-                ui.separator();
-                ui.horizontal(|ui| {
+                skin::dialog_footer(ui, |ui| {
                     if ui
-                        .add_enabled(!busy, egui::Button::new("重新读取"))
+                        .add_enabled(
+                            !busy
+                                && !self.needs_reload
+                                && self
+                                    .daily_draft
+                                    .as_ref()
+                                    .is_none_or(|draft| draft.supported),
+                            skin::primary_button("保存"),
+                        )
                         .clicked()
                     {
+                        if let Some(draft) = &self.daily_draft {
+                            action = Some(SettingsAction::Request(Request {
+                                method: "plan.save".into(),
+                                params: json!({"plan":draft.plan}),
+                            }));
+                            return;
+                        }
+                        let (method, options) = if let Some(draft) = &self.run_draft {
+                            ("settings.run_save", json!(draft))
+                        } else {
+                            ("settings.startup_save", json!(self.data.startup))
+                        };
                         action = Some(SettingsAction::Request(Request {
-                            method: if self.daily_draft.is_some() {
-                                "plan.view"
-                            } else {
-                                "settings.view"
-                            }
-                            .into(),
-                            params: json!({}),
+                            method: method.into(),
+                            params: json!({"options":options}),
                         }));
                     }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .add_enabled(!busy, skin::secondary_button("取消"))
+                        .clicked()
+                    {
+                        back = true;
+                    }
+                    if busy {
+                        ui.spinner();
+                    }
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         if ui
-                            .add_enabled(
-                                !busy
-                                    && !self.needs_reload
-                                    && self
-                                        .daily_draft
-                                        .as_ref()
-                                        .is_none_or(|draft| draft.supported),
-                                skin::primary_button("保存"),
-                            )
+                            .add_enabled(!busy, skin::secondary_button("重新读取"))
                             .clicked()
                         {
-                            if let Some(draft) = &self.daily_draft {
-                                action = Some(SettingsAction::Request(Request {
-                                    method: "plan.save".into(),
-                                    params: json!({"plan":draft.plan}),
-                                }));
-                                return;
-                            }
-                            let (method, options) = if let Some(draft) = &self.run_draft {
-                                ("settings.run_save", json!(draft))
-                            } else {
-                                ("settings.startup_save", json!(self.data.startup))
-                            };
                             action = Some(SettingsAction::Request(Request {
-                                method: method.into(),
-                                params: json!({"options":options}),
+                                method: if self.daily_draft.is_some() {
+                                    "plan.view"
+                                } else {
+                                    "settings.view"
+                                }
+                                .into(),
+                                params: json!({}),
                             }));
-                        }
-                        if ui
-                            .add_enabled(
-                                !busy,
-                                egui::Button::new("取消").min_size(egui::vec2(78.0, 34.0)),
-                            )
-                            .clicked()
-                        {
-                            back = true;
-                        }
-                        if busy {
-                            ui.spinner();
                         }
                     });
                 });
             });
-        if !busy && (back || modal.should_close()) {
+        if !busy && (back || close) {
             if self.daily_draft.is_some() && !self.needs_reload {
                 self.daily_draft = None;
                 self.error = None;
@@ -371,29 +333,23 @@ impl StartupDialog {
         let started = *self.started.get_or_insert_with(Instant::now);
         let remaining = self.seconds.saturating_sub(started.elapsed().as_secs());
         let mut action = None;
-        let modal = egui::Modal::new("startup-countdown".into())
-            .frame(
-                egui::Frame::new()
-                    .fill(skin::PANEL)
-                    .corner_radius(16)
-                    .inner_margin(24),
-            )
-            .show(ctx, |ui| {
-                ui.set_width(420.0);
-                ui.heading("即将启动勾选脚本");
-                ui.add_space(16.0);
-                ui.label(format!("将在 {remaining} 秒后按上次配置启动"));
-                ui.add_space(16.0);
-                ui.horizontal(|ui| {
-                    if ui.button("取消").clicked() {
-                        action = Some(false);
-                    }
-                    if ui.button("立即启动").clicked() {
+        let close = skin::Dialog::new("startup-countdown", "即将启动勾选脚本")
+            .width(420.0)
+            .description("按已保存的运行选项执行")
+            .show(ctx, true, |ui| {
+                skin::form_section(ui, "启动倒计时", |ui| {
+                    ui.label(format!("将在 {remaining} 秒后按上次配置启动"));
+                });
+                skin::dialog_footer(ui, |ui| {
+                    if ui.add(skin::primary_button("立即启动")).clicked() {
                         action = Some(true);
+                    }
+                    if ui.add(skin::secondary_button("取消")).clicked() {
+                        action = Some(false);
                     }
                 });
             });
-        if modal.should_close() || ctx.input(|input| input.viewport().close_requested()) {
+        if close || ctx.input(|input| input.viewport().close_requested()) {
             return Some(false);
         }
         ctx.request_repaint_after(Duration::from_millis(100));

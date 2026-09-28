@@ -249,136 +249,136 @@ impl UpdateDialog {
 
     pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<UpdateAction> {
         let mut action = None;
-        let modal = egui::Modal::new("update-dialog".into())
-            .frame(
-                egui::Frame::new()
-                    .fill(skin::PANEL)
-                    .corner_radius(16)
-                    .inner_margin(22),
-            )
-            .show(ctx, |ui| {
-                ui.set_width(560.0);
-                ui.heading("助手更新");
-                ui.label(format!("当前版本：{}", self.data.version));
-                if let Some(previous) = &self.data.previous_result {
-                    let message = match previous.status.as_str() {
-                        "installed" => "上次更新已安装完成。",
-                        "recovered" => "上次更新已恢复到旧版本。",
-                        "failed" => "上次更新未完成。",
-                        "restart_failed" => "上次更新已安装，请手动重新打开助手。",
-                        _ => "上次更新状态未知。",
-                    };
-                    ui.label(message);
-                    if let Some(error) = &previous.error {
-                        ui.label(error);
-                    }
-                }
-                if !self.data.unavailable_reason.is_empty() {
-                    ui.label(&self.data.unavailable_reason);
-                }
-                if let Some(release) = &self.data.release {
-                    ui.label(format!(
-                        "新版本：{} · {:.1} MiB",
-                        release.version,
-                        release.size as f64 / 1048576.0
-                    ));
-                    egui::ScrollArea::vertical()
-                        .max_height(260.0)
-                        .show(ui, |ui| {
-                            ui.label(if release.notes.is_empty() {
-                                "此版本未提供更新说明。"
-                            } else {
-                                &release.notes
-                            });
+        let close = skin::Dialog::new("update-dialog", "助手更新")
+            .description("检查新版本，查看下载与安装进度")
+            .show(
+                ctx,
+                !busy && !self.close_pending && !self.installing() && !self.ready(),
+                |ui| {
+                    skin::dialog_body(ui, |ui| {
+                        skin::form_section(ui, "版本信息", |ui| {
+                            ui.label(format!("当前版本：{}", self.data.version));
+                            if let Some(previous) = &self.data.previous_result {
+                                let message = match previous.status.as_str() {
+                                    "installed" => "上次更新已安装完成。",
+                                    "recovered" => "上次更新已恢复到旧版本。",
+                                    "failed" => "上次更新未完成。",
+                                    "restart_failed" => "上次更新已安装，请手动重新打开助手。",
+                                    _ => "上次更新状态未知。",
+                                };
+                                ui.label(message);
+                                if let Some(error) = &previous.error {
+                                    ui.label(error);
+                                }
+                            }
+                            if !self.data.unavailable_reason.is_empty() {
+                                ui.label(&self.data.unavailable_reason);
+                            }
                         });
-                }
-                if let Some((received, total)) = self.progress {
-                    let fraction = if total > 0 {
-                        (received as f32 / total as f32).clamp(0.0, 1.0)
-                    } else {
-                        0.0
-                    };
-                    ui.add(egui::ProgressBar::new(fraction).text(format!(
-                        "{:.1} / {:.1} MiB",
-                        received as f64 / 1048576.0,
-                        total as f64 / 1048576.0
-                    )));
-                }
-                if self.active() {
-                    ui.spinner();
-                    ctx.request_repaint_after(Duration::from_millis(200));
-                }
-                if !self.message.is_empty() {
-                    ui.label(&self.message);
-                }
-                if let Some(error) = &self.error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                }
-                if self.needs_reload {
-                    ui.label("状态未确认，请重新读取；不会自动重试操作。");
-                }
-                if self.data.prepared_version.is_some() && !self.active() && !self.ready() {
-                    ui.label("安装将关闭助手并重启。请先结束正在运行的任务和其他助手窗口。");
-                }
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(
-                            !busy && !self.close_pending && !self.installing() && !self.ready(),
-                            egui::Button::new(if self.active() {
-                                "取消更新"
+                        if let Some(release) = &self.data.release {
+                            skin::form_section(ui, "可用更新", |ui| {
+                                ui.label(format!(
+                                    "新版本：{} · {:.1} MiB",
+                                    release.version,
+                                    release.size as f64 / 1048576.0
+                                ));
+                                ui.label(if release.notes.is_empty() {
+                                    "此版本未提供更新说明。"
+                                } else {
+                                    &release.notes
+                                });
+                            });
+                        }
+                        if let Some((received, total)) = self.progress {
+                            let fraction = if total > 0 {
+                                (received as f32 / total as f32).clamp(0.0, 1.0)
                             } else {
-                                "关闭"
-                            }),
-                        )
-                        .clicked()
-                    {
-                        action = self.close();
-                    }
-                    if ui
-                        .add_enabled(!busy && !self.active(), egui::Button::new("发布页面"))
-                        .clicked()
-                    {
-                        action = Some(UpdateAction::OpenReleases(self.data.releases_url.clone()));
-                    }
-                    if !self.active() && self.needs_reload {
+                                0.0
+                            };
+                            ui.add(egui::ProgressBar::new(fraction).text(format!(
+                                "{:.1} / {:.1} MiB",
+                                received as f64 / 1048576.0,
+                                total as f64 / 1048576.0
+                            )));
+                        }
+                        if self.active() {
+                            ui.spinner();
+                            ctx.request_repaint_after(Duration::from_millis(200));
+                        }
+                        if !self.message.is_empty() {
+                            ui.label(&self.message);
+                        }
+                        if let Some(error) = &self.error {
+                            ui.colored_label(egui::Color32::LIGHT_RED, error);
+                        }
+                        if self.needs_reload {
+                            ui.label("状态未确认，请重新读取；不会自动重试操作。");
+                        }
+                        if self.data.prepared_version.is_some() && !self.active() && !self.ready() {
+                            ui.label(
+                                "安装将关闭助手并重启。请先结束正在运行的任务和其他助手窗口。",
+                            );
+                        }
+                    });
+                    skin::dialog_footer(ui, |ui| {
+                        if !self.active() && self.needs_reload {
+                            if ui
+                                .add_enabled(!busy, skin::secondary_button("重新读取"))
+                                .clicked()
+                            {
+                                action = Some(UpdateAction::Request(Request {
+                                    method: "update.view".into(),
+                                    params: json!({}),
+                                }));
+                            }
+                        } else if !self.active() && !self.data.unavailable_reason.is_empty() {
+                            ui.add_enabled(false, skin::secondary_button("检查更新"));
+                        } else if !self.active() && !self.ready() {
+                            let (label, method) = if self.data.prepared_version.is_some() {
+                                ("安装并重启", "update.install")
+                            } else if self.data.release.is_some() {
+                                ("下载更新", "update.download")
+                            } else {
+                                ("检查更新", "update.check")
+                            };
+                            if ui.add_enabled(!busy, skin::primary_button(label)).clicked() {
+                                action = Some(UpdateAction::Request(self.start(method)));
+                            }
+                            if self.data.release.is_some()
+                                && ui
+                                    .add_enabled(!busy, skin::secondary_button("检查更新"))
+                                    .clicked()
+                            {
+                                action = Some(UpdateAction::Request(self.start("update.check")));
+                            }
+                        }
                         if ui
-                            .add_enabled(!busy, egui::Button::new("重新读取"))
+                            .add_enabled(
+                                !busy && !self.close_pending && !self.installing() && !self.ready(),
+                                skin::secondary_button(if self.active() {
+                                    "取消更新"
+                                } else {
+                                    "关闭"
+                                }),
+                            )
                             .clicked()
                         {
-                            action = Some(UpdateAction::Request(Request {
-                                method: "update.view".into(),
-                                params: json!({}),
-                            }));
+                            action = self.close();
                         }
-                    } else if !self.active() && !self.data.unavailable_reason.is_empty() {
-                        ui.add_enabled(false, egui::Button::new("检查更新"));
-                    } else if !self.active() && !self.ready() {
                         if ui
-                            .add_enabled(!busy, egui::Button::new("检查更新"))
+                            .add_enabled(
+                                !busy && !self.active(),
+                                skin::secondary_button("发布页面"),
+                            )
                             .clicked()
                         {
-                            action = Some(UpdateAction::Request(self.start("update.check")));
+                            action =
+                                Some(UpdateAction::OpenReleases(self.data.releases_url.clone()));
                         }
-                        if self.data.release.is_some()
-                            && self.data.prepared_version.is_none()
-                            && ui
-                                .add_enabled(!busy, egui::Button::new("下载更新"))
-                                .clicked()
-                        {
-                            action = Some(UpdateAction::Request(self.start("update.download")));
-                        }
-                        if self.data.prepared_version.is_some()
-                            && ui
-                                .add_enabled(!busy, egui::Button::new("安装并重启"))
-                                .clicked()
-                        {
-                            action = Some(UpdateAction::Request(self.start("update.install")));
-                        }
-                    }
-                });
-            });
-        if !busy && modal.should_close() {
+                    });
+                },
+            );
+        if close {
             action = self.close();
         }
         action

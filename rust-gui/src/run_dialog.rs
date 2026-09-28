@@ -30,20 +30,32 @@ impl RunOptions {
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, shutdown_supported: bool) {
-        ui.label("运行前");
-        ui.checkbox(&mut self.close_running_enabled, "关闭残留脚本和游戏进程");
-        ui.checkbox(&mut self.mute_enabled, "静音");
-        ui.separator();
-        ui.label("运行中");
-        ui.checkbox(&mut self.rerun_enabled, "重跑失败脚本");
-        ui.separator();
-        ui.label("运行后");
-        ui.checkbox(&mut self.notify_enabled, "发送邮件通知");
-        ui.add_enabled_ui(self.notify_enabled, |ui| {
-            egui::Grid::new("mail-options")
-                .num_columns(2)
-                .spacing([12.0, 8.0])
-                .show(ui, |ui| {
+        skin::form_section(ui, "运行前", |ui| {
+            ui.checkbox(&mut self.close_running_enabled, "关闭残留脚本和游戏进程");
+            ui.checkbox(&mut self.mute_enabled, "静音");
+        });
+        skin::form_section(ui, "运行中", |ui| {
+            ui.checkbox(&mut self.rerun_enabled, "重跑失败脚本");
+        });
+        skin::form_section(ui, "运行后", |ui| {
+            ui.checkbox(&mut self.unmute_enabled, "开启声音");
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.shutdown_enabled, "自动关机");
+                ui.add_enabled(
+                    self.shutdown_enabled && shutdown_supported,
+                    egui::DragValue::new(&mut self.shutdown_delay)
+                        .range(0..=86400)
+                        .suffix(" 秒"),
+                );
+            });
+            if !shutdown_supported {
+                ui.colored_label(skin::MUTED, "关机确认入口不可用，请关闭此项后运行。");
+            }
+        });
+        skin::form_section(ui, "邮件通知", |ui| {
+            ui.checkbox(&mut self.notify_enabled, "运行结束后发送邮件通知");
+            ui.add_enabled_ui(self.notify_enabled, |ui| {
+                skin::form_grid(ui, "mail-options", |ui| {
                     for (label, text, secret) in [
                         ("邮箱", &mut self.email, false),
                         ("授权码", &mut self.auth_code, true),
@@ -51,29 +63,17 @@ impl RunOptions {
                         ("SMTP 端口", &mut self.smtp_port, false),
                     ] {
                         ui.label(label);
-                        ui.add(
-                            egui::TextEdit::singleline(text)
-                                .password(secret)
-                                .desired_width(320.0),
-                        );
+                        ui.add(skin::text_input(text).password(secret));
                         ui.end_row();
                     }
                 });
-            ui.small("授权码留空保留已存凭据；仅首次或更换时填写。");
+                ui.label(
+                    egui::RichText::new("授权码留空保留已存凭据；仅首次或更换时填写。")
+                        .size(12.0)
+                        .color(skin::MUTED),
+                );
+            });
         });
-        ui.checkbox(&mut self.unmute_enabled, "开启声音");
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut self.shutdown_enabled, "自动关机");
-            ui.add_enabled(
-                self.shutdown_enabled && shutdown_supported,
-                egui::DragValue::new(&mut self.shutdown_delay)
-                    .range(0..=86400)
-                    .suffix(" 秒"),
-            );
-        });
-        if !shutdown_supported {
-            ui.colored_label(skin::MUTED, "关机确认入口不可用，请关闭此项后运行。");
-        }
     }
 }
 
@@ -134,71 +134,65 @@ impl RunDialog {
 
     pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<RunAction> {
         let mut action = None;
-        let modal = egui::Modal::new(egui::Id::new("run-confirm"))
-            .frame(
-                egui::Frame::new()
-                    .fill(skin::PANEL)
-                    .stroke(egui::Stroke::new(1.0, skin::BORDER))
-                    .corner_radius(16)
-                    .inner_margin(20),
-            )
-            .show(ctx, |ui| {
-                ui.set_width(540.0);
-                ui.heading(format!("确认运行 {} 个脚本", self.data.script_names.len()));
-                ui.add_space(12.0);
+        let close = skin::Dialog::new(
+            "run-confirm",
+            &format!("确认运行 {} 个脚本", self.data.script_names.len()),
+        )
+        .description("检查本次运行选项，确认后开始执行")
+        .show(ctx, !busy, |ui| {
+            skin::dialog_body(ui, |ui| {
                 ui.add_enabled_ui(!busy && !self.needs_reload, |ui| {
-                    egui::ScrollArea::vertical()
-                        .max_height(450.0)
-                        .show(ui, |ui| {
-                            if !self.data.invalid.is_empty() {
-                                ui.colored_label(
-                                    egui::Color32::LIGHT_RED,
-                                    "以下脚本将在运行时跳过：",
-                                );
-                                for invalid in &self.data.invalid {
-                                    ui.label(format!("{}：{}", invalid.name, invalid.reason));
-                                }
-                                ui.checkbox(&mut self.confirm_invalid, "仍然运行有效脚本");
-                                ui.separator();
-                            }
-                            self.data.options.show(ui, self.data.shutdown_supported);
-                        });
-                });
-                if let Some(error) = &self.error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                }
-                if self.needs_reload {
-                    ui.label("选项可能已保存，请重新读取核对；不会自动启动。");
-                }
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if ui.add_enabled(!busy, egui::Button::new("取消")).clicked() {
-                        action = Some(RunAction::Cancel);
-                    }
-                    if ui
-                        .add_enabled(!busy, egui::Button::new("重新读取"))
-                        .clicked()
-                    {
-                        action = Some(RunAction::Request(Request {
-                            method: "run.view".into(),
-                            params: json!({"script_names":self.data.script_names}),
-                        }));
-                    }
-                    if ui
-                        .add_enabled(!busy && !self.needs_reload, egui::Button::new("确认运行"))
-                        .clicked()
-                    {
-                        match self.request() {
-                            Ok(request) => action = Some(RunAction::Request(request)),
-                            Err(error) => self.error = Some(error),
+                    if !self.data.invalid.is_empty() {
+                        ui.colored_label(egui::Color32::LIGHT_RED, "以下脚本将在运行时跳过：");
+                        for invalid in &self.data.invalid {
+                            ui.label(format!("{}：{}", invalid.name, invalid.reason));
                         }
+                        ui.checkbox(&mut self.confirm_invalid, "仍然运行有效脚本");
+                        ui.separator();
                     }
-                    if busy {
-                        ui.spinner();
-                    }
+                    self.data.options.show(ui, self.data.shutdown_supported);
                 });
             });
-        if !busy && modal.should_close() {
+            skin::dialog_status(
+                ui,
+                self.error.as_deref(),
+                self.needs_reload
+                    .then_some("选项可能已保存，请重新读取核对；不会自动启动。"),
+            );
+            skin::dialog_footer(ui, |ui| {
+                if ui
+                    .add_enabled(
+                        !busy && !self.needs_reload,
+                        skin::primary_button("确认运行"),
+                    )
+                    .clicked()
+                {
+                    match self.request() {
+                        Ok(request) => action = Some(RunAction::Request(request)),
+                        Err(error) => self.error = Some(error),
+                    }
+                }
+                if ui
+                    .add_enabled(!busy, skin::secondary_button("取消"))
+                    .clicked()
+                {
+                    action = Some(RunAction::Cancel);
+                }
+                if ui
+                    .add_enabled(!busy, skin::secondary_button("重新读取"))
+                    .clicked()
+                {
+                    action = Some(RunAction::Request(Request {
+                        method: "run.view".into(),
+                        params: json!({"script_names":self.data.script_names}),
+                    }));
+                }
+                if busy {
+                    ui.spinner();
+                }
+            });
+        });
+        if close {
             action = Some(RunAction::Cancel);
         }
         action

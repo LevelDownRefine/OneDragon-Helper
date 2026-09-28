@@ -51,91 +51,97 @@ impl ListDialog {
         }
         let blocked = busy || self.picker.is_some();
         let mut action = None;
-        let modal = egui::Modal::new(egui::Id::new("script-list-dialog"))
-            .frame(
-                egui::Frame::new()
-                    .fill(skin::PANEL)
-                    .stroke(egui::Stroke::new(1.0, skin::BORDER))
-                    .corner_radius(16)
-                    .inner_margin(20),
-            )
-            .show(ctx, |ui| {
-                ui.set_width(480.0);
-                ui.heading(if self.remove.is_some() {
-                    "删除脚本"
-                } else {
-                    "添加脚本"
-                });
-                ui.add_space(12.0);
+        let close = skin::Dialog::new(
+            "script-list-dialog",
+            if self.remove.is_some() {
+                "删除脚本"
+            } else {
+                "添加脚本"
+            },
+        )
+        .description(if self.remove.is_some() {
+            "从助手列表移除脚本"
+        } else {
+            "将脚本添加到助手，统一管理运行"
+        })
+        .show(ctx, !blocked, |ui| {
+            skin::dialog_body(ui, |ui| {
                 ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
-                    if let Some((_, display)) = &self.remove {
-                        ui.label(format!("确定从助手列表删除「{display}」？"));
-                        ui.label("将移除该条目和每周设置，脚本文件仍保留。");
-                    } else {
-                        ui.label("选择 .exe、.bat、.py 或指向这些文件的快捷方式。");
-                        ui.horizontal(|ui| {
-                            ui.add(egui::TextEdit::singleline(&mut self.path).desired_width(360.0));
-                            if ui.button("浏览…").clicked() {
-                                self.picker = Some(FilePicker::start(
-                                    ctx.clone(),
-                                    crate::file_picker::FileKind::ScriptOrShortcut,
-                                ));
-                            }
-                        });
-                    }
-                });
-                if let Some(error) = &self.error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                }
-                if self.needs_reload {
-                    ui.label("列表可能已改变，请刷新核对后再操作。");
-                }
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(!blocked, egui::Button::new("取消"))
-                        .clicked()
-                    {
-                        action = Some(ListAction::Cancel);
-                    }
-                    if self.needs_reload
-                        && ui
-                            .add_enabled(!blocked, egui::Button::new("刷新列表"))
-                            .clicked()
-                    {
-                        action = Some(ListAction::Refresh);
-                    }
-                    if ui
-                        .add_enabled(
-                            !blocked && !self.needs_reload,
-                            egui::Button::new(if self.remove.is_some() {
-                                "确认删除"
-                            } else {
-                                "添加"
-                            }),
-                        )
-                        .clicked()
-                    {
-                        if let Some((name, _)) = &self.remove {
-                            action = Some(ListAction::Request(Request {
-                                method: "script.remove".into(),
-                                params: json!({"script_name":name}),
-                            }));
-                        } else if self.path.trim().is_empty() {
-                            self.error = Some("请选择脚本文件".into());
+                    skin::form_section(
+                        ui,
+                        if self.remove.is_some() {
+                            "确认移除"
                         } else {
-                            action = Some(ListAction::Request(Request {
-                                method: "script.add".into(),
-                                params: json!({"file_path":self.path.trim()}),
-                            }));
-                        }
-                    }
-                    if blocked {
-                        ui.spinner();
-                    }
+                            "脚本文件"
+                        },
+                        |ui| {
+                            if let Some((_, display)) = &self.remove {
+                                ui.label(format!("确定从助手列表删除「{display}」？"));
+                                ui.label("将移除该条目和每周设置，脚本文件仍保留。");
+                            } else {
+                                ui.label("选择 .exe、.bat、.py 或指向这些文件的快捷方式。");
+                                if skin::path_input(ui, &mut self.path).1 {
+                                    self.picker = Some(FilePicker::start(
+                                        ctx.clone(),
+                                        crate::file_picker::FileKind::ScriptOrShortcut,
+                                    ));
+                                }
+                            }
+                        },
+                    );
                 });
             });
-        if !blocked && modal.should_close() {
+            skin::dialog_status(
+                ui,
+                self.error.as_deref(),
+                self.needs_reload
+                    .then_some("列表可能已改变，请刷新核对后再操作。"),
+            );
+            skin::dialog_footer(ui, |ui| {
+                if ui
+                    .add_enabled(
+                        !blocked && !self.needs_reload,
+                        skin::primary_button(if self.remove.is_some() {
+                            "确认删除"
+                        } else {
+                            "添加"
+                        }),
+                    )
+                    .clicked()
+                {
+                    if let Some((name, _)) = &self.remove {
+                        action = Some(ListAction::Request(Request {
+                            method: "script.remove".into(),
+                            params: json!({"script_name":name}),
+                        }));
+                    } else if self.path.trim().is_empty() {
+                        self.error = Some("请选择脚本文件".into());
+                    } else {
+                        action = Some(ListAction::Request(Request {
+                            method: "script.add".into(),
+                            params: json!({"file_path":self.path.trim()}),
+                        }));
+                    }
+                }
+                if ui
+                    .add_enabled(!blocked, skin::secondary_button("取消"))
+                    .clicked()
+                {
+                    action = Some(ListAction::Cancel);
+                }
+                if self.needs_reload
+                    && ui
+                        .add_enabled(!blocked, skin::secondary_button("刷新列表"))
+                        .clicked()
+                {
+                    action = Some(ListAction::Refresh);
+                }
+                if blocked {
+                    ui.spinner();
+                }
+            });
+        });
+        if close {
             action = Some(ListAction::Cancel);
         }
         action

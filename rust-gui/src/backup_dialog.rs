@@ -174,97 +174,100 @@ impl BackupDialog {
         }
         let blocked = busy || self.active() || self.picker.is_some();
         let mut action = None;
-        let modal = egui::Modal::new("backup-restore".into())
-            .frame(
-                egui::Frame::new()
-                    .fill(skin::PANEL)
-                    .corner_radius(16)
-                    .inner_margin(22),
-            )
-            .show(ctx, |ui| {
-                ui.set_width(550.0);
-                ui.heading(if self.restore {
-                    "恢复配置"
-                } else {
-                    "备份配置"
-                });
-                ui.add_space(12.0);
+        let close = skin::Dialog::new(
+            "backup-restore",
+            if self.restore {
+                "恢复配置"
+            } else {
+                "备份配置"
+            },
+        )
+        .description(if self.restore {
+            "从 ZIP 恢复脚本配置"
+        } else {
+            "将脚本配置打包保存，方便恢复或迁移"
+        })
+        .show(ctx, !blocked, |ui| {
+            skin::dialog_body(ui, |ui| {
                 ui.add_enabled_ui(!blocked && !self.finished, |ui| {
-                    if self.restore {
-                        ui.label("选择 ZIP，覆盖当前脚本目录中的同名配置；本机游戏路径保留。");
-                        ui.label(
+                    skin::form_section(
+                        ui,
+                        if self.restore {
+                            "选择备份"
+                        } else {
+                            "备份范围"
+                        },
+                        |ui| {
+                            if self.restore {
+                                ui.label(
+                                    "选择 ZIP，覆盖当前脚本目录中的同名配置；本机游戏路径保留。",
+                                );
+                                ui.label(
                             "请先停止相关脚本。恢复前会备份现有目标，失败时可能已完成部分文件。",
                         );
-                        ui.horizontal(|ui| {
-                            if ui
-                                .add(
-                                    egui::TextEdit::singleline(&mut self.path).desired_width(440.0),
-                                )
-                                .changed()
-                            {
-                                self.confirmed = false;
+                                let (changed, browse) = skin::path_input(ui, &mut self.path);
+                                if changed {
+                                    self.confirmed = false;
+                                }
+                                if browse {
+                                    self.picker =
+                                        Some(FilePicker::start(ctx.clone(), FileKind::Zip));
+                                }
+                                ui.checkbox(&mut self.confirmed, "确认覆盖当前脚本配置");
+                            } else {
+                                ui.label("备份已配置脚本的配置文件，ZIP 保存到 config/backups。");
                             }
-                            if ui.button("浏览…").clicked() {
-                                self.picker = Some(FilePicker::start(ctx.clone(), FileKind::Zip));
-                            }
-                        });
-                        ui.checkbox(&mut self.confirmed, "确认覆盖当前脚本配置");
-                    } else {
-                        ui.label("按脚本资源声明打包配置，ZIP 保存到 config/backups。");
-                    }
+                        },
+                    );
                 });
-                egui::ScrollArea::vertical()
-                    .max_height(340.0)
-                    .show(ui, |ui| {
-                        if let Some(result) = &self.result {
-                            ui.label(result);
-                            if ui.button("复制结果").clicked() {
-                                ui.ctx().copy_text(result.clone());
-                            }
-                        }
-                        if let Some(error) = &self.error {
-                            ui.colored_label(egui::Color32::LIGHT_RED, error);
-                        }
-                        if self.finished && self.error.is_some() {
-                            ui.label("请先核对结果与日志；不会自动重试或回滚。");
-                        }
-                    });
+                if let Some(result) = &self.result {
+                    ui.label(result);
+                    if ui.button("复制结果").clicked() {
+                        ui.ctx().copy_text(result.clone());
+                    }
+                }
+                if let Some(error) = &self.error {
+                    ui.colored_label(egui::Color32::LIGHT_RED, error);
+                }
+                if self.finished && self.error.is_some() {
+                    ui.label("请先核对结果与日志；不会自动重试或回滚。");
+                }
                 if self.active() {
                     ui.spinner();
                     ui.label("正在处理，请等待完成后关闭窗口。");
                     ctx.request_repaint_after(Duration::from_millis(200));
                 }
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    if ui
+            });
+            skin::dialog_footer(ui, |ui| {
+                if !self.finished
+                    && ui
                         .add_enabled(
                             !blocked,
-                            egui::Button::new(if self.finished { "关闭" } else { "取消" }),
+                            skin::primary_button(if self.restore {
+                                "开始恢复"
+                            } else {
+                                "开始备份"
+                            }),
                         )
                         .clicked()
-                    {
-                        action = Some(BackupAction::Close);
+                {
+                    match self.start_request() {
+                        Ok(request) => action = Some(BackupAction::Request(request)),
+                        Err(error) => self.error = Some(error),
                     }
-                    if !self.finished
-                        && ui
-                            .add_enabled(
-                                !blocked,
-                                egui::Button::new(if self.restore {
-                                    "开始恢复"
-                                } else {
-                                    "开始备份"
-                                }),
-                            )
-                            .clicked()
-                    {
-                        match self.start_request() {
-                            Ok(request) => action = Some(BackupAction::Request(request)),
-                            Err(error) => self.error = Some(error),
-                        }
-                    }
-                });
+                }
+                if ui
+                    .add_enabled(
+                        !blocked,
+                        skin::secondary_button(if self.finished { "关闭" } else { "取消" }),
+                    )
+                    .clicked()
+                {
+                    action = Some(BackupAction::Close);
+                }
             });
-        if !blocked && modal.should_close() {
+        });
+        if close {
             action = Some(BackupAction::Close);
         }
         action

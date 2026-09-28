@@ -299,23 +299,19 @@ impl WallpaperDialog {
         }
         let blocked = busy || self.picker.is_some();
         let mut action = None;
-        let modal = egui::Modal::new(egui::Id::new("wallpaper-dialog"))
-            .frame(
-                egui::Frame::new()
-                    .fill(crate::skin::PANEL)
-                    .corner_radius(16)
-                    .inner_margin(20),
-            )
-            .show(ctx, |ui| {
-                ui.set_width(520.0);
-                ui.heading(format!("{} · 壁纸", self.state.display_name));
-                ui.label(format!("当前来源：{}", self.state.source.display()));
-                ui.label("图片：PNG、JPEG、WebP、BMP；视频：MP4、WebM、MKV、MOV。");
-                ui.label("视频静音循环播放；能否解码取决于 Windows 已安装的编解码器。");
-                ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(&mut self.path).desired_width(410.0));
-                        if ui.button("浏览…").clicked() {
+        let close = crate::skin::Dialog::new(
+            "wallpaper-dialog",
+            &format!("{} · 壁纸", self.state.display_name),
+        )
+        .description("为当前脚本设置图片或动态背景")
+        .show(ctx, !blocked, |ui| {
+            crate::skin::dialog_body(ui, |ui| {
+                crate::skin::form_section(ui, "背景文件", |ui| {
+                    ui.label(format!("当前来源：{}", self.state.source.display()));
+                    ui.label("图片：PNG、JPEG、WebP、BMP；视频：MP4、WebM、MKV、MOV。");
+                    ui.label("视频静音循环播放；能否解码取决于 Windows 已安装的编解码器。");
+                    ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
+                        if crate::skin::path_input(ui, &mut self.path).1 {
                             self.picker = Some(crate::file_picker::FilePicker::start(
                                 ctx.clone(),
                                 crate::file_picker::FileKind::Wallpaper,
@@ -323,59 +319,59 @@ impl WallpaperDialog {
                         }
                     });
                 });
-                if let Some(error) = &self.error {
-                    ui.colored_label(egui::Color32::LIGHT_RED, error);
-                }
-                ui.horizontal(|ui| {
+            });
+            crate::skin::dialog_status(ui, self.error.as_deref(), None);
+            crate::skin::dialog_footer(ui, |ui| {
+                if self.needs_reload {
                     if ui
-                        .add_enabled(!blocked, egui::Button::new("取消"))
+                        .add_enabled(!blocked, crate::skin::secondary_button("重新读取"))
                         .clicked()
                     {
-                        action = Some(WallpaperAction::Close);
+                        action = Some(WallpaperAction::Request(Request {
+                            method: "wallpaper.view".into(),
+                            params: json!({"script_name":self.state.script_name}),
+                        }));
                     }
-                    if self.needs_reload {
-                        if ui
-                            .add_enabled(!blocked, egui::Button::new("重新读取"))
-                            .clicked()
+                } else {
+                    if ui
+                        .add_enabled(!blocked, crate::skin::primary_button("应用壁纸"))
+                        .clicked()
+                    {
+                        let extension = Path::new(self.path.trim())
+                            .extension()
+                            .and_then(|value| value.to_str())
+                            .unwrap_or_default()
+                            .to_ascii_lowercase();
+                        if ![
+                            "png", "jpg", "jpeg", "webp", "bmp", "mp4", "webm", "mkv", "mov",
+                        ]
+                        .contains(&extension.as_str())
                         {
-                            action = Some(WallpaperAction::Request(Request {
-                                method: "wallpaper.view".into(),
-                                params: json!({"script_name":self.state.script_name}),
-                            }));
-                        }
-                    } else {
-                        if ui
-                            .add_enabled(!blocked, egui::Button::new("恢复默认"))
-                            .clicked()
-                        {
-                            action = Some(self.save(None));
-                        }
-                        if ui
-                            .add_enabled(!blocked, egui::Button::new("应用壁纸"))
-                            .clicked()
-                        {
-                            let extension = Path::new(self.path.trim())
-                                .extension()
-                                .and_then(|value| value.to_str())
-                                .unwrap_or_default()
-                                .to_ascii_lowercase();
-                            if ![
-                                "png", "jpg", "jpeg", "webp", "bmp", "mp4", "webm", "mkv", "mov",
-                            ]
-                            .contains(&extension.as_str())
-                            {
-                                self.error = Some("请选择支持的图片或视频文件".into());
-                            } else {
-                                action = Some(self.save(Some(self.path.trim())));
-                            }
+                            self.error = Some("请选择支持的图片或视频文件".into());
+                        } else {
+                            action = Some(self.save(Some(self.path.trim())));
                         }
                     }
-                    if blocked {
-                        ui.spinner();
-                    }
-                });
+                }
+                if ui
+                    .add_enabled(!blocked, crate::skin::secondary_button("取消"))
+                    .clicked()
+                {
+                    action = Some(WallpaperAction::Close);
+                }
+                if !self.needs_reload
+                    && ui
+                        .add_enabled(!blocked, crate::skin::secondary_button("恢复默认"))
+                        .clicked()
+                {
+                    action = Some(self.save(None));
+                }
+                if blocked {
+                    ui.spinner();
+                }
             });
-        if !blocked && modal.should_close() {
+        });
+        if close {
             action = Some(WallpaperAction::Close);
         }
         action

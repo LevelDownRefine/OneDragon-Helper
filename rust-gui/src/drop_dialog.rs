@@ -110,20 +110,17 @@ impl DropDialog {
     pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> bool {
         let blocked = self.active() || busy;
         let mut close = false;
-        let response = egui::Modal::new(egui::Id::new("file-drop-result"))
-            .frame(
-                egui::Frame::new()
-                    .fill(skin::PANEL)
-                    .inner_margin(20)
-                    .corner_radius(16),
-            )
-            .show(ctx, |ui| {
-                ui.set_width(500.0);
-                ui.heading(if self.active() {
-                    "正在添加脚本"
-                } else {
-                    "文件导入结果"
-                });
+        let dismissed = skin::Dialog::new(
+            "file-drop-result",
+            if self.active() {
+                "正在添加脚本"
+            } else {
+                "文件导入结果"
+            },
+        )
+        .description("查看脚本文件的导入进度和结果")
+        .show(ctx, !blocked, |ui| {
+            skin::dialog_body(ui, |ui| {
                 ui.label(format!(
                     "已添加 {}，重复 {}，失败 {}，未尝试 {}",
                     self.added, self.duplicate, self.failed, self.stopped
@@ -134,26 +131,27 @@ impl DropDialog {
                         ui.label(path);
                     });
                 }
-                egui::ScrollArea::vertical()
-                    .max_height(280.0)
-                    .show(ui, |ui| {
-                        for (path, message) in &self.results {
-                            ui.label(path);
-                            ui.label(message);
-                            ui.separator();
-                        }
-                    });
+                skin::form_section(ui, "导入结果", |ui| {
+                    for (path, message) in &self.results {
+                        ui.label(path);
+                        ui.label(message);
+                        ui.separator();
+                    }
+                });
                 if self.active() {
                     ui.label("只添加启动信息。请等待完成后关闭窗口。");
                 }
+            });
+            skin::dialog_footer(ui, |ui| {
                 if ui
-                    .add_enabled(!blocked, egui::Button::new("完成"))
+                    .add_enabled(!blocked, skin::primary_button("完成"))
                     .clicked()
                 {
                     close = true;
                 }
             });
-        close || (!blocked && response.should_close())
+        });
+        close || dismissed
     }
 }
 
