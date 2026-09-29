@@ -28,10 +28,13 @@ impl View {
         actions: &mut Vec<Action>,
     ) {
         let height = ui.max_rect().height();
-        let mut drop_index = None;
         if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
             self.dragging = None;
+            self.drag_origin = None;
         }
+        // 循环里记录每行按钮矩形、取出滚动偏移：落点要在滚动后仍准确。
+        let mut buttons: Vec<Rect> = Vec::with_capacity(data.scripts.len());
+        let mut scroll_offset = 0.0_f32;
         ui.painter().rect_filled(
             rect(0.0, 0.0, 80.0, height),
             egui::CornerRadius {
@@ -50,14 +53,15 @@ impl View {
             egui::UiBuilder::new().max_rect(rect(0.0, 20.0, 80.0, height - 160.0)),
             |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
-                egui::ScrollArea::vertical()
+                let output = egui::ScrollArea::vertical()
                     .id_salt("script-list")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        for (index, script) in data.scripts.iter().enumerate() {
+                        for script in data.scripts.iter() {
                             let (row, _) = ui.allocate_exact_size(vec2(80.0, 64.0), Sense::hover());
                             let button =
                                 Rect::from_min_size(row.min + vec2(12.0, 0.0), vec2(56.0, 56.0));
+                            buttons.push(button);
                             let active = data.selected == Some(script.script_name.as_str());
                             let response = ui.interact(
                                 button,
@@ -108,21 +112,6 @@ impl View {
                                 self.dragging = Some(script.script_name.clone());
                                 self.menu = None;
                             }
-                            if self.dragging.is_some()
-                                && ui.input(|input| {
-                                    input.pointer.interact_pos().is_some_and(|pos| {
-                                        button.contains(pos) && ui.clip_rect().contains(pos)
-                                    })
-                                })
-                            {
-                                drop_index = Some(index);
-                                ui.painter().rect_stroke(
-                                    button,
-                                    16,
-                                    egui::Stroke::new(2.0, ACCENT),
-                                    egui::StrokeKind::Inside,
-                                );
-                            }
                             if response.clicked() && !data.busy {
                                 self.menu = None;
                                 if self.control_mode {
@@ -133,11 +122,60 @@ impl View {
                                     actions.push(Action::Select(script.script_name.clone()));
                                 }
                             }
-                            response.on_hover_text(&script.display_name);
+                            response.context_menu(|ui| {
+                                ui.label(&script.display_name);
+                                if ui
+                                    .add_enabled(
+                                        !data.busy && data.scripts.len() > 1,
+                                        egui::Button::new(
+                                            egui::RichText::new("删除脚本…").color(DANGER),
+                                        ),
+                                    )
+                                    .on_hover_text("从助手列表移除，保留脚本文件")
+                                    .clicked()
+                                {
+                                    actions.push(Action::RemoveScript(script.script_name.clone()));
+                                    ui.close();
+                                }
+                            });
+                            response.on_hover_text(format!(
+                                "{}\n右键管理 · 拖动排序或删除",
+                                script.display_name
+                            ));
                         }
                     });
+                scroll_offset = output.state.offset.y;
             },
         );
+        // 拖动刚开始时记下按下位置与当时的滚动偏移（内容坐标位移用）。
+        if self.dragging.is_some() && self.drag_origin.is_none() {
+            self.drag_origin = ui
+                .input(|input| input.pointer.press_origin())
+                .map(|pos| (pos, scroll_offset));
+        }
+        // 落点按内容坐标位移估算（行距 64），对齐 Qt 版；加上滚动偏移后，滚动中也准确。
+        let drop_index = self.dragging.as_deref().and_then(|name| {
+            let (origin, origin_offset) = self.drag_origin?;
+            let pos = ui.input(|input| input.pointer.interact_pos())?;
+            let source = data
+                .scripts
+                .iter()
+                .position(|script| script.script_name == name)?;
+            let last = data.scripts.len().checked_sub(1)?;
+            let dy = (pos.y - origin.y) + (scroll_offset - origin_offset);
+            let target = source as f32 + (dy / 64.0).round();
+            Some(target.clamp(0.0, last as f32) as usize)
+        });
+        if let Some(index) = drop_index
+            && let Some(button) = buttons.get(index)
+        {
+            ui.painter().rect_stroke(
+                *button,
+                16,
+                egui::Stroke::new(2.0, ACCENT),
+                egui::StrokeKind::Inside,
+            );
+        }
         let base = height - 120.0;
         ui.painter().line_segment(
             [pos2(12.0, base), pos2(68.0, base)],
@@ -155,15 +193,70 @@ impl View {
             },
         );
         if self.dragging.is_some() {
-            centered(ui, grid, "删除", 14.0, egui::Color32::LIGHT_RED);
+            // 与底部 grid 按钮同尺寸同位：拖动时删除框占据该按钮的位置。
+            let target = grid;
+            let hovered = ui.input(|input| {
+                input
+                    .pointer
+                    .interact_pos()
+                    .is_some_and(|pos| target.contains(pos))
+            });
+            ui.painter().rect(
+                target,
+                14,
+                if hovered {
+                    DANGER_FILL
+                } else {
+                    egui::Color32::from_rgb(55, 29, 40)
+                },
+                egui::Stroke::new(if hovered { 2.0 } else { 1.0 }, DANGER),
+                egui::StrokeKind::Inside,
+            );
+            centered(ui, target, "删", 18.0, DANGER);
+            // 让被拖动的图标跟随指针，拖动才有可见反馈。
+            if let Some(name) = self.dragging.clone()
+                && let Some(position) = ui.input(|input| input.pointer.interact_pos())
+                && let Some(script) = data
+                    .scripts
+                    .iter()
+                    .find(|script| script.script_name == name)
+            {
+                let size = if ui.ctx().pixels_per_point() > 1.6 {
+                    256
+                } else {
+                    64
+                };
+                let texture = self
+                    .icons
+                    .get(script.icon_path.as_deref(), size)
+                    .or_else(|| self.icons.get(self.default_icon_path.as_deref(), size));
+                let ghost = Rect::from_center_size(position, vec2(56.0, 56.0));
+                ui.painter().rect_filled(
+                    ghost,
+                    16,
+                    egui::Color32::from_rgba_unmultiplied(16, 25, 41, 220),
+                );
+                ui.painter().rect_stroke(
+                    ghost,
+                    16,
+                    egui::Stroke::new(1.0, ACCENT),
+                    egui::StrokeKind::Inside,
+                );
+                if let Some(texture) = texture {
+                    egui::Image::new(&texture).paint_at(ui, ghost.shrink(8.0));
+                } else {
+                    self.assets.icon(ui, "script", ghost.shrink(8.0));
+                }
+            }
             if ui.input(|input| input.pointer.any_released()) {
                 let name = self.dragging.take().expect("active drag");
+                self.drag_origin = None;
                 if !data.busy {
                     if ui.input(|input| {
                         input
                             .pointer
                             .interact_pos()
-                            .is_some_and(|pos| grid.contains(pos))
+                            .is_some_and(|pos| target.contains(pos))
                     }) {
                         actions.push(Action::RemoveScript(name));
                     } else if let Some(index) = drop_index {

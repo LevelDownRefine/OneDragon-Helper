@@ -17,6 +17,8 @@ pub const ACCENT: Color32 = Color32::from_rgb(140, 185, 255);
 pub const ACCENT_SOFT: Color32 = Color32::from_rgb(36, 60, 94);
 pub const PRIMARY: Color32 = Color32::from_rgb(43, 77, 115);
 pub const BATCH: Color32 = Color32::from_rgb(255, 222, 33);
+pub const DANGER: Color32 = Color32::from_rgb(255, 150, 150);
+pub const DANGER_FILL: Color32 = Color32::from_rgb(99, 35, 46);
 
 pub fn rect(x: f32, y: f32, width: f32, height: f32) -> Rect {
     Rect::from_min_size(pos2(x, y), vec2(width, height))

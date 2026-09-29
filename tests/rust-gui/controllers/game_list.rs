@@ -42,7 +42,7 @@ fn manual_selection_is_local_and_follows_identity() {
 
 #[test]
 fn drag_reorders_or_requests_delete_confirmation() {
-    for delete in [false, true] {
+    for delete in [None, Some(pos2(40.0, 632.0)), Some(pos2(60.0, 632.0))] {
         let mut scene = Scene::new();
         let mut second = scene.scripts[0].clone();
         second.script_name = "second".into();
@@ -54,16 +54,14 @@ fn drag_reorders_or_requests_delete_confirmation() {
             .unwrap()
             .rect
             .center();
-        let end = if delete {
-            pos2(40.0, 632.0)
-        } else {
+        let end = delete.unwrap_or_else(|| {
             scene
                 .ctx
                 .read_response(Id::new(("script", "second")))
                 .unwrap()
                 .rect
                 .center()
-        };
+        });
         scene.frame(vec![
             egui::Event::PointerMoved(start),
             egui::Event::PointerButton {
@@ -80,7 +78,7 @@ fn drag_reorders_or_requests_delete_confirmation() {
             pressed: false,
             modifiers: Default::default(),
         }]);
-        if delete {
+        if delete.is_some() {
             assert!(matches!(actions.as_slice(),[Action::RemoveScript(name)] if name == "test"));
         } else {
             let request = only_request(actions);
@@ -88,5 +86,74 @@ fn drag_reorders_or_requests_delete_confirmation() {
             assert_eq!(request.params, json!({"script_names":["second","test"]}));
         }
         assert!(scene.ui.dragging.is_none());
+    }
+}
+
+#[test]
+fn context_menu_deletes_its_script_only_after_confirmation_intent() {
+    for (busy, count) in [(false, 2), (true, 2), (false, 1)] {
+        let mut scene = Scene::new();
+        if count == 2 {
+            let mut second = scene.scripts[0].clone();
+            second.script_name = "second".into();
+            second.display_name = "Second".into();
+            scene.scripts.push(second);
+        }
+        scene.busy = busy;
+        scene.frame(vec![]);
+        let name = if count == 2 { "second" } else { "test" };
+        let position = scene
+            .ctx
+            .read_response(Id::new(("script", name)))
+            .unwrap()
+            .rect
+            .center();
+        for pressed in [true, false] {
+            assert!(
+                scene
+                    .frame(vec![
+                        egui::Event::PointerMoved(position),
+                        egui::Event::PointerButton {
+                            pos: position,
+                            button: egui::PointerButton::Secondary,
+                            pressed,
+                            modifiers: Default::default(),
+                        },
+                    ])
+                    .is_empty()
+            );
+        }
+        scene.frame(vec![]);
+        let position = scene
+            .output
+            .shapes
+            .iter()
+            .find_map(|shape| {
+                if let egui::Shape::Text(text) = &shape.shape
+                    && text.galley.text() == "删除脚本…"
+                {
+                    Some(text.pos + text.galley.size() / 2.0)
+                } else {
+                    None
+                }
+            })
+            .expect("visible delete command");
+        let mut actions = Vec::new();
+        for pressed in [true, false] {
+            actions.extend(scene.frame(vec![
+                egui::Event::PointerMoved(position),
+                egui::Event::PointerButton {
+                    pos: position,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: Default::default(),
+                },
+            ]));
+        }
+        if !busy && count == 2 {
+            assert!(matches!(actions.as_slice(), [Action::RemoveScript(name)] if name == "second"));
+        } else {
+            assert!(actions.is_empty(), "busy/last script must not delete");
+        }
     }
 }

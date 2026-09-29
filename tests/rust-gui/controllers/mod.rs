@@ -7,6 +7,7 @@ pub(super) struct Scene {
     pub(super) scripts: Vec<Script>,
     pub(super) time: f64,
     pub(super) busy: bool,
+    pub(super) output: egui::FullOutput,
 }
 
 impl Scene {
@@ -36,6 +37,7 @@ impl Scene {
             scripts,
             time: 0.0,
             busy: false,
+            output: Default::default(),
         };
         scene.frame(vec![]);
         scene.frame(vec![]);
@@ -67,6 +69,7 @@ impl Scene {
         });
         // The input-only harness does not upload textures to a GPU.
         output.textures_delta.clear();
+        self.output = output;
         actions
     }
 
