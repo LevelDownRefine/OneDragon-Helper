@@ -270,8 +270,14 @@ impl View {
                                 method: "script.reorder".into(),
                                 params: json!({"script_names":names}),
                             }));
+                        } else {
+                            self.toast(format!("[诊断] 未重排：source==index({index})"));
                         }
+                    } else {
+                        self.toast("[诊断] 未重排：drop_index 为空（未落在脚本上）");
                     }
+                } else {
+                    self.toast("[诊断] 未重排：busy=true");
                 }
             }
         } else if self.icon_button(ui, "grid", grid, "选择手动运行的脚本", true) && !data.busy

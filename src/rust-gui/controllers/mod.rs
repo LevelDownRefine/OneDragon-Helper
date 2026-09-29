@@ -94,6 +94,9 @@ impl View {
     }
 
     pub fn close_menu(&mut self) {
+        if self.dragging.is_some() {
+            self.toast("[诊断] 拖动被 close_menu 取消");
+        }
         self.menu = None;
         self.control_mode = false;
         self.dragging = None;
