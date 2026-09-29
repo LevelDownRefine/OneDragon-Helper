@@ -4,7 +4,7 @@
 - 读后写回，解析结果与原 config 数据等价（reloaded == original）；
 - 注释（含行内注释）保留；
 - 04:00 / 4:00 这类时间保持字符串，绝不变 240.0 浮点污染；
-- 模拟周常运行期写入（weekly.prepare_weekly_start_days 落到 currencywars_enable /
+- 模拟周常运行期写入（set_config.prepare_weekly_start_days 落到 currencywars_enable /
   echo_of_war_start_day_of_week）
   后，仍保真、注释不丢。
 

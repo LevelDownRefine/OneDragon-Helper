@@ -34,9 +34,11 @@ from src.config.set_config import (
     get_registered_script_names,
     set_config,
     set_daily_enabled,
+    set_weekly_start_day,
+    set_weekly_task,
+    weekly_names,
 )
 from src.config.task_switch import task_switch_of
-from src.config.weekly import set_weekly_start_day, set_weekly_task, weekly_names
 from src.service import launch_service, run_service, wallpaper_service
 from src.service.background_job import BackgroundJob, InvalidBackgroundJob
 from src.service.schedule import (

@@ -121,13 +121,13 @@ class TaskEditingTests(unittest.TestCase):
         no_switch = deepcopy(declaration)
         no_switch.update(display_name="无开关日常", config="no-switch.json")
         del no_switch["enable_key"]
-        self.enterContext(patch.dict(weekly_mod._BUILT, {"": []}, clear=True))
         with patch.object(
-            config_mod,
+            daily_mod,
             "get_daily_configs",
             return_value=[declaration, dynamic, no_switch],
         ):
             config = config_mod.ScriptConfig()
+        self.config = config
         self.enterContext(
             patch.dict(config_mod._CONFIGS, {"脚本": lambda: config}, clear=True)
         )
@@ -236,7 +236,7 @@ class TaskEditingTests(unittest.TestCase):
             "脚本", {"display_name": "周常", "config": "weekly.json"}, "脚本"
         )
         with (
-            patch.dict(weekly_mod._BUILT, {"脚本": [weekly], "自定义": []}, clear=True),
+            patch.object(self.config, "_weeklies", [weekly]),
             patch.object(weekly_mod, "load_script_config") as read,
             patch.object(weekly_mod, "save_script_config") as write,
         ):
@@ -317,7 +317,7 @@ class WeeklyStartEditingTests(unittest.TestCase):
 
     def test_unknown_weekly_still_saves_intent_and_skips_game_side(self):
         with (
-            patch.dict(weekly_mod._BUILT, {"脚本": []}, clear=True),
+            patch.dict(config_mod._CONFIGS, {}, clear=True),
             patch.object(weekly_mod, "save_script_config") as game,
         ):
             self.assertIsNone(self.start_weekly("脚本", "未知周常", 4))

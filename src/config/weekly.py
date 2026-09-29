@@ -2,7 +2,7 @@
 
 与日常同构——**一条周常一个对象**（一个脚本可有多条，如崩铁的货币战争 / 历战余响 /
 模拟宇宙），声明里用 ``class`` 标机制类（``WEEKLY_CLASSES`` 查表）、``config`` 标读写的
-主文件；对象由 ``ScriptConfig`` 在构造期经 :func:`build_weeklies` 装配并持有，故初始化
+主文件；对象由 ``ScriptConfig`` 在构造期经 ``build_weeklies`` 装配并持有，故初始化
 时机与日常一致。
 
 周几起（``weekly.yml`` 的 ``weekly_start`` 段）是**条目级**的：每条周常各有一个起始日；
@@ -487,35 +487,27 @@ WEEKLY_CLASSES: dict[str, type[Weekly]] = {
 """声明 ``class`` 字段可引用的机制类注册表（键 = 类名）。"""
 
 
-# ============================================================
-# 装配与适配器接口
-# ============================================================
-
-_BUILT: dict[str, list[Weekly]] = {}
-"""已装配的周常对象（按脚本标识）；由 ``ScriptConfig`` 构造期装配，模块级入口取用。"""
-
-
 def build_weeklies(script_name: str, script_display_name: str) -> list[Weekly]:
-    """装配某脚本的全部周常（幂等）：按声明逐条建对象。
-
-    由 ``ScriptConfig.__init__`` 在构造期调用，与日常装配同一时机。
+    """按声明构造一组新周常，由调用方持有；不缓存或读写原生配置。
 
     Args:
         script_name: 脚本标识名。
         script_display_name: 脚本展示名（日志与报错用）。
 
     Returns:
-        该脚本的周常对象列表（顺序与声明一致）；无周常声明的脚本返回空列表。
+        与声明顺序一致的周常对象列表；无周常声明时为空列表。
 
     Raises:
-        AssertionError: 声明里的机制类未注册，或同脚本内周常物理名重复。
+        AssertionError: 机制类未知或物理名重复。
     """
-    if script_name in _BUILT:
-        return _BUILT[script_name]
     declarations = load_weekly_map()
     weeklies: list[Weekly] = []
     seen: set[str | int] = set()
-    for declaration in declarations.get(script_name, []):
+    if script_name not in declarations:
+        return weeklies
+    assert script_name in declarations
+    for declaration in declarations[script_name]:
+        assert "class" in declaration
         class_name = declaration["class"]
         assert class_name in WEEKLY_CLASSES, (
             f"[weekly][{script_display_name}] 未知的周常机制类: {class_name!r}"
@@ -528,131 +520,4 @@ def build_weeklies(script_name: str, script_display_name: str) -> list[Weekly]:
         )
         seen.add(weekly.physical_name)
         weeklies.append(weekly)
-    _BUILT[script_name] = weeklies
     return weeklies
-
-
-def weeklies_of(script_name: str) -> list[Weekly]:
-    """取某脚本的周常对象（未装配则就地装配，展示名回落脚本标识）。
-
-    Args:
-        script_name: 脚本标识名。
-
-    Returns:
-        该脚本的周常对象列表；无周常声明时为空列表。
-    """
-    if script_name not in _BUILT:
-        build_weeklies(script_name, script_name)
-    return _BUILT[script_name]
-
-
-def weekly_names(script_name: str) -> list[str]:
-    """取某脚本的周常展示名列表（顺序与声明一致），供调用方遍历。
-
-    Args:
-        script_name: 脚本标识名。
-
-    Returns:
-        周常展示名列表。
-    """
-    return [weekly.display_name for weekly in weeklies_of(script_name)]
-
-
-def _weekly_named(script_name: str, weekly_name: str) -> Weekly | None:
-    """按展示名取该脚本的一条周常；未适配或无此周常返回 None。
-
-    Args:
-        script_name: 脚本标识名。
-        weekly_name: 周常展示名。
-
-    Returns:
-        对应的周常对象；不存在时返回 None。
-    """
-    for weekly in weeklies_of(script_name):
-        if weekly.display_name == weekly_name:
-            return weekly
-    return None
-
-
-def supports_weekly(script_name: str) -> bool:
-    """查询脚本是否支持周常（供 GUI 控制周常行可选性）。
-
-    只看声明：该脚本在 ``weekly_task_list.yml`` 里有无周常条目。
-
-    Args:
-        script_name: 脚本标识名。
-
-    Returns:
-        该脚本是否有周常声明。
-    """
-    return bool(load_weekly_map().get(script_name))
-
-
-def prepare_weekly_start_days(script_name: str, start_days: dict[str, int]) -> None:
-    """运行期入口：按各周常的起始日写该脚本的周本开关。
-
-    未适配周常的脚本优雅跳过；``start_days`` 未列出的周常不动。
-
-    Args:
-        script_name: 脚本标识名。
-        start_days: {周常展示名: 起始日（1~7）}。
-    """
-    for weekly in weeklies_of(script_name):
-        if weekly.display_name in start_days:
-            weekly.prepare_start_day(start_days[weekly.display_name])
-
-
-def set_weekly_start_day(script_name: str, weekly_name: str, start_day: int) -> None:
-    """编辑期入口：把某条周常的起始日写进它的游戏侧字面起始日字段。
-
-    与 ``prepare_start_day`` 的分工：本方法只在编辑期落盘「字面起始日」（崩铁历战余响的
-    ``echo_of_war_start_day_of_week`` / 粥的 MedicineExpireDays），值由该日直接算出、
-    不依赖当天星期；按「今天是否已到起始日」折算的二值开关仍只在运行期由
-    ``prepare_start_day`` 写。
-
-    未适配周常、无此周常、或该周常没有字面起始日字段（未覆写 ``set_start_day``）时
-    优雅跳过。
-
-    Args:
-        script_name: 脚本标识名。
-        weekly_name: 周常展示名（如「历战余响」）。
-        start_day: 周几以后启用（1~7，1=周一）。
-    """
-    weekly = _weekly_named(script_name, weekly_name)
-    if weekly is None or type(weekly).set_start_day is Weekly.set_start_day:
-        return
-    weekly.set_start_day(start_day)
-
-
-def set_weekly_task(script_name: str, weekly_name: str, task_name: str) -> None:
-    """编辑期入口：写某条周常当前选中的副本名。
-
-    未适配周常或该周常无副本选型（未覆写 ``set_task``）时优雅跳过。
-
-    Args:
-        script_name: 脚本标识名。
-        weekly_name: 周常展示名（如「历战余响」）。
-        task_name: 选中的副本名。
-    """
-    weekly = _weekly_named(script_name, weekly_name)
-    if weekly is None or type(weekly).set_task is Weekly.set_task:
-        return
-    weekly.set_task(task_name)
-
-
-def get_weekly_task(script_name: str, weekly_name: str) -> str | None:
-    """读某条周常当前选中的副本名（反读子脚本 config）。
-
-    未适配周常或无此周常时返回 None。
-
-    Args:
-        script_name: 脚本标识名。
-        weekly_name: 周常展示名（如「历战余响」）。
-
-    Returns:
-        当前选中的副本名；无真相/未设置返回 None。
-    """
-    weekly = _weekly_named(script_name, weekly_name)
-    if weekly is None:
-        return None
-    return weekly.read_task()

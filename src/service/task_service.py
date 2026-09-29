@@ -5,9 +5,9 @@ import sys
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
     get_daily_readback,
+    get_weekly_task,
     is_adapted,
 )
-from src.config.weekly import get_weekly_task
 from src.utils.utils_config import get_script, load_config
 from src.utils.utils_sub_config import get_script_name, resolve_script_path
 from src.utils.utils_weekly import get_weekly_start_map

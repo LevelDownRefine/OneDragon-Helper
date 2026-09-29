@@ -60,7 +60,7 @@ def resolve_weekly_starts(weekly_start_map: dict, script_name: str) -> dict[str,
     """取脚本各周常的起始日（{周常展示名: 0 | 1~7}），未设置返回空 dict。
 
     周常开关（enabled）是 GUI 内存态，不参与链生成；GUI 与 CLI 统一按
-    「今天周几 >= 起始日」由 ``weekly.prepare_weekly_start_days`` 判断启用/停用写入脚本配置
+    「今天周几 >= 起始日」由 ``set_config.prepare_weekly_start_days`` 判断启用/停用写入脚本配置
     （与日常副本选择落盘不受日常开关影响的模型一致）。
 
     起始日来源为 weekly.yml 的 weekly_start 段（运行时由 src.utils.utils_weekly 持久化），

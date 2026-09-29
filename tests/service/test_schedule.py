@@ -92,7 +92,7 @@ class TestBuildPreRunWriteConfig(unittest.TestCase):
     """build_pre_run_pipeline 的写子脚本 config step：把 weekly_start 写回各子脚本 config。
 
     原内联于 generate_chain_config 的周常写入已并入单一工厂，且落点归
-    ``src.config.weekly``；即时/定时两条路径统一经 ScheduledRun，故一次应用即覆盖。
+    ``src.config.set_config``；即时/定时两条路径统一经 ScheduledRun，故一次应用即覆盖。
     """
 
     def test_applies_weekly_start_per_enabled_script(self):

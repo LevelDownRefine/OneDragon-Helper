@@ -14,9 +14,9 @@ from ruamel.yaml.error import YAMLError
 
 from src.config.set_config import (
     get_daily_readback,
+    get_weekly_task,
     is_adapted,
 )
-from src.config.weekly import get_weekly_task
 from src.utils.utils_weekly import DISABLED_START_DAY
 
 logger = logging.getLogger(__name__)

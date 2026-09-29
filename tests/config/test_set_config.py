@@ -4,11 +4,13 @@ import json
 import os
 import tempfile
 import unittest
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from src.config import daily as daily_mod
 from src.config import set_config
+from src.config import weekly as weekly_mod
 from src.config.daily import Daily
 from src.config.set_config import ScriptConfig, WutheringWavesConfig
 from src.config.task_config import get_daily_configs
@@ -108,12 +110,55 @@ class TestConfigRelPaths(unittest.TestCase):
                 )
 
 
+class TestTaskBuilders(unittest.TestCase):
+    def test_builders_create_fresh_objects_without_native_config_io(self):
+        for module, builder, name in (
+            (daily_mod, daily_mod.build_dailies, "每日任务"),
+            (weekly_mod, weekly_mod.build_weeklies, "幻梦游园"),
+        ):
+            with (
+                self.subTest(builder=builder.__name__),
+                patch.object(module, "load_script_config") as read,
+                patch.object(module, "save_script_config") as save,
+            ):
+                first = builder("ok-ww", "鸣潮")
+                second = builder("ok-ww", "鸣潮")
+                self.assertEqual([task.display_name for task in first], [name])
+                self.assertIsNot(first, second)
+                self.assertIsNot(first[0], second[0])
+                self.assertEqual(first[0].script_name, "ok-ww")
+                self.assertEqual(first[0].script_display_name, "鸣潮")
+                read.assert_not_called()
+                save.assert_not_called()
+
+    def test_daily_builder_rejects_invalid_mechanisms_and_duplicate_names(self):
+        declaration = get_daily_configs("ok-ww")[0]
+        unknown = deepcopy(declaration)
+        unknown["class"] = "没有的类"
+        for declarations, message in (
+            ([unknown], "未知的日常机制类"),
+            ([declaration, deepcopy(declaration)], "日常物理名重复"),
+        ):
+            with (
+                self.subTest(error=message),
+                patch.object(daily_mod, "get_daily_configs", return_value=declarations),
+                self.assertRaisesRegex(AssertionError, message),
+            ):
+                daily_mod.build_dailies("ok-ww", "鸣潮")
+
+
 class TestSharedRegistry(unittest.TestCase):
-    def test_first_access_builds_dailies_and_template_once(self):
+    def test_first_access_builds_tasks_and_template_once(self):
         with (
             patch.dict(set_config._CONFIGS),
             patch.object(
-                set_config, "get_daily_configs", wraps=set_config.get_daily_configs
+                set_config, "build_dailies", wraps=set_config.build_dailies
+            ) as build_dailies,
+            patch.object(
+                set_config, "build_weeklies", wraps=set_config.build_weeklies
+            ) as build_weeklies,
+            patch.object(
+                daily_mod, "get_daily_configs", wraps=daily_mod.get_daily_configs
             ) as declarations,
             patch.object(
                 daily_mod, "load_template", wraps=daily_mod.load_template
@@ -128,6 +173,8 @@ class TestSharedRegistry(unittest.TestCase):
             self.assertIs(cls, set_config.ArknightsConfig)
             self.assertTrue(set_config.is_adapted("MAA"))
             declarations.assert_not_called()
+            build_dailies.assert_not_called()
+            build_weeklies.assert_not_called()
             template.assert_not_called()
 
             cfg = set_config._CONFIGS["MAA"]()
@@ -136,10 +183,15 @@ class TestSharedRegistry(unittest.TestCase):
             declarations.assert_called_once_with("MAA")
             self.assertEqual(template.call_count, 3)
             dailies = cfg._dailies
+            weeklies = cfg._weeklies
+            self.assertEqual([weekly.display_name for weekly in weeklies], ["理智药剂"])
             template.reset_mock()
 
             self.assertIs(set_config._CONFIGS["MAA"](), cfg)
             self.assertIs(set_config._CONFIGS["MAA"]()._dailies, dailies)
+            self.assertIs(set_config._CONFIGS["MAA"]()._weeklies, weeklies)
+            build_dailies.assert_called_once_with("MAA", "粥")
+            build_weeklies.assert_called_once_with("MAA", "粥")
             declarations.assert_called_once_with("MAA")
             template.assert_not_called()
         for operation in (weekly_load, weekly_save, daily_load, daily_save):
@@ -153,7 +205,7 @@ class TestSharedRegistry(unittest.TestCase):
         source = {"path": "options.json"}
         with (
             patch.object(
-                set_config,
+                daily_mod,
                 "get_daily_configs",
                 side_effect=AssertionError("共享实例不应重复解析声明"),
             ),
@@ -295,7 +347,7 @@ class TestScriptConfigBase(unittest.TestCase):
 
     def test_set_daily_task_without_daily_raises(self):
         """写路径必须给出日常展示名（单日常脚本也不例外）。"""
-        with patch("src.config.set_config.get_daily_configs", return_value=[]):
+        with patch("src.config.daily.get_daily_configs", return_value=[]):
             cfg = ScriptConfig()
         cfg.display_name = "测试"
         with (
@@ -310,7 +362,7 @@ class TestGetGameExePath(unittest.TestCase):
 
     def test_unadapted_base_returns_none(self):
         """基类未适配（无资源声明）→ None，不触发任何读取"""
-        with patch("src.config.set_config.get_daily_configs", return_value=[]):
+        with patch("src.config.daily.get_daily_configs", return_value=[]):
             cfg = ScriptConfig()
         with patch("src.config.set_config.load_game_config") as mock_load:
             got = cfg.get_game_exe_path()
