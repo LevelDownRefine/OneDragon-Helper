@@ -69,8 +69,9 @@ pub struct View {
     control_mode: bool,
     disabled: HashSet<String>,
     dragging: Option<String>,
-    /// 拖动开始时的指针位置：释放帧 press_origin 会被清空，故在起动时记下来算落点位移。
-    drag_origin: Option<egui::Pos2>,
+    /// 拖动开始时的（指针位置, 滚动偏移）：释放帧 press_origin 会被清空，故在起动时记下来；
+    /// 记滚动偏移是为了在内容坐标里算落点位移，滚动后仍准确。
+    drag_origin: Option<(egui::Pos2, f32)>,
 }
 
 impl View {

@@ -32,18 +32,9 @@ impl View {
             self.dragging = None;
             self.drag_origin = None;
         }
-        // 落点按竖直位移估算（行距 64），对齐 Qt 版：不必精确压在图标上。
-        let drop_index = self.dragging.as_deref().and_then(|name| {
-            let origin = self.drag_origin?;
-            let pos = ui.input(|input| input.pointer.interact_pos())?;
-            let source = data
-                .scripts
-                .iter()
-                .position(|script| script.script_name == name)?;
-            let last = data.scripts.len().checked_sub(1)?;
-            let target = source as f32 + ((pos.y - origin.y) / 64.0).round();
-            Some(target.clamp(0.0, last as f32) as usize)
-        });
+        // 循环里记录每行按钮矩形、取出滚动偏移：落点要在滚动后仍准确。
+        let mut buttons: Vec<Rect> = Vec::with_capacity(data.scripts.len());
+        let mut scroll_offset = 0.0_f32;
         ui.painter().rect_filled(
             rect(0.0, 0.0, 80.0, height),
             egui::CornerRadius {
@@ -62,14 +53,15 @@ impl View {
             egui::UiBuilder::new().max_rect(rect(0.0, 20.0, 80.0, height - 160.0)),
             |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
-                egui::ScrollArea::vertical()
+                let output = egui::ScrollArea::vertical()
                     .id_salt("script-list")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        for (index, script) in data.scripts.iter().enumerate() {
+                        for script in data.scripts.iter() {
                             let (row, _) = ui.allocate_exact_size(vec2(80.0, 64.0), Sense::hover());
                             let button =
                                 Rect::from_min_size(row.min + vec2(12.0, 0.0), vec2(56.0, 56.0));
+                            buttons.push(button);
                             let active = data.selected == Some(script.script_name.as_str());
                             let response = ui.interact(
                                 button,
@@ -118,16 +110,7 @@ impl View {
                             }
                             if response.drag_started() && !data.busy {
                                 self.dragging = Some(script.script_name.clone());
-                                self.drag_origin = ui.input(|input| input.pointer.press_origin());
                                 self.menu = None;
-                            }
-                            if drop_index == Some(index) {
-                                ui.painter().rect_stroke(
-                                    button,
-                                    16,
-                                    egui::Stroke::new(2.0, ACCENT),
-                                    egui::StrokeKind::Inside,
-                                );
                             }
                             if response.clicked() && !data.busy {
                                 self.menu = None;
@@ -161,8 +144,38 @@ impl View {
                             ));
                         }
                     });
+                scroll_offset = output.state.offset.y;
             },
         );
+        // 拖动刚开始时记下按下位置与当时的滚动偏移（内容坐标位移用）。
+        if self.dragging.is_some() && self.drag_origin.is_none() {
+            self.drag_origin = ui
+                .input(|input| input.pointer.press_origin())
+                .map(|pos| (pos, scroll_offset));
+        }
+        // 落点按内容坐标位移估算（行距 64），对齐 Qt 版；加上滚动偏移后，滚动中也准确。
+        let drop_index = self.dragging.as_deref().and_then(|name| {
+            let (origin, origin_offset) = self.drag_origin?;
+            let pos = ui.input(|input| input.pointer.interact_pos())?;
+            let source = data
+                .scripts
+                .iter()
+                .position(|script| script.script_name == name)?;
+            let last = data.scripts.len().checked_sub(1)?;
+            let dy = (pos.y - origin.y) + (scroll_offset - origin_offset);
+            let target = source as f32 + (dy / 64.0).round();
+            Some(target.clamp(0.0, last as f32) as usize)
+        });
+        if let Some(index) = drop_index
+            && let Some(button) = buttons.get(index)
+        {
+            ui.painter().rect_stroke(
+                *button,
+                16,
+                egui::Stroke::new(2.0, ACCENT),
+                egui::StrokeKind::Inside,
+            );
+        }
         let base = height - 120.0;
         ui.painter().line_segment(
             [pos2(12.0, base), pos2(68.0, base)],
