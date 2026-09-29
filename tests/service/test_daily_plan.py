@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -15,6 +16,7 @@ from src.service.daily_plan import (
     DailyTaskState,
     WindowsDailyTask,
     apply_daily_plan,
+    daily_plan_view,
     load_daily_plan,
     read_daily_task_state,
 )
@@ -52,6 +54,22 @@ class TestDailyPlanConfig(unittest.TestCase):
 
     def test_missing_plan_is_disabled_by_default(self):
         self.assertEqual(load_daily_plan({}), DailyPlanOptions())
+
+    def test_view_includes_saved_plan_and_actual_task_state(self):
+        state = DailyTaskState(True, False, "08:30", False)
+        task = Mock(read=Mock(return_value=state))
+        view = daily_plan_view(task=task)
+        self.assertEqual(view["plan"], asdict(DailyPlanOptions()))
+        self.assertEqual(view["state"], asdict(state))
+        self.assertIsNone(view["state_error"])
+
+    def test_view_read_failure_is_unknown_not_unregistered(self):
+        task = Mock(read=Mock(side_effect=OSError("denied")))
+        with self.assertLogs("src.service.daily_plan", level="WARNING"):
+            view = daily_plan_view(task=task)
+        self.assertEqual(view["plan"], asdict(DailyPlanOptions()))
+        self.assertIsNone(view["state"])
+        self.assertEqual(view["state_error"], "denied")
 
     def test_saved_daily_plan_is_loaded(self):
         self.assertEqual(

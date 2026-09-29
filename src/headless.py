@@ -24,7 +24,7 @@ METHODS = {
     "settings.view": ("settings_view", (), ()),
     "startup.view": ("settings_view", (), ()),
     "plan.view": ("daily_plan_view", (), ()),
-    "plan.save": ("save_daily_plan", ("plan",), ()),
+    "plan.save": ("apply_daily_plan", ("plan",), ()),
     "settings.startup_save": ("save_startup_settings", ("options",), ()),
     "settings.run_save": ("save_run_settings", ("options",), ()),
     "run.saved": ("saved_run", ("script_names",), ()),
@@ -101,13 +101,30 @@ def _parse_json(payload: str):
     )
 
 
+def _daily_task():
+    """计划任务只保存 CLI 入口与前端路径，每次触发读取最新配置。"""
+    from src.service.daily_plan import WindowsDailyTask
+    from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+
+    frontend = ""
+    if RUST_CONFIRM_ENV in os.environ:
+        frontend = os.environ[RUST_CONFIRM_ENV]
+    args = ["daily", "--shutdown-ui", frontend]
+    if not getattr(sys, "frozen", False):
+        args = ["-m", "src.headless", *args]
+    return WindowsDailyTask(entry=(sys.executable, args))
+
+
 def handle_request(service, request) -> dict:
     """串行分发，协议输入先校验；业务异常保留诊断并返回明确失败。"""
     from src.service.background_job import InvalidBackgroundJob
-    from src.service.run_service import InvalidRunRequest
+    from src.service.daily_plan import DailyPlanOptions
+    from src.service.run_service import InvalidRunRequest, parse_options
+    from src.service.schedule import is_valid_target_time
     from src.service.script_service import DuplicateScript, InvalidScript, ScriptEdit
     from src.service.task_service import InvalidTaskSelection
     from src.service.wallpaper_service import InvalidWallpaper
+    from src.utils.utils_shutdown import rust_shutdown_supported
 
     request_id = None
     mutating = False
@@ -139,7 +156,7 @@ def handle_request(service, request) -> dict:
             raise ProtocolError("invalid_params", "params 必须是 JSON 对象")
         if not set(required) <= set(params) or set(params) - set(required + optional):
             raise ProtocolError("invalid_params", "参数字段缺失或包含不支持的字段")
-        # 传输层只转换数据形状；取值校验和空操作语义归 service。
+        # 传输层校验外部参数并转换数据；业务读写统一经 service。
         mutating = method not in (
             "app.snapshot",
             "job.poll",
@@ -161,6 +178,38 @@ def handle_request(service, request) -> dict:
         with redirect_stdout(sys.stderr):
             if method == "script.edit_save":
                 result = {"script_name": service.update_script(ScriptEdit(**params))}
+            elif method == "plan.view":
+                result = service.daily_plan_view(task=_daily_task())
+                result["shutdown_supported"] = rust_shutdown_supported()
+            elif method == "plan.save":
+                assert "plan" in params
+                plan = params["plan"]
+                if not isinstance(plan, dict) or set(plan) != {
+                    "enabled",
+                    "target_time",
+                    "run_options",
+                }:
+                    raise ProtocolError("invalid_params", "每日计划字段不完整")
+                assert all(
+                    key in plan for key in ("enabled", "target_time", "run_options")
+                )
+                if type(plan["enabled"]) is not bool or not is_valid_target_time(
+                    plan["target_time"]
+                ):
+                    raise ProtocolError(
+                        "invalid_params", "计划需要布尔开关与有效的 HH:MM 时间"
+                    )
+                if plan["enabled"] and not rust_shutdown_supported():
+                    raise ProtocolError(
+                        "invalid_params", "启用每日计划需要有效的 Windows Rust 前端"
+                    )
+                options = parse_options(
+                    plan["run_options"], require_shutdown_ui=plan["enabled"]
+                )
+                result = service.apply_daily_plan(
+                    DailyPlanOptions(plan["enabled"], plan["target_time"], options),
+                    task=_daily_task(),
+                )
             else:
                 result = getattr(service, attribute)(**params)
         return {

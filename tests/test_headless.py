@@ -4,13 +4,17 @@ import json
 import os
 import queue
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
+from dataclasses import asdict
 from pathlib import Path
-from unittest.mock import Mock, call
+from unittest.mock import Mock, call, patch
 
-from src.headless import handle_request
+from src.headless import _daily_task, handle_request
+from src.service.daily_plan import DailyPlanOptions
+from src.service.schedule import RunOptions
 from src.service.script_service import ScriptEdit
 from src.update.runtime import FileLease, UpdateBusyError
 from src.utils.utils_yaml import load_yaml
@@ -90,11 +94,6 @@ class HeadlessProcessTests(unittest.TestCase):
             self.assertEqual(responses[0]["error"]["code"], "invalid_request")
 
     def test_daily_plan_cli_and_independent_entry_without_qt(self):
-        from dataclasses import asdict
-
-        from src.service.daily_plan import DailyPlanOptions
-        from src.service.schedule import RunOptions
-
         plan = DailyPlanOptions(
             True, "09:20", RunOptions(mute_enabled=True, close_running_enabled=False)
         )
@@ -102,7 +101,7 @@ class HeadlessProcessTests(unittest.TestCase):
         command[2] = command[2].replace(
             "with patch('src.utils.get_root_dir', return_value=root):",
             """
-with patch('src.utils.get_root_dir', return_value=root), patch('src.service.daily_cli.rust_shutdown_supported', return_value=True), patch('src.service.daily_cli._task') as task:
+with patch('src.utils.get_root_dir', return_value=root), patch('src.utils.utils_shutdown.rust_shutdown_supported', return_value=True), patch('src.service.daily_plan.WindowsDailyTask') as task:
     from src.service.daily_plan import DailyTaskState
     task.return_value.read.return_value = DailyTaskState()
 """,
@@ -124,6 +123,9 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
         responses = [json.loads(line) for line in result.stdout.splitlines()]
         self.assertEqual(responses[0]["result"], None)
         self.assertEqual(responses[1]["result"]["plan"], asdict(plan))
+        self.assertEqual(responses[1]["result"]["state"]["exists"], False)
+        self.assertIsNone(responses[1]["result"]["state_error"])
+        self.assertTrue(responses[1]["result"]["shutdown_supported"])
         command = self.command("daily", "--shutdown-ui", "fake-rust.exe")
         command[2] = command[2].replace(
             "with patch('src.utils.get_root_dir', return_value=root):",
@@ -941,6 +943,78 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.run_
 
 
 class ProtocolValidationTests(unittest.TestCase):
+    def test_daily_validation_before_registration_and_pause_preserves_options(self):
+        plan = DailyPlanOptions(
+            False, "04:10", RunOptions(shutdown_enabled=True, shutdown_delay=45)
+        )
+        service = Mock(spec=["apply_daily_plan"])
+        service.apply_daily_plan.return_value = None
+        with (
+            patch("src.headless._daily_task") as task,
+            patch(
+                "src.utils.utils_shutdown.rust_shutdown_supported", return_value=False
+            ),
+        ):
+            for values in (
+                None,
+                {},
+                {**asdict(plan), "enabled": 1},
+                {**asdict(plan), "target_time": "25:00"},
+                {**asdict(plan), "target_time": "bad"},
+                {**asdict(plan), "unknown": True},
+                {**asdict(plan), "run_options": []},
+                {
+                    **asdict(plan),
+                    "run_options": {**asdict(plan.run_options), "shutdown_delay": -1},
+                },
+            ):
+                with self.subTest(values=values):
+                    response = handle_request(
+                        service, request("plan.save", {"plan": values})
+                    )
+                    self.assertEqual(response["error"]["code"], "invalid_params")
+            service.apply_daily_plan.assert_not_called()
+            task.assert_not_called()
+            response = handle_request(
+                service, request("plan.save", {"plan": asdict(plan)})
+            )
+        service.apply_daily_plan.assert_called_once_with(plan, task=task.return_value)
+        self.assertIsNone(response["result"])
+
+    def test_daily_enable_without_frontend_does_not_register(self):
+        service = Mock(spec=["apply_daily_plan"])
+        with (
+            patch("src.headless._daily_task") as task,
+            patch(
+                "src.utils.utils_shutdown.rust_shutdown_supported", return_value=False
+            ),
+        ):
+            response = handle_request(
+                service, request("plan.save", {"plan": asdict(DailyPlanOptions(True))})
+            )
+        self.assertEqual(response["error"]["code"], "invalid_params")
+        self.assertIn("Windows Rust 前端", response["error"]["message"])
+        service.apply_daily_plan.assert_not_called()
+        task.assert_not_called()
+
+    def test_daily_entry_uses_headless_and_frontend_without_config_snapshot(self):
+        from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+
+        for frozen, prefix in ((False, ["-m", "src.headless"]), (True, [])):
+            with (
+                self.subTest(frozen=frozen),
+                patch.dict(os.environ, {RUST_CONFIRM_ENV: "/中文 gui.exe"}),
+                patch("sys.frozen", frozen, create=True),
+                patch("src.service.daily_plan.WindowsDailyTask") as task,
+            ):
+                _daily_task()
+            task.assert_called_once_with(
+                entry=(
+                    sys.executable,
+                    [*prefix, "daily", "--shutdown-ui", "/中文 gui.exe"],
+                )
+            )
+
     def test_script_edit_converts_at_boundary_and_preserves_response(self):
         params = {
             "script_name": "旧名",

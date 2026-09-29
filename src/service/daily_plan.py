@@ -14,7 +14,7 @@ import re
 import subprocess
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 
 from ruamel.yaml.error import YAMLError
@@ -304,6 +304,24 @@ def apply_daily_plan(
         except OSError:
             logger.exception("[daily] 保存失败后恢复系统任务也失败，请重新设置每日计划")
         raise
+
+
+def daily_plan_view(*, task: WindowsDailyTask | None = None) -> dict:
+    """聚合计划与系统任务状态；读取失败保留诊断，不当作未注册。"""
+    task = WindowsDailyTask() if task is None else task
+    state = None
+    error = None
+    try:
+        state = asdict(task.read())
+    except OSError as exc:
+        logger.warning("[daily] 系统任务读取失败 %s(%s)", type(exc).__name__, exc)
+        error = str(exc)
+    return {
+        "plan": asdict(load_daily_plan()),
+        "state": state,
+        "state_error": error,
+        "supported": sys.platform == "win32",
+    }
 
 
 def read_daily_task_state() -> DailyTaskState:

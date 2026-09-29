@@ -23,7 +23,6 @@ import logging
 import src.link as link
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
-import src.service.daily_cli as daily_cli
 import src.service.daily_plan as daily_plan
 import src.service.script_service as script_service
 import src.service.settings_service as settings_service
@@ -182,12 +181,6 @@ class AppService:
 
     def settings_view(self) -> dict:
         return settings_service.settings_view()
-
-    def daily_plan_view(self) -> dict:
-        return daily_cli.daily_view()
-
-    def save_daily_plan(self, plan: dict) -> None:
-        return daily_cli.save_daily(plan)
 
     def save_startup_settings(self, options: dict) -> None:
         return settings_service.save_startup(options)
@@ -402,8 +395,18 @@ class AppService:
     def load_daily_plan(self) -> daily_plan.DailyPlanOptions:
         return daily_plan.load_daily_plan()
 
-    def apply_daily_plan(self, options: daily_plan.DailyPlanOptions) -> None:
-        return daily_plan.apply_daily_plan(options)
+    def daily_plan_view(
+        self, *, task: daily_plan.WindowsDailyTask | None = None
+    ) -> dict:
+        return daily_plan.daily_plan_view(task=task)
+
+    def apply_daily_plan(
+        self,
+        options: daily_plan.DailyPlanOptions,
+        *,
+        task: daily_plan.WindowsDailyTask | None = None,
+    ) -> None:
+        return daily_plan.apply_daily_plan(options, task=task)
 
     def read_daily_task_state(self) -> daily_plan.DailyTaskState:
         return daily_plan.read_daily_task_state()

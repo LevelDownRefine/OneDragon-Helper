@@ -143,7 +143,8 @@ gui.dialogs → app_service → chain_service → schedule` 成环，确认窗�
 
 系统任务按安装目录和用户命名。请保持安装目录和可执行文件路径稳定；移动安装前先关闭旧计划，再在新位置启用。任务更新成功才写配置，写入失败时恢复原任务。
 
-Rust 每日计划由 daily_cli 提供严格表单边界，将显式命令交给 WindowsDailyTask。
+每日计划的聚合查询与保存统一归 daily_plan；headless 校验 JSON 表单并转换为
+DailyPlanOptions，经 AppService.apply_daily_plan 保存，同时将 CLI 入口交给 WindowsDailyTask。
 同一个任务可迁移到无 Qt headless daily；entry_matches 参与同步判断，避免旧入口沿用。
 迁移写盘失败恢复 read 阶段保存的原 XML；原 Qt 调用不传 entry，保留原入口与恢复语义。
 
