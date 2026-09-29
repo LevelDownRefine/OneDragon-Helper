@@ -198,24 +198,7 @@ impl View {
                 egui::Stroke::new(if hovered { 2.0 } else { 1.0 }, DANGER),
                 egui::StrokeKind::Inside,
             );
-            centered(
-                ui,
-                rect(target.left(), target.top() + 5.0, target.width(), 24.0),
-                if hovered {
-                    "松开以删除脚本"
-                } else {
-                    "拖到这里删除脚本"
-                },
-                15.0,
-                DANGER,
-            );
-            centered(
-                ui,
-                rect(target.left(), target.top() + 30.0, target.width(), 18.0),
-                "从助手列表移除 · 保留脚本文件",
-                11.0,
-                MUTED,
-            );
+            centered(ui, target, "删", 18.0, DANGER);
             // 让被拖动的图标跟随指针，拖动才有可见反馈。
             if let Some(name) = self.dragging.clone()
                 && let Some(position) = ui.input(|input| input.pointer.interact_pos())
