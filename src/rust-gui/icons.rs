@@ -12,6 +12,9 @@ use eframe::egui::{Color32, Pos2, Rect, pos2};
 pub struct Assets {
     pub background: egui::TextureHandle,
     pub gradient: egui::TextureHandle,
+    /// 竖向遮光渐变纹理（1×101）：top alpha=31 → 48% 处 0 → bottom 77，颜色 (11,18,32)。
+    /// 用 101 纹素而非 3：3 纹素时中点 texel 落在 50%、断点偏移 2% 屏高；101 精确落在 48%。
+    /// 颜色与圆角半径必须与 background.rs 的 BACKDROP_CORNER_RADIUS / 壁纸一致，否则混合量与形状错位。
     pub shade: egui::TextureHandle,
     pub icons: HashMap<&'static str, egui::TextureHandle>,
 }
