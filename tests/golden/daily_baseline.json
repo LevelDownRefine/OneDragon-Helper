@@ -325,9 +325,17 @@
       }
     },
     "OneDragon-Launcher": {
-      "每日任务": {
-        "不启用培养方案": [],
-        "培养方案": []
+      "培养方案": {
+        "培养方案": [
+          [
+            "启用",
+            true
+          ],
+          [
+            "不启用",
+            false
+          ]
+        ]
       }
     },
     "ok-ef": {
@@ -741,9 +749,9 @@
     "OneDragon-Launcher": [
       {
         "enabled": null,
-        "name": "每日任务",
-        "sequence": null,
-        "task": null
+        "name": "培养方案",
+        "sequence": false,
+        "task": "培养方案"
       }
     ],
     "ok-ef": [
@@ -4510,7 +4518,7 @@
     ],
     "OneDragon-Launcher": [
       {
-        "daily": "每日任务",
+        "daily": "培养方案",
         "diff": {
           "config/01/one_dragon/charge_plan.yml.daily_reset_plan_times": [
             "<MISSING>",
@@ -4556,31 +4564,31 @@
         "readback": [
           {
             "enabled": null,
-            "name": "每日任务",
-            "sequence": null,
+            "name": "培养方案",
+            "sequence": true,
             "task": "培养方案"
           }
         ],
         "saved_files": [
           "config/01/one_dragon/charge_plan.yml"
         ],
-        "sequence": null,
+        "sequence": true,
         "task": "培养方案"
       },
       {
-        "daily": "每日任务",
+        "daily": "培养方案",
         "diff": {},
         "readback": [
           {
             "enabled": null,
-            "name": "每日任务",
-            "sequence": null,
+            "name": "培养方案",
+            "sequence": true,
             "task": "培养方案"
           }
         ],
         "saved_files": [],
-        "sequence": null,
-        "task": "不启用培养方案"
+        "sequence": false,
+        "task": "培养方案"
       }
     ],
     "ok-ef": [

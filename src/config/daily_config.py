@@ -105,7 +105,7 @@ def _materialize_daily(script_name: str, declaration: dict) -> dict:
                 }
             ]
         }
-    # class/config/routine、enable_* 与模板落点（template/enable_value）都是代码耦合字段
+    # class/config/routine、enable_* 与模板落点（template）都是代码耦合字段
     # （机制类、文件路径、开关与模板落点），不属于 UI 词汇，物化时剥掉。
     declaration = {
         k: v
@@ -118,7 +118,6 @@ def _materialize_daily(script_name: str, declaration: dict) -> dict:
             "enable_key",
             "enable_task",
             "template",
-            "enable_value",
         )
     }
     return {**declaration, "options": options}

@@ -277,12 +277,19 @@ class TestReadbackFacade(unittest.TestCase):
                     ],
                 )
 
-    def test_facade_without_landing_point_has_no_truth(self):
-        # 绝区零：模板未涵盖 → 副本/序列无真相；崩铁：单层字段缺失 → 日常名 + 无序列
+    def test_facade_reads_cultivation_selection(self):
+        # 绝区零反读模板对齐状态；崩铁字段缺失时没有二级选择。
         with patch.object(Daily, "_load_daily_config", return_value={}):
             self.assertEqual(
                 get_daily_readback("OneDragon-Launcher"),
-                [{"name": "每日任务", "task": None, "sequence": None, "enabled": None}],
+                [
+                    {
+                        "name": "培养方案",
+                        "task": "培养方案",
+                        "sequence": False,
+                        "enabled": None,
+                    }
+                ],
             )
         with (
             patch.object(Daily, "_load_daily_config", return_value={}),

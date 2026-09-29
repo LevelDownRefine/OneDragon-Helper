@@ -238,17 +238,18 @@ class TestEndfieldConfig(unittest.TestCase):
 
 
 class TestZenlessZoneZeroConfig(unittest.TestCase):
-    """绝区零不再走模板初始化：模板写入改由「每日任务」在保存配置时驱动。"""
+    """绝区零：培养方案复用单层启停菜单，由模板机制写入。"""
 
     def test_init_attributes(self):
         cfg = ZenlessZoneZeroConfig()
         self.assertEqual(cfg.display_name, "绝区零")
         self.assertEqual(cfg._script_name, "OneDragon-Launcher")
         self.assertNotIn("template", cfg.resources)
-        daily = cfg._dispatch_daily("每日任务")
+        daily = cfg._dispatch_daily("培养方案")
+        self.assertIsInstance(daily, SingleLayerDaily)
         self.assertIsInstance(daily, TemplateDaily)
         self.assertEqual(daily._template_rel_path, "ZZZ一条龙.yml")
-        self.assertFalse(daily.option_fields, "日常无字段落点")
+        self.assertEqual(daily.option_fields, {"培养方案": "plan_list"})
 
 
 class TestStarRailConfig(unittest.TestCase):
