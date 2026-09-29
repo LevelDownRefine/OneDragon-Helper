@@ -122,7 +122,7 @@ class TaskEditingTests(unittest.TestCase):
         no_switch.update(display_name="无开关日常", config="no-switch.json")
         del no_switch["enable_key"]
         with patch.object(
-            config_mod,
+            daily_mod,
             "get_daily_configs",
             return_value=[declaration, dynamic, no_switch],
         ):

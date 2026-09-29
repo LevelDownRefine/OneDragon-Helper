@@ -6,10 +6,10 @@ from collections.abc import Callable
 from copy import deepcopy
 from functools import cache
 
-from src.config.daily import DAILY_CLASSES, Daily, MaaDaily
+from src.config.daily import Daily, MaaDaily, build_dailies
 from src.config.script_resources import ScriptResources, get_script_resources
-from src.config.task_config import get_daily_configs, load_weekly_map
-from src.config.weekly import WEEKLY_CLASSES, Weekly
+from src.config.task_config import load_weekly_map
+from src.config.weekly import Weekly, build_weeklies
 from src.utils.utils_dict import covers, get_field, safe_update
 from src.utils.utils_sub_config import (
     get_script_game_path,
@@ -48,40 +48,10 @@ class ScriptConfig:
         收口到构造期。``functools.cache`` 单例保证每进程每脚本仅构造一次，故对齐也仅
         触发一次。CLI/GUI 均经工厂构造，无需分散守卫。
         """
-        self._dailies: list[Daily] = []
-        seen: set[str] = set()
-        for declaration in get_daily_configs(self._script_name):
-            class_name = declaration["class"]
-            assert class_name in DAILY_CLASSES, (
-                f"[set_config][{self.display_name}] 未知的日常机制类: {class_name!r}"
-            )
-            daily = DAILY_CLASSES[class_name](
-                self._script_name, declaration, self.display_name
-            )
-            assert daily.physical_name not in seen, (
-                f"{self._script_name} 的日常物理名重复: {daily.physical_name}"
-            )
-            seen.add(daily.physical_name)
-            self._dailies.append(daily)
-        self._weeklies: list[Weekly] = []
-        weekly_declarations = load_weekly_map()
-        seen_weeklies: set[str | int] = set()
-        if self._script_name in weekly_declarations:
-            assert self._script_name in weekly_declarations
-            for declaration in weekly_declarations[self._script_name]:
-                assert "class" in declaration
-                class_name = declaration["class"]
-                assert class_name in WEEKLY_CLASSES, (
-                    f"[set_config][{self.display_name}] 未知的周常机制类: {class_name!r}"
-                )
-                weekly = WEEKLY_CLASSES[class_name](
-                    self._script_name, declaration, self.display_name
-                )
-                assert weekly.physical_name not in seen_weeklies, (
-                    f"{self._script_name} 的周常物理名重复: {weekly.physical_name}"
-                )
-                seen_weeklies.add(weekly.physical_name)
-                self._weeklies.append(weekly)
+        self._dailies: list[Daily] = build_dailies(self._script_name, self.display_name)
+        self._weeklies: list[Weekly] = build_weeklies(
+            self._script_name, self.display_name
+        )
         # 构造期对齐子脚本 config（懒加载收口点；无模板/未安装脚本为空操作）
         self._init_config()
 

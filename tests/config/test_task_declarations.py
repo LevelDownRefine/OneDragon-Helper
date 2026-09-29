@@ -35,7 +35,7 @@ class TestDeclarationBindings(unittest.TestCase):
             task_config, "load_daily_map", return_value=self.daily
         )
         weekly_patch = patch.object(
-            task_config, "load_weekly_map", return_value=self.weekly
+            weekly_mod, "load_weekly_map", return_value=self.weekly
         )
         daily_patch.start()
         weekly_patch.start()

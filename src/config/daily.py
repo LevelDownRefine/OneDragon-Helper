@@ -5,6 +5,7 @@ I/O 由 Daily 自持（``_load_daily_config`` 等，直调 ``utils_sub_config``�
 ``key``，``MaaDaily`` TaskQueue，``NoopDaily`` 无需适配。开关落点亦随声明而异：
 基类读主文件的 ``enable_key`` 字段，``Anomaly`` 读 ``routine`` 文件，``BgiDaily``
 按 ``enable_task`` 反查任务启用表。
+``build_dailies`` 按声明创建对象，由 ``ScriptConfig`` 在初始化时调用并持有。
 """
 
 import logging
@@ -13,6 +14,7 @@ from typing import Any
 
 from src.config.maa_activity import read_activity_stages
 from src.config.task_config import (
+    get_daily_configs,
     get_options,
     get_physical_name,
     get_value_map,
@@ -1101,3 +1103,33 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
     )
 }
 """声明 ``class`` 字段可引用的机制类注册表（键 = 类名）。"""
+
+
+def build_dailies(script_name: str, script_display_name: str) -> list[Daily]:
+    """按声明构造一组新日常，由调用方持有；不缓存或读写原生配置。
+
+    Args:
+        script_name: 脚本标识名。
+        script_display_name: 脚本展示名（日志与报错用）。
+
+    Returns:
+        与声明顺序一致的日常对象列表。
+
+    Raises:
+        AssertionError: 缺少日常声明、机制类未知或物理名重复。
+    """
+    dailies: list[Daily] = []
+    seen: set[str] = set()
+    for declaration in get_daily_configs(script_name):
+        assert "class" in declaration
+        class_name = declaration["class"]
+        assert class_name in DAILY_CLASSES, (
+            f"[daily][{script_display_name}] 未知的日常机制类: {class_name!r}"
+        )
+        daily = DAILY_CLASSES[class_name](script_name, declaration, script_display_name)
+        assert daily.physical_name not in seen, (
+            f"{script_name} 的日常物理名重复: {daily.physical_name}"
+        )
+        seen.add(daily.physical_name)
+        dailies.append(daily)
+    return dailies

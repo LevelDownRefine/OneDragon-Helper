@@ -96,7 +96,7 @@ class TestWeeklyAssembly(WeeklyTestCase):
         declarations = deepcopy(config_mod.load_weekly_map())
         daily_name = config_mod.WutheringWavesConfig()._dailies[0].physical_name
         declarations["ok-ww"][0]["physical_name"] = daily_name
-        with patch.object(config_mod, "load_weekly_map", return_value=declarations):
+        with patch.object(weekly_mod, "load_weekly_map", return_value=declarations):
             config = config_mod.WutheringWavesConfig()
         self.assertEqual(config._dailies[0].physical_name, daily_name)
         self.assertEqual(config._weeklies[0].physical_name, daily_name)
@@ -126,7 +126,7 @@ class TestWeeklyAssembly(WeeklyTestCase):
             "ok-ww": [{"display_name": "周常", "class": "没有的类", "config": "c.json"}]
         }
         with (
-            patch.object(config_mod, "load_weekly_map", return_value=declarations),
+            patch.object(weekly_mod, "load_weekly_map", return_value=declarations),
             self.assertRaisesRegex(AssertionError, "未知的周常机制类"),
         ):
             config_mod.WutheringWavesConfig()
@@ -151,7 +151,7 @@ class TestWeeklyAssembly(WeeklyTestCase):
             ]
         }
         with (
-            patch.object(config_mod, "load_weekly_map", return_value=declarations),
+            patch.object(weekly_mod, "load_weekly_map", return_value=declarations),
             self.assertRaisesRegex(AssertionError, "周常物理名重复"),
         ):
             config_mod.WutheringWavesConfig()

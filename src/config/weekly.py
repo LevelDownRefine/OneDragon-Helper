@@ -2,7 +2,7 @@
 
 与日常同构——**一条周常一个对象**（一个脚本可有多条，如崩铁的货币战争 / 历战余响 /
 模拟宇宙），声明里用 ``class`` 标机制类（``WEEKLY_CLASSES`` 查表）、``config`` 标读写的
-主文件；对象由 ``ScriptConfig`` 在构造期按声明直接装配并持有，故初始化
+主文件；对象由 ``ScriptConfig`` 在构造期经 ``build_weeklies`` 装配并持有，故初始化
 时机与日常一致。
 
 周几起（``weekly.yml`` 的 ``weekly_start`` 段）是**条目级**的：每条周常各有一个起始日；
@@ -21,7 +21,7 @@ TaskQueue 公式），各由子类覆写；基类只兜底 assert。
 
 import logging
 
-from src.config.task_config import get_physical_name, get_value_map
+from src.config.task_config import get_physical_name, get_value_map, load_weekly_map
 from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import load_script_config, save_script_config
 from src.utils.utils_weekly import DISABLED_START_DAY, is_weekly_start_reached
@@ -485,3 +485,39 @@ WEEKLY_CLASSES: dict[str, type[Weekly]] = {
     )
 }
 """声明 ``class`` 字段可引用的机制类注册表（键 = 类名）。"""
+
+
+def build_weeklies(script_name: str, script_display_name: str) -> list[Weekly]:
+    """按声明构造一组新周常，由调用方持有；不缓存或读写原生配置。
+
+    Args:
+        script_name: 脚本标识名。
+        script_display_name: 脚本展示名（日志与报错用）。
+
+    Returns:
+        与声明顺序一致的周常对象列表；无周常声明时为空列表。
+
+    Raises:
+        AssertionError: 机制类未知或物理名重复。
+    """
+    declarations = load_weekly_map()
+    weeklies: list[Weekly] = []
+    seen: set[str | int] = set()
+    if script_name not in declarations:
+        return weeklies
+    assert script_name in declarations
+    for declaration in declarations[script_name]:
+        assert "class" in declaration
+        class_name = declaration["class"]
+        assert class_name in WEEKLY_CLASSES, (
+            f"[weekly][{script_display_name}] 未知的周常机制类: {class_name!r}"
+        )
+        weekly = WEEKLY_CLASSES[class_name](
+            script_name, declaration, script_display_name
+        )
+        assert weekly.physical_name not in seen, (
+            f"{script_name} 的周常物理名重复: {weekly.physical_name}"
+        )
+        seen.add(weekly.physical_name)
+        weeklies.append(weekly)
+    return weeklies
