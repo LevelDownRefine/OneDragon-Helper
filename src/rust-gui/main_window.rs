@@ -108,6 +108,15 @@ pub struct App {
 
 impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, settings: Settings, started: Instant) -> Self {
+        #[cfg(windows)]
+        if let Some(window) = cc.winit_window() {
+            use winit::platform::windows::{CornerPreference, WindowExtWindows};
+            // eframe enables a native shadow that leaves a 1px non-client edge.
+            // The transparent main window draws its own rounded outline.
+            window.set_undecorated_shadow(false);
+            window.set_border_color(None);
+            window.set_corner_preference(CornerPreference::DoNotRound);
+        }
         crate::theme::configure(&cc.egui_ctx);
         let font_error = install_font(&cc.egui_ctx, settings.font.as_ref()).err();
         let file_drop = FileDrop::new(cc).map_err(|error| {

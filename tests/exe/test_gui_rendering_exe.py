@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -13,6 +14,76 @@ from tests.exe import package_dir
 
 PACKAGE = package_dir()
 EXE_NAME = "OneDragon-Helper.exe"
+
+
+def _rust_window_rects(process):
+    """读取真正 HWND 的外框和客户区；GPU 截图不包含系统绘制的边缘。"""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+    user32.GetWindowThreadProcessId.argtypes = [
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.GetClientRect.argtypes = user32.GetWindowRect.argtypes
+    user32.ClientToScreen.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.POINT)]
+    user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+    user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+    handles = []
+
+    @callback_type
+    def find_window(window, _):
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(window, ctypes.byref(pid))
+        if pid.value == process.pid and user32.IsWindowVisible(window):
+            title = ctypes.create_unicode_buffer(256)
+            user32.GetWindowTextW(window, title, len(title))
+            # winit 的消息窗口也可能可见，必须匹配主窗口。
+            if title.value == "OneDragon · Rust Preview":
+                handles.append(window)
+        return True
+
+    deadline = time.monotonic() + 30
+    while process.poll() is None and time.monotonic() < deadline:
+        if not user32.EnumWindows(find_window, 0):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if handles:
+            # 与 Rust 一样读取物理像素，避免 DPI 虚拟化掩盖 1px 偏移。
+            previous = user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))
+            if previous is None:
+                raise ctypes.WinError(ctypes.get_last_error())
+            try:
+                outer, client, origin = (
+                    wintypes.RECT(),
+                    wintypes.RECT(),
+                    wintypes.POINT(),
+                )
+                for function, target in (
+                    (user32.GetWindowRect, outer),
+                    (user32.GetClientRect, client),
+                    (user32.ClientToScreen, origin),
+                ):
+                    if not function(handles[0], ctypes.byref(target)):
+                        raise ctypes.WinError(ctypes.get_last_error())
+                return (
+                    (outer.left, outer.top, outer.right, outer.bottom),
+                    (
+                        origin.x,
+                        origin.y,
+                        origin.x + client.right,
+                        origin.y + client.bottom,
+                    ),
+                )
+            finally:
+                user32.SetThreadDpiAwarenessContext(previous)
+        time.sleep(0.01)
+    return None
 
 
 @unittest.skipUnless(
@@ -108,7 +179,7 @@ class TestPackagedRendering(unittest.TestCase):
                 with self.subTest(software=software, window=window):
                     screenshot = directory / f"rust-{window}-{software}.png"
                     try:
-                        result = subprocess.run(
+                        with subprocess.Popen(
                             [
                                 str(root / EXE_NAME),
                                 *arguments,
@@ -121,9 +192,20 @@ class TestPackagedRendering(unittest.TestCase):
                                 "__COMPAT_LAYER": "RunAsInvoker",
                                 "ODH_FORCE_SOFTWARE_RENDERING": software,
                             },
-                            capture_output=True,
-                            timeout=45,
-                        )
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                        ) as process:
+                            try:
+                                rects = (
+                                    _rust_window_rects(process)
+                                    if window == "main"
+                                    else None
+                                )
+                                _, stderr = process.communicate(timeout=45)
+                            finally:
+                                if process.poll() is None:
+                                    process.kill()
+                                    process.communicate()
                     except subprocess.TimeoutExpired as error:
                         backend_log = root / "logs/onedragon_helper.log"
                         detail = (
@@ -132,12 +214,14 @@ class TestPackagedRendering(unittest.TestCase):
                             else "未产生后端日志"
                         )
                         self.fail(f"{error}\n{error.stderr!r}\n{detail[-12000:]}")
-                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(process.returncode, 0, stderr)
                     image = QImage(str(screenshot))
                     self.assertFalse(image.isNull(), "Rust 未产生真实绘制截图")
                     self.assertGreaterEqual(image.width(), minimum[0])
                     self.assertGreaterEqual(image.height(), minimum[1])
                     if window == "main":
+                        self.assertIsNotNone(rects, "未找到 Rust 原生主窗口")
+                        self.assertEqual(rects[0], rects[1], "系统外框占用了窗口边缘")
                         # 圆角外必须完全透明，矩形遮光层不能残留在四角。
                         for x in (0, image.width() - 1):
                             for y in (0, image.height() - 1):
