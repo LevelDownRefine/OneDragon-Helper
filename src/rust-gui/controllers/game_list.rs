@@ -28,10 +28,22 @@ impl View {
         actions: &mut Vec<Action>,
     ) {
         let height = ui.max_rect().height();
-        let mut drop_index = None;
         if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
             self.dragging = None;
+            self.drag_origin = None;
         }
+        // 落点按竖直位移估算（行距 64），对齐 Qt 版：不必精确压在图标上。
+        let drop_index = self.dragging.as_deref().and_then(|name| {
+            let origin = self.drag_origin?;
+            let pos = ui.input(|input| input.pointer.interact_pos())?;
+            let source = data
+                .scripts
+                .iter()
+                .position(|script| script.script_name == name)?;
+            let last = data.scripts.len().checked_sub(1)?;
+            let target = source as f32 + ((pos.y - origin.y) / 64.0).round();
+            Some(target.clamp(0.0, last as f32) as usize)
+        });
         ui.painter().rect_filled(
             rect(0.0, 0.0, 80.0, height),
             egui::CornerRadius {
@@ -106,16 +118,10 @@ impl View {
                             }
                             if response.drag_started() && !data.busy {
                                 self.dragging = Some(script.script_name.clone());
+                                self.drag_origin = ui.input(|input| input.pointer.press_origin());
                                 self.menu = None;
                             }
-                            if self.dragging.is_some()
-                                && ui.input(|input| {
-                                    input.pointer.interact_pos().is_some_and(|pos| {
-                                        button.contains(pos) && ui.clip_rect().contains(pos)
-                                    })
-                                })
-                            {
-                                drop_index = Some(index);
+                            if drop_index == Some(index) {
                                 ui.painter().rect_stroke(
                                     button,
                                     16,
@@ -174,7 +180,7 @@ impl View {
             },
         );
         if self.dragging.is_some() {
-            let target = rect(12.0, base + 4.0, 252.0, 56.0);
+            let target = rect(0.0, base + 4.0, 80.0, 56.0);
             let hovered = ui.input(|input| {
                 input
                     .pointer
@@ -247,6 +253,7 @@ impl View {
             }
             if ui.input(|input| input.pointer.any_released()) {
                 let name = self.dragging.take().expect("active drag");
+                self.drag_origin = None;
                 if !data.busy {
                     if ui.input(|input| {
                         input
@@ -270,14 +277,8 @@ impl View {
                                 method: "script.reorder".into(),
                                 params: json!({"script_names":names}),
                             }));
-                        } else {
-                            self.toast(format!("[诊断] 未重排：source==index({index})"));
                         }
-                    } else {
-                        self.toast("[诊断] 未重排：drop_index 为空（未落在脚本上）");
                     }
-                } else {
-                    self.toast("[诊断] 未重排：busy=true");
                 }
             }
         } else if self.icon_button(ui, "grid", grid, "选择手动运行的脚本", true) && !data.busy

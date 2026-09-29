@@ -69,6 +69,8 @@ pub struct View {
     control_mode: bool,
     disabled: HashSet<String>,
     dragging: Option<String>,
+    /// 拖动开始时的指针位置：释放帧 press_origin 会被清空，故在起动时记下来算落点位移。
+    drag_origin: Option<egui::Pos2>,
 }
 
 impl View {
@@ -90,16 +92,15 @@ impl View {
             control_mode: false,
             disabled: HashSet::new(),
             dragging: None,
+            drag_origin: None,
         }
     }
 
     pub fn close_menu(&mut self) {
-        if self.dragging.is_some() {
-            self.toast("[诊断] 拖动被 close_menu 取消");
-        }
         self.menu = None;
         self.control_mode = false;
         self.dragging = None;
+        self.drag_origin = None;
     }
 
     #[cfg(feature = "capture")]
