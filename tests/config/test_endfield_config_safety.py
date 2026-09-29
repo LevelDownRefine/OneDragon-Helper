@@ -19,15 +19,8 @@ import unittest
 from unittest.mock import patch
 
 from src.config.set_config import EndfieldConfig
-from src.config.weekly import weeklies_of
 from src.utils import utils_sub_config
 from tests.support.config_diff import diff_paths
-
-
-def _ef_weekly():
-    """终末地的周常对象（卖出物资）。"""
-    return weeklies_of("ok-ef")[0]
-
 
 FIXTURE = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
@@ -113,6 +106,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
     # ---- prepare_start_day：只允许改 只买不卖（反相） ----
     def test_set_weekly_only_touches_weekly_key(self):
         # 制造差异：把周常开关先拨到错误值，逼 prepare_start_day 真正落盘
+        cfg = EndfieldConfig()
         pre = copy.deepcopy(
             self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         )
@@ -122,7 +116,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
 
         # 固定周常起始日判定，避免依赖「今天星期几」导致结果不确定
         with patch("src.config.weekly.is_weekly_start_reached", return_value=True):
-            _ef_weekly().prepare_start_day(1)  # 周常启用 ⇒ 只买不卖=false
+            cfg.prepare_weekly_start_days({"卖出物资": 1})  # 周常启用 ⇒ 只买不卖=false
 
         post = self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         diff = diff_paths(snapshot, post)
@@ -139,7 +133,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
     def test_canaries_untouched_through_full_flow(self):
         cfg = EndfieldConfig()
         cfg.set_daily_task("每日任务", "能量淤积点", "枢纽区")
-        _ef_weekly().prepare_start_day(1)
+        cfg.prepare_weekly_start_days({"卖出物资": 1})
 
         post = self.store["data/apps/ok-ef/working/configs/DailyTask.json"]
         self.assertEqual(post.get("CANARY_EXTRA"), "KEEP_ME")

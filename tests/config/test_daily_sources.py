@@ -366,7 +366,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
             ),
             patch("src.config.daily.load_game_config", return_value=self._DATA),
             patch(
-                "src.config.set_config.get_daily_configs",
+                "src.config.daily.get_daily_configs",
                 side_effect=AssertionError("不应反查声明"),
             ),
         ):
@@ -400,7 +400,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
     def test_adapter_uses_declared_mechanism_instead_of_script_type(self):
         source = {"path": self._SRC, "category": "BlessDomain"}
         with patch(
-            "src.config.set_config.get_daily_configs", return_value=[self.declaration]
+            "src.config.daily.get_daily_configs", return_value=[self.declaration]
         ):
             cfg = WutheringWavesConfig()
         with (

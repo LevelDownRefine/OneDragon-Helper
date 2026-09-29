@@ -135,14 +135,12 @@ class TestMaaDeclaredMenus(unittest.TestCase):
         activity = declarations[0]
         activity.update(display_name="别名", config="profiles/custom.json")
         activity["options"]["source"] = {"path": "resources/events.json"}
-        with patch(
-            "src.config.set_config.get_daily_configs", return_value=declarations
-        ):
+        with patch("src.config.daily.get_daily_configs", return_value=declarations):
             cfg = ArknightsConfig()
         with (
             patch.dict(_CONFIGS, {"MAA": lambda: cfg}),
             patch(
-                "src.config.set_config.get_daily_configs",
+                "src.config.daily.get_daily_configs",
                 side_effect=AssertionError("不应反查声明"),
             ),
             patch(
@@ -161,9 +159,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
         declarations = get_daily_configs("MAA")
         activity = declarations[0]
         activity["config"] = "profiles/current.json"
-        with patch(
-            "src.config.set_config.get_daily_configs", return_value=declarations
-        ):
+        with patch("src.config.daily.get_daily_configs", return_value=declarations):
             cfg = ArknightsConfig()
         with (
             patch.dict(_CONFIGS, {"MAA": lambda: cfg}),
@@ -172,7 +168,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
                 return_value={"MAA": declarations},
             ),
             patch(
-                "src.config.set_config.get_daily_configs",
+                "src.config.daily.get_daily_configs",
                 side_effect=AssertionError("日常已实例化，不应重新读取声明"),
             ),
             patch.object(ArknightsConfig, "_init_config") as init,

@@ -6,10 +6,10 @@ from collections.abc import Callable
 from copy import deepcopy
 from functools import cache
 
-from src.config.daily import DAILY_CLASSES, Daily, MaaDaily
+from src.config.daily import Daily, MaaDaily, build_dailies
 from src.config.script_resources import ScriptResources, get_script_resources
-from src.config.task_config import get_daily_configs
-from src.config.weekly import build_weeklies
+from src.config.task_config import load_weekly_map
+from src.config.weekly import Weekly, build_weeklies
 from src.utils.utils_dict import covers, get_field, safe_update
 from src.utils.utils_sub_config import (
     get_script_game_path,
@@ -48,23 +48,10 @@ class ScriptConfig:
         收口到构造期。``functools.cache`` 单例保证每进程每脚本仅构造一次，故对齐也仅
         触发一次。CLI/GUI 均经工厂构造，无需分散守卫。
         """
-        self._dailies: list[Daily] = []
-        seen: set[str] = set()
-        for declaration in get_daily_configs(self._script_name):
-            class_name = declaration["class"]
-            assert class_name in DAILY_CLASSES, (
-                f"[set_config][{self.display_name}] 未知的日常机制类: {class_name!r}"
-            )
-            daily = DAILY_CLASSES[class_name](
-                self._script_name, declaration, self.display_name
-            )
-            assert daily.physical_name not in seen, (
-                f"{self._script_name} 的日常物理名重复: {daily.physical_name}"
-            )
-            seen.add(daily.physical_name)
-            self._dailies.append(daily)
-        # 构造期装配周常对象（与日常同一时机；无周常声明的脚本得到空列表）
-        self._weeklies = build_weeklies(self._script_name, self.display_name)
+        self._dailies: list[Daily] = build_dailies(self._script_name, self.display_name)
+        self._weeklies: list[Weekly] = build_weeklies(
+            self._script_name, self.display_name
+        )
         # 构造期对齐子脚本 config（懒加载收口点；无模板/未安装脚本为空操作）
         self._init_config()
 
@@ -212,6 +199,40 @@ class ScriptConfig:
         """
         daily = self._dispatch_daily(daily_display_name)
         daily.set_enabled(enabled)  # 无日常开关的机制类不做事（选择即启用）
+
+    def _weekly_named(self, weekly_name: str) -> Weekly | None:
+        """按展示名取本脚本持有的周常；未知周常返回 None。"""
+        for weekly in self._weeklies:
+            if weekly.display_name == weekly_name:
+                return weekly
+        return None
+
+    def prepare_weekly_start_days(self, start_days: dict[str, int]) -> None:
+        """运行前按条目写周常开关；未设置的条目保持原样。"""
+        for weekly in self._weeklies:
+            if weekly.display_name in start_days:
+                weekly.prepare_start_day(start_days[weekly.display_name])
+
+    def set_weekly_start_day(self, weekly_name: str, start_day: int) -> None:
+        """编辑期同步周常字面起始日；无此能力的条目跳过。"""
+        weekly = self._weekly_named(weekly_name)
+        if weekly is None or type(weekly).set_start_day is Weekly.set_start_day:
+            return
+        weekly.set_start_day(start_day)
+
+    def set_weekly_task(self, weekly_name: str, task_name: str) -> None:
+        """设置周常副本；无副本选型的条目跳过。"""
+        weekly = self._weekly_named(weekly_name)
+        if weekly is None or type(weekly).set_task is Weekly.set_task:
+            return
+        weekly.set_task(task_name)
+
+    def _read_weekly_task(self, weekly_name: str) -> str | None:
+        """反读周常副本；未知周常返回 None。"""
+        weekly = self._weekly_named(weekly_name)
+        if weekly is None:
+            return None
+        return weekly.read_task()
 
     def get_game_exe_path(self) -> str | None:
         """读取本脚本配置中的游戏 exe 路径。
@@ -462,7 +483,7 @@ def set_config(
     """适配器接口：设置副本 / 序列。
 
     未选副本或脚本未适配（自定义脚本）时优雅跳过。周常（周几起 / 周常副本）归
-    ``src.config.weekly``，不经本入口。
+    本模块的周常接口分发给同一 ScriptConfig 持有的 Weekly，不经本函数。
 
     Args:
         script_name: 脚本标识名。
@@ -626,3 +647,53 @@ def set_daily_enabled(script_name: str, daily_display_name: str, enabled: bool) 
     """
     assert script_name in _CONFIGS, f"未适配脚本: {script_name}"
     _CONFIGS[script_name]().set_daily_enabled(daily_display_name, enabled)
+
+
+def weekly_names(script_name: str) -> list[str]:
+    """只读声明中的周常名称，查询与旧配置迁移不触发原生配置初始化。"""
+    declarations = load_weekly_map()
+    if script_name not in declarations:
+        return []
+    assert script_name in declarations
+    names = []
+    for declaration in declarations[script_name]:
+        assert "display_name" in declaration
+        names.append(declaration["display_name"])
+    return names
+
+
+def supports_weekly(script_name: str) -> bool:
+    """查询是否声明了周常，不构造配置适配器。"""
+    return bool(weekly_names(script_name))
+
+
+def prepare_weekly_start_days(script_name: str, start_days: dict[str, int]) -> None:
+    """运行期入口：经脚本适配器写入已设置的周常开关（0 表示不启用）。"""
+    if script_name not in _CONFIGS:
+        return
+    assert script_name in _CONFIGS
+    _CONFIGS[script_name]().prepare_weekly_start_days(start_days)
+
+
+def set_weekly_start_day(script_name: str, weekly_name: str, start_day: int) -> None:
+    """编辑期入口：经脚本适配器同步该条周常的游戏侧字面起始日。"""
+    if script_name not in _CONFIGS:
+        return
+    assert script_name in _CONFIGS
+    _CONFIGS[script_name]().set_weekly_start_day(weekly_name, start_day)
+
+
+def set_weekly_task(script_name: str, weekly_name: str, task_name: str) -> None:
+    """编辑期入口：经脚本适配器写入周常副本。"""
+    if script_name not in _CONFIGS:
+        return
+    assert script_name in _CONFIGS
+    _CONFIGS[script_name]().set_weekly_task(weekly_name, task_name)
+
+
+def get_weekly_task(script_name: str, weekly_name: str) -> str | None:
+    """经脚本适配器反读周常副本；未适配脚本返回 None。"""
+    if script_name not in _CONFIGS:
+        return None
+    assert script_name in _CONFIGS
+    return _CONFIGS[script_name]()._read_weekly_task(weekly_name)

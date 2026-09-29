@@ -138,8 +138,8 @@ def _load_weekly_start() -> dict:
     legacy = {k: v for k, v in start_map.items() if not isinstance(v, dict)}
     if not legacy:
         return start_map
-    # 延迟导入：config.weekly 反向依赖本模块（is_weekly_start_reached），模块级导入成环。
-    from src.config.weekly import weekly_names
+    # 延迟导入：config.set_config 经 weekly 反向依赖本模块（is_weekly_start_reached），模块级导入成环。
+    from src.config.set_config import weekly_names
 
     for script_name, start_day in legacy.items():
         names = weekly_names(script_name)

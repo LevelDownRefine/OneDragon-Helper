@@ -17,14 +17,10 @@ from src.config.set_config import (
     NTEConfig,
     WutheringWavesConfig,
     get_daily_readback,
+    get_weekly_task,
     set_daily_enabled,
 )
-from src.config.weekly import get_weekly_task, weeklies_of
-
-
-def _weekly(script_name: str, weekly_name: str):
-    """按脚本 + 周常展示名取已装配的周常对象。"""
-    return next(w for w in weeklies_of(script_name) if w.display_name == weekly_name)
+from src.config.weekly import Weekly
 
 
 def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
@@ -291,7 +287,7 @@ class TestReadbackFacade(unittest.TestCase):
         with (
             patch.object(Daily, "_load_daily_config", return_value={}),
             patch.object(
-                _weekly("March7th-Launcher", "历战余响"),
+                Weekly,
                 "_load_config",
                 return_value={},
             ),

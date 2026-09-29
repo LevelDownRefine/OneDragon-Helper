@@ -11,7 +11,7 @@ import logging
 import time
 from datetime import datetime
 
-from src.config.weekly import prepare_weekly_start_days
+from src.config.set_config import prepare_weekly_start_days
 from src.log.monitor import parse_logs
 from src.service.chain_gen import resolve_weekly_starts
 from src.utils.utils_runner import (
