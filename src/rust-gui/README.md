@@ -140,7 +140,8 @@ cargo build --release --locked --manifest-path src/rust-gui/Cargo.toml
 尺寸与颜色对应 `src/gui/qml/Layout.js`、`Theme.js`；嵌入 `assets/ds.jpg` 用于初始背景，
 加载后使用 CLI 解析的脚本默认/自定义壁纸。
 工具栏 PNG 由原 GUI 的 `UiIconProvider` 导出并提交，修改图标源后运行
-`python -m tools.export_rust_icons` 更新；这一步需要 Qt，Rust 界面运行时不需要。
+`python -m tools.export_rust_icons` 更新根目录 `assets/icons/`；这一步需要 Qt，Rust 界面运行时不需要。
+图标与默认壁纸统一归根目录 `assets/`。PNG 编译进 Rust EXE，发布包不重复拷贝图标源文件。
 
 ## 目录与职责
 
@@ -176,7 +177,9 @@ Windows 原生拖放、图标提取和视频解码集中在 `windows/file_drop.r
 
 测试全部位于 `tests/rust-gui`，控制器和 Windows 子模块按源码目录对应；单元测试通过
 `#[path]` 作为被测模块的子模块加载，保留私有成员测试，不扩大产品接口。
-`backend.rs` 是真实 Python CLI 集成测试，`backend_unit.rs` 验证传输协议；夹具位于 `fixtures/`。
+`backend.rs` 是真实 Python CLI 集成测试，`backend_unit.rs` 验证传输协议；媒体及后端夹具统一归
+根目录 `tests/fixtures/rust-gui/`。`Cargo.toml`、`Cargo.lock` 保留在 crate 根目录；`target/` 是
+Cargo 管理的本地构建缓存，已忽略，不属于提交内容。
 
 ## 体积和启动指标
 

@@ -12,7 +12,7 @@ def main() -> None:
 
     app = QApplication.instance() or QApplication([])
     provider = UiIconProvider()
-    output = Path(__file__).resolve().parents[1] / "src/rust-gui/assets/icons"
+    output = Path(__file__).resolve().parents[1] / "assets/icons"
     output.mkdir(parents=True, exist_ok=True)
     names = (
         "home",

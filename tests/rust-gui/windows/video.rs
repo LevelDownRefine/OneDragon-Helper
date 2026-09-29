@@ -6,12 +6,12 @@ fn native_resizes_large_frames_and_applies_rotation() {
     for (name, bytes, size) in [
         (
             "wide.mp4",
-            include_bytes!("../fixtures/wallpaper-wide.mp4").as_slice(),
+            include_bytes!("../../fixtures/rust-gui/wallpaper-wide.mp4").as_slice(),
             (1920, 64),
         ),
         (
             "rotated.mp4",
-            include_bytes!("../fixtures/wallpaper-rotated.mp4").as_slice(),
+            include_bytes!("../../fixtures/rust-gui/wallpaper-rotated.mp4").as_slice(),
             (64, 96),
         ),
     ] {
@@ -30,7 +30,11 @@ fn native_resizes_large_frames_and_applies_rotation() {
 fn native_h264_decodes_muted_seeks_and_releases_file() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("带声音的视频.mp4");
-    std::fs::write(&path, include_bytes!("../fixtures/wallpaper.mp4")).unwrap();
+    std::fs::write(
+        &path,
+        include_bytes!("../../fixtures/rust-gui/wallpaper.mp4"),
+    )
+    .unwrap();
     let _runtime = Runtime::new().unwrap();
     let mut decoder = Decoder::open(&path).unwrap();
     assert!(

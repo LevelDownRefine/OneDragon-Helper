@@ -4,6 +4,7 @@
 
 `release_package.py` 由 `deploy/build.bat` 调用：仅拷贝 Git 跟踪的
 `config/` 模板与声明、`assets/` 内置资源、`src/gui/qml/` 和 README。
+`assets/icons/` 是编译期图标源，已嵌入 Rust EXE，Qt 使用矢量源；两种发布包都不重复拷贝它们。
 `config.yml`、`schedule.yml`、`weekly.yml`、壁纸设置与缓存、脚本链、
 日志、备份不属于发布内容；即使误跟踪了用户配置，也会阻止打包。
 三个用户 YAML 由程序首次启动时从模板生成，已有配置保持不变。
@@ -100,5 +101,5 @@ python tools/sync_oknte_tasks.py
 `python tools/run_rust_gui.py --demo` 构建并启动独立演示配置，操作说明见
 [Rust GUI 原型](../src/rust-gui/README.md)。`--no-build` 复用已有构建。
 
-`python -m tools.export_rust_icons` 从原 GUI 图标源导出 `src/rust-gui/assets/icons/`。
+`python -m tools.export_rust_icons` 从原 GUI 图标源导出根目录 `assets/icons/`。
 仅此开发步骤需要 Qt；Rust 界面运行时使用已嵌入的图标与默认壁纸。

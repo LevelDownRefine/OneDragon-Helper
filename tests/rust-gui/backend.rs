@@ -41,7 +41,7 @@ fn call(session: &mut Session, method: &str, params: Value) -> Value {
 #[test]
 fn real_cli_round_trip_types_external_changes_and_shutdown() {
     let root = tempfile::tempdir().unwrap();
-    let mut command = python(include_str!("fixtures/real_backend.py"));
+    let mut command = python(include_str!("../fixtures/rust-gui/real_backend.py"));
     command.arg(root.path());
     let mut session = Session::spawn(command).unwrap();
     let pid = session.pid();
@@ -243,7 +243,7 @@ fn blocked_large_write_times_out_and_close_stays_responsive() {
 fn real_cli_stores_large_wallpaper_cache_and_rejects_stale_token() {
     use base64::Engine;
     let root = tempfile::tempdir().unwrap();
-    let mut command = python(include_str!("fixtures/real_backend.py"));
+    let mut command = python(include_str!("../fixtures/rust-gui/real_backend.py"));
     command.arg(root.path());
     let mut session = Session::spawn(command).unwrap();
     call(&mut session, "app.snapshot", json!({}));

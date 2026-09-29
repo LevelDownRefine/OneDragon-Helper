@@ -124,6 +124,35 @@ class TestReleasePackage(unittest.TestCase):
         )
         self.assertEqual(info["tag"], "")
 
+    def test_embedded_icons_stay_in_source_and_out_of_both_packages(self):
+        icon = self.write(self.root, "assets/icons/home.png", "compiled icon")
+        self.git("add", "--", "assets/icons/home.png")
+        for frontend in ("qt", "rust"):
+            with self.subTest(frontend=frontend):
+                package = self.package / frontend
+                names = [
+                    release.EXE_NAME,
+                    release.RUNNER_NAME,
+                    release.UPDATER_EXE,
+                    "_internal/python.dll",
+                ]
+                if frontend == "rust":
+                    names.extend((release.CLI_EXE, release.RUST_RUNTIME))
+                for name in names:
+                    self.write(package, name, "binary")
+                release.prepare_package(self.root, package, "v1.2.3", frontend=frontend)
+                manifest = release.load_manifest(package, verify=True)
+                self.assertNotIn("assets/icons/home.png", manifest["files"])
+                self.assertFalse((package / "assets/icons").exists())
+                self.assertTrue((package / "assets/ds.jpg").is_file())
+                output = self.package / f"{frontend}.zip"
+                release.archive_package(self.root, package, output)
+                with zipfile.ZipFile(output) as archive:
+                    self.assertFalse(
+                        any("/assets/icons/" in name for name in archive.namelist())
+                    )
+                self.assertEqual(icon.read_text(encoding="utf-8"), "compiled icon")
+
     def test_rust_package_requires_cli_and_excludes_qml_from_archive(self):
         self.write(self.package, release.CLI_EXE, "backend")
         self.write(self.package, release.RUST_RUNTIME, "runtime")

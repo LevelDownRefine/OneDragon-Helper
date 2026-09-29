@@ -4,7 +4,7 @@ use super::*;
 fn dropping_player_releases_worker_and_media() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("close.mp4");
-    std::fs::write(&path, include_bytes!("fixtures/wallpaper.mp4")).unwrap();
+    std::fs::write(&path, include_bytes!("../fixtures/rust-gui/wallpaper.mp4")).unwrap();
     let player = Player::new(egui::Context::default());
     let weak = Arc::downgrade(&player.0);
     player.set(1, Some(path.clone()));
@@ -30,7 +30,7 @@ fn dropping_player_releases_worker_and_media() {
 fn playback_delays_loops_and_stops_on_selection_change() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("loop.mp4");
-    std::fs::write(&path, include_bytes!("fixtures/wallpaper.mp4")).unwrap();
+    std::fs::write(&path, include_bytes!("../fixtures/rust-gui/wallpaper.mp4")).unwrap();
     let player = Player::new(egui::Context::default());
     let started = Instant::now();
     player.set(1, Some(path.clone()));

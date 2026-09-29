@@ -47,7 +47,7 @@ impl Assets {
                     texture(
                         ctx,
                         $name,
-                        include_bytes!(concat!("assets/icons/", $name, ".png")),
+                        include_bytes!(concat!("../../assets/icons/", $name, ".png")),
                     ),
                 );
             };

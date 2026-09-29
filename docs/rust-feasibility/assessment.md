@@ -20,9 +20,9 @@ Python 运行时、发布资源和原生 CRT；没有把单个 Rust EXE 当成�
 | 同一指标的最小～最大值 | 1480.28～1941.09 ms | 1183.62～1499.65 ms | 各 15 次 |
 
 1 MiB = 1,048,576 字节。目录总量是文件字节数之和，不是磁盘分配空间；不含用户配置、
-缓存、外部游戏脚本、系统字体和系统图形/媒体组件。原始字节数、分组与 SHA-256 见
-[`assessment-size.json`](assessment-size.json)，逐次时间见
-`tools/measure_gui_startup.py` 生成的本地计时报告（`.cache/gui-startup.json`，不纳入版本控制）。ZIP 哈希仅用于识别本次本机构建，
+缓存、外部游戏脚本、系统字体和系统图形/媒体组件。体积明细、分组与哈希是本机评估产物，
+保存在 `.cache/assessment-size.json`；逐次时间由 `tools/measure_gui_startup.py` 生成，
+保存到 `.cache/gui-startup.json`。原始数据均不纳入版本控制，仓库保留结论、测量条件和复现步骤。
 CI 使用另一 Python 分发与构建时间，其体积和哈希可能不同。
 
 主要体积收益来自去掉 Qt/PySide6/Shiboken（本机原包约 89.19 MiB），同时新增 Rust

@@ -271,6 +271,7 @@ config/backups/
 
 闭关降级/
 
-# 本地启动测量原始样本不入库；新报告写入 .cache/
+# 本地体积与启动测量原始数据不入库；报告写入 .cache/
 /docs/rust-feasibility/assessment-startup.json
+/docs/rust-feasibility/assessment-size.json
 /startup.json

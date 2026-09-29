@@ -1,4 +1,7 @@
-# 视频测试夹具
+# Rust GUI 测试夹具
+
+`real_backend.py` 在临时目录生成脚本配置，供 Rust 的真实 Python CLI 集成测试使用。
+视频文件供 `tests/rust-gui/video.rs` 与 `tests/rust-gui/windows/video.rs` 使用。
 
 `wallpaper.mp4` 是 FFmpeg `testsrc2`/`sine` 生成的 96×64、10 fps、0.6 秒 H.264/AAC 文件，
 没有用户媒体或第三方画面。测试覆盖 RGB 颜色、时间戳、音轨关闭、循环和文件释放。

@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 def resource_files(root: Path, frontend: str = "qt") -> list[str]:
-    """仅收集 Git 跟踪的内置资源，拒绝误跟踪的用户配置与备份。"""
+    """收集 Git 跟踪的运行资源，拒绝误跟踪的用户配置与备份。"""
     manifest_frontend({"frontend": frontend})
     resources = ["config", "assets", "README.md"]
     if frontend == "qt":
@@ -53,7 +53,8 @@ def resource_files(root: Path, frontend: str = "qt") -> list[str]:
             raise ValueError(f"用户文件不能作为发布资源: {name}")
         if (root / name).is_symlink():
             raise ValueError(f"发布资源不能是符号链接: {name}")
-    return names
+    # PNG 图标已编译进 Rust EXE；Qt 使用矢量图标源，发布包无需再拷贝。
+    return [name for name in names if not name.startswith("assets/icons/")]
 
 
 def prepare_package(
