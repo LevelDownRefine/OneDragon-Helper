@@ -180,7 +180,8 @@ impl View {
             },
         );
         if self.dragging.is_some() {
-            let target = rect(0.0, base + 4.0, 80.0, 56.0);
+            // 与底部 grid 按钮同尺寸同位：拖动时删除框占据该按钮的位置。
+            let target = grid;
             let hovered = ui.input(|input| {
                 input
                     .pointer
@@ -189,7 +190,7 @@ impl View {
             });
             ui.painter().rect(
                 target,
-                12,
+                14,
                 if hovered {
                     DANGER_FILL
                 } else {

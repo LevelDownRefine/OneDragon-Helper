@@ -42,7 +42,7 @@ fn manual_selection_is_local_and_follows_identity() {
 
 #[test]
 fn drag_reorders_or_requests_delete_confirmation() {
-    for delete in [None, Some(pos2(40.0, 632.0)), Some(pos2(70.0, 632.0))] {
+    for delete in [None, Some(pos2(40.0, 632.0)), Some(pos2(60.0, 632.0))] {
         let mut scene = Scene::new();
         let mut second = scene.scripts[0].clone();
         second.script_name = "second".into();
