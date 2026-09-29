@@ -259,14 +259,14 @@ class TestStarRailConfig(unittest.TestCase):
         self.assertEqual(cfg.display_name, "崩铁")
         self.assertEqual(cfg._script_name, "March7th-Launcher")
         self.assertNotIn("template", cfg.resources)
-        daily = cfg._dispatch_daily("每日任务")
+        daily = cfg._dispatch_daily("培养目标")
         self.assertIsInstance(daily, SingleLayerDaily)
-        self.assertEqual(daily.option_fields, {"每日任务": "build_target_enable"})
+        self.assertEqual(daily.option_fields, {"培养目标": "build_target_enable"})
         self.assertEqual(
-            daily._fields("每日任务", "培养目标"), {"build_target_enable": True}
+            daily._fields("培养目标", "启用"), {"build_target_enable": True}
         )
         self.assertEqual(
-            daily._fields("每日任务", "不启用培养目标"),
+            daily._fields("培养目标", "不启用"),
             {"build_target_enable": False},
         )
 

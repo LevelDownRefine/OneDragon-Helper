@@ -219,7 +219,6 @@ impl View {
             .map(|entry| entry.children.as_slice())
             .unwrap_or(&[]);
         let width = left_width + 10.0 + if children.is_empty() { 0.0 } else { 204.0 };
-        // Reserve space for every group so hovering never moves the popup.
         let rows = entries
             .iter()
             .fold(entries.len(), |rows, entry| rows.max(entry.children.len()));
@@ -417,15 +416,11 @@ fn daily_entries(script: &str, daily: &Daily) -> Vec<Entry> {
                     )
                 })
                 .collect();
-            if daily.has_single_group() {
-                entries.extend(children);
-            } else {
-                entries.push(Entry {
-                    label: choice.display_name.clone(),
-                    children,
-                    request: None,
-                });
-            }
+            entries.push(Entry {
+                label: choice.display_name.clone(),
+                children,
+                request: None,
+            });
         } else {
             entries.push(leaf(
                 choice.display_name.clone(),

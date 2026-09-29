@@ -60,27 +60,13 @@ pub struct DailyChoice {
 }
 
 impl Daily {
-    /// The only category repeats the daily heading and can be hidden.
-    pub fn has_single_group(&self) -> bool {
-        self.options.values.len() == 1
-            && self.options.values[0].display_name == self.name
-            && self.options.values[0]
-                .options
-                .as_ref()
-                .is_some_and(|options| !options.values.is_empty())
-    }
-
     pub fn choices(&self) -> Vec<DailyChoice> {
         let mut result = Vec::new();
         for choice in &self.options.values {
             if let Some(children) = &choice.options {
                 for child in &children.values {
                     result.push(DailyChoice {
-                        label: if self.has_single_group() {
-                            child.display_name.clone()
-                        } else {
-                            format!("{} · {}", choice.display_name, child.display_name)
-                        },
+                        label: format!("{} · {}", choice.display_name, child.display_name),
                         task_name: choice.display_name.clone(),
                         sequence: child.physical_name.clone(),
                     });

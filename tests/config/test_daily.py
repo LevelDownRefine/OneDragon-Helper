@@ -254,11 +254,11 @@ class TestRead(unittest.TestCase):
 
     def test_single_layer_reverses_field_value(self):
         """单层日常：反读回来的是日常名 + 字段里的二级值（崩铁的两态布尔）。"""
-        daily = daily_of("March7th-Launcher", "每日任务")
+        daily = daily_of("March7th-Launcher", "培养目标")
         cases = (
-            ({"build_target_enable": True}, ("每日任务", True)),
-            ({"build_target_enable": False}, ("每日任务", False)),
-            ({}, ("每日任务", None)),
+            ({"build_target_enable": True}, ("培养目标", True)),
+            ({"build_target_enable": False}, ("培养目标", False)),
+            ({}, ("培养目标", None)),
         )
         for config, expected in cases:
             with (
@@ -269,13 +269,13 @@ class TestRead(unittest.TestCase):
 
     def test_single_layer_writes_field_value(self):
         """单层日常写入：一级项是日常名，二级值直接写成顶层字段的值。"""
-        daily = daily_of("March7th-Launcher", "每日任务")
+        daily = daily_of("March7th-Launcher", "培养目标")
         config = {"build_target_enable": False}
         with (
             patch.object(daily, "_load_daily_config", return_value=config),
             patch.object(daily, "_save_daily_config") as mock_save,
         ):
-            self.assertTrue(daily.update("每日任务", "培养目标"))
+            self.assertTrue(daily.update("培养目标", "启用"))
         mock_save.assert_called_once()
         self.assertIs(config["build_target_enable"], True)
 

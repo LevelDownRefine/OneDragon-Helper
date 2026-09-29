@@ -684,12 +684,10 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
             from src.utils.utils_sub_config import resolve_script_path
             from tests.gui.helpers import make_bridge
 
-            dailies = [{
-                "display_name": "每日任务",
-                "options": {"values": [{"display_name": "副本A", "physical_name": "a"}]},
-            }]
+            from src.config.daily_config import get_daily_map
+            dailies = get_daily_map("March7th-Launcher")["March7th-Launcher"]["dailies"]
             records = [
-                {"name": "每日任务", "task": "副本A", "sequence": None, "enabled": True}
+                {"name": "培养目标", "task": "培养目标", "sequence": True, "enabled": None}
             ]
             with (
                 patch("src.service.app_service.get_weekly_map", return_value=[]),
@@ -730,50 +728,27 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
                 print("POPUP", popup.isVisible(), popup.property("dailyName"),
                       flush=True)
                 assert popup.isVisible(), "点日常 chip 未弹出菜单"
-                assert popup.property("dailyName") == "每日任务", popup.property("dailyName")
-
-                for name, labels, values, enabled in (
-                    ("每日任务", ["培养目标", "不启用培养目标"], [True, False], None),
-                    ("追猎目标", ["音霸魔王", "无首铁驭"], ["音霸魔王", "无首铁驭"], True),
-                    ("幽境危战", ["第一关", "第二关"], [1, 2], True),
-                ):
-                    popup.setVisible(False)
-                    dailies[:] = [{"display_name": name, "options": {"values": [{
-                        "display_name": name, "physical_name": name,
-                        "options": {"values": [
-                            {"display_name": label, "physical_name": value}
-                            for label, value in zip(labels, values)
-                        ]}
-                    }]}}]
-                    records[:] = [{"name": name, "task": name,
-                                   "sequence": values[0], "enabled": enabled}]
-                    bridge.taskStateChanged.emit()
-                    QTest.qWait(100)
-                    chip = find_item("dailyButton")
-                    point = chip.mapToScene(QPointF(chip.width() / 2, chip.height() / 2))
+                assert popup.property("dailyName") == "培养目标"
+                popup.setProperty("selName", "培养目标")
+                QTest.qWait(100)
+                assert popup.height() >= 72, "二级停用项必须完整可见"
+                pending = list(popup.childItems())
+                second = None
+                while pending:
+                    item = pending.pop()
+                    if item.property("text") == "不启用":
+                        second = item
+                        break
+                    pending.extend(item.childItems())
+                assert second is not None
+                with patch.object(bridge.task_card._app_service, "set_script_daily_task") as save:
+                    point = second.mapToScene(QPointF(second.width() / 2, second.height() / 2))
                     QTest.mouseClick(window, Qt.LeftButton, pos=point.toPoint())
                     QTest.qWait(100)
-                    assert popup.isVisible()
-                    assert popup.property("singleGroupTask") == name
-                    assert popup.property("rightW") == 0
-                    assert popup.height() >= (len(values) + (enabled is not None)) * 32 + 8
-                    pending = list(popup.childItems())
-                    second = None
-                    while pending:
-                        item = pending.pop()
-                        if item.property("text") == labels[1]:
-                            second = item
-                            break
-                        pending.extend(item.childItems())
-                    assert second is not None
-                    with patch.object(bridge.task_card._app_service, "set_script_daily_task") as save:
-                        point = second.mapToScene(QPointF(second.width() / 2, second.height() / 2))
-                        QTest.mouseClick(window, Qt.LeftButton, pos=point.toPoint())
-                        QTest.qWait(100)
-                        save.assert_called_once_with("ok-ww", daily_display_name=name,
-                                                     task_name=name, sequence=values[1])
-                        assert type(save.call_args.kwargs["sequence"]) is type(values[1])
-                    assert not popup.isVisible()
+                    save.assert_called_once_with("ok-ww", daily_display_name="培养目标",
+                                                 task_name="培养目标", sequence=False)
+                    assert save.call_args.kwargs["sequence"] is False
+                assert not popup.isVisible()
             """
         )
         proc = subprocess.run(

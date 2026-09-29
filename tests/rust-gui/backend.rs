@@ -83,8 +83,8 @@ fn real_cli_round_trip_types_external_changes_and_shutdown() {
         &mut session,
         "daily.select",
         json!({
-            "script_name": "March7th-Launcher", "daily_name": "每日任务",
-            "task_name": "每日任务", "sequence": true
+            "script_name": "March7th-Launcher", "daily_name": "培养目标",
+            "task_name": "培养目标", "sequence": true
         }),
     );
     assert!(saved.is_null());
@@ -107,8 +107,8 @@ fn real_cli_round_trip_types_external_changes_and_shutdown() {
         &mut session,
         "daily.select",
         json!({
-            "script_name": "March7th-Launcher", "daily_name": "每日任务",
-            "task_name": "每日任务", "sequence": false
+            "script_name": "March7th-Launcher", "daily_name": "培养目标",
+            "task_name": "培养目标", "sequence": false
         }),
     );
     let view = call(
@@ -117,13 +117,12 @@ fn real_cli_round_trip_types_external_changes_and_shutdown() {
         json!({"script_name": "March7th-Launcher"}),
     );
     let view: ScriptView = serde_json::from_value(view).unwrap();
-    assert_eq!(view.dailies[0].sequence, json!(false));
-    assert_eq!(view.dailies[0].label(), "不启用培养目标");
+    assert_eq!(view.dailies[0].label(), "培养目标 · 不启用");
     let yaml = std::fs::read_to_string(root.path().join("scripts/config.yaml")).unwrap();
     assert!(yaml.contains("build_target_enable: false"), "{yaml}");
     assert!(yaml.contains("power_enable: true"), "{yaml}");
     let rejected = session.request("daily.select", json!({
-        "script_name": "March7th-Launcher", "daily_name": "每日任务", "task_name": "每日任务", "sequence": 1
+        "script_name": "March7th-Launcher", "daily_name": "培养目标", "task_name": "培养目标", "sequence": 1
     }), Duration::from_secs(10), &AtomicBool::new(false)).unwrap_err();
     assert_eq!(rejected.code, "operation_failed");
     assert!(rejected.refresh_required);

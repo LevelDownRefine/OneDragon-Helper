@@ -712,7 +712,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
                         "daily.select",
                         selection(
                             script_name="March7th-Launcher",
-                            task_name="每日任务",
+                            daily_name="培养目标",
+                            task_name="培养目标",
                             sequence=value,
                         ),
                         i * 2,

@@ -414,7 +414,6 @@ Item {
         height: dailyPopup.popupHeight
 
         property string dailyName: ""
-        property string singleGroupTask: ""
         property bool canDisable: false
         property var options: []
         property int leftW: 200
@@ -437,14 +436,6 @@ Item {
 
         function openMenu() {
             options = Bridge.dailyOptions(dailyPopup.dailyName)
-            singleGroupTask = ""
-            if (options.length === 1
-                    && options[0].display_name === dailyName
-                    && options[0].options !== undefined
-                    && options[0].options.values.length > 0) {
-                singleGroupTask = options[0].display_name
-                options = options[0].options.values
-            }
             var maxW = 60
             for (var i = 0; i < options.length; i++) {
                 measTm.text = options[i].display_name
@@ -542,9 +533,7 @@ Item {
                                         dailyPopup.selName = modelData.display_name
                                     } else {
                                         Bridge.selectDaily(
-                                            dailyPopup.dailyName,
-                                            dailyPopup.singleGroupTask || modelData.display_name,
-                                            dailyPopup.singleGroupTask ? modelData.physical_name : null)
+                                            dailyPopup.dailyName, modelData.display_name, null)
                                         dailyPopup.visible = false
                                     }
                                 }

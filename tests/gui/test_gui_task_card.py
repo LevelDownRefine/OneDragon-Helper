@@ -368,34 +368,6 @@ class TestDailyItems(unittest.TestCase):
         )
         self.assertEqual(items[0]["task_label"], "空幕 · 轨道之夜")
 
-    def test_single_group_label_omits_repeated_daily_name(self):
-        ctrl = _make_controller()
-        for name, label, sequence in (
-            ("每日任务", "不启用培养目标", False),
-            ("追猎目标", "音霸魔王", "音霸魔王"),
-            ("幽境危战", "第二关", 2),
-        ):
-            with self.subTest(name=name):
-                values = [
-                    {
-                        "display_name": name,
-                        "options": {
-                            "values": [
-                                {"display_name": label, "physical_name": sequence}
-                            ]
-                        },
-                    }
-                ]
-                record = {
-                    "name": name,
-                    "task": name,
-                    "sequence": sequence,
-                    "enabled": True,
-                }
-                self.assertEqual(ctrl._daily_label(record, values), label)
-                record["enabled"] = False
-                self.assertEqual(ctrl._daily_label(record, values), "不启用")
-
     def test_daily_name_is_exposed_for_multi_daily_row(self):
         """多日常：每行带自己的日常展示名（QML 据此区分下拉）。"""
         ctrl = _make_controller("ok-nte", "异环")

@@ -133,7 +133,7 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 | 原神 · 地脉花 | `BgiLeyLineDaily` | 声明字段名含 `{Day}`，一次写满一周 7 份（`LeyLine{Day}Type` / `LeyLine{Day}Country`）；反读要求 7 天同值，否则无真相 |
 | 原神 · 首领讨伐 | `BgiDaily` | 一级是国家（仅分组），落点取二级的 `AutoBossName` |
 | 终末地 | `Daily` | 两级共用 `体力本`（`_single_field`）；开关取主文件的 `enable_key` 字段 |
-| 崩铁 | `SingleLayerDaily` | 一级项即日常名，二级「培养目标 / 不启用培养目标」直接写主文件的 `build_target_enable` 布尔 |
+| 崩铁 | `SingleLayerDaily` | 一级项即日常名，二级「启用 / 不启用」直接写主文件的 `build_target_enable` 布尔 |
 | 绝区零 · 每日任务 | `TemplateDaily` | 选中「培养方案」即按 `ZZZ一条龙.yml` 对齐 `charge_plan.yml`，选「不启用培养方案」不碰配置；反读按「配置涵盖模板」判定（`utils_dict.covers`） |
 | 异环 | `Anomaly` + `AnomalyHunter` | 两个日常各一段、各一个类，见下节 |
 | 粥 | `MaaDaily` | TaskQueue / StagePlan（跳过通用解析），见下节 |
