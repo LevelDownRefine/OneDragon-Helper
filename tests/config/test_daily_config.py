@@ -244,17 +244,23 @@ class TestGetDailyMap(unittest.TestCase):
             menus["OneDragon-Launcher"]["dailies"],
             [
                 {
-                    "display_name": "每日任务",
+                    "display_name": "培养方案",
                     "options": {
                         "values": [
                             {
                                 "display_name": "培养方案",
                                 "physical_name": "培养方案",
-                            },
-                            {
-                                "display_name": "不启用培养方案",
-                                "physical_name": "不启用培养方案",
-                            },
+                                "options": {
+                                    "key": "plan_list",
+                                    "values": [
+                                        {"display_name": "启用", "physical_name": True},
+                                        {
+                                            "display_name": "不启用",
+                                            "physical_name": False,
+                                        },
+                                    ],
+                                },
+                            }
                         ]
                     },
                 }

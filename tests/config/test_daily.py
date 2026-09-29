@@ -68,7 +68,7 @@ class TestDispatch(unittest.TestCase):
 
 
 class TestTemplateDaily(unittest.TestCase):
-    """模板驱动型日常（绝区零「培养方案」）：选中才按模板写，反读按涵盖判定。"""
+    """模板日常共用单层选项；启用写模板，不启用不读写。"""
 
     TEMPLATE = {
         "plan_list": [{"tab_name": "训练", "level": "默认等级"}],
@@ -76,7 +76,7 @@ class TestTemplateDaily(unittest.TestCase):
     }
 
     def _daily(self) -> TemplateDaily:
-        return daily_of("OneDragon-Launcher", "每日任务")
+        return daily_of("OneDragon-Launcher", "培养方案")
 
     def test_update_writes_template_when_selected(self):
         daily = self._daily()
@@ -84,71 +84,76 @@ class TestTemplateDaily(unittest.TestCase):
         with (
             patch.object(daily, "_load_daily_config", return_value=config),
             patch.object(daily, "_load_template", return_value=self.TEMPLATE),
-            patch.object(daily, "_save_daily_config") as mock_save,
+            patch.object(daily, "_save_daily_config") as save,
         ):
-            self.assertTrue(daily.update("培养方案"))
-        mock_save.assert_called_once()
+            self.assertTrue(daily.update("培养方案", "启用"))
+        save.assert_called_once_with(self.TEMPLATE)
         self.assertEqual(config, self.TEMPLATE)
 
-    def test_update_skips_when_not_selected_or_aligned(self):
-        """选「不启用培养方案」不碰配置；配置已涵盖模板时也不重复写。"""
+    def test_not_enabled_does_not_read_or_write(self):
         daily = self._daily()
-        cases = (
-            ("未选启用项", "不启用培养方案", {"plan_list": []}),
-            (
-                "已涵盖模板",
-                "培养方案",
+        with (
+            patch.object(daily, "_load_daily_config") as load,
+            patch.object(daily, "_load_template") as template,
+            patch.object(daily, "_save_daily_config") as save,
+        ):
+            for sequence in (False, "不启用"):
+                self.assertFalse(daily.update("培养方案", sequence))
+            load.assert_not_called()
+            template.assert_not_called()
+            save.assert_not_called()
+
+    def test_read_and_update_preserve_aligned_plan_metadata(self):
+        daily = self._daily()
+        config = {
+            "plan_list": [
                 {
-                    "plan_list": [{"tab_name": "训练", "level": "默认等级"}],
-                    "double_reward": True,
-                },
-            ),
-        )
-        for label, task_name, config in cases:
-            with (
-                self.subTest(case=label),
-                patch.object(daily, "_load_daily_config", return_value=config),
-                patch.object(daily, "_load_template", return_value=self.TEMPLATE),
-                patch.object(daily, "_save_daily_config") as mock_save,
-            ):
-                self.assertFalse(daily.update(task_name))
-                mock_save.assert_not_called()
+                    "tab_name": "训练",
+                    "level": "默认等级",
+                    "plan_id": "x",
+                    "run_times": 3,
+                }
+            ],
+            "double_reward": True,
+        }
+        with (
+            patch.object(daily, "_load_daily_config", return_value=config),
+            patch.object(daily, "_load_template", return_value=self.TEMPLATE),
+            patch.object(daily, "_save_daily_config") as save,
+        ):
+            self.assertEqual(daily.read(), ("培养方案", True))
+            self.assertFalse(daily.update("培养方案", True))
+            self.assertFalse(daily.update("培养方案", False))
+            self.assertEqual(daily.read(), ("培养方案", True))
+            save.assert_not_called()
 
     def test_read_reports_alignment(self):
-        """反读：涵盖模板即「培养方案」（多出的字段不算差异），否则无真相。"""
         daily = self._daily()
-        cases = (
-            (
-                "涵盖",
-                {
-                    "plan_list": [
-                        {"tab_name": "训练", "level": "默认等级", "plan_id": "x"}
-                    ],
-                    "double_reward": True,
-                },
-                ("培养方案", None),
-            ),
-            ("不涵盖", {"plan_list": []}, (None, None)),
-            ("未安装", None, (None, None)),
-        )
-        for label, config, expected in cases:
+        for config, expected in (
+            ({"plan_list": []}, ("培养方案", False)),
+            (None, (None, None)),
+        ):
             with (
-                self.subTest(case=label),
+                self.subTest(config=config),
                 patch.object(daily, "_load_daily_config", return_value=config),
                 patch.object(daily, "_load_template", return_value=self.TEMPLATE),
             ):
                 self.assertEqual(daily.read(), expected)
 
-    def test_enable_value_must_be_declared(self):
-        declaration = {
-            "display_name": "每日任务",
-            "config": "a.yml",
-            "template": "t.yml",
-            "enable_value": "不存在的项",
-            "options": {"values": [{"display_name": "培养方案"}]},
-        }
-        with self.assertRaisesRegex(AssertionError, "enable_value"):
-            TemplateDaily("OneDragon-Launcher", declaration, "绝区零")
+    def test_invalid_selection_is_rejected_before_io(self):
+        daily = self._daily()
+        with patch.object(daily, "_load_daily_config") as load:
+            for task_name, sequence in (
+                ("其他方案", True),
+                ("培养方案", None),
+                ("培养方案", 1),
+            ):
+                with (
+                    self.subTest(task=task_name, sequence=sequence),
+                    self.assertRaises(AssertionError),
+                ):
+                    daily.update(task_name, sequence)
+            load.assert_not_called()
 
 
 class TestLandingPoints(unittest.TestCase):

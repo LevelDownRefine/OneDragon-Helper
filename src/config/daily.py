@@ -718,64 +718,41 @@ class BgiStygianDaily(SingleLayerDaily, BgiDaily):
         self._save_routine_config(config)
 
 
-class TemplateDaily(Daily):
-    """按模板写入的日常（绝区零「培养方案」）：选中即按模板对齐 config，其余选项不碰配置。
-
-    选项是「做 / 不做」两态、落点是整份模板而非标量字段，故不走 ``_fields``。反读按「配置
-    是否涵盖模板」判定，与 ``set_config`` 的模板对齐同一判据。
-
-    Attributes:
-        _template_rel_path: 模板文件名（相对项目 ``config/`` 目录）。
-        _enable_value: 选中即写模板的那一项展示名。
-    """
+class TemplateDaily(SingleLayerDaily):
+    """模板日常：复用单层启停选项，启用写模板，不启用不碰配置。"""
 
     def _parse_landing(self, declaration: dict) -> None:
-        """无字段落点：只记模板与「选中即写」的那一项。
-
-        Raises:
-            AssertionError: 未声明选项，或 ``enable_value`` 不在选项里。
-        """
-        self.task_field = None
-        self.task_map: dict[str, Any] = {}
-        self.option_fields: dict[str, str] = {}
-        options = get_options(declaration)
-        assert options, f"{self.script_name}/{self.physical_name} 必须声明选项"
-        self._template_rel_path: str = declaration["template"]
-        self._enable_value: str = declaration["enable_value"]
-        names = [option["display_name"] for option in options]
-        assert self._enable_value in names, (
-            f"{self.script_name}/{self.physical_name} 的 enable_value 必须是声明里的选项: "
-            f"{self._enable_value!r}"
+        """解析单层选项并记录模板路径。"""
+        super()._parse_landing(declaration)
+        self._template_rel_path = get_field(
+            declaration, "template", self.display_name, str
         )
 
     def read(self) -> tuple[str | None, str | int | None]:
-        """反读：配置涵盖模板即视为已选「培养方案」，否则无真相（未安装、用户自配过）。
-
-        Returns:
-            (``enable_value``, None) 或 (None, None)。
-        """
+        """返回日常名与模板是否已对齐；未安装时无真相。"""
         config = self._load_daily_config(allow_missing=True)
-        if config is None or not covers(config, self._load_template()):
+        if config is None:
             return None, None
-        return self._enable_value, None
+        return self.display_name, covers(config, self._load_template())
 
     def update(self, task_name: str, sequence: str | int | None = None) -> bool:
-        """选中「培养方案」时按模板对齐 config；其余选项不碰配置（保留现状）。
+        """启用时按模板对齐 config；不启用时直接返回，保留现状。
 
         Args:
             task_name: 一级项展示名。
-            sequence: 二级项值（本机制类无二级，忽略）。
+            sequence: 二级启停值，可传布尔值或展示名。
 
         Returns:
-            是否有实际修改；未选「培养方案」或配置已对齐时为 False。
+            是否有实际修改；不启用或配置已对齐时为 False。
 
         Raises:
             AssertionError: config 未安装/未配置。
         """
-        if task_name != self._enable_value:
-            logger.info(
-                f"[daily][{self.display_name}] 未选「{self._enable_value}」，不改配置"
-            )
+        fields = super()._fields(task_name, sequence)
+        enabled = get_field(
+            fields, self.option_fields[task_name], self.display_name, bool
+        )
+        if not enabled:
             return False
         config = self._load_daily_config(allow_missing=True)
         assert config is not None, (
