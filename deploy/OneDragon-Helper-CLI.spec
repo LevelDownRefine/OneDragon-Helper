@@ -7,7 +7,7 @@ import logging
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 from PyInstaller.depend.bindepend import get_imports
 
 assert sys.platform == "win32", "此发布配置仅支持 Windows"
@@ -37,10 +37,10 @@ for name in sorted(ssl_names):
     binaries.append((str(found), "."))
 
 a = Analysis(
-    [str(root / "src/headless_entry.py")],
+    [str(root / "src/headless.py")],
     pathex=[str(root)],
     binaries=binaries,
-    datas=[],
+    datas=collect_data_files("jsonrpcserver"),
     hiddenimports=collect_submodules("keyring"),
     runtime_hooks=[str(root / "deploy/runtime_hook_utf8.py")],
     excludes=["PySide6", "shiboken6", "src.gui", "src.launcher", "tkinter"],

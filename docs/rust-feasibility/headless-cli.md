@@ -1,7 +1,10 @@
-# 无 Qt 任务卡 CLI
+# 无 Qt 助手 CLI
 
-入口是 `python -m src.headless`，从项目根运行，经 AppService 复用任务卡 service。
-支持脚本列表、日常/周常查询与编辑。写入与查询是独立请求；GUI 接入另行提交。
+源码与冻结包统一使用 `src/headless.py`，从项目根运行，经 AppService 复用业务。
+JSON-RPC 2.0 的解析、协议校验、方法查找、参数绑定和响应封装由
+[jsonrpcserver](https://explodinglabs.com/jsonrpcserver/dispatch/) 负责；本项目保留
+stdio 读写、明确开放的方法、表单转换、后台互斥和进程生命周期，不另建通信框架。
+Python GUI 仍直接调用 AppService，不依赖此协议。
 
 ## 两种调用方式
 
@@ -11,8 +14,8 @@
 '{}' | python -m src.headless call app.snapshot
 ```
 
-`call METHOD` 从 stdin 读一个 JSON 参数对象（可以多行），读到 EOF 后输出一个响应，
-响应 id 固定为 `1`。成功退出码 `0`，请求失败为 `1`，会话/启动失败为 `2`。
+`call METHOD` 从 stdin 读 JSON 参数（对象或位置参数数组，可以多行），读到 EOF 后输出响应，
+正常请求 id 固定为 `1`；解析或协议校验失败时为 null。成功退出码 `0`，请求失败为 `1`，会话/启动失败为 `2`。
 命令行解析错误也为 `2`，由 argparse 在 stderr 输出用法。
 
 GUI 启动并复用一个进程：
@@ -27,23 +30,27 @@ stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flus
 正常 EOF 退出码为 `0`，即使会话中有请求失败；客户端须检查每个响应。
 没有 ready 事件，首条 `app.snapshot` 成功响应即可视为就绪。
 
-## v1 请求与响应
+## JSON-RPC 2.0 请求与响应
 
-请求恰好含四个字段；id 是非空字符串或整数，不接受布尔；版本必须为整数 `1`：
+请求使用标准 `jsonrpc: "2.0"`。Rust 前端为每个请求附带递增整数 id 和命名参数对象。
+库也接受标准位置参数、批量请求与无 id 的 notification；notification 不产生响应，
+批量内的方法按序执行，每次调用仍检查后台互斥。空字符串 id 合法，不接受布尔 id。
+旧 `protocol_version: 1` 不再支持，前后端需使用同一版本。
 
 ```json
-{"protocol_version":1,"id":"list-1","method":"app.snapshot","params":{}}
-{"protocol_version":1,"id":"card-1","method":"script.view","params":{"script_name":"ok-ww"}}
-{"protocol_version":1,"id":"edit-1","method":"daily.select","params":{"script_name":"ok-ww","daily_name":"每日任务","task_name":"凝素领域","sequence":1}}
-{"protocol_version":1,"id":"card-2","method":"script.view","params":{"script_name":"ok-ww"}}
+{"jsonrpc":"2.0","id":"list-1","method":"app.snapshot","params":{}}
+{"jsonrpc":"2.0","id":"card-1","method":"script.view","params":{"script_name":"ok-ww"}}
+{"jsonrpc":"2.0","id":"edit-1","method":"daily.select","params":{"script_name":"ok-ww","daily_name":"每日任务","task_name":"凝素领域","sequence":1}}
+{"jsonrpc":"2.0","id":"card-2","method":"script.view","params":{"script_name":"ok-ww"}}
 ```
 
 响应恰有 `result` 或 `error` 之一，并回传 id：
 
 ```json
-{"protocol_version":1,"id":"list-1","result":{"scripts":[]}}
-{"protocol_version":1,"id":"edit-1","result":null}
-{"protocol_version":1,"id":"bad-1","error":{"code":"invalid_params","message":"参数字段缺失或包含不支持的字段","refresh_required":false}}
+{"jsonrpc":"2.0","id":"list-1","result":{"scripts":[]}}
+{"jsonrpc":"2.0","id":"edit-1","result":null}
+{"jsonrpc":"2.0","id":"bad-1","error":{"code":-32602,"message":"运行选项字段不完整或包含未知字段"}}
+{"jsonrpc":"2.0","id":"edit-2","error":{"code":-32002,"message":"操作失败，详情见 stderr 或助手日志","data":{"refresh_required":true}}}
 ```
 
 客户端自行使用唯一 id，并关联当前脚本选择；切换到 B 后，A 的迟到响应不得刷新 B。
@@ -113,7 +120,6 @@ CLI 不转换字符串、整数或布尔值，字段类型及取值校验仍由�
 
 周常条目：`name/options/task/start_day`；无选项组时 options 为 null。
 start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不同。
-尚未开放更新动作。
 工具栏 `script.target` 的 target 为 `home/bili/github/folder/log/configfile`。
 成功目标为 `{"kind":"url"或"path","value":"..."}`，本机缺失资源为
 `{"kind":"unavailable","reason":"..."}`；路径为绝对路径。链接沿用资源声明及原 GUI
@@ -127,7 +133,7 @@ start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不
 check_done、game_process_name、game_path 六个文本字段，以及 kill_script_after_done、
 kill_game_after_done、block 三个布尔字段。weekly_timeouts 恰为七项 0～86400 整数或 null；
 null 沿用默认超时，低于 10 秒的值保留原运行语义。switches 为任务名到布尔的映射。
-表单预校验失败返回 invalid_params、refresh_required=false，不写盘。
+表单预校验失败返回 -32602，不写盘。
 CLI 将参数构造成 `ScriptEdit` 后调用 `AppService.update_script`，再将返回标识包装为 `{"script_name": "..."}`。
 完整保存顺序归 `script_service.update`：助手条目 → 每周标识迁移/超时 → 按需初始化 → 原生任务开关。后续失败可能已部分写入；
 客户端保留草稿、刷新 app.snapshot（改名可能改变身份），要求重新读取表单后再由用户保存。
@@ -143,18 +149,21 @@ CLI 将参数构造成 `ScriptEdit` 后调用 `AppService.update_script`，再�
 游戏路径沿用手填优先、原生配置兜底规则。前端显式点击后才启动，不自动重试；
 单独启动保持原版语义，不应用批量链运行参数、完成检测、超时或前后动作。
 
-| 错误码 | 含义 |
-| --- | --- |
-| `parse_error` | 非法 JSON、重复字段、NaN/Infinity；id 为 null，可继续发送下一条 |
-| `invalid_request` | 信封字段或 id 不合法 |
-| `unsupported_version` | 不支持的协议版本 |
-| `method_not_found` | 未开放的方法 |
-| `invalid_params` | params 不是对象、参数字段缺失/多余，或显式查询引用了未知脚本 |
-| `duplicate_script` | 添加的 EXE 进程名已存在；未写入，可继续处理下一文件 |
-| `operation_busy` | 后台写入进行中，此时只接受 job.poll |
-| `operation_failed` | 配置/适配器操作失败；诊断在 stderr 与日志，写请求返回 refresh_required=true |
-| `session_failed` | 启动或传输失败；id 为 null，退出码为 2 |
+| 线上错误码 | Rust 内部分类 | 含义 |
+| --- | --- | --- |
+| `-32700` | `parse_error` | 非法 JSON、重复字段、NaN/Infinity；id 为 null，可继续发送下一条 |
+| `-32600` | `invalid_request` | 信封、版本、id 或 params 容器不合法；或一次性调用后台方法 |
+| `-32601` | `method_not_found` | 未开放的方法 |
+| `-32602` | `invalid_params` | 参数绑定失败或助手表单取值不合法 |
+| `-32603` | `internal_error` | 库报告的内部错误；客户端保守刷新 |
+| `-32001` | `duplicate_script` | 添加的 EXE 进程名已存在；未写入，可继续处理下一文件 |
+| `-32003` | `operation_busy` | 后台写入进行中，此时只接受 job.poll/job.cancel |
+| `-32002` | `operation_failed` | 配置/适配器操作失败；诊断在 stderr 与日志，写请求返回 refresh_required=true |
+| `-32004` | `session_failed` | 启动或传输失败；id 为 null，退出码为 2 |
 
+助手错误把刷新提示放在 `error.data.refresh_required`；标准协议错误不要求此字段，
+其 `data` 可能是库给出的参数诊断字符串。Rust 将数字错误码转换为原 UI 分类，
+内部错误、未知错误及损坏的助手错误详情均保守刷新。
 `refresh_required=true` 表示结果可能已经部分落盘，不能假定回滚。
 例如副本写入成功但启用失败，或周常意图已保存但游戏侧同步失败。
 适配器抛出的取值/类型错误同样属于 `operation_failed`；协议层不重建业务异常分类。
@@ -244,7 +253,7 @@ Windows Rust 前端将自身绝对路径传入 `ODH_SHUTDOWN_UI`，prepare 将�
 - 仅承诺这些新增后端方法不加载 Qt。
   原 Qt launcher 继续保留；完整 Rust 包的 CLI、Runner 和 Updater 均不包含 Qt。
 
-冻结入口 `src.headless_entry` 保留 `call/serve/run/daily` 子命令，并将原助手参数交给
+冻结入口 `src.headless` 保留 `call/serve/run/daily` 子命令，并将原助手参数交给
 `legacy -- 参数`。Rust 主程序在创建窗口前转发 `--version/--selftest/--schedule-run`
 等参数，等待 CLI 并保留退出码；输出沿用 `--out` 或临时目录的 `odh_gui_*` 文件。
 源码调试的 `--project-root/--python` 必须放在业务参数前。无动作的独立 CLI 返回 2，
@@ -264,6 +273,6 @@ PYTHONPATH=src python -m unittest tests.test_headless -v
 
 `tests/service/test_task_service.py` 覆盖聚合查询；`tests/service/test_task_editing.py`
 覆盖 CLI 入口直接转发原方法及既有写入行为。
-`tests/test_headless_entry.py` 覆盖原参数、中文输出路径、非零返回码、冻结入口和更新闸门。
+`tests/test_headless.py` 覆盖原参数、中文输出路径、非零返回码、冻结入口和更新闸门。
 Windows 真正打包验证见 `tests/exe/test_headless_exe.py`；源码全量回归与格式检查按
 [TESTING.md](../../TESTING.md) 执行。

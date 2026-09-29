@@ -120,7 +120,7 @@ import json,sys
 for line in sys.stdin:
     request=json.loads(line)
     with open(sys.argv[1], 'a') as f: f.write(request['method']+'\n')
-    print(json.dumps({'protocol_version':1,'id':request['id'],'error':{'code':'operation_failed','message':'read failed','refresh_required':False}}),flush=True)
+    print(json.dumps({'jsonrpc': '2.0','id':request['id'],'error':{'code': -32002,'message':'read failed','data': {'refresh_required': False}}}),flush=True)
 "#]).arg(&history);
     let mut app = test_app(command, root.path(), python);
     app.wallpaper_dialog = Some(WallpaperDialog::new(serde_json::from_value(json!({"script_name":"test","display_name":"Test","mode":"image","source":"image.png","custom_path":"image.png","token":"old","cache":null})).unwrap()));
@@ -187,7 +187,7 @@ import json,sys
 for line in sys.stdin:
     request=json.loads(line)
     with open(sys.argv[1], 'a') as f: f.write(request['method']+'\n')
-    print(json.dumps({'protocol_version':1,'id':request['id'],'error':{'code':'operation_failed','message':'init failed','refresh_required':True}}),flush=True)
+    print(json.dumps({'jsonrpc': '2.0','id':request['id'],'error':{'code': -32002,'message':'init failed','data': {'refresh_required': True}}}),flush=True)
 "#]).arg(&history);
     let mut app = test_app(command, root.path(), python);
     app.view = Some(serde_json::from_value(json!({"script":{"script_name":"test","display_name":"Test","script_path":"test.exe","adapted":false},"dailies":[],"weeklies":[]})).unwrap());
@@ -250,7 +250,7 @@ import json,sys
 for line in sys.stdin:
     request=json.loads(line)
     with open(sys.argv[1], 'a') as f: f.write(request['method']+'\n')
-    print(json.dumps({'protocol_version':1,'id':request['id'],'error':{'code':'operation_failed','message':'read failed','refresh_required':False}}),flush=True)
+    print(json.dumps({'jsonrpc': '2.0','id':request['id'],'error':{'code': -32002,'message':'read failed','data': {'refresh_required': False}}}),flush=True)
 "#]).arg(&history);
         let mut app = test_app(command, root.path(), python);
         app.settings.skip_startup = skip;
@@ -335,7 +335,7 @@ for line in sys.stdin:
     with open(sys.argv[1], 'a', encoding='utf-8') as history:
         history.write(json.dumps(request) + '\n')
     result = {'scripts': [{'script_name':'renamed', 'display_name':'renamed', 'script_path':'new.py', 'adapted':False}]} if request['method'] == 'app.snapshot' else {'script': {'script_name':'renamed','display_name':'renamed','script_path':'new.py','adapted':False}, 'dailies':[], 'weeklies':[]}
-    print(json.dumps({'protocol_version':1,'id':request['id'],'result':result}), flush=True)
+    print(json.dumps({'jsonrpc': '2.0','id':request['id'],'result':result}), flush=True)
 "#]).arg(&history);
         let mut app = test_app(command, root.path(), python);
         app.editor = Some(ScriptEditor::new(
@@ -403,11 +403,11 @@ for line in sys.stdin:
     request = json.loads(line)
     with open(sys.argv[1], 'a', encoding='utf-8') as history:
         history.write(json.dumps(request) + '\n')
-    response = {'protocol_version': 1, 'id': request['id']}
+    response = {'jsonrpc': '2.0', 'id': request['id']}
     if request['method'] == 'daily.select':
         response['result'] = None
     elif sys.argv[2] == 'error':
-        response['error'] = {'code': 'operation_failed', 'message': 'read failed', 'refresh_required': False}
+        response['error'] = {'code': -32002, 'message': 'read failed', 'data': {'refresh_required': False}}
     elif sys.argv[2] == 'malformed':
         response['result'] = None
     else:

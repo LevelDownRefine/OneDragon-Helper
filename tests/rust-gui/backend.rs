@@ -129,7 +129,7 @@ fn real_cli_round_trip_types_external_changes_and_shutdown() {
 #[test]
 fn stderr_flood_does_not_block_utf8_responses() {
     let command = python(
-        "import sys,json\nfor line in sys.stdin:\n r=json.loads(line)\n sys.stderr.write('诊断'*100000);sys.stderr.flush()\n print(json.dumps({'protocol_version':1,'id':r['id'],'result':{'名称':'中文'}},ensure_ascii=False),flush=True)",
+        "import sys,json\nfor line in sys.stdin:\n r=json.loads(line)\n sys.stderr.write('诊断'*100000);sys.stderr.flush()\n print(json.dumps({'jsonrpc': '2.0','id':r['id'],'result':{'名称':'中文'}},ensure_ascii=False),flush=True)",
     );
     let mut session = Session::spawn(command).unwrap();
     assert_eq!(
@@ -167,7 +167,7 @@ fn timeout_invalidates_connection_without_replaying_write() {
 
 #[test]
 fn malformed_or_wrong_id_response_fails_closed() {
-    for response in ["broken", r#"{"protocol_version":1,"id":999,"result":{}}"#] {
+    for response in ["broken", r#"{"jsonrpc": "2.0","id":999,"result":{}}"#] {
         let mut command = python("import sys\nsys.stdin.readline()\nprint(sys.argv[1],flush=True)");
         command.arg(response);
         let mut session = Session::spawn(command).unwrap();
@@ -299,7 +299,7 @@ fn real_cli_stores_large_wallpaper_cache_and_rejects_stale_token() {
 fn idle_exit_is_reported_without_another_request() {
     let backend = Backend::start(
         python(
-            "import sys,json,time\nr=json.loads(sys.stdin.readline())\nprint(json.dumps({'protocol_version':1,'id':r['id'],'result':{}}),flush=True)\ntime.sleep(0.1)",
+            "import sys,json,time\nr=json.loads(sys.stdin.readline())\nprint(json.dumps({'jsonrpc': '2.0','id':r['id'],'result':{}}),flush=True)\ntime.sleep(0.1)",
         ),
         || {},
     );

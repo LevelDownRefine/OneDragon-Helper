@@ -80,8 +80,21 @@ class HeadlessExeTests(unittest.TestCase):
         with FileLease(self.root / ".update/intent.lock"):
             result = self.call()
         self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertEqual(json.loads(result.stdout)["error"]["code"], "session_failed")
+        self.assertEqual(json.loads(result.stdout)["error"]["code"], -32004)
         self.assertFalse((self.root / "config/config.yml").exists())
+
+    def test_jsonrpc_errors_use_library_validation_in_frozen_package(self):
+        for method, code in (("unknown", -32601), ("script.view", -32602)):
+            with self.subTest(method=method):
+                result = self.call(method)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                response = json.loads(result.stdout)
+                self.assertEqual(response["jsonrpc"], "2.0")
+                self.assertEqual(response["id"], 1)
+                self.assertEqual(response["error"]["code"], code)
+        result = self.call()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["result"]["scripts"], [])
 
     def test_legacy_flags_preserve_output_files_and_exit_status(self):
         output = self.directory / "中文 自检.json"
@@ -154,7 +167,7 @@ class HeadlessExeTests(unittest.TestCase):
                 process.stdin.write(
                     json.dumps(
                         {
-                            "protocol_version": 1,
+                            "jsonrpc": "2.0",
                             "id": "中文",
                             "method": "app.snapshot",
                             "params": {},
@@ -213,6 +226,8 @@ class HeadlessExeTests(unittest.TestCase):
             "src.update.service",
             "keyring.backends.Windows",
             "requests",
+            "jsonrpcserver",
+            "jsonschema",
             "ssl",
         ):
             self.assertIn(name, modules)

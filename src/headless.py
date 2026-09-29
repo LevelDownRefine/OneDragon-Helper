@@ -1,4 +1,4 @@
-"""无 Qt 的任务卡 CLI：一次性 call 或随 GUI 启动的 serve --stdio。"""
+"""无 Qt 助手入口；JSON-RPC 2.0 分发由 jsonrpcserver 处理。"""
 
 import argparse
 import json
@@ -7,80 +7,16 @@ import os
 import sys
 from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
 from dataclasses import asdict, fields
+from functools import wraps
 from pathlib import Path
 
+from jsonrpcserver import Error, Success, dispatch_to_serializable
+
 logger = logging.getLogger(__name__)
-PROTOCOL_VERSION = 1
-# 首期只开放短配置操作；长任务必须另行设计进度与取消协议。
-METHODS = {
-    "app.snapshot": ("app_snapshot", (), ()),
-    "backup.start": ("start_backup", (), ()),
-    "restore.start": ("start_restore", ("zip_path", "confirmed"), ()),
-    "job.poll": ("poll_job", ("job_id",), ()),
-    "job.cancel": ("cancel_job", ("job_id",), ()),
-    "update.view": ("update_view", (), ()),
-    "update.check": ("start_update_check", (), ()),
-    "update.download": ("start_update_download", (), ()),
-    "update.install": ("start_update_install", (), ()),
-    "settings.view": ("settings_view", (), ()),
-    "startup.view": ("settings_view", (), ()),
-    "plan.view": ("daily_plan_view", (), ()),
-    "plan.save": ("apply_daily_plan", ("plan",), ()),
-    "settings.startup_save": ("apply_startup_options", ("options",), ()),
-    "settings.run_save": ("apply_run_options", ("options",), ()),
-    "run.saved": ("saved_run", ("script_names",), ()),
-    "run.view": ("run_view", ("script_names",), ()),
-    "run.prepare": ("prepare_run", ("script_names", "options", "confirm_invalid"), ()),
-    "script.view": ("script_view", ("script_name",), ()),
-    "script.target": ("resolve_script_target", ("script_name", "target"), ()),
-    "script.icon_path": ("game_icon_path", ("script_name",), ()),
-    "wallpaper.current": ("wallpaper_view", ("script_name",), ()),
-    "wallpaper.view": ("wallpaper_view", ("script_name",), ()),
-    "wallpaper.set": ("set_wallpaper", ("script_name", "file_path"), ()),
-    "wallpaper.cache": (
-        "save_wallpaper_cache",
-        ("script_name", "token", "jpeg_base64"),
-        (),
-    ),
-    "script.launch_target": ("resolve_launch_target", ("script_name", "target"), ()),
-    "script.edit_view": ("script_edit_view", ("script_name",), ()),
-    "script.add": ("add_script", ("file_path",), ()),
-    "script.remove": ("remove_script", ("script_name",), ()),
-    "script.reorder": ("reorder_scripts", ("script_names",), ()),
-    "script.edit_save": (
-        "update_script",
-        ("script_name", "display_name", "config_patch", "weekly_timeouts", "switches"),
-        (),
-    ),
-    "daily.select": (
-        "select_daily",
-        ("script_name",),
-        ("daily_name", "task_name", "sequence"),
-    ),
-    "daily.enable": ("enable_daily", ("script_name", "daily_name", "enabled"), ()),
-    "weekly.select": ("select_weekly", ("script_name", "weekly_name", "task_name"), ()),
-    "weekly.start": ("start_weekly", ("script_name", "weekly_name", "start_day"), ()),
-}
 
 
-class ProtocolError(ValueError):
-    """可恢复的请求格式或参数错误。"""
-
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
-
-
-def _error(request_id, code: str, message: str, *, refresh_required=False) -> dict:
-    return {
-        "protocol_version": PROTOCOL_VERSION,
-        "id": request_id,
-        "error": {
-            "code": code,
-            "message": message,
-            "refresh_required": refresh_required,
-        },
-    }
+class InvalidParams(ValueError):
+    """助手表单的字段类型或取值无效。"""
 
 
 def _reject_constant(value: str):
@@ -110,11 +46,11 @@ def _parse_run_options(values: dict, *, require_shutdown_ui: bool = True):
     if not isinstance(values, dict) or set(values) != {
         field.name for field in fields(RunOptions)
     }:
-        raise ProtocolError("invalid_params", "运行选项字段不完整或包含未知字段")
+        raise InvalidParams("运行选项字段不完整或包含未知字段")
     for key, default in asdict(RunOptions()).items():
         assert key in values
         if type(values[key]) is not type(default):
-            raise ProtocolError("invalid_params", f"运行选项 {key} 类型无效")
+            raise InvalidParams(f"运行选项 {key} 类型无效")
     options = RunOptions(
         **{
             key: value.strip() if isinstance(value, str) else value
@@ -122,21 +58,19 @@ def _parse_run_options(values: dict, *, require_shutdown_ui: bool = True):
         }
     )
     if not 0 <= options.shutdown_delay <= 86400:
-        raise ProtocolError("invalid_params", "关机延迟须为 0～86400 秒")
+        raise InvalidParams("关机延迟须为 0～86400 秒")
     if (
         require_shutdown_ui
         and options.shutdown_enabled
         and not rust_shutdown_supported()
     ):
-        raise ProtocolError(
-            "invalid_params", "Rust 关机确认入口不可用，请关闭自动关机或重新启动前端"
-        )
+        raise InvalidParams("Rust 关机确认入口不可用，请关闭自动关机或重新启动前端")
     if options.smtp_port and (
         not options.smtp_port.isdecimal() or not 1 <= int(options.smtp_port) <= 65535
     ):
-        raise ProtocolError("invalid_params", "SMTP 端口须为 1～65535")
+        raise InvalidParams("SMTP 端口须为 1～65535")
     if options.auth_code and not options.email:
-        raise ProtocolError("invalid_params", "填写授权码时请同时填写邮箱")
+        raise InvalidParams("填写授权码时请同时填写邮箱")
     return options
 
 
@@ -180,181 +114,223 @@ def _daily_task():
     return WindowsDailyTask(entry=(sys.executable, args))
 
 
-def handle_request(service, request) -> dict:
-    """串行分发，协议输入先校验；业务异常保留诊断并返回明确失败。"""
+class HeadlessApi:
+    """将 CLI 表单转换为业务对象；配置读写统一经 AppService。"""
+
+    def __init__(self, service):
+        self.service = service
+
+    def update_script(
+        self, script_name, display_name, config_patch, weekly_timeouts, switches
+    ):
+        from src.service.script_service import ScriptEdit
+
+        edit = ScriptEdit(
+            script_name, display_name, config_patch, weekly_timeouts, switches
+        )
+        return {"script_name": self.service.update_script(edit)}
+
+    def settings_view(self):
+        from src.utils.utils_shutdown import rust_shutdown_supported
+
+        return {
+            **self.service.settings_view(),
+            "shutdown_supported": rust_shutdown_supported(),
+        }
+
+    def save_startup(self, options):
+        from src.service.schedule import MAX_STARTUP_DELAY_SECONDS, StartupOptions
+
+        if not isinstance(options, dict) or set(options) != {
+            "enabled",
+            "delay_seconds",
+        }:
+            raise InvalidParams("启动选项字段无效")
+        assert "enabled" in options and "delay_seconds" in options
+        if (
+            type(options["enabled"]) is not bool
+            or type(options["delay_seconds"]) is not int
+            or not 1 <= options["delay_seconds"] <= MAX_STARTUP_DELAY_SECONDS
+        ):
+            raise InvalidParams("自动启动需要布尔开关与 1～3600 秒倒计时")
+        return self.service.apply_startup_options(StartupOptions(**options))
+
+    def save_run(self, options):
+        return self.service.apply_run_options(_parse_run_options(options))
+
+    def run_view(self, script_names):
+        from src.utils.utils_shutdown import rust_shutdown_supported
+
+        return {
+            **self.service.run_view(script_names),
+            "shutdown_supported": rust_shutdown_supported(),
+        }
+
+    def prepare_run(self, script_names, options, confirm_invalid):
+        if type(confirm_invalid) is not bool:
+            raise InvalidParams("运行确认格式无效")
+        saved = self.service.prepare_run(
+            script_names, _parse_run_options(options), confirm_invalid
+        )
+        return _run_target(script_names, saved)
+
+    def saved_run(self, script_names):
+        saved = self.service.saved_run(script_names)
+        return _run_target(script_names, _parse_run_options(asdict(saved)))
+
+    def plan_view(self):
+        from src.utils.utils_shutdown import rust_shutdown_supported
+
+        return {
+            **self.service.daily_plan_view(task=_daily_task()),
+            "shutdown_supported": rust_shutdown_supported(),
+        }
+
+    def save_plan(self, plan):
+        from src.service.daily_plan import DailyPlanOptions
+        from src.service.schedule import is_valid_target_time
+        from src.utils.utils_shutdown import rust_shutdown_supported
+
+        if not isinstance(plan, dict) or set(plan) != {
+            "enabled",
+            "target_time",
+            "run_options",
+        }:
+            raise InvalidParams("每日计划字段不完整")
+        assert all(key in plan for key in ("enabled", "target_time", "run_options"))
+        if type(plan["enabled"]) is not bool or not is_valid_target_time(
+            plan["target_time"]
+        ):
+            raise InvalidParams("计划需要布尔开关与有效的 HH:MM 时间")
+        if plan["enabled"] and not rust_shutdown_supported():
+            raise InvalidParams("启用每日计划需要有效的 Windows Rust 前端")
+        options = _parse_run_options(
+            plan["run_options"], require_shutdown_ui=plan["enabled"]
+        )
+        return self.service.apply_daily_plan(
+            DailyPlanOptions(plan["enabled"], plan["target_time"], options),
+            task=_daily_task(),
+        )
+
+
+def rpc_methods(service, *, persistent=True) -> dict:
+    """显式开放助手方法，保留业务互斥和错误语义；协议和参数绑定交给库。"""
     from src.service.chain_service import InvalidRunRequest
-    from src.service.daily_plan import DailyPlanOptions
-    from src.service.schedule import (
-        MAX_STARTUP_DELAY_SECONDS,
-        StartupOptions,
-        is_valid_target_time,
-    )
-    from src.service.script_service import DuplicateScript, InvalidScript, ScriptEdit
+    from src.service.script_service import DuplicateScript, InvalidScript
     from src.service.task_service import InvalidTaskSelection
     from src.utils.utils_job import InvalidJob
-    from src.utils.utils_shutdown import rust_shutdown_supported
     from src.utils.utils_wallpaper import InvalidWallpaper
 
-    request_id = None
-    mutating = False
-    try:
-        if not isinstance(request, dict):
-            raise ProtocolError("invalid_request", "请求必须是 JSON 对象")
-        if "id" in request and type(request["id"]) in (str, int):
-            request_id = request["id"]
-        if set(request) != {"protocol_version", "id", "method", "params"}:
-            raise ProtocolError(
-                "invalid_request", "请求需要且仅接受 protocol_version/id/method/params"
-            )
-        assert all(
-            key in request for key in ("protocol_version", "id", "method", "params")
-        )
-        if (
-            type(request["protocol_version"]) is not int
-            or request["protocol_version"] != PROTOCOL_VERSION
-        ):
-            raise ProtocolError("unsupported_version", "仅支持 protocol_version=1")
-        if request_id is None or request_id == "":
-            raise ProtocolError("invalid_request", "id 必须是非空字符串或整数")
-        method, params = request["method"], request["params"]
-        if not isinstance(method, str) or method not in METHODS:
-            raise ProtocolError("method_not_found", "未开放此方法")
-        assert method in METHODS
-        attribute, required, optional = METHODS[method]
-        if not isinstance(params, dict):
-            raise ProtocolError("invalid_params", "params 必须是 JSON 对象")
-        if not set(required) <= set(params) or set(params) - set(required + optional):
-            raise ProtocolError("invalid_params", "参数字段缺失或包含不支持的字段")
-        # 传输层校验外部参数并转换数据；业务读写统一经 service。
-        mutating = method not in (
-            "app.snapshot",
-            "job.poll",
-            "update.view",
-            "settings.view",
-            "startup.view",
-            "plan.view",
-            "run.saved",
-            "run.view",
-            "script.view",
-            "script.target",
-            "script.icon_path",
-            "wallpaper.current",
-            "wallpaper.view",
-            "script.launch_target",
-            "script.edit_view",
-        )
-        # 保护协议 stdout，包括适配器或第三方库的意外输出。
-        with redirect_stdout(sys.stderr):
-            if method == "script.edit_save":
-                result = {"script_name": service.update_script(ScriptEdit(**params))}
-            elif method in {"settings.view", "startup.view"}:
-                result = service.settings_view()
-                result["shutdown_supported"] = rust_shutdown_supported()
-            elif method == "settings.startup_save":
-                assert "options" in params
-                options = params["options"]
-                if not isinstance(options, dict) or set(options) != {
-                    "enabled",
-                    "delay_seconds",
-                }:
-                    raise ProtocolError("invalid_params", "启动选项字段无效")
-                assert "enabled" in options and "delay_seconds" in options
-                if (
-                    type(options["enabled"]) is not bool
-                    or type(options["delay_seconds"]) is not int
-                    or not 1 <= options["delay_seconds"] <= MAX_STARTUP_DELAY_SECONDS
-                ):
-                    raise ProtocolError(
-                        "invalid_params", "自动启动需要布尔开关与 1～3600 秒倒计时"
-                    )
-                result = service.apply_startup_options(StartupOptions(**options))
-            elif method == "settings.run_save":
-                assert "options" in params
-                result = service.apply_run_options(
-                    _parse_run_options(params["options"])
+    api = HeadlessApi(service)
+    methods = {
+        "app.snapshot": service.app_snapshot,
+        "backup.start": service.start_backup,
+        "restore.start": service.start_restore,
+        "job.poll": service.poll_job,
+        "job.cancel": service.cancel_job,
+        "update.view": service.update_view,
+        "update.check": service.start_update_check,
+        "update.download": service.start_update_download,
+        "update.install": service.start_update_install,
+        "settings.view": api.settings_view,
+        "startup.view": api.settings_view,
+        "plan.view": api.plan_view,
+        "plan.save": api.save_plan,
+        "settings.startup_save": api.save_startup,
+        "settings.run_save": api.save_run,
+        "run.saved": api.saved_run,
+        "run.view": api.run_view,
+        "run.prepare": api.prepare_run,
+        "script.view": service.script_view,
+        "script.target": service.resolve_script_target,
+        "script.icon_path": service.game_icon_path,
+        "wallpaper.current": service.wallpaper_view,
+        "wallpaper.view": service.wallpaper_view,
+        "wallpaper.set": service.set_wallpaper,
+        "wallpaper.cache": service.save_wallpaper_cache,
+        "script.launch_target": service.resolve_launch_target,
+        "script.edit_view": service.script_edit_view,
+        "script.add": service.add_script,
+        "script.remove": service.remove_script,
+        "script.reorder": service.reorder_scripts,
+        "script.edit_save": api.update_script,
+        "daily.select": service.select_daily,
+        "daily.enable": service.enable_daily,
+        "weekly.select": service.select_weekly,
+        "weekly.start": service.start_weekly,
+    }
+    readonly = {
+        "app.snapshot",
+        "job.poll",
+        "update.view",
+        "settings.view",
+        "startup.view",
+        "plan.view",
+        "run.saved",
+        "run.view",
+        "script.view",
+        "script.target",
+        "script.icon_path",
+        "wallpaper.current",
+        "wallpaper.view",
+        "script.launch_target",
+        "script.edit_view",
+    }
+    session_only = {
+        "backup.start",
+        "restore.start",
+        "job.poll",
+        "job.cancel",
+        "update.check",
+        "update.download",
+        "update.install",
+    }
+
+    def unsupported(*args, **kwargs):
+        return Error(-32600, "后台任务仅支持 serve --stdio 会话")
+
+    def adapt(name, method):
+        @wraps(method)
+        def invoke(*args, **kwargs):
+            if service.jobs.running and name not in {"job.poll", "job.cancel"}:
+                return Error(
+                    -32003, "后台操作进行中，请等待完成", {"refresh_required": False}
                 )
-            elif method == "run.view":
-                result = service.run_view(**params)
-                result["shutdown_supported"] = rust_shutdown_supported()
-            elif method == "run.prepare":
-                assert all(
-                    key in params
-                    for key in ("script_names", "options", "confirm_invalid")
+            try:
+                return Success(method(*args, **kwargs))
+            except DuplicateScript as exc:
+                return Error(-32001, str(exc), {"refresh_required": False})
+            except (
+                InvalidParams,
+                InvalidTaskSelection,
+                InvalidScript,
+                InvalidRunRequest,
+                InvalidJob,
+                InvalidWallpaper,
+            ) as exc:
+                return Error(-32602, str(exc))
+            except Exception:  # noqa: BLE001 -- 业务边界记录失败；写入可能已部分完成。
+                logger.exception("助手请求失败，method=%s", name)
+                return Error(
+                    -32002,
+                    "操作失败，详情见 stderr 或助手日志",
+                    {"refresh_required": name not in readonly},
                 )
-                if type(params["confirm_invalid"]) is not bool:
-                    raise ProtocolError("invalid_params", "运行确认格式无效")
-                options = _parse_run_options(params["options"])
-                saved = service.prepare_run(
-                    params["script_names"], options, params["confirm_invalid"]
-                )
-                result = _run_target(params["script_names"], saved)
-            elif method == "run.saved":
-                assert "script_names" in params
-                saved = service.saved_run(params["script_names"])
-                options = _parse_run_options(asdict(saved))
-                result = _run_target(params["script_names"], options)
-            elif method == "plan.view":
-                result = service.daily_plan_view(task=_daily_task())
-                result["shutdown_supported"] = rust_shutdown_supported()
-            elif method == "plan.save":
-                assert "plan" in params
-                plan = params["plan"]
-                if not isinstance(plan, dict) or set(plan) != {
-                    "enabled",
-                    "target_time",
-                    "run_options",
-                }:
-                    raise ProtocolError("invalid_params", "每日计划字段不完整")
-                assert all(
-                    key in plan for key in ("enabled", "target_time", "run_options")
-                )
-                if type(plan["enabled"]) is not bool or not is_valid_target_time(
-                    plan["target_time"]
-                ):
-                    raise ProtocolError(
-                        "invalid_params", "计划需要布尔开关与有效的 HH:MM 时间"
-                    )
-                if plan["enabled"] and not rust_shutdown_supported():
-                    raise ProtocolError(
-                        "invalid_params", "启用每日计划需要有效的 Windows Rust 前端"
-                    )
-                options = _parse_run_options(
-                    plan["run_options"], require_shutdown_ui=plan["enabled"]
-                )
-                result = service.apply_daily_plan(
-                    DailyPlanOptions(plan["enabled"], plan["target_time"], options),
-                    task=_daily_task(),
-                )
-            else:
-                result = getattr(service, attribute)(**params)
-        return {
-            "protocol_version": PROTOCOL_VERSION,
-            "id": request_id,
-            "result": result,
-        }
-    except ProtocolError as exc:
-        return _error(request_id, exc.code, str(exc))
-    except DuplicateScript as exc:
-        return _error(request_id, "duplicate_script", str(exc))
-    except (
-        InvalidTaskSelection,
-        InvalidScript,
-        InvalidRunRequest,
-        InvalidJob,
-        InvalidWallpaper,
-    ) as exc:
-        return _error(request_id, "invalid_params", str(exc))
-    except Exception:  # noqa: BLE001 -- IPC 边界必须回复；写入可能已部分完成。
-        logger.exception("任务卡请求失败，id=%r", request_id)
-        return _error(
-            request_id,
-            "operation_failed",
-            "操作失败，详情见 stderr 或助手日志",
-            refresh_required=mutating,
-        )
+
+        return invoke
+
+    return {
+        name: unsupported
+        if not persistent and name in session_only
+        else adapt(name, method)
+        for name, method in methods.items()
+    }
 
 
-def _emit(response: dict, output=None) -> None:
+def _emit(response, output=None) -> None:
+    # JSON-RPC notification 没有响应；不能向管道写 null 或空行。
+    if response is None:
+        return
     output = sys.stdout if output is None else output
     output.write(json.dumps(response, ensure_ascii=False, allow_nan=False) + "\n")
     output.flush()
@@ -365,66 +341,48 @@ def _serve(service) -> int:
     # 后台线程也可能输出诊断；整个会话的业务 stdout 指向 stderr。
     with redirect_stdout(sys.stderr):
         try:
+            methods = rpc_methods(service)
             for line in sys.stdin:
-                try:
-                    request = _parse_json(line)
-                except ValueError as exc:
-                    _emit(_error(None, "parse_error", str(exc)), output)
-                    continue
-                if (
-                    service.jobs.running
-                    and isinstance(request, dict)
-                    and "method" in request
-                    and request["method"] not in {"job.poll", "job.cancel"}
-                ):
-                    request_id = None
-                    if "id" in request and type(request["id"]) in (str, int):
-                        request_id = request["id"]
-                    _emit(
-                        _error(
-                            request_id, "operation_busy", "后台操作进行中，请等待完成"
-                        ),
-                        output,
-                    )
-                    continue
-                _emit(handle_request(service, request), output)
+                response = dispatch_to_serializable(
+                    line, methods=methods, deserializer=_parse_json
+                )
+                _emit(response, output)
         finally:
             service.close()
     return 0
 
 
 def _call(service, method: str) -> int:
-    if method in {
-        "backup.start",
-        "restore.start",
-        "job.poll",
-        "job.cancel",
-        "update.check",
-        "update.download",
-        "update.install",
-    }:
-        _emit(_error(1, "invalid_request", "后台任务仅支持 serve --stdio 会话"))
-        return 1
-    try:
-        params = _parse_json(sys.stdin.read())
-    except ValueError as exc:
-        _emit(_error(1, "parse_error", str(exc)))
-        return 1
-    response = handle_request(
-        service,
-        {
-            "protocol_version": PROTOCOL_VERSION,
+    def request(payload):
+        return {
+            "jsonrpc": "2.0",
             "id": 1,
             "method": method,
-            "params": params,
-        },
-    )
+            "params": _parse_json(payload),
+        }
+
+    with redirect_stdout(sys.stderr):
+        response = dispatch_to_serializable(
+            sys.stdin.read(),
+            methods=rpc_methods(service, persistent=False),
+            deserializer=request,
+        )
     _emit(response)
     return 1 if "error" in response else 0
 
 
 def main(argv: list[str] | None = None) -> int:
     """更新闸门先于配置初始化；整个 stdio 会话持有运行共享锁。"""
+    arguments = sys.argv[1:] if argv is None else argv
+    if getattr(sys, "frozen", False):
+        from src.update.package import APP_EXE
+        from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+
+        os.environ.setdefault(
+            RUST_CONFIRM_ENV, str(Path(sys.executable).parent / APP_EXE)
+        )
+    if not arguments or arguments[0] not in {"call", "serve", "run", "daily", "legacy"}:
+        arguments = ["legacy", "--", *arguments]
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
@@ -444,7 +402,7 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("legacy", help="原助手 CLI 参数透传").add_argument(
         "arguments", nargs=argparse.REMAINDER
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
     output = (
         _console_output()
         if args.command in ("run", "daily") and os.name == "nt"
@@ -522,12 +480,15 @@ def _run_command(args: argparse.Namespace) -> int:
         if args.command in ("run", "daily", "legacy"):
             return 2
         _emit(
-            _error(
-                None,
-                "session_failed",
-                "会话无法继续，详情见 stderr 或助手日志",
-                refresh_required=True,
-            )
+            {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {
+                    "code": -32004,
+                    "message": "会话无法继续，详情见 stderr 或助手日志",
+                    "data": {"refresh_required": True},
+                },
+            }
         )
         return 2
 

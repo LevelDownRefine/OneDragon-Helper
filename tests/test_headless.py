@@ -10,25 +10,52 @@ import threading
 import unittest
 from dataclasses import asdict
 from pathlib import Path
-from unittest.mock import Mock, call, patch
+from types import SimpleNamespace
+from unittest.mock import Mock, call, create_autospec, patch
 
-from src.headless import ProtocolError, _daily_task, _parse_run_options, handle_request
+from jsonrpcserver import dispatch_to_serializable
+
+from src.headless import (
+    InvalidParams,
+    _daily_task,
+    _parse_json,
+    _parse_run_options,
+    main,
+    rpc_methods,
+)
 from src.service.app_service import AppService
 from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import RunOptions, StartupOptions
 from src.service.script_service import ScriptEdit
 from src.update.runtime import FileLease, UpdateBusyError
+from src.utils.utils_shutdown import RUST_CONFIRM_ENV
 from src.utils.utils_yaml import load_yaml
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture
 
 
 def request(method, params=None, request_id=1):
     return {
-        "protocol_version": 1,
+        "jsonrpc": "2.0",
         "id": request_id,
         "method": method,
         "params": {} if params is None else params,
     }
+
+
+def mock_service():
+    service = Mock(spec=AppService)
+    instance = object.__new__(AppService)
+    for name in dir(AppService):
+        if not name.startswith("_") and callable(getattr(AppService, name)):
+            service.attach_mock(create_autospec(getattr(instance, name)), name)
+    service.jobs = SimpleNamespace(running=False)
+    return service
+
+
+def handle_request(service, payload):
+    return dispatch_to_serializable(
+        json.dumps(payload), methods=rpc_methods(service), deserializer=_parse_json
+    )
 
 
 def selection(**changes):
@@ -76,6 +103,34 @@ class HeadlessProcessTests(unittest.TestCase):
             "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in requests),
         )
 
+    def test_jsonrpc_batch_and_notification_preserve_writes_and_session(self):
+        notification = request("daily.select", selection())
+        del notification["id"]
+        result, responses = self.serve(
+            [
+                notification,
+                [
+                    request("script.view", {"script_name": "ok-ww"}, request_id=""),
+                    request("unknown", request_id=2),
+                ],
+                request("app.snapshot", request_id="after"),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(responses), 2)
+        self.assertEqual(len(responses[0]), 2)
+        view, missing = responses[0]
+        self.assertEqual(view["id"], "")
+        self.assertEqual(view["result"]["dailies"][0]["sequence"], 1)
+        self.assertEqual(missing["error"]["code"], -32601)
+        self.assertEqual(responses[1]["id"], "after")
+        self.assertEqual(
+            json.loads(self.native.read_text(encoding="utf-8"))[
+                "Which Forgery Challenge to Farm"
+            ],
+            1,
+        )
+
     def test_local_update_info_without_qt_or_network(self):
         result, responses = self.serve([request("update.view")])
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -92,7 +147,7 @@ class HeadlessProcessTests(unittest.TestCase):
         ):
             result, responses = self.run_cli(["call", method], "{}")
             self.assertEqual(result.returncode, 1)
-            self.assertEqual(responses[0]["error"]["code"], "invalid_request")
+            self.assertEqual(responses[0]["error"]["code"], -32600)
 
     def test_daily_plan_cli_and_independent_entry_without_qt(self):
         plan = DailyPlanOptions(
@@ -252,8 +307,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
             responses[1]["result"]["value"].startswith("https://github.com/")
         )
         self.assertEqual(responses[2]["result"]["kind"], "unavailable")
-        self.assertEqual(responses[3]["error"]["code"], "operation_failed")
-        self.assertFalse(responses[3]["error"]["refresh_required"])
+        self.assertEqual(responses[3]["error"]["code"], -32002)
+        self.assertFalse(responses[3]["error"]["data"]["refresh_required"])
         self.assertEqual(self.native.read_bytes(), before)
 
     def test_script_edit_round_trip_rename_and_validation_without_qt(self):
@@ -294,15 +349,15 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
             ]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(responses[0]["error"]["code"], "invalid_params")
-        self.assertFalse(responses[0]["error"]["refresh_required"])
+        self.assertEqual(responses[0]["error"]["code"], -32602)
+        self.assertNotIn("data", responses[0]["error"])
         self.assertEqual(responses[1]["result"], {"script_name": "新的名字"})
         saved = responses[2]["result"]
         self.assertEqual(saved["script"]["script_arguments"], "--中文")
         self.assertFalse(saved["script"]["kill_game_after_done"])
         self.assertFalse(saved["script"]["block"])
         self.assertEqual(saved["weekly_timeouts"][1:], [0, 60, 60, 60, 60, 86400])
-        self.assertEqual(responses[3]["error"]["code"], "invalid_params")
+        self.assertEqual(responses[3]["error"]["code"], -32602)
         self.assertEqual(self.native.read_bytes(), before)
         config = load_yaml(str(self.root / "config/config.yml"))
         self.assertEqual(config["script_list"][1]["display_name"], "新的名字")
@@ -323,8 +378,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(responses), len(cases))
         for response in responses:
-            self.assertEqual(response["error"]["code"], "operation_failed", response)
-            self.assertTrue(response["error"]["refresh_required"])
+            self.assertEqual(response["error"]["code"], -32002, response)
+            self.assertTrue(response["error"]["data"]["refresh_required"])
         self.assertEqual(before, self.native.read_bytes())
 
     def test_prepare_batch_saves_options_without_starting_a_run(self):
@@ -473,7 +528,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         self.assertEqual(set(command["env"]), {"PYTHONPATH"})
         self.assertEqual(responses[2]["result"], responses[0]["result"])
         self.assertEqual(responses[3]["result"]["kind"], "unavailable")
-        self.assertFalse(responses[4]["error"]["refresh_required"])
+        self.assertFalse(responses[4]["error"]["data"]["refresh_required"])
 
     def test_list_add_reorder_remove_without_running_script_or_qt(self):
         added = self.root / "scripts/new.py"
@@ -510,10 +565,10 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
             ["new", "ok-ww", "自定义脚本"],
         )
         for index in (3, 7):
-            self.assertEqual(responses[index]["error"]["code"], "invalid_params")
-            self.assertFalse(responses[index]["error"]["refresh_required"])
-        self.assertEqual(responses[4]["error"]["code"], "duplicate_script")
-        self.assertFalse(responses[4]["error"]["refresh_required"])
+            self.assertEqual(responses[index]["error"]["code"], -32602)
+            self.assertNotIn("data", responses[index]["error"])
+        self.assertEqual(responses[4]["error"]["code"], -32001)
+        self.assertFalse(responses[4]["error"]["data"]["refresh_required"])
         self.assertIsNone(responses[5]["result"])
         self.assertIsNone(responses[6]["result"])
         self.assertEqual(
@@ -600,10 +655,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             responses,
-            [
-                {"protocol_version": 1, "id": i, "result": None}
-                for i in range(len(cases))
-            ],
+            [{"jsonrpc": "2.0", "id": i, "result": None} for i in range(len(cases))],
         )
         self.assertEqual(before, self.native.read_bytes())
 
@@ -613,7 +665,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
             json.dumps(selection(sequence="梦州-迅刀"), ensure_ascii=False),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(responses, [{"protocol_version": 1, "id": 1, "result": None}])
+        self.assertEqual(responses, [{"jsonrpc": "2.0", "id": 1, "result": None}])
         self.assertEqual(
             json.loads(self.native.read_text(encoding="utf-8")),
             {
@@ -631,7 +683,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         self.assertEqual(responses[0]["id"], 1)
         result, responses = self.run_cli(["call", "daily.select"], "{}")
         self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertEqual(responses[0]["error"]["code"], "invalid_params")
+        self.assertEqual(responses[0]["error"]["code"], -32602)
 
     def test_boolean_physical_values_are_distinct_from_integers(self):
         with self.root.joinpath("config/config.example.yml").open(
@@ -668,7 +720,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         for i in (0, 4):
             self.assertIsNone(responses[i]["result"])
         for i in (2, 6):
-            self.assertEqual(responses[i]["error"]["code"], "operation_failed")
+            self.assertEqual(responses[i]["error"]["code"], -32002)
         for i, expected in ((1, True), (3, True), (5, False), (7, False)):
             self.assertIs(responses[i]["result"]["dailies"][0]["sequence"], expected)
         self.assertEqual(
@@ -751,7 +803,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIsNone(responses[0]["result"])
-        self.assertEqual(responses[1]["error"]["code"], "operation_failed")
+        self.assertEqual(responses[1]["error"]["code"], -32002)
         self.assertIs(responses[2]["result"]["dailies"][0]["enabled"], False)
         self.assertEqual(
             json.loads(native.read_text(encoding="utf-8")),
@@ -793,7 +845,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         for response in responses[:3]:
             self.assertIsNone(response["result"])
         for response in responses[3:]:
-            self.assertEqual(response["error"]["code"], "operation_failed")
+            self.assertEqual(response["error"]["code"], -32002)
         self.assertEqual(self.native.read_bytes(), before)
         self.assertEqual(
             load_yaml(str(self.root / "config/weekly.yml"))["weekly_start"]["ok-ww"][
@@ -849,9 +901,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
             + "\n",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            [r["error"]["code"] for r in responses[:3]], ["parse_error"] * 3
-        )
+        self.assertEqual([r["error"]["code"] for r in responses[:3]], [-32700] * 3)
         self.assertIn("result", responses[3])
 
     def test_missing_game_config_reports_failure_and_keeps_session(self):
@@ -863,8 +913,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
             ]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(responses[0]["error"]["code"], "operation_failed")
-        self.assertTrue(responses[0]["error"]["refresh_required"])
+        self.assertEqual(responses[0]["error"]["code"], -32002)
+        self.assertTrue(responses[0]["error"]["data"]["refresh_required"])
         self.assertIn("AssertionError", result.stderr)
         self.assertIn("result", responses[1])
 
@@ -876,7 +926,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         )
         result, responses = self.run_cli(["call", "app.snapshot"], "{}")
         self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertEqual(responses[0]["error"]["code"], "session_failed")
+        self.assertEqual(responses[0]["error"]["code"], -32004)
         self.assertFalse(self.root.joinpath("config/config.yml").exists())
 
     def test_external_changes_are_visible_in_same_session(self):
@@ -994,7 +1044,7 @@ class RunRequestTests(unittest.TestCase):
                         },
                     ),
                 )
-                self.assertEqual(response["error"]["code"], "invalid_params")
+                self.assertEqual(response["error"]["code"], -32602)
                 save.assert_not_called()
 
     def test_prepare_passes_names_in_stdin_and_omits_credentials(self):
@@ -1070,13 +1120,35 @@ class RunRequestTests(unittest.TestCase):
             )
         read.assert_not_called()
         self.assertNotIn("result", response)
-        self.assertEqual(response["error"]["code"], "operation_failed")
-        self.assertTrue(response["error"]["refresh_required"])
+        self.assertEqual(response["error"]["code"], -32002)
+        self.assertTrue(response["error"]["data"]["refresh_required"])
 
 
 class ProtocolValidationTests(unittest.TestCase):
+    def test_each_batch_method_checks_busy_state_after_previous_call(self):
+        service = mock_service()
+
+        def backup():
+            service.jobs.running = True
+            return {"id": "backup"}
+
+        service.start_backup.side_effect = backup
+        service.poll_job.return_value = {"state": "running"}
+        responses = handle_request(
+            service,
+            [
+                request("backup.start"),
+                request("script.remove", {"script_name": "test"}, request_id=2),
+                request("job.poll", {"job_id": "backup"}, request_id=3),
+            ],
+        )
+        self.assertEqual(responses[0]["result"], {"id": "backup"})
+        self.assertEqual(responses[1]["error"]["code"], -32003)
+        self.assertEqual(responses[2]["result"], {"state": "running"})
+        service.remove_script.assert_not_called()
+
     def test_invalid_startup_settings_never_save(self):
-        service = Mock(spec=["apply_startup_options"])
+        service = mock_service()
         for value in (
             None,
             {},
@@ -1090,13 +1162,13 @@ class ProtocolValidationTests(unittest.TestCase):
                 response = handle_request(
                     service, request("settings.startup_save", {"options": value})
                 )
-                self.assertEqual(response["error"]["code"], "invalid_params")
+                self.assertEqual(response["error"]["code"], -32602)
         service.apply_startup_options.assert_not_called()
 
     def test_settings_save_converts_options_without_starting(self):
         startup = StartupOptions(False, 120)
         options = RunOptions(mute_enabled=True, close_running_enabled=False)
-        service = Mock(spec=["apply_startup_options", "apply_run_options"])
+        service = mock_service()
         service.apply_startup_options.return_value = None
         service.apply_run_options.return_value = None
         for method, value in (
@@ -1114,7 +1186,7 @@ class ProtocolValidationTests(unittest.TestCase):
         )
 
     def test_invalid_run_settings_never_save(self):
-        service = Mock(spec=["apply_run_options"])
+        service = mock_service()
         for change in (
             {"mute_enabled": 1},
             {"shutdown_delay": True},
@@ -1132,7 +1204,7 @@ class ProtocolValidationTests(unittest.TestCase):
                         {"options": {**asdict(RunOptions()), **change}},
                     ),
                 )
-                self.assertEqual(response["error"]["code"], "invalid_params")
+                self.assertEqual(response["error"]["code"], -32602)
         service.apply_run_options.assert_not_called()
 
     def test_shutdown_without_frontend_rejected_at_boundary(self):
@@ -1140,7 +1212,7 @@ class ProtocolValidationTests(unittest.TestCase):
             patch(
                 "src.utils.utils_shutdown.rust_shutdown_supported", return_value=False
             ),
-            self.assertRaisesRegex(ProtocolError, "关机确认入口"),
+            self.assertRaisesRegex(InvalidParams, "关机确认入口"),
         ):
             _parse_run_options(
                 asdict(RunOptions(shutdown_enabled=True, shutdown_delay=45))
@@ -1150,7 +1222,7 @@ class ProtocolValidationTests(unittest.TestCase):
         plan = DailyPlanOptions(
             False, "04:10", RunOptions(shutdown_enabled=True, shutdown_delay=45)
         )
-        service = Mock(spec=["apply_daily_plan"])
+        service = mock_service()
         service.apply_daily_plan.return_value = None
         with (
             patch("src.headless._daily_task") as task,
@@ -1175,7 +1247,7 @@ class ProtocolValidationTests(unittest.TestCase):
                     response = handle_request(
                         service, request("plan.save", {"plan": values})
                     )
-                    self.assertEqual(response["error"]["code"], "invalid_params")
+                    self.assertEqual(response["error"]["code"], -32602)
             service.apply_daily_plan.assert_not_called()
             task.assert_not_called()
             response = handle_request(
@@ -1185,7 +1257,7 @@ class ProtocolValidationTests(unittest.TestCase):
         self.assertIsNone(response["result"])
 
     def test_daily_enable_without_frontend_does_not_register(self):
-        service = Mock(spec=["apply_daily_plan"])
+        service = mock_service()
         with (
             patch("src.headless._daily_task") as task,
             patch(
@@ -1195,7 +1267,7 @@ class ProtocolValidationTests(unittest.TestCase):
             response = handle_request(
                 service, request("plan.save", {"plan": asdict(DailyPlanOptions(True))})
             )
-        self.assertEqual(response["error"]["code"], "invalid_params")
+        self.assertEqual(response["error"]["code"], -32602)
         self.assertIn("Windows Rust 前端", response["error"]["message"])
         service.apply_daily_plan.assert_not_called()
         task.assert_not_called()
@@ -1226,14 +1298,14 @@ class ProtocolValidationTests(unittest.TestCase):
             "weekly_timeouts": [None] * 7,
             "switches": {"任务": False},
         }
-        service = Mock(spec=["update_script"])
+        service = mock_service()
         service.update_script.return_value = "新名"
         response = handle_request(service, request("script.edit_save", params))
         service.update_script.assert_called_once_with(ScriptEdit(**params))
         self.assertEqual(
             response,
             {
-                "protocol_version": 1,
+                "jsonrpc": "2.0",
                 "id": 1,
                 "result": {"script_name": "新名"},
             },
@@ -1241,23 +1313,22 @@ class ProtocolValidationTests(unittest.TestCase):
 
     def test_invalid_envelopes_and_params_never_dispatch(self):
         cases = [
-            ([], "invalid_request"),
-            ({**request("app.snapshot"), "extra": 0}, "invalid_request"),
+            ([], -32600),
+            ({**request("app.snapshot"), "extra": 0}, -32600),
             (
-                {**request("app.snapshot"), "protocol_version": True},
-                "unsupported_version",
+                {**request("app.snapshot"), "jsonrpc": True},
+                -32600,
             ),
-            ({**request("app.snapshot"), "protocol_version": 2}, "unsupported_version"),
-            (request("app.snapshot", request_id=True), "invalid_request"),
-            (request("app.snapshot", request_id=""), "invalid_request"),
-            (request("run.start"), "method_not_found"),
-            (request("app.snapshot", []), "invalid_params"),
-            (request("app.snapshot", {"extra": 0}), "invalid_params"),
-            (request("script.view"), "invalid_params"),
-            (request("daily.select", {"task_name": "材料"}), "invalid_params"),
-            (request("daily.select", selection(extra=True)), "invalid_params"),
+            ({**request("app.snapshot"), "jsonrpc": "1.0"}, -32600),
+            (request("app.snapshot", request_id=True), -32600),
+            (request("run.start"), -32601),
+            (request("app.snapshot", [1]), -32602),
+            (request("app.snapshot", {"extra": 0}), -32602),
+            (request("script.view"), -32602),
+            (request("daily.select", {"task_name": "材料"}), -32602),
+            (request("daily.select", selection(extra=True)), -32602),
         ]
-        service = Mock()
+        service = mock_service()
         for payload, code in cases:
             with self.subTest(payload=payload):
                 response = handle_request(service, payload)
@@ -1295,13 +1366,11 @@ class ProtocolValidationTests(unittest.TestCase):
         ]
         for method, attribute, params in cases:
             with self.subTest(method=method, params=params):
-                service = Mock()
+                service = mock_service()
                 getattr(service, attribute).return_value = None
                 service.script_view.side_effect = OSError("查询失败")
                 response = handle_request(service, request(method, params))
-                self.assertEqual(
-                    response, {"protocol_version": 1, "id": 1, "result": None}
-                )
+                self.assertEqual(response, {"jsonrpc": "2.0", "id": 1, "result": None})
                 self.assertEqual(
                     service.mock_calls, [getattr(call, attribute)(**params)]
                 )
@@ -1311,10 +1380,104 @@ class ProtocolValidationTests(unittest.TestCase):
                 )
 
     def test_failure_after_write_does_not_claim_rollback(self):
-        service = Mock()
+        service = mock_service()
         service.select_daily.side_effect = OSError("second write failed")
         with self.assertLogs("src.headless", level="ERROR") as logs:
             response = handle_request(service, request("daily.select", selection()))
-        self.assertTrue(response["error"]["refresh_required"])
+        self.assertTrue(response["error"]["data"]["refresh_required"])
         self.assertIn("OSError", "".join(logs.output))
         service.select_daily.assert_called_once_with(**selection())
+
+
+class HeadlessEntryTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.fixture = HeadlessFixture(self.root)
+        self.env = {**os.environ, "TMPDIR": str(self.root), "TEMP": str(self.root)}
+
+    def run_entry(self, *args):
+        command = self.fixture.command(*args)
+        return subprocess.run(
+            command,
+            cwd=PROJECT_ROOT,
+            env=self.env,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        )
+
+    def test_legacy_outputs_and_utf8_arguments_without_gui(self):
+        for arguments, code, expected in (
+            (("--selftest",), 0, {"status": "ok"}),
+            (("--list-scripts",), 0, {"scripts": ["ok-ww", "自定义脚本"]}),
+            (("--get-script", "自定义脚本"), 0, {"status": "ok"}),
+            (("--get-script", "不存在"), 1, {"status": "not_found"}),
+        ):
+            with self.subTest(arguments=arguments):
+                output = self.root / "中文 结果.json"
+                result = self.run_entry(*arguments, "--out", str(output))
+                self.assertEqual(result.returncode, code, result.stderr)
+                data = json.loads(output.read_text(encoding="utf-8"))
+                for key, value in expected.items():
+                    self.assertEqual(data[key], value)
+        (self.root / "version.json").write_text(
+            '{"version":"1.2.3","frontend":"rust"}', encoding="utf-8"
+        )
+        result = self.run_entry("--version")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("1.2.3", (self.root / "odh_gui_version.txt").read_text())
+
+    def test_invalid_or_missing_action_cannot_fall_back_to_gui(self):
+        for args in ((), ("--unknown-option",), ("--out", "unused.json")):
+            with self.subTest(args=args):
+                result = self.run_entry(*args)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertNotIn("CLI 加载了 GUI", result.stderr)
+
+    def test_legacy_update_gate_precedes_configuration(self):
+        with FileLease(self.root / ".update/intent.lock"):
+            result = self.run_entry("--selftest", "--out", str(self.root / "out.json"))
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertFalse((self.root / "config/config.yml").exists())
+        self.assertFalse((self.root / "out.json").exists())
+
+    def test_frozen_entry_uses_sibling_shutdown_ui_and_preserves_rpc(self):
+        with (
+            patch("src.headless._run_command", return_value=7) as entry,
+            patch("sys.frozen", True, create=True),
+            patch("sys.executable", str(self.root / "OneDragon-Helper-CLI.exe")),
+            patch.dict(os.environ),
+        ):
+            os.environ.pop(RUST_CONFIRM_ENV, None)
+            self.assertEqual(main(["serve", "--stdio"]), 7)
+            self.assertEqual(entry.call_args.args[0].command, "serve")
+            self.assertTrue(entry.call_args.args[0].stdio)
+            self.assertEqual(
+                os.environ[RUST_CONFIRM_ENV], str(self.root / "OneDragon-Helper.exe")
+            )
+            os.environ[RUST_CONFIRM_ENV] = "explicit-parent.exe"
+            self.assertEqual(main(["--selftest"]), 7)
+            self.assertEqual(entry.call_args.args[0].command, "legacy")
+            self.assertEqual(entry.call_args.args[0].arguments, ["--", "--selftest"])
+            self.assertEqual(os.environ[RUST_CONFIRM_ENV], "explicit-parent.exe")
+
+    def test_headless_selects_rust_update_service(self):
+        from argparse import Namespace
+        from contextlib import nullcontext
+
+        from src.headless import _run_command
+
+        with (
+            patch("src.update.runtime.application_lease", return_value=nullcontext()),
+            patch("src.config.generate_config.config_workflow"),
+            patch("src.utils.utils_logger.setup_logging"),
+            patch("src.utils.utils_logger.install_crash_hooks"),
+            patch("src.service.app_service.AppService") as factory,
+            patch("src.headless._call", return_value=0) as dispatch,
+        ):
+            self.assertEqual(
+                _run_command(Namespace(command="call", method="update.view")), 0
+            )
+        factory.assert_called_once_with(frontend="rust")
+        dispatch.assert_called_once_with(factory.return_value, "update.view")

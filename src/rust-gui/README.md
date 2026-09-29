@@ -2,7 +2,8 @@
 
 总集成分支 `codex/rust-gui-integration`；已同步 main 的脚本管理和资源查询接口。
 分支依赖与后续功能顺序见 [渐进迁移计划](../../docs/rust-feasibility/migration-plan.md)。
-Rust 负责窗口、列表、任务卡和进程通信；现有 Python `src.headless` 负责全部配置业务。
+Rust 负责窗口、列表、任务卡和进程通信；Python `src.headless` 用 jsonrpcserver 处理
+JSON-RPC 2.0，并将表单转换后交给 AppService 完成配置业务。源码与打包入口共用该文件。
 已接通 Windows 原 GUI 的任务卡、脚本管理、启动、设置、每日计划、备份、壁纸和更新入口。
 完整功能边界见下方“当前范围”，同条件发布包对比见[评估报告](../../docs/rust-feasibility/assessment.md)。
 支持整窗拖入 `.exe/.bat/.py/.lnk`（每次最多 128 项），逐项调用现有添加接口，

@@ -64,7 +64,7 @@ class HeadlessJobTests(unittest.TestCase):
         self.process.stdin.write(
             json.dumps(
                 {
-                    "protocol_version": 1,
+                    "jsonrpc": "2.0",
                     "id": self.counter,
                     "method": method,
                     "params": params,
@@ -101,7 +101,7 @@ class HeadlessJobTests(unittest.TestCase):
         denied = self.exchange(
             "restore.start", {"zip_path": str(archive), "confirmed": False}
         )
-        self.assertEqual(denied["error"]["code"], "invalid_params")
+        self.assertEqual(denied["error"]["code"], -32602)
         self.assertEqual(
             json.loads(self.fixture.native.read_text(encoding="utf-8")),
             {"changed": True},
@@ -148,9 +148,7 @@ with patch('src.utils.get_root_dir', return_value=root):
                 self.assertEqual(state["progress"], {"received": 7, "total": 10})
                 break
             self.assertLess(time.monotonic(), deadline)
-        self.assertEqual(
-            self.exchange("update.view", {})["error"]["code"], "operation_busy"
-        )
+        self.assertEqual(self.exchange("update.view", {})["error"]["code"], -32003)
         self.assertTrue(self.exchange("job.cancel", {"job_id": task["id"]})["result"])
         self.assertEqual(self.finished(task)["state"], "cancelled")
         self.assertIsNone(
@@ -178,9 +176,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.back
         )
         self.start(command)
         task = self.exchange("backup.start", {})["result"]
-        self.assertEqual(
-            self.exchange("app.snapshot", {})["error"]["code"], "operation_busy"
-        )
+        self.assertEqual(self.exchange("app.snapshot", {})["error"]["code"], -32003)
         self.assertEqual(
             self.exchange("job.poll", {"job_id": task["id"]})["result"]["state"],
             "running",
@@ -231,7 +227,7 @@ with patch('src.utils.get_root_dir', return_value=root):
             self.exchange("update.install", {"directory": "untrusted"})["error"][
                 "code"
             ],
-            "invalid_params",
+            -32602,
         )
         task = self.exchange("update.install", {})["result"]
         deadline = time.monotonic() + 5
@@ -240,11 +236,9 @@ with patch('src.utils.get_root_dir', return_value=root):
             time.sleep(0.01)
         self.assertEqual(
             self.exchange("job.cancel", {"job_id": task["id"]})["error"]["code"],
-            "invalid_params",
+            -32602,
         )
-        self.assertEqual(
-            self.exchange("update.install", {})["error"]["code"], "operation_busy"
-        )
+        self.assertEqual(self.exchange("update.install", {})["error"]["code"], -32003)
         self.process.stdin.close()
         with (
             self.assertRaises(UpdateBusyError),

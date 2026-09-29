@@ -40,15 +40,51 @@ fn decode_response(line: &str, id: u64) -> Result<Value, Failure> {
         .as_object()
         .ok_or_else(|| Failure::transport("CLI 响应不是对象"))?;
     if object.len() != 3
-        || object.get("protocol_version") != Some(&json!(1))
+        || object.get("jsonrpc") != Some(&json!("2.0"))
         || object.get("id") != Some(&json!(id))
         || object.contains_key("result") == object.contains_key("error")
     {
         return Err(Failure::transport("CLI 响应版本、请求编号或字段不匹配"));
     }
     if let Some(error) = object.get("error") {
-        return Err(serde_json::from_value(error.clone())
-            .map_err(|err| Failure::transport(format!("CLI 错误响应无效：{err}")))?);
+        #[derive(Deserialize)]
+        struct RpcError {
+            code: i64,
+            message: String,
+            #[serde(default)]
+            data: Value,
+        }
+        #[derive(Deserialize)]
+        struct ErrorData {
+            refresh_required: bool,
+        }
+        let error: RpcError = serde_json::from_value(error.clone())
+            .map_err(|err| Failure::transport(format!("CLI 错误响应无效：{err}")))?;
+        let code = match error.code {
+            -32700 => "parse_error",
+            -32600 => "invalid_request",
+            -32601 => "method_not_found",
+            -32602 => "invalid_params",
+            -32603 => "internal_error",
+            -32001 => "duplicate_script",
+            -32002 => "operation_failed",
+            -32003 => "operation_busy",
+            -32004 => "session_failed",
+            _ => "rpc_error",
+        };
+        let refresh_required = if (-32004..=-32001).contains(&error.code) {
+            serde_json::from_value::<ErrorData>(error.data)
+                .map_err(|err| Failure::transport(format!("CLI 错误详情无效：{err}")))?
+                .refresh_required
+        } else {
+            // 标准内部错误不能保证写入尚未开始；未知错误同样保守刷新。
+            !matches!(error.code, -32700 | -32600 | -32601 | -32602)
+        };
+        return Err(Failure {
+            code: code.into(),
+            message: error.message,
+            refresh_required,
+        });
     }
     Ok(object["result"].clone())
 }
@@ -160,7 +196,7 @@ impl Session {
         let id = self.next_id;
         self.next_id += 1;
         let mut payload = serde_json::to_vec(&json!({
-            "protocol_version": 1, "id": id, "method": method, "params": params
+            "jsonrpc": "2.0", "id": id, "method": method, "params": params
         }))
         .expect("serializable JSON request");
         payload.push(b'\n');
