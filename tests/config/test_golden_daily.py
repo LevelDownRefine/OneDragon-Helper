@@ -15,7 +15,6 @@ from unittest.mock import patch
 
 from src.config import daily as daily_mod
 from src.config import set_config as config_mod
-from src.config import weekly as weekly_mod
 from src.config.daily_config import get_daily_map
 from tests.support.config_diff import diff_paths
 
@@ -132,7 +131,6 @@ def build_baseline():
     with ExitStack() as stack:
         # 菜单基线从固定种子开始；构造期对齐不能依赖别的测试是否预热过单例。
         stack.enter_context(patch.dict(config_mod._CONFIGS))
-        stack.enter_context(patch.dict(weekly_mod._BUILT, clear=True))
         for factory in tuple(config_mod._CONFIGS.values()):
             config_mod.register(factory.__wrapped__)
         with (

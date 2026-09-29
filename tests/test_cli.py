@@ -460,8 +460,7 @@ class TestCliGenerateChainOverrides(CliTestCase):
     def test_weekly_start_unsupported_script_exits_one(self):
         """--weekly-start 对未支持周常的脚本 → 退出 1 并报错（不崩溃）。"""
         # 找一个不支持周常的已注册脚本（如 BetterGI 原神）
-        from src.config.set_config import _CONFIGS
-        from src.config.weekly import supports_weekly
+        from src.config.set_config import _CONFIGS, supports_weekly
 
         unsupported = next(n for n in _CONFIGS if not supports_weekly(n))
         code = _run_main(

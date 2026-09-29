@@ -5,24 +5,39 @@
 
 import os
 import unittest
+from functools import cache
 from unittest.mock import patch
 
+from src.config import set_config as config_mod
 from src.config import weekly as weekly_mod
 from src.config.daily_config import get_weekly_map
-from src.config.set_config import _CONFIGS, ScriptConfig
-from src.config.weekly import Weekly, weeklies_of, weekly_names
+from src.config.set_config import _CONFIGS, ScriptConfig, weekly_names
+from src.config.weekly import Weekly
+from src.service.run_actions import apply_subscript_config
 from src.utils.utils_weekly import DISABLED_START_DAY
 
 
 def _weekly(script_name: str, weekly_name: str) -> Weekly:
     """按脚本 + 周常展示名取已装配的周常对象。"""
-    for weekly in weeklies_of(script_name):
+    for weekly in _CONFIGS[script_name]()._weeklies:
         if weekly.display_name == weekly_name:
             return weekly
     raise AssertionError(f"未找到周常: {script_name}/{weekly_name}")
 
 
-class TestWeeklyDeclaration(unittest.TestCase):
+class WeeklyTestCase(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch.dict(_CONFIGS))
+        for name, factory in tuple(_CONFIGS.items()):
+            _CONFIGS[name] = cache(factory.__wrapped__)
+        # 只隔离构造期原生 I/O，每例使用全新的适配器与任务对象。
+        self.enterContext(patch.object(config_mod, "load_config", return_value=None))
+        self.enterContext(
+            patch("src.config.daily.load_script_config", return_value=None)
+        )
+
+
+class TestWeeklyDeclaration(WeeklyTestCase):
     """声明的机制类与文件路径声明。"""
 
     def test_every_declaration_has_registered_class_and_config(self):
@@ -54,14 +69,14 @@ class TestWeeklyDeclaration(unittest.TestCase):
                         self.assertNotIn("config", menu)
 
 
-class TestWeeklyAssembly(unittest.TestCase):
+class TestWeeklyAssembly(WeeklyTestCase):
     """装配：构造函数按声明建对象，ScriptConfig 构造期持有。"""
 
     def test_one_object_per_declaration(self):
         """一个脚本的周常对象数 = 声明条数（崩铁两条各一个对象）。"""
         for script_name, declarations in weekly_mod.load_weekly_map().items():
             with self.subTest(script=script_name):
-                built = weeklies_of(script_name)
+                built = _CONFIGS[script_name]()._weeklies
                 self.assertEqual(len(built), len(declarations))
                 self.assertEqual(
                     [w.display_name for w in built],
@@ -69,12 +84,16 @@ class TestWeeklyAssembly(unittest.TestCase):
                 )
 
     def test_scripts_without_declaration_build_empty(self):
-        self.assertEqual(weeklies_of("BetterGI"), [])
+        self.assertEqual(_CONFIGS["BetterGI"]()._weeklies, [])
         self.assertEqual(weekly_names("BetterGI"), [])
 
-    def test_build_is_idempotent(self):
-        """重复装配返回同一批对象（不重建）。"""
-        self.assertIs(weekly_mod.build_weeklies("ok-ww", "鸣潮"), weeklies_of("ok-ww"))
+    def test_instances_own_independent_weeklies(self):
+        first = config_mod.WutheringWavesConfig()
+        second = config_mod.WutheringWavesConfig()
+        self.assertIsNot(first._weeklies, second._weeklies)
+        self.assertIsNot(first._weeklies[0], second._weeklies[0])
+        self.assertEqual(first._weeklies[0].script_display_name, "鸣潮")
+        self.assertIs(_CONFIGS["ok-ww"](), _CONFIGS["ok-ww"]())
 
     def test_config_holds_weeklies(self):
         """ScriptConfig 构造期装配并持有周常对象（与日常同一时机）。"""
@@ -93,7 +112,6 @@ class TestWeeklyAssembly(unittest.TestCase):
         }
         with (
             patch.object(weekly_mod, "load_weekly_map", return_value=declarations),
-            patch.dict(weekly_mod._BUILT, {}, clear=True),
             self.assertRaises(AssertionError),
         ):
             weekly_mod.build_weeklies("测试", "测试脚本")
@@ -119,19 +137,27 @@ class TestWeeklyAssembly(unittest.TestCase):
         }
         with (
             patch.object(weekly_mod, "load_weekly_map", return_value=declarations),
-            patch.dict(weekly_mod._BUILT, {}, clear=True),
             self.assertRaises(AssertionError),
         ):
             weekly_mod.build_weeklies("测试", "测试脚本")
 
 
-class TestSupportsWeekly(unittest.TestCase):
+class TestSupportsWeekly(WeeklyTestCase):
     """周常支持查询：supports_weekly"""
 
     def test_unknown_script_returns_false(self):
         """未声明周常的脚本 → False"""
-        self.assertFalse(weekly_mod.supports_weekly("不存在"))
-        self.assertFalse(weekly_mod.supports_weekly("BetterGI"))
+        self.assertFalse(config_mod.supports_weekly("不存在"))
+        self.assertFalse(config_mod.supports_weekly("BetterGI"))
+
+    def test_metadata_queries_do_not_construct_configs(self):
+        with patch.dict(
+            _CONFIGS,
+            {"ok-ww": lambda: self.fail("名称查询不能构造适配器")},
+            clear=True,
+        ):
+            self.assertEqual(weekly_names("ok-ww"), ["幻梦游园"])
+            self.assertTrue(config_mod.supports_weekly("ok-ww"))
 
     def test_supported_are_the_five_weekly_scripts(self):
         """适配周常的是鸣潮/终末地/绝区零/崩铁/粥五个。"""
@@ -144,10 +170,10 @@ class TestSupportsWeekly(unittest.TestCase):
         }
         self.assertEqual(set(weekly_mod.load_weekly_map()), expected)
         for name in expected:
-            self.assertTrue(weekly_mod.supports_weekly(name), f"{name} 应支持周常")
+            self.assertTrue(config_mod.supports_weekly(name), f"{name} 应支持周常")
 
 
-class TestWeeklyStartDay(unittest.TestCase):
+class TestWeeklyStartDay(WeeklyTestCase):
     """按周几起（start_day）写落点：六条周常各形态。"""
 
     # ---- 基类 ----
@@ -443,7 +469,7 @@ class TestWeeklyStartDay(unittest.TestCase):
                 self.assertEqual(t["UseExpiringMedicine"], "SHOULD_NOT_CHANGE")
 
 
-class TestEndfieldWeekly(unittest.TestCase):
+class TestEndfieldWeekly(WeeklyTestCase):
     """终末地：周常开关是语义反相的布尔字段。"""
 
     def test_set_weekly_start_inverts_buy_only_flag(self):
@@ -464,7 +490,7 @@ class TestEndfieldWeekly(unittest.TestCase):
             mock_save.assert_called_once_with(config)
 
 
-class TestEchoOfWarEditTime(unittest.TestCase):
+class TestEchoOfWarEditTime(WeeklyTestCase):
     """崩铁·历战余响的编辑期落盘（总开关 + 字面起始日）。"""
 
     def test_set_start_day_writes_echo_field_only(self):
@@ -516,26 +542,74 @@ class TestEchoOfWarEditTime(unittest.TestCase):
         mock_save.assert_not_called()
 
 
-class TestWeeklyAdapter(unittest.TestCase):
+class TestWeeklyAdapter(WeeklyTestCase):
     """模块级入口：按名分发、未适配 / 无此能力时优雅跳过。"""
+
+    def test_all_entries_use_the_cached_script_owned_objects(self):
+        class SelectableWeekly(Weekly):
+            def set_task(self, task_name):
+                self.task = task_name
+
+            def read_task(self):
+                return self.task
+
+            def set_start_day(self, start_day):
+                self.start_day = start_day
+
+            def prepare_start_day(self, start_day):
+                self.prepared_day = start_day
+
+        owner = _CONFIGS["ok-ww"]()
+        owned = SelectableWeekly(
+            "ok-ww", {"display_name": "独有周常", "config": "weekly.json"}, "鸣潮"
+        )
+        owner._weeklies = [owned]
+        daily = owner._dailies[0]
+        with (
+            patch.object(daily, "update") as update,
+            patch.object(daily, "set_enabled") as enable,
+        ):
+            config_mod.set_config("ok-ww", daily.display_name, "材料", 1)
+            config_mod.set_weekly_task("ok-ww", "独有周常", "副本")
+            config_mod.set_weekly_start_day("ok-ww", "独有周常", 4)
+            apply_subscript_config({"ok-ww"}, {"ok-ww": {"独有周常": 0}})
+            self.assertEqual(config_mod.get_weekly_task("ok-ww", "独有周常"), "副本")
+        update.assert_called_once_with("材料", 1)
+        enable.assert_called_once_with(True)
+        self.assertEqual(owned.start_day, 4)
+        self.assertEqual(owned.prepared_day, 0)
+        self.assertIs(owner._weeklies[0], owned)
+
+    def test_two_script_instances_dispatch_to_their_own_weeklies(self):
+        first = config_mod.StarRailConfig()
+        second = config_mod.StarRailConfig()
+        first_echo = first._weekly_named("历战余响")
+        second_echo = second._weekly_named("历战余响")
+        with (
+            patch.object(first_echo, "set_start_day") as first_write,
+            patch.object(second_echo, "set_start_day") as second_write,
+        ):
+            first.set_weekly_start_day("历战余响", 4)
+        first_write.assert_called_once_with(4)
+        second_write.assert_not_called()
 
     def test_unadapted_script_is_skipped(self):
         """未适配周常的脚本：写入口不做事，读入口返回 None。"""
-        self.assertIsNone(weekly_mod.get_weekly_task("没有的脚本", "历战余响"))
-        weekly_mod.prepare_weekly_start_days("没有的脚本", {"历战余响": 3})
-        weekly_mod.set_weekly_start_day("没有的脚本", "历战余响", 3)
-        weekly_mod.set_weekly_task("没有的脚本", "历战余响", "副本")
+        self.assertIsNone(config_mod.get_weekly_task("没有的脚本", "历战余响"))
+        config_mod.prepare_weekly_start_days("没有的脚本", {"历战余响": 3})
+        config_mod.set_weekly_start_day("没有的脚本", "历战余响", 3)
+        config_mod.set_weekly_task("没有的脚本", "历战余响", "副本")
 
     def test_scripts_without_capability_are_skipped(self):
         """有周常但无该能力的脚本：无字面起始日/无副本选型时不做事。"""
-        weekly_mod.set_weekly_start_day("ok-ww", "幻梦游园", 3)
-        weekly_mod.set_weekly_task("ok-ww", "幻梦游园", "副本")
-        self.assertIsNone(weekly_mod.get_weekly_task("ok-ww", "幻梦游园"))
+        config_mod.set_weekly_start_day("ok-ww", "幻梦游园", 3)
+        config_mod.set_weekly_task("ok-ww", "幻梦游园", "副本")
+        self.assertIsNone(config_mod.get_weekly_task("ok-ww", "幻梦游园"))
 
     def test_unknown_weekly_name_is_skipped(self):
         """周常名不存在时编辑期入口不做事（不误落到同脚本其它周常）。"""
-        self.assertIsNone(weekly_mod.get_weekly_task("March7th-Launcher", "没有的周常"))
-        weekly_mod.set_weekly_start_day("March7th-Launcher", "没有的周常", 3)
+        self.assertIsNone(config_mod.get_weekly_task("March7th-Launcher", "没有的周常"))
+        config_mod.set_weekly_start_day("March7th-Launcher", "没有的周常", 3)
 
     def test_prepare_dispatches_only_listed_weeklies(self):
         """运行期入口只写 start_days 里列出的周常。"""
@@ -545,7 +619,7 @@ class TestWeeklyAdapter(unittest.TestCase):
             patch.object(currency, "prepare_start_day") as mock_currency,
             patch.object(echo, "prepare_start_day") as mock_echo,
         ):
-            weekly_mod.prepare_weekly_start_days("March7th-Launcher", {"历战余响": 5})
+            config_mod.prepare_weekly_start_days("March7th-Launcher", {"历战余响": 5})
         mock_currency.assert_not_called()
         mock_echo.assert_called_once_with(5)
 
@@ -557,7 +631,7 @@ class TestWeeklyAdapter(unittest.TestCase):
             patch.object(currency, "set_start_day") as mock_currency,
             patch.object(echo, "set_start_day") as mock_echo,
         ):
-            weekly_mod.set_weekly_start_day("March7th-Launcher", "货币战争", 4)
-            weekly_mod.set_weekly_start_day("March7th-Launcher", "历战余响", 4)
+            config_mod.set_weekly_start_day("March7th-Launcher", "货币战争", 4)
+            config_mod.set_weekly_start_day("March7th-Launcher", "历战余响", 4)
         mock_currency.assert_not_called()  # 货币战争未覆写 set_start_day
         mock_echo.assert_called_once_with(4)

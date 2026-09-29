@@ -11,7 +11,6 @@ from src.config import daily as daily_mod
 from src.config import set_config as sc_mod
 from src.config import weekly as weekly_mod
 from src.config.set_config import ArknightsConfig
-from src.config.weekly import weeklies_of
 
 
 def load_fixture():
@@ -178,7 +177,7 @@ class TestMaaNativeConfig(unittest.TestCase):
     def test_weekly_hook_changes_only_medicine_even_for_disabled_tasks(self):
         self.cfg._init_config()
         before = copy.deepcopy(self.data)
-        weeklies_of("MAA")[0].prepare_start_day(1)
+        self.cfg.prepare_weekly_start_days({"理智药剂": 1})
         expected = before["Configurations"]["Default"]["TaskQueue"]
         for task in expected:
             if task["$type"] == "FightTask":
