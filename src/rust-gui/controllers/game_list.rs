@@ -210,6 +210,41 @@ impl View {
                 11.0,
                 MUTED,
             );
+            // 让被拖动的图标跟随指针，拖动才有可见反馈。
+            if let Some(name) = self.dragging.clone()
+                && let Some(position) = ui.input(|input| input.pointer.interact_pos())
+                && let Some(script) = data
+                    .scripts
+                    .iter()
+                    .find(|script| script.script_name == name)
+            {
+                let size = if ui.ctx().pixels_per_point() > 1.6 {
+                    256
+                } else {
+                    64
+                };
+                let texture = self
+                    .icons
+                    .get(script.icon_path.as_deref(), size)
+                    .or_else(|| self.icons.get(self.default_icon_path.as_deref(), size));
+                let ghost = Rect::from_center_size(position, vec2(56.0, 56.0));
+                ui.painter().rect_filled(
+                    ghost,
+                    16,
+                    egui::Color32::from_rgba_unmultiplied(16, 25, 41, 220),
+                );
+                ui.painter().rect_stroke(
+                    ghost,
+                    16,
+                    egui::Stroke::new(1.0, ACCENT),
+                    egui::StrokeKind::Inside,
+                );
+                if let Some(texture) = texture {
+                    egui::Image::new(&texture).paint_at(ui, ghost.shrink(8.0));
+                } else {
+                    self.assets.icon(ui, "script", ghost.shrink(8.0));
+                }
+            }
             if ui.input(|input| input.pointer.any_released()) {
                 let name = self.dragging.take().expect("active drag");
                 if !data.busy {
