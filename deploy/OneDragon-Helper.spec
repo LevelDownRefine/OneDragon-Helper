@@ -115,8 +115,8 @@ excludes = [
 
 
 a = Analysis(
-    ['../src/bootstrap.py'],
-    pathex=['..'],
+    ['../python-backend/src/bootstrap.py'],
+    pathex=['../python-backend'],
     binaries=_extra_dlls,
     datas=[],
     hiddenimports=hiddenimports,

@@ -3,8 +3,8 @@ chcp 65001 >nul
 setlocal EnableExtensions
 
 set "base=%~dp0"
-:: 将项目根目录加入Python模块搜索路径，才能使用 python -m
-set "PYTHONPATH=%base%;%PYTHONPATH%"
+:: 将 Python 子项目加入模块搜索路径，才能使用 python -m
+set "PYTHONPATH=%base%python-backend;%PYTHONPATH%"
 
 :: 管理员提权（透传命令行参数）
 fltmc >nul 2>&1 || (

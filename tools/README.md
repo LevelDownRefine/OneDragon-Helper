@@ -3,7 +3,7 @@
 ## 发布包
 
 `release_package.py` 由 `deploy/build.bat` 调用：仅拷贝 Git 跟踪的
-`config/` 模板与声明、`assets/` 内置资源、`src/gui/qml/` 和 README。
+`config/` 模板与声明、`assets/` 内置资源、`python-backend/src/gui/qml/` 和 README；QML 在发布包仍安装到 `src/gui/qml/`。
 `assets/icons/` 是编译期图标源，已嵌入 Rust EXE，Qt 使用矢量源；两种发布包都不重复拷贝它们。
 `config.yml`、`schedule.yml`、`weekly.yml`、壁纸设置与缓存、脚本链、
 日志、备份不属于发布内容；即使误跟踪了用户配置，也会阻止打包。
@@ -21,8 +21,8 @@ Windows 任务计划与快捷方式使用的 `pywin32` 在主项目中显式声�
 
 包内还包含独立的 `OneDragon-Helper-Updater.exe` 和 `update-manifest.json`。
 清单版本为 schema 1，记录程序版本与每个程序文件的 SHA-256（不含清单自身）；
-构建校验及更新器共用 `src/update/package.py` 的路径规则。独立更新器从
-`src/update/__main__.py` 打包。ZIP 的 SHA-256 覆盖清单，逐文件校验确保解包和替换完整。
+构建校验及更新器共用 `python-backend/src/update/package.py` 的路径规则。独立更新器从
+`python-backend/src/update/__main__.py` 打包。ZIP 的 SHA-256 覆盖清单，逐文件校验确保解包和替换完整。
 用户配置、日志、壁纸和备份既不进入清单，也不能被更新清单声明为可替换内容。
 
 exe 集成测试只在临时副本运行，发布目录在测试前后均校验。
@@ -99,7 +99,7 @@ python tools/sync_oknte_tasks.py
 ## Rust 界面原型
 
 `python tools/run_rust_gui.py --demo` 构建并启动独立演示配置，操作说明见
-[Rust GUI 原型](../src/rust-gui/README.md)。`--no-build` 复用已有构建。
+[Rust GUI 原型](../rust-gui/README.md)。`--no-build` 复用已有构建。
 
 `python -m tools.export_rust_icons` 从原 GUI 图标源导出根目录 `assets/icons/`。
 仅此开发步骤需要 Qt；Rust 界面运行时使用已嵌入的图标与默认壁纸。

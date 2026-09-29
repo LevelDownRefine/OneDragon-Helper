@@ -16,10 +16,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 def prepare_demo(root: Path) -> None:
     """复制源码及静态声明，生成鸣潮/崩铁演示配置，不读取真实用户配置。"""
     shutil.copytree(
-        PROJECT_ROOT / "src",
-        root / "src",
+        PROJECT_ROOT / "python-backend/src",
+        root / "python-backend/src",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+    )
+    shutil.copytree(
+        PROJECT_ROOT / "runner",
+        root / "runner",
         ignore=shutil.ignore_patterns(
-            ".git", "__pycache__", "*.pyc", ".log", "tests", "rust-gui"
+            ".git", "__pycache__", "*.pyc", ".log", "tests", ".venv"
         ),
     )
     config = root / "config"
@@ -80,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    crate = PROJECT_ROOT / "src/rust-gui"
+    crate = PROJECT_ROOT / "rust-gui"
     if not args.no_build:
         command = [
             "cargo",

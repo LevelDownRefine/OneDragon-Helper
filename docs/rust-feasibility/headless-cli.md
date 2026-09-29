@@ -1,6 +1,6 @@
 # 无 Qt 助手 CLI
 
-源码与冻结包统一使用 `src/headless.py`，从项目根运行，经 AppService 复用业务。
+源码与冻结包统一使用 `python-backend/src/headless.py`，从 Python 子项目运行，经 AppService 复用业务。
 JSON-RPC 2.0 的解析、协议校验、方法查找、参数绑定和响应封装由
 [jsonrpcserver](https://explodinglabs.com/jsonrpcserver/dispatch/) 负责；本项目保留
 stdio 读写、明确开放的方法、表单转换、后台互斥和进程生命周期，不另建通信框架。
@@ -11,7 +11,7 @@ Python GUI 仍直接调用 AppService，不依赖此协议。
 一次调用：
 
 ```powershell
-'{}' | python -m src.headless call app.snapshot
+'{}' | uv run --directory python-backend python -m src.headless call app.snapshot
 ```
 
 `call METHOD` 从 stdin 读 JSON 参数（对象或位置参数数组，可以多行），读到 EOF 后输出响应，
@@ -21,7 +21,7 @@ Python GUI 仍直接调用 AppService，不依赖此协议。
 GUI 启动并复用一个进程：
 
 ```text
-python -m src.headless serve --stdio
+uv run --directory python-backend python -m src.headless serve --stdio
 ```
 
 stdin/stdout 使用 UTF-8 JSON Lines，每行一个请求或响应，立即 flush。
@@ -217,7 +217,7 @@ plan.save 校验完整表单，复用 apply_daily_plan 注册当前用户、安�
 系统任务成功后才写计划，写盘失败以原 XML 恢复真实任务，不凭配置猜测旧入口；
 原先未注册则删除新任务。取消不请求保存，状态读取失败返回 state:null 与 state_error。
 
-任务命令为 `python -m src.headless daily --shutdown-ui Rust前端绝对路径`，冻结后省去 -m。
+任务命令为 `uv run --directory python-backend python -m src.headless daily --shutdown-ui Rust前端绝对路径`，冻结后省去 -m。
 此入口持有运行锁，读取当时 daily_run 的全部脚本与独立选项，不接收手动勾选；
 已暂停则无动作。关机确认环境显式从参数恢复，其他任务语义沿用原服务。
 Rust UI 保存后回读实际状态，更新父窗每日计划开关并保留未提交的启动草稿。
@@ -230,7 +230,7 @@ Rust UI 保存后回读实际状态，更新父窗每日计划开关并保留未
 input 是 `{"script_names":[...],"options":{...}}` 的 JSON 文本；选项重新读取、授权码不回传，
 凭据沿用现有安全存储。取消无需调用 prepare；写入失败可能部分完成，不能自动重试或启动。
 
-独立入口 `python -m src.headless run` 从 UTF-8 stdin 读一个 JSON 对象直到 EOF，
+独立入口 `uv run --directory python-backend python -m src.headless run` 从 UTF-8 stdin 读一个 JSON 对象直到 EOF，
 在独立进程内复用 schedule_run，运行锁覆盖初始化与完整调度。它不是 stdio RPC 方法，
 不会阻塞持久服务；GUI 退出不终止该进程。Windows 前端以 CREATE_NEW_CONSOLE 启动，
 worker 将 stdout/stderr 绑定 CONOUT$，stdin 保留给参数；无 Qt 导入。

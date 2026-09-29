@@ -61,7 +61,7 @@ except subprocess.TimeoutExpired as e:
 
 不允许 `skipUnless`、按 `os.name` 分支跳过、注释掉校验等绕过手段。CI 挂的真因要修，不绕过。
 
-> 显式豁免：`tests/exe/` 的集成测试需要 Windows + 管理员 + 已打包 exe 前置（非管理员会弹 UAC 卡死），允许 `skipUnless`；源码 CI（ubuntu）跳过它们，验证由 `build-exe.yml` 在 Windows runner 真跑补上，覆盖并未丢失。主测试目录 `tests/` 不适用本豁免。
+> 显式豁免：`python-backend/tests/exe/` 的集成测试需要 Windows + 管理员 + 已打包 exe 前置（非管理员会弹 UAC 卡死），允许 `skipUnless`；源码 CI（ubuntu）跳过它们，验证由 `build-exe.yml` 在 Windows runner 真跑补上，覆盖并未丢失。主测试目录 `python-backend/tests/` 不适用本豁免。
 
 ## 8. 日志用 `logging` 模块
 
@@ -82,11 +82,11 @@ except subprocess.TimeoutExpired as e:
 新增/修改功能后必须补测试。动了共享接口 / 多模块 / 做了重构的**大改动**，必须用与 CI 一致的命令跑**全量**，不能只跑改动相关文件：
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests -t . -p "test*.py"
+PYTHONPATH=python-backend:python-backend/src python -m unittest discover -s python-backend/tests -t python-backend -p "test*.py"
 ```
 
-- `PYTHONPATH=src` 不可省：否则 `test_utils` 顶层 `import` 会误报 import 错。
-- `ruff check src tests` 一并跑，含 `src/runner/`。
+- `PYTHONPATH=python-backend:python-backend/src` 不可省：否则 `test_utils` 顶层 `import` 会误报 import 错。
+- `ruff check python-backend tools runner` 一并跑，含 `runner/`。
 
 ## 12. 克制使用 try-except
 

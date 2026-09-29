@@ -1,12 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 """OneDragon-Helper Runner（脚本运行器）打包配置。
 
-入口: src/runner/launcher.py (控制台应用，UAC 提权)
+入口: runner/launcher.py (控制台应用，UAC 提权)
 模式: onefile，自包含单 exe，由 GUI 主程序同目录调用。
 构建: uv run pyinstaller --noconfirm --clean deploy/OneDragon-Helper-Runner.spec
 
-注意: script_chainer 包位于 src/runner/ 下（非标准 src.runner.script_chainer），
-      需通过 pathex 将 src/runner/ 加入模块搜索路径。
+注意: script_chainer 包位于 runner/ 下（非标准 runner.script_chainer），
+      需通过 pathex 将 runner/ 加入模块搜索路径。
 """
 
 import os
@@ -32,8 +32,8 @@ excludes = [
 
 
 a = Analysis(
-    ['../src/runner/launcher.py'],
-    pathex=['../src/runner'],
+    ['../runner/launcher.py'],
+    pathex=['../runner'],
     binaries=_extra_dlls,
     datas=[],
     hiddenimports=[],
@@ -42,7 +42,7 @@ a = Analysis(
     # 冻结后运行在英文 locale(cp1252) 的 Windows 上，Runner 经 colorama 往 stdout 打印中文会
     # 抛 'charmap' codec can't encode characters 使进程崩溃（GitHub Windows runner 即此场景）。
     # runtime_hook_utf8.py 在 main 导入 colorama 之前把标准流强制为 UTF-8，是此崩溃的唯一修复点
-    # （Runner 入口是 src/runner/launcher.py，并不包含 src/launcher 的代码）。
+    # （Runner 入口是 runner/launcher.py，并不包含 src/launcher 的代码）。
     # 用 SPECPATH 定位 hook，避免依赖 build.bat 的 CWD。
     runtime_hooks=[os.path.join(SPECPATH, 'runtime_hook_utf8.py')],
     excludes=excludes,

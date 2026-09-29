@@ -18,6 +18,7 @@ import psutil
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
 from src.update.package import load_manifest, manifest_frontend  # noqa: E402
 from tools.release_package import validate_package  # noqa: E402

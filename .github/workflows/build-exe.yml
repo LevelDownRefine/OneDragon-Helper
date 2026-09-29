@@ -25,12 +25,12 @@ jobs:
       - name: Check and test Windows Rust implementation
         shell: pwsh
         run: |
-          cargo fmt --manifest-path src/rust-gui/Cargo.toml --check
+          cargo fmt --manifest-path rust-gui/Cargo.toml --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo clippy --manifest-path src/rust-gui/Cargo.toml --locked --all-features --all-targets -- -D warnings
+          cargo clippy --manifest-path rust-gui/Cargo.toml --locked --all-features --all-targets -- -D warnings
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:ODH_TEST_PYTHON = (Resolve-Path .venv/Scripts/python.exe).Path
-          cargo test --manifest-path src/rust-gui/Cargo.toml --locked --all-features
+          cargo test --manifest-path rust-gui/Cargo.toml --locked --all-features
       - name: Build complete Rust package and test EXEs
         run: uv run --frozen python tools/build_rust.py --test
       - name: Check clean release directory
@@ -66,7 +66,7 @@ jobs:
           $binary = 'deploy/dist/rust-cli/OneDragon-Helper/OneDragon-Helper-CLI.exe'
           if (!(Test-Path -LiteralPath $binary)) { throw 'CLI executable missing' }
           $env:ODH_CLI_EXE = (Resolve-Path -LiteralPath $binary).Path
-          uv run python -m unittest tests.exe.test_headless_exe -v
+          uv run python -m unittest discover -s python-backend/tests -t python-backend -p test_headless_exe.py -v
 
   build-exe:
     runs-on: windows-latest

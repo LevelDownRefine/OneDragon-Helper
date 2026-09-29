@@ -10,6 +10,11 @@ resolution-markers = [
     "(python_full_version < '3.12' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 
+[manifest]
+members = [
+    "onedragon-scriptchainer",
+]
+
 [[package]]
 name = "altgraph"
 version = "0.17.5"
@@ -402,7 +407,7 @@ wheels = [
 [[package]]
 name = "onedragon-scriptchainer"
 version = "0.0.1"
-source = { virtual = "." }
+source = { virtual = "python-backend" }
 dependencies = [
     { name = "colorama" },
     { name = "jsonrpcserver" },
