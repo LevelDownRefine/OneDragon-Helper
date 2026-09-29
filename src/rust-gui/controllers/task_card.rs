@@ -218,7 +218,7 @@ impl View {
             .and_then(|index| entries.get(index))
             .map(|entry| entry.children.as_slice())
             .unwrap_or(&[]);
-        let width = left_width + 8.0 + if children.is_empty() { 0.0 } else { 204.0 };
+        let width = left_width + 10.0 + if children.is_empty() { 0.0 } else { 204.0 };
         let desired = (entries.len() as f32 * 32.0 + 8.0).min(360.0);
         let screen = ctx.content_rect();
         let bounds = popup_bounds(menu.anchor, vec2(width, desired), screen);
@@ -242,6 +242,10 @@ impl View {
             .default_size(bounds.size())
             .constrain(false)
             .show(ctx, |ui| {
+                // Area caches its last size; default_size only applies to its first frame.
+                // Reuse the current popup bounds for both placement and clipping.
+                ui.set_min_size(bounds.size());
+                ui.set_max_size(bounds.size());
                 egui::Frame::new()
                     .fill(CONTROL)
                     .stroke(egui::Stroke::new(1.0, BORDER))
