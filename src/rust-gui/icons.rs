@@ -12,6 +12,10 @@ use eframe::egui::{Color32, Pos2, Rect, pos2};
 pub struct Assets {
     pub background: egui::TextureHandle,
     pub gradient: egui::TextureHandle,
+    /// 竖向遮光渐变纹理（1×101）：top alpha=31 → 48% 处 0 → bottom 77，颜色 (11,18,32)。
+    /// 用 101 纹素而非 3：3 纹素时中点 texel 落在 50%、断点偏移 2% 屏高；101 精确落在 48%。
+    /// 颜色与圆角半径必须与 background.rs 的 BACKDROP_CORNER_RADIUS / 壁纸一致，否则混合量与形状错位。
+    pub shade: egui::TextureHandle,
     pub icons: HashMap<&'static str, egui::TextureHandle>,
 }
 
@@ -73,9 +77,27 @@ impl Assets {
             egui::ColorImage::new([1, 2], vec![Color32::from_rgb(58, 63, 82), CANVAS]),
             egui::TextureOptions::LINEAR,
         );
+        let shade = ctx.load_texture(
+            "wallpaper-shade",
+            egui::ColorImage::new(
+                [1, 101],
+                (0..=100)
+                    .map(|step| {
+                        let alpha = if step <= 48 {
+                            31.0 * (1.0 - step as f32 / 48.0)
+                        } else {
+                            77.0 * (step - 48) as f32 / 52.0
+                        };
+                        Color32::from_rgba_unmultiplied(11, 18, 32, alpha.round() as u8)
+                    })
+                    .collect(),
+            ),
+            egui::TextureOptions::LINEAR,
+        );
         Self {
             background,
             gradient,
+            shade,
             icons,
         }
     }

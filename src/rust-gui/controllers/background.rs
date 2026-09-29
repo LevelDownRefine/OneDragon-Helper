@@ -11,6 +11,11 @@ use std::{
     sync::mpsc,
 };
 
+/// 背景层（壁纸图、壁纸渐变、遮光层 shade）共用的圆角半径，单位 px。
+/// 必须等于窗口边框圆角：否则遮光层与壁纸圆角错位，四角回填残留色块（即 PR #136 所修现象）。
+/// 改窗口圆角时，下方三处绘制须同步改动，否则该 bug 复活。
+const BACKDROP_CORNER_RADIUS: f32 = 16.0;
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
@@ -271,11 +276,11 @@ impl View {
             let uv = Rect::from_center_size(pos2(0.5, 0.5), uv_size);
             egui::Image::new((image.id(), screen.size()))
                 .uv(uv)
-                .corner_radius(16)
+                .corner_radius(BACKDROP_CORNER_RADIUS)
                 .paint_at(ui, screen);
         } else {
             egui::Image::new((self.assets.gradient.id(), screen.size()))
-                .corner_radius(16)
+                .corner_radius(BACKDROP_CORNER_RADIUS)
                 .paint_at(ui, screen);
             if let Some(character) = &self.wallpaper.placeholder {
                 ui.painter().text(
@@ -287,15 +292,10 @@ impl View {
                 );
             }
         }
-        let mut mesh = egui::Mesh::default();
-        for (fraction, alpha) in [(0.0, 31), (0.48, 0), (1.0, 77)] {
-            let y = screen.top() + screen.height() * fraction;
-            let color = egui::Color32::from_rgba_unmultiplied(11, 18, 32, alpha);
-            mesh.colored_vertex(pos2(screen.left(), y), color);
-            mesh.colored_vertex(pos2(screen.right(), y), color);
-        }
-        mesh.indices = vec![0, 1, 2, 1, 3, 2, 2, 3, 4, 3, 5, 4];
-        ui.painter().add(egui::Shape::mesh(mesh));
+        // The shade must follow the wallpaper's corners, not fill their transparent cutouts.
+        egui::Image::new((self.assets.shade.id(), screen.size()))
+            .corner_radius(BACKDROP_CORNER_RADIUS)
+            .paint_at(ui, screen);
     }
 }
 
