@@ -5,6 +5,7 @@
 
 import os
 import unittest
+from copy import deepcopy
 from functools import cache
 from unittest.mock import patch
 
@@ -42,7 +43,7 @@ class TestWeeklyDeclaration(WeeklyTestCase):
 
     def test_every_declaration_has_registered_class_and_config(self):
         """每条周常都必须声明已注册的 class 与带扩展名的 config。"""
-        for script_name, declarations in weekly_mod.load_weekly_map().items():
+        for script_name, declarations in config_mod.load_weekly_map().items():
             for declaration in declarations:
                 with self.subTest(
                     script=script_name, weekly=declaration["display_name"]
@@ -62,7 +63,7 @@ class TestWeeklyDeclaration(WeeklyTestCase):
         """物化后的周常菜单不含 class / config（代码耦合字段不入 UI 词汇）。"""
         # 隔离本地资源读取：CI 无 config.yml，不能走到真实脚本根目录解析。
         with patch("src.config.daily_config.read_task_source", return_value=[]):
-            for script_name in weekly_mod.load_weekly_map():
+            for script_name in config_mod.load_weekly_map():
                 for menu in get_weekly_map(script_name):
                     with self.subTest(script=script_name):
                         self.assertNotIn("class", menu)
@@ -74,7 +75,7 @@ class TestWeeklyAssembly(WeeklyTestCase):
 
     def test_one_object_per_declaration(self):
         """一个脚本的周常对象数 = 声明条数（崩铁两条各一个对象）。"""
-        for script_name, declarations in weekly_mod.load_weekly_map().items():
+        for script_name, declarations in config_mod.load_weekly_map().items():
             with self.subTest(script=script_name):
                 built = _CONFIGS[script_name]()._weeklies
                 self.assertEqual(len(built), len(declarations))
@@ -84,8 +85,22 @@ class TestWeeklyAssembly(WeeklyTestCase):
                 )
 
     def test_scripts_without_declaration_build_empty(self):
-        self.assertEqual(_CONFIGS["BetterGI"]()._weeklies, [])
+        with patch.object(config_mod.GenshinConfig, "_init_config") as initialize:
+            config = config_mod.GenshinConfig()
+        self.assertEqual(config._weeklies, [])
+        self.assertTrue(config._dailies)
+        initialize.assert_called_once_with()
         self.assertEqual(weekly_names("BetterGI"), [])
+
+    def test_daily_and_weekly_physical_names_are_independent(self):
+        declarations = deepcopy(config_mod.load_weekly_map())
+        daily_name = config_mod.WutheringWavesConfig()._dailies[0].physical_name
+        declarations["ok-ww"][0]["physical_name"] = daily_name
+        with patch.object(config_mod, "load_weekly_map", return_value=declarations):
+            config = config_mod.WutheringWavesConfig()
+        self.assertEqual(config._dailies[0].physical_name, daily_name)
+        self.assertEqual(config._weeklies[0].physical_name, daily_name)
+        self.assertEqual(config._weeklies[0].script_display_name, "鸣潮")
 
     def test_instances_own_independent_weeklies(self):
         first = config_mod.WutheringWavesConfig()
@@ -108,17 +123,17 @@ class TestWeeklyAssembly(WeeklyTestCase):
 
     def test_unknown_class_raises(self):
         declarations = {
-            "测试": [{"display_name": "周常", "class": "没有的类", "config": "c.json"}]
+            "ok-ww": [{"display_name": "周常", "class": "没有的类", "config": "c.json"}]
         }
         with (
-            patch.object(weekly_mod, "load_weekly_map", return_value=declarations),
-            self.assertRaises(AssertionError),
+            patch.object(config_mod, "load_weekly_map", return_value=declarations),
+            self.assertRaisesRegex(AssertionError, "未知的周常机制类"),
         ):
-            weekly_mod.build_weeklies("测试", "测试脚本")
+            config_mod.WutheringWavesConfig()
 
     def test_duplicate_physical_name_raises(self):
         declarations = {
-            "测试": [
+            "ok-ww": [
                 {
                     "display_name": "甲",
                     "physical_name": "X",
@@ -136,10 +151,10 @@ class TestWeeklyAssembly(WeeklyTestCase):
             ]
         }
         with (
-            patch.object(weekly_mod, "load_weekly_map", return_value=declarations),
-            self.assertRaises(AssertionError),
+            patch.object(config_mod, "load_weekly_map", return_value=declarations),
+            self.assertRaisesRegex(AssertionError, "周常物理名重复"),
         ):
-            weekly_mod.build_weeklies("测试", "测试脚本")
+            config_mod.WutheringWavesConfig()
 
 
 class TestSupportsWeekly(WeeklyTestCase):
@@ -168,7 +183,7 @@ class TestSupportsWeekly(WeeklyTestCase):
             "March7th-Launcher",
             "MAA",
         }
-        self.assertEqual(set(weekly_mod.load_weekly_map()), expected)
+        self.assertEqual(set(config_mod.load_weekly_map()), expected)
         for name in expected:
             self.assertTrue(config_mod.supports_weekly(name), f"{name} 应支持周常")
 

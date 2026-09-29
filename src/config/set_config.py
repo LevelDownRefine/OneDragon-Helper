@@ -9,7 +9,7 @@ from functools import cache
 from src.config.daily import DAILY_CLASSES, Daily, MaaDaily
 from src.config.script_resources import ScriptResources, get_script_resources
 from src.config.task_config import get_daily_configs, load_weekly_map
-from src.config.weekly import Weekly, build_weeklies
+from src.config.weekly import WEEKLY_CLASSES, Weekly
 from src.utils.utils_dict import covers, get_field, safe_update
 from src.utils.utils_sub_config import (
     get_script_game_path,
@@ -63,10 +63,25 @@ class ScriptConfig:
             )
             seen.add(daily.physical_name)
             self._dailies.append(daily)
-        # 构造期装配周常对象（与日常同一时机；无周常声明的脚本得到空列表）
-        self._weeklies: list[Weekly] = build_weeklies(
-            self._script_name, self.display_name
-        )
+        self._weeklies: list[Weekly] = []
+        weekly_declarations = load_weekly_map()
+        seen_weeklies: set[str | int] = set()
+        if self._script_name in weekly_declarations:
+            assert self._script_name in weekly_declarations
+            for declaration in weekly_declarations[self._script_name]:
+                assert "class" in declaration
+                class_name = declaration["class"]
+                assert class_name in WEEKLY_CLASSES, (
+                    f"[set_config][{self.display_name}] 未知的周常机制类: {class_name!r}"
+                )
+                weekly = WEEKLY_CLASSES[class_name](
+                    self._script_name, declaration, self.display_name
+                )
+                assert weekly.physical_name not in seen_weeklies, (
+                    f"{self._script_name} 的周常物理名重复: {weekly.physical_name}"
+                )
+                seen_weeklies.add(weekly.physical_name)
+                self._weeklies.append(weekly)
         # 构造期对齐子脚本 config（懒加载收口点；无模板/未安装脚本为空操作）
         self._init_config()
 

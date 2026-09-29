@@ -159,7 +159,7 @@ BGI 旧配置未声明或清空 `TaskDefinitions` 时，按 `TaskEnabledList` �
 周常机制与 I/O 归 **`src/config/weekly.py`**；`ScriptConfig` 在构造期装配并持有 `self._weeklies`，后续读写均由它分发：
 
 - **一条周常一个对象**（一个脚本可有多条：崩铁的货币战争 / 历战余响 / 模拟宇宙各一个）；声明（`weekly_task_list.yml`）每条必填 `class`（机制类，`WEEKLY_CLASSES` 查表）与 `config`（读写主文件），可选 `key`（原生字段名）与 `enable_key`（启用开关字段，落点本身不是布尔开关时才需要）——与日常同构，只是粒度落在「每一条周常」。
-- **装配时机与日常一致**：`ScriptConfig.__init__` 内 `build_weeklies(script_name, display_name)` 按声明逐条建对象，与 `_dailies` 同点；无周常声明的脚本得到空列表。每个 ScriptConfig 独占其任务对象；缓存仅在 `_CONFIGS` 的脚本工厂，weekly 模块无独立缓存或查找入口。
+- **装配时机与日常一致**：`ScriptConfig.__init__` 内按声明查 `DAILY_CLASSES` / `WEEKLY_CLASSES`，分别逐条构造 `_dailies` / `_weeklies`；无周常声明的脚本得到空列表。每个 ScriptConfig 独占其任务对象；缓存仅在 `_CONFIGS` 的脚本工厂，weekly 模块无独立缓存或查找入口。
 - `Weekly` 基类自持 config 读/写（`_load_config` / `_save_config`，共用 `utils_sub_config` 的 `load_script_config` / `save_script_config`）与起始日校验；各周常按自身形态覆写运行期落点 `prepare_start_day`。
 - 三类入口按真相归属分开：`prepare_start_day`（运行期唯一写入口，按「今天是否到起始日」折算）、`set_start_day`（编辑期落盘，仅需要字面字段 / 额外开关的周常覆写）、`set_task` / `read_task`（副本选型，当前无周常声明 `options`，机制保留待用）。未覆写即该条周常无此能力，模块入口按「是否覆写」优雅跳过。
 - **周几起是条目级**：`weekly.yml` 的 `weekly_start` 段为 `{脚本: {周常展示名: 0 | 1~7}}`，`0`（`DISABLED_START_DAY`）表示**不启用**——每次运行都把开关写成关闭，与「未设置」（条目缺席、不动开关）不同。任务卡按行渲染：每条周常一个「周几起」chip，紧邻该条的「副本」chip（需选副本时）——两块合计宽等于日常行单个 chip 宽，右边界对齐；**无需选副本的周常只有「周几起」一块，独占整宽**（`Layout.js` 的 `chipWidth` / `chipGap` / `weeklyStartChipWidth`）。下拉候选 = 不启用 + 周一~周日。
@@ -236,7 +236,7 @@ set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按�
 |------|------|
 | `set_config.py` | 本适配器，适配器接口 + 类层级；各脚本资源绑定 YAML 声明，`@register` 显式注册机制类；各日常脚本子类定义在各自 config 旁 |
 | `daily.py` | 日常规则对象：`Daily` 基类（声明 → 落点 + 读写规则）与机制类 `NoopDaily` / `Anomaly` / `MaaDaily`；纯规则不碰盘 |
-| `weekly.py` | 周常落点：`Weekly` 基类（config 读/写 + 起始日校验）与六条周常子类（列表增删 / 反相布尔 / app 条目 / 布尔开关 / 字面起始日 + 副本 / 队列公式）；机制类注册表 `WEEKLY_CLASSES`、无缓存的装配函数 `build_weeklies`；对外适配接口归 `set_config.py` |
+| `weekly.py` | 周常落点：`Weekly` 基类（config 读/写 + 起始日校验）与六条周常子类（列表增删 / 反相布尔 / app 条目 / 布尔开关 / 字面起始日 + 副本 / 队列公式）；机制类注册表 `WEEKLY_CLASSES`；装配与对外适配接口归 `set_config.py` |
 | `task_config.py` | 两份任务声明的读取、校验、物理名/取值映射 |
 | `task_switch.py` | 脚本原生任务的开关：`task_switch_list.yml` 声明（配置文件 + 任务定义/启用两个键）→ 枚举行 + 按任务名反查 id 写回；与日常/周常无关，界面入口在单脚本配置弹窗底部 |
 | `daily_config.py` | 把声明**物化**成 GUI 菜单（source 展开 + 补缺省物理名），词汇与声明一致 |
