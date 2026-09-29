@@ -307,5 +307,5 @@ fn copy_bgra(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/rust-gui/video/native.rs"]
+#[path = "../../../tests/rust-gui/windows/video.rs"]
 mod tests;

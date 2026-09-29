@@ -61,4 +61,5 @@ pub fn fallback(ctx: &egui::Context) -> Option<Result<Vec<PathBuf>, String>> {
 }
 
 #[cfg(windows)]
+#[path = "windows/file_drop.rs"]
 mod windows;

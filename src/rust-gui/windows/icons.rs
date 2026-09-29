@@ -157,5 +157,5 @@ fn from_backgrounds(black: &[u8], white: &[u8], size: u32) -> egui::ColorImage {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/rust-gui/icons/windows.rs"]
+#[path = "../../../tests/rust-gui/windows/icons.rs"]
 mod tests;

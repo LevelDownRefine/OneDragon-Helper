@@ -220,6 +220,7 @@ fn extract(path: &Path, size: u32) -> Result<Option<egui::ColorImage>, String> {
 }
 
 #[cfg(windows)]
+#[path = "windows/icons.rs"]
 mod windows;
 
 #[cfg(test)]

@@ -171,6 +171,8 @@ egui 没有 QML 层，控制器同时绘制对应区域；`controllers/mod.rs` �
 `list_dialog.rs`、`drop_dialog.rs`、`backup_dialog.rs`、`wallpaper_dialog.rs` 只保留各自表单和结果展示。
 `backend.rs`、`model.rs`、`runtime.rs`、`rendering.rs`、`file_picker.rs`、`video.rs` 是 Rust 的
 协议、启动及平台实现；Python GUI 没有一一对应文件，不为了同名增加转发层。
+Windows 原生拖放、图标提取和视频解码集中在 `windows/file_drop.rs`、`windows/icons.rs`、
+`windows/video.rs`；由对应功能模块按平台加载，避免为单个实现文件各建一个目录。
 
 测试全部位于 `tests/rust-gui`，控制器和 Windows 子模块按源码目录对应；单元测试通过
 `#[path]` 作为被测模块的子模块加载，保留私有成员测试，不扩大产品接口。

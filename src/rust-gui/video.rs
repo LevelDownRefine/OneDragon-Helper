@@ -207,6 +207,7 @@ fn play(
 }
 
 #[cfg(windows)]
+#[path = "windows/video.rs"]
 mod native;
 
 #[cfg(test)]

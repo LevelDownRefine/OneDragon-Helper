@@ -149,5 +149,5 @@ fn read_paths(drop: HDROP) -> Result<Vec<PathBuf>, String> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/rust-gui/file_drop/windows.rs"]
+#[path = "../../../tests/rust-gui/windows/file_drop.rs"]
 mod tests;
