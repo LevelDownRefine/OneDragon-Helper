@@ -19,9 +19,11 @@
 | app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
 | script_service.py | 脚本条目构造、增删改与排序；统一校验并协调助手配置、每周参数及原生任务开关 |
 | task_service.py | 脚本列表与任务卡聚合查询；无 GUI 或进程依赖 |
-| wallpaper_service.py | 壁纸来源解析、映射与有界缓存写入；解码和渲染归前端 |
-| update_session.py | 无 Qt 更新会话与短请求编排；复用 UpdateService，保留发布对象/待安装目录 |
-| utils_config.py | config.yml 读写、结构校验、条目查询与配置文件路径解析 |
+| src/link.py | 关联资源、图标与启动目标查询；实际打开和启动归前端 |
+| src/utils/utils_config.py | config.yml 读写、结构校验、条目查询与配置文件路径解析 |
+| src/utils/utils_wallpaper.py | 壁纸来源、映射与预览缓存；解码和渲染归前端 |
+| src/utils/utils_job.py | JobExecutor：单个后台操作的执行、进度、取消与结果保留；不依赖业务模块 |
+| src/update/service.py | 更新内核与 UpdateSession 会话状态；检查、下载和安装交接共用原实现 |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
 | schedule.py | schedule.yml 读写（StartupOptions 自动启动开关/秒数、RunOptions 运行选项）+ ScheduledRun 调度运行编排 |
@@ -93,7 +95,7 @@ CLI 表单通过 `script_edit_view` 读取；`script.edit_save` 在传输边界�
 调用统一保存入口后将新标识包装为协议结果。`InvalidScript` 返回写入前的输入错误；
 保存阶段异常提示可能已部分写入。手动勾选由 GUI 持有，不加入本层持久化配置。
 
-`resolve_launch_target` 与普通资源导航独立，仅解析当前脚本/游戏启动目标；Python 脚本
+`src/link.py` 统一关联目标查询，`resolve_launch_target` 解析当前脚本/游戏启动目标；Python 脚本
 复用 `build_script_command`，游戏复用手填路径优先的 `get_game_exe_path`，实际启动由
 前端进行。单独启动不走批量调度链，保持原版行为；不传整个父进程环境或 shell 命令字符串。
 
@@ -105,6 +107,7 @@ CLI 表单通过 `script_edit_view` 读取；`script.edit_save` 在传输边界�
 ## 手动更新
 
 `AppService` 装配 `src.update.service.UpdateService`，薄委托本地状态读取、检查、下载和安装交接。
+同模块的 `UpdateSession` 保留 CLI 更新会话状态，并使用 `AppService.jobs` 执行耗时操作。
 更新协议、运行锁、安装事务和独立更新器集中在 [src/update](../update/README.md)，无 Qt 依赖。
 GUI 的弹窗和工作线程保留在 `src/gui`，经 AppService 调用更新服务。
 
@@ -153,7 +156,7 @@ DailyPlanOptions，经 AppService.apply_daily_plan 保存，同时将 CLI 入口
 同一个任务可迁移到无 Qt headless daily；entry_matches 参与同步判断，避免旧入口沿用。
 迁移写盘失败恢复 read 阶段保存的原 XML；原 Qt 调用不传 entry，保留原入口与恢复语义。
 
-CLI 备份/恢复通过 AppService.background 的单任务执行器调用原服务；只做调度与结果保留，
+CLI 备份/恢复通过 AppService.jobs 的 JobExecutor 调用原服务；只做调度与结果保留，
 不重写 ZIP 搬运逻辑。stdio 会话串行轮询，EOF 等任务结束再释放运行租约；GUI 禁止普通关窗
 打断恢复，后台异常记录日志并保留可展示的部分完成详情。
 

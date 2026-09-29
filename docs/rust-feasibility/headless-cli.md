@@ -192,7 +192,7 @@ EOF 等待后台线程完成后才释放 application_lease；Rust 阻止运行�
 只存于当前会话；`update.download` 不接受 URL/版本/目录参数，复用原 UpdateService 的
 下载与校验。发布 URL 和待安装目录不由前端回传。源码运行保留原服务的不支持说明。
 
-检查/下载复用单个 BackgroundJob，kind 为 update.check/update.download；轮询可带
+检查/下载复用单个 JobExecutor，kind 为 update.check/update.download；轮询可带
 progress（received/total），取消完成时 state=cancelled。job.cancel 返回 true 只表示已发送
 取消意图；窗口继续轮询至终态才关闭。检查需等 HTTP 调用返回，下载按现有分块边界检查取消。
 EOF 发送取消并等待线程结束后释放运行租约；恢复任务依旧不可取消。

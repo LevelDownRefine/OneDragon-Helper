@@ -6,7 +6,7 @@
 
 - 总 PR [#130](https://github.com/LevelDownRefine/OneDragon-Helper/pull/130) 汇总 Rust 功能；旧 #103、#106–#129 已关闭，以下批次记录作为实现历史保留。
 - [#131](https://github.com/LevelDownRefine/OneDragon-Helper/pull/131) 的脚本管理整理随 [#133](https://github.com/LevelDownRefine/OneDragon-Helper/pull/133) 合入 main；脚本条目构造、增删改和排序归 `script_service`，`utils_config` 负责文件读写与查询。
-- [#132](https://github.com/LevelDownRefine/OneDragon-Helper/pull/132) 已合入 main；资源与图标路径查询归 `src/link.py`，启动目标归 `launch_service`，不保留额外的 `resource_service`。
+- [#132](https://github.com/LevelDownRefine/OneDragon-Helper/pull/132) 已合入 main；本分支进一步将资源、图标与启动目标查询统一到 `src/link.py`。
 - 总分支已同步 `main@8724cd8`，公共前置不再计入 #130 相对 main 的差异。Rust 源码与测试分别位于 `src/rust-gui`、`tests/rust-gui`，文件与职责对应关系见 [GUI 说明](../../src/rust-gui/README.md#目录与职责)。
 - Qt 保留原 launcher、发布包及直接 service 调用；Rust 的 stdio 协议、后台会话和分发适配仍在总 PR，不要求 Qt 全面接入 CLI。
 

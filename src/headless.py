@@ -182,7 +182,6 @@ def _daily_task():
 
 def handle_request(service, request) -> dict:
     """串行分发，协议输入先校验；业务异常保留诊断并返回明确失败。"""
-    from src.service.background_job import InvalidBackgroundJob
     from src.service.chain_service import InvalidRunRequest
     from src.service.daily_plan import DailyPlanOptions
     from src.service.schedule import (
@@ -192,8 +191,9 @@ def handle_request(service, request) -> dict:
     )
     from src.service.script_service import DuplicateScript, InvalidScript, ScriptEdit
     from src.service.task_service import InvalidTaskSelection
-    from src.service.wallpaper_service import InvalidWallpaper
+    from src.utils.utils_job import InvalidJob
     from src.utils.utils_shutdown import rust_shutdown_supported
+    from src.utils.utils_wallpaper import InvalidWallpaper
 
     request_id = None
     mutating = False
@@ -340,7 +340,7 @@ def handle_request(service, request) -> dict:
         InvalidTaskSelection,
         InvalidScript,
         InvalidRunRequest,
-        InvalidBackgroundJob,
+        InvalidJob,
         InvalidWallpaper,
     ) as exc:
         return _error(request_id, "invalid_params", str(exc))
@@ -372,7 +372,7 @@ def _serve(service) -> int:
                     _emit(_error(None, "parse_error", str(exc)), output)
                     continue
                 if (
-                    service.background.running
+                    service.jobs.running
                     and isinstance(request, dict)
                     and "method" in request
                     and request["method"] not in {"job.poll", "job.cancel"}

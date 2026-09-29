@@ -4,6 +4,7 @@
 资源及完整链接在 config/script_resources.yml 声明；格式校验见 test_script_resources。
 """
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -162,6 +163,75 @@ class ScriptTargetTests(unittest.TestCase):
                         {"kind": "unavailable", "reason": "未找到脚本路径"},
                     )
         resolve.assert_not_called()
+
+
+class LaunchTargetTests(unittest.TestCase):
+    def test_missing_script_and_path_return_recoverable_reason(self):
+        for script in (None, {"script_path": ""}, {"script_path": "missing.py"}):
+            with (
+                self.subTest(script=script),
+                patch.object(link, "get_script", return_value=script),
+                patch.object(link.os.path, "isfile", return_value=False),
+            ):
+                self.assertEqual(
+                    link.resolve_launch_target("demo", "script")["kind"],
+                    "unavailable",
+                )
+
+    def test_python_command_excludes_unchanged_environment_and_preserves_args(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            file = Path(temporary) / "中文 & demo.py"
+            file.touch()
+            script = {"script_path": str(file), "script_type": "python"}
+            with (
+                patch.object(link, "get_script", return_value=script),
+                patch.object(
+                    link,
+                    "build_script_command",
+                    return_value=(
+                        [
+                            "/absolute/python",
+                            "-m",
+                            "src.runner.launcher",
+                            "--script",
+                            str(file),
+                        ],
+                        temporary,
+                        {**os.environ, "ODH_TEST_EXTRA": "changed"},
+                    ),
+                ) as build,
+            ):
+                result = link.resolve_launch_target("demo", "script")
+            self.assertEqual(result["kind"], "command")
+            self.assertEqual(result["env"], {"ODH_TEST_EXTRA": "changed"})
+            self.assertEqual(result["args"][-1], str(file))
+            self.assertEqual(result["cwd"], temporary)
+            build.assert_called_once_with(["--script", str(file)])
+
+    def test_external_and_game_use_separate_targets(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            file = Path(temporary) / "demo.exe"
+            game = Path(temporary) / "game.exe"
+            file.touch()
+            game.touch()
+            with (
+                patch.object(
+                    link,
+                    "get_script",
+                    return_value={"script_path": str(file)},
+                ),
+                patch.object(link, "get_game_exe_path", return_value=str(game)),
+                patch.object(link, "build_script_command") as build,
+            ):
+                self.assertEqual(
+                    link.resolve_launch_target("demo", "script"),
+                    {"kind": "association", "path": str(file)},
+                )
+                self.assertEqual(
+                    link.resolve_launch_target("demo", "game"),
+                    {"kind": "association", "path": str(game)},
+                )
+            build.assert_not_called()
 
 
 if __name__ == "__main__":

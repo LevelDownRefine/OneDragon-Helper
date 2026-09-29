@@ -6,7 +6,7 @@ GUI 弹窗和控制器留在 `src/gui`，通过 `AppService` 薄委托调用 `Up
 
 | 模块 | 职责 |
 |------|------|
-| service.py | 本地状态、显式检查稳定 Release、下载校验与安装交接 |
+| service.py | 本地状态、显式检查稳定 Release、下载校验与安装交接；UpdateSession 保留 CLI 会话状态 |
 | package.py | 清单、哈希、路径校验及本地/远端 ZIP 共用的流式解包 |
 | remote.py | remotezip 入口、HTTP 响应校验与分块取消 |
 | runtime.py | 安装目录运行锁、更新闸门、同目录进程识别 |
@@ -34,6 +34,9 @@ Qt 与 Rust 使用不同发布附件：`OneDragon-Helper.zip` 与
 `OneDragon-Helper-CLI.exe`，不要求 QML；两类包都沿用同一安装事务与更新器。
 检查、下载、安装交接和事务入口均校验包类型，禁止在线跨类型替换。
 原 Qt `AppService` 接口保持 Qt 类型，无 Qt 更新会话固定选择 Rust 类型。
+`UpdateSession` 与更新内核同处 `service.py`，使用 `utils_job.JobExecutor` 执行耗时操作；
+执行器只管理线程、进度与结果，不导入更新业务。`UpdateCancelled` 同时属于标准
+`CancelledError`，让下载取消沿用更新异常处理并被执行器识别为取消状态。
 发布附件名和清单校验先于 Rust 打包接入；缺少 Rust 附件时明确报错，不回退下载 Qt 包。
 
 ### 增量下载

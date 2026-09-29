@@ -7,6 +7,7 @@ import shutil
 import stat
 import zipfile
 from collections.abc import Callable
+from concurrent.futures import CancelledError
 from contextlib import nullcontext
 from pathlib import Path, PureWindowsPath
 from threading import Event
@@ -49,7 +50,7 @@ class UpdateError(ValueError):
     """可恢复的更新输入或状态错误。"""
 
 
-class UpdateCancelled(UpdateError):
+class UpdateCancelled(UpdateError, CancelledError):
     """用户取消下载；下载服务与远端读取器共用。"""
 
 

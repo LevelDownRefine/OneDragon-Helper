@@ -38,8 +38,6 @@ from src.config.set_config import (
     weekly_names,
 )
 from src.config.task_switch import task_switch_of
-from src.service import launch_service, wallpaper_service
-from src.service.background_job import BackgroundJob, InvalidBackgroundJob
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -51,14 +49,14 @@ from src.service.schedule import (
     save_schedule,
 )
 from src.service.script_service import InvalidScript, ScriptEdit
-from src.service.update_session import UpdateSession
-from src.update.service import UpdateService
+from src.update.service import UpdateService, UpdateSession
 from src.utils.utils_config import (
     config_file_path,
     get_script,
     load_config,
     save_config,
 )
+from src.utils.utils_job import InvalidJob, JobExecutor
 from src.utils.utils_runner import (
     build_chain_command,
     collect_invalid_script_messages,
@@ -68,8 +66,11 @@ from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_wallpaper import (
     load_wallpapers,
     save_video_preview,
+    save_wallpaper_cache,
     save_wallpapers,
+    set_wallpaper,
     video_preview_path,
+    wallpaper_view,
 )
 from src.utils.utils_weekly import (
     check_weekly,
@@ -101,14 +102,14 @@ class AppService:
     def __init__(self, *, frontend: str = "qt"):
         """装配各 peer；GUI/CLI 入口选择对应发行版的更新服务。"""
         self._updates = UpdateService(frontend=frontend)
-        self.background = BackgroundJob()
-        self._update_session = UpdateSession(self._updates, self.background)
+        self.jobs = JobExecutor()
+        self._update_session = UpdateSession(self._updates, self.jobs)
 
     def close(self) -> None:
-        self.background.close()
+        self.jobs.close()
 
     def start_backup(self) -> dict:
-        return self.background.start("backup", self.create_backup)
+        return self.jobs.start("backup", self.create_backup)
 
     def start_restore(self, zip_path: str, confirmed: bool) -> dict:
         if (
@@ -116,14 +117,14 @@ class AppService:
             or not isinstance(zip_path, str)
             or not zip_path.strip()
         ):
-            raise InvalidBackgroundJob("请选择 ZIP 并确认覆盖当前脚本配置")
-        return self.background.start("restore", lambda: self.restore_backup(zip_path))
+            raise InvalidJob("请选择 ZIP 并确认覆盖当前脚本配置")
+        return self.jobs.start("restore", lambda: self.restore_backup(zip_path))
 
     def poll_job(self, job_id: str) -> dict:
-        return self.background.poll(job_id)
+        return self.jobs.poll(job_id)
 
     def cancel_job(self, job_id: str) -> bool:
-        return self.background.cancel(job_id)
+        return self.jobs.cancel(job_id)
 
     def update_view(self) -> dict:
         return self._update_session.view()
@@ -164,18 +165,18 @@ class AppService:
         return link.game_icon_path(script_name)
 
     def wallpaper_view(self, script_name: str) -> dict:
-        return wallpaper_service.wallpaper_view(script_name)
+        return wallpaper_view(script_name)
 
     def set_wallpaper(self, script_name: str, file_path: str | None) -> None:
-        return wallpaper_service.set_wallpaper(script_name, file_path)
+        return set_wallpaper(script_name, file_path)
 
     def save_wallpaper_cache(
         self, script_name: str, token: str, jpeg_base64: str
     ) -> bool:
-        return wallpaper_service.save_wallpaper_cache(script_name, token, jpeg_base64)
+        return save_wallpaper_cache(script_name, token, jpeg_base64)
 
     def resolve_launch_target(self, script_name: str, target: str) -> dict:
-        return launch_service.resolve_launch_target(script_name, target)
+        return link.resolve_launch_target(script_name, target)
 
     def run_view(self, script_names: list[str]) -> dict:
         """汇总本次所选脚本、配置问题和已存运行选项。"""
