@@ -69,6 +69,13 @@ def selection(**changes):
 
 
 class HeadlessProcessTests(unittest.TestCase):
+    def test_call_invalid_json_returns_parse_error(self):
+        result, responses = self.run_cli(["call", "app.snapshot"], "oops")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(responses[0]["jsonrpc"], "2.0")
+        self.assertIsNone(responses[0]["id"])
+        self.assertEqual(responses[0]["error"]["code"], -32700)
+
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.fixture = HeadlessFixture(self.root)
@@ -1125,6 +1132,30 @@ class RunRequestTests(unittest.TestCase):
 
 
 class ProtocolValidationTests(unittest.TestCase):
+    def test_library_binds_positional_and_default_parameters(self):
+        service = mock_service()
+        service.select_daily.return_value = None
+        response = handle_request(service, request("daily.select", ["脚本"]))
+        self.assertEqual(response, {"jsonrpc": "2.0", "id": 1, "result": None})
+        service.select_daily.assert_called_once_with("脚本")
+        service.app_snapshot.return_value = {"scripts": []}
+        response = handle_request(
+            service, {"jsonrpc": "2.0", "method": "app.snapshot", "id": ""}
+        )
+        self.assertEqual(response["result"], {"scripts": []})
+        self.assertEqual(response["id"], "")
+        service.app_snapshot.assert_called_once_with()
+
+    def test_read_failure_does_not_require_refresh(self):
+        service = mock_service()
+        service.script_view.side_effect = OSError("query failed")
+        with self.assertLogs("src.headless", level="ERROR"):
+            response = handle_request(
+                service, request("script.view", {"script_name": "脚本"})
+            )
+        self.assertEqual(response["error"]["code"], -32002)
+        self.assertFalse(response["error"]["data"]["refresh_required"])
+
     def test_each_batch_method_checks_busy_state_after_previous_call(self):
         service = mock_service()
 
