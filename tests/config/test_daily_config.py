@@ -264,21 +264,21 @@ class TestGetDailyMap(unittest.TestCase):
             menus["March7th-Launcher"]["dailies"],
             [
                 {
-                    "display_name": "每日任务",
+                    "display_name": "培养目标",
                     "options": {
                         "values": [
                             {
-                                "display_name": "每日任务",
-                                "physical_name": "每日任务",
+                                "display_name": "培养目标",
+                                "physical_name": "培养目标",
                                 "options": {
                                     "key": "build_target_enable",
                                     "values": [
                                         {
-                                            "display_name": "培养目标",
+                                            "display_name": "启用",
                                             "physical_name": True,
                                         },
                                         {
-                                            "display_name": "不启用培养目标",
+                                            "display_name": "不启用",
                                             "physical_name": False,
                                         },
                                     ],

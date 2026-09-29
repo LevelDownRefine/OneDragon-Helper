@@ -34,6 +34,12 @@ fn assert_popup_attached(scene: &Scene) -> Rect {
 #[test]
 fn short_primary_menu_is_attached_before_opening_any_submenu() {
     let mut scene = Scene::new();
+    scene.view.dailies[0].options.values[0]
+        .options
+        .as_mut()
+        .unwrap()
+        .values
+        .truncate(2);
     scene.view.dailies[0].enabled = None;
     scene.click(Id::new(("daily", "每日任务")));
     scene.frame(vec![]);
@@ -169,6 +175,34 @@ fn submenu_height_stays_stable_when_switching_between_short_and_long_groups() {
     );
     let request = only_request(scene.click(Id::new(("child", 1_usize))));
     assert_eq!(request.params["sequence"], json!(2));
+}
+
+#[test]
+fn single_parent_shows_both_enable_choices_without_scrolling() {
+    let mut scene = Scene::new();
+    scene.view.dailies[0].enabled = None;
+    scene.view.dailies[0].options = serde_json::from_value(json!({"values": [{
+        "display_name": "培养目标", "physical_name": "培养目标", "options": {"values": [
+            {"display_name": "启用", "physical_name": true},
+            {"display_name": "不启用", "physical_name": false}
+        ]}
+    }]}))
+    .unwrap();
+    scene.daily(0);
+    let popup = assert_popup_attached(&scene);
+    assert!((popup.height() - 72.0).abs() <= 1.0);
+    let second = scene
+        .ctx
+        .read_response(Id::new(("child", 1_usize)))
+        .unwrap();
+    assert!(
+        second.interact_rect.contains_rect(second.rect),
+        "{second:?}"
+    );
+    let request = only_request(scene.click(Id::new(("child", 1_usize))));
+    assert_eq!(request.method, "daily.select");
+    assert_eq!(request.params["task_name"], "培养目标");
+    assert_eq!(request.params["sequence"], json!(false));
 }
 
 #[test]

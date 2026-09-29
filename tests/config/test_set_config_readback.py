@@ -296,8 +296,8 @@ class TestReadbackFacade(unittest.TestCase):
                 get_daily_readback("March7th-Launcher"),
                 [
                     {
-                        "name": "每日任务",
-                        "task": "每日任务",
+                        "name": "培养目标",
+                        "task": "培养目标",
                         "sequence": None,
                         "enabled": None,
                     }

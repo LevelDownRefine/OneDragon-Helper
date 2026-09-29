@@ -219,7 +219,10 @@ impl View {
             .map(|entry| entry.children.as_slice())
             .unwrap_or(&[]);
         let width = left_width + 10.0 + if children.is_empty() { 0.0 } else { 204.0 };
-        let desired = (entries.len() as f32 * 32.0 + 8.0).min(360.0);
+        let rows = entries
+            .iter()
+            .fold(entries.len(), |rows, entry| rows.max(entry.children.len()));
+        let desired = (rows as f32 * 32.0 + 8.0).min(360.0);
         let screen = ctx.content_rect();
         let bounds = popup_bounds(menu.anchor, vec2(width, desired), screen);
         let outside = ctx.input(|input| {
@@ -252,6 +255,7 @@ impl View {
                     .corner_radius(10)
                     .inner_margin(4)
                     .show(ui, |ui| {
+                        ui.set_min_height(bounds.height() - 10.0);
                         ui.spacing_mut().item_spacing = vec2(4.0, 2.0);
                         ui.horizontal_top(|ui| {
                             egui::ScrollArea::vertical()

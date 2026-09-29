@@ -447,6 +447,10 @@ Item {
             }
             leftW = Math.min(maxW + 28, 240)
             var rows = options.length + (canDisable ? 1 : 0)
+            for (var j = 0; j < options.length; j++) {
+                if (options[j].options !== undefined)
+                    rows = Math.max(rows, options[j].options.values.length)
+            }
             var geom = cardRoot.placePopup(
                 anchorTop, anchorBottom, Math.min(rows * 32 + 8, 360))
             popupY = geom.y
