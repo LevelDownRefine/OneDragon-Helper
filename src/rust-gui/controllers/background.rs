@@ -287,15 +287,10 @@ impl View {
                 );
             }
         }
-        let mut mesh = egui::Mesh::default();
-        for (fraction, alpha) in [(0.0, 31), (0.48, 0), (1.0, 77)] {
-            let y = screen.top() + screen.height() * fraction;
-            let color = egui::Color32::from_rgba_unmultiplied(11, 18, 32, alpha);
-            mesh.colored_vertex(pos2(screen.left(), y), color);
-            mesh.colored_vertex(pos2(screen.right(), y), color);
-        }
-        mesh.indices = vec![0, 1, 2, 1, 3, 2, 2, 3, 4, 3, 5, 4];
-        ui.painter().add(egui::Shape::mesh(mesh));
+        // The shade must follow the wallpaper's corners, not fill their transparent cutouts.
+        egui::Image::new((self.assets.shade.id(), screen.size()))
+            .corner_radius(16)
+            .paint_at(ui, screen);
     }
 }
 

@@ -138,8 +138,10 @@ class TestPackagedRendering(unittest.TestCase):
                     self.assertGreaterEqual(image.width(), minimum[0])
                     self.assertGreaterEqual(image.height(), minimum[1])
                     if window == "main":
-                        # 原界面抗锯齿边缘也有少量 alpha，不能退化为不透明矩形。
-                        self.assertLess(image.pixelColor(0, 0).alpha(), 64)
+                        # 圆角外必须完全透明，矩形遮光层不能残留在四角。
+                        for x in (0, image.width() - 1):
+                            for y in (0, image.height() - 1):
+                                self.assertEqual(image.pixelColor(x, y).alpha(), 0)
                         self.assertEqual(
                             image.pixelColor(
                                 image.width() // 2, image.height() // 2

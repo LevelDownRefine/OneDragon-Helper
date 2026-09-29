@@ -12,6 +12,7 @@ use eframe::egui::{Color32, Pos2, Rect, pos2};
 pub struct Assets {
     pub background: egui::TextureHandle,
     pub gradient: egui::TextureHandle,
+    pub shade: egui::TextureHandle,
     pub icons: HashMap<&'static str, egui::TextureHandle>,
 }
 
@@ -73,9 +74,27 @@ impl Assets {
             egui::ColorImage::new([1, 2], vec![Color32::from_rgb(58, 63, 82), CANVAS]),
             egui::TextureOptions::LINEAR,
         );
+        let shade = ctx.load_texture(
+            "wallpaper-shade",
+            egui::ColorImage::new(
+                [1, 101],
+                (0..=100)
+                    .map(|step| {
+                        let alpha = if step <= 48 {
+                            31.0 * (1.0 - step as f32 / 48.0)
+                        } else {
+                            77.0 * (step - 48) as f32 / 52.0
+                        };
+                        Color32::from_rgba_unmultiplied(11, 18, 32, alpha.round() as u8)
+                    })
+                    .collect(),
+            ),
+            egui::TextureOptions::LINEAR,
+        );
         Self {
             background,
             gradient,
+            shade,
             icons,
         }
     }
