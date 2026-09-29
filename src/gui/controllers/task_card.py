@@ -262,9 +262,11 @@ class TaskCardController(QObject):
             task = values[0]["display_name"]
         if not task:
             return "选择副本"
-        return self._daily_chip_text(values, task, record["sequence"])
+        return self._daily_chip_text(values, task, record["sequence"], record["name"])
 
-    def _daily_chip_text(self, values: list, task_name: str, sequence) -> str:
+    def _daily_chip_text(
+        self, values: list, task_name: str, sequence, daily_name: str
+    ) -> str:
         """副本 chip 文字：副本名 + 已选二级选项（如「空幕 · 轨道之夜」）。
 
         异环等游戏的二级选项（如轨道之夜）不自包含副本名，必须连同副本名一起
@@ -278,6 +280,8 @@ class TaskCardController(QObject):
                     continue
                 for child in option["options"]["values"]:
                     if child["physical_name"] == sequence:
+                        if len(values) == 1 and task_name == daily_name:
+                            return child["display_name"]
                         return f"{task_name} · {child['display_name']}"
         return task_name
 

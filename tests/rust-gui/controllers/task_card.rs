@@ -34,6 +34,12 @@ fn assert_popup_attached(scene: &Scene) -> Rect {
 #[test]
 fn short_primary_menu_is_attached_before_opening_any_submenu() {
     let mut scene = Scene::new();
+    scene.view.dailies[0].options.values[0]
+        .options
+        .as_mut()
+        .unwrap()
+        .values
+        .truncate(2);
     scene.view.dailies[0].enabled = None;
     scene.click(Id::new(("daily", "每日任务")));
     scene.frame(vec![]);
@@ -169,6 +175,90 @@ fn submenu_height_stays_stable_when_switching_between_short_and_long_groups() {
     );
     let request = only_request(scene.click(Id::new(("child", 1_usize))));
     assert_eq!(request.params["sequence"], json!(2));
+}
+
+#[test]
+fn single_group_choices_are_direct_and_preserve_native_values() {
+    for (name, labels, values, enabled) in [
+        (
+            "每日任务",
+            ["培养目标", "不启用培养目标"],
+            [json!(true), json!(false)],
+            None,
+        ),
+        (
+            "追猎目标",
+            ["音霸魔王", "无首铁驭"],
+            [json!("音霸魔王"), json!("无首铁驭")],
+            Some(true),
+        ),
+        (
+            "幽境危战",
+            ["第一关", "第二关"],
+            [json!(1), json!(2)],
+            Some(true),
+        ),
+    ] {
+        let mut scene = Scene::new();
+        scene.view.dailies[0] = serde_json::from_value(json!({
+            "name": name, "task": name, "sequence": values[0], "enabled": enabled,
+            "options": {"values": [{"display_name": name, "physical_name": name,
+                "options": {"values": [
+                    {"display_name": labels[0], "physical_name": values[0]},
+                    {"display_name": labels[1], "physical_name": values[1]}
+                ]}}]}
+        }))
+        .unwrap();
+        scene.frame(vec![]);
+        scene.click(Id::new(("daily", name)));
+        scene.frame(vec![]);
+        let entries = daily_entries("test", &scene.view.dailies[0]);
+        assert_eq!(entries[0].label, labels[0]);
+        assert_eq!(entries[1].label, labels[1]);
+        assert!(entries.iter().all(|entry| entry.children.is_empty()));
+        let second = scene
+            .ctx
+            .read_response(Id::new(("primary", 1_usize)))
+            .unwrap();
+        assert!(
+            second.interact_rect.contains_rect(second.rect),
+            "{second:?}"
+        );
+        let request = only_request(scene.click(Id::new(("primary", 1_usize))));
+        assert_eq!(request.method, "daily.select");
+        assert_eq!(request.params["daily_name"], name);
+        assert_eq!(request.params["task_name"], name);
+        assert_eq!(request.params["sequence"], values[1]);
+        if enabled.is_some() {
+            scene.click(Id::new(("daily", name)));
+            scene.frame(vec![]);
+            let request = only_request(scene.click(Id::new(("primary", 2_usize))));
+            assert_eq!(request.method, "daily.enable");
+            assert_eq!(request.params["enabled"], json!(false));
+        }
+    }
+}
+
+#[test]
+fn submenu_larger_than_primary_menu_fits_without_scrolling() {
+    let mut scene = Scene::new();
+    scene.view.dailies[0].enabled = None;
+    scene.view.dailies[0].options.values.truncate(1);
+    scene.view.dailies[0].options.values[0]
+        .options
+        .as_mut()
+        .unwrap()
+        .values
+        .truncate(6);
+    scene.daily(0);
+    let sixth = scene
+        .ctx
+        .read_response(Id::new(("child", 5_usize)))
+        .unwrap();
+    assert!(sixth.interact_rect.contains_rect(sixth.rect), "{sixth:?}");
+    let request = only_request(scene.click(Id::new(("child", 5_usize))));
+    assert_eq!(request.params["task_name"], "材料");
+    assert_eq!(request.params["sequence"], json!(6));
 }
 
 #[test]
