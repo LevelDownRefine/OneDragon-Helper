@@ -8,9 +8,12 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, call
+from unittest.mock import Mock, call, create_autospec
 
-from src.headless import handle_request
+from jsonrpcserver import dispatch_to_serializable
+
+from src.headless import _parse_json, rpc_methods
+from src.service.app_service import AppService
 from src.update.runtime import FileLease, UpdateBusyError
 from src.utils.utils_yaml import load_yaml
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture
@@ -18,11 +21,26 @@ from tests.support.headless import PROJECT_ROOT, HeadlessFixture
 
 def request(method, params=None, request_id=1):
     return {
-        "protocol_version": 1,
+        "jsonrpc": "2.0",
         "id": request_id,
         "method": method,
         "params": {} if params is None else params,
     }
+
+
+def mock_service():
+    service = Mock(spec=AppService)
+    instance = object.__new__(AppService)
+    for name in dir(AppService):
+        if not name.startswith("_") and callable(getattr(AppService, name)):
+            service.attach_mock(create_autospec(getattr(instance, name)), name)
+    return service
+
+
+def handle_request(service, payload):
+    return dispatch_to_serializable(
+        json.dumps(payload), methods=rpc_methods(service), deserializer=_parse_json
+    )
 
 
 def selection(**changes):
@@ -122,8 +140,8 @@ class HeadlessProcessTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(responses), len(cases))
         for response in responses:
-            self.assertEqual(response["error"]["code"], "operation_failed", response)
-            self.assertTrue(response["error"]["refresh_required"])
+            self.assertEqual(response["error"]["code"], -32002, response)
+            self.assertTrue(response["error"]["data"]["refresh_required"])
         self.assertEqual(before, self.native.read_bytes())
 
     def test_daily_defaults_and_noops_return_null(self):
@@ -143,10 +161,7 @@ class HeadlessProcessTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
             responses,
-            [
-                {"protocol_version": 1, "id": i, "result": None}
-                for i in range(len(cases))
-            ],
+            [{"jsonrpc": "2.0", "id": i, "result": None} for i in range(len(cases))],
         )
         self.assertEqual(before, self.native.read_bytes())
 
@@ -156,7 +171,7 @@ class HeadlessProcessTests(unittest.TestCase):
             json.dumps(selection(sequence="梦州-迅刀"), ensure_ascii=False),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(responses, [{"protocol_version": 1, "id": 1, "result": None}])
+        self.assertEqual(responses, [{"jsonrpc": "2.0", "id": 1, "result": None}])
         self.assertEqual(
             json.loads(self.native.read_text(encoding="utf-8")),
             {
@@ -174,7 +189,14 @@ class HeadlessProcessTests(unittest.TestCase):
         self.assertEqual(responses[0]["id"], 1)
         result, responses = self.run_cli(["call", "daily.select"], "{}")
         self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertEqual(responses[0]["error"]["code"], "invalid_params")
+        self.assertEqual(responses[0]["error"]["code"], -32602)
+
+    def test_call_invalid_json_returns_parse_error(self):
+        result, responses = self.run_cli(["call", "app.snapshot"], "oops")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(responses[0]["jsonrpc"], "2.0")
+        self.assertIsNone(responses[0]["id"])
+        self.assertEqual(responses[0]["error"]["code"], -32700)
 
     def test_boolean_physical_values_are_distinct_from_integers(self):
         with self.root.joinpath("config/config.example.yml").open(
@@ -211,7 +233,7 @@ class HeadlessProcessTests(unittest.TestCase):
         for i in (0, 4):
             self.assertIsNone(responses[i]["result"])
         for i in (2, 6):
-            self.assertEqual(responses[i]["error"]["code"], "operation_failed")
+            self.assertEqual(responses[i]["error"]["code"], -32002)
         for i, expected in ((1, True), (3, True), (5, False), (7, False)):
             self.assertIs(responses[i]["result"]["dailies"][0]["sequence"], expected)
         self.assertEqual(
@@ -294,7 +316,7 @@ class HeadlessProcessTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIsNone(responses[0]["result"])
-        self.assertEqual(responses[1]["error"]["code"], "operation_failed")
+        self.assertEqual(responses[1]["error"]["code"], -32002)
         self.assertIs(responses[2]["result"]["dailies"][0]["enabled"], False)
         self.assertEqual(
             json.loads(native.read_text(encoding="utf-8")),
@@ -336,7 +358,7 @@ class HeadlessProcessTests(unittest.TestCase):
         for response in responses[:3]:
             self.assertIsNone(response["result"])
         for response in responses[3:]:
-            self.assertEqual(response["error"]["code"], "operation_failed")
+            self.assertEqual(response["error"]["code"], -32002)
         self.assertEqual(self.native.read_bytes(), before)
         self.assertEqual(
             load_yaml(str(self.root / "config/weekly.yml"))["weekly_start"]["ok-ww"][
@@ -392,9 +414,7 @@ class HeadlessProcessTests(unittest.TestCase):
             + "\n",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(
-            [r["error"]["code"] for r in responses[:3]], ["parse_error"] * 3
-        )
+        self.assertEqual([r["error"]["code"] for r in responses[:3]], [-32700] * 3)
         self.assertIn("result", responses[3])
 
     def test_missing_game_config_reports_failure_and_keeps_session(self):
@@ -406,8 +426,8 @@ class HeadlessProcessTests(unittest.TestCase):
             ]
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(responses[0]["error"]["code"], "operation_failed")
-        self.assertTrue(responses[0]["error"]["refresh_required"])
+        self.assertEqual(responses[0]["error"]["code"], -32002)
+        self.assertTrue(responses[0]["error"]["data"]["refresh_required"])
         self.assertIn("AssertionError", result.stderr)
         self.assertIn("result", responses[1])
 
@@ -419,7 +439,7 @@ class HeadlessProcessTests(unittest.TestCase):
         )
         result, responses = self.run_cli(["call", "app.snapshot"], "{}")
         self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertEqual(responses[0]["error"]["code"], "session_failed")
+        self.assertEqual(responses[0]["error"]["code"], -32004)
         self.assertFalse(self.root.joinpath("config/config.yml").exists())
 
     def test_external_changes_are_visible_in_same_session(self):
@@ -487,27 +507,68 @@ class HeadlessProcessTests(unittest.TestCase):
                     process.stdout.close()
                 reader.join(timeout=5)
 
+    def test_jsonrpc_batch_and_notification_preserve_writes_and_session(self):
+        notification = request("daily.select", selection())
+        del notification["id"]
+        result, responses = self.serve(
+            [
+                notification,
+                [
+                    request("script.view", {"script_name": "ok-ww"}, request_id=""),
+                    request("unknown", request_id=2),
+                ],
+                request("app.snapshot", request_id="after"),
+            ]
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(responses), 2)
+        self.assertEqual(len(responses[0]), 2)
+        view, missing = responses[0]
+        self.assertEqual(view["id"], "")
+        self.assertEqual(view["result"]["dailies"][0]["sequence"], 1)
+        self.assertEqual(missing["error"]["code"], -32601)
+        self.assertEqual(responses[1]["id"], "after")
+        self.assertEqual(
+            json.loads(self.native.read_text(encoding="utf-8"))[
+                "Which Forgery Challenge to Farm"
+            ],
+            1,
+        )
+
 
 class ProtocolValidationTests(unittest.TestCase):
+    def test_library_binds_positional_and_default_parameters(self):
+        service = mock_service()
+        service.select_daily.return_value = None
+        response = handle_request(service, request("daily.select", ["脚本"]))
+        self.assertEqual(response, {"jsonrpc": "2.0", "id": 1, "result": None})
+        service.select_daily.assert_called_once_with("脚本")
+        service.app_snapshot.return_value = {"scripts": []}
+        response = handle_request(
+            service, {"jsonrpc": "2.0", "method": "app.snapshot", "id": ""}
+        )
+        self.assertEqual(response["result"], {"scripts": []})
+        self.assertEqual(response["id"], "")
+        service.app_snapshot.assert_called_once_with()
+
     def test_invalid_envelopes_and_params_never_dispatch(self):
         cases = [
-            ([], "invalid_request"),
-            ({**request("app.snapshot"), "extra": 0}, "invalid_request"),
+            ([], -32600),
+            ({**request("app.snapshot"), "extra": 0}, -32600),
             (
-                {**request("app.snapshot"), "protocol_version": True},
-                "unsupported_version",
+                {**request("app.snapshot"), "jsonrpc": True},
+                -32600,
             ),
-            ({**request("app.snapshot"), "protocol_version": 2}, "unsupported_version"),
-            (request("app.snapshot", request_id=True), "invalid_request"),
-            (request("app.snapshot", request_id=""), "invalid_request"),
-            (request("run.start"), "method_not_found"),
-            (request("app.snapshot", []), "invalid_params"),
-            (request("app.snapshot", {"extra": 0}), "invalid_params"),
-            (request("script.view"), "invalid_params"),
-            (request("daily.select", {"task_name": "材料"}), "invalid_params"),
-            (request("daily.select", selection(extra=True)), "invalid_params"),
+            ({**request("app.snapshot"), "jsonrpc": "1.0"}, -32600),
+            (request("app.snapshot", request_id=True), -32600),
+            (request("run.start"), -32601),
+            (request("app.snapshot", [1]), -32602),
+            (request("app.snapshot", {"extra": 0}), -32602),
+            (request("script.view"), -32602),
+            (request("daily.select", {"task_name": "材料"}), -32602),
+            (request("daily.select", selection(extra=True)), -32602),
         ]
-        service = Mock()
+        service = mock_service()
         for payload, code in cases:
             with self.subTest(payload=payload):
                 response = handle_request(service, payload)
@@ -545,13 +606,11 @@ class ProtocolValidationTests(unittest.TestCase):
         ]
         for method, attribute, params in cases:
             with self.subTest(method=method, params=params):
-                service = Mock()
+                service = mock_service()
                 getattr(service, attribute).return_value = None
                 service.script_view.side_effect = OSError("查询失败")
                 response = handle_request(service, request(method, params))
-                self.assertEqual(
-                    response, {"protocol_version": 1, "id": 1, "result": None}
-                )
+                self.assertEqual(response, {"jsonrpc": "2.0", "id": 1, "result": None})
                 self.assertEqual(
                     service.mock_calls, [getattr(call, attribute)(**params)]
                 )
@@ -561,10 +620,20 @@ class ProtocolValidationTests(unittest.TestCase):
                 )
 
     def test_failure_after_write_does_not_claim_rollback(self):
-        service = Mock()
+        service = mock_service()
         service.select_daily.side_effect = OSError("second write failed")
         with self.assertLogs("src.headless", level="ERROR") as logs:
             response = handle_request(service, request("daily.select", selection()))
-        self.assertTrue(response["error"]["refresh_required"])
+        self.assertTrue(response["error"]["data"]["refresh_required"])
         self.assertIn("OSError", "".join(logs.output))
         service.select_daily.assert_called_once_with(**selection())
+
+    def test_read_failure_does_not_require_refresh(self):
+        service = mock_service()
+        service.script_view.side_effect = OSError("query failed")
+        with self.assertLogs("src.headless", level="ERROR"):
+            response = handle_request(
+                service, request("script.view", {"script_name": "脚本"})
+            )
+        self.assertEqual(response["error"]["code"], -32002)
+        self.assertFalse(response["error"]["data"]["refresh_required"])

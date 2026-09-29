@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "jsonrpcserver==5.0.9",
     "colorama==0.4.6",
     "psutil==6.1.1",
     "packaging==26.0",
