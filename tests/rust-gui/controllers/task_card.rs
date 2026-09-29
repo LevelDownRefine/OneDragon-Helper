@@ -3,9 +3,24 @@ use super::*;
 use super::super::tests::{Scene, only_request};
 
 fn assert_popup_attached(scene: &Scene) -> Rect {
-    let popup = egui::AreaState::load(&scene.ctx, Id::new("task-popup"))
+    let area = egui::AreaState::load(&scene.ctx, Id::new("task-popup"))
         .unwrap()
         .rect();
+    let popup = scene
+        .output
+        .shapes
+        .iter()
+        .find_map(|shape| {
+            if let egui::Shape::Rect(rect) = &shape.shape
+                && rect.rect.min.distance(area.min) <= 1.0
+                && rect.stroke.width == 1.0
+            {
+                Some(rect.rect)
+            } else {
+                None
+            }
+        })
+        .expect("painted popup frame");
     let anchor = scene.ui.menu.as_ref().unwrap().anchor;
     assert!(Rect::from_min_size(egui::Pos2::ZERO, scene.screen_size).contains_rect(popup));
     assert!(
@@ -14,6 +29,17 @@ fn assert_popup_attached(scene: &Scene) -> Rect {
         "popup {popup:?} is detached from anchor {anchor:?}",
     );
     popup
+}
+
+#[test]
+fn short_primary_menu_is_attached_before_opening_any_submenu() {
+    let mut scene = Scene::new();
+    scene.view.dailies[0].enabled = None;
+    scene.click(Id::new(("daily", "每日任务")));
+    scene.frame(vec![]);
+    assert!(scene.ui.menu.as_ref().unwrap().parent.is_none());
+    let popup = assert_popup_attached(&scene);
+    assert!((popup.height() - 104.0).abs() <= 1.0);
 }
 
 #[test]
@@ -133,13 +159,16 @@ fn submenu_height_stays_stable_when_switching_between_short_and_long_groups() {
         short, long,
         "hovering between groups must not move the popup"
     );
-    let ninth = scene
+    let second = scene
         .ctx
-        .read_response(Id::new(("child", 9_usize)))
+        .read_response(Id::new(("child", 1_usize)))
         .unwrap();
-    assert!(ninth.interact_rect.contains_rect(ninth.rect), "{ninth:?}");
-    let request = only_request(scene.click(Id::new(("child", 9_usize))));
-    assert_eq!(request.params["sequence"], json!(10));
+    assert!(
+        second.interact_rect.contains_rect(second.rect),
+        "{second:?}"
+    );
+    let request = only_request(scene.click(Id::new(("child", 1_usize))));
+    assert_eq!(request.params["sequence"], json!(2));
 }
 
 #[test]
