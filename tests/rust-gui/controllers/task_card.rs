@@ -1,6 +1,147 @@
 use super::*;
 
 use super::super::tests::{Scene, only_request};
+
+fn assert_popup_attached(scene: &Scene) -> Rect {
+    let popup = egui::AreaState::load(&scene.ctx, Id::new("task-popup"))
+        .unwrap()
+        .rect();
+    let anchor = scene.ui.menu.as_ref().unwrap().anchor;
+    assert!(Rect::from_min_size(egui::Pos2::ZERO, scene.screen_size).contains_rect(popup));
+    assert!(
+        (popup.bottom() + 4.0 - anchor.top()).abs() <= 1.0
+            || (popup.top() - 4.0 - anchor.bottom()).abs() <= 1.0,
+        "popup {popup:?} is detached from anchor {anchor:?}",
+    );
+    popup
+}
+
+#[test]
+fn long_menu_expands_after_opening_a_single_item_menu() {
+    for (size, scale) in [
+        (SIZE, 1.0),
+        (SIZE, 1.25),
+        (SIZE, 1.5),
+        (SIZE, 2.0),
+        (vec2(1024.0, 640.0), 1.0),
+        (vec2(1920.0, 1080.0), 1.0),
+    ] {
+        let mut scene = Scene::new();
+        scene.screen_size = size;
+        scene.pixels_per_point = scale;
+        scene.view.dailies[0].enabled = None;
+        scene.view.dailies[0].options = serde_json::from_value(json!({"values": [
+            {"display_name": "1-7", "physical_name": "1-7"}
+        ]}))
+        .unwrap();
+        scene.frame(vec![]);
+        scene.click(Id::new(("daily", "每日任务")));
+        scene.frame(vec![]);
+        assert!((assert_popup_attached(&scene).height() - 40.0).abs() <= 1.0);
+        scene.click(Id::new(("daily", "每日任务")));
+        scene.view.dailies[0].options = serde_json::from_value(json!({"values":
+            (0..17).map(|i| json!({"display_name": format!("关卡 {i}"), "physical_name": i})).collect::<Vec<_>>()
+        })).unwrap();
+        scene.click(Id::new(("daily", "每日任务")));
+        for _ in 0..4 {
+            scene.frame(vec![]);
+        }
+        assert!((assert_popup_attached(&scene).height() - 360.0).abs() <= 1.0);
+        let last_visible = scene
+            .ctx
+            .read_response(Id::new(("primary", 9_usize)))
+            .unwrap();
+        assert!(
+            last_visible
+                .interact_rect
+                .expand(1.0 / scale)
+                .contains_rect(last_visible.rect),
+            "size {size:?}, scale {scale}: {last_visible:?}"
+        );
+        let request = only_request(scene.click(Id::new(("primary", 9_usize))));
+        assert_eq!(request.params["task_name"], json!("关卡 9"));
+
+        scene.click(Id::new(("daily", "每日任务")));
+        scene.frame(vec![]);
+        let pos = scene
+            .ctx
+            .read_response(Id::new(("primary", 0_usize)))
+            .unwrap()
+            .rect
+            .center();
+        for _ in 0..8 {
+            scene.frame(vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: vec2(0.0, -240.0),
+                    phase: egui::TouchPhase::Move,
+                    modifiers: Default::default(),
+                },
+            ]);
+        }
+        let last = scene
+            .ctx
+            .read_response(Id::new(("primary", 16_usize)))
+            .unwrap();
+        assert!(
+            last.interact_rect
+                .expand(1.0 / scale)
+                .contains_rect(last.rect),
+            "last: {last:?}"
+        );
+        let request = only_request(scene.click(Id::new(("primary", 16_usize))));
+        assert_eq!(request.params["task_name"], json!("关卡 16"));
+
+        // Going back to a short menu must shrink its frame and stay next to the chip.
+        scene.view.dailies[0].options.values.truncate(1);
+        scene.click(Id::new(("daily", "每日任务")));
+        for _ in 0..4 {
+            scene.frame(vec![]);
+        }
+        assert!((assert_popup_attached(&scene).height() - 40.0).abs() <= 1.0);
+        let first = scene
+            .ctx
+            .read_response(Id::new(("primary", 0_usize)))
+            .unwrap();
+        assert!(
+            first
+                .interact_rect
+                .expand(1.0 / scale)
+                .contains_rect(first.rect),
+            "first: {first:?}"
+        );
+        only_request(scene.click(Id::new(("primary", 0_usize))));
+    }
+}
+
+#[test]
+fn submenu_height_stays_stable_when_switching_between_short_and_long_groups() {
+    let mut scene = Scene::new();
+    scene.daily(1);
+    let short = assert_popup_attached(&scene);
+    let pos = scene
+        .ctx
+        .read_response(Id::new(("primary", 0_usize)))
+        .unwrap()
+        .rect
+        .center();
+    scene.frame(vec![egui::Event::PointerMoved(pos)]);
+    scene.frame(vec![]);
+    let long = assert_popup_attached(&scene);
+    assert_eq!(
+        short, long,
+        "hovering between groups must not move the popup"
+    );
+    let ninth = scene
+        .ctx
+        .read_response(Id::new(("child", 9_usize)))
+        .unwrap();
+    assert!(ninth.interact_rect.contains_rect(ninth.rect), "{ninth:?}");
+    let request = only_request(scene.click(Id::new(("child", 9_usize))));
+    assert_eq!(request.params["sequence"], json!(10));
+}
+
 #[test]
 fn real_menu_click_preserves_boolean_and_disable_semantics() {
     let mut scene = Scene::new();

@@ -8,6 +8,8 @@ pub(super) struct Scene {
     pub(super) time: f64,
     pub(super) busy: bool,
     pub(super) output: egui::FullOutput,
+    pub(super) screen_size: Vec2,
+    pub(super) pixels_per_point: f32,
 }
 
 impl Scene {
@@ -38,6 +40,8 @@ impl Scene {
             time: 0.0,
             busy: false,
             output: Default::default(),
+            screen_size: SIZE,
+            pixels_per_point: 1.0,
         };
         scene.frame(vec![]);
         scene.frame(vec![]);
@@ -46,12 +50,17 @@ impl Scene {
 
     pub(super) fn frame(&mut self, events: Vec<egui::Event>) -> Vec<Action> {
         self.time += 0.1;
-        let input = egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, SIZE)),
+        let mut input = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, self.screen_size)),
             time: Some(self.time),
             events,
             ..Default::default()
         };
+        input
+            .viewports
+            .get_mut(&egui::ViewportId::ROOT)
+            .unwrap()
+            .native_pixels_per_point = Some(self.pixels_per_point);
         let mut actions = Vec::new();
         let mut output = self.ctx.run_ui(input, |ui| {
             actions.extend(self.ui.show(
