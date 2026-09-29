@@ -1,4 +1,5 @@
-use crate::{daily_plan_dialog::DailyView, run_options_editor::RunOptions, theme};
+use crate::dialogs::{daily_plan_dialog::DailyView, run_options_editor::RunOptions};
+use crate::theme;
 use eframe::egui;
 use onedragon_rust_gui::backend::Request;
 use serde::{Deserialize, Serialize};
@@ -82,17 +83,17 @@ impl SettingsDialog {
         } else {
             ("配置", "运行设置、配置备份与程序更新")
         };
-        let close = crate::dialogs::Dialog::new("global-settings", title)
+        let close = crate::dialogs::common::Dialog::new("global-settings", title)
             .description(description)
             .show(ctx, !busy, |ui| {
-                crate::dialogs::dialog_body(ui, |ui| {
+                crate::dialogs::common::dialog_body(ui, |ui| {
                     ui.add_enabled_ui(!busy && !self.needs_reload, |ui| {
                         if let Some(draft) = &mut self.daily_draft {
                             draft.show(ui);
                         } else if let Some(draft) = &mut self.run_draft {
                             draft.show(ui, self.data.shutdown_supported);
                         } else {
-                            crate::dialogs::form_section(ui, "启动行为", |ui| {
+                            crate::dialogs::common::form_section(ui, "启动行为", |ui| {
                                 ui.add_enabled_ui(!self.data.daily_enabled, |ui| {
                                     ui.checkbox(
                                         &mut self.data.startup.enabled,
@@ -185,12 +186,12 @@ impl SettingsDialog {
                         }
                     });
                 });
-                crate::dialogs::dialog_status(
+                crate::dialogs::common::dialog_status(
                     ui,
                     self.error.as_deref(),
                     self.needs_reload.then_some("配置可能已保存，请刷新核对。"),
                 );
-                crate::dialogs::dialog_footer(ui, |ui| {
+                crate::dialogs::common::dialog_footer(ui, |ui| {
                     if ui
                         .add_enabled(
                             !busy
@@ -199,7 +200,7 @@ impl SettingsDialog {
                                     .daily_draft
                                     .as_ref()
                                     .is_none_or(|draft| draft.supported),
-                            crate::dialogs::primary_button("保存"),
+                            crate::dialogs::common::primary_button("保存"),
                         )
                         .clicked()
                     {
@@ -221,7 +222,7 @@ impl SettingsDialog {
                         }));
                     }
                     if ui
-                        .add_enabled(!busy, crate::dialogs::secondary_button("取消"))
+                        .add_enabled(!busy, crate::dialogs::common::secondary_button("取消"))
                         .clicked()
                     {
                         back = true;
@@ -231,7 +232,7 @@ impl SettingsDialog {
                     }
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         if ui
-                            .add_enabled(!busy, crate::dialogs::secondary_button("刷新"))
+                            .add_enabled(!busy, crate::dialogs::common::secondary_button("刷新"))
                             .clicked()
                         {
                             action = Some(SettingsAction::Request(Request {
@@ -322,5 +323,5 @@ fn action_row(ui: &mut egui::Ui, id: &str, title: &str, description: &str) -> eg
 }
 
 #[cfg(test)]
-#[path = "../../tests/rust-gui/config_dialog.rs"]
+#[path = "../../../tests/rust-gui/dialogs/config_dialog.rs"]
 mod tests;

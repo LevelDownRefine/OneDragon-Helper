@@ -12,7 +12,7 @@ pub enum WallpaperAction {
 pub struct WallpaperDialog {
     state: Wallpaper,
     path: String,
-    picker: Option<crate::file_picker::FilePicker>,
+    picker: Option<crate::dialogs::file_picker::FilePicker>,
     error: Option<String>,
     needs_reload: bool,
 }
@@ -42,7 +42,7 @@ impl WallpaperDialog {
         if let Some(result) = self
             .picker
             .as_ref()
-            .and_then(crate::file_picker::FilePicker::poll)
+            .and_then(crate::dialogs::file_picker::FilePicker::poll)
         {
             self.picker = None;
             match result {
@@ -53,32 +53,32 @@ impl WallpaperDialog {
         }
         let blocked = busy || self.picker.is_some();
         let mut action = None;
-        let close = crate::dialogs::Dialog::new(
+        let close = crate::dialogs::common::Dialog::new(
             "wallpaper-dialog",
             &format!("{} · 壁纸", self.state.display_name),
         )
         .description("为当前脚本设置图片或动态背景")
         .show(ctx, !blocked, |ui| {
-            crate::dialogs::dialog_body(ui, |ui| {
-                crate::dialogs::form_section(ui, "背景文件", |ui| {
+            crate::dialogs::common::dialog_body(ui, |ui| {
+                crate::dialogs::common::form_section(ui, "背景文件", |ui| {
                     ui.label(format!("当前来源：{}", self.state.source.display()));
                     ui.label("图片：PNG、JPEG、WebP、BMP；视频：MP4、WebM、MKV、MOV。");
                     ui.label("视频静音循环播放；能否解码取决于 Windows 已安装的编解码器。");
                     ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
-                        if crate::dialogs::path_input(ui, &mut self.path).1 {
-                            self.picker = Some(crate::file_picker::FilePicker::start(
+                        if crate::dialogs::common::path_input(ui, &mut self.path).1 {
+                            self.picker = Some(crate::dialogs::file_picker::FilePicker::start(
                                 ctx.clone(),
-                                crate::file_picker::FileKind::Wallpaper,
+                                crate::dialogs::file_picker::FileKind::Wallpaper,
                             ));
                         }
                     });
                 });
             });
-            crate::dialogs::dialog_status(ui, self.error.as_deref(), None);
-            crate::dialogs::dialog_footer(ui, |ui| {
+            crate::dialogs::common::dialog_status(ui, self.error.as_deref(), None);
+            crate::dialogs::common::dialog_footer(ui, |ui| {
                 if self.needs_reload {
                     if ui
-                        .add_enabled(!blocked, crate::dialogs::secondary_button("刷新"))
+                        .add_enabled(!blocked, crate::dialogs::common::secondary_button("刷新"))
                         .clicked()
                     {
                         action = Some(WallpaperAction::Request(Request {
@@ -88,7 +88,7 @@ impl WallpaperDialog {
                     }
                 } else {
                     if ui
-                        .add_enabled(!blocked, crate::dialogs::primary_button("应用壁纸"))
+                        .add_enabled(!blocked, crate::dialogs::common::primary_button("应用壁纸"))
                         .clicked()
                     {
                         let extension = Path::new(self.path.trim())
@@ -108,14 +108,17 @@ impl WallpaperDialog {
                     }
                 }
                 if ui
-                    .add_enabled(!blocked, crate::dialogs::secondary_button("取消"))
+                    .add_enabled(!blocked, crate::dialogs::common::secondary_button("取消"))
                     .clicked()
                 {
                     action = Some(WallpaperAction::Close);
                 }
                 if !self.needs_reload
                     && ui
-                        .add_enabled(!blocked, crate::dialogs::secondary_button("恢复默认"))
+                        .add_enabled(
+                            !blocked,
+                            crate::dialogs::common::secondary_button("恢复默认"),
+                        )
                         .clicked()
                 {
                     action = Some(self.save(None));
@@ -139,5 +142,5 @@ impl WallpaperDialog {
 }
 
 #[cfg(test)]
-#[path = "../../tests/rust-gui/wallpaper_dialog.rs"]
+#[path = "../../../tests/rust-gui/dialogs/wallpaper_dialog.rs"]
 mod tests;

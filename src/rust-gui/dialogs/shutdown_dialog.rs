@@ -167,5 +167,5 @@ pub fn run(args: Vec<OsString>) -> Result<i32, String> {
 }
 
 #[cfg(test)]
-#[path = "../../tests/rust-gui/shutdown_dialog.rs"]
+#[path = "../../../tests/rust-gui/dialogs/shutdown_dialog.rs"]
 mod tests;

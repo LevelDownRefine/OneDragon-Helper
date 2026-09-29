@@ -1,4 +1,4 @@
-use crate::run_options_editor::RunOptions;
+use crate::dialogs::run_options_editor::RunOptions;
 use eframe::egui;
 use onedragon_rust_gui::backend::Request;
 use serde::Deserialize;
@@ -61,13 +61,13 @@ impl RunDialog {
 
     pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<RunAction> {
         let mut action = None;
-        let close = crate::dialogs::Dialog::new(
+        let close = crate::dialogs::common::Dialog::new(
             "run-confirm",
             &format!("确认运行 {} 个脚本", self.data.script_names.len()),
         )
         .description("检查本次运行选项，确认后开始执行")
         .show(ctx, !busy, |ui| {
-            crate::dialogs::dialog_body(ui, |ui| {
+            crate::dialogs::common::dialog_body(ui, |ui| {
                 ui.add_enabled_ui(!busy && !self.needs_reload, |ui| {
                     if !self.data.invalid.is_empty() {
                         ui.colored_label(egui::Color32::LIGHT_RED, "以下脚本将在运行时跳过：");
@@ -80,17 +80,17 @@ impl RunDialog {
                     self.data.options.show(ui, self.data.shutdown_supported);
                 });
             });
-            crate::dialogs::dialog_status(
+            crate::dialogs::common::dialog_status(
                 ui,
                 self.error.as_deref(),
                 self.needs_reload
                     .then_some("选项可能已保存，请刷新核对；不会自动启动。"),
             );
-            crate::dialogs::dialog_footer(ui, |ui| {
+            crate::dialogs::common::dialog_footer(ui, |ui| {
                 if ui
                     .add_enabled(
                         !busy && !self.needs_reload,
-                        crate::dialogs::primary_button("确认运行"),
+                        crate::dialogs::common::primary_button("确认运行"),
                     )
                     .clicked()
                 {
@@ -100,13 +100,13 @@ impl RunDialog {
                     }
                 }
                 if ui
-                    .add_enabled(!busy, crate::dialogs::secondary_button("取消"))
+                    .add_enabled(!busy, crate::dialogs::common::secondary_button("取消"))
                     .clicked()
                 {
                     action = Some(RunAction::Cancel);
                 }
                 if ui
-                    .add_enabled(!busy, crate::dialogs::secondary_button("刷新"))
+                    .add_enabled(!busy, crate::dialogs::common::secondary_button("刷新"))
                     .clicked()
                 {
                     action = Some(RunAction::Request(Request {
@@ -127,5 +127,5 @@ impl RunDialog {
 }
 
 #[cfg(test)]
-#[path = "../../tests/rust-gui/run_confirm_dialog.rs"]
+#[path = "../../../tests/rust-gui/dialogs/run_confirm_dialog.rs"]
 mod tests;

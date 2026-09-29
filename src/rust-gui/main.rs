@@ -1,24 +1,12 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
-mod backup_dialog;
-mod config_dialog;
-mod daily_plan_dialog;
 mod dialogs;
-mod drop_dialog;
 mod file_drop;
-mod file_picker;
 mod icons;
-mod list_dialog;
 mod main_window;
 mod rendering;
-mod run_confirm_dialog;
-mod run_options_editor;
 mod runtime;
-mod shutdown_dialog;
-mod startup_dialog;
 mod theme;
-mod update_dialog;
 mod video;
-mod wallpaper_dialog;
 
 use std::{env, ffi::OsString, path::PathBuf, time::Instant};
 
@@ -171,10 +159,12 @@ fn main() -> eframe::Result {
     }
     logger.init();
     if env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--shutdown-confirm")) {
-        let code = shutdown_dialog::run(env::args_os().skip(2).collect()).unwrap_or_else(|error| {
-            log::error!("关机确认失败：{error}");
-            2
-        });
+        let code = dialogs::shutdown_dialog::run(env::args_os().skip(2).collect()).unwrap_or_else(
+            |error| {
+                log::error!("关机确认失败：{error}");
+                2
+            },
+        );
         std::process::exit(code);
     }
     let (settings, cli_arguments) = match settings() {

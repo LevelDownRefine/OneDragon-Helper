@@ -1,5 +1,7 @@
 use super::*;
-use eframe::egui::{Pos2, Rect, Vec2};
+use crate::dialogs::test_support::{click, frame, text_rect};
+use crate::theme::SIZE;
+use eframe::egui::{Pos2, Rect, vec2};
 
 fn editor() -> ScriptEditor {
     ScriptEditor::new(serde_json::from_value(json!({
@@ -57,78 +59,8 @@ fn escape_cancels_without_emitting_save() {
     assert!(cancelled);
 }
 
-fn frame<T>(
-    ctx: &egui::Context,
-    size: Vec2,
-    events: Vec<egui::Event>,
-    show: impl FnOnce(&egui::Context) -> T,
-) -> (T, egui::FullOutput) {
-    let mut result = None;
-    let mut show = Some(show);
-    let mut output = ctx.run_ui(
-        egui::RawInput {
-            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
-            events,
-            ..Default::default()
-        },
-        |ui| result = Some(show.take().expect("single pass")(ui.ctx())),
-    );
-    output.textures_delta.clear();
-    (result.unwrap(), output)
-}
-
-fn text_rect(output: &egui::FullOutput, label: &str) -> Rect {
-    output
-        .shapes
-        .iter()
-        .find_map(|shape| {
-            if let egui::Shape::Text(text) = &shape.shape
-                && text.galley.text() == label
-            {
-                let rect = Rect::from_min_size(text.pos, text.galley.size());
-                assert!(shape.clip_rect.contains_rect(rect), "{label} is clipped");
-                Some(rect)
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| panic!("missing visible label: {label}"))
-}
-
-fn click(pos: Pos2, pressed: bool) -> Vec<egui::Event> {
-    vec![
-        egui::Event::PointerMoved(pos),
-        egui::Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: Default::default(),
-        },
-    ]
-}
-
-#[test]
-fn shared_close_button_respects_write_lock() {
-    for closable in [true, false] {
-        let ctx = egui::Context::default();
-        let show = |ctx: &egui::Context| {
-            Dialog::new("test-dialog", "Settings").show(ctx, closable, |ui| {
-                ui.label("Body");
-            })
-        };
-        for _ in 0..12 {
-            assert!(!frame(&ctx, SIZE, vec![], show).0);
-        }
-        let (_, output) = frame(&ctx, SIZE, vec![], show);
-        let pos = text_rect(&output, "×").center();
-        assert!(!frame(&ctx, SIZE, click(pos, true), show).0);
-        assert_eq!(frame(&ctx, SIZE, click(pos, false), show).0, closable);
-    }
-}
-
 #[test]
 fn long_script_form_keeps_save_visible_and_blocks_duplicate_writes() {
-    use crate::dialogs::{EditAction, ScriptEditor};
     use serde_json::json;
     for size in [SIZE, vec2(1000.0, 600.0)] {
         for (busy, reload) in [(false, false), (true, false), (false, true)] {

@@ -1,4 +1,4 @@
-use crate::file_picker::FilePicker;
+use crate::dialogs::file_picker::FilePicker;
 use eframe::egui;
 use onedragon_rust_gui::backend::Request;
 use serde_json::json;
@@ -51,7 +51,7 @@ impl ListDialog {
         }
         let blocked = busy || self.picker.is_some();
         let mut action = None;
-        let close = crate::dialogs::Dialog::new(
+        let close = crate::dialogs::common::Dialog::new(
             "script-list-dialog",
             if self.remove.is_some() {
                 "删除脚本"
@@ -65,9 +65,9 @@ impl ListDialog {
             "将脚本添加到助手，统一管理运行"
         })
         .show(ctx, !blocked, |ui| {
-            crate::dialogs::dialog_body(ui, |ui| {
+            crate::dialogs::common::dialog_body(ui, |ui| {
                 ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
-                    crate::dialogs::form_section(
+                    crate::dialogs::common::form_section(
                         ui,
                         if self.remove.is_some() {
                             "确认移除"
@@ -80,10 +80,10 @@ impl ListDialog {
                                 ui.label("将移除该条目和每周设置，脚本文件仍保留。");
                             } else {
                                 ui.label("选择 .exe、.bat、.py 或指向这些文件的快捷方式。");
-                                if crate::dialogs::path_input(ui, &mut self.path).1 {
+                                if crate::dialogs::common::path_input(ui, &mut self.path).1 {
                                     self.picker = Some(FilePicker::start(
                                         ctx.clone(),
-                                        crate::file_picker::FileKind::ScriptOrShortcut,
+                                        crate::dialogs::file_picker::FileKind::ScriptOrShortcut,
                                     ));
                                 }
                             }
@@ -91,17 +91,17 @@ impl ListDialog {
                     );
                 });
             });
-            crate::dialogs::dialog_status(
+            crate::dialogs::common::dialog_status(
                 ui,
                 self.error.as_deref(),
                 self.needs_reload
                     .then_some("列表可能已改变，请刷新核对后再操作。"),
             );
-            crate::dialogs::dialog_footer(ui, |ui| {
+            crate::dialogs::common::dialog_footer(ui, |ui| {
                 if ui
                     .add_enabled(
                         !blocked && !self.needs_reload,
-                        crate::dialogs::primary_button(if self.remove.is_some() {
+                        crate::dialogs::common::primary_button(if self.remove.is_some() {
                             "确认删除"
                         } else {
                             "添加"
@@ -124,14 +124,17 @@ impl ListDialog {
                     }
                 }
                 if ui
-                    .add_enabled(!blocked, crate::dialogs::secondary_button("取消"))
+                    .add_enabled(!blocked, crate::dialogs::common::secondary_button("取消"))
                     .clicked()
                 {
                     action = Some(ListAction::Cancel);
                 }
                 if self.needs_reload
                     && ui
-                        .add_enabled(!blocked, crate::dialogs::secondary_button("刷新列表"))
+                        .add_enabled(
+                            !blocked,
+                            crate::dialogs::common::secondary_button("刷新列表"),
+                        )
                         .clicked()
                 {
                     action = Some(ListAction::Refresh);
@@ -149,5 +152,5 @@ impl ListDialog {
 }
 
 #[cfg(test)]
-#[path = "../../tests/rust-gui/list_dialog.rs"]
+#[path = "../../../tests/rust-gui/dialogs/list_dialog.rs"]
 mod tests;

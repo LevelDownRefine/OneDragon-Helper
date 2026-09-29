@@ -1,19 +1,19 @@
-use crate::backup_dialog::{BackupAction, BackupDialog};
-use crate::config_dialog::{SettingsAction, SettingsDialog, SettingsView};
-use crate::daily_plan_dialog::DailyView;
-use crate::dialogs::{EditAction, EditView, ScriptEditor};
-use crate::drop_dialog::DropDialog;
+use crate::dialogs::backup_dialog::{BackupAction, BackupDialog};
+use crate::dialogs::config_dialog::{SettingsAction, SettingsDialog, SettingsView};
+use crate::dialogs::daily_plan_dialog::DailyView;
+use crate::dialogs::drop_dialog::DropDialog;
+use crate::dialogs::list_dialog::{ListAction, ListDialog};
+use crate::dialogs::run_confirm_dialog::{RunAction, RunDialog, RunView};
+use crate::dialogs::script_config_dialog::{EditAction, EditView, ScriptEditor};
+use crate::dialogs::startup_dialog::StartupDialog;
+use crate::dialogs::update_dialog::{UpdateAction, UpdateDialog, UpdateView};
 use crate::file_drop::FileDrop;
-use crate::list_dialog::{ListAction, ListDialog};
 use crate::main_window::controllers::launch::LaunchJob;
 use crate::main_window::controllers::links::{OpenJob, Target};
-use crate::run_confirm_dialog::{RunAction, RunDialog, RunView};
 use crate::runtime::BackendProgram;
-use crate::startup_dialog::StartupDialog;
-use crate::update_dialog::{UpdateAction, UpdateDialog, UpdateView};
 #[path = "controllers/mod.rs"]
 pub(crate) mod controllers;
-use crate::wallpaper_dialog::{WallpaperAction, WallpaperDialog};
+use crate::dialogs::wallpaper_dialog::{WallpaperAction, WallpaperDialog};
 use controllers::{Action, Presentation, View};
 use eframe::egui;
 use onedragon_rust_gui::{

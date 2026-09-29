@@ -160,22 +160,25 @@ Rust crate 位于 `src/rust-gui`，源码与 `src/gui` 平级组织；Cargo 显�
 | `controllers/daily_plan.rs` | `controllers/daily_plan.py` | 每日计划读取、保存与回显 |
 | `controllers/update.rs` | `controllers/update.py` | 更新操作事件和异步结果分发 |
 | `controllers/window.rs` | `controllers/window.py` | 窗口控制按钮与关闭限制 |
-| `dialogs.rs` | `dialogs.py` | 共用弹窗框架、表单控件与单脚本配置 |
-| `config_dialog.rs` | `config_dialog.py` | 配置入口和设置草稿 |
-| `run_options_editor.rs`、`run_confirm_dialog.rs` | 同名 `.py` | 共用运行选项表单、手动运行确认 |
-| `daily_plan_dialog.rs`、`startup_dialog.rs`、`shutdown_dialog.rs`、`update_dialog.rs` | 同名 `.py` | 各自弹窗 |
+| `dialogs/common.rs` | `dialogs.py` 的通用组件 | 共用弹窗框架、表单控件、状态和按钮 |
+| `dialogs/script_config_dialog.rs` | `dialogs.py` 的 `SingleScriptConfigDialog` | 单脚本配置表单 |
+| `dialogs/config_dialog.rs` | `config_dialog.py` | 配置入口和设置草稿 |
+| `dialogs/run_options_editor.rs`、`dialogs/run_confirm_dialog.rs` | 同名 `.py` | 共用运行选项表单、手动运行确认 |
+| `dialogs/daily_plan_dialog.rs`、`dialogs/startup_dialog.rs`、`dialogs/shutdown_dialog.rs`、`dialogs/update_dialog.rs` | 同名 `.py` | 各自弹窗 |
 | `icons.rs`、`file_drop.rs` | 同名 `.py` | 图标资源与缓存、原生文件拖入 |
 | `theme.rs` | `qml/Theme.js`、`qml/Layout.js` | 主窗口配色、尺寸与绘制工具 |
 
 egui 没有 QML 层，控制器同时绘制对应区域；`controllers/mod.rs` 保存主画面状态并组合绘制。
-控制器通过窗口的统一请求入口调用 CLI，不读写游戏配置。共用弹窗样式在 `dialogs.rs`，
-`list_dialog.rs`、`drop_dialog.rs`、`backup_dialog.rs`、`wallpaper_dialog.rs` 只保留各自表单和结果展示。
-`backend.rs`、`model.rs`、`runtime.rs`、`rendering.rs`、`file_picker.rs`、`video.rs` 是 Rust 的
+控制器通过窗口的统一请求入口调用 CLI，不读写游戏配置。弹窗和表单集中在 `dialogs/`，
+`common.rs` 只放共用组件，`script_config_dialog.rs` 单独承载脚本配置；
+`list_dialog.rs`、`drop_dialog.rs`、`backup_dialog.rs`、`wallpaper_dialog.rs` 保留各自表单和结果展示，
+原生文件选择也归 `dialogs/file_picker.rs`。
+`backend.rs`、`model.rs`、`runtime.rs`、`rendering.rs`、`video.rs` 是 Rust 的
 协议、启动及平台实现；Python GUI 没有一一对应文件，不为了同名增加转发层。
 Windows 原生拖放、图标提取和视频解码集中在 `windows/file_drop.rs`、`windows/icons.rs`、
 `windows/video.rs`；由对应功能模块按平台加载，避免为单个实现文件各建一个目录。
 
-测试全部位于 `tests/rust-gui`，控制器和 Windows 子模块按源码目录对应；单元测试通过
+测试全部位于 `tests/rust-gui`，弹窗、控制器和 Windows 子模块按源码目录对应；单元测试通过
 `#[path]` 作为被测模块的子模块加载，保留私有成员测试，不扩大产品接口。
 `backend.rs` 是真实 Python CLI 集成测试，`backend_unit.rs` 验证传输协议；媒体及后端夹具统一归
 根目录 `tests/fixtures/rust-gui/`。`Cargo.toml`、`Cargo.lock` 保留在 crate 根目录；`target/` 是

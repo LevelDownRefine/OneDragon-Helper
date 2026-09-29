@@ -109,7 +109,7 @@ impl DropDialog {
     pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> bool {
         let blocked = self.active() || busy;
         let mut close = false;
-        let dismissed = crate::dialogs::Dialog::new(
+        let dismissed = crate::dialogs::common::Dialog::new(
             "file-drop-result",
             if self.active() {
                 "正在添加脚本"
@@ -119,7 +119,7 @@ impl DropDialog {
         )
         .description("查看脚本文件的导入进度和结果")
         .show(ctx, !blocked, |ui| {
-            crate::dialogs::dialog_body(ui, |ui| {
+            crate::dialogs::common::dialog_body(ui, |ui| {
                 ui.label(format!(
                     "已添加 {}，重复 {}，失败 {}，未尝试 {}",
                     self.added, self.duplicate, self.failed, self.stopped
@@ -130,7 +130,7 @@ impl DropDialog {
                         ui.label(path);
                     });
                 }
-                crate::dialogs::form_section(ui, "导入结果", |ui| {
+                crate::dialogs::common::form_section(ui, "导入结果", |ui| {
                     for (path, message) in &self.results {
                         ui.label(path);
                         ui.label(message);
@@ -141,9 +141,9 @@ impl DropDialog {
                     ui.label("只添加启动信息。请等待完成后关闭窗口。");
                 }
             });
-            crate::dialogs::dialog_footer(ui, |ui| {
+            crate::dialogs::common::dialog_footer(ui, |ui| {
                 if ui
-                    .add_enabled(!blocked, crate::dialogs::primary_button("完成"))
+                    .add_enabled(!blocked, crate::dialogs::common::primary_button("完成"))
                     .clicked()
                 {
                     close = true;
@@ -155,5 +155,5 @@ impl DropDialog {
 }
 
 #[cfg(test)]
-#[path = "../../tests/rust-gui/drop_dialog.rs"]
+#[path = "../../../tests/rust-gui/dialogs/drop_dialog.rs"]
 mod tests;

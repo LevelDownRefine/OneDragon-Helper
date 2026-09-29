@@ -248,14 +248,14 @@ impl UpdateDialog {
 
     pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<UpdateAction> {
         let mut action = None;
-        let close = crate::dialogs::Dialog::new("update-dialog", "助手更新")
+        let close = crate::dialogs::common::Dialog::new("update-dialog", "助手更新")
             .description("检查新版本，查看下载与安装进度")
             .show(
                 ctx,
                 !busy && !self.close_pending && !self.installing() && !self.ready(),
                 |ui| {
-                    crate::dialogs::dialog_body(ui, |ui| {
-                        crate::dialogs::form_section(ui, "版本信息", |ui| {
+                    crate::dialogs::common::dialog_body(ui, |ui| {
+                        crate::dialogs::common::form_section(ui, "版本信息", |ui| {
                             ui.label(format!("当前版本：{}", self.data.version));
                             if let Some(previous) = &self.data.previous_result {
                                 let message = match previous.status.as_str() {
@@ -275,7 +275,7 @@ impl UpdateDialog {
                             }
                         });
                         if let Some(release) = &self.data.release {
-                            crate::dialogs::form_section(ui, "可用更新", |ui| {
+                            crate::dialogs::common::form_section(ui, "可用更新", |ui| {
                                 ui.label(format!(
                                     "新版本：{} · {:.1} MiB",
                                     release.version,
@@ -319,10 +319,13 @@ impl UpdateDialog {
                             );
                         }
                     });
-                    crate::dialogs::dialog_footer(ui, |ui| {
+                    crate::dialogs::common::dialog_footer(ui, |ui| {
                         if !self.active() && self.needs_reload {
                             if ui
-                                .add_enabled(!busy, crate::dialogs::secondary_button("刷新"))
+                                .add_enabled(
+                                    !busy,
+                                    crate::dialogs::common::secondary_button("刷新"),
+                                )
                                 .clicked()
                             {
                                 action = Some(UpdateAction::Request(Request {
@@ -331,7 +334,10 @@ impl UpdateDialog {
                                 }));
                             }
                         } else if !self.active() && !self.data.unavailable_reason.is_empty() {
-                            ui.add_enabled(false, crate::dialogs::secondary_button("检查更新"));
+                            ui.add_enabled(
+                                false,
+                                crate::dialogs::common::secondary_button("检查更新"),
+                            );
                         } else if !self.active() && !self.ready() {
                             let (label, method) = if self.data.prepared_version.is_some() {
                                 ("安装并重启", "update.install")
@@ -341,7 +347,7 @@ impl UpdateDialog {
                                 ("检查更新", "update.check")
                             };
                             if ui
-                                .add_enabled(!busy, crate::dialogs::primary_button(label))
+                                .add_enabled(!busy, crate::dialogs::common::primary_button(label))
                                 .clicked()
                             {
                                 action = Some(UpdateAction::Request(self.start(method)));
@@ -350,7 +356,7 @@ impl UpdateDialog {
                                 && ui
                                     .add_enabled(
                                         !busy,
-                                        crate::dialogs::secondary_button("检查更新"),
+                                        crate::dialogs::common::secondary_button("检查更新"),
                                     )
                                     .clicked()
                             {
@@ -360,7 +366,7 @@ impl UpdateDialog {
                         if ui
                             .add_enabled(
                                 !busy && !self.close_pending && !self.installing() && !self.ready(),
-                                crate::dialogs::secondary_button(if self.active() {
+                                crate::dialogs::common::secondary_button(if self.active() {
                                     "取消更新"
                                 } else {
                                     "关闭"
@@ -373,7 +379,7 @@ impl UpdateDialog {
                         if ui
                             .add_enabled(
                                 !busy && !self.active(),
-                                crate::dialogs::secondary_button("发布页面"),
+                                crate::dialogs::common::secondary_button("发布页面"),
                             )
                             .clicked()
                         {
@@ -391,5 +397,5 @@ impl UpdateDialog {
 }
 
 #[cfg(test)]
-#[path = "../../tests/rust-gui/update_dialog.rs"]
+#[path = "../../../tests/rust-gui/dialogs/update_dialog.rs"]
 mod tests;

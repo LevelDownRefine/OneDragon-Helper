@@ -1,4 +1,4 @@
-use crate::file_picker::{FileKind, FilePicker};
+use crate::dialogs::file_picker::{FileKind, FilePicker};
 use eframe::egui;
 use onedragon_rust_gui::backend::Request;
 use serde::Deserialize;
@@ -171,7 +171,7 @@ impl BackupDialog {
         }
         let blocked = busy || self.active() || self.picker.is_some();
         let mut action = None;
-        let close = crate::dialogs::Dialog::new(
+        let close = crate::dialogs::common::Dialog::new(
             "backup-restore",
             if self.restore {
                 "恢复配置"
@@ -185,9 +185,9 @@ impl BackupDialog {
             "将脚本配置打包保存，方便恢复或迁移"
         })
         .show(ctx, !blocked, |ui| {
-            crate::dialogs::dialog_body(ui, |ui| {
+            crate::dialogs::common::dialog_body(ui, |ui| {
                 ui.add_enabled_ui(!blocked && !self.finished, |ui| {
-                    crate::dialogs::form_section(
+                    crate::dialogs::common::form_section(
                         ui,
                         if self.restore {
                             "选择备份"
@@ -203,7 +203,7 @@ impl BackupDialog {
                             "请先停止相关脚本。恢复前会备份现有目标，失败时可能已完成部分文件。",
                         );
                                 let (changed, browse) =
-                                    crate::dialogs::path_input(ui, &mut self.path);
+                                    crate::dialogs::common::path_input(ui, &mut self.path);
                                 if changed {
                                     self.confirmed = false;
                                 }
@@ -236,12 +236,12 @@ impl BackupDialog {
                     ctx.request_repaint_after(Duration::from_millis(200));
                 }
             });
-            crate::dialogs::dialog_footer(ui, |ui| {
+            crate::dialogs::common::dialog_footer(ui, |ui| {
                 if !self.finished
                     && ui
                         .add_enabled(
                             !blocked,
-                            crate::dialogs::primary_button(if self.restore {
+                            crate::dialogs::common::primary_button(if self.restore {
                                 "开始恢复"
                             } else {
                                 "开始备份"
@@ -257,7 +257,7 @@ impl BackupDialog {
                 if ui
                     .add_enabled(
                         !blocked,
-                        crate::dialogs::secondary_button(if self.finished {
+                        crate::dialogs::common::secondary_button(if self.finished {
                             "关闭"
                         } else {
                             "取消"
@@ -277,5 +277,5 @@ impl BackupDialog {
 }
 
 #[cfg(test)]
-#[path = "../../tests/rust-gui/backup_dialog.rs"]
+#[path = "../../../tests/rust-gui/dialogs/backup_dialog.rs"]
 mod tests;

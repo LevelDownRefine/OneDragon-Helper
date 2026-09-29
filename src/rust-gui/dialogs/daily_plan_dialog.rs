@@ -1,4 +1,5 @@
-use crate::{run_options_editor::RunOptions, theme};
+use crate::dialogs::run_options_editor::RunOptions;
+use crate::theme;
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
@@ -28,13 +29,13 @@ pub struct DailyView {
 
 impl DailyView {
     pub fn show(&mut self, ui: &mut egui::Ui) {
-        crate::dialogs::form_section(ui, "计划时间", |ui| {
+        crate::dialogs::common::form_section(ui, "计划时间", |ui| {
             ui.colored_label(theme::MUTED, "每日计划对所有脚本生效，运行选项单独设置。");
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.plan.enabled, "启用每日计划");
                 ui.label("每天");
                 ui.add(
-                    crate::dialogs::text_input(&mut self.plan.target_time)
+                    crate::dialogs::common::text_input(&mut self.plan.target_time)
                         .desired_width(70.0)
                         .hint_text("04:10"),
                 );

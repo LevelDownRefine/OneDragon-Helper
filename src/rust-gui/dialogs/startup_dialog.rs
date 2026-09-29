@@ -1,4 +1,4 @@
-use crate::config_dialog::SettingsView;
+use crate::dialogs::config_dialog::SettingsView;
 use eframe::egui;
 use std::time::{Duration, Instant};
 
@@ -19,18 +19,24 @@ impl StartupDialog {
         let started = *self.started.get_or_insert_with(Instant::now);
         let remaining = self.seconds.saturating_sub(started.elapsed().as_secs());
         let mut action = None;
-        let close = crate::dialogs::Dialog::new("startup-countdown", "即将启动勾选脚本")
+        let close = crate::dialogs::common::Dialog::new("startup-countdown", "即将启动勾选脚本")
             .width(420.0)
             .description("按已保存的运行选项执行")
             .show(ctx, true, |ui| {
-                crate::dialogs::form_section(ui, "启动倒计时", |ui| {
+                crate::dialogs::common::form_section(ui, "启动倒计时", |ui| {
                     ui.label(format!("将在 {remaining} 秒后按上次配置启动"));
                 });
-                crate::dialogs::dialog_footer(ui, |ui| {
-                    if ui.add(crate::dialogs::primary_button("立即启动")).clicked() {
+                crate::dialogs::common::dialog_footer(ui, |ui| {
+                    if ui
+                        .add(crate::dialogs::common::primary_button("立即启动"))
+                        .clicked()
+                    {
                         action = Some(true);
                     }
-                    if ui.add(crate::dialogs::secondary_button("取消")).clicked() {
+                    if ui
+                        .add(crate::dialogs::common::secondary_button("取消"))
+                        .clicked()
+                    {
                         action = Some(false);
                     }
                 });
@@ -44,5 +50,5 @@ impl StartupDialog {
 }
 
 #[cfg(test)]
-#[path = "../../tests/rust-gui/startup_dialog.rs"]
+#[path = "../../../tests/rust-gui/dialogs/startup_dialog.rs"]
 mod tests;

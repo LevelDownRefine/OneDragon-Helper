@@ -28,14 +28,14 @@ impl RunOptions {
     }
 
     pub fn show(&mut self, ui: &mut egui::Ui, shutdown_supported: bool) {
-        crate::dialogs::form_section(ui, "运行前", |ui| {
+        crate::dialogs::common::form_section(ui, "运行前", |ui| {
             ui.checkbox(&mut self.close_running_enabled, "关闭残留脚本和游戏进程");
             ui.checkbox(&mut self.mute_enabled, "静音");
         });
-        crate::dialogs::form_section(ui, "运行中", |ui| {
+        crate::dialogs::common::form_section(ui, "运行中", |ui| {
             ui.checkbox(&mut self.rerun_enabled, "重跑失败脚本");
         });
-        crate::dialogs::form_section(ui, "运行后", |ui| {
+        crate::dialogs::common::form_section(ui, "运行后", |ui| {
             ui.checkbox(&mut self.unmute_enabled, "开启声音");
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.shutdown_enabled, "自动关机");
@@ -50,10 +50,10 @@ impl RunOptions {
                 ui.colored_label(theme::MUTED, "关机确认入口不可用，请关闭此项后运行。");
             }
         });
-        crate::dialogs::form_section(ui, "邮件通知", |ui| {
+        crate::dialogs::common::form_section(ui, "邮件通知", |ui| {
             ui.checkbox(&mut self.notify_enabled, "运行结束后发送邮件通知");
             ui.add_enabled_ui(self.notify_enabled, |ui| {
-                crate::dialogs::form_grid(ui, "mail-options", |ui| {
+                crate::dialogs::common::form_grid(ui, "mail-options", |ui| {
                     for (label, text, secret) in [
                         ("邮箱", &mut self.email, false),
                         ("授权码", &mut self.auth_code, true),
@@ -61,7 +61,7 @@ impl RunOptions {
                         ("SMTP 端口", &mut self.smtp_port, false),
                     ] {
                         ui.label(label);
-                        ui.add(crate::dialogs::text_input(text).password(secret));
+                        ui.add(crate::dialogs::common::text_input(text).password(secret));
                         ui.end_row();
                     }
                 });
