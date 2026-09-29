@@ -11,6 +11,23 @@ from src.service.schedule import RunOptions
 
 
 class RunServiceTests(unittest.TestCase):
+    def test_saved_run_returns_target_without_saving_or_starting(self):
+        options = RunOptions(mute_enabled=True, close_running_enabled=False)
+        with (
+            patch.object(run_service, "selected_scripts", return_value=[]),
+            patch.object(run_service, "load_run_options", return_value=options),
+            patch.object(run_service, "apply_run_options") as save,
+            patch.object(run_service.chain_service, "schedule_run") as run,
+        ):
+            target = run_service.saved_run(["test"])
+        save.assert_not_called()
+        run.assert_not_called()
+        self.assertEqual(target["args"][-1], "run")
+        self.assertEqual(
+            json.loads(target["input"]),
+            {"script_names": ["test"], "options": asdict(options)},
+        )
+
     def test_invalid_options_rejected_before_save(self):
         defaults = asdict(RunOptions())
         for change in (

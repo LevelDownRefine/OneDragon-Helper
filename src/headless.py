@@ -25,8 +25,8 @@ METHODS = {
     "startup.view": ("settings_view", (), ()),
     "plan.view": ("daily_plan_view", (), ()),
     "plan.save": ("apply_daily_plan", ("plan",), ()),
-    "settings.startup_save": ("save_startup_settings", ("options",), ()),
-    "settings.run_save": ("save_run_settings", ("options",), ()),
+    "settings.startup_save": ("apply_startup_options", ("options",), ()),
+    "settings.run_save": ("apply_run_options", ("options",), ()),
     "run.saved": ("saved_run", ("script_names",), ()),
     "run.view": ("run_view", ("script_names",), ()),
     "run.prepare": ("prepare_run", ("script_names", "options", "confirm_invalid"), ()),
@@ -120,7 +120,11 @@ def handle_request(service, request) -> dict:
     from src.service.background_job import InvalidBackgroundJob
     from src.service.daily_plan import DailyPlanOptions
     from src.service.run_service import InvalidRunRequest, parse_options
-    from src.service.schedule import is_valid_target_time
+    from src.service.schedule import (
+        MAX_STARTUP_DELAY_SECONDS,
+        StartupOptions,
+        is_valid_target_time,
+    )
     from src.service.script_service import DuplicateScript, InvalidScript, ScriptEdit
     from src.service.task_service import InvalidTaskSelection
     from src.service.wallpaper_service import InvalidWallpaper
@@ -178,6 +182,30 @@ def handle_request(service, request) -> dict:
         with redirect_stdout(sys.stderr):
             if method == "script.edit_save":
                 result = {"script_name": service.update_script(ScriptEdit(**params))}
+            elif method in {"settings.view", "startup.view"}:
+                result = service.settings_view()
+                result["shutdown_supported"] = rust_shutdown_supported()
+            elif method == "settings.startup_save":
+                assert "options" in params
+                options = params["options"]
+                if not isinstance(options, dict) or set(options) != {
+                    "enabled",
+                    "delay_seconds",
+                }:
+                    raise ProtocolError("invalid_params", "启动选项字段无效")
+                assert "enabled" in options and "delay_seconds" in options
+                if (
+                    type(options["enabled"]) is not bool
+                    or type(options["delay_seconds"]) is not int
+                    or not 1 <= options["delay_seconds"] <= MAX_STARTUP_DELAY_SECONDS
+                ):
+                    raise ProtocolError(
+                        "invalid_params", "自动启动需要布尔开关与 1～3600 秒倒计时"
+                    )
+                result = service.apply_startup_options(StartupOptions(**options))
+            elif method == "settings.run_save":
+                assert "options" in params
+                result = service.apply_run_options(parse_options(params["options"]))
             elif method == "plan.view":
                 result = service.daily_plan_view(task=_daily_task())
                 result["shutdown_supported"] = rust_shutdown_supported()

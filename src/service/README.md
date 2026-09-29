@@ -52,6 +52,10 @@ CLI 编辑入口保留在 `AppService`，直接调用对应的 GUI 原接口：
 进程入口 `python -m src.headless` 提供 `call` 与 `serve --stdio`，见
 [CLI 协议](../../docs/rust-feasibility/headless-cli.md)。本层不负责传输、界面状态或格式化文案。
 
+全局设置由 `AppService.settings_view` 聚合查询；CLI 校验 JSON 表单并转换为
+`StartupOptions` / `RunOptions`，复用 `apply_startup_options` / `apply_run_options`
+保存。关机能力由 CLI 补充到响应，设置保存不触发运行。
+
 ## 脚本管理
 
 `script_service` 统一提供 `add / remove / update / reorder`；`AppService` 仅作薄委托。

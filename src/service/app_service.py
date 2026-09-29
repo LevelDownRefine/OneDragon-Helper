@@ -19,13 +19,13 @@ Python GUI 直接调用本类；CLI 在传输边界转换数据，两者共用�
 """
 
 import logging
+from dataclasses import asdict
 
 import src.link as link
 import src.service.backup_service as backup_service
 import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 import src.service.script_service as script_service
-import src.service.settings_service as settings_service
 import src.service.task_service as task_service
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
@@ -180,13 +180,13 @@ class AppService:
         return run_service.run_view(script_names)
 
     def settings_view(self) -> dict:
-        return settings_service.settings_view()
-
-    def save_startup_settings(self, options: dict) -> None:
-        return settings_service.save_startup(options)
-
-    def save_run_settings(self, options: dict) -> None:
-        return settings_service.save_run_options(options)
+        """从同一份配置汇总启动、每日计划开关和运行选项。"""
+        schedule = load_schedule()
+        return {
+            "startup": asdict(load_startup_options(schedule)),
+            "daily_enabled": daily_plan.load_daily_plan(schedule).enabled,
+            "run_options": asdict(load_run_options(schedule)),
+        }
 
     def saved_run(self, script_names: list[str]) -> dict:
         return run_service.saved_run(script_names)

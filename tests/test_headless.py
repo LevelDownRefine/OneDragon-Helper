@@ -14,7 +14,7 @@ from unittest.mock import Mock, call, patch
 
 from src.headless import _daily_task, handle_request
 from src.service.daily_plan import DailyPlanOptions
-from src.service.schedule import RunOptions
+from src.service.schedule import RunOptions, StartupOptions
 from src.service.script_service import ScriptEdit
 from src.update.runtime import FileLease, UpdateBusyError
 from src.utils.utils_yaml import load_yaml
@@ -157,10 +157,6 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
         self.assertEqual(recorded["frontend"], "fake-rust.exe")
 
     def test_global_settings_round_trip_and_saved_run_without_qt(self):
-        from dataclasses import asdict
-
-        from src.service.schedule import RunOptions
-
         options = asdict(RunOptions(mute_enabled=True, close_running_enabled=False))
         result, responses = self.serve(
             [
@@ -181,6 +177,12 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
             responses[3]["result"]["startup"], {"enabled": False, "delay_seconds": 90}
         )
         self.assertTrue(responses[3]["result"]["run_options"]["mute_enabled"])
+        self.assertFalse(responses[3]["result"]["daily_enabled"])
+        self.assertIsInstance(responses[3]["result"]["shutdown_supported"], bool)
+        self.assertEqual(
+            set(responses[3]["result"]),
+            {"startup", "daily_enabled", "run_options", "shutdown_supported"},
+        )
         self.assertEqual(
             json.loads(responses[4]["result"]["input"])["script_names"], ["ok-ww"]
         )
@@ -943,6 +945,53 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.run_
 
 
 class ProtocolValidationTests(unittest.TestCase):
+    def test_invalid_startup_settings_never_save(self):
+        service = Mock(spec=["apply_startup_options"])
+        for value in (
+            None,
+            {},
+            {"enabled": 1, "delay_seconds": 60},
+            {"enabled": True, "delay_seconds": True},
+            {"enabled": True, "delay_seconds": 0},
+            {"enabled": False, "delay_seconds": 3601},
+            {"enabled": False, "delay_seconds": 60, "unknown": True},
+        ):
+            with self.subTest(value=value):
+                response = handle_request(
+                    service, request("settings.startup_save", {"options": value})
+                )
+                self.assertEqual(response["error"]["code"], "invalid_params")
+        service.apply_startup_options.assert_not_called()
+
+    def test_settings_save_converts_options_without_starting(self):
+        startup = StartupOptions(False, 120)
+        options = RunOptions(mute_enabled=True, close_running_enabled=False)
+        service = Mock(spec=["apply_startup_options", "apply_run_options"])
+        service.apply_startup_options.return_value = None
+        service.apply_run_options.return_value = None
+        for method, value in (
+            ("settings.startup_save", startup),
+            ("settings.run_save", options),
+        ):
+            with self.subTest(method=method):
+                response = handle_request(
+                    service, request(method, {"options": asdict(value)})
+                )
+                self.assertIsNone(response["result"])
+        self.assertEqual(
+            service.mock_calls,
+            [call.apply_startup_options(startup), call.apply_run_options(options)],
+        )
+
+    def test_invalid_run_settings_never_save(self):
+        service = Mock(spec=["apply_run_options"])
+        values = {**asdict(RunOptions()), "mute_enabled": 1}
+        response = handle_request(
+            service, request("settings.run_save", {"options": values})
+        )
+        self.assertEqual(response["error"]["code"], "invalid_params")
+        service.apply_run_options.assert_not_called()
+
     def test_daily_validation_before_registration_and_pause_preserves_options(self):
         plan = DailyPlanOptions(
             False, "04:10", RunOptions(shutdown_enabled=True, shutdown_delay=45)
