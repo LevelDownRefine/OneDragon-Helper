@@ -4,6 +4,7 @@
 
 `release_package.py` 由 `deploy/build.bat` 调用：仅拷贝 Git 跟踪的
 `config/` 模板与声明、`assets/` 内置资源、`src/gui/qml/` 和 README。
+`assets/icons/` 是编译期图标源，已嵌入 Rust EXE，Qt 使用矢量源；两种发布包都不重复拷贝它们。
 `config.yml`、`schedule.yml`、`weekly.yml`、壁纸设置与缓存、脚本链、
 日志、备份不属于发布内容；即使误跟踪了用户配置，也会阻止打包。
 三个用户 YAML 由程序首次启动时从模板生成，已有配置保持不变。
@@ -31,6 +32,32 @@ exe 集成测试只在临时副本运行，发布目录在测试前后均校验�
 python tools/release_package.py check --package deploy/dist/OneDragon-Helper
 python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
 ```
+
+Rust 目录准备时加 `prepare --frontend rust`：版本与清单写入包类型、必须含独立
+`OneDragon-Helper-CLI.exe` 和主程序同目录的 `vcruntime140.dll`，不复制 QML。后续 `check/archive/test` 从清单读取类型，
+拒绝混入 QML 或缺失 CLI；Qt 默认行为不变。两类 ZIP 内的顶层目录均为 `OneDragon-Helper`，
+Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时副本路径，
+不会意外测试另一个构建目录的 CLI。该资源工具不负责构建二进制或设置 UAC。
+
+完整 Rust 构建：`deploy\build-rust.bat` 或已激活环境下
+`python tools/build_rust.py`；需要 Windows、Rust 1.95+ 与 MSVC。构建 release GUI、
+无 Qt CLI、原 Runner/Updater，在发布 GUI 副本嵌入原图标和管理员 manifest。
+输出 `deploy/dist/rust/OneDragon-Helper`、同目录 ZIP 和校验文件。默认只构建/校验，
+管理员终端加 `--test` 真跑全部 EXE 集成测试；CI 与 tag 发布均加该参数，失败不发布。
+构建不清空整个 dist：仅能替换清单/哈希仍完整的 Rust 输出，存在配置/日志等用户数据或
+文件被修改时拒绝。可用 `--output deploy/dist/另一目录/OneDragon-Helper` 另选输出。
+不要将该构建目录直接作为日常安装使用；解压 ZIP 到独立目录后双击主程序。
+发布构建启用截图诊断参数 `--capture 输出.png`：任务卡就绪后由应用截取实际画面并退出，
+该模式跳过自动启动。完整包 CI 使用它验证 Rust 绘制；Qt 包继续验证原 D3D11/WARP 场景。
+Windows Rust 窗口使用 Direct3D 12，自动选择硬件或系统 WARP 软件设备；
+`ODH_FORCE_SOFTWARE_RENDERING=1` 可强制 WARP 诊断。主窗口和关机确认窗共用该后端，
+使用系统 FXC 编译器，不附带 OpenGL 软件库或额外的 DXC DLL。
+
+完整包启动对比使用 `measure_gui_startup.py`：传入 `--qt-package`、`--rust-package`、
+`--output .cache/gui-startup.json`，默认各 15 次、交替运行，另有一次不计入结果的预热。
+工具先校验发布包，在临时副本中使用生成配置测量首张任务画面回读；会打开测试窗口，
+不启动外部脚本，不包含 UAC 等待。输出目录自动创建，原始样本留在本地；测量条件和结果见
+[完整包评估](../docs/rust-feasibility/assessment.md)。
 
 这些是手动更新的发布侧基础。更新入口位于右上角设置内，由用户点击
 「更新」触发；不在启动或后台自动检查、下载或安装。
@@ -68,3 +95,11 @@ python tools/sync_oknte_tasks.py
 ```
 
 周常声明单独在 config/weekly_task_list.yml，不由上述两个同步脚本更新。
+
+## Rust 界面原型
+
+`python tools/run_rust_gui.py --demo` 构建并启动独立演示配置，操作说明见
+[Rust GUI 原型](../src/rust-gui/README.md)。`--no-build` 复用已有构建。
+
+`python -m tools.export_rust_icons` 从原 GUI 图标源导出根目录 `assets/icons/`。
+仅此开发步骤需要 Qt；Rust 界面运行时使用已嵌入的图标与默认壁纸。

@@ -14,7 +14,7 @@ import re
 import subprocess
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 
 from ruamel.yaml.error import YAMLError
@@ -58,12 +58,18 @@ class DailyTaskState:
     exists: bool = False
     enabled: bool = False
     target_time: str = ""
+    entry_matches: bool = True
 
     def matches(self, options: DailyPlanOptions) -> bool:
         """系统任务是否已与计划一致。"""
         if not options.enabled:
             return not self.exists
-        return self.exists and self.enabled and self.target_time == options.target_time
+        return (
+            self.exists
+            and self.enabled
+            and self.target_time == options.target_time
+            and self.entry_matches
+        )
 
 
 def load_daily_plan(schedule: dict | None = None) -> DailyPlanOptions:
@@ -134,8 +140,13 @@ def _trigger_time(task) -> str:
 class WindowsDailyTask:
     """按安装目录和用户区分任务；更新同一个任务，关闭时删除。"""
 
-    def __init__(self, root_dir: str | None = None):
+    def __init__(
+        self, root_dir: str | None = None, *, entry: tuple[str, list[str]] | None = None
+    ):
         self.root_dir = os.path.abspath(root_dir or get_root_dir())
+        self.entry = entry
+        self._snapshot_taken = False
+        self._previous_xml: str | None = None
         identity = os.path.normcase(self.root_dir) + "\0" + getpass.getuser()
         digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
         self.name = f"OneDragon-Helper-Daily-{digest}"
@@ -143,19 +154,36 @@ class WindowsDailyTask:
     def read(self) -> DailyTaskState:
         """回读当前安装对应的系统任务；未注册返回缺省状态。"""
         with _task_service() as service:
-            folder = None
+            folder = task = actions = action = None
             try:
                 folder = service.GetFolder("\\")
+                self._snapshot_taken = True
+                self._previous_xml = None
                 # GetTasks(1) 与 sync 同源，含隐藏任务，口径一致。
                 for task in folder.GetTasks(1):
                     if task.Name == self.name:
+                        entry_matches = True
+                        if self.entry is not None:
+                            self._previous_xml = str(task.Xml)
+                            actions = task.Definition.Actions
+                            entry_matches = actions.Count == 1
+                            if entry_matches:
+                                action = actions.Item(1)
+                                entry_matches = (
+                                    os.path.normcase(str(action.Path))
+                                    == os.path.normcase(self.entry[0])
+                                    and str(action.Arguments)
+                                    == subprocess.list2cmdline(self.entry[1])
+                                    and os.path.normcase(str(action.WorkingDirectory))
+                                    == os.path.normcase(self.root_dir)
+                                )
                         return DailyTaskState(
-                            True, bool(task.Enabled), _trigger_time(task)
+                            True, bool(task.Enabled), _trigger_time(task), entry_matches
                         )
                 return DailyTaskState()
             finally:
                 # COM 包装对象须先释放，之后才能 CoUninitialize。
-                folder = service = None
+                action = actions = task = folder = service = None
 
     def sync(self, options: DailyPlanOptions) -> None:
         """注册每日交互任务，或删除当前安装对应的任务。"""
@@ -193,10 +221,14 @@ class WindowsDailyTask:
                 trigger.DaysInterval = 1
                 trigger.Enabled = True
                 action = definition.Actions.Create(0)  # TASK_ACTION_EXEC
-                action.Path = sys.executable
-                args = ["--run-daily"]
-                if not getattr(sys, "frozen", False):
-                    args = ["-m", "src.launcher", *args]
+                if self.entry is not None:
+                    program, args = self.entry
+                else:
+                    program = sys.executable
+                    args = ["--run-daily"]
+                    if not getattr(sys, "frozen", False):
+                        args = ["-m", "src.launcher", *args]
+                action.Path = program
                 action.Arguments = subprocess.list2cmdline(args)
                 action.WorkingDirectory = self.root_dir
                 folder.RegisterTaskDefinition(self.name, definition, 6, "", "", 3)
@@ -204,8 +236,26 @@ class WindowsDailyTask:
                 # COM 包装对象须先释放，之后才能 CoUninitialize。
                 action = trigger = settings = definition = folder = service = None
 
+    def restore(self, previous: DailyPlanOptions) -> None:
+        """迁移入口失败时恢复原 XML，保留旧任务的入口及其他实际设置。"""
+        if self.entry is None:
+            self.sync(previous)
+            return
+        assert self._snapshot_taken, "恢复系统任务前须读取原状态"
+        if self._previous_xml is None:
+            self.sync(DailyPlanOptions(enabled=False))
+            return
+        with _task_service() as service:
+            folder = service.GetFolder("\\")
+            try:
+                folder.RegisterTask(self.name, self._previous_xml, 6, "", "", 3)
+            finally:
+                folder = service = None
 
-def apply_daily_plan(options: DailyPlanOptions) -> None:
+
+def apply_daily_plan(
+    options: DailyPlanOptions, *, task: WindowsDailyTask | None = None
+) -> None:
     """先更新系统任务再保存配置；写盘失败时恢复原计划。
 
     是否重新注册「回读系统任务后再判断」，而不是只比 yml 里的旧值：用户在任务计划
@@ -214,7 +264,7 @@ def apply_daily_plan(options: DailyPlanOptions) -> None:
     assert isinstance(options, DailyPlanOptions)
     data = load_schedule()
     previous = load_daily_plan(data)
-    task = WindowsDailyTask()
+    task = WindowsDailyTask() if task is None else task
     synced = not task.read().matches(options)
     if synced:
         task.sync(options)
@@ -250,10 +300,28 @@ def apply_daily_plan(options: DailyPlanOptions) -> None:
     except (OSError, YAMLError):
         try:
             if synced:
-                task.sync(previous)
+                task.restore(previous)
         except OSError:
             logger.exception("[daily] 保存失败后恢复系统任务也失败，请重新设置每日计划")
         raise
+
+
+def daily_plan_view(*, task: WindowsDailyTask | None = None) -> dict:
+    """聚合计划与系统任务状态；读取失败保留诊断，不当作未注册。"""
+    task = WindowsDailyTask() if task is None else task
+    state = None
+    error = None
+    try:
+        state = asdict(task.read())
+    except OSError as exc:
+        logger.warning("[daily] 系统任务读取失败 %s(%s)", type(exc).__name__, exc)
+        error = str(exc)
+    return {
+        "plan": asdict(load_daily_plan()),
+        "state": state,
+        "state_error": error,
+        "supported": sys.platform == "win32",
+    }
 
 
 def read_daily_task_state() -> DailyTaskState:

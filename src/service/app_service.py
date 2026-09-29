@@ -19,6 +19,7 @@ Python GUI 直接调用本类；CLI 在传输边界转换数据，两者共用�
 """
 
 import logging
+from dataclasses import asdict
 
 import src.link as link
 import src.service.backup_service as backup_service
@@ -37,7 +38,6 @@ from src.config.set_config import (
     weekly_names,
 )
 from src.config.task_switch import task_switch_of
-from src.service import launch_service
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -49,23 +49,28 @@ from src.service.schedule import (
     save_schedule,
 )
 from src.service.script_service import InvalidScript, ScriptEdit
-from src.update.service import UpdateService
+from src.update.service import UpdateService, UpdateSession
 from src.utils.utils_config import (
     config_file_path,
     get_script,
     load_config,
     save_config,
 )
+from src.utils.utils_job import InvalidJob, JobExecutor
 from src.utils.utils_runner import (
     build_chain_command,
     collect_invalid_script_messages,
     run_chain_command,
 )
+from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_wallpaper import (
     load_wallpapers,
     save_video_preview,
+    save_wallpaper_cache,
     save_wallpapers,
+    set_wallpaper,
     video_preview_path,
+    wallpaper_view,
 )
 from src.utils.utils_weekly import (
     check_weekly,
@@ -94,9 +99,44 @@ def _weekly_start_entries(script_name: str) -> dict[str, int]:
 class AppService:
     """组合根：装配平级 service peer 并向外暴露统一接口（GUI/CLI 唯一门面）。"""
 
-    def __init__(self):
-        """装配各 peer。"""
-        self._updates = UpdateService()
+    def __init__(self, *, frontend: str = "qt"):
+        """装配各 peer；GUI/CLI 入口选择对应发行版的更新服务。"""
+        self._updates = UpdateService(frontend=frontend)
+        self.jobs = JobExecutor()
+        self._update_session = UpdateSession(self._updates, self.jobs)
+
+    def close(self) -> None:
+        self.jobs.close()
+
+    def start_backup(self) -> dict:
+        return self.jobs.start("backup", self.create_backup)
+
+    def start_restore(self, zip_path: str, confirmed: bool) -> dict:
+        if (
+            confirmed is not True
+            or not isinstance(zip_path, str)
+            or not zip_path.strip()
+        ):
+            raise InvalidJob("请选择 ZIP 并确认覆盖当前脚本配置")
+        return self.jobs.start("restore", lambda: self.restore_backup(zip_path))
+
+    def poll_job(self, job_id: str) -> dict:
+        return self.jobs.poll(job_id)
+
+    def cancel_job(self, job_id: str) -> bool:
+        return self.jobs.cancel(job_id)
+
+    def update_view(self) -> dict:
+        return self._update_session.view()
+
+    def start_update_check(self) -> dict:
+        return self._update_session.check()
+
+    def start_update_download(self) -> dict:
+        return self._update_session.download()
+
+    def start_update_install(self) -> dict:
+        return self._update_session.install()
 
     def app_snapshot(self) -> dict:
         """CLI 首屏脚本列表。"""
@@ -113,18 +153,6 @@ class AppService:
     def reorder_scripts(self, script_names: list[str]) -> None:
         return script_service.reorder(script_names)
 
-    def script_edit_view(self, script_name: str) -> dict:
-        """读取脚本配置表单；不提交编辑或强制初始化。"""
-        script = self.get_script(script_name)
-        if script is None:
-            raise InvalidScript("脚本已不存在，请刷新列表")
-        return {
-            "script_name": script_name,
-            "script": script,
-            "weekly_timeouts": self.weekly_inputs(script_name),
-            "switches": self.get_script_switches(script_name),
-        }
-
     def script_view(self, script_name: str) -> dict:
         """CLI 任务卡及物化选项。"""
         return task_service.script_view(script_name)
@@ -136,8 +164,74 @@ class AppService:
     def game_icon_path(self, script_name: str) -> dict:
         return link.game_icon_path(script_name)
 
+    def wallpaper_view(self, script_name: str) -> dict:
+        return wallpaper_view(script_name)
+
+    def set_wallpaper(self, script_name: str, file_path: str | None) -> None:
+        return set_wallpaper(script_name, file_path)
+
+    def save_wallpaper_cache(
+        self, script_name: str, token: str, jpeg_base64: str
+    ) -> bool:
+        return save_wallpaper_cache(script_name, token, jpeg_base64)
+
     def resolve_launch_target(self, script_name: str, target: str) -> dict:
-        return launch_service.resolve_launch_target(script_name, target)
+        return link.resolve_launch_target(script_name, target)
+
+    def run_view(self, script_names: list[str]) -> dict:
+        """汇总本次所选脚本、配置问题和已存运行选项。"""
+        scripts = chain_service.selected_scripts(script_names)
+        return {
+            "script_names": [get_script_name(script) for script in scripts],
+            "invalid": [
+                {"name": name, "reason": reason}
+                for name, reason in self.collect_invalid_scripts(scripts)
+            ],
+            "options": asdict(self.load_run_options()),
+        }
+
+    def settings_view(self) -> dict:
+        """从同一份配置汇总启动、每日计划开关和运行选项。"""
+        schedule = load_schedule()
+        return {
+            "startup": asdict(load_startup_options(schedule)),
+            "daily_enabled": daily_plan.load_daily_plan(schedule).enabled,
+            "run_options": asdict(load_run_options(schedule)),
+        }
+
+    def saved_run(self, script_names: list[str]) -> RunOptions:
+        """自动启动校验名单并读取上次选项，不保存或运行。"""
+        chain_service.selected_scripts(script_names)
+        return self.load_run_options()
+
+    def prepare_run(
+        self, script_names: list[str], options: RunOptions, confirm_invalid: bool
+    ) -> RunOptions:
+        """确认配置问题后保存选项，反读不含授权码的运行配置。"""
+        assert isinstance(options, RunOptions)
+        assert type(confirm_invalid) is bool
+        scripts = chain_service.selected_scripts(script_names)
+        if self.collect_invalid_scripts(scripts) and not confirm_invalid:
+            raise chain_service.InvalidRunRequest(
+                "请先确认配置不合法的脚本将在运行时跳过"
+            )
+        self.apply_run_options(options)
+        return self.load_run_options()
+
+    def run_batch(self, script_names: list[str], options: RunOptions) -> None:
+        return chain_service.run_batch(script_names, options)
+
+    def script_edit_view(self, script_name: str) -> dict:
+        """读取脚本配置表单；不提交编辑或强制初始化。"""
+        script = self.get_script(script_name)
+        if script is None:
+            raise InvalidScript("脚本已不存在，请刷新列表")
+        return {
+            "script_name": script_name,
+            "script": script,
+            "weekly_timeouts": self.weekly_inputs(script_name),
+            "switches": self.get_script_switches(script_name),
+        }
 
     def select_daily(
         self,
@@ -323,8 +417,18 @@ class AppService:
     def load_daily_plan(self) -> daily_plan.DailyPlanOptions:
         return daily_plan.load_daily_plan()
 
-    def apply_daily_plan(self, options: daily_plan.DailyPlanOptions) -> None:
-        return daily_plan.apply_daily_plan(options)
+    def daily_plan_view(
+        self, *, task: daily_plan.WindowsDailyTask | None = None
+    ) -> dict:
+        return daily_plan.daily_plan_view(task=task)
+
+    def apply_daily_plan(
+        self,
+        options: daily_plan.DailyPlanOptions,
+        *,
+        task: daily_plan.WindowsDailyTask | None = None,
+    ) -> None:
+        return daily_plan.apply_daily_plan(options, task=task)
 
     def read_daily_task_state(self) -> daily_plan.DailyTaskState:
         return daily_plan.read_daily_task_state()

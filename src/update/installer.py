@@ -12,6 +12,7 @@ from src.update.package import (
     UpdateError,
     file_digest,
     load_manifest,
+    manifest_frontend,
     safe_target,
     version_number,
 )
@@ -93,6 +94,8 @@ def install_package(root: Path, package: Path) -> None:
     recover_installation(root)
     old = load_manifest(root)
     new = load_manifest(package, verify=True)
+    if manifest_frontend(old) != manifest_frontend(new):
+        raise UpdateError("更新包与当前安装的前端类型不一致，请手动切换发行版")
     if version_number(new["version"]) <= version_number(old["version"]):
         raise UpdateError("目标版本没有高于当前版本")
     old_names = set(old["files"]) | {MANIFEST}

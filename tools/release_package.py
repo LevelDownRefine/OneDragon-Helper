@@ -19,10 +19,13 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.update.package import (  # noqa: E402
+    CLI_EXE,
     MANIFEST,
+    RUST_RUNTIME,
     UPDATER_EXE,
     load_manifest,
     managed_path,
+    manifest_frontend,
     write_manifest,
 )
 
@@ -32,10 +35,14 @@ VERSION_FILE = "version.json"
 logger = logging.getLogger(__name__)
 
 
-def resource_files(root: Path) -> list[str]:
-    """仅收集 Git 跟踪的内置资源，拒绝误跟踪的用户配置与备份。"""
+def resource_files(root: Path, frontend: str = "qt") -> list[str]:
+    """收集 Git 跟踪的运行资源，拒绝误跟踪的用户配置与备份。"""
+    manifest_frontend({"frontend": frontend})
+    resources = ["config", "assets", "README.md"]
+    if frontend == "qt":
+        resources.append("src/gui/qml")
     result = subprocess.run(
-        ["git", "ls-files", "-z", "--", "config", "assets", "src/gui/qml", "README.md"],
+        ["git", "ls-files", "-z", "--", *resources],
         cwd=root,
         check=True,
         capture_output=True,
@@ -46,12 +53,15 @@ def resource_files(root: Path) -> list[str]:
             raise ValueError(f"用户文件不能作为发布资源: {name}")
         if (root / name).is_symlink():
             raise ValueError(f"发布资源不能是符号链接: {name}")
-    return names
+    # PNG 图标已编译进 Rust EXE；Qt 使用矢量图标源，发布包无需再拷贝。
+    return [name for name in names if not name.startswith("assets/icons/")]
 
 
-def prepare_package(root: Path, package: Path, tag: str = "") -> None:
+def prepare_package(
+    root: Path, package: Path, tag: str = "", *, frontend: str = "qt"
+) -> None:
     """拷贝内置资源并写入构建版本；正式版本来自发布 tag。"""
-    names = resource_files(root)
+    names = resource_files(root, frontend)
     commit = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=root,
@@ -72,29 +82,37 @@ def prepare_package(root: Path, package: Path, tag: str = "") -> None:
         destination = package / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(root / name, destination)
+    metadata = {"version": version, "tag": tag, "commit": commit}
+    if frontend == "rust":
+        metadata["frontend"] = frontend
     (package / VERSION_FILE).write_text(
-        json.dumps({"version": version, "tag": tag, "commit": commit}, indent=2) + "\n",
+        json.dumps(metadata, indent=2) + "\n",
         encoding="utf-8",
     )
     files = names + [EXE_NAME, RUNNER_NAME, UPDATER_EXE, VERSION_FILE]
+    if frontend == "rust":
+        files.extend((CLI_EXE, RUST_RUNTIME))
     files += [
         path.relative_to(package).as_posix()
         for path in (package / "_internal").rglob("*")
         if path.is_file()
     ]
-    write_manifest(package, files, version)
+    write_manifest(package, files, version, frontend=frontend)
     validate_package(root, package)
 
 
 def validate_package(root: Path, package: Path) -> list[Path]:
     """检查完整发布目录；清单外文件直接报错，避免发布个人数据或测试残留。"""
-    expected = set(resource_files(root)) | {
+    frontend = manifest_frontend(load_manifest(package))
+    expected = set(resource_files(root, frontend)) | {
         EXE_NAME,
         RUNNER_NAME,
         UPDATER_EXE,
         VERSION_FILE,
         MANIFEST,
     }
+    if frontend == "rust":
+        expected.update((CLI_EXE, RUST_RUNTIME))
     allowed_dirs = {"_internal"}
     for name in expected:
         allowed_dirs.update(
@@ -155,6 +173,7 @@ def test_package(root: Path, package: Path) -> int:
             ODH_PACKAGE_DIR=str(sandbox),
             ODH_GUI_EXE=str(sandbox / EXE_NAME),
             ODH_RUNNER_EXE=str(sandbox / RUNNER_NAME),
+            ODH_CLI_EXE=str(sandbox / CLI_EXE),
         )
         result = subprocess.run(
             [
@@ -196,10 +215,11 @@ def main() -> int:
     parser.add_argument("--package", type=Path, required=True)
     parser.add_argument("--tag", default=os.environ.get("ODH_RELEASE_TAG", ""))
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--frontend", choices=("qt", "rust"), default="qt")
     args = parser.parse_args()
     root, package = args.root.resolve(), args.package.resolve()
     if args.action == "prepare":
-        prepare_package(root, package, args.tag)
+        prepare_package(root, package, args.tag, frontend=args.frontend)
     elif args.action == "check":
         validate_package(root, package)
     elif args.action == "archive":

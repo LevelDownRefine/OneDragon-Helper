@@ -36,6 +36,10 @@ class HeadlessFixture:
             "daily_task_list.yml",
             "weekly_task_list.yml",
             "script_resources.yml",
+            "task_switch_list.yml",
+            "BGI一条龙.json",
+            "MAA任务.json",
+            "ZZZ一条龙.yml",
         ):
             shutil.copyfile(PROJECT_ROOT / "config" / name, config_dir / name)
         config_dir.joinpath("config.example.yml").write_text(

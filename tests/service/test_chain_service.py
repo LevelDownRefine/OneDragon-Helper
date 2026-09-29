@@ -8,7 +8,66 @@ from unittest.mock import patch
 
 import src.service.chain_service as chain_service
 import src.utils.utils_config as utils_config
-from src.service.schedule import ScheduledRun, build_post_run_pipeline
+from src.service.schedule import RunOptions, ScheduledRun, build_post_run_pipeline
+
+
+class TestBatchRun(unittest.TestCase):
+    def test_empty_unknown_duplicate_selection_rejected(self):
+        with patch.object(
+            utils_config,
+            "load_config",
+            return_value={
+                "script_list": [{"display_name": "demo", "script_path": "demo.py"}]
+            },
+        ):
+            for names in ([], ["missing"], ["demo", "demo"], [True]):
+                with (
+                    self.subTest(names=names),
+                    self.assertRaises(chain_service.InvalidRunRequest),
+                ):
+                    chain_service.selected_scripts(names)
+
+    def test_snapshot_options_reach_original_scheduler(self):
+        for shutdown in (False, True):
+            options = RunOptions(
+                mute_enabled=True,
+                unmute_enabled=True,
+                shutdown_enabled=shutdown,
+                shutdown_delay=45,
+                close_running_enabled=False,
+                rerun_enabled=True,
+                notify_enabled=True,
+                email="test@example.invalid",
+                smtp_port="465",
+            )
+            with (
+                self.subTest(shutdown=shutdown),
+                patch.object(
+                    utils_config,
+                    "load_config",
+                    return_value={
+                        "script_list": [
+                            {"display_name": "demo", "script_path": "demo.py"}
+                        ]
+                    },
+                ),
+                patch.object(chain_service, "schedule_run") as run,
+            ):
+                chain_service.run_batch(["demo"], options)
+            run.assert_called_once_with(
+                {"demo"},
+                "now",
+                mute=True,
+                unmute=True,
+                shutdown_delay=45 if shutdown else None,
+                close_running=False,
+                rerun_enabled=True,
+                smtp_config={
+                    "enabled": True,
+                    "email": "test@example.invalid",
+                    "smtp_port": 465,
+                },
+            )
 
 
 class TestRunChainOnce(unittest.TestCase):

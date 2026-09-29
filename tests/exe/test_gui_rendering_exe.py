@@ -1,4 +1,4 @@
-"""真实打包界面在默认 D3D11 与 WARP 下的绘制验证。"""
+"""真实发布界面：验证自动选卡和 Windows WARP 软件渲染。"""
 
 import os
 import shutil
@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from src.update.package import load_manifest, manifest_frontend
 from tests.exe import package_dir
 
 PACKAGE = package_dir()
@@ -20,11 +21,14 @@ EXE_NAME = "OneDragon-Helper.exe"
 )
 class TestPackagedRendering(unittest.TestCase):
     def test_native_window_renders_without_software_opengl(self):
-        """实际绘制首帧，覆盖删除 DLL 后默认和无 GPU 加速的启动路径。"""
+        """各前端实际绘制窗口，不依赖 Qt software OpenGL DLL。"""
         self.assertFalse(list(PACKAGE.rglob("opengl32sw.dll")))
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "app"
             shutil.copytree(PACKAGE, root)
+            if manifest_frontend(load_manifest(root)) == "rust":
+                self._check_rust_frame(root, Path(directory))
+                return
             # 测试副本不配置任何脚本，避免倒计时启动游戏。
             (root / "config/config.yml").write_text(
                 "script_list: []\n", encoding="utf-8"
@@ -86,3 +90,65 @@ class TestPackagedRendering(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, detail)
                     self.assertIn("ODH_D3D11_FRAME_READY", output, detail)
                     self.assertNotIn("[CRITICAL]", output, detail)
+
+    def _check_rust_frame(self, root: Path, directory: Path):
+        from PySide6.QtGui import QImage
+
+        (root / "config/config.yml").write_text(
+            "script_list:\n- display_name: 绘制测试\n  script_path: render.py\n",
+            encoding="utf-8",
+        )
+        (root / "render.py").write_text("# Fixture only; never executed.\n")
+        for software in ("0", "1"):
+            for window, arguments, minimum in (
+                ("main", ["--after-update"], (640, 360)),
+                # 仅运行独立确认窗；截图后取消，不调用 Python 关机动作。
+                ("shutdown", ["--shutdown-confirm", "86400"], (400, 220)),
+            ):
+                with self.subTest(software=software, window=window):
+                    screenshot = directory / f"rust-{window}-{software}.png"
+                    try:
+                        result = subprocess.run(
+                            [
+                                str(root / EXE_NAME),
+                                *arguments,
+                                "--capture",
+                                str(screenshot),
+                            ],
+                            cwd=root,
+                            env={
+                                **os.environ,
+                                "__COMPAT_LAYER": "RunAsInvoker",
+                                "ODH_FORCE_SOFTWARE_RENDERING": software,
+                            },
+                            capture_output=True,
+                            timeout=45,
+                        )
+                    except subprocess.TimeoutExpired as error:
+                        backend_log = root / "logs/onedragon_helper.log"
+                        detail = (
+                            backend_log.read_text(encoding="utf-8", errors="replace")
+                            if backend_log.exists()
+                            else "未产生后端日志"
+                        )
+                        self.fail(f"{error}\n{error.stderr!r}\n{detail[-12000:]}")
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    image = QImage(str(screenshot))
+                    self.assertFalse(image.isNull(), "Rust 未产生真实绘制截图")
+                    self.assertGreaterEqual(image.width(), minimum[0])
+                    self.assertGreaterEqual(image.height(), minimum[1])
+                    if window == "main":
+                        # 原界面抗锯齿边缘也有少量 alpha，不能退化为不透明矩形。
+                        self.assertLess(image.pixelColor(0, 0).alpha(), 64)
+                        self.assertEqual(
+                            image.pixelColor(
+                                image.width() // 2, image.height() // 2
+                            ).alpha(),
+                            255,
+                        )
+                    colors = {
+                        image.pixel(x, y)
+                        for x in range(0, image.width(), 10)
+                        for y in range(0, image.height(), 10)
+                    }
+                    self.assertGreater(len(colors), 8, "Rust 截图只有空白或单色")

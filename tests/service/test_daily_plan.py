@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -15,6 +16,7 @@ from src.service.daily_plan import (
     DailyTaskState,
     WindowsDailyTask,
     apply_daily_plan,
+    daily_plan_view,
     load_daily_plan,
     read_daily_task_state,
 )
@@ -52,6 +54,22 @@ class TestDailyPlanConfig(unittest.TestCase):
 
     def test_missing_plan_is_disabled_by_default(self):
         self.assertEqual(load_daily_plan({}), DailyPlanOptions())
+
+    def test_view_includes_saved_plan_and_actual_task_state(self):
+        state = DailyTaskState(True, False, "08:30", False)
+        task = Mock(read=Mock(return_value=state))
+        view = daily_plan_view(task=task)
+        self.assertEqual(view["plan"], asdict(DailyPlanOptions()))
+        self.assertEqual(view["state"], asdict(state))
+        self.assertIsNone(view["state_error"])
+
+    def test_view_read_failure_is_unknown_not_unregistered(self):
+        task = Mock(read=Mock(side_effect=OSError("denied")))
+        with self.assertLogs("src.service.daily_plan", level="WARNING"):
+            view = daily_plan_view(task=task)
+        self.assertEqual(view["plan"], asdict(DailyPlanOptions()))
+        self.assertIsNone(view["state"])
+        self.assertEqual(view["state_error"], "denied")
 
     def test_saved_daily_plan_is_loaded(self):
         self.assertEqual(
@@ -154,8 +172,9 @@ class TestDailyPlanConfig(unittest.TestCase):
             apply_daily_plan(DailyPlanOptions(True, "08:00"))
         self.assertEqual(
             [c.args[0] for c in task.return_value.sync.call_args_list],
-            [DailyPlanOptions(True, "08:00"), DailyPlanOptions()],
+            [DailyPlanOptions(True, "08:00")],
         )
+        task.return_value.restore.assert_called_once_with(DailyPlanOptions())
         self.assertEqual(load_yaml(self.path), self.original)
 
     @patch("src.service.daily_plan.WindowsDailyTask")
@@ -421,6 +440,51 @@ class TestWindowsDailyTask(unittest.TestCase):
         self.folder.GetTasks.return_value = [other]
         self.task.sync(DailyPlanOptions(False))
         self.folder.DeleteTask.assert_not_called()
+
+    def test_headless_entry_migration_and_xml_rollback(self):
+        self.task.entry = (
+            "/python.exe",
+            ["-m", "src.headless", "daily", "--shutdown-ui", "/中文 gui.exe"],
+        )
+        own = self._own_task()
+        own.Xml = "<Task>original entry and settings</Task>"
+        own.Definition.Actions.Count = 1
+        action = own.Definition.Actions.Item.return_value
+        action.Path = "/python.exe"
+        action.Arguments = "-m src.launcher --run-daily"
+        action.WorkingDirectory = self.task.root_dir
+        self.folder.GetTasks.return_value = [own]
+        self.assertFalse(self.task.read().matches(DailyPlanOptions(True, "08:30")))
+        with (
+            patch(
+                "src.service.daily_plan.load_schedule",
+                return_value={"daily_run": {"enabled": True, "target_time": "08:30"}},
+            ),
+            patch(
+                "src.service.daily_plan.save_schedule", side_effect=OSError("disk full")
+            ),
+            self.assertRaisesRegex(OSError, "disk full"),
+        ):
+            apply_daily_plan(DailyPlanOptions(True, "08:30"), task=self.task)
+        saved = self.definition.Actions.Create.return_value
+        self.assertEqual(saved.Path, "/python.exe")
+        self.assertIn('"/中文 gui.exe"', saved.Arguments)
+        self.assertIn("src.headless daily", saved.Arguments)
+        self.folder.RegisterTask.assert_called_once_with(
+            self.task.name, own.Xml, 6, "", "", 3
+        )
+        action.Arguments = saved.Arguments
+        self.assertTrue(self.task.read().matches(DailyPlanOptions(True, "08:30")))
+
+    def test_headless_rollback_removes_new_task_when_original_was_absent(self):
+        self.task.entry = ("/python.exe", ["-m", "src.headless", "daily"])
+        self.folder.GetTasks.return_value = []
+        self.task.read()
+        own = self._own_task()
+        self.folder.GetTasks.return_value = [own]
+        self.task.restore(DailyPlanOptions())
+        self.folder.DeleteTask.assert_called_once_with(self.task.name, 0)
+        self.folder.RegisterTask.assert_not_called()
 
     def test_installation_names_are_stable_and_distinct(self):
         self.assertEqual(self.task.name, WindowsDailyTask(self.task.root_dir).name)

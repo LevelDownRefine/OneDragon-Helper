@@ -124,6 +124,70 @@ class TestReleasePackage(unittest.TestCase):
         )
         self.assertEqual(info["tag"], "")
 
+    def test_embedded_icons_stay_in_source_and_out_of_both_packages(self):
+        icon = self.write(self.root, "assets/icons/home.png", "compiled icon")
+        self.git("add", "--", "assets/icons/home.png")
+        for frontend in ("qt", "rust"):
+            with self.subTest(frontend=frontend):
+                package = self.package / frontend
+                names = [
+                    release.EXE_NAME,
+                    release.RUNNER_NAME,
+                    release.UPDATER_EXE,
+                    "_internal/python.dll",
+                ]
+                if frontend == "rust":
+                    names.extend((release.CLI_EXE, release.RUST_RUNTIME))
+                for name in names:
+                    self.write(package, name, "binary")
+                release.prepare_package(self.root, package, "v1.2.3", frontend=frontend)
+                manifest = release.load_manifest(package, verify=True)
+                self.assertNotIn("assets/icons/home.png", manifest["files"])
+                self.assertFalse((package / "assets/icons").exists())
+                self.assertTrue((package / "assets/ds.jpg").is_file())
+                output = self.package / f"{frontend}.zip"
+                release.archive_package(self.root, package, output)
+                with zipfile.ZipFile(output) as archive:
+                    self.assertFalse(
+                        any("/assets/icons/" in name for name in archive.namelist())
+                    )
+                self.assertEqual(icon.read_text(encoding="utf-8"), "compiled icon")
+
+    def test_rust_package_requires_cli_and_excludes_qml_from_archive(self):
+        self.write(self.package, release.CLI_EXE, "backend")
+        self.write(self.package, release.RUST_RUNTIME, "runtime")
+        release.prepare_package(self.root, self.package, "v1.2.3", frontend="rust")
+        manifest = release.load_manifest(self.package, verify=True)
+        self.assertEqual(manifest["frontend"], "rust")
+        self.assertIn(release.CLI_EXE, manifest["files"])
+        self.assertFalse((self.package / "src").exists())
+        self.assertEqual(
+            json.loads((self.package / "version.json").read_text())["frontend"], "rust"
+        )
+        output = self.package.parent / "OneDragon-Helper-Rust.zip"
+        release.archive_package(self.root, self.package, output)
+        with zipfile.ZipFile(output) as archive:
+            self.assertIn(f"OneDragon-Helper/{release.CLI_EXE}", archive.namelist())
+            self.assertIn(
+                f"OneDragon-Helper/{release.RUST_RUNTIME}", archive.namelist()
+            )
+            self.assertFalse(any("/qml/" in name for name in archive.namelist()))
+        self.assertTrue(output.with_suffix(".zip.sha256").is_file())
+        (self.package / release.CLI_EXE).unlink()
+        with self.assertRaisesRegex(ValueError, release.CLI_EXE):
+            release.validate_package(self.root, self.package)
+
+    def test_rust_package_rejects_qml_and_unknown_frontend(self):
+        with self.assertRaisesRegex(ValueError, "前端类型"):
+            release.prepare_package(self.root, self.package, frontend="invalid")
+        self.assertFalse((self.package / "version.json").exists())
+        self.write(self.package, release.CLI_EXE, "backend")
+        self.write(self.package, release.RUST_RUNTIME, "runtime")
+        release.prepare_package(self.root, self.package, frontend="rust")
+        self.write(self.package, "src/gui/qml/main.qml", "unused")
+        with self.assertRaisesRegex(ValueError, "非程序目录"):
+            release.validate_package(self.root, self.package)
+
     def test_invalid_release_tag_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "发布 tag"):
             release.prepare_package(self.root, self.package, "main")
@@ -233,6 +297,7 @@ class TestReleasePackage(unittest.TestCase):
             self.assertNotEqual(sandbox, self.package)
             self.assertEqual(Path(env["ODH_GUI_EXE"]), sandbox / release.EXE_NAME)
             self.assertEqual(Path(env["ODH_RUNNER_EXE"]), sandbox / release.RUNNER_NAME)
+            self.assertEqual(Path(env["ODH_CLI_EXE"]), sandbox / release.CLI_EXE)
             self.write(sandbox, "config/config.yml", "test config")
             self.write(sandbox, "logs/test.log", "test log")
             return subprocess.CompletedProcess(command, exit_code)

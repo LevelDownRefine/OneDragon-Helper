@@ -4,11 +4,68 @@
 ``tests/gui/test_gui_countdown_dialog.py``；本文件只测「确认后执行 shutdown」的编排逻辑。
 """
 
+import os
+import subprocess
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
+from src.utils import utils_shutdown
 from src.utils.utils_shutdown import _run_shutdown_command, shutdown_sys
+
+
+class RustShutdownTests(unittest.TestCase):
+    def test_explicit_frontend_accepts_only_confirmation_code(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            frontend = Path(temporary) / "前端 gui.exe"
+            frontend.touch()
+            with (
+                mock.patch.object(sys, "platform", "win32"),
+                mock.patch.dict(
+                    os.environ, {utils_shutdown.RUST_CONFIRM_ENV: str(frontend)}
+                ),
+            ):
+                for code in (42, 0, 2, -1):
+                    with (
+                        self.subTest(code=code),
+                        mock.patch.object(
+                            utils_shutdown.subprocess,
+                            "run",
+                            return_value=mock.Mock(returncode=code),
+                        ) as run,
+                    ):
+                        self.assertEqual(
+                            utils_shutdown._confirm_shutdown(45), code == 42
+                        )
+                        self.assertEqual(
+                            run.call_args.args[0],
+                            [str(frontend), "--shutdown-confirm", "45"],
+                        )
+                        self.assertEqual(run.call_args.kwargs["timeout"], 165)
+
+    def test_missing_timeout_and_start_failure_cancel_without_qt_fallback(self):
+        with (
+            mock.patch.dict(
+                os.environ, {utils_shutdown.RUST_CONFIRM_ENV: "missing.exe"}
+            ),
+            mock.patch.object(utils_shutdown.subprocess, "run") as run,
+        ):
+            self.assertFalse(utils_shutdown._confirm_shutdown(45))
+            run.assert_not_called()
+        for error in (OSError("cannot start"), subprocess.TimeoutExpired("test", 1)):
+            with (
+                self.subTest(error=type(error).__name__),
+                mock.patch.dict(os.environ, {utils_shutdown.RUST_CONFIRM_ENV: "fake"}),
+                mock.patch.object(
+                    utils_shutdown, "rust_shutdown_supported", return_value=True
+                ),
+                mock.patch.object(utils_shutdown.subprocess, "run", side_effect=error),
+                self.assertLogs("src.utils.utils_shutdown", level="ERROR") as logs,
+            ):
+                self.assertFalse(utils_shutdown._confirm_shutdown(45))
+            self.assertIn(type(error).__name__, " ".join(logs.output))
 
 
 class TestShutdownSys(unittest.TestCase):

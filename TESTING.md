@@ -24,6 +24,7 @@ python -m 把根目录加入 sys.path，PYTHONPATH=src 让 import launcher 可�
 | 目录 | 归属 |
 |---|---|
 | `tests/gui/` | 控件、控制器、QML、窗口及 GUI 共享夹具 |
+| `tests/rust-gui/` | Rust 窗口、同名控制器/弹窗、原生能力与 CLI 通信；由 Cargo 运行 |
 | `tests/config/` | 配置适配器、声明、日常、周常及 golden 验证 |
 | `tests/service/` | 配置服务、链生成、调度和运行编排 |
 | `tests/update/` | 更新包协议、下载服务、运行锁、安装回滚 |
@@ -67,9 +68,55 @@ exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定�
 `tests/exe/test_update_exe.py` 使用临时安装副本真正启动更新器，
 验证升级后的 EXE 可启动、运行中的 Runner 阻止更新、Windows 文件占用时回滚、
 启动闸门先于用户配置初始化，以及独立恢复入口。所有用户文件断言均使用临时夹具。
+升级夹具从被测包继承 Qt/Rust 类型，因此同一组真实 EXE 测试可验证两种发布布局。
 
 `tests/gui/test_update_dialog.py` 用真实 Qt 事件循环和替代服务验证显式检查、
 工作线程、下载进度、取消/关闭、错误重试及安装就绪后退出；网络和安装操作均隔离。
+
+独立无 Qt 后端由 `deploy/OneDragon-Helper-CLI.spec` 构建：
+
+```text
+python -m PyInstaller --noconfirm --workpath deploy/build/rust-cli --distpath deploy/dist/rust-cli deploy/OneDragon-Helper-CLI.spec
+python -m unittest tests.exe.test_headless_exe -v
+```
+
+`ODH_CLI_EXE` 可指定已有 CLI 构建。测试在临时目录复制 EXE/运行库，使用空白配置模板，
+覆盖异目录启动、首启生成/再次保留、更新闸门、单进程 stdio 与 EOF 释放运行锁，
+并直接检查冻结模块不包含 Qt/GUI。后端继承父进程权限，无自身 UAC 提示；这些只读/临时
+配置测试不需要管理员。CI 的独立 Windows job 实际执行，Ubuntu 源码全量跳过这六项。
+另覆盖原 `--selftest/--get-script` 输出文件和退出码；Rust 主程序的同类参数转交此后端。
+这一构建是 Rust 发布包的后端组件，尚未包括完整 GUI/Runner/Updater 和发布资源。
+
+完整 Rust 包通过 `python tools/build_rust.py --test` 在 Windows 管理员环境验证；
+`build-exe.yml` 的独立 job 同时执行 Windows Rust 测试、CLI/GUI/Runner/Updater 的
+真实 EXE 测试。`test_rust_package_exe.py` 直接读取最终 PE 验证 GUI 图标/UAC、CLI
+继承权限、PE 校验和，以及全部 Python EXE 无 Qt/QML；这些只读检查不要求管理员。
+另检查 Rust 主程序的 CRT 导入符号均由同目录运行库提供，避免依赖开发机预装的 VC 运行库。
+包内 GUI 权限与原版一致，普通终端不要直接跑需要启动 GUI/Runner/Updater 的集成测试。
+绘制专项区分前端：Qt 仍验证完整 QML 的 D3D11/WARP 首帧；Rust 在临时空脚本夹具中
+调用随包的 `--capture` 诊断，检查主窗口及关机确认窗的实际截图尺寸和颜色，
+分别使用自动选卡和强制 WARP；截图后取消关机，仅运行独立窗口，不调用系统关机。
+两种渲染测试都以当前权限运行，
+不启动脚本，也不把 Qt 的 QML 文件要求施加到 Rust 包。
+
+Rust 双进程升级用真实主 EXE 的原 CLI `--dump-config --out` 写命名管道，暂缓读取以
+保持主程序与 CLI 存活。独立更新器收到双方 PID/创建时间，写 ready 后必须保持旧文件；
+读取输出让两者自然退出，才完成替换，且保留临时用户文件。这里覆盖进程交接与安装，
+不声称点击了更新窗；窗口状态和 ready 回执由 Rust/无 Qt 会话测试验证。管道夹具的
+锁保持与 EOF 已由独立 CLI EXE 在非管理员环境实际验证，不给产品增加测试命令。
+
+`tools/measure_gui_startup.py` 对 Qt/Rust 的干净完整包做暖启动对比，首个可回读任务画面
+才计时成功。测量工具测试覆盖标记前退出、缺少任务数据和非零退出，实际 15 轮交替测量
+见 `docs/rust-feasibility/assessment.md`；它不是常规 CI 的性能阈值测试。
+计时原始样本写到忽略目录 `.cache/gui-startup.json`，不提交本机报告。
+
+Rust 源码位于 `src/rust-gui`，单元与集成测试都已映射到 `tests/rust-gui`：
+
+```bash
+cargo fmt --manifest-path src/rust-gui/Cargo.toml --check
+cargo clippy --manifest-path src/rust-gui/Cargo.toml --locked --all-features --all-targets -- -D warnings
+cargo test --manifest-path src/rust-gui/Cargo.toml --locked --all-features
+```
 
 ## 2. 风格检查 ruff
 

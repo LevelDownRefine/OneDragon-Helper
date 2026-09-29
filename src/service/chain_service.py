@@ -22,7 +22,7 @@ import sys
 
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
-from src.service.schedule import ScheduledRun
+from src.service.schedule import RunOptions, ScheduledRun, _dump_run_options
 from src.utils import utils_config
 from src.utils.utils_runner import (
     build_run_chain_command as _build_run_chain_command,
@@ -44,6 +44,31 @@ logger = logging.getLogger(__name__)
 # config.yml 的读写实现由 :mod:`src.utils.utils_config` 拥有；运行时取配置
 # 由 run_chain_once 与 schedule（各自直接 import utils_config）调用
 # ``utils_config.load_config``。
+
+
+class InvalidRunRequest(ValueError):
+    """运行请求包含无效脚本或缺少确认。"""
+
+
+def selected_scripts(script_names: list[str]) -> list[dict]:
+    """按最新配置解析非空、无重复的运行名单，拒绝已删除的脚本。"""
+    if (
+        not isinstance(script_names, list)
+        or not script_names
+        or any(not isinstance(name, str) or not name for name in script_names)
+        or len(set(script_names)) != len(script_names)
+    ):
+        raise InvalidRunRequest("请选择要手动运行的脚本")
+    config = utils_config.load_config()
+    assert "script_list" in config
+    selected = [
+        script
+        for script in config["script_list"]
+        if get_script_name(script) in script_names
+    ]
+    if {get_script_name(script) for script in selected} != set(script_names):
+        raise InvalidRunRequest("脚本列表已变化，请刷新后重新选择")
+    return selected
 
 
 # ---------- 链生成与校验 ----------
@@ -148,6 +173,24 @@ def rerun_round(*, all_config: dict, enabled_keys: set[str] | None = None) -> No
         keys,
         chain_name="rerun",
         weekly_timeouts=weekly_timeouts,
+    )
+
+
+def run_batch(script_names: list[str], options: RunOptions) -> None:
+    """按本次运行选项执行所选脚本；由独立运行进程调用。"""
+    assert isinstance(options, RunOptions)
+    scripts = selected_scripts(script_names)
+    blocks = _dump_run_options(options)
+    assert "notify" in blocks
+    schedule_run(
+        {get_script_name(script) for script in scripts},
+        "now",
+        mute=options.mute_enabled,
+        unmute=options.unmute_enabled,
+        shutdown_delay=(options.shutdown_delay if options.shutdown_enabled else None),
+        close_running=options.close_running_enabled,
+        rerun_enabled=options.rerun_enabled,
+        smtp_config=blocks["notify"],
     )
 
 
