@@ -75,9 +75,17 @@ impl ListDialog {
                             "脚本文件"
                         },
                         |ui| {
-                            if let Some((_, display)) = &self.remove {
-                                ui.label(format!("确定从助手列表删除「{display}」？"));
-                                ui.label("将移除该条目和每周设置，脚本文件仍保留。");
+                            if let Some((name, display)) = &self.remove {
+                                ui.label(egui::RichText::new(display).size(20.0).strong());
+                                if name != display {
+                                    ui.label(egui::RichText::new(name).color(crate::theme::MUTED));
+                                }
+                                ui.add_space(8.0);
+                                ui.colored_label(
+                                    crate::theme::DANGER,
+                                    "将删除助手中的脚本条目及每周设置。",
+                                );
+                                ui.label("脚本文件保留在原位置，可以重新添加。");
                             } else {
                                 ui.label("选择 .exe、.bat、.py 或指向这些文件的快捷方式。");
                                 if crate::dialogs::common::path_input(ui, &mut self.path).1 {
@@ -101,11 +109,11 @@ impl ListDialog {
                 if ui
                     .add_enabled(
                         !blocked && !self.needs_reload,
-                        crate::dialogs::common::primary_button(if self.remove.is_some() {
-                            "确认删除"
+                        if self.remove.is_some() {
+                            crate::dialogs::common::danger_button("确认删除脚本")
                         } else {
-                            "添加"
-                        }),
+                            crate::dialogs::common::primary_button("添加")
+                        },
                     )
                     .clicked()
                 {

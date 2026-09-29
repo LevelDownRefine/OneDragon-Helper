@@ -133,7 +133,26 @@ impl View {
                                     actions.push(Action::Select(script.script_name.clone()));
                                 }
                             }
-                            response.on_hover_text(&script.display_name);
+                            response.context_menu(|ui| {
+                                ui.label(&script.display_name);
+                                if ui
+                                    .add_enabled(
+                                        !data.busy && data.scripts.len() > 1,
+                                        egui::Button::new(
+                                            egui::RichText::new("删除脚本…").color(DANGER),
+                                        ),
+                                    )
+                                    .on_hover_text("从助手列表移除，保留脚本文件")
+                                    .clicked()
+                                {
+                                    actions.push(Action::RemoveScript(script.script_name.clone()));
+                                    ui.close();
+                                }
+                            });
+                            response.on_hover_text(format!(
+                                "{}\n右键管理 · 拖动排序或删除",
+                                script.display_name
+                            ));
                         }
                     });
             },
@@ -155,7 +174,42 @@ impl View {
             },
         );
         if self.dragging.is_some() {
-            centered(ui, grid, "删除", 14.0, egui::Color32::LIGHT_RED);
+            let target = rect(12.0, base + 4.0, 252.0, 56.0);
+            let hovered = ui.input(|input| {
+                input
+                    .pointer
+                    .interact_pos()
+                    .is_some_and(|pos| target.contains(pos))
+            });
+            ui.painter().rect(
+                target,
+                12,
+                if hovered {
+                    DANGER_FILL
+                } else {
+                    egui::Color32::from_rgb(55, 29, 40)
+                },
+                egui::Stroke::new(if hovered { 2.0 } else { 1.0 }, DANGER),
+                egui::StrokeKind::Inside,
+            );
+            centered(
+                ui,
+                rect(target.left(), target.top() + 5.0, target.width(), 24.0),
+                if hovered {
+                    "松开以删除脚本"
+                } else {
+                    "拖到这里删除脚本"
+                },
+                15.0,
+                DANGER,
+            );
+            centered(
+                ui,
+                rect(target.left(), target.top() + 30.0, target.width(), 18.0),
+                "从助手列表移除 · 保留脚本文件",
+                11.0,
+                MUTED,
+            );
             if ui.input(|input| input.pointer.any_released()) {
                 let name = self.dragging.take().expect("active drag");
                 if !data.busy {
@@ -163,7 +217,7 @@ impl View {
                         input
                             .pointer
                             .interact_pos()
-                            .is_some_and(|pos| grid.contains(pos))
+                            .is_some_and(|pos| target.contains(pos))
                     }) {
                         actions.push(Action::RemoveScript(name));
                     } else if let Some(index) = drop_index {

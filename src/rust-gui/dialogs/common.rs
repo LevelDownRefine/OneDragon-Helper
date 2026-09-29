@@ -204,6 +204,13 @@ pub fn primary_button(text: &str) -> egui::Button<'_> {
         .min_size(vec2(92.0, 34.0))
 }
 
+pub fn danger_button(text: &str) -> egui::Button<'_> {
+    egui::Button::new(egui::RichText::new(text).color(TEXT).strong())
+        .fill(DANGER_FILL)
+        .stroke(egui::Stroke::new(1.0, DANGER))
+        .min_size(vec2(104.0, 34.0))
+}
+
 #[cfg(test)]
 #[path = "../../../tests/rust-gui/dialogs/common.rs"]
 mod tests;
