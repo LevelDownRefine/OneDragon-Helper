@@ -392,7 +392,15 @@ for line in sys.stdin:
 
 #[test]
 fn acknowledged_write_refreshes_once_without_replay_on_read_failure() {
-    for scenario in ["ok", "error", "malformed"] {
+    for (method, scenario) in [
+        ("daily.select", "ok"),
+        ("daily.enable", "ok"),
+        ("weekly.select", "ok"),
+        ("weekly.start", "ok"),
+        ("daily.select", "error"),
+        ("daily.select", "malformed"),
+        ("daily.select", "wrong-script"),
+    ] {
         let root = tempfile::tempdir().unwrap();
         let history = root.path().join("requests.jsonl");
         let python = PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
@@ -404,20 +412,29 @@ for line in sys.stdin:
     with open(sys.argv[1], 'a', encoding='utf-8') as history:
         history.write(json.dumps(request) + '\n')
     response = {'jsonrpc': '2.0', 'id': request['id']}
-    if request['method'] == 'daily.select':
+    if request['method'] != 'script.view':
         response['result'] = None
     elif sys.argv[2] == 'error':
         response['error'] = {'code': -32002, 'message': 'read failed', 'data': {'refresh_required': False}}
     elif sys.argv[2] == 'malformed':
         response['result'] = None
     else:
-        response['result'] = {'script': {'script_name': 'test', 'display_name': 'Test', 'script_path': 'test.exe', 'adapted': True}, 'dailies': [], 'weeklies': []}
+        response['result'] = {'script': {'script_name': 'another' if sys.argv[2] == 'wrong-script' else 'test', 'display_name': 'Test', 'script_path': 'test.exe', 'adapted': True}, 'dailies': [{'name':'每日任务', 'options': {'values':[]}, 'task':'已保存的副本', 'sequence':2, 'enabled':True}], 'weeklies': []}
     print(json.dumps(response), flush=True)
 "#]);
         command.arg(&history).arg(scenario);
         let mut app = test_app(command, root.path(), python);
-        app.request("daily.select", json!({"script_name": "test"}));
-        for _ in 0..2 {
+        let old_view: ScriptView = serde_json::from_value(json!({
+            "script": {"script_name":"test", "display_name":"Test", "script_path":"test.exe", "adapted":true},
+            "dailies":[{"name":"每日任务", "options":{"values":[]}, "task":"原副本", "sequence":1, "enabled":true}],
+            "weeklies":[]
+        })).unwrap();
+        app.scripts = vec![old_view.script.clone()];
+        app.view = Some(old_view);
+        let before = task_row_rect(&mut app);
+        app.request(method, json!({"script_name": "test"}));
+        assert_eq!(task_row_rect(&mut app), before);
+        for stage in 0..2 {
             let reply = app
                 .backend
                 .as_ref()
@@ -426,11 +443,21 @@ for line in sys.stdin:
                 .recv_timeout(Duration::from_secs(10))
                 .unwrap();
             app.receive(reply);
+            if stage == 0 {
+                assert!(app.busy && app.write_confirmed);
+                let view = app.view.as_ref().expect("keep the card while reading back");
+                assert_eq!(view.dailies[0].task.as_deref(), Some("原副本"));
+                assert_eq!(task_row_rect(&mut app), before);
+            }
         }
         assert!(!app.busy);
         assert!(!app.write_confirmed);
         if scenario == "ok" {
-            assert!(app.view.is_some());
+            assert_eq!(
+                app.view.as_ref().unwrap().dailies[0].task.as_deref(),
+                Some("已保存的副本")
+            );
+            assert_eq!(task_row_rect(&mut app), before);
             assert!(app.error.is_none());
         } else {
             assert!(app.view.is_none());
@@ -448,8 +475,71 @@ for line in sys.stdin:
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
         assert_eq!(requests.len(), 2, "{scenario}: do not replay or retry");
-        assert_eq!(requests[0]["method"], "daily.select");
+        assert_eq!(requests[0]["method"], method);
         assert_eq!(requests[1]["method"], "script.view");
         assert_eq!(requests[1]["params"]["script_name"], "test");
+    }
+}
+
+fn task_row_rect(app: &mut App) -> egui::Rect {
+    let mut output = app.ctx.clone().run_ui(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                crate::theme::SIZE,
+            )),
+            ..Default::default()
+        },
+        |ui| {
+            app.ui.show(
+                ui,
+                Presentation {
+                    scripts: &app.scripts,
+                    selected: app.selected.as_deref(),
+                    view: app.view.as_ref(),
+                    busy: app.busy,
+                    block_close: false,
+                    status: &app.status,
+                    demo: true,
+                },
+            );
+        },
+    );
+    output.textures_delta.clear();
+    app.ctx
+        .read_response(egui::Id::new(("daily", "每日任务")))
+        .expect("task row remains visible")
+        .rect
+}
+
+#[test]
+fn changing_script_clears_the_old_card_before_reading() {
+    let root = tempfile::tempdir().unwrap();
+    let python = PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+    let mut command = Command::new(&python);
+    command.args(["-u", "-c", "import sys,json\nfor line in sys.stdin:\n r=json.loads(line); print(json.dumps({'jsonrpc':'2.0','id':r['id'],'result':None}),flush=True)"]);
+    let mut app = test_app(command, root.path(), python);
+    for selected in [Some("another"), None] {
+        app.view = Some(serde_json::from_value(json!({
+            "script":{"script_name":"test","display_name":"Test","script_path":"test.exe","adapted":true},
+            "dailies":[], "weeklies":[]
+        })).unwrap());
+        app.selected = selected.map(str::to_owned);
+        app.refresh_view();
+        assert!(
+            app.view.is_none(),
+            "must not show the previous script's tasks"
+        );
+        if selected.is_some() {
+            let reply = app
+                .backend
+                .as_ref()
+                .unwrap()
+                .replies
+                .recv_timeout(Duration::from_secs(10))
+                .unwrap();
+            assert_eq!(reply.method, "script.view");
+            app.busy = false;
+        }
     }
 }

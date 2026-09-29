@@ -218,7 +218,14 @@ impl App {
     }
 
     fn refresh_view(&mut self) {
-        self.view = None;
+        // Keep the current rows while re-reading; a different script must start empty.
+        if self
+            .view
+            .as_ref()
+            .is_some_and(|view| Some(&view.script.script_name) != self.selected.as_ref())
+        {
+            self.view = None;
+        }
         if let Some(name) = self.selected.clone() {
             self.request("script.view", json!({"script_name": name}));
         } else {
