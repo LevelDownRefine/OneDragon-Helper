@@ -97,9 +97,10 @@ CLI 表单通过 `script_edit_view` 读取；`script.edit_save` 在传输边界�
 复用 `build_script_command`，游戏复用手填路径优先的 `get_game_exe_path`，实际启动由
 前端进行。单独启动不走批量调度链，保持原版行为；不传整个父进程环境或 shell 命令字符串。
 
-`run_service` 为手动批量确认提供 `run_view/prepare_run`；校验选择和完整选项、保存后
-返回独立 `src.headless run` 进程描述，不在持久 CLI 内执行长链。独立入口通过 stdin 接收
-无凭据的配置快照，复用 schedule_run 并持有运行租约；取消或 prepare 失败不启动。
+`AppService.run_view/prepare_run` 汇总运行信息并在确认后保存选项；headless 负责 JSON
+校验和独立 `src.headless run` 进程描述，不在持久 CLI 内执行长链。独立入口通过 stdin
+接收无凭据的配置快照，交给 `chain_service.run_batch` 复用 schedule_run，并持有运行租约；
+取消或 prepare 失败不启动。
 
 ## 手动更新
 

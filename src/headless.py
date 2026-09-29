@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 from contextlib import contextmanager, nullcontext, redirect_stderr, redirect_stdout
+from dataclasses import asdict, fields
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,70 @@ def _parse_json(payload: str):
     )
 
 
+def _parse_run_options(values: dict, *, require_shutdown_ui: bool = True):
+    """将完整 JSON 表单转换为 RunOptions，检查类型、范围和前端能力。"""
+    from src.service.schedule import RunOptions
+    from src.utils.utils_shutdown import rust_shutdown_supported
+
+    if not isinstance(values, dict) or set(values) != {
+        field.name for field in fields(RunOptions)
+    }:
+        raise ProtocolError("invalid_params", "运行选项字段不完整或包含未知字段")
+    for key, default in asdict(RunOptions()).items():
+        assert key in values
+        if type(values[key]) is not type(default):
+            raise ProtocolError("invalid_params", f"运行选项 {key} 类型无效")
+    options = RunOptions(
+        **{
+            key: value.strip() if isinstance(value, str) else value
+            for key, value in values.items()
+        }
+    )
+    if not 0 <= options.shutdown_delay <= 86400:
+        raise ProtocolError("invalid_params", "关机延迟须为 0～86400 秒")
+    if (
+        require_shutdown_ui
+        and options.shutdown_enabled
+        and not rust_shutdown_supported()
+    ):
+        raise ProtocolError(
+            "invalid_params", "Rust 关机确认入口不可用，请关闭自动关机或重新启动前端"
+        )
+    if options.smtp_port and (
+        not options.smtp_port.isdecimal() or not 1 <= int(options.smtp_port) <= 65535
+    ):
+        raise ProtocolError("invalid_params", "SMTP 端口须为 1～65535")
+    if options.auth_code and not options.email:
+        raise ProtocolError("invalid_params", "填写授权码时请同时填写邮箱")
+    return options
+
+
+def _run_target(script_names: list[str], options) -> dict:
+    """构造独立 CLI 运行命令，脚本名单和选项只经 stdin 传递。"""
+    from src.utils import get_root_dir
+    from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+
+    args = ["run"]
+    if not getattr(sys, "frozen", False):
+        args = ["-m", "src.headless", *args]
+    return {
+        "kind": "command",
+        "program": sys.executable,
+        "args": args,
+        "cwd": get_root_dir(),
+        "env": (
+            {RUST_CONFIRM_ENV: os.environ[RUST_CONFIRM_ENV]}
+            if RUST_CONFIRM_ENV in os.environ
+            else {}
+        ),
+        "console": True,
+        "input": json.dumps(
+            {"script_names": script_names, "options": asdict(options)},
+            ensure_ascii=False,
+        ),
+    }
+
+
 def _daily_task():
     """计划任务只保存 CLI 入口与前端路径，每次触发读取最新配置。"""
     from src.service.daily_plan import WindowsDailyTask
@@ -118,8 +183,8 @@ def _daily_task():
 def handle_request(service, request) -> dict:
     """串行分发，协议输入先校验；业务异常保留诊断并返回明确失败。"""
     from src.service.background_job import InvalidBackgroundJob
+    from src.service.chain_service import InvalidRunRequest
     from src.service.daily_plan import DailyPlanOptions
-    from src.service.run_service import InvalidRunRequest, parse_options
     from src.service.schedule import (
         MAX_STARTUP_DELAY_SECONDS,
         StartupOptions,
@@ -205,7 +270,29 @@ def handle_request(service, request) -> dict:
                 result = service.apply_startup_options(StartupOptions(**options))
             elif method == "settings.run_save":
                 assert "options" in params
-                result = service.apply_run_options(parse_options(params["options"]))
+                result = service.apply_run_options(
+                    _parse_run_options(params["options"])
+                )
+            elif method == "run.view":
+                result = service.run_view(**params)
+                result["shutdown_supported"] = rust_shutdown_supported()
+            elif method == "run.prepare":
+                assert all(
+                    key in params
+                    for key in ("script_names", "options", "confirm_invalid")
+                )
+                if type(params["confirm_invalid"]) is not bool:
+                    raise ProtocolError("invalid_params", "运行确认格式无效")
+                options = _parse_run_options(params["options"])
+                saved = service.prepare_run(
+                    params["script_names"], options, params["confirm_invalid"]
+                )
+                result = _run_target(params["script_names"], saved)
+            elif method == "run.saved":
+                assert "script_names" in params
+                saved = service.saved_run(params["script_names"])
+                options = _parse_run_options(asdict(saved))
+                result = _run_target(params["script_names"], options)
             elif method == "plan.view":
                 result = service.daily_plan_view(task=_daily_task())
                 result["shutdown_supported"] = rust_shutdown_supported()
@@ -231,7 +318,7 @@ def handle_request(service, request) -> dict:
                     raise ProtocolError(
                         "invalid_params", "启用每日计划需要有效的 Windows Rust 前端"
                     )
-                options = parse_options(
+                options = _parse_run_options(
                     plan["run_options"], require_shutdown_ui=plan["enabled"]
                 )
                 result = service.apply_daily_plan(
@@ -418,7 +505,9 @@ def _run_command(args: argparse.Namespace) -> int:
                 }:
                     raise ValueError("运行载荷字段无效")
                 assert "script_names" in payload and "options" in payload
-                service.run_batch(payload["script_names"], payload["options"])
+                service.run_batch(
+                    payload["script_names"], _parse_run_options(payload["options"])
+                )
                 return 0
             return (
                 _serve(service)

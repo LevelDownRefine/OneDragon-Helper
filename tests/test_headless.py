@@ -12,7 +12,8 @@ from dataclasses import asdict
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
-from src.headless import _daily_task, handle_request
+from src.headless import ProtocolError, _daily_task, _parse_run_options, handle_request
+from src.service.app_service import AppService
 from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import RunOptions, StartupOptions
 from src.service.script_service import ScriptEdit
@@ -390,7 +391,7 @@ def record(keys, target, **kwargs):
         locked=True
     Path(root,'worker.json').write_text(json.dumps({'keys':sorted(keys),'target':target,'locked':locked,'options':kwargs}),encoding='utf-8')
 
-with patch('src.utils.get_root_dir', return_value=root), patch('src.service.run_service.chain_service.schedule_run', side_effect=record):
+with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chain_service.schedule_run', side_effect=record):
 """,
         )
         options = responses[0]["result"]["options"]
@@ -944,6 +945,135 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.run_
                 reader.join(timeout=5)
 
 
+class RunRequestTests(unittest.TestCase):
+    def setUp(self):
+        self.service = AppService(frontend="rust")
+        self.addCleanup(self.service.close)
+        self.enterContext(
+            patch("src.service.chain_service.selected_scripts", return_value=[])
+        )
+        self.invalid = self.enterContext(
+            patch.object(self.service, "collect_invalid_scripts", return_value=[])
+        )
+
+    def test_saved_run_returns_target_without_saving_or_starting(self):
+        options = RunOptions(mute_enabled=True, close_running_enabled=False)
+        with (
+            patch.object(self.service, "load_run_options", return_value=options),
+            patch.object(self.service, "apply_run_options") as save,
+            patch("src.service.chain_service.schedule_run") as run,
+        ):
+            response = handle_request(
+                self.service, request("run.saved", {"script_names": ["test"]})
+            )
+        save.assert_not_called()
+        run.assert_not_called()
+        self.invalid.assert_not_called()
+        target = response["result"]
+        self.assertEqual(target["args"][-1], "run")
+        self.assertEqual(
+            json.loads(target["input"]),
+            {"script_names": ["test"], "options": asdict(options)},
+        )
+
+    def test_invalid_script_warning_requires_confirmation(self):
+        self.invalid.return_value = [("demo", "missing")]
+        for confirmed in (False, 1):
+            with (
+                self.subTest(confirmed=confirmed),
+                patch.object(self.service, "apply_run_options") as save,
+            ):
+                response = handle_request(
+                    self.service,
+                    request(
+                        "run.prepare",
+                        {
+                            "script_names": ["demo"],
+                            "options": asdict(RunOptions()),
+                            "confirm_invalid": confirmed,
+                        },
+                    ),
+                )
+                self.assertEqual(response["error"]["code"], "invalid_params")
+                save.assert_not_called()
+
+    def test_prepare_passes_names_in_stdin_and_omits_credentials(self):
+        from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+
+        names = ["中文,逗号 & 空格"]
+        options = RunOptions(
+            email="test@example.invalid",
+            auth_code="test-secret",
+            mute_enabled=True,
+            shutdown_enabled=True,
+            shutdown_delay=45,
+        )
+        saved = RunOptions(
+            email=options.email,
+            mute_enabled=True,
+            shutdown_enabled=True,
+            shutdown_delay=45,
+        )
+        with (
+            patch.object(self.service, "apply_run_options") as save,
+            patch.object(self.service, "load_run_options", return_value=saved),
+            patch(
+                "src.utils.utils_shutdown.rust_shutdown_supported", return_value=True
+            ),
+            patch.dict(os.environ, {RUST_CONFIRM_ENV: "/fake/gui"}),
+        ):
+            response = handle_request(
+                self.service,
+                request(
+                    "run.prepare",
+                    {
+                        "script_names": names,
+                        "options": asdict(options),
+                        "confirm_invalid": False,
+                    },
+                ),
+            )
+            view = handle_request(
+                self.service, request("run.view", {"script_names": names})
+            )
+        save.assert_called_once_with(options)
+        target = response["result"]
+        self.assertEqual(target["args"][-1], "run")
+        self.assertTrue(target["console"])
+        self.assertEqual(target["env"], {RUST_CONFIRM_ENV: "/fake/gui"})
+        self.assertTrue(view["result"]["shutdown_supported"])
+        self.assertEqual(
+            json.loads(target["input"]),
+            {"script_names": names, "options": asdict(saved)},
+        )
+        self.assertNotIn("test-secret", json.dumps(target))
+        self.assertNotIn(names[0], target["args"])
+
+    def test_failed_save_returns_no_launch_target(self):
+        with (
+            patch.object(
+                self.service, "apply_run_options", side_effect=OSError("disk full")
+            ),
+            patch.object(self.service, "load_run_options") as read,
+            self.assertLogs("src.headless", level="ERROR"),
+        ):
+            response = handle_request(
+                self.service,
+                request(
+                    "run.prepare",
+                    {
+                        "script_names": ["demo"],
+                        "options": asdict(RunOptions()),
+                        "confirm_invalid": False,
+                    },
+                ),
+            )
+        read.assert_not_called()
+        self.assertNotIn("result", response)
+        self.assertEqual(response["error"]["code"], "operation_failed")
+        self.assertTrue(response["error"]["refresh_required"])
+
+
 class ProtocolValidationTests(unittest.TestCase):
     def test_invalid_startup_settings_never_save(self):
         service = Mock(spec=["apply_startup_options"])
@@ -985,12 +1115,36 @@ class ProtocolValidationTests(unittest.TestCase):
 
     def test_invalid_run_settings_never_save(self):
         service = Mock(spec=["apply_run_options"])
-        values = {**asdict(RunOptions()), "mute_enabled": 1}
-        response = handle_request(
-            service, request("settings.run_save", {"options": values})
-        )
-        self.assertEqual(response["error"]["code"], "invalid_params")
+        for change in (
+            {"mute_enabled": 1},
+            {"shutdown_delay": True},
+            {"shutdown_delay": 86401},
+            {"smtp_port": "bad"},
+            {"smtp_port": "65536"},
+            {"auth_code": "test-secret"},
+            {"unknown": 1},
+        ):
+            with self.subTest(change=change):
+                response = handle_request(
+                    service,
+                    request(
+                        "settings.run_save",
+                        {"options": {**asdict(RunOptions()), **change}},
+                    ),
+                )
+                self.assertEqual(response["error"]["code"], "invalid_params")
         service.apply_run_options.assert_not_called()
+
+    def test_shutdown_without_frontend_rejected_at_boundary(self):
+        with (
+            patch(
+                "src.utils.utils_shutdown.rust_shutdown_supported", return_value=False
+            ),
+            self.assertRaisesRegex(ProtocolError, "关机确认入口"),
+        ):
+            _parse_run_options(
+                asdict(RunOptions(shutdown_enabled=True, shutdown_delay=45))
+            )
 
     def test_daily_validation_before_registration_and_pause_preserves_options(self):
         plan = DailyPlanOptions(

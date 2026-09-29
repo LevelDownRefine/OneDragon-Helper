@@ -38,7 +38,7 @@ from src.config.set_config import (
     weekly_names,
 )
 from src.config.task_switch import task_switch_of
-from src.service import launch_service, run_service, wallpaper_service
+from src.service import launch_service, wallpaper_service
 from src.service.background_job import BackgroundJob, InvalidBackgroundJob
 from src.service.schedule import (
     RunOptions,
@@ -64,6 +64,7 @@ from src.utils.utils_runner import (
     collect_invalid_script_messages,
     run_chain_command,
 )
+from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_wallpaper import (
     load_wallpapers,
     save_video_preview,
@@ -177,7 +178,16 @@ class AppService:
         return launch_service.resolve_launch_target(script_name, target)
 
     def run_view(self, script_names: list[str]) -> dict:
-        return run_service.run_view(script_names)
+        """汇总本次所选脚本、配置问题和已存运行选项。"""
+        scripts = chain_service.selected_scripts(script_names)
+        return {
+            "script_names": [get_script_name(script) for script in scripts],
+            "invalid": [
+                {"name": name, "reason": reason}
+                for name, reason in self.collect_invalid_scripts(scripts)
+            ],
+            "options": asdict(self.load_run_options()),
+        }
 
     def settings_view(self) -> dict:
         """从同一份配置汇总启动、每日计划开关和运行选项。"""
@@ -188,16 +198,27 @@ class AppService:
             "run_options": asdict(load_run_options(schedule)),
         }
 
-    def saved_run(self, script_names: list[str]) -> dict:
-        return run_service.saved_run(script_names)
+    def saved_run(self, script_names: list[str]) -> RunOptions:
+        """自动启动校验名单并读取上次选项，不保存或运行。"""
+        chain_service.selected_scripts(script_names)
+        return self.load_run_options()
 
     def prepare_run(
-        self, script_names: list[str], options: dict, confirm_invalid: bool
-    ) -> dict:
-        return run_service.prepare_run(script_names, options, confirm_invalid)
+        self, script_names: list[str], options: RunOptions, confirm_invalid: bool
+    ) -> RunOptions:
+        """确认配置问题后保存选项，反读不含授权码的运行配置。"""
+        assert isinstance(options, RunOptions)
+        assert type(confirm_invalid) is bool
+        scripts = chain_service.selected_scripts(script_names)
+        if self.collect_invalid_scripts(scripts) and not confirm_invalid:
+            raise chain_service.InvalidRunRequest(
+                "请先确认配置不合法的脚本将在运行时跳过"
+            )
+        self.apply_run_options(options)
+        return self.load_run_options()
 
-    def run_batch(self, script_names: list[str], options: dict) -> None:
-        return run_service.run_batch(script_names, options)
+    def run_batch(self, script_names: list[str], options: RunOptions) -> None:
+        return chain_service.run_batch(script_names, options)
 
     def script_edit_view(self, script_name: str) -> dict:
         """读取脚本配置表单；不提交编辑或强制初始化。"""
