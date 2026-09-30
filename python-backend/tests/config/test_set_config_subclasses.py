@@ -228,13 +228,18 @@ class TestEndfieldConfig(unittest.TestCase):
             with self.subTest(task=task, sequence=sequence):
                 with patch.object(EndfieldConfig, "_init_config"):
                     config = EndfieldConfig()
-                current = {"体力本": "旧本", "⭐刷体力": True}
+                # 体力本在 DailyBattleTask.json、开关键仍在 DailyTask.json，两份文件各自读。
+                data = {"体力本": "旧本"}
+                routine = {"⭐刷体力": True}
                 with (
-                    patch.object(Daily, "_load_daily_config", return_value=current),
-                    patch.object(Daily, "_save_daily_config") as save,
+                    patch.object(Daily, "_load_daily_config", return_value=data),
+                    patch.object(Daily, "_save_daily_config") as save_data,
+                    patch.object(Daily, "_load_routine_config", return_value=routine),
+                    patch.object(Daily, "_save_routine_config") as save_routine,
                 ):
                     config.set_daily_task("每日任务", task, sequence=sequence)
-                save.assert_called_once_with({"体力本": expected, "⭐刷体力": True})
+                save_data.assert_called_once_with({"体力本": expected})
+                save_routine.assert_not_called()
 
 
 class TestZenlessZoneZeroConfig(unittest.TestCase):

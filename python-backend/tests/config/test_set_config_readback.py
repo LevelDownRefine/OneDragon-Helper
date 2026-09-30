@@ -71,9 +71,12 @@ class TestReadbackGenshin(unittest.TestCase):
 
 class TestReadbackEndfield(unittest.TestCase):
     def test_stage_roundtrip(self):
-        config = {"⭐刷体力": True}
+        # 体力本在 DailyBattleTask.json、开关键仍在 DailyTask.json，两份文件各自读。
+        data: dict = {}
+        routine = {"⭐刷体力": True}
         with (
-            patch.object(Daily, "_load_daily_config", return_value=config),
+            patch.object(Daily, "_load_daily_config", return_value=data),
+            patch.object(Daily, "_load_routine_config", return_value=routine),
             patch.object(daily_mod, "save_script_config"),
         ):
             cfg = EndfieldConfig()

@@ -743,9 +743,15 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         working = self.root / "scripts/data/apps/ok-ef/working"
         working.joinpath("configs").mkdir(parents=True)
         working.joinpath("assets/data").mkdir(parents=True)
-        native = working / "configs/DailyTask.json"
+        # 体力本在 DailyBattleTask.json、开关键仍在 DailyTask.json，两份文件各自读。
+        native = working / "configs/DailyBattleTask.json"
         native.write_text(
-            json.dumps({"体力本": "旧副本", "⭐刷体力": False, "untouched": 42}),
+            json.dumps({"体力本": "旧副本", "untouched": 42}),
+            encoding="utf-8",
+        )
+        switch = working / "configs/DailyTask.json"
+        switch.write_text(
+            json.dumps({"⭐刷体力": False, "untouched": 42}),
             encoding="utf-8",
         )
         working.joinpath("assets/data/world_map.json").write_text(
@@ -788,7 +794,11 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
             self.assertIs(daily["enabled"], True)
         self.assertEqual(
             json.loads(native.read_text(encoding="utf-8")),
-            {"体力本": "副本乙", "⭐刷体力": True, "untouched": 42},
+            {"体力本": "副本乙", "untouched": 42},
+        )
+        self.assertEqual(
+            json.loads(switch.read_text(encoding="utf-8")),
+            {"⭐刷体力": True, "untouched": 42},
         )
         result, responses = self.serve(
             [
@@ -814,7 +824,11 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         self.assertIs(responses[2]["result"]["dailies"][0]["enabled"], False)
         self.assertEqual(
             json.loads(native.read_text(encoding="utf-8")),
-            {"体力本": "副本乙", "⭐刷体力": False, "untouched": 42},
+            {"体力本": "副本乙", "untouched": 42},
+        )
+        self.assertEqual(
+            json.loads(switch.read_text(encoding="utf-8")),
+            {"⭐刷体力": False, "untouched": 42},
         )
 
     def test_task_mutations_keep_adapter_noops_and_day_validation(self):
