@@ -239,14 +239,13 @@ class TestGamePathInput(unittest.TestCase):
                 "game_arguments": '--profile "中文 空格"',
             }
         )
-        self.assertEqual(
-            dlg.game_command_input.text(), 'C:/games/Endfield.exe --profile "中文 空格"'
-        )
+        self.assertEqual(dlg.game_args_input.text(), '--profile "中文 空格"')
+        self.assertEqual(dlg.game_path_input.text(), "C:/games/Endfield.exe")
 
     def test_load_defaults_empty(self):
         """条目无 game_path 时留空（多数脚本不需要）。"""
         dlg = self._make_dialog({})
-        self.assertEqual(dlg.game_command_input.text(), "")
+        self.assertEqual(dlg.game_path_input.text(), "")
 
     def test_save_stores_game_path(self):
         """路径存在时正常存入 pending_changes 的 config_patch。"""
@@ -254,8 +253,8 @@ class TestGamePathInput(unittest.TestCase):
             path = tf.name
         try:
             dlg = self._make_dialog({})
-            command = f'"{path}" --profile "中文 空格"'
-            dlg.game_command_input.setText(command)
+            dlg.game_path_input.setText(path)
+            dlg.game_args_input.setText('--profile "中文 空格"')
             with (
                 patch("gui.dialogs.styled_msg_box") as warn,
                 patch.object(SingleScriptConfigDialog, "accept"),
@@ -264,12 +263,15 @@ class TestGamePathInput(unittest.TestCase):
         finally:
             os.unlink(path)
         warn.assert_not_called()
-        self.assertEqual(dlg.pending_changes.config_patch["game_command"], command)
+        self.assertEqual(dlg.pending_changes.config_patch["game_path"], path)
+        self.assertEqual(
+            dlg.pending_changes.config_patch["game_arguments"], '--profile "中文 空格"'
+        )
 
     def test_save_blocks_when_path_not_exists(self):
         """填了但文件不存在 → 弹警告并中止保存（不进 accept）。"""
         dlg = self._make_dialog({})
-        dlg.game_command_input.setText("D:/not/exist/Endfield.exe")
+        dlg.game_path_input.setText("D:/not/exist/Endfield.exe")
         with (
             patch("gui.dialogs.styled_msg_box") as warn,
             patch.object(SingleScriptConfigDialog, "accept") as accept,
@@ -286,7 +288,7 @@ class TestGamePathInput(unittest.TestCase):
             patch.object(SingleScriptConfigDialog, "accept"),
         ):
             dlg.save_data()
-        self.assertEqual(dlg.pending_changes.config_patch["game_command"], "")
+        self.assertEqual(dlg.pending_changes.config_patch["game_path"], "")
         warn.assert_not_called()
 
     def test_invalid_form_stays_open_without_pending_write(self):

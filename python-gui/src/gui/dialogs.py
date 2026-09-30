@@ -39,7 +39,6 @@ from PySide6.QtWidgets import (
 
 from src.service.app_service import AppService
 from src.service.script_service import InvalidScript, ScriptEdit
-from src.utils.utils_game_command import game_command_of
 
 # ═══════════════════════ 弹窗样式（原 src/gui/theme.py 子集，2026-08-16 并入）═══════
 # 与 QML Theme.js 保持同一套蓝灰配色。
@@ -626,13 +625,21 @@ class SingleScriptConfigDialog(FormDialogBase):
         grid.addWidget(self._make_label("游戏进程:"), 6, 0)
         grid.addWidget(self.game_process_input, 6, 1, 1, 2)
 
-        self.game_command_input = self._make_line_edit(
-            placeholder='例如 "D:\\Game Folder\\game.exe" -screen-fullscreen 0'
+        # 行 7：游戏路径 + game_path_input（横跨 col 1-2）
+        # 非空时 runner 会先打开该游戏再启动本脚本；留空表示由脚本/启动器自行负责。
+        self.game_path_input = self._make_line_edit(
+            placeholder="仅在使用MaaEnd时填，填Endfield.exe路径"
         )
-        grid.addWidget(self._make_label("游戏命令:"), 7, 0)
-        grid.addWidget(self.game_command_input, 7, 1, 1, 2)
+        grid.addWidget(self._make_label("游戏路径:"), 7, 0)
+        grid.addWidget(self.game_path_input, 7, 1, 1, 2)
 
-        timeout_row = 8
+        # 每周超时（行 8；4×2 Grid 让同列等宽，数字右对齐）
+        self.game_args_input = self._make_line_edit(
+            placeholder="例如 -screen-fullscreen 0；含空格的值用双引号"
+        )
+        grid.addWidget(self._make_label("游戏参数:"), 8, 0)
+        grid.addWidget(self.game_args_input, 8, 1, 1, 2)
+        timeout_row = 9
         timeout_grid = QGridLayout()
         timeout_grid.setHorizontalSpacing(4)
         timeout_grid.setVerticalSpacing(2)
@@ -700,7 +707,9 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.kill_script_cb.setChecked(script_data.get("kill_script_after_done", True))
         self.kill_game_cb.setChecked(script_data.get("kill_game_after_done", False))
         self.game_process_input.setText(script_data.get("game_process_name", ""))
-        self.game_command_input.setText(game_command_of(script_data))
+        self.game_path_input.setText(script_data.get("game_path", ""))
+        if "game_arguments" in script_data:
+            self.game_args_input.setText(script_data["game_arguments"])
         # 阻塞运行：缺字段视为 True（默认阻塞）
         self.block_cb.setChecked(script_data.get("block", True))
 
@@ -743,7 +752,8 @@ class SingleScriptConfigDialog(FormDialogBase):
                 "kill_script_after_done": self.kill_script_cb.isChecked(),
                 "kill_game_after_done": self.kill_game_cb.isChecked(),
                 "game_process_name": self.game_process_input.text().strip(),
-                "game_command": self.game_command_input.text().strip(),
+                "game_path": self.game_path_input.text().strip(),
+                "game_arguments": self.game_args_input.text().strip(),
                 "block": self.block_cb.isChecked(),
             },
             weekly_timeouts=timeouts,

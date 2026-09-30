@@ -12,7 +12,6 @@ from src.utils import (
     get_config_yml_path_under_root,
     require_config_yml_path,
 )
-from src.utils.utils_game_command import game_command_of
 from src.utils.utils_sub_config import (
     check_script_name_uniqueness,
     get_script_name,
@@ -42,10 +41,6 @@ def load_config() -> dict:
         assert "script_path" in s, (
             f"[utils_config] script_list 条目缺少 script_path: {s}"
         )
-        if "game_path" in s or "game_arguments" in s:
-            s["game_command"] = game_command_of(s)
-            s.pop("game_path", None)
-            s.pop("game_arguments", None)
         # 勾选是 GUI 内存态，不落盘；旧文件残留的 enabled 在此丢弃。
         if s.pop("enabled", None) is not None:
             logger.warning(

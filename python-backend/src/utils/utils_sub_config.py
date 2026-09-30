@@ -15,7 +15,6 @@ from src.utils import (
     require_config_yml_path,
     safe_path_join,
 )
-from src.utils.utils_game_command import game_command_of, parse_game_command
 from src.utils.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
@@ -138,25 +137,20 @@ def get_script_root_dir(script_name: str) -> str | None:
 
 
 def get_script_game_path(script_name: str) -> str:
-    """按脚本唯一标识取条目里游戏启动命令中的可执行文件路径。
+    """按脚本唯一标识取条目里手填的游戏路径（config.yml 的 game_path）。
 
     游戏 exe 路径的首选来源（用户显式指定），脚本原生配置只在它为空时才用。只读查询，
     **不 assert config.yml 存在**（首启尚未生成配置时调用方也应拿到结果）。
 
     Returns:
-        config.yml 游戏命令中的路径；config.yml 缺失、无此脚本或未填时返回空字符串。
+        config.yml 里填的路径；config.yml 缺失、无此脚本或未填时返回空字符串。
     """
     if not os.path.isfile(get_config_yml_path_under_root()):
         return ""
     config_data = _load_config_yml()
     for script in config_data.get("script_list", []):
         if get_script_name(script) == script_name:
-            try:
-                path, _ = parse_game_command(game_command_of(script))
-            except ValueError as exc:
-                logger.warning("游戏启动命令无法解析：%s", exc)
-                return ""
-            return path
+            return script.get("game_path", "")
     return ""
 
 
@@ -365,7 +359,8 @@ def default_script_entry(display_name, script_type, script_path, script_argument
         "game_process_name": "",
         # 非空时 runner 会在启动本脚本前先打开该游戏（仅不自启游戏的脚本需要，如 MaaEnd）；
         # 游戏图标与「启动游戏」也以它为第一来源
-        "game_command": "",
+        "game_path": "",
+        "game_arguments": "",
         "launcher_mode": False,
         "check_done": "script_closed",
         "kill_script_after_done": True,
