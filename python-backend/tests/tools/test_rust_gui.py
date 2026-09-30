@@ -16,6 +16,7 @@ class RustDemoTests(unittest.TestCase):
             root = Path(temporary)
             with patch("tools.run_rust_gui.shutil.copytree") as source_copy:
                 prepare_demo(root)
+            self.assertFalse((root / "assets/ds.jpg").exists())
             self.assertEqual(source_copy.call_count, 2)
             backend, runner = source_copy.call_args_list
             self.assertEqual(backend.args[1], root / "python-backend/src")

@@ -35,6 +35,5 @@ tools/、deploy/   # 跨项目构建、打包、发布工具
 
 - Rust GUI：`launcher-rust.bat`；隔离演示配置加 `--demo`。
 - Python GUI：`launcher.bat`，或 `uv run python -m gui.launcher`。
-- Python 后端：`uv run --directory python-backend python -m src.headless serve --stdio`。
 
 构建与测试见 [TESTING.md](TESTING.md)，Rust 说明见 [rust-gui/README.md](rust-gui/README.md)。

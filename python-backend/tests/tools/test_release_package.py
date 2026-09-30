@@ -33,7 +33,7 @@ class TestReleasePackage(unittest.TestCase):
             "config/weekly.example.yml": "weekly_start: {}\n",
             "config/daily_task_list.yml": "日常: []\n",
             "config/script_resources.yml": "version: 1\nscripts: {}\n",
-            "assets/ds.jpg": "image",
+            "assets/ds.ico": "icon",
             "src/gui/qml/main.qml": "Window {}",
         }
         for name, content in self.resources.items():
@@ -165,7 +165,7 @@ class TestReleasePackage(unittest.TestCase):
                 manifest = release.load_manifest(package, verify=True)
                 self.assertNotIn("assets/icons/home.png", manifest["files"])
                 self.assertFalse((package / "assets/icons").exists())
-                self.assertTrue((package / "assets/ds.jpg").is_file())
+                self.assertTrue((package / "assets/ds.ico").is_file())
                 output = self.package / f"{frontend}.zip"
                 release.archive_package(self.root, package, output)
                 with zipfile.ZipFile(output) as archive:

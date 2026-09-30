@@ -19,9 +19,6 @@ from src.utils.utils_sub_config import get_script_root_dir, resolve_script_path
 
 logger = logging.getLogger(__name__)
 
-# 兜底背景：脚本未配置背景图时使用（相对项目根）
-DEFAULT_BG = "assets/ds.jpg"
-
 # 自定义壁纸缓存：用户选图时按最长边压到 WALLPAPER_MAX_SIDE 后存于
 # config/wallpaper_cache/<script_name>.jpg，resolve_bg 优先返回缓存，避免大图
 # 直接进 GPU 纹理（与 main.qml 的 sourceSize 互补）。视频首帧也复用此尺寸上限。
@@ -79,14 +76,17 @@ class BackgroundController(QObject):
         return self._bg_version
 
     def resolve_bg(self, game: dict) -> str | None:
-        """返回该脚本应使用的背景路径（自定义壁纸缓存 → 自定义壁纸 → 脚本背景 → DEFAULT_BG）。
+        """返回该脚本应使用的背景路径（自定义壁纸缓存 → 自定义壁纸 → 脚本背景）。
 
         文件不存在返回 None（走渐变兜底）。
 
         Args:
             game: 当前脚本数据。
         """
-        resolved = resolve_script_path(self._wallpaper_for(game))
+        path = self._wallpaper_for(game)
+        if not path:
+            return None
+        resolved = resolve_script_path(path)
         if not os.path.isfile(resolved):
             return None
         return resolved
@@ -98,7 +98,7 @@ class BackgroundController(QObject):
             script_name: 脚本标识名。
 
         Returns:
-            背景图绝对路径；未适配/未声明/文件缺失 → 空字符串（交 DEFAULT_BG 兜底）。
+            背景图绝对路径；未适配/未声明/文件缺失 → 空字符串（使用渐变背景）。
         """
         rel = get_background_rel_path(script_name)
         if not rel:
@@ -110,7 +110,7 @@ class BackgroundController(QObject):
         return path if os.path.isfile(path) else ""
 
     def _wallpaper_for(self, game: dict) -> str:
-        """解析某脚本应使用的背景路径：定位源（自定义壁纸 → 脚本背景图 → DEFAULT_BG），
+        """解析某脚本应使用的背景路径：定位源（自定义壁纸 → 脚本背景图），
         并判定图像/视频。图像交给 _build_wallpaper_cache 确保缓存，视频直接用源路径。
         resolve_bg 负责 resolve + isfile 守卫。
 
@@ -120,7 +120,7 @@ class BackgroundController(QObject):
         script_name = game["script_name"]
         wallpapers = self.read_wallpapers()
         if script_name not in wallpapers:
-            return self._script_background(script_name) or DEFAULT_BG
+            return self._script_background(script_name)
         src_path = wallpapers[script_name]
         if not os.path.isfile(src_path):
             return src_path  # 源图缺失：交回 resolve_bg 的 isfile 守卫，走渐变兜底
