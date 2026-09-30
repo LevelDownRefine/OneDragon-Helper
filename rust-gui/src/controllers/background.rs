@@ -259,12 +259,7 @@ fn load(state: &Wallpaper) -> Result<Loaded, String> {
 
 impl View {
     pub(super) fn background(&self, ui: &mut Ui, screen: Rect) {
-        let image = self.wallpaper.texture.as_ref().or_else(|| {
-            self.wallpaper
-                .placeholder
-                .is_none()
-                .then_some(&self.assets.background)
-        });
+        let image = self.wallpaper.texture.as_ref();
         if let Some(image) = image {
             let aspect = image.size_vec2().x / image.size_vec2().y;
             let target = screen.aspect_ratio();

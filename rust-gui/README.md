@@ -138,11 +138,11 @@ cargo build --release --locked --manifest-path rust-gui/Cargo.toml
 包不完整、类型不符会明确报错，不回退 PATH 中的 Python。Windows 首窗创建前的错误以
 原生错误框显示。显式 `--project-root` 保留源码开发模式，`--python` 仅用于源码模式。
 
-尺寸与颜色对应 `python-gui/src/gui/qml/Layout.js`、`Theme.js`；嵌入 `assets/ds.jpg` 用于初始背景，
-加载后使用 CLI 解析的脚本默认/自定义壁纸。
+尺寸与颜色对应 `python-gui/src/gui/qml/Layout.js`、`Theme.js`；初始背景使用渐变，
+加载后使用 CLI 解析的脚本默认/自定义壁纸，无图片时仍使用渐变。
 工具栏 PNG 由原 GUI 的 `UiIconProvider` 导出并提交，修改图标源后运行
 `uv run python tools/export_rust_icons.py` 更新根目录 `assets/icons/`；这一步需要 Qt，Rust 界面运行时不需要。
-图标与默认壁纸统一归根目录 `assets/`。PNG 编译进 Rust EXE，发布包不重复拷贝图标源文件。
+图标统一归根目录 `assets/`。PNG 编译进 Rust EXE，发布包不重复拷贝图标源文件。
 
 ## 目录与职责
 

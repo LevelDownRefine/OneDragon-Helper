@@ -21,9 +21,6 @@ IMAGEFORMATS = os.path.join(
     "imageformats",
 )
 
-# 与 src/gui/controllers/background.py 的 DEFAULT_BG 一致（脚本未声明背景时的兜底图）
-DEFAULT_BG = "assets/ds.jpg"
-
 # 扩展名 → 提供该格式解码能力的 Qt 图片插件。
 # png / bmp 等由 Qt 内建支持，不需要插件，故不在表内。
 _EXT_PLUGIN = {
@@ -40,12 +37,12 @@ _SKIP_REASON = f"需要 Windows 和打包产物中的图片插件目录: {IMAGEF
 
 
 def _declared_backgrounds() -> dict[str, str]:
-    """收集项目声明用到的背景图：脚本标识 → 相对路径（含兜底图）。
+    """收集项目声明用到的背景图：脚本标识 → 相对路径。
 
     Returns:
-        脚本标识到背景图相对路径的映射；兜底图以键 ``__default__`` 表示。
+        脚本标识到背景图相对路径的映射。
     """
-    backgrounds = {"__default__": DEFAULT_BG}
+    backgrounds = {}
     for name in set_config._CONFIGS:
         rel = get_background_rel_path(name)
         if rel:
@@ -103,7 +100,9 @@ class TestPackagedImageFormats(unittest.TestCase):
         QCoreApplication.setLibraryPaths([os.path.dirname(IMAGEFORMATS)])
 
         samples = {
-            "qjpeg.dll": os.path.join(package_dir(), DEFAULT_BG),
+            "qjpeg.dll": os.path.join(
+                PROJECT_ROOT, "python-gui", "tests", "fixtures", "background.jpg"
+            ),
             "qwebp.dll": os.path.join(
                 PROJECT_ROOT, "python-gui", "tests", "fixtures", "background.webp"
             ),

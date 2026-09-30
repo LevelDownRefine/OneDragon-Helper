@@ -157,13 +157,16 @@ class WallpaperTests(unittest.TestCase):
         )
         (self.root / "config").mkdir()
         (self.root / "assets").mkdir()
-        self.default = self.root / "assets/ds.jpg"
-        self.default.write_bytes(b"default")
+        self.image = self.root / "assets/custom.jpg"
+        self.image.write_bytes(b"custom")
 
     def test_priority_and_missing_custom_do_not_fall_back_to_another_image(self):
-        self.assertEqual(
-            wallpaper.wallpaper_view("script")["source"], str(self.default)
-        )
+        legacy = self.root / "assets/ds.jpg"
+        legacy.write_bytes(b"old bundled background")
+        state = wallpaper.wallpaper_view("script")
+        self.assertEqual(state["mode"], "gradient")
+        self.assertEqual(state["source"], "")
+        self.assertIsNone(state["token"])
         native = self.root / "native.png"
         native.write_bytes(b"native")
         self.relative.return_value = "native.png"
@@ -179,13 +182,13 @@ class WallpaperTests(unittest.TestCase):
 
     def test_save_reset_preserve_other_script_and_source_files(self):
         save_wallpapers({"other": "unchanged.png"})
-        wallpaper.set_wallpaper("script", str(self.default))
+        wallpaper.set_wallpaper("script", str(self.image))
         self.assertEqual(
-            load_wallpapers(), {"other": "unchanged.png", "script": str(self.default)}
+            load_wallpapers(), {"other": "unchanged.png", "script": str(self.image)}
         )
         wallpaper.set_wallpaper("script", None)
         self.assertEqual(load_wallpapers(), {"other": "unchanged.png"})
-        self.assertEqual(self.default.read_bytes(), b"default")
+        self.assertEqual(self.image.read_bytes(), b"custom")
         before = (self.root / "config/wallpaper.json").read_bytes()
         for path in ("", "missing.png", str(self.root), "bad.exe"):
             with self.subTest(path=path), self.assertRaises(wallpaper.InvalidWallpaper):
@@ -193,13 +196,14 @@ class WallpaperTests(unittest.TestCase):
         self.assertEqual((self.root / "config/wallpaper.json").read_bytes(), before)
 
     def test_cache_uses_current_source_identity_and_rejects_stale_data(self):
+        wallpaper.set_wallpaper("script", str(self.image))
         state = wallpaper.wallpaper_view("script")
         jpeg = base64.b64encode(b"\xff\xd8test\xff\xd9").decode()
         self.assertTrue(wallpaper.save_wallpaper_cache("script", state["token"], jpeg))
         cache = Path(wallpaper.wallpaper_view("script")["cache"])
         self.assertEqual(cache.parent, self.root / "config/wallpaper_cache")
         self.assertEqual(cache.read_bytes(), b"\xff\xd8test\xff\xd9")
-        self.default.write_bytes(b"changed source")
+        self.image.write_bytes(b"changed source")
         self.assertIsNone(wallpaper.wallpaper_view("script")["cache"])
         self.assertFalse(wallpaper.save_wallpaper_cache("script", state["token"], jpeg))
         for invalid in ("not base64", base64.b64encode(b"not jpeg").decode()):

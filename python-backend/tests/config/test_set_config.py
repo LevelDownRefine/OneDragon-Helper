@@ -495,7 +495,10 @@ class TestGetGameExePathAdapter(unittest.TestCase):
     def test_known_process_dispatches(self):
         factory = MagicMock()
         factory.return_value.get_game_exe_path.return_value = "D:/Game/game.exe"
-        with patch.dict(set_config._CONFIGS, {"ok-ww": factory}, clear=True):
+        with (
+            patch.dict(set_config._CONFIGS, {"ok-ww": factory}, clear=True),
+            patch.object(set_config, "get_script_game_path", return_value=""),
+        ):
             self.assertEqual(set_config.get_game_exe_path("ok-ww"), "D:/Game/game.exe")
         factory.assert_called_once_with()
         factory.return_value.get_game_exe_path.assert_called_once_with()

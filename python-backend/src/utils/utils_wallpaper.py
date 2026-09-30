@@ -102,7 +102,7 @@ def save_video_preview(source_path: str, cache_path: str, data: bytes) -> bool:
 
 
 def wallpaper_view(script_name: str) -> dict:
-    """按自定义、脚本声明、助手默认的顺序解析；缺失自定义文件走渐变。"""
+    """按自定义、脚本声明的顺序解析；无可用图片时使用渐变。"""
     script = get_script(script_name)
     if script is None:
         raise InvalidWallpaper("脚本已不存在，请刷新列表")
@@ -123,9 +123,7 @@ def wallpaper_view(script_name: str) -> dict:
                 candidate = os.path.join(root, relative)
                 if os.path.isfile(candidate):
                     source = candidate
-        if not source:
-            source = resolve_script_path("assets/ds.jpg")
-    source = os.path.abspath(source)
+    source = os.path.abspath(source) if source else ""
     mode = (
         "video" if os.path.splitext(source)[1].lower() in VIDEO_EXTENSIONS else "image"
     )
