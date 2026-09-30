@@ -1,18 +1,14 @@
 """从原 GUI 图标源生成 Rust 静态图标；仅开发时需要 Qt。"""
 
 import os
-import sys
 from pathlib import Path
-
-if __package__ in (None, ""):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
 
 def main() -> None:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
-    from src.gui.icons import UiIconProvider, _default_icon, _render_icon
+    from gui.icons import UiIconProvider, _default_icon, _render_icon
 
     app = QApplication.instance() or QApplication([])
     provider = UiIconProvider()

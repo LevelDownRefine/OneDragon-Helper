@@ -1,7 +1,6 @@
 """测试 src/utils_shutdown.py：关机命令编排与确认分支（纯逻辑，不加载 Qt）。
 
-确认窗的 GUI 实现位于 ``src/gui/shutdown_dialog.py``，其测试见
-``tests/gui/test_gui_countdown_dialog.py``；本文件只测「确认后执行 shutdown」的编排逻辑。
+确认窗由前端注册；本文件只测确认协议与「确认后执行 shutdown」的编排逻辑。
 """
 
 import os
@@ -66,6 +65,24 @@ class RustShutdownTests(unittest.TestCase):
             ):
                 self.assertFalse(utils_shutdown._confirm_shutdown(45))
             self.assertIn(type(error).__name__, " ".join(logs.output))
+
+    def test_registered_python_frontend_handles_confirmation(self):
+        confirm = mock.Mock(return_value=True)
+        self.addCleanup(utils_shutdown.set_shutdown_confirmation, None)
+        utils_shutdown.set_shutdown_confirmation(confirm)
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(utils_shutdown._confirm_shutdown(45))
+        confirm.assert_called_once_with(45)
+
+    def test_missing_python_frontend_cancels(self):
+        self.addCleanup(utils_shutdown.set_shutdown_confirmation, None)
+        utils_shutdown.set_shutdown_confirmation(None)
+        with (
+            mock.patch.dict(os.environ, {}, clear=True),
+            self.assertLogs("src.utils.utils_shutdown", level="ERROR") as logs,
+        ):
+            self.assertFalse(utils_shutdown._confirm_shutdown(45))
+        self.assertIn("未注册关机确认前端", "\n".join(logs.output))
 
 
 class TestShutdownSys(unittest.TestCase):

@@ -6,7 +6,7 @@
 供打包产物集成测试与排障使用。windowed exe 的 stdout/stderr 被丢弃，
 因此 --help/--version 等结果会**同时写文件**（见 _emit_cli / _emit_json）。
 
-GUI 主路径见 :mod:`src.launcher`，本模块不依赖 Qt。
+GUI 主路径见 :mod:`gui.launcher`，本模块不依赖 Qt。
 """
 
 import argparse

@@ -1,0 +1,671 @@
+"""源码级 CLI 单测（offscreen，CI / 普通终端均可真跑）。
+
+与 tests/exe/test_gui_exe.py（必须 Windows + 管理员 + 已打包 exe 才跑，CI 全 skip）互补：
+本文件直接调 ``launcher.main()`` 并 patch ``sys.argv``，验证各 CLI 出口的退出码与
+文件产物，无需打包、无需管理员，CI 也能覆盖。
+
+关键约定：
+- CLI 出口都通过 ``sys.exit`` 返回，故用 ``assertRaises(SystemExit)`` 捕获退出码。
+- --help/--version/--generate-chain/--run-chain 的结果经 ``cli._emit_cli`` 写临时文件，
+  测试读这些文件验证实质行为（与 windowed exe 的可观测方式一致）。
+- --generate-chain 现仅生成链配置（副本/周常配置已由编辑期实时落盘，周常起始日写盘
+  已抽到 ScheduledRun.pre_run），不再调 ``set_config``，不依赖本机是否装有游戏。
+"""
+
+import json
+import os
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+# 必须在导入 PySide6 / launcher 之前设置 offscreen 平台插件（CI 无显示器环境）
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from gui import launcher
+from src import cli
+from src.config.generate_config import config_workflow
+from src.service import chain_gen as service_chain_gen
+from src.utils import get_config_yml_path_under_root
+from src.utils.utils_sub_config import get_script_name
+from src.utils.utils_yaml import dump_yaml, load_yaml
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+class CliTestCase(unittest.TestCase):
+    """每例独立的模板、未安装脚本路径和 CLI 输出目录。"""
+
+    def setUp(self):
+        directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        config_dir = directory / "config"
+        config_dir.mkdir()
+        for name in (
+            "config.example.yml",
+            "schedule.example.yml",
+            "weekly.example.yml",
+            "daily_task_list.yml",
+            "weekly_task_list.yml",
+            "MAA任务.json",
+        ):
+            shutil.copyfile(Path(PROJECT_ROOT, "config", name), config_dir / name)
+        config = load_yaml(str(config_dir / "config.example.yml"))
+        for script in config["script_list"]:
+            name = script["script_path"].replace("\\", "/").rsplit("/", 1)[-1]
+            script["script_path"] = str(directory / "uninstalled" / name)
+        dump_yaml(str(config_dir / "config.example.yml"), config)
+        for target in (
+            "src.utils.get_root_dir",
+            "src.utils.utils_sub_config.get_root_dir",
+            "src.config.generate_config.get_root_dir",
+        ):
+            self.enterContext(patch(target, return_value=str(directory)))
+        self.enterContext(patch.object(tempfile, "tempdir", str(directory)))
+        self.enterContext(patch.object(launcher, "setup_logging"))
+        self.enterContext(patch.object(launcher, "install_crash_hooks"))
+        self.enterContext(
+            patch.object(
+                launcher, "_launch_qml", side_effect=AssertionError("CLI 进入 GUI")
+            )
+        )
+        config_workflow()
+
+
+def _cli_file(kind: str) -> str:
+    """CLI 出口结果文件（与 src/cli.py 的 _emit_cli 对应）。"""
+    return os.path.join(tempfile.gettempdir(), f"odh_gui_{kind}.txt")
+
+
+def _run_main(argv, expect_exit=None):
+    """patch sys.argv 后调 launcher.main()，返回退出码。
+
+    main() 的 CLI 出口都用 sys.exit 退出，故捕获 SystemExit 取退出码。
+    CLI 必须经 sys.exit 退出；意外返回不能算成功。
+    """
+    if "--generate-chain" in argv:
+        Path(_cli_file("generate_chain")).unlink(missing_ok=True)
+    with patch.object(sys, "argv", ["launcher.py", *argv]):
+        try:
+            launcher.main()
+        except SystemExit as exc:
+            code = exc.code
+        else:
+            raise AssertionError("CLI 没有通过 SystemExit 返回退出码")
+    if expect_exit is not None:
+        assert code == expect_exit, f"期望退出码 {expect_exit}，实际 {code}"
+    return code
+
+
+def _read_cli_file(kind: str) -> str:
+    path = _cli_file(kind)
+    assert os.path.isfile(path), f"{kind} 未生成文件: {path}"
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _cli_json(kind: str) -> str:
+    """结构化出口（_emit_json）的结果文件 odh_gui_<kind>.json。"""
+    return os.path.join(tempfile.gettempdir(), f"odh_gui_{kind}.json")
+
+
+def _read_cli_json(kind: str) -> dict:
+    path = _cli_json(kind)
+    assert os.path.isfile(path), f"{kind} 未生成 JSON: {path}"
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _known_script_names():
+    config_path = get_config_yml_path_under_root()
+    data = load_yaml(config_path)
+    return [get_script_name(s) for s in data["script_list"]]
+
+
+def _chainable_script_names():
+    """能进链的脚本唯一标识：config.yml 里未被 GUI 关闭（enabled 缺省/True）的脚本。
+
+    链生成的启用判定 = 本次名单（--enable/--exclude）∩ GUI 总闸；总闸关闭的
+    脚本不进链，故期望集合须以总闸过滤后的集合为基线。
+    """
+    data = load_yaml(get_config_yml_path_under_root())
+    return [
+        get_script_name(s)
+        for s in data.get("script_list", [])
+        if s.get("enabled", True)
+    ]
+
+
+class TestCliHelpVersion(CliTestCase):
+    """--help / --version 出口：退出 0 且结果写文件。"""
+
+    def test_backup_outputs_service_result_without_reading_manifest(self):
+        result = {"status": "ok", "path": "backup.zip", "file_count": 3}
+        with (
+            patch.object(
+                cli.AppService, "create_backup", return_value=result
+            ) as create,
+            patch.object(cli, "_emit_json") as emit,
+        ):
+            args = cli.build_parser().parse_args(
+                ["--backup-config", "--out", "result.json"]
+            )
+            self.assertEqual(cli.run_cli(args), 0)
+        create.assert_called_once_with()
+        emit.assert_called_once_with("backup_config", result, "result.json")
+
+    def test_restore_outputs_skipped_scripts(self):
+        result = {
+            "status": "partial",
+            "restored": 2,
+            "skipped_scripts": ["missing"],
+            "pre_backup": None,
+        }
+        with (
+            patch.object(
+                cli.AppService, "restore_backup", return_value=result
+            ) as restore,
+            patch.object(cli, "_emit_json") as emit,
+        ):
+            args = cli.build_parser().parse_args(["--restore-config", "input.zip"])
+            self.assertEqual(cli.run_cli(args), 0)
+        restore.assert_called_once_with("input.zip")
+        emit.assert_called_once_with("restore_config", result, None)
+
+    def test_help_exit_zero_and_writes_file(self):
+        code = _run_main(["--help"], expect_exit=0)
+        self.assertEqual(code, 0)
+        text = _read_cli_file("help")
+        self.assertIn("OneDragon", text)
+
+    def test_version_exit_zero_and_writes_file(self):
+        code = _run_main(["--version"], expect_exit=0)
+        self.assertEqual(code, 0)
+        text = _read_cli_file("version").strip()
+        self.assertTrue(text, "--version 文件为空")
+        self.assertEqual(text, cli.get_version())
+
+    def test_get_version_reads_from_root_dir(self):
+        """源码版本从项目根读取，不按冻结后的 __file__ 上溯。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "python-backend"))
+            with open(
+                os.path.join(tmp, "python-backend", "pyproject.toml"),
+                "w",
+                encoding="utf-8",
+            ) as fh:
+                fh.write('[project]\nversion = "9.9.9"\n')
+            with patch.object(cli, "get_root_dir", return_value=tmp):
+                self.assertEqual(cli.get_version(), "9.9.9")
+
+    def test_release_version_takes_precedence_over_project_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "python-backend"))
+            for name, content in (
+                ("python-backend/pyproject.toml", '[project]\nversion = "0.0.1"\n'),
+                ("version.json", '{"version": "1.2.3", "tag": "v1.2.3"}'),
+            ):
+                with open(os.path.join(tmp, name), "w", encoding="utf-8") as output:
+                    output.write(content)
+            with patch.object(cli, "get_root_dir", return_value=tmp):
+                self.assertEqual(cli.get_version(), "1.2.3")
+                os.unlink(os.path.join(tmp, "python-backend", "pyproject.toml"))
+                self.assertEqual(cli.get_version(), "1.2.3")
+
+    def test_invalid_release_metadata_reports_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for data in ({}, [], {"version": ""}, {"version": None}):
+                with self.subTest(metadata=data):
+                    with open(
+                        os.path.join(tmp, "version.json"), "w", encoding="utf-8"
+                    ) as output:
+                        json.dump(data, output)
+                    with (
+                        patch.object(cli, "get_root_dir", return_value=tmp),
+                        self.assertRaisesRegex(ValueError, "version.json"),
+                    ):
+                        cli.get_version()
+
+
+class TestCliSelftest(CliTestCase):
+    """--selftest 出口：无头校验 AppService，退出 0 且 JSON 标记 OK。"""
+
+    def test_selftest_ok(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            out = fh.name
+        try:
+            code = _run_main(["--selftest", "--out", out], expect_exit=0)
+            self.assertEqual(code, 0)
+            self.assertTrue(os.path.isfile(out), f"--selftest 未生成 JSON: {out}")
+            with open(out, encoding="utf-8") as f:
+                data = json.load(f)
+            self.assertEqual(data.get("status"), "ok", msg=data)
+            checks = data.get("checks", {})
+            self.assertTrue(checks.get("service_ready"), msg=checks)
+            self.assertIn("script_count", checks, msg=checks)
+            self.assertTrue(checks.get("config_loaded"), msg=checks)
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+
+class TestCliGenerateChain(CliTestCase):
+    """--generate-chain 出口：产出仅含启用脚本的 yml；缺名时报错退出 1。"""
+
+    def setUp(self):
+        super().setUp()
+        self._names = _known_script_names()
+        self.assertTrue(self._names, "config.yml 不应为空脚本列表")
+        self._chainable = _chainable_script_names()
+        self.assertTrue(self._chainable, "config.yml 至少应有一个未关闭的脚本")
+        # 固定「当天全部运行」，消除 weekly_timeouts 按星期剔除脚本带来的日期敏感
+        # （如某脚本周三超时配 0 表示当天不运行，会让"应含全部脚本"的断言随机失败）。
+        self._resolve_daily = patch.object(
+            service_chain_gen, "_resolve_daily_run", return_value=True
+        )
+        self._resolve_daily.start()
+        self.addCleanup(self._resolve_daily.stop)
+
+    def test_generate_chain_selection(self):
+        target = self._chainable[0]
+        all_names = set(self._chainable)
+        for name, flags, expected in (
+            ("default", [], all_names),
+            ("all", ["--enable", "all"], all_names),
+            ("uppercase_all", ["--enable", "ALL"], all_names),
+            ("subset", ["--enable", target], {target}),
+            ("exclude", ["--exclude", target], all_names - {target}),
+        ):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                out = os.path.join(tmp, "chain.yml")
+                self.assertEqual(
+                    _run_main(
+                        ["--generate-chain", *flags, "--out", out], expect_exit=0
+                    ),
+                    0,
+                )
+                self.assertTrue(os.path.isfile(out), "--generate-chain 未产出 yml")
+                data = load_yaml(out)
+                self.assertIn("script_list", data)
+                produced = [get_script_name(s) for s in data["script_list"]]
+                self.assertEqual(set(produced), expected)
+                self.assertEqual(len(produced), len(expected))
+                self.assertIn("已生成脚本链配置", _read_cli_file("generate_chain"))
+
+    def test_unknown_selection_exits_one(self):
+        bogus = "此脚本一定不存在_XYZ"
+        assert bogus not in self._names
+        for flag in ("--enable", "--exclude"):
+            with self.subTest(flag=flag):
+                self.assertEqual(
+                    _run_main(["--generate-chain", flag, bogus], expect_exit=1), 1
+                )
+                self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
+
+    def test_generate_chain_exclude_with_enable(self):
+        """--enable 白名单后再 --exclude，交集为最终集合。
+
+        other 优先取另一个总闸开启的脚本；总闸开启的不足两个时取一个被关闭的
+        脚本充当——它本就不进链，此时产物为空，顺带验证总闸语义。
+        """
+        target = self._chainable[0]
+        rest = [n for n in self._chainable if n != target]
+        if rest:
+            other = rest[0]
+        else:
+            other = next(n for n in self._names if n not in self._chainable)
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            code = _run_main(
+                [
+                    "--generate-chain",
+                    "--enable",
+                    f"{target},{other}",
+                    "--exclude",
+                    target,
+                    "--out",
+                    out,
+                ],
+                expect_exit=0,
+            )
+            self.assertEqual(code, 0)
+            data = load_yaml(out)
+            produced = [get_script_name(s) for s in data["script_list"]]
+            self.assertEqual(
+                produced, [other] if other in self._chainable else [], msg=produced
+            )
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+
+class TestParseOverrides(unittest.TestCase):
+    """_parse_overrides：解析 '脚本名=值' 格式的覆盖参数。"""
+
+    def test_none_returns_empty(self):
+        self.assertEqual(cli._parse_overrides(None), {})
+
+    def test_empty_string_returns_empty(self):
+        self.assertEqual(cli._parse_overrides(""), {})
+
+    def test_single_pair(self):
+        self.assertEqual(cli._parse_overrides("鸣潮=凝素领域"), {"鸣潮": "凝素领域"})
+
+    def test_multiple_pairs(self):
+        result = cli._parse_overrides("鸣潮=凝素领域,崩铁=侵蚀隧洞")
+        self.assertEqual(result, {"鸣潮": "凝素领域", "崩铁": "侵蚀隧洞"})
+
+    def test_strips_whitespace(self):
+        result = cli._parse_overrides(" 鸣潮 = 凝素领域 , 崩铁 = 侵蚀隧洞 ")
+        self.assertEqual(result, {"鸣潮": "凝素领域", "崩铁": "侵蚀隧洞"})
+
+    def test_missing_equals_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            cli._parse_overrides("鸣潮凝素领域")
+        self.assertIn("缺少 '='", str(ctx.exception))
+
+    def test_empty_name_raises(self):
+        with self.assertRaises(ValueError):
+            cli._parse_overrides("=凝素领域")
+
+    def test_empty_value_raises(self):
+        with self.assertRaises(ValueError):
+            cli._parse_overrides("鸣潮=")
+
+
+class TestCliGenerateChainOverrides(CliTestCase):
+    """--weekly-start 命令行覆盖的落盘语义。
+
+    - --weekly-start：经 service.set_weekly_start 持久化到 weekly_start.yml
+      （周几跑是长期配置），不实时写子脚本 config、不并入任何 UI 状态。
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._names = _known_script_names()
+        self.assertTrue(self._names, "config.yml 不应为空脚本列表")
+        self._target = "ok-ww"
+        assert self._target in self._names, f"config.yml 缺少 {self._target}"
+
+    def test_weekly_start_persists_via_set_weekly_start(self):
+        """--weekly-start 调用 service.set_weekly_start 持久化（周几跑是长期配置），
+        不实时写子脚本 config、不并入任何 UI 状态。"""
+        with tempfile.NamedTemporaryFile("w", suffix=".yml", delete=False) as fh:
+            out = fh.name
+        try:
+            with (
+                patch.object(cli.AppService, "generate_chain", return_value=out),
+                patch.object(cli.AppService, "set_weekly_start") as mock_set,
+            ):
+                _run_main(
+                    [
+                        "--generate-chain",
+                        "--enable",
+                        self._target,
+                        "--weekly-start",
+                        f"{self._target}=4",
+                        "--out",
+                        out,
+                    ],
+                    expect_exit=0,
+                )
+            mock_set.assert_called_once_with(self._target, 4)
+        finally:
+            if os.path.exists(out):
+                os.remove(out)
+
+    def test_weekly_start_non_int_exits_one(self):
+        """--weekly-start 值不是整数 → 退出 1 并报错。"""
+        code = _run_main(
+            [
+                "--generate-chain",
+                "--enable",
+                self._target,
+                "--weekly-start",
+                f"{self._target}=abc",
+            ],
+            expect_exit=1,
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("不是整数", _read_cli_file("generate_chain"))
+
+    def test_weekly_start_out_of_range_exits_one(self):
+        """--weekly-start 值越界（0 / 8）→ 退出 1 并报错。"""
+        for bad in ("0", "8"):
+            with self.subTest(bad=bad):
+                code = _run_main(
+                    [
+                        "--generate-chain",
+                        "--enable",
+                        self._target,
+                        "--weekly-start",
+                        f"{self._target}={bad}",
+                    ],
+                    expect_exit=1,
+                )
+                self.assertEqual(code, 1)
+                self.assertIn("越界", _read_cli_file("generate_chain"))
+
+    def test_unknown_script_in_weekly_start_exits_one(self):
+        """--weekly-start 中未知脚本标识 → 退出 1 并报错。"""
+        bogus = "此脚本一定不存在_XYZ"
+        code = _run_main(
+            [
+                "--generate-chain",
+                "--enable",
+                self._target,
+                "--weekly-start",
+                f"{bogus}=4",
+            ],
+            expect_exit=1,
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("未知的脚本标识", _read_cli_file("generate_chain"))
+
+    def test_weekly_start_unsupported_script_exits_one(self):
+        """--weekly-start 对未支持周常的脚本 → 退出 1 并报错（不崩溃）。"""
+        # 找一个不支持周常的已注册脚本（如 BetterGI 原神）
+        from src.config.set_config import _CONFIGS, supports_weekly
+
+        unsupported = next(n for n in _CONFIGS if not supports_weekly(n))
+        code = _run_main(
+            [
+                "--generate-chain",
+                "--enable",
+                self._target,
+                "--weekly-start",
+                f"{unsupported}=4",
+            ],
+            expect_exit=1,
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("未支持周常", _read_cli_file("generate_chain"))
+
+
+class TestCliRunChain(CliTestCase):
+    """--run-chain 出口：配置文件不存在时退出 1 且不真正拉起 Runner。"""
+
+    def test_run_chain_missing_config_exits_one(self):
+        with tempfile.NamedTemporaryFile(suffix=".yml", delete=False) as fh:
+            missing = fh.name
+        os.unlink(missing)  # 故意不创建
+        with patch("src.utils.utils_runner.run_chain_command") as mock_run:
+            code = _run_main(["--run-chain", missing], expect_exit=1)
+        self.assertEqual(code, 1)
+        mock_run.assert_not_called()  # 缺文件时不该真正启动 Runner
+        self.assertIn("脚本链配置不存在", _read_cli_file("run_chain"))
+
+
+class TestCliScheduledRun(CliTestCase):
+    """--schedule-run 出口：解析参数并委托 chain_service.schedule_run。"""
+
+    def _run(self, argv):
+        with (
+            patch.object(
+                cli.AppService,
+                "load_config",
+                return_value={"script_list": [{"display_name": "demo"}]},
+            ),
+            patch.object(cli.AppService, "schedule_run") as mock_sched,
+        ):
+            code = _run_main(argv, expect_exit=0)
+        return code, mock_sched
+
+    def test_schedule_run_delegates_with_options(self):
+        code, mock_sched = self._run(
+            ["--schedule-run", "08:00", "--enable", "demo", "--shutdown", "60"]
+        )
+        self.assertEqual(code, 0)
+        mock_sched.assert_called_once()
+        args = mock_sched.call_args
+        self.assertEqual(args.args[0], {"demo"})  # enabled_keys 来自 --enable
+        self.assertEqual(args.args[1], "08:00")  # target_time
+        self.assertEqual(args.kwargs["chain_name"], "today")
+        self.assertFalse(args.kwargs["mute"])
+        self.assertFalse(args.kwargs["unmute"])
+        self.assertEqual(args.kwargs["shutdown_delay"], 60)
+        self.assertFalse(args.kwargs["close_running"])
+
+    def test_schedule_run_defaults(self):
+        code, mock_sched = self._run(["--schedule-run", "08:00"])
+        self.assertEqual(code, 0)
+        mock_sched.assert_called_once()
+        self.assertEqual(
+            mock_sched.call_args.args[0], {"demo"}
+        )  # 无 --enable → 全部（显式集合，来自 mock config）
+        self.assertFalse(mock_sched.call_args.kwargs["mute"])
+        self.assertFalse(mock_sched.call_args.kwargs["unmute"])
+        self.assertIsNone(mock_sched.call_args.kwargs["shutdown_delay"])
+        self.assertFalse(mock_sched.call_args.kwargs["close_running"])
+
+    def test_schedule_run_unmute_flag(self):
+        # --unmute 独立于 --mute：仅 unmute=True（运行后开启声音），不影响 mute。
+        code, mock_sched = self._run(
+            ["--schedule-run", "08:00", "--enable", "demo", "--unmute"]
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(mock_sched.call_args.kwargs["unmute"])
+        self.assertFalse(mock_sched.call_args.kwargs["mute"])
+
+    def test_schedule_run_close_running_flag(self):
+        # --close-running 透传为 close_running=True；不传则默认 True。
+        code, mock_sched = self._run(
+            ["--schedule-run", "08:00", "--enable", "demo", "--close-running"]
+        )
+        self.assertEqual(code, 0)
+        self.assertTrue(mock_sched.call_args.kwargs["close_running"])
+
+    def test_schedule_run_enable_all_is_explicit_all(self):
+        code, mock_sched = self._run(["--schedule-run", "08:00", "--enable", "all"])
+        self.assertEqual(code, 0)
+        mock_sched.assert_called_once()
+        self.assertEqual(mock_sched.call_args.args[0], {"demo"})  # --enable all → 全部
+
+    def test_schedule_run_unknown_enable_exits_one(self):
+        with (
+            patch.object(
+                cli.AppService,
+                "load_config",
+                return_value={"script_list": [{"display_name": "demo"}]},
+            ),
+            patch.object(cli.AppService, "schedule_run") as mock_sched,
+        ):
+            code = _run_main(
+                ["--schedule-run", "08:00", "--enable", "ghost"], expect_exit=1
+            )
+        self.assertEqual(code, 1)
+        mock_sched.assert_not_called()
+        self.assertIn("未知的脚本标识", _read_cli_file("schedule_run"))
+
+
+class TestCliCheckConfig(CliTestCase):
+    """--check-config 出口：校验全部脚本合法性，JSON 结果可断言。"""
+
+    def test_check_config_reports_invalid(self):
+        """夹具脚本均未安装，每个条目都必须被报告为非法。"""
+        code = _run_main(["--check-config"], expect_exit=1)
+        data = _read_cli_json("check_config")
+        self.assertEqual(data["status"], "invalid")
+        self.assertEqual(code, 1)
+        self.assertEqual(len(data["invalid"]), len(_known_script_names()))
+        # invalid 元素结构：{name, message}
+        self.assertTrue(all({"name", "message"} <= i.keys() for i in data["invalid"]))
+
+    def test_check_config_json_structure(self):
+        """JSON 结果字段完整，可被测试断言。"""
+        _run_main(["--check-config"])
+        data = _read_cli_json("check_config")
+        self.assertIn("status", data)
+        self.assertIn("script_count", data)
+        self.assertIn("invalid", data)
+
+
+class TestCliListScripts(CliTestCase):
+    """--list-scripts 出口：列出脚本名，JSON 含完整列表。"""
+
+    def test_list_scripts_matches_config(self):
+        """脚本列表与 config.yml 的 script_list 一致。"""
+        code = _run_main(["--list-scripts"], expect_exit=0)
+        self.assertEqual(code, 0)
+        data = _read_cli_json("list_scripts")
+        self.assertEqual(data["scripts"], _known_script_names())
+
+
+class TestCliGetScript(CliTestCase):
+    """--get-script 出口：查询单个脚本。"""
+
+    def setUp(self):
+        super().setUp()
+        self._names = _known_script_names()
+
+    def test_get_existing_script(self):
+        """存在的脚本 → status=ok 且返回的正是所查标识的条目。"""
+        name = self._names[0]
+        code = _run_main(["--get-script", name], expect_exit=0)
+        self.assertEqual(code, 0)
+        data = _read_cli_json("get_script")
+        self.assertEqual(data["status"], "ok")
+        # 按脚本唯一标识比较（exe 用进程名、python/bat 用 display_name），
+        # 而非 display_name，避免 external 脚本标识与展示名不一致导致的误判。
+        self.assertEqual(get_script_name(data["script"]), name)
+
+    def test_get_missing_script_exits_one(self):
+        """不存在的脚本 → status=not_found 且退出码 1。"""
+        code = _run_main(["--get-script", "不存在脚本_XYZ"], expect_exit=1)
+        self.assertEqual(code, 1)
+        data = _read_cli_json("get_script")
+        self.assertEqual(data["status"], "not_found")
+
+
+class TestCliDumpConfig(CliTestCase):
+    """--dump-config 出口：导出完整 config.yml。"""
+
+    def test_dump_config_matches_source(self):
+        """导出内容与 config.yml 一致（display_name 列表）。"""
+        code = _run_main(["--dump-config"], expect_exit=0)
+        self.assertEqual(code, 0)
+        data = _read_cli_json("dump_config")
+        # 与 config.yml 的 display_name 列表一致（dump 是原始 config.yml 导出）
+        config_path = get_config_yml_path_under_root()
+        source = load_yaml(config_path)
+        self.assertEqual(
+            [s["display_name"] for s in data["script_list"]],
+            [s["display_name"] for s in source.get("script_list", [])],
+        )
+
+
+class TestCliCheckWeekly(CliTestCase):
+    """--check-weekly 出口：校验 weekly 一致性。"""
+
+    def test_check_weekly_ok(self):
+        """weekly 与 config 一致 → status=ok 且退出码 0。"""
+        code = _run_main(["--check-weekly"], expect_exit=0)
+        self.assertEqual(code, 0)
+        data = _read_cli_json("check_weekly")
+        self.assertEqual(data["status"], "ok", msg=data)
+
+
+if __name__ == "__main__":
+    unittest.main()

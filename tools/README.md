@@ -3,7 +3,7 @@
 ## 发布包
 
 `release_package.py` 由 `deploy/build.bat` 调用：仅拷贝 Git 跟踪的
-`config/` 模板与声明、`assets/` 内置资源、`python-backend/src/gui/qml/` 和 README；QML 在发布包仍安装到 `src/gui/qml/`。
+`config/` 模板与声明、`assets/` 内置资源、`python-gui/src/gui/qml/` 和 README；QML 在发布包仍安装到 `src/gui/qml/`。
 `assets/icons/` 是编译期图标源，已嵌入 Rust EXE，Qt 使用矢量源；两种发布包都不重复拷贝它们。
 `config.yml`、`schedule.yml`、`weekly.yml`、壁纸设置与缓存、脚本链、
 日志、备份不属于发布内容；即使误跟踪了用户配置，也会阻止打包。

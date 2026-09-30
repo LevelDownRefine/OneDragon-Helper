@@ -3,8 +3,6 @@ chcp 65001 >nul
 setlocal EnableExtensions
 
 set "base=%~dp0"
-:: 将 Python 子项目加入模块搜索路径，才能使用 python -m
-set "PYTHONPATH=%base%python-backend;%PYTHONPATH%"
 
 :: 管理员提权（透传命令行参数）
 fltmc >nul 2>&1 || (
@@ -26,7 +24,7 @@ if exist "%env_script%" (
     echo [WARN] 未找到 env.bat，使用当前环境
 )
 
-:: 模块启动（GUI 主窗口：src.gui.main_window）
-python -m src.launcher %*
+:: uv sync 已把 GUI 与后端安装为可编辑包，无需拼接 PYTHONPATH。
+python -m gui.launcher %*
 
 endlocal

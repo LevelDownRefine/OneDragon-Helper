@@ -17,24 +17,24 @@
 
 ## 开发者指南
 
-同一仓库按三个子项目组织：
+同一仓库按四个子项目组织：
 
 ```text
 rust-gui/          # Rust 前端：src/、tests/、Cargo.toml
 runner/            # 脚本运行器，保留现有 submodule
 python-backend/    # Python 业务与 CLI：src/、tests/、pyproject.toml
+python-gui/        # Python 前端：src/gui、tests/、pyproject.toml
 config/           # 共享声明、配置模板与本地用户配置
 assets/           # 共享图片、图标
 tools/、deploy/   # 跨项目构建、打包、发布工具
 ```
 
-Python GUI 暂保留在 `python-backend/src/gui/`，后续单独拆出。
 根目录 `pyproject.toml` 管理 uv workspace 和 Ruff，`uv.lock` 锁定共享 Python 环境。
 
 在仓库根目录安装依赖：`uv sync --frozen`。
 
 - Rust GUI：`launcher-rust.bat`；隔离演示配置加 `--demo`。
-- Python GUI：`launcher.bat`，或 `uv run --directory python-backend python -m src.launcher`。
+- Python GUI：`launcher.bat`，或 `uv run python -m gui.launcher`。
 - Python 后端：`uv run --directory python-backend python -m src.headless serve --stdio`。
 
 构建与测试见 [TESTING.md](TESTING.md)，Rust 说明见 [rust-gui/README.md](rust-gui/README.md)。

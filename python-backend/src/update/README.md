@@ -1,7 +1,7 @@
 # python-backend/src/update — 手动更新
 
 集中助手本体的更新协议、服务、运行锁、安装事务和独立更新器，无 Qt 依赖。
-GUI 弹窗和控制器留在 `python-backend/src/gui`，通过 `AppService` 薄委托调用 `UpdateService`。
+GUI 弹窗和控制器留在 `python-gui/src/gui`，通过 `AppService` 薄委托调用 `UpdateService`。
 包导入不创建工作目录，也不检查或下载更新。
 
 | 模块 | 职责 |
@@ -13,7 +13,7 @@ GUI 弹窗和控制器留在 `python-backend/src/gui`，通过 `AppService` 薄�
 | installer.py | 程序文件替换、持久化恢复记录及失败回滚 |
 | __main__.py | 独立更新器入口；等待调用进程退出，执行安装/恢复并记录结果 |
 
-`tools/release_package.py` 共用 `package.py`；`python-backend/src/bootstrap.py` 在导入 Qt 前取得运行锁。
+`tools/release_package.py` 共用 `package.py`；`python-gui/src/gui/bootstrap.py` 在导入 Qt 前取得运行锁。
 更新器由 `deploy/OneDragon-Helper-Updater.spec` 从 `__main__.py` 打成独立 onefile EXE。
 源码调试入口为 `uv run --directory python-backend python -m src.update --help`，安装/恢复仅用于独立测试副本。
 对应测试位于 `python-backend/tests/update/`；GUI 和 Windows EXE 集成测试分别保留在原目录。

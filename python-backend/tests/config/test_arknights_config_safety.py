@@ -297,9 +297,9 @@ class TestMaaNativeConfig(unittest.TestCase):
         from types import SimpleNamespace
         from unittest.mock import MagicMock
 
+        from gui.controllers.task_card import TaskCardController
         from src.config.daily_config import get_daily_map
         from src.config.task_config import get_daily_configs
-        from src.gui.controllers.task_card import TaskCardController
 
         self.cfg._init_config()
         service = MagicMock()

@@ -1,0 +1,130 @@
+"""启动 / 运行控制器：启动全部 / 启动当前脚本 / 运行前校验 / 生成并运行链。
+
+独立 QObject，依赖 game_list / task_card / service（落盘与生成链）。
+"""
+
+import os
+import subprocess
+
+from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtWidgets import QDialog, QMessageBox
+
+from gui.dialogs import styled_msg_box
+from gui.run_confirm_dialog import RunConfirmDialog
+from src.utils import open_in_explorer
+from src.utils.utils_runner import spawn_schedule_run
+from src.utils.utils_sub_config import get_script_name
+
+
+class LaunchController(QObject):
+    toastRequested = Signal(str)
+
+    def __init__(self, game_list, task_card, app_service, toast, parent=None):
+        super().__init__(parent)
+        self._game_list = game_list
+        self._task_card = task_card
+        self._app_service = app_service
+        self._toast = toast
+
+    @Slot()
+    def launchAll(self, confirm: bool = True):
+        """启动全部：先校验，再经 spawn_schedule_run 运行。
+
+        经 ``spawn_schedule_run`` 以 now 起独立控制台进程，
+        ``chain_service.schedule_run`` 处理生成→运行→重跑→邮件/关机。
+        每日触发由系统计划独立负责，手动启动不等待。GUI 退出不影响运行。
+
+        Args:
+            confirm: 是否弹运行前确认窗（含不合法告警与调度配置回显）。GUI 打开后的
+                无人值守启动传 ``False``，直接按上次落盘的 schedule/config 启动全部。
+        """
+        enabled_script_names = {
+            g["script_name"]
+            for g, game_enabled in zip(
+                self._game_list.games, self._game_list.enabled, strict=True
+            )
+            if game_enabled
+        }
+        if not enabled_script_names:
+            self._toast("没有勾选手动运行的脚本")
+            return
+        if confirm and not self._confirm_run(enabled_script_names):
+            return
+        options = self._app_service.load_run_options()
+        msg = f"手动运行：已在新控制台窗口生成并运行链 ({len(enabled_script_names)} 个脚本)"
+        proc = spawn_schedule_run(
+            enabled_script_names,
+            "now",
+            mute=options.mute_enabled,
+            unmute=options.unmute_enabled,
+            shutdown_delay=(
+                options.shutdown_delay
+                if options.shutdown_enabled and options.shutdown_delay > 0
+                else None
+            ),
+            close_running=options.close_running_enabled,
+        )
+        if proc is None:
+            # 起进程失败（Popen 异常已被 spawn 记日志）：不报成功，引导看日志。
+            self._toast("启动失败，详见 logs/onedragon_helper.log")
+            return
+        self._toast(f"{msg}（关闭控制台即取消）")
+
+    @Slot()
+    def launchScript(self):
+        """启动当前选中脚本（直接运行，不走链）。"""
+        game = self._game_list.current_game
+        if game is None:
+            self._toast("尚无脚本")
+            return
+        target = self._app_service.resolve_launch_target(game["script_name"], "script")
+        assert "kind" in target
+        if target["kind"] == "unavailable":
+            assert "reason" in target
+            self._toast(f"{game['display_name']}：{target['reason']}")
+            return
+        if target["kind"] == "command":
+            assert all(key in target for key in ("program", "args", "cwd", "env"))
+            # service 只返回覆盖项；继承当前环境，保留 PATH 等运行依赖。
+            environment = {**os.environ, **target["env"]} if target["env"] else None
+            subprocess.Popen(
+                [target["program"], *target["args"]],
+                cwd=target["cwd"],
+                env=environment,
+            )
+        else:
+            assert target["kind"] == "association" and "path" in target
+            open_in_explorer(target["path"])  # noqa: S606 启动脚本本体
+        self._toast(f"已启动 {game['display_name']}")
+
+    def _confirm_run(self, enabled_keys: set) -> bool:
+        """运行前校验并确认。Returns: True 继续，False 取消。"""
+        config_data = self._app_service.load_config()
+        enabled_scripts = [
+            s for s in config_data["script_list"] if get_script_name(s) in enabled_keys
+        ]
+        invalid = self._app_service.collect_invalid_scripts(enabled_scripts)
+        if invalid:
+            details = "\n".join(f"· {name}：{msg}" for name, msg in invalid)
+            box = styled_msg_box(
+                None,
+                QMessageBox.Warning,
+                "脚本配置不合法",
+                f"以下脚本配置不合法，运行时会被跳过：\n{details}\n\n是否仍然运行？",
+            )
+            box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            box.setDefaultButton(QMessageBox.No)
+            if box.exec() != QMessageBox.Yes:
+                return False
+
+        # 回显 schedule 当前运行选项到确认弹窗（RunOptions 为单一 schema）。
+        options = self._app_service.load_run_options()
+        dialog = RunConfirmDialog(len(enabled_keys), options)
+        if dialog.exec() != QDialog.Accepted:
+            return False
+
+        # 弹窗勾选项的落盘（schedule.yml + 授权码凭据）整体经 service。
+        res = dialog.run_options
+        assert res is not None, "[launch] 弹窗 accept 但 run_options 为 None"
+        self._app_service.apply_run_options(res)
+        return True

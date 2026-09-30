@@ -41,7 +41,7 @@ def resource_files(root: Path, frontend: str = "qt") -> list[str]:
     manifest_frontend({"frontend": frontend})
     resources = ["config", "assets", "README.md"]
     if frontend == "qt":
-        resources.append("python-backend/src/gui/qml")
+        resources.append("python-gui/src/gui/qml")
     result = subprocess.run(
         ["git", "ls-files", "-z", "--", *resources],
         cwd=root,
@@ -49,17 +49,19 @@ def resource_files(root: Path, frontend: str = "qt") -> list[str]:
         capture_output=True,
     )
     names = sorted(result.stdout.decode("utf-8").split("\0")[:-1])
-    for name in names:
-        if not managed_path(name.removeprefix("python-backend/")):
-            raise ValueError(f"用户文件不能作为发布资源: {name}")
-        if (root / name).is_symlink():
-            raise ValueError(f"发布资源不能是符号链接: {name}")
-    # PNG 图标已编译进 Rust EXE；Qt 使用矢量图标源，发布包无需再拷贝。
-    return [
-        name.removeprefix("python-backend/")
+    packaged_names = [
+        name.removeprefix("python-gui/")
+        if name.startswith("python-gui/src/gui/qml/")
+        else name
         for name in names
-        if not name.startswith("assets/icons/")
     ]
+    for source_name, name in zip(names, packaged_names, strict=True):
+        if not managed_path(name):
+            raise ValueError(f"用户文件不能作为发布资源: {name}")
+        if (root / source_name).is_symlink():
+            raise ValueError(f"发布资源不能是符号链接: {source_name}")
+    # PNG 图标已编译进 Rust EXE；Qt 使用矢量图标源，发布包无需再拷贝。
+    return [name for name in packaged_names if not name.startswith("assets/icons/")]
 
 
 def prepare_package(
@@ -87,7 +89,7 @@ def prepare_package(
         destination = package / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         source = root / (
-            "python-backend/" + name if name.startswith("src/gui/qml/") else name
+            "python-gui/" + name if name.startswith("src/gui/qml/") else name
         )
         shutil.copy2(source, destination)
     metadata = {"version": version, "tag": tag, "commit": commit}
@@ -180,6 +182,7 @@ def test_package(root: Path, package: Path) -> int:
         env.update(
             PYTHONPATH=os.pathsep.join(
                 (
+                    str(root / "python-gui/src"),
                     str(root / "python-backend"),
                     str(root / "python-backend/src"),
                     str(root),
@@ -190,23 +193,26 @@ def test_package(root: Path, package: Path) -> int:
             ODH_RUNNER_EXE=str(sandbox / RUNNER_NAME),
             ODH_CLI_EXE=str(sandbox / CLI_EXE),
         )
-        result = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "unittest",
-                "discover",
-                "-s",
-                "python-backend/tests",
-                "-t",
-                "python-backend",
-                "-p",
-                "test_*_exe.py",
-            ],
-            cwd=root,
-            env=env,
-            check=False,
-        )
+        result_code = 0
+        for project in ("python-backend", "python-gui"):
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "unittest",
+                    "discover",
+                    "-s",
+                    f"{project}/tests",
+                    "-t",
+                    project,
+                    "-p",
+                    "test_*_exe.py",
+                ],
+                cwd=root,
+                env=env,
+                check=False,
+            )
+            result_code = result_code or result.returncode
     finally:
         try:
             directory.cleanup()
@@ -218,7 +224,7 @@ def test_package(root: Path, package: Path) -> int:
                 directory.name,
             )
     validate_package(root, package)
-    return result.returncode
+    return result_code
 
 
 def main() -> int:

@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """OneDragon-Helper GUI 主程序打包配置。
 
-入口: src/bootstrap.py → src/launcher.py (PySide6 窗口应用)
+入口: gui/bootstrap.py → gui/launcher.py (PySide6 窗口应用)
 模式: onedir (COLLECT)，config/assets 放在 exe 同级目录，可写可持久化。
 构建: uv run pyinstaller --noconfirm --clean deploy/OneDragon-Helper.spec
 """
@@ -115,8 +115,8 @@ excludes = [
 
 
 a = Analysis(
-    ['../python-backend/src/bootstrap.py'],
-    pathex=['../python-backend'],
+    ['../python-gui/src/gui/bootstrap.py'],
+    pathex=['../python-gui/src', '../python-backend'],
     binaries=_extra_dlls,
     datas=[],
     hiddenimports=hiddenimports,

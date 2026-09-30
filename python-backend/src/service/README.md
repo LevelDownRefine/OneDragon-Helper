@@ -1,7 +1,7 @@
 # python-backend/src/service — 服务层（AppService 组合根 + 平级 peer）
 
 把 set_config、runner、链生成与校验内聚为统一薄接口，对 GUI 与 CLI 暴露同一套调用面。
-从 python-backend/src/gui/ 分离而出，无 Qt 依赖，故 GUI 与 CLI 共用同一实现，也便于无头测试。
+从 python-gui/src/gui/ 分离而出，无 Qt 依赖，故 GUI 与 CLI 共用同一实现，也便于无头测试。
 
 ## 设计定位
 
@@ -10,7 +10,7 @@
 | 组合根，非协调器 peer | `AppService` 装配各 peer 并薄委托，是 GUI/CLI 唯一入口；各 peer 互不越界 |
 | 平级 peer | script_service（脚本管理）/ chain_service（链编排）互不拥有，由组合根装配 |
 | 周常运行期参数 | `weekly.yml` 的 `weekly_start` 段（周几起，条目级 `{脚本: {周常: 0 | 1~7}}`，0 = 不启用）与 `weekly_timeouts` 段的读写归 `src.utils.utils_weekly` 模块函数（无状态、无 peer 实例）；周常读写经 `src.config.set_config` 分发给脚本持有的 Weekly，落点归 `src.config.weekly`；schedule.yml 归 schedule 模块函数 |
-| 无 Qt 依赖 | 纯业务逻辑，不承载 UI 渲染（关机确认窗归 `python-backend/src/gui/shutdown_dialog.py`） |
+| 无 Qt 依赖 | 纯业务逻辑，不承载 UI 渲染（关机确认窗归 `python-gui/src/gui/shutdown_dialog.py`） |
 
 ## 文件
 
@@ -109,7 +109,7 @@ CLI 表单通过 `script_edit_view` 读取；`script.edit_save` 在传输边界�
 `AppService` 装配 `src.update.service.UpdateService`，薄委托本地状态读取、检查、下载和安装交接。
 同模块的 `UpdateSession` 保留 CLI 更新会话状态，并使用 `AppService.jobs` 执行耗时操作。
 更新协议、运行锁、安装事务和独立更新器集中在 [python-backend/src/update](../update/README.md)，无 Qt 依赖。
-GUI 的弹窗和工作线程保留在 `python-backend/src/gui`，经 AppService 调用更新服务。
+GUI 的弹窗和工作线程保留在 `python-gui/src/gui`，经 AppService 调用更新服务。
 
 ## 配置迁移
 
@@ -140,8 +140,8 @@ MainWindow  GUI  ┘                        ├─▶ daily_config 模块函数�
 
 调用方不感知 weekly 同步、链合法性校验、runner 命令构造等细节，全部内聚在 service/。
 
-`utils_shutdown.py` 不得模块级依赖 GUI 层：否则 `schedule → utils_shutdown →
-gui.dialogs → app_service → chain_service → schedule` 成环，确认窗实现于 `python-backend/src/gui/shutdown_dialog.py`，`utils_shutdown` 仅延迟 import 它。
+`utils_shutdown.py` 不依赖 GUI 层。Rust 前端通过环境变量提供确认程序；Python GUI
+由 `gui.launcher` 注册 `gui.shutdown_dialog.confirm_shutdown`，避免 service 反向导入前端。
 
 ## 每日运行
 
