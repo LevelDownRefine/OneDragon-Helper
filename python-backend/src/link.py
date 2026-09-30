@@ -97,7 +97,7 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
         result = {"kind": "association", "path": os.path.abspath(resolved)}
         if target == "game" and "game_arguments" in script:
             arguments = script["game_arguments"]
-            if not isinstance(arguments, str) or "\0" in arguments:
+            if not isinstance(arguments, str):
                 return _unavailable("游戏启动参数无效")
             if arguments:
                 result["arguments"] = arguments

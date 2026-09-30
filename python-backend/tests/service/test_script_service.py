@@ -110,7 +110,7 @@ class TestScriptEdit(ScriptServiceTestBase):
         self.init.assert_not_called()
         self.switch_factory.assert_not_called()
 
-    def test_game_arguments_save_independently_and_reject_null_characters(self):
+    def test_game_arguments_save_independently(self):
         arguments = '--profile "中文 空格" --literal "a&b"'
         self.service.update_script(
             self.edit(game_arguments=arguments, script_arguments="--script")
@@ -118,10 +118,6 @@ class TestScriptEdit(ScriptServiceTestBase):
         saved = load_yaml(str(self.config))["script_list"][0]
         self.assertEqual(saved["game_arguments"], arguments)
         self.assertEqual(saved["script_arguments"], "--script")
-        before = self.config.read_bytes()
-        with self.assertRaises(InvalidScript):
-            self.service.update_script(self.edit(game_arguments="--bad\0value"))
-        self.assertEqual(self.config.read_bytes(), before)
 
     def test_normalization_keeps_input_and_files_unchanged(self):
         edit = replace(

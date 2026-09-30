@@ -47,9 +47,6 @@ impl LaunchTarget {
             Self::Unavailable { reason } => Err(reason),
             Self::Association { path, arguments } => {
                 absolute_path(&path)?;
-                if arguments.contains('\0') {
-                    return Err("游戏启动参数无效".into());
-                }
                 crate::main_window::controllers::links::open_with_arguments(&path, &arguments)?;
                 Ok(None)
             }

@@ -83,8 +83,6 @@ def validate_edit(
         raise InvalidScript("完成检测方式无效")
     if patch["game_path"] and not os.path.isfile(patch["game_path"]):
         raise InvalidScript("游戏路径不存在")
-    if "\0" in patch["game_arguments"]:
-        raise InvalidScript("游戏启动参数不能包含空字符")
     if not patch["game_process_name"]:
         patch["kill_game_after_done"] = False
     if (
