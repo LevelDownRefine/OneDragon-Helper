@@ -24,14 +24,16 @@ class TestGameArgumentsChain(unittest.TestCase):
         arguments = '--profile "中文 空格"'
         script = {
             **_script(),
-            "game_arguments": arguments,
+            "game_command": '"D:/Game Folder/game.exe" ' + arguments,
             "script_arguments": "--script",
         }
         with tempfile.TemporaryDirectory() as directory:
             output = os.path.join(directory, "chain.yml")
             generate_chain_config({"script_list": [script]}, {"测试"}, out_path=output)
             saved = load_yaml(output)["script_list"][0]
-        self.assertEqual(saved["game_arguments"], arguments)
+        self.assertEqual(
+            saved["game_command"], '"D:/Game Folder/game.exe" ' + arguments
+        )
         self.assertEqual(saved["script_arguments"], "--script")
         self.assertNotIn("run_timeout_seconds", script)
 

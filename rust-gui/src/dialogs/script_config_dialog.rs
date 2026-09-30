@@ -34,9 +34,7 @@ pub struct Fields {
     #[serde(default)]
     game_process_name: String,
     #[serde(default)]
-    game_path: String,
-    #[serde(default)]
-    game_arguments: String,
+    game_command: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -125,8 +123,7 @@ impl ScriptEditor {
                     "script_arguments": fields.script_arguments.trim(), "check_done": fields.check_done,
                     "kill_script_after_done": fields.kill_script_after_done,
                     "kill_game_after_done": fields.kill_game_after_done, "block": fields.block,
-                    "game_process_name": fields.game_process_name.trim(), "game_path": fields.game_path.trim(),
-                    "game_arguments": fields.game_arguments.trim(),
+                    "game_process_name": fields.game_process_name.trim(), "game_command": fields.game_command.trim(),
                 },
                 "weekly_timeouts": timeouts, "switches": switches,
             }),
@@ -266,13 +263,8 @@ impl ScriptEditor {
                         .hint_text("例如 Game.exe"),
                 );
                 ui.end_row();
-                ui.label("游戏路径");
-                ui.add(crate::dialogs::common::text_input(&mut fields.game_path));
-                ui.end_row();
-                ui.label("游戏启动参数");
-                ui.add(crate::dialogs::common::text_input(
-                    &mut fields.game_arguments,
-                ));
+                ui.label("游戏启动命令");
+                ui.add(crate::dialogs::common::text_input(&mut fields.game_command));
                 ui.end_row();
             });
             ui.horizontal_wrapped(|ui| {

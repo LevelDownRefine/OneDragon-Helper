@@ -170,6 +170,7 @@ CLI 备份/恢复通过 AppService.jobs 的 JobExecutor 调用原服务；只做
 
 `AppService` 默认装配 Qt 发行版的更新服务，Rust headless 入口显式传入 `frontend="rust"`。直接更新调用与后台更新会话共用同一个 `UpdateService`，不为 Python GUI 额外装配 Rust 更新实例。
 
-游戏启动参数存入脚本条目的 `game_arguments`，与 `script_arguments` 独立。
-手动启动与运行器自动启动均保留 Windows 参数文本及双引号；空值兼容旧配置。
-自动启动仍需填写 `game_path`，由脚本自行启动的游戏不使用此参数。
+游戏启动命令存入脚本条目的 `game_command`，例如 `"D:\Game Folder\game.exe" -screen-fullscreen 0`。
+手动启动与运行器自动启动使用同一命令；含空格的路径须用双引号，参数保留原始 Windows 文本。
+空命令表示由脚本自行启动游戏，手动启动仍可反读原生游戏路径；图标使用命令中的可执行文件。
+旧 `game_path` / `game_arguments` 在读取时转换，保存后仅保留 `game_command`。

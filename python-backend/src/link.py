@@ -6,6 +6,7 @@ from src.config.script_resources import get_script_resources
 from src.config.set_config import get_game_exe_path
 from src.log import get_log_dir
 from src.utils.utils_config import config_file_path, get_script
+from src.utils.utils_game_command import game_command_of, parse_game_command
 from src.utils.utils_runner import build_script_command
 from src.utils.utils_sub_config import resolve_script_path
 
@@ -83,7 +84,15 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
     if script is None:
         return {"kind": "unavailable", "reason": "脚本已不存在，请刷新列表"}
     assert "script_path" in script
-    path = get_game_exe_path(script_name) if target == "game" else script["script_path"]
+    arguments = ""
+    if target == "game":
+        try:
+            path, arguments = parse_game_command(game_command_of(script))
+        except ValueError as exc:
+            return _unavailable(str(exc))
+        path = path or get_game_exe_path(script_name)
+    else:
+        path = script["script_path"]
     if not path:
         return {
             "kind": "unavailable",
@@ -95,12 +104,8 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
     script_type = script["script_type"] if "script_type" in script else "external"  # noqa: SIM401
     if target == "game" or script_type != "python":
         result = {"kind": "association", "path": os.path.abspath(resolved)}
-        if target == "game" and "game_arguments" in script:
-            arguments = script["game_arguments"]
-            if not isinstance(arguments, str) or "\0" in arguments:
-                return _unavailable("游戏启动参数无效")
-            if arguments:
-                result["arguments"] = arguments
+        if arguments:
+            result["arguments"] = arguments
         return result
     command, cwd, environment = build_script_command(["--script", resolved])
     # 不经传输携带整个父进程环境，仅给出运行器增加/修改的项。

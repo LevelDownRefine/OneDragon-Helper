@@ -218,7 +218,7 @@ class LaunchTargetTests(unittest.TestCase):
                     "get_script",
                     return_value={
                         "script_path": str(file),
-                        "game_arguments": arguments,
+                        "game_command": f'"{file}" {arguments}',
                         "script_arguments": "--script-only",
                     },
                 ),

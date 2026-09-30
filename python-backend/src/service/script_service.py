@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from src.config.set_config import init_config
 from src.config.task_switch import task_switch_of
 from src.utils import utils_config, utils_weekly
+from src.utils.utils_game_command import parse_game_command
 from src.utils.utils_shortcut import read_shortcut
 from src.utils.utils_sub_config import (
     default_script_entry,
@@ -22,8 +23,7 @@ _TEXT_FIELDS = (
     "script_arguments",
     "check_done",
     "game_process_name",
-    "game_path",
-    "game_arguments",
+    "game_command",
 )
 _BOOL_FIELDS = ("kill_script_after_done", "kill_game_after_done", "block")
 
@@ -81,10 +81,12 @@ def validate_edit(
         "game_or_script_closed",
     ):
         raise InvalidScript("完成检测方式无效")
-    if patch["game_path"] and not os.path.isfile(patch["game_path"]):
-        raise InvalidScript("游戏路径不存在")
-    if "\0" in patch["game_arguments"]:
-        raise InvalidScript("游戏启动参数不能包含空字符")
+    try:
+        game_path, _ = parse_game_command(patch["game_command"])
+    except ValueError as exc:
+        raise InvalidScript(str(exc)) from exc
+    if game_path and not os.path.isfile(resolve_script_path(game_path)):
+        raise InvalidScript("游戏启动文件不存在，含空格的路径须用双引号")
     if not patch["game_process_name"]:
         patch["kill_game_after_done"] = False
     if (

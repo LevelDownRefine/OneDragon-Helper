@@ -47,8 +47,7 @@ class ScriptServiceTestBase(unittest.TestCase):
                 "script_arguments": "",
                 "check_done": "script_closed",
                 "game_process_name": "YuanShen.exe",
-                "game_path": "",
-                "game_arguments": "",
+                "game_command": "",
                 "kill_script_after_done": True,
                 "kill_game_after_done": True,
                 "block": True,
@@ -94,7 +93,7 @@ class TestScriptEdit(ScriptServiceTestBase):
             {"config_patch": self.edit(check_done="unknown").config_patch},
             {
                 "config_patch": self.edit(
-                    game_path=str(self.config.parent / "missing.exe")
+                    game_command=str(self.config.parent / "missing.exe")
                 ).config_patch
             },
             {"weekly_timeouts": [None] * 6},
@@ -110,17 +109,39 @@ class TestScriptEdit(ScriptServiceTestBase):
         self.init.assert_not_called()
         self.switch_factory.assert_not_called()
 
+    def test_legacy_game_path_migrates_on_save_and_command_can_be_cleared(self):
+        legacy = self.edit().config_patch.copy()
+        legacy.pop("game_command")
+        legacy["game_path"] = str(self.config)
+        legacy["game_arguments"] = '--profile "中文 空格"'
+        self._seed(replace(self.edit(), config_patch=legacy))
+        before = self.config.read_bytes()
+        command = self.service.get_script("BetterGI")["game_command"]
+        from src.utils.utils_game_command import parse_game_command
+
+        self.assertEqual(
+            parse_game_command(command), (str(self.config), legacy["game_arguments"])
+        )
+        self.assertEqual(self.config.read_bytes(), before)
+        self.service.update_script(self.edit(game_command=""))
+        saved = load_yaml(str(self.config))["script_list"][0]
+        self.assertEqual(saved["game_command"], "")
+        self.assertNotIn("game_path", saved)
+        self.assertNotIn("game_arguments", saved)
+
     def test_game_arguments_save_independently_and_reject_null_characters(self):
         arguments = '--profile "中文 空格" --literal "a&b"'
         self.service.update_script(
-            self.edit(game_arguments=arguments, script_arguments="--script")
+            self.edit(
+                game_command=f'"{self.config}" {arguments}', script_arguments="--script"
+            )
         )
         saved = load_yaml(str(self.config))["script_list"][0]
-        self.assertEqual(saved["game_arguments"], arguments)
+        self.assertEqual(saved["game_command"], f'"{self.config}" {arguments}')
         self.assertEqual(saved["script_arguments"], "--script")
         before = self.config.read_bytes()
         with self.assertRaises(InvalidScript):
-            self.service.update_script(self.edit(game_arguments="--bad\0value"))
+            self.service.update_script(self.edit(game_command="--bad\0value"))
         self.assertEqual(self.config.read_bytes(), before)
 
     def test_normalization_keeps_input_and_files_unchanged(self):
@@ -128,7 +149,7 @@ class TestScriptEdit(ScriptServiceTestBase):
             self.edit(
                 game_process_name=" ",
                 script_arguments=" --中文 ",
-                game_arguments=' --profile "中文 空格" ',
+                game_command=f' "{self.config}" --profile "中文 空格" ',
             ),
             display_name=" 原神 ",
         )
@@ -137,7 +158,8 @@ class TestScriptEdit(ScriptServiceTestBase):
         self.assertEqual(cleaned.display_name, "原神")
         self.assertEqual(cleaned.config_patch["script_arguments"], "--中文")
         self.assertEqual(
-            cleaned.config_patch["game_arguments"], '--profile "中文 空格"'
+            cleaned.config_patch["game_command"],
+            f'"{self.config}" --profile "中文 空格"',
         )
         self.assertFalse(cleaned.config_patch["kill_game_after_done"])
         self.assertEqual(edit.display_name, " 原神 ")
@@ -278,7 +300,7 @@ class TestScriptEdit(ScriptServiceTestBase):
                 self.edit(),
                 replace(self.edit(), display_name="原神日常"),
                 self.edit(script_arguments="--test"),
-                self.edit(game_path=str(self.config)),
+                self.edit(game_command=f'"{self.config}"'),
                 replace(self.edit(), weekly_timeouts=[90] * 7),
             ):
                 with self.subTest(edit=edit), self.assertNoLogs(set_config.logger):

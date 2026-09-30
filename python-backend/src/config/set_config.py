@@ -579,7 +579,7 @@ def iter_backup_paths() -> dict[str, tuple[str, ...]]:
 def get_game_exe_path(script_name: str) -> str | None:
     """读游戏 exe 路径（供 GUI 打开游戏、取游戏图标）。
 
-    config.yml 条目里手填的 ``game_path`` 优先 —— 它是用户显式指定的；未填时才回退到脚本
+    config.yml 条目里``game_command`` 中的可执行文件路径 优先 —— 它是用户显式指定的；未填时才回退到脚本
     原生配置里的路径（脚本自管，异环那类可能指向启动器，不自启游戏的 MaaEnd 则没有）。
 
     Returns:
