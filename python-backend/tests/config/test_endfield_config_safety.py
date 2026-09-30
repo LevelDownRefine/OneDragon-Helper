@@ -1,15 +1,13 @@
 """终末地（ok-ef）config 安全性测试。
 
 日常子任务拆分后，参数与开关分居两份文件：体力本落在 ``configs/DailyBattleTask.json``，
-开关键仍在 ``configs/DailyTask.json``；周常「只买不卖」随地区建设迁到
-``configs/RegionalBuildTask.json``。夹具即这三份脱敏后的真实配置。
+开关键仍在 ``configs/DailyTask.json``。夹具即这两份脱敏后的真实配置。
 
-跑 set_daily_task / prepare_start_day，对每次落盘做全量字段 diff，断言「只动了该动的字段，
-其余（含注入的金丝雀字段）原封不动，也没串到另一份文件」。
+跑 set_daily_task，对每次落盘做全量字段 diff，断言「只动了该动的字段，其余（含注入的金丝雀
+字段）原封不动，也没串到另一份文件」。
 
-允许改动字段集合严格来自实现：
-- set_daily_task（EndfieldConfig）：数据侧仅写声明落点「体力本」，开关侧仅写「⭐刷体力」；
-- prepare_start_day（EndfieldWeekly）：仅写 _task_name="只买不卖"（顶层 bool，反相写入）。
+允许改动字段集合严格来自实现：set_daily_task（EndfieldConfig）数据侧仅写声明落点「体力本」，
+开关侧仅写「⭐刷体力」。
 """
 
 import copy
@@ -26,15 +24,12 @@ FIXTURES = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fixtures")
 
 DAILY_TASK = "data/apps/ok-ef/working/configs/DailyTask.json"
 DAILY_BATTLE_TASK = "data/apps/ok-ef/working/configs/DailyBattleTask.json"
-REGIONAL_BUILD_TASK = "data/apps/ok-ef/working/configs/RegionalBuildTask.json"
 
 # set_daily_task 只允许改动的 {文件: 字段路径集合}（= 数据落点 + 开关落点）
 ALLOWED_DUNGEON = {
     DAILY_BATTLE_TASK: {"体力本"},
     DAILY_TASK: {"⭐刷体力"},
 }
-# prepare_start_day 只允许改动的 {文件: 字段路径集合}（严格按 EndfieldWeekly 的 config 与 key）
-ALLOWED_WEEKLY = {REGIONAL_BUILD_TASK: {"只买不卖"}}
 
 
 def load_fixture(name: str) -> dict:
@@ -58,7 +53,6 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         self.seed = {
             DAILY_TASK: load_fixture("ok_ef_DailyTask.scrubbed.json"),
             DAILY_BATTLE_TASK: load_fixture("ok_ef_DailyBattleTask.scrubbed.json"),
-            REGIONAL_BUILD_TASK: load_fixture("ok_ef_RegionalBuildTask.scrubbed.json"),
         }
         for config in self.seed.values():
             inject_canaries(config)
@@ -84,11 +78,9 @@ class TestEndfieldConfigSafety(unittest.TestCase):
             p.stop()
 
     def misalign(self) -> None:
-        """把三个落点都拨到目标值的反面，逼迫后续写入真正落盘。"""
+        """把两个落点都拨到目标值的反面，逼迫写入真正落盘。"""
         self.store[DAILY_BATTLE_TASK]["体力本"] = "__WRONG__"
         self.store[DAILY_TASK]["⭐刷体力"] = False
-        # 周常启用时目标为 false（反相写入），故拨成 true。
-        self.store[REGIONAL_BUILD_TASK]["只买不卖"] = True
 
     def changed_fields(self, before: dict) -> dict[str, set[str]]:
         """各文件相对 ``before`` 实际改动的字段路径；无改动的文件不出现。"""
@@ -116,34 +108,13 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         self.assertEqual(self.store[DAILY_BATTLE_TASK]["体力本"], "枢纽区")
         self.assertTrue(self.store[DAILY_TASK]["⭐刷体力"])
 
-    # ---- prepare_start_day：只允许改 只买不卖（反相） ----
-    def test_set_weekly_only_touches_weekly_key(self):
-        cfg = EndfieldConfig()
-        self.misalign()
-        before = copy.deepcopy(self.store)
-
-        # 固定周常起始日判定，避免依赖「今天星期几」导致结果不确定
-        with patch("src.config.weekly.is_weekly_start_reached", return_value=True):
-            cfg.prepare_weekly_start_days({"卖出物资": 1})  # 周常启用 ⇒ 只买不卖=false
-
-        self.assertEqual(
-            self.changed_fields(before),
-            ALLOWED_WEEKLY,
-            "prepare_start_day 改到了不该改的字段或文件",
-        )
-        self.assertFalse(
-            self.store[REGIONAL_BUILD_TASK]["只买不卖"], "周常启用时只买不卖应为 false"
-        )
-
     # ---- 金丝雀：无关字段全程不被触碰 ----
     def test_canaries_untouched_through_full_flow(self):
         cfg = EndfieldConfig()
-        self.misalign()  # 逼两条写入路径都真正落盘
+        self.misalign()  # 逼写入真正落盘
         cfg.set_daily_task("每日任务", "能量淤积点", "枢纽区")
-        with patch("src.config.weekly.is_weekly_start_reached", return_value=True):
-            cfg.prepare_weekly_start_days({"卖出物资": 1})
 
-        for path in (DAILY_TASK, DAILY_BATTLE_TASK, REGIONAL_BUILD_TASK):
+        for path in (DAILY_TASK, DAILY_BATTLE_TASK):
             with self.subTest(config=path):
                 config = self.store[path]
                 self.assertEqual(config.get("CANARY_EXTRA"), "KEEP_ME")

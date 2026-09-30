@@ -172,14 +172,13 @@ BGI 旧配置未声明或清空 `TaskDefinitions` 时，按 `TaskEnabledList` �
 | 脚本 / 周常 | 机制类 | 落点 |
 |------|--------|------|
 | 鸣潮 / 幻梦游园 | `WutheringWavesWeekly` | `Additional Tasks to Run After Daily Task` 列表增删 `Check Weekly Garden` |
-| 终末地 / 卖出物资 | `EndfieldWeekly` | `DailyTask.json` 的「只买不卖」布尔（语义反相） |
 | 绝区零 / 迷失之地 | `ZenlessZoneZeroWeekly` | `_group.yml` 的 `app_list` 中 `lost_void.enabled` |
 | 崩铁 / 货币战争 | `SwitchWeekly` | `config.yaml` 的 `currencywars_enable`（按周几起门控） |
 | 崩铁 / 模拟宇宙 | `SwitchWeekly` | `config.yaml` 的 `universe_enable`（同上；M7A 无周几起字段） |
 | 崩铁 / 历战余响 | `EchoOfWarWeekly` | `config.yaml` 的 `echo_of_war_enable`（总开关）+ `echo_of_war_start_day_of_week`（字面起始日，交 M7A 自行门控） |
 | 粥 / 理智药剂 | `ArknightsWeekly` | 所有 FightTask 的 `UseExpiringMedicine` + `MedicineExpireDays = 8 - 周几起`；运行前只同步窗口及兜底开关 |
 
-前四条（含 `SwitchWeekly` 两条）用 `is_weekly_start_reached(start_day)` 得出「今天是否已到起始日」再写开关；历战余响写字面日、不经该门控；粥按公式直接写窗口、也不经门控。
+鸣潮、绝区零与 `SwitchWeekly` 的两条用 `is_weekly_start_reached(start_day)` 得出「今天是否已到起始日」再写开关；历战余响写字面日、不经该门控；粥按公式直接写窗口、也不经门控。
 
 > 与编辑期的 `set_start_day`（历战余响 / 粥覆写，落盘游戏侧字段、不动运行期开关）分层：`prepare_start_day` 是运行期入口，`set_start_day` 是编辑期入口。
 

@@ -201,27 +201,6 @@ class WutheringWavesWeekly(Weekly):
         self._save_config(config)
 
 
-# ---- 终末地 Arknights: Endfield：卖出物资 ----
-class EndfieldWeekly(Weekly):
-    """终末地：周常是语义反相的布尔字段（只买不卖=true → 不卖出 → 周常关）。"""
-
-    def prepare_start_day(self, start_day: int) -> None:
-        """按周几起写「只买不卖」开关（语义反相）。
-
-        Args:
-            start_day: 周几以后启用（1~7，1=周一）。
-
-        Raises:
-            AssertionError: 起始日越界。
-        """
-        self._check_start_day(start_day)
-        enabled = is_weekly_start_reached(start_day)
-        config = self._load_config()
-        # 反相：enabled=True（卖出）→ 只买不卖=false
-        safe_update(config, self._key, not enabled, self.display_name)
-        self._save_config(config)
-
-
 # ---- 绝区零 Zenless Zone Zero：迷失之地 ----
 class ZenlessZoneZeroWeekly(Weekly):
     """绝区零：周常在 _group.yml 的 app_list 里，是某条 app 条目的 enabled。"""
@@ -477,7 +456,6 @@ WEEKLY_CLASSES: dict[str, type[Weekly]] = {
     cls.__name__: cls
     for cls in (
         WutheringWavesWeekly,
-        EndfieldWeekly,
         ZenlessZoneZeroWeekly,
         SwitchWeekly,
         EchoOfWarWeekly,
