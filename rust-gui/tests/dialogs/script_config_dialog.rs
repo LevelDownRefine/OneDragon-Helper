@@ -30,6 +30,49 @@ fn form_preserves_null_timeouts_and_boolean_switches() {
 }
 
 #[test]
+fn switches_use_two_columns_and_save_clicked_state() {
+    let ctx = egui::Context::default();
+    let mut editor = editor();
+    editor.data.switches = (0..3)
+        .map(|index| TaskSwitch {
+            name: format!("Task {index}"),
+            enabled: index != 1,
+        })
+        .collect();
+    for _ in 0..12 {
+        frame(&ctx, vec2(1000.0, 1600.0), vec![], |ctx| {
+            egui::Area::new(egui::Id::new("switch-test")).show(ctx, |ui| editor.fields_ui(ui))
+        });
+    }
+    let (_, output) = frame(&ctx, vec2(1000.0, 1600.0), vec![], |ctx| {
+        egui::Area::new(egui::Id::new("switch-test")).show(ctx, |ui| editor.fields_ui(ui))
+    });
+    let first = text_rect(&output, "Task 0");
+    let second = text_rect(&output, "Task 1");
+    let third = text_rect(&output, "Task 2");
+    assert!((first.center().y - second.center().y).abs() < 1.0);
+    assert!(second.left() > first.right());
+    assert!((first.left() - third.left()).abs() < 1.0);
+    assert!(third.top() > first.bottom());
+    frame(
+        &ctx,
+        vec2(1000.0, 1600.0),
+        click(second.center(), true),
+        |ctx| egui::Area::new(egui::Id::new("switch-test")).show(ctx, |ui| editor.fields_ui(ui)),
+    );
+    frame(
+        &ctx,
+        vec2(1000.0, 1600.0),
+        click(second.center(), false),
+        |ctx| egui::Area::new(egui::Id::new("switch-test")).show(ctx, |ui| editor.fields_ui(ui)),
+    );
+    assert_eq!(
+        editor.request().unwrap().params["switches"],
+        json!({"Task 0": true, "Task 1": true, "Task 2": true})
+    );
+}
+
+#[test]
 fn escape_cancels_without_emitting_save() {
     let ctx = egui::Context::default();
     let mut editor = editor();

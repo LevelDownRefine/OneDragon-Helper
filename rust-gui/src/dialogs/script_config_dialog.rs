@@ -300,8 +300,12 @@ impl ScriptEditor {
         });
         if !self.data.switches.is_empty() {
             crate::dialogs::common::form_section(ui, "任务开关", |ui| {
-                for row in &mut self.data.switches {
-                    ui.checkbox(&mut row.enabled, &row.name);
+                for pair in self.data.switches.chunks_mut(2) {
+                    ui.columns(2, |columns| {
+                        for (index, row) in pair.iter_mut().enumerate() {
+                            columns[index].checkbox(&mut row.enabled, &row.name);
+                        }
+                    });
                 }
             });
         }
