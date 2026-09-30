@@ -300,13 +300,13 @@ class TestLegacyWeeklyStartMigration(UtilsWeeklyTestBase):
         """起始日越界 / 脚本已无周常声明的条目丢弃，其余照常迁移。"""
         self._write_weekly(
             {
-                "weekly_start": {"ok-ww": 9, "不存在的脚本": 3, "ok-ef": 6},
+                "weekly_start": {"ok-ww": 9, "不存在的脚本": 3, "MAA": 6},
                 "weekly_timeouts": {},
             }
         )
         with self.assertLogs("src.utils.utils_weekly", level="WARNING") as logs:
             start_map = get_weekly_start_map()
-        self.assertEqual(start_map, {"ok-ef": {"卖出物资": 6}})
+        self.assertEqual(start_map, {"MAA": {"理智药剂": 6}})
         self.assertEqual(len(logs.records), 3)  # 两条丢弃告警 + 一条迁移告警
         for script_name in ("ok-ww", "不存在的脚本"):
             self.assertNotIn(script_name, self._read_weekly()["weekly_start"])

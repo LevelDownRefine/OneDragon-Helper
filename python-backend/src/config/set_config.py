@@ -58,7 +58,7 @@ class ScriptConfig:
     def _daily_config_rel_path(self) -> str:
         """脚本 config 文件路径（取首个日常声明的 ``config``）。
 
-        模板对齐与「打开配置」共用该文件——脚本 config 与日常所在文件恰好同份。
+        模板对齐与「打开配置」共用它。
 
         Returns:
             相对脚本根目录的路径。

@@ -3,8 +3,8 @@
 I/O 由 Daily 自持（``_load_daily_config`` 等，直调 ``utils_sub_config``），完成「读盘 → 改内存 → 有改动才落盘」。
 声明形态与读写机制由机制类负责：基类解析标准两层，``Anomaly`` 单层带
 ``key``，``MaaDaily`` TaskQueue，``NoopDaily`` 无需适配。开关落点亦随声明而异：
-基类读主文件的 ``enable_key`` 字段，``Anomaly`` 读 ``routine`` 文件，``BgiDaily``
-按 ``enable_task`` 反查任务启用表。
+基类读 ``enable_key`` 字段（声明了 ``routine`` 就读 routine 文件），``Anomaly``
+读 ``routine`` 文件的 Routine Items，``BgiDaily`` 按 ``enable_task`` 反查任务启用表。
 ``build_dailies`` 按声明创建对象，由 ``ScriptConfig`` 在初始化时调用并持有。
 """
 
@@ -147,6 +147,34 @@ class Daily:
         save_script_config(
             self.script_name, self.script_display_name, self._routine_rel_path, routine
         )
+
+    def _load_enable_config(self, *, allow_missing: bool = False) -> dict | None:
+        """读开关所在文件。
+
+        声明了 ``routine`` 的日常，开关不在数据文件里（如 ok-ef 的每日任务：数据在
+        子任务配置、开关仍留在日常总配置），此时读 routine；否则与数据同文件。
+
+        Args:
+            allow_missing: True 时读取失败返回 None（读路径）；
+                False 时失败即报错（写路径，默认）。
+
+        Returns:
+            解析后的 config dict；allow_missing=True 且读取失败时为 None。
+        """
+        if self._routine_rel_path:
+            return self._load_routine_config(allow_missing=allow_missing)
+        return self._load_daily_config(allow_missing=allow_missing)
+
+    def _save_enable_config(self, config: dict) -> None:
+        """保存开关所在文件，与 ``_load_enable_config`` 取同一份。
+
+        Args:
+            config: 待保存的 dict。
+        """
+        if self._routine_rel_path:
+            self._save_routine_config(config)
+            return
+        self._save_daily_config(config)
 
     def _parse_landing(self, declaration: dict) -> None:
         """解析标准两层落点；其它形态的机制类覆写本方法。
@@ -304,11 +332,11 @@ class Daily:
             界面据此不提供「不启用」。
 
         Raises:
-            AssertionError: config 缺少开关字段或该字段不是布尔。
+            AssertionError: 开关所在文件缺少开关字段或该字段不是布尔。
         """
         if not self._enable_key:
             return None
-        data = self._load_daily_config(allow_missing=True)
+        data = self._load_enable_config(allow_missing=True)
         if data is None:
             return None  # 未安装/未配置：无真相
         return get_field(data, self._enable_key, self.display_name, bool)
@@ -323,13 +351,13 @@ class Daily:
             是否有实际修改；未声明 ``enable_key`` 时恒为 False。
 
         Raises:
-            AssertionError: config 未安装/未配置，或缺少开关字段。
+            AssertionError: 开关所在文件未安装/未配置，或缺少开关字段。
         """
         if not self._enable_key:
             return False
-        data = self._load_daily_config()
+        data = self._load_enable_config()
         if safe_update(data, self._enable_key, enabled, self.display_name):
-            self._save_daily_config(data)
+            self._save_enable_config(data)
             return True
         return False
 
@@ -480,27 +508,6 @@ class BgiDaily(Daily):
             )
             return None
         return task_id
-
-    def _load_enable_config(self, *, allow_missing: bool = False) -> dict | None:
-        """读开关所在文件；默认与数据同文件（一条龙配置）。
-
-        开关与数据分处两份文件的机制类覆写本方法（如幽境危战：开关在一条龙配置、数据在主配置）。
-
-        Args:
-            allow_missing: True 时读取失败返回 None（读路径）。
-
-        Returns:
-            解析后的 config dict；allow_missing=True 且读取失败时为 None。
-        """
-        return self._load_daily_config(allow_missing=allow_missing)
-
-    def _save_enable_config(self, config: dict) -> None:
-        """保存开关所在文件；默认与数据同文件。
-
-        Args:
-            config: 待保存的 dict。
-        """
-        self._save_daily_config(config)
 
     def read_enabled(self) -> bool | None:
         """反读该日常对应的原生任务是否启用。
@@ -697,25 +704,6 @@ class BgiStygianDaily(SingleLayerDaily, BgiDaily):
             段是否存在。
         """
         return self._SECTION in config
-
-    def _load_enable_config(self, *, allow_missing: bool = False) -> dict | None:
-        """读开关所在的一条龙配置。
-
-        Args:
-            allow_missing: True 时读取失败返回 None（读路径）。
-
-        Returns:
-            一条龙配置 dict；allow_missing=True 且读取失败时为 None。
-        """
-        return self._load_routine_config(allow_missing=allow_missing)
-
-    def _save_enable_config(self, config: dict) -> None:
-        """保存开关所在的一条龙配置。
-
-        Args:
-            config: 待保存的 dict。
-        """
-        self._save_routine_config(config)
 
 
 class TemplateDaily(SingleLayerDaily):

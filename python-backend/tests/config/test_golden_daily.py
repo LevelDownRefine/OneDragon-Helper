@@ -73,11 +73,14 @@ def _seed_files():
             "User/OneDragon/默认配置.json": bgi,
             "User/config.json": bgi_main,
         },
+        # 刷体力参数在子任务卡片文件，开关键仍留在日常总配置。
         "ok-ef": {
-            "data/apps/ok-ef/working/configs/DailyTask.json": {
+            "data/apps/ok-ef/working/configs/DailyBattleTask.json": {
                 "体力本": "能量淤积点-乙",
+            },
+            "data/apps/ok-ef/working/configs/DailyTask.json": {
                 "⭐刷体力": False,
-            }
+            },
         },
         "OneDragon-Launcher": {"config/01/one_dragon/charge_plan.yml": {}},
         "March7th-Launcher": {"config.yaml": {}},

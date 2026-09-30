@@ -174,11 +174,10 @@ class TestSupportsWeekly(WeeklyTestCase):
             self.assertEqual(weekly_names("ok-ww"), ["幻梦游园"])
             self.assertTrue(config_mod.supports_weekly("ok-ww"))
 
-    def test_supported_are_the_five_weekly_scripts(self):
-        """适配周常的是鸣潮/终末地/绝区零/崩铁/粥五个。"""
+    def test_supported_are_the_four_weekly_scripts(self):
+        """适配周常的是鸣潮/绝区零/崩铁/粥四个。"""
         expected = {
             "ok-ww",
-            "ok-ef",
             "OneDragon-Launcher",
             "March7th-Launcher",
             "MAA",
@@ -482,27 +481,6 @@ class TestWeeklyStartDay(WeeklyTestCase):
             if t.get("$type") == "FightTask":
                 self.assertEqual(t["MedicineExpireDays"], 5)
                 self.assertEqual(t["UseExpiringMedicine"], "SHOULD_NOT_CHANGE")
-
-
-class TestEndfieldWeekly(WeeklyTestCase):
-    """终末地：周常开关是语义反相的布尔字段。"""
-
-    def test_set_weekly_start_inverts_buy_only_flag(self):
-        """周常（卖出物资）enabled 与游戏「只买不卖」反相：开→false，关→true。"""
-        weekly = _weekly("ok-ef", "卖出物资")
-        for enabled, expected in ((True, False), (False, True)):
-            config = {"只买不卖": not expected}
-            with (
-                patch.object(weekly, "_load_config", return_value=config),
-                patch.object(weekly, "_save_config") as mock_save,
-                patch(
-                    "src.config.weekly.is_weekly_start_reached",
-                    return_value=enabled,
-                ),
-            ):
-                weekly.prepare_start_day(1)
-            self.assertEqual(config["只买不卖"], expected)
-            mock_save.assert_called_once_with(config)
 
 
 class TestEchoOfWarEditTime(WeeklyTestCase):

@@ -13,11 +13,6 @@ ok-ww:
   class: WutheringWavesWeekly
   config: data/apps/ok-ww/working/configs/DailyTask.json
   key: Additional Tasks to Run After Daily Task
-ok-ef:
-- display_name: 卖出物资
-  class: EndfieldWeekly
-  config: data/apps/ok-ef/working/configs/DailyTask.json
-  key: 只买不卖
 OneDragon-Launcher:
 - display_name: 迷失之地
   physical_name: lost_void
