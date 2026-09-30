@@ -27,7 +27,6 @@ class ScriptResources(TypedDict):
     background: NotRequired[str]
     template: NotRequired[str]
     logs: NotRequired[LogPath]
-    open_config: NotRequired[str]
 
 
 def _fields(value, required: set[str], optional: set[str], context: str) -> None:
@@ -69,7 +68,7 @@ def _validate_script(value: dict, name: str) -> None:
     _fields(
         value,
         {"backup_paths", "links"},
-        {"game", "background", "template", "logs", "open_config"},
+        {"game", "background", "template", "logs"},
         name,
     )
     assert "backup_paths" in value and "links" in value
@@ -99,7 +98,7 @@ def _validate_script(value: dict, name: str) -> None:
             f"{name}/logs/root 只支持 script / temp"
         )
         _relative_path(node["path"], f"{name}/logs/path")
-    for field in ("background", "template", "open_config"):
+    for field in ("background", "template"):
         if field in value:
             _relative_path(value[field], f"{name}/{field}")
     links = value["links"]

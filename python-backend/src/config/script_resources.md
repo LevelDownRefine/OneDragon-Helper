@@ -6,7 +6,7 @@
 
 ## 声明边界
 
-- 脚本级资源：备份范围、游戏路径所在配置及键路径、默认背景图、初始化模板、日志目录、「打开配置」的主文件、官网/B 站/GitHub 链接。
+- 脚本级资源：备份范围、游戏路径所在配置及键路径、默认背景图、初始化模板、日志目录、官网/B 站/GitHub 链接。
 - 日常、周常和任务开关的文件路径继续由各自的 `daily_task_list.yml`、`weekly_task_list.yml`、`task_switch_list.yml` 持有，不另建一层路径别名。
 - 用户机器上的安装路径仍保存在用户配置或脚本原生配置中；手填 `game_path` 仍优先。
 - 文件读写、模板合并、游戏启动器搜索、日志解析规则仍由 Python 机制类实现。YAML 不包含可执行表达式。
@@ -24,7 +24,6 @@ scripts:
     game:
       config: data/apps/ok-ef/working/configs/devices.json
       keys: [pc_full_path]
-    open_config: data/apps/ok-ef/working/configs/DailyTask.json
     logs:
       root: temp
       path: ok-ef/日常任务
@@ -41,7 +40,6 @@ scripts:
 | `game.launcher` | 启动器相对路径；异环机制用它逐层向上查找 | 通用读取不需要；异环机制要求声明 |
 | `background` | 相对脚本根目录的默认背景图 | 无脚本默认图，沿用界面回退规则 |
 | `template` | 相对助手 `config/` 的初始化模板文件 | 不做通用模板对齐 |
-| `open_config` | 相对脚本根目录、GUI「打开配置」打开的主文件 | 回落为首个日常声明的 `config` |
 | `logs.root` / `logs.path` | 根目录 `script`（脚本所在目录）或 `temp`（系统临时目录），加相对目录 | 无日志位置声明；有解析器的脚本必须声明 |
 | `links` | 完整的 `homepage`、`bilibili`、`github` HTTP(S) URL | 三项均必填 |
 

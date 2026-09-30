@@ -33,7 +33,6 @@ class TestScriptResources(unittest.TestCase):
                     "backup_paths": ["配置"],
                     "background": "图片/背景.jpg",
                     "template": "模板.json",
-                    "open_config": "配置/打开.json",
                     "game": {"config": "配置/game.json", "keys": ["nested", "exe"]},
                     "logs": {"root": "script", "path": "日志"},
                     "links": {
@@ -89,12 +88,6 @@ class TestScriptResources(unittest.TestCase):
             load_game.assert_called_once_with("demo", "配置/game.json")
             # 元数据迁移不改变 ScriptConfig 的初始化时机。
             init.assert_called_once()
-            # 「打开配置」以声明的 open_config 为准，不再跟着首个日常走。
-            with patch.object(
-                set_config, "_get_config_path_impl", return_value="配置绝对路径"
-            ) as resolve:
-                self.assertEqual(set_config.get_config_path("demo"), "配置绝对路径")
-                resolve.assert_called_once_with("demo", "配置/打开.json")
 
     def test_missing_optional_resources_and_unknown_script(self):
         node = self.data["scripts"]["demo"]
