@@ -12,6 +12,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "onedragon-python-gui",
     "onedragon-scriptchainer",
 ]
 
@@ -405,9 +406,24 @@ wheels = [
 ]
 
 [[package]]
+name = "onedragon-python-gui"
+version = "0.0.1"
+source = { editable = "python-gui" }
+dependencies = [
+    { name = "onedragon-scriptchainer" },
+    { name = "pyside6" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "onedragon-scriptchainer", editable = "python-backend" },
+    { name = "pyside6", specifier = "==6.8.0.2" },
+]
+
+[[package]]
 name = "onedragon-scriptchainer"
 version = "0.0.1"
-source = { virtual = "python-backend" }
+source = { editable = "python-backend" }
 dependencies = [
     { name = "colorama" },
     { name = "jsonrpcserver" },
@@ -417,7 +433,6 @@ dependencies = [
     { name = "psutil" },
     { name = "pycaw" },
     { name = "pyinstaller" },
-    { name = "pyside6" },
     { name = "pyuac" },
     { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "remotezip" },
@@ -436,7 +451,6 @@ requires-dist = [
     { name = "psutil", specifier = "==6.1.1" },
     { name = "pycaw", specifier = "==20220416" },
     { name = "pyinstaller", specifier = "==6.19.0" },
-    { name = "pyside6", specifier = "==6.8.0.2" },
     { name = "pyuac", specifier = "==0.0.3" },
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = "==311" },
     { name = "remotezip", specifier = "==0.12.6" },

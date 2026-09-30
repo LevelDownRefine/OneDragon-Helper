@@ -11,7 +11,7 @@ from tools.run_rust_gui import prepare_demo
 class NoGui(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname.split(".")[0] in ("PySide6", "shiboken6") or fullname.startswith(
-            "src.gui"
+            "gui"
         ):
             raise AssertionError("CLI 加载了 GUI: " + fullname)
 

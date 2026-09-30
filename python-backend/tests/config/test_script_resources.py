@@ -240,7 +240,7 @@ import importlib.abc
 import sys
 class NoGui(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        assert not fullname.startswith(("PySide6", "shiboken6", "src.gui")), fullname
+        assert not fullname.startswith(("PySide6", "shiboken6", "gui")), fullname
 sys.meta_path.insert(0, NoGui())
 sys.frozen = True
 sys.executable = {str(self.root / "OneDragon-Helper.exe")!r}

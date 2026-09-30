@@ -6,7 +6,7 @@
   按 daily_task_list 选项校验。
 
 脚本配置合法性校验（对齐 runner invalid_message）见 ``src.utils.utils_runner``。
-自 ``src.gui.chain`` 迁出：不依赖 Qt，收编到 service 层便于无头测试与 GUI/CLI 共用。
+自 ``gui.chain`` 迁出：不依赖 Qt，收编到 service 层便于无头测试与 GUI/CLI 共用。
 """
 
 import copy

@@ -233,7 +233,7 @@ class HeadlessExeTests(unittest.TestCase):
             self.assertIn(name, modules)
         self.assertFalse(
             any(
-                name.startswith(("PySide6", "shiboken6", "src.gui", "src.launcher"))
+                name.startswith(("PySide6", "shiboken6", "gui", "gui.launcher"))
                 for name in modules
             )
         )

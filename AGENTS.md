@@ -8,17 +8,17 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 
 ## 技术栈
 
-- 仓库按 `rust-gui/`、`runner/`、`python-backend/` 组织，源码和测试各归子项目。Python GUI 暂保留于 `python-backend/src/gui/`；共享 `config/`、`assets/`、`tools/`、`deploy/` 留在根目录。
+- 仓库按 `rust-gui/`、`runner/`、`python-backend/`、`python-gui/` 组织，源码和测试各归子项目；共享 `config/`、`assets/`、`tools/`、`deploy/` 留在根目录。
 - Python 3.11+；GUI 用 PySide6，原生控件加手写样式；Lint/Format 用 ruff，line-length 88，双引号。
-- Python 依赖声明于 `python-backend/pyproject.toml`，根目录 uv workspace 统一管理 `.venv/` 与 `uv.lock`，运行 `uv sync`；改代码前先 `source .venv/Scripts/activate`，或 `call env.bat`。
+- Python 依赖分别声明于 `python-backend/pyproject.toml` 和 `python-gui/pyproject.toml`，根目录 uv workspace 统一管理 `.venv/` 与 `uv.lock`，运行 `uv sync`；改代码前先 `source .venv/Scripts/activate`，或 `call env.bat`。
 - **`runner/` 是 git submodule → OneDragonRunner，独立仓库维护**：涉及 runner 的改动要进那个仓库单独提交/推送，主仓只更新 submodule 指针。
 
 ## 架构：四部分，职责单向、互不越界
 
 1. **set_config：副本配置适配器** — 把各游戏脚本异构的 config 格式/路径/字段名适配成统一接口 `set_config()`。它是 adapter 而非 facade，facade 职责归 service。详见 `python-backend/src/config/set_config.md`。
 2. **runner：脚本链运行器，submodule** — 逐条执行脚本链，`block` 字段控制阻塞/非阻塞。详见 `runner/README.md`。
-3. **gui** — 只放纯图形界面，即 QML、控制器与弹窗；**不写盘、不承载业务逻辑**，写盘统一经 service。详见 `python-backend/src/gui/README.md`。
-4. **service，外观/facade** — 整合 config 读写·UI 状态·链生成·校验·runner 命令，对 GUI/CLI 暴露统一薄接口，无 Qt 依赖，从 gui 分出。详见 `python-backend/src/service/README.md`。助手本体的手动更新内核集中在 `python-backend/src/update/`，由 AppService 薄委托；独立更新器入口为 `python-backend/src/update/__main__.py`，GUI 仍归 `python-backend/src/gui/`，详见 `python-backend/src/update/README.md`。
+3. **gui** — 只放纯图形界面，即 QML、控制器与弹窗；**不写盘、不承载业务逻辑**，写盘统一经 service。详见 `python-gui/src/gui/README.md`。
+4. **service，外观/facade** — 整合 config 读写·UI 状态·链生成·校验·runner 命令，对 GUI/CLI 暴露统一薄接口，无 Qt 依赖，从 gui 分出。详见 `python-backend/src/service/README.md`。助手本体的手动更新内核集中在 `python-backend/src/update/`，由 AppService 薄委托；独立更新器入口为 `python-backend/src/update/__main__.py`，GUI 仍归 `python-gui/src/gui/`，详见 `python-backend/src/update/README.md`。
 
 > 日常和周常分别声明于 `config/daily_task_list.yml`、`config/weekly_task_list.yml`，统一使用 `display_name / physical_name` 和递归 `options`；原神/终末地反读脚本本地资源（原神三日常：秘境读 tp.json（另含 BGI 内置的「自动选择 → 根据提升指南选择秘境」，值即该文案本身）、地脉花读 AutoLeyLineOutcrop 的地区键、首领讨伐的 boss 名单为静态表需手工跟版），鸣潮/异环通过 GitHub Action 同步选项。日常落点与读写收敛在 `Daily` 机制类（`python-backend/src/config/daily.py`，文件 I/O 由 Daily 自持、直调 utils_sub_config），日常在声明里用 `class` 标注机制类（`DAILY_CLASSES` 注册表查表）并用 `config`/`routine` 标注文件路径、`enable_key`/`enable_task` 标注开关落点（无声明即无「不启用」）、名字只来自声明；周常落点与读写收敛在 `Weekly` 类（`python-backend/src/config/weekly.py`，**一条周常一个对象**、config I/O 自持，声明每条标 `class`/`config`，机制类查 `WEEKLY_CLASSES`；日常和周常由 `ScriptConfig.__init__` 分别调用 `build_dailies` / `build_weeklies` 装配，统一持有并分发调用（`_dailies` / `_weeklies`），`weekly.py` 不持独立对象缓存；周几起是条目级（`0` = 不启用），界面入口只在任务卡（周常行的「周几起」chip，单脚本配置弹窗已无此项））；GUI 菜单由声明物化（`daily_config.get_daily_map`），加日常只改 yml；异环两个日常各一段、开关独立。脚本原生任务的开关（纯开/关、无副本落点）另立声明 `config/task_switch_list.yml`（给出该脚本的原生配置文件与任务定义/启用两个键），由 `python-backend/src/config/task_switch.py` 枚举行并按任务名反查 id 写回，界面入口是单脚本配置弹窗底部的「任务开关」区；与日常/周常互不掺和（行名取脚本配置里的任务名，脚本侧改名或增删任务自动跟上）。日志解析/失败重跑/邮件汇总之运行后动作内联于 `python-backend/src/log` 与 `service`（由 `schedule_run` 统一编排，详见 `python-backend/src/service/README.md`）；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
 

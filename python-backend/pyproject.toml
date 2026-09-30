@@ -12,7 +12,6 @@ dependencies = [
     "portalocker[win32]==4.4.0",
     "pycaw==20220416",
     "pyinstaller==6.19.0",
-    "pyside6==6.8.0.2",
     "pywin32==311; sys_platform == 'win32'",
     "requests==2.33.0",
     "remotezip==0.12.6",
@@ -21,3 +20,11 @@ dependencies = [
     "ruamel-yaml>=0.18",
     "keyring>=24.0.0",
 ]
+
+[build-system]
+requires = ["setuptools>=82"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]

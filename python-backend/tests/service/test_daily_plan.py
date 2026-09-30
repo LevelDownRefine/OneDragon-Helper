@@ -391,7 +391,7 @@ class TestWindowsDailyTask(unittest.TestCase):
         self.assertFalse(self.definition.Settings.StopIfGoingOnBatteries)
         self.assertEqual(self.definition.Settings.ExecutionTimeLimit, "PT0S")
         action = self.definition.Actions.Create.return_value
-        self.assertEqual(action.Arguments, "-m src.launcher --run-daily")
+        self.assertEqual(action.Arguments, "-m gui.launcher --run-daily")
         self.assertEqual(
             action.WorkingDirectory, os.path.join(self.task.root_dir, "python-backend")
         )
@@ -454,7 +454,7 @@ class TestWindowsDailyTask(unittest.TestCase):
         own.Definition.Actions.Count = 1
         action = own.Definition.Actions.Item.return_value
         action.Path = "/python.exe"
-        action.Arguments = "-m src.launcher --run-daily"
+        action.Arguments = "-m gui.launcher --run-daily"
         action.WorkingDirectory = self.task.root_dir
         self.folder.GetTasks.return_value = [own]
         self.assertFalse(self.task.read().matches(DailyPlanOptions(True, "08:30")))

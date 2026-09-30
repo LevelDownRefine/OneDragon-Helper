@@ -1,4 +1,4 @@
-//! Visual constants mirror python-backend/src/gui/qml/{Theme,Layout}.js.
+//! Visual constants mirror python-gui/src/gui/qml/{Theme,Layout}.js.
 use eframe::egui::{self, Color32, FontId, Pos2, Rect, Vec2, pos2, vec2};
 
 pub const SIZE: Vec2 = vec2(1280.0, 720.0);

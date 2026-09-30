@@ -3,10 +3,8 @@
 关机必须由主仓库编排（在所有运行含重跑结束之后），不能再交给 runner 子进程的
 ``--shutdown``，否则首次运行结束即拉起关机倒计时，会抢在重跑前关掉机器。
 
-确认窗是 PySide6 实现，位于 ``src.gui.shutdown_dialog``；本模块只保留「确认后执行
-shutdown 命令」的纯逻辑，弹窗经**延迟 import** 引入，避免底层反向依赖上层（否则
-``schedule → utils_shutdown → gui.dialogs → app_service → chain_service →
-schedule`` 成环）。
+确认 UI 由前端提供：Rust 前端通过环境变量声明确认程序，Python GUI 在启动时注册
+确认函数。本模块只保留「确认后执行 shutdown 命令」的纯逻辑，不导入任何 GUI。
 
 仅 Windows 下真正关机；非 Windows（CI/Linux/macOS）仅记日志跳过关机。
 """
@@ -15,6 +13,7 @@ import logging
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -25,6 +24,13 @@ _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 RUST_CONFIRM_ENV = "ODH_SHUTDOWN_UI"
 RUST_CONFIRM_EXIT = 42
+_python_confirmation: Callable[[int], bool] | None = None
+
+
+def set_shutdown_confirmation(callback: Callable[[int], bool] | None) -> None:
+    """注册当前 Python 前端的关机确认函数；None 用于测试或前端退出时清理。"""
+    global _python_confirmation
+    _python_confirmation = callback
 
 
 def rust_shutdown_supported() -> bool:
@@ -52,10 +58,7 @@ def shutdown_sys(seconds: int) -> None:
 
 
 def _confirm_shutdown(countdown: int) -> bool:
-    """弹关机确认窗并等待用户选择（GUI 实现见 :mod:`src.gui.shutdown_dialog`）。
-
-    延迟 import：GUI 层会经 ``gui.dialogs`` 反向依赖 service 层，模块级 import 成环；
-    且只有真要弹窗时才需要 GUI（非 Windows 平台根本走不到）。
+    """请求当前前端确认关机。
 
     Args:
         countdown: 倒计时秒数。
@@ -84,9 +87,10 @@ def _confirm_shutdown(countdown: int) -> bool:
             logger.error("Rust 关机确认异常退出（%d），按取消处理", result.returncode)
         return result.returncode == RUST_CONFIRM_EXIT
 
-    from src.gui.shutdown_dialog import confirm_shutdown
-
-    return confirm_shutdown(countdown)
+    if _python_confirmation is None:
+        logger.error("未注册关机确认前端，按取消处理")
+        return False
+    return _python_confirmation(countdown)
 
 
 def _run_shutdown_command(args: list[str]) -> None:

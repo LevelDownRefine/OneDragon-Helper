@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 class NoGui(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.split('.')[0] in ('PySide6', 'shiboken6') or fullname.startswith('src.gui'):
+        if fullname.split('.')[0] in ('PySide6', 'shiboken6') or fullname.startswith('gui'):
             raise AssertionError('CLI 加载了 GUI: ' + fullname)
 
 sys.meta_path.insert(0, NoGui())

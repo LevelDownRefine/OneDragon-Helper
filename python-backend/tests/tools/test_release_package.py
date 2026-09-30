@@ -15,10 +15,10 @@ from tools import release_package as release
 class TestReleasePackage(unittest.TestCase):
     def test_source_relocation_preserves_installed_qml_path(self):
         release.prepare_package(self.root, self.package, "v1.2.3")
-        source = self.root / "python-backend/src/gui/qml/main.qml"
+        source = self.root / "python-gui/src/gui/qml/main.qml"
         installed = self.package / "src/gui/qml/main.qml"
         self.assertEqual(installed.read_bytes(), source.read_bytes())
-        self.assertFalse((self.package / "python-backend").exists())
+        self.assertFalse((self.package / "python-gui").exists())
 
     def setUp(self):
         directory = self.enterContext(tempfile.TemporaryDirectory())
@@ -39,7 +39,7 @@ class TestReleasePackage(unittest.TestCase):
         for name, content in self.resources.items():
             self.write(
                 self.root,
-                "python-backend/" + name if name.startswith("src/") else name,
+                "python-gui/" + name if name.startswith("src/gui/qml/") else name,
                 content,
             )
         self.write(
@@ -50,7 +50,7 @@ class TestReleasePackage(unittest.TestCase):
             "add",
             "--",
             *[
-                "python-backend/" + name if name.startswith("src/") else name
+                "python-gui/" + name if name.startswith("src/gui/qml/") else name
                 for name in self.resources
             ],
             "python-backend/pyproject.toml",
@@ -340,7 +340,7 @@ class TestReleasePackage(unittest.TestCase):
                 self.assertEqual(
                     release.test_package(self.root, self.package), exit_code
                 )
-        self.assertEqual(len(copies), 2)
+        self.assertEqual(len(copies), 4)
         self.assertFalse((self.package / "config/config.yml").exists())
         self.assertFalse((self.package / "logs").exists())
         release.validate_package(self.root, self.package)

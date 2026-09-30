@@ -114,8 +114,8 @@ class TestBgiReadback(unittest.TestCase):
             from PySide6.QtQml import QQmlComponent, QQmlEngine, qmlRegisterSingletonInstance
             from PySide6.QtWidgets import QApplication
             from src.config.daily import Daily
-            from src.gui.controllers.background import BackgroundController
-            from src.gui.main_window import QmlBridge
+            from gui.controllers.background import BackgroundController
+            from gui.main_window import QmlBridge
             from src.service.app_service import AppService
 
             app = QApplication([])
@@ -164,7 +164,7 @@ class TestBgiReadback(unittest.TestCase):
         )
         result = subprocess.run(
             [sys.executable, "-c", code],
-            env=dict(os.environ, QT_QPA_PLATFORM="offscreen"),
+            env=dict(os.environ, QT_QPA_PLATFORM="offscreen", PYTHONUTF8="1"),
             capture_output=True,
             text=True,
             encoding="utf-8",

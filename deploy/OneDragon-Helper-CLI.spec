@@ -43,10 +43,10 @@ a = Analysis(
     datas=collect_data_files("jsonrpcserver"),
     hiddenimports=collect_submodules("keyring"),
     runtime_hooks=[str(root / "deploy/runtime_hook_utf8.py")],
-    excludes=["PySide6", "shiboken6", "src.gui", "src.launcher", "tkinter"],
+    excludes=["PySide6", "shiboken6", "gui", "gui.launcher", "tkinter"],
 )
 assert not any(
-    name.startswith(("PySide6", "shiboken6", "src.gui", "src.launcher"))
+    name.startswith(("PySide6", "shiboken6", "gui", "gui.launcher"))
     for name, *_rest in a.pure
 ), "CLI 意外包含 GUI 模块"
 pyz = PYZ(a.pure)

@@ -1,0 +1,21 @@
+[project]
+name = "onedragon-python-gui"
+version = "0.0.1"
+description = "Qt frontend for OneDragon-Helper"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "onedragon-scriptchainer==0.0.1",
+    "pyside6==6.8.0.2",
+]
+
+[build-system]
+requires = ["setuptools>=82"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["gui*"]
+
+[tool.uv.sources]
+onedragon-scriptchainer = { workspace = true }

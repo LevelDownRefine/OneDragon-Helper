@@ -234,7 +234,7 @@ class WindowsDailyTask:
                     program = sys.executable
                     args = ["--run-daily"]
                     if not getattr(sys, "frozen", False):
-                        args = ["-m", "src.launcher", *args]
+                        args = ["-m", "gui.launcher", *args]
                 action.Path = program
                 action.Arguments = subprocess.list2cmdline(args)
                 action.WorkingDirectory = self.working_directory

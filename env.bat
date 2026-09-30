@@ -5,7 +5,5 @@ set "env_script=%base%.venv\Scripts\activate.bat"
 :: 执行目标脚本
 call "%env_script%"
 
-set "PYTHONPATH=%base%python-backend;%base%python-backend\src;%base%;%PYTHONPATH%"
-
 set http_proxy=http://127.0.0.1:7890
 set https_proxy=http://127.0.0.1:7890

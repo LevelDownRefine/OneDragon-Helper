@@ -47,7 +47,7 @@ class RustPackageExeTests(unittest.TestCase):
                 modules = archive.open_embedded_archive("PYZ.pyz").toc
                 self.assertFalse(
                     any(
-                        key.startswith(("PySide6", "shiboken6", "src.gui"))
+                        key.startswith(("PySide6", "shiboken6", "gui"))
                         for key in modules
                     )
                 )

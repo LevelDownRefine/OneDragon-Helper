@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["python-backend"]
+members = ["python-backend", "python-gui"]
 
 # Ruff configuration
 [tool.ruff]
@@ -44,4 +44,4 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.ruff.lint.isort]
-known-first-party = ["src", "tests", "tools"]
+known-first-party = ["gui", "src", "tests", "tools"]

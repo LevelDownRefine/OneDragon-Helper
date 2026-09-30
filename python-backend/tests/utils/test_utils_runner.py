@@ -486,7 +486,7 @@ class TestSpawnScheduleRun(unittest.TestCase):
                     entry = (
                         [sys.executable]
                         if frozen
-                        else [sys.executable, "-m", "src.launcher"]
+                        else [sys.executable, "-m", "gui.launcher"]
                     )
                     self.assertEqual(
                         cmd,

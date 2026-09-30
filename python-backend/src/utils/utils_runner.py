@@ -476,8 +476,8 @@ def spawn_schedule_run(
     本函数是「壳」：只负责拼命令并拉起独立进程；真实实现（等待→生成→运行→关机）
     在 ``chain_service.schedule_run`` 中。
 
-    子进程须走与 GUI 相同的入口（``src.launcher``，其 ``main`` 会解析参数并路由到
-    ``run_cli``）：开发态用 ``python -m src.launcher``，冻结态直接复用 ``sys.executable``
+    子进程须走与 GUI 相同的入口（``gui.launcher``，其 ``main`` 会解析参数并路由到
+    ``run_cli``）：开发态用 ``python -m gui.launcher``，冻结态直接复用 ``sys.executable``
     （打包 exe 的入口即 ``launcher.main``）。``--schedule-run`` 的参数是目标时刻 ``HH:MM``
     （不是 ``--at``）。
 
@@ -501,7 +501,7 @@ def spawn_schedule_run(
     if getattr(sys, "frozen", False):
         command: list[str] = [sys.executable]
     else:
-        command = [sys.executable, "-m", "src.launcher"]
+        command = [sys.executable, "-m", "gui.launcher"]
     command += ["--schedule-run", target_time, "--name", chain_name]
     if mute:
         command.append("--mute")
