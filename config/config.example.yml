@@ -19,6 +19,8 @@ script_list:
   no_log_timeout_seconds: 0
   no_log_max_retries: 3
   block: true
+  game_path: 'C:\Program Files\Wuthering Waves\Wuthering Waves Game\Wuthering Waves.exe'
+  game_arguments: '-krqlv=hd'
 - display_name: 原神
   game_label: ''
   script_type: external
