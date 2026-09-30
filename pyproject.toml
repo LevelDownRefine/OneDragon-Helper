@@ -1,26 +1,5 @@
-[project]
-name = "onedragon-scriptchainer"
-version = "0.0.1"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-    "jsonrpcserver==5.0.9",
-    "colorama==0.4.6",
-    "psutil==6.1.1",
-    "packaging==26.0",
-    "portalocker[win32]==4.4.0",
-    "pycaw==20220416",
-    "pyinstaller==6.19.0",
-    "pyside6==6.8.0.2",
-    "pywin32==311; sys_platform == 'win32'",
-    "requests==2.33.0",
-    "remotezip==0.12.6",
-    "pyuac==0.0.3",
-    "ruff>=0.15.5",
-    "ruamel-yaml>=0.18",
-    "keyring>=24.0.0",
-]
+[tool.uv.workspace]
+members = ["python-backend"]
 
 # Ruff configuration
 [tool.ruff]
@@ -63,3 +42,6 @@ skip-magic-trailing-comma = false
 
 # Like Black, automatically detect the appropriate line ending.
 line-ending = "auto"
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "tests", "tools"]

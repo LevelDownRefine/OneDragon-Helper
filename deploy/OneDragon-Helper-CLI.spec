@@ -37,8 +37,8 @@ for name in sorted(ssl_names):
     binaries.append((str(found), "."))
 
 a = Analysis(
-    [str(root / "src/headless.py")],
-    pathex=[str(root)],
+    [str(root / "python-backend/src/headless.py")],
+    pathex=[str(root / "python-backend")],
     binaries=binaries,
     datas=collect_data_files("jsonrpcserver"),
     hiddenimports=collect_submodules("keyring"),

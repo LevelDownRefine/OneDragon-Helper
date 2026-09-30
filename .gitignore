@@ -237,7 +237,7 @@ config/notify_mail.yml
 config/script_chain/
 
 # 本地安全测试（不进 git，手动把关 config.yml 的 script_path 是否被非法改动）
-tests/test_local_config_paths.py
+python-backend/tests/test_local_config_paths.py
 
 # 运行日志（每日轮转，onedragon_helper.log.*）
 logs/

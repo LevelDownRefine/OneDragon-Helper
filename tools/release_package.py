@@ -17,6 +17,7 @@ from pathlib import Path
 # 作为独立脚本从 deploy/ 调用时，定位共享的纯 Python 更新包协议。
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
 from src.update.package import (  # noqa: E402
     CLI_EXE,
@@ -40,7 +41,7 @@ def resource_files(root: Path, frontend: str = "qt") -> list[str]:
     manifest_frontend({"frontend": frontend})
     resources = ["config", "assets", "README.md"]
     if frontend == "qt":
-        resources.append("src/gui/qml")
+        resources.append("python-backend/src/gui/qml")
     result = subprocess.run(
         ["git", "ls-files", "-z", "--", *resources],
         cwd=root,
@@ -49,12 +50,16 @@ def resource_files(root: Path, frontend: str = "qt") -> list[str]:
     )
     names = sorted(result.stdout.decode("utf-8").split("\0")[:-1])
     for name in names:
-        if not managed_path(name):
+        if not managed_path(name.removeprefix("python-backend/")):
             raise ValueError(f"用户文件不能作为发布资源: {name}")
         if (root / name).is_symlink():
             raise ValueError(f"发布资源不能是符号链接: {name}")
     # PNG 图标已编译进 Rust EXE；Qt 使用矢量图标源，发布包无需再拷贝。
-    return [name for name in names if not name.startswith("assets/icons/")]
+    return [
+        name.removeprefix("python-backend/")
+        for name in names
+        if not name.startswith("assets/icons/")
+    ]
 
 
 def prepare_package(
@@ -74,14 +79,17 @@ def prepare_package(
             raise ValueError(f"发布 tag 必须是 v主版本.次版本.修订版本: {tag}")
         version = tag[1:]
     else:
-        with (root / "pyproject.toml").open("rb") as source:
+        with (root / "python-backend/pyproject.toml").open("rb") as source:
             project = tomllib.load(source)
         assert "project" in project and "version" in project["project"]
         version = f"{project['project']['version']}+dev.{commit[:7]}"
     for name in names:
         destination = package / name
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(root / name, destination)
+        source = root / (
+            "python-backend/" + name if name.startswith("src/gui/qml/") else name
+        )
+        shutil.copy2(source, destination)
     metadata = {"version": version, "tag": tag, "commit": commit}
     if frontend == "rust":
         metadata["frontend"] = frontend
@@ -170,6 +178,13 @@ def test_package(root: Path, package: Path) -> int:
         shutil.copytree(package, sandbox)
         env = dict(os.environ)
         env.update(
+            PYTHONPATH=os.pathsep.join(
+                (
+                    str(root / "python-backend"),
+                    str(root / "python-backend/src"),
+                    str(root),
+                )
+            ),
             ODH_PACKAGE_DIR=str(sandbox),
             ODH_GUI_EXE=str(sandbox / EXE_NAME),
             ODH_RUNNER_EXE=str(sandbox / RUNNER_NAME),
@@ -182,9 +197,9 @@ def test_package(root: Path, package: Path) -> int:
                 "unittest",
                 "discover",
                 "-s",
-                "tests",
+                "python-backend/tests",
                 "-t",
-                ".",
+                "python-backend",
                 "-p",
                 "test_*_exe.py",
             ],

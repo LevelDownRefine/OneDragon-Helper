@@ -12,6 +12,7 @@ from pathlib import Path
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
 from src.update.package import (  # noqa: E402
     APP_EXE,
@@ -80,9 +81,9 @@ def build(root: Path, destination: Path, *, tag: str = "", test: bool = False) -
                 "--features",
                 "capture",
                 "--manifest-path",
-                str(root / "src/rust-gui/Cargo.toml"),
+                str(root / "rust-gui/Cargo.toml"),
                 "--target-dir",
-                str(root / "src/rust-gui/target"),
+                str(root / "rust-gui/target"),
             ],
             cwd=root,
             check=True,
@@ -105,7 +106,7 @@ def build(root: Path, destination: Path, *, tag: str = "", test: bool = False) -
             )
         package = staging / "OneDragon-Helper"
         shutil.copy2(
-            root / "src/rust-gui/target/release/onedragon-rust-gui.exe",
+            root / "rust-gui/target/release/onedragon-rust-gui.exe",
             package / APP_EXE,
         )
         for name in (RUNNER_EXE, UPDATER_EXE):
