@@ -48,6 +48,7 @@ class ScriptServiceTestBase(unittest.TestCase):
                 "check_done": "script_closed",
                 "game_process_name": "YuanShen.exe",
                 "game_path": "",
+                "game_arguments": "",
                 "kill_script_after_done": True,
                 "kill_game_after_done": True,
                 "block": True,
@@ -109,15 +110,31 @@ class TestScriptEdit(ScriptServiceTestBase):
         self.init.assert_not_called()
         self.switch_factory.assert_not_called()
 
+    def test_game_arguments_save_independently(self):
+        arguments = '--profile "中文 空格" --literal "a&b"'
+        self.service.update_script(
+            self.edit(game_arguments=arguments, script_arguments="--script")
+        )
+        saved = load_yaml(str(self.config))["script_list"][0]
+        self.assertEqual(saved["game_arguments"], arguments)
+        self.assertEqual(saved["script_arguments"], "--script")
+
     def test_normalization_keeps_input_and_files_unchanged(self):
         edit = replace(
-            self.edit(game_process_name=" ", script_arguments=" --中文 "),
+            self.edit(
+                game_process_name=" ",
+                script_arguments=" --中文 ",
+                game_arguments=' --profile "中文 空格" ',
+            ),
             display_name=" 原神 ",
         )
         original = self.config.read_bytes()
         cleaned = self.service.validate_script_edit(edit)
         self.assertEqual(cleaned.display_name, "原神")
         self.assertEqual(cleaned.config_patch["script_arguments"], "--中文")
+        self.assertEqual(
+            cleaned.config_patch["game_arguments"], '--profile "中文 空格"'
+        )
         self.assertFalse(cleaned.config_patch["kill_game_after_done"])
         self.assertEqual(edit.display_name, " 原神 ")
         self.assertEqual(edit.config_patch["script_arguments"], " --中文 ")

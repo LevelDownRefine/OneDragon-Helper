@@ -52,8 +52,12 @@ impl OpenJob {
     }
 }
 
-#[cfg(windows)]
 pub(crate) fn open(value: &str) -> Result<(), String> {
+    open_with_arguments(value, "")
+}
+
+#[cfg(windows)]
+pub(crate) fn open_with_arguments(value: &str, arguments: &str) -> Result<(), String> {
     use windows_sys::Win32::{
         System::Com::{
             COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize,
@@ -61,6 +65,14 @@ pub(crate) fn open(value: &str) -> Result<(), String> {
         UI::Shell::ShellExecuteW,
     };
     let path: Vec<u16> = value.encode_utf16().chain(Some(0)).collect();
+    let parameters: Vec<u16> = arguments.encode_utf16().chain(Some(0)).collect();
+    let directory: Vec<u16> = std::path::Path::new(value)
+        .parent()
+        .unwrap_or(std::path::Path::new(""))
+        .to_string_lossy()
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
     let verb: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
     // This worker owns its COM apartment; the strings remain alive for the call.
     unsafe {
@@ -75,8 +87,12 @@ pub(crate) fn open(value: &str) -> Result<(), String> {
             std::ptr::null_mut(),
             verb.as_ptr(),
             path.as_ptr(),
-            std::ptr::null(),
-            std::ptr::null(),
+            parameters.as_ptr(),
+            if arguments.is_empty() {
+                std::ptr::null()
+            } else {
+                directory.as_ptr()
+            },
             1,
         ) as isize;
         CoUninitialize();
@@ -90,7 +106,10 @@ pub(crate) fn open(value: &str) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-pub(crate) fn open(value: &str) -> Result<(), String> {
+pub(crate) fn open_with_arguments(value: &str, arguments: &str) -> Result<(), String> {
+    if !arguments.is_empty() {
+        return Err("带参数的游戏启动仅支持 Windows".into());
+    }
     let executable = if cfg!(target_os = "macos") {
         "open"
     } else {

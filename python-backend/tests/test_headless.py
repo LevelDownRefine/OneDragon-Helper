@@ -334,6 +334,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
             "check_done": "script_closed",
             "game_process_name": "",
             "game_path": "",
+            "game_arguments": "",
             "kill_script_after_done": True,
             "kill_game_after_done": True,
             "block": False,

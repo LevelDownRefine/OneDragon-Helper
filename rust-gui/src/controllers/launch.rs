@@ -15,6 +15,8 @@ use std::{
 pub enum LaunchTarget {
     Association {
         path: String,
+        #[serde(default)]
+        arguments: String,
     },
     Command {
         program: String,
@@ -43,9 +45,9 @@ impl LaunchTarget {
     fn start(self) -> Result<Option<Child>, String> {
         match self {
             Self::Unavailable { reason } => Err(reason),
-            Self::Association { path } => {
+            Self::Association { path, arguments } => {
                 absolute_path(&path)?;
-                crate::main_window::controllers::links::open(&path)?;
+                crate::main_window::controllers::links::open_with_arguments(&path, &arguments)?;
                 Ok(None)
             }
             Self::Command {

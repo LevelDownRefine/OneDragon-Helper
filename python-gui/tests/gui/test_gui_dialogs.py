@@ -233,7 +233,13 @@ class TestGamePathInput(unittest.TestCase):
 
     def test_load_restores_game_path(self):
         """打开弹窗时回填条目里已存的 game_path。"""
-        dlg = self._make_dialog({"game_path": "C:/games/Endfield.exe"})
+        dlg = self._make_dialog(
+            {
+                "game_path": "C:/games/Endfield.exe",
+                "game_arguments": '--profile "中文 空格"',
+            }
+        )
+        self.assertEqual(dlg.game_args_input.text(), '--profile "中文 空格"')
         self.assertEqual(dlg.game_path_input.text(), "C:/games/Endfield.exe")
 
     def test_load_defaults_empty(self):
@@ -248,6 +254,7 @@ class TestGamePathInput(unittest.TestCase):
         try:
             dlg = self._make_dialog({})
             dlg.game_path_input.setText(path)
+            dlg.game_args_input.setText('--profile "中文 空格"')
             with (
                 patch("gui.dialogs.styled_msg_box") as warn,
                 patch.object(SingleScriptConfigDialog, "accept"),
@@ -257,6 +264,9 @@ class TestGamePathInput(unittest.TestCase):
             os.unlink(path)
         warn.assert_not_called()
         self.assertEqual(dlg.pending_changes.config_patch["game_path"], path)
+        self.assertEqual(
+            dlg.pending_changes.config_patch["game_arguments"], '--profile "中文 空格"'
+        )
 
     def test_save_blocks_when_path_not_exists(self):
         """填了但文件不存在 → 弹警告并中止保存（不进 accept）。"""

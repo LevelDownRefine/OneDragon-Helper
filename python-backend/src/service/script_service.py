@@ -23,6 +23,7 @@ _TEXT_FIELDS = (
     "check_done",
     "game_process_name",
     "game_path",
+    "game_arguments",
 )
 _BOOL_FIELDS = ("kill_script_after_done", "kill_game_after_done", "block")
 

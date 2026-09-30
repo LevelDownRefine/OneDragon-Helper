@@ -55,6 +55,27 @@ class TestLinksGameIcon(unittest.TestCase):
         self.toast.assert_not_called()
 
 
+class TestGameArgumentsLaunch(unittest.TestCase):
+    def test_launch_passes_raw_arguments_to_system_opener(self):
+        service = MagicMock()
+        arguments = '--profile "中文 空格" --literal "a&b"'
+        service.resolve_launch_target.return_value = {
+            "kind": "association",
+            "path": "C:/Game/game.exe",
+            "arguments": arguments,
+        }
+        toast = MagicMock()
+        controller = LinksController(
+            _FakeGameList({"script_name": "demo", "display_name": "示例"}),
+            toast,
+            service,
+        )
+        with patch("gui.controllers.links.open_in_explorer") as opener:
+            controller.launchGame()
+        opener.assert_called_once_with("C:/Game/game.exe", arguments)
+        toast.assert_called_once_with("正在启动 示例…")
+
+
 class TestLinksOpenScriptConfig(unittest.TestCase):
     """openScriptConfig：委托 AppService.resolve_script_target 打开当前脚本配置文件。"""
 

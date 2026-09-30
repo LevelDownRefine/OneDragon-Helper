@@ -21,14 +21,17 @@ class LinksController(QObject):
         self._toast = toast
         self._app_service = app_service or AppService()
 
-    def _open_path(self, path: str) -> bool:
+    def _open_path(self, path: str, arguments: str = "") -> bool:
         """用系统默认程序打开；无关联程序等 OSError 转 toast 并返回 False。
 
         os.startfile 对未关联文件类型（如 .yml 无默认程序）会抛 OSError，
         从 QML 槽逃逸即崩，故统一在此收口。
         """
         try:
-            open_in_explorer(path)
+            if arguments:
+                open_in_explorer(path, arguments)
+            else:
+                open_in_explorer(path)
         except OSError as e:
             self._toast(f"无法打开：{e}")
             return False
@@ -58,7 +61,10 @@ class LinksController(QObject):
             self._toast(f"{game['display_name']}：{target['reason']}")
             return
         assert target["kind"] == "association" and "path" in target
-        if self._open_path(target["path"]):
+        arguments = ""
+        if "arguments" in target:
+            arguments = target["arguments"]
+        if self._open_path(target["path"], arguments):
             self._toast(f"正在启动 {game['display_name']}…")
 
     @Slot(result=str)

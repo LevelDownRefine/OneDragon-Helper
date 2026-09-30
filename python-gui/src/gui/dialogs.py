@@ -634,7 +634,12 @@ class SingleScriptConfigDialog(FormDialogBase):
         grid.addWidget(self.game_path_input, 7, 1, 1, 2)
 
         # 每周超时（行 8；4×2 Grid 让同列等宽，数字右对齐）
-        timeout_row = 8
+        self.game_args_input = self._make_line_edit(
+            placeholder="例如 -screen-fullscreen 0；含空格的值用双引号"
+        )
+        grid.addWidget(self._make_label("游戏参数:"), 8, 0)
+        grid.addWidget(self.game_args_input, 8, 1, 1, 2)
+        timeout_row = 9
         timeout_grid = QGridLayout()
         timeout_grid.setHorizontalSpacing(4)
         timeout_grid.setVerticalSpacing(2)
@@ -703,6 +708,8 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.kill_game_cb.setChecked(script_data.get("kill_game_after_done", False))
         self.game_process_input.setText(script_data.get("game_process_name", ""))
         self.game_path_input.setText(script_data.get("game_path", ""))
+        if "game_arguments" in script_data:
+            self.game_args_input.setText(script_data["game_arguments"])
         # 阻塞运行：缺字段视为 True（默认阻塞）
         self.block_cb.setChecked(script_data.get("block", True))
 
@@ -746,6 +753,7 @@ class SingleScriptConfigDialog(FormDialogBase):
                 "kill_game_after_done": self.kill_game_cb.isChecked(),
                 "game_process_name": self.game_process_input.text().strip(),
                 "game_path": self.game_path_input.text().strip(),
+                "game_arguments": self.game_args_input.text().strip(),
                 "block": self.block_cb.isChecked(),
             },
             weekly_timeouts=timeouts,

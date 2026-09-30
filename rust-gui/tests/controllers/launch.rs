@@ -51,7 +51,8 @@ fn bootstrap_stdin_reaches_child_and_closes_at_eof() {
 fn unavailable_and_invalid_targets_fail_before_launch() {
     assert!(
         LaunchTarget::Association {
-            path: "relative.exe".into()
+            path: "relative.exe".into(),
+            arguments: String::new()
         }
         .start()
         .is_err()
