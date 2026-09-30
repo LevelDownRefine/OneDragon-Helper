@@ -35,7 +35,7 @@ class QmlBridge(QObject):
     taskStateChanged = Signal()
     gameAdded = Signal()
 
-    def __init__(self):
+    def __init__(self, cli_client=None):
         super().__init__()
         self.app_service = AppService()
         # 组合各职责控制器：每个自管状态 + 信号；经构造注入显式依赖
@@ -44,11 +44,18 @@ class QmlBridge(QObject):
             toast=self.toastRequested.emit,
             on_reload=lambda: self._reload_games(),
         )
-        self.task_card = TaskCardController(
-            game_list=self.game_list,
-            app_service=self.app_service,
-            toast=self.toastRequested.emit,
-        )
+        if cli_client is None:
+            self.task_card = TaskCardController(
+                game_list=self.game_list,
+                app_service=self.app_service,
+                toast=self.toastRequested.emit,
+            )
+        else:
+            from gui.controllers.cli_task_card import CliTaskCardController
+
+            self.task_card = CliTaskCardController(
+                self.game_list, cli_client, self.toastRequested.emit, self
+            )
         self.background = BackgroundController(
             game_list=self.game_list,
             app_service=self.app_service,

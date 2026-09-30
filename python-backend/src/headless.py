@@ -41,7 +41,7 @@ def _parse_json(payload: str):
 def _parse_run_options(values: dict, *, require_shutdown_ui: bool = True):
     """将完整 JSON 表单转换为 RunOptions，检查类型、范围和前端能力。"""
     from src.service.schedule import RunOptions
-    from src.utils.utils_shutdown import rust_shutdown_supported
+    from src.utils.utils_shutdown import shutdown_ui_supported
 
     if not isinstance(values, dict) or set(values) != {
         field.name for field in fields(RunOptions)
@@ -59,12 +59,8 @@ def _parse_run_options(values: dict, *, require_shutdown_ui: bool = True):
     )
     if not 0 <= options.shutdown_delay <= 86400:
         raise InvalidParams("关机延迟须为 0～86400 秒")
-    if (
-        require_shutdown_ui
-        and options.shutdown_enabled
-        and not rust_shutdown_supported()
-    ):
-        raise InvalidParams("Rust 关机确认入口不可用，请关闭自动关机或重新启动前端")
+    if require_shutdown_ui and options.shutdown_enabled and not shutdown_ui_supported():
+        raise InvalidParams("关机确认入口不可用，请关闭自动关机或重新启动前端")
     if options.smtp_port and (
         not options.smtp_port.isdecimal() or not 1 <= int(options.smtp_port) <= 65535
     ):
@@ -77,7 +73,7 @@ def _parse_run_options(values: dict, *, require_shutdown_ui: bool = True):
 def _run_target(script_names: list[str], options) -> dict:
     """构造独立 CLI 运行命令，脚本名单和选项只经 stdin 传递。"""
     from src.utils import get_root_dir
-    from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+    from src.utils.utils_shutdown import SHUTDOWN_UI_ARGS_ENV, SHUTDOWN_UI_ENV
 
     args = ["run"]
     if not getattr(sys, "frozen", False):
@@ -92,8 +88,12 @@ def _run_target(script_names: list[str], options) -> dict:
             else os.path.join(get_root_dir(), "python-backend")
         ),
         "env": (
-            {RUST_CONFIRM_ENV: os.environ[RUST_CONFIRM_ENV]}
-            if RUST_CONFIRM_ENV in os.environ
+            {
+                key: os.environ[key]
+                for key in (SHUTDOWN_UI_ENV, SHUTDOWN_UI_ARGS_ENV)
+                if key in os.environ
+            }
+            if SHUTDOWN_UI_ENV in os.environ
             else {}
         ),
         "console": True,
@@ -107,12 +107,14 @@ def _run_target(script_names: list[str], options) -> dict:
 def _daily_task():
     """计划任务只保存 CLI 入口与前端路径，每次触发读取最新配置。"""
     from src.service.daily_plan import WindowsDailyTask
-    from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+    from src.utils.utils_shutdown import SHUTDOWN_UI_ARGS_ENV, SHUTDOWN_UI_ENV
 
     frontend = ""
-    if RUST_CONFIRM_ENV in os.environ:
-        frontend = os.environ[RUST_CONFIRM_ENV]
+    if SHUTDOWN_UI_ENV in os.environ:
+        frontend = os.environ[SHUTDOWN_UI_ENV]
     args = ["daily", "--shutdown-ui", frontend]
+    if SHUTDOWN_UI_ARGS_ENV in os.environ:
+        args.extend(["--shutdown-ui-args", os.environ[SHUTDOWN_UI_ARGS_ENV]])
     if not getattr(sys, "frozen", False):
         args = ["-m", "src.headless", *args]
     return WindowsDailyTask(entry=(sys.executable, args))
@@ -135,11 +137,11 @@ class HeadlessApi:
         return {"script_name": self.service.update_script(edit)}
 
     def settings_view(self):
-        from src.utils.utils_shutdown import rust_shutdown_supported
+        from src.utils.utils_shutdown import shutdown_ui_supported
 
         return {
             **self.service.settings_view(),
-            "shutdown_supported": rust_shutdown_supported(),
+            "shutdown_supported": shutdown_ui_supported(),
         }
 
     def save_startup(self, options):
@@ -163,11 +165,11 @@ class HeadlessApi:
         return self.service.apply_run_options(_parse_run_options(options))
 
     def run_view(self, script_names):
-        from src.utils.utils_shutdown import rust_shutdown_supported
+        from src.utils.utils_shutdown import shutdown_ui_supported
 
         return {
             **self.service.run_view(script_names),
-            "shutdown_supported": rust_shutdown_supported(),
+            "shutdown_supported": shutdown_ui_supported(),
         }
 
     def prepare_run(self, script_names, options, confirm_invalid):
@@ -183,17 +185,17 @@ class HeadlessApi:
         return _run_target(script_names, _parse_run_options(asdict(saved)))
 
     def plan_view(self):
-        from src.utils.utils_shutdown import rust_shutdown_supported
+        from src.utils.utils_shutdown import shutdown_ui_supported
 
         return {
             **self.service.daily_plan_view(task=_daily_task()),
-            "shutdown_supported": rust_shutdown_supported(),
+            "shutdown_supported": shutdown_ui_supported(),
         }
 
     def save_plan(self, plan):
         from src.service.daily_plan import DailyPlanOptions
         from src.service.schedule import is_valid_target_time
-        from src.utils.utils_shutdown import rust_shutdown_supported
+        from src.utils.utils_shutdown import shutdown_ui_supported
 
         if not isinstance(plan, dict) or set(plan) != {
             "enabled",
@@ -206,8 +208,8 @@ class HeadlessApi:
             plan["target_time"]
         ):
             raise InvalidParams("计划需要布尔开关与有效的 HH:MM 时间")
-        if plan["enabled"] and not rust_shutdown_supported():
-            raise InvalidParams("启用每日计划需要有效的 Windows Rust 前端")
+        if plan["enabled"] and not shutdown_ui_supported():
+            raise InvalidParams("启用每日计划需要有效的 Windows 关机确认程序")
         options = _parse_run_options(
             plan["run_options"], require_shutdown_ui=plan["enabled"]
         )
@@ -375,15 +377,26 @@ def _call(service, method: str) -> int:
     return 1 if "error" in response else 0
 
 
+def _installed_frontend() -> str:
+    """更新目标来自安装清单，与连接 CLI 的前端无关。"""
+    from src.update.package import MANIFEST, load_manifest, manifest_frontend
+    from src.utils import get_root_dir
+
+    root = Path(get_root_dir())
+    return (
+        manifest_frontend(load_manifest(root)) if (root / MANIFEST).is_file() else "qt"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """更新闸门先于配置初始化；整个 stdio 会话持有运行共享锁。"""
     arguments = sys.argv[1:] if argv is None else argv
     if getattr(sys, "frozen", False):
         from src.update.package import APP_EXE
-        from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+        from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
 
         os.environ.setdefault(
-            RUST_CONFIRM_ENV, str(Path(sys.executable).parent / APP_EXE)
+            SHUTDOWN_UI_ENV, str(Path(sys.executable).parent / APP_EXE)
         )
     if not arguments or arguments[0] not in {"call", "serve", "run", "daily", "legacy"}:
         arguments = ["legacy", "--", *arguments]
@@ -400,9 +413,9 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser(
         "run", help="从 stdin 读取一次运行配置，在独立进程中执行批量任务"
     )
-    commands.add_parser(
-        "daily", help="系统每日计划入口，读取独立计划配置"
-    ).add_argument("--shutdown-ui", required=True)
+    daily = commands.add_parser("daily", help="系统每日计划入口，读取独立计划配置")
+    daily.add_argument("--shutdown-ui", required=True)
+    daily.add_argument("--shutdown-ui-args", default="[]")
     commands.add_parser("legacy", help="原助手 CLI 参数透传").add_argument(
         "arguments", nargs=argparse.REMAINDER
     )
@@ -442,7 +455,7 @@ def _run_command(args: argparse.Namespace) -> int:
                 setup_logging()
                 install_crash_hooks()
                 config_workflow()
-                service = AppService(frontend="rust")
+                service = AppService(frontend=_installed_frontend())
             if args.command == "legacy":
                 from src.cli import build_parser, run_cli
 
@@ -451,12 +464,16 @@ def _run_command(args: argparse.Namespace) -> int:
                     arguments = arguments[1:]
                 result = run_cli(build_parser().parse_args(arguments))
                 if result is None:
-                    raise ValueError("请指定 CLI 操作；图形界面由 Rust 前端启动")
+                    raise ValueError("请指定 CLI 操作；请启动图形界面入口")
                 return result
             if args.command == "daily":
-                from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+                from src.utils.utils_shutdown import (
+                    SHUTDOWN_UI_ARGS_ENV,
+                    SHUTDOWN_UI_ENV,
+                )
 
-                os.environ[RUST_CONFIRM_ENV] = args.shutdown_ui
+                os.environ[SHUTDOWN_UI_ENV] = args.shutdown_ui
+                os.environ[SHUTDOWN_UI_ARGS_ENV] = args.shutdown_ui_args
                 service.run_daily_plan()
                 return 0
             if args.command == "run":

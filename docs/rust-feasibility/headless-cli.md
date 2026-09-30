@@ -4,7 +4,11 @@
 JSON-RPC 2.0 的解析、协议校验、方法查找、参数绑定和响应封装由
 [jsonrpcserver](https://explodinglabs.com/jsonrpcserver/dispatch/) 负责；本项目保留
 stdio 读写、明确开放的方法、表单转换、后台互斥和进程生命周期，不另建通信框架。
-Python GUI 仍直接调用 AppService，不依赖此协议。
+协议不按连接方决定发行版或业务行为。更新目标由安装清单决定（源码缺少清单时使用 Qt 默认值）。
+Python GUI 通过 `gui.cli_client.CliClient` 使用同一持久会话；任务卡已接入，其他控制器仍直接调用 AppService。
+源码启动自动接入；冻结 Qt 包只有同目录存在独立 CLI 时才接入，否则保留原任务卡路径。
+客户端不调用 waitForFinished/waitForReadyRead，结果以请求编号和信号交付，失败不重放写入。
+`CliTaskCardController` 使用脚本身份和选择代数丢弃迟到响应，包括 A→B→A。
 
 ## 两种调用方式
 
@@ -235,11 +239,14 @@ input 是 `{"script_names":[...],"options":{...}}` 的 JSON 文本；选项重�
 不会阻塞持久服务；GUI 退出不终止该进程。Windows 前端以 CREATE_NEW_CONSOLE 启动，
 worker 将 stdout/stderr 绑定 CONOUT$，stdin 保留给参数；无 Qt 导入。
 任务名、邮箱和凭据均不进入命令行。失败返回非零退出码，详细诊断在控制台和原日志。
-Windows Rust 前端将自身绝对路径传入 `ODH_SHUTDOWN_UI`，prepare 将该变量显式转交运行进程。
+Windows 前端将确认程序的绝对路径传入 `ODH_SHUTDOWN_UI`；可选 `ODH_SHUTDOWN_UI_ARGS` 是字符串数组的 JSON，
+表示程序的固定前置参数（Python 源码为 `["-m","gui.launcher"]`，Rust EXE 为 `[]`）。
+调用统一为 `程序 前置参数 --shutdown-confirm 秒数`，不用 shell。prepare 和每日计划均保留这些参数。
+参数格式或路径失效时报告不可用；确认程序只显示窗口，不执行系统关机。
 运行后仍由原 post_run 最后一步触发确认，独立 Rust 进程 `--shutdown-confirm 秒数` 只显示
 倒计时，不执行系统命令；只有退出码 42 表示确认，0 为取消，其他退出码/启动失败/超时也取消。
 指定入口失效时不回退 Qt。未指定变量的原 Python GUI 保持原确认窗；无 Qt run 的启用校验
-要求有效 Rust 入口。延迟 0 仍沿用原语义：不触发关机。
+要求有效关机确认入口。延迟 0 仍沿用原语义：不触发关机。
 
 ## 生命周期与现有边界
 

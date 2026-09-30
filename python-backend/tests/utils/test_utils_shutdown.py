@@ -23,7 +23,7 @@ class RustShutdownTests(unittest.TestCase):
             with (
                 mock.patch.object(sys, "platform", "win32"),
                 mock.patch.dict(
-                    os.environ, {utils_shutdown.RUST_CONFIRM_ENV: str(frontend)}
+                    os.environ, {utils_shutdown.SHUTDOWN_UI_ENV: str(frontend)}
                 ),
             ):
                 for code in (42, 0, 2, -1):
@@ -47,7 +47,7 @@ class RustShutdownTests(unittest.TestCase):
     def test_missing_timeout_and_start_failure_cancel_without_qt_fallback(self):
         with (
             mock.patch.dict(
-                os.environ, {utils_shutdown.RUST_CONFIRM_ENV: "missing.exe"}
+                os.environ, {utils_shutdown.SHUTDOWN_UI_ENV: "missing.exe"}
             ),
             mock.patch.object(utils_shutdown.subprocess, "run") as run,
         ):
@@ -56,9 +56,9 @@ class RustShutdownTests(unittest.TestCase):
         for error in (OSError("cannot start"), subprocess.TimeoutExpired("test", 1)):
             with (
                 self.subTest(error=type(error).__name__),
-                mock.patch.dict(os.environ, {utils_shutdown.RUST_CONFIRM_ENV: "fake"}),
+                mock.patch.dict(os.environ, {utils_shutdown.SHUTDOWN_UI_ENV: "fake"}),
                 mock.patch.object(
-                    utils_shutdown, "rust_shutdown_supported", return_value=True
+                    utils_shutdown, "shutdown_ui_supported", return_value=True
                 ),
                 mock.patch.object(utils_shutdown.subprocess, "run", side_effect=error),
                 self.assertLogs("src.utils.utils_shutdown", level="ERROR") as logs,

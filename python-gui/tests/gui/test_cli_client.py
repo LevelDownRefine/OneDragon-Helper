@@ -1,0 +1,263 @@
+"""真实管道与 Qt 事件循环验证异步客户端，所有子进程均为临时测试程序。"""
+
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+
+from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
+
+from gui.cli_client import CliClient, CliFailure
+from gui.controllers.cli_task_card import CliTaskCardController
+from tests.gui.helpers import get_app
+
+CHILD = """
+import json, sys, time
+for line in sys.stdin:
+    request = json.loads(line)
+    method = request['method']
+    if method == 'hang':
+        time.sleep(10)
+    if method == 'exit':
+        sys.exit(2)
+    sys.stderr.write('diagnostic' * 10000)
+    sys.stderr.flush()
+    response = {'jsonrpc': '2.0', 'id': request['id'], 'result': request['params']}
+    if method == 'null':
+        response['result'] = None
+    if method == 'wrong-id':
+        response['id'] += 1
+    if method == 'error':
+        response.pop('result')
+        response['error'] = {'code': -32002, 'message': 'partial write',
+                             'data': {'refresh_required': True}}
+    data = (json.dumps(response, ensure_ascii=False) + '\\n').encode('utf-8')
+    sys.stdout.buffer.write(data[:3]); sys.stdout.buffer.flush()
+    sys.stdout.buffer.write(data[3:]); sys.stdout.buffer.flush()
+"""
+
+
+class CliClientTests(unittest.TestCase):
+    def setUp(self):
+        get_app()
+        self.temporary = self.enterContext(tempfile.TemporaryDirectory())
+        self.script = Path(self.temporary) / "child.py"
+        self.script.write_text(CHILD, encoding="utf-8")
+        self.client = CliClient(
+            sys.executable, [str(self.script)], self.temporary, timeout_ms=500
+        )
+        self.results = []
+        self.errors = []
+        self.client.succeeded.connect(lambda *args: self.results.append(args))
+        self.client.failed.connect(lambda *args: self.errors.append(args))
+        self.addCleanup(self.close_client)
+
+    def wait_for(self, predicate):
+        loop = QEventLoop()
+        poll = QTimer()
+        poll.setInterval(5)
+        poll.timeout.connect(lambda: loop.quit() if predicate() else None)
+        poll.start()
+        deadline = QTimer()
+        deadline.setSingleShot(True)
+        deadline.timeout.connect(loop.quit)
+        deadline.start(5000)
+        if not predicate():
+            loop.exec()
+        self.assertTrue(predicate(), (self.results, self.errors))
+
+    def close_client(self):
+        self.client.close()
+        self.wait_for(lambda: not self.client.running)
+
+    def test_queue_utf8_fragmented_response_null_and_rpc_error(self):
+        first = self.client.request("echo", {"文案": "中文"})
+        second = self.client.request("null")
+        third = self.client.request("error")
+        fourth = self.client.request("echo", {"after": True})
+        self.wait_for(lambda: len(self.results) + len(self.errors) == 4)
+        self.assertEqual(
+            self.results,
+            [(first, {"文案": "中文"}), (second, None), (fourth, {"after": True})],
+        )
+        self.assertEqual(self.errors, [(third, CliFailure(-32002, "partial write"))])
+
+    def assert_transport_failure(self, method):
+        first = self.client.request(method)
+        second = self.client.request("echo")
+        self.wait_for(lambda: len(self.errors) == 2)
+        self.assertEqual([row[0] for row in self.errors], [first, second])
+        self.assertTrue(all(row[1].code == "transport_failed" for row in self.errors))
+        self.assertEqual(self.results, [])
+        with self.assertRaises(RuntimeError):
+            self.client.request("echo")
+
+    def test_wrong_id_breaks_session_without_replay(self):
+        self.assert_transport_failure("wrong-id")
+
+    def test_process_exit_fails_active_and_queued(self):
+        self.assert_transport_failure("exit")
+
+    def test_timeout_fails_active_and_queued(self):
+        self.assert_transport_failure("hang")
+
+    def test_close_drains_queue_then_eof(self):
+        first = self.client.request("echo", {"saved": True})
+        self.client.close()
+        self.wait_for(lambda: len(self.results) == 1 and not self.client.running)
+        self.assertEqual(self.results, [(first, {"saved": True})])
+        self.assertEqual(self.errors, [])
+
+    def test_real_headless_session_uses_same_protocol_without_gui_imports(self):
+        project = Path(__file__).resolve().parents[3]
+        config = Path(self.temporary) / "config"
+        config.mkdir()
+        for source in (project / "config").iterdir():
+            if source.is_file() and source.suffix in {".yml", ".json"}:
+                shutil.copyfile(source, config / source.name)
+        (config / "config.example.yml").write_text(
+            "script_list:\n- display_name: 自定义\n  script_path: custom.py\n",
+            encoding="utf-8",
+        )
+        (Path(self.temporary) / "custom.py").touch()
+        self.script.write_text(
+            "import sys, runpy, importlib.abc\n"
+            "from unittest.mock import patch\n"
+            f"sys.path.insert(0, {str(project / 'python-backend')!r})\n"
+            "class NoGui(importlib.abc.MetaPathFinder):\n"
+            "    def find_spec(self, fullname, path=None, target=None):\n"
+            "        if fullname.startswith(('gui', 'PySide6', 'shiboken6')):\n"
+            "            raise AssertionError(fullname)\n"
+            "sys.meta_path.insert(0, NoGui())\n"
+            "sys.argv = ['headless', 'serve', '--stdio']\n"
+            f"with patch('src.utils.get_root_dir', return_value={self.temporary!r}):\n"
+            "    runpy.run_module('src.headless', run_name='__main__')\n",
+            encoding="utf-8",
+        )
+        self.client._timer.setInterval(10000)
+        first = self.client.request("app.snapshot")
+        second = self.client.request("script.view", {"script_name": "自定义"})
+        self.wait_for(lambda: len(self.results) + len(self.errors) == 2)
+        self.assertEqual(self.errors, [])
+        self.assertEqual(self.results[0][0], first)
+        self.assertEqual(self.results[0][1]["scripts"][0]["display_name"], "自定义")
+        self.assertEqual(self.results[1][0], second)
+        self.assertEqual(self.results[1][1]["dailies"], [])
+        self.assertEqual(self.results[1][1]["weeklies"], [])
+
+
+class FakeClient(QObject):
+    succeeded = Signal(int, object)
+    failed = Signal(int, object)
+
+    def __init__(self):
+        super().__init__()
+        self.requests = []
+
+    def request(self, method, params):
+        self.requests.append((method, params))
+        return len(self.requests)
+
+
+class CliTaskCardTests(unittest.TestCase):
+    def setUp(self):
+        get_app()
+        self.client = FakeClient()
+        self.games = SimpleNamespace(
+            current_game={"script_name": "A", "display_name": "A"}
+        )
+        self.messages = []
+        self.card = CliTaskCardController(self.games, self.client, self.messages.append)
+
+    def view(self, name):
+        return {
+            "script": {"script_name": name, "adapted": True},
+            "dailies": [],
+            "weeklies": [],
+        }
+
+    def test_switch_discards_old_response_including_a_b_a(self):
+        self.card.refresh()
+        self.games.current_game["script_name"] = "B"
+        self.card.refresh()
+        self.games.current_game["script_name"] = "A"
+        self.card.refresh()
+        self.client.succeeded.emit(1, self.view("old-A"))
+        self.client.succeeded.emit(2, self.view("B"))
+        self.assertFalse(self.card.task_adapted)
+        self.client.succeeded.emit(3, self.view("A"))
+        self.assertEqual(self.card._view["script"]["script_name"], "A")
+
+    def test_write_success_and_partial_error_refresh_without_replay(self):
+        self.card.selectDaily("daily", "task", 1)
+        self.client.succeeded.emit(1, None)
+        self.assertEqual(
+            [row[0] for row in self.client.requests], ["daily.select", "script.view"]
+        )
+        self.client.failed.emit(2, CliFailure("transport_failed", "refresh failed"))
+        self.assertEqual(len(self.client.requests), 2)
+        self.card.selectWeeklyStart("weekly", 2)
+        self.client.failed.emit(3, CliFailure(-32002, "partial"))
+        self.assertEqual(
+            [row[0] for row in self.client.requests],
+            ["daily.select", "script.view", "weekly.start", "script.view"],
+        )
+        self.assertEqual(self.messages, ["refresh failed", "partial"])
+
+    def test_protocol_records_are_presented_by_gui(self):
+        self.card.refresh()
+        view = self.view("A")
+        values = [
+            {
+                "display_name": "副本",
+                "physical_name": "dungeon",
+                "options": {"values": [{"display_name": "线路", "physical_name": 1}]},
+            }
+        ]
+        view["dailies"] = [
+            {
+                "name": "日常",
+                "task": "副本",
+                "sequence": 1,
+                "enabled": False,
+                "options": {"values": values},
+            }
+        ]
+        view["weeklies"] = [
+            {
+                "name": "周常",
+                "task": None,
+                "start_day": 0,
+                "options": {"values": values},
+            }
+        ]
+        self.client.succeeded.emit(1, view)
+        self.assertEqual(
+            self.card.daily_items,
+            [
+                {
+                    "name": "日常",
+                    "task_label": "不启用",
+                    "can_disable": True,
+                    "disabled": True,
+                }
+            ],
+        )
+        self.assertEqual(self.card.daily_options("日常"), values)
+        self.assertEqual(self.card.weekly_task_options("周常"), values)
+        self.assertEqual(
+            self.card.weekly_items,
+            [
+                {
+                    "name": "周常",
+                    "has_task": True,
+                    "task_label": "选择副本",
+                    "start_set": True,
+                    "start_label": "不启用",
+                }
+            ],
+        )
+        view["dailies"][0]["enabled"] = True
+        self.assertEqual(self.card.daily_items[0]["task_label"], "副本 · 线路")

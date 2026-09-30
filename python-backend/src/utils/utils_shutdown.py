@@ -9,6 +9,7 @@
 仅 Windows 下真正关机；非 Windows（CI/Linux/macOS）仅记日志跳过关机。
 """
 
+import json
 import logging
 import os
 import subprocess
@@ -22,8 +23,9 @@ logger = logging.getLogger(__name__)
 # 保证同一份代码在 Linux/macOS CI 上也能正常执行（不创建隐藏窗口）。
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-RUST_CONFIRM_ENV = "ODH_SHUTDOWN_UI"
-RUST_CONFIRM_EXIT = 42
+SHUTDOWN_UI_ENV = "ODH_SHUTDOWN_UI"
+SHUTDOWN_UI_ARGS_ENV = "ODH_SHUTDOWN_UI_ARGS"
+SHUTDOWN_CONFIRM_EXIT = 42
 _python_confirmation: Callable[[int], bool] | None = None
 
 
@@ -33,12 +35,21 @@ def set_shutdown_confirmation(callback: Callable[[int], bool] | None) -> None:
     _python_confirmation = callback
 
 
-def rust_shutdown_supported() -> bool:
-    """只有显式指定的 Windows Rust 前端可承接无 Qt 确认。"""
-    if sys.platform != "win32" or RUST_CONFIRM_ENV not in os.environ:
+def shutdown_ui_supported() -> bool:
+    """显式指定的 Windows 程序可承接关机确认。"""
+    if sys.platform != "win32" or SHUTDOWN_UI_ENV not in os.environ:
         return False
-    path = Path(os.environ[RUST_CONFIRM_ENV])
-    return path.is_absolute() and path.is_file()
+    path = Path(os.environ[SHUTDOWN_UI_ENV])
+    if not path.is_absolute() or not path.is_file():
+        return False
+    if SHUTDOWN_UI_ARGS_ENV in os.environ:
+        try:
+            args = json.loads(os.environ[SHUTDOWN_UI_ARGS_ENV])
+        except ValueError as exc:
+            logger.error("关机确认参数无效：%s: %s", type(exc).__name__, exc)
+            return False
+        return isinstance(args, list) and all(isinstance(arg, str) for arg in args)
+    return True
 
 
 def shutdown_sys(seconds: int) -> None:
@@ -66,26 +77,33 @@ def _confirm_shutdown(countdown: int) -> bool:
     Returns:
         确认返回 True；取消/关窗/弹窗失败返回 False。
     """
-    if RUST_CONFIRM_ENV in os.environ:
-        if not rust_shutdown_supported():
-            logger.error("Rust 关机确认入口不可用，按取消处理")
+    if SHUTDOWN_UI_ENV in os.environ:
+        if not shutdown_ui_supported():
+            logger.error("关机确认入口不可用，按取消处理")
             return False
         try:
             result = subprocess.run(
-                [os.environ[RUST_CONFIRM_ENV], "--shutdown-confirm", str(countdown)],
+                [
+                    os.environ[SHUTDOWN_UI_ENV],
+                    *(
+                        json.loads(os.environ[SHUTDOWN_UI_ARGS_ENV])
+                        if SHUTDOWN_UI_ARGS_ENV in os.environ
+                        else []
+                    ),
+                    "--shutdown-confirm",
+                    str(countdown),
+                ],
                 creationflags=_CREATE_NO_WINDOW,
                 capture_output=True,
                 timeout=max(0, countdown) + 120,
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            logger.error(
-                "Rust 关机确认失败 %s(%s)，按取消处理", type(exc).__name__, exc
-            )
+            logger.error("关机确认失败 %s(%s)，按取消处理", type(exc).__name__, exc)
             return False
-        if result.returncode not in (0, RUST_CONFIRM_EXIT):
-            logger.error("Rust 关机确认异常退出（%d），按取消处理", result.returncode)
-        return result.returncode == RUST_CONFIRM_EXIT
+        if result.returncode not in (0, SHUTDOWN_CONFIRM_EXIT):
+            logger.error("关机确认异常退出（%d），按取消处理", result.returncode)
+        return result.returncode == SHUTDOWN_CONFIRM_EXIT
 
     if _python_confirmation is None:
         logger.error("未注册关机确认前端，按取消处理")

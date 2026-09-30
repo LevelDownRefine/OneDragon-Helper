@@ -5,13 +5,14 @@ GUI 走 QML（gui/main_window 桥接业务逻辑，gui/qml/main.qml 渲染）；
 无头 CLI 出口见 :mod:`src.cli`（本模块的 --generate-chain / --run-chain 等命令行参数）。
 """
 
+import json
 import logging
 import os
 import shutil
 import sys
 import time
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import QEventLoop, Qt, QTimer, QUrl
 from PySide6.QtGui import QFont
 from PySide6.QtQml import QQmlApplicationEngine, qmlRegisterSingletonInstance
 from PySide6.QtWidgets import QApplication
@@ -63,6 +64,16 @@ def _clear_qml_cache():
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--shutdown-confirm":
+        from gui.shutdown_dialog import confirm_shutdown
+        from src.utils.utils_shutdown import SHUTDOWN_CONFIRM_EXIT
+
+        app = QApplication.instance() or QApplication(sys.argv)
+        app.setFont(QFont(FONT_FAMILY))
+        seconds = int(sys.argv[2])
+        if not 1 <= seconds <= 86400:
+            raise ValueError("关机倒计时须为 1～86400 秒")
+        sys.exit(SHUTDOWN_CONFIRM_EXIT if confirm_shutdown(seconds) else 0)
     _start_startup_timer()
     args = build_parser().parse_args()
     # 日志先于 config_workflow：init 对齐产生的 WARNING（如补缺失字段）必须进
@@ -122,7 +133,41 @@ def _launch_qml(*, skip_auto_launch: bool = False):
 
     # bridge 注册为 QML 单例（不是 setContextProperty）：单例由 QML 引擎强持有，
     # 事件循环中不会被 GC——context property 传 Python 对象时，QML 侧会读到 null。
-    bridge = QmlBridge()
+    client = None
+    # 源码使用当前解释器；冻结包只有随包 CLI 存在时接入。
+    from pathlib import Path
+
+    from gui.cli_client import CliClient
+    from src.update.package import CLI_EXE
+    from src.utils import get_root_dir
+    from src.utils.utils_shutdown import SHUTDOWN_UI_ARGS_ENV, SHUTDOWN_UI_ENV
+
+    root = Path(get_root_dir())
+    confirmation = {
+        SHUTDOWN_UI_ENV: sys.executable,
+        SHUTDOWN_UI_ARGS_ENV: json.dumps(
+            [] if getattr(sys, "frozen", False) else ["-m", "gui.launcher"]
+        ),
+    }
+    if not getattr(sys, "frozen", False):
+        client = CliClient(
+            sys.executable,
+            ["-m", "src.headless", "serve", "--stdio"],
+            str(root / "python-backend"),
+            app,
+            environment=confirmation,
+        )
+    elif (root / CLI_EXE).is_file():
+        client = CliClient(
+            str(root / CLI_EXE),
+            ["serve", "--stdio"],
+            str(root),
+            app,
+            environment=confirmation,
+        )
+    if client is not None:
+        app.aboutToQuit.connect(client.close)
+    bridge = QmlBridge(cli_client=client)
     qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
 
     engine = QQmlApplicationEngine()
@@ -162,6 +207,11 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     _log_startup("进入事件循环")
     logger.info("[qml] entering event loop")
     exit_code = app.exec()
+    if client is not None and client.running:
+        cleanup = QEventLoop()
+        client.closed.connect(cleanup.quit)
+        client.close()
+        cleanup.exec()
     if file_drop is not None:
         app.removeNativeEventFilter(file_drop)
     sys.exit(exit_code)

@@ -28,7 +28,7 @@ from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import RunOptions, StartupOptions
 from src.service.script_service import ScriptEdit
 from src.update.runtime import FileLease, UpdateBusyError
-from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
 from src.utils.utils_yaml import load_yaml
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture
 
@@ -164,7 +164,7 @@ class HeadlessProcessTests(unittest.TestCase):
         command[2] = command[2].replace(
             "with patch('src.utils.get_root_dir', return_value=root):",
             """
-with patch('src.utils.get_root_dir', return_value=root), patch('src.utils.utils_shutdown.rust_shutdown_supported', return_value=True), patch('src.service.daily_plan.WindowsDailyTask') as task:
+with patch('src.utils.get_root_dir', return_value=root), patch('src.utils.utils_shutdown.shutdown_ui_supported', return_value=True), patch('src.service.daily_plan.WindowsDailyTask') as task:
     from src.service.daily_plan import DailyTaskState
     task.return_value.read.return_value = DailyTaskState()
 """,
@@ -196,8 +196,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.utils.utils_
 def record(keys, target, **kwargs):
     import json,os
     from pathlib import Path
-    from src.utils.utils_shutdown import RUST_CONFIRM_ENV
-    Path(root, 'daily-worker.json').write_text(json.dumps({'keys':sorted(keys),'options':kwargs,'frontend':os.environ[RUST_CONFIRM_ENV]}),encoding='utf-8')
+    from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
+    Path(root, 'daily-worker.json').write_text(json.dumps({'keys':sorted(keys),'options':kwargs,'frontend':os.environ[SHUTDOWN_UI_ENV]}),encoding='utf-8')
 with patch('src.utils.get_root_dir', return_value=root), patch('src.service.daily_plan.chain_service.schedule_run', side_effect=record):
 """,
         )
@@ -442,9 +442,9 @@ def record(keys, target, **kwargs):
     import os
     from pathlib import Path
     from src.update.runtime import FileLease, UpdateBusyError
-    from src.utils.utils_shutdown import _confirm_shutdown, RUST_CONFIRM_ENV
+    from src.utils.utils_shutdown import _confirm_shutdown, SHUTDOWN_UI_ENV
     from unittest.mock import Mock
-    with patch.dict(os.environ, {RUST_CONFIRM_ENV: 'fake-rust.exe'}), patch('src.utils.utils_shutdown.rust_shutdown_supported', return_value=True), patch('src.utils.utils_shutdown.subprocess.run', return_value=Mock(returncode=42)) as confirm:
+    with patch.dict(os.environ, {SHUTDOWN_UI_ENV: 'fake-rust.exe'}), patch('src.utils.utils_shutdown.shutdown_ui_supported', return_value=True), patch('src.utils.utils_shutdown.subprocess.run', return_value=Mock(returncode=42)) as confirm:
         assert _confirm_shutdown(45)
         assert confirm.call_args.args[0] == ['fake-rust.exe', '--shutdown-confirm', '45']
     try:
@@ -1070,7 +1070,7 @@ class RunRequestTests(unittest.TestCase):
                 save.assert_not_called()
 
     def test_prepare_passes_names_in_stdin_and_omits_credentials(self):
-        from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+        from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
 
         names = ["中文,逗号 & 空格"]
         options = RunOptions(
@@ -1089,10 +1089,8 @@ class RunRequestTests(unittest.TestCase):
         with (
             patch.object(self.service, "apply_run_options") as save,
             patch.object(self.service, "load_run_options", return_value=saved),
-            patch(
-                "src.utils.utils_shutdown.rust_shutdown_supported", return_value=True
-            ),
-            patch.dict(os.environ, {RUST_CONFIRM_ENV: "/fake/gui"}),
+            patch("src.utils.utils_shutdown.shutdown_ui_supported", return_value=True),
+            patch.dict(os.environ, {SHUTDOWN_UI_ENV: "/fake/gui"}),
         ):
             response = handle_request(
                 self.service,
@@ -1112,7 +1110,7 @@ class RunRequestTests(unittest.TestCase):
         target = response["result"]
         self.assertEqual(target["args"][-1], "run")
         self.assertTrue(target["console"])
-        self.assertEqual(target["env"], {RUST_CONFIRM_ENV: "/fake/gui"})
+        self.assertEqual(target["env"], {SHUTDOWN_UI_ENV: "/fake/gui"})
         self.assertTrue(view["result"]["shutdown_supported"])
         self.assertEqual(
             json.loads(target["input"]),
@@ -1255,9 +1253,7 @@ class ProtocolValidationTests(unittest.TestCase):
 
     def test_shutdown_without_frontend_rejected_at_boundary(self):
         with (
-            patch(
-                "src.utils.utils_shutdown.rust_shutdown_supported", return_value=False
-            ),
+            patch("src.utils.utils_shutdown.shutdown_ui_supported", return_value=False),
             self.assertRaisesRegex(InvalidParams, "关机确认入口"),
         ):
             _parse_run_options(
@@ -1272,9 +1268,7 @@ class ProtocolValidationTests(unittest.TestCase):
         service.apply_daily_plan.return_value = None
         with (
             patch("src.headless._daily_task") as task,
-            patch(
-                "src.utils.utils_shutdown.rust_shutdown_supported", return_value=False
-            ),
+            patch("src.utils.utils_shutdown.shutdown_ui_supported", return_value=False),
         ):
             for values in (
                 None,
@@ -1306,25 +1300,23 @@ class ProtocolValidationTests(unittest.TestCase):
         service = mock_service()
         with (
             patch("src.headless._daily_task") as task,
-            patch(
-                "src.utils.utils_shutdown.rust_shutdown_supported", return_value=False
-            ),
+            patch("src.utils.utils_shutdown.shutdown_ui_supported", return_value=False),
         ):
             response = handle_request(
                 service, request("plan.save", {"plan": asdict(DailyPlanOptions(True))})
             )
         self.assertEqual(response["error"]["code"], -32602)
-        self.assertIn("Windows Rust 前端", response["error"]["message"])
+        self.assertIn("Windows 关机确认程序", response["error"]["message"])
         service.apply_daily_plan.assert_not_called()
         task.assert_not_called()
 
     def test_daily_entry_uses_headless_and_frontend_without_config_snapshot(self):
-        from src.utils.utils_shutdown import RUST_CONFIRM_ENV
+        from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
 
         for frozen, prefix in ((False, ["-m", "src.headless"]), (True, [])):
             with (
                 self.subTest(frozen=frozen),
-                patch.dict(os.environ, {RUST_CONFIRM_ENV: "/中文 gui.exe"}),
+                patch.dict(os.environ, {SHUTDOWN_UI_ENV: "/中文 gui.exe"}),
                 patch("sys.frozen", frozen, create=True),
                 patch("src.service.daily_plan.WindowsDailyTask") as task,
             ):
@@ -1495,20 +1487,20 @@ class HeadlessEntryTests(unittest.TestCase):
             patch("sys.executable", str(self.root / "OneDragon-Helper-CLI.exe")),
             patch.dict(os.environ),
         ):
-            os.environ.pop(RUST_CONFIRM_ENV, None)
+            os.environ.pop(SHUTDOWN_UI_ENV, None)
             self.assertEqual(main(["serve", "--stdio"]), 7)
             self.assertEqual(entry.call_args.args[0].command, "serve")
             self.assertTrue(entry.call_args.args[0].stdio)
             self.assertEqual(
-                os.environ[RUST_CONFIRM_ENV], str(self.root / "OneDragon-Helper.exe")
+                os.environ[SHUTDOWN_UI_ENV], str(self.root / "OneDragon-Helper.exe")
             )
-            os.environ[RUST_CONFIRM_ENV] = "explicit-parent.exe"
+            os.environ[SHUTDOWN_UI_ENV] = "explicit-parent.exe"
             self.assertEqual(main(["--selftest"]), 7)
             self.assertEqual(entry.call_args.args[0].command, "legacy")
             self.assertEqual(entry.call_args.args[0].arguments, ["--", "--selftest"])
-            self.assertEqual(os.environ[RUST_CONFIRM_ENV], "explicit-parent.exe")
+            self.assertEqual(os.environ[SHUTDOWN_UI_ENV], "explicit-parent.exe")
 
-    def test_headless_selects_rust_update_service(self):
+    def test_headless_without_manifest_selects_default_update_service(self):
         from argparse import Namespace
         from contextlib import nullcontext
 
@@ -1525,5 +1517,5 @@ class HeadlessEntryTests(unittest.TestCase):
             self.assertEqual(
                 _run_command(Namespace(command="call", method="update.view")), 0
             )
-        factory.assert_called_once_with(frontend="rust")
+        factory.assert_called_once_with(frontend="qt")
         dispatch.assert_called_once_with(factory.return_value, "update.view")
