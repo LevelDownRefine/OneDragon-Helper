@@ -169,3 +169,7 @@ CLI 备份/恢复通过 AppService.jobs 的 JobExecutor 调用原服务；只做
 这些查询不打开文件、不启动进程。Python GUI 直接调用 AppService，无须经过 CLI；其它前端可通过同一 service 获取目标。
 
 `AppService` 默认装配 Qt 发行版的更新服务，Rust headless 入口显式传入 `frontend="rust"`。直接更新调用与后台更新会话共用同一个 `UpdateService`，不为 Python GUI 额外装配 Rust 更新实例。
+
+游戏启动参数存入脚本条目的 `game_arguments`，与 `script_arguments` 独立。
+手动启动与运行器自动启动均保留 Windows 参数文本及双引号；空值兼容旧配置。
+自动启动仍需填写 `game_path`，由脚本自行启动的游戏不使用此参数。

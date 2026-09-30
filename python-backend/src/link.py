@@ -94,7 +94,14 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
         return {"kind": "unavailable", "reason": "启动文件不存在，请检查配置"}
     script_type = script["script_type"] if "script_type" in script else "external"  # noqa: SIM401
     if target == "game" or script_type != "python":
-        return {"kind": "association", "path": os.path.abspath(resolved)}
+        result = {"kind": "association", "path": os.path.abspath(resolved)}
+        if target == "game" and "game_arguments" in script:
+            arguments = script["game_arguments"]
+            if not isinstance(arguments, str) or "\0" in arguments:
+                return _unavailable("游戏启动参数无效")
+            if arguments:
+                result["arguments"] = arguments
+        return result
     command, cwd, environment = build_script_command(["--script", resolved])
     # 不经传输携带整个父进程环境，仅给出运行器增加/修改的项。
     overrides = {}

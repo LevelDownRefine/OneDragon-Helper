@@ -35,6 +35,8 @@ pub struct Fields {
     game_process_name: String,
     #[serde(default)]
     game_path: String,
+    #[serde(default)]
+    game_arguments: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -124,6 +126,7 @@ impl ScriptEditor {
                     "kill_script_after_done": fields.kill_script_after_done,
                     "kill_game_after_done": fields.kill_game_after_done, "block": fields.block,
                     "game_process_name": fields.game_process_name.trim(), "game_path": fields.game_path.trim(),
+                    "game_arguments": fields.game_arguments.trim(),
                 },
                 "weekly_timeouts": timeouts, "switches": switches,
             }),
@@ -265,6 +268,11 @@ impl ScriptEditor {
                 ui.end_row();
                 ui.label("游戏路径");
                 ui.add(crate::dialogs::common::text_input(&mut fields.game_path));
+                ui.end_row();
+                ui.label("游戏启动参数");
+                ui.add(crate::dialogs::common::text_input(
+                    &mut fields.game_arguments,
+                ));
                 ui.end_row();
             });
             ui.horizontal_wrapped(|ui| {

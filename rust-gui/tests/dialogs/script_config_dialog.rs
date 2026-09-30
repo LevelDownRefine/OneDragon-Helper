@@ -13,10 +13,15 @@ fn editor() -> ScriptEditor {
 #[test]
 fn form_preserves_null_timeouts_and_boolean_switches() {
     let mut editor = editor();
+    editor.data.script.game_arguments = " --profile \"中文 空格\" ".into();
     editor.timeouts[0].clear();
     editor.timeouts[6] = "86400".into();
     let request = editor.request().unwrap();
     assert_eq!(request.method, "script.edit_save");
+    assert_eq!(
+        request.params["config_patch"]["game_arguments"],
+        "--profile \"中文 空格\""
+    );
     assert_eq!(
         request.params["weekly_timeouts"],
         json!([null, 60, 60, 60, 60, 60, 86400])

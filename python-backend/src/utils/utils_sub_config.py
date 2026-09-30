@@ -360,6 +360,7 @@ def default_script_entry(display_name, script_type, script_path, script_argument
         # 非空时 runner 会在启动本脚本前先打开该游戏（仅不自启游戏的脚本需要，如 MaaEnd）；
         # 游戏图标与「启动游戏」也以它为第一来源
         "game_path": "",
+        "game_arguments": "",
         "launcher_mode": False,
         "check_done": "script_closed",
         "kill_script_after_done": True,

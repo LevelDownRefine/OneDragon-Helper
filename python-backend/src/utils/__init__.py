@@ -152,7 +152,7 @@ def join_dir_path_with_mk(base: str, *subs) -> str:
     return target
 
 
-def open_in_explorer(path: str) -> None:
+def open_in_explorer(path: str, arguments: str = "") -> None:
     """用系统默认程序打开文件或目录（跨平台）。
 
     Windows 走 ``os.startfile``；其他平台走 ``xdg-open`` / ``open``。
@@ -162,7 +162,12 @@ def open_in_explorer(path: str) -> None:
         path: 待打开的文件或目录路径。
     """
     if sys.platform == "win32":
-        os.startfile(path)  # noqa: S606 系统默认程序打开
+        if arguments:
+            os.startfile(path, arguments=arguments, cwd=os.path.dirname(path))  # noqa: S606 系统默认程序打开
+        else:
+            os.startfile(path)  # noqa: S606 系统默认程序打开
         return
+    if arguments:
+        raise OSError("带参数的游戏启动仅支持 Windows")
     opener = "open" if sys.platform == "darwin" else "xdg-open"
     subprocess.run([opener, path], check=False)

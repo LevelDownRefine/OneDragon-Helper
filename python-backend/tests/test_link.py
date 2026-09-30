@@ -207,6 +207,35 @@ class LaunchTargetTests(unittest.TestCase):
             self.assertEqual(result["cwd"], temporary)
             build.assert_called_once_with(["--script", str(file)])
 
+    def test_game_arguments_preserve_quotes_and_do_not_reach_script(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            file = Path(temporary) / "game.exe"
+            file.touch()
+            arguments = '--profile "中文 空格" --literal "a&b"'
+            with (
+                patch.object(
+                    link,
+                    "get_script",
+                    return_value={
+                        "script_path": str(file),
+                        "game_arguments": arguments,
+                        "script_arguments": "--script-only",
+                    },
+                ),
+                patch.object(link, "get_game_exe_path", return_value=str(file)),
+            ):
+                self.assertEqual(
+                    link.resolve_launch_target("demo", "game"),
+                    {
+                        "kind": "association",
+                        "path": str(file),
+                        "arguments": arguments,
+                    },
+                )
+                self.assertNotIn(
+                    "arguments", link.resolve_launch_target("demo", "script")
+                )
+
     def test_external_and_game_use_separate_targets(self):
         with tempfile.TemporaryDirectory() as temporary:
             file = Path(temporary) / "demo.exe"
