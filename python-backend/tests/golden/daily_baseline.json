@@ -4595,13 +4595,13 @@
       {
         "daily": "每日任务",
         "diff": {
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json.体力本": [
+            "能量淤积点-乙",
+            "干员养成-甲"
+          ],
           "data/apps/ok-ef/working/configs/DailyTask.json.⭐刷体力": [
             false,
             true
-          ],
-          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
-            "能量淤积点-乙",
-            "干员养成-甲"
           ]
         },
         "readback": [
@@ -4613,7 +4613,7 @@
           }
         ],
         "saved_files": [
-          "data/apps/ok-ef/working/configs/DailyTask.json",
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json",
           "data/apps/ok-ef/working/configs/DailyTask.json"
         ],
         "sequence": "干员养成-甲",
@@ -4622,7 +4622,7 @@
       {
         "daily": "每日任务",
         "diff": {
-          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json.体力本": [
             "干员养成-甲",
             "干员养成-乙"
           ]
@@ -4636,7 +4636,7 @@
           }
         ],
         "saved_files": [
-          "data/apps/ok-ef/working/configs/DailyTask.json"
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json"
         ],
         "sequence": "干员养成-乙",
         "task": "干员养成"
@@ -4644,7 +4644,7 @@
       {
         "daily": "每日任务",
         "diff": {
-          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json.体力本": [
             "干员养成-乙",
             "武器养成-甲"
           ]
@@ -4658,7 +4658,7 @@
           }
         ],
         "saved_files": [
-          "data/apps/ok-ef/working/configs/DailyTask.json"
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json"
         ],
         "sequence": "武器养成-甲",
         "task": "武器养成"
@@ -4666,7 +4666,7 @@
       {
         "daily": "每日任务",
         "diff": {
-          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json.体力本": [
             "武器养成-甲",
             "武器养成-乙"
           ]
@@ -4680,7 +4680,7 @@
           }
         ],
         "saved_files": [
-          "data/apps/ok-ef/working/configs/DailyTask.json"
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json"
         ],
         "sequence": "武器养成-乙",
         "task": "武器养成"
@@ -4688,7 +4688,7 @@
       {
         "daily": "每日任务",
         "diff": {
-          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json.体力本": [
             "武器养成-乙",
             "危境再现-甲"
           ]
@@ -4702,7 +4702,7 @@
           }
         ],
         "saved_files": [
-          "data/apps/ok-ef/working/configs/DailyTask.json"
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json"
         ],
         "sequence": "危境再现-甲",
         "task": "危境再现"
@@ -4710,7 +4710,7 @@
       {
         "daily": "每日任务",
         "diff": {
-          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json.体力本": [
             "危境再现-甲",
             "危境再现-乙"
           ]
@@ -4724,7 +4724,7 @@
           }
         ],
         "saved_files": [
-          "data/apps/ok-ef/working/configs/DailyTask.json"
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json"
         ],
         "sequence": "危境再现-乙",
         "task": "危境再现"
@@ -4732,7 +4732,7 @@
       {
         "daily": "每日任务",
         "diff": {
-          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json.体力本": [
             "危境再现-乙",
             "危境预演-甲"
           ]
@@ -4746,7 +4746,7 @@
           }
         ],
         "saved_files": [
-          "data/apps/ok-ef/working/configs/DailyTask.json"
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json"
         ],
         "sequence": "危境预演-甲",
         "task": "危境预演"
@@ -4754,7 +4754,7 @@
       {
         "daily": "每日任务",
         "diff": {
-          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json.体力本": [
             "危境预演-甲",
             "危境预演-乙"
           ]
@@ -4768,7 +4768,7 @@
           }
         ],
         "saved_files": [
-          "data/apps/ok-ef/working/configs/DailyTask.json"
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json"
         ],
         "sequence": "危境预演-乙",
         "task": "危境预演"
@@ -4776,7 +4776,7 @@
       {
         "daily": "每日任务",
         "diff": {
-          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json.体力本": [
             "危境预演-乙",
             "能量淤积点-甲"
           ]
@@ -4790,7 +4790,7 @@
           }
         ],
         "saved_files": [
-          "data/apps/ok-ef/working/configs/DailyTask.json"
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json"
         ],
         "sequence": "能量淤积点-甲",
         "task": "能量淤积点"
@@ -4798,7 +4798,7 @@
       {
         "daily": "每日任务",
         "diff": {
-          "data/apps/ok-ef/working/configs/DailyTask.json.体力本": [
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json.体力本": [
             "能量淤积点-甲",
             "能量淤积点-乙"
           ]
@@ -4812,7 +4812,7 @@
           }
         ],
         "saved_files": [
-          "data/apps/ok-ef/working/configs/DailyTask.json"
+          "data/apps/ok-ef/working/configs/DailyBattleTask.json"
         ],
         "sequence": "能量淤积点-乙",
         "task": "能量淤积点"

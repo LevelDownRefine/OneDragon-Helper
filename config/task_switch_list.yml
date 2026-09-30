@@ -27,17 +27,20 @@ BetterGI:
   tasks_key: TaskDefinitions
   enabled_key: TaskEnabledList
 
-# 终末地：⭐ 开头的布尔项是任务开关；另三项是多选（在列表里即在跑，候选项见
-# src/tasks/daily/daily_routine_mixin.py 与 daily_regional_runner.py，都是中文故用列表简写）。
+# 终末地：⭐ 开头的布尔项是任务开关，仍留在日常总配置；另三项是多选（在列表里即在跑），
+# 随日常子任务拆分迁到各自的任务卡片文件，候选项是中文故用列表简写。
 ok-ef:
   config: data/apps/ok-ef/working/configs/DailyTask.json
   segments:
     - task_pattern: "⭐(.+)"
-    - list_key: "⭐地区建设"
+    - config: data/apps/ok-ef/working/configs/RegionalBuildTask.json
+      list_key: "⭐地区建设"
       names: [据点兑换, 买物资, 买卖货]
-    - list_key: "⭐帝江号收菜"
+    - config: data/apps/ok-ef/working/configs/BoatHarvestTask.json
+      list_key: "⭐帝江号收菜"
       names: [收集线索, 使用制造舱助力]
-    - list_key: "⭐活动奖励"
+    - config: data/apps/ok-ef/working/configs/ActivityRewardTask.json
+      list_key: "⭐活动奖励"
       names: [周常奖励, 理智补给, 刮刮乐]
 
 # 绝区零：一条龙的应用组配置（ApplicationGroupConfig 读它），展示名取自源码 APP_NAME；

@@ -56,9 +56,9 @@ class ScriptConfig:
         self._init_config()
 
     def _daily_config_rel_path(self) -> str:
-        """脚本 config 文件路径（取首个日常声明的 ``config``）。
+        """首个日常的数据文件路径（取其声明的 ``config``）。
 
-        模板对齐与「打开配置」共用该文件——脚本 config 与日常所在文件恰好同份。
+        模板对齐用它；「打开配置」优先取资源声明里的 ``open_config``。
 
         Returns:
             相对脚本根目录的路径。
@@ -528,6 +528,9 @@ def get_task_lists(
 def get_config_path(script_name: str) -> str:
     """取 config 绝对路径（供 GUI 打开）。
 
+    声明了 ``open_config`` 的脚本以它为准——config 拆分后首个日常的落点文件未必是
+    用户认知里的「总配置」；未声明则仍取首个日常的 config。
+
     Args:
         script_name: 脚本标识名。
 
@@ -538,9 +541,12 @@ def get_config_path(script_name: str) -> str:
         AssertionError: 脚本未适配。
     """
     assert script_name in _CONFIGS, f"[set_config] 未适配脚本: {script_name}"
-    return _get_config_path_impl(
-        script_name, _CONFIGS[script_name]()._daily_config_rel_path()
-    )
+    config = _CONFIGS[script_name]()
+    resources = config.resources
+    assert resources is not None
+    if "open_config" in resources:
+        return _get_config_path_impl(script_name, resources["open_config"])
+    return _get_config_path_impl(script_name, config._daily_config_rel_path())
 
 
 def get_game_path_keys(script_name: str, rel: str) -> tuple[str, ...]:

@@ -336,25 +336,26 @@ class TestEnabled(unittest.TestCase):
                 with patch.object(daily, "_load_routine_config", return_value=None):
                     self.assertIsNone(daily.read_enabled())
 
-    def test_declared_field_switch_toggles_in_place(self):
-        """声明 enable_key 的日常（终末地）：开关就是主文件里的布尔字段。"""
+    def test_declared_field_switch_lands_in_routine_file(self):
+        """声明 routine 的日常（终末地）：开关在 routine 文件，与副本数据不同份。"""
         daily = daily_of("ok-ef", "每日任务")
-        config = {"⭐刷体力": True, "体力本": "清波寨"}
+        routine = {"⭐刷体力": True}
         with (
-            patch.object(daily, "_load_daily_config", return_value=config),
-            patch.object(daily, "_save_daily_config") as mock_save,
+            patch.object(daily, "_load_routine_config", return_value=routine),
+            patch.object(daily, "_save_routine_config") as save_routine,
+            patch.object(daily, "_save_daily_config") as save_data,
         ):
             self.assertTrue(daily.read_enabled())
             # 置反必然有改变；对同值再置一次则无改变、不落盘
             self.assertTrue(daily.set_enabled(False))
             self.assertFalse(daily.set_enabled(False))
-            mock_save.assert_called_once()
-        self.assertFalse(config["⭐刷体力"])
-        self.assertEqual(config["体力本"], "清波寨", "开关不应动到副本选择")
+            save_routine.assert_called_once()
+        self.assertFalse(routine["⭐刷体力"])
+        save_data.assert_not_called()
 
     def test_declared_field_switch_without_file_has_no_truth(self):
         daily = daily_of("ok-ef", "每日任务")
-        with patch.object(daily, "_load_daily_config", return_value=None):
+        with patch.object(daily, "_load_routine_config", return_value=None):
             self.assertIsNone(daily.read_enabled())
 
     def test_bgi_switch_looks_up_task_id_by_name(self):

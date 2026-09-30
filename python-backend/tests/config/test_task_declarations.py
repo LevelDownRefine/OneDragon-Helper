@@ -107,6 +107,8 @@ class TestDeclarationBindings(unittest.TestCase):
                 config = {**switch_seed, "NativeTarget": "old", "untouched": True}
                 with (
                     patch.object(Daily, "_load_daily_config", return_value=config),
+                    # 终末地的开关另存一份文件；本用例只验声明绑定，两处指向同一份内存。
+                    patch.object(Daily, "_load_routine_config", return_value=config),
                     patch.object(daily_mod, "save_script_config"),
                 ):
                     cfg.set_daily_task("每日任务", task_name, "真实副本")
