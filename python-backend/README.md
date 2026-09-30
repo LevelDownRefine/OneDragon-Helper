@@ -2,6 +2,8 @@
 
 配置适配、脚本编辑、任务编排、日志汇总、更新和 JSON-RPC stdio 入口。
 Rust GUI 通过 `src.headless` 调用业务；后端通过 CLI 调用根目录的 `runner/`。
+源码运行直接执行 `python <仓库>/runner/launcher.py --chain <配置路径>`，
+由 Python 自动定位 runner 内部包，无需修改 `PYTHONPATH`；发布时调用同目录 Runner EXE。
 
 - `src/`：Python 源码。现有 `src/gui/` 和 Qt 启动入口暂时保留，下轮拆出。
 - `tests/`：Python 测试，以及发布包和共享构建工具的集成测试。

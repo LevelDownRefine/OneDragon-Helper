@@ -3,9 +3,9 @@
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from src.headless import _run_target
 from src.service.schedule import RunOptions
@@ -31,12 +31,20 @@ class ProjectLayoutTests(unittest.TestCase):
         self.assertIn(b"--stdio", result.stdout)
 
     def test_runner_remains_a_separate_cli(self):
-        with patch.dict(os.environ, {"PYTHONPATH": ""}):
-            command, cwd, environment = build_script_command(["--help"])
-        self.assertEqual(command[:3], [sys.executable, "-m", "runner.launcher"])
-        result = subprocess.run(
-            command, cwd=cwd, env=environment, capture_output=True, timeout=20
+        command, cwd, overrides = build_script_command(["--help"])
+        self.assertEqual(
+            command[:2],
+            [sys.executable, str(Path(get_root_dir()) / "runner/launcher.py")],
         )
+        self.assertEqual(cwd, get_root_dir())
+        self.assertIsNone(overrides)
+        environment = {
+            key: value for key, value in os.environ.items() if key != "PYTHONPATH"
+        }
+        with tempfile.TemporaryDirectory(prefix="runner other cwd ") as directory:
+            result = subprocess.run(
+                command, cwd=directory, env=environment, capture_output=True, timeout=20
+            )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(b"--chain", result.stdout)
         self.assertIn(b"--script", result.stdout)

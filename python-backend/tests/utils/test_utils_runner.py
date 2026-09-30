@@ -179,17 +179,13 @@ class TestRunChainCommandInvocation(unittest.TestCase):
                     run.call_args.args[0],
                     [
                         sys.executable,
-                        "-m",
-                        "runner.launcher",
+                        os.path.join(get_root_dir(), "runner", "launcher.py"),
                         "--chain",
                         CHAIN_PATH,
                     ],
                 )
                 self.assertEqual(run.call_args.kwargs["cwd"], get_root_dir())
-                self.assertIn(
-                    "runner",
-                    run.call_args.kwargs["env"]["PYTHONPATH"],
-                )
+                self.assertIsNone(run.call_args.kwargs["env"])
 
 
 class TestNonBlocking(unittest.TestCase):
@@ -250,15 +246,20 @@ class TestBuildScriptInvocationFrozen(unittest.TestCase):
         self.assertEqual(cwd, os.path.dirname(self.FAKE_EXE))
         self.assertIsNone(env)
 
-    def test_non_frozen_uses_python_minus_m(self):
-        """非冻结模式：用 sys.executable -m runner.launcher --script <路径>。"""
+    def test_non_frozen_runs_launcher_file_and_inherits_environment(self):
+        """非冻结模式直接运行入口文件，无需修改模块搜索路径。"""
         command, cwd, env = build_script_command(["--script", self.SCRIPT])
-        self.assertEqual(command[0], sys.executable)
-        self.assertIn("-m", command)
-        self.assertIn("runner.launcher", command)
-        self.assertIn("--script", command)
-        self.assertEqual(command[command.index("--script") + 1], self.SCRIPT)
-        self.assertIn("runner", env["PYTHONPATH"])
+        self.assertEqual(
+            command,
+            [
+                sys.executable,
+                os.path.join(get_root_dir(), "runner", "launcher.py"),
+                "--script",
+                self.SCRIPT,
+            ],
+        )
+        self.assertEqual(cwd, get_root_dir())
+        self.assertIsNone(env)
 
 
 class TestBuildRunChainCommand(unittest.TestCase):

@@ -191,8 +191,7 @@ class LaunchTargetTests(unittest.TestCase):
                     return_value=(
                         [
                             "/absolute/python",
-                            "-m",
-                            "runner.launcher",
+                            "/absolute/runner/launcher.py",
                             "--script",
                             str(file),
                         ],

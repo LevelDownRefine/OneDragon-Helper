@@ -379,7 +379,7 @@ def build_script_command(extra_args: list[str]) -> tuple[list[str], str, dict | 
 
     Returns:
         (命令列表, 工作目录, 环境变量)。冻结态调用同目录 Runner exe；
-        开发态用 ``python -m runner.launcher`` 并注入 ``PYTHONPATH``。
+        开发态直接运行 ``runner/launcher.py``，两者均继承父进程环境。
     """
     if getattr(sys, "frozen", False):
         runner_exe = os.path.join(
@@ -388,15 +388,8 @@ def build_script_command(extra_args: list[str]) -> tuple[list[str], str, dict | 
         return [runner_exe, *extra_args], os.path.dirname(sys.executable), None
 
     cwd = get_root_dir()
-    runner_pkg_dir = os.path.join(cwd, "runner")
-    existing_pp = os.environ.get("PYTHONPATH", "")
-    env = {
-        **os.environ,
-        "PYTHONPATH": runner_pkg_dir
-        + (os.pathsep + existing_pp if existing_pp else ""),
-    }
-    command = [sys.executable, "-m", "runner.launcher", *extra_args]
-    return command, cwd, env
+    launcher = os.path.join(cwd, "runner", "launcher.py")
+    return [sys.executable, launcher, *extra_args], cwd, None
 
 
 def build_chain_command(

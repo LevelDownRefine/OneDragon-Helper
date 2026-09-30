@@ -1,7 +1,7 @@
 """Windows 下 schedule 全链路真实模拟（手动诊断脚本，不进 CI、不被 discover 收集）。
 
 用法:
-    PYTHONPATH=src python -m tests.sim_schedule_win
+    PYTHONPATH=python-backend:python-backend/src python -m tests.sim_schedule_win
 
 在 %TEMP%/odh_e2e_<pid> 搭建沙箱：进程内把 get_root_dir 补丁指向沙箱后，
 用真实代码与真实子进程走完 ``schedule_run`` 全编排——
@@ -39,17 +39,6 @@ SANDBOX = Path(tempfile.gettempdir()) / f"odh_e2e_{os.getpid()}"
 import src.utils as _u  # noqa: E402
 
 _u.get_root_dir = lambda: str(SANDBOX)
-# runner 子进程以沙箱为 cwd 起进程：runner.launcher 从仓库根导入，而 launcher
-# 内部的 import script_chainer 需要 <仓库根>/runner 在 sys.path。build_script_command
-# 会把 get_root_dir()/runner（沙箱下不存在）拼到 PYTHONPATH 前列，无害，但真实
-# runner 目录必须由这里提供。
-os.environ["PYTHONPATH"] = (
-    str(REAL_ROOT / "runner")
-    + os.pathsep
-    + str(REAL_ROOT)
-    + os.pathsep
-    + os.environ.get("PYTHONPATH", "")
-)
 
 import psutil  # noqa: E402
 
@@ -128,6 +117,13 @@ def _pyinstaller(name: str, main_py: Path, onedir: bool, distpath: Path) -> None
 
 def build_sandbox() -> None:
     (SANDBOX / "config").mkdir(parents=True)
+    shutil.copytree(
+        REAL_ROOT / "runner",
+        SANDBOX / "runner",
+        ignore=shutil.ignore_patterns(
+            ".git", ".venv", ".log", "__pycache__", "*.pyc", "tests"
+        ),
+    )
     (SANDBOX / "config" / "script_chain").mkdir()
     GAME_DIR.mkdir(parents=True)
     WW_DIR.mkdir(parents=True)
