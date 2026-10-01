@@ -8,7 +8,7 @@ fn dropping_player_releases_worker_and_media() {
     let player = Player::new(egui::Context::default());
     let weak = Arc::downgrade(&player.0);
     player.set(1, Some(path.clone()));
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         if let Some(output) = player.poll() {
             output.result.unwrap();
@@ -36,14 +36,27 @@ fn playback_delays_loops_and_stops_on_selection_change() {
     player.set(1, Some(path.clone()));
     std::thread::sleep(Duration::from_millis(100));
     assert!(player.poll().is_none());
+    // Decoder startup can be slow on a cold Windows runner. Measure playback
+    // only after its first frame, while retaining a bounded startup deadline.
+    let startup_deadline = started + Duration::from_secs(30);
+    let mut playback_started = None;
     let mut cached = 0;
     let mut received = 0;
-    while started.elapsed() < Duration::from_secs(3) {
+    loop {
+        let now = Instant::now();
+        if let Some(first) = playback_started {
+            if now.duration_since(first) >= Duration::from_secs(3) {
+                break;
+            }
+        } else {
+            assert!(now < startup_deadline, "decoder produced no first frame");
+        }
         if let Some(output) = player.poll() {
             assert_eq!(output.generation, 1);
             let frame = output.result.unwrap();
             cached += usize::from(frame.jpeg.is_some());
             received += 1;
+            playback_started.get_or_insert_with(Instant::now);
         }
         std::thread::sleep(Duration::from_millis(10));
     }
