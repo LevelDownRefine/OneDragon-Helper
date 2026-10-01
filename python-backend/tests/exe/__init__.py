@@ -3,6 +3,8 @@
 import os
 import pathlib
 
+from src.update.package import MANIFEST, load_manifest, manifest_frontend
+
 
 def project_root() -> str:
     """向上找到含 .gitmodules 的仓库根，避免本包内测试文件被移动后算错根。"""
@@ -21,3 +23,10 @@ def package_dir() -> pathlib.Path:
     if configured:
         return pathlib.Path(configured)
     return pathlib.Path(project_root()) / "deploy/dist/OneDragon-Helper"
+
+
+def is_frontend_package(package: pathlib.Path, frontend: str) -> bool:
+    """按发布清单选择前端专用测试；两种前端都包含 CLI。"""
+    return (package / MANIFEST).is_file() and manifest_frontend(
+        load_manifest(package)
+    ) == frontend
