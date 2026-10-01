@@ -386,6 +386,22 @@ class FormDialogBase(FramelessWindowMixin, QDialog):
         super().__init__(parent)
         self._make_frameless()
         self._make_round_style()
+        self._pending = False
+
+    def set_pending(self, pending):
+        """提交期间保留表单，禁止取消已发出的写操作。"""
+        self._pending = pending
+        self.setEnabled(not pending)
+
+    def reject(self):
+        if not self._pending:
+            super().reject()
+
+    def closeEvent(self, event):
+        if self._pending:
+            event.ignore()
+        else:
+            super().closeEvent(event)
 
     def _make_label(self, text) -> QLabel:
         """构造固定宽度的表单字段标签（无边框透明背景）。"""

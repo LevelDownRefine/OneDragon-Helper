@@ -76,12 +76,19 @@ class QmlBridge(QObject):
                 self.toastRequested.emit,
                 self,
             )
-        self.launch = LaunchController(
-            game_list=self.game_list,
-            task_card=self.task_card,
-            app_service=self.app_service,
-            toast=self.toastRequested.emit,
-        )
+        if self._cli_session is None:
+            self.launch = LaunchController(
+                game_list=self.game_list,
+                task_card=self.task_card,
+                app_service=self.app_service,
+                toast=self.toastRequested.emit,
+            )
+        else:
+            from gui.controllers.cli_launch import CliLaunchController
+
+            self.launch = CliLaunchController(
+                self.game_list, self._cli_session, self.toastRequested.emit, self
+            )
         if self._cli_session is None:
             self.background = BackgroundController(
                 game_list=self.game_list,
@@ -385,7 +392,17 @@ class QmlBridge(QObject):
 
     @Slot()
     def closeWindow(self):
-        self.window.closeWindow()
+        if self.canClose():
+            self.window.closeWindow()
+
+    @Slot(result=bool)
+    def canClose(self):
+        if self._cli_session is not None and (
+            self._cli_session.busy or self.launch.active
+        ):
+            self.toastRequested.emit("后台操作正在进行，请完成后关闭窗口")
+            return False
+        return True
 
     @Slot(str, str, "QVariant")
     def selectDaily(self, daily_name, task_name, seq):

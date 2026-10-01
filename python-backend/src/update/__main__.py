@@ -62,7 +62,7 @@ def run_update(
                     and frontend_pid
                     and process.ppid() != frontend_pid
                 ):
-                    raise UpdateBusyError("CLI 与 Rust 窗口的父子关系已变化")
+                    raise UpdateBusyError("CLI 与助手窗口的父子关系已变化")
                 waiting.append(process)
             except psutil.NoSuchProcess:
                 logger.info("调用进程已经退出: pid=%s", pid)

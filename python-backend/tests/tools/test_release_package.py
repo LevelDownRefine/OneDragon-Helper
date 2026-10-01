@@ -13,6 +13,17 @@ from tools import release_package as release
 
 
 class TestReleasePackage(unittest.TestCase):
+    def test_qt_cli_runtime_is_isolated_and_in_update_manifest(self):
+        self.write(self.package, "_cli_internal/python.dll", "cli-runtime")
+        release.prepare_package(self.root, self.package, "v1.2.3")
+        manifest = json.loads((self.package / release.MANIFEST).read_text())
+        self.assertIn(release.CLI_EXE, manifest["files"])
+        self.assertIn("_cli_internal/python.dll", manifest["files"])
+        self.assertIn("_internal/python.dll", manifest["files"])
+        self.write(self.package, "_cli_internal/unlisted.dll", "unexpected")
+        with self.assertRaisesRegex(ValueError, "更新清单不一致"):
+            release.validate_package(self.root, self.package)
+
     def test_source_relocation_preserves_installed_qml_path(self):
         release.prepare_package(self.root, self.package, "v1.2.3")
         source = self.root / "python-gui/src/gui/qml/main.qml"
@@ -73,6 +84,7 @@ class TestReleasePackage(unittest.TestCase):
             release.EXE_NAME,
             release.RUNNER_NAME,
             release.UPDATER_EXE,
+            release.CLI_EXE,
             "_internal/python.dll",
         ):
             self.write(self.package, name, "binary")
@@ -117,6 +129,7 @@ class TestReleasePackage(unittest.TestCase):
                 release.EXE_NAME,
                 release.RUNNER_NAME,
                 release.UPDATER_EXE,
+                release.CLI_EXE,
                 release.MANIFEST,
                 release.VERSION_FILE,
                 "_internal/python.dll",
@@ -155,6 +168,7 @@ class TestReleasePackage(unittest.TestCase):
                     release.EXE_NAME,
                     release.RUNNER_NAME,
                     release.UPDATER_EXE,
+                    release.CLI_EXE,
                     "_internal/python.dll",
                 ]
                 if frontend == "rust":

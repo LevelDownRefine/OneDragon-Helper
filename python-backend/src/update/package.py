@@ -100,7 +100,7 @@ def managed_path(name: str) -> bool:
         return len(parts) >= 2 and parts[1].casefold() not in USER_CONFIG
     if name.casefold() == "assets/banner.jpg":
         return False
-    return name.startswith(("_internal/", "assets/", "src/gui/qml/"))
+    return name.startswith(("_internal/", "_cli_internal/", "assets/", "src/gui/qml/"))
 
 
 def safe_target(root: Path, name: str) -> Path:

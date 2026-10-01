@@ -316,14 +316,17 @@ class UpdateService:
             raise UpdateError("待安装包与当前安装的前端类型不一致")
         caller = psutil.Process()
         frontend = None
-        if self.frontend == "rust":
+        if (
+            self.frontend == "rust"
+            or Path(caller.exe()).resolve() == self.root / CLI_EXE
+        ):
             frontend = caller.parent()
             if (
                 Path(caller.exe()).resolve() != self.root / CLI_EXE
                 or frontend is None
                 or Path(frontend.exe()).resolve() != self.root / APP_EXE
             ):
-                raise UpdateError("安装更新须从当前 Rust 窗口发起")
+                raise UpdateError("安装更新须从当前助手窗口发起")
         excluded = {os.getpid()}
         if frontend is not None:
             excluded.add(frontend.pid)

@@ -100,11 +100,13 @@ def prepare_package(
         encoding="utf-8",
     )
     files = names + [EXE_NAME, RUNNER_NAME, UPDATER_EXE, VERSION_FILE]
+    files.append(CLI_EXE)
     if frontend == "rust":
-        files.extend((CLI_EXE, RUST_RUNTIME))
+        files.append(RUST_RUNTIME)
     files += [
         path.relative_to(package).as_posix()
-        for path in (package / "_internal").rglob("*")
+        for directory in ("_internal", "_cli_internal")
+        for path in (package / directory).rglob("*")
         if path.is_file()
     ]
     write_manifest(package, files, version, frontend=frontend)
@@ -120,10 +122,11 @@ def validate_package(root: Path, package: Path) -> list[Path]:
         UPDATER_EXE,
         VERSION_FILE,
         MANIFEST,
+        CLI_EXE,
     }
     if frontend == "rust":
         expected.update((CLI_EXE, RUST_RUNTIME))
-    allowed_dirs = {"_internal"}
+    allowed_dirs = {"_internal", "_cli_internal"}
     for name in expected:
         allowed_dirs.update(
             str(parent) for parent in Path(name).parents if str(parent) != "."
@@ -136,12 +139,14 @@ def validate_package(root: Path, package: Path) -> list[Path]:
             raise ValueError(f"发布包不能包含符号链接: {name}")
         if path.is_dir():
             if (
-                path.parts[len(package.parts)] != "_internal"
+                path.parts[len(package.parts)] not in {"_internal", "_cli_internal"}
                 and str(Path(name)) not in allowed_dirs
             ):
                 raise ValueError(f"发布包包含非程序目录: {name}")
             continue
-        if name not in expected and not name.startswith("_internal/"):
+        if name not in expected and not name.startswith(
+            ("_internal/", "_cli_internal/")
+        ):
             raise ValueError(f"发布包包含非程序文件: {name}")
         found.add(name)
         files.append(path)
