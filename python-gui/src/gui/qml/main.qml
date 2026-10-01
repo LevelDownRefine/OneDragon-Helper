@@ -612,6 +612,7 @@ Window {
                         target: Bridge
                         function onCurrentIndexChanged() { linkButton.refreshGameIcon() }
                         function onGamesChanged() { linkButton.refreshGameIcon() }
+                        function onGameIconChanged() { linkButton.refreshGameIcon() }
                     }
                     x: 8
                     y: 12 + index * 48

@@ -20,7 +20,13 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtQuick import QQuickImageProvider
 from PySide6.QtWidgets import QMessageBox
 
-from gui.icons import GameIconProvider, _render_icon, get_script_icon
+from gui.icons import (
+    GameIconProvider,
+    _default_icon,
+    _exe_icon,
+    _render_icon,
+    get_script_icon,
+)
 from src.service.script_service import DuplicateScript, InvalidScript
 from src.utils.utils_sub_config import get_script_name
 
@@ -57,7 +63,11 @@ class ScriptIconProvider(QQuickImageProvider):
         self._cache = {}
         for game in games:
             name = game["script_name"]
-            self._cache[name] = self._load_icon(game["script_data"])
+            self._cache[name] = (
+                _render_icon(_exe_icon(game["icon_path"]) or _default_icon())
+                if "icon_path" in game
+                else self._load_icon(game["script_data"])
+            )
 
     def requestPixmap(self, id: str, size, requestedSize):
         return self._cache.get(id, QPixmap())
@@ -205,10 +215,6 @@ class GameListController(QObject):
     # ── 加载 / 增删改 ───────────────────────────────────────────────────
     def reload_games(self):
         """从 config.yml 重建脚本列表。"""
-        enabled = {
-            game["script_name"]: state
-            for game, state in zip(self._games, self._enabled, strict=False)
-        }
         games = []
         for script in self._app_service.load_config()["script_list"]:
             display_name = script["display_name"]
@@ -221,6 +227,14 @@ class GameListController(QObject):
                     "color": C_GAME_DIM,
                 }
             )
+        self._set_games(games)
+
+    def _set_games(self, games):
+        """发布已读取的列表；异步读取也复用图标、模型和内存勾选更新。"""
+        enabled = {
+            game["script_name"]: state
+            for game, state in zip(self._games, self._enabled, strict=False)
+        }
         if not games:
             # 手改 config.yml 删空脚本属可恢复的外部输入：降级为空界面而非崩溃
             # （删最后一个脚本已由 deleteScript 拦截，正常操作不会走到这里）。
