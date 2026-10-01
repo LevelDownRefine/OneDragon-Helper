@@ -10,6 +10,7 @@ from gui.controllers.game_list import C_GAME_DIM, GameListController
 
 class CliGameListController(GameListController):
     loaded = Signal()
+    loadFailed = Signal()
 
     def __init__(self, session, toast, on_reload, parent=None):
         super().__init__(None, toast, on_reload, parent)
@@ -59,6 +60,7 @@ class CliGameListController(GameListController):
         def failed(failure):
             if generation == self._generation:
                 self._toast(failure.message)
+                self.loadFailed.emit()
 
         self._session.call("app.snapshot", {}, loaded, failed)
 

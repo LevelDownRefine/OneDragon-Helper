@@ -452,3 +452,37 @@ class ControllerTests(TestCase):
         invalid["startup"]["delay_seconds"] = True
         with self.assertRaises(ValueError):
             parse_settings(invalid)
+
+    def test_initial_snapshot_failure_cancels_startup_before_or_after_request(self):
+        from gui.main_window import QmlBridge
+
+        for before_request in (False, True):
+            for invalid_response in (False, True):
+                with self.subTest(
+                    before_request=before_request, invalid_response=invalid_response
+                ):
+                    transport = Transport()
+                    with patch("gui.main_window.AppService", return_value=Mock()):
+                        bridge = QmlBridge(transport)
+                    messages = []
+                    bridge.toastRequested.connect(messages.append)
+                    if not before_request:
+                        bridge.maybe_auto_launch()
+                        self.assertTrue(bridge._auto_launch_pending)
+                    if invalid_response:
+                        transport.succeeded.emit(1, {})
+                    else:
+                        transport.failed.emit(1, CliFailure("transport_failed", "lost"))
+                    if before_request:
+                        bridge.maybe_auto_launch()
+                    self.assertFalse(bridge._auto_launch_pending)
+                    self.assertTrue(bridge._startup_load_failed)
+                    self.assertIn("读取脚本列表失败，已取消自动启动", messages)
+                    bridge._reload_games()
+                    with patch("gui.startup_dialog.confirm_startup") as confirm:
+                        transport.succeeded.emit(2, snapshot("A"))
+                        bridge.maybe_auto_launch()
+                    confirm.assert_not_called()
+                    self.assertNotIn(
+                        "startup.view", [method for method, _ in transport.requests]
+                    )

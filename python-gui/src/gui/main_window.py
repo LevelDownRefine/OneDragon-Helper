@@ -42,6 +42,7 @@ class QmlBridge(QObject):
         self._cli_session = None
         self._auto_launch_pending = False
         self._games_loaded = False
+        self._startup_load_failed = False
         if cli_client is not None:
             from gui.cli_client import CliSession
 
@@ -112,6 +113,7 @@ class QmlBridge(QObject):
             )
             self.links.iconChanged.connect(self.gameIconChanged.emit)
             self.game_list.loaded.connect(self._cli_games_loaded)
+            self.game_list.loadFailed.connect(self._cli_games_failed)
             self._cli_session.recovered.connect(self._reload_games)
         self.window = WindowController()
         # UI 矢量图标提供器（无状态，门面持有）
@@ -285,6 +287,8 @@ class QmlBridge(QObject):
         已落盘的 config/schedule 启动当前启用的脚本。无启用脚本时无需弹窗。
         """
         if self._cli_session is not None:
+            if self._startup_load_failed:
+                return
             if not self._games_loaded:
                 self._auto_launch_pending = True
                 return
@@ -462,6 +466,13 @@ class QmlBridge(QObject):
         if self._auto_launch_pending:
             self._auto_launch_pending = False
             self.maybe_auto_launch()
+
+    def _cli_games_failed(self):
+        """首轮读取失败即取消本次自动启动，后续重连只恢复界面。"""
+        if not self._games_loaded:
+            self._startup_load_failed = True
+            self._auto_launch_pending = False
+            self.toastRequested.emit("读取脚本列表失败，已取消自动启动")
 
     def _apply_current(self):
         if not self.game_list.games:
