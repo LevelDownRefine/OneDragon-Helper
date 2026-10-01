@@ -11,7 +11,7 @@ import psutil
 
 from src.update import __main__ as updater
 from src.update import service
-from src.update.package import APP_EXE, CLI_EXE, UpdateError
+from src.update.package import APP_EXE, CLI_EXE, QT_CLI_EXE, UpdateError
 from src.update.runtime import FileLease, UpdateBusyError
 from tests.support.update_package import make_package, program_snapshot
 
@@ -166,7 +166,7 @@ class QtCliHandoffTests(RustHandoffTests):
         )
         self.prepared = service.PreparedUpdate(self.package.parent, "2.0.0")
         self.client = service.UpdateService(self.root, frontend="qt")
-        self.cli.exe.return_value = str(self.root / CLI_EXE)
+        self.cli.exe.return_value = str(self.root / QT_CLI_EXE)
         self.gui.exe.return_value = str(self.root / APP_EXE)
 
     def test_service_rejects_foreign_parent_or_other_running_cli(self):

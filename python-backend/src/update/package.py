@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 APP_EXE = "OneDragon-Helper.exe"
 CLI_EXE = "OneDragon-Helper-CLI.exe"
+QT_CLI_EXE = "_internal/cli/" + CLI_EXE
 RUST_RUNTIME = "vcruntime140.dll"
 RUNNER_EXE = "OneDragon-Helper-Runner.exe"
 UPDATER_EXE = "OneDragon-Helper-Updater.exe"
@@ -105,7 +106,7 @@ def managed_path(name: str) -> bool:
         return len(parts) >= 2 and parts[1].casefold() not in USER_CONFIG
     if name.casefold() == "assets/banner.jpg":
         return False
-    return name.startswith(("_internal/", "_cli_internal/", "assets/", "src/gui/qml/"))
+    return name.startswith(("_internal/", "assets/", "src/gui/qml/"))
 
 
 def linked_path(path: Path) -> bool:

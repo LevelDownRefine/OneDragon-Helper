@@ -95,10 +95,15 @@ def get_wallpaper_json_path_under_root() -> str:
 def get_root_dir() -> str:
     """
     获取项目根目录
-    :return: 仓库根目录（python-backend/ 的父目录）；冻结（PyInstaller）时为 exe 所在目录
+    :return: 仓库根目录（python-backend/ 的父目录）；冻结时为安装根目录（Qt CLI 位于 _internal/cli）
     """
     if getattr(sys, "frozen", False):
-        return os.path.dirname(sys.executable)
+        from src.update.package import QT_CLI_EXE
+
+        executable = Path(sys.executable)
+        if executable.as_posix().endswith("/" + QT_CLI_EXE):
+            return str(executable.parents[2])
+        return str(executable.parent)
     # 配置与共享资源仍在仓库根目录。
     return str(Path(__file__).resolve().parents[3])
 
