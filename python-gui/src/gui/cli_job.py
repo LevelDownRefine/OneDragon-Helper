@@ -121,7 +121,7 @@ class CliJob(QObject):
     def _failure(self, failure):
         if not self.active:
             return
-        if failure.code != "job_failed":
+        if failure.code in {"transport_failed", "invalid_response"}:
             self.session.retire()
         self._finish()
         self.failed.emit(failure)

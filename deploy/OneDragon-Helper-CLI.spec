@@ -4,7 +4,6 @@
 import _hashlib
 import _ssl
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -58,9 +57,7 @@ exe = EXE(
     exclude_binaries=True,
     name="OneDragon-Helper-CLI",
     console=True,
-    contents_directory=(
-        "_cli_internal" if os.environ.get("ODH_CLI_FRONTEND") == "qt" else "_internal"
-    ),
+    contents_directory="_internal",
     upx=False,
     icon=[str(root / "assets/ds.ico")],
 )

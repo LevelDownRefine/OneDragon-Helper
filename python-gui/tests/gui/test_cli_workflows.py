@@ -95,6 +95,45 @@ class WorkflowTests(TestCase):
             self.transport.requests[1:], [("job.poll", {"job_id": "job-1"})] * 2
         )
 
+    def test_rejected_start_keeps_session_and_allows_explicit_retry(self):
+        self.job.start("restore.start", {"zip_path": "invalid.zip", "confirmed": True})
+        self.transport.failed.emit(1, CliFailure(-32002, "invalid backup"))
+        self.assertFalse(self.job.active)
+        self.assertFalse(self.session.busy)
+        self.assertTrue(self.session.usable)
+        self.factory.assert_not_called()
+        self.assertEqual(len(self.transport.requests), 1)
+        self.job.start("restore.start", {"zip_path": "valid.zip", "confirmed": True})
+        self.assertEqual(
+            self.transport.requests[-1],
+            ("restore.start", {"zip_path": "valid.zip", "confirmed": True}),
+        )
+        self.reply({"id": "job-2"})
+        self.job._timer.stop()
+        self.job._poll()
+        self.reply(
+            {
+                "id": "job-2",
+                "kind": "restore",
+                "state": "succeeded",
+                "result": {"restored": 1, "skipped_scripts": []},
+            }
+        )
+        self.assertEqual(len(self.results), 1)
+
+    def test_daily_busy_shows_feedback_without_read_or_open(self):
+        toast = Mock()
+        controller = CliDailyPlanController(self.session, toast)
+        self.session.hold()
+        controller.edit()
+        toast.assert_called_once_with("已有后台操作，请稍候")
+        self.assertEqual(self.transport.requests, [])
+        toast.reset_mock()
+        controller._opening = True
+        controller.edit()
+        toast.assert_not_called()
+        self.session.release()
+
     def test_unknown_start_result_keeps_old_process_and_never_replays(self):
         self.job.start("restore.start", {"zip_path": "backup.zip", "confirmed": True})
         self.transport.usable = False
@@ -368,8 +407,11 @@ class WorkflowTests(TestCase):
         self.assertEqual(self.transport.requests, [("update.download", {})])
         self.transport.failed.emit(1, CliFailure(-32002, "failed"))
         self.assertEqual(controller._next_operation, "check")
-        self.transport.running = False
-        self.transport.closed.emit()
+        self.assertTrue(self.session.usable)
+        self.assertFalse(self.session.busy)
+        self.factory.assert_not_called()
+        controller._advance()
+        self.assertEqual(self.transport.requests[-1], ("update.view", {}))
 
     def test_plan_unknown_state_remains_explicit_and_invalid_payloads_fail(self):
         value = {

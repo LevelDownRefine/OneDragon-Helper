@@ -3,6 +3,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -97,6 +98,16 @@ class TestGetRootDirFrozen(unittest.TestCase):
     def tearDown(self):
         # 测试后也要清缓存，避免影响后续测试
         utils.get_root_dir.cache_clear()
+
+    def test_nested_qt_cli_uses_installation_root(self):
+        from src.update.package import QT_CLI_EXE
+
+        root = Path(os.sep) / "app"
+        with (
+            patch("sys.frozen", True, create=True),
+            patch("sys.executable", str(root / QT_CLI_EXE)),
+        ):
+            self.assertEqual(utils.get_root_dir(), str(root))
 
     def test_frozen_returns_exe_dir(self):
         fake_exe = os.path.join(os.sep, "app", "OneDragon-Helper.exe")

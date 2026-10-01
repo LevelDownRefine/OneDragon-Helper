@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 import portalocker
 
 from src.update import __main__ as updater
-from src.update.package import APP_EXE, CLI_EXE, UpdateError
+from src.update.package import APP_EXE, CLI_EXE, QT_CLI_EXE, UpdateError
 from src.update.runtime import (
     FileLease,
     UpdateBusyError,
@@ -97,11 +97,15 @@ class TestUpdateRuntime(unittest.TestCase):
         another.exe.return_value = str(self.root / "other" / APP_EXE)
         worker = Mock(pid=12347)
         worker.exe.return_value = str(self.root / CLI_EXE)
+        qt_worker = Mock(pid=12348)
+        qt_worker.exe.return_value = str(self.root / QT_CLI_EXE)
         with patch(
             "src.update.runtime.psutil.process_iter",
-            return_value=[own, running, another, worker],
+            return_value=[own, running, another, worker, qt_worker],
         ):
-            self.assertEqual(helper_processes(self.root, {os.getpid()}), [12345, 12347])
+            self.assertEqual(
+                helper_processes(self.root, {os.getpid()}), [12345, 12347, 12348]
+            )
 
     def test_busy_runner_is_rejected_before_ready_or_install(self):
         ready = self.root / "ready.json"

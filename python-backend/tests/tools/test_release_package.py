@@ -9,18 +9,21 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
+from tests.support.legacy_qt_paths import managed_path as legacy_managed_path
 from tools import release_package as release
 
 
 class TestReleasePackage(unittest.TestCase):
     def test_qt_cli_runtime_is_isolated_and_in_update_manifest(self):
-        self.write(self.package, "_cli_internal/python.dll", "cli-runtime")
+        self.write(self.package, "_internal/cli/_internal/python.dll", "cli-runtime")
         release.prepare_package(self.root, self.package, "v1.2.3")
         manifest = json.loads((self.package / release.MANIFEST).read_text())
-        self.assertIn(release.CLI_EXE, manifest["files"])
-        self.assertIn("_cli_internal/python.dll", manifest["files"])
+        self.assertIn(release.QT_CLI_EXE, manifest["files"])
+        self.assertIn("_internal/cli/_internal/python.dll", manifest["files"])
         self.assertIn("_internal/python.dll", manifest["files"])
-        self.write(self.package, "_cli_internal/unlisted.dll", "unexpected")
+        self.assertTrue(all(legacy_managed_path(name) for name in manifest["files"]))
+        self.assertFalse(legacy_managed_path("_cli_internal/python.dll"))
+        self.write(self.package, "_internal/cli/_internal/unlisted.dll", "unexpected")
         with self.assertRaisesRegex(ValueError, "更新清单不一致"):
             release.validate_package(self.root, self.package)
 
@@ -84,7 +87,7 @@ class TestReleasePackage(unittest.TestCase):
             release.EXE_NAME,
             release.RUNNER_NAME,
             release.UPDATER_EXE,
-            release.CLI_EXE,
+            release.QT_CLI_EXE,
             "_internal/python.dll",
         ):
             self.write(self.package, name, "binary")
@@ -129,7 +132,7 @@ class TestReleasePackage(unittest.TestCase):
                 release.EXE_NAME,
                 release.RUNNER_NAME,
                 release.UPDATER_EXE,
-                release.CLI_EXE,
+                release.QT_CLI_EXE,
                 release.MANIFEST,
                 release.VERSION_FILE,
                 "_internal/python.dll",
@@ -168,7 +171,7 @@ class TestReleasePackage(unittest.TestCase):
                     release.EXE_NAME,
                     release.RUNNER_NAME,
                     release.UPDATER_EXE,
-                    release.CLI_EXE,
+                    release.CLI_EXE if frontend == "rust" else release.QT_CLI_EXE,
                     "_internal/python.dll",
                 ]
                 if frontend == "rust":
@@ -332,7 +335,7 @@ class TestReleasePackage(unittest.TestCase):
             self.assertNotEqual(sandbox, self.package)
             self.assertEqual(Path(env["ODH_GUI_EXE"]), sandbox / release.EXE_NAME)
             self.assertEqual(Path(env["ODH_RUNNER_EXE"]), sandbox / release.RUNNER_NAME)
-            self.assertEqual(Path(env["ODH_CLI_EXE"]), sandbox / release.CLI_EXE)
+            self.assertEqual(Path(env["ODH_CLI_EXE"]), sandbox / release.QT_CLI_EXE)
             self.write(sandbox, "config/config.yml", "test config")
             self.write(sandbox, "logs/test.log", "test log")
             return subprocess.CompletedProcess(command, exit_code)

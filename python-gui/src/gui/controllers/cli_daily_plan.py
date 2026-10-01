@@ -20,7 +20,10 @@ class CliDailyPlanController(QObject):
         self._opening = False
 
     def edit(self):
-        if self._opening or self._session.busy:
+        if self._opening:
+            return
+        if self._session.busy:
+            self._toast("已有后台操作，请稍候")
             return
         self._opening = True
 
