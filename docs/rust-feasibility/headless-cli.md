@@ -283,3 +283,12 @@ PYTHONPATH=src python -m unittest tests.test_headless -v
 `tests/test_headless.py` 覆盖原参数、中文输出路径、非零返回码、冻结入口和更新闸门。
 Windows 真正打包验证见 `tests/exe/test_headless_exe.py`；源码全量回归与格式检查按
 [TESTING.md](../../TESTING.md) 执行。
+
+
+## 两端的故障恢复
+
+Python 任务卡刷新发现会话失效时，通过组合根工厂新建独立进程并断开旧信号；只发送 script.view。
+Rust 已有刷新时重建 Backend 的路径，重新读取 app.snapshot 与 script.view，旧后端随故障释放。
+两端都不重放失败写入。任务卡字段在运行时验证：可空的 task/enabled/options/start_day
+仍须由响应明确给出，缺失与 null 不等价；Choice.options 是真正可选的子菜单字段。
+Python 校验不会因优化模式而移除；Rust 使用 serde 显式区分缺失与可空字段。

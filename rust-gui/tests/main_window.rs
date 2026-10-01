@@ -1,6 +1,58 @@
 use super::*;
 use std::time::Duration;
 
+#[test]
+fn refresh_after_transport_failure_starts_new_session_without_replaying_write() {
+    let root = tempfile::tempdir().unwrap();
+    let package = root.path().join("python-backend/src");
+    std::fs::create_dir_all(&package).unwrap();
+    std::fs::write(package.join("__init__.py"), "").unwrap();
+    std::fs::write(package.join("headless.py"), r#"
+import json,sys
+for line in sys.stdin:
+    request = json.loads(line)
+    with open('requests.jsonl', 'a') as history:
+        history.write(request['method'] + '\n')
+    script = {'script_name':'test', 'display_name':'Test', 'script_path':'test.exe', 'adapted':False}
+    result = {'scripts':[script]} if request['method'] == 'app.snapshot' else {'script':script, 'dailies':[], 'weeklies':[]}
+    print(json.dumps({'jsonrpc':'2.0', 'id':request['id'], 'result':result}), flush=True)
+"#).unwrap();
+    let python = PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+    let mut command = Command::new(&python);
+    command.args(["-c", "import sys; sys.stdin.read()"]);
+    let mut app = test_app(command, root.path(), python);
+    app.request("daily.select", json!({"script_name":"test"}));
+    app.receive(Reply {
+        method: "daily.select".into(),
+        pid: 0,
+        diagnostics: String::new(),
+        result: Err(Failure::transport("write outcome unknown")),
+    });
+    assert!(app.backend.is_none());
+    assert!(app.view.is_none());
+    app.connect();
+    for method in ["app.snapshot", "script.view"] {
+        let reply = app
+            .backend
+            .as_ref()
+            .unwrap()
+            .replies
+            .recv_timeout(Duration::from_secs(10))
+            .unwrap();
+        assert_eq!(reply.method, method);
+        app.receive(reply);
+    }
+    assert_eq!(app.view.as_ref().unwrap().script.script_name, "test");
+    assert!(!app.busy);
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("python-backend/requests.jsonl"))
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
+        ["app.snapshot", "script.view"]
+    );
+}
+
 fn test_app(command: Command, root: &std::path::Path, python: PathBuf) -> App {
     let ctx = egui::Context::default();
     App {

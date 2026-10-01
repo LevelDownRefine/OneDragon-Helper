@@ -6,7 +6,7 @@ import tempfile
 import time
 import unittest
 from contextlib import ExitStack
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 # 在导入 PySide6 相关模块之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -147,7 +147,11 @@ class TestUpdateRestart(unittest.TestCase):
                 self.assertEqual(
                     bridge.return_value.maybe_auto_launch.call_count, int(not skip)
                 )
-                bridge.assert_called_once_with(cli_client=client.return_value)
+                bridge.assert_called_once_with(
+                    cli_client=client.return_value, cli_client_factory=ANY
+                )
+                factory = bridge.call_args.kwargs["cli_client_factory"]
+                self.assertIs(factory(), client.return_value)
                 if skip:
                     timer.singleShot.assert_called_once()
                     timer.singleShot.call_args.args[1]()

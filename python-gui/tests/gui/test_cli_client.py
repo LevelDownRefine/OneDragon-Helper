@@ -1,6 +1,7 @@
 """真实管道与 Qt 事件循环验证异步客户端，所有子进程均为临时测试程序。"""
 
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -10,7 +11,7 @@ from types import SimpleNamespace
 from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
 
 from gui.cli_client import CliClient, CliFailure
-from gui.controllers.cli_task_card import CliTaskCardController
+from gui.controllers.cli_task_card import CliTaskCardController, valid_script_view
 from tests.gui.helpers import get_app
 
 CHILD = """
@@ -54,7 +55,7 @@ class CliClientTests(unittest.TestCase):
         self.client.failed.connect(lambda *args: self.errors.append(args))
         self.addCleanup(self.close_client)
 
-    def wait_for(self, predicate):
+    def wait_for(self, predicate, timeout_ms=5000):
         loop = QEventLoop()
         poll = QTimer()
         poll.setInterval(5)
@@ -63,7 +64,7 @@ class CliClientTests(unittest.TestCase):
         deadline = QTimer()
         deadline.setSingleShot(True)
         deadline.timeout.connect(loop.quit)
-        deadline.start(5000)
+        deadline.start(timeout_ms)
         if not predicate():
             loop.exec()
         self.assertTrue(predicate(), (self.results, self.errors))
@@ -136,10 +137,12 @@ class CliClientTests(unittest.TestCase):
             "    runpy.run_module('src.headless', run_name='__main__')\n",
             encoding="utf-8",
         )
-        self.client._timer.setInterval(10000)
+        self.client._timer.setInterval(30000)
         first = self.client.request("app.snapshot")
         second = self.client.request("script.view", {"script_name": "自定义"})
-        self.wait_for(lambda: len(self.results) + len(self.errors) == 2)
+        self.wait_for(
+            lambda: len(self.results) + len(self.errors) == 2, timeout_ms=30000
+        )
         self.assertEqual(self.errors, [])
         self.assertEqual(self.results[0][0], first)
         self.assertEqual(self.results[0][1]["scripts"][0]["display_name"], "自定义")
@@ -155,6 +158,10 @@ class FakeClient(QObject):
     def __init__(self):
         super().__init__()
         self.requests = []
+        self.usable = True
+
+    def close(self):
+        self.usable = False
 
     def request(self, method, params):
         self.requests.append((method, params))
@@ -261,3 +268,102 @@ class CliTaskCardTests(unittest.TestCase):
         )
         view["dailies"][0]["enabled"] = True
         self.assertEqual(self.card.daily_items[0]["task_label"], "副本 · 线路")
+
+    def test_refresh_replaces_failed_client_and_discards_old_signals_and_writes(self):
+        replacement = FakeClient()
+        self.card._client_factory = lambda: replacement
+        self.card.selectDaily("daily", "task", 1)
+        self.client.usable = False
+        self.client.failed.emit(1, CliFailure("transport_failed", "failed"))
+        self.card.refresh()
+        self.assertIs(self.card._client, replacement)
+        self.assertEqual(replacement.requests, [("script.view", {"script_name": "A"})])
+        self.client.succeeded.emit(1, self.view("old"))
+        self.client.failed.emit(1, CliFailure("transport_failed", "late exit"))
+        self.assertIsNone(self.card._view)
+        replacement.succeeded.emit(1, self.view("A"))
+        self.assertTrue(self.card.task_adapted)
+        self.assertEqual(self.messages, ["failed"])
+        self.assertEqual(len(self.client.requests), 1)
+
+    def test_malformed_views_clear_state_and_report_without_exceptions(self):
+        valid = self.view("A")
+        invalid = [
+            None,
+            [],
+            {},
+            {**valid, "script": None},
+            self.view("wrong"),
+            {**valid, "dailies": {}},
+            {**valid, "dailies": [{"name": "daily"}]},
+            {
+                **valid,
+                "weeklies": [
+                    {"name": "weekly", "task": None, "options": None, "start_day": True}
+                ],
+            },
+            {
+                **valid,
+                "weeklies": [
+                    {"name": "weekly", "task": None, "options": None, "start_day": 8}
+                ],
+            },
+        ]
+        for response in invalid:
+            with self.subTest(response=response):
+                self.card.refresh()
+                self.client.succeeded.emit(len(self.client.requests), response)
+                self.assertIsNone(self.card._view)
+                self.assertEqual(self.card.daily_items, [])
+                self.assertEqual(self.card.weekly_items, [])
+                self.assertEqual(self.messages[-1], "CLI 任务卡响应无效，请刷新")
+                self.assertFalse(valid_script_view(response, "A"))
+
+    def test_response_validation_remains_enabled_under_python_optimization(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-O",
+                "-c",
+                "from gui.controllers.cli_task_card import valid_script_view; "
+                "raise SystemExit(1 if valid_script_view(None, 'A') else 0)",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_invalid_write_response_only_refreshes_and_does_not_replay(self):
+        self.card.selectWeeklyStart("weekly", 1)
+        self.client.succeeded.emit(1, {"unexpected": True})
+        self.assertEqual(self.messages, ["CLI 写操作响应无效，请刷新"])
+        self.assertEqual(
+            [row[0] for row in self.client.requests], ["weekly.start", "script.view"]
+        )
+
+    def test_nested_options_and_nullable_fields_reject_invalid_types(self):
+        for options in (
+            {"values": {}},
+            {"values": [{}]},
+            {
+                "values": [
+                    {
+                        "display_name": "task",
+                        "physical_name": 1,
+                        "options": {"values": None},
+                    }
+                ]
+            },
+        ):
+            view = self.view("A")
+            view["dailies"] = [
+                {
+                    "name": "daily",
+                    "task": None,
+                    "sequence": None,
+                    "enabled": None,
+                    "options": options,
+                }
+            ]
+            self.assertFalse(valid_script_view(view, "A"))

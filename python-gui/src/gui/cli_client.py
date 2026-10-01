@@ -197,6 +197,11 @@ class CliClient(QObject):
         self._send_next()
 
     @property
+    def usable(self):
+        """失效或关闭中的会话不能继续接受请求。"""
+        return not self._broken and not self._closing
+
+    @property
     def running(self):
         return self._process.state() != QProcess.ProcessState.NotRunning
 

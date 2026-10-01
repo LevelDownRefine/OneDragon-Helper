@@ -2,6 +2,34 @@ use super::*;
 use serde_json::json;
 
 #[test]
+fn nullable_task_fields_must_be_present_and_have_valid_types() {
+    let daily = json!({"name":"daily", "options":{"values":[]},
+        "task":null, "sequence":null, "enabled":null});
+    assert!(serde_json::from_value::<Daily>(daily.clone()).is_ok());
+    for key in ["task", "enabled"] {
+        let mut missing = daily.clone();
+        missing.as_object_mut().unwrap().remove(key);
+        assert!(serde_json::from_value::<Daily>(missing).is_err(), "{key}");
+    }
+    let weekly = json!({"name":"weekly", "options":null, "task":null, "start_day":null});
+    assert!(serde_json::from_value::<Weekly>(weekly.clone()).is_ok());
+    for key in ["options", "task", "start_day"] {
+        let mut missing = weekly.clone();
+        missing.as_object_mut().unwrap().remove(key);
+        assert!(serde_json::from_value::<Weekly>(missing).is_err(), "{key}");
+    }
+    for (key, value) in [
+        ("options", json!([])),
+        ("task", json!(3)),
+        ("start_day", json!(true)),
+    ] {
+        let mut invalid = weekly.clone();
+        invalid[key] = value;
+        assert!(serde_json::from_value::<Weekly>(invalid).is_err(), "{key}");
+    }
+}
+
+#[test]
 fn preserves_boolean_integer_and_string_sequences() {
     let daily: Daily = serde_json::from_value(json!({
         "name": "测试", "enabled": null,

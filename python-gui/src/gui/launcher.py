@@ -149,25 +149,29 @@ def _launch_qml(*, skip_auto_launch: bool = False):
             [] if getattr(sys, "frozen", False) else ["-m", "gui.launcher"]
         ),
     }
+    clients = []
+    client_factory = None
     if not getattr(sys, "frozen", False):
-        client = CliClient(
+        program, arguments, cwd = (
             sys.executable,
             ["-m", "src.headless", "serve", "--stdio"],
             str(root / "python-backend"),
-            app,
-            environment=confirmation,
         )
     elif (root / CLI_EXE).is_file():
-        client = CliClient(
-            str(root / CLI_EXE),
-            ["serve", "--stdio"],
-            str(root),
-            app,
-            environment=confirmation,
-        )
-    if client is not None:
-        app.aboutToQuit.connect(client.close)
-    bridge = QmlBridge(cli_client=client)
+        program, arguments, cwd = str(root / CLI_EXE), ["serve", "--stdio"], str(root)
+    else:
+        program = None
+    if program is not None:
+
+        def client_factory():
+            """每次连接使用独立进程，退出时统一关闭所有会话。"""
+            session = CliClient(program, arguments, cwd, app, environment=confirmation)
+            clients.append(session)
+            app.aboutToQuit.connect(session.close)
+            return session
+
+        client = client_factory()
+    bridge = QmlBridge(cli_client=client, cli_client_factory=client_factory)
     qmlRegisterSingletonInstance(QmlBridge, "OneDragonHelper", 1, 0, "Bridge", bridge)
 
     engine = QQmlApplicationEngine()
@@ -207,11 +211,12 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     _log_startup("进入事件循环")
     logger.info("[qml] entering event loop")
     exit_code = app.exec()
-    if client is not None and client.running:
-        cleanup = QEventLoop()
-        client.closed.connect(cleanup.quit)
-        client.close()
-        cleanup.exec()
+    for session in clients:
+        if session.running:
+            cleanup = QEventLoop()
+            session.closed.connect(cleanup.quit)
+            session.close()
+            cleanup.exec()
     if file_drop is not None:
         app.removeNativeEventFilter(file_drop)
     sys.exit(exit_code)

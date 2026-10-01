@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -32,17 +32,30 @@ pub struct Choice {
 pub struct Daily {
     pub name: String,
     pub options: Options,
+    #[serde(deserialize_with = "required_nullable")]
     pub task: Option<String>,
     pub sequence: Value,
+    #[serde(deserialize_with = "required_nullable")]
     pub enabled: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Weekly {
     pub name: String,
+    #[serde(deserialize_with = "required_nullable")]
     pub options: Option<Options>,
+    #[serde(deserialize_with = "required_nullable")]
     pub task: Option<String>,
+    #[serde(deserialize_with = "required_nullable")]
     pub start_day: Option<u8>,
+}
+
+fn required_nullable<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
 }
 
 #[derive(Clone, Debug, Deserialize)]
