@@ -35,7 +35,12 @@ class HeadlessExeTests(unittest.TestCase):
         self.root.mkdir()
         self.root = self.root.resolve()
         shutil.copy2(EXECUTABLE, self.root / CLI_EXE)
-        shutil.copytree(EXECUTABLE.parent / "_internal", self.root / "_internal")
+        self.runtime = (
+            "_cli_internal"
+            if (EXECUTABLE.parent / "_cli_internal").is_dir()
+            else "_internal"
+        )
+        shutil.copytree(EXECUTABLE.parent / self.runtime, self.root / self.runtime)
         for name in resource_files(ROOT):
             if name.startswith(("config/", "assets/")):
                 target = self.root / name
@@ -240,6 +245,6 @@ class HeadlessExeTests(unittest.TestCase):
         self.assertFalse(
             any(
                 "pyside" in path.name.lower() or "shiboken" in path.name.lower()
-                for path in (self.root / "_internal").rglob("*")
+                for path in (self.root / self.runtime).rglob("*")
             )
         )
