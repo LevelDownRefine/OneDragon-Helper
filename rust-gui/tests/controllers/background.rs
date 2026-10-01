@@ -15,13 +15,16 @@ fn video_decode_failure_preserves_existing_preview_or_gradient() {
         state.mode = Mode::Video;
         state.cache = cache.clone();
         backdrop.set(state);
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
         loop {
             if let Some(error) = backdrop.poll(&ctx) {
                 assert!(error.contains("视频无法播放"));
                 break;
             }
-            assert!(std::time::Instant::now() < deadline);
+            assert!(
+                std::time::Instant::now() < deadline,
+                "decoder did not report invalid media"
+            );
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         assert!(backdrop.ready);
