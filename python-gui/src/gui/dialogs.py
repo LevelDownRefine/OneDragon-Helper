@@ -14,7 +14,7 @@
 
 import os
 
-from PySide6.QtCore import QRectF, Qt, QTimer
+from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -535,6 +535,7 @@ class SingleScriptConfigDialog(FormDialogBase):
     """单个脚本的配置弹窗（路径选择 + 每周超时时间，删除改由左侧列表交互完成）。"""
 
     _TIMEOUT_INPUT_STYLE = small_line_edit_qss(text_align="right")
+    saveRequested = Signal(object)
 
     def __init__(
         self,
@@ -543,6 +544,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         script_path="",
         parent=None,
         app_service=None,
+        edit_view=None,
     ):
         super().__init__(parent)
         self.setWindowTitle(f"配置 {display_name}")
@@ -552,10 +554,15 @@ class SingleScriptConfigDialog(FormDialogBase):
         )
         self.display_name = display_name  # 展示名
         self.script_path = script_path
-        self._app_service = app_service or AppService()
+        self._app_service = (app_service or AppService()) if edit_view is None else None
+        self._edit_view = edit_view
         self.pending_changes: ScriptEdit | None = None
         # 原生任务开关：构造期读一次，init_ui 按它建行、load_data 按它回显
-        self._switches = self._app_service.get_script_switches(self.script_name)
+        self._switches = (
+            edit_view["switches"]
+            if edit_view is not None
+            else self._app_service.get_script_switches(self.script_name)
+        )
 
         self.init_ui()
         self.load_data()
@@ -687,6 +694,8 @@ class SingleScriptConfigDialog(FormDialogBase):
 
     def _find_script_data(self) -> dict:
         """从 config.yml 读取本脚本的完整数据字典；脚本不在表中返回空 dict。"""
+        if self._edit_view is not None:
+            return self._edit_view["script"]
         script = self._app_service.get_script(self.script_name)
         return script if script is not None else {}
 
@@ -714,7 +723,11 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.block_cb.setChecked(script_data.get("block", True))
 
         # 每周超时
-        timeouts = self._app_service.weekly_inputs(self.script_name)
+        timeouts = (
+            self._edit_view["weekly_timeouts"]
+            if self._edit_view is not None
+            else self._app_service.weekly_inputs(self.script_name)
+        )
         for idx, timeout_edit in enumerate(self.timeout_inputs):
             timeout_edit.setText(str(timeouts[idx]))
 
@@ -762,6 +775,10 @@ class SingleScriptConfigDialog(FormDialogBase):
                 for name, checkbox in self.switch_checks.items()
             },
         )
+        if self._edit_view is not None:
+            self.pending_changes = edit
+            self.saveRequested.emit(edit)
+            return
         try:
             self.pending_changes = self._app_service.validate_script_edit(edit)
         except InvalidScript as exc:

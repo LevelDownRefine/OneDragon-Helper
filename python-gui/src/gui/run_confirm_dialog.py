@@ -34,9 +34,11 @@ class RunConfirmDialog(FormDialogBase):
         parent=None,
         *,
         settings_only: bool = False,
+        submit=None,
     ):
         super().__init__(parent)
         self.settings_only = settings_only
+        self._submit = submit
         self.setWindowTitle("运行选项" if settings_only else "确认运行")
 
         self._run_options = None  # accept 后供调用方读取勾选项
@@ -81,4 +83,7 @@ class RunConfirmDialog(FormDialogBase):
     def _on_accept(self) -> None:
         """确认运行：收集勾选项并 accept。"""
         self._run_options = self.editor.run_options
-        self.accept()
+        if self._submit is None:
+            self.accept()
+        else:
+            self._submit(self)

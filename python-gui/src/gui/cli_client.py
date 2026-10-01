@@ -11,6 +11,117 @@ logger = logging.getLogger(__name__)
 MAX_LINE = 8 * 1024 * 1024
 
 
+class CliSession(QObject):
+    """控制器共用的会话；外部编号不随重连重置，失效写操作不重放。"""
+
+    succeeded = Signal(int, object)
+    failed = Signal(int, object)
+    recovered = Signal()
+
+    READ_METHODS = {
+        "app.snapshot",
+        "script.view",
+        "script.target",
+        "script.icon_path",
+        "script.launch_target",
+        "script.edit_view",
+        "settings.view",
+        "startup.view",
+        "wallpaper.current",
+        "wallpaper.view",
+        "plan.view",
+        "run.view",
+    }
+
+    def __init__(self, client, factory, parent=None):
+        super().__init__(parent)
+        self._client = client
+        self._factory = factory
+        self._next_id = 1
+        self._pending = {}
+        self._callbacks = {}
+        self._recovery_pending = False
+        self._closing = False
+        self._connect()
+        self.succeeded.connect(self._success)
+        self.failed.connect(self._failure)
+
+    def _connect(self):
+        self._client.succeeded.connect(self._received)
+        self._client.failed.connect(self._rejected)
+
+    @property
+    def usable(self):
+        return self._client.usable and not self._closing
+
+    def detach(self):
+        """GUI 退出后不再交付响应，底层进程仍由 launcher 排空关闭。"""
+        self._closing = True
+        self._pending.clear()
+        self._callbacks.clear()
+
+    def request(self, method, params=None):
+        if self._closing:
+            raise RuntimeError("GUI 正在退出")
+        if not self.usable:
+            if method not in self.READ_METHODS or self._factory is None:
+                raise RuntimeError("CLI 会话已失效，请刷新后再操作")
+            previous = self._client
+            previous.succeeded.disconnect(self._received)
+            previous.failed.disconnect(self._rejected)
+            # 旧会话尚未回调的请求也必须结束，不能挂在新会话上。
+            pending = list(self._pending.values())
+            self._pending.clear()
+            for request_id in pending:
+                self.failed.emit(
+                    request_id, CliFailure("transport_failed", "CLI 会话已失效")
+                )
+            previous.close()
+            self._client = self._factory()
+            self._connect()
+            self._recovery_pending = True
+        wire_id = self._client.request(method, params)
+        request_id = self._next_id
+        self._next_id += 1
+        self._pending[wire_id] = request_id
+        return request_id
+
+    def call(self, method, params, success, failure):
+        """回调只绑定本次请求；用户重试才会产生新的写操作。"""
+        try:
+            request_id = self.request(method, params)
+        except (RuntimeError, ValueError) as exc:
+            failure(CliFailure("transport_failed", str(exc)))
+            return
+        self._callbacks[request_id] = success, failure
+
+    def _received(self, wire_id, result):
+        if wire_id in self._pending:
+            request_id = self._pending.pop(wire_id)
+            if self._recovery_pending:
+                self._recovery_pending = False
+                self.recovered.emit()
+            self.succeeded.emit(request_id, result)
+
+    def _rejected(self, wire_id, failure):
+        if wire_id in self._pending:
+            self.failed.emit(self._pending.pop(wire_id), failure)
+
+    def _success(self, request_id, result):
+        if request_id in self._callbacks:
+            success, failure = self._callbacks.pop(request_id)
+            try:
+                success(result)
+            except ValueError as exc:
+                logger.error("CLI 业务响应无效：%s", exc)
+                failure(CliFailure("invalid_response", "CLI 返回了无效数据，请刷新"))
+
+    def _failure(self, request_id, failure):
+        if request_id in self._callbacks:
+            _, callback = self._callbacks.pop(request_id)
+            callback(failure)
+
+
 @dataclass(frozen=True)
 class CliFailure:
     code: int | str
@@ -157,11 +268,12 @@ class CliClient(QObject):
             failure = CliFailure(error["code"], error["message"], refresh)
         self._active = None
         self._timer.stop()
+        # 结果槽可能打开模态弹窗，先允许其嵌套事件循环继续发送保存请求。
+        QTimer.singleShot(0, self._send_next)
         if failure is None:
             self.succeeded.emit(request_id, response["result"])
         else:
             self.failed.emit(request_id, failure)
-        QTimer.singleShot(0, self._send_next)
 
     def _read_stderr(self):
         text = bytes(self._process.readAllStandardError()).decode("utf-8", "replace")

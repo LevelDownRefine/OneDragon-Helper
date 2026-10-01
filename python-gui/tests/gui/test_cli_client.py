@@ -85,6 +85,25 @@ class CliClientTests(unittest.TestCase):
         )
         self.assertEqual(self.errors, [(third, CliFailure(-32002, "partial write"))])
 
+    def test_result_can_open_modal_loop_and_submit_next_request(self):
+        completed = []
+
+        def received(request_id, result):
+            if request_id != 1:
+                return
+            loop = QEventLoop()
+            self.client.succeeded.connect(lambda _id, _result: loop.quit())
+            self.client.request("echo", {"saved": True})
+            QTimer.singleShot(1500, loop.quit)
+            loop.exec()
+            completed.append(len(self.results))
+
+        self.client.succeeded.connect(received)
+        self.client.request("echo", {"open": True})
+        self.wait_for(lambda: bool(completed))
+        self.assertEqual(completed, [2])
+        self.assertEqual(self.errors, [])
+
     def assert_transport_failure(self, method):
         first = self.client.request(method)
         second = self.client.request("echo")

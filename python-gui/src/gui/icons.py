@@ -191,11 +191,17 @@ class GameIconProvider(QQuickImageProvider):
 
     def __init__(self):
         super().__init__(QQuickImageProvider.Pixmap)
+        self.paths = None
 
     def requestPixmap(self, id: str, size, requestedSize):
         from src.config.set_config import get_game_exe_path
 
-        exe_path = get_game_exe_path(id)
+        id = id.split("?", 1)[0]
+        exe_path = (
+            (self.paths[id] if id in self.paths else None)  # noqa: SIM401
+            if self.paths is not None
+            else get_game_exe_path(id)
+        )
         return _render_icon(
             get_exe_icon(exe_path) if exe_path else None,
             self._SOURCE_SIZE,
