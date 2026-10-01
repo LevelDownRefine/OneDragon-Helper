@@ -85,3 +85,19 @@ QML 仅经 Bridge.<slot>() 与 Python 交互，QmlBridge 是唯一桥。新增�
 示例：右上角加截图按钮 → window.py 加 @Slot def screenshot → QmlBridge.screenshot 一行委托 → qml/window.qml 加按钮。
 
 资源跳转与当前脚本/游戏启动：控制器直接调用 `AppService.resolve_script_target` / `resolve_launch_target`，只负责系统打开或启动进程及反馈；AppService 统一委托 `python-backend/src/link.py` 查询链接、路径、图标来源、启动目标及 Runner 命令。Python 启动环境继承父进程，再应用 service 给出的覆盖项。
+
+## 异步 CLI 客户端
+
+`cli_client.CliClient` 由 Qt 的 QProcess 和 QTimer 驱动，持久复用 `serve --stdio`。
+请求串行排队、递增编号，stdout/stderr 同时消费；成功（含 null）与失败分别发信号。
+传输损坏、超时、退出会使会话不可用并通知所有排队请求，不重放写入。
+close 排空请求并关闭 stdin，逾期结束进程；launcher 退出时等待关闭信号。
+
+launcher 在源码运行时为任务卡注入客户端；冻结包须同目录存在独立 CLI，否则保持原路径。
+任务卡的展示文案仍由 GUI 生成，菜单/反读/四种编辑使用共享协议。
+其他控制器暂保留 AppService 接口，不能把当前接入视为整个 Python GUI 已迁移到子进程。
+关机确认入口 `--shutdown-confirm 秒数` 可独立调用，退出码 42 为确认，其余按取消处理。
+
+传输失效后，下一次任务卡刷新通过 launcher 提供的工厂创建新 CliClient，断开旧会话信号，
+丢弃旧请求关联，仅请求当前 script.view；失败的写入不会重放。所有会话由 launcher 管理退出。
+任务卡响应在接收边界显式验证身份、容器、递归菜单及可空字段类型，优化模式下仍有效。

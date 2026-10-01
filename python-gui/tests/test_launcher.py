@@ -6,7 +6,7 @@ import tempfile
 import time
 import unittest
 from contextlib import ExitStack
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 # 在导入 PySide6 相关模块之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -138,6 +138,8 @@ class TestUpdateRestart(unittest.TestCase):
                     patch.object(launcher, "QQmlApplicationEngine")
                 )
                 engine.return_value.rootObjects.return_value = [Mock()]
+                client = stack.enter_context(patch("gui.cli_client.CliClient"))
+                client.return_value.running = False
                 bridge = stack.enter_context(patch.object(launcher, "QmlBridge"))
                 timer = stack.enter_context(patch.object(launcher, "QTimer"))
                 with self.assertRaises(SystemExit):
@@ -145,6 +147,11 @@ class TestUpdateRestart(unittest.TestCase):
                 self.assertEqual(
                     bridge.return_value.maybe_auto_launch.call_count, int(not skip)
                 )
+                bridge.assert_called_once_with(
+                    cli_client=client.return_value, cli_client_factory=ANY
+                )
+                factory = bridge.call_args.kwargs["cli_client_factory"]
+                self.assertIs(factory(), client.return_value)
                 if skip:
                     timer.singleShot.assert_called_once()
                     timer.singleShot.call_args.args[1]()
@@ -153,6 +160,25 @@ class TestUpdateRestart(unittest.TestCase):
                     )
                 else:
                     timer.singleShot.assert_not_called()
+
+    def test_shutdown_confirmation_entry_does_not_initialize_or_launch_scripts(self):
+        for confirmed, exit_code in ((True, 42), (False, 0)):
+            with (
+                self.subTest(confirmed=confirmed),
+                patch.object(sys, "argv", ["gui", "--shutdown-confirm", "45"]),
+                patch.object(launcher, "QApplication"),
+                patch.object(launcher, "config_workflow") as workflow,
+                patch.object(launcher, "_launch_qml") as window,
+                patch(
+                    "gui.shutdown_dialog.confirm_shutdown", return_value=confirmed
+                ) as confirm,
+                self.assertRaises(SystemExit) as result,
+            ):
+                launcher.main()
+            self.assertEqual(result.exception.code, exit_code)
+            confirm.assert_called_once_with(45)
+            workflow.assert_not_called()
+            window.assert_not_called()
 
 
 class TestQtMessageLogger(unittest.TestCase):
