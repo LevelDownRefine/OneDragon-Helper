@@ -117,6 +117,21 @@ class TestTaskOptionsDialog(unittest.TestCase):
         self.assertEqual(groups[1]["options"], [])
         self.assertEqual(len(groups), 4)
 
+    def test_child_options_do_not_widen_the_original_form(self):
+        dialog = self.dialog()
+        view = deepcopy(dialog._edit_view)
+        view["task_options"] = []
+        original = SingleScriptConfigDialog("demo", "示例", "demo.exe", edit_view=view)
+        self.addCleanup(original.close)
+        original.show()
+        dialog.show()
+        self.app.processEvents()
+        self.assertLessEqual(dialog.width(), original.width() + 12)
+        self.assertLess(
+            dialog.option_controls["mode"].width(), dialog.args_input.width()
+        )
+        self.assertEqual(dialog.minimumWidth(), dialog.maximumWidth())
+
     def test_task_section_nests_options_under_main_switch(self):
         dialog = self.dialog()
         dialog.close()

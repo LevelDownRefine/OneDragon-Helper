@@ -758,6 +758,7 @@ class SingleScriptConfigDialog(FormDialogBase):
                             children.addWidget(label, index, 0, Qt.AlignTop)
                             if row["type"] == "choice":
                                 control = self._make_combo([])
+                                control.setFixedWidth(INPUT_FIXED_W - 24 - 100 - 12)
                                 for choice in row["choices"]:
                                     control.addItem(
                                         choice["display_name"], choice["physical_name"]
@@ -786,6 +787,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         footer = self._make_footer("保存", self.save_data)
 
         if groups:
+            grid.setContentsMargins(0, 0, 0, 0)
             body = QWidget(self)
             body.setLayout(grid)
             scroll = QScrollArea(self)
@@ -804,7 +806,8 @@ class SingleScriptConfigDialog(FormDialogBase):
             scroll.viewport().setAutoFillBackground(False)
             body.setAutoFillBackground(False)
             layout.addWidget(scroll)
-            self.resize(640, 720)
+            self.setFixedWidth(grid.minimumSize().width() + 32 + 8)
+            self.resize(self.width(), 720)
         else:
             layout.addLayout(grid)
         layout.addLayout(footer)
