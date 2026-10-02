@@ -168,6 +168,10 @@ class TestTaskOptionsDialog(unittest.TestCase):
         ]
         self.assertTrue(all(control.isVisible() for control in controls))
         self.assertEqual(len({control.height() for control in controls}), 1)
+        self.assertEqual(controls[0].height(), controls[0].sizeHint().height())
+        self.assertLess(
+            dialog.option_controls["mode"].height(), dialog.args_input.height()
+        )
         self.assertFalse(
             any(
                 button.text() in ("设置", "收起")

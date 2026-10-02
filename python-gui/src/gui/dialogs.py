@@ -721,7 +721,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         groups = task_groups(self._switches, self._task_options)
         if groups:
             tasks = QVBoxLayout()
-            tasks.setSpacing(6)
+            tasks.setSpacing(12)
             for group in groups:
                 section = QVBoxLayout()
                 section.setSpacing(6)
@@ -729,18 +729,15 @@ class SingleScriptConfigDialog(FormDialogBase):
                 if len(switches) == 1 and switches[0]["name"] == group["name"]:
                     switch = switches[0]
                     checkbox = self._make_checkbox(switch["name"])
-                    checkbox.setFixedHeight(INPUT_FIXED_H)
                     section.addWidget(checkbox, alignment=Qt.AlignLeft)
                     self.switch_checks[switch["name"]] = checkbox
                 else:
                     heading = QLabel(group["name"])
                     heading.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
                     heading.setStyleSheet(f"color: {TEXT}; background: transparent;")
-                    heading.setFixedHeight(INPUT_FIXED_H)
                     section.addWidget(heading)
                     for switch in switches:
                         checkbox = self._make_checkbox(switch["name"])
-                        checkbox.setFixedHeight(INPUT_FIXED_H)
                         section.addWidget(checkbox, alignment=Qt.AlignLeft)
                         self.switch_checks[switch["name"]] = checkbox
                 if group["options"]:
@@ -753,7 +750,6 @@ class SingleScriptConfigDialog(FormDialogBase):
                         if row["type"] == "bool":
                             control = self._make_checkbox(row["display_name"])
                             control.setChecked(row["value"])
-                            control.setFixedHeight(INPUT_FIXED_H)
                             children.addWidget(control, index, 0, 1, 2, Qt.AlignLeft)
                         else:
                             label = self._make_label(row["display_name"])
@@ -763,6 +759,13 @@ class SingleScriptConfigDialog(FormDialogBase):
                             if row["type"] == "choice":
                                 control = self._make_combo([])
                                 control.setFixedWidth(INPUT_FIXED_W - 24 - 100 - 12)
+                                control.setFixedHeight(
+                                    self.kill_script_cb.sizeHint().height()
+                                )
+                                control.setStyleSheet(
+                                    self._COMBO_STYLE
+                                    + "QComboBox { padding: 0px 8px; border-radius: 4px; }"
+                                )
                                 for choice in row["choices"]:
                                     control.addItem(
                                         choice["display_name"], choice["physical_name"]
@@ -772,7 +775,7 @@ class SingleScriptConfigDialog(FormDialogBase):
                             else:
                                 control = {}
                                 selections = QVBoxLayout()
-                                selections.setSpacing(6)
+                                selections.setSpacing(4)
                                 for choice in row["choices"]:
                                     checkbox = self._make_checkbox(
                                         choice["display_name"]
@@ -780,7 +783,6 @@ class SingleScriptConfigDialog(FormDialogBase):
                                     checkbox.setChecked(
                                         choice["physical_name"] in row["value"]
                                     )
-                                    checkbox.setFixedHeight(INPUT_FIXED_H)
                                     control[choice["physical_name"]] = checkbox
                                     selections.addWidget(checkbox)
                                 children.addLayout(selections, index, 1)

@@ -488,7 +488,6 @@ impl ScriptEditor {
         let groups = task_groups(&self.data);
         if !groups.is_empty() {
             crate::dialogs::common::form_section(ui, "任务", |ui| {
-                ui.spacing_mut().interact_size.y = 30.0;
                 for group in groups {
                     ui.push_id(&group.name, |ui| {
                         if group.switches.len() != 1
@@ -507,7 +506,7 @@ impl ScriptEditor {
                                 }
                             });
                         }
-                        ui.add_space(6.0);
+                        ui.add_space(8.0);
                     });
                 }
             });
