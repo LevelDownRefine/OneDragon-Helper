@@ -213,3 +213,40 @@ fn task_groups_attach_options_without_creating_switches() {
     assert!(groups[1].switches.is_empty());
     assert_eq!(groups[1].options, vec![1]);
 }
+
+#[test]
+fn task_settings_expand_and_preserve_changed_child_value() {
+    let ctx = egui::Context::default();
+    let mut editor = editor();
+    editor.data.task_options = serde_json::from_value(json!([
+        {"id":"child", "group":"任务", "display_name":"Child flag", "type":"bool", "value":false, "choices":[]}
+    ])).unwrap();
+    for _ in 0..12 {
+        frame(&ctx, vec2(1000.0, 1600.0), vec![], |ctx| {
+            egui::Area::new(egui::Id::new("settings-test")).show(ctx, |ui| editor.fields_ui(ui))
+        });
+    }
+    let (_, output) = frame(&ctx, vec2(1000.0, 1600.0), vec![], |ctx| {
+        egui::Area::new(egui::Id::new("settings-test")).show(ctx, |ui| editor.fields_ui(ui))
+    });
+    assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Child flag")));
+    let button = text_rect(&output, "设置").center();
+    for pressed in [true, false] {
+        frame(&ctx, vec2(1000.0, 1600.0), click(button, pressed), |ctx| {
+            egui::Area::new(egui::Id::new("settings-test")).show(ctx, |ui| editor.fields_ui(ui))
+        });
+    }
+    let (_, output) = frame(&ctx, vec2(1000.0, 1600.0), vec![], |ctx| {
+        egui::Area::new(egui::Id::new("settings-test")).show(ctx, |ui| editor.fields_ui(ui))
+    });
+    let child = text_rect(&output, "Child flag").center();
+    for pressed in [true, false] {
+        frame(&ctx, vec2(1000.0, 1600.0), click(child, pressed), |ctx| {
+            egui::Area::new(egui::Id::new("settings-test")).show(ctx, |ui| editor.fields_ui(ui))
+        });
+    }
+    assert_eq!(
+        editor.request().unwrap().params["task_options"]["child"],
+        true
+    );
+}
