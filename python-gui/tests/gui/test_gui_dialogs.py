@@ -326,6 +326,7 @@ class TestSingleScriptConfigDialogSwitches(unittest.TestCase):
         service.validate_script_edit.side_effect = validate_edit
         service.weekly_inputs.return_value = [60] * 7
         service.get_script_switches.return_value = switches
+        service.get_script_options.return_value = []
         return service
 
     def _make_dialog(self, switches):

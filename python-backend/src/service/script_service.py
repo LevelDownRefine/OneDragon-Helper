@@ -4,9 +4,10 @@
 """
 
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from src.config.set_config import init_config
+from src.config.task_options import task_options_of
 from src.config.task_switch import task_switch_of
 from src.utils import utils_config, utils_weekly
 from src.utils.utils_shortcut import read_shortcut
@@ -37,6 +38,7 @@ class ScriptEdit:
     config_patch: dict[str, str | bool]  # config.yml
     weekly_timeouts: list[int | None]  # weekly.yml
     switches: dict[str, bool]  # 脚本自身 config
+    task_options: dict[str, bool | str | list[str]] = field(default_factory=dict)
 
 
 class InvalidScript(ValueError):
@@ -101,6 +103,15 @@ def validate_edit(
         raise InvalidScript("任务开关格式无效")
     display_name = edit.display_name.strip()
     new_script_name = get_script_name({**patch, "display_name": display_name})
+    if not isinstance(edit.task_options, dict):
+        raise InvalidScript("任务选项格式无效")
+    if edit.task_options:
+        if new_script_name != edit.script_name:
+            raise InvalidScript("修改脚本标识后请刷新，再编辑任务选项")
+        try:
+            task_options_of(edit.script_name).prepare(edit.task_options)
+        except ValueError as exc:
+            raise InvalidScript(str(exc)) from exc
     if new_script_name != edit.script_name:
         if script_names is None:
             config = utils_config.load_config()
@@ -197,6 +208,10 @@ def update(edit: ScriptEdit) -> str:
         raise InvalidScript("脚本已不存在，请刷新列表")
     assert "script_path" in target and "script_path" in edit.config_patch
     previous_path = target["script_path"]
+    if edit.task_options and previous_path != edit.config_patch["script_path"]:
+        raise InvalidScript("修改脚本路径后请刷新，再编辑任务选项")
+    options = task_options_of(edit.script_name) if edit.task_options else None
+    pending = options.prepare(edit.task_options) if options is not None else []
 
     target.update(edit.config_patch)
     target["display_name"] = edit.display_name
@@ -211,6 +226,8 @@ def update(edit: ScriptEdit) -> str:
     ):
         init_config(new_script_name)
     switch = task_switch_of(new_script_name)
+    if options is not None:
+        options.write_prepared(pending)
     if switch is not None:
         switch.write(edit.switches)
     return new_script_name

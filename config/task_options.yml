@@ -1,0 +1,106 @@
+# 已接入任务的附带业务选项；不含基础设置、MAA、复杂策略。
+# keys 为原生键路径；当前值只反读原生配置。
+ok-ef:
+  - display_name: 地区建设
+    config: data/apps/ok-ef/working/configs/RegionalBuildTask.json
+    fields:
+      - {id: regional_buy_only, display_name: 只买不卖, keys: [只买不卖], type: bool}
+      - {id: regional_gift, display_name: 买礼物, keys: [是否买礼物], type: bool}
+      - {id: regional_wuling, display_name: 武陵, keys: [武陵], type: bool}
+      - {id: regional_valley, display_name: 四号谷地, keys: [四号谷地], type: bool}
+  - display_name: 收信用
+    config: data/apps/ok-ef/working/configs/CreditCollectTask.json
+    fields:
+      - {id: credit_only_nursery, display_name: 仅收培育室, keys: [尝试仅收培育室], type: bool}
+  - display_name: 送礼
+    config: data/apps/ok-ef/working/configs/LiaisonGiftTask.json
+    fields:
+      - id: gift_target
+        display_name: 优先送礼对象
+        keys: [优先送礼对象]
+        type: choice
+        source: {path: data/apps/ok-ef/working/assets/data/characters.json, field: zh}
+  - display_name: 自动送货
+    config: data/apps/ok-ef/working/configs/DailyDeliveryTask.json
+    fields:
+      - id: delivery_area
+        display_name: 地区
+        keys: [地区切换]
+        type: choice
+        source: {path: data/apps/ok-ef/working/assets/data/delivery_area.json, key: [delivery_area_config]}
+  - display_name: 帝江号整理
+    config: data/apps/ok-ef/working/configs/BoatOrganizeTask.json
+    fields:
+      - {id: boat_stash, display_name: 一键存放, keys: [⭐帝江号一键存放], type: bool}
+      - {id: boat_craft, display_name: 简易制作, keys: [⭐简易制作], type: bool}
+ok-ww:
+  - display_name: 自动刷所有梦魇巢穴
+    config: data/apps/ok-ww/working/configs/NightmareNestTask.json
+    fields:
+      - id: nightmare_targets
+        display_name: 目标
+        keys: [Which to Farm]
+        type: multi
+        min_items: 1
+        values:
+          - {display_name: 梦魇净化, physical_name: Nightmare Purification}
+          - {display_name: 残象巢穴, physical_name: Tacet Discord Nest}
+BetterGI:
+  - display_name: 领取每日奖励
+    config: User/OneDragon/默认配置.json
+    fields:
+      - id: daily_reward_country
+        display_name: 地区
+        keys: [AdventurersGuildCountry]
+        type: choice
+        source: {path: GameTask/Common/Element/Assets/Json, prefix: 冒险家协会_}
+OneDragon-Launcher:
+  - display_name: 咖啡店
+    config: config/01/one_dragon/coffee.yml
+    fields:
+      - id: coffee_location
+        display_name: 地点
+        keys: [transport_point]
+        type: choice
+        values: [六分街 - 咖啡店, 澄辉坪 - 汀曼咖啡, 布亚斯特城区 - 片刻闲]
+  - display_name: 录像店营业
+    config: config/01/one_dragon/random_play.yml
+    fields:
+      - id: video_location
+        display_name: 地点
+        keys: [transport_point]
+        type: choice
+        values: [录像店 - 柜台, 澄辉坪 - 录像店营业点, 布亚斯特城区 - 录像店营业点]
+      - id: video_agent_1
+        display_name: 宣传员 1
+        keys: [agent_name_1]
+        type: choice
+        source: {path: src/zzz_od/game_data/agent.py, enum: AgentEnum, argument: 1, prepend: [随机]}
+      - id: video_agent_2
+        display_name: 宣传员 2
+        keys: [agent_name_2]
+        type: choice
+        source: {path: src/zzz_od/game_data/agent.py, enum: AgentEnum, argument: 1, prepend: [随机]}
+  - display_name: 情报板
+    config: config/01/one_dragon/intel_board.yml
+    fields:
+      - {id: intel_exp, display_name: 刷满经验模式, keys: [exp_grind_mode], type: bool}
+ok-nte:
+  - display_name: 日常领取
+    config: data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json
+    fields:
+      - {id: claim_mail, display_name: 邮件, keys: [daily_claim, 邮件], type: bool}
+      - {id: claim_daily, display_name: 活跃度奖励, keys: [daily_claim, 活跃度奖励], type: bool}
+      - {id: claim_period, display_name: 环期任务奖励, keys: [daily_claim, 环期任务奖励], type: bool}
+  - display_name: 喷泉签到
+    config: data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json
+    fields:
+      - id: fountain_mode
+        display_name: 方式
+        keys: [fountain, 签到方式]
+        type: choice
+        values: [签到, 捞币]
+  - display_name: 异象家具
+    config: data/apps/ok-nte/working/configs/DailyRoutineTaskConfigs.json
+    fields:
+      - {id: furniture_mammon, display_name: 挑战玛门, keys: [furniture, 挑战玛门], type: bool}

@@ -215,6 +215,7 @@ class ControllerTests(TestCase):
                     "config_patch",
                     "weekly_timeouts",
                     "switches",
+                    "task_options",
                 },
             )
             self.assertEqual(params["display_name"], "renamed")

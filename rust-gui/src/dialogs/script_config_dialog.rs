@@ -46,11 +46,50 @@ pub struct TaskSwitch {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct OptionChoice {
+    display_name: String,
+    physical_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", content = "value")]
+pub enum OptionValue {
+    #[serde(rename = "bool")]
+    Bool(bool),
+    #[serde(rename = "choice")]
+    Choice(String),
+    #[serde(rename = "multi")]
+    Multi(Vec<String>),
+}
+
+impl OptionValue {
+    fn json(&self) -> Value {
+        match self {
+            Self::Bool(value) => json!(value),
+            Self::Choice(value) => json!(value),
+            Self::Multi(value) => json!(value),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TaskOption {
+    id: String,
+    group: String,
+    display_name: String,
+    #[serde(flatten)]
+    value: OptionValue,
+    choices: Vec<OptionChoice>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct EditView {
     pub script_name: String,
     script: Fields,
     weekly_timeouts: [u32; 7],
     switches: Vec<TaskSwitch>,
+    #[serde(default)]
+    task_options: Vec<TaskOption>,
 }
 
 pub enum EditAction {
@@ -65,17 +104,24 @@ pub struct ScriptEditor {
     error: Option<String>,
     pub needs_reload: bool,
     picker: Option<FilePicker>,
+    original_options: serde_json::Map<String, Value>,
 }
 
 impl ScriptEditor {
     pub fn new(data: EditView) -> Self {
         let timeouts = data.weekly_timeouts.map(|value| value.to_string());
+        let original_options = data
+            .task_options
+            .iter()
+            .map(|row| (row.id.clone(), row.value.json()))
+            .collect();
         Self {
             data,
             timeouts,
             error: None,
             needs_reload: false,
             picker: None,
+            original_options,
         }
     }
 
@@ -115,6 +161,32 @@ impl ScriptEditor {
             .iter()
             .map(|row| (row.name.clone(), json!(row.enabled)))
             .collect();
+        let task_options: serde_json::Map<String, Value> = self
+            .data
+            .task_options
+            .iter()
+            .filter_map(|row| {
+                let mut value = row.value.json();
+                if let (OptionValue::Multi(selected), Some(Value::Array(original))) =
+                    (&row.value, self.original_options.get(&row.id))
+                {
+                    let mut ordered: Vec<String> = original
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .filter(|name| selected.iter().any(|item| item == name))
+                        .map(str::to_owned)
+                        .collect();
+                    for name in selected {
+                        if !ordered.contains(name) {
+                            ordered.push(name.clone());
+                        }
+                    }
+                    value = json!(ordered);
+                }
+                (self.original_options.get(&row.id) != Some(&value))
+                    .then(|| (row.id.clone(), value))
+            })
+            .collect();
         Ok(Request {
             method: "script.edit_save".into(),
             params: json!({
@@ -129,6 +201,7 @@ impl ScriptEditor {
                     "game_arguments": fields.game_arguments.trim(),
                 },
                 "weekly_timeouts": timeouts, "switches": switches,
+                "task_options": task_options,
             }),
         })
     }
@@ -313,6 +386,58 @@ impl ScriptEditor {
                         for (index, row) in pair.iter_mut().enumerate() {
                             columns[index].checkbox(&mut row.enabled, &row.name);
                         }
+                    });
+                }
+            });
+        }
+        if !self.data.task_options.is_empty() {
+            crate::dialogs::common::form_section(ui, "任务选项", |ui| {
+                for row in &mut self.data.task_options {
+                    ui.push_id(&row.id, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(format!("{} · {}", row.group, row.display_name));
+                            match &mut row.value {
+                                OptionValue::Bool(value) => {
+                                    ui.checkbox(value, "");
+                                }
+                                OptionValue::Choice(value) => {
+                                    let label = row
+                                        .choices
+                                        .iter()
+                                        .find(|choice| choice.physical_name == *value)
+                                        .map_or(value.as_str(), |choice| {
+                                            choice.display_name.as_str()
+                                        });
+                                    egui::ComboBox::from_id_salt("choice")
+                                        .selected_text(label)
+                                        .show_ui(ui, |ui| {
+                                            for choice in &row.choices {
+                                                ui.selectable_value(
+                                                    value,
+                                                    choice.physical_name.clone(),
+                                                    &choice.display_name,
+                                                );
+                                            }
+                                        });
+                                }
+                                OptionValue::Multi(values) => {
+                                    for choice in &row.choices {
+                                        let mut selected = values.contains(&choice.physical_name);
+                                        if ui
+                                            .checkbox(&mut selected, &choice.display_name)
+                                            .changed()
+                                        {
+                                            if selected {
+                                                values.push(choice.physical_name.clone());
+                                            } else {
+                                                values
+                                                    .retain(|value| *value != choice.physical_name);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
                     });
                 }
             });

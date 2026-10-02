@@ -13,6 +13,7 @@
 """
 
 import os
+from copy import deepcopy
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
@@ -34,7 +35,9 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
+    QWidget,
 )
 
 from src.service.app_service import AppService
@@ -563,6 +566,14 @@ class SingleScriptConfigDialog(FormDialogBase):
             if edit_view is not None
             else self._app_service.get_script_switches(self.script_name)
         )
+        self._task_options = (
+            edit_view.get("task_options", [])  # 旧表单响应未包含附带选项。
+            if edit_view is not None
+            else self._app_service.get_script_options(self.script_name)
+        )
+        self._original_options = {
+            row["id"]: deepcopy(row["value"]) for row in self._task_options
+        }
 
         self.init_ui()
         self.load_data()
@@ -687,9 +698,66 @@ class SingleScriptConfigDialog(FormDialogBase):
             grid.addLayout(switch_grid, timeout_row + 1, 1, 1, 2)
 
         # 底部按钮行：右主操作（取消 / 保存）
+        self.option_controls = {}
+        if self._task_options:
+            option_grid = QGridLayout()
+            previous_group = None
+            index = 0
+            for row in self._task_options:
+                if row["group"] != previous_group:
+                    heading = QLabel(row["group"])
+                    heading.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
+                    heading.setStyleSheet(f"color: {TEXT}; background: transparent;")
+                    option_grid.addWidget(heading, index, 0, 1, 2)
+                    previous_group = row["group"]
+                    index += 1
+                label = self._make_label(row["display_name"])
+                label.setFixedWidth(140)
+                label.setWordWrap(True)
+                option_grid.addWidget(label, index, 0)
+                if row["type"] == "bool":
+                    control = self._make_checkbox("")
+                    control.setChecked(row["value"])
+                    option_grid.addWidget(control, index, 1)
+                elif row["type"] == "choice":
+                    control = self._make_combo([])
+                    for choice in row["choices"]:
+                        control.addItem(choice["display_name"], choice["physical_name"])
+                    control.setCurrentIndex(control.findData(row["value"]))
+                    option_grid.addWidget(control, index, 1)
+                else:
+                    control = {}
+                    selections = QVBoxLayout()
+                    for choice in row["choices"]:
+                        checkbox = self._make_checkbox(choice["display_name"])
+                        checkbox.setChecked(choice["physical_name"] in row["value"])
+                        control[choice["physical_name"]] = checkbox
+                        selections.addWidget(checkbox)
+                    option_grid.addLayout(selections, index, 1)
+                self.option_controls[row["id"]] = control
+                index += 1
+            grid.addWidget(
+                self._make_label("任务选项:"), timeout_row + 2, 0, Qt.AlignTop
+            )
+            grid.addLayout(option_grid, timeout_row + 2, 1, 1, 2)
         footer = self._make_footer("保存", self.save_data)
 
-        layout.addLayout(grid)
+        if self._task_options:
+            body = QWidget(self)
+            body.setLayout(grid)
+            scroll = QScrollArea(self)
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.NoFrame)
+            scroll.setStyleSheet(
+                "QScrollArea { background: transparent; border: none; }"
+            )
+            scroll.setWidget(body)
+            scroll.viewport().setAutoFillBackground(False)
+            body.setAutoFillBackground(False)
+            layout.addWidget(scroll)
+            self.resize(640, 720)
+        else:
+            layout.addLayout(grid)
         layout.addLayout(footer)
 
     def _find_script_data(self) -> dict:
@@ -774,6 +842,7 @@ class SingleScriptConfigDialog(FormDialogBase):
                 name: checkbox.isChecked()
                 for name, checkbox in self.switch_checks.items()
             },
+            task_options=self._collect_task_options(),
         )
         if self._edit_view is not None:
             self.pending_changes = edit
@@ -785,3 +854,23 @@ class SingleScriptConfigDialog(FormDialogBase):
             show_warning(self, str(exc))
             return
         self.accept()
+
+    def _collect_task_options(self) -> dict:
+        """只提交相对打开时发生变化的选项；未触碰的原生字段不回写。"""
+        changed = {}
+        for row in self._task_options:
+            control = self.option_controls[row["id"]]
+            if row["type"] == "bool":
+                value = control.isChecked()
+            elif row["type"] == "choice":
+                value = control.currentData()
+            else:
+                original = self._original_options[row["id"]]
+                selected = [
+                    name for name, checkbox in control.items() if checkbox.isChecked()
+                ]
+                value = [name for name in original if name in selected]
+                value.extend(name for name in selected if name not in original)
+            if value != self._original_options[row["id"]]:
+                changed[row["id"]] = value
+        return changed

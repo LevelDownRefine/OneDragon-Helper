@@ -24,6 +24,8 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 
 脚本级资源位置统一声明于 `config/script_resources.yml`（备份范围、游戏路径配置及键路径、背景图、模板、日志目录、链接）；`python-backend/src/config/script_resources.py` 只读并校验，机制仍归各 Python 类。用户安装路径不写入此声明，格式与路径基准见 `python-backend/src/config/script_resources.md`。
 
+已接入任务的附带业务选项声明于 `config/task_options.yml`，机制类 `TaskOptions` 自持子配置读写；支持开关、单选、多选，不含基础设置或 MAA。两套 GUI 的单脚本配置弹窗通过 `ScriptEdit.task_options` 只提交改动，写盘经 service。格式见 `python-backend/src/config/task_options.md`。
+
 ## 铁律：违反即打回
 
 - 不可能发生的事用 `assert`；可恢复才 `return False`/跳过。

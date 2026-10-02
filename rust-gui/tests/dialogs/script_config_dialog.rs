@@ -35,6 +35,35 @@ fn form_preserves_null_timeouts_and_boolean_switches() {
 }
 
 #[test]
+fn task_options_preserve_types_and_submit_only_changes() {
+    let mut editor = ScriptEditor::new(serde_json::from_value(json!({
+        "script_name": "demo", "script": {"display_name": "示例", "script_path": "demo.exe"},
+        "weekly_timeouts": [60,60,60,60,60,60,60], "switches": [],
+        "task_options": [
+            {"id":"flag", "group":"领奖", "display_name":"邮件", "type":"bool", "value":true, "choices":[]},
+            {"id":"mode", "group":"喷泉", "display_name":"方式", "type":"choice", "value":"coin", "choices":[{"display_name":"捞币", "physical_name":"coin"}]},
+            {"id":"targets", "group":"梦魇", "display_name":"目标", "type":"multi", "value":["b","a"], "choices":[]}
+        ]
+    })).unwrap());
+    assert_eq!(editor.request().unwrap().params["task_options"], json!({}));
+    editor.data.task_options[2].value = OptionValue::Multi(vec!["a".into(), "b".into()]);
+    assert_eq!(editor.request().unwrap().params["task_options"], json!({}));
+    editor.data.task_options[0].value = OptionValue::Bool(false);
+    editor.data.task_options[2].value = OptionValue::Multi(vec!["a".into()]);
+    assert_eq!(
+        editor.request().unwrap().params["task_options"],
+        json!({"flag":false,"targets":["a"]})
+    );
+}
+
+#[test]
+fn task_option_response_rejects_wrong_type() {
+    assert!(serde_json::from_value::<TaskOption>(json!({
+        "id":"flag", "group":"领奖", "display_name":"邮件", "type":"bool", "value":1, "choices":[]
+    })).is_err());
+}
+
+#[test]
 fn switches_use_two_columns_and_save_clicked_state() {
     let ctx = egui::Context::default();
     let mut editor = editor();

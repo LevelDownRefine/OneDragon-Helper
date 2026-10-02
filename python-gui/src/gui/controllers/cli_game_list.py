@@ -281,6 +281,8 @@ def valid_edit_view(value, name):
     timeouts = value["weekly_timeouts"]
     switches = value["switches"]
     script = value["script"]
+    if "task_options" in value and not valid_task_options(value["task_options"]):
+        return False
     if (
         not all(
             key in script and isinstance(script[key], str)
@@ -321,3 +323,52 @@ def valid_edit_view(value, name):
             for row in switches
         )
     )
+
+
+def valid_task_options(rows):
+    """校验附带选项响应，避免错误类型进入控件。"""
+    if not isinstance(rows, list):
+        return False
+    identifiers = set()
+    for row in rows:
+        if not isinstance(row, dict) or not all(
+            key in row
+            for key in ("id", "group", "display_name", "type", "value", "choices")
+        ):
+            return False
+        if not all(
+            isinstance(row[key], str) and row[key]
+            for key in ("id", "group", "display_name")
+        ):
+            return False
+        if row["id"] in identifiers:
+            return False
+        identifiers.add(row["id"])
+        choices = row["choices"]
+        if not isinstance(choices, list) or not all(
+            isinstance(choice, dict)
+            and all(
+                key in choice and isinstance(choice[key], str)
+                for key in ("display_name", "physical_name")
+            )
+            for choice in choices
+        ):
+            return False
+        values = [choice["physical_name"] for choice in choices]
+        if len(values) != len(set(values)):
+            return False
+        value = row["value"]
+        if row["type"] == "bool":
+            if type(value) is not bool:
+                return False
+        elif row["type"] == "choice":
+            if not isinstance(value, str) or value not in values:
+                return False
+        elif row["type"] == "multi":
+            if not isinstance(value, list) or not all(
+                isinstance(item, str) and item in values for item in value
+            ):
+                return False
+        else:
+            return False
+    return True
