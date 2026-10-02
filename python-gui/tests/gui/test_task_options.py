@@ -192,3 +192,13 @@ class TestTaskOptionsDialog(unittest.TestCase):
                 rows = deepcopy(option_rows())
                 rows[0].update(patch)
                 self.assertFalse(valid_task_options(rows))
+
+    def test_task_choice_width_follows_current_text_with_a_limit(self):
+        dialog = self.dialog()
+        combo = dialog.option_controls["mode"]
+        self.assertEqual(combo.width(), 64)
+        combo.addItem("非常长的候选名称" * 10, "long")
+        combo.setCurrentIndex(combo.count() - 1)
+        self.assertEqual(combo.width(), 128)
+        combo.setCurrentIndex(0)
+        self.assertEqual(combo.width(), 64)

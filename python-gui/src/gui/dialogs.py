@@ -758,7 +758,6 @@ class SingleScriptConfigDialog(FormDialogBase):
                             children.addWidget(label, index, 0, Qt.AlignVCenter)
                             if row["type"] == "choice":
                                 control = self._make_combo([])
-                                control.setFixedWidth(INPUT_FIXED_W - 24 - 100 - 12)
                                 control.setFixedHeight(
                                     self.kill_script_cb.sizeHint().height()
                                 )
@@ -771,7 +770,24 @@ class SingleScriptConfigDialog(FormDialogBase):
                                         choice["display_name"], choice["physical_name"]
                                     )
                                 control.setCurrentIndex(control.findData(row["value"]))
-                                children.addWidget(control, index, 1)
+
+                                def fit_choice_width(text, combo=control):
+                                    combo.setFixedWidth(
+                                        min(
+                                            128,
+                                            max(
+                                                64,
+                                                combo.fontMetrics().horizontalAdvance(
+                                                    text
+                                                )
+                                                + 32,
+                                            ),
+                                        )
+                                    )
+
+                                fit_choice_width(control.currentText())
+                                control.currentTextChanged.connect(fit_choice_width)
+                                children.addWidget(control, index, 1, Qt.AlignLeft)
                             else:
                                 control = {}
                                 selections = QVBoxLayout()
