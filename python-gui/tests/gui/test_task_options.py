@@ -92,6 +92,15 @@ class TestTaskOptionsDialog(unittest.TestCase):
         dialog.reject()
         self.assertIsNone(dialog.pending_changes)
 
+    def test_option_labels_stay_with_controls_and_background_is_opaque(self):
+        dialog = self.dialog()
+        dialog.show()
+        self.app.processEvents()
+        checkbox = dialog.option_controls["claim"]
+        self.assertEqual(checkbox.text(), "邮件")
+        self.assertLess(checkbox.width(), 150)
+        self.assertEqual(dialog.grab().toImage().pixelColor(5, 100).alpha(), 255)
+
     def test_invalid_protocol_values_are_rejected(self):
         self.assertTrue(valid_task_options(option_rows()))
         for patch in [{"type": "int"}, {"value": 1}, {"choices": None}, {"id": ""}]:

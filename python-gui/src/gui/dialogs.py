@@ -289,7 +289,7 @@ class FramelessWindowMixin:
         body = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         path = QPainterPath()
         path.addRoundedRect(body, radius, radius)
-        painter.fillPath(path, QColor(BG_DIALOG))
+        painter.fillPath(path, QColor(getattr(self, "_dialog_background", BG_DIALOG)))
         painter.setPen(QPen(QColor(BORDER), 1))
         painter.drawPath(path)
 
@@ -578,6 +578,8 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.init_ui()
         self.load_data()
 
+    _dialog_background = BG_CARD
+
     def init_ui(self):
         """用 QGridLayout：所有 label 在 col 0、input 在 col 1（固定宽），自动等宽对齐。"""
         layout = QVBoxLayout(self)
@@ -585,6 +587,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         layout.setSpacing(8)
 
         grid = QGridLayout()
+        grid.setAlignment(Qt.AlignTop)
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
         grid.setColumnStretch(0, 0)
@@ -701,6 +704,10 @@ class SingleScriptConfigDialog(FormDialogBase):
         self.option_controls = {}
         if self._task_options:
             option_grid = QGridLayout()
+            option_grid.setAlignment(Qt.AlignTop)
+            option_grid.setHorizontalSpacing(12)
+            option_grid.setVerticalSpacing(8)
+            option_grid.setColumnStretch(2, 1)
             previous_group = None
             index = 0
             for row in self._task_options:
@@ -711,21 +718,22 @@ class SingleScriptConfigDialog(FormDialogBase):
                     option_grid.addWidget(heading, index, 0, 1, 2)
                     previous_group = row["group"]
                     index += 1
-                label = self._make_label(row["display_name"])
-                label.setFixedWidth(140)
-                label.setWordWrap(True)
-                option_grid.addWidget(label, index, 0)
                 if row["type"] == "bool":
-                    control = self._make_checkbox("")
+                    control = self._make_checkbox(row["display_name"])
                     control.setChecked(row["value"])
-                    option_grid.addWidget(control, index, 1)
-                elif row["type"] == "choice":
+                    option_grid.addWidget(control, index, 0, 1, 2, Qt.AlignLeft)
+                else:
+                    label = self._make_label(row["display_name"])
+                    label.setFixedWidth(80)
+                    label.setWordWrap(True)
+                    option_grid.addWidget(label, index, 0, Qt.AlignTop)
+                if row["type"] == "choice":
                     control = self._make_combo([])
                     for choice in row["choices"]:
                         control.addItem(choice["display_name"], choice["physical_name"])
                     control.setCurrentIndex(control.findData(row["value"]))
                     option_grid.addWidget(control, index, 1)
-                else:
+                elif row["type"] == "multi":
                     control = {}
                     selections = QVBoxLayout()
                     for choice in row["choices"]:
