@@ -6,7 +6,7 @@ from copy import deepcopy
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLabel, QPushButton
 
 from gui.controllers.cli_game_list import valid_task_options
 from gui.dialogs import SingleScriptConfigDialog, task_groups
@@ -141,8 +141,6 @@ class TestTaskOptionsDialog(unittest.TestCase):
         self.addCleanup(dialog.close)
         dialog.show()
         self.app.processEvents()
-        dialog.option_buttons["领奖"].click()
-        self.app.processEvents()
         parent = dialog.switch_checks["领奖"]
         child = dialog.option_controls["claim"]
         self.assertGreater(
@@ -159,23 +157,23 @@ class TestTaskOptionsDialog(unittest.TestCase):
         self.assertNotIn("任务选项:", labels)
         self.assertTrue(child.isChecked())
 
-    def test_settings_start_collapsed_and_keep_uniform_row_heights(self):
+    def test_inline_options_and_task_switches_have_equal_height(self):
         dialog = self.dialog()
         dialog.show()
         self.app.processEvents()
-        claim = dialog.option_controls["claim"]
-        mode = dialog.option_controls["mode"]
-        self.assertFalse(claim.isVisible())
-        self.assertFalse(mode.isVisible())
-        dialog.option_buttons["领奖"].click()
-        dialog.option_buttons["喷泉"].click()
-        self.app.processEvents()
-        self.assertTrue(claim.isVisible())
-        self.assertTrue(mode.isVisible())
-        self.assertEqual(claim.height(), mode.height())
-        claim.setChecked(False)
-        dialog.option_buttons["领奖"].click()
-        self.assertEqual(dialog._collect_task_options(), {"claim": False})
+        controls = [
+            dialog.option_controls["claim"],
+            dialog.option_controls["mode"],
+            *dialog.option_controls["targets"].values(),
+        ]
+        self.assertTrue(all(control.isVisible() for control in controls))
+        self.assertEqual(len({control.height() for control in controls}), 1)
+        self.assertFalse(
+            any(
+                button.text() in ("设置", "收起")
+                for button in dialog.findChildren(QPushButton)
+            )
+        )
 
     def test_invalid_protocol_values_are_rejected(self):
         self.assertTrue(valid_task_options(option_rows()))

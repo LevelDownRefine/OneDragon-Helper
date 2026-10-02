@@ -718,7 +718,6 @@ class SingleScriptConfigDialog(FormDialogBase):
 
         self.switch_checks: dict[str, QCheckBox] = {}
         self.option_controls = {}
-        self.option_buttons = {}
         groups = task_groups(self._switches, self._task_options)
         if groups:
             tasks = QVBoxLayout()
@@ -726,45 +725,25 @@ class SingleScriptConfigDialog(FormDialogBase):
             for group in groups:
                 section = QVBoxLayout()
                 section.setSpacing(6)
-                header = QHBoxLayout()
-                header.setSpacing(8)
                 switches = group["switches"]
                 if len(switches) == 1 and switches[0]["name"] == group["name"]:
                     switch = switches[0]
                     checkbox = self._make_checkbox(switch["name"])
                     checkbox.setFixedHeight(INPUT_FIXED_H)
-                    header.addWidget(checkbox)
+                    section.addWidget(checkbox, alignment=Qt.AlignLeft)
                     self.switch_checks[switch["name"]] = checkbox
                 else:
                     heading = QLabel(group["name"])
                     heading.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
                     heading.setStyleSheet(f"color: {TEXT}; background: transparent;")
                     heading.setFixedHeight(INPUT_FIXED_H)
-                    header.addWidget(heading)
-                header.addStretch()
-                section.addLayout(header)
-                if len(switches) != 1 or switches[0]["name"] != group["name"]:
+                    section.addWidget(heading)
                     for switch in switches:
                         checkbox = self._make_checkbox(switch["name"])
                         checkbox.setFixedHeight(INPUT_FIXED_H)
                         section.addWidget(checkbox, alignment=Qt.AlignLeft)
                         self.switch_checks[switch["name"]] = checkbox
                 if group["options"]:
-                    panel = QWidget(self)
-                    panel.setVisible(False)
-                    button = QPushButton("设置", self)
-                    button.setFont(make_font(size=FONT_SIZE_BODY))
-                    button.setStyleSheet(self._SECONDARY_BTN_STYLE)
-                    button.setFixedSize(64, INPUT_FIXED_H)
-                    button.setCheckable(True)
-                    button.toggled.connect(panel.setVisible)
-                    button.toggled.connect(
-                        lambda expanded, target=button: target.setText(
-                            "收起" if expanded else "设置"
-                        )
-                    )
-                    header.addWidget(button)
-                    self.option_buttons[group["name"]] = button
                     children = QGridLayout()
                     children.setContentsMargins(24, 0, 0, 0)
                     children.setHorizontalSpacing(12)
@@ -793,7 +772,7 @@ class SingleScriptConfigDialog(FormDialogBase):
                             else:
                                 control = {}
                                 selections = QVBoxLayout()
-                                selections.setSpacing(4)
+                                selections.setSpacing(6)
                                 for choice in row["choices"]:
                                     checkbox = self._make_checkbox(
                                         choice["display_name"]
@@ -806,8 +785,7 @@ class SingleScriptConfigDialog(FormDialogBase):
                                     selections.addWidget(checkbox)
                                 children.addLayout(selections, index, 1)
                         self.option_controls[row["id"]] = control
-                    panel.setLayout(children)
-                    section.addWidget(panel)
+                    section.addLayout(children)
                 tasks.addLayout(section)
             grid.addWidget(self._make_label("任务:"), timeout_row + 1, 0, Qt.AlignTop)
             grid.addLayout(tasks, timeout_row + 1, 1, 1, 2)

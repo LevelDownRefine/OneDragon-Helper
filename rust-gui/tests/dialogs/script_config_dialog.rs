@@ -215,7 +215,7 @@ fn task_groups_attach_options_without_creating_switches() {
 }
 
 #[test]
-fn task_settings_expand_and_preserve_changed_child_value() {
+fn task_child_is_visible_inline_and_saves_clicked_value() {
     let ctx = egui::Context::default();
     let mut editor = editor();
     editor.data.task_options = serde_json::from_value(json!([
@@ -223,26 +223,16 @@ fn task_settings_expand_and_preserve_changed_child_value() {
     ])).unwrap();
     for _ in 0..12 {
         frame(&ctx, vec2(1000.0, 1600.0), vec![], |ctx| {
-            egui::Area::new(egui::Id::new("settings-test")).show(ctx, |ui| editor.fields_ui(ui))
+            egui::Area::new(egui::Id::new("inline-test")).show(ctx, |ui| editor.fields_ui(ui))
         });
     }
     let (_, output) = frame(&ctx, vec2(1000.0, 1600.0), vec![], |ctx| {
-        egui::Area::new(egui::Id::new("settings-test")).show(ctx, |ui| editor.fields_ui(ui))
-    });
-    assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "Child flag")));
-    let button = text_rect(&output, "设置").center();
-    for pressed in [true, false] {
-        frame(&ctx, vec2(1000.0, 1600.0), click(button, pressed), |ctx| {
-            egui::Area::new(egui::Id::new("settings-test")).show(ctx, |ui| editor.fields_ui(ui))
-        });
-    }
-    let (_, output) = frame(&ctx, vec2(1000.0, 1600.0), vec![], |ctx| {
-        egui::Area::new(egui::Id::new("settings-test")).show(ctx, |ui| editor.fields_ui(ui))
+        egui::Area::new(egui::Id::new("inline-test")).show(ctx, |ui| editor.fields_ui(ui))
     });
     let child = text_rect(&output, "Child flag").center();
     for pressed in [true, false] {
         frame(&ctx, vec2(1000.0, 1600.0), click(child, pressed), |ctx| {
-            egui::Area::new(egui::Id::new("settings-test")).show(ctx, |ui| editor.fields_ui(ui))
+            egui::Area::new(egui::Id::new("inline-test")).show(ctx, |ui| editor.fields_ui(ui))
         });
     }
     assert_eq!(

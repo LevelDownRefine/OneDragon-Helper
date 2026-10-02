@@ -159,14 +159,10 @@ fn task_groups(data: &EditView) -> Vec<TaskGroup> {
 fn task_option_ui(ui: &mut egui::Ui, row: &mut TaskOption) {
     ui.push_id(&row.id, |ui| match &mut row.value {
         OptionValue::Bool(value) => {
-            ui.add_sized(
-                [ui.available_width(), 30.0],
-                egui::Checkbox::new(value, &row.display_name),
-            );
+            ui.checkbox(value, &row.display_name);
         }
         OptionValue::Choice(value) => {
             ui.horizontal_wrapped(|ui| {
-                ui.set_min_height(30.0);
                 ui.label(&row.display_name);
                 let label = row
                     .choices
@@ -492,54 +488,26 @@ impl ScriptEditor {
         let groups = task_groups(&self.data);
         if !groups.is_empty() {
             crate::dialogs::common::form_section(ui, "任务", |ui| {
+                ui.spacing_mut().interact_size.y = 30.0;
                 for group in groups {
                     ui.push_id(&group.name, |ui| {
-                        let main_switch = group.switches.len() == 1
-                            && self.data.switches[group.switches[0]].name == group.name;
-                        let settings_id = ui.id().with("settings");
-                        let mut expanded = ui
-                            .data(|data| data.get_temp::<bool>(settings_id))
-                            .unwrap_or(false);
-                        ui.horizontal(|ui| {
-                            ui.set_min_height(30.0);
-                            if main_switch {
-                                let row = &mut self.data.switches[group.switches[0]];
-                                ui.checkbox(&mut row.enabled, &row.name);
-                            } else {
-                                ui.label(egui::RichText::new(&group.name).strong());
-                            }
-                            if !group.options.is_empty() {
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui
-                                            .button(if expanded { "收起" } else { "设置" })
-                                            .clicked()
-                                        {
-                                            expanded = !expanded;
-                                        }
-                                    },
-                                );
-                            }
-                        });
-                        ui.data_mut(|data| data.insert_temp(settings_id, expanded));
-                        if !main_switch {
-                            for index in group.switches {
-                                let row = &mut self.data.switches[index];
-                                ui.add_sized(
-                                    [ui.available_width(), 30.0],
-                                    egui::Checkbox::new(&mut row.enabled, &row.name),
-                                );
-                            }
+                        if group.switches.len() != 1
+                            || self.data.switches[group.switches[0]].name != group.name
+                        {
+                            ui.label(egui::RichText::new(&group.name).strong());
                         }
-                        if expanded {
+                        for index in group.switches {
+                            let row = &mut self.data.switches[index];
+                            ui.checkbox(&mut row.enabled, &row.name);
+                        }
+                        if !group.options.is_empty() {
                             ui.indent("children", |ui| {
                                 for index in group.options {
                                     task_option_ui(ui, &mut self.data.task_options[index]);
                                 }
                             });
                         }
-                        ui.add_space(8.0);
+                        ui.add_space(6.0);
                     });
                 }
             });
