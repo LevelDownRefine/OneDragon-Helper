@@ -27,7 +27,8 @@ def _relative_path(value: str) -> None:
 
 def load_declarations() -> dict:
     """读取并校验静态声明，不读取用户配置。"""
-    data = load_yaml(str(Path(get_root_dir()) / "config" / "task_options.yml"))
+    data = load_yaml(str(Path(get_root_dir()) / "config" / "task_switch_list.yml"))
+    data = {name: node["options"] for name, node in data.items() if "options" in node}
     for groups in data.values():
         assert isinstance(groups, list)
         identifiers = set()
@@ -36,6 +37,8 @@ def load_declarations() -> dict:
             _relative_path(group["config"])
             assert isinstance(group["display_name"], str) and group["display_name"]
             assert isinstance(group["fields"], list) and group["fields"]
+            assert isinstance(group["tasks"], list)
+            assert all(isinstance(name, str) and name for name in group["tasks"])
             for field in group["fields"]:
                 assert {"id", "display_name", "keys", "type"} <= field.keys()
                 assert isinstance(field["id"], str) and field["id"]
@@ -191,6 +194,9 @@ class TaskOptions:
                     {
                         "id": field["id"],
                         "group": group["display_name"],
+                        "tasks": group.get(
+                            "tasks", [group["display_name"]]
+                        ),  # 兼容旧声明。
                         "display_name": field["display_name"],
                         "type": field["type"],
                         "value": value,

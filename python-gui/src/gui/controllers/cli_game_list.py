@@ -344,6 +344,11 @@ def valid_task_options(rows):
         if row["id"] in identifiers:
             return False
         identifiers.add(row["id"])
+        if "tasks" in row and (
+            not isinstance(row["tasks"], list)
+            or not all(isinstance(name, str) and name for name in row["tasks"])
+        ):
+            return False
         choices = row["choices"]
         if not isinstance(choices, list) or not all(
             isinstance(choice, dict)

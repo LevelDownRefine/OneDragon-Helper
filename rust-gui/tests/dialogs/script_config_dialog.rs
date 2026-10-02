@@ -64,7 +64,7 @@ fn task_option_response_rejects_wrong_type() {
 }
 
 #[test]
-fn switches_use_two_columns_and_save_clicked_state() {
+fn tasks_stack_in_order_and_save_clicked_state() {
     let ctx = egui::Context::default();
     let mut editor = editor();
     editor.data.switches = (0..3)
@@ -84,8 +84,8 @@ fn switches_use_two_columns_and_save_clicked_state() {
     let first = text_rect(&output, "Task 0");
     let second = text_rect(&output, "Task 1");
     let third = text_rect(&output, "Task 2");
-    assert!((first.center().y - second.center().y).abs() < 1.0);
-    assert!(second.left() > first.right());
+    assert!(second.top() > first.bottom());
+    assert!((second.left() - first.left()).abs() < 1.0);
     assert!((first.left() - third.left()).abs() < 1.0);
     assert!(third.top() > first.bottom());
     frame(
@@ -197,4 +197,19 @@ fn long_script_form_keeps_save_visible_and_blocks_duplicate_writes() {
             }
         }
     }
+}
+
+#[test]
+fn task_groups_attach_options_without_creating_switches() {
+    let mut editor = editor();
+    editor.data.task_options = serde_json::from_value(json!([
+        {"id":"child", "group":"奖励", "tasks":["任务"], "display_name":"邮件", "type":"bool", "value":false, "choices":[]},
+        {"id":"orphan", "group":"整理", "tasks":[], "display_name":"存放", "type":"bool", "value":true, "choices":[]}
+    ])).unwrap();
+    let groups = task_groups(&editor.data);
+    assert_eq!(groups.len(), 2);
+    assert_eq!(groups[0].switches, vec![0]);
+    assert_eq!(groups[0].options, vec![0]);
+    assert!(groups[1].switches.is_empty());
+    assert_eq!(groups[1].options, vec![1]);
 }

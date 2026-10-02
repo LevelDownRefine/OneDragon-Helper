@@ -34,7 +34,7 @@
 ## 任务卡查询与编辑
 
 单脚本配置表单的 `task_options` 由 `config/task_options.py` 读写，静态范围与落点声明在
-`config/task_options.yml`。前端只提交变化的字段标识与值；`script_service` 在写入前校验，
+`config/task_switch_list.yml` 的 `options`。前端只提交变化的字段标识与值；`script_service` 在写入前校验，
 先保存附带选项再保存任务开关，避免同文件修改互相覆盖。格式见
 [任务附带选项](../config/task_options.md)。
 

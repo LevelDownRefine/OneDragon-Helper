@@ -205,6 +205,18 @@ class TestTaskOptions(unittest.TestCase):
             "一咖舍", [group["display_name"] for group in declarations["ok-nte"]]
         )
 
+    def test_options_extend_existing_switch_declaration(self):
+        from src.config.task_switch import load_task_switch_map
+
+        options = mod.load_declarations()
+        switches = load_task_switch_map()
+        self.assertTrue(set(options) <= set(switches))
+        for groups in options.values():
+            for group in groups:
+                self.assertTrue(group["tasks"])
+        self.assertEqual(options["ok-nte"][0]["tasks"], ["日常领取"])
+        self.assertNotIn("options", switches["ok-nte"][0])
+
     def test_absent_script_has_no_options(self):
         with patch.object(mod, "get_script_root_dir", return_value=None):
             self.assertEqual(self.options.read(), [])

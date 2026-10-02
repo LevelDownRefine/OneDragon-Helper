@@ -6,8 +6,10 @@ from copy import deepcopy
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
+from PySide6.QtWidgets import QLabel
+
 from gui.controllers.cli_game_list import valid_task_options
-from gui.dialogs import SingleScriptConfigDialog
+from gui.dialogs import SingleScriptConfigDialog, task_groups
 from tests.gui.helpers import get_app
 
 
@@ -101,9 +103,54 @@ class TestTaskOptionsDialog(unittest.TestCase):
         self.assertLess(checkbox.width(), 150)
         self.assertEqual(dialog.grab().toImage().pixelColor(5, 100).alpha(), 255)
 
+    def test_tasks_attach_children_and_keep_unrelated_switches(self):
+        rows = option_rows()
+        rows[0]["tasks"] = ["领取奖励"]
+        switches = [
+            {"name": "领取奖励", "enabled": False},
+            {"name": "一咖舍", "enabled": True},
+        ]
+        groups = task_groups(switches, rows)
+        self.assertEqual(groups[0]["switches"], [switches[0]])
+        self.assertEqual(groups[0]["options"], [rows[0]])
+        self.assertEqual(groups[1]["switches"], [switches[1]])
+        self.assertEqual(groups[1]["options"], [])
+        self.assertEqual(len(groups), 4)
+
+    def test_task_section_nests_options_under_main_switch(self):
+        dialog = self.dialog()
+        dialog.close()
+        view = deepcopy(dialog._edit_view)
+        view["switches"] = [{"name": "领奖", "enabled": False}]
+        dialog = SingleScriptConfigDialog("demo", "示例", "demo.exe", edit_view=view)
+        self.addCleanup(dialog.close)
+        dialog.show()
+        self.app.processEvents()
+        parent = dialog.switch_checks["领奖"]
+        child = dialog.option_controls["claim"]
+        self.assertGreater(
+            child.mapTo(dialog, child.rect().topLeft()).x(),
+            parent.mapTo(dialog, parent.rect().topLeft()).x(),
+        )
+        self.assertGreater(
+            child.mapTo(dialog, child.rect().topLeft()).y(),
+            parent.mapTo(dialog, parent.rect().topLeft()).y(),
+        )
+        labels = [label.text() for label in dialog.findChildren(QLabel)]
+        self.assertIn("任务:", labels)
+        self.assertNotIn("任务开关:", labels)
+        self.assertNotIn("任务选项:", labels)
+        self.assertTrue(child.isChecked())
+
     def test_invalid_protocol_values_are_rejected(self):
         self.assertTrue(valid_task_options(option_rows()))
-        for patch in [{"type": "int"}, {"value": 1}, {"choices": None}, {"id": ""}]:
+        for patch in [
+            {"type": "int"},
+            {"value": 1},
+            {"choices": None},
+            {"id": ""},
+            {"tasks": "任务"},
+        ]:
             with self.subTest(patch=patch):
                 rows = deepcopy(option_rows())
                 rows[0].update(patch)

@@ -534,6 +534,37 @@ class CountdownConfirmDialogBase(FormDialogBase):
         super().hideEvent(event)
 
 
+def task_groups(switches: list[dict], options: list[dict]) -> list[dict]:
+    """按任务关联子设置；没有主开关的组仅显示名称，不虚构开关。"""
+    groups = {}
+    for row in options:
+        name = row["group"]
+        if name not in groups:
+            groups[name] = {
+                "name": name,
+                "switches": [],
+                "options": [],
+                "tasks": row.get("tasks", [name]),
+            }  # 旧响应按组名关联。
+        groups[name]["options"].append(row)
+    result = []
+    seen = set()
+    for switch in switches:
+        matched = next(
+            (group for group in groups.values() if switch["name"] in group["tasks"]),
+            None,
+        )
+        if matched is None:
+            result.append({"name": switch["name"], "switches": [switch], "options": []})
+        else:
+            matched["switches"].append(switch)
+            if matched["name"] not in seen:
+                result.append(matched)
+                seen.add(matched["name"])
+    result.extend(group for name, group in groups.items() if name not in seen)
+    return result
+
+
 class SingleScriptConfigDialog(FormDialogBase):
     """单个脚本的配置弹窗（路径选择 + 每周超时时间，删除改由左侧列表交互完成）。"""
 
@@ -685,79 +716,89 @@ class SingleScriptConfigDialog(FormDialogBase):
         grid.addWidget(self._make_label("每周超时:"), timeout_row, 0)
         grid.addLayout(timeout_grid, timeout_row, 1, 1, 2)
 
-        # 任务开关（行 9；仅声明该特性的脚本有此区）：纯开关，逐行一个复选框
         self.switch_checks: dict[str, QCheckBox] = {}
-        if self._switches:
-            switch_grid = QGridLayout()
-            switch_grid.setHorizontalSpacing(8)
-            switch_grid.setVerticalSpacing(4)
-            for index, switch in enumerate(self._switches):
-                checkbox = self._make_checkbox(switch["name"])
-                switch_grid.addWidget(checkbox, index // 2, index % 2)
-                self.switch_checks[switch["name"]] = checkbox
-            grid.addWidget(
-                self._make_label("任务开关:"), timeout_row + 1, 0, Qt.AlignTop
-            )
-            grid.addLayout(switch_grid, timeout_row + 1, 1, 1, 2)
-
-        # 底部按钮行：右主操作（取消 / 保存）
         self.option_controls = {}
-        if self._task_options:
-            option_grid = QGridLayout()
-            option_grid.setAlignment(Qt.AlignTop)
-            option_grid.setHorizontalSpacing(12)
-            option_grid.setVerticalSpacing(8)
-            option_grid.setColumnStretch(2, 1)
-            previous_group = None
-            index = 0
-            for row in self._task_options:
-                if row["group"] != previous_group:
-                    heading = QLabel(row["group"])
+        groups = task_groups(self._switches, self._task_options)
+        if groups:
+            tasks = QVBoxLayout()
+            tasks.setSpacing(12)
+            for group in groups:
+                section = QVBoxLayout()
+                section.setSpacing(6)
+                switches = group["switches"]
+                if len(switches) == 1 and switches[0]["name"] == group["name"]:
+                    switch = switches[0]
+                    checkbox = self._make_checkbox(switch["name"])
+                    section.addWidget(checkbox, alignment=Qt.AlignLeft)
+                    self.switch_checks[switch["name"]] = checkbox
+                else:
+                    heading = QLabel(group["name"])
                     heading.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
                     heading.setStyleSheet(f"color: {TEXT}; background: transparent;")
-                    option_grid.addWidget(heading, index, 0, 1, 2)
-                    previous_group = row["group"]
-                    index += 1
-                if row["type"] == "bool":
-                    control = self._make_checkbox(row["display_name"])
-                    control.setChecked(row["value"])
-                    option_grid.addWidget(control, index, 0, 1, 2, Qt.AlignLeft)
-                else:
-                    label = self._make_label(row["display_name"])
-                    label.setFixedWidth(80)
-                    label.setWordWrap(True)
-                    option_grid.addWidget(label, index, 0, Qt.AlignTop)
-                if row["type"] == "choice":
-                    control = self._make_combo([])
-                    for choice in row["choices"]:
-                        control.addItem(choice["display_name"], choice["physical_name"])
-                    control.setCurrentIndex(control.findData(row["value"]))
-                    option_grid.addWidget(control, index, 1)
-                elif row["type"] == "multi":
-                    control = {}
-                    selections = QVBoxLayout()
-                    for choice in row["choices"]:
-                        checkbox = self._make_checkbox(choice["display_name"])
-                        checkbox.setChecked(choice["physical_name"] in row["value"])
-                        control[choice["physical_name"]] = checkbox
-                        selections.addWidget(checkbox)
-                    option_grid.addLayout(selections, index, 1)
-                self.option_controls[row["id"]] = control
-                index += 1
-            grid.addWidget(
-                self._make_label("任务选项:"), timeout_row + 2, 0, Qt.AlignTop
-            )
-            grid.addLayout(option_grid, timeout_row + 2, 1, 1, 2)
+                    section.addWidget(heading)
+                    for switch in switches:
+                        checkbox = self._make_checkbox(switch["name"])
+                        section.addWidget(checkbox, alignment=Qt.AlignLeft)
+                        self.switch_checks[switch["name"]] = checkbox
+                if group["options"]:
+                    children = QGridLayout()
+                    children.setContentsMargins(24, 0, 0, 0)
+                    children.setHorizontalSpacing(12)
+                    children.setVerticalSpacing(6)
+                    children.setColumnStretch(2, 1)
+                    for index, row in enumerate(group["options"]):
+                        if row["type"] == "bool":
+                            control = self._make_checkbox(row["display_name"])
+                            control.setChecked(row["value"])
+                            children.addWidget(control, index, 0, 1, 2, Qt.AlignLeft)
+                        else:
+                            label = self._make_label(row["display_name"])
+                            label.setFixedWidth(100)
+                            label.setWordWrap(True)
+                            children.addWidget(label, index, 0, Qt.AlignTop)
+                            if row["type"] == "choice":
+                                control = self._make_combo([])
+                                for choice in row["choices"]:
+                                    control.addItem(
+                                        choice["display_name"], choice["physical_name"]
+                                    )
+                                control.setCurrentIndex(control.findData(row["value"]))
+                                children.addWidget(control, index, 1)
+                            else:
+                                control = {}
+                                selections = QVBoxLayout()
+                                selections.setSpacing(4)
+                                for choice in row["choices"]:
+                                    checkbox = self._make_checkbox(
+                                        choice["display_name"]
+                                    )
+                                    checkbox.setChecked(
+                                        choice["physical_name"] in row["value"]
+                                    )
+                                    control[choice["physical_name"]] = checkbox
+                                    selections.addWidget(checkbox)
+                                children.addLayout(selections, index, 1)
+                        self.option_controls[row["id"]] = control
+                    section.addLayout(children)
+                tasks.addLayout(section)
+            grid.addWidget(self._make_label("任务:"), timeout_row + 1, 0, Qt.AlignTop)
+            grid.addLayout(tasks, timeout_row + 1, 1, 1, 2)
         footer = self._make_footer("保存", self.save_data)
 
-        if self._task_options:
+        if groups:
             body = QWidget(self)
             body.setLayout(grid)
             scroll = QScrollArea(self)
             scroll.setWidgetResizable(True)
             scroll.setFrameShape(QScrollArea.NoFrame)
             scroll.setStyleSheet(
-                "QScrollArea { background: transparent; border: none; }"
+                f"""QScrollArea {{ background: transparent; border: none; }}
+                QScrollBar:vertical {{ background: {BG_CARD}; width: 8px; margin: 0; }}
+                QScrollBar::handle:vertical {{ background: {BORDER}; min-height: 24px; border-radius: 4px; }}
+                QScrollBar::handle:vertical:hover {{ background: {TEXT_MUTED}; }}
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+                """
             )
             scroll.setWidget(body)
             scroll.viewport().setAutoFillBackground(False)
