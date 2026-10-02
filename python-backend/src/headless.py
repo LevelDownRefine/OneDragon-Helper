@@ -127,12 +127,23 @@ class HeadlessApi:
         self.service = service
 
     def update_script(
-        self, script_name, display_name, config_patch, weekly_timeouts, switches
+        self,
+        script_name,
+        display_name,
+        config_patch,
+        weekly_timeouts,
+        switches,
+        task_options=None,
     ):
         from src.service.script_service import ScriptEdit
 
         edit = ScriptEdit(
-            script_name, display_name, config_patch, weekly_timeouts, switches
+            script_name,
+            display_name,
+            config_patch,
+            weekly_timeouts,
+            switches,
+            {} if task_options is None else task_options,
         )
         return {"script_name": self.service.update_script(edit)}
 

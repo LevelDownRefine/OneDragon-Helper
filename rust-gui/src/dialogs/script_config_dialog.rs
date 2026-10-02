@@ -46,11 +46,156 @@ pub struct TaskSwitch {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct OptionChoice {
+    display_name: String,
+    physical_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", content = "value")]
+pub enum OptionValue {
+    #[serde(rename = "bool")]
+    Bool(bool),
+    #[serde(rename = "choice")]
+    Choice(String),
+    #[serde(rename = "multi")]
+    Multi(Vec<String>),
+}
+
+impl OptionValue {
+    fn json(&self) -> Value {
+        match self {
+            Self::Bool(value) => json!(value),
+            Self::Choice(value) => json!(value),
+            Self::Multi(value) => json!(value),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TaskOption {
+    id: String,
+    group: String,
+    #[serde(default)]
+    tasks: Vec<String>,
+    display_name: String,
+    #[serde(flatten)]
+    value: OptionValue,
+    choices: Vec<OptionChoice>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct EditView {
     pub script_name: String,
     script: Fields,
     weekly_timeouts: [u32; 7],
     switches: Vec<TaskSwitch>,
+    #[serde(default)]
+    task_options: Vec<TaskOption>,
+}
+
+struct TaskGroup {
+    name: String,
+    switches: Vec<usize>,
+    options: Vec<usize>,
+}
+
+fn task_groups(data: &EditView) -> Vec<TaskGroup> {
+    let mut groups: Vec<TaskGroup> = Vec::new();
+    for (index, row) in data.task_options.iter().enumerate() {
+        if let Some(group) = groups.iter_mut().find(|group| group.name == row.group) {
+            group.options.push(index);
+        } else {
+            groups.push(TaskGroup {
+                name: row.group.clone(),
+                switches: Vec::new(),
+                options: vec![index],
+            });
+        }
+    }
+    let mut order = Vec::new();
+    let mut seen = Vec::new();
+    for (index, switch) in data.switches.iter().enumerate() {
+        let matched = groups.iter().position(|group| {
+            let option = &data.task_options[group.options[0]];
+            option.tasks.contains(&switch.name)
+                || (option.tasks.is_empty() && option.group == switch.name)
+        });
+        if let Some(group_index) = matched {
+            groups[group_index].switches.push(index);
+            if !seen.contains(&group_index) {
+                seen.push(group_index);
+                order.push((true, group_index));
+            }
+        } else {
+            order.push((false, index));
+        }
+    }
+    order.extend(
+        (0..groups.len())
+            .filter(|index| !seen.contains(index))
+            .map(|index| (true, index)),
+    );
+    order
+        .into_iter()
+        .map(|(grouped, index)| {
+            if grouped {
+                TaskGroup {
+                    name: groups[index].name.clone(),
+                    switches: groups[index].switches.clone(),
+                    options: groups[index].options.clone(),
+                }
+            } else {
+                TaskGroup {
+                    name: data.switches[index].name.clone(),
+                    switches: vec![index],
+                    options: Vec::new(),
+                }
+            }
+        })
+        .collect()
+}
+
+fn task_option_ui(ui: &mut egui::Ui, row: &mut TaskOption) {
+    ui.push_id(&row.id, |ui| match &mut row.value {
+        OptionValue::Bool(value) => {
+            ui.checkbox(value, &row.display_name);
+        }
+        OptionValue::Choice(value) => {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(&row.display_name);
+                let label = row
+                    .choices
+                    .iter()
+                    .find(|choice| choice.physical_name == *value)
+                    .map_or(value.as_str(), |choice| choice.display_name.as_str());
+                egui::ComboBox::from_id_salt("choice")
+                    .selected_text(label)
+                    .show_ui(ui, |ui| {
+                        for choice in &row.choices {
+                            ui.selectable_value(
+                                value,
+                                choice.physical_name.clone(),
+                                &choice.display_name,
+                            );
+                        }
+                    });
+            });
+        }
+        OptionValue::Multi(values) => {
+            ui.label(&row.display_name);
+            for choice in &row.choices {
+                let mut selected = values.contains(&choice.physical_name);
+                if ui.checkbox(&mut selected, &choice.display_name).changed() {
+                    if selected {
+                        values.push(choice.physical_name.clone());
+                    } else {
+                        values.retain(|value| *value != choice.physical_name);
+                    }
+                }
+            }
+        }
+    });
 }
 
 pub enum EditAction {
@@ -65,17 +210,24 @@ pub struct ScriptEditor {
     error: Option<String>,
     pub needs_reload: bool,
     picker: Option<FilePicker>,
+    original_options: serde_json::Map<String, Value>,
 }
 
 impl ScriptEditor {
     pub fn new(data: EditView) -> Self {
         let timeouts = data.weekly_timeouts.map(|value| value.to_string());
+        let original_options = data
+            .task_options
+            .iter()
+            .map(|row| (row.id.clone(), row.value.json()))
+            .collect();
         Self {
             data,
             timeouts,
             error: None,
             needs_reload: false,
             picker: None,
+            original_options,
         }
     }
 
@@ -115,6 +267,32 @@ impl ScriptEditor {
             .iter()
             .map(|row| (row.name.clone(), json!(row.enabled)))
             .collect();
+        let task_options: serde_json::Map<String, Value> = self
+            .data
+            .task_options
+            .iter()
+            .filter_map(|row| {
+                let mut value = row.value.json();
+                if let (OptionValue::Multi(selected), Some(Value::Array(original))) =
+                    (&row.value, self.original_options.get(&row.id))
+                {
+                    let mut ordered: Vec<String> = original
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .filter(|name| selected.iter().any(|item| item == name))
+                        .map(str::to_owned)
+                        .collect();
+                    for name in selected {
+                        if !ordered.contains(name) {
+                            ordered.push(name.clone());
+                        }
+                    }
+                    value = json!(ordered);
+                }
+                (self.original_options.get(&row.id) != Some(&value))
+                    .then(|| (row.id.clone(), value))
+            })
+            .collect();
         Ok(Request {
             method: "script.edit_save".into(),
             params: json!({
@@ -129,6 +307,7 @@ impl ScriptEditor {
                     "game_arguments": fields.game_arguments.trim(),
                 },
                 "weekly_timeouts": timeouts, "switches": switches,
+                "task_options": task_options,
             }),
         })
     }
@@ -306,13 +485,28 @@ impl ScriptEditor {
                 }
             });
         });
-        if !self.data.switches.is_empty() {
-            crate::dialogs::common::form_section(ui, "任务开关", |ui| {
-                for pair in self.data.switches.chunks_mut(2) {
-                    ui.columns(2, |columns| {
-                        for (index, row) in pair.iter_mut().enumerate() {
-                            columns[index].checkbox(&mut row.enabled, &row.name);
+        let groups = task_groups(&self.data);
+        if !groups.is_empty() {
+            crate::dialogs::common::form_section(ui, "任务", |ui| {
+                for group in groups {
+                    ui.push_id(&group.name, |ui| {
+                        if group.switches.len() != 1
+                            || self.data.switches[group.switches[0]].name != group.name
+                        {
+                            ui.label(egui::RichText::new(&group.name).strong());
                         }
+                        for index in group.switches {
+                            let row = &mut self.data.switches[index];
+                            ui.checkbox(&mut row.enabled, &row.name);
+                        }
+                        if !group.options.is_empty() {
+                            ui.indent("children", |ui| {
+                                for index in group.options {
+                                    task_option_ui(ui, &mut self.data.task_options[index]);
+                                }
+                            });
+                        }
+                        ui.add_space(8.0);
                     });
                 }
             });

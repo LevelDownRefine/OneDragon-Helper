@@ -1,5 +1,6 @@
 """脚本管理的输入校验、跨配置保存与失败边界。"""
 
+import json
 import os
 import tempfile
 import unittest
@@ -81,6 +82,121 @@ class ScriptServiceTestBase(unittest.TestCase):
 
 
 class TestScriptEdit(ScriptServiceTestBase):
+    def test_options_and_switches_save_together_in_same_native_file(self):
+        from src.config.task_options import TaskOptions
+        from src.config.task_switch import TaskSwitch
+
+        native = self.config.parent / "native.json"
+        native.write_text(
+            json.dumps(
+                {
+                    "TaskDefinitions": {"id": "任务"},
+                    "TaskEnabledList": {"id": True},
+                    "country": "蒙德",
+                    "other": 7,
+                }
+            ),
+            encoding="utf-8",
+        )
+        options = TaskOptions(
+            "BetterGI",
+            [
+                {
+                    "display_name": "领奖",
+                    "config": "native.json",
+                    "fields": [
+                        {
+                            "id": "country",
+                            "display_name": "地区",
+                            "keys": ["country"],
+                            "type": "choice",
+                            "values": ["蒙德", "枫丹"],
+                        }
+                    ],
+                }
+            ],
+        )
+        switch = TaskSwitch(
+            "BetterGI",
+            [
+                {
+                    "config": "native.json",
+                    "tasks_key": "TaskDefinitions",
+                    "enabled_key": "TaskEnabledList",
+                }
+            ],
+        )
+        with (
+            patch(
+                "src.config.task_options.get_script_root_dir",
+                return_value=str(native.parent),
+            ),
+            patch(
+                "src.utils.utils_sub_config.get_script_root_dir",
+                return_value=str(native.parent),
+            ),
+            patch.object(script_service, "task_options_of", return_value=options),
+            patch.object(script_service, "task_switch_of", return_value=switch),
+        ):
+            self.service.update_script(
+                replace(self.edit(), task_options={"country": "枫丹"})
+            )
+        actual = json.loads(native.read_text(encoding="utf-8"))
+        self.assertEqual(actual["country"], "枫丹")
+        self.assertFalse(actual["TaskEnabledList"]["id"])
+        self.assertEqual(actual["other"], 7)
+
+    def test_invalid_options_never_modify_main_or_native_files(self):
+        options = Mock()
+        options.prepare.side_effect = ValueError("未知选择")
+        original = (self.config.read_bytes(), self.weekly.read_bytes())
+        with (
+            patch.object(script_service, "task_options_of", return_value=options),
+            self.assertRaisesRegex(InvalidScript, "未知选择"),
+        ):
+            self.service.update_script(
+                replace(self.edit(), task_options={"country": "unknown"})
+            )
+        self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), original)
+        options.write_prepared.assert_not_called()
+        self.switch.write.assert_not_called()
+
+    def test_options_reject_changed_script_path_before_writes(self):
+        options = Mock()
+        options.prepare.return_value = []
+        original = (self.config.read_bytes(), self.weekly.read_bytes())
+        with (
+            patch.object(script_service, "task_options_of", return_value=options),
+            self.assertRaisesRegex(InvalidScript, "修改脚本路径"),
+        ):
+            self.service.update_script(
+                replace(
+                    self.edit(script_path="D:/new/BetterGI.exe"),
+                    task_options={"country": "枫丹"},
+                )
+            )
+        self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), original)
+        options.write_prepared.assert_not_called()
+
+    def test_second_options_validation_failure_is_reported_without_writes(self):
+        options = Mock()
+        error = ValueError("任务配置已变化，请刷新")
+        options.prepare.side_effect = [[], error]
+        original = (self.config.read_bytes(), self.weekly.read_bytes())
+        with (
+            patch.object(script_service, "task_options_of", return_value=options),
+            self.assertRaisesRegex(InvalidScript, "任务配置已变化，请刷新") as raised,
+        ):
+            self.service.update_script(
+                replace(self.edit(), task_options={"country": "枫丹"})
+            )
+        self.assertEqual(options.prepare.call_count, 2)
+        self.assertIs(raised.exception.__cause__, error)
+        self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), original)
+        options.write_prepared.assert_not_called()
+        self.switch.write.assert_not_called()
+        self.init.assert_not_called()
+
     def test_invalid_edit_never_writes(self):
         edit = self.edit()
         original = (self.config.read_bytes(), self.weekly.read_bytes())

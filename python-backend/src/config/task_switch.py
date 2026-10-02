@@ -597,6 +597,7 @@ def _normalized_segments(script_name: str, node) -> list[dict]:
         AssertionError: 节点非字典、``segments`` 非非空列表、节点级多写字段，或某段非法。
     """
     assert isinstance(node, dict), f"{script_name} 的任务开关声明必须为字典"
+    node = {key: value for key, value in node.items() if key != "options"}
     if "segments" not in node:
         _validate_segment(script_name, node)
         return [_with_dict_names(node)]

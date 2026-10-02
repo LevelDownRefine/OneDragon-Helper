@@ -13,6 +13,7 @@
 """
 
 import os
+from copy import deepcopy
 
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
@@ -34,7 +35,9 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
+    QWidget,
 )
 
 from src.service.app_service import AppService
@@ -286,7 +289,7 @@ class FramelessWindowMixin:
         body = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         path = QPainterPath()
         path.addRoundedRect(body, radius, radius)
-        painter.fillPath(path, QColor(BG_DIALOG))
+        painter.fillPath(path, QColor(getattr(self, "_dialog_background", BG_DIALOG)))
         painter.setPen(QPen(QColor(BORDER), 1))
         painter.drawPath(path)
 
@@ -531,6 +534,37 @@ class CountdownConfirmDialogBase(FormDialogBase):
         super().hideEvent(event)
 
 
+def task_groups(switches: list[dict], options: list[dict]) -> list[dict]:
+    """按任务关联子设置；没有主开关的组仅显示名称，不虚构开关。"""
+    groups = {}
+    for row in options:
+        name = row["group"]
+        if name not in groups:
+            groups[name] = {
+                "name": name,
+                "switches": [],
+                "options": [],
+                "tasks": row.get("tasks", [name]),
+            }  # 旧响应按组名关联。
+        groups[name]["options"].append(row)
+    result = []
+    seen = set()
+    for switch in switches:
+        matched = next(
+            (group for group in groups.values() if switch["name"] in group["tasks"]),
+            None,
+        )
+        if matched is None:
+            result.append({"name": switch["name"], "switches": [switch], "options": []})
+        else:
+            matched["switches"].append(switch)
+            if matched["name"] not in seen:
+                result.append(matched)
+                seen.add(matched["name"])
+    result.extend(group for name, group in groups.items() if name not in seen)
+    return result
+
+
 class SingleScriptConfigDialog(FormDialogBase):
     """单个脚本的配置弹窗（路径选择 + 每周超时时间，删除改由左侧列表交互完成）。"""
 
@@ -563,9 +597,19 @@ class SingleScriptConfigDialog(FormDialogBase):
             if edit_view is not None
             else self._app_service.get_script_switches(self.script_name)
         )
+        self._task_options = (
+            edit_view.get("task_options", [])  # 旧表单响应未包含附带选项。
+            if edit_view is not None
+            else self._app_service.get_script_options(self.script_name)
+        )
+        self._original_options = {
+            row["id"]: deepcopy(row["value"]) for row in self._task_options
+        }
 
         self.init_ui()
         self.load_data()
+
+    _dialog_background = BG_CARD
 
     def init_ui(self):
         """用 QGridLayout：所有 label 在 col 0、input 在 col 1（固定宽），自动等宽对齐。"""
@@ -574,6 +618,7 @@ class SingleScriptConfigDialog(FormDialogBase):
         layout.setSpacing(8)
 
         grid = QGridLayout()
+        grid.setAlignment(Qt.AlignTop)
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
         grid.setColumnStretch(0, 0)
@@ -671,25 +716,123 @@ class SingleScriptConfigDialog(FormDialogBase):
         grid.addWidget(self._make_label("每周超时:"), timeout_row, 0)
         grid.addLayout(timeout_grid, timeout_row, 1, 1, 2)
 
-        # 任务开关（行 9；仅声明该特性的脚本有此区）：纯开关，逐行一个复选框
         self.switch_checks: dict[str, QCheckBox] = {}
-        if self._switches:
-            switch_grid = QGridLayout()
-            switch_grid.setHorizontalSpacing(8)
-            switch_grid.setVerticalSpacing(4)
-            for index, switch in enumerate(self._switches):
-                checkbox = self._make_checkbox(switch["name"])
-                switch_grid.addWidget(checkbox, index // 2, index % 2)
-                self.switch_checks[switch["name"]] = checkbox
-            grid.addWidget(
-                self._make_label("任务开关:"), timeout_row + 1, 0, Qt.AlignTop
-            )
-            grid.addLayout(switch_grid, timeout_row + 1, 1, 1, 2)
+        self.option_controls = {}
+        groups = task_groups(self._switches, self._task_options)
+        if groups:
+            tasks = QVBoxLayout()
+            tasks.setSpacing(12)
+            for group in groups:
+                section = QVBoxLayout()
+                section.setSpacing(6)
+                switches = group["switches"]
+                if len(switches) == 1 and switches[0]["name"] == group["name"]:
+                    switch = switches[0]
+                    checkbox = self._make_checkbox(switch["name"])
+                    section.addWidget(checkbox, alignment=Qt.AlignLeft)
+                    self.switch_checks[switch["name"]] = checkbox
+                else:
+                    heading = QLabel(group["name"])
+                    heading.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
+                    heading.setStyleSheet(f"color: {TEXT}; background: transparent;")
+                    section.addWidget(heading)
+                    for switch in switches:
+                        checkbox = self._make_checkbox(switch["name"])
+                        section.addWidget(checkbox, alignment=Qt.AlignLeft)
+                        self.switch_checks[switch["name"]] = checkbox
+                if group["options"]:
+                    children = QGridLayout()
+                    children.setContentsMargins(24, 0, 0, 0)
+                    children.setHorizontalSpacing(12)
+                    children.setVerticalSpacing(6)
+                    children.setColumnStretch(2, 1)
+                    for index, row in enumerate(group["options"]):
+                        if row["type"] == "bool":
+                            control = self._make_checkbox(row["display_name"])
+                            control.setChecked(row["value"])
+                            children.addWidget(control, index, 0, 1, 2, Qt.AlignLeft)
+                        else:
+                            label = self._make_label(row["display_name"])
+                            label.setFixedWidth(100)
+                            label.setWordWrap(True)
+                            children.addWidget(label, index, 0, Qt.AlignVCenter)
+                            if row["type"] == "choice":
+                                control = self._make_combo([])
+                                control.setFixedHeight(
+                                    self.kill_script_cb.sizeHint().height()
+                                )
+                                control.setStyleSheet(
+                                    self._COMBO_STYLE
+                                    + "QComboBox { padding: 0px 8px; border-radius: 4px; }"
+                                )
+                                for choice in row["choices"]:
+                                    control.addItem(
+                                        choice["display_name"], choice["physical_name"]
+                                    )
+                                control.setCurrentIndex(control.findData(row["value"]))
 
-        # 底部按钮行：右主操作（取消 / 保存）
+                                def fit_choice_width(text, combo=control):
+                                    combo.setFixedWidth(
+                                        min(
+                                            128,
+                                            max(
+                                                64,
+                                                combo.fontMetrics().horizontalAdvance(
+                                                    text
+                                                )
+                                                + 32,
+                                            ),
+                                        )
+                                    )
+
+                                fit_choice_width(control.currentText())
+                                control.currentTextChanged.connect(fit_choice_width)
+                                children.addWidget(control, index, 1, Qt.AlignLeft)
+                            else:
+                                control = {}
+                                selections = QVBoxLayout()
+                                selections.setSpacing(4)
+                                for choice in row["choices"]:
+                                    checkbox = self._make_checkbox(
+                                        choice["display_name"]
+                                    )
+                                    checkbox.setChecked(
+                                        choice["physical_name"] in row["value"]
+                                    )
+                                    control[choice["physical_name"]] = checkbox
+                                    selections.addWidget(checkbox)
+                                children.addLayout(selections, index, 1)
+                        self.option_controls[row["id"]] = control
+                    section.addLayout(children)
+                tasks.addLayout(section)
+            grid.addWidget(self._make_label("任务:"), timeout_row + 1, 0, Qt.AlignTop)
+            grid.addLayout(tasks, timeout_row + 1, 1, 1, 2)
         footer = self._make_footer("保存", self.save_data)
 
-        layout.addLayout(grid)
+        if groups:
+            grid.setContentsMargins(0, 0, 0, 0)
+            body = QWidget(self)
+            body.setLayout(grid)
+            scroll = QScrollArea(self)
+            scroll.setWidgetResizable(True)
+            scroll.setFrameShape(QScrollArea.NoFrame)
+            scroll.setStyleSheet(
+                f"""QScrollArea {{ background: transparent; border: none; }}
+                QScrollBar:vertical {{ background: {BG_CARD}; width: 8px; margin: 0; }}
+                QScrollBar::handle:vertical {{ background: {BORDER}; min-height: 24px; border-radius: 4px; }}
+                QScrollBar::handle:vertical:hover {{ background: {TEXT_MUTED}; }}
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+                QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: transparent; }}
+                """
+            )
+            scroll.setWidget(body)
+            scroll.viewport().setAutoFillBackground(False)
+            body.setAutoFillBackground(False)
+            layout.addWidget(scroll)
+            self.setFixedWidth(grid.minimumSize().width() + 32 + 8)
+            self.resize(self.width(), 720)
+        else:
+            layout.addLayout(grid)
         layout.addLayout(footer)
 
     def _find_script_data(self) -> dict:
@@ -774,6 +917,7 @@ class SingleScriptConfigDialog(FormDialogBase):
                 name: checkbox.isChecked()
                 for name, checkbox in self.switch_checks.items()
             },
+            task_options=self._collect_task_options(),
         )
         if self._edit_view is not None:
             self.pending_changes = edit
@@ -785,3 +929,23 @@ class SingleScriptConfigDialog(FormDialogBase):
             show_warning(self, str(exc))
             return
         self.accept()
+
+    def _collect_task_options(self) -> dict:
+        """只提交相对打开时发生变化的选项；未触碰的原生字段不回写。"""
+        changed = {}
+        for row in self._task_options:
+            control = self.option_controls[row["id"]]
+            if row["type"] == "bool":
+                value = control.isChecked()
+            elif row["type"] == "choice":
+                value = control.currentData()
+            else:
+                original = self._original_options[row["id"]]
+                selected = [
+                    name for name, checkbox in control.items() if checkbox.isChecked()
+                ]
+                value = [name for name in original if name in selected]
+                value.extend(name for name in selected if name not in original)
+            if value != self._original_options[row["id"]]:
+                changed[row["id"]] = value
+        return changed

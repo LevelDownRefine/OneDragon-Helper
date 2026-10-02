@@ -37,6 +37,7 @@ from src.config.set_config import (
     set_weekly_task,
     weekly_names,
 )
+from src.config.task_options import task_options_of
 from src.config.task_switch import task_switch_of
 from src.service.schedule import (
     RunOptions,
@@ -231,6 +232,7 @@ class AppService:
             "script": script,
             "weekly_timeouts": self.weekly_inputs(script_name),
             "switches": self.get_script_switches(script_name),
+            "task_options": self.get_script_options(script_name),
         }
 
     def select_daily(
@@ -467,6 +469,10 @@ class AppService:
     ) -> None:
         """写某周常当前选中的副本名到脚本自身 config。"""
         return set_weekly_task(script_name, weekly_name, task_name)
+
+    def get_script_options(self, script_name: str) -> list:
+        """读取已接入任务的附带业务选项。"""
+        return task_options_of(script_name).read()
 
     # ── 脚本原生任务开关（src.config.task_switch 模块函数）─────────────
     def get_script_switches(self, script_name: str) -> list:

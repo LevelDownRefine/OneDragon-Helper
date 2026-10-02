@@ -326,6 +326,7 @@ class TestSingleScriptConfigDialogSwitches(unittest.TestCase):
         service.validate_script_edit.side_effect = validate_edit
         service.weekly_inputs.return_value = [60] * 7
         service.get_script_switches.return_value = switches
+        service.get_script_options.return_value = []
         return service
 
     def _make_dialog(self, switches):
@@ -386,7 +387,7 @@ class TestSingleScriptConfigDialogSwitches(unittest.TestCase):
 class TestFramelessDialogs(unittest.TestCase):
     """弹窗去系统标题栏、透明圆角（无边框深色，四角透出桌面）；空白处可拖动。"""
 
-    def _assert_round(self, dlg):
+    def _assert_round(self, dlg, alpha=235):
         """无边框 + 透明背景 + 圆角深底样式三件套。"""
         self.assertTrue(dlg.windowFlags() & Qt.FramelessWindowHint)
         self.assertTrue(dlg.testAttribute(Qt.WA_TranslucentBackground))
@@ -394,9 +395,9 @@ class TestFramelessDialogs(unittest.TestCase):
         self.assertIn(BG_DIALOG, dlg.styleSheet())
         dlg.show()
         _app.processEvents()
-        # 顶部空白的真实绘制像素必须半透明，不能仅设置透明窗口属性。
+        # 验证实际背景透明度与透明圆角。
         image = dlg.grab().toImage()
-        self.assertEqual(image.pixelColor(image.width() // 2, 3).alpha(), 235)
+        self.assertEqual(image.pixelColor(image.width() // 2, 3).alpha(), alpha)
         self.assertEqual(image.pixelColor(0, 0).alpha(), 0)
         self.assertEqual(dlg.windowOpacity(), 1.0)
         self.assertEqual(QColor(BG_DIALOG).alpha(), 235)
@@ -412,7 +413,7 @@ class TestFramelessDialogs(unittest.TestCase):
         return dlg
 
     def test_single_script_dialog_frameless(self):
-        self._assert_round(self._single_script_dialog())
+        self._assert_round(self._single_script_dialog(), alpha=255)
 
     def test_run_confirm_dialog_frameless(self):
         from gui.run_confirm_dialog import RunConfirmDialog
