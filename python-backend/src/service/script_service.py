@@ -211,7 +211,10 @@ def update(edit: ScriptEdit) -> str:
     if edit.task_options and previous_path != edit.config_patch["script_path"]:
         raise InvalidScript("修改脚本路径后请刷新，再编辑任务选项")
     options = task_options_of(edit.script_name) if edit.task_options else None
-    pending = options.prepare(edit.task_options) if options is not None else []
+    try:
+        pending = options.prepare(edit.task_options) if options is not None else []
+    except ValueError as exc:
+        raise InvalidScript(str(exc)) from exc
 
     target.update(edit.config_patch)
     target["display_name"] = edit.display_name

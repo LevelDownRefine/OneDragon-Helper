@@ -110,7 +110,6 @@ class TestScriptEdit(ScriptServiceTestBase):
                             "display_name": "地区",
                             "keys": ["country"],
                             "type": "choice",
-                            "default": "蒙德",
                             "values": ["蒙德", "枫丹"],
                         }
                     ],
@@ -178,6 +177,25 @@ class TestScriptEdit(ScriptServiceTestBase):
             )
         self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), original)
         options.write_prepared.assert_not_called()
+
+    def test_second_options_validation_failure_is_reported_without_writes(self):
+        options = Mock()
+        error = ValueError("任务配置已变化，请刷新")
+        options.prepare.side_effect = [[], error]
+        original = (self.config.read_bytes(), self.weekly.read_bytes())
+        with (
+            patch.object(script_service, "task_options_of", return_value=options),
+            self.assertRaisesRegex(InvalidScript, "任务配置已变化，请刷新") as raised,
+        ):
+            self.service.update_script(
+                replace(self.edit(), task_options={"country": "枫丹"})
+            )
+        self.assertEqual(options.prepare.call_count, 2)
+        self.assertIs(raised.exception.__cause__, error)
+        self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), original)
+        options.write_prepared.assert_not_called()
+        self.switch.write.assert_not_called()
+        self.init.assert_not_called()
 
     def test_invalid_edit_never_writes(self):
         edit = self.edit()
