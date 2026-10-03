@@ -17,7 +17,6 @@ fn cancellation_waits_for_terminal_state_and_rejects_stale_job() {
     let mut dialog = dialog();
     assert_eq!(dialog.start("update.download").method, "update.download");
     assert!(dialog.active());
-    assert!(dialog.close().is_none());
     dialog
         .started("update.download", json!({"id":"job"}))
         .unwrap();
@@ -28,9 +27,8 @@ fn cancellation_waits_for_terminal_state_and_rejects_stale_job() {
     );
     assert!(!dialog.receive(json!({"id":"job","kind":"update.download","state":"running","progress":{"received":7,"total":10}})).unwrap());
     assert_eq!(dialog.progress, Some((7, 10)));
-    let Some(UpdateAction::Request(cancel)) = dialog.close() else {
-        panic!("expected cancel");
-    };
+    assert!(dialog.close().is_none());
+    let cancel = dialog.poll().expect("expected queued cancel");
     assert_eq!(cancel.method, "job.cancel");
     assert_eq!(cancel.params, json!({"job_id":"job"}));
     assert!(dialog.close().is_none());
@@ -42,6 +40,77 @@ fn cancellation_waits_for_terminal_state_and_rejects_stale_job() {
     );
     assert!(!dialog.active());
     assert!(dialog.poll().is_none());
+}
+
+#[test]
+fn cancellation_before_job_id_is_sent_once_then_keeps_polling() {
+    let mut dialog = dialog();
+    dialog.start("update.check");
+    assert!(dialog.close().is_none());
+    assert!(dialog.close_pending);
+    assert!(dialog.poll().is_none());
+    dialog.started("update.check", json!({"id":"job"})).unwrap();
+    assert_eq!(dialog.poll().unwrap().method, "job.cancel");
+    assert_eq!(dialog.poll().unwrap().method, "job.poll");
+    assert!(
+        !dialog
+            .receive(json!({"id":"job","kind":"update.check","state":"running"}))
+            .unwrap()
+    );
+    assert!(dialog.close().is_none());
+    dialog.next_poll = Instant::now();
+    assert_eq!(dialog.poll().unwrap().method, "job.poll");
+    assert!(dialog.receive(json!({"id":"job","kind":"update.check","state":"succeeded","result":{"release":null}})).unwrap());
+    assert!(dialog.poll().is_none());
+}
+
+#[test]
+fn cancel_button_stays_enabled_during_polls_and_queues_busy_click() {
+    use crate::dialogs::test_support::{click, frame, text_rect};
+    let ctx = egui::Context::default();
+    let mut dialog = dialog();
+    dialog.start("update.download");
+    dialog
+        .started("update.download", json!({"id":"job"}))
+        .unwrap();
+    for _ in 0..12 {
+        frame(&ctx, crate::theme::SIZE, vec![], |ctx| {
+            dialog.show(ctx, false)
+        });
+    }
+    let mut idle_color = None;
+    for busy in [false, true, false, true] {
+        let (_, output) = frame(&ctx, crate::theme::SIZE, vec![], |ctx| {
+            dialog.show(ctx, busy)
+        });
+        let text = output
+            .shapes
+            .iter()
+            .find_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) if text.galley.text() == "取消更新" => Some(text),
+                _ => None,
+            })
+            .unwrap();
+        let color = text.galley.job.sections[0].format.color;
+        assert_eq!(*idle_color.get_or_insert(color), color);
+    }
+    let (_, output) = frame(&ctx, crate::theme::SIZE, vec![], |ctx| {
+        dialog.show(ctx, true)
+    });
+    let pos = text_rect(&output, "取消更新").center();
+    frame(&ctx, crate::theme::SIZE, click(pos, true), |ctx| {
+        dialog.show(ctx, true)
+    });
+    let (action, _) = frame(&ctx, crate::theme::SIZE, click(pos, false), |ctx| {
+        dialog.show(ctx, true)
+    });
+    assert!(
+        action.is_none(),
+        "busy click must not send a concurrent request"
+    );
+    assert!(dialog.close_pending);
+    assert_eq!(dialog.poll().unwrap().method, "job.cancel");
+    assert_eq!(dialog.poll().unwrap().method, "job.poll");
 }
 
 #[test]

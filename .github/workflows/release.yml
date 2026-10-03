@@ -80,7 +80,7 @@ jobs:
           else
             changelog=$'\n\n## 首次发布'
           fi
-          notes=$(printf '%s\n\n下载 OneDragon-Helper.zip 解压后即可使用。%s' "自动构建发布 $version（对应 commit: $GITHUB_SHA）" "$changelog")
+          notes=$(printf '%s\n\n推荐使用 **OneDragon-Helper-Rust.zip**，备用包为 **OneDragon-Helper.zip**，下载后解压即可使用。%s' "自动构建发布 $version（对应 commit: $GITHUB_SHA）" "$changelog")
           gh release create "$version" \
             --target "$GITHUB_SHA" \
             --title "$version" \

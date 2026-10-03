@@ -41,6 +41,7 @@ pub struct UpdateDialog {
     progress: Option<(u64, u64)>,
     next_poll: Instant,
     close_pending: bool,
+    cancel_sent: bool,
     message: String,
     error: Option<String>,
     needs_reload: bool,
@@ -55,6 +56,7 @@ impl UpdateDialog {
             progress: None,
             next_poll: Instant::now(),
             close_pending: false,
+            cancel_sent: false,
             message: String::new(),
             error: None,
             needs_reload: false,
@@ -81,6 +83,7 @@ impl UpdateDialog {
         self.awaiting = None;
         self.job = None;
         self.close_pending = false;
+        self.cancel_sent = false;
         self.error = Some(message);
         self.needs_reload = reload;
     }
@@ -124,6 +127,13 @@ impl UpdateDialog {
 
     pub fn poll(&mut self) -> Option<Request> {
         let (id, _) = self.job.as_ref()?;
+        if self.close_pending && !self.cancel_sent {
+            self.cancel_sent = true;
+            return Some(Request {
+                method: "job.cancel".into(),
+                params: json!({"job_id":id}),
+            });
+        }
         if Instant::now() < self.next_poll {
             return None;
         }
@@ -229,166 +239,151 @@ impl UpdateDialog {
         if self.installing() || self.ready() {
             return None;
         }
-        if let Some((id, _)) = &self.job {
+        if self.active() {
             if self.close_pending {
                 return None;
             }
             self.close_pending = true;
             self.message = "正在取消，请等待当前网络请求结束…".into();
-            Some(UpdateAction::Request(Request {
-                method: "job.cancel".into(),
-                params: json!({"job_id":id}),
-            }))
-        } else if !self.active() {
-            Some(UpdateAction::Close)
-        } else {
             None
+        } else {
+            Some(UpdateAction::Close)
         }
     }
 
     pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<UpdateAction> {
         let mut action = None;
+        // Polling locks the transport, but cancellation can be queued at any time.
+        let closable =
+            (!busy || self.active()) && !self.close_pending && !self.installing() && !self.ready();
         let close = crate::dialogs::common::Dialog::new("update-dialog", "助手更新")
             .description("检查新版本，查看下载与安装进度")
-            .show(
-                ctx,
-                !busy && !self.close_pending && !self.installing() && !self.ready(),
-                |ui| {
-                    crate::dialogs::common::dialog_body(ui, |ui| {
-                        crate::dialogs::common::form_section(ui, "版本信息", |ui| {
-                            ui.label(format!("当前版本：{}", self.data.version));
-                            if let Some(previous) = &self.data.previous_result {
-                                let message = match previous.status.as_str() {
-                                    "installed" => "上次更新已安装完成。",
-                                    "recovered" => "上次更新已恢复到旧版本。",
-                                    "failed" => "上次更新未完成。",
-                                    "restart_failed" => "上次更新已安装，请手动重新打开助手。",
-                                    _ => "上次更新状态未知。",
-                                };
-                                ui.label(message);
-                                if let Some(error) = &previous.error {
-                                    ui.label(error);
-                                }
-                            }
-                            if !self.data.unavailable_reason.is_empty() {
-                                ui.label(&self.data.unavailable_reason);
-                            }
-                        });
-                        if let Some(release) = &self.data.release {
-                            crate::dialogs::common::form_section(ui, "可用更新", |ui| {
-                                ui.label(format!(
-                                    "新版本：{} · {:.1} MiB",
-                                    release.version,
-                                    release.size as f64 / 1048576.0
-                                ));
-                                ui.label(if release.notes.is_empty() {
-                                    "此版本未提供更新说明。"
-                                } else {
-                                    &release.notes
-                                });
-                            });
-                        }
-                        if let Some((received, total)) = self.progress {
-                            let fraction = if total > 0 {
-                                (received as f32 / total as f32).clamp(0.0, 1.0)
-                            } else {
-                                0.0
+            .show(ctx, closable, |ui| {
+                crate::dialogs::common::dialog_body(ui, |ui| {
+                    crate::dialogs::common::form_section(ui, "版本信息", |ui| {
+                        ui.label(format!("当前版本：{}", self.data.version));
+                        if let Some(previous) = &self.data.previous_result {
+                            let message = match previous.status.as_str() {
+                                "installed" => "上次更新已安装完成。",
+                                "recovered" => "上次更新已恢复到旧版本。",
+                                "failed" => "上次更新未完成。",
+                                "restart_failed" => "上次更新已安装，请手动重新打开助手。",
+                                _ => "上次更新状态未知。",
                             };
-                            ui.add(egui::ProgressBar::new(fraction).text(format!(
-                                "{:.1} / {:.1} MiB",
-                                received as f64 / 1048576.0,
-                                total as f64 / 1048576.0
-                            )));
+                            ui.label(message);
+                            if let Some(error) = &previous.error {
+                                ui.label(error);
+                            }
                         }
-                        if self.active() {
-                            ui.spinner();
-                            ctx.request_repaint_after(Duration::from_millis(200));
-                        }
-                        if !self.message.is_empty() {
-                            ui.label(&self.message);
-                        }
-                        if let Some(error) = &self.error {
-                            ui.colored_label(egui::Color32::LIGHT_RED, error);
-                        }
-                        if self.needs_reload {
-                            ui.label("状态未确认，请刷新；不会自动重试操作。");
-                        }
-                        if self.data.prepared_version.is_some() && !self.active() && !self.ready() {
-                            ui.label(
-                                "安装将关闭助手并重启。请先结束正在运行的任务和其他助手窗口。",
-                            );
+                        if !self.data.unavailable_reason.is_empty() {
+                            ui.label(&self.data.unavailable_reason);
                         }
                     });
-                    crate::dialogs::common::dialog_footer(ui, |ui| {
-                        if !self.active() && self.needs_reload {
-                            if ui
+                    if let Some(release) = &self.data.release {
+                        crate::dialogs::common::form_section(ui, "可用更新", |ui| {
+                            ui.label(format!(
+                                "新版本：{} · {:.1} MiB",
+                                release.version,
+                                release.size as f64 / 1048576.0
+                            ));
+                            ui.label(if release.notes.is_empty() {
+                                "此版本未提供更新说明。"
+                            } else {
+                                &release.notes
+                            });
+                        });
+                    }
+                    if let Some((received, total)) = self.progress {
+                        let fraction = if total > 0 {
+                            (received as f32 / total as f32).clamp(0.0, 1.0)
+                        } else {
+                            0.0
+                        };
+                        ui.add(egui::ProgressBar::new(fraction).text(format!(
+                            "{:.1} / {:.1} MiB",
+                            received as f64 / 1048576.0,
+                            total as f64 / 1048576.0
+                        )));
+                    }
+                    if self.active() {
+                        ui.spinner();
+                        ctx.request_repaint_after(Duration::from_millis(200));
+                    }
+                    if !self.message.is_empty() {
+                        ui.label(&self.message);
+                    }
+                    if let Some(error) = &self.error {
+                        ui.colored_label(egui::Color32::LIGHT_RED, error);
+                    }
+                    if self.needs_reload {
+                        ui.label("状态未确认，请刷新；不会自动重试操作。");
+                    }
+                    if self.data.prepared_version.is_some() && !self.active() && !self.ready() {
+                        ui.label("安装将关闭助手并重启。请先结束正在运行的任务和其他助手窗口。");
+                    }
+                });
+                crate::dialogs::common::dialog_footer(ui, |ui| {
+                    if !self.active() && self.needs_reload {
+                        if ui
+                            .add_enabled(!busy, crate::dialogs::common::secondary_button("刷新"))
+                            .clicked()
+                        {
+                            action = Some(UpdateAction::Request(Request {
+                                method: "update.view".into(),
+                                params: json!({}),
+                            }));
+                        }
+                    } else if !self.active() && !self.data.unavailable_reason.is_empty() {
+                        ui.add_enabled(false, crate::dialogs::common::secondary_button("检查更新"));
+                    } else if !self.active() && !self.ready() {
+                        let (label, method) = if self.data.prepared_version.is_some() {
+                            ("安装并重启", "update.install")
+                        } else if self.data.release.is_some() {
+                            ("下载更新", "update.download")
+                        } else {
+                            ("检查更新", "update.check")
+                        };
+                        if ui
+                            .add_enabled(!busy, crate::dialogs::common::primary_button(label))
+                            .clicked()
+                        {
+                            action = Some(UpdateAction::Request(self.start(method)));
+                        }
+                        if self.data.release.is_some()
+                            && ui
                                 .add_enabled(
                                     !busy,
-                                    crate::dialogs::common::secondary_button("刷新"),
+                                    crate::dialogs::common::secondary_button("检查更新"),
                                 )
                                 .clicked()
-                            {
-                                action = Some(UpdateAction::Request(Request {
-                                    method: "update.view".into(),
-                                    params: json!({}),
-                                }));
-                            }
-                        } else if !self.active() && !self.data.unavailable_reason.is_empty() {
-                            ui.add_enabled(
-                                false,
-                                crate::dialogs::common::secondary_button("检查更新"),
-                            );
-                        } else if !self.active() && !self.ready() {
-                            let (label, method) = if self.data.prepared_version.is_some() {
-                                ("安装并重启", "update.install")
-                            } else if self.data.release.is_some() {
-                                ("下载更新", "update.download")
+                        {
+                            action = Some(UpdateAction::Request(self.start("update.check")));
+                        }
+                    }
+                    if ui
+                        .add_enabled(
+                            closable,
+                            crate::dialogs::common::secondary_button(if self.active() {
+                                "取消更新"
                             } else {
-                                ("检查更新", "update.check")
-                            };
-                            if ui
-                                .add_enabled(!busy, crate::dialogs::common::primary_button(label))
-                                .clicked()
-                            {
-                                action = Some(UpdateAction::Request(self.start(method)));
-                            }
-                            if self.data.release.is_some()
-                                && ui
-                                    .add_enabled(
-                                        !busy,
-                                        crate::dialogs::common::secondary_button("检查更新"),
-                                    )
-                                    .clicked()
-                            {
-                                action = Some(UpdateAction::Request(self.start("update.check")));
-                            }
-                        }
-                        if ui
-                            .add_enabled(
-                                !busy && !self.close_pending && !self.installing() && !self.ready(),
-                                crate::dialogs::common::secondary_button(if self.active() {
-                                    "取消更新"
-                                } else {
-                                    "关闭"
-                                }),
-                            )
-                            .clicked()
-                        {
-                            action = self.close();
-                        }
-                        if ui
-                            .add_enabled(
-                                !busy && !self.active(),
-                                crate::dialogs::common::secondary_button("发布页面"),
-                            )
-                            .clicked()
-                        {
-                            action =
-                                Some(UpdateAction::OpenReleases(self.data.releases_url.clone()));
-                        }
-                    });
-                },
-            );
+                                "关闭"
+                            }),
+                        )
+                        .clicked()
+                    {
+                        action = self.close();
+                    }
+                    if ui
+                        .add_enabled(
+                            !busy && !self.active(),
+                            crate::dialogs::common::secondary_button("发布页面"),
+                        )
+                        .clicked()
+                    {
+                        action = Some(UpdateAction::OpenReleases(self.data.releases_url.clone()));
+                    }
+                });
+            });
         if close {
             action = self.close();
         }
