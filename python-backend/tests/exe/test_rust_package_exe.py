@@ -5,13 +5,15 @@ import unittest
 from xml.etree import ElementTree
 
 from src.update.package import APP_EXE, CLI_EXE, RUNNER_EXE, UPDATER_EXE, load_manifest
-from tests.exe import package_dir
+from tests.exe import is_frontend_package, package_dir
 
 PACKAGE = package_dir()
 
 
 @unittest.skipUnless(
-    sys.platform == "win32" and (PACKAGE / CLI_EXE).is_file(),
+    sys.platform == "win32"
+    and (PACKAGE / CLI_EXE).is_file()
+    and is_frontend_package(PACKAGE, "rust"),
     "需要 Windows 与完整 Rust 发布目录",
 )
 class RustPackageExeTests(unittest.TestCase):

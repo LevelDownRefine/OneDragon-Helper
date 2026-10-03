@@ -14,7 +14,7 @@ from src.update.installer import (
     recover_installation,
     write_json,
 )
-from src.update.package import APP_EXE, CLI_EXE
+from src.update.package import APP_EXE, CLI_EXE, QT_CLI_EXE
 from src.update.runtime import (
     FileLease,
     UpdateBusyError,
@@ -43,8 +43,12 @@ def run_update(
     with FileLease(directory / "intent.lock"):
         waiting = []
         for pid, created, executable in (
-            (parent_pid, parent_created, CLI_EXE if frontend_pid else None),
-            (frontend_pid, frontend_created, APP_EXE),
+            (
+                parent_pid,
+                parent_created,
+                (CLI_EXE, QT_CLI_EXE) if frontend_pid else None,
+            ),
+            (frontend_pid, frontend_created, (APP_EXE,)),
         ):
             if not pid:
                 continue
@@ -52,17 +56,16 @@ def run_update(
                 process = psutil.Process(pid)
                 if process.create_time() != created:
                     raise UpdateBusyError("调用进程已变化，取消更新")
-                if (
-                    executable is not None
-                    and Path(process.exe()).resolve() != root / executable
-                ):
+                if executable is not None and Path(process.exe()).resolve() not in {
+                    root / name for name in executable
+                }:
                     raise UpdateBusyError("调用进程不属于当前安装")
                 if (
                     pid == parent_pid
                     and frontend_pid
                     and process.ppid() != frontend_pid
                 ):
-                    raise UpdateBusyError("CLI 与 Rust 窗口的父子关系已变化")
+                    raise UpdateBusyError("CLI 与助手窗口的父子关系已变化")
                 waiting.append(process)
             except psutil.NoSuchProcess:
                 logger.info("调用进程已经退出: pid=%s", pid)
