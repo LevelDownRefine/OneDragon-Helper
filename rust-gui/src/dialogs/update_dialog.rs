@@ -251,11 +251,20 @@ impl UpdateDialog {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<UpdateAction> {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        request_pending: bool,
+        local_operation_active: bool,
+    ) -> Option<UpdateAction> {
         let mut action = None;
+        let blocked = request_pending || local_operation_active;
         // Polling locks the transport, but cancellation can be queued at any time.
-        let closable =
-            (!busy || self.active()) && !self.close_pending && !self.installing() && !self.ready();
+        let closable = (!request_pending || self.active())
+            && !local_operation_active
+            && !self.close_pending
+            && !self.installing()
+            && !self.ready();
         let close = crate::dialogs::common::Dialog::new("update-dialog", "助手更新")
             .description("检查新版本，查看下载与安装进度")
             .show(ctx, closable, |ui| {
@@ -325,7 +334,7 @@ impl UpdateDialog {
                 crate::dialogs::common::dialog_footer(ui, |ui| {
                     if !self.active() && self.needs_reload {
                         if ui
-                            .add_enabled(!busy, crate::dialogs::common::secondary_button("刷新"))
+                            .add_enabled(!blocked, crate::dialogs::common::secondary_button("刷新"))
                             .clicked()
                         {
                             action = Some(UpdateAction::Request(Request {
@@ -344,7 +353,7 @@ impl UpdateDialog {
                             ("检查更新", "update.check")
                         };
                         if ui
-                            .add_enabled(!busy, crate::dialogs::common::primary_button(label))
+                            .add_enabled(!blocked, crate::dialogs::common::primary_button(label))
                             .clicked()
                         {
                             action = Some(UpdateAction::Request(self.start(method)));
@@ -352,7 +361,7 @@ impl UpdateDialog {
                         if self.data.release.is_some()
                             && ui
                                 .add_enabled(
-                                    !busy,
+                                    !blocked,
                                     crate::dialogs::common::secondary_button("检查更新"),
                                 )
                                 .clicked()
@@ -375,7 +384,7 @@ impl UpdateDialog {
                     }
                     if ui
                         .add_enabled(
-                            !busy && !self.active(),
+                            !blocked && !self.active(),
                             crate::dialogs::common::secondary_button("发布页面"),
                         )
                         .clicked()

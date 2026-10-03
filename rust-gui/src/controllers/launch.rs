@@ -173,7 +173,7 @@ impl View {
             Id::new("launch"),
             Sense::click(),
         );
-        if response.on_hover_text("启动当前脚本").clicked() && !data.busy {
+        if response.on_hover_text("启动当前脚本").clicked() && !data.editing_blocked {
             if let Some(name) = data.selected {
                 actions.push(Action::Request(Request {
                     method: "script.launch_target".into(),
@@ -196,7 +196,7 @@ impl View {
             rect(launch.left() + 186.0, launch.top() + 6.0, 44.0, 48.0),
             "脚本配置",
             true,
-        ) && !data.busy
+        ) && !data.editing_blocked
         {
             if let Some(script) = data.selected {
                 actions.push(Action::Request(Request {
@@ -218,7 +218,7 @@ impl App {
             .and_then(|dialog| dialog.show(ui.ctx()))
         {
             self.startup_dialog = None;
-            if confirmed && !self.busy {
+            if confirmed && !self.dialog_blocked() {
                 self.request(
                     "run.saved",
                     json!({"script_names":self.ui.enabled_names(&self.scripts)}),
@@ -230,10 +230,11 @@ impl App {
 
 impl App {
     pub(in crate::main_window) fn show_run_confirm(&mut self, ui: &mut Ui) {
+        let blocked = self.dialog_blocked();
         if let Some(action) = self
             .run_dialog
             .as_mut()
-            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+            .and_then(|dialog| dialog.show(ui.ctx(), blocked))
         {
             match action {
                 RunAction::Request(request) => {
@@ -276,7 +277,6 @@ impl App {
                         self.run_dialog = None;
                     }
                     self.launch_job = Some(LaunchJob::start(target, self.ctx.clone()));
-                    self.busy = true;
                     self.status = "启动中".into();
                 }
                 Err(error) => self.fail(Failure::transport(format!("启动信息无效：{error}"))),

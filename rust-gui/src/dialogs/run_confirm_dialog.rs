@@ -59,16 +59,16 @@ impl RunDialog {
         })
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<RunAction> {
+    pub fn show(&mut self, ctx: &egui::Context, blocked: bool) -> Option<RunAction> {
         let mut action = None;
         let close = crate::dialogs::common::Dialog::new(
             "run-confirm",
             &format!("确认运行 {} 个脚本", self.data.script_names.len()),
         )
         .description("检查本次运行选项，确认后开始执行")
-        .show(ctx, !busy, |ui| {
+        .show(ctx, !blocked, |ui| {
             crate::dialogs::common::dialog_body(ui, |ui| {
-                ui.add_enabled_ui(!busy && !self.needs_reload, |ui| {
+                ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
                     if !self.data.invalid.is_empty() {
                         ui.colored_label(egui::Color32::LIGHT_RED, "以下脚本将在运行时跳过：");
                         for invalid in &self.data.invalid {
@@ -89,7 +89,7 @@ impl RunDialog {
             crate::dialogs::common::dialog_footer(ui, |ui| {
                 if ui
                     .add_enabled(
-                        !busy && !self.needs_reload,
+                        !blocked && !self.needs_reload,
                         crate::dialogs::common::primary_button("确认运行"),
                     )
                     .clicked()
@@ -100,13 +100,13 @@ impl RunDialog {
                     }
                 }
                 if ui
-                    .add_enabled(!busy, crate::dialogs::common::secondary_button("取消"))
+                    .add_enabled(!blocked, crate::dialogs::common::secondary_button("取消"))
                     .clicked()
                 {
                     action = Some(RunAction::Cancel);
                 }
                 if ui
-                    .add_enabled(!busy, crate::dialogs::common::secondary_button("刷新"))
+                    .add_enabled(!blocked, crate::dialogs::common::secondary_button("刷新"))
                     .clicked()
                 {
                     action = Some(RunAction::Request(Request {
@@ -114,7 +114,7 @@ impl RunDialog {
                         params: json!({"script_names":self.data.script_names}),
                     }));
                 }
-                if busy {
+                if blocked {
                     ui.spinner();
                 }
             });

@@ -106,8 +106,8 @@ impl DropDialog {
         disconnected
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> bool {
-        let blocked = self.active() || busy;
+    pub fn show(&mut self, ctx: &egui::Context, blocked: bool) -> bool {
+        let blocked = self.active() || blocked;
         let mut close = false;
         let dismissed = crate::dialogs::common::Dialog::new(
             "file-drop-result",

@@ -70,7 +70,7 @@ pub struct App {
     scripts: Vec<Script>,
     selected: Option<String>,
     view: Option<ScriptView>,
-    busy: bool,
+    request_pending: bool,
     status: String,
     error: Option<String>,
     diagnostics: String,
@@ -129,7 +129,7 @@ impl App {
             scripts: Vec::new(),
             selected: None,
             view: None,
-            busy: false,
+            request_pending: false,
             status: "连接中".into(),
             error: font_error,
             diagnostics: String::new(),
@@ -177,7 +177,7 @@ impl App {
     }
 
     fn request(&mut self, method: &str, params: Value) {
-        assert!(!self.busy, "only one request may be outstanding");
+        assert!(!self.request_pending, "only one request may be outstanding");
         self.ui.close_menu();
         let request = Request {
             method: method.into(),
@@ -188,8 +188,10 @@ impl App {
             .as_ref()
             .is_some_and(|backend| backend.requests.send(request).is_ok());
         if sent {
-            self.busy = true;
-            self.status = if matches!(
+            self.request_pending = true;
+            self.status = if matches!(method, "job.poll" | "job.cancel") {
+                "处理中"
+            } else if matches!(
                 method,
                 "app.snapshot"
                     | "script.view"
@@ -202,7 +204,6 @@ impl App {
                     | "run.view"
                     | "settings.view"
                     | "plan.view"
-                    | "job.poll"
                     | "update.view"
                     | "startup.view"
                     | "run.saved"
@@ -235,7 +236,7 @@ impl App {
 
     fn fail(&mut self, mut failure: Failure) {
         if self.drop_dialog.as_ref().is_some_and(DropDialog::awaiting) {
-            self.busy = false;
+            self.request_pending = false;
             self.receive_drop(Err(failure));
             return;
         }
@@ -243,9 +244,7 @@ impl App {
             failure.message = format!("已保存，但刷新失败：{}", failure.message);
         }
         self.write_confirmed = false;
-        self.open_job = None;
-        self.launch_job = None;
-        self.busy = false;
+        self.request_pending = false;
         self.view = None;
         self.status = "操作失败 · 请刷新".into();
         self.ui.toast(&failure.message);
@@ -277,7 +276,7 @@ impl App {
     }
 
     fn receive(&mut self, reply: Reply) {
-        self.busy = false;
+        self.request_pending = false;
         self.pid = reply.pid;
         self.diagnostics = reply.diagnostics;
         if reply.method.starts_with("wallpaper.") {
@@ -478,7 +477,6 @@ impl App {
                 Ok(target) => {
                     let ctx = self.ctx.clone();
                     self.open_job = Some(OpenJob::start(target, move || ctx.request_repaint()));
-                    self.busy = true;
                     self.status = "打开中".into();
                 }
                 Err(error) => self.fail(Failure::transport(format!("资源响应无效：{error}"))),
@@ -514,7 +512,7 @@ impl App {
                         #[cfg(feature = "capture")]
                         if self.settings.capture.is_some()
                             && self.settings.capture_settings
-                            && !self.busy
+                            && !self.request_pending
                         {
                             self.request("settings.view", json!({}));
                         }
@@ -529,14 +527,14 @@ impl App {
                         #[cfg(feature = "capture")]
                         if self.settings.capture.is_some()
                             && self.settings.capture_wallpaper
-                            && !self.busy
+                            && !self.request_pending
                         {
                             self.request("wallpaper.view", json!({"script_name":self.selected}));
                         }
                         #[cfg(feature = "capture")]
                         if self.settings.capture.is_some()
                             && self.settings.capture_update
-                            && !self.busy
+                            && !self.request_pending
                         {
                             self.request("update.view", json!({}));
                         }
@@ -548,7 +546,7 @@ impl App {
                         #[cfg(feature = "capture")]
                         if self.settings.capture.is_some()
                             && self.settings.capture_run
-                            && !self.busy
+                            && !self.request_pending
                         {
                             self.request("run.view",json!({"script_names":self.scripts.iter().map(|script|script.script_name.clone()).collect::<Vec<_>>()}));
                         }
@@ -569,7 +567,61 @@ impl App {
         }
     }
 
-    fn operation_active(&self) -> bool {
+    fn local_operation_active(&self) -> bool {
+        self.open_job.is_some() || self.launch_job.is_some()
+    }
+
+    fn dialog_blocked(&self) -> bool {
+        self.request_pending || self.local_operation_active()
+    }
+
+    fn editing_blocked(&self) -> bool {
+        self.dialog_blocked() || self.background_task_active()
+    }
+
+    fn poll_local_jobs(&mut self) {
+        let update_status =
+            !self.request_pending && !self.background_task_active() && self.error.is_none();
+        if let Some(result) = self.launch_job.as_ref().and_then(LaunchJob::poll) {
+            self.launch_job = None;
+            match result {
+                Ok(child) => {
+                    if let Some(child) = child {
+                        self.launched.push(child);
+                    }
+                    if update_status {
+                        self.status = "已同步".into();
+                    }
+                    self.ui.toast("已发起启动");
+                }
+                Err(error) => {
+                    if update_status {
+                        self.status = "启动失败".into();
+                    }
+                    self.ui.toast(error);
+                }
+            }
+        }
+        if let Some(result) = self.open_job.as_ref().and_then(OpenJob::poll) {
+            self.open_job = None;
+            match result {
+                Ok(()) => {
+                    if update_status {
+                        self.status = "已同步".into();
+                    }
+                    self.ui.toast("已打开");
+                }
+                Err(error) => {
+                    if update_status {
+                        self.status = "打开失败".into();
+                    }
+                    self.ui.toast(error);
+                }
+            }
+        }
+    }
+
+    fn background_task_active(&self) -> bool {
         self.backup_dialog
             .as_ref()
             .is_some_and(BackupDialog::active)
@@ -599,30 +651,14 @@ impl eframe::App for App {
         if let Some(paths) = dropped {
             self.start_drop(paths);
         }
-        if self.operation_active() {
+        if self.background_task_active() {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
-        if self.operation_active() && ctx.input(|input| input.viewport().close_requested()) {
+        if self.background_task_active() && ctx.input(|input| input.viewport().close_requested()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.ui.toast("操作进行中，请等待完成后关闭");
         }
-        if let Some(result) = self.launch_job.as_ref().and_then(LaunchJob::poll) {
-            self.launch_job = None;
-            self.busy = false;
-            match result {
-                Ok(child) => {
-                    if let Some(child) = child {
-                        self.launched.push(child);
-                    }
-                    self.status = "已同步".into();
-                    self.ui.toast("已发起启动");
-                }
-                Err(error) => {
-                    self.status = "启动失败".into();
-                    self.ui.toast(error);
-                }
-            }
-        }
+        self.poll_local_jobs();
         for index in (0..self.launched.len()).rev() {
             match self.launched[index].try_wait() {
                 Ok(Some(status)) => {
@@ -644,20 +680,6 @@ impl eframe::App for App {
         if !self.launched.is_empty() {
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
-        if let Some(result) = self.open_job.as_ref().and_then(OpenJob::poll) {
-            self.open_job = None;
-            self.busy = false;
-            match result {
-                Ok(()) => {
-                    self.status = "已同步".into();
-                    self.ui.toast("已打开");
-                }
-                Err(error) => {
-                    self.status = "打开失败".into();
-                    self.ui.toast(error);
-                }
-            }
-        }
         let reply = self
             .backend
             .as_ref()
@@ -671,12 +693,12 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
-        if !self.busy
+        if !self.request_pending
             && let Some(request) = self.drop_dialog.as_mut().and_then(DropDialog::next)
         {
             self.request(&request.method, request.params);
         }
-        if !self.busy
+        if !self.request_pending
             && let Some(request) = self.backup_dialog.as_mut().and_then(BackupDialog::poll)
         {
             self.request(&request.method, request.params);
@@ -687,14 +709,14 @@ impl eframe::App for App {
             } else if let Some(request) = self.ui.wallpaper.take_cache() {
                 self.request(&request.method, request.params);
             }
-        } else if !self.busy
+        } else if !self.request_pending
             && self.backend.is_some()
             && self.wallpaper_dialog.is_some()
             && let Some(request) = self.ui.wallpaper.take_cache()
         {
             self.request(&request.method, request.params);
         }
-        if !self.busy
+        if !self.request_pending
             && let Some(request) = self.update_dialog.as_mut().and_then(UpdateDialog::poll)
         {
             self.request(&request.method, request.params);
@@ -750,8 +772,8 @@ impl eframe::App for App {
                 scripts: &self.scripts,
                 selected: self.selected.as_deref(),
                 view: self.view.as_ref(),
-                busy: self.busy || self.operation_active(),
-                block_close: self.operation_active(),
+                editing_blocked: self.editing_blocked(),
+                block_close: self.background_task_active(),
                 status: &self.status,
                 demo: self.settings.demo,
             },
@@ -810,10 +832,11 @@ impl eframe::App for App {
         self.show_script_list(ui);
         self.show_run_confirm(ui);
         self.show_wallpaper(ui);
+        let blocked = self.dialog_blocked();
         if self
             .drop_dialog
             .as_mut()
-            .is_some_and(|dialog| dialog.show(ui.ctx(), self.busy))
+            .is_some_and(|dialog| dialog.show(ui.ctx(), blocked))
         {
             self.drop_dialog = None;
         }
@@ -841,7 +864,9 @@ impl eframe::App for App {
             && !self.capture_requested
             && (!self.settings.capture_game_icon || self.ui.capture_icon_ready)
             && (!self.settings.capture_wallpaper
-                || (self.wallpaper_dialog.is_some() && self.ui.wallpaper.ready && !self.busy))
+                || (self.wallpaper_dialog.is_some()
+                    && self.ui.wallpaper.ready
+                    && !self.request_pending))
             && (!self.settings.capture_editor || self.editor.is_some())
             && (!self.settings.capture_run || self.run_dialog.is_some())
             && (!self.settings.capture_settings || self.settings_dialog.is_some())
@@ -852,7 +877,7 @@ impl eframe::App for App {
                     .drop_dialog
                     .as_ref()
                     .is_some_and(|dialog| !dialog.active())
-                    && !self.busy))
+                    && !self.request_pending))
             && (!self.settings.capture_plan
                 || self
                     .settings_dialog
