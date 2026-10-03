@@ -76,44 +76,48 @@ ok-ww:
       options:
         key: Which Tacet Suppression to Farm
         values:
-        - display_name: 梦州-盾
+        - display_name: '1'
           physical_name: 1
-        - display_name: 梦州-风
+        - display_name: '2'
           physical_name: 2
-        - display_name: 拉海洛-冰
+        - display_name: 梦州-盾
           physical_name: 3
-        - display_name: 拉海洛-风
+        - display_name: 梦州-风
           physical_name: 4
-        - display_name: 拉海洛-火
+        - display_name: 拉海洛-冰
           physical_name: 5
-        - display_name: 拉海洛-光
+        - display_name: 拉海洛-风
           physical_name: 6
-        - display_name: 拉海洛-奶
+        - display_name: 拉海洛-火
           physical_name: 7
-        - display_name: 黎那汐塔-荣光火
+        - display_name: 拉海洛-光
           physical_name: 8
-        - display_name: 黎那汐塔-流云暗
+        - display_name: 拉海洛-奶
           physical_name: 9
-        - display_name: 黎那汐塔-充能
+        - display_name: 黎那汐塔-荣光火
           physical_name: 10
-        - display_name: 黎那汐塔-冰
+        - display_name: 黎那汐塔-流云暗
           physical_name: 11
-        - display_name: 黎那汐塔-高天暗
+        - display_name: 黎那汐塔-充能
           physical_name: 12
-        - display_name: 今州-奶
+        - display_name: 黎那汐塔-冰
           physical_name: 13
-        - display_name: 今州-冰风
+        - display_name: 黎那汐塔-高天暗
           physical_name: 14
-        - display_name: 今州-冰雷
+        - display_name: 今州-奶
           physical_name: 15
-        - display_name: 今州-光
+        - display_name: 今州-冰风
           physical_name: 16
-        - display_name: 今州-火奶
+        - display_name: 今州-冰雷
           physical_name: 17
-        - display_name: 今州-雷火
+        - display_name: 今州-光
           physical_name: 18
-        - display_name: 今州-暗轻云
+        - display_name: 今州-火奶
           physical_name: 19
+        - display_name: 今州-雷火
+          physical_name: 20
+        - display_name: 今州-暗轻云
+          physical_name: 21
 BetterGI:
 - display_name: 每日任务
   class: BgiDaily
@@ -150,11 +154,11 @@ BetterGI:
   config: User/OneDragon/默认配置.json
   enable_task: 自动地脉花
   options:
-    key: "LeyLine{Day}Type"
+    key: LeyLine{Day}Type
     values:
     - display_name: 藏金之花
       options: &bgi_ley_line_countries
-        key: "LeyLine{Day}Country"
+        key: LeyLine{Day}Country
         source:
           path: GameTask/AutoLeyLineOutcrop/Assets/config.json
           key: [leyLinePositions]
