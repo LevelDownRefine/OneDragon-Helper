@@ -82,7 +82,7 @@
 - 每个选项可继续包含 `options`（递归声明）。
 - 顶层任务 `key` 供对应子类的周常操作使用（开关、列表字段或起始日字段）。
 
-`task_config.py` 只读取、校验声明（`get_daily_configs` 返回某脚本全部日常声明，按展示名匹配）；`daily.py` 的 `Daily` 把声明解析成落点；`daily_config.py` 把声明**物化**成 GUI 菜单。
+`task_config.py` 只读取、查询声明，校验统一交给 `task_parser.py`（`get_daily_configs` 返回某脚本全部日常声明，按展示名匹配）；`daily.py` 的 `Daily` 把声明解析成落点；`task_parser.py` 负责递归选项展开、物理名映射及候选资源解析；`daily_config.py` 负责 GUI 菜单布局。
 
 ### 写路径
 
@@ -228,9 +228,10 @@ set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按�
 | `set_config.py` | 本适配器，适配器接口 + 类层级；各脚本资源绑定 YAML 声明，`@register` 显式注册机制类；各日常脚本子类定义在各自 config 旁 |
 | `daily.py` | 日常规则对象：`Daily` 基类（声明 → 落点 + 读写规则）与机制类 `Anomaly` / `MaaDaily`；无缓存的 `build_dailies` 负责装配，读写由 Daily 自持 |
 | `weekly.py` | 周常落点：`Weekly` 基类（config 读/写 + 起始日校验）与六条周常子类（列表增删 / 反相布尔 / app 条目 / 布尔开关 / 字面起始日 + 副本 / 队列公式）；机制类注册表 `WEEKLY_CLASSES` 和无缓存的 `build_weeklies`；对外适配接口归 `set_config.py` |
-| `task_config.py` | 两份任务声明的读取、校验、物理名/取值映射 |
+| `task_config.py` | 两份任务声明的读取与查询，文件解码经 utils_io，声明校验经 task_parser |
+| `task_parser.py` | 日常、周常、任务开关及附带选项的声明校验、归一化、递归选项展开及候选资源解析；不读写文件，不依赖机制类或 GUI |
 | `task_switch.py` | 脚本原生任务的开关：`task_switch_list.yml` 声明（配置文件 + 任务定义/启用两个键）→ 枚举行 + 按任务名反查 id 写回；与日常/周常无关，界面入口在单脚本配置弹窗底部 |
-| `daily_config.py` | 把声明**物化**成 GUI 菜单（source 展开 + 补缺省物理名），词汇与声明一致 |
+| `daily_config.py` | 调用 task_parser 展开选项，组织 GUI 菜单布局并去除机制字段 |
 | `python-backend/src/utils/utils_dict.py` | `safe_update` / `get_field` 字段工具（`Daily` 与 `ScriptConfig` 共用） |
 | `script_resources.py` / `config/script_resources.yml` | 脚本级静态资源的校验与声明，详见 [格式和路径基准](script_resources.md) |
 | `python-backend/src/link.py` | 从资源声明查询官网、B 站、GitHub 完整链接，不实例化 config 适配器 |

@@ -16,15 +16,16 @@
 
 ``names`` 各形态共用：给了它就是白名单（只列出的行标识出现、行名取映射值），也可写成
 ``[标识]`` 列表（行名即标识）。多段声明的段写在 ``segments`` 下，节点级的 ``config`` 作为
-各段默认。声明格式与校验只在本模块。
+各段默认。声明格式与校验集中于 task_parser，本模块负责机制装配及原生配置读写。
 """
 
 import logging
 import re
 from functools import cache
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 from typing import NamedTuple
 
+from src.config.task_parser import parse_task_switch_map, switch_form
 from src.utils import get_task_switch_list_yml_path_under_root
 from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import load_script_config, save_script_config
@@ -423,6 +424,14 @@ class MultiSelectSegment(_Segment):
         ]
 
 
+_SEGMENT_CLASSES = {
+    "pattern": PatternSegment,
+    "key_pair": KeyPairSegment,
+    "app_list": AppListSegment,
+    "multi_select": MultiSelectSegment,
+}
+
+
 class TaskSwitch:
     """某脚本的原生任务开关：由一条或多条声明段聚合而成。
 
@@ -430,15 +439,18 @@ class TaskSwitch:
 
     Args:
         script_name: 脚本标识名（与 config.yml 一致）。
-        declarations: 声明段列表，每段由 ``_form_of`` 选实现类。
+        declarations: 声明段列表，每段由 ``switch_form`` 选实现类。
     """
 
     def __init__(self, script_name: str, declarations: list[dict]) -> None:
         self.script_name = script_name
         self._segments: list[_Segment] = []
         for declaration in declarations:
-            cls = _form_of(declaration)
-            assert cls is not None, f"[task_switch] {script_name} 的声明形态未校验通过"
+            form = switch_form(declaration)
+            assert form in _SEGMENT_CLASSES, (
+                f"[task_switch] {script_name} 的声明形态未校验通过"
+            )
+            cls = _SEGMENT_CLASSES[form]
             self._segments.append(cls.from_declaration(script_name, declaration))
 
     def read(self) -> list[dict]:
@@ -476,150 +488,6 @@ class TaskSwitch:
         return sum(segment.write(batch) for segment, batch in batches.items())
 
 
-#: 声明段共有：可选字段 names（白名单 / 展示名 / 多选候选项）
-_OPTIONAL_FIELDS = frozenset({"names"})
-
-#: 声明段形态 → (必需字段, 可选字段, 实现类)；各形态字段集互不重叠
-_FORMS: tuple[tuple[frozenset, frozenset, type[_Segment]], ...] = (
-    (frozenset({"config", "task_pattern"}), _OPTIONAL_FIELDS, PatternSegment),
-    (
-        frozenset({"config", "tasks_key", "enabled_key"}),
-        _OPTIONAL_FIELDS,
-        KeyPairSegment,
-    ),
-    (
-        frozenset({"config", "list_key", "id_key", "enabled_key"}),
-        _OPTIONAL_FIELDS,
-        AppListSegment,
-    ),
-    (
-        frozenset({"config", "list_key", "names"}),
-        frozenset(),
-        MultiSelectSegment,
-    ),
-)
-
-
-def _form_of(declaration: dict) -> type[_Segment] | None:
-    """匹配声明段所属形态：必需字段齐且无多余字段；不属于任何形态时返回 None。"""
-    fields = frozenset(declaration)
-    for required, optional, cls in _FORMS:
-        if required <= fields and fields <= (required | optional):
-            return cls
-    return None
-
-
-def _single_group_pattern(text: str) -> bool:
-    """正则可编译且恰好一个捕获组（行名取自它）。"""
-    try:
-        pattern = re.compile(text)
-    except re.error:
-        return False
-    return pattern.groups == 1
-
-
-def _validate_segment(script_name: str, segment: dict) -> None:
-    """单段声明须匹配某一形态，字段全为非空字符串，config 为脚本内相对路径。
-
-    Raises:
-        AssertionError: 字段缺失、多写、形态混用、取值非法，或正则不可用（编译失败／
-            捕获组数不为 1，行名无从取）。
-    """
-    assert _form_of(segment) is not None, (
-        f"{script_name} 的任务开关声明字段必须为 "
-        + " 或 ".join(
-            str(sorted(required)) + (f" + 可选 {sorted(optional)}" if optional else "")
-            for required, optional, _ in _FORMS
-        )
-    )
-    for field in sorted(segment):
-        if field in _OPTIONAL_FIELDS:
-            continue
-        value = segment[field]
-        assert isinstance(value, str) and value.strip(), (
-            f"{script_name}/task_switch/{field} 必须为非空字符串"
-        )
-    path = PureWindowsPath(segment["config"])
-    assert not path.anchor and ".." not in path.parts, (
-        f"{script_name}/task_switch/config 必须为脚本内相对路径"
-    )
-    if "task_pattern" in segment:
-        assert _single_group_pattern(segment["task_pattern"]), (
-            f"{script_name}/task_switch/task_pattern 必须是可编译且恰好一个捕获组的正则"
-        )
-    if "names" in segment:
-        _validate_names(script_name, segment["names"])
-
-
-def _validate_names(script_name: str, names) -> None:
-    """``names`` 为 ``{标识: 展示名}`` 或 ``[标识]``（后者行名即标识），键与值都须非空。
-
-    Raises:
-        AssertionError: 既非字典也非列表，或其中某项不是非空字符串。
-    """
-    assert isinstance(names, (dict, list)), (
-        f"{script_name}/task_switch/names 必须为字典（标识: 展示名）或列表（标识）"
-    )
-    pairs = (
-        list(names.items())
-        if isinstance(names, dict)
-        else [(ident, ident) for ident in names]
-    )
-    for ident, name in pairs:
-        assert isinstance(ident, str) and ident.strip(), (
-            f"{script_name}/task_switch/names 的标识必须为非空字符串"
-        )
-        assert isinstance(name, str) and name.strip(), (
-            f"{script_name}/task_switch/names 的展示名必须为非空字符串"
-        )
-
-
-def _with_dict_names(segment: dict) -> dict:
-    """``names`` 写成 ``[标识]`` 时补成 ``{标识: 标识}``（行名即标识）。"""
-    names = segment.get("names")
-    if isinstance(names, list):
-        return {**segment, "names": {ident: ident for ident in names}}
-    return segment
-
-
-def _normalized_segments(script_name: str, node) -> list[dict]:
-    """把声明节点校验并归一化成段列表。
-
-    单段直接写在节点上；多段写在 ``segments`` 下，节点级的 ``config`` 作为各段默认（同一
-    脚本的开关常散在同一个文件的不同键上，路径因此只写一次）。``names`` 统一成
-    ``{标识: 展示名}``。
-
-    Returns:
-        段列表，每段一种形态。
-
-    Raises:
-        AssertionError: 节点非字典、``segments`` 非非空列表、节点级多写字段，或某段非法。
-    """
-    assert isinstance(node, dict), f"{script_name} 的任务开关声明必须为字典"
-    node = {key: value for key, value in node.items() if key != "options"}
-    if "segments" not in node:
-        _validate_segment(script_name, node)
-        return [_with_dict_names(node)]
-
-    defaults = {key: value for key, value in node.items() if key != "segments"}
-    assert set(defaults) <= {"config"}, (
-        f"{script_name}/task_switch 多段声明的节点级只能给 config（作为各段默认）"
-    )
-    segments = node["segments"]
-    assert isinstance(segments, list) and segments, (
-        f"{script_name}/task_switch/segments 必须为非空列表"
-    )
-    result: list[dict] = []
-    for segment in segments:
-        assert isinstance(segment, dict), (
-            f"{script_name}/task_switch/segments 的每一项必须为字典"
-        )
-        merged = {**defaults, **segment}
-        _validate_segment(script_name, merged)
-        result.append(_with_dict_names(merged))
-    return result
-
-
 def load_task_switch_map() -> dict[str, list[dict]]:
     """取得各脚本的任务开关声明段（``{脚本标识: [段, ...]}``）。
 
@@ -632,16 +500,7 @@ def load_task_switch_map() -> dict[str, list[dict]]:
     path = get_task_switch_list_yml_path_under_root()
     file = Path(path)
     assert file.is_file(), f"任务开关声明缺失: {path}"
-    return _parse_declarations(load_data(path, cached=True, file_format="yaml"))
-
-
-def _parse_declarations(data: dict) -> dict[str, list[dict]]:
-    """校验已读取的数据，不读文件或缓存业务结构。"""
-    assert isinstance(data, dict), "任务开关声明必须是字典"
-    return {
-        script_name: _normalized_segments(script_name, node)
-        for script_name, node in data.items()
-    }
+    return parse_task_switch_map(load_data(path, cached=True, file_format="yaml"))
 
 
 @cache

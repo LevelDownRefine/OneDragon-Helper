@@ -21,7 +21,8 @@ TaskQueue 公式），各由子类覆写；基类只兜底 assert。
 
 import logging
 
-from src.config.task_config import get_physical_name, get_value_map, load_weekly_map
+from src.config.task_config import load_weekly_map
+from src.config.task_parser import get_physical_name, get_value_map
 from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import load_script_config, save_script_config
 from src.utils.utils_weekly import DISABLED_START_DAY, is_weekly_start_reached

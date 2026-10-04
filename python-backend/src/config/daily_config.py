@@ -7,57 +7,11 @@
 
 from src.config.set_config import get_task_lists
 from src.config.task_config import (
-    get_physical_name,
     load_daily_map,
     load_weekly_map,
 )
+from src.config.task_parser import get_physical_name, materialize_options
 from src.config.task_source import read_task_source
-
-
-def _materialize_options(
-    script_name: str,
-    node: dict,
-    depth: int = 0,
-    *,
-    daily: str | None = None,
-) -> dict:
-    """物化一个声明节点的选项组。
-
-    Args:
-        script_name: 脚本标识名（资源定位用）。
-        node: 声明节点（日常或选项）。
-        depth: 选项组嵌套深度（日常自身为 0，其子选项组为 1）。
-        daily: 所属日常展示名；周常省略并使用通用资源读取。
-
-    Returns:
-        物化后的选项组（新 dict，不改动声明）：``key`` 等声明字段原样保留，
-        ``values`` 恒存在，每个选项均带 ``physical_name``。
-
-    Raises:
-        AssertionError: 节点未声明选项，或子选项组还带更深的选项组
-            （GUI 目前最多渲染两级，不许静默丢层）。
-    """
-    assert "options" in node, f"{node['display_name']} 未声明选项"
-    group = node["options"]
-    if "source" in group:
-        names = (
-            get_task_lists(script_name, daily, group["source"])
-            if daily is not None
-            else read_task_source(script_name, group["source"])
-        )
-        values = [{"display_name": name} for name in names] if names else []
-    else:
-        values = group["values"]
-    options = []
-    for option in values:
-        materialized = {**option, "physical_name": get_physical_name(option)}
-        if "options" in option:
-            assert depth < 1, "当前日常菜单最多支持两级选择"
-            materialized["options"] = _materialize_options(
-                script_name, option, depth + 1, daily=daily
-            )
-        options.append(materialized)
-    return {**group, "values": options}
 
 
 def get_weekly_map(script_name: str) -> list:
@@ -73,7 +27,12 @@ def get_weekly_map(script_name: str) -> list:
     defs = []
     for task in defs_map[script_name]:
         if "options" in task:
-            task = {**task, "options": _materialize_options(script_name, task)}
+            task = {
+                **task,
+                "options": materialize_options(
+                    task, lambda source: read_task_source(script_name, source)
+                ),
+            }
             values = task["options"]["values"]
             assert all("options" not in option for option in values), (
                 "当前周常菜单只支持一级选择"
@@ -90,9 +49,16 @@ def _materialize_daily(script_name: str, declaration: dict) -> dict:
       其 values 作二级——与写路径一致（一级项名 = 日常名、值走二级）；
     - 单层无 ``key``（no-op）：values 即一级项。
     """
-    options = _materialize_options(
-        script_name, declaration, daily=declaration["display_name"]
+    options = materialize_options(
+        declaration,
+        lambda source: get_task_lists(script_name, declaration["display_name"], source),
     )
+    assert all(
+        "options" not in child
+        for option in options["values"]
+        if "options" in option
+        for child in option["options"]["values"]
+    ), "当前日常菜单最多支持两级选择"
     # layered 判断走物化结果（values 恒存在），不读裸声明——日常级 source 组没有 values。
     layered = any("options" in option for option in options["values"])
     if "key" in declaration["options"] and not layered:

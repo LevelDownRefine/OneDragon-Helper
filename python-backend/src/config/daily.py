@@ -13,11 +13,12 @@ from copy import deepcopy
 from typing import Any
 
 from src.config.maa_activity import read_activity_stages
-from src.config.task_config import (
-    get_daily_configs,
+from src.config.task_config import get_daily_configs
+from src.config.task_parser import (
     get_options,
     get_physical_name,
     get_value_map,
+    parse_map_point_names,
 )
 from src.config.task_source import read_task_source
 from src.utils.utils_dict import covers, get_field, safe_update
@@ -553,31 +554,9 @@ class BgiDaily(Daily):
         """原神资源：category 筛地图点位，无 category 时走通用键路径读取。"""
         if "category" not in source:
             return super().get_task_lists(source)
-        assert source.keys() <= {"path", "category"}, (
-            "原神资源来源只支持 path / category"
-        )
         path = get_field(source, "path", self.display_name, str)
-        category = get_field(source, "category", self.display_name, str)
         data = load_game_config(self.script_name, path)
-        if not data:
-            return []
-        assert isinstance(data, dict), "原神地图资源必须为 dict"
-        names = []
-        # 地图和点位可没有秘境分类或名称，此时不提供选项。
-        scenes = data["data"] if "data" in data else []  # noqa: SIM401
-        for scene in scenes:
-            if not isinstance(scene, dict) or "points" not in scene:
-                continue
-            for point in scene["points"]:
-                if (
-                    isinstance(point, dict)
-                    and "type" in point
-                    and point["type"] == category
-                    and "name" in point
-                    and point["name"]
-                ):
-                    names.append(point["name"])
-        return names
+        return parse_map_point_names(data, source, self.display_name)
 
 
 class BgiLeyLineDaily(BgiDaily):

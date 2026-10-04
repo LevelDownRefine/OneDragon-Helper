@@ -1,10 +1,16 @@
 """已接入任务的附带选项；声明限定字段，原生配置仍是真源。"""
 
-import ast
 import logging
 from copy import deepcopy
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
+from src.config.task_parser import (
+    parse_choices,
+    parse_enum_names,
+    parse_record_names,
+    parse_resource_choices,
+    parse_task_options,
+)
 from src.config.task_source import read_task_source
 from src.utils import get_root_dir
 from src.utils.utils_io import load_data
@@ -18,45 +24,15 @@ from src.utils.utils_sub_config import (
 logger = logging.getLogger(__name__)
 
 
-def _relative_path(value: str) -> None:
-    assert isinstance(value, str) and value
-    path = PureWindowsPath(value)
-    assert not path.is_absolute() and not path.drive and ".." not in path.parts
-
-
 def load_declarations() -> dict:
-    """读取并校验静态声明，不读取用户配置。"""
-    data = load_data(
-        str(Path(get_root_dir()) / "config" / "task_switch_list.yml"),
-        file_format="yaml",
-        cached=True,
+    """读取附带选项声明，交由 task_parser 校验。"""
+    return parse_task_options(
+        load_data(
+            str(Path(get_root_dir()) / "config" / "task_switch_list.yml"),
+            "yaml",
+            cached=True,
+        )
     )
-    assert isinstance(data, dict), "任务选项声明必须为 dict"
-    data = {name: node["options"] for name, node in data.items() if "options" in node}
-    for groups in data.values():
-        assert isinstance(groups, list)
-        identifiers = set()
-        for group in groups:
-            assert {"display_name", "config", "fields"} <= group.keys()
-            _relative_path(group["config"])
-            assert isinstance(group["display_name"], str) and group["display_name"]
-            assert isinstance(group["fields"], list) and group["fields"]
-            assert isinstance(group["tasks"], list)
-            assert all(isinstance(name, str) and name for name in group["tasks"])
-            for field in group["fields"]:
-                assert {"id", "display_name", "keys", "type"} <= field.keys()
-                assert isinstance(field["id"], str) and field["id"]
-                assert field["id"] not in identifiers
-                identifiers.add(field["id"])
-                assert isinstance(field["display_name"], str) and field["display_name"]
-                assert field["type"] in ("bool", "choice", "multi")
-                assert isinstance(field["keys"], list) and field["keys"]
-                assert all(isinstance(key, str) and key for key in field["keys"])
-                if field["type"] != "bool":
-                    assert ("values" in field) != ("source" in field)
-                    if "source" in field:
-                        _relative_path(field["source"]["path"])
-    return data
 
 
 class TaskOptions:
@@ -85,56 +61,14 @@ class TaskOptions:
             elif "key" in source:
                 names = read_task_source(self.script_name, source)
             elif "enum" in source:
-                # 只读取 AST 中的字符串常量，不导入或执行外部脚本。
-                tree = ast.parse(path.read_text(encoding="utf-8-sig"))
-                names = []
-                for node in tree.body:
-                    if isinstance(node, ast.ClassDef) and node.name == source["enum"]:
-                        for item in node.body:
-                            if isinstance(item, ast.Assign) and isinstance(
-                                item.value, ast.Call
-                            ):
-                                argument = source["argument"]
-                                if len(item.value.args) <= argument:
-                                    raise ValueError("枚举构造参数已变化")
-                                value = item.value.args[argument]
-                                if not isinstance(
-                                    value, ast.Constant
-                                ) or not isinstance(value.value, str):
-                                    raise ValueError("枚举候选名不再是字符串常量")
-                                names.append(value.value)
-                if not names:
-                    raise ValueError("未找到枚举候选项")
+                names = parse_enum_names(path.read_text(encoding="utf-8-sig"), source)
             else:
                 records = load_data(
                     path, file_format="json", cached=False, encoding="utf-8-sig"
                 )
-                if not isinstance(records, dict):
-                    raise ValueError("候选资源不再是字典")
-                assert "field" in source
-                names = []
-                for record in records.values():
-                    if not isinstance(record, dict) or source["field"] not in record:
-                        raise ValueError("候选资源字段已变化")
-                    names.append(record[source["field"]])
-            if not all(isinstance(name, str) and name for name in names):
-                raise ValueError("候选资源名称必须是非空字符串")
-            if "prepend" in source:
-                names = [*source["prepend"], *names]
-        assert isinstance(names, list)
-        choices = []
-        for name in names:
-            if isinstance(name, str):
-                choices.append({"display_name": name, "physical_name": name})
-            else:
-                assert (
-                    isinstance(name, dict)
-                    and {"display_name", "physical_name"} <= name.keys()
-                )
-                choices.append(dict(name))
-        assert all(isinstance(item["physical_name"], str) for item in choices)
-        assert len({item["physical_name"] for item in choices}) == len(choices)
-        return choices
+                names = parse_record_names(records, source)
+            return parse_resource_choices(names, source)
+        return parse_choices(names)
 
     @staticmethod
     def _value(config: dict, field: dict):

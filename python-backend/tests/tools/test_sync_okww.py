@@ -14,7 +14,7 @@ _YAML = YAML()
 
 class TestRebaseSequences(unittest.TestCase):
     def test_repeated_growth_renumbers_placeholders_and_preserves_friendly_names(self):
-        from src.config.task_config import validate_options
+        from src.config.task_parser import validate_options
 
         options = [{"display_name": "梦州-迅刀", "physical_name": 1}]
         for delta in (2, 1, 2):

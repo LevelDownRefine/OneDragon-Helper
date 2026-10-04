@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.config import task_config as m
+from src.config.task_parser import get_physical_name
 from src.utils.utils_io import YAML_INSTANCE, _parse_yaml, save_data
 
 
@@ -54,8 +55,8 @@ class TestTaskDeclarations(unittest.TestCase):
         }
         loaded = self.load(data)
         self.assertEqual(loaded, data)
-        self.assertEqual(m.get_physical_name(loaded["script"][0]), "native_task")
-        self.assertEqual(m.get_physical_name({"display_name": "原样"}), "原样")
+        self.assertEqual(get_physical_name(loaded["script"][0]), "native_task")
+        self.assertEqual(get_physical_name({"display_name": "原样"}), "原样")
 
     def test_same_schema_in_two_separate_files(self):
         daily = m.load_daily_map()
