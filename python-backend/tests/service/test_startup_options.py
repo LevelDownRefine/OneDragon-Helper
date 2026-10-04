@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from src.service.app_service import AppService
 from src.service.schedule import RunOptions, StartupOptions, load_startup_options
-from src.utils.utils_yaml import dump_yaml, load_yaml
+from src.utils.utils_io import dump_yaml, load_yaml
 
 
 class TestStartupOptions(unittest.TestCase):

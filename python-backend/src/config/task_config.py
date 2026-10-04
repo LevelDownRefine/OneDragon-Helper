@@ -1,14 +1,13 @@
 """读取日常、周常声明并校验递归选项；不负责调度或写入子脚本。"""
 
 from copy import deepcopy
-from functools import lru_cache
 from pathlib import Path, PureWindowsPath
 
 from src.utils import (
     get_daily_task_list_yml_path_under_root,
     get_weekly_task_list_yml_path_under_root,
 )
-from src.utils.utils_yaml import load_yaml_str
+from src.utils.utils_io import load_yaml
 
 
 def get_physical_name(node: dict) -> str | int:
@@ -145,7 +144,7 @@ def _validate_definitions(script_name: str, definitions: list[dict]) -> None:
 
 
 def load_task_map(path: str, *, require_class: bool = False) -> dict[str, list[dict]]:
-    """同一份内容只解析一次；调用方取得独立副本。
+    """读取层按内容缓存解码结果；本层校验任务声明。
 
     Args:
         path: 声明文件路径。
@@ -160,7 +159,7 @@ def load_task_map(path: str, *, require_class: bool = False) -> dict[str, list[d
     """
     file = Path(path)
     assert file.is_file(), f"任务声明缺失: {path}"
-    data = deepcopy(_load_task_map(file.read_text(encoding="utf-8")))
+    data = _load_task_map(load_yaml(path, cached=True))
     if require_class:
         for definitions in data.values():
             for definition in definitions:
@@ -175,10 +174,8 @@ def load_task_map(path: str, *, require_class: bool = False) -> dict[str, list[d
     return data
 
 
-@lru_cache(maxsize=2)
-def _load_task_map(content: str) -> dict[str, list[dict]]:
-    """以内容为缓存键，避免同大小、同时间戳的文件替换读到旧声明。"""
-    data = load_yaml_str(content)
+def _load_task_map(data: dict) -> dict[str, list[dict]]:
+    """校验已读取的数据，不读文件或缓存业务结构。"""
     assert isinstance(data, dict), "任务声明必须是字典"
     for script_name, definitions in data.items():
         _validate_name(script_name, "脚本标识")

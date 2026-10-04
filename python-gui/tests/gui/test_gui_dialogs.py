@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from src.service.script_service import validate_edit
-from src.utils.utils_yaml import dump_yaml_file
+from src.utils.utils_io import dump_yaml_file
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

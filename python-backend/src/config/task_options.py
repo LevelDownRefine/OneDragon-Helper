@@ -1,20 +1,19 @@
 """已接入任务的附带选项；声明限定字段，原生配置仍是真源。"""
 
 import ast
-import json
 import logging
 from copy import deepcopy
 from pathlib import Path, PureWindowsPath
 
 from src.config.task_source import read_task_source
 from src.utils import get_root_dir
+from src.utils.utils_io import load_data, load_yaml
 from src.utils.utils_sub_config import (
     get_script_root_dir,
     get_sub_config_path,
     load_script_config,
     save_script_config,
 )
-from src.utils.utils_yaml import load_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +101,7 @@ class TaskOptions:
                 if not names:
                     raise ValueError("未找到枚举候选项")
             else:
-                records = json.loads(path.read_text(encoding="utf-8-sig"))
+                records = load_data(path, cached=False, encoding="utf-8-sig")
                 if not isinstance(records, dict):
                     raise ValueError("候选资源不再是字典")
                 assert "field" in source

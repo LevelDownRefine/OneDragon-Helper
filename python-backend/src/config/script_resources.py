@@ -6,7 +6,7 @@ from typing import Literal, NotRequired, TypedDict, cast
 from urllib.parse import urlsplit
 
 from src.utils import get_root_dir
-from src.utils.utils_yaml import load_yaml
+from src.utils.utils_io import load_yaml
 
 
 class GamePath(TypedDict):

@@ -25,8 +25,8 @@ from src.service.schedule import (
     build_pre_run_pipeline,
     load_run_options,
 )
+from src.utils.utils_io import dump_yaml, load_yaml
 from src.utils.utils_runner import ProcessTarget
-from src.utils.utils_yaml import dump_yaml, load_yaml
 from tests.support.process_sim import ProcessSim
 
 

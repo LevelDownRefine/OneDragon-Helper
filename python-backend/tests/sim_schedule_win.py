@@ -168,7 +168,7 @@ def build_sandbox() -> None:
 
     # config.yml：ok-ww 为 external（runner 先启动 FakeGame 再跑它、收尾杀游戏）；
     # ok-nte 为 python（进程内 exec，首跑失败触发重跑轮）。
-    from src.utils.utils_yaml import dump_yaml
+    from src.utils.utils_io import dump_yaml
 
     ww = default_script_entry(
         display_name="ok-ww",

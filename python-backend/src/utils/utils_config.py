@@ -12,13 +12,13 @@ from src.utils import (
     get_config_yml_path_under_root,
     require_config_yml_path,
 )
+from src.utils.utils_io import dump_yaml, load_yaml
 from src.utils.utils_sub_config import (
     check_script_name_uniqueness,
     get_script_name,
     is_exe_script,
     resolve_script_path,
 )
-from src.utils.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
 

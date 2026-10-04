@@ -34,9 +34,9 @@ from src.service.run_actions import (
     wait_until_target,
 )
 from src.utils import get_schedule_yml_path_under_root
+from src.utils.utils_io import dump_yaml, load_yaml
 from src.utils.utils_mute import mute_off, mute_on
 from src.utils.utils_shutdown import shutdown_sys
-from src.utils.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
 

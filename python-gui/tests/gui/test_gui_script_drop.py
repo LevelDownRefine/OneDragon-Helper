@@ -23,8 +23,8 @@ from gui.main_window import QmlBridge
 from src.service import script_service
 from src.service.app_service import AppService
 from src.utils import utils_config, utils_weekly
+from src.utils.utils_io import load_yaml
 from src.utils.utils_sub_config import get_script_name
-from src.utils.utils_yaml import load_yaml
 
 _app = QApplication.instance() or QApplication([])
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.config import task_config as m
-from src.utils.utils_yaml import dump_yaml_file
+from src.utils.utils_io import YAML_INSTANCE, _parse_yaml, dump_yaml_file
 
 
 class TestTaskDeclarations(unittest.TestCase):
@@ -16,8 +16,8 @@ class TestTaskDeclarations(unittest.TestCase):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.path = Path(directory.name) / "tasks.yml"
-        m._load_task_map.cache_clear()
-        self.addCleanup(m._load_task_map.cache_clear)
+        _parse_yaml.cache_clear()
+        self.addCleanup(_parse_yaml.cache_clear)
 
     def load(self, data):
         dump_yaml_file(str(self.path), data)
@@ -198,7 +198,7 @@ class TestTaskDeclarations(unittest.TestCase):
             ]
         }
         self.load(data)
-        with patch.object(m, "load_yaml_str", wraps=m.load_yaml_str) as read:
+        with patch.object(YAML_INSTANCE, "load", wraps=YAML_INSTANCE.load) as read:
             first = m.load_task_map(str(self.path))
             first["s"][0]["options"]["values"].clear()
             self.assertEqual(m.load_task_map(str(self.path)), data)

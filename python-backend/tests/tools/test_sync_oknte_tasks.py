@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.utils.utils_yaml import load_yaml
+from src.utils.utils_io import load_yaml
 from tools import sync_oknte_tasks as m
 
 _ANOMALY = """

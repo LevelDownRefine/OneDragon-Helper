@@ -10,8 +10,8 @@ from src.service.chain_gen import (
     generate_chain_config,
     resolve_weekly_starts,
 )
+from src.utils.utils_io import load_yaml
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT
-from src.utils.utils_yaml import load_yaml
 
 
 def _script(display_name="测试"):

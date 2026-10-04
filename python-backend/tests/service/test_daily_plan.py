@@ -21,7 +21,7 @@ from src.service.daily_plan import (
     read_daily_task_state,
 )
 from src.service.schedule import RunOptions
-from src.utils.utils_yaml import dump_yaml, load_yaml
+from src.utils.utils_io import dump_yaml, load_yaml
 
 
 class TestDailyPlanConfig(unittest.TestCase):

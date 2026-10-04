@@ -16,7 +16,7 @@ from src import link
 from src.config import script_resources as resources
 from src.config import set_config
 from src.log import monitor
-from src.utils.utils_yaml import dump_yaml_str
+from src.utils.utils_io import dump_yaml_str
 
 ROOT = Path(__file__).resolve().parents[3]
 

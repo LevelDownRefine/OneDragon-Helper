@@ -28,8 +28,8 @@ from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import RunOptions, StartupOptions
 from src.service.script_service import ScriptEdit
 from src.update.runtime import FileLease, UpdateBusyError
+from src.utils.utils_io import load_yaml
 from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
-from src.utils.utils_yaml import load_yaml
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture
 
 
@@ -590,7 +590,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         self.assertIn("new", weekly["weekly_timeouts"])
 
     def test_icon_paths_are_read_only_without_gui_imports(self):
-        from src.utils.utils_yaml import dump_yaml
+        from src.utils.utils_io import dump_yaml
 
         result, _ = self.serve([request("app.snapshot")])
         self.assertEqual(result.returncode, 0, result.stderr)

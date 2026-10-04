@@ -21,14 +21,13 @@
 
 import logging
 import re
-from copy import deepcopy
-from functools import cache, lru_cache
+from functools import cache
 from pathlib import Path, PureWindowsPath
 from typing import NamedTuple
 
 from src.utils import get_task_switch_list_yml_path_under_root
+from src.utils.utils_io import load_yaml
 from src.utils.utils_sub_config import load_script_config, save_script_config
-from src.utils.utils_yaml import load_yaml_str
 
 logger = logging.getLogger(__name__)
 
@@ -633,13 +632,11 @@ def load_task_switch_map() -> dict[str, list[dict]]:
     path = get_task_switch_list_yml_path_under_root()
     file = Path(path)
     assert file.is_file(), f"任务开关声明缺失: {path}"
-    return deepcopy(_parse_declarations(file.read_text(encoding="utf-8")))
+    return _parse_declarations(load_yaml(path, cached=True))
 
 
-@lru_cache(maxsize=2)
-def _parse_declarations(content: str) -> dict[str, list[dict]]:
-    """以内容为缓存键，避免同大小、同时间戳的文件替换读到旧声明。"""
-    data = load_yaml_str(content)
+def _parse_declarations(data: dict) -> dict[str, list[dict]]:
+    """校验已读取的数据，不读文件或缓存业务结构。"""
     assert isinstance(data, dict), "任务开关声明必须是字典"
     return {
         script_name: _normalized_segments(script_name, node)

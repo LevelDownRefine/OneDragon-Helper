@@ -19,8 +19,8 @@ import logging
 from datetime import datetime, timedelta
 
 from src.utils import get_weekly_yml_path_under_root
+from src.utils.utils_io import dump_yaml, load_yaml_optional
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
-from src.utils.utils_yaml import dump_yaml, load_yaml_optional
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,7 @@ from src.utils.utils_config import (
     load_config,
     save_config,
 )
-from src.utils.utils_yaml import dump_yaml_file, load_yaml
+from src.utils.utils_io import dump_yaml_file, load_yaml
 
 
 class UtilsConfigTestBase(unittest.TestCase):

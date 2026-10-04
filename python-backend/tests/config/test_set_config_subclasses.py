@@ -7,7 +7,7 @@
 
 import unittest
 from contextlib import ExitStack
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 from src.config.daily import Daily, SingleLayerDaily, TemplateDaily
 from src.config.set_config import (
@@ -142,11 +142,7 @@ class TestGenshinConfig(unittest.TestCase):
 
     def test_update_task_writes_shared_field(self):
         """原神两级共用 DomainName：无二级时写入一级项名。"""
-        with (
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data="{}")),
-        ):
-            cfg = GenshinConfig()
+        cfg = GenshinConfig()
         config = {"DomainName": "旧本"}
         changed = _update(cfg, config, "每日任务", "圣遗物")
         self.assertTrue(changed)

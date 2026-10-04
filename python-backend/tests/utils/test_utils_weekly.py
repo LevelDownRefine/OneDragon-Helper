@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from src.utils.utils_io import dump_yaml_file, load_yaml
 from src.utils.utils_weekly import (
     DISABLED_START_DAY,
     check_weekly,
@@ -22,7 +23,6 @@ from src.utils.utils_weekly import (
     set_weekly_start,
     weekly_inputs,
 )
-from src.utils.utils_yaml import dump_yaml_file, load_yaml
 
 
 class UtilsWeeklyTestBase(unittest.TestCase):

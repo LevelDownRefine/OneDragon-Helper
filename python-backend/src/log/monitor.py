@@ -12,7 +12,7 @@ src.log.monitor` 方式调用，不单独运行。脚本唯一标识复用 `get_
 `src.utils.utils_sub_config`），日志位置读取 `src.config.script_resources` 的内置声明；
 根目录复用 `src.utils.get_root_dir`
 （冻结时为 exe 所在目录，勿按 `__file__` 自算），并直接读取 `config.yml`（经
-`src.utils.utils_yaml.load_yaml`，ruamel YAML 1.2 解析）。
+`src.utils.utils_io.load_yaml`，ruamel YAML 1.2 解析）。
 """
 
 import logging
@@ -26,9 +26,9 @@ from pathlib import Path
 
 from src.config.script_resources import get_script_resources
 from src.utils import get_root_dir
+from src.utils.utils_io import load_yaml, load_yaml_optional
 from src.utils.utils_logger import setup_logging
 from src.utils.utils_sub_config import get_script_name
-from src.utils.utils_yaml import load_yaml, load_yaml_optional
 
 logger = logging.getLogger(__name__)
 

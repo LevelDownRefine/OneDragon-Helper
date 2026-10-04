@@ -43,8 +43,8 @@ from pathlib import Path
 
 import psutil
 
+from src.utils.utils_io import dump_yaml
 from src.utils.utils_sub_config import default_script_entry
-from src.utils.utils_yaml import dump_yaml
 from tests.exe import project_root
 from tests.exe.test_close_running_exe import _kill_process_tree
 from tests.exe.test_gui_exe import _SKIP_REASON, CAN_RUN_EXE, GUI_EXE

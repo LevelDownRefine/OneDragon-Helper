@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from src.config import generate_config
 from src.config.generate_config import config_workflow
-from src.utils.utils_yaml import load_yaml
+from src.utils.utils_io import load_yaml
 
 
 class ConfigWorkflowTestBase(unittest.TestCase):

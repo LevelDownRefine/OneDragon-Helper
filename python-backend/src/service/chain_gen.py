@@ -16,9 +16,9 @@ from src.utils import (
     get_path_under_root,
     safe_path_join,
 )
+from src.utils.utils_io import dump_yaml
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
 from src.utils.utils_weekly import DISABLED_START_DAY, get_week_num
-from src.utils.utils_yaml import dump_yaml
 
 logger = logging.getLogger(__name__)
 

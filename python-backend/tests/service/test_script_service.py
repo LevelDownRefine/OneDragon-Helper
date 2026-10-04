@@ -14,8 +14,8 @@ from src.service import script_service
 from src.service.app_service import AppService
 from src.service.script_service import InvalidScript, ScriptEdit, validate_edit
 from src.utils import utils_config, utils_weekly
+from src.utils.utils_io import dump_yaml_file, load_yaml
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
-from src.utils.utils_yaml import dump_yaml_file, load_yaml
 
 
 class ScriptServiceTestBase(unittest.TestCase):

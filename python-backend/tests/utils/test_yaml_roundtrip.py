@@ -1,6 +1,6 @@
 """YAML 往返读写回归测试。
 
-验证游戏 config 的读写（src.utils.utils_yaml.YAML_INSTANCE 往返实例）：
+验证游戏 config 的读写（src.utils.utils_io.YAML_INSTANCE 往返实例）：
 - 保留注释（含行内注释）；
 - 按 YAML 1.2 解析，使 04:00 这类时间保持字符串而非六十进制 float（240.0）；
 - ruamel 把带引号的空串读成 str 子类时，不破坏 safe_update 的类型检查；
@@ -16,9 +16,9 @@ from unittest.mock import patch
 
 from ruamel.yaml.error import YAMLError
 
-from src.utils import utils_yaml
+from src.utils import utils_io
 from src.utils.utils_dict import safe_update
-from src.utils.utils_yaml import (
+from src.utils.utils_io import (
     YAML_INSTANCE,
     dump_yaml,
     load_yaml,
@@ -76,8 +76,8 @@ class TestYamlReadCache(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.path = Path(tmp.name) / "config.yml"
-        utils_yaml._parse_yaml.cache_clear()
-        self.addCleanup(utils_yaml._parse_yaml.cache_clear)
+        utils_io._parse_yaml.cache_clear()
+        self.addCleanup(utils_io._parse_yaml.cache_clear)
 
     def test_unchanged_content_parsed_once_with_independent_nested_values(self):
         self.path.write_text("tasks:\n  - name: original\n", encoding="utf-8")

@@ -23,8 +23,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from src.utils.utils_io import load_yaml
 from src.utils.utils_sub_config import get_script_name
-from src.utils.utils_yaml import load_yaml
 from tests.exe import project_root
 
 PROJECT_ROOT = str(project_root())

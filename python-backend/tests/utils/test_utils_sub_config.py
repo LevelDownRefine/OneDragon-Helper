@@ -10,6 +10,7 @@ from unittest.mock import mock_open, patch
 from src.config import set_config
 from src.config.task_config import get_daily_configs
 from src.utils import get_root_dir, safe_path_join, utils_sub_config
+from src.utils.utils_io import dump_yaml_str, load_yaml_str
 from src.utils.utils_sub_config import (
     check_script_name_uniqueness,
     default_script_entry,
@@ -20,7 +21,6 @@ from src.utils.utils_sub_config import (
     load_game_config,
     resolve_script_path,
 )
-from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
 
 
 class TestGetProcessName(unittest.TestCase):
@@ -531,11 +531,13 @@ class TestSaveConfig(unittest.TestCase):
                 utils_sub_config, "get_sub_config_path", return_value=fake_path
             ),
             patch("builtins.open", m),
+            patch("src.utils.utils_io.os.replace") as replace,
         ):
             result = utils_sub_config.save_config("ok-ww", "DailyTask.json", data)
 
         self.assertIsNone(result)
-        m.assert_called_once_with(fake_path, "w", encoding="utf-8")
+        m.assert_called_once_with(fake_path + ".tmp", "w", encoding="utf-8")
+        replace.assert_called_once_with(fake_path + ".tmp", fake_path)
         # 验证写入的内容是正确的 JSON
         handle = m()
         written = "".join(call.args[0] for call in handle.write.call_args_list)
@@ -555,7 +557,7 @@ class TestSaveConfig(unittest.TestCase):
                 utils_sub_config, "get_sub_config_path", return_value=fake_path
             ),
             patch("builtins.open", m),
-            patch("src.utils.utils_yaml.os.replace") as mock_replace,
+            patch("src.utils.utils_io.os.replace") as mock_replace,
         ):
             result = utils_sub_config.save_config(
                 "OneDragon-Launcher", "charge_plan.yml", data

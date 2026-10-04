@@ -4,7 +4,6 @@
 提供脚本根目录解析、config 路径推导、配置文件读写等功能。
 """
 
-import json
 import logging
 import os
 import re
@@ -15,7 +14,7 @@ from src.utils import (
     require_config_yml_path,
     safe_path_join,
 )
-from src.utils.utils_yaml import dump_yaml, load_yaml
+from src.utils.utils_io import load_data, load_yaml, save_data
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ def _load_config_yml() -> dict:
     """读取主配置 config.yml。
 
     路径解析（``get_script_path`` / ``get_script_root_dir``）被每个子配置读写调用，
-    一次启动会读同一份文件十几次；解析结果由 ``utils_yaml.load_yaml`` 按文件内容复用。
+    一次启动会读同一份文件十几次；解析结果由 ``utils_io.load_yaml`` 按文件内容复用。
 
     Returns:
         解析后的 dict（每次调用独立副本，调用方可自由修改）。
@@ -188,15 +187,7 @@ def load_template(script_name: str, rel_path: str) -> dict | list:
     assert os.path.exists(template_path), (
         f"[set_config][{script_name}] 未找到模板文件: {template_path}"
     )
-    ext = os.path.splitext(template_path)[1].lower()
-    with open(template_path, encoding="utf-8") as f:
-        if ext == ".json":
-            template = json.load(f)
-        elif ext in (".yaml", ".yml"):
-            template = load_yaml(template_path)
-        else:
-            raise ValueError(f"[set_config][{script_name}] 不支持的模板格式: {ext}")
-    return template
+    return load_data(template_path, cached=True)
 
 
 def load_config(script_name: str, rel_path: str) -> dict | list:
@@ -207,13 +198,7 @@ def load_config(script_name: str, rel_path: str) -> dict | list:
     """
     path = get_sub_config_path(script_name, rel_path)
     assert os.path.exists(path), f"[set_config] config 文件不存在: {path}"
-    ext = os.path.splitext(path)[1].lower()
-    with open(path, encoding="utf-8") as f:
-        if ext == ".json":
-            return json.load(f)
-        elif ext in (".yaml", ".yml"):
-            return load_yaml(path)
-        raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
+    return load_data(path, cached=False)
 
 
 def load_script_config(
@@ -275,13 +260,7 @@ def load_game_config(script_name: str, rel_path: str) -> dict | None:
             f"[set_config][{script_name}] 游戏路径配置文件不存在: {game_config_path}"
         )
         return None
-    ext = os.path.splitext(game_config_path)[1].lower()
-    with open(game_config_path, encoding="utf-8") as f:
-        if ext == ".json":
-            return json.load(f)
-        elif ext in (".yaml", ".yml"):
-            return load_yaml(game_config_path)
-        raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
+    return load_data(game_config_path, cached=False)
 
 
 def save_config(script_name: str, rel_path: str, data: dict | list) -> None:
@@ -291,14 +270,7 @@ def save_config(script_name: str, rel_path: str, data: dict | list) -> None:
     并确保 config 文件已存在且能被写入。
     """
     path = get_sub_config_path(script_name, rel_path)
-    ext = os.path.splitext(path)[1].lower()
-    if ext == ".json":
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
-    elif ext in (".yaml", ".yml"):
-        dump_yaml(path, data)
-    else:
-        raise ValueError(f"[set_config] 不支持的 config 格式: {ext}")
+    save_data(path, data)
 
 
 def save_script_config(

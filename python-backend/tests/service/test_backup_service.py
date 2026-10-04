@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from src.config import set_config
 from src.service import backup_service as backup
-from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
+from src.utils.utils_io import dump_yaml_str, load_yaml_str
 
 
 class TestBackupService(unittest.TestCase):

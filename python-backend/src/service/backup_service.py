@@ -4,7 +4,6 @@
 恢复按当前脚本目录覆盖同名文件，保留额外文件，未配置的脚本跳过并报告。
 """
 
-import json
 import logging
 import os
 import shutil
@@ -18,8 +17,8 @@ from ruamel.yaml.error import YAMLError
 
 from src.config.set_config import get_game_path_keys, iter_backup_paths
 from src.utils import get_path_under_root
+from src.utils.utils_io import dump_data_str, load_data, parse_data
 from src.utils.utils_sub_config import get_script_root_dir
-from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
 
 logger = logging.getLogger(__name__)
 
@@ -138,10 +137,14 @@ def _preserve_game_path(target: Path, temporary: Path, keys: tuple[str, ...]) ->
     ext = target.suffix.lower()
     if ext not in (".json", ".yaml", ".yml"):
         raise ValueError(f"不支持的游戏路径配置格式: {ext}")
-    parse = json.loads if ext == ".json" else load_yaml_str
-    current = parse(target.read_text(encoding="utf-8-sig")) if target.is_file() else {}
+    file_format = "json" if ext == ".json" else "yaml"
+    current = (
+        load_data(target, cached=False, encoding="utf-8-sig")
+        if target.is_file()
+        else {}
+    )
     payload = temporary.read_bytes()
-    restored = parse(payload.decode("utf-8-sig"))
+    restored = parse_data(payload.decode("utf-8-sig"), file_format=file_format)
     if not isinstance(current, dict) or not isinstance(restored, dict):
         raise ValueError(f"游戏路径配置必须是对象: {target}")
     missing = object()
@@ -173,11 +176,7 @@ def _preserve_game_path(target: Path, temporary: Path, keys: tuple[str, ...]) ->
         if key in node and node[key] == value:
             return
         node[key] = value
-    text = (
-        json.dumps(restored, ensure_ascii=False, indent=4)
-        if ext == ".json"
-        else dump_yaml_str(restored)
-    )
+    text = dump_data_str(restored, file_format=file_format)
     encoding = "utf-8-sig" if payload.startswith(b"\xef\xbb\xbf") else "utf-8"
     temporary.write_bytes(text.encode(encoding))
 

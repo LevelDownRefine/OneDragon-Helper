@@ -29,8 +29,8 @@ from src import cli
 from src.config.generate_config import config_workflow
 from src.service import chain_gen as service_chain_gen
 from src.utils import get_config_yml_path_under_root
+from src.utils.utils_io import dump_yaml, load_yaml
 from src.utils.utils_sub_config import get_script_name
-from src.utils.utils_yaml import dump_yaml, load_yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 

@@ -16,7 +16,7 @@ from src.utils import (
     get_weekly_yml_path_under_root,
     safe_path_join,
 )
-from src.utils.utils_yaml import dump_yaml, load_yaml
+from src.utils.utils_io import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
 

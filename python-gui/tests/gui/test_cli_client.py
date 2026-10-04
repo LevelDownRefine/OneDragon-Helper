@@ -135,7 +135,11 @@ class CliClientTests(unittest.TestCase):
         config = Path(self.temporary) / "config"
         config.mkdir()
         for source in (project / "config").iterdir():
-            if source.is_file() and source.suffix in {".yml", ".json"}:
+            if (
+                source.is_file()
+                and source.suffix in {".yml", ".json"}
+                and source.name != "config.yml"
+            ):
                 shutil.copyfile(source, config / source.name)
         (config / "config.example.yml").write_text(
             "script_list:\n- display_name: 自定义\n  script_path: custom.py\n",
