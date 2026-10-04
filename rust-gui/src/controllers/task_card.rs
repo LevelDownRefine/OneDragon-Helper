@@ -55,7 +55,7 @@ impl View {
             11.0,
             if response.hovered() { ACCENT } else { MUTED },
         );
-        if response.clicked() && !data.busy {
+        if response.clicked() && !data.editing_blocked {
             self.menu = None;
             actions.push(Action::Refresh);
         }
@@ -89,7 +89,7 @@ impl View {
                                 Id::new(("daily", &daily.name)),
                                 daily.enabled != Some(false),
                             );
-                            if response.clicked() && !data.busy {
+                            if response.clicked() && !data.editing_blocked {
                                 self.toggle(MenuKind::Daily(daily.name.clone()), chip);
                             }
                         }
@@ -113,7 +113,7 @@ impl View {
                                 Id::new(("start", &weekly.name)),
                                 true,
                             );
-                            if response.clicked() && !data.busy {
+                            if response.clicked() && !data.editing_blocked {
                                 self.toggle(MenuKind::Start(weekly.name.clone()), chip);
                             }
                             if has_choices {
@@ -128,7 +128,7 @@ impl View {
                                     Id::new(("weekly", &weekly.name)),
                                     true,
                                 );
-                                if response.clicked() && !data.busy {
+                                if response.clicked() && !data.editing_blocked {
                                     self.toggle(MenuKind::Weekly(weekly.name.clone()), chip);
                                 }
                             }

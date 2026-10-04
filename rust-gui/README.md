@@ -173,6 +173,10 @@ egui 没有 QML 层，控制器同时绘制对应区域；`controllers/mod.rs` �
 `common.rs` 只放共用组件，`script_config_dialog.rs` 单独承载脚本配置；
 `list_dialog.rs`、`drop_dialog.rs`、`backup_dialog.rs`、`wallpaper_dialog.rs` 保留各自表单和结果展示，
 原生文件选择也归 `dialogs/file_picker.rs`。
+`App.request_pending` 只表示 CLI 请求尚未返回；本地打开/启动任务由各自任务句柄表示，
+备份、导入和更新由 `background_task_active()` 表示。主画面通过 `editing_blocked()`
+组合编辑限制，表单通过 `dialog_blocked()` 检查请求和本地操作；各表单自持长任务限制。
+更新取消可以在请求期间排队，本地操作期间仍禁用；各类操作完成只释放自己的状态。
 `backend.rs`、`model.rs`、`runtime.rs`、`rendering.rs`、`video.rs` 是 Rust 的
 协议、启动及平台实现；Python GUI 没有一一对应文件，不为了同名增加转发层。
 Windows 原生拖放、图标提取和视频解码集中在 `windows/file_drop.rs`、`windows/icons.rs`、

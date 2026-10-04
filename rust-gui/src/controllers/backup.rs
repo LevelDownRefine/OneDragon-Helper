@@ -3,11 +3,12 @@ use super::*;
 
 impl App {
     pub(in crate::main_window) fn show_config(&mut self, ui: &mut Ui) {
+        let blocked = self.dialog_blocked();
         if let Some(action) = self
             .settings_dialog
             .as_mut()
             .filter(|_| self.backup_dialog.is_none() && self.update_dialog.is_none())
-            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+            .and_then(|dialog| dialog.show(ui.ctx(), blocked))
         {
             match action {
                 SettingsAction::Backup(restore) => {
@@ -42,10 +43,11 @@ impl App {
 
 impl App {
     pub(in crate::main_window) fn show_backup(&mut self, ui: &mut Ui) {
+        let blocked = self.dialog_blocked();
         if let Some(action) = self
             .backup_dialog
             .as_mut()
-            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+            .and_then(|dialog| dialog.show(ui.ctx(), blocked))
         {
             match action {
                 BackupAction::Request(request) => {

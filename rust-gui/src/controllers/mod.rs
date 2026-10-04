@@ -32,7 +32,7 @@ pub struct Presentation<'a> {
     pub scripts: &'a [Script],
     pub selected: Option<&'a str>,
     pub view: Option<&'a ScriptView>,
-    pub busy: bool,
+    pub editing_blocked: bool,
     pub block_close: bool,
     pub status: &'a str,
     pub demo: bool,
@@ -132,7 +132,7 @@ impl View {
         self.launch_button(ui, screen, &data, &mut actions);
         self.card(ui, &data, &mut actions);
         self.sidebar(ui, &data, &mut actions);
-        if data.busy {
+        if data.editing_blocked {
             self.menu = None;
         }
         if let Some(view) = data.view {

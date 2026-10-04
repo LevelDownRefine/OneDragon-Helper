@@ -157,7 +157,7 @@ impl BackupDialog {
         })
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<BackupAction> {
+    pub fn show(&mut self, ctx: &egui::Context, blocked: bool) -> Option<BackupAction> {
         if let Some(result) = self.picker.as_ref().and_then(FilePicker::poll) {
             self.picker = None;
             match result {
@@ -169,7 +169,7 @@ impl BackupDialog {
                 Err(error) => self.error = Some(error),
             }
         }
-        let blocked = busy || self.active() || self.picker.is_some();
+        let blocked = blocked || self.active() || self.picker.is_some();
         let mut action = None;
         let close = crate::dialogs::common::Dialog::new(
             "backup-restore",

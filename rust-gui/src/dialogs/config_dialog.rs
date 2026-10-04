@@ -73,7 +73,7 @@ impl SettingsDialog {
         self.needs_reload = false;
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<SettingsAction> {
+    pub fn show(&mut self, ctx: &egui::Context, blocked: bool) -> Option<SettingsAction> {
         let mut action = None;
         let mut back = false;
         let (title, description) = if self.daily_draft.is_some() {
@@ -85,9 +85,9 @@ impl SettingsDialog {
         };
         let close = crate::dialogs::common::Dialog::new("global-settings", title)
             .description(description)
-            .show(ctx, !busy, |ui| {
+            .show(ctx, !blocked, |ui| {
                 crate::dialogs::common::dialog_body(ui, |ui| {
-                    ui.add_enabled_ui(!busy && !self.needs_reload, |ui| {
+                    ui.add_enabled_ui(!blocked && !self.needs_reload, |ui| {
                         if let Some(draft) = &mut self.daily_draft {
                             draft.show(ui);
                         } else if let Some(draft) = &mut self.run_draft {
@@ -194,7 +194,7 @@ impl SettingsDialog {
                 crate::dialogs::common::dialog_footer(ui, |ui| {
                     if ui
                         .add_enabled(
-                            !busy
+                            !blocked
                                 && !self.needs_reload
                                 && self
                                     .daily_draft
@@ -222,17 +222,17 @@ impl SettingsDialog {
                         }));
                     }
                     if ui
-                        .add_enabled(!busy, crate::dialogs::common::secondary_button("取消"))
+                        .add_enabled(!blocked, crate::dialogs::common::secondary_button("取消"))
                         .clicked()
                     {
                         back = true;
                     }
-                    if busy {
+                    if blocked {
                         ui.spinner();
                     }
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         if ui
-                            .add_enabled(!busy, crate::dialogs::common::secondary_button("刷新"))
+                            .add_enabled(!blocked, crate::dialogs::common::secondary_button("刷新"))
                             .clicked()
                         {
                             action = Some(SettingsAction::Request(Request {
@@ -248,7 +248,7 @@ impl SettingsDialog {
                     });
                 });
             });
-        if !busy && (back || close) {
+        if !blocked && (back || close) {
             if self.daily_draft.is_some() && !self.needs_reload {
                 self.daily_draft = None;
                 self.error = None;

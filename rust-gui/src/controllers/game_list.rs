@@ -108,11 +108,11 @@ impl View {
                                     egui::Color32::from_black_alpha(150),
                                 );
                             }
-                            if response.drag_started() && !data.busy {
+                            if response.drag_started() && !data.editing_blocked {
                                 self.dragging = Some(script.script_name.clone());
                                 self.menu = None;
                             }
-                            if response.clicked() && !data.busy {
+                            if response.clicked() && !data.editing_blocked {
                                 self.menu = None;
                                 if self.control_mode {
                                     if !self.disabled.remove(&script.script_name) {
@@ -126,7 +126,7 @@ impl View {
                                 ui.label(&script.display_name);
                                 if ui
                                     .add_enabled(
-                                        !data.busy && data.scripts.len() > 1,
+                                        !data.editing_blocked && data.scripts.len() > 1,
                                         egui::Button::new(
                                             egui::RichText::new("删除脚本…").color(DANGER),
                                         ),
@@ -251,7 +251,7 @@ impl View {
             if ui.input(|input| input.pointer.any_released()) {
                 let name = self.dragging.take().expect("active drag");
                 self.drag_origin = None;
-                if !data.busy {
+                if !data.editing_blocked {
                     if ui.input(|input| {
                         input
                             .pointer
@@ -278,7 +278,8 @@ impl View {
                     }
                 }
             }
-        } else if self.icon_button(ui, "grid", grid, "选择手动运行的脚本", true) && !data.busy
+        } else if self.icon_button(ui, "grid", grid, "选择手动运行的脚本", true)
+            && !data.editing_blocked
         {
             self.control_mode = !self.control_mode;
             self.menu = None;
@@ -301,7 +302,7 @@ impl View {
                 if ui
                     .interact(bounds, Id::new(("manual-action", index)), Sense::click())
                     .clicked()
-                    && !data.busy
+                    && !data.editing_blocked
                 {
                     match index {
                         0 => self.disabled.clear(),
@@ -333,7 +334,8 @@ impl View {
         }
         let batch = rect(16.0, base + 64.0, 48.0, 48.0);
         ui.painter().circle_filled(batch.center(), 24.0, BATCH);
-        if self.icon_button(ui, "play_all", batch, "启动手动勾选的脚本", false) && !data.busy
+        if self.icon_button(ui, "play_all", batch, "启动手动勾选的脚本", false)
+            && !data.editing_blocked
         {
             let names = self.enabled_names(data.scripts);
             if names.is_empty() {
@@ -350,7 +352,7 @@ impl View {
 
 impl App {
     pub(in crate::main_window) fn can_drop(&self) -> bool {
-        !self.busy
+        !self.dialog_blocked()
             && self.backend.is_some()
             && self.view.is_some()
             && self.editor.is_none()
@@ -393,10 +395,11 @@ impl App {
 
 impl App {
     pub(in crate::main_window) fn show_script_config(&mut self, ui: &mut Ui) {
+        let blocked = self.dialog_blocked();
         if let Some(action) = self
             .editor
             .as_mut()
-            .and_then(|editor| editor.show(ui.ctx(), self.busy))
+            .and_then(|editor| editor.show(ui.ctx(), blocked))
         {
             match action {
                 EditAction::Cancel => {
@@ -425,10 +428,11 @@ impl App {
 
 impl App {
     pub(in crate::main_window) fn show_script_list(&mut self, ui: &mut Ui) {
+        let blocked = self.dialog_blocked();
         if let Some(action) = self
             .list_dialog
             .as_mut()
-            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+            .and_then(|dialog| dialog.show(ui.ctx(), blocked))
         {
             match action {
                 ListAction::Request(request) => {

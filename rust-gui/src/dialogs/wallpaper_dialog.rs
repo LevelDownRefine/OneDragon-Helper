@@ -38,7 +38,7 @@ impl WallpaperDialog {
         self.error = Some(error);
         self.needs_reload = needs_reload;
     }
-    pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<WallpaperAction> {
+    pub fn show(&mut self, ctx: &egui::Context, blocked: bool) -> Option<WallpaperAction> {
         if let Some(result) = self
             .picker
             .as_ref()
@@ -51,7 +51,7 @@ impl WallpaperDialog {
                 Err(error) => self.error = Some(error),
             }
         }
-        let blocked = busy || self.picker.is_some();
+        let blocked = blocked || self.picker.is_some();
         let mut action = None;
         let close = crate::dialogs::common::Dialog::new(
             "wallpaper-dialog",

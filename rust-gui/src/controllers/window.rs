@@ -16,7 +16,9 @@ impl View {
             .enumerate()
         {
             let bounds = rect(window.left() + 6.0 + index as f32 * 40.0, 22.0, 36.0, 32.0);
-            if self.icon_button(ui, icon, bounds, hint, true) && (index != 0 || !data.busy) {
+            if self.icon_button(ui, icon, bounds, hint, true)
+                && (index != 0 || !data.editing_blocked)
+            {
                 match index {
                     0 => actions.push(Action::Request(Request {
                         method: "settings.view".into(),

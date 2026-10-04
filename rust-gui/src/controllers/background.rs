@@ -373,10 +373,11 @@ impl App {
 
 impl App {
     pub(in crate::main_window) fn show_wallpaper(&mut self, ui: &mut Ui) {
+        let blocked = self.dialog_blocked();
         if let Some(action) = self
             .wallpaper_dialog
             .as_mut()
-            .and_then(|dialog| dialog.show(ui.ctx(), self.busy))
+            .and_then(|dialog| dialog.show(ui.ctx(), blocked))
         {
             match action {
                 WallpaperAction::Close => {

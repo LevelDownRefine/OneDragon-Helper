@@ -75,13 +75,13 @@ fn cancel_button_stays_enabled_during_polls_and_queues_busy_click() {
         .unwrap();
     for _ in 0..12 {
         frame(&ctx, crate::theme::SIZE, vec![], |ctx| {
-            dialog.show(ctx, false)
+            dialog.show(ctx, false, false)
         });
     }
     let mut idle_color = None;
     for busy in [false, true, false, true] {
         let (_, output) = frame(&ctx, crate::theme::SIZE, vec![], |ctx| {
-            dialog.show(ctx, busy)
+            dialog.show(ctx, busy, false)
         });
         let text = output
             .shapes
@@ -95,14 +95,14 @@ fn cancel_button_stays_enabled_during_polls_and_queues_busy_click() {
         assert_eq!(*idle_color.get_or_insert(color), color);
     }
     let (_, output) = frame(&ctx, crate::theme::SIZE, vec![], |ctx| {
-        dialog.show(ctx, true)
+        dialog.show(ctx, true, false)
     });
     let pos = text_rect(&output, "取消更新").center();
     frame(&ctx, crate::theme::SIZE, click(pos, true), |ctx| {
-        dialog.show(ctx, true)
+        dialog.show(ctx, true, false)
     });
     let (action, _) = frame(&ctx, crate::theme::SIZE, click(pos, false), |ctx| {
-        dialog.show(ctx, true)
+        dialog.show(ctx, true, false)
     });
     assert!(
         action.is_none(),
@@ -111,6 +111,38 @@ fn cancel_button_stays_enabled_during_polls_and_queues_busy_click() {
     assert!(dialog.close_pending);
     assert_eq!(dialog.poll().unwrap().method, "job.cancel");
     assert_eq!(dialog.poll().unwrap().method, "job.poll");
+}
+
+#[test]
+fn escape_queues_cancellation_during_request_but_not_native_operation() {
+    use crate::dialogs::test_support::frame;
+    let ctx = egui::Context::default();
+    let mut dialog = dialog();
+    dialog.start("update.check");
+    for _ in 0..12 {
+        frame(&ctx, crate::theme::SIZE, vec![], |ctx| {
+            dialog.show(ctx, true, true)
+        });
+    }
+    for local_operation_active in [true, false] {
+        let (action, _) = frame(
+            &ctx,
+            crate::theme::SIZE,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Default::default(),
+            }],
+            |ctx| dialog.show(ctx, true, local_operation_active),
+        );
+        assert!(action.is_none());
+        assert_eq!(dialog.close_pending, !local_operation_active);
+    }
+    assert!(dialog.poll().is_none());
+    dialog.started("update.check", json!({"id":"job"})).unwrap();
+    assert_eq!(dialog.poll().unwrap().method, "job.cancel");
 }
 
 #[test]
@@ -193,7 +225,7 @@ fn escape_closes_idle_dialog_without_check_or_download() {
     let mut dialog = dialog();
     for _ in 0..2 {
         let mut output = ctx.run_ui(Default::default(), |ui| {
-            assert!(dialog.show(ui.ctx(), false).is_none());
+            assert!(dialog.show(ui.ctx(), false, false).is_none());
         });
         output.textures_delta.clear();
     }
@@ -210,7 +242,7 @@ fn escape_closes_idle_dialog_without_check_or_download() {
         },
         |ui| {
             assert!(matches!(
-                dialog.show(ui.ctx(), false),
+                dialog.show(ui.ctx(), false, false),
                 Some(UpdateAction::Close)
             ));
         },

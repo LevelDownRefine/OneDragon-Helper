@@ -1,6 +1,137 @@
 use super::*;
 use std::time::Duration;
 
+fn waiting_app(root: &std::path::Path) -> App {
+    let python = PathBuf::from(std::env::var_os("ODH_TEST_PYTHON").unwrap_or("python".into()));
+    let mut command = Command::new(&python);
+    command.args(["-c", "import sys; sys.stdin.read()"]);
+    test_app(command, root, python)
+}
+
+fn icon_reply() -> Reply {
+    Reply {
+        method: "script.icon_path".into(),
+        result: Ok(json!({"script_name":"test","path":null})),
+        diagnostics: String::new(),
+        pid: 0,
+    }
+}
+
+#[test]
+fn native_completion_and_reply_release_only_their_own_locks() {
+    for launch in [false, true] {
+        for reply_first in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let mut app = waiting_app(root.path());
+            if launch {
+                app.launch_job = Some(LaunchJob::start(
+                    controllers::launch::LaunchTarget::Unavailable {
+                        reason: "test".into(),
+                    },
+                    app.ctx.clone(),
+                ));
+            } else {
+                app.open_job = Some(OpenJob::start(
+                    Target::Unavailable {
+                        reason: "test".into(),
+                    },
+                    || {},
+                ));
+            }
+            assert!(!app.request_pending);
+            assert!(app.dialog_blocked());
+            app.request("script.icon_path", json!({"script_name":"test"}));
+            assert!(app.request_pending);
+            if reply_first {
+                app.receive(icon_reply());
+                assert!(!app.request_pending);
+                assert!(app.dialog_blocked(), "native job still owns its lock");
+            }
+            let status = app.status.clone();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while app.local_operation_active() {
+                app.poll_local_jobs();
+                assert!(Instant::now() < deadline, "native result timed out");
+                std::thread::yield_now();
+            }
+            if !reply_first {
+                assert!(
+                    app.request_pending,
+                    "native completion cannot unlock the request"
+                );
+                assert_eq!(app.status, status);
+                assert!(app.dialog_blocked());
+                app.receive(icon_reply());
+            }
+            assert!(!app.request_pending);
+            assert!(!app.editing_blocked());
+        }
+    }
+}
+
+#[test]
+fn transport_failure_preserves_native_results_and_error_status() {
+    let root = tempfile::tempdir().unwrap();
+    let mut app = waiting_app(root.path());
+    app.open_job = Some(OpenJob::start(
+        Target::Unavailable {
+            reason: "test".into(),
+        },
+        || {},
+    ));
+    app.launch_job = Some(LaunchJob::start(
+        controllers::launch::LaunchTarget::Unavailable {
+            reason: "test".into(),
+        },
+        app.ctx.clone(),
+    ));
+    app.request("script.icon_path", json!({"script_name":"test"}));
+    app.fail(Failure::transport("connection lost"));
+    assert!(!app.request_pending);
+    assert!(app.backend.is_none());
+    assert!(app.open_job.is_some() && app.launch_job.is_some());
+    let status = app.status.clone();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while app.local_operation_active() {
+        app.poll_local_jobs();
+        assert!(Instant::now() < deadline, "native result timed out");
+        std::thread::yield_now();
+    }
+    assert_eq!(app.status, status);
+    assert_eq!(app.error.as_deref(), Some("connection lost"));
+}
+
+#[test]
+fn running_backup_blocks_editing_between_polls_until_terminal_reply() {
+    let root = tempfile::tempdir().unwrap();
+    let mut app = waiting_app(root.path());
+    let mut dialog = BackupDialog::new(false);
+    dialog.started(json!({"id":"backup"})).unwrap();
+    app.backup_dialog = Some(dialog);
+    assert!(!app.request_pending);
+    assert!(!app.dialog_blocked());
+    assert!(app.editing_blocked());
+    app.request("job.poll", json!({"job_id":"backup"}));
+    app.receive(Reply {
+        method: "job.poll".into(),
+        result: Ok(json!({"id":"backup","kind":"backup","state":"running"})),
+        diagnostics: String::new(),
+        pid: 0,
+    });
+    assert!(!app.request_pending);
+    assert!(app.editing_blocked());
+    assert_eq!(app.status, "处理中");
+    app.request("job.poll", json!({"job_id":"backup"}));
+    app.receive(Reply {
+        method: "job.poll".into(),
+        result: Ok(json!({"id":"backup","kind":"backup","state":"succeeded","result":{"file_count":1,"path":"backup.zip"}})),
+        diagnostics: String::new(),
+        pid: 0,
+    });
+    assert!(!app.request_pending);
+    assert!(!app.editing_blocked());
+}
+
 #[test]
 fn refresh_after_transport_failure_starts_new_session_without_replaying_write() {
     let root = tempfile::tempdir().unwrap();
@@ -43,7 +174,7 @@ for line in sys.stdin:
         app.receive(reply);
     }
     assert_eq!(app.view.as_ref().unwrap().script.script_name, "test");
-    assert!(!app.busy);
+    assert!(!app.request_pending);
     assert_eq!(
         std::fs::read_to_string(root.path().join("python-backend/requests.jsonl"))
             .unwrap()
@@ -89,7 +220,7 @@ fn test_app(command: Command, root: &std::path::Path, python: PathBuf) -> App {
         scripts: Vec::new(),
         selected: Some("test".into()),
         view: None,
-        busy: false,
+        request_pending: false,
         status: String::new(),
         error: None,
         diagnostics: String::new(),
@@ -192,7 +323,7 @@ for line in sys.stdin:
         .unwrap();
     assert_eq!(reply.method, "wallpaper.view");
     app.receive(reply);
-    assert!(!app.busy);
+    assert!(!app.request_pending);
     assert!(!app.write_confirmed);
     assert!(app.wallpaper_dialog.is_some());
     assert_eq!(
@@ -224,7 +355,7 @@ fn optional_icon_failure_preserves_task_card() {
     });
     assert!(app.view.is_some());
     assert!(app.backend.is_some());
-    assert!(!app.busy);
+    assert!(!app.request_pending);
     assert!(app.error.is_none());
 }
 
@@ -250,16 +381,16 @@ for line in sys.stdin:
             path
         })
         .into();
-    app.busy = true;
+    app.request_pending = true;
     app.start_drop(Ok(paths.clone()));
     assert!(app.drop_dialog.is_none());
-    app.busy = false;
+    app.request_pending = false;
     app.list_dialog = Some(ListDialog::add());
     app.start_drop(Ok(paths.clone()));
     assert!(app.drop_dialog.is_none());
     app.list_dialog = None;
     app.start_drop(Ok(paths));
-    assert!(app.operation_active());
+    assert!(app.background_task_active());
     let request = app.drop_dialog.as_mut().unwrap().next().unwrap();
     app.request(&request.method, request.params);
     let reply = app
@@ -270,7 +401,7 @@ for line in sys.stdin:
         .recv_timeout(Duration::from_secs(10))
         .unwrap();
     app.receive(reply);
-    assert!(!app.operation_active());
+    assert!(!app.background_task_active());
     assert!(app.launch_job.is_none());
     let reply = app
         .backend
@@ -314,7 +445,7 @@ for line in sys.stdin:
             diagnostics: String::new(),
             result: Ok(view.clone()),
         });
-        assert_eq!(app.busy, !skip);
+        assert_eq!(app.request_pending, !skip);
         if !skip {
             let reply = app
                 .backend
@@ -331,7 +462,10 @@ for line in sys.stdin:
             diagnostics: String::new(),
             result: Ok(view),
         });
-        assert!(!app.busy, "refresh must not repeat startup after a failure");
+        assert!(
+            !app.request_pending,
+            "refresh must not repeat startup after a failure"
+        );
         assert!(app.launch_job.is_none());
         drop(app);
         if skip {
@@ -496,13 +630,13 @@ for line in sys.stdin:
                 .unwrap();
             app.receive(reply);
             if stage == 0 {
-                assert!(app.busy && app.write_confirmed);
+                assert!(app.request_pending && app.write_confirmed);
                 let view = app.view.as_ref().expect("keep the card while reading back");
                 assert_eq!(view.dailies[0].task.as_deref(), Some("原副本"));
                 assert_eq!(task_row_rect(&mut app), before);
             }
         }
-        assert!(!app.busy);
+        assert!(!app.request_pending);
         assert!(!app.write_confirmed);
         if scenario == "ok" {
             assert_eq!(
@@ -549,7 +683,7 @@ fn task_row_rect(app: &mut App) -> egui::Rect {
                     scripts: &app.scripts,
                     selected: app.selected.as_deref(),
                     view: app.view.as_ref(),
-                    busy: app.busy,
+                    editing_blocked: app.editing_blocked(),
                     block_close: false,
                     status: &app.status,
                     demo: true,
@@ -591,7 +725,7 @@ fn changing_script_clears_the_old_card_before_reading() {
                 .recv_timeout(Duration::from_secs(10))
                 .unwrap();
             assert_eq!(reply.method, "script.view");
-            app.busy = false;
+            app.request_pending = false;
         }
     }
 }

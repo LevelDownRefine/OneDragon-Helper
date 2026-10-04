@@ -99,7 +99,7 @@ fn context_menu_deletes_its_script_only_after_confirmation_intent() {
             second.display_name = "Second".into();
             scene.scripts.push(second);
         }
-        scene.busy = busy;
+        scene.editing_blocked = busy;
         scene.frame(vec![]);
         let name = if count == 2 { "second" } else { "test" };
         let position = scene

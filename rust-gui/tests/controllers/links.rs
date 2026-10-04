@@ -77,9 +77,9 @@ fn hovering_game_only_queries_icon_once_per_entry() {
     scene.ui.set_game_icon("test".into(), None);
     assert!(scene.frame(vec![]).is_empty());
     scene.frame(vec![egui::Event::PointerMoved(pos2(500.0, 100.0))]);
-    scene.busy = true;
+    scene.editing_blocked = true;
     assert!(scene.frame(vec![egui::Event::PointerMoved(pos)]).is_empty());
-    scene.busy = false;
+    scene.editing_blocked = false;
     assert_eq!(only_request(scene.frame(vec![])).method, "script.icon_path");
 }
 

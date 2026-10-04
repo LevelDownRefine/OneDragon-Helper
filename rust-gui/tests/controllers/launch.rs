@@ -77,6 +77,6 @@ fn script_settings_opens_edit_form_for_current_script() {
     let request = only_request(scene.click(Id::new(("icon", "配置"))));
     assert_eq!(request.method, "settings.view");
     assert_eq!(request.params, json!({}));
-    scene.busy = true;
+    scene.editing_blocked = true;
     assert!(scene.click(Id::new(("icon", "配置"))).is_empty());
 }

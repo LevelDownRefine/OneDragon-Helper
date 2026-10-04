@@ -171,7 +171,7 @@ impl View {
                 "game",
                 Rect::from_center_size(bounds.center(), vec2(26.0, 26.0)),
             );
-            if !data.busy
+            if !data.editing_blocked
                 && let Some(name) = data.selected
                 && self.game_hover.as_deref() != Some(name)
             {
@@ -260,7 +260,7 @@ impl View {
             if clicked {
                 // A click wins over the optional hover read; only one CLI request per frame.
                 actions.retain(|action| !matches!(action, Action::Request(request) if request.method == "script.icon_path"));
-                if !data.busy {
+                if !data.editing_blocked {
                     if let Some(script) = data.selected {
                         actions.push(Action::Request(Request {
                             method: match *icon {

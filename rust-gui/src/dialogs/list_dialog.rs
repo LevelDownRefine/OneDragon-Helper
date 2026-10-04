@@ -40,7 +40,7 @@ impl ListDialog {
         self.needs_reload = needs_reload;
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, busy: bool) -> Option<ListAction> {
+    pub fn show(&mut self, ctx: &egui::Context, blocked: bool) -> Option<ListAction> {
         if let Some(result) = self.picker.as_ref().and_then(FilePicker::poll) {
             self.picker = None;
             match result {
@@ -49,7 +49,7 @@ impl ListDialog {
                 Err(error) => self.error = Some(error),
             }
         }
-        let blocked = busy || self.picker.is_some();
+        let blocked = blocked || self.picker.is_some();
         let mut action = None;
         let close = crate::dialogs::common::Dialog::new(
             "script-list-dialog",
