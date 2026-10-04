@@ -29,7 +29,7 @@ def _parse_json(content: str):
     return json.loads(content)
 
 
-def parse_data(content: str, *, file_format: FileFormat, cached: bool = False):
+def parse_data(content: str, file_format: FileFormat, cached: bool = False):
     """解码 JSON/YAML 文本，不校验业务结构。
 
     Args:
@@ -49,17 +49,16 @@ def parse_data(content: str, *, file_format: FileFormat, cached: bool = False):
 
 def load_data(
     path: str | Path,
-    *,
-    cached: bool = False,
     file_format: FileFormat,
+    cached: bool = False,
     encoding: str = "utf-8",
 ):
     """读取 JSON/YAML 文件；每次读盘，缓存仅避免重复解码。
 
     Args:
         path: 文件路径。
-        cached: 是否按内容缓存解码结果，默认不缓存。
         file_format: 文件格式，由调用方显式指定。
+        cached: 是否按内容缓存解码结果，默认不缓存。
         encoding: 文本编码，含 BOM 的外部资源可使用 utf-8-sig。
 
     Returns:
@@ -74,9 +73,7 @@ def load_data(
     return parse_data(content, file_format=file_format, cached=cached)
 
 
-def dump_data_str(
-    data: dict | list, *, file_format: FileFormat, indent: int = 4
-) -> str:
+def dump_data_str(data: dict | list, file_format: FileFormat, indent: int = 4) -> str:
     """编码配置数据，保留 YAML 注释与引号。
 
     Args:
@@ -99,7 +96,6 @@ def dump_data_str(
 def save_data(
     path: str | Path,
     data: dict | list,
-    *,
     file_format: FileFormat,
     indent: int = 4,
     encoding: str = "utf-8",

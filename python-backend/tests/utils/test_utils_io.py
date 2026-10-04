@@ -160,12 +160,14 @@ class TestConfigFileIO(unittest.TestCase):
 
     def test_explicit_format_handles_staged_files_and_bom(self):
         path = self.root / "config.tmp"
-        mod.save_data(path, {"value": "文本"}, file_format="json", encoding="utf-8-sig")
+        mod.save_data(path, {"value": "文本"}, "json", 4, "utf-8-sig")
         self.assertTrue(path.read_bytes().startswith(b"\xef\xbb\xbf"))
         self.assertEqual(
-            mod.load_data(path, file_format="json", encoding="utf-8-sig"),
+            mod.load_data(path, "json", True, "utf-8-sig"),
             {"value": "文本"},
         )
+        text = mod.dump_data_str({"value": "文本"}, "json", 2)
+        self.assertEqual(mod.parse_data(text, "json", True), {"value": "文本"})
 
     def test_format_parameter_controls_codec_independently_of_extension(self):
         path = self.root / "config.json"
