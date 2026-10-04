@@ -236,7 +236,7 @@ class TestTaskOptions(unittest.TestCase):
         )
         self.assertEqual(
             [group["display_name"] for group in declarations["BetterGI"]],
-            ["一条龙", "领取每日奖励"],
+            ["完成后操作", "领取每日奖励"],
         )
         self.assertNotIn(
             "随便观",
@@ -258,7 +258,7 @@ class TestTaskOptions(unittest.TestCase):
             for group in groups
             if not group["tasks"]
         ]
-        self.assertEqual(standalone, [("BetterGI", "一条龙")])
+        self.assertEqual(standalone, [("BetterGI", "完成后操作")])
         self.assertEqual(options["ok-nte"][0]["tasks"], ["日常领取"])
         self.assertNotIn("options", switches["ok-nte"][0])
 
