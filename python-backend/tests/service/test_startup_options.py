@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from src.service.app_service import AppService
 from src.service.schedule import RunOptions, StartupOptions, load_startup_options
-from src.utils.utils_yaml import dump_yaml, load_yaml
+from src.utils.utils_io import load_data, save_data
 
 
 class TestStartupOptions(unittest.TestCase):
@@ -52,14 +52,14 @@ class TestStartupOptions(unittest.TestCase):
                 "notify": {"enabled": False, "email": "local@example.com"},
                 "future_option": {"keep": "value"},
             }
-            dump_yaml(path, original)
+            save_data(path, original, file_format="yaml")
             with patch(
                 "src.service.schedule.get_schedule_yml_path_under_root",
                 return_value=path,
             ):
                 service = AppService()
                 service.apply_startup_options(StartupOptions(False, 125))
-                data = load_yaml(path)
+                data = load_data(path, file_format="yaml", cached=True)
                 for key, value in original.items():
                     self.assertIn(key, data)
                     self.assertEqual(data[key], value)

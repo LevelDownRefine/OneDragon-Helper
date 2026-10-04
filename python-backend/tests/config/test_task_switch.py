@@ -419,9 +419,7 @@ class TestDeclaration(unittest.TestCase):
     """声明文件：按内容解析一次，字段非法即报错。"""
 
     def setUp(self):
-        mod._parse_declarations.cache_clear()
         task_switch_of.cache_clear()
-        self.addCleanup(mod._parse_declarations.cache_clear)
         self.addCleanup(task_switch_of.cache_clear)
 
     def _with_declaration(self, text: str):

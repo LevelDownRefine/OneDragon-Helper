@@ -9,14 +9,14 @@ from pathlib import Path
 
 from src.log.monitor import parse_logs
 from src.utils import get_root_dir
+from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import get_script_name
-from src.utils.utils_yaml import load_yaml
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     # 诊断视图要覆盖全部脚本：显式传入 config 全部脚本集合（parse_logs 的 None/空
     # 集合语义是「跳过」，不表达「全部」）。
     config_path = Path(get_root_dir()) / "config" / "config.yml"
-    config_data = load_yaml(str(config_path))
+    config_data = load_data(str(config_path), file_format="yaml", cached=True)
     all_keys = {get_script_name(s) for s in config_data.get("script_list", [])}
     parse_logs(do_log=True, candidate_script_names=all_keys)

@@ -43,8 +43,8 @@ from pathlib import Path
 
 import psutil
 
+from src.utils.utils_io import save_data
 from src.utils.utils_sub_config import default_script_entry
-from src.utils.utils_yaml import dump_yaml
 from tests.exe import project_root
 from tests.exe.test_close_running_exe import _kill_process_tree
 from tests.exe.test_gui_exe import _SKIP_REASON, CAN_RUN_EXE, GUI_EXE
@@ -277,7 +277,7 @@ class TestScheduleExeE2E(unittest.TestCase):
                 "rerun": {"enabled": False},
                 "notify": {"enabled": False, "email": ""},
             }
-        dump_yaml(
+        save_data(
             _CONFIG_DIR / "schedule.yml",
             {
                 "shutdown": {"after_run": False, "delay_seconds": 0},
@@ -288,13 +288,15 @@ class TestScheduleExeE2E(unittest.TestCase):
                 "notify": {"enabled": False, "email": ""},
                 "close_running": {"enabled": True},
             },
+            file_format="yaml",
         )
-        dump_yaml(
+        save_data(
             _CONFIG_DIR / "weekly.yml",
             {
                 "weekly_start": {},
                 "weekly_timeouts": {"ok-ww": [3600] * 7, "ok-nte": [3600] * 7},
             },
+            file_format="yaml",
         )
 
     @classmethod
@@ -318,7 +320,9 @@ class TestScheduleExeE2E(unittest.TestCase):
         nte = default_script_entry(
             display_name="ok-nte", script_type="python", script_path=str(cls.nte_script)
         )
-        dump_yaml(_CONFIG_DIR / "config.yml", {"script_list": [ww, nte]})
+        save_data(
+            _CONFIG_DIR / "config.yml", {"script_list": [ww, nte]}, file_format="yaml"
+        )
 
     @classmethod
     def _spawn_fake_game(cls) -> subprocess.Popen:

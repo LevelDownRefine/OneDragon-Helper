@@ -168,7 +168,7 @@ def build_sandbox() -> None:
 
     # config.yml：ok-ww 为 external（runner 先启动 FakeGame 再跑它、收尾杀游戏）；
     # ok-nte 为 python（进程内 exec，首跑失败触发重跑轮）。
-    from src.utils.utils_yaml import dump_yaml
+    from src.utils.utils_io import save_data
 
     ww = default_script_entry(
         display_name="ok-ww",
@@ -188,8 +188,12 @@ def build_sandbox() -> None:
         script_type="python",
         script_path=str(NTE_DIR / "ok-nte.py"),
     )
-    dump_yaml(SANDBOX / "config" / "config.yml", {"script_list": [ww, nte]})
-    dump_yaml(
+    save_data(
+        SANDBOX / "config" / "config.yml",
+        {"script_list": [ww, nte]},
+        file_format="yaml",
+    )
+    save_data(
         SANDBOX / "config" / "schedule.yml",
         {
             "shutdown": {"after_run": False, "delay_seconds": 0},
@@ -200,13 +204,15 @@ def build_sandbox() -> None:
             "notify": {"enabled": False, "email": ""},
             "close_running": {"enabled": True},
         },
+        file_format="yaml",
     )
-    dump_yaml(
+    save_data(
         SANDBOX / "config" / "weekly.yml",
         {
             "weekly_start": {},
             "weekly_timeouts": {"ok-ww": [3600] * 7, "ok-nte": [3600] * 7},
         },
+        file_format="yaml",
     )
 
 

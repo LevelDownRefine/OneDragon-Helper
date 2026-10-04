@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, call, patch
 from gui.controllers import task_card as task_card_mod
 from gui.controllers.task_card import TaskCardController
 from src.config.daily_config import get_daily_map, get_weekly_map
+from src.utils.utils_io import save_data
 from src.utils.utils_weekly import DISABLED_START_DAY
-from src.utils.utils_yaml import dump_yaml_file
 
 
 class _FakeGameList:
@@ -42,7 +42,7 @@ def _write_defs(tmp, data):
                     "values": [{"display_name": name} for name in task["tasks"]]
                 }
             declarations[script_name].append(definition)
-    dump_yaml_file(path, declarations)
+    save_data(path, declarations, file_format="yaml")
     return path
 
 

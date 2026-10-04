@@ -10,8 +10,8 @@ from src.service.chain_gen import (
     generate_chain_config,
     resolve_weekly_starts,
 )
+from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT
-from src.utils.utils_yaml import load_yaml
 
 
 def _script(display_name="测试"):
@@ -30,7 +30,7 @@ class TestGameArgumentsChain(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = os.path.join(directory, "chain.yml")
             generate_chain_config({"script_list": [script]}, {"测试"}, out_path=output)
-            saved = load_yaml(output)["script_list"][0]
+            saved = load_data(output, file_format="yaml", cached=True)["script_list"][0]
         self.assertEqual(saved["game_arguments"], arguments)
         self.assertEqual(saved["script_arguments"], "--script")
         self.assertNotIn("run_timeout_seconds", script)
@@ -105,7 +105,7 @@ class TestGenerateChainConfig(unittest.TestCase):
             out = generate_chain_config(
                 config, names, out_path=os.path.join(tmp, "today.yml")
             )
-            return load_yaml(out)
+            return load_data(out, file_format="yaml", cached=True)
 
     def test_only_named_scripts_included_with_enabled_true(self):
         config = {

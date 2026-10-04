@@ -16,9 +16,9 @@ from src.utils import (
     get_path_under_root,
     safe_path_join,
 )
+from src.utils.utils_io import save_data
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
 from src.utils.utils_weekly import DISABLED_START_DAY, get_week_num
-from src.utils.utils_yaml import dump_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -146,5 +146,5 @@ def generate_chain_config(
     output_file = out_path or safe_path_join(
         get_path_under_root("config", "script_chain"), f"{chain_name}.yml"
     )
-    dump_yaml(output_file, data)
+    save_data(output_file, data, file_format="yaml")
     return output_file

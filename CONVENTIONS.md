@@ -105,3 +105,12 @@ Conventional Commits 前缀：`feat` / `fix` / `refactor` / `chore` / `docs` / `
 ## 14. 备注/日志规范且简短
 
 工作日志、代码注释、`[startup]` 等备注一律只记要点：改动、原因、效果，不写过程叙述、流水账与复述性说明。函数文档对齐所在文件既有风格：主仓 Google 风格、runner reST `:param:`/`:return:`，新增函数须与所在文件一致，且保持简洁。
+
+## 15. 配置读写统一入口
+
+主仓业务配置的 JSON/YAML 读写统一经 `src.utils.utils_io`，不在业务模块直接调用 JSON/YAML 引擎。格式通过 `file_format="yaml"` / `"json"` 显式指定，不另设格式专用函数。脚本路径定位仍归 `utils_sub_config`，必需/可选文件策略与字典等业务结构校验归调用方。
+
+- `load_data(..., file_format="yaml", cached=True)` 按文件内容缓存解码结果并返回独立副本；每次仍读盘，外部修改立即可见。
+- `load_data(..., file_format="json", cached=False)` 不缓存，默认用于脚本原生配置；声明和模板可显式启用缓存。
+- `save_data` 先完整编码，再写临时文件并原子替换。YAML 保留注释、引号和键序。
+- 读取层只处理文件格式；字段校验、归一化、缺失文件策略由调用方负责。归档、图片等二进制读写不走此接口，更新器事务日志保留专用的刷盘协议。

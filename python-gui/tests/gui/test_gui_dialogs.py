@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from src.service.script_service import validate_edit
-from src.utils.utils_yaml import dump_yaml_file
+from src.utils.utils_io import save_data
 
 # 在导入 PySide6 之前设置 offscreen 平台插件（CI 无显示器环境）
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -65,14 +65,16 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
     def _make_weekly_file(self, weekly_map):
         d = self.enterContext(tempfile.TemporaryDirectory())
         wt = os.path.join(d, "weekly.yml")
-        dump_yaml_file(wt, {"weekly_start": {}, "weekly_timeouts": weekly_map})
+        save_data(
+            wt, {"weekly_start": {}, "weekly_timeouts": weekly_map}, file_format="yaml"
+        )
         return wt
 
     def _make_config_file(self):
         """构造一个最小、存在的 config.yml 供对话框读取（对话框依赖 config.yml 已存在）。"""
         d = self.enterContext(tempfile.TemporaryDirectory())
         cfg = os.path.join(d, "config.yml")
-        dump_yaml_file(cfg, {"script_list": []})
+        save_data(cfg, {"script_list": []}, file_format="yaml")
         return cfg
 
     def test_weekly_timeout_loads_saved_values_or_defaults(self):
@@ -119,7 +121,7 @@ class TestSingleScriptConfigDialogBlock(unittest.TestCase):
     def _make_config_file(self, script_list):
         d = self.enterContext(tempfile.TemporaryDirectory())
         cfg = os.path.join(d, "config.yml")
-        dump_yaml_file(cfg, {"script_list": script_list})
+        save_data(cfg, {"script_list": script_list}, file_format="yaml")
         return cfg
 
     def test_block_loads_explicit_value_or_defaults_to_true(self):
@@ -367,9 +369,11 @@ class TestSingleScriptConfigDialogSwitches(unittest.TestCase):
         """真实 AppService：未声明该特性的脚本不建区，保存回传空状态。"""
         directory = self.enterContext(tempfile.TemporaryDirectory())
         cfg = os.path.join(directory, "config.yml")
-        dump_yaml_file(cfg, {"script_list": []})
+        save_data(cfg, {"script_list": []}, file_format="yaml")
         weekly = os.path.join(directory, "weekly.yml")
-        dump_yaml_file(weekly, {"weekly_start": {}, "weekly_timeouts": {}})
+        save_data(
+            weekly, {"weekly_start": {}, "weekly_timeouts": {}}, file_format="yaml"
+        )
         with (
             patch("src.utils.utils_config.require_config_yml_path", return_value=cfg),
             patch(

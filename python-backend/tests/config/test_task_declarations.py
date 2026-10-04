@@ -216,7 +216,8 @@ class TestDeclarationBindings(unittest.TestCase):
         declaration["options"]["values"] = [
             {"display_name": "新土别名", "physical_name": "1-7"}
         ]
-        cfg = self.load_adapters().ArknightsConfig()
+        with patch.object(Daily, "_load_daily_config", return_value=None):
+            cfg = self.load_adapters().ArknightsConfig()
         queue = []
         config = {"Configurations": {"Default": {"TaskQueue": queue}}}
         with (
@@ -232,7 +233,9 @@ class TestDeclarationBindings(unittest.TestCase):
         """单日常脚本的写/读入口仍在（都委托给该脚本解析出的日常实现类）。"""
         for cls in (WutheringWavesConfig, NTEConfig, ArknightsConfig):
             self.assertTrue(callable(cls.set_daily_task))
-            for daily in cls()._dailies:
+            with patch.object(Daily, "_load_daily_config", return_value=None):
+                dailies = cls()._dailies
+            for daily in dailies:
                 self.assertTrue(callable(daily.update))
 
 

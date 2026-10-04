@@ -12,13 +12,13 @@ from src.utils import (
     get_config_yml_path_under_root,
     require_config_yml_path,
 )
+from src.utils.utils_io import load_data, save_data
 from src.utils.utils_sub_config import (
     check_script_name_uniqueness,
     get_script_name,
     is_exe_script,
     resolve_script_path,
 )
-from src.utils.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ def load_config() -> dict:
     script_list 内部数据此后可安全用直接访问。
     """
     config_path = require_config_yml_path()
-    data = load_yaml(config_path)
+    data = load_data(config_path, file_format="yaml", cached=True)
     assert isinstance(data, dict) and "script_list" in data, (
         "[utils_config] config.yml 缺少 script_list 字段"
     )
@@ -61,7 +61,7 @@ def save_config(data: dict) -> None:
         "[utils_config] 待保存的 config 缺少 script_list 字段"
     )
     config_path = get_config_yml_path_under_root()
-    dump_yaml(config_path, data)
+    save_data(config_path, data, file_format="yaml")
 
 
 def get_script(script_name: str) -> dict | None:

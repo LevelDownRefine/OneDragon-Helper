@@ -25,8 +25,8 @@ from src.service.schedule import (
     build_pre_run_pipeline,
     load_run_options,
 )
+from src.utils.utils_io import load_data, save_data
 from src.utils.utils_runner import ProcessTarget
-from src.utils.utils_yaml import dump_yaml, load_yaml
 from tests.support.process_sim import ProcessSim
 
 
@@ -534,7 +534,11 @@ class TestApplyRunOptions(unittest.TestCase):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp_dir.cleanup)
         self.schedule_path = os.path.join(self.tmp_dir.name, "schedule.yml")
-        dump_yaml(self.schedule_path, {"notify": {"enabled": False, "email": ""}})
+        save_data(
+            self.schedule_path,
+            {"notify": {"enabled": False, "email": ""}},
+            file_format="yaml",
+        )
         patcher = mock.patch(
             "src.service.schedule.get_schedule_yml_path_under_root",
             return_value=self.schedule_path,
@@ -543,7 +547,7 @@ class TestApplyRunOptions(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def _read(self):
-        return load_yaml(self.schedule_path)
+        return load_data(self.schedule_path, file_format="yaml", cached=True)
 
     @staticmethod
     def _options(**overrides) -> RunOptions:
@@ -587,7 +591,9 @@ class TestApplyRunOptions(unittest.TestCase):
         self.assertEqual(self._read()["notify"], {"enabled": True, "email": ""})
 
     def test_invalid_smtp_port_keeps_old_value(self):
-        dump_yaml(self.schedule_path, {"notify": {"smtp_port": 465}})
+        save_data(
+            self.schedule_path, {"notify": {"smtp_port": 465}}, file_format="yaml"
+        )
         apply_run_options(self._options(smtp_port="abc"))
         self.assertEqual(self._read()["notify"]["smtp_port"], 465)
 

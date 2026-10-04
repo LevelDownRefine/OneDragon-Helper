@@ -20,8 +20,8 @@ from src.log import (
     ZZZLogParser,
     parse_log,
 )
+from src.utils.utils_io import load_data, parse_data, save_data
 from src.utils.utils_sub_config import get_script_name
-from src.utils.utils_yaml import dump_yaml_file, load_yaml, load_yaml_str
 
 
 def _parse_content(parser, content: str) -> dict:
@@ -52,7 +52,9 @@ class TestLogParser(unittest.TestCase):
                 expected = folder / "run.log"
                 expected.write_text("done", encoding="utf-8")
                 (folder / "zzz.txt").write_text("unrelated", encoding="utf-8")
-                keywords = load_yaml_str(f"log_pattern: {quote}*.log{quote}")
+                keywords = parse_data(
+                    f"log_pattern: {quote}*.log{quote}", file_format="yaml"
+                )
                 with mock.patch.object(
                     collect_log, "_keywords_for", return_value=keywords
                 ):
@@ -190,7 +192,11 @@ class TestParseLogsRerunList(unittest.TestCase):
     def _make_config(self, tmp: str, scripts: list[dict]) -> None:
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        dump_yaml_file(os.path.join(cfg_dir, "config.yml"), {"script_list": scripts})
+        save_data(
+            os.path.join(cfg_dir, "config.yml"),
+            {"script_list": scripts},
+            file_format="yaml",
+        )
 
     def _fake_exe(self, tmp: str, name: str = "fake.exe") -> str:
         # 游戏父目录不放 logs，使 parse 判定为 NO_LOG（未正常启动）。
@@ -208,7 +214,9 @@ class TestParseLogsRerunList(unittest.TestCase):
         orig = collect_log.get_root_dir
         collect_log.get_root_dir = lambda: tmp  # type: ignore[assignment]
         # 诊断视图覆盖全部脚本：显式传 config 全部脚本集合（parse_logs 的 None/空=跳过）。
-        config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
+        config_data = load_data(
+            os.path.join(tmp, "config", "config.yml"), file_format="yaml", cached=True
+        )
         candidate = {get_script_name(s) for s in config_data.get("script_list", [])}
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
@@ -257,7 +265,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         tmp = self.enterContext(tempfile.TemporaryDirectory())
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        dump_yaml_file(
+        save_data(
             os.path.join(cfg_dir, "config.yml"),
             {
                 "script_list": [
@@ -271,6 +279,7 @@ class TestParseLogsRerunList(unittest.TestCase):
                     },
                 ]
             },
+            file_format="yaml",
         )
 
         def fake_parse(script_name, script_path=""):
@@ -308,7 +317,11 @@ class TestParseLogsRerunList(unittest.TestCase):
         collect_log.get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
-            config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
+            config_data = load_data(
+                os.path.join(tmp, "config", "config.yml"),
+                file_format="yaml",
+                cached=True,
+            )
             candidate = {get_script_name(s) for s in config_data.get("script_list", [])}
             with mock.patch.object(collect_log, "parse_log", side_effect=fake_parse):
                 result = collect_log.parse_logs(
@@ -336,7 +349,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         tmp = self.enterContext(tempfile.TemporaryDirectory())
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        dump_yaml_file(
+        save_data(
             os.path.join(cfg_dir, "config.yml"),
             {
                 "script_list": [
@@ -346,6 +359,7 @@ class TestParseLogsRerunList(unittest.TestCase):
                     },
                 ]
             },
+            file_format="yaml",
         )
 
         def fake_parse(script_name, script_path=""):
@@ -364,7 +378,11 @@ class TestParseLogsRerunList(unittest.TestCase):
         collect_log.get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
-            config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
+            config_data = load_data(
+                os.path.join(tmp, "config", "config.yml"),
+                file_format="yaml",
+                cached=True,
+            )
             candidate = {get_script_name(s) for s in config_data.get("script_list", [])}
             with mock.patch.object(collect_log, "parse_log", side_effect=fake_parse):
                 result = collect_log.parse_logs(
@@ -457,7 +475,7 @@ class TestParseLogsRerunList(unittest.TestCase):
         tmp = self.enterContext(tempfile.TemporaryDirectory())
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        dump_yaml_file(
+        save_data(
             os.path.join(cfg_dir, "config.yml"),
             {
                 "script_list": [
@@ -467,6 +485,7 @@ class TestParseLogsRerunList(unittest.TestCase):
                     },
                 ]
             },
+            file_format="yaml",
         )
 
         def fake_parse(script_name, script_path=""):
@@ -485,7 +504,11 @@ class TestParseLogsRerunList(unittest.TestCase):
         collect_log.get_root_dir = lambda: tmp  # type: ignore[assignment]
         before = {id(h) for h in _logging.getLogger().handlers}
         try:
-            config_data = load_yaml(os.path.join(tmp, "config", "config.yml"))
+            config_data = load_data(
+                os.path.join(tmp, "config", "config.yml"),
+                file_format="yaml",
+                cached=True,
+            )
             candidate = {get_script_name(s) for s in config_data.get("script_list", [])}
             with mock.patch.object(collect_log, "parse_log", side_effect=fake_parse):
                 result = collect_log.parse_logs(
@@ -983,7 +1006,7 @@ class TestFourFieldExtraction(unittest.TestCase):
         tmp = self.enterContext(tempfile.TemporaryDirectory())
         cfg_dir = os.path.join(tmp, "config")
         os.makedirs(cfg_dir, exist_ok=True)
-        dump_yaml_file(
+        save_data(
             os.path.join(cfg_dir, "config.yml"),
             {
                 "script_list": [
@@ -993,6 +1016,7 @@ class TestFourFieldExtraction(unittest.TestCase):
                     }
                 ]
             },
+            file_format="yaml",
         )
         orig = collect_log.get_root_dir
         collect_log.get_root_dir = lambda: tmp  # type: ignore[assignment]

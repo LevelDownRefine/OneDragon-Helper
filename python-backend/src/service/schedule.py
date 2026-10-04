@@ -34,9 +34,9 @@ from src.service.run_actions import (
     wait_until_target,
 )
 from src.utils import get_schedule_yml_path_under_root
+from src.utils.utils_io import load_data, save_data
 from src.utils.utils_mute import mute_off, mute_on
 from src.utils.utils_shutdown import shutdown_sys
-from src.utils.utils_yaml import dump_yaml, load_yaml
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,11 @@ def load_schedule() -> dict:
     调度参数（shutdown / mute / unmute / rerun / notify）独立于 config.yml
     存放，避免与脚本链声明（script_list）耦合。
     """
-    return load_yaml(get_schedule_yml_path_under_root())
+    data = load_data(
+        get_schedule_yml_path_under_root(), file_format="yaml", cached=True
+    )
+    assert isinstance(data, dict), "[schedule] 配置必须为 dict"
+    return data
 
 
 def save_schedule(data: dict) -> None:
@@ -65,7 +69,7 @@ def save_schedule(data: dict) -> None:
         data: 完整调度运行参数字典（由调用方原地修改后传入）。
     """
     assert isinstance(data, dict), "[schedule] 待保存的 schedule 非 dict"
-    dump_yaml(get_schedule_yml_path_under_root(), data)
+    save_data(get_schedule_yml_path_under_root(), data, file_format="yaml")
 
 
 MAX_STARTUP_DELAY_SECONDS = 3600

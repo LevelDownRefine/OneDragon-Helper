@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from src.config import set_config
 from src.service import backup_service as backup
-from src.utils.utils_yaml import dump_yaml_str, load_yaml_str
+from src.utils.utils_io import dump_data_str, parse_data
 
 
 class TestBackupService(unittest.TestCase):
@@ -32,12 +32,23 @@ class TestBackupService(unittest.TestCase):
                         node = node[key]
                     node[keys[-1]] = value
                 is_json = rel.endswith(".json")
-                dump = json.dumps if is_json else dump_yaml_str
-                parse = json.loads if is_json else load_yaml_str
-                target = self._write(script_name, rel, dump(current).encode())
-                path = self._input({f"scripts/{script_name}/{rel}": dump(old).encode()})
+                file_format = "json" if is_json else "yaml"
+                target = self._write(
+                    script_name,
+                    rel,
+                    dump_data_str(current, file_format=file_format).encode(),
+                )
+                path = self._input(
+                    {
+                        f"scripts/{script_name}/{rel}": dump_data_str(
+                            old, file_format=file_format
+                        ).encode()
+                    }
+                )
                 backup.restore_backup(path)
-                restored = parse(target.read_text(encoding="utf-8"))
+                restored = parse_data(
+                    target.read_text(encoding="utf-8"), file_format=file_format
+                )
                 self.assertEqual(restored["task"], 1)
                 for key in keys:
                     restored = restored[key]

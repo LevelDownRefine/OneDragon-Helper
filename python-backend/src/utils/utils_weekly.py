@@ -16,11 +16,12 @@ weekly_task_list.yml 提供；本模块只管「周几起 / 每天超时多久�
 """
 
 import logging
+import os
 from datetime import datetime, timedelta
 
 from src.utils import get_weekly_yml_path_under_root
+from src.utils.utils_io import load_data, save_data
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
-from src.utils.utils_yaml import dump_yaml, load_yaml_optional
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,12 @@ def _load_weekly_file() -> dict:
     setdefault 两段空结构：缺失文件或某段缺失时，写回不会把整个段丢掉（等价空 {}）。
     """
     weekly_path = get_weekly_yml_path_under_root()
-    data = load_yaml_optional(weekly_path)
+    data = (
+        load_data(weekly_path, file_format="yaml", cached=True)
+        if os.path.exists(weekly_path)
+        else {}
+    )
+    assert isinstance(data, dict), f"[weekly] 文件内容应为 dict: {weekly_path}"
     data.setdefault("weekly_start", {})
     data.setdefault("weekly_timeouts", {})
     return data
@@ -105,7 +111,7 @@ def _load_weekly_file() -> dict:
 def _dump_weekly_file(data: dict) -> None:
     """写回 weekly.yml 全量（含 weekly_start / weekly_timeouts 两段）。"""
     weekly_path = get_weekly_yml_path_under_root()
-    dump_yaml(weekly_path, data)
+    save_data(weekly_path, data, file_format="yaml")
 
 
 def _load_weekly() -> dict:
