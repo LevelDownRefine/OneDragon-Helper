@@ -67,22 +67,22 @@ class TestConfigRelPaths(unittest.TestCase):
         second = set_config._CONFIGS[name]()
         self.assertIs(first, second)
 
-    def test_ensure_config_aligns_once_vs_init_config_twice(self):
+    def test_maa_ensure_config_initializes_once_vs_explicit_init_twice(self):
         """预热用 ensure_config 仅构造触发一次 _init_config（无重复日志）；
 
         init_config 对缓存实例额外显式再调一次（强制重对齐，供新增/修改脚本、
         备份恢复）。这是 #64 warmup 重复日志的根因回归点。
         """
-        name = "BetterGI"
+        name = "MAA"
         set_config._CONFIGS[name].cache_clear()
         with (
-            patch.object(set_config.ScriptConfig, "_init_config") as init,
+            patch.object(set_config.ArknightsConfig, "_init_config") as init,
         ):
             set_config.ensure_config(name)
             self.assertEqual(init.call_count, 1)
         set_config._CONFIGS[name].cache_clear()
         with (
-            patch.object(set_config.ScriptConfig, "_init_config") as init2,
+            patch.object(set_config.ArknightsConfig, "_init_config") as init2,
         ):
             set_config.init_config(name)
             self.assertEqual(init2.call_count, 2)

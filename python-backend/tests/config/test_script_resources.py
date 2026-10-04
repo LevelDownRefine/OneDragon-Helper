@@ -58,7 +58,6 @@ class TestScriptResources(unittest.TestCase):
             patch.object(resources, "get_root_dir", return_value=str(self.root)),
             patch.dict(set_config._CONFIGS, clear=True),
             patch("src.config.daily.get_daily_configs", return_value=[]),
-            patch.object(set_config.ScriptConfig, "_init_config") as init,
             patch.object(set_config, "get_script_game_path", return_value=""),
             patch.object(
                 set_config,
@@ -85,8 +84,7 @@ class TestScriptResources(unittest.TestCase):
                 link.get_game_link("demo", "homepage"), "https://example.com/"
             )
             load_game.assert_called_once_with("demo", "配置/game.json")
-            # 元数据迁移不改变 ScriptConfig 的初始化时机。
-            init.assert_called_once()
+            self.assertNotIn("_init_config", set_config.ScriptConfig.__dict__)
 
     def test_missing_optional_resources_and_unknown_script(self):
         node = self.data["scripts"]["demo"]

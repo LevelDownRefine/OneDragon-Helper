@@ -39,18 +39,11 @@ class ScriptConfig:
     """静态资源来自 script_resources.yml；基类 None 表示未适配。"""
 
     def __init__(self) -> None:
-        """按声明创建日常与周常对象，并在构造时执行脚本专属初始化。
-
-        两者装配同一时机（日常 ``_dailies`` / 周常 ``_weeklies``）；初始化经 ``_init_config``
-        收口到构造期。``functools.cache`` 单例保证每进程每脚本仅构造一次，故初始化也仅
-        触发一次。CLI/GUI 均经工厂构造，无需分散守卫。
-        """
+        """按声明装配日常与周常对象，不读写原生配置。"""
         self._dailies: list[Daily] = build_dailies(self._script_name, self.display_name)
         self._weeklies: list[Weekly] = build_weeklies(
             self._script_name, self.display_name
         )
-        # 构造期执行脚本专属初始化（懒加载收口点；默认不读写配置）
-        self._init_config()
 
     def _daily_config_rel_path(self) -> str:
         """脚本 config 文件路径（取首个日常声明的 ``config``）。
@@ -107,9 +100,6 @@ class ScriptConfig:
                 }
             )
         return records
-
-    def _init_config(self) -> None:
-        """脚本专属初始化钩子；默认不读写，MAA 覆盖以维护任务队列。"""
 
     def set_daily_task(
         self,
@@ -313,6 +303,10 @@ class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
     display_name = "粥"
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._init_config()
+
     def _init_config(self) -> None:
         """建立三个独立入口和必刷剿灭，交给 MAA 原生队列执行。"""
         activity, main, remaining = self._dailies
@@ -390,14 +384,16 @@ def init_config(script_name: str) -> None:
     """
     if script_name not in _CONFIGS:
         return
-    _CONFIGS[script_name]()._init_config()
+    config = _CONFIGS[script_name]()
+    if isinstance(config, ArknightsConfig):
+        config._init_config()
 
 
 def ensure_config(script_name: str) -> None:
     """确保脚本适配器已构造（幂等，不重复初始化）。
 
-    仅经工厂构造单例；``__init__`` 内已收口 ``_init_config``，故每个进程每脚本仅初始化
-    一次，无重复日志/重复工作。供启动后预热遍历，与懒加载共用同一工厂出口。
+    仅经工厂构造单例；MAA 在自身构造函数中初始化一次。
+    供启动后预热遍历，与懒加载共用同一工厂出口。
     需重新初始化（新增/修改脚本、备份恢复）请用 :func:`init_config`。
 
     Args:

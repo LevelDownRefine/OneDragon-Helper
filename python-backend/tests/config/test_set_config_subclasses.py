@@ -136,7 +136,7 @@ class TestGenshinConfig(unittest.TestCase):
             patch("src.utils.utils_sub_config.save_config") as save,
         ):
             cfg = GenshinConfig()
-            cfg._init_config()
+            self.assertFalse(hasattr(cfg, "_init_config"))
         load.assert_not_called()
         save.assert_not_called()
 
@@ -155,14 +155,11 @@ class TestGenshinConfig(unittest.TestCase):
 
 class TestEndfieldConfig(unittest.TestCase):
     def test_init_attributes(self):
-        with patch.object(EndfieldConfig, "_init_config"):
-            cfg = EndfieldConfig()
+        cfg = EndfieldConfig()
         self.assertEqual(cfg.display_name, "终末地")
         self.assertEqual(cfg._script_name, "ok-ef")
         self.assertEqual(cfg._dispatch_daily("每日任务").task_field, "体力本")
-        self.assertNotIn(
-            "template", cfg.resources, "模板已删，_init_config 对其为空操作"
-        )
+        self.assertNotIn("template", cfg.resources, "不维护脚本级初始化模板")
 
     def test_daily_selection_saves_leaf_and_preserves_enable_switch(self):
         for task, sequence, expected in (
@@ -170,8 +167,7 @@ class TestEndfieldConfig(unittest.TestCase):
             ("能量淤积点", "枢纽区", "枢纽区"),
         ):
             with self.subTest(task=task, sequence=sequence):
-                with patch.object(EndfieldConfig, "_init_config"):
-                    config = EndfieldConfig()
+                config = EndfieldConfig()
                 # 体力本在 DailyBattleTask.json、开关键仍在 DailyTask.json，两份文件各自读。
                 data = {"体力本": "旧本"}
                 routine = {"⭐刷体力": True}

@@ -25,11 +25,11 @@
           python-backend/src/config/daily.py：Daily / NoopDaily / Anomaly / MaaDaily
 ```
 
-- `ScriptConfig` 统一持有 `_dailies` / `_weeklies`，分发日常选择、开关、反读及周常起始日、副本读写。`_init_config` 默认不读写，仅 MAA 覆盖以维护任务队列；任务落点与文件 I/O 分别归 `Daily` / `Weekly`。模块级适配接口均经 `_CONFIGS` 复用同一脚本实例。
+- `ScriptConfig` 统一持有 `_dailies` / `_weeklies`，分发日常选择、开关、反读及周常起始日、副本读写。基类仅装配任务，MAA 在自身构造函数中维护任务队列；任务落点与文件 I/O 分别归 `Daily` / `Weekly`。模块级适配接口均经 `_CONFIGS` 复用同一脚本实例。
 - **日常机制类**：`python-backend/src/config/daily.py::Daily`——`__init__` 只做身份（`script_name` / `script_display_name` / `display_name` / `physical_name`）与配置路径（`config_rel_path` / `routine_rel_path`，全部来自声明 `config` / `routine` 字段），落点解析下沉为可覆写的 `_parse_landing`（模板方法）；公开 `_fields(task, sequence)`（该次选择的落点 {字段: 值}）、`update(task, sequence)`（取自己的段写入、返回是否有改动；段未落盘/config 缺失即 assert）、`read()`（反读，config 缺失/段未落盘 = 无真相）、`section` / `section_exists`（分段取段）、`read_enabled` / `set_enabled`（开关对：落点随声明与机制类而异——基类读主文件的 `enable_key` 布尔字段、`Anomaly` 读 `routine` 文件里自己那条、`BgiDaily` 按 `enable_task` 反查 BetterGI 任务启用表；无开关落点的日常恒返回 None/False）。文件 I/O 由 Daily 自持（直调 `utils_sub_config`，含保存后回读校验）：`_load_daily_config` / `_save_daily_config` / `_load_routine_config` / `_save_routine_config`——`update` / `read` / `set_enabled` 各自完成「读盘 → 改内存 → 有改动才落盘」的闭环，config dict 不在调用链上穿线。基类 `_parse_landing` 只解析**标准两层形态**；单层带 `key` 由 `SingleLayerDaily` 覆写（崩铁直接用它；`BgiStygianDaily` / `AnomalyHunter` 再混入别的机制类补数据段与开关落点），`MaaDaily` 跳过通用解析——名字（`display_name`）只来自声明，全链路唯一来源。
 - 机制类在 `daily.py`：`BgiDaily`（原神秘境资源筛选、开关按任务名反查任务启用表，副本读写沿用基类）、`BgiLeyLineDaily`（原地脉花：声明字段名含 `{Day}`，`_fields` 展开成一周 7 份、`read` 要求 7 天同值）、`SingleLayerDaily`（单层带 `key`：整组自身即唯一一级项、展示名用日常名，选中的二级值直接写成那一个字段——崩铁的「培养目标」即此形态）、`TemplateDaily`（继承 `SingleLayerDaily`，绝区零「培养方案」启用时按 `template` 对齐 config，不启用不读写；反读返回模板是否已对齐）、`Anomaly`（数据在自己段、开关在第二份文件）、`MaaDaily`（粥的 TaskQueue/StagePlan）、`MaaActivityDaily`（活动选项及过期检查）。适配器构造时按声明创建全部日常，之后持续复用。
 - 子类声明 `_script_name`、`display_name` 和特殊机制；脚本级路径、背景图、日志目录及链接统一来自 `config/script_resources.yml`，详见 [资源声明](script_resources.md)；**机制类与文件路径由声明标注**（`daily_task_list.yml` 每个日常必填 `class`（`daily.py::DAILY_CLASSES` 注册表查表）与 `config`（该日常读写的主文件路径；`routine` 可选，日常开关文件；`enable_key` / `enable_task` 可选，开关落点；`template` 为模板驱动型日常（`TemplateDaily`）的模板路径）；`ScriptConfig.__init__` 调用 `build_dailies` 按声明逐个实例化并注入路径——加日常只改 yml，「主 config」概念不复存在。
-- 注册表 `_CONFIGS: dict[str, Callable[[], ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`，值为带缓存的构造入口：首次访问时创建适配器及其全部日常，之后复用同一个实例；构造时装配任务对象并调用 `_init_config`；原生配置仍逐次读盘。资源声明不完整会在 import 时 assert 暴露。本次资源迁移不改变构造或初始化时机。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `iter_backup_paths` / `set_config` / `get_daily_readback` / `set_daily_enabled`）。
+- 注册表 `_CONFIGS: dict[str, Callable[[], ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`，值为带缓存的构造入口：首次访问时创建适配器及其全部日常，之后复用同一个实例；基类构造时仅装配任务对象，MAA 在自身构造函数中调用 `_init_config`；原生配置仍逐次读盘。资源声明不完整会在 import 时 assert 暴露。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `iter_backup_paths` / `set_config` / `get_daily_readback` / `set_daily_enabled`）。
 
 ## 三个独立流程
 
@@ -56,9 +56,9 @@
 
 ## 初始化流程 init
 
-`ScriptConfig._init_config()` 默认为空操作；仅 `ArknightsConfig` 覆盖该钩子，
+基类不提供 `_init_config()`；仅 `ArknightsConfig` 自持该方法，
 补齐剿灭和三个日常入口、整理任务顺序，并保留已有任务设置。
-构造时执行一次，缓存工厂随后复用实例；显式 `init_config` 重新执行，
+MAA 构造时执行一次，缓存工厂随后复用实例；显式 `init_config` 仅重新初始化 MAA，
 `ensure_config` 仅确保实例存在。脚本编辑时仅路径或标识变化才重新初始化。
 
 原神不再读取或维护初始化模板。一条龙「完成后操作」归
@@ -240,7 +240,7 @@ set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按�
 1. `set_config.py` 新建子类继承 `ScriptConfig` 并加 `@register`：设 `_script_name`、`display_name`；在 `config/script_resources.yml` 添加同名资源声明（必填 `backup_paths`、`links`，其余按需）。
 2. 在 `daily_task_list.yml` 给日常标注 `class`（机制类名，注册表见 `daily.py::DAILY_CLASSES`）：标准两层 `Daily`；分段 `Anomaly`（追猎目标 `AnomalyHunter`）/TaskQueue `MaaDaily`/无需适配 `NoopDaily`；config 子类零改动；声明表达不了的特殊读写才覆写 `update` / `read`。
 3. `config/daily_task_list.yml` 加该脚本的日常声明（key 用 script_name）；菜单自动出现，无需改 GUI。
-4. `_init_config` 默认不读写；仅需脚本专属初始化时覆盖此钩子。
+4. 脚本专属初始化由对应子类自持，基类仅装配任务。
 5. 补测试 `python-backend/tests/config/test_set_config_subclasses.py`（可参照 golden：`PYTHONPATH=python-backend:python-backend/src python -m tests.config.test_golden_daily --update` 重新生成基线，审查差异后提交）。
 
 ## 设计原则
