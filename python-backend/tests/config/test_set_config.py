@@ -5,6 +5,7 @@ import os
 import tempfile
 import unittest
 from copy import deepcopy
+from functools import cache
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -59,33 +60,26 @@ class TestConfigRelPaths(unittest.TestCase):
             self.assertTrue(cls.resources["game"]["keys"], f"{name} 缺少 game.keys")
             self.assertTrue(cls.resources["game"]["config"], f"{name} 缺少 game.config")
 
-    def test_init_config_warms_singleton_idempotently(self):
-        """init_config 构造单例并触发对齐；重复调用返回同一实例（幂等）。"""
-        name = "ok-ww"
-        first = set_config._CONFIGS[name]()
-        set_config.init_config(name)
-        second = set_config._CONFIGS[name]()
-        self.assertIs(first, second)
-
-    def test_maa_ensure_config_initializes_once_vs_explicit_init_twice(self):
-        """预热用 ensure_config 仅构造触发一次 _init_config（无重复日志）；
-
-        init_config 对缓存实例额外显式再调一次（强制重对齐，供新增/修改脚本、
-        备份恢复）。这是 #64 warmup 重复日志的根因回归点。
-        """
-        name = "MAA"
-        set_config._CONFIGS[name].cache_clear()
+    def test_maa_initialization_is_lazy_and_cache_invalidation_does_not_write(self):
+        factory = cache(set_config.ArknightsConfig)
         with (
-            patch.object(set_config.ArknightsConfig, "_init_config") as init,
+            patch.dict(set_config._CONFIGS, {"MAA": factory}),
+            patch.object(set_config.ArknightsConfig, "_init_config") as initialize,
         ):
-            set_config.ensure_config(name)
-            self.assertEqual(init.call_count, 1)
-        set_config._CONFIGS[name].cache_clear()
-        with (
-            patch.object(set_config.ArknightsConfig, "_init_config") as init2,
-        ):
-            set_config.init_config(name)
-            self.assertEqual(init2.call_count, 2)
+            set_config.invalidate_config("MAA")
+            initialize.assert_not_called()
+            first = factory()
+            self.assertIs(factory(), first)
+            initialize.assert_called_once_with()
+            set_config.invalidate_config("MAA")
+            initialize.assert_called_once_with()
+            second = factory()
+            self.assertIsNot(second, first)
+            self.assertEqual(initialize.call_count, 2)
+            self.assertIs(factory(), second)
+
+    def test_unknown_script_cache_invalidation_is_noop(self):
+        set_config.invalidate_config("custom")
 
     def test_script_resources_do_not_declare_initialization_templates(self):
         """脚本级初始化模板已移除，日常模板由 Daily 自持。"""

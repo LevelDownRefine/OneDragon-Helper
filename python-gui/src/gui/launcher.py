@@ -192,11 +192,11 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     logger.info("[qml] engine loaded, rootObjects = %d", len(engine.rootObjects()))
     # load 返回时窗口已显示并 expose（首帧也在其内），无需另挂 frameSwapped。
     _log_startup("QML 装载完成（窗口已显示）")
-    # 窗口首帧渲染（已可见）后才启动空闲预热，避免装载/模态期间提前占用主线程。
+    # 窗口首帧渲染后仅预热输入控件，脚本配置保持懒加载。
     if engine.rootObjects():
         win = engine.rootObjects()[0]
         win.afterSynchronizing.connect(
-            bridge.start_config_warmup, Qt.ConnectionType.SingleShotConnection
+            bridge._prewarm_line_edit, Qt.ConnectionType.SingleShotConnection
         )
     if not engine.rootObjects():
         sys.exit(1)

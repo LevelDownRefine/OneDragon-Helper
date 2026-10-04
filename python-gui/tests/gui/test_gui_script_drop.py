@@ -44,7 +44,7 @@ class TestDroppedScripts(unittest.TestCase):
             patch.object(utils_config, "save_config")
         )
         self.enterContext(patch.object(utils_weekly, "ensure_weekly_entry"))
-        self.enterContext(patch.object(script_service, "init_config"))
+        self.enterContext(patch.object(script_service, "invalidate_config"))
 
         def save(config):
             entry = config["script_list"][-1]

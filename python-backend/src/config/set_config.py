@@ -396,45 +396,25 @@ class ArknightsConfig(ScriptConfig):
 # ============================================================
 
 
-def init_config(script_name: str) -> None:
-    """重新执行脚本专属初始化；当前仅 MAA 维护任务队列。
+def invalidate_config(script_name: str) -> None:
+    """使脚本适配器缓存失效，下次使用时重新构造。
 
-    实例已缓存时仍执行初始化钩子，供脚本路径变化或备份恢复后使用。
-    启动预热请用 :func:`ensure_config`，避免重复初始化。
+    不读取或初始化原生配置，供添加脚本或修改安装路径后调用。
 
     Args:
         script_name: 脚本标识名，未注册的脚本直接跳过。
     """
     if script_name not in _CONFIGS:
         return
-    config = _CONFIGS[script_name]()
-    if isinstance(config, ArknightsConfig):
-        config._init_config()
-
-
-def ensure_config(script_name: str) -> None:
-    """确保脚本适配器已构造（幂等，不重复初始化）。
-
-    仅经工厂构造单例；MAA 在自身构造函数中初始化一次。
-    供启动后预热遍历，与懒加载共用同一工厂出口。
-    需重新初始化（新增/修改脚本、备份恢复）请用 :func:`init_config`。
-
-    Args:
-        script_name: 脚本标识名。
-    """
-    if script_name not in _CONFIGS:
-        return
-    _CONFIGS[script_name]()
-
-
-def init_config_all() -> None:
-    """执行所有已注册脚本的专属初始化（手动全量入口，如备份恢复后）。"""
-    for script_name in _CONFIGS:
-        init_config(script_name)
+    _CONFIGS[script_name].cache_clear()
 
 
 def get_registered_script_names() -> list[str]:
-    """返回所有已注册（已适配）脚本的标识名，供预热遍历。"""
+    """枚举已注册的脚本，不构造适配器。
+
+    Returns:
+        已适配脚本的标识名列表。
+    """
     return list(_CONFIGS.keys())
 
 

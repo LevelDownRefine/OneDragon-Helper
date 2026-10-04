@@ -10,7 +10,6 @@ import logging
 from PySide6.QtCore import Property, QCoreApplication, QObject, Signal, Slot
 from ruamel.yaml.error import YAMLError
 
-from gui.config_warmer import ConfigWarmer
 from gui.controllers.background import BackgroundController
 from gui.controllers.backup import BackupController
 from gui.controllers.game_list import GameListController
@@ -140,26 +139,6 @@ class QmlBridge(QObject):
 
         # 编排启动：重建列表 → 构建副本缓存 → 刷新当前（_reload_games 收尾即刷）
         self._reload_games()
-
-        # 启动后空闲预热各脚本 config：事件循环驱动、逐脚本、错开关键路径，
-        # 用户点选时已在缓存（functools.cache 单例复用）。失败不拖垮启动。
-        self._config_warmer = ConfigWarmer(
-            self.app_service.get_registered_script_names()
-            if self._cli_session is None
-            else [],
-            self.app_service.warm_config,
-            self,
-        )
-
-    def start_config_warmup(self) -> None:
-        """窗口可见后启动空闲预热（由 launcher 在首帧渲染后调用）。
-
-        warmup 经 QTimer 在事件循环中逐脚本跑，错开关键路径；此处仅在
-        窗口已显示后才挂起定时器，避免装载/模态期间提前占用主线程。
-        收尾再接一次输入框预热（见 _prewarm_line_edit），不与 config 预热争首帧后的时间。
-        """
-        self._config_warmer.finished.connect(self._prewarm_line_edit)
-        self._config_warmer.start()
 
     @Slot()
     def _prewarm_line_edit(self) -> None:
