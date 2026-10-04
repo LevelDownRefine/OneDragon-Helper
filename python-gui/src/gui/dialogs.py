@@ -726,12 +726,17 @@ class SingleScriptConfigDialog(FormDialogBase):
                 section = QVBoxLayout()
                 section.setSpacing(6)
                 switches = group["switches"]
+                standalone = (
+                    not switches
+                    and len(group["options"]) == 1
+                    and group["options"][0]["display_name"] == group["name"]
+                )
                 if len(switches) == 1 and switches[0]["name"] == group["name"]:
                     switch = switches[0]
                     checkbox = self._make_checkbox(switch["name"])
                     section.addWidget(checkbox, alignment=Qt.AlignLeft)
                     self.switch_checks[switch["name"]] = checkbox
-                else:
+                elif not standalone:
                     heading = QLabel(group["name"])
                     heading.setFont(make_font(size=FONT_SIZE_BODY, bold=True))
                     heading.setStyleSheet(f"color: {TEXT}; background: transparent;")
@@ -742,7 +747,7 @@ class SingleScriptConfigDialog(FormDialogBase):
                         self.switch_checks[switch["name"]] = checkbox
                 if group["options"]:
                     children = QGridLayout()
-                    children.setContentsMargins(24, 0, 0, 0)
+                    children.setContentsMargins(0 if standalone else 24, 0, 0, 0)
                     children.setHorizontalSpacing(12)
                     children.setVerticalSpacing(6)
                     children.setColumnStretch(2, 1)

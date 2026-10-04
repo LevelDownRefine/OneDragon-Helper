@@ -215,6 +215,34 @@ fn task_groups_attach_options_without_creating_switches() {
 }
 
 #[test]
+fn standalone_option_renders_one_label_without_a_group_heading() {
+    let ctx = egui::Context::default();
+    let mut editor = editor();
+    editor.data.switches.clear();
+    editor.data.task_options = serde_json::from_value(json!([
+        {"id":"completion_action", "group":"完成后操作", "tasks":[],
+         "display_name":"完成后操作", "type":"choice", "value":"无",
+         "choices":[{"display_name":"无", "physical_name":"无"}]}
+    ]))
+    .unwrap();
+    for _ in 0..12 {
+        frame(&ctx, vec2(1000.0, 1600.0), vec![], |ctx| {
+            egui::Area::new(egui::Id::new("standalone-test")).show(ctx, |ui| editor.fields_ui(ui))
+        });
+    }
+    let (_, output) = frame(&ctx, vec2(1000.0, 1600.0), vec![], |ctx| {
+        egui::Area::new(egui::Id::new("standalone-test")).show(ctx, |ui| editor.fields_ui(ui))
+    });
+    let count = output.shapes.iter().filter(|shape| {
+        matches!(&shape.shape, egui::Shape::Text(text) if text.galley.text() == "完成后操作")
+    }).count();
+    assert_eq!(count, 1);
+    assert!(
+        (text_rect(&output, "完成后操作").left() - text_rect(&output, "任务").left()).abs() < 1.0
+    );
+}
+
+#[test]
 fn task_child_is_visible_inline_and_saves_clicked_value() {
     let ctx = egui::Context::default();
     let mut editor = editor();

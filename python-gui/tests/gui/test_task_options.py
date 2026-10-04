@@ -94,6 +94,33 @@ class TestTaskOptionsDialog(unittest.TestCase):
         dialog.reject()
         self.assertIsNone(dialog.pending_changes)
 
+    def test_single_standalone_option_has_one_label_without_indentation(self):
+        view = deepcopy(self.dialog()._edit_view)
+        row = option_rows()[1]
+        row.update(group="完成后操作", display_name="完成后操作", tasks=[])
+        view["task_options"] = [row]
+        dialog = SingleScriptConfigDialog("demo", "示例", "demo.exe", edit_view=view)
+        self.addCleanup(dialog.close)
+        labels = [
+            label
+            for label in dialog.findChildren(QLabel)
+            if label.text() == "完成后操作"
+        ]
+        self.assertEqual(len(labels), 1)
+        dialog.show()
+        self.app.processEvents()
+        label = labels[0]
+        task_label = next(
+            item for item in dialog.findChildren(QLabel) if item.text() == "任务:"
+        )
+        self.assertLess(
+            abs(
+                label.mapTo(dialog, label.rect().topLeft()).y()
+                - task_label.mapTo(dialog, task_label.rect().topLeft()).y()
+            ),
+            label.height() / 2,
+        )
+
     def test_option_labels_stay_with_controls_and_background_is_opaque(self):
         dialog = self.dialog()
         dialog.show()

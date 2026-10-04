@@ -29,7 +29,9 @@ class ScriptServiceTestBase(unittest.TestCase):
             (utils_weekly, "get_weekly_yml_path_under_root", self.weekly),
         ):
             self.enterContext(patch.object(module, name, return_value=str(path)))
-        self.init = self.enterContext(patch.object(script_service, "init_config"))
+        self.invalidate = self.enterContext(
+            patch.object(script_service, "invalidate_config")
+        )
         self.switch = Mock()
         self.switch_factory = self.enterContext(
             patch.object(script_service, "task_switch_of", return_value=self.switch)
@@ -195,7 +197,7 @@ class TestScriptEdit(ScriptServiceTestBase):
         self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), original)
         options.write_prepared.assert_not_called()
         self.switch.write.assert_not_called()
-        self.init.assert_not_called()
+        self.invalidate.assert_not_called()
 
     def test_invalid_edit_never_writes(self):
         edit = self.edit()
@@ -223,7 +225,7 @@ class TestScriptEdit(ScriptServiceTestBase):
             self.assertEqual(
                 (self.config.read_bytes(), self.weekly.read_bytes()), original
             )
-        self.init.assert_not_called()
+        self.invalidate.assert_not_called()
         self.switch_factory.assert_not_called()
 
     def test_game_arguments_save_independently(self):
@@ -277,7 +279,7 @@ class TestScriptEdit(ScriptServiceTestBase):
                 self.assertEqual(
                     (self.config.read_bytes(), self.weekly.read_bytes()), original
                 )
-        self.init.assert_not_called()
+        self.invalidate.assert_not_called()
         self.switch_factory.assert_not_called()
 
     def test_save_normalizes_timeouts_and_preserves_unedited_fields(self):
@@ -298,7 +300,7 @@ class TestScriptEdit(ScriptServiceTestBase):
                 },
             },
         )
-        self.init.assert_not_called()
+        self.invalidate.assert_not_called()
         self.switch_factory.assert_called_once_with("BetterGI")
         self.switch.write.assert_called_once_with({"任务": False})
 
@@ -320,7 +322,7 @@ class TestScriptEdit(ScriptServiceTestBase):
         ):
             with self.subTest(expected=expected):
                 self._seed(original)
-                self.init.reset_mock()
+                self.invalidate.reset_mock()
                 self.switch_factory.reset_mock()
                 self.switch.reset_mock()
                 self.assertEqual(self.service.update_script(edited), expected)
@@ -335,12 +337,12 @@ class TestScriptEdit(ScriptServiceTestBase):
                         "weekly_timeouts": {expected: [60] * 7},
                     },
                 )
-                self.init.assert_called_once_with(expected)
+                self.invalidate.assert_called_once_with(expected)
                 self.switch_factory.assert_called_once_with(expected)
                 self.switch.write.assert_called_once_with(edited.switches)
 
     def test_failure_stops_remaining_steps_without_retry(self):
-        steps = ["config", "rename", "weekly", "init", "switches"]
+        steps = ["config", "rename", "weekly", "invalidate", "switches"]
         for index, failed_step in enumerate(steps):
             with self.subTest(step=failed_step):
                 self._seed(self.edit())
@@ -353,7 +355,9 @@ class TestScriptEdit(ScriptServiceTestBase):
                     patch.object(utils_config, "save_config", events.config),
                     patch.object(utils_weekly, "rename_weekly", events.rename),
                     patch.object(utils_weekly, "save_weekly", events.weekly),
-                    patch.object(script_service, "init_config", events.init),
+                    patch.object(
+                        script_service, "invalidate_config", events.invalidate
+                    ),
                     patch.object(
                         script_service,
                         "task_switch_of",
@@ -371,21 +375,18 @@ class TestScriptEdit(ScriptServiceTestBase):
                     expected,
                 )
 
-    def test_native_config_is_only_realigned_after_target_change(self):
-        template = {"task": {"enabled": True}}
+    def test_genshin_edit_does_not_initialize_native_config(self):
         factory = cache(set_config.GenshinConfig)
         with (
             patch.dict(set_config._CONFIGS, {"BetterGI": factory}, clear=True),
-            patch.object(script_service, "init_config", wraps=set_config.init_config),
-            patch.object(script_service, "task_switch_of", return_value=None),
             patch.object(
-                set_config, "load_config", return_value=template
-            ) as native_read,
-            patch.object(set_config, "load_template", return_value=template),
-            patch.object(set_config, "save_config") as native_write,
+                script_service, "invalidate_config", wraps=set_config.invalidate_config
+            ) as invalidate,
+            patch.object(script_service, "task_switch_of", return_value=None),
+            patch("src.utils.utils_sub_config.load_config") as native_read,
+            patch("src.utils.utils_sub_config.save_config") as native_write,
         ):
-            set_config.ensure_config("BetterGI")
-            native_read.reset_mock()
+            set_config._CONFIGS["BetterGI"]()
             for edit in (
                 self.edit(),
                 replace(self.edit(), display_name="原神日常"),
@@ -393,16 +394,13 @@ class TestScriptEdit(ScriptServiceTestBase):
                 self.edit(game_path=str(self.config)),
                 replace(self.edit(), weekly_timeouts=[90] * 7),
             ):
-                with self.subTest(edit=edit), self.assertNoLogs(set_config.logger):
+                with self.subTest(edit=edit):
                     self.service.update_script(edit)
-                    native_read.assert_not_called()
-                    native_write.assert_not_called()
-            with self.assertLogs(set_config.logger, level="INFO") as logs:
-                self.service.update_script(self.edit(script_path="D:/new/BetterGI.exe"))
-            self.assertEqual(len(logs.records), 1)
-            native_read.assert_called_once_with(
-                "BetterGI", "User/OneDragon/默认配置.json"
-            )
+                    invalidate.assert_not_called()
+            self.service.update_script(self.edit(script_path="D:/new/BetterGI.exe"))
+            invalidate.assert_called_once_with("BetterGI")
+            self.assertEqual(factory.cache_info().currsize, 0)
+            native_read.assert_not_called()
             native_write.assert_not_called()
 
 
@@ -492,7 +490,7 @@ class TestScriptList(ScriptServiceTestBase):
         with self.assertRaises(script_service.DuplicateScript):
             self.service.add_script(path)
         self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), before)
-        self.init.assert_not_called()
+        self.invalidate.assert_not_called()
 
     def test_invalid_file_and_shortcut_do_not_write(self):
         before = (self.config.read_bytes(), self.weekly.read_bytes())
@@ -511,7 +509,7 @@ class TestScriptList(ScriptServiceTestBase):
         ):
             self.service.add_script(self._file("broken.lnk"))
         self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), before)
-        self.init.assert_not_called()
+        self.invalidate.assert_not_called()
 
     def test_add_and_remove_coordinate_config_and_weekly(self):
         path = self._file("新增.py")
@@ -523,8 +521,8 @@ class TestScriptList(ScriptServiceTestBase):
         weekly = load_yaml(str(self.weekly))
         self.assertEqual(weekly["weekly_timeouts"]["新增"], [DEFAULT_RUN_TIMEOUT] * 7)
         self.assertEqual(weekly["weekly_start"], {"BetterGI": {"周常": 3}})
-        self.init.assert_called_once_with("新增")
-        self.init.reset_mock()
+        self.invalidate.assert_called_once_with("新增")
+        self.invalidate.reset_mock()
 
         self.service.remove_script("新增")
         self.assertIsNone(utils_config.get_script("新增"))
@@ -536,7 +534,7 @@ class TestScriptList(ScriptServiceTestBase):
             },
         )
         self.assertTrue(Path(path).is_file())
-        self.init.assert_not_called()
+        self.invalidate.assert_not_called()
 
     def test_add_shortcut_preserves_target_and_arguments(self):
         target = self._file("new.exe")
@@ -551,7 +549,7 @@ class TestScriptList(ScriptServiceTestBase):
         entry = utils_config.get_script("new")
         self.assertEqual(entry["script_path"], target)
         self.assertEqual(entry["script_arguments"], arguments)
-        self.init.assert_called_once_with("new")
+        self.invalidate.assert_called_once_with("new")
 
     def test_shortcut_with_different_working_directory_does_not_write(self):
         before = (self.config.read_bytes(), self.weekly.read_bytes())
@@ -566,7 +564,7 @@ class TestScriptList(ScriptServiceTestBase):
         ):
             self.service.add_script(self._file("shortcut.lnk"))
         self.assertEqual((self.config.read_bytes(), self.weekly.read_bytes()), before)
-        self.init.assert_not_called()
+        self.invalidate.assert_not_called()
 
     def test_shortcut_accepts_equivalent_working_directory_and_environment(self):
         target = self._file("new.exe")
@@ -601,7 +599,7 @@ class TestScriptList(ScriptServiceTestBase):
             load_yaml(str(self.config)), {"script_list": [second, first], "other": True}
         )
         self.assertEqual(self.weekly.read_bytes(), weekly_before)
-        self.init.assert_not_called()
+        self.invalidate.assert_not_called()
 
     def test_stale_duplicate_and_invalid_orders_do_not_write(self):
         before = self.config.read_bytes()
@@ -619,7 +617,7 @@ class TestScriptList(ScriptServiceTestBase):
 
     def test_add_failure_stops_remaining_steps_without_retry(self):
         path = self._file("新增.py")
-        steps = ["config", "weekly", "init"]
+        steps = ["config", "weekly", "invalidate"]
         for index, failed_step in enumerate(steps):
             with self.subTest(step=failed_step):
                 self._seed(self.edit())
@@ -630,7 +628,9 @@ class TestScriptList(ScriptServiceTestBase):
                 with (
                     patch.object(utils_config, "save_config", events.config),
                     patch.object(utils_weekly, "ensure_weekly_entry", events.weekly),
-                    patch.object(script_service, "init_config", events.init),
+                    patch.object(
+                        script_service, "invalidate_config", events.invalidate
+                    ),
                     self.assertRaisesRegex(OSError, failed_step),
                 ):
                     self.service.add_script(path)
@@ -649,7 +649,7 @@ class TestScriptList(ScriptServiceTestBase):
             with self.subTest(step=failed_step):
                 self._seed(self.edit())
                 self.service.add_script(path)
-                self.init.reset_mock()
+                self.invalidate.reset_mock()
                 events = Mock()
                 events.config.side_effect = utils_config.save_config
                 events.weekly.side_effect = utils_weekly.delete_weekly
@@ -667,4 +667,4 @@ class TestScriptList(ScriptServiceTestBase):
                     utils_config.get_script("新增") is not None, index == 0
                 )
                 self.assertIn("新增", load_yaml(str(self.weekly))["weekly_timeouts"])
-                self.init.assert_not_called()
+                self.invalidate.assert_not_called()

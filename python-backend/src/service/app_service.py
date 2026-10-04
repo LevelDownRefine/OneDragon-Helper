@@ -29,8 +29,6 @@ import src.service.script_service as script_service
 import src.service.task_service as task_service
 from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
-    ensure_config,
-    get_registered_script_names,
     set_config,
     set_daily_enabled,
     set_weekly_start_day,
@@ -299,18 +297,6 @@ class AppService:
         return get_daily_map(script_name)
 
     # ── 游戏侧 config 适配器（src.config.set_config 模块函数）────────────
-    def get_registered_script_names(self) -> list[str]:
-        """已注册（已适配）脚本标识名，供启动后预热遍历。"""
-        return get_registered_script_names()
-
-    def warm_config(self, script_name: str) -> None:
-        """预热单个脚本 config：构造单例并触发模板对齐（幂等、不强制重对齐）。
-
-        启动后空闲时逐脚本调用，使点选时已在缓存、零等待；对齐在 ``__init__`` 内
-        收口，每个进程每脚本仅一次，无重复日志。需强制重对齐请用 ``init_config``。
-        """
-        ensure_config(script_name)
-
     # ── 单脚本配置（src.utils.utils_config 模块函数）─────────────────────────
     def get_script(self, script_name: str):
         """按脚本唯一标识读取单个脚本条目。"""

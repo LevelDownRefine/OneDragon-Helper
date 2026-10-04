@@ -490,6 +490,14 @@ impl ScriptEditor {
             crate::dialogs::common::form_section(ui, "任务", |ui| {
                 for group in groups {
                     ui.push_id(&group.name, |ui| {
+                        if group.switches.is_empty()
+                            && group.options.len() == 1
+                            && self.data.task_options[group.options[0]].display_name == group.name
+                        {
+                            task_option_ui(ui, &mut self.data.task_options[group.options[0]]);
+                            ui.add_space(8.0);
+                            return;
+                        }
                         if group.switches.len() != 1
                             || self.data.switches[group.switches[0]].name != group.name
                         {

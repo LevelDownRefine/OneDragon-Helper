@@ -12,7 +12,7 @@ from unittest.mock import patch
 from src.config import set_config as config_mod
 from src.config import weekly as weekly_mod
 from src.config.daily_config import get_weekly_map
-from src.config.set_config import _CONFIGS, ScriptConfig, weekly_names
+from src.config.set_config import _CONFIGS, weekly_names
 from src.config.weekly import Weekly
 from src.service.run_actions import apply_subscript_config
 from src.utils.utils_weekly import DISABLED_START_DAY
@@ -32,7 +32,6 @@ class WeeklyTestCase(unittest.TestCase):
         for name, factory in tuple(_CONFIGS.items()):
             _CONFIGS[name] = cache(factory.__wrapped__)
         # 只隔离构造期原生 I/O，每例使用全新的适配器与任务对象。
-        self.enterContext(patch.object(config_mod, "load_config", return_value=None))
         self.enterContext(
             patch("src.config.daily.load_script_config", return_value=None)
         )
@@ -85,11 +84,10 @@ class TestWeeklyAssembly(WeeklyTestCase):
                 )
 
     def test_scripts_without_declaration_build_empty(self):
-        with patch.object(config_mod.GenshinConfig, "_init_config") as initialize:
-            config = config_mod.GenshinConfig()
+        config = config_mod.GenshinConfig()
         self.assertEqual(config._weeklies, [])
         self.assertTrue(config._dailies)
-        initialize.assert_called_once_with()
+        self.assertFalse(hasattr(config, "_init_config"))
         self.assertEqual(weekly_names("BetterGI"), [])
 
     def test_daily_and_weekly_physical_names_are_independent(self):
@@ -112,8 +110,8 @@ class TestWeeklyAssembly(WeeklyTestCase):
 
     def test_config_holds_weeklies(self):
         """ScriptConfig 构造期装配并持有周常对象（与日常同一时机）。"""
-        # 屏蔽模板对齐：CI 无 config.yml，未命中缓存的脚本不能走到真实读盘。
-        with patch.object(ScriptConfig, "_init_config"):
+        # 仅 MAA 在构造期维护原生任务队列。
+        with patch.object(config_mod.ArknightsConfig, "_init_config"):
             for script_name, factory in _CONFIGS.items():
                 with self.subTest(script=script_name):
                     self.assertEqual(

@@ -6,7 +6,7 @@
 import os
 from dataclasses import dataclass, field, replace
 
-from src.config.set_config import init_config
+from src.config.set_config import invalidate_config
 from src.config.task_options import task_options_of
 from src.config.task_switch import task_switch_of
 from src.utils import utils_config, utils_weekly
@@ -170,7 +170,7 @@ def add(file_path: str) -> dict:
     config["script_list"].append(entry)
     utils_config.save_config(config)
     utils_weekly.ensure_weekly_entry(script_name)
-    init_config(script_name)
+    invalidate_config(script_name)
     assert "display_name" in entry
     return {"script_name": script_name, "display_name": entry["display_name"]}
 
@@ -193,7 +193,7 @@ def remove(script_name: str) -> None:
 
 
 def update(edit: ScriptEdit) -> str:
-    """保存完整编辑，按新标识同步每周参数、初始化及任务开关。"""
+    """保存完整编辑，按新标识同步每周参数、适配器缓存及任务开关。"""
     config = utils_config.load_config()
     assert "script_list" in config
     scripts = config["script_list"]
@@ -227,7 +227,7 @@ def update(edit: ScriptEdit) -> str:
         previous_path != edit.config_patch["script_path"]
         or new_script_name != edit.script_name
     ):
-        init_config(new_script_name)
+        invalidate_config(new_script_name)
     switch = task_switch_of(new_script_name)
     if options is not None:
         options.write_prepared(pending)

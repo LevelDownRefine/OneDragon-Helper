@@ -42,7 +42,7 @@ class TestWeeklySource(unittest.TestCase):
     def test_does_not_instantiate_or_init_config(self):
         """周常读资源不触发配置初始化。"""
         with (
-            patch.object(StarRailConfig, "_init_config") as mock_init,
+            patch.object(StarRailConfig, "__init__", return_value=None) as mock_init,
             patch("src.config.task_source.load_game_config", return_value=self._DATA),
         ):
             read_task_source(
@@ -129,7 +129,7 @@ class TestTaskSource(unittest.TestCase):
                     "src.config.task_source.load_game_config",
                     return_value={"资源": {"类别": {"乙": 2, "甲": 1}}},
                 ) as load,
-                patch.object(NTEConfig, "_init_config") as init,
+                patch.object(NTEConfig, "__init__", return_value=None) as init,
             ):
                 names = get_task_lists(
                     "ok-nte", "异象界域", {"path": "options.json", "key": key}
@@ -185,7 +185,7 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
     def test_does_not_instantiate_or_init_config(self):
         """读取选项复用已有日常，不触发配置初始化。"""
         with (
-            patch.object(EndfieldConfig, "_init_config") as mock_init,
+            patch.object(EndfieldConfig, "__init__", return_value=None) as mock_init,
             patch("src.config.task_source.load_game_config", return_value=self._DATA),
         ):
             get_task_lists(
@@ -309,7 +309,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
     def test_does_not_instantiate_or_init_config(self):
         """读取选项复用已有日常，不触发配置初始化。"""
         with (
-            patch.object(GenshinConfig, "_init_config") as mock_init,
+            patch.object(GenshinConfig, "__init__", return_value=None) as mock_init,
             patch("src.config.daily.load_game_config", return_value=self._DATA),
         ):
             get_task_lists(

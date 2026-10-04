@@ -10,13 +10,10 @@ from src.config.daily import Daily, MaaDaily, build_dailies
 from src.config.script_resources import ScriptResources, get_script_resources
 from src.config.task_config import load_weekly_map
 from src.config.weekly import Weekly, build_weeklies
-from src.utils.utils_dict import covers, get_field, safe_update
+from src.utils.utils_dict import get_field
 from src.utils.utils_sub_config import (
     get_script_game_path,
-    load_config,
     load_game_config,
-    load_template,
-    save_config,
 )
 from src.utils.utils_sub_config import (
     get_sub_config_path as _get_config_path_impl,
@@ -42,42 +39,21 @@ class ScriptConfig:
     """静态资源来自 script_resources.yml；基类 None 表示未适配。"""
 
     def __init__(self) -> None:
-        """按声明创建日常与周常对象，并在构造时对齐子脚本 config。
-
-        两者装配同一时机（日常 ``_dailies`` / 周常 ``_weeklies``）；对齐经 ``_init_config``
-        收口到构造期。``functools.cache`` 单例保证每进程每脚本仅构造一次，故对齐也仅
-        触发一次。CLI/GUI 均经工厂构造，无需分散守卫。
-        """
+        """按声明装配日常与周常对象，不读写原生配置。"""
         self._dailies: list[Daily] = build_dailies(self._script_name, self.display_name)
         self._weeklies: list[Weekly] = build_weeklies(
             self._script_name, self.display_name
         )
-        # 构造期对齐子脚本 config（懒加载收口点；无模板/未安装脚本为空操作）
-        self._init_config()
 
     def _daily_config_rel_path(self) -> str:
         """脚本 config 文件路径（取首个日常声明的 ``config``）。
 
-        模板对齐与「打开配置」共用它。
+        供「打开配置」定位原生文件。
 
         Returns:
             相对脚本根目录的路径。
         """
         return self._dailies[0]._config_rel_path
-
-    def _load_template(self) -> dict:
-        """加载模板文件（JSON/YAML）。
-
-        Returns:
-            模板 dict。
-
-        Raises:
-            AssertionError: 未声明 template 或解析结果非 dict。
-        """
-        assert self.resources is not None and "template" in self.resources, (
-            f"[set_config][{self.display_name}] 未声明 template"
-        )
-        return load_template(self._script_name, self.resources["template"])
 
     def _dispatch_daily(self, daily_display_name: str) -> Daily:
         """按日常展示名取日常对象。
@@ -124,43 +100,6 @@ class ScriptConfig:
                 }
             )
         return records
-
-    def _init_config(self) -> None:
-        """对齐检查并把模板 config 同步到用户 config。
-
-        仅对有模板（声明 ``template``）的脚本生效；无模板脚本或脚本尚未
-        安装/未配置（config 缺失）时直接返回，不触碰 config。已对齐时不动 config。
-        """
-        if self.resources is None or "template" not in self.resources:
-            return
-        rel_path = self._daily_config_rel_path()
-        try:
-            config = load_config(self._script_name, rel_path)
-        except AssertionError:
-            return  # 脚本未安装/未配置，待首次写入时由 set_* 创建
-        except Exception:  # noqa: BLE001  # 文件存在但内容损坏
-            logger.warning(
-                f"[init_config][{self.display_name}] config 损坏，跳过对齐: {rel_path}",
-                exc_info=True,
-            )
-            return
-        if not isinstance(config, dict):
-            return
-        template = self._load_template()
-
-        if covers(config, template):
-            logger.info(f"[init_config][{self.display_name}] config 已对齐，无需更新")
-            return
-
-        for key, val in template.items():
-            safe_update(config, key, val, self.display_name, assert_key_exists=False)
-        save_config(self._script_name, rel_path, config)
-        reloaded = load_config(self._script_name, rel_path)
-        assert reloaded == config, (
-            f"[init_config][{self.display_name}] 配置保存后校验失败："
-            "重新读取的内容与预期不一致"
-        )
-        logger.info(f"[init_config][{self.display_name}] config 已更新")
 
     def set_daily_task(
         self,
@@ -364,8 +303,19 @@ class ArknightsConfig(ScriptConfig):
     _script_name = "MAA"
     display_name = "粥"
 
+    def __init__(self) -> None:
+        """装配日常与周常对象，并初始化 MAA 原生任务队列。"""
+        super().__init__()
+        self._init_config()
+
     def _init_config(self) -> None:
-        """建立三个独立入口和必刷剿灭，交给 MAA 原生队列执行。"""
+        """建立三个日常入口和必刷剿灭，保留已有任务设置。
+
+        原生配置缺失时跳过；队列发生变化时才保存。
+
+        Raises:
+            AssertionError: 日常机制类不是 MaaDaily。
+        """
         activity, main, remaining = self._dailies
         assert all(isinstance(daily, MaaDaily) for daily in self._dailies)
         config = main._load_daily_config(allow_missing=True)
@@ -381,7 +331,15 @@ class ArknightsConfig(ScriptConfig):
             main._save_daily_config(config)
 
     def _init_fight_tasks(self, queue: list[dict], days: int) -> list[dict]:
-        """准备必刷剿灭和三个日常入口，保留各自已有设置。"""
+        """准备必刷剿灭和三个日常入口，保留各自已有设置。
+
+        Args:
+            queue: 原生任务队列，已有战斗任务会就地更新。
+            days: 临期理智药的使用窗口天数。
+
+        Returns:
+            按剿灭、活动、理智作战、剩余理智排序的战斗任务。
+        """
         main = self._dailies[1]
         annihilation = None
         daily_names = {daily.physical_name for daily in self._dailies}
@@ -403,7 +361,12 @@ class ArknightsConfig(ScriptConfig):
         return [annihilation, *selected]
 
     def _order_tasks(self, queue: list[dict], fights: list[dict]) -> None:
-        """唤醒后安排剿灭和活动，库存保持后安排其余日常；清理多余战斗。"""
+        """唤醒后安排剿灭和活动，库存保持后安排其余日常。
+
+        Args:
+            queue: 就地重排的原生任务队列，多余战斗任务会被移除。
+            fights: 按剿灭、活动、理智作战、剩余理智排序的战斗任务。
+        """
         others = [task for task in queue if task["$type"] != "FightTask"]
         # 插入点按非战斗队列计算，原生任务的相对顺序保持不变。
         wake = next(
@@ -433,44 +396,25 @@ class ArknightsConfig(ScriptConfig):
 # ============================================================
 
 
-def init_config(script_name: str) -> None:
-    """对齐脚本 config 与模板，补全缺失字段（强制重对齐）。
+def invalidate_config(script_name: str) -> None:
+    """使脚本适配器缓存失效，下次使用时重新构造。
 
-    仅对声明了 ``template`` 的脚本生效；无模板或脚本未安装/未配置时为空操作。
-    实例已缓存时不重新构造，但显式再跑一次 ``_init_config``，故用于需强制重对齐的场景
-    （新增/修改脚本、备份恢复）。启动预热等幂等场景请用 :func:`ensure_config` 避免重复对齐与日志。
+    不读取或初始化原生配置，供添加脚本或修改安装路径后调用。
 
     Args:
-        script_name: 脚本标识名。
+        script_name: 脚本标识名，未注册的脚本直接跳过。
     """
     if script_name not in _CONFIGS:
         return
-    _CONFIGS[script_name]()._init_config()
-
-
-def ensure_config(script_name: str) -> None:
-    """确保脚本 config 已构造并模板对齐（幂等，不强制重对齐）。
-
-    仅经工厂构造单例；``__init__`` 内已收口 ``_init_config``，故每个进程每脚本仅对齐
-    一次，无重复日志/重复工作。供启动后预热遍历，与懒加载共用同一工厂出口。
-    需强制重对齐（新增/修改脚本、备份恢复）请用 :func:`init_config`。
-
-    Args:
-        script_name: 脚本标识名。
-    """
-    if script_name not in _CONFIGS:
-        return
-    _CONFIGS[script_name]()
-
-
-def init_config_all() -> None:
-    """对齐所有已注册脚本的 config 与模板（手动全量入口，如备份恢复后）。"""
-    for script_name in _CONFIGS:
-        init_config(script_name)
+    _CONFIGS[script_name].cache_clear()
 
 
 def get_registered_script_names() -> list[str]:
-    """返回所有已注册（已适配）脚本的标识名，供预热遍历。"""
+    """枚举已注册的脚本，不构造适配器。
+
+    Returns:
+        已适配脚本的标识名列表。
+    """
     return list(_CONFIGS.keys())
 
 

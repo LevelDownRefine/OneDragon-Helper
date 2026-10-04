@@ -36,7 +36,6 @@ def prepare_demo(root: Path) -> None:
         "weekly_task_list.yml",
         "script_resources.yml",
         "task_switch_list.yml",
-        "BGI一条龙.json",
         "MAA任务.json",
         "ZZZ一条龙.yml",
     ):
