@@ -152,7 +152,7 @@ class TestAtomicDump(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         path = os.path.join(tmp.name, "atomic.yml")
         save_data(path, {"a": 1, "b": "文本"}, file_format="yaml")
-        self.assertFalse(os.path.exists(path + ".tmp"))
+        self.assertEqual(os.listdir(tmp.name), ["atomic.yml"])
         self.assertEqual(
             load_data(path, file_format="yaml", cached=True), {"a": 1, "b": "文本"}
         )

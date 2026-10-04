@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import tempfile
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
@@ -100,7 +101,7 @@ def save_data(
     indent: int = 4,
     encoding: str = "utf-8",
 ) -> None:
-    """先完整编码，再写临时文件并原子替换目标。
+    """先完整编码，再写独立临时文件并原子替换目标，失败时清理临时文件。
 
     Args:
         path: 目标文件路径，父目录由调用方准备。
@@ -113,7 +114,20 @@ def save_data(
         OSError: 临时文件写入或目标替换失败。
     """
     text = dump_data_str(data, file_format=file_format, indent=indent)
-    temporary = f"{path}.tmp"
-    with open(temporary, "w", encoding=encoding) as stream:
-        stream.write(text)
-    os.replace(temporary, path)
+    target = Path(path)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding=encoding,
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(text)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)

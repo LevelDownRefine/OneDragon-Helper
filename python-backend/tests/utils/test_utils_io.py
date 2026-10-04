@@ -3,7 +3,9 @@
 import json
 import os
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
@@ -140,6 +142,60 @@ class TestConfigFileIO(unittest.TestCase):
                         file_format="json" if path.suffix == ".json" else "yaml",
                     )
                 self.assertEqual(path.read_bytes(), original)
+                self.assertFalse(list(self.root.glob("*.tmp")))
+
+    def test_failed_write_closes_and_removes_temporary_file(self):
+        """写入中断时保留目标，关闭文件后移除临时文件。"""
+        path = self.root / "config.json"
+        mod.save_data(path, {"value": "original"}, "json")
+        original = path.read_bytes()
+        temporary = self.enterContext(
+            tempfile.NamedTemporaryFile(mode="w", dir=self.root, delete=False)
+        )
+        with (
+            patch.object(mod.tempfile, "NamedTemporaryFile", return_value=temporary),
+            patch.object(temporary, "write", side_effect=OSError("write failed")),
+            self.assertRaisesRegex(OSError, "write failed"),
+        ):
+            mod.save_data(path, {"value": "new"}, "json")
+        self.assertTrue(temporary.file.closed)
+        self.assertFalse(Path(temporary.name).exists())
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_overlapping_saves_use_independent_temporary_files(self):
+        """强制两次保存同时到达替换阶段，各自提交完整且独立的内容。"""
+        path = self.root / "config.json"
+        barrier = threading.Barrier(2)
+        replacement_lock = threading.Lock()
+        temporary_paths = []
+        contents = []
+        replace = os.replace
+        values = [{"value": "first"}, {"value": "second"}]
+
+        def replace_together(source, target):
+            temporary_paths.append(Path(source))
+            contents.append(mod.load_data(source, "json"))
+            barrier.wait(timeout=5)
+            # 两个写入已重叠；串行替换避免 Windows 同时替换目标的共享冲突。
+            with replacement_lock:
+                replace(source, target)
+
+        with (
+            patch.object(mod.os, "replace", side_effect=replace_together),
+            ThreadPoolExecutor(max_workers=2) as executor,
+        ):
+            futures = [
+                executor.submit(mod.save_data, path, value, "json") for value in values
+            ]
+            for future in futures:
+                future.result(timeout=10)
+        self.assertEqual(len(set(temporary_paths)), 2)
+        self.assertTrue(
+            all(temporary.parent == path.parent for temporary in temporary_paths)
+        )
+        self.assertCountEqual(contents, values)
+        self.assertIn(mod.load_data(path, "json"), values)
+        self.assertFalse(list(self.root.glob("*.tmp")))
 
     def test_serialization_failure_does_not_touch_target_or_temporary_file(self):
         path = self.root / "config.json"
