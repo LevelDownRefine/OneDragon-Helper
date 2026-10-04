@@ -304,11 +304,18 @@ class ArknightsConfig(ScriptConfig):
     display_name = "粥"
 
     def __init__(self) -> None:
+        """装配日常与周常对象，并初始化 MAA 原生任务队列。"""
         super().__init__()
         self._init_config()
 
     def _init_config(self) -> None:
-        """建立三个独立入口和必刷剿灭，交给 MAA 原生队列执行。"""
+        """建立三个日常入口和必刷剿灭，保留已有任务设置。
+
+        原生配置缺失时跳过；队列发生变化时才保存。
+
+        Raises:
+            AssertionError: 日常机制类不是 MaaDaily。
+        """
         activity, main, remaining = self._dailies
         assert all(isinstance(daily, MaaDaily) for daily in self._dailies)
         config = main._load_daily_config(allow_missing=True)
@@ -324,7 +331,15 @@ class ArknightsConfig(ScriptConfig):
             main._save_daily_config(config)
 
     def _init_fight_tasks(self, queue: list[dict], days: int) -> list[dict]:
-        """准备必刷剿灭和三个日常入口，保留各自已有设置。"""
+        """准备必刷剿灭和三个日常入口，保留各自已有设置。
+
+        Args:
+            queue: 原生任务队列，已有战斗任务会就地更新。
+            days: 临期理智药的使用窗口天数。
+
+        Returns:
+            按剿灭、活动、理智作战、剩余理智排序的战斗任务。
+        """
         main = self._dailies[1]
         annihilation = None
         daily_names = {daily.physical_name for daily in self._dailies}
@@ -346,7 +361,12 @@ class ArknightsConfig(ScriptConfig):
         return [annihilation, *selected]
 
     def _order_tasks(self, queue: list[dict], fights: list[dict]) -> None:
-        """唤醒后安排剿灭和活动，库存保持后安排其余日常；清理多余战斗。"""
+        """唤醒后安排剿灭和活动，库存保持后安排其余日常。
+
+        Args:
+            queue: 就地重排的原生任务队列，多余战斗任务会被移除。
+            fights: 按剿灭、活动、理智作战、剩余理智排序的战斗任务。
+        """
         others = [task for task in queue if task["$type"] != "FightTask"]
         # 插入点按非战斗队列计算，原生任务的相对顺序保持不变。
         wake = next(
@@ -381,6 +401,9 @@ def init_config(script_name: str) -> None:
 
     实例已缓存时仍执行初始化钩子，供脚本路径变化或备份恢复后使用。
     启动预热请用 :func:`ensure_config`，避免重复初始化。
+
+    Args:
+        script_name: 脚本标识名，未注册的脚本直接跳过。
     """
     if script_name not in _CONFIGS:
         return
