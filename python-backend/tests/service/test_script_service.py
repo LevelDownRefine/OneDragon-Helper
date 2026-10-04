@@ -14,7 +14,7 @@ from src.service import script_service
 from src.service.app_service import AppService
 from src.service.script_service import InvalidScript, ScriptEdit, validate_edit
 from src.utils import utils_config, utils_weekly
-from src.utils.utils_io import dump_yaml_file, load_yaml
+from src.utils.utils_io import load_data, save_data
 from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
 
 
@@ -62,7 +62,7 @@ class ScriptServiceTestBase(unittest.TestCase):
         )
 
     def _seed(self, edit):
-        dump_yaml_file(
+        save_data(
             str(self.config),
             {
                 "script_list": [
@@ -73,13 +73,15 @@ class ScriptServiceTestBase(unittest.TestCase):
                     }
                 ]
             },
+            file_format="yaml",
         )
-        dump_yaml_file(
+        save_data(
             str(self.weekly),
             {
                 "weekly_start": {edit.script_name: {"周常": 3}},
                 "weekly_timeouts": {edit.script_name: [60] * 7},
             },
+            file_format="yaml",
         )
 
 
@@ -233,7 +235,9 @@ class TestScriptEdit(ScriptServiceTestBase):
         self.service.update_script(
             self.edit(game_arguments=arguments, script_arguments="--script")
         )
-        saved = load_yaml(str(self.config))["script_list"][0]
+        saved = load_data(str(self.config), file_format="yaml", cached=True)[
+            "script_list"
+        ][0]
         self.assertEqual(saved["game_arguments"], arguments)
         self.assertEqual(saved["script_arguments"], "--script")
 
@@ -272,7 +276,9 @@ class TestScriptEdit(ScriptServiceTestBase):
         ):
             with self.subTest(label=label):
                 edit = validate_edit(self.edit(script_path="C:/new.exe"))
-                dump_yaml_file(str(self.config), {"script_list": entries})
+                save_data(
+                    str(self.config), {"script_list": entries}, file_format="yaml"
+                )
                 original = (self.config.read_bytes(), self.weekly.read_bytes())
                 with self.assertRaises(InvalidScript):
                     self.service.update_script(edit)
@@ -288,11 +294,13 @@ class TestScriptEdit(ScriptServiceTestBase):
             weekly_timeouts=[None, 0, 5, 60, 90, 120, 86400],
         )
         self.assertEqual(self.service.update_script(edit), "BetterGI")
-        entry = load_yaml(str(self.config))["script_list"][0]
+        entry = load_data(str(self.config), file_format="yaml", cached=True)[
+            "script_list"
+        ][0]
         self.assertEqual(entry["other_field"], "保留")
         self.assertFalse(entry["kill_game_after_done"])
         self.assertEqual(
-            load_yaml(str(self.weekly)),
+            load_data(str(self.weekly), file_format="yaml", cached=True),
             {
                 "weekly_start": {"BetterGI": {"周常": 3}},
                 "weekly_timeouts": {
@@ -327,11 +335,15 @@ class TestScriptEdit(ScriptServiceTestBase):
                 self.switch.reset_mock()
                 self.assertEqual(self.service.update_script(edited), expected)
                 self.assertEqual(
-                    get_script_name(load_yaml(str(self.config))["script_list"][0]),
+                    get_script_name(
+                        load_data(str(self.config), file_format="yaml", cached=True)[
+                            "script_list"
+                        ][0]
+                    ),
                     expected,
                 )
                 self.assertEqual(
-                    load_yaml(str(self.weekly)),
+                    load_data(str(self.weekly), file_format="yaml", cached=True),
                     {
                         "weekly_start": {expected: {"周常": 3}},
                         "weekly_timeouts": {expected: [60] * 7},
@@ -371,7 +383,11 @@ class TestScriptEdit(ScriptServiceTestBase):
                 )
                 expected = "BetterGI" if index == 0 else "new"
                 self.assertEqual(
-                    get_script_name(load_yaml(str(self.config))["script_list"][0]),
+                    get_script_name(
+                        load_data(str(self.config), file_format="yaml", cached=True)[
+                            "script_list"
+                        ][0]
+                    ),
                     expected,
                 )
 
@@ -441,7 +457,9 @@ class TestScriptList(ScriptServiceTestBase):
                 self.assertEqual(
                     [
                         entry["display_name"]
-                        for entry in load_yaml(str(self.config))["script_list"][1:]
+                        for entry in load_data(
+                            str(self.config), file_format="yaml", cached=True
+                        )["script_list"][1:]
                     ],
                     ["重复", "重复_1", "重复_2"],
                 )
@@ -451,7 +469,7 @@ class TestScriptList(ScriptServiceTestBase):
         for operation in ("add", "remove", "update", "reorder"):
             with self.subTest(operation=operation):
                 self._seed(self.edit())
-                config = load_yaml(str(self.config))
+                config = load_data(str(self.config), file_format="yaml", cached=True)
                 original = config["script_list"][0]
                 extra = {
                     "display_name": "其他",
@@ -460,7 +478,7 @@ class TestScriptList(ScriptServiceTestBase):
                 }
                 config["script_list"].append(extra)
                 config["other_config"] = {"preserved": True}
-                dump_yaml_file(str(self.config), config)
+                save_data(str(self.config), config, file_format="yaml")
                 with patch.object(
                     utils_config, "load_config", wraps=utils_config.load_config
                 ) as read:
@@ -473,7 +491,7 @@ class TestScriptList(ScriptServiceTestBase):
                     else:
                         self.service.reorder_scripts(["其他", "BetterGI"])
                     read.assert_called_once_with()
-                saved = load_yaml(str(self.config))
+                saved = load_data(str(self.config), file_format="yaml", cached=True)
                 self.assertEqual(saved["other_config"], {"preserved": True})
                 self.assertIn(extra, saved["script_list"])
                 if operation == "update":
@@ -518,7 +536,7 @@ class TestScriptList(ScriptServiceTestBase):
             {"script_name": "新增", "display_name": "新增"},
         )
         self.assertEqual(utils_config.get_script("新增")["script_path"], path)
-        weekly = load_yaml(str(self.weekly))
+        weekly = load_data(str(self.weekly), file_format="yaml", cached=True)
         self.assertEqual(weekly["weekly_timeouts"]["新增"], [DEFAULT_RUN_TIMEOUT] * 7)
         self.assertEqual(weekly["weekly_start"], {"BetterGI": {"周常": 3}})
         self.invalidate.assert_called_once_with("新增")
@@ -527,7 +545,7 @@ class TestScriptList(ScriptServiceTestBase):
         self.service.remove_script("新增")
         self.assertIsNone(utils_config.get_script("新增"))
         self.assertEqual(
-            load_yaml(str(self.weekly)),
+            load_data(str(self.weekly), file_format="yaml", cached=True),
             {
                 "weekly_timeouts": {"BetterGI": [60] * 7},
                 "weekly_start": {"BetterGI": {"周常": 3}},
@@ -590,13 +608,16 @@ class TestScriptList(ScriptServiceTestBase):
     def test_reorder_preserves_entries_and_unknown_fields(self):
         first = {"script_path": "a.py", "display_name": "一", "custom": [1, 2]}
         second = {"script_path": "b.exe", "display_name": "二"}
-        dump_yaml_file(
-            str(self.config), {"script_list": [first, second], "other": True}
+        save_data(
+            str(self.config),
+            {"script_list": [first, second], "other": True},
+            file_format="yaml",
         )
         weekly_before = self.weekly.read_bytes()
         self.service.reorder_scripts(["b", "一"])
         self.assertEqual(
-            load_yaml(str(self.config)), {"script_list": [second, first], "other": True}
+            load_data(str(self.config), file_format="yaml", cached=True),
+            {"script_list": [second, first], "other": True},
         )
         self.assertEqual(self.weekly.read_bytes(), weekly_before)
         self.invalidate.assert_not_called()
@@ -639,7 +660,11 @@ class TestScriptList(ScriptServiceTestBase):
                 )
                 self.assertEqual(utils_config.get_script("新增") is not None, index > 0)
                 self.assertEqual(
-                    "新增" in load_yaml(str(self.weekly))["weekly_timeouts"], index > 1
+                    "新增"
+                    in load_data(str(self.weekly), file_format="yaml", cached=True)[
+                        "weekly_timeouts"
+                    ],
+                    index > 1,
                 )
 
     def test_remove_failure_stops_remaining_steps_without_retry(self):
@@ -666,5 +691,10 @@ class TestScriptList(ScriptServiceTestBase):
                 self.assertEqual(
                     utils_config.get_script("新增") is not None, index == 0
                 )
-                self.assertIn("新增", load_yaml(str(self.weekly))["weekly_timeouts"])
+                self.assertIn(
+                    "新增",
+                    load_data(str(self.weekly), file_format="yaml", cached=True)[
+                        "weekly_timeouts"
+                    ],
+                )
                 self.invalidate.assert_not_called()

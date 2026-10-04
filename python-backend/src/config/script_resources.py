@@ -6,7 +6,7 @@ from typing import Literal, NotRequired, TypedDict, cast
 from urllib.parse import urlsplit
 
 from src.utils import get_root_dir
-from src.utils.utils_io import load_yaml
+from src.utils.utils_io import load_data
 
 
 class GamePath(TypedDict):
@@ -108,7 +108,8 @@ def _validate_script(value: dict, name: str) -> None:
 @lru_cache(maxsize=8)
 def load_resource_manifest(path: str) -> dict[str, ScriptResources]:
     """校验并缓存 YAML 字典；调用方只读，更新声明后重启生效。"""
-    data = load_yaml(path)
+    assert Path(path).is_file(), f"资源声明缺失: {path}"
+    data = load_data(path, file_format="yaml", cached=True)
     _fields(data, {"version", "scripts"}, set(), "script_resources")
     assert "version" in data and "scripts" in data
     assert type(data["version"]) is int and data["version"] == 1, "资源声明版本必须为 1"

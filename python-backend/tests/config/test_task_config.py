@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.config import task_config as m
-from src.utils.utils_io import YAML_INSTANCE, _parse_yaml, dump_yaml_file
+from src.utils.utils_io import YAML_INSTANCE, _parse_yaml, save_data
 
 
 class TestTaskDeclarations(unittest.TestCase):
@@ -20,7 +20,7 @@ class TestTaskDeclarations(unittest.TestCase):
         self.addCleanup(_parse_yaml.cache_clear)
 
     def load(self, data):
-        dump_yaml_file(str(self.path), data)
+        save_data(str(self.path), data, file_format="yaml")
         return m.load_task_map(str(self.path))
 
     def test_names_and_recursive_options(self):
@@ -205,7 +205,7 @@ class TestTaskDeclarations(unittest.TestCase):
         read.assert_not_called()
         stat = self.path.stat()
         data["s"][0]["display_name"] = "更新任务"
-        dump_yaml_file(str(self.path), data)
+        save_data(str(self.path), data, file_format="yaml")
         os.utime(self.path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
         self.assertEqual(self.path.stat().st_size, stat.st_size)
         self.assertEqual(m.load_task_map(str(self.path)), data)
@@ -234,9 +234,8 @@ class TestDailyClassField(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "daily_task_list.yml")
-            dump_yaml_file(
-                path,
-                {"ok-ww": [{"display_name": "每日任务"}]},
+            save_data(
+                path, {"ok-ww": [{"display_name": "每日任务"}]}, file_format="yaml"
             )
             with self.assertRaisesRegex(AssertionError, "未声明 class"):
                 load_task_map(path, require_class=True)
@@ -247,9 +246,8 @@ class TestDailyClassField(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "weekly_task_list.yml")
-            dump_yaml_file(
-                path,
-                {"ok-ww": [{"display_name": "历战余响"}]},
+            save_data(
+                path, {"ok-ww": [{"display_name": "历战余响"}]}, file_format="yaml"
             )
             data = load_task_map(path)
         self.assertEqual(data["ok-ww"][0]["display_name"], "历战余响")

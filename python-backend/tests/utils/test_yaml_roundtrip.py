@@ -18,12 +18,7 @@ from ruamel.yaml.error import YAMLError
 
 from src.utils import utils_io
 from src.utils.utils_dict import safe_update
-from src.utils.utils_io import (
-    YAML_INSTANCE,
-    dump_yaml,
-    load_yaml,
-    load_yaml_optional,
-)
+from src.utils.utils_io import YAML_INSTANCE, load_data, save_data
 
 
 class TestYamlRoundTrip(unittest.TestCase):
@@ -82,10 +77,10 @@ class TestYamlReadCache(unittest.TestCase):
     def test_unchanged_content_parsed_once_with_independent_nested_values(self):
         self.path.write_text("tasks:\n  - name: original\n", encoding="utf-8")
         with patch.object(YAML_INSTANCE, "load", wraps=YAML_INSTANCE.load) as parse:
-            first = load_yaml(self.path)
+            first = load_data(self.path, file_format="yaml", cached=True)
             first["tasks"][0]["name"] = "edited"
-            second = load_yaml(self.path)
-            optional = load_yaml_optional(self.path)
+            second = load_data(self.path, file_format="yaml", cached=True)
+            optional = load_data(self.path, file_format="yaml", cached=True)
         self.assertEqual(parse.call_count, 1)
         self.assertEqual(second, {"tasks": [{"name": "original"}]})
         self.assertEqual(optional, second)
@@ -93,7 +88,9 @@ class TestYamlReadCache(unittest.TestCase):
 
     def test_same_size_and_timestamp_replacement_reads_new_content(self):
         self.path.write_text("value: before\n", encoding="utf-8")
-        self.assertEqual(load_yaml(self.path)["value"], "before")
+        self.assertEqual(
+            load_data(self.path, file_format="yaml", cached=True)["value"], "before"
+        )
         stat = self.path.stat()
         replacement = self.path.with_suffix(".tmp")
         replacement.write_text("value: after!\n", encoding="utf-8")
@@ -101,57 +98,64 @@ class TestYamlReadCache(unittest.TestCase):
         replacement.replace(self.path)
         self.assertEqual(self.path.stat().st_size, stat.st_size)
         self.assertEqual(self.path.stat().st_mtime_ns, stat.st_mtime_ns)
-        self.assertEqual(load_yaml(self.path)["value"], "after!")
-        self.assertEqual(load_yaml_optional(self.path)["value"], "after!")
+        self.assertEqual(
+            load_data(self.path, file_format="yaml", cached=True)["value"], "after!"
+        )
+        self.assertEqual(
+            load_data(self.path, file_format="yaml", cached=True)["value"], "after!"
+        )
 
-    def test_deleted_cached_file_keeps_required_and_optional_contracts(self):
+    def test_deleted_cached_file_does_not_return_cached_data(self):
         self.path.write_text("value: present\n", encoding="utf-8")
-        load_yaml(self.path)
+        load_data(self.path, file_format="yaml", cached=True)
         self.path.unlink()
-        with self.assertRaisesRegex(AssertionError, "配置文件缺失"):
-            load_yaml(self.path)
-        self.assertEqual(load_yaml_optional(self.path), {})
+        with self.assertRaises(FileNotFoundError):
+            load_data(self.path, file_format="yaml", cached=True)
 
     def test_invalid_external_edits_do_not_return_previous_content(self):
         self.path.write_text("value: valid\n", encoding="utf-8")
-        load_yaml(self.path)
-        for text, error in (
-            ("", AssertionError),
-            ("[]", AssertionError),
-            ("a: [", YAMLError),
-        ):
-            self.path.write_text(text, encoding="utf-8")
-            for read in (load_yaml, load_yaml_optional):
-                with (
-                    self.subTest(text=text, read=read.__name__),
-                    self.assertRaises(error),
-                ):
-                    read(self.path)
+        load_data(self.path, file_format="yaml", cached=True)
+        for text, expected in (("", None), ("[]", [])):
+            with self.subTest(text=text):
+                self.path.write_text(text, encoding="utf-8")
+                self.assertEqual(
+                    load_data(self.path, file_format="yaml", cached=True), expected
+                )
+        self.path.write_text("a: [", encoding="utf-8")
+        with self.assertRaises(YAMLError):
+            load_data(self.path, file_format="yaml", cached=True)
 
     def test_cached_round_trip_preserves_comments_quotes_and_time(self):
         self.path.write_text(TestYamlRoundTrip.SAMPLE, encoding="utf-8")
-        load_yaml(self.path)
-        data = load_yaml(self.path)
+        load_data(self.path, file_format="yaml", cached=True)
+        data = load_data(self.path, file_format="yaml", cached=True)
         data["name"] = "updated"
-        dump_yaml(self.path, data)
+        save_data(self.path, data, file_format="yaml")
         saved = self.path.read_text(encoding="utf-8")
         self.assertIn("# 顶部注释", saved)
         self.assertIn("# 行内注释", saved)
         self.assertIn("empty: ''", saved)
-        self.assertEqual(load_yaml(self.path)["name"], "updated")
-        self.assertEqual(load_yaml(self.path)["scheduled_time"], "04:00")
+        self.assertEqual(
+            load_data(self.path, file_format="yaml", cached=True)["name"], "updated"
+        )
+        self.assertEqual(
+            load_data(self.path, file_format="yaml", cached=True)["scheduled_time"],
+            "04:00",
+        )
 
 
 class TestAtomicDump(unittest.TestCase):
-    """dump_yaml 原子写（tmp + os.replace）：写入中断不留截断损坏文件。"""
+    """save_data 原子写（tmp + os.replace）：写入中断不留截断损坏文件。"""
 
     def test_no_tmp_left_and_content_round_trips(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         path = os.path.join(tmp.name, "atomic.yml")
-        dump_yaml(path, {"a": 1, "b": "文本"})
+        save_data(path, {"a": 1, "b": "文本"}, file_format="yaml")
         self.assertFalse(os.path.exists(path + ".tmp"))
-        self.assertEqual(load_yaml(path), {"a": 1, "b": "文本"})
+        self.assertEqual(
+            load_data(path, file_format="yaml", cached=True), {"a": 1, "b": "文本"}
+        )
 
 
 if __name__ == "__main__":

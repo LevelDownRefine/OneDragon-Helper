@@ -28,7 +28,7 @@ from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import RunOptions, StartupOptions
 from src.service.script_service import ScriptEdit
 from src.update.runtime import FileLease, UpdateBusyError
-from src.utils.utils_io import load_yaml
+from src.utils.utils_io import load_data
 from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture
 
@@ -367,7 +367,9 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
         self.assertEqual(saved["weekly_timeouts"][1:], [0, 60, 60, 60, 60, 86400])
         self.assertEqual(responses[3]["error"]["code"], -32602)
         self.assertEqual(self.native.read_bytes(), before)
-        config = load_yaml(str(self.root / "config/config.yml"))
+        config = load_data(
+            str(self.root / "config/config.yml"), file_format="yaml", cached=True
+        )
         self.assertEqual(config["script_list"][1]["display_name"], "新的名字")
 
     def test_adapter_rejections_leave_native_file_unchanged(self):
@@ -584,21 +586,23 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         )
         self.assertFalse(added.with_suffix(".started").exists())
         self.assertTrue((self.root / "scripts/custom.py").exists())
-        weekly = load_yaml(str(self.root / "config/weekly.yml"))
+        weekly = load_data(
+            str(self.root / "config/weekly.yml"), file_format="yaml", cached=True
+        )
         self.assertNotIn("ok-ww", weekly["weekly_timeouts"])
         self.assertNotIn("自定义脚本", weekly["weekly_timeouts"])
         self.assertIn("new", weekly["weekly_timeouts"])
 
     def test_icon_paths_are_read_only_without_gui_imports(self):
-        from src.utils.utils_io import dump_yaml
+        from src.utils.utils_io import save_data
 
         result, _ = self.serve([request("app.snapshot")])
         self.assertEqual(result.returncode, 0, result.stderr)
         config_path = self.root / "config/config.yml"
-        config = load_yaml(str(config_path))
+        config = load_data(str(config_path), file_format="yaml", cached=True)
         config["script_list"][0]["game_path"] = str(self.root / "游戏.exe")
         config["script_list"][0]["script_type"] = "external"
-        dump_yaml(str(config_path), config)
+        save_data(str(config_path), config, file_format="yaml")
         before = config_path.read_bytes()
         result, responses = self.serve(
             [
@@ -732,7 +736,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         for i, expected in ((1, True), (3, True), (5, False), (7, False)):
             self.assertIs(responses[i]["result"]["dailies"][0]["sequence"], expected)
         self.assertEqual(
-            load_yaml(str(native)), {"build_target_enable": False, "power_enable": True}
+            load_data(str(native), file_format="yaml", cached=True),
+            {"build_target_enable": False, "power_enable": True},
         )
 
     def test_resource_selection_reuses_enable_behavior(self):
@@ -870,9 +875,9 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
             self.assertEqual(response["error"]["code"], -32002)
         self.assertEqual(self.native.read_bytes(), before)
         self.assertEqual(
-            load_yaml(str(self.root / "config/weekly.yml"))["weekly_start"]["ok-ww"][
-                "幻梦游园"
-            ],
+            load_data(
+                str(self.root / "config/weekly.yml"), file_format="yaml", cached=True
+            )["weekly_start"]["ok-ww"]["幻梦游园"],
             1,
         )
 
@@ -896,7 +901,9 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         self.assertEqual(responses[1]["result"]["weeklies"][0]["start_day"], 0)
         self.assertIsNone(responses[2]["result"])
         self.assertEqual(
-            load_yaml(str(self.root / "config/weekly.yml"))["weekly_start"]["ok-ww"],
+            load_data(
+                str(self.root / "config/weekly.yml"), file_format="yaml", cached=True
+            )["weekly_start"]["ok-ww"],
             {"幻梦游园": 0, "未知周常": 4},
         )
 

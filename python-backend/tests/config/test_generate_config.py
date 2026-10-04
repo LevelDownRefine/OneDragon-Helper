@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from src.config import generate_config
 from src.config.generate_config import config_workflow
-from src.utils.utils_io import load_yaml
+from src.utils.utils_io import load_data
 
 
 class ConfigWorkflowTestBase(unittest.TestCase):
@@ -76,11 +76,15 @@ class TestConfigWorkflowGenerate(ConfigWorkflowTestBase):
         self.assertTrue(os.path.exists(self._path("schedule.yml")))
         self.assertTrue(os.path.exists(self._path("weekly.yml")))
         self.assertEqual(
-            load_yaml(self._path("schedule.yml"))["daily_run"],
+            load_data(self._path("schedule.yml"), file_format="yaml", cached=True)[
+                "daily_run"
+            ],
             {"enabled": False, "target_time": "04:10"},
         )
         self.assertEqual(
-            load_yaml(self._path("config.yml"))["script_list"][0]["display_name"],
+            load_data(self._path("config.yml"), file_format="yaml", cached=True)[
+                "script_list"
+            ][0]["display_name"],
             "示例",
         )
 
@@ -103,7 +107,9 @@ class TestConfigWorkflowCorruption(ConfigWorkflowTestBase):
         config_workflow()
         # 重建后的 config.yml 可解析且含模板 script_list
         self.assertEqual(
-            load_yaml(self._path("config.yml"))["script_list"][0]["display_name"],
+            load_data(self._path("config.yml"), file_format="yaml", cached=True)[
+                "script_list"
+            ][0]["display_name"],
             "示例",
         )
         # 损坏现场保留
@@ -112,13 +118,19 @@ class TestConfigWorkflowCorruption(ConfigWorkflowTestBase):
     def test_corrupt_schedule_recovered(self):
         self._write("schedule.yml", "rerun: [unclosed")
         config_workflow()
-        self.assertIn("rerun", load_yaml(self._path("schedule.yml")))
+        self.assertIn(
+            "rerun",
+            load_data(self._path("schedule.yml"), file_format="yaml", cached=True),
+        )
         self.assertTrue(os.path.exists(self._path("schedule.yml.bak")))
 
     def test_corrupt_weekly_recovered(self):
         self._write("weekly.yml", "weekly_start: {")
         config_workflow()
-        self.assertIn("weekly_timeouts", load_yaml(self._path("weekly.yml")))
+        self.assertIn(
+            "weekly_timeouts",
+            load_data(self._path("weekly.yml"), file_format="yaml", cached=True),
+        )
         self.assertTrue(os.path.exists(self._path("weekly.yml.bak")))
 
     def test_existing_bak_not_clobbered(self):

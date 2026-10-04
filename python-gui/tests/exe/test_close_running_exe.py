@@ -22,7 +22,7 @@ import tempfile
 import time
 import unittest
 
-from src.utils.utils_io import dump_yaml
+from src.utils.utils_io import save_data
 from tests.exe import project_root
 
 PROJECT_ROOT = str(project_root())
@@ -116,8 +116,8 @@ class TestExeCloseRunning(unittest.TestCase):
         body_name 非 None 时写入 script_process_name（指向真实存在的脚本真身进程），
         用于验证「真身」也按名被 close 命中；为 None 则留空，只验游戏进程。
 
-        用项目统一的 ruamel dump_yaml 写回（不依赖 PyYAML），与 exe 自己的
-        load_yaml（ruamel）格式一致。
+        用项目统一的 ruamel save_data 写回（不依赖 PyYAML），与 exe 自己的
+        load_data（ruamel）格式一致。
         """
         assert EXE_CONFIG is not None
         original = None
@@ -144,7 +144,7 @@ class TestExeCloseRunning(unittest.TestCase):
                 }
             ]
         }
-        dump_yaml(EXE_CONFIG, data)
+        save_data(EXE_CONFIG, data, file_format="yaml")
         return original
 
     def _run_once(self, *, close_running: bool, with_body: bool) -> tuple[bool, bool]:

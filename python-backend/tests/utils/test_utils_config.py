@@ -15,7 +15,7 @@ from src.utils.utils_config import (
     load_config,
     save_config,
 )
-from src.utils.utils_io import dump_yaml_file, load_yaml
+from src.utils.utils_io import load_data, save_data
 
 
 class UtilsConfigTestBase(unittest.TestCase):
@@ -49,10 +49,10 @@ class UtilsConfigTestBase(unittest.TestCase):
             self.addCleanup(p.stop)
 
     def _write_config(self, data):
-        dump_yaml_file(self.config_path, data)
+        save_data(self.config_path, data, file_format="yaml")
 
     def _read_config(self):
-        return load_yaml(self.config_path)
+        return load_data(self.config_path, file_format="yaml", cached=True)
 
 
 class TestDeprecatedEnabledField(UtilsConfigTestBase):
@@ -182,7 +182,7 @@ class TestLoadSaveConfig(unittest.TestCase):
                 {"display_name": "测试", "script_path": "C:/x.exe"},
             ]
         }
-        dump_yaml_file(self.config_path, fake_data)
+        save_data(self.config_path, fake_data, file_format="yaml")
         with patch(
             "src.utils.utils_config.require_config_yml_path",
             return_value=self.config_path,
@@ -191,7 +191,7 @@ class TestLoadSaveConfig(unittest.TestCase):
         self.assertEqual(data, fake_data)
 
     def test_load_config_asserts_script_list(self):
-        dump_yaml_file(self.config_path, {"a": 1})
+        save_data(self.config_path, {"a": 1}, file_format="yaml")
         with (
             patch(
                 "src.utils.utils_config.require_config_yml_path",
@@ -207,7 +207,7 @@ class TestLoadSaveConfig(unittest.TestCase):
             return_value=self.config_path,
         ):
             save_config({"script_list": [{"display_name": "测试"}]})
-        saved = load_yaml(self.config_path)
+        saved = load_data(self.config_path, file_format="yaml", cached=True)
         self.assertEqual(saved["script_list"][0]["display_name"], "测试")
 
     def test_save_config_asserts_script_list(self):

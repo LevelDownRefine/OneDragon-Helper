@@ -16,7 +16,7 @@ from src import link
 from src.config import script_resources as resources
 from src.config import set_config
 from src.log import monitor
-from src.utils.utils_io import dump_yaml_str
+from src.utils.utils_io import dump_data_str
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -47,7 +47,8 @@ class TestScriptResources(unittest.TestCase):
     def load(self, data=None):
         resources.load_resource_manifest.cache_clear()
         self.path.write_text(
-            dump_yaml_str(self.data if data is None else data), encoding="utf-8"
+            dump_data_str(self.data if data is None else data, file_format="yaml"),
+            encoding="utf-8",
         )
         return resources.load_resource_manifest(str(self.path))
 
@@ -171,16 +172,20 @@ class TestScriptResources(unittest.TestCase):
             resources.load_resource_manifest(str(self.path))
 
     def test_yaml_shape_and_cache_until_reload(self):
-        with patch.object(resources, "load_yaml", wraps=resources.load_yaml) as read:
+        with patch.object(resources, "load_data", wraps=resources.load_data) as read:
             loaded = self.load()
             self.assertIsInstance(loaded["demo"], dict)
             self.assertIsInstance(loaded["demo"]["game"]["keys"], list)
             self.assertEqual(loaded, self.data["scripts"])
             self.data["scripts"]["demo"]["background"] = "changed.jpg"
-            self.path.write_text(dump_yaml_str(self.data), encoding="utf-8")
+            self.path.write_text(
+                dump_data_str(self.data, file_format="yaml"), encoding="utf-8"
+            )
             self.assertIs(resources.load_resource_manifest(str(self.path)), loaded)
             self.assertEqual(loaded["demo"]["background"], "图片/背景.jpg")
-            read.assert_called_once_with(str(self.path))
+            read.assert_called_once_with(
+                str(self.path), file_format="yaml", cached=True
+            )
             resources.load_resource_manifest.cache_clear()
             reloaded = resources.load_resource_manifest(str(self.path))
             self.assertEqual(reloaded["demo"]["background"], "changed.jpg")

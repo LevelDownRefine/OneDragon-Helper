@@ -21,7 +21,7 @@ from src.service.daily_plan import (
     read_daily_task_state,
 )
 from src.service.schedule import RunOptions
-from src.utils.utils_io import dump_yaml, load_yaml
+from src.utils.utils_io import load_data, save_data
 
 
 class TestDailyPlanConfig(unittest.TestCase):
@@ -44,7 +44,7 @@ class TestDailyPlanConfig(unittest.TestCase):
         )
         self.config = config_patcher.start().return_value
         self.addCleanup(config_patcher.stop)
-        dump_yaml(self.path, self.original)
+        save_data(self.path, self.original, file_format="yaml")
         patcher = patch(
             "src.service.schedule.get_schedule_yml_path_under_root",
             return_value=self.path,
@@ -142,7 +142,10 @@ class TestDailyPlanConfig(unittest.TestCase):
         ):
             apply_daily_plan(options)
             self.assertEqual(load_daily_plan(), options)
-            self.assertEqual(load_yaml(self.path)["notify"], self.original["notify"])
+            self.assertEqual(
+                load_data(self.path, file_format="yaml", cached=True)["notify"],
+                self.original["notify"],
+            )
         self.assertEqual(
             [call.args[0] for call in task.return_value.sync.call_args_list],
             [
@@ -158,7 +161,9 @@ class TestDailyPlanConfig(unittest.TestCase):
         task.return_value.sync.side_effect = OSError("denied")
         with self.assertRaisesRegex(OSError, "denied"):
             apply_daily_plan(DailyPlanOptions(True))
-        self.assertEqual(load_yaml(self.path), self.original)
+        self.assertEqual(
+            load_data(self.path, file_format="yaml", cached=True), self.original
+        )
 
     @patch("src.service.daily_plan.WindowsDailyTask")
     def test_save_failure_restores_previous_task(self, task):
@@ -175,7 +180,9 @@ class TestDailyPlanConfig(unittest.TestCase):
             [DailyPlanOptions(True, "08:00")],
         )
         task.return_value.restore.assert_called_once_with(DailyPlanOptions())
-        self.assertEqual(load_yaml(self.path), self.original)
+        self.assertEqual(
+            load_data(self.path, file_format="yaml", cached=True), self.original
+        )
 
     @patch("src.service.daily_plan.WindowsDailyTask")
     def test_save_with_notify_off_preserves_saved_mail_settings(self, task):
@@ -190,9 +197,11 @@ class TestDailyPlanConfig(unittest.TestCase):
                 "smtp_port": 465,
             }
         }
-        dump_yaml(self.path, saved)
+        save_data(self.path, saved, file_format="yaml")
         apply_daily_plan(DailyPlanOptions(True, "04:10"))
-        notify = load_yaml(self.path)["daily_run"]["run_options"]["notify"]
+        notify = load_data(self.path, file_format="yaml", cached=True)["daily_run"][
+            "run_options"
+        ]["notify"]
         self.assertEqual(
             notify,
             {

@@ -139,7 +139,7 @@ def _preserve_game_path(target: Path, temporary: Path, keys: tuple[str, ...]) ->
         raise ValueError(f"不支持的游戏路径配置格式: {ext}")
     file_format = "json" if ext == ".json" else "yaml"
     current = (
-        load_data(target, cached=False, encoding="utf-8-sig")
+        load_data(target, file_format=file_format, cached=False, encoding="utf-8-sig")
         if target.is_file()
         else {}
     )

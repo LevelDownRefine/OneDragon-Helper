@@ -29,7 +29,7 @@ from src import cli
 from src.config.generate_config import config_workflow
 from src.service import chain_gen as service_chain_gen
 from src.utils import get_config_yml_path_under_root
-from src.utils.utils_io import dump_yaml, load_yaml
+from src.utils.utils_io import load_data, save_data
 from src.utils.utils_sub_config import get_script_name
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -51,11 +51,13 @@ class CliTestCase(unittest.TestCase):
             "MAA任务.json",
         ):
             shutil.copyfile(Path(PROJECT_ROOT, "config", name), config_dir / name)
-        config = load_yaml(str(config_dir / "config.example.yml"))
+        config = load_data(
+            str(config_dir / "config.example.yml"), file_format="yaml", cached=True
+        )
         for script in config["script_list"]:
             name = script["script_path"].replace("\\", "/").rsplit("/", 1)[-1]
             script["script_path"] = str(directory / "uninstalled" / name)
-        dump_yaml(str(config_dir / "config.example.yml"), config)
+        save_data(str(config_dir / "config.example.yml"), config, file_format="yaml")
         for target in (
             "src.utils.get_root_dir",
             "src.utils.utils_sub_config.get_root_dir",
@@ -119,7 +121,7 @@ def _read_cli_json(kind: str) -> dict:
 
 def _known_script_names():
     config_path = get_config_yml_path_under_root()
-    data = load_yaml(config_path)
+    data = load_data(config_path, file_format="yaml", cached=True)
     return [get_script_name(s) for s in data["script_list"]]
 
 
@@ -129,7 +131,7 @@ def _chainable_script_names():
     链生成的启用判定 = 本次名单（--enable/--exclude）∩ GUI 总闸；总闸关闭的
     脚本不进链，故期望集合须以总闸过滤后的集合为基线。
     """
-    data = load_yaml(get_config_yml_path_under_root())
+    data = load_data(get_config_yml_path_under_root(), file_format="yaml", cached=True)
     return [
         get_script_name(s)
         for s in data.get("script_list", [])
@@ -286,7 +288,7 @@ class TestCliGenerateChain(CliTestCase):
                     0,
                 )
                 self.assertTrue(os.path.isfile(out), "--generate-chain 未产出 yml")
-                data = load_yaml(out)
+                data = load_data(out, file_format="yaml", cached=True)
                 self.assertIn("script_list", data)
                 produced = [get_script_name(s) for s in data["script_list"]]
                 self.assertEqual(set(produced), expected)
@@ -331,7 +333,7 @@ class TestCliGenerateChain(CliTestCase):
                 expect_exit=0,
             )
             self.assertEqual(code, 0)
-            data = load_yaml(out)
+            data = load_data(out, file_format="yaml", cached=True)
             produced = [get_script_name(s) for s in data["script_list"]]
             self.assertEqual(
                 produced, [other] if other in self._chainable else [], msg=produced
@@ -649,7 +651,7 @@ class TestCliDumpConfig(CliTestCase):
         data = _read_cli_json("dump_config")
         # 与 config.yml 的 display_name 列表一致（dump 是原始 config.yml 导出）
         config_path = get_config_yml_path_under_root()
-        source = load_yaml(config_path)
+        source = load_data(config_path, file_format="yaml", cached=True)
         self.assertEqual(
             [s["display_name"] for s in data["script_list"]],
             [s["display_name"] for s in source.get("script_list", [])],

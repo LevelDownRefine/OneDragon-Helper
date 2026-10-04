@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.utils.utils_io import load_yaml
+from src.utils.utils_io import load_data
 from tools import sync_oknte_tasks as m
 
 _ANOMALY = """
@@ -127,10 +127,10 @@ class SyncOknteTest(unittest.TestCase):
         self.assertEqual(m._load_hunter(), ["音霸魔王", "无首铁驭"])
 
     def test_apply_numeric_and_hunter(self) -> None:
-        before = load_yaml(self.tmp_path)
+        before = load_data(self.tmp_path, file_format="yaml", cached=True)
         m._apply_numeric(m._fetch_anomaly_totals())
         m._apply_hunter(m._fetch_hunter_targets())
-        data = load_yaml(self.tmp_path)
+        data = load_data(self.tmp_path, file_format="yaml", cached=True)
         self.assertEqual(data["ok-nte"][2], before["ok-nte"][2])
         by_name = {d["display_name"]: d for d in data["ok-nte"][0]["options"]["values"]}
         self.assertEqual(data["ok-nte"][0]["physical_name"], "daily_anomaly")

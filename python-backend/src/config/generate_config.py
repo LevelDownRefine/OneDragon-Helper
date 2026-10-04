@@ -16,7 +16,7 @@ from src.utils import (
     get_weekly_yml_path_under_root,
     safe_path_join,
 )
-from src.utils.utils_io import dump_yaml, load_yaml
+from src.utils.utils_io import load_data, save_data
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +30,9 @@ def generate_config_from_example() -> None:
     example_path = safe_path_join(get_root_dir(), "config", "config.example.yml")
     config_path = get_config_yml_path_under_root()
     assert os.path.exists(example_path), f"[sub_config] 模板不存在: {example_path}"
-    data = load_yaml(example_path)
-    dump_yaml(config_path, data)
+    data = load_data(example_path, file_format="yaml", cached=True)
+    assert isinstance(data, dict), f"模板必须为 dict: {example_path}"
+    save_data(config_path, data, file_format="yaml")
 
 
 def generate_schedule_from_example() -> None:
@@ -44,8 +45,9 @@ def generate_schedule_from_example() -> None:
     example_path = safe_path_join(get_root_dir(), "config", "schedule.example.yml")
     schedule_path = get_schedule_yml_path_under_root()
     assert os.path.exists(example_path), f"[sub_config] 模板不存在: {example_path}"
-    data = load_yaml(example_path)
-    dump_yaml(schedule_path, data)
+    data = load_data(example_path, file_format="yaml", cached=True)
+    assert isinstance(data, dict), f"模板必须为 dict: {example_path}"
+    save_data(schedule_path, data, file_format="yaml")
 
 
 def generate_weekly_from_example() -> None:
@@ -59,8 +61,9 @@ def generate_weekly_from_example() -> None:
     example_path = safe_path_join(get_root_dir(), "config", "weekly.example.yml")
     weekly_path = get_weekly_yml_path_under_root()
     assert os.path.exists(example_path), f"[sub_config] 模板不存在: {example_path}"
-    data = load_yaml(example_path)
-    dump_yaml(weekly_path, data)
+    data = load_data(example_path, file_format="yaml", cached=True)
+    assert isinstance(data, dict), f"模板必须为 dict: {example_path}"
+    save_data(weekly_path, data, file_format="yaml")
 
 
 def _backup_corrupt(path: str) -> str:
@@ -81,14 +84,15 @@ def _ensure_generated(path: str, generate) -> None:
     """保证生成物可用：缺失→从模板生成；存在但解析失败→改名保留后重建。
 
     三个生成物是用户可手改的外部文件，损坏属可恢复外部输入而非编程错误：
-    记日志留现场（.bak），从模板重建使用户无感恢复（load_yaml 的快速失败
+    记日志留现场（.bak），从模板重建使用户无感恢复（load_data 的快速失败
     语义保持不变，恢复只发生在启动期的本函数）。
     """
     if not os.path.exists(path):
         generate()
         return
     try:
-        load_yaml(path)
+        data = load_data(path, file_format="yaml", cached=True)
+        assert isinstance(data, dict), f"配置必须为 dict: {path}"
     except Exception:
         logger.error(
             "[generate_config] %s 无法解析（损坏），将从模板重建，原文件改名保留",

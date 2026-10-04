@@ -10,7 +10,7 @@ from unittest.mock import mock_open, patch
 from src.config import set_config
 from src.config.task_config import get_daily_configs
 from src.utils import get_root_dir, safe_path_join, utils_sub_config
-from src.utils.utils_io import dump_yaml_str, load_yaml_str
+from src.utils.utils_io import dump_data_str, parse_data
 from src.utils.utils_sub_config import (
     check_script_name_uniqueness,
     default_script_entry,
@@ -502,7 +502,7 @@ class TestLoadConfig(unittest.TestCase):
             if ext == ".json":
                 file_content = json.dumps(fake_data, ensure_ascii=False)
             else:
-                file_content = dump_yaml_str(fake_data)
+                file_content = dump_data_str(fake_data, file_format="yaml")
 
             with (
                 patch.object(
@@ -546,7 +546,7 @@ class TestSaveConfig(unittest.TestCase):
     def test_save_yaml_config_does_not_write_real_file(self):
         """save YAML 时不应写入真实 config 文件
 
-        dump_yaml 为原子写：先写同目录 .tmp，再 os.replace 到目标路径。
+        save_data 为原子写：先写同目录 .tmp，再 os.replace 到目标路径。
         """
         fake_path = r"C:\fake\script\charge_plan.yml"
         data = {"plan_list": [{"category_name": "test"}]}
@@ -570,7 +570,7 @@ class TestSaveConfig(unittest.TestCase):
         # 验证写入的内容是有效的 YAML
         handle = m()
         written = "".join(call.args[0] for call in handle.write.call_args_list)
-        self.assertEqual(load_yaml_str(written), data)
+        self.assertEqual(parse_data(written, file_format="yaml"), data)
 
     def test_save_unknown_script_is_rejected_before_opening_a_file(self):
         with (

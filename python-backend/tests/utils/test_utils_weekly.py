@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.utils.utils_io import dump_yaml_file, load_yaml
+from src.utils.utils_io import load_data, save_data
 from src.utils.utils_weekly import (
     DISABLED_START_DAY,
     check_weekly,
@@ -44,12 +44,12 @@ class UtilsWeeklyTestBase(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def _write_weekly(self, data):
-        dump_yaml_file(self.weekly_path, data)
+        save_data(self.weekly_path, data, file_format="yaml")
 
     def _read_weekly(self):
         if not os.path.exists(self.weekly_path):
             return None
-        return load_yaml(self.weekly_path)
+        return load_data(self.weekly_path, file_format="yaml", cached=True)
 
 
 class TestSaveWeekly(UtilsWeeklyTestBase):
@@ -322,7 +322,7 @@ class TestLegacyWeeklyStartMigration(UtilsWeeklyTestBase):
 class TestMissingWeeklyFile(unittest.TestCase):
     """weekly.yml 缺失（用户文件、CI 干净 checkout 尚未生成）时读取不崩，回退空结构。
 
-    与 schedule.yml 一致：用户文件可能不存在，读取器用 load_yaml_optional 回退空 {}，
+    与 schedule.yml 一致：用户文件可能不存在，读取器用 load_data 回退空 {}，
     而非 assert 崩溃（这正是 CI test_chain_service 崩溃的根因修复）。
     """
 
@@ -344,7 +344,7 @@ class TestMissingWeeklyFile(unittest.TestCase):
     def test_save_creates_file_with_both_sections(self):
         """缺失时首次写回会创建文件，且 weekly_start / weekly_timeouts 两段都在。"""
         save_weekly("a", [60] * 7)
-        data = load_yaml(self.missing_path)
+        data = load_data(self.missing_path, file_format="yaml", cached=True)
         self.assertEqual(data["weekly_timeouts"]["a"], [60] * 7)
         self.assertEqual(data["weekly_start"], {})
 

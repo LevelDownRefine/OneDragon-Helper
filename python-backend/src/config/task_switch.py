@@ -26,7 +26,7 @@ from pathlib import Path, PureWindowsPath
 from typing import NamedTuple
 
 from src.utils import get_task_switch_list_yml_path_under_root
-from src.utils.utils_io import load_yaml
+from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import load_script_config, save_script_config
 
 logger = logging.getLogger(__name__)
@@ -632,7 +632,7 @@ def load_task_switch_map() -> dict[str, list[dict]]:
     path = get_task_switch_list_yml_path_under_root()
     file = Path(path)
     assert file.is_file(), f"任务开关声明缺失: {path}"
-    return _parse_declarations(load_yaml(path, cached=True))
+    return _parse_declarations(load_data(path, cached=True, file_format="yaml"))
 
 
 def _parse_declarations(data: dict) -> dict[str, list[dict]]:

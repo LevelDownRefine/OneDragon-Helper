@@ -23,7 +23,7 @@ from gui.main_window import QmlBridge
 from src.service import script_service
 from src.service.app_service import AppService
 from src.utils import utils_config, utils_weekly
-from src.utils.utils_io import load_yaml
+from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import get_script_name
 
 _app = QApplication.instance() or QApplication([])
@@ -308,7 +308,9 @@ class TestNativeDropPersistence(unittest.TestCase):
                 shell.DragFinish.assert_called_once_with(5678)
                 # 此处不 mock 定时器、添加接口或写盘，验证异步回调真正走完全链路。
                 QTest.qWait(150)
-                entry = load_yaml(str(config))["script_list"][0]
+                entry = load_data(str(config), file_format="yaml", cached=True)[
+                    "script_list"
+                ][0]
                 self.assertEqual(entry["script_path"], str(exe))
                 self.assertEqual(entry["script_type"], "external")
                 self.assertEqual(bridge.gameModel.rowCount(), 1)
@@ -317,7 +319,9 @@ class TestNativeDropPersistence(unittest.TestCase):
                 )
                 self.assertIn(
                     bridge.games[0]["script_name"],
-                    load_yaml(str(weekly))["weekly_timeouts"],
+                    load_data(str(weekly), file_format="yaml", cached=True)[
+                        "weekly_timeouts"
+                    ],
                 )
                 self.assertIn(f"已添加 {entry['display_name']}", toasts)
 

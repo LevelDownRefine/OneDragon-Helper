@@ -7,7 +7,7 @@ from pathlib import Path, PureWindowsPath
 
 from src.config.task_source import read_task_source
 from src.utils import get_root_dir
-from src.utils.utils_io import load_data, load_yaml
+from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import (
     get_script_root_dir,
     get_sub_config_path,
@@ -26,7 +26,12 @@ def _relative_path(value: str) -> None:
 
 def load_declarations() -> dict:
     """读取并校验静态声明，不读取用户配置。"""
-    data = load_yaml(str(Path(get_root_dir()) / "config" / "task_switch_list.yml"))
+    data = load_data(
+        str(Path(get_root_dir()) / "config" / "task_switch_list.yml"),
+        file_format="yaml",
+        cached=True,
+    )
+    assert isinstance(data, dict), "任务选项声明必须为 dict"
     data = {name: node["options"] for name, node in data.items() if "options" in node}
     for groups in data.values():
         assert isinstance(groups, list)
@@ -101,7 +106,9 @@ class TaskOptions:
                 if not names:
                     raise ValueError("未找到枚举候选项")
             else:
-                records = load_data(path, cached=False, encoding="utf-8-sig")
+                records = load_data(
+                    path, file_format="json", cached=False, encoding="utf-8-sig"
+                )
                 if not isinstance(records, dict):
                     raise ValueError("候选资源不再是字典")
                 assert "field" in source

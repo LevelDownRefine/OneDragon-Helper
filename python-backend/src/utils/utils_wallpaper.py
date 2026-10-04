@@ -37,7 +37,7 @@ def load_wallpapers() -> dict:
     if not os.path.isfile(path):
         return {}
     try:
-        data = load_data(path, cached=False)
+        data = load_data(path, file_format="json", cached=False)
     except (OSError, json.JSONDecodeError) as e:
         logger.warning(
             "[wallpaper] 壁纸表读取失败(%s)，按未设置处理：%s %s",
@@ -61,7 +61,7 @@ def save_wallpapers(wallpapers: dict) -> None:
     """
     assert isinstance(wallpapers, dict), "[wallpaper] 待保存的壁纸表非 dict"
     path = get_wallpaper_json_path_under_root()
-    save_data(path, wallpapers, indent=2)
+    save_data(path, wallpapers, file_format="json", indent=2)
 
 
 def video_preview_path(source_path: str) -> str | None:

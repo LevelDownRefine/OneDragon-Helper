@@ -12,7 +12,7 @@ src.log.monitor` 方式调用，不单独运行。脚本唯一标识复用 `get_
 `src.utils.utils_sub_config`），日志位置读取 `src.config.script_resources` 的内置声明；
 根目录复用 `src.utils.get_root_dir`
 （冻结时为 exe 所在目录，勿按 `__file__` 自算），并直接读取 `config.yml`（经
-`src.utils.utils_io.load_yaml`，ruamel YAML 1.2 解析）。
+`src.utils.utils_io.load_data`，ruamel YAML 1.2 解析）。
 """
 
 import logging
@@ -26,7 +26,7 @@ from pathlib import Path
 
 from src.config.script_resources import get_script_resources
 from src.utils import get_root_dir
-from src.utils.utils_io import load_yaml, load_yaml_optional
+from src.utils.utils_io import load_data
 from src.utils.utils_logger import setup_logging
 from src.utils.utils_sub_config import get_script_name
 
@@ -55,7 +55,13 @@ def _load_log_analysis_config() -> dict:
     global _LOG_ANALYSIS_CONFIG
     if _LOG_ANALYSIS_CONFIG is None:
         path = os.path.join(_PROJECT_ROOT, "config", _LOG_ANALYSIS_YAML)
-        _LOG_ANALYSIS_CONFIG = load_yaml_optional(path)
+        data = (
+            load_data(path, file_format="yaml", cached=True)
+            if os.path.exists(path)
+            else {}
+        )
+        assert isinstance(data, dict), f"[log_monitor] 配置必须为 dict: {path}"
+        _LOG_ANALYSIS_CONFIG = data
     return _LOG_ANALYSIS_CONFIG
 
 
@@ -604,7 +610,7 @@ def parse_logs(
     config_path = Path(get_root_dir()) / "config" / "config.yml"
     assert config_path.exists(), f"[log_monitor] config.yml 不存在: {config_path}"
 
-    config_data = load_yaml(str(config_path))
+    config_data = load_data(str(config_path), file_format="yaml", cached=True)
 
     script_list = config_data.get("script_list", [])
     # 受支持脚本由各 parser 的 script_name 推导，与全链路标识一致。

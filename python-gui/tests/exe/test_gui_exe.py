@@ -23,7 +23,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.utils.utils_io import load_yaml
+from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import get_script_name
 from tests.exe import project_root
 
@@ -133,7 +133,10 @@ class TestGuiExe(unittest.TestCase):
                     path = root / "config" / name
                     template = root / "config" / name.replace(".yml", ".example.yml")
                     if first_start:
-                        self.assertEqual(load_yaml(path), load_yaml(template))
+                        self.assertEqual(
+                            load_data(path, file_format="yaml", cached=True),
+                            load_data(template, file_format="yaml", cached=True),
+                        )
                         path.write_text("user_marker: keep-me\n", encoding="utf-8")
                     else:
                         self.assertEqual(
@@ -162,7 +165,7 @@ class TestGuiExe(unittest.TestCase):
         result = self._run_exe("--generate-chain", "--out", out)
         self.assertEqual(result.returncode, 0, msg=result.stderr[:500])
         self.assertTrue(os.path.isfile(out), f"--generate-chain 未产出 yml: {out}")
-        data = load_yaml(out)
+        data = load_data(out, file_format="yaml", cached=True)
         self.assertIn("script_list", data, msg=data)
         self.assertIsInstance(data["script_list"], list, msg=data)
 

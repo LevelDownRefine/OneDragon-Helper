@@ -7,7 +7,7 @@ from src.utils import (
     get_daily_task_list_yml_path_under_root,
     get_weekly_task_list_yml_path_under_root,
 )
-from src.utils.utils_io import load_yaml
+from src.utils.utils_io import load_data
 
 
 def get_physical_name(node: dict) -> str | int:
@@ -159,7 +159,7 @@ def load_task_map(path: str, *, require_class: bool = False) -> dict[str, list[d
     """
     file = Path(path)
     assert file.is_file(), f"任务声明缺失: {path}"
-    data = _load_task_map(load_yaml(path, cached=True))
+    data = _load_task_map(load_data(path, cached=True, file_format="yaml"))
     if require_class:
         for definitions in data.values():
             for definition in definitions:
