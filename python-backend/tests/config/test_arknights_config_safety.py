@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.config import daily as daily_mod
-from src.config import set_config as sc_mod
 from src.config import weekly as weekly_mod
 from src.config.set_config import ArknightsConfig
 
@@ -36,7 +35,6 @@ class TestMaaNativeConfig(unittest.TestCase):
         for module, load_name, save_name in (
             (daily_mod, "load_script_config", "save_script_config"),
             (weekly_mod, "load_script_config", "save_script_config"),
-            (sc_mod, "load_config", "save_config"),
         ):
             for name, function in ((load_name, load), (save_name, save)):
                 mock = patch.object(module, name, side_effect=function)

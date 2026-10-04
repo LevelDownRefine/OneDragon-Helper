@@ -1,5 +1,5 @@
 # 内置脚本资源声明，随程序发布；不保存用户机器上的安装路径。
-# 相对路径用 /；game、background、backup_paths 相对脚本目录，template 相对助手 config/。
+# 相对路径用 /；game、background、backup_paths 相对脚本目录。
 # logs.root 只支持 script / temp；异环 launcher 的向上查找机制仍由适配器实现。
 version: 1
 scripts:
@@ -25,7 +25,6 @@ scripts:
       keys:
       - genshinStartConfig
       - installPath
-    template: BGI一条龙.json
     logs:
       root: script
       path: log

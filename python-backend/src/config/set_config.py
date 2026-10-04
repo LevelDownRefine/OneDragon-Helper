@@ -10,13 +10,10 @@ from src.config.daily import Daily, MaaDaily, build_dailies
 from src.config.script_resources import ScriptResources, get_script_resources
 from src.config.task_config import load_weekly_map
 from src.config.weekly import Weekly, build_weeklies
-from src.utils.utils_dict import covers, get_field, safe_update
+from src.utils.utils_dict import get_field
 from src.utils.utils_sub_config import (
     get_script_game_path,
-    load_config,
     load_game_config,
-    load_template,
-    save_config,
 )
 from src.utils.utils_sub_config import (
     get_sub_config_path as _get_config_path_impl,
@@ -42,42 +39,28 @@ class ScriptConfig:
     """静态资源来自 script_resources.yml；基类 None 表示未适配。"""
 
     def __init__(self) -> None:
-        """按声明创建日常与周常对象，并在构造时对齐子脚本 config。
+        """按声明创建日常与周常对象，并在构造时执行脚本专属初始化。
 
-        两者装配同一时机（日常 ``_dailies`` / 周常 ``_weeklies``）；对齐经 ``_init_config``
-        收口到构造期。``functools.cache`` 单例保证每进程每脚本仅构造一次，故对齐也仅
+        两者装配同一时机（日常 ``_dailies`` / 周常 ``_weeklies``）；初始化经 ``_init_config``
+        收口到构造期。``functools.cache`` 单例保证每进程每脚本仅构造一次，故初始化也仅
         触发一次。CLI/GUI 均经工厂构造，无需分散守卫。
         """
         self._dailies: list[Daily] = build_dailies(self._script_name, self.display_name)
         self._weeklies: list[Weekly] = build_weeklies(
             self._script_name, self.display_name
         )
-        # 构造期对齐子脚本 config（懒加载收口点；无模板/未安装脚本为空操作）
+        # 构造期执行脚本专属初始化（懒加载收口点；默认不读写配置）
         self._init_config()
 
     def _daily_config_rel_path(self) -> str:
         """脚本 config 文件路径（取首个日常声明的 ``config``）。
 
-        模板对齐与「打开配置」共用它。
+        供「打开配置」定位原生文件。
 
         Returns:
             相对脚本根目录的路径。
         """
         return self._dailies[0]._config_rel_path
-
-    def _load_template(self) -> dict:
-        """加载模板文件（JSON/YAML）。
-
-        Returns:
-            模板 dict。
-
-        Raises:
-            AssertionError: 未声明 template 或解析结果非 dict。
-        """
-        assert self.resources is not None and "template" in self.resources, (
-            f"[set_config][{self.display_name}] 未声明 template"
-        )
-        return load_template(self._script_name, self.resources["template"])
 
     def _dispatch_daily(self, daily_display_name: str) -> Daily:
         """按日常展示名取日常对象。
@@ -126,41 +109,7 @@ class ScriptConfig:
         return records
 
     def _init_config(self) -> None:
-        """对齐检查并把模板 config 同步到用户 config。
-
-        仅对有模板（声明 ``template``）的脚本生效；无模板脚本或脚本尚未
-        安装/未配置（config 缺失）时直接返回，不触碰 config。已对齐时不动 config。
-        """
-        if self.resources is None or "template" not in self.resources:
-            return
-        rel_path = self._daily_config_rel_path()
-        try:
-            config = load_config(self._script_name, rel_path)
-        except AssertionError:
-            return  # 脚本未安装/未配置，待首次写入时由 set_* 创建
-        except Exception:  # noqa: BLE001  # 文件存在但内容损坏
-            logger.warning(
-                f"[init_config][{self.display_name}] config 损坏，跳过对齐: {rel_path}",
-                exc_info=True,
-            )
-            return
-        if not isinstance(config, dict):
-            return
-        template = self._load_template()
-
-        if covers(config, template):
-            logger.info(f"[init_config][{self.display_name}] config 已对齐，无需更新")
-            return
-
-        for key, val in template.items():
-            safe_update(config, key, val, self.display_name, assert_key_exists=False)
-        save_config(self._script_name, rel_path, config)
-        reloaded = load_config(self._script_name, rel_path)
-        assert reloaded == config, (
-            f"[init_config][{self.display_name}] 配置保存后校验失败："
-            "重新读取的内容与预期不一致"
-        )
-        logger.info(f"[init_config][{self.display_name}] config 已更新")
+        """脚本专属初始化钩子；默认不读写，MAA 覆盖以维护任务队列。"""
 
     def set_daily_task(
         self,
@@ -434,14 +383,10 @@ class ArknightsConfig(ScriptConfig):
 
 
 def init_config(script_name: str) -> None:
-    """对齐脚本 config 与模板，补全缺失字段（强制重对齐）。
+    """重新执行脚本专属初始化；当前仅 MAA 维护任务队列。
 
-    仅对声明了 ``template`` 的脚本生效；无模板或脚本未安装/未配置时为空操作。
-    实例已缓存时不重新构造，但显式再跑一次 ``_init_config``，故用于需强制重对齐的场景
-    （新增/修改脚本、备份恢复）。启动预热等幂等场景请用 :func:`ensure_config` 避免重复对齐与日志。
-
-    Args:
-        script_name: 脚本标识名。
+    实例已缓存时仍执行初始化钩子，供脚本路径变化或备份恢复后使用。
+    启动预热请用 :func:`ensure_config`，避免重复初始化。
     """
     if script_name not in _CONFIGS:
         return
@@ -449,11 +394,11 @@ def init_config(script_name: str) -> None:
 
 
 def ensure_config(script_name: str) -> None:
-    """确保脚本 config 已构造并模板对齐（幂等，不强制重对齐）。
+    """确保脚本适配器已构造（幂等，不重复初始化）。
 
-    仅经工厂构造单例；``__init__`` 内已收口 ``_init_config``，故每个进程每脚本仅对齐
+    仅经工厂构造单例；``__init__`` 内已收口 ``_init_config``，故每个进程每脚本仅初始化
     一次，无重复日志/重复工作。供启动后预热遍历，与懒加载共用同一工厂出口。
-    需强制重对齐（新增/修改脚本、备份恢复）请用 :func:`init_config`。
+    需重新初始化（新增/修改脚本、备份恢复）请用 :func:`init_config`。
 
     Args:
         script_name: 脚本标识名。
@@ -464,7 +409,7 @@ def ensure_config(script_name: str) -> None:
 
 
 def init_config_all() -> None:
-    """对齐所有已注册脚本的 config 与模板（手动全量入口，如备份恢复后）。"""
+    """执行所有已注册脚本的专属初始化（手动全量入口，如备份恢复后）。"""
     for script_name in _CONFIGS:
         init_config(script_name)
 

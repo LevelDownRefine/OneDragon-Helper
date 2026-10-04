@@ -1,4 +1,4 @@
-# options 为任务的子设置，tasks 关联本声明反读出的任务名；当前值只反读原生配置。
+# options 为任务子设置或独立选项组，tasks 关联任务名，[] 表示独立；当前值只反读原生配置。
 # 脚本原生任务的开关声明：把该脚本自带的任务列表接到配置弹窗的「任务」区。
 # 声明本文件的脚本才显示该区，未声明（或该脚本未安装、缺表）即整区不出现。
 #
@@ -25,6 +25,15 @@
 # config 为该脚本的原生配置文件（相对脚本安装目录）。
 BetterGI:
   options:
+  - display_name: 一条龙
+    config: User/OneDragon/默认配置.json
+    fields:
+    - id: completion_action
+      display_name: 完成后操作
+      keys: [CompletionAction]
+      type: choice
+      values: [无, 关闭游戏, 关闭软件, 关闭游戏和软件, 关机]
+    tasks: []
   - display_name: 领取每日奖励
     config: User/OneDragon/默认配置.json
     fields:

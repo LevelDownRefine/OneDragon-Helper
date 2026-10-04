@@ -32,7 +32,6 @@ class TestScriptResources(unittest.TestCase):
                 "demo": {
                     "backup_paths": ["配置"],
                     "background": "图片/背景.jpg",
-                    "template": "模板.json",
                     "game": {"config": "配置/game.json", "keys": ["nested", "exe"]},
                     "logs": {"root": "script", "path": "日志"},
                     "links": {
@@ -91,7 +90,7 @@ class TestScriptResources(unittest.TestCase):
 
     def test_missing_optional_resources_and_unknown_script(self):
         node = self.data["scripts"]["demo"]
-        for name in ("game", "template", "background", "logs"):
+        for name in ("game", "background", "logs"):
             del node[name]
         declaration = self.load()["demo"]
         self.assertEqual(declaration, node)
@@ -100,8 +99,6 @@ class TestScriptResources(unittest.TestCase):
             patch.dict(set_config._CONFIGS, clear=True),
             patch("src.config.daily.get_daily_configs", return_value=[]),
             patch.object(set_config, "load_game_config") as load_game,
-            patch.object(set_config, "load_config") as load_config,
-            patch.object(set_config, "load_template") as load_template,
         ):
 
             @set_config.register
@@ -114,8 +111,6 @@ class TestScriptResources(unittest.TestCase):
             self.assertEqual(set_config.get_game_path_keys("demo", "config.json"), ())
             self.assertEqual(set_config.iter_backup_paths()["demo"], ("配置",))
             load_game.assert_not_called()
-            load_config.assert_not_called()
-            load_template.assert_not_called()
             self.assertIsNone(resources.get_script_resources("unknown"))
             self.assertEqual(link.get_game_link("unknown", "github"), "")
 
@@ -125,6 +120,7 @@ class TestScriptResources(unittest.TestCase):
             (("version",), 2),
             (("scripts",), []),
             (("scripts", "demo", "backups"), ["config"]),
+            (("scripts", "demo", "template"), "旧模板.json"),
             (("scripts", "demo", "backup_paths"), []),
             (("scripts", "demo", "backup_paths"), ["config", "CONFIG"]),
             (("scripts", "demo", "game", "keys"), "path"),
@@ -222,7 +218,7 @@ class TestScriptResources(unittest.TestCase):
             str(ROOT / "config/script_resources.yml")
         )
         self.assertEqual(set(manifest), set(set_config.get_registered_script_names()))
-        self.assertEqual(manifest["BetterGI"]["template"], "BGI一条龙.json")
+        self.assertNotIn("template", manifest["BetterGI"])
         self.assertEqual(manifest["ok-nte"]["game"]["launcher"], "NTELauncher.exe")
         self.assertEqual(
             manifest["OneDragon-Launcher"]["background"],

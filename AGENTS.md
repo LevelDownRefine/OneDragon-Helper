@@ -22,9 +22,9 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 
 > 日常和周常分别声明于 `config/daily_task_list.yml`、`config/weekly_task_list.yml`，统一使用 `display_name / physical_name` 和递归 `options`；原神/终末地反读脚本本地资源（原神三日常：秘境读 tp.json（另含 BGI 内置的「自动选择 → 根据提升指南选择秘境」，值即该文案本身）、地脉花读 AutoLeyLineOutcrop 的地区键、首领讨伐的 boss 名单为静态表需手工跟版），鸣潮/异环通过 GitHub Action 同步选项。日常落点与读写收敛在 `Daily` 机制类（`python-backend/src/config/daily.py`，文件 I/O 由 Daily 自持、直调 utils_sub_config），日常在声明里用 `class` 标注机制类（`DAILY_CLASSES` 注册表查表）并用 `config`/`routine` 标注文件路径、`enable_key`/`enable_task` 标注开关落点（无声明即无「不启用」）、名字只来自声明；周常落点与读写收敛在 `Weekly` 类（`python-backend/src/config/weekly.py`，**一条周常一个对象**、config I/O 自持，声明每条标 `class`/`config`，机制类查 `WEEKLY_CLASSES`；日常和周常由 `ScriptConfig.__init__` 分别调用 `build_dailies` / `build_weeklies` 装配，统一持有并分发调用（`_dailies` / `_weeklies`），`weekly.py` 不持独立对象缓存；周几起是条目级（`0` = 不启用），界面入口只在任务卡（周常行的「周几起」chip，单脚本配置弹窗已无此项））；GUI 菜单由声明物化（`daily_config.get_daily_map`），加日常只改 yml；异环两个日常各一段、开关独立。脚本原生任务的开关（纯开/关、无副本落点）另立声明 `config/task_switch_list.yml`（给出该脚本的原生配置文件与任务定义/启用两个键），由 `python-backend/src/config/task_switch.py` 枚举行并按任务名反查 id 写回，界面入口是单脚本配置弹窗底部的「任务」区；与日常/周常互不掺和（行名取脚本配置里的任务名，脚本侧改名或增删任务自动跟上）。日志解析/失败重跑/邮件汇总之运行后动作内联于 `python-backend/src/log` 与 `service`（由 `schedule_run` 统一编排，详见 `python-backend/src/service/README.md`）；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
 
-脚本级资源位置统一声明于 `config/script_resources.yml`（备份范围、游戏路径配置及键路径、背景图、模板、日志目录、链接）；`python-backend/src/config/script_resources.py` 只读并校验，机制仍归各 Python 类。用户安装路径不写入此声明，格式与路径基准见 `python-backend/src/config/script_resources.md`。
+脚本级资源位置统一声明于 `config/script_resources.yml`（备份范围、游戏路径配置及键路径、背景图、日志目录、链接）；`python-backend/src/config/script_resources.py` 只读并校验，机制仍归各 Python 类。用户安装路径不写入此声明，格式与路径基准见 `python-backend/src/config/script_resources.md`。
 
-已接入任务的附带业务选项声明于 `config/task_switch_list.yml` 的 `options`，机制类 `TaskOptions` 自持子配置读写；支持开关、单选、多选，不含基础设置或 MAA。两套 GUI 的单脚本配置弹窗通过 `ScriptEdit.task_options` 只提交改动，写盘经 service。格式见 `python-backend/src/config/task_options.md`。
+已接入任务的附带业务选项及原神一条龙完成后操作声明于 `config/task_switch_list.yml` 的 `options`，机制类 `TaskOptions` 自持子配置读写；支持开关、单选、多选，不含基础设置或 MAA。两套 GUI 的单脚本配置弹窗通过 `ScriptEdit.task_options` 只提交改动，写盘经 service。格式见 `python-backend/src/config/task_options.md`。
 
 ## 铁律：违反即打回
 

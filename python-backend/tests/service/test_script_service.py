@@ -371,21 +371,18 @@ class TestScriptEdit(ScriptServiceTestBase):
                     expected,
                 )
 
-    def test_native_config_is_only_realigned_after_target_change(self):
-        template = {"task": {"enabled": True}}
+    def test_genshin_edit_does_not_initialize_native_config(self):
         factory = cache(set_config.GenshinConfig)
         with (
             patch.dict(set_config._CONFIGS, {"BetterGI": factory}, clear=True),
-            patch.object(script_service, "init_config", wraps=set_config.init_config),
-            patch.object(script_service, "task_switch_of", return_value=None),
             patch.object(
-                set_config, "load_config", return_value=template
-            ) as native_read,
-            patch.object(set_config, "load_template", return_value=template),
-            patch.object(set_config, "save_config") as native_write,
+                script_service, "init_config", wraps=set_config.init_config
+            ) as init,
+            patch.object(script_service, "task_switch_of", return_value=None),
+            patch("src.utils.utils_sub_config.load_config") as native_read,
+            patch("src.utils.utils_sub_config.save_config") as native_write,
         ):
             set_config.ensure_config("BetterGI")
-            native_read.reset_mock()
             for edit in (
                 self.edit(),
                 replace(self.edit(), display_name="原神日常"),
@@ -393,16 +390,12 @@ class TestScriptEdit(ScriptServiceTestBase):
                 self.edit(game_path=str(self.config)),
                 replace(self.edit(), weekly_timeouts=[90] * 7),
             ):
-                with self.subTest(edit=edit), self.assertNoLogs(set_config.logger):
+                with self.subTest(edit=edit):
                     self.service.update_script(edit)
-                    native_read.assert_not_called()
-                    native_write.assert_not_called()
-            with self.assertLogs(set_config.logger, level="INFO") as logs:
-                self.service.update_script(self.edit(script_path="D:/new/BetterGI.exe"))
-            self.assertEqual(len(logs.records), 1)
-            native_read.assert_called_once_with(
-                "BetterGI", "User/OneDragon/默认配置.json"
-            )
+                    init.assert_not_called()
+            self.service.update_script(self.edit(script_path="D:/new/BetterGI.exe"))
+            init.assert_called_once_with("BetterGI")
+            native_read.assert_not_called()
             native_write.assert_not_called()
 
 

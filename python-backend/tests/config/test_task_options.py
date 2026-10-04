@@ -60,6 +60,47 @@ class TestTaskOptions(unittest.TestCase):
         }
         self.path.write_text(json.dumps(self.seed), encoding="utf-8")
 
+    def test_genshin_completion_action_is_explicit_and_preserves_native_tasks(self):
+        path = self.root / "User/OneDragon/默认配置.json"
+        path.parent.mkdir(parents=True)
+        config = {
+            "CompletionAction": "无",
+            "TaskDefinitions": {"mail": "领取邮件"},
+            "TaskEnabledList": {"mail": False},
+            "PartyName": "自己的队伍",
+        }
+        path.write_text(json.dumps(config), encoding="utf-8")
+        original = path.read_bytes()
+        options = mod.task_options_of("BetterGI")
+        rows = options.read()
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["id"], "completion_action")
+        self.assertEqual(row["value"], "无")
+        self.assertEqual(row["tasks"], [])
+        self.assertEqual(
+            [choice["physical_name"] for choice in row["choices"]],
+            ["无", "关闭游戏", "关闭软件", "关闭游戏和软件", "关机"],
+        )
+        self.assertEqual(path.read_bytes(), original)
+        config["PartyName"] = "外部修改的队伍"
+        path.write_text(json.dumps(config), encoding="utf-8")
+        options.write_prepared(options.prepare({"completion_action": "关闭游戏"}))
+        config["CompletionAction"] = "关闭游戏"
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), config)
+
+    def test_genshin_missing_completion_action_is_not_initialized(self):
+        options = mod.task_options_of("BetterGI")
+        self.assertEqual(options.read(), [])
+        path = self.root / "User/OneDragon/默认配置.json"
+        self.assertFalse(path.exists())
+        path.parent.mkdir(parents=True)
+        path.write_text("{}", encoding="utf-8")
+        self.assertEqual(options.read(), [])
+        with self.assertRaises(ValueError):
+            options.prepare({"completion_action": "关闭游戏"})
+        self.assertEqual(path.read_text(encoding="utf-8"), "{}")
+
     def test_round_trip_preserves_unsubmitted_fields_and_external_edits(self):
         self.assertEqual(self.options.read()[2]["value"], ["b", "a"])
         self.seed["keep"] = 99
@@ -195,7 +236,7 @@ class TestTaskOptions(unittest.TestCase):
         )
         self.assertEqual(
             [group["display_name"] for group in declarations["BetterGI"]],
-            ["领取每日奖励"],
+            ["一条龙", "领取每日奖励"],
         )
         self.assertNotIn(
             "随便观",
@@ -211,9 +252,13 @@ class TestTaskOptions(unittest.TestCase):
         options = mod.load_declarations()
         switches = load_task_switch_map()
         self.assertTrue(set(options) <= set(switches))
-        for groups in options.values():
-            for group in groups:
-                self.assertTrue(group["tasks"])
+        standalone = [
+            (script, group["display_name"])
+            for script, groups in options.items()
+            for group in groups
+            if not group["tasks"]
+        ]
+        self.assertEqual(standalone, [("BetterGI", "一条龙")])
         self.assertEqual(options["ok-nte"][0]["tasks"], ["日常领取"])
         self.assertNotIn("options", switches["ok-nte"][0])
 

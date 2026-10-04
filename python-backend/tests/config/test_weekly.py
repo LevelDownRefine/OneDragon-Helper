@@ -32,7 +32,6 @@ class WeeklyTestCase(unittest.TestCase):
         for name, factory in tuple(_CONFIGS.items()):
             _CONFIGS[name] = cache(factory.__wrapped__)
         # 只隔离构造期原生 I/O，每例使用全新的适配器与任务对象。
-        self.enterContext(patch.object(config_mod, "load_config", return_value=None))
         self.enterContext(
             patch("src.config.daily.load_script_config", return_value=None)
         )

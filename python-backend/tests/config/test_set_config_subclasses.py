@@ -5,12 +5,10 @@
 所有文件 I/O 均通过 mock 隔离，不依赖真实 config 文件。
 """
 
-import json
 import unittest
 from contextlib import ExitStack
 from unittest.mock import MagicMock, mock_open, patch
 
-from src.config import set_config
 from src.config.daily import Daily, SingleLayerDaily, TemplateDaily
 from src.config.set_config import (
     ArknightsConfig,
@@ -126,75 +124,21 @@ class TestWutheringWavesConfig(unittest.TestCase):
 
 class TestGenshinConfig(unittest.TestCase):
     def test_init_attributes(self):
-        template = {"DomainName": "测试", "PartyName": "队伍1"}
-        with (
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-        ):
-            cfg = GenshinConfig()
+        cfg = GenshinConfig()
         self.assertEqual(cfg.display_name, "原神")
         self.assertEqual(cfg._script_name, "BetterGI")
         self.assertEqual(cfg._dispatch_daily("每日任务").task_field, "DomainName")
 
-    def test_init_config_aligned_no_save(self):
-        """config 与模板对齐（含模板外的自定义 key）时不保存"""
-        template = {
-            "TaskEnabledList": {"领取邮件": True},
-            "CompletionAction": "关闭游戏",
-        }
-        config = {
-            "TaskEnabledList": {"领取邮件": True},
-            "CompletionAction": "关闭游戏",
-            "PartyName": "队伍B",  # 模板外的用户自定义 key，不应被改动
-        }
+    def test_initialization_does_not_read_or_write_native_config(self):
+        """构造及显式初始化均不覆盖用户的完成后操作。"""
         with (
-            patch.object(set_config, "load_config", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch("src.config.set_config.save_config") as mock_save,
+            patch("src.utils.utils_sub_config.load_config") as load,
+            patch("src.utils.utils_sub_config.save_config") as save,
         ):
             cfg = GenshinConfig()
             cfg._init_config()
-        mock_save.assert_not_called()
-
-    def test_init_config_misaligned_saves(self):
-        """config 与模板不对齐时，用模板值 reconcile（覆盖不一致、补缺失、保留多余）并保存"""
-        template = {
-            "TaskEnabledList": {"领取邮件": True},
-            "CompletionAction": "关闭游戏",
-        }
-        config = {
-            "TaskEnabledList": {"领取邮件": False},  # 不一致 → 覆盖为模板值
-            "CompletionAction": "不操作",  # 不一致 → 覆盖为模板值
-            "ExtraKey": 1,  # 模板无 → 保留
-        }
-        with (
-            patch.object(set_config, "load_config", return_value=config),
-            patch("os.path.exists", return_value=True),
-            patch("builtins.open", mock_open(read_data=json.dumps(template))),
-            patch("src.config.set_config.save_config") as mock_save,
-        ):
-            cfg = GenshinConfig()
-            cfg._init_config()
-        mock_save.assert_called_once()
-        saved = mock_save.call_args[0][2]
-        # 不一致项被模板值覆盖
-        self.assertEqual(saved["TaskEnabledList"], {"领取邮件": True})
-        self.assertEqual(saved["CompletionAction"], "关闭游戏")
-        # 多余项保留
-        self.assertEqual(saved["ExtraKey"], 1)
-
-    def test_init_config_missing_config_is_noop(self):
-        """config 缺失（首次写入前）时 _init_config 不崩溃、不写盘。"""
-        with (
-            patch.object(set_config, "load_config", return_value=None),
-            patch.object(GenshinConfig, "_load_template") as mock_template,
-            patch("src.config.set_config.save_config") as mock_save,
-        ):
-            cfg = GenshinConfig()
-            cfg._init_config()
-        mock_template.assert_not_called()
-        mock_save.assert_not_called()
+        load.assert_not_called()
+        save.assert_not_called()
 
     def test_update_task_writes_shared_field(self):
         """原神两级共用 DomainName：无二级时写入一级项名。"""

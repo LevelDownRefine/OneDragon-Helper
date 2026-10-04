@@ -137,7 +137,6 @@ def build_baseline():
         for factory in tuple(config_mod._CONFIGS.values()):
             config_mod.register(factory.__wrapped__)
         with (
-            patch.object(config_mod, "load_config", return_value=None),
             patch.object(daily_mod, "load_script_config", return_value=None),
         ):
             for factory in config_mod._CONFIGS.values():
@@ -145,7 +144,6 @@ def build_baseline():
         # Daily 自持 I/O 走 load_script_config / save_script_config（带展示名的 3/4 参签名）。
         for module, load_name, save_name in (
             (daily_mod, "load_script_config", "save_script_config"),
-            (config_mod, "load_config", "save_config"),
         ):
             stack.enter_context(patch.object(module, load_name, side_effect=load))
             stack.enter_context(patch.object(module, save_name, side_effect=save))
