@@ -15,8 +15,8 @@ script_list:
   notify_done: false
   notify_log_interval: 0
   attach_direction: ''
-  no_log_timeout_seconds: 300
-  no_log_max_retries: 1
+  no_log_timeout_seconds: 0
+  no_log_max_retries: 3
   block: true
   game_path: 'C:\Program Files\Wuthering Waves\Wuthering Waves Game\Wuthering Waves.exe'
   game_arguments: '-krqlv=hd'
@@ -37,8 +37,8 @@ script_list:
   notify_done: false
   notify_log_interval: 0
   attach_direction: ''
-  no_log_timeout_seconds: 300
-  no_log_max_retries: 1
+  no_log_timeout_seconds: 0
+  no_log_max_retries: 3
   block: true
 - display_name: 终末地
   game_label: ''
@@ -57,8 +57,8 @@ script_list:
   notify_done: false
   notify_log_interval: 0
   attach_direction: ''
-  no_log_timeout_seconds: 300
-  no_log_max_retries: 1
+  no_log_timeout_seconds: 0
+  no_log_max_retries: 3
   block: true
 - display_name: 绝区零
   game_label: ''
@@ -78,8 +78,8 @@ script_list:
   notify_done: false
   notify_log_interval: 0
   attach_direction: ''
-  no_log_timeout_seconds: 300
-  no_log_max_retries: 1
+  no_log_timeout_seconds: 0
+  no_log_max_retries: 3
   block: true
 - display_name: 崩铁
   game_label: ''
@@ -97,8 +97,8 @@ script_list:
   notify_done: false
   notify_log_interval: 0
   attach_direction: ''
-  no_log_timeout_seconds: 300
-  no_log_max_retries: 1
+  no_log_timeout_seconds: 0
+  no_log_max_retries: 3
   block: true
 - display_name: 异环
   game_label: ''
@@ -117,8 +117,8 @@ script_list:
   notify_done: false
   notify_log_interval: 0
   attach_direction: ''
-  no_log_timeout_seconds: 300
-  no_log_max_retries: 1
+  no_log_timeout_seconds: 0
+  no_log_max_retries: 3
   block: true
 - display_name: 明日方舟
   game_label: ''
@@ -136,8 +136,8 @@ script_list:
   notify_done: false
   notify_log_interval: 0
   attach_direction: ''
-  no_log_timeout_seconds: 300
-  no_log_max_retries: 1
+  no_log_timeout_seconds: 0
+  no_log_max_retries: 3
   block: true
 - display_name: MaaEnd
   game_label: ''
@@ -159,6 +159,6 @@ script_list:
   notify_done: false
   notify_log_interval: 0
   attach_direction: ''
-  no_log_timeout_seconds: 300
-  no_log_max_retries: 1
+  no_log_timeout_seconds: 0
+  no_log_max_retries: 3
   block: true
