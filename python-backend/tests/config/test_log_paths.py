@@ -154,7 +154,7 @@ class TestLogPaths(unittest.TestCase):
 
 class TestBundledLogPaths(unittest.TestCase):
     def test_maa_declarations_reach_runner_and_gui_without_parser(self):
-        for name, log_file in (("MAA", "asst.log"), ("MaaEnd", "maafw.log")):
+        for name, log_file in (("MAA", "gui.log"), ("MaaEnd", "maafw.log")):
             with self.subTest(script=name), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 script = {
@@ -165,8 +165,10 @@ class TestBundledLogPaths(unittest.TestCase):
                 }
                 (root / "debug").mkdir()
                 (root / f"{name}.exe").touch()
-                # GUI 日志已有旧内容，运行链仍须选择核心日志，即使它尚未创建。
-                (root / "debug/gui.log").write_text("old GUI message", encoding="utf-8")
+                # 其它日志已存在时仍使用声明路径，目标日志可以在启动后创建。
+                (root / "debug/asst.log").write_text(
+                    "old core message", encoding="utf-8"
+                )
                 expected = root / "debug" / log_file
                 self.assertEqual(resolve_log_path(script), expected)
                 with patch.object(link, "get_script", return_value=script):

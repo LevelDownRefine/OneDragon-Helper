@@ -108,8 +108,8 @@ parsers:
       - '未领取'
 
   MAA:
-    # 核心执行日志；GUI 日志在作战期间可能长时间没有新消息。
-    log_path: 'debug/asst.log'
+    # 与 AUTO-MAS 保持一致；正常作战也可能长时间不更新，阈值由用户设置。
+    log_path: 'debug/gui.log'
 
   MaaEnd:
     # MaaFramework 的实时执行日志，位于 MaaEnd.exe 同级 debug 目录。
