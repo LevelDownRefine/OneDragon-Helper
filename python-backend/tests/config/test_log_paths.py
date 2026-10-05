@@ -153,29 +153,39 @@ class TestLogPaths(unittest.TestCase):
 
 
 class TestBundledLogPaths(unittest.TestCase):
-    def test_maaend_declaration_reaches_runner_and_gui_without_parser(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            script = {
-                "script_path": str(root / "MaaEnd.exe"),
-                "display_name": "自定义名字",
-            }
-            (root / "debug").mkdir()
-            script_file = root / "MaaEnd.exe"
-            script_file.touch()
-            expected = root / "debug/maafw.log"
-            self.assertEqual(resolve_log_path(script), expected)
-            with patch.object(link, "get_script", return_value=script):
-                self.assertEqual(
-                    link.resolve_script_target("MaaEnd", "log"),
-                    {"kind": "path", "value": str(expected.parent)},
+    def test_maa_declarations_reach_runner_and_gui_without_parser(self):
+        for name, log_file in (("MAA", "asst.log"), ("MaaEnd", "maafw.log")):
+            with self.subTest(script=name), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                script = {
+                    "script_path": str(root / f"{name}.exe"),
+                    "display_name": "自定义名字",
+                    "no_log_timeout_seconds": 300,
+                    "no_log_max_retries": 1,
+                }
+                (root / "debug").mkdir()
+                (root / f"{name}.exe").touch()
+                # GUI 日志已有旧内容，运行链仍须选择核心日志，即使它尚未创建。
+                (root / "debug/gui.log").write_text("old GUI message", encoding="utf-8")
+                expected = root / "debug" / log_file
+                self.assertEqual(resolve_log_path(script), expected)
+                with patch.object(link, "get_script", return_value=script):
+                    self.assertEqual(
+                        link.resolve_script_target(name, "log"),
+                        {"kind": "path", "value": str(expected.parent)},
+                    )
+                chain = root / "chain.yml"
+                generate_chain_config(
+                    {"script_list": [script]},
+                    {name},
+                    out_path=str(chain),
+                    weekly_timeouts={name: [1800] * 7},
                 )
-            chain = root / "chain.yml"
-            generate_chain_config(
-                {"script_list": [script]}, {"MaaEnd"}, out_path=str(chain)
-            )
-            saved = load_data(chain, file_format="yaml")["script_list"][0]
-            self.assertEqual(saved["log_path"], str(expected))
+                saved = load_data(chain, file_format="yaml")["script_list"][0]
+                self.assertEqual(saved["log_path"], str(expected))
+                self.assertEqual(saved["no_log_timeout_seconds"], 300)
+                self.assertEqual(saved["no_log_max_retries"], 1)
+                self.assertEqual(saved["run_timeout_seconds"], 1800)
 
 
 if __name__ == "__main__":

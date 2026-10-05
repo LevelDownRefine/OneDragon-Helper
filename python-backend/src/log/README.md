@@ -24,6 +24,10 @@ parsers:
 `log_path`。runner 只消费这份链，不依赖助手的 YAML 结构，也不会拿分析报告判断活动。
 主配置和新增脚本不再保存日志路径；残留旧字段不覆盖声明。
 
+MAA 使用核心执行日志 `debug/asst.log`，界面日志 `debug/gui.log` 在作战期间
+可能长时间不更新。核心日志也有正常静默阶段（例如开始作战后等待 40 秒），
+正常等待超过设定的无日志阈值也会触发；该检测不能区分正常静默与卡死。
+
 MaaEnd 使用 MaaFramework 的实时执行日志 `debug/maafw.log`；
 文件轮转时仍监测同一活动文件。
 位置也见 [MaaFramework 文档](https://github.com/MaaXYZ/MaaFramework/blob/main/docs/zh_cn/1.1-%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B.md)。
