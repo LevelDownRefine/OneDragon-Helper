@@ -48,6 +48,7 @@ class CliTestCase(unittest.TestCase):
             "weekly.example.yml",
             "daily_task_list.yml",
             "weekly_task_list.yml",
+            "log_analysis.yml",
             "MAA任务.json",
         ):
             shutil.copyfile(Path(PROJECT_ROOT, "config", name), config_dir / name)

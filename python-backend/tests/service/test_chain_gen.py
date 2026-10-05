@@ -107,6 +107,35 @@ class TestGenerateChainConfig(unittest.TestCase):
             )
             return load_data(out, file_format="yaml", cached=True)
 
+    def test_runtime_log_settings_come_from_declaration_and_preserve_user_options(self):
+        for name, expected_suffix in (
+            ("MAA", "debug/gui.log"),
+            ("MaaEnd", "debug/maafw.log"),
+            ("unknown", None),
+        ):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                script = {
+                    "script_path": os.path.join(directory, name + ".exe"),
+                    "display_name": "自定义名字",
+                    "log_path": "stale.log",
+                    "log_analysis_path": "stale_report.txt",
+                    "no_log_timeout_seconds": 300,
+                    "no_log_max_retries": 1,
+                }
+                saved = self._write({"script_list": [script]}, {name})["script_list"][0]
+                expected = (
+                    os.path.join(directory, *expected_suffix.split("/"))
+                    if expected_suffix
+                    else ""
+                )
+                self.assertEqual(saved["log_path"], expected)
+                self.assertNotIn("log_analysis_path", saved)
+                self.assertEqual(saved["no_log_timeout_seconds"], 300)
+                self.assertEqual(saved["no_log_max_retries"], 1)
+                self.assertEqual(script["log_path"], "stale.log")
+                self.assertEqual(script["log_analysis_path"], "stale_report.txt")
+                self.assertNotIn("run_timeout_seconds", script)
+
     def test_only_named_scripts_included_with_enabled_true(self):
         config = {
             "script_list": [

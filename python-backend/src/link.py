@@ -65,7 +65,7 @@ def resolve_script_target(script_name: str, target: str) -> dict:
         if target == "folder":
             path = os.path.dirname(resolved)
         else:
-            path = get_log_dir(script_name, resolved)
+            path = get_log_dir(script)
             if path is None:
                 return _unavailable("暂不支持日志跳转")
         if not os.path.isdir(path):

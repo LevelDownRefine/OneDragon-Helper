@@ -338,6 +338,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
             "kill_script_after_done": True,
             "kill_game_after_done": True,
             "block": False,
+            "no_log_timeout_seconds": 300,
+            "no_log_max_retries": 1,
         }
         params = {
             "script_name": "自定义脚本",
@@ -364,6 +366,8 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.dail
         self.assertEqual(saved["script"]["script_arguments"], "--中文")
         self.assertFalse(saved["script"]["kill_game_after_done"])
         self.assertFalse(saved["script"]["block"])
+        self.assertEqual(saved["script"]["no_log_timeout_seconds"], 300)
+        self.assertEqual(saved["script"]["no_log_max_retries"], 1)
         self.assertEqual(saved["weekly_timeouts"][1:], [0, 60, 60, 60, 60, 86400])
         self.assertEqual(responses[3]["error"]["code"], -32602)
         self.assertEqual(self.native.read_bytes(), before)

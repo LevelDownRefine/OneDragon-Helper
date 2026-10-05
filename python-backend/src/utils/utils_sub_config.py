@@ -7,6 +7,7 @@
 import logging
 import os
 import re
+import tempfile
 from pathlib import Path
 
 from src.utils import (
@@ -325,6 +326,60 @@ def _is_absolute_path(p: str) -> bool:
     if re.match(r"^[A-Za-z]:[\\/]", p):
         return True
     return p.startswith("\\\\") or p.startswith("//")
+
+
+LOG_PATH_FIELDS = ("log_path", "log_analysis_path")
+
+
+def get_log_paths(script_name: str) -> dict:
+    """从 log_analysis.yml 读取固定日志位置；未适配脚本返回空字典。"""
+    path = safe_path_join(get_root_dir(), "config", "log_analysis.yml")
+    data = load_data(path, file_format="yaml", cached=True)
+    assert isinstance(data, dict) and "parsers" in data
+    parsers = data["parsers"]
+    assert isinstance(parsers, dict)
+    if script_name not in parsers:
+        return {}
+    settings = parsers[script_name]
+    assert isinstance(settings, dict)
+    return {key: settings[key] for key in LOG_PATH_FIELDS if key in settings}
+
+
+def resolve_log_path(script: dict, *, analysis: bool = False) -> Path | None:
+    """按脚本标识从日志声明解析位置；只允许文件名含通配符，不扫描子目录。
+
+    相对路径基于脚本目录，%TEMP% 基于系统临时目录。分析路径省略时
+    使用实时日志；显式空值表示不使用文件日志。
+    """
+    settings = get_log_paths(get_script_name(script))
+    key = (
+        "log_analysis_path"
+        if analysis and "log_analysis_path" in settings
+        else "log_path"
+    )
+    if key not in settings:
+        return None
+    raw = settings[key]
+    if not isinstance(raw, str):
+        raise ValueError(f"{key} 必须为文本")
+    raw = raw.strip().replace("\\", "/")
+    if not raw:
+        return None
+    if raw.startswith("%TEMP%/"):
+        path = Path(tempfile.gettempdir()) / raw[len("%TEMP%/") :]
+    elif _is_absolute_path(raw):
+        path = Path(raw)
+    else:
+        assert "script_path" in script
+        if not script["script_path"]:
+            return None
+        path = (
+            Path(resolve_script_path(script["script_path"]).replace("\\", "/")).parent
+            / raw
+        )
+    if any(char in str(path.parent) for char in "*?") or "**" in path.name:
+        raise ValueError(f"{key} 仅允许文件名含通配符")
+    return path
 
 
 def default_script_entry(display_name, script_type, script_path, script_arguments=""):

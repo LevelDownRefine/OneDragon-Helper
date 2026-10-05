@@ -134,8 +134,12 @@ start_day 为 `0`（不启用）、`1…7`，或 null（未设置），三者不
 例如无副本选择的周常选择为空操作；设置未知周常起始日仍保存助手侧意图，跳过游戏侧同步。
 
 `script.edit_save` 的 config_patch 必须包含 script_path、script_type、script_arguments、
-check_done、game_process_name、game_path 六个文本字段，以及 kill_script_after_done、
-kill_game_after_done、block 三个布尔字段。weekly_timeouts 恰为七项 0～86400 整数或 null；
+check_done、game_process_name、game_path、game_arguments 七个文本字段，以及 kill_script_after_done、
+kill_game_after_done、block 三个布尔字段，no_log_timeout_seconds、no_log_max_retries 两个
+0～2147483647 的整数字段（不接受布尔）。无日志超时单位为秒，0 关闭；重试次数 0 表示不重试。
+仅阻塞运行的 external 脚本启用无日志检测；控制台输出或实时日志文件变化任一有活动就刷新计时。
+固定日志位置在 `config/log_analysis.yml` 声明，生成链时注入 runner 的 `log_path`。
+weekly_timeouts 恰为七项 0～86400 整数或 null；
 null 沿用默认超时，低于 10 秒的值保留原运行语义。switches 为任务名到布尔的映射。
 表单预校验失败返回 -32602，不写盘。
 CLI 将参数构造成 `ScriptEdit` 后调用 `AppService.update_script`，再将返回标识包装为 `{"script_name": "..."}`。

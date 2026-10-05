@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path, PureWindowsPath
-from typing import Literal, NotRequired, TypedDict, cast
+from typing import NotRequired, TypedDict, cast
 from urllib.parse import urlsplit
 
 from src.utils import get_root_dir
@@ -15,17 +15,11 @@ class GamePath(TypedDict):
     launcher: NotRequired[str]
 
 
-class LogPath(TypedDict):
-    root: Literal["script", "temp"]
-    path: str
-
-
 class ScriptResources(TypedDict):
     backup_paths: list[str]
     links: dict[str, str]
     game: NotRequired[GamePath]
     background: NotRequired[str]
-    logs: NotRequired[LogPath]
 
 
 def _fields(value, required: set[str], optional: set[str], context: str) -> None:
@@ -67,7 +61,7 @@ def _validate_script(value: dict, name: str) -> None:
     _fields(
         value,
         {"backup_paths", "links"},
-        {"game", "background", "logs"},
+        {"game", "background"},
         name,
     )
     assert "backup_paths" in value and "links" in value
@@ -89,14 +83,6 @@ def _validate_script(value: dict, name: str) -> None:
             _text(key, f"{name}/game/keys")
         if "launcher" in node:
             _relative_path(node["launcher"], f"{name}/game/launcher")
-    if "logs" in value:
-        node = value["logs"]
-        _fields(node, {"root", "path"}, set(), f"{name}/logs")
-        assert "root" in node and "path" in node
-        assert isinstance(node["root"], str) and node["root"] in {"script", "temp"}, (
-            f"{name}/logs/root 只支持 script / temp"
-        )
-        _relative_path(node["path"], f"{name}/logs/path")
     if "background" in value:
         _relative_path(value["background"], f"{name}/background")
     links = value["links"]

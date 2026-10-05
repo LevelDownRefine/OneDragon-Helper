@@ -55,6 +55,8 @@ class ScriptServiceTestBase(unittest.TestCase):
                 "kill_script_after_done": True,
                 "kill_game_after_done": True,
                 "block": True,
+                "no_log_timeout_seconds": 0,
+                "no_log_max_retries": 3,
                 **patch_fields,
             },
             weekly_timeouts=[60] * 7,
@@ -86,6 +88,30 @@ class ScriptServiceTestBase(unittest.TestCase):
 
 
 class TestScriptEdit(ScriptServiceTestBase):
+    def test_no_log_settings_round_trip(self):
+        for seconds, retries in ((300, 1), (0, 0)):
+            with self.subTest(seconds=seconds, retries=retries):
+                self.service.update_script(
+                    self.edit(
+                        no_log_timeout_seconds=seconds, no_log_max_retries=retries
+                    )
+                )
+                saved = self.service.get_script("BetterGI")
+                self.assertEqual(saved["no_log_timeout_seconds"], seconds)
+                self.assertEqual(saved["no_log_max_retries"], retries)
+
+    def test_invalid_no_log_settings_never_write(self):
+        original = (self.config.read_bytes(), self.weekly.read_bytes())
+        for key in ("no_log_timeout_seconds", "no_log_max_retries"):
+            for value in (-1, True, 2147483648):
+                with self.subTest(key=key, value=value):
+                    with self.assertRaises(InvalidScript):
+                        self.service.update_script(self.edit(**{key: value}))
+                    self.assertEqual(
+                        (self.config.read_bytes(), self.weekly.read_bytes()), original
+                    )
+                    self.switch.write.assert_not_called()
+
     def test_options_and_switches_save_together_in_same_native_file(self):
         from src.config.task_options import TaskOptions
         from src.config.task_switch import TaskSwitch
