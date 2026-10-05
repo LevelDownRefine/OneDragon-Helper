@@ -114,6 +114,8 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 
 `_read_daily_tasks()` 逐日常调 `daily.read()` + `daily.read_enabled()`（各自读自己那份文件），每项一条记录 `{name, task, sequence, enabled}`（facade `get_daily_readback`），顺序与声明一致。反读不看启用状态影响副本（用于呈现未启用的日常）。
 
+终末地的多选列表开关由 `MultiSelectEnabledDaily` 实现：`enable_key` 指向列表、`enable_task` 指定成员，配置缺少列表时记录警告并返回无真相，不创建旧的布尔开关。
+
 **未安装 = 无真相**：脚本未安装（config 或开关文件缺失）时对应字段为 None，不谎报「已停用」；无开关落点的日常（鸣潮、绝区零、崩铁）开关恒为 None，界面据此不提供「不启用」。声明了开关落点（`enable_key` 字段 / `enable_task` 任务名 / `routine` 文件）的日常在原生文件里读写该开关，值缺失属契约错误、当场 assert。config 损坏或字段值未知亦由 assert 暴露，不静默回退。
 
 ### 各脚本策略
@@ -124,7 +126,7 @@ GUI 侧两条流互不依赖，靠声明 `display_name` 对齐：菜单流（`ge
 | 原神 · 每日任务 | `BgiDaily` | 两级共用 `DomainName`（`_single_field`）；开关按 `enable_task` 反查任务启用表 |
 | 原神 · 地脉花 | `BgiLeyLineDaily` | 声明字段名含 `{Day}`，一次写满一周 7 份（`LeyLine{Day}Type` / `LeyLine{Day}Country`）；反读要求 7 天同值，否则无真相 |
 | 原神 · 首领讨伐 | `BgiDaily` | 一级是国家（仅分组），落点取二级的 `AutoBossName` |
-| 终末地 | `Daily` | 两级共用 `体力本`（`_single_field`）；开关取主文件的 `enable_key` 字段 |
+| 终末地 | `MultiSelectEnabledDaily` | 两级共用 `体力本`（`_single_field`）；开关取 DailyTask.json 的 `战斗任务` 列表是否包含 `刷体力`，只增删该成员并保留其他任务 |
 | 崩铁 | `SingleLayerDaily` | 一级项即日常名，二级「启用 / 不启用」直接写主文件的 `build_target_enable` 布尔 |
 | 绝区零 · 培养方案 | `TemplateDaily` | 二级「启用」按 `ZZZ一条龙.yml` 对齐 `charge_plan.yml`；「不启用」不读写，也不撤回已有模板。反读为模板是否已对齐（`utils_dict.covers`） |
 | 异环 | `Anomaly` + `AnomalyHunter` | 两个日常各一段、各一个类，见下节 |

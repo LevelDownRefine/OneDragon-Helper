@@ -757,7 +757,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         )
         switch = working / "configs/DailyTask.json"
         switch.write_text(
-            json.dumps({"⭐刷体力": False, "untouched": 42}),
+            json.dumps({"战斗任务": ["演算"], "untouched": 42}),
             encoding="utf-8",
         )
         working.joinpath("assets/data/world_map.json").write_text(
@@ -804,7 +804,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         )
         self.assertEqual(
             json.loads(switch.read_text(encoding="utf-8")),
-            {"⭐刷体力": True, "untouched": 42},
+            {"战斗任务": ["演算", "刷体力"], "untouched": 42},
         )
         result, responses = self.serve(
             [
@@ -834,7 +834,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
         )
         self.assertEqual(
             json.loads(switch.read_text(encoding="utf-8")),
-            {"⭐刷体力": False, "untouched": 42},
+            {"战斗任务": ["演算"], "untouched": 42},
         )
 
     def test_task_mutations_keep_adapter_noops_and_day_validation(self):

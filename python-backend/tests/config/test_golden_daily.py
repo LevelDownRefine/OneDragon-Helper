@@ -79,7 +79,7 @@ def _seed_files():
                 "体力本": "能量淤积点-乙",
             },
             "data/apps/ok-ef/working/configs/DailyTask.json": {
-                "⭐刷体力": False,
+                "战斗任务": ["演算"],
             },
         },
         "OneDragon-Launcher": {"config/01/one_dragon/charge_plan.yml": {}},

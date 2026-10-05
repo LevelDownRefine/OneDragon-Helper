@@ -2,8 +2,8 @@
 # class：机制类（daily.py 的 DAILY_CLASSES 注册表），每个日常必填。
 # config：该日常数据所在文件的路径（相对脚本根目录，必填）；多个日常可同份也可各自独立。
 # routine：开关所在文件路径（可选；声明即开关与数据分居两份，如终末地的每日任务、原神幽境危战、异环）。
-# enable_key：开关字段名（可选，布尔），声明即提供「不启用」；落在 routine（声明了就用它）或 config 文件顶层。
-# enable_task：开关在原生任务启用表里按该任务名定位（可选，原神一条龙）。
+# enable_key：开关字段名（布尔或机制类约定的多选列表），落在 routine 或 config 顶层。
+# enable_task：原神启用表按任务名定位；多选列表开关则表示启用时包含的成员。
 # options：递归选项组；key 为原生字段，values / source 二选一。
 # key 含 {Day} 时展开成 Monday…Sunday 七个字段（原神地脉花，一次写满一周）。
 # source.path 为资源文件，source.key 为多级键路径；原神暂保留 category 分类筛选。
@@ -256,12 +256,13 @@ BetterGI:
     - display_name: 关卡三
       physical_name: 3
 ok-ef:
-# 刷体力参数已拆进子任务卡片，体力本落点在 DailyBattleTask.json，开关键仍在日常总配置。
+# 体力本参数在 DailyBattleTask.json；启用状态取日常总配置的战斗任务列表。
 - display_name: 每日任务
-  class: Daily
+  class: MultiSelectEnabledDaily
   config: data/apps/ok-ef/working/configs/DailyBattleTask.json
   routine: data/apps/ok-ef/working/configs/DailyTask.json
-  enable_key: ⭐刷体力
+  enable_key: 战斗任务
+  enable_task: 刷体力
   options:
     values:
     - display_name: 干员养成

@@ -7,7 +7,7 @@
 字段）原封不动，也没串到另一份文件」。
 
 允许改动字段集合严格来自实现：set_daily_task（EndfieldConfig）数据侧仅写声明落点「体力本」，
-开关侧仅写「⭐刷体力」。
+开关侧仅增删「战斗任务」中的「刷体力」，保留其他成员。
 """
 
 import copy
@@ -28,7 +28,7 @@ DAILY_BATTLE_TASK = "data/apps/ok-ef/working/configs/DailyBattleTask.json"
 # set_daily_task 只允许改动的 {文件: 字段路径集合}（= 数据落点 + 开关落点）
 ALLOWED_DUNGEON = {
     DAILY_BATTLE_TASK: {"体力本"},
-    DAILY_TASK: {"⭐刷体力"},
+    DAILY_TASK: {"战斗任务[1]"},
 }
 
 
@@ -80,7 +80,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
     def misalign(self) -> None:
         """把两个落点都拨到目标值的反面，逼迫写入真正落盘。"""
         self.store[DAILY_BATTLE_TASK]["体力本"] = "__WRONG__"
-        self.store[DAILY_TASK]["⭐刷体力"] = False
+        self.store[DAILY_TASK]["战斗任务"] = ["演算"]
 
     def changed_fields(self, before: dict) -> dict[str, set[str]]:
         """各文件相对 ``before`` 实际改动的字段路径；无改动的文件不出现。"""
@@ -91,7 +91,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
                 changes[path] = fields
         return changes
 
-    # ---- set_daily_task：只允许改 体力本（数据）与 ⭐刷体力（开关） ----
+    # ---- set_daily_task：只允许改 体力本（数据）与 战斗任务里的刷体力（开关） ----
     def test_set_daily_task_only_touches_declared_fields(self):
         cfg = EndfieldConfig()
         self.misalign()
@@ -106,7 +106,7 @@ class TestEndfieldConfigSafety(unittest.TestCase):
         )
         # 正向校验：副本与开关都到达期望值
         self.assertEqual(self.store[DAILY_BATTLE_TASK]["体力本"], "枢纽区")
-        self.assertTrue(self.store[DAILY_TASK]["⭐刷体力"])
+        self.assertEqual(self.store[DAILY_TASK]["战斗任务"], ["演算", "刷体力"])
 
     # ---- 金丝雀：无关字段全程不被触碰 ----
     def test_canaries_untouched_through_full_flow(self):

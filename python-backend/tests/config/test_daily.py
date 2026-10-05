@@ -339,7 +339,7 @@ class TestEnabled(unittest.TestCase):
     def test_declared_field_switch_lands_in_routine_file(self):
         """声明 routine 的日常（终末地）：开关在 routine 文件，与副本数据不同份。"""
         daily = daily_of("ok-ef", "每日任务")
-        routine = {"⭐刷体力": True}
+        routine = {"战斗任务": ["刷体力", "演算"], "其他任务": ["收邮件"]}
         with (
             patch.object(daily, "_load_routine_config", return_value=routine),
             patch.object(daily, "_save_routine_config") as save_routine,
@@ -350,13 +350,62 @@ class TestEnabled(unittest.TestCase):
             self.assertTrue(daily.set_enabled(False))
             self.assertFalse(daily.set_enabled(False))
             save_routine.assert_called_once()
-        self.assertFalse(routine["⭐刷体力"])
+        self.assertEqual(routine["战斗任务"], ["演算"])
+        self.assertEqual(routine["其他任务"], ["收邮件"])
         save_data.assert_not_called()
 
     def test_declared_field_switch_without_file_has_no_truth(self):
         daily = daily_of("ok-ef", "每日任务")
         with patch.object(daily, "_load_routine_config", return_value=None):
             self.assertIsNone(daily.read_enabled())
+
+    def test_endfield_battle_list_reads_disabled_without_legacy_boolean(self):
+        daily = daily_of("ok-ef", "每日任务")
+        routine = {"战斗任务": ["演算"]}
+        with patch.object(daily, "_load_routine_config", return_value=routine):
+            self.assertFalse(daily.read_enabled())
+
+    def test_endfield_enable_preserves_other_tasks_and_avoids_duplicate_writes(self):
+        daily = daily_of("ok-ef", "每日任务")
+        routine = {"战斗任务": ["演算", "上游新增任务"], "其他任务": ["收邮件"]}
+        with (
+            patch.object(daily, "_load_routine_config", return_value=routine),
+            patch.object(daily, "_save_routine_config") as save,
+            patch.object(daily, "_save_daily_config") as save_data,
+        ):
+            self.assertTrue(daily.set_enabled(True))
+            self.assertTrue(daily.read_enabled())
+            self.assertFalse(daily.set_enabled(True))
+            save.assert_called_once_with(routine)
+        self.assertEqual(routine["战斗任务"], ["演算", "上游新增任务", "刷体力"])
+        self.assertEqual(routine["其他任务"], ["收邮件"])
+        self.assertNotIn("⭐刷体力", routine)
+        save_data.assert_not_called()
+
+    def test_endfield_missing_list_is_reported_without_creating_legacy_key(self):
+        daily = daily_of("ok-ef", "每日任务")
+        routine = {"其他任务": ["收邮件"]}
+        with (
+            patch.object(daily, "_load_routine_config", return_value=routine),
+            patch.object(daily, "_save_routine_config") as save,
+            self.assertLogs("src.config.daily", level="WARNING"),
+        ):
+            self.assertIsNone(daily.read_enabled())
+            self.assertFalse(daily.set_enabled(True))
+        self.assertEqual(routine, {"其他任务": ["收邮件"]})
+        save.assert_not_called()
+
+    def test_endfield_battle_list_rejects_unexpected_native_types(self):
+        daily = daily_of("ok-ef", "每日任务")
+        for tasks in [True, "刷体力", [1]]:
+            with (
+                self.subTest(tasks=tasks),
+                patch.object(
+                    daily, "_load_routine_config", return_value={"战斗任务": tasks}
+                ),
+                self.assertRaises(AssertionError),
+            ):
+                daily.read_enabled()
 
     def test_bgi_switch_looks_up_task_id_by_name(self):
         """原神：开关是原生启用表里的一项，id 由任务名反查，不硬编码 uuid。"""
