@@ -1,5 +1,9 @@
 # tools/ 开发与发布工具
 
+## Python GUI 源码启动
+
+`launcher.bat` 通过 `run_python_gui.py` 启动当前检出的 GUI 与后端，显式设置源码路径及工作目录。工作树复用父目录 `.venv` 时，可编辑包仍可能绑定主目录；启动器会优先使用本检出的源码，并透传参数与退出码。`env.bat` 优先复用已激活环境，否则向父目录查找 `.venv`。
+
 ## 发布包
 
 `release_package.py` 由 `deploy/build.bat` 调用：仅拷贝 Git 跟踪的

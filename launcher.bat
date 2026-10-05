@@ -24,7 +24,8 @@ if exist "%env_script%" (
     echo [WARN] 未找到 env.bat，使用当前环境
 )
 
-:: uv sync 已把 GUI 与后端安装为可编辑包，无需拼接 PYTHONPATH。
-python -m gui.launcher %*
+:: 共享环境的可编辑包可能指向另一份检出；从本启动器所在目录加载源码。
+python "%base%tools\run_python_gui.py" %*
+set "gui_exit=%ERRORLEVEL%"
 
-endlocal
+endlocal & exit /b %gui_exit%
