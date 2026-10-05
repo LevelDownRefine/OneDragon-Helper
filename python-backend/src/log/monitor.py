@@ -9,7 +9,7 @@
 
 本模块为 `src.log` 包的子模块，由 `python -m src.log`（__main__ 入口）或 GUI/service 以 `import
 src.log.monitor` 方式调用，不单独运行。脚本唯一标识复用 `get_script_name`（见
-`src.utils.utils_sub_config`），日志位置读取 `src.config.script_resources` 的内置声明；
+`src.utils.utils_sub_config`），日志位置读取 `config/log_analysis.yml` 中的声明；
 根目录复用 `src.utils.get_root_dir`
 （冻结时为 exe 所在目录，勿按 `__file__` 自算），并直接读取 `config.yml`（经
 `src.utils.utils_io.load_data`，ruamel YAML 1.2 解析）。
@@ -19,16 +19,14 @@ import logging
 import os
 import re
 import sys
-import tempfile
 import unicodedata
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from src.config.script_resources import get_script_resources
 from src.utils import get_root_dir
 from src.utils.utils_io import load_data
 from src.utils.utils_logger import setup_logging
-from src.utils.utils_sub_config import get_script_name
+from src.utils.utils_sub_config import get_script_name, resolve_log_path
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +114,7 @@ class BaseLogParser:
     # exe 脚本=进程名（script_path basename 去后缀，空格→-），python 脚本=display_name。
     # parse_log 与 supported 推导都按它匹配，不再依赖易变的 display_name。
     script_name: str = ""
-    # 以下判定关键词（含成功 / 失败 / 退出 / 体力提取正则 / 日志文件名）均来自
+    # 以下判定关键词（含成功 / 失败 / 退出 / 体力提取正则）均来自
     # config/log_analysis.yml，由 __init__ 经 _apply_keywords 注入；此处仅留类型与缺省，
     # 真正的取值以配置文件为准。具体语义见 log_analysis.yml 顶部注释。
     # 判定某行是否为报错的子串标记。
@@ -124,8 +122,6 @@ class BaseLogParser:
     # 命中 error_markers 但实为良性噪声（启动瞬断 / 战斗复检 / 关机收尾等）的子串，
     # 含这些子串的行不计入报错。
     error_noise: tuple[str, ...] = ()
-    # 日志文件名 glob 模式（各子类按需覆写）。
-    log_pattern: str = ""
     # 体力提取正则：第一个捕获组为剩余体力数字；不设置（为空）表示日志不含体力。
     stamina_pattern: str = ""
     # 判定当日是否做完的「成功」标记；命中任一即视为做完，否则（含未提及）视为未完成。
@@ -139,38 +135,23 @@ class BaseLogParser:
     def _apply_keywords(self) -> None:
         """从 config/log_analysis.yml 注入本脚本的判定关键词；缺失字段以空值兜底。"""
         kw = _keywords_for(self.script_name)
-        self.log_pattern = kw.get("log_pattern", "")
         self.stamina_pattern = kw.get("stamina_pattern", "")
         self.error_markers = tuple(kw.get("error_markers", ()))
         self.error_noise = tuple(kw.get("error_noise", ()))
         self.daily_success_marker = tuple(kw.get("daily_success_marker", ()))
         self.exit_markers = tuple(kw.get("exit_markers", ()))
 
-    def get_log_path(self, script_path: str) -> Path | None:
-        log_dir = self._get_log_dir(script_path)
-        if not log_dir or not log_dir.exists():
+    def get_log_path(self, log_path: str) -> Path | None:
+        """从已解析的文件路径或文件名通配符中选取当日日志。"""
+        if not log_path:
             return None
-
-        # Python 3.11 的 pathlib 不接受 ruamel 保留引号的 str 子类。
-        log_files = sorted(log_dir.glob(str(self.log_pattern)), reverse=True)
-        for log_file in log_files:
-            if self._is_valid_log(log_file):
+        pattern = Path(log_path)
+        if not pattern.parent.is_dir():
+            return None
+        for log_file in sorted(pattern.parent.glob(str(pattern.name)), reverse=True):
+            if log_file.is_file() and self._is_valid_log(log_file):
                 return log_file
         return None
-
-    def _get_log_dir(self, script_path: str) -> Path:
-        resources = get_script_resources(self.script_name)
-        assert resources is not None and "logs" in resources, (
-            f"[log] 缺少日志目录声明: {self.script_name}"
-        )
-        logs = resources["logs"]
-        assert "root" in logs and "path" in logs
-        if logs["root"] == "temp":
-            base = Path(tempfile.gettempdir())
-        else:
-            assert logs["root"] == "script"
-            base = Path(script_path.replace("\\", "/")).parent
-        return base / logs["path"]
 
     def _read_file(self, path: Path) -> str:
         """读取日志文本：utf-8 失败回退 gbk；读取/解码失败记日志返回空串。"""
@@ -248,8 +229,8 @@ class BaseLogParser:
                 break
         return errors
 
-    def parse(self, script_path: str = "") -> dict:
-        log_path = self.get_log_path(script_path)
+    def parse(self, log_path: str = "") -> dict:
+        log_path = self.get_log_path(log_path)
         if not log_path or not log_path.exists():
             return {
                 "status": ScriptLogStatus.NO_LOG,
@@ -356,7 +337,7 @@ _PARSERS = [
 ]
 
 
-def parse_log(script_name: str, script_path: str = "") -> dict:
+def parse_log(script_name: str, log_path: str = "") -> dict:
     """解析单个脚本当日日志：按 script_name 找到对应 Parser 并解析，返回统一结构。
 
     返回 dict 恒含 status / log_path / log_content / stamina / daily_done /
@@ -370,7 +351,7 @@ def parse_log(script_name: str, script_path: str = "") -> dict:
     )
     for parser_cls in _PARSERS:
         if script_name == parser_cls.script_name:
-            result = parser_cls().parse(script_path)
+            result = parser_cls().parse(log_path)
             # parse() 在 NO_LOG 时只返 status/log_path（其余字段缺省），补全缺省值使结构统一；
             # 仅对缺省键 setdefault，不覆盖调用方（如测试）已提供的字段。
             if "stamina" not in result:
@@ -625,11 +606,14 @@ def parse_logs(
         # 仅解析候选脚本：未启用的脚本不进入本次重跑/邮件的挑选范围。
         if script_name not in candidate_script_names:
             continue
+        log_path = resolve_log_path(script, analysis=True)
         entries.append(
             {
                 "script_name": script_name,
                 "display_name": script.get("display_name", script_name),
-                "result": parse_log(script_name, script.get("script_path", "")),
+                "result": parse_log(
+                    script_name, str(log_path) if log_path is not None else ""
+                ),
             }
         )
 
@@ -644,13 +628,7 @@ def parse_logs(
     }
 
 
-def get_log_dir(script_name: str, script_path: str) -> Path | None:
-    """按脚本标识找到对应 Parser，计算其日志目录；无匹配返回 None。
-
-    供 GUI「打开日志」等场景复用，避免 GUI 手抄各游戏日志目录规则。
-    script_path 应为绝对路径（与 config/script_path 一致）。
-    """
-    for cls in _PARSERS:
-        if cls.script_name == script_name:
-            return cls()._get_log_dir(script_path)
-    return None
+def get_log_dir(script: dict) -> Path | None:
+    """由日志声明的实时日志位置解析目录，供 GUI 打开日志使用。"""
+    path = resolve_log_path(script)
+    return path.parent if path is not None else None

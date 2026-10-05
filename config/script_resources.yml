@@ -1,6 +1,6 @@
 # 内置脚本资源声明，随程序发布；不保存用户机器上的安装路径。
 # 相对路径用 /；game、background、backup_paths 相对脚本目录。
-# logs.root 只支持 script / temp；异环 launcher 的向上查找机制仍由适配器实现。
+# 日志位置在 log_analysis.yml 声明；异环 launcher 的向上查找机制仍由适配器实现。
 version: 1
 scripts:
   ok-ww:
@@ -10,9 +10,6 @@ scripts:
       config: data/apps/ok-ww/working/configs/devices.json
       keys:
       - pc_full_path
-    logs:
-      root: script
-      path: data/apps/ok-ww/working/logs
     links:
       homepage: https://mc.kurogames.com/
       bilibili: https://space.bilibili.com/1955897084
@@ -25,9 +22,6 @@ scripts:
       keys:
       - genshinStartConfig
       - installPath
-    logs:
-      root: script
-      path: log
     links:
       homepage: https://ys.mihoyo.com/
       bilibili: https://space.bilibili.com/401742377
@@ -39,9 +33,6 @@ scripts:
       config: data/apps/ok-ef/working/configs/devices.json
       keys:
       - pc_full_path
-    logs:
-      root: temp
-      path: ok-ef/日常任务
     links:
       homepage: https://endfield.hypergryph.com/
       bilibili: https://space.bilibili.com/1265652806
@@ -54,9 +45,6 @@ scripts:
       keys:
       - game_path
     background: assets/ui/static_background.webp
-    logs:
-      root: script
-      path: .log
     links:
       homepage: https://zzz.mihoyo.com/
       bilibili: https://space.bilibili.com/1636034895
@@ -69,9 +57,6 @@ scripts:
       keys:
       - game_path
     background: assets/app/images/bg37.jpg
-    logs:
-      root: script
-      path: logs
     links:
       homepage: https://sr.mihoyo.com/
       bilibili: https://space.bilibili.com/1340190821
@@ -84,9 +69,6 @@ scripts:
       keys:
       - pc_full_path
       launcher: NTELauncher.exe
-    logs:
-      root: script
-      path: data/apps/ok-nte/working/logs
     links:
       homepage: https://yh.wanmei.com/
       bilibili: https://space.bilibili.com/3546636978489848

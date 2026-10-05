@@ -27,6 +27,7 @@ _TEXT_FIELDS = (
     "game_arguments",
 )
 _BOOL_FIELDS = ("kill_script_after_done", "kill_game_after_done", "block")
+_INT_FIELDS = ("no_log_timeout_seconds", "no_log_max_retries")
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,7 @@ class ScriptEdit:
 
     script_name: str  # 编辑前标识
     display_name: str
-    config_patch: dict[str, str | bool]  # config.yml
+    config_patch: dict[str, str | bool | int]  # config.yml
     weekly_timeouts: list[int | None]  # weekly.yml
     switches: dict[str, bool]  # 脚本自身 config
     task_options: dict[str, bool | str | list[str]] = field(default_factory=dict)
@@ -58,7 +59,9 @@ def validate_edit(
     if not isinstance(edit.display_name, str) or not edit.display_name.strip():
         raise InvalidScript("脚本名称不能为空")
     patch = edit.config_patch
-    if not isinstance(patch, dict) or set(patch) != set(_TEXT_FIELDS + _BOOL_FIELDS):
+    if not isinstance(patch, dict) or set(patch) != set(
+        _TEXT_FIELDS + _BOOL_FIELDS + _INT_FIELDS
+    ):
         raise InvalidScript("脚本配置字段不完整或包含未知字段")
     for key in _TEXT_FIELDS:
         assert key in patch
@@ -68,6 +71,10 @@ def validate_edit(
         assert key in patch
         if type(patch[key]) is not bool:
             raise InvalidScript(f"{key} 必须是开关")
+    for key in _INT_FIELDS:
+        assert key in patch
+        if type(patch[key]) is not int or not 0 <= patch[key] <= 2147483647:
+            raise InvalidScript("无日志超时和重试次数须为 0～2147483647 的整数")
     patch = {
         key: value.strip() if isinstance(value, str) else value
         for key, value in patch.items()

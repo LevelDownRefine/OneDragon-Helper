@@ -11,6 +11,48 @@ fn editor() -> ScriptEditor {
 }
 
 #[test]
+fn no_log_settings_preserve_defaults_saved_values_and_zero() {
+    let mut editor = editor();
+    let defaults = editor.request().unwrap();
+    assert_eq!(defaults.params["config_patch"]["no_log_timeout_seconds"], 0);
+    assert_eq!(defaults.params["config_patch"]["no_log_max_retries"], 3);
+    editor.data.script = serde_json::from_value(json!({
+        "display_name": "示例", "script_path": "demo.exe",
+        "no_log_timeout_seconds": 300, "no_log_max_retries": 1,
+    }))
+    .unwrap();
+    for (seconds, retries) in [(300, 1), (0, 0), (600, 0)] {
+        editor.data.script.no_log_timeout_seconds = seconds;
+        editor.data.script.no_log_max_retries = retries;
+        let request = editor.request().unwrap();
+        assert_eq!(
+            request.params["config_patch"]["no_log_timeout_seconds"],
+            seconds
+        );
+        assert_eq!(
+            request.params["config_patch"]["no_log_max_retries"],
+            retries
+        );
+    }
+    editor.data.script.no_log_timeout_seconds = u32::MAX;
+    assert!(editor.request().is_err());
+    editor.data.script.no_log_timeout_seconds = 300;
+    editor.data.script.no_log_max_retries = u32::MAX;
+    assert!(editor.request().is_err());
+}
+
+#[test]
+fn no_log_response_rejects_negative_boolean_and_fractional_values() {
+    for key in ["no_log_timeout_seconds", "no_log_max_retries"] {
+        for value in [json!(-1), json!(true), json!(1.5), json!("300")] {
+            let mut fields = json!({"display_name": "示例", "script_path": "demo.exe"});
+            fields[key] = value;
+            assert!(serde_json::from_value::<Fields>(fields).is_err());
+        }
+    }
+}
+
+#[test]
 fn form_preserves_null_timeouts_and_boolean_switches() {
     let mut editor = editor();
     editor.data.script.game_arguments = " --profile \"中文 空格\" ".into();

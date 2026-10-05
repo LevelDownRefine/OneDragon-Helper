@@ -716,6 +716,46 @@ class SingleScriptConfigDialog(FormDialogBase):
         grid.addWidget(self._make_label("每周超时:"), timeout_row, 0)
         grid.addLayout(timeout_grid, timeout_row, 1, 1, 2)
 
+        no_log_row = QHBoxLayout()
+        no_log_row.setSpacing(8)
+        field_width = (INPUT_FIXED_W - no_log_row.spacing()) // 2
+        self.no_log_timeout_input = self._make_line_edit(width=field_width)
+        self.no_log_retries_input = self._make_line_edit(width=field_width)
+        for control, title, unit in (
+            (self.no_log_timeout_input, "超时", "秒"),
+            (self.no_log_retries_input, "重试", "次"),
+        ):
+            control.setValidator(QIntValidator(0, 2147483647, self))
+            control.setAlignment(Qt.AlignRight)
+            control.setTextMargins(34, 0, 22, 0)
+            control.setAccessibleName(f"无日志{title}（{unit}）")
+            for text, left, width in ((title, 12, 28), (unit, field_width - 24, 16)):
+                label = QLabel(text, control)
+                label.setFont(make_font(size=FONT_SIZE_BODY))
+                label.setGeometry(left, 0, width, INPUT_FIXED_H)
+                label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+                label.setAttribute(Qt.WA_TransparentForMouseEvents)
+                label.setStyleSheet(
+                    f"QLabel {{ color: {TEXT_MUTED}; background: transparent; border: none; }}"
+                    f"QLabel:disabled {{ color: {TEXT_FAINT}; }}"
+                )
+        no_log_hint = (
+            "仅对阻塞运行的外部脚本生效，检测控制台输出和实时日志文件变化。"
+            "超时 0 秒关闭检测；重试 0 次表示超时后关闭脚本、不重试。"
+        )
+        no_log_label = self._make_label("无日志:")
+        no_log_label.setToolTip(no_log_hint)
+        self.no_log_timeout_input.setToolTip(no_log_hint)
+        self.no_log_retries_input.setToolTip(no_log_hint)
+        no_log_row.addWidget(self.no_log_timeout_input)
+        no_log_row.addWidget(self.no_log_retries_input)
+        no_log_row.addStretch()
+        grid.addWidget(no_log_label, timeout_row + 1, 0)
+        grid.addLayout(no_log_row, timeout_row + 1, 1, 1, 2)
+        self.type_combo.currentTextChanged.connect(self._update_no_log_controls)
+        self.block_cb.toggled.connect(self._update_no_log_controls)
+        self.no_log_timeout_input.textChanged.connect(self._update_no_log_controls)
+
         self.switch_checks: dict[str, QCheckBox] = {}
         self.option_controls = {}
         groups = task_groups(self._switches, self._task_options)
@@ -810,8 +850,8 @@ class SingleScriptConfigDialog(FormDialogBase):
                         self.option_controls[row["id"]] = control
                     section.addLayout(children)
                 tasks.addLayout(section)
-            grid.addWidget(self._make_label("任务:"), timeout_row + 1, 0, Qt.AlignTop)
-            grid.addLayout(tasks, timeout_row + 1, 1, 1, 2)
+            grid.addWidget(self._make_label("任务:"), timeout_row + 2, 0, Qt.AlignTop)
+            grid.addLayout(tasks, timeout_row + 2, 1, 1, 2)
         footer = self._make_footer("保存", self.save_data)
 
         if groups:
@@ -839,6 +879,19 @@ class SingleScriptConfigDialog(FormDialogBase):
         else:
             layout.addLayout(grid)
         layout.addLayout(footer)
+
+    def _update_no_log_controls(self):
+        enabled = (
+            self.type_combo.currentText() == "external" and self.block_cb.isChecked()
+        )
+        self.no_log_timeout_input.setEnabled(enabled)
+        text = self.no_log_timeout_input.text().strip()
+        self.no_log_retries_input.setEnabled(
+            enabled
+            and self.no_log_timeout_input.hasAcceptableInput()
+            and text.isdecimal()
+            and int(text) > 0
+        )
 
     def _find_script_data(self) -> dict:
         """从 config.yml 读取本脚本的完整数据字典；脚本不在表中返回空 dict。"""
@@ -869,6 +922,19 @@ class SingleScriptConfigDialog(FormDialogBase):
             self.game_args_input.setText(script_data["game_arguments"])
         # 阻塞运行：缺字段视为 True（默认阻塞）
         self.block_cb.setChecked(script_data.get("block", True))
+
+        # 旧配置缺字段时沿用 runner 默认值，不自动启用检测。
+        self.no_log_timeout_input.setText(
+            str(script_data["no_log_timeout_seconds"])
+            if "no_log_timeout_seconds" in script_data
+            else "0"
+        )
+        self.no_log_retries_input.setText(
+            str(script_data["no_log_max_retries"])
+            if "no_log_max_retries" in script_data
+            else "3"
+        )
+        self._update_no_log_controls()
 
         # 每周超时
         timeouts = (
@@ -902,6 +968,14 @@ class SingleScriptConfigDialog(FormDialogBase):
                 return
             timeouts.append(int(text) if text else None)
 
+        for control in (self.no_log_timeout_input, self.no_log_retries_input):
+            if (
+                not control.hasAcceptableInput()
+                or not control.text().strip().isdecimal()
+            ):
+                show_warning(self, "无日志超时和重试次数须为 0～2147483647 的整数")
+                return
+
         edit = ScriptEdit(
             script_name=self.script_name,
             display_name=self.name_input.text().strip(),
@@ -916,6 +990,8 @@ class SingleScriptConfigDialog(FormDialogBase):
                 "game_path": self.game_path_input.text().strip(),
                 "game_arguments": self.game_args_input.text().strip(),
                 "block": self.block_cb.isChecked(),
+                "no_log_timeout_seconds": int(self.no_log_timeout_input.text()),
+                "no_log_max_retries": int(self.no_log_retries_input.text()),
             },
             weekly_timeouts=timeouts,
             switches={

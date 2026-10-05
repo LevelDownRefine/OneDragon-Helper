@@ -115,6 +115,76 @@ class TestSingleScriptConfigDialogLoad(unittest.TestCase):
             SingleScriptConfigDialog("collect_log", "日志分析", "C:/x.py")
 
 
+class TestNoLogSettings(unittest.TestCase):
+    def dialog(self, **fields):
+        dialog = SingleScriptConfigDialog(
+            "demo",
+            "示例",
+            "C:/demo.exe",
+            edit_view={
+                "script": {"script_type": "external", "block": True, **fields},
+                "weekly_timeouts": [3600] * 7,
+                "switches": [],
+            },
+        )
+        self.addCleanup(dialog.close)
+        return dialog
+
+    def test_load_edit_and_emit_integer_values_without_writing(self):
+        for saved, expected in (
+            ({}, (0, 3)),
+            ({"no_log_timeout_seconds": 300, "no_log_max_retries": 1}, (300, 1)),
+        ):
+            with self.subTest(saved=saved):
+                dialog = self.dialog(**saved)
+                self.assertEqual(dialog.no_log_timeout_input.text(), str(expected[0]))
+                self.assertEqual(dialog.no_log_retries_input.text(), str(expected[1]))
+                dialog.no_log_timeout_input.setText("600")
+                dialog.no_log_retries_input.setText("0")
+                emitted = []
+                dialog.saveRequested.connect(emitted.append)
+                with patch("src.utils.utils_config.save_config") as save:
+                    dialog.save_data()
+                save.assert_not_called()
+                self.assertEqual(len(emitted), 1)
+                self.assertEqual(emitted[0].config_patch["no_log_timeout_seconds"], 600)
+                self.assertEqual(emitted[0].config_patch["no_log_max_retries"], 0)
+
+    def test_disabled_controls_preserve_values_and_follow_run_mode(self):
+        dialog = self.dialog(no_log_timeout_seconds=300, no_log_max_retries=1)
+        self.assertTrue(dialog.no_log_timeout_input.isEnabled())
+        self.assertTrue(dialog.no_log_retries_input.isEnabled())
+        dialog.block_cb.setChecked(False)
+        self.assertFalse(dialog.no_log_timeout_input.isEnabled())
+        self.assertFalse(dialog.no_log_retries_input.isEnabled())
+        dialog.block_cb.setChecked(True)
+        dialog.type_combo.setCurrentText("python")
+        self.assertFalse(dialog.no_log_timeout_input.isEnabled())
+        dialog.type_combo.setCurrentText("external")
+        self.assertEqual(dialog.no_log_timeout_input.text(), "300")
+        self.assertTrue(dialog.no_log_retries_input.isEnabled())
+        dialog.no_log_timeout_input.setText("0")
+        self.assertTrue(dialog.no_log_timeout_input.isEnabled())
+        self.assertFalse(dialog.no_log_retries_input.isEnabled())
+        self.assertEqual(dialog.no_log_retries_input.text(), "1")
+        dialog.reject()
+        self.assertIsNone(dialog.pending_changes)
+
+    def test_invalid_numbers_keep_form_open_without_emitting_save(self):
+        for field in ("no_log_timeout_input", "no_log_retries_input"):
+            for value in ("", "-1", "1.5", "1,000", "2147483648"):
+                with self.subTest(field=field, value=value):
+                    dialog = self.dialog(no_log_timeout_seconds=300)
+                    getattr(dialog, field).setText(value)
+                    emitted = []
+                    dialog.saveRequested.connect(emitted.append)
+                    with patch("gui.dialogs.show_warning") as warning:
+                        dialog.save_data()
+                    warning.assert_called_once()
+                    self.assertEqual(emitted, [])
+                    self.assertIsNone(dialog.pending_changes)
+
+
 class TestSingleScriptConfigDialogBlock(unittest.TestCase):
     """测试 block 字段在配置弹窗的加载与保存。"""
 

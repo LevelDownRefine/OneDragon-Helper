@@ -11,6 +11,9 @@ fn enabled() -> bool {
 fn external() -> String {
     "external".into()
 }
+fn default_no_log_retries() -> u32 {
+    3
+}
 fn script_closed() -> String {
     "script_closed".into()
 }
@@ -31,6 +34,10 @@ pub struct Fields {
     kill_game_after_done: bool,
     #[serde(default = "enabled")]
     block: bool,
+    #[serde(default)]
+    no_log_timeout_seconds: u32,
+    #[serde(default = "default_no_log_retries")]
+    no_log_max_retries: u32,
     #[serde(default)]
     game_process_name: String,
     #[serde(default)]
@@ -198,6 +205,50 @@ fn task_option_ui(ui: &mut egui::Ui, row: &mut TaskOption) {
     });
 }
 
+fn no_log_input(
+    ui: &mut egui::Ui,
+    value: &mut u32,
+    title: &str,
+    unit: &str,
+    width: f32,
+) -> egui::Response {
+    egui::Frame::new()
+        .fill(theme::CONTROL)
+        .stroke(egui::Stroke::new(1.0, theme::BORDER))
+        .corner_radius(7)
+        .inner_margin(egui::Margin::symmetric(10, 0))
+        .show(ui, |ui| {
+            ui.set_width(width - 22.0);
+            ui.set_min_height(30.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(title).color(theme::MUTED));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let style = ui.style_mut();
+                    style.spacing.button_padding = egui::vec2(0.0, 6.0);
+                    style.visuals.text_edit_bg_color = Some(egui::Color32::TRANSPARENT);
+                    for visuals in [
+                        &mut style.visuals.widgets.inactive,
+                        &mut style.visuals.widgets.hovered,
+                        &mut style.visuals.widgets.active,
+                    ] {
+                        visuals.bg_fill = egui::Color32::TRANSPARENT;
+                        visuals.weak_bg_fill = egui::Color32::TRANSPARENT;
+                        visuals.bg_stroke = egui::Stroke::NONE;
+                    }
+                    ui.add(
+                        egui::DragValue::new(value)
+                            .range(0..=i32::MAX as u32)
+                            .clamp_existing_to_range(false)
+                            .suffix(egui::RichText::new(format!(" {unit}")).color(theme::MUTED)),
+                    )
+                })
+                .inner
+            })
+            .inner
+        })
+        .inner
+}
+
 pub enum EditAction {
     Save(Request),
     Cancel,
@@ -261,6 +312,11 @@ impl ScriptEditor {
                 timeouts.push(Some(seconds));
             }
         }
+        if fields.no_log_timeout_seconds > i32::MAX as u32
+            || fields.no_log_max_retries > i32::MAX as u32
+        {
+            return Err("无日志超时和重试次数须为 0～2147483647 的整数".into());
+        }
         let switches: serde_json::Map<String, Value> = self
             .data
             .switches
@@ -305,6 +361,8 @@ impl ScriptEditor {
                     "kill_game_after_done": fields.kill_game_after_done, "block": fields.block,
                     "game_process_name": fields.game_process_name.trim(), "game_path": fields.game_path.trim(),
                     "game_arguments": fields.game_arguments.trim(),
+                    "no_log_timeout_seconds": fields.no_log_timeout_seconds,
+                    "no_log_max_retries": fields.no_log_max_retries,
                 },
                 "weekly_timeouts": timeouts, "switches": switches,
                 "task_options": task_options,
@@ -438,6 +496,23 @@ impl ScriptEditor {
                             ui.selectable_value(&mut fields.check_done, value.into(), label);
                         }
                     });
+                ui.end_row();
+                ui.label("无日志")
+                    .on_hover_text("仅对阻塞运行的外部脚本生效，检测控制台输出和实时日志文件变化");
+                let input_width = ui.spacing().text_edit_width;
+                ui.add_enabled_ui(fields.script_type == "external" && fields.block, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.set_width(input_width);
+                        ui.spacing_mut().item_spacing.x = 8.0;
+                        let width = (input_width - 8.0) / 2.0;
+                        no_log_input(ui, &mut fields.no_log_timeout_seconds, "超时", "秒", width)
+                            .on_hover_text("0 秒关闭无日志检测");
+                        ui.add_enabled_ui(fields.no_log_timeout_seconds > 0, |ui| {
+                            no_log_input(ui, &mut fields.no_log_max_retries, "重试", "次", width)
+                                .on_hover_text("0 次表示超时后关闭脚本、不重试");
+                        });
+                    });
+                });
                 ui.end_row();
                 ui.label("游戏进程");
                 ui.add(

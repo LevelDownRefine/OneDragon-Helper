@@ -17,7 +17,11 @@ from src.utils import (
     safe_path_join,
 )
 from src.utils.utils_io import save_data
-from src.utils.utils_sub_config import DEFAULT_RUN_TIMEOUT, get_script_name
+from src.utils.utils_sub_config import (
+    DEFAULT_RUN_TIMEOUT,
+    get_script_name,
+    resolve_log_path,
+)
 from src.utils.utils_weekly import DISABLED_START_DAY, get_week_num
 
 logger = logging.getLogger(__name__)
@@ -106,6 +110,7 @@ def generate_chain_config(
     """生成 ScriptChainer 配置文件（仅含启用的脚本）。
 
     启用判定只看 ``enabled_keys`` 名单；链内条目统一显式写 ``enabled=True``。
+    实时日志位置由 log_analysis.yml 解析为绝对路径后注入链，runner 不读取助手声明。
 
     脚本自身的副本/序列、周常起始日对应的周本开关，均由 GUI / CLI 在编辑期实时落盘
     （见 ``src.config.set_config`` / ``src.config.weekly``）；其中「按周几起决定开启/关闭」这类必须在运行期按当天星期
@@ -139,6 +144,9 @@ def generate_chain_config(
             continue
         script.setdefault("block", True)
         script["enabled"] = True
+        log_path = resolve_log_path(script)
+        script["log_path"] = str(log_path) if log_path is not None else ""
+        script.pop("log_analysis_path", None)
         filtered.append(script)
 
     data["script_list"] = filtered

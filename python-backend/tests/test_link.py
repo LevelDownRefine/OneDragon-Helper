@@ -106,7 +106,7 @@ class ScriptTargetTests(unittest.TestCase):
                 link.resolve_script_target("example", "log"),
                 {"kind": "path", "value": str(logs)},
             )
-            log_dir.assert_called_once_with("example", str(self.script))
+            log_dir.assert_called_once_with(self.lookup.return_value)
             self.assertEqual(resolve.call_count, 2)
 
     def test_config_file_preserves_existing_adapter_result(self):

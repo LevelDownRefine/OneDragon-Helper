@@ -52,15 +52,15 @@ class TestLogParser(unittest.TestCase):
                 expected = folder / "run.log"
                 expected.write_text("done", encoding="utf-8")
                 (folder / "zzz.txt").write_text("unrelated", encoding="utf-8")
-                keywords = parse_data(
-                    f"log_pattern: {quote}*.log{quote}", file_format="yaml"
+                settings = parse_data(
+                    f"log_path: {quote}*.log{quote}", file_format="yaml"
                 )
-                with mock.patch.object(
-                    collect_log, "_keywords_for", return_value=keywords
+                script = {"script_path": str(folder / "tool.exe")}
+                with mock.patch(
+                    "src.utils.utils_sub_config.get_log_paths", return_value=settings
                 ):
-                    parser = OkWwLogParser()
-                with mock.patch.object(parser, "_get_log_dir", return_value=folder):
-                    self.assertEqual(parser.get_log_path("unused.exe"), expected)
+                    path = collect_log.resolve_log_path(script, analysis=True)
+                self.assertEqual(OkWwLogParser().get_log_path(str(path)), expected)
 
     def test_daily_completion_determines_status_for_each_parser(self):
         for parser_type, completed, incomplete in (
@@ -1148,18 +1148,26 @@ class TestLogAnalysisConfigDriven(unittest.TestCase):
     回归护栏：确保重构后关键词确由配置注入，且配置与代码中的脚本标识保持一致。
     """
 
-    def test_config_covers_all_parsers(self):
-        """_PARSERS 中每个脚本标识都应在 log_analysis.yml 有对应条目，反之亦然。"""
+    def test_config_covers_all_parsers_and_allows_path_only_scripts(self):
+        """所有解析器都有声明；没有解析器的条目只允许配置日志位置。"""
         cfg = collect_log._load_log_analysis_config()
-        parsers = cfg.get("parsers", {})
+        assert "parsers" in cfg
+        parsers = cfg["parsers"]
         configured = set(parsers.keys())
         declared = {cls.script_name for cls in collect_log._PARSERS if cls.script_name}
-        self.assertEqual(configured, declared)
+        self.assertLessEqual(declared, configured)
+        for name in configured:
+            with self.subTest(name=name):
+                self.assertIn("log_path", parsers[name])
+                if name not in declared:
+                    self.assertLessEqual(
+                        set(parsers[name]), {"log_path", "log_analysis_path"}
+                    )
 
     def test_keywords_loaded_from_config(self):
         """Parser 实例的判定关键词应由配置注入，而非依赖类属性 hardcode。"""
         oww = OkWwLogParser()
-        self.assertEqual(oww.log_pattern, "ok-script.log")
+        self.assertNotIn("log_pattern", collect_log._keywords_for("ok-ww"))
         self.assertEqual(oww.error_markers, ("ERROR",))
         # 双空格领奖标记必须原样保留（成败判据即此标记）。
         self.assertEqual(

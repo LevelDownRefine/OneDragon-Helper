@@ -15,7 +15,6 @@ from ruamel.yaml.constructor import DuplicateKeyError
 from src import link
 from src.config import script_resources as resources
 from src.config import set_config
-from src.log import monitor
 from src.utils.utils_io import dump_data_str
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -33,7 +32,6 @@ class TestScriptResources(unittest.TestCase):
                     "backup_paths": ["配置"],
                     "background": "图片/背景.jpg",
                     "game": {"config": "配置/game.json", "keys": ["nested", "exe"]},
-                    "logs": {"root": "script", "path": "日志"},
                     "links": {
                         "homepage": "https://example.com/",
                         "bilibili": "https://space.bilibili.com/1",
@@ -89,7 +87,7 @@ class TestScriptResources(unittest.TestCase):
 
     def test_missing_optional_resources_and_unknown_script(self):
         node = self.data["scripts"]["demo"]
-        for name in ("game", "background", "logs"):
+        for name in ("game", "background"):
             del node[name]
         declaration = self.load()["demo"]
         self.assertEqual(declaration, node)
@@ -125,7 +123,6 @@ class TestScriptResources(unittest.TestCase):
             (("scripts", "demo", "game", "keys"), "path"),
             (("scripts", "demo", "game", "keys"), [True]),
             (("scripts", "demo", "game", "keys"), []),
-            (("scripts", "demo", "logs", "root"), "cwd"),
             (("scripts", "demo", "links", "github"), "javascript:alert(1)"),
             (
                 ("scripts", "demo", "links", "github"),
@@ -190,31 +187,6 @@ class TestScriptResources(unittest.TestCase):
             reloaded = resources.load_resource_manifest(str(self.path))
             self.assertEqual(reloaded["demo"]["background"], "changed.jpg")
             self.assertEqual(read.call_count, 2)
-
-    def test_log_paths_preserve_script_and_temp_roots(self):
-        expected = {
-            "ok-ww": "data/apps/ok-ww/working/logs",
-            "ok-nte": "data/apps/ok-nte/working/logs",
-            "March7th-Launcher": "logs",
-            "BetterGI": "log",
-            "OneDragon-Launcher": ".log",
-        }
-        for name, path in expected.items():
-            with self.subTest(script=name):
-                self.assertEqual(
-                    monitor.get_log_dir(name, str(self.root / "工具.exe")),
-                    self.root / path,
-                )
-        self.assertEqual(
-            monitor.get_log_dir("ok-ef", "/unrelated/ok-ef.exe"),
-            Path(tempfile.gettempdir()) / "ok-ef/日常任务",
-        )
-        self.assertIsNone(monitor.get_log_dir("MAA", "MAA.exe"))
-        # 声明解析不用当前工作目录，也能处理 Windows 分隔符。
-        self.assertEqual(
-            monitor.get_log_dir("BetterGI", r"D:\工具\程序.exe"),
-            Path("D:/工具/log"),
-        )
 
     def test_repository_manifest_covers_registered_adapters(self):
         manifest = resources.load_resource_manifest(

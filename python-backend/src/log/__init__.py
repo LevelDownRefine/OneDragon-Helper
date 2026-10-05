@@ -3,7 +3,7 @@
 迁移自原 `scripts/collect_log.py`；核心解析逻辑（Parser 类、辅助函数、
 `parse_log` / `parse_logs`）现置于本包。诊断入口为 `python -m src.log`
 （`__main__` 调用 `parse_logs(do_log=True)` 打印当日汇总报告）。
-日志位置由 `src.config.script_resources` 读取内置声明，脚本标识及 YAML 读取复用
+日志位置来自 `config/log_analysis.yml` 的脚本声明，脚本标识及 YAML 读取复用
 `src.utils`；不依赖 GUI 或配置适配器实例。
 
 本包对外暴露的公开符号列入 `__all__`，下游可 `import src.log as collect_log`
