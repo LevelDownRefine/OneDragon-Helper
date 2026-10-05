@@ -342,8 +342,8 @@ class TestScheduleExeE2E(unittest.TestCase):
     def _log_offsets(cls) -> dict[str, int]:
         """当前两级日志文件大小（作为「本轮增量」的起点）。"""
         return {
-            p: (Path(p).stat().st_size if Path(p).exists() else 0)
-            for p in cls._log_paths()
+            key: (Path(path).stat().st_size if Path(path).exists() else 0)
+            for key, path in cls._log_paths().items()
         }
 
     @classmethod
@@ -526,7 +526,7 @@ class TestScheduleExeE2E(unittest.TestCase):
                 continue
             with open(p, encoding="utf-8", errors="replace") as f:
                 f.seek(0, os.SEEK_END)
-                if f.tell() <= offset:  # 午夜轮转截断重建：整份即本轮增量
+                if f.tell() < offset:  # 午夜轮转截断重建：整份即本轮增量
                     f.seek(0)
                     tails[key] = f.read()
                 else:

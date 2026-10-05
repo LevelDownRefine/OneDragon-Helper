@@ -207,6 +207,7 @@ def test_package(root: Path, package: Path) -> int:
                     project,
                     "-p",
                     "test_*_exe.py",
+                    "-v",
                 ],
                 cwd=root,
                 env=env,
