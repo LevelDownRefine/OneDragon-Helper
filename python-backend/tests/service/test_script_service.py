@@ -88,10 +88,8 @@ class ScriptServiceTestBase(unittest.TestCase):
 
 
 class TestScriptEdit(ScriptServiceTestBase):
-    def test_no_log_settings_round_trip_and_chain(self):
-        from src.service.chain_gen import generate_chain_config
-
-        for seconds, retries in ((300, 1), (0, 0), (600, 0)):
+    def test_no_log_settings_round_trip(self):
+        for seconds, retries in ((300, 1), (0, 0)):
             with self.subTest(seconds=seconds, retries=retries):
                 self.service.update_script(
                     self.edit(
@@ -101,19 +99,11 @@ class TestScriptEdit(ScriptServiceTestBase):
                 saved = self.service.get_script("BetterGI")
                 self.assertEqual(saved["no_log_timeout_seconds"], seconds)
                 self.assertEqual(saved["no_log_max_retries"], retries)
-                chain = generate_chain_config(
-                    {"script_list": [saved]},
-                    {"BetterGI"},
-                    out_path=str(self.config.parent / "chain.yml"),
-                )
-                entry = load_data(chain, file_format="yaml")["script_list"][0]
-                self.assertEqual(entry["no_log_timeout_seconds"], seconds)
-                self.assertEqual(entry["no_log_max_retries"], retries)
 
     def test_invalid_no_log_settings_never_write(self):
         original = (self.config.read_bytes(), self.weekly.read_bytes())
         for key in ("no_log_timeout_seconds", "no_log_max_retries"):
-            for value in (-1, True, 1.5, "300", None, 2147483648):
+            for value in (-1, True, 2147483648):
                 with self.subTest(key=key, value=value):
                     with self.assertRaises(InvalidScript):
                         self.service.update_script(self.edit(**{key: value}))

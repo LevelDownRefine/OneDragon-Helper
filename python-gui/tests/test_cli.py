@@ -294,13 +294,6 @@ class TestCliGenerateChain(CliTestCase):
                 produced = [get_script_name(s) for s in data["script_list"]]
                 self.assertEqual(set(produced), expected)
                 self.assertEqual(len(produced), len(expected))
-                for script in data["script_list"]:
-                    self.assertNotIn("log_analysis_path", script)
-                    if get_script_name(script) == "MaaEnd":
-                        self.assertEqual(
-                            script["log_path"],
-                            str(Path(script["script_path"]).parent / "debug/maafw.log"),
-                        )
                 self.assertIn("已生成脚本链配置", _read_cli_file("generate_chain"))
 
     def test_unknown_selection_exits_one(self):

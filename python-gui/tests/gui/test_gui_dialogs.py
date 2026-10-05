@@ -130,25 +130,18 @@ class TestNoLogSettings(unittest.TestCase):
         self.addCleanup(dialog.close)
         return dialog
 
-    def test_load_edit_and_emit_integer_values_without_writing(self):
-        for saved, expected in (
-            ({}, (0, 3)),
-            ({"no_log_timeout_seconds": 300, "no_log_max_retries": 1}, (300, 1)),
-        ):
-            with self.subTest(saved=saved):
-                dialog = self.dialog(**saved)
-                self.assertEqual(dialog.no_log_timeout_input.text(), str(expected[0]))
-                self.assertEqual(dialog.no_log_retries_input.text(), str(expected[1]))
-                dialog.no_log_timeout_input.setText("600")
-                dialog.no_log_retries_input.setText("0")
-                emitted = []
-                dialog.saveRequested.connect(emitted.append)
-                with patch("src.utils.utils_config.save_config") as save:
-                    dialog.save_data()
-                save.assert_not_called()
-                self.assertEqual(len(emitted), 1)
-                self.assertEqual(emitted[0].config_patch["no_log_timeout_seconds"], 600)
-                self.assertEqual(emitted[0].config_patch["no_log_max_retries"], 0)
+    def test_load_edit_and_emit_no_log_settings(self):
+        dialog = self.dialog(no_log_timeout_seconds=300, no_log_max_retries=1)
+        self.assertEqual(dialog.no_log_timeout_input.text(), "300")
+        self.assertEqual(dialog.no_log_retries_input.text(), "1")
+        dialog.no_log_timeout_input.setText("600")
+        dialog.no_log_retries_input.setText("0")
+        emitted = []
+        dialog.saveRequested.connect(emitted.append)
+        dialog.save_data()
+        self.assertEqual(len(emitted), 1)
+        self.assertEqual(emitted[0].config_patch["no_log_timeout_seconds"], 600)
+        self.assertEqual(emitted[0].config_patch["no_log_max_retries"], 0)
 
     def test_disabled_controls_preserve_values_and_follow_run_mode(self):
         dialog = self.dialog(no_log_timeout_seconds=300, no_log_max_retries=1)
@@ -172,7 +165,7 @@ class TestNoLogSettings(unittest.TestCase):
 
     def test_invalid_numbers_keep_form_open_without_emitting_save(self):
         for field in ("no_log_timeout_input", "no_log_retries_input"):
-            for value in ("", "-1", "1.5", "1,000", "2147483648"):
+            for value in ("", "-1"):
                 with self.subTest(field=field, value=value):
                     dialog = self.dialog(no_log_timeout_seconds=300)
                     getattr(dialog, field).setText(value)

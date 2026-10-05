@@ -108,7 +108,11 @@ class TestGenerateChainConfig(unittest.TestCase):
             return load_data(out, file_format="yaml", cached=True)
 
     def test_runtime_log_settings_come_from_declaration_and_preserve_user_options(self):
-        for name, expected_suffix in (("MaaEnd", "debug/maafw.log"), ("unknown", None)):
+        for name, expected_suffix in (
+            ("MAA", "debug/gui.log"),
+            ("MaaEnd", "debug/maafw.log"),
+            ("unknown", None),
+        ):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
                 script = {
                     "script_path": os.path.join(directory, name + ".exe"),
