@@ -384,6 +384,69 @@ class Daily:
         return True
 
 
+class MultiSelectEnabledDaily(Daily):
+    """以多选列表成员表示启用状态的日常，副本落点沿用 Daily。"""
+
+    def __init__(
+        self, script_name: str, declaration: dict, script_display_name: str
+    ) -> None:
+        """初始化副本落点及列表开关。
+
+        Args:
+            script_name: 所属脚本标识名。
+            declaration: 含 enable_key（列表键）与 enable_task（成员名）的声明。
+            script_display_name: 脚本展示名，供日志使用。
+        """
+        super().__init__(script_name, declaration, script_display_name)
+        assert self._enable_key, "多选列表开关必须声明 enable_key"
+        self._enable_task = get_field(
+            declaration, "enable_task", self.display_name, str
+        )
+        assert self._enable_task, "多选列表开关必须声明 enable_task"
+
+    def _enabled_tasks(self, config: dict) -> list[str] | None:
+        """取得任务列表；外部配置尚未提供该列表时返回 None 并记录。"""
+        if self._enable_key not in config:
+            logger.warning(
+                "[daily][%s] 配置缺少任务列表 %s，无法读取或修改启用状态",
+                self.display_name,
+                self._enable_key,
+            )
+            return None
+        tasks = get_field(config, self._enable_key, self.display_name, list)
+        assert all(isinstance(task, str) for task in tasks), "任务列表必须为字符串列表"
+        return tasks
+
+    def read_enabled(self) -> bool | None:
+        """反读任务是否在列表中；文件或列表缺失时返回 None。"""
+        config = self._load_enable_config(allow_missing=True)
+        if config is None:
+            return None
+        tasks = self._enabled_tasks(config)
+        return None if tasks is None else self._enable_task in tasks
+
+    def set_enabled(self, enabled: bool) -> bool:
+        """仅增删本任务，保留其他任务及顺序；实际变更时保存并返回 True。
+
+        Args:
+            enabled: 目标启用状态。
+
+        Returns:
+            是否修改并保存了任务列表；列表缺失或状态相同时为 False。
+        """
+        assert type(enabled) is bool, "任务启用状态必须为布尔"
+        config = self._load_enable_config()
+        tasks = self._enabled_tasks(config)
+        if tasks is None or (self._enable_task in tasks) == enabled:
+            return False
+        if enabled:
+            tasks.append(self._enable_task)
+        else:
+            tasks[:] = [task for task in tasks if task != self._enable_task]
+        self._save_enable_config(config)
+        return True
+
+
 class SingleLayerDaily(Daily):
     """单层带 ``key`` 的日常：整组自身即唯一一级项，展示名用日常名，选中结果走二级。
 
@@ -1056,6 +1119,7 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
     cls.__name__: cls
     for cls in (
         Daily,
+        MultiSelectEnabledDaily,
         BgiDaily,
         BgiLeyLineDaily,
         BgiStygianDaily,

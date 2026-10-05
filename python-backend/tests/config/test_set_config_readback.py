@@ -73,7 +73,7 @@ class TestReadbackEndfield(unittest.TestCase):
     def test_stage_roundtrip(self):
         # 体力本在 DailyBattleTask.json、开关键仍在 DailyTask.json，两份文件各自读。
         data: dict = {}
-        routine = {"⭐刷体力": True}
+        routine = {"战斗任务": ["刷体力", "演算"]}
         with (
             patch.object(Daily, "_load_daily_config", return_value=data),
             patch.object(Daily, "_load_routine_config", return_value=routine),
@@ -231,7 +231,7 @@ class TestReadbackFacade(unittest.TestCase):
         cases = (
             (
                 "ok-ef",
-                {"体力本": "清波寨", "⭐刷体力": False},
+                {"体力本": "清波寨", "战斗任务": ["演算"]},
                 [("每日任务", "清波寨", None, False)],
             ),
             (

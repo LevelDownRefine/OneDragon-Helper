@@ -4599,9 +4599,9 @@
             "能量淤积点-乙",
             "干员养成-甲"
           ],
-          "data/apps/ok-ef/working/configs/DailyTask.json.⭐刷体力": [
-            false,
-            true
+          "data/apps/ok-ef/working/configs/DailyTask.json.战斗任务[1]": [
+            "<MISSING>",
+            "刷体力"
           ]
         },
         "readback": [

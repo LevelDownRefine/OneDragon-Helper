@@ -97,8 +97,8 @@ class TestDeclarationBindings(unittest.TestCase):
             (
                 adapters.EndfieldConfig,
                 "干员养成",
-                {"⭐刷体力": False},
-                {"⭐刷体力": True},
+                {"战斗任务": ["演算"]},
+                {"战斗任务": ["演算", "刷体力"]},
             ),
         )
         for cls, task_name, switch_seed, switch_expected in cases:
