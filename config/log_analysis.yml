@@ -108,7 +108,7 @@ parsers:
       - '未领取'
 
   MAA:
-    # 与 AUTO-MAS 保持一致；正常作战也可能长时间不更新，阈值由用户设置。
+    # 正常作战期间也可能长时间不更新，无日志阈值由用户设置。
     log_path: 'debug/gui.log'
 
   MaaEnd:

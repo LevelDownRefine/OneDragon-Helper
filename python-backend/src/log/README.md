@@ -24,8 +24,7 @@ parsers:
 `log_path`。runner 只消费这份链，不依赖助手的 YAML 结构，也不会拿分析报告判断活动。
 主配置和新增脚本不再保存日志路径；残留旧字段不覆盖声明。
 
-MAA 与 [AUTO-MAS 的 MAA 适配](https://github.com/AUTO-MAS-Project/AUTO-MAS/blob/a38bfc26229d788b643f74fb420a6ddf5d81df56/app/task/MAA/AutoProxy.py#L335)
-使用同一个 `debug/gui.log`。该文件在正常作战期间也可能长时间不更新；
+MAA 使用 `debug/gui.log`。该文件在正常作战期间也可能长时间不更新；
 无日志阈值由用户设置，不自动放宽。正常等待超过阈值同样触发，
 该检测不能区分正常静默与卡死。
 
