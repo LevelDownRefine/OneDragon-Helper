@@ -286,6 +286,9 @@ def unpack_package(
         )
         completed = resumed
         (destination / MANIFEST).write_bytes(manifest_bytes)
+        # 先报一次断点位置：整段命中缓存时下面不会再回调。
+        if progress is not None:
+            progress(completed, total)
         for name, item in entries.values():
             check_cancelled(cancelled)
             if name == MANIFEST or name in resumed_names:

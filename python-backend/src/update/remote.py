@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import re
 import zipfile
 import zlib
@@ -161,7 +162,10 @@ class ResumableFetcher:
         self._checked = False
 
     def fetch(self, data_range, stream=False):
-        """按 remotezip 的区间请求返回缓冲；后缀区间自行换算为正向区间。"""
+        """按 remotezip 的区间请求返回缓冲；后缀区间自行换算为正向区间。
+
+        两种 stream 模式都返回按需拉取的缓冲，整段不进内存。
+        """
         self._check_remote()
         start, end = data_range
         if start < 0 and end is None:
@@ -201,12 +205,17 @@ class ResumableFetcher:
             ]
         self._cache.mkdir(parents=True, exist_ok=True)
         state = self._cache / "state.json"
+        stored = None
+        if identity[1] and state.is_file():
+            stored = json.loads(state.read_text(encoding="utf-8"))
         # 没有标识就无法判断远端是否改过，只能每次重来，避免混用两次的字节。
-        reuses = identity[1] and state.is_file()
-        if not reuses or json.loads(state.read_text(encoding="utf-8")) != identity:
+        if stored != identity:
             for path in self._cache.glob("*.bin"):
                 path.unlink()
-        state.write_text(json.dumps(identity), encoding="utf-8")
+        # 同目录临时文件加原子替换，崩在写一半也不会留下坏 JSON 让下次判成坏缓存。
+        temporary = state.with_name(state.name + ".tmp")
+        temporary.write_text(json.dumps(identity), encoding="utf-8")
+        os.replace(temporary, state)
         self._checked = True
 
     @staticmethod
