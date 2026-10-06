@@ -8,7 +8,13 @@ from pathlib import Path
 import portalocker
 import psutil
 
-from src.update.package import APP_EXE, CLI_EXE, RUNNER_EXE, UpdateError
+from src.update.package import (
+    APP_EXE,
+    CLI_EXE,
+    RUNNER_EXE,
+    UpdateError,
+    linked_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +49,6 @@ class FileLease:
 
     def __exit__(self, *args):
         self.lock.__exit__(*args)
-
-
-def linked_path(path: Path) -> bool:
-    """符号链接或 Windows junction；更新路径不允许落在链接后面。"""
-    return path.is_symlink() or bool(
-        path.exists() and getattr(path.lstat(), "st_file_attributes", 0) & 0x400
-    )
 
 
 def update_directory(root: Path) -> Path:

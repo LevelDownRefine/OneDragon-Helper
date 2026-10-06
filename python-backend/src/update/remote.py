@@ -298,12 +298,12 @@ def open_archive(url: str, *, cache: Path, cancelled: Event | None = None):
                 yield archive
         except NotImplementedError as exc:
             raise UpdateError(f"远端 ZIP 压缩方式不受支持: {exc}") from exc
-        except (
-            RemoteZipError,
-            zipfile.BadZipFile,
-            zlib.error,
-            EOFError,
-        ) as exc:
+        except (zipfile.BadZipFile, zlib.error) as exc:
+            # 解压或 CRC 在校验之前就失败，说明拿到的字节本身不对：留着同一份断点只会重复失败。
+            raise UpdateError(
+                f"远端 ZIP 数据损坏 ({type(exc).__name__}): {exc}"
+            ) from exc
+        except (RemoteZipError, EOFError) as exc:
             raise UpdateInterrupted(
                 f"范围读取失败 ({type(exc).__name__}): {exc}"
             ) from exc

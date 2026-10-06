@@ -26,6 +26,7 @@ from src.update.package import (
     UpdateCancelled,
     UpdateError,
     file_digest,
+    linked_path,
     load_manifest,
     manifest_frontend,
     unpack_package,
@@ -36,7 +37,6 @@ from src.update.runtime import (
     FileLease,
     child_environment,
     helper_processes,
-    linked_path,
     update_directory,
 )
 from src.utils import get_root_dir
@@ -47,6 +47,17 @@ REPOSITORY = "LevelDownRefine/OneDragon-Helper"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
 ZIP_NAME = "OneDragon-Helper.zip"
 RUST_ZIP_NAME = "OneDragon-Helper-Rust.zip"
+
+
+def superseded_workspace(name: str, installed: str) -> bool:
+    """工作目录是否属于已安装或更早的版本，可以直接清掉。
+
+    比已安装版本更新的目录可能是待安装的断点，留着续传。
+    """
+    suffix = name.removeprefix("download-v")
+    if re.fullmatch(r"\d+(\.\d+)*", suffix) is None:
+        return False
+    return version_number(suffix) <= version_number(installed)
 
 
 @dataclass(frozen=True)
@@ -229,7 +240,9 @@ class UpdateService:
             if linked_path(work):
                 raise UpdateError("更新工作目录不能是链接")
             for stale in directory.glob("download-*"):
-                if stale != work and not linked_path(stale):
+                if stale == work or linked_path(stale):
+                    continue
+                if superseded_workspace(stale.name, installed["version"]):
                     shutil.rmtree(stale, ignore_errors=True)
             work.mkdir(exist_ok=True)
             try:

@@ -203,6 +203,17 @@ class TestUpdateService(unittest.TestCase):
         request.assert_not_called()
         self.assertFalse(list((self.root / ".update").glob("download-*")))
 
+    def test_stale_workspace_is_cleared_but_newer_one_is_kept(self):
+        update = self.root / ".update"
+        (update / "download-v1.0.0").mkdir(parents=True)
+        (update / "download-v1.20.0").mkdir()
+        with patch.object(requests, "get", side_effect=self.responses()):
+            self.client.prepare_update(self.release)
+        self.assertEqual(
+            sorted(path.name for path in update.glob("download-*")),
+            ["download-v1.10.0", "download-v1.20.0"],
+        )
+
     def test_bad_checksum_or_interrupted_download_preserves_installation(self):
         for kind, kept in (("checksum", False), ("truncated", True), ("network", True)):
             with self.subTest(kind=kind):

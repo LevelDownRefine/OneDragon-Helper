@@ -103,17 +103,25 @@ def managed_path(name: str) -> bool:
     return name.startswith(("_internal/", "assets/", "src/gui/qml/"))
 
 
+def linked_path(path: Path) -> bool:
+    """符号链接或 Windows junction；更新路径不允许落在链接后面。"""
+    return path.is_symlink() or bool(
+        path.exists() and getattr(path.lstat(), "st_file_attributes", 0) & 0x400
+    )
+
+
 def safe_target(root: Path, name: str) -> Path:
-    """拒绝用户目录、符号链接和 Windows junction 造成的路径逃逸。"""
+    """拒绝用户目录、符号链接和 Windows junction 造成的路径逃逸。
+
+    root 自身不查链接：安装目录本来就是用户挑的，挪到 junction 后面是合理用法。
+    """
     if not managed_path(name):
         raise UpdateError(f"更新包包含非程序路径: {name}")
     target = root / name
     for item in (target, *target.parents):
         if item == root:
             break
-        if item.is_symlink() or (
-            item.exists() and getattr(item.lstat(), "st_file_attributes", 0) & 0x400
-        ):
+        if linked_path(item):
             raise UpdateError(f"更新路径不能经过链接: {name}")
     if not target.resolve().is_relative_to(root.resolve()):
         raise UpdateError(f"更新路径越界: {name}")
@@ -220,6 +228,8 @@ def unpack_package(
 
     目标目录可以已存在：哈希一致的条目视为上次已下完，只补齐其余条目。
     """
+    if linked_path(destination):
+        raise UpdateError("解包目录不能是链接")
     prefix = "OneDragon-Helper/"
     check_cancelled(cancelled)
     context = (
