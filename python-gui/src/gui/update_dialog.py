@@ -114,7 +114,7 @@ class UpdateDialog(FormDialogBase):
             "current": "重新检查",
             "error": "重试",
             "unsupported": "检查更新",
-            "cancelling": "正在暂停…",
+            "cancelling": "请稍候…",
         }
         assert state in actions
         self.status_label.setText(message)

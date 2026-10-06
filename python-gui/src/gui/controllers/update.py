@@ -182,7 +182,8 @@ class UpdateController(QObject):
         elif self._worker.operation != "install":
             self._close_pending = True
             self._worker.cancelled.set()
-            self._dialog.show_state("cancelling", "正在暂停，请等待当前操作结束…")
+            verb = "暂停" if self._worker.operation == "download" else "取消"
+            self._dialog.show_state("cancelling", f"正在{verb}，请等待当前操作结束…")
 
     @Slot()
     def shutdown(self):
