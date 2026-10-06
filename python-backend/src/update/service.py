@@ -243,7 +243,7 @@ class UpdateService:
                 if stale == work or linked_path(stale):
                     continue
                 if superseded_workspace(stale.name, installed["version"]):
-                    shutil.rmtree(stale, ignore_errors=True)
+                    self._discard(stale)
             work.mkdir(exist_ok=True)
             try:
                 if not self._prepare_incremental(release, work, progress, cancelled):
@@ -264,9 +264,9 @@ class UpdateService:
                 else:
                     logger.exception("准备更新失败")
                 if not isinstance(exc, resumable):
-                    shutil.rmtree(work, ignore_errors=True)
+                    self._discard(work)
                 raise
-            shutil.rmtree(work / "ranges", ignore_errors=True)
+            self._discard(work / "ranges")
         return PreparedUpdate(work, release.version)
 
     def _prepare_incremental(
@@ -365,6 +365,16 @@ class UpdateService:
                     output.write(chunk)
                     if progress is not None:
                         progress(received, limit)
+
+    @staticmethod
+    def _discard(path: Path) -> None:
+        """尽力删除临时目录；删不掉只记录，不影响本次更新的结果。"""
+        try:
+            shutil.rmtree(path)
+        except FileNotFoundError:
+            return
+        except OSError:
+            logger.warning("无法清理更新目录: %s", path)
 
     def start_update(self, prepared: PreparedUpdate) -> Path:
         """启动独立安装器并等待 ready；返回后调用方应立即退出 GUI。"""

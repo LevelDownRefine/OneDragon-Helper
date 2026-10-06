@@ -506,6 +506,34 @@ class TestRemoteArchive(unittest.TestCase):
         self.assertEqual((self.root / "_internal/small.bin").read_bytes(), b"old")
         self.assert_workspace(kept=False)
 
+    def test_corrupt_member_is_not_treated_as_resumable(self):
+        # 改一个成员（确保会被下载）后翻转它压缩数据中间一个字节。
+        (self.target / "_internal/shared.bin").write_bytes(os.urandom(SHARED_BYTES))
+        write_manifest(self.target, list(load_manifest(self.target)["files"]), "1.10.0")
+        archive = archive_package(self.target, self.directory / "corrupt.zip")
+        raw = bytearray(archive.read_bytes())
+        with zipfile.ZipFile(archive) as source:
+            member = source.getinfo("OneDragon-Helper/_internal/shared.bin")
+        data_start = (
+            member.header_offset
+            + 30
+            + len(member.filename.encode())
+            + len(member.extra)
+        )
+        raw[data_start + member.compress_size // 2] ^= 0xFF
+        self.server.payload = bytes(raw)
+        release = replace(self.release, size=len(raw))
+
+        with (
+            self.assertLogs(service.__name__, level="ERROR"),
+            self.assertRaises(service.UpdateError) as raised,
+        ):
+            self.client.prepare_update(release)
+        # 坏字节必须当确定性失败：重放同一份断点缓存只会一直失败。
+        self.assertNotIsInstance(raised.exception, service.UpdateInterrupted)
+        self.assertIn("数据损坏", str(raised.exception))
+        self.assert_workspace(kept=False)
+
     def test_missing_range_support_falls_back_to_full_download(self):
         digest = hashlib.sha256(self.payload).hexdigest()
         for missing in ("head", "range"):

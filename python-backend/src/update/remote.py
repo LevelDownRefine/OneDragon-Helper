@@ -71,9 +71,11 @@ class _RangeBuffer:
             self._have = 0
 
     def __len__(self):
+        """区间长度；remotezip 用它加 tell() 反推远端文件大小。"""
         return self._end - self._start + 1
 
     def tell(self):
+        """远端坐标上的当前位置，不是缓存文件里的偏移。"""
         return self._position
 
     def seek(self, offset, whence=0):
