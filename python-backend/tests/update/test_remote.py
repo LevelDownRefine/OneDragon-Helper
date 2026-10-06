@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import struct
 import tempfile
 import threading
@@ -50,6 +51,11 @@ def build_pair(directory: Path):
 class RangeHandler(http.server.BaseHTTPRequestHandler):
     """按单区间返回归档内容；关闭 supports_range 时退化为整包响应。"""
 
+    def send_identity(self):
+        self.send_header(
+            "ETag", '"' + hashlib.sha256(self.server.payload).hexdigest() + '"'
+        )
+
     def do_HEAD(self):
         self.server.requests.append((self.path, None))
         if not self.server.supports_head:
@@ -60,6 +66,7 @@ class RangeHandler(http.server.BaseHTTPRequestHandler):
         else:
             self.send_response(200)
             self.send_header("Content-Length", str(len(self.server.payload)))
+            self.send_identity()
         self.end_headers()
 
     def do_GET(self):
@@ -97,6 +104,7 @@ class RangeHandler(http.server.BaseHTTPRequestHandler):
             self.send_header(
                 "Content-Range", f"bytes {start + shift}-{end + shift}/{len(data)}"
             )
+        self.send_identity()
         self.end_headers()
         self.server.served += length
         try:
@@ -111,8 +119,9 @@ class RangeHandler(http.server.BaseHTTPRequestHandler):
 class FullResponse:
     """整包下载路径的最小响应替身。"""
 
-    def __init__(self, content=b""):
-        self.content = content
+    def __init__(self, content=b"", status_code=200, headers=None):
+        self.content, self.status_code = content, status_code
+        self.headers = headers or {}
 
     def __enter__(self):
         return self
@@ -137,6 +146,7 @@ class TestRemoteArchive(unittest.TestCase):
         )
         self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.root, target = build_pair(self.directory)
+        self.ranges = self.directory / "ranges"
         self.target = target
         archive = archive_package(target, self.directory / service.ZIP_NAME)
         self.payload = archive.read_bytes()
@@ -177,6 +187,15 @@ class TestRemoteArchive(unittest.TestCase):
         )
         self.client = service.UpdateService(self.root)
 
+    def forget_workspace(self):
+        """丢掉上一轮的断点与已下载的包，让下一次从零开始。"""
+        shutil.rmtree(self.root / ".update", ignore_errors=True)
+
+    def assert_workspace(self, kept: bool):
+        """可重试的失败保留工作目录，确定性失败清空。"""
+        found = [path.name for path in (self.root / ".update").glob("download-*")]
+        self.assertEqual(found, ["download-v1.10.0"] if kept else [])
+
     def test_incremental_preparation_fetches_only_changed_entries(self):
         progress = Mock()
         prepared = self.client.prepare_update(self.release, progress=progress)
@@ -194,7 +213,7 @@ class TestRemoteArchive(unittest.TestCase):
         self.assertLess(progress.call_args.args[1], len(self.payload))
 
     def test_remotezip_reads_the_requested_member(self):
-        with remote.open_archive(self.url) as archive:
+        with remote.open_archive(self.url, cache=self.ranges) as archive:
             self.assertIsInstance(archive, zipfile.ZipFile)
             self.assertEqual(
                 archive.read("OneDragon-Helper/_internal/small.bin"), b"new"
@@ -202,7 +221,7 @@ class TestRemoteArchive(unittest.TestCase):
 
     def test_remotezip_follows_redirects_with_positive_ranges(self):
         url = f"http://127.0.0.1:{self.server.server_address[1]}/redirect"
-        with remote.open_archive(url) as archive:
+        with remote.open_archive(url, cache=self.ranges) as archive:
             self.assertEqual(
                 archive.read("OneDragon-Helper/_internal/small.bin"), b"new"
             )
@@ -222,7 +241,7 @@ class TestRemoteArchive(unittest.TestCase):
             self.target, self.directory / "cached.zip"
         ).read_bytes()
         self.assertLess(len(self.server.payload), 65536)
-        with remote.open_archive(self.url) as archive:
+        with remote.open_archive(self.url, cache=self.ranges) as archive:
             requests_before = len(self.server.requests)
             progress = Mock()
             destination = self.directory / "cached"
@@ -237,7 +256,7 @@ class TestRemoteArchive(unittest.TestCase):
         self.assertGreater(total, 0)
         self.assertEqual(received, total)
 
-    def test_cancellation_during_directory_download_removes_workspace(self):
+    def test_cancellation_during_directory_download_keeps_workspace(self):
         cancelled = Event()
         readinto = HTTPResponse.readinto
 
@@ -249,15 +268,21 @@ class TestRemoteArchive(unittest.TestCase):
         with (
             patch.object(HTTPResponse, "readinto", cancel_on_chunk),
             patch.object(requests, "get") as full_download,
-            self.assertLogs(service.__name__, level="ERROR"),
+            self.assertNoLogs(service.__name__, level="ERROR"),
             self.assertRaises(service.UpdateCancelled),
         ):
             self.client.prepare_update(self.release, cancelled=cancelled)
         full_download.assert_not_called()
-        self.assertFalse(list((self.root / ".update").glob("download-*")))
+        self.assert_workspace(kept=True)
 
     def test_invalid_range_length_does_not_trigger_full_download(self):
-        for kind in ("short", "long", "truncated", "unframed-short"):
+        # 声明长度对不上属于坏响应，直接丢弃；只是流提前结束则可以续传。
+        for kind, resumable in (
+            ("short", False),
+            ("long", False),
+            ("truncated", True),
+            ("unframed-short", True),
+        ):
             with self.subTest(kind=kind):
                 self.server.invalid_length = kind
                 with (
@@ -269,7 +294,7 @@ class TestRemoteArchive(unittest.TestCase):
                 ):
                     self.client.prepare_update(self.release)
                 full_download.assert_not_called()
-                self.assertFalse(list((self.root / ".update").glob("download-*")))
+                self.assert_workspace(kept=resumable)
 
     def test_long_names_and_extra_fields_remain_incremental(self):
         for name, extra, zip64 in (
@@ -300,7 +325,7 @@ class TestRemoteArchive(unittest.TestCase):
                     )
                 self.server.payload = path.read_bytes()
                 self.server.served = 0
-                with remote.open_archive(self.url) as archive:
+                with remote.open_archive(self.url, cache=self.ranges) as archive:
                     self.assertEqual(
                         archive.read("OneDragon-Helper/" + name), b"changed member"
                     )
@@ -312,6 +337,7 @@ class TestRemoteArchive(unittest.TestCase):
         expected = path.read_bytes()
         for kind in ("missing", "modified"):
             with self.subTest(kind=kind):
+                self.forget_workspace()
                 if kind == "missing":
                     path.unlink()
                 else:
@@ -331,7 +357,7 @@ class TestRemoteArchive(unittest.TestCase):
                     self.assertEqual(path.read_bytes(), b"locally changed")
                 path.write_bytes(expected)
 
-    def test_cancel_during_last_range_removes_workspace(self):
+    def test_cancel_during_last_range_keeps_workspace(self):
         cancelled = Event()
 
         def cancel(received, total):
@@ -339,7 +365,7 @@ class TestRemoteArchive(unittest.TestCase):
                 cancelled.set()
 
         with (
-            self.assertLogs(service.__name__, level="ERROR"),
+            self.assertNoLogs(service.__name__, level="ERROR"),
             self.assertRaises(service.UpdateCancelled),
         ):
             self.client.prepare_update(
@@ -347,7 +373,7 @@ class TestRemoteArchive(unittest.TestCase):
                 progress=cancel,
                 cancelled=cancelled,
             )
-        self.assertFalse(list((self.root / ".update").glob("download-*")))
+        self.assert_workspace(kept=True)
 
     def test_large_range_reports_progress_before_completion_and_can_cancel(self):
         (self.target / "_internal/shared.bin").write_bytes(os.urandom(SHARED_BYTES))
@@ -372,15 +398,49 @@ class TestRemoteArchive(unittest.TestCase):
                 cancelled.set()
 
         with (
-            self.assertLogs(service.__name__, level="ERROR"),
+            self.assertNoLogs(service.__name__, level="ERROR"),
             self.assertRaises(service.UpdateCancelled),
         ):
             self.client.prepare_update(release, progress=cancel, cancelled=cancelled)
         self.assertTrue(progress)
         self.assertLess(progress[0][0], progress[0][1])
-        self.assertFalse(list((self.root / ".update").glob("download-*")))
+        self.assert_workspace(kept=True)
 
-    def test_cancel_while_copying_reused_files_removes_workspace(self):
+    def test_interrupted_incremental_download_resumes_inside_the_member(self):
+        (self.target / "_internal/shared.bin").write_bytes(os.urandom(SHARED_BYTES))
+        write_manifest(self.target, list(load_manifest(self.target)["files"]), "1.10.0")
+        archive = archive_package(self.target, self.directory / "large.zip")
+        self.server.payload = archive.read_bytes()
+        release = replace(self.release, size=len(self.server.payload))
+        cancelled = Event()
+
+        def cancel(received, _total):
+            if received > 2 * 65536:
+                cancelled.set()
+
+        with (
+            self.assertNoLogs(service.__name__, level="ERROR"),
+            self.assertRaises(service.UpdateCancelled),
+        ):
+            self.client.prepare_update(release, progress=cancel, cancelled=cancelled)
+        self.assert_workspace(kept=True)
+
+        self.server.requests = []
+        self.server.served = 0
+        prepared = self.client.prepare_update(release)
+        load_manifest(prepared.directory / "package", verify=True)
+        starts = [
+            int(header[6:].split("-")[0])
+            for _path, header in self.server.requests
+            if header is not None
+        ]
+        self.assertTrue(starts)
+        with zipfile.ZipFile(archive) as source:
+            member = source.getinfo("OneDragon-Helper/_internal/shared.bin")
+        self.assertNotIn(member.header_offset, starts)
+        self.assertLess(self.server.served, SHARED_BYTES)
+
+    def test_cancel_while_copying_reused_files_keeps_workspace(self):
         cancelled = Event()
         copy = service.shutil.copy2
 
@@ -391,11 +451,11 @@ class TestRemoteArchive(unittest.TestCase):
 
         with (
             patch.object(service.shutil, "copy2", side_effect=cancel_after_copy),
-            self.assertLogs(service.__name__, level="ERROR"),
+            self.assertNoLogs(service.__name__, level="ERROR"),
             self.assertRaises(service.UpdateCancelled),
         ):
             self.client.prepare_update(self.release, cancelled=cancelled)
-        self.assertFalse(list((self.root / ".update").glob("download-*")))
+        self.assert_workspace(kept=True)
 
     def test_broken_archive_is_unavailable(self):
         for payload in (
@@ -408,12 +468,15 @@ class TestRemoteArchive(unittest.TestCase):
                 self.server.payload = payload
                 with (
                     self.assertRaises(remote.RemoteUnavailable),
-                    remote.open_archive(self.url) as broken,
+                    remote.open_archive(self.url, cache=self.ranges) as broken,
                 ):
                     broken.namelist()
 
     def test_http_error_and_wrong_range_do_not_trigger_full_download(self):
-        for kind, message in (("http", "范围读取失败"), ("range", "范围响应位置")):
+        for kind, message, resumable in (
+            ("http", "范围读取失败", True),
+            ("range", "范围响应位置", False),
+        ):
             with self.subTest(kind=kind):
                 self.server.fail_ranges = kind == "http"
                 self.server.wrong_range = kind == "range"
@@ -424,7 +487,7 @@ class TestRemoteArchive(unittest.TestCase):
                 ):
                     self.client.prepare_update(self.release)
                 full_download.assert_not_called()
-                self.assertFalse(list((self.root / ".update").glob("download-*")))
+                self.assert_workspace(kept=resumable)
 
     def test_remote_hash_mismatch_does_not_trigger_full_download(self):
         # ZIP 本身有效，但其中一项与发布清单不符。
@@ -441,12 +504,13 @@ class TestRemoteArchive(unittest.TestCase):
             self.client.prepare_update(self.release)
         full_download.assert_not_called()
         self.assertEqual((self.root / "_internal/small.bin").read_bytes(), b"old")
-        self.assertFalse(list((self.root / ".update").glob("download-*")))
+        self.assert_workspace(kept=False)
 
     def test_missing_range_support_falls_back_to_full_download(self):
         digest = hashlib.sha256(self.payload).hexdigest()
         for missing in ("head", "range"):
             with self.subTest(missing=missing):
+                self.forget_workspace()
                 self.server.supports_head = missing != "head"
                 self.server.supports_range = missing != "range"
                 responses = [
@@ -464,12 +528,12 @@ class TestRemoteArchive(unittest.TestCase):
                     "1.10.0",
                 )
 
-    def test_cancellation_removes_incremental_workspace(self):
+    def test_cancellation_keeps_incremental_workspace(self):
         cancelled = Event()
         cancelled.set()
         with (
-            self.assertLogs(service.__name__, level="ERROR"),
+            self.assertNoLogs(service.__name__, level="ERROR"),
             self.assertRaises(service.UpdateCancelled),
         ):
             self.client.prepare_update(self.release, cancelled=cancelled)
-        self.assertFalse(list((self.root / ".update").glob("download-*")))
+        self.assert_workspace(kept=True)

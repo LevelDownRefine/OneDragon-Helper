@@ -27,8 +27,11 @@ from tests.support.update_package import archive_package, make_package, program_
 
 
 class Response:
-    def __init__(self, data=None, content=b"", error=None):
+    def __init__(
+        self, data=None, content=b"", error=None, status_code=200, headers=None
+    ):
         self.data, self.content, self.error = data, content, error
+        self.status_code, self.headers = status_code, headers or {}
 
     def __enter__(self):
         return self
@@ -181,8 +184,27 @@ class TestUpdateService(unittest.TestCase):
             Response(content=content),
         ]
 
+    def assert_workspace(self, kept: bool):
+        """可重试的失败保留工作目录，确定性失败清空。"""
+        found = [path.name for path in (self.root / ".update").glob("download-*")]
+        self.assertEqual(found, ["download-v1.10.0"] if kept else [])
+
+    def test_linked_workspace_is_rejected_before_any_request(self):
+        with (
+            patch.object(
+                service,
+                "linked_path",
+                side_effect=lambda path: path.name.startswith("download-"),
+            ),
+            patch.object(requests, "get") as request,
+            self.assertRaisesRegex(UpdateError, "链接"),
+        ):
+            self.client.prepare_update(self.release)
+        request.assert_not_called()
+        self.assertFalse(list((self.root / ".update").glob("download-*")))
+
     def test_bad_checksum_or_interrupted_download_preserves_installation(self):
-        for kind in ("checksum", "truncated", "network"):
+        for kind, kept in (("checksum", False), ("truncated", True), ("network", True)):
             with self.subTest(kind=kind):
                 responses = (
                     self.responses(checksum="0" * 64)
@@ -199,18 +221,54 @@ class TestUpdateService(unittest.TestCase):
                 ):
                     self.client.prepare_update(self.release)
                 self.assertEqual(program_snapshot(self.root), before)
-                self.assertFalse(list((self.root / ".update").glob("download-*")))
+                self.assert_workspace(kept)
 
-    def test_cancellation_removes_partial_download(self):
+    def test_cancellation_keeps_partial_download_for_resume(self):
         cancelled = Event()
         cancelled.set()
         with (
             patch.object(requests, "get", side_effect=self.responses()),
-            self.assertLogs(service.__name__, level="ERROR"),
+            self.assertNoLogs(service.__name__, level="ERROR"),
             self.assertRaises(service.UpdateCancelled),
         ):
             self.client.prepare_update(self.release, cancelled=cancelled)
-        self.assertFalse(list((self.root / ".update").glob("download-*")))
+        self.assert_workspace(kept=True)
+
+    def test_interrupted_full_download_resumes_from_saved_bytes(self):
+        partial = len(self.archive) // 2
+        with (
+            patch.object(
+                requests,
+                "get",
+                side_effect=[
+                    self.responses()[0],
+                    Response(content=self.archive[:partial]),
+                ],
+            ),
+            self.assertLogs(service.__name__, level="ERROR"),
+            self.assertRaises(service.UpdateInterrupted),
+        ):
+            self.client.prepare_update(self.release)
+        self.assert_workspace(kept=True)
+
+        resumed = Response(content=self.archive[partial:])
+        resumed.status_code = 206
+        resumed.headers = {
+            "Content-Range": (
+                f"bytes {partial}-{len(self.archive) - 1}/{len(self.archive)}"
+            )
+        }
+        with patch.object(
+            requests, "get", side_effect=[self.responses()[0], resumed]
+        ) as request:
+            prepared = self.client.prepare_update(self.release)
+        self.assertEqual(
+            request.call_args.kwargs["headers"], {"Range": f"bytes={partial}-"}
+        )
+        self.assertEqual(
+            load_manifest(prepared.directory / "package", verify=True)["version"],
+            "1.10.0",
+        )
 
     def test_facade_prepares_verified_update_and_hands_off_when_idle(self):
         with patch.object(service, "get_root_dir", return_value=str(self.root)):

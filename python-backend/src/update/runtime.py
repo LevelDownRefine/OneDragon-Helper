@@ -45,12 +45,16 @@ class FileLease:
         self.lock.__exit__(*args)
 
 
+def linked_path(path: Path) -> bool:
+    """符号链接或 Windows junction；更新路径不允许落在链接后面。"""
+    return path.is_symlink() or bool(
+        path.exists() and getattr(path.lstat(), "st_file_attributes", 0) & 0x400
+    )
+
+
 def update_directory(root: Path) -> Path:
     directory = root / ".update"
-    if directory.is_symlink() or (
-        directory.exists()
-        and getattr(directory.lstat(), "st_file_attributes", 0) & 0x400
-    ):
+    if linked_path(directory):
         raise UpdateError("更新工作目录不能是链接")
     directory.mkdir(exist_ok=True)
     return directory
