@@ -138,7 +138,7 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     from pathlib import Path
 
     from gui.cli_client import CliClient
-    from src.update.package import CLI_EXE
+    from src.update.package import CLI_EXE, QT_CLI_EXE
     from src.utils import get_root_dir
     from src.utils.utils_shutdown import SHUTDOWN_UI_ARGS_ENV, SHUTDOWN_UI_ENV
 
@@ -157,8 +157,11 @@ def _launch_qml(*, skip_auto_launch: bool = False):
             ["-m", "src.headless", "serve", "--stdio"],
             str(root / "python-backend"),
         )
-    elif (root / CLI_EXE).is_file():
-        program, arguments, cwd = str(root / CLI_EXE), ["serve", "--stdio"], str(root)
+    elif (root / QT_CLI_EXE).is_file() or (root / CLI_EXE).is_file():
+        executable = (
+            root / QT_CLI_EXE if (root / QT_CLI_EXE).is_file() else root / CLI_EXE
+        )
+        program, arguments, cwd = str(executable), ["serve", "--stdio"], str(root)
     else:
         program = None
     if program is not None:

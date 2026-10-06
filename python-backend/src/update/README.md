@@ -33,7 +33,7 @@ Qt 与 Rust 使用不同发布附件：`OneDragon-Helper.zip` 与
 须声明 `frontend: "rust"`；未声明的旧包按 Qt 处理。Rust 包要求独立的
 `OneDragon-Helper-CLI.exe`，不要求 QML；两类包都沿用同一安装事务与更新器。
 检查、下载、安装交接和事务入口均校验包类型，禁止在线跨类型替换。
-原 Qt `AppService` 接口保持 Qt 类型，无 Qt 更新会话固定选择 Rust 类型。
+原 Qt `AppService` 接口保持 Qt 类型，CLI 更新会话从安装清单选择 Qt/Rust 类型；源码缺省 Qt。
 `UpdateSession` 与更新内核同处 `service.py`，使用 `utils_job.JobExecutor` 执行耗时操作；
 执行器只管理线程、进度与结果，不导入更新业务。`UpdateCancelled` 同时属于标准
 `CancelledError`，让下载取消沿用更新异常处理并被执行器识别为取消状态。
@@ -69,7 +69,7 @@ HTTP 错误、错误范围、传输中断、非法包路径、清单或文件校
 再检查同目录 GUI / CLI / Runner 进程，不终止既有任务。冻结入口 `bootstrap.py`
 在导入 Qt 和初始化配置前持有共享运行锁，覆盖 GUI、每日计划和其他 CLI 出口。
 
-Rust 从独立 CLI 会话交接：服务检查当前 CLI 和直接父进程的安装路径，
+Qt 与 Rust 从独立 CLI 会话交接：服务检查当前 CLI 和直接父进程的安装路径，
 只将这两个进程排除在“其他任务”检查外。更新器接收双方 PID/创建时间，再次核对
 可执行路径及父子关系；写出 ready 后在同一个 30 秒期限内等待双方退出，
 取得独占运行锁后重新扫描同目录进程才安装。身份变化或仍未退出会记录失败，

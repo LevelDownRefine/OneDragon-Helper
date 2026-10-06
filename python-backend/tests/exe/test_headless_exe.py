@@ -11,7 +11,7 @@ from pathlib import Path
 
 import psutil
 
-from src.update.package import CLI_EXE
+from src.update.package import CLI_EXE, QT_CLI_EXE
 from src.update.runtime import FileLease, UpdateBusyError, child_environment
 from tests.exe import project_root
 from tests.exe.pipe_output import PipeOutput
@@ -34,8 +34,17 @@ class HeadlessExeTests(unittest.TestCase):
         self.root = self.directory / "独立 CLI 安装"
         self.root.mkdir()
         self.root = self.root.resolve()
-        shutil.copy2(EXECUTABLE, self.root / CLI_EXE)
-        shutil.copytree(EXECUTABLE.parent / "_internal", self.root / "_internal")
+        relative = (
+            QT_CLI_EXE
+            if EXECUTABLE.parent.name == "cli"
+            and EXECUTABLE.parent.parent.name == "_internal"
+            else CLI_EXE
+        )
+        self.binary = self.root / relative
+        self.binary.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(EXECUTABLE, self.binary)
+        self.runtime = self.binary.parent / "_internal"
+        shutil.copytree(EXECUTABLE.parent / "_internal", self.runtime)
         for name in resource_files(ROOT):
             if name.startswith(("config/", "assets/")):
                 target = self.root / name
@@ -47,7 +56,7 @@ class HeadlessExeTests(unittest.TestCase):
 
     def call(self, method="app.snapshot", params=None):
         return subprocess.run(
-            [str(self.root / CLI_EXE), "call", method],
+            [str(self.binary), "call", method],
             input=json.dumps({} if params is None else params),
             text=True,
             encoding="utf-8",
@@ -105,7 +114,7 @@ class HeadlessExeTests(unittest.TestCase):
         ):
             with self.subTest(arguments=arguments):
                 result = subprocess.run(
-                    [str(self.root / CLI_EXE), *arguments],
+                    [str(self.binary), *arguments],
                     cwd=self.directory,
                     env=child_environment(),
                     capture_output=True,
@@ -128,7 +137,7 @@ class HeadlessExeTests(unittest.TestCase):
         )
         with PipeOutput() as pipe:
             process = subprocess.Popen(
-                [str(self.root / CLI_EXE), "--dump-config", "--out", pipe.name],
+                [str(self.binary), "--dump-config", "--out", pipe.name],
                 cwd=self.directory,
                 env=child_environment(),
                 stdout=subprocess.DEVNULL,
@@ -153,7 +162,7 @@ class HeadlessExeTests(unittest.TestCase):
     def test_persistent_cli_is_one_process_and_eof_releases_runtime_lease(self):
         with tempfile.TemporaryFile() as errors:
             process = subprocess.Popen(
-                [str(self.root / CLI_EXE), "serve", "--stdio"],
+                [str(self.binary), "serve", "--stdio"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=errors,
@@ -190,12 +199,12 @@ class HeadlessExeTests(unittest.TestCase):
                 self.assertEqual(response["id"], "中文")
                 self.assertIn("result", response)
                 cli = psutil.Process(process.pid)
-                self.assertEqual(Path(cli.exe()).resolve(), self.root / CLI_EXE)
+                self.assertEqual(Path(cli.exe()).resolve(), self.binary)
                 self.assertEqual(cli.ppid(), os.getpid())
                 # Windows may create a hidden conhost; only another CLI would change the handoff identity.
                 self.assertFalse(
                     any(
-                        Path(child.exe()).resolve() == self.root / CLI_EXE
+                        Path(child.exe()).resolve() == self.binary
                         for child in cli.children()
                     )
                 )
@@ -240,6 +249,6 @@ class HeadlessExeTests(unittest.TestCase):
         self.assertFalse(
             any(
                 "pyside" in path.name.lower() or "shiboken" in path.name.lower()
-                for path in (self.root / "_internal").rglob("*")
+                for path in self.runtime.rglob("*")
             )
         )

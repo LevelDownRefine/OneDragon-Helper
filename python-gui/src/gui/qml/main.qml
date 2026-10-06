@@ -19,6 +19,7 @@ Window {
     // 0/1、无 alpha），圆边只能落在整像素网格上，必然呈现阶梯状锯齿。
     color: "transparent"
     visible: true
+    onClosing: close => { close.accepted = Bridge.canClose() }
     title: "OneDragon-Helper · 游戏自动化调度器"
     readonly property int cornerRadius: Layout.windowCornerRadius
     // 无着色器能力的后端（Qt Quick 软件渲染）不执行 layer.effect，整窗内容会整层
