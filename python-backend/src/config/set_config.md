@@ -244,7 +244,7 @@ set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按�
 2. 在 `daily_task_list.yml` 给日常标注 `class`（机制类名，注册表见 `daily.py::DAILY_CLASSES`）：标准两层 `Daily`；分段 `Anomaly`（追猎目标 `AnomalyHunter`）/TaskQueue `MaaDaily`/无需适配 `NoopDaily`；config 子类零改动；声明表达不了的特殊读写才覆写 `update` / `read`。
 3. `config/daily_task_list.yml` 加该脚本的日常声明（key 用 script_name）；菜单自动出现，无需改 GUI。
 4. 脚本专属初始化由对应子类自持，基类仅装配任务。
-5. 补测试 `python-backend/tests/config/test_set_config_subclasses.py`（可参照 golden：`PYTHONPATH=python-backend:python-backend/src python -m tests.config.test_golden_daily --update` 重新生成基线，审查差异后提交）。
+5. 补测试 `python-backend/tests/config/test_set_config_subclasses.py`（可参照 golden：`uv run --directory python-backend python -m tests.config.test_golden_daily --update` 重新生成基线，审查差异后提交）。
 
 ## 设计原则
 

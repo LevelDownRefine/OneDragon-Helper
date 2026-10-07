@@ -54,10 +54,8 @@ runner 子模块测试由 OneDragonRunner 仓库自己的 CI 执行，主仓 CI 
 日常 golden 覆盖全部声明菜单选择的保存路径、字段差异及反读，正常测试只读基线。确认行为变更后显式更新，并审查 `python-backend/tests/golden/daily_baseline.json` 的差异：
 
 ```bash
-PYTHONPATH=python-backend:python-backend/src python -m tests.config.test_golden_daily --update
+uv run --directory python-backend python -m tests.config.test_golden_daily --update
 ```
-
-完整测试清单及本轮发现见 [测试审查记录](docs/test-audit.md)。
 
 平台分工：源码全量测试只在本地/CI ubuntu 跑；Windows 下**只跑打包产物集成测试**（python-backend/tests/exe/test_*_exe.py，由 .github/workflows/build-exe.yml 打包后覆盖），非打包测试不在 Windows 重复跑。
 
@@ -110,7 +108,7 @@ Rust 双进程升级用真实主 EXE 的原 CLI `--dump-config --out` 写命名�
 
 `tools/measure_gui_startup.py` 对 Qt/Rust 的干净完整包做暖启动对比，首个可回读任务画面
 才计时成功。测量工具测试覆盖标记前退出、缺少任务数据和非零退出，实际 15 轮交替测量
-见 `docs/rust-feasibility/assessment.md`；它不是常规 CI 的性能阈值测试。
+见 `rust-feasibility/assessment.md`；它不是常规 CI 的性能阈值测试。
 计时原始样本写到忽略目录 `.cache/gui-startup.json`，不提交本机报告。
 
 Rust 源码位于 `rust-gui/src`，单元与集成测试都已映射到 `rust-gui/tests`：
@@ -141,7 +139,7 @@ ruff format .
 ## 5. Windows 全链路真实模拟（手动）
 
 ```bash
-PYTHONPATH=python-backend:python-backend/src python -m tests.sim_schedule_win
+uv run --directory python-backend python -m tests.sim_schedule_win
 ```
 
 在 %TEMP% 沙箱内以真实进程走完 schedule_run 全编排（定时等待→清场→生成链→runner 子进程→日志解析→重跑→post_run），假脚本/假游戏由脚本内 PyInstaller 现场打包（进程名唯一不误杀），16 项断言逐项核验；不进 CI，不触碰真实 config。

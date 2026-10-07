@@ -32,8 +32,8 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 - 字典先 `assert key in d` 再 `d[key]`，不用 `.get()`。
 - 不静默吞异常：`except` 不许 `pass`/裸吞，必须显式处理；克制用 try，except 尽量显式类型。
 - 日志用 `logging`，`logger = logging.getLogger(__name__)`，禁止裸 `print`。
-- 改完必须补测试 + 跑全套：`PYTHONPATH=python-backend:python-backend/src python -m unittest discover -s python-backend/tests -t python-backend -p "test*.py"`，且 `ruff check python-backend tools runner` 且 `ruff format --check python-backend tools runner`（format 不过 CI 会挂；失败用 `ruff format .` 改完再 `--check`）。
+- 改完必须补测试 + 跑全套：`python -m unittest discover -s python-backend/tests -t python-backend -p "test*.py"` 与 `-s python-gui/tests -t python-gui`（两套件分开跑），且 `ruff check python-backend python-gui tools runner` 且 `ruff format --check python-backend python-gui tools runner`（format 不过 CI 会挂；失败用 `ruff format .` 改完再 `--check`）。
 - 不动 `.bak`/备份文件，除非先问用户。
 - Commit 用 Conventional Commits 前缀 + ≤50 字主题；备注/注释只写要点。
 
-完整编码约定，含每条的理由与边界，见 **`CONVENTIONS.md`**；测试与工作流见 **`TESTING.md`**；副本同步见 **`tools/README.md`**。
+完整编码约定，含每条的理由与边界，见 **`docs/CONVENTIONS.md`**；测试与工作流见 **`docs/TESTING.md`**；副本同步见 **`tools/README.md`**。

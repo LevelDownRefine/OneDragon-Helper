@@ -13,7 +13,7 @@
 日志、备份不属于发布内容；即使误跟踪了用户配置，也会阻止打包。
 三个用户 YAML 由程序首次启动时从模板生成，已有配置保持不变。
 `config/script_resources.yml` 是内置资源声明，随上述 Git 资源一起发布及更新；
-修改脚本资源位置不需要另改打包文件列表，详见 [声明格式](../src/config/script_resources.md)。
+修改脚本资源位置不需要另改打包文件列表，详见 [声明格式](../python-backend/src/config/script_resources.md)。
 
 打包只收集助手及 Runner 自身依赖。Runner 的 `.py` 模式在冻结进程内执行，
 需要额外第三方库的脚本应通过 `.bat` 调用自己的 Python 环境，不依赖助手附带库。
@@ -68,7 +68,7 @@ Windows Rust 窗口使用 Direct3D 12，自动选择硬件或系统 WARP 软件�
 
 ## 副本同步
 
-config/daily_task_list.yml 各游戏副本列表维护总览。鸣潮/异环经 GitHub Actions 每周六检测并开 PR；原神、终末地经 options.source 运行期读取脚本自身资源。本目录是开发/CI 工具，区别于 scripts/ 的实际运行脚本。
+config/daily_task_list.yml 各游戏副本列表维护总览。鸣潮/异环经 GitHub Actions 每周六检测并开 PR；原神、终末地经 options.source 运行期读取脚本自身资源。本目录是开发/CI 工具，不含运行期脚本。
 
 ## 各游戏副本更新方式
 
