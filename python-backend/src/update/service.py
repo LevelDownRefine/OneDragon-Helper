@@ -269,7 +269,7 @@ class UpdateService:
                 else:
                     logger.exception("准备更新失败")
                 if isinstance(exc, RangeCacheCorrupt):
-                    # 坏字节只可能来自区间缓存，逐文件校验过的 package/ 留着复用。
+                    # 字节不可信只可能是区间数据的问题，逐文件校验过的 package/ 留着复用。
                     self._discard(work / "ranges")
                 elif not isinstance(exc, resumable):
                     self._discard(work)

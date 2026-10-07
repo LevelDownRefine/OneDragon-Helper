@@ -24,7 +24,7 @@ class UpdateInterrupted(UpdateError):
 
 
 class RangeCacheCorrupt(UpdateError):
-    """断点缓存里的字节本身不对；清缓存重取，已解包的条目仍可复用。"""
+    """读到的区间字节本身不对（缓存或远端）；丢缓存重取，已解包的条目仍可复用。"""
 
 
 class _CancellableReader(io.RawIOBase):
