@@ -1,7 +1,6 @@
 # OneDragon-Helper
 [本项目](https://github.com/WinSa/OneDragon-Helper)是多游戏自动化脚本调度器。
 ![ds](assets/demo.png)
-大肥鲸不擅长GUI，等下一款擅长GUI的廉价模型再优化GUI。
 
 ## 功能简介
 
@@ -33,7 +32,7 @@ tools/、deploy/   # 跨项目构建、打包、发布工具
 
 在仓库根目录安装依赖：`uv sync --frozen`。
 
-- Rust GUI：`launcher-rust.bat`；隔离演示配置加 `--demo`。
+- Rust GUI：`launcher-rust.bat`。
 - Python GUI：`launcher.bat`，或 `uv run python -m gui.launcher`。
 
 构建与测试见 [TESTING.md](TESTING.md)，Rust 说明见 [rust-gui/README.md](rust-gui/README.md)。
