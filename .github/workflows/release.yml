@@ -1,6 +1,9 @@
 name: Release Build
 
-# 推送 v* tag 时自动打包并发布正式 release；手动 workflow_dispatch 仅做构建+exe 集成测试（调试用，不发布）。
+# 推送 v* tag 时发布正式 release。优先复用 Build EXE & Run Exe Tests 在同一 commit 上
+# 构建好的产物（见 build-exe.yml），只重盖版本戳后归档发布，省去重复的 PyInstaller/cargo
+# 构建；找不到可用产物（未跑/失败/超过 7 天保留期）时回退全量构建。
+# 手动 workflow_dispatch 仅构建+exe 测试（调试用，不发布）。
 # 版本号即 tag 名（如 v0.0.1），发新版时打新 tag 即「每次递增」。
 on:
   push:
@@ -10,16 +13,16 @@ on:
 
 permissions:
   contents: write   # 创建 release 与 tag 需要写权限
+  actions: read     # 跨 workflow 下载构建产物需要读权限
 
 jobs:
   release:
     runs-on: windows-latest
     env:
       ODH_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-      PYTHONUTF8: 1   # 与 build-exe.yml 同源：冻结 exe 在英文 locale 下经 colorama 输出中文不崩
-      # 可复现构建：PyInstaller 默认把构建时刻与哈希随机序写进产物，导致源码未变的
-      # exe（Runner/Updater）每次发布字节都不同，客户端只能整包重下。固定这两项后，
-      # 同一份源码的产物字节一致，增量更新才能跳过未变的 exe。取值只需恒定。
+      # 与 build-exe.yml 同源：冻结 exe 在英文 locale 下经 colorama 输出中文不崩。
+      PYTHONUTF8: 1
+      # 可复现构建常量，必须与 build-exe.yml 完全一致，否则复用其产物会与本地重建字节不同。
       SOURCE_DATE_EPOCH: "1700000000"
       PYTHONHASHSEED: "0"
 
@@ -36,23 +39,70 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      # 复用 build-exe.yml 的构建链路：打包 GUI(onedir)+Runner(onefile) 并跑 exe 集成测试。
-      # exe 测试失败则 build.bat 非 0 退出，本步骤失败 ⇒ 不发布。
-      - name: Build EXE and run exe integration tests
+      # 定位同一 commit 上成功的 Build EXE & Run Exe Tests run，作为产物来源。
+      - name: Locate matching Build EXE run
+        id: reuse
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # gh 查询失败（网络/API 抖动）不应让发布失败：落空后由 fallback 全量构建。
+          run_id=$(gh run list --workflow=build-exe.yml --event push --commit "$GITHUB_SHA" \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // ""') || run_id=""
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+
+      # 拉取该 run 的 Qt 发布目录与 Rust 发布目录。产物缺失/已过期（保留 7 天）则本步失败，
+      # 交由后续 fallback 步骤承接。
+      - name: Fetch reused build artifacts
+        id: fetch
+        if: steps.reuse.outputs.run-id != ''
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p deploy/dist deploy/dist/rust
+          gh run download "${{ steps.reuse.outputs.run-id }}" \
+            --name OneDragon-Helper-windows --dir deploy/dist/OneDragon-Helper
+          gh run download "${{ steps.reuse.outputs.run-id }}" \
+            --name OneDragon-Helper-Rust-windows --dir deploy/dist/rust/OneDragon-Helper
+          # 校验产物形态：缺 version.json 说明产物缺失/过期或形态不符（如仍是旧的 ZIP 形态），
+          # 本步失败后由 fallback 全量构建。
+          for pkg in deploy/dist/OneDragon-Helper deploy/dist/rust/OneDragon-Helper; do
+            test -f "$pkg/version.json" || { echo "复用产物不可用：缺少 $pkg/version.json"; exit 1; }
+          done
+
+      # 复用路径：产物是同一 commit 的确定性字节，只需把 dev 版本戳改成发布 tag。
+      # 不传 --tag：release_package.py 默认读环境变量 ODH_RELEASE_TAG（job env 已注入）。
+      # 用 bash 而非 pwsh：pwsh 步骤只取最后一条命令的退出码，两条 prepare 里第一条失败会被掩盖。
+      - name: Re-stamp reused packages
+        if: steps.fetch.outcome == 'success'
+        shell: bash
+        run: |
+          uv run python tools/release_package.py prepare --package deploy/dist/OneDragon-Helper
+          uv run python tools/release_package.py prepare --package deploy/dist/rust/OneDragon-Helper --frontend rust
+
+      # 回退路径：按原方式全量构建并跑 exe 集成测试。build.bat 会先清空 deploy/dist，
+      # 顺带清掉可能残留的下载产物。
+      - name: Build EXE and run exe integration tests (fallback)
+        if: steps.fetch.outcome != 'success'
         shell: cmd
         run: call deploy\build.bat
 
-      - name: Package dist into zip
-        shell: pwsh
-        run: uv run python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
-
-      - name: Set up Rust toolchain
-        run: rustup toolchain install 1.97.1 --profile minimal
-
-      - name: Build and test Rust release package
+      - name: Build and test Rust release package (fallback)
+        if: steps.fetch.outcome != 'success'
         env:
           RUSTUP_TOOLCHAIN: 1.97.1
-        run: uv run --frozen python tools/build_rust.py --test
+        run: |
+          rustup toolchain install 1.97.1 --profile minimal
+          uv run --frozen python tools/build_rust.py --test
+
+      # 同样用 bash：两条 archive 都要生效，pwsh 只会透传最后一条的退出码。
+      - name: Package dist into zip
+        shell: bash
+        run: |
+          uv run python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
+          uv run python tools/release_package.py archive --package deploy/dist/rust/OneDragon-Helper --output deploy/dist/rust/OneDragon-Helper-Rust.zip
 
       # 仅 tag 触发时发布正式 release（手动 dispatch 跳过，避免用分支名造出错误 release）。
       - name: Create release

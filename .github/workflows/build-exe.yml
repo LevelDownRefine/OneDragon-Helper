@@ -7,11 +7,20 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+# 与 release.yml 用同一组可复现构建常量：同一份源码在本 workflow 与 release 上产出字节一致，
+# 发布时才能直接复用本 workflow 的产物而无需重建。
+env:
+  # 强制 UTF-8：Runner exe 在英文 locale(cp1252) 下经 colorama 输出中文会崩，此变量让冻结
+  # 解释器以 UTF-8 写 stdout（与 deploy/runtime_hook_utf8.py 同源修复）。
+  PYTHONUTF8: 1
+  # PyInstaller 默认把构建时刻与哈希随机序写进产物；固定后同一源码产物字节一致。
+  SOURCE_DATE_EPOCH: "1700000000"
+  PYTHONHASHSEED: "0"
+
 jobs:
   build-rust:
     runs-on: windows-latest
     env:
-      PYTHONUTF8: 1
       RUSTUP_TOOLCHAIN: 1.97.1
     steps:
       - uses: actions/checkout@v5
@@ -37,20 +46,17 @@ jobs:
         id: rust-package-check
         if: always() && hashFiles('deploy/dist/rust/OneDragon-Helper/version.json') != ''
         run: uv run python tools/release_package.py check --package deploy/dist/rust/OneDragon-Helper
+      # 上传未打包的发布目录：release.yml 复用后重盖版本戳再归档，ZIP 交由发布流程生成。
       - uses: actions/upload-artifact@v6
         if: success() && steps.rust-package-check.outcome == 'success'
         with:
           name: OneDragon-Helper-Rust-windows
-          path: |
-            deploy/dist/rust/OneDragon-Helper-Rust.zip
-            deploy/dist/rust/OneDragon-Helper-Rust.zip.sha256
+          path: deploy/dist/rust/OneDragon-Helper
           if-no-files-found: error
           retention-days: 7
 
   build-headless:
     runs-on: windows-latest
-    env:
-      PYTHONUTF8: 1
     steps:
       - uses: actions/checkout@v5
         with:
@@ -70,10 +76,6 @@ jobs:
 
   build-exe:
     runs-on: windows-latest
-    env:
-      # 强制 UTF-8 模式：Runner exe 在英文 locale(cp1252) 下经 colorama 输出中文会崩，
-      # 此变量让冻结解释器以 UTF-8 写 stdout（与 deploy/runtime_hook_utf8.py 同源修复）。
-      PYTHONUTF8: 1
 
     steps:
       - name: Checkout repository
