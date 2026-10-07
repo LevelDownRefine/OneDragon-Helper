@@ -176,25 +176,30 @@ def parse_manifest(data: object) -> dict:
     return data
 
 
+def verify_installation(root: Path, data: dict) -> None:
+    """安装目录须逐文件匹配清单，且版本信息与本包前端类型一致。"""
+    for name, digest in data["files"].items():
+        target = safe_target(root, name)
+        if not target.is_file() or file_digest(target) != digest:
+            raise UpdateError(f"程序文件校验失败: {name}")
+    info = json.loads((root / VERSION_FILE).read_text(encoding="utf-8"))
+    if (
+        not isinstance(info, dict)
+        or "version" not in info
+        or info["version"] != data["version"]
+    ):
+        raise UpdateError("版本信息与更新清单不一致")
+    if manifest_frontend(info) != manifest_frontend(data):
+        raise UpdateError("版本信息与更新清单的前端类型不一致")
+
+
 def load_manifest(root: Path, *, verify: bool = False) -> dict:
     path = safe_target(root, MANIFEST)
     if not path.is_file():
         raise UpdateError("当前安装缺少更新清单，请先手动安装支持更新的版本")
     data = parse_manifest(json.loads(path.read_text(encoding="utf-8")))
     if verify:
-        for name, digest in data["files"].items():
-            target = safe_target(root, name)
-            if not target.is_file() or file_digest(target) != digest:
-                raise UpdateError(f"程序文件校验失败: {name}")
-        info = json.loads((root / VERSION_FILE).read_text(encoding="utf-8"))
-        if (
-            not isinstance(info, dict)
-            or "version" not in info
-            or info["version"] != data["version"]
-        ):
-            raise UpdateError("版本信息与更新清单不一致")
-        if manifest_frontend(info) != manifest_frontend(data):
-            raise UpdateError("版本信息与更新清单的前端类型不一致")
+        verify_installation(root, data)
     return data
 
 

@@ -1,14 +1,17 @@
 """可恢复的程序文件替换；只操作新旧清单拥有的路径。"""
 
+import errno
 import json
 import logging
 import os
 import shutil
+import time
 import uuid
 from pathlib import Path
 
 from src.update.package import (
     MANIFEST,
+    VERSION_FILE,
     UpdateError,
     file_digest,
     load_manifest,
@@ -19,6 +22,20 @@ from src.update.package import (
 from src.update.runtime import update_directory
 
 logger = logging.getLogger(__name__)
+
+REPLACE_ATTEMPTS = 5
+REPLACE_BACKOFF_SECONDS = 0.2
+# 文件被其他进程短暂持有：Windows 的拒绝访问与共享冲突，POSIX 的权限与占用。
+TRANSIENT_WINERRORS = frozenset({5, 32, 33})
+TRANSIENT_ERRNOS = frozenset({errno.EACCES, errno.EPERM, errno.EBUSY, errno.ETXTBSY})
+
+
+def _transient_occupation(exc: OSError) -> bool:
+    """瞬时占用可退避重试；其余失败立即上抛，不掩盖确定性错误。"""
+    winerror = getattr(exc, "winerror", None)
+    if winerror is not None:
+        return winerror in TRANSIENT_WINERRORS
+    return exc.errno in TRANSIENT_ERRNOS
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -32,11 +49,27 @@ def write_json(path: Path, data: dict) -> None:
 
 
 def _replace(source: Path, target: Path, temporary: Path) -> None:
+    """copy/fsync/原子替换；占用退避重试，不让偶发失败中断整次安装或回滚。"""
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, temporary)
-    with temporary.open("r+b") as stream:
-        os.fsync(stream.fileno())
-    os.replace(temporary, target)
+    for attempt in range(REPLACE_ATTEMPTS):
+        try:
+            shutil.copy2(source, temporary)
+            with temporary.open("r+b") as stream:
+                os.fsync(stream.fileno())
+            os.replace(temporary, target)
+            return
+        except OSError as exc:
+            if attempt + 1 == REPLACE_ATTEMPTS or not _transient_occupation(exc):
+                raise
+            delay = REPLACE_BACKOFF_SECONDS * 2**attempt
+            logger.warning(
+                "文件被占用，%.1f 秒后重试: %s (%s: %s)",
+                delay,
+                target.name,
+                type(exc).__name__,
+                exc,
+            )
+            time.sleep(delay)
 
 
 def recover_installation(root: Path) -> bool:
@@ -126,9 +159,11 @@ def install_package(root: Path, package: Path) -> None:
         for name in sorted(old_names - new_names):
             safe_target(root, name).unlink(missing_ok=True)
         for name in sorted(new_names - {MANIFEST}):
-            _replace(
-                safe_target(package, name), safe_target(root, name), work / "swap.tmp"
-            )
+            target = safe_target(root, name)
+            if target.is_file() and file_digest(target) == new["files"][name]:
+                # 内容已一致：重写只会多一次撞上文件被占用的机会。
+                continue
+            _replace(safe_target(package, name), target, work / "swap.tmp")
         _replace(package / MANIFEST, root / MANIFEST, work / "swap.tmp")
         load_manifest(root, verify=True)
         data["phase"] = "committed"
@@ -138,3 +173,77 @@ def install_package(root: Path, package: Path) -> None:
         recover_installation(root)
         raise
     logger.info("已安装版本 %s", new["version"])
+
+
+def settle_transaction(root: Path) -> bool:
+    """启动闸门：能证明安装目录自洽就补完事务，否则交给显式恢复。
+
+    中断的安装常只差元数据——程序文件已全部就位，只剩 version.json 与清单是旧版；
+    此时把用户挡在门外只能手敲 --recover。安装目录与某个更高版本包逐文件一致时，
+    用该包的元数据补齐后提交；证明不了就维持拒绝，不放行混合版本。
+    """
+    directory = update_directory(root)
+    journal = directory / "transaction.json"
+    if not journal.exists():
+        return True
+    data = json.loads(journal.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or "phase" not in data:
+        return False
+    if data["phase"] in ("committed", "rolled_back"):
+        return True
+    if data["phase"] != "installing":
+        return False
+    if not _adopt_prepared_package(root, directory):
+        return False
+    data["phase"] = "committed"
+    write_json(journal, data)
+    logger.info("已补完中断的更新事务")
+    return True
+
+
+def _adopt_prepared_package(root: Path, directory: Path) -> bool:
+    """安装目录与已准备包中版本更高、且程序文件逐一相同的那一个对齐元数据。"""
+    try:
+        current = load_manifest(root)
+    except (OSError, ValueError) as exc:
+        logger.warning("无法读取当前安装清单，不自动补完: %s", type(exc).__name__)
+        return False
+    current_version = version_number(current["version"])
+    adopted = []
+    for path in directory.glob(f"download-*/package/{MANIFEST}"):
+        try:
+            data = load_manifest(path.parent)
+        except (OSError, ValueError) as exc:
+            logger.warning("跳过无法读取的更新包: %s (%s)", path, type(exc).__name__)
+            continue
+        if manifest_frontend(data) != manifest_frontend(current):
+            continue
+        version = version_number(data["version"])
+        if version <= current_version:
+            continue
+        try:
+            matched = _matches_program_files(root, data)
+        except (OSError, ValueError) as exc:
+            logger.warning("核对安装目录失败: %s (%s)", path, type(exc).__name__)
+            continue
+        if matched:
+            adopted.append((version, path.parent, data))
+    if not adopted:
+        return False
+    _version, package, data = max(adopted, key=lambda item: item[0])
+    # 先版本信息后清单：中途再中断时目录仍与包对得上，下次启动可重来。
+    _replace(package / VERSION_FILE, root / VERSION_FILE, directory / "swap.tmp")
+    _replace(package / MANIFEST, root / MANIFEST, directory / "swap.tmp")
+    logger.info("安装目录已是 %s，补上清单与版本信息", data["version"])
+    return True
+
+
+def _matches_program_files(root: Path, data: dict) -> bool:
+    """除元数据外程序文件是否已全是该包内容；元数据由采纳时补写。"""
+    for name, digest in data["files"].items():
+        if name == VERSION_FILE:
+            continue
+        target = safe_target(root, name)
+        if not target.is_file() or file_digest(target) != digest:
+            return False
+    return True

@@ -1,6 +1,7 @@
 """更新测试的最小程序包；不依赖真实用户配置。"""
 
 import json
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -8,6 +9,9 @@ from src.update.package import (
     MANIFEST,
     REQUIRED_FILES,
     RUST_REQUIRED_FILES,
+    VERSION_FILE,
+    file_digest,
+    load_manifest,
     write_manifest,
 )
 
@@ -45,3 +49,22 @@ def program_snapshot(root: Path):
     return {
         name: (root / name).read_bytes() for name in set(data["files"]) | {MANIFEST}
     }
+
+
+def stage_interrupted_install(root: Path, package: Path) -> None:
+    """摆出中断现场：程序文件已是新版，只剩清单与版本信息还是旧版。"""
+    originals = {name: file_digest(root / name) for name in (MANIFEST, VERSION_FILE)}
+    for name in load_manifest(package)["files"]:
+        if name in (MANIFEST, VERSION_FILE):
+            continue
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(package / name, target)
+    journal = root / ".update/transaction.json"
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    journal.write_text(
+        json.dumps(
+            {"phase": "installing", "transaction": "0" * 32, "originals": originals}
+        ),
+        encoding="utf-8",
+    )
