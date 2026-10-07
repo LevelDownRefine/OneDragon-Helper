@@ -537,6 +537,16 @@ class TestRemoteArchive(unittest.TestCase):
         self.assertTrue((work / "package" / MANIFEST).is_file())
         self.assert_workspace(kept=True)
 
+        # 远端恢复正常后重跑：只重取区间缓存，整包与留下的条目都不再重下。
+        self.server.payload = self.payload
+        self.server.served = 0
+        prepared = self.client.prepare_update(self.release)
+        self.assertEqual(
+            load_manifest(prepared.directory / "package", verify=True)["version"],
+            "1.10.0",
+        )
+        self.assertLess(self.server.served, len(self.payload))
+
     def test_missing_range_support_falls_back_to_full_download(self):
         digest = hashlib.sha256(self.payload).hexdigest()
         for missing in ("head", "range"):
