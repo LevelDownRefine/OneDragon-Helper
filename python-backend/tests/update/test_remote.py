@@ -192,7 +192,7 @@ class TestRemoteArchive(unittest.TestCase):
         shutil.rmtree(self.root / ".update", ignore_errors=True)
 
     def assert_workspace(self, kept: bool):
-        """可重试的失败保留工作目录，确定性失败清空。"""
+        """可重试的失败与坏区间缓存保留工作目录，其余确定性失败清空。"""
         found = [path.name for path in (self.root / ".update").glob("download-*")]
         self.assertEqual(found, ["download-v1.10.0"] if kept else [])
 
