@@ -526,13 +526,16 @@ class TestRemoteArchive(unittest.TestCase):
 
         with (
             self.assertLogs(service.__name__, level="ERROR"),
-            self.assertRaises(service.UpdateError) as raised,
+            self.assertRaises(service.RangeCacheCorrupt) as raised,
         ):
             self.client.prepare_update(release)
         # 坏字节必须当确定性失败：重放同一份断点缓存只会一直失败。
-        self.assertNotIsInstance(raised.exception, service.UpdateInterrupted)
         self.assertIn("数据损坏", str(raised.exception))
-        self.assert_workspace(kept=False)
+        work = self.root / ".update" / "download-v1.10.0"
+        # 只丢区间缓存；已解包并校验过的条目留着，重跑从缺口继续。
+        self.assertFalse(list((work / "ranges").glob("*.bin")))
+        self.assertTrue((work / "package" / MANIFEST).is_file())
+        self.assert_workspace(kept=True)
 
     def test_missing_range_support_falls_back_to_full_download(self):
         digest = hashlib.sha256(self.payload).hexdigest()

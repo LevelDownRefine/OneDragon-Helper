@@ -23,6 +23,10 @@ class UpdateInterrupted(UpdateError):
     """网络中断或范围读取不完整；工作目录可保留续传。"""
 
 
+class RangeCacheCorrupt(UpdateError):
+    """断点缓存里的字节本身不对；清缓存重取，已解包的条目仍可复用。"""
+
+
 class _CancellableReader(io.RawIOBase):
     """由 BufferedReader 组装读取，限制每次网络读取并检查取消及长度。"""
 
@@ -302,7 +306,7 @@ def open_archive(url: str, *, cache: Path, cancelled: Event | None = None):
             raise UpdateError(f"远端 ZIP 压缩方式不受支持: {exc}") from exc
         except (zipfile.BadZipFile, zlib.error) as exc:
             # 解压或 CRC 在校验之前就失败，说明拿到的字节本身不对：留着同一份断点只会重复失败。
-            raise UpdateError(
+            raise RangeCacheCorrupt(
                 f"远端 ZIP 数据损坏 ({type(exc).__name__}): {exc}"
             ) from exc
         except (RemoteZipError, EOFError) as exc:

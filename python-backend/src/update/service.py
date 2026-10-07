@@ -32,7 +32,12 @@ from src.update.package import (
     unpack_package,
     version_number,
 )
-from src.update.remote import RemoteUnavailable, UpdateInterrupted, open_archive
+from src.update.remote import (
+    RangeCacheCorrupt,
+    RemoteUnavailable,
+    UpdateInterrupted,
+    open_archive,
+)
 from src.update.runtime import (
     FileLease,
     child_environment,
@@ -263,10 +268,15 @@ class UpdateService:
                     logger.info("更新已暂停，保留下载断点")
                 else:
                     logger.exception("准备更新失败")
-                if not isinstance(exc, resumable):
+                if isinstance(exc, RangeCacheCorrupt):
+                    # 坏字节只可能来自区间缓存，逐文件校验过的 package/ 留着复用。
+                    self._discard(work / "ranges")
+                elif not isinstance(exc, resumable):
                     self._discard(work)
                 raise
-            self._discard(work / "ranges")
+            # 成功后 package/ 已是完整副本，整包与区间缓存都没有留的必要。
+            for leftover in ("ranges", self.zip_name, self.zip_name + ".sha256"):
+                self._discard(work / leftover)
         return PreparedUpdate(work, release.version)
 
     def _prepare_incremental(
@@ -368,13 +378,16 @@ class UpdateService:
 
     @staticmethod
     def _discard(path: Path) -> None:
-        """尽力删除临时目录；删不掉只记录，不影响本次更新的结果。"""
+        """尽力删除临时文件或目录；删不掉只记录，不影响本次更新的结果。"""
         try:
-            shutil.rmtree(path)
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
         except FileNotFoundError:
             return
         except OSError:
-            logger.warning("无法清理更新目录: %s", path)
+            logger.warning("无法清理更新临时路径: %s", path)
 
     def start_update(self, prepared: PreparedUpdate) -> Path:
         """启动独立安装器并等待 ready；返回后调用方应立即退出 GUI。"""

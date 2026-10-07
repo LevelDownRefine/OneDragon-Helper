@@ -276,6 +276,10 @@ class TestUpdateService(unittest.TestCase):
         self.assertEqual(
             request.call_args.kwargs["headers"], {"Range": f"bytes={partial}-"}
         )
+        # 成功后包已是完整副本，整包与校验文件都不留。
+        self.assertEqual(
+            sorted(path.name for path in prepared.directory.iterdir()), ["package"]
+        )
         self.assertEqual(
             load_manifest(prepared.directory / "package", verify=True)["version"],
             "1.10.0",
