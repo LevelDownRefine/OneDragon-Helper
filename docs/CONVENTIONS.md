@@ -71,7 +71,7 @@ except subprocess.TimeoutExpired as e:
 
 ## 9. GUI 持久化边界
 
-无 UI 状态文件：日常副本/序列的真源是子脚本 config（编辑期实时落盘）；`set_daily_task` 为 no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 `daily_task_list.yml` 声明项。手动脚本勾选 `enabled` 经 service 保存到 config.yml 的脚本条目，重启回显，旧条目缺省启用。每日计划单独将 `script_names` 保存到 schedule.yml 的 `daily_run`，不受手动勾选影响；旧计划首次读取时固化当前勾选。
+无 UI 状态文件：日常副本/序列的真源是子脚本 config（编辑期实时落盘）；`set_daily_task` 为 no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 `daily_task_list.yml` 声明项。手动脚本勾选是纯内存态（`GameListController._enabled`），不落盘、重启回到全选；config.yml 条目的 `enabled` 已废弃，读取时丢弃并告警。每日计划对所有脚本生效，schedule.yml 的 `daily_run` 只记启用状态、触发时间与独立运行选项，不含脚本名单，旧 `script_names` 残留忽略不读；它与手动勾选互不影响。
 
 ## 10. 不随意修改 `.bak` / 备份文件
 
@@ -82,11 +82,13 @@ except subprocess.TimeoutExpired as e:
 新增/修改功能后必须补测试。动了共享接口 / 多模块 / 做了重构的**大改动**，必须用与 CI 一致的命令跑**全量**，不能只跑改动相关文件：
 
 ```bash
-PYTHONPATH=python-backend:python-backend/src python -m unittest discover -s python-backend/tests -t python-backend -p "test*.py"
+python -m unittest discover -s python-backend/tests -t python-backend -p "test*.py"
+python -m unittest discover -s python-gui/tests -t python-gui -p "test*.py"
 ```
 
-- `PYTHONPATH=python-backend:python-backend/src` 不可省：否则 `test_utils` 顶层 `import` 会误报 import 错。
-- `ruff check python-backend tools runner` 一并跑，含 `runner/`。
+- 两套件必须分开跑：它们各自的 `tests` 包同名，合并会互相遮蔽。
+- 已 `uv sync` 的环境直接运行即可，不再需要拼接 `PYTHONPATH`。
+- `ruff check python-backend python-gui tools runner` 一并跑，含 `runner/`。
 
 ## 12. 克制使用 try-except
 

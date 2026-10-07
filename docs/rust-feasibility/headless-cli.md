@@ -216,7 +216,7 @@ EOF 发送取消并等待线程结束后释放运行租约；恢复任务依旧�
 `update.install` 不可取消，EOF 等待交接结束后释放租约。就绪后禁止再次检查、下载或安装；
 `update.view.handoff_ready` 可回读就绪状态。失败保留已校验包供显式重试，断连不得重放。
 更新服务与独立更新器校验 CLI/GUI 双进程身份、等待双方退出，安装后带 `--after-update`
-重启 Rust EXE。源码运行仍不支持原位安装；独立包构建与真实 EXE 交接测试见 `TESTING.md`。
+重启 Rust EXE。源码运行仍不支持原位安装；独立包构建与真实 EXE 交接测试见 `../TESTING.md`。
 
 ## 每日计划
 
@@ -272,21 +272,21 @@ Windows 前端将确认程序的绝对路径传入 `ODH_SHUTDOWN_UI`；可选 `O
 
 ## 验证
 
-`tests/test_headless.py` 使用独立子进程和临时根目录，导入钩子主动阻止 PySide6、shiboken6、
+`python-backend/tests/test_headless.py` 使用独立子进程和临时根目录，导入钩子主动阻止 PySide6、shiboken6、
 src.gui；覆盖实际 JSON/YAML 落盘与反读、未修改字段保留、整数/布尔/资源选项、
 独立写入确认与查询、默认参数/空操作、静态展示名转换、选择后启用、周常禁用与未设置、
 同进程外部修改反读、错误后继续处理、UTF-8、
 退出码，以及更新闸门和会话租约释放。
 
 ```text
-PYTHONPATH=src python -m unittest tests.test_headless -v
+uv run --directory python-backend python -m unittest tests.test_headless -v
 ```
 
-`tests/service/test_task_service.py` 覆盖聚合查询；`tests/service/test_task_editing.py`
+`python-backend/tests/service/test_task_service.py` 覆盖聚合查询；`python-backend/tests/service/test_task_editing.py`
 覆盖 CLI 入口直接转发原方法及既有写入行为。
-`tests/test_headless.py` 覆盖原参数、中文输出路径、非零返回码、冻结入口和更新闸门。
-Windows 真正打包验证见 `tests/exe/test_headless_exe.py`；源码全量回归与格式检查按
-[TESTING.md](../../TESTING.md) 执行。
+`python-backend/tests/test_headless.py` 覆盖原参数、中文输出路径、非零返回码、冻结入口和更新闸门。
+Windows 真正打包验证见 `python-backend/tests/exe/test_headless_exe.py`；源码全量回归与格式检查按
+[TESTING.md](../TESTING.md) 执行。
 
 
 ## 两端的故障恢复

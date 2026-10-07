@@ -20,4 +20,4 @@ Python GUI 位于 `python-gui/`，可用根目录 `launcher.bat` 启动。
 `config/`、`assets/` 和运行期数据仍以仓库根目录为基准，与调用者当前目录无关。
 发布时 Python 模块打入运行库，EXE、用户配置和共享资源的安装位置不变。
 
-测试命令见根目录 [TESTING.md](../TESTING.md)。
+测试命令见 [docs/TESTING.md](../docs/TESTING.md)。

@@ -1,5 +1,5 @@
 # OneDragon-Helper
-[本项目](https://github.com/WinSa/OneDragon-Helper)是多游戏自动化脚本调度器。
+[本项目](https://github.com/LevelDownRefine/OneDragon-Helper)是多游戏自动化脚本调度器。
 ![ds](assets/demo.png)
 
 ## 功能简介
@@ -35,4 +35,4 @@ tools/、deploy/   # 跨项目构建、打包、发布工具
 - Rust GUI：`launcher-rust.bat`。
 - Python GUI：`launcher.bat`，或 `uv run python -m gui.launcher`。
 
-构建与测试见 [TESTING.md](TESTING.md)，Rust 说明见 [rust-gui/README.md](rust-gui/README.md)。
+构建与测试见 [docs/TESTING.md](docs/TESTING.md)，Rust 说明见 [rust-gui/README.md](rust-gui/README.md)。

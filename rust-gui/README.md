@@ -1,7 +1,6 @@
 # Rust GUI 预览
 
-总集成分支 `codex/rust-gui-integration`；已同步 main 的脚本管理和资源查询接口。
-分支依赖与后续功能顺序见 [渐进迁移计划](../docs/rust-feasibility/migration-plan.md)。
+Rust GUI 已并入 main，与 Python/Qt 前端并存，共用同一套无 Qt Python 业务。
 Rust 负责窗口、列表、任务卡和进程通信；Python `src.headless` 用 jsonrpcserver 处理
 JSON-RPC 2.0，并将表单转换后交给 AppService 完成配置业务。源码与打包入口共用该文件。
 已接通 Windows 原 GUI 的任务卡、脚本管理、启动、设置、每日计划、备份、壁纸和更新入口。
@@ -224,7 +223,7 @@ Rust 交互测试以真实 egui 指针/滚轮事件验证分级菜单的布尔�
 集成测试使用临时目录与实际 Python CLI，并阻止导入 Qt/GUI；覆盖整数/布尔写入、
 外部修改反读、周常开关、同一 PID 复用、错误后继续请求、UTF-8、stderr 大量输出、
 超时、坏响应和退出释放更新租约。演示目录生成另有 Python 单元测试。
-Python 全套测试仍按 `TESTING.md` 在 Ubuntu 运行。
+Python 全套测试仍按 `docs/TESTING.md` 在 Ubuntu 运行。
 
 2026-09-28 rebase 验证：Rust 13 项通过；Ubuntu Python 1155 项中 1121 项通过、34 项按原有规则
 跳过（77.846 秒）；Ruff、rustfmt 和严格 Clippy 通过。已运行 Windows 实际窗口并检查

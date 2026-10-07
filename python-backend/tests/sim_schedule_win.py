@@ -1,7 +1,7 @@
 """Windows 下 schedule 全链路真实模拟（手动诊断脚本，不进 CI、不被 discover 收集）。
 
 用法:
-    PYTHONPATH=python-backend:python-backend/src python -m tests.sim_schedule_win
+    uv run --directory python-backend python -m tests.sim_schedule_win
 
 在 %TEMP%/odh_e2e_<pid> 搭建沙箱：进程内把 get_root_dir 补丁指向沙箱后，
 用真实代码与真实子进程走完 ``schedule_run`` 全编排——
