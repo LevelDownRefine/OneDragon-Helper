@@ -281,6 +281,9 @@ def unpack_package(
         for name, digest in data["files"].items():
             check_cancelled(cancelled)
             downloaded = safe_target(destination, name)
+            if downloaded.exists() and not downloaded.is_file():
+                # 同名目录会让写盘一直失败，只能当确定性失败清掉工作目录。
+                raise UpdateError(f"下载目录里存在同名目录: {name}")
             if downloaded.is_file() and file_digest(downloaded) == digest:
                 resumed_names.add(name)
                 resumed += sizes[name]

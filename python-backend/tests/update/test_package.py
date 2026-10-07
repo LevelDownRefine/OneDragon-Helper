@@ -100,6 +100,13 @@ class TestUpdatePackage(unittest.TestCase):
             safe_target(self.package, "assets/example.txt")
         self.assertFalse((outside / "example.txt").exists())
 
+    def test_existing_directory_in_destination_is_rejected(self):
+        archive = archive_package(self.package, self.directory / "package.zip")
+        target = self.directory / "unpacked"
+        (target / "_internal/python.dll").mkdir(parents=True)
+        with self.assertRaisesRegex(UpdateError, "同名目录"):
+            unpack_package(archive, target, "1.2.0")
+
     def test_manifest_rejects_case_duplicates_and_file_directory_conflicts(self):
         for names in (("assets/a", "assets/A"), ("assets/a", "assets/a/b")):
             with self.subTest(names=names):
