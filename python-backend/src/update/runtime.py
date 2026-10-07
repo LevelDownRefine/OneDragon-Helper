@@ -66,19 +66,11 @@ def application_lease(root: Path):
     with contextlib.ExitStack() as stack:
         with FileLease(directory / "intent.lock", shared=True):
             stack.enter_context(FileLease(directory / "runtime.lock", shared=True))
-            journal = directory / "transaction.json"
-            if journal.exists():
-                import json
+            # installer 依赖本模块的 update_directory，只能在调用点导入。
+            from src.update.installer import settle_transaction
 
-                data = json.loads(journal.read_text(encoding="utf-8"))
-                if (
-                    not isinstance(data, dict)
-                    or "phase" not in data
-                    or data["phase"] not in ("committed", "rolled_back")
-                ):
-                    raise UpdateError(
-                        "上次更新未完成，请运行更新器 --recover 恢复后再启动"
-                    )
+            if not settle_transaction(root):
+                raise UpdateError("上次更新未完成，请运行更新器 --recover 恢复后再启动")
         yield
 
 

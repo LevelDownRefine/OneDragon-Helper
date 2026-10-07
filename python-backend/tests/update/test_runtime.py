@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,13 +14,14 @@ from unittest.mock import Mock, patch
 import portalocker
 
 from src.update import __main__ as updater
-from src.update.package import APP_EXE, CLI_EXE, UpdateError
+from src.update.package import APP_EXE, CLI_EXE, UpdateError, load_manifest
 from src.update.runtime import (
     FileLease,
     UpdateBusyError,
     application_lease,
     helper_processes,
 )
+from tests.support.update_package import make_package, stage_interrupted_install
 
 
 class TestUpdateRuntime(unittest.TestCase):
@@ -87,6 +89,15 @@ class TestUpdateRuntime(unittest.TestCase):
         )
         with self.assertRaisesRegex(UpdateError, "恢复"), application_lease(self.root):
             self.fail("application started")
+
+    def test_interrupted_install_that_matches_prepared_package_launches(self):
+        root = make_package(self.root / "app")
+        package = make_package(self.root / "prepared", "2.0.0")
+        shutil.copytree(package, root / ".update/download-v2.0.0/package")
+        stage_interrupted_install(root, package)
+        with application_lease(root):
+            self.assertTrue((root / ".update/runtime.lock").is_file())
+        self.assertEqual(load_manifest(root, verify=True)["version"], "2.0.0")
 
     def test_process_detection_uses_install_path_and_excludes_caller(self):
         own = Mock(pid=os.getpid())

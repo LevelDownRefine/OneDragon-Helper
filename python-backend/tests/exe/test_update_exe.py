@@ -33,6 +33,9 @@ CAN_RUN = (
     and (package_dir() / UPDATER_EXE).is_file()
 )
 
+# 占用测试的目标：新版必须真的改过它，否则更新会跳过替换，锁形同虚设。
+LOCKED_FILE = "config/config.example.yml"
+
 
 @unittest.skipUnless(CAN_RUN, "需要 Windows 管理员环境与完整打包产物")
 class TestUpdateExe(unittest.TestCase):
@@ -52,6 +55,9 @@ class TestUpdateExe(unittest.TestCase):
                 destination = root / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source / name, destination)
+            if root == self.new:
+                # 两棵树同源，只有元数据不同；给新版造一处真实差异，占用才撞得上替换
+                (root / LOCKED_FILE).write_text("program 2.0.0\n", encoding="utf-8")
             metadata = {"version": version}
             if frontend == "rust":
                 metadata["frontend"] = frontend
@@ -134,7 +140,7 @@ class TestUpdateExe(unittest.TestCase):
 
     def test_locked_file_rolls_back_after_partial_replacement(self):
         # Windows 普通读句柄禁止替换；触发前已经替换 EXE、删旧资源并写新资源。
-        with (self.root / "config/config.example.yml").open("rb"):
+        with (self.root / LOCKED_FILE).open("rb"):
             code, result = self.run_updater("--package", str(self.new))
         self.assertEqual((code, result["status"]), (1, "failed"), result)
         self.assert_old_restored()

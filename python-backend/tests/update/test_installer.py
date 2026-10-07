@@ -1,14 +1,21 @@
-"""升级与恢复只影响程序清单中的文件。"""
+"""安装事务只影响程序清单中的文件，替换可容忍瞬时占用且中断可补完。"""
 
 import json
+import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from src.update import installer
-from src.update.package import UpdateError, load_manifest
-from tests.support.update_package import make_package, program_snapshot
+from src.update.package import MANIFEST, VERSION_FILE, UpdateError, load_manifest
+from tests.support.update_package import (
+    make_package,
+    program_snapshot,
+    stage_interrupted_install,
+    stage_started_install,
+)
 
 
 class InterruptedInstall(BaseException):
@@ -123,3 +130,154 @@ class TestUpdateInstaller(unittest.TestCase):
                 with self.assertRaisesRegex(UpdateError, "没有高于"):
                     installer.install_package(self.root, candidate)
                 self.assertEqual(program_snapshot(self.root), self.before)
+
+    def test_files_whose_content_already_matches_are_not_replaced(self):
+        unchanged = "OneDragon-Helper.exe"
+        (self.root / unchanged).write_bytes((self.new / unchanged).read_bytes())
+        replaced = []
+        real_replace = installer._replace
+
+        def record(source, target, temporary):
+            replaced.append(target.relative_to(self.root).as_posix())
+            return real_replace(source, target, temporary)
+
+        with patch.object(installer, "_replace", side_effect=record):
+            installer.install_package(self.root, self.new)
+        self.assertEqual(load_manifest(self.root, verify=True)["version"], "2.0.0")
+        self.assertIn("assets/new.txt", replaced)
+        self.assertNotIn(unchanged, replaced)
+        # 运行库两版本本就同内容，同样不该重写
+        self.assertNotIn("_internal/python.dll", replaced)
+
+    def test_transient_occupation_is_retried(self):
+        victim = self.root / "assets/new.txt"
+        real_replace = os.replace
+        attempts = []
+
+        def occupied(source, target):
+            if target == victim:
+                attempts.append(target)
+                if len(attempts) <= 2:
+                    raise PermissionError(13, "拒绝访问", str(target), 5)
+            return real_replace(source, target)
+
+        with (
+            patch.object(installer.os, "replace", side_effect=occupied),
+            patch.object(installer.time, "sleep") as sleep,
+            self.assertLogs(installer.__name__, level="WARNING"),
+        ):
+            installer.install_package(self.root, self.new)
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(load_manifest(self.root, verify=True)["version"], "2.0.0")
+
+    def test_permanent_failure_is_not_retried(self):
+        victim = self.root / "assets/new.txt"
+        real_replace = os.replace
+        attempts = []
+
+        def missing(source, target):
+            if target == victim:
+                attempts.append(target)
+                raise FileNotFoundError(2, "文件不存在", str(target))
+            return real_replace(source, target)
+
+        with (
+            patch.object(installer.os, "replace", side_effect=missing),
+            patch.object(installer.time, "sleep") as sleep,
+            self.assertLogs(installer.__name__, level="ERROR"),
+            self.assertRaises(FileNotFoundError),
+        ):
+            installer.install_package(self.root, self.new)
+        self.assertEqual(len(attempts), 1)
+        sleep.assert_not_called()
+
+    def test_temporary_name_is_private_to_the_process(self):
+        # 启动闸门在共享锁下也会补写记录：并发启动若共用临时名，两边会互相踩
+        used = []
+        with patch.object(
+            installer.os,
+            "replace",
+            side_effect=lambda source, target: used.append(source),
+        ):
+            for pid in (101, 102):
+                with patch.object(installer.os, "getpid", return_value=pid):
+                    installer.write_json(self.root / "record.json", {"phase": "1"})
+        self.assertEqual(len({source.name for source in used}), 2)
+
+
+class TestUpdateSettlement(unittest.TestCase):
+    """启动闸门只在能证明替换已经走完时补完中断的事务。"""
+
+    def setUp(self):
+        self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.root = make_package(self.directory / "app")
+        self.package = make_package(self.directory / "prepared", "2.0.0")
+        self.journal = self.root / ".update/transaction.json"
+        self.journal.parent.mkdir(parents=True, exist_ok=True)
+
+    def prepare(self):
+        """摆出中断现场：安装目录已是 2.0.0 的程序文件，包还留在 .update 里。"""
+        shutil.copytree(self.package, self.root / ".update/download-v2.0.0/package")
+        stage_interrupted_install(self.root, self.package)
+
+    def write_phase(self, phase):
+        self.journal.write_text(json.dumps({"phase": phase}), encoding="utf-8")
+
+    def phase(self):
+        return json.loads(self.journal.read_text(encoding="utf-8"))["phase"]
+
+    def test_settlement_adopts_matching_prepared_package(self):
+        self.prepare()
+        self.assertTrue(installer.settle_transaction(self.root))
+        self.assertEqual(load_manifest(self.root, verify=True)["version"], "2.0.0")
+        self.assertEqual(self.phase(), "committed")
+        self.assertFalse(installer.recover_installation(self.root))
+
+    def test_settlement_refuses_when_program_files_differ(self):
+        self.prepare()
+        (self.root / "OneDragon-Helper.exe").write_bytes(b"damaged")
+        self.assertFalse(installer.settle_transaction(self.root))
+        self.assertEqual(self.phase(), "installing")
+
+    def test_settlement_commits_when_replacement_already_finished(self):
+        # 程序文件与元数据都已是新版，只剩 committed 标记没写：目录自洽且已不同于快照
+        self.prepare()
+        for name in (MANIFEST, VERSION_FILE):
+            shutil.copy2(self.package / name, self.root / name)
+        self.assertTrue(installer.settle_transaction(self.root))
+        self.assertEqual(self.phase(), "committed")
+        self.assertEqual(load_manifest(self.root, verify=True)["version"], "2.0.0")
+
+    def test_settlement_refuses_when_installation_equals_the_snapshot(self):
+        # 目录自洽，但版本与事务快照一致：替换从未推进，没有升级可采信
+        stage_started_install(self.root)
+        shutil.copytree(self.package, self.root / ".update/download-v2.0.0/package")
+        self.assertFalse(installer.settle_transaction(self.root))
+        self.assertEqual(self.phase(), "installing")
+
+    def test_settlement_ignores_prepared_package_that_is_not_newer(self):
+        # 目录仍是 1.0.0，包也只是同版本：没有升级可采信，不能当作已提交
+        stale = self.root / ".update/download-v1.0.0/package"
+        stale.mkdir(parents=True)
+        for name in ("update-manifest.json", "version.json"):
+            shutil.copy2(self.root / name, stale / name)
+        self.write_phase("installing")
+        self.assertFalse(installer.settle_transaction(self.root))
+        self.assertEqual(self.phase(), "installing")
+
+    def test_settlement_refuses_unknown_phase(self):
+        for phase in ("installing-unknown", "verifying"):
+            with self.subTest(phase=phase):
+                self.write_phase(phase)
+                self.assertFalse(installer.settle_transaction(self.root))
+
+    def test_settlement_leaves_settled_or_absent_journal_alone(self):
+        for phase in ("committed", "rolled_back"):
+            with self.subTest(phase=phase):
+                self.write_phase(phase)
+                self.assertTrue(installer.settle_transaction(self.root))
+                self.assertEqual(load_manifest(self.root)["version"], "1.0.0")
+        self.journal.unlink()
+        self.assertTrue(installer.settle_transaction(self.root))
+        self.assertEqual(load_manifest(self.root)["version"], "1.0.0")
