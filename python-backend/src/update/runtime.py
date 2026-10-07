@@ -8,7 +8,13 @@ from pathlib import Path
 import portalocker
 import psutil
 
-from src.update.package import APP_EXE, CLI_EXE, RUNNER_EXE, UpdateError
+from src.update.package import (
+    APP_EXE,
+    CLI_EXE,
+    RUNNER_EXE,
+    UpdateError,
+    linked_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +53,7 @@ class FileLease:
 
 def update_directory(root: Path) -> Path:
     directory = root / ".update"
-    if directory.is_symlink() or (
-        directory.exists()
-        and getattr(directory.lstat(), "st_file_attributes", 0) & 0x400
-    ):
+    if linked_path(directory):
         raise UpdateError("更新工作目录不能是链接")
     directory.mkdir(exist_ok=True)
     return directory

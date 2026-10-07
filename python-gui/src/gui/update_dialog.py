@@ -114,7 +114,7 @@ class UpdateDialog(FormDialogBase):
             "current": "重新检查",
             "error": "重试",
             "unsupported": "检查更新",
-            "cancelling": "正在取消…",
+            "cancelling": "请稍候…",
         }
         assert state in actions
         self.status_label.setText(message)
@@ -124,7 +124,7 @@ class UpdateDialog(FormDialogBase):
         )
         self.action_button.setVisible(state != "unsupported")
         self.close_button.setEnabled(state not in {"installing", "cancelling"})
-        self.close_button.setText("取消下载" if state == "downloading" else "关闭")
+        self.close_button.setText("暂停下载" if state == "downloading" else "关闭")
         self.releases_button.setEnabled(state != "installing")
         busy = state in {"checking", "downloading", "installing", "cancelling"}
         self.progress.setVisible(busy)

@@ -51,7 +51,7 @@ class UpdateError(ValueError):
 
 
 class UpdateCancelled(UpdateError, CancelledError):
-    """用户取消下载；下载服务与远端读取器共用。"""
+    """用户中断下载；已下载的部分保留，供下次续传。"""
 
 
 def check_cancelled(cancelled: Event | None) -> None:
@@ -103,17 +103,25 @@ def managed_path(name: str) -> bool:
     return name.startswith(("_internal/", "assets/", "src/gui/qml/"))
 
 
+def linked_path(path: Path) -> bool:
+    """符号链接或 Windows junction；更新路径不允许落在链接后面。"""
+    return path.is_symlink() or bool(
+        path.exists() and getattr(path.lstat(), "st_file_attributes", 0) & 0x400
+    )
+
+
 def safe_target(root: Path, name: str) -> Path:
-    """拒绝用户目录、符号链接和 Windows junction 造成的路径逃逸。"""
+    """拒绝用户目录、符号链接和 Windows junction 造成的路径逃逸。
+
+    root 自身不查链接：安装目录本来就是用户挑的，挪到 junction 后面是合理用法。
+    """
     if not managed_path(name):
         raise UpdateError(f"更新包包含非程序路径: {name}")
     target = root / name
     for item in (target, *target.parents):
         if item == root:
             break
-        if item.is_symlink() or (
-            item.exists() and getattr(item.lstat(), "st_file_attributes", 0) & 0x400
-        ):
+        if linked_path(item):
             raise UpdateError(f"更新路径不能经过链接: {name}")
     if not target.resolve().is_relative_to(root.resolve()):
         raise UpdateError(f"更新路径越界: {name}")
@@ -216,9 +224,12 @@ def unpack_package(
     progress: Callable[[int, int], None] | None = None,
     cancelled: Event | None = None,
 ) -> dict:
-    """本地与远端 ZIP 共用校验和流式解包，允许复用哈希一致的已安装文件。"""
-    if destination.exists():
-        raise UpdateError("解包目录必须是新的空目录")
+    """本地与远端 ZIP 共用校验和流式解包，允许复用哈希一致的已安装文件。
+
+    目标目录可以已存在：哈希一致的条目视为上次已下完，只补齐其余条目。
+    """
+    if linked_path(destination):
+        raise UpdateError("解包目录不能是链接")
     prefix = "OneDragon-Helper/"
     check_cancelled(cancelled)
     context = (
@@ -262,31 +273,45 @@ def unpack_package(
         expected = set(data["files"]) | {MANIFEST}
         if {name for name, _item in entries.values()} != expected:
             raise UpdateError("更新包文件与清单不一致")
+        destination.mkdir(parents=True, exist_ok=True)
+        sizes = {name: item.file_size for name, item in entries.values()}
         reused = {}
-        if reuse_root is not None:
-            for name, digest in data["files"].items():
-                check_cancelled(cancelled)
-                candidate = safe_target(reuse_root, name)
-                if candidate.is_file() and file_digest(candidate) == digest:
-                    reused[name] = candidate
-        total = sum(
+        resumed_names = set()
+        resumed = 0
+        for name, digest in data["files"].items():
+            check_cancelled(cancelled)
+            downloaded = safe_target(destination, name)
+            if downloaded.exists() and not downloaded.is_file():
+                # 同名目录会让写盘一直失败，只能当确定性失败清掉工作目录。
+                raise UpdateError(f"下载目录里存在同名目录: {name}")
+            if downloaded.is_file() and file_digest(downloaded) == digest:
+                resumed_names.add(name)
+                resumed += sizes[name]
+                continue
+            if reuse_root is not None:
+                installed = safe_target(reuse_root, name)
+                if installed.is_file() and file_digest(installed) == digest:
+                    reused[name] = installed
+        total = resumed + sum(
             item.file_size
             for name, item in entries.values()
-            if name != MANIFEST and name not in reused
+            if name != MANIFEST and name not in reused and name not in resumed_names
         )
-        completed = 0
-        destination.mkdir(parents=True)
+        completed = resumed
         (destination / MANIFEST).write_bytes(manifest_bytes)
+        # 先报一次断点位置：整段命中缓存时下面不会再回调。
+        if progress is not None:
+            progress(completed, total)
         for name, item in entries.values():
             check_cancelled(cancelled)
-            if name == MANIFEST:
+            if name == MANIFEST or name in resumed_names:
                 continue
             target = safe_target(destination, name)
             target.parent.mkdir(parents=True, exist_ok=True)
             if name in reused:
                 shutil.copy2(reused[name], target)
                 continue
-            with source.open(item) as reader, target.open("xb") as writer:
+            with source.open(item) as reader, target.open("wb") as writer:
                 while chunk := reader.read(65536):
                     check_cancelled(cancelled)
                     writer.write(chunk)

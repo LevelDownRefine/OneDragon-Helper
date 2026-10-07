@@ -26,13 +26,20 @@ from src.update.package import (
     UpdateCancelled,
     UpdateError,
     file_digest,
+    linked_path,
     load_manifest,
     manifest_frontend,
     unpack_package,
     version_number,
 )
-from src.update.remote import RemoteUnavailable, open_archive
+from src.update.remote import (
+    RangeCacheCorrupt,
+    RemoteUnavailable,
+    UpdateInterrupted,
+    open_archive,
+)
 from src.update.runtime import (
+    FileLease,
     child_environment,
     helper_processes,
     update_directory,
@@ -45,6 +52,17 @@ REPOSITORY = "LevelDownRefine/OneDragon-Helper"
 RELEASES_URL = f"https://github.com/{REPOSITORY}/releases"
 ZIP_NAME = "OneDragon-Helper.zip"
 RUST_ZIP_NAME = "OneDragon-Helper-Rust.zip"
+
+
+def superseded_workspace(name: str, installed: str) -> bool:
+    """工作目录是否属于已安装或更早的版本，可以直接清掉。
+
+    比已安装版本更新的目录可能是待安装的断点，留着续传。
+    """
+    suffix = name.removeprefix("download-v")
+    if re.fullmatch(r"\d+(\.\d+)*", suffix) is None:
+        return False
+    return version_number(suffix) <= version_number(installed)
 
 
 @dataclass(frozen=True)
@@ -195,9 +213,13 @@ class UpdateService:
         progress: Callable[[int, int], None] | None = None,
         cancelled: Event | None = None,
     ) -> PreparedUpdate:
-        """下载到独立工作目录，校验成功后解包；不改当前程序和用户文件。"""
+        """下载到独立工作目录，校验成功后解包；不改当前程序和用户文件。
+
+        工作目录按目标版本固定并跨次保留，中断或取消后重跑只补缺口。
+        """
         installed = self._installed()
-        if version_number(release.version) <= version_number(installed["version"]):
+        version = version_number(release.version)
+        if version <= version_number(installed["version"]):
             raise UpdateError("目标版本没有高于当前版本")
         prefix = (
             f"https://github.com/{REPOSITORY}/releases/download/v{release.version}/"
@@ -211,38 +233,50 @@ class UpdateService:
             raise UpdateError("更新包大小无效")
         import requests
 
-        work = update_directory(self.root) / ("download-" + uuid.uuid4().hex)
-        work.mkdir()
-        try:
-            if not self._prepare_incremental(release, work, progress, cancelled):
-                checksum = work / (self.zip_name + ".sha256")
-                self._download(release.checksum_url, checksum, 512, None, cancelled)
-                match = re.fullmatch(
-                    rf"([0-9a-fA-F]{{64}})  {re.escape(self.zip_name)}\s*",
-                    checksum.read_text(encoding="ascii"),
-                )
-                if match is None:
-                    raise UpdateError("SHA-256 文件格式无效")
-                archive = work / self.zip_name
-                self._download(
-                    release.archive_url, archive, release.size, progress, cancelled
-                )
-                if (
-                    archive.stat().st_size != release.size
-                    or file_digest(archive) != match[1].lower()
-                ):
-                    raise UpdateError("下载包大小或 SHA-256 校验失败")
-                unpack_package(
-                    archive, work / "package", release.version, cancelled=cancelled
-                )
-            if manifest_frontend(load_manifest(work / "package")) != self.frontend:
-                raise UpdateError("下载包与当前安装的前端类型不一致")
-            if cancelled is not None and cancelled.is_set():
-                raise UpdateCancelled("下载已取消")
-        except (OSError, ValueError, requests.RequestException, zipfile.BadZipFile):
-            logger.exception("准备更新失败")
-            shutil.rmtree(work)
-            raise
+        directory = update_directory(self.root)
+        work = directory / f"download-v{version}"
+        resumable = (
+            OSError,
+            requests.RequestException,
+            UpdateCancelled,
+            UpdateInterrupted,
+        )
+        with FileLease(directory / "download.lock"):
+            if linked_path(work):
+                raise UpdateError("更新工作目录不能是链接")
+            for stale in directory.glob("download-*"):
+                if stale == work or linked_path(stale):
+                    continue
+                if superseded_workspace(stale.name, installed["version"]):
+                    self._discard(stale)
+            work.mkdir(exist_ok=True)
+            try:
+                if not self._prepare_incremental(release, work, progress, cancelled):
+                    self._download_package(release, work, progress, cancelled)
+                if manifest_frontend(load_manifest(work / "package")) != self.frontend:
+                    raise UpdateError("下载包与当前安装的前端类型不一致")
+                if cancelled is not None and cancelled.is_set():
+                    raise UpdateCancelled("下载已取消")
+            except (
+                OSError,
+                ValueError,
+                requests.RequestException,
+                zipfile.BadZipFile,
+            ) as exc:
+                # 可重试的失败保留断点；校验类失败清掉，避免反复读到坏数据。
+                if isinstance(exc, UpdateCancelled):
+                    logger.info("更新已暂停，保留下载断点")
+                else:
+                    logger.exception("准备更新失败")
+                if isinstance(exc, RangeCacheCorrupt):
+                    # 字节不可信只可能是区间数据的问题，逐文件校验过的 package/ 留着复用。
+                    self._discard(work / "ranges")
+                elif not isinstance(exc, resumable):
+                    self._discard(work)
+                raise
+            # 成功后 package/ 已是完整副本，整包与区间缓存都没有留的必要。
+            for leftover in ("ranges", self.zip_name, self.zip_name + ".sha256"):
+                self._discard(work / leftover)
         return PreparedUpdate(work, release.version)
 
     def _prepare_incremental(
@@ -254,17 +288,18 @@ class UpdateService:
     ) -> bool:
         """复用统一解包流程，哈希一致的文件从当前安装补齐。
 
-        远端不支持范围读取或目录损坏时返回 False，由调用方走全量下载；此时
-        工作目录已恢复为刚创建的状态。清单校验失败不回退，避免重复下载。
+        远端不支持范围读取或目录损坏时返回 False，由调用方走全量下载；已下完的
+        条目留在工作目录里，回退或重跑都只补缺口。清单校验失败不回退。
         """
-        package = work / "package"
         try:
-            with open_archive(release.archive_url, cancelled=cancelled) as archive:
+            with open_archive(
+                release.archive_url, cache=work / "ranges", cancelled=cancelled
+            ) as archive:
                 if archive.size() != release.size:
                     raise UpdateError("远端归档大小与 Release 记录不符")
                 unpack_package(
                     archive,
-                    package,
+                    work / "package",
                     release.version,
                     reuse_root=self.root,
                     progress=progress,
@@ -272,10 +307,35 @@ class UpdateService:
                 )
         except RemoteUnavailable as exc:
             logger.info("增量更新不可用，改用全量下载：%s", exc)
-            if package.exists():
-                shutil.rmtree(package)
             return False
         return True
+
+    def _download_package(
+        self,
+        release: ReleaseUpdate,
+        work: Path,
+        progress: Callable[[int, int], None] | None,
+        cancelled: Event | None,
+    ) -> None:
+        """全量回退：取 SHA-256 后按已有长度续传整包并校验。"""
+        checksum = work / (self.zip_name + ".sha256")
+        # 校验文件只有几十字节，且这里的大小是上限而不是目标长度，不能当断点续传。
+        checksum.unlink(missing_ok=True)
+        self._download(release.checksum_url, checksum, 512, None, cancelled)
+        match = re.fullmatch(
+            rf"([0-9a-fA-F]{{64}})  {re.escape(self.zip_name)}\s*",
+            checksum.read_text(encoding="ascii"),
+        )
+        if match is None:
+            raise UpdateError("SHA-256 文件格式无效")
+        archive = work / self.zip_name
+        self._download(release.archive_url, archive, release.size, progress, cancelled)
+        if archive.stat().st_size != release.size:
+            raise UpdateInterrupted("下载未完成")
+        if file_digest(archive) != match[1].lower():
+            archive.unlink(missing_ok=True)
+            raise UpdateError("下载包 SHA-256 校验失败")
+        unpack_package(archive, work / "package", release.version, cancelled=cancelled)
 
     @staticmethod
     def _download(
@@ -285,12 +345,27 @@ class UpdateService:
         progress: Callable | None,
         cancelled: Event | None,
     ) -> None:
+        """按已有长度续传；limit 是目标文件的完整大小，已满则交给调用方校验。"""
         import requests
 
-        with requests.get(url, stream=True, timeout=(10, 30)) as response:
-            response.raise_for_status()
+        received = destination.stat().st_size if destination.is_file() else 0
+        if received > limit:
+            destination.unlink()
             received = 0
-            with destination.open("xb") as output:
+        if received == limit:
+            return
+        headers = {"Range": f"bytes={received}-"} if received else {}
+        with requests.get(
+            url, stream=True, timeout=(10, 30), headers=headers
+        ) as response:
+            response.raise_for_status()
+            if received and (
+                response.status_code != 206
+                or response.headers.get("Content-Range")
+                != f"bytes {received}-{limit - 1}/{limit}"
+            ):
+                received = 0
+            with destination.open("ab" if received else "wb") as output:
                 for chunk in response.iter_content(1024**2):
                     if cancelled is not None and cancelled.is_set():
                         raise UpdateCancelled("下载已取消")
@@ -300,6 +375,19 @@ class UpdateService:
                     output.write(chunk)
                     if progress is not None:
                         progress(received, limit)
+
+    @staticmethod
+    def _discard(path: Path) -> None:
+        """尽力删除临时文件或目录；删不掉只记录，不影响本次更新的结果。"""
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
+        except FileNotFoundError:
+            return
+        except OSError:
+            logger.warning("无法清理更新临时路径: %s", path)
 
     def start_update(self, prepared: PreparedUpdate) -> Path:
         """启动独立安装器并等待 ready；返回后调用方应立即退出 GUI。"""

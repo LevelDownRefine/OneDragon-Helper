@@ -56,6 +56,16 @@ class TestUpdatePackage(unittest.TestCase):
             )
         load_manifest(self.package, verify=True)
 
+    def test_linked_destination_is_rejected(self):
+        archive = archive_package(self.package, self.directory / "package.zip")
+        target = self.directory / "unpacked"
+        with (
+            patch.object(package, "linked_path", return_value=True),
+            self.assertRaisesRegex(UpdateError, "链接"),
+        ):
+            unpack_package(archive, target, "1.2.0")
+        self.assertFalse(target.exists())
+
     def test_manifest_rejects_unsafe_and_user_file_paths(self):
         for name in (
             "../app.exe",
@@ -89,6 +99,13 @@ class TestUpdatePackage(unittest.TestCase):
         with self.assertRaisesRegex(UpdateError, "链接"):
             safe_target(self.package, "assets/example.txt")
         self.assertFalse((outside / "example.txt").exists())
+
+    def test_existing_directory_in_destination_is_rejected(self):
+        archive = archive_package(self.package, self.directory / "package.zip")
+        target = self.directory / "unpacked"
+        (target / "_internal/python.dll").mkdir(parents=True)
+        with self.assertRaisesRegex(UpdateError, "同名目录"):
+            unpack_package(archive, target, "1.2.0")
 
     def test_manifest_rejects_case_duplicates_and_file_directory_conflicts(self):
         for names in (("assets/a", "assets/A"), ("assets/a", "assets/a/b")):

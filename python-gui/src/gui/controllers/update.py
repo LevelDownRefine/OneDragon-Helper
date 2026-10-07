@@ -118,7 +118,7 @@ class UpdateController(QObject):
         assert self._dialog is not None and self._worker is None
         states = {
             "check": ("checking", "正在检查新版本…"),
-            "download": ("downloading", "正在下载更新，可随时取消。"),
+            "download": ("downloading", "正在下载更新，暂停后可从断点继续。"),
             "install": ("installing", "正在准备安装，助手即将关闭并重启…"),
         }
         assert operation in states
@@ -182,7 +182,8 @@ class UpdateController(QObject):
         elif self._worker.operation != "install":
             self._close_pending = True
             self._worker.cancelled.set()
-            self._dialog.show_state("cancelling", "正在取消，请等待当前操作结束…")
+            verb = "暂停" if self._worker.operation == "download" else "取消"
+            self._dialog.show_state("cancelling", f"正在{verb}，请等待当前操作结束…")
 
     @Slot()
     def shutdown(self):
