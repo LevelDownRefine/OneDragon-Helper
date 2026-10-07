@@ -9,11 +9,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.update import installer
-from src.update.package import UpdateError, load_manifest
+from src.update.package import MANIFEST, VERSION_FILE, UpdateError, load_manifest
 from tests.support.update_package import (
     make_package,
     program_snapshot,
     stage_interrupted_install,
+    stage_started_install,
 )
 
 
@@ -191,9 +192,22 @@ class TestUpdateInstaller(unittest.TestCase):
         self.assertEqual(len(attempts), 1)
         sleep.assert_not_called()
 
+    def test_temporary_name_is_private_to_the_process(self):
+        # 启动闸门在共享锁下也会补写记录：并发启动若共用临时名，两边会互相踩
+        used = []
+        with patch.object(
+            installer.os,
+            "replace",
+            side_effect=lambda source, target: used.append(source),
+        ):
+            for pid in (101, 102):
+                with patch.object(installer.os, "getpid", return_value=pid):
+                    installer.write_json(self.root / "record.json", {"phase": "1"})
+        self.assertEqual(len({source.name for source in used}), 2)
+
 
 class TestUpdateSettlement(unittest.TestCase):
-    """启动闸门只在能证明目录自洽时补完中断的事务。"""
+    """启动闸门只在能证明替换已经走完时补完中断的事务。"""
 
     def setUp(self):
         self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -223,6 +237,22 @@ class TestUpdateSettlement(unittest.TestCase):
     def test_settlement_refuses_when_program_files_differ(self):
         self.prepare()
         (self.root / "OneDragon-Helper.exe").write_bytes(b"damaged")
+        self.assertFalse(installer.settle_transaction(self.root))
+        self.assertEqual(self.phase(), "installing")
+
+    def test_settlement_commits_when_replacement_already_finished(self):
+        # 程序文件与元数据都已是新版，只剩 committed 标记没写：目录自洽且已不同于快照
+        self.prepare()
+        for name in (MANIFEST, VERSION_FILE):
+            shutil.copy2(self.package / name, self.root / name)
+        self.assertTrue(installer.settle_transaction(self.root))
+        self.assertEqual(self.phase(), "committed")
+        self.assertEqual(load_manifest(self.root, verify=True)["version"], "2.0.0")
+
+    def test_settlement_refuses_when_installation_equals_the_snapshot(self):
+        # 目录自洽，但版本与事务快照一致：替换从未推进，没有升级可采信
+        stage_started_install(self.root)
+        shutil.copytree(self.package, self.root / ".update/download-v2.0.0/package")
         self.assertFalse(installer.settle_transaction(self.root))
         self.assertEqual(self.phase(), "installing")
 

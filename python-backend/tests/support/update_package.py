@@ -51,20 +51,32 @@ def program_snapshot(root: Path):
     }
 
 
+def stage_started_install(root: Path) -> None:
+    """摆出事务已开始、但一个程序文件都还没换的现场：快照与安装目录同版本。"""
+    identity = "0" * 32
+    snapshot = root / ".update" / identity / "previous"
+    originals = {}
+    for name in (MANIFEST, VERSION_FILE):
+        destination = snapshot / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(root / name, destination)
+        originals[name] = file_digest(root / name)
+    journal = root / ".update/transaction.json"
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    journal.write_text(
+        json.dumps(
+            {"phase": "installing", "transaction": identity, "originals": originals}
+        ),
+        encoding="utf-8",
+    )
+
+
 def stage_interrupted_install(root: Path, package: Path) -> None:
     """摆出中断现场：程序文件已是新版，只剩清单与版本信息还是旧版。"""
-    originals = {name: file_digest(root / name) for name in (MANIFEST, VERSION_FILE)}
+    stage_started_install(root)
     for name in load_manifest(package)["files"]:
         if name in (MANIFEST, VERSION_FILE):
             continue
         target = root / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(package / name, target)
-    journal = root / ".update/transaction.json"
-    journal.parent.mkdir(parents=True, exist_ok=True)
-    journal.write_text(
-        json.dumps(
-            {"phase": "installing", "transaction": "0" * 32, "originals": originals}
-        ),
-        encoding="utf-8",
-    )
