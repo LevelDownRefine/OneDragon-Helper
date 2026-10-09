@@ -413,8 +413,10 @@ class TestRemoteArchive(unittest.TestCase):
         self.server.payload = archive.read_bytes()
         release = replace(self.release, size=len(self.server.payload))
         cancelled = Event()
+        progress = []
 
-        def cancel(received, _total):
+        def cancel(received, total):
+            progress.append((received, total))
             if received > 2 * 65536:
                 cancelled.set()
 
@@ -424,20 +426,33 @@ class TestRemoteArchive(unittest.TestCase):
         ):
             self.client.prepare_update(release, progress=cancel, cancelled=cancelled)
         self.assert_workspace(kept=True)
+        total = progress[0][1]
+        with zipfile.ZipFile(archive) as source:
+            member = source.getinfo("OneDragon-Helper/_internal/shared.bin")
+        ranges = self.root / ".update/download-v1.10.0/ranges"
+        cached = list(ranges.glob(f"{member.header_offset}-*.bin"))
+        self.assertEqual(len(cached), 1)
+        saved_size = cached[0].stat().st_size
+        self.assertGreater(saved_size, 0)
+        self.assertLess(saved_size, member.compress_size)
 
         self.server.requests = []
         self.server.served = 0
-        prepared = self.client.prepare_update(release)
+        progress.clear()
+        prepared = self.client.prepare_update(
+            release, progress=lambda received, size: progress.append((received, size))
+        )
         load_manifest(prepared.directory / "package", verify=True)
+        self.assertTrue(all(size == total for _received, size in progress))
+        self.assertEqual(progress[-1], (total, total))
         starts = [
             int(header[6:].split("-")[0])
             for _path, header in self.server.requests
             if header is not None
         ]
         self.assertTrue(starts)
-        with zipfile.ZipFile(archive) as source:
-            member = source.getinfo("OneDragon-Helper/_internal/shared.bin")
         self.assertNotIn(member.header_offset, starts)
+        self.assertIn(member.header_offset + saved_size, starts)
         self.assertLess(self.server.served, SHARED_BYTES)
 
     def test_cancel_while_copying_reused_files_keeps_workspace(self):
@@ -456,6 +471,69 @@ class TestRemoteArchive(unittest.TestCase):
         ):
             self.client.prepare_update(self.release, cancelled=cancelled)
         self.assert_workspace(kept=True)
+
+    def test_resume_keeps_copied_files_out_of_download_progress(self):
+        cancelled = Event()
+        progress = []
+        copy = service.shutil.copy2
+        copied = self.root / ".update/download-v1.10.0/package/_internal/shared.bin"
+
+        def cancel_after_shared_copy(source, target):
+            result = copy(source, target)
+            if target == copied:
+                cancelled.set()
+            return result
+
+        with (
+            patch.object(service.shutil, "copy2", side_effect=cancel_after_shared_copy),
+            self.assertNoLogs(service.__name__, level="ERROR"),
+            self.assertRaises(service.UpdateCancelled),
+        ):
+            self.client.prepare_update(
+                self.release,
+                progress=lambda received, total: progress.append((received, total)),
+                cancelled=cancelled,
+            )
+        self.assertEqual(
+            copied.read_bytes(), (self.root / "_internal/shared.bin").read_bytes()
+        )
+        total = (self.target / "version.json").stat().st_size + len(b"new")
+        self.assertTrue(progress)
+        self.assertTrue(all(size == total for _received, size in progress))
+        received_before = progress[-1][0]
+
+        # 连续暂停两次，已复制的文件不能再计入下载，已完成的下载不能丢失。
+        for _ in range(2):
+            progress.clear()
+            cancelled.clear()
+
+            def pause(received, size):
+                progress.append((received, size))
+                cancelled.set()
+
+            self.server.requests.clear()
+            with self.assertRaises(service.UpdateCancelled):
+                self.client.prepare_update(
+                    self.release, progress=pause, cancelled=cancelled
+                )
+            self.assertEqual(progress, [(received_before, total)])
+            self.assertTrue(
+                all(header is None for _path, header in self.server.requests)
+            )
+
+        progress.clear()
+        self.server.served = 0
+        with patch.object(requests, "get") as full_download:
+            prepared = self.client.prepare_update(
+                self.release,
+                progress=lambda received, size: progress.append((received, size)),
+            )
+        full_download.assert_not_called()
+        self.assertEqual(progress[0], (received_before, total))
+        self.assertEqual(progress[-1], (total, total))
+        self.assertTrue(all(size == total for _received, size in progress))
+        self.assertLess(self.server.served, SHARED_BYTES)
+        load_manifest(prepared.directory / "package", verify=True)
 
     def test_broken_archive_is_unavailable(self):
         for payload in (

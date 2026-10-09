@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import re
 import shutil
 import stat
@@ -13,6 +14,10 @@ from pathlib import Path, PureWindowsPath
 from threading import Event
 
 from packaging.version import InvalidVersion, Version
+
+from src.utils.utils_io import load_data, save_data
+
+logger = logging.getLogger(__name__)
 
 APP_EXE = "OneDragon-Helper.exe"
 CLI_EXE = "OneDragon-Helper-CLI.exe"
@@ -280,29 +285,82 @@ def unpack_package(
             raise UpdateError("更新包文件与清单不一致")
         destination.mkdir(parents=True, exist_ok=True)
         sizes = {name: item.file_size for name, item in entries.values()}
+        progress_path = destination.with_name(destination.name + ".progress.json")
+        manifest_digest = hashlib.sha256(manifest_bytes).hexdigest()
+        previous_copied = None
+        if reuse_root is not None:
+            if linked_path(progress_path) or (
+                progress_path.exists() and not progress_path.is_file()
+            ):
+                raise UpdateError("下载进度记录不能是链接或目录")
+            if progress_path.is_file():
+                try:
+                    state = load_data(progress_path, file_format="json")
+                except (OSError, ValueError) as exc:
+                    logger.warning(
+                        "下载进度记录读取失败 (%s)，重新识别来源", type(exc).__name__
+                    )
+                else:
+                    if (
+                        isinstance(state, dict)
+                        and {"manifest", "copied"} <= state.keys()
+                        and state["manifest"] == manifest_digest
+                        and isinstance(state["copied"], list)
+                        and all(
+                            isinstance(name, str) and name in data["files"]
+                            for name in state["copied"]
+                        )
+                    ):
+                        previous_copied = set(state["copied"])
+                    else:
+                        logger.info("下载进度记录无效或目标已变，重新识别来源")
         reused = {}
+        copied_names = set()
         resumed_names = set()
-        resumed = 0
         for name, digest in data["files"].items():
             check_cancelled(cancelled)
             downloaded = safe_target(destination, name)
             if downloaded.exists() and not downloaded.is_file():
                 # 同名目录会让写盘一直失败，只能当确定性失败清掉工作目录。
                 raise UpdateError(f"下载目录里存在同名目录: {name}")
-            if downloaded.is_file() and file_digest(downloaded) == digest:
+            cached = downloaded.is_file() and file_digest(downloaded) == digest
+            if cached:
                 resumed_names.add(name)
-                resumed += sizes[name]
-                continue
+                if previous_copied is not None:
+                    if name in previous_copied:
+                        copied_names.add(name)
+                    continue
+            # 来源只影响进度；复用缓存前仍须按目标清单校验文件。
             if reuse_root is not None:
                 installed = safe_target(reuse_root, name)
-                if installed.is_file() and file_digest(installed) == digest:
+                try:
+                    matches = installed.is_file() and file_digest(installed) == digest
+                except OSError as exc:
+                    if not cached:
+                        raise
+                    # 兼容没有来源记录的旧断点；读取原文件失败不能阻止复用完整缓存。
+                    logger.warning(
+                        "安装源无法读取 (%s): %s，已校验缓存按已下载计入进度",
+                        type(exc).__name__,
+                        name,
+                    )
+                    matches = False
+                if matches:
                     reused[name] = installed
-        total = resumed + sum(
+                    copied_names.add(name)
+        total = sum(
             item.file_size
             for name, item in entries.values()
-            if name != MANIFEST and name not in reused and name not in resumed_names
+            if name != MANIFEST and name not in copied_names
         )
-        completed = resumed
+        assert resumed_names <= sizes.keys()
+        completed = sum(sizes[name] for name in resumed_names - copied_names)
+        if reuse_root is not None:
+            save_data(
+                progress_path,
+                {"manifest": manifest_digest, "copied": sorted(copied_names)},
+                file_format="json",
+            )
         (destination / MANIFEST).write_bytes(manifest_bytes)
         # 先报一次断点位置：整段命中缓存时下面不会再回调。
         if progress is not None:
