@@ -19,6 +19,7 @@ import warnings
 
 from src.config.set_config import supports_weekly
 from src.service.app_service import AppService
+from src.service.chain_service import ChainBusyError, chain_run_lease
 from src.utils import get_root_dir
 from src.utils.utils_config import get_script
 from src.utils.utils_shutdown import shutdown_sys
@@ -470,7 +471,13 @@ def _run_run_chain(args) -> int:
     app_service = AppService()
     command, cwd, _env = app_service.build_chain_command(chain_path)
     _emit_cli("run_chain", f"运行: {cwd} {' '.join(command)}")
-    code = app_service.run_chain_command(chain_path, block=not args.no_block)
+    # 运行位覆盖到 Runner 结束；--no-block 立即返回，互斥只到启动为止。
+    try:
+        with chain_run_lease():
+            code = app_service.run_chain_command(chain_path, block=not args.no_block)
+    except ChainBusyError as exc:
+        _emit_cli("run_chain", str(exc))
+        return 1
     if args.no_block:
         _emit_cli("run_chain", f"脚本链已后台启动，启动状态码: {code}")
     else:

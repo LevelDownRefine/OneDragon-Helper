@@ -15,15 +15,17 @@ weekly 运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly
 本模块不承载 UI 渲染/弹窗逻辑，无 Qt 依赖。
 """
 
+import contextlib
 import logging
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from src.log.monitor import parse_logs
 from src.service.chain_gen import generate_chain_config as _generate_chain_config
 from src.service.schedule import RunOptions, ScheduledRun, _dump_run_options
-from src.utils import utils_config
+from src.utils import get_path_under_root, utils_config
 from src.utils.utils_runner import (
     build_run_chain_command as _build_run_chain_command,
 )
@@ -38,6 +40,48 @@ logger = logging.getLogger(__name__)
 
 # schedule_run 需把「本模块」作为 chain_service facade 传给 ScheduledRun
 # （ScheduledRun 仅经其调用 run_chain_once / rerun_round），故传 sys.modules[__name__]。
+
+
+class ChainBusyError(RuntimeError):
+    """已有脚本链在运行。"""
+
+
+_CHAIN_LOCK_NAME = "run.lock"
+_run_lock_held = False
+
+
+def chain_lock_path() -> Path:
+    """脚本链运行位锁文件路径（该目录不进更新差分）。"""
+    return Path(get_path_under_root("config", "script_chain")) / _CHAIN_LOCK_NAME
+
+
+@contextlib.contextmanager
+def chain_run_lease():
+    """独占脚本链运行位：同一时刻只允许一条链在清场/生成/运行。
+
+    并发跑两条链会互相覆盖同名链配置（手动运行 today、重跑轮 rerun），并按名杀掉
+    对方拉起的游戏；锁文件落在链配置目录，由 portalocker 跨进程持有。同进程嵌套
+    调用（重跑轮复用 run_chain_once）直接放行，不重复加锁。
+
+    Raises:
+        ChainBusyError: 运行位已被其他进程占用。
+    """
+    global _run_lock_held
+    if _run_lock_held:
+        yield
+        return
+    # 延迟导入：仅真正跑链时才需要 portalocker/psutil。
+    from src.update.runtime import FileLease, UpdateBusyError
+
+    try:
+        with FileLease(chain_lock_path()):
+            _run_lock_held = True
+            try:
+                yield
+            finally:
+                _run_lock_held = False
+    except UpdateBusyError as exc:
+        raise ChainBusyError("已有脚本链在运行，请稍后重试") from exc
 
 
 # ---------- 配置读取 ----------
@@ -127,15 +171,19 @@ def run_chain_once(
 
     Returns:
         始终返回 None（纯跑链，运行后动作交由调用方）。
+
+    Raises:
+        ChainBusyError: 运行位已被其他进程占用。
     """
-    all_config = utils_config.load_config()
-    weekly_timeouts = load_all_weekly()
-    _run_chain_once_impl(
-        all_config,
-        enabled_keys,
-        chain_name=chain_name,
-        weekly_timeouts=weekly_timeouts,
-    )
+    with chain_run_lease():
+        all_config = utils_config.load_config()
+        weekly_timeouts = load_all_weekly()
+        _run_chain_once_impl(
+            all_config,
+            enabled_keys,
+            chain_name=chain_name,
+            weekly_timeouts=weekly_timeouts,
+        )
     return None
 
 

@@ -16,8 +16,11 @@ import os
 import tempfile
 import unittest
 from dataclasses import replace
+from pathlib import Path
 from unittest import mock
 
+import src.service.chain_service as chain_service
+from src.service.chain_service import chain_run_lease
 from src.service.schedule import (
     RunOptions,
     ScheduledRun,
@@ -25,6 +28,7 @@ from src.service.schedule import (
     build_pre_run_pipeline,
     load_run_options,
 )
+from src.update.runtime import FileLease, UpdateBusyError
 from src.utils.utils_io import load_data, save_data
 from src.utils.utils_runner import ProcessTarget
 from tests.support.process_sim import ProcessSim
@@ -52,6 +56,13 @@ def _make_service(testcase, script_list=None, *, schedule=None):
     )
     p_weekly.start()
     testcase.addCleanup(p_weekly.stop)
+    # 运行位锁文件落临时目录，避免测试在仓库 config/script_chain 下留文件。
+    p_lock = mock.patch(
+        "src.service.chain_service.chain_lock_path",
+        return_value=Path(tempfile.mkdtemp()) / "run.lock",
+    )
+    p_lock.start()
+    testcase.addCleanup(p_lock.stop)
     return svc
 
 
@@ -312,6 +323,35 @@ class TestScheduledRunPreRunClose(unittest.TestCase):
             sched.run()
         svc.run_chain_once.assert_called_once_with(None, chain_name="today")
         self.assertEqual(post_done, ["post"])
+
+    def test_run_holds_chain_lease(self):
+        """run() 全段持有运行位：core 期间外部抢不到，同进程嵌套放行（重跑轮形态）。"""
+
+        def assert_lease_held(*args, **kwargs):
+            with chain_run_lease():  # 重跑轮复用同一把，同进程嵌套直接放行
+                pass
+            with (
+                self.assertRaises(UpdateBusyError),
+                FileLease(chain_service.chain_lock_path()),
+            ):
+                self.fail("运行期间外部仍能拿到运行位")
+
+        sim = ProcessSim()
+        sim.add_script("ok-ww")
+        svc = _make_service(self, sim.scripts)
+        svc.run_chain_once.side_effect = assert_lease_held
+        with (
+            mock.patch(
+                "src.service.schedule.load_schedule",
+                return_value=svc.schedule_data,
+            ),
+            mock.patch("src.service.schedule.build_post_run_pipeline", return_value=[]),
+            sim.install(),
+        ):
+            ScheduledRun(svc, None, "now", close_running=False).run()
+        svc.run_chain_once.assert_called_once_with(None, chain_name="today")
+        with FileLease(chain_service.chain_lock_path()):  # 跑完即释放
+            pass
 
 
 class TestScheduledRunOrder(unittest.TestCase):
