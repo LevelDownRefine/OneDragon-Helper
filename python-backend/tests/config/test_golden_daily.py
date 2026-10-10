@@ -1,7 +1,9 @@
 """固定种子 → 全菜单选择 → 落盘差异和反读；只替换文件 I/O 与外部资源。
 
+基线按 (日常, 任务, 序号) 逐项记录落盘与反读，不记录菜单字面内容：上游新增选项
+只是多出一个键，不算回归。已有项的行为一旦变化即为失败。
+
 显式更新基线：PYTHONPATH=src python -m tests.config.test_golden_daily --update
-正常测试只读基线，新增选项或修改行为后须审查 JSON 差异。
 """
 
 import json
@@ -130,7 +132,7 @@ def build_baseline():
         stores[script][path] = deepcopy(data)
         saves.append(path)
 
-    baseline = {"menus": {}, "writes": {}, "reads": {}}
+    baseline = {"writes": {}, "reads": {}}
     with ExitStack() as stack:
         # 菜单基线从固定种子开始；构造期对齐不能依赖别的测试是否预热过单例。
         stack.enter_context(patch.dict(config_mod._CONFIGS))
@@ -154,39 +156,28 @@ def build_baseline():
         assert set(menus) == set(stores) == set(config_mod._CONFIGS)
         for script in sorted(menus):
             cfg = config_mod._CONFIGS[script]()
-            normalized = {}
-            steps = []
+            steps = {}
             before_read = config_mod.get_daily_readback(script)
             for daily in menus[script]["dailies"]:
                 name = daily["display_name"]
-                choices = {}
                 for task in daily["options"]["values"]:
                     task_name = task["display_name"]
                     sequences = task["options"]["values"] if "options" in task else []
-                    choices[task_name] = [
-                        [s["display_name"], s["physical_name"]] for s in sequences
-                    ]
                     for sequence in [s["physical_name"] for s in sequences] or [None]:
                         before = deepcopy(stores[script])
                         saves.clear()
                         cfg.set_daily_task(name, task_name, sequence)
-                        steps.append(
-                            {
-                                "daily": name,
-                                "task": task_name,
-                                "sequence": sequence,
-                                "saved_files": list(saves),
-                                "diff": {
-                                    path: [old, new]
-                                    for path, old, new in diff_paths(
-                                        before, stores[script]
-                                    )
-                                },
-                                "readback": config_mod.get_daily_readback(script),
-                            }
-                        )
-                normalized[name] = choices
-            baseline["menus"][script] = normalized
+                        steps[f"{name}|{task_name}|{sequence}"] = {
+                            "daily": name,
+                            "task": task_name,
+                            "sequence": sequence,
+                            "saved_files": list(saves),
+                            "diff": {
+                                path: [old, new]
+                                for path, old, new in diff_paths(before, stores[script])
+                            },
+                            "readback": config_mod.get_daily_readback(script),
+                        }
             baseline["writes"][script] = steps
             baseline["reads"][script] = before_read
     return baseline
@@ -202,7 +193,13 @@ class TestDailyGolden(unittest.TestCase):
         expected = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
         actual = build_baseline()
         self.maxDiff = 6000
-        self.assertEqual(_dump(actual), _dump(expected))
+        # 只校验基线记录过的项：上游新增选项只是多出一个键，不算回归。
+        for script, steps in expected["writes"].items():
+            self.assertIn(script, actual["writes"])
+            for key, step in steps.items():
+                self.assertIn(key, actual["writes"][script])
+                self.assertEqual(_dump(step), _dump(actual["writes"][script][key]))
+        self.assertEqual(_dump(actual["reads"]), _dump(expected["reads"]))
 
     def test_repeated_builds_preserve_the_baseline_and_registry(self):
         factories = dict(config_mod._CONFIGS)
