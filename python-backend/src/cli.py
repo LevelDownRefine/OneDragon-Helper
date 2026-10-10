@@ -166,7 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="结果 JSON 路径或链配置输出路径"
-        "（默认 %%TEMP%%/odh_gui_<出口>.json 或 config/script_chain/<name>.yml）",
+        "（默认 %%TEMP%%/odh_gui_<出口>.json 或 config/script_chain/<name>-<运行时刻>.yml）",
     )
     return parser
 

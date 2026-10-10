@@ -486,7 +486,7 @@ def spawn_schedule_run(
             None 不被允许——CLI 已把 ``--enable`` 的缺省/``all`` 物化为全部脚本集合，
             GUI 永远传非空真实集合，故跨进程壳层不再用 None 表达「全部」。
         target_time: 目标时刻 ``"HH:MM"``（24 小时制），须合法（调用方已校验）。
-        chain_name: 链配置文件名（不含扩展名，默认 today）。
+        chain_name: 链配置文件名前缀（实际文件名带本次运行时刻，默认 today）。
         mute: 是否运行前静音（透传 ``--mute``）。
         unmute: 是否运行后开启声音（透传 ``--unmute``）。
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。

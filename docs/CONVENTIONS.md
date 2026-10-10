@@ -65,7 +65,7 @@ except subprocess.TimeoutExpired as e:
 
 ## 8. 日志用 `logging` 模块
 
-`logger = logging.getLogger(__name__)`；入口调 `setup_logging()`，控制台加文件轮转。禁止裸 `print`。
+`logger = logging.getLogger(__name__)`；入口调 `setup_logging(role=...)`（GUI 与计划/运行分文件），控制台加按日文件。禁止裸 `print`。
 
 - runner 子模块有独立日志系统 `.log/`，遵循其自身约定。
 

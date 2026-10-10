@@ -463,7 +463,10 @@ def _run_command(args: argparse.Namespace) -> int:
                 from src.service.app_service import AppService
                 from src.utils.utils_logger import install_crash_hooks, setup_logging
 
-                setup_logging()
+                # 计划/运行出口与 GUI 分文件落盘（同 gui.launcher 的判定）。
+                setup_logging(
+                    role="plan" if args.command in ("daily", "run", "legacy") else "gui"
+                )
                 install_crash_hooks()
                 config_workflow()
                 service = AppService(frontend=_installed_frontend())

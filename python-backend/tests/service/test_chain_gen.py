@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from src.service.chain_gen import (
     _resolve_daily_run,
+    _run_stamp,
     generate_chain_config,
     resolve_weekly_starts,
 )
@@ -157,6 +158,34 @@ class TestGenerateChainConfig(unittest.TestCase):
         data = self._write(config, {"乙"})
         self.assertEqual([s["display_name"] for s in data["script_list"]], ["乙"])
         self.assertIs(data["script_list"][0]["enabled"], True)
+
+
+class TestDefaultOutputName(unittest.TestCase):
+    def test_default_output_name_carries_run_time(self):
+        """默认输出 config/script_chain/<前缀>-<运行时刻>.yml：时刻不同即不重名。"""
+        root = self.enterContext(tempfile.TemporaryDirectory())
+        os.makedirs(os.path.join(root, "config", "script_chain"))
+        script = _script()
+        stamps = ("20261010-194312123456", "20261010-194313000000")
+        with (
+            patch(
+                "src.service.chain_gen.get_path_under_root",
+                side_effect=lambda *subs: os.path.join(root, *subs),
+            ),
+            patch("src.service.chain_gen._run_stamp", side_effect=list(stamps)),
+        ):
+            paths = [
+                generate_chain_config(
+                    {"script_list": [script]}, {"测试"}, chain_name="today"
+                )
+                for _ in stamps
+            ]
+
+        self.assertRegex(_run_stamp(), r"^\d{8}-\d{6}\d{6}$")
+        self.assertEqual(
+            [os.path.basename(path) for path in paths],
+            [f"today-{stamp}.yml" for stamp in stamps],
+        )
 
 
 if __name__ == "__main__":

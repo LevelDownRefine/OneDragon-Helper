@@ -88,7 +88,7 @@ def generate_chain(
     Args:
         all_config_data: config.yml 完整数据（含 script_list）。
         enabled_keys: 要纳入链的脚本唯一标识集合。
-        chain_name: 链配置文件名（不含扩展名）。
+        chain_name: 链配置文件名前缀（实际文件名带本次运行时刻）。
         out_path: 输出路径；None 时默认 config/script_chain/<chain_name>.yml。
 
     Returns:
@@ -123,7 +123,7 @@ def run_chain_once(
     Args:
         enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
             （跳过运行）。调用方想全量时显式传入 config 全部脚本集合。
-        chain_name: 链配置文件名（不含扩展名，默认 today）。
+        chain_name: 链配置文件名前缀（实际文件名带本次运行时刻，默认 today）。
 
     Returns:
         始终返回 None（纯跑链，运行后动作交由调用方）。
@@ -217,7 +217,7 @@ def schedule_run(
         enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
             （跳过运行）。调用方想全量时显式传入 config 全部脚本集合。
         target_time: 目标时刻 ``"HH:MM"`` 或带秒的 ``"HH:MM:SS"``；``"now"`` 表示即时运行（跳过等待）。
-        chain_name: 链配置文件名（不含扩展名，默认 today）。
+        chain_name: 链配置文件名前缀（实际文件名带本次运行时刻，默认 today）。
         mute: 是否运行前静音（由 ScheduledRun 的 pre_run 执行）。
         unmute: 是否运行后开启声音（由 ScheduledRun 的 post_run 执行，与静音独立）。
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
@@ -262,7 +262,7 @@ def _run_chain_once_impl(
         all_config: config.yml 完整数据（含 script_list）。
         enabled_keys: 纳入链的脚本唯一标识集合；None/空集合表示不纳入任何脚本
             （跳过运行）。调用方想全量时显式传入 config 全部脚本集合。
-        chain_name: 链配置文件名（不含扩展名，默认 today）。
+        chain_name: 链配置文件名前缀（实际文件名带本次运行时刻，默认 today）。
 
     Returns:
         始终返回 None（纯跑链）。
