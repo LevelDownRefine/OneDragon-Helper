@@ -1,0 +1,92 @@
+name: Sync task lists
+
+on:
+  schedule:
+    - cron: "15 3 * * *" # 每天 03:15 UTC（北京 11:15）
+  workflow_dispatch: # 支持手动触发
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install ruamel.yaml
+
+      - name: Sync ok-ww task numbers
+        id: okww
+        run: |
+          set -e
+          # exit=0 无差异；exit=1 有差异（自动 apply 后开 PR）；
+          # exit=2 抓取/解析失败（跳过本次，不误开 PR）
+          code=0
+          python tools/sync_okww_tasks.py || code=$?
+          if [ $code -eq 1 ]; then
+            python tools/sync_okww_tasks.py --apply
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create ok-ww Pull Request
+        if: steps.okww.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "chore: sync ok-ww task numbers from upstream"
+          title: "chore: 同步鸣潮副本数字"
+          body: |
+            检测到鸣潮副本数量有更新，已从 ok-wuthering-waves 的 `ForgeryTask.py`/`TacetTask.py`（`self.structure`）同步到 `config/daily_task_list.yml`。
+
+            - 鸣潮新增副本插在**最前方**，已有别名已自动整体后移对应位数
+            - 最前方新增的占位 display 为数字，**请人工改成友好名**（如 梦州-迅刀）
+            - 移除的数字仅报告不删除（无法安全重排，请人工核对）
+          branch: auto-sync/okww-tasks
+          delete-branch: true
+
+      # 上一步已把文件改动 commit 进 auto-sync 分支，此处复位到本次触发的 main，
+      # 让下一个脚本从干净的基线重新读改写。
+      - name: Reset workspace
+        if: steps.okww.outputs.changed == 'true'
+        run: git checkout --force -B main origin/main
+
+      - name: Sync ok-nte task lists
+        id: oknte
+        run: |
+          set -e
+          # exit=0 无差异；exit=1 有差异（自动 apply 后开 PR）；
+          # exit=2 抓取/解析失败（跳过本次，不误开 PR）
+          code=0
+          python tools/sync_oknte_tasks.py || code=$?
+          if [ $code -eq 1 ]; then
+            python tools/sync_oknte_tasks.py --apply
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create ok-nte Pull Request
+        if: steps.oknte.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v8
+        with:
+          commit-message: "chore: sync ok-nte task lists from upstream"
+          title: "chore: 同步异环副本（数字 + 追猎目标）"
+          body: |
+            检测到异环副本有更新，已从 ok-nte 上游同步到 `config/daily_task_list.yml`：
+
+            - 异象界域（数字）：`AnomalyTask.py` 的 `_ID_RANGE`
+            - 追猎目标（boss 名）：`AnomalyHunter.py` 的 `HUNTER_TARGETS`
+
+            - 新增数字的 display 为占位数字，**请人工改成友好名**（如 光暗/鸟/苹果）
+            - 新增的追猎目标为 boss 中文名，**请人工核对**是否与游戏内一致
+            - 移除的项仅报告不删除（避免上游短暂回退时丢配置）
+          branch: auto-sync/oknte-tasks
+          delete-branch: true
