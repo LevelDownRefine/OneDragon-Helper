@@ -9,7 +9,6 @@ from pathlib import Path
 from unittest import mock
 
 import src.log.monitor as collect_log
-import src.utils.utils_logger
 from src.log import (
     BGILogParser,
     M7ALogParser,
@@ -21,7 +20,9 @@ from src.log import (
     parse_log,
 )
 from src.utils.utils_io import load_data, parse_data, save_data
+from src.utils.utils_logger import today
 from src.utils.utils_sub_config import get_script_name
+from tests.support.framework_log import temp_framework_root
 
 
 def _parse_content(parser, content: str) -> dict:
@@ -121,24 +122,14 @@ class TestCollectLogSetup(unittest.TestCase):
     def test_setup_logging_writes_to_framework_log(self):
         """monitor 复用框架 setup_logging，日志写入 <root>/logs 的当日 gui 文件
         （用临时根避免污染真实 logs），且不写 collect_log.log。"""
-        tmp = self.enterContext(tempfile.TemporaryDirectory())
         self.addCleanup(_logging.getLogger().setLevel, _logging.getLogger().level)
-        orig = src.utils.utils_logger.get_root_dir
-        configured_saved = src.utils.utils_logger._configured
-        src.utils.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
-        src.utils.utils_logger._configured = False
-        before = {id(h) for h in _logging.getLogger().handlers}
-        try:
+        with temp_framework_root() as tmp:
             collect_log.setup_logging()
             _logging.getLogger("__test_collect_log__").info("HELLO_FROM_TEST")
-            for h in _logging.getLogger().handlers:
-                h.flush()
+            for handler in _logging.getLogger().handlers:
+                handler.flush()
 
-            log_file = os.path.join(
-                tmp,
-                "logs",
-                f"onedragon_helper-{src.utils.utils_logger.today()}.log",
-            )
+            log_file = os.path.join(tmp, "logs", f"onedragon_helper-{today()}.log")
             self.assertTrue(os.path.exists(log_file))
             with open(log_file, encoding="utf-8") as f:
                 self.assertIn("HELLO_FROM_TEST", f.read())
@@ -148,47 +139,24 @@ class TestCollectLogSetup(unittest.TestCase):
             ]
             self.assertIn(log_file, targets)
             self.assertFalse(any("collect_log.log" in t for t in targets))
-        finally:
-            after = {id(h) for h in _logging.getLogger().handlers}
-            for h in list(_logging.getLogger().handlers):
-                if id(h) in (after - before):
-                    _logging.getLogger().removeHandler(h)
-                    h.close()
-            src.utils.utils_logger._configured = configured_saved
-            src.utils.utils_logger.get_root_dir = orig
 
     def test_setup_logging_is_idempotent(self):
         """重复调用复用框架 setup_logging 不会重复添加当日 gui 文件 handler。"""
-        tmp = self.enterContext(tempfile.TemporaryDirectory())
         self.addCleanup(_logging.getLogger().setLevel, _logging.getLogger().level)
-        orig = src.utils.utils_logger.get_root_dir
-        configured_saved = src.utils.utils_logger._configured
-        src.utils.utils_logger.get_root_dir = lambda: tmp  # type: ignore[assignment]
-        src.utils.utils_logger._configured = False
-        before = {id(h) for h in _logging.getLogger().handlers}
-        try:
+        with temp_framework_root():
+            before = {id(h) for h in _logging.getLogger().handlers}
             collect_log.setup_logging()
             collect_log.setup_logging()
-            # 幂等：本次调用（首次因 _configured 被置 False 而添加，第二次 no-op）
-            # 仅新增 1 个指向当日 gui 文件的 handler；不依赖全局计数，
+            # 幂等：仅新增 1 个指向当日 gui 文件的 handler；不依赖全局计数，
             # 避免被其它测试残留的 handler 干扰。
-            added = {id(h) for h in _logging.getLogger().handlers} - before
             added_count = sum(
                 1
-                for h in _logging.getLogger().handlers
-                if id(h) in added
-                and f"onedragon_helper-{src.utils.utils_logger.today()}.log"
-                in getattr(h, "baseFilename", "")
+                for handler in _logging.getLogger().handlers
+                if id(handler) not in before
+                and f"onedragon_helper-{today()}.log"
+                in getattr(handler, "baseFilename", "")
             )
             self.assertEqual(added_count, 1)
-        finally:
-            after = {id(h) for h in _logging.getLogger().handlers}
-            for h in list(_logging.getLogger().handlers):
-                if id(h) in (after - before):
-                    _logging.getLogger().removeHandler(h)
-                    h.close()
-            src.utils.utils_logger._configured = configured_saved
-            src.utils.utils_logger.get_root_dir = orig
 
 
 class TestParseLogsRerunList(unittest.TestCase):

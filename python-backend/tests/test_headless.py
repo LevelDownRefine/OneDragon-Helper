@@ -1530,3 +1530,47 @@ class HeadlessEntryTests(unittest.TestCase):
             )
         factory.assert_called_once_with(frontend="qt")
         dispatch.assert_called_once_with(factory.return_value, "update.view")
+
+    def test_run_command_selects_log_role_by_entry(self):
+        """计划/运行出口写 plan 文件，GUI 服务出口写 gui 文件（同 gui.launcher 判定）。"""
+        import io
+        from argparse import Namespace
+        from contextlib import nullcontext
+
+        from src.headless import _run_command
+
+        logging_setup = self.enterContext(patch("src.utils.utils_logger.setup_logging"))
+        self.enterContext(
+            patch(
+                "src.headless._parse_json",
+                return_value={"script_names": [], "options": {}},
+            )
+        )
+        for target in (
+            "src.utils.utils_logger.install_crash_hooks",
+            "src.config.generate_config.config_workflow",
+            "src.service.app_service.AppService",
+            "src.headless._parse_run_options",
+            "src.cli.build_parser",
+        ):
+            self.enterContext(patch(target))
+        self.enterContext(patch("src.cli.run_cli", return_value=0))
+        self.enterContext(patch("src.headless._call", return_value=0))
+        self.enterContext(patch("sys.stdin", new=io.StringIO("{}")))
+        self.enterContext(
+            patch("src.update.runtime.application_lease", return_value=nullcontext())
+        )
+        self.enterContext(patch.dict(os.environ))
+
+        for args, role in (
+            (
+                Namespace(command="daily", shutdown_ui="x", shutdown_ui_args="[]"),
+                "plan",
+            ),
+            (Namespace(command="run"), "plan"),
+            (Namespace(command="legacy", arguments=["--selftest"]), "plan"),
+            (Namespace(command="call", method="update.view"), "gui"),
+        ):
+            with self.subTest(command=args.command):
+                self.assertEqual(_run_command(args), 0)
+            self.assertEqual(logging_setup.call_args.kwargs, {"role": role})

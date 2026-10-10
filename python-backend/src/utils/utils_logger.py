@@ -22,7 +22,13 @@ from src.utils import get_root_dir, safe_path_join
 # 进程角色 → 日志文件名前缀。同一角色同一时刻只有一个目标写者。
 _LOG_PREFIXES = {"gui": "onedragon_helper", "plan": "onedragon_helper.plan"}
 _BACKUP_DAYS = 14
-_configured = False
+# 按日文件名（任一角色），供过期清理匹配
+_DATED_LOG_PATTERN = re.compile(
+    "^(?:"
+    + "|".join(re.escape(prefix) for prefix in _LOG_PREFIXES.values())
+    + r")-(\d{4}-\d{2}-\d{2})\.log$"
+)
+_configured_role: str | None = None
 
 
 def today() -> str:
@@ -35,13 +41,18 @@ class _DailyFileHandler(logging.FileHandler):
 
     跨日时只关掉旧文件、改用当天文件，不做 rename：同一日志文件可能被多个
     进程同时持有，而 rename 需要独占删除权，必然失败。
+
+    追加模式是刻意的：换文件靠 ``close()``（会置 ``_closed``），而
+    ``FileHandler.emit`` 只在 ``mode == "w" and _closed`` 时拒绝落盘。
     """
 
     def __init__(self, directory: str, prefix: str) -> None:
         self._directory = directory
         self._prefix = prefix
         self._day = today()
-        super().__init__(self._path_for(self._day), encoding="utf-8", delay=True)
+        super().__init__(
+            self._path_for(self._day), mode="a", encoding="utf-8", delay=True
+        )
 
     def _path_for(self, day: str) -> str:
         return safe_path_join(self._directory, f"{self._prefix}-{day}.log")
@@ -59,14 +70,13 @@ class _DailyFileHandler(logging.FileHandler):
         self.baseFilename = os.path.abspath(self._path_for(day))
 
 
-def purge_expired_logs(directory: str, prefix: str) -> None:
-    """删除同前缀中日期超过保留期的日志文件；被占用或不可删则跳过。"""
-    pattern = re.compile(rf"^{re.escape(prefix)}-(\d{{4}}-\d{{2}}-\d{{2}})\.log$")
-    deadline = date.today() - timedelta(days=_BACKUP_DAYS)
+def purge_expired_logs(directory: str) -> None:
+    """删除日志目录里日期超过保留期的按日文件（各角色同规则）；不可删则跳过。"""
+    deadline = date.fromisoformat(today()) - timedelta(days=_BACKUP_DAYS)
     for entry in os.scandir(directory):
         if not entry.is_file():
             continue
-        matched = pattern.match(entry.name)
+        matched = _DATED_LOG_PATTERN.match(entry.name)
         if matched is None:
             continue
         try:
@@ -89,8 +99,9 @@ def setup_logging(level: int = logging.INFO, *, role: str = "gui") -> None:
         level: root logger 级别。
         role: 进程角色；``gui``（含 GUI 子进程）与 ``plan``（计划/运行）分文件。
     """
-    global _configured
-    if _configured:
+    global _configured_role
+    if _configured_role is not None:
+        assert role == _configured_role, (role, _configured_role)
         return
     assert role in _LOG_PREFIXES, role
 
@@ -108,13 +119,12 @@ def setup_logging(level: int = logging.INFO, *, role: str = "gui") -> None:
 
     log_dir = safe_path_join(get_root_dir(), "logs")
     os.makedirs(log_dir, exist_ok=True)
-    prefix = _LOG_PREFIXES[role]
-    purge_expired_logs(log_dir, prefix)
-    file_handler = _DailyFileHandler(log_dir, prefix)
+    purge_expired_logs(log_dir)
+    file_handler = _DailyFileHandler(log_dir, _LOG_PREFIXES[role])
     file_handler.setFormatter(fmt)
     root.addHandler(file_handler)
 
-    _configured = True
+    _configured_role = role
 
 
 def install_crash_hooks() -> None:
