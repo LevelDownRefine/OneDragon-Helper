@@ -89,20 +89,23 @@ def purge_expired_logs(directory: str) -> None:
             os.remove(entry.path)
 
 
-def setup_logging(level: int = logging.INFO, *, role: str = "gui") -> None:
+def setup_logging(level: int = logging.INFO, *, role: str | None = None) -> None:
     """配置 root logger：控制台 + logs/ 下当日文件（按日保留 14 天）。
 
-    幂等：重复调用不会重复添加 handler。所有 getLogger(__name__) 子 logger
-    会继承 root 的 handler，无需各自配置。
+    幂等：重复调用不会重复添加 handler，也不改变已定的落点——运行期的日志
+    汇总（`src.log.monitor.parse_logs`）只需确保日志已初始化，故不必传 role。
+    所有 getLogger(__name__) 子 logger 会继承 root 的 handler。
 
     Args:
         level: root logger 级别。
         role: 进程角色；``gui``（含 GUI 子进程）与 ``plan``（计划/运行）分文件。
+            省略即按 ``gui`` 落盘；已配置过的进程再传不同角色属调用错误。
     """
     global _configured_role
     if _configured_role is not None:
-        assert role == _configured_role, (role, _configured_role)
+        assert role in (None, _configured_role), (role, _configured_role)
         return
+    role = role or "gui"
     assert role in _LOG_PREFIXES, role
 
     root = logging.getLogger()

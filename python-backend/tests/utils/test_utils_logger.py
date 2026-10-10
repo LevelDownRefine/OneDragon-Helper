@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from unittest import mock
 
+import src.log.monitor as collect_log
 import src.utils.utils_logger as utils_logger
 from src.utils.utils_logger import _BACKUP_DAYS, _DailyFileHandler, today
 from tests.support.framework_log import temp_framework_root
@@ -31,10 +32,11 @@ class TestSetupLoggingRole(unittest.TestCase):
                 content = Path(tmp, "logs", logs[0]).read_text(encoding="utf-8")
                 self.assertIn(f"HELLO_{role}", content)
 
-    def test_second_call_with_other_role_is_rejected(self):
-        """同进程二次调用换角色即断言失败，不会静默沿用第一个角色的文件。"""
+    def test_repeat_call_keeps_first_role(self):
+        """重复调用沿用首次落点：运行期日志汇总的调用形态不报错，显式换角色即断言失败。"""
         with temp_framework_root():
             utils_logger.setup_logging(role="plan")
+            collect_log.setup_logging()  # parse_logs 内部就是这样调的（不传角色）
             with self.assertRaises(AssertionError):
                 utils_logger.setup_logging(role="gui")
 
