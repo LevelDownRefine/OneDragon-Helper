@@ -2,7 +2,7 @@ name: Sync ok-ww tasks
 
 on:
   schedule:
-    - cron: "15 3 * * 6" # 每周六 03:15 UTC（北京 11:15，与 okef 错开避免并发改同一 yml）
+    - cron: "15 3 * * *" # 每天 03:15 UTC（北京 11:15，与 okef 错开避免并发改同一 yml）
   workflow_dispatch: # 支持手动触发
 
 permissions:
