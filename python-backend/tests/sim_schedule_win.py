@@ -43,7 +43,7 @@ _u.get_root_dir = lambda: str(SANDBOX)
 import psutil  # noqa: E402
 
 from src.service import chain_service  # noqa: E402
-from src.utils.utils_logger import setup_logging  # noqa: E402
+from src.utils.utils_logger import setup_logging, today  # noqa: E402
 from src.utils.utils_sub_config import default_script_entry  # noqa: E402
 
 GAME_NAME = "FakeGame.exe"
@@ -54,7 +54,7 @@ WW_DIR = SANDBOX / "fake_ww"
 WW_LOG_DIR = WW_DIR / "data" / "apps" / "ok-ww" / "working" / "logs"
 NTE_DIR = SANDBOX / "fake_nte"
 NTE_LOG_DIR = NTE_DIR / "data" / "apps" / "ok-nte" / "working" / "logs"
-FRAMEWORK_LOG = SANDBOX / "logs" / "onedragon_helper.log"
+FRAMEWORK_LOG = SANDBOX / "logs" / f"onedragon_helper.plan-{today()}.log"
 
 # 假游戏本体：自跑心跳循环（onedir 打包，启动即写心跳，无需参数即可常驻）
 GAME_MAIN_SOURCE = """\
@@ -250,7 +250,7 @@ def main() -> int:
 
     print(f"沙箱: {SANDBOX}")
     build_sandbox()
-    setup_logging()
+    setup_logging(role="plan")
 
     enabled = {"ok-ww", "ok-nte"}
     now = datetime.now()

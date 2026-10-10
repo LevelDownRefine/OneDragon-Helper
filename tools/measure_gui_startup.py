@@ -21,6 +21,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
 from src.update.package import load_manifest, manifest_frontend  # noqa: E402
+from src.utils.utils_logger import today  # noqa: E402
 from tools.release_package import validate_package  # noqa: E402
 from tools.run_rust_gui import prepare_demo  # noqa: E402
 
@@ -60,7 +61,7 @@ def run_sample(family: str, root: Path, area: Path, iteration: int) -> dict[str,
         data_marker = "first task ready"
         frame_marker = "task frame captured"
     else:
-        output = root / "logs/onedragon_helper.log"
+        output = root / "logs" / f"onedragon_helper-{today()}.log"
         if output.exists():
             output.unlink()
         data_marker = "[qml] entering event loop"

@@ -66,7 +66,7 @@ class LaunchController(QObject):
         )
         if proc is None:
             # 起进程失败（Popen 异常已被 spawn 记日志）：不报成功，引导看日志。
-            self._toast("启动失败，详见 logs/onedragon_helper.log")
+            self._toast("启动失败，详见 logs/ 当日日志")
             return
         self._toast(f"{msg}（关闭控制台即取消）")
 

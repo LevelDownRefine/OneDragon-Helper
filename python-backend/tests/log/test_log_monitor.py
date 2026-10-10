@@ -119,7 +119,7 @@ class TestCollectLogSetup(unittest.TestCase):
         )
 
     def test_setup_logging_writes_to_framework_log(self):
-        """monitor 复用框架 setup_logging，日志写入 <root>/logs/onedragon_helper.log
+        """monitor 复用框架 setup_logging，日志写入 <root>/logs 的当日 gui 文件
         （用临时根避免污染真实 logs），且不写 collect_log.log。"""
         tmp = self.enterContext(tempfile.TemporaryDirectory())
         self.addCleanup(_logging.getLogger().setLevel, _logging.getLogger().level)
@@ -134,7 +134,11 @@ class TestCollectLogSetup(unittest.TestCase):
             for h in _logging.getLogger().handlers:
                 h.flush()
 
-            log_file = os.path.join(tmp, "logs", "onedragon_helper.log")
+            log_file = os.path.join(
+                tmp,
+                "logs",
+                f"onedragon_helper-{src.utils.utils_logger.today()}.log",
+            )
             self.assertTrue(os.path.exists(log_file))
             with open(log_file, encoding="utf-8") as f:
                 self.assertIn("HELLO_FROM_TEST", f.read())
@@ -142,7 +146,7 @@ class TestCollectLogSetup(unittest.TestCase):
             targets = [
                 getattr(h, "baseFilename", "") for h in _logging.getLogger().handlers
             ]
-            self.assertTrue(any("onedragon_helper.log" in t for t in targets))
+            self.assertIn(log_file, targets)
             self.assertFalse(any("collect_log.log" in t for t in targets))
         finally:
             after = {id(h) for h in _logging.getLogger().handlers}
@@ -154,7 +158,7 @@ class TestCollectLogSetup(unittest.TestCase):
             src.utils.utils_logger.get_root_dir = orig
 
     def test_setup_logging_is_idempotent(self):
-        """重复调用复用框架 setup_logging 不会重复添加 onedragon_helper.log handler。"""
+        """重复调用复用框架 setup_logging 不会重复添加当日 gui 文件 handler。"""
         tmp = self.enterContext(tempfile.TemporaryDirectory())
         self.addCleanup(_logging.getLogger().setLevel, _logging.getLogger().level)
         orig = src.utils.utils_logger.get_root_dir
@@ -166,14 +170,15 @@ class TestCollectLogSetup(unittest.TestCase):
             collect_log.setup_logging()
             collect_log.setup_logging()
             # 幂等：本次调用（首次因 _configured 被置 False 而添加，第二次 no-op）
-            # 仅新增 1 个指向 onedragon_helper.log 的 handler；不依赖全局计数，
+            # 仅新增 1 个指向当日 gui 文件的 handler；不依赖全局计数，
             # 避免被其它测试残留的 handler 干扰。
             added = {id(h) for h in _logging.getLogger().handlers} - before
             added_count = sum(
                 1
                 for h in _logging.getLogger().handlers
                 if id(h) in added
-                and "onedragon_helper.log" in getattr(h, "baseFilename", "")
+                and f"onedragon_helper-{src.utils.utils_logger.today()}.log"
+                in getattr(h, "baseFilename", "")
             )
             self.assertEqual(added_count, 1)
         finally:

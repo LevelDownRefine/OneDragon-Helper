@@ -79,7 +79,12 @@ def main():
     # 日志先于 config_workflow：init 对齐产生的 WARNING（如补缺失字段）必须进
     # 日志文件可追溯；否则走 logging 兜底裸印 stderr，无时间戳且 windowed exe
     # 下彻底丢失。幂等，GUI 路径复用。
-    setup_logging()
+    # 运行类出口（计划/定时运行/指定链）与 GUI 分文件落盘：两侧会同时持有各自的
+    # 日志文件，rename 式轮转会被另一个持有者拒绝并让本进程日志全部写不进去。
+    plan_run = (
+        args.run_daily or args.schedule_run is not None or args.run_chain is not None
+    )
+    setup_logging(role="plan" if plan_run else "gui")
     install_crash_hooks()
     config_workflow()
     from gui.shutdown_dialog import confirm_shutdown
@@ -102,7 +107,7 @@ def _install_qt_message_logger():
     """把 Qt/QML 的 debug/warning/critical 路由到 logging。
 
     windowed exe 无 stderr，QML 类型错误等 Qt 告警默认完全不可见；
-    统一落 logs/onedragon_helper.log 后可事后排查。
+    统一落 logs/ 当日日志文件后可事后排查。
     """
     from PySide6.QtCore import QtMsgType, qInstallMessageHandler
 

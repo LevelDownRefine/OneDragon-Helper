@@ -10,10 +10,16 @@ import unittest
 from pathlib import Path
 
 from src.update.package import load_manifest, manifest_frontend
+from src.utils.utils_logger import today
 from tests.exe import package_dir
 
 PACKAGE = package_dir()
 EXE_NAME = "OneDragon-Helper.exe"
+
+
+def _framework_log(root: Path) -> Path:
+    """GUI 与其子进程共用的当日框架日志（frozen 后 get_root_dir 即 exe 目录）。"""
+    return root / "logs" / f"onedragon_helper-{today()}.log"
 
 
 def _rust_window_rects(process):
@@ -131,7 +137,7 @@ class TestPackagedRendering(unittest.TestCase):
                 1,
             )
             qml.write_text(scene, encoding="utf-8")
-            log = root / "logs/onedragon_helper.log"
+            log = _framework_log(root)
             for software in ("0", "1"):
                 with self.subTest(prefer_software=software):
                     log.unlink(missing_ok=True)
@@ -207,7 +213,7 @@ class TestPackagedRendering(unittest.TestCase):
                                     process.kill()
                                     process.communicate()
                     except subprocess.TimeoutExpired as error:
-                        backend_log = root / "logs/onedragon_helper.log"
+                        backend_log = _framework_log(root)
                         detail = (
                             backend_log.read_text(encoding="utf-8", errors="replace")
                             if backend_log.exists()

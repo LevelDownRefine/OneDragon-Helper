@@ -23,7 +23,7 @@
 - FakeGame.exe：System32 cmd.exe 副本（无参数启动即驻留控制台，当「挂着的游戏」）。
 
 windowed exe 捕获不到 stdout，全部证据走文件产物：
-- <exe目录>/logs/onedragon_helper.log（框架日志：等待/清场/重跑决策/静音）；
+- <exe目录>/logs/onedragon_helper.plan-<日期>.log（计划/运行侧框架日志：等待/清场/重跑决策/静音）；
 - <exe目录>/.log/script_chainer_runner.log（Runner 日志，frozen 专属：启动游戏/关闭游戏
   ——dev 模式不落盘，正是本测试必须打包跑的原因之一）。
 
@@ -44,6 +44,7 @@ from pathlib import Path
 import psutil
 
 from src.utils.utils_io import save_data
+from src.utils.utils_logger import today
 from src.utils.utils_sub_config import default_script_entry
 from tests.exe import project_root
 from tests.exe.test_close_running_exe import _kill_process_tree
@@ -510,7 +511,9 @@ class TestScheduleExeE2E(unittest.TestCase):
     @classmethod
     def _log_paths(cls) -> dict[str, str]:
         return {
-            "fw": os.path.join(PACKAGE_DIR, "logs", "onedragon_helper.log"),
+            "fw": os.path.join(
+                PACKAGE_DIR, "logs", f"onedragon_helper.plan-{today()}.log"
+            ),
             "runner": os.path.join(PACKAGE_DIR, ".log", "script_chainer_runner.log"),
         }
 

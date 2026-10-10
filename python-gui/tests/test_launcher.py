@@ -66,7 +66,7 @@ class TestMainStartupOrder(unittest.TestCase):
             patch.object(
                 launcher,
                 "setup_logging",
-                side_effect=lambda: order.append("setup_logging"),
+                side_effect=lambda **_: order.append("setup_logging"),
             ),
             patch.object(
                 launcher,
@@ -86,6 +86,30 @@ class TestMainStartupOrder(unittest.TestCase):
         self.assertEqual(
             order, ["setup_logging", "install_crash_hooks", "config_workflow"]
         )
+
+
+class TestMainLogRole(unittest.TestCase):
+    """GUI 与运行类出口分文件落盘（两侧会同时持有各自的日志文件）。"""
+
+    def test_run_entries_log_to_plan_file(self):
+        for argv, role in (
+            (["OneDragon-Helper"], "gui"),
+            (["OneDragon-Helper", "--dump-config"], "gui"),
+            (["OneDragon-Helper", "--run-daily"], "plan"),
+            (["OneDragon-Helper", "--schedule-run", "now"], "plan"),
+            (["OneDragon-Helper", "--run-chain", "plan.yml"], "plan"),
+        ):
+            with self.subTest(argv=argv):
+                with (
+                    patch.object(launcher, "setup_logging") as logging_setup,
+                    patch.object(launcher, "install_crash_hooks"),
+                    patch.object(launcher, "config_workflow"),
+                    patch.object(launcher, "run_cli", return_value=0),
+                    patch.object(sys, "argv", argv),
+                    self.assertRaises(SystemExit),
+                ):
+                    launcher.main()
+                self.assertEqual(logging_setup.call_args.kwargs, {"role": role})
 
 
 class TestStartupTimer(unittest.TestCase):
