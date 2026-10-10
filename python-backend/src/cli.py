@@ -19,7 +19,6 @@ import warnings
 
 from src.config.set_config import supports_weekly
 from src.service.app_service import AppService
-from src.service.chain_service import ChainBusyError, chain_run_lease
 from src.utils import get_root_dir
 from src.utils.utils_config import get_script
 from src.utils.utils_shutdown import shutdown_sys
@@ -167,7 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="结果 JSON 路径或链配置输出路径"
-        "（默认 %%TEMP%%/odh_gui_<出口>.json 或 config/script_chain/<name>.yml）",
+        "（默认 %%TEMP%%/odh_gui_<出口>.json 或 config/script_chain/<name>-<运行时刻>.yml）",
     )
     return parser
 
@@ -471,13 +470,7 @@ def _run_run_chain(args) -> int:
     app_service = AppService()
     command, cwd, _env = app_service.build_chain_command(chain_path)
     _emit_cli("run_chain", f"运行: {cwd} {' '.join(command)}")
-    # 运行位覆盖到 Runner 结束；--no-block 立即返回，互斥只到启动为止。
-    try:
-        with chain_run_lease():
-            code = app_service.run_chain_command(chain_path, block=not args.no_block)
-    except ChainBusyError as exc:
-        _emit_cli("run_chain", str(exc))
-        return 1
+    code = app_service.run_chain_command(chain_path, block=not args.no_block)
     if args.no_block:
         _emit_cli("run_chain", f"脚本链已后台启动，启动状态码: {code}")
     else:

@@ -311,9 +311,10 @@ def main() -> int:
     )
     check("清场：日志含『已关闭残留进程』", "已关闭残留进程" in log_text)
 
-    # 3. 链生成（today + rerun 两份）与重跑决策
-    check("生成链 today.yml", (SANDBOX / "config/script_chain/today.yml").exists())
-    check("重跑链 rerun.yml", (SANDBOX / "config/script_chain/rerun.yml").exists())
+    # 3. 链生成（today + rerun 两份，文件名带运行时刻）与重跑决策
+    chain_dir = SANDBOX / "config" / "script_chain"
+    check("生成链 today-*.yml", bool(list(chain_dir.glob("today-*.yml"))))
+    check("重跑链 rerun-*.yml", bool(list(chain_dir.glob("rerun-*.yml"))))
     check(
         "日志含『重跑 1 个脚本: ['ok-nte']』",
         "重跑 1 个脚本" in log_text and "'ok-nte'" in log_text,

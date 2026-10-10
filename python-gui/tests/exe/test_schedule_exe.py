@@ -70,7 +70,6 @@ _GENERATED = ("config.yml", "schedule.yml", "weekly.yml")
 # 精确回滚（旧文件截回原大小、新文件删除、新建目录清空后移除），保证
 # build-exe 上传的 dist 产物不含测试痕迹。
 _CHAIN_DIR = _CONFIG_DIR / "script_chain" if _CONFIG_DIR else None
-_CHAIN_FILES = ("cut.yml", "tail.yml", "rerun.yml", "plan.yml")
 _LOG_DIRS = ("logs", ".log")
 
 _TARGET_LEAD_SECONDS = (
@@ -182,7 +181,10 @@ class TestScheduleExeE2E(unittest.TestCase):
         # 包内 config 生成物与链文件：备份 → 写入本测试的假配置。build-exe 跑完
         # 本测试后会上传 dist 产物，测试写盘必须全部还原，避免测试痕迹进 artifact。
         cls._config_backup = cls._backup_files(_CONFIG_DIR, _GENERATED)
-        cls._chain_backup = cls._backup_files(_CHAIN_DIR, _CHAIN_FILES)
+        # 链文件名带运行时刻，故按目录快照现有 *.yml（名字事先不可枚举）。
+        cls._chain_backup = cls._backup_files(
+            _CHAIN_DIR, tuple(path.name for path in _CHAIN_DIR.glob("*.yml"))
+        )
         cls._snapshot_logs()
         cls._write_schedule_yml()
 
@@ -240,6 +242,11 @@ class TestScheduleExeE2E(unittest.TestCase):
         # 恢复包内 config 生成物与链文件（原缺失则删除，还 dist 一个干净状态）
         cls._restore_files(_CONFIG_DIR, cls._config_backup)
         cls._restore_files(_CHAIN_DIR, cls._chain_backup)
+        # 本轮新生成的链文件（名带运行时刻）不在备份里，按目录删除。
+        for path in _CHAIN_DIR.glob("*.yml"):
+            if path.name not in cls._chain_backup:
+                with contextlib.suppress(OSError):
+                    path.unlink()
         cls._restore_logs()
         shutil.rmtree(WORK_DIR, ignore_errors=True)
 
@@ -554,10 +561,9 @@ class TestScheduleExeE2E(unittest.TestCase):
 
     def test_chains_generated(self):
         """三份链 yml 落盘：掐断轮的 cut 主链 + 整链轮的 tail 主链与 rerun 重跑链。"""
-        for name in _CHAIN_FILES:
-            self.assertTrue(
-                (Path(PACKAGE_DIR) / "config" / "script_chain" / name).exists(), name
-            )
+        chain_dir = Path(PACKAGE_DIR) / "config" / "script_chain"
+        for prefix in ("cut", "tail", "rerun", "plan"):
+            self.assertTrue(list(chain_dir.glob(f"{prefix}-*.yml")), prefix)
 
     def test_game_launched_real(self):
         """Runner（冻结版）按 game_path 真实拉起真实 OS 进程，观察期内仍存活。

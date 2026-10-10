@@ -381,7 +381,7 @@ class ScheduledRun:
             （跳过运行、重跑与邮件）。调用方想全量时显式传入 config 全部脚本集合。
         target_time: 目标时刻 ``"HH:MM"``（24 小时制，须合法，调用方已校验）；
             传 ``"now"`` 表示即时运行（跳过等待，直接点火）。
-        chain_name: 链配置文件名（不含扩展名，默认 today）。
+        chain_name: 链配置文件名前缀（实际文件名带本次运行时刻，默认 today）。
         mute: 是否运行前静音（由 pre_run 执行，主仓直接操作系统音频）。
         unmute: 是否运行后开启声音（由 post_run 执行，与运行前静音相互独立）。
         shutdown_delay: 关机延迟秒数；None 表示不关机（含 0/未启用）。
@@ -442,21 +442,10 @@ class ScheduledRun:
         )
 
     def run(self) -> None:
-        """执行完整编排：pre_run → 生成并运行 → 重跑 → post_run。
-
-        全段独占脚本链运行位（含定时等待）：排定即占位，期间其他入口的运行会被
-        拒，避免到点才发现两条链撞车（互相覆盖链配置、互相按名杀游戏）。
-
-        Raises:
-            ChainBusyError: 运行位已被其他进程占用。
-        """
-        # 运行位归 chain_service（重跑轮复用它）；函数内导入避免循环导入。
-        from src.service.chain_service import chain_run_lease
-
-        with chain_run_lease():
-            self._run_steps(self.pre_run)
-            self._run_core()
-            self._run_steps(self.post_run)
+        """执行完整编排：pre_run → 生成并运行 → 重跑 → post_run。"""
+        self._run_steps(self.pre_run)
+        self._run_core()
+        self._run_steps(self.post_run)
 
     def _run_core(self) -> None:
         """生成脚本链并运行，随后按需重跑失败脚本（先于 post_run）。"""

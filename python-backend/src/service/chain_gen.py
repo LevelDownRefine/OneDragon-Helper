@@ -11,6 +11,7 @@
 
 import copy
 import logging
+from datetime import datetime
 
 from src.utils import (
     get_path_under_root,
@@ -100,6 +101,11 @@ def resolve_weekly_starts(weekly_start_map: dict, script_name: str) -> dict[str,
     return dict(start_days)
 
 
+def _run_stamp() -> str:
+    """本次运行时刻（文件名用），微秒精度避免同秒内两次运行重名。"""
+    return datetime.now().strftime("%Y%m%d-%H%M%S%f")
+
+
 def generate_chain_config(
     all_config_data: dict,
     enabled_keys: set[str],
@@ -122,8 +128,8 @@ def generate_chain_config(
     Args:
         all_config_data: config.yml 完整数据（含 script_list）。
         enabled_keys: 要纳入链的脚本唯一标识集合。
-        chain_name: 链配置文件名（不含扩展名）。
-        out_path: 输出路径；None 时默认 config/script_chain/<chain_name>.yml。
+        chain_name: 链配置文件名前缀（实际文件名带本次运行时刻）。
+        out_path: 输出路径；None 时默认 config/script_chain/<chain_name>-<运行时刻>.yml。
         weekly_timeouts: weekly.yml 的 weekly_timeouts 段 的全量字典（默认空 dict）。
 
     Returns:
@@ -152,7 +158,8 @@ def generate_chain_config(
     data["script_list"] = filtered
 
     output_file = out_path or safe_path_join(
-        get_path_under_root("config", "script_chain"), f"{chain_name}.yml"
+        get_path_under_root("config", "script_chain"),
+        f"{chain_name}-{_run_stamp()}.yml",
     )
     save_data(output_file, data, file_format="yaml")
     return output_file
