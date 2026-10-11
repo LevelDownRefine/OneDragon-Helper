@@ -296,7 +296,7 @@ class TestMaaNativeConfig(unittest.TestCase):
         from unittest.mock import MagicMock
 
         from gui.controllers.task_card import TaskCardController
-        from src.config.daily_config import get_daily_map
+        from src.config.set_config import get_daily_map
         from src.config.task_config import get_daily_configs
 
         self.cfg._init_config()
@@ -316,7 +316,7 @@ class TestMaaNativeConfig(unittest.TestCase):
         controller = TaskCardController(game_list, service, MagicMock())
         with (
             patch(
-                "src.config.daily_config.load_daily_map",
+                "src.config.set_config.load_daily_map",
                 return_value={"MAA": get_daily_configs("MAA")},
             ),
             patch.object(

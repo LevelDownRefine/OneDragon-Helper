@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config.daily_config import get_daily_map
+from src.config.daily import MaaActivityDaily
 from src.config.maa_activity import read_activity_stages
-from src.config.set_config import _CONFIGS, ArknightsConfig, get_task_lists
+from src.config.set_config import ArknightsConfig, get_daily_map
 from src.config.task_config import get_daily_configs
 
 # 真实 MAA 配置（已脱敏），用于钉死 ClientType 的实际形态。
@@ -107,7 +107,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
         declarations = get_daily_configs("MAA")
         with (
             patch(
-                "src.config.daily_config.load_daily_map",
+                "src.config.set_config.load_daily_map",
                 return_value={"MAA": declarations},
             ),
             patch(
@@ -131,45 +131,31 @@ class TestMaaDeclaredMenus(unittest.TestCase):
         )
 
     def test_source_dispatch_uses_declared_paths_not_display_name(self):
-        declarations = get_daily_configs("MAA")
-        activity = declarations[0]
+        activity = get_daily_configs("MAA")[0]
         activity.update(display_name="别名", config="profiles/custom.json")
         activity["options"]["source"] = {"path": "resources/events.json"}
-        with patch("src.config.daily.get_daily_configs", return_value=declarations):
-            cfg = ArknightsConfig()
-        with (
-            patch.dict(_CONFIGS, {"MAA": lambda: cfg}),
-            patch(
-                "src.config.daily.get_daily_configs",
-                side_effect=AssertionError("不应反查声明"),
-            ),
-            patch(
-                "src.config.daily.read_activity_stages", return_value=["AT-8"]
-            ) as reader,
-        ):
+        daily = MaaActivityDaily("MAA", activity, "粥")
+        with patch(
+            "src.config.daily.read_activity_stages", return_value=["AT-8"]
+        ) as reader:
             self.assertEqual(
-                get_task_lists("MAA", "别名", activity["options"]["source"]),
-                ["AT-8"],
+                daily.get_task_lists(activity["options"]["source"]), ["AT-8"]
             )
         reader.assert_called_once_with(
             "MAA", "resources/events.json", "profiles/custom.json"
         )
 
-    def test_menu_uses_current_daily_config_without_reverse_lookup(self):
+    def test_menu_uses_declared_config_without_script_initialization(self):
         declarations = get_daily_configs("MAA")
-        activity = declarations[0]
-        activity["config"] = "profiles/current.json"
-        with patch("src.config.daily.get_daily_configs", return_value=declarations):
-            cfg = ArknightsConfig()
+        declarations[0]["config"] = "profiles/current.json"
         with (
-            patch.dict(_CONFIGS, {"MAA": lambda: cfg}),
             patch(
-                "src.config.daily_config.load_daily_map",
+                "src.config.set_config.load_daily_map",
                 return_value={"MAA": declarations},
             ),
             patch(
-                "src.config.daily.get_daily_configs",
-                side_effect=AssertionError("日常已实例化，不应重新读取声明"),
+                "src.config.set_config.get_daily_configs",
+                side_effect=AssertionError("声明已传入"),
             ),
             patch.object(ArknightsConfig, "_init_config") as init,
             patch("src.config.daily.save_script_config") as save,

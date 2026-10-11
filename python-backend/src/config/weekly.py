@@ -20,8 +20,10 @@ TaskQueue 公式），各由子类覆写；基类只兜底 assert。
 """
 
 import logging
+from copy import deepcopy
 
 from src.config.task_config import get_physical_name, get_value_map, load_weekly_map
+from src.config.task_source import read_task_source
 from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import load_script_config, save_script_config
 from src.utils.utils_weekly import DISABLED_START_DAY, is_weekly_start_reached
@@ -57,6 +59,7 @@ class Weekly:
                 ``key``（原生字段名）可选，路径相对脚本根目录。
             script_display_name: 所属脚本的展示名（日志与报错用）。
         """
+        self._declaration = declaration
         self.script_name = script_name
         self.script_display_name = script_display_name
         self.display_name: str = declaration["display_name"]
@@ -67,6 +70,36 @@ class Weekly:
         """启用开关的原生字段名；落点本身不是布尔开关时才需要声明（如历战余响）。"""
         self._task_values: dict[str, str | int] = get_value_map(declaration)
         """该周常的「展示名 → 物理值」映射（副本选型用）；声明走资源来源时为空。"""
+
+    def menu(self) -> dict:
+        """返回本周常菜单；无选项时保留声明，有选项时只支持一级选择。"""
+        result = {
+            key: deepcopy(value)
+            for key, value in self._declaration.items()
+            if key not in ("class", "config")
+        }
+        if "options" not in result:
+            return result
+        group = result["options"]
+        if "source" in group:
+            values = [
+                {"display_name": name}
+                for name in read_task_source(self.script_name, group["source"])
+            ]
+        else:
+            assert "values" in group
+            values = group["values"]
+        assert all("options" not in option for option in values), (
+            "当前周常菜单只支持一级选择"
+        )
+        result["options"] = {
+            **group,
+            "values": [
+                {**option, "physical_name": get_physical_name(option)}
+                for option in values
+            ],
+        }
+        return result
 
     def _load_config(self, *, allow_missing: bool = False) -> dict | None:
         """读周常所在的 config 文件（缺失与损坏语义见 ``load_script_config``）。

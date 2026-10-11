@@ -138,7 +138,7 @@ launcher.py CLI  ┐
                  ├─▶ AppService（组合根）─┬─▶ script_service（脚本管理）─┬─▶ utils_config（助手配置）
                                           │                          ├─▶ utils_weekly（每周参数）
                                           │                          └─▶ config 适配器（缓存失效/任务开关）
-MainWindow  GUI  ┘                        ├─▶ daily_config 模块函数（副本 / 周本声明，src.config）
+MainWindow  GUI  ┘                        ├─▶ set_config 菜单入口（Daily / Weekly 对象解释）
                                           └─▶ chain_service ─▶ chain_gen / schedule / utils_runner
                                                   └─▶ src.utils.utils_weekly（周常参数读写）
 ```

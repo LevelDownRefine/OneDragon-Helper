@@ -5,7 +5,7 @@
 peer：
 - 脚本管理（增删改、排序与跨配置编排）：归 :mod:`src.service.script_service` 模块函数
 - 助手配置读写、条目查询与路径解析：归 :mod:`src.utils.utils_config` 模块函数
-- 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.daily_config` 模块函数
+- 副本与周常声明读取（daily_task_list.yml / weekly_task_list.yml）：归 :mod:`src.config.set_config` 模块函数
 - 链编排（生成/运行/调度/校验）：归 :mod:`src.service.chain_service` 模块函数
 - schedule.yml 读写：归 :mod:`src.service.schedule` 的模块函数（与调度编排同处一模一样）
 - 周常运行期参数（weekly.yml 的 weekly_start 段 / weekly.yml 的 weekly_timeouts 段）：归 :mod:`src.utils.utils_weekly` 模块函数
@@ -27,8 +27,9 @@ import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 import src.service.script_service as script_service
 import src.service.task_service as task_service
-from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
+    get_daily_map,
+    get_weekly_map,
     set_config,
     set_daily_enabled,
     set_weekly_start_day,
@@ -287,7 +288,7 @@ class AppService:
         """按当前脚本目录恢复并保留游戏路径，返回恢复文件数和跳过的脚本。"""
         return backup_service.restore_backup(zip_path)
 
-    # ── 副本 / 周常声明（src.config.daily_config 模块函数）────────────
+    # ── 副本 / 周常声明（src.config.set_config 模块函数）────────────
     def get_weekly_map(self, script_name: str) -> list:
         """读取 weekly_task_list.yml 的周常声明清单。"""
         return get_weekly_map(script_name)

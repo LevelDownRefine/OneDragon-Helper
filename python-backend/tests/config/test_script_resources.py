@@ -56,7 +56,7 @@ class TestScriptResources(unittest.TestCase):
         with (
             patch.object(resources, "get_root_dir", return_value=str(self.root)),
             patch.dict(set_config._CONFIGS, clear=True),
-            patch("src.config.daily.get_daily_configs", return_value=[]),
+            patch("src.config.set_config.get_daily_configs", return_value=[]),
             patch.object(set_config, "get_script_game_path", return_value=""),
             patch.object(
                 set_config,
@@ -94,7 +94,7 @@ class TestScriptResources(unittest.TestCase):
         with (
             patch.object(resources, "get_root_dir", return_value=str(self.root)),
             patch.dict(set_config._CONFIGS, clear=True),
-            patch("src.config.daily.get_daily_configs", return_value=[]),
+            patch("src.config.set_config.get_daily_configs", return_value=[]),
             patch.object(set_config, "load_game_config") as load_game,
         ):
 

@@ -1,6 +1,6 @@
 """测试 QmlBridge 任务卡后端（日常副本 / 周常周几）。
 
-复用 gui_helpers.make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / daily_config.get_weekly_map / get_daily_map /
+复用 gui_helpers.make_bridge：用 mock 隔离 config / 壁纸 I/O；is_adapted / set_config.get_weekly_map / get_daily_map /
 parse_daily_config 按用例 patch（task_card 经 AppService 取数，patch 目标指向
 真实模块函数），验证 QML 任务卡所需的数据与写回行为。
 """
