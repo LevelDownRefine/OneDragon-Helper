@@ -115,7 +115,7 @@ class TestScriptEdit(ScriptServiceTestBase):
                     self.switch.write.assert_not_called()
 
     def test_options_and_switches_save_together_in_same_native_file(self):
-        from src.config.task.native_task_switch import NativeTaskSwitch
+        from src.config.native_task_switch import NativeTaskSwitch
         from src.config.task.task_options import TaskOptions
 
         native = self.config.parent / "native.json"

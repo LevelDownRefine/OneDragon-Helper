@@ -247,7 +247,7 @@ class TestTaskOptions(unittest.TestCase):
         )
 
     def test_options_extend_existing_switch_declaration(self):
-        from src.config.task.native_task_switch import load_native_task_switch_map
+        from src.config.native_task_switch import load_native_task_switch_map
 
         options = mod.load_declarations()
         switches = load_native_task_switch_map()

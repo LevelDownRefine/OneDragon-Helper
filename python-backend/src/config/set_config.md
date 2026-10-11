@@ -229,7 +229,7 @@ set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按�
 | `task/daily.py` | 日常规则对象：`Daily` 基类（声明 → 落点 + 读写规则）与机制类 `Anomaly` / `MaaDaily`；无缓存的 `build_dailies` 负责装配，读写由 Daily 自持 |
 | `task/weekly.py` | 周常落点：`Weekly` 基类（config 读/写 + 起始日校验）与六条周常子类（列表增删 / 反相布尔 / app 条目 / 布尔开关 / 字面起始日 + 副本 / 队列公式）；机制类注册表 `WEEKLY_CLASSES` 和无缓存的 `build_weeklies`；对外适配接口归 `set_config.py` |
 | `task/task_declarations.py` | 日常与周常声明的读取、校验及共用的物理名、选项取值规则 |
-| `task/native_task_switch.py` | 脚本原生任务的开关：`task_switch_list.yml` 声明（配置文件 + 任务定义/启用两个键）→ 枚举行 + 按任务名反查 id 写回；与日常/周常无关，界面入口在单脚本配置弹窗底部 |
+| `native_task_switch.py` | 脚本原生任务的开关：`task_switch_list.yml` 声明（配置文件 + 任务定义/启用两个键）→ 枚举行 + 按任务名反查 id 写回；与日常/周常无关，界面入口在单脚本配置弹窗底部 |
 | `Daily.menu()` / `Weekly.menu()` | 解释各自菜单、展开资源；`set_config` 提供统一查询入口 |
 | `python-backend/src/utils/utils_dict.py` | `safe_update` / `get_field` 字段工具（`Daily` 与 `ScriptConfig` 共用） |
 | `script_resources.py` / `config/script_resources.yml` | 脚本级静态资源的校验与声明，详见 [格式和路径基准](script_resources.md) |
