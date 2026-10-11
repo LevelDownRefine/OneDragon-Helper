@@ -4,7 +4,7 @@ import logging
 import os
 import subprocess
 from dataclasses import asdict
-from threading import Thread
+from threading import Event, Lock, Thread, Timer
 
 from PySide6.QtCore import QObject, Signal, Slot
 from PySide6.QtWidgets import QDialog, QMessageBox
@@ -21,11 +21,19 @@ class RunStarter(QObject):
     started = Signal()
     failed = Signal(str)
 
+    def __init__(self, parent=None, timeout_seconds=30):
+        super().__init__(parent)
+        self._timeout_seconds = timeout_seconds
+
     def start(self, target):
         """stdin 交付成功才报告启动；后续运行与 GUI 生命周期独立。"""
 
         def launch():
             child = None
+            timer = None
+            delivered = Event()
+            expired = Event()
+            guard = Lock()
             try:
                 child = subprocess.Popen(
                     [target["program"], *target["args"]],
@@ -40,12 +48,48 @@ class RunStarter(QObject):
                     start_new_session=os.name != "nt",
                 )
                 assert child.stdin is not None
+
+                def timeout():
+                    with guard:
+                        if delivered.is_set():
+                            return
+                        expired.set()
+                        try:
+                            child.kill()
+                        except OSError:
+                            logger.exception("终止配置交付超时的运行进程失败")
+
+                timer = Timer(self._timeout_seconds, timeout)
+                timer.daemon = True
+                timer.start()
                 with child.stdin:
                     child.stdin.write(target["input"].encode("utf-8"))
+                with guard:
+                    if expired.is_set():
+                        raise TimeoutError("运行配置交付超时")
+                    delivered.set()
                 self.started.emit()
             except (OSError, ValueError) as exc:
                 logger.exception("交付运行配置失败")
-                self.failed.emit(f"启动或传递运行配置失败：{exc}；请核对控制台后再操作")
+                if child is not None:
+                    with guard:
+                        delivered.set()
+                        if child.poll() is None:
+                            try:
+                                child.kill()
+                            except OSError:
+                                logger.exception("终止配置交付失败的运行进程失败")
+                message = (
+                    "运行配置交付超时，已尝试终止本次进程"
+                    if expired.is_set()
+                    else (f"启动或传递运行配置失败：{exc}")
+                )
+                self.failed.emit(
+                    message + "；运行结果不确定，请核对控制台和日志后再操作"
+                )
+            finally:
+                if timer is not None:
+                    timer.cancel()
             if child is not None:
                 child.wait()
 
