@@ -39,13 +39,13 @@ class SimProcess:
         self._name = name
         self._cmdline = cmdline or []
         self.ppid = parent.pid if parent is not None else None
-        self.info = {"pid": self.pid, "ppid": self.ppid}
         self.terminated = False
         self.killed = False
         self.cmdline_calls = 0
 
-    def create_time(self) -> float:
-        return self.created
+    @property
+    def info(self) -> dict:
+        return {"pid": self.pid, "ppid": self.ppid, "create_time": self.created}
 
     def name(self) -> str:
         return self._name

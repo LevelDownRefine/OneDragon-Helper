@@ -403,6 +403,35 @@ class TestKillProcesses(unittest.TestCase):
         self.assertFalse(stale.terminated)
         self.assertFalse(unrelated_child.terminated)
 
+    def test_unreadable_child_creation_time_excludes_its_entire_subtree(self):
+        target = SimProcess("game.exe")
+        child = SimProcess("worker.exe", parent=target)
+        child.created = None
+        grandchild = SimProcess("helper.exe", parent=child)
+        with (
+            self._patch_iter([target, child, grandchild]),
+            self._patch_wait([target], []),
+            self.assertLogs("src.utils.utils_runner", level="WARNING"),
+        ):
+            killed = kill_processes([ProcessTarget(name="game.exe")])
+        self.assertEqual(killed, [f"game.exe({target.pid})"])
+        self.assertFalse(child.terminated)
+        self.assertFalse(grandchild.terminated)
+
+    def test_unreadable_root_creation_time_does_not_guess_children(self):
+        target = SimProcess("game.exe")
+        target.created = None
+        child = SimProcess("worker.exe", parent=target)
+        with (
+            self._patch_iter([target, child]),
+            self._patch_wait([target], []),
+            self.assertLogs("src.utils.utils_runner", level="WARNING"),
+        ):
+            killed = kill_processes([ProcessTarget(name="game.exe")])
+        self.assertEqual(killed, [f"game.exe({target.pid})"])
+        self.assertTrue(target.terminated)
+        self.assertFalse(child.terminated)
+
     def test_access_denied_on_terminate_is_not_waited_or_reported_as_killed(self):
         denied = SimProcess("game.exe")
         allowed = SimProcess("game.exe")

@@ -193,7 +193,7 @@ def _find_processes(targets: Sequence[ProcessTarget]) -> list[psutil.Process]:
         return []
     excluded = _self_and_ancestor_pids()
     found: dict[int, psutil.Process] = {}
-    for proc in psutil.process_iter(["pid"]):
+    for proc in psutil.process_iter(["pid", "create_time"]):
         if proc.pid in excluded or proc.pid in found:
             continue
         name = _safe_name(proc)
@@ -216,7 +216,7 @@ def _build_child_map() -> dict[int, list[psutil.Process]]:
     （真正的开销是 ``cmdline()``，约 5.9ms/进程）。
     """
     kids: dict[int, list[psutil.Process]] = {}
-    for proc in psutil.process_iter(["pid", "ppid"]):
+    for proc in psutil.process_iter(["pid", "ppid", "create_time"]):
         ppid = proc.info.get("ppid")
         if ppid is not None:
             kids.setdefault(ppid, []).append(proc)
@@ -244,18 +244,20 @@ def _process_tree(
             continue
         seen.add(item.pid)
         out.append(item)
-        try:
-            parent_created = item.create_time()
-        except (psutil.NoSuchProcess, psutil.AccessDenied) as exc:
-            logger.warning("无法读取进程 %s 创建时间，跳过子树：%s", item.pid, exc)
+        assert "create_time" in item.info
+        parent_created = item.info["create_time"]
+        if parent_created is None:
+            logger.warning("进程 %s 创建时间不可读，跳过子树", item.pid)
             continue
         for child in child_map.get(item.pid, ()):
-            try:
-                # Windows 保留旧父 PID；PID 复用后旧进程不属于新父进程。
-                if child.create_time() >= parent_created:
-                    stack.append(child)
-            except (psutil.NoSuchProcess, psutil.AccessDenied) as exc:
-                logger.warning("无法确认子进程 %s，跳过：%s", child.pid, exc)
+            assert "create_time" in child.info
+            child_created = child.info["create_time"]
+            if child_created is None:
+                logger.warning("子进程 %s 创建时间不可读，跳过", child.pid)
+                continue
+            # Windows 保留旧父 PID；PID 复用后旧进程不属于新父进程。
+            if child_created >= parent_created:
+                stack.append(child)
     return out
 
 
