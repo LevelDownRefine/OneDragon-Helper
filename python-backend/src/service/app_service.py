@@ -27,7 +27,6 @@ import src.service.chain_service as chain_service
 import src.service.daily_plan as daily_plan
 import src.service.script_service as script_service
 import src.service.task_service as task_service
-from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import (
     get_daily_map,
     get_weekly_map,
@@ -37,7 +36,8 @@ from src.config.set_config import (
     set_weekly_task,
     weekly_names,
 )
-from src.config.task_options import task_options_of
+from src.config.task.native_task_switch import native_task_switch_of
+from src.config.task.task_options import task_options_of
 from src.service.schedule import (
     RunOptions,
     StartupOptions,
@@ -461,7 +461,7 @@ class AppService:
         """读取已接入任务的附带业务选项。"""
         return task_options_of(script_name).read()
 
-    # ── 脚本原生任务开关（src.config.native_task_switch 模块函数）─────────────
+    # ── 脚本原生任务开关（src.config.task.native_task_switch 模块函数）─────────────
     def get_script_switches(self, script_name: str) -> list:
         """读该脚本原生任务的开关清单（供配置弹窗的「任务开关」区）。
 

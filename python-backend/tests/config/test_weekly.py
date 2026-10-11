@@ -1,4 +1,4 @@
-"""周常落点（``src.config.weekly``）：声明校验、装配、支持查询与各周常的落点读写。
+"""周常落点（``src.config.task.weekly``）：声明校验、装配、支持查询与各周常的落点读写。
 
 一条周常一个对象（崩铁三条各一个），故测试按「脚本 + 周常展示名」取对象。
 """
@@ -10,9 +10,9 @@ from functools import cache
 from unittest.mock import patch
 
 from src.config import set_config as config_mod
-from src.config import weekly as weekly_mod
 from src.config.set_config import _CONFIGS, get_weekly_map, weekly_names
-from src.config.weekly import Weekly
+from src.config.task import weekly as weekly_mod
+from src.config.task.weekly import Weekly
 from src.service.run_actions import apply_subscript_config
 from src.utils.utils_weekly import DISABLED_START_DAY
 
@@ -32,7 +32,7 @@ class WeeklyTestCase(unittest.TestCase):
             _CONFIGS[name] = cache(factory.__wrapped__)
         # 只隔离构造期原生 I/O，每例使用全新的适配器与任务对象。
         self.enterContext(
-            patch("src.config.daily.load_script_config", return_value=None)
+            patch("src.config.task.daily.load_script_config", return_value=None)
         )
 
 
@@ -60,7 +60,7 @@ class TestWeeklyDeclaration(WeeklyTestCase):
     def test_menu_strips_code_fields(self):
         """物化后的周常菜单不含 class / config（代码耦合字段不入 UI 词汇）。"""
         # 隔离本地资源读取：CI 无 config.yml，不能走到真实脚本根目录解析。
-        with patch("src.config.weekly.read_task_source", return_value=[]):
+        with patch("src.config.task.weekly.read_task_source", return_value=[]):
             for script_name in config_mod.load_weekly_map():
                 for menu in get_weekly_map(script_name):
                     with self.subTest(script=script_name):

@@ -6,9 +6,9 @@
 import os
 from dataclasses import dataclass, field, replace
 
-from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import invalidate_config
-from src.config.task_options import task_options_of
+from src.config.task.native_task_switch import native_task_switch_of
+from src.config.task.task_options import task_options_of
 from src.utils import utils_config, utils_weekly
 from src.utils.utils_shortcut import read_shortcut
 from src.utils.utils_sub_config import (

@@ -131,7 +131,7 @@ class TestWeeklyItems(unittest.TestCase):
         )
         with (
             patch(
-                "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
+                "src.config.task.task_declarations.get_weekly_task_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(task_card_mod, "get_weekly_task", return_value=None),
@@ -168,7 +168,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
+            "src.config.task.task_declarations.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -194,7 +194,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
+            "src.config.task.task_declarations.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -213,7 +213,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
+            "src.config.task.task_declarations.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -233,7 +233,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
+            "src.config.task.task_declarations.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl_star = _make_controller("March7th-Launcher", "崩铁")
@@ -247,7 +247,7 @@ class TestWeeklyItems(unittest.TestCase):
         # ok-ww 不在 weekly_task_list.yml 声明 → 空列表
         defs_path = _write_defs(tmp, {})
         with patch(
-            "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
+            "src.config.task.task_declarations.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller("ok-ww", "鸣潮")
@@ -547,7 +547,7 @@ class TestWeeklyItemsReadback(unittest.TestCase):
         )
         with (
             patch(
-                "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
+                "src.config.task.task_declarations.get_weekly_task_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(task_card_mod, "get_weekly_task", return_value="铁骸的锈冢"),

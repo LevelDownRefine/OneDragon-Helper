@@ -6,11 +6,11 @@ from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config import daily as daily_mod
-from src.config import task_declarations
-from src.config import weekly as weekly_mod
-from src.config.daily import Daily
 from src.config.set_config import ArknightsConfig, NTEConfig, WutheringWavesConfig
+from src.config.task import daily as daily_mod
+from src.config.task import task_declarations
+from src.config.task import weekly as weekly_mod
+from src.config.task.daily import Daily
 from src.utils.utils_weekly import DISABLED_START_DAY
 
 
@@ -28,7 +28,7 @@ class TestDeclarationBindings(unittest.TestCase):
         """隔离注册表，验证类属性在声明改变后仍绑定到正确字段。"""
         spec = importlib.util.spec_from_file_location(
             "declaration_test_adapters",
-            Path(task_declarations.__file__).with_name("set_config.py"),
+            Path(task_declarations.__file__).parent.parent / "set_config.py",
         )
         module = importlib.util.module_from_spec(spec)
         daily_patch = patch.object(

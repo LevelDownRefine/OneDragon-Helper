@@ -9,12 +9,12 @@ from functools import cache
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.config import daily as daily_mod
 from src.config import set_config
-from src.config import weekly as weekly_mod
-from src.config.daily import Daily
 from src.config.set_config import ScriptConfig, WutheringWavesConfig
-from src.config.task_declarations import get_daily_configs
+from src.config.task import daily as daily_mod
+from src.config.task import weekly as weekly_mod
+from src.config.task.daily import Daily
+from src.config.task.task_declarations import get_daily_configs
 from src.utils import utils_sub_config
 
 
@@ -159,8 +159,8 @@ class TestSharedRegistry(unittest.TestCase):
             patch.object(
                 daily_mod, "load_template", wraps=daily_mod.load_template
             ) as template,
-            patch("src.config.weekly.load_script_config") as weekly_load,
-            patch("src.config.weekly.save_script_config") as weekly_save,
+            patch("src.config.task.weekly.load_script_config") as weekly_load,
+            patch("src.config.task.weekly.save_script_config") as weekly_save,
             patch.object(daily_mod, "load_script_config") as daily_load,
             patch.object(daily_mod, "save_script_config") as daily_save,
             patch.object(set_config.ArknightsConfig, "_init_config") as init,

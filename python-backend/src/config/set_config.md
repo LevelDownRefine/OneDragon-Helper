@@ -22,11 +22,11 @@
  ok-ww  BetterGI/ok-ef OneDragon-Launcher/March7th-Launcher ok-nte  MAA
                 │ 每个日常一个 Daily 实例（声明解析出落点）
                 ▼
-          python-backend/src/config/daily.py：Daily / SingleLayerDaily / Anomaly / MaaDaily
+          python-backend/src/config/task/daily.py：Daily / SingleLayerDaily / Anomaly / MaaDaily
 ```
 
 - `ScriptConfig` 统一持有 `_dailies` / `_weeklies`，分发日常选择、开关、反读及周常起始日、副本读写。基类仅装配任务，MAA 在自身构造函数中维护任务队列；任务落点与文件 I/O 分别归 `Daily` / `Weekly`。配置操作经 `_CONFIGS` 复用脚本实例；菜单查询直接装配任务对象并调用 `menu()`，避免脚本级初始化。
-- **日常机制类**：`python-backend/src/config/daily.py::Daily`——`__init__` 只做身份（`script_name` / `script_display_name` / `display_name` / `physical_name`）与配置路径（`config_rel_path` / `routine_rel_path`，全部来自声明 `config` / `routine` 字段），落点解析下沉为可覆写的 `_parse_landing`（模板方法）；提供 `menu()`（按机制形态展开候选项）、`_fields(task, sequence)`（该次选择的落点 {字段: 值}）、`update(task, sequence)`（取自己的段写入、返回是否有改动；段未落盘/config 缺失即 assert）、`read()`（反读，config 缺失/段未落盘 = 无真相）、`section` / `section_exists`（分段取段）、`read_enabled` / `set_enabled`（开关对：落点随声明与机制类而异——基类读主文件的 `enable_key` 布尔字段、`Anomaly` 读 `routine` 文件里自己那条、`BgiDaily` 按 `enable_task` 反查 BetterGI 任务启用表；无开关落点的日常恒返回 None/False）。文件 I/O 由 Daily 自持（直调 `utils_sub_config`，含保存后回读校验）：`_load_daily_config` / `_save_daily_config` / `_load_routine_config` / `_save_routine_config`——`update` / `read` / `set_enabled` 各自完成「读盘 → 改内存 → 有改动才落盘」的闭环，config dict 不在调用链上穿线。基类 `_parse_landing` 只解析**标准两层形态**；单层带 `key` 由 `SingleLayerDaily` 覆写（崩铁直接用它；`BgiStygianDaily` / `AnomalyHunter` 再混入别的机制类补数据段与开关落点），`MaaDaily` 跳过通用解析——名字（`display_name`）只来自声明，全链路唯一来源。
+- **日常机制类**：`python-backend/src/config/task/daily.py::Daily`——`__init__` 只做身份（`script_name` / `script_display_name` / `display_name` / `physical_name`）与配置路径（`config_rel_path` / `routine_rel_path`，全部来自声明 `config` / `routine` 字段），落点解析下沉为可覆写的 `_parse_landing`（模板方法）；提供 `menu()`（按机制形态展开候选项）、`_fields(task, sequence)`（该次选择的落点 {字段: 值}）、`update(task, sequence)`（取自己的段写入、返回是否有改动；段未落盘/config 缺失即 assert）、`read()`（反读，config 缺失/段未落盘 = 无真相）、`section` / `section_exists`（分段取段）、`read_enabled` / `set_enabled`（开关对：落点随声明与机制类而异——基类读主文件的 `enable_key` 布尔字段、`Anomaly` 读 `routine` 文件里自己那条、`BgiDaily` 按 `enable_task` 反查 BetterGI 任务启用表；无开关落点的日常恒返回 None/False）。文件 I/O 由 Daily 自持（直调 `utils_sub_config`，含保存后回读校验）：`_load_daily_config` / `_save_daily_config` / `_load_routine_config` / `_save_routine_config`——`update` / `read` / `set_enabled` 各自完成「读盘 → 改内存 → 有改动才落盘」的闭环，config dict 不在调用链上穿线。基类 `_parse_landing` 只解析**标准两层形态**；单层带 `key` 由 `SingleLayerDaily` 覆写（崩铁直接用它；`BgiStygianDaily` / `AnomalyHunter` 再混入别的机制类补数据段与开关落点），`MaaDaily` 跳过通用解析——名字（`display_name`）只来自声明，全链路唯一来源。
 - 机制类在 `daily.py`：`BgiDaily`（原神秘境资源筛选、开关按任务名反查任务启用表，副本读写沿用基类）、`BgiLeyLineDaily`（原地脉花：声明字段名含 `{Day}`，`_fields` 展开成一周 7 份、`read` 要求 7 天同值）、`SingleLayerDaily`（单层带 `key`：整组自身即唯一一级项、展示名用日常名，选中的二级值直接写成那一个字段——崩铁的「培养目标」即此形态）、`TemplateDaily`（继承 `SingleLayerDaily`，绝区零「培养方案」启用时按 `template` 对齐 config，不启用不读写；反读返回模板是否已对齐）、`Anomaly`（数据在自己段、开关在第二份文件）、`MaaDaily`（粥的 TaskQueue/StagePlan）、`MaaActivityDaily`（活动选项及过期检查）。适配器构造时按声明创建全部日常，之后持续复用。
 - 子类声明 `_script_name`、`display_name` 和特殊机制；脚本级路径、背景图及链接统一来自 `config/script_resources.yml`，详见 [资源声明](script_resources.md)；**机制类与文件路径由声明标注**（`daily_task_list.yml` 每个日常必填 `class`（`daily.py::DAILY_CLASSES` 注册表查表）与 `config`（该日常读写的主文件路径；`routine` 可选，日常开关文件；`enable_key` / `enable_task` 可选，开关落点；`template` 为模板驱动型日常（`TemplateDaily`）的模板路径）；`ScriptConfig.__init__` 调用 `build_dailies` 按声明逐个实例化并注入路径——加日常只改 yml，「主 config」概念不复存在。
 - 注册表 `_CONFIGS: dict[str, Callable[[], ScriptConfig]]` 由 `@register` 装饰器显式填充，key 为 `_script_name`，值为带缓存的构造入口：首次访问时创建适配器及其全部日常，之后复用同一个实例；基类构造时仅装配任务对象，MAA 在自身构造函数中调用 `_init_config`；原生配置仍逐次读盘。资源声明不完整会在 import 时 assert 暴露。**注册表为模块私有，不对外 import**：外部只经模块级公开函数访问（`is_adapted` / `get_config_path` / `get_game_exe_path` / `get_background_rel_path` / `iter_backup_paths` / `set_config` / `get_daily_readback` / `set_daily_enabled`）。
@@ -38,7 +38,7 @@
 | 初始化 init | 首次使用时构造适配器 | MAA 构造时初始化原生任务队列 |
 | 设置副本 set_daily_task | 外部调用 `set_config()` 时 | 按用户选择的副本/序列修改 config |
 
-两者独立：初始化是防御性对齐，设置副本是功能性响应。周常（周几起 / 周常副本）走 `python-backend/src/config/weekly.py`，见该模块说明。
+两者独立：初始化是防御性对齐，设置副本是功能性响应。周常（周几起 / 周常副本）走 `python-backend/src/config/task/weekly.py`，见该模块说明。
 
 ## 落盘时机（何时调用 set_config）
 
@@ -82,7 +82,7 @@
 - 每个选项可继续包含 `options`（递归声明）。
 - 顶层任务 `key` 供对应子类的周常操作使用（开关、列表字段或起始日字段）。
 
-`task_declarations.py` 只读取、校验声明；`Daily` 统一解释日常的落点和菜单形态，`Weekly` 持有自己的周常菜单。外部菜单入口统一在 `set_config.get_daily_map` / `get_weekly_map`。
+`task/task_declarations.py` 读取、校验声明并提供共用的选项取值规则；`Daily` 统一解释日常的落点和菜单形态，`Weekly` 持有自己的周常菜单。外部菜单入口统一在 `set_config.get_daily_map` / `get_weekly_map`。
 
 ### 写路径
 
@@ -148,7 +148,7 @@ BGI 旧配置未声明或清空 `TaskDefinitions` 时，按 `TaskEnabledList` �
 
 ## 周常（周几起 / 副本选型）
 
-周常机制与 I/O 归 **`python-backend/src/config/weekly.py`**；`ScriptConfig` 在构造期装配并持有 `self._weeklies`，后续读写均由它分发：
+周常机制与 I/O 归 **`python-backend/src/config/task/weekly.py`**；`ScriptConfig` 在构造期装配并持有 `self._weeklies`，后续读写均由它分发：
 
 - **一条周常一个对象**（一个脚本可有多条：崩铁的货币战争 / 历战余响 / 模拟宇宙各一个）；声明（`weekly_task_list.yml`）每条必填 `class`（机制类，`WEEKLY_CLASSES` 查表）与 `config`（读写主文件），可选 `key`（原生字段名）与 `enable_key`（启用开关字段，落点本身不是布尔开关时才需要）——与日常同构，只是粒度落在「每一条周常」。
 - **装配时机与日常一致**：`ScriptConfig.__init__` 调用 `daily.build_dailies` / `weekly.build_weeklies`；两个函数分别按声明查 `DAILY_CLASSES` / `WEEKLY_CLASSES` 构造新对象，由适配器持有为 `_dailies` / `_weeklies`；无周常声明的脚本得到空列表。每个 ScriptConfig 独占其任务对象；缓存仅在 `_CONFIGS` 的脚本工厂，weekly 模块无独立缓存或查找入口。
@@ -226,10 +226,10 @@ set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按�
 | 文件 | 作用 |
 |------|------|
 | `set_config.py` | 本适配器，适配器接口 + 类层级；各脚本资源绑定 YAML 声明，`@register` 显式注册机制类；各日常脚本子类定义在各自 config 旁 |
-| `daily.py` | 日常规则对象：`Daily` 基类（声明 → 落点 + 读写规则）与机制类 `Anomaly` / `MaaDaily`；无缓存的 `build_dailies` 负责装配，读写由 Daily 自持 |
-| `weekly.py` | 周常落点：`Weekly` 基类（config 读/写 + 起始日校验）与六条周常子类（列表增删 / 反相布尔 / app 条目 / 布尔开关 / 字面起始日 + 副本 / 队列公式）；机制类注册表 `WEEKLY_CLASSES` 和无缓存的 `build_weeklies`；对外适配接口归 `set_config.py` |
-| `task_declarations.py` | 日常与周常声明的读取、校验及共用物理名规则 |
-| `native_task_switch.py` | 脚本原生任务的开关：`task_switch_list.yml` 声明（配置文件 + 任务定义/启用两个键）→ 枚举行 + 按任务名反查 id 写回；与日常/周常无关，界面入口在单脚本配置弹窗底部 |
+| `task/daily.py` | 日常规则对象：`Daily` 基类（声明 → 落点 + 读写规则）与机制类 `Anomaly` / `MaaDaily`；无缓存的 `build_dailies` 负责装配，读写由 Daily 自持 |
+| `task/weekly.py` | 周常落点：`Weekly` 基类（config 读/写 + 起始日校验）与六条周常子类（列表增删 / 反相布尔 / app 条目 / 布尔开关 / 字面起始日 + 副本 / 队列公式）；机制类注册表 `WEEKLY_CLASSES` 和无缓存的 `build_weeklies`；对外适配接口归 `set_config.py` |
+| `task/task_declarations.py` | 日常与周常声明的读取、校验及共用的物理名、选项取值规则 |
+| `task/native_task_switch.py` | 脚本原生任务的开关：`task_switch_list.yml` 声明（配置文件 + 任务定义/启用两个键）→ 枚举行 + 按任务名反查 id 写回；与日常/周常无关，界面入口在单脚本配置弹窗底部 |
 | `Daily.menu()` / `Weekly.menu()` | 解释各自菜单、展开资源；`set_config` 提供统一查询入口 |
 | `python-backend/src/utils/utils_dict.py` | `safe_update` / `get_field` 字段工具（`Daily` 与 `ScriptConfig` 共用） |
 | `script_resources.py` / `config/script_resources.yml` | 脚本级静态资源的校验与声明，详见 [格式和路径基准](script_resources.md) |

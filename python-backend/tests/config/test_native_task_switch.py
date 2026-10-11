@@ -1,12 +1,12 @@
-"""测试 src/config/native_task_switch.py：声明校验、开关枚举与写入。"""
+"""测试 src/config/task/native_task_switch.py：声明校验、开关枚举与写入。"""
 
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config import native_task_switch as mod
-from src.config.native_task_switch import (
+from src.config.task import native_task_switch as mod
+from src.config.task.native_task_switch import (
     AppListSegment,
     KeyPairSegment,
     MultiSelectSegment,
@@ -106,7 +106,7 @@ class TestRead(unittest.TestCase):
     def test_missing_tables_reads_empty_with_warning(self):
         with (
             patch.object(mod, "load_script_config", return_value={"other": 1}),
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
+            self.assertLogs("src.config.task.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_switch().read(), [])
 
@@ -115,7 +115,7 @@ class TestRead(unittest.TestCase):
         config = _config({"a": "领取邮件", "b": "周常"}, {"a": True})
         with (
             patch.object(mod, "load_script_config", return_value=config),
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
+            self.assertLogs("src.config.task.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_switch().read(), [{"name": "领取邮件", "enabled": True}])
 
@@ -180,7 +180,7 @@ class TestRead(unittest.TestCase):
     def test_app_list_missing_list_reads_empty_with_warning(self):
         with (
             patch.object(mod, "load_script_config", return_value={"other": 1}),
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
+            self.assertLogs("src.config.task.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_app_list_switch().read(), [])
 
@@ -199,7 +199,7 @@ class TestRead(unittest.TestCase):
     def test_multi_select_missing_list_reads_empty_with_warning(self):
         with (
             patch.object(mod, "load_script_config", return_value={"other": 1}),
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
+            self.assertLogs("src.config.task.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_multi_select_switch().read(), [])
 
@@ -244,7 +244,7 @@ class TestWrite(unittest.TestCase):
         with (
             patch.object(mod, "load_script_config", return_value=config),
             patch.object(mod, "save_script_config") as mock_save,
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
+            self.assertLogs("src.config.task.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_switch().write({"不存在": True, "同名": True}), 0)
         mock_save.assert_not_called()
@@ -256,7 +256,7 @@ class TestWrite(unittest.TestCase):
     def test_missing_tables_write_is_noop(self):
         with (
             patch.object(mod, "load_script_config", return_value={"other": 1}),
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
+            self.assertLogs("src.config.task.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_switch().write({"领取邮件": True}), 0)
 
@@ -269,7 +269,7 @@ class TestWrite(unittest.TestCase):
             patch.object(
                 mod, "save_script_config", side_effect=lambda *args: saved.append(args)
             ),
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
+            self.assertLogs("src.config.task.native_task_switch", level="WARNING"),
         ):
             changed = _pattern_switch().write({"收邮件": True, "帝江号收菜": True})
         self.assertEqual(changed, 1)
@@ -411,7 +411,7 @@ class TestSegments(unittest.TestCase):
         with (
             patch.object(mod, "load_script_config", return_value=self._config()),
             patch.object(mod, "save_script_config") as mock_save,
-            self.assertLogs("src.config.native_task_switch", level="WARNING"),
+            self.assertLogs("src.config.task.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(self._switch().write({"不存在": True}), 0)
         mock_save.assert_not_called()

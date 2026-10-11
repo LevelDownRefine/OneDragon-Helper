@@ -8,8 +8,6 @@ import unittest
 from contextlib import ExitStack
 from unittest.mock import patch
 
-from src.config import daily as daily_mod
-from src.config.daily import Daily
 from src.config.set_config import (
     ArknightsConfig,
     EndfieldConfig,
@@ -20,7 +18,9 @@ from src.config.set_config import (
     get_weekly_task,
     set_daily_enabled,
 )
-from src.config.weekly import Weekly
+from src.config.task import daily as daily_mod
+from src.config.task.daily import Daily
+from src.config.task.weekly import Weekly
 
 
 def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:

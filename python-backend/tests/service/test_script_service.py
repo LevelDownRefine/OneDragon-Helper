@@ -115,8 +115,8 @@ class TestScriptEdit(ScriptServiceTestBase):
                     self.switch.write.assert_not_called()
 
     def test_options_and_switches_save_together_in_same_native_file(self):
-        from src.config.native_task_switch import NativeTaskSwitch
-        from src.config.task_options import TaskOptions
+        from src.config.task.native_task_switch import NativeTaskSwitch
+        from src.config.task.task_options import TaskOptions
 
         native = self.config.parent / "native.json"
         native.write_text(
@@ -160,7 +160,7 @@ class TestScriptEdit(ScriptServiceTestBase):
         )
         with (
             patch(
-                "src.config.task_options.get_script_root_dir",
+                "src.config.task.task_options.get_script_root_dir",
                 return_value=str(native.parent),
             ),
             patch(

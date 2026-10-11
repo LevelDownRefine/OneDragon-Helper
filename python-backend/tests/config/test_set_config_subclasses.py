@@ -9,7 +9,6 @@ import unittest
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
-from src.config.daily import Daily, SingleLayerDaily, TemplateDaily
 from src.config.set_config import (
     ArknightsConfig,
     EndfieldConfig,
@@ -19,6 +18,7 @@ from src.config.set_config import (
     WutheringWavesConfig,
     ZenlessZoneZeroConfig,
 )
+from src.config.task.daily import Daily, SingleLayerDaily, TemplateDaily
 
 
 def _update(cfg, config: dict, daily_name: str, task_name: str, sequence=None) -> bool:

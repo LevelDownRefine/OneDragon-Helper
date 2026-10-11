@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config import daily as daily_mod
-from src.config import weekly as weekly_mod
 from src.config.set_config import ArknightsConfig
+from src.config.task import daily as daily_mod
+from src.config.task import weekly as weekly_mod
 
 
 def load_fixture():
@@ -297,7 +297,7 @@ class TestMaaNativeConfig(unittest.TestCase):
 
         from gui.controllers.task_card import TaskCardController
         from src.config.set_config import get_daily_map
-        from src.config.task_declarations import get_daily_configs
+        from src.config.task.task_declarations import get_daily_configs
 
         self.cfg._init_config()
         service = MagicMock()

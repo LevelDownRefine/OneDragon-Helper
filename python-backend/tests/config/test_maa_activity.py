@@ -7,10 +7,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config.daily import MaaActivityDaily
-from src.config.maa_activity import read_activity_stages
 from src.config.set_config import ArknightsConfig, get_daily_map
-from src.config.task_declarations import get_daily_configs
+from src.config.task.daily import MaaActivityDaily
+from src.config.task.maa_activity import read_activity_stages
+from src.config.task.task_declarations import get_daily_configs
 
 # 真实 MAA 配置（已脱敏），用于钉死 ClientType 的实际形态。
 NATIVE_CONFIG_FIXTURE = Path(__file__).parents[1] / "fixtures/maa_gui.new.scrubbed.json"
@@ -43,10 +43,10 @@ class TestMaaActivityResource(unittest.TestCase):
         now = now or datetime(2026, 9, 16, tzinfo=UTC)
         with (
             patch(
-                "src.config.maa_activity.load_game_config",
+                "src.config.task.maa_activity.load_game_config",
                 side_effect=[self.config, self.data],
             ),
-            patch("src.config.maa_activity.datetime") as clock,
+            patch("src.config.task.maa_activity.datetime") as clock,
         ):
             clock.now.return_value = now
             clock.strptime.side_effect = datetime.strptime
@@ -88,7 +88,7 @@ class TestMaaActivityResource(unittest.TestCase):
         self.assertEqual(self.read(), ["AT-8", "AT-7"])
 
     def test_missing_installation_has_no_choices(self):
-        with patch("src.config.maa_activity.load_game_config", return_value=None):
+        with patch("src.config.task.maa_activity.load_game_config", return_value=None):
             self.assertEqual(
                 read_activity_stages("MAA", "cache/events.json", "config/gui.new.json"),
                 [],
@@ -97,7 +97,7 @@ class TestMaaActivityResource(unittest.TestCase):
     def test_incomplete_config_missing_gui_returns_empty(self):
         """MAA 配置存在但缺 Gui 段（未初始化/版本错位）时优雅降级并记日志，不崩。"""
         self.config = {"Configurations": {"Default": {}}}
-        with self.assertLogs("src.config.maa_activity", level="WARNING") as logs:
+        with self.assertLogs("src.config.task.maa_activity", level="WARNING") as logs:
             self.assertEqual(self.read(), [])
         self.assertTrue(any("缺 Gui 段" in r.getMessage() for r in logs.records))
 
@@ -111,7 +111,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
                 return_value={"MAA": declarations},
             ),
             patch(
-                "src.config.daily.read_activity_stages",
+                "src.config.task.daily.read_activity_stages",
                 return_value=["AT-8", "AT-7"],
             ) as reader,
         ):
@@ -136,7 +136,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
         activity["options"]["source"] = {"path": "resources/events.json"}
         daily = MaaActivityDaily("MAA", activity, "粥")
         with patch(
-            "src.config.daily.read_activity_stages", return_value=["AT-8"]
+            "src.config.task.daily.read_activity_stages", return_value=["AT-8"]
         ) as reader:
             self.assertEqual(
                 daily.get_task_lists(activity["options"]["source"]), ["AT-8"]
@@ -158,9 +158,9 @@ class TestMaaDeclaredMenus(unittest.TestCase):
                 side_effect=AssertionError("声明已传入"),
             ),
             patch.object(ArknightsConfig, "_init_config") as init,
-            patch("src.config.daily.save_script_config") as save,
+            patch("src.config.task.daily.save_script_config") as save,
             patch(
-                "src.config.daily.read_activity_stages", return_value=["AT-8"]
+                "src.config.task.daily.read_activity_stages", return_value=["AT-8"]
             ) as reader,
         ):
             menu = get_daily_map()["MAA"]["dailies"][0]

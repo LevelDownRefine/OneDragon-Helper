@@ -22,8 +22,12 @@ TaskQueue 公式），各由子类覆写；基类只兜底 assert。
 import logging
 from copy import deepcopy
 
-from src.config.task_declarations import get_physical_name, load_weekly_map
-from src.config.task_source import read_task_source
+from src.config.task.task_declarations import (
+    get_physical_name,
+    get_value_map,
+    load_weekly_map,
+)
+from src.config.task.task_source import read_task_source
 from src.utils.utils_dict import get_field, safe_update
 from src.utils.utils_sub_config import load_script_config, save_script_config
 from src.utils.utils_weekly import DISABLED_START_DAY, is_weekly_start_reached
@@ -68,14 +72,7 @@ class Weekly:
         self._key: str = declaration.get("key", "")
         self._enable_key: str = declaration.get("enable_key", "")
         """启用开关的原生字段名；落点本身不是布尔开关时才需要声明（如历战余响）。"""
-        self._task_values: dict[str, str | int] = {}
-        if "options" in declaration:
-            group = get_field(declaration, "options", self.display_name, dict)
-            # 资源来源没有静态 values。
-            self._task_values = {
-                option["display_name"]: get_physical_name(option)
-                for option in group.get("values", [])
-            }
+        self._task_values: dict[str, str | int] = get_value_map(declaration)
         """该周常的「展示名 → 物理值」映射（副本选型用）；声明走资源来源时为空。"""
 
     def menu(self) -> dict:

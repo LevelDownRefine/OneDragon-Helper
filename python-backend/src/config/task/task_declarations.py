@@ -16,6 +16,24 @@ def get_physical_name(node: dict) -> str | int:
     return node.get("physical_name", node["display_name"])
 
 
+def get_options(node: dict) -> list[dict]:
+    """取得直属选项；无选项或来源尚未展开时为空，调用方只读声明。"""
+    if "options" not in node:
+        return []
+    group = node["options"]
+    assert isinstance(group, dict), "options 必须为选项组"
+    # 来源尚未展开时没有 values。
+    return group.get("values", [])
+
+
+def get_value_map(node: dict) -> dict[str, str | int]:
+    """把一组选项声明转换成展示名到物理名的映射。"""
+    return {
+        option["display_name"]: get_physical_name(option)
+        for option in get_options(node)
+    }
+
+
 def _validate_name(value, context: str) -> None:
     assert isinstance(value, str) and value.strip(), f"{context} 必须为非空字符串"
 
