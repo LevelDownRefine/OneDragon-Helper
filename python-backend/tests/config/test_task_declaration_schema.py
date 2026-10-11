@@ -7,7 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config import task_config as m
+from src.config import task_declarations as m
 from src.utils.utils_io import YAML_INSTANCE, _parse_yaml, save_data
 
 
@@ -230,7 +230,7 @@ class TestDailyClassField(unittest.TestCase):
 
     def test_daily_map_requires_class(self):
         """load_daily_map：任务未声明 class → 报错。"""
-        from src.config.task_config import load_task_map
+        from src.config.task_declarations import load_task_map
 
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "daily_task_list.yml")
@@ -242,7 +242,7 @@ class TestDailyClassField(unittest.TestCase):
 
     def test_weekly_map_ignores_class(self):
         """weekly 声明无需 class，照常加载。"""
-        from src.config.task_config import load_task_map
+        from src.config.task_declarations import load_task_map
 
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "weekly_task_list.yml")

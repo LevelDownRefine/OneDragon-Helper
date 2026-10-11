@@ -17,7 +17,7 @@ from src.config.daily import (
     TemplateDaily,
 )
 from src.config.set_config import _CONFIGS
-from src.config.task_config import load_daily_map
+from src.config.task_declarations import load_daily_map
 from src.utils import utils_sub_config
 
 

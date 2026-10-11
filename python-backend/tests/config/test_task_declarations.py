@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.config import daily as daily_mod
-from src.config import task_config
+from src.config import task_declarations
 from src.config import weekly as weekly_mod
 from src.config.daily import Daily
 from src.config.set_config import ArknightsConfig, NTEConfig, WutheringWavesConfig
@@ -21,18 +21,18 @@ def _read(cfg, daily_name: str) -> tuple[str | None, str | int | None]:
 
 class TestDeclarationBindings(unittest.TestCase):
     def setUp(self):
-        self.daily = task_config.load_daily_map()
-        self.weekly = task_config.load_weekly_map()
+        self.daily = task_declarations.load_daily_map()
+        self.weekly = task_declarations.load_weekly_map()
 
     def load_adapters(self):
         """隔离注册表，验证类属性在声明改变后仍绑定到正确字段。"""
         spec = importlib.util.spec_from_file_location(
             "declaration_test_adapters",
-            Path(task_config.__file__).with_name("set_config.py"),
+            Path(task_declarations.__file__).with_name("set_config.py"),
         )
         module = importlib.util.module_from_spec(spec)
         daily_patch = patch.object(
-            task_config, "load_daily_map", return_value=self.daily
+            task_declarations, "load_daily_map", return_value=self.daily
         )
         weekly_patch = patch.object(
             weekly_mod, "load_weekly_map", return_value=self.weekly

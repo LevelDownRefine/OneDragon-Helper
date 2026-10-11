@@ -14,7 +14,7 @@ from src.config import set_config
 from src.config import weekly as weekly_mod
 from src.config.daily import Daily
 from src.config.set_config import ScriptConfig, WutheringWavesConfig
-from src.config.task_config import get_daily_configs
+from src.config.task_declarations import get_daily_configs
 from src.utils import utils_sub_config
 
 

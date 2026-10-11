@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from src.config.daily import BgiDaily, Daily
 from src.config.set_config import get_daily_readback
-from src.config.task_config import get_daily_configs
+from src.config.task_declarations import get_daily_configs
 
 
 class TestBgiReadback(unittest.TestCase):

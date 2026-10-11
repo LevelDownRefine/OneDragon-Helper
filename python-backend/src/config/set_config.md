@@ -82,7 +82,7 @@
 - 每个选项可继续包含 `options`（递归声明）。
 - 顶层任务 `key` 供对应子类的周常操作使用（开关、列表字段或起始日字段）。
 
-`task_config.py` 只读取、校验声明；`Daily` 统一解释日常的落点和菜单形态，`Weekly` 持有自己的周常菜单。外部菜单入口统一在 `set_config.get_daily_map` / `get_weekly_map`。
+`task_declarations.py` 只读取、校验声明；`Daily` 统一解释日常的落点和菜单形态，`Weekly` 持有自己的周常菜单。外部菜单入口统一在 `set_config.get_daily_map` / `get_weekly_map`。
 
 ### 写路径
 
@@ -228,7 +228,7 @@ set_weekly_start_day("March7th-Launcher", "历战余响", 4)  # 编辑期：按�
 | `set_config.py` | 本适配器，适配器接口 + 类层级；各脚本资源绑定 YAML 声明，`@register` 显式注册机制类；各日常脚本子类定义在各自 config 旁 |
 | `daily.py` | 日常规则对象：`Daily` 基类（声明 → 落点 + 读写规则）与机制类 `Anomaly` / `MaaDaily`；无缓存的 `build_dailies` 负责装配，读写由 Daily 自持 |
 | `weekly.py` | 周常落点：`Weekly` 基类（config 读/写 + 起始日校验）与六条周常子类（列表增删 / 反相布尔 / app 条目 / 布尔开关 / 字面起始日 + 副本 / 队列公式）；机制类注册表 `WEEKLY_CLASSES` 和无缓存的 `build_weeklies`；对外适配接口归 `set_config.py` |
-| `task_config.py` | 两份任务声明的读取、校验、物理名/取值映射 |
+| `task_declarations.py` | 日常与周常声明的读取、校验及共用物理名规则 |
 | `task_switch.py` | 脚本原生任务的开关：`task_switch_list.yml` 声明（配置文件 + 任务定义/启用两个键）→ 枚举行 + 按任务名反查 id 写回；与日常/周常无关，界面入口在单脚本配置弹窗底部 |
 | `Daily.menu()` / `Weekly.menu()` | 解释各自菜单、展开资源；`set_config` 提供统一查询入口 |
 | `python-backend/src/utils/utils_dict.py` | `safe_update` / `get_field` 字段工具（`Daily` 与 `ScriptConfig` 共用） |

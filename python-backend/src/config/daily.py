@@ -13,7 +13,7 @@ from copy import deepcopy
 from typing import Any
 
 from src.config.maa_activity import read_activity_stages
-from src.config.task_config import get_physical_name
+from src.config.task_declarations import get_physical_name
 from src.config.task_source import read_task_source
 from src.utils.utils_dict import covers, get_field, safe_update
 from src.utils.utils_sub_config import (

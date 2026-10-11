@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 from src.config.daily import Daily, MaaActivityDaily, SingleLayerDaily
 from src.config.set_config import ArknightsConfig, get_daily_map, get_weekly_map
-from src.config.task_config import load_daily_map
+from src.config.task_declarations import load_daily_map
 from src.config.weekly import Weekly
 from tests.support.task_menus import patch_daily_sources
 

@@ -12,7 +12,7 @@ from src.config.set_config import (
     WutheringWavesConfig,
     get_daily_map,
 )
-from src.config.task_config import get_daily_configs
+from src.config.task_declarations import get_daily_configs
 from src.config.task_source import read_task_source
 
 

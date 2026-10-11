@@ -50,7 +50,7 @@ def _make_controller(script_name="March7th-Launcher", display_name="崩铁"):
     games = [{"script_name": script_name, "display_name": display_name}]
     game_list = _FakeGameList(games)
     service = MagicMock()
-    # 副本/周常声明经真实 task_config 模块函数读取（weekly_task_list.yml 路径已由用例 patch）。
+    # 副本/周常声明经真实 task_declarations 模块函数读取（weekly_task_list.yml 路径已由用例 patch）。
     service.get_weekly_map.side_effect = get_weekly_map
     service.get_daily_map.side_effect = get_daily_map
     # 周几起默认未设置（脚本级与条目级都要给值，否则 MagicMock 会被当起始日）
@@ -131,7 +131,7 @@ class TestWeeklyItems(unittest.TestCase):
         )
         with (
             patch(
-                "src.config.task_config.get_weekly_task_list_yml_path_under_root",
+                "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(task_card_mod, "get_weekly_task", return_value=None),
@@ -168,7 +168,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.task_config.get_weekly_task_list_yml_path_under_root",
+            "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -194,7 +194,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.task_config.get_weekly_task_list_yml_path_under_root",
+            "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -213,7 +213,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.task_config.get_weekly_task_list_yml_path_under_root",
+            "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller()
@@ -233,7 +233,7 @@ class TestWeeklyItems(unittest.TestCase):
             },
         )
         with patch(
-            "src.config.task_config.get_weekly_task_list_yml_path_under_root",
+            "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl_star = _make_controller("March7th-Launcher", "崩铁")
@@ -247,7 +247,7 @@ class TestWeeklyItems(unittest.TestCase):
         # ok-ww 不在 weekly_task_list.yml 声明 → 空列表
         defs_path = _write_defs(tmp, {})
         with patch(
-            "src.config.task_config.get_weekly_task_list_yml_path_under_root",
+            "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
             return_value=defs_path,
         ):
             ctrl = _make_controller("ok-ww", "鸣潮")
@@ -547,7 +547,7 @@ class TestWeeklyItemsReadback(unittest.TestCase):
         )
         with (
             patch(
-                "src.config.task_config.get_weekly_task_list_yml_path_under_root",
+                "src.config.task_declarations.get_weekly_task_list_yml_path_under_root",
                 return_value=defs_path,
             ),
             patch.object(task_card_mod, "get_weekly_task", return_value="铁骸的锈冢"),

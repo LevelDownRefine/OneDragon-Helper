@@ -8,7 +8,11 @@ from functools import cache
 
 from src.config.daily import Daily, MaaDaily, build_dailies
 from src.config.script_resources import ScriptResources, get_script_resources
-from src.config.task_config import get_daily_configs, load_daily_map, load_weekly_map
+from src.config.task_declarations import (
+    get_daily_configs,
+    load_daily_map,
+    load_weekly_map,
+)
 from src.config.weekly import Weekly, build_weeklies
 from src.utils.utils_dict import get_field
 from src.utils.utils_sub_config import (

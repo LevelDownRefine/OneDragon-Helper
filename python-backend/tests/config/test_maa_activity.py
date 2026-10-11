@@ -10,7 +10,7 @@ from unittest.mock import patch
 from src.config.daily import MaaActivityDaily
 from src.config.maa_activity import read_activity_stages
 from src.config.set_config import ArknightsConfig, get_daily_map
-from src.config.task_config import get_daily_configs
+from src.config.task_declarations import get_daily_configs
 
 # 真实 MAA 配置（已脱敏），用于钉死 ClientType 的实际形态。
 NATIVE_CONFIG_FIXTURE = Path(__file__).parents[1] / "fixtures/maa_gui.new.scrubbed.json"
