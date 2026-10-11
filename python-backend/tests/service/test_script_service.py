@@ -34,7 +34,9 @@ class ScriptServiceTestBase(unittest.TestCase):
         )
         self.switch = Mock()
         self.switch_factory = self.enterContext(
-            patch.object(script_service, "task_switch_of", return_value=self.switch)
+            patch.object(
+                script_service, "native_task_switch_of", return_value=self.switch
+            )
         )
         self.service = AppService()
         self._seed(self.edit())
@@ -113,8 +115,8 @@ class TestScriptEdit(ScriptServiceTestBase):
                     self.switch.write.assert_not_called()
 
     def test_options_and_switches_save_together_in_same_native_file(self):
+        from src.config.native_task_switch import NativeTaskSwitch
         from src.config.task_options import TaskOptions
-        from src.config.task_switch import TaskSwitch
 
         native = self.config.parent / "native.json"
         native.write_text(
@@ -146,7 +148,7 @@ class TestScriptEdit(ScriptServiceTestBase):
                 }
             ],
         )
-        switch = TaskSwitch(
+        switch = NativeTaskSwitch(
             "BetterGI",
             [
                 {
@@ -166,7 +168,7 @@ class TestScriptEdit(ScriptServiceTestBase):
                 return_value=str(native.parent),
             ),
             patch.object(script_service, "task_options_of", return_value=options),
-            patch.object(script_service, "task_switch_of", return_value=switch),
+            patch.object(script_service, "native_task_switch_of", return_value=switch),
         ):
             self.service.update_script(
                 replace(self.edit(), task_options={"country": "枫丹"})
@@ -398,7 +400,7 @@ class TestScriptEdit(ScriptServiceTestBase):
                     ),
                     patch.object(
                         script_service,
-                        "task_switch_of",
+                        "native_task_switch_of",
                         return_value=Mock(write=events.switches),
                     ),
                     self.assertRaisesRegex(OSError, failed_step),
@@ -424,7 +426,7 @@ class TestScriptEdit(ScriptServiceTestBase):
             patch.object(
                 script_service, "invalidate_config", wraps=set_config.invalidate_config
             ) as invalidate,
-            patch.object(script_service, "task_switch_of", return_value=None),
+            patch.object(script_service, "native_task_switch_of", return_value=None),
             patch("src.utils.utils_sub_config.load_config") as native_read,
             patch("src.utils.utils_sub_config.save_config") as native_write,
         ):

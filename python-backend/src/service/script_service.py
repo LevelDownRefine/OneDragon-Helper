@@ -6,9 +6,9 @@
 import os
 from dataclasses import dataclass, field, replace
 
+from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import invalidate_config
 from src.config.task_options import task_options_of
-from src.config.task_switch import task_switch_of
 from src.utils import utils_config, utils_weekly
 from src.utils.utils_shortcut import read_shortcut
 from src.utils.utils_sub_config import (
@@ -235,7 +235,7 @@ def update(edit: ScriptEdit) -> str:
         or new_script_name != edit.script_name
     ):
         invalidate_config(new_script_name)
-    switch = task_switch_of(new_script_name)
+    switch = native_task_switch_of(new_script_name)
     if options is not None:
         options.write_prepared(pending)
     if switch is not None:
