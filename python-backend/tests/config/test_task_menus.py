@@ -183,7 +183,11 @@ class TestDailyMenus(unittest.TestCase):
         original = deepcopy(self.declaration)
         daily = Daily("x", self.declaration, "脚本")
         first = daily.menu()
-        first["options"]["values"][0]["display_name"] = "被改的菜单"
+        choice = first["options"]["values"][0]
+        choice["display_name"] = "被改的菜单"
+        choice["options"]["key"] = "被改的字段"
+        choice["options"]["values"][0]["physical_name"] = 99
+        choice["options"]["values"].append({"display_name": "新增选项"})
         self.assertEqual(self.declaration, original)
         self.declaration["options"]["values"][0]["display_name"] = "被改的声明"
         self.assertEqual(daily.menu()["options"], original["options"])
@@ -216,11 +220,17 @@ class TestDailyMenus(unittest.TestCase):
         )
 
     def test_third_level_is_rejected(self):
+        single_layer = deepcopy(self.declaration)
         child = self.declaration["options"]["values"][0]["options"]["values"][0]
         child["options"] = {"key": "third", "values": [{"display_name": "三级"}]}
-        daily = Daily("x", self.declaration, "脚本")
-        with self.assertRaisesRegex(AssertionError, "最多支持两级"):
-            daily.menu()
+        for cls, declaration in (
+            (Daily, self.declaration),
+            (SingleLayerDaily, single_layer),
+        ):
+            with self.subTest(mechanism=cls.__name__):
+                daily = cls("x", declaration, "脚本")
+                with self.assertRaisesRegex(AssertionError, "最多支持两级"):
+                    daily.menu()
 
     def test_resource_dispatch_receives_the_owning_daily(self):
         reader = Mock(return_value=["原生副本"])

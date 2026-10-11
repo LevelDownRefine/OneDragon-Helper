@@ -71,14 +71,11 @@ class Daily:
         self.display_name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
         self._declaration = deepcopy(declaration)
-        self._menu_options = get_field(
-            self._declaration, "options", self.display_name, dict
-        )
         self._parse_landing(self._declaration)
 
     def menu(self) -> dict:
-        """返回本日常菜单；资源按需读取，结果独立于声明与原生配置状态。"""
-        metadata = {
+        """返回本日常菜单；按需展开两级选项，结果独立于声明与原生配置状态。"""
+        result = {
             key: deepcopy(value)
             for key, value in self._declaration.items()
             if key
@@ -92,31 +89,28 @@ class Daily:
                 "options",
             )
         }
-        return {**metadata, "options": self._materialize_options(self._menu_options)}
-
-    def _materialize_options(self, group: dict, depth: int = 0) -> dict:
-        """展开本日常的资源并补齐物理名，菜单最多支持两级选择。"""
-        result = deepcopy(dict(group))
-        if "source" in group:
-            values = [
-                {"display_name": name} for name in self.get_task_lists(group["source"])
+        result["options"] = deepcopy(
+            dict(get_field(self._declaration, "options", self.display_name, dict))
+        )
+        groups = [(result["options"], 0)]
+        for group, depth in groups:
+            if "source" in group:
+                values = [
+                    {"display_name": name}
+                    for name in self.get_task_lists(group["source"])
+                ]
+            else:
+                assert "values" in group
+                values = group["values"]
+            group["values"] = [
+                {**option, "physical_name": get_physical_name(option)}
+                for option in values
             ]
-        else:
-            assert "values" in group
-            values = group["values"]
-        options = []
-        for option in values:
-            materialized = {
-                **deepcopy(option),
-                "physical_name": get_physical_name(option),
-            }
-            if "options" in option:
-                assert depth < 1, "当前日常菜单最多支持两级选择"
-                materialized["options"] = self._materialize_options(
-                    option["options"], depth + 1
-                )
-            options.append(materialized)
-        result["values"] = options
+            for option in group["values"]:
+                if "options" in option:
+                    assert depth < 1, "当前日常菜单最多支持两级选择"
+                    option["options"] = dict(option["options"])
+                    groups.append((option["options"], depth + 1))
         return result
 
     def get_task_lists(self, source: dict) -> list[str]:
@@ -517,20 +511,28 @@ class SingleLayerDaily(Daily):
         self.task_map: dict[str, Any] = {}
         self.option_fields: dict[str, str] = {self.display_name: group["key"]}
         self.options: list[dict] = [declaration]
-        self._menu_options = {
-            "values": [
-                {
-                    "display_name": self.display_name,
-                    "physical_name": self.physical_name,
-                    "options": group,
-                }
-            ]
-        }
         self._sequence_values: dict[str, dict[str, Any]] = (
             {self.display_name: get_value_map(declaration)} if "values" in group else {}
         )
         self._sequence_required = "values" in group
         self._single_field = False
+
+    def menu(self) -> dict:
+        """将单层选项作为日常名下的二级选择。"""
+        result = super().menu()
+        assert all("options" not in option for option in result["options"]["values"]), (
+            "当前日常菜单最多支持两级选择"
+        )
+        result["options"] = {
+            "values": [
+                {
+                    "display_name": self.display_name,
+                    "physical_name": self.physical_name,
+                    "options": result["options"],
+                }
+            ]
+        }
+        return result
 
     def read(self) -> tuple[str | None, str | int | None]:
         """反读该日常已选的 (日常名, 二级值)。
