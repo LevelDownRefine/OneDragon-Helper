@@ -79,9 +79,8 @@ def apply_subscript_config(
     """
     for name in enabled_keys:
         start_days = resolve_weekly_starts(weekly_start_map or {}, name)
-        # 该脚本未设任何周几起即不动其周本开关。
-        if start_days:
-            prepare_weekly_start_days(name, start_days)
+        # 空周常设置仍准备原生任务（如 MAA）；周常开关只处理显式设置项。
+        prepare_weekly_start_days(name, start_days)
 
 
 def analyze_logs(

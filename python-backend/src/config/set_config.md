@@ -110,7 +110,7 @@
 
 ### 反读
 
-`_read_daily_tasks()` 逐日常调 `daily.read()` + `daily.read_enabled()`（各自读自己那份文件），每项一条记录 `{name, task, sequence, enabled}`（facade `get_daily_readback`），顺序与声明一致。反读不看启用状态影响副本（用于呈现未启用的日常）。
+`Daily.readback()` 调本对象的 `read()` + `read_enabled()`，返回 `{name, task, sequence, enabled}`；`get_daily_readback` 直接按声明装配 Daily 并聚合结果，顺序与声明一致，不触发 ScriptConfig 初始化。周常状态查询也直接装配 Weekly 调 `read_task()`。运行前始终进入配置准备步骤，空周常设置仍完成 MAA 原生任务初始化；编辑入口继续经 ScriptConfig。反读不看启用状态影响副本（用于呈现未启用的日常）。
 
 终末地的多选列表开关由 `MultiSelectEnabledDaily` 实现：`enable_key` 指向列表、`enable_task` 指定成员，配置缺少列表时记录警告并返回无真相，不创建旧的布尔开关。
 

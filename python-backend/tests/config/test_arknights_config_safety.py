@@ -66,7 +66,7 @@ class TestMaaNativeConfig(unittest.TestCase):
         # 本身不修改内存、不触发额外写盘。
         saved_before_read = list(self.saved)
         before = copy.deepcopy(self.data)
-        self.assertEqual(len(self.cfg._read_daily_tasks()), 3)
+        self.assertEqual(len([daily.readback() for daily in self.cfg._dailies]), 3)
         self.assertEqual(self.data, before)
         self.assertEqual(self.saved, saved_before_read)
 

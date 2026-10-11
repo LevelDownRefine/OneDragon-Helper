@@ -77,32 +77,6 @@ class ScriptConfig:
         )
         return matches[0]
 
-    def _read_daily_tasks(self) -> list[dict]:
-        """反读该脚本全部日常的已选项与开关（界面按日常逐行呈现）。
-
-        日常集合由声明推导，调用方无需指定日常。每项一条记录：
-
-        - ``name``：日常展示名；
-        - ``task``：已选一级项展示名；未选择/无真相为 None；
-        - ``sequence``：已选二级值；无二级或未选择为 None；
-        - ``enabled``：是否启用；该脚本无日常开关文件时为 None。
-
-        Returns:
-            [{name, task, sequence, enabled}, ...]，顺序与声明一致。
-        """
-        records = []
-        for daily in self._dailies:
-            task, sequence = daily.read()
-            records.append(
-                {
-                    "name": daily.display_name,
-                    "task": task,
-                    "sequence": sequence,
-                    "enabled": daily.read_enabled(),
-                }
-            )
-        return records
-
     def set_daily_task(
         self,
         daily_display_name: str,
@@ -167,13 +141,6 @@ class ScriptConfig:
         if weekly is None or type(weekly).set_task is Weekly.set_task:
             return
         weekly.set_task(task_name)
-
-    def _read_weekly_task(self, weekly_name: str) -> str | None:
-        """反读周常副本；未知周常返回 None。"""
-        weekly = self._weekly_named(weekly_name)
-        if weekly is None:
-            return None
-        return weekly.read_task()
 
     def get_game_exe_path(self) -> str | None:
         """读取本脚本配置中的游戏 exe 路径。
@@ -565,20 +532,23 @@ def get_background_rel_path(script_name: str) -> str:
 
 
 def get_daily_readback(script_name: str) -> list[dict]:
-    """读该脚本全部日常的已选项与开关（反读子脚本 config，界面按日常逐行呈现）。
-
-    日常集合由声明推导，故无需调用方指定日常。未适配脚本返回空列表。
+    """直接装配日常并反读状态，不触发脚本级原生配置初始化。
 
     Args:
         script_name: 脚本标识名。
 
     Returns:
-        [{name, task, sequence, enabled}, ...]；顺序与声明一致。各字段含义见
-        ``ScriptConfig._read_daily_tasks``。
+        [{name, task, sequence, enabled}, ...]，顺序与声明一致；
+        未声明脚本返回空列表，单条状态由 Daily.readback() 解释。
     """
-    if script_name not in _CONFIGS:
+    declarations = load_daily_map()
+    if script_name not in declarations:
         return []
-    return _CONFIGS[script_name]()._read_daily_tasks()
+    assert script_name in declarations
+    return [
+        daily.readback()
+        for daily in build_dailies(script_name, script_name, declarations[script_name])
+    ]
 
 
 def set_daily_enabled(script_name: str, daily_display_name: str, enabled: bool) -> None:
@@ -638,8 +608,8 @@ def set_weekly_task(script_name: str, weekly_name: str, task_name: str) -> None:
 
 
 def get_weekly_task(script_name: str, weekly_name: str) -> str | None:
-    """经脚本适配器反读周常副本；未适配脚本返回 None。"""
-    if script_name not in _CONFIGS:
-        return None
-    assert script_name in _CONFIGS
-    return _CONFIGS[script_name]()._read_weekly_task(weekly_name)
+    """直接装配周常并反读副本；未声明脚本或未知周常返回 None。"""
+    for weekly in build_weeklies(script_name, script_name):
+        if weekly.display_name == weekly_name:
+            return weekly.read_task()
+    return None

@@ -111,8 +111,8 @@ class TestBuildPreRunWriteConfig(unittest.TestCase):
         mock_weekly.assert_any_call("A", {"周常甲": 3})
         mock_weekly.assert_any_call("B", {"周常乙": 4})
 
-    def test_missing_from_map_is_skipped(self):
-        # 未设周常起始日的脚本：不写周本开关（空 dict 不入写入口）。
+    def test_missing_weekly_settings_still_prepare_the_script(self):
+        # 未设周常起始日的脚本仍准备原生任务，空设置不写周常开关。
         with mock.patch(
             "src.service.run_actions.prepare_weekly_start_days"
         ) as mock_weekly:
@@ -122,7 +122,9 @@ class TestBuildPreRunWriteConfig(unittest.TestCase):
                 weekly_start_map={"A": {"周常甲": 2}},
             )
             steps[0]()
-        mock_weekly.assert_called_once_with("A", {"周常甲": 2})
+        mock_weekly.assert_any_call("A", {"周常甲": 2})
+        mock_weekly.assert_any_call("C", {})
+        self.assertEqual(mock_weekly.call_count, 2)
 
     def test_empty_keys_returns_no_steps(self):
         # 无启用脚本：不写盘、不产生 step。

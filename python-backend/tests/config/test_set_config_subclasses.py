@@ -332,10 +332,10 @@ class TestNTEConfig(unittest.TestCase):
         with self._patch_load(config, routine):
             self.assertEqual(_read(self.cfg, "追猎目标"), ("追猎目标", "音霸魔王"))
             self.assertEqual(_read(self.cfg, "异象界域"), ("空幕", 3))
-            # 是否启用不影响反读，走 _read_daily_tasks 记录里的 enabled
+            # 是否启用不影响反读，走 readback 记录里的 enabled
             enabled = {
                 record["name"]: record["enabled"]
-                for record in self.cfg._read_daily_tasks()
+                for record in [daily.readback() for daily in self.cfg._dailies]
             }
             self.assertTrue(enabled["异象界域"])
             self.assertFalse(enabled["追猎目标"])
@@ -349,7 +349,7 @@ class TestNTEConfig(unittest.TestCase):
         routine = self._make_routine(anomaly_enabled=True, hunter_enabled=False)
         with self._patch_load(config, routine):
             self.assertEqual(
-                self.cfg._read_daily_tasks(),
+                [daily.readback() for daily in self.cfg._dailies],
                 [
                     {
                         "name": "异象界域",
@@ -541,7 +541,7 @@ class TestNTEConfig(unittest.TestCase):
         ):
             enabled = {
                 record["name"]: record["enabled"]
-                for record in self.cfg._read_daily_tasks()
+                for record in [daily.readback() for daily in self.cfg._dailies]
             }
             self.assertFalse(enabled["异象界域"])
             self.assertTrue(enabled["追猎目标"])
@@ -551,7 +551,7 @@ class TestNTEConfig(unittest.TestCase):
         with self._patch_load({"daily_anomaly": {}, "daily_anomaly_hunter": {}}, None):
             enabled = {
                 record["name"]: record["enabled"]
-                for record in self.cfg._read_daily_tasks()
+                for record in [daily.readback() for daily in self.cfg._dailies]
             }
             self.assertIsNone(enabled["异象界域"])
             self.assertIsNone(enabled["追猎目标"])

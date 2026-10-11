@@ -535,7 +535,7 @@ class TestEchoOfWarEditTime(WeeklyTestCase):
 class TestWeeklyAdapter(WeeklyTestCase):
     """模块级入口：按名分发、未适配 / 无此能力时优雅跳过。"""
 
-    def test_all_entries_use_the_cached_script_owned_objects(self):
+    def test_write_entries_use_the_cached_script_owned_objects(self):
         class SelectableWeekly(Weekly):
             def set_task(self, task_name):
                 self.task = task_name
@@ -563,7 +563,7 @@ class TestWeeklyAdapter(WeeklyTestCase):
             config_mod.set_weekly_task("ok-ww", "独有周常", "副本")
             config_mod.set_weekly_start_day("ok-ww", "独有周常", 4)
             apply_subscript_config({"ok-ww"}, {"ok-ww": {"独有周常": 0}})
-            self.assertEqual(config_mod.get_weekly_task("ok-ww", "独有周常"), "副本")
+            self.assertEqual(owned.read_task(), "副本")
         update.assert_called_once_with("材料", 1)
         enable.assert_called_once_with(True)
         self.assertEqual(owned.start_day, 4)

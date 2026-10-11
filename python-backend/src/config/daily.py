@@ -112,6 +112,16 @@ class Daily:
                     groups.append((option["options"], depth + 1))
         return result
 
+    def readback(self) -> dict:
+        """返回本日常当前的名称、选项、序列与开关；无真相的字段为 None。"""
+        task, sequence = self.read()
+        return {
+            "name": self.display_name,
+            "task": task,
+            "sequence": sequence,
+            "enabled": self.read_enabled(),
+        }
+
     def get_task_lists(self, source: dict) -> list[str]:
         """读取该日常某组选项的资源；特殊资源格式由机制类覆写。"""
         return read_task_source(self.script_name, source)
