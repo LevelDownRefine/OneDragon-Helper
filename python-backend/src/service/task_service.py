@@ -2,9 +2,10 @@
 
 import sys
 
-from src.config.daily_config import get_daily_map, get_weekly_map
 from src.config.set_config import (
+    get_daily_map,
     get_daily_readback,
+    get_weekly_map,
     get_weekly_task,
     is_adapted,
 )

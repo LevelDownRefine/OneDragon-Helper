@@ -17,15 +17,16 @@ from unittest.mock import patch
 
 from src.config import daily as daily_mod
 from src.config import set_config as config_mod
-from src.config.daily_config import get_daily_map
+from src.config.set_config import get_daily_map
 from tests.support.config_diff import diff_paths
+from tests.support.task_menus import patch_daily_sources
 
 logger = logging.getLogger(__name__)
 GOLDEN_PATH = Path(__file__).parents[1] / "golden/daily_baseline.json"
 DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
 
-def _resource_names(_script, _daily, source):
+def _resource_names(_daily, source):
     """固定本地资源选项，不依赖游戏安装和活动日期。"""
     if "category" in source:
         prefix = source["category"]
@@ -149,9 +150,7 @@ def build_baseline():
         ):
             stack.enter_context(patch.object(module, load_name, side_effect=load))
             stack.enter_context(patch.object(module, save_name, side_effect=save))
-        stack.enter_context(
-            patch("src.config.daily_config.get_task_lists", side_effect=_resource_names)
-        )
+        stack.enter_context(patch_daily_sources(_resource_names))
         menus = get_daily_map()
         assert set(menus) == set(stores) == set(config_mod._CONFIGS)
         for script in sorted(menus):

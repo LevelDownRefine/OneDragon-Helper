@@ -8,7 +8,7 @@ from functools import cache
 
 from src.config.daily import Daily, MaaDaily, build_dailies
 from src.config.script_resources import ScriptResources, get_script_resources
-from src.config.task_config import load_weekly_map
+from src.config.task_config import load_daily_map, load_weekly_map
 from src.config.weekly import Weekly, build_weeklies
 from src.utils.utils_dict import get_field
 from src.utils.utils_sub_config import (
@@ -447,26 +447,27 @@ def set_config(
     _CONFIGS[script_name]().set_daily_task(daily_display_name, task_name, sequence)
 
 
-def get_task_lists(
-    script_name: str, daily_display_name: str, source: dict
-) -> list[str] | None:
-    """适配器接口：复用已注册的 Daily 读取可选副本。
+def get_daily_map(script_name: str | None = None) -> dict:
+    """直接装配日常并取得菜单，不触发脚本级配置初始化。
 
     Args:
-        script_name: 脚本唯一标识（如 ``March7th-Launcher``）。
-        daily_display_name: 所属日常展示名。
-        source: 完整的 options.source 声明，资源定位不依赖任务名称。
-
-    Returns:
-        副本名列表（含「无」等占位）；不可用时返回 None。
+        script_name: 仅取得指定脚本的菜单；省略时返回全部声明。
     """
-    if script_name not in _CONFIGS:
-        return None
-    return (
-        _CONFIGS[script_name]()
-        ._dispatch_daily(daily_display_name)
-        .get_task_lists(source)
-    )
+    return {
+        name: {
+            "dailies": [
+                daily.menu()
+                for daily in build_dailies(name, name, declarations=declarations)
+            ]
+        }
+        for name, declarations in load_daily_map().items()
+        if script_name is None or name == script_name
+    }
+
+
+def get_weekly_map(script_name: str) -> list[dict]:
+    """直接装配周常并取得菜单；未声明的脚本返回空列表。"""
+    return [weekly.menu() for weekly in build_weeklies(script_name, script_name)]
 
 
 def get_config_path(script_name: str) -> str:

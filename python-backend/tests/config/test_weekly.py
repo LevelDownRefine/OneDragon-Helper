@@ -11,8 +11,7 @@ from unittest.mock import patch
 
 from src.config import set_config as config_mod
 from src.config import weekly as weekly_mod
-from src.config.daily_config import get_weekly_map
-from src.config.set_config import _CONFIGS, weekly_names
+from src.config.set_config import _CONFIGS, get_weekly_map, weekly_names
 from src.config.weekly import Weekly
 from src.service.run_actions import apply_subscript_config
 from src.utils.utils_weekly import DISABLED_START_DAY
@@ -61,7 +60,7 @@ class TestWeeklyDeclaration(WeeklyTestCase):
     def test_menu_strips_code_fields(self):
         """物化后的周常菜单不含 class / config（代码耦合字段不入 UI 词汇）。"""
         # 隔离本地资源读取：CI 无 config.yml，不能走到真实脚本根目录解析。
-        with patch("src.config.daily_config.read_task_source", return_value=[]):
+        with patch("src.config.weekly.read_task_source", return_value=[]):
             for script_name in config_mod.load_weekly_map():
                 for menu in get_weekly_map(script_name):
                     with self.subTest(script=script_name):

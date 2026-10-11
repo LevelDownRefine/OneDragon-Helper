@@ -3,7 +3,6 @@
 import unittest
 from unittest.mock import patch
 
-from src.config.daily_config import get_daily_map
 from src.config.set_config import (
     _CONFIGS,
     EndfieldConfig,
@@ -11,7 +10,7 @@ from src.config.set_config import (
     NTEConfig,
     StarRailConfig,
     WutheringWavesConfig,
-    get_task_lists,
+    get_daily_map,
 )
 from src.config.task_config import get_daily_configs
 from src.config.task_source import read_task_source
@@ -131,8 +130,10 @@ class TestTaskSource(unittest.TestCase):
                 ) as load,
                 patch.object(NTEConfig, "__init__", return_value=None) as init,
             ):
-                names = get_task_lists(
-                    "ok-nte", "异象界域", {"path": "options.json", "key": key}
+                names = (
+                    _CONFIGS["ok-nte"]()
+                    ._dispatch_daily("异象界域")
+                    .get_task_lists({"path": "options.json", "key": key})
                 )
             self.assertEqual(names, ["乙", "甲"])
             load.assert_called_once_with("ok-nte", "options.json")
@@ -188,11 +189,9 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
             patch.object(EndfieldConfig, "__init__", return_value=None) as mock_init,
             patch("src.config.task_source.load_game_config", return_value=self._DATA),
         ):
-            get_task_lists(
-                "ok-ef",
-                self.declaration["display_name"],
-                {"path": self._SRC, "key": ["stages_dict", "能量淤积点"]},
-            )
+            _CONFIGS["ok-ef"]()._dispatch_daily(
+                self.declaration["display_name"]
+            ).get_task_lists({"path": self._SRC, "key": ["stages_dict", "能量淤积点"]})
         mock_init.assert_not_called()
 
     def test_source_is_used_as_rel_path(self):
@@ -312,11 +311,9 @@ class TestBgiGetTaskLists(unittest.TestCase):
             patch.object(GenshinConfig, "__init__", return_value=None) as mock_init,
             patch("src.config.daily.load_game_config", return_value=self._DATA),
         ):
-            get_task_lists(
-                "BetterGI",
-                self.declaration["display_name"],
-                {"path": self._SRC, "category": "BlessDomain"},
-            )
+            _CONFIGS["BetterGI"]()._dispatch_daily(
+                self.declaration["display_name"]
+            ).get_task_lists({"path": self._SRC, "category": "BlessDomain"})
         mock_init.assert_not_called()
 
     def test_source_is_used_as_rel_path(self):
@@ -361,7 +358,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
     def test_nested_menu_uses_bgi_daily_for_each_category(self):
         with (
             patch(
-                "src.config.daily_config.load_daily_map",
+                "src.config.set_config.load_daily_map",
                 return_value={"BetterGI": [self.declaration]},
             ),
             patch("src.config.daily.load_game_config", return_value=self._DATA),
@@ -407,6 +404,10 @@ class TestBgiGetTaskLists(unittest.TestCase):
             patch.dict(_CONFIGS, {"ok-ww": lambda: cfg}),
             patch("src.config.daily.load_game_config", return_value=self._DATA) as load,
         ):
-            names = get_task_lists("ok-ww", self.declaration["display_name"], source)
+            names = (
+                _CONFIGS["ok-ww"]()
+                ._dispatch_daily(self.declaration["display_name"])
+                .get_task_lists(source)
+            )
         self.assertEqual(names, ["仲夏庭园", "铭记之谷", "芬德尼尔之顶"])
         load.assert_called_once_with("ok-ww", self._SRC)

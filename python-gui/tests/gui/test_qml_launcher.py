@@ -695,7 +695,7 @@ class TestTaskCardDailyChipOpensMenu(unittest.TestCase):
             from src.utils.utils_sub_config import resolve_script_path
             from tests.gui.helpers import make_bridge
 
-            from src.config.daily_config import get_daily_map
+            from src.config.set_config import get_daily_map
             dailies = get_daily_map("March7th-Launcher")["March7th-Launcher"]["dailies"]
             records = [
                 {"name": "培养目标", "task": "培养目标", "sequence": True, "enabled": None}
@@ -906,7 +906,7 @@ class TestTaskCardWeeklyAreaHeightForSupportedScript(unittest.TestCase):
                          return_value={"script_list": scripts}).start()
             patch.object(main_window.BackgroundController, "resolve_bg",
                          return_value=None).start()
-            patch("src.config.daily_config.read_task_source",
+            patch("src.config.weekly.read_task_source",
                   return_value=["无", "坏灭的喜剧", "铁骸的锈冢", "晨昏的回眸",
                                 "心兽的战场", "尘梦的赞礼", "蛀星的旧靥",
                                 "不死的神实", "寒潮的落幕", "毁灭的开端"]).start()

@@ -1,11 +1,11 @@
 """一个日常：由 daily_task_list.yml 声明解析出的落点与读写规则。
 
 I/O 由 Daily 自持（``_load_daily_config`` 等，直调 ``utils_sub_config``），完成「读盘 → 改内存 → 有改动才落盘」。
-声明形态与读写机制由机制类负责：基类解析标准两层，``Anomaly`` 单层带
-``key``，``MaaDaily`` TaskQueue，``NoopDaily`` 无需适配。开关落点亦随声明而异：
+声明形态、菜单与读写机制由机制类负责：基类解析标准两层，``SingleLayerDaily``
+解析单层带 ``key``，``MaaDaily`` 适配 TaskQueue。开关落点亦随声明而异：
 基类读 ``enable_key`` 字段（声明了 ``routine`` 就读 routine 文件），``Anomaly``
 读 ``routine`` 文件的 Routine Items，``BgiDaily`` 按 ``enable_task`` 反查任务启用表。
-``build_dailies`` 按声明创建对象，由 ``ScriptConfig`` 在初始化时调用并持有。
+``build_dailies`` 按声明创建对象，供 ``ScriptConfig`` 持有或菜单查询直接使用。
 """
 
 import logging
@@ -36,9 +36,9 @@ class Daily:
 
     Attributes:
         script_name: 所属脚本标识名。
-        name: 日常展示名，来自声明，界面行名与匹配键。
+        display_name: 日常展示名，来自声明，界面行名与匹配键。
         physical_name: 日常物理名，子脚本 config 的段名 / routine item id。
-        options: 该日常的一级项声明，菜单数据来源。
+        options: 该日常的一级项声明。
         task_field: 一级项写入的原生字段。
         task_map: 一级项展示名 → 一级物理值。
         option_fields: 一级项展示名 → 二级项写入的原生字段。
@@ -70,7 +70,54 @@ class Daily:
         self._enable_key: str = declaration.get("enable_key", "")
         self.display_name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
-        self._parse_landing(declaration)
+        self._declaration = deepcopy(declaration)
+        self._menu_options = get_field(
+            self._declaration, "options", self.display_name, dict
+        )
+        self._parse_landing(self._declaration)
+
+    def menu(self) -> dict:
+        """返回本日常菜单；资源按需读取，结果独立于声明与原生配置状态。"""
+        metadata = {
+            key: deepcopy(value)
+            for key, value in self._declaration.items()
+            if key
+            not in (
+                "class",
+                "config",
+                "routine",
+                "enable_key",
+                "enable_task",
+                "template",
+                "options",
+            )
+        }
+        return {**metadata, "options": self._materialize_options(self._menu_options)}
+
+    def _materialize_options(self, group: dict, depth: int = 0) -> dict:
+        """展开本日常的资源并补齐物理名，菜单最多支持两级选择。"""
+        result = deepcopy(dict(group))
+        if "source" in group:
+            values = [
+                {"display_name": name} for name in self.get_task_lists(group["source"])
+            ]
+        else:
+            assert "values" in group
+            values = group["values"]
+        options = []
+        for option in values:
+            materialized = {
+                **deepcopy(option),
+                "physical_name": get_physical_name(option),
+            }
+            if "options" in option:
+                assert depth < 1, "当前日常菜单最多支持两级选择"
+                materialized["options"] = self._materialize_options(
+                    option["options"], depth + 1
+                )
+            options.append(materialized)
+        result["values"] = options
+        return result
 
     def get_task_lists(self, source: dict) -> list[str]:
         """读取该日常某组选项的资源；特殊资源格式由机制类覆写。"""
@@ -470,6 +517,15 @@ class SingleLayerDaily(Daily):
         self.task_map: dict[str, Any] = {}
         self.option_fields: dict[str, str] = {self.display_name: group["key"]}
         self.options: list[dict] = [declaration]
+        self._menu_options = {
+            "values": [
+                {
+                    "display_name": self.display_name,
+                    "physical_name": self.physical_name,
+                    "options": group,
+                }
+            ]
+        }
         self._sequence_values: dict[str, dict[str, Any]] = (
             {self.display_name: get_value_map(declaration)} if "values" in group else {}
         )
@@ -1134,12 +1190,18 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
 """声明 ``class`` 字段可引用的机制类注册表（键 = 类名）。"""
 
 
-def build_dailies(script_name: str, script_display_name: str) -> list[Daily]:
+def build_dailies(
+    script_name: str,
+    script_display_name: str,
+    *,
+    declarations: list[dict] | None = None,
+) -> list[Daily]:
     """按声明构造一组新日常，由调用方持有；不缓存或读写原生配置。
 
     Args:
         script_name: 脚本标识名。
         script_display_name: 脚本展示名（日志与报错用）。
+        declarations: 已读取的声明；省略时读取该脚本的日常声明。
 
     Returns:
         与声明顺序一致的日常对象列表。
@@ -1149,7 +1211,9 @@ def build_dailies(script_name: str, script_display_name: str) -> list[Daily]:
     """
     dailies: list[Daily] = []
     seen: set[str] = set()
-    for declaration in get_daily_configs(script_name):
+    if declarations is None:
+        declarations = get_daily_configs(script_name)
+    for declaration in declarations:
         assert "class" in declaration
         class_name = declaration["class"]
         assert class_name in DAILY_CLASSES, (

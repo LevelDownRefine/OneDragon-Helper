@@ -191,7 +191,7 @@ class TestSharedRegistry(unittest.TestCase):
         # 构造期对齐已收口到 __init__：首次构造调用一次，缓存命中不再调用
         init.assert_called_once()
 
-    def test_menu_and_updates_use_the_same_daily(self):
+    def test_resource_read_and_updates_use_the_bound_daily(self):
         cfg = set_config._CONFIGS["ok-ww"]()
         daily = cfg._dispatch_daily("每日任务")
         source = {"path": "options.json"}
@@ -206,7 +206,10 @@ class TestSharedRegistry(unittest.TestCase):
         ):
             set_config.set_config("ok-ww", "每日任务", "凝素领域", 3)
             self.assertEqual(
-                set_config.get_task_lists("ok-ww", "每日任务", source), ["甲"]
+                set_config._CONFIGS["ok-ww"]()
+                ._dispatch_daily("每日任务")
+                .get_task_lists(source),
+                ["甲"],
             )
         update.assert_called_once_with("凝素领域", 3)
         reader.assert_called_once_with(source)
