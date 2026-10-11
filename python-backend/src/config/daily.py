@@ -14,7 +14,6 @@ from typing import Any
 
 from src.config.maa_activity import read_activity_stages
 from src.config.task_config import (
-    get_daily_configs,
     get_options,
     get_physical_name,
     get_value_map,
@@ -71,7 +70,7 @@ class Daily:
         self.display_name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
         self._declaration = deepcopy(declaration)
-        self._parse_landing(self._declaration)
+        self._parse_landing(declaration)
 
     def menu(self) -> dict:
         """返回本日常菜单；按需展开两级选项，结果独立于声明与原生配置状态。"""
@@ -1195,26 +1194,23 @@ DAILY_CLASSES: dict[str, type[Daily]] = {
 def build_dailies(
     script_name: str,
     script_display_name: str,
-    *,
-    declarations: list[dict] | None = None,
+    declarations: list[dict],
 ) -> list[Daily]:
     """按声明构造一组新日常，由调用方持有；不缓存或读写原生配置。
 
     Args:
         script_name: 脚本标识名。
         script_display_name: 脚本展示名（日志与报错用）。
-        declarations: 已读取的声明；省略时读取该脚本的日常声明。
+        declarations: 已读取的日常声明。
 
     Returns:
         与声明顺序一致的日常对象列表。
 
     Raises:
-        AssertionError: 缺少日常声明、机制类未知或物理名重复。
+        AssertionError: 声明缺少机制类、机制类未知或物理名重复。
     """
     dailies: list[Daily] = []
     seen: set[str] = set()
-    if declarations is None:
-        declarations = get_daily_configs(script_name)
     for declaration in declarations:
         assert "class" in declaration
         class_name = declaration["class"]

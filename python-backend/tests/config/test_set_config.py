@@ -104,17 +104,22 @@ class TestConfigRelPaths(unittest.TestCase):
 
 class TestTaskBuilders(unittest.TestCase):
     def test_builders_create_fresh_objects_without_native_config_io(self):
-        for module, builder, name in (
-            (daily_mod, daily_mod.build_dailies, "每日任务"),
-            (weekly_mod, weekly_mod.build_weeklies, "幻梦游园"),
+        for module, builder, name, args in (
+            (
+                daily_mod,
+                daily_mod.build_dailies,
+                "每日任务",
+                (get_daily_configs("ok-ww"),),
+            ),
+            (weekly_mod, weekly_mod.build_weeklies, "幻梦游园", ()),
         ):
             with (
                 self.subTest(builder=builder.__name__),
                 patch.object(module, "load_script_config") as read,
                 patch.object(module, "save_script_config") as save,
             ):
-                first = builder("ok-ww", "鸣潮")
-                second = builder("ok-ww", "鸣潮")
+                first = builder("ok-ww", "鸣潮", *args)
+                second = builder("ok-ww", "鸣潮", *args)
                 self.assertEqual([task.display_name for task in first], [name])
                 self.assertIsNot(first, second)
                 self.assertIsNot(first[0], second[0])
@@ -133,10 +138,9 @@ class TestTaskBuilders(unittest.TestCase):
         ):
             with (
                 self.subTest(error=message),
-                patch.object(daily_mod, "get_daily_configs", return_value=declarations),
                 self.assertRaisesRegex(AssertionError, message),
             ):
-                daily_mod.build_dailies("ok-ww", "鸣潮")
+                daily_mod.build_dailies("ok-ww", "鸣潮", declarations)
 
 
 class TestSharedRegistry(unittest.TestCase):
@@ -150,7 +154,7 @@ class TestSharedRegistry(unittest.TestCase):
                 set_config, "build_weeklies", wraps=set_config.build_weeklies
             ) as build_weeklies,
             patch.object(
-                daily_mod, "get_daily_configs", wraps=daily_mod.get_daily_configs
+                set_config, "get_daily_configs", wraps=set_config.get_daily_configs
             ) as declarations,
             patch.object(
                 daily_mod, "load_template", wraps=daily_mod.load_template
@@ -182,7 +186,7 @@ class TestSharedRegistry(unittest.TestCase):
             self.assertIs(set_config._CONFIGS["MAA"](), cfg)
             self.assertIs(set_config._CONFIGS["MAA"]()._dailies, dailies)
             self.assertIs(set_config._CONFIGS["MAA"]()._weeklies, weeklies)
-            build_dailies.assert_called_once_with("MAA", "粥")
+            build_dailies.assert_called_once_with("MAA", "粥", get_daily_configs("MAA"))
             build_weeklies.assert_called_once_with("MAA", "粥")
             declarations.assert_called_once_with("MAA")
             template.assert_not_called()
@@ -197,7 +201,7 @@ class TestSharedRegistry(unittest.TestCase):
         source = {"path": "options.json"}
         with (
             patch.object(
-                daily_mod,
+                set_config,
                 "get_daily_configs",
                 side_effect=AssertionError("共享实例不应重复解析声明"),
             ),
@@ -342,7 +346,7 @@ class TestScriptConfigBase(unittest.TestCase):
 
     def test_set_daily_task_without_daily_raises(self):
         """写路径必须给出日常展示名（单日常脚本也不例外）。"""
-        with patch("src.config.daily.get_daily_configs", return_value=[]):
+        with patch("src.config.set_config.get_daily_configs", return_value=[]):
             cfg = ScriptConfig()
         cfg.display_name = "测试"
         with (
@@ -357,7 +361,7 @@ class TestGetGameExePath(unittest.TestCase):
 
     def test_unadapted_base_returns_none(self):
         """基类未适配（无资源声明）→ None，不触发任何读取"""
-        with patch("src.config.daily.get_daily_configs", return_value=[]):
+        with patch("src.config.set_config.get_daily_configs", return_value=[]):
             cfg = ScriptConfig()
         with patch("src.config.set_config.load_game_config") as mock_load:
             got = cfg.get_game_exe_path()

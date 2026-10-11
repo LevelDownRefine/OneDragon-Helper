@@ -8,7 +8,7 @@ from functools import cache
 
 from src.config.daily import Daily, MaaDaily, build_dailies
 from src.config.script_resources import ScriptResources, get_script_resources
-from src.config.task_config import load_daily_map, load_weekly_map
+from src.config.task_config import get_daily_configs, load_daily_map, load_weekly_map
 from src.config.weekly import Weekly, build_weeklies
 from src.utils.utils_dict import get_field
 from src.utils.utils_sub_config import (
@@ -40,7 +40,9 @@ class ScriptConfig:
 
     def __init__(self) -> None:
         """按声明装配日常与周常对象，不读写原生配置。"""
-        self._dailies: list[Daily] = build_dailies(self._script_name, self.display_name)
+        self._dailies: list[Daily] = build_dailies(
+            self._script_name, self.display_name, get_daily_configs(self._script_name)
+        )
         self._weeklies: list[Weekly] = build_weeklies(
             self._script_name, self.display_name
         )
@@ -456,8 +458,7 @@ def get_daily_map(script_name: str | None = None) -> dict:
     return {
         name: {
             "dailies": [
-                daily.menu()
-                for daily in build_dailies(name, name, declarations=declarations)
+                daily.menu() for daily in build_dailies(name, name, declarations)
             ]
         }
         for name, declarations in load_daily_map().items()

@@ -154,7 +154,7 @@ class TestMaaDeclaredMenus(unittest.TestCase):
                 return_value={"MAA": declarations},
             ),
             patch(
-                "src.config.daily.get_daily_configs",
+                "src.config.set_config.get_daily_configs",
                 side_effect=AssertionError("声明已传入"),
             ),
             patch.object(ArknightsConfig, "_init_config") as init,
