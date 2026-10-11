@@ -8,6 +8,8 @@ import unittest
 from datetime import datetime
 from unittest import mock
 
+import psutil
+
 from src.utils import get_root_dir
 from src.utils.utils_runner import (
     ProcessTarget,
@@ -383,6 +385,40 @@ class TestKillProcesses(unittest.TestCase):
         ):
             kill_processes([ProcessTarget(name=f"r{i}.exe") for i in range(3)])
         self.assertEqual(mock_iter.call_count, 2)
+
+    def test_reused_parent_pid_does_not_kill_older_process_or_its_children(self):
+        target = SimProcess("game.exe")
+        stale = SimProcess("system.exe", parent=target)
+        stale.created = target.created - 100
+        unrelated_child = SimProcess("unrelated.exe", parent=stale)
+        real_child = SimProcess("worker.exe", parent=target)
+        with (
+            self._patch_iter([target, stale, unrelated_child, real_child]),
+            self._patch_wait([target, real_child], []),
+        ):
+            killed = kill_processes([ProcessTarget(name="game.exe")])
+        self.assertEqual(len(killed), 2)
+        self.assertTrue(target.terminated)
+        self.assertTrue(real_child.terminated)
+        self.assertFalse(stale.terminated)
+        self.assertFalse(unrelated_child.terminated)
+
+    def test_access_denied_on_terminate_is_not_waited_or_reported_as_killed(self):
+        denied = SimProcess("game.exe")
+        allowed = SimProcess("game.exe")
+        with (
+            self._patch_iter([denied, allowed]),
+            mock.patch.object(
+                denied, "terminate", side_effect=psutil.AccessDenied(denied.pid)
+            ),
+            self._patch_wait([allowed], []) as wait,
+            self.assertLogs("src.utils.utils_runner", level="WARNING"),
+        ):
+            killed = kill_processes([ProcessTarget(name="game.exe")])
+        wait.assert_called_once_with([allowed], timeout=3)
+        self.assertEqual(killed, [f"game.exe({allowed.pid})"])
+        self.assertFalse(denied.terminated)
+        self.assertTrue(allowed.terminated)
 
     def test_no_match_returns_empty(self):
         with self._patch_iter([SimProcess("other.exe")]):
