@@ -1,22 +1,24 @@
 # python-backend/src/update — 手动更新
 
-集中助手本体的更新协议、服务、运行锁、安装事务和独立更新器，无 Qt 依赖。
+助手的发布配置与更新会话，无 Qt 依赖。更新内核维护于
+[LevelDownRefine/updater](https://github.com/LevelDownRefine/updater)，通过锁定提交的
+`leveldown-updater` 依赖安装，不再在本仓复制下载、锁和安装事务代码。
 GUI 弹窗和控制器留在 `python-gui/src/gui`，通过 `AppService` 薄委托调用 `UpdateService`。
 包导入不创建工作目录，也不检查或下载更新。
 
 | 模块 | 职责 |
 |------|------|
-| service.py | 本地状态、显式检查稳定 Release、下载校验与安装交接；UpdateSession 保留 CLI 会话状态 |
-| package.py | 清单、哈希、路径校验及本地/远端 ZIP 共用的流式解包 |
-| remote.py | remotezip 入口、HTTP 响应校验、分块取消与按区间的断点缓存 |
-| runtime.py | 安装目录运行锁、更新闸门、同目录进程识别 |
-| installer.py | 程序文件替换与跳过、持久化恢复记录、失败回滚及中断事务采纳 |
-| __main__.py | 独立更新器入口；等待调用进程退出，执行安装/恢复并记录结果 |
+| policy.py | 助手仓库、附件名、Qt/Rust 布局、必要文件、用户文件保护和进程规则 |
+| service.py | UpdateService 绑定安装根目录与发布规则；UpdateSession 连接共享任务执行器 |
+| package.py | 为发布工具和助手绑定同一套包规则 |
+| runtime.py | 应用启动闸门绑定助手规则 |
+| __main__.py | 将助手规则传给 updater.worker 的独立打包入口 |
 
 `tools/release_package.py` 共用 `package.py`；`python-gui/src/gui/bootstrap.py` 在导入 Qt 前取得运行锁。
 更新器由 `deploy/OneDragon-Helper-Updater.spec` 从 `__main__.py` 打成独立 onefile EXE。
 源码调试入口为 `uv run --directory python-backend python -m src.update --help`，安装/恢复仅用于独立测试副本。
-对应测试位于 `python-backend/tests/update/`；GUI 和 Windows EXE 集成测试分别保留在原目录。
+核心测试迁至 updater 仓库；`python-backend/tests/update/` 保留助手的前端布局、交接和
+会话测试，GUI 和 Windows EXE 集成测试分别保留在原目录。
 
 ## 手动更新内核
 

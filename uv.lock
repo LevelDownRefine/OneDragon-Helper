@@ -385,6 +385,18 @@ wheels = [
 ]
 
 [[package]]
+name = "leveldown-updater"
+version = "0.1.0"
+source = { git = "https://github.com/LevelDownRefine/updater.git?rev=9f3c8523548fe903d2b15c5bc1d0dc4d630ba9d8#9f3c8523548fe903d2b15c5bc1d0dc4d630ba9d8" }
+dependencies = [
+    { name = "packaging" },
+    { name = "portalocker", extra = ["win32"] },
+    { name = "psutil" },
+    { name = "remotezip" },
+    { name = "requests" },
+]
+
+[[package]]
 name = "macholib"
 version = "1.16.4"
 source = { registry = "https://pypi.org/simple" }
@@ -428,14 +440,12 @@ dependencies = [
     { name = "colorama" },
     { name = "jsonrpcserver" },
     { name = "keyring" },
-    { name = "packaging" },
-    { name = "portalocker", extra = ["win32"] },
+    { name = "leveldown-updater" },
     { name = "psutil" },
     { name = "pycaw" },
     { name = "pyinstaller" },
     { name = "pyuac" },
     { name = "pywin32", marker = "sys_platform == 'win32'" },
-    { name = "remotezip" },
     { name = "requests" },
     { name = "ruamel-yaml" },
     { name = "ruff" },
@@ -446,14 +456,12 @@ requires-dist = [
     { name = "colorama", specifier = "==0.4.6" },
     { name = "jsonrpcserver", specifier = "==5.0.9" },
     { name = "keyring", specifier = ">=24.0.0" },
-    { name = "packaging", specifier = "==26.0" },
-    { name = "portalocker", extras = ["win32"], specifier = "==4.4.0" },
+    { name = "leveldown-updater", git = "https://github.com/LevelDownRefine/updater.git?rev=9f3c8523548fe903d2b15c5bc1d0dc4d630ba9d8" },
     { name = "psutil", specifier = "==6.1.1" },
     { name = "pycaw", specifier = "==20220416" },
     { name = "pyinstaller", specifier = "==6.19.0" },
     { name = "pyuac", specifier = "==0.0.3" },
     { name = "pywin32", marker = "sys_platform == 'win32'", specifier = "==311" },
-    { name = "remotezip", specifier = "==0.12.6" },
     { name = "requests", specifier = "==2.33.0" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "ruff", specifier = ">=0.15.5" },

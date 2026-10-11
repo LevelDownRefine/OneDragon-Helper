@@ -11,19 +11,12 @@ import unittest
 from pathlib import Path
 
 import psutil
+from updater.package import file_digest
+from updater.runtime import FileLease, child_environment
+from updater.storage import write_json
 
-from src.update.installer import write_json
-from src.update.package import (
-    APP_EXE,
-    CLI_EXE,
-    RUNNER_EXE,
-    UPDATER_EXE,
-    file_digest,
-    load_manifest,
-    manifest_frontend,
-    write_manifest,
-)
-from src.update.runtime import FileLease, child_environment
+from src.update.package import load_manifest, manifest_frontend, write_manifest
+from src.update.policy import APP_EXE, CLI_EXE, RUNNER_EXE, UPDATER_EXE
 from tests.exe import package_dir
 from tests.exe.pipe_output import PipeOutput
 

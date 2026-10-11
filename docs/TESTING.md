@@ -29,7 +29,7 @@ python -m unittest discover -s python-gui/tests -t python-gui -p "test*.py"
 | `rust-gui/tests/` | Rust 窗口、同名控制器/弹窗、原生能力与 CLI 通信；由 Cargo 运行 |
 | `python-backend/tests/config/` | 配置适配器、声明、日常、周常及 golden 验证 |
 | `python-backend/tests/service/` | 配置服务、链生成、调度和运行编排 |
-| `python-backend/tests/update/` | 更新包协议、下载服务、运行锁、安装回滚 |
+| `python-backend/tests/update/` | 助手发布布局、更新进程交接与会话；内核测试归 updater 仓库 |
 | `python-backend/tests/utils/` | 通用工具、文件读写、路径与系统操作 |
 | `python-backend/tests/log/` | 日志解析与邮件通知 |
 | `python-backend/tests/tools/` | 选项同步脚本的离线测试 |
@@ -65,7 +65,8 @@ exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定�
 再次启动保留修改，以及 `--version` 与构建元数据一致；测试前后和 ZIP 归档前均检查发布文件清单。
 测试后尝试清理临时副本，清理失败仅警告并给出残留路径；构建结果取决于 EXE 测试结果与发布包校验。
 
-`python-backend/tests/update/` 覆盖更新包边界、下载校验与取消、程序文件替换、故障回滚和中断恢复；
+独立 updater 仓库覆盖更新包边界、下载校验与取消、程序文件替换、故障回滚和中断恢复；
+`python-backend/tests/update/` 覆盖助手的 Qt/Rust 发布布局、更新进程交接和会话；
 `python-backend/tests/exe/test_update_exe.py` 使用临时安装副本真正启动更新器，
 验证升级后的 EXE 可启动、运行中的 Runner 阻止更新、Windows 文件占用时回滚、
 启动闸门先于用户配置初始化，以及独立恢复入口。所有用户文件断言均使用临时夹具。

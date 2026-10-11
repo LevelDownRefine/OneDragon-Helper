@@ -8,11 +8,13 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import psutil
+from updater import service
+from updater import worker as updater
+from updater.package import UpdateError
+from updater.runtime import FileLease, UpdateBusyError
 
-from src.update import __main__ as updater
-from src.update import service
-from src.update.package import APP_EXE, CLI_EXE, QT_CLI_EXE, UpdateError
-from src.update.runtime import FileLease, UpdateBusyError
+from src.update.policy import APP_EXE, CLI_EXE, POLICY, QT_CLI_EXE
+from src.update.service import UpdateService
 from tests.support.update_package import make_package, program_snapshot
 
 
@@ -24,7 +26,7 @@ class RustHandoffTests(unittest.TestCase):
             self.root / ".update/download-test/package", "2.0.0", frontend="rust"
         )
         self.prepared = service.PreparedUpdate(self.package.parent, "2.0.0")
-        self.client = service.UpdateService(self.root, frontend="rust")
+        self.client = UpdateService(self.root, frontend="rust")
         self.enterContext(patch.object(sys, "frozen", True, create=True))
         self.cli = Mock(pid=os.getpid())
         self.gui = Mock(pid=999991)
@@ -52,13 +54,15 @@ class RustHandoffTests(unittest.TestCase):
 
         with (
             patch.object(service.psutil, "Process", return_value=self.cli),
-            patch.object(service, "helper_processes", return_value=[]) as running,
+            patch.object(service, "application_processes", return_value=[]) as running,
             patch.object(service.subprocess, "Popen", side_effect=start),
         ):
             self.assertEqual(
                 self.client.start_update(self.prepared).name, "result.json"
             )
-        running.assert_called_once_with(self.root, {self.cli.pid, self.gui.pid})
+        running.assert_called_once_with(
+            self.root, {self.cli.pid, self.gui.pid}, policy=POLICY
+        )
         self.assertEqual(program_snapshot(self.root), before)
 
     def test_service_rejects_foreign_parent_or_other_running_cli(self):
@@ -75,7 +79,7 @@ class RustHandoffTests(unittest.TestCase):
                     patch.object(service.psutil, "Process", return_value=self.cli),
                     patch.object(
                         service,
-                        "helper_processes",
+                        "application_processes",
                         return_value=[1234] if kind == "busy" else [],
                     ),
                     patch.object(service.subprocess, "Popen") as spawn,
@@ -93,6 +97,7 @@ class RustHandoffTests(unittest.TestCase):
             frontend_pid=self.gui.pid,
             frontend_created=22.0,
             ready=ready,
+            policy=POLICY,
         )
 
     def processes(self, pid):
@@ -112,7 +117,7 @@ class RustHandoffTests(unittest.TestCase):
         self.cli.wait.side_effect = lambda timeout: wait("cli", timeout)
         self.gui.wait.side_effect = lambda timeout: wait("gui", timeout)
 
-        def install(root, package):
+        def install(root, package, *, policy):
             self.assertEqual((root, package), (self.root, self.package))
             self.assertEqual(exited, ["cli", "gui"])
             with (
@@ -123,7 +128,7 @@ class RustHandoffTests(unittest.TestCase):
 
         with (
             patch.object(updater.psutil, "Process", side_effect=self.processes),
-            patch.object(updater, "helper_processes", return_value=[]) as running,
+            patch.object(updater, "application_processes", return_value=[]) as running,
             patch.object(updater, "install_package", side_effect=install) as installed,
         ):
             self.run_installer(ready)
@@ -148,7 +153,7 @@ class RustHandoffTests(unittest.TestCase):
                 )
                 with (
                     patch.object(updater.psutil, "Process", side_effect=self.processes),
-                    patch.object(updater, "helper_processes", return_value=[]),
+                    patch.object(updater, "application_processes", return_value=[]),
                     patch.object(updater, "install_package") as install,
                     self.assertRaises(UpdateBusyError),
                 ):
@@ -165,7 +170,7 @@ class QtCliHandoffTests(RustHandoffTests):
             self.root / ".update/download-test/package", "2.0.0"
         )
         self.prepared = service.PreparedUpdate(self.package.parent, "2.0.0")
-        self.client = service.UpdateService(self.root, frontend="qt")
+        self.client = UpdateService(self.root, frontend="qt")
         self.cli.exe.return_value = str(self.root / QT_CLI_EXE)
         self.gui.exe.return_value = str(self.root / APP_EXE)
 
@@ -181,7 +186,7 @@ class QtCliHandoffTests(RustHandoffTests):
                     patch.object(service.psutil, "Process", return_value=self.cli),
                     patch.object(
                         service,
-                        "helper_processes",
+                        "application_processes",
                         return_value=[1234] if kind == "busy" else [],
                     ),
                     patch.object(service.subprocess, "Popen") as spawn,

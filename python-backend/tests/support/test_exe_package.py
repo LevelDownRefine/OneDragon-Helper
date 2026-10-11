@@ -5,7 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.update.package import CLI_EXE, MANIFEST, UpdateError
+from updater.package import MANIFEST, UpdateError
+
+from src.update.policy import CLI_EXE
 from tests.exe import is_frontend_package
 from tests.support.update_package import make_package
 

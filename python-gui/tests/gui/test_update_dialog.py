@@ -9,9 +9,9 @@ from unittest.mock import Mock, patch
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
+from updater.package import UpdateCancelled, UpdateError
 
 from gui.controllers.update import UpdateController
-from src.update.package import UpdateCancelled, UpdateError
 from src.update.service import (
     PreparedUpdate,
     ReleaseUpdate,

@@ -390,7 +390,9 @@ def _call(service, method: str) -> int:
 
 def _installed_frontend() -> str:
     """更新目标来自安装清单，与连接 CLI 的前端无关。"""
-    from src.update.package import MANIFEST, load_manifest, manifest_frontend
+    from updater.package import MANIFEST
+
+    from src.update.package import load_manifest, manifest_frontend
     from src.utils import get_root_dir
 
     root = Path(get_root_dir())
@@ -403,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
     """更新闸门先于配置初始化；整个 stdio 会话持有运行共享锁。"""
     arguments = sys.argv[1:] if argv is None else argv
     if getattr(sys, "frozen", False):
-        from src.update.package import APP_EXE
+        from src.update.policy import APP_EXE
         from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
 
         os.environ.setdefault(

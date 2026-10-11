@@ -5,15 +5,10 @@ import shutil
 import zipfile
 from pathlib import Path
 
-from src.update.package import (
-    MANIFEST,
-    REQUIRED_FILES,
-    RUST_REQUIRED_FILES,
-    VERSION_FILE,
-    file_digest,
-    load_manifest,
-    write_manifest,
-)
+from updater.package import MANIFEST, VERSION_FILE, file_digest
+
+from src.update.package import load_manifest, write_manifest
+from src.update.policy import REQUIRED_FILES, RUST_REQUIRED_FILES
 
 
 def make_package(root: Path, version="1.0.0", extra=None, *, frontend="qt"):

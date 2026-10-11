@@ -3,7 +3,9 @@
 import os
 import pathlib
 
-from src.update.package import MANIFEST, load_manifest, manifest_frontend
+from updater.package import MANIFEST
+
+from src.update.package import load_manifest, manifest_frontend
 
 
 def project_root() -> str:

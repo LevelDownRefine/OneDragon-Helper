@@ -14,13 +14,12 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
-from src.update.package import (  # noqa: E402
+from src.update.package import load_manifest, manifest_frontend  # noqa: E402
+from src.update.policy import (  # noqa: E402
     APP_EXE,
     RUNNER_EXE,
     RUST_RUNTIME,
     UPDATER_EXE,
-    load_manifest,
-    manifest_frontend,
 )
 from tools.release_package import (  # noqa: E402
     archive_package,

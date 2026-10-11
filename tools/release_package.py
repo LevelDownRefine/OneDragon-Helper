@@ -19,16 +19,19 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
+from updater.package import MANIFEST  # noqa: E402
+
 from src.update.package import (  # noqa: E402
-    CLI_EXE,
-    MANIFEST,
-    QT_CLI_EXE,
-    RUST_RUNTIME,
-    UPDATER_EXE,
     load_manifest,
     managed_path,
     manifest_frontend,
     write_manifest,
+)
+from src.update.policy import (  # noqa: E402
+    CLI_EXE,
+    QT_CLI_EXE,
+    RUST_RUNTIME,
+    UPDATER_EXE,
 )
 
 EXE_NAME = "OneDragon-Helper.exe"

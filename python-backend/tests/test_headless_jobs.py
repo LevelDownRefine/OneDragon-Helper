@@ -11,7 +11,8 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from src.update.runtime import FileLease, UpdateBusyError
+from updater.runtime import FileLease, UpdateBusyError
+
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture
 
 
@@ -125,7 +126,7 @@ class HeadlessJobTests(unittest.TestCase):
             "with patch('src.utils.get_root_dir', return_value=root):",
             """
 def download(release, *, progress, cancelled):
-    from src.update.package import UpdateCancelled
+    from updater.package import UpdateCancelled
     progress(7, 10)
     if not cancelled.wait(10):
         raise TimeoutError('cancel did not arrive')

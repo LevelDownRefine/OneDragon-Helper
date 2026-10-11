@@ -10,9 +10,9 @@ import unittest
 from pathlib import Path
 
 import psutil
+from updater.runtime import FileLease, UpdateBusyError, child_environment
 
-from src.update.package import CLI_EXE, QT_CLI_EXE
-from src.update.runtime import FileLease, UpdateBusyError, child_environment
+from src.update.policy import CLI_EXE, QT_CLI_EXE
 from tests.exe import project_root
 from tests.exe.pipe_output import PipeOutput
 from tools.release_package import resource_files

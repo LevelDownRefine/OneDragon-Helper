@@ -98,7 +98,7 @@ def get_root_dir() -> str:
     :return: 仓库根目录（python-backend/ 的父目录）；冻结时为安装根目录（Qt CLI 位于 _internal/cli）
     """
     if getattr(sys, "frozen", False):
-        from src.update.package import QT_CLI_EXE
+        from src.update.policy import QT_CLI_EXE
 
         executable = Path(sys.executable)
         if executable.as_posix().endswith("/" + QT_CLI_EXE):

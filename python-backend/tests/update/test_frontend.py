@@ -8,20 +8,19 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from updater import service
+from updater.installer import install_package
+from updater.package import MANIFEST, VERSION_FILE, UpdateError
+
 from src.service.app_service import AppService
-from src.update import service
-from src.update.installer import install_package
 from src.update.package import (
-    CLI_EXE,
-    MANIFEST,
-    RUST_RUNTIME,
-    VERSION_FILE,
-    UpdateError,
     load_manifest,
     manifest_frontend,
     parse_manifest,
     unpack_package,
 )
+from src.update.policy import CLI_EXE, POLICY, RUST_RUNTIME
+from src.update.service import UpdateService
 from tests.support.update_package import archive_package, make_package, program_snapshot
 
 
@@ -45,7 +44,7 @@ class FrontendPackageTests(unittest.TestCase):
             json.dumps({"version": "1.0.0"}), encoding="utf-8"
         )
         # 保持哈希正确，单独验证身份元数据，而非因文件被改动提前失败。
-        from src.update.package import file_digest
+        from updater.package import file_digest
 
         manifest = load_manifest(root)
         manifest["files"][VERSION_FILE] = file_digest(root / VERSION_FILE)
@@ -89,7 +88,7 @@ class FrontendPackageTests(unittest.TestCase):
                 user.write_bytes(b"user configuration")
                 before = program_snapshot(root)
                 with self.assertRaisesRegex(UpdateError, "前端类型不一致"):
-                    install_package(root, target)
+                    install_package(root, target, policy=POLICY)
                 self.assertEqual(program_snapshot(root), before)
                 self.assertEqual(user.read_bytes(), b"user configuration")
                 self.assertFalse((root / ".update/transaction.json").exists())
@@ -99,16 +98,16 @@ class FrontendPackageTests(unittest.TestCase):
         target = make_package(self.directory / "next", "2.0.0", frontend="rust")
         user = root / "config/wallpaper.json"
         user.write_bytes(b"user wallpaper")
-        install_package(root, target)
+        install_package(root, target, policy=POLICY)
         self.assertEqual(load_manifest(root, verify=True)["version"], "2.0.0")
         self.assertEqual((root / CLI_EXE).read_bytes(), b"program 2.0.0")
         self.assertEqual(user.read_bytes(), b"user wallpaper")
 
     def test_release_selection_and_local_info_do_not_mix_frontends(self):
-        prefix = f"https://github.com/{service.REPOSITORY}/releases/download/v2.0.0/"
+        prefix = f"https://github.com/{POLICY.repository}/releases/download/v2.0.0/"
         assets = [
             {"name": name, "browser_download_url": prefix + name, "size": 100}
-            for archive in (service.ZIP_NAME, service.RUST_ZIP_NAME)
+            for archive in (POLICY.archives["qt"], POLICY.archives["rust"])
             for name in (archive, archive + ".sha256")
         ]
         data = {
@@ -122,18 +121,19 @@ class FrontendPackageTests(unittest.TestCase):
         response.__enter__.return_value = response
         response.json.return_value = data
         for frontend, name in (
-            ("qt", service.ZIP_NAME),
-            ("rust", service.RUST_ZIP_NAME),
+            ("qt", POLICY.archives["qt"]),
+            ("rust", POLICY.archives["rust"]),
         ):
             with self.subTest(frontend=frontend):
                 root = make_package(self.directory / frontend, frontend=frontend)
-                client = service.UpdateService(root, frontend=frontend)
+                client = UpdateService(root, frontend=frontend)
                 with patch("requests.get", return_value=response):
                     result = client.check_update()
                 self.assertEqual(result.archive_url, prefix + name)
         with (
-            patch.object(
-                service, "get_root_dir", return_value=str(self.directory / "qt")
+            patch(
+                "src.update.service.get_root_dir",
+                return_value=str(self.directory / "qt"),
             ),
             patch("requests.get") as network,
         ):
@@ -149,13 +149,13 @@ class FrontendPackageTests(unittest.TestCase):
 
     def test_mislabelled_download_is_cleaned_and_never_handed_to_installer(self):
         root = make_package(self.directory / "installed", frontend="rust")
-        client = service.UpdateService(root, frontend="rust")
-        prefix = f"https://github.com/{service.REPOSITORY}/releases/download/v2.0.0/"
+        client = UpdateService(root, frontend="rust")
+        prefix = f"https://github.com/{POLICY.repository}/releases/download/v2.0.0/"
         release = service.ReleaseUpdate(
             "2.0.0",
             "",
-            prefix + service.RUST_ZIP_NAME,
-            prefix + service.RUST_ZIP_NAME + ".sha256",
+            prefix + POLICY.archives["rust"],
+            prefix + POLICY.archives["rust"] + ".sha256",
             100,
         )
 
@@ -166,7 +166,7 @@ class FrontendPackageTests(unittest.TestCase):
         before = program_snapshot(root)
         with (
             patch.object(client, "_prepare_incremental", side_effect=prepare),
-            self.assertLogs("src.update.service", level="ERROR"),
+            self.assertLogs("updater.service", level="ERROR"),
             self.assertRaisesRegex(UpdateError, "前端类型不一致"),
         ):
             client.prepare_update(release)
@@ -186,8 +186,8 @@ class FrontendPackageTests(unittest.TestCase):
         root = make_package(self.directory / "installed", frontend="rust")
         target = make_package(self.directory / "next", "2.0.0", frontend="rust")
         archive = archive_package(target, self.directory / "rust.zip").read_bytes()
-        client = service.UpdateService(root, frontend="rust")
-        prefix = f"https://github.com/{service.REPOSITORY}/releases/download/v2.0.0/"
+        client = UpdateService(root, frontend="rust")
+        prefix = f"https://github.com/{POLICY.repository}/releases/download/v2.0.0/"
         release = service.ReleaseUpdate(
             "2.0.0",
             "",
@@ -197,7 +197,7 @@ class FrontendPackageTests(unittest.TestCase):
         )
         checksum = hashlib.sha256(archive).hexdigest()
         before = program_snapshot(root)
-        for name in (service.ZIP_NAME, service.RUST_ZIP_NAME):
+        for name in (POLICY.archives["qt"], POLICY.archives["rust"]):
             with self.subTest(checksum_filename=name):
                 responses = []
                 for content in (f"{checksum}  {name}\n".encode(), archive):
@@ -209,7 +209,7 @@ class FrontendPackageTests(unittest.TestCase):
                     patch.object(client, "_prepare_incremental", return_value=False),
                     patch("requests.get", side_effect=responses) as network,
                 ):
-                    if name == service.ZIP_NAME:
+                    if name == POLICY.archives["qt"]:
                         with (
                             self.assertLogs(service.__name__, level="ERROR"),
                             self.assertRaisesRegex(UpdateError, "SHA-256 文件格式"),

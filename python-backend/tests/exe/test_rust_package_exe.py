@@ -4,7 +4,8 @@ import sys
 import unittest
 from xml.etree import ElementTree
 
-from src.update.package import APP_EXE, CLI_EXE, RUNNER_EXE, UPDATER_EXE, load_manifest
+from src.update.package import load_manifest
+from src.update.policy import APP_EXE, CLI_EXE, RUNNER_EXE, UPDATER_EXE
 from tests.exe import is_frontend_package, package_dir
 
 PACKAGE = package_dir()

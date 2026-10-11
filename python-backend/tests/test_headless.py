@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, create_autospec, patch
 
 from jsonrpcserver import dispatch_to_serializable
+from updater.runtime import FileLease, UpdateBusyError
 
 from src.headless import (
     InvalidParams,
@@ -27,7 +28,6 @@ from src.service.app_service import AppService
 from src.service.daily_plan import DailyPlanOptions
 from src.service.schedule import RunOptions, StartupOptions
 from src.service.script_service import ScriptEdit
-from src.update.runtime import FileLease, UpdateBusyError
 from src.utils.utils_io import load_data
 from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture
@@ -447,7 +447,7 @@ def record(keys, target, **kwargs):
     import json
     import os
     from pathlib import Path
-    from src.update.runtime import FileLease, UpdateBusyError
+    from updater.runtime import FileLease, UpdateBusyError
     from src.utils.utils_shutdown import _confirm_shutdown, SHUTDOWN_UI_ENV
     from unittest.mock import Mock
     with patch.dict(os.environ, {SHUTDOWN_UI_ENV: 'fake-rust.exe'}), patch('src.utils.utils_shutdown.shutdown_ui_supported', return_value=True), patch('src.utils.utils_shutdown.subprocess.run', return_value=Mock(returncode=42)) as confirm:
