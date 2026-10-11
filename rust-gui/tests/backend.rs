@@ -129,7 +129,7 @@ fn real_cli_round_trip_types_external_changes_and_shutdown() {
     assert!(rejected.refresh_required);
     call(&mut session, "script.view", json!({"script_name": "ok-ww"}));
     let mut command = python(
-        "import sys\nfrom pathlib import Path\nfrom src.update.runtime import FileLease\nwith FileLease(Path(sys.argv[1])): pass",
+        "import sys\nfrom pathlib import Path\nfrom updater.runtime import FileLease\nwith FileLease(Path(sys.argv[1])): pass",
     );
     let lock = root.path().join(".update/runtime.lock");
     assert!(lock.is_file());
