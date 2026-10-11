@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""Rust GUI 的独立 Python 后端；onedir，不携带 Qt 或外部脚本环境。"""
+"""两个 GUI 共用的独立 Python 后端；onedir，不携带 Qt 或外部脚本环境。"""
 
 import _hashlib
 import _ssl
@@ -57,6 +57,7 @@ exe = EXE(
     exclude_binaries=True,
     name="OneDragon-Helper-CLI",
     console=True,
+    contents_directory="_internal",
     upx=False,
     icon=[str(root / "assets/ds.ico")],
 )

@@ -17,6 +17,7 @@ class CliSession(QObject):
     succeeded = Signal(int, object)
     failed = Signal(int, object)
     recovered = Signal()
+    busyChanged = Signal()
 
     READ_METHODS = {
         "app.snapshot",
@@ -31,6 +32,8 @@ class CliSession(QObject):
         "wallpaper.view",
         "plan.view",
         "run.view",
+        "run.saved",
+        "update.view",
     }
 
     def __init__(self, client, factory, parent=None):
@@ -42,6 +45,7 @@ class CliSession(QObject):
         self._callbacks = {}
         self._recovery_pending = False
         self._closing = False
+        self._held_client = None
         self._connect()
         self.succeeded.connect(self._success)
         self.failed.connect(self._failure)
@@ -54,6 +58,35 @@ class CliSession(QObject):
     def usable(self):
         return self._client.usable and not self._closing
 
+    @property
+    def busy(self):
+        return self._held_client is not None
+
+    def hold(self):
+        """后台写入及安装交接结束前保留当前进程，禁止另起会话。"""
+        if self.busy or not self.usable:
+            return False
+        self._held_client = self._client
+        self._client.protect()
+        self._client.closed.connect(self.release)
+        self.busyChanged.emit()
+        return True
+
+    def release(self):
+        """断线任务等旧进程完成 EOF 清理再释放，不能并发重建写入会话。"""
+        client = self._held_client
+        if client is None or (not client.usable and client.running):
+            return
+        client.closed.disconnect(self.release)
+        client.unprotect()
+        self._held_client = None
+        self.busyChanged.emit()
+
+    def retire(self):
+        """结果不明时送 EOF 等后台操作结束，保留保护和租约直到进程退出。"""
+        self._client.close()
+        self.release()
+
     def detach(self):
         """GUI 退出后不再交付响应，底层进程仍由 launcher 排空关闭。"""
         self._closing = True
@@ -64,6 +97,8 @@ class CliSession(QObject):
         if self._closing:
             raise RuntimeError("GUI 正在退出")
         if not self.usable:
+            if self.busy:
+                raise RuntimeError("后台操作正在结束，请稍后刷新；不要重复提交")
             if method not in self.READ_METHODS or self._factory is None:
                 raise RuntimeError("CLI 会话已失效，请刷新后再操作")
             previous = self._client
@@ -160,6 +195,7 @@ class CliClient(QObject):
         self._buffer = bytearray()
         self._closing = False
         self._broken = False
+        self._protected = False
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(timeout_ms)
@@ -294,7 +330,20 @@ class CliClient(QObject):
         self._active = None
         for request_id, _ in pending:
             self.failed.emit(request_id, CliFailure("transport_failed", message))
-        self._process.kill()
+        if self._protected:
+            self._process.closeWriteChannel()
+            if not self.running:
+                self.closed.emit()
+        else:
+            self._process.kill()
+
+    def protect(self):
+        """EOF 后允许服务完成后台写入，不强杀恢复或安装准备。"""
+        self._protected = True
+        self._close_timer.stop()
+
+    def unprotect(self):
+        self._protected = False
 
     def close(self):
         """排空已接收请求后发送 EOF；逾期结束子进程。"""
@@ -305,7 +354,8 @@ class CliClient(QObject):
         ):
             self.closed.emit()
             return
-        self._close_timer.start()
+        if not self._protected:
+            self._close_timer.start()
         self._send_next()
 
     @property

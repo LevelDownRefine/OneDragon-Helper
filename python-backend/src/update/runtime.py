@@ -11,6 +11,7 @@ import psutil
 from src.update.package import (
     APP_EXE,
     CLI_EXE,
+    QT_CLI_EXE,
     RUNNER_EXE,
     UpdateError,
     linked_path,
@@ -79,7 +80,7 @@ def helper_processes(root: Path, excluded: set[int] | None = None) -> list[int]:
     excluded = excluded or set()
     targets = {
         os.path.normcase(str((root / name).resolve()))
-        for name in (APP_EXE, CLI_EXE, RUNNER_EXE)
+        for name in (APP_EXE, CLI_EXE, QT_CLI_EXE, RUNNER_EXE)
     }
     found = []
     for process in psutil.process_iter():

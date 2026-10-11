@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 APP_EXE = "OneDragon-Helper.exe"
 CLI_EXE = "OneDragon-Helper-CLI.exe"
+QT_CLI_EXE = "_internal/cli/" + CLI_EXE
 RUST_RUNTIME = "vcruntime140.dll"
 RUNNER_EXE = "OneDragon-Helper-Runner.exe"
 UPDATER_EXE = "OneDragon-Helper-Updater.exe"

@@ -11,7 +11,7 @@ import psutil
 
 from src.update import __main__ as updater
 from src.update import service
-from src.update.package import APP_EXE, CLI_EXE, UpdateError
+from src.update.package import APP_EXE, CLI_EXE, QT_CLI_EXE, UpdateError
 from src.update.runtime import FileLease, UpdateBusyError
 from tests.support.update_package import make_package, program_snapshot
 
@@ -155,3 +155,37 @@ class RustHandoffTests(unittest.TestCase):
                     self.run_installer(ready)
                 install.assert_not_called()
                 self.assertEqual(ready.exists(), kind == "timeout")
+
+
+class QtCliHandoffTests(RustHandoffTests):
+    def setUp(self):
+        super().setUp()
+        self.root = make_package(self.directory / "qt-installed")
+        self.package = make_package(
+            self.root / ".update/download-test/package", "2.0.0"
+        )
+        self.prepared = service.PreparedUpdate(self.package.parent, "2.0.0")
+        self.client = service.UpdateService(self.root, frontend="qt")
+        self.cli.exe.return_value = str(self.root / QT_CLI_EXE)
+        self.gui.exe.return_value = str(self.root / APP_EXE)
+
+    def test_service_rejects_foreign_parent_or_other_running_cli(self):
+        # Qt 旧入口仍支持 GUI 直接交接；CLI 入口严格验证父 GUI。
+        for kind in ("foreign", "missing", "busy"):
+            with self.subTest(kind=kind):
+                self.cli.parent.return_value = None if kind == "missing" else self.gui
+                self.gui.exe.return_value = str(
+                    (self.directory if kind == "foreign" else self.root) / APP_EXE
+                )
+                with (
+                    patch.object(service.psutil, "Process", return_value=self.cli),
+                    patch.object(
+                        service,
+                        "helper_processes",
+                        return_value=[1234] if kind == "busy" else [],
+                    ),
+                    patch.object(service.subprocess, "Popen") as spawn,
+                    self.assertRaises(UpdateError),
+                ):
+                    self.client.start_update(self.prepared)
+                spawn.assert_not_called()

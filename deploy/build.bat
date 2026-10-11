@@ -64,8 +64,16 @@ if errorlevel 1 (
 )
 
 echo.
-echo [4/6] 整合：将 Runner 拷入 GUI 目录...
+echo 构建独立 CLI 后端...
+%PY% --noconfirm --distpath "%~dp0dist-cli" %UPX_OPT% "OneDragon-Helper-CLI.spec"
+if errorlevel 1 (
+    exit /b 1
+)
+
+echo [4/6] 整合：将 Runner 和 CLI 拷入 GUI 目录...
 set "GUI_DIR=%~dp0dist\OneDragon-Helper"
+xcopy /E /I /Y "%~dp0dist-cli\OneDragon-Helper" "%GUI_DIR%\_internal\cli"
+if errorlevel 1 exit /b 1
 set "RUNNER_EXE=%~dp0dist\OneDragon-Helper-Runner.exe"
 if not exist "%RUNNER_EXE%" (
     echo [ERROR] 未找到 Runner exe: %RUNNER_EXE%

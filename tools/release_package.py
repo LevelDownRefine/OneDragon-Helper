@@ -22,6 +22,7 @@ if __package__ in (None, ""):
 from src.update.package import (  # noqa: E402
     CLI_EXE,
     MANIFEST,
+    QT_CLI_EXE,
     RUST_RUNTIME,
     UPDATER_EXE,
     load_manifest,
@@ -100,14 +101,15 @@ def prepare_package(
         encoding="utf-8",
     )
     files = names + [EXE_NAME, RUNNER_NAME, UPDATER_EXE, VERSION_FILE]
+    files.append(CLI_EXE if frontend == "rust" else QT_CLI_EXE)
     if frontend == "rust":
-        files.extend((CLI_EXE, RUST_RUNTIME))
+        files.append(RUST_RUNTIME)
     files += [
         path.relative_to(package).as_posix()
         for path in (package / "_internal").rglob("*")
         if path.is_file()
     ]
-    write_manifest(package, files, version, frontend=frontend)
+    write_manifest(package, sorted(set(files)), version, frontend=frontend)
     validate_package(root, package)
 
 
@@ -121,6 +123,7 @@ def validate_package(root: Path, package: Path) -> list[Path]:
         VERSION_FILE,
         MANIFEST,
     }
+    expected.add(CLI_EXE if frontend == "rust" else QT_CLI_EXE)
     if frontend == "rust":
         expected.update((CLI_EXE, RUST_RUNTIME))
     allowed_dirs = {"_internal"}
@@ -136,7 +139,7 @@ def validate_package(root: Path, package: Path) -> list[Path]:
             raise ValueError(f"发布包不能包含符号链接: {name}")
         if path.is_dir():
             if (
-                path.parts[len(package.parts)] != "_internal"
+                path.parts[len(package.parts)] not in {"_internal"}
                 and str(Path(name)) not in allowed_dirs
             ):
                 raise ValueError(f"发布包包含非程序目录: {name}")
@@ -191,7 +194,14 @@ def test_package(root: Path, package: Path) -> int:
             ODH_PACKAGE_DIR=str(sandbox),
             ODH_GUI_EXE=str(sandbox / EXE_NAME),
             ODH_RUNNER_EXE=str(sandbox / RUNNER_NAME),
-            ODH_CLI_EXE=str(sandbox / CLI_EXE),
+            ODH_CLI_EXE=str(
+                sandbox
+                / (
+                    CLI_EXE
+                    if manifest_frontend(load_manifest(sandbox)) == "rust"
+                    else QT_CLI_EXE
+                )
+            ),
         )
         result_code = 0
         for project in ("python-backend", "python-gui"):

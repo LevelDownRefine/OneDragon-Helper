@@ -2,8 +2,11 @@
 
 from dataclasses import asdict
 
+from PySide6.QtCore import QObject
+
 from gui.config_dialog import ConfigDialog
 from gui.controllers.backup import BackupController
+from gui.controllers.cli_backup import CliBackupMixin
 from gui.dialogs import show_warning
 from gui.run_confirm_dialog import RunConfirmDialog
 from src.service.daily_plan import DailyPlanOptions
@@ -47,11 +50,17 @@ def parse_settings(value):
     return StartupOptions(**startup), parse_run_options(value["run_options"])
 
 
-class CliSettingsController(BackupController):
+class CliSettingsController(CliBackupMixin, BackupController):
     def __init__(self, app_service, session, toast, parent=None):
-        super().__init__(app_service, toast, parent)
+        QObject.__init__(self, parent)
+        self._toast = toast
         self._session = session
         self._opening = False
+        from gui.controllers.cli_daily_plan import CliDailyPlanController
+        from gui.controllers.cli_update import CliUpdateController
+
+        self.daily_plan = CliDailyPlanController(session, toast, self)
+        self.update = CliUpdateController(session, self)
 
     def openConfig(self):
         if self._opening:
@@ -80,13 +89,6 @@ class CliSettingsController(BackupController):
             def dispatch(action):
                 assert action in actions
                 actions[action]()
-                if action == "daily":
-                    self._session.call(
-                        "settings.view",
-                        {},
-                        refresh,
-                        lambda failure: dialog.show_error(failure.message),
-                    )
 
             def refresh(view):
                 parse_settings(view)
@@ -123,7 +125,18 @@ class CliSettingsController(BackupController):
 
             dialog.actionRequested.connect(dispatch)
             dialog.saveRequested.connect(save)
+
+            def daily_changed():
+                self._session.call(
+                    "settings.view",
+                    {},
+                    refresh,
+                    lambda failure: dialog.show_error(failure.message),
+                )
+
+            self.daily_plan.changed.connect(daily_changed)
             dialog.exec()
+            self.daily_plan.changed.disconnect(daily_changed)
 
         self._session.call("settings.view", {}, loaded, failed)
 

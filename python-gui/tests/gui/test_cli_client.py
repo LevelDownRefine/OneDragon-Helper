@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
 
-from gui.cli_client import CliClient, CliFailure
+from gui.cli_client import CliClient, CliFailure, CliSession
 from gui.controllers.cli_task_card import CliTaskCardController, valid_script_view
 from tests.gui.helpers import get_app
 
@@ -72,6 +72,27 @@ class CliClientTests(unittest.TestCase):
     def close_client(self):
         self.client.close()
         self.wait_for(lambda: not self.client.running)
+
+    def test_protected_timeout_sends_eof_and_waits_for_backend_cleanup(self):
+        self.script.write_text(
+            "import sys,time,pathlib\n"
+            "sys.stdin.readline()\n"
+            "time.sleep(2.2)\n"
+            "sys.stdin.read()\n"
+            "pathlib.Path('completed').write_text('done')\n",
+            encoding="utf-8",
+        )
+        session = CliSession(self.client, None)
+        self.assertTrue(session.hold())
+        self.client.request("restore.start", {})
+        self.wait_for(lambda: bool(self.errors))
+        self.assertTrue(session.busy)
+        self.assertTrue(self.client.running)
+        session.retire()
+        self.assertTrue(session.busy)
+        self.wait_for(lambda: not self.client.running)
+        self.assertEqual((Path(self.temporary) / "completed").read_text(), "done")
+        self.assertFalse(session.busy)
 
     def test_queue_utf8_fragmented_response_null_and_rpc_error(self):
         first = self.client.request("echo", {"文案": "中文"})
