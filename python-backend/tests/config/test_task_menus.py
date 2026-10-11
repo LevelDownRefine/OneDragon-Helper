@@ -4,10 +4,10 @@ import unittest
 from copy import deepcopy
 from unittest.mock import Mock, patch
 
-from src.config.daily import Daily, MaaActivityDaily, SingleLayerDaily
 from src.config.set_config import ArknightsConfig, get_daily_map, get_weekly_map
-from src.config.task_config import load_daily_map
-from src.config.weekly import Weekly
+from src.config.task.daily import Daily, MaaActivityDaily, SingleLayerDaily
+from src.config.task.task_declarations import load_daily_map
+from src.config.task.weekly import Weekly
 from tests.support.task_menus import patch_daily_sources
 
 
@@ -60,6 +60,22 @@ class TestDailyMenus(unittest.TestCase):
         source.assert_not_called()
         read.assert_not_called()
 
+    def test_default_physical_names_preserve_false_values_and_declaration(self):
+        del self.declaration["options"]["values"][0]["physical_name"]
+        children = self.declaration["options"]["values"][0]["options"]["values"]
+        children[:] = [
+            {"display_name": "默认"},
+            {"display_name": "关闭", "physical_name": False},
+        ]
+        original = deepcopy(self.declaration)
+        daily = Daily("x", self.declaration, "脚本")
+        self.assertEqual(
+            daily._fields("材料", "默认"), {"kind": "材料", "stage": "默认"}
+        )
+        self.assertEqual(daily._fields("材料", False), {"kind": "材料", "stage": False})
+        daily.menu()
+        self.assertEqual(self.declaration, original)
+
     def test_single_layer_menu_uses_the_mechanism_shape(self):
         declaration = {
             "display_name": "培养",
@@ -98,7 +114,9 @@ class TestDailyMenus(unittest.TestCase):
         declarations = {"current": [current], "other": [{"class": "不存在的机制"}]}
         with (
             patch("src.config.set_config.load_daily_map", return_value=declarations),
-            patch("src.config.daily.read_task_source", return_value=["副本"]) as source,
+            patch(
+                "src.config.task.daily.read_task_source", return_value=["副本"]
+            ) as source,
         ):
             menus = get_daily_map("current")
             self.assertEqual(get_daily_map("custom"), {})
@@ -117,7 +135,7 @@ class TestDailyMenus(unittest.TestCase):
                 return_value={"custom": [declaration]},
             ),
             patch(
-                "src.config.daily.load_game_config",
+                "src.config.task.daily.load_game_config",
                 return_value={
                     "data": [
                         {
@@ -146,10 +164,10 @@ class TestDailyMenus(unittest.TestCase):
         with (
             patch("src.config.set_config._CONFIGS", {}),
             patch.object(ArknightsConfig, "_init_config") as init,
-            patch("src.config.daily.load_script_config") as read,
-            patch("src.config.daily.save_script_config") as save,
-            patch("src.config.weekly.load_script_config") as weekly_read,
-            patch("src.config.weekly.save_script_config") as weekly_save,
+            patch("src.config.task.daily.load_script_config") as read,
+            patch("src.config.task.daily.save_script_config") as save,
+            patch("src.config.task.weekly.load_script_config") as weekly_read,
+            patch("src.config.task.weekly.save_script_config") as weekly_save,
             patch_daily_sources(lambda daily, source: []),
         ):
             menus = get_daily_map()
@@ -164,7 +182,7 @@ class TestDailyMenus(unittest.TestCase):
             "key": "stage",
             "source": {"path": "stages.json", "key": ["stages"]},
         }
-        with patch("src.config.daily.read_task_source") as source:
+        with patch("src.config.task.daily.read_task_source") as source:
             daily = Daily("x", self.declaration, "脚本")
             source.assert_not_called()
             source.side_effect = [["甲"], [], ["乙"]]
@@ -205,7 +223,7 @@ class TestDailyMenus(unittest.TestCase):
         declaration.update(display_name="别名", config="profiles/current.json")
         declaration["options"]["source"] = {"path": "resources/events.json"}
         with patch(
-            "src.config.daily.read_activity_stages", return_value=["AT-8"]
+            "src.config.task.daily.read_activity_stages", return_value=["AT-8"]
         ) as reader:
             daily = MaaActivityDaily("MAA", declaration, "粥")
             reader.assert_not_called()
@@ -373,6 +391,33 @@ class TestDailyMenus(unittest.TestCase):
 
 
 class TestWeeklyMenus(unittest.TestCase):
+    def test_weekly_value_mapping_handles_optional_and_dynamic_groups(self):
+        declaration = {
+            "display_name": "周常",
+            "config": "config.json",
+        }
+        for group, expected in (
+            (None, {}),
+            ({"source": {"path": "stages.json"}}, {}),
+            (
+                {
+                    "values": [
+                        {"display_name": "默认"},
+                        {"display_name": "关闭", "physical_name": False},
+                    ]
+                },
+                {"默认": "默认", "关闭": False},
+            ),
+        ):
+            with self.subTest(group=group):
+                current = deepcopy(declaration)
+                if group is not None:
+                    current["options"] = group
+                original = deepcopy(current)
+                weekly = Weekly("x", current, "脚本")
+                self.assertEqual(weekly._task_values, expected)
+                self.assertEqual(current, original)
+
     def test_static_options_and_empty_weeklies(self):
         declarations = [
             {
@@ -391,9 +436,10 @@ class TestWeeklyMenus(unittest.TestCase):
         original = deepcopy(declarations)
         with (
             patch(
-                "src.config.weekly.load_weekly_map", return_value={"x": declarations}
+                "src.config.task.weekly.load_weekly_map",
+                return_value={"x": declarations},
             ),
-            patch("src.config.weekly.read_task_source") as source,
+            patch("src.config.task.weekly.read_task_source") as source,
         ):
             menus = get_weekly_map("x")
             self.assertEqual(get_weekly_map("unknown"), [])
@@ -429,7 +475,7 @@ class TestWeeklyMenus(unittest.TestCase):
                 }
                 weekly = Weekly("x", declaration, "脚本")
                 with patch(
-                    "src.config.weekly.read_task_source", side_effect=[["甲"], []]
+                    "src.config.task.weekly.read_task_source", side_effect=[["甲"], []]
                 ) as reader:
                     menus = [weekly.menu(), weekly.menu()]
                 self.assertEqual(

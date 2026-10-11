@@ -4,9 +4,9 @@ import unittest
 from copy import deepcopy
 from unittest.mock import patch, sentinel
 
-from src.config import daily as daily_mod
 from src.config import set_config as config_mod
-from src.config import weekly as weekly_mod
+from src.config.task import daily as daily_mod
+from src.config.task import weekly as weekly_mod
 from src.service import app_service, task_service
 from src.service.app_service import AppService
 from src.utils import utils_weekly

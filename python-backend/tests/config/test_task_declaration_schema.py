@@ -7,7 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config import task_config as m
+from src.config.task import task_declarations as m
 from src.utils.utils_io import YAML_INSTANCE, _parse_yaml, save_data
 
 
@@ -56,6 +56,27 @@ class TestTaskDeclarations(unittest.TestCase):
         self.assertEqual(loaded, data)
         self.assertEqual(m.get_physical_name(loaded["script"][0]), "native_task")
         self.assertEqual(m.get_physical_name({"display_name": "原样"}), "原样")
+
+    def test_option_values_use_shared_name_rules_without_expanding_sources(self):
+        node = {
+            "options": {
+                "values": [
+                    {"display_name": "默认"},
+                    {"display_name": "关闭", "physical_name": False},
+                    {"display_name": "编号", "physical_name": 7},
+                ]
+            }
+        }
+        original = deepcopy(node)
+        self.assertEqual(
+            m.get_value_map(node), {"默认": "默认", "关闭": False, "编号": 7}
+        )
+        self.assertEqual(m.get_options(node), original["options"]["values"])
+        self.assertEqual(node, original)
+        for declaration in ({}, {"options": {"source": {"path": "stages.json"}}}):
+            with self.subTest(declaration=declaration):
+                self.assertEqual(m.get_options(declaration), [])
+                self.assertEqual(m.get_value_map(declaration), {})
 
     def test_same_schema_in_two_separate_files(self):
         daily = m.load_daily_map()
@@ -230,7 +251,7 @@ class TestDailyClassField(unittest.TestCase):
 
     def test_daily_map_requires_class(self):
         """load_daily_map：任务未声明 class → 报错。"""
-        from src.config.task_config import load_task_map
+        from src.config.task.task_declarations import load_task_map
 
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "daily_task_list.yml")
@@ -242,7 +263,7 @@ class TestDailyClassField(unittest.TestCase):
 
     def test_weekly_map_ignores_class(self):
         """weekly 声明无需 class，照常加载。"""
-        from src.config.task_config import load_task_map
+        from src.config.task.task_declarations import load_task_map
 
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "weekly_task_list.yml")

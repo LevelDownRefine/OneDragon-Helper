@@ -12,8 +12,8 @@ from src.config.set_config import (
     WutheringWavesConfig,
     get_daily_map,
 )
-from src.config.task_config import get_daily_configs
-from src.config.task_source import read_task_source
+from src.config.task.task_declarations import get_daily_configs
+from src.config.task.task_source import read_task_source
 
 
 class TestWeeklySource(unittest.TestCase):
@@ -27,7 +27,7 @@ class TestWeeklySource(unittest.TestCase):
     def test_reads_keys_of_weekly_entry(self):
         """正常读取：返回该任务条目的键列表（即副本名，含「无」占位）。"""
         with patch(
-            "src.config.task_source.load_game_config", return_value=self._DATA
+            "src.config.task.task_source.load_game_config", return_value=self._DATA
         ) as mock_load:
             names = read_task_source(
                 "March7th-Launcher",
@@ -42,7 +42,9 @@ class TestWeeklySource(unittest.TestCase):
         """周常读资源不触发配置初始化。"""
         with (
             patch.object(StarRailConfig, "__init__", return_value=None) as mock_init,
-            patch("src.config.task_source.load_game_config", return_value=self._DATA),
+            patch(
+                "src.config.task.task_source.load_game_config", return_value=self._DATA
+            ),
         ):
             read_task_source(
                 "March7th-Launcher",
@@ -53,7 +55,7 @@ class TestWeeklySource(unittest.TestCase):
     def test_source_is_used_as_rel_path(self):
         """source 即相对脚本根目录的路径，直接透传给 load_game_config（无额外白名单）。"""
         with patch(
-            "src.config.task_source.load_game_config", return_value=None
+            "src.config.task.task_source.load_game_config", return_value=None
         ) as mock_load:
             self.assertEqual(
                 read_task_source(
@@ -66,7 +68,7 @@ class TestWeeklySource(unittest.TestCase):
 
     def test_script_not_installed_returns_empty(self):
         """M7A 未安装（load_game_config 软降级为 None）→ data 为空 → 返回 []。"""
-        with patch("src.config.task_source.load_game_config", return_value=None):
+        with patch("src.config.task.task_source.load_game_config", return_value=None):
             self.assertEqual(
                 read_task_source(
                     "March7th-Launcher",
@@ -78,7 +80,9 @@ class TestWeeklySource(unittest.TestCase):
     def test_missing_task_key_asserts(self):
         """data 不含该任务键 → assert 触发（不静默兜底）。"""
         with (
-            patch("src.config.task_source.load_game_config", return_value=self._DATA),
+            patch(
+                "src.config.task.task_source.load_game_config", return_value=self._DATA
+            ),
             self.assertRaises(AssertionError),
         ):
             read_task_source(
@@ -90,7 +94,7 @@ class TestWeeklySource(unittest.TestCase):
         """该任务条目不是列表或字典（格式异常）→ assert 触发（不静默兜底）。"""
         with (
             patch(
-                "src.config.task_source.load_game_config",
+                "src.config.task.task_source.load_game_config",
                 return_value={"历战余响": 42},
             ),
             self.assertRaises(AssertionError),
@@ -112,7 +116,10 @@ class TestTaskSource(unittest.TestCase):
             ):
                 with (
                     self.subTest(data=data, source=source),
-                    patch("src.config.task_source.load_game_config", return_value=data),
+                    patch(
+                        "src.config.task.task_source.load_game_config",
+                        return_value=data,
+                    ),
                 ):
                     names = read_task_source("test", source)
                 self.assertEqual(names, ["乙", "甲"])
@@ -125,7 +132,7 @@ class TestTaskSource(unittest.TestCase):
                 self.subTest(key=key),
                 patch.dict(_CONFIGS, {"ok-nte": lambda: cfg}),
                 patch(
-                    "src.config.task_source.load_game_config",
+                    "src.config.task.task_source.load_game_config",
                     return_value={"资源": {"类别": {"乙": 2, "甲": 1}}},
                 ) as load,
                 patch.object(NTEConfig, "__init__", return_value=None) as init,
@@ -149,7 +156,9 @@ class TestTaskSource(unittest.TestCase):
         ):
             with (
                 self.subTest(source=source, data=data),
-                patch("src.config.task_source.load_game_config", return_value=data),
+                patch(
+                    "src.config.task.task_source.load_game_config", return_value=data
+                ),
                 self.assertRaises(AssertionError),
             ):
                 read_task_source("test", source)
@@ -175,7 +184,7 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
     def test_reads_stages_list(self):
         """正常读取：返回 stages_dict[task_name]（二级目录副本名列表）。"""
         with patch(
-            "src.config.task_source.load_game_config", return_value=self._DATA
+            "src.config.task.task_source.load_game_config", return_value=self._DATA
         ) as mock_load:
             names = self.daily.get_task_lists(
                 {"path": self._SRC, "key": ["stages_dict", "能量淤积点"]}
@@ -187,7 +196,9 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
         """读取选项复用已有日常，不触发配置初始化。"""
         with (
             patch.object(EndfieldConfig, "__init__", return_value=None) as mock_init,
-            patch("src.config.task_source.load_game_config", return_value=self._DATA),
+            patch(
+                "src.config.task.task_source.load_game_config", return_value=self._DATA
+            ),
         ):
             _CONFIGS["ok-ef"]()._dispatch_daily(
                 self.declaration["display_name"]
@@ -197,7 +208,7 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
     def test_source_is_used_as_rel_path(self):
         """source 即相对脚本根目录的路径，直接透传给 load_game_config（无额外白名单）。"""
         with patch(
-            "src.config.task_source.load_game_config", return_value=None
+            "src.config.task.task_source.load_game_config", return_value=None
         ) as mock_load:
             self.assertEqual(
                 self.daily.get_task_lists(
@@ -212,7 +223,7 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
 
     def test_script_not_installed_returns_empty(self):
         """ok-ef 未安装（load_game_config 软降级为 None）→ data 为空 → 返回 []。"""
-        with patch("src.config.task_source.load_game_config", return_value=None):
+        with patch("src.config.task.task_source.load_game_config", return_value=None):
             self.assertEqual(
                 self.daily.get_task_lists(
                     {"path": self._SRC, "key": ["stages_dict", "能量淤积点"]}
@@ -223,7 +234,9 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
     def test_missing_stages_dict_asserts(self):
         """顶层不含 stages_dict → assert 触发（不静默兜底）。"""
         with (
-            patch("src.config.task_source.load_game_config", return_value={"foo": 1}),
+            patch(
+                "src.config.task.task_source.load_game_config", return_value={"foo": 1}
+            ),
             self.assertRaises(AssertionError),
         ):
             self.daily.get_task_lists(
@@ -233,7 +246,9 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
     def test_missing_task_key_asserts(self):
         """stages_dict 不含该类别 → assert 触发（不静默兜底）。"""
         with (
-            patch("src.config.task_source.load_game_config", return_value=self._DATA),
+            patch(
+                "src.config.task.task_source.load_game_config", return_value=self._DATA
+            ),
             self.assertRaises(AssertionError),
         ):
             self.daily.get_task_lists(
@@ -244,7 +259,7 @@ class TestEndfieldGetTaskLists(unittest.TestCase):
         """stages_dict 中的选项不是列表或字典（格式异常）→ assert 触发（不静默兜底）。"""
         with (
             patch(
-                "src.config.task_source.load_game_config",
+                "src.config.task.task_source.load_game_config",
                 return_value={"stages_dict": {"能量淤积点": 42}},
             ),
             self.assertRaises(AssertionError),
@@ -294,7 +309,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
             with (
                 self.subTest(category=category),
                 patch(
-                    "src.config.daily.load_game_config", return_value=self._DATA
+                    "src.config.task.daily.load_game_config", return_value=self._DATA
                 ) as load,
             ):
                 self.assertEqual(
@@ -309,7 +324,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
         """读取选项复用已有日常，不触发配置初始化。"""
         with (
             patch.object(GenshinConfig, "__init__", return_value=None) as mock_init,
-            patch("src.config.daily.load_game_config", return_value=self._DATA),
+            patch("src.config.task.daily.load_game_config", return_value=self._DATA),
         ):
             _CONFIGS["BetterGI"]()._dispatch_daily(
                 self.declaration["display_name"]
@@ -318,7 +333,9 @@ class TestBgiGetTaskLists(unittest.TestCase):
 
     def test_source_is_used_as_rel_path(self):
         """source 即相对脚本根目录的路径，直接透传给 load_game_config（无额外白名单）。"""
-        with patch("src.config.daily.load_game_config", return_value=None) as mock_load:
+        with patch(
+            "src.config.task.daily.load_game_config", return_value=None
+        ) as mock_load:
             self.assertEqual(
                 self.daily.get_task_lists(
                     {"path": "some/other/path.json", "category": "BlessDomain"}
@@ -329,7 +346,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
 
     def test_script_not_installed_returns_empty(self):
         """BetterGI 未安装（load_game_config 软降级为 None）→ data 为空 → 返回 []。"""
-        with patch("src.config.daily.load_game_config", return_value=None):
+        with patch("src.config.task.daily.load_game_config", return_value=None):
             self.assertEqual(
                 self.daily.get_task_lists(
                     {"path": self._SRC, "category": "BlessDomain"}
@@ -339,7 +356,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
 
     def test_category_without_native_entries_returns_empty(self):
         """不维护类别白名单；资源中没有匹配类别时返回空列表。"""
-        with patch("src.config.daily.load_game_config", return_value=self._DATA):
+        with patch("src.config.task.daily.load_game_config", return_value=self._DATA):
             self.assertEqual(
                 self.daily.get_task_lists(
                     {"path": self._SRC, "category": "WeeklyDomain"}
@@ -350,7 +367,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
     def test_top_level_not_dict_asserts(self):
         """tp.json 顶层非 dict（格式异常）→ assert 触发（不静默兜底）。"""
         with (
-            patch("src.config.daily.load_game_config", return_value=[1, 2]),
+            patch("src.config.task.daily.load_game_config", return_value=[1, 2]),
             self.assertRaises(AssertionError),
         ):
             self.daily.get_task_lists({"path": self._SRC, "category": "BlessDomain"})
@@ -361,7 +378,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
                 "src.config.set_config.load_daily_map",
                 return_value={"BetterGI": [self.declaration]},
             ),
-            patch("src.config.daily.load_game_config", return_value=self._DATA),
+            patch("src.config.task.daily.load_game_config", return_value=self._DATA),
             patch(
                 "src.config.set_config.get_daily_configs",
                 side_effect=AssertionError("不应反查声明"),
@@ -388,7 +405,7 @@ class TestBgiGetTaskLists(unittest.TestCase):
         data = {"leyLinePositions": {"蒙德": [{"x": 1}], "璃月": [{"x": 2}]}}
         path = "GameTask/AutoLeyLineOutcrop/Assets/config.json"
         with patch(
-            "src.config.task_source.load_game_config", return_value=data
+            "src.config.task.task_source.load_game_config", return_value=data
         ) as load:
             names = daily.get_task_lists({"path": path, "key": ["leyLinePositions"]})
         self.assertEqual(names, ["蒙德", "璃月"])
@@ -402,7 +419,9 @@ class TestBgiGetTaskLists(unittest.TestCase):
             cfg = WutheringWavesConfig()
         with (
             patch.dict(_CONFIGS, {"ok-ww": lambda: cfg}),
-            patch("src.config.daily.load_game_config", return_value=self._DATA) as load,
+            patch(
+                "src.config.task.daily.load_game_config", return_value=self._DATA
+            ) as load,
         ):
             names = (
                 _CONFIGS["ok-ww"]()

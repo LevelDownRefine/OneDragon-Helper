@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config import task_options as mod
+from src.config.task import task_options as mod
 
 
 class TestTaskOptions(unittest.TestCase):
@@ -247,10 +247,10 @@ class TestTaskOptions(unittest.TestCase):
         )
 
     def test_options_extend_existing_switch_declaration(self):
-        from src.config.task_switch import load_task_switch_map
+        from src.config.native_task_switch import load_native_task_switch_map
 
         options = mod.load_declarations()
-        switches = load_task_switch_map()
+        switches = load_native_task_switch_map()
         self.assertTrue(set(options) <= set(switches))
         standalone = [
             (script, group["display_name"])

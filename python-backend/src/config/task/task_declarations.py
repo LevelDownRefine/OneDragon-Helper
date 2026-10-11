@@ -1,6 +1,5 @@
 """读取日常、周常声明并校验递归选项；不负责调度或写入子脚本。"""
 
-from copy import deepcopy
 from pathlib import Path, PureWindowsPath
 
 from src.utils import (
@@ -18,13 +17,13 @@ def get_physical_name(node: dict) -> str | int:
 
 
 def get_options(node: dict) -> list[dict]:
-    """取得直属选项副本；无选项或来源尚未展开时为空。"""
+    """取得直属选项；无选项或来源尚未展开时为空，调用方只读声明。"""
     if "options" not in node:
         return []
     group = node["options"]
     assert isinstance(group, dict), "options 必须为选项组"
     # 来源尚未展开时没有 values。
-    return deepcopy(group.get("values", []))
+    return group.get("values", [])
 
 
 def get_value_map(node: dict) -> dict[str, str | int]:

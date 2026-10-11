@@ -8,7 +8,7 @@ from unittest import mock
 from unittest.mock import mock_open, patch
 
 from src.config import set_config
-from src.config.task_config import get_daily_configs
+from src.config.task.task_declarations import get_daily_configs
 from src.utils import get_root_dir, safe_path_join, utils_sub_config
 from src.utils.utils_io import dump_data_str
 from src.utils.utils_sub_config import (

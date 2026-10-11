@@ -107,11 +107,11 @@ class _Segment:
             value = task.slot.get()
             if value is None:
                 logger.warning(
-                    f"[task_switch][{self.script_name}] 任务 {name!r} 无开关记录，跳过"
+                    f"[native_task_switch][{self.script_name}] 任务 {name!r} 无开关记录，跳过"
                 )
                 continue
             assert isinstance(value, bool), (
-                f"[task_switch][{self.script_name}] 任务 {name!r} 的开关必须为 bool: "
+                f"[native_task_switch][{self.script_name}] 任务 {name!r} 的开关必须为 bool: "
                 f"{value!r}"
             )
             result.append({"name": name, "enabled": value})
@@ -136,13 +136,13 @@ class _Segment:
             task = self._task_of(rows, name)
             if task is None:
                 logger.warning(
-                    f"[task_switch][{self.script_name}] 未找到唯一的任务 {name!r}，跳过"
+                    f"[native_task_switch][{self.script_name}] 未找到唯一的任务 {name!r}，跳过"
                 )
                 continue
             current = task.slot.get()
             if current is None:
                 logger.warning(
-                    f"[task_switch][{self.script_name}] 任务 {name!r} 无开关记录，跳过"
+                    f"[native_task_switch][{self.script_name}] 任务 {name!r} 无开关记录，跳过"
                 )
                 continue
             if current == value:
@@ -284,19 +284,19 @@ class KeyPairSegment(_Segment):
     def _tasks(self, config: dict) -> list[_NativeTask] | None:
         if self._tasks_key not in config or self._enabled_key not in config:
             logger.warning(
-                f"[task_switch][{self.script_name}] 配置缺少任务表 "
+                f"[native_task_switch][{self.script_name}] 配置缺少任务表 "
                 f"{self._tasks_key}/{self._enabled_key}，按无开关处理"
             )
             return None
         definitions = config[self._tasks_key]
         enabled = config[self._enabled_key]
         assert isinstance(definitions, dict) and isinstance(enabled, dict), (
-            f"[task_switch][{self.script_name}] 任务表必须为字典"
+            f"[native_task_switch][{self.script_name}] 任务表必须为字典"
         )
         tasks: list[_NativeTask] = []
         for task_id, name in definitions.items():
             assert isinstance(name, str) and name, (
-                f"[task_switch][{self.script_name}] 任务名必须为非空字符串: {name!r}"
+                f"[native_task_switch][{self.script_name}] 任务名必须为非空字符串: {name!r}"
             )
             tasks.append(_NativeTask(task_id, name, _DictSlot(enabled, task_id)))
         return tasks
@@ -345,25 +345,25 @@ class AppListSegment(_Segment):
     def _tasks(self, config: dict) -> list[_NativeTask] | None:
         if self._list_key not in config:
             logger.warning(
-                f"[task_switch][{self.script_name}] 配置缺少应用列表 "
+                f"[native_task_switch][{self.script_name}] 配置缺少应用列表 "
                 f"{self._list_key}，按无开关处理"
             )
             return None
         items = config[self._list_key]
         assert isinstance(items, list), (
-            f"[task_switch][{self.script_name}] 应用列表必须为列表"
+            f"[native_task_switch][{self.script_name}] 应用列表必须为列表"
         )
         tasks: list[_NativeTask] = []
         for item in items:
             assert isinstance(item, dict), (
-                f"[task_switch][{self.script_name}] 应用列表项必须为字典"
+                f"[native_task_switch][{self.script_name}] 应用列表项必须为字典"
             )
             assert self._id_key in item, (
-                f"[task_switch][{self.script_name}] 应用列表项缺少 {self._id_key}"
+                f"[native_task_switch][{self.script_name}] 应用列表项缺少 {self._id_key}"
             )
             app_id = item[self._id_key]
             assert isinstance(app_id, str) and app_id, (
-                f"[task_switch][{self.script_name}] 应用标识必须为非空字符串: {app_id!r}"
+                f"[native_task_switch][{self.script_name}] 应用标识必须为非空字符串: {app_id!r}"
             )
             tasks.append(
                 _NativeTask(app_id, app_id, _DictSlot(item, self._enabled_key))
@@ -409,21 +409,21 @@ class MultiSelectSegment(_Segment):
     def _tasks(self, config: dict) -> list[_NativeTask] | None:
         if self._list_key not in config:
             logger.warning(
-                f"[task_switch][{self.script_name}] 配置缺少多选列表 "
+                f"[native_task_switch][{self.script_name}] 配置缺少多选列表 "
                 f"{self._list_key}，按无开关处理"
             )
             return None
         items = config[self._list_key]
         assert isinstance(items, list) and all(
             isinstance(item, str) for item in items
-        ), f"[task_switch][{self.script_name}] 多选列表必须为字符串列表"
+        ), f"[native_task_switch][{self.script_name}] 多选列表必须为字符串列表"
         return [
             _NativeTask(ident, ident, _MemberSlot(items, ident))
             for ident in self._names
         ]
 
 
-class TaskSwitch:
+class NativeTaskSwitch:
     """某脚本的原生任务开关：由一条或多条声明段聚合而成。
 
     读取按声明顺序拼接；写回先按行名定位到行所在的段，再交给该段（同名行以先声明的段为准）。
@@ -438,7 +438,9 @@ class TaskSwitch:
         self._segments: list[_Segment] = []
         for declaration in declarations:
             cls = _form_of(declaration)
-            assert cls is not None, f"[task_switch] {script_name} 的声明形态未校验通过"
+            assert cls is not None, (
+                f"[native_task_switch] {script_name} 的声明形态未校验通过"
+            )
             self._segments.append(cls.from_declaration(script_name, declaration))
 
     def read(self) -> list[dict]:
@@ -469,7 +471,7 @@ class TaskSwitch:
             segment = owners.get(name)
             if segment is None:
                 logger.warning(
-                    f"[task_switch][{self.script_name}] 未找到任务 {name!r}，跳过"
+                    f"[native_task_switch][{self.script_name}] 未找到任务 {name!r}，跳过"
                 )
                 continue
             batches.setdefault(segment, {})[name] = value
@@ -537,15 +539,15 @@ def _validate_segment(script_name: str, segment: dict) -> None:
             continue
         value = segment[field]
         assert isinstance(value, str) and value.strip(), (
-            f"{script_name}/task_switch/{field} 必须为非空字符串"
+            f"{script_name}/native_task_switch/{field} 必须为非空字符串"
         )
     path = PureWindowsPath(segment["config"])
     assert not path.anchor and ".." not in path.parts, (
-        f"{script_name}/task_switch/config 必须为脚本内相对路径"
+        f"{script_name}/native_task_switch/config 必须为脚本内相对路径"
     )
     if "task_pattern" in segment:
         assert _single_group_pattern(segment["task_pattern"]), (
-            f"{script_name}/task_switch/task_pattern 必须是可编译且恰好一个捕获组的正则"
+            f"{script_name}/native_task_switch/task_pattern 必须是可编译且恰好一个捕获组的正则"
         )
     if "names" in segment:
         _validate_names(script_name, segment["names"])
@@ -558,7 +560,7 @@ def _validate_names(script_name: str, names) -> None:
         AssertionError: 既非字典也非列表，或其中某项不是非空字符串。
     """
     assert isinstance(names, (dict, list)), (
-        f"{script_name}/task_switch/names 必须为字典（标识: 展示名）或列表（标识）"
+        f"{script_name}/native_task_switch/names 必须为字典（标识: 展示名）或列表（标识）"
     )
     pairs = (
         list(names.items())
@@ -567,10 +569,10 @@ def _validate_names(script_name: str, names) -> None:
     )
     for ident, name in pairs:
         assert isinstance(ident, str) and ident.strip(), (
-            f"{script_name}/task_switch/names 的标识必须为非空字符串"
+            f"{script_name}/native_task_switch/names 的标识必须为非空字符串"
         )
         assert isinstance(name, str) and name.strip(), (
-            f"{script_name}/task_switch/names 的展示名必须为非空字符串"
+            f"{script_name}/native_task_switch/names 的展示名必须为非空字符串"
         )
 
 
@@ -603,16 +605,16 @@ def _normalized_segments(script_name: str, node) -> list[dict]:
 
     defaults = {key: value for key, value in node.items() if key != "segments"}
     assert set(defaults) <= {"config"}, (
-        f"{script_name}/task_switch 多段声明的节点级只能给 config（作为各段默认）"
+        f"{script_name}/native_task_switch 多段声明的节点级只能给 config（作为各段默认）"
     )
     segments = node["segments"]
     assert isinstance(segments, list) and segments, (
-        f"{script_name}/task_switch/segments 必须为非空列表"
+        f"{script_name}/native_task_switch/segments 必须为非空列表"
     )
     result: list[dict] = []
     for segment in segments:
         assert isinstance(segment, dict), (
-            f"{script_name}/task_switch/segments 的每一项必须为字典"
+            f"{script_name}/native_task_switch/segments 的每一项必须为字典"
         )
         merged = {**defaults, **segment}
         _validate_segment(script_name, merged)
@@ -620,7 +622,7 @@ def _normalized_segments(script_name: str, node) -> list[dict]:
     return result
 
 
-def load_task_switch_map() -> dict[str, list[dict]]:
+def load_native_task_switch_map() -> dict[str, list[dict]]:
     """取得各脚本的任务开关声明段（``{脚本标识: [段, ...]}``）。
 
     Returns:
@@ -645,7 +647,7 @@ def _parse_declarations(data: dict) -> dict[str, list[dict]]:
 
 
 @cache
-def task_switch_of(script_name: str) -> TaskSwitch | None:
+def native_task_switch_of(script_name: str) -> NativeTaskSwitch | None:
     """取某脚本的任务开关。
 
     Args:
@@ -654,7 +656,7 @@ def task_switch_of(script_name: str) -> TaskSwitch | None:
     Returns:
         该脚本的开关对象；声明文件里没有该脚本时为 None。
     """
-    declarations = load_task_switch_map()
+    declarations = load_native_task_switch_map()
     if script_name not in declarations:
         return None
-    return TaskSwitch(script_name, declarations[script_name])
+    return NativeTaskSwitch(script_name, declarations[script_name])

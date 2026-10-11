@@ -7,7 +7,6 @@
 无 Qt 的纯逻辑，被 GUI 与 service 多处直接引用，收拢到 src 顶层便于共用。
 """
 
-import contextlib
 import ctypes
 import logging
 import os
@@ -194,7 +193,7 @@ def _find_processes(targets: Sequence[ProcessTarget]) -> list[psutil.Process]:
         return []
     excluded = _self_and_ancestor_pids()
     found: dict[int, psutil.Process] = {}
-    for proc in psutil.process_iter(["pid"]):
+    for proc in psutil.process_iter(["pid", "create_time"]):
         if proc.pid in excluded or proc.pid in found:
             continue
         name = _safe_name(proc)
@@ -217,7 +216,7 @@ def _build_child_map() -> dict[int, list[psutil.Process]]:
     （真正的开销是 ``cmdline()``，约 5.9ms/进程）。
     """
     kids: dict[int, list[psutil.Process]] = {}
-    for proc in psutil.process_iter(["pid", "ppid"]):
+    for proc in psutil.process_iter(["pid", "ppid", "create_time"]):
         ppid = proc.info.get("ppid")
         if ppid is not None:
             kids.setdefault(ppid, []).append(proc)
@@ -245,11 +244,24 @@ def _process_tree(
             continue
         seen.add(item.pid)
         out.append(item)
-        stack.extend(child_map.get(item.pid, ()))
+        assert "create_time" in item.info
+        parent_created = item.info["create_time"]
+        if parent_created is None:
+            logger.warning("进程 %s 创建时间不可读，跳过子树", item.pid)
+            continue
+        for child in child_map.get(item.pid, ()):
+            assert "create_time" in child.info
+            child_created = child.info["create_time"]
+            if child_created is None:
+                logger.warning("子进程 %s 创建时间不可读，跳过", child.pid)
+                continue
+            # Windows 保留旧父 PID；PID 复用后旧进程不属于新父进程。
+            if child_created >= parent_created:
+                stack.append(child)
     return out
 
 
-def kill_processes(targets: Sequence[ProcessTarget]) -> int:
+def kill_processes(targets: Sequence[ProcessTarget]) -> list[str]:
     """优雅终止所有匹配进程及其子进程树（对齐 runner ``ProcessManager.kill``）。
 
     先对整棵树 ``terminate``，等 3 秒，仍存活的强制 ``kill``。无匹配、进程已退出或
@@ -270,15 +282,29 @@ def kill_processes(targets: Sequence[ProcessTarget]) -> int:
     for proc in matched:
         for item in _process_tree(proc, child_map):
             tree.setdefault(item.pid, item)
-    pending = list(tree.values())
-    killed = [_describe(proc) for proc in pending]
-    for proc in pending:
-        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+    pending: list[psutil.Process] = []
+    killed: list[str] = []
+    for proc in tree.values():
+        description = _describe(proc)
+        try:
             proc.terminate()
+        except psutil.NoSuchProcess:
+            logger.debug("进程 %s 已退出，跳过", description)
+        except psutil.AccessDenied as exc:
+            logger.warning("无法终止进程 %s，跳过：%s", description, exc)
+        else:
+            pending.append(proc)
+            killed.append(description)
+    if not pending:
+        return killed
     _gone, alive = psutil.wait_procs(pending, timeout=3)
     for proc in alive:
-        with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+        try:
             proc.kill()
+        except psutil.NoSuchProcess:
+            logger.debug("进程 %s 已退出，无需强制终止", proc.pid)
+        except psutil.AccessDenied as exc:
+            logger.warning("无法强制终止进程 %s：%s", proc.pid, exc)
     return killed
 
 

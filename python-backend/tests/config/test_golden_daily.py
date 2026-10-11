@@ -15,9 +15,9 @@ from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config import daily as daily_mod
 from src.config import set_config as config_mod
 from src.config.set_config import get_daily_map
+from src.config.task import daily as daily_mod
 from tests.support.config_diff import diff_paths
 from tests.support.task_menus import patch_daily_sources
 

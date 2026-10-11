@@ -3,7 +3,7 @@
 from contextlib import ExitStack, contextmanager
 from unittest.mock import patch
 
-from src.config.daily import BgiDaily, Daily, MaaActivityDaily
+from src.config.task.daily import BgiDaily, Daily, MaaActivityDaily
 
 
 @contextmanager

@@ -119,7 +119,7 @@ def generate_chain_config(
     实时日志位置由 log_analysis.yml 解析为绝对路径后注入链，runner 不读取助手声明。
 
     脚本自身的副本/序列、周常起始日对应的周本开关，均由 GUI / CLI 在编辑期实时落盘
-    （见 ``src.config.set_config`` / ``src.config.weekly``）；其中「按周几起决定开启/关闭」这类必须在运行期按当天星期
+    （见 ``src.config.set_config`` / ``src.config.task.weekly``）；其中「按周几起决定开启/关闭」这类必须在运行期按当天星期
     计算的周本开关写盘，已抽出为 ``ScheduledRun`` 的 pre_run 步骤（由 ``build_pre_run_pipeline`` 在运行前统一写回），
     故本函数只负责按星期过滤脚本并生成链 yml，不再写任何子脚本 config。
 

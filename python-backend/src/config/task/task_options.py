@@ -5,7 +5,7 @@ import logging
 from copy import deepcopy
 from pathlib import Path, PureWindowsPath
 
-from src.config.task_source import read_task_source
+from src.config.task.task_source import read_task_source
 from src.utils import get_root_dir
 from src.utils.utils_io import load_data
 from src.utils.utils_sub_config import (

@@ -9,15 +9,15 @@ import json
 import unittest
 from unittest.mock import patch
 
-from src.config.daily import (
+from src.config.set_config import _CONFIGS
+from src.config.task.daily import (
     Anomaly,
     Daily,
     MaaDaily,
     SingleLayerDaily,
     TemplateDaily,
 )
-from src.config.set_config import _CONFIGS
-from src.config.task_config import load_daily_map
+from src.config.task.task_declarations import load_daily_map
 from src.utils import utils_sub_config
 
 
@@ -388,7 +388,7 @@ class TestEnabled(unittest.TestCase):
         with (
             patch.object(daily, "_load_routine_config", return_value=routine),
             patch.object(daily, "_save_routine_config") as save,
-            self.assertLogs("src.config.daily", level="WARNING"),
+            self.assertLogs("src.config.task.daily", level="WARNING"),
         ):
             self.assertIsNone(daily.read_enabled())
             self.assertFalse(daily.set_enabled(True))
@@ -433,7 +433,7 @@ class TestEnabled(unittest.TestCase):
         }
         with (
             patch.object(daily, "_load_daily_config", return_value=config),
-            self.assertLogs("src.config.daily", level="WARNING"),
+            self.assertLogs("src.config.task.daily", level="WARNING"),
         ):
             self.assertIsNone(daily.read_enabled())
 

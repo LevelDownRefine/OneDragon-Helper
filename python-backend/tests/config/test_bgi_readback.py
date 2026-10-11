@@ -8,9 +8,9 @@ import textwrap
 import unittest
 from unittest.mock import patch
 
-from src.config.daily import BgiDaily, Daily
 from src.config.set_config import get_daily_readback
-from src.config.task_config import get_daily_configs
+from src.config.task.daily import BgiDaily, Daily
+from src.config.task.task_declarations import get_daily_configs
 
 
 class TestBgiReadback(unittest.TestCase):
@@ -62,7 +62,7 @@ class TestBgiReadback(unittest.TestCase):
                 self.subTest(config=config),
                 patch.object(self.daily, "_load_daily_config", return_value=config),
                 patch.object(self.daily, "_save_daily_config") as save,
-                self.assertLogs("src.config.daily", level="WARNING"),
+                self.assertLogs("src.config.task.daily", level="WARNING"),
             ):
                 self.assertIsNone(self.daily.read_enabled())
                 self.assertFalse(self.daily.set_enabled(False))
@@ -98,7 +98,7 @@ class TestBgiReadback(unittest.TestCase):
             # 幽境危战的开关在另一份文件（一条龙配置即本用例的 config 之外的 routine），
             # 此处显式判为无真相，避免读进真实安装目录。
             patch.object(Daily, "_load_routine_config", return_value=None),
-            self.assertLogs("src.config.daily", level="WARNING"),
+            self.assertLogs("src.config.task.daily", level="WARNING"),
         ):
             records = get_daily_readback("BetterGI")
         self.assertEqual([r["enabled"] for r in records], [True, None, None, None])
@@ -113,7 +113,7 @@ class TestBgiReadback(unittest.TestCase):
             from PySide6.QtCore import QUrl, qInstallMessageHandler
             from PySide6.QtQml import QQmlComponent, QQmlEngine, qmlRegisterSingletonInstance
             from PySide6.QtWidgets import QApplication
-            from src.config.daily import Daily
+            from src.config.task.daily import Daily
             from gui.controllers.background import BackgroundController
             from gui.main_window import QmlBridge
             from src.service.app_service import AppService

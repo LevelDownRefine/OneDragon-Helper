@@ -1,19 +1,19 @@
-"""测试 src/config/task_switch.py：声明校验、开关枚举与写入。"""
+"""测试 src/config/native_task_switch.py：声明校验、开关枚举与写入。"""
 
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.config import task_switch as mod
-from src.config.task_switch import (
+from src.config import native_task_switch as mod
+from src.config.native_task_switch import (
     AppListSegment,
     KeyPairSegment,
     MultiSelectSegment,
+    NativeTaskSwitch,
     PatternSegment,
-    TaskSwitch,
-    load_task_switch_map,
-    task_switch_of,
+    load_native_task_switch_map,
+    native_task_switch_of,
 )
 
 _DECLARATION = {
@@ -106,7 +106,7 @@ class TestRead(unittest.TestCase):
     def test_missing_tables_reads_empty_with_warning(self):
         with (
             patch.object(mod, "load_script_config", return_value={"other": 1}),
-            self.assertLogs("src.config.task_switch", level="WARNING"),
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_switch().read(), [])
 
@@ -115,7 +115,7 @@ class TestRead(unittest.TestCase):
         config = _config({"a": "领取邮件", "b": "周常"}, {"a": True})
         with (
             patch.object(mod, "load_script_config", return_value=config),
-            self.assertLogs("src.config.task_switch", level="WARNING"),
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_switch().read(), [{"name": "领取邮件", "enabled": True}])
 
@@ -180,7 +180,7 @@ class TestRead(unittest.TestCase):
     def test_app_list_missing_list_reads_empty_with_warning(self):
         with (
             patch.object(mod, "load_script_config", return_value={"other": 1}),
-            self.assertLogs("src.config.task_switch", level="WARNING"),
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_app_list_switch().read(), [])
 
@@ -199,7 +199,7 @@ class TestRead(unittest.TestCase):
     def test_multi_select_missing_list_reads_empty_with_warning(self):
         with (
             patch.object(mod, "load_script_config", return_value={"other": 1}),
-            self.assertLogs("src.config.task_switch", level="WARNING"),
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_multi_select_switch().read(), [])
 
@@ -244,7 +244,7 @@ class TestWrite(unittest.TestCase):
         with (
             patch.object(mod, "load_script_config", return_value=config),
             patch.object(mod, "save_script_config") as mock_save,
-            self.assertLogs("src.config.task_switch", level="WARNING"),
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_switch().write({"不存在": True, "同名": True}), 0)
         mock_save.assert_not_called()
@@ -256,7 +256,7 @@ class TestWrite(unittest.TestCase):
     def test_missing_tables_write_is_noop(self):
         with (
             patch.object(mod, "load_script_config", return_value={"other": 1}),
-            self.assertLogs("src.config.task_switch", level="WARNING"),
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(_switch().write({"领取邮件": True}), 0)
 
@@ -269,7 +269,7 @@ class TestWrite(unittest.TestCase):
             patch.object(
                 mod, "save_script_config", side_effect=lambda *args: saved.append(args)
             ),
-            self.assertLogs("src.config.task_switch", level="WARNING"),
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
             changed = _pattern_switch().write({"收邮件": True, "帝江号收菜": True})
         self.assertEqual(changed, 1)
@@ -372,8 +372,10 @@ class TestWrite(unittest.TestCase):
 class TestSegments(unittest.TestCase):
     """多段：同一脚本的开关散在多处时，读按声明顺序拼接、写分发到行所在的段。"""
 
-    def _switch(self) -> TaskSwitch:
-        return TaskSwitch("ok-ww", [_OKWW_BOOL_DECLARATION, _OKWW_MULTI_DECLARATION])
+    def _switch(self) -> NativeTaskSwitch:
+        return NativeTaskSwitch(
+            "ok-ww", [_OKWW_BOOL_DECLARATION, _OKWW_MULTI_DECLARATION]
+        )
 
     def _config(self) -> dict:
         return {
@@ -409,7 +411,7 @@ class TestSegments(unittest.TestCase):
         with (
             patch.object(mod, "load_script_config", return_value=self._config()),
             patch.object(mod, "save_script_config") as mock_save,
-            self.assertLogs("src.config.task_switch", level="WARNING"),
+            self.assertLogs("src.config.native_task_switch", level="WARNING"),
         ):
             self.assertEqual(self._switch().write({"不存在": True}), 0)
         mock_save.assert_not_called()
@@ -419,8 +421,8 @@ class TestDeclaration(unittest.TestCase):
     """声明文件：按内容解析一次，字段非法即报错。"""
 
     def setUp(self):
-        task_switch_of.cache_clear()
-        self.addCleanup(task_switch_of.cache_clear)
+        native_task_switch_of.cache_clear()
+        self.addCleanup(native_task_switch_of.cache_clear)
 
     def _with_declaration(self, text: str):
         directory = self.enterContext(tempfile.TemporaryDirectory())
@@ -438,14 +440,14 @@ class TestDeclaration(unittest.TestCase):
             "  enabled_key: TaskEnabledList\n"
         )
         with self._with_declaration(text):
-            switch = task_switch_of("BetterGI")
+            switch = native_task_switch_of("BetterGI")
             self.assertIsInstance(switch._segments[0], KeyPairSegment)
-            self.assertIsNone(task_switch_of("ZZZ"), "未声明脚本应为无此特性")
+            self.assertIsNone(native_task_switch_of("ZZZ"), "未声明脚本应为无此特性")
 
     def test_pattern_declaration_builds_switch(self):
         text = "ok-ef:\n  config: a/b.json\n  task_pattern: '@(.+)'\n"
         with self._with_declaration(text):
-            switch = task_switch_of("ok-ef")
+            switch = native_task_switch_of("ok-ef")
             self.assertIsInstance(switch._segments[0], PatternSegment)
 
     def test_app_list_declaration_builds_switch(self):
@@ -459,7 +461,7 @@ class TestDeclaration(unittest.TestCase):
             "    a: 甲\n"
         )
         with self._with_declaration(text):
-            switch = task_switch_of("ZZZ")
+            switch = native_task_switch_of("ZZZ")
             self.assertIsInstance(switch._segments[0], AppListSegment)
 
     def test_multi_select_declaration_builds_switch(self):
@@ -471,7 +473,7 @@ class TestDeclaration(unittest.TestCase):
             "    a: 甲\n"
         )
         with self._with_declaration(text):
-            switch = task_switch_of("ok-ww")
+            switch = native_task_switch_of("ok-ww")
             self.assertIsInstance(switch._segments[0], MultiSelectSegment)
 
     def test_segments_node_builds_one_segment_each(self):
@@ -487,7 +489,7 @@ class TestDeclaration(unittest.TestCase):
             "        b: 乙\n"
         )
         with self._with_declaration(text):
-            switch = task_switch_of("ok-ww")
+            switch = native_task_switch_of("ok-ww")
             self.assertEqual(len(switch._segments), 2)
             self.assertIsInstance(switch._segments[0], PatternSegment)
             self.assertIsInstance(switch._segments[1], MultiSelectSegment)
@@ -503,7 +505,7 @@ class TestDeclaration(unittest.TestCase):
             "      names: [据点兑换]\n"
         )
         with self._with_declaration(text):
-            segments = load_task_switch_map()["ok-ef"]
+            segments = load_native_task_switch_map()["ok-ef"]
         self.assertEqual(
             [segment["config"] for segment in segments], ["a/DailyTask.json"] * 2
         )
@@ -518,7 +520,7 @@ class TestDeclaration(unittest.TestCase):
             "      names: [据点兑换, 买物资]\n"
         )
         with self._with_declaration(text):
-            segments = load_task_switch_map()["ok-ef"]
+            segments = load_native_task_switch_map()["ok-ef"]
         self.assertEqual(
             segments[0]["names"], {"据点兑换": "据点兑换", "买物资": "买物资"}
         )
@@ -532,7 +534,7 @@ class TestDeclaration(unittest.TestCase):
             ),
             self.assertRaises(AssertionError),
         ):
-            load_task_switch_map()
+            load_native_task_switch_map()
 
     def test_invalid_declarations_are_rejected(self):
         cases = {
@@ -588,18 +590,18 @@ class TestDeclaration(unittest.TestCase):
                 self._with_declaration(text),
                 self.assertRaises(AssertionError),
             ):
-                load_task_switch_map()
+                load_native_task_switch_map()
 
     def test_repo_declaration_covers_bettergi(self):
         """仓库声明里原神已接上：键指向其一条龙配置的两张表。"""
-        declaration = load_task_switch_map()["BetterGI"][0]
+        declaration = load_native_task_switch_map()["BetterGI"][0]
         self.assertEqual(declaration["config"], "User/OneDragon/默认配置.json")
         self.assertEqual(declaration["tasks_key"], "TaskDefinitions")
         self.assertEqual(declaration["enabled_key"], "TaskEnabledList")
 
     def test_repo_declaration_covers_m7a(self):
         """仓库声明里星铁已接上：正则白名单形态，names 只列任务项（设置/通知不列）。"""
-        declaration = load_task_switch_map()["March7th-Launcher"][0]
+        declaration = load_native_task_switch_map()["March7th-Launcher"][0]
         self.assertEqual(declaration["config"], "config.yaml")
         self.assertEqual(declaration["task_pattern"], "(.+_enable)")
         self.assertEqual(declaration["names"]["power_enable"], "清体力")
@@ -608,7 +610,7 @@ class TestDeclaration(unittest.TestCase):
 
     def test_repo_declaration_covers_endfield(self):
         """仓库声明里终末地已接上：正则白名单形态指向其一条龙任务表。"""
-        declaration = load_task_switch_map()["ok-ef"][0]
+        declaration = load_native_task_switch_map()["ok-ef"][0]
         self.assertEqual(
             declaration["config"], "data/apps/ok-ef/working/configs/DailyTask.json"
         )
@@ -616,14 +618,14 @@ class TestDeclaration(unittest.TestCase):
 
     def test_repo_declaration_covers_zzz(self):
         """仓库声明里绝区零已接上：应用列表形态指向其一条龙应用组配置。"""
-        declaration = load_task_switch_map()["OneDragon-Launcher"][0]
+        declaration = load_native_task_switch_map()["OneDragon-Launcher"][0]
         self.assertEqual(declaration["config"], "config/01/one_dragon/_group.yml")
         self.assertEqual(declaration["list_key"], "app_list")
         self.assertEqual(declaration["names"]["redemption_code"], "兑换码")
 
     def test_repo_declaration_covers_oknte(self):
         """仓库声明里异环已接上：应用列表形态指向其计划任务表。"""
-        declaration = load_task_switch_map()["ok-nte"][0]
+        declaration = load_native_task_switch_map()["ok-nte"][0]
         self.assertEqual(
             declaration["config"], "data/apps/ok-nte/working/configs/DailyPlanTask.json"
         )
@@ -632,7 +634,7 @@ class TestDeclaration(unittest.TestCase):
 
     def test_repo_declaration_covers_okww(self):
         """仓库声明里鸣潮已接上：布尔项与多选项各一段，指向同一个一条龙配置。"""
-        declarations = load_task_switch_map()["ok-ww"]
+        declarations = load_native_task_switch_map()["ok-ww"]
         self.assertEqual(len(declarations), 2)
         boolean, multi = declarations
         self.assertEqual(
