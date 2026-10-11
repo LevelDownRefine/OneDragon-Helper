@@ -18,12 +18,22 @@ class RunStarterTests(TestCase):
         self.app = get_app()
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.children = []
+        self.ready_before_delivery = None
         self.addCleanup(self._cleanup_children)
         original = subprocess.Popen
 
         def spawn(*args, **kwargs):
             child = original(*args, **kwargs)
             self.children.append(child)
+            if self.ready_before_delivery is not None:
+                # 此场景先关闭子进程 stdin，再开始交付，排除解释器启动计时。
+                deadline = time.monotonic() + 5
+                while not self.ready_before_delivery.is_file():
+                    if child.poll() is not None:
+                        raise OSError("假进程在关闭 stdin 前退出")
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("假进程未报告 stdin 已关闭")
+                    time.sleep(0.01)
             return child
 
         self.enterContext(
@@ -86,10 +96,15 @@ class RunStarterTests(TestCase):
         self.assertIn("已在独立控制台启动", self.toast.call_args.args[0])
 
     def test_closed_stdin_reports_failure_and_terminates_child(self):
+        self.ready_before_delivery = self.root / "stdin-closed"
         self.controller._starter.start(
-            self._target("import os,time; os.close(0); time.sleep(30)")
+            self._target(
+                "import os,time; from pathlib import Path; os.close(0); "
+                "Path('stdin-closed').touch(); time.sleep(30)"
+            )
         )
         self._wait(lambda: not self.controller.active)
         self._wait(lambda: self.children[0].poll() is not None)
+        self.assertTrue(self.ready_before_delivery.is_file())
         self.toast.assert_called_once()
         self.assertIn("传递运行配置失败", self.toast.call_args.args[0])
