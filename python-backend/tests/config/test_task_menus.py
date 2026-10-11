@@ -60,6 +60,22 @@ class TestDailyMenus(unittest.TestCase):
         source.assert_not_called()
         read.assert_not_called()
 
+    def test_default_physical_names_preserve_false_values_and_declaration(self):
+        del self.declaration["options"]["values"][0]["physical_name"]
+        children = self.declaration["options"]["values"][0]["options"]["values"]
+        children[:] = [
+            {"display_name": "默认"},
+            {"display_name": "关闭", "physical_name": False},
+        ]
+        original = deepcopy(self.declaration)
+        daily = Daily("x", self.declaration, "脚本")
+        self.assertEqual(
+            daily._fields("材料", "默认"), {"kind": "材料", "stage": "默认"}
+        )
+        self.assertEqual(daily._fields("材料", False), {"kind": "材料", "stage": False})
+        daily.menu()
+        self.assertEqual(self.declaration, original)
+
     def test_single_layer_menu_uses_the_mechanism_shape(self):
         declaration = {
             "display_name": "培养",
@@ -373,6 +389,33 @@ class TestDailyMenus(unittest.TestCase):
 
 
 class TestWeeklyMenus(unittest.TestCase):
+    def test_weekly_value_mapping_handles_optional_and_dynamic_groups(self):
+        declaration = {
+            "display_name": "周常",
+            "config": "config.json",
+        }
+        for group, expected in (
+            (None, {}),
+            ({"source": {"path": "stages.json"}}, {}),
+            (
+                {
+                    "values": [
+                        {"display_name": "默认"},
+                        {"display_name": "关闭", "physical_name": False},
+                    ]
+                },
+                {"默认": "默认", "关闭": False},
+            ),
+        ):
+            with self.subTest(group=group):
+                current = deepcopy(declaration)
+                if group is not None:
+                    current["options"] = group
+                original = deepcopy(current)
+                weekly = Weekly("x", current, "脚本")
+                self.assertEqual(weekly._task_values, expected)
+                self.assertEqual(current, original)
+
     def test_static_options_and_empty_weeklies(self):
         declarations = [
             {

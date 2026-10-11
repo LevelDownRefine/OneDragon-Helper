@@ -1,6 +1,5 @@
 """读取日常、周常声明并校验递归选项；不负责调度或写入子脚本。"""
 
-from copy import deepcopy
 from pathlib import Path, PureWindowsPath
 
 from src.utils import (
@@ -15,24 +14,6 @@ def get_physical_name(node: dict) -> str | int:
     assert "display_name" in node, "必须声明 display_name"
     # 物理名与展示名相同时可省略。
     return node.get("physical_name", node["display_name"])
-
-
-def get_options(node: dict) -> list[dict]:
-    """取得直属选项副本；无选项或来源尚未展开时为空。"""
-    if "options" not in node:
-        return []
-    group = node["options"]
-    assert isinstance(group, dict), "options 必须为选项组"
-    # 来源尚未展开时没有 values。
-    return deepcopy(group.get("values", []))
-
-
-def get_value_map(node: dict) -> dict[str, str | int]:
-    """把一组选项声明转换成展示名到物理名的映射。"""
-    return {
-        option["display_name"]: get_physical_name(option)
-        for option in get_options(node)
-    }
 
 
 def _validate_name(value, context: str) -> None:

@@ -13,11 +13,7 @@ from copy import deepcopy
 from typing import Any
 
 from src.config.maa_activity import read_activity_stages
-from src.config.task_config import (
-    get_options,
-    get_physical_name,
-    get_value_map,
-)
+from src.config.task_config import get_physical_name
 from src.config.task_source import read_task_source
 from src.utils.utils_dict import covers, get_field, safe_update
 from src.utils.utils_sub_config import (
@@ -226,7 +222,9 @@ class Daily:
             AssertionError: 未声明选项，或顶层无 ``key`` 时各一级项的
                 二级 key 不唯一。
         """
-        options = get_options(declaration)
+        group = get_field(declaration, "options", self.display_name, dict)
+        # 资源来源没有静态 values。
+        options = group.get("values", [])
         assert options, f"{self.script_name}/{self.physical_name} 必须声明选项"
         layered = ["options" in option for option in options]
         assert all(layered), (
@@ -234,7 +232,6 @@ class Daily:
             "标准两层日常不适用（为该脚本选择匹配的机制类）"
         )
         keys = {option["options"]["key"] for option in options}
-        group = declaration["options"]
         if "key" in group:
             self.task_field: str | None = group["key"]
         else:
@@ -243,14 +240,22 @@ class Daily:
                 "各选项的二级 key 必须唯一"
             )
             self.task_field = keys.pop()
-        self.task_map: dict[str, Any] = get_value_map(declaration)
+        self.task_map: dict[str, Any] = {
+            option["display_name"]: get_physical_name(option) for option in options
+        }
         self.option_fields: dict[str, str] = {
             option["display_name"]: option["options"]["key"] for option in options
         }
         self.options: list[dict] = options
         static = all("values" in option["options"] for option in options)
         self._sequence_values: dict[str, dict[str, Any]] = (
-            {option["display_name"]: get_value_map(option) for option in options}
+            {
+                option["display_name"]: {
+                    child["display_name"]: get_physical_name(child)
+                    for child in option["options"]["values"]
+                }
+                for option in options
+            }
             if static
             else {}
         )
@@ -500,9 +505,10 @@ class SingleLayerDaily(Daily):
         Raises:
             AssertionError: 未声明选项或未声明 ``key``。
         """
-        options = get_options(declaration)
+        group = get_field(declaration, "options", self.display_name, dict)
+        # 资源来源没有静态 values。
+        options = group.get("values", [])
         assert options, f"{self.script_name}/{self.physical_name} 必须声明选项"
-        group = declaration["options"]
         assert "key" in group, (
             f"{self.script_name}/{self.physical_name} 的单层日常必须声明 key 作为落点"
         )
@@ -511,7 +517,14 @@ class SingleLayerDaily(Daily):
         self.option_fields: dict[str, str] = {self.display_name: group["key"]}
         self.options: list[dict] = [declaration]
         self._sequence_values: dict[str, dict[str, Any]] = (
-            {self.display_name: get_value_map(declaration)} if "values" in group else {}
+            {
+                self.display_name: {
+                    option["display_name"]: get_physical_name(option)
+                    for option in options
+                }
+            }
+            if "values" in group
+            else {}
         )
         self._sequence_required = "values" in group
         self._single_field = False
@@ -1002,7 +1015,12 @@ class MaaDaily(Daily):
 
     def _parse_landing(self, declaration: dict) -> None:
         """建立声明名称到原生关卡值的双向映射。"""
-        self._stage_by_name = get_value_map(declaration)
+        group = get_field(declaration, "options", self.display_name, dict)
+        # 资源来源没有静态 values。
+        self._stage_by_name = {
+            option["display_name"]: get_physical_name(option)
+            for option in group.get("values", [])
+        }
         assert self._stage_by_name, f"{self.display_name} 未声明关卡"
         self._name_by_stage = {v: k for k, v in self._stage_by_name.items()}
 
