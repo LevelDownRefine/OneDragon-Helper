@@ -69,7 +69,7 @@ class Daily:
         self._enable_key: str = declaration.get("enable_key", "")
         self.display_name: str = declaration["display_name"]
         self.physical_name: str = get_physical_name(declaration)
-        self._declaration = deepcopy(declaration)
+        self._declaration = declaration
         self._parse_landing(declaration)
 
     def menu(self) -> dict:

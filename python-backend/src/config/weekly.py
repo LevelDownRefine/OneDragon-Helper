@@ -59,7 +59,7 @@ class Weekly:
                 ``key``（原生字段名）可选，路径相对脚本根目录。
             script_display_name: 所属脚本的展示名（日志与报错用）。
         """
-        self._declaration = deepcopy(declaration)
+        self._declaration = declaration
         self.script_name = script_name
         self.script_display_name = script_display_name
         self.display_name: str = declaration["display_name"]
