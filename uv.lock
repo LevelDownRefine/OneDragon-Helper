@@ -387,12 +387,22 @@ wheels = [
 [[package]]
 name = "leveldown-updater"
 version = "0.1.0"
-source = { git = "https://github.com/LevelDownRefine/updater.git?rev=55b8963c09710662ed8c4ae1d9b0d68ffa34eaa3#55b8963c09710662ed8c4ae1d9b0d68ffa34eaa3" }
+source = { editable = "updater-lib" }
 dependencies = [
     { name = "packaging" },
     { name = "portalocker", extra = ["win32"] },
     { name = "requests" },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "packaging", specifier = ">=26.0" },
+    { name = "portalocker", extras = ["win32"], specifier = ">=4.4.0" },
+    { name = "requests", specifier = ">=2.33.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "ruff", specifier = ">=0.15.5" }]
 
 [[package]]
 name = "macholib"
@@ -454,7 +464,7 @@ requires-dist = [
     { name = "colorama", specifier = "==0.4.6" },
     { name = "jsonrpcserver", specifier = "==5.0.9" },
     { name = "keyring", specifier = ">=24.0.0" },
-    { name = "leveldown-updater", git = "https://github.com/LevelDownRefine/updater.git?rev=55b8963c09710662ed8c4ae1d9b0d68ffa34eaa3" },
+    { name = "leveldown-updater", editable = "updater-lib" },
     { name = "psutil", specifier = "==6.1.1" },
     { name = "pycaw", specifier = "==20220416" },
     { name = "pyinstaller", specifier = "==6.19.0" },

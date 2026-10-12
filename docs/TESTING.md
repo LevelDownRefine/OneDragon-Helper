@@ -49,7 +49,11 @@ python -m unittest discover -s python-gui/tests/gui -t python-gui -p "test*.py"
 - 缓存测试使用隔离的注册表并恢复原状态；需要已初始化对象时，在用例中明确构造。golden 使用独立适配器和固定种子，不受其它测试是否预热缓存影响。
 - 合并或迁移测试后，除全量检查外，受影响文件须能独立运行，例如 `python -m unittest tests.config.test_golden_daily`。只检查“未抛异常”或“结果非空”不足以验证具体行为，应断言结果、调用对象或持久化内容。
 
-runner 子模块测试由 OneDragonRunner 仓库自己的 CI 执行，主仓 CI 只运行主仓测试。
+runner 和 updater 子模块测试由各自仓库的 CI 执行，主仓 CI 只运行主仓测试。
+首次检出运行 `git submodule update --init --recursive`，再运行 `uv sync --frozen`；
+更新库从 `updater-lib/` 可编辑安装，主仓测试直接使用该子模块源码。
+更新库使用严格可编辑模式，保证 PyInstaller 能收集包；修改已有文件可直接联调，
+新增或删除库文件后运行 `uv sync --reinstall-package leveldown-updater` 重建安装链接。
 
 日常 golden 覆盖全部声明菜单选择的保存路径、字段差异及反读，正常测试只读基线。确认行为变更后显式更新，并审查 `python-backend/tests/golden/daily_baseline.json` 的差异：
 

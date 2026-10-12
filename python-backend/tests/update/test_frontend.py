@@ -1,6 +1,7 @@
 """助手的本地版本、Qt/Rust 附件选择及下载适配。"""
 
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -16,6 +17,24 @@ from tests.support.update_package import make_package, program_snapshot, release
 
 
 class FrontendUpdateTests(unittest.TestCase):
+    def test_repository_startup_imports_updater_source(self):
+        root = Path(__file__).resolve().parents[3]
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from pathlib import Path; "
+                "import updater; from updater import GitHubUpdater; "
+                "assert Path(updater.__file__).samefile("
+                "'updater-lib/src/__init__.py')",
+            ],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def setUp(self):
         self.directory = Path(
             self.enterContext(tempfile.TemporaryDirectory())

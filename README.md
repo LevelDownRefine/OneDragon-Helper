@@ -21,6 +21,7 @@
 ```text
 rust-gui/          # Rust 前端：src/、tests/、Cargo.toml
 runner/            # 脚本运行器，保留现有 submodule
+updater-lib/       # GitHub Release 更新库，submodule
 python-backend/    # Python 业务与 CLI：src/、tests/、pyproject.toml
 python-gui/        # Python 前端：src/gui、tests/、pyproject.toml
 config/           # 共享声明、配置模板与本地用户配置
@@ -30,7 +31,9 @@ tools/、deploy/   # 跨项目构建、打包、发布工具
 
 根目录 `pyproject.toml` 管理 uv workspace 和 Ruff，`uv.lock` 锁定共享 Python 环境。
 
-在仓库根目录安装依赖：`uv sync --frozen`。
+先运行 `git submodule update --init --recursive` 拉取 runner 和 updater 源码，
+再在仓库根目录安装依赖：`uv sync --frozen`。updater 从本地源码可编辑安装，修改后可直接联调；
+子模块改动需在各自仓库提交并推送，再更新主仓库指针。
 
 - Rust GUI：`launcher-rust.bat`。
 - Python GUI：`launcher.bat`，或 `uv run python -m gui.launcher`。
