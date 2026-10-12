@@ -37,8 +37,8 @@ python tools/release_package.py check --package deploy/dist/OneDragon-Helper
 python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
 ```
 
-Rust 目录准备时加 `prepare --frontend rust`：版本与清单写入包类型、必须含独立
-`OneDragon-Helper-CLI.exe` 和主程序同目录的 `vcruntime140.dll`，不复制 QML。后续 `check/archive/test` 从清单读取类型，
+Rust 目录准备时加 `prepare --frontend rust`：`version.json` 写入包类型、必须含独立
+`OneDragon-Helper-CLI.exe` 和主程序同目录的 `vcruntime140.dll`，不复制 QML。后续 `check/archive/test` 从 `version.json` 读取类型，
 拒绝混入 QML 或缺失 CLI；Qt 默认行为不变。两类 ZIP 内的顶层目录均为 `OneDragon-Helper`，
 Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时副本路径，
 不会意外测试另一个构建目录的 CLI。该资源工具不负责构建二进制或设置 UAC。
@@ -48,8 +48,9 @@ Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时
 无 Qt CLI、原 Runner/Updater，在发布 GUI 副本嵌入原图标和管理员 manifest。
 输出 `deploy/dist/rust/OneDragon-Helper`、同目录 ZIP 和校验文件。默认只构建/校验，
 管理员终端加 `--test` 真跑全部 EXE 集成测试；CI 与 tag 发布均加该参数，失败不发布。
-构建不清空整个 dist：仅能替换清单/哈希仍完整的 Rust 输出，存在配置/日志等用户数据或
-文件被修改时拒绝。可用 `--output deploy/dist/另一目录/OneDragon-Helper` 另选输出。
+构建不清空整个 dist：仅能替换通过发布文件范围校验的 Rust 输出，存在配置/日志等用户数据、
+额外文件或缺失文件时拒绝；此校验不检测程序文件内容是否被修改。
+可用 `--output deploy/dist/另一目录/OneDragon-Helper` 另选输出。
 不要将该构建目录直接作为日常安装使用；解压 ZIP 到独立目录后双击主程序。
 发布构建启用截图诊断参数 `--capture 输出.png`：任务卡就绪后由应用截取实际画面并退出，
 该模式跳过自动启动。完整包 CI 使用它验证 Rust 绘制；Qt 包继续验证原 D3D11/WARP 场景。
