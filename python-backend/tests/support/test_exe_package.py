@@ -14,12 +14,30 @@ from tests.exe import is_frontend_package
 from tests.support.update_package import (
     archive_package,
     make_package,
+    prepare_archive,
     prepare_package,
     program_snapshot,
 )
 
 
 class ExePackageTests(unittest.TestCase):
+    def test_shared_zip_produces_separate_verified_install_workspaces(self):
+        package = make_package(self.directory / "package", "2.0.0")
+        archive = archive_package(package, self.directory / "shared.zip")
+        before = file_digest(archive)
+        roots = [make_package(self.directory / name) for name in ("one", "two")]
+        prepared = [prepare_archive(root, archive, "2.0.0", "qt") for root in roots]
+        self.assertNotEqual(prepared[0].directory, prepared[1].directory)
+        (prepared[0].directory / "package/config/config.example.yml").write_bytes(
+            b"modified"
+        )
+        self.assertNotEqual(
+            (prepared[0].directory / "package/config/config.example.yml").read_bytes(),
+            (prepared[1].directory / "package/config/config.example.yml").read_bytes(),
+        )
+        client(roots[1], "1.0.0", "qt").install(prepared[1])
+        self.assertEqual(file_digest(archive), before)
+
     def setUp(self):
         self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
 

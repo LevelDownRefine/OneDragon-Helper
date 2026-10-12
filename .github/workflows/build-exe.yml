@@ -17,6 +17,10 @@ env:
   SOURCE_DATE_EPOCH: "1700000000"
   PYTHONHASHSEED: "0"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-rust:
     runs-on: windows-latest
@@ -31,6 +35,11 @@ jobs:
         run: |
           uv sync --frozen
           rustup toolchain install 1.97.1 --profile minimal --component clippy --component rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-gui -> target
+          shared-key: windows-rust
+
       - name: Check and test Windows Rust implementation
         shell: pwsh
         run: |

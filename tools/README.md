@@ -6,6 +6,10 @@
 
 ## 发布包
 
+正式 release 在 Linux job 中查找同提交、主分支 push 的成功完整构建。
+已有构建仍运行时最多等待 20 分钟，再复用 Qt/Rust 产物；失败、超时、查询失败或
+产物过期时回退全量构建和 EXE 测试。`find_build_run.py` 不复用 PR 或其他提交的产物。
+
 `release_package.py` 由 `deploy/build.bat` 调用：仅拷贝 Git 跟踪的
 `config/` 模板与声明、`assets/` 内置资源、`python-gui/src/gui/qml/` 和 README；QML 在发布包仍安装到 `src/gui/qml/`。
 `assets/icons/` 是编译期图标源，已嵌入 Rust EXE，Qt 使用矢量源；两种发布包都不重复拷贝它们。

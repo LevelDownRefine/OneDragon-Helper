@@ -116,21 +116,20 @@ def prepare_package(install: Path, package: Path, version: str, frontend: str):
     """通过真实下载接口暂存普通 ZIP，HTTP 使用本地字节流。"""
     with tempfile.TemporaryDirectory() as temporary:
         archive = archive_package(package, Path(temporary) / "package.zip")
-        size = archive.stat().st_size
-        target = release(
-            version, frontend=frontend, size=size, sha256=file_digest(archive)
-        )
-        response = MagicMock()
-        response.__enter__.return_value = response
-        response.status_code = 200
-        response.headers = {"Content-Length": str(size)}
-        updater = GitHubUpdater(
-            REPOSITORY,
-            ARCHIVES[frontend],
-            install,
-            "0",
-            archive_prefix="OneDragon-Helper/",
-        )
-        with archive.open("rb") as source, patch("requests.get", return_value=response):
-            response.iter_content.return_value = iter(lambda: source.read(65536), b"")
-            return updater.download(target)
+        return prepare_archive(install, archive, version, frontend)
+
+
+def prepare_archive(install: Path, archive: Path, version: str, frontend: str):
+    """复用只读 ZIP 输入，每个安装仍独立下载、解包及记录身份。"""
+    size = archive.stat().st_size
+    target = release(version, frontend=frontend, size=size, sha256=file_digest(archive))
+    response = MagicMock()
+    response.__enter__.return_value = response
+    response.status_code = 200
+    response.headers = {"Content-Length": str(size)}
+    updater = GitHubUpdater(
+        REPOSITORY, ARCHIVES[frontend], install, "0", archive_prefix="OneDragon-Helper/"
+    )
+    with archive.open("rb") as source, patch("requests.get", return_value=response):
+        response.iter_content.return_value = iter(lambda: source.read(65536), b"")
+        return updater.download(target)

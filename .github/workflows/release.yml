@@ -16,7 +16,24 @@ permissions:
   actions: read     # 跨 workflow 下载构建产物需要读权限
 
 jobs:
+  locate-build:
+    # 等待放在 Linux，避免占用 Windows 构建槽；失败/无匹配产物仍回退重建。
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run-id: ${{ steps.reuse.outputs.run-id }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Locate or wait for matching build
+        id: reuse
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python tools/find_build_run.py --repository "$GITHUB_REPOSITORY" --commit "$GITHUB_SHA" --output "$GITHUB_OUTPUT"
+
   release:
+    needs: locate-build
     runs-on: windows-latest
     env:
       ODH_RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
@@ -39,32 +56,20 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      # 定位同一 commit 上成功的 Build EXE & Run Exe Tests run，作为产物来源。
-      - name: Locate matching Build EXE run
-        id: reuse
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # gh 查询失败（网络/API 抖动）不应让发布失败：落空后由 fallback 全量构建。
-          run_id=$(gh run list --workflow=build-exe.yml --event push --commit "$GITHUB_SHA" \
-            --status success --limit 1 --json databaseId --jq '.[0].databaseId // ""') || run_id=""
-          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
-
       # 拉取该 run 的 Qt 发布目录与 Rust 发布目录。产物缺失/已过期（保留 7 天）则本步失败，
       # 交由后续 fallback 步骤承接。
       - name: Fetch reused build artifacts
         id: fetch
-        if: steps.reuse.outputs.run-id != ''
+        if: needs.locate-build.outputs.run-id != ''
         continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p deploy/dist deploy/dist/rust
-          gh run download "${{ steps.reuse.outputs.run-id }}" \
+          gh run download "${{ needs.locate-build.outputs.run-id }}" \
             --name OneDragon-Helper-windows --dir deploy/dist/OneDragon-Helper
-          gh run download "${{ steps.reuse.outputs.run-id }}" \
+          gh run download "${{ needs.locate-build.outputs.run-id }}" \
             --name OneDragon-Helper-Rust-windows --dir deploy/dist/rust/OneDragon-Helper
           # 校验产物形态：缺 version.json 说明产物缺失/过期或形态不符（如仍是旧的 ZIP 形态），
           # 本步失败后由 fallback 全量构建。
@@ -89,13 +94,25 @@ jobs:
         shell: cmd
         run: call deploy\build.bat
 
+      - name: Install Rust for fallback
+        if: steps.fetch.outcome != 'success'
+        env:
+          RUSTUP_TOOLCHAIN: 1.97.1
+        run: rustup toolchain install 1.97.1 --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.fetch.outcome != 'success'
+        env:
+          RUSTUP_TOOLCHAIN: 1.97.1
+        with:
+          workspaces: rust-gui -> target
+          shared-key: windows-rust
+
       - name: Build and test Rust release package (fallback)
         if: steps.fetch.outcome != 'success'
         env:
           RUSTUP_TOOLCHAIN: 1.97.1
-        run: |
-          rustup toolchain install 1.97.1 --profile minimal
-          uv run --frozen python tools/build_rust.py --test
+        run: uv run --frozen python tools/build_rust.py --test
 
       # 同样用 bash：两条 archive 都要生效，pwsh 只会透传最后一条的退出码。
       - name: Package dist into zip
