@@ -32,18 +32,30 @@ fn playback_delays_loops_and_stops_on_selection_change() {
     let path = root.path().join("loop.mp4");
     std::fs::write(&path, include_bytes!("fixtures/wallpaper.mp4")).unwrap();
     let player = Player::new(egui::Context::default());
-    let started = Instant::now();
     player.set(1, Some(path.clone()));
     std::thread::sleep(Duration::from_millis(100));
     assert!(player.poll().is_none());
     let mut cached = 0;
     let mut received = 0;
-    while started.elapsed() < Duration::from_secs(3) {
+    let startup_deadline = Instant::now() + Duration::from_secs(10);
+    let mut playback_deadline = None;
+    loop {
         if let Some(output) = player.poll() {
             assert_eq!(output.generation, 1);
             let frame = output.result.unwrap();
             cached += usize::from(frame.jpeg.is_some());
             received += 1;
+            playback_deadline.get_or_insert_with(|| Instant::now() + Duration::from_secs(3));
+        }
+        if let Some(deadline) = playback_deadline {
+            if Instant::now() >= deadline {
+                break;
+            }
+        } else {
+            assert!(
+                Instant::now() < startup_deadline,
+                "decoder produced no first frame"
+            );
         }
         std::thread::sleep(Duration::from_millis(10));
     }

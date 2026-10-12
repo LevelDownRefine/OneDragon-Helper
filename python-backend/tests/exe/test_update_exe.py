@@ -158,7 +158,7 @@ class TestUpdateExe(unittest.TestCase):
         self.assertEqual((code, result["status"]), (1, "failed"), result)
         self.assert_old_restored()
         journal = json.loads(
-            (self.root / ".update/github-transaction.json").read_text()
+            (self.root / ".update/github-transaction.json").read_text(encoding="utf-8")
         )
         self.assertEqual(journal["phase"], "rolled_back")
 
@@ -228,7 +228,9 @@ class TestUpdateExe(unittest.TestCase):
                 ):
                     time.sleep(0.05)
                 self.assertTrue(ready.exists(), "更新器未就绪")
-                self.assertEqual(json.loads(ready.read_text())["status"], "ready")
+                self.assertEqual(
+                    json.loads(ready.read_text(encoding="utf-8"))["status"], "ready"
+                )
                 self.assertIsNone(updater.poll())
                 self.assertIsNone(frontend.poll())
                 self.assertEqual(program_snapshot(self.root), self.before)
@@ -236,7 +238,8 @@ class TestUpdateExe(unittest.TestCase):
                 self.assertEqual(frontend.wait(timeout=30), 0)
                 self.assertEqual(updater.wait(timeout=180), 0)
                 self.assertEqual(
-                    json.loads(self.result.read_text())["status"], "installed"
+                    json.loads(self.result.read_text(encoding="utf-8"))["status"],
+                    "installed",
                 )
                 self.assertEqual(read_version(self.root)["version"], "2.0.0")
                 self.assert_users_unchanged()
@@ -320,7 +323,9 @@ class TestUpdateExe(unittest.TestCase):
                 "transaction": identity,
                 "originals": {"version.json": file_digest(previous)},
                 "inventory": json.loads(
-                    (self.root / ".update/github-installed.json").read_text()
+                    (self.root / ".update/github-installed.json").read_text(
+                        encoding="utf-8"
+                    )
                 ),
             },
         )

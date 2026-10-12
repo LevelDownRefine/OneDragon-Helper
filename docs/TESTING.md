@@ -54,6 +54,7 @@ runner 和 updater 子模块测试由各自仓库的 CI 执行，主仓 CI 只�
 更新库从 `updater-lib/` 可编辑安装，主仓测试直接使用该子模块源码。
 更新库使用严格可编辑模式，保证 PyInstaller 能收集包；修改已有文件可直接联调，
 新增或删除库文件后运行 `uv sync --reinstall-package leveldown-updater` 重建安装链接。
+Windows 安装可能使用硬链接；编辑器通过替换文件保存源码时，也需重装该包以刷新链接。
 
 日常 golden 覆盖全部声明菜单选择的保存路径、字段差异及反读，正常测试只读基线。确认行为变更后显式更新，并审查 `python-backend/tests/golden/daily_baseline.json` 的差异：
 
