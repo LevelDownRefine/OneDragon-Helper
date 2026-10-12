@@ -12,7 +12,7 @@ OneDragon-Helper 项目指南。细节与澄清见各子文档。
 - Python 3.11+；GUI 用 PySide6，原生控件加手写样式；Lint/Format 用 ruff，line-length 88，双引号。
 - Python 依赖分别声明于 `python-backend/pyproject.toml` 和 `python-gui/pyproject.toml`，根目录 uv workspace 统一管理 `.venv/` 与 `uv.lock`，运行 `uv sync`；改代码前先 `source .venv/Scripts/activate`，或 `call env.bat`。
 - **`runner/` 是 git submodule → OneDragonRunner，独立仓库维护**：涉及 runner 的改动要进那个仓库单独提交/推送，主仓只更新 submodule 指针。
-- **`updater-lib/` 是 git submodule → LevelDownRefine/updater，独立仓库维护**：更新库改动在子仓库单独提交/推送，主仓只更新指针；`uv sync` 从本地子模块可编辑安装 `leveldown-updater`。目录名避开 Python 包名 `updater`，防止源码启动时遮蔽导入。
+- **`updater/` 是 git submodule → LevelDownRefine/updater，独立仓库维护**：更新库改动在子仓库单独提交/推送，主仓只更新指针；`uv sync` 从本地子模块严格可编辑安装 `leveldown-updater`。
 
 ## 架构：四部分，职责单向、互不越界
 

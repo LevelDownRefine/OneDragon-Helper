@@ -21,7 +21,7 @@
 ```text
 rust-gui/          # Rust 前端：src/、tests/、Cargo.toml
 runner/            # 脚本运行器，保留现有 submodule
-updater-lib/       # GitHub Release 更新库，submodule
+updater/           # GitHub Release 更新库，submodule
 python-backend/    # Python 业务与 CLI：src/、tests/、pyproject.toml
 python-gui/        # Python 前端：src/gui、tests/、pyproject.toml
 config/           # 共享声明、配置模板与本地用户配置

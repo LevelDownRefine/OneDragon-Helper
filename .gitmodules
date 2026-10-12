@@ -2,5 +2,5 @@
 	path = runner
 	url = https://github.com/LevelDownRefine/OneDragonRunner.git
 [submodule "updater"]
-	path = updater-lib
+	path = updater
 	url = https://github.com/LevelDownRefine/updater.git

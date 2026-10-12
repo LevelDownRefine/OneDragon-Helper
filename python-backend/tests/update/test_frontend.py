@@ -26,7 +26,7 @@ class FrontendUpdateTests(unittest.TestCase):
                 "from pathlib import Path; "
                 "import updater; from updater import GitHubUpdater; "
                 "assert Path(updater.__file__).samefile("
-                "'updater-lib/src/__init__.py')",
+                "'updater/src/__init__.py')",
             ],
             cwd=root,
             capture_output=True,

@@ -387,7 +387,7 @@ wheels = [
 [[package]]
 name = "leveldown-updater"
 version = "0.1.0"
-source = { editable = "updater-lib" }
+source = { editable = "updater" }
 dependencies = [
     { name = "packaging" },
     { name = "portalocker", extra = ["win32"] },
@@ -464,7 +464,7 @@ requires-dist = [
     { name = "colorama", specifier = "==0.4.6" },
     { name = "jsonrpcserver", specifier = "==5.0.9" },
     { name = "keyring", specifier = ">=24.0.0" },
-    { name = "leveldown-updater", editable = "updater-lib" },
+    { name = "leveldown-updater", editable = "updater" },
     { name = "psutil", specifier = "==6.1.1" },
     { name = "pycaw", specifier = "==20220416" },
     { name = "pyinstaller", specifier = "==6.19.0" },
