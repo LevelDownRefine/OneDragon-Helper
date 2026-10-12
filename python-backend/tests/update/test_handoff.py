@@ -8,11 +8,12 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import psutil
+from updater import UpdateError
+from updater.utils import FileLease, UpdateBusyError
 
-from src.update import __main__ as updater
-from src.update import service
-from src.update.package import APP_EXE, CLI_EXE, QT_CLI_EXE, UpdateError
-from src.update.runtime import FileLease, UpdateBusyError
+from src import update as service
+from src import update as updater
+from src.update import APP_EXE, CLI_EXE, QT_CLI_EXE, UpdateService
 from tests.support.update_package import make_package, program_snapshot
 
 
@@ -21,10 +22,10 @@ class RustHandoffTests(unittest.TestCase):
         self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.root = make_package(self.directory / "installed", frontend="rust")
         self.package = make_package(
-            self.root / ".update/download-test/package", "2.0.0", frontend="rust"
+            self.root / ".update/github-test/package", "2.0.0", frontend="rust"
         )
         self.prepared = service.PreparedUpdate(self.package.parent, "2.0.0")
-        self.client = service.UpdateService(self.root, frontend="rust")
+        self.client = UpdateService(self.root, frontend="rust")
         self.enterContext(patch.object(sys, "frozen", True, create=True))
         self.cli = Mock(pid=os.getpid())
         self.gui = Mock(pid=999991)
@@ -39,6 +40,8 @@ class RustHandoffTests(unittest.TestCase):
         before = program_snapshot(self.root)
 
         def start(command, **_kwargs):
+            self.assertEqual(Path(_kwargs["cwd"]), Path(command[0]).parent)
+            self.assertFalse(Path(_kwargs["cwd"]).is_relative_to(self.root))
             self.assertEqual(
                 command[command.index("--parent-pid") + 1], str(self.cli.pid)
             )
@@ -47,12 +50,14 @@ class RustHandoffTests(unittest.TestCase):
                 command[command.index("--frontend-pid") + 1], str(self.gui.pid)
             )
             self.assertEqual(command[command.index("--frontend-created") + 1], "22.0")
-            Path(command[command.index("--ready") + 1]).write_text('{"status":"ready"}')
-            return Mock()
+            Path(command[command.index("--ready") + 1]).write_text(
+                '{"status":"ready","version":"2.0.0"}'
+            )
+            return Mock(poll=Mock(return_value=None))
 
         with (
             patch.object(service.psutil, "Process", return_value=self.cli),
-            patch.object(service, "helper_processes", return_value=[]) as running,
+            patch.object(service, "application_processes", return_value=[]) as running,
             patch.object(service.subprocess, "Popen", side_effect=start),
         ):
             self.assertEqual(
@@ -75,7 +80,7 @@ class RustHandoffTests(unittest.TestCase):
                     patch.object(service.psutil, "Process", return_value=self.cli),
                     patch.object(
                         service,
-                        "helper_processes",
+                        "application_processes",
                         return_value=[1234] if kind == "busy" else [],
                     ),
                     patch.object(service.subprocess, "Popen") as spawn,
@@ -84,10 +89,32 @@ class RustHandoffTests(unittest.TestCase):
                     self.client.start_update(self.prepared)
                 spawn.assert_not_called()
 
+    def test_unreadable_ready_receipt_cancels_worker_before_returning_error(self):
+        command_sent = []
+
+        def start(command, **_kwargs):
+            command_sent.extend(command)
+            Path(command[command.index("--ready") + 1]).write_text(
+                "incomplete", encoding="utf-8"
+            )
+            return Mock(poll=Mock(return_value=None))
+
+        with (
+            patch.object(service.psutil, "Process", return_value=self.cli),
+            patch.object(service, "application_processes", return_value=[]),
+            patch.object(service.subprocess, "Popen", side_effect=start),
+            self.assertRaises(ValueError),
+        ):
+            self.client.start_update(self.prepared)
+        self.assertTrue(
+            Path(command_sent[command_sent.index("--cancel") + 1]).is_file()
+        )
+
     def run_installer(self, ready):
         updater.run_update(
             self.root,
-            self.package,
+            self.prepared,
+            frontend=self.client.frontend,
             parent_pid=self.cli.pid,
             parent_created=11.0,
             frontend_pid=self.gui.pid,
@@ -112,8 +139,8 @@ class RustHandoffTests(unittest.TestCase):
         self.cli.wait.side_effect = lambda timeout: wait("cli", timeout)
         self.gui.wait.side_effect = lambda timeout: wait("gui", timeout)
 
-        def install(root, package):
-            self.assertEqual((root, package), (self.root, self.package))
+        def install(prepared):
+            self.assertEqual(prepared, self.prepared)
             self.assertEqual(exited, ["cli", "gui"])
             with (
                 self.assertRaises(UpdateBusyError),
@@ -123,8 +150,8 @@ class RustHandoffTests(unittest.TestCase):
 
         with (
             patch.object(updater.psutil, "Process", side_effect=self.processes),
-            patch.object(updater, "helper_processes", return_value=[]) as running,
-            patch.object(updater, "install_package", side_effect=install) as installed,
+            patch.object(updater, "application_processes", return_value=[]) as running,
+            patch("updater.GitHubUpdater.install", side_effect=install) as installed,
         ):
             self.run_installer(ready)
         installed.assert_called_once()
@@ -148,8 +175,8 @@ class RustHandoffTests(unittest.TestCase):
                 )
                 with (
                     patch.object(updater.psutil, "Process", side_effect=self.processes),
-                    patch.object(updater, "helper_processes", return_value=[]),
-                    patch.object(updater, "install_package") as install,
+                    patch.object(updater, "application_processes", return_value=[]),
+                    patch("updater.GitHubUpdater.install") as install,
                     self.assertRaises(UpdateBusyError),
                 ):
                     self.run_installer(ready)
@@ -161,11 +188,9 @@ class QtCliHandoffTests(RustHandoffTests):
     def setUp(self):
         super().setUp()
         self.root = make_package(self.directory / "qt-installed")
-        self.package = make_package(
-            self.root / ".update/download-test/package", "2.0.0"
-        )
+        self.package = make_package(self.root / ".update/github-test/package", "2.0.0")
         self.prepared = service.PreparedUpdate(self.package.parent, "2.0.0")
-        self.client = service.UpdateService(self.root, frontend="qt")
+        self.client = UpdateService(self.root, frontend="qt")
         self.cli.exe.return_value = str(self.root / QT_CLI_EXE)
         self.gui.exe.return_value = str(self.root / APP_EXE)
 
@@ -181,7 +206,7 @@ class QtCliHandoffTests(RustHandoffTests):
                     patch.object(service.psutil, "Process", return_value=self.cli),
                     patch.object(
                         service,
-                        "helper_processes",
+                        "application_processes",
                         return_value=[1234] if kind == "busy" else [],
                     ),
                     patch.object(service.subprocess, "Popen") as spawn,

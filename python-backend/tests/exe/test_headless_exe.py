@@ -10,9 +10,9 @@ import unittest
 from pathlib import Path
 
 import psutil
+from updater.utils import FileLease, UpdateBusyError
 
-from src.update.package import CLI_EXE, QT_CLI_EXE
-from src.update.runtime import FileLease, UpdateBusyError, child_environment
+from src.update import CLI_EXE, QT_CLI_EXE, child_environment
 from tests.exe import project_root
 from tests.exe.pipe_output import PipeOutput
 from tools.release_package import resource_files
@@ -232,7 +232,7 @@ class HeadlessExeTests(unittest.TestCase):
         modules = archive.open_embedded_archive("PYZ.pyz").toc
         for name in (
             "src.service.app_service",
-            "src.update.service",
+            "src.update",
             "keyring.backends.Windows",
             "requests",
             "jsonrpcserver",

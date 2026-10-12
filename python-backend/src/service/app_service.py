@@ -12,7 +12,7 @@ peer：
 - 游戏侧 config 适配器（副本/周几起写脚本自身 config）：归 :mod:`src.config.set_config` 模块函数
 - 自定义壁纸表（config/wallpaper.json）：归 :mod:`src.utils.utils_wallpaper` 模块函数
 - 配置备份与恢复（各子脚本 config 打包为 ZIP / 按目录原样回写）：归 :mod:`src.service.backup_service` 模块函数
-- 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.service.UpdateService`
+- 助手手动更新（检查 / 下载 / 安装交接）：归 :class:`src.update.UpdateService`
 
 GUI（MainWindow）与 CLI（各子命令）都只实例化本类，控制器经构造注入持有它；
 Python GUI 直接调用本类；CLI 在传输边界转换数据，两者共用业务实现。
@@ -49,7 +49,7 @@ from src.service.schedule import (
     save_schedule,
 )
 from src.service.script_service import InvalidScript, ScriptEdit
-from src.update.service import UpdateService, UpdateSession
+from src.update import UpdateService, UpdateSession
 from src.utils.utils_config import (
     config_file_path,
     get_script,

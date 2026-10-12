@@ -4,7 +4,7 @@ import sys
 import unittest
 from xml.etree import ElementTree
 
-from src.update.package import APP_EXE, CLI_EXE, RUNNER_EXE, UPDATER_EXE, load_manifest
+from src.update import APP_EXE, CLI_EXE, RUNNER_EXE, UPDATER_EXE, read_version
 from tests.exe import is_frontend_package, package_dir
 
 PACKAGE = package_dir()
@@ -21,7 +21,7 @@ class RustPackageExeTests(unittest.TestCase):
         import pefile
         from PyInstaller.utils.win32.winmanifest import read_manifest_from_executable
 
-        self.assertEqual(load_manifest(PACKAGE, verify=True)["frontend"], "rust")
+        self.assertEqual(read_version(PACKAGE)["frontend"], "rust")
         for name, level in ((APP_EXE, "requireAdministrator"), (CLI_EXE, "asInvoker")):
             with self.subTest(executable=name):
                 document = ElementTree.fromstring(

@@ -19,17 +19,40 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
-from src.update.package import (  # noqa: E402
+from updater.utils import linked_path, relative_path  # noqa: E402
+
+from src.update import (  # noqa: E402
     CLI_EXE,
-    MANIFEST,
     QT_CLI_EXE,
-    RUST_RUNTIME,
     UPDATER_EXE,
-    load_manifest,
-    managed_path,
-    manifest_frontend,
-    write_manifest,
+    read_version,
 )
+
+RUST_RUNTIME = "vcruntime140.dll"
+
+
+def program_path(name: str) -> bool:
+    """发布资源不能包含实际用户配置、缓存或备份。"""
+    parts = name.split("/")
+    if not relative_path(name) or any(
+        part.casefold()
+        in {"logs", ".log", "backups", "wallpaper_cache", "script_chain"}
+        for part in parts
+    ):
+        return False
+    if name.casefold() == "assets/banner.jpg":
+        return False
+    if parts[0] == "config":
+        return len(parts) >= 2 and parts[1].casefold() not in {
+            "config.yml",
+            "schedule.yml",
+            "weekly.yml",
+            "notify_mail.yml",
+            "wallpaper.json",
+            "gui_state.json",
+        }
+    return True
+
 
 EXE_NAME = "OneDragon-Helper.exe"
 RUNNER_NAME = "OneDragon-Helper-Runner.exe"
@@ -39,7 +62,8 @@ logger = logging.getLogger(__name__)
 
 def resource_files(root: Path, frontend: str = "qt") -> list[str]:
     """收集 Git 跟踪的运行资源，拒绝误跟踪的用户配置与备份。"""
-    manifest_frontend({"frontend": frontend})
+    if frontend not in {"qt", "rust"}:
+        raise ValueError("前端类型无效")
     resources = ["config", "assets", "README.md"]
     if frontend == "qt":
         resources.append("python-gui/src/gui/qml")
@@ -57,9 +81,9 @@ def resource_files(root: Path, frontend: str = "qt") -> list[str]:
         for name in names
     ]
     for source_name, name in zip(names, packaged_names, strict=True):
-        if not managed_path(name):
+        if not program_path(name):
             raise ValueError(f"用户文件不能作为发布资源: {name}")
-        if (root / source_name).is_symlink():
+        if linked_path(root / source_name):
             raise ValueError(f"发布资源不能是符号链接: {source_name}")
     # PNG 图标已编译进 Rust EXE；Qt 使用矢量图标源，发布包无需再拷贝。
     return [name for name in packaged_names if not name.startswith("assets/icons/")]
@@ -100,28 +124,19 @@ def prepare_package(
         json.dumps(metadata, indent=2) + "\n",
         encoding="utf-8",
     )
-    files = names + [EXE_NAME, RUNNER_NAME, UPDATER_EXE, VERSION_FILE]
-    files.append(CLI_EXE if frontend == "rust" else QT_CLI_EXE)
-    if frontend == "rust":
-        files.append(RUST_RUNTIME)
-    files += [
-        path.relative_to(package).as_posix()
-        for path in (package / "_internal").rglob("*")
-        if path.is_file()
-    ]
-    write_manifest(package, sorted(set(files)), version, frontend=frontend)
     validate_package(root, package)
 
 
 def validate_package(root: Path, package: Path) -> list[Path]:
     """检查完整发布目录；清单外文件直接报错，避免发布个人数据或测试残留。"""
-    frontend = manifest_frontend(load_manifest(package))
+    if linked_path(package):
+        raise ValueError("发布包目录不能是链接")
+    frontend = read_version(package)["frontend"]
     expected = set(resource_files(root, frontend)) | {
         EXE_NAME,
         RUNNER_NAME,
         UPDATER_EXE,
         VERSION_FILE,
-        MANIFEST,
     }
     expected.add(CLI_EXE if frontend == "rust" else QT_CLI_EXE)
     if frontend == "rust":
@@ -135,16 +150,22 @@ def validate_package(root: Path, package: Path) -> list[Path]:
     files = []
     for path in sorted(package.rglob("*")):
         name = path.relative_to(package).as_posix()
-        if path.is_symlink():
+        if linked_path(path):
             raise ValueError(f"发布包不能包含符号链接: {name}")
         if path.is_dir():
-            if (
+            if any(
+                part.casefold()
+                in {"logs", ".log", "backups", "wallpaper_cache", "script_chain"}
+                for part in Path(name).parts
+            ) or (
                 path.parts[len(package.parts)] not in {"_internal"}
                 and str(Path(name)) not in allowed_dirs
             ):
                 raise ValueError(f"发布包包含非程序目录: {name}")
             continue
-        if name not in expected and not name.startswith("_internal/"):
+        if not program_path(name) or (
+            name not in expected and not name.startswith("_internal/")
+        ):
             raise ValueError(f"发布包包含非程序文件: {name}")
         found.add(name)
         files.append(path)
@@ -153,9 +174,6 @@ def validate_package(root: Path, package: Path) -> list[Path]:
         raise ValueError(f"发布包缺少文件: {', '.join(sorted(missing))}")
     if not any(name.startswith("_internal/") for name in found):
         raise ValueError("发布包缺少 _internal 运行库")
-    manifest = load_manifest(package, verify=True)
-    if found != set(manifest["files"]) | {MANIFEST}:
-        raise ValueError("发布包文件与更新清单不一致")
     return files
 
 
@@ -198,7 +216,7 @@ def test_package(root: Path, package: Path) -> int:
                 sandbox
                 / (
                     CLI_EXE
-                    if manifest_frontend(load_manifest(sandbox)) == "rust"
+                    if read_version(sandbox)["frontend"] == "rust"
                     else QT_CLI_EXE
                 )
             ),

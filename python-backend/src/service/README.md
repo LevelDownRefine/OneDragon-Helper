@@ -23,7 +23,7 @@
 | python-backend/src/utils/utils_config.py | config.yml 读写、结构校验、条目查询与配置文件路径解析 |
 | python-backend/src/utils/utils_wallpaper.py | 壁纸来源、映射与预览缓存；解码和渲染归前端 |
 | python-backend/src/utils/utils_job.py | JobExecutor：单个后台操作的执行、进度、取消与结果保留；不依赖业务模块 |
-| python-backend/src/update/service.py | 更新内核与 UpdateSession 会话状态；检查、下载和安装交接共用原实现 |
+| python-backend/src/update.py | 助手更新适配、UpdateSession 与独立更新进程；内核归 updater 子库 |
 | chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
 | chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
 | schedule.py | schedule.yml 读写（StartupOptions 自动启动开关/秒数、RunOptions 运行选项）+ ScheduledRun 调度运行编排 |
@@ -111,10 +111,28 @@ CLI 表单通过 `script_edit_view` 读取；`script.edit_save` 在传输边界�
 
 ## 手动更新
 
-`AppService` 装配 `src.update.service.UpdateService`，薄委托本地状态读取、检查、下载和安装交接。
+`AppService` 装配 `src.update.UpdateService`，薄委托本地状态读取、检查、下载和安装交接。
 同模块的 `UpdateSession` 保留 CLI 更新会话状态，并使用 `AppService.jobs` 执行耗时操作。
-更新协议、运行锁、安装事务和独立更新器集中在 [python-backend/src/update](../update/README.md)，无 Qt 依赖。
+助手的更新适配、运行锁和独立更新进程集中在 [src/update.py](../update.py)，无 Qt 依赖。
+下载、断点续传、文件校验、安装事务与恢复由独立 [updater](https://github.com/LevelDownRefine/updater) 库负责。
 GUI 的弹窗和工作线程保留在 `python-gui/src/gui`，经 AppService 调用更新服务。
+
+`version.json` 记录本地版本及 Qt/Rust 类型；源码与开发构建不在线替换。
+检查按类型选择 GitHub Release ZIP，下载沿用子库的整包断点续传。
+下载包的版本元数据无效时丢弃缓存，显式重试重新下载；安装成功后清理本次缓存，
+安装失败或取消继续保留断点。就绪回执读取或校验失败会撤销交接。
+发布工具 `tools/release_package.py` 校验资源边界，只打包程序资源、example 与声明，
+不再生成 `update-manifest.json`；实际用户配置、日志和自定义壁纸留在原位。
+旧更新器依赖专用清单，首次切换到本协议需手动安装新版完整包。
+子库首次接管不推断历史文件所有权，旧版退役文件不会自动清理；之后由本地安装清单管理。
+
+安装交接复制 onefile 更新器到独立临时目录，关闭启动闸门，报告匹配版本的 ready，
+然后在同一 30 秒期限内等待 GUI/CLI 退出，并取得独占运行锁。
+同安装的其他窗口或 Runner 仍运行时拒绝安装，不终止已有任务。
+安装和回滚调用子库，成功后带 `--after-update` 重启；结果保存在 `.update/result.json`。
+应用启动先于配置初始化检测中断事务，在独占运行锁下调用恢复，恢复失败拒绝启动。
+独立恢复入口：`OneDragon-Helper-Updater.exe --root 安装目录 --recover`。
+源码调试可用 `python -m src.update --help`；安装仅用于独立测试副本。
 
 ## 配置迁移
 

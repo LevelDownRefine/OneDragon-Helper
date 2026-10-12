@@ -23,11 +23,11 @@ Windows 任务计划与快捷方式使用的 `pywin32` 在主项目中显式声�
 `ODH_RELEASE_TAG` 读取 `v主版本.次版本.修订版本`，本地及分支构建标记为
 `pyproject版本+dev.提交号`。`--version` 优先读取这份构建信息。
 
-包内还包含独立的 `OneDragon-Helper-Updater.exe` 和 `update-manifest.json`。
-清单版本为 schema 1，记录程序版本与每个程序文件的 SHA-256（不含清单自身）；
-构建校验及更新器共用 `python-backend/src/update/package.py` 的路径规则。独立更新器从
-`python-backend/src/update/__main__.py` 打包。ZIP 的 SHA-256 覆盖清单，逐文件校验确保解包和替换完整。
-用户配置、日志、壁纸和备份既不进入清单，也不能被更新清单声明为可替换内容。
+包内包含独立的 `OneDragon-Helper-Updater.exe`，由 `python-backend/src/update.py` 打包。
+发布普通 ZIP，不再生成专用更新清单；构建工具校验 Git 资源和程序文件范围，
+拒绝混入用户配置、日志、壁纸和备份。更新库下载后记录并验证逐文件 SHA-256，
+安装所有权清单保存在本地 `.update/`，不属于发布资源。
+旧更新器无法识别这个协议，首次切换需手动安装新版完整包。
 
 exe 集成测试只在临时副本运行，发布目录在测试前后均校验。
 `archive` 再次校验文件清单并生成 ZIP 和同名 `.sha256` 校验文件：
@@ -37,8 +37,8 @@ python tools/release_package.py check --package deploy/dist/OneDragon-Helper
 python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
 ```
 
-Rust 目录准备时加 `prepare --frontend rust`：版本与清单写入包类型、必须含独立
-`OneDragon-Helper-CLI.exe` 和主程序同目录的 `vcruntime140.dll`，不复制 QML。后续 `check/archive/test` 从清单读取类型，
+Rust 目录准备时加 `prepare --frontend rust`：`version.json` 写入包类型、必须含独立
+`OneDragon-Helper-CLI.exe` 和主程序同目录的 `vcruntime140.dll`，不复制 QML。后续 `check/archive/test` 从 `version.json` 读取类型，
 拒绝混入 QML 或缺失 CLI；Qt 默认行为不变。两类 ZIP 内的顶层目录均为 `OneDragon-Helper`，
 Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时副本路径，
 不会意外测试另一个构建目录的 CLI。该资源工具不负责构建二进制或设置 UAC。
@@ -48,8 +48,9 @@ Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时
 无 Qt CLI、原 Runner/Updater，在发布 GUI 副本嵌入原图标和管理员 manifest。
 输出 `deploy/dist/rust/OneDragon-Helper`、同目录 ZIP 和校验文件。默认只构建/校验，
 管理员终端加 `--test` 真跑全部 EXE 集成测试；CI 与 tag 发布均加该参数，失败不发布。
-构建不清空整个 dist：仅能替换清单/哈希仍完整的 Rust 输出，存在配置/日志等用户数据或
-文件被修改时拒绝。可用 `--output deploy/dist/另一目录/OneDragon-Helper` 另选输出。
+构建不清空整个 dist：仅能替换通过发布文件范围校验的 Rust 输出，存在配置/日志等用户数据、
+额外文件或缺失文件时拒绝；此校验不检测程序文件内容是否被修改。
+可用 `--output deploy/dist/另一目录/OneDragon-Helper` 另选输出。
 不要将该构建目录直接作为日常安装使用；解压 ZIP 到独立目录后双击主程序。
 发布构建启用截图诊断参数 `--capture 输出.png`：任务卡就绪后由应用截取实际画面并退出，
 该模式跳过自动启动。完整包 CI 使用它验证 Rust 绘制；Qt 包继续验证原 D3D11/WARP 场景。

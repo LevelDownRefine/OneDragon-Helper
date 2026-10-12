@@ -29,7 +29,7 @@ python -m unittest discover -s python-gui/tests -t python-gui -p "test*.py"
 | `rust-gui/tests/` | Rust 窗口、同名控制器/弹窗、原生能力与 CLI 通信；由 Cargo 运行 |
 | `python-backend/tests/config/` | 配置适配器、声明、日常、周常及 golden 验证 |
 | `python-backend/tests/service/` | 配置服务、链生成、调度和运行编排 |
-| `python-backend/tests/update/` | 更新包协议、下载服务、运行锁、安装回滚 |
+| `python-backend/tests/update/` | 助手发布布局、更新进程交接与会话；内核测试归 updater 仓库 |
 | `python-backend/tests/utils/` | 通用工具、文件读写、路径与系统操作 |
 | `python-backend/tests/log/` | 日志解析与邮件通知 |
 | `python-backend/tests/tools/` | 选项同步脚本的离线测试 |
@@ -49,7 +49,12 @@ python -m unittest discover -s python-gui/tests/gui -t python-gui -p "test*.py"
 - 缓存测试使用隔离的注册表并恢复原状态；需要已初始化对象时，在用例中明确构造。golden 使用独立适配器和固定种子，不受其它测试是否预热缓存影响。
 - 合并或迁移测试后，除全量检查外，受影响文件须能独立运行，例如 `python -m unittest tests.config.test_golden_daily`。只检查“未抛异常”或“结果非空”不足以验证具体行为，应断言结果、调用对象或持久化内容。
 
-runner 子模块测试由 OneDragonRunner 仓库自己的 CI 执行，主仓 CI 只运行主仓测试。
+runner 和 updater 子模块测试由各自仓库的 CI 执行，主仓 CI 只运行主仓测试。
+首次检出运行 `git submodule update --init --recursive`，再运行 `uv sync --frozen`；
+更新库从 `updater/` 可编辑安装，主仓测试直接使用该子模块源码。
+更新库使用严格可编辑模式，保证 PyInstaller 能收集包；修改已有文件可直接联调，
+新增或删除库文件后运行 `uv sync --reinstall-package leveldown-updater` 重建安装链接。
+Windows 安装可能使用硬链接；编辑器通过替换文件保存源码时，也需重装该包以刷新链接。
 
 日常 golden 覆盖全部声明菜单选择的保存路径、字段差异及反读，正常测试只读基线。确认行为变更后显式更新，并审查 `python-backend/tests/golden/daily_baseline.json` 的差异：
 
@@ -62,10 +67,11 @@ uv run --directory python-backend python -m tests.config.test_golden_daily --upd
 `deploy/build.bat` 经 `tools/release_package.py test` 复制发布目录到临时目录再运行
 exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定测试副本。
 发布目录不生成用户配置、日志或缓存。打包测试覆盖缺少用户 YAML 时的首启生成、
-再次启动保留修改，以及 `--version` 与构建元数据一致；测试前后和 ZIP 归档前均检查发布文件清单。
+再次启动保留修改，以及 `--version` 与构建元数据一致；测试前后和 ZIP 归档前均检查发布文件范围。
 测试后尝试清理临时副本，清理失败仅警告并给出残留路径；构建结果取决于 EXE 测试结果与发布包校验。
 
-`python-backend/tests/update/` 覆盖更新包边界、下载校验与取消、程序文件替换、故障回滚和中断恢复；
+独立 updater 仓库覆盖更新包边界、下载校验与取消、程序文件替换、故障回滚和中断恢复；
+`python-backend/tests/update/` 覆盖助手的 Qt/Rust 发布布局、更新进程交接和会话；
 `python-backend/tests/exe/test_update_exe.py` 使用临时安装副本真正启动更新器，
 验证升级后的 EXE 可启动、运行中的 Runner 阻止更新、Windows 文件占用时回滚、
 启动闸门先于用户配置初始化，以及独立恢复入口。所有用户文件断言均使用临时夹具。

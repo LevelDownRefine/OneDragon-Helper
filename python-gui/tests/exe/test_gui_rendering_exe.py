@@ -9,7 +9,7 @@ import time
 import unittest
 from pathlib import Path
 
-from src.update.package import load_manifest, manifest_frontend
+from src.update import read_version
 from src.utils.utils_logger import today
 from tests.exe import package_dir
 
@@ -103,7 +103,7 @@ class TestPackagedRendering(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "app"
             shutil.copytree(PACKAGE, root)
-            if manifest_frontend(load_manifest(root)) == "rust":
+            if read_version(root)["frontend"] == "rust":
                 self._check_rust_frame(root, Path(directory))
                 return
             # 测试副本不配置任何脚本，避免倒计时启动游戏。

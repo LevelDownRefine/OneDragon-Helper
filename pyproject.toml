@@ -1,3 +1,7 @@
+[tool.uv]
+# 用实际包目录暴露可编辑源码，供 PyInstaller 静态收集。
+config-settings-package = { leveldown-updater = { editable_mode = "strict" } }
+
 [tool.uv.workspace]
 members = ["python-backend", "python-gui"]
 
@@ -45,3 +49,4 @@ line-ending = "auto"
 
 [tool.ruff.lint.isort]
 known-first-party = ["gui", "src", "tests", "tools"]
+known-third-party = ["updater"]

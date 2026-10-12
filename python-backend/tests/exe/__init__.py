@@ -3,7 +3,7 @@
 import os
 import pathlib
 
-from src.update.package import MANIFEST, load_manifest, manifest_frontend
+from src.update import VERSION_FILE, read_version
 
 
 def project_root() -> str:
@@ -26,7 +26,7 @@ def package_dir() -> pathlib.Path:
 
 
 def is_frontend_package(package: pathlib.Path, frontend: str) -> bool:
-    """按发布清单选择前端专用测试；两种前端都包含 CLI。"""
-    return (package / MANIFEST).is_file() and manifest_frontend(
-        load_manifest(package)
-    ) == frontend
+    """按版本元数据选择前端专用测试；两种前端都包含 CLI。"""
+    return (package / VERSION_FILE).is_file() and read_version(package)[
+        "frontend"
+    ] == frontend

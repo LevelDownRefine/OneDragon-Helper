@@ -20,7 +20,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
-from src.update.package import load_manifest, manifest_frontend  # noqa: E402
+from src.update import read_version  # noqa: E402
 from src.utils.utils_logger import today  # noqa: E402
 from tools.release_package import validate_package  # noqa: E402
 from tools.run_rust_gui import prepare_demo  # noqa: E402
@@ -125,7 +125,7 @@ def main() -> int:
     project = Path(__file__).resolve().parents[1]
     for family, package in (("qt", args.qt_package), ("rust", args.rust_package)):
         validate_package(project, package)
-        if manifest_frontend(load_manifest(package)) != family:
+        if read_version(package)["frontend"] != family:
             parser.error(f"{family} 参数指向了其他类型的发布包")
     samples = {"qt": [], "rust": []}
     with tempfile.TemporaryDirectory(prefix="odh-startup-") as temporary:

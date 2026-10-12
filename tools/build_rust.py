@@ -14,15 +14,14 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
-from src.update.package import (  # noqa: E402
+from src.update import (  # noqa: E402
     APP_EXE,
     RUNNER_EXE,
-    RUST_RUNTIME,
     UPDATER_EXE,
-    load_manifest,
-    manifest_frontend,
+    read_version,  # noqa: E402
 )
 from tools.release_package import (  # noqa: E402
+    RUST_RUNTIME,
     archive_package,
     prepare_package,
     test_package,
@@ -45,7 +44,7 @@ def output_path(root: Path, destination: Path) -> Path:
         raise ValueError("输出须为仓库 deploy/dist 内名为 OneDragon-Helper 的目录")
     if target.exists():
         validate_package(root, target)
-        if manifest_frontend(load_manifest(target)) != "rust":
+        if read_version(target)["frontend"] != "rust":
             raise ValueError("Rust 构建不能覆盖 Qt 发布目录")
     return target
 

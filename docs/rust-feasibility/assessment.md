@@ -98,7 +98,7 @@ Media Foundation 与编解码器来自系统，Windows N 等缺少媒体组件�
 python tools/measure_gui_startup.py --qt-package deploy/dist/OneDragon-Helper --rust-package deploy/dist/rust/OneDragon-Helper --output .cache/gui-startup.json --runs 15
 ```
 
-工具先验证清单/哈希，只修改临时副本；Rust 直接使用随包的截图诊断，Qt 只在临时 QML
+工具先验证发布文件范围和版本元数据，只修改临时副本；Rust 直接使用随包的截图诊断，Qt 只在临时 QML
 加入画面回读回调。输出环境、主 EXE SHA-256、逐次样本和中位数/范围。
 提前退出、缺少任务就绪标记或截图异常退出会使测量失败，不会计作快速启动。
 它会反复打开并关闭测试窗口；只在 Windows 运行，不需要管理员权限。

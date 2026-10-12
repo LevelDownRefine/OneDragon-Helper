@@ -1,152 +1,130 @@
-"""更新锁和运行锁的跨进程语义。"""
+"""应用启动恢复和独立安装；实际更新库配合临时安装目录。"""
 
 import json
-import os
 import shutil
-import subprocess
-import sys
 import tempfile
-import time
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-import portalocker
+from updater import UpdateError
+from updater.utils import FileLease, UpdateBusyError, file_digest, write_json
 
-from src.update import __main__ as updater
-from src.update.package import APP_EXE, CLI_EXE, QT_CLI_EXE, UpdateError, load_manifest
-from src.update.runtime import (
-    FileLease,
-    UpdateBusyError,
-    application_lease,
-    helper_processes,
-)
-from tests.support.update_package import make_package, stage_interrupted_install
+from src.update import application_lease, read_version, run_update
+from tests.support.update_package import make_package, prepare_package, program_snapshot
 
 
-class TestUpdateRuntime(unittest.TestCase):
+class UpdateRuntimeTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.directory = Path(
+            self.enterContext(tempfile.TemporaryDirectory())
+        ).resolve()
+        self.root = make_package(self.directory / "installed")
 
-    def test_shared_application_leases_coexist_but_exclude_installation(self):
-        with (
-            application_lease(self.root),
-            application_lease(self.root),
-            self.assertRaises(UpdateBusyError),
-            FileLease(self.root / ".update/runtime.lock"),
-        ):
-            self.fail("exclusive lock acquired")
-        with FileLease(self.root / ".update/runtime.lock"):
-            self.assertTrue((self.root / ".update/runtime.lock").is_file())
+    def test_worker_installs_plain_zip_and_preserves_unpublished_local_files(self):
+        for frontend in ("qt", "rust"):
+            with self.subTest(frontend=frontend):
+                root = make_package(self.directory / frontend, frontend=frontend)
+                target = make_package(
+                    self.directory / (frontend + "-next"), "2.0.0", frontend=frontend
+                )
+                user = root / "config/config.yml"
+                user.write_bytes(b"local configuration")
+                prepared = prepare_package(root, target, "2.0.0", frontend)
+                run_update(root, prepared, frontend=frontend)
+                self.assertEqual(read_version(root)["version"], "2.0.0")
+                self.assertEqual(user.read_bytes(), b"local configuration")
+                self.assertFalse((root / "update-manifest.json").exists())
+                self.assertFalse(prepared.directory.exists())
+                self.assertEqual(
+                    json.loads((root / ".update/github-installed.json").read_text())[
+                        "version"
+                    ],
+                    "2.0.0",
+                )
 
-    def test_update_intent_blocks_new_application_without_configuration_io(self):
+    def test_startup_recovers_before_acquiring_shared_runtime_lease(self):
+        previous = self.root / ".update" / ("a" * 32) / "previous/version.json"
+        previous.parent.mkdir(parents=True)
+        shutil.copy2(self.root / "version.json", previous)
+        write_json(
+            self.root / ".update/github-transaction.json",
+            {
+                "phase": "installing",
+                "transaction": "a" * 32,
+                "originals": {"version.json": file_digest(previous)},
+                "inventory": None,
+            },
+        )
+        (self.root / "version.json").write_text("incomplete", encoding="utf-8")
+        with application_lease(self.root):
+            self.assertEqual(read_version(self.root)["version"], "1.0.0")
+            with (
+                self.assertRaises(UpdateBusyError),
+                FileLease(self.root / ".update/runtime.lock"),
+            ):
+                self.fail("running application must hold a shared lease")
+        self.assertEqual(
+            json.loads((self.root / ".update/result.json").read_text()),
+            {"status": "recovered"},
+        )
+        with application_lease(self.root):
+            self.assertEqual(read_version(self.root)["version"], "1.0.0")
+
+    def test_update_gate_blocks_start_and_running_task_blocks_install(self):
         with (
             FileLease(self.root / ".update/intent.lock"),
             self.assertRaises(UpdateBusyError),
             application_lease(self.root),
         ):
-            self.fail("application started")
-        self.assertFalse((self.root / "config").exists())
-
-    def test_timeout_reports_busy_and_preserves_holder(self):
-        path = self.root / "runtime.lock"
-        with FileLease(path):
-            started = time.monotonic()
-            with self.assertRaises(UpdateBusyError), FileLease(path, timeout=0.02):
-                self.fail("exclusive lock acquired")
-            self.assertGreaterEqual(time.monotonic() - started, 0.02)
-            with self.assertRaises(UpdateBusyError), FileLease(path, shared=True):
-                self.fail("failed acquisition released the holder")
-        with FileLease(path):
-            self.assertTrue(path.exists())
-
-    def test_backend_failure_is_reported_as_update_error(self):
+            self.fail("startup gate must reject startup")
+        target = make_package(self.directory / "next", "2.0.0")
+        prepared = prepare_package(self.root, target, "2.0.0", "qt")
+        before = program_snapshot(self.root)
         with (
-            patch(
-                "src.update.runtime.portalocker.Lock.acquire",
-                side_effect=portalocker.LockException("unsupported filesystem"),
-            ),
-            self.assertRaisesRegex(UpdateError, "unsupported filesystem") as raised,
-            FileLease(self.root / "runtime.lock"),
-        ):
-            self.fail("failed backend acquired the lock")
-        self.assertNotIsInstance(raised.exception, UpdateBusyError)
-
-    def test_process_exit_releases_update_intent(self):
-        code = (
-            "from pathlib import Path; from src.update.runtime import FileLease; "
-            "import os,sys; lock=FileLease(Path(sys.argv[1])); lock.__enter__(); os._exit(0)"
-        )
-        path = self.root / ".update/intent.lock"
-        subprocess.run([sys.executable, "-c", code, str(path)], check=True, timeout=20)
-        with FileLease(path):
-            self.assertTrue(path.exists())
-
-    def test_unfinished_transaction_blocks_launch(self):
-        (self.root / ".update").mkdir()
-        (self.root / ".update/transaction.json").write_text(
-            json.dumps({"phase": "installing"})
-        )
-        with self.assertRaisesRegex(UpdateError, "恢复"), application_lease(self.root):
-            self.fail("application started")
-
-    def test_interrupted_install_that_matches_prepared_package_launches(self):
-        root = make_package(self.root / "app")
-        package = make_package(self.root / "prepared", "2.0.0")
-        shutil.copytree(package, root / ".update/download-v2.0.0/package")
-        stage_interrupted_install(root, package)
-        with application_lease(root):
-            self.assertTrue((root / ".update/runtime.lock").is_file())
-        self.assertEqual(load_manifest(root, verify=True)["version"], "2.0.0")
-
-    def test_process_detection_uses_install_path_and_excludes_caller(self):
-        own = Mock(pid=os.getpid())
-        own.exe.return_value = str(self.root / APP_EXE)
-        running = Mock(pid=12345)
-        running.exe.return_value = str(self.root / APP_EXE)
-        another = Mock(pid=12346)
-        another.exe.return_value = str(self.root / "other" / APP_EXE)
-        worker = Mock(pid=12347)
-        worker.exe.return_value = str(self.root / CLI_EXE)
-        qt_worker = Mock(pid=12348)
-        qt_worker.exe.return_value = str(self.root / QT_CLI_EXE)
-        with patch(
-            "src.update.runtime.psutil.process_iter",
-            return_value=[own, running, another, worker, qt_worker],
-        ):
-            self.assertEqual(
-                helper_processes(self.root, {os.getpid()}), [12345, 12347, 12348]
-            )
-
-    def test_busy_runner_is_rejected_before_ready_or_install(self):
-        ready = self.root / "ready.json"
-        with (
-            patch.object(updater, "helper_processes", return_value=[12345]),
-            patch.object(updater, "install_package") as install,
+            patch("src.update.application_processes", return_value=[1234]),
             self.assertRaises(UpdateBusyError),
         ):
-            updater.run_update(self.root, self.root / "new", ready=ready)
-        install.assert_not_called()
-        self.assertFalse(ready.exists())
+            run_update(self.root, prepared)
+        self.assertEqual(program_snapshot(self.root), before)
+        self.assertTrue(prepared.directory.is_dir())
 
-    def test_parent_identity_must_match(self):
-        parent = Mock()
-        parent.create_time.return_value = 22.0
-        with (
-            patch.object(updater.psutil, "Process", return_value=parent),
-            self.assertRaises(UpdateBusyError),
-        ):
-            updater.run_update(
-                self.root, self.root / "new", parent_pid=12345, parent_created=11.0
-            )
-
-    def test_handoff_cancellation_blocks_orphaned_worker(self):
-        cancel = self.root / "cancel"
+    def test_cancelled_handoff_and_tampered_package_never_modify_application(self):
+        target = make_package(self.directory / "next", "2.0.0")
+        prepared = prepare_package(self.root, target, "2.0.0", "qt")
+        before = program_snapshot(self.root)
+        cancel = self.directory / "cancel"
         cancel.touch()
+        with self.assertRaises(UpdateBusyError):
+            run_update(self.root, prepared, cancel=cancel)
+        (prepared.directory / "package/config/config.example.yml").write_bytes(
+            b"tampered"
+        )
+        with self.assertRaises(UpdateError):
+            run_update(self.root, prepared)
+        self.assertEqual(program_snapshot(self.root), before)
+
+    def test_malformed_journal_rejects_startup_as_update_error(self):
+        (self.root / ".update").mkdir()
+        contents = [
+            json.dumps({"phase": phase}) for phase in ([], {}, None, 1, "unknown")
+        ]
+        contents += ["", "incomplete"]
+        for content in contents:
+            with self.subTest(content=content):
+                (self.root / ".update/github-transaction.json").write_text(
+                    content, encoding="utf-8"
+                )
+                with self.assertRaises(UpdateError), application_lease(self.root):
+                    self.fail("invalid journal must reject startup")
+
+    def test_cache_cleanup_failure_keeps_successful_installation(self):
+        target = make_package(self.directory / "next", "2.0.0")
+        prepared = prepare_package(self.root, target, "2.0.0", "qt")
         with (
-            patch.object(updater, "helper_processes", return_value=[]),
-            patch.object(updater, "install_package") as install,
-            self.assertRaisesRegex(UpdateBusyError, "取消"),
+            patch("src.update.remove_directory", side_effect=PermissionError("busy")),
+            self.assertLogs("src.update", level="WARNING"),
         ):
-            updater.run_update(self.root, self.root / "new", cancel=cancel)
-        install.assert_not_called()
+            run_update(self.root, prepared)
+        self.assertEqual(read_version(self.root)["version"], "2.0.0")
+        self.assertTrue(prepared.directory.is_dir())
