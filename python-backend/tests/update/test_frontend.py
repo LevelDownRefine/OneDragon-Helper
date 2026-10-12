@@ -103,6 +103,10 @@ class FrontendUpdateTests(unittest.TestCase):
                 }
                 with patch("requests.get", return_value=response):
                     self.assertEqual(
+                        UpdateService(root, frontend=frontend)._client().manifest_name,
+                        "update-manifest.json",
+                    )
+                    self.assertEqual(
                         UpdateService(root, frontend=frontend).check_update(), result
                     )
 

@@ -23,7 +23,33 @@ class TestReleasePackage(unittest.TestCase):
         self.assertIn(release.QT_CLI_EXE, names)
         self.assertIn("_internal/cli/_internal/python.dll", names)
         self.assertIn("_internal/python.dll", names)
-        self.assertFalse((self.package / "update-manifest.json").exists())
+        manifest = json.loads(
+            (self.package / "update-manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifest["schema"], 1)
+        self.assertEqual(manifest["version"], "1.2.3")
+        self.assertEqual(
+            manifest["files"][release.QT_CLI_EXE],
+            hashlib.sha256(
+                (self.package / release.QT_CLI_EXE).read_bytes()
+            ).hexdigest(),
+        )
+
+    def test_modified_program_file_rejected_and_prepare_refreshes_hashes(self):
+        release.prepare_package(self.root, self.package, "v1.2.3")
+        executable = self.package / release.EXE_NAME
+        executable.write_bytes(b"changed executable")
+        with self.assertRaisesRegex(ValueError, "哈希清单"):
+            release.validate_package(self.root, self.package)
+        release.prepare_package(self.root, self.package, "v1.2.4")
+        manifest = json.loads(
+            (self.package / "update-manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(manifest["version"], "1.2.4")
+        self.assertEqual(
+            manifest["files"][release.EXE_NAME],
+            hashlib.sha256(executable.read_bytes()).hexdigest(),
+        )
 
     def test_source_relocation_preserves_installed_qml_path(self):
         release.prepare_package(self.root, self.package, "v1.2.3")
@@ -132,6 +158,7 @@ class TestReleasePackage(unittest.TestCase):
                 release.UPDATER_EXE,
                 release.QT_CLI_EXE,
                 release.VERSION_FILE,
+                release.MANIFEST_FILE,
                 "_internal/python.dll",
             },
         )
@@ -321,8 +348,8 @@ class TestReleasePackage(unittest.TestCase):
             release.validate_package(self.root, self.package)
 
     def test_plain_package_includes_runtime_libraries(self):
-        release.prepare_package(self.root, self.package)
         self.write(self.package, "_internal/unlisted.dll", "unknown")
+        release.prepare_package(self.root, self.package)
         files = release.validate_package(self.root, self.package)
         self.assertIn(self.package / "_internal/unlisted.dll", files)
 
