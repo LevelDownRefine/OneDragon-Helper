@@ -18,6 +18,7 @@ from src.update import (
     RUNNER_EXE,
     UPDATER_EXE,
 )
+from tools.release_package import program_path
 
 
 def make_package(root: Path, version="1.0.0", extra=None, *, frontend="qt"):
@@ -51,7 +52,7 @@ def make_package(root: Path, version="1.0.0", extra=None, *, frontend="qt"):
 def archive_package(root: Path, output: Path):
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in root.rglob("*"):
-            if path.is_file():
+            if path.is_file() and program_path(path.relative_to(root).as_posix()):
                 archive.write(
                     path, "OneDragon-Helper/" + path.relative_to(root).as_posix()
                 )

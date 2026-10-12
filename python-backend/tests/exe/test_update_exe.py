@@ -25,6 +25,7 @@ from src.update import (
 from tests.exe import package_dir
 from tests.exe.pipe_output import PipeOutput
 from tests.support.update_package import prepare_package, program_snapshot
+from tools.release_package import program_path
 
 CAN_RUN = (
     sys.platform == "win32"
@@ -48,7 +49,7 @@ class TestUpdateExe(unittest.TestCase):
         names = [
             p.relative_to(source).as_posix()
             for p in source.rglob("*")
-            if p.is_file() and ".update" not in p.relative_to(source).parts
+            if p.is_file() and program_path(p.relative_to(source).as_posix())
         ]
         for root, version, extra in (
             (self.root, "1.0.0", "assets/obsolete.txt"),

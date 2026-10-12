@@ -18,13 +18,15 @@ class ExePackageTests(unittest.TestCase):
 
     def test_program_snapshot_excludes_local_data_and_detects_program_changes(self):
         root = make_package(self.directory / "installed")
+        user = root / "config/config.yml"
+        user.write_text("before", encoding="utf-8")
+        logs = root / ".log"
+        logs.mkdir()
+        (logs / "runner.log").write_text("before", encoding="utf-8")
         prepared = prepare_package(root, root, "1.0.0", "qt")
         client(root, "0", "qt").install(prepared)
         before = program_snapshot(root)
-        user = root / "config/config.yml"
         user.write_text("personal", encoding="utf-8")
-        logs = root / ".log"
-        logs.mkdir()
         (logs / "runner.log").write_text("new log", encoding="utf-8")
         self.assertEqual(program_snapshot(root), before)
         (root / "version.json").write_text('{"version":"2.0.0"}', encoding="utf-8")
