@@ -100,7 +100,7 @@ class TestGetRootDirFrozen(unittest.TestCase):
         utils.get_root_dir.cache_clear()
 
     def test_nested_qt_cli_uses_installation_root(self):
-        from src.update.policy import QT_CLI_EXE
+        from src.update import QT_CLI_EXE
 
         root = Path(os.sep) / "app"
         with (

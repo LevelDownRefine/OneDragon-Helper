@@ -9,12 +9,12 @@ from unittest.mock import Mock, patch
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
-from updater.package import UpdateCancelled, UpdateError
+from updater import UpdateCancelled, UpdateError
 
 from gui.controllers.update import UpdateController
-from src.update.service import (
+from src.update import (
+    GitHubRelease,
     PreparedUpdate,
-    ReleaseUpdate,
     UpdateInfo,
 )
 from tests.gui.helpers import get_app
@@ -25,8 +25,8 @@ class TestUpdateDialog(unittest.TestCase):
         self.app = get_app()
         self.service = Mock()
         self.service.get_update_info.return_value = UpdateInfo("1.0.0")
-        self.release = ReleaseUpdate(
-            "1.1.0", "修复与改进\n<不作为 HTML 渲染>", "zip", "sha", 2048
+        self.release = GitHubRelease(
+            "v1.1.0", "1.1.0", "修复与改进\n<不作为 HTML 渲染>", 1, "zip", 2048
         )
         self.service.check_update.return_value = self.release
         self.service.prepare_update.return_value = PreparedUpdate(

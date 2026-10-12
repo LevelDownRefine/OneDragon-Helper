@@ -73,10 +73,9 @@ class StartupMeasurementTests(unittest.TestCase):
             patch("tools.measure_gui_startup.sys.argv", arguments),
             patch("tools.measure_gui_startup.sys.platform", "win32"),
             patch("tools.measure_gui_startup.validate_package"),
-            patch("tools.measure_gui_startup.load_manifest"),
             patch(
-                "tools.measure_gui_startup.manifest_frontend",
-                side_effect=["qt", "rust"],
+                "tools.measure_gui_startup.read_version",
+                side_effect=[{"frontend": "qt"}, {"frontend": "rust"}],
             ),
             patch(
                 "tools.measure_gui_startup.run_sample",

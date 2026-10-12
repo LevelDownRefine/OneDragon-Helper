@@ -143,7 +143,7 @@ def _launch_qml(*, skip_auto_launch: bool = False):
     from pathlib import Path
 
     from gui.cli_client import CliClient
-    from src.update.policy import CLI_EXE, QT_CLI_EXE
+    from src.update import CLI_EXE, QT_CLI_EXE
     from src.utils import get_root_dir
     from src.utils.utils_shutdown import SHUTDOWN_UI_ARGS_ENV, SHUTDOWN_UI_ENV
 

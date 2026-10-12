@@ -389,23 +389,19 @@ def _call(service, method: str) -> int:
 
 
 def _installed_frontend() -> str:
-    """更新目标来自安装清单，与连接 CLI 的前端无关。"""
-    from updater.package import MANIFEST
-
-    from src.update.package import load_manifest, manifest_frontend
+    """更新目标来自本地版本元数据，与连接 CLI 的前端无关。"""
+    from src.update import VERSION_FILE, read_version
     from src.utils import get_root_dir
 
     root = Path(get_root_dir())
-    return (
-        manifest_frontend(load_manifest(root)) if (root / MANIFEST).is_file() else "qt"
-    )
+    return read_version(root)["frontend"] if (root / VERSION_FILE).is_file() else "qt"
 
 
 def main(argv: list[str] | None = None) -> int:
     """更新闸门先于配置初始化；整个 stdio 会话持有运行共享锁。"""
     arguments = sys.argv[1:] if argv is None else argv
     if getattr(sys, "frozen", False):
-        from src.update.policy import APP_EXE
+        from src.update import APP_EXE
         from src.utils.utils_shutdown import SHUTDOWN_UI_ENV
 
         os.environ.setdefault(
@@ -455,7 +451,7 @@ def _console_output():
 
 def _run_command(args: argparse.Namespace) -> int:
     """在同一租约边界内初始化并执行一次入口。"""
-    from src.update.runtime import application_lease
+    from src.update import application_lease
     from src.utils import get_root_dir
 
     try:

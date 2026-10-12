@@ -10,7 +10,7 @@ extra_dlls = [
     if os.path.isfile(os.path.join(base_bin, name))
 ]
 a = Analysis(
-    ['../python-backend/src/update/__main__.py'],
+    ['../python-backend/src/update.py'],
     pathex=['../python-backend'], binaries=extra_dlls, datas=[], hiddenimports=[],
     runtime_hooks=[os.path.join(SPECPATH, 'runtime_hook_utf8.py')],
     excludes=['PySide6', 'tkinter'],

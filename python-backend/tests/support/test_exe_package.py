@@ -5,9 +5,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from updater.package import MANIFEST, UpdateError
+from updater import UpdateError
 
-from src.update.policy import CLI_EXE
+from src.update import CLI_EXE, VERSION_FILE
 from tests.exe import is_frontend_package
 from tests.support.update_package import make_package
 
@@ -27,10 +27,10 @@ class ExePackageTests(unittest.TestCase):
         self.assertTrue(is_frontend_package(package, "rust"))
         self.assertFalse(is_frontend_package(package, "qt"))
 
-    def test_missing_manifest_skips_but_invalid_manifest_is_not_hidden(self):
+    def test_missing_version_skips_but_invalid_version_is_not_hidden(self):
         self.assertFalse(is_frontend_package(self.directory, "rust"))
         package = make_package(self.directory / "invalid")
-        path = package / MANIFEST
+        path = package / VERSION_FILE
         data = json.loads(path.read_text(encoding="utf-8"))
         data["frontend"] = "invalid"
         path.write_text(json.dumps(data), encoding="utf-8")

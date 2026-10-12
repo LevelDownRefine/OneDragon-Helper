@@ -9,23 +9,21 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from tests.support.legacy_qt_paths import managed_path as legacy_managed_path
 from tools import release_package as release
 
 
 class TestReleasePackage(unittest.TestCase):
-    def test_qt_cli_runtime_is_isolated_and_in_update_manifest(self):
+    def test_qt_cli_runtime_is_isolated_and_in_plain_package(self):
         self.write(self.package, "_internal/cli/_internal/python.dll", "cli-runtime")
         release.prepare_package(self.root, self.package, "v1.2.3")
-        manifest = json.loads((self.package / release.MANIFEST).read_text())
-        self.assertIn(release.QT_CLI_EXE, manifest["files"])
-        self.assertIn("_internal/cli/_internal/python.dll", manifest["files"])
-        self.assertIn("_internal/python.dll", manifest["files"])
-        self.assertTrue(all(legacy_managed_path(name) for name in manifest["files"]))
-        self.assertFalse(legacy_managed_path("_cli_internal/python.dll"))
-        self.write(self.package, "_internal/cli/_internal/unlisted.dll", "unexpected")
-        with self.assertRaisesRegex(ValueError, "更新清单不一致"):
-            release.validate_package(self.root, self.package)
+        names = {
+            p.relative_to(self.package).as_posix()
+            for p in release.validate_package(self.root, self.package)
+        }
+        self.assertIn(release.QT_CLI_EXE, names)
+        self.assertIn("_internal/cli/_internal/python.dll", names)
+        self.assertIn("_internal/python.dll", names)
+        self.assertFalse((self.package / "update-manifest.json").exists())
 
     def test_source_relocation_preserves_installed_qml_path(self):
         release.prepare_package(self.root, self.package, "v1.2.3")
@@ -133,7 +131,6 @@ class TestReleasePackage(unittest.TestCase):
                 release.RUNNER_NAME,
                 release.UPDATER_EXE,
                 release.QT_CLI_EXE,
-                release.MANIFEST,
                 release.VERSION_FILE,
                 "_internal/python.dll",
             },
@@ -179,8 +176,11 @@ class TestReleasePackage(unittest.TestCase):
                 for name in names:
                     self.write(package, name, "binary")
                 release.prepare_package(self.root, package, "v1.2.3", frontend=frontend)
-                manifest = release.load_manifest(package, verify=True)
-                self.assertNotIn("assets/icons/home.png", manifest["files"])
+                names = {
+                    p.relative_to(package).as_posix()
+                    for p in release.validate_package(self.root, package)
+                }
+                self.assertNotIn("assets/icons/home.png", names)
                 self.assertFalse((package / "assets/icons").exists())
                 self.assertTrue((package / "assets/ds.ico").is_file())
                 output = self.package / f"{frontend}.zip"
@@ -195,9 +195,9 @@ class TestReleasePackage(unittest.TestCase):
         self.write(self.package, release.CLI_EXE, "backend")
         self.write(self.package, release.RUST_RUNTIME, "runtime")
         release.prepare_package(self.root, self.package, "v1.2.3", frontend="rust")
-        manifest = release.load_manifest(self.package, verify=True)
-        self.assertEqual(manifest["frontend"], "rust")
-        self.assertIn(release.CLI_EXE, manifest["files"])
+        info = release.read_version(self.package)
+        self.assertEqual(info["frontend"], "rust")
+        self.assertTrue((self.package / release.CLI_EXE).is_file())
         self.assertFalse((self.package / "src").exists())
         self.assertEqual(
             json.loads((self.package / "version.json").read_text())["frontend"], "rust"
@@ -287,11 +287,22 @@ class TestReleasePackage(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "config/config.example.yml"):
             release.validate_package(self.root, self.package)
 
-    def test_runtime_file_added_after_manifest_blocks_publication(self):
+    def test_runtime_tree_cannot_publish_logs_or_backups(self):
+        release.prepare_package(self.root, self.package)
+        for name in ("_internal/logs/private.log", "_internal/cache.dll.bak"):
+            with self.subTest(name=name):
+                path = self.write(self.package, name, "personal")
+                with self.assertRaisesRegex(ValueError, "非程序"):
+                    release.validate_package(self.root, self.package)
+                path.unlink()
+                if path.parent.name == "logs":
+                    path.parent.rmdir()
+
+    def test_plain_package_includes_runtime_libraries(self):
         release.prepare_package(self.root, self.package)
         self.write(self.package, "_internal/unlisted.dll", "unknown")
-        with self.assertRaisesRegex(ValueError, "更新清单不一致"):
-            release.validate_package(self.root, self.package)
+        files = release.validate_package(self.root, self.package)
+        self.assertIn(self.package / "_internal/unlisted.dll", files)
 
     def test_archive_contains_checked_files_and_matching_checksum(self):
         release.prepare_package(self.root, self.package, "v1.2.3")

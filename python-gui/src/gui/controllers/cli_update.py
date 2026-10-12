@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QApplication, QDialog
 
 from gui.cli_job import CliJob
 from gui.update_dialog import UpdateDialog
-from src.update.service import RELEASES_URL
+from src.update import RELEASES_URL
 
 
 class CliUpdateController(QObject):

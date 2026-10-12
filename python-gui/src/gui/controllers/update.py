@@ -6,10 +6,10 @@ from threading import Event
 from PySide6.QtCore import QObject, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication, QDialog
-from updater.package import UpdateCancelled
+from updater import UpdateCancelled
 
 from gui.update_dialog import UpdateDialog
-from src.update.service import RELEASES_URL
+from src.update import RELEASES_URL
 
 logger = logging.getLogger(__name__)
 

@@ -4,9 +4,9 @@ import logging
 import sys
 from pathlib import Path
 
-from updater.package import UpdateError
+from updater import UpdateError
 
-from src.update.runtime import application_lease
+from src.update import application_lease
 
 logger = logging.getLogger(__name__)
 

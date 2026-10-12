@@ -66,17 +66,17 @@ class FrontendProtocolTests(unittest.TestCase):
                     self.assertFalse(utils_shutdown._confirm_shutdown(1))
                     run.assert_not_called()
 
-    def test_update_variant_comes_from_installation_manifest(self):
+    def test_update_variant_comes_from_version_metadata(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             with patch("src.utils.get_root_dir", return_value=str(root)):
                 self.assertEqual(_installed_frontend(), "qt")
-                (root / "update-manifest.json").touch()
+                (root / "version.json").touch()
                 for frontend in ("qt", "rust"):
                     with (
                         self.subTest(frontend=frontend),
                         patch(
-                            "src.update.package.load_manifest",
+                            "src.update.read_version",
                             return_value={"frontend": frontend},
                         ),
                     ):

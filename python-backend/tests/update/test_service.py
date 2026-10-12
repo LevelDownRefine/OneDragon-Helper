@@ -7,11 +7,11 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import Mock
 
-from updater.package import UpdateCancelled, UpdateError
+from updater import UpdateCancelled, UpdateError
 
-from src.update.service import (
+from src.update import (
+    GitHubRelease,
     PreparedUpdate,
-    ReleaseUpdate,
     UpdateInfo,
     UpdateService,
     UpdateSession,
@@ -24,8 +24,8 @@ class UpdateSessionTests(unittest.TestCase):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.service = Mock(spec=UpdateService)
         self.service.get_update_info.return_value = UpdateInfo("1.0.0")
-        self.release = ReleaseUpdate(
-            "2.0.0", "更新说明", "verified-url", "checksum", 100
+        self.release = GitHubRelease(
+            "v2.0.0", "2.0.0", "更新说明", 1, "verified-url", 100
         )
         self.service.check_update.return_value = self.release
         self.jobs = JobExecutor()

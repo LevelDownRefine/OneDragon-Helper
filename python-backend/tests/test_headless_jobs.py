@@ -11,7 +11,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from updater.runtime import FileLease, UpdateBusyError
+from updater.utils import FileLease, UpdateBusyError
 
 from tests.support.headless import PROJECT_ROOT, HeadlessFixture
 
@@ -126,15 +126,15 @@ class HeadlessJobTests(unittest.TestCase):
             "with patch('src.utils.get_root_dir', return_value=root):",
             """
 def download(release, *, progress, cancelled):
-    from updater.package import UpdateCancelled
+    from updater import UpdateCancelled
     progress(7, 10)
     if not cancelled.wait(10):
         raise TimeoutError('cancel did not arrive')
     raise UpdateCancelled('cancelled')
 with patch('src.utils.get_root_dir', return_value=root):
-    from src.update.service import UpdateInfo, ReleaseUpdate, UpdateService
+    from src.update import UpdateInfo, GitHubRelease, UpdateService
     patch.object(UpdateService,'get_update_info',return_value=UpdateInfo('1.0.0')).start()
-    patch.object(UpdateService,'check_update',return_value=ReleaseUpdate('2.0.0','notes','url','checksum',100)).start()
+    patch.object(UpdateService,'check_update',return_value=GitHubRelease('v2.0.0','2.0.0','notes',1,'url',100)).start()
     patch.object(UpdateService,'prepare_update',side_effect=download).start()
 """,
         )
@@ -213,9 +213,9 @@ def handoff(prepared):
     return Path(root,'private-result.json')
 with patch('src.utils.get_root_dir', return_value=root):
     from pathlib import Path
-    from src.update.service import UpdateInfo, ReleaseUpdate, PreparedUpdate, UpdateService
+    from src.update import UpdateInfo, GitHubRelease, PreparedUpdate, UpdateService
     patch.object(UpdateService,'get_update_info',return_value=UpdateInfo('1.0.0')).start()
-    patch.object(UpdateService,'check_update',return_value=ReleaseUpdate('2.0.0','notes','url','checksum',100)).start()
+    patch.object(UpdateService,'check_update',return_value=GitHubRelease('v2.0.0','2.0.0','notes',1,'url',100)).start()
     patch.object(UpdateService,'prepare_update',return_value=PreparedUpdate(Path(root,'private-package'),'2.0.0')).start()
     patch.object(UpdateService,'start_update',side_effect=handoff).start()
 """,

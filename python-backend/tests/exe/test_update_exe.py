@@ -11,14 +11,20 @@ import unittest
 from pathlib import Path
 
 import psutil
-from updater.package import file_digest
-from updater.runtime import FileLease, child_environment
-from updater.storage import write_json
+from updater.utils import FileLease, file_digest, write_json
 
-from src.update.package import load_manifest, manifest_frontend, write_manifest
-from src.update.policy import APP_EXE, CLI_EXE, RUNNER_EXE, UPDATER_EXE
+from src.update import (
+    APP_EXE,
+    CLI_EXE,
+    RUNNER_EXE,
+    UPDATER_EXE,
+    child_environment,
+    client,
+    read_version,
+)
 from tests.exe import package_dir
 from tests.exe.pipe_output import PipeOutput
+from tests.support.update_package import prepare_package, program_snapshot
 
 CAN_RUN = (
     sys.platform == "win32"
@@ -37,9 +43,13 @@ class TestUpdateExe(unittest.TestCase):
         self.root = self.directory / "旧版 安装目录"
         self.new = self.directory / "新版 程序包"
         source = package_dir()
-        manifest = load_manifest(source)
-        names = list(manifest["files"])
-        frontend = manifest_frontend(manifest)
+        frontend = read_version(source)["frontend"]
+        self.frontend = frontend
+        names = [
+            p.relative_to(source).as_posix()
+            for p in source.rglob("*")
+            if p.is_file() and ".update" not in p.relative_to(source).parts
+        ]
         for root, version, extra in (
             (self.root, "1.0.0", "assets/obsolete.txt"),
             (self.new, "2.0.0", "assets/new.txt"),
@@ -56,10 +66,13 @@ class TestUpdateExe(unittest.TestCase):
                 metadata["frontend"] = frontend
             write_json(root / "version.json", metadata)
             (root / extra).write_text(version, encoding="utf-8")
-            write_manifest(root, names + [extra], version, frontend=frontend)
+
         self.worker = self.directory / UPDATER_EXE
         shutil.copy2(source / UPDATER_EXE, self.worker)
         self.result = self.directory / "result.json"
+        adopted = prepare_package(self.root, self.root, "1.0.0", frontend)
+        client(self.root, "0", frontend).install(adopted)
+        self.prepared = prepare_package(self.root, self.new, "2.0.0", frontend)
         self.users = {}
         for name in (
             "config/config.yml",
@@ -78,7 +91,7 @@ class TestUpdateExe(unittest.TestCase):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(b"user: preserved\n")
             self.users[name] = target.read_bytes()
-        self.before = load_manifest(self.root, verify=True)
+        self.before = program_snapshot(self.root)
 
     def run_updater(self, *args):
         process = subprocess.run(
@@ -88,6 +101,8 @@ class TestUpdateExe(unittest.TestCase):
                 str(self.root),
                 "--result",
                 str(self.result),
+                "--frontend",
+                self.frontend,
                 *args,
             ],
             cwd=self.directory,
@@ -109,14 +124,16 @@ class TestUpdateExe(unittest.TestCase):
         )
 
     def assert_old_restored(self):
-        self.assertEqual(load_manifest(self.root, verify=True), self.before)
+        self.assertEqual(program_snapshot(self.root), self.before)
         self.assertFalse((self.root / "assets/new.txt").exists())
         self.assert_users_unchanged()
 
     def test_upgrade_real_binaries_and_launch_updated_exe(self):
-        code, result = self.run_updater("--package", str(self.new))
+        code, result = self.run_updater(
+            "--package", str(self.prepared.directory), "--version", "2.0.0"
+        )
         self.assertEqual((code, result["status"]), (0, "installed"), result)
-        self.assertEqual(load_manifest(self.root, verify=True)["version"], "2.0.0")
+        self.assertEqual(read_version(self.root)["version"], "2.0.0")
         self.assertFalse((self.root / "assets/obsolete.txt").exists())
         self.assert_users_unchanged()
         launch = subprocess.run(
@@ -134,14 +151,18 @@ class TestUpdateExe(unittest.TestCase):
     def test_locked_file_rolls_back_after_partial_replacement(self):
         # Windows 普通读句柄禁止替换；触发前已经替换 EXE、删旧资源并写新资源。
         with (self.root / LOCKED_FILE).open("rb"):
-            code, result = self.run_updater("--package", str(self.new))
+            code, result = self.run_updater(
+                "--package", str(self.prepared.directory), "--version", "2.0.0"
+            )
         self.assertEqual((code, result["status"]), (1, "failed"), result)
         self.assert_old_restored()
-        journal = json.loads((self.root / ".update/transaction.json").read_text())
+        journal = json.loads(
+            (self.root / ".update/github-transaction.json").read_text()
+        )
         self.assertEqual(journal["phase"], "rolled_back")
 
     def test_rust_update_waits_for_real_frontend_and_cli_to_exit(self):
-        if manifest_frontend(self.before) != "rust":
+        if self.frontend != "rust":
             self.skipTest("双进程交接只适用于 Rust 发布包，由 build-rust job 真跑")
         content = {"script_list": [], "handoff_probe": "x" * 1024**2}
         config = self.root / "config/config.yml"
@@ -175,7 +196,11 @@ class TestUpdateExe(unittest.TestCase):
                         "--root",
                         str(self.root),
                         "--package",
-                        str(self.new),
+                        str(self.prepared.directory),
+                        "--version",
+                        "2.0.0",
+                        "--frontend",
+                        self.frontend,
                         "--parent-pid",
                         str(cli.pid),
                         "--parent-created",
@@ -205,16 +230,14 @@ class TestUpdateExe(unittest.TestCase):
                 self.assertEqual(json.loads(ready.read_text())["status"], "ready")
                 self.assertIsNone(updater.poll())
                 self.assertIsNone(frontend.poll())
-                self.assertEqual(load_manifest(self.root, verify=True), self.before)
+                self.assertEqual(program_snapshot(self.root), self.before)
                 self.assertEqual(json.loads(pipe.read()), content)
                 self.assertEqual(frontend.wait(timeout=30), 0)
                 self.assertEqual(updater.wait(timeout=180), 0)
                 self.assertEqual(
                     json.loads(self.result.read_text())["status"], "installed"
                 )
-                self.assertEqual(
-                    load_manifest(self.root, verify=True)["version"], "2.0.0"
-                )
+                self.assertEqual(read_version(self.root)["version"], "2.0.0")
                 self.assert_users_unchanged()
             finally:
                 # 仅清理本测试持有的进程，正常成功路径双方自行退出。
@@ -253,7 +276,9 @@ class TestUpdateExe(unittest.TestCase):
             ):
                 time.sleep(0.1)
             self.assertTrue(marker.exists(), "测试 Runner 未就绪")
-            code, result = self.run_updater("--package", str(self.new))
+            code, result = self.run_updater(
+                "--package", str(self.prepared.directory), "--version", "2.0.0"
+            )
             self.assertEqual((code, result["status"]), (1, "failed"), result)
             self.assertIn("运行中的进程", result["error"])
             self.assertIsNone(runner.poll())
@@ -288,11 +313,14 @@ class TestUpdateExe(unittest.TestCase):
         previous.parent.mkdir(parents=True)
         shutil.copy2(self.root / "version.json", previous)
         write_json(
-            self.root / ".update/transaction.json",
+            self.root / ".update/github-transaction.json",
             {
                 "phase": "installing",
                 "transaction": identity,
                 "originals": {"version.json": file_digest(previous)},
+                "inventory": json.loads(
+                    (self.root / ".update/github-installed.json").read_text()
+                ),
             },
         )
         shutil.copy2(self.new / "version.json", self.root / "version.json")

@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, create_autospec, patch
 
 from jsonrpcserver import dispatch_to_serializable
-from updater.runtime import FileLease, UpdateBusyError
+from updater.utils import FileLease, UpdateBusyError
 
 from src.headless import (
     InvalidParams,
@@ -447,7 +447,7 @@ def record(keys, target, **kwargs):
     import json
     import os
     from pathlib import Path
-    from updater.runtime import FileLease, UpdateBusyError
+    from updater.utils import FileLease, UpdateBusyError
     from src.utils.utils_shutdown import _confirm_shutdown, SHUTDOWN_UI_ENV
     from unittest.mock import Mock
     with patch.dict(os.environ, {SHUTDOWN_UI_ENV: 'fake-rust.exe'}), patch('src.utils.utils_shutdown.shutdown_ui_supported', return_value=True), patch('src.utils.utils_shutdown.subprocess.run', return_value=Mock(returncode=42)) as confirm:
@@ -954,7 +954,7 @@ with patch('src.utils.get_root_dir', return_value=root), patch('src.service.chai
     def test_update_gate_precedes_configuration_initialization(self):
         update_dir = self.root / ".update"
         update_dir.mkdir()
-        update_dir.joinpath("transaction.json").write_text(
+        update_dir.joinpath("github-transaction.json").write_text(
             '{"phase":"installing"}', encoding="utf-8"
         )
         result, responses = self.run_cli(["call", "app.snapshot"], "{}")
@@ -1518,7 +1518,7 @@ class HeadlessEntryTests(unittest.TestCase):
         from src.headless import _run_command
 
         with (
-            patch("src.update.runtime.application_lease", return_value=nullcontext()),
+            patch("src.update.application_lease", return_value=nullcontext()),
             patch("src.config.generate_config.config_workflow"),
             patch("src.utils.utils_logger.setup_logging"),
             patch("src.utils.utils_logger.install_crash_hooks"),
@@ -1558,7 +1558,7 @@ class HeadlessEntryTests(unittest.TestCase):
         self.enterContext(patch("src.headless._call", return_value=0))
         self.enterContext(patch("sys.stdin", new=io.StringIO("{}")))
         self.enterContext(
-            patch("src.update.runtime.application_lease", return_value=nullcontext())
+            patch("src.update.application_lease", return_value=nullcontext())
         )
         self.enterContext(patch.dict(os.environ))
 

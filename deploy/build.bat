@@ -124,7 +124,6 @@ echo   输出目录: %GUI_DIR%
 echo   - OneDragon-Helper.exe        (GUI 主程序)
 echo   - OneDragon-Helper-Runner.exe  (脚本运行器)
 echo   - OneDragon-Helper-Updater.exe (独立更新器)
-echo   - update-manifest.json        (程序文件清单)
 echo   - config\                      (配置模板与声明)
 echo   - assets\                      (资源目录)
 echo   - version.json                (构建版本)
