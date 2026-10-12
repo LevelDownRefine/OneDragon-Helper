@@ -119,6 +119,8 @@ GUI 的弹窗和工作线程保留在 `python-gui/src/gui`，经 AppService 调�
 
 `version.json` 记录本地版本及 Qt/Rust 类型；源码与开发构建不在线替换。
 检查按类型选择 GitHub Release ZIP，下载沿用子库的整包断点续传。
+下载包的版本元数据无效时丢弃缓存，显式重试重新下载；安装成功后清理本次缓存，
+安装失败或取消继续保留断点。就绪回执读取或校验失败会撤销交接。
 发布工具 `tools/release_package.py` 校验资源边界，只打包程序资源、example 与声明，
 不再生成 `update-manifest.json`；实际用户配置、日志和自定义壁纸留在原位。
 旧更新器依赖专用清单，首次切换到本协议需手动安装新版完整包。

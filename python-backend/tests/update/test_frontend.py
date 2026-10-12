@@ -125,3 +125,26 @@ class FrontendUpdateTests(unittest.TestCase):
             update.run_update(root, PreparedUpdate(work, "2.0.0"), frontend="rust")
         install.assert_not_called()
         self.assertEqual(program_snapshot(root), before)
+
+    def test_invalid_download_metadata_discards_cache_for_explicit_retry(self):
+        root = make_package(self.directory / "installed")
+        work = root / ".update/github-test"
+        package = make_package(work / "package", "2.0.0")
+        updater = Mock()
+        updater.download.return_value = PreparedUpdate(work, "2.0.0")
+        service = UpdateService(root)
+        target = release()
+        for content in (None, "incomplete", '{"version": []}'):
+            with self.subTest(content=content):
+                updater.discard.reset_mock()
+                path = package / "version.json"
+                if content is None:
+                    path.unlink()
+                else:
+                    path.write_text(content, encoding="utf-8")
+                with (
+                    patch.object(service, "_client", return_value=updater),
+                    self.assertRaises(ValueError),
+                ):
+                    service.prepare_update(target)
+                updater.discard.assert_called_once_with(target)

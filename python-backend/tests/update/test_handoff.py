@@ -40,6 +40,8 @@ class RustHandoffTests(unittest.TestCase):
         before = program_snapshot(self.root)
 
         def start(command, **_kwargs):
+            self.assertEqual(Path(_kwargs["cwd"]), Path(command[0]).parent)
+            self.assertFalse(Path(_kwargs["cwd"]).is_relative_to(self.root))
             self.assertEqual(
                 command[command.index("--parent-pid") + 1], str(self.cli.pid)
             )
@@ -86,6 +88,27 @@ class RustHandoffTests(unittest.TestCase):
                 ):
                     self.client.start_update(self.prepared)
                 spawn.assert_not_called()
+
+    def test_unreadable_ready_receipt_cancels_worker_before_returning_error(self):
+        command_sent = []
+
+        def start(command, **_kwargs):
+            command_sent.extend(command)
+            Path(command[command.index("--ready") + 1]).write_text(
+                "incomplete", encoding="utf-8"
+            )
+            return Mock(poll=Mock(return_value=None))
+
+        with (
+            patch.object(service.psutil, "Process", return_value=self.cli),
+            patch.object(service, "application_processes", return_value=[]),
+            patch.object(service.subprocess, "Popen", side_effect=start),
+            self.assertRaises(ValueError),
+        ):
+            self.client.start_update(self.prepared)
+        self.assertTrue(
+            Path(command_sent[command_sent.index("--cancel") + 1]).is_file()
+        )
 
     def run_installer(self, ready):
         updater.run_update(

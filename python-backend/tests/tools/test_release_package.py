@@ -298,6 +298,28 @@ class TestReleasePackage(unittest.TestCase):
                 if path.parent.name == "logs":
                     path.parent.rmdir()
 
+    def test_linked_resources_and_runtime_directories_are_rejected(self):
+        release.prepare_package(self.root, self.package)
+        outside = self.package.parent / "outside"
+        outside.mkdir()
+        (outside / "private.txt").write_text("personal", encoding="utf-8")
+        linked = self.package / "_internal/linked"
+        linked.symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "链接"):
+            release.validate_package(self.root, self.package)
+        linked.unlink()
+        # 模拟 Windows junction：它不是 symlink，但仍是不能遍历的链接目录。
+        junction = self.package / "_internal/junction"
+        junction.mkdir()
+        self.enterContext(
+            patch(
+                "tools.release_package.linked_path",
+                side_effect=lambda path: path == junction,
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "链接"):
+            release.validate_package(self.root, self.package)
+
     def test_plain_package_includes_runtime_libraries(self):
         release.prepare_package(self.root, self.package)
         self.write(self.package, "_internal/unlisted.dll", "unknown")

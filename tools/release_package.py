@@ -19,7 +19,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
-from updater.utils import relative_path  # noqa: E402
+from updater.utils import linked_path, relative_path  # noqa: E402
 
 from src.update import (  # noqa: E402
     CLI_EXE,
@@ -83,7 +83,7 @@ def resource_files(root: Path, frontend: str = "qt") -> list[str]:
     for source_name, name in zip(names, packaged_names, strict=True):
         if not program_path(name):
             raise ValueError(f"用户文件不能作为发布资源: {name}")
-        if (root / source_name).is_symlink():
+        if linked_path(root / source_name):
             raise ValueError(f"发布资源不能是符号链接: {source_name}")
     # PNG 图标已编译进 Rust EXE；Qt 使用矢量图标源，发布包无需再拷贝。
     return [name for name in packaged_names if not name.startswith("assets/icons/")]
@@ -129,6 +129,8 @@ def prepare_package(
 
 def validate_package(root: Path, package: Path) -> list[Path]:
     """检查完整发布目录；清单外文件直接报错，避免发布个人数据或测试残留。"""
+    if linked_path(package):
+        raise ValueError("发布包目录不能是链接")
     frontend = read_version(package)["frontend"]
     expected = set(resource_files(root, frontend)) | {
         EXE_NAME,
@@ -148,7 +150,7 @@ def validate_package(root: Path, package: Path) -> list[Path]:
     files = []
     for path in sorted(package.rglob("*")):
         name = path.relative_to(package).as_posix()
-        if path.is_symlink():
+        if linked_path(path):
             raise ValueError(f"发布包不能包含符号链接: {name}")
         if path.is_dir():
             if any(

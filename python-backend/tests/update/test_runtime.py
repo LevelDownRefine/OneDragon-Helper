@@ -35,6 +35,7 @@ class UpdateRuntimeTests(unittest.TestCase):
                 self.assertEqual(read_version(root)["version"], "2.0.0")
                 self.assertEqual(user.read_bytes(), b"local configuration")
                 self.assertFalse((root / "update-manifest.json").exists())
+                self.assertFalse(prepared.directory.exists())
                 self.assertEqual(
                     json.loads((root / ".update/github-installed.json").read_text())[
                         "version"
@@ -86,6 +87,7 @@ class UpdateRuntimeTests(unittest.TestCase):
         ):
             run_update(self.root, prepared)
         self.assertEqual(program_snapshot(self.root), before)
+        self.assertTrue(prepared.directory.is_dir())
 
     def test_cancelled_handoff_and_tampered_package_never_modify_application(self):
         target = make_package(self.directory / "next", "2.0.0")
@@ -101,3 +103,24 @@ class UpdateRuntimeTests(unittest.TestCase):
         with self.assertRaises(UpdateError):
             run_update(self.root, prepared)
         self.assertEqual(program_snapshot(self.root), before)
+
+    def test_malformed_journal_rejects_startup_as_update_error(self):
+        (self.root / ".update").mkdir()
+        for phase in ([], {}, None, 1, "unknown"):
+            with self.subTest(phase=phase):
+                write_json(
+                    self.root / ".update/github-transaction.json", {"phase": phase}
+                )
+                with self.assertRaises(UpdateError), application_lease(self.root):
+                    self.fail("invalid journal must reject startup")
+
+    def test_cache_cleanup_failure_keeps_successful_installation(self):
+        target = make_package(self.directory / "next", "2.0.0")
+        prepared = prepare_package(self.root, target, "2.0.0", "qt")
+        with (
+            patch("src.update.remove_directory", side_effect=PermissionError("busy")),
+            self.assertLogs("src.update", level="WARNING"),
+        ):
+            run_update(self.root, prepared)
+        self.assertEqual(read_version(self.root)["version"], "2.0.0")
+        self.assertTrue(prepared.directory.is_dir())

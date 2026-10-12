@@ -25,6 +25,7 @@ from updater.utils import (
     FileLease,
     UpdateBusyError,
     linked_path,
+    remove_directory,
     update_directory,
     version_number,
     write_json,
@@ -112,7 +113,11 @@ def application_lease(root: Path):
             journal = directory / "github-transaction.json"
             if journal.is_file():
                 data = load_data(journal, file_format="json")
-                if not isinstance(data, dict) or "phase" not in data:
+                if (
+                    not isinstance(data, dict)
+                    or "phase" not in data
+                    or not isinstance(data["phase"], str)
+                ):
                     raise UpdateError("安装事务信息无效")
                 if data["phase"] == "installing":
                     with FileLease(directory / "runtime.lock"):
@@ -189,7 +194,12 @@ class UpdateService:
     ) -> PreparedUpdate:
         updater = self._client()
         prepared = updater.download(release, progress=progress, cancelled=cancelled)
-        data = read_version(prepared.directory / "package")
+        try:
+            data = read_version(prepared.directory / "package")
+        except ValueError:
+            # 无效元数据不能复用，否则显式重试仍会命中同一坏包。
+            updater.discard(release)
+            raise
         if data["frontend"] != self.frontend or data["version"] != prepared.version:
             updater.discard(release)
             raise UpdateError("下载包的版本或前端类型不一致")
@@ -263,11 +273,16 @@ class UpdateService:
                 "--frontend-created",
                 str(frontend.create_time()),
             ]
-        process = subprocess.Popen(command, cwd=work, env=child_environment())
+        process = subprocess.Popen(command, cwd=worker_dir, env=child_environment())
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             if ready.is_file() and process.poll() is None:
-                receipt = load_data(ready, file_format="json")
+                try:
+                    receipt = load_data(ready, file_format="json")
+                except (OSError, ValueError) as exc:
+                    # 回执读取失败也必须撤销交接，防止窗口之后退出触发安装。
+                    cancel.touch()
+                    raise UpdateError("无法读取更新器就绪回执") from exc
                 if receipt != {"status": "ready", "version": prepared.version}:
                     cancel.touch()
                     raise UpdateError("更新器就绪回执无效")
@@ -362,6 +377,15 @@ def run_update(
                 ):
                     raise UpdateError("待安装包的版本或前端类型不一致")
                 client(root, installed["version"], frontend).install(prepared)
+                # 安装成功后不再需要断点；清理失败不把已完成的更新报成失败。
+                try:
+                    remove_directory(prepared.directory)
+                except OSError:
+                    logger.warning(
+                        "更新已安装，无法清理下载缓存: %s",
+                        prepared.directory,
+                        exc_info=True,
+                    )
 
 
 def main() -> int:
