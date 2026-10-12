@@ -50,6 +50,9 @@ python -m unittest discover -s python-gui/tests/gui -t python-gui -p "test*.py"
 - 合并或迁移测试后，除全量检查外，受影响文件须能独立运行，例如 `python -m unittest tests.config.test_golden_daily`。只检查“未抛异常”或“结果非空”不足以验证具体行为，应断言结果、调用对象或持久化内容。
 
 runner 和 updater 子模块测试由各自仓库的 CI 执行，主仓 CI 只运行主仓测试。
+CI 缓存 `rust-gui/target` 的编译依赖；Windows 构建与发布回退共用缓存。
+同一 PR 后续推送取消旧 CI，主分支和正式发布运行独立保留。
+更新 EXE 测试每类只生成一次两版 ZIP，各用例仍独立持有安装目录、下载缓存和事务。
 首次检出运行 `git submodule update --init --recursive`，再运行 `uv sync --frozen`；
 更新库从 `updater/` 可编辑安装，主仓测试直接使用该子模块源码。
 更新库使用严格可编辑模式，保证 PyInstaller 能收集包；修改已有文件可直接联调，

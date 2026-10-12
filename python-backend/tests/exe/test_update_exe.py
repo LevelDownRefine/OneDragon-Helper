@@ -24,7 +24,11 @@ from src.update import (
 )
 from tests.exe import package_dir
 from tests.exe.pipe_output import PipeOutput
-from tests.support.update_package import prepare_package, program_snapshot
+from tests.support.update_package import (
+    archive_package,
+    prepare_archive,
+    program_snapshot,
+)
 from tools.release_package import program_path
 
 CAN_RUN = (
@@ -39,41 +43,53 @@ LOCKED_FILE = "config/config.example.yml"
 
 @unittest.skipUnless(CAN_RUN, "需要 Windows 管理员环境与完整打包产物")
 class TestUpdateExe(unittest.TestCase):
-    def setUp(self):
-        self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        self.root = self.directory / "旧版 安装目录"
-        self.new = self.directory / "新版 程序包"
+    @classmethod
+    def setUpClass(cls):
+        temporary = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(temporary.cleanup)
+        baseline = Path(temporary.name)
+        cls.old_baseline = baseline / "old"
+        cls.new = baseline / "new"
         source = package_dir()
-        frontend = read_version(source)["frontend"]
-        self.frontend = frontend
+        cls.frontend = read_version(source)["frontend"]
         names = [
             p.relative_to(source).as_posix()
             for p in source.rglob("*")
             if p.is_file() and program_path(p.relative_to(source).as_posix())
         ]
         for root, version, extra in (
-            (self.root, "1.0.0", "assets/obsolete.txt"),
-            (self.new, "2.0.0", "assets/new.txt"),
+            (cls.old_baseline, "1.0.0", "assets/obsolete.txt"),
+            (cls.new, "2.0.0", "assets/new.txt"),
         ):
             for name in names:
                 destination = root / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source / name, destination)
-            if root == self.new:
+            if root == cls.new:
                 # 两棵树同源，只有元数据不同；给新版造一处真实差异，占用才撞得上替换
                 (root / LOCKED_FILE).write_text("program 2.0.0\n", encoding="utf-8")
             metadata = {"version": version}
-            if frontend == "rust":
-                metadata["frontend"] = frontend
+            if cls.frontend == "rust":
+                metadata["frontend"] = cls.frontend
             write_json(root / "version.json", metadata)
             (root / extra).write_text(version, encoding="utf-8")
 
+        cls.old_archive = archive_package(cls.old_baseline, baseline / "old.zip")
+        cls.new_archive = archive_package(cls.new, baseline / "new.zip")
+
+    def setUp(self):
+        self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.root = self.directory / "旧版 安装目录"
+        shutil.copytree(self.old_baseline, self.root)
+
         self.worker = self.directory / UPDATER_EXE
-        shutil.copy2(source / UPDATER_EXE, self.worker)
+        shutil.copy2(self.old_baseline / UPDATER_EXE, self.worker)
         self.result = self.directory / "result.json"
-        adopted = prepare_package(self.root, self.root, "1.0.0", frontend)
-        client(self.root, "0", frontend).install(adopted)
-        self.prepared = prepare_package(self.root, self.new, "2.0.0", frontend)
+        adopted = prepare_archive(self.root, self.old_archive, "1.0.0", self.frontend)
+        client(self.root, "0", self.frontend).install(adopted)
+        self.prepared = prepare_archive(
+            self.root, self.new_archive, "2.0.0", self.frontend
+        )
         self.users = {}
         for name in (
             "config/config.yml",

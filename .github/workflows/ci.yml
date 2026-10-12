@@ -6,8 +6,14 @@ on:
   pull_request:
     branches: [ main, master ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
+    env:
+      RUSTUP_TOOLCHAIN: 1.97.1
     # 源码全量测试只在 ubuntu 跑；Windows 侧仅跑打包产物集成测试（tests/exe/），
     # 由 build-exe.yml 打包后覆盖，避免非打包测试在 Windows 重复跑一遍。
     runs-on: ubuntu-latest
@@ -45,6 +51,10 @@ jobs:
 
       - name: Set up Rust prototype toolchain
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-gui -> target
 
       - name: Check Rust prototype
         run: |
