@@ -13,6 +13,15 @@ from tools import release_package as release
 
 
 class TestReleasePackage(unittest.TestCase):
+    def test_boolean_manifest_schema_is_rejected(self):
+        release.prepare_package(self.root, self.package, "v1.2.3")
+        path = self.package / release.MANIFEST_FILE
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["schema"] = True
+        path.write_text(json.dumps(data), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "哈希清单"):
+            release.validate_package(self.root, self.package)
+
     def test_qt_cli_runtime_is_isolated_and_in_plain_package(self):
         self.write(self.package, "_internal/cli/_internal/python.dll", "cli-runtime")
         release.prepare_package(self.root, self.package, "v1.2.3")

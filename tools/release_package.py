@@ -206,12 +206,18 @@ def validate_package(root: Path, package: Path) -> list[Path]:
             for p in files
             if p != manifest
         }
-        if data != {
-            "schema": 1,
-            "version": read_version(package)["version"],
-            "frontend": frontend,
-            "files": published,
-        }:
+        if (
+            not isinstance(data, dict)
+            or "schema" not in data
+            or type(data["schema"]) is not int
+            or data
+            != {
+                "schema": 1,
+                "version": read_version(package)["version"],
+                "frontend": frontend,
+                "files": published,
+            }
+        ):
             raise ValueError("发布文件与哈希清单不一致")
     return files
 
