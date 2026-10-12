@@ -3,18 +3,42 @@
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from updater import UpdateError
+from updater.utils import file_digest
 
 from src.update import CLI_EXE, VERSION_FILE, client
 from tests.exe import is_frontend_package
-from tests.support.update_package import make_package, prepare_package, program_snapshot
+from tests.support.update_package import (
+    archive_package,
+    make_package,
+    prepare_package,
+    program_snapshot,
+)
 
 
 class ExePackageTests(unittest.TestCase):
     def setUp(self):
         self.directory = Path(self.enterContext(tempfile.TemporaryDirectory()))
+
+    def test_changed_exe_fixture_rebuilds_optional_manifest(self):
+        root = make_package(self.directory / "package", "2.0.0", frontend="rust")
+        (root / "update-manifest.json").write_text("old manifest", encoding="utf-8")
+        (root / "config/config.yml").write_bytes(b"personal")
+        example = root / "config/config.example.yml"
+        example.write_bytes(b"changed template")
+        archive = archive_package(root, self.directory / "package.zip")
+        with zipfile.ZipFile(archive) as bundle:
+            manifest = json.loads(bundle.read("OneDragon-Helper/update-manifest.json"))
+        self.assertEqual(manifest["version"], "2.0.0")
+        self.assertEqual(manifest["frontend"], "rust")
+        self.assertEqual(
+            manifest["files"]["config/config.example.yml"], file_digest(example)
+        )
+        self.assertNotIn("config/config.yml", manifest["files"])
+        self.assertNotIn("update-manifest.json", manifest["files"])
 
     def test_program_snapshot_excludes_local_data_and_detects_program_changes(self):
         root = make_package(self.directory / "installed")

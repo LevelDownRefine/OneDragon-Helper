@@ -19,7 +19,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python-backend"))
 
-from updater.utils import linked_path, relative_path  # noqa: E402
+from updater.utils import file_digest, linked_path, relative_path  # noqa: E402
 
 from src.update import (  # noqa: E402
     CLI_EXE,
@@ -57,6 +57,7 @@ def program_path(name: str) -> bool:
 EXE_NAME = "OneDragon-Helper.exe"
 RUNNER_NAME = "OneDragon-Helper-Runner.exe"
 VERSION_FILE = "version.json"
+MANIFEST_FILE = "update-manifest.json"
 logger = logging.getLogger(__name__)
 
 
@@ -124,6 +125,27 @@ def prepare_package(
         json.dumps(metadata, indent=2) + "\n",
         encoding="utf-8",
     )
+    manifest = package / MANIFEST_FILE
+    if linked_path(manifest):
+        raise ValueError("发布清单不能是链接")
+    manifest.unlink(missing_ok=True)
+    files = validate_package(root, package)
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "version": version,
+                "frontend": frontend,
+                "files": {
+                    p.relative_to(package).as_posix(): file_digest(p) for p in files
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     validate_package(root, package)
 
 
@@ -139,6 +161,9 @@ def validate_package(root: Path, package: Path) -> list[Path]:
         VERSION_FILE,
     }
     expected.add(CLI_EXE if frontend == "rust" else QT_CLI_EXE)
+    manifest = package / MANIFEST_FILE
+    if manifest.exists():
+        expected.add(MANIFEST_FILE)
     if frontend == "rust":
         expected.update((CLI_EXE, RUST_RUNTIME))
     allowed_dirs = {"_internal"}
@@ -174,6 +199,26 @@ def validate_package(root: Path, package: Path) -> list[Path]:
         raise ValueError(f"发布包缺少文件: {', '.join(sorted(missing))}")
     if not any(name.startswith("_internal/") for name in found):
         raise ValueError("发布包缺少 _internal 运行库")
+    if manifest.is_file():
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        published = {
+            p.relative_to(package).as_posix(): file_digest(p)
+            for p in files
+            if p != manifest
+        }
+        if (
+            not isinstance(data, dict)
+            or "schema" not in data
+            or type(data["schema"]) is not int
+            or data
+            != {
+                "schema": 1,
+                "version": read_version(package)["version"],
+                "frontend": frontend,
+                "files": published,
+            }
+        ):
+            raise ValueError("发布文件与哈希清单不一致")
     return files
 
 

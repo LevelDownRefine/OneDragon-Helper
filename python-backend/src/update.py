@@ -73,6 +73,7 @@ def client(root: Path, version: str, frontend: str) -> GitHubUpdater:
         root,
         version,
         archive_prefix="OneDragon-Helper/",
+        manifest_name="update-manifest.json",
     )
 
 

@@ -17,6 +17,7 @@ from src.update import (
     REPOSITORY,
     RUNNER_EXE,
     UPDATER_EXE,
+    read_version,
 )
 from tools.release_package import program_path
 
@@ -50,12 +51,36 @@ def make_package(root: Path, version="1.0.0", extra=None, *, frontend="qt"):
 
 
 def archive_package(root: Path, output: Path):
+    paths = [
+        path
+        for path in root.rglob("*")
+        if path.is_file() and program_path(path.relative_to(root).as_posix())
+    ]
+    manifest = root / "update-manifest.json"
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in root.rglob("*"):
-            if path.is_file() and program_path(path.relative_to(root).as_posix()):
+        for path in paths:
+            if path != manifest:
                 archive.write(
                     path, "OneDragon-Helper/" + path.relative_to(root).as_posix()
                 )
+        if manifest.is_file():
+            # EXE fixtures change versions/templates; hash those actual fixture bytes.
+            info = read_version(root)
+            archive.writestr(
+                "OneDragon-Helper/update-manifest.json",
+                json.dumps(
+                    {
+                        "schema": 1,
+                        "version": info["version"],
+                        "frontend": info["frontend"],
+                        "files": {
+                            path.relative_to(root).as_posix(): file_digest(path)
+                            for path in paths
+                            if path != manifest
+                        },
+                    }
+                ),
+            )
     return output
 
 

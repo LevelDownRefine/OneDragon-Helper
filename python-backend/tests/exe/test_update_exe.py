@@ -150,7 +150,7 @@ class TestUpdateExe(unittest.TestCase):
         self.assert_users_unchanged()
 
     def test_locked_file_rolls_back_after_partial_replacement(self):
-        # Windows 普通读句柄禁止替换；触发前已经替换 EXE、删旧资源并写新资源。
+        # Windows 普通读句柄禁止替换；触发前已经删旧资源并写新资源。
         with (self.root / LOCKED_FILE).open("rb"):
             code, result = self.run_updater(
                 "--package", str(self.prepared.directory), "--version", "2.0.0"
