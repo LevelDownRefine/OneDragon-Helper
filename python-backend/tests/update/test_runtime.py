@@ -106,10 +106,14 @@ class UpdateRuntimeTests(unittest.TestCase):
 
     def test_malformed_journal_rejects_startup_as_update_error(self):
         (self.root / ".update").mkdir()
-        for phase in ([], {}, None, 1, "unknown"):
-            with self.subTest(phase=phase):
-                write_json(
-                    self.root / ".update/github-transaction.json", {"phase": phase}
+        contents = [
+            json.dumps({"phase": phase}) for phase in ([], {}, None, 1, "unknown")
+        ]
+        contents += ["", "incomplete"]
+        for content in contents:
+            with self.subTest(content=content):
+                (self.root / ".update/github-transaction.json").write_text(
+                    content, encoding="utf-8"
                 )
                 with self.assertRaises(UpdateError), application_lease(self.root):
                     self.fail("invalid journal must reject startup")

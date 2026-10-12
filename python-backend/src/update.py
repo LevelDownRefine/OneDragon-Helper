@@ -112,7 +112,10 @@ def application_lease(root: Path):
         with FileLease(directory / "intent.lock"):
             journal = directory / "github-transaction.json"
             if journal.is_file():
-                data = load_data(journal, file_format="json")
+                try:
+                    data = load_data(journal, file_format="json")
+                except ValueError as exc:
+                    raise UpdateError("安装事务信息无效") from exc
                 if (
                     not isinstance(data, dict)
                     or "phase" not in data
