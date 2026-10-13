@@ -97,7 +97,8 @@ config/daily_task_list.yml 各游戏副本列表维护总览。鸣潮/异环经 
 的正式版本默认分支解析同一提交下的 `BinData/adventure_detect/silentareadetection.json`
 与 `Textmaps/zh-Hans/multi_text/MultiText.json`。只取 `Secondary=22`，用 `Name` 关联中文文本；
 按 `SortId` 降序排列。今州七项同值，沿用既有 F2 顺序；其他排序值重复时停止，禁止猜顺序。
-`SortId` 推导结果仍需在首次接入 PR 中核对实际 F2 菜单，尤其旧别名与正式名称有出入的位置。
+首次接入已核对实际 F2 菜单第 6–9 项：冰原运输港、加拉尔冠阶、隐喙深腹、陷足流川。
+后续新增或排序变化仍需核对实际 F2 菜单，尤其旧别名与正式名称有出入的位置。
 
 同步顺序：
 
