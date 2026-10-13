@@ -68,14 +68,14 @@ Windows Rust 窗口使用 Direct3D 12，自动选择硬件或系统 WARP 软件�
 
 ## 副本同步
 
-config/daily_task_list.yml 各游戏副本列表维护总览。鸣潮/异环经 GitHub Actions 每周六检测并开 PR；原神、终末地经 options.source 运行期读取脚本自身资源。本目录是开发/CI 工具，不含运行期脚本。
+config/daily_task_list.yml 各游戏副本列表维护总览。鸣潮/异环经 GitHub Actions 每天北京时间 11:15 检测并开 PR，也支持手动触发；原神、终末地经 options.source 运行期读取脚本自身资源。本目录是开发/CI 工具，不含运行期脚本。
 
 ## 各游戏副本更新方式
 
 | 游戏 | yml key | 副本数据源 | 更新方式 | 人工环节 |
 |---|---|---|---|---|
 | 终末地 | ok-ef | ok-ef 自身 world_map.json | options.source 运行期读取，无需 Action | 无 |
-| 鸣潮 | ok-ww | ok-wuthering-waves ForgeryTask.py/TacetTask.py 的 self.structure | sync_okww_tasks.py + Action 自动重排（最前插入，已有别名后移） | 最前新增占位改友好名 |
+| 鸣潮 | ok-ww | ok-wuthering-waves ForgeryTask.py/TacetTask.py 的 self.structure；正式服数据仅补无音区名称 | sync_okww_tasks.py + Action，以 ok-ww 分组变化为门槛 | 凝素新增占位命名；无音区核对 PR 中编号与正式名 |
 | 异环 | ok-nte | ok-nte AnomalyTask.py 的 _ID_RANGE | sync_oknte_tasks.py + Action 自动补数字 | 新数字改友好名 |
 | 原神 | BetterGI | better-genshin-impact AutoTrackPath/Assets/tp.json | options.source 运行期读取，无需 Action | 无 |
 | 明日方舟 | MAA | 固定 | 无需更新 | — |
@@ -84,12 +84,33 @@ config/daily_task_list.yml 各游戏副本列表维护总览。鸣潮/异环经 
 
 ## 通用约定
 
-- 数据源可靠性：以脚本仓库自身代码/数据为准；bettergi-scripts-list 的 JS 层滞后不可作来源；AI 生成的 JSON 不可信。
+- 数据源可靠性：支持范围以脚本仓库自身代码/数据为准；鸣潮正式服数据只补充已支持的无音区名称。bettergi-scripts-list 的 JS 层滞后不可作来源；AI 生成的 JSON 不可信。
 - 退出码：0 = 无差异，1 = 有差异未应用供 CI 判断，2 = 抓取/解析失败 CI 跳过。
-- --apply：鸣潮按最前插入模型重排——新增 delta 个时已有 physical_name 整体 +delta、最前补占位；移除仅报告不删除（无法安全重排），防上游短暂回退丢配置。
+- --apply：鸣潮凝素领域新增 delta 个时已有 physical_name 整体 +delta、最前补占位；无音区按下面的双源校验同步正式名。移除仅报告不删除，防上游短暂回退丢配置。
 - yml 格式：由 yaml 统一管理，无注释、sort_keys=False 幂等，diff 只含真实增量。
 - 选项格式：任务和选项统一用 display_name / physical_name；子选项放 options.values，读写字段放 options.key。
-- Action 产物：自动更新开 PR，最前新增的占位 display_name 需人工改友好名、已有别名已被自动后移，核对后合并。
+- Action 产物：自动更新开 PR；鸣潮无音区提供完整编号/正式名称表和来源提交，凝素领域及异环的新增数字占位仍需人工命名，核对后合并。
+
+### 鸣潮无音区名称
+
+`okww_tacet_names.py` 从 [Arikatsu/WutheringWaves_Data](https://github.com/Arikatsu/WutheringWaves_Data)
+的正式版本默认分支解析同一提交下的 `BinData/adventure_detect/silentareadetection.json`
+与 `Textmaps/zh-Hans/multi_text/MultiText.json`。只取 `Secondary=22`，用 `Name` 关联中文文本；
+按 `SortId` 降序排列。今州七项同值，沿用既有 F2 顺序；其他排序值重复时停止，禁止猜顺序。
+`SortId` 推导结果仍需在首次接入 PR 中核对实际 F2 菜单，尤其旧别名与正式名称有出入的位置。
+
+同步顺序：
+
+1. 先读取 ok-ww 的 `self.structure`；无音区首次接入，或与 `okww_tacet_state.json`
+   记录的分组不同，才查询名称来源。游戏资料单独更新不会触发配置变更。
+2. 正式服数据的总数及 `DetectionTabType` 分组必须与 ok-ww 完全一致；多出或缺少的项都不截取凑数。
+3. 名称完整且唯一、旧副本 ID 的相对顺序未改变才生成配置；数据先更新、滞后、接口失败或格式变化均暂缓，
+   在 Action 摘要写明原因，保留已有配置与同步状态，下一次继续检查。
+4. 更新 `daily_task_list.yml` 和 `okww_tacet_state.json` 并一起提交 PR。
+   状态只记录已处理的 ok-ww 分组、稳定副本 ID、正式服版本和来源提交，不重复保存名称。
+
+Action 使用一次 `--apply --github-output ... --report ...` 完成抓取与应用，避免检查和应用之间上游变动。
+无音区校验不通过时该次鸣潮同步整体暂缓，异环继续独立运行；凝素领域的命名机制保持不变。
 
 ## 脚本用法
 

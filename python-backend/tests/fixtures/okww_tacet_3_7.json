@@ -1,0 +1,238 @@
+{
+  "source": "https://github.com/Arikatsu/WutheringWaves_Data/tree/9218d612ad815e398e064e577e42aaf878899968",
+  "records": [
+    {
+      "Id": 30010001,
+      "Name": "MapMark_5001_MarkTitle",
+      "Secondary": 22,
+      "SortId": 3,
+      "DetectionTabType": 1
+    },
+    {
+      "Id": 30010009,
+      "Name": "MapMark_5002_MarkTitle",
+      "Secondary": 22,
+      "SortId": 3,
+      "DetectionTabType": 1
+    },
+    {
+      "Id": 30010010,
+      "Name": "MapMark_5003_MarkTitle",
+      "Secondary": 22,
+      "SortId": 3,
+      "DetectionTabType": 1
+    },
+    {
+      "Id": 30010011,
+      "Name": "MapMark_5004_MarkTitle",
+      "Secondary": 22,
+      "SortId": 3,
+      "DetectionTabType": 1
+    },
+    {
+      "Id": 30010012,
+      "Name": "MapMark_5005_MarkTitle",
+      "Secondary": 22,
+      "SortId": 3,
+      "DetectionTabType": 1
+    },
+    {
+      "Id": 30010013,
+      "Name": "MapMark_5006_MarkTitle",
+      "Secondary": 22,
+      "SortId": 3,
+      "DetectionTabType": 1
+    },
+    {
+      "Id": 30010016,
+      "Name": "MapMark_5007_MarkTitle",
+      "Secondary": 22,
+      "SortId": 3,
+      "DetectionTabType": 1
+    },
+    {
+      "Id": 30010017,
+      "Name": "MapMark_5008_MarkTitle",
+      "Secondary": 22,
+      "SortId": 12,
+      "DetectionTabType": 2
+    },
+    {
+      "Id": 30010018,
+      "Name": "MapMark_5009_MarkTitle",
+      "Secondary": 22,
+      "SortId": 11,
+      "DetectionTabType": 2
+    },
+    {
+      "Id": 30010019,
+      "Name": "MapMark_5010_MarkTitle",
+      "Secondary": 22,
+      "SortId": 13,
+      "DetectionTabType": 2
+    },
+    {
+      "Id": 30010020,
+      "Name": "MapMark_5011_MarkTitle",
+      "Secondary": 22,
+      "SortId": 14,
+      "DetectionTabType": 2
+    },
+    {
+      "Id": 30010021,
+      "Name": "MapMark_5012_MarkTitle",
+      "Secondary": 22,
+      "SortId": 15,
+      "DetectionTabType": 2
+    },
+    {
+      "Id": 30010022,
+      "Name": "MapMark_5013_MarkTitle",
+      "Secondary": 22,
+      "SortId": 16,
+      "DetectionTabType": 5
+    },
+    {
+      "Id": 30010023,
+      "Name": "MapMark_5014_MarkTitle",
+      "Secondary": 22,
+      "SortId": 17,
+      "DetectionTabType": 5
+    },
+    {
+      "Id": 30010024,
+      "Name": "MapMark_5015_MarkTitle",
+      "Secondary": 22,
+      "SortId": 18,
+      "DetectionTabType": 5
+    },
+    {
+      "Id": 30010025,
+      "Name": "MapMark_5016_MarkTitle",
+      "Secondary": 22,
+      "SortId": 19,
+      "DetectionTabType": 5
+    },
+    {
+      "Id": 30010026,
+      "Name": "MapMark_5017_MarkTitle",
+      "Secondary": 22,
+      "SortId": 20,
+      "DetectionTabType": 5
+    },
+    {
+      "Id": 30010027,
+      "Name": "MapMark_5018_MarkTitle",
+      "Secondary": 22,
+      "SortId": 21,
+      "DetectionTabType": 11
+    },
+    {
+      "Id": 30010028,
+      "Name": "MapMark_5019_MarkTitle",
+      "Secondary": 22,
+      "SortId": 22,
+      "DetectionTabType": 11
+    },
+    {
+      "Id": 30010029,
+      "Name": "MapMark_5020_MarkTitle",
+      "Secondary": 22,
+      "SortId": 23,
+      "DetectionTabType": 11
+    },
+    {
+      "Id": 30010030,
+      "Name": "MapMark_5200_MarkTitle",
+      "Secondary": 22,
+      "SortId": 24,
+      "DetectionTabType": 11
+    }
+  ],
+  "texts": [
+    {
+      "Id": "MapMark_5001_MarkTitle",
+      "Content": "中曲台地无音区"
+    },
+    {
+      "Id": "MapMark_5002_MarkTitle",
+      "Content": "荒石高地无音区Ⅰ"
+    },
+    {
+      "Id": "MapMark_5003_MarkTitle",
+      "Content": "虎口山脉无音区"
+    },
+    {
+      "Id": "MapMark_5004_MarkTitle",
+      "Content": "怨鸟泽无音区"
+    },
+    {
+      "Id": "MapMark_5005_MarkTitle",
+      "Content": "归墟港市无音区"
+    },
+    {
+      "Id": "MapMark_5006_MarkTitle",
+      "Content": "荒石高地无音区Ⅱ"
+    },
+    {
+      "Id": "MapMark_5007_MarkTitle",
+      "Content": "无光之森无音区"
+    },
+    {
+      "Id": "MapMark_5008_MarkTitle",
+      "Content": "槲生半岛无音区"
+    },
+    {
+      "Id": "MapMark_5009_MarkTitle",
+      "Content": "悲叹墓岛无音区"
+    },
+    {
+      "Id": "MapMark_5010_MarkTitle",
+      "Content": "黎乔利群岛无音区"
+    },
+    {
+      "Id": "MapMark_5011_MarkTitle",
+      "Content": "贝奥海域无音区"
+    },
+    {
+      "Id": "MapMark_5012_MarkTitle",
+      "Content": "哀恸谷无音区"
+    },
+    {
+      "Id": "MapMark_5013_MarkTitle",
+      "Content": "陷足流川无音区"
+    },
+    {
+      "Id": "MapMark_5014_MarkTitle",
+      "Content": "隐喙深腹无音区"
+    },
+    {
+      "Id": "MapMark_5015_MarkTitle",
+      "Content": "加拉尔冠阶无音区"
+    },
+    {
+      "Id": "MapMark_5016_MarkTitle",
+      "Content": "冰原运输港无音区"
+    },
+    {
+      "Id": "MapMark_5017_MarkTitle",
+      "Content": "落日堤屿无音区"
+    },
+    {
+      "Id": "MapMark_5018_MarkTitle",
+      "Content": "玄幽东岳无音区"
+    },
+    {
+      "Id": "MapMark_5019_MarkTitle",
+      "Content": "方擎西峰无音区"
+    },
+    {
+      "Id": "MapMark_5020_MarkTitle",
+      "Content": "烬心域无音区"
+    },
+    {
+      "Id": "MapMark_5200_MarkTitle",
+      "Content": "沉心域无音区"
+    }
+  ]
+}

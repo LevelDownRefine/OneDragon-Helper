@@ -61,7 +61,7 @@ class TestRebaseSequences(unittest.TestCase):
                 self.assertEqual(options, original)
 
 
-class TestApplyNewFrontInsert(unittest.TestCase):
+class TestUpdatedData(unittest.TestCase):
     def _write_tmp(self, data: dict) -> str:
         with tempfile.NamedTemporaryFile(
             "w", suffix=".yml", delete=False, encoding="utf-8"
@@ -122,10 +122,7 @@ class TestApplyNewFrontInsert(unittest.TestCase):
             # 生产里 upstream 只含数字分类（凝素领域/无音区），不含模拟领域
             upstream = {"凝素领域": 3}
             current = m._load_okww()
-            m._apply_new(upstream, current)
-
-            with open(path, encoding="utf-8") as f:
-                after = _YAML.load(f)
+            after = m._updated_data(upstream, current, None)
             self.assertEqual(after["ok-ww"][0]["options"]["key"], "Which to Farm")
             self.assertEqual(after["ok-ww"][1], data["ok-ww"][1])
             options = {
@@ -184,7 +181,7 @@ class TestApplyNewFrontInsert(unittest.TestCase):
             current = m._load_okww()
             with open(path, encoding="utf-8") as f:
                 before = f.read()
-            m._apply_new(upstream, current)
+            self.assertEqual(m._updated_data(upstream, current, None), data)
             with open(path, encoding="utf-8") as f:
                 after = f.read()
             self.assertEqual(before, after)  # 不变
