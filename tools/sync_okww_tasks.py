@@ -1,206 +1,318 @@
-"""同步鸣潮（ok-ww）副本数字列表到 config/daily_task_list.yml（CI 自动更新用）。
+"""以 ok-ww 的 F2 分组为准同步副本；正式服游戏数据仅补充无音区名称。
 
-数据源：ok-wuthering-waves 仓库 src/task/ 下各副本 task 类的 `self.structure`。
-F2 面板按页展示副本，structure 是每页数量，`total_number = sum(structure)`
-即副本总数（数字 1..N 为 F2 面板序号，脚本只认数字不认名字）。
+凝素领域仍按最前插入模型保留别名。无音区在首次接入或 ok-ww 分组变化时
+读取同一正式服提交的副本表和中文文本，数量、分组匹配后才更新名称和编号。
+已处理的分组写入 tools/okww_tacet_state.json；游戏数据单独更新不触发同步。
 
-    src/task/ForgeryTask.py  → structure → 凝素领域总数（当前 20）
-    src/task/TacetTask.py    → structure → 无音区总数（当前 19）
-
-不变式（关键）：鸣潮新增副本**恒插在最前方**（F2 面板位置 1），已有副本
-整体后移。因此别名与副本的绑定靠「跟随滑动」维持——新增 delta 个时，所有
-已有别名的 value += delta，最前方补 delta 个占位（value=1..delta，name
-先填数字待人工改友好名，如 梦州-迅刀）。模拟领域是固定英文选项，不参与数字
-重排。
-
-对比 daily_task_list.yml 中 ok-ww 的纯数字分类（凝素领域/无音区），按总数差
-delta 判定：delta>0 为最前插入，--apply 时重排；delta<0 为移除，仅报告不
-删除（无法安全重排，交人工核对）。
-
-本文件不 import 项目任何模块，独立可运行（位于 tools/ 下）。
-
-用法：
-    python tools/sync_okww_tasks.py            # 只检测，输出差异报告
-    python tools/sync_okww_tasks.py --apply    # 检测并自动重排
-
-退出码：0 = 无差异（或已应用）；1 = 有差异未应用；2 = 抓取/解析失败（跳过本次）。
+退出码：0 = 无差异或已应用；1 = 有差异未应用；2 = 上游未就绪/解析失败。
 """
 
+import argparse
+import json
+import logging
 import os
 import re
 import sys
+import tempfile
 import urllib.error
-import urllib.request
+from contextlib import ExitStack
+from io import StringIO
+from pathlib import Path
 
 from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
+if __package__:
+    from .okww_tacet_names import (
+        DATA_REPO,
+        TacetSnapshot,
+        fetch_tacet_snapshot,
+        fetch_text,
+        require_fields,
+    )
+else:
+    from okww_tacet_names import (
+        DATA_REPO,
+        TacetSnapshot,
+        fetch_tacet_snapshot,
+        fetch_text,
+        require_fields,
+    )
+
+logger = logging.getLogger(__name__)
 _yaml = YAML()
-
-_FORGERY_URL = (
-    "https://raw.githubusercontent.com/ok-oldking/ok-wuthering-waves/"
-    "master/src/task/ForgeryTask.py"
+_UPSTREAM_ROOT = (
+    "https://raw.githubusercontent.com/ok-oldking/ok-wuthering-waves/master"
 )
-_TACET_URL = (
-    "https://raw.githubusercontent.com/ok-oldking/ok-wuthering-waves/"
-    "master/src/task/TacetTask.py"
-)
-# 本文件位于 tools/ 下，需两级 dirname 才到项目根
+_FORGERY_URL = f"{_UPSTREAM_ROOT}/src/task/ForgeryTask.py"
+_TACET_URL = f"{_UPSTREAM_ROOT}/src/task/TacetTask.py"
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DUNGEON_PATH = os.path.join(_PROJECT_ROOT, "config", "daily_task_list.yml")
+_STATE_PATH = os.path.join(_PROJECT_ROOT, "tools", "okww_tacet_state.json")
 _OKWW_KEY = "ok-ww"
-# 数字分类：上游 task 文件 → yml 分类名
-_NUMERIC_CATEGORIES = {
-    _FORGERY_URL: "凝素领域",
-    _TACET_URL: "无音区",
-}
+_NUMERIC_CATEGORIES = {_FORGERY_URL: "凝素领域", _TACET_URL: "无音区"}
 
 
-def _fetch_totals() -> dict[str, int]:
-    """拉取各 task 文件，返回 {分类: 副本总数}（structure 之和）。
-
-    网络失败或上游结构变化 → exit 2（区别于"有差异"的 1，CI 据此跳过不开 PR）。
-    """
-    totals = {}
+def _fetch_structures() -> dict[str, list[int]]:
+    """先读取 ok-ww 支持的分组；不由游戏数据推断脚本支持范围。"""
+    structures = {}
     for url, label in _NUMERIC_CATEGORIES.items():
-        try:  # 外部网络操作，失败可恢复，以 exit 2 区分于"有差异"
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                content = resp.read().decode("utf-8")
-        except (urllib.error.URLError, OSError) as exc:
-            print(f"[sync_okww_tasks] 抓取失败 {url}: {exc}")
-            sys.exit(2)
+        content = fetch_text(url)
         match = re.search(r"self\.structure\s*=\s*\[([\d\s,]+)\]", content)
         if match is None:
-            print(
-                f"[sync_okww_tasks] {label} 上游未找到 structure 定义（结构可能变化）"
-            )
-            sys.exit(2)
-        structure = [int(x) for x in re.findall(r"\d+", match.group(1))]
-        totals[label] = sum(structure)
-    return totals
+            raise ValueError(f"{label} 上游未找到 structure 定义")
+        structure = [int(value) for value in re.findall(r"\d+", match[1])]
+        if not structure or any(value <= 0 for value in structure):
+            raise ValueError(f"{label} 上游分组无效：{structure}")
+        structures[label] = structure
+    return structures
 
 
 def _daily_tasks(data: dict) -> list[dict]:
-    """按日常名定位要同步的副本清单，不依赖其列表位置。"""
+    """按日常名定位菜单，避免依赖声明位置。"""
     assert _OKWW_KEY in data, "缺少脚本日常配置"
-    matches = [
-        daily
-        for daily in data[_OKWW_KEY]
-        if daily.get("physical_name", daily["display_name"]) == "每日任务"
-    ]
+    matches = []
+    for daily in data[_OKWW_KEY]:
+        assert "display_name" in daily
+        name = (
+            daily["physical_name"]
+            if "physical_name" in daily
+            else daily["display_name"]
+        )
+        if name == "每日任务":
+            matches.append(daily)
     assert len(matches) == 1, "必须唯一声明每日任务"
+    assert "options" in matches[0] and "values" in matches[0]["options"]
     return matches[0]["options"]["values"]
 
 
+def _load_data() -> dict:
+    """读取本地任务声明。"""
+    with open(_DUNGEON_PATH, encoding="utf-8") as stream:
+        data = _yaml.load(stream)
+    assert isinstance(data, dict) and _OKWW_KEY in data
+    return data
+
+
 def _load_okww() -> dict[str, list[int]]:
-    """读取 daily_task_list.yml 中 ok-ww 的纯数字分类 → 数字 value 列表。"""
-    with open(_DUNGEON_PATH, encoding="utf-8") as f:
-        data = _yaml.load(f)
-    assert isinstance(data, dict) and _OKWW_KEY in data, (
-        f"daily_task_list.yml 缺少 {_OKWW_KEY} 配置"
-    )
+    """读取数字分类的已声明编号。"""
     result = {}
-    for task in _daily_tasks(data):
-        if task.get("display_name") == "未选择":
+    for task in _daily_tasks(_load_data()):
+        assert "display_name" in task
+        if task["display_name"] == "未选择":
             continue
-        values = [s["physical_name"] for s in task["options"]["values"]]
-        if values and all(isinstance(v, int) for v in values):
+        assert "options" in task and "values" in task["options"]
+        values = []
+        for option in task["options"]["values"]:
+            assert "physical_name" in option
+            values.append(option["physical_name"])
+        if values and all(type(value) is int for value in values):
+            assert sorted(values) == list(range(1, len(values) + 1)), (
+                "编号必须连续且唯一"
+            )
             result[task["display_name"]] = values
     return result
 
 
 def _rebase_sequences(seqs: list[dict], delta: int) -> list[dict]:
-    """最前插入 delta 个新副本时重排序列（纯函数，便于单测）。
-
-    鸣潮新增副本恒插在最前方（F2 面板位置 1），已有副本整体后移 delta 位。
-    因此别名与其副本的绑定靠「跟随滑动」维持：已有条目 ``physical_name += delta``，
-    最前方补 delta 个占位（``physical_name = 1..delta``，display_name 先填数字待人工改名）。
-
-    Args:
-        seqs: 当前序列条目列表（每条含 ``display_name``/``physical_name``）。
-        delta: 新增副本数（必须 > 0）。
-
-    Returns:
-        重排后的序列列表，按 ``physical_name`` 升序。
-    """
-    assert delta > 0, "[sync_okww] delta 必须为正"
-    rebased: list[dict] = [
-        {"display_name": str(v), "physical_name": v} for v in range(1, delta + 1)
+    """凝素领域新增项插在最前，已有别名跟随编号后移。"""
+    assert delta > 0
+    rebased = [
+        {"display_name": str(value), "physical_name": value}
+        for value in range(1, delta + 1)
     ]
-    for s in seqs:
-        value = s["physical_name"] + delta
-        name = (
-            str(value)
-            if s["display_name"] == str(s["physical_name"])
-            else s["display_name"]
-        )
-        rebased.append({**s, "display_name": name, "physical_name": value})
-    rebased.sort(key=lambda s: s["physical_name"])
-    assert len({s["display_name"] for s in rebased}) == len(rebased), (
-        "重排后的展示名重复"
-    )
+    for option in seqs:
+        assert "physical_name" in option and "display_name" in option
+        value = option["physical_name"] + delta
+        name = option["display_name"]
+        if name == str(option["physical_name"]):
+            name = str(value)
+        rebased.append({**option, "display_name": name, "physical_name": value})
+    rebased.sort(key=lambda option: option["physical_name"])
+    assert len({option["display_name"] for option in rebased}) == len(rebased)
     return rebased
 
 
-def _apply_new(upstream: dict[str, int], current: dict[str, list[int]]) -> None:
-    """按最前插入模型重排 yml 中的 ok-ww 数字分类。
+def _updated_data(
+    upstream: dict[str, int], current: dict[str, list[int]], names: list[str] | None
+) -> dict:
+    """生成完整变更，抓取与校验结束前不写盘。"""
+    data = _load_data()
+    for category, total in upstream.items():
+        assert category in current
+        task = next(
+            item for item in _daily_tasks(data) if item["display_name"] == category
+        )
+        if category == "无音区" and names is not None:
+            assert len(names) == total
+            display_names = [name.replace("无音区", "").strip() for name in names]
+            if not all(display_names) or len(set(display_names)) != len(display_names):
+                raise ValueError("无音区展示名称为空或重复，需人工核对")
+            task["options"]["values"] = [
+                {"display_name": name, "physical_name": index}
+                for index, name in enumerate(display_names, 1)
+            ]
+        elif total > len(current[category]):
+            task["options"]["values"] = _rebase_sequences(
+                task["options"]["values"], total - len(current[category])
+            )
+    return data
 
-    daily_task_list.yml 已由 yaml 统一管理（无注释、格式幂等），
-    直接 load→改→dump 即可，重写后 diff 只含真实增量。仅处理新增
-    （delta>0）类别；移除（delta<0）不在此处理，交由报告人工核对。
-    """
-    with open(_DUNGEON_PATH, encoding="utf-8") as f:
-        data = _yaml.load(f)
-    for cat, total in upstream.items():
-        old_count = len(current.get(cat, []))
-        delta = total - old_count
-        if delta <= 0:
-            continue  # 无新增；移除不在此处理
-        task = next(d for d in _daily_tasks(data) if d["display_name"] == cat)
-        task["options"]["values"] = _rebase_sequences(task["options"]["values"], delta)
-    with open(_DUNGEON_PATH, "w", encoding="utf-8") as f:
-        _yaml.dump(data, f)
 
-
-def main() -> int:
-    apply = "--apply" in sys.argv
-    upstream = _fetch_totals()
-    current = _load_okww()
-
-    deltas: dict[str, int] = {}
-    for cat, total in upstream.items():
-        old_count = len(current.get(cat, []))
-        delta = total - old_count
-        if delta != 0:
-            deltas[cat] = delta
-
-    if not deltas:
-        print("[sync_okww_tasks] 无差异")
-        return 0
-
-    print(
-        "[sync_okww_tasks] 上游总数："
-        + "、".join(f"{cat}={total}" for cat, total in upstream.items())
+def _load_state() -> dict | None:
+    """首次接入没有状态；已有状态损坏时停止同步。"""
+    if not os.path.exists(_STATE_PATH):
+        return None
+    state = require_fields(
+        json.loads(Path(_STATE_PATH).read_text(encoding="utf-8")),
+        ("okww_structure", "ids", "data_commit", "game_version"),
+        "无音区同步状态",
     )
-    for cat, delta in deltas.items():
-        if delta > 0:
-            print(
-                f"最前新增 {delta} 个副本 [{cat}]：位置 1..{delta} 为占位（待人工改友好名），"
-                f"已有别名整体后移 {delta} 位"
-            )
-        else:
-            print(
-                f"移除 {-delta} 个副本（仅报告不删除）[{cat}]：别名无法安全重排，请人工核对"
-            )
+    structure, ids = state["okww_structure"], state["ids"]
+    if (
+        not isinstance(structure, list)
+        or not structure
+        or any(type(value) is not int or value <= 0 for value in structure)
+        or not isinstance(ids, list)
+        or any(type(value) is not int for value in ids)
+        or len(ids) != sum(structure)
+        or len(set(ids)) != len(ids)
+    ):
+        raise ValueError("无音区同步状态的数量或 ID 无效")
+    if (
+        not isinstance(state["data_commit"], str)
+        or not re.fullmatch(r"[0-9a-f]{40}", state["data_commit"])
+        or not isinstance(state["game_version"], str)
+        or not re.fullmatch(r"\d+\.\d+\.\d+", state["game_version"])
+    ):
+        raise ValueError("无音区同步状态的来源提交或版本无效")
+    return state
 
-    if not apply:
-        print("[sync_okww_tasks] 检测到差异，未应用（加 --apply 自动重排）")
-        return 1
 
-    _apply_new(upstream, current)
-    print("[sync_okww_tasks] 已重排：新增副本插最前、已有别名后移")
-    return 0
+def _snapshot_state(snapshot: TacetSnapshot) -> dict:
+    """记录已处理的 ok-ww 分组与可追溯的数据提交。"""
+    return {
+        "okww_structure": snapshot.structure,
+        "ids": snapshot.ids,
+        "data_commit": snapshot.revision,
+        "game_version": snapshot.version,
+    }
+
+
+def _sync(apply: bool) -> tuple[bool, str]:
+    """以 ok-ww 为门槛生成一次同步及可审阅的 PR 报告。"""
+    structures = _fetch_structures()
+    current = _load_okww()
+    upstream = {category: sum(structure) for category, structure in structures.items()}
+    assert "无音区" in structures and "无音区" in current
+    old_state = _load_state()
+    state = old_state
+    snapshot = None
+    tacet_total = upstream["无音区"]
+    needs_names = (
+        old_state is None
+        or old_state["okww_structure"] != structures["无音区"]
+        or len(current["无音区"]) != tacet_total
+    )
+    report = ["以 ok-ww 的 `self.structure` 为同步依据。", ""]
+    if needs_names and tacet_total >= len(current["无音区"]):
+        snapshot = fetch_tacet_snapshot(structures["无音区"])
+        if old_state is not None:
+            previous_ids = old_state["ids"]
+            retained = [value for value in snapshot.ids if value in previous_ids]
+            if retained != previous_ids:
+                raise ValueError("已有无音区消失或相对顺序改变，需人工核对 F2")
+        state = _snapshot_state(snapshot)
+        report.extend(
+            [
+                f"无音区分组：`{snapshot.structure}`，共 {len(snapshot.ids)} 项。",
+                f"名称来源：[正式服 {snapshot.version}]"
+                f"(https://github.com/{DATA_REPO}/tree/{snapshot.revision})。",
+                "排序依据游戏数据 SortId（降序），今州同值项沿用既有 F2 顺序；合并前核对菜单。",
+                "",
+                "| ok-ww 编号 | 正式名称 |",
+                "|---|---|",
+                *[
+                    f"| {index} | {name} |"
+                    for index, name in enumerate(snapshot.names, 1)
+                ],
+                "",
+            ]
+        )
+    else:
+        report.append(
+            "ok-ww 无音区分组未变或数量回退，不读取游戏数据、不扩展支持范围。"
+        )
+    for category, total in upstream.items():
+        assert category in current
+        delta = total - len(current[category])
+        if delta < 0:
+            report.append(f"{category}：ok-ww 数量回退 {abs(delta)}，仅报告，不删除。")
+        elif delta > 0 and category != "无音区":
+            report.append(
+                f"{category}：最前新增 {delta} 个数字占位，已有别名后移；请人工命名。"
+            )
+    data = _updated_data(upstream, current, snapshot.names if snapshot else None)
+    changed = data != _load_data() or state != old_state
+    if apply and changed:
+        stream = StringIO()
+        _yaml.dump(data, stream)
+        updates = {Path(_DUNGEON_PATH): stream.getvalue()}
+        if state != old_state:
+            updates[Path(_STATE_PATH)] = (
+                json.dumps(state, ensure_ascii=False, indent=2) + "\n"
+            )
+        # 全部内容先写到同文件系统的临时文件，再逐个替换，状态最后发布。
+        with ExitStack() as stack:
+            staged = []
+            for path, content in updates.items():
+                directory = stack.enter_context(
+                    tempfile.TemporaryDirectory(
+                        prefix=f".{path.name}.", dir=path.parent
+                    )
+                )
+                temporary = Path(directory) / path.name
+                temporary.write_text(content, encoding="utf-8")
+                staged.append((temporary, path))
+            for temporary, path in staged:
+                temporary.replace(path)
+    return changed, "\n".join(report) + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    """检查或应用一次快照，并为 GitHub Action 输出结果。"""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--github-output", type=Path)
+    parser.add_argument("--report", type=Path)
+    args = parser.parse_args(argv)
+    try:
+        changed, report = _sync(args.apply)
+    except (urllib.error.URLError, UnicodeError, ValueError, YAMLError) as exc:
+        report = f"鸣潮同步暂缓，本次同步未完成：{type(exc).__name__}: {exc}\n"
+        logger.warning(report.rstrip())
+        if args.report:
+            args.report.write_text(report, encoding="utf-8")
+        if args.github_output:
+            with args.github_output.open("a", encoding="utf-8") as stream:
+                stream.write("changed=false\n")
+        return 2
+    logger.info(report.rstrip())
+    if args.report:
+        args.report.write_text(report, encoding="utf-8")
+    if args.github_output:
+        with args.github_output.open("a", encoding="utf-8") as stream:
+            stream.write(f"changed={'true' if changed and args.apply else 'false'}\n")
+    logger.info(
+        "已应用更新"
+        if changed and args.apply
+        else "检测到差异"
+        if changed
+        else "无差异"
+    )
+    return 1 if changed and not args.apply else 0
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     sys.exit(main())

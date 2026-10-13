@@ -22,33 +22,34 @@ jobs:
       - name: Install deps
         run: pip install ruamel.yaml
 
-      - name: Sync ok-ww task numbers
+      - name: Sync ok-ww tasks and Tacet names
         id: okww
         run: |
           set -e
-          # exit=0 无差异；exit=1 有差异（自动 apply 后开 PR）；
-          # exit=2 抓取/解析失败（跳过本次，不误开 PR）
+          # 单次抓取并应用同一快照；ok-ww 未更新时不查询名称来源。
           code=0
-          python tools/sync_okww_tasks.py || code=$?
-          if [ $code -eq 1 ]; then
-            python tools/sync_okww_tasks.py --apply
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
+          python tools/sync_okww_tasks.py --apply \
+            --github-output "$GITHUB_OUTPUT" \
+            --report "$RUNNER_TEMP/okww-sync.md" || code=$?
+          if [ -f "$RUNNER_TEMP/okww-sync.md" ]; then
+            cat "$RUNNER_TEMP/okww-sync.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ $code -eq 2 ]; then
+            echo "::warning::鸣潮上游数据尚未就绪，详见本次运行摘要；下次继续检查。"
+          elif [ $code -ne 0 ]; then
+            exit "$code"
           fi
 
       - name: Create ok-ww Pull Request
         if: steps.okww.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
-          commit-message: "chore: sync ok-ww task numbers from upstream"
-          title: "chore: 同步鸣潮副本数字"
-          body: |
-            检测到鸣潮副本数量有更新，已从 ok-wuthering-waves 的 `ForgeryTask.py`/`TacetTask.py`（`self.structure`）同步到 `config/daily_task_list.yml`。
-
-            - 鸣潮新增副本插在**最前方**，已有别名已自动整体后移对应位数
-            - 最前方新增的占位 display 为数字，**请人工改成友好名**（如 梦州-迅刀）
-            - 移除的数字仅报告不删除（无法安全重排，请人工核对）
+          commit-message: "chore: sync ok-ww tasks and Tacet names"
+          title: "chore: 同步鸣潮副本与无音区名称"
+          body-path: ${{ runner.temp }}/okww-sync.md
+          add-paths: |
+            config/daily_task_list.yml
+            tools/okww_tacet_state.json
           branch: auto-sync/okww-tasks
           delete-branch: true
 
