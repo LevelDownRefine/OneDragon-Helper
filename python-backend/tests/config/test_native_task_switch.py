@@ -609,12 +609,15 @@ class TestDeclaration(unittest.TestCase):
         self.assertNotIn("notify_telegram_enable", declaration["names"])
 
     def test_repo_declaration_covers_endfield(self):
-        """仓库声明里终末地已接上：正则白名单形态指向其一条龙任务表。"""
+        """终末地日常总开关使用分组多选，刷体力由日常卡独立管理。"""
         declaration = load_native_task_switch_map()["ok-ef"][0]
         self.assertEqual(
             declaration["config"], "data/apps/ok-ef/working/configs/DailyTask.json"
         )
-        self.assertEqual(declaration["task_pattern"], "⭐(.+)")
+        self.assertEqual(declaration["list_key"], "帝江号任务")
+        self.assertEqual(
+            list(declaration["names"]), ["送礼", "帝江号整理", "帝江号收菜"]
+        )
 
     def test_repo_declaration_covers_zzz(self):
         """仓库声明里绝区零已接上：应用列表形态指向其一条龙应用组配置。"""
