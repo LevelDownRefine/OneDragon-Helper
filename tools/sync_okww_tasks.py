@@ -143,7 +143,7 @@ def _updated_data(
         if category == "无音区" and names is not None:
             assert len(names) == total
             task["options"]["values"] = [
-                {"display_name": name, "physical_name": index}
+                {"display_name": name.replace("无音区", ""), "physical_name": index}
                 for index, name in enumerate(names, 1)
             ]
         elif total > len(current[category]):

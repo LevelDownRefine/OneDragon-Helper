@@ -38,6 +38,29 @@ EXPECTED_NAMES = [
     "荒石高地无音区Ⅱ",
     "无光之森无音区",
 ]
+EXPECTED_DISPLAY_NAMES = [
+    "沉心域",
+    "烬心域",
+    "方擎西峰",
+    "玄幽东岳",
+    "落日堤屿",
+    "冰原运输港",
+    "加拉尔冠阶",
+    "隐喙深腹",
+    "陷足流川",
+    "哀恸谷",
+    "贝奥海域",
+    "黎乔利群岛",
+    "槲生半岛",
+    "悲叹墓岛",
+    "中曲台地",
+    "荒石高地Ⅰ",
+    "虎口山脉",
+    "怨鸟泽",
+    "归墟港市",
+    "荒石高地Ⅱ",
+    "无光之森",
+]
 EXPECTED_IDS = [
     30010030,
     30010029,
@@ -255,7 +278,8 @@ class TestOkwwGate(unittest.TestCase):
             fetch.assert_called_once_with(STRUCTURE)
         self.assertEqual(result, 0)
         self.assertEqual(
-            [row["display_name"] for row in self.values("无音区")], EXPECTED_NAMES
+            [row["display_name"] for row in self.values("无音区")],
+            EXPECTED_DISPLAY_NAMES,
         )
         self.assertEqual(
             [row["physical_name"] for row in self.values("无音区")], list(range(1, 22))
@@ -268,7 +292,7 @@ class TestOkwwGate(unittest.TestCase):
         )
 
     def test_data_updates_alone_never_trigger_a_fetch_or_config_change(self):
-        self.write_config(EXPECTED_NAMES[2:])
+        self.write_config(EXPECTED_DISPLAY_NAMES[2:])
         self.write_state([2, 5, 5, 7], EXPECTED_IDS[2:])
         self.structures["无音区"] = [2, 5, 5, 7]
         before = (self.config.read_bytes(), self.state.read_bytes())
@@ -278,7 +302,7 @@ class TestOkwwGate(unittest.TestCase):
         self.assertEqual((self.config.read_bytes(), self.state.read_bytes()), before)
 
     def test_okww_growth_imports_names_then_becomes_idempotent(self):
-        self.write_config(EXPECTED_NAMES[2:])
+        self.write_config(EXPECTED_DISPLAY_NAMES[2:])
         self.write_state([2, 5, 5, 7], EXPECTED_IDS[2:])
         with patch.object(
             sync, "fetch_tacet_snapshot", return_value=self.snapshot
@@ -291,11 +315,12 @@ class TestOkwwGate(unittest.TestCase):
             fetch.assert_not_called()
         self.assertEqual((self.config.read_bytes(), self.state.read_bytes()), before)
         self.assertEqual(
-            [row["display_name"] for row in self.values("无音区")], EXPECTED_NAMES
+            [row["display_name"] for row in self.values("无音区")],
+            EXPECTED_DISPLAY_NAMES,
         )
 
     def test_unready_data_preserves_files_and_retries_next_run(self):
-        self.write_config(EXPECTED_NAMES[2:])
+        self.write_config(EXPECTED_DISPLAY_NAMES[2:])
         self.write_state([2, 5, 5, 7], EXPECTED_IDS[2:])
         before = (self.config.read_bytes(), self.state.read_bytes())
         for error in (ValueError("数量不一致"), urllib.error.URLError("offline")):
@@ -324,7 +349,7 @@ class TestOkwwGate(unittest.TestCase):
         self.assertEqual(len(self.values("无音区")), 21)
 
     def test_primary_rollback_does_not_delete_or_advance_state(self):
-        self.write_config(EXPECTED_NAMES)
+        self.write_config(EXPECTED_DISPLAY_NAMES)
         self.write_state()
         self.structures = {"凝素领域": [1], "无音区": [2, 5, 5, 7]}
         before = (self.config.read_bytes(), self.state.read_bytes())
@@ -336,7 +361,7 @@ class TestOkwwGate(unittest.TestCase):
         self.assertEqual((self.config.read_bytes(), self.state.read_bytes()), before)
 
     def test_forgery_growth_does_not_query_unchanged_tacet_data(self):
-        self.write_config(EXPECTED_NAMES)
+        self.write_config(EXPECTED_DISPLAY_NAMES)
         self.write_state()
         self.structures["凝素领域"] = [3]
         with patch.object(sync, "fetch_tacet_snapshot") as fetch:
@@ -351,7 +376,8 @@ class TestOkwwGate(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            [row["display_name"] for row in self.values("无音区")], EXPECTED_NAMES
+            [row["display_name"] for row in self.values("无音区")],
+            EXPECTED_DISPLAY_NAMES,
         )
 
     def test_same_count_group_change_still_requires_source_validation(self):
@@ -364,7 +390,7 @@ class TestOkwwGate(unittest.TestCase):
 
     def test_reordered_existing_ids_require_review_without_writing(self):
         self.write_state([2, 5, 5, 7], list(reversed(EXPECTED_IDS[2:])))
-        self.write_config(EXPECTED_NAMES[2:])
+        self.write_config(EXPECTED_DISPLAY_NAMES[2:])
         before = (self.config.read_bytes(), self.state.read_bytes())
         with (
             patch.object(sync, "fetch_tacet_snapshot", return_value=self.snapshot),
