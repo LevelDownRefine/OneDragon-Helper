@@ -13,7 +13,10 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import urllib.error
+from contextlib import ExitStack
+from io import StringIO
 from pathlib import Path
 
 from ruamel.yaml import YAML
@@ -142,9 +145,12 @@ def _updated_data(
         )
         if category == "无音区" and names is not None:
             assert len(names) == total
+            display_names = [name.replace("无音区", "").strip() for name in names]
+            if not all(display_names) or len(set(display_names)) != len(display_names):
+                raise ValueError("无音区展示名称为空或重复，需人工核对")
             task["options"]["values"] = [
-                {"display_name": name.replace("无音区", ""), "physical_name": index}
-                for index, name in enumerate(names, 1)
+                {"display_name": name, "physical_name": index}
+                for index, name in enumerate(display_names, 1)
             ]
         elif total > len(current[category]):
             task["options"]["values"] = _rebase_sequences(
@@ -249,12 +255,27 @@ def _sync(apply: bool) -> tuple[bool, str]:
     data = _updated_data(upstream, current, snapshot.names if snapshot else None)
     changed = data != _load_data() or state != old_state
     if apply and changed:
-        with open(_DUNGEON_PATH, "w", encoding="utf-8") as stream:
-            _yaml.dump(data, stream)
+        stream = StringIO()
+        _yaml.dump(data, stream)
+        updates = {Path(_DUNGEON_PATH): stream.getvalue()}
         if state != old_state:
-            Path(_STATE_PATH).write_text(
-                json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            updates[Path(_STATE_PATH)] = (
+                json.dumps(state, ensure_ascii=False, indent=2) + "\n"
             )
+        # 全部内容先写到同文件系统的临时文件，再逐个替换，状态最后发布。
+        with ExitStack() as stack:
+            staged = []
+            for path, content in updates.items():
+                directory = stack.enter_context(
+                    tempfile.TemporaryDirectory(
+                        prefix=f".{path.name}.", dir=path.parent
+                    )
+                )
+                temporary = Path(directory) / path.name
+                temporary.write_text(content, encoding="utf-8")
+                staged.append((temporary, path))
+            for temporary, path in staged:
+                temporary.replace(path)
     return changed, "\n".join(report) + "\n"
 
 
@@ -267,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         changed, report = _sync(args.apply)
-    except (urllib.error.URLError, OSError, UnicodeError, ValueError, YAMLError) as exc:
+    except (urllib.error.URLError, UnicodeError, ValueError, YAMLError) as exc:
         report = f"鸣潮同步暂缓，本次同步未完成：{type(exc).__name__}: {exc}\n"
         logger.warning(report.rstrip())
         if args.report:

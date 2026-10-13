@@ -1,7 +1,9 @@
 """从正式服游戏数据补充 ok-ww 已支持的无音区名称。"""
 
+import http.client
 import json
 import re
+import urllib.error
 import urllib.request
 from collections import Counter
 from dataclasses import dataclass
@@ -28,8 +30,11 @@ class TacetSnapshot:
 def fetch_text(url: str) -> str:
     """读取公开上游；调用方处理网络或解码失败。"""
     request = urllib.request.Request(url, headers={"User-Agent": "OneDragon-Helper"})
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return response.read().decode("utf-8")
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return response.read().decode("utf-8")
+    except (OSError, http.client.HTTPException) as exc:
+        raise urllib.error.URLError(f"{type(exc).__name__}: {exc}") from exc
 
 
 def require_fields(row: object, fields: tuple[str, ...], context: str) -> dict:

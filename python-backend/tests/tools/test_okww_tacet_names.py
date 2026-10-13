@@ -1,5 +1,6 @@
 """正式服资料解析、ok-ww 主导的更新门槛与失败重试。"""
 
+import http.client
 import json
 import tempfile
 import unittest
@@ -169,6 +170,16 @@ class TestTacetSource(unittest.TestCase):
         ):
             source.fetch_tacet_snapshot(STRUCTURE)
         fetch.assert_called_once()
+
+    def test_interrupted_download_is_reported_as_a_source_failure(self):
+        for error in (TimeoutError("timeout"), http.client.IncompleteRead(b"part", 10)):
+            with (
+                self.subTest(error=type(error).__name__),
+                patch.object(source.urllib.request, "urlopen") as request,
+                self.assertRaises(urllib.error.URLError),
+            ):
+                request.return_value.__enter__.return_value.read.side_effect = error
+                source.fetch_text("https://example.com/data.json")
 
 
 class TestOkwwGate(unittest.TestCase):
@@ -398,6 +409,100 @@ class TestOkwwGate(unittest.TestCase):
         ):
             self.assertEqual(sync.main(["--apply"]), 2)
         self.assertEqual((self.config.read_bytes(), self.state.read_bytes()), before)
+
+    def test_invalid_display_names_preserve_config_and_state(self):
+        self.write_state([2, 5, 5, 7], EXPECTED_IDS[2:])
+        self.write_config(EXPECTED_DISPLAY_NAMES[2:])
+        before = (self.config.read_bytes(), self.state.read_bytes())
+        for first_two in (
+            ["无音区", "烬心域无音区"],
+            ["沉心域无音区", "沉心域 无音区"],
+        ):
+            names = first_two + EXPECTED_NAMES[2:]
+            snapshot = source.TacetSnapshot(
+                "a" * 40, "3.7.0", STRUCTURE, EXPECTED_IDS, names
+            )
+            with (
+                self.subTest(names=first_two),
+                patch.object(sync, "fetch_tacet_snapshot", return_value=snapshot),
+                self.assertLogs(sync.logger, level="WARNING"),
+            ):
+                self.assertEqual(sync.main(["--apply"]), 2)
+            self.assertEqual(
+                (self.config.read_bytes(), self.state.read_bytes()), before
+            )
+
+    def test_local_write_failure_is_fatal_and_preserves_both_files(self):
+        self.write_state([2, 5, 5, 7], EXPECTED_IDS[2:])
+        self.write_config(EXPECTED_DISPLAY_NAMES[2:])
+        before = (self.config.read_bytes(), self.state.read_bytes())
+        original_write = Path.write_text
+
+        def fail_state_write(path, *args, **kwargs):
+            if path.name == self.state.name:
+                raise OSError("disk full")
+            return original_write(path, *args, **kwargs)
+
+        with (
+            patch.object(sync, "fetch_tacet_snapshot", return_value=self.snapshot),
+            patch.object(Path, "write_text", fail_state_write),
+            self.assertRaisesRegex(OSError, "disk full"),
+        ):
+            sync.main(["--apply", "--github-output", str(self.output)])
+        self.assertEqual((self.config.read_bytes(), self.state.read_bytes()), before)
+        self.assertFalse(self.output.exists())
+
+    def test_failed_yaml_serialization_never_truncates_config(self):
+        before = self.config.read_bytes()
+
+        def fail_dump(data, stream):
+            stream.write("partial")
+            raise OSError("serialization interrupted")
+
+        with (
+            patch.object(sync, "fetch_tacet_snapshot", return_value=self.snapshot),
+            patch.object(sync._yaml, "dump", side_effect=fail_dump),
+            self.assertRaisesRegex(OSError, "serialization interrupted"),
+        ):
+            sync.main(["--apply"])
+        self.assertEqual(self.config.read_bytes(), before)
+        self.assertFalse(self.state.exists())
+
+    def test_failed_publish_never_advances_state_and_next_run_recovers(self):
+        original_replace = Path.replace
+        for failed_target in (self.config, self.state):
+            self.write_state([2, 5, 5, 7], EXPECTED_IDS[2:])
+            self.write_config(EXPECTED_DISPLAY_NAMES[2:])
+            before = (self.config.read_bytes(), self.state.read_bytes())
+
+            def fail_replace(path, target, failed_target=failed_target):
+                if target == failed_target:
+                    raise PermissionError("file locked")
+                return original_replace(path, target)
+
+            with (
+                self.subTest(target=failed_target.name),
+                patch.object(sync, "fetch_tacet_snapshot", return_value=self.snapshot),
+            ):
+                with (
+                    patch.object(Path, "replace", fail_replace),
+                    self.assertRaisesRegex(PermissionError, "file locked"),
+                ):
+                    sync.main(["--apply"])
+                if failed_target == self.config:
+                    self.assertEqual(self.config.read_bytes(), before[0])
+                else:
+                    self.assertEqual(
+                        [row["display_name"] for row in self.values("无音区")],
+                        EXPECTED_DISPLAY_NAMES,
+                    )
+                self.assertEqual(self.state.read_bytes(), before[1])
+                self.assertEqual(set(self.root.iterdir()), {self.config, self.state})
+                self.assertEqual(sync.main(["--apply"]), 0)
+                self.assertEqual(
+                    json.loads(self.state.read_text(encoding="utf-8"))["ids"],
+                    EXPECTED_IDS,
+                )
 
 
 if __name__ == "__main__":
