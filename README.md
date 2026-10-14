@@ -1,41 +1,37 @@
 # OneDragon-Helper
-[本项目](https://github.com/LevelDownRefine/OneDragon-Helper)是多游戏自动化脚本调度器。
-![ds](assets/demo.png)
 
-## 功能简介
+多游戏自动化脚本调度器：选择脚本与任务，统一配置副本、超时和运行顺序，执行后汇总结果。
 
-- 更改各脚本日常和周常配置
-  - 首先点击右下角的 ☰ 键进行配置，选择正确的脚本路径。随后即可更改日常和周常副本
-- 集成多游戏脚本，形成脚本链一同运行
-  - 点击左下角的【启动全部】即可
-- 非阻塞运行脚本
-- 日志解析与重新运行
-- 动态背景
-  - 点击右侧壁纸图标即可配置
-- 更多功能欢迎提交Pull Request
+![界面示例](assets/demo.png)
 
-## 开发者指南
+- 适配脚本的日常、周常及原生任务开关，也可添加自定义脚本。
+- 支持失败重跑、日志分析、邮件汇总、每日计划及完成后关机。
+- 提供配置备份恢复、手动更新，以及 Rust、Qt 两套界面。
 
-同一仓库按四个子项目组织：
+## 使用
 
-```text
-rust-gui/          # Rust 前端：src/、tests/、Cargo.toml
-runner/            # 脚本运行器，保留现有 submodule
-updater/           # GitHub Release 更新库，submodule
-python-backend/    # Python 业务与 CLI：src/、tests/、pyproject.toml
-python-gui/        # Python 前端：src/gui、tests/、pyproject.toml
-config/           # 共享声明、配置模板与本地用户配置
-assets/           # 共享图片、图标
-tools/、deploy/   # 跨项目构建、打包、发布工具
+从 [Releases](https://github.com/LevelDownRefine/OneDragon-Helper/releases) 下载并解压完整安装包，运行主程序。Rust 包为 `OneDragon-Helper-Rust.zip`，Qt 包为 `OneDragon-Helper.zip`。各游戏脚本需自行安装，再添加到助手。
+
+## 源码运行
+
+Python 3.11+，依赖由根目录 uv workspace 管理：
+
+```powershell
+git submodule update --init --recursive
+uv sync --frozen
+.launcher-rust.bat
 ```
 
-根目录 `pyproject.toml` 管理 uv workspace 和 Ruff，`uv.lock` 锁定共享 Python 环境。
+Rust 界面另需 Rust 1.95+ 和 Windows MSVC 工具链；Qt 界面使用 `launcher.bat`。启动器读取当前检出的源码，可复用父目录环境。
 
-先运行 `git submodule update --init --recursive` 拉取 runner 和 updater 源码，
-再在仓库根目录安装依赖：`uv sync --frozen`。updater 从本地源码可编辑安装，修改后可直接联调；
-子模块改动需在各自仓库提交并推送，再更新主仓库指针。
+## 开发导航
 
-- Rust GUI：`launcher-rust.bat`。
-- Python GUI：`launcher.bat`，或 `uv run python -m gui.launcher`。
+| 目录 | 职责 |
+| --- | --- |
+| [rust-gui](rust-gui/README.md) / [python-gui](python-gui/README.md) | Rust / Qt 界面 |
+| [python-backend](python-backend/README.md) | 配置适配、业务服务、无 Qt CLI |
+| [runner](runner/README.md) / [updater](updater/README.md) | 运行器 / 更新内核，均为独立子模块 |
+| `config/`、`assets/` | 共享声明、模板与资源 |
+| [tools](tools/README.md)、`deploy/` | 同步、构建与发布 |
 
-构建与测试见 [docs/TESTING.md](docs/TESTING.md)，Rust 说明见 [rust-gui/README.md](rust-gui/README.md)。
+开发前阅读 [项目约束](AGENTS.md)、[编码约定](docs/CONVENTIONS.md) 和 [测试指南](docs/TESTING.md)。

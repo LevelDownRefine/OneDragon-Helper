@@ -1,200 +1,52 @@
-# python-backend/src/service — 服务层（AppService 组合根 + 平级 peer）
+# 服务层
 
-把 set_config、runner、链生成与校验内聚为统一薄接口，对 GUI 与 CLI 暴露同一套调用面。
-从 python-gui/src/gui/ 分离而出，无 Qt 依赖，故 GUI 与 CLI 共用同一实现，也便于无头测试。
+`AppService` 是 GUI/CLI 的统一入口：装配平级服务并薄委托，无 Qt 依赖。配置适配归 set_config，执行归 runner，展示状态归前端。
 
-## 设计定位
-
-| 角色 | 说明 |
-|------|------|
-| 组合根，非协调器 peer | `AppService` 装配各 peer 并薄委托，是 GUI/CLI 唯一入口；各 peer 互不越界 |
-| 平级 peer | script_service（脚本管理）/ chain_service（链编排）互不拥有，由组合根装配 |
-| 周常运行期参数 | `weekly.yml` 的 `weekly_start` 段（周几起，条目级 `{脚本: {周常: 0 | 1~7}}`，0 = 不启用）与 `weekly_timeouts` 段的读写归 `src.utils.utils_weekly` 模块函数（无状态、无 peer 实例）；周常读写经 `src.config.set_config` 分发给脚本持有的 Weekly，落点归 `src.config.task.weekly`；schedule.yml 归 schedule 模块函数 |
-| 无 Qt 依赖 | 纯业务逻辑，不承载 UI 渲染（关机确认窗归 `python-gui/src/gui/shutdown_dialog.py`） |
-
-## 文件
+## 模块职责
 
 | 模块 | 职责 |
-|------|------|
-| app_service.py | 组合根：装配 peer 并薄委托，GUI/CLI 唯一入口 |
-| script_service.py | 脚本条目构造、增删改与排序；统一校验并协调助手配置、每周参数及原生任务开关 |
-| task_service.py | 脚本列表与任务卡聚合查询；无 GUI 或进程依赖 |
-| python-backend/src/link.py | 关联资源、图标与启动目标查询；实际打开和启动归前端 |
-| python-backend/src/utils/utils_config.py | config.yml 读写、结构校验、条目查询与配置文件路径解析 |
-| python-backend/src/utils/utils_wallpaper.py | 壁纸来源、映射与预览缓存；解码和渲染归前端 |
-| python-backend/src/utils/utils_job.py | JobExecutor：单个后台操作的执行、进度、取消与结果保留；不依赖业务模块 |
-| python-backend/src/update.py | 助手更新适配、UpdateSession 与独立更新进程；内核归 updater 子库 |
-| chain_service.py | 链编排 peer：链生成、合法性校验、runner 命令构造、调度运行入口 |
-| chain_gen.py | 脚本链配置生成：由 enabled_names + 子脚本 config 生成链配置并校验 |
-| schedule.py | schedule.yml 读写（StartupOptions 自动启动开关/秒数、RunOptions 运行选项）+ ScheduledRun 调度运行编排 |
-| daily_plan.py | 每日计划读写与 Windows 原生任务注册，并可回读任务实际状态；系统仅保存触发时间和 --run-daily 入口 |
-| backup_service.py | 配置备份与恢复：普通 ZIP 收集与恢复；按当前脚本目录覆盖，保留游戏路径，未配置脚本跳过 |
-| run_actions.py | pre_run / post_run 各 step 的具体动作 |
+| --- | --- |
+| `app_service.py` | 组合根与公开接口 |
+| `script_service.py`、`task_service.py` | 脚本增删改排序、表单校验、任务查询 |
+| `chain_service.py`、`chain_gen.py` | 链生成、校验和运行命令 |
+| `schedule.py`、`run_actions.py` | 运行选项、调度、前后动作与失败重跑 |
+| `daily_plan.py` | 每日计划、Windows 任务注册与状态回读 |
+| `backup_service.py` | 配置 ZIP 备份与恢复 |
+| `../link.py`、`../utils/utils_wallpaper.py` | 资源/启动目标、壁纸映射与缓存 |
+| `../update.py`、`../utils/utils_job.py` | 更新适配与会话、后台任务执行 |
 
-## 任务卡查询与编辑
+## 查询与保存
 
-单脚本配置表单的 `task_options` 由 `config/task_options.py` 读写，静态范围与落点声明在
-`config/task_switch_list.yml` 的 `options`。前端只提交变化的字段标识与值；`script_service` 在写入前校验，
-先保存附带选项再保存任务开关，避免同文件修改互相覆盖。格式见
-[任务附带选项](../config/task_options.md)。
+任务卡查询保留适配器原值：日常 `name/task/sequence/enabled/options`，周常 `name/task/options/start_day`。整数、布尔、`0` 和 `None` 不混用。查询可能触发既有模板初始化或格式迁移，不承诺完全无写盘副作用。
 
-任务卡通过 `AppService.app_snapshot/script_view` 查询。查询返回普通字典：日常为 `name/task/sequence/enabled/options`，周常为
-`name/task/options/start_day`。保留 JSON 整数与布尔的区别、`0=不启用` 与 `None=未设置`；
-读取仍可能触发既有模板对齐，不承诺完全没有写盘副作用。
+日常选择、启停和周常选择薄委托原接口；写后刷新由调用方另行请求。周常起始日先保存助手侧意图，再同步原生配置；后一步失败不撤销意图。落点见 [配置适配](../config/set_config.md)。
 
-CLI 编辑入口保留在 `AppService`，直接调用对应的 GUI 原接口：
+脚本标识：EXE 使用不含扩展名的文件名，其他脚本使用展示名。保存前校验完整表单；依次保存助手配置、每周标识及超时，按需清除适配器缓存，再保存附带选项和原生开关。后续失败可能部分落盘，调用方须重读列表及表单，不自动重试。
 
-| 操作 | CLI 入口 | GUI 原入口 |
-|------|------|------|
-| 选择日常（同时启用） | `select_daily(script_name, daily_name=None, task_name=None, sequence=None)` | `set_script_daily_task` |
-| 日常开关 | `enable_daily(script_name, daily_name, enabled)` | `set_script_daily_enabled` |
-| 选择周常 | `select_weekly(script_name, weekly_name, task_name)` | `set_script_weekly_task` |
-| 周常起始日 | `start_weekly(script_name, weekly_name, start_day)` | `set_weekly_start_for` |
+[附带选项](../config/task/task_options.md) 只提交变化的字段；保存前重读文件并校验。选项先于开关写入，防止共享文件被旧内容覆盖。取消编辑不调用保存。
 
-`daily_name` 对应原接口的 `daily_display_name`，参数值原样传入。
-四个 CLI 写入口只做 `return self.<原接口>(...)`，返回值及异常原样传递。
-原写接口当前返回 `None`，校验与写入由原调用链负责；不增加菜单预读或写后整卡查询。
-调用方需要刷新时再调用 `script_view`，并分别处理写入和查询的错误。
-周常起始日仍先保存助手侧意图，再同步游戏侧字段；后一步失败不撤销已保存的意图。
-进程入口 `uv run --directory python-backend python -m src.headless` 提供 `call` 与 `serve --stdio`，见
-[CLI 协议](../../../docs/rust-feasibility/headless-cli.md)。本层不负责传输、界面状态或格式化文案。
+## 运行与计划
 
-全局设置由 `AppService.settings_view` 聚合查询；CLI 校验 JSON 表单并转换为
-`StartupOptions` / `RunOptions`，复用 `apply_startup_options` / `apply_run_options`
-保存。关机能力由 CLI 补充到响应，设置保存不触发运行。
+`run.prepare` 保存确认后的选项并返回独立运行命令及 stdin 数据，不在服务进程启动调度。运行进程持锁，依次完成配置准备、运行链、日志分析、重跑与汇总；凭据不进入命令行或查询响应。CLI 字段和进程交接见 [协议](../../../docs/rust-feasibility/headless-cli.md)。
 
-## 脚本管理
+手动勾选仅由前端持有。每日计划默认关闭，默认时间 04:10；启用后对所有脚本生效，使用 `schedule.yml` 中独立的 `daily_run` 选项。
 
-`script_service` 统一提供 `add / remove / update / reorder`；`AppService` 仅作薄委托。
-各操作使用 `InvalidScript` 表示写入前的输入或状态错误；重复导入 EXE 使用其子类
-`DuplicateScript`，便于批量导入单独计数。底层模块统一通过 `utils_config` / `utils_weekly` 调用。
+Windows 任务按当前用户和安装目录标识，需管理员权限注册及用户登录后运行，不负责唤醒或补跑。配置表示意图，系统任务状态表示实际结果。保存时先注册任务再写配置；写盘失败恢复旧 XML，原先未注册则删除新任务。移动安装目录前先停用旧计划。
 
-工具栏通过 `AppService.resolve_script_target(script_name, target)` 查询 URL、绝对路径
-或不可用原因；只接受官网/B 站/GitHub、脚本目录、日志目录和配置文件六类目标。
-业务路径规则复用原接口，操作系统关联打开由前端负责，不含游戏启动操作。
+## 备份恢复
 
-`ScriptEdit` 表达一次完整编辑：编辑前标识、展示名、助手配置字段、每周超时、原生任务开关。
-它只承载输入；`frozen=True` 禁止字段重新绑定，不提供深层不可变或事务保证。
+备份范围来自 [脚本资源声明](../config/script_resources.md)，ZIP 按 `scripts/脚本名/相对路径` 收集。恢复到当前配置的脚本目录；未配置脚本跳过，已有游戏路径（包括空值）保留，缺失时不导入备份中的旧路径。
 
-Python GUI 收集 `ScriptEdit`，先经 `AppService.validate_script_edit` 校验；无效时保留弹窗和输入。
-确认后调用唯一保存入口 `AppService.update_script(edit)`，由其薄委托 `script_service.update`。
-该流程重新校验最新配置，并统一执行：
-
-1. 更新 `config.yml` 的脚本条目，取得保存后的标识。
-2. 标识变化时迁移 `weekly.yml` 两段，再保存每周超时。
-3. 路径或标识变化时清除适配器缓存，下次使用时懒初始化。
-4. 按保存后的标识写原生任务开关。
-
-`script_service` 在本次读取的配置上完成条目修改，交给 `utils_config.save_config` 写盘；`utils_weekly` 负责每周参数的具体读写，配置适配器负责原生配置。
-GUI 不编排这些步骤；CLI 如需调用，在传输边界构造 `ScriptEdit`，服务层不接收 JSON 协议对象。
-写入失败立即传播异常，后续步骤不执行，已完成的写入不回滚，也不自动重试。
-只改参数、超时、游戏路径或 exe 的展示名，以及无改动保存，都不强制对齐模板。
-适配器仅在首次使用时构造；MAA 在自身构造期初始化原生任务队列，不提供配置预热或额外初始化入口。
-
-添加按「助手条目 → 每周默认参数 → 清除适配器缓存」执行；删除按「助手条目 → 每周清理」执行，源文件保留。
-排序只更新助手列表顺序。各操作按最新配置检查重复、最后一个脚本和完整顺序；过期排序拒绝写入。
-快捷方式解析、类型推断和新增名称去重均归添加流程。编辑预校验和保存各自检查当时的配置，
-保存内部的重名检查与条目修改共用一次读取；这不提供跨进程文件锁或事务保证。
-
-CLI 表单通过 `script_edit_view` 读取；`script.edit_save` 在传输边界构造 `ScriptEdit`，
-调用统一保存入口后将新标识包装为协议结果。`InvalidScript` 返回写入前的输入错误；
-保存阶段异常提示可能已部分写入。手动勾选由 GUI 持有，不加入本层持久化配置。
-
-`python-backend/src/link.py` 统一关联目标查询，`resolve_launch_target` 解析当前脚本/游戏启动目标；Python 脚本
-复用 `build_script_command`，游戏复用手填路径优先的 `get_game_exe_path`，实际启动由
-前端进行。单独启动不走批量调度链，保持原版行为；不传整个父进程环境或 shell 命令字符串。
-
-`AppService.run_view/prepare_run` 汇总运行信息并在确认后保存选项；headless 负责 JSON
-校验和独立 `src.headless run` 进程描述，不在持久 CLI 内执行长链。独立入口通过 stdin
-接收无凭据的配置快照，交给 `chain_service.run_batch` 复用 schedule_run，并持有运行租约；
-取消或 prepare 失败不启动。
+覆盖前备份目标文件，逐文件原子替换；不承诺整批事务回滚。失败结果保留完成数量和恢复前 ZIP，供用户核对。归档安全检查与路径校验归后端。
 
 ## 手动更新
 
-`AppService` 装配 `src.update.UpdateService`，薄委托本地状态读取、检查、下载和安装交接。
-同模块的 `UpdateSession` 保留 CLI 更新会话状态，并使用 `AppService.jobs` 执行耗时操作。
-助手的更新适配、运行锁和独立更新进程集中在 [src/update.py](../update.py)，无 Qt 依赖。
-下载、断点续传、文件校验、安装事务与恢复由独立 [updater](https://github.com/LevelDownRefine/updater) 库负责。
-GUI 的弹窗和工作线程保留在 `python-gui/src/gui`，经 AppService 调用更新服务。
+更新内核独立维护于 `updater/`；`src/update.py` 负责助手适配、`UpdateSession` 和独立更新器入口，AppService 只委托。
 
-`version.json` 记录本地版本及 Qt/Rust 类型；源码与开发构建不在线替换。
-检查按类型选择 GitHub Release ZIP；子库读取可选哈希清单，复用本地未变化文件，
-按 HTTP Range 下载差异文件并保留断点，服务器不支持时回退整包续传。
-下载包的版本元数据无效时丢弃缓存，显式重试重新下载；安装成功后清理本次缓存，
-安装失败或取消继续保留断点。就绪回执读取或校验失败会撤销交接。
-发布工具 `tools/release_package.py` 校验资源边界，只打包程序资源、example 与声明，
-生成旧版兼容的 `update-manifest.json`；实际用户配置、日志和自定义壁纸留在原位。
-v1.0.10 未附清单，后续附清单的版本可从旧更新器升级。
-子库首次接管不推断历史文件所有权，旧版退役文件不会自动清理；之后由本地安装清单管理。
+- 打开更新窗只读本地信息；显式检查稳定版后，下载同一会话中的版本。
+- 按安装清单区分 Qt/Rust 包；源码不支持原位安装。
+- 按清单与哈希复用本地文件、下载差异；服务器不支持范围请求时回退整包续传。安装所有权记录在 `.update/`。
+- 临时更新器就绪后等待 GUI/CLI 退出并取得独占租约；其他窗口或 Runner 占用时拒绝安装，不强杀它们。
+- 安装后带 `--after-update` 重启，避免自动运行。失败诊断与恢复入口由更新结果提供；使用提示的 `--recover` 命令恢复。
 
-安装交接复制 onefile 更新器到独立临时目录，关闭启动闸门，报告匹配版本的 ready，
-然后在同一 30 秒期限内等待 GUI/CLI 退出，并取得独占运行锁。
-同安装的其他窗口或 Runner 仍运行时拒绝安装，不终止已有任务。
-安装和回滚调用子库，成功后带 `--after-update` 重启；结果保存在 `.update/result.json`。
-应用启动先于配置初始化检测中断事务，在独占运行锁下调用恢复，恢复失败拒绝启动。
-独立恢复入口：`OneDragon-Helper-Updater.exe --root 安装目录 --recover`。
-源码调试可用 `python -m src.update --help`；安装仅用于独立测试副本。
-
-## 配置迁移
-
-配置迁移只负责文件搬运，目录正确性及上游版本兼容性由用户保证。
-ZIP 结构固定为 `scripts/<脚本名>/<相对路径>`，无清单或版本协议；
-旧 ZIP 中的清单和自身配置目录直接忽略。备份目录中新增加的文件自动收录。
-
-换机时先配置新机器的脚本路径，再选择 ZIP 恢复。同名文件覆盖，额外文件保留；
-未配置目录的脚本跳过并列出，之后配置好路径可以再次恢复。唯一的字段处理是复用适配器已有声明，
-保留本机游戏路径（包括空值）；本机文件或字段缺失时，不导入旧机器路径。
-仅解析承载游戏路径的 JSON/YAML，其余文件原样复制。路径配置解析失败会停止恢复，
-保留该文件现值并报告已完成数量。ZIP 可以用普通解压工具直接取出配置。
-
-恢复前会把本次已有目标保存为另一个普通 ZIP，写入单个文件时先写完临时文件再替换。
-写入失败报告已完成数量和恢复前 ZIP 位置，不做整批自动回滚；请在子脚本停止后操作。
-
-## 依赖方向
-
-```
-launcher.py CLI  ┐
-                 ├─▶ AppService（组合根）─┬─▶ script_service（脚本管理）─┬─▶ utils_config（助手配置）
-                                          │                          ├─▶ utils_weekly（每周参数）
-                                          │                          └─▶ config 适配器（缓存失效/任务开关）
-MainWindow  GUI  ┘                        ├─▶ set_config 菜单入口（Daily / Weekly 对象解释）
-                                          └─▶ chain_service ─▶ chain_gen / schedule / utils_runner
-                                                  └─▶ src.utils.utils_weekly（周常参数读写）
-```
-
-调用方不感知 weekly 同步、链合法性校验、runner 命令构造等细节，全部内聚在 service/。
-
-`utils_shutdown.py` 不依赖 GUI 层。Rust 前端通过环境变量提供确认程序；Python GUI
-由 `gui.launcher` 注册 `gui.shutdown_dialog.confirm_shutdown`，避免 service 反向导入前端。
-
-## 每日运行
-
-在配置弹窗启用每日计划时注册当前用户的 Windows 交互任务（需管理员权限），仅记录程序入口和每日时间。计划默认关闭，默认时间为 04:10，对所有脚本生效。GUI 关闭仍会按时触发，电脑需保持开机并登录；不唤醒、不补跑错过的时间。
-
-`--run-daily` 每次读取 daily_run（含独立 run_options 块），以 now 运行当天全部脚本的链；手动脚本 enabled 不参与筛选，运行选项也取每日计划独立配置（不再回落手动 RunOptions）。计划已关闭或没有可运行的脚本则无动作。只改副本、超时或运行选项无需更新系统任务，修改时间或开关才更新任务；暂停保留时间。旧 CLI `--schedule-run HH:MM[:SS]` 保留一次性等待用途（可带秒，便于精确等待或集成测试用「当前 + 几秒」）。
-
-系统任务按安装目录和用户命名。请保持安装目录和可执行文件路径稳定；移动安装前先关闭旧计划，再在新位置启用。任务更新成功才写配置，写入失败时恢复原任务。
-
-每日计划的聚合查询与保存统一归 daily_plan；headless 校验 JSON 表单并转换为
-DailyPlanOptions，经 AppService.apply_daily_plan 保存，同时将 CLI 入口交给 WindowsDailyTask。
-同一个任务可迁移到无 Qt headless daily；entry_matches 参与同步判断，避免旧入口沿用。
-迁移写盘失败恢复 read 阶段保存的原 XML；原 Qt 调用不传 entry，保留原入口与恢复语义。
-
-CLI 备份/恢复通过 AppService.jobs 的 JobExecutor 调用原服务；只做调度与结果保留，
-不重写 ZIP 搬运逻辑。stdio 会话串行轮询，EOF 等任务结束再释放运行租约；GUI 禁止普通关窗
-打断恢复，后台异常记录日志并保留可展示的部分完成详情。
-
-## 资源与启动目标
-
-`src.link.resolve_script_target` 统一解析主页、B 站、GitHub、脚本目录、日志目录和配置文件，返回 URL、绝对路径或不可用原因。`src.link.game_icon_path` 按需读取游戏路径，图标提取仍由前端负责。
-
-`resolve_launch_target` 统一解析当前脚本或游戏的启动方式。外部程序使用系统关联打开；Python 脚本复用 Runner 命令，保留参数、工作目录和环境覆盖项。调用方继承自身环境并应用覆盖项，不经接口传递整个进程环境。
-
-这些查询不打开文件、不启动进程。Python GUI 直接调用 AppService，无须经过 CLI；其它前端可通过同一 service 获取目标。
-
-`AppService` 默认装配 Qt 发行版的更新服务，Rust headless 入口显式传入 `frontend="rust"`。直接更新调用与后台更新会话共用同一个 `UpdateService`，不为 Python GUI 额外装配 Rust 更新实例。
-
-游戏启动参数存入脚本条目的 `game_arguments`，与 `script_arguments` 独立。
-手动启动保留参数文本；运行器中的游戏和脚本共用现有 `shlex.split(posix=False)`
-规则，拆分为列表后交给 ProcessManager。支持简单参数，空值兼容旧配置。
-自动启动仍需填写 `game_path`，由脚本自行启动的游戏不使用此参数。
+后台任务的互斥、取消、EOF 和交接规则集中在 [CLI 协议](../../../docs/rust-feasibility/headless-cli.md)。测试见 [测试指南](../../../docs/TESTING.md)。
