@@ -1,11 +1,7 @@
-# python-gui
+# Qt GUI
 
-OneDragon-Helper 的 PySide6/QML 前端。这里只包含窗口、控制器、弹窗与 GUI
-启动入口；配置读写和运行编排统一调用 `python-backend` 的 service。
+PySide6/QML 前端，业务经无 Qt CLI 调用 Python 后端。依赖由根目录 uv workspace 安装，从仓库根目录运行 `launcher.bat`。
 
-在仓库根目录同步 workspace 后，可直接启动：
-
-```powershell
-uv sync
-uv run python -m gui.launcher
-```
+- [界面模块与开发边界](src/gui/README.md)
+- [CLI 协议](../docs/rust-feasibility/headless-cli.md)
+- [测试指南](../docs/TESTING.md)

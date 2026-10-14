@@ -1,118 +1,44 @@
-# CONVENTIONS.md — 编码约定全文
+# 编码约定
 
-> 本文件是 AGENTS.md「铁律」的完整版与澄清落点。AGENTS.md 只列要点，细节与边界以本文件为准。
-> 约定为「强偏好，违反即打回」。
+本文补充 [AGENTS.md](../AGENTS.md) 的规则与边界；违反即打回。
 
-## 1. 严格 `assert` 表达「不该发生」
+## 错误与日志
 
-`assert` 只用于表达编程错误：前置/不变量被破坏、不可达分支。可恢复情况——外部输入、文件缺失、用户取消——用 `return False` / 跳过 / 抛业务异常，不要用 assert 当校验。
+- `assert` 仅表达编程错误、前置条件或不变量被破坏。外部输入、文件缺失、用户取消等可恢复情况用返回值、跳过或业务异常处理。
+- 字典先 `assert key in d` 再 `d[key]`。确实可选且缺失应走默认的字段，才可用带显式默认值的 `.get()`，并注释原因。
+- 仅在需要处理错误时捕获，尽量指定异常类型；可预见条件优先显式判断。禁止 `except: pass` 或静默吞异常，必须记录、回退或重抛。
+- 捕获与记录是两个问题。记录已捕获异常时包含异常类型，必要时用 `exc_info=True`。无桌面等环境的 GUI 初始化失败应留诊断并按取消处理。
+- 宽泛捕获须有明确理由及对应 `noqa`；外部模块按其自身约定处理。
+- 使用 `logger = logging.getLogger(__name__)`，入口调用 `setup_logging(role=...)`，禁止裸 `print`。不导入项目代码的独立 `tools/` CLI 可用 stdout 输出契约；runner 使用自己的日志系统。
 
-```python
-assert "script_path" in script          # 不该缺失 → 用 assert
-resolved = resolve_script_path(script["script_path"])
-if not os.path.exists(resolved):
-    return f"脚本不存在 {script['script_path']}"   # 可恢复 → 返回原因
-```
+## 设计与命名
 
-## 2. 字典访问不用 `.get()`
+- 名称表达意图，如 `display_name`；重命名同步修改调用点，不留兼容别名。
+- 多实体共享机制优先类层级与注册表，避免分散的函数加字典查表。
+- 重构须改善可读性、测试或去重；单一调用不抽函数，无复用诉求不提前抽象。
+- GUI 只处理交互与展示，持久化经 service；架构边界见 [项目指南](../AGENTS.md)。
 
-先 `assert key in dict` 再直接 `dict[key]`。`.get()` 会掩盖「字段不该缺失」的错误，让 bug 静默变成 `None`。
+## 配置与状态
 
-```python
-assert "script_type" in script
-script_type = script["script_type"]
-```
+主仓业务 JSON/YAML 统一经 `src.utils.utils_io`，显式指定 `file_format`；脚本路径由 `utils_sub_config` 定位，结构校验及缺失文件策略归调用方。
 
-> 注：仅在「字段确实可选、缺失即走默认」的少数场景可用 `.get()`，但需显式给出默认值并注释原因；不要无默认值裸 `.get()`。
+- YAML `cached=True` 每次仍读盘，按内容缓存解码结果并返回独立副本，外部修改立即可见。
+- 原生 JSON 默认不缓存；声明和模板可显式缓存。
+- `save_data` 完整编码后写临时文件并原子替换，YAML 保留注释、引号和键序。
+- 二进制归档、图片及更新器事务日志使用各自协议。
 
-## 3. 不静默吞异常，与 #12「是否用 try」正交
+日常选择实时写入子脚本配置，不另建 UI 状态文件；无选择接口的脚本只展示声明项。手动勾选只存内存，重启全选；旧 `config.yml.enabled` 读取时丢弃并告警。
 
-`except` 分支不得 `pass`、不得裸吞；被捕获的异常必须显式处理——记录 / 回退 / 重抛——不得悄无声息消失。
+每日计划的 `daily_run` 只保存启用、时间和独立运行选项，对所有脚本生效，不读取手动勾选；忽略旧 `script_names`。
 
-- 「是否用 `logger` 记录」与「是否用 try 捕获」是**两个独立问题**：try 用于规避可预见的错误，logging 用于把已处理、含被捕获的异常留痕。
-- 若捕获后选择记录，记**异常类型**，至少 `type(e).__name__`，必要时 `exc_info=True`，便于事后定位，不要只打一句泛化文案。
+`.bak` 与备份默认只读，修改前须征得用户同意。
 
-```python
-try:
-    proc = subprocess.run(command, timeout=30)
-except subprocess.TimeoutExpired as e:
-    proc = getattr(e, "subprocess", None)
-    if proc is not None:
-        proc.kill()
-    logger.error("命令超时未响应：%s", command)
-    return False
-```
+## 测试与提交
 
-> 边界：headless / 无桌面等环境下 GUI（Qt 等）初始化失败属可预见，须包 try 并记诊断，不能 `except Exception: pass` 让失败静默成「取消」且无日志（如 ``utils_shutdown._confirm_shutdown`` 按取消处理并记 error）。
+新增或修改功能须补测试。共享接口、跨模块修改和重构须跑两套 Python 全量测试及 ruff；命令与平台划分见 [测试指南](TESTING.md)，两套 `tests` 包必须分进程执行。
 
-## 4. 命名显式明确
+禁止通过跳过测试、按平台绕过或注释校验掩盖依赖与 CI 问题。明确豁免：`python-backend/tests/exe/` 需要 Windows、管理员和打包产物，可按前置条件跳过，由 Windows 构建 CI 补足验证；普通源码测试不适用。
 
-`self.display_name` 优于 `self.name`；模块/函数名表达意图。不留兼容别名，删旧名并改调用点。
+Commit 使用 Conventional Commits 前缀及 ≤50 字符主题。子模块单独提交，先推子模块再更新主仓指针。
 
-## 5. 多实体共享/注册优先 OOP 类层级
-
-同类多实体，如各游戏脚本的 config 适配、各副本解析，用 `class` 层级 + 注册表，而非 `function + dict` 散查。结构集中、扩展点清晰。
-
-## 6. 重构只在有明确收益时做
-
-反对 scope-creep。1 处调用点不抽函数；没有复用诉求不提前抽象。重构须带来可读/可测/去重等实质收益，否则保持原样。
-
-## 7. 禁止绕过依赖/CI 的 workaround
-
-不允许 `skipUnless`、按 `os.name` 分支跳过、注释掉校验等绕过手段。CI 挂的真因要修，不绕过。
-
-> 显式豁免：`python-backend/tests/exe/` 的集成测试需要 Windows + 管理员 + 已打包 exe 前置（非管理员会弹 UAC 卡死），允许 `skipUnless`；源码 CI（ubuntu）跳过它们，验证由 `build-exe.yml` 在 Windows runner 真跑补上，覆盖并未丢失。主测试目录 `python-backend/tests/` 不适用本豁免。
-
-## 8. 日志用 `logging` 模块
-
-`logger = logging.getLogger(__name__)`；入口调 `setup_logging(role=...)`（GUI 与计划/运行分文件），控制台加按日文件。禁止裸 `print`。
-
-- runner 子模块有独立日志系统 `.log/`，遵循其自身约定。
-
-## 9. GUI 持久化边界
-
-无 UI 状态文件：日常副本/序列的真源是子脚本 config（编辑期实时落盘）；`set_daily_task` 为 no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现 `daily_task_list.yml` 声明项。手动脚本勾选是纯内存态（`GameListController._enabled`），不落盘、重启回到全选；config.yml 条目的 `enabled` 已废弃，读取时丢弃并告警。每日计划对所有脚本生效，schedule.yml 的 `daily_run` 只记启用状态、触发时间与独立运行选项，不含脚本名单，旧 `script_names` 残留忽略不读；它与手动勾选互不影响。
-
-## 10. 不随意修改 `.bak` / 备份文件
-
-备份文件如 `.bak` 默认只读参考。需改动时先征得用户同意，不在无人确认下动备份。
-
-## 11. 必须补测试并跑全套
-
-新增/修改功能后必须补测试。动了共享接口 / 多模块 / 做了重构的**大改动**，必须用与 CI 一致的命令跑**全量**，不能只跑改动相关文件：
-
-```bash
-python -m unittest discover -s python-backend/tests -t python-backend -p "test*.py"
-python -m unittest discover -s python-gui/tests -t python-gui -p "test*.py"
-```
-
-- 两套件必须分开跑：它们各自的 `tests` 包同名，合并会互相遮蔽。
-- 已 `uv sync` 的环境直接运行即可，不再需要拼接 `PYTHONPATH`。
-- `ruff check python-backend python-gui tools runner` 一并跑，含 `runner/`。
-
-## 12. 克制使用 try-except
-
-仅在确有必要时才捕获，使用前须有明确理由；`except` 应尽可能显式指定异常类型，避免 `except Exception`，优先用 `if` 判断规避可预见的错误，如先 `os.path.exists` 再打开。
-
-- 被捕获异常的处理方式，是否 `logger.warning`，与「是否用 try」正交，见 #3。
-- 宽泛捕获带 `noqa` + 明确理由的，不在本项目约束内的外部模块可酌情放宽，如 runner、cli.py、icons.py。
-- `tools/` 下的独立 CLI 工具（GitHub Action 用，不 import 项目代码）允许裸 `print` 作输出：它们是独立脚本的 stdout 契约，非项目日志。
-
-## 13. Commit 规范且简短
-
-Conventional Commits 前缀：`feat` / `fix` / `refactor` / `chore` / `docs` / `test` / `style`，一句话主题，≤50 字符。如 `refactor: 抽取 service 层`。
-
-- submodule 与 主仓分开提交；先推 submodule 再推主仓，避免主仓指针悬空。
-
-## 14. 备注/日志规范且简短
-
-工作日志、代码注释、`[startup]` 等备注一律只记要点：改动、原因、效果，不写过程叙述、流水账与复述性说明。函数文档对齐所在文件既有风格：主仓 Google 风格、runner reST `:param:`/`:return:`，新增函数须与所在文件一致，且保持简洁。
-
-## 15. 配置读写统一入口
-
-主仓业务配置的 JSON/YAML 读写统一经 `src.utils.utils_io`，不在业务模块直接调用 JSON/YAML 引擎。格式通过 `file_format="yaml"` / `"json"` 显式指定，不另设格式专用函数。脚本路径定位仍归 `utils_sub_config`，必需/可选文件策略与字典等业务结构校验归调用方。
-
-- `load_data(..., file_format="yaml", cached=True)` 按文件内容缓存解码结果并返回独立副本；每次仍读盘，外部修改立即可见。
-- `load_data(..., file_format="json", cached=False)` 不缓存，默认用于脚本原生配置；声明和模板可显式启用缓存。
-- `save_data` 先完整编码，再写临时文件并原子替换。YAML 保留注释、引号和键序。
-- 读取层只处理文件格式；字段校验、归一化、缺失文件策略由调用方负责。归档、图片等二进制读写不走此接口，更新器事务日志保留专用的刷盘协议。
+注释、工作日志只写改动、原因和效果，不写流水账。函数文档沿用所在文件风格：主仓 Google，runner reST。

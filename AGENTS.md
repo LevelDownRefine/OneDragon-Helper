@@ -1,40 +1,41 @@
 # AGENTS.md
 
-OneDragon-Helper 项目指南。细节与澄清见各子文档。
+OneDragon-Helper 是多游戏脚本调度器：GUI 选择任务 → 写原生配置 → runner 执行脚本链 → 分析日志并汇总。
 
-## 项目是什么
+## 环境与仓库
 
-多游戏自动化脚本调度器：GUI 选脚本/副本/超时 → 写各脚本自己的 config → 运行器逐条 subprocess 调外部 exe → 解析日志汇总成功/失败。
+- Python 3.11+，根目录 uv workspace 统一管理 `.venv/` 和 `uv.lock`；改代码前运行 `uv sync` 并激活环境（Windows Bash：`source .venv/Scripts/activate`；CMD：`call env.bat`）。
+- `rust-gui/` 为 egui/eframe 前端，`python-gui/` 为 PySide6/QML 前端，`python-backend/` 为无 Qt 业务后端。共享 config、assets、tools、deploy 留在根目录，源码和测试归各子项目。
+- `runner/`（OneDragonRunner）和 `updater/`（LevelDownRefine/updater）是独立 Git 子模块：改动在子仓提交并先推送，主仓只更新指针。`leveldown-updater` 从本地子模块严格可编辑安装。
+- Python 使用 ruff，行长 88、双引号；完整规则见 [编码约定](docs/CONVENTIONS.md)。
 
-## 技术栈
+## 架构边界
 
-- 仓库按 `rust-gui/`、`runner/`、`python-backend/`、`python-gui/` 组织，源码和测试各归子项目；共享 `config/`、`assets/`、`tools/`、`deploy/` 留在根目录。
-- Python 3.11+；GUI 用 PySide6，原生控件加手写样式；Lint/Format 用 ruff，line-length 88，双引号。
-- Python 依赖分别声明于 `python-backend/pyproject.toml` 和 `python-gui/pyproject.toml`，根目录 uv workspace 统一管理 `.venv/` 与 `uv.lock`，运行 `uv sync`；改代码前先 `source .venv/Scripts/activate`，或 `call env.bat`。
-- **`runner/` 是 git submodule → OneDragonRunner，独立仓库维护**：涉及 runner 的改动要进那个仓库单独提交/推送，主仓只更新 submodule 指针。
-- **`updater/` 是 git submodule → LevelDownRefine/updater，独立仓库维护**：更新库改动在子仓库单独提交/推送，主仓只更新指针；`uv sync` 从本地子模块严格可编辑安装 `leveldown-updater`。
+| 层 | 职责与详细说明 |
+| --- | --- |
+| [配置适配器](python-backend/src/config/set_config.md) | 适配原生配置路径、格式和字段，不承担 service 外观职责 |
+| [runner](runner/README.md) | 按链逐条执行，block 控制阻塞 |
+| [Rust GUI](rust-gui/README.md) / [Qt GUI](python-gui/src/gui/README.md) | 纯界面、控制器和弹窗；不写配置、不承载业务 |
+| [service](python-backend/src/service/README.md) | AppService 统一整合读写、校验、链及运行命令，无 Qt 依赖 |
 
-## 架构：四部分，职责单向、互不越界
+更新内核归 updater 子库；助手适配、UpdateSession 与独立更新器入口集中在 `python-backend/src/update.py`，由 AppService 薄委托。
 
-1. **set_config：副本配置适配器** — 把各游戏脚本异构的 config 格式/路径/字段名适配成统一接口 `set_config()`。它是 adapter 而非 facade，facade 职责归 service。详见 `python-backend/src/config/set_config.md`。
-2. **runner：脚本链运行器，submodule** — 逐条执行脚本链，`block` 字段控制阻塞/非阻塞。详见 `runner/README.md`。
-3. **gui** — 只放纯图形界面，即 QML、控制器与弹窗；**不写盘、不承载业务逻辑**，写盘统一经 service。详见 `python-gui/src/gui/README.md`。
-4. **service，外观/facade** — 整合 config 读写·UI 状态·链生成·校验·runner 命令，对 GUI/CLI 暴露统一薄接口，无 Qt 依赖，从 gui 分出。详见 `python-backend/src/service/README.md`。手动更新内核独立维护于 `LevelDownRefine/updater`，助手的更新适配和 UpdateSession 集中在 `python-backend/src/update.py`，由 AppService 薄委托；同文件兼作独立更新器入口，GUI 仍归 `python-gui/src/gui/`，详见 `python-backend/src/service/README.md` 的手动更新章节。
+## 声明与所有权
 
-> 日常和周常分别声明于 `config/daily_task_list.yml`、`config/weekly_task_list.yml`，统一使用 `display_name / physical_name` 和递归 `options`；原神/终末地反读脚本本地资源（原神三日常：秘境读 tp.json（另含 BGI 内置的「自动选择 → 根据提升指南选择秘境」，值即该文案本身）、地脉花读 AutoLeyLineOutcrop 的地区键、首领讨伐的 boss 名单为静态表需手工跟版），鸣潮/异环通过 GitHub Action 同步选项。日常落点与读写收敛在 `Daily` 机制类（`python-backend/src/config/task/daily.py`，文件 I/O 由 Daily 自持、直调 utils_sub_config），日常在声明里用 `class` 标注机制类（`DAILY_CLASSES` 注册表查表）并用 `config`/`routine` 标注文件路径、`enable_key`/`enable_task` 标注开关落点（无声明即无「不启用」）、名字只来自声明；周常落点与读写收敛在 `Weekly` 类（`python-backend/src/config/task/weekly.py`，**一条周常一个对象**、config I/O 自持，声明每条标 `class`/`config`，机制类查 `WEEKLY_CLASSES`；日常和周常由 `ScriptConfig.__init__` 分别调用 `build_dailies` / `build_weeklies` 装配，统一持有并分发调用（`_dailies` / `_weeklies`），`weekly.py` 不持独立对象缓存；周几起是条目级（`0` = 不启用），界面入口只在任务卡（周常行的「周几起」chip，单脚本配置弹窗已无此项））；GUI 菜单由 `Daily.menu()` / `Weekly.menu()` 解释，统一经 `set_config.get_daily_map` / `get_weekly_map` 获取；菜单入口直接装配任务对象，不触发脚本级原生配置初始化，加日常只改 yml；异环两个日常各一段、开关独立。脚本原生任务的开关（纯开/关、无副本落点）另立声明 `config/task_switch_list.yml`（给出该脚本的原生配置文件与任务定义/启用两个键），由 `python-backend/src/config/native_task_switch.py` 枚举行并按任务名反查 id 写回，界面入口是单脚本配置弹窗底部的「任务」区；与日常/周常互不掺和（行名取脚本配置里的任务名，脚本侧改名或增删任务自动跟上）。日志解析/失败重跑/邮件汇总之运行后动作内联于 `python-backend/src/log` 与 `service`（由 `schedule_run` 统一编排，详见 `python-backend/src/service/README.md`）；初始化由 `config_workflow()` 在 `config.yml` 缺失时模板生成。
+- 日常/周常分别在 `config/daily_task_list.yml`、`weekly_task_list.yml`，统一 display_name/physical_name 和递归 options；class 注册表选择机制，config/routine 指定落点，名字只来自声明。
+- `ScriptConfig` 通过 build_dailies/build_weeklies 装配并持有对象，一条任务一个实例。Daily/Weekly 自持原生 I/O，weekly 不设独立缓存；菜单直接装配任务，不触发脚本级初始化。
+- 周几起是条目级，0 禁用；界面入口只在任务卡。日常有 enable_key/enable_task 声明才提供独立开关，异环两个日常各段、各开关。
+- 原生任务开关在 `config/task_switch_list.yml`，由 native_task_switch 枚举并按原生任务名定位，展示于脚本配置「任务」区，不混入日常/周常。
+- [附带业务选项](python-backend/src/config/task/task_options.md) 同文件 options 声明，TaskOptions 自持读写。支持开关、单选、多选及原神完成后操作，不含基础设置或 MAA；前端经 ScriptEdit.task_options 只提交改动。
+- [脚本资源](python-backend/src/config/script_resources.md) 统一在 script_resources.yml，含备份、游戏路径落点、背景和链接；不放用户安装路径，加载器只读校验，机制归 Python。
+- [日志位置和规则](python-backend/src/log/README.md) 在 log_analysis.yml；log_path 为实时日志，log_analysis_path 可指定分析文件，service 生成链时注入 runner。schedule_run 编排分析、重跑和汇总。
+- 缺失主配置由 config_workflow 从模板生成。原神/终末地等动态选项读本地资源，静态名单手工维护；鸣潮/异环的 Action 同步规则见 [工具指南](tools/README.md)。
 
-脚本级资源位置统一声明于 `config/script_resources.yml`（备份范围、游戏路径配置及键路径、背景图、链接）；`python-backend/src/config/script_resources.py` 只读并校验，机制仍归各 Python 类。日志文件位置统一放在 `config/log_analysis.yml` 各脚本声明的 `log_path`（实时日志）及可选 `log_analysis_path`（分析使用的不同文件），生成运行链时注入 runner 的 `log_path`；规则见 `python-backend/src/log/README.md`。用户安装路径不写入此声明，格式与路径基准见 `python-backend/src/config/script_resources.md`。
+## 必须遵守
 
-已接入任务的附带业务选项及原神一条龙完成后操作声明于 `config/task_switch_list.yml` 的 `options`，机制类 `TaskOptions` 自持子配置读写；支持开关、单选、多选，不含基础设置或 MAA。两套 GUI 的单脚本配置弹窗通过 `ScriptEdit.task_options` 只提交改动，写盘经 service。格式见 `python-backend/src/config/task/task_options.md`。
-
-## 铁律：违反即打回
-
-- 不可能发生的事用 `assert`；可恢复才 `return False`/跳过。
-- 字典先 `assert key in d` 再 `d[key]`，不用 `.get()`。
-- 不静默吞异常：`except` 不许 `pass`/裸吞，必须显式处理；克制用 try，except 尽量显式类型。
-- 日志用 `logging`，`logger = logging.getLogger(__name__)`，禁止裸 `print`。
-- 改完必须补测试 + 跑全套：`python -m unittest discover -s python-backend/tests -t python-backend -p "test*.py"` 与 `-s python-gui/tests -t python-gui`（两套件分开跑），且 `ruff check python-backend python-gui tools runner` 且 `ruff format --check python-backend python-gui tools runner`（format 不过 CI 会挂；失败用 `ruff format .` 改完再 `--check`）。
-- 不动 `.bak`/备份文件，除非先问用户。
-- Commit 用 Conventional Commits 前缀 + ≤50 字主题；备注/注释只写要点。
-
-完整编码约定，含每条的理由与边界，见 **`docs/CONVENTIONS.md`**；测试与工作流见 **`docs/TESTING.md`**；副本同步见 **`tools/README.md`**。
+- 不可能发生的事用 assert；可恢复错误显式处理。
+- 字典先 assert 键存在再索引，不用无默认值的 .get()；例外边界见编码约定。
+- 不静默吞异常，捕获尽量指定类型；日志用 logging，禁止裸 print。
+- 功能改动必须补测试；改完运行两套 Python 全量测试、ruff check 和 ruff format --check，命令见 [测试指南](docs/TESTING.md)。两套件分开跑，格式失败修复后重查。
+- 不动 .bak 或备份，除非先获用户同意。
+- Commit 使用 Conventional Commits 前缀及 ≤50 字符主题；注释和备注只写要点。

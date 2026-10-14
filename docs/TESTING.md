@@ -1,126 +1,54 @@
-# TESTING.md — 测试与开发工作流
+# 测试与验证
 
-铁律：改代码前先激活 venv，改完必须跑测试 + ruff。
+源码测试在 Ubuntu 运行，Windows CI 验证打包 EXE。新增或修改功能须补测试；共享接口、跨模块修改和重构必须跑全套，不能只跑相关文件。纯文档修改检查链接、命令和实现是否一致。
 
-## 0. 前置：激活环境
+## 环境
+
+从仓库根目录执行：
 
 ```bash
-source .venv/Scripts/activate    # bash / git bash
-call env.bat                     # cmd，同时设置代理 127.0.0.1:7890
+git submodule update --init --recursive
+uv sync --frozen
 ```
 
-未激活环境是最常见的本地能跑、CI 挂或 ImportError 根因。
+然后激活 `.venv`：Linux 用 `source .venv/bin/activate`，Windows Bash 用 `source .venv/Scripts/activate`，CMD 用 `call env.bat`。
 
-## 1. 跑测试
+`runner/`、`updater/` 必须完整检出。`leveldown-updater` 从本地子模块严格可编辑安装；新增、删除模块，或 Windows 编辑器原子替换文件导致链接失效时，执行 `uv sync --reinstall-package leveldown-updater`。不要用空模块或跳过导入掩盖环境问题。
+
+## Python 检查
+
+两套测试都有名为 `tests` 的包，必须分进程运行：
 
 ```bash
-cd <root>
 python -m unittest discover -s python-backend/tests -t python-backend -p "test*.py"
 python -m unittest discover -s python-gui/tests -t python-gui -p "test*.py"
+ruff check python-backend python-gui tools runner
+ruff format --check python-backend python-gui tools runner
 ```
 
-`uv sync` 会把两个 workspace 包以可编辑方式安装，源码与测试不再拼接 `PYTHONPATH`。测试按被测模块和职责归档；GUI 测试开头设 `QT_QPA_PLATFORM=offscreen` 无头跑 PySide6。文件 I/O 使用 mock 或独立临时目录，不读写真实 config 或游戏脚本路径；临时资源用上下文管理器或 `addCleanup` 回收。新增或修改功能后必须补测试并跑全套再交付。
+格式失败时运行 `ruff format .`，再重新检查。不要通过跳过用例或放宽断言使 CI 通过。
 
-`-t` 将各 Python 子项目作为测试包顶层；两个测试集须分开运行，避免它们同名的 `tests` 包互相遮蔽。子目录须保留 `__init__.py`，否则 unittest 不会递归发现其中的用例。
+| 位置 | 内容 |
+| --- | --- |
+| `python-backend/tests/config/` | 配置适配、声明、迁移与 golden |
+| `python-backend/tests/service/` | 业务编排与 CLI 契约 |
+| `python-backend/tests/exe/` | Windows 打包集成测试 |
+| `python-gui/tests/` | 控制器、弹窗、CLI 客户端及 Qt EXE |
+| `rust-gui/tests/` | Rust 单元、协议和真实后端集成测试 |
 
-| 目录 | 归属 |
-|---|---|
-| `python-gui/tests/gui/` | 控件、控制器、QML、窗口及 GUI 共享夹具 |
-| `rust-gui/tests/` | Rust 窗口、同名控制器/弹窗、原生能力与 CLI 通信；由 Cargo 运行 |
-| `python-backend/tests/config/` | 配置适配器、声明、日常、周常及 golden 验证 |
-| `python-backend/tests/service/` | 配置服务、链生成、调度和运行编排 |
-| `python-backend/tests/update/` | 助手发布布局、更新进程交接与会话；内核测试归 updater 仓库 |
-| `python-backend/tests/utils/` | 通用工具、文件读写、路径与系统操作 |
-| `python-backend/tests/log/` | 日志解析与邮件通知 |
-| `python-backend/tests/tools/` | 选项同步脚本的离线测试 |
-| `python-backend/tests/support/` | 跨模块测试辅助代码及其自身测试 |
-| `python-backend/tests/exe/` | 后端、Runner、更新器和 Rust 发布产物集成测试 |
-| `python-gui/tests/exe/` | Python GUI 发布产物集成测试 |
-| `python-backend/tests/fixtures/`、`python-backend/tests/golden/` | 静态夹具与 golden 基线 |
+测试使用临时目录和 mock，不读写真实安装、用户配置或系统任务。Qt 用例通过共享 `get_app()` 创建应用并在 offscreen 下运行。清理使用上下文管理器或 `addCleanup`，缓存和单例也需隔离。夹具不要命名为 `test_*.py`。
 
-只跑某一 GUI 模块时也指定 Python GUI 项目根，例如：
+断言具体行为与结果；同一契约的多组数据可用 `subTest`，独立迁移另设测试文件。避免只断言非空、复制实现或依赖执行顺序。
 
-```bash
-python -m unittest discover -s python-gui/tests/gui -t python-gui -p "test*.py"
-```
+## Golden 更新
 
-- 参数不同但契约相同的场景用具名 `subTest` 合并，每个场景保留独立输入和完整断言；不同失败原因或不同层次的集成测试单独保留。
-- 共享夹具放非 `test_*.py` 模块，不从另一个测试文件导入。`python-gui/tests/gui/helpers.py` 提供 `get_app()` 和 `make_bridge()`；使用 Qt 图像或窗口前显式创建应用，不依赖导入副作用。
-- 缓存测试使用隔离的注册表并恢复原状态；需要已初始化对象时，在用例中明确构造。golden 使用独立适配器和固定种子，不受其它测试是否预热缓存影响。
-- 合并或迁移测试后，除全量检查外，受影响文件须能独立运行，例如 `python -m unittest tests.config.test_golden_daily`。只检查“未抛异常”或“结果非空”不足以验证具体行为，应断言结果、调用对象或持久化内容。
-
-runner 和 updater 子模块测试由各自仓库的 CI 执行，主仓 CI 只运行主仓测试。
-CI 缓存 `rust-gui/target` 的编译依赖；Windows 构建与发布回退共用缓存。
-同一 PR 后续推送取消旧 CI，主分支和正式发布运行独立保留。
-更新 EXE 测试每类只生成一次两版 ZIP，各用例仍独立持有安装目录、下载缓存和事务。
-首次检出运行 `git submodule update --init --recursive`，再运行 `uv sync --frozen`；
-更新库从 `updater/` 可编辑安装，主仓测试直接使用该子模块源码。
-更新库使用严格可编辑模式，保证 PyInstaller 能收集包；修改已有文件可直接联调，
-新增或删除库文件后运行 `uv sync --reinstall-package leveldown-updater` 重建安装链接。
-Windows 安装可能使用硬链接；编辑器通过替换文件保存源码时，也需重装该包以刷新链接。
-
-日常 golden 覆盖全部声明菜单选择的保存路径、字段差异及反读，正常测试只读基线。确认行为变更后显式更新，并审查 `python-backend/tests/golden/daily_baseline.json` 的差异：
+日常读写基线保存在 `python-backend/tests/golden/daily_baseline.json`。正常测试只读基线；行为确实变更后显式更新并审查差异：
 
 ```bash
 uv run --directory python-backend python -m tests.config.test_golden_daily --update
 ```
 
-平台分工：源码全量测试只在本地/CI ubuntu 跑；Windows 下**只跑打包产物集成测试**（python-backend/tests/exe/test_*_exe.py，由 .github/workflows/build-exe.yml 打包后覆盖），非打包测试不在 Windows 重复跑。
-
-`deploy/build.bat` 经 `tools/release_package.py test` 复制发布目录到临时目录再运行
-exe 测试，使用 `ODH_PACKAGE_DIR`、`ODH_GUI_EXE`、`ODH_RUNNER_EXE` 指定测试副本。
-发布目录不生成用户配置、日志或缓存。打包测试覆盖缺少用户 YAML 时的首启生成、
-再次启动保留修改，以及 `--version` 与构建元数据一致；测试前后和 ZIP 归档前均检查发布文件范围。
-测试后尝试清理临时副本，清理失败仅警告并给出残留路径；构建结果取决于 EXE 测试结果与发布包校验。
-
-独立 updater 仓库覆盖更新包边界、下载校验与取消、程序文件替换、故障回滚和中断恢复；
-`python-backend/tests/update/` 覆盖助手的 Qt/Rust 发布布局、更新进程交接和会话；
-`python-backend/tests/exe/test_update_exe.py` 使用临时安装副本真正启动更新器，
-验证升级后的 EXE 可启动、运行中的 Runner 阻止更新、Windows 文件占用时回滚、
-启动闸门先于用户配置初始化，以及独立恢复入口。所有用户文件断言均使用临时夹具。
-升级夹具从被测包继承 Qt/Rust 类型，因此同一组真实 EXE 测试可验证两种发布布局。
-
-`python-gui/tests/gui/test_update_dialog.py` 用真实 Qt 事件循环和替代服务验证显式检查、
-工作线程、下载进度、取消/关闭、错误重试及安装就绪后退出；网络和安装操作均隔离。
-
-独立无 Qt 后端由 `deploy/OneDragon-Helper-CLI.spec` 构建：
-
-```text
-python -m PyInstaller --noconfirm --workpath deploy/build/rust-cli --distpath deploy/dist/rust-cli deploy/OneDragon-Helper-CLI.spec
-python -m unittest discover -s python-backend/tests -t python-backend -p test_headless_exe.py -v
-```
-
-`ODH_CLI_EXE` 可指定已有 CLI 构建。测试在临时目录复制 EXE/运行库，使用空白配置模板，
-覆盖异目录启动、首启生成/再次保留、更新闸门、单进程 stdio 与 EOF 释放运行锁，
-并直接检查冻结模块不包含 Qt/GUI。后端继承父进程权限，无自身 UAC 提示；这些只读/临时
-配置测试不需要管理员。CI 的独立 Windows job 实际执行，Ubuntu 源码全量跳过这六项。
-另覆盖原 `--selftest/--get-script` 输出文件和退出码；Rust 主程序的同类参数转交此后端。
-这一构建是 Rust 发布包的后端组件，尚未包括完整 GUI/Runner/Updater 和发布资源。
-
-完整 Rust 包通过 `python tools/build_rust.py --test` 在 Windows 管理员环境验证；
-`build-exe.yml` 的独立 job 同时执行 Windows Rust 测试、CLI/GUI/Runner/Updater 的
-真实 EXE 测试。`test_rust_package_exe.py` 直接读取最终 PE 验证 GUI 图标/UAC、CLI
-继承权限、PE 校验和，以及全部 Python EXE 无 Qt/QML；这些只读检查不要求管理员。
-另检查 Rust 主程序的 CRT 导入符号均由同目录运行库提供，避免依赖开发机预装的 VC 运行库。
-包内 GUI 权限与原版一致，普通终端不要直接跑需要启动 GUI/Runner/Updater 的集成测试。
-绘制专项区分前端：Qt 仍验证完整 QML 的 D3D11/WARP 首帧；Rust 在临时空脚本夹具中
-调用随包的 `--capture` 诊断，检查主窗口及关机确认窗的实际截图尺寸和颜色，
-分别使用自动选卡和强制 WARP；截图后取消关机，仅运行独立窗口，不调用系统关机。
-两种渲染测试都以当前权限运行，
-不启动脚本，也不把 Qt 的 QML 文件要求施加到 Rust 包。
-
-Rust 双进程升级用真实主 EXE 的原 CLI `--dump-config --out` 写命名管道，暂缓读取以
-保持主程序与 CLI 存活。独立更新器收到双方 PID/创建时间，写 ready 后必须保持旧文件；
-读取输出让两者自然退出，才完成替换，且保留临时用户文件。这里覆盖进程交接与安装，
-不声称点击了更新窗；窗口状态和 ready 回执由 Rust/无 Qt 会话测试验证。管道夹具的
-锁保持与 EOF 已由独立 CLI EXE 在非管理员环境实际验证，不给产品增加测试命令。
-
-`tools/measure_gui_startup.py` 对 Qt/Rust 的干净完整包做暖启动对比，首个可回读任务画面
-才计时成功。测量工具测试覆盖标记前退出、缺少任务数据和非零退出，实际 15 轮交替测量
-见 `rust-feasibility/assessment.md`；它不是常规 CI 的性能阈值测试。
-计时原始样本写到忽略目录 `.cache/gui-startup.json`，不提交本机报告。
-
-Rust 源码位于 `rust-gui/src`，单元与集成测试都已映射到 `rust-gui/tests`：
+## Rust 检查
 
 ```bash
 cargo fmt --manifest-path rust-gui/Cargo.toml --check
@@ -128,27 +56,25 @@ cargo clippy --manifest-path rust-gui/Cargo.toml --locked --all-features --all-t
 cargo test --manifest-path rust-gui/Cargo.toml --locked --all-features
 ```
 
-## 2. 风格检查 ruff
+真实后端集成测试需要完整 Python 环境，可将 `ODH_TEST_PYTHON` 指向已安装工作区依赖的解释器。Windows CI 额外覆盖 D3D12/WARP、视频解码、进程及系统接口；Linux 结果不能替代这些验证。
 
-```bash
-ruff check python-backend python-gui tools runner
-ruff format .
+## Windows 打包验证
+
+在管理员终端、已激活环境中执行：
+
+```powershell
+.deploy\build.bat
+python tools/build_rust.py --test
 ```
 
-`check` 与 CI 一致，含 tools/；`format .` 全仓格式化（含 runner/，也是我们的代码）。
+前者构建 Qt 包并测试，后者构建 Rust 完整包并测试。真实 EXE 用例在临时副本中运行；UAC 前置不满足时可能阻塞，不要直接在日常安装目录测试。CLI 单独验证可通过 `ODH_CLI_EXE` 指定已打包路径，执行 `test_headless_exe.py`。
 
-## 3. 加依赖
+构建、资源清单及输出位置见 [工具指南](../tools/README.md)。需手动模拟计划运行时使用 `uv run --directory python-backend python -m tests.sim_schedule_win`；它会弹出交互窗口。
 
-改任一 Python 子项目的 pyproject.toml → 在仓库根运行 uv sync 同步 uv.lock。
+## CI
 
-## 4. 调试
+- `ci.yml`：Ubuntu Python 测试、ruff 与 Rust 检查。
+- `build-exe.yml`：Windows Qt 包、独立 CLI、Rust 完整包的构建与真实 EXE 验证。
+- `release.yml`：tag 发布复用同提交的成功构建，无法复用时重建并测试。
 
-先看日志再下结论：主程序日志在 logs/ 下按角色分文件——GUI 与其子进程写 logs/onedragon_helper-<日期>.log，计划/运行出口（`--run-daily` / `--schedule-run` / `--run-chain`，及 headless 的 `daily` / `run` / `legacy`）写 logs/onedragon_helper.plan-<日期>.log；跨日只切到当天新文件、保留 14 天（多进程同时运行也不会互相挡住）。运行器子进程有独立日志系统 .log/。子脚本日志位置见 config/log_analysis.yml 的 log_path / log_analysis_path 声明。日志汇总：uv run --directory python-backend python -m src.log。
-
-## 5. Windows 全链路真实模拟（手动）
-
-```bash
-uv run --directory python-backend python -m tests.sim_schedule_win
-```
-
-在 %TEMP% 沙箱内以真实进程走完 schedule_run 全编排（定时等待→清场→生成链→runner 子进程→日志解析→重跑→post_run），假脚本/假游戏由脚本内 PyInstaller 现场打包（进程名唯一不误杀），16 项断言逐项核验；不进 CI，不触碰真实 config。
+发布目录在测试前后校验，禁止混入配置、日志或测试产物。日志位置见 [日志说明](../python-backend/src/log/README.md)。

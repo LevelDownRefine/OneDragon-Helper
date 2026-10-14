@@ -1,19 +1,10 @@
 # 脚本资源声明
 
-`config/script_resources.yml` 保存随助手发布的脚本资源位置。`script_resources.py`
-只负责读取、校验和缓存 YAML 字典；配置适配器与链接查询共用这份声明。
-它不导入 GUI，也不实例化 `ScriptConfig`，可供 Python CLI 和后续 Rust 实现使用。
+`config/script_resources.yml` 保存随助手发布的备份范围、游戏路径落点、背景和链接。`script_resources.py` 只读取、校验和缓存声明，不初始化或写入原生配置。
 
-## 声明边界
+用户安装目录仍在用户配置或原生配置中，手填 `game_path` 优先；日常、周常、任务开关的落点留在各自声明。
 
-- 脚本级资源：备份范围、游戏路径所在配置及键路径、默认背景图、官网/B 站/GitHub 链接。
-- 日常、周常和任务开关的文件路径继续由各自的 `daily_task_list.yml`、`weekly_task_list.yml`、`task_switch_list.yml` 持有，不另建一层路径别名。
-- 用户机器上的安装路径仍保存在用户配置或脚本原生配置中；手填 `game_path` 仍优先。
-- 文件读写、模板合并、游戏启动器搜索、日志解析规则仍由 Python 机制类实现。YAML 不包含可执行表达式。
-
-## 格式与路径基准
-
-顶层 `version: 1`，`scripts` 以全链路 `script_name` 为键。示例：
+## 格式
 
 ```yaml
 version: 1
@@ -30,35 +21,21 @@ scripts:
       github: https://github.com/AliceJump/ok-end-field
 ```
 
-| 字段 | 含义与基准 | 省略时 |
-|---|---|---|
-| `backup_paths` | 相对脚本根目录的文件或目录列表 | 必填，非空且不重复 |
-| `game.config` / `game.keys` | 相对脚本根目录的配置文件，以及逐层读取游戏路径的键列表 | 省略整个 `game` 表示不反读游戏路径；声明时两项均必填 |
-| `game.launcher` | 启动器相对路径；异环机制用它逐层向上查找 | 通用读取不需要；异环机制要求声明 |
-| `background` | 相对脚本根目录的默认背景图 | 无脚本默认图，沿用界面回退规则 |
-| `links` | 完整的 `homepage`、`bilibili`、`github` HTTP(S) URL | 三项均必填 |
+| 字段 | 规则 |
+| --- | --- |
+| `scripts` 键 | 全链路 `script_name` |
+| `backup_paths` | 必填、非空、不重复的相对文件或目录列表 |
+| `game.config/keys` | 可省略整个 game；声明时须同时提供配置文件与键路径 |
+| `game.launcher` | 启动器相对路径；异环机制据此向上查找 |
+| `background` | 可选默认背景相对路径 |
+| `links` | 必含 homepage、bilibili、github 三个 HTTP(S) URL，不含凭据 |
 
-路径统一用 `/` 分隔，不允许绝对路径、盘符、`..`、空段或变量插值。
-不检查目标文件是否已安装；声明格式正确与本机资源存在是两件事。
-链接必须完整，不能携带用户名或密码。未知字段、缺少必填项、重复 YAML 键和不支持的版本直接报错。
+路径相对脚本根目录，以 `/` 分隔，禁止绝对路径、盘符、`..`、空段和变量插值。校验格式，不检查目标是否安装；未知字段、重复 YAML 键、缺少必填项或不支持的版本直接报错。
 
-## 消费与扩展
+## 使用
 
-`get_script_resources(script_name)` 返回 YAML 中的脚本字典；未声明脚本返回 `None`。
-`ScriptResources` 等 `TypedDict` 只提供类型提示，不构造额外数据对象。
-字典保留 YAML 的列表和可选字段形状，不注入缺省字段；消费端处理未声明项。
-已注册的 `ScriptConfig` 必须有声明，注册时即校验并绑定 `resources`。
-`get_game_exe_path`、`iter_backup_paths`、`get_background_rel_path`、`get_game_link`
-的公开接口保持不变；`ScriptConfig` 的构造与初始化时机也保持不变。
+`get_script_resources(script_name)` 返回共享只读字典，未声明脚本返回 `None`；已注册适配器必须有声明。可选字段不补默认值，特殊机制仍由 Python 实现。
 
-修改已支持脚本的目录布局或链接，只改声明并验证对应行为；新增脚本仍需注册适配器，
-有特殊机制或日志格式时再添加对应 Python 实现。声明不能凭空提供新机制。
+声明按文件位置缓存，修改后重启；不支持用户覆盖或热加载。源码经 `get_root_dir()` 定位，发布包从 EXE 同级 `config/` 读取。新增声明必须提交到 Git 才会被打包，缺失或损坏不回退硬编码。
 
-加载器按声明文件位置缓存，只读一次，修改后重启生效。返回的是共享字典，调用方按只读使用。
-它是版本管理的内置资源，
-不提供用户覆盖文件或热加载；用户安装目录不写入此文件。
-路径通过 `get_root_dir()` 定位，打包后从 EXE 同级的 `config/` 读取。
-发布工具自动收集 Git 跟踪的 `config/` 文件，更新器按程序资源替换此文件；
-因此新增声明必须提交到 Git。发布文件缺失或损坏时直接报错，不回退到 Python 硬编码。
-
-日志位置统一在 `config/log_analysis.yml` 声明，见 [日志配置](../log/README.md)。
+日志位置另见 [日志声明](../log/README.md)。

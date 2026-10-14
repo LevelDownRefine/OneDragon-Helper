@@ -1,140 +1,70 @@
-# tools/ 开发与发布工具
+# 开发与发布工具
 
-## Python GUI 源码启动
+本目录提供源码启动、构建、资源生成与上游同步工具；运行期业务留在后端。
 
-`launcher.bat` 通过 `run_python_gui.py` 启动当前检出的 GUI 与后端，显式设置源码路径及工作目录。工作树复用父目录 `.venv` 时，可编辑包仍可能绑定主目录；启动器会优先使用本检出的源码，并透传参数与退出码。`env.bat` 优先复用已激活环境，否则向父目录查找 `.venv`。
+## 启动与构建
 
-## 发布包
+`launcher.bat` 经 `run_python_gui.py` 优先加载当前检出的源码；`env.bat` 复用已激活环境或向父目录查找 `.venv`。Rust 启动参数见 [Rust GUI](../rust-gui/README.md)。
 
-正式 release 在 Linux job 中查找同提交、主分支 push 的成功完整构建。
-已有构建仍运行时最多等待 20 分钟，再复用 Qt/Rust 产物；失败、超时、查询失败或
-产物过期时回退全量构建和 EXE 测试。`find_build_run.py` 不复用 PR 或其他提交的产物。
+| 命令（仓库根目录） | 结果 |
+| --- | --- |
+| `deploy\build.bat` | Qt 完整包及 EXE 测试 |
+| `deploy\build-rust.bat` | Rust 完整包、ZIP 和校验文件 |
+| `python tools/build_rust.py --test` | Rust 构建后运行真实 EXE 测试，需管理员 |
+| `python -m tools.export_rust_icons` | 从 Qt 图标源生成编译期 `assets/icons/` |
 
-`release_package.py` 由 `deploy/build.bat` 调用：仅拷贝 Git 跟踪的
-`config/` 模板与声明、`assets/` 内置资源、`python-gui/src/gui/qml/` 和 README；QML 在发布包仍安装到 `src/gui/qml/`。
-`assets/icons/` 是编译期图标源，已嵌入 Rust EXE，Qt 使用矢量源；两种发布包都不重复拷贝它们。
-`config.yml`、`schedule.yml`、`weekly.yml`、壁纸设置与缓存、脚本链、
-日志、备份不属于发布内容；即使误跟踪了用户配置，也会阻止打包。
-三个用户 YAML 由程序首次启动时从模板生成，已有配置保持不变。
-`config/script_resources.yml` 是内置资源声明，随上述 Git 资源一起发布及更新；
-修改脚本资源位置不需要另改打包文件列表，详见 [声明格式](../python-backend/src/config/script_resources.md)。
+Rust 构建需 Windows、Rust 1.95+、MSVC。Qt 输出 `deploy/dist/OneDragon-Helper`；Rust 输出 `deploy/dist/rust/OneDragon-Helper`，同目录生成 `OneDragon-Helper-Rust.zip`。可用 `--output` 指定其他 Rust 输出目录。
 
-打包只收集助手及 Runner 自身依赖。Runner 的 `.py` 模式在冻结进程内执行，
-需要额外第三方库的脚本应通过 `.bat` 调用自己的 Python 环境，不依赖助手附带库。
-Windows 任务计划与快捷方式使用的 `pywin32` 在主项目中显式声明。
+构建仅替换通过文件范围和清单哈希校验的输出；存在用户数据、额外文件或已修改程序时拒绝覆盖。日常安装应解压到独立目录。测试和平台前置见 [测试指南](../docs/TESTING.md)。
 
-构建写入 `version.json`（version、tag、commit）。正式发布从
-`ODH_RELEASE_TAG` 读取 `v主版本.次版本.修订版本`，本地及分支构建标记为
-`pyproject版本+dev.提交号`。`--version` 优先读取这份构建信息。
+## 发布
 
-包内包含独立的 `OneDragon-Helper-Updater.exe`，由 `python-backend/src/update.py` 打包。
-发布普通 ZIP，并生成 schema 1 的 `update-manifest.json`，记录版本、前端和逐文件 SHA-256；
-构建工具校验 Git 资源、程序文件范围及哈希，拒绝混入用户配置、日志、壁纸和备份。
-更新库按清单复用本地未变化文件，只下载差异文件；服务器不支持范围读取时回退整包续传。
-安装所有权清单保存在本地 `.update/`，不属于发布资源。
-该清单兼容旧更新器；v1.0.10 未附清单，后续带清单的包可从旧版内置更新升级。
+推送 `v主版本.次版本.修订版本` tag 触发正式发布；手动 dispatch 只构建和测试。发布优先复用同提交、主分支 push 的成功完整构建，运行中最多等待 20 分钟；无法复用时重建并测试，不复用 PR 产物。
 
-exe 集成测试只在临时副本运行，发布目录在测试前后均校验。
-`archive` 再次校验文件清单并生成 ZIP 和同名 `.sha256` 校验文件：
+`release_package.py` 收集 Git 跟踪的 config、assets、README 和 Qt QML；Rust 不含 QML。编译期 `assets/icons/` 不重复拷贝。独立 CLI、Runner、Updater 随包发布，Rust 包还要求主程序同级 CRT。
+
+`config.yml/schedule.yml/weekly.yml`、壁纸映射和缓存、脚本链、日志及备份不进入安装包，即使误被 Git 跟踪也拒绝打包。缺失的用户 YAML 首次启动从模板生成，已有配置保留。
+
+`version.json` 记录版本、tag、commit 和包类型；正式版本来自 `ODH_RELEASE_TAG`，开发构建为项目版本加提交号。`update-manifest.json` 使用 schema 1，记录逐文件 SHA-256；本地 `.update/` 所有权清单不属于发布资源。
 
 ```bash
 python tools/release_package.py check --package deploy/dist/OneDragon-Helper
 python tools/release_package.py archive --package deploy/dist/OneDragon-Helper --output OneDragon-Helper.zip
 ```
 
-Rust 目录准备时加 `prepare --frontend rust`：`version.json` 写入包类型、必须含独立
-`OneDragon-Helper-CLI.exe` 和主程序同目录的 `vcruntime140.dll`，不复制 QML。后续 `check/archive/test` 从 `version.json` 读取类型，
-拒绝混入 QML 或缺失 CLI；Qt 默认行为不变。两类 ZIP 内的顶层目录均为 `OneDragon-Helper`，
-Rust 附件名为 `OneDragon-Helper-Rust.zip`。测试给所有 EXE 指定临时副本路径，
-不会意外测试另一个构建目录的 CLI。该资源工具不负责构建二进制或设置 UAC。
+测试前后及归档前均校验发布范围，归档同时生成 `.sha256`。CI 上传未压缩的发布目录，正式发布重新写版本戳并归档。更新运行机制见 [服务层](../python-backend/src/service/README.md)。
 
-完整 Rust 构建：`deploy\build-rust.bat` 或已激活环境下
-`python tools/build_rust.py`；需要 Windows、Rust 1.95+ 与 MSVC。构建 release GUI、
-无 Qt CLI、原 Runner/Updater，在发布 GUI 副本嵌入原图标和管理员 manifest。
-输出 `deploy/dist/rust/OneDragon-Helper`、同目录 ZIP 和校验文件。默认只构建/校验，
-管理员终端加 `--test` 真跑全部 EXE 集成测试；CI 与 tag 发布均加该参数，失败不发布。
-构建不清空整个 dist：仅能替换通过发布文件范围及清单哈希校验的 Rust 输出，存在用户数据、
-额外文件、缺失文件或程序内容被修改时拒绝；无清单的旧产物仅验证文件范围。
-可用 `--output deploy/dist/另一目录/OneDragon-Helper` 另选输出。
-不要将该构建目录直接作为日常安装使用；解压 ZIP 到独立目录后双击主程序。
-发布构建启用截图诊断参数 `--capture 输出.png`：任务卡就绪后由应用截取实际画面并退出，
-该模式跳过自动启动。完整包 CI 使用它验证 Rust 绘制；Qt 包继续验证原 D3D11/WARP 场景。
-Windows Rust 窗口使用 Direct3D 12，自动选择硬件或系统 WARP 软件设备；
-`ODH_FORCE_SOFTWARE_RENDERING=1` 可强制 WARP 诊断。主窗口和关机确认窗共用该后端，
-使用系统 FXC 编译器，不附带 OpenGL 软件库或额外的 DXC DLL。
-
-完整包启动对比使用 `measure_gui_startup.py`：传入 `--qt-package`、`--rust-package`、
-`--output .cache/gui-startup.json`，默认各 15 次、交替运行，另有一次不计入结果的预热。
-工具先校验发布包，在临时副本中使用生成配置测量首张任务画面回读；会打开测试窗口，
-不启动外部脚本，不包含 UAC 等待。输出目录自动创建，原始样本留在本地；测量条件和结果见
-[完整包评估](../docs/rust-feasibility/assessment.md)。
-
-这些是手动更新的发布侧基础。更新入口位于右上角设置内，由用户点击
-「更新」触发；不在启动或后台自动检查、下载或安装。
+Runner 的冻结 Python 环境只含自身依赖；依赖额外第三方库的脚本应由 BAT 调用自己的环境。
 
 ## 副本同步
 
-config/daily_task_list.yml 各游戏副本列表维护总览。鸣潮/异环经 GitHub Actions 每天北京时间 11:15 检测并开 PR，也支持手动触发；原神、终末地经 options.source 运行期读取脚本自身资源。本目录是开发/CI 工具，不含运行期脚本。
+`sync-tasks.yml` 每天北京时间 11:15 检查鸣潮、异环并开 PR，也支持手动触发。周常不由这两个工具更新。
 
-## 各游戏副本更新方式
-
-| 游戏 | yml key | 副本数据源 | 更新方式 | 人工环节 |
-|---|---|---|---|---|
-| 终末地 | ok-ef | ok-ef 自身 world_map.json | options.source 运行期读取，无需 Action | 无 |
-| 鸣潮 | ok-ww | ok-wuthering-waves ForgeryTask.py/TacetTask.py 的 self.structure；正式服数据仅补无音区名称 | sync_okww_tasks.py + Action，以 ok-ww 分组变化为门槛 | 凝素新增占位命名；无音区核对 PR 中编号与正式名 |
-| 异环 | ok-nte | ok-nte AnomalyTask.py 的 _ID_RANGE | sync_oknte_tasks.py + Action 自动补数字 | 新数字改友好名 |
-| 原神 | BetterGI | better-genshin-impact AutoTrackPath/Assets/tp.json | options.source 运行期读取，无需 Action | 无 |
-| 明日方舟 | MAA | 固定 | 无需更新 | — |
-| 崩铁 | March7th-Launcher | 固定 | 无需更新 | — |
-| 绝区零 | OneDragon-Launcher | 固定 | 无需更新 | — |
-
-## 通用约定
-
-- 数据源可靠性：支持范围以脚本仓库自身代码/数据为准；鸣潮正式服数据只补充已支持的无音区名称。bettergi-scripts-list 的 JS 层滞后不可作来源；AI 生成的 JSON 不可信。
-- 退出码：0 = 无差异，1 = 有差异未应用供 CI 判断，2 = 抓取/解析失败 CI 跳过。
-- --apply：鸣潮凝素领域新增 delta 个时已有 physical_name 整体 +delta、最前补占位；无音区按下面的双源校验同步正式名。移除仅报告不删除，防上游短暂回退丢配置。
-- yml 格式：由 yaml 统一管理，无注释、sort_keys=False 幂等，diff 只含真实增量。
-- 选项格式：任务和选项统一用 display_name / physical_name；子选项放 options.values，读写字段放 options.key。
-- Action 产物：自动更新开 PR；鸣潮无音区提供完整编号/正式名称表和来源提交，凝素领域及异环的新增数字占位仍需人工命名，核对后合并。
-
-### 鸣潮无音区名称
-
-`okww_tacet_names.py` 从 [Arikatsu/WutheringWaves_Data](https://github.com/Arikatsu/WutheringWaves_Data)
-的正式版本默认分支解析同一提交下的 `BinData/adventure_detect/silentareadetection.json`
-与 `Textmaps/zh-Hans/multi_text/MultiText.json`。只取 `Secondary=22`，用 `Name` 关联中文文本；
-按 `SortId` 降序排列。今州七项同值，沿用既有 F2 顺序；其他排序值重复时停止，禁止猜顺序。
-首次接入已核对实际 F2 菜单第 6–9 项：冰原运输港、加拉尔冠阶、隐喙深腹、陷足流川。
-后续新增或排序变化仍需核对实际 F2 菜单，尤其旧别名与正式名称有出入的位置。
-选项的 `display_name` 省略“无音区”，保留Ⅰ、Ⅱ等区分标记；来源数据与 PR 报告保留完整名称。
-简化后名称为空或重复时停止同步。写盘前先暂存全部内容，再替换配置、最后替换状态；
-本地 I/O 失败会让 Action 失败，不按上游暂未就绪跳过；状态未发布时下次仍会重试。
-
-同步顺序：
-
-1. 先读取 ok-ww 的 `self.structure`；无音区首次接入，或与 `okww_tacet_state.json`
-   记录的分组不同，才查询名称来源。游戏资料单独更新不会触发配置变更。
-2. 正式服数据的总数及 `DetectionTabType` 分组必须与 ok-ww 完全一致；多出或缺少的项都不截取凑数。
-3. 名称完整且唯一、旧副本 ID 的相对顺序未改变才生成配置；数据先更新、滞后、接口失败或格式变化均暂缓，
-   在 Action 摘要写明原因，保留已有配置与同步状态，下一次继续检查。
-4. 更新 `daily_task_list.yml` 和 `okww_tacet_state.json` 并一起提交 PR。
-   状态只记录已处理的 ok-ww 分组、稳定副本 ID、正式服版本和来源提交，不重复保存名称。
-
-Action 使用一次 `--apply --github-output ... --report ...` 完成抓取与应用，避免检查和应用之间上游变动。
-无音区校验不通过时该次鸣潮同步整体暂缓，异环继续独立运行；凝素领域的命名机制保持不变。
-
-## 脚本用法
+| 游戏 | 数据来源与维护 |
+| --- | --- |
+| 鸣潮 | ok-ww 的 ForgeryTask/TacetTask `self.structure` 决定支持范围，正式服数据补无音区名称 |
+| 异环 | ok-nte 的 `_ID_RANGE` 等原生任务数据，新增数字占位需人工命名 |
+| 原神 | 秘境、地脉花等动态选项读取本地资源；首领名单等静态项手工跟版 |
+| 终末地 | 读取 ok-ef 本地 world_map.json |
+| MAA | 普通关卡静态维护，活动读取本地 StageActivityV2.json |
+| 崩铁、绝区零 | 按声明及本地资源提供，不由该 Action 同步 |
 
 ```bash
 python tools/sync_okww_tasks.py --apply
 python tools/sync_oknte_tasks.py
 ```
 
-周常声明单独在 config/weekly_task_list.yml，不由上述两个同步脚本更新。
+退出码：0 无差异或已应用；1 有差异待应用；2 上游抓取/解析暂不可用。上游数量回退只报告，不删除配置。鸣潮凝素领域新增时旧 physical_name 后移、前方补占位，需人工命名。
 
-## Rust 界面原型
+### 鸣潮无音区
 
-`python tools/run_rust_gui.py --demo` 构建并启动独立演示配置，操作说明见
-[Rust GUI 原型](../rust-gui/README.md)。`--no-build` 复用已有构建。
+1. 首次接入或 ok-ww 分组相对 `okww_tacet_state.json` 改变时才查询名称；资料站单独更新不推动配置。
+2. 从 [Arikatsu/WutheringWaves_Data](https://github.com/Arikatsu/WutheringWaves_Data) 同一提交读取 `BinData/adventure_detect/silentareadetection.json` 和中文 `MultiText.json`：筛选 Secondary=22，按 Name 关联文本、SortId 降序排序。今州同值项沿用已核对的 F2 顺序，其他排序冲突停止同步。
+3. 总数与 DetectionTabType 分组须完全匹配 ok-ww，名称完整唯一、旧副本 ID 相对顺序不变。display_name 去掉「无音区」，保留Ⅰ/Ⅱ等区分标记。
+4. 同时更新任务声明和状态，PR 附完整编号、名称及来源提交供核对。状态仅存分组、稳定 ID、版本和来源，不重复保存名称。
 
-`python -m tools.export_rust_icons` 从原 GUI 图标源导出根目录 `assets/icons/`。
-仅此开发步骤需要 Qt；Rust 界面运行时使用已嵌入的图标与默认壁纸。
+上游未就绪时整次鸣潮同步暂缓，保留配置和状态，下次重试；异环独立继续。Action 用一次 `--apply --github-output ... --report ...` 获取并应用同一快照。写入先暂存，再替换配置，最后发布状态；本地 I/O 失败须使 Action 失败，不能按上游暂缓跳过。
+
+## 测量
+
+`measure_gui_startup.py` 在临时完整包中测量首张任务画面回读；命令、条件与历史结果见 [完整包测量](../docs/rust-feasibility/assessment.md)。

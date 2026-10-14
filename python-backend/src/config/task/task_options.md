@@ -1,36 +1,26 @@
 # 任务附带选项
 
-`task_options.py` 根据根目录 `config/task_switch_list.yml` 的 `options` 读写已接入任务的业务参数。
-支持任务子设置与一条龙完成后操作，不承载基础设置、MAA、战斗策略、自由数字或文本输入；与日常/周常分开，在「任务」区展示。
+`TaskOptions` 按 `config/task_switch_list.yml.options` 读写已接入任务的业务参数及完成后操作；与日常/周常分开，不承载基础设置、MAA、战斗策略或自由数字/文本输入。
 
-每个脚本节点的 `options` 声明若干组，`tasks` 关联同节点反读出的任务名。
-子设置直接显示，下拉框压缩至原有复选框行高；原有行高与间距不增加，不增加折叠入口。
-有主开关时子设置缩进显示在其下；只有多个子任务开关时合并成组，不虚构总开关。
-没有子设置的任务只显示原生开关。
+## 声明
 
-`tasks: []` 表示独立选项组，不关联任务开关。原神的「完成后操作」
-通过 `CompletionAction` 反读原生值，只在用户修改时写回，不再用初始化模板覆盖。
-独立组只有一个字段且组名与字段名相同时，直接显示一行控件，不增加标题或缩进。
+每组含 `display_name/config/tasks/fields`；config 相对脚本根目录，tasks 关联反读的原生任务名，`[]` 表示独立组。
 
-每组：`display_name` 为任务名，`config` 为相对脚本安装目录的原生文件，
-`fields` 每项包含稳定的 `id`、展示名、原生 `keys` 键路径和 `type`。
-支持 `bool`、`choice`、`multi`；多选可声明 `min_items`。当前值只反读原生配置。
-文件或字段不存在时不显示该选项，不补默认值、不创建配置文件。
+字段含稳定 `id`、展示名、原生 `keys` 和 `type`。支持 `bool/choice/multi`，多选可设 `min_items`。候选来自 `values`（字符串或 display_name/physical_name）或本地 source：
 
-选择项通过 `values`（字符串列表或 `display_name/physical_name` 映射）或本地 `source` 提供：
+| source 字段 | 读取方式 |
+| --- | --- |
+| path/prefix | 匹配目录内 JSON 文件，去除前缀 |
+| path/key | 沿 JSON 键路径取列表或字典键 |
+| path/field | 取 JSON 各记录的指定字段 |
+| path/enum/argument | 用 Python AST 读取枚举构造参数，不导入或执行；prepend 可加「随机」 |
 
-- `path/prefix`：枚举该目录里匹配前缀的 JSON 文件名，移除前缀；用于 BGI 领奖地区。
-- `path/key`：沿 JSON 键路径读取列表或字典键；用于终末地送货地区。
-- `path/field`：读取 JSON 字典中各记录的指定字段；用于终末地送礼对象。
-- `path/enum/argument`：读取 Python AST 中指定枚举类构造调用的字符串参数；
-  用于绝区零录像店宣传员，不执行或导入外部 Python。`prepend` 可添加「随机」。
+原生文件或字段缺失时隐藏选项，不补默认值、不创建文件。资源缺失或解码失败须记录诊断；当前值不在候选中仍保留回显。异环参数写 `DailyRoutineTaskConfigs.json` 任务节点，不能写独立任务 JSON。
 
-异环一条龙参数落在 `DailyRoutineTaskConfigs.json` 的任务节点内，不能写独立任务 JSON。
-本地资源缺失或无法解码时隐藏受影响选择并记录诊断；当前值不在候选列表时保留回显，
-避免编辑其他字段时清除上游新增值。
+## 展示与保存
 
-`AppService.script_edit_view` 返回 `task_options` 字段列表；前端只提交相对打开时变化的
-`id → value`，经 `ScriptEdit.task_options` 与 `script.edit_save` 保存。读写与校验归后端，
-GUI 仅负责控件。保存前重新读取原生文件、校验全部输入，拒绝未知字段、错误类型和非法
-候选值，保留其他键。选项与任务开关共用文件时先保存选项，开关随后重读并修改同一文件。
-修改安装路径或脚本标识时，先保存并刷新，再编辑附带选项。
+子设置直接显示在任务下，保留原行高并缩进，不增加折叠或虚构总开关；独立单字段同名组只显示一行。没有附带选项的任务只显示原生开关。
+
+`script_edit_view.task_options` 提供字段，前端通过 `ScriptEdit.task_options` 仅提交变化的 `id → value`。保存前重读并校验全部输入，拒绝未知字段、错误类型及非法候选，保留其他键。
+
+共享文件时先存附带选项，再由任务开关重读修改。安装路径或脚本标识改变后先保存刷新，再编辑选项。原神 `CompletionAction` 同样只在用户修改时写回。

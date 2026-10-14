@@ -1,119 +1,40 @@
-# python-gui/src/gui — GUI 包
+# Qt 界面层
 
-图形界面层：主窗口 + 单脚本配置弹窗。只放与图形界面有关的东西，即 QML / 控制器 / 弹窗，不承载业务逻辑、config 读写、链生成与运行——分别归 set_config、runner、service。GUI 不写盘，写盘统一经 service。详见 AGENTS.md 第 4 节。
+只负责 QML、控制器和弹窗；配置读写、适配及业务编排归 [AppService](../../../python-backend/src/service/README.md)。`QmlBridge` 是 QML 唯一门面，组合控制器并通过构造注入协调交互。
 
-## 文件与依赖
+## 模块
 
-| 模块 | 职责 | 项目内依赖 |
-|------|------|-----------|
-| main_window，QmlBridge | QML 门面单例：组合各控制器 + 委托 property/slot | controllers/* / icons / service |
-| controllers/game_list | 脚本列表 / 选中 / 增删 / 配置弹窗 / 图标提供器 | config / icons |
-| controllers/background | 背景视频/图片/渐变、壁纸、背景路径解析 | config / subscript |
-| controllers/task_card | 日常副本 / 周常周几，数据 + 选择持久化 | config / service / utils_weekly |
-| controllers/launch | 启动胶囊，启动当前 / 启动全部 | game_list / task_card / service |
-| controllers/links | 悬浮条：主页/B站/GitHub/目录/设置/启动游戏 | config / utils_sub_config / utils |
-| controllers/backup | 配置操作分发、备份 / 恢复与结果提示 | config_dialog / service |
-| controllers/daily_plan | 配置界面的每日计划编辑 | daily_plan_dialog / service |
-| controllers/update | 手动更新的状态、工作线程、取消与安装退出 | update_dialog / service |
-| controllers/window | 窗口控制：最小化/关闭/拖动 | 无 |
-| icons | 脚本 exe 图标 + QML 矢量图标提供器 | utils_sub_config |
-| dialogs | 单脚本配置弹窗 + 确认回调 | config / service |
-| file_drop | Windows 整窗文件拖入，兼容管理员窗口 | 无 |
-| config_dialog | 右上角配置入口与自动启动设置 | dialogs / icons |
-| daily_plan_dialog | 每日计划的时间、脚本名单与启用开关 | dialogs / service |
-| update_dialog | 当前版本、更新说明、下载进度与安装重启按钮 | dialogs |
-| qml/Theme.js | 主窗口、按钮、任务卡与下拉菜单的共享配色 | 无 |
+| 模块 | 职责 |
+| --- | --- |
+| `main_window.py`、`qml/` | Bridge、主窗口布局和共享主题 |
+| `controllers/` | 列表、任务卡、运行、背景、链接、计划、备份和更新 |
+| `dialogs.py`、`*_dialog.py` | 表单、确认和结果展示 |
+| `cli_client.py` | 持久 CLI 会话、请求编号和异步响应 |
+| `icons.py`、`file_drop.py` | 图标与平台拖放 |
 
-依赖单向：main_window 组合各控制器，控制器间构造注入；QmlBridge 是 QML 唯一门面。qml/ 组件经 Loader 相对路径加载，文件名与 controllers/ 同名。
+主窗口配色集中在 `qml/Theme.js`，原生弹窗色板在 `dialogs.py`。保持纯 QtQuick，不增加控件或效果库依赖。
 
-## 主窗口 main_window.py
+## CLI 与状态
 
-`QmlBridge`：QML 中央控制器单例，经 `qmlRegisterSingletonInstance` 注册为 QML 的 `Bridge`，组合各职责控制器并编排跨控制器流程（选脚本 → 刷背景 + 任务卡）。窗口几何与布局在 `qml/main.qml`，运行直接 subprocess.Popen 开独立控制台窗口跑链。
+源码及含独立 CLI 的冻结包通过同一会话接入列表、任务卡、表单、设置、资源、运行、计划、备份和更新；缺少 CLI 的旧 Qt 包保留 AppService 路径。协议见 [无 Qt CLI](../../../docs/rust-feasibility/headless-cli.md)。
 
-主窗口使用蓝灰配色与半透明面板；颜色统一取 `qml/Theme.js`，原生弹窗对应色板在 `dialogs.py`。图标通过 `UiIconProvider` 绘制，避免依赖符号字体；右侧工具栏悬停显示用途，长 toast 自动换行。保持纯 QtQuick，不增加控件或效果库依赖。
+- 使用 QProcess/QTimer 异步收发，禁止 `waitForFinished` / `waitForReadyRead` 阻塞 UI。
+- 写入与刷新分别处理。断连使待处理请求失败；重连只重读状态，不重放写入、运行或自动启动。
+- 以脚本身份和选择代数丢弃迟到响应，包括 A→B→A。后台任务编号不能跨会话复用。
+- 手动勾选仅在内存，重启全选；每日计划对所有脚本生效，使用独立运行选项。
+- 弹窗取消不写入，保存失败保留草稿；保存后重读，改名后使用新标识。
+- 单脚本配置通过 `ScriptEdit` 提交；附带选项只提交变化字段，布局与规则见 [任务选项](../../../python-backend/src/config/task/task_options.md)。
 
-「启动游戏」悬停时，经 `set_config.get_game_exe_path` 读取当前游戏 exe，在内存中生成图标提示；路径或图标缺失时显示「启动游戏」。切换脚本和再次悬停时刷新，不写图标缓存文件。
+## 进程与系统交互
 
-左下控制模式按钮开启时，在右侧气泡显示「全 / 清 / ＋」，左侧脚本仍可逐项选择是否参加手动运行；再次点击模式按钮、Esc 或点击右侧内容区退出控制模式。添加脚本前先收起气泡，拖拽期间暂时隐藏气泡。
+拖入 `.exe/.bat/.py/.lnk` 只登记脚本，快捷方式解析和合法性校验归 service。链接及启动目标由后端解析，前端显式调用系统打开或启动。
 
-从资源管理器将 `.exe` / `.bat` / `.py` 文件或快捷方式拖到主窗口任意位置即可添加，支持多个文件，复用「＋」的命名、默认配置和保存流程。快捷方式由 service 读取目标路径与原始启动参数；失效、指向其他类型或指定不同工作目录的快捷方式拒绝添加并说明原因（运行器固定以目标所在目录启动）。同名 exe 提示已存在。批量添加结束后统一显示成功、重复和失败数量，保留未完成文件的名称与原因。仅记录启动信息，不移动或运行文件。Windows 先撤销 Qt 的 OLE 拖放注册，再统一使用 WM_DROPFILES，避免管理员窗口先被 OLE 拒绝；其他平台由整窗 QML DropArea 接收。两条入口均经 Bridge.dropScripts。
+运行链启动为独立进程，交付参数后关闭 GUI 不终止运行。每日计划启用、演示或更新后启动时跳过窗口自动运行。
 
-## 弹窗 dialogs.py
+更新窗打开时只读本地状态，用户点击检查才联网。备份、恢复、安装期间阻止普通关窗；检查和下载可请求取消，等待任务终态后关闭。更新交接 ready 后退出 GUI，安装与重启归更新器。
 
-- SingleScriptConfigDialog：单脚本配置弹窗，收集 ScriptEdit，经 AppService.validate_script_edit 校验后用 pending_changes 返回；调用方只需 AppService.update_script，完整保存顺序归 script_service.update。校验失败保留弹窗输入。
-- ConfigDialog：右上角图标入口，自动启动设置点击「保存」才写入；取消、关闭和 Esc 不写入。每日计划、运行选项和备份/恢复独立打开，保留当前表单。每日计划启用时不再触发打开窗口的自动启动。
-- DailyPlanDialog：时间、参加的脚本、启用开关放在同一表单，保存后经 DailyPlanController 调 AppService；失败保留输入，取消不写入。仅从「配置 → 每日计划」进入，主界面不显示计划卡片或快捷按钮。在表单中取消勾选启用开关并保存即可暂停，时间与脚本继续保留；手动勾选不修改计划。开关下方回读并显示系统任务实际状态（未注册 / 已禁用 / 每天 HH:MM）：设置与系统任务不一致时保存会重新注册。
-- RunConfirmDialog：手动启动前确认，或在「运行选项」中仅保存配置。每日时间独立管理，手动「启动全部」始终立即运行。
-- UpdateDialog：从右上角「配置 → 更新」进入后才检查新版本，展示版本与更新说明；点击「下载更新」下载校验，完成后点击「安装并重启」。检查、下载、安装准备由工作线程调用 AppService，GUI 不写盘。关闭或 Esc 取消检查/下载并等待线程结束；安装准备阶段禁止重复点击与关闭，更新器就绪后才退出应用。失败保留窗口并支持重试，源码/开发版和不支持原位更新的旧包提供发布页面入口。安装结果下次打开弹窗时可读，成功重启显示完成提示并跳过本次任务倒计时。
-- 表单、启动/关机倒计时及消息框共用半透明背景（与 QML Theme.panel 一致），文字和控件保持清晰；系统文件选择框沿用系统外观。
+## 扩展
 
-## 写盘路径
+新增交互先确定后端接口，再添加控制器及 Bridge property/slot，最后接入 QML 或弹窗。界面只保留展示状态，不创建配置文件或复制业务校验。
 
-config.yml 写入权统一归 src.utils.utils_config（经 AppService 委托），GUI 弹窗不直接写盘：
-
-| 操作 | GUI 触发 | 写盘路径 |
-|------|----------|---------|
-| 编辑脚本字段 | 弹窗 save_data → pending_changes | AppService.update_script（src.service.script_service） |
-| 增删脚本 | _add_script / _on_delete_script | AppService.add_script / remove_script（src.utils.utils_config） |
-| 重排 | 拖拽 | AppService.save_config（src.utils.utils_config） |
-| 自动启动 | 配置弹窗保存 | AppService.apply_startup_options → schedule.yml 的 startup 块 |
-| 每日计划 | 计划弹窗保存 / 暂停 / 恢复 | AppService.apply_daily_plan → 先回读系统任务，与设置不一致才重新注册（Windows 任务计划）；再写 schedule.yml 的 daily_run 块 |
-| 脚本勾选 | 控制模式 / 全选 / 清空 | 纯内存态（`GameListController._enabled`），不落盘；重启回到全选 |
-| 运行 | 启动全部 | AppService 链生成 → chain_gen（src.service.chain_service.generate_chain） |
-
-## UI 状态持久化
-
-日常副本/序列的真源是子脚本 config（编辑期实时落盘，无 UI 状态文件）；日常菜单按日常分组，
-每个日常一行（异环两行、其余脚本一行），下拉经 `Bridge.dailyOptions(dailyName)` 按日常取，
-每行的 chip 文案由 `Bridge.dailyItems` 一次反读全部日常得到（`get_daily_readback`）。
-写回经 `Bridge.selectDaily(dailyName, taskName, sequence)` —— 日常名与该行的副本名一起带下去，
-与「不启用」的 `Bridge.setDailyEnabled(dailyName, enabled)` 同形，适配器不做「副本→所属日常」的猜测。
-set_daily_task 为 no-op 的脚本（绝区零/崩铁，上游自身已支持）不提供选择，chip 直接呈现该日常
-声明的首个选项。声明了日常开关的脚本（异环，反读记录里 `enabled` 非 None）在下拉末尾多一项
-「不启用」，选中即经 `AppService.set_script_daily_enabled` 落 `enabled=false`，chip 显示「不启用」；
-脚本未安装（整条记录无真相）时既不算「不启用」、也不提供该入口。
-手动脚本 enabled 保存到 config.yml，重启按脚本身份回显；缺省启用。每日计划对所有脚本生效，配置记录启用状态、触发时间与独立运行选项（run_options 块，缺省空白）；运行选项仅对每日计划生效，与手动运行选项互不干扰。
-
-## 添加功能配方
-
-QML 仅经 Bridge.<slot>() 与 Python 交互，QmlBridge 是唯一桥。新增功能三步，逻辑归所属控制器，门面只做薄委托：
-
-1. 逻辑：加到所属 controllers/ 控制器；无固定归属按屏幕区域就近放，跨区域则新建独立控制器。
-2. 暴露：在 QmlBridge 加一行 @Slot 委托。
-3. 界面：在对应 qml/<name>.qml 加 Rectangle/MouseArea，调用 Bridge.xxx()。
-
-示例：右上角加截图按钮 → window.py 加 @Slot def screenshot → QmlBridge.screenshot 一行委托 → qml/window.qml 加按钮。
-
-资源跳转与当前脚本/游戏启动：CLI 模式经 `script.target` / `script.launch_target` 查询；
-回退模式调用 AppService。前端负责系统打开或启动进程及反馈，目标由
-`python-backend/src/link.py` 解析。Python 启动环境继承父进程，再应用后端给出的覆盖项。
-
-## 异步 CLI 客户端
-
-`cli_client.CliClient` 由 Qt 的 QProcess 和 QTimer 驱动，持久复用 `serve --stdio`。
-请求串行排队、递增编号，stdout/stderr 同时消费；成功（含 null）与失败分别发信号。
-传输损坏、超时、退出会使会话不可用并通知所有排队请求，不重放写入。
-close 排空请求并关闭 stdin；普通查询逾期结束进程，后台写入送 EOF 后等服务清理完成，不强杀恢复或安装准备。launcher 退出时等待关闭信号。
-
-launcher 在源码运行时注入共享 CliSession；冻结包须同目录存在独立 CLI，否则保持原路径。
-任务卡的展示文案仍由 GUI 生成，菜单/反读/四种编辑使用共享协议。
-列表查询、脚本增删排序与编辑、资源链接/脚本与游戏启动目标/图标、壁纸与预览缓存、
-启动与运行设置读写、每日计划启用状态均经同一异步会话；Qt 只负责模型、弹窗与本机打开动作。
-运行确认/保存、每日计划系统任务查询/注册、备份恢复、更新均经 CLI。
-`run.prepare` 返回命令与 stdin 配置，前端在后台交付后让独立控制台继续运行；自动启动使用 `run.saved`。
-stdin 交付限时 30 秒，超时或写入失败终止本次子进程并提示核对运行结果，不自动重试；交付成功后不限制运行时长。
-`CliJob` 只提交一次 start，再按当前会话的任务编号轮询；更新检查/下载可取消，取消响应后继续等终态。
-备份恢复不可取消，恢复前明确确认；保存期间表单保留并禁止关闭。窗口关闭检查后台任务和运行配置交付状态。
-传输失败或响应损坏时不重放任务，也不把旧任务编号带入新会话；旧进程完成 EOF 清理后才允许刷新重连。
-更新只使用服务端保留的发布与包状态，收到安装 `ready=true` 才退出 GUI。CLI 更新器校验 Qt/Rust 父 GUI 并等待两者退出。
-Qt 发布包包含独立 CLI，CLI 与运行库隔离在 `_internal/cli/`，旧 Qt 更新器也接受该目录；旧包缺少 CLI 时仍保留原路径。
-源码模式不再在 GUI 主线程预热脚本 config；启动倒计时等列表和启动设置读取成功后才开始。
-首轮列表读取失败即取消本次自动启动；后续重连不会补弹倒计时。
-关机确认入口 `--shutdown-confirm 秒数` 可独立调用，退出码 42 为确认，其余按取消处理。
-
-传输失效后，下一次只读请求通过 launcher 提供的工厂创建新 CliClient，断开旧会话信号，
-结束旧请求关联；会话层外部编号持续递增，旧响应不会落到新请求上。
-失效会话不接受写操作，失败的写入不会重放。所有会话由 launcher 管理退出。
-列表和当前脚本查询丢弃过期响应；编辑表单等待保存确认后关闭，失败保留输入。
-响应回调可打开模态弹窗，客户端在其嵌套事件循环中仍能发送后续保存请求。
-任务卡响应在接收边界显式验证身份、容器、递归菜单及可空字段类型，优化模式下仍有效。
+从仓库根目录用 `launcher.bat` 启动；验证命令见 [测试指南](../../../docs/TESTING.md)。

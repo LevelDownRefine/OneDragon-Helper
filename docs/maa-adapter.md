@@ -1,20 +1,21 @@
-# MAA 原生刷图适配
+# MAA 刷图适配
 
-适配器只读写 `config/gui.new.json` 中的 `Configurations.Default.TaskQueue`。队列执行、关卡当天是否开放、理智消耗、剿灭周进度由 MAA 处理，OneDragon-Helper 不维护运行调度器或额外状态文件。
+只读写 `config/gui.new.json` 的 `Configurations.Default.TaskQueue`；队列执行、关卡开放、理智消耗与剿灭进度归 MAA，不另存调度状态。
 
-## 本项目的行为约定
+## 行为
 
-- 三个独立入口：活动关卡、理智作战、剩余理智。每个入口保存一个固定关卡代码；名称和顺序来自 `daily_task_list.yml`，不保存活动序号。
-- 普通关卡在 YAML 中维护；活动选项读取 MAA 本地 `StageActivityV2.json`，按客户端和活动时间筛选 `Value`，排除 `SSReopen-` 复刻导航指令。
-- 初始化时补齐任务：唤醒后安排剿灭和活动，库存保持后安排理智作战和剩余理智。剿灭必刷，额外和重复 FightTask 清理，其他类型任务保持原有顺序及内容。
-- 新入口从仓库的 `config/MAA任务.json` 创建。日常实例构造时读入模板，每次创建任务时复制。它是按原生字段编写的最小配置片段，不是用户配置快照，也不是 MAA 导出的完整默认配置；未列字段由 MAA 提供默认值。已有入口继续使用自己的设置，不复制其他入口。
-- 接管单关卡、启用状态、备选关卡/周计划/次数/掉落限制开关。普通药、源石、连战及未接管字段保留原生值。未选关、多关卡计划均按未设置处理，保持停用。
-- 所有战斗临期药常开。新任务继承现有战斗共同的 `MedicineExpireDays`，不一致时统一为 2 天；周常入口设置 `MedicineExpireDays = 8 - 起始星期`。
-- 活动过期仅在初始化时停用，保留原代码；新活动须重新选择。菜单启动时缓存，保存选择时直接写入关卡代码，运行时的可用性由 MAA 判断，运行前不重建队列。
+- 活动关卡、理智作战、剩余理智各存一个固定关卡代码，名字与顺序来自日常声明。普通关卡静态维护；活动从本地 StageActivityV2.json 按客户端和时间筛选，排除 SSReopen- 导航指令。
+- 初始化在唤醒后安排必刷剿灭和活动，在库存保持后安排理智作战和剩余理智；清理额外/重复 FightTask，保留非战斗任务的内容与顺序。
+- 新任务复制项目最小模板 `config/MAA任务.json`，未列字段由 MAA 默认；已有任务保留自己的设置，不借用其他入口。
+- 接管单关卡、启用、备选关卡/周计划/次数/掉落限制开关；保留普通药、源石、连战及其他字段。未选关或多关计划视为未设置并停用。
+- 初始化启用战斗临期药；新任务继承一致的 MedicineExpireDays，不一致用 2 天。周常写入 `8 - 起始星期`，禁用时关闭临期药。
+- 活动过期仅在初始化时停用并保留代码，新活动须重新选择。菜单启动时缓存，运行前不重建队列，实际可用性由 MAA 判断。
 
-## MAA 字段及执行依据
+`MaaDaily` 负责读写与开关，`MaaActivityDaily` 增加活动资源及过期检查，`ArknightsConfig._init_config` 编排队列。
 
-核对版本：`7e5de9b3c137a448b715cdc622f27f667b5b7b7a`。这里只使用原生配置字段和资源格式，不移植上游 C# / C++ 的任务执行实现。
+## 上游依据
+
+核对提交：`7e5de9b3c137a448b715cdc622f27f667b5b7b7a`。仅使用字段与资源格式，不移植任务执行实现。
 
 | 原生定义 | 适配所用的事实 |
 | --- | --- |
@@ -24,5 +25,3 @@
 | [TaskQueueViewModel.cs](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaWpfGui/ViewModels/UI/TaskQueueViewModel.cs) | 原生队列按顺序处理启用任务 |
 | [StageManager.cs](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaWpfGui/Services/StageManager.cs)、[StageActivityInfo.cs](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaWpfGui/Models/StageActivityInfo.cs) | 客户端资源、活动时区及开放区间；普通关卡的开放日由 MAA 管理 |
 | [FightTask.cpp](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/7e5de9b3c137a448b715cdc622f27f667b5b7b7a/src/MaaCore/Task/Interface/FightTask.cpp) | `SSReopen-` 属于复刻导航指令 |
-
-日常读写和开关由 `MaaDaily` 负责，`MaaActivityDaily` 增加活动选项及过期检查，`ArknightsConfig._init_config` 负责一次性编排。runner 子模块保持原有实现与版本。
