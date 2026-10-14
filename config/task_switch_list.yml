@@ -48,8 +48,8 @@ BetterGI:
   tasks_key: TaskDefinitions
   enabled_key: TaskEnabledList
 
-# 终末地：⭐ 开头的布尔项是任务开关，仍留在日常总配置；另三项是多选（在列表里即在跑），
-# 随日常子任务拆分迁到各自的任务卡片文件，候选项是中文故用列表简写。
+# 终末地：日常总开关在 DailyTask 的六组多选中；刷体力由日常卡管理。
+# 子任务开关仍在各自文件，外部命令保留独立布尔开关。
 ok-ef:
   options:
   - display_name: 地区建设
@@ -60,6 +60,7 @@ ok-ef:
     - {id: regional_wuling, display_name: 武陵, keys: [武陵], type: bool}
     - {id: regional_valley, display_name: 四号谷地, keys: [四号谷地], type: bool}
     tasks:
+    - 地区建设
     - 据点兑换
     - 买物资
     - 买卖货
@@ -98,7 +99,20 @@ ok-ef:
     - 帝江号整理
   config: data/apps/ok-ef/working/configs/DailyTask.json
   segments:
+    - list_key: 帝江号任务
+      names: [送礼, 帝江号整理, 帝江号收菜]
+    - list_key: 其他任务
+      names: [收邮件, 转交运送委托, 地区建设, 造装备, 收信用, 买信用商店]
+    - list_key: 战斗任务
+      names: [演算]
+    - list_key: 奖励任务
+      names: [活动奖励, 日常奖励]
+    - list_key: 自动送货任务
+      names: [自动送货]
+    - list_key: 收尾任务
+      names: [传送到帝江号右侧传送点]
     - task_pattern: "⭐(.+)"
+      names: [执行外部命令]
     - config: data/apps/ok-ef/working/configs/RegionalBuildTask.json
       list_key: "⭐地区建设"
       names: [据点兑换, 买物资, 买卖货]
