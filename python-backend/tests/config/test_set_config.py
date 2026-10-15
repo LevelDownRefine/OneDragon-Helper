@@ -374,12 +374,12 @@ class TestGetGameExePath(unittest.TestCase):
         self.assertIsNone(got)
         mock_load.assert_not_called()
 
-    def test_wuthering_waves_pc_full_path(self):
-        """鸣潮（ok-ww）读取 devices.json 的 pc_full_path。
+    def test_ok_series_pc_full_path(self):
+        """鸣潮和终末地读取 devices.json 的游戏本体路径。
 
-        终末地（ok-ef）及异环（ok-nte）已重写 get_game_exe_path 返回启动器路径，不在此列（见专项测试）。
+        异环仍返回启动器路径，见专项测试。
         """
-        for script_name in ("ok-ww",):
+        for script_name in ("ok-ww", "ok-ef"):
             with patch(
                 "src.config.set_config.load_game_config",
                 return_value={
@@ -508,26 +508,31 @@ class TestInstalledLauncher(unittest.TestCase):
         )
 
     def test_both_launchers_resolve_from_each_registry_location(self):
-        for adapter, uninstall_id, filename in (
+        for script_name, uninstall_id, filename in (
             (
-                set_config.EndfieldConfig,
+                "ok-ef",
                 "33a0a6296a20400d503c59ac0fd6341e",
                 "Launcher.exe",
             ),
-            (set_config.NTEConfig, "YH", "NTELauncher.exe"),
+            ("ok-nte", "YH", "NTELauncher.exe"),
         ):
             launcher = self.root / filename
             launcher.touch()
             for index, (root, view) in enumerate(
                 ((1, 256), (1, 512), (2, 256), (2, 512))
             ):
-                with self.subTest(adapter=adapter.__name__, root=root, view=view):
+                with self.subTest(script=script_name, root=root, view=view):
                     self.registry.OpenKey.reset_mock()
                     self.registry.OpenKey.side_effect = [
                         *[FileNotFoundError("not installed")] * index,
                         MagicMock(),
                     ]
-                    self.assertEqual(adapter().get_game_exe_path(), str(launcher))
+                    self.assertEqual(
+                        utils_launcher.get_installed_launcher(
+                            script_name, uninstall_id, filename
+                        ),
+                        str(launcher),
+                    )
                     self.registry.OpenKey.assert_called_with(
                         root,
                         rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{uninstall_id}",
@@ -539,17 +544,18 @@ class TestInstalledLauncher(unittest.TestCase):
 
     def test_missing_or_denied_install_records_do_not_return_game_executable(self):
         self.load.return_value = {"pc_full_path": str(self.root / "game.exe")}
-        for adapter in (set_config.EndfieldConfig, set_config.NTEConfig):
-            for error in (FileNotFoundError("missing"), PermissionError("denied")):
-                with self.subTest(adapter=adapter.__name__, error=type(error).__name__):
-                    self.registry.OpenKey.side_effect = error
-                    self.assertIsNone(adapter().get_game_exe_path())
+        for error in (FileNotFoundError("missing"), PermissionError("denied")):
+            with self.subTest(error=type(error).__name__):
+                self.registry.OpenKey.side_effect = error
+                self.assertIsNone(set_config.NTEConfig().get_game_exe_path())
 
     def test_invalid_install_location_or_absent_file_is_ignored(self):
         for folder in (None, 1, "", "relative", str(self.root)):
             with self.subTest(folder=folder):
                 self.registry.QueryValueEx.return_value = (folder, 1)
-                self.assertIsNone(set_config.EndfieldConfig().get_game_exe_path())
+                self.assertIsNone(
+                    utils_launcher.get_installed_launcher("game", "id", "Launcher.exe")
+                )
         self.load.assert_not_called()
 
     def test_nte_stale_record_falls_back_to_game_parent_directory(self):
@@ -563,7 +569,9 @@ class TestInstalledLauncher(unittest.TestCase):
 
     def test_non_windows_does_not_read_registry(self):
         with patch.object(utils_launcher.sys, "platform", "linux"):
-            self.assertIsNone(set_config.EndfieldConfig().get_game_exe_path())
+            self.assertIsNone(
+                utils_launcher.get_installed_launcher("game", "id", "Launcher.exe")
+            )
         self.registry.OpenKey.assert_not_called()
 
 

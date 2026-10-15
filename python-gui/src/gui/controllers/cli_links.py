@@ -1,7 +1,5 @@
 """资源目标由 CLI 查询，打开文件和浏览器仍使用本机 GUI。"""
 
-import os
-import subprocess
 import webbrowser
 
 from PySide6.QtCore import Signal, Slot
@@ -108,31 +106,17 @@ class CliLinksController(LinksController):
                 "arguments" in target and not isinstance(target["arguments"], str)
             ):
                 raise ValueError("游戏启动目标无效")
-            if self._open_game_target(target):
+            if self._open_launch_target(target, game=True):
                 self._toast(f"正在启动 {game['display_name']}…")
 
         self._query("script.launch_target", {"target": "game"}, show)
 
     def launchScript(self):
         def show(game, target):
-            try:
-                if target["kind"] == "association":
-                    if not self._open_path(target["path"]):
-                        return
-                elif target["kind"] == "command":
-                    if not valid_command(target):
-                        raise ValueError("脚本启动命令无效")
-                    subprocess.Popen(
-                        [target["program"], *target["args"]],
-                        cwd=target["cwd"],
-                        env={**os.environ, **target["env"]} if target["env"] else None,
-                    )
-                else:
-                    raise ValueError("脚本启动目标无效")
-            except OSError as exc:
-                self._toast(f"无法启动 {game['display_name']}：{exc}")
-                return
-            self._toast(f"已启动 {game['display_name']}")
+            if target["kind"] == "command" and not valid_command(target):
+                raise ValueError("脚本启动命令无效")
+            if self._open_launch_target(target):
+                self._toast(f"已启动 {game['display_name']}")
 
         self._query("script.launch_target", {"target": "script"}, show)
 

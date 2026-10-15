@@ -30,7 +30,6 @@ import src.service.task_service as task_service
 from src.config.native_task_switch import native_task_switch_of
 from src.config.set_config import (
     get_daily_map,
-    get_game_launch_info,
     get_weekly_map,
     set_config,
     set_daily_enabled,
@@ -51,7 +50,6 @@ from src.service.schedule import (
 )
 from src.service.script_service import InvalidScript, ScriptEdit
 from src.update import UpdateService, UpdateSession
-from src.utils import open_in_explorer
 from src.utils.utils_config import (
     config_file_path,
     get_script,
@@ -64,7 +62,7 @@ from src.utils.utils_runner import (
     collect_invalid_script_messages,
     run_chain_command,
 )
-from src.utils.utils_sub_config import get_script_name, resolve_script_path
+from src.utils.utils_sub_config import get_script_name
 from src.utils.utils_wallpaper import (
     load_wallpapers,
     save_video_preview,
@@ -176,36 +174,6 @@ class AppService:
         self, script_name: str, token: str, jpeg_base64: str
     ) -> bool:
         return save_wallpaper_cache(script_name, token, jpeg_base64)
-
-    def launch_game(self, script_name: str) -> None:
-        """执行适配器提供的游戏启动流程；由独立 CLI 进程调用。"""
-        script = get_script(script_name)
-        if script is None:
-            raise ValueError("脚本已不存在")
-        info = get_game_launch_info(script_name)
-        if info is None:
-            raise ValueError("该脚本未提供专用游戏启动流程")
-        for key in (
-            "launcher_path",
-            "game_path",
-            "launcher_process_name",
-            "game_process_name",
-            "trusted_signers",
-        ):
-            assert key in info
-        if not info["game_path"]:
-            raise FileNotFoundError("未找到游戏程序，请配置游戏路径")
-        arguments = script["game_arguments"] if "game_arguments" in script else ""  # noqa: SIM401
-        if not isinstance(arguments, str):
-            raise ValueError("游戏启动参数无效")
-        open_in_explorer(
-            resolve_script_path(info["game_path"]),
-            arguments,
-            launcher_path=info["launcher_path"],
-            launcher_process_name=info["launcher_process_name"],
-            game_process_name=info["game_process_name"],
-            trusted_signers=info["trusted_signers"],
-        )
 
     def resolve_launch_target(self, script_name: str, target: str) -> dict:
         return link.resolve_launch_target(script_name, target)

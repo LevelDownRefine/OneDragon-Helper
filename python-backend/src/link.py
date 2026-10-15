@@ -4,10 +4,11 @@ import os
 import sys
 
 from src.config.script_resources import get_script_resources
-from src.config.set_config import get_game_exe_path, get_game_launch_info
+from src.config.set_config import get_game_exe_path
 from src.log import get_log_dir
 from src.utils import get_root_dir
 from src.utils.utils_config import config_file_path, get_script
+from src.utils.utils_launcher import LAUNCHERS
 from src.utils.utils_runner import build_script_command
 from src.utils.utils_sub_config import resolve_script_path
 
@@ -85,28 +86,6 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
     if script is None:
         return {"kind": "unavailable", "reason": "脚本已不存在，请刷新列表"}
     assert "script_path" in script
-    launch_info = get_game_launch_info(script_name) if target == "game" else None
-    if launch_info is not None:
-        assert "launcher_path" in launch_info and "game_path" in launch_info
-        if "game_arguments" in script and not isinstance(script["game_arguments"], str):
-            return _unavailable("游戏启动参数无效")
-        launcher_path = launch_info["launcher_path"]
-        game_path = launch_info["game_path"]
-        if not launcher_path or not os.path.isfile(launcher_path):
-            return _unavailable("未找到官方启动器，请检查安装")
-        if not game_path or not os.path.isfile(resolve_script_path(game_path)):
-            return _unavailable("未找到游戏程序，请配置游戏路径")
-        frozen = getattr(sys, "frozen", False)
-        return {
-            "kind": "command",
-            "program": sys.executable,
-            "args": ([] if frozen else ["-m", "src.headless"])
-            + ["--launch-game", script_name],
-            "cwd": get_root_dir()
-            if frozen
-            else os.path.join(get_root_dir(), "python-backend"),
-            "env": {},
-        }
     path = get_game_exe_path(script_name) if target == "game" else script["script_path"]
     if not path:
         return {
@@ -119,10 +98,26 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
     script_type = script["script_type"] if "script_type" in script else "external"  # noqa: SIM401
     if target == "game" or script_type != "python":
         result = {"kind": "association", "path": os.path.abspath(resolved)}
-        if target == "game" and "game_arguments" in script:
-            arguments = script["game_arguments"]
+        if target == "game":
+            arguments = script.get("game_arguments", "")  # 旧配置可以没有游戏参数。
             if not isinstance(arguments, str):
                 return _unavailable("游戏启动参数无效")
+            if os.path.basename(resolved).casefold() in LAUNCHERS:
+                frozen = getattr(sys, "frozen", False)
+                return {
+                    "kind": "command",
+                    "program": sys.executable,
+                    "args": ([] if frozen else ["-m", "src.headless"])
+                    + [
+                        "--launch-game",
+                        os.path.abspath(resolved),
+                        f"--game-arguments={arguments}",
+                    ],
+                    "cwd": get_root_dir()
+                    if frozen
+                    else os.path.join(get_root_dir(), "python-backend"),
+                    "env": {},
+                }
             if arguments:
                 result["arguments"] = arguments
         return result

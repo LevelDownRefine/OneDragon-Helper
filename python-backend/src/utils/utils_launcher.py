@@ -3,39 +3,47 @@
 import ctypes
 import json
 import logging
-import math
 import os
 import subprocess
 import sys
 import time
 from collections.abc import Collection
 from ctypes import wintypes
-from typing import TypedDict
+from dataclasses import dataclass
 
 import psutil
 
 logger = logging.getLogger(__name__)
 
-ENDFIELD_TRUSTED_SIGNERS = frozenset(
-    {
-        "2B366F397E64A9494A553B70004E8CA1AAE02B9D",
-        "FF4AF264C36A27F0C805936708EF8EC67B396225",
-    }
-)
-ENDFIELD_PARENT_PROCESS = "Games.exe"
-ENDFIELD_GAME_PROCESS = "Endfield.exe"
 _PARENT_PROCESS_ATTRIBUTE = 0x00020000
 _PROCESS_CREATE_PROCESS = 0x0080
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _EXTENDED_STARTUPINFO_PRESENT = 0x00080000
 
 
-class GameLaunchInfo(TypedDict):
-    launcher_path: str
-    game_path: str
-    launcher_process_name: str
-    game_process_name: str
+@dataclass(frozen=True)
+class Launcher:
+    uninstall_id: str
+    filename: str
+    process_name: str
+    arguments: tuple[str, ...]
     trusted_signers: frozenset[str]
+
+
+LAUNCHERS = {
+    "endfield.exe": Launcher(
+        uninstall_id="33a0a6296a20400d503c59ac0fd6341e",
+        filename="Launcher.exe",
+        process_name="Games.exe",
+        arguments=("--game=Endfield", "--reason=4"),
+        trusted_signers=frozenset(
+            {
+                "2B366F397E64A9494A553B70004E8CA1AAE02B9D",
+                "FF4AF264C36A27F0C805936708EF8EC67B396225",
+            }
+        ),
+    ),
+}
 
 
 def get_installed_launcher(
@@ -67,17 +75,6 @@ def get_installed_launcher(
             if os.path.isfile(launcher):
                 return os.path.abspath(launcher)
     return None
-
-
-def get_endfield_launch_info(launcher_path: str, game_path: str) -> GameLaunchInfo:
-    """构造终末地官方启动器流程所需信息。"""
-    return {
-        "launcher_path": launcher_path,
-        "game_path": game_path,
-        "launcher_process_name": ENDFIELD_PARENT_PROCESS,
-        "game_process_name": ENDFIELD_GAME_PROCESS,
-        "trusted_signers": ENDFIELD_TRUSTED_SIGNERS,
-    }
 
 
 class _StartupInfo(ctypes.Structure):
@@ -234,6 +231,7 @@ def _running_pids(name: str) -> list[int]:
 
 
 def _verified_parent(kernel, name: str, trusted_signers: Collection[str]) -> int | None:
+    rejected = None
     for pid in _running_pids(name):
         handle = None
         try:
@@ -259,41 +257,43 @@ def _verified_parent(kernel, name: str, trusted_signers: Collection[str]) -> int
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
             if handle:
                 kernel.CloseHandle(handle)
+            if handle is None and getattr(error, "winerror", None) == 87:
+                logger.debug("启动器进程 PID %s 已退出", pid)
+                continue
             logger.warning("无法使用启动器进程 PID %s：%s", pid, error)
+            rejected = error
+    if rejected is not None:
+        raise RuntimeError(f"无法使用启动器进程 {name}：{rejected}") from rejected
     return None
 
 
-def _prepare_parent(
-    kernel,
-    launcher_path: str,
-    launcher_arguments: str,
-    launcher_process_name: str,
-    trusted_signers: Collection[str],
-    timeout: float,
-) -> int:
-    parent = _verified_parent(kernel, launcher_process_name, trusted_signers)
+def _prepare_parent(kernel, launcher: Launcher) -> int:
+    parent = _verified_parent(kernel, launcher.process_name, launcher.trusted_signers)
     if parent:
         return parent
-    _verify_official_launcher(launcher_path, trusted_signers)
-    command_line = subprocess.list2cmdline([launcher_path])
-    if launcher_arguments:
-        command_line += " " + launcher_arguments
+    launcher_path = get_installed_launcher(
+        launcher.process_name, launcher.uninstall_id, launcher.filename
+    )
+    if not launcher_path:
+        raise FileNotFoundError(f"未找到官方启动器：{launcher.filename}")
+    _verify_official_launcher(launcher_path, launcher.trusted_signers)
     subprocess.Popen(
-        command_line,
-        executable=launcher_path,
+        [launcher_path, *launcher.arguments],
         cwd=os.path.dirname(launcher_path),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
     )
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
-        parent = _verified_parent(kernel, launcher_process_name, trusted_signers)
+        parent = _verified_parent(
+            kernel, launcher.process_name, launcher.trusted_signers
+        )
         if parent:
             return parent
         time.sleep(0.25)
-    raise TimeoutError(f"官方启动器在 {timeout:g} 秒内未就绪")
+    raise TimeoutError("官方启动器在 30 秒内未就绪")
 
 
 def _create_game_process(kernel, game_path: str, arguments: str, parent: int) -> int:
@@ -353,57 +353,34 @@ def _create_game_process(kernel, game_path: str, arguments: str, parent: int) ->
 
 def launch_game(
     game_path: str,
-    launcher_path: str,
-    launcher_arguments: str,
-    launcher_process_name: str,
-    game_process_name: str,
-    trusted_signers: Collection[str],
-    timeout: float = 30,
+    game_arguments: str = "",
+    launcher: Launcher | None = None,
 ) -> int | None:
-    """Launch a game under a signature-verified process from its official launcher."""
+    """Launch a game with its arguments under a verified official launcher process."""
     if sys.platform != "win32":
         raise OSError("通过父进程启动游戏仅支持 Windows")
     if not os.path.isfile(game_path):
         raise FileNotFoundError(f"未找到游戏程序：{game_path}")
-    if not os.path.isfile(launcher_path):
-        raise FileNotFoundError(f"未找到官方启动器：{launcher_path}")
-    if not isinstance(launcher_arguments, str):
+    if not isinstance(game_arguments, str):
         raise ValueError("游戏启动参数无效")
-    if not isinstance(launcher_process_name, str) or not launcher_process_name:
-        raise ValueError("启动器进程名无效")
-    if not isinstance(game_process_name, str) or not game_process_name:
-        raise ValueError("游戏进程名无效")
-    if (
-        isinstance(trusted_signers, str)
-        or not isinstance(trusted_signers, Collection)
-        or not trusted_signers
-        or not all(isinstance(signer, str) and signer for signer in trusted_signers)
-    ):
-        raise ValueError("未配置受信任的启动器签名")
-    if (
-        not isinstance(timeout, (int, float))
-        or not math.isfinite(timeout)
-        or timeout <= 0
-    ):
-        raise ValueError("等待启动器的超时时间必须大于零")
+    game_path = os.path.abspath(game_path)
+    game_process_name = os.path.basename(game_path)
+    if launcher is None:
+        key = game_process_name.casefold()
+        if key not in LAUNCHERS:
+            raise ValueError(f"未配置游戏的官方启动器：{game_process_name}")
+        launcher = LAUNCHERS[key]
     if _running_pids(game_process_name):
         logger.info("%s 已经运行，跳过重复启动", game_process_name)
         return None
 
     kernel = _kernel32()
-    parent = _prepare_parent(
-        kernel,
-        os.path.abspath(launcher_path),
-        launcher_arguments,
-        launcher_process_name,
-        trusted_signers,
-        timeout,
-    )
+    parent = _prepare_parent(kernel, launcher)
     try:
         if _running_pids(game_process_name):
             logger.info("%s 已在启动器就绪期间启动，跳过重复启动", game_process_name)
             return None
-        pid = _create_game_process(kernel, os.path.abspath(game_path), "", parent)
+        pid = _create_game_process(kernel, game_path, game_arguments, parent)
         logger.info("已通过官方启动器进程创建 %s：pid=%s", game_process_name, pid)
         return pid
     finally:

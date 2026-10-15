@@ -4,14 +4,13 @@
 资源及完整链接在 config/script_resources.yml 声明；格式校验见 test_script_resources。
 """
 
-import inspect
 import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src import link
+from src import cli, link
 from src.config import set_config
 from src.utils import utils_launcher
 
@@ -266,71 +265,56 @@ class LaunchTargetTests(unittest.TestCase):
 
 
 class LauncherTargetTests(unittest.TestCase):
-    def test_endfield_adapter_provides_a_reusable_launcher_profile(self):
+    def test_endfield_command_preserves_game_path_and_arguments_through_cli(self):
         with tempfile.TemporaryDirectory() as temporary:
-            game = Path(temporary) / "Endfield.exe"
-            launcher = Path(temporary) / "Launcher.exe"
+            game = Path(temporary) / "中文 Endfield" / "Endfield.exe"
+            game.parent.mkdir()
             game.touch()
-            launcher.touch()
+            arguments = '--profile "中文 空格" --literal "a&b"'
             with (
+                patch.object(
+                    link,
+                    "get_script",
+                    return_value={
+                        "script_path": "ok-ef.exe",
+                        "game_arguments": arguments,
+                    },
+                ),
                 patch.object(
                     set_config, "get_script_game_path", return_value=str(game)
                 ),
-                patch.object(
-                    set_config.EndfieldConfig,
-                    "get_game_exe_path",
-                    return_value=str(launcher),
-                ),
+                patch.object(utils_launcher, "get_installed_launcher") as find_launcher,
+                patch.object(cli, "launch_game") as launch,
+                patch.object(cli, "AppService") as service,
             ):
-                profile = object.__new__(
-                    set_config.EndfieldConfig
-                ).get_game_launch_info()
-            self.assertEqual(profile["launcher_path"], str(launcher))
-            self.assertEqual(profile["game_path"], str(game))
-            self.assertEqual(profile["launcher_process_name"], "Games.exe")
-            self.assertEqual(profile["game_process_name"], "Endfield.exe")
-            self.assertTrue(profile["trusted_signers"])
+                for frozen in (False, True):
+                    with (
+                        self.subTest(frozen=frozen),
+                        patch.object(link.sys, "frozen", frozen, create=True),
+                    ):
+                        target = link.resolve_launch_target("ok-ef", "game")
+                        self.assertEqual(target["kind"], "command")
+                        self.assertEqual(target["program"], link.sys.executable)
+                        self.assertEqual(
+                            target["cwd"],
+                            link.get_root_dir()
+                            if frozen
+                            else os.path.join(link.get_root_dir(), "python-backend"),
+                        )
+                        command = target["args"]
+                        if not frozen:
+                            self.assertEqual(command[:2], ["-m", "src.headless"])
+                            command = command[2:]
+                        parsed = cli.build_parser().parse_args(command)
+                        self.assertEqual(cli.run_cli(parsed), 0)
+                        launch.assert_called_with(str(game), arguments)
+                        self.assertEqual(
+                            link.game_icon_path("ok-ef")["path"], str(game)
+                        )
+                find_launcher.assert_not_called()
+                service.assert_not_called()
 
-    def test_launch_and_icon_use_adapter_path_and_user_arguments(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            launcher = Path(temporary) / "launcher.exe"
-            launcher.touch()
-            for name, arguments in (("ok-nte", "--user-option"),):
-                with (
-                    self.subTest(script=name),
-                    patch.object(
-                        link,
-                        "get_script",
-                        return_value={
-                            "script_path": str(launcher),
-                            "game_arguments": arguments,
-                        },
-                    ),
-                    patch.object(set_config, "get_script_game_path", return_value=""),
-                    patch.object(
-                        utils_launcher,
-                        "get_installed_launcher",
-                        return_value=str(launcher),
-                    ),
-                ):
-                    self.assertEqual(
-                        link.resolve_launch_target(name, "game"),
-                        {
-                            "kind": "association",
-                            "path": str(launcher),
-                            "arguments": arguments,
-                        },
-                    )
-                    self.assertEqual(
-                        link.resolve_launch_target(name, "script"),
-                        {"kind": "association", "path": str(launcher)},
-                    )
-                    self.assertEqual(
-                        link.game_icon_path(name),
-                        {"script_name": name, "path": str(launcher)},
-                    )
-
-    def test_manual_endfield_path_keeps_user_arguments(self):
+    def test_manual_custom_program_still_uses_system_association(self):
         with tempfile.TemporaryDirectory() as temporary:
             executable = Path(temporary) / "custom.exe"
             executable.touch()
@@ -339,14 +323,13 @@ class LauncherTargetTests(unittest.TestCase):
                     link,
                     "get_script",
                     return_value={
-                        "script_path": "script.exe",
+                        "script_path": "ok-ef.exe",
                         "game_arguments": "--custom",
                     },
                 ),
                 patch.object(
                     set_config, "get_script_game_path", return_value=str(executable)
                 ),
-                patch.object(utils_launcher, "get_installed_launcher") as find,
             ):
                 self.assertEqual(
                     link.resolve_launch_target("ok-ef", "game"),
@@ -356,102 +339,18 @@ class LauncherTargetTests(unittest.TestCase):
                         "arguments": "--custom",
                     },
                 )
-                find.assert_not_called()
 
-    def test_endfield_launch_uses_local_launcher_helper(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            game = Path(temporary) / "Endfield.exe"
-            launcher = Path(temporary) / "Launcher.exe"
-            game.touch()
-            launcher.touch()
-            kernel = unittest.mock.MagicMock()
-            create_process = unittest.mock.MagicMock(return_value=314)
-            prepare_parent = unittest.mock.MagicMock(return_value=42)
-            with (
-                patch.object(utils_launcher.sys, "platform", "win32"),
-                patch.object(utils_launcher, "_running_pids", side_effect=[[], []]),
-                patch.object(utils_launcher, "_kernel32", return_value=kernel),
-                patch.object(utils_launcher, "_prepare_parent", prepare_parent),
-                patch.object(utils_launcher, "_create_game_process", create_process),
-            ):
-                self.assertEqual(
-                    utils_launcher.launch_game(
-                        str(game),
-                        str(launcher),
-                        "--game=Demo --reason=4",
-                        "DemoLauncher.exe",
-                        "Demo.exe",
-                        {"AABB"},
-                    ),
-                    314,
-                )
-            create_process.assert_called_once_with(kernel, str(game), "", 42)
-            prepare_parent.assert_called_once_with(
-                kernel,
-                str(launcher),
-                "--game=Demo --reason=4",
-                "DemoLauncher.exe",
-                {"AABB"},
-                30,
-            )
-            kernel.CloseHandle.assert_called_once_with(42)
-            self.assertTrue(
-                all(
-                    parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
-                    for parameter in inspect.signature(
-                        utils_launcher.launch_game
-                    ).parameters.values()
-                )
-            )
-
-    def test_launcher_arguments_are_appended_to_the_launcher_command_line(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            launcher = Path(temporary) / "Launcher.exe"
-            launcher.touch()
-            kernel = unittest.mock.MagicMock()
-            with (
-                patch.object(
-                    utils_launcher, "_verified_parent", side_effect=[None, 42]
-                ),
-                patch.object(utils_launcher, "_verify_official_launcher"),
-                patch.object(utils_launcher.subprocess, "Popen") as start_launcher,
-                patch.object(utils_launcher.time, "monotonic", side_effect=[0, 1]),
-                patch.object(utils_launcher.time, "sleep"),
-            ):
-                self.assertEqual(
-                    utils_launcher._prepare_parent(
-                        kernel,
-                        str(launcher),
-                        "--game=Endfield --reason=4",
-                        "Games.exe",
-                        {"AABB"},
-                        2,
-                    ),
-                    42,
-                )
-            self.assertTrue(
-                start_launcher.call_args.args[0].endswith(" --game=Endfield --reason=4")
-            )
-            self.assertEqual(
-                start_launcher.call_args.kwargs["executable"], str(launcher)
-            )
-
-    def test_endfield_launch_rejects_non_windows_and_missing_files(self):
+    def test_cli_reports_launcher_failure(self):
+        parsed = cli.build_parser().parse_args(["--launch-game", "Endfield.exe"])
         with (
-            patch.object(utils_launcher.sys, "platform", "linux"),
-            self.assertRaisesRegex(OSError, "仅支持 Windows"),
+            patch.object(
+                cli, "launch_game", side_effect=PermissionError("需要管理员权限")
+            ),
+            patch.object(cli, "_emit_cli") as emit,
+            self.assertLogs(cli.logger, level="ERROR"),
         ):
-            utils_launcher.launch_game(
-                "game.exe", "Launcher.exe", "", "Launcher.exe", "Game.exe", {"AABB"}
-            )
-        with (
-            patch.object(utils_launcher.sys, "platform", "win32"),
-            patch.object(utils_launcher.os.path, "isfile", return_value=False),
-            self.assertRaises(FileNotFoundError),
-        ):
-            utils_launcher.launch_game(
-                "game.exe", "Launcher.exe", "", "Launcher.exe", "Game.exe", {"AABB"}
-            )
+            self.assertEqual(cli.run_cli(parsed), 1)
+        emit.assert_called_once_with("launch_game", "启动游戏失败: 需要管理员权限")
 
 
 if __name__ == "__main__":

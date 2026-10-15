@@ -1,7 +1,6 @@
 import os
 import subprocess
 import sys
-from collections.abc import Collection
 from functools import lru_cache
 from pathlib import Path
 
@@ -158,15 +157,7 @@ def join_dir_path_with_mk(base: str, *subs) -> str:
     return target
 
 
-def open_in_explorer(
-    path: str,
-    arguments: str = "",
-    *,
-    launcher_path: str | None = None,
-    launcher_process_name: str = "Games.exe",
-    game_process_name: str = "Endfield.exe",
-    trusted_signers: Collection[str] | None = None,
-) -> None:
+def open_in_explorer(path: str, arguments: str = "") -> None:
     """用系统默认程序打开文件或目录（跨平台）。
 
     Windows 走 ``os.startfile``；其他平台走 ``xdg-open`` / ``open``。
@@ -175,20 +166,6 @@ def open_in_explorer(
     Args:
         path: 待打开的文件或目录路径。
     """
-    if launcher_path is not None:
-        from src.utils.utils_launcher import ENDFIELD_TRUSTED_SIGNERS, launch_game
-
-        launch_game(
-            path,
-            launcher_path,
-            arguments,
-            launcher_process_name,
-            game_process_name,
-            trusted_signers
-            if trusted_signers is not None
-            else ENDFIELD_TRUSTED_SIGNERS,
-        )
-        return
     if sys.platform == "win32":
         if arguments:
             os.startfile(path, arguments=arguments, cwd=os.path.dirname(path))  # noqa: S606 系统默认程序打开

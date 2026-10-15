@@ -22,15 +22,15 @@
 
 ## 游戏启动入口
 
-`EndfieldConfig` 和 `NTEConfig` 共用 Windows 卸载记录查询，检查 HKCU/HKLM 的
-32/64 位视图，读取 `InstallLocation`，拼接适配器指定的文件名并确认文件存在。
-终末地使用卸载项 `33a0a6296a20400d503c59ac0fd6341e`；异环使用 `YH`，
-注册表定位失败时仍从游戏本体目录向上查找。手填 `game_path` 仍优先。
-`link` 使用适配器返回的路径及用户设置的 `game_arguments`。对于有专用启动器流程的游戏，
-该参数传给启动器；直接启动游戏时则传给游戏本体。终末地点击「游戏」时，在独立 CLI 进程
-由 `utils_launcher` 校验启动器签名，等待
-`Games.exe`，再以它为父进程创建游戏。路径通过可选的 `launcher_path` 交给
-`open_in_explorer`；普通打开仍使用系统关联。
+终末地沿用原生配置中的游戏本体路径，手填 `game_path` 优先；`game_arguments`
+只传给游戏本体，游戏进程仍为 `Endfield.exe`。`link` 将已解析的路径和参数交给
+独立 CLI，CLI 直接调用 `utils_launcher.launch_game`，避免等待启动器时阻塞界面。
+启动模块独立负责复用或定位官方启动器、校验签名、等待 `Games.exe`，再创建游戏。
+终末地启动器参数固定为 `--game=Endfield --reason=4`，无需填入游戏参数。
+
+启动器查询共用 Windows 卸载记录的 HKCU/HKLM、32/64 位视图及 `InstallLocation`。
+终末地卸载项为 `33a0a6296a20400d503c59ac0fd6341e`；异环仍由 `NTEConfig`
+使用 `YH` 查找启动器，失败时保留从游戏目录向上查找的回退。
 
 ## 任务声明
 

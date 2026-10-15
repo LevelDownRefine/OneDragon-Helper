@@ -33,7 +33,7 @@ scripts:
 
 ## 使用
 
-`get_script_resources(script_name)` 返回共享只读字典，未声明脚本返回 `None`；已注册适配器必须有声明。可选字段不补默认值，特殊机制仍由 Python 实现。启动器文件名和查找策略由配置适配器自持。
+`get_script_resources(script_name)` 返回共享只读字典，未声明脚本返回 `None`；已注册适配器必须有声明。可选字段不补默认值，特殊机制仍由 Python 实现。启动器文件名和查找策略由对应的 Python 适配代码维护。
 
 声明按文件位置缓存，修改后重启；不支持用户覆盖或热加载。源码经 `get_root_dir()` 定位，发布包从 EXE 同级 `config/` 读取。新增声明必须提交到 Git 才会被打包，缺失或损坏不回退硬编码。
 

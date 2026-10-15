@@ -21,6 +21,7 @@ from src.config.set_config import supports_weekly
 from src.service.app_service import AppService
 from src.utils import get_root_dir
 from src.utils.utils_config import get_script
+from src.utils.utils_launcher import launch_game
 from src.utils.utils_shutdown import shutdown_sys
 from src.utils.utils_sub_config import get_script_name
 
@@ -48,8 +49,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
-        "--launch-game", metavar="SCRIPT_KEY", help="通过脚本专用流程启动游戏"
+        "--launch-game", metavar="PATH", help="准备官方启动器后启动指定游戏"
     )
+    parser.add_argument("--game-arguments", default="", help="传给游戏本体的启动参数")
     action.add_argument(
         "--selftest",
         action="store_true",
@@ -528,7 +530,7 @@ def run_cli(args) -> int | None:
         return 0
     if args.launch_game is not None:
         try:
-            AppService().launch_game(args.launch_game)
+            launch_game(args.launch_game, args.game_arguments)
         except Exception as exc:  # noqa: BLE001 - 启动失败也需写出 CLI 结果
             logger.exception("启动游戏失败")
             _emit_cli("launch_game", f"启动游戏失败: {exc}")

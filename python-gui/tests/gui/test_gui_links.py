@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from gui.controllers.links import LinksController
+from tests.gui.helpers import get_app
 
 
 class _FakeGameList:
@@ -73,6 +74,34 @@ class TestGameArgumentsLaunch(unittest.TestCase):
         with patch("gui.controllers.links.open_in_explorer") as opener:
             controller.launchGame()
         opener.assert_called_once_with("C:/Game/game.exe", arguments)
+        toast.assert_called_once_with("正在启动 示例…")
+
+    def test_game_cli_success_is_reaped_without_an_error_toast(self):
+        get_app()
+        service = MagicMock()
+        service.resolve_launch_target.return_value = {
+            "kind": "command",
+            "program": "C:/Helper/CLI.exe",
+            "args": ["--launch-game", "C:/Game/Endfield.exe", "--game-arguments="],
+            "cwd": "C:/Helper",
+            "env": {},
+        }
+        toast = MagicMock()
+        controller = LinksController(
+            _FakeGameList({"script_name": "demo", "display_name": "示例"}),
+            toast,
+            service,
+        )
+        with patch("gui.controllers.links.subprocess.Popen") as spawn:
+            spawn.return_value.poll.return_value = 0
+            controller.launchGame()
+        controller._game_launch_timer.setInterval(0)
+        get_app().processEvents()
+        self.assertFalse(controller._game_launch_timer.isActive())
+        self.assertEqual(controller._game_launches, [])
+        spawn.return_value.wait.assert_not_called()
+        spawn.return_value.terminate.assert_not_called()
+        spawn.return_value.kill.assert_not_called()
         toast.assert_called_once_with("正在启动 示例…")
 
 
