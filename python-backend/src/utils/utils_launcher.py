@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Collection, Sequence
+from collections.abc import Collection
 from ctypes import wintypes
 from typing import TypedDict
 
@@ -22,7 +22,6 @@ ENDFIELD_TRUSTED_SIGNERS = frozenset(
         "FF4AF264C36A27F0C805936708EF8EC67B396225",
     }
 )
-ENDFIELD_LAUNCHER_ARGUMENTS = ("--game=Endfield", "--reason=4")
 ENDFIELD_PARENT_PROCESS = "Games.exe"
 ENDFIELD_GAME_PROCESS = "Endfield.exe"
 _PARENT_PROCESS_ATTRIBUTE = 0x00020000
@@ -34,7 +33,6 @@ _EXTENDED_STARTUPINFO_PRESENT = 0x00080000
 class GameLaunchInfo(TypedDict):
     launcher_path: str
     game_path: str
-    launcher_arguments: tuple[str, ...]
     launcher_process_name: str
     game_process_name: str
     trusted_signers: frozenset[str]
@@ -76,7 +74,6 @@ def get_endfield_launch_info(launcher_path: str, game_path: str) -> GameLaunchIn
     return {
         "launcher_path": launcher_path,
         "game_path": game_path,
-        "launcher_arguments": ENDFIELD_LAUNCHER_ARGUMENTS,
         "launcher_process_name": ENDFIELD_PARENT_PROCESS,
         "game_process_name": ENDFIELD_GAME_PROCESS,
         "trusted_signers": ENDFIELD_TRUSTED_SIGNERS,
@@ -269,7 +266,7 @@ def _verified_parent(kernel, name: str, trusted_signers: Collection[str]) -> int
 def _prepare_parent(
     kernel,
     launcher_path: str,
-    launcher_arguments: Sequence[str],
+    launcher_arguments: str,
     launcher_process_name: str,
     trusted_signers: Collection[str],
     timeout: float,
@@ -278,8 +275,12 @@ def _prepare_parent(
     if parent:
         return parent
     _verify_official_launcher(launcher_path, trusted_signers)
+    command_line = subprocess.list2cmdline([launcher_path])
+    if launcher_arguments:
+        command_line += " " + launcher_arguments
     subprocess.Popen(
-        [launcher_path, *launcher_arguments],
+        command_line,
+        executable=launcher_path,
         cwd=os.path.dirname(launcher_path),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
@@ -353,8 +354,7 @@ def _create_game_process(kernel, game_path: str, arguments: str, parent: int) ->
 def launch_game(
     game_path: str,
     launcher_path: str,
-    game_arguments: str,
-    launcher_arguments: Sequence[str],
+    launcher_arguments: str,
     launcher_process_name: str,
     game_process_name: str,
     trusted_signers: Collection[str],
@@ -367,18 +367,12 @@ def launch_game(
         raise FileNotFoundError(f"未找到游戏程序：{game_path}")
     if not os.path.isfile(launcher_path):
         raise FileNotFoundError(f"未找到官方启动器：{launcher_path}")
-    if not isinstance(game_arguments, str):
+    if not isinstance(launcher_arguments, str):
         raise ValueError("游戏启动参数无效")
     if not isinstance(launcher_process_name, str) or not launcher_process_name:
         raise ValueError("启动器进程名无效")
     if not isinstance(game_process_name, str) or not game_process_name:
         raise ValueError("游戏进程名无效")
-    if (
-        isinstance(launcher_arguments, str)
-        or not isinstance(launcher_arguments, Sequence)
-        or not all(isinstance(argument, str) for argument in launcher_arguments)
-    ):
-        raise ValueError("启动器参数无效")
     if (
         isinstance(trusted_signers, str)
         or not isinstance(trusted_signers, Collection)
@@ -409,9 +403,7 @@ def launch_game(
         if _running_pids(game_process_name):
             logger.info("%s 已在启动器就绪期间启动，跳过重复启动", game_process_name)
             return None
-        pid = _create_game_process(
-            kernel, os.path.abspath(game_path), game_arguments, parent
-        )
+        pid = _create_game_process(kernel, os.path.abspath(game_path), "", parent)
         logger.info("已通过官方启动器进程创建 %s：pid=%s", game_process_name, pid)
         return pid
     finally:

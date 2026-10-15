@@ -287,9 +287,6 @@ class LauncherTargetTests(unittest.TestCase):
                 ).get_game_launch_info()
             self.assertEqual(profile["launcher_path"], str(launcher))
             self.assertEqual(profile["game_path"], str(game))
-            self.assertEqual(
-                profile["launcher_arguments"], ("--game=Endfield", "--reason=4")
-            )
             self.assertEqual(profile["launcher_process_name"], "Games.exe")
             self.assertEqual(profile["game_process_name"], "Endfield.exe")
             self.assertTrue(profile["trusted_signers"])
@@ -381,21 +378,18 @@ class LauncherTargetTests(unittest.TestCase):
                     utils_launcher.launch_game(
                         str(game),
                         str(launcher),
-                        '--profile "中文 名称"',
-                        ("--game=Demo",),
+                        "--game=Demo --reason=4",
                         "DemoLauncher.exe",
                         "Demo.exe",
                         {"AABB"},
                     ),
                     314,
                 )
-            create_process.assert_called_once_with(
-                kernel, str(game), '--profile "中文 名称"', 42
-            )
+            create_process.assert_called_once_with(kernel, str(game), "", 42)
             prepare_parent.assert_called_once_with(
                 kernel,
                 str(launcher),
-                ("--game=Demo",),
+                "--game=Demo --reason=4",
                 "DemoLauncher.exe",
                 {"AABB"},
                 30,
@@ -410,13 +404,45 @@ class LauncherTargetTests(unittest.TestCase):
                 )
             )
 
+    def test_launcher_arguments_are_appended_to_the_launcher_command_line(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            launcher = Path(temporary) / "Launcher.exe"
+            launcher.touch()
+            kernel = unittest.mock.MagicMock()
+            with (
+                patch.object(
+                    utils_launcher, "_verified_parent", side_effect=[None, 42]
+                ),
+                patch.object(utils_launcher, "_verify_official_launcher"),
+                patch.object(utils_launcher.subprocess, "Popen") as start_launcher,
+                patch.object(utils_launcher.time, "monotonic", side_effect=[0, 1]),
+                patch.object(utils_launcher.time, "sleep"),
+            ):
+                self.assertEqual(
+                    utils_launcher._prepare_parent(
+                        kernel,
+                        str(launcher),
+                        "--game=Endfield --reason=4",
+                        "Games.exe",
+                        {"AABB"},
+                        2,
+                    ),
+                    42,
+                )
+            self.assertTrue(
+                start_launcher.call_args.args[0].endswith(" --game=Endfield --reason=4")
+            )
+            self.assertEqual(
+                start_launcher.call_args.kwargs["executable"], str(launcher)
+            )
+
     def test_endfield_launch_rejects_non_windows_and_missing_files(self):
         with (
             patch.object(utils_launcher.sys, "platform", "linux"),
             self.assertRaisesRegex(OSError, "仅支持 Windows"),
         ):
             utils_launcher.launch_game(
-                "game.exe", "Launcher.exe", "", (), "Launcher.exe", "Game.exe", {"AABB"}
+                "game.exe", "Launcher.exe", "", "Launcher.exe", "Game.exe", {"AABB"}
             )
         with (
             patch.object(utils_launcher.sys, "platform", "win32"),
@@ -424,7 +450,7 @@ class LauncherTargetTests(unittest.TestCase):
             self.assertRaises(FileNotFoundError),
         ):
             utils_launcher.launch_game(
-                "game.exe", "Launcher.exe", "", (), "Launcher.exe", "Game.exe", {"AABB"}
+                "game.exe", "Launcher.exe", "", "Launcher.exe", "Game.exe", {"AABB"}
             )
 
 

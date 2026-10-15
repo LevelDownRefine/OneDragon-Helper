@@ -1,7 +1,7 @@
 import os
 import subprocess
 import sys
-from collections.abc import Collection, Sequence
+from collections.abc import Collection
 from functools import lru_cache
 from pathlib import Path
 
@@ -163,7 +163,6 @@ def open_in_explorer(
     arguments: str = "",
     *,
     launcher_path: str | None = None,
-    launcher_arguments: Sequence[str] = (),
     launcher_process_name: str = "Games.exe",
     game_process_name: str = "Endfield.exe",
     trusted_signers: Collection[str] | None = None,
@@ -183,7 +182,6 @@ def open_in_explorer(
             path,
             launcher_path,
             arguments,
-            launcher_arguments,
             launcher_process_name,
             game_process_name,
             trusted_signers
