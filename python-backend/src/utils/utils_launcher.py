@@ -10,6 +10,7 @@ import sys
 import time
 from collections.abc import Collection, Sequence
 from ctypes import wintypes
+from typing import TypedDict
 
 import psutil
 
@@ -28,6 +29,58 @@ _PARENT_PROCESS_ATTRIBUTE = 0x00020000
 _PROCESS_CREATE_PROCESS = 0x0080
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _EXTENDED_STARTUPINFO_PRESENT = 0x00080000
+
+
+class GameLaunchInfo(TypedDict):
+    launcher_path: str
+    game_path: str
+    launcher_arguments: tuple[str, ...]
+    launcher_process_name: str
+    game_process_name: str
+    trusted_signers: frozenset[str]
+
+
+def get_installed_launcher(
+    script_name: str, uninstall_id: str, filename: str
+) -> str | None:
+    """从 Windows 卸载记录定位启动器；记录或文件缺失时返回 None。"""
+    if sys.platform != "win32":
+        return None
+    import winreg
+
+    key_path = rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{uninstall_id}"
+    for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+            try:
+                with winreg.OpenKey(root, key_path, 0, winreg.KEY_READ | view) as key:
+                    folder, _ = winreg.QueryValueEx(key, "InstallLocation")
+            except OSError as error:
+                logger.debug(
+                    "[%s] 读取启动器安装记录失败 (%s): %s",
+                    script_name,
+                    type(error).__name__,
+                    error,
+                )
+                continue
+            if not isinstance(folder, str) or not os.path.isabs(folder):
+                logger.warning("[%s] 启动器安装目录无效: %r", script_name, folder)
+                continue
+            launcher = os.path.join(folder, filename)
+            if os.path.isfile(launcher):
+                return os.path.abspath(launcher)
+    return None
+
+
+def get_endfield_launch_info(launcher_path: str, game_path: str) -> GameLaunchInfo:
+    """构造终末地官方启动器流程所需信息。"""
+    return {
+        "launcher_path": launcher_path,
+        "game_path": game_path,
+        "launcher_arguments": ENDFIELD_LAUNCHER_ARGUMENTS,
+        "launcher_process_name": ENDFIELD_PARENT_PROCESS,
+        "game_process_name": ENDFIELD_GAME_PROCESS,
+        "trusted_signers": ENDFIELD_TRUSTED_SIGNERS,
+    }
 
 
 class _StartupInfo(ctypes.Structure):

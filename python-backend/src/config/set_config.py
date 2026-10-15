@@ -2,12 +2,10 @@
 
 import logging
 import os
-import sys
 from collections.abc import Callable
 from copy import deepcopy
 from functools import cache
 from pathlib import PureWindowsPath
-from typing import TypedDict
 
 from src.config.script_resources import ScriptResources, get_script_resources
 from src.config.task.daily import Daily, MaaDaily, build_dailies
@@ -17,13 +15,8 @@ from src.config.task.task_declarations import (
     load_weekly_map,
 )
 from src.config.task.weekly import Weekly, build_weeklies
+from src.utils import utils_launcher
 from src.utils.utils_dict import get_field
-from src.utils.utils_launcher import (
-    ENDFIELD_GAME_PROCESS,
-    ENDFIELD_LAUNCHER_ARGUMENTS,
-    ENDFIELD_PARENT_PROCESS,
-    ENDFIELD_TRUSTED_SIGNERS,
-)
 from src.utils.utils_sub_config import (
     get_script_game_path,
     load_game_config,
@@ -33,15 +26,6 @@ from src.utils.utils_sub_config import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class GameLaunchInfo(TypedDict):
-    launcher_path: str
-    game_path: str
-    launcher_arguments: tuple[str, ...]
-    launcher_process_name: str
-    game_process_name: str
-    trusted_signers: frozenset[str]
 
 
 # ============================================================
@@ -197,42 +181,8 @@ class ScriptConfig:
             return None
         return weekly.read_task()
 
-    def get_game_launch_info(self) -> GameLaunchInfo | None:
+    def get_game_launch_info(self) -> utils_launcher.GameLaunchInfo | None:
         """需要脚本专用启动流程时返回模块和游戏路径；默认使用系统关联。"""
-        return None
-
-    def _get_installed_launcher(self, uninstall_id: str, filename: str) -> str | None:
-        """从 Windows 卸载记录定位指定的启动器；记录或文件缺失返回 None。"""
-        if sys.platform != "win32":
-            return None
-        import winreg
-
-        key_path = (
-            rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{uninstall_id}"
-        )
-        for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
-            for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
-                try:
-                    with winreg.OpenKey(
-                        root, key_path, 0, winreg.KEY_READ | view
-                    ) as key:
-                        folder, _ = winreg.QueryValueEx(key, "InstallLocation")
-                except OSError as error:
-                    logger.debug(
-                        "[%s] 读取启动器安装记录失败 (%s): %s",
-                        self._script_name,
-                        type(error).__name__,
-                        error,
-                    )
-                    continue
-                if not isinstance(folder, str) or not os.path.isabs(folder):
-                    logger.warning(
-                        "[%s] 启动器安装目录无效: %r", self._script_name, folder
-                    )
-                    continue
-                launcher = os.path.join(folder, filename)
-                if os.path.isfile(launcher):
-                    return os.path.abspath(launcher)
         return None
 
     def get_game_exe_path(self) -> str | None:
@@ -310,25 +260,19 @@ class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
 
-    def get_game_launch_info(self) -> GameLaunchInfo | None:
+    def get_game_launch_info(self) -> utils_launcher.GameLaunchInfo | None:
         """返回官方启动器与游戏本体路径；手填其他程序时保持直接打开。"""
         manual = get_script_game_path(self._script_name)
         if manual and PureWindowsPath(manual).name.casefold() != "endfield.exe":
             return None
-        launcher = self.get_game_exe_path() or ""
-        return {
-            "launcher_path": launcher,
-            "game_path": manual or super().get_game_exe_path() or "",
-            "launcher_arguments": ENDFIELD_LAUNCHER_ARGUMENTS,
-            "launcher_process_name": ENDFIELD_PARENT_PROCESS,
-            "game_process_name": ENDFIELD_GAME_PROCESS,
-            "trusted_signers": ENDFIELD_TRUSTED_SIGNERS,
-        }
+        return utils_launcher.get_endfield_launch_info(
+            self.get_game_exe_path() or "", manual or super().get_game_exe_path() or ""
+        )
 
     def get_game_exe_path(self) -> str | None:
         """返回注册表中的鹰角启动器路径；未安装时返回 None。"""
-        return self._get_installed_launcher(
-            "33a0a6296a20400d503c59ac0fd6341e", "Launcher.exe"
+        return utils_launcher.get_installed_launcher(
+            self._script_name, "33a0a6296a20400d503c59ac0fd6341e", "Launcher.exe"
         )
 
 
@@ -359,7 +303,9 @@ class NTEConfig(ScriptConfig):
             启动器绝对路径；注册表及游戏目录均找不到时返回 None。
         """
         launcher = "NTELauncher.exe"
-        installed = self._get_installed_launcher("YH", launcher)
+        installed = utils_launcher.get_installed_launcher(
+            self._script_name, "YH", launcher
+        )
         if installed:
             return installed
 
@@ -620,7 +566,7 @@ def get_game_exe_path(script_name: str) -> str | None:
     return None
 
 
-def get_game_launch_info(script_name: str) -> GameLaunchInfo | None:
+def get_game_launch_info(script_name: str) -> utils_launcher.GameLaunchInfo | None:
     """读取脚本专用启动流程的信息，不加载模块或启动进程。"""
     if script_name not in _CONFIGS:
         return None

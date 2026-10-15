@@ -16,7 +16,7 @@ from src.config.task import daily as daily_mod
 from src.config.task import weekly as weekly_mod
 from src.config.task.daily import Daily
 from src.config.task.task_declarations import get_daily_configs
-from src.utils import utils_sub_config
+from src.utils import utils_launcher, utils_sub_config
 
 
 class TestConfigRelPaths(unittest.TestCase):
@@ -362,7 +362,7 @@ class TestGetGameExePath(unittest.TestCase):
 
     def setUp(self):
         self.enterContext(
-            patch.object(ScriptConfig, "_get_installed_launcher", return_value=None)
+            patch.object(utils_launcher, "get_installed_launcher", return_value=None)
         )
 
     def test_unadapted_base_returns_none(self):
@@ -502,7 +502,7 @@ class TestInstalledLauncher(unittest.TestCase):
             QueryValueEx=MagicMock(return_value=(str(self.root), 1)),
         )
         self.enterContext(patch.dict("sys.modules", {"winreg": self.registry}))
-        self.enterContext(patch.object(set_config.sys, "platform", "win32"))
+        self.enterContext(patch.object(utils_launcher.sys, "platform", "win32"))
         self.load = self.enterContext(
             patch.object(set_config, "load_game_config", return_value=None)
         )
@@ -562,7 +562,7 @@ class TestInstalledLauncher(unittest.TestCase):
         self.assertEqual(set_config.NTEConfig().get_game_exe_path(), str(launcher))
 
     def test_non_windows_does_not_read_registry(self):
-        with patch.object(set_config.sys, "platform", "linux"):
+        with patch.object(utils_launcher.sys, "platform", "linux"):
             self.assertIsNone(set_config.EndfieldConfig().get_game_exe_path())
         self.registry.OpenKey.assert_not_called()
 

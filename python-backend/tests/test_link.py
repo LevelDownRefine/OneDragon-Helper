@@ -311,8 +311,8 @@ class LauncherTargetTests(unittest.TestCase):
                     ),
                     patch.object(set_config, "get_script_game_path", return_value=""),
                     patch.object(
-                        set_config.ScriptConfig,
-                        "_get_installed_launcher",
+                        utils_launcher,
+                        "get_installed_launcher",
                         return_value=str(launcher),
                     ),
                 ):
@@ -349,9 +349,7 @@ class LauncherTargetTests(unittest.TestCase):
                 patch.object(
                     set_config, "get_script_game_path", return_value=str(executable)
                 ),
-                patch.object(
-                    set_config.ScriptConfig, "_get_installed_launcher"
-                ) as find,
+                patch.object(utils_launcher, "get_installed_launcher") as find,
             ):
                 self.assertEqual(
                     link.resolve_launch_target("ok-ef", "game"),
