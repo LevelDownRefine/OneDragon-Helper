@@ -175,6 +175,12 @@ class AppService:
     ) -> bool:
         return save_wallpaper_cache(script_name, token, jpeg_base64)
 
+    def launch_game(self, script_name: str) -> None:
+        """显式启动专用游戏流程；由独立 CLI 进程调用。"""
+        from src.game_launcher import launch_game
+
+        launch_game(script_name)
+
     def resolve_launch_target(self, script_name: str, target: str) -> dict:
         return link.resolve_launch_target(script_name, target)
 

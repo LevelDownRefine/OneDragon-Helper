@@ -48,6 +48,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
+        "--launch-game", metavar="SCRIPT_KEY", help="通过脚本专用流程启动游戏"
+    )
+    action.add_argument(
         "--selftest",
         action="store_true",
         help="无头自检：校验 AppService 配置/脚本列表，结果写 JSON 后退出",
@@ -522,6 +525,9 @@ def run_cli(args) -> int | None:
         return 0
     if args.version:
         _emit_cli("version", get_version())
+        return 0
+    if args.launch_game is not None:
+        AppService().launch_game(args.launch_game)
         return 0
     if args.selftest:
         return _run_selftest(args.out)

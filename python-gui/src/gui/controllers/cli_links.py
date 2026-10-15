@@ -101,12 +101,14 @@ class CliLinksController(LinksController):
     @Slot()
     def launchGame(self):
         def show(game, target):
-            if target["kind"] != "association" or (
+            if target["kind"] == "command":
+                if not valid_command(target):
+                    raise ValueError("游戏启动命令无效")
+            elif target["kind"] != "association" or (
                 "arguments" in target and not isinstance(target["arguments"], str)
             ):
                 raise ValueError("游戏启动目标无效")
-            arguments = target["arguments"] if "arguments" in target else ""  # noqa: SIM401
-            if self._open_path(target["path"], arguments):
+            if self._open_game_target(target):
                 self._toast(f"正在启动 {game['display_name']}…")
 
         self._query("script.launch_target", {"target": "game"}, show)

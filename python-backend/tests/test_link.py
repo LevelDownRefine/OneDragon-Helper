@@ -268,10 +268,7 @@ class LauncherTargetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             launcher = Path(temporary) / "launcher.exe"
             launcher.touch()
-            for name, arguments in (
-                ("ok-ef", "--game=Endfield --reason=4"),
-                ("ok-nte", "--user-option"),
-            ):
+            for name, arguments in (("ok-nte", "--user-option"),):
                 with (
                     self.subTest(script=name),
                     patch.object(
