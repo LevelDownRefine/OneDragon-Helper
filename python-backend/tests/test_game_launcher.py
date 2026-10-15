@@ -8,9 +8,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src import game_launcher, link
+from src import link, utils
 from src.cli import build_parser, run_cli
 from src.config import set_config
+from src.service import app_service
+from src.service.app_service import AppService
 
 
 class TestEndfieldLaunch(unittest.TestCase):
@@ -47,8 +49,22 @@ class TestEndfieldLaunch(unittest.TestCase):
         self.script = {"script_path": "ok-ef.exe", "game_arguments": "-dx11"}
         self.enterContext(patch.object(link, "get_script", return_value=self.script))
         self.enterContext(
-            patch.object(game_launcher, "get_script", return_value=self.script)
+            patch.object(app_service, "get_script", return_value=self.script)
         )
+
+        self.service = AppService()
+        self.addCleanup(self.service.close)
+
+    def test_open_without_launcher_keeps_existing_system_association(self):
+        with (
+            patch.object(sys, "platform", "win32"),
+            patch.object(os, "startfile", create=True) as start,
+        ):
+            utils.open_in_explorer(str(self.game), "-dx11")
+        start.assert_called_once_with(
+            str(self.game), arguments="-dx11", cwd=str(self.game.parent)
+        )
+        self.assertFalse(self.result.exists())
 
     def test_target_is_read_only_and_uses_existing_cli_in_source_and_frozen_layouts(
         self,
@@ -107,7 +123,7 @@ class TestEndfieldLaunch(unittest.TestCase):
                 patch.object(sys, "platform", "win32"),
             ):
                 self.script["game_arguments"] = arguments
-                game_launcher.launch_game("ok-ef")
+                self.service.launch_game("ok-ef")
                 self.assertEqual(
                     json.loads(self.result.read_text(encoding="utf-8")),
                     [os.path.abspath(self.game), expected],
@@ -124,7 +140,7 @@ class TestEndfieldLaunch(unittest.TestCase):
                     encoding="utf-8",
                 )
                 with self.assertRaises(error):
-                    game_launcher.launch_game("ok-ef")
+                    self.service.launch_game("ok-ef")
 
     def test_ordinary_game_queries_do_not_initialize_native_configuration(self):
         with (
