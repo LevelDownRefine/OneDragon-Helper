@@ -183,15 +183,12 @@ class ScriptConfig:
             return None
         return weekly.read_task()
 
-    def _get_installed_launcher(self, uninstall_id: str) -> str | None:
-        """从 Windows 卸载记录定位声明的启动器；记录或文件缺失返回 None。"""
+    def _get_installed_launcher(self, uninstall_id: str, filename: str) -> str | None:
+        """从 Windows 卸载记录定位指定的启动器；记录或文件缺失返回 None。"""
         if sys.platform != "win32":
             return None
         import winreg
 
-        assert self.resources is not None and "game" in self.resources
-        game = self.resources["game"]
-        assert "launcher" in game
         key_path = (
             rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{uninstall_id}"
         )
@@ -215,7 +212,7 @@ class ScriptConfig:
                         "[%s] 启动器安装目录无效: %r", self._script_name, folder
                     )
                     continue
-                launcher = os.path.join(folder, game["launcher"])
+                launcher = os.path.join(folder, filename)
                 if os.path.isfile(launcher):
                     return os.path.abspath(launcher)
         return None
@@ -298,7 +295,9 @@ class EndfieldConfig(ScriptConfig):
 
     def get_game_exe_path(self) -> str | None:
         """返回注册表中的鹰角启动器路径；未安装时返回 None。"""
-        return self._get_installed_launcher("33a0a6296a20400d503c59ac0fd6341e")
+        return self._get_installed_launcher(
+            "33a0a6296a20400d503c59ac0fd6341e", "Launcher.exe"
+        )
 
 
 # ---- 绝区零 Zenless Zone Zero ----
@@ -327,13 +326,11 @@ class NTEConfig(ScriptConfig):
         Returns:
             启动器绝对路径；注册表及游戏目录均找不到时返回 None。
         """
-        installed = self._get_installed_launcher("YH")
+        launcher = "NTELauncher.exe"
+        installed = self._get_installed_launcher("YH", launcher)
         if installed:
             return installed
-        assert self.resources is not None and "game" in self.resources
-        game = self.resources["game"]
-        assert "launcher" in game, "异环必须声明 game.launcher"
-        launcher = game["launcher"]
+
         game_exe = super().get_game_exe_path()
         if not game_exe:
             return None

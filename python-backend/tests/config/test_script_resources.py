@@ -194,7 +194,6 @@ class TestScriptResources(unittest.TestCase):
         )
         self.assertEqual(set(manifest), set(set_config.get_registered_script_names()))
         self.assertNotIn("template", manifest["BetterGI"])
-        self.assertEqual(manifest["ok-nte"]["game"]["launcher"], "NTELauncher.exe")
         self.assertEqual(
             manifest["OneDragon-Launcher"]["background"],
             "assets/ui/static_background.webp",

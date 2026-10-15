@@ -33,7 +33,6 @@ scripts:
       config: data/apps/ok-ef/working/configs/devices.json
       keys:
       - pc_full_path
-      launcher: Launcher.exe
     links:
       homepage: https://endfield.hypergryph.com/
       bilibili: https://space.bilibili.com/1265652806
@@ -69,7 +68,6 @@ scripts:
       config: data/apps/ok-nte/working/configs/devices.json
       keys:
       - pc_full_path
-      launcher: NTELauncher.exe
     links:
       homepage: https://yh.wanmei.com/
       bilibili: https://space.bilibili.com/3546636978489848
