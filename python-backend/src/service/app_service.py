@@ -185,8 +185,16 @@ class AppService:
         info = get_game_launch_info(script_name)
         if info is None:
             raise ValueError("该脚本未提供专用游戏启动流程")
-        launcher_path, game_path = info
-        if not game_path:
+        for key in (
+            "launcher_path",
+            "game_path",
+            "launcher_arguments",
+            "launcher_process_name",
+            "game_process_name",
+            "trusted_signers",
+        ):
+            assert key in info
+        if not info["game_path"]:
             raise FileNotFoundError("未找到游戏程序，请配置游戏路径")
         arguments = script["game_arguments"] if "game_arguments" in script else ""  # noqa: SIM401
         if not isinstance(arguments, str):
@@ -195,7 +203,13 @@ class AppService:
         if arguments.strip() == "--game=Endfield --reason=4":
             arguments = ""
         open_in_explorer(
-            resolve_script_path(game_path), arguments, launcher_path=launcher_path
+            resolve_script_path(info["game_path"]),
+            arguments,
+            launcher_path=info["launcher_path"],
+            launcher_arguments=info["launcher_arguments"],
+            launcher_process_name=info["launcher_process_name"],
+            game_process_name=info["game_process_name"],
+            trusted_signers=info["trusted_signers"],
         )
 
     def resolve_launch_target(self, script_name: str, target: str) -> dict:

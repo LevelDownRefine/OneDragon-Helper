@@ -4,6 +4,7 @@
 资源及完整链接在 config/script_resources.yml 声明；格式校验见 test_script_resources。
 """
 
+import inspect
 import os
 import tempfile
 import unittest
@@ -265,6 +266,34 @@ class LaunchTargetTests(unittest.TestCase):
 
 
 class LauncherTargetTests(unittest.TestCase):
+    def test_endfield_adapter_provides_a_reusable_launcher_profile(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            game = Path(temporary) / "Endfield.exe"
+            launcher = Path(temporary) / "Launcher.exe"
+            game.touch()
+            launcher.touch()
+            with (
+                patch.object(
+                    set_config, "get_script_game_path", return_value=str(game)
+                ),
+                patch.object(
+                    set_config.EndfieldConfig,
+                    "get_game_exe_path",
+                    return_value=str(launcher),
+                ),
+            ):
+                profile = object.__new__(
+                    set_config.EndfieldConfig
+                ).get_game_launch_info()
+            self.assertEqual(profile["launcher_path"], str(launcher))
+            self.assertEqual(profile["game_path"], str(game))
+            self.assertEqual(
+                profile["launcher_arguments"], ("--game=Endfield", "--reason=4")
+            )
+            self.assertEqual(profile["launcher_process_name"], "Games.exe")
+            self.assertEqual(profile["game_process_name"], "Endfield.exe")
+            self.assertTrue(profile["trusted_signers"])
+
     def test_launch_and_icon_use_adapter_path_and_user_arguments(self):
         with tempfile.TemporaryDirectory() as temporary:
             launcher = Path(temporary) / "launcher.exe"
@@ -342,36 +371,63 @@ class LauncherTargetTests(unittest.TestCase):
             launcher.touch()
             kernel = unittest.mock.MagicMock()
             create_process = unittest.mock.MagicMock(return_value=314)
+            prepare_parent = unittest.mock.MagicMock(return_value=42)
             with (
                 patch.object(utils_launcher.sys, "platform", "win32"),
                 patch.object(utils_launcher, "_running_pids", side_effect=[[], []]),
                 patch.object(utils_launcher, "_kernel32", return_value=kernel),
-                patch.object(utils_launcher, "_prepare_parent", return_value=42),
+                patch.object(utils_launcher, "_prepare_parent", prepare_parent),
                 patch.object(utils_launcher, "_create_game_process", create_process),
             ):
                 self.assertEqual(
-                    utils_launcher.launch_endfield(
-                        str(game), str(launcher), '--profile "中文 名称"'
+                    utils_launcher.launch_game(
+                        str(game),
+                        str(launcher),
+                        '--profile "中文 名称"',
+                        ("--game=Demo",),
+                        "DemoLauncher.exe",
+                        "Demo.exe",
+                        {"AABB"},
                     ),
                     314,
                 )
             create_process.assert_called_once_with(
                 kernel, str(game), '--profile "中文 名称"', 42
             )
+            prepare_parent.assert_called_once_with(
+                kernel,
+                str(launcher),
+                ("--game=Demo",),
+                "DemoLauncher.exe",
+                {"AABB"},
+                30,
+            )
             kernel.CloseHandle.assert_called_once_with(42)
+            self.assertTrue(
+                all(
+                    parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+                    for parameter in inspect.signature(
+                        utils_launcher.launch_game
+                    ).parameters.values()
+                )
+            )
 
     def test_endfield_launch_rejects_non_windows_and_missing_files(self):
         with (
             patch.object(utils_launcher.sys, "platform", "linux"),
             self.assertRaisesRegex(OSError, "仅支持 Windows"),
         ):
-            utils_launcher.launch_endfield("game.exe", "Launcher.exe")
+            utils_launcher.launch_game(
+                "game.exe", "Launcher.exe", "", (), "Launcher.exe", "Game.exe", {"AABB"}
+            )
         with (
             patch.object(utils_launcher.sys, "platform", "win32"),
             patch.object(utils_launcher.os.path, "isfile", return_value=False),
             self.assertRaises(FileNotFoundError),
         ):
-            utils_launcher.launch_endfield("game.exe", "Launcher.exe")
+            utils_launcher.launch_game(
+                "game.exe", "Launcher.exe", "", (), "Launcher.exe", "Game.exe", {"AABB"}
+            )
 
 
 if __name__ == "__main__":

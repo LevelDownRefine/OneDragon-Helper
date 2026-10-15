@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from collections.abc import Collection, Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -158,7 +159,14 @@ def join_dir_path_with_mk(base: str, *subs) -> str:
 
 
 def open_in_explorer(
-    path: str, arguments: str = "", *, launcher_path: str | None = None
+    path: str,
+    arguments: str = "",
+    *,
+    launcher_path: str | None = None,
+    launcher_arguments: Sequence[str] = (),
+    launcher_process_name: str = "Games.exe",
+    game_process_name: str = "Endfield.exe",
+    trusted_signers: Collection[str] | None = None,
 ) -> None:
     """用系统默认程序打开文件或目录（跨平台）。
 
@@ -169,9 +177,19 @@ def open_in_explorer(
         path: 待打开的文件或目录路径。
     """
     if launcher_path is not None:
-        from src.utils.utils_launcher import launch_endfield
+        from src.utils.utils_launcher import ENDFIELD_TRUSTED_SIGNERS, launch_game
 
-        launch_endfield(path, launcher_path, arguments)
+        launch_game(
+            path,
+            launcher_path,
+            arguments,
+            launcher_arguments,
+            launcher_process_name,
+            game_process_name,
+            trusted_signers
+            if trusted_signers is not None
+            else ENDFIELD_TRUSTED_SIGNERS,
+        )
         return
     if sys.platform == "win32":
         if arguments:

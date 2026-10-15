@@ -87,9 +87,11 @@ def resolve_launch_target(script_name: str, target: str) -> dict:
     assert "script_path" in script
     launch_info = get_game_launch_info(script_name) if target == "game" else None
     if launch_info is not None:
+        assert "launcher_path" in launch_info and "game_path" in launch_info
         if "game_arguments" in script and not isinstance(script["game_arguments"], str):
             return _unavailable("游戏启动参数无效")
-        launcher_path, game_path = launch_info
+        launcher_path = launch_info["launcher_path"]
+        game_path = launch_info["game_path"]
         if not launcher_path or not os.path.isfile(launcher_path):
             return _unavailable("未找到官方启动器，请检查安装")
         if not game_path or not os.path.isfile(resolve_script_path(game_path)):
