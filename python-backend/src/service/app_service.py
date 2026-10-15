@@ -19,6 +19,7 @@ Python GUI 直接调用本类；CLI 在传输边界转换数据，两者共用�
 """
 
 import logging
+import subprocess
 from dataclasses import asdict
 
 import src.link as link
@@ -199,8 +200,8 @@ class AppService:
         arguments = script["game_arguments"] if "game_arguments" in script else ""  # noqa: SIM401
         if not isinstance(arguments, str):
             raise ValueError("游戏启动参数无效")
-        # 启动器参数由助手的启动模块处理，不重复传给游戏本体。
-        if arguments.strip() == "--game=Endfield --reason=4":
+        # 已配置在游戏参数中的启动器参数由启动器处理，不重复传给游戏本体。
+        if arguments.strip() == subprocess.list2cmdline(info["launcher_arguments"]):
             arguments = ""
         open_in_explorer(
             resolve_script_path(info["game_path"]),

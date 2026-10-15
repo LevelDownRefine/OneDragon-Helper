@@ -6,11 +6,40 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from src.service import task_service
+from src.service import app_service, task_service
 from src.service.app_service import AppService
 
 
 class TaskServiceTests(unittest.TestCase):
+    def test_launcher_arguments_are_not_forwarded_to_the_game(self):
+        launcher_arguments = ("--launcher-mode", "--profile=cn")
+        launch_info = {
+            "launcher_path": "launcher.exe",
+            "game_path": "game.exe",
+            "launcher_arguments": launcher_arguments,
+            "launcher_process_name": "Launcher.exe",
+            "game_process_name": "Game.exe",
+            "trusted_signers": frozenset({"signer"}),
+        }
+        for configured, expected in (
+            ("  --launcher-mode --profile=cn  ", ""),
+            ("--language=ja", "--language=ja"),
+        ):
+            with (
+                self.subTest(configured=configured),
+                patch.object(
+                    app_service,
+                    "get_script",
+                    return_value={"game_arguments": configured},
+                ),
+                patch.object(
+                    app_service, "get_game_launch_info", return_value=launch_info
+                ),
+                patch.object(app_service, "open_in_explorer") as open_game,
+            ):
+                AppService().launch_game("test")
+            self.assertEqual(open_game.call_args.args[1], expected)
+
     def test_snapshot_keeps_order_identity_and_custom_scripts_without_loading_tasks(
         self,
     ):
