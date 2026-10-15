@@ -6,10 +6,21 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from src.config.set_config import EndfieldConfig
 from src.utils import utils_launcher
 
 
 class LauncherTests(unittest.TestCase):
+    def setUp(self):
+        self.launcher = EndfieldConfig.launcher
+        self.enterContext(
+            patch.dict(
+                utils_launcher.LAUNCHERS,
+                {self.launcher.game_exe.casefold(): self.launcher},
+                clear=True,
+            )
+        )
+
     def test_game_arguments_reach_game_and_parent_handle_is_released(self):
         with tempfile.TemporaryDirectory() as temporary:
             game = Path(temporary) / "ENDFIELD.exe"
@@ -39,9 +50,7 @@ class LauncherTests(unittest.TestCase):
                         else:
                             with self.assertRaises(OSError):
                                 utils_launcher.launch_game(str(game), arguments)
-                    prepare.assert_called_once_with(
-                        kernel, utils_launcher.LAUNCHERS["endfield.exe"]
-                    )
+                    prepare.assert_called_once_with(kernel, self.launcher)
                     create.assert_called_once_with(kernel, str(game), arguments, 42)
                     kernel.CloseHandle.assert_called_once_with(42)
 
@@ -52,16 +61,14 @@ class LauncherTests(unittest.TestCase):
             patch.object(utils_launcher.subprocess, "Popen") as start,
         ):
             self.assertEqual(
-                utils_launcher._prepare_parent(
-                    MagicMock(), utils_launcher.LAUNCHERS["endfield.exe"]
-                ),
+                utils_launcher._prepare_parent(MagicMock(), self.launcher),
                 42,
             )
         find.assert_not_called()
         start.assert_not_called()
 
     def test_cold_start_uses_launcher_arguments(self):
-        launcher = utils_launcher.LAUNCHERS["endfield.exe"]
+        launcher = self.launcher
         path = os.path.abspath(os.path.join("Launcher Folder", "Launcher.exe"))
         with (
             patch.object(utils_launcher, "_verified_parent", side_effect=[None, 42]),
@@ -88,7 +95,7 @@ class LauncherTests(unittest.TestCase):
         )
 
     def test_rejected_parent_preserves_reason_without_restarting_launcher(self):
-        launcher = utils_launcher.LAUNCHERS["endfield.exe"]
+        launcher = self.launcher
         for failure in (PermissionError("拒绝访问"), RuntimeError("签名无效")):
             with self.subTest(failure=failure):
                 kernel = MagicMock()

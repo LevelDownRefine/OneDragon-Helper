@@ -23,6 +23,7 @@ _EXTENDED_STARTUPINFO_PRESENT = 0x00080000
 
 @dataclass(frozen=True)
 class Launcher:
+    game_exe: str
     uninstall_id: str
     filename: str
     process_name: str
@@ -30,20 +31,8 @@ class Launcher:
     trusted_signers: frozenset[str]
 
 
-LAUNCHERS = {
-    "endfield.exe": Launcher(
-        uninstall_id="33a0a6296a20400d503c59ac0fd6341e",
-        filename="Launcher.exe",
-        process_name="Games.exe",
-        arguments=("--game=Endfield", "--reason=4"),
-        trusted_signers=frozenset(
-            {
-                "2B366F397E64A9494A553B70004E8CA1AAE02B9D",
-                "FF4AF264C36A27F0C805936708EF8EC67B396225",
-            }
-        ),
-    ),
-}
+# 由 set_config.register 装配；独立调用 launch_game 时可显式传 launcher。
+LAUNCHERS: dict[str, Launcher] = {}
 
 
 def get_installed_launcher(

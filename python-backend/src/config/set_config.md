@@ -26,7 +26,10 @@
 只传给游戏本体，游戏进程仍为 `Endfield.exe`。`link` 将已解析的路径和参数交给
 独立 CLI，CLI 直接调用 `utils_launcher.launch_game`，避免等待启动器时阻塞界面。
 启动模块独立负责复用或定位官方启动器、校验签名、等待 `Games.exe`，再创建游戏。
-终末地启动器参数固定为 `--game=Endfield --reason=4`，无需填入游戏参数。
+终末地启动器声明集中在 `EndfieldConfig.launcher`，其中 `arguments` 固定为
+`("--game=Endfield", "--reason=4")`，无需填入游戏参数。现有 `register()`
+按游戏 EXE 文件名将声明装配到 `utils_launcher.LAUNCHERS`；`utils_launcher`
+只负责通用的启动器查找、签名校验与游戏进程创建。
 
 启动器查询共用 Windows 卸载记录的 HKCU/HKLM、32/64 位视图及 `InstallLocation`。
 终末地卸载项为 `33a0a6296a20400d503c59ac0fd6341e`；异环仍由 `NTEConfig`

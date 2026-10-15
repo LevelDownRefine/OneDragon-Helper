@@ -43,6 +43,9 @@ class ScriptConfig:
     resources: ScriptResources | None = None
     """静态资源来自 script_resources.yml；基类 None 表示未适配。"""
 
+    launcher: utils_launcher.Launcher | None = None
+    """需要通过官方启动器创建游戏进程时使用的声明。"""
+
     def __init__(self) -> None:
         """按声明装配日常与周常对象，不读写原生配置。"""
         self._dailies: list[Daily] = build_dailies(
@@ -227,6 +230,8 @@ def register(cls: type[ScriptConfig]) -> type[ScriptConfig]:
     assert resources is not None, f"[set_config] 缺少资源声明: {cls._script_name}"
     cls.resources = resources
     _CONFIGS[cls._script_name] = cache(cls)
+    if cls.launcher is not None:
+        utils_launcher.LAUNCHERS[cls.launcher.game_exe.casefold()] = cls.launcher
     return cls
 
 
@@ -254,6 +259,19 @@ class GenshinConfig(ScriptConfig):
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
+    launcher = utils_launcher.Launcher(
+        game_exe="Endfield.exe",
+        uninstall_id="33a0a6296a20400d503c59ac0fd6341e",
+        filename="Launcher.exe",
+        process_name="Games.exe",
+        arguments=("--game=Endfield", "--reason=4"),
+        trusted_signers=frozenset(
+            {
+                "2B366F397E64A9494A553B70004E8CA1AAE02B9D",
+                "FF4AF264C36A27F0C805936708EF8EC67B396225",
+            }
+        ),
+    )
 
 
 # ---- 绝区零 Zenless Zone Zero ----

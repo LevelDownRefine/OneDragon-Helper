@@ -82,6 +82,19 @@ class TestConfigRelPaths(unittest.TestCase):
     def test_unknown_script_cache_invalidation_is_noop(self):
         set_config.invalidate_config("custom")
 
+    def test_launcher_registration_is_repeatable_without_constructing_adapter(self):
+        with (
+            patch.dict(utils_launcher.LAUNCHERS, clear=True),
+            patch.object(set_config.EndfieldConfig, "__init__") as initialize,
+        ):
+            for _ in range(2):
+                set_config.register(set_config.EndfieldConfig)
+                self.assertEqual(
+                    utils_launcher.LAUNCHERS,
+                    {"endfield.exe": set_config.EndfieldConfig.launcher},
+                )
+            initialize.assert_not_called()
+
     def test_script_resources_do_not_declare_initialization_templates(self):
         """脚本级初始化模板已移除，日常模板由 Daily 自持。"""
         with_template = {
