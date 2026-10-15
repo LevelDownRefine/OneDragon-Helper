@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from src import link
 from src.config import set_config
+from src.utils import utils_launcher
 
 
 class TestLinkDispatch(unittest.TestCase):
@@ -268,10 +269,7 @@ class LauncherTargetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             launcher = Path(temporary) / "launcher.exe"
             launcher.touch()
-            for name, arguments in (
-                ("ok-ef", "--game=Endfield --reason=4"),
-                ("ok-nte", "--user-option"),
-            ):
+            for name, arguments in (("ok-nte", "--user-option"),):
                 with (
                     self.subTest(script=name),
                     patch.object(
@@ -335,6 +333,45 @@ class LauncherTargetTests(unittest.TestCase):
                     },
                 )
                 find.assert_not_called()
+
+    def test_endfield_launch_uses_local_launcher_helper(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            game = Path(temporary) / "Endfield.exe"
+            launcher = Path(temporary) / "Launcher.exe"
+            game.touch()
+            launcher.touch()
+            kernel = unittest.mock.MagicMock()
+            create_process = unittest.mock.MagicMock(return_value=314)
+            with (
+                patch.object(utils_launcher.sys, "platform", "win32"),
+                patch.object(utils_launcher, "_running_pids", side_effect=[[], []]),
+                patch.object(utils_launcher, "_kernel32", return_value=kernel),
+                patch.object(utils_launcher, "_prepare_parent", return_value=42),
+                patch.object(utils_launcher, "_create_game_process", create_process),
+            ):
+                self.assertEqual(
+                    utils_launcher.launch_endfield(
+                        str(game), str(launcher), '--profile "中文 名称"'
+                    ),
+                    314,
+                )
+            create_process.assert_called_once_with(
+                kernel, str(game), '--profile "中文 名称"', 42
+            )
+            kernel.CloseHandle.assert_called_once_with(42)
+
+    def test_endfield_launch_rejects_non_windows_and_missing_files(self):
+        with (
+            patch.object(utils_launcher.sys, "platform", "linux"),
+            self.assertRaisesRegex(OSError, "仅支持 Windows"),
+        ):
+            utils_launcher.launch_endfield("game.exe", "Launcher.exe")
+        with (
+            patch.object(utils_launcher.sys, "platform", "win32"),
+            patch.object(utils_launcher.os.path, "isfile", return_value=False),
+            self.assertRaises(FileNotFoundError),
+        ):
+            utils_launcher.launch_endfield("game.exe", "Launcher.exe")
 
 
 if __name__ == "__main__":

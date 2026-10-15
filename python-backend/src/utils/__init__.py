@@ -157,7 +157,9 @@ def join_dir_path_with_mk(base: str, *subs) -> str:
     return target
 
 
-def open_in_explorer(path: str, arguments: str = "") -> None:
+def open_in_explorer(
+    path: str, arguments: str = "", *, launcher_path: str | None = None
+) -> None:
     """用系统默认程序打开文件或目录（跨平台）。
 
     Windows 走 ``os.startfile``；其他平台走 ``xdg-open`` / ``open``。
@@ -166,6 +168,11 @@ def open_in_explorer(path: str, arguments: str = "") -> None:
     Args:
         path: 待打开的文件或目录路径。
     """
+    if launcher_path is not None:
+        from src.utils.utils_launcher import launch_endfield
+
+        launch_endfield(path, launcher_path, arguments)
+        return
     if sys.platform == "win32":
         if arguments:
             os.startfile(path, arguments=arguments, cwd=os.path.dirname(path))  # noqa: S606 系统默认程序打开

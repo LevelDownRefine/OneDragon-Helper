@@ -27,7 +27,9 @@
 终末地使用卸载项 `33a0a6296a20400d503c59ac0fd6341e`；异环使用 `YH`，
 注册表定位失败时仍从游戏本体目录向上查找。手填 `game_path` 仍优先。
 `link` 使用适配器返回的路径及用户设置的 `game_arguments`，不注入游戏专用参数。
-如需传入终末地启动器参数，可在「游戏参数」中填写 `--game=Endfield --reason=4`。
+终末地点击「游戏」时，在独立 CLI 进程由 `utils_launcher` 校验启动器签名，等待
+`Games.exe`，再以它为父进程创建游戏。路径通过可选的 `launcher_path` 交给
+`open_in_explorer`；普通打开仍使用系统关联。
 
 ## 任务声明
 

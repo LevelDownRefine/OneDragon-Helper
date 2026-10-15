@@ -6,6 +6,7 @@ import sys
 from collections.abc import Callable
 from copy import deepcopy
 from functools import cache
+from pathlib import PureWindowsPath
 
 from src.config.script_resources import ScriptResources, get_script_resources
 from src.config.task.daily import Daily, MaaDaily, build_dailies
@@ -180,6 +181,10 @@ class ScriptConfig:
             return None
         return weekly.read_task()
 
+    def get_game_launch_info(self) -> tuple[str, str] | None:
+        """需要脚本专用启动流程时返回模块和游戏路径；默认使用系统关联。"""
+        return None
+
     def _get_installed_launcher(self, uninstall_id: str, filename: str) -> str | None:
         """从 Windows 卸载记录定位指定的启动器；记录或文件缺失返回 None。"""
         if sys.platform != "win32":
@@ -288,6 +293,14 @@ class GenshinConfig(ScriptConfig):
 class EndfieldConfig(ScriptConfig):
     _script_name = "ok-ef"
     display_name = "终末地"
+
+    def get_game_launch_info(self) -> tuple[str, str] | None:
+        """返回官方启动器与游戏本体路径；手填其他程序时保持直接打开。"""
+        manual = get_script_game_path(self._script_name)
+        if manual and PureWindowsPath(manual).name.casefold() != "endfield.exe":
+            return None
+        launcher = self.get_game_exe_path() or ""
+        return launcher, manual or super().get_game_exe_path() or ""
 
     def get_game_exe_path(self) -> str | None:
         """返回注册表中的鹰角启动器路径；未安装时返回 None。"""
@@ -582,6 +595,17 @@ def get_game_exe_path(script_name: str) -> str | None:
     if script_name in _CONFIGS:
         return _CONFIGS[script_name]().get_game_exe_path()
     return None
+
+
+def get_game_launch_info(script_name: str) -> tuple[str, str] | None:
+    """读取脚本专用启动流程的信息，不加载模块或启动进程。"""
+    if script_name not in _CONFIGS:
+        return None
+    factory = _CONFIGS[script_name]
+    # 普通游戏无需构造适配器，避免只读查询触发 MAA 等脚本的原生初始化。
+    if factory.__wrapped__.get_game_launch_info is ScriptConfig.get_game_launch_info:
+        return None
+    return factory().get_game_launch_info()
 
 
 def is_adapted(script_name: str) -> bool:
