@@ -45,7 +45,9 @@ class LinksController(QObject):
             return self._open_path(target["path"], arguments)
         if target["kind"] != "command":
             raise ValueError("游戏启动目标无效")
-        assert all(key in target for key in ("program", "args", "cwd", "env"))
+        if not all(key in target for key in ("program", "args", "cwd", "env")):
+            self._toast("游戏启动命令无效")
+            return False
         try:
             subprocess.Popen(
                 [target["program"], *target["args"]],

@@ -190,7 +190,12 @@ def open_in_explorer(
         if spec is None or spec.loader is None:
             raise ImportError("无法加载游戏启动模块")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        sys.modules[spec.name] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            sys.modules.pop(spec.name, None)
+            raise
         if not callable(getattr(module, "launch_game", None)):
             raise ImportError("游戏启动模块缺少 launch_game，请更新对应脚本")
         if module.launch_game(os.path.abspath(path), arguments, logger) is not True:

@@ -527,7 +527,12 @@ def run_cli(args) -> int | None:
         _emit_cli("version", get_version())
         return 0
     if args.launch_game is not None:
-        AppService().launch_game(args.launch_game)
+        try:
+            AppService().launch_game(args.launch_game)
+        except Exception as exc:  # noqa: BLE001 - 外部启动模块失败也需写出 CLI 结果
+            logger.exception("启动游戏失败")
+            _emit_cli("launch_game", f"启动游戏失败: {exc}")
+            return 1
         return 0
     if args.selftest:
         return _run_selftest(args.out)

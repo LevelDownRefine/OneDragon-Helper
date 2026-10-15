@@ -52,6 +52,7 @@ class TestEndfieldLaunch(unittest.TestCase):
             patch.object(app_service, "get_script", return_value=self.script)
         )
 
+        self.enterContext(patch.dict(sys.modules))
         self.service = AppService()
         self.addCleanup(self.service.close)
 
@@ -141,6 +142,32 @@ class TestEndfieldLaunch(unittest.TestCase):
                 )
                 with self.assertRaises(error):
                     self.service.launch_game("ok-ef")
+
+    def test_module_import_registration_and_failure_cleanup(self):
+        with patch.object(sys, "platform", "win32"):
+            self.module.write_text(
+                "import sys\nassert sys.modules[__name__] is not None\n"
+                "raise ImportError('dependency missing')\n",
+                encoding="utf-8",
+            )
+            with self.assertRaises(ImportError):
+                self.service.launch_game("ok-ef")
+            self.assertNotIn("_odh_game_launcher", sys.modules)
+            self.module.write_text("# no launch function\n", encoding="utf-8")
+            with self.assertRaises(ImportError):
+                self.service.launch_game("ok-ef")
+
+    def test_cli_failure_writes_result_and_returns_nonzero(self):
+        with (
+            patch("src.cli.AppService") as service,
+            patch("src.cli._emit_cli") as emit,
+            patch("src.cli.logger"),
+        ):
+            service.return_value.launch_game.side_effect = RuntimeError("timeout")
+            self.assertEqual(
+                run_cli(build_parser().parse_args(["--launch-game", "ok-ef"])), 1
+            )
+            emit.assert_called_once_with("launch_game", "启动游戏失败: timeout")
 
     def test_ordinary_game_queries_do_not_initialize_native_configuration(self):
         with (
