@@ -256,31 +256,6 @@ class ControllerTests(TestCase):
             )
         opened.assert_called_once_with("game.exe", "")
 
-    def test_game_launch_command_runs_in_independent_process_and_reports_spawn_failure(
-        self,
-    ):
-        self.load("A")
-        links = CliLinksController(self.games, self.session, self.messages.append)
-        target = {
-            "kind": "command",
-            "program": "/absolute/python",
-            "args": ["--launch-game", "ok-ef"],
-            "cwd": "/absolute/helper",
-            "env": {},
-        }
-        links.launchGame()
-        with patch("gui.controllers.links.subprocess.Popen") as spawn:
-            self.transport.succeeded.emit(2, target)
-        self.assertEqual(spawn.call_args.args[0], [target["program"], *target["args"]])
-        self.assertEqual(spawn.call_args.kwargs["cwd"], target["cwd"])
-        self.assertIn("正在启动", self.messages[-1])
-        links.launchGame()
-        with patch(
-            "gui.controllers.links.subprocess.Popen", side_effect=OSError("denied")
-        ):
-            self.transport.succeeded.emit(3, target)
-        self.assertIn("无法启动游戏", self.messages[-1])
-
     def test_wallpaper_stale_and_changed_target_uses_cli(self):
         self.load("A", "B")
         background = CliBackgroundController(

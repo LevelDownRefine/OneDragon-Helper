@@ -1,12 +1,8 @@
-import importlib.util
-import logging
 import os
 import subprocess
 import sys
 from functools import lru_cache
 from pathlib import Path
-
-logger = logging.getLogger(__name__)
 
 
 def get_config_yml_path_under_root() -> str:
@@ -161,9 +157,7 @@ def join_dir_path_with_mk(base: str, *subs) -> str:
     return target
 
 
-def open_in_explorer(
-    path: str, arguments: str = "", *, launcher_module: str | None = None
-) -> None:
+def open_in_explorer(path: str, arguments: str = "") -> None:
     """用系统默认程序打开文件或目录（跨平台）。
 
     Windows 走 ``os.startfile``；其他平台走 ``xdg-open`` / ``open``。
@@ -171,36 +165,7 @@ def open_in_explorer(
 
     Args:
         path: 待打开的文件或目录路径。
-        arguments: 启动参数。
-        launcher_module: 可选脚本启动模块；由模块处理官方启动器和父进程关系。
     """
-    if launcher_module is not None:
-        if sys.platform != "win32":
-            raise OSError("通过官方启动器启动游戏仅支持 Windows")
-        if not os.path.isfile(launcher_module):
-            raise FileNotFoundError("未找到游戏启动模块，请更新对应脚本")
-        if not os.path.isfile(path):
-            raise FileNotFoundError("未找到游戏程序，请配置游戏路径")
-        # 动态加载的 ok-ef 模块使用此标准库类型，显式导入供冻结收集。
-        import ctypes.wintypes  # noqa: F401
-
-        spec = importlib.util.spec_from_file_location(
-            "_odh_game_launcher", launcher_module
-        )
-        if spec is None or spec.loader is None:
-            raise ImportError("无法加载游戏启动模块")
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = module
-        try:
-            spec.loader.exec_module(module)
-        except BaseException:
-            sys.modules.pop(spec.name, None)
-            raise
-        if not callable(getattr(module, "launch_game", None)):
-            raise ImportError("游戏启动模块缺少 launch_game，请更新对应脚本")
-        if module.launch_game(os.path.abspath(path), arguments, logger) is not True:
-            raise RuntimeError("游戏启动模块未确认启动成功，详见日志")
-        return
     if sys.platform == "win32":
         if arguments:
             os.startfile(path, arguments=arguments, cwd=os.path.dirname(path))  # noqa: S606 系统默认程序打开
